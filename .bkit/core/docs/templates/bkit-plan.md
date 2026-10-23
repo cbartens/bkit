@@ -302,6 +302,8 @@ Verify only when applicable.
 ## Architecture & Component Changes
 
 [Group files logically (DB, API, Backend, Frontend, Cron, Observability). Separate by headers; initially set to `PENDING`.]
+**Ledger rows:** [Backticked `key` of every `docs/decisions.jsonl` / `docs/deferrals.jsonl` row written for this plan, comma-separated. If none, write "None"; initially set to `PENDING`.]
+**CRITICAL:** No runbook task writes or checks a ledger row.
 **CRITICAL:** Justify new file locations per `docs/architecture.md` topology.
 **CRITICAL:** Prefer `[MODIFY]` over `[NEW]`. Every `[NEW]` must trace to a `Reuse Inventory` `NEW` row and carry its reason — no parallel reimplementation. Superseded → `Supersession Inventory` as `DELETE`.
 **CRITICAL:** Frontend/Mobile → adhere to `docs/design.md`.
@@ -438,7 +440,7 @@ _No DB changes: "Code-only — `git revert` sufficient."_
 - [ ] **Sweep existing tests:** Each task fixed the tests it broke; full suite green per `docs/testing.md`. Fix only what tasks missed.
 - [ ] **Sweep new tests:** Each task's `Done when` tests exist and pass per Testing Strategy; add only what tasks missed — not where tests are first written. Reuse data factories + auth conventions (above) for UI E2E tests.
 - [ ] **Verify observability:** Observable per `docs/observability.md` — errors logged via the project's structured logger (e.g. `console.error("[Context] Message", payload)`), correlation IDs through pipeline, audit coverage on monitored tables where the project has it (e.g. audit / CDC triggers); update doc for new log names / labels / tracing scopes.
-- [ ] **Update documentation:** Integrate logic/schemas into affected docs — `docs/architecture.md`, `docs/data-schema.md`, `docs/knowledge.jsonl`, `docs/decisions.jsonl`, others via `.agents/docs.md`. Rewrite ground-truth prose; do not append lazy bullet points.
+- [ ] **Update documentation:** Integrate logic/schemas into affected docs — `docs/architecture.md`, `docs/data-schema.md`, others via `.agents/docs.md`. Rewrite ground-truth prose; do not append lazy bullet points.
 
 ### 🔒 Gate 3: Testing & Documentation Check
 

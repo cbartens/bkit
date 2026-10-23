@@ -49,9 +49,9 @@ maxTurns: 200
 7. any finding with `class` = `architectural` → append `BLOCKED` → proceed to next.
 8. Implement in `severity` order — apply suggested remediation per finding (edit / create source) → append log → next finding.
 9. Run `pnpm bkit:gate:static-unit` — all local tests MUST pass.
-10. Once remediations verified (tests pass) → append gotcha rows (if any) to `docs/knowledge.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
-11. For all `BLOCKED` findings (no later `DONE`) → name `Deferral Reason` per `.bkit/jsonl.md` and check justifications. **If** none valid = not valid deferral → finish work. **Else** → append deferral rows to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
-12. For all `DEFERRED` findings → append deferral rows with `reason` = `low-severity`, `severity` = `LOW` to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
+10. Once remediations verified (tests pass) → append gotcha rows (if any) to `docs/knowledge.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
+11. For all `BLOCKED` findings (no later `DONE`) → name `Deferral Reason` per `.bkit/jsonl.md` and check justifications. **If** none valid = not valid deferral → finish work. **Else** → append deferral rows to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
+12. For all `DEFERRED` findings → append deferral rows with `reason` = `low-severity`, `severity` = `LOW` to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
 13. Update **Create** — set `Blocked` via `Edit` = `true` when any `CRITICAL|HIGH` finding ends `BLOCKED` with no later `DONE` across logs, else `false`; set `Verdict` via `Edit`; mapping:
     - `PASS` = every finding not `DEFERRED` has `DONE` across logs and local tests pass.
     - `FAIL` = local tests fail.

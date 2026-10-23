@@ -51,7 +51,7 @@ tools:
    - All strategies: NEVER record a red by undoing or swapping out code (restoring old source, stubbing over landed code). Test-order gap (`no-red`, `late-red`, `red-mismatch`, `red-evidence-missing`, `test-changed`) → `BLOCKED`; never touch a `Test-order exception` line.
 7. Implement in `priority` order — targeted remediation per gap (edit / create source); implement missing tests if suggested → verify acceptance criteria → append log → proceed.
 8. Run `pnpm bkit:gate:static-unit` — all local tests MUST pass. **If** Context names boundary gates → run too; MUST pass.
-9. Once remediations verified (tests pass) → append gotcha rows (if any) to `docs/knowledge.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
+9. Once remediations verified (tests pass) → append gotcha rows (if any) to `docs/knowledge.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
 10. Update **Create** — set `Fixed` via `Edit` = count of `DONE` lines in **Create**; set `Verdict` via `Edit`; mapping:
     - `PASS` = every in-scope gap has `DONE` across logs and local tests pass.
     - `FAIL` = unable to remediate; any in-scope gap ends `BLOCKED` with no later `DONE` or local tests fail.

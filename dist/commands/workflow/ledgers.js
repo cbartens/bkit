@@ -1,5 +1,6 @@
-// bkit ledgers commit|union|only-bookkeeping|append — stage and commit bookkeeping
-// by an allow-list, never `git add -A`; append validated rows with a minted `ts`.
+// bkit ledgers commit|union|only-bookkeeping|append|check — stage and commit bookkeeping
+// by an allow-list, never `git add -A`; append validated rows with a minted `ts`;
+// check that the ledger rows a plan names are on disk.
 //
 // The pathspec is built by `git ls-files` against quoted globs, so git does the
 // matching and an unmatched glob is empty output, never a shell abort. Staging
@@ -11,7 +12,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { readBkitVersion } from "../../install/version-file.js";
-import { APPEND_LEDGERS, SCHEMA, gitEnv, mintTs, resolveRepoSlug, validate, writerProblem, } from "../../ledgers/telemetry.js";
+import { APPEND_LEDGERS, SCHEMA, gitEnv, parse, mintTs, resolveRepoSlug, validate, writerProblem, } from "../../ledgers/telemetry.js";
 import { CommandError, EXIT, parseJson, } from "../lib.js";
 import { str } from "./status.js";
 /** Root is not a directory or repo, git is too old, or a ref does not resolve. */
@@ -131,6 +132,8 @@ function dirtyTracked(root) {
 // push sends exactly the run's commits. Nothing else reads or writes the file.
 /** Exit code: a path that was dirty before the run changed during it, so no commit was made. */
 export const EXIT_FOREIGN_PATH = 10;
+/** check: the plan has no `**Ledger rows:**` line, it is unfilled, or a key it names is on no ledger. */
+export const EXIT_ROWS_MISSING = 11;
 const RECORD_DIR = "bkit/shared-checkout";
 const RECORD_FID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 /** The checkout's top: git status and pathspecs are relative to it, whatever `cwd` is. */
@@ -626,6 +629,22 @@ export const ledgersCommand = {
             },
             run: (ctx) => append(ctx),
         },
+        check: {
+            summary: "Check that every decision / deferral key on a plan's `**Ledger rows:**` line is on disk.",
+            flags: [
+                { name: "root", type: "string", help: "checkout whose ledgers to read (default: cwd)" },
+                { name: "plan", type: "string", required: true, help: "plan file, relative to --root" },
+            ],
+            output: {
+                plan: "the plan checked",
+                keys: "the keys its Ledger rows line names (empty for None)",
+                missing: "keys on neither docs/decisions.jsonl nor docs/deferrals.jsonl",
+            },
+            exitCodes: {
+                [EXIT_ROWS_MISSING]: "no `**Ledger rows:**` line, the line is unfilled, or a key it names has no row",
+            },
+            run: (ctx) => check(ctx),
+        },
     },
 };
 /**
@@ -958,6 +977,53 @@ function append(ctx) {
     const r = appendLedgerRows(root, String(ctx.flags.ledger), parsed.value);
     ctx.log(`appended ${r.appended} row(s) to ${r.file}`);
     ctx.emit({ ...r });
+    return EXIT.OK;
+}
+const LEDGER_ROWS_LINE = /^\*\*Ledger rows:\*\*(.*)$/m;
+const CHECKED_LEDGERS = [APPEND_LEDGERS.decisions, APPEND_LEDGERS.deferrals];
+/**
+ * Read the plan's `**Ledger rows:**` line — backticked keys, or `None` — and
+ * return the keys no `decision` / `deferral` row carries. Throws EXIT_ROWS_MISSING
+ * when the line is absent or still a placeholder.
+ */
+export function checkPlanRows(root, plan) {
+    const abs = path.resolve(root, plan);
+    if (!fs.existsSync(abs))
+        throw new CommandError(EXIT.USAGE, `--plan not found: ${plan}`);
+    const text = fs.readFileSync(abs, "utf-8");
+    const line = LEDGER_ROWS_LINE.exec(text)?.[1]?.trim();
+    if (line === undefined) {
+        throw new CommandError(EXIT_ROWS_MISSING, `${plan} has no **Ledger rows:** line`);
+    }
+    const keys = [...line.matchAll(/`([^`]+)`/g)].map((m) => m[1] ?? "");
+    if (keys.length === 0) {
+        if (line.replace(/[."\s]/g, "") === "None")
+            return { keys: [], missing: [] };
+        throw new CommandError(EXIT_ROWS_MISSING, `${plan}: **Ledger rows:** is unfilled (${line})`);
+    }
+    const onDisk = new Set();
+    for (const { file, kinds } of CHECKED_LEDGERS) {
+        const abs = path.join(root, file);
+        if (!fs.existsSync(abs))
+            continue;
+        for (const e of parse(fs.readFileSync(abs, "utf-8")).events) {
+            const key = e.key;
+            if (kinds.includes(e.kind) && typeof key === "string")
+                onDisk.add(key);
+        }
+    }
+    return { keys, missing: keys.filter((k) => !onDisk.has(k)) };
+}
+function check(ctx) {
+    const root = rootOf(ctx);
+    const plan = String(ctx.flags.plan);
+    const r = checkPlanRows(root, plan);
+    ctx.emit({ plan, ...r });
+    if (r.missing.length > 0) {
+        ctx.log(`${plan}: no ledger row for ${r.missing.join(", ")}`);
+        return EXIT_ROWS_MISSING;
+    }
+    ctx.log(`${plan}: ${r.keys.length} ledger row(s) on disk`);
     return EXIT.OK;
 }
 /** mkdir -p; the error text, or undefined on success. */

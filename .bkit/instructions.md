@@ -277,15 +277,12 @@ Rules with no `- {surface}:` line reach agents only through the run-time read of
 ### major-changes
 
 - rule: R13 · Universal Rules › Basic Principles
-- refs:
-  - `docs/decisions.jsonl`
 - workflow:
   - specialised: `bkit-build`, `bkit-design`
   - applies: `bkit-build`, `bkit-design`
 - prompt:
   - condensed: `bkit-plan-generate`
   - specialised: `bkit-build-challenge-remediate`, `bkit-design-generate`, `bkit-design-summary`, `bkit-plan-summary`, `bkit-plan-update`
-  - applies: `bkit-debug-failure-remediate`, `bkit-plan-generate`, `bkit-utility-update-decisions`
 - audit:
   - specialised: `bkit-audit-gates`
 - drift:
@@ -293,7 +290,7 @@ Rules with no `- {surface}:` line reach agents only through the run-time read of
   - `bkit-design:283`: Grill puts questions to the human mid-procedure without a HARD STOP marker; R94 says NEVER request confirmation between steps and R37 says STOP only for explicit HARD STOPs
 
 ```text
-**Major changes:** ALWAYS require human confirmation (global, architecture, technology, process, layout, UX). Steps forcing calls inside `/bkit-*` workflows: Decide, append rows to `docs/decisions.jsonl`, and surface in output; NEVER decide silently.
+**Major changes:** ALWAYS require human confirmation (global, architecture, technology, process, layout, UX). Inside `/bkit-*` workflows, a step forced to decide → decide and surface it in output; NEVER decide silently.
 ```
 
 ### skills
@@ -709,7 +706,7 @@ Rules with no `- {surface}:` line reach agents only through the run-time read of
   - `bkit-utility-update-roadmap:52`: NEVER append ledger rows means a bug or deferral found while ranking cannot be recorded per R38 / R39
 
 ```text
-**Deferred work:** NEVER silently drop deferred work, ALWAYS append rows to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first. All rows MUST carry `reason` from closed enum; no valid justification = not valid deferral → finish work.
+**Deferred work:** NEVER silently drop deferred work, ALWAYS append rows to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first. All rows MUST carry `reason` from closed enum; no valid justification = not valid deferral → finish work.
 ```
 
 ### discovered-bugs
@@ -737,7 +734,7 @@ Rules with no `- {surface}:` line reach agents only through the run-time read of
   - `bkit-audit-flakes:123`, `bkit-audit-testing:157`, `bkit-audit-repo:121`: "the audit agent writes docs/failures.jsonl rows" vs shared Gate 3 Writes item
 
 ```text
-**Discovered bugs:** NEVER silently drop discovered bugs, ALWAYS append rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
+**Discovered bugs:** NEVER silently drop discovered bugs, ALWAYS append rows to `docs/failures.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
 ```
 
 ### flaky-tests
@@ -755,7 +752,7 @@ Rules with no `- {surface}:` line reach agents only through the run-time read of
   - `bkit-audit-flakes:123`: "the audit agent writes docs/failures.jsonl rows" vs shared Gate 3 Writes item
 
 ```text
-**Flaky tests:** Any tests passing ONLY on retry / failing intermittently, ALWAYS append rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
+**Flaky tests:** Any tests passing ONLY on retry / failing intermittently, ALWAYS append rows to `docs/failures.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
 ```
 
 ### tracker-issue-creation
@@ -2293,9 +2290,13 @@ by `key`, highest `ts` wins → search ONLY winning rows where `status` is {{sta
 - prompt: repeatable
 - rules: repeatable
 - rule: R39 Discovered bugs (0.62)
-- carriers: prompt `bkit-build-challenge-remediate`, `bkit-build-plan-gaps-remediate`, `bkit-debug-abort-handover`, `bkit-debug-failure-remediate`, `bkit-design-generate`, `bkit-plan-generate`, `bkit-plan-update`; rules
+- carriers: prompt `bkit-build-challenge-remediate`, `bkit-build-plan-gaps-remediate`, `bkit-debug-abort-handover`, `bkit-debug-failure-remediate`, `bkit-design-generate`, `bkit-plan-generate`, `bkit-plan-update`, `bkit-ship-deferred-sweep`; rules
 
 ```text
+to `docs/{{ledger}}.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
+```
+
+```retired
 to `docs/{{ledger}}.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 ```
 
@@ -2354,10 +2355,11 @@ to `docs/{{ledger}}.jsonl` in `.bkit/jsonl.md` format; check existing entries fi
 - carriers: workflow all
 
 ```text
-**Friction:** Watch own context and subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → append rows to `.bkit/friction.jsonl` in `.bkit/jsonl.md` format → continue or escalate; logging does not replace **Failure Path**.
+**Friction:** Watch own context and subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → append rows to `.bkit/friction.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom) → continue or escalate; logging does not replace **Failure Path**.
 ```
 
 ```retired
+**Friction:** Watch own context and subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → append rows to `.bkit/friction.jsonl` in `.bkit/jsonl.md` format → continue or escalate; logging does not replace **Failure Path**.
 **Friction:** Watch own context and subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → APPEND rows to `.bkit/friction.jsonl` in `.bkit/jsonl.md` format → continue or escalate; logging does NOT replace **Failure Path**.
 ```
 
@@ -5353,7 +5355,7 @@ Same text in 2+ files; `- carriers:` names them per surface.
   **If** tracker wired → per remaining entry with `status` not `TRIAGED|CLOSED` → search for matching tracker issues. **If** matching issue found → set `status` to `TRIAGED`, add issue id to `references`; never create, close or relabel issues.
   ```
 
-- carriers: workflow `bkit-design`, `bkit-plan`
+- carriers: workflow `bkit-design`
 
   ```text
   **If** user requests the open questions one by one → ask each `## Outstanding Questions` item on its own, verbatim, with its options, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step.
@@ -5624,7 +5626,7 @@ L123 **If** any item lacks a decision → discuss follow-ups → end turn → wa
 L124 **Else** → step 5.
 L126 [R10; R13] **Accept** — ONLY on that item's explicit human approval; "yes" to an `Accept` recommendation counts:
 L127 Test-order gap → `**Test-order exception:**` as the task's last line in `{DECISION_PLAN}`, indented; entries in `Test first` form, each ending `— {human's reason}`.
-L128 [R13] Other → append one `docs/decisions.jsonl` row in `.bkit/jsonl.md` format; `step` = `build-decision`; `summary` names `{FID}`, step `{PAUSE_STEP}` and the gap or finding; `rationale` = `accepted by owner: {human's reason}`.
+L128 Other → append one `docs/decisions.jsonl` row with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); `by.step` = `build-decision`; `summary` names `{FID}`, step `{PAUSE_STEP}` and the gap or finding; `rationale` = `accepted by owner: {human's reason}`.
 L129 **Fix now** → append `- [ ] **Task {next N}:**` with `**Done when:**` and `**Test first:**` (1-5 `` `{test file}` `{test name}` fails on {what goes wrong} `` entries, `;`-separated) to `{DECISION_PLAN}`.
 L130 Under each item add `Decision: {Accept|Fix now} — {human's words}`; set `Status: DECIDED`. **If** a `Test-order exception` was written → commit `{DECISION_PLAN}` alone first:
 L140 **If** any `Fix now` → `FIX_TASKS` = the added task numbers → Step 6.
@@ -5818,6 +5820,9 @@ L418 **Subagent:** Invoke `@bkit-plan-scope-check-2`
 L464 Record the count — `verdict` `SINGLE` = no split, `SPLIT` = partition required:
 L468 **If** `COMPLEXITY_VERDICT` = SINGLE → Step 10.
 L479 [R73; R74] **If** exit 1 → invoke `@bkit-plan-complexity-split` again with Context `"Fix only what 'docs/plans/{YYYYMM}/logs/{FID}/plan-split-check.md' names, in the children."` → re-run this sub-step; a second exit 1 → **Failure Path**.
+L504 Hold `final` as `{PLAN_FINAL}`. Check every `key` on its `**Ledger rows:**` line is on disk:
+L508 **If** exit non-zero → **Failure Path**, naming each `missing` key.
+L601 **If** user requests the open questions one by one → ask each `## Outstanding Questions` item on its own, verbatim, with its options, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step. Each answer that settles an architecture / technology decision → append its row to `docs/decisions.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom) at once; `by.step` = `plan-close-workflow`; `rationale` = `answered by owner: {human's answer}`; decision already on disk → same `key`.
 ```
 
 #### bkit-ship
@@ -5897,7 +5902,7 @@ L73 `Project Instructions` bullets extend or override `Universal Instructions` s
 L78 [R12; R33] **If** surfaces absent → tick with explicit skip and evidence of absence; record where steps say, **Else** → `Checked`. Do not invent findings for absent surfaces.
 L81 `Suggested Issues`: group `Findings` into issues to create; one row = one change landed in one go. Group by shared root cause, then module, then fix; never by severity alone. Every `MEDIUM`+ finding in exactly one row; `LOW` findings optional, batched into one row. `Findings` = finding IDs; `Severity` = highest of its findings; `Title` = the fix, imperative.
 L82 [R43] `Next Step`, first match wins: change outside the repo (dashboard, tracker, vendor setting) → `manual`; failing test / CI / runtime, cause unknown → `/bkit-debug`; approach open (options, trade-offs, unanswered questions) → `/bkit-design`; approach settled, not broken into tasks → `/bkit-plan`; change clear → `/bkit-build`. **If** `.bkit/lite.md` § When to use allows a lite workflow → `/bkit-build` becomes `build:lite`; `/bkit-debug` becomes `debug:lite`. `Reason` = the deciding fact, one clause.
-L83 [R39] Write ledger entries to `docs/failures.jsonl` per `.bkit/jsonl.md`; `workflow: "audit"`, `step: "audit-{slug}"`. **If** template audits `docs/failures.jsonl` or `docs/deferrals.jsonl` → skip step.
+L83 [R39] Write ledger entries to `docs/failures.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); `by: {workflow: "audit", step: "audit-{slug}"}`. **If** template audits `docs/failures.jsonl` or `docs/deferrals.jsonl` → skip step.
 L87 [R39] Per finding `MEDIUM`+: open row names same problem → reuse its `key`. **Else** → new `key` `audit-{slug}-{content-slug}`, never the finding ID.
 L88 [R39] Per finding `LOW`: open row names same problem → same `key`, `severity: "LOW"`. **Else** → no row.
 L89 Per open row with `key` prefix `audit-{slug}-` no finding matches: surface checked this run → `CLOSED`. **Else** → leave open. never close rows under other `key` prefixes.
@@ -6363,7 +6368,8 @@ L49 `CRITICAL` items must be applied; no consensus required. **If** conflict acr
 L50 [R05] OPTIONAL items — apply each on merit; no consensus required. **If** conflict with applied `CRITICAL` or scope expansion → skip.
 L51 **If** input carries `Suggested Scope Expansion` → write candidates into plan's `Suggested Scope Expansion` per `docs/templates/bkit-plan.md` § `Suggested Scope Expansion`.
 L53 **If** applied findings add / reword open questions under `Open Questions & Assumptions` → shape each per `docs/templates/bkit-plan.md` § `Open Questions & Assumptions`. Questions in regions no finding touches stay verbatim.
-L55 `PASS` = all `CRITICAL` applied; OPTIONAL applied on merit.
+L53 Applied findings add or change an architecture / technology decision → append its row to `docs/decisions.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first. Changed decision → same `key`. Add each decision / deferral `key` written to the plan's `**Ledger rows:**` line.
+L56 `PASS` = all `CRITICAL` applied; OPTIONAL applied on merit.
 ```
 
 #### bkit-ship-conflict-resolve
@@ -6398,10 +6404,10 @@ L48 **Else** → apply blocking tests to the unmet gap:
 L49 [R12] **If** deliverable itself absent, stub only, or produces wrong observable result, shown by named files, symbols, or failing tests and never inferred from plan sentences → mark item `Blocked`.
 L50 [R69] **If** guards removed / weakened (auth, validation, data-loss, secret handling), or paths known to be broken → mark item `Blocked`.
 L51 **If** shipped surfaces instruct consumers to run something that fails at runtime → mark item `Blocked`.
-L53 [R04; R38] Any leftover `Planned` items → mark items `Lazy` → move to `Lazy Deferrals` → append deferral rows to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first; set `reason` to `unjustified`, set `status` to `TRIAGED`.
+L53 [R04; R38] Any leftover `Planned` items → mark items `Lazy` → move to `Lazy Deferrals` → append deferral rows to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first; set `reason` to `unjustified`, set `status` to `TRIAGED`.
 L55 [R04; R38] Scan `docs/deferrals.jsonl` for any plan related entries including recently appended rows → verify each `reason` holds at ship time as per `.bkit/jsonl.md` deferral reason tests; `reason` = `low-severity` with `severity` = `LOW` holds without the tests:
 L56 **If** holds → record under / move to `Exempt Deferrals` → continue; append no row, `reason` is set once and carried verbatim.
-L57 [R38] **Else** → record under / keep under `Lazy Deferrals` → append row to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format with same `key` and prior fields verbatim, set `reason` to `unjustified`, set `status` to `TRIAGED`, `description` naming failed deferral tests.
+L57 [R38] **Else** → record under / keep under `Lazy Deferrals` → append row to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), same `key` and prior fields verbatim, set `reason` to `unjustified`, set `status` to `TRIAGED`, `description` naming failed deferral tests.
 ```
 
 #### bkit-ship-summary
@@ -6467,7 +6473,7 @@ L90 Report to caller; do not write the report into the file: original vs new lin
 ```text
 L18 **Role:** Senior editor correcting decisions the docs or codebase have since contradicted.
 L45 `CONTRADICTED` = docs or code now state otherwise and one replacement is unambiguous → corrected decision, set `status` to `ACTIVE`, `references` naming evidence.
-L49 [R13] Per `key` changed above → append one row to `docs/decisions.jsonl` in `.bkit/jsonl.md` format with same `key` and updated values; copy unchanged field values verbatim.
+L49 Per `key` changed above → append one row to `docs/decisions.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), same `key` and updated values; copy unchanged field values verbatim.
 ```
 
 #### bkit-utility-update-deferrals
@@ -6477,7 +6483,7 @@ L49 [R13] Per `key` changed above → append one row to `docs/decisions.jsonl` i
 ```text
 L18 **Role:** Senior editor closing deferrals the codebase has already resolved.
 L43 [R12] Per remaining entry → check whether work is done; always check codebase; never trust entry claims. **If** done in code → set `status` to `CLOSED`, `references` naming evidence. **Else** → leave open (not done **or** cannot be judged from code).
-L46 [R38] Per `key` changed above → append one row to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format with same `key` and updated values; copy unchanged field values verbatim.
+L46 [R38] Per `key` changed above → append one row to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), same `key` and updated values; copy unchanged field values verbatim.
 ```
 
 #### bkit-utility-update-documentation
@@ -6495,7 +6501,7 @@ L18 **Role:** Senior tech writer syncing project docs with system state after mu
 ```text
 L18 **Role:** Senior editor closing failures the codebase has already resolved.
 L43 [R12; R40] Per remaining entry → check whether work is done; always check codebase; never trust entry claims. **If** done in code → set `status` to `CLOSED`, `references` naming evidence. **Else** → leave open (not done **or** cannot be judged from code). For `category` `testing` same-`key` row count is flake count; close only on landed deterministic fix, never on recent green run.
-L46 [R39; R40] Per `key` changed above → append one row to `docs/failures.jsonl` in `.bkit/jsonl.md` format with same `key` and updated values; copy unchanged field values verbatim.
+L46 [R39; R40] Per `key` changed above → append one row to `docs/failures.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), same `key` and updated values; copy unchanged field values verbatim.
 ```
 
 #### bkit-utility-update-knowledge
@@ -6505,7 +6511,7 @@ L46 [R39; R40] Per `key` changed above → append one row to `docs/failures.json
 ```text
 L18 **Role:** Senior editor correcting gotchas the docs or codebase have since contradicted.
 L45 `CONTRADICTED` = docs or code now state otherwise and one replacement is unambiguous → corrected lesson, set `status` to `ACTIVE`, `references` naming evidence.
-L49 Per `key` changed above → append one row to `docs/knowledge.jsonl` in `.bkit/jsonl.md` format with same `key` and updated values; copy unchanged field values verbatim.
+L49 Per `key` changed above → append one row to `docs/knowledge.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), same `key` and updated values; copy unchanged field values verbatim.
 ```
 
 #### bkit-utility-update-roadmap
@@ -7926,54 +7932,56 @@ L279 **MODIFY:** `users.role` (added enum value)]
 L280 If no schema changes are required, explicitly state "None".
 L284 [R03; R33] [One row per capability plan introduces, including those search cleared as absent. Author before `Architecture & Component Changes`. No capability → no rows; "None" never substitutes for searching. Design `Reuse & Prior Art` verdicts = starting point; every row still records its own `Search performed`; initially set to `PENDING`.]
 L298 never accept cleaner-fresh / messy-existing / close-but-different as a `NEW` reason — messy candidate → extend and clean it, in scope. Empty `Search performed` = UNSEARCHED, not `NEW`-eligible.
-L305 **CRITICAL:** Justify new file locations per `docs/architecture.md` topology.
-L306 [R03] **CRITICAL:** Prefer `[MODIFY]` over `[NEW]`. Every `[NEW]` must trace to a `Reuse Inventory` `NEW` row and carry its reason — no parallel reimplementation. Superseded → `Supersession Inventory` as `DELETE`.
-L307 **CRITICAL:** Frontend/Mobile → adhere to `docs/design.md`.
-L308 [R16; R17; R19] **CRITICAL:** Verify `[MODIFY]` files exist (else `[NEW]`). Before changing exported symbol/signature/contract: find callers/importers/schemas/consumers (language-server references when configured + text search), list blast radius.
-L309 **CRITICAL:** Include backend actions for new schema validations (e.g. Zod `schema.parse`).
-L310 [R69] **CRITICAL:** NEVER weaken gate to pass: no type-system escapes (e.g. TS `as any` / `as unknown as` / `@ts-ignore`, Python `# type: ignore`), linter disables (e.g. `eslint-disable`, `//nolint`), test skips (e.g. `.skip`, `xfail`), deleted assertions, empty `catch` / error-swallowing, mocking-away unit under test. Fix root causes; per-file opt-out needs explicit human sign-off.
-L311 **CRITICAL:** Auto-capture (e.g. log drains / CDC) does not replace explicit logging — log edge cases escaping auto-capture with the project's structured logger (e.g. `console.error("[Context] Message", payload)`). See `docs/observability.md` for naming, severity, correlation IDs, label taxonomy.
-L315 [R87] [Define new tables / columns / access policies (e.g. RLS) with your migration tool (e.g. `db:diff`). **NEVER apply to shared remotes by hand** (e.g. `db push` to Dev/Main) — CI's migration lane applies them; see `docs/deployments.md` § Applying migrations at deploy time; initially set to `PENDING`.]
-L321 If a column contains PII → update the audit trigger to scrub it.
-L330 **Existence Check:** [Verify file exists first.]
-L335 **Reuse Check:** [`Reuse Inventory` row + reason (a)/(b)/(c) — why no existing artifact can be evolved.]
-L396 [R37; R94] **Continuous Execution:** Run runbook autonomously; no user permission at Gates; `[x]` as you go.
-L397 **Step Isolation:** Finish task (verify + checkbox) before next.
-L398 **Integration Shape:** may suggest PR / commit / sequencing — advisory, never a gate; one PR for all tasks always OK. Do not specify merge method.
-L402 Every task MUST include `**Done when:**` — terse, testable, codebase-verifiable (file exists / signature matches / test passes / behaviour observable). Plan-verify asserts before `[x]`. No task without `Done when:`. One task per in-scope audit finding id; group only on one shared root cause in report — every id still named.
-L404 [R01; R80] **Tests ship with their task.** Task adding / changing logic → names its own unit tests in `Done when`, matrix row or not; tests it breaks → fixed in same task. never defer task tests to later tasks to avoid splits that leave untested code and drop coverage gates.
-L406 **Build order and test source.** Order tasks by build dependency (schema → API → UI). Behaviour tests only from `Derived Test Matrix` rows — do not invent. Boundary-crossing tasks (DB / API / model / network / migration) carry paired non-mock `Done when` tests; pure-function tasks exempt from pairing, not from unit tests.
-L408 **Test first.** Every task is one `- [ ] **Task N:**` bullet and MUST include `**Test first:**` on it after `Done when`. Behaviour change at unit / integration tier → 1-10 tests across <= 3 test files, `;`-separated, each `` `{test file}` `` `` `{test name}` `` fails on {what goes wrong} — repo-relative test files, test names as the runner reports them or their last segments, no `;` in failure text; {what goes wrong} = wrong behaviour the stub shows, never a literal assertion; build sees each fail against stubs before writing the task's code. More tests or files → split the task. No behaviour change (docs, config, pure refactor) or E2E / `@live` tier only → `n/a — {reason naming which}`.
-L410 **Test-order exception.** Agents NEVER write one on their own judgement; ONLY the human, or the build orchestrator after explicit human approval. Human accepting a task's test-order gaps → `**Test-order exception:**` as the task's last line, indented, entries in `Test first` form each ending `— {reason}`; committed alone on the branch the build runs on (`feat/{FID}` in its worktree when it has one) before re-running build. `bkit tests green` clears only the named tests' test-order gaps; uncommitted or last changed by a workflow step commit → clears nothing.
-L412 **Issue tasks.** Change-shape issue (`.bkit/trackers.md` § Issue shapes) → its `Tasks` lines are the starting runbook; keep each `Done when` / `Test first` (tighten, never weaken); renumber in build order.
-L414 **Task 1:** [e.g., Create DB migration (`npx supabase db diff`)]. **Done when:** [e.g., `supabase/migrations/{timestamp}_add_items_status.sql` exists; `npx supabase db push --local` applies cleanly]. **Test first:** [e.g., n/a — migration; fresh-DB replay tier].
-L415 **Task 2:** [e.g., Implement backend API action `action.ts`]. **Done when:** [e.g., `packages/api/src/items/setStatus.ts` exports `setStatus` with Zod-validated input; unit test `packages/api/src/items/setStatus.test.ts` covers each status transition; integration test in `packages/api/items.integration.test.ts` passes]. **Test first:** [e.g., `packages/api/src/items/setStatus.test.ts` `rejects an unknown status` fails on an unknown status being accepted; `packages/api/items.integration.test.ts` `persists the new status` fails on no row being stored].
-L416 **Task 3:** [e.g., Update React component `page.tsx`]. **Done when:** [e.g., `apps/web/app/items/page.tsx` renders status badge; Playwright spec `apps/web/e2e/items.spec.ts` confirms user-visible state]. **Test first:** [e.g., n/a — E2E tier only; runs in CI].
-L420 [R10; R37; R94] **CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT — `[x]` all boxes below. **do not stop for user permission.** Proceed to `Testing & Documentation`.
-L422 [R03; R69] **No bolt-on / no gate-weakening:** every `[NEW]` traces to a `Reuse Inventory` `NEW` row and its search still holds — reusable artifact found mid-build → add a row, fold code into it; every `EXTEND` landed as a modification of the named artifact, not a parallel file. No type-system escapes (e.g. TS `as any` / `as unknown as` / `@ts-ignore`, Python `# type: ignore`), linter disables (e.g. `eslint-disable`, `//nolint`), test skips (e.g. `.skip`, `xfail`), empty `catch` / error-swallowing introduced to make a gate pass.
-L423 [R67] **Test first:** every task naming `Test first` tests recorded a red per test before its code; tests unchanged since except formatting or lines added outside every planned test; test-order gaps cleared only by a human-committed `Test-order exception`.
-L424 [fit `audit-gate-2-verified` 0.81] **Gate 2 - Verified:** Every checkbox above independently verified and checked off against the plan.
-L430 **End-to-end integration** — core data paths need at least 1 integration test firing the real API against a local DB _without_ ORM/DB mocking.
-L431 **UI E2E (browser or device) for UI only** (e.g. Playwright) — don't drive a UI for non-visual logic.
-L437 **Verify test coverage against Derived Test Matrix:** Each `Acceptance Scenario → Derived Test Matrix` row → one runbook task whose `Done when` carries its test; gaps → add to that task, not here.
-L438 [R12; R80] **Sweep existing tests:** Each task fixed the tests it broke; full suite green per `docs/testing.md`. Fix only what tasks missed.
-L439 **Sweep new tests:** Each task's `Done when` tests exist and pass per Testing Strategy; add only what tasks missed — not where tests are first written. Reuse data factories + auth conventions (above) for UI E2E tests.
-L440 **Verify observability:** Observable per `docs/observability.md` — errors logged via the project's structured logger (e.g. `console.error("[Context] Message", payload)`), correlation IDs through pipeline, audit coverage on monitored tables where the project has it (e.g. audit / CDC triggers); update doc for new log names / labels / tracing scopes.
-L441 [R28; R29] **Update documentation:** Integrate logic/schemas into affected docs — `docs/architecture.md`, `docs/data-schema.md`, `docs/knowledge.jsonl`, `docs/decisions.jsonl`, others via `.agents/docs.md`. Rewrite ground-truth prose; do not append lazy bullet points.
-L445 [R10; R37; R94] **CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT — `[x]` all boxes below. **do not stop for user permission.** Proceed to `Verification Plan`.
-L447 [R28] **Docs updated:** Every row in `Documentation Updates` completed. `.agents/docs.md` still accurate.
-L453 **Advisory build-phase checks, not merge gates.** Only `Agent Execution Runbook` `Done when` lines gate merge; nothing here does. Do not write "before merge" on untickable boxes — CI/human-only preconditions (lane RUN, deployed state, operator step) unenforceable. Work that MUST block merge → runbook task + codebase-verifiable `Done when`; lane that must run → CI config, not plan prose.
-L457 [R69; R75] **Full Local Gate Suite:** Full local gates — deepest declared `bkit:gate:*` script up to integration (`pnpm bkit:gate:static-unit-integration`, else `pnpm bkit:gate:static-unit`; e.g. typecheck, lint, `format:check`, prose, `slop:delta`, unit, in-process integration) + `bkit check`. Do not weaken gates (anti-suppression CRITICAL under Architecture & Component Changes).
-L458 [R80] **Test Synchronization:** [List existing E2E tests (e.g. Playwright) to update synchronously to prevent CI failures.]
-L459 **Build Configuration:** [Keep new test-only files (mocks, test configs) out of the production build (e.g. `tsconfig.json` `exclude`).]
-L460 **[Test Type] (`path/to/test.spec.ts`):** [Describe flows/unit/E2E additions. Note data hygiene needs.]
-L461 **Apply local migrations:** New migrations → apply locally (e.g. `npx supabase db push --local`); else integration tests fail on stale schema.
-L462 [R73] **Run all tests:** Local unit + integration (e.g. `pnpm test`, `pnpm test:integration`); fix failures before Gate 4.
-L465 [R68] **No Architectural Downgrades:** Build / compiler / test errors during verification → never hot-fix or anti-pattern; follow `docs/architecture.md` + named reference repos. Halt if stuck.
-L469 [R10; R37; R94] **CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT — `[x]` all boxes below. **do not stop for user permission.** Proceed to `Manual Verification`.
-L471 [R12] **Gate 4 - Verified:** Every checkbox in Automated Tests independently verified and checked off. Explicit proof (test outputs, CLI results, API responses) gathered.
-L479 [R73; R74] **Dashboard Ban:** Proactively use local CLIs (e.g. `gh`, `vercel`, `npx supabase`) to verify CI/CD pipelines instead of asking users to check dashboards.
-L481 **Step 1:** [Instructions for agent/user to verify feature end-to-end via CLI/DB.]
+L305 **Ledger rows:** [Backticked `key` of every `docs/decisions.jsonl` / `docs/deferrals.jsonl` row written for this plan, comma-separated. If none, write "None"; initially set to `PENDING`.]
+L306 **CRITICAL:** No runbook task writes or checks a ledger row.
+L307 **CRITICAL:** Justify new file locations per `docs/architecture.md` topology.
+L308 [R03] **CRITICAL:** Prefer `[MODIFY]` over `[NEW]`. Every `[NEW]` must trace to a `Reuse Inventory` `NEW` row and carry its reason — no parallel reimplementation. Superseded → `Supersession Inventory` as `DELETE`.
+L309 **CRITICAL:** Frontend/Mobile → adhere to `docs/design.md`.
+L310 [R16; R17; R19] **CRITICAL:** Verify `[MODIFY]` files exist (else `[NEW]`). Before changing exported symbol/signature/contract: find callers/importers/schemas/consumers (language-server references when configured + text search), list blast radius.
+L311 **CRITICAL:** Include backend actions for new schema validations (e.g. Zod `schema.parse`).
+L312 [R69] **CRITICAL:** NEVER weaken gate to pass: no type-system escapes (e.g. TS `as any` / `as unknown as` / `@ts-ignore`, Python `# type: ignore`), linter disables (e.g. `eslint-disable`, `//nolint`), test skips (e.g. `.skip`, `xfail`), deleted assertions, empty `catch` / error-swallowing, mocking-away unit under test. Fix root causes; per-file opt-out needs explicit human sign-off.
+L313 **CRITICAL:** Auto-capture (e.g. log drains / CDC) does not replace explicit logging — log edge cases escaping auto-capture with the project's structured logger (e.g. `console.error("[Context] Message", payload)`). See `docs/observability.md` for naming, severity, correlation IDs, label taxonomy.
+L317 [R87] [Define new tables / columns / access policies (e.g. RLS) with your migration tool (e.g. `db:diff`). **NEVER apply to shared remotes by hand** (e.g. `db push` to Dev/Main) — CI's migration lane applies them; see `docs/deployments.md` § Applying migrations at deploy time; initially set to `PENDING`.]
+L323 If a column contains PII → update the audit trigger to scrub it.
+L332 **Existence Check:** [Verify file exists first.]
+L337 **Reuse Check:** [`Reuse Inventory` row + reason (a)/(b)/(c) — why no existing artifact can be evolved.]
+L398 [R37; R94] **Continuous Execution:** Run runbook autonomously; no user permission at Gates; `[x]` as you go.
+L399 **Step Isolation:** Finish task (verify + checkbox) before next.
+L400 **Integration Shape:** may suggest PR / commit / sequencing — advisory, never a gate; one PR for all tasks always OK. Do not specify merge method.
+L404 Every task MUST include `**Done when:**` — terse, testable, codebase-verifiable (file exists / signature matches / test passes / behaviour observable). Plan-verify asserts before `[x]`. No task without `Done when:`. One task per in-scope audit finding id; group only on one shared root cause in report — every id still named.
+L406 [R01; R80] **Tests ship with their task.** Task adding / changing logic → names its own unit tests in `Done when`, matrix row or not; tests it breaks → fixed in same task. never defer task tests to later tasks to avoid splits that leave untested code and drop coverage gates.
+L408 **Build order and test source.** Order tasks by build dependency (schema → API → UI). Behaviour tests only from `Derived Test Matrix` rows — do not invent. Boundary-crossing tasks (DB / API / model / network / migration) carry paired non-mock `Done when` tests; pure-function tasks exempt from pairing, not from unit tests.
+L410 **Test first.** Every task is one `- [ ] **Task N:**` bullet and MUST include `**Test first:**` on it after `Done when`. Behaviour change at unit / integration tier → 1-10 tests across <= 3 test files, `;`-separated, each `` `{test file}` `` `` `{test name}` `` fails on {what goes wrong} — repo-relative test files, test names as the runner reports them or their last segments, no `;` in failure text; {what goes wrong} = wrong behaviour the stub shows, never a literal assertion; build sees each fail against stubs before writing the task's code. More tests or files → split the task. No behaviour change (docs, config, pure refactor) or E2E / `@live` tier only → `n/a — {reason naming which}`.
+L412 **Test-order exception.** Agents NEVER write one on their own judgement; ONLY the human, or the build orchestrator after explicit human approval. Human accepting a task's test-order gaps → `**Test-order exception:**` as the task's last line, indented, entries in `Test first` form each ending `— {reason}`; committed alone on the branch the build runs on (`feat/{FID}` in its worktree when it has one) before re-running build. `bkit tests green` clears only the named tests' test-order gaps; uncommitted or last changed by a workflow step commit → clears nothing.
+L414 **Issue tasks.** Change-shape issue (`.bkit/trackers.md` § Issue shapes) → its `Tasks` lines are the starting runbook; keep each `Done when` / `Test first` (tighten, never weaken); renumber in build order.
+L416 **Task 1:** [e.g., Create DB migration (`npx supabase db diff`)]. **Done when:** [e.g., `supabase/migrations/{timestamp}_add_items_status.sql` exists; `npx supabase db push --local` applies cleanly]. **Test first:** [e.g., n/a — migration; fresh-DB replay tier].
+L417 **Task 2:** [e.g., Implement backend API action `action.ts`]. **Done when:** [e.g., `packages/api/src/items/setStatus.ts` exports `setStatus` with Zod-validated input; unit test `packages/api/src/items/setStatus.test.ts` covers each status transition; integration test in `packages/api/items.integration.test.ts` passes]. **Test first:** [e.g., `packages/api/src/items/setStatus.test.ts` `rejects an unknown status` fails on an unknown status being accepted; `packages/api/items.integration.test.ts` `persists the new status` fails on no row being stored].
+L418 **Task 3:** [e.g., Update React component `page.tsx`]. **Done when:** [e.g., `apps/web/app/items/page.tsx` renders status badge; Playwright spec `apps/web/e2e/items.spec.ts` confirms user-visible state]. **Test first:** [e.g., n/a — E2E tier only; runs in CI].
+L422 [R10; R37; R94] **CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT — `[x]` all boxes below. **do not stop for user permission.** Proceed to `Testing & Documentation`.
+L424 [R03; R69] **No bolt-on / no gate-weakening:** every `[NEW]` traces to a `Reuse Inventory` `NEW` row and its search still holds — reusable artifact found mid-build → add a row, fold code into it; every `EXTEND` landed as a modification of the named artifact, not a parallel file. No type-system escapes (e.g. TS `as any` / `as unknown as` / `@ts-ignore`, Python `# type: ignore`), linter disables (e.g. `eslint-disable`, `//nolint`), test skips (e.g. `.skip`, `xfail`), empty `catch` / error-swallowing introduced to make a gate pass.
+L425 [R67] **Test first:** every task naming `Test first` tests recorded a red per test before its code; tests unchanged since except formatting or lines added outside every planned test; test-order gaps cleared only by a human-committed `Test-order exception`.
+L426 [fit `audit-gate-2-verified` 0.81] **Gate 2 - Verified:** Every checkbox above independently verified and checked off against the plan.
+L432 **End-to-end integration** — core data paths need at least 1 integration test firing the real API against a local DB _without_ ORM/DB mocking.
+L433 **UI E2E (browser or device) for UI only** (e.g. Playwright) — don't drive a UI for non-visual logic.
+L439 **Verify test coverage against Derived Test Matrix:** Each `Acceptance Scenario → Derived Test Matrix` row → one runbook task whose `Done when` carries its test; gaps → add to that task, not here.
+L440 [R12; R80] **Sweep existing tests:** Each task fixed the tests it broke; full suite green per `docs/testing.md`. Fix only what tasks missed.
+L441 **Sweep new tests:** Each task's `Done when` tests exist and pass per Testing Strategy; add only what tasks missed — not where tests are first written. Reuse data factories + auth conventions (above) for UI E2E tests.
+L442 **Verify observability:** Observable per `docs/observability.md` — errors logged via the project's structured logger (e.g. `console.error("[Context] Message", payload)`), correlation IDs through pipeline, audit coverage on monitored tables where the project has it (e.g. audit / CDC triggers); update doc for new log names / labels / tracing scopes.
+L443 [R28; R29] **Update documentation:** Integrate logic/schemas into affected docs — `docs/architecture.md`, `docs/data-schema.md`, others via `.agents/docs.md`. Rewrite ground-truth prose; do not append lazy bullet points.
+L447 [R10; R37; R94] **CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT — `[x]` all boxes below. **do not stop for user permission.** Proceed to `Verification Plan`.
+L449 [R28] **Docs updated:** Every row in `Documentation Updates` completed. `.agents/docs.md` still accurate.
+L455 **Advisory build-phase checks, not merge gates.** Only `Agent Execution Runbook` `Done when` lines gate merge; nothing here does. Do not write "before merge" on untickable boxes — CI/human-only preconditions (lane RUN, deployed state, operator step) unenforceable. Work that MUST block merge → runbook task + codebase-verifiable `Done when`; lane that must run → CI config, not plan prose.
+L459 [R69; R75] **Full Local Gate Suite:** Full local gates — deepest declared `bkit:gate:*` script up to integration (`pnpm bkit:gate:static-unit-integration`, else `pnpm bkit:gate:static-unit`; e.g. typecheck, lint, `format:check`, prose, `slop:delta`, unit, in-process integration) + `bkit check`. Do not weaken gates (anti-suppression CRITICAL under Architecture & Component Changes).
+L460 [R80] **Test Synchronization:** [List existing E2E tests (e.g. Playwright) to update synchronously to prevent CI failures.]
+L461 **Build Configuration:** [Keep new test-only files (mocks, test configs) out of the production build (e.g. `tsconfig.json` `exclude`).]
+L462 **[Test Type] (`path/to/test.spec.ts`):** [Describe flows/unit/E2E additions. Note data hygiene needs.]
+L463 **Apply local migrations:** New migrations → apply locally (e.g. `npx supabase db push --local`); else integration tests fail on stale schema.
+L464 [R73] **Run all tests:** Local unit + integration (e.g. `pnpm test`, `pnpm test:integration`); fix failures before Gate 4.
+L467 [R68] **No Architectural Downgrades:** Build / compiler / test errors during verification → never hot-fix or anti-pattern; follow `docs/architecture.md` + named reference repos. Halt if stuck.
+L471 [R10; R37; R94] **CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT — `[x]` all boxes below. **do not stop for user permission.** Proceed to `Manual Verification`.
+L473 [R12] **Gate 4 - Verified:** Every checkbox in Automated Tests independently verified and checked off. Explicit proof (test outputs, CLI results, API responses) gathered.
+L481 [R73; R74] **Dashboard Ban:** Proactively use local CLIs (e.g. `gh`, `vercel`, `npx supabase`) to verify CI/CD pipelines instead of asking users to check dashboards.
+L483 **Step 1:** [Instructions for agent/user to verify feature end-to-end via CLI/DB.]
 ```
 
 ### Entry file

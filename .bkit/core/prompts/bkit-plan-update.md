@@ -49,9 +49,10 @@ maxTurns: 200
 7. `CRITICAL` items must be applied; no consensus required. **If** conflict across findings → prefer stricter wording.
 8. OPTIONAL items — apply each on merit; no consensus required. **If** conflict with applied `CRITICAL` or scope expansion → skip.
 9. **If** input carries `Suggested Scope Expansion` → write candidates into plan's `Suggested Scope Expansion` per `docs/templates/bkit-plan.md` § `Suggested Scope Expansion`.
-10. Applied findings add `Out of Scope` `Exempt` rows → mirror each to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first. never append `Suggested Scope Expansion` candidates. **If** `reason` scope-declared → `references` must contain plan item declaring it out of scope (row is not that declaration). **If** `reason` own-cycle → state what makes it plan-sized.
-11. **If** applied findings add / reword open questions under `Open Questions & Assumptions` → shape each per `docs/templates/bkit-plan.md` § `Open Questions & Assumptions`. Questions in regions no finding touches stay verbatim.
-12. Update **Create** — set `Verdict` via `Edit`; mapping:
+10. Applied findings add `Out of Scope` `Exempt` rows → mirror each to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first. never append `Suggested Scope Expansion` candidates. **If** `reason` scope-declared → `references` must contain plan item declaring it out of scope (row is not that declaration). **If** `reason` own-cycle → state what makes it plan-sized.
+11. Applied findings add or change an architecture / technology decision → append its row to `docs/decisions.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first. Changed decision → same `key`. Add each decision / deferral `key` written to the plan's `**Ledger rows:**` line.
+12. **If** applied findings add / reword open questions under `Open Questions & Assumptions` → shape each per `docs/templates/bkit-plan.md` § `Open Questions & Assumptions`. Questions in regions no finding touches stay verbatim.
+13. Update **Create** — set `Verdict` via `Edit`; mapping:
     - `PASS` = all `CRITICAL` applied; OPTIONAL applied on merit.
     - `CONCERNS` = some OPTIONAL skipped.
     - `FAIL` = findings contradictory and unresolvable, plan unanimously rejected by all lenses.

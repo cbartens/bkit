@@ -54,8 +54,8 @@ maxTurns: 200
    - Ordered database migrations → resequence so each new file sorts after every migration already applied upstream.
 8. Run `pnpm bkit:gate:static-unit` — all local tests MUST pass. **If** any declared live tests were failing → remediation done only when those same live tests pass.
 9. **If** any failures → document errors in output, set `Verdict` = `FAIL` (no alternatives, no rollbacks, no `--no-verify`).
-10. Once remediations verified (tests pass) → append gotcha rows (if any) to `docs/knowledge.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
-11. Once remediations verified (tests pass) → append forced architecture / technology decision rows (if any) to `docs/decisions.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
+10. Once remediations verified (tests pass) → append gotcha rows (if any) to `docs/knowledge.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
+11. Once remediations verified (tests pass) → append forced architecture / technology decision rows (if any) to `docs/decisions.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
 12. Update **Create** — set `Verdict` via `Edit`; mapping:
     - `PASS` = every remediation step has `DONE` across logs and all local tests pass.
     - `FAIL` = unable to remediate; any step ends `BLOCKED` with no later `DONE` or some local tests still fail.

@@ -43,7 +43,7 @@ tools:
 4. Per remaining entry → check whether work is done; always check codebase; never trust entry claims. **If** done in code → set `status` to `CLOSED`, `references` naming evidence. **Else** → leave open (not done **or** cannot be judged from code).
 5. Per remaining entry → check file paths, symbols, flags, and commands against the codebase. **If** one replacement is unambiguous → replace locators. **If** stale and no single replacement → record `unresolved` under `Locators`; never guess. A locator fix does not change `status`.
 6. **If** tracker wired → per remaining entry with `status` not `TRIAGED|CLOSED` → search for matching tracker issues. **If** matching issue found → set `status` to `TRIAGED`, add issue id to `references`; never create, close or relabel issues.
-7. Per `key` changed above → append one row to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format with same `key` and updated values; copy unchanged field values verbatim.
+7. Per `key` changed above → append one row to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), same `key` and updated values; copy unchanged field values verbatim.
 8. Rank what remains by `severity`, then age.
 9. Ensure agent memories (`MEMORY.md` / `memory/*.md`) do not duplicate content and only contain pointers (path, section, one-line hook) to relevant `docs/*.md` sections / `docs/*.jsonl` entries. **If** memory contains duplicate / stale content → update memory.
 10. Collect setup tips:

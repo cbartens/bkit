@@ -35,7 +35,7 @@ developer_instructions = """
    - `OBSOLETE` = code paths, dependency versions, or tools the entry describes are gone and nothing replaced them → set `status` to `SUPERSEDED`, `references` naming evidence.
    - `AMBIGUOUS` = cannot be judged from docs or code, no single replacement, or describes external / upstream behaviour → no change; record under `Left`. never retract on absence of local evidence.
 5. Per remaining entry → check file paths, symbols, flags, and commands against the codebase. **If** one replacement is unambiguous → replace locators. **If** stale and no single replacement → record `unresolved` under `Locators`; never guess. A locator fix does not change `status` or `classification`.
-6. Per `key` changed above → append one row to `docs/knowledge.jsonl` in `.bkit/jsonl.md` format with same `key` and updated values; copy unchanged field values verbatim.
+6. Per `key` changed above → append one row to `docs/knowledge.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), same `key` and updated values; copy unchanged field values verbatim.
 7. Per doc passage that states facts you just corrected → follow doc `Rules` header and edit only the passages to match appended row; do not run full doc sync.
 8. Ensure agent memories (`MEMORY.md` / `memory/*.md`) do not duplicate content and only contain pointers (path, section, one-line hook) to relevant `docs/*.md` sections / `docs/*.jsonl` entries. **If** memory contains duplicate / stale content → update memory.
 9. Collect setup tips:

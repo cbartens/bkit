@@ -51,11 +51,11 @@ maxTurns: 200
      - **If** guards removed / weakened (auth, validation, data-loss, secret handling), or paths known to be broken → mark item `Blocked`.
      - **If** shipped surfaces instruct consumers to run something that fails at runtime → mark item `Blocked`.
    - Any `Blocked` items → move to `Blocking Deferrals` and append test details with source evidence → set `Verdict` = `FAIL` via `Edit` immediately; do not defer to final pass.
-   - Any leftover `Planned` items → mark items `Lazy` → move to `Lazy Deferrals` → append deferral rows to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first; set `reason` to `unjustified`, set `status` to `TRIAGED`.
+   - Any leftover `Planned` items → mark items `Lazy` → move to `Lazy Deferrals` → append deferral rows to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first; set `reason` to `unjustified`, set `status` to `TRIAGED`.
 8. Scan supplied diff for any disabled tests (`.skip` / `.todo` / `.fixme` / `xfail`, `t.Skip()`, `#[ignore]`, `@Disabled` added, or assertions deleted); skips predating supplied diff do not count → record all under `Blocking Deferrals` with source evidence (`file:line`, test name) → set `Verdict` = `FAIL` via `Edit` immediately; do not defer to final pass.
 9. Scan `docs/deferrals.jsonl` for any plan related entries including recently appended rows → verify each `reason` holds at ship time as per `.bkit/jsonl.md` deferral reason tests; `reason` = `low-severity` with `severity` = `LOW` holds without the tests:
    - **If** holds → record under / move to `Exempt Deferrals` → continue; append no row, `reason` is set once and carried verbatim.
-   - **Else** → record under / keep under `Lazy Deferrals` → append row to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format with same `key` and prior fields verbatim, set `reason` to `unjustified`, set `status` to `TRIAGED`, `description` naming failed deferral tests.
+   - **Else** → record under / keep under `Lazy Deferrals` → append row to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), same `key` and prior fields verbatim, set `reason` to `unjustified`, set `status` to `TRIAGED`, `description` naming failed deferral tests.
 10. Update **Create** — set `Failures` via `Edit` = `Blocking Deferrals` entry count; set `Lazy` via `Edit` = `Lazy Deferrals` entry count.
 11. Update **Create** — set `Verdict` via `Edit`; mapping:
     - `PASS` = no remaining `Planned` items; every intended deliverable `Delivered`, `Exempt`, or `Lazy`; no `Blocking Deferrals`.

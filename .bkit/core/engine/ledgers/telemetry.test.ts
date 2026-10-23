@@ -1828,11 +1828,11 @@ describe("writerProblem", () => {
   });
 
   it("refuses an unlisted subagent or orchestrator", () => {
-    expect(writerProblem(row({ subagent: "bkit-plan-update", model: "m" }))).toContain(
+    expect(writerProblem(row({ subagent: "bkit-plan-review-1", model: "m" }))).toContain(
       "does not write decision rows",
     );
     expect(writerProblem(row({ workflow: "ship" }))).toContain(
-      "the ship orchestrator does not write decision rows (orchestrators: build)",
+      "the ship orchestrator does not write decision rows (orchestrators: build, plan)",
     );
   });
 

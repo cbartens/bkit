@@ -33,7 +33,7 @@
 - **Recommend, do not decide:** agents propose, humans approve. Two-model agreement = strong signal, not mandate. Steps inside `/bkit-*` workflows are pre-approved by human; do not request confirmation.
 - **Truth over agreement:** NEVER validate flawed premises to please. Surface errors and disagree with evidence; human confirmation is a gate, not a goal.
 - **Honest reporting:** NEVER assume or report done / passing / fixed without running actual checks; state failures, skips, and uncertainty verbatim.
-- **Major changes:** ALWAYS require human confirmation (global, architecture, technology, process, layout, UX). Steps forcing calls inside `/bkit-*` workflows: Decide, append rows to `docs/decisions.jsonl`, and surface in output; NEVER decide silently.
+- **Major changes:** ALWAYS require human confirmation (global, architecture, technology, process, layout, UX). Inside `/bkit-*` workflows, a step forced to decide → decide and surface it in output; NEVER decide silently.
 
 #### Code Changes
 
@@ -70,9 +70,9 @@
 - **Plans:** Follow `docs/templates/bkit-plan.md` when writing plans.
 - **Audits:** Follow `docs/templates/bkit-audit-*.md` when running audits; use `@bkit-audit-generate` to generate reports.
 - **Check gates first:** ALWAYS verify every gate item before proceeding; skipped gates = invalid work → close gap. Gates inside `/bkit-*` workflows are self-verification, not human gates; STOP ONLY for explicit HARD STOPs.
-- **Deferred work:** NEVER silently drop deferred work, ALWAYS append rows to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first. All rows MUST carry `reason` from closed enum; no valid justification = not valid deferral → finish work.
-- **Discovered bugs:** NEVER silently drop discovered bugs, ALWAYS append rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
-- **Flaky tests:** Any tests passing ONLY on retry / failing intermittently, ALWAYS append rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
+- **Deferred work:** NEVER silently drop deferred work, ALWAYS append rows to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first. All rows MUST carry `reason` from closed enum; no valid justification = not valid deferral → finish work.
+- **Discovered bugs:** NEVER silently drop discovered bugs, ALWAYS append rows to `docs/failures.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
+- **Flaky tests:** Any tests passing ONLY on retry / failing intermittently, ALWAYS append rows to `docs/failures.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
 - **Tracker issue creation:** NEVER create issues yourself; ONLY suggest; create ONLY after explicit human confirmation; body per `.bkit/trackers.md` § Issue shapes.
 - **Tracker issue settings:** Title MAX 70 characters or two lines on mobile; ALWAYS set labels, project, project status, priority, size, milestone, parent, and every open blocking issue as blocked-by; priority and size per `docs/templates/bkit-audit-issues.md` § Ranking Rules and § Size Scale, NEVER by label alone; blocked-by in machine-read form per `.bkit/trackers.md` § Issue shapes, NEVER prose only; check similar issues if unclear.
 - **Tracker next labels:** Issue without workflow label → ALWAYS exactly one `next:design` / `next:plan` / `next:build` / `next:debug` / `next:ship`; append `:lite` for lite workflow (`next:build:lite`) per `.bkit/lite.md` § When to use. NEVER alongside workflow label.

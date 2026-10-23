@@ -50,7 +50,7 @@ tools:
 7. Each conflict → pick stronger, justify.
 8. Preserve strongest approaches. Consolidate Decisions.
 9. Prior-art sweep per capability — repo, dependency built-ins, ecosystem practice. Default `EXTEND` + named artifact; `NEW` only when nothing covers capability or extending breaks named contract / callers. Every net-new `Architecture` component traces to a `NEW` verdict.
-10. Append out-of-scope idea rows (if any) to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first. **If** `reason` scope-declared → `references` must contain design item declaring it out of scope (row is not that declaration). **If** `reason` own-cycle → state what makes it plan-sized.
+10. Append out-of-scope idea rows (if any) to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first. **If** `reason` scope-declared → `references` must contain design item declaring it out of scope (row is not that declaration). **If** `reason` own-cycle → state what makes it plan-sized.
 
 **Output format:**
 

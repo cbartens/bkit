@@ -56,7 +56,7 @@ tools:
    - `Alternative Approaches & Recommendations`.
    - `Data Schema Integration`.
    - `Reuse Inventory`.
-   - `Architecture & Component Changes`; derived from `Reuse Inventory`. Append new architecture / technology decision rows (if any) to `docs/decisions.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
+   - `Architecture & Component Changes`; derived from `Reuse Inventory`. As each is decided, append one row per design `Decisions` item and per new architecture / technology decision (if any) to `docs/decisions.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first; changed decision → new row, same `key`.
 9. Derived from design:
    - `Breaking Changes & Naming Review` from Architecture.
    - `Supersession Inventory` from Architecture `[DELETE]` rows.
@@ -64,7 +64,7 @@ tools:
    - `Documentation Updates`; docs changes touch.
    - `Rollback Strategy` from Data schema / Architecture.
 10. Scope hygiene:
-    - `Out of Scope`; mirror `Exempt` rows (if any) to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first. **If** `reason` scope-declared → `references` must contain design or plan item declaring it out of scope (row is not that declaration). **If** `reason` own-cycle → state what makes it plan-sized.
+    - `Out of Scope`; mirror `Exempt` rows (if any) to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first. **If** `reason` scope-declared → `references` must contain design or plan item declaring it out of scope (row is not that declaration). **If** `reason` own-cycle → state what makes it plan-sized.
     - `Suggested Scope Expansion`.
 11. Execution:
     - `Agent Execution Runbook`.

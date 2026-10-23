@@ -456,6 +456,10 @@ by `key`, highest `ts` wins → search ONLY winning rows where `status` is {{sta
 - rules: repeatable
 
 ```text
+to `docs/{{ledger}}.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
+```
+
+```retired
 to `docs/{{ledger}}.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 ```
 
@@ -508,10 +512,11 @@ to `docs/{{ledger}}.jsonl` in `.bkit/jsonl.md` format; check existing entries fi
 - workflow: required
 
 ```text
-**Friction:** Watch own context and subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → append rows to `.bkit/friction.jsonl` in `.bkit/jsonl.md` format → continue or escalate; logging does not replace **Failure Path**.
+**Friction:** Watch own context and subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → append rows to `.bkit/friction.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom) → continue or escalate; logging does not replace **Failure Path**.
 ```
 
 ```retired
+**Friction:** Watch own context and subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → append rows to `.bkit/friction.jsonl` in `.bkit/jsonl.md` format → continue or escalate; logging does not replace **Failure Path**.
 **Friction:** Watch own context and subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → APPEND rows to `.bkit/friction.jsonl` in `.bkit/jsonl.md` format → continue or escalate; logging does NOT replace **Failure Path**.
 ```
 

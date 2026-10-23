@@ -40,8 +40,8 @@ tools:
 4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
 5. Extract `Rot Signals` from diagnose attempts → aggregate into handover — dedupe slugs, retain all evidence.
 6. Extract `Out-of-Scope Recommendations` from diagnose attempts → aggregate (dedupe paths, retain all rationales).
-7. Append failure rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
-8. Append deferral rows to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
+7. Append failure rows to `docs/failures.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
+8. Append deferral rows to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
 
 **Output format:**
 

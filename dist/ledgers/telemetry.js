@@ -200,10 +200,12 @@ export const KIND_WRITERS = {
         subagents: new Set([
             "bkit-debug-failure-remediate",
             "bkit-plan-generate",
+            "bkit-plan-update",
             "bkit-utility-update-decisions",
         ]),
-        // Decision Pause accept, ONLY after explicit human approval.
-        orchestrators: new Set(["build"]),
+        // Build: Decision Pause accept; plan: an open question answered after close.
+        // Both ONLY after explicit human approval.
+        orchestrators: new Set(["build", "plan"]),
     },
     deferral: { subagents: DEFERRAL_WRITERS, orchestrators: new Set() },
     failure: { subagents: ANY_WRITER, orchestrators: ANY_WRITER },

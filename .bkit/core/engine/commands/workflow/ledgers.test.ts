@@ -6,7 +6,14 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runCommand } from "../lib";
-import { EXIT_ROW_REFUSED, bookPathspecs, ledgersCommand, newRecord, writeRecord } from "./ledgers";
+import {
+  EXIT_ROWS_MISSING,
+  EXIT_ROW_REFUSED,
+  bookPathspecs,
+  ledgersCommand,
+  newRecord,
+  writeRecord,
+} from "./ledgers";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -1062,5 +1069,49 @@ describe("bkit ledgers append", () => {
     ]);
     expect(res.code).toBe(0);
     expect(lines(r, ".bkit/friction.jsonl")).toHaveLength(1);
+  });
+});
+
+describe("bkit ledgers check", () => {
+  const row = (kind: string, key: string) =>
+    JSON.stringify({ schema: 2, ts: 1792720147039, kind, key, repo: "o/r", summary: key });
+
+  async function check(r: string, plan: string) {
+    put(r, "plan.md", `# Plan\n\n## Architecture & Component Changes\n\n${plan}\n`);
+    return run(r, ["check", `--root=${r}`, "--plan=plan.md"]);
+  }
+
+  it("passes when every key on the Ledger rows line has a decision or deferral row", async () => {
+    const r = tmp();
+    put(r, "docs/decisions.jsonl", `${row("decision", "1338-skip-line")}\n`);
+    put(r, "docs/deferrals.jsonl", `${row("deferral", "1338-later")}\n`);
+    const res = await check(r, "**Ledger rows:** `1338-skip-line`, `1338-later`");
+    expect(res.code).toBe(0);
+    expect(res.json).toEqual({
+      plan: "plan.md",
+      keys: ["1338-skip-line", "1338-later"],
+      missing: [],
+    });
+  });
+
+  it("names the keys no row carries and exits EXIT_ROWS_MISSING", async () => {
+    const r = tmp();
+    put(r, "docs/decisions.jsonl", `${row("decision", "1338-skip-line")}\n`);
+    put(r, "docs/knowledge.jsonl", `${row("knowledge", "1338-not-a-decision")}\n`);
+    const res = await check(r, "**Ledger rows:** `1338-skip-line`, `1338-not-a-decision`");
+    expect(res.code).toBe(EXIT_ROWS_MISSING);
+    expect(res.json).toMatchObject({ missing: ["1338-not-a-decision"] });
+  });
+
+  it("passes on None", async () => {
+    const res = await check(tmp(), "**Ledger rows:** None");
+    expect(res.code).toBe(0);
+    expect(res.json).toMatchObject({ keys: [], missing: [] });
+    expect((await check(tmp(), '**Ledger rows:** "None".')).code).toBe(0);
+  });
+
+  it("refuses a plan with no Ledger rows line or an unfilled one", async () => {
+    expect((await check(tmp(), "No line here.")).code).toBe(EXIT_ROWS_MISSING);
+    expect((await check(tmp(), "**Ledger rows:** PENDING")).code).toBe(EXIT_ROWS_MISSING);
   });
 });

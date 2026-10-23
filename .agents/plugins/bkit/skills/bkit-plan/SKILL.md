@@ -17,7 +17,7 @@ description: "Plan Feature — Autonomous plan generation"
 > - **No Improv:** No ad-hoc task lists, no skipping, no alternative approaches, or scope beyond this file.
 > - **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does not mean silent.
 > - **`Failures`:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
-> - **Friction:** Watch own context and subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → append rows to `.bkit/friction.jsonl` in `.bkit/jsonl.md` format → continue or escalate; logging does not replace **Failure Path**.
+> - **Friction:** Watch own context and subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → append rows to `.bkit/friction.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom) → continue or escalate; logging does not replace **Failure Path**.
 > - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{PARENT_FID}`, `{PARENT_YYYYMM}`, etc non-empty if required before making tool calls (`{ISSUE_ID}` may be empty). **Else** → **Failure Path**.
 > - **Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is one JSON object: hold named keys as `{VAR}`. Exit non-zero with no `Route:` for it → **Failure Path**; exit 80 → mapped MCP tool (**gh MCP fallback**); exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
 > - **Finish:** `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, checks artifacts and row, writes the row, commits, prints `comment`. Exit 5 **or** 6 → invoke `reask.agent` again with `"Your prior output '<reask.artifact>' has an invalid header. Re-emit only its header fields + '<!-- verdict:end -->' at top of that file. Do not redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**. Hold `verdict` as the step's verdict, `fields` as its other header fields.
@@ -405,7 +405,11 @@ description: "Plan Feature — Autonomous plan generation"
    ```bash
    "{BKIT}" workflows promote --workflow=plan --fid={FID} --month={YYYYMM} --resolve
    ```
-   Hold `final` as `{PLAN_FINAL}`.
+   Hold `final` as `{PLAN_FINAL}`. Check every `key` on its `**Ledger rows:**` line is on disk:
+   ```bash
+   "{BKIT}" ledgers check --plan={PLAN_FINAL}
+   ```
+   **If** exit non-zero → **Failure Path**, naming each `missing` key.
 2. **Subagent:** Invoke `view_file` `.agents/plugins/bkit/agents/bkit-plan-summary.md` using `view_file` tool:
    Context: You are a subagent in the Plan phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `{PLAN_FINAL}` (highest v{N}), glob `docs/plans/{YYYYMM}/logs/{FID}/plan-v4-*.md` (children if SPLIT), `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/plan-*.md`.
@@ -426,6 +430,7 @@ description: "Plan Feature — Autonomous plan generation"
 ### 🔒 Gate 10 — Summary
 
 - [ ] Plan final resolved (`PLAN_FINAL` = highest `plan-v*.md`, excluding child `plan-v4-N.md`)
+- [ ] Ledger rows on disk (`ledgers check` exit 0)
 - [ ] Subagent invoked (`@bkit-plan-summary`, no inline work)
 - [ ] Mechanical checks passed (`steps finish` exit 0)
 - [ ] Summary displayed verbatim before **Failure Path** (if `SUMMARY_VERDICT` = FAIL)
@@ -475,7 +480,7 @@ description: "Plan Feature — Autonomous plan generation"
    Append a `## bkit Tips` heading, unless `{BKIT_TIPS}` is empty.
    Append `{BKIT_TIPS}`, unless empty.
 7. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, NOT nouns; do not re-run any step.
-8. **If** user requests the open questions one by one → ask each `## Outstanding Questions` item on its own, verbatim, with its options, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step.
+8. **If** user requests the open questions one by one → ask each `## Outstanding Questions` item on its own, verbatim, with its options, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step. Each answer that settles an architecture / technology decision → append its row to `docs/decisions.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom) at once; `by.step` = `plan-close-workflow`; `rationale` = `answered by owner: {human's answer}`; decision already on disk → same `key`.
 
 ### 🔒 Gate 11 — Close Workflow
 

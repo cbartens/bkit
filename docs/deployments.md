@@ -663,4 +663,4 @@ Owner runs every step by hand; agents propose, never execute. Triggers: compromi
 4. **Fix privately.** Security → Advisories → New draft advisory (ecosystem npm, package `@cbartens/bkit`, affected and patched versions) → work in its temporary private fork. Details stay out of public issues / PRs / commits until step 6 (`docs/security.md` § Public repo content).
 5. **Supersede.** Re-add the trusted publisher (npmjs.com → Trusted publishing → GitHub Actions, `cbartens/bkit`, workflow `release.yml`) → merge the fix to `main` → tag → release per § GitHub Release → verify the new version per `docs/security.md` § Verify a published version.
 6. **Tell consumers.** Publish the advisory (request a CVE in the draft). GitHub reviews it into the Advisory Database → `pnpm audit` / `npm audit` and Dependabot / Renovate alerts flag affected versions in consumer repos.
-7. **Record.** Append a `docs/failures.jsonl` row after the advisory is public: key, root cause, references (advisory URL, fixed version).
+7. **Record.** Append a `docs/failures.jsonl` row with `bkit ledgers append` after the advisory is public: key, root cause, references (advisory URL, fixed version).
