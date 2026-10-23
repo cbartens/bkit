@@ -34,6 +34,9 @@ function fixture() {
   const root = tmp("main");
   git(remote, "init", "-q", "--bare", "-b", "dev");
   git(root, "init", "-q", "-b", "dev");
+  // The engine's own git calls (the replay's cherry-pick) carry no -c identity.
+  git(root, "config", "user.email", "t@t");
+  git(root, "config", "user.name", "t");
   fs.writeFileSync(path.join(root, ".gitignore"), ".worktrees/\n");
   fs.writeFileSync(path.join(root, "notes.txt"), "base\n");
   git(root, "add", "-A");
