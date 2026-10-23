@@ -227,7 +227,7 @@ After writes, bkit re-runs credential and environment checks — some only accur
 | `bkit-managed-duplicate` | A managed markdown file holds an older unmarked copy of its block outside `bkit:start`/`bkit:end`: the block's `# ` title plus 10+ of its long lines verbatim, fenced code ignored. Install never updates that copy. Names each file and title line; delete the copy. |
 | `gh-mcp-token-unset-shell` / `gh-mcp-token-empty-shell` | `BKIT_GH_TOKEN` (GitHub MCP auth) unset/empty in shell while a `github` MCP server is configured — the whole tracker/PR/board MCP surface fails to connect. Suppressed in CI. |
 | `tracker-setup-none` / `-github` / `-linear` / `-jira` | Optional post-install decision — which issue tracker is wired (`bkit.issueTracker`). `none` nudges `bkit install --tracker=…`. See [§ Optional post-install decisions](#optional-post-install-decisions). |
-| `github-project-board-sync-unconfigured` | GitHub tracker active but Projects v2 board sync is half-configured (`bkit.github.project` absent or not a board URL, and/or `.mcp.json` lacks the `projects` toolset) — sync silently no-ops. Silence with `bkit.github.project: false`. |
+| `github-project-board-sync-unconfigured` | GitHub tracker active but Projects v2 board sync is half-configured (`bkit.github.project` empty, absent or not a board URL, and/or `.mcp.json` lacks the `projects` toolset) — sync silently no-ops. Silence with `bkit.github.project: false`. |
 | `dep-updater-absent` | No Renovate or Dependabot config. Copy one example and own it. `bkit.depUpdater: "none"` silences this. See [§ Optional post-install decisions](#optional-post-install-decisions). |
 | `dep-updater-both` | Both updater configs are present. Keep one. |
 | `cloud-router-none` / `cloud-router` | Optional post-install decision — post-CI auto-routing (`bkit.cloudAgents`). `none` (undecided) nudges `bkit install --auto=<variant>`, except under the jira tracker (local runs only); `cloud-router` is informational once `bkit-cloud.yml` is present. See [§ Optional post-install decisions](#optional-post-install-decisions). |
@@ -315,7 +315,7 @@ Use one. `bkit.depUpdater: "none"` skips the install-time absence advisory. Setu
 2. Pick tracker: `bkit install --tracker=github` (or `linear` / `jira`). Needs no host flag; re-renders every installed host. Persisted to `bkit.issueTracker`; future installs preserve (switching free).
 3. Copy one updater example (table above). Land Renovate config on the default branch before installing the App.
 4. Enable cloud agents: `bkit install --auto=claude|cursor|opencode`. Persisted to `bkit.cloudAgents`; install prints secrets + permissions + dashboard checklist (`bkit-auto-setup`). Shipped `bkit-cloud.yml` carries claude job (`ANTHROPIC_API_KEY` repo secret or federation repo variables — `.bkit/cloud.md` § Claude — workload identity federation) and opencode job (`OPENCODE_PROVIDER_KEY`), each runtime-gated.
-5. **To opt out and silence the nudge**, set the field to `"none"` in `package.json` (`bkit.issueTracker` / `bkit.depUpdater` / `bkit.cloudAgents`). Advisory stays quiet.
+5. **To opt out and silence the nudge**, set the field to `"none"` in `package.json` (`bkit.issueTracker` / `bkit.depUpdater` / `bkit.cloudAgents`). Advisory stays quiet. The `""` install seeds means undecided and keeps the nudge.
 
 Tracker and cloud agents reverse by re-running install with the other flag. Updater files stay until you delete them.
 

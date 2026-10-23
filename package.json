@@ -122,7 +122,9 @@
     "issueTracker": "github",
     "cloudAgents": "claude",
     "github": {
-      "project": "https://github.com/users/cbartens/projects/1"
+      "project": "https://github.com/users/cbartens/projects/1",
+      "progress": "In progress",
+      "review": "In review"
     },
     "opencodeProvider": "openrouter",
     "opencodeProviders": [
@@ -138,6 +140,31 @@
     "capstoneJob": "bkit-tests-check",
     "ciWorkflow": "bkit-ci.yml",
     "roadmapNext": 25,
-    "loopPause": true
+    "loopPause": true,
+    "linear": {
+      "team": "",
+      "project": "",
+      "progress": "started",
+      "review": "In Review"
+    },
+    "jira": {
+      "site": "",
+      "project": "",
+      "progress": "In Progress",
+      "review": "In Review"
+    },
+    "shipGateRequiredLanes": [],
+    "worktree": {
+      "copy": [
+        ".env",
+        ".env.local"
+      ],
+      "install": true
+    },
+    "disk": {
+      "minFreeGb": 40
+    },
+    "depUpdater": "",
+    "ignoreAdvisories": []
   }
 }

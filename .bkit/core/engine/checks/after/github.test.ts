@@ -172,7 +172,7 @@ describe("buildGithubProjectAdvisory", () => {
     const result = buildGithubProjectAdvisory(tmpDir);
     expect(result).not.toBeNull();
     expect(result!.id).toBe("github-project-board-sync-unconfigured");
-    expect(result!.detect).toContain("`bkit.github.project` is absent");
+    expect(result!.detect).toContain("`bkit.github.project` is empty or absent");
     expect(result!.detect).toContain("`projects` toolset is missing");
   });
 
@@ -190,7 +190,7 @@ describe("buildGithubProjectAdvisory", () => {
     writeToolset("context,issues,projects");
     const result = buildGithubProjectAdvisory(tmpDir);
     expect(result).not.toBeNull();
-    expect(result!.detect).toContain("`bkit.github.project` is absent");
+    expect(result!.detect).toContain("`bkit.github.project` is empty or absent");
     expect(result!.detect).not.toContain("`projects` toolset is missing");
   });
 
@@ -319,6 +319,15 @@ describe("buildCloudSetupAdvisory", () => {
     expect(result!.id).toBe("cloud-router-none");
   });
 
+  it("still nudges when bkit.cloudAgents is the empty value install seeds", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", bkit: { cloudAgents: "" } }),
+    );
+    expect(buildCloudSetupAdvisory(tmpDir)?.id).toBe("cloud-router-none");
+  });
+
   it("jira tracker: no nudge (Jira runs locally only)", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
@@ -363,6 +372,14 @@ describe("buildTrackerSetupAdvisory — explicit-none opt-out symmetry", () => {
     for (const tracker of ["github", "linear", "jira"]) {
       expect(result!.action).toContain(`--tracker=${tracker}`);
     }
+  });
+
+  it("nudges when bkit.issueTracker is the empty value install seeds", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", bkit: { issueTracker: "" } }),
+    );
+    expect(buildTrackerSetupAdvisory(tmpDir)?.id).toBe("tracker-setup-none");
   });
 
   it("stays quiet when bkit.issueTracker is explicitly 'none' (deliberate opt-out)", () => {

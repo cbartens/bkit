@@ -180,7 +180,7 @@ export function buildGithubProjectAdvisory(cwd) {
         return null;
     const missing = [];
     if (configState === "absent")
-        missing.push("`bkit.github.project` is absent from package.json");
+        missing.push("`bkit.github.project` is empty or absent in package.json");
     if (configState === "invalid")
         missing.push("`bkit.github.project` is not a GitHub Projects board URL");
     if (toolset === "missing")

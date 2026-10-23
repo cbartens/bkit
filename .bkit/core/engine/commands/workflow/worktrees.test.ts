@@ -110,6 +110,8 @@ describe("bkit worktrees setup — adopt in place", () => {
       logDir: path.join(cwd, "docs/plans", MONTH, "logs", FID),
       baseRef: "origin/dev",
       baseSha: null,
+      carriedSha: null,
+      carriedDropped: [],
       copied: [],
       copyMissing: [],
       direnvAllowed: false,

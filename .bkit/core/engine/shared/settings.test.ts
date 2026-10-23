@@ -166,7 +166,7 @@ describe("readBkitConfig", () => {
     expect(readBkitConfig(root('{"bkit":{}}')).depUpdaterOptOut).toBe(false);
   });
 
-  it("tells an explicitly set issueTracker and cloudAgents from an absent one, whatever the value", () => {
+  it("tells an explicitly set issueTracker and cloudAgents from an absent or empty one, whatever the value", () => {
     const explicit = (bkit: unknown) => {
       const cfg = readBkitConfig(root(JSON.stringify({ bkit })));
       return [cfg.issueTrackerExplicit, cfg.cloudAgentsExplicit];
@@ -177,6 +177,7 @@ describe("readBkitConfig", () => {
     expect(explicit({ issueTracker: 5 })).toEqual([true, false]);
     expect(explicit({ cloudAgents: "bogus" })).toEqual([false, true]);
     expect(explicit({ issueTracker: null })).toEqual([true, false]);
+    expect(explicit({ issueTracker: "", cloudAgents: "" })).toEqual([false, false]);
   });
 
   it("reports nothing explicit without package.json or with unparseable JSON", () => {

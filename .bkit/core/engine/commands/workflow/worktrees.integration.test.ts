@@ -383,13 +383,78 @@ describe("bkit worktrees setup — mint (resume)", () => {
     expect(git(wtOf(f), "rev-parse", "HEAD~1")).toBe(local);
   });
 
-  it("a rebase that cannot start (dirty tree) writes the sentinel with its own exit code", async () => {
+  it.each(["debug", "build"])(
+    "%s: commits a failed ship's leftovers, drops the logs dev already holds, then rebases",
+    async (workflow) => {
+      const f = await minted();
+      const rel = `docs/plans/${MONTH}/logs/${FID}`;
+      const logDir = path.join(wtOf(f), rel);
+      fs.writeFileSync(
+        path.join(logDir, "status.jsonl"),
+        `${JSON.stringify({ type: "workflow-started", workflow: "ship", at: "2026-10-22T06:51:49Z" })}\n` +
+          `${JSON.stringify({ type: "workflow-failed", workflow: "ship", at: "2026-10-22T07:17:00Z" })}\n`,
+      );
+      fs.writeFileSync(path.join(logDir, "ship-summary.md"), "worktree copy\n");
+      fs.writeFileSync(path.join(wtOf(f), "a.txt"), "ship doc edit\n");
+      // The flush landed the ship log on dev; the worktree's copy has drifted from it.
+      fs.mkdirSync(path.join(f.seed, rel), { recursive: true });
+      const tip = advanceDev(f, `${rel}/ship-summary.md`, "landed copy\n");
+
+      const r = await setup(f.repo, workflow, "--worktrees");
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({
+        mode: "resumed",
+        sentinel: null,
+        carriedDropped: [`${rel}/ship-summary.md`],
+      });
+      expect(r.err).toContain("committed the failed ship record left uncommitted");
+      expect(git(wtOf(f), "log", "-1", "--format=%s")).toBe(
+        `chore(${FID}): carry the failed ship record left uncommitted bkit`,
+      );
+      expect(r.json.carriedSha).toBe(git(wtOf(f), "rev-parse", "HEAD"));
+      expect(git(wtOf(f), "rev-parse", "HEAD~1")).toBe(tip);
+      // Only the .env setup copied in stays out of the commit.
+      expect(git(wtOf(f), "status", "--porcelain")).toBe("?? .env");
+      expect(fs.readFileSync(path.join(logDir, "ship-summary.md"), "utf-8")).toBe("landed copy\n");
+      expect(fs.readFileSync(path.join(wtOf(f), "a.txt"), "utf-8")).toBe("ship doc edit\n");
+    },
+  );
+
+  it("never commits the entries setup copies in from the main checkout", async () => {
     const f = await minted();
+    expect(fs.readFileSync(path.join(wtOf(f), ".env"), "utf-8")).toBe("SECRET=1\n");
+    fs.writeFileSync(path.join(wtOf(f), "a.txt"), "left behind\n");
+    advanceDev(f, "b.txt", "new\n");
+
+    const r = await setup(f.repo, "build", "--worktrees");
+    expect(r.code).toBe(0);
+    expect(git(wtOf(f), "show", "--name-only", "--format=", "HEAD")).toBe("a.txt");
+  });
+
+  it("leaves a clean worktree's history alone", async () => {
+    const f = await minted();
+    git(wtOf(f), "commit", "-q", "--allow-empty", "-m", "feature");
+    advanceDev(f, "b.txt", "new\n");
+    const r = await setup(f.repo, "build", "--worktrees");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ carriedSha: null, carriedDropped: [] });
+    expect(git(wtOf(f), "log", "-1", "--format=%s")).toBe("feature");
+  });
+
+  it("a rebase that cannot start (the leftovers' commit refused) writes the sentinel with its own exit code", async () => {
+    const f = await minted();
+    const hooks = path.join(f.repo, "hooks");
+    fs.mkdirSync(hooks);
+    fs.writeFileSync(path.join(hooks, "pre-commit"), "#!/bin/sh\nexit 1\n");
+    fs.chmodSync(path.join(hooks, "pre-commit"), 0o755);
+    git(f.repo, "config", "core.hooksPath", hooks);
     fs.writeFileSync(path.join(wtOf(f), "a.txt"), "uncommitted\n");
     advanceDev(f, "b.txt", "new\n");
     const r = await setup(f.repo, "build", "--worktrees");
     expect(r.code).toBe(9);
     expect(r.json.rebaseConflict).toBe(false);
+    expect(r.json.carriedSha).toBe(null);
+    expect(r.err).toContain("could not commit what an earlier run left");
     expect(fs.existsSync(r.json.sentinel)).toBe(true);
   });
 

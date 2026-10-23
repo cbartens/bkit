@@ -24,6 +24,7 @@ import { dispatchModules, listStampedFiles, type ModuleContext } from "./index";
 import { readInstallingVersion } from "../../shared/package-json";
 import { getBkitDocsRoot, getPkgRoot } from "../../shared/package-roots";
 import { BKIT_GATE_SCRIPTS } from "../manifest";
+import { readBkitConfig } from "../../shared/settings";
 import { hashFile, readBkitVersion, readManagedVersion, writeBkitVersion } from "../version-file";
 import { applyTokens } from "../placeholders";
 
@@ -642,7 +643,8 @@ describe("migrateLinearTeamKey (via seedCorePackageJsonScripts)", () => {
   it("is idempotent, and runs on every install through the core module", () => {
     seed({ linearTeam: "ENG" });
     dispatchModules(new Set(["core"]), makeCtx({}));
-    expect(bkitKey().linear).toEqual({ team: "ENG" });
+    // The full install also seeds the other linear keys around the migrated team.
+    expect(bkitKey().linear).toMatchObject({ team: "ENG" });
     expect(touched(run())).toBe(false);
   });
 });
@@ -663,24 +665,68 @@ describe("seedBkitDefaults (via seedCorePackageJsonScripts)", () => {
   const touched = (ctx: ModuleContext): boolean =>
     ctx.ws.writes.some((w) => w.path === "package.json");
 
-  it("writes bkit.loopPause = true and bkit.roadmapNext = 25 when missing, creating the bkit block, keeping the indent", () => {
+  it("writes every bkit setting when missing, creating the bkit block, keeping the indent", () => {
     seed({});
     expect(touched(run())).toBe(true);
     expect(JSON.parse(read()).bkit).toEqual(SEEDED_BKIT_DEFAULTS);
-    expect(SEEDED_BKIT_DEFAULTS).toEqual({ loopPause: true, roadmapNext: 25 });
     expect(read()).toMatch(/\n {4}"bkit"/);
-    seed({ bkit: { issueTracker: "github" } });
-    run();
-    expect(JSON.parse(read()).bkit).toEqual({ issueTracker: "github", ...SEEDED_BKIT_DEFAULTS });
   });
 
-  it("never touches a value already set, even a non-boolean one", () => {
-    for (const value of [false, true, "yes"]) {
-      seed({ bkit: { loopPause: value, roadmapNext: 10 } });
-      const before = read();
-      expect(touched(run())).toBe(false);
-      expect(read()).toBe(before);
-    }
+  it("writes defaults where a key has one and an empty value only for a choice not made", () => {
+    expect(SEEDED_BKIT_DEFAULTS).toMatchObject({
+      issueTracker: "",
+      cloudAgents: "",
+      github: { project: "", progress: "In progress", review: "In review" },
+      linear: { team: "", project: "", progress: "started", review: "In Review" },
+      jira: { site: "", project: "", progress: "In Progress", review: "In Review" },
+      opencodeProvider: "",
+      opencodeProviders: [],
+      ciWorkflow: "bkit-ci.yml",
+      capstoneJob: "bkit-tests-check",
+      shipGateRequiredLanes: [],
+      minPushPaths: ["docs/plans/**", "docs/*.jsonl", ".bkit/*.jsonl"],
+      worktree: { copy: [".env", ".env.local"], install: true },
+      disk: { minFreeGb: 40 },
+      loopPause: true,
+      roadmapNext: 25,
+      depUpdater: "",
+      ignoreAdvisories: [],
+    });
+  });
+
+  it("reads back as the same config as an empty bkit block", () => {
+    seed({});
+    const empty = readBkitConfig(".");
+    run();
+    expect(readBkitConfig(".")).toEqual(empty);
+  });
+
+  it("fills missing keys inside a present block and never touches a value already set", () => {
+    seed({
+      bkit: {
+        issueTracker: "github",
+        github: { project: false },
+        loopPause: "yes",
+        minPushPaths: [],
+        worktree: { copy: [] },
+      },
+    });
+    run();
+    const bkit = JSON.parse(read()).bkit;
+    expect(bkit.issueTracker).toBe("github");
+    expect(bkit.github).toEqual({ project: false, progress: "In progress", review: "In review" });
+    expect(bkit.loopPause).toBe("yes");
+    expect(bkit.minPushPaths).toEqual([]);
+    expect(bkit.worktree).toEqual({ copy: [], install: true });
+    const before = read();
+    expect(touched(run())).toBe(false);
+    expect(read()).toBe(before);
+  });
+
+  it("leaves a non-object nested block alone", () => {
+    seed({ bkit: { github: "x" } });
+    run();
+    expect(JSON.parse(read()).bkit.github).toBe("x");
   });
 
   it("leaves a non-object bkit value alone", () => {
@@ -700,7 +746,7 @@ describe("seedBkitDefaults (via seedCorePackageJsonScripts)", () => {
   it("is idempotent, and runs on every install through the core module", () => {
     seed({});
     dispatchModules(new Set(["core"]), makeCtx({}));
-    expect(JSON.parse(read()).bkit.loopPause).toBe(true);
+    expect(JSON.parse(read()).bkit).toEqual(SEEDED_BKIT_DEFAULTS);
     expect(touched(run())).toBe(false);
   });
 });
@@ -788,7 +834,8 @@ describe("migrateGithubProjectKey (via seedCorePackageJsonScripts)", () => {
   it("is idempotent, and runs on every install through the core module", () => {
     seed({ githubProject: templateBoard });
     dispatchModules(new Set(["core"]), makeCtx({}));
-    expect(bkitKey().github).toEqual({ project: "https://github.com/orgs/acme/projects/1" });
+    // The full install also seeds the other github keys around the migrated board.
+    expect(bkitKey().github).toMatchObject({ project: "https://github.com/orgs/acme/projects/1" });
     expect(touched(run())).toBe(false);
   });
 });

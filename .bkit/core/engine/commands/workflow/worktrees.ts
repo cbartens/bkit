@@ -232,6 +232,49 @@ function rebaseInProgress(wt: string): boolean {
   });
 }
 
+/**
+ * Commit what an earlier run left uncommitted in a resumed worktree, so the
+ * resume rebase can start: a failed ship's flush lands its record on dev and
+ * leaves the worktree as it was, for whatever runs next. An untracked file in a
+ * log folder of this feature that `onto` already holds is dropped first: dev's
+ * copy, landed by that flush, wins, and a second copy would stop the rebase.
+ * The `worktreeCopy` entries setup copies in are never committed. Clean tree →
+ * null; a failed commit is narrated and leaves the tree for the rebase to refuse.
+ */
+function carryLeftovers(
+  wt: string,
+  o: { fid: string; onto: string; statusFile: string; copied: string[] },
+  log: (m: string) => void,
+): { sha: string | null; dropped: string[] } | null {
+  const dirty = () => (git(wt, ["status", "--porcelain", "--untracked-files=all"]) ?? "") !== "";
+  if (!dirty()) return null;
+  const logs = new RegExp(`^docs/plans/[^/]+/logs/${o.fid.replace(/\./g, "\\.")}/`);
+  const dropped = (git(wt, ["ls-files", "--others", "--exclude-standard"]) ?? "")
+    .split("\n")
+    .filter((f) => logs.test(f) && runGit(wt, ["cat-file", "-e", `${o.onto}:${f}`]).ok);
+  for (const f of dropped) fs.rmSync(path.join(wt, f));
+  if (dropped.length > 0)
+    log(
+      `dropped ${dropped.length} untracked log(s) ${o.onto} already holds: ${dropped.join(", ")}`,
+    );
+  if (!dirty()) return { sha: null, dropped };
+
+  const prior = fs.existsSync(o.statusFile) ? readRuns(o.statusFile).at(-1) : undefined;
+  const what =
+    prior === undefined
+      ? "uncommitted work left in the worktree"
+      : `the ${prior.status === "FAILED" ? "failed " : ""}${prior.workflow} record left uncommitted`;
+  const keep = o.copied.map((e) => `:(exclude)${path.normalize(e)}`);
+  runGit(wt, ["add", "-A", "--", ".", ...keep]);
+  const made = runGit(wt, ["commit", "-m", `chore(${o.fid}): carry ${what} bkit`]);
+  if (!made.ok) {
+    log(`could not commit what an earlier run left in ${wt}: ${made.stderr || made.stdout}`);
+    return { sha: null, dropped };
+  }
+  log(`committed ${what} before the resume rebase`);
+  return { sha: git(wt, ["rev-parse", "HEAD"]), dropped };
+}
+
 // ---------------------------------------------------------------------------
 // Copy and install
 // ---------------------------------------------------------------------------
@@ -445,6 +488,10 @@ export const worktreesCommand: CommandSpec = {
         baseRef:
           "dev when local dev is a fast-forward of origin/dev (unpushed commits), else origin/dev",
         baseSha: "git merge-base baseRef HEAD at worktreePath, or null",
+        carriedSha:
+          "resume: the commit holding what an earlier run left uncommitted (a failed ship's record), made before the rebase; else null",
+        carriedDropped:
+          "resume: untracked logs of this feature dropped because baseRef already holds them (dev's copy wins)",
         copied: "worktree copy entries copied from the main checkout",
         copyMissing: "worktree copy entries absent from the main checkout",
         direnvAllowed:
@@ -464,7 +511,8 @@ export const worktreesCommand: CommandSpec = {
         [EXIT_REFUSED]:
           "refused: main as the working branch (dev too, except debug in place), ship of dev / main, detached HEAD, or ship could not switch to its branch (a missing feat/{fid} is named)",
         [EXIT_WORKTREE_ADD]: "git worktree add failed",
-        [EXIT_REBASE_NOT_STARTED]: "resume rebase could not start (e.g. uncommitted changes)",
+        [EXIT_REBASE_NOT_STARTED]:
+          "resume rebase could not start, even after committing what an earlier run left (e.g. a commit hook refused that commit)",
         [EXIT_NOT_A_WORKTREE]: ".worktrees/{fid} exists but is not a registered git worktree",
         [EXIT_SHARED_BUSY]:
           "in place on dev: another feature's run holds this checkout (its shared-checkout record has a live workflow lock); nothing written",
@@ -582,6 +630,7 @@ export const worktreesCommand: CommandSpec = {
 
         let rebaseConflict = false;
         let sentinel: string | null = null;
+        let carried: ReturnType<typeof carryLeftovers> = null;
         const sentinelPath = path.join(logDir, ".rebase-failed");
         if (mode === "resumed" && workflow !== "ship") {
           // Cleared before every attempt: a sentinel left by an earlier run would
@@ -597,7 +646,19 @@ export const worktreesCommand: CommandSpec = {
           } else {
             fetchBranch(wt, DEV);
             const onto = devBase(wt, ctx.log);
+            carried = carryLeftovers(
+              wt,
+              {
+                fid,
+                onto,
+                statusFile: path.join(logDir, "status.jsonl"),
+                copied: config.worktreeCopy,
+              },
+              ctx.log,
+            );
             const rb = runGit(wt, ["rebase", "--rebase-merges", onto]);
+            // The rebase replays the carry commit on top: report the replayed one.
+            if (rb.ok && carried?.sha) carried.sha = git(wt, ["rev-parse", "HEAD"]);
             if (!rb.ok) {
               failure = {
                 conflict: rebaseInProgress(wt),
@@ -646,6 +707,8 @@ export const worktreesCommand: CommandSpec = {
           logDir,
           baseRef,
           baseSha: git(wt, ["merge-base", baseRef, "HEAD"]),
+          carriedSha: carried?.sha ?? null,
+          carriedDropped: carried?.dropped ?? [],
           copied,
           copyMissing,
           direnvAllowed,

@@ -99,9 +99,9 @@ export interface BkitConfig {
   loopPause: boolean;
   /** `bkit.depUpdater` is `"none"`: silences the missing-dependency-updater advisory. */
   depUpdaterOptOut: boolean;
-  /** `bkit.issueTracker` is present with any value, so `none` is a choice, not an undecided install. */
+  /** `bkit.issueTracker` is set, so `none` is a choice; absent or `""` (what install seeds) = undecided. */
   issueTrackerExplicit: boolean;
-  /** `bkit.cloudAgents` is present with any value, so `none` is a choice, not an undecided install. */
+  /** `bkit.cloudAgents` is set, so `none` is a choice; absent or `""` (what install seeds) = undecided. */
   cloudAgentsExplicit: boolean;
 }
 
@@ -209,8 +209,8 @@ export function readBkitConfig(root: string): BkitConfig {
     cloudAgents: parseCloudAgents(bkit.cloudAgents) ?? CONFIG_DEFAULTS.cloudAgents,
     loopPause: typeof bkit.loopPause === "boolean" ? bkit.loopPause : CONFIG_DEFAULTS.loopPause,
     depUpdaterOptOut: bkit.depUpdater === "none",
-    issueTrackerExplicit: bkit.issueTracker !== undefined,
-    cloudAgentsExplicit: bkit.cloudAgents !== undefined,
+    issueTrackerExplicit: bkit.issueTracker !== undefined && bkit.issueTracker !== "",
+    cloudAgentsExplicit: bkit.cloudAgents !== undefined && bkit.cloudAgents !== "",
   };
 }
 

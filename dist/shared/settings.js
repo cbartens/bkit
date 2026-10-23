@@ -104,8 +104,8 @@ export function readBkitConfig(root) {
         cloudAgents: parseCloudAgents(bkit.cloudAgents) ?? CONFIG_DEFAULTS.cloudAgents,
         loopPause: typeof bkit.loopPause === "boolean" ? bkit.loopPause : CONFIG_DEFAULTS.loopPause,
         depUpdaterOptOut: bkit.depUpdater === "none",
-        issueTrackerExplicit: bkit.issueTracker !== undefined,
-        cloudAgentsExplicit: bkit.cloudAgents !== undefined,
+        issueTrackerExplicit: bkit.issueTracker !== undefined && bkit.issueTracker !== "",
+        cloudAgentsExplicit: bkit.cloudAgents !== undefined && bkit.cloudAgents !== "",
     };
 }
 export function trackerScope(cfg) {

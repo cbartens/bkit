@@ -30,7 +30,8 @@ describe("bkit's own package.json", () => {
   });
 
   // Code 16 is opt-in (a lane whose `if:` is event-scoped cannot run pre-merge).
-  it("does NOT declare bkit.shipGateRequiredLanes", () => {
-    expect(ownBkit()?.shipGateRequiredLanes).toBeUndefined();
+  // Install seeds `[]`, which reads the same as absent: the capstone's green decides.
+  it("declares no bkit.shipGateRequiredLanes lane", () => {
+    expect([undefined, []]).toContainEqual(ownBkit()?.shipGateRequiredLanes);
   });
 });

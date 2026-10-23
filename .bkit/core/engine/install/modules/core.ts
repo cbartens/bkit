@@ -422,15 +422,69 @@ export function seedCorePackageJsonScripts(
   return written;
 }
 
-/** `bkit.*` settings written on every install and upgrade so consumers see them; add-if-missing. */
+/**
+ * Every `bkit.*` setting, written on every install and upgrade so consumers see them all;
+ * add-if-missing, nested blocks included. A key with a default gets it; a choice not made
+ * yet is `""` or `[]`, which every reader treats as unset.
+ */
 export const SEEDED_BKIT_DEFAULTS: Readonly<Record<string, unknown>> = {
+  issueTracker: "",
+  cloudAgents: "",
+  github: {
+    project: "",
+    progress: CONFIG_DEFAULTS.github.progress,
+    review: CONFIG_DEFAULTS.github.review,
+  },
+  linear: {
+    team: "",
+    project: "",
+    progress: CONFIG_DEFAULTS.linear.progress,
+    review: CONFIG_DEFAULTS.linear.review,
+  },
+  jira: {
+    site: "",
+    project: "",
+    progress: CONFIG_DEFAULTS.jira.progress,
+    review: CONFIG_DEFAULTS.jira.review,
+  },
+  opencodeProvider: "",
+  opencodeProviders: [],
+  ciWorkflow: CONFIG_DEFAULTS.ciWorkflow,
+  capstoneJob: CONFIG_DEFAULTS.capstoneJob,
+  shipGateRequiredLanes: [...CONFIG_DEFAULTS.shipGateRequiredLanes],
+  minPushPaths: [...CONFIG_DEFAULTS.minPushPaths],
+  worktree: { copy: [...CONFIG_DEFAULTS.worktreeCopy], install: CONFIG_DEFAULTS.worktreeInstall },
+  disk: { minFreeGb: CONFIG_DEFAULTS.diskMinFreeGb },
   loopPause: CONFIG_DEFAULTS.loopPause,
   // bkit-utility-update-roadmap list length; the prompt falls back to 25 too.
   roadmapNext: 25,
+  depUpdater: "",
+  ignoreAdvisories: [],
 };
 
-// Add each SEEDED_BKIT_DEFAULTS key missing from `package.json` `bkit`, creating the
-// block when absent. A key already present keeps its value, whatever it is. Returns
+const plainObject = (v: unknown): v is Record<string, unknown> =>
+  v !== null && typeof v === "object" && !Array.isArray(v);
+
+// Copy each `defaults` key missing from `target`, descending into blocks both sides hold.
+// A present key keeps its value, whatever it is. Pushes each added key's dotted path.
+function addMissingKeys(
+  target: Record<string, unknown>,
+  defaults: Readonly<Record<string, unknown>>,
+  prefix: string,
+  added: string[],
+): void {
+  for (const [k, v] of Object.entries(defaults)) {
+    if (!Object.prototype.hasOwnProperty.call(target, k)) {
+      target[k] = structuredClone(v);
+      added.push(`${prefix}${k}`);
+    } else if (plainObject(v) && plainObject(target[k])) {
+      addMissingKeys(target[k], v, `${prefix}${k}.`, added);
+    }
+  }
+}
+
+// Add each SEEDED_BKIT_DEFAULTS key missing from `package.json` `bkit`, creating the block
+// when absent. Runs after the legacy-key migrations, which test `=== undefined`. Returns
 // true when package.json changed.
 export function seedBkitDefaults(dryRun: boolean, ws: WriteSet, logPrefix: string): boolean {
   const pkgPath = "package.json";
@@ -439,22 +493,16 @@ export function seedBkitDefaults(dryRun: boolean, ws: WriteSet, logPrefix: strin
   const parsed = parseJson(raw);
   if (!parsed.ok) return false;
   const pkg = parsed.value as Record<string, unknown>;
-  if (
-    pkg.bkit !== undefined &&
-    (pkg.bkit === null || typeof pkg.bkit !== "object" || Array.isArray(pkg.bkit))
-  )
-    return false;
+  if (pkg.bkit !== undefined && !plainObject(pkg.bkit)) return false;
   const cfg = (pkg.bkit ?? {}) as Record<string, unknown>;
-  const added = Object.keys(SEEDED_BKIT_DEFAULTS).filter(
-    (k) => !Object.prototype.hasOwnProperty.call(cfg, k),
-  );
+  const added: string[] = [];
+  addMissingKeys(cfg, SEEDED_BKIT_DEFAULTS, "bkit.", added);
   if (added.length === 0) return false;
-  for (const k of added) cfg[k] = SEEDED_BKIT_DEFAULTS[k];
   pkg.bkit = cfg;
   ws.writes.push({ path: pkgPath, action: "update" });
   if (!dryRun) writePackageJsonLike(raw, pkg);
   console.log(
-    `${logPrefix} ${dryRun ? "[dry-run] " : ""}core: set ${added.map((k) => `bkit.${k} = ${JSON.stringify(SEEDED_BKIT_DEFAULTS[k])}`).join(", ")} in package.json`,
+    `${logPrefix} ${dryRun ? "[dry-run] " : ""}core: added ${added.join(", ")} to package.json`,
   );
   return true;
 }
