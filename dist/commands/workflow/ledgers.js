@@ -11,7 +11,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { gitEnv } from "../../ledgers/telemetry.js";
-import { CommandError, EXIT } from "../lib.js";
+import { CommandError, EXIT, parseJson, } from "../lib.js";
 import { str } from "./status.js";
 /** Root is not a directory or repo, git is too old, or a ref does not resolve. */
 export const EXIT_ROOT = 3;
@@ -61,12 +61,13 @@ const UNION_PATHSPECS = [
     ":(exclude).bkit/issues.jsonl",
 ];
 /** `git <args>` in `cwd`, never throwing and never trimming (NUL-delimited output). */
-function gitRaw(cwd, args) {
+function gitRaw(cwd, args, env = {}, input) {
     const res = spawnSync("git", args, {
         cwd,
         encoding: "utf-8",
-        env: gitEnv(),
+        env: { ...gitEnv(), ...env },
         maxBuffer: 1 << 28,
+        ...(input === undefined ? {} : { input }),
     });
     // A spawn error is never a success: the child can exit 0 before ENOBUFS kills it.
     const status = res.error && res.status === 0 ? 1 : res.status;
@@ -114,6 +115,394 @@ function dirtyTracked(root) {
     return gitRaw(root, ["status", "--porcelain"])
         .stdout.split("\n")
         .filter((l) => l !== "" && !l.startsWith("??"));
+}
+// ---------------------------------------------------------------------------
+// Shared-checkout record — the one home
+// ---------------------------------------------------------------------------
+//
+// An in-place run on `dev` shares its checkout with whatever else is dirty or
+// committed there. At `worktrees setup` the run snapshots which paths were
+// already dirty (and the HEAD it started from) into a per-clone file under the
+// git dir, never committed. Every commit the run makes goes through
+// `ownPathCommit`, which leaves those paths alone, and records its SHA so the
+// push sends exactly the run's commits. Nothing else reads or writes the file.
+/** Exit code: a path that was dirty before the run changed during it, so no commit was made. */
+export const EXIT_FOREIGN_PATH = 10;
+const RECORD_DIR = "bkit/shared-checkout";
+const RECORD_FID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+/** The checkout's top: git status and pathspecs are relative to it, whatever `cwd` is. */
+function topOf(cwd) {
+    const top = gitRaw(cwd, ["rev-parse", "--show-toplevel"]);
+    return top.status === 0 ? top.stdout.trim() : cwd;
+}
+/** `$(git rev-parse --git-path bkit/shared-checkout/{sub})`, absolute; null outside a repo. */
+function recordPathOf(cwd, sub) {
+    const res = gitRaw(cwd, ["rev-parse", "--git-path", `${RECORD_DIR}/${sub}`]);
+    return res.status === 0 && res.stdout.trim() !== "" ? path.resolve(cwd, res.stdout.trim()) : null;
+}
+const recordFile = (cwd, fid) => RECORD_FID.test(fid) && !fid.includes("..") ? recordPathOf(cwd, `${fid}.json`) : null;
+function asRecord(value) {
+    if (typeof value !== "object" || value === null)
+        return null;
+    const r = value;
+    if (typeof r.fid !== "string" ||
+        typeof r.branch !== "string" ||
+        typeof r.startSha !== "string" ||
+        typeof r.aheadAtStart !== "number" ||
+        !Array.isArray(r.paths) ||
+        !Array.isArray(r.commits))
+        return null;
+    return {
+        fid: r.fid,
+        branch: r.branch,
+        startSha: r.startSha,
+        originSha: typeof r.originSha === "string" ? r.originSha : null,
+        aheadAtStart: r.aheadAtStart,
+        paths: r.paths.filter((p) => typeof p?.path === "string"),
+        commits: r.commits.filter((c) => typeof c === "string"),
+        ...(Array.isArray(r.pushed)
+            ? { pushed: r.pushed.filter((c) => typeof c === "string") }
+            : {}),
+    };
+}
+/** The FID's record, or null when absent or unreadable. */
+export function readRecord(cwd, fid) {
+    const file = recordFile(cwd, fid);
+    if (file === null || !fs.existsSync(file))
+        return null;
+    const parsed = parseJson(fs.readFileSync(file, "utf-8"));
+    return parsed.ok ? asRecord(parsed.value) : null;
+}
+/** Note run commits that now sit on origin/dev as replayed copies, so a later push skips them. */
+export function markRecordPushed(cwd, fid, shas) {
+    const rec = readRecord(cwd, fid);
+    if (rec === null)
+        return;
+    writeRecord(cwd, { ...rec, pushed: [...new Set([...(rec.pushed ?? []), ...shas])] });
+}
+/** Every record in this clone. */
+export function listRecords(cwd) {
+    const dir = recordPathOf(cwd, "");
+    if (dir === null || !fs.existsSync(dir))
+        return [];
+    return fs
+        .readdirSync(dir)
+        .filter((f) => f.endsWith(".json"))
+        .map((f) => readRecord(cwd, f.slice(0, -".json".length)))
+        .filter((r) => r !== null);
+}
+export function writeRecord(cwd, rec) {
+    const file = recordFile(cwd, rec.fid);
+    if (file === null)
+        throw new CommandError(EXIT_ROOT, `cannot place a record for "${rec.fid}"`);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, `${JSON.stringify(rec, null, 2)}\n`);
+}
+/** A setup guard older than this is a crashed setup's leftover. */
+const SETUP_GUARD_STALE_MS = 30_000;
+/**
+ * Run `fn` as the only record-setup in this clone: an exclusive-create guard file
+ * next to the records makes the busy check and the record write one step. Returns
+ * null, without running `fn`, when another setup holds a fresh guard.
+ */
+export function withSetupGuard(cwd, fn) {
+    const guard = recordPathOf(cwd, ".setup.lock");
+    if (guard === null)
+        return { value: fn() };
+    fs.mkdirSync(path.dirname(guard), { recursive: true });
+    const take = () => {
+        try {
+            fs.closeSync(fs.openSync(guard, "wx"));
+            return true;
+        }
+        catch (err) {
+            if (err.code === "EEXIST")
+                return false;
+            throw err;
+        }
+    };
+    if (!take()) {
+        const age = fs.existsSync(guard) ? Date.now() - fs.statSync(guard).mtimeMs : Infinity;
+        if (age < SETUP_GUARD_STALE_MS)
+            return null;
+        fs.rmSync(guard, { force: true });
+        if (!take())
+            return null;
+    }
+    try {
+        return { value: fn() };
+    }
+    finally {
+        fs.rmSync(guard, { force: true });
+    }
+}
+/** Remove the FID's record; false when there was none. */
+export function removeRecord(cwd, fid) {
+    const file = recordFile(cwd, fid);
+    if (file === null || !fs.existsSync(file))
+        return false;
+    fs.rmSync(file, { force: true });
+    return true;
+}
+/** The FID's record, only while its branch is still the one checked out. */
+export function activeRecord(cwd, fid) {
+    const rec = readRecord(cwd, fid);
+    if (rec === null)
+        return null;
+    const here = gitRaw(cwd, ["branch", "--show-current"]).stdout.trim();
+    return here === rec.branch ? rec : null;
+}
+/**
+ * The record of the run in place on `branch`, for a command that is not told
+ * its FID (the push). Setup keeps one live record per clone; if several are left
+ * over, the one written last wins.
+ */
+export function recordOnBranch(cwd, branch) {
+    const dir = recordPathOf(cwd, "");
+    const written = (r) => {
+        const file = recordFile(cwd, r.fid);
+        return file !== null && fs.existsSync(file) ? fs.statSync(file).mtimeMs : 0;
+    };
+    const ours = listRecords(cwd).filter((r) => r.branch === branch);
+    if (dir === null || ours.length === 0)
+        return null;
+    return ours.reduce((a, b) => (written(b) > written(a) ? b : a));
+}
+/** Append a commit the run made; called only after the commit succeeded. */
+export function appendRecordCommit(cwd, fid, sha) {
+    const rec = readRecord(cwd, fid);
+    if (rec === null || rec.commits.includes(sha))
+        return;
+    writeRecord(cwd, { ...rec, commits: [...rec.commits, sha] });
+}
+/** Paths git reports as changed or untracked, relative to the top, one per file. */
+function dirtyPaths(top) {
+    const res = gitRaw(top, ["status", "--porcelain", "-z", "-uall", "--no-renames"]);
+    return nulList(res.stdout)
+        .filter((e) => e.length > 3 && !e.startsWith("!!"))
+        .map((e) => e.slice(3));
+}
+/** `git hash-object` of the working file; null when it is gone. */
+function hashOf(top, rel) {
+    const abs = path.join(top, rel);
+    if (!fs.existsSync(abs))
+        return null;
+    if (!fs.statSync(abs).isFile())
+        return "not-a-file";
+    const res = gitRaw(top, ["hash-object", "--", rel]);
+    return res.status === 0 ? res.stdout.trim() : "unhashable";
+}
+/** A text's non-blank lines. */
+const rowsOf = (text) => text.split("\n").filter((l) => l.trim() !== "");
+/** Lines of `file` in `cwd`'s working copy that its HEAD blob lacks (compared trimmed). */
+export function rowsHeadLacks(cwd, file) {
+    const head = new Set(rowsOf(gitRaw(cwd, ["show", `HEAD:${file}`]).stdout).map((l) => l.trim()));
+    return rowsOf(fs.readFileSync(path.join(cwd, file), "utf-8")).filter((l) => !head.has(l.trim()));
+}
+/**
+ * Rows of `file` the run appended: lines HEAD lacks, and past the recorded line
+ * count when the run's record holds the file (rows before it are someone else's).
+ */
+export function runRows(cwd, file, rec) {
+    const was = rec?.paths.find((p) => p.path === file);
+    if (was?.lines === undefined)
+        return rowsHeadLacks(cwd, file);
+    const head = gitRaw(cwd, ["show", `HEAD:${file}`]);
+    const have = new Set(rowsOf(head.status === 0 ? head.stdout : "").map((l) => l.trim()));
+    const lines = fs.readFileSync(path.join(cwd, file), "utf-8").split("\n").slice(was.lines);
+    return rowsOf(lines.join("\n")).filter((l) => !have.has(l.trim()));
+}
+/** The record for a run starting now in `cwd` on `branch`. */
+export function newRecord(cwd, fid, branch) {
+    const top = topOf(cwd);
+    const startSha = gitRaw(top, ["rev-parse", "HEAD"]).stdout.trim();
+    const origin = gitRaw(top, ["rev-parse", "-q", "--verify", `refs/remotes/origin/${branch}`]);
+    const originSha = origin.status === 0 ? origin.stdout.trim() : null;
+    const ahead = originSha === null
+        ? 0
+        : Number(gitRaw(top, ["rev-list", "--count", `${originSha}..HEAD`]).stdout);
+    const paths = dirtyPaths(top).map((rel) => {
+        const hash = hashOf(top, rel);
+        const abs = path.join(top, rel);
+        const text = hash !== null && rel.endsWith(".jsonl") ? fs.readFileSync(abs, "utf-8") : null;
+        return text !== null && (text === "" || text.endsWith("\n"))
+            ? { path: rel, hash, lines: fileLines(text).length }
+            : { path: rel, hash };
+    });
+    return { fid, branch, startSha, originSha, aheadAtStart: ahead, paths, commits: [] };
+}
+/**
+ * The paths that are the run's own: dirty now, minus every recorded path. A
+ * recorded append-only ledger contributes only the rows appended after the
+ * recorded line count that HEAD lacks. Any other recorded path whose content
+ * changed, or a ledger whose recorded lines changed, throws EXIT_FOREIGN_PATH.
+ * `among` limits which recorded paths count (a bookkeeping commit only commits
+ * its allow-list).
+ */
+export function ownSet(cwd, rec, among) {
+    const top = topOf(cwd);
+    const recorded = new Map(rec.paths.map((p) => [p.path, p]));
+    const out = { plain: [], ledgers: [] };
+    const foreign = [];
+    for (const rel of dirtyPaths(top)) {
+        const was = recorded.get(rel);
+        if (was === undefined) {
+            out.plain.push(rel);
+            continue;
+        }
+        if (among !== undefined && !among.includes(rel))
+            continue;
+        if (hashOf(top, rel) === was.hash)
+            continue;
+        if (was.lines === undefined) {
+            foreign.push(rel);
+            continue;
+        }
+        const text = fs.readFileSync(path.join(top, rel), "utf-8");
+        const lines = text.split("\n");
+        const prefix = `${lines.slice(0, was.lines).join("\n")}\n`;
+        // `--path` applies the same clean / eol filters `hashOf` hashed the file with.
+        const prefixHash = gitRaw(top, ["hash-object", `--path=${rel}`, "--stdin"], {}, prefix).stdout.trim();
+        if (was.lines > 0 && prefixHash !== was.hash) {
+            foreign.push(rel);
+            continue;
+        }
+        const own = runRows(top, rel, rec);
+        if (own.length === 0)
+            continue;
+        const head = gitRaw(top, ["show", `HEAD:${rel}`]);
+        const base = head.status === 0 ? head.stdout : "";
+        const sep = base === "" || base.endsWith("\n") ? "" : "\n";
+        out.ledgers.push({ path: rel, text: `${base}${sep}${own.join("\n")}\n` });
+    }
+    if (foreign.length > 0) {
+        throw new CommandError(EXIT_FOREIGN_PATH, `refusing to commit: ${foreign.join(", ")} changed during the run but was already modified before it started — nothing committed; commit or revert ${foreign.length === 1 ? "it" : "them"} yourself, then re-run`);
+    }
+    return out;
+}
+/**
+ * Rebuild the real index entry of a ledger the user staged before the run: the
+ * new HEAD blob plus the staged rows HEAD lacks, so the user's next plain commit
+ * keeps the run's committed rows.
+ */
+function restageLedger(top, rel) {
+    const staged = gitRaw(top, ["show", `:${rel}`]);
+    const head = gitRaw(top, ["show", `HEAD:${rel}`]);
+    if (staged.status !== 0 || head.status !== 0)
+        return;
+    const have = new Set(rowsOf(head.stdout).map((l) => l.trim()));
+    const theirs = rowsOf(staged.stdout).filter((l) => !have.has(l.trim()));
+    if (theirs.length === 0) {
+        gitRaw(top, ["reset", "-q", "--", rel]);
+        return;
+    }
+    const sep = head.stdout === "" || head.stdout.endsWith("\n") ? "" : "\n";
+    const blob = gitRaw(top, ["hash-object", "-w", "--stdin"], {}, `${head.stdout}${sep}${theirs.join("\n")}\n`);
+    if (blob.status !== 0)
+        return;
+    gitRaw(top, ["update-index", "--cacheinfo", `100644,${blob.stdout.trim()},${rel}`]);
+}
+/**
+ * Commit `set` and nothing else: foreign index entries stay staged and foreign
+ * files stay out. Plain files go through a pathspec commit; ledger rows, or an
+ * empty set, go through a temporary index read from HEAD. With `skipIfEmpty`, no
+ * change against HEAD makes no commit (`sha` null). The caller records the SHA.
+ */
+export function commitOwnSet(cwd, set, message, o = {}) {
+    const top = topOf(cwd);
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-own-"));
+    try {
+        const list = path.join(tmp, "list");
+        const all = [...set.plain, ...set.ledgers.map((l) => l.path)];
+        fs.writeFileSync(list, all.map((p) => `${p}\0`).join(""));
+        const stagedBefore = new Set(nulList(gitRaw(top, ["diff", "--cached", "--name-only", "-z"]).stdout));
+        const tail = ["-m", message];
+        let made;
+        if (set.ledgers.length === 0 && set.plain.length > 0) {
+            const add = gitRaw(top, ["add", `--pathspec-from-file=${list}`, "--pathspec-file-nul"]);
+            if (add.status !== 0)
+                return { ok: false, error: `'git add' failed: ${add.stderr}` };
+            if (o.skipIfEmpty === true &&
+                gitRaw(top, ["diff", "--cached", "--quiet", "--", ...set.plain]).status === 0)
+                return { ok: true, sha: null };
+            made = gitRaw(top, [
+                "commit",
+                ...(o.allowEmpty === true ? ["--allow-empty"] : []),
+                `--pathspec-from-file=${list}`,
+                "--pathspec-file-nul",
+                ...tail,
+            ]);
+        }
+        else {
+            const env = { GIT_INDEX_FILE: path.join(tmp, "index") };
+            if (gitRaw(top, ["rev-parse", "-q", "--verify", "HEAD"]).status === 0) {
+                const read = gitRaw(top, ["read-tree", "HEAD"], env);
+                if (read.status !== 0)
+                    return { ok: false, error: `'git read-tree' failed: ${read.stderr}` };
+            }
+            if (set.plain.length > 0) {
+                const add = gitRaw(top, ["add", `--pathspec-from-file=${list}`, "--pathspec-file-nul"], env);
+                if (add.status !== 0)
+                    return { ok: false, error: `'git add' failed: ${add.stderr}` };
+            }
+            for (const l of set.ledgers) {
+                const blob = gitRaw(top, ["hash-object", "-w", "--stdin"], env, l.text);
+                const upd = gitRaw(top, ["update-index", "--add", "--cacheinfo", `100644,${blob.stdout.trim()},${l.path}`], env);
+                if (blob.status !== 0 || upd.status !== 0) {
+                    return { ok: false, error: `'git update-index' failed: ${upd.stderr || blob.stderr}` };
+                }
+            }
+            if (o.skipIfEmpty === true && gitRaw(top, ["diff", "--cached", "--quiet"], env).status === 0)
+                return { ok: true, sha: null };
+            made = gitRaw(top, ["commit", ...(o.allowEmpty === true ? ["--allow-empty"] : []), ...tail], env);
+            if (made.status === 0 && all.length > 0) {
+                // The real index still holds the pre-commit entries; bring the run's own
+                // (unstaged-by-anyone-else) paths level with the new HEAD.
+                const reset = all.filter((p) => !stagedBefore.has(p));
+                fs.writeFileSync(list, reset.map((p) => `${p}\0`).join(""));
+                if (reset.length > 0) {
+                    gitRaw(top, ["reset", "-q", `--pathspec-from-file=${list}`, "--pathspec-file-nul"]);
+                }
+                // A ledger the user had staged keeps their rows in the index, on top of the new HEAD's.
+                for (const l of set.ledgers)
+                    if (stagedBefore.has(l.path))
+                        restageLedger(top, l.path);
+            }
+        }
+        if (made.status !== 0) {
+            // Leave the index as it was: unstage what this attempt staged, never another's entry.
+            const unstage = all.filter((p) => !stagedBefore.has(p));
+            fs.writeFileSync(list, unstage.map((p) => `${p}\0`).join(""));
+            if (unstage.length > 0)
+                gitRaw(top, ["reset", "-q", `--pathspec-from-file=${list}`, "--pathspec-file-nul"]);
+            return { ok: false, error: made.stderr || made.stdout.trim() };
+        }
+        return { ok: true, sha: gitRaw(top, ["rev-parse", "HEAD"]).stdout.trim() };
+    }
+    finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+    }
+}
+/**
+ * The run's own-path commit: compute the own set from the record, commit it,
+ * append the SHA to the record. Throws EXIT_FOREIGN_PATH before committing.
+ */
+export function ownPathCommit(cwd, rec, message, o = {}) {
+    const made = commitOwnSet(cwd, ownSet(cwd, rec), message, o);
+    if (made.ok && made.sha !== null)
+        appendRecordCommit(cwd, rec.fid, made.sha);
+    return made;
+}
+/**
+ * An empty commit of the run's own: nothing from the working tree or the real
+ * index goes in, so a path the user staged never lands in it. The SHA is
+ * appended to the record.
+ */
+export function retriggerCommit(cwd, rec, message) {
+    const made = commitOwnSet(cwd, { plain: [], ledgers: [] }, message, { allowEmpty: true });
+    if (made.ok && made.sha !== null)
+        appendRecordCommit(cwd, rec.fid, made.sha);
+    return made;
 }
 // ---------------------------------------------------------------------------
 // Command
@@ -168,6 +557,7 @@ export const ledgersCommand = {
                 [EXIT_STAGE]: "staging failed (git add / git add -u)",
                 [EXIT_COMMIT]: "git commit failed",
                 [EXIT_EMPTY]: "the allow-list matched nothing — refusing to commit the whole index",
+                [EXIT_FOREIGN_PATH]: "an in-place run's allow-listed path was already modified before the run and changed during it — nothing committed",
             },
             run: (ctx) => commit(ctx),
         },
@@ -238,8 +628,14 @@ export function commitBookkeeping(o, log) {
         for (const line of dirty)
             log(line);
     }
+    // An in-place run on a shared branch: recorded paths are someone else's.
+    const rec = squashOf === undefined ? activeRecord(root, fid) : null;
     if (o.stageTrackedUpdates === true) {
-        const res = gitRaw(root, ["add", "-u"]);
+        // Throws EXIT_FOREIGN_PATH when any recorded path changed, before anything is staged.
+        if (rec !== null)
+            ownSet(root, rec);
+        const keepOut = (rec?.paths ?? []).map((p) => `:(exclude,literal)${p.path}`);
+        const res = gitRaw(root, ["add", "-u", ...(keepOut.length > 0 ? ["--", ".", ...keepOut] : [])]);
         if (res.status !== 0)
             throw new CommandError(EXIT_STAGE, `'git add -u' failed: ${res.stderr}`);
     }
@@ -256,7 +652,14 @@ export function commitBookkeeping(o, log) {
     if (listed.status !== 0) {
         throw new CommandError(EXIT_ROOT, `'git ls-files' failed while building the pathspec: ${listed.stderr}`);
     }
-    const paths = nulList(listed.stdout);
+    let paths = nulList(listed.stdout);
+    let ledgerRows = [];
+    if (rec !== null) {
+        // Throws EXIT_FOREIGN_PATH when a recorded path in the allow-list changed.
+        ledgerRows = ownSet(root, rec, paths).ledgers;
+        const recorded = new Set(rec.paths.map((p) => p.path));
+        paths = paths.filter((p) => !recorded.has(p));
+    }
     let squashPaths = [];
     if (squashOf !== undefined) {
         const diff = gitRaw(root, ["diff", "--name-only", "-z", "--no-renames", `HEAD...${squashOf}`]);
@@ -265,7 +668,7 @@ export function commitBookkeeping(o, log) {
         }
         squashPaths = nulList(diff.stdout);
     }
-    if (mode !== "stage" && paths.length + squashPaths.length === 0) {
+    if (mode !== "stage" && paths.length + squashPaths.length + ledgerRows.length === 0) {
         // The pre-worktree commit records only bookkeeping; a dirty tree with none
         // of it (a fresh consumer repo) has nothing of ours to commit, and stopping
         // here never reaches `git commit`.
@@ -274,6 +677,20 @@ export function commitBookkeeping(o, log) {
             return { outcome: "nothing-to-commit", commit: null, paths, squashPaths };
         }
         throw new CommandError(EXIT_EMPTY, `empty pathspec list — refusing to commit (nothing under scope=${scope} matched in ${root})`);
+    }
+    if (rec !== null && mode !== "stage" && ledgerRows.length > 0) {
+        const made = commitOwnSet(root, { plain: paths, ledgers: ledgerRows }, message, {
+            allowEmpty: mode === "commit-allow-empty",
+            skipIfEmpty: mode === "commit",
+        });
+        if (!made.ok)
+            throw new CommandError(EXIT_COMMIT, `'git commit' failed: ${made.error}`);
+        if (made.sha === null) {
+            log("nothing to commit");
+            return { outcome: "nothing-to-commit", commit: null, paths, squashPaths };
+        }
+        appendRecordCommit(root, fid, made.sha);
+        return { outcome: "committed", commit: made.sha, paths, squashPaths };
     }
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-ledgers-"));
     try {
@@ -304,12 +721,10 @@ export function commitBookkeeping(o, log) {
         if (made.status !== 0) {
             throw new CommandError(EXIT_COMMIT, `'git commit' failed: ${made.stderr || made.stdout.trim()}`);
         }
-        return {
-            outcome: "committed",
-            commit: gitRaw(root, ["rev-parse", "HEAD"]).stdout.trim(),
-            paths,
-            squashPaths,
-        };
+        const sha = gitRaw(root, ["rev-parse", "HEAD"]).stdout.trim();
+        if (rec !== null)
+            appendRecordCommit(root, fid, sha);
+        return { outcome: "committed", commit: sha, paths, squashPaths };
     }
     finally {
         fs.rmSync(tmp, { recursive: true, force: true });

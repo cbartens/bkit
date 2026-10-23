@@ -13,6 +13,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fold, lastRun, statusTimestamp, } from "../../ledgers/status.js";
 import { CommandError, EXIT, parseJson, repoRoot, statusRelPath, utcMonth, } from "../lib.js";
+import { removeRecord } from "./ledgers.js";
 import { str } from "./status.js";
 /** A workflow lock whose holder shows no sign of life for this long is stale. */
 export const WORKFLOW_LOCK_IDLE_S = 1800;
@@ -112,7 +113,7 @@ function liveReason(root, month, fid, holder, now) {
  * Fold a status log for the lock cross-check. A missing or malformed log shows no
  * run: there is no evidence the holder is alive, so the lock is reclaimed.
  */
-function readRunsLenient(file) {
+export function readRunsLenient(file) {
     if (!fs.existsSync(file))
         return [];
     const raw = fs.readFileSync(file, "utf-8").trim();
@@ -126,6 +127,24 @@ function readRunsLenient(file) {
         events.push(parsed.value);
     }
     return fold(events);
+}
+/** Whether `fid` holds a workflow lock whose holder is still stepping (not reclaimable). */
+export function workflowLockLive(root, fid) {
+    return monthBuckets(root, fid).some((month) => {
+        const holder = readHolder(workflowLockPath(root, month, fid));
+        return holder !== undefined && "live" in liveReason(root, month, fid, holder, Date.now());
+    });
+}
+/**
+ * Whether `fid` has a workflow lock file younger than the idle limit, whatever
+ * its run's state: a run that has closed but not yet released its lock (it still
+ * pushes and waits for CI) still owns its checkout.
+ */
+export function workflowLockFresh(root, fid) {
+    return monthBuckets(root, fid).some((month) => {
+        const stat = fs.statSync(workflowLockPath(root, month, fid), { throwIfNoEntry: false });
+        return stat !== undefined && (Date.now() - stat.mtimeMs) / 1000 < WORKFLOW_LOCK_IDLE_S;
+    });
 }
 export function acquireWorkflowLock(opts) {
     const root = repoRoot(opts.cwd);
@@ -219,7 +238,7 @@ export const locksCommand = {
             },
         },
         release: {
-            summary: "Remove a lock this caller owns; another owner's lock is left in place.",
+            summary: "Remove a lock this caller owns (and the feature's shared-checkout record); another owner's lock is left in place.",
             flags: [
                 KIND_FLAG,
                 LOCK_WORKFLOW_FLAG,
@@ -253,6 +272,9 @@ export const locksCommand = {
                 const root = repoRoot(ctx.cwd);
                 const file = workflowLockPath(root, resolveMonth(root, who.fid, str(ctx.flags.month)), who.fid);
                 const { removeFailed, ...result } = releaseLock(file, who);
+                // The run is over once its lock is released: so is its shared-checkout record.
+                if (!removeFailed && result.heldBy === null)
+                    removeRecord(root, who.fid);
                 ctx.emit({ kind, ...result });
                 if (removeFailed) {
                     ctx.log(`lock removal failed: ${file}`);

@@ -230,6 +230,7 @@ pnpm add -D prettier@^3.5.3
 2. Add `format:check` (§ Gate tool scripts). Reference: https://prettier.io/docs/install.
 
 - Keep the `.bkit/templates/` line.
+- Keep the three `docs/plans/*/logs/*/` gate-log lines: build and debug commit raw `bkit tests run` output there, and `format:check` fails on it.
 
 ## lint-staged — `.lintstagedrc.json`
 

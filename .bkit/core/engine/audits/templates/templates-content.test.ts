@@ -5,6 +5,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import * as prettier from "prettier";
 import { describe, expect, it } from "vitest";
 import { parse as parseYamlText } from "yaml";
 import { listFilesRecursive } from "../../install/template-copies";
@@ -610,6 +611,21 @@ describe("consumer .prettierignore template (.bkit/templates/.prettierignore)", 
 
   it("carries no bkit:start / bkit:end block (bkit never writes a template)", () => {
     expect(content).not.toMatch(/^# bkit:(start|end)\b/m);
+  });
+
+  it.each([
+    ["run-tests-1.md", true],
+    ["build-subplan-gate-1-1.md", true],
+    ["context-tests-local-1.md", true],
+    ["build-plan-verify-1-1.md", false],
+  ])("prettier ignores the committed gate log %s: %s", async (name, ignored) => {
+    const file = path.join(
+      path.dirname(CONSUMER_PRETTIERIGNORE_TEMPLATE),
+      "docs/plans/202610/logs/1-x",
+      name,
+    );
+    const info = await prettier.getFileInfo(file, { ignorePath: CONSUMER_PRETTIERIGNORE_TEMPLATE });
+    expect(info.ignored).toBe(ignored);
   });
 });
 

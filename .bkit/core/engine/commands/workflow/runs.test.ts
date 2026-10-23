@@ -19,6 +19,7 @@ import {
   type Gh,
 } from "./runs";
 import type { GhResult } from "../lib";
+import { appendRecordCommit, newRecord, readRecord, writeRecord } from "./ledgers";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
 const FIXTURES = path.join(REPO_ROOT, "tests", "fixtures", "gh");
@@ -1375,6 +1376,162 @@ describe("bkit runs dispatch", { timeout: 20_000 }, () => {
   });
 });
 
+describe("bkit runs dispatch on dev (a debug run in place)", { timeout: 30_000 }, () => {
+  const FID = "1-x";
+
+  /**
+   * A clone on `dev` of a bare origin: one pushed base commit, a foreign local commit,
+   * then (with `record`) a shared-checkout record and one commit the run made.
+   */
+  function devRepo(o: { record: boolean }) {
+    const root = tmp();
+    const remote = path.join(root, "remote.git");
+    const cwd = path.join(root, "work");
+    gitIn(root, "init", "-q", "--bare", "-b", "dev", remote);
+    gitIn(root, "init", "-q", "-b", "dev", cwd);
+    gitIn(cwd, "config", "user.email", "t@t");
+    gitIn(cwd, "config", "user.name", "t");
+    gitIn(cwd, "commit", "-q", "--allow-empty", "-m", "base");
+    gitIn(cwd, "remote", "add", "origin", remote);
+    gitIn(cwd, "push", "-q", "-u", "origin", "dev");
+    gitIn(cwd, "commit", "-q", "--allow-empty", "-m", "foreign local commit");
+    if (o.record) writeRecord(cwd, newRecord(cwd, FID, "dev"));
+    gitIn(cwd, "commit", "-q", "--allow-empty", "-m", `chore(${FID}): run commit`);
+    if (o.record) appendRecordCommit(cwd, FID, gitIn(cwd, "rev-parse", "HEAD"));
+    const remoteTip = () => gitIn(remote, "rev-parse", "dev");
+    const remoteLog = () => gitIn(remote, "log", "--format=%s", "dev").split("\n");
+    return { root, remote, cwd, remoteTip, remoteLog };
+  }
+
+  const gateBase = (cwd: string) => ({
+    cwd,
+    pr: "7",
+    fid: FID,
+    autoRouteSuffix: "",
+    budgetS: 60,
+    intervalS: 10,
+    retriggered: false,
+  });
+  const quiet = { sleep: instant, log: noLog };
+  const NONE = rollup("vercel");
+  const FOUND = rollup("bkit-tests-unit");
+
+  /** A gh whose `run list` is empty for `emptyFor` calls, then shows a run at origin's dev tip. */
+  const runAtRemoteTip = (remote: string, emptyFor: number): Gh => {
+    let n = 0;
+    return (args) => {
+      if (args[0] !== "run" || args[1] !== "list") return fail;
+      if (++n <= emptyFor) return ok("[]");
+      const headSha = gitIn(remote, "rev-parse", "dev");
+      return ok(JSON.stringify([{ status: "queued", conclusion: "", headSha }]));
+    };
+  };
+
+  it("dispatch on dev with a pushed sha and no pr proves the run started", async () => {
+    const { cwd, root, remote } = devRepo({ record: true });
+    // The pushed sha is a copy the push made on origin; the clone does not have it yet.
+    const other = path.join(root, "other");
+    gitIn(root, "clone", "-q", "-b", "dev", remote, other);
+    gitIn(other, "commit", "-q", "--allow-empty", "-m", `chore(${FID}): landed copy`);
+    gitIn(other, "push", "-q", "origin", "dev");
+    const sha = gitIn(other, "rev-parse", "HEAD");
+    fakeGhBin({
+      "pr-list": "[]",
+      "run-list": JSON.stringify([{ status: "queued", conclusion: "", headSha: sha }]),
+    });
+    const r = await cli(cwd, ["dispatch", `--fid=${FID}`, `--sha=${sha}`]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      ciDispatch: { outcome: "dispatched", head: sha, retrigger: false },
+      phase: "done",
+      pr: null,
+      head: sha,
+      scanResult: "clean",
+    });
+  });
+
+  it("re-trigger on dev with a record pushes through the own-commit push", async () => {
+    const { cwd, remote, remoteTip, remoteLog } = devRepo({ record: true });
+    const r = await ciDispatchGate(gateBase(cwd), {
+      gh: sequenceGh([NONE, NONE, NONE, NONE, NONE, NONE, FOUND]).gh,
+      ...quiet,
+    });
+    // The foreign local commit never reaches origin; the run's commits do.
+    expect(remoteLog()).not.toContain("foreign local commit");
+    expect(remoteLog()).toContain(`chore(${FID}): run commit`);
+    expect(remoteLog()[0]).toBe(`chore(${FID}): re-trigger`);
+    // The gate follows the landed copy, not the local commit it was made as.
+    expect(r.ciDispatch).toMatchObject({ outcome: "self-healed", head: remoteTip() });
+    expect(r.head).toBe(remoteTip());
+    expect(gitIn(remote, "rev-list", "--count", "dev")).toBe("3");
+    expect(readRecord(cwd, FID)?.commits).toHaveLength(2);
+  });
+
+  it("re-trigger on dev with a record never commits a foreign staged path", async () => {
+    const { cwd, remoteLog } = devRepo({ record: true });
+    fs.writeFileSync(path.join(cwd, "foreign.txt"), "user work\n");
+    gitIn(cwd, "add", "foreign.txt");
+    await ciDispatchGate(gateBase(cwd), {
+      gh: sequenceGh([NONE, NONE, NONE, NONE, NONE, NONE, FOUND]).gh,
+      ...quiet,
+    });
+    const retrigger = gitIn(cwd, "log", "-1", "--format=%H", "--grep=re-trigger");
+    expect(gitIn(cwd, "show", "--name-only", "--format=", retrigger)).toBe("");
+    expect(gitIn(cwd, "diff", "--cached", "--name-only")).toBe("foreign.txt");
+    expect(remoteLog()).not.toContain("foreign local commit");
+  });
+
+  it("dispatch on dev with no pr and a record follows the landed sha through the re-trigger", async () => {
+    const { cwd, remote, remoteTip } = devRepo({ record: true });
+    const r = await ciDispatchGate(
+      { ...gateBase(cwd), pr: null },
+      { gh: runAtRemoteTip(remote, 6), ...quiet },
+    );
+    expect(r.ciDispatch).toMatchObject({
+      outcome: "self-healed",
+      retrigger: true,
+      head: remoteTip(),
+    });
+    expect(gitIn(remote, "log", "-1", "--format=%s", "dev")).toBe(`chore(${FID}): re-trigger`);
+  });
+
+  it("re-trigger on dev without a record commits and pushes nothing, and hands off to the Failure Path", async () => {
+    const { cwd, remoteTip, remoteLog } = devRepo({ record: false });
+    const headBefore = gitIn(cwd, "rev-parse", "HEAD");
+    const tipBefore = remoteTip();
+    const r = await ciDispatchGate(gateBase(cwd), {
+      gh: sequenceGh([NONE, NONE, NONE, NONE, NONE, NONE, FOUND]).gh,
+      ...quiet,
+    });
+    expect(r).toMatchObject({ phase: "repoll", handoff: 6 });
+    expect(r.ciDispatch).not.toMatchObject({ outcome: "self-healed" });
+    expect(gitIn(cwd, "rev-parse", "HEAD")).toBe(headBefore);
+    expect(remoteTip()).toBe(tipBefore);
+    expect(remoteLog()).not.toContain("foreign local commit");
+  });
+
+  it("re-trigger on dev only uses the record of its own FID", async () => {
+    const { cwd, remoteTip, remoteLog } = devRepo({ record: true });
+    const tipBefore = remoteTip();
+    const r = await ciDispatchGate(
+      { ...gateBase(cwd), fid: "some-other-run" },
+      { gh: sequenceGh([NONE, NONE, NONE, NONE, NONE, NONE, FOUND]).gh, ...quiet },
+    );
+    expect(r).toMatchObject({ handoff: 6 });
+    expect(remoteTip()).toBe(tipBefore);
+    expect(remoteLog()).not.toContain("some-other-run");
+  });
+
+  it.each(["abc1234", "0123456789abcdef0123456789abcdef0123456"])(
+    "dispatch --sha=%s is refused: the CI run is matched on the full 40-hex sha",
+    async (sha) => {
+      const { cwd } = devRepo({ record: true });
+      const r = await cli(cwd, ["dispatch", `--fid=${FID}`, `--sha=${sha}`]);
+      expect(r.code).toBe(2);
+    },
+  );
+});
+
 const ROLLUP_FOUND = JSON.stringify({
   statusCheckRollup: [{ name: "bkit-tests-unit", status: "QUEUED" }],
 });
@@ -1871,6 +2028,22 @@ describe("bkit runs context", () => {
     expect((await context(cwd, "deploy", "1")).code).toBe(3);
     fakeGhBin({ "pr-view": "EXIT:4" });
     expect((await context(cwd, "ship", "42")).code).toBe(80);
+  });
+
+  it("runs context refuses an issue-less marker and branch naming the missing issue", async () => {
+    const cwd = autoRepo();
+    const runs = JSON.stringify([{ databaseId: 5, headSha: "sha12" }]);
+    const cases = [
+      { headRefName: "feat/other", body: "<!-- bkit:fid=dev-ci-failures -->\n" },
+      { headRefName: "feat/dev-ci-failures", body: "" },
+    ];
+    for (const pr of cases) {
+      fakeGhBin({ "pr-view": prJson(pr), "run-list": runs });
+      const r = await context(cwd, "ship", "42");
+      expect(r.err).toContain("dev-ci-failures names no issue");
+      expect(r.code).toBe(9);
+      expect(r.json.fid).toBeNull();
+    }
   });
 });
 

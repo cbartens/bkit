@@ -689,3 +689,95 @@ describe("sync", () => {
     expect(syncWording([synthetic({ texts: [RULE] })], [prompt("p", content)]).size).toBe(0);
   });
 });
+
+describe("issue-less workflow clauses", () => {
+  // A run with no issue warns and continues; the clauses carry that for all five workflows.
+  it("workflow-issue-id-missing leads into the branch recovery without a STOP", () => {
+    for (const text of clause("workflow-issue-id-missing").texts) {
+      expect(text).not.toContain("STOP");
+      expect(text).toContain("recover `ISSUE_ID` from the branch");
+      expect(text).toContain("→ as exit 0 with `issueId` null");
+    }
+  });
+
+  it("the fids parse routes: hit, no issue, non-slug STOP", () => {
+    expect(clause("workflow-issue-id-parse-hit").texts[0]).toContain(
+      "hold `issueId` as `ISSUE_ID`",
+    );
+    const none = clause("workflow-issue-id-parse-none").texts[0];
+    expect(none).toContain('`ISSUE_ID=""`');
+    expect(none).toContain("never create a tracker issue");
+    expect(none).not.toContain("STOP");
+    const slug = clause("workflow-issue-id-parse-slug").texts[0];
+    expect(slug).toContain("**STOP**");
+    expect(slug).toContain("exit 3");
+    expect(slug).toContain("rename `BRANCH`");
+    expect(slug).toContain("never the **Failure Path**");
+  });
+
+  it("workflow-fid-branch compares a held issue to the FID prefix", () => {
+    const [text] = clause("workflow-fid-branch").texts;
+    expect(text).toContain("`ISSUE_ID` non-empty");
+    expect(text).toContain("starts with `ISSUE_ID`");
+  });
+
+  it("the repeated issue-less mint clauses route through fids free", () => {
+    expect(clause("workflow-fid-free-gate").texts[0]).toContain("first name no finished run used");
+    expect(clause("workflow-fid-free-reject").texts[0]).toContain("**Failure Path**");
+  });
+
+  it("changed issue clauses keep their old text in retired", () => {
+    const OLD: Record<string, string> = {
+      "workflow-issue-id-missing":
+        "**If** no `ID` found → log `No issue ID in the session prompt.` never create a tracker issue.",
+      "workflow-fid-mint":
+        "Mint: `FID` from `{ISSUE_ID}` and kebab from title, no stopwords, <=3 tokens, lowercase.",
+      "workflow-fid-unset": "`ISSUE_ID` unset → `{branch-suffix}-{slug}`.",
+      "workflow-gate-issue-id":
+        "Issue ID resolved (`ISSUE_ID` non-empty when tracker wired; may be empty under `none`)",
+      "workflow-issue-link": "Append issue link [{ISSUE_ID} {TITLE}]({URL})",
+      "workflow-related-search-jira": "AND key != {ISSUE_ID} ORDER BY updated DESC",
+    };
+    for (const [name, old] of Object.entries(OLD)) {
+      expect(
+        clause(name).retired.some((r) => r.includes(old)),
+        `${name}: old text is not in its retired block`,
+      ).toBe(true);
+    }
+  });
+
+  it("workflow-fid-mint re-mints once on a fids check reject", () => {
+    const [text] = clause("workflow-fid-mint").texts;
+    expect(text).toContain("fids check");
+    expect(text).toContain("re-mint once");
+    expect(text).toContain("all-digit");
+    expect(text).toContain("**Failure Path**");
+  });
+
+  it("the issue-less FID and gate clauses read as the issue-less behaviour", () => {
+    expect(clause("workflow-fid-unset").texts[0]).toContain("all-digit word");
+    expect(clause("workflow-fid-unset").texts[0]).toContain("`ISSUE_ID` empty");
+    expect(clause("workflow-gate-issue-id").texts[0]).toContain("no-issue warning emitted");
+    expect(clause("workflow-issue-link").texts[0]).toContain("`ISSUE_ID` is empty");
+    expect(clause("workflow-related-search-jira").texts[0]).toContain(
+      "drop `AND key != {ISSUE_ID}` when `ISSUE_ID` empty",
+    );
+  });
+
+  it("the warning, the final-message line and the skip line are clauses", () => {
+    const warning = clause("workflow-no-issue-warning");
+    expect(warning.texts[0]).toContain(
+      "WARNING: no issue named — running issue-less as {FID}; no tracker reads, labels or comments. Name {FID} in the next prompt to continue this run.",
+    );
+    expect(warning.modes.workflow).toBe("required");
+    expect(warning.except.has("bkit-auto")).toBe(true);
+    expect(clause("workflow-final-first-line").texts[0]).toContain("Line 1 of the final message");
+    expect(clause("workflow-skip-no-issue").texts[0]).toContain("**Skip if** `ISSUE_ID` empty");
+  });
+
+  it("workflow-large-diff takes the diff base as a slot", () => {
+    const [text] = clause("workflow-large-diff").texts;
+    expect(text).toContain("{{base}}...HEAD");
+    expect(text).not.toContain("origin/dev");
+  });
+});

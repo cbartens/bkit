@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { runCommand } from "../lib";
 import { COMMANDS } from "../registry";
+import { newRecord, readRecord, writeRecord } from "./ledgers";
 import { ROW_FIELDS, placeholderLines, promptHeader, promptVerdicts, readHeader } from "./steps";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
@@ -801,6 +802,76 @@ describe("bkit steps gate — placeholders, FID, derived attempt", () => {
     expect((await gate("../escape")).code).toBe(1);
   });
 
+  describe("--issue", () => {
+    function wired(tracker = "github") {
+      const cwd = repo();
+      write(cwd, "package.json", JSON.stringify({ bkit: { issueTracker: tracker } }));
+      return cwd;
+    }
+    const gate = (cwd: string, fid: string, ...extra: string[]) =>
+      run(cwd, [
+        "steps",
+        "gate",
+        "--workflow=design",
+        "--step=design-start-workflow",
+        `--fid=${fid}`,
+        ...extra,
+      ]);
+
+    it('gate --issue="" fails the fid check for a non-slug FID and passes 123-fix under github', async () => {
+      const bad = await gate(wired(), "Fix_CI", "--issue=");
+      expect(bad.code).toBe(1);
+      expect(bad.json.checks[0]).toMatchObject({ check: "fid Fix_CI", ok: false });
+      expect(bad.err).toContain("not a slug");
+      expect((await gate(wired(), "123-fix", "--issue=")).code).toBe(0);
+    });
+
+    it('gate --issue="" passes the fid check for dev-ci-failures under github', async () => {
+      const r = await gate(wired(), "dev-ci-failures", "--issue=");
+      expect(r.code).toBe(0);
+      expect(r.json.checks[0]).toMatchObject({ check: "fid dev-ci-failures", ok: true });
+    });
+
+    it("gate with --issue=<id> requires the tracker shape and a tracker issue id", async () => {
+      expect((await gate(wired(), "650-x", "--issue=650")).code).toBe(0);
+      expect((await gate(wired(), "dev-ci", "--issue=650")).code).toBe(1);
+      expect((await gate(wired(), "650-x", "--issue=ABC-1")).code).toBe(1);
+      expect((await gate(wired("linear"), "abc-1-x", "--issue=ABC-1")).code).toBe(0);
+    });
+
+    it("gate with --issue absent is unchanged: the tracker shape alone", async () => {
+      expect((await gate(wired(), "650-x")).code).toBe(0);
+      expect((await gate(wired(), "dev-ci-failures")).code).toBe(1);
+      expect((await gate(wired(), "Fix_CI", "--issue=")).code).toBe(1);
+    });
+
+    it("gate --fid=123-foo --issue=456 fails: the FID embeds another issue", async () => {
+      const r = await gate(wired(), "123-foo", "--issue=456");
+      expect(r.code).toBe(1);
+      expect(r.json.checks[0]).toMatchObject({ check: "fid 123-foo", ok: false });
+      expect(r.err).toContain("embeds issue 123, not the run's issue 456");
+      expect((await gate(wired(), "123-foo", "--issue=123")).code).toBe(0);
+    });
+
+    it("gate --issue without --fid is a usage error", async () => {
+      expect(
+        (
+          await run(wired(), [
+            "steps",
+            "gate",
+            "--workflow=design",
+            "--step=design-start-workflow",
+            "--issue=",
+          ])
+        ).code,
+      ).toBe(2);
+    });
+
+    it('gate --issue="" under none keeps today\'s check', async () => {
+      expect((await gate(repo(), "123-fix", "--issue=")).code).toBe(0);
+    });
+  });
+
   it("--attempt-of checks the row carries the derived counter", async () => {
     const cwd = repo();
     await run(cwd, doneArgs("--attempt=next"));
@@ -819,5 +890,109 @@ describe("bkit steps gate — placeholders, FID, derived attempt", () => {
       (await run(cwd, ["steps", "gate", "--workflow=build", "--step=x", "--attempt-of=x:next"]))
         .code,
     ).toBe(2);
+  });
+});
+
+describe("bkit steps done — a run in place on dev that shares its checkout", () => {
+  const FID = "650-shared";
+  const LOGS = `docs/plans/202610/logs/${FID}`;
+
+  /** A repo on dev holding foreign work (modified, untracked, staged) and the run's record. */
+  function shared() {
+    const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-steps-shared-")));
+    dirs.push(cwd);
+    git(cwd, "init", "-q", "-b", "dev");
+    git(cwd, "config", "user.email", "t@t");
+    git(cwd, "config", "user.name", "t");
+    fs.mkdirSync(path.join(cwd, "src"));
+    write(cwd, "src/a.txt", "a\n");
+    write(cwd, "src/staged.txt", "s\n");
+    git(cwd, "add", "-A");
+    git(cwd, "commit", "-q", "-m", "base");
+    write(cwd, "src/a.txt", "a\nforeign\n");
+    write(cwd, "notes.md", "foreign notes\n");
+    write(cwd, "src/staged.txt", "s\nforeign\n");
+    git(cwd, "add", "src/staged.txt");
+    writeRecord(cwd, newRecord(cwd, FID, "dev"));
+    fs.mkdirSync(path.join(cwd, LOGS), { recursive: true });
+    write(cwd, `${LOGS}/verify-1.md`, "Verdict: PASS\nFailures: 0\n\n<!-- verdict:end -->\n");
+    return cwd;
+  }
+  const step = (cwd: string) =>
+    run(cwd, [
+      "steps",
+      "done",
+      `--file=${LOGS}/status.jsonl`,
+      "--workflow=debug",
+      "--step=debug-verify",
+      "--verdict=PASS",
+      "--failures=0",
+      `--artifact=${LOGS}/verify-1.md`,
+      `--message=chore(${FID}): verify`,
+    ]);
+  const committed = (cwd: string) =>
+    git(cwd, "show", "--name-only", "--format=", "HEAD").split("\n").sort();
+  const staged = (cwd: string) => git(cwd, "diff", "--cached", "--name-only");
+
+  it("writeStepRow with a shared-checkout record never commits a recorded path", async () => {
+    const cwd = shared();
+    const r = await step(cwd);
+    expect(r.code).toBe(0);
+    expect(committed(cwd)).toEqual([`${LOGS}/status.jsonl`, `${LOGS}/verify-1.md`]);
+    expect(staged(cwd)).toBe("src/staged.txt");
+    expect(fs.readFileSync(path.join(cwd, "src/a.txt"), "utf-8")).toBe("a\nforeign\n");
+  });
+
+  it("writeStepRow refuses when a recorded path changed", async () => {
+    const cwd = shared();
+    const head = git(cwd, "rev-parse", "HEAD");
+    write(cwd, "src/a.txt", "a\nforeign\nedited mid-run\n");
+    const r = await step(cwd);
+    expect(r.code).toBe(10);
+    expect(r.err).toContain("src/a.txt");
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+    // No row is written, so the re-run after the human's fix writes it once.
+    expect(fs.existsSync(path.join(cwd, LOGS, "status.jsonl"))).toBe(false);
+    write(cwd, "src/a.txt", "a\nforeign\n");
+    expect((await step(cwd)).code).toBe(0);
+    const rows = fs
+      .readFileSync(path.join(cwd, LOGS, "status.jsonl"), "utf-8")
+      .trim()
+      .split("\n");
+    expect(rows).toHaveLength(1);
+  });
+
+  it("writeStepRow exits 14 with no row and no commit when the run has no record on dev", async () => {
+    const cwd = shared();
+    fs.rmSync(
+      path.resolve(cwd, git(cwd, "rev-parse", "--git-path", `bkit/shared-checkout/${FID}.json`)),
+    );
+    const head = git(cwd, "rev-parse", "HEAD");
+    const r = await step(cwd);
+    expect(r.code).toBe(14);
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+    expect(fs.existsSync(path.join(cwd, LOGS, "status.jsonl"))).toBe(false);
+    expect(staged(cwd)).toBe("src/staged.txt");
+  });
+
+  it("writeStepRow appends its commit sha to the record", async () => {
+    const cwd = shared();
+    const r = await step(cwd);
+    expect(r.code).toBe(0);
+    expect(readRecord(cwd, FID)?.commits).toEqual([git(cwd, "rev-parse", "HEAD")]);
+  });
+
+  it("a hook-refused own-path commit exits without staging a recorded path", async () => {
+    const cwd = shared();
+    const head = git(cwd, "rev-parse", "HEAD");
+    fs.mkdirSync(path.join(cwd, ".git/hooks"), { recursive: true });
+    write(cwd, ".git/hooks/pre-commit", "#!/bin/sh\necho blocked >&2\nexit 1\n");
+    fs.chmodSync(path.join(cwd, ".git/hooks/pre-commit"), 0o755);
+    const r = await step(cwd);
+    expect(r.code).toBe(8);
+    expect(r.err).toContain("blocked");
+    expect(staged(cwd)).toBe("src/staged.txt");
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+    expect(readRecord(cwd, FID)).toMatchObject({ commits: [] });
   });
 });

@@ -18,7 +18,7 @@ description: "Ship Feature — Autonomous merge and archive"
 > - **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does not mean silent.
 > - **`Failures`:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
 > - **Friction:** Watch own context and subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → append rows to `.bkit/friction.jsonl` in `.bkit/jsonl.md` format → continue or escalate; logging does not replace **Failure Path**.
-> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, etc non-empty if required before making tool calls. **Else** → **Failure Path**.
+> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, etc non-empty if required before making tool calls (`{ISSUE_ID}` may be empty). **Else** → **Failure Path**.
 > - **Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is one JSON object: hold named keys as `{VAR}`. Exit non-zero with no `Route:` for it → **Failure Path**; exit 80 → mapped MCP tool (**gh MCP fallback**); exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
 > - **Finish:** `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, derives the attempt (`--attempt-of`; `<attempt>` in a path becomes it), checks artifacts and row, writes the row (ship: `--commit=none`, bookkeeping to `$BOOK_ROOT`), prints `comment`. Exit 5 **or** 6 → invoke `reask.agent` again with `"Your prior output '<reask.artifact>' has an invalid header. Re-emit only its header fields + '<!-- verdict:end -->' at top of that file. Do not redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**. Hold `verdict` as the step's verdict, `fields` as its other header fields, `attempt` as its attempt.
 > - **Resume:** On start, fold `$BOOK_ROOT/.../status.jsonl` — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
@@ -32,6 +32,9 @@ description: "Ship Feature — Autonomous merge and archive"
 > - **Tracker:** GitHub Issues via MCP server `github` (`.mcp.json` `mcpServers.github`). Tools: `mcp__github__issue_read` (method `get` / `get_comments` / `get_labels`), `mcp__github__issue_write` (method `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (method `add_project_item` / `update_project_item`); board status sync needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.github.project`, absent either → silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; writes best-effort, never gate; **If** failure → retry once after 5s → continue.
 > - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive; a phase start drops the old phase, every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path). `bkit issues labels` computes each transition; MCP writes it.
 > - **Comments:** Post the `comment` a step's `bkit` block prints as a new comment via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` before its gate; every gate includes `Issue comment attempted (Step N section)`. Post the printed `comment` byte-for-byte; never shorten, reword, or rebuild it. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
+
+
+> - **No issue:** `ISSUE_ID` empty → run issue-less; skip every issue-tied tracker read, label, comment and board call. Once Step 1 sub-step 4 holds `FID`, emit: WARNING: no issue named — running issue-less as {FID}; no tracker reads, labels or comments. Name {FID} in the next prompt to continue this run.
 
 
 > - **Timeouts:** **If** workflow or subagent run > 3600 seconds → **Failure Path**.
@@ -50,8 +53,8 @@ description: "Ship Feature — Autonomous merge and archive"
    "{BKIT}" workflows fail --workflow=ship --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --max-exceeded --pr={PR_NUMBER} {LABEL_FLAGS} --step-number={N} --step-title="{Step Name}" --sub-step={M} --error-file="{OUTBOX_ROOT}/error.md" --stderr-file="{STDERR_FILE}"
    ```
    → hold `handoverNeeded` as `{HANDOVER_NEEDED}`, `labels` as `{LABELS}`, `trackerState` as `{TRACKER_STATE}`. **If** exit non-zero → log `Lock removal failed` with the printed `lock` to stderr, continue.
-2. `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
-   Post `comment` (when non-null).
+2. **Skip if** `ISSUE_ID` empty. `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
+   **Skip if** `ISSUE_ID` empty. Post `comment` (when non-null).
 3. **If** `HANDOVER_NEEDED` = true → step 4. **Else** → step 5.
 4. **Subagent:** Invoke `view_file` `.agents/plugins/bkit/agents/bkit-debug-abort-handover.md` using `view_file` tool:
    Context: You are a subagent in the Ship Debug phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
@@ -61,8 +64,8 @@ description: "Ship Feature — Autonomous merge and archive"
    ```bash
    "{BKIT}" workflows handover --workflow=ship --fid={FID} --month={YYYYMM} --flush --worktree="{WORKTREE_PATH}"
    ```
-   **If** `HANDOVER_NEEDED` = true **and** `comment` non-null → post `comment` (handover linked only where the flush pushed it). **If** the push failed → do not claim success on tracker.
-6. **STOP**, no further downstream steps.
+   **If** `HANDOVER_NEEDED` = true **and** `comment` non-null → post `comment` (skipped when `ISSUE_ID` empty; handover linked only where the flush pushed it). **If** the push failed → do not claim success on tracker.
+6. **STOP**, no further downstream steps. Line 1 of the final message = the no-issue warning, when one was emitted.
 
 ---
 
@@ -75,12 +78,21 @@ description: "Ship Feature — Autonomous merge and archive"
    → hold `bkit` as `{BKIT}`, `ownerRepo` as `{OWNER_REPO}`, `owner` as `{OWNER}`, `repo` as `{REPO}`, `branch` as initial `{BRANCH}`, `repoRoot` as `{REPO_ROOT}`, `outboxRoot` as `{OUTBOX_ROOT}`, `bkitAdvisory` as `{BKIT_ADVISORY}`. **If** `BKIT_ADVISORY` != null → emit advisory `[bkit-ship] {BKIT_ADVISORY}`.
    Hold `trackerTeam` as `{TRACKER_TEAM}`, `trackerProject` as `{TRACKER_PROJECT}`, `trackerSite` as `{TRACKER_SITE}`.
 2. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else**:
-   Extract from session prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`. **If** no `ID` found → log `No issue ID in the session prompt.` never create a tracker issue. → **STOP**, no further downstream steps.
+   Extract from session prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`.
+   **If** no `ID` found → recover `ISSUE_ID` from the branch; no `FID` in the session prompt and `BRANCH` != `feat/{FID}` → as exit 0 with `issueId` null:
+   ```bash
+   "{BKIT}" fids parse --branch="feat/{FID}"
+   ```
+   Route:
+   - **If** exit 0 and `issueId` non-null → hold `issueId` as `ISSUE_ID`.
+   - **If** exit 0 and `issueId` null → set `ISSUE_ID=""` → emit the no-issue warning once `FID` is held → continue; never create a tracker issue.
+   - **If** exit 3 → **STOP**; tell the user to rename `BRANCH` to `feat/{lowercase-slug}` or name an issue; never the **Failure Path**.
+   - **Else** → **Failure Path**.
 3. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → sort `COMMENTS` oldest to newest → skip. **Else**:
-   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`; `labels` → `LABELS`; `body` → `DESCRIPTION`; `title` → `TITLE`; `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → sort oldest to newest → `COMMENTS`.
+   **If** `ISSUE_ID` empty → `STATE`, `LABELS`, `DESCRIPTION`, `COMMENTS` all empty; input artifact built from session prompt alone. **Else** → `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`; `labels` → `LABELS`; `body` → `DESCRIPTION`; `title` → `TITLE`; `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → sort oldest to newest → `COMMENTS`.
 4. Resolve `FID` — first match wins; never borrow another feature's `FID` from a leftover lock or the newest bucket:
    1. Session prompt names it — an `FID` slug, a `feat/{FID}` branch, or a path under `docs/plans/{YYYYMM}/` (`{FID}-design.md`, `{FID}-plan.md`, `logs/{FID}/`).
-   2. `BRANCH` = `feat/{FID}` → that `FID`.
+   2. `BRANCH` = `feat/{FID}` → that `FID`; with `ISSUE_ID` non-empty, only when `FID` starts with `ISSUE_ID` (lowercased).
    3. `ISSUE_ID` non-empty → feature already logged for that issue:
       ```bash
       "{BKIT}" fids find --issue="{ISSUE_ID}"
@@ -89,12 +101,28 @@ description: "Ship Feature — Autonomous merge and archive"
       - **If** exit 0 → that `fid`.
       - **If** exit 4 → **Failure Path** listing `fids` (name the `FID` in the session prompt to pick one).
       - **Else** → next.
-   4. Mint: `FID` from `{ISSUE_ID}` and kebab from title, no stopwords, <=3 tokens, lowercase. Format `{ISSUE_ID}-{slug}`.
-   One `FID` for all artifacts once set. Check its format for the wired tracker:
+   4. Mint: `FID` from `{ISSUE_ID}` and kebab from title or prompt, no stopwords, <=3 tokens, lowercase; `fids check` rejects it → re-mint once with every all-digit word dropped; a second reject → **Failure Path**. Format `{ISSUE_ID}-{slug}`.
+      `ISSUE_ID` empty → `{branch-suffix}-{slug}`, slug from the session prompt with every all-digit word dropped.
+
+   **Run only if** sub-step 4 minted `FID` with `ISSUE_ID` empty — take the first name no finished run used:
+
    ```bash
-   "{BKIT}" fids check --fid="{FID}"
+   "{BKIT}" fids free --fid="{FID}" --workflow=ship
    ```
+
+   Route:
+   - **If** exit 0 → `{FID}` = the printed `fid`.
+   - **If** exit 1 → re-mint once with every all-digit word dropped → re-run this block; a second exit 1 → **Failure Path**.
+   - **Else** → **Failure Path**.
+
+   One `FID` for all artifacts once set. Check its format for the wired tracker:
+
+   ```bash
+   "{BKIT}" fids check --fid="{FID}" --issue="{ISSUE_ID}"
+   ```
+
    → hold `fid` as `{FID}`.
+
 5. Detect the runtime:
    ```bash
    "{BKIT}" runtime detect --fid="{FID}"
@@ -109,7 +137,13 @@ description: "Ship Feature — Autonomous merge and archive"
    ```bash
    "{BKIT}" worktrees setup --workflow=ship --fid="{FID}" --month="{YYYYMM}" --detect --branch="{PROMPT_BRANCH}"
    ```
-   → hold `worktreePath` as `{WORKTREE_PATH}`, `branch` as `{SHIP_BRANCH}`.
+   Route:
+   - **If** exit 0 → hold `worktreePath` as `{WORKTREE_PATH}`, `branch` as `{SHIP_BRANCH}`.
+   - **If** exit 7 (a ship of `dev` or `main`) → print the engine's refusal as the final message → release the lock → **STOP**; never the **Failure Path**. Line 1 of the final message = the no-issue warning, when one was emitted.
+     ```bash
+     "{BKIT}" locks release --kind=workflow --workflow=ship --fid="{FID}" --month="{YYYYMM}" --token="{LOCK_TOKEN}" >/dev/null
+     ```
+   - **Else** → **Failure Path**.
 8. Enter the worktree and find where the run books:
    ```bash
    cd "{WORKTREE_PATH}" || exit 1
@@ -126,24 +160,24 @@ description: "Ship Feature — Autonomous merge and archive"
    ```
    → hold `run` as `{RUN}`.
    Update `BRANCH` = `SHIP_BRANCH`; carry `SHIP_BRANCH` to every later step.
-9. Compute the label transition and board move — `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry:
+9. **Skip if** `ISSUE_ID` empty. Compute the label transition and board move — `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry:
    ```bash
    "{BKIT}" issues labels --phase=ship --board=progress --issue="{ISSUE_ID}" --owner-repo="{OWNER_REPO}" {LABEL_FLAGS}
    ```
    → hold `labels` as `{LABELS}`, `trackerState` as `{TRACKER_STATE}`, `board` as `{BOARD}`, `boardSkipped`.
-   `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
+   **Skip if** `ISSUE_ID` empty. `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
    **If** `BOARD` = null → log `boardSkipped` → skip. **Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → set status `mcp__github__projects_write({BOARD}.updateItem)`.
 10. Create the outbox (`{OUTBOX}` = `{OUTBOX_ROOT}/{FID}`) and run the repo preflight:
     ```bash
     mkdir -p "{OUTBOX}" || exit 1
     "{BKIT}" repo preflight --owner-repo="{OWNER_REPO}"
     ```
-11. Write `DESCRIPTION` to `{OUTBOX}/issue-description.md` and `COMMENTS` as read to `{OUTBOX}/issue-comments.json` (empty / `[]` when no tracker), then build `ISSUE_TEXT`:
+11. **Skip if** `ISSUE_ID` empty (`ISSUE_TEXT` empty). Write `DESCRIPTION` to `{OUTBOX}/issue-description.md` and `COMMENTS` as read to `{OUTBOX}/issue-comments.json`, then build `ISSUE_TEXT`:
     ```bash
     "{BKIT}" issues text --description-file="{OUTBOX}/issue-description.md" --comments-file="{OUTBOX}/issue-comments.json"
     ```
     → hold `text` as `{ISSUE_TEXT}`.
-12. Comment:
+12. **Skip if** `ISSUE_ID` empty. Comment:
     ```bash
     "{BKIT}" issues comment --workflow=ship --workflow-heading --step-number=1 --step-title="Start Workflow" --owner-repo="{OWNER_REPO}" --tree="{BRANCH}"
     ```
@@ -151,16 +185,16 @@ description: "Ship Feature — Autonomous merge and archive"
 ### 🔒 Gate 1 — Start Workflow
 
 ```bash
-"{BKIT}" steps gate --workflow=ship --step=ship-start-workflow --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --placeholder=OWNER_REPO={OWNER_REPO} --placeholder=BRANCH={BRANCH} --placeholder=RUNTIME_WORKTREES={RUNTIME_WORKTREES}
+"{BKIT}" steps gate --workflow=ship --step=ship-start-workflow --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --issue="{ISSUE_ID}" --placeholder=OWNER_REPO={OWNER_REPO} --placeholder=BRANCH={BRANCH} --placeholder=RUNTIME_WORKTREES={RUNTIME_WORKTREES}
 ```
 
 - [ ] Mechanical checks passed (`steps gate` exit 0: placeholders held, FID shape, lock held)
-- [ ] Issue ID resolved (`ISSUE_ID` non-empty when tracker wired; may be empty under `none`)
+- [ ] Issue resolved (`ISSUE_ID` non-empty, the no-issue warning emitted, or no tracker wired)
 - [ ] On `SHIP_BRANCH` (not `dev|main`), worktree created / resumed or adopted (no rebase — Path A) before any tracker write; run opened in the worktree (`workflow-started`, `ship-start-workflow`, `runtime-resolved`)
 - [ ] Outbox created (`{OUTBOX}`)
 
 
-- [ ] Issue update attempted (phase label `bkit:ship`, status / state `In Progress`)
+- [ ] Issue update attempted (phase label `bkit:ship`, status / state `In Progress`; skipped when `ISSUE_ID` empty)
 
 
 ---
@@ -168,7 +202,7 @@ description: "Ship Feature — Autonomous merge and archive"
 ## 🤖 Step 2 — Verify PR (Worktree Setup + Regression Guard)
 
 1. Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-input-{RUN}.md` in `{WORKTREE_PATH}` = session prompt + `ISSUE_TEXT` + `docs/plans/{YYYYMM}/{FID}-plan.md` (if present).
-2. **If** `BRANCH` does not contain `{FID}` **and** does not contain `{ISSUE_ID}` (case-insensitive) → emit `[bkit-ship] WARNING branch {BRANCH} not named for {FID} — shipping it as named` → continue.
+2. **If** `BRANCH` does not contain `{FID}` **and** (`ISSUE_ID` empty **or** `BRANCH` does not contain `{ISSUE_ID}`) (case-insensitive) → emit `[bkit-ship] WARNING branch {BRANCH} not named for {FID} — shipping it as named` → continue.
 3. Find the branch's PR — open first, then merged:
    ```bash
    "{BKIT}" prs probe --head="{SHIP_BRANCH}" --state=all
@@ -222,7 +256,7 @@ description: "Ship Feature — Autonomous merge and archive"
 ```
 
 - [ ] Mechanical checks passed (`steps gate` exit 0: `ship-input-{RUN}.md`, step `ship-worktree-setup` recorded; `steps finish` exit 0: `ship-regression-guard`)
-- [ ] Naming warning emitted when `SHIP_BRANCH` is not named for `FID` / `ISSUE_ID`
+- [ ] Naming warning emitted when `SHIP_BRANCH` does not contain `FID` and `ISSUE_ID` is empty or `SHIP_BRANCH` does not contain it
 - [ ] PR number non-empty (`PR_NUMBER`); `PR_BASE` = dev (opened by ship, `openedPr` row recorded, CI awaited — when no PR existed)
 - [ ] Entry head and mergeable read (`ENTRY_HEAD`, `MERGEABLE`); no PR CI failures confirmed
 
@@ -346,7 +380,7 @@ description: "Ship Feature — Autonomous merge and archive"
    Hold `verdict` as `SUMMARY_VERDICT`.
 3. Route:
    - **If** `SUMMARY_VERDICT` = PASS **or** CONCERNS → Step 7.
-   - **If** `SUMMARY_VERDICT` = FAIL → display `ship-summary.md` content verbatim as final message to user → **Failure Path**.
+   - **If** `SUMMARY_VERDICT` = FAIL → display `ship-summary.md` content verbatim as final message to user. Line 1 of the final message = the no-issue warning, when one was emitted. → **Failure Path**.
    - **Else** → **Failure Path**.
 
 ### 🔒 Gate 6 — Update Docs & Summary
@@ -439,14 +473,15 @@ description: "Ship Feature — Autonomous merge and archive"
      - **If** exit 0 (`next` = `step-9`) → set `{REVALIDATE_REASON}` = `gate-refusal` → Step 9.
      - **Else** → **Failure Path** (exit 1: max-retry exhaustion).
    - **Else** (12/13/15/16/18/20) → **Failure Path**.
-2. Merge with an empty body and `--match-head` (GitHub refuses when the head moved). Re-read labels from the tracker so ` bkit [auto route]` rides the squash subject on `bkit:auto` — never carried forward from Step 1's `{LABELS}`; `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry, empty when no tracker is wired:
-   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `labels` → `LABELS`.
+2. Merge with an empty body and `--match-head` (GitHub refuses when the head moved). Re-read labels from the tracker so ` bkit [auto route]` rides the squash subject on `bkit:auto` — never carried forward from Step 1's `{LABELS}`; `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry, empty when no tracker is wired or `ISSUE_ID` is empty:
+   **Skip if** `ISSUE_ID` empty. `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `labels` → `LABELS`.
    ```bash
    "{BKIT}" prs merge --number="{PR_NUMBER}" --match-head="{GATE_HEAD}" --delete-branch {LABEL_FLAGS} --expect-merged
    ```
    Route:
    - **If** exit 0 **or** 7 → hold `verdict` as `{MERGE_VERDICT}`, `failures` as `{MERGE_FAILURES}`, `state`.
-   - **Else** → **Failure Path**.
+   - **If** exit 80 → `pull_request_read` (`get`) and assert `base.ref` = `dev`; mismatch → **Failure Path** with nothing merged; then `merge_pull_request` and read `state` back through `pull_request_read` → `{MERGE_VERDICT}` = PASS and `{MERGE_FAILURES}` = 0 when merged, else FAIL and 1.
+   - **Else** (8: the PR's base is not `dev`, nothing merged) → **Failure Path**.
 3. Finish (bookkeeping to `$BOOK_ROOT`):
    ```bash
    "{BKIT}" steps finish --workflow=ship --step=ship-merge-pr --file="{STATUS}" --verdict={MERGE_VERDICT} --failures={MERGE_FAILURES} --attempt=next --commit=none --number=10 --title="Merge Gate + Merge PR"
@@ -549,20 +584,20 @@ description: "Ship Feature — Autonomous merge and archive"
    cd "{REPO_ROOT}"; exit $rc
    ```
    → hold `landed.via` as `{CLOSE_VIA}`.
-3. Compute the label transition and board move:
+3. **Skip if** `ISSUE_ID` empty. Compute the label transition and board move:
    ```bash
    "{BKIT}" issues labels --phase=merged --board=review --issue="{ISSUE_ID}" --owner-repo="{OWNER_REPO}" {LABEL_FLAGS}
    ```
    → hold `labels` as `{LABELS}`, `trackerState` as `{TRACKER_STATE}`, `board` as `{BOARD}`, `boardSkipped`.
-   `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`. Do not close the issue.
+   **Skip if** `ISSUE_ID` empty. `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`. Do not close the issue.
    **If** `BOARD` = null → log `boardSkipped` → skip. **Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → set status `mcp__github__projects_write({BOARD}.updateItem)`.
 4. Collect setup tips:
    ```bash
    "{BKIT}" tips --workflow=ship
    ```
    Plain text, not JSON. Hold stdout as `{BKIT_TIPS}`; prints nothing or exits non-zero → `{BKIT_TIPS}` empty.
-5. Final return: Display `{OUTBOX}/ship-summary.md` content verbatim as final message to user; do not summarise or trim; do not auto-invoke. **If** `{OUTBOX}/ship-summary.md` absent → display `PR was already merged — no ship summary this run.` **HARD STOP**.
-   Append issue link [{ISSUE_ID} {TITLE}]({URL})
+5. Final return: Display `{OUTBOX}/ship-summary.md` content verbatim as final message to user; do not summarise or trim; do not auto-invoke. Line 1 of the final message = the no-issue warning, when one was emitted. **If** `{OUTBOX}/ship-summary.md` absent → display `PR was already merged — no ship summary this run.` **HARD STOP**.
+   Append the issue link [{ISSUE_ID} {TITLE}]({URL}) unless `ISSUE_ID` is empty
    Append a `## Suggested Replies` heading.
    Append `Would you like me to explain any of this in plain English? Then write 'yes, explain in plain english'.`
    Append a `## bkit Tips` heading, unless `{BKIT_TIPS}` is empty.
@@ -585,6 +620,6 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] Final return displayed (`{OUTBOX}/ship-summary.md` content verbatim, copied before the close)
 
 
-- [ ] Issue update attempted (phase label `bkit:merged`, status / state `In Review`; issue left open for human close)
-- [ ] Artifact link list and telemetry report embedded in `Step 14` comment
+- [ ] Issue update attempted (phase label `bkit:merged`, status / state `In Review`; issue left open for human close; skipped when `ISSUE_ID` empty)
+- [ ] Artifact link list and telemetry report embedded in `Step 14` comment (skipped when `ISSUE_ID` empty)
 

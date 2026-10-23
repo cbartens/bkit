@@ -17,6 +17,7 @@ import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+import { lastRun } from "../../ledgers/status.js";
 import { gitEnv } from "../../ledgers/telemetry.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { COULD_NOT_RUN_EXIT_CODES, installCommand } from "../../shared/package-manager.js";
@@ -26,13 +27,23 @@ import {
   EXIT,
   git,
   isSharedBranch,
+  MAIN,
   repoRoot,
   runGit,
   type CommandSpec,
 } from "../lib.js";
 import { ensureDiskSpace } from "./disk.js";
+import {
+  listRecords,
+  newRecord,
+  readRecord,
+  removeRecord,
+  withSetupGuard,
+  writeRecord,
+} from "./ledgers.js";
+import { workflowLockFresh, workflowLockLive } from "./locks.js";
 import { detect } from "./runtime.js";
-import { WORKFLOW_FLAG } from "./status.js";
+import { WORKFLOW_FLAG, readRuns } from "./status.js";
 
 const WORKFLOWS = ["design", "plan", "build", "debug", "ship"];
 const ORIGIN_DEV = `origin/${DEV}`;
@@ -47,6 +58,7 @@ export const EXIT_REBASE_NOT_STARTED = 9;
 export const EXIT_NOT_A_WORKTREE = 10;
 export const EXIT_REMOVE = 11;
 export const EXIT_DISK_FULL = 12;
+export const EXIT_SHARED_BUSY = 13;
 
 const FID_FLAG = { name: "fid", type: "string", required: true, help: "feature id" } as const;
 
@@ -109,6 +121,41 @@ function fetchBranch(cwd: string, branch: string): void {
   if (!res.ok) {
     throw new CommandError(EXIT_FETCH, `could not fetch origin ${branch}: ${res.stderr}`);
   }
+}
+
+/**
+ * The shared-checkout record for an in-place run on `dev`. Another feature's
+ * record with a live workflow lock means that run owns the checkout; one
+ * without is left over and removed. The same feature with an open run in
+ * `{logDir}/status.jsonl` is a resume and keeps its record; a new run rewrites it.
+ */
+function openSharedRecord(root: string, fid: string, workflow: string, logDir: string) {
+  const busy = (other: string) =>
+    new CommandError(
+      EXIT_SHARED_BUSY,
+      `${other} is running in this checkout (workflow lock held) — wait for it to finish, then re-run`,
+    );
+  const guarded = withSetupGuard(root, () => {
+    for (const other of listRecords(root)) {
+      if (other.fid === fid) continue;
+      // A closed run that has not released its lock still pushes and waits for CI.
+      if (workflowLockLive(root, other.fid) || workflowLockFresh(root, other.fid)) {
+        throw busy(other.fid);
+      }
+      removeRecord(root, other.fid);
+    }
+    const existing = readRecord(root, fid);
+    const statusFile = path.join(logDir, "status.jsonl");
+    const open =
+      fs.existsSync(statusFile) &&
+      lastRun(readRuns(statusFile), workflow)?.status === "IN_PROGRESS";
+    if (existing !== null && existing.branch === DEV && open) return existing;
+    const fresh = newRecord(root, fid, DEV);
+    writeRecord(root, fresh);
+    return fresh;
+  });
+  if (guarded === null) throw busy("another run");
+  return guarded.value;
 }
 
 /** Ship's branch: the one the prompt names, else `feat/{fid}` when it exists, else the session's. */
@@ -403,6 +450,10 @@ export const worktreesCommand: CommandSpec = {
         direnvAllowed:
           "direnv allow ran on the worktree's .envrc (present and identical to the main checkout's)",
         installed: "dependencies were installed",
+        startSha:
+          "in place on dev (debug): HEAD when the run started, recorded in the shared-checkout record; absent otherwise",
+        aheadAtStart:
+          "in place on dev (debug): commits local dev held beyond origin/dev when the run started; absent otherwise",
       },
       exitCodes: {
         [EXIT_REBASE_CONFLICT]:
@@ -411,10 +462,12 @@ export const worktreesCommand: CommandSpec = {
         [EXIT_INSTALL]: "dependency install failed",
         [EXIT_INSTALL_COULD_NOT_RUN]: "the package manager could not run (exit 126 / 127)",
         [EXIT_REFUSED]:
-          "refused: dev / main as the working branch, detached HEAD, or ship could not switch to its branch",
+          "refused: main as the working branch (dev too, except debug in place), ship of dev / main, detached HEAD, or ship could not switch to its branch (a missing feat/{fid} is named)",
         [EXIT_WORKTREE_ADD]: "git worktree add failed",
         [EXIT_REBASE_NOT_STARTED]: "resume rebase could not start (e.g. uncommitted changes)",
         [EXIT_NOT_A_WORKTREE]: ".worktrees/{fid} exists but is not a registered git worktree",
+        [EXIT_SHARED_BUSY]:
+          "in place on dev: another feature's run holds this checkout (its shared-checkout record has a live workflow lock); nothing written",
         [EXIT_DISK_FULL]:
           "free disk under bkit.disk.minFreeGb even after your max cleanup steps (`bkit disk prune`); nothing created",
       },
@@ -446,7 +499,12 @@ export const worktreesCommand: CommandSpec = {
         }
         const target = workflow === "ship" ? shipBranch(root, fid, named, session) : `feat/${fid}`;
         if (isSharedBranch(target)) {
-          throw new CommandError(EXIT_REFUSED, `refusing to ship ${target} as a feature branch`);
+          throw new CommandError(
+            EXIT_REFUSED,
+            workflow === "ship"
+              ? `refusing to ship ${target}: /bkit-ship ships a feature branch into ${DEV} only; it never opens a PR from ${DEV} into ${MAIN} or merges into ${MAIN}, releases stay manual. Name the feature branch to ship.`
+              : `refusing to ship ${target} as a feature branch`,
+          );
         }
 
         // Ship mints only when the session is not already on the branch it ships:
@@ -491,6 +549,12 @@ export const worktreesCommand: CommandSpec = {
           if (workflow === "ship" && git(root, ["branch", "--show-current"]) !== target) {
             const sw = runGit(root, ["switch", target]);
             if (!sw.ok) {
+              if (!hasLocal(root, target) && remoteHas(root, target) !== "yes") {
+                throw new CommandError(
+                  EXIT_REFUSED,
+                  `${target} does not exist — name the feature branch to ship`,
+                );
+              }
               throw new CommandError(
                 EXIT_REFUSED,
                 `adopt mode: cannot switch to ${target} — commit or stash local changes, then re-run (${sw.stderr})`,
@@ -498,8 +562,8 @@ export const worktreesCommand: CommandSpec = {
             }
           }
           const here = git(root, ["branch", "--show-current"]) ?? "";
-          const refused = workflow === "debug" ? "main" : DEV;
-          if (here === "" || here === refused) {
+          // Debug may work in place on dev (its shared-checkout path); nothing works in place on main.
+          if (here === "" || here === MAIN || (here === DEV && workflow !== "debug")) {
             throw new CommandError(
               EXIT_REFUSED,
               here === ""
@@ -508,6 +572,13 @@ export const worktreesCommand: CommandSpec = {
             );
           }
         }
+
+        // An in-place run on a shared branch records what was dirty before it, so its
+        // commits and push take only its own work.
+        const shared =
+          mode === "adopted" && isSharedBranch(git(root, ["branch", "--show-current"]) ?? "")
+            ? openSharedRecord(root, fid, workflow, logDir)
+            : undefined;
 
         let rebaseConflict = false;
         let sentinel: string | null = null;
@@ -579,6 +650,9 @@ export const worktreesCommand: CommandSpec = {
           copyMissing,
           direnvAllowed,
           installed: wantInstall && installStatus === 0,
+          ...(shared === undefined
+            ? {}
+            : { startSha: shared.startSha, aheadAtStart: shared.aheadAtStart }),
         });
         if (sentinel !== null)
           return rebaseConflict ? EXIT_REBASE_CONFLICT : EXIT_REBASE_NOT_STARTED;

@@ -16,7 +16,7 @@ Design Feature — Autonomous design phase
 > - **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does not mean silent.
 > - **`Failures`:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
 > - **Friction:** Watch own context and subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → append rows to `.bkit/friction.jsonl` in `.bkit/jsonl.md` format → continue or escalate; logging does not replace **Failure Path**.
-> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, etc non-empty if required before making tool calls. **Else** → **Failure Path**.
+> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, etc non-empty if required before making tool calls (`{ISSUE_ID}` may be empty). **Else** → **Failure Path**.
 > - **Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is one JSON object: hold named keys as `{VAR}`. Exit non-zero with no `Route:` for it → **Failure Path**; exit 80 → mapped MCP tool (**gh MCP fallback**); exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
 > - **Finish:** `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, checks artifacts and row, writes the row, commits, prints `comment`. Exit 5 **or** 6 → invoke `reask.agent` again with `"Your prior output '<reask.artifact>' has an invalid header. Re-emit only its header fields + '<!-- verdict:end -->' at top of that file. Do not redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**. Hold `verdict` as the step's verdict, `fields` as its other header fields.
 > - **Resume:** On start, fold status.jsonl — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
@@ -30,6 +30,9 @@ Design Feature — Autonomous design phase
 > - **Tracker:** GitHub Issues via MCP server `github` (`.mcp.json` `mcpServers.github`). Tools: `mcp__github__issue_read` (method `get` / `get_comments` / `get_labels`), `mcp__github__issue_write` (method `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (method `add_project_item` / `update_project_item`); board status sync needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.github.project`, absent either → silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; writes best-effort, never gate; **If** failure → retry once after 5s → continue.
 > - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive; a phase start drops the old phase, every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path). `bkit issues labels` computes each transition; MCP writes it.
 > - **Comments:** Post the `comment` a step's `bkit` block prints as a new comment via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` before its gate; every gate includes `Issue comment attempted (Step N section)`. Post the printed `comment` byte-for-byte; never shorten, reword, or rebuild it. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
+
+
+> - **No issue:** `ISSUE_ID` empty → run issue-less; skip every issue-tied tracker read, label, comment and board call. Once Step 1 sub-step 4 holds `FID`, emit: WARNING: no issue named — running issue-less as {FID}; no tracker reads, labels or comments. Name {FID} in the next prompt to continue this run.
 
 
 > - **Timeouts:** **If** workflow or subagent run > 3600 seconds → **Failure Path**. Step 3 time waiting on human answers does not count.
@@ -46,16 +49,16 @@ Design Feature — Autonomous design phase
    Route:
    - **If** exit 0 **or** 5 → hold `labels` as `{LABELS}`, `trackerState` as `{TRACKER_STATE}` → step 2.
    - **Else** → step 4.
-2. Add `bkit:failed` (prior phase label persists, additive) → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
-   Post `comment` (when non-null).
+2. **Skip if** `ISSUE_ID` empty. Add `bkit:failed` (prior phase label persists, additive) → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
+   **Skip if** `ISSUE_ID` empty. Post `comment` (when non-null).
 3. `git status --short` → on a feature branch remove unintended files; on `dev` / `main` remove nothing (only the run's own record lands, through a throwaway checkout). Then commit and push the run's record — NEVER onto a branch with an open PR; **Skip if** `{WORKTREE_PATH}` is not set:
    ```bash
    "{BKIT}" workflows handover --workflow=design --fid={FID} --month={YYYYMM} --push --worktree="{WORKTREE_PATH}"
    ```
    Route:
    - **If** exit 80 → open PR on `{BRANCH}` via `list_pull_requests` → re-run with `--open-pr={number}` or `--open-pr=none`.
-   - **Else** → post `comment` (when non-null) → step 4.
-4. **STOP**, no further downstream steps.
+   - **Else** → post `comment` (when non-null **and** `ISSUE_ID` non-empty) → step 4.
+4. **STOP**, no further downstream steps. Line 1 of the final message = the no-issue warning, when one was emitted.
 
 ---
 
@@ -68,12 +71,21 @@ Design Feature — Autonomous design phase
    Hold `bkit` as `{BKIT}`, `ownerRepo` as `{OWNER_REPO}`, `owner` as `{OWNER}`, `repo` as `{REPO}`, `branch` as `{BRANCH}`, `repoRoot` as `{REPO_ROOT}`, `outboxRoot` as `{OUTBOX_ROOT}`, `bkitAdvisory` as `{BKIT_ADVISORY}`. **If** `BKIT_ADVISORY` != null → emit advisory `[bkit-design] {BKIT_ADVISORY}`.
    Hold `trackerTeam` as `{TRACKER_TEAM}`, `trackerProject` as `{TRACKER_PROJECT}`, `trackerSite` as `{TRACKER_SITE}`.
 2. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else**:
-   Extract from session prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`. **If** no `ID` found → log `No issue ID in the session prompt.` never create a tracker issue. → **STOP**, no further downstream steps.
+   Extract from session prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`.
+   **If** no `ID` found → recover `ISSUE_ID` from the branch; no `FID` in the session prompt and `BRANCH` != `feat/{FID}` → as exit 0 with `issueId` null:
+   ```bash
+   "{BKIT}" fids parse --branch="feat/{FID}"
+   ```
+   Route:
+   - **If** exit 0 and `issueId` non-null → hold `issueId` as `ISSUE_ID`.
+   - **If** exit 0 and `issueId` null → set `ISSUE_ID=""` → emit the no-issue warning once `FID` is held → continue; never create a tracker issue.
+   - **If** exit 3 → **STOP**; tell the user to rename `BRANCH` to `feat/{lowercase-slug}` or name an issue; never the **Failure Path**.
+   - **Else** → **Failure Path**.
 3. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → sort `COMMENTS` oldest to newest → skip. **Else**:
-   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`; `labels` → `LABELS`; `body` → `DESCRIPTION`; `title` → `TITLE`; `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → sort oldest to newest → `COMMENTS`.
+   **If** `ISSUE_ID` empty → `STATE`, `LABELS`, `DESCRIPTION`, `COMMENTS` all empty; input artifact built from session prompt alone. **Else** → `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`; `labels` → `LABELS`; `body` → `DESCRIPTION`; `title` → `TITLE`; `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → sort oldest to newest → `COMMENTS`.
 4. Resolve `FID` — first match wins; never borrow another feature's `FID` from a leftover lock or the newest bucket:
    1. Session prompt names it — an `FID` slug, a `feat/{FID}` branch, or a path under `docs/plans/{YYYYMM}/` (`{FID}-design.md`, `{FID}-plan.md`, `logs/{FID}/`).
-   2. `BRANCH` = `feat/{FID}` → that `FID`.
+   2. `BRANCH` = `feat/{FID}` → that `FID`; with `ISSUE_ID` non-empty, only when `FID` starts with `ISSUE_ID` (lowercased).
    3. `ISSUE_ID` non-empty → feature already logged for that issue:
       ```bash
       "{BKIT}" fids find --issue="{ISSUE_ID}"
@@ -82,24 +94,40 @@ Design Feature — Autonomous design phase
       - **If** exit 0 → that `fid`.
       - **If** exit 4 → **Failure Path** listing `fids` (name the `FID` in the session prompt to pick one).
       - **Else** → next.
-   4. Mint: `FID` from `{ISSUE_ID}` and kebab from title, no stopwords, <=3 tokens, lowercase. Format `{ISSUE_ID}-{slug}`.
-   One `FID` for all artifacts once set. Check its format for the wired tracker:
+   4. Mint: `FID` from `{ISSUE_ID}` and kebab from title or prompt, no stopwords, <=3 tokens, lowercase; `fids check` rejects it → re-mint once with every all-digit word dropped; a second reject → **Failure Path**. Format `{ISSUE_ID}-{slug}`.
+      `ISSUE_ID` empty → `{branch-suffix}-{slug}`, slug from the session prompt with every all-digit word dropped.
+
+   **Run only if** sub-step 4 minted `FID` with `ISSUE_ID` empty — take the first name no finished run used:
+
    ```bash
-   "{BKIT}" fids check --fid="{FID}"
+   "{BKIT}" fids free --fid="{FID}" --workflow=design
    ```
+
+   Route:
+   - **If** exit 0 → `{FID}` = the printed `fid`.
+   - **If** exit 1 → re-mint once with every all-digit word dropped → re-run this block; a second exit 1 → **Failure Path**.
+   - **Else** → **Failure Path**.
+
+   One `FID` for all artifacts once set. Check its format for the wired tracker:
+
+   ```bash
+   "{BKIT}" fids check --fid="{FID}" --issue="{ISSUE_ID}"
+   ```
+
    → hold `fid` as `{FID}`.
+
 5. Acquire concurrency lock:
    ```bash
    "{BKIT}" locks acquire --kind=workflow --workflow=design --fid={FID}
    ```
    Hold `token` as `{LOCK_TOKEN}`, `month` as `{YYYYMM}`.
-6. Set phase `bkit:design` → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
-   **If** `BOARD` = null → log `boardSkipped` → skip. **Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → set status `mcp__github__projects_write({BOARD}.updateItem)`.
-   `{LABELS}` = `labels`, `{TRACKER_STATE}` = `trackerState`, `{BOARD}` = `board`, `boardSkipped` of the block below; `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry:
+6. **Skip if** `ISSUE_ID` empty. Set phase `bkit:design` → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
+   **Skip if** `ISSUE_ID` empty. **If** `BOARD` = null → log `boardSkipped` → skip. **Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → set status `mcp__github__projects_write({BOARD}.updateItem)`.
+   **Skip if** `ISSUE_ID` empty. `{LABELS}` = `labels`, `{TRACKER_STATE}` = `trackerState`, `{BOARD}` = `board`, `boardSkipped` of the block below; `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry:
    ```bash
    "{BKIT}" issues labels --phase=design --board=progress --issue={ISSUE_ID} --owner-repo={OWNER_REPO} {LABEL_FLAGS}
    ```
-7. Comment:
+7. **Skip if** `ISSUE_ID` empty. Comment:
    ```bash
    "{BKIT}" issues comment --workflow=design --workflow-heading --step-number=1 --step-title="Start Workflow" --owner-repo={OWNER_REPO} --tree=dev
    ```
@@ -107,14 +135,14 @@ Design Feature — Autonomous design phase
 ### 🔒 Gate 1 — Start Workflow
 
 ```bash
-"{BKIT}" steps gate --workflow=design --step=design-start-workflow --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --placeholder=OWNER_REPO={OWNER_REPO} --placeholder=BRANCH={BRANCH} --placeholder=REPO_ROOT={REPO_ROOT}
+"{BKIT}" steps gate --workflow=design --step=design-start-workflow --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --issue="{ISSUE_ID}" --placeholder=OWNER_REPO={OWNER_REPO} --placeholder=BRANCH={BRANCH} --placeholder=REPO_ROOT={REPO_ROOT}
 ```
 
 - [ ] Mechanical checks passed (`steps gate` exit 0: placeholders held, FID shape, lock held)
-- [ ] Issue ID resolved (`ISSUE_ID` non-empty when tracker wired; may be empty under `none`)
+- [ ] Issue resolved (`ISSUE_ID` non-empty, the no-issue warning emitted, or no tracker wired)
 
 
-- [ ] Issue update attempted (phase label `bkit:design`, status / state `In Progress`)
+- [ ] Issue update attempted (phase label `bkit:design`, status / state `In Progress`; skipped when `ISSUE_ID` empty)
 
 
 ---
@@ -146,7 +174,7 @@ Design Feature — Autonomous design phase
    "{BKIT}" runtime assert --file="{LOG_DIR}/status.jsonl" --workflow=design >/dev/null
    ```
    Hold `file` as `{STATUS}`, `run` as `{RUN}`.
-4. Write `DESCRIPTION` to `{OUTBOX}/issue-description.md` and `COMMENTS` (JSON, oldest to newest; `[]` when none) to `{OUTBOX}/issue-comments.json` → build `ISSUE_TEXT`:
+4. **Skip if** `ISSUE_ID` empty (`ISSUE_TEXT` empty). Write `DESCRIPTION` to `{OUTBOX}/issue-description.md` and `COMMENTS` (JSON, oldest to newest; `[]` when none) to `{OUTBOX}/issue-comments.json` → build `ISSUE_TEXT`:
    ```bash
    "{BKIT}" issues text --description-file="{OUTBOX}/issue-description.md" --comments-file="{OUTBOX}/issue-comments.json"
    ```
@@ -385,7 +413,7 @@ Design Feature — Autonomous design phase
    Hold `verdict` as `SUMMARY_VERDICT`.
 4. Route:
    - **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 11.
-   - **If** `SUMMARY_VERDICT` = FAIL → display `design-summary.md` content verbatim as final message to user → **Failure Path**.
+   - **If** `SUMMARY_VERDICT` = FAIL → display `design-summary.md` content verbatim as final message to user. Line 1 of the final message = the no-issue warning, when one was emitted. → **Failure Path**.
    - **Else** → **Failure Path**.
 
 ### 🔒 Gate 10 — Summary
@@ -401,6 +429,7 @@ Design Feature — Autonomous design phase
 ## 🤖 Step 11 — Suggest Workstreams
 
 
+**Skip if** `ISSUE_ID` empty → Step 12.
 **Run only if** `SUMMARY_VERDICT` = PASS or CONCERNS.
 
 1. Parse workstreams:
@@ -441,14 +470,14 @@ Design Feature — Autonomous design phase
    Route:
    - **If** exit 0 → hold `canonicalRef` as `{CANONICAL_REF}`.
    - **If** exit 80 at `stage` = open → `create_pull_request` with the printed `title` / `body` / `base` / `head` → re-run with `--pr=<number>`.
-   - **If** exit 80 at `stage` = merge → `merge_pull_request` with the printed `subject`, empty body → re-run with `--pr={prNumber} --merged-sha=<merge commit>`.
+   - **If** exit 80 at `stage` = merge → `pull_request_read` (`get`) and assert `base.ref` = `dev`; mismatch → **Failure Path** with nothing merged; then `merge_pull_request` with the printed `subject`, empty body → re-run with `--pr={prNumber} --merged-sha=<merge commit>`.
    - **Else** → **Failure Path**.
-3. No label changes. **If** `BOARD` = null → log `boardSkipped` → skip. **Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → set status `mcp__github__projects_write({BOARD}.updateItem)`.
-   `{TRACKER_STATE}` = `trackerState`, `{BOARD}` = `board`, `boardSkipped` of the block below:
+3. **Skip if** `ISSUE_ID` empty. No label changes. **If** `BOARD` = null → log `boardSkipped` → skip. **Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → set status `mcp__github__projects_write({BOARD}.updateItem)`.
+   **Skip if** `ISSUE_ID` empty. `{TRACKER_STATE}` = `trackerState`, `{BOARD}` = `board`, `boardSkipped` of the block below:
    ```bash
    "{BKIT}" issues labels --board=review --issue={ISSUE_ID} --owner-repo={OWNER_REPO}
    ```
-4. Comment — artifact links on `dev`, close telemetry report:
+4. **Skip if** `ISSUE_ID` empty. Comment — artifact links on `dev`, close telemetry report:
    ```bash
    "{BKIT}" workflows links --workflow=design --fid={FID} --month={YYYYMM} --ref={CANONICAL_REF} --outbox="{OUTBOX}" --number=12 --title="Close Workflow"
    ```
@@ -457,8 +486,8 @@ Design Feature — Autonomous design phase
    "{BKIT}" tips --workflow=design
    ```
    Plain text, not JSON. Hold stdout as `{BKIT_TIPS}`; prints nothing or exits non-zero → `{BKIT_TIPS}` empty.
-6. Final return: Display `design-summary.md` content verbatim as final message to user; do not summarise or trim; do not auto-invoke. **HARD STOP** — do not invoke `/bkit-plan`.
-   Append issue link [{ISSUE_ID} {TITLE}]({URL})
+6. Final return: Display `design-summary.md` content verbatim as final message to user; do not summarise or trim; do not auto-invoke. Line 1 of the final message = the no-issue warning, when one was emitted. **HARD STOP** — do not invoke `/bkit-plan`.
+   Append the issue link [{ISSUE_ID} {TITLE}]({URL}) unless `ISSUE_ID` is empty
    Append a `## Suggested Replies` heading.
    **If** `## Outstanding Questions` lists any question → append `Want me to ask you the open questions one by one, with my recommendation for each? Then write 'yes, ask me one by one'.`
    Append `Would you like me to explain any of this in plain English? Then write 'yes, explain in plain english'.`
@@ -479,6 +508,6 @@ Design Feature — Autonomous design phase
 - [ ] Final return displayed (`design-summary.md` content verbatim)
 
 
-- [ ] Issue update attempted (status / state `In Review`, phase label `bkit:design` unchanged)
-- [ ] Artifact link list and telemetry report embedded in `Step 12` comment
+- [ ] Issue update attempted (status / state `In Review`, phase label `bkit:design` unchanged; skipped when `ISSUE_ID` empty)
+- [ ] Artifact link list and telemetry report embedded in `Step 12` comment (skipped when `ISSUE_ID` empty)
 

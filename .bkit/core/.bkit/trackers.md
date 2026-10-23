@@ -53,6 +53,8 @@ Boolean tracker-presence gates for tracker-agnostic content. only no-tracker mar
 
 Conditionals resolved after group pass — group nested inside kept `true` resolves first. Removed block consumes leading newline + indentation (no blank gap). Unbalanced `start`/`end` = orphan.
 
+**Inline form:** a `true` block may sit inside a line to add wired-only words to text `none` shares, e.g. `before<!-- bkit:tracker true start --> wired-only words<!-- bkit:tracker true end --> after`. A removed block also consumes the whitespace right before its marker, so keep exactly one separating space on each side of the inserted words: inside the block, with the `start` marker glued to the text before it, or before the marker, with a space after the `end` marker (`N. <start>words<end> rest` keeps its list number). A `false` block placed right after the `true` block carries the `none` wording when it differs. The `none` render then stays equal to the text outside the blocks (`render/trackers.test.ts` § none render baselines).
+
 **Numbered-step rule:** never wrap numbered list item's NUMBER inside `true` block — under `none` whole item vanishes → numbering gap (`1, 6, 7`). Numbered step with tracker-only body: keep `N.` outside markers; pair `true` body with trailing `false` stub. Put `false` on same line as `true end`, single leading space before stub → inline (`N. _stub_`) not dangling continuation:
 
 ```text
@@ -71,9 +73,9 @@ Per-tracker call sites referenced across `.bkit/workflows.md` by these names. Ea
 | Interaction | Purpose | github | linear | jira | none |
 | --- | --- | --- | --- | --- | --- |
 | `rule-block` | CAUTION-block tracker/labels/comments rules | rules prose | rules prose | rules prose | "not configured" stub |
-| `issue-id-extraction` | Step 1 `ISSUE_ID` resolution. No match → stop. Never creates an issue | session prompt scan; no match → stop | session prompt scan; no match → stop | session prompt scan (incl. `/browse/{KEY}` links); no match → stop | scan session prompt; else `ISSUE_ID=""` |
-| `fid-format` | FID slug regex assertion | `^[0-9]+-[a-z0-9-]+$` | `^[a-z]+-[0-9]+-[a-z0-9-]+$` | `^[a-z][a-z0-9]+-[0-9]+-[a-z0-9-]+$` | no strict assert |
-| `issue-read` | Read state + labels + body + comments | `issue_read` `get` / `get_comments` | `get_issue` / `list_comments` | `getJiraIssue` `view: "evidence"` / `executeRead` `listJiraIssueComments` | skip (vars empty) |
+| `issue-id-extraction` | Step 1 `ISSUE_ID` resolution. No match → `bkit fids parse` on the named `FID` / `feat/{FID}` branch (issue id counts only with a `.bkit/issues.jsonl` feature row); none → `ISSUE_ID=""`, no-issue warning, issue-tied calls skipped; non-slug branch suffix → stop. Never creates an issue | session prompt scan, then FID / branch recovery | session prompt scan, then FID / branch recovery | session prompt scan (incl. `/browse/{KEY}` links), then FID / branch recovery | scan session prompt; else `ISSUE_ID=""` |
+| `fid-format` | FID slug regex assertion. `ISSUE_ID` empty (any tracker) → any lowercase slug; a minted FID has no all-digit word; a finished minted name repeats as `-b`, `-c`, … (`bkit fids free`) | `^[0-9]+-[a-z0-9-]+$` | `^[a-z]+-[0-9]+-[a-z0-9-]+$` | `^[a-z][a-z0-9]+-[0-9]+-[a-z0-9-]+$` | no strict assert |
+| `issue-read` | Read state + labels + body + comments; skipped when `ISSUE_ID` empty | `issue_read` `get` / `get_comments` | `get_issue` / `list_comments` | `getJiraIssue` `view: "evidence"` / `executeRead` `listJiraIssueComments` | skip (vars empty) |
 | `issue-scan` | Bounded related-issue scan at design/plan/debug entry — writes each hit's body + comments under a `## #{number} — {title} ({state})` heading to a file (advisory, top 10, never gates); broad keyword search in title+body, all states | `search_issues` for ranking only + per-hit `issue_read` `get` / `get_comments` | `list_issues` + per-hit `list_comments` | `searchJiraIssuesUsingJql` (`text ~` per keyword, inside `bkit.jira.project`) + per-hit `listJiraIssueComments` | skip stub (no scan) |
 | `issue-update-phase` | Step 1: set phase label (`bkit:debug` included; drops `next:*`, `bkit:failed`) + active state | `issue_write` labels | `save_issue_label` per new label, then `save_issue` labels, then `save_issue` state `bkit.linear.progress` | `editJiraIssue` full label set, then transition to `bkit.jira.progress` | skip |
 | `issue-update-review` | phase Close hand-off (non-terminal) | no-op (label carries) | `save_issue` state `bkit.linear.review` | transition to `bkit.jira.review` | skip |
@@ -82,9 +84,9 @@ Per-tracker call sites referenced across `.bkit/workflows.md` by these names. Ea
 | `issue-update-status` | Projects v2 board status (best-effort) | `projects_write` add/update item | no-op (state carries) | no-op (status carries) | skip |
 | `comment-post-step` | new comment per workflow step | `add_issue_comment` | `save_comment` | `addOrEditJiraIssueComment` | skip |
 | `issue-blockers-check` | Gate on open blockers | parse body marker → read states | `get_issue` relations | JQL `linkedIssues(KEY, "is blocked by") AND statusCategory != Done` | skip |
-| `kill-switch-check` | Terminate if `bkit:auto` absent | label check | label check | label check | inactive |
-| `pr-body-metadata` | Parse PR-body issue/FID marker | `pull_request_read` + parse | same (GitHub PR) | same (GitHub PR) | FID-only, no fail-closed |
-| `pr-body-marker` | Literal PR-body marker line | `<!-- bkit:issue=#{ISSUE_ID} bkit:fid={FID} -->` | `<!-- bkit:issue={ISSUE_ID} bkit:fid={FID} -->` | `<!-- bkit:issue={ISSUE_ID} bkit:fid={FID} -->` | `<!-- bkit:fid={FID} -->` |
+| `kill-switch-check` | Terminate if `bkit:auto` absent; skipped when `ISSUE_ID` empty | label check | label check | label check | inactive |
+| `pr-body-metadata` | Parse PR-body issue/FID marker; FID-only marker (no issue) → `issueId: null`, `/bkit-auto` fails closed | `pull_request_read` + parse | same (GitHub PR) | same (GitHub PR) | FID-only, no fail-closed |
+| `pr-body-marker` | Literal PR-body marker line; no issue → `<!-- bkit:fid={FID} -->` alone | `<!-- bkit:issue=#{ISSUE_ID} bkit:fid={FID} -->` | `<!-- bkit:issue={ISSUE_ID} bkit:fid={FID} -->` | `<!-- bkit:issue={ISSUE_ID} bkit:fid={FID} -->` | `<!-- bkit:fid={FID} -->` |
 
 Phase-label set + additive-label semantics: `.bkit/workflows.md` § Tracker Integration.
 
@@ -163,13 +165,13 @@ Defaults match GitHub's Kanban and Team planning board templates. `/orgs/` → M
 
 ## linear — notes
 
-Linear `ISSUE_ID`s carry team prefix (e.g. `TEAM-123`) — FID inherits (`team-123-slug`). GitHub FIDs numeric-only (`123-slug`). Cross-provider scripts must tolerate both shapes. `bkit repo info` prints `trackerTeam` / `trackerProject` from `package.json` `bkit.linear.team` / `bkit.linear.project` (null → related search unscoped). No separate project board — issue state carries status → `issue-update-status` no-op.
+Linear `ISSUE_ID`s carry team prefix (e.g. `TEAM-123`) — FID inherits (`team-123-slug`). GitHub FIDs numeric-only (`123-slug`). No issue → lowercase-slug FID (minted: no all-digit word), FID-only PR marker. Cross-provider scripts must tolerate all three shapes. `bkit repo info` prints `trackerTeam` / `trackerProject` from `package.json` `bkit.linear.team` / `bkit.linear.project` (null → related search unscoped). No separate project board — issue state carries status → `issue-update-status` no-op.
 
 Linear `save_issue` is all-or-nothing: one state or label name the team lacks rejects the whole call, valid fields included, and Linear never creates the missing name. A default team has states Backlog / Todo / In Progress / Done / Canceled / Duplicate and labels Improvement / Feature / Bug. Workflows therefore write labels and state in separate calls, labels first. Each label the transition adds (`add` from `bkit issues labels` / `bkit workflows fail`) is created first with `save_issue_label({ name })`, a workspace label; `already exists` = done. Phase start sets state `bkit.linear.progress` (default `started`, a state type every team has). Hand-off, Failure Path and ship terminal set state `bkit.linear.review` (default `In Review`); on a team without it the state call fails alone, is logged `Unapplied`, and the issue keeps its started state while `bkit:merged` / `bkit:failed` carry the hand-off. Label names resolve case-insensitively.
 
 ## jira — setup and notes
 
-Jira Cloud only. `ISSUE_ID` = issue key (`PROJ-123`) → FID `proj-123-slug`. MCP server `jira` = Atlassian Rovo MCP `https://mcp.atlassian.com/v2/mcp`, header `Authorization: Bearer ${BKIT_JIRA_API_TOKEN}`. Workflows run locally; no Jira-side trigger starts cloud runs.
+Jira Cloud only. `ISSUE_ID` = issue key (`PROJ-123`) → FID `proj-123-slug`; no issue → lowercase-slug FID (minted: no all-digit word), FID-only PR marker. MCP server `jira` = Atlassian Rovo MCP `https://mcp.atlassian.com/v2/mcp`, header `Authorization: Bearer ${BKIT_JIRA_API_TOKEN}`. Workflows run locally; no Jira-side trigger starts cloud runs.
 
 <!-- prettier-ignore -->
 | `package.json` `bkit.jira` key | Value |

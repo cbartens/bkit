@@ -33,9 +33,16 @@ import {
 import { bkitVersionStatus, type BkitVersionStatus } from "../../shared/bkit-latest.js";
 import { landBackoffMs, landDir, pushToDev, sleep } from "../land.js";
 import { TIMEOUTS } from "../../shared/timeouts.js";
-import { commitBookkeeping } from "./ledgers.js";
+import {
+  activeRecord,
+  commitBookkeeping,
+  markRecordPushed,
+  recordOnBranch,
+  type SharedCheckoutRecord,
+} from "./ledgers.js";
 import { releaseLock, resolveMonth, workflowLockPath } from "./locks.js";
 import {
+  EXIT_BASE_NOT_DEV,
   closeTransportRow,
   crossCheckRows,
   mergePr,
@@ -73,6 +80,7 @@ export const EXIT_INSTALL_FAILED = 16;
 export const EXIT_LAND_STOPPED = 17;
 export const EXIT_LANDED_UNVERIFIED = 18;
 export const EXIT_LOCK_LEFT = 19;
+export const EXIT_NO_RECORD = 20;
 
 // ---------------------------------------------------------------------------
 // Process helpers
@@ -544,6 +552,8 @@ export interface PushOutcome {
     forced: boolean;
     skipped: string | null;
     prNumber: number | null;
+    /** The run's commits went out as copies cherry-picked onto a fresh origin/dev. */
+    replayed: boolean;
   };
 }
 
@@ -551,17 +561,22 @@ export interface PushOutcome {
  * Push the current branch with exactly one `git push`: plain for dev / main,
  * `--force-with-lease` otherwise. `abort` never pushes into an open PR (`openPr`:
  * the answer MCP gave; undefined asks gh, which throws EXIT.USE_MCP when it cannot).
+ * An in-place run on dev (a shared-checkout record exists) pushes only the
+ * commits it made: plain when they are all that local dev holds beyond
+ * origin/dev, else replayed onto a fresh origin/dev through `pushToDev`.
  */
-export function pushBranch(
+export async function pushBranch(
   cwd: string,
   o: {
     mode: "feature" | "abort" | "dev";
     setUpstream?: boolean;
     requireCi?: boolean;
     openPr?: string;
+    /** The in-place run's FID: selects its shared-checkout record, and a missing record refuses the push. */
+    fid?: string;
   },
   log: (m: string) => void,
-): PushOutcome {
+): Promise<PushOutcome> {
   const { mode, openPr: openPrFlag } = o;
   if (openPrFlag !== undefined && openPrFlag !== "none" && !/^[1-9][0-9]*$/.test(openPrFlag)) {
     throw new CommandError(
@@ -579,6 +594,7 @@ export function pushBranch(
       forced: false,
       skipped: null,
       prNumber: null,
+      replayed: false,
       ...extra,
     },
   });
@@ -590,8 +606,23 @@ export function pushBranch(
     log(`--mode=dev pushes ${DEV}, but the checkout is on ${branch}`);
     return notPushed(EXIT_NOT_DEV);
   }
+  const shared = isSharedBranch(branch);
+  const rec = !shared
+    ? null
+    : o.fid === undefined
+      ? recordOnBranch(cwd, branch)
+      : activeRecord(cwd, o.fid);
+  // Without the run's record the push would carry all of local dev, not the run's commits.
+  if (shared && rec === null && (mode === "dev" || o.fid !== undefined)) {
+    log(
+      `no shared-checkout record${o.fid === undefined ? "" : ` for ${o.fid}`} on ${branch} — refusing to push: it would carry commits the run does not own`,
+    );
+    return notPushed(EXIT_NO_RECORD);
+  }
   if (o.requireCi === true) {
-    const message = git(cwd, ["log", "-1", "--pretty=%B"]) ?? "";
+    // With a record, the commit that reaches the remote last is the run's own.
+    const last = rec?.commits.at(-1) ?? "HEAD";
+    const message = git(cwd, ["log", "-1", "--pretty=%B", last]) ?? "";
     if (SKIP_CI_TOKEN.test(message)) {
       log(
         `HEAD message on ${branch} carries a CI-suppressing token, and this push needs a CI run — refusing`,
@@ -599,7 +630,7 @@ export function pushBranch(
       return notPushed(EXIT_SKIP_CI, { skipped: "skip-ci" });
     }
   }
-  const shared = isSharedBranch(branch);
+  if (rec !== null) return pushOwnCommits(cwd, rec, o, log, notPushed);
   if (mode === "abort" && !shared) {
     const pr =
       openPrFlag === undefined
@@ -636,22 +667,182 @@ export function pushBranch(
       forced: !shared,
       skipped: null,
       prNumber: null,
+      replayed: false,
     },
   };
 }
 
-function pushVerb(ctx: RunContext): number {
+/** A replayed commit that does not apply onto origin/dev without the foreign commits it builds on. */
+class ReplayConflict extends Error {}
+
+/**
+ * The `pushToDev` build callback that replays `shas` (oldest first) onto the
+ * fresh origin/dev in `dir`, each as a cherry-pick that keeps its message and
+ * author and keeps empty commits. A commit that does not apply throws a
+ * ReplayConflict naming the conflicting paths, after aborting the cherry-pick.
+ */
+export function replayBuild(shas: string[]): (dir: string) => void {
+  return (dir) => {
+    for (const sha of shas) {
+      const picked = runGit(dir, ["cherry-pick", "--allow-empty", "--keep-redundant-commits", sha]);
+      if (picked.ok) continue;
+      const paths = (git(dir, ["diff", "--name-only", "--diff-filter=U"]) ?? "")
+        .split("\n")
+        .filter(Boolean);
+      runGit(dir, ["cherry-pick", "--abort"]);
+      throw new ReplayConflict(
+        `commit ${sha.slice(0, 12)} does not apply onto ${UPSTREAM} without the local ${DEV} commits it builds on — ${
+          paths.length > 0 ? `conflicts in: ${paths.join(", ")}` : picked.stderr
+        }`,
+      );
+    }
+  };
+}
+
+/**
+ * Push only the commits an in-place run on dev made (the record's `commits`).
+ * Plain push of their tip SHA when origin/dev is an ancestor of local dev and they
+ * are exactly what local dev holds beyond it; otherwise (a foreign commit among
+ * them, origin/dev moved, or the plain push is rejected) they are replayed onto a
+ * fresh origin/dev in the throwaway checkout and pushed from there.
+ */
+async function pushOwnCommits(
+  cwd: string,
+  rec: SharedCheckoutRecord,
+  o: { setUpstream?: boolean },
+  log: (m: string) => void,
+  notPushed: (code: number, extra?: Partial<PushOutcome["out"]>) => PushOutcome,
+): Promise<PushOutcome> {
+  const gone = rec.commits.filter(
+    (c) => !runGit(cwd, ["merge-base", "--is-ancestor", c, "HEAD"]).ok,
+  );
+  if (gone.length > 0) {
+    log(
+      `the run's commit(s) ${gone.map((c) => c.slice(0, 12)).join(", ")} are no longer on ${rec.branch} — refusing to push`,
+    );
+    return notPushed(EXIT_PUSH_FAILED);
+  }
+  const fetched = runGit(cwd, ["fetch", REMOTE, `+refs/heads/${DEV}:refs/remotes/${UPSTREAM}`]);
+  if (!fetched.ok) {
+    log(`git fetch ${REMOTE} ${DEV} failed: ${fetched.stderr}`);
+    return notPushed(EXIT_FETCH_FAILED);
+  }
+  // Oldest first, minus what origin/dev already has (pushed plain before) and
+  // what an earlier replay already landed.
+  const mine = new Set(rec.commits);
+  const landed = new Set(rec.pushed ?? []);
+  const range = runGit(cwd, ["rev-parse", "-q", "--verify", `${rec.startSha}^{commit}`]).ok
+    ? `${rec.startSha}..HEAD`
+    : "HEAD";
+  const pending = (git(cwd, ["rev-list", "--reverse", range]) ?? "")
+    .split("\n")
+    .filter(
+      (c) =>
+        mine.has(c) &&
+        !landed.has(c) &&
+        !runGit(cwd, ["merge-base", "--is-ancestor", c, UPSTREAM]).ok,
+    );
+  if (pending.length === 0) {
+    log("every commit the run made is already on origin/dev — nothing to push");
+    return notPushed(EXIT.OK, { skipped: "no-run-commits" });
+  }
+  const ahead = (git(cwd, ["rev-list", "--reverse", `${UPSTREAM}..HEAD`]) ?? "")
+    .split("\n")
+    .filter(Boolean);
+  // Plain only when origin/dev is an ancestor of local dev (a fast-forward) and
+  // the run's commits are all local dev holds beyond it; the explicit SHA keeps
+  // a commit made after the check out of the push.
+  const fastForward = runGit(cwd, ["merge-base", "--is-ancestor", UPSTREAM, "HEAD"]).ok;
+  if (fastForward && ahead.length === pending.length && ahead.every((c, i) => c === pending[i])) {
+    const last = pending[pending.length - 1];
+    const args = [
+      "push",
+      ...(o.setUpstream === true ? ["-u"] : []),
+      REMOTE,
+      `${last}:refs/heads/${rec.branch}`,
+    ];
+    const res = runGit(cwd, args);
+    if (res.ok) {
+      log(`pushed ${rec.branch}: the run's ${pending.length} commit(s) are all local dev holds`);
+      return {
+        code: EXIT.OK,
+        out: {
+          pushed: true,
+          ref: rec.branch,
+          sha: last,
+          forced: false,
+          skipped: null,
+          prNumber: null,
+          replayed: false,
+        },
+      };
+    }
+    log(`git ${args.join(" ")} failed: ${res.stderr} — replaying onto a fresh ${UPSTREAM}`);
+  }
+
+  const root = repoRoot(cwd);
+  let res: Awaited<ReturnType<typeof pushToDev>>;
+  try {
+    res = await pushToDev({
+      root,
+      dir: landDir(root, rec.fid),
+      build: replayBuild(pending),
+      log,
+    });
+  } catch (err) {
+    if (!(err instanceof ReplayConflict)) throw err;
+    log(`replaying the run's commits onto ${UPSTREAM} stopped: ${err.message}`);
+    return notPushed(EXIT_MERGE_CONFLICT);
+  }
+  switch (res.kind) {
+    case "landed":
+      markRecordPushed(cwd, rec.fid, pending);
+      log(
+        `pushed ${pending.length} commit(s) of the run to ${DEV} as copies on a fresh ${UPSTREAM} (${res.sha.slice(0, 12)}); local ${DEV} still holds the originals beside other commits — resync with: git pull --rebase ${REMOTE} ${DEV}`,
+      );
+      return {
+        code: EXIT.OK,
+        out: {
+          pushed: true,
+          ref: rec.branch,
+          sha: res.sha,
+          forced: false,
+          skipped: null,
+          prNumber: null,
+          replayed: true,
+        },
+      };
+    case "refused":
+      log(`${DEV} refused the push: ${res.stderr}`);
+      return notPushed(EXIT_PUSH_FAILED);
+    case "push-failed":
+      log(`push to ${DEV} failed without a server answer: ${res.stderr}`);
+      return notPushed(EXIT_PUSH_FAILED);
+    case "exhausted":
+      log(`${DEV} moved before each of ${res.attempts} pushes`);
+      return notPushed(EXIT_PUSH_FAILED);
+    case "fetch-failed":
+      log(`git fetch ${REMOTE} ${DEV} failed: ${res.stderr}`);
+      return notPushed(EXIT_FETCH_FAILED);
+    case "setup-failed":
+      log(`throwaway checkout failed: ${res.stderr}`);
+      return notPushed(EXIT_PUSH_FAILED);
+  }
+}
+
+async function pushVerb(ctx: RunContext): Promise<number> {
   const mode = String(ctx.flags.mode);
   if (!["feature", "abort", "dev"].includes(mode)) {
     throw new CommandError(EXIT.USAGE, "--mode must be feature, abort, or dev");
   }
-  const r = pushBranch(
+  const r = await pushBranch(
     ctx.cwd,
     {
       mode: mode as "feature" | "abort" | "dev",
       setUpstream: ctx.flags.setUpstream === true,
       requireCi: ctx.flags.requireCi === true,
       openPr: str(ctx.flags.openPr),
+      fid: str(ctx.flags.fid),
     },
     ctx.log,
   );
@@ -1057,7 +1248,7 @@ async function landPr(
         EXIT_LAND_STOPPED,
         `${o.workflow} close diff carries non-doc files:\n${stray.join("\n")}`,
       );
-    const pushed = pushBranch(tree, { mode: "feature" }, ctx.log);
+    const pushed = await pushBranch(tree, { mode: "feature" }, ctx.log);
     if (pushed.code !== EXIT.OK)
       throw new Stop(
         EXIT_PUSH_FAILED,
@@ -1092,6 +1283,11 @@ async function landPr(
         ctx.emit({ stage: "merge", prNumber: Number(prNumber), subject, body: "" });
         return EXIT.USE_MCP;
       }
+      if (merged.code === EXIT_BASE_NOT_DEV)
+        throw new Stop(
+          EXIT_LAND_STOPPED,
+          `PR ${prNumber} does not target ${DEV} — bkit merges into ${DEV} only, releases stay manual; nothing merged, PR left open`,
+        );
       if (merged.out.merged) {
         sha = merged.out.mergeCommitOid ?? "";
         break;
@@ -1463,13 +1659,21 @@ export const branchesCommand: CommandSpec = {
           type: "string",
           help: "--mode=abort: the open-PR answer from MCP (a number, or none) instead of asking gh",
         },
+        {
+          name: "fid",
+          type: "string",
+          help: "an in-place run on dev: its FID, which selects the run's shared-checkout record; with it a missing record refuses the push",
+        },
       ],
       output: {
         pushed: "true when the push ran and succeeded",
+        replayed:
+          "true when the run's commits went out as copies cherry-picked onto a fresh origin/dev (an in-place run on dev whose local dev holds other commits); sha is then the landed origin/dev commit",
         ref: "the branch pushed — link handover artifacts to this ref; null when nothing was pushed",
         sha: "HEAD commit pushed (null when not pushed)",
         forced: "true when pushed with --force-with-lease",
-        skipped: "why the push did not run: open-pr | skip-ci (null otherwise)",
+        skipped:
+          "why the push did not run: open-pr | skip-ci | no-run-commits (an in-place run on dev with nothing new to push) (null otherwise)",
         prNumber: "the open PR that stopped an abort push (null otherwise)",
       },
       exitCodes: {
@@ -1477,8 +1681,14 @@ export const branchesCommand: CommandSpec = {
         [EXIT_SKIP_CI]: "--require-ci and the HEAD message carries a skip-CI token",
         [EXIT_OPEN_PR]:
           "--mode=abort and the branch has an open PR: push skipped, remote HEAD kept",
-        [EXIT_PUSH_FAILED]: "git push failed",
+        [EXIT_PUSH_FAILED]:
+          "git push failed, or dev refused a replayed push (in-place run on dev: the refusal is printed)",
         [EXIT_NOT_DEV]: "--mode=dev and the checkout is not on dev",
+        [EXIT_NO_RECORD]:
+          "--mode=dev, or --fid, on dev with no shared-checkout record for the run: nothing pushed",
+        [EXIT_FETCH_FAILED]: "in-place run on dev: fetching origin/dev failed",
+        [EXIT_MERGE_CONFLICT]:
+          "in-place run on dev: a run commit does not apply onto origin/dev without the local commits it builds on; the conflicting paths are printed, nothing pushed",
       },
       run: pushVerb,
     },
@@ -1578,7 +1788,7 @@ export const branchesCommand: CommandSpec = {
           "dev moved before every one of LAND_ATTEMPTS pushes, or the PR branch push failed (nothing landed)",
         [EXIT_FETCH_FAILED]: `git fetch ${REMOTE} ${DEV} failed (nothing landed)`,
         [EXIT_LAND_STOPPED]:
-          "a guard stopped the land: stray files, failed squash, staged non-doc files, canonical blob mismatch, no checkout holds the branch, PR not opened / not merged after LAND_ATTEMPTS tries (nothing landed; the PR stays open)",
+          "a guard stopped the land: stray files, failed squash, staged non-doc files, canonical blob mismatch, no checkout holds the branch, PR not opened / not merged after LAND_ATTEMPTS tries, PR base not dev or unreadable (nothing landed; the PR stays open)",
         [EXIT_LANDED_UNVERIFIED]:
           "landed, but the body scan, transport cross-check or canonical-on-dev check failed",
         [EXIT_LOCK_LEFT]: "landed and audited, but the workflow lock file survived removal",

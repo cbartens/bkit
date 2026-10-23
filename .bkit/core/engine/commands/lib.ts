@@ -374,7 +374,7 @@ export function git(cwd: string, args: string[]): string | null {
 export { parseJson } from "../shared/json.js";
 
 // The shared-branch rule (`dev`, `main`) lives in shared/ so checks can read it too.
-export { DEV, isSharedBranch } from "../shared/branches.js";
+export { DEV, MAIN, isSharedBranch } from "../shared/branches.js";
 
 export interface ToolResult {
   /** False when the binary is not on PATH (or could not be spawned). */

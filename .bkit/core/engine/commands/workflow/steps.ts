@@ -26,6 +26,8 @@ import { getPromptsRoot } from "../../shared/package-roots.js";
 import {
   CommandError,
   EXIT,
+  git,
+  isSharedBranch,
   repoRoot,
   runGit,
   type CommandSpec,
@@ -33,8 +35,16 @@ import {
   type FlagValue,
   type RunContext,
 } from "../lib.js";
-import { FID_PATTERNS, normaliseFid, readIssueTracker } from "./fids.js";
+import { fidProblem, normaliseFid, readIssueTracker } from "./fids.js";
 import { buildComment } from "./issues.js";
+import {
+  EXIT_FOREIGN_PATH,
+  activeRecord,
+  ownPathCommit,
+  ownSet,
+  type OwnCommit,
+  type SharedCheckoutRecord,
+} from "./ledgers.js";
 import { readHolder, resolveMonth, workflowLockPath } from "./locks.js";
 import {
   EXIT_NO_STATUS,
@@ -346,6 +356,13 @@ const CORE_ROW_KEYS = new Set([
 // Writing the row
 // ---------------------------------------------------------------------------
 
+/** The FID a `docs/plans/{month}/logs/{fid}/status.jsonl` path belongs to; undefined for any other file. */
+function fidOfStatusFile(file: string): string | undefined {
+  return /(?:^|\/)docs\/plans\/[0-9]{6}\/logs\/([^/]+)\/status\.jsonl$/.exec(
+    file.split(path.sep).join("/"),
+  )?.[1];
+}
+
 export interface StepRow {
   file: string;
   workflow: string;
@@ -360,9 +377,31 @@ export interface StepRow {
   extras?: Record<string, unknown>;
   /** Default: HEAD now, before this step's commit. */
   parentSha?: string;
-  /** auto: `git add -A` + commit `message`; none: the row only. */
+  /** auto: `git add -A` + commit `message` (an in-place shared-branch run: its own paths only); none: the row only. */
   commit: "auto" | "none";
   message?: string;
+}
+
+/** Exit code: a debug run on a shared branch has no shared-checkout record, so nothing was written or committed. */
+export const EXIT_NO_RECORD = 14;
+
+/**
+ * A debug run on `dev` / `main` works in place, so its record must exist before
+ * it writes or commits (`git add -A` there would carry work the run does not own).
+ * Throws EXIT_NO_RECORD when the checkout is on a shared branch and `rec` is null.
+ */
+export function requireRecordOnShared(
+  cwd: string,
+  workflow: string,
+  rec: SharedCheckoutRecord | null,
+): void {
+  if (workflow !== "debug" || rec !== null) return;
+  const branch = git(cwd, ["branch", "--show-current"]) ?? "";
+  if (!isSharedBranch(branch)) return;
+  throw new CommandError(
+    EXIT_NO_RECORD,
+    `no shared-checkout record for this run on ${branch} — nothing written or committed (the record is gone or belongs to another run); a plain commit here would carry work the run does not own`,
+  );
 }
 
 /**
@@ -399,10 +438,39 @@ export function writeStepRow(
     ...(r.strategy === undefined ? {} : { strategy: r.strategy as Step["strategy"] }),
     ...(r.extras ?? {}),
   };
+  // An in-place run on a shared branch commits its own paths only; a refusal
+  // comes before the append, so a re-run after the human's fix writes the row once.
+  const fid = r.commit === "auto" ? fidOfStatusFile(r.file) : undefined;
+  const rec = fid === undefined ? null : activeRecord(cwd, fid);
+  if (r.commit === "auto") requireRecordOnShared(cwd, r.workflow, rec);
+  if (rec !== null) {
+    try {
+      ownSet(cwd, rec);
+    } catch (err) {
+      if (!(err instanceof CommandError) || err.code !== EXIT_FOREIGN_PATH) throw err;
+      log(`no row written to ${r.file}: the commit would be refused: ${err.message}`);
+      return { row, commit: null, code: EXIT_FOREIGN_PATH };
+    }
+  }
   fs.mkdirSync(path.dirname(r.file), { recursive: true });
   fs.appendFileSync(r.file, appendLine(row));
 
   if (r.commit === "none") return { row, commit: null, code: EXIT.OK };
+  if (rec !== null) {
+    let own: OwnCommit;
+    try {
+      own = ownPathCommit(cwd, rec, r.message!, { allowEmpty: true });
+    } catch (err) {
+      if (!(err instanceof CommandError) || err.code !== EXIT_FOREIGN_PATH) throw err;
+      log(`row written to ${r.file} but the commit was refused: ${err.message}`);
+      return { row, commit: null, code: EXIT_FOREIGN_PATH };
+    }
+    if (!own.ok) {
+      log(`row written to ${r.file} but the commit failed: ${own.error}`);
+      return { row, commit: null, code: EXIT_COMMIT };
+    }
+    return { row, commit: runGit(cwd, ["rev-parse", "HEAD"]).stdout, code: EXIT.OK };
+  }
   const add = runGit(cwd, ["add", "-A"]);
   const made = add.ok ? runGit(cwd, ["commit", "--allow-empty", "-m", r.message!]) : add;
   if (!made.ok) {
@@ -434,6 +502,8 @@ interface GateOptions {
   verdictRequired: boolean;
   allowed: string[];
   fid?: string;
+  /** The run's issue id, "" for a run with no issue; absent checks the tracker shape alone. */
+  issue?: string;
   month?: string;
   token?: string;
   placeholders: string[];
@@ -460,10 +530,8 @@ function gateChecks(cwd: string, o: GateOptions): Check[] {
     const fid = normaliseFid(o.fid, tracker);
     add(
       `fid ${fid}`,
-      FID_PATTERNS[tracker].test(fid)
-        ? undefined
-        : `does not match the ${tracker} shape ${FID_PATTERNS[tracker].source}`,
-      `${tracker} shape`,
+      fidProblem(fid, tracker, o.issue),
+      o.issue === "" && tracker !== "none" ? "issue-less shape" : `${tracker} shape`,
     );
     if (o.token !== undefined) {
       const root = repoRoot(cwd);
@@ -481,6 +549,8 @@ function gateChecks(cwd: string, o: GateOptions): Check[] {
     }
   } else if (o.token !== undefined) {
     throw new CommandError(EXIT.USAGE, "--token needs --fid");
+  } else if (o.issue !== undefined) {
+    throw new CommandError(EXIT.USAGE, "--issue needs --fid");
   }
 
   for (const a of o.artifacts) {
@@ -939,6 +1009,10 @@ export const stepsCommand: CommandSpec = {
         [EXIT_NO_STATUS]: "--attempt=next could not read status.jsonl",
         [EXIT_ARTIFACT]: "an --artifact is missing, empty, or outside the working directory",
         [EXIT_COMMIT]: "the row was written but the commit failed",
+        [EXIT_FOREIGN_PATH]:
+          "nothing written, nothing committed: a path that was dirty before an in-place run changed during it",
+        [EXIT_NO_RECORD]:
+          "a debug run on dev/main with no shared-checkout record: nothing written or committed",
       },
       run: (ctx) => {
         const f = ctx.flags;
@@ -1141,6 +1215,10 @@ export const stepsCommand: CommandSpec = {
         [EXIT_ARTIFACT]:
           "an --artifact is missing, empty, or outside the working directory (nothing written)",
         [EXIT_COMMIT]: "the row was written but the commit failed",
+        [EXIT_FOREIGN_PATH]:
+          "nothing written, nothing committed: a path that was dirty before an in-place run changed during it",
+        [EXIT_NO_RECORD]:
+          "a debug run on dev/main with no shared-checkout record: nothing written or committed",
         [EXIT_OUTSIDE_DOCS]:
           "--docs-only and the step staged a file outside the artifact tree (nothing written)",
       },
@@ -1225,6 +1303,11 @@ export const stepsCommand: CommandSpec = {
           help: "NAME=value — the held placeholder must be non-empty",
         },
         { name: "fid", type: "string", help: "the FID must match the wired tracker's shape" },
+        {
+          name: "issue",
+          type: "string",
+          help: 'the run\'s issue id, or "" for a run with no issue (then the FID must be issue-less); needs --fid',
+        },
         { name: "month", type: "string", help: "month bucket of the lock (with --token)" },
         {
           name: "token",
@@ -1269,6 +1352,7 @@ export const stepsCommand: CommandSpec = {
           verdictRequired: f.verdictRequired === true,
           allowed: allowedVerdicts(f),
           fid: str(f.fid),
+          issue: str(f.issue),
           month: str(f.month),
           token: str(f.token),
           placeholders: list(f.placeholder),

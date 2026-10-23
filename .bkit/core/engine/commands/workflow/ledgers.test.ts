@@ -6,7 +6,7 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { runCommand } from "../lib";
-import { bookPathspecs, ledgersCommand } from "./ledgers";
+import { bookPathspecs, ledgersCommand, newRecord, writeRecord } from "./ledgers";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -359,6 +359,99 @@ describe("bkit ledgers commit (tests/book-commit.bats)", () => {
     expect(res.code).toBe(0);
     expect(res.json.outcome).toBe("staged");
     expect(staged(r).split("\n").sort()).toEqual([".bkit/new.jsonl", "src.ts"]);
+    expect(head(r)).toBe(before);
+  });
+});
+
+describe("bkit ledgers commit — a run in place on dev that shares its checkout", () => {
+  const FID = "650-shared";
+  const LOGS = `docs/plans/202610/logs/${FID}`;
+  const row = (id: string) => `${JSON.stringify({ id })}\n`;
+  const base = ["--month=202610", `--fid=${FID}`, "--scope=core"];
+
+  /** A dev checkout with a foreign edit and a foreign ledger row in flight, and the run's record. */
+  function shared() {
+    const r = repo();
+    git(r, "switch", "-q", "-c", "dev");
+    put(r, "src/a.txt", "a\n");
+    put(r, "src/own.txt", "own\n");
+    put(r, ".bkit/issues.jsonl", row("base"));
+    put(r, `${LOGS}/status.jsonl`, "{}\n");
+    commitAll(r);
+    add(r, "src/a.txt", "foreign\n");
+    add(r, ".bkit/issues.jsonl", row("foreign"));
+    writeRecord(r, newRecord(r, FID, "dev"));
+    return r;
+  }
+
+  it("stageTrackedUpdates skips recorded paths", async () => {
+    const r = shared();
+    add(r, "src/own.txt", "run edit\n");
+    const res = await run(r, commitArgs(r, ...base, "--mode=stage", "--stage-tracked-updates"));
+    expect(res.code).toBe(0);
+    const list = staged(r).split("\n");
+    expect(list).toContain("src/own.txt");
+    expect(list).not.toContain("src/a.txt");
+  });
+
+  it("a recorded ledger commits only the rows the run appended", async () => {
+    const r = shared();
+    add(r, ".bkit/issues.jsonl", row("run"));
+    const res = await run(r, commitArgs(r, ...base, "--mode=commit", "--message=book"));
+    expect(res.code).toBe(0);
+    expect(git(r, "show", "HEAD:.bkit/issues.jsonl")).toBe(`${row("base")}${row("run")}`.trimEnd());
+    expect(fs.readFileSync(path.join(r, ".bkit/issues.jsonl"), "utf-8")).toBe(
+      `${row("base")}${row("foreign")}${row("run")}`,
+    );
+  });
+
+  it("a ledger the user staged before the run keeps their rows in the index after the run's commit", async () => {
+    const r = shared();
+    git(r, "add", ".bkit/issues.jsonl");
+    add(r, ".bkit/issues.jsonl", row("run"));
+    const res = await run(r, commitArgs(r, ...base, "--mode=commit", "--message=book"));
+    expect(res.code).toBe(0);
+    expect(git(r, "show", "HEAD:.bkit/issues.jsonl")).toBe(`${row("base")}${row("run")}`.trimEnd());
+    // The index is HEAD's rows plus the user's staged row, so their next plain commit adds only that row.
+    expect(git(r, "show", ":.bkit/issues.jsonl")).toBe(
+      `${row("base")}${row("run")}${row("foreign")}`.trimEnd(),
+    );
+    expect(git(r, "diff", "--cached", "-U0", "--", ".bkit/issues.jsonl")).toContain(
+      `+${JSON.stringify({ id: "foreign" })}`,
+    );
+    expect(git(r, "diff", "--cached", "-U0", "--", ".bkit/issues.jsonl")).not.toContain("-{");
+  });
+
+  it("a recorded ledger under an eol attribute still commits only the run's rows", async () => {
+    const r = repo();
+    git(r, "switch", "-q", "-c", "dev");
+    put(r, ".gitattributes", ".bkit/issues.jsonl text eol=crlf\n");
+    put(r, "src/a.txt", "a\n");
+    put(r, ".bkit/issues.jsonl", `${row("base").trimEnd()}\r\n`);
+    put(r, `${LOGS}/status.jsonl`, "{}\n");
+    commitAll(r);
+    add(r, "src/a.txt", "foreign\n");
+    add(r, ".bkit/issues.jsonl", `${row("foreign").trimEnd()}\r\n`);
+    writeRecord(r, newRecord(r, FID, "dev"));
+    add(r, ".bkit/issues.jsonl", `${row("run").trimEnd()}\r\n`);
+    const res = await run(r, commitArgs(r, ...base, "--mode=commit", "--message=book"));
+    expect(res.code).toBe(0);
+    const inHead = git(r, "show", "HEAD:.bkit/issues.jsonl");
+    expect(inHead).toContain('"run"');
+    expect(inHead).not.toContain('"foreign"');
+  });
+
+  it("commitBookkeeping refuses when a recorded path changed", async () => {
+    const r = shared();
+    const before = head(r);
+    add(r, "src/a.txt", "changed mid-run\n");
+    add(r, `${LOGS}/status.jsonl`, "{}\n");
+    const res = await run(
+      r,
+      commitArgs(r, ...base, "--mode=commit", "--message=book", "--stage-tracked-updates"),
+    );
+    expect(res.code).toBe(10);
+    expect(res.err).toContain("src/a.txt");
     expect(head(r)).toBe(before);
   });
 });

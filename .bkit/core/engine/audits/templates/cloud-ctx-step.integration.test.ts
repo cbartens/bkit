@@ -548,6 +548,23 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
       },
     );
 
+    it("an issue-less marker resolves no issue — the step no-ops (/bkit-auto stays issue-only)", () => {
+      const result = runCtxStep(fixture, {
+        EVENT: "workflow_run",
+        CONCLUSION: "failure",
+        BRANCH: "feat/dev-ci-failures",
+        COMMIT_MSG: "chore: something unconventional",
+        HEAD_SHA: "issue-less-sha",
+        STUB_PR_NUMBER: "89",
+        STUB_PR_BODY: "<!-- bkit:fid=dev-ci-failures -->",
+        STUB_ISSUE_LABELS: "bkit:auto",
+      });
+      expect(result.status, `step aborted: ${result.stderr}`).toBe(0);
+      expect(result.outputs.skip).toBe("true");
+      expect(result.outputs.phase).toBeUndefined();
+      expect(statusDirs(fixture.workspaceDir, "dev-ci-failures")).toEqual([]);
+    });
+
     it("feat/** failure dispatches debug and is NOT subject to the dispatch cap", () => {
       seedDevDispatchRows(fixture.workspaceDir, "363-widen-bkit-cloud-trigger", ["s1", "s2", "s3"]); // would exhaust the cap if consulted
       const result = runCtxStep(fixture, {

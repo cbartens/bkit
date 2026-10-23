@@ -324,6 +324,64 @@ describe("real workflow sources", () => {
 });
 
 // ---------------------------------------------------------------------------
+// issue-less runs — the machinery lives in tracker blocks, so `none` never sees it
+// ---------------------------------------------------------------------------
+
+describe("issue-less runs render only under a wired tracker", () => {
+  const phases = ["bkit-design", "bkit-plan", "bkit-build", "bkit-debug", "bkit-ship"];
+  const source = (wf: string) =>
+    fs.readFileSync(path.join(REPO_ROOT, ".bkit", "core", "workflows", `${wf}.md`), "utf-8");
+  // Text that only a wired tracker run can need: the warning, the recovery, the skips.
+  const WIRED_ONLY = [
+    "**No issue:**",
+    "WARNING: no issue named",
+    "**Skip if** `ISSUE_ID` empty",
+    "fids parse --branch",
+  ];
+
+  for (const wf of phases) {
+    it(`${wf}: the none render carries none of the issue-less machinery`, () => {
+      const out = substituteWorkflow(source(wf), "none").output;
+      const found = WIRED_ONLY.filter((t) => out.includes(t));
+      expect(found, `${wf} none render leaks: ${found.join(", ")}`).toEqual([]);
+    });
+
+    it.each(["github", "linear", "jira"] as const)(
+      `${wf}: the %s render keeps the warning bullet once and the recovery in Step 1`,
+      (tracker) => {
+        const out = substituteWorkflow(source(wf), tracker).output;
+        expect(out.split("> - **No issue:**").length - 1).toBe(1);
+        expect(out.split('fids parse --branch="feat/{FID}"').length - 1).toBe(1);
+        expect(out).toContain("**Skip if** `ISSUE_ID` empty");
+      },
+    );
+  }
+});
+
+// ---------------------------------------------------------------------------
+// none render — the issue-less machinery leaves the no-tracker workflows byte-identical
+// ---------------------------------------------------------------------------
+
+describe("none render baselines", () => {
+  const BASELINES = path.join(__dirname, "__snapshots__");
+  const source = (wf: string) =>
+    fs.readFileSync(path.join(REPO_ROOT, ".bkit", "core", "workflows", `${wf}.md`), "utf-8");
+
+  // The issue-less machinery (warning, recovery, skips, `--issue`) sits in tracker blocks, so
+  // a none render differs from the render before issue-less runs only where the prose is
+  // tracker-independent: the shared wording clauses of `.bkit/wording.md` (FID mint, empty-FID
+  // rule, gate item, Failure Path comment), the gate-log copy (build), the ship refusal / naming
+  // warning / merge base assert (ship), and the debug-on-`dev` prose (debug). A change that
+  // shows up here is a change to the none render: review it, then `vitest -u`.
+  for (const wf of ["bkit-design", "bkit-plan", "bkit-build", "bkit-debug", "bkit-ship"]) {
+    it(`${wf}: the none render matches its baseline byte for byte`, async () => {
+      const out = substituteWorkflow(source(wf), "none").output;
+      await expect(out).toMatchFileSnapshot(path.join(BASELINES, `${wf}.none.txt`));
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // real prompt sources — agents get the same resolution as workflows
 // ---------------------------------------------------------------------------
 

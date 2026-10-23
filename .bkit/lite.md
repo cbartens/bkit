@@ -22,7 +22,7 @@ NEVER a lite workflow for: schema / migrations, public API, dependencies, secret
 
 ## Contract
 
-Read `.agents/rules.md`. Work on the current branch; commit as you go; push only when shipping or when asked. Tracker-wired: issue → **In progress** + `bkit:<phase>` label at start (drops other `bkit:*` workflow labels, `next:*`, `bkit:failed` per `.agents/rules.md` § Tracker workflow labels), **In review** at end, one short comment per step. No tracker: skip the tracker lines.
+Read `.agents/rules.md`. Work on the current branch; commit as you go; push only when shipping or when asked. Tracker-wired: issue → **In progress** + `bkit:<phase>` label at start (drops other `bkit:*` workflow labels, `next:*`, `bkit:failed` per `.agents/rules.md` § Tracker workflow labels), **In review** at end, one short comment per step. No tracker, or no issue named: skip the tracker lines.
 
 ## Paste
 
