@@ -138,11 +138,11 @@ Design Feature — Autonomous design phase
 "{BKIT}" steps gate --workflow=design --step=design-start-workflow --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --issue="{ISSUE_ID}" --placeholder=OWNER_REPO={OWNER_REPO} --placeholder=BRANCH={BRANCH} --placeholder=REPO_ROOT={REPO_ROOT}
 ```
 
-- [ ] Mechanical checks passed (`steps gate` exit 0: placeholders held, FID shape, lock held)
-- [ ] Issue resolved (`ISSUE_ID` non-empty, the no-issue warning emitted, or no tracker wired)
+- [ ] Mechanical checks passed (`steps gate`)
+- [ ] Issue resolved
 
 
-- [ ] Issue update attempted (phase label `bkit:design`, status / state `In Progress`; skipped when `ISSUE_ID` empty)
+- [ ] Issue update attempted
 
 
 ---
@@ -188,8 +188,8 @@ Design Feature — Autonomous design phase
 
 ### 🔒 Gate 2 — Worktree Setup
 
-- [ ] Worktree ready, branch and run held (`WORKTREE_PATH`, `BRANCH`, `RUN`)
-- [ ] Mechanical checks passed (`steps finish` exit 0: `design-input-{RUN}.md`, steps `design-start-workflow` and `design-worktree-setup` recorded)
+- [ ] Worktree ready
+- [ ] Mechanical checks passed (`steps finish`)
 
 ---
 
@@ -240,10 +240,10 @@ Design Feature — Autonomous design phase
 
 ### 🔒 Gate 3 — Grill
 
-- [ ] Interview held in this session, assumed headless, or skipped (no subagent put a question to the human; rounds <= 10; no question asked and no turn ended when `RUNTIME_HEADLESS` = true; skip only on `grill=false`)
-- [ ] Grill decisions appended to input (one `Grill decisions` section in `design-input-{RUN}.md`)
-- [ ] Draft acceptance scenario recorded (`### Draft Acceptance Scenario` with its four parts under a `DRAFT only` first line; absent only on `grill=false`)
-- [ ] Mechanical checks passed (`steps finish` exit 0: `design-grill-{RUN}.md`, `design-input-{RUN}.md`, step `design-grill` recorded)
+- [ ] Interview held
+- [ ] Grill decisions appended
+- [ ] Draft acceptance scenario recorded
+- [ ] Mechanical checks passed (`steps finish`)
 
 ---
 
@@ -280,10 +280,10 @@ Design Feature — Autonomous design phase
 ### 🔒 Gate 4 — Brainstorm & Ideate
 
 - [ ] Subagents invoked (`@bkit-design-brainstorm-ideate-1`, `@bkit-design-brainstorm-ideate-2`, `@bkit-design-brainstorm-ideate-3`, no inline work)
-- [ ] Mechanical checks passed (`steps finish` exit 0)
+- [ ] Mechanical checks passed (`steps finish`)
 
 
-- [ ] Related-issues search attempted (a hit whose comments do not parse skipped and named in `related-issues.md`)
+- [ ] Related-issues search attempted
 
 
 ---
@@ -302,7 +302,7 @@ Design Feature — Autonomous design phase
 ### 🔒 Gate 5 — Generate Design
 
 - [ ] Subagent invoked (`@bkit-design-generate`, no inline work)
-- [ ] Mechanical checks passed (`steps finish` exit 0)
+- [ ] Mechanical checks passed (`steps finish`)
 
 ---
 
@@ -330,8 +330,8 @@ Design Feature — Autonomous design phase
 ### 🔒 Gate 6 — Design Review
 
 - [ ] Subagents invoked (`@bkit-design-review-1`, `@bkit-design-review-2`, no inline work)
-- [ ] Mechanical checks passed (`steps finish` exit 0: both verdicts valid, `Spike` in `true|false`, step `design-review` recorded with the worst verdict)
-- [ ] Routed correctly: FAIL → Failure Path; `REVIEW_SPIKE` = true → Step 7; **Else** → Step 8
+- [ ] Mechanical checks passed (`steps finish`)
+- [ ] Routed correctly
 
 ---
 
@@ -351,7 +351,7 @@ Design Feature — Autonomous design phase
 ### 🔒 Gate 7 — Spike
 
 - [ ] Subagent invoked (`@bkit-design-spike`, no inline work)
-- [ ] Mechanical checks passed (`steps finish` exit 0: verdict valid, probe files confined to `docs/plans/{YYYYMM}/logs/{FID}/spike/`)
+- [ ] Mechanical checks passed (`steps finish`)
 
 ---
 
@@ -369,7 +369,7 @@ Design Feature — Autonomous design phase
 ### 🔒 Gate 8 — Apply Review
 
 - [ ] Subagent invoked (`@bkit-design-update`, no inline work)
-- [ ] Mechanical checks passed (`steps finish` exit 0)
+- [ ] Mechanical checks passed (`steps finish`)
 
 ---
 
@@ -388,7 +388,7 @@ Design Feature — Autonomous design phase
 ### 🔒 Gate 9 — Design Organise
 
 - [ ] Subagent invoked (`@bkit-design-organise`, no inline work)
-- [ ] Mechanical checks passed (`steps finish` exit 0)
+- [ ] Mechanical checks passed (`steps finish`)
 
 ---
 
@@ -418,11 +418,11 @@ Design Feature — Autonomous design phase
 
 ### 🔒 Gate 10 — Summary
 
-- [ ] Design final resolved (`DESIGN_FINAL` = highest `design-v*.md`)
+- [ ] Final design resolved
 - [ ] Subagent invoked (`@bkit-design-summary`, no inline work)
-- [ ] Mechanical checks passed (`steps finish` exit 0)
-- [ ] Summary displayed verbatim before **Failure Path** (if `SUMMARY_VERDICT` = FAIL)
-- [ ] Summary commit pushed to branch
+- [ ] Mechanical checks passed (`steps finish`)
+- [ ] Failing summary displayed
+- [ ] Summary commit pushed
 
 ---
 
@@ -448,8 +448,8 @@ Design Feature — Autonomous design phase
 
 ### 🔒 Gate 11 — Suggest Workstreams
 
-- [ ] Workstreams parsed (`WORKSTREAMS` non-empty)
-- [ ] Mechanical checks passed (`steps finish` exit 0)
+- [ ] Workstreams parsed
+- [ ] Mechanical checks passed (`steps finish`)
 
 
 ---
@@ -502,12 +502,12 @@ Design Feature — Autonomous design phase
 "{BKIT}" steps gate --file="{REPO_ROOT}/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl" --ref=origin/dev --workflow=design --step=design-close-workflow
 ```
 
-- [ ] Mechanical checks passed (`steps gate` exit 0: step `design-close-workflow` recorded on `origin/dev`)
-- [ ] Canonical design promoted and landed (`docs/plans/{YYYYMM}/{FID}-design.md` on `dev`, close telemetry committed; `branches land` exit 0: squash staged the `{BRANCH}` copy, body scan clean, transport cross-check passed, `close-transport` row written only when the run's checkout is the branch (`RUNTIME_DEVPUSHES=false`), otherwise logged — the main checkout is never written to, lock released)
-- [ ] Worktree removed and feature branch deleted (workflow-created worktree only; branch kept when another worktree holds it, `branchBlockedBy`)
-- [ ] Final return displayed (`design-summary.md` content verbatim)
+- [ ] Mechanical checks passed (`steps gate`)
+- [ ] Canonical design promoted and landed (`branches land`)
+- [ ] Worktree removed and feature branch deleted
+- [ ] Final return displayed
 
 
-- [ ] Issue update attempted (status / state `In Review`, phase label `bkit:design` unchanged; skipped when `ISSUE_ID` empty)
-- [ ] Artifact link list and telemetry report embedded in `Step 12` comment (skipped when `ISSUE_ID` empty)
+- [ ] Issue update attempted
+- [ ] Artifact link list and telemetry report posted
 

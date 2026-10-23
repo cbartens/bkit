@@ -68,8 +68,8 @@ Auto — Phase-routed dispatch of any bkit phase
 "{BKIT}" steps gate --workflow=auto --step=auto-start-workflow --placeholder=PHASE={PHASE} --placeholder=MODE={MODE} --placeholder=OWNER_REPO={OWNER_REPO} --placeholder=OWNER={OWNER} --placeholder=REPO={REPO} {MODE_PLACEHOLDERS}
 ```
 
-- [ ] Mechanical checks passed (`steps gate` exit 0: phase, mode, repo and the mode's placeholders non-empty)
-- [ ] CI: PR open, CI run at its head found, `FID` recovered (`runs context` exit 0); CI_DEV: `FID` slug-asserted before use
+- [ ] Mechanical checks passed (`steps gate`)
+- [ ] Run context recovered
 
 ---
 
@@ -91,6 +91,6 @@ Auto — Phase-routed dispatch of any bkit phase
 
 ### 🔒 Gate 2 — Dispatch
 
-- [ ] Reference derived (`{REF}` from `#N` GitHub / `ABC-123` Linear)
-- [ ] Phase skill invoked with correct arguments (`{FID} {REF}` ship / debug, `{REF}` design / plan / build)
+- [ ] Reference derived
+- [ ] Phase skill invoked
 - [ ] Orchestrator exits and the dispatched skill owns the session

@@ -67,7 +67,7 @@ Choose by the state of the work. Procedure stays in the command file and in § P
   - **Variable references:** One name, one marker — the marker says who resolves it, and when. `{VAR}` = orchestrator substitutes (paths, JSON, commit msgs, Context, output templates). `$VAR` = bash expands, and must be assigned in the same fenced block — shell state does not persist between blocks. Model-held value needed in bash → assign once at block top (`VERDICT="{VERDICT}"`), then `$VERDICT` below. `{lower}` = free text the writing agent fills in, never asserted. `{{VAR}}` = install-time token, do not unify. Standalone prose mention: backticked, sigil OPTIONAL. Operators outside (`VERIFY_ATTEMPT` = 0). Literal enum plain (**If** `VERDICT` = PASS); unions one backticked tight-pipe unit in canonical order (`PASS|CONCERNS|FAIL`). Fenced output blocks and unfenced output-template fragments: plain. never `${VAR}` outside bash fences, except inline shell quoted as an instruction. Enforced by `.bkit/core/engine/audits/workflows/block-locality-audit.test.ts`.
     - **Argument placeholders:** never `$0` to `$9` or `$ARGUMENTS`, fenced or not. These files render into slash commands and the host substitutes invocation arguments into the body before the model reads it — `$N` = `$ARGUMENTS[N]`, zero-based, so a first argument rewrites every `$0`. Awk field reference → `$(N)`: POSIX, identical behaviour, no `$`-digit sequence left to rewrite. Do not use the host `\$N` escape — it is Claude-Code-only and renders verbatim into the other IDE command dirs. Shell positional parameters have no `$(N)` equivalent; logic taking arguments becomes a `bkit <noun> <verb>` command (§ Workflow commands), and a block passes a flag list through `set --` / `"$@"`. Enforced by `.bkit/core/engine/audits/workflows/slash-arg-expansion.test.ts`.
     - **Variable names:** held step output = `{LOOP}_{FIELD}` in UPPER_SNAKE; prefix names the loop, not the agent (`VERIFY_FIXED` from gaps-remediate, `CHALLENGE_BLOCKED` from challenge-remediate); two-value flags take lowercase `true|false`.
-  - **Gate items:** `- [ ]` leads with prose label; vars only in trailing backticked parenthetical — `- [ ] Test attempt incremented (\`TEST_ATTEMPT\` + 1)`, never `- [ ] \`TEST_ATTEMPT\` incremented`. Extraction + validity = one item: `- [ ] Verdict extracted and valid (\`SUMMARY_VERDICT\` in \`PASS|CONCERNS|FAIL\`)`.
+  - **Gate items:** `- [ ]` + general prose reminder of what the step did — never a step detail (condition, path, variable, value set, field list, exit code) — § `Gates`. `- [ ] Verdict valid`, never `- [ ] Verdict valid (\`SUMMARY_VERDICT\` in \`PASS|CONCERNS|FAIL\`)`.
 - **Notation:** One job per mark — `.bkit/prompts.md` § `Notation` binds workflows too; do not restate its mark rules here.
 - **Dense instructions only:** No rationale, commentary, parentheticals explaining why, or inline behaviour justification — one exception: a single reason clause on a hard limit a model would otherwise misread (§ `Notation`). Every byte is paid on every run; explanations, decisions, trade-offs, history and commentary live in `.bkit/workflows.md`.
   - **No internal labels, no coined guard names:** NEVER cite a bkit-internal identifier (ledger key, tracker issue number, review-finding id) or a coined guard name in workflow files — unexplained tokens for consumers. Drop the label outright; the step lead-in states what the step does. Name the behaviour, never the record of it (`open-PR pre-flight`, not a finding id).
@@ -385,7 +385,7 @@ Reading does not remove the log, so a retried status block re-emits the same arr
 
 **Uncapped by decision: the tracker sweep.** `related-issues.md` and `context-related-*.md` get no size cap and no tiering. Long human tracker threads are the point of the sweep; capping them optimises against the content the sweep exists to surface. Trimming happens on the right axis instead — `bkit:generated` filtering, the `bkit:ignore-earlier` cut, and a better query (§ Related-issues scan). Accepted risk, stated deliberately: unbounded by design, with only the backstop above underneath it.
 
-**No gate re-asserts the clamp.** Every call site is `"{BKIT}" context clamp … || exit 2` inside a fenced block, so the shell guarantees both that it ran and that a failure stops the step — a checklist item would only ask a model to re-assert what the command already enforces. Gates name `clamped` solely in the status-row field list, alongside `parentSha` / `verdict` / `artifacts`.
+**No gate re-asserts the clamp.** Every call site is `"{BKIT}" context clamp … || exit 2` inside a fenced block, so the shell guarantees both that it ran and that a failure stops the step — a checklist item would only ask a model to re-assert what the command already enforces. Gates never name `clamped` (§ Gates).
 
 ### Attempt counters — derived from status.jsonl, never carried
 
@@ -516,7 +516,7 @@ Tracker write calls (issue update, comment post) = observability, not gates. nev
 2. `rate_limited` / transient → wait 5s, retry once.
 3. Second failure → `TRACKER_DEFERRED` = true, append `TRACKER_DEFERRED=true reason={error}` to next commit message, proceed.
 
-**Gate phrasing:** `Issue update attempted (label set X)` / `Issue comment attempted (Step N section)` — not `Issue state X set` or `Issue comment created` (imply success).
+**Gate phrasing:** `Issue update attempted` / `Issue comment attempted` — not `Issue state X set` or `Issue comment created` (imply success).
 
 ### Versioned Outputs
 
@@ -611,7 +611,7 @@ Mid-stream termination after verdict line → usable verdict + truncated body (d
 **Per-step gate item (verdict-bearing steps):**
 
 ```
-[ ] `Verdict` valid ({VERDICT} ∈ {PASS, CONCERNS, FAIL})
+[ ] Verdict valid
 ```
 
 ### Anchor Block
@@ -643,18 +643,19 @@ Every stamp (design, plan, sub-plan, audit report) adds 2 more when `.bkit/versi
 
 Every step ends `### 🔒 Gate N — {Step Name}` + checklist.
 
-**Format:** `[ ] What (settings)` — verb-led clause, parenthetical for specifics. Do not lead with value, path, or variable list.
+**Remind, never restate.** A gate is a short reminder, read as the orchestrator leaves the step, of the actions and checks the step ran. Every detail — conditions, routes, paths, flags, variables, value sets, field lists, exit codes, skip rules — lives in the step body and is still in orchestrator context. A gate item that restates one makes the orchestrator re-check it and drifts when the step changes; `bkit steps finish` / `bkit steps gate` already enforce the mechanical ones.
+
+**Format:** `[ ] {What was done}` — verb-led, general words. A parenthetical only names WHICH of several like things (`(@{name}, no inline work)`, `(steps gate)`), never a condition, path, value or list. An action that runs on some routes only stays one plain item — the route is in context.
 
 Canonical patterns:
 
-- `[ ] Placeholders non-empty (X, Y, Z)` — placeholder existence
+- `[ ] Mechanical checks passed (steps finish)` / `(steps gate)` — one-call step ending / gate check
 - `[ ] Subagent invoked (@{name}, no inline work)` — subagent invocation
-- `[ ] Artifact written (docs/plans/{YYYYMM}/logs/{FID}/{file}.md, non-empty)` — artifact existence
-- `[ ] {VARIABLE} extracted` — verdict / value capture
-- `[ ] Verdict valid ({VERDICT} ∈ {PASS, CONCERNS, FAIL})` — verdict-bearing-step validation
-- `[ ] Workflow status updated ({phase} {STATE}, step {step-name} recorded with parentSha[, verdict, attempt, …])` — status.jsonl mutation
-- `[ ] Issue update attempted (state X, label Y)` — tracker `issue-update-*` snippet
-- `[ ] Issue comment attempted (Step {N} section)` — tracker `comment-post-step` snippet
+- `[ ] Artifact written` — artifact the step writes itself
+- `[ ] Verdict valid` — verdict-bearing-step validation
+- `[ ] Workflow status updated` — status.jsonl mutation outside `steps finish`
+- `[ ] Issue update attempted` — tracker `issue-update-*` snippet
+- `[ ] Issue comment attempted` — tracker `comment-post-step` snippet
 
 Skipped gate = invalid work. Workflow must verify every checkbox before advancing.
 
@@ -1645,7 +1646,7 @@ When writing/editing `.bkit/core/workflows/bkit-*.md` (canonical — `bkit insta
 - [ ] **Step 1 — Start Workflow:** `bkit repo info` + FID + `bkit locks acquire` + tracker init + comment create + label set + state `In Progress`.
 - [ ] **Step 2 — Worktree Setup:** `bkit worktrees setup` + `bkit workflows start --lock-held` + `bkit runtime row` + save phase input + status step + comment append.
 - [ ] Every bash block calls `"{BKIT}" <noun> <verb>` (Step 1's first block: the lookup expression; § Workflow commands); model values reach commands as flag values, never shell variables; no template-script call, no package-manager literal.
-- [ ] Every step that writes a row ends in one `bkit steps finish`; a gate without one runs `bkit steps gate`; gate checklists do not restate what those calls check.
+- [ ] Every step that writes a row ends in one `bkit steps finish`; a gate without one runs `bkit steps gate`; gate checklists remind in general words, never restate a step detail or what those calls check (§ Gates).
 - [ ] Every step ends with `### 🔒 Gate N` and a checklist.
 - [ ] Every step appends one fenced section to the workflow comment via the `comment-post-step` tracker snippet (one new comment per step — no COMMENT_ID threading).
 - [ ] Subagent invocations use `@name` + `Context:` / `Read:` / `Update:` / `Create:` block (Update/Create as applicable); assert non-empty Update/Create artifacts.

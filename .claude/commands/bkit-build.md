@@ -141,10 +141,10 @@ description: "Build Feature — Autonomous implementation"
 
 ### 🔒 Gate — Decision Pause
 
-- [ ] Questions put by the orchestrator in this session, or handed over headless (no subagent asked the human)
-- [ ] Loop pause opens with `## Progress` and a fix-round question worded so "yes" accepts the recommendation (`PAUSE_QUESTION` in `VERIFY_LOOP|TESTS_LOOP`)
-- [ ] Acceptances written only after explicit human approval (decision rows, `Test-order exception` lines committed alone)
-- [ ] Mechanical checks passed (`steps finish` exit 0: step `build-decision` with `attempt`), or run left `IN_PROGRESS` with lock released
+- [ ] Questions put by the orchestrator or handed over
+- [ ] Loop progress and question written (`counters progress`)
+- [ ] Acceptances written only on human approval
+- [ ] Mechanical checks passed (`steps finish`), or run handed over and lock released
 
 ---
 
@@ -227,13 +227,13 @@ description: "Build Feature — Autonomous implementation"
 "{BKIT}" steps gate --workflow=build --step=build-start-workflow --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --issue="{ISSUE_ID}" --placeholder=OWNER_REPO={OWNER_REPO} --placeholder=BRANCH={BRANCH} --placeholder=REPO_ROOT={REPO_ROOT}
 ```
 
-- [ ] Mechanical checks passed (`steps gate` exit 0: placeholders held, FID shape, lock held)
-- [ ] Issue resolved (`ISSUE_ID` non-empty, the no-issue warning emitted, or no tracker wired)
+- [ ] Mechanical checks passed (`steps gate`)
+- [ ] Issue resolved
 - [ ] Long-branch advisory emitted
 
 
-- [ ] Blocker check attempted (not blocked by any related issues; skipped when `ISSUE_ID` empty)
-- [ ] Issue update attempted (phase label `bkit:build`, status / state `In Progress`; skipped when `ISSUE_ID` empty)
+- [ ] Blocker check attempted
+- [ ] Issue update attempted
 
 
 ---
@@ -288,9 +288,9 @@ description: "Build Feature — Autonomous implementation"
 
 ### 🔒 Gate 2 — Worktree Setup
 
-- [ ] Worktree ready, branch and run held (`WORKTREE_PATH`, `BRANCH`, `RUN`)
-- [ ] Sub-plan count set (`SUB_COUNT`); counters derived per-block
-- [ ] Mechanical checks passed (`steps finish` exit 0: `build-input-{RUN}.md`, steps `build-start-workflow` and `build-worktree-setup` recorded)
+- [ ] Worktree ready
+- [ ] Sub-plan count set
+- [ ] Mechanical checks passed (`steps finish`)
 
 ---
 
@@ -315,9 +315,9 @@ description: "Build Feature — Autonomous implementation"
 
 ### 🔒 Gate 3 — Branch Sync
 
-- [ ] Docs not behind origin (`docs/` not behind `origin/dev`), on the worktree branch
-- [ ] Every `Test first` line on a task bullet, sub-plans included (`tests plan-check` exit 0)
-- [ ] Mechanical checks passed (`steps finish` exit 0)
+- [ ] Docs synced (`branches sync`)
+- [ ] Plan checked (`tests plan-check`)
+- [ ] Mechanical checks passed (`steps finish`)
 
 ---
 
@@ -343,11 +343,11 @@ description: "Build Feature — Autonomous implementation"
 
 ### 🔒 Gate 4 — Plan Current
 
-- [ ] Base commit resolved (`BASE_SHA` non-empty)
+- [ ] Base commit resolved
 - [ ] Subagent invoked (`@bkit-build-plan-current`, no inline work)
-- [ ] Mechanical checks passed (`steps finish` exit 0: verdict valid, `Affected` integer >= 0)
-- [ ] Plan not revised (no edit to `{FID}-plan.md` or `{FID}-plan-*.md`)
-- [ ] Advisory emitted (if verdict = CONCERNS or FAIL)
+- [ ] Mechanical checks passed (`steps finish`)
+- [ ] Plan not revised
+- [ ] Advisory emitted
 
 ---
 
@@ -367,8 +367,8 @@ description: "Build Feature — Autonomous implementation"
 ### 🔒 Gate 5 — Install Skills
 
 - [ ] Subagent invoked (`@bkit-build-install-skills`, no inline work)
-- [ ] New skills installed (or no new skills noted)
-- [ ] Mechanical checks passed (`steps finish` exit 0)
+- [ ] New skills installed
+- [ ] Mechanical checks passed (`steps finish`)
 
 ---
 
@@ -397,7 +397,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 ### 🔒 Gate 6 — Plan Execute
 
 - [ ] Subagent invoked (`@bkit-build-plan-execute`, no inline work)
-- [ ] Mechanical checks passed (`steps finish` exit 0: verdict in `PASS|FAIL`)
+- [ ] Mechanical checks passed (`steps finish`)
 - [ ] Source files implemented
 
 ---
@@ -464,12 +464,12 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 ### 🔒 Gate 7 — Plan Verify
 
-- [ ] Test-first reds audited (`tests green` exit 0 or 1)
+- [ ] Test-first reds audited (`tests green`)
 - [ ] Subagent invoked (`@bkit-build-plan-verify`, no inline work)
-- [ ] Mechanical checks passed (`steps finish` exit 0: verify verdict and failures valid, `Fixable` in `true|false`, attempt derived for this sub-plan; boundary `build-subplan-gate` row with `scope`, `attempt`, `subPlan`, `clamped` when it ran)
-- [ ] Boundary verdict decided (`BOUNDARY_VERDICT` in `PASS|FAIL|SKIPPED`)
-- [ ] `Fixable: false` gaps routed to **Decision Pause**, after at most one fix round since the last decision (`VERIFY_VERDICT` = FAIL)
-- [ ] Exhausted fix loop routed to **Decision Pause** or **Failure Path** as `counters route` printed (`PAUSE_QUESTION` = `VERIFY_LOOP` on a pause)
+- [ ] Mechanical checks passed (`steps finish`)
+- [ ] Boundary verdict decided
+- [ ] Unfixable gaps routed
+- [ ] Exhausted fix loop routed
 
 ---
 
@@ -503,10 +503,10 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 ### 🔒 Gate 8 — Plan Gaps Remediate
 
-- [ ] Strategy computed before invocation (`STRATEGY`)
+- [ ] Strategy computed before invocation
 - [ ] Subagent invoked (`@bkit-build-plan-gaps-remediate`, no inline work)
-- [ ] Mechanical checks passed (`steps finish` exit 0: verdict valid, `strategy` recorded, `Fixed` present)
-- [ ] No-progress attempt routed to **Decision Pause** (no source change, or `VERIFY_FIXED` = 0); verify never re-run on unchanged code
+- [ ] Mechanical checks passed (`steps finish`)
+- [ ] No-progress attempt routed
 
 ---
 
@@ -529,7 +529,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 ### 🔒 Gate 9 — Plan Verify Holistic
 
 - [ ] Subagent invoked (`@bkit-build-plan-verify`, holistic, no inline work)
-- [ ] Mechanical checks passed (`steps finish` exit 0)
+- [ ] Mechanical checks passed (`steps finish`)
 
 ---
 
@@ -552,7 +552,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 ### 🔒 Gate 10 — Build Challenge
 
 - [ ] Subagents invoked (`@bkit-build-challenge-1`, `@bkit-build-challenge-2`, no inline work)
-- [ ] Mechanical checks passed (`steps finish` exit 0)
+- [ ] Mechanical checks passed (`steps finish`)
 
 ---
 
@@ -581,7 +581,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 ### 🔒 Gate 11 — Reconcile Build Challenge
 
 - [ ] Subagent invoked (`@bkit-build-challenge-reconcile`, no inline work)
-- [ ] Mechanical checks passed (`steps finish` exit 0)
+- [ ] Mechanical checks passed (`steps finish`)
 
 ---
 
@@ -612,9 +612,9 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 ### 🔒 Gate 12 — Build Challenge Remediate
 
 - [ ] Subagent invoked (`@bkit-build-challenge-remediate`, no inline work)
-- [ ] Mechanical checks passed (`steps finish` exit 0: `Blocked` in `true|false`)
-- [ ] Source files modified, or every finding logged `BLOCKED|DEFERRED` (`low-severity` rows)
-- [ ] `CRITICAL|HIGH` findings left `BLOCKED` routed to **Decision Pause** (`CHALLENGE_BLOCKED` = true)
+- [ ] Mechanical checks passed (`steps finish`)
+- [ ] Source files modified or findings logged
+- [ ] Blocked findings routed
 
 ---
 
@@ -637,9 +637,9 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 ### 🔒 Gate 13 — Build Challenge Tests
 
 - [ ] Subagent invoked (`@bkit-build-challenge-tests`, no inline work)
-- [ ] Mechanical checks passed (`steps finish` exit 0)
+- [ ] Mechanical checks passed (`steps finish`)
 - [ ] Test files created / updated
-- [ ] Routing applied: re-run Step 10 when `CHALLENGE_VERDICT` = FAIL; **Else** → Step 14
+- [ ] Routing applied
 
 ---
 
@@ -681,10 +681,10 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 ### 🔒 Gate 14 — Run Tests
 
-- [ ] Tests executed (deepest declared of `bkit:gate:static-unit-integration`, `bkit:gate:static-unit`; exit 0 or 1)
-- [ ] Mechanical checks passed (`steps finish` exit 0: `run-tests-{TEST_ATTEMPT}.md` committed in the log dir, row `attempt`, `scope`, `clamped`)
-- [ ] Test results extracted (`TEST_VERDICT`, `TEST_FAILURES`, `TEST_SCOPE`)
-- [ ] Exhausted test loop routed to **Decision Pause** or **Failure Path** as `counters route` printed (`PAUSE_QUESTION` = `TESTS_LOOP` on a pause)
+- [ ] Tests executed
+- [ ] Mechanical checks passed (`steps finish`)
+- [ ] Test results extracted
+- [ ] Exhausted test loop routed
 
 ---
 
@@ -708,9 +708,9 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 ### 🔒 Gate 15 — Failure Diagnose
 
-- [ ] Strategy computed before invocation (`STRATEGY`)
+- [ ] Strategy computed before invocation
 - [ ] Subagent invoked (`@bkit-debug-failure-diagnose`, no inline work)
-- [ ] Mechanical checks passed (`steps finish` exit 0)
+- [ ] Mechanical checks passed (`steps finish`)
 
 ---
 
@@ -731,7 +731,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 ### 🔒 Gate 16 — Failure Remediate
 
 - [ ] Subagent invoked (`@bkit-debug-failure-remediate`, no inline work)
-- [ ] Mechanical checks passed (`steps finish` exit 0)
+- [ ] Mechanical checks passed (`steps finish`)
 - [ ] Source files modified
 
 ---
@@ -767,10 +767,10 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 ### 🔒 Gate 17 — Summary
 
 - [ ] Subagent invoked (`@bkit-build-summary`, no inline work)
-- [ ] Mechanical checks passed (`steps finish` exit 0)
-- [ ] Summary displayed verbatim before **Failure Path** (if `SUMMARY_VERDICT` = FAIL)
-- [ ] Open-PR probe ran (no pre-existing open PR)
-- [ ] Summary commit pushed to branch
+- [ ] Mechanical checks passed (`steps finish`)
+- [ ] Failing summary displayed
+- [ ] Open-PR probe ran
+- [ ] Summary commit pushed
 
 ---
 
@@ -854,22 +854,22 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 "{BKIT}" steps gate --workflow=build --step=build-create-pr --file="{STATUS}" --artifact={PR_URL}
 ```
 
-- [ ] Mechanical checks passed (`steps gate` exit 0: steps `build-create-pr` (PR URL in `artifacts`) and `build-close-workflow` (`ciDispatch`) recorded)
+- [ ] Mechanical checks passed (`steps gate`)
 
 
-- [ ] Auto-label presence re-read before close-workflow commit (`bkit:auto` pre-commit label read for marker sourcing; skipped when `ISSUE_ID` empty)
+- [ ] Auto-label presence re-read before close-workflow commit
 
 
-- [ ] Close committed and pushed (`workflows close` committed telemetry; `branches push --require-ci` exit 0: close-workflow commit is the CI-triggering HEAD; no PR yet → no CI)
-- [ ] Lock released (`locks release` exit 0)
-- [ ] Open-PR probe ran (no pre-existing open PR, or probe fell through)
-- [ ] PR created with base `dev` (`PR_URL`, `PR_NUMBER` non-empty)
-- [ ] CI-Dispatch gate ran (`runs dispatch` exit 0, close transport recorded)
-- [ ] Final return displayed (`build-summary.md` content verbatim)
+- [ ] Close committed and pushed (`branches push`)
+- [ ] Lock released
+- [ ] Open-PR probe ran
+- [ ] PR created
+- [ ] CI-Dispatch gate ran (`runs dispatch`)
+- [ ] Final return displayed
 
 
-- [ ] Marker `bkit [auto route]` present (if label `bkit:auto` present at close time; skipped when `ISSUE_ID` empty)
-- [ ] Issue update attempted (status / state `In Review`, phase label `bkit:build` unchanged; skipped when `ISSUE_ID` empty)
-- [ ] Kill-switch propagation checked (post-push re-read of `bkit:auto` label on issue; skipped when `ISSUE_ID` empty)
-- [ ] Artifact link list and telemetry report embedded in `Step 18` comment (skipped when `ISSUE_ID` empty)
+- [ ] Marker `bkit [auto route]` present
+- [ ] Issue update attempted
+- [ ] Kill-switch propagation checked
+- [ ] Artifact link list and telemetry report posted
 

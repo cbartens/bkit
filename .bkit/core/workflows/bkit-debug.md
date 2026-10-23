@@ -260,16 +260,16 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 "{BKIT}" steps gate --workflow=debug --step=debug-start-workflow --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN}<!-- bkit:tracker true start --> --issue="{ISSUE_ID}"<!-- bkit:tracker true end --> --placeholder=OWNER_REPO={OWNER_REPO} --placeholder=BRANCH={BRANCH} --placeholder=REPO_ROOT={REPO_ROOT}
 ```
 
-- [ ] Mechanical checks passed (`steps gate` exit 0: placeholders held, FID shape, lock held)
-- [ ] Issue resolved (`ISSUE_ID` non-empty, the no-issue warning emitted, or no tracker wired)
-- [ ] Push mode decided and valid (`PUSH_MODE` in `PR|LOCAL`; `PR_NUMBER` held when PR)
-- [ ] Debug attempt derived (cross-run; `1` if first)
-- [ ] Debug mode decided and valid (`DEBUG_MODE` in `NORMAL|SOAK`, `SOAK_ENTRY` set)
-- [ ] Repro decided (`REPRO`)
+- [ ] Mechanical checks passed (`steps gate`)
+- [ ] Issue resolved
+- [ ] Push mode decided
+- [ ] Debug attempt derived
+- [ ] Debug mode decided
+- [ ] Repro decided
 
 <!-- bkit:tracker true start -->
 
-- [ ] Issue update attempted (phase label `bkit:debug`, `next:*` and `bkit:failed` cleared, board / state per `bkit issues labels`; skipped when `ISSUE_ID` empty)
+- [ ] Issue update attempted
 
 <!-- bkit:tracker true end -->
 
@@ -314,9 +314,9 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 ### 🔒 Gate 2 — Worktree Setup
 
-- [ ] Worktree resumed, existing `feat/{FID}` adopted, or session branch adopted in place; `BRANCH` non-empty and not `main`
-- [ ] Runtime row written and asserted (`runtime-resolved`)
-- [ ] Mechanical checks passed (`steps finish` exit 0: `debug-input-{DEBUG_ATTEMPT}.md`; `debug` `IN_PROGRESS` with `debugAttempt`; steps `debug-start-workflow` and `debug-worktree-setup` recorded, the latter with `debugMode`, `pushMode`)
+- [ ] Worktree ready
+- [ ] Runtime row written and asserted
+- [ ] Mechanical checks passed (`steps finish`)
 
 ---
 
@@ -380,10 +380,10 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 ### 🔒 Gate 3 — Run Tests
 
-- [ ] Tests executed (deepest declared `bkit:gate:*` via `bkit tests run`, exit 0 or 1; `[live=off]` drops the live candidate)
-- [ ] Test results extracted (`TEST_VERDICT`, `TEST_FAILURES`, `TEST_SCOPE`)
-- [ ] Mechanical checks passed (`steps finish` exit 0: `context-tests-local-{DEBUG_ATTEMPT}.md`, `debug-run-tests` row with `verdict`, `attempt`, `scope`, `clamped`)
-- [ ] Empirical fail-then-pass observable when `live` in `TEST_SCOPE` (iteration-1 `TEST_VERDICT` = FAIL → later PASS)
+- [ ] Tests executed (`tests run`)
+- [ ] Test results extracted
+- [ ] Mechanical checks passed (`steps finish`)
+- [ ] Live fail-then-pass observed
 
 ---
 
@@ -452,13 +452,13 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 "{BKIT}" steps gate --file="{STATUS}" --workflow=debug --step=context-fetch
 ```
 
-- [ ] Mechanical checks passed (`steps gate` exit 0: `context-fetch` row with `verdict`, `attempt`, `artifacts`, `contextsConfigured`, `clamped`)
-- [ ] Context-fetch blocks enumerated with ordinal, context and name (`FETCH_BLOCKS`); coverage narrated before fetching (`runtime` / `ci` / `diff` / `e2e` / `web` each `CONFIGURED` or `NOT CONFIGURED`)
-- [ ] Every enumerated block customised and run through `bkit context run-block`, or narrated `NOT RUN` (unknown context, empty body); every outcome narrated `CHECKED` / `SELF-SKIPPED` / neither — no silent block
+- [ ] Mechanical checks passed (`steps gate`)
+- [ ] Context-fetch blocks enumerated and coverage narrated
+- [ ] Context-fetch blocks run and outcomes narrated
 
 <!-- bkit:tracker true start -->
 
-- [ ] Related-issues search attempted (a hit whose comments do not parse skipped and named in `context-related-{DEBUG_ATTEMPT}.md`)
+- [ ] Related-issues search attempted
 
 <!-- bkit:tracker true end -->
 
@@ -486,7 +486,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 ### 🔒 Gate 5 — Failure Reproduce
 
 - [ ] Subagent invoked (`@bkit-debug-failure-reproduce`, no inline work)
-- [ ] Mechanical checks passed (`steps finish` exit 0: `Reproduced` in `YES|NO`, `debug-failure-reproduce` row with `attempt`)
+- [ ] Mechanical checks passed (`steps finish`)
 
 ---
 
@@ -518,9 +518,9 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 ### 🔒 Gate 6 — Failure Diagnose
 
-- [ ] Strategy computed before invocation (`STRATEGY`)
+- [ ] Strategy computed
 - [ ] Subagent invoked (`@bkit-debug-failure-diagnose`, no inline work)
-- [ ] Mechanical checks passed (`steps finish` exit 0: verdict valid, `Mode` in `NORMAL|SOAK`, `strategy` recorded)
+- [ ] Mechanical checks passed (`steps finish`)
 
 ---
 
@@ -542,7 +542,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 - [ ] Subagent invoked (`@bkit-debug-failure-remediate`, no inline work)
 - [ ] Source files modified
-- [ ] Mechanical checks passed (`steps finish` exit 0: fix committed as `fix({FID}): {description}`, HEAD for the next Run Tests / Push)
+- [ ] Mechanical checks passed (`steps finish`)
 
 ---
 
@@ -562,9 +562,9 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 ### 🔒 Gate 8 — Failure Remediate Soak
 
-- [ ] Subagent invoked (`@bkit-debug-failure-soak`, one accumulating context reading prior soak logs, no inline work)
+- [ ] Subagent invoked (`@bkit-debug-failure-soak`, no inline work)
 - [ ] Source files modified
-- [ ] Mechanical checks passed (`steps finish` exit 0: fix committed as `fix({FID}): soak {description}`, row with `soakAttempt`)
+- [ ] Mechanical checks passed (`steps finish`)
 
 ---
 
@@ -587,9 +587,9 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 ### 🔒 Gate 9 — Push Remediation
 
-- [ ] Mechanical checks passed (`steps finish` exit 0: `debug-push-remediation` row)
-- [ ] Step 7 or Step 8 `fix({FID}): {description}` commit pushed as branch HEAD (no intermediate `chore` commit between fix and push; on `dev` the Step 11 close pushes it)
-- [ ] PR title contains `[verbose ci]` (if `PUSH_MODE` = PR)
+- [ ] Mechanical checks passed (`steps finish`)
+- [ ] Fix commit pushed
+- [ ] PR title tagged `[verbose ci]`
 
 ---
 
@@ -618,9 +618,9 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 ### 🔒 Gate 10 — Summary
 
 - [ ] Subagent invoked (`@bkit-debug-summary`, no inline work)
-- [ ] Mechanical checks passed (`steps finish` exit 0)
-- [ ] Summary displayed verbatim before **Failure Path** (if `SUMMARY_VERDICT` = FAIL)
-- [ ] Summary commit pushed to branch (on `dev` the Step 11 close pushes it)
+- [ ] Mechanical checks passed (`steps finish`)
+- [ ] Failing summary displayed
+- [ ] Summary commit pushed
 
 ---
 
@@ -813,27 +813,27 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 "{BKIT}" steps gate --file="{STATUS}" --workflow=debug --step=debug-close-workflow
 ```
 
-- [ ] Mechanical checks passed (`steps gate` exit 0: `debug-close-workflow` row, with `testsLiveSkipped` if no live test, `ciDispatch` on every close)
-- [ ] PR title `[verbose ci]` stripped (if `{PR_OPEN}` = 1)
+- [ ] Mechanical checks passed (`steps gate`)
+- [ ] PR title `[verbose ci]` stripped
 
 <!-- bkit:tracker true start -->
 
-- [ ] Auto-label presence re-read before close-workflow commit (`bkit:auto` pre-commit label read for marker sourcing; skipped when `ISSUE_ID` empty)
+- [ ] Auto-label presence re-read
 
 <!-- bkit:tracker true end -->
 
-- [ ] No-leak Assertion passed (no `[DEBUG-OBSERVE]` lines survive)
-- [ ] Close committed and pushed (`workflows close` committed telemetry on `{BRANCH}`; `branches push --require-ci` exit 0 on a feature branch, `branches push --mode=dev --require-ci` exit 0 on `dev` with `{DEV_SHA}` held)
-- [ ] Live PR probe ran before the close, any base; labels, subject suffix and PR trigger follow it (`PR_OPEN`, recorded `PUSH_MODE`, `TRIGGER_PR`)
-- [ ] PR created or adopted, step `debug-create-pr` recorded with the PR URL and `ciDispatch`, changes pushed (if `TRIGGER_PR` = 1; `PR_URL`, `PR_NUMBER` held)
-- [ ] CI-Dispatch gate ran (`runs dispatch` exit 0, close transport recorded; on `dev` also `runs wait --until=completed` with `conclusion` = `success` and `runs gate --capstone-only` exit 0, then the lock released)
-- [ ] Final return displayed (`debug-summary.md` content verbatim)
+- [ ] No-leak Assertion passed
+- [ ] Close committed and pushed (`branches push`)
+- [ ] Live PR probe ran
+- [ ] PR created or adopted
+- [ ] CI-Dispatch gate ran (`runs dispatch`)
+- [ ] Final return displayed
 
 <!-- bkit:tracker true start -->
 
-- [ ] Marker `bkit [auto route]` present (if label `bkit:auto` present at close time; skipped when `ISSUE_ID` empty)
-- [ ] Issue update attempted (status / state `In Review`, phase label `bkit:debug` unchanged; skipped when `ISSUE_ID` empty)
-- [ ] Kill-switch propagation checked if `PR_NUMBER` set (`bkit:auto` label presence verified on issue; skipped when `ISSUE_ID` empty)
-- [ ] Artifact link list and telemetry report embedded in `Step 11` comment (skipped when `ISSUE_ID` empty)
+- [ ] Marker `bkit [auto route]` present
+- [ ] Issue update attempted
+- [ ] Kill-switch propagation checked
+- [ ] Artifact link list and telemetry report posted
 
 <!-- bkit:tracker true end -->

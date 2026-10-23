@@ -187,13 +187,13 @@ description: "Ship Feature — Autonomous merge and archive"
 "{BKIT}" steps gate --workflow=ship --step=ship-start-workflow --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --issue="{ISSUE_ID}" --placeholder=OWNER_REPO={OWNER_REPO} --placeholder=BRANCH={BRANCH} --placeholder=RUNTIME_WORKTREES={RUNTIME_WORKTREES}
 ```
 
-- [ ] Mechanical checks passed (`steps gate` exit 0: placeholders held, FID shape, lock held)
-- [ ] Issue resolved (`ISSUE_ID` non-empty, the no-issue warning emitted, or no tracker wired)
-- [ ] On `SHIP_BRANCH` (not `dev|main`), worktree created / resumed or adopted (no rebase — Path A) before any tracker write; run opened in the worktree (`workflow-started`, `ship-start-workflow`, `runtime-resolved`)
-- [ ] Outbox created (`{OUTBOX}`)
+- [ ] Mechanical checks passed (`steps gate`)
+- [ ] Issue resolved
+- [ ] Worktree ready and run opened
+- [ ] Outbox created
 
 
-- [ ] Issue update attempted (phase label `bkit:ship`, status / state `In Progress`; skipped when `ISSUE_ID` empty)
+- [ ] Issue update attempted
 
 
 ---
@@ -254,10 +254,10 @@ description: "Ship Feature — Autonomous merge and archive"
 "{BKIT}" steps gate --file="{STATUS}" --workflow=ship --step=ship-worktree-setup --artifact="docs/plans/{YYYYMM}/logs/{FID}/ship-input-{RUN}.md"
 ```
 
-- [ ] Mechanical checks passed (`steps gate` exit 0: `ship-input-{RUN}.md`, step `ship-worktree-setup` recorded; `steps finish` exit 0: `ship-regression-guard`)
-- [ ] Naming warning emitted when `SHIP_BRANCH` does not contain `FID` and `ISSUE_ID` is empty or `SHIP_BRANCH` does not contain it
-- [ ] PR number non-empty (`PR_NUMBER`); `PR_BASE` = dev (opened by ship, `openedPr` row recorded, CI awaited — when no PR existed)
-- [ ] Entry head and mergeable read (`ENTRY_HEAD`, `MERGEABLE`); no PR CI failures confirmed
+- [ ] Mechanical checks passed (`steps gate`, `steps finish`)
+- [ ] Naming warning emitted
+- [ ] PR found or opened
+- [ ] Entry head and mergeable read, PR CI checked
 
 ---
 
@@ -278,7 +278,7 @@ description: "Ship Feature — Autonomous merge and archive"
 "{BKIT}" steps gate --workflow=ship --step=ship-regression-guard --placeholder=BASE_PATH={BASE_PATH}
 ```
 
-- [ ] Ancestor verdict determined after fetching `origin/dev` (`BASE_PATH` in `A|B`)
+- [ ] Ancestor verdict determined
 
 ---
 
@@ -312,10 +312,11 @@ description: "Ship Feature — Autonomous merge and archive"
 
 ### 🔒 Gate 4 — Integrate
 
-- [ ] Path classified (B1 mergeable / B2 conflicting)
-- [ ] B1: `bkit prs update-branch --only-if-required` attempted (`updated` = false when `dev` requires no status checks)
-- [ ] B2: subagent invoked (`@bkit-ship-conflict-resolve`, no inline work); `steps finish` exit 0 (verdict in `PASS|FAIL`, step `ship-conflict-resolve` recorded)
-- [ ] B2: pushed to `{SHIP_BRANCH}` via `--force-with-lease` (ONLY step that force-pushes the branch)
+- [ ] Path classified
+- [ ] Branch update attempted (`prs update-branch`)
+- [ ] Subagent invoked (`@bkit-ship-conflict-resolve`, no inline work)
+- [ ] Mechanical checks passed (`steps finish`)
+- [ ] Resolved branch pushed
 
 ---
 
@@ -351,10 +352,9 @@ description: "Ship Feature — Autonomous merge and archive"
 
 ### 🔒 Gate 5 — Deferred Sweep
 
-- [ ] Worktree fast-forwarded to the PR head (`origin/{SHIP_BRANCH}`)
-- [ ] Deferred sweep run once per ship (no second `ship-deferred-sweep` step row)
+- [ ] Worktree fast-forwarded
 - [ ] Subagent invoked (`@bkit-ship-deferred-sweep`, no inline work)
-- [ ] Mechanical checks passed (`steps finish` exit 0: verdict in `PASS|FAIL`, failures agree)
+- [ ] Mechanical checks passed (`steps finish`)
 
 ---
 
@@ -384,11 +384,10 @@ description: "Ship Feature — Autonomous merge and archive"
 
 ### 🔒 Gate 6 — Update Docs & Summary
 
-- [ ] Plans canonical at `docs/plans/{YYYYMM}/`
-- [ ] Subagents invoked in the worktree (`@bkit-ship-update-docs`, `@bkit-ship-summary`, `{WORKTREE_PATH}`, no inline work)
-- [ ] Ledger row appended in the worktree, mechanical `roadmap-status` board re-rendered after the subagents (`SHIPPED`, `bkit roadmap feature --strict` exit 0)
-- [ ] Mechanical checks passed (`steps finish` exit 0 twice: `ship-update-docs.md`, `ship-summary.md`, steps `ship-update-docs`, `ship-summary` recorded)
-- [ ] Summary displayed verbatim before **Failure Path** (if `SUMMARY_VERDICT` = FAIL)
+- [ ] Subagents invoked (`@bkit-ship-update-docs`, `@bkit-ship-summary`, no inline work)
+- [ ] Ledger row appended and roadmap board re-rendered
+- [ ] Mechanical checks passed (`steps finish`)
+- [ ] Failing summary displayed
 
 ---
 
@@ -407,9 +406,9 @@ description: "Ship Feature — Autonomous merge and archive"
 
 ### 🔒 Gate 7 — Prune Skills
 
-- [ ] Feature-specific skills pruned, or the skip / failed uninstalls narrated (`skipped`, `failed`)
-- [ ] Logs at `docs/plans/{YYYYMM}/logs/{FID}/` retained for manual cleanup
-- [ ] Mechanical checks passed (`steps finish` exit 0)
+- [ ] Feature-specific skills pruned, warnings narrated
+- [ ] Logs retained
+- [ ] Mechanical checks passed (`steps finish`)
 
 ---
 
@@ -430,9 +429,9 @@ description: "Ship Feature — Autonomous merge and archive"
 
 ### 🔒 Gate 8 — Commit + Push Bookkeeping
 
-- [ ] Mechanical checks passed (`steps finish` exit 0: step `ship-bookkeeping-push` recorded before the commit, `parentSha` = `CODE_HEAD`)
-- [ ] Single path-scoped `[skip ci]` commit via `bkit ledgers commit` (`--scope=pr`)
-- [ ] Branch pushed without force, only when the commit landed (`{SHIP_BRANCH}`)
+- [ ] Mechanical checks passed (`steps finish`)
+- [ ] Bookkeeping committed (`ledgers commit`)
+- [ ] Branch pushed
 
 ---
 
@@ -450,8 +449,8 @@ description: "Ship Feature — Autonomous merge and archive"
 "{BKIT}" steps gate --workflow=ship --step=ship-bookkeeping-push --placeholder=VALIDATED_HEAD={VALIDATED_HEAD}
 ```
 
-- [ ] Validated head resolved: `VALIDATED_HEAD` = `CODE_HEAD` while the PR head adds bookkeeping only and `dev` requires no status checks; **Else** → the PR head
-- [ ] CI awaited only on code movement or `gate-refusal` re-entry; the duplicate-dispatch probe ran before any dispatch (row `ship-revalidate-dispatch` with `probe`, `reason`, `dispatched`); CI completed at the validated head (`runs revalidate` exit 0)
+- [ ] Validated head resolved
+- [ ] CI re-validated (`runs revalidate`)
 
 ---
 
@@ -498,10 +497,10 @@ description: "Ship Feature — Autonomous merge and archive"
 
 ### 🔒 Gate 10 — Merge Gate + Merge PR
 
-- [ ] Gate asserted at the current head (`runs gate --pr --validated`, exit 0; pre-merge snapshot written to the outbox; no skip token in the PR title)
-- [ ] Re-entry counter derived from `ship-revalidate-dispatch` rows since `workflow-started`, bounded by `MAX_REVALIDATE_ATTEMPT` (`bkit counters rows`)
-- [ ] PR merge attempted with `--match-head` (server refuses on head drift); state read back (`prs merge` exit 0 or 7)
-- [ ] Mechanical checks passed (`steps finish` exit 0: step `ship-merge-pr` recorded with `verdict`, `failures`, `attempt`)
+- [ ] Merge gate asserted (`runs gate`)
+- [ ] Re-entry counter derived (`counters rows`)
+- [ ] PR merge attempted (`prs merge`)
+- [ ] Mechanical checks passed (`steps finish`)
 
 ---
 
@@ -521,7 +520,7 @@ description: "Ship Feature — Autonomous merge and archive"
 ### 🔒 Gate 11 — Failure Diagnose
 
 - [ ] Subagent invoked (`@bkit-debug-failure-diagnose`, no inline work)
-- [ ] Mechanical checks passed (`steps finish` exit 0: verdict valid, no PENDING placeholders, step `ship-failure-diagnose` recorded with `attempt`)
+- [ ] Mechanical checks passed (`steps finish`)
 
 ---
 
@@ -547,7 +546,7 @@ description: "Ship Feature — Autonomous merge and archive"
 ### 🔒 Gate 12 — Failure Remediate
 
 - [ ] Subagent invoked (`@bkit-debug-failure-remediate`, no inline work)
-- [ ] Mechanical checks passed (`steps finish` exit 0: verdict valid, step `ship-failure-remediate` recorded with `attempt`, `strategy`)
+- [ ] Mechanical checks passed (`steps finish`)
 
 ---
 
@@ -563,8 +562,8 @@ description: "Ship Feature — Autonomous merge and archive"
 
 ### 🔒 Gate 13 — Update Local Dev
 
-- [ ] Local `dev` fast-forwarded to `origin/dev`, or its local-only commits logged (`branches sync-dev` exit 0)
-- [ ] Mechanical checks passed (`steps finish` exit 0: step `ship-switch-to-dev` recorded)
+- [ ] Local `dev` synced (`branches sync-dev`)
+- [ ] Mechanical checks passed (`steps finish`)
 
 ---
 
@@ -611,14 +610,14 @@ description: "Ship Feature — Autonomous merge and archive"
 
 **If** `CLOSE_VIA` = close-pr-open → drop `--ref`, gate `--file="{STATUS}"`.
 
-- [ ] Squash-merge CI capstone green (`runs gate --squash-of --capstone-only` exit 0 at `SQUASH_SHA`; row `ship-merge-ci` with `verdict`, `reason`)
-- [ ] Close landed (`workflows close --flush` exit 0: `ship` `DONE`, close telemetry committed, single path-scoped `[skip ci]` close commit pushed to `dev` or published through `ship-close/{FID}`, lock released, throwaway checkout removed; a close that did not land keeps the lock and goes to the **Failure Path**)
-- [ ] Worktree and `{SHIP_BRANCH}` removed, or kept with a reason; cwd = `{REPO_ROOT}` (`worktree.removed`, `worktree.branchDeleted`, `reason`, `branchBlockedBy`)
-- [ ] Mechanical checks passed (`steps gate` exit 0: step `ship-close-workflow` recorded on `origin/dev`)
-- [ ] Logs retained at `docs/plans/{YYYYMM}/logs/{FID}/` on `dev` for manual cleanup
-- [ ] Final return displayed (`{OUTBOX}/ship-summary.md` content verbatim, copied before the close)
+- [ ] Squash-merge CI capstone green (`runs gate`)
+- [ ] Close landed (`workflows close`)
+- [ ] Worktree removed and feature branch deleted, back in the repo root
+- [ ] Mechanical checks passed (`steps gate`)
+- [ ] Logs retained
+- [ ] Final return displayed
 
 
-- [ ] Issue update attempted (phase label `bkit:merged`, status / state `In Review`; issue left open for human close; skipped when `ISSUE_ID` empty)
-- [ ] Artifact link list and telemetry report embedded in `Step 14` comment (skipped when `ISSUE_ID` empty)
+- [ ] Issue update attempted
+- [ ] Artifact link list and telemetry report posted
 

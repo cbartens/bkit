@@ -151,13 +151,13 @@ description: "Plan Feature — Autonomous plan generation"
 "{BKIT}" steps gate --workflow=plan --step=plan-start-workflow --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --issue="{ISSUE_ID}" --placeholder=OWNER_REPO={OWNER_REPO} --placeholder=BRANCH={BRANCH} --placeholder=REPO_ROOT={REPO_ROOT}
 ```
 
-- [ ] Mechanical checks passed (`steps gate` exit 0: placeholders held, FID shape, lock held)
-- [ ] Issue resolved (`ISSUE_ID` non-empty, the no-issue warning emitted, or no tracker wired)
-- [ ] Parent FID extraction attempted (`PARENT_FID`, from issue description, else `fids design`)
-- [ ] Audit report paths extracted (`AUDIT_PATHS`, from issue description and session prompt)
+- [ ] Mechanical checks passed (`steps gate`)
+- [ ] Issue resolved
+- [ ] Parent FID extraction attempted
+- [ ] Audit report paths extracted
 
 
-- [ ] Issue update attempted (phase label `bkit:plan`, status / state `In Progress`; skipped when `ISSUE_ID` empty)
+- [ ] Issue update attempted
 
 
 ---
@@ -203,9 +203,9 @@ description: "Plan Feature — Autonomous plan generation"
 
 ### 🔒 Gate 2 — Worktree Setup
 
-- [ ] Worktree ready, branch and run held (`WORKTREE_PATH`, `BRANCH`, `RUN`)
-- [ ] Parent design and audit reports appended (if present)
-- [ ] Mechanical checks passed (`steps finish` exit 0: `plan-input-{RUN}.md`, steps `plan-start-workflow` and `plan-worktree-setup` recorded)
+- [ ] Worktree ready
+- [ ] Parent design and audit reports appended
+- [ ] Mechanical checks passed (`steps finish`)
 
 ---
 
@@ -223,7 +223,7 @@ description: "Plan Feature — Autonomous plan generation"
 ### 🔒 Gate 3 — Generate Plan
 
 - [ ] Subagent invoked (`@bkit-plan-generate`, no inline work)
-- [ ] Mechanical checks passed (`steps finish` exit 0)
+- [ ] Mechanical checks passed (`steps finish`)
 
 ---
 
@@ -259,10 +259,10 @@ description: "Plan Feature — Autonomous plan generation"
 
 ### 🔒 Gate 4 — Fetch Context
 
-- [ ] Mechanical checks passed (`steps finish` exit 0: `plan-draft-check.md`, `related-deferrals.md`, `related-failures.md`, `related-issues.md` when a tracker is connected; step `plan-fetch-context` recorded with `clamped`)
+- [ ] Mechanical checks passed (`steps finish`)
 
 
-- [ ] Related-issues search attempted (or `None` / `Search unavailable`; a hit whose comments do not parse skipped and named in `related-issues.md`)
+- [ ] Related-issues search attempted
 
 
 ---
@@ -290,7 +290,7 @@ description: "Plan Feature — Autonomous plan generation"
 ### 🔒 Gate 5 — Review Plan
 
 - [ ] Subagents invoked (`@bkit-plan-review-1`, `@bkit-plan-review-2`, `@bkit-plan-review-3`, no inline work)
-- [ ] Mechanical checks passed (`steps finish` exit 0: three verdicts and failures valid, step `plan-review` recorded with the worst verdict and the summed failures)
+- [ ] Mechanical checks passed (`steps finish`)
 
 ---
 
@@ -308,7 +308,7 @@ description: "Plan Feature — Autonomous plan generation"
 ### 🔒 Gate 6 — Apply Review
 
 - [ ] Subagent invoked (`@bkit-plan-update`, no inline work)
-- [ ] Mechanical checks passed (`steps finish` exit 0)
+- [ ] Mechanical checks passed (`steps finish`)
 
 ---
 
@@ -331,7 +331,7 @@ description: "Plan Feature — Autonomous plan generation"
 ### 🔒 Gate 7 — Scope Check
 
 - [ ] Subagents invoked (`@bkit-plan-scope-check-1`, `@bkit-plan-scope-check-2`, no inline work)
-- [ ] Mechanical checks passed (`steps finish` exit 0)
+- [ ] Mechanical checks passed (`steps finish`)
 
 ---
 
@@ -349,8 +349,8 @@ description: "Plan Feature — Autonomous plan generation"
 ### 🔒 Gate 8 — Apply Scope
 
 - [ ] Subagent invoked (`@bkit-plan-update`, no inline work)
-- [ ] Scope expansions in `docs/deferrals.jsonl` (if any)
-- [ ] Mechanical checks passed (`steps finish` exit 0)
+- [ ] Scope expansions deferred
+- [ ] Mechanical checks passed (`steps finish`)
 
 ---
 
@@ -390,12 +390,12 @@ description: "Plan Feature — Autonomous plan generation"
 
 ### 🔒 Gate 9 — Complexity Split
 
-- [ ] Plan counted, every `Test first` line on a task bullet (`tests plan-check` exit 0, no inline counting)
-- [ ] Count recorded (`steps finish` exit 0: `COMPLEXITY_VERDICT` in `SINGLE|SPLIT`)
-- [ ] Subagent invoked (`@bkit-plan-complexity-split`, no inline work, if `SPLIT`)
-- [ ] Children written (`plan-v4-1.md` ... `plan-v4-N.md`, non-empty, if `SPLIT`)
-- [ ] Children within the caps (`tests plan-check --children` exit 0, if `SPLIT`)
-- [ ] Mechanical checks passed (`steps finish` exit 0)
+- [ ] Plan counted (`tests plan-check`, no inline counting)
+- [ ] Count recorded (`steps finish`)
+- [ ] Subagent invoked (`@bkit-plan-complexity-split`, no inline work)
+- [ ] Children written
+- [ ] Children checked (`tests plan-check`)
+- [ ] Mechanical checks passed (`steps finish`)
 
 ---
 
@@ -429,12 +429,12 @@ description: "Plan Feature — Autonomous plan generation"
 
 ### 🔒 Gate 10 — Summary
 
-- [ ] Plan final resolved (`PLAN_FINAL` = highest `plan-v*.md`, excluding child `plan-v4-N.md`)
-- [ ] Ledger rows on disk (`ledgers check` exit 0)
+- [ ] Final plan resolved
+- [ ] Ledger rows checked (`ledgers check`)
 - [ ] Subagent invoked (`@bkit-plan-summary`, no inline work)
-- [ ] Mechanical checks passed (`steps finish` exit 0)
-- [ ] Summary displayed verbatim before **Failure Path** (if `SUMMARY_VERDICT` = FAIL)
-- [ ] Summary commit pushed to branch
+- [ ] Mechanical checks passed (`steps finish`)
+- [ ] Failing summary displayed
+- [ ] Summary commit pushed
 
 ---
 
@@ -488,12 +488,12 @@ description: "Plan Feature — Autonomous plan generation"
 "{BKIT}" steps gate --file="{REPO_ROOT}/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl" --ref=origin/dev --workflow=plan --step=plan-close-workflow
 ```
 
-- [ ] Mechanical checks passed (`steps gate` exit 0: step `plan-close-workflow` recorded on `origin/dev`)
-- [ ] Canonical plan promoted and landed (`docs/plans/{YYYYMM}/{FID}-plan.md` and sub-plans on `dev`, close telemetry committed; `branches land` exit 0: squash staged the `{BRANCH}` copies, body scan clean, transport cross-check passed, `close-transport` row written only when the run's checkout is the branch (`RUNTIME_DEVPUSHES=false`), otherwise logged — the main checkout is never written to, lock released)
-- [ ] Worktree removed and feature branch deleted (workflow-created worktree only; branch kept when another worktree holds it, `branchBlockedBy`)
-- [ ] Final return displayed (`plan-summary.md` content verbatim)
+- [ ] Mechanical checks passed (`steps gate`)
+- [ ] Canonical plan promoted and landed (`branches land`)
+- [ ] Worktree removed and feature branch deleted
+- [ ] Final return displayed
 
 
-- [ ] Issue update attempted (status / state `In Review`, phase label `bkit:plan` unchanged; skipped when `ISSUE_ID` empty)
-- [ ] Artifact link list and telemetry report embedded in `Step 11` comment (skipped when `ISSUE_ID` empty)
+- [ ] Issue update attempted
+- [ ] Artifact link list and telemetry report posted
 

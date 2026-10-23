@@ -710,7 +710,7 @@ describe("issue-less runs", () => {
     },
   );
 
-  it.each(PHASES)("%s: tracker gate items read skipped when ISSUE_ID empty", (name) => {
+  it.each(PHASES)("%s: tracker gate items name the attempt, never its skip rule", (name) => {
     const items = workflow(name)
       .split("\n")
       .filter((l) =>
@@ -719,12 +719,11 @@ describe("issue-less runs", () => {
         ),
       );
     expect(items.length, name).toBeGreaterThan(0);
-    for (const item of items) expect(item, name).toContain("skipped when `ISSUE_ID` empty");
+    for (const item of items) expect(item, name).not.toContain("skipped when");
     const resolved = workflow(name)
       .split("\n")
       .filter((l) => l.startsWith("- [ ] Issue resolved"));
     expect(resolved, name).toHaveLength(1);
-    expect(resolved[0]).toContain("no-issue warning emitted");
   });
 
   it.each(PHASES)("%s: every Failure Path comment post sits behind the ISSUE_ID guard", (name) => {
