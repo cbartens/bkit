@@ -44,7 +44,7 @@ cbartens/bkit (this repo)
 │   │   ├── launch.ts            # `bkit cursor` / `bkit opencode` launcher verbs — merges .bkit/.env over process.env and exec's the app binary directly (`open -a` routes via launchd, which DROPS the env — #279/#280)
 │   │   ├── comply.ts            # Compliance grader (#234 WS-2) — no-mirror-edit + skip-ci-not-head rules; emits kind:"compliance" rows; `bkit comply --phase <p>` (fail-open)
 │   │   ├── harvest.ts           # Cross-repo harvest CLI (#234 WS-4, #343) — COPIES consumer .bkit/stats.jsonl (never modified); MOVES .bkit/friction.jsonl into harvest/ at repo root, pruning drained rows from the consumer; COUNT-ONLY for docs/{deferrals,failures}.jsonl; store keeps every distinct row, deduped by content (never rewritten from the fold); prune gated on byte-for-byte content (NOT identity — fold collapses colliding rows) after copy→fsync→read-back; store accumulates, never cleared; never commits in any repo; `bkit harvest`
-│   │   ├── analysis.ts          # Analysis CLI (#234 WS-4) — counts/rates/elapsed, #183 size↔outcome regression, dispatch-size threshold, counterSource trust labelling, per-rule compliance rate over kind:"compliance" rows; `bkit analysis`
+│   │   ├── analysis.ts          # Analysis CLI (#234 WS-4) — counts/rates/elapsed, #183 size↔outcome regression, dispatch-size threshold, counter.source trust labelling, per-rule compliance rate over kind:"compliance" rows; `bkit analysis`
 │   │   └── workflow/ ci/ setup/ # `bkit <noun> <verb>` workflow commands
 │   ├── install/                 # what gets written into a consumer repo, and how
 │   │   ├── modules/index.ts     # Phase 2 — module dispatcher (MODULE_REGISTRY)
@@ -65,8 +65,9 @@ cbartens/bkit (this repo)
 │   │   └── after/               # Phase 3 — index.ts runs one file per group of findings (auth, github,
 │   │                            #   vercel, ci-yml, tools, managed); checklist formatter
 │   ├── ledgers/                 # JSONL ledger codecs
+│   │   ├── migrate.ts           # Install / upgrade rewrite of ledger rows without `schema` into the current shape via `normalize`; `isSchemaLedger` keeps ledgers out of canonicalHashes
 │   │   ├── status.ts            # status.jsonl workflow-log contract + fold reducer + invariant validator (the `bkit status` verb lives in commands/install/doctor.ts)
-│   │   └── telemetry.ts         # Unified JSONL telemetry codec — TelemetryEvent union, parse/fold/foldFrom/validate/appendLine (#234 WS-1)
+│   │   └── telemetry.ts         # Unified JSONL telemetry codec — TelemetryEvent union, normalize/parse/fold/foldFrom/validate/totalsProblem/appendLine (#234 WS-1)
 │   ├── shared/                  # helpers every folder uses
 │   │   ├── json.ts              # `parseJson` / `readJsonFile`: the only place a failed JSON parse is caught; `audits/repo/json-parse-owner.test.ts` fails on a `JSON.parse` inside a `try` anywhere else
 │   │   ├── package-json.ts      # `readPackageJson` (a checkout's manifest, or why it could not be read); `readInstallingVersion` is the only reader of the version of the bkit doing the install and throws when bkit's own `package.json` is missing, not a JSON object, or has no string `version`
@@ -189,7 +190,7 @@ Deterministic, advisory-only grader on `git diff parentSha..HEAD` → `kind:"com
 
 `docs/knowledge.jsonl` (`kind:"knowledge"`) + `docs/decisions.jsonl` (`kind:"decision"`) = NDJSON ledgers. Consumer-inherited (`.gitattributes` managed block, `merge=union`).
 
-**Data topology:** shared `TelemetryEnvelope` (ts, kind, repo, bkitVersion, workflow, step, key, references[]) + kind payloads (`KnowledgePayload` / `DecisionPayload`) in `.bkit/core/engine/ledgers/telemetry.ts`.
+**Data topology:** shared `TelemetryEnvelope` top section (schema: 2, ts, kind, key, repo, bkit.version, by.{workflow, step, subagent, model}, references[]) + kind payloads (`KnowledgePayload` / `DecisionPayload`) in `.bkit/core/engine/ledgers/telemetry.ts`; readers `normalize()` rows written without `schema`, and `bkit install` / `bkit upgrade` rewrite them once (`.bkit/core/engine/ledgers/migrate.ts`).
 
 `references[]` = single cross-entry pointer for EVERY kind (envelope, not payload) — feature ids, tracker ids, PRs, SHAs, paths, sibling `ts`, `KN-N` / `DE-N` ids. No separate identity field. `ts` = id; `references[]` = pointers. Contract: `.bkit/jsonl.md` § Key & References. Cite slug `key`, never bare number.
 

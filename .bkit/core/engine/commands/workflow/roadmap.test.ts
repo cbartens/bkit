@@ -563,10 +563,20 @@ describe("bkit roadmap feature", () => {
     expect(res.code).toBe(0);
     expect(res.json).toMatchObject({ appended: true, written: true });
     expect(rows(r)).toEqual([res.json.row]);
+    expect(Object.keys(res.json.row).slice(0, 7)).toEqual([
+      "schema",
+      "ts",
+      "kind",
+      "key",
+      "repo",
+      "bkit",
+      "by",
+    ]);
     expect(res.json.row).toMatchObject({
+      schema: 2,
       kind: "feature",
-      workflow: "build",
-      step: "build-close-workflow",
+      bkit: { version: "unknown" },
+      by: { workflow: "build", step: "build-close-workflow" },
       key: "12-csv",
       category: "agentic",
       description: "Build closed for 12-csv",
@@ -578,7 +588,10 @@ describe("bkit roadmap feature", () => {
   it("takes --status and --step, and re-appends a printed row verbatim with --row", async () => {
     const a = root();
     const first = await feat(a, "--workflow=ship", "--fid=7-x", "--step=ship-update-docs");
-    expect(first.json.row).toMatchObject({ status: "SHIPPED", step: "ship-update-docs" });
+    expect(first.json.row).toMatchObject({
+      status: "SHIPPED",
+      by: { workflow: "ship", step: "ship-update-docs" },
+    });
     const b = root();
     const copy = await feat(b, `--row=${JSON.stringify(first.json.row)}`);
     expect(copy.code).toBe(0);

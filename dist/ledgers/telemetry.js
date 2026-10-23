@@ -13,8 +13,8 @@
 //   (b) `validate` REJECTS unknown `kind` before write. No reject path in status.ts.
 //   (c) ms `ts` via now*1000|floor, NOT ISO `at`.
 //
-// Version provenance: every row records the emitting `bkitVersion`. Readers ingest
-// ALL well-formed rows (no version gating) and report row counts per `bkitVersion`
+// Version provenance: every row records the emitting `bkit.version`. Readers ingest
+// ALL well-formed rows (no version gating) and report row counts per `bkit.version`
 // so an unexpected version surfaces for triage.
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -99,6 +99,11 @@ export function resolveRepoSlug(cwd) {
         return "";
     return parseRemoteUrlToSlug(res.stdout);
 }
+// ---------------------------------------------------------------------------
+// Shared envelope (A2-mandatory fields on EVERY row, every kind)
+// ---------------------------------------------------------------------------
+/** Row format version. Rows written without `schema` are read through {@link normalize}. */
+export const SCHEMA = 2;
 export const VALID_KINDS = new Set([
     "compliance",
     "outcome",
@@ -171,17 +176,20 @@ export const DEFERRAL_WRITERS = new Set([
 /** A writer list that admits every name (`.bkit/jsonl.md` § Ledgers & Writers: "any agent"). */
 export const ANY_WRITER = "any";
 /**
- * The ledgers `bkit ledgers append` lands rows in, one kind each. `feature` rows
- * go through `bkit roadmap feature` (it re-renders the board); `.bkit/stats.jsonl`
- * rows are written by the engine and the chat-stats script.
+ * The ledgers `bkit ledgers append` lands rows in, and the kinds each takes.
+ * `feature` rows go through `bkit roadmap feature` (it re-renders the board);
+ * `chat` / `run` rows are written by the chat-stats script.
  */
 export const APPEND_LEDGERS = {
-    decisions: { file: "docs/decisions.jsonl", kind: "decision" },
-    deferrals: { file: "docs/deferrals.jsonl", kind: "deferral" },
-    failures: { file: "docs/failures.jsonl", kind: "failure" },
-    knowledge: { file: "docs/knowledge.jsonl", kind: "knowledge" },
-    friction: { file: ".bkit/friction.jsonl", kind: "friction" },
+    decisions: { file: "docs/decisions.jsonl", kinds: ["decision"] },
+    deferrals: { file: "docs/deferrals.jsonl", kinds: ["deferral"] },
+    failures: { file: "docs/failures.jsonl", kinds: ["failure"] },
+    knowledge: { file: "docs/knowledge.jsonl", kinds: ["knowledge"] },
+    friction: { file: ".bkit/friction.jsonl", kinds: ["friction"] },
+    stats: { file: ".bkit/stats.jsonl", kinds: ["compliance", "counter", "outcome"] },
 };
+/** The workflows whose close writes `.bkit/stats.jsonl` rows (`bkit workflows close`, `bkit comply`). */
+const CLOSING_WORKFLOWS = new Set(["design", "plan", "build", "debug", "ship"]);
 /**
  * `.bkit/jsonl.md` § Ledgers & Writers as code, for the kinds in
  * {@link APPEND_LEDGERS}. EXHAUSTIVE: a name absent from a set does not write the
@@ -212,35 +220,41 @@ export const KIND_WRITERS = {
         subagents: new Set(),
         orchestrators: new Set(["design", "plan", "build", "debug", "ship"]),
     },
+    compliance: { subagents: new Set(), orchestrators: CLOSING_WORKFLOWS },
+    counter: { subagents: new Set(), orchestrators: CLOSING_WORKFLOWS },
+    outcome: { subagents: new Set(), orchestrators: CLOSING_WORKFLOWS },
 };
 const writerList = (w) => w === ANY_WRITER ? "any" : w.size === 0 ? "none" : [...w].join(", ");
+/** A row's `by` block, or an empty one when it has none. */
+const byOf = (row) => row["by"] !== null && typeof row["by"] === "object" ? row["by"] : {};
 /**
  * Why `row` may not be written by its author, or undefined when it may. The author
- * is `subagent` when set (with its `model`), else the orchestrator in `workflow`
- * (`.bkit/jsonl.md` § Who Wrote It).
+ * is `by.subagent` when set (with its `by.model`), else the orchestrator in
+ * `by.workflow` (`.bkit/jsonl.md` § Who Wrote It).
  */
 export function writerProblem(row) {
     const kind = row["kind"];
     const writers = KIND_WRITERS[kind];
     if (writers === undefined)
         return `${String(kind)} rows have no append writers`;
-    const subagent = row["subagent"];
+    const by = byOf(row);
+    const subagent = by["subagent"];
     if (subagent !== undefined) {
         if (typeof subagent !== "string" || subagent === "") {
-            return "subagent must be a non-empty string";
+            return "by.subagent must be a non-empty string";
         }
-        if (typeof row["model"] !== "string" || row["model"] === "") {
-            return `subagent ${subagent} row missing model (its prompt's frontmatter model:)`;
+        if (typeof by["model"] !== "string" || by["model"] === "") {
+            return `subagent ${subagent} row missing by.model (its prompt's frontmatter model:)`;
         }
         if (writers.subagents === ANY_WRITER || writers.subagents.has(subagent))
             return undefined;
         return `subagent ${subagent} does not write ${kind} rows (subagents: ${writerList(writers.subagents)})`;
     }
-    if (row["model"] !== undefined)
-        return "model is set only on subagent rows";
+    if (by["model"] !== undefined)
+        return "by.model is set only on subagent rows";
     if (writers.orchestrators === ANY_WRITER)
         return undefined;
-    const workflow = row["workflow"];
+    const workflow = by["workflow"];
     if (typeof workflow === "string" && writers.orchestrators.has(workflow))
         return undefined;
     return `the ${typeof workflow === "string" ? workflow : "(no workflow)"} orchestrator does not write ${kind} rows (orchestrators: ${writerList(writers.orchestrators)})`;
@@ -257,6 +271,7 @@ export function mintTs(after) {
         ts = after + 1;
     return ts % 1000 === 0 ? ts + 1 : ts;
 }
+export const OUTCOME_ENDINGS = new Set(["done", "close-failed"]);
 export const RUN_ENDINGS = new Set([
     "done",
     "close-failed",
@@ -269,18 +284,20 @@ export const RUN_ENDINGS = new Set([
 // Mirrors ledgers/status.ts's tuple dedupe approach.
 // ---------------------------------------------------------------------------
 export function identity(event) {
+    const workflow = event.by?.workflow;
     switch (event.kind) {
         case "compliance":
-            return `compliance ${event.repo} ${event.workflow} ${event.parentSha} ${event.rule}`;
+            return `compliance ${event.repo} ${workflow} ${event.run?.parentSha} ${event.rule?.id}`;
         case "outcome": {
-            // One run row per workflow run: keyed by (repo, workflow, parentSha).
-            // A ship row with no parentSha falls back to prNumber (then ts), so it stays
+            // One run row per workflow run: keyed by (repo, workflow, run.parentSha).
+            // A ship row with no parentSha falls back to run.pr (then ts), so it stays
             // uniquely keyed per PR.
-            const anchor = event.parentSha ?? (event.prNumber !== undefined ? `pr${event.prNumber}` : `ts${event.ts}`);
-            return `outcome ${event.repo} ${event.workflow} ${anchor}`;
+            const anchor = event.run?.parentSha ??
+                (event.run?.pr !== undefined ? `pr${event.run.pr}` : `ts${event.ts}`);
+            return `outcome ${event.repo} ${workflow} ${anchor}`;
         }
         case "counter":
-            return `counter ${event.repo} ${event.workflow} ${event.parentSha} ${event.counterName}`;
+            return `counter ${event.repo} ${workflow} ${event.run?.parentSha} ${event.counter?.name}`;
         case "friction":
         case "deferral":
         case "failure":
@@ -289,9 +306,543 @@ export function identity(event) {
         case "feature":
         case "chat":
         case "run":
-            // instinct-loop kinds (+ feature, chat, run): identity = kind + key
+            // keyed kinds: identity = kind + key
             return `${event.kind} ${event.repo} ${event.key ?? event.ts}`;
     }
+}
+const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+/** `o` without its undefined fields, so an absent value stays absent. */
+const defined = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
+const tenthOf = (n) => Math.round(n * 10) / 10;
+/** Fields of a row written without `schema` that the current shape moves or drops, per kind. */
+const MOVED = {
+    compliance: ["rule", "result", "evidence", "phase"],
+    counter: ["counterName", "counterValue", "counterSource", "phase"],
+    outcome: [
+        "phase",
+        "prNumber",
+        "linesAdded",
+        "linesDeleted",
+        "linesChanged",
+        "filesChanged",
+        "taskCount",
+        "durationSeconds",
+        "ciTrySuccess",
+        "correctiveCommits",
+        "reviewIterations",
+        "deferrals",
+        "failures",
+        "frictionAdded",
+        "deferralsAdded",
+        "failuresAdded",
+        "planSource",
+        "coverage",
+        "redTests",
+    ],
+};
+const TOP_MOVED = ["schema", "bkitVersion", "workflow", "step", "subagent", "model", "parentSha"];
+/**
+ * A row in the current shape. A row that carries `schema` is returned as it is; a
+ * row written without one has its top section (`bkitVersion` -> `bkit.version`,
+ * `workflow` / `step` / `subagent` / `model` -> `by.*`) and the stats kinds' run
+ * fields moved into their blocks as far as the row holds them. Fields with no
+ * place in the current shape are dropped, and any kind's `parentSha` moves to
+ * `run.parentSha`. `bkit install` / `bkit upgrade` rewrite old rows through it
+ * (`./migrate.ts`); readers still call it, as a union merge can bring an old line back.
+ */
+export function normalize(raw) {
+    if (!isObj(raw))
+        return {};
+    if (raw["schema"] !== undefined)
+        return raw;
+    const kind = String(raw["kind"]);
+    const moved = new Set([...TOP_MOVED, ...(MOVED[kind] ?? [])]);
+    const rest = Object.fromEntries(Object.entries(raw).filter(([k]) => !moved.has(k)));
+    const { ts, kind: _kind, key, repo, references, ...payload } = rest;
+    const out = defined({
+        schema: SCHEMA,
+        ts,
+        kind: raw["kind"],
+        key,
+        repo,
+        // "none": the chat-stats script found no bkit version for the row.
+        bkit: {
+            version: raw["bkitVersion"] === undefined || raw["bkitVersion"] === "none"
+                ? null
+                : raw["bkitVersion"],
+        },
+        // An old row's null or empty `workflow` / `subagent` / `model` meant "none": left out.
+        by: Object.fromEntries(["workflow", "step", "subagent", "model"]
+            .map((f) => [f, raw[f]])
+            .filter(([, v]) => v !== undefined && v !== null && v !== "")),
+        references,
+    });
+    const num = (f) => typeof raw[f] === "number" ? raw[f] : undefined;
+    switch (kind) {
+        case "compliance":
+            out["run"] = { parentSha: raw["parentSha"] };
+            out["rule"] = defined({ id: raw["rule"], verdict: raw["result"], evidence: raw["evidence"] });
+            break;
+        case "counter":
+            out["run"] = { parentSha: raw["parentSha"] };
+            out["counter"] = {
+                name: raw["counterName"],
+                value: raw["counterValue"],
+                source: raw["counterSource"],
+            };
+            break;
+        case "outcome": {
+            out["run"] = defined({ parentSha: raw["parentSha"], pr: raw["prNumber"] });
+            const seconds = num("durationSeconds");
+            if (seconds !== undefined)
+                out["time"] = { totalMinutes: tenthOf(seconds / 60) };
+            const added = num("linesAdded");
+            const deleted = num("linesDeleted");
+            if (added !== undefined && deleted !== undefined) {
+                out["lines"] = {
+                    total: { added, deleted, changed: added + deleted, files: num("filesChanged") ?? 0 },
+                };
+            }
+            out["ledgers"] = {
+                deferrals: defined({ repo: num("deferrals"), added: num("deferralsAdded") }),
+                failures: defined({ repo: num("failures"), added: num("failuresAdded") }),
+                friction: defined({ added: num("frictionAdded") }),
+            };
+            if (raw["planSource"] === "brief")
+                out["plan"] = { source: "brief" };
+            if (isObj(raw["coverage"]))
+                out["ship"] = { coverage: raw["coverage"] };
+            if (num("redTests") !== undefined)
+                out["build"] = { redTests: num("redTests") };
+            break;
+        }
+        case "chat":
+            return { ...out, ...oldChat(raw) };
+        case "run":
+            return {
+                ...out,
+                by: defined({ workflow: raw["workflow"], step: raw["step"] ?? "scan" }),
+                ...oldRun(raw),
+            };
+    }
+    const run = out["run"] ?? (raw["parentSha"] !== undefined ? { parentSha: raw["parentSha"] } : undefined);
+    return { ...out, ...payload, ...defined({ run }) };
+}
+// The chat-stats script's own kinds, mapped in full: every schema-1 field has a
+// place in the current shape or is dropped. `scripts/stats/bkit-chat-stats.mjs`
+// `normalize` maps them the same way.
+const objOf = (v) => (isObj(v) ? v : {});
+const numOr = (v, or = 0) => typeof v === "number" ? v : or;
+const arrOf = (v) => (Array.isArray(v) ? v : []);
+const TOKENS = ["input", "cacheWrite", "cacheRead", "output", "outputEst", "read"];
+const oldTokens = (t) => Object.fromEntries(TOKENS.map((k) => [k, numOr(objOf(t)[k])]));
+const oldMix = (m) => {
+    if (!isObj(m))
+        return undefined;
+    return {
+        read: numOr(m["read"]),
+        edit: numOr(m["edit"]),
+        grep: numOr(m["grep"]),
+        shellRead: numOr(m["sedCat"]),
+        shellList: numOr(m["findLs"]),
+        tests: numOr(m["tests"]),
+        serena: numOr(m["serena"]),
+    };
+};
+const sumNums = (xs) => xs.reduce((a, x) => a + (typeof x === "number" ? x : 0), 0);
+/** Shell tools by host: the tool a schema-1 chat row's per-chat shell categories move under. */
+const OLD_SHELL_TOOLS = [
+    "Bash",
+    "bash",
+    "Shell",
+    "shell",
+    "shell_command",
+    "local_shell",
+    "exec_command",
+    "run_command",
+    "run_terminal_cmd",
+];
+function oldChat(r) {
+    const byAgent = {};
+    for (const [type, av] of Object.entries(objOf(r["agents"]))) {
+        const a = objOf(av);
+        const peaks = arrOf(a["ctxPeaks"]).filter((p) => typeof p === "number");
+        const n = numOr(a["n"], peaks.length);
+        byAgent[type] = defined({
+            n,
+            errors: numOr(a["errors"]),
+            // Per-instance turns were stored only as a sum: known when the type ran once.
+            instances: peaks.map((p) => ({
+                turns: n === 1 ? numOr(a["turns"], null) : null,
+                ctxPeak: p,
+            })),
+            usage: {
+                turns: numOr(a["turns"]),
+                tokens: oldTokens(a),
+                ctx: { peak: numOr(a["ctxPeakMax"], Math.max(0, ...peaks)) },
+                compactions: numOr(a["compactions"]),
+            },
+            mix: oldMix(a["mix"]),
+        });
+    }
+    const byTool = {};
+    for (const [k, tv] of Object.entries(objOf(r["tools"]))) {
+        const t = objOf(tv);
+        byTool[k] = { calls: numOr(t["calls"]), errors: numOr(t["errors"]) };
+    }
+    const shellTool = OLD_SHELL_TOOLS.find((k) => byTool[k] !== undefined);
+    const bash = objOf(r["bash"]);
+    if (shellTool !== undefined && Object.keys(bash).length > 0)
+        byTool[shellTool]["byCategory"] = { ...bash };
+    const byModel = Object.fromEntries(Object.entries(objOf(r["models"])).map(([k, m]) => [
+        k,
+        { turns: numOr(objOf(m)["turns"]), tokens: oldTokens(m) },
+    ]));
+    const m = objOf(r["main"]);
+    const tokens = objOf(r["tokens"]);
+    const byVerb = objOf(r["bkitCli"]);
+    const agents = Object.values(byAgent).map(objOf);
+    const tools = Object.values(byTool);
+    const start = r["start"];
+    const end = r["end"];
+    return {
+        by: defined({ workflow: r["workflow"] ?? "chat-stats", step: r["step"] ?? "scan" }),
+        bkit: {
+            version: r["bkitVersion"] === undefined || r["bkitVersion"] === "none" ? null : r["bkitVersion"],
+            versionSource: r["bkitVersionSource"] ?? "none",
+            via: arrOf(r["bkitVia"]),
+            workflows: arrOf(r["bkitWorkflows"]),
+            prompts: arrOf(r["bkitKinds"]),
+            cli: { total: sumNums(Object.values(byVerb)), byVerb },
+        },
+        session: {
+            platform: r["platform"] ?? "claude-code",
+            id: r["sessionId"] ?? null,
+            hostVersion: r["hostVersion"] ?? null,
+            entrypoint: r["entrypoint"] ?? null,
+            prompts: numOr(r["userPrompts"]),
+        },
+        time: defined({
+            start: start ?? null,
+            end: end ?? null,
+            totalMinutes: typeof r["minutes"] === "number"
+                ? r["minutes"]
+                : typeof start === "number" && typeof end === "number"
+                    ? tenthOf((end - start) / 60000)
+                    : null,
+            activeMinutes: numOr(r["activeMinutes"], null),
+            spans: arrOf(r["active"]),
+            lastActivity: r["lastActivityAt"],
+        }),
+        issue: {
+            id: r["issue"] ?? null,
+            all: arrOf(r["issues"]),
+            mentioned: arrOf(r["mentioned"]),
+            source: r["issueSource"] ?? "none",
+        },
+        run: { parentShas: arrOf(r["parentShas"]) },
+        effort: objOf(r["effort"]),
+        usage: {
+            total: {
+                turns: numOr(r["turns"]),
+                // Summed from the models, as a fresh scan writes it: the old row's own total
+                // estimated output once over the whole chat, so it can differ from its parts.
+                tokens: Object.keys(byModel).length > 0
+                    ? Object.fromEntries(TOKENS.map((k) => [k, sumNums(Object.values(byModel).map((x) => x.tokens[k]))]))
+                    : oldTokens(tokens),
+                ctx: { start: numOr(tokens["ctxStart"]), peak: numOr(tokens["ctxPeak"]) },
+                compactions: numOr(r["compactions"]),
+            },
+            main: defined({
+                turns: numOr(m["turns"]),
+                tokens: oldTokens(m),
+                ctx: { peak: numOr(m["ctxPeak"]) },
+                compactions: numOr(m["compactions"]),
+                mix: oldMix(m["mix"]),
+            }),
+            byModel,
+        },
+        agents: {
+            total: {
+                n: numOr(r["subagents"], sumNums(agents.map((a) => a["n"]))),
+                errors: sumNums(agents.map((a) => a["errors"])),
+            },
+            byAgent,
+        },
+        tools: {
+            total: {
+                calls: sumNums(tools.map((t) => t["calls"])),
+                errors: sumNums(tools.map((t) => t["errors"])),
+            },
+            byTool,
+            filesRead: numOr(r["filesRead"]),
+        },
+        scan: defined({
+            files: r["sourceFiles"],
+            bytes: r["sourceBytes"],
+            settled: r["settled"],
+            tokensRecorded: r["tokensRecorded"],
+        }),
+    };
+}
+/** A schema-1 run row's plan: its per-task lists, grouped when unsplit. */
+function oldPlan(p) {
+    const n = numOr(p["subPlans"], 1);
+    const tests = arrOf(p["testsPerTask"]);
+    const files = arrOf(p["testFilesPerTask"]);
+    const tasks = numOr(p["tasks"], tests.length);
+    const kb = numOr(p["kb"]);
+    const out = { source: "file", total: { tasks, kb } };
+    out["subPlans"] =
+        n === 1
+            ? [
+                {
+                    kb,
+                    tasks: Array.from({ length: tasks }, (_, i) => ({
+                        tests: numOr(tests[i], null),
+                        testFiles: numOr(files[i], null),
+                    })),
+                },
+            ]
+            : // A split plan's per-task lists were stored flat: which sub-plan each task was in is not known.
+                Array.from({ length: n }, () => ({ kb: null, tasks: null }));
+    if (isObj(p["complexity"]))
+        out["complexity"] = p["complexity"];
+    return out;
+}
+function oldRun(r) {
+    const steps = Object.entries(objOf(r["steps"])).map(([k, v]) => [k, objOf(v)]);
+    const byStep = Object.fromEntries(steps.map(([k, st]) => [
+        k,
+        {
+            n: numOr(st["n"]),
+            totalMinutes: numOr(st["minutes"]),
+            activeMinutes: numOr(st["active"], null),
+        },
+    ]));
+    const parts = steps.map(([, st]) => st);
+    const isBuild = r["workflow"] === "build" ||
+        ["verify", "gapsRemediate", "holistic", "challenge", "redTests"].some((k) => k in r);
+    const ch = isObj(r["challenge"]) ? r["challenge"] : undefined;
+    const f = isObj(ch?.["findings"]) ? ch["findings"] : undefined;
+    const lines = objOf(r["lines"]);
+    const lineParts = ["code", "tests", "docs"].map((k) => objOf(lines[k]));
+    const linesOut = isObj(r["lines"]) && isObj(lines["code"])
+        ? (() => {
+            const added = sumNums(lineParts.map((p) => p["added"]));
+            const deleted = sumNums(lineParts.map((p) => p["deleted"]));
+            return {
+                total: {
+                    added,
+                    deleted,
+                    changed: added + deleted,
+                    files: sumNums(lineParts.map((p) => p["files"])),
+                },
+                code: lines["code"],
+                tests: lines["tests"],
+                docs: lines["docs"],
+                merges: lines["merges"],
+            };
+        })()
+        : r["lines"];
+    return defined({
+        run: {
+            fid: r["fid"] ?? null,
+            issue: r["issue"] ?? null,
+            n: numOr(r["run"], null),
+            parentSha: r["parentSha"] ?? null,
+            parentShas: arrOf(r["parentShas"]),
+        },
+        time: defined({
+            start: r["start"] ?? null,
+            end: r["end"] ?? null,
+            totalMinutes: numOr(r["minutes"], null),
+            activeMinutes: numOr(r["activeMinutes"], null),
+            activeFrom: r["activeFrom"] ?? null,
+            lastActivity: r["lastActivityAt"],
+        }),
+        ending: r["ending"],
+        ci: arrOf(r["closeCi"]).map((cv) => {
+            const c = objOf(cv);
+            return defined({
+                status: c["outcome"] ?? null,
+                reason: c["reason"] ?? undefined,
+                attempts: numOr(c["attempts"], null),
+            });
+        }),
+        steps: {
+            total: {
+                n: sumNums(parts.map((st) => st["n"])),
+                totalMinutes: tenthOf(sumNums(parts.map((st) => st["minutes"]))),
+                activeMinutes: parts.some((st) => typeof st["active"] !== "number")
+                    ? null
+                    : tenthOf(sumNums(parts.map((st) => st["active"]))),
+            },
+            byStep,
+        },
+        lines: linesOut,
+        plan: isObj(r["plan"]) ? oldPlan(r["plan"]) : r["plan"],
+        build: isBuild
+            ? defined({
+                verify: arrOf(r["verify"]),
+                gapsRemediate: arrOf(r["gapsRemediate"]),
+                holistic: r["holistic"] ?? undefined,
+                challenge: ch
+                    ? {
+                        verdict: ch["verdict"] ?? null,
+                        findings: f ? { total: sumNums(Object.values(f)), ...f } : null,
+                    }
+                    : undefined,
+                redTests: numOr(r["redTests"]),
+            })
+            : undefined,
+        scan: defined({ rows: r["sourceRows"], afterEnd: r["afterEnd"], settled: r["settled"] }),
+    });
+}
+/** `normalize` typed for readers: every row a fold or report sees. */
+export const normalizeEvent = (raw) => normalize(raw);
+// ---------------------------------------------------------------------------
+// Totals — every total beside its parts must equal them
+// ---------------------------------------------------------------------------
+const sumOf = (xs) => xs.reduce((a, x) => a + (typeof x === "number" ? x : 0), 0);
+const field = (o, ...pathTo) => pathTo.reduce((v, k) => (isObj(v) ? v[k] : undefined), o);
+const TOKEN_FIELDS = ["input", "cacheWrite", "cacheRead", "output", "outputEst", "read"];
+/**
+ * The first total on `row` that does not equal its parts, or undefined. Only blocks
+ * the row carries are checked. Minute totals are summed from unrounded values, so
+ * each part may be off by its rounding: +-0.1 per part.
+ */
+export function totalsProblem(row) {
+    const eq = (what, total, parts, tol = 0) => typeof total === "number" && Math.abs(total - parts) <= tol + 1e-9
+        ? undefined
+        : `${what} is ${String(total)}, its parts sum to ${tenthOf(parts)}`;
+    const checks = [];
+    const lines = row["lines"];
+    if (isObj(lines) && isObj(lines["total"])) {
+        const t = lines["total"];
+        checks.push(() => eq("lines.total.changed", t["changed"], sumOf([t["added"], t["deleted"]])));
+        if (["code", "tests", "docs"].some((p) => isObj(lines[p]))) {
+            for (const f of ["added", "deleted", "files"]) {
+                checks.push(() => eq(`lines.total.${f}`, t[f], sumOf(["code", "tests", "docs"].map((p) => field(lines, p, f)))));
+            }
+        }
+    }
+    const time = row["time"];
+    if (isObj(time) && typeof time["start"] === "number" && typeof time["end"] === "number") {
+        checks.push(() => eq("time.totalMinutes", time["totalMinutes"], (time["end"] - time["start"]) / 60000, 0.1));
+        const spans = time["spans"];
+        if (row["kind"] === "chat" &&
+            Array.isArray(spans) &&
+            typeof time["activeMinutes"] === "number") {
+            const ms = sumOf(spans.map((s) => (Array.isArray(s) ? Number(s[1]) - Number(s[0]) : 0)));
+            checks.push(() => eq("time.activeMinutes", time["activeMinutes"], ms / 60000, 0.1));
+        }
+    }
+    const steps = row["steps"];
+    if (isObj(steps) && isObj(steps["byStep"]) && isObj(steps["total"])) {
+        const parts = Object.values(steps["byStep"]);
+        for (const f of ["n", "totalMinutes", "activeMinutes"]) {
+            const total = steps["total"][f];
+            if (total === undefined || total === null)
+                continue;
+            const tol = f === "n" ? 0 : 0.1 * Math.max(1, parts.length);
+            checks.push(() => eq(`steps.total.${f}`, total, sumOf(parts.map((p) => field(p, f))), tol));
+        }
+    }
+    const plan = row["plan"];
+    // Sub-plans with `tasks: null` (never recorded) give no parts to check against.
+    if (isObj(plan) &&
+        isObj(plan["total"]) &&
+        Array.isArray(plan["subPlans"]) &&
+        plan["subPlans"].every((p) => Array.isArray(field(p, "tasks")))) {
+        const subs = plan["subPlans"];
+        const total = plan["total"];
+        checks.push(() => eq("plan.total.tasks", total["tasks"], sumOf(subs.map((p) => field(p, "tasks").length))));
+        checks.push(() => eq("plan.total.kb", total["kb"], sumOf(subs.map((p) => field(p, "kb")))));
+    }
+    const build = row["build"];
+    if (isObj(build)) {
+        const findings = field(build, "challenge", "findings");
+        if (isObj(findings)) {
+            checks.push(() => eq("build.challenge.findings.total", findings["total"], sumOf(["CRITICAL", "HIGH", "MEDIUM", "LOW"].map((s) => findings[s]))));
+        }
+        if (typeof build["redTests"] === "number" && isObj(field(steps, "byStep"))) {
+            checks.push(() => eq("build.redTests", build["redTests"], Number(field(steps, "byStep", "build-task-red", "n") ?? 0)));
+        }
+    }
+    const usage = row["usage"];
+    const agents = row["agents"];
+    const byAgent = isObj(agents) && isObj(agents["byAgent"]) ? Object.values(agents["byAgent"]) : [];
+    if (isObj(usage)) {
+        const blocks = [
+            ["usage.total", usage["total"]],
+            ["usage.main", usage["main"]],
+            ...Object.entries(isObj(usage["byModel"]) ? usage["byModel"] : {}).map(([m, u]) => [`usage.byModel.${m}`, u]),
+            ...Object.entries(isObj(agents) && isObj(agents["byAgent"]) ? agents["byAgent"] : {}).map(([a, v]) => [`agents.byAgent.${a}.usage`, field(v, "usage")]),
+        ];
+        for (const [name, u] of blocks) {
+            const tokens = field(u, "tokens");
+            if (!isObj(tokens) || tokens["read"] === undefined)
+                continue;
+            checks.push(() => eq(`${name}.tokens.read`, tokens["read"], sumOf([tokens["input"], tokens["cacheWrite"], tokens["cacheRead"]])));
+        }
+        const total = usage["total"];
+        const models = isObj(usage["byModel"]) ? Object.values(usage["byModel"]) : [];
+        if (isObj(total) && models.length > 0) {
+            checks.push(() => eq("usage.total.turns", total["turns"], sumOf(models.map((m) => field(m, "turns")))));
+            for (const f of TOKEN_FIELDS) {
+                if (field(total, "tokens", f) === undefined)
+                    continue;
+                checks.push(() => eq(`usage.total.tokens.${f}`, field(total, "tokens", f), sumOf(models.map((m) => field(m, "tokens", f)))));
+            }
+        }
+        if (isObj(total) && total["compactions"] !== undefined) {
+            checks.push(() => eq("usage.total.compactions", total["compactions"], sumOf([
+                field(usage, "main", "compactions"),
+                ...byAgent.map((a) => field(a, "usage", "compactions")),
+            ])));
+        }
+        const peak = field(total, "ctx", "peak");
+        if (typeof peak === "number") {
+            const peaks = [
+                field(usage, "main", "ctx", "peak"),
+                ...byAgent.flatMap((a) => Array.isArray(field(a, "instances"))
+                    ? field(a, "instances").map((i) => field(i, "ctxPeak"))
+                    : []),
+            ].filter((v) => typeof v === "number");
+            if (peaks.length > 0)
+                checks.push(() => eq("usage.total.ctx.peak", peak, Math.max(...peaks)));
+        }
+    }
+    if (isObj(agents) && isObj(agents["total"]) && isObj(agents["byAgent"])) {
+        const total = agents["total"];
+        for (const f of ["n", "errors"]) {
+            checks.push(() => eq(`agents.total.${f}`, total[f], sumOf(byAgent.map((a) => field(a, f)))));
+        }
+        for (const [name, a] of Object.entries(agents["byAgent"])) {
+            const instances = field(a, "instances");
+            if (Array.isArray(instances)) {
+                checks.push(() => eq(`agents.byAgent.${name}.n`, field(a, "n"), instances.length));
+            }
+        }
+    }
+    const tools = row["tools"];
+    if (isObj(tools) && isObj(tools["total"]) && isObj(tools["byTool"])) {
+        const parts = Object.values(tools["byTool"]);
+        for (const f of ["calls", "errors"]) {
+            checks.push(() => eq(`tools.total.${f}`, field(tools, "total", f), sumOf(parts.map((p) => field(p, f)))));
+        }
+    }
+    const cli = field(row, "bkit", "cli");
+    if (isObj(cli) && isObj(cli["byVerb"])) {
+        checks.push(() => eq("bkit.cli.total", cli["total"], sumOf(Object.values(cli["byVerb"]))));
+    }
+    for (const check of checks) {
+        const problem = check();
+        if (problem !== undefined)
+            return problem;
+    }
+    return undefined;
 }
 // ---------------------------------------------------------------------------
 // Validate — reject malformed + unknown kind before write
@@ -301,11 +852,17 @@ export function validate(event) {
         return { ok: false, reason: "event must be an object" };
     }
     const e = event;
-    // A2-mandatory envelope fields
-    const mandatory = ["ts", "kind", "repo", "bkitVersion", "step"];
-    for (const field of mandatory) {
+    if (e["schema"] !== SCHEMA) {
+        return { ok: false, reason: `schema must be ${SCHEMA} (got: ${String(e["schema"])})` };
+    }
+    for (const field of ["ts", "kind", "repo", "bkit", "by"]) {
         if (e[field] === undefined || e[field] === null) {
             return { ok: false, reason: `missing mandatory field: ${field}` };
+        }
+    }
+    for (const flat of ["bkitVersion", "workflow", "step", "subagent", "model"]) {
+        if (e[flat] !== undefined) {
+            return { ok: false, reason: `${flat} is not a top-level field (bkit.version, by.*)` };
         }
     }
     if (typeof e["ts"] !== "number") {
@@ -320,11 +877,35 @@ export function validate(event) {
     if (typeof e["repo"] !== "string" || e["repo"] === "") {
         return { ok: false, reason: "repo must be a non-empty string" };
     }
-    if (typeof e["bkitVersion"] !== "string" || e["bkitVersion"] === "") {
-        return { ok: false, reason: "bkitVersion must be a non-empty string" };
+    const bkit = e["bkit"];
+    // null on chat / run rows: the script found no bkit version in the repo's history at that time.
+    const unknownVersion = bkit !== undefined &&
+        isObj(bkit) &&
+        bkit["version"] === null &&
+        (e["kind"] === "chat" || e["kind"] === "run");
+    if (!isObj(bkit) ||
+        ((typeof bkit["version"] !== "string" || bkit["version"] === "") && !unknownVersion)) {
+        return {
+            ok: false,
+            reason: "bkit.version must be a non-empty string (null on chat / run rows)",
+        };
     }
-    if (typeof e["step"] !== "string" || e["step"] === "") {
-        return { ok: false, reason: "step must be a non-empty string" };
+    const by = e["by"];
+    if (!isObj(by))
+        return { ok: false, reason: "by must be an object" };
+    if (typeof by["step"] !== "string" || by["step"] === "") {
+        return { ok: false, reason: "by.step must be a non-empty string" };
+    }
+    for (const f of ["workflow", "subagent", "model"]) {
+        if (by[f] !== undefined && (typeof by[f] !== "string" || by[f] === "")) {
+            return { ok: false, reason: `by.${f} must be a non-empty string when present` };
+        }
+    }
+    if (by["model"] !== undefined && by["subagent"] === undefined) {
+        return { ok: false, reason: "by.model is set only on subagent rows" };
+    }
+    if (e["references"] !== undefined && !Array.isArray(e["references"])) {
+        return { ok: false, reason: "references must be an array when present" };
     }
     // kind-specific payload validation (minimal — structural check)
     const kind = e["kind"];
@@ -394,92 +975,115 @@ export function validate(event) {
     else if (e["reason"] !== undefined) {
         return { ok: false, reason: `${kind} rows do not carry reason` };
     }
+    const run = isObj(e["run"]) ? e["run"] : undefined;
+    if (kind === "compliance" || kind === "counter") {
+        if (typeof run?.["parentSha"] !== "string" || run["parentSha"] === "") {
+            return { ok: false, reason: `${kind} row missing run.parentSha` };
+        }
+    }
     if (kind === "compliance") {
-        if (!e["rule"] || !e["result"] || !e["phase"] || !e["parentSha"]) {
-            return { ok: false, reason: "compliance row missing required payload fields" };
+        const rule = e["rule"];
+        if (!isObj(rule) || typeof rule["id"] !== "string" || rule["id"] === "") {
+            return { ok: false, reason: "compliance row missing rule.id" };
+        }
+        if (!["pass", "fail", "n/a"].includes(rule["verdict"])) {
+            return {
+                ok: false,
+                reason: `compliance rule.verdict must be pass|fail|n/a (got: ${String(rule["verdict"])})`,
+            };
+        }
+    }
+    if (kind === "counter") {
+        const c = e["counter"];
+        if (!isObj(c) ||
+            typeof c["name"] !== "string" ||
+            c["name"] === "" ||
+            typeof c["value"] !== "number") {
+            return { ok: false, reason: "counter row needs counter.name and a numeric counter.value" };
+        }
+        if (c["source"] !== "model-self-report" && c["source"] !== "shell-bus") {
+            return { ok: false, reason: "counter.source must be model-self-report or shell-bus" };
         }
     }
     if (kind === "outcome") {
-        // Every workflow run carries these; `prNumber` is ship-only (see below).
-        const numFields = [
-            "linesAdded",
-            "linesDeleted",
-            "linesChanged",
-            "filesChanged",
-            "taskCount",
-            "durationSeconds",
-            "deferrals",
-            "failures",
-        ];
-        for (const f of numFields) {
-            if (typeof e[f] !== "number") {
-                return { ok: false, reason: `outcome missing or invalid numeric field: ${f}` };
+        if (run === undefined)
+            return { ok: false, reason: "outcome row missing run" };
+        if (run["parentSha"] !== undefined && typeof run["parentSha"] !== "string") {
+            return { ok: false, reason: "outcome run.parentSha must be a string when present" };
+        }
+        if (run["pr"] !== undefined && typeof run["pr"] !== "number") {
+            return { ok: false, reason: "outcome run.pr must be a number when present" };
+        }
+        const time = e["time"];
+        // null: the run's start row is missing, so its time could not be measured.
+        if (time !== null &&
+            (!isObj(time) || ["start", "end", "totalMinutes"].some((f) => typeof time[f] !== "number"))) {
+            return {
+                ok: false,
+                reason: "outcome row needs time.start, time.end and time.totalMinutes, or time: null",
+            };
+        }
+        if (!OUTCOME_ENDINGS.has(e["ending"])) {
+            return {
+                ok: false,
+                reason: `outcome ending must be done|close-failed (got: ${String(e["ending"])})`,
+            };
+        }
+        const ledgers = e["ledgers"];
+        if (typeof field(ledgers, "deferrals", "repo") !== "number" ||
+            typeof field(ledgers, "failures", "repo") !== "number") {
+            return {
+                ok: false,
+                reason: "outcome row needs ledgers.deferrals.repo and ledgers.failures.repo",
+            };
+        }
+        for (const l of ["deferrals", "failures", "friction"]) {
+            const added = field(ledgers, l, "added");
+            if (added !== undefined && typeof added !== "number") {
+                return { ok: false, reason: `outcome ledgers.${l}.added must be a number when present` };
             }
         }
-        // prNumber — ship-only, optional; validate only when present.
-        if (e["prNumber"] !== undefined && typeof e["prNumber"] !== "number") {
-            return { ok: false, reason: "outcome prNumber must be a number when present" };
+        const source = field(e["plan"], "source");
+        if (e["plan"] !== undefined && source !== "file" && source !== "brief") {
+            return {
+                ok: false,
+                reason: `outcome plan.source must be file|brief (got: ${String(source)})`,
+            };
         }
-        // parentSha — the run's identity anchor; optional (absent on some ship rows).
-        if (e["parentSha"] !== undefined && typeof e["parentSha"] !== "string") {
-            return { ok: false, reason: "outcome parentSha must be a string when present" };
-        }
-        // Optional per-run numeric metrics: validate type only when present.
-        for (const f of [
-            "frictionAdded",
-            "deferralsAdded",
-            "failuresAdded",
-            "correctiveCommits",
-            "reviewIterations",
-            "ciTrySuccess",
-        ]) {
-            if (e[f] !== undefined && typeof e[f] !== "number") {
-                return { ok: false, reason: `outcome ${f} must be a number when present` };
-            }
-        }
-        if (e["planSource"] !== undefined && e["planSource"] !== "brief") {
-            return { ok: false, reason: 'outcome planSource must be "brief" when present' };
-        }
-        // coverage is optional + per-tier; validate structure only when present.
-        if (e["coverage"] !== undefined) {
-            const cov = e["coverage"];
-            if (typeof cov !== "object" || cov === null) {
-                return { ok: false, reason: "outcome coverage must be an object" };
-            }
+        const cov = field(e["ship"], "coverage");
+        if (cov !== undefined) {
+            if (!isObj(cov))
+                return { ok: false, reason: "outcome ship.coverage must be an object" };
             for (const tier of ["unit", "integration", "e2e"]) {
                 const t = cov[tier];
                 if (t === undefined)
                     continue;
-                if (typeof t !== "object" || t === null) {
-                    return { ok: false, reason: `outcome coverage.${tier} must be an object` };
-                }
+                if (!isObj(t))
+                    return { ok: false, reason: `outcome ship.coverage.${tier} must be an object` };
                 for (const m of ["lines", "branches", "functions", "statements"]) {
-                    const v = t[m];
-                    if (v !== undefined && typeof v !== "number") {
-                        return { ok: false, reason: `outcome coverage.${tier}.${m} must be a number` };
+                    if (t[m] !== undefined && typeof t[m] !== "number") {
+                        return { ok: false, reason: `outcome ship.coverage.${tier}.${m} must be a number` };
                     }
                 }
             }
-        }
-    }
-    if (kind === "counter") {
-        if (!e["counterName"] || typeof e["counterValue"] !== "number" || !e["parentSha"]) {
-            return { ok: false, reason: "counter row missing required payload fields" };
-        }
-        if (e["counterSource"] !== "model-self-report" && e["counterSource"] !== "shell-bus") {
-            return { ok: false, reason: "counter counterSource must be model-self-report or shell-bus" };
         }
     }
     if (kind === "chat") {
         if (!e["key"] || typeof e["key"] !== "string") {
             return { ok: false, reason: "chat row missing required field: key (<platform>:<sessionId>)" };
         }
-        for (const f of ["start", "end", "sourceBytes"]) {
-            if (typeof e[f] !== "number")
-                return { ok: false, reason: `chat row missing numeric field: ${f}` };
+        if (typeof field(e, "time", "start") !== "number" ||
+            typeof field(e, "time", "end") !== "number") {
+            return { ok: false, reason: "chat row needs time.start and time.end" };
         }
-        if (!Array.isArray(e["parentShas"]) || !Array.isArray(e["issues"])) {
-            return { ok: false, reason: "chat row needs parentShas and issues arrays (the join keys)" };
+        if (typeof field(e, "scan", "bytes") !== "number") {
+            return { ok: false, reason: "chat row needs scan.bytes" };
+        }
+        if (!Array.isArray(field(e, "run", "parentShas")) || !Array.isArray(field(e, "issue", "all"))) {
+            return {
+                ok: false,
+                reason: "chat row needs run.parentShas and issue.all arrays (the join keys)",
+            };
         }
     }
     if (kind === "run") {
@@ -489,12 +1093,15 @@ export function validate(event) {
                 reason: "run row missing required field: key (<fid fp>:<workflow>:<start>)",
             };
         }
-        if (!e["fid"] || typeof e["fid"] !== "string") {
-            return { ok: false, reason: "run row missing required field: fid" };
+        if (typeof run?.["fid"] !== "string" || run["fid"] === "") {
+            return { ok: false, reason: "run row missing required field: run.fid" };
         }
-        for (const f of ["start", "end", "sourceRows"]) {
-            if (typeof e[f] !== "number")
-                return { ok: false, reason: `run row missing numeric field: ${f}` };
+        if (typeof field(e, "time", "start") !== "number" ||
+            typeof field(e, "time", "end") !== "number") {
+            return { ok: false, reason: "run row needs time.start and time.end" };
+        }
+        if (typeof field(e, "scan", "rows") !== "number") {
+            return { ok: false, reason: "run row needs scan.rows" };
         }
         if (!RUN_ENDINGS.has(e["ending"])) {
             return {
@@ -502,11 +1109,11 @@ export function validate(event) {
                 reason: `run ending must be one of ${[...RUN_ENDINGS].join("|")} (got: ${String(e["ending"])})`,
             };
         }
-        if (e["parentSha"] !== null && typeof e["parentSha"] !== "string") {
-            return { ok: false, reason: "run parentSha must be a string or null" };
+        if (run["parentSha"] !== null && typeof run["parentSha"] !== "string") {
+            return { ok: false, reason: "run run.parentSha must be a string or null" };
         }
-        if (!Array.isArray(e["parentShas"])) {
-            return { ok: false, reason: "run row needs a parentShas array (the join keys)" };
+        if (!Array.isArray(run["parentShas"])) {
+            return { ok: false, reason: "run row needs a run.parentShas array (the join keys)" };
         }
     }
     if (kind === "feature") {
@@ -520,13 +1127,17 @@ export function validate(event) {
             return { ok: false, reason: "feature row missing required payload field: description" };
         }
     }
+    const totals = totalsProblem(e);
+    if (totals !== undefined)
+        return { ok: false, reason: `totals: ${totals}` };
     return { ok: true };
 }
 /**
  * Tolerant parse — per-line try/catch, skips + counts unparseable lines.
  * NEVER throws.
  *
- * No version gating — ALL well-formed rows are kept regardless of `bkitVersion`.
+ * No version gating — ALL well-formed rows are kept as written, `schema` or not;
+ * {@link fold} reads each through {@link normalize}.
  */
 export function parse(raw) {
     const result = {
@@ -569,13 +1180,13 @@ export function compareTs(a, b) {
     return x < y ? -1 : x > y ? 1 : 0;
 }
 /**
- * Fold events into a Map keyed by per-kind composite identity.
- * Later rows (higher ts) win for the same key — last-write-wins fold.
- * Mirrors ledgers/status.ts's dedupe approach but with per-kind composite tuples.
+ * Fold events into a Map keyed by per-kind composite identity, each row in the
+ * current shape ({@link normalize}). Later rows (higher ts) win for the same key —
+ * last-write-wins fold.
  */
 export function fold(events) {
     // Sort by ts ascending so later rows overwrite earlier ones
-    const sorted = [...events].sort(compareTs);
+    const sorted = events.map(normalizeEvent).sort(compareTs);
     const state = new Map();
     for (const event of sorted) {
         const key = identity(event);
@@ -596,8 +1207,9 @@ export function foldFrom(paths) {
         totalMalformed += parsed.malformedLineCount;
     }
     const versionCounts = {};
-    for (const e of allEvents) {
-        const v = typeof e.bkitVersion === "string" && e.bkitVersion !== "" ? e.bkitVersion : "unknown";
+    for (const e of allEvents.map(normalizeEvent)) {
+        const version = e.bkit?.version;
+        const v = typeof version === "string" && version !== "" ? version : "unknown";
         versionCounts[v] = (versionCounts[v] ?? 0) + 1;
     }
     const rowCount = allEvents.length;
@@ -676,7 +1288,7 @@ export function workflowTelemetry(result, workflow) {
     // Folded ENTITY count per workflow (not raw lines) — an updated row folds to one.
     const workflowCounts = {};
     for (const ev of events) {
-        const w = ev.workflow || "unknown";
+        const w = ev.by?.workflow || "unknown";
         workflowCounts[w] = (workflowCounts[w] ?? 0) + 1;
     }
     const base = {
@@ -698,14 +1310,15 @@ export function workflowTelemetry(result, workflow) {
     }
     // This workflow's run rows (generalized outcome), oldest → newest.
     const runs = events
-        .filter((e) => e.kind === "outcome" && e.workflow === workflow)
+        .filter((e) => e.kind === "outcome" && e.by?.workflow === workflow)
         .sort(compareTs);
     const cur = runs.at(-1);
     // Baseline only against runs of the same plan source — a brief run (no plan)
     // has no tasks and a different shape, so mixing them skews every median.
+    const brief = (r) => r?.plan?.source === "brief";
     const prev = runs
         .slice(0, -1)
-        .filter((r) => r.planSource === cur?.planSource)
+        .filter((r) => brief(r) === brief(cur))
         .slice(-RUN_BASELINE_WINDOW);
     const repo = cur?.repo ?? events[0]?.repo ?? "unknown/repo";
     // Rendered as a Markdown table so it drops straight into the tracker comment
@@ -718,61 +1331,63 @@ export function workflowTelemetry(result, workflow) {
     if (cur) {
         // med·N: median of the previous runs that carry the field, `—` until there are
         // at least RUN_BASELINE_MIN of them (1–2 samples is noise, not a baseline).
-        const medCell = (key, fmt = String) => {
-            const vals = prev.map((r) => r[key]).filter((v) => typeof v === "number");
+        const medCell = (get, fmt = String) => {
+            const vals = prev.map(get).filter((v) => typeof v === "number");
             if (vals.length < RUN_BASELINE_MIN)
                 return "—";
             const m = median(vals);
             return m === null ? "—" : fmt(m);
         };
-        // Core metrics — always shown.
-        row("durationSeconds", `${cur.durationSeconds} (${humanizeDuration(cur.durationSeconds)})`, medCell("durationSeconds", (n) => `${n} (${humanizeDuration(n)})`));
-        row("linesChanged", `${cur.linesChanged} (+${cur.linesAdded}/-${cur.linesDeleted})`, medCell("linesChanged"));
-        row("filesChanged", `${cur.filesChanged}`, medCell("filesChanged"));
-        // Conditional metrics — shown only when this run carries them.
-        if (cur.planSource)
-            row("planSource", cur.planSource, "—");
-        if (cur.taskCount > 0)
-            row("taskCount", `${cur.taskCount}`, medCell("taskCount"));
-        if (typeof cur.reviewIterations === "number")
-            row("reviewIterations", `${cur.reviewIterations}`, medCell("reviewIterations"));
-        if (typeof cur.correctiveCommits === "number")
-            row("correctiveCommits", `${cur.correctiveCommits}`, medCell("correctiveCommits"));
-        if (typeof cur.ciTrySuccess === "number")
-            row("ciTrySuccess", `${cur.ciTrySuccess}${cur.ciTrySuccess === 1 ? " (first-try)" : ""}`, medCell("ciTrySuccess"));
-        // Instinct-loop deltas — frictionAdded is the featured signal (shown even at 0).
-        if (typeof cur.frictionAdded === "number")
-            row("frictionAdded", `${cur.frictionAdded}`, medCell("frictionAdded"));
-        if (typeof cur.deferralsAdded === "number")
-            row("deferralsAdded", `${cur.deferralsAdded}`, medCell("deferralsAdded"));
-        if (typeof cur.failuresAdded === "number")
-            row("failuresAdded", `${cur.failuresAdded}`, medCell("failuresAdded"));
+        const mins = (n) => `${n} (${humanizeDuration(n * 60)})`;
+        const show = (label, get, fmt) => {
+            const v = get(cur);
+            if (typeof v === "number")
+                row(label, fmt ? fmt(v) : String(v), medCell(get, fmt));
+        };
+        show("time.totalMinutes", (r) => r.time?.totalMinutes, mins);
+        const total = cur.lines?.total;
+        if (total) {
+            row("lines.total.changed", `${total.changed} (+${total.added}/-${total.deleted})`, medCell((r) => r.lines?.total?.changed));
+            show("lines.total.files", (r) => r.lines?.total?.files);
+        }
+        if (brief(cur))
+            row("plan.source", "brief", "—");
+        show("plan.total.tasks", (r) => r.plan?.total?.tasks);
+        if (cur.ending === "close-failed")
+            row("ending", "close-failed", "—");
+        // Instinct-loop deltas — friction is the featured signal (shown even at 0).
+        show("ledgers.friction.added", (r) => r.ledgers?.friction?.added);
+        show("ledgers.deferrals.added", (r) => r.ledgers?.deferrals?.added);
+        show("ledgers.failures.added", (r) => r.ledgers?.failures?.added);
     }
-    // Compliance — this run's rows. The `outcome` and `compliance` rows are written
-    // at different points in a close (different HEADs → different parentSha), so we
-    // DON'T match on the run row's parentSha: we take the newest same-workflow
-    // compliance group (its parentSha) as "this run".
-    const complianceRows = events.filter((e) => e.kind === "compliance" && e.workflow === workflow);
-    const compSha = complianceRows.slice().sort((a, b) => compareTs(b, a))[0]?.parentSha;
+    // Compliance — this run's rows: the run row's run.parentSha, else the newest
+    // same-workflow compliance group.
+    const complianceRows = events.filter((e) => e.kind === "compliance" && e.by?.workflow === workflow);
+    const newestSha = complianceRows.slice().sort((a, b) => compareTs(b, a))[0]?.run?.parentSha;
+    const curSha = cur?.run?.parentSha;
+    const compSha = complianceRows.some((c) => c.run?.parentSha === curSha) ? curSha : newestSha;
     if (compSha) {
-        const comp = complianceRows.filter((c) => c.parentSha === compSha);
-        const pass = comp.filter((c) => c.result === "pass").length;
-        const fail = comp.filter((c) => c.result === "fail").length;
-        const na = comp.filter((c) => c.result === "n/a").length;
+        const comp = complianceRows.filter((c) => c.run?.parentSha === compSha);
+        const pass = comp.filter((c) => c.rule?.verdict === "pass").length;
+        const fail = comp.filter((c) => c.rule?.verdict === "fail").length;
+        const na = comp.filter((c) => c.rule?.verdict === "n/a").length;
         const denom = pass + fail + na;
         const rate = denom > 0 ? Math.round((pass / denom) * 100) : 0;
         row("compliance", `${pass} pass · ${fail} fail · ${na} n/a (${rate}%)`, "—");
     }
-    // Attempts — the newest same-workflow *_ATTEMPT counter (this run).
-    const attempt = events
-        .filter((e) => e.kind === "counter" && e.workflow === workflow && /_ATTEMPT$/.test(e.counterName))
-        .sort((a, b) => compareTs(b, a))[0];
+    // Attempts — this run's *_ATTEMPT counter, else the newest same-workflow one.
+    const attempts = events
+        .filter((e) => e.kind === "counter" &&
+        e.by?.workflow === workflow &&
+        /_ATTEMPT$/.test(e.counter?.name ?? ""))
+        .sort((a, b) => compareTs(b, a));
+    const attempt = attempts.find((c) => c.run?.parentSha === curSha) ?? attempts[0];
     if (attempt)
-        row("attempts", `${attempt.counterName} ${attempt.counterValue}`, "—");
+        row("attempts", `${attempt.counter.name} ${attempt.counter.value}`, "—");
     if (tableRows.length > 0) {
         lines.push(`| metric | this run | med·${RUN_BASELINE_WINDOW} |`, "| --- | --- | --- |", ...tableRows, "");
     }
-    lines.push(`\`med·${RUN_BASELINE_WINDOW}\` = median of the previous ${RUN_BASELINE_WINDOW} ${workflow}${cur?.planSource ? ` ${cur.planSource}` : ""} runs (— if < ${RUN_BASELINE_MIN}) · ledger ${result.rowCount} rows, ${result.malformedLineCount} malformed`);
+    lines.push(`\`med·${RUN_BASELINE_WINDOW}\` = median of the previous ${RUN_BASELINE_WINDOW} ${workflow}${brief(cur) ? " brief" : ""} runs (— if < ${RUN_BASELINE_MIN}) · ledger ${result.rowCount} rows, ${result.malformedLineCount} malformed`);
     lines.push(...maxRowsLines);
     return { ...base, lines };
 }

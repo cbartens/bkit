@@ -3,13 +3,13 @@
 // Done-when contract (WS2-T3):
 //   - `(parentSha, phase) -> Violation[]` is deterministic.
 //   - Unit test asserts each rule's pass/fail.
-//   - Every emitted `kind:"compliance"` row carries `bkitVersion`.
+//   - Every emitted `kind:"compliance"` row carries `by` and `run.parentSha`.
 
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   ruleNoMirrorEdit,
   ruleSkipCiNotHead,
@@ -17,12 +17,12 @@ import {
   buildComplianceRows,
   appendComplianceRows,
   formatComplianceSummary,
-  readBkitVersion,
   gradeCompliance,
   type GraderInput,
   type GitAdapter,
-  type ComplianceRow,
+  type ComplianceRowDraft,
 } from "./comply.js";
+import { validate } from "../ledgers/telemetry.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -223,44 +223,28 @@ describe("runGrader", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildComplianceRows", () => {
+  const input = { workflow: "ship", parentSha: "abc1234", step: "ship-close-workflow" };
+
   it("emits one row per rule (no-mirror-edit + skip-ci-not-head = 2)", () => {
-    const rows = buildComplianceRows({
-      violations: [],
-      phase: "ship",
-      parentSha: "abc1234",
-      repo: "cbartens/bkit",
-      bkitVersion: "4.1.4",
-    });
+    const rows = buildComplianceRows({ violations: [], ...input });
     expect(rows).toHaveLength(2);
   });
 
   it("every row carries kind:'compliance'", () => {
-    const rows = buildComplianceRows({
-      violations: [],
-      phase: "ship",
-      parentSha: "abc1234",
-      repo: "cbartens/bkit",
-      bkitVersion: "4.1.4",
-    });
+    const rows = buildComplianceRows({ violations: [], ...input });
     for (const row of rows) {
       expect(row.kind).toBe("compliance");
     }
   });
 
-  it("every row carries bkitVersion", () => {
-    const rows = buildComplianceRows({
-      violations: [],
-      phase: "ship",
-      parentSha: "abc1234",
-      repo: "cbartens/bkit",
-      bkitVersion: "4.1.4",
-    });
+  it("rows leave the top section ledgers append fills (schema, ts, repo, bkit) unset", () => {
+    const rows = buildComplianceRows({ violations: [], ...input });
     for (const row of rows) {
-      expect(row.bkitVersion).toBe("4.1.4");
+      for (const k of ["schema", "ts", "repo", "bkit"]) expect(Object.hasOwn(row, k)).toBe(false);
     }
   });
 
-  it("failing violation produces result:'fail' row for that rule", () => {
+  it("failing violation produces verdict:'fail' row for that rule", () => {
     const rows = buildComplianceRows({
       violations: [
         {
@@ -270,91 +254,42 @@ describe("buildComplianceRows", () => {
           result: "fail",
         },
       ],
-      phase: "ship",
-      parentSha: "abc1234",
-      repo: "cbartens/bkit",
-      bkitVersion: "4.1.4",
+      ...input,
     });
-    const mirrorRow = rows.find((r) => r.rule === "no-mirror-edit");
-    expect(mirrorRow?.result).toBe("fail");
-    expect(mirrorRow?.evidence).toBe(".claude/agents/bkit-design.md");
+    const mirrorRow = rows.find((r) => r.rule.id === "no-mirror-edit");
+    expect(mirrorRow?.rule.verdict).toBe("fail");
+    expect(mirrorRow?.rule.evidence).toBe(".claude/agents/bkit-design.md");
   });
 
-  it("passing rule produces result:'pass' row", () => {
-    const rows = buildComplianceRows({
-      violations: [],
-      phase: "build",
-      parentSha: "abc1234",
-      repo: "cbartens/bkit",
-      bkitVersion: "4.1.4",
-    });
+  it("passing rule produces verdict:'pass' row with no evidence", () => {
+    const rows = buildComplianceRows({ violations: [], ...input, workflow: "build" });
     for (const row of rows) {
-      expect(row.result).toBe("pass");
+      expect(row.rule.verdict).toBe("pass");
+      expect(Object.hasOwn(row.rule, "evidence")).toBe(false);
     }
   });
 
-  it("rows have a numeric ts field", () => {
+  it("rows carry the workflow and step in by", () => {
     const rows = buildComplianceRows({
       violations: [],
-      phase: "ship",
+      workflow: "design",
       parentSha: "abc1234",
-      repo: "cbartens/bkit",
-      bkitVersion: "4.1.4",
+      step: "close-gate",
     });
     for (const row of rows) {
-      expect(typeof row.ts).toBe("number");
-      expect(row.ts).toBeGreaterThan(0);
+      expect(row.by).toEqual({ workflow: "design", step: "close-gate" });
     }
   });
 
-  it("rows carry the phase in workflow field", () => {
-    const rows = buildComplianceRows({
-      violations: [],
-      phase: "design",
-      parentSha: "abc1234",
-      repo: "cbartens/bkit",
-      bkitVersion: "4.1.4",
-    });
+  it("rows carry run.parentSha", () => {
+    const rows = buildComplianceRows({ violations: [], ...input, parentSha: "cafebabe" });
     for (const row of rows) {
-      expect(row.workflow).toBe("design");
-    }
-  });
-
-  it("rows carry parentSha", () => {
-    const rows = buildComplianceRows({
-      violations: [],
-      phase: "ship",
-      parentSha: "cafebabe",
-      repo: "cbartens/bkit",
-      bkitVersion: "4.1.4",
-    });
-    for (const row of rows) {
-      expect(row.parentSha).toBe("cafebabe");
-    }
-  });
-
-  it("extra envelope fields are merged into rows", () => {
-    const rows = buildComplianceRows({
-      violations: [],
-      phase: "ship",
-      parentSha: "abc1234",
-      repo: "cbartens/bkit",
-      bkitVersion: "4.1.4",
-      extra: { subagent: "bkit-ship-summary" },
-    });
-    for (const row of rows) {
-      expect(row.subagent).toBe("bkit-ship-summary");
+      expect(row.run).toEqual({ parentSha: "cafebabe" });
     }
   });
 
   it("JSON.stringify of each row is valid NDJSON line (no newlines inside)", () => {
-    const rows = buildComplianceRows({
-      violations: [],
-      phase: "ship",
-      parentSha: "abc1234",
-      repo: "cbartens/bkit",
-      bkitVersion: "4.1.4",
-    });
+    const rows = buildComplianceRows({ violations: [], ...input });
     for (const row of rows) {
       const line = JSON.stringify(row);
       expect(line.includes("\n")).toBe(false);
@@ -418,123 +353,87 @@ describe("appendComplianceRows", () => {
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-comply-test-"));
+    fs.mkdirSync(path.join(tmpDir, ".bkit"));
+    fs.writeFileSync(
+      path.join(tmpDir, ".bkit", "version"),
+      JSON.stringify({ pinnedVersion: "4.1.4", canonicalHashes: {} }),
+    );
   });
 
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  function makeRow(rule: "no-mirror-edit" | "skip-ci-not-head", ts: number): ComplianceRow {
+  const statsPath = () => path.join(tmpDir, ".bkit", "stats.jsonl");
+  const read = () =>
+    fs
+      .readFileSync(statsPath(), "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+
+  function makeRow(rule: "no-mirror-edit" | "skip-ci-not-head"): ComplianceRowDraft {
     return {
-      ts,
       kind: "compliance",
-      repo: "cbartens/bkit",
-      bkitVersion: "4.1.4",
-      workflow: "ship",
-      step: "close-gate",
-      rule,
-      result: "pass",
-      phase: "ship",
-      parentSha: "abc1234",
+      by: { workflow: "ship", step: "close-gate" },
+      run: { parentSha: "abc1234" },
+      rule: { id: rule, verdict: "pass" },
     };
   }
 
-  it("appends one NDJSON line per row to statsPath", () => {
-    const statsPath = path.join(tmpDir, "stats.jsonl");
-    appendComplianceRows([makeRow("no-mirror-edit", 1), makeRow("skip-ci-not-head", 2)], statsPath);
+  it("appends one NDJSON line per row to .bkit/stats.jsonl, with the top section filled", () => {
+    expect(
+      appendComplianceRows([makeRow("no-mirror-edit"), makeRow("skip-ci-not-head")], tmpDir),
+    ).toBe(true);
 
-    const lines = fs.readFileSync(statsPath, "utf8").trim().split("\n");
-    expect(lines).toHaveLength(2);
-    expect(JSON.parse(lines[0]!).rule).toBe("no-mirror-edit");
-    expect(JSON.parse(lines[1]!).rule).toBe("skip-ci-not-head");
+    const rows = read();
+    expect(rows.map((r) => (r.rule as { id: string }).id)).toEqual([
+      "no-mirror-edit",
+      "skip-ci-not-head",
+    ]);
+    for (const r of rows) {
+      expect(r.schema).toBe(2);
+      expect(typeof r.ts).toBe("number");
+      expect(r.bkit).toEqual({ version: "4.1.4" });
+      expect(typeof r.repo).toBe("string");
+      expect(validate(r)).toEqual({ ok: true });
+    }
+    expect(rows[1]!.ts as number).toBeGreaterThan(rows[0]!.ts as number);
   });
 
   it("appends to an existing file rather than truncating it", () => {
-    const statsPath = path.join(tmpDir, "stats.jsonl");
-    fs.writeFileSync(statsPath, JSON.stringify({ kind: "outcome", ts: 0 }) + "\n", "utf8");
+    fs.writeFileSync(statsPath(), JSON.stringify({ kind: "outcome", ts: 0 }) + "\n", "utf8");
 
-    appendComplianceRows([makeRow("no-mirror-edit", 1)], statsPath);
+    appendComplianceRows([makeRow("no-mirror-edit")], tmpDir);
 
-    const lines = fs.readFileSync(statsPath, "utf8").trim().split("\n");
-    expect(lines).toHaveLength(2);
-    expect(JSON.parse(lines[0]!).kind).toBe("outcome");
+    const rows = read();
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.kind).toBe("outcome");
   });
 
-  it("writes a bare newline (no throw) when rows is empty", () => {
-    const statsPath = path.join(tmpDir, "stats.jsonl");
-    expect(() => appendComplianceRows([], statsPath)).not.toThrow();
-    expect(fs.existsSync(statsPath)).toBe(true);
-    expect(fs.readFileSync(statsPath, "utf8")).toBe("\n");
+  it("writes nothing and returns false when rows is empty", () => {
+    expect(appendComplianceRows([], tmpDir)).toBe(false);
+    expect(fs.existsSync(statsPath())).toBe(false);
   });
 
   it("fails open: logs and does not throw when the write target is invalid", () => {
-    // A statsPath inside a non-existent parent directory makes appendFileSync throw ENOENT.
-    const statsPath = path.join(tmpDir, "no-such-dir", "stats.jsonl");
-    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    // `.bkit` as a file makes the append fail.
+    fs.rmSync(path.join(tmpDir, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".bkit"), "");
+    const log: string[] = [];
 
-    expect(() => appendComplianceRows([makeRow("no-mirror-edit", 1)], statsPath)).not.toThrow();
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining("[bkit-comply] append failed:"));
-    expect(fs.existsSync(statsPath)).toBe(false);
-
-    errSpy.mockRestore();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// readBkitVersion — nearest-package.json walk-up
-// ---------------------------------------------------------------------------
-
-describe("readBkitVersion", () => {
-  let tmpDir: string;
-
-  beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-comply-version-test-"));
+    expect(appendComplianceRows([makeRow("no-mirror-edit")], tmpDir, (m) => log.push(m))).toBe(
+      false,
+    );
+    expect(log.join("\n")).toContain("[bkit-comply] append failed:");
   });
 
-  afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  it("reads version from the nearest package.json", () => {
-    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ version: "9.9.9" }));
-    expect(readBkitVersion(tmpDir)).toBe("9.9.9");
-  });
-
-  it("walks up past a directory with no package.json at all", () => {
-    const sub = path.join(tmpDir, "sub");
-    fs.mkdirSync(sub);
-    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ version: "5.5.5" }));
-    expect(readBkitVersion(sub)).toBe("5.5.5");
-  });
-
-  it("walks up past a package.json that has no version field", () => {
-    const sub = path.join(tmpDir, "sub");
-    fs.mkdirSync(sub);
-    fs.writeFileSync(path.join(sub, "package.json"), JSON.stringify({ name: "no-version-here" }));
-    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ version: "6.6.6" }));
-    expect(readBkitVersion(sub)).toBe("6.6.6");
-  });
-
-  it("defaults to the running bkit package's own version, whatever the working directory", () => {
-    const pkgRoot = path.resolve(__dirname, "../../../..");
-    const own = (
-      JSON.parse(fs.readFileSync(path.join(pkgRoot, "package.json"), "utf-8")) as {
-        version: string;
-      }
-    ).version;
-    const cwd = process.cwd();
-    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ version: "1.2.3" }));
-    try {
-      process.chdir(tmpDir);
-      expect(readBkitVersion()).toBe(own);
-    } finally {
-      process.chdir(cwd);
-    }
-  });
-
-  it("returns '0.0.0' when package.json contains invalid JSON (fail-open)", () => {
-    fs.writeFileSync(path.join(tmpDir, "package.json"), "not valid json{{{");
-    expect(readBkitVersion(tmpDir)).toBe("0.0.0");
+  it("fails open on a row ledgers append refuses, writing nothing", () => {
+    const log: string[] = [];
+    const bad = { ...makeRow("no-mirror-edit"), by: { workflow: "audit", step: "close-gate" } };
+    expect(appendComplianceRows([bad], tmpDir, (m) => log.push(m))).toBe(false);
+    expect(log.join("\n")).toContain("[bkit-comply] append failed:");
+    expect(fs.existsSync(statsPath())).toBe(false);
   });
 });
 
@@ -570,8 +469,32 @@ describe("gradeCompliance — the grade bkit workflows close runs before its rep
     expect(v?.map((x) => x.ruleId)).toEqual(["skip-ci-not-head"]);
     const rows = statsRows(d);
     expect(rows.map((r) => r.kind)).toEqual(["compliance", "compliance"]);
-    expect(rows.find((r) => r.rule === "skip-ci-not-head")?.result).toBe("fail");
+    expect(
+      rows.find((r) => (r.rule as { id: string }).id === "skip-ci-not-head")?.rule,
+    ).toMatchObject({ verdict: "fail" });
     expect(log.join("\n")).toContain("Compliance violations found");
+  });
+
+  it("stamps HEAD as run.parentSha and close-gate as by.step by default", () => {
+    const d = repo("base", "feat(1-x): work");
+    gradeCompliance(d, "build", () => undefined);
+    const head = git(d, "rev-parse", "HEAD").stdout.trim();
+    for (const r of statsRows(d)) {
+      expect(r.run).toEqual({ parentSha: head });
+      expect(r.by).toEqual({ workflow: "build", step: "close-gate" });
+    }
+  });
+
+  it("stamps the given run's parentSha and step, so the rows join the close's other rows", () => {
+    const d = repo("base", "feat(1-x): work");
+    gradeCompliance(d, "build", () => undefined, undefined, {
+      parentSha: "0123456789abcdef",
+      step: "build-close-workflow",
+    });
+    for (const r of statsRows(d)) {
+      expect(r.run).toEqual({ parentSha: "0123456789abcdef" });
+      expect(r.by).toEqual({ workflow: "build", step: "build-close-workflow" });
+    }
   });
 
   it("with a squash sha, grades from the squash's parent so earlier feature commits count", () => {
@@ -612,7 +535,9 @@ describe("gradeCompliance — the grade bkit workflows close runs before its rep
   it("passes every rule on a clean head", () => {
     const d = repo("base", "feat(1-x): work");
     expect(gradeCompliance(d, "build", () => undefined)).toEqual([]);
-    expect(statsRows(d).every((r) => r.result === "pass")).toBe(true);
+    expect(statsRows(d).every((r) => (r.rule as { verdict: string }).verdict === "pass")).toBe(
+      true,
+    );
   });
 
   it("is fail-open: no commits returns null; an unwritable stats file is reported, never thrown", () => {
@@ -620,9 +545,8 @@ describe("gradeCompliance — the grade bkit workflows close runs before its rep
     const d = repo("base", "x");
     fs.rmSync(path.join(d, ".bkit"), { recursive: true });
     fs.writeFileSync(path.join(d, ".bkit"), "");
-    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    expect(gradeCompliance(d, "build", () => undefined)).toEqual([]);
-    expect(errors.mock.calls.flat().join("\n")).toContain("[bkit-comply] append failed");
-    errors.mockRestore();
+    const log: string[] = [];
+    expect(gradeCompliance(d, "build", (m) => log.push(m))).toEqual([]);
+    expect(log.join("\n")).toContain("[bkit-comply] append failed");
   });
 });

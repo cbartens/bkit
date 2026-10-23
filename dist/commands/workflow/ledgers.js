@@ -11,7 +11,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { readBkitVersion } from "../../install/version-file.js";
-import { APPEND_LEDGERS, gitEnv, mintTs, resolveRepoSlug, validate, writerProblem, } from "../../ledgers/telemetry.js";
+import { APPEND_LEDGERS, SCHEMA, gitEnv, mintTs, resolveRepoSlug, validate, writerProblem, } from "../../ledgers/telemetry.js";
 import { CommandError, EXIT, parseJson, } from "../lib.js";
 import { str } from "./status.js";
 /** Root is not a directory or repo, git is too old, or a ref does not resolve. */
@@ -611,7 +611,7 @@ export const ledgersCommand = {
                     name: "rows",
                     type: "string",
                     required: true,
-                    help: "file holding a JSON array of rows without ts, or - for stdin",
+                    help: "file holding a JSON array of rows without schema, ts or bkit, or - for stdin",
                 },
             ],
             output: {
@@ -838,24 +838,27 @@ function union(ctx) {
     ctx.emit({ unioned: files.length, files });
     return EXIT.OK;
 }
+/** The top section in its written order, then the row's own fields. */
+const TOP_ORDER = ["schema", "ts", "kind", "key", "repo", "bkit", "by", "references"];
 /**
  * Append `rows` to one ledger. Every row is checked before any is written, so a
- * refused row leaves the file byte-identical. Each row gets a `ts` minted now
- * (never supplied), and `repo` / `bkitVersion` when it lacks them. Never reads
- * back or rewrites existing rows. Throws a CommandError (USAGE / EXIT_ROW_REFUSED
- * / EXIT_STAGE).
+ * refused row leaves the file byte-identical. Each row gets `schema` and a `ts`
+ * minted now (never supplied), `repo` when it lacks one and `bkit.version` from
+ * `.bkit/version`. Never reads back or rewrites existing rows. Throws a
+ * CommandError (USAGE / EXIT_ROW_REFUSED / EXIT_STAGE).
  */
 export function appendLedgerRows(root, ledger, rows) {
     if (!Object.hasOwn(APPEND_LEDGERS, ledger)) {
         throw new CommandError(EXIT.USAGE, `--ledger must be one of ${Object.keys(APPEND_LEDGERS).join(", ")} (got '${ledger}')`);
     }
-    const { file, kind } = APPEND_LEDGERS[ledger];
+    const { file, kinds } = APPEND_LEDGERS[ledger];
+    const takes = kinds;
     if (!Array.isArray(rows))
         throw new CommandError(EXIT.USAGE, "--rows must hold a JSON array");
     if (rows.length === 0)
         throw new CommandError(EXIT.USAGE, "--rows holds no rows");
     let repo;
-    let bkitVersion;
+    let version;
     let last;
     const out = rows.map((raw, i) => {
         const refuse = (why) => new CommandError(EXIT_ROW_REFUSED, `row ${i + 1}: ${why}`);
@@ -865,14 +868,30 @@ export function appendLedgerRows(root, ledger, rows) {
         const r = raw;
         if (Object.hasOwn(r, "ts"))
             throw refuse("carries ts; ts is minted at append time");
-        if (r["kind"] !== kind) {
-            throw refuse(`kind must be ${kind} in --ledger=${ledger} (got ${String(r["kind"])})`);
+        if (Object.hasOwn(r, "schema"))
+            throw refuse("carries schema; it is set at append time");
+        if (!takes.includes(String(r["kind"]))) {
+            throw refuse(`kind must be ${takes.join(" | ")} in --ledger=${ledger} (got ${String(r["kind"])})`);
         }
+        if (Object.hasOwn(r, "bkit"))
+            throw refuse("carries bkit; bkit.version is set at append time");
         repo ??= resolveRepoSlug(root) || "unknown/repo";
-        bkitVersion ??=
-            readBkitVersion(path.join(root, ".bkit", "version"))?.pinnedVersion || "unknown";
+        version ??= readBkitVersion(path.join(root, ".bkit", "version"))?.pinnedVersion || "unknown";
         last = mintTs(last);
-        const row = { ts: last, kind, repo, bkitVersion, ...r };
+        const filled = {
+            repo,
+            ...r,
+            schema: SCHEMA,
+            ts: last,
+            bkit: { version },
+        };
+        const row = {};
+        for (const k of TOP_ORDER)
+            if (filled[k] !== undefined)
+                row[k] = filled[k];
+        for (const [k, v] of Object.entries(filled))
+            if (!(k in row))
+                row[k] = v;
         const v = validate(row);
         if (!v.ok)
             throw refuse(v.reason ?? "invalid");

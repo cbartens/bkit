@@ -14,6 +14,7 @@ import { readInstallingVersion } from "../../shared/package-json.js";
 import { CONFIG_DEFAULTS } from "../../shared/settings.js";
 import { getCoreRoot, getSharedRoot, getBkitDocsRoot, TEMPLATE_COPIES_DIR, } from "../../shared/package-roots.js";
 import { getInstallManifest, BKIT_GATE_SCRIPTS, BKIT_OPTIONAL_GATES, BKIT_PUSH_GATES, BKIT_TEST_FILE_SCRIPT, } from "../manifest.js";
+import { migrateLedgers } from "../../ledgers/migrate.js";
 export function listMdFiles(dir, prefix) {
     if (!fs.existsSync(dir))
         return [];
@@ -233,6 +234,7 @@ export function runBkitDocs(dryRun, tokens, ws, logPrefix) {
     }
     migrateShortcutsToLite(dryRun, ws, logPrefix);
     migrateRetiredDevLock(dryRun, ws, logPrefix);
+    migrateLedgerSchema(dryRun, ws, logPrefix);
 }
 // Migration (5.1.0 – 5.2.4 installs, `docs/migrations.md`): the lite workflows lived at
 // `.agents/shortcuts.md`. The consumer's own lines below `bkit:end` (minus the seeded
@@ -281,6 +283,16 @@ export function migrateRetiredDevLock(dryRun, ws, logPrefix) {
         fs.rmSync(RETIRED_DEV_LOCK);
     ws.writes.push({ path: RETIRED_DEV_LOCK, action: "write" });
     console.log(`${logPrefix} ${dryRun ? "[dry-run] " : ""}core: removed ${RETIRED_DEV_LOCK} (the dev lock is gone)`);
+}
+// Migration (installs up to 5.5.x, `docs/migrations.md`): ledger rows written before
+// `schema: 2` are rewritten into the current shape (`.bkit/jsonl.md` § Generic Fields).
+// Recorded in ws so `bkit check` fails until upgrade runs; ledgers never get a
+// canonical hash (`mergeCanonicalHashes`).
+export function migrateLedgerSchema(dryRun, ws, logPrefix) {
+    for (const { file, rewritten } of migrateLedgers(process.cwd(), dryRun)) {
+        ws.writes.push({ path: file, action: "update" });
+        console.log(`${logPrefix} ${dryRun ? "[dry-run] " : ""}core: ${file} — ${rewritten} row(s) rewritten to schema 2`);
+    }
 }
 // ---------------------------------------------------------------------------
 // Source-rendered host outputs — agents (.agents/prompts source) and commands

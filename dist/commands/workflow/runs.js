@@ -31,6 +31,7 @@ import { pushBranch } from "./branches.js";
 import { activeRecord, checkOnlyBookkeeping, retriggerCommit } from "./ledgers.js";
 import { closeTransportRow, crossCheckFile, devRequiresChecks, prRepoSlug, probePr, } from "./prs.js";
 import { resolveOwnerRepo, splitSlug } from "./repo.js";
+import { restateOutcome } from "./run-facts.js";
 import { extraField, str } from "./status.js";
 import { writeStepRow } from "./steps.js";
 const GH_MISSING = "gh is not on PATH — use the mapped GitHub MCP tool instead";
@@ -980,6 +981,10 @@ async function runDispatch(ctx) {
             },
             commit: "none",
         }, ctx.log).row;
+        if (/-close-workflow$/.test(step)) {
+            const tree = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
+            restateOutcome(tree, status, String(f.workflow ?? "build"), { ...r.ciDispatch }, ctx.log);
+        }
         if (code === EXIT.OK || code === EXIT_SKIP_TOKEN) {
             const check = crossCheckFile(status, "gh", ctx.log);
             if (!check.ok) {

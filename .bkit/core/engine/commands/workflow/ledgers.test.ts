@@ -816,12 +816,21 @@ describe("bkit ledgers append", () => {
 
   const failure = (o: Record<string, unknown> = {}) => ({
     kind: "failure",
-    workflow: "build",
-    step: "build-challenge",
+    by: { workflow: "build", step: "build-challenge" },
     key: "parser-drops-last-line",
     summary: "parser drops the last line",
     severity: "HIGH",
     status: "OPEN",
+    ...o,
+  });
+
+  const outcome = (o: Record<string, unknown> = {}) => ({
+    kind: "outcome",
+    by: { workflow: "build", step: "build-close-workflow" },
+    run: { parentSha: "a".repeat(40) },
+    time: null,
+    ending: "done",
+    ledgers: { deferrals: { repo: 0 }, failures: { repo: 0 }, friction: {} },
     ...o,
   });
 
@@ -838,7 +847,7 @@ describe("bkit ledgers append", () => {
       .filter((l) => l !== "")
       .map((l) => JSON.parse(l) as Record<string, unknown>);
 
-  it("append mints ts and writes validated rows", async () => {
+  it("append mints ts and fills the top section: schema, repo and bkit.version", async () => {
     const r = repo();
     put(r, ".bkit/version", JSON.stringify({ pinnedVersion: "5.5.1", canonicalHashes: {} }));
     const before = Date.now();
@@ -853,19 +862,32 @@ describe("bkit ledgers append", () => {
     const [a, b] = lines(r, "docs/failures.jsonl");
     expect(a.ts).toBeGreaterThanOrEqual(before);
     expect(b.ts).toBeGreaterThan(a.ts as number);
-    expect(Object.keys(a).slice(0, 4)).toEqual(["ts", "kind", "repo", "bkitVersion"]);
+    expect(Object.keys(a).slice(0, 7)).toEqual([
+      "schema",
+      "ts",
+      "kind",
+      "key",
+      "repo",
+      "bkit",
+      "by",
+    ]);
     expect(a).toMatchObject({
+      schema: 2,
       repo: "unknown/repo",
-      bkitVersion: "5.5.1",
+      bkit: { version: "5.5.1" },
+      by: { workflow: "build", step: "build-challenge" },
       summary: "parser drops the last line",
     });
   });
 
-  it("append keeps a row's own repo and bkitVersion", async () => {
+  it("append keeps a row's own repo", async () => {
     const r = repo();
-    const res = await append(r, "failures", [failure({ repo: "o/r", bkitVersion: "1.2.3" })]);
+    const res = await append(r, "failures", [failure({ repo: "o/r" })]);
     expect(res.code).toBe(0);
-    expect(lines(r, "docs/failures.jsonl")[0]).toMatchObject({ repo: "o/r", bkitVersion: "1.2.3" });
+    expect(lines(r, "docs/failures.jsonl")[0]).toMatchObject({
+      repo: "o/r",
+      bkit: { version: "unknown" },
+    });
   });
 
   it("append refuses a supplied ts", async () => {
@@ -874,6 +896,24 @@ describe("bkit ledgers append", () => {
     expect(res.code).toBe(EXIT_ROW_REFUSED);
     expect(res.err).toContain("row 1: carries ts");
     expect(fs.existsSync(path.join(r, "docs/failures.jsonl"))).toBe(false);
+  });
+
+  it("append refuses a supplied schema or bkit", async () => {
+    const r = repo();
+    const schema = await append(r, "failures", [failure({ schema: 2 })]);
+    expect(schema.code).toBe(EXIT_ROW_REFUSED);
+    expect(schema.err).toContain("row 1: carries schema");
+    const bkit = await append(r, "failures", [failure(), failure({ bkit: { version: "1.2.3" } })]);
+    expect(bkit.code).toBe(EXIT_ROW_REFUSED);
+    expect(bkit.err).toContain("row 2: carries bkit");
+    expect(fs.existsSync(path.join(r, "docs/failures.jsonl"))).toBe(false);
+  });
+
+  it("append refuses a flat top-level field the top section moved into by", async () => {
+    const r = repo();
+    const res = await append(r, "failures", [failure({ workflow: "build" })]);
+    expect(res.code).toBe(EXIT_ROW_REFUSED);
+    expect(res.err).toContain("workflow is not a top-level field");
   });
 
   it("append writes nothing when one row is invalid", async () => {
@@ -895,6 +935,63 @@ describe("bkit ledgers append", () => {
     const res = await append(r, "knowledge", [failure()]);
     expect(res.code).toBe(EXIT_ROW_REFUSED);
     expect(res.err).toContain("kind must be knowledge in --ledger=knowledge (got failure)");
+  });
+
+  it("append --ledger=stats takes compliance, counter and outcome rows", async () => {
+    const r = repo();
+    const sha = "a".repeat(40);
+    const by = { workflow: "build", step: "build-close-workflow" };
+    const res = await append(r, "stats", [
+      {
+        kind: "compliance",
+        by,
+        run: { parentSha: sha },
+        rule: { id: "no-mirror-edit", verdict: "pass" },
+      },
+      {
+        kind: "counter",
+        by,
+        run: { parentSha: sha },
+        counter: { name: "BUILD_ATTEMPT", value: 1, source: "shell-bus" },
+      },
+      outcome(),
+    ]);
+    expect(res.code).toBe(0);
+    expect(res.json).toMatchObject({ ledger: "stats", file: ".bkit/stats.jsonl", appended: 3 });
+    const rows = lines(r, ".bkit/stats.jsonl");
+    expect(rows.map((x) => x.kind)).toEqual(["compliance", "counter", "outcome"]);
+    expect(rows.map((x) => [x.schema, (x.run as { parentSha: string }).parentSha])).toEqual([
+      [2, sha],
+      [2, sha],
+      [2, sha],
+    ]);
+  });
+
+  it("append --ledger=stats refuses another kind, a non-closing writer, and a total that does not match its parts", async () => {
+    const r = repo();
+    const kind = await append(r, "stats", [failure()]);
+    expect(kind.code).toBe(EXIT_ROW_REFUSED);
+    expect(kind.err).toContain("kind must be compliance | counter | outcome in --ledger=stats");
+    const writer = await append(r, "stats", [
+      outcome({ by: { workflow: "audit", step: "audit-close" } }),
+    ]);
+    expect(writer.code).toBe(EXIT_ROW_REFUSED);
+    expect(writer.err).toContain("the audit orchestrator does not write outcome rows");
+    const none = { added: 0, deleted: 0, files: 0 };
+    const totals = await append(r, "stats", [
+      outcome({
+        lines: {
+          total: { added: 5, deleted: 0, changed: 5, files: 1 },
+          code: { added: 4, deleted: 0, files: 1 },
+          tests: none,
+          docs: none,
+          merges: 0,
+        },
+      }),
+    ]);
+    expect(totals.code).toBe(EXIT_ROW_REFUSED);
+    expect(totals.err).toContain("lines.total.added");
+    expect(fs.existsSync(path.join(r, ".bkit/stats.jsonl"))).toBe(false);
   });
 
   it("append bumps a round-second mint", async () => {
@@ -926,23 +1023,22 @@ describe("bkit ledgers append", () => {
     const r = repo();
     const knowledge = {
       kind: "knowledge",
-      workflow: "build",
-      step: "build-challenge",
+      by: { workflow: "build", step: "build-challenge" },
       key: "k",
       summary: "s",
     };
-    const bySubagent = await append(r, "knowledge", [
-      { ...knowledge, subagent: "bkit-plan-generate", model: "m" },
-    ]);
+    const as = (subagent: string) => ({
+      ...knowledge,
+      by: { ...knowledge.by, subagent, model: "m" },
+    });
+    const bySubagent = await append(r, "knowledge", [as("bkit-plan-generate")]);
     expect(bySubagent.code).toBe(EXIT_ROW_REFUSED);
     expect(bySubagent.err).toContain("subagent bkit-plan-generate does not write knowledge rows");
     const byOrchestrator = await append(r, "knowledge", [knowledge]);
     expect(byOrchestrator.code).toBe(EXIT_ROW_REFUSED);
     expect(byOrchestrator.err).toContain("the build orchestrator does not write knowledge rows");
     expect(fs.existsSync(path.join(r, "docs/knowledge.jsonl"))).toBe(false);
-    const ok = await append(r, "knowledge", [
-      { ...knowledge, subagent: "bkit-utility-update-knowledge", model: "m" },
-    ]);
+    const ok = await append(r, "knowledge", [as("bkit-utility-update-knowledge")]);
     expect(ok.code).toBe(0);
   });
 
@@ -958,8 +1054,7 @@ describe("bkit ledgers append", () => {
     const res = await append(r, "friction", [
       {
         kind: "friction",
-        workflow: "ship",
-        step: "ship-close-gate",
+        by: { workflow: "ship", step: "ship-close-gate" },
         key: "f",
         summary: "s",
         severity: "LOW",

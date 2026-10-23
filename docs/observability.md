@@ -53,7 +53,12 @@ Compliance grader stderr. Canonical grep patterns:
 
 ### `[bkit-telemetry]` prefix
 
-`bkit workflows close` writes the `counter` + `outcome` rows; a failed append is logged (`telemetryWritten` false) and the close continues. `[bkit-telemetry] stats.jsonl not found — no telemetry rows yet` in the close `report` when the ledger is absent.
+`bkit workflows close` writes the `counter` + `outcome` rows via `bkit ledgers append --ledger=stats`; a failed append is logged (`telemetryWritten` false), the close continues. `bkit runs dispatch` re-appends the outcome with its CI dispatch, fail-open too. Grep patterns:
+
+- `[bkit-telemetry] stats rows not written: {reason}` — close append failed (row refused or file write failed).
+- `[bkit-telemetry] stats.jsonl not found — no telemetry rows yet` — in the close `report` when the ledger is absent.
+- `[bkit-telemetry] outcome not restated: {reason}` / `no {workflow} workflow-done row with parentSha — outcome not restated` / `no {workflow} outcome row for {sha} — outcome not restated` — dispatch re-append skipped.
+- `[bkit-telemetry] {kind} row {key} not written: {reason}` — chat-stats row failing its totals check, on stderr; not appended.
 
 ### `[bkit-harvest]` prefix
 
@@ -77,8 +82,8 @@ Compliance grader stderr. Canonical grep patterns:
 `bkit analysis` log lines:
 
 - `[bkit-analysis] Telemetry rows: N | malformed: M` — start summary.
-- `[bkit-analysis] #183 Size↔outcome regression (dispatch-size threshold: N linesAdded):` — regression header.
-- `[bkit-analysis] counterSource trust: shell-bus=N (trusted) | model-self-report=N (untrusted, pre-P3)` — trust tier.
+- `[bkit-analysis] #183 Size↔outcome regression (dispatch-size threshold: N lines added):` — regression header (buckets on `lines.total.added`).
+- `[bkit-analysis] counter.source trust: shell-bus=N (trusted) | model-self-report=N (untrusted)` — trust tier.
 - `[bkit-analysis] Per-rule compliance rates:` — compliance header.
 
 ### `[bkit-roadmap]` prefix

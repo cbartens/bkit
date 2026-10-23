@@ -421,46 +421,63 @@ describe("bkit workflows close", () => {
     return cwd;
   }
 
+  /** The close's rows as `ledgers append` wrote them to `.bkit/stats.jsonl`. */
+  const statsOf = (cwd: string) => rows(path.join(cwd, ".bkit/stats.jsonl"));
+  const writtenOutcome = (cwd: string) => statsOf(cwd).find((x) => x.kind === "outcome");
+  const NO_LINES = { added: 0, deleted: 0, files: 0 };
+
   it("writes workflow-done and schema-valid counter + outcome rows", async () => {
     const cwd = closable();
+    const head = git(cwd, "rev-parse", "HEAD");
     const r = await run(cwd, wf("close", "build"));
     expect(r.code).toBe(0);
-    expect(rows(statusOf(cwd)).at(-1)).toMatchObject({ type: "workflow-done", workflow: "build" });
-    const all = rows(path.join(cwd, ".bkit/stats.jsonl"));
+    // The run's join key on its status row: what `runs dispatch` restates the outcome by.
+    expect(rows(statusOf(cwd)).at(-1)).toMatchObject({
+      type: "workflow-done",
+      workflow: "build",
+      parentSha: head,
+    });
+    const all = statsOf(cwd);
     // The grader's compliance rows come first: the report below must carry this run's grade.
     expect(all.map((x) => x.kind)).toEqual(["compliance", "compliance", "counter", "outcome"]);
-    const stats = all.slice(2);
-    const [counter, outcome] = stats;
-    for (const row of stats) expect(validate(row)).toEqual({ ok: true });
+    for (const row of all) expect(validate(row)).toEqual({ ok: true });
+    const [counter, outcome] = all.slice(2);
     expect(counter).toMatchObject({
+      schema: 2,
       kind: "counter",
-      step: "build-close-workflow",
-      counterName: "BUILD_ATTEMPT",
-      counterValue: 1,
-      counterSource: "shell-bus",
       repo: "cbartens/bkit",
-      bkitVersion: "4.6.3",
-      parentSha: git(cwd, "rev-parse", "HEAD"),
+      bkit: { version: "4.6.3" },
+      by: { workflow: "build", step: "build-close-workflow" },
+      run: { parentSha: head },
+      counter: { name: "BUILD_ATTEMPT", value: 1, source: "shell-bus" },
     });
     expect(outcome).toMatchObject({
+      schema: 2,
       kind: "outcome",
-      workflow: "build",
-      step: "build-close-workflow",
-      // a.txt +1, b.txt +1, and the status / friction logs committed with the work (+1, +3)
-      linesAdded: 6,
-      linesDeleted: 0,
-      linesChanged: 6,
-      filesChanged: 4,
-      frictionAdded: 1,
-      deferralsAdded: 0,
-      failuresAdded: 0,
-      deferrals: 0,
-      failures: 0,
-      taskCount: 0,
+      by: { workflow: "build", step: "build-close-workflow" },
+      run: { parentSha: head },
+      ending: "done",
+      // a.txt +1, b.txt +1; the status / friction logs committed with the work are left out
+      lines: {
+        total: { added: 2, deleted: 0, changed: 2, files: 2 },
+        code: { added: 2, deleted: 0, files: 2 },
+        tests: NO_LINES,
+        docs: NO_LINES,
+        merges: 0,
+      },
+      ledgers: {
+        deferrals: { repo: 0, added: 0 },
+        failures: { repo: 0, added: 0 },
+        friction: { added: 1 },
+      },
+      build: { verify: [], gapsRemediate: [], holistic: null, challenge: null, redTests: 0 },
     });
-    expect(outcome!.durationSeconds).toBeGreaterThan(0);
-    expect(outcome!.prNumber).toBeUndefined();
-    expect(outcome!.planSource).toBeUndefined();
+    expect((outcome!.time as { totalMinutes: number }).totalMinutes).toBeGreaterThan(0);
+    expect(outcome!.run).not.toHaveProperty("pr");
+    expect(outcome).not.toHaveProperty("plan");
+    expect(outcome).not.toHaveProperty("taskCount");
+    // The printed rows are the drafts the ledger copies were written from.
+    expect(r.json.outcomeRow).toMatchObject({ kind: "outcome", run: { parentSha: head } });
     expect(r.json).toMatchObject({
       telemetryWritten: true,
       compliance: 0,
@@ -472,7 +489,23 @@ describe("bkit workflows close", () => {
     expect(r.json.report.length).toBeGreaterThan(0);
   });
 
-  it("carries planSource from this run's workflow-meta, counts plan tasks and ledger totals", async () => {
+  it("stamps its compliance rows with the same run.parentSha as its counter and outcome, at the close step", async () => {
+    const cwd = closable();
+    expect((await run(cwd, wf("close", "build"))).code).toBe(0);
+    const all = statsOf(cwd);
+    const head = git(cwd, "rev-parse", "HEAD");
+    expect(all.map((x) => (x.run as { parentSha: string }).parentSha)).toEqual([
+      head,
+      head,
+      head,
+      head,
+    ]);
+    for (const row of all) {
+      expect(row.by).toEqual({ workflow: "build", step: "build-close-workflow" });
+    }
+  });
+
+  it("carries planSource from this run's workflow-meta and the repo / per-run ledger counts", async () => {
     const cwd = closable();
     fs.appendFileSync(
       statusOf(cwd),
@@ -487,7 +520,6 @@ describe("bkit workflows close", () => {
       ]),
     );
     write(cwd, `docs/plans/${M}/${FID}-plan.md`, "- [ ] one\n- [x] two\n  - [ ] nested\n");
-    write(cwd, `docs/plans/${M}/${FID}-plan-2.md`, "- [ ] three\n");
     write(
       cwd,
       "docs/deferrals.jsonl",
@@ -498,12 +530,40 @@ describe("bkit workflows close", () => {
       ]) + "not json\n",
     );
     const r = await run(cwd, wf("close", "build"));
-    const outcome = r.json.outcomeRow;
-    expect(outcome).toMatchObject({
-      planSource: "brief",
-      taskCount: 3,
-      deferrals: 2,
-      deferralsAdded: 1,
+    expect(r.code).toBe(0);
+    const outcome = writtenOutcome(cwd);
+    // A brief run carries only its source, whatever plan files exist.
+    expect(outcome!.plan).toEqual({ source: "brief" });
+    expect((outcome!.ledgers as Record<string, unknown>).deferrals).toEqual({ repo: 2, added: 1 });
+  });
+
+  it("counts plan tasks from the task headings, never the sub-step checkboxes", async () => {
+    const cwd = closable();
+    const taskLine = (n: number) =>
+      `- [ ] **Task ${n}:** Do ${n}. **Done when:** done. **Test first:** \`a.test.ts\` \`t${n}\` fails.`;
+    const steps = (n: number) => [1, 2, 3].map((i) => `  - [ ] Step ${n}.${i}`).join("\n");
+    write(
+      cwd,
+      `docs/plans/${M}/${FID}-plan-1.md`,
+      `# Plan 1\n\n${taskLine(1)}\n${steps(1)}\n${taskLine(2)}\n${steps(2)}\n`,
+    );
+    write(cwd, `docs/plans/${M}/${FID}-plan-2.md`, `# Plan 2\n\n${taskLine(3)}\n${steps(3)}\n`);
+    expect((await run(cwd, wf("close", "build"))).code).toBe(0);
+    const outcome = writtenOutcome(cwd);
+    expect(validate(outcome)).toEqual({ ok: true });
+    // Twelve `- [` lines, three tasks.
+    expect(outcome!.plan).toMatchObject({
+      source: "file",
+      total: { tasks: 3 },
+      subPlans: [
+        {
+          tasks: [
+            { tests: 1, testFiles: 1 },
+            { tests: 1, testFiles: 1 },
+          ],
+        },
+        { tasks: [{ tests: 1, testFiles: 1 }] },
+      ],
     });
   });
 
@@ -511,7 +571,7 @@ describe("bkit workflows close", () => {
     const cwd = closable("design");
     const r = await run(cwd, wf("close", "design"));
     expect(r.code).toBe(0);
-    expect(rows(path.join(cwd, ".bkit/stats.jsonl")).map((x) => x.kind)).toEqual([
+    expect(statsOf(cwd).map((x) => x.kind)).toEqual([
       "compliance",
       "compliance",
       "counter",
@@ -520,14 +580,20 @@ describe("bkit workflows close", () => {
     expect(r.json.featureStatus).toBe("DESIGNED");
   });
 
-  it("with no workflow-started row: duration 0, per-run counts omitted, attempt 1", async () => {
+  it("with no workflow-started row: time null, per-run counts omitted, attempt 1", async () => {
     const cwd = repo();
     write(cwd, `${REL}/status.jsonl`, "");
     const r = await run(cwd, wf("close", "debug"));
     expect(r.code).toBe(0);
-    expect(r.json.outcomeRow.durationSeconds).toBe(0);
-    expect(r.json.outcomeRow).not.toHaveProperty("frictionAdded");
-    expect(r.json.counterRow.counterValue).toBe(1);
+    const outcome = writtenOutcome(cwd);
+    expect(validate(outcome)).toEqual({ ok: true });
+    expect(outcome!.time).toBeNull();
+    expect(outcome!.ledgers).toEqual({
+      deferrals: { repo: 0 },
+      failures: { repo: 0 },
+      friction: {},
+    });
+    expect(r.json.counterRow.counter.value).toBe(1);
   });
 
   it("counts attempts from distinct workflow-started rows (a union merge may duplicate one)", async () => {
@@ -537,7 +603,7 @@ describe("bkit workflows close", () => {
       statusOf(cwd),
       jsonl([first!, { type: "workflow-started", workflow: "build", at: "2020-01-02T00:00:00Z" }]),
     );
-    expect((await run(cwd, wf("close", "build"))).json.counterRow.counterValue).toBe(2);
+    expect((await run(cwd, wf("close", "build"))).json.counterRow.counter.value).toBe(2);
   });
 
   it("an unwritable stats path is logged and never fails the close", async () => {
@@ -547,8 +613,9 @@ describe("bkit workflows close", () => {
     const r = await run(cwd, wf("close", "build"));
     expect(r.code).toBe(0);
     expect(r.json.telemetryWritten).toBe(false);
-    expect(r.err).toContain("[bkit-telemetry] append failed");
-    expect(r.json.outcomeRow.bkitVersion).toBe("unknown");
+    expect(r.err).toContain("[bkit-telemetry] stats rows not written");
+    expect(r.json.outcomeRow).toBeNull();
+    expect(r.json.counterRow).toBeNull();
   });
 
   it("refuses without status.jsonl and writes nothing", async () => {
@@ -558,7 +625,7 @@ describe("bkit workflows close", () => {
     expect(fs.existsSync(path.join(cwd, ".bkit/stats.jsonl"))).toBe(false);
   });
 
-  it("ship: prNumber, size of the squash commit, and coverage", async () => {
+  it("ship: run.pr, size of the squash commit, and coverage", async () => {
     const cwd = closable("ship");
     write(cwd, "c.txt", "1\n2\n3\n");
     git(cwd, "add", "-A");
@@ -583,13 +650,13 @@ describe("bkit workflows close", () => {
     );
     const r = await run(cwd, wf("close", "ship", "--pr-number=42", `--squash-sha=${squash}`));
     expect(r.code).toBe(0);
-    expect(r.json.outcomeRow).toMatchObject({
-      prNumber: 42,
-      linesAdded: 3,
-      filesChanged: 1,
-      coverage: { unit: { lines: 91.5, branches: 80, functions: 70, statements: 90 } },
+    const outcome = writtenOutcome(cwd);
+    expect(outcome).toMatchObject({
+      run: { pr: 42 },
+      lines: { total: { added: 3, files: 1 } },
+      ship: { coverage: { unit: { lines: 91.5, branches: 80, functions: 70, statements: 90 } } },
     });
-    expect(validate(r.json.outcomeRow).ok).toBe(true);
+    expect(validate(outcome)).toEqual({ ok: true });
     expect((await run(cwd, wf("close", "ship", "--squash-sha=HEAD"))).code).toBe(2);
   });
 
@@ -634,8 +701,12 @@ describe("bkit workflows close", () => {
     );
     const r = await run(cwd, wf("close", "build"));
     expect(r.code).toBe(0);
-    expect(r.json.outcomeRow).toMatchObject({ frictionAdded: 1, failures: 2, failuresAdded: 1 });
-    expect(validate(r.json.outcomeRow).ok).toBe(true);
+    const outcome = writtenOutcome(cwd);
+    expect(outcome!.ledgers).toMatchObject({
+      friction: { added: 1 },
+      failures: { repo: 2, added: 1 },
+    });
+    expect(validate(outcome)).toEqual({ ok: true });
   });
 
   it("absent ledgers still give a schema-valid row with zero per-run counts", async () => {
@@ -643,14 +714,13 @@ describe("bkit workflows close", () => {
     fs.rmSync(path.join(cwd, ".bkit/friction.jsonl"));
     const r = await run(cwd, wf("close", "design"));
     expect(r.code).toBe(0);
-    expect(r.json.outcomeRow).toMatchObject({
-      frictionAdded: 0,
-      deferralsAdded: 0,
-      failuresAdded: 0,
-      deferrals: 0,
-      failures: 0,
+    const outcome = writtenOutcome(cwd);
+    expect(outcome!.ledgers).toEqual({
+      deferrals: { repo: 0, added: 0 },
+      failures: { repo: 0, added: 0 },
+      friction: { added: 0 },
     });
-    expect(validate(r.json.outcomeRow).ok).toBe(true);
+    expect(validate(outcome)).toEqual({ ok: true });
   });
 });
 
@@ -975,6 +1045,103 @@ describe("bkit workflows handover", () => {
     const left = fs.readFileSync(path.join(cwd, ".bkit/stats.jsonl"), "utf-8");
     expect(left).toContain('"other-feature"');
     expect(left).toContain('"chat"');
+  });
+
+  it("--push on dev never carries another run's stats rows: a run.parentSha that is none of the run's shas", async () => {
+    const { cwd, remote } = withDevRemote();
+    const head = git(cwd, "rev-parse", "HEAD");
+    const startSha = "e".repeat(40);
+    const start = Date.now() - 1000;
+    const by = { workflow: "debug", step: "debug-close-workflow" };
+    const stats = [
+      // Rows written without schema, joined by their top-level parentSha.
+      { kind: "compliance", workflow: "debug", ts: start + 1, parentSha: head, rule: "mine-head" },
+      {
+        kind: "outcome",
+        workflow: "debug",
+        ts: start + 2,
+        parentSha: "f".repeat(40),
+        x: "theirs-1",
+      },
+      // Rows in the current shape, joined by run.parentSha.
+      {
+        schema: 2,
+        kind: "counter",
+        by,
+        ts: start + 3,
+        run: { parentSha: startSha },
+        x: "mine-start",
+      },
+      {
+        schema: 2,
+        kind: "outcome",
+        by,
+        ts: start + 4,
+        run: { parentSha: "d".repeat(40) },
+        x: "theirs-2",
+      },
+    ];
+    write(cwd, ".bkit/stats.jsonl", jsonl(stats));
+    write(
+      cwd,
+      `${REL}/status.jsonl`,
+      jsonl([
+        {
+          type: "workflow-started",
+          workflow: "debug",
+          at: new Date(start).toISOString(),
+          parentSha: startSha,
+        },
+        { type: "workflow-failed", workflow: "debug", at: new Date(start + 500).toISOString() },
+      ]),
+    );
+    const r = await run(cwd, wf("handover", "debug", `--month=${M}`, "--push"));
+    expect(r.code).toBe(0);
+    const onDev = git(remote, "show", "dev:.bkit/stats.jsonl");
+    expect(onDev).not.toContain('"theirs-1"');
+    expect(onDev).not.toContain('"theirs-2"');
+    expect(onDev).toContain('"mine-head"');
+    expect(onDev).toContain('"mine-start"');
+    const left = fs.readFileSync(path.join(cwd, ".bkit/stats.jsonl"), "utf-8");
+    expect(left).toContain('"theirs-1"');
+    expect(left).toContain('"theirs-2"');
+    expect(left).not.toContain('"mine-head"');
+  });
+
+  it("--push on dev never carries a row whose references name another feature", async () => {
+    const { cwd, remote } = withDevRemote();
+    const start = Date.now() - 1000;
+    const deferral = (key: string, references: string[], ts: number) => ({
+      kind: "deferral",
+      key,
+      workflow: "debug",
+      ts: start + ts,
+      references,
+    });
+    write(
+      cwd,
+      "docs/deferrals.jsonl",
+      jsonl([
+        deferral("mine-fid", [FID, "BAR-217"], 1),
+        deferral("mine-number", ["12"], 2),
+        deferral("no-feature-ref", ["src/a.ts", "KN-14"], 3),
+        deferral("mine-among-others", ["99-other-thing", FID], 4),
+        deferral("theirs-fid", ["99-other-thing"], 5),
+        deferral("theirs-number", ["7"], 6),
+      ]),
+    );
+    write(cwd, `${REL}/status.jsonl`, startedThenFailed("debug", start));
+    const r = await run(cwd, wf("handover", "debug", `--month=${M}`, "--push"));
+    expect(r.code).toBe(0);
+    const onDev = git(remote, "show", "dev:docs/deferrals.jsonl");
+    for (const key of ["mine-fid", "mine-number", "no-feature-ref", "mine-among-others"]) {
+      expect(onDev).toContain(`"${key}"`);
+    }
+    expect(onDev).not.toContain('"theirs-fid"');
+    expect(onDev).not.toContain('"theirs-number"');
+    const left = fs.readFileSync(path.join(cwd, "docs/deferrals.jsonl"), "utf-8");
+    expect(left).toContain('"theirs-fid"');
+    expect(left).toContain('"theirs-number"');
   });
 
   it("--push on dev with no start row carries no shared-ledger row, and says so", async () => {

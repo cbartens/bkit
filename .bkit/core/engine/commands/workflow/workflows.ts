@@ -30,15 +30,13 @@ import {
   type StatusEvent,
 } from "../../ledgers/status.js";
 import {
-  appendLine as telemetryLine,
   foldFrom,
-  mintTs,
+  normalize,
   resolveRepoSlug,
-  validate,
   workflowTelemetry,
   type CoverageStats,
+  type OutcomePayload,
 } from "../../ledgers/telemetry.js";
-import { readBkitVersion } from "../../install/version-file.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { gradeCompliance } from "../comply.js";
 import { landDir, pushToDev, type DevPush } from "../land.js";
@@ -74,9 +72,19 @@ import {
   ownPathCommit,
   ownSet,
   removeRecord,
+  appendLedgerRows,
   runRows,
   unionLedgers,
 } from "./ledgers.js";
+import {
+  buildBlock,
+  ciList,
+  planBlock,
+  runLines,
+  runStatusRows,
+  stepsBlock,
+  timeBlock,
+} from "./run-facts.js";
 import {
   EXIT_REMOVE_FAILED,
   EXIT_SPLIT_BUCKET,
@@ -369,12 +377,47 @@ const SHARED_LEDGERS = [
  */
 const NOT_A_RUNS_OWN_KIND = new Set(["chat", "run"]);
 
+/** HEAD and every `parentSha` the run's status rows of `workflow` carry: the shas its `run.parentSha` can name. */
+function runShas(src: string, status: string, workflow: string): Set<string> {
+  const shas = new Set<string>([headSha(src)]);
+  for (const e of fs.existsSync(status) ? readStatusEvents(status) : []) {
+    const sha = (e as Record<string, unknown>).parentSha;
+    if (e.workflow === workflow && typeof sha === "string") shas.add(sha);
+  }
+  shas.delete("");
+  return shas;
+}
+
+/** A feature id in `references`: a bare number or `{N}-{slug}`. */
+const FEATURE_REF = /^\d+(-[a-z0-9-]+)?$/;
+
+/**
+ * A shared-ledger row (normalized) of THIS run: a row of `workflow` at or after its
+ * start, never a kind no run writes. A row with `run.parentSha` (compliance, counter,
+ * outcome) must name one of the run's shas; any other row must not point at a
+ * different feature in its `references`.
+ */
+function isRunsOwnRow(
+  row: Record<string, unknown>,
+  o: { fid: string; workflow: string; startMs: number | undefined },
+  shas: Set<string>,
+): boolean {
+  if (byWorkflow(row) !== o.workflow || !(Number(row.ts) >= o.startMs!)) return false;
+  if (NOT_A_RUNS_OWN_KIND.has(String(row.kind))) return false;
+  const sha = (row.run as Record<string, unknown> | undefined)?.parentSha;
+  if (sha !== undefined) return typeof sha === "string" && shas.has(sha);
+  const features = (Array.isArray(row.references) ? row.references : [])
+    .map(String)
+    .filter((r) => FEATURE_REF.test(r));
+  const n = /^(\d+)-/.exec(o.fid)?.[1];
+  return features.length === 0 || features.some((r) => r === o.fid || r === n);
+}
+
 /**
  * Carry ONLY the run's own record out of a dev / main / detached checkout, which
  * other sessions and local-only commits share: the `.md` logs it wrote in its log
  * folder; the lines of that folder's `.jsonl` files its HEAD lacks; and, from the
- * shared ledgers, lines its HEAD lacks that are rows of `workflow` at or after
- * the run's start (`startMs`), except kinds no run writes ({@link NOT_A_RUNS_OWN_KIND}).
+ * shared ledgers, lines its HEAD lacks that are this run's rows ({@link isRunsOwnRow}).
  * No start known → no shared-ledger row is carried.
  */
 function carryOwnBook(
@@ -409,15 +452,11 @@ function carryOwnBook(
     log(`no ${o.workflow} start row for ${o.fid} — no shared-ledger row carried`);
     return carried;
   }
+  const shas = runShas(src, path.join(src, statusRelPath(o.month, o.fid)), o.workflow);
   for (const file of listed(SHARED_LEDGERS)) {
     const own = uncommitted(file).filter((l) => {
-      const parsed = parseJson(l);
-      const row = parsed.ok ? (parsed.value as Record<string, unknown> | null) : null;
-      return (
-        row?.workflow === o.workflow &&
-        Number(row.ts) >= o.startMs! &&
-        !NOT_A_RUNS_OWN_KIND.has(String(row.kind))
-      );
+      const row = parseObject(l);
+      return row !== undefined && isRunsOwnRow(normalize(row), o, shas);
     });
     if (own.length > 0) add(file, own);
   }
@@ -678,13 +717,11 @@ async function handoverVerb(ctx: RunContext): Promise<number> {
 // close
 // ---------------------------------------------------------------------------
 
-interface Ledgers {
-  frictionAdded?: number;
-  deferralsAdded?: number;
-  failuresAdded?: number;
-  deferrals: number;
-  failures: number;
-}
+type Ledgers = OutcomePayload["ledgers"];
+
+/** The row's `by.workflow`, on a row already normalized. */
+const byWorkflow = (r: Record<string, unknown>) =>
+  (r.by as Record<string, unknown> | undefined)?.workflow;
 
 /** Rows of a JSONL ledger; malformed lines are skipped, a missing file is empty. */
 function ledgerRows(file: string): Array<Record<string, unknown>> {
@@ -720,47 +757,29 @@ const distinctKeys = (rows: Array<Record<string, unknown>>) =>
  * counting the ledger's whole history as this run's.
  */
 function ledgerCounts(tree: string, workflow: string, startMs: number | undefined): Ledgers {
-  const deferrals = ledgerRows(path.join(tree, "docs", "deferrals.jsonl"));
-  const failures = ledgerRows(path.join(tree, "docs", "failures.jsonl"));
-  const friction = ledgerRows(path.join(tree, ".bkit", "friction.jsonl"));
+  const read = (file: string) => ledgerRows(file).map((r) => normalize(r));
+  const deferrals = read(path.join(tree, "docs", "deferrals.jsonl"));
+  const failures = read(path.join(tree, "docs", "failures.jsonl"));
+  const friction = read(path.join(tree, ".bkit", "friction.jsonl"));
   const added = (rows: Array<Record<string, unknown>>) =>
-    distinctKeys(rows.filter((r) => r.workflow === workflow && Number(r.ts) >= startMs!));
-  return {
-    deferrals: distinctKeys(deferrals.filter((r) => r.kind === "deferral")),
-    failures: distinctKeys(failures.filter((r) => r.kind === "failure")),
-    ...(startMs === undefined
+    startMs === undefined
       ? {}
       : {
-          frictionAdded: added(friction),
-          deferralsAdded: added(deferrals),
-          failuresAdded: added(failures),
-        }),
-  };
-}
-
-/** `git diff --shortstat` numbers; 0 for anything absent or a range git rejects. */
-export function diffStat(cwd: string, range: string) {
-  const out = runGit(cwd, ["diff", "--shortstat", range]).stdout;
-  const num = (re: RegExp) => Number(re.exec(out)?.[1] ?? 0);
-  const linesAdded = num(/(\d+) insertions?\(/);
-  const linesDeleted = num(/(\d+) deletions?\(/);
+          added: distinctKeys(
+            rows.filter((r) => byWorkflow(r) === workflow && Number(r.ts) >= startMs),
+          ),
+        };
   return {
-    linesAdded,
-    linesDeleted,
-    linesChanged: linesAdded + linesDeleted,
-    filesChanged: num(/(\d+) files? changed/),
+    deferrals: {
+      repo: distinctKeys(deferrals.filter((r) => r.kind === "deferral")),
+      ...added(deferrals),
+    },
+    failures: {
+      repo: distinctKeys(failures.filter((r) => r.kind === "failure")),
+      ...added(failures),
+    },
+    friction: added(friction),
   };
-}
-
-/** Checklist items (`- [`) across the feature's plan and sub-plans. */
-function taskCount(tree: string, month: string, fid: string): number {
-  const dir = path.join(tree, "docs", "plans", month);
-  if (!fs.existsSync(dir)) return 0;
-  return fs
-    .readdirSync(dir)
-    .filter((f) => f.startsWith(`${fid}-plan`) && f.endsWith(".md"))
-    .flatMap((f) => fs.readFileSync(path.join(dir, f), "utf-8").split("\n"))
-    .filter((l) => l.startsWith("- [")).length;
 }
 
 /** Per-tier coverage from `coverage/{tier}/coverage-summary.json`; undefined when none. */
@@ -790,20 +809,14 @@ function lastOfType(events: StatusEvent[], type: string, workflow: string) {
     .at(-1) as (StatusEvent & Record<string, unknown>) | undefined;
 }
 
-/** Append telemetry rows; best-effort, so a bad path is logged and never fails the close. */
-function appendStats(file: string, rows: Array<Record<string, unknown>>, log: (m: string) => void) {
-  const valid = rows.filter((r) => {
-    const v = validate(r);
-    if (!v.ok) log(`[bkit-telemetry] ${String(r.kind)} row invalid, not written: ${v.reason}`);
-    return v.ok;
-  });
-  if (valid.length === 0) return false;
+/** Append the close's stats rows; best-effort, so a refused row or a bad path is logged and never fails the close. */
+function appendStats(tree: string, rows: Array<Record<string, unknown>>, log: (m: string) => void) {
   try {
-    fs.appendFileSync(file, valid.map((r) => `${telemetryLine(r as never)}\n`).join(""));
+    appendLedgerRows(tree, "stats", rows);
     return true;
   } catch (err) {
-    // Telemetry never gates a close: report the failed append and carry on.
-    log(`[bkit-telemetry] append failed: ${file} — ${(err as Error).message}`);
+    // Telemetry never gates a close: report the refused append and carry on.
+    log(`[bkit-telemetry] stats rows not written: ${(err as Error).message}`);
     return false;
   }
 }
@@ -903,10 +916,12 @@ export function closeWorkflow(
   if (o.message !== undefined) requireRecordOnShared(where.tree, workflow, rec);
   if (rec !== null) ownSet(where.tree, rec);
 
-  // Graded first, so the report below carries this run's grade.
-  const violations = gradeCompliance(where.tree, workflow, log, o.squashSha);
-
   const step = `${workflow}-close-workflow`;
+  // The run's join key: every row of this run carries HEAD at close as `run.parentSha`.
+  const parentSha = headSha(where.tree);
+  // Graded first, so the report below carries this run's grade.
+  const violations = gradeCompliance(where.tree, workflow, log, o.squashSha, { parentSha, step });
+
   if (o.recordStep === true) {
     writeStepRow(
       where.tree,
@@ -914,70 +929,62 @@ export function closeWorkflow(
       log,
     );
   }
-  const row = { type: "workflow-done" as const, workflow, at: statusTimestamp() };
+  const endAt = statusTimestamp();
+  const row = { type: "workflow-done" as const, workflow, at: endAt, parentSha };
   fs.appendFileSync(where.status, appendLine(row));
 
   const repo = resolveRepoSlug(where.root) || "unknown/repo";
-  const bkitVersion =
-    readBkitVersion(path.join(where.root, ".bkit", "version"))?.pinnedVersion || "unknown";
-  const parentSha = headSha(where.tree);
   const started = lastOfType(events, "workflow-started", workflow);
   const startAt = started?.at;
   const startMs = startAt ? Date.parse(startAt) : NaN;
   const startKnown = Number.isFinite(startMs) ? startMs : undefined;
-  const planSource = events
-    .filter(
-      (e) =>
-        e.type === "workflow-meta" &&
-        e.workflow === workflow &&
-        (startAt === undefined || e.at >= startAt) &&
-        (e as Record<string, unknown>).planSource,
-    )
-    .at(-1) as Record<string, unknown> | undefined;
+  const runRowsOf =
+    startAt === undefined ? [] : runStatusRows(readStatusEvents(where.status), workflow, startAt);
+  const planSource = runRowsOf
+    .filter((e) => e.type === "workflow-meta" && typeof e.planSource === "string")
+    .at(-1)?.planSource as string | undefined;
   const base = typeof started?.parentSha === "string" ? started.parentSha : "";
-  const range = o.squashSha
-    ? `${o.squashSha}^..${o.squashSha}`
-    : base
-      ? `${base}..HEAD`
-      : "origin/dev...HEAD";
-  const durationSeconds =
-    startKnown === undefined ? 0 : Math.max(0, Math.floor((Date.now() - startKnown) / 1000));
+  const lines = o.squashSha
+    ? runLines(where.tree, `${o.squashSha}^`, o.squashSha)
+    : runLines(where.tree, base, parentSha);
   const startedRows = new Set(
     events.filter((e) => e.type === "workflow-started" && e.workflow === workflow).map((e) => e.at),
   ).size;
-  const ts = mintTs();
+  const logDir = path.join(where.tree, logDirRel(where.month, o.fid));
+  const by = { workflow, step };
 
   const counterRow = {
-    ts,
     kind: "counter",
-    workflow,
-    repo,
-    bkitVersion,
-    step,
-    counterName: `${workflow.toUpperCase()}_ATTEMPT`,
-    counterValue: Math.max(1, startedRows),
-    counterSource: "shell-bus",
-    parentSha,
+    by,
+    run: { parentSha },
+    counter: {
+      name: `${workflow.toUpperCase()}_ATTEMPT`,
+      value: Math.max(1, startedRows),
+      source: "shell-bus",
+    },
   };
   const cov = workflow === "ship" ? coverage(where.tree) : undefined;
+  const ci = ciList(runRowsOf);
+  const plan = ["plan", "build", "ship"].includes(workflow)
+    ? planBlock(where.tree, where.month, o.fid, logDir, planSource)
+    : undefined;
+  const endMs = Date.parse(endAt);
   const outcomeRow = {
-    ts: mintTs(ts),
     kind: "outcome",
-    workflow,
-    repo,
-    bkitVersion,
-    step,
-    parentSha,
-    ...(o.prNumber === undefined ? {} : { prNumber: o.prNumber }),
-    ...diffStat(where.tree, range),
-    taskCount: taskCount(where.tree, where.month, o.fid),
-    durationSeconds,
-    ...ledgerCounts(where.tree, workflow, startKnown),
-    ...(planSource?.planSource ? { planSource: planSource.planSource } : {}),
-    ...(cov ? { coverage: cov } : {}),
+    by,
+    run: { parentSha, ...(o.prNumber === undefined ? {} : { pr: o.prNumber }) },
+    time: startKnown === undefined ? null : timeBlock(startKnown, Math.max(startKnown, endMs)),
+    ending: "done",
+    lines,
+    ...(runRowsOf.length > 0 ? { steps: stepsBlock(runRowsOf) } : {}),
+    ...(ci.length > 0 ? { ci } : {}),
+    ledgers: ledgerCounts(where.tree, workflow, startKnown),
+    ...(plan === undefined ? {} : { plan }),
+    ...(workflow === "build" ? { build: buildBlock(runRowsOf, logDir) } : {}),
+    ...(cov ? { ship: { coverage: cov } } : {}),
   };
   const stats = path.join(where.tree, ".bkit", "stats.jsonl");
-  const telemetryWritten = appendStats(stats, [counterRow, outcomeRow], log);
+  const telemetryWritten = appendStats(where.tree, [counterRow, outcomeRow], log);
 
   const report = fs.existsSync(stats)
     ? workflowTelemetry(foldFrom([stats]), workflow).lines
@@ -1041,8 +1048,9 @@ export function closeWorkflow(
 
   return {
     row,
-    counterRow: validate(counterRow).ok ? counterRow : null,
-    outcomeRow: validate(outcomeRow).ok ? outcomeRow : null,
+    // The rows as drafted; the ledger copies add the top section `ledgers append` fills.
+    counterRow: telemetryWritten ? counterRow : null,
+    outcomeRow: telemetryWritten ? outcomeRow : null,
     telemetryWritten,
     compliance: violations === null ? null : violations.length,
     report,

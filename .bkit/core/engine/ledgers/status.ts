@@ -44,7 +44,8 @@ export type StatusEvent =
   | { type: "workflow-started"; workflow: string; at: string }
   | ({ type: "step-done"; workflow: string } & Step)
   | ({ type: "workflow-meta"; workflow: string; at: string } & Record<string, unknown>)
-  | { type: "workflow-done"; workflow: string; at: string }
+  // `parentSha`: HEAD at close, the run's join key (`run.parentSha` on its ledger rows).
+  | { type: "workflow-done"; workflow: string; at: string; parentSha?: string }
   | { type: "workflow-failed"; workflow: string; at: string };
 
 // Identity for de-dup under union merge. `step-done` is unique per

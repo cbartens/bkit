@@ -149,10 +149,20 @@ function commandSources(): string[] {
   });
 }
 
+/**
+ * Group-folder sources that export no command, by file: helpers shared by the
+ * commands next to them. Each still needs its test file.
+ */
+const HELPER_SOURCES = new Set([
+  // The measured blocks of a run's outcome row, shared by `workflows close` and `runs dispatch`.
+  path.join("commands", "workflow", "run-facts.ts"),
+]);
+
 /** Every way a command source breaks "exports a command, and each is in COMMANDS"; empty = conforms. */
 async function exportProblems(rel: string): Promise<string[]> {
   const cmds = await exportedCommands(rel);
-  const problems = cmds.length === 0 ? [`${rel}: exports no command`] : [];
+  const problems =
+    cmds.length === 0 && !HELPER_SOURCES.has(rel) ? [`${rel}: exports no command`] : [];
   for (const cmd of cmds) {
     if (!COMMANDS.includes(cmd)) problems.push(`${rel}: bkit ${cmd.noun} is not in COMMANDS`);
   }

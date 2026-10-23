@@ -771,6 +771,51 @@ describe("migrateRetiredDevLock (via runBkitDocs)", () => {
   });
 });
 
+describe("migrateLedgerSchema (via runBkitDocs)", () => {
+  const LEDGER = path.join("docs", "deferrals.jsonl");
+  const OLD =
+    '{"ts":1760000000123,"kind":"deferral","repo":"acme/widgets","bkitVersion":"5.5.0","workflow":"build","step":"build-challenge","key":"k","category":"other","severity":"LOW","reason":"low-severity","description":"d"}\n';
+  const run = (dryRun = false): ModuleContext => {
+    const ctx = makeCtx({ dryRun });
+    runBkitDocs(ctx.dryRun, ctx.tokens, ctx.ws, ctx.logPrefix);
+    return ctx;
+  };
+  const paths = (ctx: ModuleContext): string[] => ctx.ws.writes.map((w) => path.normalize(w.path));
+  const seed = (): void => {
+    fs.mkdirSync("docs", { recursive: true });
+    fs.writeFileSync(LEDGER, OLD, "utf-8");
+  };
+
+  it("rewrites a 5.5.x ledger row to schema 2 and records the write", () => {
+    seed();
+    const ctx = run();
+    const row = JSON.parse(fs.readFileSync(LEDGER, "utf-8")) as Record<string, unknown>;
+    expect(row).toMatchObject({
+      schema: 2,
+      ts: 1760000000123,
+      bkit: { version: "5.5.0" },
+      by: { workflow: "build", step: "build-challenge" },
+    });
+    expect(row["bkitVersion"]).toBeUndefined();
+    expect(paths(ctx)).toContain(LEDGER);
+  });
+
+  it("under dry-run records the same write and leaves the file", () => {
+    seed();
+    const ctx = run(true);
+    expect(fs.readFileSync(LEDGER, "utf-8")).toBe(OLD);
+    expect(paths(ctx)).toContain(LEDGER);
+  });
+
+  it("is idempotent", () => {
+    seed();
+    run();
+    const once = fs.readFileSync(LEDGER, "utf-8");
+    expect(paths(run())).not.toContain(LEDGER);
+    expect(fs.readFileSync(LEDGER, "utf-8")).toBe(once);
+  });
+});
+
 describe("migrateShortcutsToLite (via runBkitDocs)", () => {
   const FIXTURE = path.join(getPkgRoot(), "tests/fixtures/shortcuts-5.2.4/shortcuts.md.txt");
   const OLD = path.join(".agents", "shortcuts.md");

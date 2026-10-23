@@ -365,7 +365,6 @@ describe("dogfood advisories — carry EVERY rule from their source section", ()
     "Bold in body",
     "ASCII operators",
     "Slash separator",
-    "Plural for general rules",
     "Output Lens line",
     // a sibling prompt shows the Contract clauses and Read-path inputs; copying one
     // yields a standalone-runnable prompt

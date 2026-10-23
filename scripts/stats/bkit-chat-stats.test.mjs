@@ -29,10 +29,12 @@ import {
   hostsFor,
   isoWeek,
   issueFp,
+  latestOutcomes,
   latestRows,
   lineClass,
   mergeSpans,
   modelFamily,
+  normalize,
   overlapMs,
   planShape,
   planTasks,
@@ -48,7 +50,9 @@ import {
   splitRuns,
   testOrderGaps,
   toolMix,
+  validateTotals,
   versionAt,
+  writableRows,
 } from "./bkit-chat-stats.mjs";
 
 const SCRIPT = new URL("./bkit-chat-stats.mjs", import.meta.url);
@@ -720,41 +724,89 @@ await test("claude-code: one folded row per chat, with fingerprints and no prose
   const res = await scanHosts(["claude-code"]);
   assert.equal(res.rows.length, 1);
   const row = rowOf(`claude-code:${sid}`);
-  assert.equal(row.platform, "claude-code");
+  assert.equal(row.schema, 2);
+  assert.equal(row.kind, "chat");
+  assert.equal(row.key, `claude-code:${sid}`);
+  assert.deepEqual(row.by, { workflow: "chat-stats", step: "scan" });
+  assert.equal(row.session.platform, "claude-code");
+  assert.equal(row.session.id, sid);
+  assert.equal(row.session.hostVersion, "2.1.0");
+  assert.equal(row.session.prompts, 1, "the command line is not a typed prompt");
   assert.equal(row.repo, repoFp("acme/widget"));
-  assert.equal(row.issue, issueFp("acme/widget", 650));
-  assert.equal(row.issueSource, "command");
-  assert.deepEqual(row.mentioned, [issueFp("acme/widget", 651)]);
-  assert.deepEqual(row.bkitWorkflows, ["plan"]);
-  assert.deepEqual(row.parentShas, [SHA]);
-  assert.equal(row.bkitVersion, "5.5.1");
-  assert.equal(row.subagents, 1);
-  assert.equal(row.agents["bkit-plan-generate"].n, 1);
-  assert.equal(row.turns, 3, "the <synthetic> message is not a turn");
-  assert.deepEqual(Object.keys(row.models).sort(), ["claude-opus-5-5", "claude-sonnet-5-5"]);
-  assert.equal(row.models["claude-opus-5-5"].read, 4000);
-  assert.equal(row.tokens.read, 6000);
-  assert.equal(row.tokensRecorded, true);
-  assert.equal(row.main.read, 4000);
-  assert.equal(row.compactions, 1);
-  assert.equal(row.errors, 1);
-  assert.deepEqual(row.tools["mcp__github"], { calls: 1, errors: 1 });
-  assert.equal(row.bkitCli["workflows close"], 1);
-  assert.deepEqual(row.models["claude-opus-5-5"], {
-    turns: 2,
-    read: 4000,
-    input: 20,
-    cacheWrite: 0,
-    cacheRead: 3980,
-    output: 10,
-    outputEst: row.models["claude-opus-5-5"].outputEst,
+  assert.deepEqual(row.issue, {
+    id: issueFp("acme/widget", 650),
+    all: [issueFp("acme/widget", 650)],
+    mentioned: [issueFp("acme/widget", 651)],
+    source: "command",
   });
-  const agent = row.agents["bkit-plan-generate"];
-  assert.equal(agent.cacheRead, 1990);
-  assert.equal(agent.input, 10);
+  assert.equal(row.bkit.version, "5.5.1");
+  assert.equal(row.bkit.versionSource, "repo-history");
+  assert.deepEqual(row.bkit.via, ["command", "subagent"]);
+  assert.deepEqual(row.bkit.workflows, ["plan"]);
+  assert.deepEqual(row.bkit.prompts, ["plan"]);
+  assert.deepEqual(row.bkit.cli, { total: 1, byVerb: { "workflows close": 1 } });
+  assert.deepEqual(row.run, { parentShas: [SHA] });
+  assert.deepEqual(row.agents.total, { n: 1, errors: 0 });
+  assert.equal(row.agents.byAgent["bkit-plan-generate"].n, 1);
+  assert.equal(row.usage.total.turns, 3, "the <synthetic> message is not a turn");
+  assert.deepEqual(Object.keys(row.usage.byModel).sort(), ["claude-opus-5-5", "claude-sonnet-5-5"]);
+  assert.equal(row.usage.byModel["claude-opus-5-5"].tokens.read, 4000);
+  assert.equal(row.usage.total.tokens.read, 6000);
+  assert.deepEqual(row.usage.total.ctx, { start: 1000, peak: 3000 });
+  assert.equal(row.scan.tokensRecorded, true);
+  assert.equal(row.scan.settled, true);
+  assert.equal(row.scan.files, 2);
+  assert.equal(row.usage.main.tokens.read, 4000);
+  assert.equal(row.usage.total.compactions, 1);
+  assert.deepEqual(row.tools.total, { calls: 3, errors: 1 });
+  assert.deepEqual(row.tools.byTool["mcp__github"], { calls: 1, errors: 1 });
+  assert.deepEqual(row.tools.byTool.Bash, { calls: 1, errors: 0, byCategory: { "bkit cli": 1 } });
+  assert.equal(row.tools.filesRead, 1);
+  assert.deepEqual(row.usage.byModel["claude-opus-5-5"], {
+    turns: 2,
+    tokens: {
+      input: 20,
+      cacheWrite: 0,
+      cacheRead: 3980,
+      output: 10,
+      outputEst: row.usage.byModel["claude-opus-5-5"].tokens.outputEst,
+      read: 4000,
+    },
+  });
+  assert.deepEqual(row.time.spans, [[ms(0), ms(6)]]);
+  assert.equal(row.time.totalMinutes, 6);
+  assert.equal(row.time.activeMinutes, 6);
+  assert.ok(row.time.lastActivity > 0);
+  const agent = row.agents.byAgent["bkit-plan-generate"];
+  assert.equal(agent.usage.tokens.cacheRead, 1990);
+  assert.equal(agent.usage.tokens.input, 10);
   assert.equal(agent.mix.read, 1, "the Read tool counts as a read");
-  assert.deepEqual(agent.ctxPeaks, [agent.ctxPeakMax], "each agent's largest turn is kept");
-  assert.equal(row.main.cacheRead, 3980);
+  assert.deepEqual(
+    agent.instances,
+    [{ turns: 1, ctxPeak: 2000 }],
+    "each agent's largest turn is kept",
+  );
+  assert.equal(row.usage.main.tokens.cacheRead, 3980);
+  assert.deepEqual(Object.keys(row.usage.main.mix), [
+    "read",
+    "edit",
+    "grep",
+    "shellRead",
+    "shellList",
+    "tests",
+    "serena",
+  ]);
+  assert.deepEqual(validateTotals(row), { ok: true });
+  for (const gone of [
+    "bkitVersion",
+    "workflow",
+    "step",
+    "subagents",
+    "minutes",
+    "tokens",
+    "models",
+  ])
+    assert.ok(!(gone in row), `row still has ${gone}`);
   const text = JSON.stringify(row);
   for (const leak of ["widget", "secret", "650", "/tmp", repoDir])
     assert.ok(!text.includes(leak), `row contains ${leak}`);
@@ -788,14 +840,17 @@ await test("a chat changed inside the settle window is written as open, then aga
   let res = await scanHosts(["claude-code"]);
   assert.equal(res.rows.length, 1);
   assert.equal(res.byPlatform["claude-code"].open, 1);
-  assert.equal(res.rows[0].settled, false);
-  assert.ok(res.rows[0].lastActivityAt > res.rows[0].end - 1, "lastActivityAt = the last write");
+  assert.equal(res.rows[0].scan.settled, false);
+  assert.ok(
+    res.rows[0].time.lastActivity > res.rows[0].time.end - 1,
+    "time.lastActivity = the last write",
+  );
   res = await scanHosts(["claude-code"]);
   assert.equal(res.rows.length, 0, "still open, same size: nothing new");
   age(proj);
   res = await scanHosts(["claude-code"]);
   assert.equal(res.rows.length, 1, "settled since: one more row");
-  assert.equal(res.rows[0].settled, true);
+  assert.equal(res.rows[0].scan.settled, true);
 });
 
 await test("codex: $bkit-build, parentSha, failed command, duplicate token event, subagent folded in", async () => {
@@ -803,17 +858,19 @@ await test("codex: $bkit-build, parentSha, failed command, duplicate token event
   const res = await scanHosts(["codex"]);
   assert.equal(res.byPlatform.codex.found, 1);
   const row = rowOf(`codex:${CODEX_ID}`);
-  assert.deepEqual(row.bkitWorkflows, ["build"]);
-  assert.equal(row.issue, issueFp("acme/widget", 652));
-  assert.deepEqual(row.parentShas, [SHA2]);
-  assert.equal(row.turns, 3, "the repeated token_count is one turn");
-  assert.equal(row.models["gpt-5.5-codex"].read, 22500);
-  assert.equal(row.tokens.cacheRead, 19000);
-  assert.equal(row.agents.explorer.n, 1);
-  assert.equal(row.tools.exec_command.errors, 1);
-  assert.equal(row.compactions, 1);
-  assert.equal(row.userPrompts, 1, "the injected <skill> message is not a prompt");
-  assert.equal(row.hostVersion, "0.146.0");
+  assert.deepEqual(row.bkit.workflows, ["build"]);
+  assert.equal(row.issue.id, issueFp("acme/widget", 652));
+  assert.deepEqual(row.run.parentShas, [SHA2]);
+  assert.equal(row.usage.total.turns, 3, "the repeated token_count is one turn");
+  assert.equal(row.usage.byModel["gpt-5.5-codex"].tokens.read, 22500);
+  assert.equal(row.usage.total.tokens.cacheRead, 19000);
+  assert.equal(row.agents.byAgent.explorer.n, 1);
+  assert.equal(row.tools.byTool.exec_command.errors, 1);
+  assert.deepEqual(row.tools.byTool.exec_command.byCategory, { "bkit cli": 1, "test runner": 1 });
+  assert.equal(row.usage.total.compactions, 1);
+  assert.equal(row.session.prompts, 1, "the injected <skill> message is not a prompt");
+  assert.equal(row.session.hostVersion, "0.146.0");
+  assert.deepEqual(validateTotals(row), { ok: true });
 });
 
 await test(
@@ -823,19 +880,20 @@ await test(
     const res = await scanHosts(["opencode"]);
     assert.equal(res.byPlatform.opencode.found, 2);
     const root = rowOf("opencode:ses_root");
-    assert.deepEqual(root.bkitWorkflows, ["design"]);
-    assert.equal(root.issue, issueFp("acme/widget", 653));
-    assert.deepEqual(root.mentioned, [], "the expanded template's text is not the human's");
-    assert.equal(root.models["anthropic/claude-opus-5.5"].read, 10000);
-    assert.equal(root.agents["bkit-design-generate"].n, 1);
-    assert.equal(root.tools.shell.errors, 1);
-    assert.equal(root.bkitCli["steps finish"], 1);
+    assert.deepEqual(root.bkit.workflows, ["design"]);
+    assert.equal(root.issue.id, issueFp("acme/widget", 653));
+    assert.deepEqual(root.issue.mentioned, [], "the expanded template's text is not the human's");
+    assert.equal(root.usage.byModel["anthropic/claude-opus-5.5"].tokens.read, 10000);
+    assert.equal(root.agents.byAgent["bkit-design-generate"].n, 1);
+    assert.equal(root.tools.byTool.shell.errors, 1);
+    assert.equal(root.bkit.cli.byVerb["steps finish"], 1);
     assert.deepEqual(root.effort, { max: 2 });
+    assert.deepEqual(validateTotals(root), { ok: true });
     const fork = rowOf("opencode:ses_fork");
-    assert.equal(fork.turns, 1);
-    assert.deepEqual(fork.bkitWorkflows, []);
-    assert.deepEqual(fork.mentioned, [issueFp("acme/widget", 654)]);
-    assert.equal(fork.compactions, 1);
+    assert.equal(fork.usage.total.turns, 1);
+    assert.deepEqual(fork.bkit.workflows, []);
+    assert.deepEqual(fork.issue.mentioned, [issueFp("acme/widget", 654)]);
+    assert.equal(fork.usage.total.compactions, 1);
   },
   { needsSqlite: true },
 );
@@ -847,20 +905,21 @@ await test(
     const res = await scanHosts(["cursor"]);
     assert.equal(res.byPlatform.cursor.found, 2);
     const row = rowOf("cursor:cur-root");
-    assert.equal(row.tokensRecorded, false);
-    assert.deepEqual(row.bkitWorkflows, ["ship"]);
-    assert.equal(row.issue, issueFp("acme/widget", 655));
-    assert.equal(row.userPrompts, 1);
-    assert.deepEqual(row.tools["mcp__github"], { calls: 1, errors: 1 });
-    assert.equal(row.bkitCli["workflows close"], 1);
-    assert.equal(row.models["claude-opus-5-5-high-fast"].turns, 2);
-    assert.equal(row.agents.explore.n, 1);
+    assert.equal(row.scan.tokensRecorded, false);
+    assert.deepEqual(row.bkit.workflows, ["ship"]);
+    assert.equal(row.issue.id, issueFp("acme/widget", 655));
+    assert.equal(row.session.prompts, 1);
+    assert.deepEqual(row.tools.byTool["mcp__github"], { calls: 1, errors: 1 });
+    assert.equal(row.bkit.cli.byVerb["workflows close"], 1);
+    assert.equal(row.usage.byModel["claude-opus-5-5-high-fast"].turns, 2);
+    assert.equal(row.agents.byAgent.explore.n, 1);
     assert.equal(row.repo, repoFp("acme/widget"));
+    assert.deepEqual(validateTotals(row), { ok: true });
     const old = rowOf("cursor:cur-old");
-    assert.equal(old.turns, 1);
-    assert.equal(old.tools.Shell.calls, 1);
-    assert.equal(old.bash.git, 1);
-    assert.equal(old.issue, fingerprintNone(656));
+    assert.equal(old.usage.total.turns, 1);
+    assert.equal(old.tools.byTool.Shell.calls, 1);
+    assert.equal(old.tools.byTool.Shell.byCategory.git, 1);
+    assert.equal(old.issue.id, fingerprintNone(656));
   },
   { needsSqlite: true },
 );
@@ -873,12 +932,16 @@ await test(
     const res = await scanHosts(["antigravity"]);
     assert.equal(res.byPlatform.antigravity.appended, 1);
     const row = rowOf("antigravity:ag-1");
-    assert.deepEqual(row.bkitWorkflows, ["debug"]);
-    assert.equal(row.turns, 2);
-    assert.equal(row.models["gemini-3.8-flash-n"].read, 10200);
-    assert.equal(row.tokens.output, 100);
-    assert.deepEqual(row.tools.run_command, { calls: 1, errors: 1 });
-    assert.equal(row.bash["test runner"], 1);
+    assert.deepEqual(row.bkit.workflows, ["debug"]);
+    assert.equal(row.usage.total.turns, 2);
+    assert.equal(row.usage.byModel["gemini-3.8-flash-n"].tokens.read, 10200);
+    assert.equal(row.usage.total.tokens.output, 100);
+    assert.deepEqual(row.tools.byTool.run_command, {
+      calls: 1,
+      errors: 1,
+      byCategory: { "test runner": 1 },
+    });
+    assert.deepEqual(validateTotals(row), { ok: true });
     assert.deepEqual(
       fs.readdirSync(dir).sort(),
       before,
@@ -898,7 +961,7 @@ await test("the report resolves names, links the chat to its outcome row exactly
   assert.equal(chatClass(rowOf(`claude-code:${sid}`)), "workflow");
   assert.match(md, /\| widget \| widget#650 \| workflow \| plan \| 5\.5\.1 \|/);
   assert.match(md, /1 outcome/);
-  assert.match(md, /12 lines, 4 tasks, 10 min \|/);
+  assert.match(md, /12 lines, 10 min \|/, "the schema-1 outcome row's task count is not read");
   assert.match(md, /2026-W43/);
   assert.match(md, /## By platform/);
   assert.match(md, /\| claude-code \| 1 \|/);
@@ -937,6 +1000,7 @@ function counts(over = {}) {
     },
     tools: {},
     bash: {},
+    bashByTool: {},
     bkitCli: {},
     filesRead: 0,
     bkitVersionSeen: null,
@@ -960,7 +1024,15 @@ await test("toolMix counts each host's tool names and the shell commands by what
       bash: { "grep / rg": 2, "sed / cat / head / tail": 3, "find / ls": 1, "test runner": 4 },
     }),
   );
-  assert.deepEqual(mix, { read: 3, edit: 3, grep: 6, sedCat: 3, findLs: 2, tests: 4, serena: 5 });
+  assert.deepEqual(mix, {
+    read: 3,
+    edit: 3,
+    grep: 6,
+    shellRead: 3,
+    shellList: 2,
+    tests: 4,
+    serena: 5,
+  });
 });
 
 await test("a workflow named only in the host's summary keeps the issue but is not a workflow run", () => {
@@ -977,11 +1049,16 @@ await test("a workflow named only in the host's summary keeps the issue but is n
     [],
     { files: 1, bytes: 10 },
   );
-  assert.equal(row.issueSource, "summary");
-  assert.equal(row.issue, issueFp("acme/widget", 650));
-  assert.deepEqual(row.bkitVia, ["subagent"]);
+  assert.equal(row.issue.source, "summary");
+  assert.equal(row.issue.id, issueFp("acme/widget", 650));
+  assert.deepEqual(row.bkit.via, ["subagent"]);
   assert.equal(chatClass(row), "bkit agents only");
-  assert.deepEqual(row.agents["bkit-build-plan-verify"].ctxPeaks, [130_000, 210_000]);
+  assert.deepEqual(row.agents.byAgent["bkit-build-plan-verify"].instances, [
+    { turns: 1, ctxPeak: 130_000 },
+    { turns: 1, ctxPeak: 210_000 },
+  ]);
+  assert.equal(row.usage.total.ctx.peak, 210_000);
+  assert.deepEqual(validateTotals(row), { ok: true });
 });
 
 // Run logs: a plan run and two build runs of one feature, in the main checkout and a worktree ----
@@ -1178,25 +1255,55 @@ await test("scan appends one run row per finished run, with fingerprints and no 
   assert.equal(res.runs.appended, 3);
   const [plan, b1, b2] = runs;
   const fid = fingerprint(`acme/widget:${FID}`);
+  assert.equal(plan.schema, 2);
   assert.equal(plan.key, `${fid}:plan:${ms(100)}`);
-  assert.equal(plan.issue, issueFp("acme/widget", 650));
-  assert.equal(plan.parentSha, CLOSE_SHA);
+  assert.deepEqual(plan.by, { workflow: "plan", step: "scan" });
+  assert.deepEqual(plan.bkit, { version: "5.5.1" });
+  assert.deepEqual(plan.run, {
+    fid,
+    issue: issueFp("acme/widget", 650),
+    n: 1,
+    parentSha: CLOSE_SHA,
+    parentShas: [SHA2, CLOSE_SHA],
+  });
   assert.equal(plan.ending, "done");
-  assert.deepEqual(plan.steps["plan-generate"], { n: 1, minutes: 10, active: null });
-  assert.equal(plan.activeMinutes, null, "no counted chat ran this issue during the run");
+  assert.deepEqual(plan.steps.byStep["plan-generate"], {
+    n: 1,
+    totalMinutes: 10,
+    activeMinutes: null,
+  });
+  assert.deepEqual(plan.steps.total, { n: 3, totalMinutes: 20, activeMinutes: null });
+  assert.deepEqual(plan.time, {
+    start: ms(100),
+    end: ms(120),
+    totalMinutes: 20,
+    activeMinutes: null,
+    activeFrom: null,
+    lastActivity: ms(120),
+  });
+  assert.equal(plan.time.activeMinutes, null, "no counted chat ran this issue during the run");
   assert.deepEqual(plan.plan, {
-    kb: 0,
-    subPlans: 2,
-    tasks: 3,
-    tasksWithoutTests: 1,
-    testsPerTask: [6, 0, 2],
-    testFilesPerTask: [2, 0, 2],
+    source: "file",
+    total: { tasks: 3, kb: 0 },
+    subPlans: [
+      {
+        kb: 0,
+        tasks: [
+          { tests: 6, testFiles: 2 },
+          { tests: 0, testFiles: 0 },
+        ],
+      },
+      { kb: 0, tasks: [{ tests: 2, testFiles: 2 }] },
+    ],
     complexity: { verdict: "SPLIT", tasksChecked: 13 },
   });
+  assert.deepEqual(plan.scan, { rows: 5, afterEnd: 0, settled: true });
+  assert.ok(!("lines" in plan) && !("build" in plan), "a plan run writes no code");
   assert.equal(b1.ending, "failed");
-  assert.equal(b1.redTests, 2);
+  assert.equal(b1.build.redTests, 2);
+  assert.equal(b1.steps.byStep["build-task-red"].n, 2);
   assert.deepEqual(
-    b1.verify.map((v) => [v.attempt, v.verdict, v.testOrderGaps]),
+    b1.build.verify.map((v) => [v.attempt, v.verdict, v.testOrderGaps]),
     [
       [1, "FAIL", null],
       [2, "FAIL", 20],
@@ -1204,22 +1311,27 @@ await test("scan appends one run row per finished run, with fingerprints and no 
     "round 1's report was overwritten by the second build; round 2's was written during the first",
   );
   assert.equal(b1.lines, null, "git does not have the run's commits");
-  assert.equal(b1.challenge, null);
-  assert.equal(b2.run, 2);
-  assert.equal(b2.parentSha, BUILD_SHA);
+  assert.ok(!("challenge" in b1.build), "no challenge ran");
+  assert.equal(b2.run.n, 2);
+  assert.equal(b2.run.parentSha, BUILD_SHA);
   assert.deepEqual(
-    b2.verify.map((v) => [v.attempt, v.verdict, v.testOrderGaps]),
+    b2.build.verify.map((v) => [v.attempt, v.verdict, v.testOrderGaps]),
     [
       [1, "FAIL", 1],
       [2, "PASS", null],
     ],
   );
-  assert.deepEqual(b2.gapsRemediate, [
+  assert.deepEqual(b2.build.gapsRemediate, [
     { subPlan: 1, attempt: 1, verdict: "PASS", strategy: "STANDARD" },
   ]);
-  assert.deepEqual(b2.challenge.findings, { CRITICAL: 0, HIGH: 1, MEDIUM: 1, LOW: 1 });
-  for (const r of runs)
+  assert.deepEqual(b2.build.challenge, {
+    verdict: "CONCERNS",
+    findings: { total: 3, CRITICAL: 0, HIGH: 1, MEDIUM: 1, LOW: 1 },
+  });
+  for (const r of runs) {
     assert.ok(!JSON.stringify(r).includes("secret"), "row contains the FID text");
+    assert.deepEqual(validateTotals(r), { ok: true });
+  }
 });
 
 await test("a run without an end row is written as open, then settles as stopped or paused", async () => {
@@ -1233,15 +1345,15 @@ await test("a run without an end row is written as open, then settles as stopped
       step(410, "build", "build-plan-verify"),
   );
   res = await scanRunsNow(ms(420));
-  const open = res.rows.filter((r) => r.kind === "run" && r.start === ms(400));
+  const open = res.rows.filter((r) => r.kind === "run" && r.time.start === ms(400));
   assert.deepEqual(
-    open.map((r) => [r.ending, r.settled, r.lastActivityAt]),
+    open.map((r) => [r.ending, r.scan.settled, r.time.lastActivity]),
     [["stopped", false, ms(410)]],
     "an open run is written, marked open",
   );
   res = await scanRunsNow(ms(420) + 2 * DAY);
   assert.deepEqual(
-    res.rows.filter((r) => r.kind === "run").map((r) => [r.ending, r.settled]),
+    res.rows.filter((r) => r.kind === "run").map((r) => [r.ending, r.scan.settled]),
     [["stopped", true]],
   );
   fs.writeFileSync(path.join(logDir, "build-decision-3-1.md"), "Status: OPEN\nFrom: verify\n");
@@ -1350,20 +1462,29 @@ await test("active spans end at a gap over 5 minutes, and subagent events fill t
     [],
     { files: 1, bytes: 10 },
   );
-  assert.deepEqual(row.active, [[s(0), s(600)]]);
-  assert.equal(row.activeMinutes, 10);
+  assert.deepEqual(row.time.spans, [[s(0), s(600)]]);
+  assert.equal(row.time.activeMinutes, 10);
 });
 
 await test("a run's active minutes come from its issue's chats, per step, and a newly counted chat re-counts it", () => {
   const chat = {
+    schema: 2,
+    kind: "chat",
     key: "claude-code:x",
-    issues: [issueFp("acme/widget", 650)],
+    issue: { id: null, all: [issueFp("acme/widget", 650)], mentioned: [], source: "command" },
+    time: { start: ms(300), end: ms(360), spans: [[ms(300), ms(330)]] },
+    scan: { files: 1, bytes: 10 },
+  };
+  // A chat row written without `schema`: read through normalize().
+  const other = {
+    kind: "chat",
+    key: "claude-code:y",
+    issues: [issueFp("acme/widget", 651)],
     start: ms(300),
     end: ms(360),
     active: [[ms(300), ms(330)]],
     sourceBytes: 10,
   };
-  const other = { ...chat, key: "claude-code:y", issues: [issueFp("acme/widget", 651)] };
   const rows = runRows(
     logDir,
     { slug: "acme/widget", root: repoDir },
@@ -1371,12 +1492,24 @@ await test("a run's active minutes come from its issue's chats, per step, and a 
     activityIndex([chat, other]),
   );
   const b2 = rows[2];
-  assert.equal(b2.activeMinutes, 30);
-  assert.deepEqual(b2.activeFrom, { chats: 1, bytes: 10 });
-  assert.equal(b2.steps["build-plan-verify"].active, 20, "300-310 and 320-330");
-  assert.equal(b2.steps["build-plan-gaps-remediate"].active, 10);
-  assert.equal(b2.steps["build-challenge"].active, 0, "330-340 is after the chat's last span");
-  assert.equal(rows[1].activeMinutes, null, "the first build ran before the chat");
+  assert.equal(b2.time.activeMinutes, 30);
+  assert.deepEqual(b2.time.activeFrom, { chats: 1, bytes: 10 });
+  assert.equal(b2.steps.byStep["build-plan-verify"].activeMinutes, 20, "300-310 and 320-330");
+  assert.equal(b2.steps.byStep["build-plan-gaps-remediate"].activeMinutes, 10);
+  assert.equal(
+    b2.steps.byStep["build-challenge"].activeMinutes,
+    0,
+    "330-340 is after the chat's last span",
+  );
+  assert.equal(b2.steps.total.activeMinutes, 30);
+  assert.equal(rows[1].time.activeMinutes, null, "the first build ran before the chat");
+  const viaOld = runRows(
+    logDir,
+    { slug: "acme/widget", root: repoDir },
+    [],
+    activityIndex([{ ...other, issues: chat.issue.all }]),
+  );
+  assert.equal(viaOld[2].time.activeMinutes, 30, "a schema-1 chat row gives the same minutes");
   const res = scanRuns({
     roots: [repoDir],
     known: latestRows(readLedger(statsFile), "run"),
@@ -1386,6 +1519,48 @@ await test("a run's active minutes come from its issue's chats, per step, and a 
   const keys = res.rows.map((r) => r.key);
   assert.ok(keys.includes(b2.key), "the build its chat now covers is counted again");
   assert.ok(!keys.includes(rows[0].key), "the plan run is unchanged");
+  // A migrated split-plan row: which sub-plan each task was in was not recorded.
+  const known = latestRows(readLedger(statsFile), "run");
+  const stored = known.get(rows[0].key);
+  known.set(rows[0].key, {
+    ...stored,
+    plan: { ...stored.plan, subPlans: stored.plan.subPlans.map(() => ({ kb: null, tasks: null })) },
+  });
+  const again = scanRuns({ roots: [repoDir], known, settledBefore: Date.now(), chats: [chat] });
+  assert.ok(
+    again.rows.some((r) => r.key === rows[0].key),
+    "a stored run whose sub-plan tasks are unknown is written again once the plan files give them",
+  );
+});
+
+await test("a run's parentSha is its last workflow-done row's, else its last close step's, else null", () => {
+  const DONE_SHA = "d".repeat(40);
+  const LATER_SHA = "e".repeat(40);
+  const dir = path.join(tmp, "join-sha", "651-join");
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, "status.jsonl"),
+    [
+      // The close commit lands after workflow-done, so the close step names a later commit.
+      status(100, "workflow-started", { workflow: "design", parentSha: SHA2 }),
+      status(110, "workflow-done", { workflow: "design", parentSha: CLOSE_SHA }),
+      status(112, "workflow-done", { workflow: "design", parentSha: DONE_SHA }),
+      step(115, "design", "design-close-workflow", { parentSha: LATER_SHA }),
+      // No parentSha on the done row: the close step's.
+      status(200, "workflow-started", { workflow: "design" }),
+      status(210, "workflow-done", { workflow: "design" }),
+      step(212, "design", "design-close-workflow", { parentSha: BUILD_SHA }),
+      // Neither.
+      status(300, "workflow-started", { workflow: "design" }),
+      status(310, "workflow-done", { workflow: "design" }),
+    ].join(""),
+  );
+  const rows = runRows(dir, { slug: "acme/widget", root: null }, []);
+  assert.deepEqual(
+    rows.map((r) => r.run.parentSha),
+    [DONE_SHA, BUILD_SHA, null],
+  );
+  assert.ok(rows[0].run.parentShas.includes(LATER_SHA), "parentShas still names every commit");
 });
 
 // Lines from git, test-order gaps, split reasons ----------------------------------------------
@@ -1440,6 +1615,7 @@ await test("runLines counts the run's own commits by code, tests and docs, leavi
   put("src/a.ts", "1\n2\nthree\n");
   const last = commit("fix");
   assert.deepEqual(runLines(dir, [first, last]), {
+    total: { added: 7, deleted: 1, changed: 8, files: 4 },
     code: { added: 4, deleted: 1, files: 2 },
     tests: { added: 2, deleted: 0, files: 1 },
     docs: { added: 1, deleted: 0, files: 1 },
@@ -1484,7 +1660,8 @@ await test("plan shape stores every task's numbers and judges none; the reason i
   fs.writeFileSync(path.join(dir, "plan-v4-1.md"), many);
   fs.writeFileSync(path.join(dir, "plan-complexity-check.md"), "Verdict: SPLIT\n\nTwo domains.\n");
   const shape = planShape(dir);
-  assert.deepEqual(shape.testsPerTask, [8]);
+  assert.deepEqual(shape.subPlans, [{ kb: 0, tasks: [{ tests: 8, testFiles: 1 }] }]);
+  assert.deepEqual(shape.total, { tasks: 1, kb: 0 });
   assert.deepEqual(shape.complexity, { verdict: "SPLIT", tasksChecked: 1 });
   assert.equal(checkReason(dir), null, "no Session Fit Estimate section: no reason");
   assert.ok(!/SPLIT_|CTX_LIMITS/.test(fs.readFileSync(SCRIPT, "utf8")), "no limit in the script");
@@ -1531,6 +1708,762 @@ await test("the report lists open runs, marked, and leaves them out of the media
     "step medians use the settled run only",
   );
   assert.match(md, /\| build \(open\)|build×2 \(open\)/);
+});
+
+// Totals: validateTotals() refuses a row whose total does not match its parts -----------------
+
+/** A written chat row and run row of this test run, to break one total at a time. */
+const writtenChat = () => structuredClone(rowOf(`claude-code:${sid}`));
+const writtenRun = () =>
+  structuredClone(
+    readLedger(statsFile)
+      .filter((r) => r.kind === "run" && r.schema === 2 && r.build?.challenge)
+      .at(-1),
+  );
+const refuses = (row, why) => {
+  const v = validateTotals(row);
+  assert.equal(v.ok, false, `accepted a row with a wrong ${why}`);
+  assert.match(v.reason, new RegExp(why.replace(/[.*[\]]/g, "\\$&")));
+};
+
+await test("validateTotals accepts every row the scans wrote", () => {
+  const written = readLedger(statsFile).filter((r) => r.schema === 2);
+  assert.ok(written.length >= 8);
+  for (const r of written) assert.deepEqual(validateTotals(r), { ok: true }, r.key);
+});
+
+await test("validateTotals refuses each kind of mismatched total", () => {
+  let r = writtenRun();
+  r.lines = {
+    total: { added: 5, deleted: 1, changed: 6, files: 3 },
+    code: { added: 1, deleted: 1, files: 1 },
+    tests: { added: 1, deleted: 0, files: 1 },
+    docs: { added: 2, deleted: 0, files: 1 },
+    merges: 0,
+  };
+  refuses(structuredClone(r), "lines.total.added");
+  r.lines.total = { added: 4, deleted: 2, changed: 6, files: 3 };
+  refuses(structuredClone(r), "lines.total.deleted");
+  r.lines.total = { added: 4, deleted: 1, changed: 5, files: 4 };
+  refuses(structuredClone(r), "lines.total.files");
+  r.lines.total = { added: 4, deleted: 1, changed: 6, files: 3 };
+  refuses(structuredClone(r), "lines.total.changed");
+  r.lines.total.changed = 5;
+  assert.deepEqual(validateTotals(r), { ok: true });
+
+  r = writtenRun();
+  r.time.totalMinutes += 0.2;
+  refuses(r, "time.totalMinutes");
+  r = writtenRun();
+  r.steps.total.n += 1;
+  refuses(r, "steps.total.n");
+  r = writtenRun();
+  r.steps.total.totalMinutes += 0.1 * Object.keys(r.steps.byStep).length + 0.01;
+  refuses(r, "steps.total.totalMinutes");
+  r = writtenRun();
+  r.steps.total.activeMinutes = 3;
+  refuses(r, "steps.total.activeMinutes");
+  r = writtenRun();
+  r.build.redTests += 1;
+  refuses(r, "build.redTests");
+  r = writtenRun();
+  r.build.challenge.findings.total = 4;
+  refuses(r, "build.challenge.findings.total");
+  r = writtenRun();
+  r.plan = {
+    source: "file",
+    total: { tasks: 2, kb: 3 },
+    subPlans: [{ kb: 3, tasks: [{ tests: 1, testFiles: 1 }] }],
+  };
+  refuses(structuredClone(r), "plan.total.tasks");
+  r.plan.total = { tasks: 1, kb: 4 };
+  refuses(r, "plan.total.kb");
+
+  let c = writtenChat();
+  c.time.activeMinutes += 1;
+  refuses(c, "time.activeMinutes");
+  c = writtenChat();
+  c.usage.main.tokens.read += 1;
+  refuses(c, "usage.main.tokens.read");
+  c = writtenChat();
+  c.usage.byModel["claude-opus-5-5"].tokens.read += 1;
+  refuses(c, "usage.byModel.claude-opus-5-5.tokens.read");
+  c = writtenChat();
+  c.usage.total.turns += 1;
+  refuses(c, "usage.total.turns");
+  c = writtenChat();
+  c.usage.total.tokens.output += 1;
+  refuses(c, "usage.total.tokens.output");
+  c = writtenChat();
+  c.usage.total.compactions += 1;
+  refuses(c, "usage.total.compactions");
+  c = writtenChat();
+  c.usage.total.ctx.peak += 1;
+  refuses(c, "usage.total.ctx.peak");
+  c = writtenChat();
+  c.agents.total.n += 1;
+  refuses(c, "agents.total.n");
+  c = writtenChat();
+  c.agents.total.errors += 1;
+  refuses(c, "agents.total.errors");
+  c = writtenChat();
+  c.agents.byAgent["bkit-plan-generate"].instances.push({ turns: 1, ctxPeak: 1 });
+  refuses(c, "agents.byAgent.bkit-plan-generate.n");
+  c = writtenChat();
+  c.tools.total.calls += 1;
+  refuses(c, "tools.total.calls");
+  c = writtenChat();
+  c.tools.total.errors += 1;
+  refuses(c, "tools.total.errors");
+  c = writtenChat();
+  c.bkit.cli.total += 1;
+  refuses(c, "bkit.cli.total");
+});
+
+await test("the writer skips a row that fails validateTotals and says why", () => {
+  const good = writtenChat();
+  const bad = writtenChat();
+  bad.tools.total.calls += 1;
+  const said = [];
+  const kept = writableRows([good, bad], (m) => said.push(m));
+  assert.deepEqual(kept, [good]);
+  assert.equal(said.length, 1);
+  assert.match(
+    said[0],
+    /^\[bkit-telemetry\] chat row claude-code:\S+ not written: tools\.total\.calls/,
+  );
+});
+
+// normalize(): rows written without `schema` read in the schema-2 shape -----------------------
+
+const OLD_CHAT = {
+  ts: 1792722243262,
+  kind: "chat",
+  repo: "fp:55c170f293b3",
+  bkitVersion: "5.5.1",
+  workflow: "chat-stats",
+  step: "scan",
+  key: "claude-code:ece8",
+  platform: "claude-code",
+  sessionId: "ece8",
+  bkitVersionSource: "repo-history",
+  start: 1000,
+  end: 61000,
+  minutes: 1,
+  activeMinutes: 0.5,
+  active: [[1000, 31000]],
+  hostVersion: "2.1.299",
+  entrypoint: "sdk-cli",
+  models: {
+    m1: { turns: 2, read: 30, input: 1, cacheWrite: 9, cacheRead: 20, output: 4, outputEst: 5 },
+  },
+  effort: { high: 2 },
+  bkit: true,
+  bkitVia: ["subagent"],
+  bkitKinds: ["build"],
+  bkitWorkflows: [],
+  issue: null,
+  issueSource: "none",
+  issues: [],
+  mentioned: [],
+  parentShas: [SHA],
+  turns: 2,
+  userPrompts: 1,
+  compactions: 2,
+  tokens: {
+    input: 1,
+    cacheWrite: 9,
+    cacheRead: 20,
+    output: 4,
+    outputEst: 5,
+    read: 30,
+    ctxStart: 7,
+    ctxPeak: 26,
+  },
+  tokensRecorded: true,
+  main: {
+    turns: 1,
+    read: 10,
+    input: 1,
+    cacheWrite: 4,
+    cacheRead: 5,
+    output: 3,
+    outputEst: 2,
+    ctxPeak: 26,
+    compactions: 1,
+    mix: { read: 3, edit: 16, grep: 25, sedCat: 13, findLs: 0, tests: 8, serena: 0 },
+  },
+  subagents: 1,
+  bkitSubagents: 1,
+  otherSubagents: 0,
+  agents: {
+    "bkit-build-challenge-remediate": {
+      n: 1,
+      turns: 1,
+      turnsMax: 1,
+      read: 20,
+      input: 0,
+      cacheWrite: 5,
+      cacheRead: 15,
+      output: 1,
+      outputEst: 3,
+      ctxPeakMax: 20,
+      ctxPeaks: [20],
+      compactions: 1,
+      errors: 3,
+      mix: { read: 0, edit: 3, grep: 64, sedCat: 57, findLs: 0, tests: 33, serena: 0 },
+    },
+  },
+  tools: { Bash: { calls: 5, errors: 3 }, Read: { calls: 3, errors: 0 } },
+  bash: { git: 4, "grep / rg": 1 },
+  bkitCli: { "steps finish": 9, status: 1 },
+  filesRead: 3,
+  errors: 3,
+  sourceFiles: 2,
+  sourceBytes: 5957523,
+  lastActivityAt: 1792722243263,
+  settled: false,
+};
+
+await test("normalize maps a schema-1 chat row into the schema-2 shape", () => {
+  const n = normalize(OLD_CHAT);
+  assert.deepEqual(n, {
+    schema: 2,
+    ts: 1792722243262,
+    kind: "chat",
+    key: "claude-code:ece8",
+    repo: "fp:55c170f293b3",
+    bkit: {
+      version: "5.5.1",
+      versionSource: "repo-history",
+      via: ["subagent"],
+      workflows: [],
+      prompts: ["build"],
+      cli: { total: 10, byVerb: { "steps finish": 9, status: 1 } },
+    },
+    by: { workflow: "chat-stats", step: "scan" },
+    session: {
+      platform: "claude-code",
+      id: "ece8",
+      hostVersion: "2.1.299",
+      entrypoint: "sdk-cli",
+      prompts: 1,
+    },
+    time: {
+      start: 1000,
+      end: 61000,
+      totalMinutes: 1,
+      activeMinutes: 0.5,
+      spans: [[1000, 31000]],
+      lastActivity: 1792722243263,
+    },
+    issue: { id: null, all: [], mentioned: [], source: "none" },
+    run: { parentShas: [SHA] },
+    effort: { high: 2 },
+    usage: {
+      total: {
+        turns: 2,
+        tokens: { input: 1, cacheWrite: 9, cacheRead: 20, output: 4, outputEst: 5, read: 30 },
+        ctx: { start: 7, peak: 26 },
+        compactions: 2,
+      },
+      main: {
+        turns: 1,
+        tokens: { input: 1, cacheWrite: 4, cacheRead: 5, output: 3, outputEst: 2, read: 10 },
+        ctx: { peak: 26 },
+        compactions: 1,
+        mix: { read: 3, edit: 16, grep: 25, shellRead: 13, shellList: 0, tests: 8, serena: 0 },
+      },
+      byModel: {
+        m1: {
+          turns: 2,
+          tokens: { input: 1, cacheWrite: 9, cacheRead: 20, output: 4, outputEst: 5, read: 30 },
+        },
+      },
+    },
+    agents: {
+      total: { n: 1, errors: 3 },
+      byAgent: {
+        "bkit-build-challenge-remediate": {
+          n: 1,
+          errors: 3,
+          instances: [{ turns: 1, ctxPeak: 20 }],
+          usage: {
+            turns: 1,
+            tokens: { input: 0, cacheWrite: 5, cacheRead: 15, output: 1, outputEst: 3, read: 20 },
+            ctx: { peak: 20 },
+            compactions: 1,
+          },
+          mix: { read: 0, edit: 3, grep: 64, shellRead: 57, shellList: 0, tests: 33, serena: 0 },
+        },
+      },
+    },
+    tools: {
+      total: { calls: 8, errors: 3 },
+      byTool: {
+        Bash: { calls: 5, errors: 3, byCategory: { git: 4, "grep / rg": 1 } },
+        Read: { calls: 3, errors: 0 },
+      },
+      filesRead: 3,
+    },
+    scan: { files: 2, bytes: 5957523, settled: false, tokensRecorded: true },
+  });
+  assert.equal(normalize(n), n, "a schema-2 row passes through unchanged");
+  assert.equal(normalize({ ...OLD_CHAT, bkitVersion: "none" }).bkit.version, null);
+  const two = normalize({
+    ...OLD_CHAT,
+    agents: {
+      x: { ...OLD_CHAT.agents["bkit-build-challenge-remediate"], n: 2, ctxPeaks: [5, 20] },
+    },
+  });
+  assert.deepEqual(
+    two.agents.byAgent.x.instances,
+    [
+      { turns: null, ctxPeak: 5 },
+      { turns: null, ctxPeak: 20 },
+    ],
+    "per-instance turns of a two-agent type were not stored",
+  );
+});
+
+await test("normalize maps a schema-1 run row, its plan and build facts", () => {
+  const n = normalize({
+    ts: 9,
+    kind: "run",
+    repo: "fp:r",
+    bkitVersion: "5.4.0",
+    workflow: "build",
+    step: "scan",
+    key: "fp:f:build:1",
+    fid: "fp:f",
+    issue: "fp:i",
+    run: 1,
+    start: 60000,
+    end: 180000,
+    lastActivityAt: 180000,
+    minutes: 2,
+    activeMinutes: 1.5,
+    activeFrom: { chats: 1, bytes: 9 },
+    ending: "close-failed",
+    parentSha: SHA,
+    closeCi: [{ outcome: "unresolved", reason: "ci-declared-no-run", attempts: 12 }],
+    parentShas: [SHA2, SHA],
+    steps: {
+      "build-task-red": { n: 2, minutes: 0.5, active: 0.5 },
+      "build-close-workflow": { n: 1, minutes: 1, active: null },
+    },
+    afterEnd: 3,
+    lines: {
+      code: { added: 4, deleted: 1, files: 2 },
+      tests: { added: 2, deleted: 0, files: 1 },
+      docs: { added: 1, deleted: 0, files: 1 },
+      merges: 1,
+    },
+    verify: [{ subPlan: 1, attempt: 1, verdict: "PASS", failures: 0, testOrderGaps: 0 }],
+    gapsRemediate: [],
+    holistic: null,
+    challenge: { verdict: "CONCERNS", findings: { CRITICAL: 0, HIGH: 0, MEDIUM: 1, LOW: 6 } },
+    redTests: 2,
+    sourceRows: 51,
+    settled: true,
+  });
+  assert.deepEqual(n, {
+    schema: 2,
+    ts: 9,
+    kind: "run",
+    key: "fp:f:build:1",
+    repo: "fp:r",
+    bkit: { version: "5.4.0" },
+    by: { workflow: "build", step: "scan" },
+    run: { fid: "fp:f", issue: "fp:i", n: 1, parentSha: SHA, parentShas: [SHA2, SHA] },
+    time: {
+      start: 60000,
+      end: 180000,
+      totalMinutes: 2,
+      activeMinutes: 1.5,
+      activeFrom: { chats: 1, bytes: 9 },
+      lastActivity: 180000,
+    },
+    ending: "close-failed",
+    ci: [{ status: "unresolved", reason: "ci-declared-no-run", attempts: 12 }],
+    steps: {
+      total: { n: 3, totalMinutes: 1.5, activeMinutes: null },
+      byStep: {
+        "build-task-red": { n: 2, totalMinutes: 0.5, activeMinutes: 0.5 },
+        "build-close-workflow": { n: 1, totalMinutes: 1, activeMinutes: null },
+      },
+    },
+    lines: {
+      total: { added: 7, deleted: 1, changed: 8, files: 4 },
+      code: { added: 4, deleted: 1, files: 2 },
+      tests: { added: 2, deleted: 0, files: 1 },
+      docs: { added: 1, deleted: 0, files: 1 },
+      merges: 1,
+    },
+    build: {
+      verify: [{ subPlan: 1, attempt: 1, verdict: "PASS", failures: 0, testOrderGaps: 0 }],
+      gapsRemediate: [],
+      challenge: {
+        verdict: "CONCERNS",
+        findings: { total: 7, CRITICAL: 0, HIGH: 0, MEDIUM: 1, LOW: 6 },
+      },
+      redTests: 2,
+    },
+    scan: { rows: 51, afterEnd: 3, settled: true },
+  });
+  const planRun = (plan) =>
+    normalize({ kind: "run", workflow: "plan", key: "k", start: 0, end: 0, plan }).plan;
+  assert.deepEqual(
+    planRun({
+      kb: 12,
+      subPlans: 1,
+      tasks: 2,
+      tasksWithoutTests: 1,
+      testsPerTask: [3, 0],
+      testFilesPerTask: [1, 0],
+      complexity: { verdict: "SINGLE", tasksChecked: 2 },
+    }),
+    {
+      source: "file",
+      total: { tasks: 2, kb: 12 },
+      subPlans: [
+        {
+          kb: 12,
+          tasks: [
+            { tests: 3, testFiles: 1 },
+            { tests: 0, testFiles: 0 },
+          ],
+        },
+      ],
+      complexity: { verdict: "SINGLE", tasksChecked: 2 },
+    },
+  );
+  assert.deepEqual(
+    planRun({ kb: 9, subPlans: 1, tasks: 2, testsPerTask: null, testFilesPerTask: null }),
+    {
+      source: "file",
+      total: { tasks: 2, kb: 9 },
+      subPlans: [
+        {
+          kb: 9,
+          tasks: [
+            { tests: null, testFiles: null },
+            { tests: null, testFiles: null },
+          ],
+        },
+      ],
+    },
+    "a plan before `Test first`: null per task",
+  );
+  assert.deepEqual(
+    planRun({
+      kb: 256,
+      subPlans: 2,
+      tasks: 3,
+      testsPerTask: [1, 2, 3],
+      testFilesPerTask: [1, 1, 1],
+    }),
+    {
+      source: "file",
+      total: { tasks: 3, kb: 256 },
+      subPlans: [
+        { kb: null, tasks: null },
+        { kb: null, tasks: null },
+      ],
+    },
+    "a split plan's per-sub-plan grouping was not stored",
+  );
+});
+
+await test("normalize puts an opencode chat's bash categories on its lowercase bash tool", () => {
+  const n = normalize({
+    ...OLD_CHAT,
+    tools: { bash: { calls: 3, errors: 0 } },
+    bash: { git: 2, other: 1 },
+  });
+  assert.deepEqual(n.tools.byTool.bash, { calls: 3, errors: 0, byCategory: { git: 2, other: 1 } });
+});
+
+await test("normalize sums a chat's total tokens from its models, as a fresh scan writes them", () => {
+  const n = normalize({
+    ...OLD_CHAT,
+    tokens: { input: 9, outputEst: 10 },
+    models: { a: { turns: 1, input: 4, outputEst: 4 }, b: { turns: 1, input: 5, outputEst: 5 } },
+  });
+  assert.equal(n.usage.total.tokens.input, 9);
+  assert.equal(n.usage.total.tokens.outputEst, 9);
+});
+
+await test("normalize leaves null by fields out and always gives an outcome its ledgers", () => {
+  const n = normalize({
+    ts: 7,
+    kind: "outcome",
+    repo: "cbartens/bkit",
+    bkitVersion: "5.5.1",
+    workflow: null,
+    step: "ship-close-workflow",
+    subagent: null,
+    model: "",
+    parentSha: SHA,
+  });
+  assert.deepEqual(n.by, { step: "ship-close-workflow" });
+  assert.deepEqual(n.ledgers, { deferrals: {}, failures: {}, friction: {} });
+});
+
+await test("normalize maps schema-1 outcome, counter and compliance rows", () => {
+  assert.deepEqual(
+    normalize({
+      ts: 5,
+      kind: "outcome",
+      workflow: "ship",
+      repo: "cbartens/bkit",
+      bkitVersion: "4.10.0",
+      step: "ship-close-workflow",
+      subagent: "bkit-x",
+      model: "m",
+      parentSha: SHA,
+      prNumber: 395,
+      linesAdded: 11089,
+      linesDeleted: 1273,
+      linesChanged: 12362,
+      filesChanged: 95,
+      taskCount: 55,
+      durationSeconds: 45132,
+      deferrals: 52,
+      failures: 4,
+      frictionAdded: 0,
+      deferralsAdded: 1,
+      failuresAdded: 2,
+      planSource: "brief",
+      redTests: 3,
+      coverage: { unit: { lines: 78.41 } },
+    }),
+    {
+      schema: 2,
+      ts: 5,
+      kind: "outcome",
+      repo: "cbartens/bkit",
+      bkit: { version: "4.10.0" },
+      by: { workflow: "ship", step: "ship-close-workflow", subagent: "bkit-x", model: "m" },
+      run: { parentSha: SHA, pr: 395 },
+      time: { totalMinutes: 752.2 },
+      lines: { total: { added: 11089, deleted: 1273, changed: 12362, files: 95 } },
+      ledgers: {
+        deferrals: { repo: 52, added: 1 },
+        failures: { repo: 4, added: 2 },
+        friction: { added: 0 },
+      },
+      plan: { source: "brief" },
+      build: { redTests: 3 },
+      ship: { coverage: { unit: { lines: 78.41 } } },
+    },
+  );
+  assert.deepEqual(
+    normalize({
+      ts: 6,
+      kind: "counter",
+      workflow: "build",
+      repo: "cbartens/bkit",
+      bkitVersion: "5.5.1",
+      step: "build-close-workflow",
+      counterName: "BUILD_ATTEMPT",
+      counterValue: 2,
+      counterSource: "shell-bus",
+      parentSha: SHA,
+    }),
+    {
+      schema: 2,
+      ts: 6,
+      kind: "counter",
+      repo: "cbartens/bkit",
+      bkit: { version: "5.5.1" },
+      by: { workflow: "build", step: "build-close-workflow" },
+      run: { parentSha: SHA },
+      counter: { name: "BUILD_ATTEMPT", value: 2, source: "shell-bus" },
+    },
+  );
+  assert.deepEqual(
+    normalize({
+      ts: 7,
+      kind: "compliance",
+      repo: "cbartens/bkit",
+      bkitVersion: "5.5.1",
+      workflow: "build",
+      step: "close-gate",
+      rule: "skip-ci-not-head",
+      result: "fail",
+      phase: "build",
+      parentSha: SHA,
+      evidence: "HEAD is [skip ci]",
+    }),
+    {
+      schema: 2,
+      ts: 7,
+      kind: "compliance",
+      repo: "cbartens/bkit",
+      bkit: { version: "5.5.1" },
+      by: { workflow: "build", step: "close-gate" },
+      run: { parentSha: SHA },
+      rule: { id: "skip-ci-not-head", verdict: "fail", evidence: "HEAD is [skip ci]" },
+    },
+  );
+  const s2 = { schema: 2, kind: "outcome", run: { parentSha: SHA } };
+  assert.equal(normalize(s2), s2);
+});
+
+await test("the report renders a ledger that mixes schema-1 and schema-2 rows of every kind", () => {
+  const fresh = writtenChat();
+  const oldChat = {
+    ...OLD_CHAT,
+    key: "claude-code:old-1",
+    sessionId: "old-1",
+    repo: repoFp("acme/widget"),
+    start: T0 - 2 * 60_000,
+    end: T0 + 60_000,
+    bkitVia: ["command"],
+    bkitWorkflows: ["build"],
+    issue: issueFp("acme/widget", 650),
+    issues: [issueFp("acme/widget", 650)],
+    issueSource: "command",
+    parentShas: [BUILD_SHA],
+    settled: true,
+  };
+  const newOutcome = {
+    schema: 2,
+    ts: ms(352),
+    kind: "outcome",
+    repo: "acme/widget",
+    bkit: { version: "5.6.0" },
+    by: { workflow: "build", step: "build-close-workflow" },
+    run: { parentSha: BUILD_SHA },
+    time: { start: ms(300), end: ms(352), totalMinutes: 52 },
+    ending: "done",
+    lines: {
+      total: { added: 30, deleted: 3, changed: 33, files: 3 },
+      code: { added: 10, deleted: 1, files: 1 },
+      tests: { added: 10, deleted: 1, files: 1 },
+      docs: { added: 10, deleted: 1, files: 1 },
+      merges: 0,
+    },
+    plan: { source: "file", total: { tasks: 7, kb: 4 }, subPlans: [] },
+  };
+  const counter = {
+    schema: 2,
+    ts: ms(352),
+    kind: "counter",
+    repo: "acme/widget",
+    bkit: { version: "5.6.0" },
+    by: { workflow: "build", step: "build-close-workflow" },
+    run: { parentSha: BUILD_SHA },
+    counter: { name: "BUILD_ATTEMPT", value: 2, source: "shell-bus" },
+  };
+  const oldCompliance = {
+    ts: ms(352),
+    kind: "compliance",
+    repo: "acme/widget",
+    bkitVersion: "5.5.1",
+    workflow: "build",
+    step: "close-gate",
+    rule: "skip-ci-not-head",
+    result: "pass",
+    phase: "build",
+    parentSha: BUILD_SHA,
+  };
+  const ledger = [
+    // The schema-1 build outcome is replaced by the schema-2 one.
+    ...readLedger(statsFile).filter(
+      (r) => r.kind !== "chat" && !(r.kind === "outcome" && r.parentSha === BUILD_SHA),
+    ),
+    fresh,
+    oldChat,
+    newOutcome,
+    counter,
+    oldCompliance,
+  ];
+  const md = renderReport(
+    ledger,
+    new Map([
+      [repoFp("acme/widget"), "widget"],
+      [issueFp("acme/widget", 650), "widget#650"],
+    ]),
+    [],
+    T0 + DAY,
+  );
+  assert.match(md, /Generated .* from 2 chats/);
+  assert.match(
+    md,
+    /\| 1 outcome, 1 counter, 1 compliance \|/,
+    "exact links to rows of both schemas",
+  );
+  assert.match(md, /33 lines, 7 tasks, 52 min \|/, "the schema-2 outcome row");
+  assert.match(md, /12 lines, 10 min \|/, "the schema-1 outcome row");
+  assert.match(
+    md,
+    /\| widget#650 \| [^|]* \| plan, build×2 \| 2 \|/,
+    "both chats count for the issue",
+  );
+  assert.match(md, /\| bkit-build-challenge-remediate \| 1 \|/, "the schema-1 chat's agents");
+  assert.match(md, /\| bkit-plan-generate \| 1 \|/, "the schema-2 chat's agents");
+});
+
+await test("outcome readers keep only the newest row per repo, workflow and parentSha", () => {
+  const base = {
+    schema: 2,
+    kind: "outcome",
+    repo: "acme/widget",
+    bkit: { version: "5.6.0" },
+    by: { workflow: "build", step: "build-close-workflow" },
+    run: { parentSha: BUILD_SHA },
+    time: { start: ms(300), end: ms(352), totalMinutes: 52 },
+    ending: "done",
+    lines: {
+      total: { added: 30, deleted: 3, changed: 33, files: 3 },
+      code: { added: 10, deleted: 1, files: 1 },
+      tests: { added: 10, deleted: 1, files: 1 },
+      docs: { added: 10, deleted: 1, files: 1 },
+      merges: 0,
+    },
+  };
+  // `runs dispatch` re-appends the row with the dispatch in `ci`; the newer ts wins, not file order.
+  const redispatched = {
+    ...base,
+    ts: ms(400),
+    ending: "close-failed",
+    ci: [{ status: "unresolved", reason: "no-run", attempts: 1 }],
+    lines: { ...base.lines, total: { added: 37, deleted: 3, changed: 40, files: 3 } },
+  };
+  const first = { ...base, ts: ms(352) };
+  const otherWorkflow = { ...base, ts: ms(352), by: { workflow: "debug", step: "close" } };
+  const sameRepoAt = { ...first, repo: "@acme/widget", ts: ms(353) };
+  assert.deepEqual(latestOutcomes([redispatched, first, sameRepoAt, otherWorkflow]), [
+    redispatched,
+    otherWorkflow,
+  ]);
+  const chat = {
+    ...normalize({
+      ...OLD_CHAT,
+      key: "claude-code:dispatch",
+      sessionId: "dispatch",
+      repo: repoFp("acme/widget"),
+      start: ms(290),
+      end: ms(500),
+      bkitVia: ["command"],
+      bkitWorkflows: ["build"],
+      issue: issueFp("acme/widget", 650),
+      issues: [issueFp("acme/widget", 650)],
+      issueSource: "command",
+      parentShas: [BUILD_SHA],
+      settled: true,
+    }),
+  };
+  const md = renderReport(
+    [chat, redispatched, first],
+    new Map([[repoFp("acme/widget"), "widget"]]),
+    [],
+    ms(500) + DAY,
+  );
+  assert.match(md, /\| 1 outcome \| 1 outcome \|/, "the re-appended row is not counted twice");
+  assert.match(md, /40 lines, 52 min \|/, "the newest row's numbers");
 });
 
 /** The Cursor transcript has no folder, so its issue is fingerprinted under the "none" repo. */

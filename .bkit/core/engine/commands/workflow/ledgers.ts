@@ -15,6 +15,7 @@ import * as path from "node:path";
 import { readBkitVersion } from "../../install/version-file.js";
 import {
   APPEND_LEDGERS,
+  SCHEMA,
   gitEnv,
   mintTs,
   resolveRepoSlug,
@@ -746,7 +747,7 @@ export const ledgersCommand: CommandSpec = {
           name: "rows",
           type: "string",
           required: true,
-          help: "file holding a JSON array of rows without ts, or - for stdin",
+          help: "file holding a JSON array of rows without schema, ts or bkit, or - for stdin",
         },
       ],
       output: {
@@ -1029,12 +1030,15 @@ export interface AppendResult {
   keys: Array<string | null>;
 }
 
+/** The top section in its written order, then the row's own fields. */
+const TOP_ORDER = ["schema", "ts", "kind", "key", "repo", "bkit", "by", "references"];
+
 /**
  * Append `rows` to one ledger. Every row is checked before any is written, so a
- * refused row leaves the file byte-identical. Each row gets a `ts` minted now
- * (never supplied), and `repo` / `bkitVersion` when it lacks them. Never reads
- * back or rewrites existing rows. Throws a CommandError (USAGE / EXIT_ROW_REFUSED
- * / EXIT_STAGE).
+ * refused row leaves the file byte-identical. Each row gets `schema` and a `ts`
+ * minted now (never supplied), `repo` when it lacks one and `bkit.version` from
+ * `.bkit/version`. Never reads back or rewrites existing rows. Throws a
+ * CommandError (USAGE / EXIT_ROW_REFUSED / EXIT_STAGE).
  */
 export function appendLedgerRows(root: string, ledger: string, rows: unknown): AppendResult {
   if (!Object.hasOwn(APPEND_LEDGERS, ledger)) {
@@ -1043,12 +1047,13 @@ export function appendLedgerRows(root: string, ledger: string, rows: unknown): A
       `--ledger must be one of ${Object.keys(APPEND_LEDGERS).join(", ")} (got '${ledger}')`,
     );
   }
-  const { file, kind } = APPEND_LEDGERS[ledger as AppendLedger];
+  const { file, kinds } = APPEND_LEDGERS[ledger as AppendLedger];
+  const takes: readonly string[] = kinds;
   if (!Array.isArray(rows)) throw new CommandError(EXIT.USAGE, "--rows must hold a JSON array");
   if (rows.length === 0) throw new CommandError(EXIT.USAGE, "--rows holds no rows");
 
   let repo: string | undefined;
-  let bkitVersion: string | undefined;
+  let version: string | undefined;
   let last: number | undefined;
   const out: Array<Record<string, unknown>> = rows.map((raw, i) => {
     const refuse = (why: string) => new CommandError(EXIT_ROW_REFUSED, `row ${i + 1}: ${why}`);
@@ -1057,14 +1062,26 @@ export function appendLedgerRows(root: string, ledger: string, rows: unknown): A
     }
     const r = raw as Record<string, unknown>;
     if (Object.hasOwn(r, "ts")) throw refuse("carries ts; ts is minted at append time");
-    if (r["kind"] !== kind) {
-      throw refuse(`kind must be ${kind} in --ledger=${ledger} (got ${String(r["kind"])})`);
+    if (Object.hasOwn(r, "schema")) throw refuse("carries schema; it is set at append time");
+    if (!takes.includes(String(r["kind"]))) {
+      throw refuse(
+        `kind must be ${takes.join(" | ")} in --ledger=${ledger} (got ${String(r["kind"])})`,
+      );
     }
+    if (Object.hasOwn(r, "bkit")) throw refuse("carries bkit; bkit.version is set at append time");
     repo ??= resolveRepoSlug(root) || "unknown/repo";
-    bkitVersion ??=
-      readBkitVersion(path.join(root, ".bkit", "version"))?.pinnedVersion || "unknown";
+    version ??= readBkitVersion(path.join(root, ".bkit", "version"))?.pinnedVersion || "unknown";
     last = mintTs(last);
-    const row = { ts: last, kind, repo, bkitVersion, ...r };
+    const filled: Record<string, unknown> = {
+      repo,
+      ...r,
+      schema: SCHEMA,
+      ts: last,
+      bkit: { version },
+    };
+    const row: Record<string, unknown> = {};
+    for (const k of TOP_ORDER) if (filled[k] !== undefined) row[k] = filled[k];
+    for (const [k, v] of Object.entries(filled)) if (!(k in row)) row[k] = v;
     const v = validate(row);
     if (!v.ok) throw refuse(v.reason ?? "invalid");
     const who = writerProblem(row);

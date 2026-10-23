@@ -33,6 +33,7 @@ import {
   BKIT_PUSH_GATES,
   BKIT_TEST_FILE_SCRIPT,
 } from "../manifest.js";
+import { migrateLedgers } from "../../ledgers/migrate.js";
 import type { ModuleContext } from "./index.js";
 
 export function listMdFiles(dir: string, prefix?: string): string[] {
@@ -302,6 +303,7 @@ export function runBkitDocs(
   }
   migrateShortcutsToLite(dryRun, ws, logPrefix);
   migrateRetiredDevLock(dryRun, ws, logPrefix);
+  migrateLedgerSchema(dryRun, ws, logPrefix);
 }
 
 // Migration (5.1.0 – 5.2.4 installs, `docs/migrations.md`): the lite workflows lived at
@@ -353,6 +355,19 @@ export function migrateRetiredDevLock(dryRun: boolean, ws: WriteSet, logPrefix: 
   console.log(
     `${logPrefix} ${dryRun ? "[dry-run] " : ""}core: removed ${RETIRED_DEV_LOCK} (the dev lock is gone)`,
   );
+}
+
+// Migration (installs up to 5.5.x, `docs/migrations.md`): ledger rows written before
+// `schema: 2` are rewritten into the current shape (`.bkit/jsonl.md` § Generic Fields).
+// Recorded in ws so `bkit check` fails until upgrade runs; ledgers never get a
+// canonical hash (`mergeCanonicalHashes`).
+export function migrateLedgerSchema(dryRun: boolean, ws: WriteSet, logPrefix: string): void {
+  for (const { file, rewritten } of migrateLedgers(process.cwd(), dryRun)) {
+    ws.writes.push({ path: file, action: "update" });
+    console.log(
+      `${logPrefix} ${dryRun ? "[dry-run] " : ""}core: ${file} — ${rewritten} row(s) rewritten to schema 2`,
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------

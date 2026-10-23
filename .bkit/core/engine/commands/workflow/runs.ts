@@ -57,6 +57,7 @@ import {
   type PrInfo,
 } from "./prs.js";
 import { resolveOwnerRepo, splitSlug } from "./repo.js";
+import { restateOutcome } from "./run-facts.js";
 import { extraField, str } from "./status.js";
 import { writeStepRow } from "./steps.js";
 
@@ -1370,6 +1371,10 @@ async function runDispatch(ctx: RunContext): Promise<number> {
       },
       ctx.log,
     ).row;
+    if (/-close-workflow$/.test(step!)) {
+      const tree = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
+      restateOutcome(tree, status, String(f.workflow ?? "build"), { ...r.ciDispatch }, ctx.log);
+    }
     if (code === EXIT.OK || code === EXIT_SKIP_TOKEN) {
       const check = crossCheckFile(status, "gh", ctx.log);
       if (!check.ok) {

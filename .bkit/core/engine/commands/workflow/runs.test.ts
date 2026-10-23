@@ -19,7 +19,14 @@ import {
   type Gh,
 } from "./runs";
 import type { GhResult } from "../lib";
-import { appendRecordCommit, newRecord, readRecord, writeRecord } from "./ledgers";
+import { validate } from "../../ledgers/telemetry";
+import {
+  appendLedgerRows,
+  appendRecordCommit,
+  newRecord,
+  readRecord,
+  writeRecord,
+} from "./ledgers";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
 const FIXTURES = path.join(REPO_ROOT, "tests", "fixtures", "gh");
@@ -2104,6 +2111,64 @@ describe(
         scanResult: "clean",
       });
       expect(r.json.row).toEqual(rows[0]);
+    });
+
+    /** The close's workflow-done row and its outcome row, as `bkit workflows close` leaves them. */
+    function closedRun(cwd: string, file: string) {
+      const sha = gitIn(cwd, "rev-parse", "HEAD");
+      fs.writeFileSync(
+        file,
+        `${JSON.stringify({ type: "workflow-done", workflow: "build", at: new Date().toISOString(), parentSha: sha })}\n`,
+      );
+      appendLedgerRows(cwd, "stats", [
+        {
+          kind: "outcome",
+          by: { workflow: "build", step: "build-close-workflow" },
+          run: { parentSha: sha },
+          time: null,
+          ending: "done",
+          ledgers: { deferrals: { repo: 0 }, failures: { repo: 0 }, friction: {} },
+        },
+      ]);
+      return { sha, stats: path.join(cwd, ".bkit", "stats.jsonl") };
+    }
+    const dispatchClose = (cwd: string, file: string, ...extra: string[]) =>
+      cli(cwd, [
+        "dispatch",
+        "--fid=1-x",
+        "--pr=7",
+        `--file=${file}`,
+        "--workflow=build",
+        "--step=build-close-workflow",
+        ...extra,
+      ]);
+
+    it("--step=build-close-workflow appends a newer outcome row with the dispatch added to ci", async () => {
+      const { cwd, file } = pushedRepo();
+      const { sha, stats } = closedRun(cwd, file);
+      fakeGhBin({ "pr-view": ROLLUP_FOUND, "pr-list": '[{"number":7}]' });
+      expect((await dispatchClose(cwd, file)).code).toBe(0);
+      const [close, restated] = rowsOf(stats);
+      expect(restated).toMatchObject({
+        kind: "outcome",
+        by: { workflow: "build", step: "build-close-workflow" },
+        run: { parentSha: sha },
+        ending: "done",
+        ci: [{ status: "dispatched", reason: null, attempts: 1 }],
+      });
+      expect(restated!.ts as number).toBeGreaterThan(close!.ts as number);
+      expect(validate(restated)).toEqual({ ok: true });
+    });
+
+    it("--step=build-close-workflow with an unresolved dispatch restates the outcome as close-failed", async () => {
+      const { cwd, file } = pushedRepo();
+      const { stats } = closedRun(cwd, file);
+      fakeGhBin({ "pr-view": "EXIT:1" });
+      expect((await dispatchClose(cwd, file, "--budget-s=1", "--interval-s=1")).code).toBe(1);
+      expect(rowsOf(stats).at(-1)).toMatchObject({
+        ending: "close-failed",
+        ci: [{ status: "unresolved", reason: "gh-error" }],
+      });
     });
 
     it("--file and --step go together", async () => {

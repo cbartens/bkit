@@ -98,7 +98,7 @@ description: "Build Feature — Autonomous implementation"
 5. Apply each decision:
    - **Accept** — ONLY on that item's explicit human approval; "yes" to an `Accept` recommendation counts:
      - Test-order gap → `**Test-order exception:**` as the task's last line in `{DECISION_PLAN}`, indented; entries in `Test first` form, each ending `— {human's reason}`.
-     - Other → append one `docs/decisions.jsonl` row in `.bkit/jsonl.md` format; `step` = `build-decision`; `summary` names `{FID}`, step `{PAUSE_STEP}` and the gap or finding; `rationale` = `accepted by owner: {human's reason}`.
+     - Other → append one `docs/decisions.jsonl` row in `.bkit/jsonl.md` format; `by.step` = `build-decision`; `summary` names `{FID}`, step `{PAUSE_STEP}` and the gap or finding; `rationale` = `accepted by owner: {human's reason}`.
    - **Fix now** → append `- [ ] **Task {next N}:**` with `**Done when:**` and `**Test first:**` (1-5 `` `{test file}` `{test name}` fails on {what goes wrong} `` entries, `;`-separated) to `{DECISION_PLAN}`.
 6. Under each item add `Decision: {Accept|Fix now} — {human's words}`; set `Status: DECIDED`. **If** a `Test-order exception` was written → commit `{DECISION_PLAN}` alone first:
    ```bash

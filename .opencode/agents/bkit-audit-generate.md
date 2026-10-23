@@ -65,7 +65,7 @@ tools:
 10. Populate `Report` from steps that feed each section.
     - `Suggested Issues`: group `Findings` into issues to create; one row = one change landed in one go. Group by shared root cause, then module, then fix; never by severity alone. Every `MEDIUM`+ finding in exactly one row; `LOW` findings optional, batched into one row. `Findings` = finding IDs; `Severity` = highest of its findings; `Title` = the fix, imperative.
     - `Next Step`, first match wins: change outside the repo (dashboard, tracker, vendor setting) → `manual`; failing test / CI / runtime, cause unknown → `/bkit-debug`; approach open (options, trade-offs, unanswered questions) → `/bkit-design`; approach settled, not broken into tasks → `/bkit-plan`; change clear → `/bkit-build`. **If** `.bkit/lite.md` § When to use allows a lite workflow → `/bkit-build` becomes `build:lite`; `/bkit-debug` becomes `debug:lite`. `Reason` = the deciding fact, one clause.
-11. Write ledger entries to `docs/failures.jsonl` per `.bkit/jsonl.md`; `workflow: "audit"`, `step: "audit-{slug}"`. **If** template audits `docs/failures.jsonl` or `docs/deferrals.jsonl` → skip step.
+11. Write ledger entries to `docs/failures.jsonl` per `.bkit/jsonl.md`; `by: {workflow: "audit", step: "audit-{slug}"}`. **If** template audits `docs/failures.jsonl` or `docs/deferrals.jsonl` → skip step.
     - Report complete first. Template read-only rules cover audited surfaces, not this append.
     - Open rows = fold by `key`, highest `ts` wins, `status` != `CLOSED`; every `key`, whichever workflow wrote it.
     - Same problem = same `file:line`, test title, or error signature.

@@ -11,7 +11,8 @@
 //   - stats.jsonl is COPY-ONLY: consumer mtime + content unchanged.
 //   - friction.jsonl is MOVE: harvested rows are pruned from the consumer, but ONLY
 //     after that exact row is durably fsync'd + read back from the central store.
-//   - The prune gate is byte-for-byte CONTENT, never identity.
+//   - The prune gate is byte-for-byte CONTENT of the row in its current shape
+//     (`normalize`), never identity. The store holds rows in that shape.
 //   - The central store ACCUMULATES across runs (never cleared) and holds every
 //     DISTINCT row, deduped by content only. It is never rewritten from the fold. It is
 //     gitignored (private consumer content), so it is the only record of pruned consumer
@@ -28,7 +29,7 @@
 // See DE-34 for the shared-entrypoint + crash-isolation contract.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { fold, parse, resolveRepoSlug, } from "../ledgers/telemetry.js";
+import { fold, normalize, parse, resolveRepoSlug, } from "../ledgers/telemetry.js";
 import { parseJson } from "../shared/json.js";
 // ---------------------------------------------------------------------------
 // Constants
@@ -198,13 +199,14 @@ export function pruneConsumerFile(srcPath, consumerSlug, durable) {
     return { removed, kept: kept.length };
 }
 /**
- * Canonical serialisation used to compare a consumer row against a stored row.
- * Safe as a plain `JSON.stringify`: the store was written from exactly this function's
- * output, and a JSON.parse -> JSON.stringify round-trip preserves key order, so the
+ * Canonical serialisation used to compare a consumer row against a stored row: the
+ * row in the current shape (`normalize`), so a row written before `schema: 2` and its
+ * migrated copy are the same content. The store is written from exactly this
+ * function's output, and `normalize` returns a `schema` row unchanged, so the
  * store's own rewrite is byte-stable.
  */
 function canonicalRow(event) {
-    return JSON.stringify(event);
+    return JSON.stringify(normalize(event));
 }
 /** fsync a file to disk, so a durability check is not just a page-cache read. */
 function fsyncFile(filePath) {

@@ -22,6 +22,7 @@ import {
   pruneConsumerFile,
   runHarvest,
 } from "./harvest";
+import { normalize } from "../ledgers/telemetry";
 
 interface FileSnapshot {
   content: string;
@@ -475,6 +476,24 @@ describe("Harvest boundary: stats copy-only, friction moved (WS4-T1, #343)", () 
     const harvestStats = path.join(bkitRoot, HARVEST_DEST_DIR, "stats.jsonl");
     const rows = fs.readFileSync(harvestStats, "utf-8").trim().split("\n");
     expect(rows.length).toBe(2);
+  });
+
+  // A store banked before `schema: 2` holds the old shape; the consumer's copy was migrated.
+  it("prunes a migrated friction row its old-shape stored copy holds, adding no duplicate", () => {
+    const old = frictionRow(1_700_000_000_003, "fk-1");
+    const consumerPath = path.join(tmpDir, "consumer-app");
+    makeConsumerRepo(consumerPath, {
+      ".bkit/friction.jsonl": JSON.stringify(normalize(JSON.parse(old))) + "\n",
+    });
+    const bkitRoot = makeBkitRoot(tmpDir, [consumerPath]);
+    fs.mkdirSync(path.join(bkitRoot, HARVEST_DEST_DIR), { recursive: true });
+    const store = path.join(bkitRoot, HARVEST_DEST_DIR, "friction.jsonl");
+    fs.writeFileSync(store, old + "\n", "utf-8");
+
+    runHarvest(bkitRoot);
+
+    expect(fs.readFileSync(path.join(consumerPath, ".bkit", "friction.jsonl"), "utf-8")).toBe("");
+    expect(fs.readFileSync(store, "utf-8").trim().split("\n")).toHaveLength(1);
   });
 });
 

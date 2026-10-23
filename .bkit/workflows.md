@@ -920,7 +920,7 @@ Each subsection documents command behaviour — steps, subagents, artifacts, ver
 One mechanism for everything only a human can settle: verify gaps logged `Fixable: false` (test-order gaps included), a no-progress Step 8 attempt, and `CRITICAL|HIGH` challenge findings left `BLOCKED`. Replaces the Failure Path on those routes.
 
 - **Who asks:** the orchestrator, in session, one `Q{n}` question with a `Recommended:` line per item (same format as `/bkit-design` grill). NEVER a subagent — subagents cannot reach the human. Record = `build-decision-{RUN}-{K}.md` (`Status: OPEN` → `DECIDED`; header carries `From`, `Pause step`, `Sub-plan`, `Verify attempt`, `Plan`).
-- **Accept:** written ONLY after explicit human approval of that item; agents NEVER write one on own judgement. Test-order gap → `**Test-order exception:**` lines in the plan, committed alone (`git commit -- {plan}`) so `tests green` honours them; other → `docs/decisions.jsonl` row (`step` `build-decision`, `rationale` `accepted by owner: …`). Verify and `@bkit-build-challenge-reconcile` read `build-decision-*.md` and drop accepted items. Boundary-gate failures offer no Accept.
+- **Accept:** written ONLY after explicit human approval of that item; agents NEVER write one on own judgement. Test-order gap → `**Test-order exception:**` lines in the plan, committed alone (`git commit -- {plan}`) so `tests green` honours them; other → `docs/decisions.jsonl` row (`by.step` `build-decision`, `rationale` `accepted by owner: …`). Verify and `@bkit-build-challenge-reconcile` read `build-decision-*.md` and drop accepted items. Boundary-gate failures offer no Accept.
 - **Fix now:** new `- [ ] **Task N:**` with `Done when` + `Test first` appended to the plan in place (`build-input-{RUN}.md` with no plan) → Step 6 for those tasks only → Step 7 → onward; a challenge-originated fix reaches the challenge reviewers again through Steps 9-10. Not offered for test-order gaps.
 - **Then:** `status meta --decision` (fresh attempt budgets) → `steps finish --step=build-decision --comment-body` (decision posted to the tracker) → Step 6, re-run Step 7, or Step 13.
 - **Headless** (`runtimeHeadless` true) or human says stop: decision file → `build-handover.md` → `workflows handover --push` (comment posted) → lock released → STOP with the run still `IN_PROGRESS`; no `workflows fail`, no `bkit:failed`. Next `/bkit-build` resumes at the open decision file and asks.
@@ -1572,7 +1572,7 @@ Append-only. Row format: `.bkit/jsonl.md`. Doc index + read-by-phase matrix: `.a
 
 ## Telemetry Ledgers
 
-bkit emits JSONL telemetry to six append-only ledgers. Row format (envelope, per-kind fields, dedup tuples, write idiom): `.bkit/jsonl.md`.
+bkit emits JSONL telemetry to six append-only ledgers. Row format (top section, per-kind fields, dedup tuples, write idiom): `.bkit/jsonl.md`.
 
 <!-- prettier-ignore -->
 | File | Kind(s) | Scope |
@@ -1586,7 +1586,7 @@ bkit emits JSONL telemetry to six append-only ledgers. Row format (envelope, per
 
 Orchestrator behavior:
 
-- **Append route:** `bkit ledgers append --ledger=… --rows=…` writes `decision` / `deferral` / `failure` / `knowledge` / `friction` rows, minting `ts` and refusing the whole batch on one bad row (`.bkit/jsonl.md` § Write Idiom).
+- **Append route:** `bkit ledgers append --ledger=… --rows=…` writes `decision` / `deferral` / `failure` / `knowledge` / `friction` rows (`--ledger=stats`: `compliance` / `counter` / `outcome`); sets `schema: 2`, mints `ts`, fills `repo` (when absent) / `bkit.version`, refuses the whole batch on one bad row (`.bkit/jsonl.md` § Write Idiom). Every row carries `by: {workflow?, step, subagent?, model?}` (`.bkit/jsonl.md` § Who Wrote It).
 - **Never-drop:** never silently drop deferred work → append `kind:"deferral"` to `docs/deferrals.jsonl`.
 - **Found-bug:** never silently drop discovered bug → append `kind:"failure"` to `docs/failures.jsonl` immediately.
 - **Path idiom (all JSONL ledgers):** resolve once per bash block:
@@ -1595,7 +1595,7 @@ Orchestrator behavior:
   - `STATUS="$WT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"`
   - `STATS="$WT/.bkit/stats.jsonl"` · `FRICTION="$WT/.bkit/friction.jsonl"`
   - `docs/{deferrals,failures,knowledge,decisions}.jsonl` → `"$WT/docs/…"`. never mix `$REPO_ROOT` and `show-toplevel` for the same ledger in one block.
-- **Friction/stats:** `bkit workflows close` appends the `counter` + `outcome` rows to `.bkit/stats.jsonl` (`counterRow` / `outcomeRow`, schema-validated); stage into the close commit that pushes (never leave dirty after push).
+- **Friction/stats:** `bkit workflows close` appends the `counter` + `outcome` rows to `.bkit/stats.jsonl` via `bkit ledgers append --ledger=stats` (`counterRow` / `outcomeRow`); every row of the run carries `run.parentSha` = HEAD at close, also on its `workflow-done` status row. Close's CI dispatch (`bkit runs dispatch`) re-appends the outcome: dispatch added to `ci`, `ending` `close-failed` when CI never started; newer row supersedes under fold. Stage into the close commit that pushes (never leave dirty after push).
 - **Close commit pathspec:** design / plan on main: `bkit ledgers commit --squash-of=feat/{FID}` (bookkeeping allow-list + the squashed paths). Ship: `bkit ledgers commit --scope=full`. Build/debug (worktree sandbox): `git add -A` after writes — includes the same relative paths under `$WT`.
 - **Ledger sweep (every path-scoped staging site):** the `{FID}`/`{YYYYMM}` log-dir entry names one feature and one month bucket — a `status.jsonl` under any other bucket, and any ledger added after the list was written, would be appended to, never staged, and lost at the next `git worktree remove --force` / branch switch / clean. `bkit ledgers commit` therefore carries `docs/plans/*/logs/*/*.jsonl docs/*.jsonl .bkit/*.jsonl` (plus `docs/roadmap.md`) in its own pathspec set alongside the log-dir entry, and passes the whole set to `git ls-files` — git expands the globs itself, so an unmatched glob is empty output (exit 0), never a zsh abort and never shell word-splitting. Sweep root = `--root=` (`$REPO_ROOT` pre-worktree, `$WT` at close, `$BOOK_ROOT` in ship Step 1 / **Failure Path**, cwd in ship B2). Bounded to those three globs on purpose — a repo's own `*.jsonl` data or fixtures must never ride into a `[skip ci]` bookkeeping commit. The `-A` ban stays. Ship's worktree→`BOOK_ROOT` reconciliation (`bkit ledgers union`) unions the same swept set row-wise (append-only NDJSON, never copy over; never `.bkit/issues.jsonl`).
 - **Best-effort:** telemetry never gates workflow. `bkit workflows close` logs a failed stats append and continues (`telemetryWritten` false); the remaining inline appends (feature rows, ship audit rows) keep `… || echo "[bkit-roadmap] append failed: $FILE"`.

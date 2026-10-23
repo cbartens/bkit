@@ -18,7 +18,14 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { compareTs, mintTs, parse, resolveRepoSlug, validate } from "../../ledgers/telemetry.js";
+import {
+  SCHEMA,
+  compareTs,
+  mintTs,
+  parse,
+  resolveRepoSlug,
+  validate,
+} from "../../ledgers/telemetry.js";
 import { readBkitVersion } from "../../install/version-file.js";
 import {
   CommandError,
@@ -331,13 +338,15 @@ export function featureRow(
 ): Record<string, unknown> {
   const phase = o.workflow.charAt(0).toUpperCase() + o.workflow.slice(1);
   return {
+    schema: SCHEMA,
     ts: mintTs(),
     kind: "feature",
-    repo: resolveRepoSlug(root) || "unknown/repo",
-    bkitVersion: readBkitVersion(path.join(root, ".bkit", "version"))?.pinnedVersion || "unknown",
-    workflow: o.workflow,
-    step: o.step,
     key: o.fid,
+    repo: resolveRepoSlug(root) || "unknown/repo",
+    bkit: {
+      version: readBkitVersion(path.join(root, ".bkit", "version"))?.pinnedVersion || "unknown",
+    },
+    by: { workflow: o.workflow, step: o.step },
     category: "agentic",
     description: `${phase} closed for ${o.fid}`,
     status: o.status,

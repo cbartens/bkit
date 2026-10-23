@@ -27,7 +27,9 @@ import {
   gitEnv,
   identity,
   mintTs,
+  normalize,
   parse,
+  totalsProblem,
   validate,
   writerProblem,
   type KindWriters,
@@ -63,60 +65,67 @@ function makeGitRepo(commits: number, remotes: string[]): string {
   return dir;
 }
 
-function baseEnvelope(
-  kind: TelemetryEvent["kind"],
-  overrides: Partial<TelemetryEvent> = {},
-): TelemetryEvent {
+type Row = Record<string, unknown>;
+
+/** A `time` block of `minutes` length from `start`, its total consistent with its ends. */
+function timeOf(minutes: number, start = 1_700_000_000_000) {
+  return { start, end: start + minutes * 60_000, totalMinutes: minutes };
+}
+
+function baseEnvelope(kind: TelemetryEvent["kind"], overrides: Row = {}): TelemetryEvent {
   const base = {
+    schema: 2,
     ts: 1_700_000_000_000,
     kind,
     repo: "cbartens/bkit",
-    bkitVersion: "4.1.4",
-    workflow: "build",
-    step: "build-close-workflow",
+    bkit: { version: "4.1.4" },
+    by: { workflow: "build", step: "build-close-workflow" },
   };
   return { ...base, ...overrides } as TelemetryEvent;
 }
 
-function complianceEvent(overrides: Partial<TelemetryEvent> = {}): EventOf<"compliance"> {
+function complianceEvent(overrides: Row = {}): EventOf<"compliance"> {
   return {
     ...baseEnvelope("compliance"),
-    rule: "no-mirror-edit",
-    result: "pass",
-    phase: "build",
-    parentSha: "abc123",
+    run: { parentSha: "abc123" },
+    rule: { id: "no-mirror-edit", verdict: "pass" },
     ...overrides,
   } as EventOf<"compliance">;
 }
 
-function outcomeEvent(overrides: Partial<TelemetryEvent> = {}): EventOf<"outcome"> {
+/** A compliance row for `rule` (verdict pass unless given). */
+function ruleRow(id: string, overrides: Row = {}, verdict = "pass"): EventOf<"compliance"> {
+  return complianceEvent({ rule: { id, verdict }, ...overrides });
+}
+
+function outcomeEvent(overrides: Row = {}): EventOf<"outcome"> {
   return {
     ...baseEnvelope("outcome"),
-    prNumber: 42,
-    linesAdded: 100,
-    linesDeleted: 20,
-    linesChanged: 120,
-    filesChanged: 5,
-    taskCount: 9,
-    durationSeconds: 3600,
-    deferrals: 0,
-    failures: 0,
+    run: { pr: 42 },
+    time: timeOf(60),
+    ending: "done",
+    lines: {
+      total: { added: 100, deleted: 20, changed: 120, files: 5 },
+      code: { added: 80, deleted: 10, files: 3 },
+      tests: { added: 15, deleted: 5, files: 1 },
+      docs: { added: 5, deleted: 5, files: 1 },
+      merges: 0,
+    },
+    ledgers: { deferrals: { repo: 0 }, failures: { repo: 0 }, friction: {} },
     ...overrides,
   } as EventOf<"outcome">;
 }
 
-function counterEvent(overrides: Partial<TelemetryEvent> = {}): TelemetryEvent {
+function counterEvent(overrides: Row = {}): TelemetryEvent {
   return {
     ...baseEnvelope("counter"),
-    counterName: "verifyAttempt",
-    counterValue: 1,
-    parentSha: "abc123",
-    counterSource: "model-self-report" as const,
+    run: { parentSha: "abc123" },
+    counter: { name: "verifyAttempt", value: 1, source: "model-self-report" },
     ...overrides,
   } as TelemetryEvent;
 }
 
-function frictionEvent(key: string, overrides: Partial<TelemetryEvent> = {}): EventOf<"friction"> {
+function frictionEvent(key: string, overrides: Row = {}): EventOf<"friction"> {
   return {
     ...baseEnvelope("friction"),
     key,
@@ -128,7 +137,7 @@ function frictionEvent(key: string, overrides: Partial<TelemetryEvent> = {}): Ev
   } as EventOf<"friction">;
 }
 
-function deferralEvent(key: string, overrides: Partial<TelemetryEvent> = {}): EventOf<"deferral"> {
+function deferralEvent(key: string, overrides: Row = {}): EventOf<"deferral"> {
   return {
     ...baseEnvelope("deferral"),
     key,
@@ -141,7 +150,7 @@ function deferralEvent(key: string, overrides: Partial<TelemetryEvent> = {}): Ev
   } as EventOf<"deferral">;
 }
 
-function failureEvent(key: string, overrides: Partial<TelemetryEvent> = {}): TelemetryEvent {
+function failureEvent(key: string, overrides: Row = {}): TelemetryEvent {
   return {
     ...baseEnvelope("failure"),
     key,
@@ -151,7 +160,7 @@ function failureEvent(key: string, overrides: Partial<TelemetryEvent> = {}): Tel
   } as TelemetryEvent;
 }
 
-function decisionEvent(key: string, overrides: Partial<TelemetryEvent> = {}): TelemetryEvent {
+function decisionEvent(key: string, overrides: Row = {}): TelemetryEvent {
   return {
     ...baseEnvelope("decision"),
     key,
@@ -160,7 +169,7 @@ function decisionEvent(key: string, overrides: Partial<TelemetryEvent> = {}): Te
   } as TelemetryEvent;
 }
 
-function knowledgeEvent(key: string, overrides: Partial<TelemetryEvent> = {}): TelemetryEvent {
+function knowledgeEvent(key: string, overrides: Row = {}): TelemetryEvent {
   return {
     ...baseEnvelope("knowledge"),
     key,
@@ -169,7 +178,7 @@ function knowledgeEvent(key: string, overrides: Partial<TelemetryEvent> = {}): T
   } as TelemetryEvent;
 }
 
-function featureEvent(key: string, overrides: Partial<TelemetryEvent> = {}): TelemetryEvent {
+function featureEvent(key: string, overrides: Row = {}): TelemetryEvent {
   return {
     ...baseEnvelope("feature"),
     key,
@@ -181,37 +190,35 @@ function featureEvent(key: string, overrides: Partial<TelemetryEvent> = {}): Tel
   } as TelemetryEvent;
 }
 
-function chatEvent(key: string, overrides: Partial<TelemetryEvent> = {}): TelemetryEvent {
+function chatEvent(key: string, overrides: Row = {}): TelemetryEvent {
   return {
     ...baseEnvelope("chat"),
-    workflow: "chat-stats",
-    step: "scan",
+    by: { workflow: "chat-stats", step: "scan" },
     key,
-    platform: "claude-code",
-    sessionId: key.split(":")[1],
-    start: 1_700_000_000_000,
-    end: 1_700_000_600_000,
-    parentShas: [],
-    issues: [],
-    sourceBytes: 1024,
+    session: { platform: "claude-code", id: key.split(":")[1] },
+    time: timeOf(10),
+    issue: { id: null, all: [], mentioned: [] },
+    run: { parentShas: [] },
+    scan: { files: 1, bytes: 1024, settled: true },
     ...overrides,
   } as TelemetryEvent;
 }
 
-function runEvent(key: string, overrides: Partial<TelemetryEvent> = {}): TelemetryEvent {
+function runEvent(key: string, overrides: Row = {}): TelemetryEvent {
   return {
     ...baseEnvelope("run"),
-    workflow: "plan",
-    step: "scan",
+    by: { workflow: "plan", step: "scan" },
     key,
-    fid: "fp:000000000000",
-    issue: null,
-    start: 1_700_000_000_000,
-    end: 1_700_000_600_000,
+    run: {
+      fid: "fp:000000000000",
+      issue: null,
+      n: 1,
+      parentSha: "deadbeef",
+      parentShas: ["deadbeef"],
+    },
+    time: timeOf(10),
     ending: "done",
-    parentSha: "deadbeef",
-    parentShas: ["deadbeef"],
-    sourceRows: 12,
+    scan: { rows: 12, afterEnd: 0, settled: true },
     ...overrides,
   } as TelemetryEvent;
 }
@@ -221,22 +228,22 @@ function runEvent(key: string, overrides: Partial<TelemetryEvent> = {}): Telemet
 // ---------------------------------------------------------------------------
 
 describe("identity — per-kind composite tuples", () => {
-  it("compliance: keyed by (repo, workflow, parentSha, rule)", () => {
+  it("compliance: keyed by (repo, by.workflow, run.parentSha, rule.id)", () => {
     const e = complianceEvent();
     const id = identity(e);
     expect(id).toBe("compliance cbartens/bkit build abc123 no-mirror-edit");
   });
 
-  it("outcome: keyed by (repo, workflow, parentSha) — prNumber fallback when no parentSha", () => {
+  it("outcome: keyed by (repo, by.workflow, run.parentSha) — run.pr fallback when no parentSha", () => {
     // Generalized per-workflow run row: the run's parentSha is the anchor.
-    const withSha = outcomeEvent({ parentSha: "deadbeef" } as Partial<TelemetryEvent>);
+    const withSha = outcomeEvent({ run: { parentSha: "deadbeef", pr: 42 } });
     expect(identity(withSha)).toBe("outcome cbartens/bkit build deadbeef");
-    // Back-compat: a legacy ship row with no parentSha falls back to its prNumber.
+    // A ship row with no parentSha falls back to its run.pr.
     const legacy = outcomeEvent();
     expect(identity(legacy)).toBe("outcome cbartens/bkit build pr42");
   });
 
-  it("counter: keyed by (repo, workflow, parentSha, counterName)", () => {
+  it("counter: keyed by (repo, by.workflow, run.parentSha, counter.name)", () => {
     const e = counterEvent();
     expect(identity(e)).toBe("counter cbartens/bkit build abc123 verifyAttempt");
   });
@@ -258,8 +265,8 @@ describe("identity — per-kind composite tuples", () => {
 
   it("composite tuple is DISTINCT from bare ts — same ts, different key → different identity", () => {
     const ts = 1_700_000_000_000;
-    const e1 = complianceEvent({ ts, rule: "no-mirror-edit" } as Partial<TelemetryEvent>);
-    const e2 = complianceEvent({ ts, rule: "skip-ci-not-head" } as Partial<TelemetryEvent>);
+    const e1 = ruleRow("no-mirror-edit", { ts });
+    const e2 = ruleRow("skip-ci-not-head", { ts });
     // Same ts, different composite key
     expect(e1.ts).toBe(e2.ts);
     expect(identity(e1)).not.toBe(identity(e2));
@@ -632,9 +639,14 @@ describe("chat kind — .bkit/stats.jsonl chat rows", () => {
 
   it("rejects a row without the join keys readers depend on", () => {
     expect(validate({ ...chatEvent("claude-code:abc"), key: undefined }).ok).toBe(false);
-    expect(validate({ ...chatEvent("claude-code:abc"), sourceBytes: undefined }).ok).toBe(false);
-    expect(validate({ ...chatEvent("claude-code:abc"), parentShas: undefined }).ok).toBe(false);
-    expect(validate({ ...chatEvent("claude-code:abc"), start: "yesterday" }).ok).toBe(false);
+    expect(validate({ ...chatEvent("claude-code:abc"), scan: { files: 1 } }).ok).toBe(false);
+    expect(validate({ ...chatEvent("claude-code:abc"), run: {} }).ok).toBe(false);
+    expect(
+      validate({ ...chatEvent("claude-code:abc"), issue: { id: null, mentioned: [] } }).ok,
+    ).toBe(false);
+    expect(
+      validate({ ...chatEvent("claude-code:abc"), time: { ...timeOf(10), start: "yesterday" } }).ok,
+    ).toBe(false);
   });
 
   it("carries no severity or status", () => {
@@ -643,23 +655,24 @@ describe("chat kind — .bkit/stats.jsonl chat rows", () => {
   });
 
   it("a resumed chat's new row folds over the first one", () => {
-    const first = chatEvent("claude-code:abc", { sourceBytes: 1024 } as Partial<TelemetryEvent>);
+    const first = chatEvent("claude-code:abc", {
+      scan: { files: 1, bytes: 1024, settled: false },
+    });
     const resumed = chatEvent("claude-code:abc", {
       ts: first.ts + 1,
-      sourceBytes: 4096,
-    } as Partial<TelemetryEvent>);
+      scan: { files: 1, bytes: 4096, settled: true },
+    });
     const state = fold([first, resumed]);
     expect(state.size).toBe(1);
-    expect(([...state.values()][0] as TelemetryEvent & { sourceBytes: number }).sourceBytes).toBe(
-      4096,
-    );
+    const current = [...state.values()][0] as EventOf<"chat">;
+    expect(current.scan.bytes).toBe(4096);
   });
 
   it("leaves a workflow's telemetry report unchanged", () => {
     const run = outcomeEvent({
-      workflow: "plan",
-      parentSha: "deadbeef",
-    } as Partial<TelemetryEvent>);
+      by: { workflow: "plan", step: "plan-close-workflow" },
+      run: { parentSha: "deadbeef" },
+    });
     // The footer counts every ledger row; only the workflow's own numbers must not move.
     const result = (events: TelemetryEvent[]) => ({
       state: fold(events),
@@ -688,11 +701,13 @@ describe("run kind — .bkit/stats.jsonl run rows", () => {
 
   it("rejects a row without the join keys readers depend on", () => {
     expect(validate({ ...runEvent(key), key: undefined }).ok).toBe(false);
-    expect(validate({ ...runEvent(key), fid: undefined }).ok).toBe(false);
-    expect(validate({ ...runEvent(key), sourceRows: undefined }).ok).toBe(false);
-    expect(validate({ ...runEvent(key), parentShas: undefined }).ok).toBe(false);
-    expect(validate({ ...runEvent(key), parentSha: 7 }).ok).toBe(false);
-    expect(validate({ ...runEvent(key), parentSha: null }).ok).toBe(true);
+    const base = runEvent(key) as EventOf<"run">;
+    const run = (o: Row) => ({ ...base, run: { ...base.run, ...o } });
+    expect(validate(run({ fid: undefined })).ok).toBe(false);
+    expect(validate({ ...runEvent(key), scan: { afterEnd: 0, settled: true } }).ok).toBe(false);
+    expect(validate(run({ parentShas: undefined })).ok).toBe(false);
+    expect(validate(run({ parentSha: 7 })).ok).toBe(false);
+    expect(validate(run({ parentSha: null })).ok).toBe(true);
   });
 
   it("takes only the five endings", () => {
@@ -707,21 +722,21 @@ describe("run kind — .bkit/stats.jsonl run rows", () => {
   });
 
   it("a grown run log's new row folds over the first one", () => {
-    const first = runEvent(key, { ending: "stopped" } as Partial<TelemetryEvent>);
+    const first = runEvent(key, { ending: "stopped" });
     const grown = runEvent(key, {
       ts: first.ts + 1,
-      sourceRows: 20,
-    } as Partial<TelemetryEvent>);
+      scan: { rows: 20, afterEnd: 0, settled: true },
+    });
     const state = fold([first, grown]);
     expect(state.size).toBe(1);
-    expect(([...state.values()][0] as TelemetryEvent & { sourceRows: number }).sourceRows).toBe(20);
+    expect(([...state.values()][0] as EventOf<"run">).scan.rows).toBe(20);
   });
 
   it("leaves the telemetry report of the same workflow unchanged", () => {
     const outcome = outcomeEvent({
-      workflow: "plan",
-      parentSha: "deadbeef",
-    } as Partial<TelemetryEvent>);
+      by: { workflow: "plan", step: "plan-close-workflow" },
+      run: { parentSha: "deadbeef" },
+    });
     // The footer counts every ledger row; only the workflow's own numbers must not move.
     const result = (events: TelemetryEvent[]) => ({
       state: fold(events),
@@ -834,9 +849,13 @@ describe("jsonl.md examples — validated against the codec", () => {
   // step = WHERE, subagent = WHO, model = the subagent's own pin. They were
   // collapsed: `step` held agent names on most rows while `subagent` sat empty on
   // all 141, costing the harvest two of its five dimensions.
-  it("no example puts an agent name in step", () => {
+  /** An example's `by` block, read in the current shape whatever shape the doc shows. */
+  const byOf = (ex: Record<string, unknown>): Record<string, unknown> =>
+    (normalize(ex)["by"] ?? {}) as Record<string, unknown>;
+
+  it("no example puts an agent name in by.step", () => {
     const steps = specExamples()
-      .map((ex) => ex["step"])
+      .map((ex) => byOf(ex)["step"])
       .filter((step): step is string => typeof step === "string");
     expect(steps.length).toBeGreaterThan(0);
     for (const step of steps) {
@@ -844,10 +863,11 @@ describe("jsonl.md examples — validated against the codec", () => {
     }
   });
 
-  it("model appears exactly where subagent does — never on an orchestrator row", () => {
+  it("by.model appears exactly where by.subagent does — never on an orchestrator row", () => {
     for (const ex of fullExamples()) {
-      expect(Boolean(ex["model"]), `${String(ex["kind"])}: model must be set iff subagent is`).toBe(
-        Boolean(ex["subagent"]),
+      const by = byOf(ex);
+      expect(Boolean(by["model"]), `${String(ex["kind"])}: model must be set iff subagent is`).toBe(
+        Boolean(by["subagent"]),
       );
     }
   });
@@ -986,8 +1006,8 @@ describe("workflowTelemetry — ledger-health readout (no workflow)", () => {
     const s = workflowTelemetry(
       foldFrom([
         write([
-          counterEvent({ bkitVersion: "4.5.0", parentSha: "aaa" } as Partial<TelemetryEvent>),
-          counterEvent({ bkitVersion: "", parentSha: "bbb" } as Partial<TelemetryEvent>),
+          counterEvent({ bkit: { version: "4.5.0" }, run: { parentSha: "aaa" } }),
+          counterEvent({ bkit: { version: "" }, run: { parentSha: "bbb" } }),
         ]),
       ]),
     );
@@ -998,7 +1018,7 @@ describe("workflowTelemetry — ledger-health readout (no workflow)", () => {
   });
 
   it("reports 0 malformed as a single 0 when nothing is malformed", () => {
-    const s = workflowTelemetry(foldFrom([write([counterEvent({ parentSha: "aaa" })])]));
+    const s = workflowTelemetry(foldFrom([write([counterEvent({ run: { parentSha: "aaa" } })])]));
     expect(s.malformedLineCount).toBe(0);
     expect(s.lines[0]).toContain("malformed: 0");
     expect(s.lines[0]).not.toContain("\n"); // the bash emitted "0\n0" here
@@ -1007,19 +1027,19 @@ describe("workflowTelemetry — ledger-health readout (no workflow)", () => {
   it("counts malformed lines by parsing, not by regex", () => {
     // `{}` matches the bash guard /^\{.*\}$/ but is not a telemetry row.
     const s = workflowTelemetry(
-      foldFrom([write([counterEvent({ parentSha: "aaa" })], ['{"ts":1,"kind":"coun'])]),
+      foldFrom([write([counterEvent({ run: { parentSha: "aaa" } })], ['{"ts":1,"kind":"coun'])]),
     );
     expect(s.malformedLineCount).toBe(1);
   });
 
   it("counts per-workflow ENTITIES, so an updated row is not counted twice", () => {
     const p = write([
-      frictionEvent("k", { ts: 1_000, workflow: "ship" } as Partial<TelemetryEvent>),
+      frictionEvent("k", { ts: 1_000, by: { workflow: "ship", step: "ship-close-gate" } }),
       frictionEvent("k", {
         ts: 2_000,
-        workflow: "ship",
+        by: { workflow: "ship", step: "ship-close-gate" },
         status: "CLOSED",
-      } as Partial<TelemetryEvent>),
+      }),
     ]);
     const s = workflowTelemetry(foldFrom([p]), "ship");
     expect(s.rowCount).toBe(2); // two lines on disk
@@ -1029,7 +1049,7 @@ describe("workflowTelemetry — ledger-health readout (no workflow)", () => {
   });
 
   it("omits the chain line when no workflow is given", () => {
-    const s = workflowTelemetry(foldFrom([write([counterEvent({ parentSha: "aaa" })])]));
+    const s = workflowTelemetry(foldFrom([write([counterEvent({ run: { parentSha: "aaa" } })])]));
     expect(s.lines.some((l) => l.includes("chain total"))).toBe(false);
   });
 });
@@ -1043,26 +1063,28 @@ describe("validate — A2-mandatory envelope fields", () => {
     expect(validate(outcomeEvent()).ok).toBe(true);
   });
 
-  it("accepts an outcome event with valid per-tier coverage", () => {
+  it("accepts an outcome event with valid per-tier ship.coverage", () => {
     const e = outcomeEvent({
-      coverage: {
-        unit: { lines: 83.1, branches: 71.2, functions: 78.4, statements: 82.7 },
-        e2e: { branches: 40.1 },
+      ship: {
+        coverage: {
+          unit: { lines: 83.1, branches: 71.2, functions: 78.4, statements: 82.7 },
+          e2e: { branches: 40.1 },
+        },
       },
-    } as Partial<TelemetryEvent>);
+    });
     expect(validate(e).ok).toBe(true);
   });
 
-  it("rejects an outcome event with non-object coverage", () => {
-    const bad: unknown = { coverage: 71 };
-    const e = outcomeEvent(bad as Partial<TelemetryEvent>);
-    expect(validate(e).ok).toBe(false);
+  it("rejects an outcome event with non-object ship.coverage", () => {
+    const r = validate(outcomeEvent({ ship: { coverage: 71 } }));
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain("ship.coverage");
   });
 
   it("rejects an outcome event with a non-numeric coverage metric", () => {
-    const bad: unknown = { coverage: { unit: { branches: "high" } } };
-    const e = outcomeEvent(bad as Partial<TelemetryEvent>);
-    expect(validate(e).ok).toBe(false);
+    const r = validate(outcomeEvent({ ship: { coverage: { unit: { branches: "high" } } } }));
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain("ship.coverage.unit.branches");
   });
 
   it("accepts a valid counter event", () => {
@@ -1082,15 +1104,27 @@ describe("validate — A2-mandatory envelope fields", () => {
   });
 
   // Per-field drop tests — each mandatory field individually removed
-  for (const field of ["ts", "kind", "repo", "bkitVersion", "step"] as const) {
+  for (const field of ["ts", "kind", "repo", "bkit", "by"] as const) {
     it(`rejects event missing mandatory field: ${field}`, () => {
-      const e = { ...complianceEvent() };
-      delete (e as Record<string, unknown>)[field];
+      const e: Row = { ...complianceEvent() };
+      delete e[field];
       const r = validate(e);
       expect(r.ok).toBe(false);
       expect(r.reason).toContain(field);
     });
   }
+
+  it("rejects event missing by.step", () => {
+    const r = validate(complianceEvent({ by: { workflow: "build" } }));
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain("by.step");
+  });
+
+  it("rejects event missing bkit.version", () => {
+    const r = validate(complianceEvent({ bkit: {} }));
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain("bkit.version");
+  });
 
   it("rejects unknown kind", () => {
     const e = { ...complianceEvent(), kind: "unknown-kind" };
@@ -1105,9 +1139,11 @@ describe("validate — A2-mandatory envelope fields", () => {
     expect(validate(42).ok).toBe(false);
   });
 
-  it("rejects counter with invalid counterSource", () => {
-    const e = { ...counterEvent(), counterSource: "bad-source" };
-    expect(validate(e).ok).toBe(false);
+  it("rejects counter with invalid counter.source", () => {
+    const e = counterEvent({ counter: { name: "verifyAttempt", value: 1, source: "bad-source" } });
+    const r = validate(e);
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain("counter.source");
   });
 });
 
@@ -1117,19 +1153,19 @@ describe("validate — A2-mandatory envelope fields", () => {
 
 describe("fold — composite-identity dedup", () => {
   it("folds same-key compliance rows to latest (higher ts)", () => {
-    const e1 = complianceEvent({ ts: 1000 } as Partial<TelemetryEvent>);
-    const e2 = complianceEvent({ ts: 2000, result: "fail" } as Partial<TelemetryEvent>);
+    const e1 = complianceEvent({ ts: 1000 });
+    const e2 = ruleRow("no-mirror-edit", { ts: 2000 }, "fail");
     const state = fold([e1, e2]);
     expect(state.size).toBe(1);
     const val = state.get(identity(e1));
     expect(val).toBeDefined();
-    expect((val as typeof e2).result).toBe("fail");
+    expect((val as typeof e2).rule.verdict).toBe("fail");
   });
 
   it("two same-ts same-key rows (merge=union duplicate) fold to ONE via composite identity", () => {
     const ts = 1_700_000_000_000;
-    const e1 = complianceEvent({ ts } as Partial<TelemetryEvent>);
-    const e2 = complianceEvent({ ts } as Partial<TelemetryEvent>);
+    const e1 = complianceEvent({ ts });
+    const e2 = complianceEvent({ ts });
     // Both have identical ts AND identical composite key
     expect(identity(e1)).toBe(identity(e2));
     const state = fold([e1, e2]);
@@ -1138,8 +1174,8 @@ describe("fold — composite-identity dedup", () => {
 
   it("two same-ts DIFFERENT-key rows (same ts, different rule) → TWO entries", () => {
     const ts = 1_700_000_000_000;
-    const e1 = complianceEvent({ ts, rule: "no-mirror-edit" } as Partial<TelemetryEvent>);
-    const e2 = complianceEvent({ ts, rule: "skip-ci-not-head" } as Partial<TelemetryEvent>);
+    const e1 = ruleRow("no-mirror-edit", { ts });
+    const e2 = ruleRow("skip-ci-not-head", { ts });
     // Same ts but different composite key — proves dedup is composite, NOT bare ts
     expect(e1.ts).toBe(e2.ts);
     expect(identity(e1)).not.toBe(identity(e2));
@@ -1147,18 +1183,14 @@ describe("fold — composite-identity dedup", () => {
     expect(state.size).toBe(2);
   });
 
-  it("folds outcome rows by (repo, prNumber)", () => {
-    const e1 = outcomeEvent({ ts: 1000, prNumber: 10 } as Partial<TelemetryEvent>);
-    const e2 = outcomeEvent({
-      ts: 2000,
-      prNumber: 10,
-      linesAdded: 999,
-    } as Partial<TelemetryEvent>);
-    const e3 = outcomeEvent({ ts: 3000, prNumber: 11 } as Partial<TelemetryEvent>);
+  it("folds outcome rows by (repo, run.pr)", () => {
+    const e1 = outcomeEvent({ ts: 1000, run: { pr: 10 } });
+    const e2 = outcomeEvent({ ts: 2000, run: { pr: 10 }, ending: "close-failed" });
+    const e3 = outcomeEvent({ ts: 3000, run: { pr: 11 } });
     const state = fold([e1, e2, e3]);
     expect(state.size).toBe(2);
     const pr10 = state.get("outcome cbartens/bkit build pr10");
-    expect((pr10 as typeof e2).linesAdded).toBe(999);
+    expect((pr10 as typeof e2).ending).toBe("close-failed");
   });
 
   it("folds friction rows by (kind, repo, key)", () => {
@@ -1222,7 +1254,7 @@ describe("parse — tolerant reader", () => {
   });
 
   it("keeps ALL well-formed rows regardless of bkitVersion (no version gating)", () => {
-    const newer = { ...complianceEvent(), bkitVersion: "9.9.9" };
+    const newer = complianceEvent({ bkit: { version: "9.9.9" } });
     const current = complianceEvent();
     const raw = JSON.stringify(newer) + "\n" + appendLine(current);
     const result = parse(raw);
@@ -1240,17 +1272,15 @@ describe("outcome — shape and inline-jq parity", () => {
     expect(validate(e).ok).toBe(true);
   });
 
-  it("planSource: brief validates; any other value is rejected", () => {
-    expect(validate(outcomeEvent({ planSource: "brief" } as Partial<TelemetryEvent>)).ok).toBe(
-      true,
-    );
-    // An invalid planSource; build it as a raw record and cast once.
-    const invalid: Record<string, unknown> = { planSource: "plan" };
-    const bad = validate(outcomeEvent(invalid as Partial<TelemetryEvent>));
+  it("plan.source: brief and file validate; any other value is rejected", () => {
+    expect(validate(outcomeEvent({ plan: { source: "brief" } })).ok).toBe(true);
+    expect(validate(outcomeEvent({ plan: { source: "file" } })).ok).toBe(true);
+    const bad = validate(outcomeEvent({ plan: { source: "plan" } }));
     expect(bad.ok).toBe(false);
+    expect(bad.reason).toContain("plan.source");
   });
 
-  it("folds outcome by (repo, prNumber)", () => {
+  it("folds outcome by (repo, run.pr)", () => {
     const e = outcomeEvent();
     const state = fold([e]);
     const key = identity(e);
@@ -1261,21 +1291,17 @@ describe("outcome — shape and inline-jq parity", () => {
     // Simulate what `jq -nc '... | .ts = (now*1000|floor)'` would produce:
     // A plain JSON object with ms ts (integer) and all required fields.
     const jqRow = {
+      schema: 2,
       ts: Math.floor(Date.now()),
       kind: "outcome",
       repo: "cbartens/bkit",
-      bkitVersion: "4.1.4",
-      workflow: "ship",
-      step: "ship-close-gate",
-      prNumber: 100,
-      linesAdded: 50,
-      linesDeleted: 10,
-      linesChanged: 60,
-      filesChanged: 3,
-      taskCount: 5,
-      durationSeconds: 1800,
-      deferrals: 0,
-      failures: 0,
+      bkit: { version: "4.1.4" },
+      by: { workflow: "ship", step: "ship-close-gate" },
+      run: { parentSha: "abc123", pr: 100 },
+      time: timeOf(30),
+      ending: "done",
+      lines: { total: { added: 50, deleted: 10, changed: 60, files: 3 } },
+      ledgers: { deferrals: { repo: 0 }, failures: { repo: 0 }, friction: { added: 0 } },
     };
     const raw = JSON.stringify(jqRow);
     const result = parse(raw);
@@ -1329,8 +1355,8 @@ describe("foldFrom — several ledger files", () => {
 
   it("reads hot file and returns rowCount", () => {
     const hotPath = path.join(tmpDir, "stats.jsonl");
-    const e1 = complianceEvent({ ts: 1000 } as Partial<TelemetryEvent>);
-    const e2 = complianceEvent({ ts: 2000, rule: "skip-ci-not-head" } as Partial<TelemetryEvent>);
+    const e1 = complianceEvent({ ts: 1000 });
+    const e2 = ruleRow("skip-ci-not-head", { ts: 2000 });
     fs.writeFileSync(hotPath, appendLine(e1) + "\n" + appendLine(e2) + "\n");
 
     const result = foldFrom([hotPath]);
@@ -1344,11 +1370,8 @@ describe("foldFrom — several ledger files", () => {
     const hotPath = path.join(tmpDir, "stats.jsonl");
     const archivePath = path.join(tmpDir, "stats.202606.jsonl");
 
-    const archiveEvent = complianceEvent({
-      ts: 500,
-      rule: "archive-rule",
-    } as Partial<TelemetryEvent>);
-    const hotEvent = complianceEvent({ ts: 1000, rule: "hot-rule" } as Partial<TelemetryEvent>);
+    const archiveEvent = ruleRow("archive-rule", { ts: 500 });
+    const hotEvent = ruleRow("hot-rule", { ts: 1000 });
 
     fs.writeFileSync(archivePath, appendLine(archiveEvent) + "\n");
     fs.writeFileSync(hotPath, appendLine(hotEvent) + "\n");
@@ -1369,9 +1392,7 @@ describe("foldFrom — several ledger files", () => {
     const lines: string[] = [];
     for (let i = 0; i <= MAX_ROWS_BEFORE_ROLLUP; i++) {
       // Each row has unique rule so they're all distinct
-      lines.push(
-        appendLine(complianceEvent({ ts: i, rule: `rule-${i}` } as Partial<TelemetryEvent>)),
-      );
+      lines.push(appendLine(ruleRow(`rule-${i}`, { ts: i })));
     }
     fs.writeFileSync(hotPath, lines.join("\n") + "\n");
 
@@ -1424,9 +1445,7 @@ describe("workflowTelemetry — per-workflow summary signals", () => {
     const hotPath = path.join(tmpDir, "stats.jsonl");
     const lines: string[] = [];
     for (let i = 0; i <= MAX_ROWS_BEFORE_ROLLUP; i++) {
-      lines.push(
-        appendLine(complianceEvent({ ts: i, rule: `rule-${i}` } as Partial<TelemetryEvent>)),
-      );
+      lines.push(appendLine(ruleRow(`rule-${i}`, { ts: i })));
     }
     fs.writeFileSync(hotPath, lines.join("\n") + "\n");
 
@@ -1461,98 +1480,100 @@ describe("workflowTelemetry — this-run vs med·5 baseline", () => {
 
   it("shows THIS run's values against med·5 of the previous same-workflow runs", () => {
     // Six build runs; newest (ts 1005) is THIS run. Previous five durations
-    // [600,1200,1800,2400,3000] → median 1800 (30m). This run 1980 (33m).
-    const runs = [600, 1200, 1800, 2400, 3000, 1980].map((dur, i) =>
+    // [10,20,30,40,50] minutes → median 30. This run 33.
+    const runs = [10, 20, 30, 40, 50, 33].map((minutes, i) =>
       outcomeEvent({
         ts: 1000 + i,
-        parentSha: `sha${i}`,
-        durationSeconds: dur,
-        frictionAdded: i, // prev five: [0,1,2,3,4] → median 2; this run 5
-      } as Partial<TelemetryEvent>),
+        run: { parentSha: `sha${i}` },
+        time: timeOf(minutes),
+        // prev five: [0,1,2,3,4] → median 2; this run 5
+        ledgers: { deferrals: { repo: 0 }, failures: { repo: 0 }, friction: { added: i } },
+      }),
     );
     const s = workflowTelemetry(foldFrom([writeStats(runs)]), "build");
     expect(s.lines).toContain("| metric | this run | med·5 |"); // Markdown table
-    const dline = s.lines.find((l) => l.startsWith("| durationSeconds "));
-    expect(dline).toContain("1980 (33m)"); // this run
-    expect(dline).toContain("1800 (30m)"); // med·5 of the previous runs
-    const fline = s.lines.find((l) => l.startsWith("| frictionAdded "));
-    expect(fline).toContain("5"); // this run frictionAdded
+    const dline = s.lines.find((l) => l.startsWith("| time.totalMinutes "));
+    expect(dline).toContain("33 (33m)"); // this run
+    expect(dline).toContain("30 (30m)"); // med·5 of the previous runs
+    const fline = s.lines.find((l) => l.startsWith("| ledgers.friction.added "));
+    expect(fline).toContain("5"); // this run's friction added
     expect(fline).toMatch(/\b2\b/); // med·5 of [0,1,2,3,4]
   });
 
-  it("baselines a brief run only against prior brief runs, and shows planSource", () => {
-    // Five planned runs at 600s, then three brief runs at 60s; this run is brief.
-    const planned = {};
-    const brief = { planSource: "brief" };
-    const durs: [number, object][] = [
-      [600, planned],
-      [600, planned],
-      [600, planned],
-      [600, planned],
-      [600, planned],
-      [60, brief],
-      [60, brief],
-      [60, brief],
-      [90, brief],
+  it("baselines a brief run only against prior brief runs, and shows plan.source", () => {
+    // Five planned runs at 10 minutes, then three brief runs at 1; this run is brief.
+    const planned = { plan: { source: "file" } };
+    const brief = { plan: { source: "brief" } };
+    const durs: [number, Row][] = [
+      [10, planned],
+      [10, planned],
+      [10, planned],
+      [10, planned],
+      [10, planned],
+      [1, brief],
+      [1, brief],
+      [1, brief],
+      [1.5, brief],
     ];
-    const runs = durs.map(([dur, source], i) =>
-      outcomeEvent({
-        ts: 2000 + i,
-        parentSha: `b${i}`,
-        durationSeconds: dur,
-        ...source,
-      } as Partial<TelemetryEvent>),
+    const runs = durs.map(([minutes, source], i) =>
+      outcomeEvent({ ts: 2000 + i, run: { parentSha: `b${i}` }, time: timeOf(minutes), ...source }),
     );
     const s = workflowTelemetry(foldFrom([writeStats(runs)]), "build");
-    const dline = s.lines.find((l) => l.startsWith("| durationSeconds "));
-    expect(dline).toContain("60 (1m)"); // med of prior brief runs, not the 600s planned ones
-    expect(dline).not.toContain("600");
-    expect(s.lines.some((l) => l.startsWith("| planSource | brief "))).toBe(true);
+    const dline = s.lines.find((l) => l.startsWith("| time.totalMinutes "));
+    expect(dline).toContain("1 (1m)"); // med of prior brief runs, not the 10-minute planned ones
+    expect(dline).not.toContain("10 (");
+    expect(s.lines.some((l) => l.startsWith("| plan.source | brief "))).toBe(true);
   });
 
   it("prints — for the baseline until at least 3 prior runs exist", () => {
-    const runs = [1000, 2000].map((dur, i) =>
-      outcomeEvent({
-        ts: 1000 + i,
-        parentSha: `s${i}`,
-        durationSeconds: dur,
-      } as Partial<TelemetryEvent>),
+    const runs = [20, 40].map((minutes, i) =>
+      outcomeEvent({ ts: 1000 + i, run: { parentSha: `s${i}` }, time: timeOf(minutes) }),
     );
     const s = workflowTelemetry(foldFrom([writeStats(runs)]), "build");
-    const dline = s.lines.find((l) => l.startsWith("| durationSeconds "));
-    expect(dline).toContain("2000"); // this run present
+    const dline = s.lines.find((l) => l.startsWith("| time.totalMinutes "));
+    expect(dline).toContain("40 (40m)"); // this run present
     expect(dline).toContain("—"); // only one prior → no baseline
   });
 
-  it("omits absent conditional metrics but shows frictionAdded even at 0", () => {
-    // outcomeEvent carries no reviewIterations/ciTrySuccess/correctiveCommits.
-    const run = outcomeEvent({ parentSha: "x", frictionAdded: 0 } as Partial<TelemetryEvent>);
+  it("omits absent conditional metrics but shows ledgers.friction.added even at 0", () => {
+    // No deferrals.added / failures.added on this run: those rows are absent.
+    const run = outcomeEvent({
+      run: { parentSha: "x" },
+      ledgers: { deferrals: { repo: 3 }, failures: { repo: 2 }, friction: { added: 0 } },
+    });
     const s = workflowTelemetry(foldFrom([writeStats([run])]), "build");
-    expect(s.lines.some((l) => l.startsWith("| frictionAdded "))).toBe(true);
-    expect(s.lines.some((l) => l.startsWith("| reviewIterations "))).toBe(false);
-    expect(s.lines.some((l) => l.startsWith("| ciTrySuccess "))).toBe(false);
+    expect(s.lines.some((l) => l.startsWith("| ledgers.friction.added | 0 "))).toBe(true);
+    expect(s.lines.some((l) => l.startsWith("| ledgers.deferrals.added "))).toBe(false);
+    expect(s.lines.some((l) => l.startsWith("| ledgers.failures.added "))).toBe(false);
+    // The removed run fields have no report row at all.
+    for (const gone of ["reviewIterations", "ciTrySuccess", "correctiveCommits", "durationSeconds"])
+      expect(s.lines.some((l) => l.startsWith(`| ${gone} `))).toBe(false);
   });
 
-  it("adds a this-run compliance line matched by parentSha", () => {
-    const run = outcomeEvent({ parentSha: "sha-run", frictionAdded: 1 } as Partial<TelemetryEvent>);
+  it("adds a this-run compliance line matched by run.parentSha", () => {
+    const run = outcomeEvent({ run: { parentSha: "sha-run" } });
     const rows = [
       run,
-      complianceEvent({
-        parentSha: "sha-run",
-        result: "pass",
-        rule: "no-mirror-edit",
-      } as Partial<TelemetryEvent>),
-      complianceEvent({
-        parentSha: "sha-run",
-        result: "fail",
-        rule: "skip-ci-not-head",
-      } as Partial<TelemetryEvent>),
+      ruleRow("no-mirror-edit", { run: { parentSha: "sha-run" } }, "pass"),
+      ruleRow("skip-ci-not-head", { run: { parentSha: "sha-run" } }, "fail"),
     ];
     const s = workflowTelemetry(foldFrom([writeStats(rows)]), "build");
     const cline = s.lines.find((l) => l.startsWith("| compliance "));
     expect(cline).toContain("1 pass");
     expect(cline).toContain("1 fail");
     expect(cline).toContain("(50%)");
+  });
+
+  it("adds the run's *_ATTEMPT counter matched by run.parentSha", () => {
+    const rows = [
+      outcomeEvent({ run: { parentSha: "sha-run" } }),
+      counterEvent({
+        run: { parentSha: "sha-run" },
+        counter: { name: "BUILD_ATTEMPT", value: 2, source: "shell-bus" },
+      }),
+    ];
+    const s = workflowTelemetry(foldFrom([writeStats(rows)]), "build");
+    expect(s.lines.find((l) => l.startsWith("| attempts "))).toContain("BUILD_ATTEMPT 2");
   });
 });
 
@@ -1575,7 +1596,7 @@ describe("humanizeDuration", () => {
  * telemetry-invariant
  *
  * Fold-invariant check: confirms that the number of `kind:"counter"` rows
- * with `counterName:"verifyAttempt"` in a telemetry log equals the expected
+ * with `counter.name:"verifyAttempt"` in a telemetry log equals the expected
  * count of `plan-verify` steps recorded in the same log.
  *
  * The structural guarantee:
@@ -1594,15 +1615,15 @@ describe("telemetry-invariant", () => {
   function mkEnvelope(
     kind: TelemetryEvent["kind"],
     ts: number,
-    overrides: Partial<TelemetryEvent> = {},
+    overrides: Row = {},
   ): TelemetryEvent {
-    const base: TelemetryEvent = {
+    const base = {
+      schema: 2,
       ts,
       kind,
       repo: "test/repo",
-      bkitVersion: "0.0.0",
-      workflow: "build",
-      step: "build-plan-verify",
+      bkit: { version: "0.0.0" },
+      by: { workflow: "build", step: "build-plan-verify" },
       ...overrides,
     } as TelemetryEvent;
     return base;
@@ -1611,20 +1632,17 @@ describe("telemetry-invariant", () => {
   /** Build a kind:"counter" row for verifyAttempt. */
   function mkVerifyAttemptCounter(ts: number, value: number, parentSha = "abc123"): TelemetryEvent {
     return mkEnvelope("counter", ts, {
-      counterName: "verifyAttempt",
-      counterValue: value,
-      parentSha,
-      counterSource: "shell-bus",
-      step: "build-plan-verify",
-    } as Partial<TelemetryEvent>);
+      run: { parentSha },
+      counter: { name: "verifyAttempt", value, source: "shell-bus" },
+    });
   }
 
   /**
-   * Count the number of `kind:"counter"` rows with `counterName:"verifyAttempt"`
+   * Count the number of `kind:"counter"` rows with `counter.name:"verifyAttempt"`
    * from a folded state map.
    *
    * The fold uses per-kind composite identity:
-   *   counter {repo} {workflow} {parentSha} {counterName}
+   *   counter {repo} {by.workflow} {run.parentSha} {counter.name}
    * So multiple attempts with different `parentSha` values are DISTINCT rows
    * (each verify attempt starts from a different HEAD).
    */
@@ -1634,7 +1652,7 @@ describe("telemetry-invariant", () => {
 
   /** True for a counter row named `verifyAttempt`. */
   function isVerifyAttemptRow(e: TelemetryEvent): boolean {
-    return e.kind === "counter" && (e as { counterName?: string }).counterName === "verifyAttempt";
+    return e.kind === "counter" && e.counter.name === "verifyAttempt";
   }
 
   /**
@@ -1703,8 +1721,8 @@ describe("telemetry-invariant", () => {
       expect(checkVerifyAttemptInvariant(allRows).passed).toBe(true);
     });
 
-    it("fold deduplicates verifyAttempt counter by (repo, workflow, parentSha, counterName) identity", () => {
-      // Two rows with the SAME parentSha + counterName → same fold key → only one row survives.
+    it("fold deduplicates verifyAttempt counter by (repo, by.workflow, run.parentSha, counter.name) identity", () => {
+      // Two rows with the SAME run.parentSha + counter.name → same fold key → only one row survives.
       const events: TelemetryEvent[] = [
         mkVerifyAttemptCounter(1_700_000_001_000, 1, "sha-same"),
         mkVerifyAttemptCounter(1_700_000_002_000, 2, "sha-same"), // later ts wins
@@ -1715,7 +1733,7 @@ describe("telemetry-invariant", () => {
       const state = fold(parsed);
       const allRows = [...state.values()];
 
-      // Only 1 unique row because same identity (repo + workflow + parentSha + counterName)
+      // Only 1 unique row because same identity (repo + workflow + parentSha + counter name)
       expect(countVerifyAttemptRows(allRows)).toBe(1);
       // The surviving row should have the higher ts (last-write-wins)
       const row = allRows.find(isVerifyAttemptRow);
@@ -1727,12 +1745,10 @@ describe("telemetry-invariant", () => {
         mkVerifyAttemptCounter(1_700_000_001_000, 1, "sha-1"),
         // Unrelated counter — should not count as verifyAttempt
         mkEnvelope("counter", 1_700_000_002_000, {
-          counterName: "testAttempt",
-          counterValue: 1,
-          parentSha: "sha-1",
-          counterSource: "shell-bus",
-          step: "build-run-tests",
-        } as Partial<TelemetryEvent>),
+          by: { workflow: "build", step: "build-run-tests" },
+          run: { parentSha: "sha-1" },
+          counter: { name: "testAttempt", value: 1, source: "shell-bus" },
+        }),
       ];
 
       const raw = toJsonl(events);
@@ -1757,7 +1773,7 @@ describe("telemetry-invariant", () => {
       expect(checkVerifyAttemptInvariant(allRows).passed).toBe(true);
     });
 
-    it("verifyAttempt counterSource must be shell-bus post-WS3 (structural trust tier)", () => {
+    it("verifyAttempt counter.source must be shell-bus post-WS3 (structural trust tier)", () => {
       // The fold invariant also checks the trust tier of counter rows.
       const events: TelemetryEvent[] = [mkVerifyAttemptCounter(1_700_000_001_000, 1, "sha-1")];
 
@@ -1766,11 +1782,9 @@ describe("telemetry-invariant", () => {
       const state = fold(parsed);
       const allRows = [...state.values()];
 
-      const verifyRow = allRows.find(isVerifyAttemptRow) as TelemetryEvent & {
-        counterSource?: string;
-      };
+      const verifyRow = allRows.find(isVerifyAttemptRow) as EventOf<"counter"> | undefined;
 
-      expect(verifyRow?.counterSource).toBe("shell-bus");
+      expect(verifyRow?.counter.source).toBe("shell-bus");
     });
 
     it("invariant holds with empty log (zero attempts == zero verify steps)", () => {
@@ -1806,7 +1820,7 @@ describe("mintTs", () => {
 });
 
 describe("writerProblem", () => {
-  const row = (o: Record<string, unknown>) => ({ kind: "decision", workflow: "build", ...o });
+  const row = (by: Row) => ({ kind: "decision", by: { workflow: "build", ...by } });
 
   it("admits a listed subagent and the listed orchestrator", () => {
     expect(writerProblem(row({ subagent: "bkit-plan-generate", model: "m" }))).toBeUndefined();
@@ -1823,13 +1837,28 @@ describe("writerProblem", () => {
   });
 
   it("holds model to subagent rows", () => {
-    expect(writerProblem(row({ subagent: "bkit-plan-generate" }))).toContain("missing model");
-    expect(writerProblem(row({ model: "m" }))).toBe("model is set only on subagent rows");
+    expect(writerProblem(row({ subagent: "bkit-plan-generate" }))).toContain("missing by.model");
+    expect(writerProblem(row({ model: "m" }))).toBe("by.model is set only on subagent rows");
   });
 
   it("admits any author on an any-agent kind", () => {
-    expect(writerProblem({ kind: "failure", subagent: "anyone", model: "m" })).toBeUndefined();
-    expect(writerProblem({ kind: "failure", workflow: "plan" })).toBeUndefined();
+    expect(
+      writerProblem({ kind: "failure", by: { subagent: "anyone", model: "m" } }),
+    ).toBeUndefined();
+    expect(writerProblem({ kind: "failure", by: { workflow: "plan" } })).toBeUndefined();
+  });
+
+  it("admits each closing workflow on the stats kinds, and refuses audit and any subagent", () => {
+    for (const kind of APPEND_LEDGERS.stats.kinds) {
+      for (const workflow of ["design", "plan", "build", "debug", "ship"])
+        expect(writerProblem({ kind, by: { workflow } })).toBeUndefined();
+      expect(writerProblem({ kind, by: { workflow: "audit" } })).toContain(
+        `does not write ${kind} rows`,
+      );
+      expect(writerProblem({ kind, by: { subagent: "bkit-build-summary", model: "m" } })).toContain(
+        `does not write ${kind} rows`,
+      );
+    }
   });
 });
 
@@ -1851,8 +1880,18 @@ describe("writer sets in telemetry.ts match the jsonl.md table", () => {
   const namedAsOrchestrator = (text: string, w: string) =>
     new RegExp(`\\b${w}\\b.*orchestrator|orchestrator.*\\b${w}\\b`).test(text);
 
-  for (const { kind, file } of Object.values(APPEND_LEDGERS)) {
-    it(`${kind}: the doc row names ${file} and the same writers`, () => {
+  const ledgerKinds = Object.entries(APPEND_LEDGERS).flatMap(([ledger, { file, kinds }]) =>
+    kinds.map((kind) => ({ ledger, file, kind })),
+  );
+
+  it("every kind appears in exactly one ledger", () => {
+    const kinds = ledgerKinds.map((l) => l.kind);
+    expect(new Set(kinds).size).toBe(kinds.length);
+    expect(Object.keys(KIND_WRITERS).sort()).toEqual([...kinds].sort());
+  });
+
+  for (const { ledger, file, kind } of ledgerKinds.filter((l) => l.ledger !== "stats")) {
+    it(`${ledger} / ${kind}: the doc row names ${file} and the same writers`, () => {
       const text = cell(kind);
       expect(SPEC).toContain(`| \`${kind}\` | \`${file}\` |`);
       const { subagents, orchestrators } = KIND_WRITERS[kind];
@@ -1862,4 +1901,779 @@ describe("writer sets in telemetry.ts match the jsonl.md table", () => {
       expect(named.filter((w) => !namedAsOrchestrator(text, w))).toEqual([]);
     });
   }
+
+  // The stats rows are written by the CLI at each workflow's close, so their doc rows
+  // name the close, not "the X orchestrator"; the writers are the closing workflows,
+  // never a subagent.
+  for (const { ledger, file, kind } of ledgerKinds.filter((l) => l.ledger === "stats")) {
+    it(`${ledger} / ${kind}: the doc row names ${file}, a close-step writer and no subagent`, () => {
+      const text = cell(kind);
+      expect(SPEC).toContain(`| \`${kind}\` | \`${file}\` |`);
+      const { subagents, orchestrators } = KIND_WRITERS[kind];
+      expect(docSubagents(text)).toEqual([]);
+      expect(listed(subagents)).toEqual([]);
+      expect(text).toMatch(/close/);
+      expect([...orchestratorNames(orchestrators)].sort()).toEqual([
+        "build",
+        "debug",
+        "design",
+        "plan",
+        "ship",
+      ]);
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// normalize — a row written without `schema` read in the current shape
+// ---------------------------------------------------------------------------
+
+describe("normalize — schema-1 rows to schema 2", () => {
+  /** A schema-1 top section: flat bkitVersion / workflow / step. */
+  const v1 = (kind: string, o: Row = {}): Row => ({
+    ts: 1_700_000_000_000,
+    kind,
+    repo: "cbartens/bkit",
+    bkitVersion: "4.1.4",
+    workflow: "build",
+    step: "build-close-workflow",
+    ...o,
+  });
+  const top = {
+    schema: 2,
+    ts: 1_700_000_000_000,
+    repo: "cbartens/bkit",
+    bkit: { version: "4.1.4" },
+    by: { workflow: "build", step: "build-close-workflow" },
+  };
+
+  it("compliance: rule / result / evidence / parentSha move into run and rule; phase is dropped", () => {
+    const old = v1("compliance", {
+      rule: "skip-ci-not-head",
+      result: "fail",
+      evidence: "HEAD carries [skip ci]",
+      phase: "build",
+      parentSha: "abc123",
+    });
+    const row = normalize(old);
+    expect(row).toEqual({
+      ...top,
+      kind: "compliance",
+      run: { parentSha: "abc123" },
+      rule: { id: "skip-ci-not-head", verdict: "fail", evidence: "HEAD carries [skip ci]" },
+    });
+    expect(validate(row).ok).toBe(true);
+  });
+
+  it("counter: counterName / Value / Source and parentSha move into counter and run", () => {
+    const old = v1("counter", {
+      counterName: "BUILD_ATTEMPT",
+      counterValue: 2,
+      counterSource: "shell-bus",
+      parentSha: "abc123",
+    });
+    const row = normalize(old);
+    expect(row).toEqual({
+      ...top,
+      kind: "counter",
+      run: { parentSha: "abc123" },
+      counter: { name: "BUILD_ATTEMPT", value: 2, source: "shell-bus" },
+    });
+    expect(validate(row).ok).toBe(true);
+  });
+
+  it("outcome: run fields move into their blocks; the fields with no place are dropped", () => {
+    const old = v1("outcome", {
+      workflow: "ship",
+      step: "ship-close-gate",
+      prNumber: 42,
+      linesAdded: 100,
+      linesDeleted: 20,
+      linesChanged: 120,
+      filesChanged: 5,
+      taskCount: 9,
+      durationSeconds: 3600,
+      ciTrySuccess: 1,
+      correctiveCommits: 0,
+      reviewIterations: 2,
+      deferrals: 3,
+      failures: 2,
+      frictionAdded: 1,
+      deferralsAdded: 0,
+      planSource: "brief",
+      coverage: { unit: { lines: 80 } },
+    });
+    expect(normalize(old)).toEqual({
+      ...top,
+      by: { workflow: "ship", step: "ship-close-gate" },
+      kind: "outcome",
+      run: { pr: 42 },
+      time: { totalMinutes: 60 },
+      lines: { total: { added: 100, deleted: 20, changed: 120, files: 5 } },
+      ledgers: {
+        deferrals: { repo: 3, added: 0 },
+        failures: { repo: 2 },
+        friction: { added: 1 },
+      },
+      plan: { source: "brief" },
+      ship: { coverage: { unit: { lines: 80 } } },
+    });
+  });
+
+  it("chat: every schema-1 field lands in its block, and the totals hold", () => {
+    const start = 1_700_000_000_000;
+    const tokens = (input: number, cacheWrite: number, cacheRead: number) => ({
+      input,
+      cacheWrite,
+      cacheRead,
+      output: 1,
+      outputEst: 1,
+      read: input + cacheWrite + cacheRead,
+    });
+    const mix = { read: 1, edit: 2, grep: 3, sedCat: 4, findLs: 5, tests: 6, serena: 0 };
+    const old = v1("chat", {
+      ts: start + 600_000,
+      key: "claude-code:abc",
+      repo: "fp:000000000001",
+      bkitVersion: "none",
+      bkitVersionSource: "none",
+      workflow: "chat-stats",
+      step: "scan",
+      platform: "claude-code",
+      sessionId: "abc",
+      hostVersion: "2.1.0",
+      entrypoint: "cli",
+      userPrompts: 3,
+      start,
+      end: start + 600_000,
+      minutes: 10,
+      activeMinutes: 5,
+      active: [[start, start + 300_000]],
+      lastActivityAt: start + 600_001,
+      issue: "fp:i1",
+      issues: ["fp:i1"],
+      mentioned: [],
+      issueSource: "command",
+      parentShas: ["deadbeef"],
+      effort: { high: 4 },
+      bkit: true,
+      bkitVia: ["command"],
+      bkitWorkflows: ["build"],
+      bkitKinds: ["build"],
+      bkitCli: { "steps finish": 2, "counters derive": 1 },
+      turns: 4,
+      compactions: 1,
+      tokens: { ...tokens(10, 20, 30), output: 2, outputEst: 2, ctxStart: 100, ctxPeak: 900 },
+      models: { "claude-opus-5-5": { turns: 4, ...tokens(10, 20, 30), output: 2, outputEst: 2 } },
+      main: { turns: 3, ...tokens(6, 12, 18), ctxPeak: 900, compactions: 1, mix },
+      subagents: 1,
+      agents: {
+        "bkit-build-plan-execute": {
+          n: 1,
+          turns: 1,
+          ...tokens(4, 8, 12),
+          ctxPeakMax: 500,
+          ctxPeaks: [500],
+          compactions: 0,
+          errors: 2,
+          mix,
+        },
+      },
+      tools: { Bash: { calls: 5, errors: 1 }, Read: { calls: 2, errors: 0 } },
+      bash: { git: 3, "grep / rg": 2 },
+      filesRead: 2,
+      errors: 1,
+      sourceFiles: 2,
+      sourceBytes: 1024,
+      settled: true,
+      tokensRecorded: true,
+    });
+    const row = normalize(old);
+    expect(validate(row)).toEqual({ ok: true });
+    expect(row).toMatchObject({
+      schema: 2,
+      key: "claude-code:abc",
+      bkit: {
+        version: null,
+        versionSource: "none",
+        via: ["command"],
+        workflows: ["build"],
+        prompts: ["build"],
+        cli: { total: 3, byVerb: { "steps finish": 2, "counters derive": 1 } },
+      },
+      by: { workflow: "chat-stats", step: "scan" },
+      session: {
+        platform: "claude-code",
+        id: "abc",
+        hostVersion: "2.1.0",
+        entrypoint: "cli",
+        prompts: 3,
+      },
+      time: {
+        start,
+        end: start + 600_000,
+        totalMinutes: 10,
+        activeMinutes: 5,
+        spans: [[start, start + 300_000]],
+        lastActivity: start + 600_001,
+      },
+      issue: { id: "fp:i1", all: ["fp:i1"], mentioned: [], source: "command" },
+      run: { parentShas: ["deadbeef"] },
+      usage: {
+        total: { turns: 4, ctx: { start: 100, peak: 900 }, compactions: 1 },
+        main: {
+          turns: 3,
+          ctx: { peak: 900 },
+          mix: { read: 1, edit: 2, grep: 3, shellRead: 4, shellList: 5, tests: 6, serena: 0 },
+        },
+        byModel: { "claude-opus-5-5": { turns: 4 } },
+      },
+      agents: {
+        total: { n: 1, errors: 2 },
+        byAgent: {
+          "bkit-build-plan-execute": {
+            n: 1,
+            errors: 2,
+            instances: [{ turns: 1, ctxPeak: 500 }],
+            usage: { turns: 1, ctx: { peak: 500 }, compactions: 0 },
+          },
+        },
+      },
+      tools: {
+        total: { calls: 7, errors: 1 },
+        byTool: {
+          Bash: { calls: 5, errors: 1, byCategory: { git: 3, "grep / rg": 2 } },
+          Read: { calls: 2, errors: 0 },
+        },
+        filesRead: 2,
+      },
+      scan: { files: 2, bytes: 1024, settled: true, tokensRecorded: true },
+    });
+    for (const gone of ["bkitVersion", "platform", "sessionId", "start", "minutes", "bkitCli"])
+      expect(row, `schema-1 field ${gone} left at the top`).not.toHaveProperty(gone);
+  });
+
+  it("run: every schema-1 field lands in its block, and the totals hold", () => {
+    const start = 1_700_000_000_000;
+    const old = v1("run", {
+      key: "fp:f:build:1700000000000",
+      repo: "fp:000000000001",
+      bkitVersion: "5.0.0",
+      fid: "fp:f",
+      issue: "fp:i",
+      run: 1,
+      start,
+      end: start + 600_000,
+      minutes: 10,
+      lastActivityAt: start + 600_000,
+      ending: "done",
+      parentSha: "deadbeef",
+      parentShas: ["deadbeef"],
+      closeCi: [{ outcome: "unresolved", reason: "ci-declared-no-run", attempts: 2 }],
+      steps: {
+        "build-task-red": { n: 2, minutes: 3.04, active: 1 },
+        "build-plan-verify": { n: 1, minutes: 4.04, active: 2 },
+      },
+      lines: {
+        code: { added: 10, deleted: 1, files: 2 },
+        tests: { added: 5, deleted: 0, files: 1 },
+        docs: { added: 1, deleted: 0, files: 1 },
+        merges: 0,
+      },
+      plan: {
+        kb: 12,
+        subPlans: 1,
+        tasks: 2,
+        testsPerTask: [3, null],
+        testFilesPerTask: [1, null],
+        complexity: { verdict: "OK", tasksChecked: 2, reasons: [] },
+      },
+      verify: [{ subPlan: 1, attempt: 1, verdict: "PASS", failures: 0, testOrderGaps: 0 }],
+      holistic: { verdict: "PASS", failures: 0 },
+      challenge: { verdict: "CONCERNS", findings: { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 0 } },
+      redTests: 2,
+      sourceRows: 12,
+      afterEnd: 0,
+      settled: true,
+    });
+    const row = normalize(old);
+    expect(validate(row)).toEqual({ ok: true });
+    expect(row).toMatchObject({
+      schema: 2,
+      bkit: { version: "5.0.0" },
+      by: { workflow: "build", step: "build-close-workflow" },
+      run: { fid: "fp:f", issue: "fp:i", n: 1, parentSha: "deadbeef", parentShas: ["deadbeef"] },
+      time: { start, end: start + 600_000, totalMinutes: 10, lastActivity: start + 600_000 },
+      ending: "done",
+      ci: [{ status: "unresolved", reason: "ci-declared-no-run", attempts: 2 }],
+      steps: {
+        total: { n: 3, totalMinutes: 7.1, activeMinutes: 3 },
+        byStep: { "build-task-red": { n: 2, totalMinutes: 3.04, activeMinutes: 1 } },
+      },
+      lines: { total: { added: 16, deleted: 1, changed: 17, files: 4 }, merges: 0 },
+      plan: {
+        source: "file",
+        total: { tasks: 2, kb: 12 },
+        subPlans: [
+          {
+            kb: 12,
+            tasks: [
+              { tests: 3, testFiles: 1 },
+              { tests: null, testFiles: null },
+            ],
+          },
+        ],
+        complexity: { verdict: "OK", tasksChecked: 2, reasons: [] },
+      },
+      build: {
+        holistic: { verdict: "PASS", failures: 0 },
+        challenge: {
+          verdict: "CONCERNS",
+          findings: { total: 3, CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 0 },
+        },
+        redTests: 2,
+      },
+      scan: { rows: 12, afterEnd: 0, settled: true },
+    });
+    for (const gone of ["fid", "start", "closeCi", "redTests", "sourceRows", "bkitVersion"])
+      expect(row, `schema-1 field ${gone} left at the top`).not.toHaveProperty(gone);
+  });
+
+  it("a keyed kind (deferral) moves its top fields into bkit / by and keeps its payload", () => {
+    const old = v1("deferral", {
+      key: "k",
+      step: "build-challenge-remediate",
+      subagent: "bkit-build-challenge-remediate",
+      model: "claude-opus-5-5",
+      references: ["#1"],
+      type: "issue",
+      category: "agentic",
+      severity: "LOW",
+      description: "d",
+      reason: "low-severity",
+    });
+    const row = normalize(old);
+    expect(row).toEqual({
+      schema: 2,
+      ts: 1_700_000_000_000,
+      kind: "deferral",
+      key: "k",
+      repo: "cbartens/bkit",
+      bkit: { version: "4.1.4" },
+      by: {
+        workflow: "build",
+        step: "build-challenge-remediate",
+        subagent: "bkit-build-challenge-remediate",
+        model: "claude-opus-5-5",
+      },
+      references: ["#1"],
+      type: "issue",
+      category: "agentic",
+      severity: "LOW",
+      description: "d",
+      reason: "low-severity",
+    });
+    expect(validate(row).ok).toBe(true);
+  });
+
+  it("a row carrying schema passes through unchanged", () => {
+    const row = complianceEvent();
+    expect(normalize(row)).toBe(row);
+    const odd = { ...complianceEvent(), schema: 3, bkitVersion: "4.1.4" };
+    expect(normalize(odd)).toBe(odd);
+  });
+
+  it('bkitVersion "none" becomes bkit.version null', () => {
+    expect(normalize(v1("friction", { bkitVersion: "none" }))["bkit"]).toEqual({ version: null });
+    expect(normalize(v1("chat", { bkitVersion: "none" }))["bkit"]).toMatchObject({
+      version: null,
+    });
+  });
+
+  it("a non-object reads as an empty row", () => {
+    expect(normalize(null)).toEqual({});
+    expect(normalize("x")).toEqual({});
+  });
+
+  it("phase is dropped, outcome redTests moves into build, any kind's parentSha into run", () => {
+    const outcome = normalize(v1("outcome", { phase: "build", redTests: 3, durationSeconds: 60 }));
+    expect(outcome["phase"]).toBeUndefined();
+    expect(outcome["redTests"]).toBeUndefined();
+    expect(outcome["build"]).toEqual({ redTests: 3 });
+    expect(normalize(v1("counter", { phase: "build" }))["phase"]).toBeUndefined();
+    const friction = normalize(v1("friction", { parentSha: "abc1234" }));
+    expect(friction["parentSha"]).toBeUndefined();
+    expect(friction["run"]).toEqual({ parentSha: "abc1234" });
+  });
+
+  it("chat: an opencode row's bash categories land on its lowercase bash tool", () => {
+    const n = normalize(
+      v1("chat", { tools: { bash: { calls: 3, errors: 0 } }, bash: { git: 2, other: 1 } }),
+    );
+    expect(n["tools"]).toMatchObject({
+      byTool: { bash: { calls: 3, errors: 0, byCategory: { git: 2, other: 1 } } },
+    });
+  });
+
+  it("chat: usage.total.tokens is the sum of its models, as a fresh scan writes it", () => {
+    const n = normalize(
+      v1("chat", {
+        tokens: { input: 9, outputEst: 10 },
+        models: {
+          a: { turns: 1, input: 4, outputEst: 4 },
+          b: { turns: 1, input: 5, outputEst: 5 },
+        },
+      }),
+    );
+    expect(n["usage"]).toMatchObject({ total: { tokens: { input: 9, outputEst: 9 } } });
+  });
+
+  it("null or empty workflow / subagent / model are left out of by", () => {
+    const row = v1("deferral", { workflow: null, subagent: null, model: "" });
+    expect(normalize(row)["by"]).toEqual({ step: "build-close-workflow" });
+  });
+});
+
+describe("fold — schema-1 and schema-2 rows of one identity", () => {
+  const oldRow = (ts: number, result: string): TelemetryEvent =>
+    ({
+      ts,
+      kind: "compliance",
+      repo: "cbartens/bkit",
+      bkitVersion: "4.1.4",
+      workflow: "build",
+      step: "build-close-workflow",
+      rule: "no-mirror-edit",
+      result,
+      phase: "build",
+      parentSha: "abc123",
+    }) as unknown as TelemetryEvent;
+
+  it("fold the two into one entry; the newer ts wins whichever shape it has", () => {
+    const newer = ruleRow("no-mirror-edit", { ts: 2_000 }, "fail");
+    const state = fold([newer, oldRow(1_000, "pass")]);
+    expect(state.size).toBe(1);
+    expect(([...state.values()][0] as EventOf<"compliance">).rule.verdict).toBe("fail");
+
+    const older = ruleRow("no-mirror-edit", { ts: 1_000 }, "fail");
+    const state2 = fold([oldRow(2_000, "pass"), older]);
+    expect(state2.size).toBe(1);
+    const current = [...state2.values()][0] as EventOf<"compliance">;
+    expect(current.rule.verdict).toBe("pass");
+    expect(current.schema).toBe(2); // read in the current shape
+  });
+});
+
+// ---------------------------------------------------------------------------
+// totals — every total beside its parts must equal them (validate refuses)
+// ---------------------------------------------------------------------------
+
+describe("totals — validate refuses a total that does not match its parts", () => {
+  /** totalsProblem and validate on a chat row carrying the `good` blocks, then the `bad` ones. */
+  function totalsOf(good: Row, bad: Row) {
+    const ok: Row = { ...chatEvent("claude-code:abc", good) };
+    const wrong: Row = { ...chatEvent("claude-code:abc", bad) };
+    return {
+      good: [totalsProblem(ok), validate(ok)],
+      bad: [totalsProblem(wrong), validate(wrong)],
+    };
+  }
+  /** What totalsOf gives when the good row holds and the bad row's `what` total is refused. */
+  const refused = (what: string) => ({
+    good: [undefined, { ok: true }],
+    bad: [
+      expect.stringContaining(`${what} is `),
+      { ok: false, reason: expect.stringContaining(`totals: ${what} is `) },
+    ],
+  });
+
+  const parts = {
+    code: { added: 1, deleted: 1, files: 1 },
+    tests: { added: 2, deleted: 1, files: 1 },
+    docs: { added: 3, deleted: 1, files: 1 },
+    merges: 0,
+  };
+
+  // Each bad total keeps changed = added + deleted, so only the named sum is off.
+  it.each([
+    ["added", { added: 7, deleted: 3, changed: 10, files: 3 }],
+    ["deleted", { added: 6, deleted: 4, changed: 10, files: 3 }],
+    ["files", { added: 6, deleted: 3, changed: 9, files: 4 }],
+  ])("lines.total.%s = code + tests + docs", (f, bad) => {
+    const total = { added: 6, deleted: 3, changed: 9, files: 3 };
+    expect(totalsOf({ lines: { total, ...parts } }, { lines: { total: bad, ...parts } })).toEqual(
+      refused(`lines.total.${f}`),
+    );
+  });
+
+  it("lines.total.changed = added + deleted", () => {
+    const total = { added: 6, deleted: 3, changed: 9, files: 3 };
+    expect(
+      totalsOf(
+        { lines: { total, ...parts } },
+        { lines: { total: { ...total, changed: 10 }, ...parts } },
+      ),
+    ).toEqual(refused("lines.total.changed"));
+  });
+
+  it("time.totalMinutes = end - start, within 0.1", () => {
+    expect(
+      totalsOf(
+        { time: { ...timeOf(10), totalMinutes: 10.05 } },
+        { time: { ...timeOf(10), totalMinutes: 10.2 } },
+      ),
+    ).toEqual(refused("time.totalMinutes"));
+  });
+
+  it("chat time.activeMinutes = the sum of time.spans", () => {
+    const t = timeOf(10);
+    const spans = [
+      [t.start, t.start + 120_000],
+      [t.start + 300_000, t.start + 480_000],
+    ];
+    expect(
+      totalsOf(
+        { time: { ...t, activeMinutes: 5, spans } },
+        { time: { ...t, activeMinutes: 6, spans } },
+      ),
+    ).toEqual(refused("time.activeMinutes"));
+  });
+
+  it("usage.*.tokens.read = input + cacheWrite + cacheRead", () => {
+    const tokens = { input: 1, cacheWrite: 2, cacheRead: 3, output: 4, read: 6 };
+    expect(
+      totalsOf(
+        { usage: { main: { tokens } } },
+        { usage: { main: { tokens: { ...tokens, read: 10 } } } },
+      ),
+    ).toEqual(refused("usage.main.tokens.read"));
+  });
+
+  it("usage.total.turns / tokens = the sum of usage.byModel", () => {
+    const byModel = {
+      a: { turns: 1, tokens: { input: 1, output: 1 } },
+      b: { turns: 2, tokens: { input: 2, output: 1 } },
+    };
+    expect(
+      totalsOf(
+        { usage: { total: { turns: 3, tokens: { input: 3, output: 2 } }, byModel } },
+        { usage: { total: { turns: 4, tokens: { input: 3, output: 2 } }, byModel } },
+      ),
+    ).toEqual(refused("usage.total.turns"));
+    expect(
+      totalsOf(
+        { usage: { total: { turns: 3, tokens: { input: 3, output: 2 } }, byModel } },
+        { usage: { total: { turns: 3, tokens: { input: 3, output: 3 } }, byModel } },
+      ),
+    ).toEqual(refused("usage.total.tokens.output"));
+  });
+
+  it("usage.total.compactions = usage.main + every agent's usage", () => {
+    const agents = { byAgent: { x: { usage: { compactions: 2 } } } };
+    expect(
+      totalsOf(
+        { usage: { total: { compactions: 3 }, main: { compactions: 1 } }, agents },
+        { usage: { total: { compactions: 4 }, main: { compactions: 1 } }, agents },
+      ),
+    ).toEqual(refused("usage.total.compactions"));
+  });
+
+  it("usage.total.ctx.peak = the max of usage.main and every agent instance", () => {
+    const usage = { total: { ctx: { peak: 900 } }, main: { ctx: { peak: 900 } } };
+    expect(
+      totalsOf(
+        { usage, agents: { byAgent: { x: { instances: [{ ctxPeak: 500 }] } } } },
+        { usage, agents: { byAgent: { x: { instances: [{ ctxPeak: 1000 }] } } } },
+      ),
+    ).toEqual(refused("usage.total.ctx.peak"));
+  });
+
+  it.each(["n", "errors"])("agents.total.%s = the sum of byAgent", (f) => {
+    const byAgent = { a: { n: 1, errors: 0 }, b: { n: 2, errors: 2 } };
+    const total = { n: 3, errors: 2 };
+    expect(
+      totalsOf(
+        { agents: { total, byAgent } },
+        { agents: { total: { ...total, [f]: total[f as keyof typeof total] + 1 }, byAgent } },
+      ),
+    ).toEqual(refused(`agents.total.${f}`));
+  });
+
+  it("agents.byAgent.*.n = the length of its instances", () => {
+    const total = { n: 2, errors: 0 };
+    expect(
+      totalsOf(
+        { agents: { total, byAgent: { a: { n: 2, errors: 0, instances: [{}, {}] } } } },
+        { agents: { total, byAgent: { a: { n: 2, errors: 0, instances: [{}] } } } },
+      ),
+    ).toEqual(refused("agents.byAgent.a.n"));
+  });
+
+  it.each(["calls", "errors"])("tools.total.%s = the sum of byTool", (f) => {
+    const byTool = { Bash: { calls: 5, errors: 1 }, Read: { calls: 2, errors: 0 } };
+    const total = { calls: 7, errors: 1 };
+    expect(
+      totalsOf(
+        { tools: { total, byTool } },
+        { tools: { total: { ...total, [f]: total[f as keyof typeof total] + 1 }, byTool } },
+      ),
+    ).toEqual(refused(`tools.total.${f}`));
+  });
+
+  it("bkit.cli.total = the sum of byVerb", () => {
+    const byVerb = { "steps finish": 2, "counters derive": 1 };
+    expect(
+      totalsOf(
+        { bkit: { version: "5.5.1", cli: { total: 3, byVerb } } },
+        { bkit: { version: "5.5.1", cli: { total: 4, byVerb } } },
+      ),
+    ).toEqual(refused("bkit.cli.total"));
+  });
+
+  it("steps.total.n = the sum of byStep", () => {
+    const byStep = { a: { n: 1, totalMinutes: 1 }, b: { n: 2, totalMinutes: 2 } };
+    expect(
+      totalsOf(
+        { steps: { total: { n: 3, totalMinutes: 3 }, byStep } },
+        { steps: { total: { n: 4, totalMinutes: 3 }, byStep } },
+      ),
+    ).toEqual(refused("steps.total.n"));
+  });
+
+  it.each(["totalMinutes", "activeMinutes"])(
+    "steps.total.%s = the sum of byStep, within 0.1 per part",
+    (f) => {
+      // Three parts: up to 0.3 off is rounding, 0.4 is a wrong total.
+      const step = (m: number) => ({ n: 1, totalMinutes: m, activeMinutes: m });
+      const byStep = { a: step(1.1), b: step(2.1), c: step(3.1) };
+      const total = (m: number) => ({ n: 3, totalMinutes: 6.3, activeMinutes: 6.3, [f]: m });
+      expect(
+        totalsOf(
+          { steps: { total: total(6.6 - 0.01), byStep } },
+          { steps: { total: total(6.7), byStep } },
+        ),
+      ).toEqual(refused(`steps.total.${f}`));
+    },
+  );
+
+  it.each(["tasks", "kb"])("plan.total.%s = the sum over subPlans", (f) => {
+    const task = { tests: 1, testFiles: 1 };
+    const subPlans = [
+      { kb: 10, tasks: [task] },
+      { kb: 20, tasks: [task, task] },
+    ];
+    const total = { tasks: 3, kb: 30 };
+    expect(
+      totalsOf(
+        { plan: { source: "file", total, subPlans } },
+        {
+          plan: {
+            source: "file",
+            total: { ...total, [f]: total[f as keyof typeof total] + 1 },
+            subPlans,
+          },
+        },
+      ),
+    ).toEqual(refused(`plan.total.${f}`));
+  });
+
+  it("plan totals are not checked against sub-plans whose tasks were never recorded", () => {
+    const row: Row = {
+      ...chatEvent("claude-code:abc", {
+        plan: {
+          source: "file",
+          total: { tasks: 19, kb: 194 },
+          subPlans: [
+            { kb: null, tasks: null },
+            { kb: null, tasks: null },
+          ],
+        },
+      }),
+    };
+    expect(totalsProblem(row)).toBeUndefined();
+  });
+
+  it('build.redTests = steps.byStep["build-task-red"].n', () => {
+    const steps = {
+      total: { n: 2, totalMinutes: 1 },
+      byStep: { "build-task-red": { n: 2, totalMinutes: 1 } },
+    };
+    expect(totalsOf({ steps, build: { redTests: 2 } }, { steps, build: { redTests: 3 } })).toEqual(
+      refused("build.redTests"),
+    );
+  });
+
+  it("build.challenge.findings.total = the sum of the four severities", () => {
+    const findings = { total: 5, CRITICAL: 0, HIGH: 0, MEDIUM: 2, LOW: 3 };
+    expect(
+      totalsOf(
+        { build: { challenge: { verdict: "CONCERNS", findings } } },
+        { build: { challenge: { verdict: "CONCERNS", findings: { ...findings, total: 6 } } } },
+      ),
+    ).toEqual(refused("build.challenge.findings.total"));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validate — the schema-2 top section
+// ---------------------------------------------------------------------------
+
+describe("validate — schema-2 top section", () => {
+  it("refuses a row without schema: 2", () => {
+    const { schema: _schema, ...noSchema } = complianceEvent();
+    for (const row of [noSchema, { ...complianceEvent(), schema: 1 }]) {
+      const r = validate(row);
+      expect(r.ok).toBe(false);
+      expect(r.reason).toContain("schema must be 2");
+    }
+  });
+
+  it.each(["bkitVersion", "workflow", "step", "subagent", "model"])(
+    "refuses a top-level %s",
+    (flat) => {
+      const r = validate({ ...complianceEvent(), [flat]: "x" });
+      expect(r.ok).toBe(false);
+      expect(r.reason).toBe(`${flat} is not a top-level field (bkit.version, by.*)`);
+    },
+  );
+
+  it("refuses by.model without by.subagent", () => {
+    const r = validate(
+      complianceEvent({ by: { workflow: "build", step: "build-close-workflow", model: "m" } }),
+    );
+    expect(r).toEqual({ ok: false, reason: "by.model is set only on subagent rows" });
+    expect(
+      validate(
+        failureEvent("k", {
+          by: { workflow: "build", step: "s", subagent: "bkit-build-summary", model: "m" },
+        }),
+      ).ok,
+    ).toBe(true);
+  });
+
+  it("accepts an outcome with time: null", () => {
+    expect(validate(outcomeEvent({ time: null }))).toEqual({ ok: true });
+    expect(validate(outcomeEvent({ time: { totalMinutes: 5 } })).ok).toBe(false);
+  });
+
+  it("accepts bkit.version null on chat and run rows", () => {
+    expect(validate(chatEvent("claude-code:abc", { bkit: { version: null } })).ok).toBe(true);
+    expect(validate(runEvent("fp:0:plan:1", { bkit: { version: null } })).ok).toBe(true);
+  });
+
+  it.each([
+    ["compliance", () => complianceEvent({ bkit: { version: null } })],
+    ["counter", () => counterEvent({ bkit: { version: null } })],
+    ["outcome", () => outcomeEvent({ bkit: { version: null } })],
+    ["friction", () => frictionEvent("k", { bkit: { version: null } })],
+    ["deferral", () => deferralEvent("k", { bkit: { version: null } })],
+    ["failure", () => failureEvent("k", { bkit: { version: null } })],
+    ["knowledge", () => knowledgeEvent("k", { bkit: { version: null } })],
+    ["decision", () => decisionEvent("k", { bkit: { version: null } })],
+    ["feature", () => featureEvent("k", { bkit: { version: null } })],
+  ] as const)("refuses bkit.version null on a %s row", (_kind, make) => {
+    const r = validate(make());
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain("bkit.version");
+  });
 });

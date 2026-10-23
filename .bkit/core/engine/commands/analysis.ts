@@ -2,17 +2,15 @@
 //
 // Provides:
 //   1. Counts/rates/elapsed-time over telemetry rows.
-//   2. Size↔outcome regression (logistic approximation: error ~ log(linesAdded)
-//      + filesChanged) over `kind:"outcome"` rows.
+//   2. Size↔outcome regression (error rate per `lines.total.added` bucket) over
+//      `kind:"outcome"` rows.
 //   3. Dispatch-size threshold computation for plan-split.
-//   4. `counterSource` trust labelling: each outcome row is joined to its `counter` row
-//      (model-self-report pre-P3, shell-bus post-P3).
+//   4. `counter.source` trust labelling: each outcome row is joined to its `counter` row
+//      (model-self-report or shell-bus).
 //   5. Per-rule compliance rate over `kind:"compliance"` rows.
-//   6. Per-`bkitVersion`→CHANGELOG release-attributed regression.
+//   6. Per-`bkit.version` release-attributed regression.
 //
-// Backfill scope (DE-37): GitHub-API backfill limited to the repo where bkit is
-// installed; PRs closed >= `--since` date; fields: additions, deletions, changedFiles,
-// commits count (for correctiveCommits proxy). Model-self-report counterSource.
+// Rows are read folded, so rows written without `schema` arrive in the current shape.
 //
 // All computation is advisory + inform-only; never gates any workflow.
 // See DE-34 for the shared-entrypoint + crash-isolation contract.
@@ -22,7 +20,9 @@ import * as path from "node:path";
 import {
   UNJUSTIFIED_REASON,
   foldFrom,
+  type CompliancePayload,
   type CounterPayload,
+  type DeferralPayload,
   type OutcomePayload,
   type TelemetryEnvelope,
   type TelemetryEvent,
@@ -36,18 +36,11 @@ import { HARVEST_DEST_DIR } from "./harvest.js";
 /** A `kind:"outcome"` ledger row: the shared envelope plus the outcome payload. */
 export type OutcomeRow = TelemetryEnvelope & OutcomePayload;
 
-/** A `kind:"counter"` ledger row; `counterSource` lives here, never on the outcome row. */
+/** A `kind:"counter"` ledger row; `counter.source` lives here, never on the outcome row. */
 export type CounterRow = TelemetryEnvelope & CounterPayload;
 
-export interface ComplianceRow {
-  ts: number;
-  repo: string;
-  bkitVersion: string;
-  rule: string;
-  result: "pass" | "fail" | "n/a";
-  phase: string;
-  parentSha: string;
-}
+/** A `kind:"compliance"` ledger row. */
+export type ComplianceRow = TelemetryEnvelope & CompliancePayload;
 
 // ---------------------------------------------------------------------------
 // Counts / rates summary
@@ -67,7 +60,8 @@ export function computeCounts(events: TelemetryEvent[]): TelemetryCounts {
 
   for (const ev of events) {
     byKind[ev.kind] = (byKind[ev.kind] ?? 0) + 1;
-    byWorkflow[ev.workflow] = (byWorkflow[ev.workflow] ?? 0) + 1;
+    const workflow = ev.by?.workflow ?? "unknown";
+    byWorkflow[workflow] = (byWorkflow[workflow] ?? 0) + 1;
     byRepo[ev.repo] = (byRepo[ev.repo] ?? 0) + 1;
   }
 
@@ -80,43 +74,45 @@ export function computeCounts(events: TelemetryEvent[]): TelemetryCounts {
 
 export interface ElapsedStats {
   count: number;
-  totalSeconds: number;
-  meanSeconds: number;
-  minSeconds: number;
-  maxSeconds: number;
-  p50Seconds: number;
+  totalMinutes: number;
+  meanMinutes: number;
+  minMinutes: number;
+  maxMinutes: number;
+  p50Minutes: number;
 }
 
+/** Over the rows that carry `time.totalMinutes`. */
 export function computeElapsedStats(rows: OutcomeRow[]): ElapsedStats {
-  if (rows.length === 0) {
+  const durations = rows
+    .map((r) => r.time?.totalMinutes)
+    .filter((m): m is number => typeof m === "number")
+    .sort((a, b) => a - b);
+  if (durations.length === 0) {
     return {
       count: 0,
-      totalSeconds: 0,
-      meanSeconds: 0,
-      minSeconds: 0,
-      maxSeconds: 0,
-      p50Seconds: 0,
+      totalMinutes: 0,
+      meanMinutes: 0,
+      minMinutes: 0,
+      maxMinutes: 0,
+      p50Minutes: 0,
     };
   }
-  const durations = rows.map((r) => r.durationSeconds).sort((a, b) => a - b);
   const total = durations.reduce((s, v) => s + v, 0);
-  const p50 = durations[Math.floor(durations.length / 2)] ?? 0;
   return {
-    count: rows.length,
-    totalSeconds: total,
-    meanSeconds: total / rows.length,
-    minSeconds: durations[0] ?? 0,
-    maxSeconds: durations[durations.length - 1] ?? 0,
-    p50Seconds: p50,
+    count: durations.length,
+    totalMinutes: total,
+    meanMinutes: total / durations.length,
+    minMinutes: durations[0] ?? 0,
+    maxMinutes: durations[durations.length - 1] ?? 0,
+    p50Minutes: durations[Math.floor(durations.length / 2)] ?? 0,
   };
 }
 
 // ---------------------------------------------------------------------------
 // Size↔outcome regression
 //
-// Logistic approximation: P(error) ~ 1 / (1 + exp(-(b0 + b1*log1p(linesAdded) + b2*filesChanged)))
-// Computed as a bucketed version without external libraries.
-// "Error" = ciTrySuccess > 1 OR correctiveCommits > 0 OR reviewIterations > 1 OR failures > 0.
+// Error rate per `lines.total.added` bucket. "Error" = the run added failures
+// (`ledgers.failures.repo` rose against the previous run of the repo).
 // ---------------------------------------------------------------------------
 
 export interface SizeBucket {
@@ -137,8 +133,8 @@ export interface RegressionResult {
   dispatchSizeThreshold: number;
   /**
    * Trust tier split: an outcome row is shell-bus when a `counter` row with the same
-   * repo + workflow + parentSha carries `counterSource: "shell-bus"` (post-P3
-   * deterministic); every other outcome row is model-self-report (pre-P3 untrusted).
+   * repo + workflow + run.parentSha carries `counter.source: "shell-bus"`
+   * (deterministic); every other outcome row is model-self-report (untrusted).
    */
   shellBusCount: number;
   modelSelfReportCount: number;
@@ -156,7 +152,7 @@ const SIZE_BUCKETS: Array<{ label: string; min: number; max: number }> = [
 /**
  * Per-run NEW failures = this row's cumulative total minus the previous row's.
  *
- * `outcome.failures` is the repo's CUMULATIVE distinct-failure count at ship time.
+ * `ledgers.failures.repo` is the repo's CUMULATIVE distinct-failure count at close.
  *
  * Previous = the newest outcome row for the SAME repo strictly before this one; the
  * first row for a repo has no predecessor, so its total IS its delta.
@@ -167,29 +163,25 @@ export function newFailuresThisRun(row: OutcomeRow, allRows: OutcomeRow[]): numb
   const previous = allRows
     .filter((r) => r.repo === row.repo && r.ts < row.ts)
     .sort((a, b) => b.ts - a.ts)[0];
-  if (!previous) return row.failures;
-  return Math.max(0, row.failures - previous.failures);
+  const failures = (r: OutcomeRow) => r.ledgers?.failures?.repo ?? 0;
+  if (!previous) return failures(row);
+  return Math.max(0, failures(row) - failures(previous));
 }
 
-function isErrorRun(row: OutcomeRow, allRows: OutcomeRow[]): boolean {
-  return (
-    (row.ciTrySuccess !== undefined && row.ciTrySuccess > 1) ||
-    (row.correctiveCommits !== undefined && row.correctiveCommits > 0) ||
-    (row.reviewIterations !== undefined && row.reviewIterations > 1) ||
-    newFailuresThisRun(row, allRows) > 0
-  );
-}
+const isErrorRun = (row: OutcomeRow, allRows: OutcomeRow[]): boolean =>
+  newFailuresThisRun(row, allRows) > 0;
 
 /** Identity of one workflow run: the key the close writes on both its counter and outcome rows. */
-function runKey(row: { repo: string; workflow: string; parentSha?: string }): string | undefined {
-  return row.parentSha ? JSON.stringify([row.repo, row.workflow, row.parentSha]) : undefined;
+function runKey(row: TelemetryEnvelope & { run?: { parentSha?: string } }): string | undefined {
+  const sha = row.run?.parentSha;
+  return sha ? JSON.stringify([row.repo, row.by?.workflow, sha]) : undefined;
 }
 
 export function computeRegression(rows: OutcomeRow[], counterRows: CounterRow[]): RegressionResult {
   const shellBusRuns = new Set<string>();
   for (const c of counterRows) {
     const key = runKey(c);
-    if (c.counterSource === "shell-bus" && key !== undefined) shellBusRuns.add(key);
+    if (c.counter?.source === "shell-bus" && key !== undefined) shellBusRuns.add(key);
   }
 
   const buckets: SizeBucket[] = SIZE_BUCKETS.map((b) => ({
@@ -213,8 +205,8 @@ export function computeRegression(rows: OutcomeRow[], counterRows: CounterRow[])
       modelSelfReportCount++;
     }
 
-    // Bucket by linesAdded
-    const lines = row.linesAdded;
+    // Bucket by lines added
+    const lines = row.lines?.total?.added ?? 0;
     for (const bucket of buckets) {
       if (lines >= bucket.minLines && lines <= bucket.maxLines) {
         bucket.count++;
@@ -269,13 +261,14 @@ export function computeComplianceRates(rows: ComplianceRow[]): ComplianceRuleRat
   > = {};
 
   for (const row of rows) {
-    if (!byRule[row.rule]) {
-      byRule[row.rule] = { passCount: 0, failCount: 0, naCount: 0, totalCount: 0 };
+    const id = row.rule?.id ?? "unknown";
+    if (!byRule[id]) {
+      byRule[id] = { passCount: 0, failCount: 0, naCount: 0, totalCount: 0 };
     }
-    const r = byRule[row.rule]!;
+    const r = byRule[id]!;
     r.totalCount++;
-    if (row.result === "pass") r.passCount++;
-    else if (row.result === "fail") r.failCount++;
+    if (row.rule?.verdict === "pass") r.passCount++;
+    else if (row.rule?.verdict === "fail") r.failCount++;
     else r.naCount++;
   }
 
@@ -287,11 +280,11 @@ export function computeComplianceRates(rows: ComplianceRow[]): ComplianceRuleRat
 }
 
 // ---------------------------------------------------------------------------
-// Per-bkitVersion compliance trend (release-attributed regression)
+// Per-bkit.version compliance trend (release-attributed regression)
 // ---------------------------------------------------------------------------
 
 export interface VersionComplianceEntry {
-  bkitVersion: string;
+  version: string;
   passRate: number;
   totalRuns: number;
 }
@@ -299,18 +292,19 @@ export interface VersionComplianceEntry {
 export function computeVersionCompliance(rows: ComplianceRow[]): VersionComplianceEntry[] {
   const byVersion: Record<string, { pass: number; total: number }> = {};
   for (const row of rows) {
-    if (!byVersion[row.bkitVersion]) byVersion[row.bkitVersion] = { pass: 0, total: 0 };
-    const v = byVersion[row.bkitVersion]!;
+    const version = row.bkit?.version ?? "unknown";
+    if (!byVersion[version]) byVersion[version] = { pass: 0, total: 0 };
+    const v = byVersion[version]!;
     v.total++;
-    if (row.result === "pass") v.pass++;
+    if (row.rule?.verdict === "pass") v.pass++;
   }
   return Object.entries(byVersion)
-    .map(([bkitVersion, { pass, total }]) => ({
-      bkitVersion,
+    .map(([version, { pass, total }]) => ({
+      version,
       passRate: total > 0 ? pass / total : 0,
       totalRuns: total,
     }))
-    .sort((a, b) => a.bkitVersion.localeCompare(b.bkitVersion, undefined, { numeric: true }));
+    .sort((a, b) => a.version.localeCompare(b.version, undefined, { numeric: true }));
 }
 
 // ---------------------------------------------------------------------------
@@ -318,22 +312,10 @@ export function computeVersionCompliance(rows: ComplianceRow[]): VersionComplian
 // ---------------------------------------------------------------------------
 
 /**
- * One folded `kind:"deferral"` entity. `subagent` + `model` are absent on rows an
+ * One folded `kind:"deferral"` entity. `by.subagent` + `by.model` are absent on rows an
  * orchestrator wrote directly (`.bkit/jsonl.md` § Who Wrote It).
  */
-export interface DeferralRow {
-  ts: number;
-  repo: string;
-  bkitVersion: string;
-  key?: string;
-  workflow?: string;
-  step?: string;
-  subagent?: string;
-  model?: string;
-  reason?: string;
-  severity?: string;
-  status?: string;
-}
+export type DeferralRow = TelemetryEnvelope & Partial<DeferralPayload>;
 
 export interface DeferralDisciplineEntry {
   /** The writer: subagent name, or the workflow that wrote the row itself. */
@@ -369,8 +351,8 @@ export function computeDeferralDiscipline(rows: DeferralRow[]): DeferralDiscipli
 
   for (const row of rows) {
     const writer =
-      row.subagent ?? (row.workflow ? `${row.workflow} (orchestrator)` : "unattributed");
-    const model = row.model ?? "unknown";
+      row.by?.subagent ?? (row.by?.workflow ? `${row.by.workflow} (orchestrator)` : "unattributed");
+    const model = row.by?.model ?? "unknown";
     const id = `${writer}\u0000${model}`;
     if (!byWriter[id])
       byWriter[id] = { writer, model, total: 0, unjustifiedCount: 0, byReason: {} };
@@ -450,13 +432,13 @@ export function runAnalysis(paths: string[]): AnalysisReport {
 
   if (elapsed.count > 0) {
     reportLines.push(
-      `[bkit-analysis] Duration (s): mean=${elapsed.meanSeconds.toFixed(0)} | p50=${elapsed.p50Seconds.toFixed(0)} | min=${elapsed.minSeconds} | max=${elapsed.maxSeconds}`,
+      `[bkit-analysis] Duration (min): mean=${elapsed.meanMinutes.toFixed(1)} | p50=${elapsed.p50Minutes.toFixed(1)} | min=${elapsed.minMinutes} | max=${elapsed.maxMinutes}`,
     );
   }
 
   // Regression report
   reportLines.push(
-    `[bkit-analysis] #183 Size↔outcome regression (dispatch-size threshold: ${regression.dispatchSizeThreshold} linesAdded):`,
+    `[bkit-analysis] #183 Size↔outcome regression (dispatch-size threshold: ${regression.dispatchSizeThreshold} lines added):`,
   );
   for (const b of regression.buckets) {
     if (b.count > 0) {
@@ -466,7 +448,7 @@ export function runAnalysis(paths: string[]): AnalysisReport {
     }
   }
   reportLines.push(
-    `[bkit-analysis] counterSource trust: shell-bus=${regression.shellBusCount} (trusted) | model-self-report=${regression.modelSelfReportCount} (untrusted, pre-P3)`,
+    `[bkit-analysis] counter.source trust: shell-bus=${regression.shellBusCount} (trusted) | model-self-report=${regression.modelSelfReportCount} (untrusted)`,
   );
 
   // Compliance rates
@@ -481,10 +463,10 @@ export function runAnalysis(paths: string[]): AnalysisReport {
 
   // Version compliance
   if (versionCompliance.length > 0) {
-    reportLines.push(`[bkit-analysis] Per-bkitVersion compliance:`);
+    reportLines.push(`[bkit-analysis] Per-bkit.version compliance:`);
     for (const v of versionCompliance) {
       reportLines.push(
-        `  v${v.bkitVersion}: ${(v.passRate * 100).toFixed(1)}% pass (${v.totalRuns} runs)`,
+        `  v${v.version}: ${(v.passRate * 100).toFixed(1)}% pass (${v.totalRuns} runs)`,
       );
     }
   }
@@ -522,7 +504,7 @@ export function runAnalysis(paths: string[]): AnalysisReport {
 
 // analysis — cross-repo analysis CLI.
 // Reports counts/rates/elapsed-time, size↔outcome regression, per-rule compliance
-// rate, dispatch-size threshold, counterSource trust labelling. Advisory + inform-only.
+// rate, dispatch-size threshold, counter.source trust labelling. Advisory + inform-only.
 // See DE-34 for the shared-entrypoint + crash-isolation contract.
 export function runAnalysisCommand(): void {
   try {
