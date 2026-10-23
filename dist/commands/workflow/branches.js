@@ -620,11 +620,6 @@ function syncVerb(ctx) {
  */
 function syncDevVerb(ctx) {
     const root = repoRoot(ctx.cwd);
-    // `bkit install` can leave core.bare=true on the main checkout, which breaks `merge --ff-only` there.
-    if (git(root, ["config", "--get", "core.bare"]) === "true" &&
-        fs.statSync(path.join(root, ".git"), { throwIfNoEntry: false })?.isDirectory()) {
-        runGit(root, ["config", "core.bare", "false"]);
-    }
     const fetch = runGit(root, ["fetch", REMOTE, DEV]);
     if (!fetch.ok) {
         ctx.log(`git fetch ${REMOTE} ${DEV} failed: ${fetch.stderr}`);
@@ -954,11 +949,6 @@ async function landVerb(ctx) {
     const fid = String(ctx.flags.fid);
     const root = repoRoot(ctx.cwd);
     const month = resolveMonth(root, fid, str(ctx.flags.month));
-    // `bkit install` can leave core.bare=true on the main checkout, which breaks every worktree below.
-    if (git(root, ["config", "--get", "core.bare"]) === "true" &&
-        fs.statSync(path.join(root, ".git"), { throwIfNoEntry: false })?.isDirectory()) {
-        runGit(root, ["config", "core.bare", "false"]);
-    }
     const worktreeStatus = path.join(git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? root, "docs", "plans", month, "logs", fid, "status.jsonl");
     try {
         const devPushes = devPushesOf(root, worktreeStatus, ctx.log);

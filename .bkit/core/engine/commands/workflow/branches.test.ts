@@ -1292,13 +1292,6 @@ describe("branches sync-dev", { timeout: GIT_TIMEOUT }, () => {
     git(clone, "remote", "set-url", "origin", path.join(tmp("gone"), "missing"));
     expect((await run(clone, ["sync-dev"])).code).toBe(10);
   });
-
-  it("puts core.bare back to false on the main checkout", async () => {
-    const { clone } = shipped("sync-bare");
-    git(clone, "config", "core.bare", "true");
-    await run(clone, ["sync-dev"]);
-    expect(git(clone, "config", "--get", "core.bare").out).toBe("false");
-  });
 });
 
 const currentBranchOf = (cwd: string) => git(cwd, "branch", "--show-current").out;
