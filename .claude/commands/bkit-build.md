@@ -284,7 +284,7 @@ description: "Build Feature — Autonomous implementation"
    ```bash
    "{BKIT}" branches sync --merge-docs || exit 1
    ```
-2. Check every `Test first:` line sits on a task bullet:
+2. Check every `Test first:` line sits on a task bullet, in the plan and its `{FID}-plan-{N}.md` sub-plans:
    ```bash
    "{BKIT}" tests plan-check --plan=docs/plans/{YYYYMM}/{FID}-plan.md --brief=docs/plans/{YYYYMM}/logs/{FID}/build-input-{RUN}.md --log=docs/plans/{YYYYMM}/logs/{FID}/build-plan-check.md
    ```
@@ -300,7 +300,7 @@ description: "Build Feature — Autonomous implementation"
 ### 🔒 Gate 3 — Branch Sync
 
 - [ ] Docs not behind origin (`docs/` not behind `origin/dev`), on the worktree branch
-- [ ] Every `Test first` line on a task bullet (`tests plan-check` exit 0)
+- [ ] Every `Test first` line on a task bullet, sub-plans included (`tests plan-check` exit 0)
 - [ ] Mechanical checks passed (`steps finish` exit 0)
 
 ---

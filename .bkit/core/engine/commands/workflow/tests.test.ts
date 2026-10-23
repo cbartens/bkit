@@ -408,6 +408,8 @@ describe("unclaimedTestFirst", () => {
       "- [ ] **Task 2:** Sub-bullet.", // 8
       "  - **Test first:** `b.test.ts` `y` fails.", // 9: its own bullet
       "**Test first:** `c.test.ts` `z` fails.", // 10: loose
+      "### Gate 2", // 11
+      "- [ ] **Test first:** every task naming `Test first` tests recorded a red before its code.", // 12: checklist item
     ].join("\n");
     expect(unclaimedTestFirst(plan)).toEqual([9, 10]);
   });
@@ -484,6 +486,31 @@ describe("bkit tests plan-check", () => {
     expect(report()).toContain("  > **Test first:** `x.test.ts` `loose` fails.");
   });
 
+  it("checks a master plan's `{stem}-{N}.md` sub-plans with it, and says when no task bullet was read", async () => {
+    write("plan.md");
+    write("plan-1.md", task(1));
+    write(
+      "plan-2.md",
+      task(1),
+      "- [ ] **T2: Old label.** **Test first:** `o.test.ts` `old` fails.",
+    );
+    const r = await check();
+    expect(r.code).toBe(1);
+    expect(r.json.plans.map((p: { plan: string; tasks: number }) => [p.plan, p.tasks])).toEqual([
+      ["plan.md", 0],
+      ["plan-1.md", 1],
+      ["plan-2.md", 1],
+    ]);
+    expect(r.json.unread).toBe(1);
+    expect(report()).toContain("`plan-2.md:4`");
+    expect(report()).not.toContain("no `- [ ] **Task N:**` bullet was read");
+    fs.rmSync(path.join(cwd, "plan-1.md"));
+    fs.rmSync(path.join(cwd, "plan-2.md"));
+    write("plan.md", "- [ ] **T1: Old label.** **Test first:** `o.test.ts` `old` fails.");
+    expect((await check()).json.plans[0]).toMatchObject({ tasks: 0, unread: [3] });
+    expect(report()).toContain("- `plan.md`: no `- [ ] **Task N:**` bullet was read.");
+  });
+
   it("--children checks each sibling sub-plan; exit 1 while one is still over a cap", async () => {
     write("logs/plan-v4-split.md", "Parent index.");
     write("logs/plan-v4-1.md", task(1, 2, 1));
@@ -501,6 +528,8 @@ describe("bkit tests plan-check", () => {
     r = await children();
     expect(r.code).toBe(0);
     expect(r.json.verdict).toBe("SINGLE");
+    expect(report()).toContain("`logs/plan-v4-1.md`: 1 tasks; `logs/plan-v4-2.md`: 1 tasks");
+    expect(report()).not.toContain("nothing was checked");
   });
 
   it("no plan or brief: nothing to check, SINGLE, exit 0", async () => {

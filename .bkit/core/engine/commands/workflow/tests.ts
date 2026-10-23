@@ -228,6 +228,8 @@ export type TestFirst =
 
 /** A runbook task's bullet: `**Task N:**`, `**Task N — {title}.**`, `**Task N.**` or `**Task N**`. */
 const TASK_LINE = /^\s*- \[[ xX]\] \*\*Task (\d+)(?=[\s:.*—–-])/;
+/** A checkbox whose label is `Test first` itself: the template's Gate 2 item, a checklist line, never a test entry. */
+const GATE_TEST_FIRST_LINE = /^\s*- \[[ xX]\] \*\*Test first:\*\*/;
 const TEST_FIRST = "**Test first:**";
 const TEST_ORDER_EXCEPTION = "**Test-order exception:**";
 
@@ -319,7 +321,9 @@ function taskSpans(lines: string[]): Array<{ task: number; start: number; end: n
 
 /**
  * 1-based lines carrying `**Test first:**` that no task bullet claims, so `readTestFirst`
- * never reads them. Mentions inside inline code or a fenced block are prose, not entries.
+ * never reads them. Mentions inside inline code or a fenced block are prose, not entries;
+ * a checkbox labelled `Test first` itself (the template's Gate 2 item) is a checklist
+ * line, not an entry.
  */
 export function unclaimedTestFirst(plan: string): number[] {
   const lines = plan.split("\n");
@@ -337,6 +341,7 @@ export function unclaimedTestFirst(plan: string): number[] {
       continue;
     }
     if (fence !== null || claimed.has(i)) continue;
+    if (GATE_TEST_FIRST_LINE.test(line)) continue;
     if (line.replace(/(`+)[\s\S]*?\1/g, "").includes(TEST_FIRST)) out.push(i + 1);
   }
   return out;
@@ -1091,7 +1096,7 @@ export const testsCommand: CommandSpec = {
           type: "string",
           required: true,
           repeatable: true,
-          help: "candidate plan file; the first that exists is checked",
+          help: "candidate plan file; the first that exists is checked, with its `{stem}-{N}.md` sub-plans when any exist",
         },
         {
           name: "brief",
@@ -1101,7 +1106,7 @@ export const testsCommand: CommandSpec = {
         {
           name: "children",
           type: "boolean",
-          help: "check the sub-plans `{stem}-{N}.md` beside the first --plan `{stem}.md` instead (that file need not exist); each must fit (SINGLE)",
+          help: "check only the sub-plans `{stem}-{N}.md` beside the first --plan `{stem}.md` (that file need not exist); each must fit (SINGLE)",
         },
         {
           name: "log",
@@ -1122,25 +1127,38 @@ export const testsCommand: CommandSpec = {
         if (logArg === "") throw new CommandError(EXIT.USAGE, "--log must be non-empty");
         const exists = (p: string) => fs.existsSync(path.resolve(ctx.cwd, p));
         const briefArg = str(ctx.flags.brief);
-        const target =
-          (ctx.flags.plan as string[]).find(exists) ??
-          (briefArg !== undefined && exists(briefArg) ? briefArg : undefined);
-        const children = ctx.flags.children === true;
-        let files = target === undefined ? [] : [target];
-        if (children) {
-          const base = (ctx.flags.plan as string[])[0]!;
+        /** `{stem}-{N}.md` beside `base` (`{stem}.md`), in N order; `base` itself need not exist. */
+        const siblings = (base: string): string[] => {
           const dir = path.dirname(base);
           const stem = path.basename(base, ".md");
           const escaped = stem.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
           const child = new RegExp(`^${escaped}-(\\d+)\\.md$`);
           const abs = path.resolve(ctx.cwd, dir);
-          files = (fs.existsSync(abs) ? fs.readdirSync(abs) : [])
+          return (fs.existsSync(abs) ? fs.readdirSync(abs) : [])
             .map((f) => child.exec(f))
             .filter((m) => m !== null)
             .sort((a, b) => Number(a[1]) - Number(b[1]))
             .map((m) => path.posix.join(dir.split(path.sep).join("/"), m[0]));
-          if (files.length === 0)
-            throw new CommandError(EXIT.USAGE, `no sub-plans \`${stem}-{N}.md\` in ${dir}`);
+        };
+        const planArgs = ctx.flags.plan as string[];
+        const children = ctx.flags.children === true;
+        let files: string[];
+        if (children) {
+          files = siblings(planArgs[0]!);
+          if (files.length === 0) {
+            const stem = path.basename(planArgs[0]!, ".md");
+            throw new CommandError(
+              EXIT.USAGE,
+              `no sub-plans \`${stem}-{N}.md\` in ${path.dirname(planArgs[0]!)}`,
+            );
+          }
+        } else {
+          // A split feature's master plan holds no tasks: its sub-plans carry them, so they
+          // are checked with it. The brief never has sub-plans.
+          const plan = planArgs.find(exists);
+          const brief = briefArg !== undefined && exists(briefArg) ? briefArg : undefined;
+          files =
+            plan !== undefined ? [plan, ...siblings(plan)] : brief !== undefined ? [brief] : [];
         }
         const plans = files.map((plan) => {
           const text = fs.readFileSync(path.resolve(ctx.cwd, plan), "utf-8");
@@ -1165,7 +1183,7 @@ export const testsCommand: CommandSpec = {
           ),
         ];
         const fit =
-          target === undefined
+          plans.length === 0
             ? "No plan file or brief exists, so nothing was checked."
             : tooBig.length === 0
               ? `${plans.map((p) => `\`${p.plan}\`: ${p.tasks} tasks`).join("; ")}; every task within the caps (${caps}).`
@@ -1203,13 +1221,18 @@ export const testsCommand: CommandSpec = {
         }
         out.push("", "## Unread `Test first` lines", "");
         if (unread === 0) out.push("None.");
-        for (const p of plans)
+        for (const p of plans) {
           p.unread.forEach((line, i) =>
             out.push(
               `- \`${p.plan}:${line}\` — \`**Test first:**\` outside every task bullet; write the task as \`- [ ] **Task N:** … **Test first:** …\``,
               `  > ${p.quotes[i]}`,
             ),
           );
+          if (p.tasks === 0 && p.unread.length > 0)
+            out.push(
+              `- \`${p.plan}\`: no \`- [ ] **Task N:**\` bullet was read. Tasks labelled another way (\`**T1:**\`, a \`**Test first:**\` sub-bullet under the task) are not tasks to the engine; relabel each as \`- [ ] **Task N:** … **Test first:** …\` on one bullet.`,
+            );
+        }
         const log = path.resolve(ctx.cwd, logArg);
         fs.mkdirSync(path.dirname(log), { recursive: true });
         fs.writeFileSync(log, `${out.join("\n")}\n`);
