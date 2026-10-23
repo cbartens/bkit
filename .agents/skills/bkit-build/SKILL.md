@@ -21,7 +21,7 @@ description: "Build Feature — Autonomous implementation"
 > - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, etc non-empty if required before making tool calls. **Else** → **Failure Path**.
 > - **Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is one JSON object: hold named keys as `{VAR}`. Exit non-zero with no `Route:` for it → **Failure Path**; exit 80 → mapped MCP tool (**gh MCP fallback**); exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
 > - **Finish:** `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, derives the attempt (`--attempt-of`; `<attempt>` in a path or message becomes it), checks artifacts and row, writes the row, commits, prints `comment`. Exit 5 **or** 6 → invoke `reask.agent` again with `"Your prior output '<reask.artifact>' has an invalid header. Re-emit only its header fields + '<!-- verdict:end -->' at top of that file. Do not redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**. Hold `verdict` as the step's verdict, `fields` as its other header fields, `attempt` as its attempt.
-> - **Resume:** On start, fold status.jsonl — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
+> - **Resume:** On start, fold status.jsonl — pick up after last `DONE` step in active `IN_PROGRESS` workflow. **If** a `docs/plans/{YYYYMM}/logs/{FID}/build-decision-*.md` holds `Status: OPEN` → after Step 2 resume at **Decision Pause** step 3 with it; its trailing number gives `DECISION`, its header `PAUSE_STEP`, `SUB_PLAN`, `{VERIFY_ATTEMPT}`, `DECISION_PLAN`; `From: challenge` → re-read `CHALLENGE_VERDICT` per Step 12 sub-step 1.
 > - **Status:** `status.jsonl` = append-only NDJSON event log; fold to derive the run array. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS|CONCERNS|FAIL`), `failures`, `attempt`, `subPlan`, `strategy` (`STANDARD|PIVOT|FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
 > - **Locks:** Step 1 takes `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` with `bkit locks acquire --kind=workflow` (hold `token`); release in last step and Failure Path with that token; assert lock released before exiting. **If** still held → **Failure Path** with `Lock removal failed`. **If** existing lock — its owning workflow's folded status.jsonl decides: `IN_PROGRESS` and last step <30min idle → **Failure Path**; any other holder (`DONE`, `FAILED`, `IN_PROGRESS` idle >=30min, no run) → reclaimed.
 > - **Status branch:** status.jsonl committed on `feat/{FID}` (`$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`); per-step commits, no pushes.
@@ -66,6 +66,67 @@ description: "Build Feature — Autonomous implementation"
    - **If** exit 80 → open PR on `{BRANCH}` via `list_pull_requests` → re-run with `--open-pr={number}` or `--open-pr=none`.
    - **Else** → post `comment` (when non-null) → step 6.
 6. **STOP**, no further downstream steps.
+
+---
+
+## 🤖 Decision Pause
+
+1. Derive the decision number:
+   ```bash
+   "{BKIT}" counters derive --file="{STATUS}" --workflow=build --step=build-decision --position=next
+   ```
+   Hold `value` as `{DECISION}`.
+2. Create `docs/plans/{YYYYMM}/logs/{FID}/build-decision-{RUN}-{DECISION}.md` = header lines, then one question per item; hold its `Plan:` path as `{DECISION_PLAN}`:
+   - Verify → header `Status: OPEN`, `From: verify`, `Pause step: {PAUSE_STEP}`, `Sub-plan: {SUB_PLAN}`, `Verify attempt: {VERIFY_ATTEMPT}`, `Plan: {GREEN_PLAN}`; items = each `## Identified Gaps Log` line of `build-plan-verify-{SUB_PLAN}-{VERIFY_ATTEMPT}.md` with its last `BLOCKED` reason in `build-plan-gaps-remediate-{SUB_PLAN}-*-log.md` (if any), plus each failure of `build-subplan-gate-{SUB_PLAN}-{VERIFY_ATTEMPT}.md` when `BOUNDARY_VERDICT` = FAIL.
+   - Challenge → header `Status: OPEN`, `From: challenge`, `Pause step: {PAUSE_STEP}`, `Sub-plan: {SUB_COUNT}`, `Plan:` = first existing of `docs/plans/{YYYYMM}/{FID}-plan-{SUB_COUNT}.md`, `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-input-{RUN}.md`; items = each `CRITICAL|HIGH` finding of `build-challenge.md` logged `BLOCKED` with no later `DONE` in `build-challenge-remediate-log.md`.
+   - Per item: `**Q{n} — {title}:** {what is wrong, why no agent can settle it, options}`, then `Recommended: {Accept|Fix now} — {reason}` on its own line; number from `Q1` in item order; word each so "yes" accepts the recommendation. Options `Accept|Fix now`; test-order gap (`no-red`, `late-red`, `red-mismatch`, `red-evidence-missing`, `test-changed`) → `Accept` only; boundary-gate failure → `Fix now` only.
+3. Read the runtime:
+   ```bash
+   "{BKIT}" runtime assert --file="{STATUS}" --workflow=build
+   ```
+   Hold `runtimeHeadless` as `{RUNTIME_HEADLESS}`, `runtime` as `{RUNTIME}`. **If** `RUNTIME_HEADLESS` = true → step 8.
+4. Ask the human in this session; NEVER hand questions or acceptances to subagents:
+   - One message = every `Q{n}` question of the decision file, no header lines; plain text, no host question tool.
+   - Look up facts in repo, docs and tools; never ask the human.
+   - Decide nothing on the human's behalf. Narrate `Decision pause {DECISION}: {count} question(s)` → end turn → wait for answers.
+   - Route:
+     - **If** the human says stop → step 8.
+     - **If** any item lacks a decision → discuss follow-ups → end turn → wait for answers.
+     - **Else** → step 5.
+5. Apply each decision:
+   - **Accept** — ONLY on that item's explicit human approval; "yes" to an `Accept` recommendation counts:
+     - Test-order gap → `**Test-order exception:**` as the task's last line in `{DECISION_PLAN}`, indented; entries in `Test first` form, each ending `— {human's reason}`.
+     - Other → append one `docs/decisions.jsonl` row in `.bkit/jsonl.md` format; `step` = `build-decision`; `summary` names `{FID}`, step `{PAUSE_STEP}` and the gap or finding; `rationale` = `accepted by owner: {human's reason}`.
+   - **Fix now** → append `- [ ] **Task {next N}:**` with `**Done when:**` and `**Test first:**` (1-5 `` `{test file}` `{test name}` fails on {what goes wrong} `` entries, `;`-separated) to `{DECISION_PLAN}`.
+6. Under each item add `Decision: {Accept|Fix now} — {human's words}`; set `Status: DECIDED`. **If** a `Test-order exception` was written → commit `{DECISION_PLAN}` alone first:
+   ```bash
+   cd "{WORKTREE_PATH}" && git commit -m "docs({FID}): test-order exception accepted by owner bkit [skip ci]" -- "{DECISION_PLAN}" || exit 1
+   ```
+   Record the decision and restart the attempt budgets:
+   ```bash
+   "{BKIT}" status meta --file="{STATUS}" --workflow=build --decision >/dev/null || exit 1
+   "{BKIT}" steps finish --workflow=build --step=build-decision --file="{STATUS}" --attempt-of=build-decision:next --artifact="docs/plans/{YYYYMM}/logs/{FID}/build-decision-{RUN}-<attempt>.md" --message="chore({FID}): decision <attempt>" --number={PAUSE_STEP} --title="Decision Pause" --comment-body
+   ```
+7. Route:
+   - **If** any `Fix now` → `FIX_TASKS` = the added task numbers → Step 6.
+   - **If** `From: verify` → re-run Step 7.
+   - **Else** → Step 13.
+8. Create `docs/plans/{YYYYMM}/logs/{FID}/build-handover.md` = the decision file plus the line `Paused ({RUNTIME}); run stays IN_PROGRESS. Answer in a session: /bkit-build {ISSUE_ID} resumes at this pause.`; `ISSUE_ID` empty → `{FID}`. Then push the record — NEVER onto a branch with an open PR:
+   ```bash
+   "{BKIT}" workflows handover --workflow=build --fid={FID} --month={YYYYMM} --push --worktree="{WORKTREE_PATH}"
+   ```
+   Route as **Failure Path** step 5 does, going on to step 9 instead of its step 6.
+9. Release the lock; never `workflows fail`:
+   ```bash
+   "{BKIT}" locks release --kind=workflow --workflow=build --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} >/dev/null || exit 1
+   ```
+   **STOP**, no further downstream steps.
+
+### 🔒 Gate — Decision Pause
+
+- [ ] Questions put by the orchestrator in this session, or handed over headless (no subagent asked the human)
+- [ ] Acceptances written only after explicit human approval (decision rows, `Test-order exception` lines committed alone)
+- [ ] Mechanical checks passed (`steps finish` exit 0: step `build-decision` with `attempt`), or run left `IN_PROGRESS` with lock released
 
 ---
 
@@ -268,14 +329,15 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 ### 🧠 Step 6 — Plan Execute
 
 3. **Subagent:** Invoke `@bkit-build-plan-execute` using `Agent` tool:
-   Context: You are a subagent in the Build phase. Execute sub-plan `{SUB_PLAN}` / `{SUB_COUNT}`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations. Red command: `"{BKIT}" tests red --file="{STATUS}" --workflow=build --sub-plan={SUB_PLAN} --task={task} --test={test file} --name="{test name}" --log=docs/plans/{YYYYMM}/logs/{FID}/build-task-red-{SUB_PLAN}-{task}-{test position}.md`.
+   Context: You are a subagent in the Build phase. Execute sub-plan `{SUB_PLAN}` / `{SUB_COUNT}`. **If** `FIX_TASKS` set → add `Execute only Tasks {FIX_TASKS}; append to the existing log.` Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations. Red command: `"{BKIT}" tests red --file="{STATUS}" --workflow=build --sub-plan={SUB_PLAN} --task={task} --test={test file} --name="{test name}" --log=docs/plans/{YYYYMM}/logs/{FID}/build-task-red-{SUB_PLAN}-{task}-{test position}.md`.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/build-input-{RUN}.md`, `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), `docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/build-plan-current.md` (if present, consider findings when executing plan; do not revise plan).
    Update: Source files.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-plan-execute-{SUB_PLAN}-log.md`.
 4. Finish:
    ```bash
-   "{BKIT}" steps finish --workflow=build --step=build-plan-execute --file="{STATUS}" --attempt=1 --sub-plan={SUB_PLAN} --agent=bkit-build-plan-execute --artifact=docs/plans/{YYYYMM}/logs/{FID}/build-plan-execute-{SUB_PLAN}-log.md --message="chore({FID}): plan-execute sub-plan {SUB_PLAN}" --number=6 --title="Plan Execute" --sub-plan-count={SUB_COUNT}
+   "{BKIT}" steps finish --workflow=build --step=build-plan-execute --file="{STATUS}" --attempt-of=build-plan-execute:next --sub-plan={SUB_PLAN} --agent=bkit-build-plan-execute --artifact=docs/plans/{YYYYMM}/logs/{FID}/build-plan-execute-{SUB_PLAN}-log.md --message="chore({FID}): plan-execute sub-plan {SUB_PLAN} attempt <attempt>" --number=6 --title="Plan Execute" --sub-plan-count={SUB_COUNT}
    ```
+   Clear `FIX_TASKS`.
 
 ### 🔒 Gate 6 — Plan Execute
 
@@ -299,14 +361,14 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    **If** exit >= 2 → **Failure Path**. Hold `plan` as `{GREEN_PLAN}`.
 7. **Subagent:** Invoke `@bkit-build-plan-verify` using `Agent` tool:
    Context: You are a subagent in the Build phase. Single plan verification. Sub-plan `{SUB_PLAN}`, attempt `{VERIFY_ATTEMPT}`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/{YYYYMM}/logs/{FID}/build-input-{RUN}.md`, `docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/build-plan-execute-{SUB_PLAN}-log.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-tests-green-{SUB_PLAN}-{VERIFY_ATTEMPT}.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-current.md` (if present), glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{SUB_PLAN}-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{SUB_PLAN}-*-log.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**; filter to changes relevant to this sub-plan's checklist; ignore changes outside scope).
+   Read: `docs/plans/{YYYYMM}/logs/{FID}/build-input-{RUN}.md`, `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), `docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/build-plan-execute-{SUB_PLAN}-log.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-tests-green-{SUB_PLAN}-{VERIFY_ATTEMPT}.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-current.md` (if present), glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{SUB_PLAN}-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{SUB_PLAN}-*-log.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-decision-*.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**; filter to changes relevant to this sub-plan's checklist; ignore changes outside scope).
    Update: `docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md` (if present).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{SUB_PLAN}-{VERIFY_ATTEMPT}.md`.
 8. Finish:
    ```bash
    "{BKIT}" steps finish --workflow=build --step=build-plan-verify --file="{STATUS}" --attempt-of=build-plan-verify:next --sub-plan={SUB_PLAN} --agent=bkit-build-plan-verify --artifact="docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{SUB_PLAN}-<attempt>.md" --message="chore({FID}): plan-verify sub-plan {SUB_PLAN} attempt <attempt>" --number=7 --title="Plan Verify" --sub-plan-count={SUB_COUNT}
    ```
-   Hold `verdict` as `VERIFY_VERDICT`, `fields.Gaps` as `VERIFY_GAPS`.
+   Hold `verdict` as `VERIFY_VERDICT`, `failures` as `VERIFY_FAILURES`, `fields.Fixable` as `VERIFY_FIXABLE`.
 9. Route:
    - **If** `VERIFY_VERDICT` = PASS **and** more sub-plans remain (`SUB_PLAN` < `SUB_COUNT`) → sub-step 10.
    - **Else** → `BOUNDARY_VERDICT` = SKIPPED → sub-step 12.
@@ -326,10 +388,17 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 12. **If** `VERIFY_VERDICT` = PASS **and** `BOUNDARY_VERDICT` != FAIL:
     - **If** more sub-plans remain (`SUB_PLAN` < `SUB_COUNT`) → next `SUB_PLAN` → Step 6.
     - **Else** → Step 9.
-13. **If** `VERIFY_GAPS` = ORDER → **Failure Path** with `Sub-plan {SUB_PLAN}: only test-order gaps remain. Human decision: in {WORKTREE_PATH}, add a **Test-order exception:** line under each task below in {GREEN_PLAN}, commit it on {BRANCH} in a commit of its own, and re-run the build; or re-plan the tasks. Tasks and tests:` followed by every line of `## Identified Gaps Log` in `build-plan-verify-{SUB_PLAN}-{VERIFY_ATTEMPT}.md`.
-14. **If** `VERIFY_VERDICT` = CONCERNS or FAIL, **or** `BOUNDARY_VERDICT` = FAIL → run counter-bus routing:
+13. **If** `VERIFY_VERDICT` = FAIL → route on fix rounds since the last **Decision Pause**:
     ```bash
-    "{BKIT}" counters route --name=VERIFY_ATTEMPT --of=build-plan-verify:current --file="{STATUS}" --workflow=build --sub-plan={SUB_PLAN} --limit=MAX_VERIFY_ATTEMPT --continue=step-8 --exceeded=failure-path
+    "{BKIT}" counters route --name=GAPS_REMEDIATE_ATTEMPT --of=build-plan-gaps-remediate:count --file="{STATUS}" --workflow=build --sub-plan={SUB_PLAN} --since=decisionAt --max=0 --continue=first-round --exceeded=decision-pause
+    ```
+    Route:
+    - **If** exit 0 (printed `first-round`) **and** `VERIFY_FIXABLE` = true → sub-step 14.
+    - **If** exit 0 or 1 → `PAUSE_STEP` = 7 → **Decision Pause**.
+    - **Else** → **Failure Path**.
+14. **If** `VERIFY_VERDICT` = CONCERNS or FAIL, **or** `BOUNDARY_VERDICT` = FAIL → counter-bus routing on attempts since the last **Decision Pause**:
+    ```bash
+    "{BKIT}" counters route --name=VERIFY_ATTEMPT --of=build-plan-verify:current --file="{STATUS}" --workflow=build --sub-plan={SUB_PLAN} --since=decisionAt --limit=MAX_VERIFY_ATTEMPT --continue=step-8 --exceeded=failure-path
     ```
     Route:
     - **If** exit 0 (printed `step-8`) → Step 8.
@@ -340,15 +409,15 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 - [ ] Test-first reds audited (`tests green` exit 0 or 1)
 - [ ] Subagent invoked (`@bkit-build-plan-verify`, no inline work)
-- [ ] Mechanical checks passed (`steps finish` exit 0: verify verdict and failures valid, `Gaps` in `NONE|ORDER|OTHER`, attempt derived for this sub-plan; boundary `build-subplan-gate` row with `scope`, `attempt`, `subPlan`, `clamped` when it ran)
+- [ ] Mechanical checks passed (`steps finish` exit 0: verify verdict and failures valid, `Fixable` in `true|false`, attempt derived for this sub-plan; boundary `build-subplan-gate` row with `scope`, `attempt`, `subPlan`, `clamped` when it ran)
 - [ ] Boundary verdict decided (`BOUNDARY_VERDICT` in `PASS|FAIL|SKIPPED`)
-- [ ] Test-order-only gaps routed to Failure Path (`VERIFY_GAPS` = ORDER)
+- [ ] `Fixable: false` gaps routed to **Decision Pause**, after at most one fix round since the last decision (`VERIFY_VERDICT` = FAIL)
 
 ---
 
 ### 🧠 Step 8 — Plan Gaps Remediate
 
-**Run only if** Step 7 `VERIFY_VERDICT` = CONCERNS or FAIL **and** `VERIFY_GAPS` != ORDER, **or** `BOUNDARY_VERDICT` = FAIL.
+**Run only if** Step 7 sub-step 14 routed here.
 
 16. Read status.jsonl and derive next `STRATEGY`:
     ```bash
@@ -356,7 +425,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
     ```
     Hold `nextStrategy` as `{STRATEGY}`.
 17. **Subagent:** Invoke `@bkit-build-plan-gaps-remediate` using `Agent` tool:
-    Context: You are a subagent in the Build phase. Sub-plan `{SUB_PLAN}`, attempt `{VERIFY_ATTEMPT}`. `Strategy`: `{STRATEGY}`. **If** `BOUNDARY_VERDICT` = FAIL → add `Boundary gate`: `{TEST_SCOPE}`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
+    Context: You are a subagent in the Build phase. Sub-plan `{SUB_PLAN}`, attempt `{VERIFY_ATTEMPT}`. `Strategy`: `{STRATEGY}`. **If** `BOUNDARY_VERDICT` = FAIL → add `Boundary gate`: `{TEST_SCOPE}`. **If** `VERIFY_VERDICT` = FAIL → add `Scope`: `fixable only`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
     Read: `docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{SUB_PLAN}-{VERIFY_ATTEMPT}.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-subplan-gate-{SUB_PLAN}-{VERIFY_ATTEMPT}.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/build-tests-green-{SUB_PLAN}-{VERIFY_ATTEMPT}.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{SUB_PLAN}-*-log.md`.
     Update: Source files.
     Create: `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{SUB_PLAN}-{VERIFY_ATTEMPT}-log.md`.
@@ -364,14 +433,22 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
     ```bash
     "{BKIT}" steps finish --workflow=build --step=build-plan-gaps-remediate --file="{STATUS}" --attempt-of=build-plan-verify:current --sub-plan={SUB_PLAN} --agent=bkit-build-plan-gaps-remediate --artifact="docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{SUB_PLAN}-<attempt>-log.md" --message="chore({FID}): plan-gaps-remediate sub-plan {SUB_PLAN} attempt <attempt>" --number=8 --title="Plan Gaps Remediate" --sub-plan-count={SUB_COUNT}
     ```
-19. Re-run Step 7.
+    Hold `fields.Fixed` as `VERIFY_FIXED`.
+19. Check the attempt changed source, not only logs and ledgers:
+    ```bash
+    cd "{WORKTREE_PATH}" && git diff --quiet HEAD~1 HEAD -- . ':(exclude)docs/plans' ':(exclude)docs/*.jsonl' ':(exclude).bkit/*.jsonl'
+    ```
+    Route:
+    - **If** exit 0 (no source change) **or** `VERIFY_FIXED` = 0 → `PAUSE_STEP` = 8 → **Decision Pause**.
+    - **If** exit 1 → re-run Step 7.
+    - **Else** → **Failure Path**.
 
 ### 🔒 Gate 8 — Plan Gaps Remediate
 
 - [ ] Strategy computed before invocation (`STRATEGY`)
 - [ ] Subagent invoked (`@bkit-build-plan-gaps-remediate`, no inline work)
-- [ ] Source files modified
-- [ ] Mechanical checks passed (`steps finish` exit 0: verdict valid, `strategy` recorded)
+- [ ] Mechanical checks passed (`steps finish` exit 0: verdict valid, `strategy` recorded, `Fixed` present)
+- [ ] No-progress attempt routed to **Decision Pause** (no source change, or `VERIFY_FIXED` = 0); verify never re-run on unchanged code
 
 ---
 
@@ -381,7 +458,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 1. **Subagent:** Invoke `@bkit-build-plan-verify` using `Agent` tool:
    Context: You are a subagent in the Build phase. Holistic plan verification (master and sub-plans). Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, all `docs/plans/{YYYYMM}/{FID}-plan-N.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-*-log.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**; review full feature diff for cross-sub-plan integration).
+   Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, all `docs/plans/{YYYYMM}/{FID}-plan-N.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-*-log.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-decision-*.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**; review full feature diff for cross-sub-plan integration).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-holistic.md`.
 2. Finish:
    ```bash
@@ -425,7 +502,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 1. **Subagent:** Invoke `@bkit-build-challenge-reconcile` using `Agent` tool:
    Context: You are a subagent in the Build phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/{YYYYMM}/logs/{FID}/build-challenge-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-challenge-2.md`.
+   Read: `docs/plans/{YYYYMM}/logs/{FID}/build-challenge-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-challenge-2.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-decision-*.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-challenge.md`.
 2. Finish:
    ```bash
@@ -433,9 +510,9 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    ```
    Hold `verdict` as `CHALLENGE_VERDICT`.
 3. **If** `CHALLENGE_VERDICT` = PASS → Step 14.
-4. **If** `CHALLENGE_VERDICT` = CONCERNS or FAIL → counter-bus routing on the next `build-challenge-remediate` attempt; `{EXCEEDED}` = `step-14` for CONCERNS, `failure-path` for FAIL:
+4. **If** `CHALLENGE_VERDICT` = CONCERNS or FAIL → counter-bus routing on the next `build-challenge-remediate` attempt since the last **Decision Pause**; `{EXCEEDED}` = `step-14` for CONCERNS, `failure-path` for FAIL:
    ```bash
-   "{BKIT}" counters route --name=CHALLENGE_REMEDIATE_ATTEMPT --of=build-challenge-remediate:next --file="{STATUS}" --workflow=build --limit=MAX_CHALLENGE_REMEDIATE_ATTEMPT --continue=step-12 --exceeded={EXCEEDED}
+   "{BKIT}" counters route --name=CHALLENGE_REMEDIATE_ATTEMPT --of=build-challenge-remediate:next --file="{STATUS}" --workflow=build --since=decisionAt --limit=MAX_CHALLENGE_REMEDIATE_ATTEMPT --continue=step-12 --exceeded={EXCEEDED}
    ```
    Route:
    - **If** exit 0 (printed `step-12`) → Step 12.
@@ -468,15 +545,18 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    ```bash
    "{BKIT}" steps finish --workflow=build --step=build-challenge-remediate --file="{STATUS}" --attempt-of=build-challenge-remediate:next --agent=bkit-build-challenge-remediate --artifact=docs/plans/{YYYYMM}/logs/{FID}/build-challenge-remediate-log.md --message="chore({FID}): build-challenge-remediate attempt <attempt>" --number=12 --title="Build Challenge Remediate"
    ```
+   Hold `fields.Blocked` as `CHALLENGE_BLOCKED`.
 4. Route:
    - **If** `verdict` = FAIL → **Failure Path**.
+   - **If** `CHALLENGE_BLOCKED` = true → `PAUSE_STEP` = 12 → **Decision Pause**.
    - **Else** → Step 13.
 
 ### 🔒 Gate 12 — Build Challenge Remediate
 
 - [ ] Subagent invoked (`@bkit-build-challenge-remediate`, no inline work)
-- [ ] Mechanical checks passed (`steps finish` exit 0)
-- [ ] Source files modified or classify-gate FAIL recorded
+- [ ] Mechanical checks passed (`steps finish` exit 0: `Blocked` in `true|false`)
+- [ ] Source files modified, or every finding logged `BLOCKED|DEFERRED` (`low-severity` rows)
+- [ ] `CRITICAL|HIGH` findings left `BLOCKED` routed to **Decision Pause** (`CHALLENGE_BLOCKED` = true)
 
 ---
 

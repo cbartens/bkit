@@ -297,6 +297,7 @@ export const ROW_FIELDS: Record<string, readonly RowField[]> = {
   "build/build-challenge-reconcile": ["attempt"],
   "build/build-challenge-remediate": ["attempt"],
   "build/build-challenge-tests": ["attempt"],
+  "build/build-decision": ["attempt"],
   "build/build-run-tests": ["attempt", "scope"],
   "build/build-failure-diagnose": ["attempt", "strategy"],
   "build/build-failure-remediate": ["attempt", "strategy"],

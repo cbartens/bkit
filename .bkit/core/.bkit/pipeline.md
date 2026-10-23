@@ -81,13 +81,15 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
   2. install-skills
   3. execute build       (producer — implement tasks)
   4. verify build        (critic — verify each task; tick only on confirmed artifacts)
-                         ↶ producer-critic loop, capped 3 attempts
+                         ↶ producer-critic loop, capped 3 attempts;
+                           unfixable gaps / no progress → Decision Pause (human, in session)
   5. gaps-remediate      (fix verifier gaps, re-verify)
   6. verify build        (holistic second pass across whole plan)
   7. challenge × 2 (parallel, distinct lenses, no sibling reads)
     • bug-hunting  • security
   8. challenge-reconcile (merge findings, severity + verdict max-wins)
-  9. challenge-remediate (classify-gate: architectural → FAIL; else fix + test)
+  9. challenge-remediate (LOW → deferred; fix mechanical + test;
+                         HIGH/CRITICAL blocked → Decision Pause)
   10. challenge-tests    (edge-case tests for changed files)
   11. run tests          (local tier: lint + typecheck + unit + slop:delta + bkit check;
                          no integration / e2e / @live — those run in CI)
@@ -213,7 +215,7 @@ Output: PR to `dev`. Heaviest phase — most steps verify rather than produce. C
 | `bkit-build-challenge-1` | Bug-hunting | Adversarial review of the full diff. Forbidden from reading its sibling. Parallel. |
 | `bkit-build-challenge-2` | Security | Same diff, security lens. Depth-sensitive: stays on the top model tier. Parallel. |
 | `bkit-build-challenge-reconcile` | Merge findings | Unifies both challenges. `Severity` and verdict max-wins; downgrades need explicit justification. |
-| `bkit-build-challenge-remediate` | Fixer (classify-gate) | Any architectural finding → FAIL (no silent fixes); else applies mechanical fixes and re-runs tests. |
+| `bkit-build-challenge-remediate` | Fixer | Defers every `LOW` finding; logs architectural findings `BLOCKED` (no silent fixes); applies mechanical fixes and re-runs tests. `CRITICAL|HIGH` left blocked → the orchestrator's Decision Pause asks the human. |
 | `bkit-build-challenge-tests` | Test author | Adds edge-case tests for changed files; runs the test suite. |
 | `bkit-debug-failure-diagnose` | Diagnostician | (If tests fail) diagnoses with Standard / Pivot / Final strategy escalation. Shared with debug. |
 | `bkit-debug-failure-remediate` | Fixer | (If tests fail) applies the diagnosed fix. |

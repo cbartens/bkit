@@ -343,6 +343,7 @@ function workflowAuthoringAdvisory() {
     rule("Notation"),
     rule("Dense instructions only"),
     rule("Cross-workflow alignment"),
+    rule("Human questions"),
     rule("Self-contained"),
     rule("Removal = delete"),
     REPO_AUTHORING_RULE,

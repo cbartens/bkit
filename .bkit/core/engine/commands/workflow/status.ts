@@ -242,6 +242,7 @@ const FOLDED_TYPES = new Set([
 /** Markers that record the row's own time or a fact, not a value. */
 const META_MARKS: Record<string, (at: string) => Record<string, unknown>> = {
   "soak-entry": (at) => ({ soakEntryAt: at }),
+  decision: (at) => ({ decisionAt: at }),
   "opened-pr": () => ({ openedPr: true }),
 };
 
@@ -388,6 +389,11 @@ export const statusCommand: CommandSpec = {
           name: "soak-entry",
           type: "boolean",
           help: "record soakEntryAt (the soak budget counts from here)",
+        },
+        {
+          name: "decision",
+          type: "boolean",
+          help: "record decisionAt (a human decision; build attempt budgets count from here)",
         },
         { name: "opened-pr", type: "boolean", help: "record openedPr: this run opened the PR" },
       ],

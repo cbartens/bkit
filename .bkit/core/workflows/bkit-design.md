@@ -30,21 +30,21 @@ description: "Design Feature — Autonomous design phase"
 
 > - **Tracker:** GitHub Issues via MCP server `github` (`.mcp.json` `mcpServers.github`). Tools: `mcp__github__issue_read` (method `get` / `get_comments` / `get_labels`), `mcp__github__issue_write` (method `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (method `add_project_item` / `update_project_item`); board status sync needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.github.project`, absent either → silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; writes best-effort, never gate; **If** failure → retry once after 5s → continue.
 > - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive; a phase start drops the old phase, every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path). `bkit issues labels` computes each transition; MCP writes it.
-> - **Comments:** Post the `comment` a step's `bkit` block prints as a new comment via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` before its gate; every gate includes `Issue comment attempted (Step N section)`. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
+> - **Comments:** Post the `comment` a step's `bkit` block prints as a new comment via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` before its gate; every gate includes `Issue comment attempted (Step N section)`. Post the printed `comment` byte-for-byte; never shorten, reword, or rebuild it. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
 
 <!-- bkit:tracker github end -->
 <!-- bkit:tracker linear start -->
 
 > - **Tracker:** Linear via MCP server `linear` (`.mcp.json` `mcpServers.linear`). Tools: `mcp__linear__get_issue`, `mcp__linear__save_issue`, `mcp__linear__save_issue_label`, `mcp__linear__save_comment`, `mcp__linear__list_comments`, `mcp__linear__list_issues`. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; `save_*` writes best-effort, never gate; **If** failure → retry once after 5s → continue. `save_issue` always includes `id` and is all-or-nothing (one state or label name the team lacks rejects the whole call) → labels and state in separate calls, labels first; create each printed `add` entry first via `save_issue_label({ name })` (`already exists` = done). `Could not find state` / `Could not find label` → log `Unapplied: <state|label> "<name>" not in team`, no retry, continue.
 > - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive; a phase start drops the old phase, every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path). `bkit issues labels` computes each transition; MCP writes it.
-> - **Comments:** Post the `comment` a step's `bkit` block prints as a new comment via `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` (no `id`) before its gate; every gate includes `Issue comment attempted (Step N section)`. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
+> - **Comments:** Post the `comment` a step's `bkit` block prints as a new comment via `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` (no `id`) before its gate; every gate includes `Issue comment attempted (Step N section)`. Post the printed `comment` byte-for-byte; never shorten, reword, or rebuild it. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
 
 <!-- bkit:tracker linear end -->
 <!-- bkit:tracker jira start -->
 
 > - **Tracker:** Jira via MCP server `jira` (`.mcp.json` `mcpServers.jira`). Tools: `mcp__jira__getJiraIssue`, `mcp__jira__editJiraIssue`, `mcp__jira__transitionJiraIssue`, `mcp__jira__addOrEditJiraIssueComment`, `mcp__jira__searchJiraIssuesUsingJql`, `mcp__jira__executeRead`; every call passes `cloudId: "{TRACKER_SITE}"`. Assert `{ISSUE_ID}` / `{TRACKER_SITE}` / `{STATE}` / `{LABELS}` non-empty before tool calls; writes best-effort, never gate; **If** failure → retry once after 5s → continue. `getJiraIssue` always passes `view: "evidence"` (other views omit labels). `editJiraIssue` `fields.labels` replaces the whole set → pass full printed `LABELS`; labels and status in separate calls, labels first; never pass `fields` / `update` to `transitionJiraIssue`. Status change: `executeRead({ name: "listJiraIssueTransitions", inputs: { issueIdOrKey } })` → transition whose `to.name` = target status → `transitionJiraIssue({ issueIdOrKey, transitionId })`; none → log `Unapplied: status "<name>" not reachable`, no retry, continue. Comment reads: `executeRead({ name: "listJiraIssueComments", inputs: { issueIdOrKey, maxResults: 100, startAt } })`, oldest first, raise `startAt` while `isLast` is false; page with `appliedContentFormat` = `html` → re-read it one comment per call (`maxResults: 1`).
 > - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive; a phase start drops the old phase, every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path). `bkit issues labels` computes each transition; MCP writes it.
-> - **Comments:** Post the `comment` a step's `bkit` block prints as a new comment via `mcp__jira__addOrEditJiraIssueComment({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", commentBody: "{BODY}" })` (no `commentId`) before its gate; every gate includes `Issue comment attempted (Step N section)`. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content. Body over 32,767 characters → post as consecutive comments split at line breaks, in order.
+> - **Comments:** Post the `comment` a step's `bkit` block prints as a new comment via `mcp__jira__addOrEditJiraIssueComment({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", commentBody: "{BODY}" })` (no `commentId`) before its gate; every gate includes `Issue comment attempted (Step N section)`. Post the printed `comment` byte-for-byte; never shorten, reword, or rebuild it. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content. Body over 32,767 characters → post as consecutive comments split at line breaks, in order.
 
 <!-- bkit:tracker jira end -->
 
@@ -251,13 +251,13 @@ description: "Design Feature — Autonomous design phase"
    - **If** session prompt contains `grill=false` → create `docs/plans/{YYYYMM}/logs/{FID}/design-grill-{RUN}.md` = `## Grill decisions` heading plus `Skipped (grill=false).` → step 6.
    - **If** `RUNTIME_HEADLESS` = true → no human to ask: map the tree and frontier per step 2 without asking or ending the turn, taking each recommended answer as given to open the next frontier, until it is empty or 9 rounds; then write the draft scenario per step 4 without asking → step 5; every question counts as unanswered at stop.
    - **Else** → step 2.
-2. Interview the human in this session; NEVER hand the interview to a subagent because subagents cannot reach the human:
+2. Ask the human in this session; NEVER hand questions to subagents:
    - Read `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`. **If** an earlier run left a `docs/plans/{YYYYMM}/logs/{FID}/design-grill-*.md` → the newest one's `Settled` entries stay settled and its `Draft Acceptance Scenario` is the starting draft for step 4; ask only what they leave open or what `ISSUE_TEXT` changed since.
    - Map open decisions as a tree: each decision branches into the decisions that depend on it. Frontier = every unsettled decision whose prerequisites are settled.
-   - One round = the whole frontier in one message. A question that depends on another question in the same round waits for a later round.
-   - Per question: `❓ **Q{n} — {title}:** {question, options}`, then `➡️ {recommended answer}` on its own line. Number `Q1`, `Q2`, … across all rounds; word each so "yes" accepts the recommended answer; plain text only; do not use a host question tool.
-   - Look up facts (repo, docs, tools; read-only subagents allowed); never ask the human for a fact that can be looked up. A pending lookup holds back only the questions that depend on it.
-   - Put decisions to the human only; never answer on the human's behalf. Narrate `Grill round {k}/10` → end turn → wait for answers.
+   - One round = the whole frontier in one message; a question depending on another in the same round waits for a later round.
+   - Per question: `**Q{n} — {title}:** {question, options}`, then `Recommended: {answer}` on its own line; number from `Q1` across rounds; word each so "yes" accepts the recommendation; plain text, no host question tool.
+   - Look up facts in repo, docs and tools; never ask the human. Pending lookups hold back only the questions that depend on them.
+   - Decide nothing on the human's behalf. Narrate `Grill round {k}/10` → end turn → wait for answers.
 3. Recompute the frontier from the answers. Route:
    - **If** the human says stop → write the draft scenario per step 4 without asking → step 5.
    - **If** frontier empty **or** 9 rounds asked → step 4.
@@ -268,7 +268,7 @@ description: "Design Feature — Autonomous design phase"
      - `Success Criteria` — <=5 measurable outcomes; no tests, no implementation steps.
      - `Key Edge Cases` — design-shaping only (concurrency, conflicts, failure modes, cross-feature interactions).
      - `Process Sketch` — 3-7 `WHEN X → THEN Y` lines with the same examples; outcomes, not implementation steps.
-   - Show the whole draft, then one question per item the draft inferred rather than took from the context or an answer, per step 2 format with the recommended answer = as drafted; last question: `❓ **Q{n} — Draft acceptance scenario:** accept the draft with the answers above as the design's starting point?` with `➡️ Yes`. Narrate `Grill round {k}/10 — draft acceptance scenario` → end turn → wait for answers.
+   - Show the whole draft, then one question per item the draft inferred rather than took from the context or an answer, per step 2 format with the recommended answer = as drafted; last question: `**Q{n} — Draft acceptance scenario:** accept the draft with the answers above as the design's starting point?` with `Recommended: yes`. Narrate `Grill round {k}/10 — draft acceptance scenario` → end turn → wait for answers.
    - Fold the answers into the draft. Route:
      - **If** an answer opens new decisions **and** fewer than 9 rounds asked → step 2, next round; the draft round repeats after.
      - **Else** → step 5; new decisions left unasked → `Open`.
@@ -390,23 +390,23 @@ description: "Design Feature — Autonomous design phase"
    ```bash
    "{BKIT}" steps finish --file="{STATUS}" --workflow=design --step=design-review --attempt=1 --agent=bkit-design-review-1 --agent=bkit-design-review-2 --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-review-1.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-review-2.md --message="chore({FID}): design-review" --number=6 --title="Design Review"
    ```
-   Hold `verdict` as `REVIEW_VERDICT`, `fields.Spike` as `SPIKE`.
+   Hold `verdict` as `REVIEW_VERDICT`, `fields.Spike` as `REVIEW_SPIKE`.
 3. Route:
    - **If** `REVIEW_VERDICT` = FAIL → **Failure Path**.
-   - **If** `SPIKE` = TRUE → Step 7.
+   - **If** `REVIEW_SPIKE` = true → Step 7.
    - **Else** → Step 8.
 
 ### 🔒 Gate 6 — Design Review
 
 - [ ] Subagents invoked (`@bkit-design-review-1`, `@bkit-design-review-2`, no inline work)
-- [ ] Mechanical checks passed (`steps finish` exit 0: both verdicts valid, `Spike` in `TRUE|FALSE`, step `design-review` recorded with the worst verdict)
-- [ ] Routed correctly: FAIL → Failure Path; `SPIKE` = TRUE → Step 7; **Else** → Step 8
+- [ ] Mechanical checks passed (`steps finish` exit 0: both verdicts valid, `Spike` in `true|false`, step `design-review` recorded with the worst verdict)
+- [ ] Routed correctly: FAIL → Failure Path; `REVIEW_SPIKE` = true → Step 7; **Else** → Step 8
 
 ---
 
 ## 🧠 Step 7 — Spike
 
-**Run only if** Step 6 `SPIKE` = TRUE.
+**Run only if** Step 6 `REVIEW_SPIKE` = true.
 
 1. **Subagent:** Invoke `@bkit-design-spike` using `Agent` tool:
    Context: You are a subagent in the Design phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations. Write throwaway probe code under `docs/plans/{YYYYMM}/logs/{FID}/spike/` only; never modify tracked source outside that directory.
@@ -428,7 +428,7 @@ description: "Design Feature — Autonomous design phase"
 
 1. **Subagent:** Invoke `@bkit-design-update` using `Agent` tool:
    Context: You are a subagent in the Design phase applying review critiques. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-review-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-review-2.md`; append `docs/plans/{YYYYMM}/logs/{FID}/design-spike.md` **If** Step 6 `SPIKE` = TRUE.
+   Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-review-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-review-2.md`; append `docs/plans/{YYYYMM}/logs/{FID}/design-spike.md` **If** Step 6 `REVIEW_SPIKE` = true.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/design-v2-reviewed.md`.
 2. Finish:
    ```bash

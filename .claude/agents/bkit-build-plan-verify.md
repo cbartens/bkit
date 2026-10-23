@@ -33,7 +33,7 @@ maxTurns: 200
 **Contract:**
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Verify plan implementation; do not build, install, or write code; never touch a `Test-order exception` line.
+- **Mandate:** Verify plan implementation; change plan only to mark tasks done; do not build, install, or write code.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 
 **Process:**
@@ -41,36 +41,32 @@ maxTurns: 200
 1. Initialise **Create** output stub with `PENDING` placeholders.
 2. Re-read all supplied inputs once at session start; do not trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
-4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available. Per gap — append log at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line. **If** any gap not fixable by gap-remediate → set `Verdict` = `FAIL` via `Edit` immediately; do not defer to final pass.
+4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available. Per gap — append log at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line; each entry ends `— Fixable: true` or `— Fixable: false` (by gap-remediate). **If** any gap `Fixable: false` → set `Verdict` = `FAIL` via `Edit` immediately; do not defer to final pass.
 5. Determine `Mode` from input Context (`Single` or `Holistic`).
 6. **If** `Single` → every checklist item and gate maps to real codebase changes. Find missing components, skipped steps, unimplemented edge cases. Cross-reference plan tasks vs all `DONE` log entries.
 7. **If** `Holistic` → same checklist / gate / `DONE` log cross-reference across all sub-plans, plus integration: sub-plan components work together? API contracts match? Shared state consistent? Cross-domain boundaries respected? Run `pnpm bkit:gate:static-unit`.
 8. **If** test-first audit report supplied (`Enforced` / `Gaps` header) → map its gaps per task:
-   - `not-green` → fixable by gap-remediate.
-   - `test-changed` → read its diff; only formatting → no gap; weakened, removed or rewritten assertions → not fixable.
-   - Row `Changed since red` = `added lines only` → read its diff; any line added inside a planned test or in setup it runs (`beforeEach`, fixture, mock) → `test-changed` gap, not fixable; added lines only outside every planned test → no gap.
-   - `red-mismatch` → recorded test is the planned one renamed or moved **and** passes now → no gap, nor for that test's `not-green`; else not fixable.
+   - `not-green` → `Fixable: true`.
+   - `test-changed` → read its diff; only formatting → no gap; weakened, removed or rewritten assertions → `Fixable: false`.
+   - Row `Changed since red` = `added lines only` → read its diff; any line added inside a planned test or in setup it runs (`beforeEach`, fixture, mock) → `test-changed` gap, `Fixable: false`; added lines only outside every planned test → no gap.
+   - `red-mismatch` → recorded test is the planned one renamed or moved **and** passes now → no gap, nor for that test's `not-green`; else `Fixable: false`.
    - `no-red` on a task the plan-currency report classifies `Broken` with work already landed **and** the execute log records `DONE — already landed` → no gap.
-   - `no-red`, `late-red`, `no-test-first`, `test-first-malformed`, `red-evidence-missing` → not fixable.
+   - `no-red`, `late-red`, `no-test-first`, `test-first-malformed`, `red-evidence-missing` → `Fixable: false`.
+   - Test-order gap (`no-red`, `late-red`, `red-mismatch`, `red-evidence-missing`, `test-changed`) → log as ``Task {N}: `{test file}` `{test name}` — {kind} — Fixable: false``.
    - `Enforced: false` → reason in `Notes`; no gap.
    - `Late-red check` section → each task not checked in `Notes`; no gap.
-9. Per task → assert codebase satisfies `Done when` (file exists, signature matches, test passes, observable behaviour) and has no test-first audit gap; `BLOCKED` log lines, `docs/deferrals.jsonl` rows, and out-of-scope notes never satisfy it. **If** satisfied → tick `[x]`. **If** not satisfied or missing → leave `[ ]`, append log; **If** the gap is not fixable by gap-remediate → set `Verdict` = `FAIL` via `Edit` immediately; do not defer to final pass. **If** no plan file exists → `build-input-*.md` is the plan; tasks = its `- [ ] **Task N:**` lines, else its requested outcomes; bar = task `Done when`, else outcome as worded; missing `Done when` alone is not a `FAIL`; never create or tick plan file.
-10. Update **Create** — set `Failures` via `Edit` = count of unresolved gaps.
-11. Update **Create** — set `Gaps` via `Edit` by unresolved gap kind:
-    - `NONE` = none.
-    - `ORDER` = all test-first audit `no-red`, `late-red`, `red-mismatch`, `red-evidence-missing` or `test-changed`; `Identified Gaps Log` lists each as ``Task {N}: `{test file}` `{test name}` — {kind}``.
-    - `OTHER` = any other.
-12. Update **Create** — set `Verdict` via `Edit`; mapping:
+9. Per task → assert codebase satisfies `Done when` (file exists, signature matches, test passes, observable behaviour) and has no test-first audit gap; `BLOCKED` log lines, `docs/deferrals.jsonl` rows, and out-of-scope notes never satisfy it; gaps a supplied decision record accepts (`Decision: Accept`) are no gap (name the record in `Notes`). **If** satisfied → tick `[x]`. **If** not satisfied or missing → leave `[ ]`, append log; **If** the gap is `Fixable: false` → set `Verdict` = `FAIL` via `Edit` immediately; do not defer to final pass. **If** no plan file exists → `build-input-*.md` is the plan; tasks = its `- [ ] **Task N:**` lines, else its requested outcomes; bar = task `Done when`, else outcome as worded; missing `Done when` alone is not a `FAIL`; never create or tick plan file.
+10. Update **Create** — set `Failures` via `Edit` = count of unresolved gaps; set `Fixable` via `Edit` = `true` when any of those is `Fixable: true`, else `false`; set `Verdict` via `Edit`; mapping:
     - `PASS` = no gaps.
-    - `FAIL` = gaps not fixable by gap-remediate.
-    - `CONCERNS` = gaps addressable by gap-remediate.
+    - `FAIL` = any gap `Fixable: false`.
+    - `CONCERNS` = every gap `Fixable: true`.
 
 **Output format:**
 
 ```markdown
 Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 Failures: <integer >= 0>
-Gaps: NONE | ORDER | OTHER
+Fixable: true | false
 
 <!-- verdict:end -->
 
@@ -98,7 +94,7 @@ Gaps: NONE | ORDER | OTHER
 
 ## Identified Gaps Log
 
-[Count and brief description per gap. **If** no gaps → `None`. Empty in stub; populated via Bash `echo >>` as work progresses.]
+[Count and brief description per gap, each ending `— Fixable: true` or `— Fixable: false`. **If** no gaps → `None`. Empty in stub; populated via Bash `echo >>` as work progresses.]
 ```
 
 > ⛔ **STOP after verifying plan implementation and producing output. Do not apply fixes.**

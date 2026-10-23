@@ -60,8 +60,8 @@ maxTurns: 100
 9. PoC approach — <=200 words. **If** can't be described that briefly → `Verdict` = `CONCERNS`.
 10. Unknowns / blockers needing experimentation.
 11. Update **Create** — set `Spike` via `Edit`; mapping:
-    - `TRUE` = any `Unknowns & Blockers` items are settleable only by running code.
-    - `FALSE` = every open item resolves by reading docs or source.
+    - `true` = any `Unknowns & Blockers` items are settleable only by running code.
+    - `false` = every open item resolves by reading docs or source.
 12. Update **Create** — set `Verdict` via `Edit`; mapping:
     - `PASS` = feasible as designed; proceed.
     - `CONCERNS` = feasible with caveats — design proceeds, findings addressable.
@@ -71,7 +71,7 @@ maxTurns: 100
 
 ```markdown
 Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
-Spike: TRUE | FALSE
+Spike: true | false
 
 <!-- verdict:end -->
 

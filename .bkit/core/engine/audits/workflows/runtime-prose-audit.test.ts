@@ -97,13 +97,16 @@ describe("bkit-runtime-prose-audit (presence, NOT behaviour)", () => {
     it("runtimeGithubCli's reader chain includes the runtime-resolved row it is durably read back from", () => {
       // runtimeGithubCli: BOTH halves present — the reader (the gh->MCP fallback rule,
       // close-guard) and the emission call site, which runs before the first
-      // `bkit runtime assert` that reads the row back.
+      // `bkit runtime assert` that reads the row back. Sections above Step 1
+      // (Failure Path, Decision Pause) are entered only after Step 1 has run.
       expect(corpus).toContain("runtime-resolved");
       for (const workflow of ["design", "plan", "build", "debug", "ship"] as const) {
         const content = readWorkflow(`bkit-${workflow}.md`);
+        const step1 = content.indexOf("## 🤖 Step 1 — ");
         const row = content.indexOf(`"{BKIT}" runtime row --workflow=${workflow} `);
-        expect(row, `bkit-${workflow}.md emits the runtime-resolved row`).toBeGreaterThan(-1);
-        expect(row).toBeLessThan(content.indexOf("runtime assert"));
+        expect(step1, `bkit-${workflow}.md has a Step 1 heading`).toBeGreaterThan(-1);
+        expect(row, `bkit-${workflow}.md emits the runtime-resolved row`).toBeGreaterThan(step1);
+        expect(row).toBeLessThan(content.indexOf("runtime assert", step1));
       }
     });
   });

@@ -419,6 +419,13 @@ describe("bkit status meta", () => {
     expect(w.json.row.soakEntryAt).toBe(w.json.row.at);
   });
 
+  it("records decisionAt at the row's own time", async () => {
+    const file = log([started("build", "2026-10-01T00:00:00Z")]);
+    const w = await run(["status", "meta", `--file=${file}`, "--workflow=build", "--decision"]);
+    expect(w.code).toBe(0);
+    expect(w.json.row.decisionAt).toBe(w.json.row.at);
+  });
+
   it.each([
     [["--plan-source=guess"], 2],
     [["--debug-mode=TURBO"], 2],

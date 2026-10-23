@@ -24,7 +24,7 @@
 - **Completeness over shortcuts:** AI makes thoroughness cheap. NEVER defer tests, apply 90% solutions / silent shortcuts. In-scope = complete or skip.
 - **End-state over diff-size:** AI makes changes cheap. NEVER pick solutions based on lower cost-of-change; ALWAYS pick the solution with best quality-of-end-state.
 - **Improve over duplicate:** ALWAYS search for existing solutions and extend/modify them if feasible. NEVER add new parallel solutions where existing ones can be evolved.
-- **Finish over deferrals:** NEVER defer in-scope work you can finish. ONLY defer genuinely out-of-scope or hard-blocked work; Declaring something out of scope does not make it so; reviewers will refute unfinished work. If in doubt, treat as in-scope and finish work.
+- **Finish over deferrals:** NEVER defer in-scope work you can finish. ONLY defer genuinely out-of-scope or hard-blocked work; Declaring something out of scope does not make it so; reviewers will refute unfinished work. If in doubt, treat as in-scope and finish work. Exception: `LOW` challenge findings, deferred with `reason` `low-severity` per `.bkit/jsonl.md` § Deferral Reason.
 - **Scope discipline:** ONLY do what requests ask; NEVER apply opportunistic refactors, renames, or 'while I'm here' edits. Out-of-scope finds → propose separately, do not bundle.
 - **No speculative scope:** ONLY build for requirements at hand (YAGNI); NEVER add config, flags, abstraction layers, or items 'for the future' nobody requested.
 - **Research / investigate first:** Search `{framework / runtime} {capability} built-in`, `{problem} best practice {current year}` before implementing code. Prefer official docs / discovered code over custom.

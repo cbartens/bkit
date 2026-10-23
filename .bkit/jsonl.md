@@ -37,10 +37,10 @@ One file per `kind`; writers:
 | `outcome` | `.bkit/stats.jsonl` | every workflow at its close (one run row per workflow run; keyed by `repo`+`workflow`+`parentSha`) |
 | `counter` | `.bkit/stats.jsonl` | every workflow at its close step (attempt counters) |
 | `friction` | `.bkit/friction.jsonl` | orchestrator workflows (design / plan / build / debug / ship) on observed friction |
-| `deferral` | `docs/deferrals.jsonl` | `@bkit-design-generate`, `@bkit-plan-generate`, `@bkit-plan-update`, `@bkit-build-challenge-remediate` (blocked), `@bkit-debug-abort-handover`, `@bkit-ship-deferred-sweep` (adjudication only), `@bkit-utility-update-deferrals` (close / triage / locator) |
+| `deferral` | `docs/deferrals.jsonl` | `@bkit-design-generate`, `@bkit-plan-generate`, `@bkit-plan-update`, `@bkit-build-challenge-remediate` (blocked; `LOW` → `low-severity`), `@bkit-debug-abort-handover`, `@bkit-ship-deferred-sweep` (adjudication only), `@bkit-utility-update-deferrals` (close / triage / locator) |
 | `failure` | `docs/failures.jsonl` | any agent on a discovered bug; `@bkit-debug-abort-handover`; `@bkit-audit-generate` (`MEDIUM`+ findings; rerun closes rows it no longer finds); `@bkit-utility-update-failures` (close / triage / locator) |
 | `knowledge` | `docs/knowledge.jsonl` | `@bkit-build-challenge-remediate`, `@bkit-build-plan-gaps-remediate`, `@bkit-debug-failure-remediate` (after verified fix), `@bkit-utility-update-knowledge` (supersede / correct) |
-| `decision` | `docs/decisions.jsonl` | `@bkit-debug-failure-remediate` (forced arch), `@bkit-plan-generate`, `@bkit-utility-update-decisions` (supersede / correct) |
+| `decision` | `docs/decisions.jsonl` | `@bkit-debug-failure-remediate` (forced arch), `@bkit-plan-generate`, `@bkit-utility-update-decisions` (supersede / correct), build orchestrator (Decision Pause accept, ONLY after explicit human approval) |
 | `feature` | `.bkit/issues.jsonl` | design / plan / build / debug orchestrators at their phase close; ship Step 6 into the worktree ledger (rides the PR); `ABANDONED` only by a human, or an agent on explicit human instruction |
 
 **Writers are exhaustive:** only agents listed as writers for a given kind are allowed to write that specific kind; no exceptions.
@@ -162,14 +162,15 @@ Kinds with both (`friction` / `deferral` / `failure` / `knowledge` / `decision` 
 | `hard-blocked` | external blocker (credential, upstream fix, feature) blocks it now. | Name blocker in `description`. |
 | `needs-decision` | human decision missing; guessing worse than waiting. | State decision + options. |
 | `own-cycle` | plan-sized — new architecture, not a mechanical fix. | Say what makes it plan-sized. |
+| `low-severity` | `LOW` challenge finding skipped. | Name the finding. |
 | `unjustified` | ADJUDICATOR-only — in-scope work that should have been finished. | Which test it failed. |
 
-- First four → deferral. None fit → unfinished work, do IT (`.agents/rules.md` § "Finish over deferrals").
+- First four, or `low-severity` where it applies → deferral. None fit → unfinished work, do IT (`.agents/rules.md` § "Finish over deferrals").
 - `unjustified` never self-assigned — writer picks first four; reviewer adjudicating another's deferral sets it via same-`key` append.
 - Set once, carried verbatim by every later row — the rate it feeds counts the deferral that should not have been written.
 - No free prose — an unadjudicable reason reads as justification while being none; the enum closes that.
 
-**The four tests.** Reviewer marks `unjustified` when all hold:
+**The four tests.** Reviewer marks `unjustified` when all hold; never applied to a `low-severity` row:
 
 1. `remediation` names specific files + a bounded edit, not a new architecture.
 2. Surface inside files the cycle already touched.

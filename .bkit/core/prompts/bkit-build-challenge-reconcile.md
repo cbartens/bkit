@@ -40,7 +40,7 @@ maxTurns: 200
 1. Initialise **Create** output stub with `PENDING` placeholders; do not `cp` existing inputs.
 2. Re-read all supplied inputs once at session start; do not trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
-4. Deduplicate same `file:line` or same root-cause keyword cluster → merge one finding citing both reviewers; **Else** → keep separate with attribution.
+4. Deduplicate same `file:line` or same root-cause keyword cluster → merge one finding citing both reviewers; **Else** → keep separate with attribution. Drop findings a supplied decision record accepts (`Decision: Accept`).
 5. Merged findings with divergent severities → adopt higher (`CRITICAL > HIGH > MEDIUM > LOW`) by default. Downgrade only with explicit justification citing both reviewers' evidence. **If** any `CRITICAL` → set `Verdict` = `FAIL` via `Edit` immediately; do not defer to final pass.
 6. Add `agreement: {N}/{total}` per finding.
 7. Per finding → all require: `severity` (`CRITICAL|HIGH|MEDIUM|LOW`), `class` (`mechanical|architectural`), `location` (`file:line`), exploit scenario, suggested fix.

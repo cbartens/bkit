@@ -134,6 +134,7 @@ export const DEFERRAL_REASONS = new Set([
     "hard-blocked",
     "needs-decision",
     "own-cycle",
+    "low-severity",
     "unjustified",
 ]);
 /**

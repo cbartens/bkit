@@ -268,19 +268,28 @@ export const FEATURE_STATUSES: Set<string> = new Set([
  * - `needs-decision` — a human decision is missing, and guessing it is worse than
  *   waiting. Confirmation is unavailable inside `/bkit-*` workflows.
  * - `own-cycle` — genuinely plan-sized: a new architecture, not a mechanical fix.
+ * - `low-severity` — a `LOW` challenge finding `@bkit-build-challenge-remediate`
+ *   skips; that writer and that severity only.
  * - `unjustified` — ADJUDICATOR-ONLY (see UNJUSTIFIED_REASON).
  *
- * A writer who cannot pick one of the first four does not have a deferral; it has
- * unfinished work (`.agents/rules.md` § Principles, "Finish over deferrals").
+ * A writer who cannot pick one of the first four, or `low-severity` where it
+ * applies, does not have a deferral; it has unfinished work (`.agents/rules.md`
+ * § Principles, "Finish over deferrals").
  */
 export type DeferralReason =
-  "scope-declared" | "hard-blocked" | "needs-decision" | "own-cycle" | "unjustified";
+  | "scope-declared"
+  | "hard-blocked"
+  | "needs-decision"
+  | "own-cycle"
+  | "low-severity"
+  | "unjustified";
 
 export const DEFERRAL_REASONS: Set<string> = new Set([
   "scope-declared",
   "hard-blocked",
   "needs-decision",
   "own-cycle",
+  "low-severity",
   "unjustified",
 ]);
 

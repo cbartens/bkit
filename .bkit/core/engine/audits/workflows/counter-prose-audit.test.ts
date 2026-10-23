@@ -582,12 +582,14 @@ describe("5. no $(( )) arithmetic on a counter — positions are the command's j
 // ---------------------------------------------------------------------------
 
 const COUNTER_STEP_MAP: Record<string, string[]> = {
+  "build-plan-execute": ["build-plan-execute"],
   "build-plan-verify": ["build-plan-verify"],
   "build-plan-gaps-remediate": ["build-plan-verify"],
   "build-subplan-gate": ["build-plan-verify"],
   "build-challenge": ["build-challenge-remediate"],
   "build-challenge-reconcile": ["build-challenge-remediate"],
   "build-challenge-remediate": ["build-challenge-remediate"],
+  "build-decision": ["build-decision"],
   "build-run-tests": ["build-run-tests"],
   "build-failure-diagnose": ["build-run-tests"],
   "build-failure-remediate": ["build-run-tests"],

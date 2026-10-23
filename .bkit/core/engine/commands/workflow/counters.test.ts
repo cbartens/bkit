@@ -124,6 +124,26 @@ describe("bkit counters derive", () => {
     expect((await derive(file, "soak", "count", "--since=neverSet")).json.value).toBe(2);
   });
 
+  it("--since=decisionAt restarts a route's budget at the newest decision", async () => {
+    const decision = (at: string) => ({
+      type: "workflow-meta",
+      workflow: "build",
+      at,
+      decisionAt: at,
+    });
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      done("build", "verify", "2026-10-01T00:01:00Z", { subPlan: 1 }),
+      decision("2026-10-01T00:02:00Z"),
+      done("build", "verify", "2026-10-01T00:03:00Z", { subPlan: 1 }),
+      decision("2026-10-01T00:04:00Z"),
+      done("build", "verify", "2026-10-01T00:05:00Z", { subPlan: 1 }),
+    ]);
+    const since = ["--sub-plan=1", "--since=decisionAt"];
+    expect((await derive(file, "verify", "count", ...since)).json.value).toBe(1);
+    expect((await derive(file, "verify", "count", "--sub-plan=1")).json.value).toBe(3);
+  });
+
   it("two soakEntryAt markers in the same second fold to one marker", async () => {
     const marker = {
       type: "workflow-meta",

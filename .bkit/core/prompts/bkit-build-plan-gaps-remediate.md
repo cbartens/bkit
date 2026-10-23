@@ -42,7 +42,7 @@ maxTurns: 200
 1. Initialise **Create** output stub with `PENDING` placeholders.
 2. Re-read all supplied inputs once at session start; do not trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
-4. Read plan gaps, boundary gate logs (if supplied; each failure = one gap), and all logs (`DONE` = done, `BLOCKED` = blocked) → find first gap not `DONE` → resume.
+4. Read plan gaps, boundary gate logs (if supplied; each failure = one gap), and all logs (`DONE` = done, `BLOCKED` = blocked) → find first gap not `DONE` → resume. **If** Context `Scope` = `fixable only` → skip gaps logged `— Fixable: false`; no log line.
 5. Update **Create** after each gap — append `DONE|BLOCKED` at EOF via Bash `echo {log entry} >> {output}`.
 6. Determine `Strategy` from input Context; **If** missing → `Verdict` = `FAIL`. Apply:
    - `STANDARD` → Targeted remediation from current gaps.
@@ -52,9 +52,9 @@ maxTurns: 200
 7. Implement in `priority` order — targeted remediation per gap (edit / create source); implement missing tests if suggested → verify acceptance criteria → append log → proceed.
 8. Run `pnpm bkit:gate:static-unit` — all local tests MUST pass. **If** Context names boundary gates → run too; MUST pass.
 9. Once remediations verified (tests pass) → append gotcha rows (if any) to `docs/knowledge.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
-10. Update **Create** — set `Verdict` via `Edit`; mapping:
-    - `PASS` = every gap has `DONE` across logs and local tests pass.
-    - `FAIL` = unable to remediate; any gap ends `BLOCKED` with no later `DONE` or local tests fail.
+10. Update **Create** — set `Fixed` via `Edit` = count of `DONE` lines in **Create**; set `Verdict` via `Edit`; mapping:
+    - `PASS` = every in-scope gap has `DONE` across logs and local tests pass.
+    - `FAIL` = unable to remediate; any in-scope gap ends `BLOCKED` with no later `DONE` or local tests fail.
     - `CONCERNS` = remediation applied, tests pass, but non-blocking flake / warning needs follow-up.
 
 **Output format:**
@@ -62,6 +62,7 @@ maxTurns: 200
 ```markdown
 Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 Strategy: STANDARD | PIVOT | FINAL
+Fixed: <integer >= 0>
 
 <!-- verdict:end -->
 

@@ -131,7 +131,7 @@ Verify only when applicable.
 | --- | --- | --- |
 | `ts` | Not numeric Unix milliseconds: a string, seconds, or missing. Fold order is then undefined | The same row with a fresh `ts` |
 | `status` | Outside `OPEN` / `TRIAGED` / `CLOSED` (`RESOLVED`, `BLOCKED`, `SUPERSEDED`, free text) | `TRIAGED` where the row records analysis, otherwise `OPEN`, old word kept in `description`. `CLOSED` comes only from a verdict |
-| `reason` | Missing, or outside `scope-declared` / `hard-blocked` / `needs-decision` / `own-cycle` / `unjustified` | One of the first four the row's text supports, old text kept in `description`. Never `unjustified` |
+| `reason` | Missing, or outside `scope-declared` / `hard-blocked` / `needs-decision` / `own-cycle` / `low-severity` / `unjustified` | One of the first four the row's text supports, old text kept in `description`. Never `unjustified`; `low-severity` only on a `LOW` row |
 
 Winning row with future `ts` → finding names `key` for owner. No correction row. **Done when:** count of each defect, and each `Expected` row, in `Defects`, or `none`.
 
@@ -155,6 +155,7 @@ Pace reference queries. Re-run empty or surprisingly low results before close ve
 | `hard-blocked` | Is the blocker the row names still there? |
 | `needs-decision` | Was the decision made since? Search `docs/decisions.jsonl` |
 | `own-cycle` | Does a plan or an issue for it exist? |
+| `low-severity` | Still `LOW`? Never `unjustified` by the four tests |
 | `scope-declared` | Does the cited doc section exist, and does it predate the row? |
 
 Blocker lifted = highest-yield finding. Flag on verdict. Apply KEEP trigger rule. **Done when:** every verified row's reason, and every KEEP trigger, has a result on the finding.

@@ -326,9 +326,10 @@ describe("severity — per-kind requirement + closed enum", () => {
 
   // reason — the deferral justification. A bare declaration is written by the agent
   // that wants out of the work; the enum is what makes the claim adjudicable.
-  it("DEFERRAL_REASONS is exactly the four justifications plus the adjudicator verdict", () => {
+  it("DEFERRAL_REASONS is exactly the four justifications, low-severity and the adjudicator verdict", () => {
     expect([...DEFERRAL_REASONS].sort()).toEqual([
       "hard-blocked",
+      "low-severity",
       "needs-decision",
       "own-cycle",
       "scope-declared",
