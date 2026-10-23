@@ -696,7 +696,7 @@ Then assert each Update/Create artifact exists, non-empty. Empty → **Failure P
 | Agent | `Verdict` values | Routing |
 | --- | --- | --- |
 | `@bkit-build-plan-current` | PASS / CONCERNS / FAIL | PASS → Step 5. CONCERNS / FAIL → Step 5 too — advisory only: recorded on the `step-done` row, posted to the tracker with `Affected`, echoed as a console advisory, never blocking. The findings flow into Step 6: `@bkit-build-plan-execute` reads `build-plan-current.md` and treats it as fact about the codebase, the plan as intent. Build never revises the plan file — that belongs to `/bkit-plan`, whose own close re-stamps the anchor. Never invokes `@bkit-plan-update`. |
-| `@bkit-build-plan-verify` | PASS / CONCERNS / FAIL | PASS → boundary gate (between sub-plans; § Sub-plan boundary gate) → next sub-plan or Step 9; CONCERNS / boundary FAIL → `@bkit-build-plan-gaps-remediate` loop (max `MAX_VERIFY_ATTEMPT` = 3 → Failure Path); FAIL (any gap `Fixable: false`) → one fixable-only remediate per decision when `Fixable: true`, then § Decision Pause. |
+| `@bkit-build-plan-verify` | PASS / CONCERNS / FAIL | PASS → boundary gate (between sub-plans; § Sub-plan boundary gate) → next sub-plan or Step 9; CONCERNS / boundary FAIL → `@bkit-build-plan-gaps-remediate` loop (max `MAX_VERIFY_ATTEMPT` → Decision Pause under `bkit.loopPause`, else Failure Path; § Loop pause); FAIL (any gap `Fixable: false`) → one fixable-only remediate per decision when `Fixable: true`, then § Decision Pause. |
 | `@bkit-build-challenge-reconcile` | PASS / CONCERNS / FAIL | PASS → Step 14; CONCERNS and `CHALLENGE_REMEDIATE_ATTEMPT` < 1 → Step 12 → Step 13 → Step 14; CONCERNS and `CHALLENGE_REMEDIATE_ATTEMPT` >= 1 → Step 14; FAIL and `CHALLENGE_REMEDIATE_ATTEMPT` < 1 → Step 12 → Step 13 → re-Step 10; FAIL and `CHALLENGE_REMEDIATE_ATTEMPT` >= 1 → Failure Path. Findings carry `class: mechanical | architectural`; `@bkit-build-challenge-remediate` defers every `LOW` finding, logs architectural ones `BLOCKED` and fixes mechanical ones; `CRITICAL|HIGH` left `BLOCKED` → Decision Pause. One re-Challenge bite — bounded by `CHALLENGE_REMEDIATE_ATTEMPT` < 1. |
 | `@bkit-design-review-1` / `-2` | PASS / CONCERNS / FAIL | `REVIEW_VERDICT` = worst-of-two. PASS/CONCERNS → Step 7 spike (`REVIEW_SPIKE` = true) else Step 8 apply-review; FAIL → Failure Path (design fundamentally not viable, human reframe required). `@bkit-design-review-1` additionally emits `Spike` (`true` / `false`) in its header — a routing flag, not a verdict; `REVIEW_SPIKE` gates Step 7 only and never contributes to `REVIEW_VERDICT`. |
 | `@bkit-design-spike` | PASS / CONCERNS / FAIL | Every value → Step 8 apply-review; the step informs, it does not gate. PASS = every claim held under an honest attempt; CONCERNS = nothing disproven but a claim was unsettleable this run (missing credential / service / host), design proceeds with the assumption unproven and `@bkit-design-summary` reports it under `Feasibility`; FAIL = a claim is disproven and `@bkit-design-update` revises the design against the evidence — not a Failure Path, a disproven assumption is the step succeeding. Only a malformed or empty artifact routes to the Failure Path. Per-claim `SETTLED` / `DISPROVEN` / `BLOCKED` stays in the artifact body — the header verdict is the routing signal, not the finding. |
@@ -710,13 +710,13 @@ Then assert each Update/Create artifact exists, non-empty. Empty → **Failure P
 <!-- prettier-ignore -->
 | Constant | Value | Where |
 | --- | --- | --- |
-| `MAX_VERIFY_ATTEMPT` | 3 | `/bkit-build` per-sub-plan verify→remediate-gaps loop |
-| `MAX_TEST_ATTEMPT` | 3 | `/bkit-build` test→diagnose→remediate loop |
+| `MAX_VERIFY_ATTEMPT` | 3 (1 under `bkit.loopPause`) | `/bkit-build` per-sub-plan verify→remediate-gaps loop |
+| `MAX_TEST_ATTEMPT` | 3 (1 under `bkit.loopPause`) | `/bkit-build` test→diagnose→remediate loop |
 | `MAX_CHALLENGE_REMEDIATE_ATTEMPT` | 1 | `/bkit-build` challenge→remediate passes (one re-Challenge bite) |
 | `MAX_DEBUG_ATTEMPT` | 3 | `/bkit-debug` invocation index (read from status.jsonl `workflow == "debug"` entry); `DEBUG_ATTEMPT` >= `MAX_DEBUG_ATTEMPT` starts a fresh run in `SOAK` |
 | `MAX_NORMAL_ATTEMPT` | 3 | `/bkit-debug` NORMAL diagnose→remediate loop |
 | `MAX_SOAK_ATTEMPT` | 3 | `/bkit-debug` SOAK loop (reset to 0 on each SOAK entry) |
-| `MAX_MERGE_ATTEMPT` | 3 | `/bkit-ship` PR merge retries |
+| `MAX_MERGE_ATTEMPT` | 3 (1 under `bkit.loopPause`) | `/bkit-ship` PR merge retries |
 | `MAX_REVALIDATE_ATTEMPT` | 3 | `/bkit-ship` poll-only Step 9 re-entries after a gate refusal (10/11/14/17) |
 | `MAX_DEV_DISPATCH_ATTEMPTS` | 3 | `bkit-cloud.yml` — distinct failed `dev` CI SHAs per FID that may each dispatch `/bkit-debug` |
 | Grill rounds | 10 | `/bkit-design` Step 3 interview cap, draft scenario round included (decision rounds <= 9); literal in the step, not in `THRESHOLDS` |
@@ -727,7 +727,7 @@ Then assert each Update/Create artifact exists, non-empty. Empty → **Failure P
 | Ship presence probe | 6 x 10s | Step 9 run-at-head probe before any dispatch (`SHIP_PROBE_ATTEMPTS` x `SHIP_PROBE_INTERVAL_S`) |
 | Newest-bkit lookup | 5s / 86400s / 3600s | Registry query limit / answer reuse / failure reuse for the outdated-bkit check (`BKIT_LATEST_LOOKUP_TIMEOUT_S` / `BKIT_LATEST_CACHE_S` / `BKIT_LATEST_RETRY_S`) |
 
-`MAX_*` live in `THRESHOLDS` (`commands/workflow/counters.ts`; `bkit counters max`) and are referenced by name in retry checks (`bkit counters route --limit=`) — never a literal `3`. Waits live in `TIMEOUTS` (`.bkit/core/engine/shared/timeouts.ts`).
+`MAX_*` live in `THRESHOLDS` (`commands/workflow/counters.ts`; `bkit counters max`), the loop-pause caps in `LOOP_PAUSE_THRESHOLDS` (§ Loop pause), and are referenced by name in retry checks (`bkit counters route --limit=`) — never a literal `3`. Waits live in `TIMEOUTS` (`.bkit/core/engine/shared/timeouts.ts`).
 
 ### Failure Path
 
@@ -917,13 +917,43 @@ Each subsection documents command behaviour — steps, subagents, artifacts, ver
 
 #### Decision Pause
 
-One mechanism for everything only a human can settle: verify gaps logged `Fixable: false` (test-order gaps included), a no-progress Step 8 attempt, and `CRITICAL|HIGH` challenge findings left `BLOCKED`. Replaces the Failure Path on those routes.
+One mechanism for everything only a human can settle: verify gaps logged `Fixable: false` (test-order gaps included), a no-progress Step 8 attempt, `CRITICAL|HIGH` challenge findings left `BLOCKED`, and — under `bkit.loopPause` — a verify or test fix loop that ran out (§ Loop pause). Replaces the Failure Path on those routes.
 
-- **Who asks:** the orchestrator, in session, one `Q{n}` question with a `Recommended:` line per item (same format as `/bkit-design` grill). NEVER a subagent — subagents cannot reach the human. Record = `build-decision-{RUN}-{K}.md` (`Status: OPEN` → `DECIDED`; header carries `From`, `Pause step`, `Sub-plan`, `Verify attempt`, `Plan`).
+- **Who asks:** the orchestrator, in session, one `Q{n}` question with a `Recommended:` line per item (same format as `/bkit-design` grill). NEVER a subagent — subagents cannot reach the human. Record = `build-decision-{RUN}-{K}.md` (`Status: OPEN` → `DECIDED`; header carries `Question` (`VERIFY_GAPS|VERIFY_LOOP|CHALLENGE|TESTS_LOOP`), `From` (`verify` / `challenge` / `tests`), `Pause step`, `Sub-plan`, `Verify attempt` or `Test attempt`, `Plan`).
 - **Accept:** written ONLY after explicit human approval of that item; agents NEVER write one on own judgement. Test-order gap → `**Test-order exception:**` lines in the plan, committed alone (`git commit -- {plan}`) so `tests green` honours them; other → `docs/decisions.jsonl` row (`by.step` `build-decision`, `rationale` `accepted by owner: …`). Verify and `@bkit-build-challenge-reconcile` read `build-decision-*.md` and drop accepted items. Boundary-gate failures offer no Accept.
 - **Fix now:** new `- [ ] **Task N:**` with `Done when` + `Test first` appended to the plan in place (`build-input-{RUN}.md` with no plan) → Step 6 for those tasks only → Step 7 → onward; a challenge-originated fix reaches the challenge reviewers again through Steps 9-10. Not offered for test-order gaps.
-- **Then:** `status meta --decision` (fresh attempt budgets) → `steps finish --step=build-decision --comment-body` (decision posted to the tracker) → Step 6, re-run Step 7, or Step 13.
+- **Try again** (loop pause only): one more fix round on the same problems; the items wait undecided. `From: verify` → re-run Step 7, `From: tests` → re-run Step 14; the fresh budget allows exactly one fix round before the next pause. That re-run checks the unchanged code once more before the fix round (one extra verify agent or test run), so the next progress report covers that round alone.
+- **Then:** `status meta --decision` (fresh attempt budgets) → `steps finish --step=build-decision --comment-body` (decision posted to the tracker) → Step 6, re-run Step 7, re-run Step 14, or Step 13.
+- **Fixer reads the answer:** Step 8 (`@bkit-build-plan-gaps-remediate`) and Step 15 (`@bkit-debug-failure-diagnose`) read the newest `build-decision-{RUN}-*.md`, so the owner's words reach the next round. The `STANDARD → PIVOT → FINAL` ladder reads every run and is not reset by a decision: each further round moves up a rung, `FINAL` stays `FINAL`.
 - **Headless** (`runtimeHeadless` true) or human says stop: decision file → `build-handover.md` → `workflows handover --push` (comment posted) → lock released → STOP with the run still `IN_PROGRESS`; no `workflows fail`, no `bkit:failed`. Next `/bkit-build` resumes at the open decision file and asks.
+
+#### Loop pause
+
+`package.json` `bkit.loopPause` (boolean, default `true`; any non-boolean → `true`). On: each covered fix loop runs ONE automatic round, then asks the owner before every further round. Off: the `MAX_*` caps (3) apply, then the Failure Path. Install and upgrade write `true` when the key is missing; a value already set is never touched.
+
+<!-- prettier-ignore -->
+| Loop | Cap lowered to 1 | Ran out, `loopPause` on | Ran out, `loopPause` off |
+| --- | --- | --- | --- |
+| `/bkit-build` Step 7 verify → Step 8 fix gaps (CONCERNS / boundary FAIL) | `MAX_VERIFY_ATTEMPT` | Decision Pause, `Question: VERIFY_LOOP` | Failure Path |
+| `/bkit-build` Step 14 tests → Steps 15-16 diagnose + fix | `MAX_TEST_ATTEMPT` | Decision Pause, `Question: TESTS_LOOP` | Failure Path |
+| `/bkit-ship` merge → diagnose + fix | `MAX_MERGE_ATTEMPT` | Failure Path; rerunning `/bkit-ship` is the next round | Failure Path |
+
+Not covered: `MAX_CHALLENGE_REMEDIATE_ATTEMPT` (already 1), `/bkit-debug` caps (`MAX_DEBUG_ATTEMPT`, `MAX_NORMAL_ATTEMPT`, `MAX_SOAK_ATTEMPT` count modes and soak entries, not plain rounds), `MAX_REVALIDATE_ATTEMPT` (waits on unfinished CI), `MAX_DEV_DISPATCH_ATTEMPTS` (caps automatic debug runs).
+
+- **Mechanism:** `bkit counters route --limit=<cap>` reads `bkit.loopPause` from the checkout's `package.json`. A covered cap with the setting on resolves to `LOOP_PAUSE_THRESHOLDS` (1) and routes an exceeded value to `--exceeded-paused` (falls back to `--exceeded`); output carries `paused`. Routes carry both targets, so workflow text is the same either way. The Step 14 route counts since `decisionAt`, like Step 7.
+- **Progress report:** `bkit counters progress --check=<step> --fix=<step> --since=decisionAt` → `## Progress` block at the top of the decision file. Counted from `status.jsonl` and git, never judged by an agent:
+
+  <!-- prettier-ignore -->
+  | Field | Source |
+  | --- | --- |
+  | `counts` (`5 → 2`) | `failures` on each check row since the last decision |
+  | `codeChanged` | `git diff` of source (plan logs and ledgers excluded) between the first and last check rows' `parentSha`; `null` when git cannot compare |
+  | `lastStrategy` / `nextStrategy` / `finalSpent` | fix rows' `strategy`; next rung from every run |
+  | `minutesPerRound` | check-row timestamps |
+  | `trend` | `worse` = count rose; `closing` = count fell and code changed (or unknown); `stuck` = otherwise; `first-round` = one check row |
+  | `recommend` | `try-again` when `closing`, else `stop`; `null` on `first-round` |
+
+- **Question:** `Q1`, worded so "yes" accepts `recommend`: `Another fix round?` (`Try again`) on `try-again`, else `Decide the items below instead of another fix round?` (`Decide`); options `Try again|Decide`; items numbered from `Q2`. Every route into the pause sets `PAUSE_QUESTION` — `VERIFY_GAPS` for unfixable gaps or a fix round that changed nothing, `VERIFY_LOOP|TESTS_LOOP` for an exhausted loop, `CHALLENGE` for blocked findings; it picks the header, the items and the loop question, and resume reads it back from the `Question:` header. Unattended runs hand the same file over (§ Decision Pause, Headless) and wait for the owner.
 
 ### `/bkit-debug` — 11 steps
 
@@ -1362,7 +1392,7 @@ and holds its `bkit` key as `{BKIT}` (plus `repoRoot` as `{REPO_ROOT}`, `outboxR
 | `runs` | `wait`, `dispatch`, `gate`, `revalidate`, `context`, `mirror`, `declared` | CI polls, CI-Dispatch Gate (`--file` / `--step` record its row, `--label` the re-trigger suffix), ship merge gate (`--pr` / `--squash-of` heads, `--snapshot`, `--record`), ship Step 9 re-validate, auto Step 1 context, release-PR mirror, CI-workflow presence |
 | `tests` | `run`, `red`, `green` | deepest-declared `bkit:gate:*` run + saved log + verdict; build test-first: a task's red via `bkit:test:file` (row + test snapshot), a sub-plan's audit report (§ Test-first) |
 | `status` | `path`, `fold`, `route`, `meta`, `row` | status location, fold, routing state (`route --expect=field=value`), `workflow-meta` rows, typed audit rows the fold skips |
-| `counters` | `derive`, `rows`, `run`, `route`, `max` | attempt counters (step rows or typed audit rows), run number, `MAX_*` routing (`route --of=<step>:<pos>` derives the value; `--of=<step>,<step>:count` sums several steps) |
+| `counters` | `derive`, `rows`, `run`, `route`, `max`, `progress` | attempt counters (step rows or typed audit rows), run number, `MAX_*` routing (`route --of=<step>:<pos>` derives the value; `--of=<step>,<step>:count` sums several steps; `--exceeded-paused` under `bkit.loopPause`), fix-loop progress report (`progress`, § Loop pause) |
 | `steps` | `done`, `finish`, `verdict`, `gate`, `stub` | `step-done` row + commit; the one-call step ending (§ Step endings); verdict header read; mechanical gate items (placeholders, FID, lock, artifacts, the row's `attempt` / `strategy` / `scope`; `--ref` reads `status.jsonl` as committed on a ref); seeding a versioned artifact with a PENDING header |
 | `ledgers` | `commit`, `union`, `only-bookkeeping`, `append`, `check` | path-scoped bookkeeping staging, ledger union, carry-forward check, validated row append, plan close: every `**Ledger rows:**` `key` on disk (exit 11) |
 | `context` | `clamp`, `clamp-log`, `ledger-scan`, `list-blocks`, `run-block`, `finalise` | artifact clamping, plan ledger scan, debug `context-fetch`, `bkit-cloud-bootstrap.sh` provision recipes (`list-blocks` → `provision`) |
@@ -1546,11 +1576,11 @@ Verify→remediate and diagnose→fix loops carry context via **per-attempt log 
 <!-- prettier-ignore -->
 | Verifier / checker | Remediator | Max attempts | Escalation |
 | --- | --- | --- | --- |
-| `@bkit-build-plan-verify` | `@bkit-build-plan-gaps-remediate` | `MAX_VERIFY_ATTEMPT` = 3 since the last decision; unfixable gaps or no progress → Decision Pause | Failure Path |
+| `@bkit-build-plan-verify` | `@bkit-build-plan-gaps-remediate` | `MAX_VERIFY_ATTEMPT` (3; 1 under `bkit.loopPause`) since the last decision; unfixable gaps or no progress → Decision Pause | Decision Pause under `bkit.loopPause`, else Failure Path |
 | `@bkit-build-challenge-1` + `@bkit-build-challenge-2` (parallel pair) → `@bkit-build-challenge-reconcile` | `@bkit-build-challenge-remediate` | `CHALLENGE_REMEDIATE_ATTEMPT` < 1 (`MAX_CHALLENGE_REMEDIATE_ATTEMPT` = 1: 0 rows on entry, 1 after Step 12; one remediation max; FAIL triggers re-Challenge for verification, CONCERNS falls through without re-Challenge) | Failure Path on FAIL after remediate (local tests fail); `CRITICAL|HIGH` findings left `BLOCKED` → Decision Pause |
-| Build test loop (`bkit tests run`, deepest declared gate) | `@bkit-debug-failure-diagnose` → `@bkit-debug-failure-remediate` | `MAX_TEST_ATTEMPT` = 3 | Failure Path |
+| Build test loop (`bkit tests run`, deepest declared gate) | `@bkit-debug-failure-diagnose` → `@bkit-debug-failure-remediate` | `MAX_TEST_ATTEMPT` (3; 1 under `bkit.loopPause`) since the last decision | Decision Pause under `bkit.loopPause`, else Failure Path |
 | Debug test loop | `@bkit-debug-failure-diagnose` → `@bkit-debug-failure-remediate` (NORMAL); `@bkit-debug-failure-soak` (SOAK) | `MAX_NORMAL_ATTEMPT` = 3 (NORMAL loop); `SOAK_ATTEMPT` bounded by `MAX_SOAK_ATTEMPT` = 3 (reset on each SOAK entry) | Failure Path with `@bkit-debug-abort-handover` |
-| Ship merge loop | `@bkit-debug-failure-diagnose` → `@bkit-debug-failure-remediate` | `MAX_MERGE_ATTEMPT` = 3 | Failure Path with `@bkit-debug-abort-handover` |
+| Ship merge loop | `@bkit-debug-failure-diagnose` → `@bkit-debug-failure-remediate` | `MAX_MERGE_ATTEMPT` (3; 1 under `bkit.loopPause`) | Failure Path with `@bkit-debug-abort-handover` |
 
 **Filename convention:** `docs/plans/{YYYYMM}/logs/{FID}/{phase}-{step}-N-{ATTEMPT}.md` (e.g. `build-verify-plan-1-2.md` = sub-plan 1, verify attempt 2). Verifiers must read prior verify+remediate logs before PASS/FAIL. Remediators must glob own prior logs; no repeat strategies.
 

@@ -50,6 +50,7 @@ maxTurns: 200
    - `PIVOT` → Identify prior attempt failure and why. Different angle — do not repeat.
    - `FINAL` → Run `pnpm bkit:deps:outdated`. Re-diagnose: Right problem? Plan flawed? Upstream root cause? Explicit comparison to prior attempts required.
    - All strategies: NEVER record a red by undoing or swapping out code (restoring old source, stubbing over landed code). Test-order gap (`no-red`, `late-red`, `red-mismatch`, `red-evidence-missing`, `test-changed`) → `BLOCKED`; never touch a `Test-order exception` line.
+   - **If** a decision record is supplied → follow the owner's words on its `Decision:` lines in this round; they override the strategy's default angle.
 7. Implement in `priority` order — targeted remediation per gap (edit / create source); implement missing tests if suggested → verify acceptance criteria → append log → proceed.
 8. Run `pnpm bkit:gate:static-unit` — all local tests MUST pass. **If** Context names boundary gates → run too; MUST pass.
 9. Once remediations verified (tests pass) → append gotcha rows (if any) to `docs/knowledge.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.

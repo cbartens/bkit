@@ -416,7 +416,47 @@ export function seedCorePackageJsonScripts(
   if (migrateGithubProjectKey(dryRun, ws, logPrefix) && !written.includes("package.json")) {
     written.push("package.json");
   }
+  if (seedBkitDefaults(dryRun, ws, logPrefix) && !written.includes("package.json")) {
+    written.push("package.json");
+  }
   return written;
+}
+
+/** `bkit.*` settings written on every install and upgrade so consumers see them; add-if-missing. */
+export const SEEDED_BKIT_DEFAULTS: Readonly<Record<string, unknown>> = {
+  loopPause: CONFIG_DEFAULTS.loopPause,
+  // bkit-utility-update-roadmap list length; the prompt falls back to 25 too.
+  roadmapNext: 25,
+};
+
+// Add each SEEDED_BKIT_DEFAULTS key missing from `package.json` `bkit`, creating the
+// block when absent. A key already present keeps its value, whatever it is. Returns
+// true when package.json changed.
+export function seedBkitDefaults(dryRun: boolean, ws: WriteSet, logPrefix: string): boolean {
+  const pkgPath = "package.json";
+  if (!fs.existsSync(pkgPath)) return false;
+  const raw = fs.readFileSync(pkgPath, "utf-8");
+  const parsed = parseJson(raw);
+  if (!parsed.ok) return false;
+  const pkg = parsed.value as Record<string, unknown>;
+  if (
+    pkg.bkit !== undefined &&
+    (pkg.bkit === null || typeof pkg.bkit !== "object" || Array.isArray(pkg.bkit))
+  )
+    return false;
+  const cfg = (pkg.bkit ?? {}) as Record<string, unknown>;
+  const added = Object.keys(SEEDED_BKIT_DEFAULTS).filter(
+    (k) => !Object.prototype.hasOwnProperty.call(cfg, k),
+  );
+  if (added.length === 0) return false;
+  for (const k of added) cfg[k] = SEEDED_BKIT_DEFAULTS[k];
+  pkg.bkit = cfg;
+  ws.writes.push({ path: pkgPath, action: "update" });
+  if (!dryRun) writePackageJsonLike(raw, pkg);
+  console.log(
+    `${logPrefix} ${dryRun ? "[dry-run] " : ""}core: set ${added.map((k) => `bkit.${k} = ${JSON.stringify(SEEDED_BKIT_DEFAULTS[k])}`).join(", ")} in package.json`,
+  );
+  return true;
 }
 
 /** Rewrite package.json with `pkg`, keeping the file's indent and trailing newline. */

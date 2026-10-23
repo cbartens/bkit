@@ -243,6 +243,15 @@ describe("readBkitConfig", () => {
       expect(book(bad)).toEqual(CONFIG_DEFAULTS.minPushPaths);
     expect(CONFIG_DEFAULTS.minPushPaths.some((p) => /^docs\/\*\*/.test(p))).toBe(false);
   });
+
+  it("reads loopPause as a boolean, else true", () => {
+    const pause = (v: unknown) =>
+      readBkitConfig(root(JSON.stringify({ bkit: { loopPause: v } }))).loopPause;
+    expect(pause(false)).toBe(false);
+    expect(pause(true)).toBe(true);
+    for (const bad of ["yes", "false", 1, 0, null]) expect(pause(bad)).toBe(true);
+    expect(readBkitConfig(root(JSON.stringify({ bkit: {} }))).loopPause).toBe(true);
+  });
 });
 
 describe("package manager", () => {

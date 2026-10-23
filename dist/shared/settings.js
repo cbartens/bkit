@@ -32,6 +32,7 @@ export const CONFIG_DEFAULTS = {
     opencodeProvider: null,
     opencodeProviders: [],
     cloudAgents: DEFAULT_CLOUD_AGENTS,
+    loopPause: true,
     depUpdaterOptOut: false,
     issueTrackerExplicit: false,
     cloudAgentsExplicit: false,
@@ -101,6 +102,7 @@ export function readBkitConfig(root) {
             ? providers.filter((v) => typeof v === "string" && isOpencodeProvider(v))
             : [],
         cloudAgents: parseCloudAgents(bkit.cloudAgents) ?? CONFIG_DEFAULTS.cloudAgents,
+        loopPause: typeof bkit.loopPause === "boolean" ? bkit.loopPause : CONFIG_DEFAULTS.loopPause,
         depUpdaterOptOut: bkit.depUpdater === "none",
         issueTrackerExplicit: bkit.issueTracker !== undefined,
         cloudAgentsExplicit: bkit.cloudAgents !== undefined,

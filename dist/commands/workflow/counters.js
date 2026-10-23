@@ -8,8 +8,10 @@
 //            be 0 there, so 0 is refused (it means the row was dropped).
 //   count    routing on a DIFFERENT step, prior or not yet run: the bare count, and
 //            0 is a legal answer (that step simply has not run).
-import { activeDoneSteps, runNumber } from "../../ledgers/status.js";
-import { CommandError, EXIT } from "../lib.js";
+import * as path from "node:path";
+import { activeDoneSteps, lastDoneStepAllRuns, nextStrategy, runNumber, } from "../../ledgers/status.js";
+import { readBkitConfig } from "../../shared/settings.js";
+import { CommandError, EXIT, git, runGit, } from "../lib.js";
 import { EXIT_NO_STATUS, FILE_FLAG, STEP_FLAG, SUB_PLAN_FLAG, WORKFLOW_FLAG, positiveInt, readRuns, readStatusRows, statusFile, str, } from "./status.js";
 /** Every MAX_* threshold the workflows route on. */
 export const THRESHOLDS = {
@@ -29,6 +31,22 @@ export const THRESHOLDS = {
     /** distinct failed dev CI SHAs per FID that may each dispatch a debug run */
     MAX_DEV_DISPATCH_ATTEMPTS: 3,
 };
+/**
+ * Fix-loop caps `bkit.loopPause` (default on) lowers to one round. Running out then
+ * routes to `--exceeded-paused`, where the owner decides whether another round runs.
+ */
+export const LOOP_PAUSE_THRESHOLDS = {
+    MAX_VERIFY_ATTEMPT: 1,
+    MAX_TEST_ATTEMPT: 1,
+    MAX_MERGE_ATTEMPT: 1,
+};
+/** Paths a fix round's code change is judged on: everything but plan logs and ledgers. */
+const SOURCE_PATHS = [
+    ".",
+    ":(exclude)docs/plans",
+    ":(exclude)docs/*.jsonl",
+    ":(exclude).bkit/*.jsonl",
+];
 /** Exit code: `--position=current` found no row — the step's own row is missing. */
 export const EXIT_NO_OWN_ROW = 4;
 const nonNegativeInt = (v, flag) => {
@@ -59,6 +77,33 @@ function derivedOf(ctx) {
     if (position === "current" && count === 0)
         throw new CommandError(EXIT_NO_OWN_ROW, `${steps[0]}: no DONE row in the active run — the step's own row is missing`);
     return position === "next" ? count + 1 : count;
+}
+/** Whether `bkit.loopPause` is on for the checkout `cwd` sits in. */
+function loopPauseOn(cwd) {
+    return readBkitConfig(git(cwd, ["rev-parse", "--show-toplevel"]) ?? cwd).loopPause;
+}
+/** The checkout a status.jsonl under `docs/plans/` belongs to; `cwd` when it is elsewhere. */
+function checkoutOf(file, cwd) {
+    const abs = path.resolve(cwd, file);
+    const at = abs.lastIndexOf(`${path.sep}docs${path.sep}plans${path.sep}`);
+    return at < 0 ? cwd : abs.slice(0, at);
+}
+/**
+ * The loop's direction from its check rounds: `worse` when the problem count rose,
+ * `closing` when it fell and the rounds changed code, `stuck` otherwise.
+ */
+export function loopTrend(rounds, codeChanged) {
+    if (rounds.length < 2)
+        return "first-round";
+    const first = rounds[0]?.failures;
+    const last = rounds.at(-1)?.failures;
+    if (first === undefined || last === undefined)
+        return "stuck";
+    if (last > first)
+        return "worse";
+    if (last < first && codeChanged !== false)
+        return "closing";
+    return "stuck";
 }
 function threshold(name) {
     const value = THRESHOLDS[name];
@@ -145,12 +190,18 @@ export const countersCommand = {
                 { name: "limit", type: "string", help: "max as a threshold name, e.g. MAX_VERIFY_ATTEMPT" },
                 { name: "continue", type: "string", help: "step to go to when value <= max" },
                 { name: "exceeded", type: "string", help: "step to go to when value > max" },
+                {
+                    name: "exceeded-paused",
+                    type: "string",
+                    help: "step to go to when value > max and bkit.loopPause lowered --limit to one round",
+                },
             ],
             output: {
                 value: "the counter compared",
                 exceeded: "true when value > max",
-                next: "--continue or --exceeded step, whichever applies (null when not given)",
+                next: "--continue, --exceeded or --exceeded-paused step, whichever applies (null when not given)",
                 max: "the max compared against",
+                paused: "true when bkit.loopPause lowered --limit to one round",
             },
             exitCodes: {
                 [EXIT_NO_STATUS]: "--of: status.jsonl missing, unreadable, or not valid NDJSON",
@@ -164,17 +215,25 @@ export const countersCommand = {
                 if ((ctx.flags.max === undefined) === (ctx.flags.limit === undefined)) {
                     throw new CommandError(EXIT.USAGE, "give exactly one of --max or --limit");
                 }
-                const max = ctx.flags.limit !== undefined
-                    ? threshold(String(ctx.flags.limit))
-                    : nonNegativeInt(ctx.flags.max, "max");
+                const limit = str(ctx.flags.limit);
+                const paused = limit !== undefined && limit in LOOP_PAUSE_THRESHOLDS && loopPauseOn(ctx.cwd);
+                const max = limit === undefined
+                    ? nonNegativeInt(ctx.flags.max, "max")
+                    : paused
+                        ? (LOOP_PAUSE_THRESHOLDS[limit] ?? threshold(limit))
+                        : threshold(limit);
                 const exceeded = value > max;
                 if (exceeded)
                     ctx.log(`counter ${name} exceeded max=${max} (value=${value})`);
+                const exceededTo = paused
+                    ? (str(ctx.flags.exceededPaused) ?? str(ctx.flags.exceeded))
+                    : str(ctx.flags.exceeded);
                 ctx.emit({
                     value,
                     exceeded,
-                    next: str(exceeded ? ctx.flags.exceeded : ctx.flags.continue) ?? null,
+                    next: (exceeded ? exceededTo : str(ctx.flags.continue)) ?? null,
                     max,
+                    paused,
                 });
                 return exceeded ? EXIT.NO : EXIT.OK;
             },
@@ -187,10 +246,103 @@ export const countersCommand = {
             output: {
                 value: "the named threshold (with --name)",
                 thresholds: "every threshold (without --name)",
+                loopPauseThresholds: "the caps bkit.loopPause lowers to one round (without --name)",
             },
             run: (ctx) => {
                 const name = str(ctx.flags.name);
-                ctx.emit(name === undefined ? { thresholds: THRESHOLDS } : { value: threshold(name) });
+                ctx.emit(name === undefined
+                    ? { thresholds: THRESHOLDS, loopPauseThresholds: LOOP_PAUSE_THRESHOLDS }
+                    : { value: threshold(name) });
+                return EXIT.OK;
+            },
+        },
+        progress: {
+            summary: "Progress report for a fix loop since a run field's timestamp: counts per round, code change, strategy, trend.",
+            flags: [
+                FILE_FLAG,
+                WORKFLOW_FLAG,
+                {
+                    name: "check",
+                    type: "string",
+                    required: true,
+                    help: "the step that counts problems, e.g. build-plan-verify",
+                },
+                {
+                    name: "fix",
+                    type: "string",
+                    required: true,
+                    help: "the step that fixes them, e.g. build-plan-gaps-remediate",
+                },
+                SUB_PLAN_FLAG,
+                {
+                    name: "since",
+                    type: "string",
+                    help: "run field holding a timestamp; only rows after it count (decisionAt)",
+                },
+            ],
+            output: {
+                rounds: "the check rounds counted: attempt, failures, at",
+                counts: "problem count after each round, e.g. 5 → 2",
+                codeChanged: "source changed between the first and last check round (null when git cannot tell)",
+                lastStrategy: "strategy of the last fix round (null when none ran)",
+                nextStrategy: "strategy the next fix round would use",
+                finalSpent: "true when a fix round already ran FINAL",
+                minutesPerRound: "average minutes between check rounds (null under two rounds)",
+                trend: "first-round | closing | stuck | worse",
+                recommend: "try-again when closing, else stop (null on the first round)",
+            },
+            exitCodes: { [EXIT_NO_STATUS]: "status.jsonl missing, unreadable, or not valid NDJSON" },
+            run: (ctx) => {
+                const file = statusFile(ctx);
+                const runs = readRuns(file);
+                const workflow = String(ctx.flags.workflow);
+                const subPlan = positiveInt(ctx.flags.subPlan, "sub-plan");
+                const since = str(ctx.flags.since);
+                const check = String(ctx.flags.check);
+                const fix = String(ctx.flags.fix);
+                const rounds = activeDoneSteps(runs, workflow, { step: check, subPlan }, since);
+                const fixes = activeDoneSteps(runs, workflow, { step: fix, subPlan }, since);
+                const first = rounds[0];
+                const last = rounds.at(-1);
+                let codeChanged = null;
+                if (first && last && first !== last && first.parentSha && last.parentSha) {
+                    const diff = runGit(checkoutOf(file, ctx.cwd), [
+                        "diff",
+                        "--quiet",
+                        first.parentSha,
+                        last.parentSha,
+                        "--",
+                        ...SOURCE_PATHS,
+                    ]);
+                    // --quiet: exit 0 = no change, 1 = changed; anything else (unknown sha) leaves null.
+                    if (diff.ok)
+                        codeChanged = false;
+                    else if (diff.stderr === "")
+                        codeChanged = true;
+                }
+                const lastStrategy = fixes.at(-1)?.strategy ?? null;
+                const ladder = lastDoneStepAllRuns(runs, workflow, { step: fix, subPlan })?.strategy;
+                const trend = loopTrend(rounds, codeChanged);
+                const span = first && last && rounds.length > 1
+                    ? (Date.parse(last.at) - Date.parse(first.at)) / 60000 / (rounds.length - 1)
+                    : null;
+                ctx.emit({
+                    rounds: rounds.map((r) => ({
+                        attempt: r.attempt ?? null,
+                        failures: r.failures ?? null,
+                        at: r.at,
+                    })),
+                    counts: rounds
+                        .map((r) => (r.failures === undefined ? "?" : String(r.failures)))
+                        .join(" → "),
+                    codeChanged,
+                    lastStrategy,
+                    nextStrategy: nextStrategy(ladder),
+                    finalSpent: fixes.some((r) => r.strategy === "FINAL") || ladder === "FINAL",
+                    minutesPerRound: span === null || Number.isNaN(span) ? null : Math.round(span),
+                    trend,
+                    recommend: trend === "first-round" ? null : trend === "closing" ? "try-again" : "stop",
+                });
                 return EXIT.OK;
             },
         },

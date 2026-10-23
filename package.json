@@ -137,6 +137,7 @@
     ],
     "capstoneJob": "bkit-tests-check",
     "ciWorkflow": "bkit-ci.yml",
-    "roadmapNext": 25
+    "roadmapNext": 25,
+    "loopPause": true
   }
 }

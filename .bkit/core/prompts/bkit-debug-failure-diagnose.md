@@ -48,6 +48,7 @@ maxTurns: 200
    - `STANDARD` → Targeted diagnosis.
    - `PIVOT` → Identify prior attempt failures and why. Explicitly answer: Re-application of prior commit SHA / debug log? **If** yes → what new evidence makes it work this time? Different angle — do not repeat verbatim.
    - `FINAL` → Re-diagnose: Right problem? Plan flawed? Upstream root cause? Explicit comparison to prior attempts required.
+   - **If** a decision record is supplied → follow the owner's words on its `Decision:` lines in this diagnosis; they override the strategy's default angle.
 6. Read historical gotchas: fold `docs/knowledge.jsonl` ledger by `key`, highest `ts` wins → search only winning rows where `status` is `ACTIVE` or absent; never search any other rows → search by symptoms / error-classes / workflow-steps. **If** matches found → add to `Prior Knowledge`.
 7. Read scar-tissue: search reverted commits with candidate files. **If** matches capture what was tried and why reverted → add to `Prior Knowledge`.
 8. Investigate inputs: CI logs, diff vs last-passing CI, local / E2E test results, runtime logs, related issues. **If** live tests failed on functional assertion → anchor diagnosis on that real-boundary ground truth; do not theorise past it. **If** live tests could not reach boundaries (auth / credential / connection / missing env) → environment problem, NEVER features broken. only re-run narrower filters via Bash if hypothesis needs probing. Absent evidence is not proof; cap confidence on unchecked classes.

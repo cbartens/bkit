@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -6,18 +7,20 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { runCommand } from "../lib";
 import { COMMANDS } from "../registry";
-import { THRESHOLDS } from "./counters";
+import type { Step } from "../../ledgers/status";
+import { LOOP_PAUSE_THRESHOLDS, THRESHOLDS, loopTrend } from "./counters";
 
 const dirs: string[] = [];
 afterEach(() => {
   for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
 });
 
-async function run(argv: string[]) {
+async function run(argv: string[], cwd?: string) {
   const out: string[] = [];
   const err: string[] = [];
   const code = await runCommand(argv, COMMANDS, {
     classicVerbs: new Set(),
+    cwd,
     io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
   });
   return {
@@ -40,6 +43,14 @@ const done = (workflow: string, step: string, at: string, extra: Record<string, 
   artifacts: [],
   ...extra,
 });
+
+/** A checkout root holding `package.json` with this `bkit` block. */
+function pkgDir(bkit: Record<string, unknown>) {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-counters-pkg-"));
+  dirs.push(d);
+  fs.writeFileSync(path.join(d, "package.json"), JSON.stringify({ name: "x", bkit }));
+  return d;
+}
 
 function log(rows: object[]) {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-counters-"));
@@ -304,6 +315,7 @@ describe("bkit counters route", () => {
       exceeded: false,
       next: "step-8",
       max: 3,
+      paused: false,
     });
     expect((await route("1", "3")).code).toBe(0);
   });
@@ -311,17 +323,35 @@ describe("bkit counters route", () => {
   it("exits 1 one over the cap, naming the counter on stderr", async () => {
     const r = await route("4", "3");
     expect(r.code).toBe(1);
-    expect(r.json).toEqual({ value: 4, exceeded: true, next: "failure-path", max: 3 });
+    expect(r.json).toEqual({
+      value: 4,
+      exceeded: true,
+      next: "failure-path",
+      max: 3,
+      paused: false,
+    });
     expect(r.err).toContain("counter VERIFY_ATTEMPT exceeded max=3 (value=4)");
   });
 
   it("a max of 0 lets value 0 through and stops value 1", async () => {
     const first = await route("0", "0");
     expect(first.code).toBe(0);
-    expect(first.json).toEqual({ value: 0, exceeded: false, next: "step-8", max: 0 });
+    expect(first.json).toEqual({
+      value: 0,
+      exceeded: false,
+      next: "step-8",
+      max: 0,
+      paused: false,
+    });
     const over = await route("1", "0");
     expect(over.code).toBe(1);
-    expect(over.json).toEqual({ value: 1, exceeded: true, next: "failure-path", max: 0 });
+    expect(over.json).toEqual({
+      value: 1,
+      exceeded: true,
+      next: "failure-path",
+      max: 0,
+      paused: false,
+    });
     expect(over.err).toContain("counter VERIFY_ATTEMPT exceeded max=0 (value=1)");
   });
 
@@ -343,15 +373,12 @@ describe("bkit counters route", () => {
   });
 
   it("takes the max from a threshold name with --limit", async () => {
-    const r = await run([
-      "counters",
-      "route",
-      "--name=x",
-      "--value=4",
-      "--limit=MAX_VERIFY_ATTEMPT",
-    ]);
+    const r = await run(
+      ["counters", "route", "--name=x", "--value=4", "--limit=MAX_VERIFY_ATTEMPT"],
+      pkgDir({ loopPause: false }),
+    );
     expect(r.code).toBe(1);
-    expect(r.json).toEqual({ value: 4, exceeded: true, next: null, max: 3 });
+    expect(r.json).toEqual({ value: 4, exceeded: true, next: null, max: 3, paused: false });
   });
 
   it("needs exactly one of --max and --limit", async () => {
@@ -403,6 +430,7 @@ describe("bkit counters route --of", () => {
       exceeded: false,
       next: "step-15",
       max: 2,
+      paused: false,
     });
     const next = await route(file, "build-run-tests:next", "2");
     expect(next.code).toBe(1);
@@ -455,12 +483,243 @@ describe("bkit counters route --of", () => {
   });
 });
 
+describe("bkit counters route under bkit.loopPause", () => {
+  const route = (value: string, limit: string, cwd: string) =>
+    run(
+      [
+        "counters",
+        "route",
+        "--name=VERIFY_ATTEMPT",
+        `--value=${value}`,
+        `--limit=${limit}`,
+        "--continue=step-8",
+        "--exceeded=failure-path",
+        "--exceeded-paused=decision-pause",
+      ],
+      cwd,
+    );
+
+  it("loopPause on caps covered limits at 1 and takes --exceeded-paused", async () => {
+    for (const cwd of [pkgDir({ loopPause: true }), pkgDir({})]) {
+      for (const limit of Object.keys(LOOP_PAUSE_THRESHOLDS)) {
+        expect((await route("1", limit, cwd)).json).toEqual({
+          value: 1,
+          exceeded: false,
+          next: "step-8",
+          max: 1,
+          paused: true,
+        });
+        const over = await route("2", limit, cwd);
+        expect(over.code).toBe(1);
+        expect(over.json).toEqual({
+          value: 2,
+          exceeded: true,
+          next: "decision-pause",
+          max: 1,
+          paused: true,
+        });
+      }
+    }
+  });
+
+  it("loopPause off keeps today's limits and --exceeded", async () => {
+    const cwd = pkgDir({ loopPause: false });
+    expect((await route("3", "MAX_VERIFY_ATTEMPT", cwd)).json).toMatchObject({
+      exceeded: false,
+      max: 3,
+      paused: false,
+    });
+    expect((await route("4", "MAX_TEST_ATTEMPT", cwd)).json).toMatchObject({
+      exceeded: true,
+      next: "failure-path",
+      paused: false,
+    });
+  });
+
+  it("falls back to --exceeded when no --exceeded-paused is given", async () => {
+    const r = await run(
+      [
+        "counters",
+        "route",
+        "--name=x",
+        "--value=2",
+        "--limit=MAX_MERGE_ATTEMPT",
+        "--exceeded=failure-path",
+      ],
+      pkgDir({}),
+    );
+    expect(r.json).toMatchObject({ next: "failure-path", max: 1, paused: true });
+  });
+
+  it("uncovered limits and --max ignore loopPause", async () => {
+    const cwd = pkgDir({});
+    for (const limit of ["MAX_REVALIDATE_ATTEMPT", "MAX_NORMAL_ATTEMPT", "MAX_SOAK_ATTEMPT"])
+      expect((await route("3", limit, cwd)).json).toMatchObject({ max: 3, paused: false });
+    const r = await run(
+      ["counters", "route", "--name=x", "--value=2", "--max=3", "--exceeded-paused=decision-pause"],
+      cwd,
+    );
+    expect(r.json).toMatchObject({ exceeded: false, max: 3, paused: false });
+  });
+});
+
+describe("bkit counters progress", () => {
+  const verify = (at: string, failures: number, sha: string, extra: Record<string, unknown> = {}) =>
+    done("build", "build-plan-verify", at, { failures, parentSha: sha, subPlan: 1, ...extra });
+  const fix = (at: string, strategy: string) =>
+    done("build", "build-plan-gaps-remediate", at, { strategy, subPlan: 1 });
+  const progress = (file: string, ...extra: string[]) =>
+    run([
+      "counters",
+      "progress",
+      `--file=${file}`,
+      "--workflow=build",
+      "--check=build-plan-verify",
+      "--fix=build-plan-gaps-remediate",
+      "--sub-plan=1",
+      ...extra,
+    ]);
+
+  it("reports a falling count as closing and recommends another round", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      verify("2026-10-01T00:10:00Z", 5, "a"),
+      fix("2026-10-01T00:20:00Z", "STANDARD"),
+      verify("2026-10-01T00:30:00Z", 2, "b"),
+    ]);
+    const r = await progress(file);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      counts: "5 → 2",
+      lastStrategy: "STANDARD",
+      nextStrategy: "PIVOT",
+      finalSpent: false,
+      minutesPerRound: 20,
+      trend: "closing",
+      recommend: "try-again",
+    });
+    expect(r.json.rounds).toHaveLength(2);
+  });
+
+  it("reports the same count as stuck and a rising count as worse", async () => {
+    const same = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      verify("2026-10-01T00:10:00Z", 21, "a"),
+      fix("2026-10-01T00:20:00Z", "PIVOT"),
+      verify("2026-10-01T00:30:00Z", 21, "b"),
+    ]);
+    expect((await progress(same)).json).toMatchObject({ trend: "stuck", recommend: "stop" });
+    const rose = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      verify("2026-10-01T00:10:00Z", 2, "a"),
+      fix("2026-10-01T00:20:00Z", "FINAL"),
+      verify("2026-10-01T00:30:00Z", 4, "b"),
+    ]);
+    expect((await progress(rose)).json).toMatchObject({
+      trend: "worse",
+      recommend: "stop",
+      nextStrategy: "FINAL",
+      finalSpent: true,
+    });
+  });
+
+  it("counts only rounds after --since, and calls a lone round first-round", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      verify("2026-10-01T00:10:00Z", 5, "a"),
+      fix("2026-10-01T00:20:00Z", "STANDARD"),
+      verify("2026-10-01T00:30:00Z", 3, "b"),
+      {
+        type: "workflow-meta",
+        workflow: "build",
+        at: "2026-10-01T00:40:00Z",
+        decisionAt: "2026-10-01T00:40:00Z",
+      },
+      verify("2026-10-01T00:50:00Z", 3, "c"),
+    ]);
+    const r = await progress(file, "--since=decisionAt");
+    expect(r.json).toMatchObject({
+      counts: "3",
+      lastStrategy: null,
+      nextStrategy: "PIVOT",
+      minutesPerRound: null,
+      trend: "first-round",
+      recommend: null,
+    });
+  });
+
+  it("leaves codeChanged null when git cannot compare the rounds", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      verify("2026-10-01T00:10:00Z", 5, "nope1"),
+      verify("2026-10-01T00:30:00Z", 2, "nope2"),
+    ]);
+    expect((await progress(file)).json).toMatchObject({ codeChanged: null, trend: "closing" });
+  });
+
+  it("judges codeChanged on source only, from the rounds' parent commits", async () => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-counters-git-"));
+    dirs.push(repo);
+    const sh = (...a: string[]) =>
+      spawnSync("git", a, {
+        cwd: repo,
+        encoding: "utf-8",
+      }).stdout.trim();
+    sh("init", "-q");
+    sh("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "a");
+    const a = sh("rev-parse", "HEAD");
+    const logs = path.join(repo, "docs", "plans", "202610", "logs", "1-x");
+    fs.mkdirSync(logs, { recursive: true });
+    fs.writeFileSync(path.join(logs, "note.md"), "log only\n");
+    sh("add", "-A");
+    sh("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "logs");
+    const b = sh("rev-parse", "HEAD");
+    fs.writeFileSync(path.join(repo, "src.ts"), "x\n");
+    sh("add", "-A");
+    sh("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "src");
+    const c = sh("rev-parse", "HEAD");
+    const file = path.join(logs, "status.jsonl");
+    const write = (second: string) =>
+      fs.writeFileSync(
+        file,
+        [
+          started("build", "2026-10-01T00:00:00Z"),
+          verify("2026-10-01T00:10:00Z", 5, a),
+          verify("2026-10-01T00:30:00Z", 2, second),
+        ]
+          .map((x) => JSON.stringify(x))
+          .join("\n") + "\n",
+      );
+    write(b);
+    expect((await progress(file)).json).toMatchObject({ codeChanged: false, trend: "stuck" });
+    write(c);
+    expect((await progress(file)).json).toMatchObject({ codeChanged: true, trend: "closing" });
+  });
+
+  it("exits 3 on a missing file", async () => {
+    expect((await progress("/nonexistent/status.jsonl")).code).toBe(3);
+  });
+});
+
+describe("loopTrend", () => {
+  const r = (failures?: number) => ({ failures }) as Step;
+  it("a fall without a code change is stuck, not closing", () => {
+    expect(loopTrend([r(5), r(2)], false)).toBe("stuck");
+    expect(loopTrend([r(5), r(2)], true)).toBe("closing");
+    expect(loopTrend([r(5), r()], true)).toBe("stuck");
+    expect(loopTrend([r(5)], true)).toBe("first-round");
+  });
+});
+
 describe("bkit counters max", () => {
   it("returns one threshold or all of them", async () => {
     expect((await run(["counters", "max", "--name=MAX_DEV_DISPATCH_ATTEMPTS"])).json).toEqual({
       value: 3,
     });
-    expect((await run(["counters", "max"])).json).toEqual({ thresholds: THRESHOLDS });
+    expect((await run(["counters", "max"])).json).toEqual({
+      thresholds: THRESHOLDS,
+      loopPauseThresholds: LOOP_PAUSE_THRESHOLDS,
+    });
   });
 
   it("every threshold is a non-negative integer, and every attempt cap is at least 1", () => {

@@ -95,6 +95,8 @@ export interface BkitConfig {
   opencodeProviders: OpencodeProvider[];
   /** The post-CI cloud-agent variant; `none` is both the default and the explicit opt-out. */
   cloudAgents: CloudAgents;
+  /** Fix loops run one round, then ask the owner before each further round; false = the `MAX_*` caps. */
+  loopPause: boolean;
   /** `bkit.depUpdater` is `"none"`: silences the missing-dependency-updater advisory. */
   depUpdaterOptOut: boolean;
   /** `bkit.issueTracker` is present with any value, so `none` is a choice, not an undecided install. */
@@ -122,6 +124,7 @@ export const CONFIG_DEFAULTS: Readonly<BkitConfig> = {
   opencodeProvider: null,
   opencodeProviders: [],
   cloudAgents: DEFAULT_CLOUD_AGENTS,
+  loopPause: true,
   depUpdaterOptOut: false,
   issueTrackerExplicit: false,
   cloudAgentsExplicit: false,
@@ -204,6 +207,7 @@ export function readBkitConfig(root: string): BkitConfig {
         )
       : [],
     cloudAgents: parseCloudAgents(bkit.cloudAgents) ?? CONFIG_DEFAULTS.cloudAgents,
+    loopPause: typeof bkit.loopPause === "boolean" ? bkit.loopPause : CONFIG_DEFAULTS.loopPause,
     depUpdaterOptOut: bkit.depUpdater === "none",
     issueTrackerExplicit: bkit.issueTracker !== undefined,
     cloudAgentsExplicit: bkit.cloudAgents !== undefined,

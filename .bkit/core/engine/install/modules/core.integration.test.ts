@@ -17,6 +17,8 @@ import {
   runBkitDocs,
   migrateLinearTeamKey,
   migrateGithubProjectKey,
+  seedBkitDefaults,
+  SEEDED_BKIT_DEFAULTS,
 } from "./core";
 import { dispatchModules, listStampedFiles, type ModuleContext } from "./index";
 import { readInstallingVersion } from "../../shared/package-json";
@@ -641,6 +643,64 @@ describe("migrateLinearTeamKey (via seedCorePackageJsonScripts)", () => {
     seed({ linearTeam: "ENG" });
     dispatchModules(new Set(["core"]), makeCtx({}));
     expect(bkitKey().linear).toEqual({ team: "ENG" });
+    expect(touched(run())).toBe(false);
+  });
+});
+
+describe("seedBkitDefaults (via seedCorePackageJsonScripts)", () => {
+  const seed = (pkg: Record<string, unknown>): void =>
+    fs.writeFileSync(
+      "package.json",
+      JSON.stringify({ name: "x", ...pkg }, null, 4) + "\n",
+      "utf-8",
+    );
+  const read = (): string => fs.readFileSync("package.json", "utf-8");
+  const run = (dryRun = false): ModuleContext => {
+    const ctx = makeCtx({ dryRun });
+    seedBkitDefaults(ctx.dryRun, ctx.ws, ctx.logPrefix);
+    return ctx;
+  };
+  const touched = (ctx: ModuleContext): boolean =>
+    ctx.ws.writes.some((w) => w.path === "package.json");
+
+  it("writes bkit.loopPause = true and bkit.roadmapNext = 25 when missing, creating the bkit block, keeping the indent", () => {
+    seed({});
+    expect(touched(run())).toBe(true);
+    expect(JSON.parse(read()).bkit).toEqual(SEEDED_BKIT_DEFAULTS);
+    expect(SEEDED_BKIT_DEFAULTS).toEqual({ loopPause: true, roadmapNext: 25 });
+    expect(read()).toMatch(/\n {4}"bkit"/);
+    seed({ bkit: { issueTracker: "github" } });
+    run();
+    expect(JSON.parse(read()).bkit).toEqual({ issueTracker: "github", ...SEEDED_BKIT_DEFAULTS });
+  });
+
+  it("never touches a value already set, even a non-boolean one", () => {
+    for (const value of [false, true, "yes"]) {
+      seed({ bkit: { loopPause: value, roadmapNext: 10 } });
+      const before = read();
+      expect(touched(run())).toBe(false);
+      expect(read()).toBe(before);
+    }
+  });
+
+  it("leaves a non-object bkit value alone", () => {
+    seed({ bkit: "x" });
+    const before = read();
+    expect(touched(run())).toBe(false);
+    expect(read()).toBe(before);
+  });
+
+  it("under dry-run records the same write and leaves the file, so `bkit check` reports it", () => {
+    seed({});
+    const before = read();
+    expect(touched(run(true))).toBe(true);
+    expect(read()).toBe(before);
+  });
+
+  it("is idempotent, and runs on every install through the core module", () => {
+    seed({});
+    dispatchModules(new Set(["core"]), makeCtx({}));
+    expect(JSON.parse(read()).bkit.loopPause).toBe(true);
     expect(touched(run())).toBe(false);
   });
 });
