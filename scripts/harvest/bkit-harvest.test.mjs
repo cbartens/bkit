@@ -1,11 +1,10 @@
 #!/usr/bin/env node
-// Example. Copy into scripts/stats/ and own it. bkit install does not write this file
-// and does not overwrite a copy.
+// bkit's own checkout only; never shipped.
 /**
- * bkit-chat-stats.test.mjs — tests for bkit-chat-stats.mjs against made-up chats of every host
+ * bkit-harvest.test.mjs — tests for bkit-harvest.mjs against made-up chats of every host
  * under a temp home folder, with a temp git repo as the repo the chats ran in.
  *
- * Pure Node, no runner: `node scripts/stats/bkit-chat-stats.test.mjs`. The opencode, Cursor and
+ * Pure Node, no runner: `node scripts/harvest/bkit-harvest.test.mjs`. The opencode, Cursor and
  * Antigravity tests need Node 22.5+ (`node:sqlite`) and are skipped on an older Node.
  * Exit: 0 = all tests passed, 1 = at least one test failed.
  */
@@ -35,15 +34,16 @@ import {
   mergeSpans,
   modelFamily,
   normalize,
-  otherLedgerRows,
   overlapMs,
   planShape,
   planTasks,
   readLedger,
   renderReport,
+  renderRunCheck,
   repoFp,
   resolveRepo,
   runLines,
+  runCheck,
   runLogDirs,
   runRows,
   scan,
@@ -55,9 +55,9 @@ import {
   validateTotals,
   versionAt,
   writableRows,
-} from "./bkit-chat-stats.mjs";
+} from "./bkit-harvest.mjs";
 
-const SCRIPT = new URL("./bkit-chat-stats.mjs", import.meta.url);
+const SCRIPT = new URL("./bkit-harvest.mjs", import.meta.url);
 
 let sqlite = null;
 try {
@@ -628,7 +628,7 @@ function makeAntigravity(home, cwd) {
   return dir;
 }
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-chat-stats-"));
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-harvest-"));
 const home = path.join(tmp, "home");
 const repoDir = path.join(tmp, "widget");
 makeRepo(repoDir);
@@ -662,7 +662,7 @@ const rowOf = (key) =>
     .filter((r) => r.key === key)
     .at(-1);
 
-console.log("bkit-chat-stats");
+console.log("bkit-harvest");
 
 await test("slugFromRemote reads ssh and https remotes", () => {
   assert.equal(slugFromRemote("git@github.com:acme/widget.git"), "acme/widget");
@@ -959,7 +959,7 @@ await test("the report resolves names, links the chat to its outcome row exactly
     [repoFp("acme/widget"), "widget"],
     [issueFp("acme/widget", 650), "widget#650"],
   ]);
-  const md = renderReport(rows, names, [], T0 + DAY);
+  const md = renderReport(rows, names, T0 + DAY);
   assert.equal(chatClass(rowOf(`claude-code:${sid}`)), "workflow");
   assert.match(md, /\| widget \| widget#650 \| workflow \| plan \| 5\.5\.1 \|/);
   assert.match(md, /1 outcome/);
@@ -1392,7 +1392,6 @@ await test("the report shows token types, agents, features, the verify loop, pla
   const md = renderReport(
     readLedger(statsFile),
     names,
-    [],
     T0 + DAY,
     new Map([[fingerprint(`acme/widget:${FID}`), logDir]]),
   );
@@ -1699,7 +1698,6 @@ await test("the report lists open runs, marked, and leaves them out of the media
       run(T0 + DAY, 7, false),
     ],
     new Map([[fingerprint(`acme/widget:${FID}`), FID]]),
-    [],
     T0 + 2 * DAY,
   );
   assert.match(md, /\| build \| 2 \| 1 \| 1 \| 0 \| 0 \| 0 \| 1 \| 100 \| 100 \|/);
@@ -2212,35 +2210,6 @@ await test("normalize leaves null by fields out and always gives an outcome its 
   assert.deepEqual(n.ledgers, { deferrals: {}, failures: {}, friction: {} });
 });
 
-await test("otherLedgerRows counts a row once when a worktree still holds it in the old shape", () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-stats-other-"));
-  spawnSync("git", ["init", "-q", root]);
-  spawnSync("git", ["-C", root, "remote", "add", "origin", "git@github.com:acme/dup.git"]);
-  const old = {
-    ts: 9,
-    kind: "counter",
-    workflow: "plan",
-    step: "plan-close-workflow",
-    repo: "acme/dup",
-    bkitVersion: "5.5.0",
-    parentSha: SHA,
-    counterName: "PLAN_ATTEMPT",
-    counterValue: 1,
-    counterSource: "shell-bus",
-  };
-  const fresh = { ...old, ts: 10, counterValue: 2 };
-  const own = path.join(root, "own.jsonl");
-  fs.writeFileSync(own, `${JSON.stringify(normalize(old))}\n`);
-  const wt = path.join(root, ".worktrees", "651-x", ".bkit");
-  fs.mkdirSync(wt, { recursive: true });
-  fs.writeFileSync(
-    path.join(wt, "stats.jsonl"),
-    `${JSON.stringify(old)}\n${JSON.stringify(fresh)}\n`,
-  );
-  resolveRepo(root);
-  assert.deepEqual(otherLedgerRows(own), [normalize(fresh)]);
-});
-
 await test("normalize maps schema-1 outcome, counter and compliance rows", () => {
   assert.deepEqual(
     normalize({
@@ -2417,7 +2386,6 @@ await test("the report renders a ledger that mixes schema-1 and schema-2 rows of
       [repoFp("acme/widget"), "widget"],
       [issueFp("acme/widget", 650), "widget#650"],
     ]),
-    [],
     T0 + DAY,
   );
   assert.match(md, /Generated .* from 2 chats/);
@@ -2465,8 +2433,7 @@ await test("outcome readers keep only the newest row per repo, workflow and pare
   };
   const first = { ...base, ts: ms(352) };
   const otherWorkflow = { ...base, ts: ms(352), by: { workflow: "debug", step: "close" } };
-  const sameRepoAt = { ...first, repo: "@acme/widget", ts: ms(353) };
-  assert.deepEqual(latestOutcomes([redispatched, first, sameRepoAt, otherWorkflow]), [
+  assert.deepEqual(latestOutcomes([redispatched, first, otherWorkflow]), [
     redispatched,
     otherWorkflow,
   ]);
@@ -2490,11 +2457,50 @@ await test("outcome readers keep only the newest row per repo, workflow and pare
   const md = renderReport(
     [chat, redispatched, first],
     new Map([[repoFp("acme/widget"), "widget"]]),
-    [],
     ms(500) + DAY,
   );
   assert.match(md, /\| 1 outcome \| 1 outcome \|/, "the re-appended row is not counted twice");
   assert.match(md, /40 lines, 52 min \|/, "the newest row's numbers");
+});
+
+await test("the run check pairs outcome rows with run rows on parentSha, per repo", () => {
+  const sha = (c) => c.repeat(40);
+  const top = { schema: 2, bkit: { version: "5.0.0" } };
+  const outcome = (repo, s, ts) => ({
+    ...top,
+    ts,
+    kind: "outcome",
+    repo,
+    by: { workflow: "build", step: "build-close-workflow" },
+    run: { parentSha: s },
+  });
+  const run = (repo, s, settled = true) => ({
+    ...top,
+    ts: 1,
+    kind: "run",
+    key: `${repo}:${s}`,
+    repo,
+    by: { workflow: "build", step: "scan" },
+    run: { parentSha: s },
+    time: { start: 1 },
+    scan: { settled },
+  });
+  const fp = repoFp("acme/widget");
+  const rows = [
+    outcome("acme/widget", sha("a"), 10),
+    outcome("acme/widget", sha("a"), 11), // the re-appended close: one outcome
+    run(fp, sha("a")),
+    outcome("acme/widget", sha("b"), 12), // no run row
+    run(fp, sha("c")), // no outcome row
+    run(fp, sha("d"), false), // open: left out
+  ];
+  const c = runCheck(rows).get(fp);
+  assert.equal(c.both, 1);
+  assert.deepEqual(c.outcomeOnly.map((o) => o.run.parentSha), [sha("b")]);
+  assert.deepEqual(c.runOnly.map((r) => r.run.parentSha), [sha("c")]);
+  const md = renderRunCheck(runCheck(rows), new Map([[fp, "widget"]]));
+  assert.match(md, /\| widget \| 1 \| 1 \| 1 \|/);
+  assert.match(md, /\| widget \| run only \| build \| .* \| cccccccc \|/);
 });
 
 /** The Cursor transcript has no folder, so its issue is fingerprinted under the "none" repo. */

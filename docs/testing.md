@@ -717,9 +717,9 @@ Harvest boundary tests: real `os.tmpdir()`, `fs.stat`/`fs.readFileSync` ground t
 6. `fileUnchanged(before, after)` — content + size byte-identical.
 7. `harvest/stats.jsonl` gained expected rows.
 
-**Per-file invariant.** `stats.jsonl` copy-only → step 6 MUST pass. `friction.jsonl` MOVE → prune after store; `fileUnchanged` false by design.
+**Per-file invariant.** `stats.jsonl` with no `chat` / `run` rows → step 6 MUST pass; with them, only those rows go and every other line stays byte-identical. `friction.jsonl` MOVE → prune after store; `fileUnchanged` false by design.
 
-Pruning makes store sole copy until commit — property-test destructive half: store accumulates, malformed never pruned, absent rows left. See `.bkit/core/engine/commands/harvest.integration.test.ts`.
+Pruning makes store sole copy until commit — property-test destructive half: store accumulates, malformed never pruned, absent rows left. See `scripts/harvest/ledgers.integration.test.ts`.
 
 Any read-only filesystem invariant: step 6 = `fileUnchanged` (not mtime). `afterEach(() => fs.rmSync(tmpDir, { recursive: true }))`.
 

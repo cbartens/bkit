@@ -1,19 +1,19 @@
-// commands/harvest.test.ts — Unit tests for harvest dedup + tolerant-tail.
+// scripts/harvest/ledgers.test.ts — Unit tests for harvest dedup + tolerant-tail.
 //
 // WS4-T2 Derived Test Matrix row:
 //   "Harvest dedupes by per-`kind` composite `(ts, repo, …)` across repeat runs;
 //    tolerant `parse` skips half-written tail"
 //
 // consumerPathToSlug (real git remote resolution) is covered in
-// commands/harvest.integration.test.ts (real `git init` subprocess).
+// scripts/harvest/ledgers.integration.test.ts (real `git init` subprocess).
 
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { CONSUMERS_FILE, HARVEST_COPY_FILES, HARVEST_DEST_DIR, runHarvest } from "./harvest";
-import type { TelemetryEvent } from "../ledgers/telemetry";
+import { CONSUMERS_FILE, HARVEST_COPY_FILES, HARVEST_DEST_DIR, runHarvest } from "./ledgers";
+import type { TelemetryEvent } from "../../.bkit/core/engine/ledgers/telemetry";
 
 // ---------------------------------------------------------------------------
 // Fixtures

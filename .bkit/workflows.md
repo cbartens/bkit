@@ -770,7 +770,7 @@ Every command has `## 🤖 Failure Path` before Step 1. Any step / tool / gate f
 
 **Why Tier 2 when Tier 1 covers the ledgers:** Tier 1 fires only where the attribute applies — not when the consumer's `.gitattributes` predates a ledger, when there is none, or for `.bkit/friction.jsonl` (ships unlisted). Those conflicts reach the workflow. Tier 2 runs `git merge-file --union` over index stages `:1:` / `:2:` / `:3:` — same driver as `merge=union` — so its output is byte-identical to an attribute-pre-empted path.
 
-**Why Tier 2 covers `.bkit/friction.jsonl` when Tier 1 excludes it:** the exclusion guards `bkit harvest` drains — union can resurrect a drained row. At rebase time that is the cheaper error: next harvest re-banks it idempotently; a blocking conflict halts the run. Deliberate divergence from the attribute.
+**Why Tier 2 covers `.bkit/friction.jsonl` when Tier 1 excludes it:** the exclusion guards harvest drains — union can resurrect a drained row. At rebase time that is the cheaper error: next harvest re-banks it idempotently; a blocking conflict halts the run. Deliberate divergence from the attribute.
 
 **Why Tier 2 is a command, not inline bash:** inline = four copies of ~150 lines across four workflows. Not a subagent: mechanical, deterministic git plumbing, no judgement.
 
@@ -1577,7 +1577,7 @@ bkit emits JSONL telemetry to six append-only ledgers. Row format (top section, 
 <!-- prettier-ignore -->
 | File | Kind(s) | Scope |
 | --- | --- | --- |
-| `.bkit/stats.jsonl` | `compliance`, `outcome`, `counter`, `chat`, `run` | Per-run/per-workflow stats, compliance grades, counters; `chat` / `run`: opt-in chat-stats script (`.bkit/templates.md` § Chat stats) |
+| `.bkit/stats.jsonl` | `compliance`, `outcome`, `counter` | Per-run/per-workflow stats, compliance grades, counters; `bkit stats` reports them into `.bkit/stats.md` |
 | `.bkit/friction.jsonl` | `friction` | Friction entries from workflow runs |
 | `docs/deferrals.jsonl` | `deferral` | Deferred work items and scope-expansions |
 | `docs/failures.jsonl` | `failure` | Discovered bugs and failures |

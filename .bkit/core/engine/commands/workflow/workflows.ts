@@ -372,7 +372,7 @@ const SHARED_LEDGERS = [
 ];
 
 /**
- * Kinds no workflow run writes: `scripts/stats/bkit-chat-stats.mjs` appends them, and a
+ * Kinds no workflow run writes: bkit's harvest script writes them to `harvest/`, and a
  * `run` row names any feature's workflow (`.bkit/jsonl.md` § Ledgers & Writers).
  */
 const NOT_A_RUNS_OWN_KIND = new Set(["chat", "run"]);

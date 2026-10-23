@@ -4,7 +4,11 @@ import { unitTimeouts } from "./vitest.timeout-budget.ts";
 
 export default defineConfig({
   test: {
-    include: [".bkit/core/engine/**/*.test.ts", ".bkit/core/engine/**/*.integration.test.ts"],
+    include: [
+      ".bkit/core/engine/**/*.test.ts",
+      ".bkit/core/engine/**/*.integration.test.ts",
+      "scripts/harvest/**/*.test.ts",
+    ],
     // Strip inherited GIT_* env vars in every worker so temp-repo git ops can
     // never hit the real repo when the suite runs from a git hook (see
     // vitest.setup.ts for the 2026-07-13 branch-hijack incident).

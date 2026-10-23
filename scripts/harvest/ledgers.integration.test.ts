@@ -1,4 +1,4 @@
-// commands/harvest.integration.test.ts — boundary: filesystem/consumer repo.
+// scripts/harvest/ledgers.integration.test.ts — boundary: filesystem/consumer repo.
 //
 // Tests the split contract: harvest COPIES consumer .bkit/stats.jsonl (never
 // modified) and MOVES .bkit/friction.jsonl, pruning ONLY rows durably present in the
@@ -21,8 +21,9 @@ import {
   harvestConsumer,
   pruneConsumerFile,
   runHarvest,
-} from "./harvest";
-import { normalize } from "../ledgers/telemetry";
+  stampRepo,
+} from "./ledgers";
+import { normalize, type TelemetryEvent } from "../../.bkit/core/engine/ledgers/telemetry";
 
 interface FileSnapshot {
   content: string;
@@ -494,6 +495,108 @@ describe("Harvest boundary: stats copy-only, friction moved (WS4-T1, #343)", () 
 
     expect(fs.readFileSync(path.join(consumerPath, ".bkit", "friction.jsonl"), "utf-8")).toBe("");
     expect(fs.readFileSync(store, "utf-8").trim().split("\n")).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// bkit's own checkout, chat / run drain, one repo slug per repo
+// ---------------------------------------------------------------------------
+
+function chatRow(ts: number, key: string): string {
+  return JSON.stringify({
+    schema: 2,
+    ts,
+    kind: "chat",
+    key,
+    repo: "fp:0123456789ab",
+    bkit: { version: "4.1.4" },
+    by: { workflow: "chat-stats", step: "scan" },
+  });
+}
+
+describe("Harvest: bkit's own checkout, chat / run drain, repo slug", () => {
+  it("harvests bkit's own .bkit/ ledgers alongside the listed consumers", () => {
+    const consumerPath = path.join(tmpDir, "consumer-app");
+    makeConsumerRepo(consumerPath, { ".bkit/stats.jsonl": statsRow(1_700_000_000_001, 1) + "\n" });
+    const bkitRoot = makeBkitRoot(tmpDir, [consumerPath]);
+    fs.writeFileSync(
+      path.join(bkitRoot, ".bkit", "friction.jsonl"),
+      frictionRow(1_700_000_000_002, "own-1") + "\n",
+    );
+
+    const result = runHarvest(bkitRoot);
+
+    expect(result.self?.copiedRows).toBe(1);
+    expect(result.consumers).toHaveLength(1);
+    const store = fs.readFileSync(path.join(bkitRoot, HARVEST_DEST_DIR, "friction.jsonl"), "utf-8");
+    expect(store).toContain("own-1");
+    expect(fs.readFileSync(path.join(bkitRoot, ".bkit", "friction.jsonl"), "utf-8")).toBe("");
+  });
+
+  it("harvests bkit once when consumers.md also lists it", () => {
+    const bkitRoot = makeBkitRoot(tmpDir, []);
+    fs.writeFileSync(path.join(bkitRoot, CONSUMERS_FILE), bkitRoot + "\n");
+    fs.writeFileSync(
+      path.join(bkitRoot, ".bkit", "stats.jsonl"),
+      statsRow(1_700_000_000_001, 1) + "\n",
+    );
+
+    const result = runHarvest(bkitRoot);
+
+    expect(result.self).toBeNull();
+    expect(result.consumers).toHaveLength(1);
+    const rows = fs.readFileSync(path.join(bkitRoot, HARVEST_DEST_DIR, "stats.jsonl"), "utf-8");
+    expect(rows.trim().split("\n")).toHaveLength(1);
+  });
+
+  it("moves chat / run rows out of .bkit/stats.jsonl and leaves close-time rows byte-identical", () => {
+    const consumerPath = path.join(tmpDir, "consumer-app");
+    const outcome = statsRow(1_700_000_000_001, 1);
+    const chat = chatRow(1_700_000_000_002, "claude-code:s1");
+    const run = JSON.stringify({ ...JSON.parse(chat), kind: "run", key: "fp:x:build:1" });
+    makeConsumerRepo(consumerPath, {
+      ".bkit/stats.jsonl": [outcome, chat, run].join("\n") + "\n",
+    });
+    const bkitRoot = makeBkitRoot(tmpDir, [consumerPath]);
+
+    const result = runHarvest(bkitRoot);
+
+    const left = fs.readFileSync(path.join(consumerPath, ".bkit", "stats.jsonl"), "utf-8");
+    expect(left).toBe(outcome + "\n");
+    expect(result.consumers[0]!.prunedRows["stats.jsonl"]).toBe(2);
+    const store = fs.readFileSync(path.join(bkitRoot, HARVEST_DEST_DIR, "stats.jsonl"), "utf-8");
+    expect(store).toContain("claude-code:s1");
+    expect(store).toContain("fp:x:build:1");
+    // chat / run rows keep their fingerprint
+    expect(store).toContain('"repo":"fp:0123456789ab"');
+  });
+
+  it("never rewrites .bkit/stats.jsonl when it holds no chat / run rows", () => {
+    const consumerPath = path.join(tmpDir, "consumer-app");
+    makeConsumerRepo(consumerPath, { ".bkit/stats.jsonl": statsRow(1_700_000_000_001, 1) + "\n" });
+    const bkitRoot = makeBkitRoot(tmpDir, [consumerPath]);
+    const file = path.join(consumerPath, ".bkit", "stats.jsonl");
+    const before = fs.statSync(file).mtimeMs;
+
+    runHarvest(bkitRoot);
+
+    expect(fs.statSync(file).mtimeMs).toBe(before);
+  });
+});
+
+describe("stampRepo — fills a missing repo only", () => {
+  const row = (repo: unknown): TelemetryEvent =>
+    ({ ts: 1, kind: "outcome", ...(repo === undefined ? {} : { repo }) }) as TelemetryEvent;
+
+  it("fills a missing or empty repo", () => {
+    expect(stampRepo(row(undefined), "acme/app").repo).toBe("acme/app");
+    expect(stampRepo(row(""), "acme/app").repo).toBe("acme/app");
+  });
+
+  it("keeps a written repo as is, the folder name included", () => {
+    expect(stampRepo(row("app"), "acme/app").repo).toBe("app");
+    expect(stampRepo(row("fp:0123456789ab"), "acme/app").repo).toBe("fp:0123456789ab");
+    expect(stampRepo(row("other/thing"), "acme/app").repo).toBe("other/thing");
   });
 });
 

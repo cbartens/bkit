@@ -178,7 +178,7 @@ export const ANY_WRITER = "any";
 /**
  * The ledgers `bkit ledgers append` lands rows in, and the kinds each takes.
  * `feature` rows go through `bkit roadmap feature` (it re-renders the board);
- * `chat` / `run` rows are written by the chat-stats script.
+ * `chat` / `run` rows are written by bkit's harvest script, to `harvest/stats.jsonl`.
  */
 export const APPEND_LEDGERS = {
     decisions: { file: "docs/decisions.jsonl", kinds: ["decision"] },
@@ -367,7 +367,7 @@ export function normalize(raw) {
         kind: raw["kind"],
         key,
         repo,
-        // "none": the chat-stats script found no bkit version for the row.
+        // "none": the harvest script found no bkit version for the row.
         bkit: {
             version: raw["bkitVersion"] === undefined || raw["bkitVersion"] === "none"
                 ? null
@@ -430,8 +430,8 @@ export function normalize(raw) {
     const run = out["run"] ?? (raw["parentSha"] !== undefined ? { parentSha: raw["parentSha"] } : undefined);
     return { ...out, ...payload, ...defined({ run }) };
 }
-// The chat-stats script's own kinds, mapped in full: every schema-1 field has a
-// place in the current shape or is dropped. `scripts/stats/bkit-chat-stats.mjs`
+// The harvest script's own kinds, mapped in full: every schema-1 field has a
+// place in the current shape or is dropped. `scripts/harvest/bkit-harvest.mjs`
 // `normalize` maps them the same way.
 const objOf = (v) => (isObj(v) ? v : {});
 const numOr = (v, or = 0) => typeof v === "number" ? v : or;

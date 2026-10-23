@@ -12,7 +12,7 @@
 > - Ships to consumers: describe the current setup only. NEVER an internal identifier (tracker issue number, ledger key, review-finding id) and NEVER project history — decisions belong in `docs/decisions.jsonl`, incidents in `docs/knowledge.jsonl`.
 > - One row per line. never edit or reorder a prior line — row STATE changes via same-`key` append (§ Updating a Row); sole exception: the install / upgrade schema migration (§ Versioning).
 > - Before append: read file. Skip only if identity-matching row exists and nothing changed — changed field = update, not duplicate.
-> - `.bkit/friction.jsonl` rows removed only by `bkit harvest` (§ Friction Is a Drained Queue).
+> - Rows removed only by bkit's harvest: every `.bkit/friction.jsonl` row, `chat` / `run` rows in `.bkit/stats.jsonl` (§ Friction Is a Drained Queue).
 > - Best-effort append — always exit 0; never gate workflows on telemetry success.
 
 ## Write Idiom
@@ -24,7 +24,7 @@
 - **Refused:** supplied `schema` / `ts` / `bkit`; flat `bkitVersion` / `workflow` / `step` / `subagent` / `model` (they live in `bkit` / `by`); a kind the ledger does not take; a total not matching its parts.
 - `--ledger=stats` takes `compliance` / `counter` / `outcome` (`bkit workflows close` writes through it).
 - Subagent with no shell → hands its rows to the orchestrator as that JSON, `by.subagent` and `by.model` already set.
-- `feature` rows: `bkit roadmap feature`. `chat` / `run` rows: the chat-stats script.
+- `feature` rows: `bkit roadmap feature`. `chat` / `run` rows: bkit's harvest script, into `harvest/stats.jsonl` only.
 
 **Humans and scripts:** the `jq` idiom:
 
@@ -34,7 +34,7 @@ jq -c -n '{ schema: 2, ts: null, kind: "deferral", repo: $REPO, bkit: { version:
 ```
 
 - **`ts`:** Unix ms, always minted by `jq`'s `now` AT append TIME — `jq '… | .ts = (now*1000|floor)'`. The `ts: null` placeholder holds field order only; the pipe overwrites it. Drop the pipe and the row fails validation instead of landing a fake value — never seed the placeholder with a number.
-- **`ts` is never a literal.** Not hand-typed, not copied off an example row or the line above, not `date +%s%3N` (BSD/macOS incompatible). A fabricated past `ts` is indistinguishable from a real one and silently reorders the last-wins fold that every reader, `bkit harvest`, and every age report depend on. Whole-second values (`ts % 1000 == 0`) fail the live-ledger gate — a real mint is never round: `bkit ledgers append` moves one 1 ms on; a `jq` append that lands on one is re-run.
+- **`ts` is never a literal.** Not hand-typed, not copied off an example row or the line above, not `date +%s%3N` (BSD/macOS incompatible). A fabricated past `ts` is indistinguishable from a real one and silently reorders the last-wins fold that every reader, the harvest, and every age report depend on. Whole-second values (`ts % 1000 == 0`) fail the live-ledger gate — a real mint is never round: `bkit ledgers append` moves one 1 ms on; a `jq` append that lands on one is re-run.
 - **Log prefix:** every telemetry log line starts `[bkit-telemetry]` — load-bearing for log-drain grep.
 
 ## Ledgers & Writers
@@ -47,8 +47,8 @@ One file per `kind`; writers:
 | `compliance` | `.bkit/stats.jsonl` | `bkit workflows close` of design / plan / build / debug / ship (its grader, one row per rule) |
 | `outcome` | `.bkit/stats.jsonl` | `bkit workflows close` of design / plan / build / debug / ship (one row per workflow run, keyed by `repo`+`by.workflow`+`run.parentSha`); re-appended by the close's CI dispatch (§ Per-Kind Fields) |
 | `counter` | `.bkit/stats.jsonl` | `bkit workflows close` of design / plan / build / debug / ship (attempt counters) |
-| `chat` | `.bkit/stats.jsonl` | `scripts/stats/bkit-chat-stats.mjs` (opt-in, `.bkit/templates.md` § Chat stats): per agent chat on the machine, any repo or host |
-| `run` | `.bkit/stats.jsonl` | Same script: per workflow run in the run logs of every repo a chat ran in |
+| `chat` | `harvest/stats.jsonl` (bkit repo only) | bkit's harvest script: per agent chat on the maintainer's machine, any repo or host |
+| `run` | `harvest/stats.jsonl` (bkit repo only) | Same script: per workflow run in the run logs of every repo a chat ran in |
 | `friction` | `.bkit/friction.jsonl` | orchestrator workflows (design / plan / build / debug / ship) on observed friction |
 | `deferral` | `docs/deferrals.jsonl` | `@bkit-design-generate`, `@bkit-plan-generate`, `@bkit-plan-update`, `@bkit-build-challenge-remediate` (blocked; `LOW` → `low-severity`), `@bkit-debug-abort-handover`, `@bkit-ship-deferred-sweep` (adjudication only), `@bkit-utility-update-deferrals` (close / triage / locator) |
 | `failure` | `docs/failures.jsonl` | any agent on a discovered bug; `@bkit-debug-abort-handover`; `@bkit-audit-generate` (`MEDIUM`+ findings; rerun closes rows it no longer finds); `@bkit-utility-update-failures` (close / triage / locator) |
@@ -71,7 +71,7 @@ Every row opens with the same top section, in this order:
 | `key` | `string?` | Keyed kinds only (`friction` / `deferral` / `failure` / `knowledge` / `decision` / `feature` / `chat` / `run`). See § Key & References. |
 | `repo` | `string` | Origin repo slug, e.g. `cbartens/bkit`; its fingerprint on `chat` / `run` rows (§ Per-Kind Fields). |
 | `bkit` | `{version}` | `version` = bkit version that emitted the row (`null` on `chat` / `run` when none found). `chat` adds its bkit-use fields. |
-| `by` | `{workflow?, step, subagent?, model?}` | Who wrote it — § Who Wrote It. `workflow`: `design` / `plan` / `build` / `debug` / `ship` / `audit`; `chat-stats` on `chat`; the run's workflow on `run`. |
+| `by` | `{workflow?, step, subagent?, model?}` | Who wrote it — § Who Wrote It. `workflow`: `design` / `plan` / `build` / `debug` / `ship` / `audit`; `chat-stats` on `chat` (the harvest script's scan); the run's workflow on `run`. |
 | `references` | `string[]?` | Pointers that place the row: feature ids, tracker ids, PRs, commit SHAs, paths, a sibling `ts`. See § Key & References. |
 
 Values, every kind:
@@ -148,17 +148,17 @@ Orchestrator: omit `by.subagent` and `by.model`.
 - No separate identity field: `ts` = id; `references` = pointers only.
 - Omit when nothing to point at.
 
-## Friction Is a Drained Queue — the one non-append-only ledger
+## Friction Is a Drained Queue — the non-append-only rows
 
-`.bkit/friction.jsonl` = drained work queue — only file rows are removed from:
+`.bkit/friction.jsonl` = drained work queue. `chat` / `run` rows in `.bkit/stats.jsonl` = drained too (they belong in `harvest/`). No other row is ever removed:
 
 <!-- prettier-ignore -->
 | Actor | May do |
 | --- | --- |
 | **A consumer repo** | append only. |
-| **`bkit harvest`** (from the bkit repo) | MOVES rows out: copies each into bkit's `harvest/` store, then prunes it from the consumer. |
+| **bkit's harvest** (`pnpm harvest`, bkit repo only, unshipped) | MOVES rows out: copies each into bkit's `harvest/` store, then prunes it from the repo. |
 
-Row vanishing from `.bkit/friction.jsonl` = `bkit harvest` banked it centrally.
+Row vanishing from `.bkit/friction.jsonl` = the harvest banked it centrally.
 
 Prune gates (in order):
 
@@ -167,7 +167,7 @@ Prune gates (in order):
 - **Malformed lines** — never pruned.
 - **Store accumulates** — every distinct row, deduped by content only; never cleared, never rewritten from `fold` (winners shift between runs). Readers fold it. `harvest` NEVER commits, either repo.
 
-`stats.jsonl` = COPY-only; `deferrals` / `failures` = COUNT-only (top-section metadata; prose never leaves consumer). Contract: `.bkit/core/engine/commands/harvest.ts`.
+`stats.jsonl` = COPIED whole; only its `chat` / `run` rows pruned. `deferrals` / `failures` = COUNT-only (top-section metadata; prose never leaves the repo).
 
 ## Summary vs Description
 
@@ -337,7 +337,7 @@ Identity match = same thing — not automatically skip:
 
 Indented for readability — **on disk each row = single physical line** (§ Write Idiom). One example per ledger. Each shows the kind's fields, optional ones included where they apply to its workflow (§ Per-Kind Fields; `build` block: the `run` example):
 
-`.bkit/stats.jsonl` (`compliance` / `outcome` / `counter` / `chat` / `run`):
+`.bkit/stats.jsonl` (`compliance` / `outcome` / `counter`); `harvest/stats.jsonl` (`chat` / `run`):
 
 <!-- prettier-ignore -->
 ```jsonl

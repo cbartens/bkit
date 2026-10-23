@@ -92,7 +92,7 @@ const currentBranch = (cwd) => git(cwd, ["branch", "--show-current"]) ?? "";
  * ledger or is missing.
  *
  * `.bkit/friction.jsonl` ships WITHOUT `merge=union` but is listed here; a row union
- * resurrects after `bkit harvest` drained it is re-banked by the next harvest.
+ * resurrects after the harvest drained it is re-banked by the next harvest.
  *
  * `docs/roadmap.md` is not append-only — it is regenerated from
  * `.bkit/issues.jsonl` — but every workflow close re-folds it, so both sides of

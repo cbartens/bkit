@@ -11,8 +11,7 @@ import { runCommand } from "./commands/lib.js";
 import { launchApp } from "./commands/launch.js";
 import { runStatus, runDoctor } from "./commands/install/doctor.js";
 import { runComplyCommand } from "./commands/comply.js";
-import { runHarvestCommand } from "./commands/harvest.js";
-import { runAnalysisCommand } from "./commands/analysis.js";
+import { runStatsCommand } from "./commands/stats.js";
 import { runTelemetryCommand } from "./commands/telemetry.js";
 import { runTipsCommand } from "./commands/tips.js";
 import { runUpgradeCommand } from "./commands/install/upgrade.js";
@@ -47,8 +46,7 @@ export const CLASSIC_VERBS: ReadonlySet<string> = new Set([
   "uninstall",
   "upgrade",
   "comply",
-  "harvest",
-  "analysis",
+  "stats",
   "telemetry",
   "tips",
   "cursor",
@@ -66,8 +64,7 @@ export type Verb =
   | "cursor"
   | "opencode"
   | "comply"
-  | "harvest"
-  | "analysis"
+  | "stats"
   | "telemetry"
   | "tips"
   | "help";
@@ -260,24 +257,12 @@ export function parseArgs(argv: string[]): ParsedArgs {
   } else if (firstArg === "comply") {
     verb = "comply";
     args.shift();
-  } else if (firstArg === "harvest") {
-    verb = "harvest";
+  } else if (firstArg === "stats") {
+    verb = "stats";
     args.shift();
-    // harvest takes no flags — reject any remaining args
+    // stats takes no flags — reject any remaining positional args
     if (args.length > 0 && !args[0]?.startsWith("-")) {
-      console.error(
-        `[bkit] \`bkit harvest\` takes no positional args. Run \`bkit help\` for usage.`,
-      );
-      process.exit(1);
-    }
-  } else if (firstArg === "analysis") {
-    verb = "analysis";
-    args.shift();
-    // analysis takes no flags — reject any remaining positional args
-    if (args.length > 0 && !args[0]?.startsWith("-")) {
-      console.error(
-        `[bkit] \`bkit analysis\` takes no positional args. Run \`bkit help\` for usage.`,
-      );
+      console.error(`[bkit] \`bkit stats\` takes no positional args. Run \`bkit help\` for usage.`);
       process.exit(1);
     }
   } else if (firstArg === "telemetry") {
@@ -650,18 +635,6 @@ Usage:
                                  never gates a workflow. Appends kind:"compliance"
                                  rows to .bkit/stats.jsonl. Fail-open: always exits 0.
                                  Valid phases: design, plan, build, debug, ship.
-  bkit harvest                  Cross-repo harvest — COPIES consumer .bkit/stats.jsonl
-                                 and MOVES .bkit/friction.jsonl into harvest/ (COUNT-ONLY
-                                 for docs/deferrals.jsonl and docs/failures.jsonl).
-                                 Reads consumer paths from harvest/consumers.md.
-                                 DESTRUCTIVE: harvested friction rows are REMOVED from
-                                 the consumer, but only after they are fsync'd and read
-                                 back from harvest/. stats.jsonl is never modified.
-                                 harvest/ accumulates and is never cleared; it is
-                                 gitignored, so it is the only record of pruned rows —
-                                 back it up. Never commits
-                                 in any repo. Deduplicates by per-kind composite
-                                 identity. Advisory + fail-open: exits 0.
   bkit telemetry summary [--phase=<workflow>]
                                  Per-workflow telemetry report: THIS run's metrics
                                  (duration, size, friction/deferrals/failures added,
@@ -671,13 +644,12 @@ Usage:
                                  --phase=<workflow>: the workflow to report
                                  (design|plan|build|debug|ship). Without it, prints the
                                  ledger-health line only. Read-only: exits 0.
-  bkit analysis                 Cross-repo analysis — reports counts/rates/elapsed-time,
-                                 change-size vs outcome regression, dispatch-size threshold,
-                                 counterSource trust labelling, per-rule compliance
-                                 rate over kind:"compliance" rows, and the
-                                 unjustified-deferral rate per (subagent, model)
-                                 over kind:"deferral" rows. Reads from harvest/,
-                                 .bkit/stats.jsonl and docs/deferrals.jsonl.
+  bkit stats                    This repo's stats report: counts, durations, change-size vs
+                                 outcome, counterSource trust, per-rule and per-version
+                                 compliance, and the unjustified-deferral rate per
+                                 (subagent, model). Reads .bkit/stats.jsonl,
+                                 .bkit/friction.jsonl and docs/deferrals.jsonl of THIS repo
+                                 only; writes .bkit/stats.md and prints it.
                                  Advisory + inform-only: exits 0.
   bkit help                     Print this message.
 
@@ -884,13 +856,8 @@ export async function main() {
     return;
   }
 
-  if (verb === "harvest") {
-    runHarvestCommand();
-    return;
-  }
-
-  if (verb === "analysis") {
-    runAnalysisCommand();
+  if (verb === "stats") {
+    runStatsCommand();
     return;
   }
 

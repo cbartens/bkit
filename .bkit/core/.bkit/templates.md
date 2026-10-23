@@ -41,7 +41,6 @@ Adoption order = `bkit tips` order. Local stack lock has no tip (nothing in a re
 | Local stack lock | One run at a time on local services every worktree shares (Docker database, emulator); a second run waits and names the run holding them. | A reset or stop from one worktree wipes the stack under another worktree's test run; the failures look like real bugs. |
 | Cursor editor + cloud agent | Format-on-save, recommended extensions, Cursor cloud-agent image. | Cursor edits miss project formatting; no Cursor cloud agent. |
 | Launchd GUI env | macOS apps opened from the Dock get the same tokens as the terminal. | Dock-launched editors start signed out. |
-| Chat stats | Every agent chat on the machine (any repo, any host) and every workflow run in those repos' logs, counted into `.bkit/stats.jsonl` per manual run, linked to workflow rows, reported by week, bkit version and model. | Hosts delete transcripts (30 days); no baseline for whether a bkit change made runs cheaper. |
 
 ## Contract
 
@@ -74,7 +73,6 @@ Adoption order = `bkit tips` order. Local stack lock has no tip (nothing in a re
 | Local stack lock | `.bkit/templates/scripts/ci/bkit-local-stack-lock.sh` | `scripts/ci/` | that file |
 | Context-fetch blocks | `.bkit/templates/context/bkit-<provider>.md` | below `<!-- bkit:end -->` in `.agents/context.md` | the blocks you use |
 | Cloud SessionStart hook | `.bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh` | `.claude/hooks/bkit-cloud-bootstrap.sh` | that file |
-| Chat stats | `.bkit/templates/scripts/stats/` | `scripts/stats/bkit-chat-stats.mjs` + `.test.mjs` | both scripts and the `chat` / `run` rows in `.bkit/stats.jsonl`; never `.bkit/stats.md` (gitignored) |
 
 Placeholders. Copies keep them raw; replace each in your copy:
 
@@ -672,44 +670,3 @@ cp .bkit/templates/scripts/ci/bkit-local-stack-lock.sh scripts/ci/
 - Never stale: a small perl process holds the lock (flock) and exits within a second of its caller, however the caller ends.
 - Wait: `LOCAL_STACK_LOCK_WAIT_S` seconds (default 3600), a note naming the holder once a minute, then exit 1 naming it. A runner started by the holder (`LOCAL_STACK_LOCK_OWNER`) does not wait. `CI=true` / `CI=1` → no-op.
 - Fix hints and docs name the locked scripts, never the raw command (`supabase db reset`, `docker compose down`): the raw command skips the lock. `.agents/rules.md` § Shared local stack.
-
-## Chat stats — every agent chat, week by week
-
-`scripts/stats/bkit-chat-stats.mjs` reads every chat on this machine (any repo, any host) and the run logs of every repo they ran in, appends `chat` and `run` rows to this checkout's `.bkit/stats.jsonl`, then writes `.bkit/stats.md` (gitignored). Run by hand at least every few weeks: hosts delete old chats.
-
-```bash
-mkdir -p scripts/stats
-cp .bkit/templates/scripts/stats/bkit-chat-stats.mjs .bkit/templates/scripts/stats/bkit-chat-stats.test.mjs scripts/stats/
-node scripts/stats/bkit-chat-stats.mjs --dry-run   # what the first scan would append
-node scripts/stats/bkit-chat-stats.mjs             # append, then write .bkit/stats.md
-```
-
-<!-- prettier-ignore -->
-| `platform` | Reads (read-only) | Gaps |
-| --- | --- | --- |
-| `claude-code` | `~/.claude/projects/` | deleted after `cleanupPeriodDays` (30 by default): run more often |
-| `codex` | `$CODEX_HOME/sessions/`, `archived_sessions/` (`~/.codex`) | — |
-| `opencode` | `~/.local/share/opencode/opencode.db` | a fork counts only its messages after the fork |
-| `cursor` | `globalStorage/state.vscdb`, `~/.cursor/chats/*/*/store.db`, `~/.cursor/projects/*/agent-transcripts/` | no token counts (`tokensRecorded: false`); archived chats → transcript only: no model, tool results or times |
-| `antigravity` | `~/.gemini/antigravity{,-ide,-cli}/conversations/*.db` | older encrypted `*.pb` chats not read |
-
-- One collecting checkout per machine; two → every chat counted twice.
-- Append-only, open rows included: `time.lastActivity` = last write; `scan.settled` = unchanged for `--settle-hours` (24). Same size and `settled` → skipped; else new row, same `key`, last wins. Report: open rows in totals and lists, marked `open`, not in medians.
-- Numbers, not limits: no bkit limit applied. Per-task test / test-file counts and each agent's largest turn stored as lists; the report's 120k / 200k columns are presentation. Measurement settings: `IDLE_GAP_MS` (5 min), `LINES_FLOOR` (100), `DEFAULT_SETTLE_HOURS` (24).
-- Fingerprints: `repo` / issues = `fp:` + 12 hex of sha256(`owner/repo` / `owner/repo#N`). No paths, branch names or prompt text; `stats.md` reverses them from local repos → gitignored.
-- Links (report only): exact = `run.parentShas` ↔ `run.parentSha` of `outcome` / `counter` / `compliance` rows (printed by `bkit workflows close`); outcome rows count once, the newest per (repo, `by.workflow`, `run.parentSha`); time = same repo and workflow, `ts` inside the chat; issue = shared issue fingerprint. Other repos' `.bkit/stats.jsonl` read, never copied.
-- bkit version: the repo's `.bkit/version` history at chat start → an expanded command's managed marker → a link.
-- Workflow named only in the host's summary → `issue.source: "summary"`: issue kept, not a workflow run.
-- Tokens by type, never dollars: `input` (fresh), `cacheWrite`, `cacheRead`; `read` = sum. `usage` per model, main chat and total; per agent type under `agents.byAgent`. Claude Code logs subagent `output` ~12× low → `outputEst` (chars / 4). Per agent: peak context per instance, compactions, tool mix (`read`, `edit`, `grep`, `shellRead`, `shellList`, `tests`, `serena`).
-- Row shape: `.bkit/jsonl.md` § Generic Fields, § Shared Blocks, § Per-Kind Fields — every total computed from its parts at write and checked; a row that fails is not written (`[bkit-telemetry] … not written: <reason>` on stderr).
-- `run` rows: one per run in `docs/plans/<YYYYMM>/logs/<FID>/status.jsonl`, main checkout and `.worktrees/*` (largest copy wins); new row when the log grows, its counted chats change or it settles. Fields → `.bkit/jsonl.md` § Per-Kind Fields.
-  - `ending`: last end row (a close after it writes its own). `close-failed` = work done, close failed (CI never started, or a failed row), until a later close starts CI → `done`. No end row → `decision-pause` (`build-decision-*.md` `Status: OPEN`), else `stopped`. `ci` = each close's CI dispatch.
-  - Active minutes: chat spans (main + subagents) split at gaps over 5 min; a run's = overlap with the spans of counted chats naming its issue (command or summary); per step too. A tool call over 5 min counts as idle.
-  - Steps: count, total minutes (since the previous status row), active minutes; `steps.total` beside `steps.byStep`.
-  - Lines (build, debug): git first → last `run.parentShas`, first-parent, cut at merges (dev syncs out); `lines.total` beside code / tests / docs; `docs/plans/**` and jsonl ledgers out.
-  - Build: verify rounds (verdict, failures, test-order gaps in the `` `kind` `` and older `` `kind` xN `` formats), gaps-remediate strategy, holistic verdict, reconciled challenge findings by severity, task reds. An earlier build's report counts only if written before the next build started, else `null`.
-  - Plan: `plan.total` (tasks, kb) beside `plan.subPlans`, each with per-task tests and test files (from `Test first`; `null` before it), check verdict and tasks checked. Report: tasks without tests, median / p90 / max, tasks per count, the check's `Session Fit Estimate` quoted from the local file (never stored).
-- Report: by week (versions, runs, tokens by type), bkit version × workflow, platform, model (host spellings merged), agents (tokens, cache share, context peaks, tool mix), by feature (chats, run and active minutes, tokens, tasks, code / test lines, per-task and per-100-line ratios, `-` under 100 lines, verify FAILs, debug after ship), runs by ending (closes where CI never started, by reason), verify loop (gaps per round), plan shape, minutes per step, recent bkit chats with links, biggest chats.
-- Host databases: opened `immutable` or via the host's WAL; WAL without `-shm` → temp copy; nothing written beside them. Node 22.5+ (`node:sqlite`), else those hosts read empty.
-- Growth: ~2 KB a `chat` row; ~450 chats + ~30 runs a month, plus a row per scan for each changing open row and one on settling → `MAX_ROWS_BEFORE_ROLLUP` (5000) in 6 to 9 months.
-- Tests: `node scripts/stats/bkit-chat-stats.test.mjs`.

@@ -628,7 +628,7 @@ describe("feature kind — .bkit/issues.jsonl (#380)", () => {
   });
 });
 
-// `chat` kind: one agent chat on any host, written by scripts/stats/bkit-chat-stats.mjs.
+// `chat` kind: one agent chat on any host, written by scripts/harvest/bkit-harvest.mjs.
 describe("chat kind — .bkit/stats.jsonl chat rows", () => {
   it("is a valid kind keyed by kind + repo + key", () => {
     expect(VALID_KINDS.has("chat")).toBe(true);
@@ -688,7 +688,7 @@ describe("chat kind — .bkit/stats.jsonl chat rows", () => {
   });
 });
 
-// `run` kind: one workflow run from its run log, written by scripts/stats/bkit-chat-stats.mjs.
+// `run` kind: one workflow run from its run log, written by scripts/harvest/bkit-harvest.mjs.
 describe("run kind — .bkit/stats.jsonl run rows", () => {
   const key = "fp:000000000000:plan:1700000000000";
 

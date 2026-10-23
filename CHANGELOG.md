@@ -13,9 +13,11 @@ Format: `## [version] — YYYY-MM-DD`
 - **Workflows run from the prompt alone, with no issue, design or plan.** A missing issue no longer stops design, plan, build, debug or ship. Step 1 recovers the issue from a `FID` the prompt names or a `feat/{FID}` branch (`bkit fids parse`); with none, the run warns once (line 1 of its final message) and continues, skipping every tracker read, label, comment, board call and kill-switch check. Workflows still never create an issue. A run with no issue mints its `FID` as `{branch-suffix}-{slug}` with every all-digit word dropped, so no tracker can read it as an issue id; when a finished run already used that name, `bkit fids free` takes the first free `-b`, `-c`, … suffix (naming the `FID` in the prompt is how you continue a run). A `feat/{FID}` branch gives its suffix verbatim as the `FID` for any lowercase slug (`feat/upgrade-react-19`), and the issue id in it counts only when `.bkit/issues.jsonl` has a feature row for it; a branch suffix that is not a lowercase slug (`feat/Fix_CI`) stops the run and asks you to rename the branch or name an issue. #650
 - **`bkit fids check --issue` and `bkit steps gate --issue`.** Passing the run's issue id (or an empty value for a run with no issue) checks the `FID` against it: with an issue the `FID` must embed that same id, with none any lowercase slug passes. `bkit prs open --issue` puts only `<!-- bkit:fid={FID} -->` in the PR body when there is no issue. #650
 - **`/bkit-debug` on `dev` works in place, on its own paths and its own commits.** Steps 9 and 10 push nothing. Step 11 pushes only the run's commits with `bkit branches push --mode=dev`, then waits for the `dev` CI run at the pushed commit (`bkit runs dispatch --sha`, `bkit runs wait --until=completed`, `bkit runs gate --capstone-only`) before it releases the lock. A red run, a refused push or a replay conflict goes to the Failure Path naming the run; a file someone else changed during the run stops the workflow and asks you. #650
+- **`bkit stats` writes this repo's stats report to `.bkit/stats.md`.** It reads only this repo's `.bkit/stats.jsonl`, `.bkit/friction.jsonl` and `docs/deferrals.jsonl`, and prints the report too. `chat` / `run` rows are not counted. Always exits 0. #683
 
 ### Changed
 
+- **`.bkit/stats.md` is committed.** The managed `.gitignore` block no longer ignores it, so commit the file after `bkit stats`. It holds no timestamp and changes only when the ledgers do. #683
 - **`bkit prs merge` refuses a PR whose base is not `dev`.** It exits 8 and merges nothing, and `bkit prs open --base=main` is refused too: bkit opens and merges into `dev` only, and releases stay manual. A consumer script that merges a PR into another base through `bkit prs merge` breaks. #650
 - **`/bkit-ship` of `dev` or `main` prints the engine's refusal and stops.** It releases its lock first. `bkit worktrees setup` also refuses `main` in place for design, plan and build. #650
 
@@ -24,6 +26,11 @@ Format: `## [version] — YYYY-MM-DD`
 - **The ship naming warning fires on a run with no issue.** A branch not named for the `FID` now warns when `ISSUE_ID` is empty; an empty id used to match every branch name. #650
 - **Build Step 18.9 and debug Step 11.9 kill-switch checks skip when `ISSUE_ID` is empty,** and ship Step 14.3's label calls skip on a merged run with no issue. #650
 - **The build boundary gate (Step 7) and the debug local test run (Step 3) can pass their own format check.** Both wrote their test log straight into `docs/plans/{YYYYMM}/logs/{FID}/`, where the gate's `prettier --check .` found the half-written log and failed. They now log to the outbox and copy the finished log in. The `.prettierignore` template gains three `docs/plans/*/logs/*/` lines (`run-tests-*.md`, `build-subplan-gate-*.md`, `context-tests-local-*.md`); templates are copy-and-own, so a consumer that already adopted `.prettierignore` adds the three lines by hand. #650
+
+### Removed
+
+- **`bkit harvest` and `bkit analysis`.** `bkit stats` replaces `bkit analysis` for a repo's own report. Collecting stats across repos is no longer part of the package. #683
+- **The chat-stats template (`.bkit/templates/scripts/stats/`).** An adopted `scripts/stats/` copy keeps working on its own; delete it if unused. #683
 
 ---
 

@@ -211,6 +211,7 @@ bkit upgrade --latest     # bump @cbartens/bkit + resync in one step (or --to=<v
 bkit check                # drift gate — exits non-zero on drift
 bkit doctor               # advisories only; exits 0; no managed-file writes
 bkit tips [--all]         # what is not set up yet, most useful first; exits 0
+bkit stats                # this repo's stats report → .bkit/stats.md (commit it); exits 0
 bkit install --claude --cursor               # (re)seed hosts; name ≥1 module
 ```
 
@@ -403,7 +404,9 @@ Installed list: `.agents/skills.md`. Skills in `.agents/skills/` not listed → 
 | `.agents/docs.md` | Document index and phase-matrix (what to read per phase) |
 | `.agents/skills.md` | Installed skills registry |
 | `.bkit/providers.md` | Host differences (Claude/Cursor/opencode), transform rules, additive install, provider model IDs, pin process (§ Selecting pins), network allowlist encodings (`.bkit/allowlist.json` vs baked settings) |
-| `.bkit/friction.jsonl` | Friction ledger — orchestrator-observed recovery moments. Created on first append by a phase workflow, not by install; drained by `bkit harvest` only. Row shape: `.bkit/jsonl.md`. |
+| `.bkit/friction.jsonl` | Friction ledger — orchestrator-observed recovery moments. Created on first append by a phase workflow, not by install; drained only by bkit's harvest (run from the bkit repo). Row shape: `.bkit/jsonl.md`. |
+| `.bkit/stats.jsonl` | Stats ledger — `outcome` / `compliance` / `counter` rows appended at every workflow close. Append-only. Row shape: `.bkit/jsonl.md`. |
+| `.bkit/stats.md` | This repo's stats report, written by `bkit stats` from `.bkit/stats.jsonl`, `.bkit/friction.jsonl` and `docs/deferrals.jsonl`. Committed; holds no timestamp, so it changes only when the ledgers do. |
 | `docs/plans/{YYYYMM}/` | Canonical month bucket — `{FID}-design.md`, `{FID}-plan.md` (+ `-N.md` if split). Files never move; `{YYYYMM}` = creation month at design start. Created by the design phase. |
 | `docs/templates/bkit-audit-*.md` | Read-only audit procedures, one per lens. Run with `@bkit-audit-generate`. |
 | `docs/audits/{YYYYMM}/` | Audit reports. Input to `/bkit-plan`, with or without a design. |

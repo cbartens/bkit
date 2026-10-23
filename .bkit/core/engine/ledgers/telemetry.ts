@@ -356,7 +356,7 @@ export interface KindWriters {
 /**
  * The ledgers `bkit ledgers append` lands rows in, and the kinds each takes.
  * `feature` rows go through `bkit roadmap feature` (it re-renders the board);
- * `chat` / `run` rows are written by the chat-stats script.
+ * `chat` / `run` rows are written by bkit's harvest script, to `harvest/stats.jsonl`.
  */
 export const APPEND_LEDGERS = {
   decisions: { file: "docs/decisions.jsonl", kinds: ["decision"] },
@@ -701,7 +701,7 @@ export interface FeaturePayload {
 }
 
 // chat — one agent chat on any host (a session plus its subagents), written by
-// `scripts/stats/bkit-chat-stats.mjs`; keyed by explicit `key` (`<platform>:<sessionId>`).
+// `scripts/harvest/bkit-harvest.mjs`; keyed by explicit `key` (`<platform>:<sessionId>`).
 // A resumed chat is a same-`key` append; last row wins. The script is the writer and the
 // field reference (its header); the codec checks the join fields and every total.
 export interface ChatPayload {
@@ -716,7 +716,7 @@ export interface ChatPayload {
 }
 
 // run — one workflow run, read from its run log (`docs/plans/<YYYYMM>/logs/<FID>/status.jsonl`)
-// by `scripts/stats/bkit-chat-stats.mjs`; keyed by explicit `key` (`<fid fp>:<workflow>:<start>`).
+// by `scripts/harvest/bkit-harvest.mjs`; keyed by explicit `key` (`<fid fp>:<workflow>:<start>`).
 // A run whose log grew is a same-`key` append; last row wins.
 export interface RunPayload {
   key: string;
@@ -856,7 +856,7 @@ export function normalize(raw: unknown): Obj {
     kind: raw["kind"],
     key,
     repo,
-    // "none": the chat-stats script found no bkit version for the row.
+    // "none": the harvest script found no bkit version for the row.
     bkit: {
       version:
         raw["bkitVersion"] === undefined || raw["bkitVersion"] === "none"
@@ -921,8 +921,8 @@ export function normalize(raw: unknown): Obj {
   return { ...out, ...payload, ...defined({ run }) };
 }
 
-// The chat-stats script's own kinds, mapped in full: every schema-1 field has a
-// place in the current shape or is dropped. `scripts/stats/bkit-chat-stats.mjs`
+// The harvest script's own kinds, mapped in full: every schema-1 field has a
+// place in the current shape or is dropped. `scripts/harvest/bkit-harvest.mjs`
 // `normalize` maps them the same way.
 
 const objOf = (v: unknown): Obj => (isObj(v) ? v : {});

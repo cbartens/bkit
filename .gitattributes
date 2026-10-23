@@ -23,7 +23,7 @@ docs/roadmap.md      merge=union
 .bkit/stats.jsonl    merge=union
 
 # `.bkit/friction.jsonl` is deliberately absent: it is the one ledger rows are
-# REMOVED from (`bkit harvest` drains it). Union would resurrect rows a drain
+# REMOVED from (bkit's harvest drains it). Union would resurrect rows a drain
 # deleted, so a conflict there carries real information and must stay blocking.
 
 # Append-only NDJSON workflow status logs: union auto-concatenates both branches'
@@ -37,7 +37,7 @@ docs/plans/**/status.jsonl merge=union
 # <!-- bkit:end -->
 
 # Local opt-in, against the managed block's advice above (Tier-2 bkit-repo rule).
-# `.bkit/friction.jsonl` IS drained by `bkit harvest`, so union can resurrect rows a
+# `.bkit/friction.jsonl` IS drained by `pnpm harvest`, so union can resurrect rows a
 # drain deleted. Accepted here: this repo runs the workflows that append friction on
 # every cycle, drains are rare and deliberate, and a resurrected row is re-banked
 # idempotently by the next harvest — cheaper than a blocking conflict per cycle.

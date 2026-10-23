@@ -1,4 +1,5 @@
-// commands/analysis.ts — Analysis CLI for bkit telemetry.
+// commands/analysis.ts — the computations behind `bkit stats` (commands/stats.ts) and the
+// cross-repo section of the harvest report (scripts/harvest/, bkit's checkout only).
 //
 // Provides:
 //   1. Counts/rates/elapsed-time over telemetry rows.
@@ -15,8 +16,6 @@
 // All computation is advisory + inform-only; never gates any workflow.
 // See DE-34 for the shared-entrypoint + crash-isolation contract.
 
-import * as fs from "node:fs";
-import * as path from "node:path";
 import {
   UNJUSTIFIED_REASON,
   foldFrom,
@@ -27,7 +26,6 @@ import {
   type TelemetryEnvelope,
   type TelemetryEvent,
 } from "../ledgers/telemetry.js";
-import { HARVEST_DEST_DIR } from "./harvest.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -395,9 +393,13 @@ export interface AnalysisReport {
   reportLines: string[];
 }
 
-export function runAnalysis(paths: string[]): AnalysisReport {
+/** Analyse the folded rows of `paths`, leaving out rows of `skipKinds`. */
+export function runAnalysis(
+  paths: string[],
+  skipKinds: ReadonlySet<string> = new Set(),
+): AnalysisReport {
   const { state, rowCount, malformedLineCount } = foldFrom(paths);
-  const events = [...state.values()];
+  const events = [...state.values()].filter((ev) => !skipKinds.has(ev.kind));
 
   const outcomeRows: OutcomeRow[] = [];
   const counterRows: CounterRow[] = [];
@@ -500,43 +502,4 @@ export function runAnalysis(paths: string[]): AnalysisReport {
     deferralDiscipline,
     reportLines,
   };
-}
-
-// analysis — cross-repo analysis CLI.
-// Reports counts/rates/elapsed-time, size↔outcome regression, per-rule compliance
-// rate, dispatch-size threshold, counter.source trust labelling. Advisory + inform-only.
-// See DE-34 for the shared-entrypoint + crash-isolation contract.
-export function runAnalysisCommand(): void {
-  try {
-    const cwd = process.cwd();
-    // Analyse: bkit's own stats.jsonl + harvested consumer rows.
-    // Harvest dest is sourced from the constant, NOT re-spelled here.
-    const statsPath = path.join(cwd, ".bkit", "stats.jsonl");
-    const harvestStatsPath = path.join(cwd, HARVEST_DEST_DIR, "stats.jsonl");
-    const harvestFrictionPath = path.join(cwd, HARVEST_DEST_DIR, "friction.jsonl");
-    const frictionPath = path.join(cwd, ".bkit", "friction.jsonl");
-    // deferrals is LOCAL-only: harvest takes it count-only (prose never leaves the
-    // consumer), so the discipline rate is this repo's own writers, not a fleet view.
-    const deferralsPath = path.join(cwd, "docs", "deferrals.jsonl");
-    const paths = [
-      statsPath,
-      harvestStatsPath,
-      harvestFrictionPath,
-      frictionPath,
-      deferralsPath,
-    ].filter((p) => fs.existsSync(p));
-    if (paths.length === 0) {
-      console.log(
-        "[bkit-analysis] No telemetry files found. Run `bkit harvest` first, or accumulate telemetry via bkit workflows.",
-      );
-      return;
-    }
-    const report = runAnalysis(paths);
-    for (const line of report.reportLines) {
-      console.log(line);
-    }
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[bkit-analysis] analysis error (fail-open): ${msg}`);
-  }
 }

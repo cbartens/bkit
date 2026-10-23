@@ -1,7 +1,7 @@
 // The measured blocks of a workflow run's `outcome` row (`.bkit/core/.bkit/jsonl.md`
 // § Shared blocks): lines, steps, ci, plan and build, from git, the run's
-// `status.jsonl` rows and its log folder. `scripts/stats/bkit-chat-stats.mjs`
-// computes the same blocks for its `run` rows, with the same rules.
+// `status.jsonl` rows and its log folder. bkit's unshipped harvest script
+// (`scripts/harvest/bkit-harvest.mjs`) computes the same blocks for its `run` rows, with the same rules.
 
 import * as fs from "node:fs";
 import * as path from "node:path";

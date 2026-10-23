@@ -1,32 +1,32 @@
-// commands/harvest.ts — Cross-repo harvest CLI.
+// scripts/harvest/ledgers.ts — the ledger half of the harvest (bkit's checkout only, never shipped).
 //
-// MOVES consumer `.bkit/friction.jsonl` and COPIES `.bkit/stats.jsonl` into bkit's
-// central store at `harvest/`. COUNT-ONLY aggregates `docs/{deferrals,failures}.jsonl`
-// (dimensional counts from envelope metadata; prose NOT copied). Deduplicates by
-// row content; entity counts fold by per-kind composite identity.
+// Run by `scripts/harvest/bkit-harvest.mjs` (`pnpm harvest`), before the chat scan. For bkit's
+// own checkout and every repo in `harvest/consumers.md`:
+//   - `.bkit/stats.jsonl`: every row is copied into `harvest/stats.jsonl`. `chat` / `run` rows are
+//     then pruned from the repo: they belong in `harvest/` only. Close-time rows (`outcome` /
+//     `compliance` / `counter`) stay in the repo.
+//   - `.bkit/friction.jsonl`: every row is copied, then pruned (friction is a drained queue).
+//   - `docs/{deferrals,failures}.jsonl`: COUNT-ONLY (entities from envelope metadata; prose is
+//     never copied).
 //
-// INVARIANTS (PII guard + move/copy contract):
+// INVARIANTS (PII guard + copy/prune contract):
 //   - Touches ONLY the named .jsonl ledgers — never any .env/secret files.
-//   - NEVER commits in any repo (bkit's or a consumer's) — the caller commits.
-//   - stats.jsonl is COPY-ONLY: consumer mtime + content unchanged.
-//   - friction.jsonl is MOVE: harvested rows are pruned from the consumer, but ONLY
-//     after that exact row is durably fsync'd + read back from the central store.
-//   - The prune gate is byte-for-byte CONTENT of the row in its current shape
+//   - NEVER commits in any repo — the caller commits.
+//   - A row is pruned from a repo ONLY after that exact row is durably fsync'd + read back from
+//     the store. The prune gate is byte-for-byte CONTENT of the row in its current shape
 //     (`normalize`), never identity. The store holds rows in that shape.
-//   - The central store ACCUMULATES across runs (never cleared) and holds every
-//     DISTINCT row, deduped by content only. It is never rewritten from the fold. It is
-//     gitignored (private consumer content), so it is the only record of pruned consumer
-//     friction; readers fold it.
-//   - Malformed consumer lines are NEVER pruned (not ours to delete).
+//   - Rows a repo keeps (close-time stats rows) are never rewritten: the repo file is untouched
+//     unless a row is pruned from it.
+//   - The store ACCUMULATES across runs (never cleared) and holds every DISTINCT row, deduped by
+//     content only. It is gitignored and never backed up by bkit, so it is the only record of
+//     pruned rows; readers fold it.
+//   - A copied row without `repo` gets the repo's `owner/repo` (see `stampRepo`).
+//   - Malformed lines are NEVER pruned (not ours to delete).
 //   - Grep-able [bkit-harvest] log lines.
 //   - Relies on the tolerant `parse` for half-written tails.
 //
-// Friction is moved, not copied: consumers start each cycle clean. Ordering is
-// copy -> fsync -> verify -> prune; a crash at any point re-copies idempotently on the
-// next run.
-//
-// Consumers are listed in `harvest/consumers.md` (one absolute path per line).
-// See DE-34 for the shared-entrypoint + crash-isolation contract.
+// Ordering is copy -> fsync -> verify -> prune; a crash at any point re-copies idempotently on
+// the next run.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -37,21 +37,23 @@ import {
   resolveRepoSlug,
   type FoldedState,
   type TelemetryEvent,
-} from "../ledgers/telemetry.js";
-import { parseJson } from "../shared/json.js";
+} from "../../.bkit/core/engine/ledgers/telemetry.js";
+import { parseJson } from "../../.bkit/core/engine/shared/json.js";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Files to COPY from each consumer's `.bkit/` directory (content + dedup). */
+/** Files to COPY from each repo's `.bkit/` directory (content + dedup). */
 export const HARVEST_COPY_FILES = ["stats.jsonl", "friction.jsonl"] as const;
 /**
- * Files PRUNED from the consumer after their rows are durably in the central store.
- * Must be a subset of HARVEST_COPY_FILES. `stats.jsonl` is absent: it is copied, never
- * moved.
+ * Per copied file, the rows PRUNED from the repo once they are durably in the store.
+ * `friction.jsonl`: every row. `stats.jsonl`: only `chat` / `run` rows — close-time rows stay.
  */
-export const HARVEST_PRUNE_FILES = ["friction.jsonl"] as const;
+export const HARVEST_PRUNE_KINDS: Record<(typeof HARVEST_COPY_FILES)[number], "all" | string[]> = {
+  "stats.jsonl": ["chat", "run"],
+  "friction.jsonl": "all",
+};
 /** Files to COUNT-ONLY from each consumer's `docs/` directory (metadata only). */
 export const HARVEST_COUNT_FILES = ["deferrals.jsonl", "failures.jsonl"] as const;
 /** Path (relative to bkit repo root) for the consumers list. */
@@ -80,11 +82,14 @@ export interface HarvestConsumerResult {
   malformedLineCount: number;
   skipped: boolean;
   skipReason?: string;
-  /** Rows pruned from this consumer's ledgers, keyed by filename. */
+  /** Rows pruned from this repo's ledgers, keyed by filename. */
   prunedRows: Record<string, number>;
 }
 
 export interface HarvestResult {
+  /** bkit's own checkout, harvested like a consumer. `null` when it is also listed in `consumers.md`. */
+  self: HarvestConsumerResult | null;
+  /** The repos in `harvest/consumers.md`. */
   consumers: HarvestConsumerResult[];
   totalCopiedRows: number;
   totalCountOnly: Record<string, number>;
@@ -119,9 +124,9 @@ export function readConsumerPaths(bkitRoot: string): string[] {
 // ---------------------------------------------------------------------------
 
 /**
- * Harvest one consumer's `.bkit/{stats,friction}.jsonl` (COPY) and
+ * Harvest one repo's `.bkit/{stats,friction}.jsonl` (COPY) and
  * `docs/{deferrals,failures}.jsonl` (COUNT-ONLY).
- * NEVER writes to the consumer repo.
+ * NEVER writes to the repo: pruning is `runHarvest`'s, after the store is durable.
  */
 export function harvestConsumer(consumerPath: string, bkitRoot: string): HarvestConsumerResult {
   const result: HarvestConsumerResult = {
@@ -145,6 +150,8 @@ export function harvestConsumer(consumerPath: string, bkitRoot: string): Harvest
   if (!fs.existsSync(destDir)) {
     fs.mkdirSync(destDir, { recursive: true });
   }
+
+  const consumerSlug = consumerPathToSlug(consumerPath);
 
   // COPY: .bkit/{stats,friction}.jsonl
   for (const filename of HARVEST_COPY_FILES) {
@@ -170,8 +177,6 @@ export function harvestConsumer(consumerPath: string, bkitRoot: string): Harvest
     result.copiedRows += parsed.events.length;
     result.malformedLineCount += parsed.malformedLineCount;
 
-    // Stamp repo on each event if missing
-    const consumerSlug = consumerPathToSlug(consumerPath);
     const stamped = parsed.events.map((ev) => stampRepo(ev, consumerSlug));
 
     // Write to harvest dest (append)
@@ -213,15 +218,13 @@ export function harvestConsumer(consumerPath: string, bkitRoot: string): Harvest
 // ---------------------------------------------------------------------------
 
 /**
- * Stamp `repo` on an event when the consumer wrote the row without one.
+ * Stamp `repo` on a row the repo wrote without one; any written `repo` is kept.
  * MUST be applied on both the store side and the prune side, or the two contents
  * diverge and a stored row is never recognised as prunable.
  */
 export function stampRepo(event: TelemetryEvent, consumerSlug: string): TelemetryEvent {
-  return {
-    ...event,
-    repo: event.repo && event.repo.length > 0 ? event.repo : consumerSlug,
-  };
+  if (typeof event.repo === "string" && event.repo.length > 0) return event;
+  return { ...event, repo: consumerSlug };
 }
 
 /** What the store durably holds, read back off disk after fsync. */
@@ -232,18 +235,24 @@ export interface DurableStore {
 
 export interface PruneResult {
   removed: number;
-  /** Lines left in the consumer: malformed, or appended after the copy. */
+  /** Lines the prune would take but left: malformed, or appended after the copy. */
   kept: number;
 }
 
+/** Whether a row of `kinds` is pruned once it is stored (`all`: every row). */
+function drains(event: TelemetryEvent, kinds: "all" | string[]): boolean {
+  return kinds === "all" || kinds.includes(String(event.kind));
+}
+
 /**
- * Remove from `srcPath` exactly those rows whose CONTENT is durably in the store.
+ * Remove from `srcPath` exactly those rows of `kinds` whose CONTENT is durably in the store.
  *
  * Gated on byte-for-byte content, NOT on identity.
  *
- * Line-level, NOT event-level: a line that does not parse is kept verbatim.
+ * Line-level, NOT event-level: a line that does not parse is kept verbatim, and a row of
+ * another kind is kept verbatim.
  *
- * Re-reads the file at prune time, so rows appended by the consumer DURING the harvest
+ * Re-reads the file at prune time, so rows appended by the repo DURING the harvest
  * survive.
  *
  * Writes via temp-file + rename; an interrupted prune never leaves a torn ledger.
@@ -252,33 +261,41 @@ export function pruneConsumerFile(
   srcPath: string,
   consumerSlug: string,
   durable: DurableStore,
+  kinds: "all" | string[] = "all",
 ): PruneResult {
   const raw = fs.readFileSync(srcPath, "utf-8");
-  const kept: string[] = [];
+  const lines: string[] = [];
   let removed = 0;
+  let kept = 0;
 
   for (const line of raw.split("\n")) {
     if (line.trim() === "") continue;
     const parsed = parseJson(line.trim());
     if (!parsed.ok) {
-      kept.push(line); // malformed — never ours to delete
+      lines.push(line); // malformed — never ours to delete
+      kept++;
       continue;
     }
     const event = parsed.value as TelemetryEvent;
+    if (!drains(event, kinds)) {
+      lines.push(line);
+      continue;
+    }
     if (durable.rows.has(canonicalRow(stampRepo(event, consumerSlug)))) {
       removed++;
       continue;
     }
-    kept.push(line);
+    lines.push(line);
+    kept++;
   }
 
-  if (removed === 0) return { removed: 0, kept: kept.length };
+  if (removed === 0) return { removed: 0, kept };
 
-  const next = kept.length > 0 ? kept.join("\n") + "\n" : "";
+  const next = lines.length > 0 ? lines.join("\n") + "\n" : "";
   const tmpPath = `${srcPath}.bkit-harvest.tmp`;
   fs.writeFileSync(tmpPath, next, "utf-8");
   fs.renameSync(tmpPath, srcPath);
-  return { removed, kept: kept.length };
+  return { removed, kept };
 }
 
 /**
@@ -307,32 +324,36 @@ function fsyncFile(filePath: string): void {
 // ---------------------------------------------------------------------------
 
 /**
- * Run harvest across all consumers listed in `harvest/consumers.md`.
- * Deduplicates the store by row content after collecting all rows.
+ * Run the ledger harvest over bkit's own checkout (`bkitRoot`) and every repo listed in
+ * `harvest/consumers.md`. Deduplicates the store by row content after collecting all rows,
+ * then prunes what drains (`HARVEST_PRUNE_KINDS`).
  */
 export function runHarvest(bkitRoot: string): HarvestResult {
   const consumerPaths = readConsumerPaths(bkitRoot);
   console.error(`[bkit-harvest] Found ${consumerPaths.length} consumer(s) in ${CONSUMERS_FILE}`);
 
-  const consumerResults: HarvestConsumerResult[] = [];
   let totalCopied = 0;
   const totalCountOnly: Record<string, number> = {};
-
-  // The central store ACCUMULATES — it is NEVER cleared between runs. Re-copied rows
-  // collapse via the content dedup below.
-  const destDir = path.join(bkitRoot, HARVEST_DEST_DIR);
-
-  for (const consumerPath of consumerPaths) {
-    console.error(`[bkit-harvest] Harvesting: ${consumerPath}`);
-    const res = harvestConsumer(consumerPath, bkitRoot);
-    consumerResults.push(res);
+  const harvestOne = (repoPath: string): HarvestConsumerResult => {
+    console.error(`[bkit-harvest] Harvesting: ${repoPath}`);
+    const res = harvestConsumer(repoPath, bkitRoot);
     if (!res.skipped) {
       totalCopied += res.copiedRows;
       for (const [k, v] of Object.entries(res.countOnlyRows)) {
         totalCountOnly[k] = (totalCountOnly[k] ?? 0) + v;
       }
     }
-  }
+    return res;
+  };
+
+  // bkit's own checkout first, unless consumers.md lists it too (then it is harvested there).
+  const listsSelf = consumerPaths.some((p) => samePath(p, bkitRoot));
+  const self = listsSelf ? null : harvestOne(bkitRoot);
+  const consumerResults = consumerPaths.map(harvestOne);
+
+  // The central store ACCUMULATES — it is NEVER cleared between runs. Re-copied rows
+  // collapse via the content dedup below.
+  const destDir = path.join(bkitRoot, HARVEST_DEST_DIR);
 
   // Deduplicate by content: drop exact re-copies, keep every distinct row in first-seen
   // order. Entity counts come from the fold, which is a read — never what is written.
@@ -364,15 +385,20 @@ export function runHarvest(bkitRoot: string): HarvestResult {
   // Prune ONLY now — every row below is confirmed byte-for-byte in the store on disk.
   let totalPruned = 0;
   let totalKept = 0;
-  for (const res of consumerResults) {
+  for (const res of self ? [self, ...consumerResults] : consumerResults) {
     if (res.skipped) continue;
     const consumerSlug = consumerPathToSlug(res.consumerPath);
-    for (const filename of HARVEST_PRUNE_FILES) {
+    for (const filename of HARVEST_COPY_FILES) {
       const srcPath = path.join(res.consumerPath, ".bkit", filename);
       if (!fs.existsSync(srcPath)) continue;
       const durable = durableByFile[filename];
       if (!durable || durable.rows.size === 0) continue;
-      const { removed, kept } = pruneConsumerFile(srcPath, consumerSlug, durable);
+      const { removed, kept } = pruneConsumerFile(
+        srcPath,
+        consumerSlug,
+        durable,
+        HARVEST_PRUNE_KINDS[filename],
+      );
       if (removed > 0) {
         res.prunedRows[filename] = removed;
         totalPruned += removed;
@@ -390,15 +416,16 @@ export function runHarvest(bkitRoot: string): HarvestResult {
   }
 
   console.error(
-    `[bkit-harvest] Done — total rows collected: ${totalCopied}, entities after fold: ${dedupedRows}, pruned from consumers: ${totalPruned}, kept in consumers: ${totalKept}`,
+    `[bkit-harvest] Done — total rows collected: ${totalCopied}, entities after fold: ${dedupedRows}, pruned from repos: ${totalPruned}, kept in repos: ${totalKept}`,
   );
   if (totalPruned > 0) {
     console.error(
-      `[bkit-harvest] ${totalPruned} row(s) now exist ONLY in ${HARVEST_DEST_DIR}/ (gitignored) — back it up to make them durable.`,
+      `[bkit-harvest] ${totalPruned} row(s) now exist ONLY in ${HARVEST_DEST_DIR}/ (gitignored, not backed up by bkit).`,
     );
   }
 
   return {
+    self,
     consumers: consumerResults,
     totalCopiedRows: totalCopied,
     totalCountOnly,
@@ -406,6 +433,12 @@ export function runHarvest(bkitRoot: string): HarvestResult {
     totalPrunedRows: totalPruned,
     mergedState,
   };
+}
+
+/** Whether two paths name the same directory (symlinks and trailing slashes resolved). */
+function samePath(a: string, b: string): boolean {
+  const real = (p: string): string => (fs.existsSync(p) ? fs.realpathSync(p) : path.resolve(p));
+  return real(a) === real(b);
 }
 
 // ---------------------------------------------------------------------------
@@ -429,34 +462,4 @@ export function consumerPathToSlug(consumerPath: string): string {
       `This is NOT an owner/repo slug and will not join rows from the same repo harvested elsewhere.`,
   );
   return fallback;
-}
-
-// harvest — cross-repo harvest CLI.
-// Copies consumer .bkit/stats.jsonl and MOVES .bkit/friction.jsonl into harvest/;
-// COUNT-ONLY for docs/{deferrals,failures}.jsonl. Friction rows are pruned from the
-// consumer only after they are fsync'd + read back from the store. Fail-open: exits 0.
-// See DE-34 for the shared-entrypoint + crash-isolation contract.
-export function runHarvestCommand(): void {
-  try {
-    const cwd = process.cwd();
-    console.log("[bkit-harvest] Starting cross-repo harvest...");
-    const result = runHarvest(cwd);
-    console.log(
-      `[bkit-harvest] Harvest complete — consumers: ${result.consumers.length}, rows copied: ${result.totalCopiedRows}, entities after fold: ${result.dedupedRows}, pruned from consumers: ${result.totalPrunedRows}`,
-    );
-    const countOnlyEntries = Object.entries(result.totalCountOnly);
-    if (countOnlyEntries.length > 0) {
-      for (const [file, count] of countOnlyEntries) {
-        console.log(`[bkit-harvest] count-only ${file}: ${count} rows (not copied)`);
-      }
-    }
-    if (result.totalPrunedRows > 0) {
-      console.log(
-        `[bkit-harvest] ${result.totalPrunedRows} friction row(s) were REMOVED from consumers and now exist only in ${HARVEST_DEST_DIR}/ — commit it.`,
-      );
-    }
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[bkit-harvest] harvest error (fail-open): ${msg}`);
-  }
 }

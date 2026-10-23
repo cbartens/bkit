@@ -63,9 +63,6 @@ docs/plans/*/logs/**/.rebase-failed
 .bkit/.roadmap-shortlist.json
 .bkit/.roadmap-reverse-sync.json
 
-# Chat-stats report: names the repos and issues stats.jsonl stores only as fingerprints
-.bkit/stats.md
-
 # Claude Code /schedule daemon lock
 .claude/scheduled_tasks.lock
 
@@ -121,6 +118,6 @@ __pycache__/
 # Secrets sync: fingerprint + time of each push.
 scripts/secrets/bkit-secrets-state.json
 
-# `bkit harvest` store + consumer list: private consumer content and local paths.
-# Local only; the store is the sole copy of pruned consumer friction.
+# Harvest store + consumer list (`pnpm harvest`): private repo content and local paths.
+# Local only and not backed up by bkit; the store is the sole copy of pruned rows.
 harvest/

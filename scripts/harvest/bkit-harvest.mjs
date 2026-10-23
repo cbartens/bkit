@@ -1,11 +1,17 @@
 #!/usr/bin/env node
-// Example. Copy into scripts/stats/ and own it. bkit install does not write this file
-// and does not overwrite a copy.
+// bkit's own checkout only; never shipped (not in dist, .bkit/core, .bkit/shared or .bkit/templates).
 /**
- * bkit-chat-stats.mjs — counts what every agent chat on this machine did, from the files each
- * host keeps, and what every workflow run did, from its run log. Appends one `chat` row per
- * chat and one `run` row per run to the checkout's `.bkit/stats.jsonl`, open ones included,
- * then writes `.bkit/stats.md` from every row in that file.
+ * bkit-harvest.mjs — the cross-repo harvest. One run, in order:
+ *   1. ledgers (scripts/harvest/ledgers.ts): bkit's own `.bkit/` ledgers and those of every repo
+ *      in `harvest/consumers.md` into `harvest/stats.jsonl` and `harvest/friction.jsonl`;
+ *      friction rows and leftover `chat` / `run` rows are then pruned from the repos;
+ *   2. scan: counts what every agent chat on this machine did, from the files each host keeps,
+ *      and what every workflow run did, from its run log. Appends one `chat` row per chat and
+ *      one `run` row per run to `harvest/stats.jsonl`, open ones included;
+ *   3. run check: every settled run as an `outcome` row and as a `run` row (runCheck());
+ *   4. `harvest/stats.md` from every row in `harvest/stats.jsonl`.
+ * The scan never reads or writes a repo's `.bkit/` ledgers: each repo's own report is
+ * `.bkit/stats.md`, written by `bkit stats` from the rows its workflow closes append.
  *
  * Hosts read (read-only; `session.platform` on the row):
  *   claude-code  ~/.claude/projects/<project>/<session>.jsonl + <session>/subagents/
@@ -85,28 +91,30 @@
  * `schema` and the workflow rows (`outcome`, `counter`, `compliance`) the engine writes.
  *
  * Repo slugs, FIDs and issue numbers are stored only as fingerprints (`fp:` + the first 12 hex
- * of sha256 of `owner/repo`, `owner/repo:<FID>` or `owner/repo#123`). `stats.md` turns them back
- * into names from the repos and run logs found on this machine; that is why it is gitignored.
+ * of sha256 of `owner/repo`, `owner/repo:<FID>` or `owner/repo#123`). `harvest/stats.md` turns
+ * them back into names from the repos and run logs found on this machine; `harvest/` is
+ * gitignored.
  * No paths, branch names, prompt text or agent descriptions are stored.
  *
  * Links. A row stores the keys; the report joins them, so a row links to rows written
  * after it:
  *   exact  `run.parentShas` = the `parentSha` printed by `bkit workflows close` in the chat ->
  *          that run's `outcome` / `counter` / `compliance` rows (`run.parentSha`); a `run` row's
- *          `run.parentSha` -> its `outcome` row, in this ledger or any repo's or worktree's.
+ *          `run.parentSha` -> its `outcome` row, as the ledger step copied it from that repo.
  *          Outcome rows count once: the newest per (repo, `by.workflow`, `run.parentSha`).
  *   time   rows from the same repo whose `ts` falls inside the chat.
  *   issue  other chats whose `issue.all` / `issue.mentioned` share a fingerprint.
  * A chat whose repo had no `.bkit/version` takes its bkit version from the managed marker of
  * an expanded workflow command, else from those links.
  *
- * Usage:  node scripts/stats/bkit-chat-stats.mjs [scan|report] [--settle-hours=<n>]
- *           [--platforms=<p,...>] [--home=<dir>] [--stats=<file>] [--report=<file>] [--dry-run]
- *         scan (default) appends new rows, then writes the report; report only writes it.
+ * Usage:  pnpm harvest [scan|report] [--settle-hours=<n>] [--platforms=<p,...>] [--home=<dir>]
+ *           [--dry-run]
+ *         (`tsx scripts/harvest/bkit-harvest.mjs`: the ledger step is TypeScript.)
+ *         scan (default) runs every step; report only writes `harvest/stats.md`.
  *         --home reads every host's files under <dir> instead of the home folder.
- *         --dry-run prints what scan would append and writes nothing.
- * Exit:   0 = done, 1 = a host, the ledger or the report could not be read or written (the
- *         other hosts' rows are still appended), 2 = bad arguments or not inside a git checkout.
+ *         --dry-run skips the ledger step, prints what scan would append and writes nothing.
+ * Exit:   0 = done, 1 = a host, the store or the report could not be read or written (the
+ *         other hosts' rows are still appended), 2 = bad arguments or not in bkit's checkout.
  */
 
 import { spawnSync } from "node:child_process";
@@ -135,7 +143,6 @@ const MENTION = /(?:#|issues\/)(\d{2,6})\b/g;
 const BKIT_CLI = /(?:^|[\s;&|(])(?:[\w./-]*\/)?bkit\s+([a-z][a-z-]*)(?:\s+([a-z][a-z-]*))?/g;
 /** bkit's top-level commands (`bkit --help`); any other word after `bkit` is prose, not a call. */
 const BKIT_COMMANDS = new Set([
-  "analysis",
   "branches",
   "check",
   "ci",
@@ -146,7 +153,6 @@ const BKIT_COMMANDS = new Set([
   "disk",
   "doctor",
   "fids",
-  "harvest",
   "help",
   "install",
   "issues",
@@ -162,6 +168,7 @@ const BKIT_COMMANDS = new Set([
   "runtime",
   "setup",
   "skills",
+  "stats",
   "status",
   "steps",
   "telemetry",
@@ -179,6 +186,7 @@ const BKIT_LEAF_COMMANDS = new Set([
   "doctor",
   "help",
   "install",
+  "stats",
   "status",
   "tips",
   "uninstall",
@@ -1977,7 +1985,7 @@ export const latestChats = (rows) => latestRows(rows, "chat");
 /**
  * Outcome rows, the newest per (repo, `by.workflow`, `run.parentSha`): `bkit runs dispatch`
  * appends the run's outcome again with the dispatch in `ci`. Newest is the larger `ts`, the later
- * row on a tie; a leading `@` on `repo` names the same repo. Rows without `run.parentSha` are
+ * row on a tie. Rows without `run.parentSha` are
  * all kept. Order follows each kept row's first appearance.
  */
 export function latestOutcomes(rows) {
@@ -1990,7 +1998,7 @@ export function latestOutcomes(rows) {
       out.push(r);
       continue;
     }
-    const k = [String(r.repo).replace(/^@/, ""), r.by?.workflow ?? r.workflow, sha].join("\u0000");
+    const k = [r.repo, r.by?.workflow ?? r.workflow, sha].join("\u0000");
     const i = at.get(k);
     if (i === undefined) at.set(k, out.push(r) - 1);
     else if ((r.ts ?? 0) >= (out[i].ts ?? 0)) out[i] = r;
@@ -2990,7 +2998,7 @@ export async function buildLookup(hosts, ledgerRows) {
   const slugs = new Set(
     ledgerRows
       .filter((r) => workflowRow(r) && typeof r.repo === "string")
-      .map((r) => r.repo.replace(/^@/, "")),
+      .map((r) => r.repo),
   );
   slugs.add("none");
   for (const { list } of hosts) {
@@ -3033,40 +3041,6 @@ export async function buildLookup(hosts, ledgerRows) {
     }
   }
   return names;
-}
-
-/**
- * Workflow rows (not `chat` or `run` rows) from the `.bkit/stats.jsonl` of every repo resolved so
- * far and of each of its worktrees (rows not yet merged), other than `statsFile` and without
- * rows `statsFile` already has — read only, to link chats and runs to the rows those repos recorded.
- */
-export function otherLedgerRows(statsFile) {
-  const own = path.resolve(statsFile);
-  // Compared after normalize: a worktree's or an unmigrated repo's ledger can hold a row in the
-  // old shape that this ledger holds migrated.
-  const seenRows = new Set(readLedger(own).map((r) => JSON.stringify(normalize(r))));
-  const seen = new Set([own]);
-  const rows = [];
-  for (const { root } of repoCache.values()) {
-    if (!root) continue;
-    const wt = path.join(root, ".worktrees");
-    const bases = [
-      root,
-      ...(fs.existsSync(wt) ? fs.readdirSync(wt).map((d) => path.join(wt, d)) : []),
-    ];
-    for (const base of bases) {
-      const file = path.resolve(base, ".bkit", "stats.jsonl");
-      if (seen.has(file)) continue;
-      seen.add(file);
-      for (const r of readLedger(file).filter(workflowRow).map(normalize)) {
-        const k = JSON.stringify(r);
-        if (seenRows.has(k)) continue;
-        seenRows.add(k);
-        rows.push(r);
-      }
-    }
-  }
-  return rows;
 }
 
 const median = (xs) => quantile(xs, 0.5);
@@ -3174,7 +3148,7 @@ export function linkChats(chatRows, ledgerRows) {
     // A workflow chat links only to rows of its own workflows: a long chat overlaps other runs.
     const time = others.filter(
       (r) =>
-        repoFp(String(r.repo).replace(/^@/, "")) === c.repo &&
+        repoFp(r.repo) === c.repo &&
         r.ts >= c.time.start &&
         r.ts <= c.time.end + TIME_LINK_GRACE_MS &&
         (!wfs.length || wfs.includes(r.by?.workflow)),
@@ -3207,40 +3181,32 @@ function table(head, rows) {
 }
 
 /**
- * @param {object[]} ledgerRows  every row of this checkout's `.bkit/stats.jsonl`
+ * @param {object[]} ledgerRows  every row of `harvest/stats.jsonl`: the chats and runs this script
+ *   wrote, and the workflow rows the ledger step copied from every repo's `.bkit/stats.jsonl`
  * @param {Map<string, string>} names  buildLookup()
- * @param {object[]} extraRows  workflow rows from other repos' ledgers, for links only
  * @param {Map<string, string>} logDirs  logDirIndex(): where the report quotes run-log reports from
  */
-export function renderReport(
-  ledgerRows,
-  names,
-  extraRows = [],
-  now = Date.now(),
-  logDirs = new Map(),
-) {
+export function renderReport(ledgerRows, names, now = Date.now(), logDirs = new Map()) {
   // Every row in the schema-2 shape, whichever format it was written in.
   ledgerRows = ledgerRows.map(normalize);
-  extraRows = extraRows.map(normalize);
   const chats = [...latestChats(ledgerRows).values()].sort((a, b) => a.time.start - b.time.start);
-  const links = linkChats(chats, [...ledgerRows, ...extraRows]);
+  const links = linkChats(chats, ledgerRows);
   const name = (fp) => (fp ? (names.get(fp) ?? fp) : "-");
   const versionOf = (c) => links.get(c.key).version;
   const wfKey = (c) => c.bkit.workflows.join("+");
   const workflowRuns = chats.filter((c) => chatClass(c) === "workflow");
   const out = [];
 
-  out.push("# Chat stats\n");
+  out.push("# Harvest stats\n");
   if (!chats.length) {
-    out.push(
-      "No `chat` rows in `.bkit/stats.jsonl` yet. Run `node scripts/stats/bkit-chat-stats.mjs`.\n",
-    );
+    out.push("No `chat` rows in `harvest/stats.jsonl` yet. Run `pnpm harvest`.\n");
     return out.join("\n");
   }
   out.push(
     `Generated ${new Date(now).toISOString().slice(0, 16).replace("T", " ")} UTC from ${chats.length} chats ` +
-      `(${day(chats[0].time.start)} to ${day(chats.at(-1).time.start)}) by \`scripts/stats/bkit-chat-stats.mjs\`. ` +
-      "This file is local and gitignored: it shows the repo names and issue numbers that `.bkit/stats.jsonl` stores only as fingerprints.\n",
+      `(${day(chats[0].time.start)} to ${day(chats.at(-1).time.start)}) by \`scripts/harvest/bkit-harvest.mjs\`, across every repo. ` +
+      "Each repo's own report is its `.bkit/stats.md` (`bkit stats`). " +
+      "This file is local and gitignored, like all of `harvest/`: it shows the repo names and issue numbers that `harvest/stats.jsonl` stores only as fingerprints.\n",
   );
   out.push(
     "- A **chat** is one session in one host (Claude Code, Codex, opencode, Cursor, Antigravity) plus all its subagents. **Tokens read** is the context sent on each turn, added up over every turn. " +
@@ -3681,7 +3647,7 @@ export function renderReport(
     (a, b) => a.time.start - b.time.start,
   );
   const wfOf = (r) => r.by?.workflow;
-  const outcomes = latestOutcomes([...ledgerRows, ...extraRows]);
+  const outcomes = latestOutcomes(ledgerRows);
   const outcomeBySha = new Map(
     outcomes.filter((r) => r.run?.parentSha).map((r) => [r.run.parentSha, r]),
   );
@@ -4147,6 +4113,69 @@ export function renderReport(
 }
 
 // ---------------------------------------------------------------------------
+// Run check: every settled workflow run as an `outcome` row (written at close, copied by the
+// ledger step) and as a `run` row (rebuilt from the run log), joined on `run.parentSha`.
+// ---------------------------------------------------------------------------
+
+/**
+ * Per repo fingerprint: runs found on both sides, outcome rows with no `run` row, and `run` rows
+ * with no outcome row. Only rows that carry `run.parentSha` take part, and only settled runs.
+ * @returns {Map<string, {both: number, outcomeOnly: object[], runOnly: object[]}>}
+ */
+export function runCheck(rows) {
+  rows = rows.map(normalize);
+  const byRepo = new Map();
+  const of = (fp) =>
+    byRepo.get(fp) ?? byRepo.set(fp, { both: 0, outcomeOnly: [], runOnly: [] }).get(fp);
+  const runKey = (fp, sha) => `${fp}\u0000${sha}`;
+  const runs = new Map();
+  for (const r of latestRows(rows, "run").values()) {
+    if (!r.run?.parentSha || r.scan?.settled === false) continue;
+    runs.set(runKey(r.repo, r.run.parentSha), r);
+  }
+  const matched = new Set();
+  for (const o of latestOutcomes(rows)) {
+    const sha = o.run?.parentSha;
+    if (!sha || typeof o.repo !== "string") continue;
+    const fp = o.repo.startsWith("fp:") ? o.repo : repoFp(o.repo);
+    const k = runKey(fp, sha);
+    if (runs.has(k)) {
+      of(fp).both++;
+      matched.add(k);
+    } else of(fp).outcomeOnly.push(o);
+  }
+  for (const [k, r] of runs) if (!matched.has(k)) of(r.repo).runOnly.push(r);
+  return byRepo;
+}
+
+/** The run check as a report section. */
+export function renderRunCheck(byRepo, names) {
+  const name = (fp) => names.get(fp) ?? fp;
+  const repos = [...byRepo.entries()].sort(([a], [b]) => name(a).localeCompare(name(b)));
+  const out = ["## Run check\n"];
+  out.push(
+    "Every settled workflow run should appear twice: as an `outcome` row its close wrote to the repo's `.bkit/stats.jsonl`, " +
+      "and as a `run` row rebuilt from its run log. **Outcome only**: the run log is gone or was not scanned. " +
+      "**Run only**: the close never wrote its row.\n",
+  );
+  out.push(
+    table(
+      ["Repo", "Both", "Outcome only", "Run only"],
+      repos.map(([fp, c]) => [name(fp), c.both, c.outcomeOnly.length, c.runOnly.length]),
+    ),
+  );
+  const misses = repos.flatMap(([fp, c]) => [
+    ...c.outcomeOnly.map((o) => [name(fp), "outcome only", o.by?.workflow ?? "-", day(o.ts), o.run.parentSha.slice(0, 8)]),
+    ...c.runOnly.map((r) => [name(fp), "run only", r.by?.workflow ?? "-", day(r.time.start), r.run.parentSha.slice(0, 8)]),
+  ]);
+  if (misses.length) {
+    out.push("### Mismatches\n");
+    out.push(table(["Repo", "Side", "Workflow", "Day", "parentSha"], misses));
+  }
+  return out.join("\n");
+}
+
+// ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
 
@@ -4164,8 +4193,6 @@ function parseArgs(argv) {
     else if (a.startsWith("--settle-hours=")) opts.settleHours = Number(a.slice(15));
     else if (a.startsWith("--home=")) opts.home = a.slice(7);
     else if (a.startsWith("--platforms=")) opts.only = a.slice(12).split(",").filter(Boolean);
-    else if (a.startsWith("--stats=")) opts.statsFile = a.slice(8);
-    else if (a.startsWith("--report=")) opts.reportFile = a.slice(9);
     else return { error: `unknown argument: ${a}` };
   }
   if (!Number.isFinite(opts.settleHours) || opts.settleHours < 0)
@@ -4186,34 +4213,57 @@ export function hostsFor(home, platforms = Object.keys(HOSTS)) {
   });
 }
 
+/** Print the ledger step's result. */
+function logLedgers(res) {
+  const done = [res.self, ...res.consumers].filter((r) => r && !r.skipped);
+  console.log(
+    `[bkit-harvest] ledgers: ${done.length} repo(s), ${res.totalCopiedRows} rows copied, ` +
+      `${res.totalPrunedRows} pruned from repos`,
+  );
+  for (const [file, count] of Object.entries(res.totalCountOnly))
+    console.log(`[bkit-harvest] count-only ${file}: ${count} entities (not copied)`);
+  if (res.totalPrunedRows > 0)
+    console.log(
+      `[bkit-harvest] ${res.totalPrunedRows} row(s) now exist only in harvest/ (gitignored, not backed up by bkit)`,
+    );
+}
+
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   if (opts.error) {
-    console.error(`[bkit-chat-stats] ${opts.error}`);
+    console.error(`[bkit-harvest] ${opts.error}`);
     return 2;
   }
   const top = git(process.cwd(), ["rev-parse", "--show-toplevel"])?.trim();
-  if (!top && !(opts.statsFile && opts.reportFile)) {
-    console.error("[bkit-chat-stats] run inside a git checkout, or pass --stats= and --report=");
+  if (!top || !fs.existsSync(path.join(top, "harvest", "consumers.md"))) {
+    console.error("[bkit-harvest] run in bkit's own checkout: harvest/consumers.md not found");
     return 2;
   }
+  // TypeScript from the engine and the ledger step: `pnpm harvest` runs this file under tsx.
+  const { runHarvest } = await import("./ledgers.ts");
+  const { runAnalysis } = await import("../../.bkit/core/engine/commands/analysis.ts");
+  const { renderStatsMarkdown } = await import("../../.bkit/core/engine/commands/stats.ts");
   const hosts = hostsFor(opts.home, opts.only);
-  const statsFile = opts.statsFile ?? path.join(top, ".bkit", "stats.jsonl");
-  const reportFile = opts.reportFile ?? path.join(top, ".bkit", "stats.md");
+  const statsFile = path.join(top, "harvest", "stats.jsonl");
+  const frictionFile = path.join(top, "harvest", "friction.jsonl");
+  const reportFile = path.join(top, "harvest", "stats.md");
   let failed = false;
   try {
     if (opts.cmd === "scan") {
+      // Ledgers first: chat / run rows a repo still holds land in the store before the scan,
+      // which then counts them as already seen.
+      if (!opts.dryRun) logLedgers(runHarvest(top));
       const res = await scan({
         hosts,
         statsFile,
         settleHours: opts.settleHours,
-        checkout: top ?? null,
+        checkout: top,
         dryRun: opts.dryRun,
       });
       const verb = opts.dryRun ? "would append" : "appended";
       const n = (k) => res.rows.filter((r) => r.kind === k).length;
       console.log(
-        `[bkit-chat-stats] ${verb} ${n("chat")} chat rows and ${n("run")} run rows to ${statsFile}`,
+        `[bkit-harvest] ${verb} ${n("chat")} chat rows and ${n("run")} run rows to ${statsFile}`,
       );
       for (const [p, s] of Object.entries(res.byPlatform)) {
         if (s.error) {
@@ -4248,14 +4298,32 @@ async function main() {
     }
     const rows = readLedger(statsFile);
     const names = await buildLookup(hosts, rows);
+    const check = runCheck(rows);
+    const workflowRows = renderStatsMarkdown(
+      runAnalysis(
+        [statsFile, frictionFile].filter((f) => fs.existsSync(f)),
+        new Set(["chat", "run"]),
+      ),
+      "Workflow rows, all repos",
+      "The rows every repo's workflow closes wrote, as copied into `harvest/`.",
+    ).replace(/^#/gm, "##");
     fs.writeFileSync(
       reportFile,
-      renderReport(rows, names, otherLedgerRows(statsFile), Date.now(), logDirIndex()),
+      [
+        renderReport(rows, names, Date.now(), logDirIndex()),
+        renderRunCheck(check, names),
+        workflowRows,
+      ].join("\n"),
     );
-    console.log(`[bkit-chat-stats] wrote ${reportFile}`);
+    const misses = [...check.values()].reduce(
+      (n, c) => n + c.outcomeOnly.length + c.runOnly.length,
+      0,
+    );
+    console.log(`[bkit-harvest] run check: ${misses} mismatch(es)`);
+    console.log(`[bkit-harvest] wrote ${reportFile}`);
     return failed ? 1 : 0;
   } catch (err) {
-    console.error(`[bkit-chat-stats] ${err instanceof Error ? err.message : String(err)}`);
+    console.error(`[bkit-harvest] ${err instanceof Error ? err.message : String(err)}`);
     return 1;
   }
 }

@@ -43,8 +43,8 @@ cbartens/bkit (this repo)
 │   │   ├── install/uninstall.ts # `bkit uninstall` orchestrator — surgical format-aware removal
 │   │   ├── launch.ts            # `bkit cursor` / `bkit opencode` launcher verbs — merges .bkit/.env over process.env and exec's the app binary directly (`open -a` routes via launchd, which DROPS the env — #279/#280)
 │   │   ├── comply.ts            # Compliance grader (#234 WS-2) — no-mirror-edit + skip-ci-not-head rules; emits kind:"compliance" rows; `bkit comply --phase <p>` (fail-open)
-│   │   ├── harvest.ts           # Cross-repo harvest CLI (#234 WS-4, #343) — COPIES consumer .bkit/stats.jsonl (never modified); MOVES .bkit/friction.jsonl into harvest/ at repo root, pruning drained rows from the consumer; COUNT-ONLY for docs/{deferrals,failures}.jsonl; store keeps every distinct row, deduped by content (never rewritten from the fold); prune gated on byte-for-byte content (NOT identity — fold collapses colliding rows) after copy→fsync→read-back; store accumulates, never cleared; never commits in any repo; `bkit harvest`
-│   │   ├── analysis.ts          # Analysis CLI (#234 WS-4) — counts/rates/elapsed, #183 size↔outcome regression, dispatch-size threshold, counter.source trust labelling, per-rule compliance rate over kind:"compliance" rows; `bkit analysis`
+│   │   ├── stats.ts             # `bkit stats` — this repo's .bkit/stats.jsonl + friction + deferrals → .bkit/stats.md (committed, no timestamp); never reads harvest/ or chats; chat/run rows not counted; fail-open
+│   │   ├── analysis.ts          # Computations behind `bkit stats` and the harvest report — counts/rates/elapsed, #183 size↔outcome regression, dispatch-size threshold, counter.source trust labelling, per-rule compliance rate over kind:"compliance" rows
 │   │   └── workflow/ ci/ setup/ # `bkit <noun> <verb>` workflow commands
 │   ├── install/                 # what gets written into a consumer repo, and how
 │   │   ├── modules/index.ts     # Phase 2 — module dispatcher (MODULE_REGISTRY)
@@ -85,14 +85,14 @@ cbartens/bkit (this repo)
 │                           #   .env.example, settings/hooks/mcp JSON, bkit-cloud.md, docs/*.md blocks
 └── .bkit/templates/        # Copy-and-own templates: copied raw to the consumer's
                             #   .bkit/templates/, never applied
-├── harvest/                # Central store for `bkit harvest` — consumer stats/friction rows (#343)
+├── harvest/                # Central store for `pnpm harvest` — every repo's stats/friction rows + chat/run scan (#343, #683)
 │                           # + consumers.md (maintainer-local consumer checkout paths, one per line).
 │                           # bkit-repo only; deliberately OUTSIDE .bkit/ (that is bkit's managed
 │                           # install surface; harvested consumer data is neither managed nor shipped).
 │                           # Gitignored: private consumer content + local paths never enter the
 │                           # public repo. Holds every distinct row ever harvested; readers fold it by
 │                           # identity. Accumulates across runs and is never cleared — once harvest
-│                           # prunes a consumer's friction row, this local store is the only copy.
+│                           # prunes a repo's friction or chat/run row, this local store is the only copy.
 └── package.json            # bin: bkit → dist/cli.js
 ```
 
@@ -132,8 +132,8 @@ CLI verbs:
 - `pnpm bkit uninstall` — surgical format-aware removal: fully-managed delete / markered-text strip / byte-equal-text hash-guarded delete; `--dry-run`, `--force`, `--nuke`, `--yes`. package.json scripts and devDeps are never removed (the `bkit` install-state block goes on a full uninstall).
 - `pnpm bkit upgrade` — diff engine vs `canonicalHashes`; non-conflicts auto-apply, conflicts stderr (`--auto-apply` non-zero on conflict). Conflicts come only from the payload walk's whole files; `renderManagedOutputs` outputs (agents, commands, skills, `.bkit/*.md`) always re-render, and `bkit check` flags an edit to one. Module-scoped. Re-renders at **installed** version (offline). `--to=<version>` / `--latest` (#296) bump `@cbartens/bkit` (`pnpm add`) → re-exec fresh binary → re-render + re-pin atomically, so version bump cannot drift mirrors; bare `pnpm add` does not re-render.
 - `pnpm bkit comply --phase <p>` (#234 WS-2) — grader over `git diff parentSha..HEAD`; advisory-only, fail-open.
-- `pnpm bkit harvest` (#234 WS-4, #343) — bkit-repo only; COPIES `stats.jsonl`, MOVES `friction.jsonl` (prunes consumer), count-only `docs/{deferrals,failures}.jsonl`. Never commits.
-- `pnpm bkit analysis` (#234 WS-4) — harvested store counts / rates; size↔outcome regression, per-rule compliance.
+- `pnpm bkit stats` (#683) — this repo's ledgers only → `.bkit/stats.md` (committed); size↔outcome regression, per-rule compliance; exit 0.
+- `pnpm harvest` (#683, bkit repo only, unshipped: `scripts/harvest/`) — copies every repo's `stats.jsonl` + `friction.jsonl` into `harvest/` and prunes friction + `chat`/`run` rows from them; count-only `docs/{deferrals,failures}.jsonl`; scans chats + run logs → `harvest/stats.jsonl`; run check; `harvest/stats.md`. Never commits. `docs/observability.md` § Harvest.
 - `pnpm bkit telemetry summary [--phase=<workflow>]` (#234 WS-5) — per-workflow telemetry report against the median of the previous 5 runs; read-only.
 - `pnpm bkit cursor` / `pnpm bkit opencode` — launch host with `.bkit/.env` merged (macOS GUI apps skip login-shell / direnv env).
 
@@ -152,7 +152,7 @@ Consumer repo
 │   └── skills/             # installed agent skills (cross-IDE)
 └── .bkit/                  # bkit install state + config (consumer-side)
     ├── version             # JSON: { pinnedVersion, canonicalHashes, claudeAllowDerived }
-    ├── friction.jsonl      # friction ledger — appended by phase workflows, drained by bkit harvest
+    ├── friction.jsonl      # friction ledger — appended by phase workflows, drained by bkit's harvest
     ├── advisories.md       # generated artifact (gitignored) — last install/check findings
     ├── .env.example        # fully-managed — token placeholders
     ├── templates/          # raw template copies (bkit-ci.yml, hooks, tool configs, context/<provider>.md …) — copy and own

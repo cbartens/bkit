@@ -35,7 +35,7 @@ const LEDGERS: Record<string, string[]> = {
 };
 
 /**
- * The one ledger rows are REMOVED from (`bkit harvest` drains it), and therefore
+ * The one ledger rows are REMOVED from (bkit's harvest script drains it), and therefore
  * the one that must NOT carry `merge=union` in the shipped block — union would
  * resurrect rows a drain deleted. Every other ledger in {@link LEDGERS} is
  * strictly append-only and must carry it.
