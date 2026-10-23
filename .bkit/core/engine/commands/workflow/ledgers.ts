@@ -1,5 +1,5 @@
-// bkit ledgers commit|union|only-bookkeeping — stage and commit bookkeeping by
-// an allow-list, never `git add -A`.
+// bkit ledgers commit|union|only-bookkeeping|append — stage and commit bookkeeping
+// by an allow-list, never `git add -A`; append validated rows with a minted `ts`.
 //
 // The pathspec is built by `git ls-files` against quoted globs, so git does the
 // matching and an unmatched glob is empty output, never a shell abort. Staging
@@ -12,7 +12,16 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { gitEnv } from "../../ledgers/telemetry.js";
+import { readBkitVersion } from "../../install/version-file.js";
+import {
+  APPEND_LEDGERS,
+  gitEnv,
+  mintTs,
+  resolveRepoSlug,
+  validate,
+  writerProblem,
+  type AppendLedger,
+} from "../../ledgers/telemetry.js";
 import {
   CommandError,
   EXIT,
@@ -33,6 +42,8 @@ export const EXIT_COMMIT = 5;
 export const EXIT_EMPTY = 6;
 /** only-bookkeeping: a non-bookkeeping path changed, or from is not an ancestor of to. */
 export const EXIT_NOT_BOOKKEEPING = 7;
+/** append: a row was refused (supplied `ts`, wrong kind, invalid, unlisted writer). */
+export const EXIT_ROW_REFUSED = 8;
 
 const SCOPES = ["core", "full", "pr"] as const;
 export type Scope = (typeof SCOPES)[number];
@@ -721,6 +732,36 @@ export const ledgersCommand: CommandSpec = {
       },
       run: (ctx) => onlyBookkeeping(ctx),
     },
+    append: {
+      summary: "Append validated rows to one ledger, minting each row's ts at append time.",
+      flags: [
+        { name: "root", type: "string", help: "checkout whose ledger to append to (default: cwd)" },
+        {
+          name: "ledger",
+          type: "string",
+          required: true,
+          help: Object.keys(APPEND_LEDGERS).join(" | "),
+        },
+        {
+          name: "rows",
+          type: "string",
+          required: true,
+          help: "file holding a JSON array of rows without ts, or - for stdin",
+        },
+      ],
+      output: {
+        ledger: "the ledger appended to",
+        file: "its path, relative to --root",
+        appended: "rows written",
+        keys: "each row's key, in order (null when a row has none)",
+      },
+      exitCodes: {
+        [EXIT_STAGE]: "mkdir or append failed",
+        [EXIT_ROW_REFUSED]:
+          "a row carries ts, has the wrong kind, fails validation, or names a writer not listed for its kind — nothing written",
+      },
+      run: (ctx) => append(ctx),
+    },
   },
 };
 
@@ -978,6 +1019,110 @@ function union(ctx: RunContext): number {
   const files = unionLedgers(src, dst);
   ctx.log(`swept ${files.length} ledger(s) from ${src} into ${dst}`);
   ctx.emit({ unioned: files.length, files });
+  return EXIT.OK;
+}
+
+export interface AppendResult {
+  ledger: AppendLedger;
+  file: string;
+  appended: number;
+  keys: Array<string | null>;
+}
+
+/**
+ * Append `rows` to one ledger. Every row is checked before any is written, so a
+ * refused row leaves the file byte-identical. Each row gets a `ts` minted now
+ * (never supplied), and `repo` / `bkitVersion` when it lacks them. Never reads
+ * back or rewrites existing rows. Throws a CommandError (USAGE / EXIT_ROW_REFUSED
+ * / EXIT_STAGE).
+ */
+export function appendLedgerRows(root: string, ledger: string, rows: unknown): AppendResult {
+  if (!Object.hasOwn(APPEND_LEDGERS, ledger)) {
+    throw new CommandError(
+      EXIT.USAGE,
+      `--ledger must be one of ${Object.keys(APPEND_LEDGERS).join(", ")} (got '${ledger}')`,
+    );
+  }
+  const { file, kind } = APPEND_LEDGERS[ledger as AppendLedger];
+  if (!Array.isArray(rows)) throw new CommandError(EXIT.USAGE, "--rows must hold a JSON array");
+  if (rows.length === 0) throw new CommandError(EXIT.USAGE, "--rows holds no rows");
+
+  let repo: string | undefined;
+  let bkitVersion: string | undefined;
+  let last: number | undefined;
+  const out: Array<Record<string, unknown>> = rows.map((raw, i) => {
+    const refuse = (why: string) => new CommandError(EXIT_ROW_REFUSED, `row ${i + 1}: ${why}`);
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+      throw refuse("not a JSON object");
+    }
+    const r = raw as Record<string, unknown>;
+    if (Object.hasOwn(r, "ts")) throw refuse("carries ts; ts is minted at append time");
+    if (r["kind"] !== kind) {
+      throw refuse(`kind must be ${kind} in --ledger=${ledger} (got ${String(r["kind"])})`);
+    }
+    repo ??= resolveRepoSlug(root) || "unknown/repo";
+    bkitVersion ??=
+      readBkitVersion(path.join(root, ".bkit", "version"))?.pinnedVersion || "unknown";
+    last = mintTs(last);
+    const row = { ts: last, kind, repo, bkitVersion, ...r };
+    const v = validate(row);
+    if (!v.ok) throw refuse(v.reason ?? "invalid");
+    const who = writerProblem(row);
+    if (who !== undefined) throw refuse(who);
+    return row;
+  });
+
+  const abs = path.join(root, file);
+  const made = mkdirp(path.dirname(abs));
+  if (made) throw new CommandError(EXIT_STAGE, `mkdir failed for ${path.dirname(file)}: ${made}`);
+  const block = out.map((r) => `${JSON.stringify(r)}\n`).join("");
+  try {
+    // A file missing its final newline would glue the first row onto its last one.
+    fs.appendFileSync(abs, endsMidLine(abs) ? `\n${block}` : block);
+  } catch (err) {
+    throw new CommandError(EXIT_STAGE, `append failed: ${file} — ${(err as Error).message}`);
+  }
+  return {
+    ledger: ledger as AppendLedger,
+    file,
+    appended: out.length,
+    keys: out.map((r) => (typeof r["key"] === "string" ? r["key"] : null)),
+  };
+}
+
+/** True when `abs` exists, is non-empty and its last byte is not a newline. */
+function endsMidLine(abs: string): boolean {
+  let fd: number | undefined;
+  try {
+    fd = fs.openSync(abs, "r");
+    const size = fs.fstatSync(fd).size;
+    if (size === 0) return false;
+    const last = Buffer.alloc(1);
+    fs.readSync(fd, last, 0, 1, size - 1);
+    return last[0] !== 0x0a;
+  } catch {
+    // No file yet: the append creates it.
+    return false;
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+  }
+}
+
+function append(ctx: RunContext): number {
+  const root = path.resolve(ctx.cwd, str(ctx.flags.root) ?? ".");
+  const src = String(ctx.flags.rows);
+  let text: string;
+  try {
+    text = fs.readFileSync(src === "-" ? 0 : path.resolve(ctx.cwd, src), "utf-8");
+  } catch (err) {
+    throw new CommandError(EXIT.USAGE, `--rows unreadable: ${(err as Error).message}`);
+  }
+  if (text.trim() === "") throw new CommandError(EXIT.USAGE, "--rows holds no rows");
+  const parsed = parseJson(text);
+  if (!parsed.ok) throw new CommandError(EXIT.USAGE, "--rows is not JSON");
+  const r = appendLedgerRows(root, String(ctx.flags.ledger), parsed.value);
+  ctx.log(`appended ${r.appended} row(s) to ${r.file}`);
+  ctx.emit({ ...r });
   return EXIT.OK;
 }
 

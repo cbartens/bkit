@@ -20,7 +20,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { appendLine, fold, runNumber, runOrStepField, statusTimestamp, } from "../../ledgers/status.js";
-import { appendLine as telemetryLine, foldFrom, resolveRepoSlug, validate, workflowTelemetry, } from "../../ledgers/telemetry.js";
+import { appendLine as telemetryLine, foldFrom, mintTs, resolveRepoSlug, validate, workflowTelemetry, } from "../../ledgers/telemetry.js";
 import { readBkitVersion } from "../../install/version-file.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { gradeCompliance } from "../comply.js";
@@ -744,7 +744,7 @@ export function closeWorkflow(cwd, o, log) {
             : "origin/dev...HEAD";
     const durationSeconds = startKnown === undefined ? 0 : Math.max(0, Math.floor((Date.now() - startKnown) / 1000));
     const startedRows = new Set(events.filter((e) => e.type === "workflow-started" && e.workflow === workflow).map((e) => e.at)).size;
-    const ts = Date.now();
+    const ts = mintTs();
     const counterRow = {
         ts,
         kind: "counter",
@@ -759,7 +759,7 @@ export function closeWorkflow(cwd, o, log) {
     };
     const cov = workflow === "ship" ? coverage(where.tree) : undefined;
     const outcomeRow = {
-        ts: ts + 1,
+        ts: mintTs(ts),
         kind: "outcome",
         workflow,
         repo,

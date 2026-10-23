@@ -18,7 +18,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { compareTs, parse, resolveRepoSlug, validate } from "../../ledgers/telemetry.js";
+import { compareTs, mintTs, parse, resolveRepoSlug, validate } from "../../ledgers/telemetry.js";
 import { readBkitVersion } from "../../install/version-file.js";
 import {
   CommandError,
@@ -331,7 +331,7 @@ export function featureRow(
 ): Record<string, unknown> {
   const phase = o.workflow.charAt(0).toUpperCase() + o.workflow.slice(1);
   return {
-    ts: Date.now(),
+    ts: mintTs(),
     kind: "feature",
     repo: resolveRepoSlug(root) || "unknown/repo",
     bkitVersion: readBkitVersion(path.join(root, ".bkit", "version"))?.pinnedVersion || "unknown",

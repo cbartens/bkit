@@ -16,7 +16,7 @@
 // a bad ledger or an unwritable board, and never gates the caller's close.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { compareTs, parse, resolveRepoSlug, validate } from "../../ledgers/telemetry.js";
+import { compareTs, mintTs, parse, resolveRepoSlug, validate } from "../../ledgers/telemetry.js";
 import { readBkitVersion } from "../../install/version-file.js";
 import { CommandError, DEV, EXIT, git, parseJson, repoRoot, runGit, } from "../lib.js";
 import { landDir, pushToDev } from "../land.js";
@@ -264,7 +264,7 @@ function fold(ctx) {
 export function featureRow(root, o) {
     const phase = o.workflow.charAt(0).toUpperCase() + o.workflow.slice(1);
     return {
-        ts: Date.now(),
+        ts: mintTs(),
         kind: "feature",
         repo: resolveRepoSlug(root) || "unknown/repo",
         bkitVersion: readBkitVersion(path.join(root, ".bkit", "version"))?.pinnedVersion || "unknown",

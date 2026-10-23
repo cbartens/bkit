@@ -19,7 +19,7 @@ import * as path from "node:path";
 import { readJsonFile } from "../shared/json.js";
 import { getPkgRoot } from "../shared/package-roots.js";
 import { isMirrorPath } from "../shared/protected-paths.js";
-import { gitEnv, resolveGitSha, resolveRepoSlug, } from "../ledgers/telemetry.js";
+import { gitEnv, mintTs, resolveGitSha, resolveRepoSlug, } from "../ledgers/telemetry.js";
 /** SHA charset guard — only raw hex SHAs from the ledger are accepted. */
 const SHA_RE = /^[0-9a-f]{7,40}$/;
 export const realGitAdapter = {
@@ -139,7 +139,6 @@ export function runGrader(input) {
  * Called by the CLI dispatch after `runGrader`.
  */
 export function buildComplianceRows(input) {
-    const ts = Date.now();
     const { violations, phase, parentSha, repo, bkitVersion, extra } = input;
     const violationByRule = new Map();
     for (const v of violations) {
@@ -152,7 +151,7 @@ export function buildComplianceRows(input) {
         const result = violation != null ? violation.result : "pass";
         const evidence = violation?.evidence;
         const envelope = {
-            ts: ts + rows.length, // micro-offset so each row has a unique ts within the batch
+            ts: mintTs(rows.at(-1)?.ts), // each row's ts follows the last, so a batch never ties
             kind: "compliance",
             repo,
             bkitVersion,

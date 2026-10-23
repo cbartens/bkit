@@ -32,6 +32,7 @@ import {
 import {
   appendLine as telemetryLine,
   foldFrom,
+  mintTs,
   resolveRepoSlug,
   validate,
   workflowTelemetry,
@@ -944,7 +945,7 @@ export function closeWorkflow(
   const startedRows = new Set(
     events.filter((e) => e.type === "workflow-started" && e.workflow === workflow).map((e) => e.at),
   ).size;
-  const ts = Date.now();
+  const ts = mintTs();
 
   const counterRow = {
     ts,
@@ -960,7 +961,7 @@ export function closeWorkflow(
   };
   const cov = workflow === "ship" ? coverage(where.tree) : undefined;
   const outcomeRow = {
-    ts: ts + 1,
+    ts: mintTs(ts),
     kind: "outcome",
     workflow,
     repo,

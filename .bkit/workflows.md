@@ -1586,6 +1586,7 @@ bkit emits JSONL telemetry to six append-only ledgers. Row format (envelope, per
 
 Orchestrator behavior:
 
+- **Append route:** `bkit ledgers append --ledger=… --rows=…` writes `decision` / `deferral` / `failure` / `knowledge` / `friction` rows, minting `ts` and refusing the whole batch on one bad row (`.bkit/jsonl.md` § Write Idiom).
 - **Never-drop:** never silently drop deferred work → append `kind:"deferral"` to `docs/deferrals.jsonl`.
 - **Found-bug:** never silently drop discovered bug → append `kind:"failure"` to `docs/failures.jsonl` immediately.
 - **Path idiom (all JSONL ledgers):** resolve once per bash block:

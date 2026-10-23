@@ -328,6 +328,106 @@ export const DEFERRAL_WRITERS: Set<string> = new Set([
   "bkit-utility-update-deferrals",
 ]);
 
+/** A writer list that admits every name (`.bkit/jsonl.md` § Ledgers & Writers: "any agent"). */
+export const ANY_WRITER = "any";
+
+export interface KindWriters {
+  /** Who may write the kind as a subagent, matched against the row's `subagent`. */
+  subagents: ReadonlySet<string> | typeof ANY_WRITER;
+  /** Which orchestrators may write it, matched against the `workflow` of a row with no `subagent`. */
+  orchestrators: ReadonlySet<string> | typeof ANY_WRITER;
+}
+
+/**
+ * The ledgers `bkit ledgers append` lands rows in, one kind each. `feature` rows
+ * go through `bkit roadmap feature` (it re-renders the board); `.bkit/stats.jsonl`
+ * rows are written by the engine and the chat-stats script.
+ */
+export const APPEND_LEDGERS = {
+  decisions: { file: "docs/decisions.jsonl", kind: "decision" },
+  deferrals: { file: "docs/deferrals.jsonl", kind: "deferral" },
+  failures: { file: "docs/failures.jsonl", kind: "failure" },
+  knowledge: { file: "docs/knowledge.jsonl", kind: "knowledge" },
+  friction: { file: ".bkit/friction.jsonl", kind: "friction" },
+} as const;
+
+export type AppendLedger = keyof typeof APPEND_LEDGERS;
+export type AppendKind = (typeof APPEND_LEDGERS)[AppendLedger]["kind"];
+
+/**
+ * `.bkit/jsonl.md` § Ledgers & Writers as code, for the kinds in
+ * {@link APPEND_LEDGERS}. EXHAUSTIVE: a name absent from a set does not write the
+ * kind. `telemetry.test.ts` holds this to the doc table.
+ */
+export const KIND_WRITERS: Record<AppendKind, KindWriters> = {
+  decision: {
+    subagents: new Set([
+      "bkit-debug-failure-remediate",
+      "bkit-plan-generate",
+      "bkit-utility-update-decisions",
+    ]),
+    // Decision Pause accept, ONLY after explicit human approval.
+    orchestrators: new Set(["build"]),
+  },
+  deferral: { subagents: DEFERRAL_WRITERS, orchestrators: new Set() },
+  failure: { subagents: ANY_WRITER, orchestrators: ANY_WRITER },
+  knowledge: {
+    subagents: new Set([
+      "bkit-build-challenge-remediate",
+      "bkit-build-plan-gaps-remediate",
+      "bkit-debug-failure-remediate",
+      "bkit-utility-update-knowledge",
+    ]),
+    orchestrators: new Set(),
+  },
+  friction: {
+    subagents: new Set(),
+    orchestrators: new Set(["design", "plan", "build", "debug", "ship"]),
+  },
+};
+
+const writerList = (w: KindWriters["subagents"]): string =>
+  w === ANY_WRITER ? "any" : w.size === 0 ? "none" : [...w].join(", ");
+
+/**
+ * Why `row` may not be written by its author, or undefined when it may. The author
+ * is `subagent` when set (with its `model`), else the orchestrator in `workflow`
+ * (`.bkit/jsonl.md` § Who Wrote It).
+ */
+export function writerProblem(row: Record<string, unknown>): string | undefined {
+  const kind = row["kind"] as AppendKind;
+  const writers = KIND_WRITERS[kind];
+  if (writers === undefined) return `${String(kind)} rows have no append writers`;
+  const subagent = row["subagent"];
+  if (subagent !== undefined) {
+    if (typeof subagent !== "string" || subagent === "") {
+      return "subagent must be a non-empty string";
+    }
+    if (typeof row["model"] !== "string" || row["model"] === "") {
+      return `subagent ${subagent} row missing model (its prompt's frontmatter model:)`;
+    }
+    if (writers.subagents === ANY_WRITER || writers.subagents.has(subagent)) return undefined;
+    return `subagent ${subagent} does not write ${kind} rows (subagents: ${writerList(writers.subagents)})`;
+  }
+  if (row["model"] !== undefined) return "model is set only on subagent rows";
+  if (writers.orchestrators === ANY_WRITER) return undefined;
+  const workflow = row["workflow"];
+  if (typeof workflow === "string" && writers.orchestrators.has(workflow)) return undefined;
+  return `the ${typeof workflow === "string" ? workflow : "(no workflow)"} orchestrator does not write ${kind} rows (orchestrators: ${writerList(writers.orchestrators)})`;
+}
+
+/**
+ * A `ts` minted now: `Date.now()`, or `after + 1` when the clock has not passed
+ * `after`, moved 1 ms off a whole second. The live-ledger gate fails whole-second
+ * values as hand-typed (`audits/repo/ledger-integrity.test.ts`), and a real mint
+ * must never trip it.
+ */
+export function mintTs(after?: number): number {
+  let ts = Date.now();
+  if (after !== undefined && ts <= after) ts = after + 1;
+  return ts % 1000 === 0 ? ts + 1 : ts;
+}
+
 // compliance — one row per run x rule (kind:"compliance")
 export interface CompliancePayload {
   rule: string;

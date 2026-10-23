@@ -2,11 +2,14 @@ import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  ANY_WRITER,
+  APPEND_LEDGERS,
   DEFERRAL_REASONS,
   FEATURE_STATUSES,
+  KIND_WRITERS,
   MAX_ROWS_BEFORE_ROLLUP,
   SEVERITY_KINDS,
   TRIAGE_STATUSES,
@@ -23,8 +26,11 @@ import {
   foldFrom,
   gitEnv,
   identity,
+  mintTs,
   parse,
   validate,
+  writerProblem,
+  type KindWriters,
   type TelemetryEvent,
 } from "./telemetry";
 import { getBkitDocsRoot } from "../shared/package-roots";
@@ -1778,4 +1784,82 @@ describe("telemetry-invariant", () => {
       expect(result.passed).toBe(true);
     });
   });
+});
+
+describe("mintTs", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("moves a whole-second clock reading 1 ms on", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(1787788800000);
+    expect(mintTs()).toBe(1787788800001);
+  });
+
+  it("follows `after` when the clock has not passed it, never landing on a whole second", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(1787788799990);
+    expect(mintTs(1787788799995)).toBe(1787788799996);
+    expect(mintTs(1787788799999)).toBe(1787788800001);
+  });
+});
+
+describe("writerProblem", () => {
+  const row = (o: Record<string, unknown>) => ({ kind: "decision", workflow: "build", ...o });
+
+  it("admits a listed subagent and the listed orchestrator", () => {
+    expect(writerProblem(row({ subagent: "bkit-plan-generate", model: "m" }))).toBeUndefined();
+    expect(writerProblem(row({}))).toBeUndefined();
+  });
+
+  it("refuses an unlisted subagent or orchestrator", () => {
+    expect(writerProblem(row({ subagent: "bkit-plan-update", model: "m" }))).toContain(
+      "does not write decision rows",
+    );
+    expect(writerProblem(row({ workflow: "ship" }))).toContain(
+      "the ship orchestrator does not write decision rows (orchestrators: build)",
+    );
+  });
+
+  it("holds model to subagent rows", () => {
+    expect(writerProblem(row({ subagent: "bkit-plan-generate" }))).toContain("missing model");
+    expect(writerProblem(row({ model: "m" }))).toBe("model is set only on subagent rows");
+  });
+
+  it("admits any author on an any-agent kind", () => {
+    expect(writerProblem({ kind: "failure", subagent: "anyone", model: "m" })).toBeUndefined();
+    expect(writerProblem({ kind: "failure", workflow: "plan" })).toBeUndefined();
+  });
+});
+
+describe("writer sets in telemetry.ts match the jsonl.md table", () => {
+  // The § Ledgers & Writers table: "| `kind` | `file` | written by |".
+  const SPEC = fs.readFileSync(path.join(getBkitDocsRoot(), "jsonl.md"), "utf-8");
+  const cell = (kind: string): string => {
+    const line = SPEC.split("\n").find((l) => l.startsWith(`| \`${kind}\` |`));
+    if (line === undefined) throw new Error(`jsonl.md has no writer row for ${kind}`);
+    return line.split("|")[3] ?? "";
+  };
+  /** The subagents a writer cell names, or ANY_WRITER for "any agent". */
+  const docSubagents = (text: string) =>
+    text.includes("any agent")
+      ? ANY_WRITER
+      : [...new Set([...text.matchAll(/@(bkit-[a-z0-9-]+)/g)].map((m) => m[1]))].sort();
+  const listed = (w: KindWriters["subagents"]) => (w === ANY_WRITER ? ANY_WRITER : [...w].sort());
+  const orchestratorNames = (w: KindWriters["orchestrators"]) => (w === ANY_WRITER ? [] : [...w]);
+  const namedAsOrchestrator = (text: string, w: string) =>
+    new RegExp(`\\b${w}\\b.*orchestrator|orchestrator.*\\b${w}\\b`).test(text);
+
+  for (const { kind, file } of Object.values(APPEND_LEDGERS)) {
+    it(`${kind}: the doc row names ${file} and the same writers`, () => {
+      const text = cell(kind);
+      expect(SPEC).toContain(`| \`${kind}\` | \`${file}\` |`);
+      const { subagents, orchestrators } = KIND_WRITERS[kind];
+      expect(docSubagents(text)).toEqual(listed(subagents));
+      const named = orchestratorNames(orchestrators);
+      expect(text.includes("orchestrator")).toBe(named.length > 0);
+      expect(named.filter((w) => !namedAsOrchestrator(text, w))).toEqual([]);
+    });
+  }
 });

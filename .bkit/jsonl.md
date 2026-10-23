@@ -17,13 +17,17 @@
 
 ## Write Idiom
 
+**Engine and workflow writers:** `bkit ledgers append --ledger=<decisions|deferrals|failures|knowledge|friction> --rows=<file|->`, rows as a JSON array without `ts`. It mints each `ts`, fills `repo` / `bkitVersion` when absent, validates every row and checks its author against § Ledgers & Writers before writing any; one refused row exits 8 and writes nothing. A subagent with no shell hands its rows to the orchestrator as that JSON, `subagent` and `model` already set. `feature` rows: `bkit roadmap feature`. `.bkit/stats.jsonl`: engine only.
+
+**Humans and scripts:** the `jq` idiom:
+
 ```bash
 jq -c -n '{ ts: null, kind: "deferral", repo: $REPO, bkitVersion: $VER, step: $STEP, … } | .ts = (now*1000|floor)' \
   >> "$FILE" || echo "[bkit-telemetry] append failed: $FILE"
 ```
 
 - **`ts`:** Unix ms, always minted by `jq`'s `now` AT append TIME — `jq '… | .ts = (now*1000|floor)'`. The `ts: null` placeholder holds field order only; the pipe overwrites it. Drop the pipe and the row fails the envelope gate instead of landing a fake value — never seed the placeholder with a number.
-- **`ts` is never a literal.** Not hand-typed, not copied off an example row or the line above, not `date +%s%3N` (BSD/macOS incompatible). A fabricated past `ts` is indistinguishable from a real one and silently reorders the last-wins fold that every reader, `bkit harvest`, and every age report depend on. Whole-second values (`ts % 1000 == 0`) are rejected — a real mint is never round.
+- **`ts` is never a literal.** Not hand-typed, not copied off an example row or the line above, not `date +%s%3N` (BSD/macOS incompatible). A fabricated past `ts` is indistinguishable from a real one and silently reorders the last-wins fold that every reader, `bkit harvest`, and every age report depend on. Whole-second values (`ts % 1000 == 0`) fail the live-ledger gate — a real mint is never round: `bkit ledgers append` moves one 1 ms on; a `jq` append that lands on one is re-run.
 - **Log prefix:** every telemetry log line starts `[bkit-telemetry]` — load-bearing for log-drain grep.
 
 ## Ledgers & Writers
@@ -45,7 +49,7 @@ One file per `kind`; writers:
 | `decision` | `docs/decisions.jsonl` | `@bkit-debug-failure-remediate` (forced arch), `@bkit-plan-generate`, `@bkit-utility-update-decisions` (supersede / correct), build orchestrator (Decision Pause accept, ONLY after explicit human approval) |
 | `feature` | `.bkit/issues.jsonl` | design / plan / build / debug orchestrators at their phase close; ship Step 6 into the worktree ledger (rides the PR); `ABANDONED` only by a human, or an agent on explicit human instruction |
 
-**Writers are exhaustive:** only agents listed as writers for a given kind are allowed to write that specific kind; no exceptions.
+**Writers are exhaustive:** only agents listed as writers for a given kind are allowed to write that specific kind; no exceptions. For the five `bkit ledgers append` kinds this column is `KIND_WRITERS` in `.bkit/core/engine/ledgers/telemetry.ts`, the check `append` runs; `telemetry.test.ts` fails when either side changes alone.
 
 ## Generic Fields (all kinds)
 

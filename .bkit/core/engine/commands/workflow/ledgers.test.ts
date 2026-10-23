@@ -3,10 +3,10 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runCommand } from "../lib";
-import { bookPathspecs, ledgersCommand, newRecord, writeRecord } from "./ledgers";
+import { EXIT_ROW_REFUSED, bookPathspecs, ledgersCommand, newRecord, writeRecord } from "./ledgers";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -806,5 +806,166 @@ describe("bookPathspecs — frozen bookkeeping allow-list", () => {
     expect(unreached).toEqual([]);
     expect(pr).toContain("docs/plans/202610/logs/1-x/*");
     expect(pr).toContain("docs/*.jsonl"); // .bkit/issues.jsonl's route is the .bkit/*.jsonl glob
+  });
+});
+
+describe("bkit ledgers append", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const failure = (o: Record<string, unknown> = {}) => ({
+    kind: "failure",
+    workflow: "build",
+    step: "build-challenge",
+    key: "parser-drops-last-line",
+    summary: "parser drops the last line",
+    severity: "HIGH",
+    status: "OPEN",
+    ...o,
+  });
+
+  async function append(r: string, ledger: string, rows: unknown) {
+    const file = path.join(tmp(), "rows.json");
+    fs.writeFileSync(file, JSON.stringify(rows));
+    return run(r, ["append", `--root=${r}`, `--ledger=${ledger}`, `--rows=${file}`]);
+  }
+
+  const lines = (r: string, rel: string) =>
+    fs
+      .readFileSync(path.join(r, rel), "utf-8")
+      .split("\n")
+      .filter((l) => l !== "")
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+
+  it("append mints ts and writes validated rows", async () => {
+    const r = repo();
+    put(r, ".bkit/version", JSON.stringify({ pinnedVersion: "5.5.1", canonicalHashes: {} }));
+    const before = Date.now();
+    const res = await append(r, "failures", [failure(), failure({ key: "second" })]);
+    expect(res.code).toBe(0);
+    expect(res.json).toEqual({
+      ledger: "failures",
+      file: "docs/failures.jsonl",
+      appended: 2,
+      keys: ["parser-drops-last-line", "second"],
+    });
+    const [a, b] = lines(r, "docs/failures.jsonl");
+    expect(a.ts).toBeGreaterThanOrEqual(before);
+    expect(b.ts).toBeGreaterThan(a.ts as number);
+    expect(Object.keys(a).slice(0, 4)).toEqual(["ts", "kind", "repo", "bkitVersion"]);
+    expect(a).toMatchObject({
+      repo: "unknown/repo",
+      bkitVersion: "5.5.1",
+      summary: "parser drops the last line",
+    });
+  });
+
+  it("append keeps a row's own repo and bkitVersion", async () => {
+    const r = repo();
+    const res = await append(r, "failures", [failure({ repo: "o/r", bkitVersion: "1.2.3" })]);
+    expect(res.code).toBe(0);
+    expect(lines(r, "docs/failures.jsonl")[0]).toMatchObject({ repo: "o/r", bkitVersion: "1.2.3" });
+  });
+
+  it("append refuses a supplied ts", async () => {
+    const r = repo();
+    const res = await append(r, "failures", [failure({ ts: 1787788800123 })]);
+    expect(res.code).toBe(EXIT_ROW_REFUSED);
+    expect(res.err).toContain("row 1: carries ts");
+    expect(fs.existsSync(path.join(r, "docs/failures.jsonl"))).toBe(false);
+  });
+
+  it("append writes nothing when one row is invalid", async () => {
+    const r = repo();
+    put(r, "docs/failures.jsonl", '{"kept":true}\n');
+    const res = await append(r, "failures", [
+      failure(),
+      failure({ severity: "SEVERE" }),
+      failure(),
+    ]);
+    expect(res.code).toBe(EXIT_ROW_REFUSED);
+    expect(res.err).toContain("row 2:");
+    expect(res.err).toContain("severity");
+    expect(fs.readFileSync(path.join(r, "docs/failures.jsonl"), "utf-8")).toBe('{"kept":true}\n');
+  });
+
+  it("append refuses a row whose kind is not the ledger's", async () => {
+    const r = repo();
+    const res = await append(r, "knowledge", [failure()]);
+    expect(res.code).toBe(EXIT_ROW_REFUSED);
+    expect(res.err).toContain("kind must be knowledge in --ledger=knowledge (got failure)");
+  });
+
+  it("append bumps a round-second mint", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(1787788800000);
+    const r = repo();
+    const res = await append(r, "failures", [failure()]);
+    expect(res.code).toBe(0);
+    expect(lines(r, "docs/failures.jsonl")[0].ts).toBe(1787788800001);
+  });
+
+  it("append refuses an empty rows file", async () => {
+    const r = repo();
+    expect((await append(r, "failures", [])).code).toBe(2);
+    const empty = path.join(tmp(), "empty.json");
+    fs.writeFileSync(empty, "");
+    const res = await run(r, ["append", `--root=${r}`, "--ledger=failures", `--rows=${empty}`]);
+    expect(res.code).toBe(2);
+  });
+
+  it("append refuses an unknown or issues ledger", async () => {
+    const r = repo();
+    const res = await append(r, "issues", [failure()]);
+    expect(res.code).toBe(2);
+    expect(res.err).toContain("--ledger must be one of");
+  });
+
+  it("append refuses a writer not listed for the kind", async () => {
+    const r = repo();
+    const knowledge = {
+      kind: "knowledge",
+      workflow: "build",
+      step: "build-challenge",
+      key: "k",
+      summary: "s",
+    };
+    const bySubagent = await append(r, "knowledge", [
+      { ...knowledge, subagent: "bkit-plan-generate", model: "m" },
+    ]);
+    expect(bySubagent.code).toBe(EXIT_ROW_REFUSED);
+    expect(bySubagent.err).toContain("subagent bkit-plan-generate does not write knowledge rows");
+    const byOrchestrator = await append(r, "knowledge", [knowledge]);
+    expect(byOrchestrator.code).toBe(EXIT_ROW_REFUSED);
+    expect(byOrchestrator.err).toContain("the build orchestrator does not write knowledge rows");
+    expect(fs.existsSync(path.join(r, "docs/knowledge.jsonl"))).toBe(false);
+    const ok = await append(r, "knowledge", [
+      { ...knowledge, subagent: "bkit-utility-update-knowledge", model: "m" },
+    ]);
+    expect(ok.code).toBe(0);
+  });
+
+  it("append starts a new line when the ledger lacks its final newline", async () => {
+    const r = repo();
+    put(r, "docs/failures.jsonl", '{"kept":true}');
+    expect((await append(r, "failures", [failure()])).code).toBe(0);
+    expect(lines(r, "docs/failures.jsonl")).toHaveLength(2);
+  });
+
+  it("append creates the ledger and its directory", async () => {
+    const r = repo();
+    const res = await append(r, "friction", [
+      {
+        kind: "friction",
+        workflow: "ship",
+        step: "ship-close-gate",
+        key: "f",
+        summary: "s",
+        severity: "LOW",
+      },
+    ]);
+    expect(res.code).toBe(0);
+    expect(lines(r, ".bkit/friction.jsonl")).toHaveLength(1);
   });
 });

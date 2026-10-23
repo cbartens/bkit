@@ -22,6 +22,7 @@ import { getPkgRoot } from "../shared/package-roots.js";
 import { isMirrorPath } from "../shared/protected-paths.js";
 import {
   gitEnv,
+  mintTs,
   resolveGitSha,
   resolveRepoSlug,
   type TelemetryEnvelope,
@@ -218,7 +219,6 @@ export type ComplianceRow = TelemetryEnvelope & CompliancePayload;
  * Called by the CLI dispatch after `runGrader`.
  */
 export function buildComplianceRows(input: ComplianceRowInput): ComplianceRow[] {
-  const ts = Date.now();
   const { violations, phase, parentSha, repo, bkitVersion, extra } = input;
 
   const violationByRule = new Map<RuleId, Violation>();
@@ -235,7 +235,7 @@ export function buildComplianceRows(input: ComplianceRowInput): ComplianceRow[] 
     const evidence = violation?.evidence;
 
     const envelope: TelemetryEnvelope = {
-      ts: ts + rows.length, // micro-offset so each row has a unique ts within the batch
+      ts: mintTs(rows.at(-1)?.ts), // each row's ts follows the last, so a batch never ties
       kind: "compliance",
       repo,
       bkitVersion,
