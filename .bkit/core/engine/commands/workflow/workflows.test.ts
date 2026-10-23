@@ -955,6 +955,27 @@ describe("bkit workflows handover", () => {
     expect(fs.readFileSync(path.join(cwd, "src.ts"), "utf-8")).toBe("half-done fix\n");
   });
 
+  it("--push on dev never carries the stats script's chat and run rows, whatever their workflow", async () => {
+    const { cwd, remote } = withDevRemote();
+    const start = Date.now() - 1000;
+    const outcome = { kind: "outcome", workflow: "debug", ts: start + 1 };
+    const scanned = [
+      { kind: "run", key: "other-feature", workflow: "debug", ts: start + 2 },
+      { kind: "chat", key: "c", workflow: "debug", ts: start + 3 },
+    ];
+    write(cwd, ".bkit/stats.jsonl", jsonl([outcome, ...scanned]));
+    write(cwd, `${REL}/status.jsonl`, startedThenFailed("debug", start));
+    const r = await run(cwd, wf("handover", "debug", `--month=${M}`, "--push"));
+    expect(r.code).toBe(0);
+    const onDev = git(remote, "show", "dev:.bkit/stats.jsonl");
+    expect(onDev).toContain('"outcome"');
+    expect(onDev).not.toContain('"other-feature"');
+    expect(onDev).not.toContain('"chat"');
+    const left = fs.readFileSync(path.join(cwd, ".bkit/stats.jsonl"), "utf-8");
+    expect(left).toContain('"other-feature"');
+    expect(left).toContain('"chat"');
+  });
+
   it("--push on dev with no start row carries no shared-ledger row, and says so", async () => {
     const { cwd, remote } = withDevRemote();
     write(cwd, "docs/decisions.jsonl", jsonl([{ key: "x", workflow: "debug", ts: Date.now() }]));

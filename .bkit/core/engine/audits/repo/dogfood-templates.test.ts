@@ -551,6 +551,8 @@ const ADOPTED: Record<string, Entry> = {
   },
   "scripts/cleanup/bkit-tmp-prune.mjs": identical,
   "scripts/prettier/bkit-insert-ignore.mjs": identical,
+  "scripts/stats/bkit-chat-stats.mjs": identical,
+  "scripts/stats/bkit-chat-stats.test.mjs": identical,
   "scripts/secrets/bkit-secrets.mjs": identical,
   "scripts/secrets/bkit-secrets.config.mjs": {
     status: "adopted",

@@ -354,11 +354,18 @@ const SHARED_LEDGERS = [
 ];
 
 /**
+ * Kinds no workflow run writes: `scripts/stats/bkit-chat-stats.mjs` appends them, and a
+ * `run` row names any feature's workflow (`.bkit/jsonl.md` § Ledgers & Writers).
+ */
+const NOT_A_RUNS_OWN_KIND = new Set(["chat", "run"]);
+
+/**
  * Carry ONLY the run's own record out of a dev / main / detached checkout, which
  * other sessions and local-only commits share: the `.md` logs it wrote in its log
  * folder; the lines of that folder's `.jsonl` files its HEAD lacks; and, from the
  * shared ledgers, lines its HEAD lacks that are rows of `workflow` at or after
- * the run's start (`startMs`). No start known → no shared-ledger row is carried.
+ * the run's start (`startMs`), except kinds no run writes ({@link NOT_A_RUNS_OWN_KIND}).
+ * No start known → no shared-ledger row is carried.
  */
 function carryOwnBook(
   src: string,
@@ -399,7 +406,11 @@ function carryOwnBook(
     const own = uncommitted(file).filter((l) => {
       const parsed = parseJson(l);
       const row = parsed.ok ? (parsed.value as Record<string, unknown> | null) : null;
-      return row?.workflow === o.workflow && Number(row.ts) >= o.startMs!;
+      return (
+        row?.workflow === o.workflow &&
+        Number(row.ts) >= o.startMs! &&
+        !NOT_A_RUNS_OWN_KIND.has(String(row.kind))
+      );
     });
     if (own.length > 0) add(file, own);
   }

@@ -36,6 +36,8 @@ One file per `kind`; writers:
 | `compliance` | `.bkit/stats.jsonl` | `bkit comply` grader at each workflow close step |
 | `outcome` | `.bkit/stats.jsonl` | every workflow at its close (one run row per workflow run; keyed by `repo`+`workflow`+`parentSha`) |
 | `counter` | `.bkit/stats.jsonl` | every workflow at its close step (attempt counters) |
+| `chat` | `.bkit/stats.jsonl` | `scripts/stats/bkit-chat-stats.mjs` (opt-in, `.bkit/templates.md` § Chat stats): per agent chat on the machine, any repo or host |
+| `run` | `.bkit/stats.jsonl` | Same script: per workflow run in the run logs of every repo a chat ran in |
 | `friction` | `.bkit/friction.jsonl` | orchestrator workflows (design / plan / build / debug / ship) on observed friction |
 | `deferral` | `docs/deferrals.jsonl` | `@bkit-design-generate`, `@bkit-plan-generate`, `@bkit-plan-update`, `@bkit-build-challenge-remediate` (blocked; `LOW` → `low-severity`), `@bkit-debug-abort-handover`, `@bkit-ship-deferred-sweep` (adjudication only), `@bkit-utility-update-deferrals` (close / triage / locator) |
 | `failure` | `docs/failures.jsonl` | any agent on a discovered bug; `@bkit-debug-abort-handover`; `@bkit-audit-generate` (`MEDIUM`+ findings; rerun closes rows it no longer finds); `@bkit-utility-update-failures` (close / triage / locator) |
@@ -51,10 +53,10 @@ One file per `kind`; writers:
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `ts` | `number` | Unix milliseconds — primary id. Minted via `jq '… \| .ts = (now*1000\|floor)'`, never a literal (§ Write Idiom). |
-| `kind` | `string` | Closed enum: `compliance`, `outcome`, `counter`, `friction`, `deferral`, `failure`, `knowledge`, `decision`, `feature`. |
-| `repo` | `string` | Origin repo slug, e.g. `cbartens/bkit`. |
+| `kind` | `string` | Closed enum: `compliance`, `outcome`, `counter`, `friction`, `deferral`, `failure`, `knowledge`, `decision`, `feature`, `chat`, `run`. |
+| `repo` | `string` | Origin repo slug, e.g. `cbartens/bkit`; its fingerprint on `chat` / `run` rows (§ Per-Kind Fields). |
 | `bkitVersion` | `string` | bkit version that emitted the row — sole version stamp; readers tally rows per `bkitVersion` for triage. |
-| `workflow` | `string` | Emitting workflow: `design` / `plan` / `build` / `debug` / `ship` / `audit` (part of the dedup tuple for `compliance` / `counter` / `outcome`). |
+| `workflow` | `string` | Emitting workflow: `design` / `plan` / `build` / `debug` / `ship` / `audit`; `chat` rows: `chat-stats`; `run` rows: the run's workflow (part of the dedup tuple for `compliance` / `counter` / `outcome`). |
 | `step` | `string` | The workflow step the row was emitted at, e.g. `build-close-workflow`, `ship-close-gate`. Never an agent name. See § Who Wrote It. |
 | `subagent` | `string?` | The subagent that wrote the row, e.g. `bkit-build-challenge-remediate`. Set on every subagent-written row; absent on orchestrator-written rows. See § Who Wrote It. |
 | `model` | `string?` | The model that wrote the row, from the writing subagent's own frontmatter `model:`. Set only where `subagent` is set. See § Who Wrote It. |
@@ -73,6 +75,8 @@ One file per `kind`; writers:
 | `failure` | `key`, `category?` (§ Categories; `"testing"` = flaky/intermittent test), `summary?`, `severity`, `description`, `rootCause?`, `remediation?`, `status:"OPEN"\|"TRIAGED"\|"CLOSED"\|string?`. |
 | `knowledge` | `key`, `summary`, `description?`, `rootCause?`, `remediation?`, `status:"ACTIVE"\|"SUPERSEDED"?`. |
 | `decision` | `key`, `summary`, `description?`, `rationale?`, `alternatives?`, `status:"ACTIVE"\|"SUPERSEDED"?`. |
+| `chat` | `key` (`<platform>:<sessionId>`), `platform` (`claude-code` / `codex` / `opencode` / `cursor` / `antigravity`), `sessionId`, `start:number`, `end:number` (unix ms; `ts` = `end`), `minutes:number`, `activeMinutes:number` (sum of `active`: `[[startMs,endMs]]`, chat + subagents, split at gaps over 5 min), `bkitVersionSource:"repo-history"\|"prompt"\|"none"` (`prompt` = an expanded workflow command's managed marker), `hostVersion?`, `entrypoint?`, `models` (per host model id: `{turns,read,input,cacheWrite,cacheRead,output,outputEst}`), `effort` (turns per level), `bkit:boolean`, `bkitVia` (`command` / `subagent`), `bkitKinds`, `bkitWorkflows`, `issue` / `issues` / `mentioned` (issue fingerprints), `issueSource:"command"\|"summary"\|"mention"\|"none"`, `parentShas` (printed by `bkit workflows close` — exact join to `outcome` / `counter` / `compliance`), `turns:number`, `userPrompts:number`, `compactions:number`, `tokens` (`{input,cacheWrite,cacheRead,output,outputEst,read,ctxStart,ctxPeak}`), `tokensRecorded:boolean` (false = host records none, e.g. Cursor), `main` (session minus subagents: `{turns,read,input,cacheWrite,cacheRead,output,outputEst,ctxPeak,compactions,mix}`), `subagents:number`, `bkitSubagents:number`, `otherSubagents:number`, `agents` (per agent type: `{n,turns,turnsMax,read,input,cacheWrite,cacheRead,output,outputEst,ctxPeakMax,ctxPeaks,compactions,errors,mix}`; `ctxPeaks` = each agent's largest turn; `mix` = calls by kind: `{read,edit,grep,sedCat,findLs,tests,serena}`), `tools`, `bash`, `bkitCli`, `filesRead:number`, `errors:number`, `sourceFiles:number`, `sourceBytes:number`, `lastActivityAt:number` (last write to the chat's files), `settled:boolean` (unchanged for the settle window; `false` = open: counted and marked, not in medians; absent = settled). New same-`key` row when `sourceBytes` or `settled` changes. `repo` and issues are fingerprints: `fp:` + 12 hex of sha256(`owner/repo` / `owner/repo#N`); no paths, branch names or prompt text. `bkitVia: command` only when the chat ran a `/bkit-*` command itself; named only in the host's summary of an earlier chat → `issueSource:"summary"`. Field reference: the script's header. |
+| `run` | `key` (`<fid>:<workflow>:<start>`), `fid` (fingerprint of `owner/repo:<FID>`), `issue` (fingerprint of the FID's leading number, else null), `run:number` (nth run of that workflow in the log), `start:number`, `end:number` (first / last status row, unix ms), `lastActivityAt:number` (log's last row, after-end rows included), `minutes:number`, `activeMinutes:number\|null` (run time inside the `active` spans of counted chats naming its issue by command or summary; null = none yet), `activeFrom` (`{chats,bytes}` of those chats), `ending:"done"\|"close-failed"\|"failed"\|"decision-pause"\|"stopped"` (last end row; `close-failed` = after `workflow-done` only the close failed: last close's `ciDispatch.outcome` `unresolved`, or a `workflow-failed` row with no close after it; no end row → `decision-pause` if its `build-decision-*.md` is `Status: OPEN`, else `stopped`), `parentSha` (the close step's — exact join to the run's `outcome` / `counter` / `compliance`; null without one), `closeCi` (`[{outcome,reason,attempts}]`, each close's `ciDispatch`), `parentShas`, `steps` (per step `{n,minutes,active}`: minutes since the previous status row; `active` = the part inside the spans, null without `activeFrom`), `afterEnd:number` (rows after the end row, e.g. a hand rewind), `sourceRows:number`, `settled:boolean` (last row older than the settle window). `ts` = scan time. New same-`key` row when `sourceRows`, `activeFrom` or `settled` changes. Build and debug add `lines` (`{code,tests,docs}`, each `{added,deleted,files}`, + `merges`): git `--numstat` first → last `parentShas`, first-parent, cut at merges (dev syncs out); `docs/plans/**`, `docs/*.jsonl`, `.bkit/*.jsonl` out; null when the first sha is not an ancestor of the last. Build adds `verify` (`[{subPlan,attempt,verdict,failures,testOrderGaps}]`; `testOrderGaps` null = round's report gone: an earlier build's counts only if written before the next build started), `gapsRemediate` (`[{subPlan,attempt,verdict,strategy}]`), `holistic` (`{verdict,failures}`), `challenge` (`{verdict,findings}`, reconciled, per severity), `redTests:number`. A feature's last plan run adds `plan` (`{kb,subPlans,tasks,tasksWithoutTests,testsPerTask,testFilesPerTask,complexity}`; per-task lists in plan order, null before `Test first`; `complexity` = the check's `{verdict,tasksChecked}`). No limits applied; no FID text, paths or branch names. |
 | `feature` | `key` (the FID), `category` (§ Categories), `summary?`, `description`, `status:"DESIGNED"\|"PLANNED"\|"BUILT"\|"DEBUGGED"\|"SHIPPED"\|"ABANDONED"` (required — no severity; see `docs/roadmap.md`), `shippedAt:number?` (§ Ship Date). |
 
 ## Who Wrote It — `step` vs `subagent` vs `model`
@@ -280,7 +284,7 @@ Identity tuple, not bare `ts`:
 | `compliance` | `(repo, workflow, parentSha, rule)` |
 | `outcome` | `(repo, workflow, parentSha)` — `prNumber` / `ts` fallback on rows without `parentSha` |
 | `counter` | `(repo, workflow, parentSha, counterName)` |
-| `friction` \| `deferral` \| `failure` \| `knowledge` \| `decision` | `(kind, repo, key)` |
+| `friction` \| `deferral` \| `failure` \| `knowledge` \| `decision` \| `chat` \| `run` | `(kind, repo, key)` |
 
 Identity match = same thing — not automatically skip:
 
@@ -295,7 +299,7 @@ No schema version — `bkitVersion` only stamp. Readers ingest all well-formed r
 
 Indented for readability — **on disk each row = single physical line** (§ Write Idiom). One example per ledger. Each shows all kind fields including `?`-optional ones (§ Per-Kind Fields) real rows omit when N/A:
 
-`.bkit/stats.jsonl` (`compliance` / `outcome` / `counter`):
+`.bkit/stats.jsonl` (`compliance` / `outcome` / `counter` / `chat` / `run`):
 
 <!-- prettier-ignore -->
 ```jsonl
@@ -348,6 +352,75 @@ Indented for readability — **on disk each row = single physical line** (§ Wri
   "counterValue": 2,
   "counterSource": "shell-bus",
   "parentSha": "a1b2c3d"
+}
+{
+  "ts": 1718903600000,
+  "kind": "chat",
+  "repo": "fp:9f86d081884c",
+  "bkitVersion": "4.2.0",
+  "workflow": "chat-stats",
+  "step": "scan",
+  "key": "claude-code:8f9f0a84-6f5a-503d-8484-d56d75424d11",
+  "platform": "claude-code",
+  "sessionId": "8f9f0a84-6f5a-503d-8484-d56d75424d11",
+  "start": 1718900000000,
+  "end": 1718903600000,
+  "minutes": 60,
+  "activeMinutes": 52.5,
+  "active": [[1718900000000, 1718902400000], [1718903150000, 1718903600000]],
+  "bkitVersionSource": "repo-history",
+  "hostVersion": "2.1.299",
+  "models": { "claude-opus-5-5": { "turns": 120, "read": 9800000, "cacheWrite": 410000, "output": 52000, "outputEst": 48000 } },
+  "bkit": true,
+  "bkitVia": ["command", "subagent"],
+  "bkitKinds": ["build"],
+  "bkitWorkflows": ["build"],
+  "issue": "fp:2c26b46b68ff",
+  "issueSource": "command",
+  "issues": ["fp:2c26b46b68ff"],
+  "mentioned": [],
+  "parentShas": ["a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"],
+  "turns": 120,
+  "tokens": { "input": 900, "cacheWrite": 410000, "cacheRead": 9399100, "output": 52000, "outputEst": 48000, "read": 9800000, "ctxStart": 21000, "ctxPeak": 180000 },
+  "tokensRecorded": true,
+  "subagents": 4,
+  "agents": { "bkit-build-plan-execute": { "n": 1, "turns": 60, "turnsMax": 60, "read": 5200000, "cacheWrite": 200000, "outputEst": 21000, "ctxPeakMax": 150000, "ctxPeaks": [150000], "compactions": 0, "errors": 2 } },
+  "sourceFiles": 5,
+  "sourceBytes": 4812345,
+  "lastActivityAt": 1718903600000,
+  "settled": true
+}
+{
+  "ts": 1718910000000,
+  "kind": "run",
+  "repo": "fp:9f86d081884c",
+  "bkitVersion": "4.2.0",
+  "workflow": "build",
+  "step": "scan",
+  "key": "fp:4e07408562be:build:1718900000000",
+  "fid": "fp:4e07408562be",
+  "issue": "fp:2c26b46b68ff",
+  "run": 1,
+  "start": 1718900000000,
+  "end": 1718910000000,
+  "lastActivityAt": 1718910000000,
+  "minutes": 166.7,
+  "activeMinutes": 98.4,
+  "activeFrom": { "chats": 1, "bytes": 4812345 },
+  "ending": "done",
+  "parentSha": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+  "closeCi": [{ "outcome": "dispatched", "reason": null, "attempts": 1 }],
+  "parentShas": ["a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"],
+  "steps": { "build-plan-execute": { "n": 1, "minutes": 41.2, "active": 30.1 }, "build-plan-verify": { "n": 2, "minutes": 18.5, "active": 12.0 } },
+  "afterEnd": 0,
+  "lines": { "code": { "added": 200, "deleted": 2, "files": 4 }, "tests": { "added": 938, "deleted": 104, "files": 14 }, "docs": { "added": 34, "deleted": 14, "files": 5 }, "merges": 1 },
+  "verify": [{ "subPlan": 1, "attempt": 1, "verdict": "FAIL", "failures": 2, "testOrderGaps": 0 }, { "subPlan": 1, "attempt": 2, "verdict": "PASS", "failures": 0, "testOrderGaps": 0 }],
+  "gapsRemediate": [{ "subPlan": 1, "attempt": 1, "verdict": "PASS", "strategy": "STANDARD" }],
+  "holistic": null,
+  "challenge": { "verdict": "CONCERNS", "findings": { "CRITICAL": 0, "HIGH": 0, "MEDIUM": 2, "LOW": 3 } },
+  "redTests": 14,
+  "sourceRows": 31,
+  "settled": true
 }
 ```
 

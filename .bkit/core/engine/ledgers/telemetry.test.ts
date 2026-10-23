@@ -175,6 +175,41 @@ function featureEvent(key: string, overrides: Partial<TelemetryEvent> = {}): Tel
   } as TelemetryEvent;
 }
 
+function chatEvent(key: string, overrides: Partial<TelemetryEvent> = {}): TelemetryEvent {
+  return {
+    ...baseEnvelope("chat"),
+    workflow: "chat-stats",
+    step: "scan",
+    key,
+    platform: "claude-code",
+    sessionId: key.split(":")[1],
+    start: 1_700_000_000_000,
+    end: 1_700_000_600_000,
+    parentShas: [],
+    issues: [],
+    sourceBytes: 1024,
+    ...overrides,
+  } as TelemetryEvent;
+}
+
+function runEvent(key: string, overrides: Partial<TelemetryEvent> = {}): TelemetryEvent {
+  return {
+    ...baseEnvelope("run"),
+    workflow: "plan",
+    step: "scan",
+    key,
+    fid: "fp:000000000000",
+    issue: null,
+    start: 1_700_000_000_000,
+    end: 1_700_000_600_000,
+    ending: "done",
+    parentSha: "deadbeef",
+    parentShas: ["deadbeef"],
+    sourceRows: 12,
+    ...overrides,
+  } as TelemetryEvent;
+}
+
 // ---------------------------------------------------------------------------
 // identity() — per-kind composite tuple tests
 // ---------------------------------------------------------------------------
@@ -577,6 +612,122 @@ describe("feature kind — .bkit/issues.jsonl (#380)", () => {
     expect(state.size).toBe(1);
     const current = [...state.values()][0] as TelemetryEvent & { status?: string };
     expect(current.status).toBe("BUILT");
+  });
+});
+
+// `chat` kind: one agent chat on any host, written by scripts/stats/bkit-chat-stats.mjs.
+describe("chat kind — .bkit/stats.jsonl chat rows", () => {
+  it("is a valid kind keyed by kind + repo + key", () => {
+    expect(VALID_KINDS.has("chat")).toBe(true);
+    const e = chatEvent("claude-code:abc");
+    expect(validate(e).ok).toBe(true);
+    expect(identity(e)).toBe("chat cbartens/bkit claude-code:abc");
+  });
+
+  it("rejects a row without the join keys readers depend on", () => {
+    expect(validate({ ...chatEvent("claude-code:abc"), key: undefined }).ok).toBe(false);
+    expect(validate({ ...chatEvent("claude-code:abc"), sourceBytes: undefined }).ok).toBe(false);
+    expect(validate({ ...chatEvent("claude-code:abc"), parentShas: undefined }).ok).toBe(false);
+    expect(validate({ ...chatEvent("claude-code:abc"), start: "yesterday" }).ok).toBe(false);
+  });
+
+  it("carries no severity or status", () => {
+    expect(validate({ ...chatEvent("claude-code:abc"), severity: "HIGH" }).ok).toBe(false);
+    expect(validate({ ...chatEvent("claude-code:abc"), status: "OPEN" }).ok).toBe(false);
+  });
+
+  it("a resumed chat's new row folds over the first one", () => {
+    const first = chatEvent("claude-code:abc", { sourceBytes: 1024 } as Partial<TelemetryEvent>);
+    const resumed = chatEvent("claude-code:abc", {
+      ts: first.ts + 1,
+      sourceBytes: 4096,
+    } as Partial<TelemetryEvent>);
+    const state = fold([first, resumed]);
+    expect(state.size).toBe(1);
+    expect(([...state.values()][0] as TelemetryEvent & { sourceBytes: number }).sourceBytes).toBe(
+      4096,
+    );
+  });
+
+  it("leaves a workflow's telemetry report unchanged", () => {
+    const run = outcomeEvent({
+      workflow: "plan",
+      parentSha: "deadbeef",
+    } as Partial<TelemetryEvent>);
+    // The footer counts every ledger row; only the workflow's own numbers must not move.
+    const result = (events: TelemetryEvent[]) => ({
+      state: fold(events),
+      rowCount: 2,
+      malformedLineCount: 0,
+      versionCounts: {},
+      maxRowsWarning: false,
+    });
+    const without = workflowTelemetry(result([run]), "plan").lines;
+    const withChat = workflowTelemetry(result([run, chatEvent("claude-code:abc")]), "plan").lines;
+    expect(without.length).toBeGreaterThan(0);
+    expect(withChat).toEqual(without);
+  });
+});
+
+// `run` kind: one workflow run from its run log, written by scripts/stats/bkit-chat-stats.mjs.
+describe("run kind — .bkit/stats.jsonl run rows", () => {
+  const key = "fp:000000000000:plan:1700000000000";
+
+  it("is a valid kind keyed by kind + repo + key", () => {
+    expect(VALID_KINDS.has("run")).toBe(true);
+    const e = runEvent(key);
+    expect(validate(e).ok).toBe(true);
+    expect(identity(e)).toBe(`run cbartens/bkit ${key}`);
+  });
+
+  it("rejects a row without the join keys readers depend on", () => {
+    expect(validate({ ...runEvent(key), key: undefined }).ok).toBe(false);
+    expect(validate({ ...runEvent(key), fid: undefined }).ok).toBe(false);
+    expect(validate({ ...runEvent(key), sourceRows: undefined }).ok).toBe(false);
+    expect(validate({ ...runEvent(key), parentShas: undefined }).ok).toBe(false);
+    expect(validate({ ...runEvent(key), parentSha: 7 }).ok).toBe(false);
+    expect(validate({ ...runEvent(key), parentSha: null }).ok).toBe(true);
+  });
+
+  it("takes only the five endings", () => {
+    for (const ending of ["done", "close-failed", "failed", "decision-pause", "stopped"])
+      expect(validate({ ...runEvent(key), ending }).ok).toBe(true);
+    expect(validate({ ...runEvent(key), ending: "open" }).ok).toBe(false);
+  });
+
+  it("carries no severity or status", () => {
+    expect(validate({ ...runEvent(key), severity: "HIGH" }).ok).toBe(false);
+    expect(validate({ ...runEvent(key), status: "OPEN" }).ok).toBe(false);
+  });
+
+  it("a grown run log's new row folds over the first one", () => {
+    const first = runEvent(key, { ending: "stopped" } as Partial<TelemetryEvent>);
+    const grown = runEvent(key, {
+      ts: first.ts + 1,
+      sourceRows: 20,
+    } as Partial<TelemetryEvent>);
+    const state = fold([first, grown]);
+    expect(state.size).toBe(1);
+    expect(([...state.values()][0] as TelemetryEvent & { sourceRows: number }).sourceRows).toBe(20);
+  });
+
+  it("leaves the telemetry report of the same workflow unchanged", () => {
+    const outcome = outcomeEvent({
+      workflow: "plan",
+      parentSha: "deadbeef",
+    } as Partial<TelemetryEvent>);
+    // The footer counts every ledger row; only the workflow's own numbers must not move.
+    const result = (events: TelemetryEvent[]) => ({
+      state: fold(events),
+      rowCount: 2,
+      malformedLineCount: 0,
+      versionCounts: {},
+      maxRowsWarning: false,
+    });
+    const without = workflowTelemetry(result([outcome]), "plan").lines;
+    const withRun = workflowTelemetry(result([outcome, runEvent(key)]), "plan").lines;
+    expect(without.length).toBeGreaterThan(0);
+    expect(withRun).toEqual(without);
   });
 });
 

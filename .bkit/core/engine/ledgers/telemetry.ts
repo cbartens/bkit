@@ -120,7 +120,7 @@ export interface TelemetryEnvelope {
   repo: string;
   /** bkit version stamped on every row for regression attribution. */
   bkitVersion: string;
-  /** Emitting workflow: design | plan | build | debug | ship | audit */
+  /** Emitting workflow: design | plan | build | debug | ship | audit; `chat-stats` on `chat` rows; the counted run's on `run` rows. */
   workflow: string;
   /**
    * The WORKFLOW STEP the row was emitted at, e.g. `build-close-workflow`,
@@ -176,7 +176,9 @@ export type TelemetryKind =
   | "failure"
   | "knowledge"
   | "decision"
-  | "feature";
+  | "feature"
+  | "chat"
+  | "run";
 
 export const VALID_KINDS: Set<string> = new Set([
   "compliance",
@@ -188,6 +190,8 @@ export const VALID_KINDS: Set<string> = new Set([
   "knowledge",
   "decision",
   "feature",
+  "chat",
+  "run",
 ]);
 
 /**
@@ -551,6 +555,73 @@ export interface FeaturePayload {
   shippedAt?: number;
 }
 
+// chat — one agent chat on any host (a session plus its subagents), written by
+// `scripts/stats/bkit-chat-stats.mjs`; keyed by explicit `key` (`<platform>:<sessionId>`).
+// A resumed chat is a same-`key` append; last row wins. The script is the writer and the
+// field reference (its header); the codec checks only what readers join on.
+export interface ChatPayload {
+  /** `<platform>:<sessionId>` — written once per chat, repeated on a resumed chat's new row. */
+  key: string;
+  platform: string;
+  sessionId: string;
+  /** Unix ms of the chat's first and last transcript line. `ts` = `end`. */
+  start: number;
+  end: number;
+  /** `repo-history` = from the chat repo's `.bkit/version` history; `prompt` = from an expanded command's managed marker; `none` = neither. */
+  bkitVersionSource: "repo-history" | "prompt" | "none";
+  /** `fp:` + 12 hex of sha256(`owner/repo#N`); `issues` from `/bkit-*` commands, `mentioned` from typed `#N`. */
+  issue: string | null;
+  issues: string[];
+  mentioned: string[];
+  /** `parentSha` values `bkit workflows close` printed in the chat — exact join to outcome / counter / compliance rows. */
+  parentShas: string[];
+  /** Workflows run by `/bkit-*` command (`plan`, `build`, …). */
+  bkitWorkflows: string[];
+  turns: number;
+  tokens: {
+    input: number;
+    cacheWrite: number;
+    cacheRead: number;
+    output: number;
+    outputEst: number;
+    read: number;
+    ctxStart: number;
+    ctxPeak: number;
+  };
+  /** Total size of the chat's transcript files when counted; a changed size = the chat was resumed. */
+  sourceBytes: number;
+}
+
+// run — one workflow run, read from its run log (`docs/plans/<YYYYMM>/logs/<FID>/status.jsonl`)
+// by `scripts/stats/bkit-chat-stats.mjs`; keyed by explicit `key` (`<fid fp>:<workflow>:<start>`).
+// A run whose log grew is a same-`key` append; last row wins. The script is the writer and the
+// field reference; the codec checks only what readers join on.
+export interface RunPayload {
+  /** `<fid fp>:<workflow>:<start>`. */
+  key: string;
+  /** `fp:` + 12 hex of sha256(`owner/repo:<FID>`); `issue` = fingerprint of the FID's leading number. */
+  fid: string;
+  issue: string | null;
+  /** Unix ms of the run's first and last status row. `ts` = when the scan wrote the row. */
+  start: number;
+  end: number;
+  /** `close-failed` = the work wrote `workflow-done` and only the close after it failed. */
+  ending: "done" | "close-failed" | "failed" | "decision-pause" | "stopped";
+  /** The close step's `parentSha` — exact join to the run's outcome / counter / compliance rows. */
+  parentSha: string | null;
+  parentShas: string[];
+  /** Status rows read; a changed count = the run's log grew. */
+  sourceRows: number;
+}
+
+export const RUN_ENDINGS: Set<string> = new Set([
+  "done",
+  "close-failed",
+  "failed",
+  "decision-pause",
+  "stopped",
+]);
+
 // ---------------------------------------------------------------------------
 // Discriminated union event type
 // ---------------------------------------------------------------------------
@@ -566,6 +637,8 @@ export type TelemetryEvent = TelemetryEnvelope &
     | ({ kind: "knowledge" } & KnowledgePayload)
     | ({ kind: "decision" } & DecisionPayload)
     | ({ kind: "feature" } & FeaturePayload)
+    | ({ kind: "chat" } & ChatPayload)
+    | ({ kind: "run" } & RunPayload)
   );
 
 // ---------------------------------------------------------------------------
@@ -593,7 +666,9 @@ export function identity(event: TelemetryEvent): string {
     case "knowledge":
     case "decision":
     case "feature":
-      // instinct-loop kinds (+ feature): identity = kind + key
+    case "chat":
+    case "run":
+      // instinct-loop kinds (+ feature, chat, run): identity = kind + key
       return `${event.kind} ${event.repo} ${event.key ?? event.ts}`;
   }
 }
@@ -784,6 +859,45 @@ export function validate(event: unknown): ValidationResult {
     }
     if (e["counterSource"] !== "model-self-report" && e["counterSource"] !== "shell-bus") {
       return { ok: false, reason: "counter counterSource must be model-self-report or shell-bus" };
+    }
+  }
+  if (kind === "chat") {
+    if (!e["key"] || typeof e["key"] !== "string") {
+      return { ok: false, reason: "chat row missing required field: key (<platform>:<sessionId>)" };
+    }
+    for (const f of ["start", "end", "sourceBytes"]) {
+      if (typeof e[f] !== "number")
+        return { ok: false, reason: `chat row missing numeric field: ${f}` };
+    }
+    if (!Array.isArray(e["parentShas"]) || !Array.isArray(e["issues"])) {
+      return { ok: false, reason: "chat row needs parentShas and issues arrays (the join keys)" };
+    }
+  }
+  if (kind === "run") {
+    if (!e["key"] || typeof e["key"] !== "string") {
+      return {
+        ok: false,
+        reason: "run row missing required field: key (<fid fp>:<workflow>:<start>)",
+      };
+    }
+    if (!e["fid"] || typeof e["fid"] !== "string") {
+      return { ok: false, reason: "run row missing required field: fid" };
+    }
+    for (const f of ["start", "end", "sourceRows"]) {
+      if (typeof e[f] !== "number")
+        return { ok: false, reason: `run row missing numeric field: ${f}` };
+    }
+    if (!RUN_ENDINGS.has(e["ending"] as string)) {
+      return {
+        ok: false,
+        reason: `run ending must be one of ${[...RUN_ENDINGS].join("|")} (got: ${String(e["ending"])})`,
+      };
+    }
+    if (e["parentSha"] !== null && typeof e["parentSha"] !== "string") {
+      return { ok: false, reason: "run parentSha must be a string or null" };
+    }
+    if (!Array.isArray(e["parentShas"])) {
+      return { ok: false, reason: "run row needs a parentShas array (the join keys)" };
     }
   }
   if (kind === "feature") {

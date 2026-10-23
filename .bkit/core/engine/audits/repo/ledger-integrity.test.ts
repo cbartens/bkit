@@ -30,7 +30,7 @@ const LEDGERS: Record<string, string[]> = {
   "docs/deferrals.jsonl": ["deferral"],
   "docs/failures.jsonl": ["failure"],
   ".bkit/friction.jsonl": ["friction"],
-  ".bkit/stats.jsonl": ["compliance", "counter", "outcome"],
+  ".bkit/stats.jsonl": ["compliance", "counter", "outcome", "chat", "run"],
 };
 
 /**

@@ -53,6 +53,9 @@ docs/plans/*/logs/**/.rebase-failed
 .bkit/.roadmap-shortlist.json
 .bkit/.roadmap-reverse-sync.json
 
+# Chat-stats report: names the repos and issues stats.jsonl stores only as fingerprints
+.bkit/stats.md
+
 # Claude Code /schedule daemon lock
 .claude/scheduled_tasks.lock
 

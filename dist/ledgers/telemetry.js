@@ -109,6 +109,8 @@ export const VALID_KINDS = new Set([
     "knowledge",
     "decision",
     "feature",
+    "chat",
+    "run",
 ]);
 export const VALID_SEVERITIES = new Set(["CRITICAL", "HIGH", "MEDIUM", "LOW"]);
 /**
@@ -166,6 +168,13 @@ export const DEFERRAL_WRITERS = new Set([
     "bkit-ship-deferred-sweep",
     "bkit-utility-update-deferrals",
 ]);
+export const RUN_ENDINGS = new Set([
+    "done",
+    "close-failed",
+    "failed",
+    "decision-pause",
+    "stopped",
+]);
 // ---------------------------------------------------------------------------
 // Identity — per-kind composite tuple for dedup (NOT bare ts)
 // Mirrors ledgers/status.ts's tuple dedupe approach.
@@ -189,7 +198,9 @@ export function identity(event) {
         case "knowledge":
         case "decision":
         case "feature":
-            // instinct-loop kinds (+ feature): identity = kind + key
+        case "chat":
+        case "run":
+            // instinct-loop kinds (+ feature, chat, run): identity = kind + key
             return `${event.kind} ${event.repo} ${event.key ?? event.ts}`;
     }
 }
@@ -368,6 +379,45 @@ export function validate(event) {
         }
         if (e["counterSource"] !== "model-self-report" && e["counterSource"] !== "shell-bus") {
             return { ok: false, reason: "counter counterSource must be model-self-report or shell-bus" };
+        }
+    }
+    if (kind === "chat") {
+        if (!e["key"] || typeof e["key"] !== "string") {
+            return { ok: false, reason: "chat row missing required field: key (<platform>:<sessionId>)" };
+        }
+        for (const f of ["start", "end", "sourceBytes"]) {
+            if (typeof e[f] !== "number")
+                return { ok: false, reason: `chat row missing numeric field: ${f}` };
+        }
+        if (!Array.isArray(e["parentShas"]) || !Array.isArray(e["issues"])) {
+            return { ok: false, reason: "chat row needs parentShas and issues arrays (the join keys)" };
+        }
+    }
+    if (kind === "run") {
+        if (!e["key"] || typeof e["key"] !== "string") {
+            return {
+                ok: false,
+                reason: "run row missing required field: key (<fid fp>:<workflow>:<start>)",
+            };
+        }
+        if (!e["fid"] || typeof e["fid"] !== "string") {
+            return { ok: false, reason: "run row missing required field: fid" };
+        }
+        for (const f of ["start", "end", "sourceRows"]) {
+            if (typeof e[f] !== "number")
+                return { ok: false, reason: `run row missing numeric field: ${f}` };
+        }
+        if (!RUN_ENDINGS.has(e["ending"])) {
+            return {
+                ok: false,
+                reason: `run ending must be one of ${[...RUN_ENDINGS].join("|")} (got: ${String(e["ending"])})`,
+            };
+        }
+        if (e["parentSha"] !== null && typeof e["parentSha"] !== "string") {
+            return { ok: false, reason: "run parentSha must be a string or null" };
+        }
+        if (!Array.isArray(e["parentShas"])) {
+            return { ok: false, reason: "run row needs a parentShas array (the join keys)" };
         }
     }
     if (kind === "feature") {
