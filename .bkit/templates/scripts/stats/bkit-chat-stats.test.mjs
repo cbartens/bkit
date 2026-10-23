@@ -35,12 +35,14 @@ import {
   mergeSpans,
   modelFamily,
   normalize,
+  otherLedgerRows,
   overlapMs,
   planShape,
   planTasks,
   readLedger,
   renderReport,
   repoFp,
+  resolveRepo,
   runLines,
   runLogDirs,
   runRows,
@@ -2208,6 +2210,35 @@ await test("normalize leaves null by fields out and always gives an outcome its 
   });
   assert.deepEqual(n.by, { step: "ship-close-workflow" });
   assert.deepEqual(n.ledgers, { deferrals: {}, failures: {}, friction: {} });
+});
+
+await test("otherLedgerRows counts a row once when a worktree still holds it in the old shape", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-stats-other-"));
+  spawnSync("git", ["init", "-q", root]);
+  spawnSync("git", ["-C", root, "remote", "add", "origin", "git@github.com:acme/dup.git"]);
+  const old = {
+    ts: 9,
+    kind: "counter",
+    workflow: "plan",
+    step: "plan-close-workflow",
+    repo: "acme/dup",
+    bkitVersion: "5.5.0",
+    parentSha: SHA,
+    counterName: "PLAN_ATTEMPT",
+    counterValue: 1,
+    counterSource: "shell-bus",
+  };
+  const fresh = { ...old, ts: 10, counterValue: 2 };
+  const own = path.join(root, "own.jsonl");
+  fs.writeFileSync(own, `${JSON.stringify(normalize(old))}\n`);
+  const wt = path.join(root, ".worktrees", "651-x", ".bkit");
+  fs.mkdirSync(wt, { recursive: true });
+  fs.writeFileSync(
+    path.join(wt, "stats.jsonl"),
+    `${JSON.stringify(old)}\n${JSON.stringify(fresh)}\n`,
+  );
+  resolveRepo(root);
+  assert.deepEqual(otherLedgerRows(own), [normalize(fresh)]);
 });
 
 await test("normalize maps schema-1 outcome, counter and compliance rows", () => {

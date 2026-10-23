@@ -3042,7 +3042,9 @@ export async function buildLookup(hosts, ledgerRows) {
  */
 export function otherLedgerRows(statsFile) {
   const own = path.resolve(statsFile);
-  const seenRows = new Set(readLedger(own).map((r) => JSON.stringify(r)));
+  // Compared after normalize: a worktree's or an unmigrated repo's ledger can hold a row in the
+  // old shape that this ledger holds migrated.
+  const seenRows = new Set(readLedger(own).map((r) => JSON.stringify(normalize(r))));
   const seen = new Set([own]);
   const rows = [];
   for (const { root } of repoCache.values()) {
@@ -3056,7 +3058,7 @@ export function otherLedgerRows(statsFile) {
       const file = path.resolve(base, ".bkit", "stats.jsonl");
       if (seen.has(file)) continue;
       seen.add(file);
-      for (const r of readLedger(file).filter(workflowRow)) {
+      for (const r of readLedger(file).filter(workflowRow).map(normalize)) {
         const k = JSON.stringify(r);
         if (seenRows.has(k)) continue;
         seenRows.add(k);

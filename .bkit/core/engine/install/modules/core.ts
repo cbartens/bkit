@@ -362,10 +362,11 @@ export function migrateRetiredDevLock(dryRun: boolean, ws: WriteSet, logPrefix: 
 // Recorded in ws so `bkit check` fails until upgrade runs; ledgers never get a
 // canonical hash (`mergeCanonicalHashes`).
 export function migrateLedgerSchema(dryRun: boolean, ws: WriteSet, logPrefix: string): void {
-  for (const { file, rewritten } of migrateLedgers(process.cwd(), dryRun)) {
+  for (const { file, rewritten, dropped } of migrateLedgers(process.cwd(), dryRun)) {
     ws.writes.push({ path: file, action: "update" });
+    const copies = dropped > 0 ? `, ${dropped} old copy(ies) of rewritten rows dropped` : "";
     console.log(
-      `${logPrefix} ${dryRun ? "[dry-run] " : ""}core: ${file} — ${rewritten} row(s) rewritten to schema 2`,
+      `${logPrefix} ${dryRun ? "[dry-run] " : ""}core: ${file} — ${rewritten} row(s) rewritten to schema 2${copies}`,
     );
   }
 }

@@ -56,13 +56,31 @@ describe("migrateLedgerText", () => {
 
   it("is idempotent: a second pass changes nothing", () => {
     const once = migrateLedgerText(`${line(OLD_DEFERRAL)}\n${line(OLD_OUTCOME)}\n`).text;
-    expect(migrateLedgerText(once)).toEqual({ text: once, rewritten: 0 });
+    expect(migrateLedgerText(once)).toEqual({ text: once, rewritten: 0, dropped: 0 });
   });
 
   it("keeps malformed, non-object, blank and schema lines byte-for-byte", () => {
     const schemaRow = line(normalize(OLD_DEFERRAL));
     const input = ["{not json", "[1,2]", "42", "", schemaRow, ""].join("\n");
-    expect(migrateLedgerText(input)).toEqual({ text: input, rewritten: 0 });
+    expect(migrateLedgerText(input)).toEqual({ text: input, rewritten: 0, dropped: 0 });
+  });
+
+  it("drops an old row whose rewrite the file already holds (a union merge of an unmigrated branch)", () => {
+    const migrated = `${line(normalize(OLD_DEFERRAL))}\n${line(normalize(OLD_OUTCOME))}\n`;
+    const { text, rewritten, dropped } = migrateLedgerText(
+      `${migrated}${line(OLD_DEFERRAL)}\n${line(OLD_OUTCOME)}\n${line({ ...OLD_OUTCOME, ts: 1 })}\n`,
+    );
+    expect([rewritten, dropped]).toEqual([1, 2]);
+    expect(text).toBe(`${migrated}${line(normalize({ ...OLD_OUTCOME, ts: 1 }))}\n`);
+  });
+
+  it("keeps repeated old rows when the file holds no rewrite of them", () => {
+    const twice = `${line(OLD_OUTCOME)}\n${line(OLD_OUTCOME)}\n`;
+    expect(migrateLedgerText(twice)).toEqual({
+      text: `${line(normalize(OLD_OUTCOME))}\n${line(normalize(OLD_OUTCOME))}\n`,
+      rewritten: 2,
+      dropped: 0,
+    });
   });
 
   it("preserves CRLF line endings and a missing final newline", () => {
@@ -87,8 +105,8 @@ describe("migrateLedgers", () => {
     fs.writeFileSync(path.join(root, "docs/deferrals.jsonl"), `${line(OLD_DEFERRAL)}\n`);
     fs.writeFileSync(path.join(root, ".bkit/stats.jsonl"), `${line(OLD_OUTCOME)}\n{bad\n`);
     expect(migrateLedgers(root, false)).toEqual([
-      { file: ".bkit/stats.jsonl", rewritten: 1 },
-      { file: "docs/deferrals.jsonl", rewritten: 1 },
+      { file: ".bkit/stats.jsonl", rewritten: 1, dropped: 0 },
+      { file: "docs/deferrals.jsonl", rewritten: 1, dropped: 0 },
     ]);
     const stats = fs.readFileSync(path.join(root, ".bkit/stats.jsonl"), "utf-8");
     expect(stats).toBe(`${line(normalize(OLD_OUTCOME))}\n{bad\n`);
@@ -100,7 +118,9 @@ describe("migrateLedgers", () => {
     const file = path.join(root, "docs/failures.jsonl");
     const before = `${line({ ...OLD_DEFERRAL, kind: "failure", reason: undefined })}\n`;
     fs.writeFileSync(file, before);
-    expect(migrateLedgers(root, true)).toEqual([{ file: "docs/failures.jsonl", rewritten: 1 }]);
+    expect(migrateLedgers(root, true)).toEqual([
+      { file: "docs/failures.jsonl", rewritten: 1, dropped: 0 },
+    ]);
     expect(fs.readFileSync(file, "utf-8")).toBe(before);
   });
 
