@@ -11,6 +11,7 @@ import {
   detectMainBranchProtection,
   buildCloudSetupAdvisory,
   buildTrackerSetupAdvisory,
+  buildGithubProjectTokenScopeAdvisory,
 } from "./github";
 
 // ---------------------------------------------------------------------------
@@ -393,7 +394,7 @@ describe("buildTrackerSetupAdvisory — explicit-none opt-out symmetry", () => {
   it.each([
     ["github", "BKIT_GH_TOKEN"],
     ["linear", "BKIT_LINEAR_API_KEY"],
-    ["jira", "BKIT_JIRA_API_TOKEN"],
+    ["jira", "BKIT_JIRA_API_KEY"],
   ] as const)("informational when tracker is %s, naming %s", (tracker, token) => {
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -429,7 +430,7 @@ describe("buildTrackerSetupAdvisory — explicit-none opt-out symmetry", () => {
     for (const s of [
       "Allow API token authentication",
       "Atlassian MCP V2",
-      "BKIT_JIRA_API_TOKEN",
+      "BKIT_JIRA_API_KEY",
       "bkit.jira.site",
       "bkit.jira.project",
     ]) {
@@ -438,5 +439,97 @@ describe("buildTrackerSetupAdvisory — explicit-none opt-out symmetry", () => {
     // No Linear-style per-session issue injection and no preflight hook under jira.
     expect(result.action).not.toContain("LINEAR_ISSUE_ID");
     expect(result.action).not.toContain("preflight hook");
+  });
+});
+
+describe("buildGithubProjectTokenScopeAdvisory", () => {
+  const pkg = (bkit: Record<string, unknown>) =>
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "x", bkit }));
+  const board = { project: "https://github.com/orgs/acme/projects/7" };
+  const userResponse = (scopes: string | null) =>
+    `HTTP/2.0 200 OK\r\n${scopes === null ? "" : `X-Oauth-Scopes: ${scopes}\r\n`}Content-Type: application/json\r\n\r\n{"login":"me"}`;
+  /** `gh api -i user` answers with `user`; the board query answers with `graphql` (or throws). */
+  const ghAnswers = (user: string, graphql: string | Error = "") =>
+    execFileSync.mockImplementation((_cmd: string, args: string[]) => {
+      if (args[1] === "-i") return user;
+      if (graphql instanceof Error) throw graphql;
+      return graphql;
+    });
+
+  beforeEach(() => {
+    delete process.env.CI;
+    delete process.env.CLAUDE_CODE_REMOTE;
+    delete process.env.CURSOR_REMOTE_AGENT;
+  });
+
+  it("classic token with the project scope: quiet", () => {
+    pkg({ issueTracker: "github", github: board });
+    ghAnswers(userResponse("repo, project, read:org"));
+    expect(buildGithubProjectTokenScopeAdvisory(tmpDir)).toBeNull();
+  });
+
+  it("classic token without the project scope: names the fix", () => {
+    pkg({ issueTracker: "github", github: board });
+    ghAnswers(userResponse("repo, read:org"));
+    const r = buildGithubProjectTokenScopeAdvisory(tmpDir);
+    expect(r?.id).toBe("github-project-token-scope");
+    expect(r?.detect).toContain("`project` scope");
+    expect(r?.action).toContain("BKIT_GH_TOKEN");
+  });
+
+  it("fine-grained token that can see the board: quiet", () => {
+    pkg({ issueTracker: "github", github: board });
+    ghAnswers(
+      userResponse(null),
+      JSON.stringify({ data: { repositoryOwner: { projectV2: { id: "PVT_1" } } } }),
+    );
+    expect(buildGithubProjectTokenScopeAdvisory(tmpDir)).toBeNull();
+    const query = execFileSync.mock.calls[1]![1] as string[];
+    expect(query).toContain("login=acme");
+    expect(query).toContain("n=7");
+  });
+
+  it("fine-grained token whose board query returns null: names the fix", () => {
+    pkg({ issueTracker: "github", github: board });
+    ghAnswers(
+      userResponse(null),
+      JSON.stringify({ data: { repositoryOwner: { projectV2: null } } }),
+    );
+    expect(buildGithubProjectTokenScopeAdvisory(tmpDir)?.id).toBe("github-project-token-scope");
+  });
+
+  it("fine-grained token whose board query is refused: names the fix", () => {
+    pkg({ issueTracker: "github", github: board });
+    ghAnswers(userResponse(null), new Error("gh: Could not resolve to a ProjectV2"));
+    expect(buildGithubProjectTokenScopeAdvisory(tmpDir)?.id).toBe("github-project-token-scope");
+  });
+
+  it("gh unavailable or unauthenticated: quiet (cannot judge)", () => {
+    pkg({ issueTracker: "github", github: board });
+    execFileSync.mockImplementation(() => {
+      throw new Error("gh: not logged in");
+    });
+    expect(buildGithubProjectTokenScopeAdvisory(tmpDir)).toBeNull();
+  });
+
+  it("no board configured, another tracker, or cloud: no gh call at all", () => {
+    pkg({ issueTracker: "github" });
+    expect(buildGithubProjectTokenScopeAdvisory(tmpDir)).toBeNull();
+    pkg({ issueTracker: "linear", github: board });
+    expect(buildGithubProjectTokenScopeAdvisory(tmpDir)).toBeNull();
+    pkg({ issueTracker: "github", github: board });
+    process.env.CI = "true";
+    expect(buildGithubProjectTokenScopeAdvisory(tmpDir)).toBeNull();
+    expect(execFileSync).not.toHaveBeenCalled();
+  });
+
+  it("never prints the token", () => {
+    pkg({ issueTracker: "github", github: board });
+    process.env.BKIT_GH_TOKEN = "ghp_secretvalue";
+    ghAnswers(userResponse("repo"));
+    const r = buildGithubProjectTokenScopeAdvisory(tmpDir);
+    expect(JSON.stringify(r)).not.toContain("ghp_secretvalue");
+    const env = (execFileSync.mock.calls[0]![2] as { env: NodeJS.ProcessEnv }).env;
+    expect(env.GH_TOKEN).toBe("ghp_secretvalue");
   });
 });

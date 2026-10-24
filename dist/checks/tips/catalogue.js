@@ -30,7 +30,7 @@ import { buildTrackerSetupAdvisory } from "../after/github.js";
 import { buildDepUpdaterSetupAdvisory } from "../after/tools.js";
 import { detectInstalledHostModules } from "../../install/hosts.js";
 import { readBkitConfig } from "../../shared/settings.js";
-import { anyWorkflowMentions, claudeSettingsHas, codexTopLevelHas, exists, hasJsTestRunner, hasLintStagedConfig, hasMcpServer, hasTestLinter, unlockedMcpServers, } from "./detect.js";
+import { anyWorkflowMentions, claudeSettingsHas, codexTopLevelHas, exists, hasJsTestRunner, hasLintStagedConfig, hasMcpServer, hasTestLinter, readsBkitText, unlockedMcpServers, } from "./detect.js";
 const hosts = (cwd) => detectInstalledHostModules(cwd);
 /** Every phase workflow. A value import of `COMPLY_PHASES` would cycle through cli.ts. */
 export const ALL_WORKFLOWS = ["design", "plan", "build", "debug", "ship"];
@@ -339,6 +339,15 @@ export const SETUP_TIPS = [
             !fs.existsSync(machineStepsPath()),
     },
     // --- setup: only some setups -----------------------------------------------------------
+    {
+        id: "bkit-output-json",
+        title: "Scripts that read bkit's replies",
+        line: "A hook, script or CI step reads bkit's replies as JSON, but bkit replies in plain text unless the call passes `--json`. Add `--json` to those bkit calls.",
+        why: "bkit answers in short text lines by default because agents read them. A script expecting JSON gets nothing it can parse, so its step quietly does nothing.",
+        ask: "Add --json to every bkit call whose output a hook, script or CI workflow parses (piped to jq, or read with JSON.parse), then rerun `bkit tips` until this tip is gone.",
+        steps: "`.bkit/workflows.md` § Workflow commands. Files: `.claude/hooks/`, `.husky/`, `.github/workflows/`, `scripts/`.",
+        fires: (cwd) => readsBkitText(cwd).length > 0,
+    },
     {
         id: "cursor-files",
         title: "Cursor editor settings",

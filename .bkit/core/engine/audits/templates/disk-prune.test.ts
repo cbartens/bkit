@@ -47,11 +47,15 @@ describe("disk prune step-file templates", () => {
     fs.copyFileSync(MACHINE_TEMPLATE, machineStepsPath());
 
     const out: string[] = [];
-    const code = await runCommand(["disk", "prune", "--mode=max", "--dry-run"], [diskCommand], {
-      classicVerbs: new Set(),
-      cwd,
-      io: { stdout: (t) => out.push(t), stderr: () => {} },
-    });
+    const code = await runCommand(
+      ["disk", "prune", "--mode=max", "--dry-run", "--json"],
+      [diskCommand],
+      {
+        classicVerbs: new Set(),
+        cwd,
+        io: { stdout: (t) => out.push(t), stderr: () => {} },
+      },
+    );
     const r = JSON.parse(out.join("")) as {
       files: { scope: string; steps: number; error: string | null }[];
       steps: { scope: string; mode: string; outcome: string }[];

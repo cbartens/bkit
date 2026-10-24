@@ -81,7 +81,7 @@
 - **Tracker issue mentions:** NEVER mention issue IDs on their own; ALWAYS mention issue IDs together with their title and URL.
 - **Tracker work comments:** ANY issue worked on outside `/bkit-*` workflows → ALWAYS post ONE comment per related issue at end of every major turn (files changed / commit / PR / finding / blocked stop) with work done, outcome, links; SKIP turns with no work (Q&A, clarifying questions). NEVER paste diffs / restate code. NEVER mention @claude or @cursor in comment body.
 - **Tracker context cut:** Use `###### bkit:ignore-earlier` on its own line in issue bodies or comments to drop all earlier content from workflow inputs; ALWAYS requires human confirmation; NEVER include unprompted in any output.
-- **Tracker MCPs:** Issue reads / updates via configured MCP ONLY; use CLI / HTTP shell-outs as backup / fallback ONLY.
+- **Tracker MCPs:** Tracker reads / writes via `bkit` verbs; configured tracker MCP ONLY when a verb prints `tracker.done: false` or exits 80.
 
 #### Git, CI & Merges
 
@@ -103,7 +103,7 @@
 - **Production merge:** Any merge into default production branch (`main`) requires PR with explicit human confirmation.
 - **Polls / loops:** NEVER use blocking foreground `sleep` to poll; runtimes may not honour. ALWAYS use bounded, `timeout` wrapped bash poll (bash) or agent-side per-turn yield loop (control flow). Legitimate retry / backoff sleeps are exempt.
 - **Shallow history:** Before reading git history (log, blame, bisect, churn, history scans) → `git rev-parse --is-shallow-repository`; `true` → state boundary commit, older history unread; NEVER report partial history as complete.
-- **MCP fallback:** All substitutions of unavailable `gh` commands with MCP tools MUST be bounded (max 1 transition per run), recorded (`transport-fallback` rows), and success-asserted via independent re-reads. NEVER improvise unrecorded substitutions.
+- **MCP fallback:** MCP tools stand in for engine work ONLY when the engine says so: a verb exits 80 or prints `tracker.done: false`. `gh` substitutions MUST be bounded (max 1 transition per run), recorded (`transport-fallback` rows), and success-asserted via independent re-reads; tracker fallbacks send the payload the verb printed, byte-for-byte. NEVER improvise unrecorded substitutions.
 
 #### Testing & Debugging
 

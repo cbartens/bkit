@@ -38,7 +38,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { THRESHOLDS } from "../../commands/workflow/counters";
+import { THRESHOLDS } from "../../shared/thresholds";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -219,6 +219,12 @@ describe("2. MAX_* thresholds: none dead, none unknown", () => {
     ".bkit/templates/.github/workflows/bkit-cloud.yml",
   ];
 
+  /**
+   * Engine verbs that route on a cap themselves: `status route --prompt-file`
+   * decides debug's mode against MAX_DEBUG_ATTEMPT, so the cap is live there.
+   */
+  const ENGINE_ENFORCEMENT_FILES = [".bkit/core/engine/commands/workflow/status.ts"];
+
   /** Drop comment-only lines — a cap named solely in a comment enforces nothing. */
   const executable = (text: string) =>
     text
@@ -230,6 +236,9 @@ describe("2. MAX_* thresholds: none dead, none unknown", () => {
     [
       ...realFiles().flatMap((f) => fencedBlocks(f.content).map((b) => executable(b.block))),
       ...SHELL_ENFORCEMENT_FILES.map((f) => executable(readRepo(f))),
+      ...ENGINE_ENFORCEMENT_FILES.map((f) =>
+        [...readRepo(f).matchAll(/THRESHOLDS\.(MAX_\w+)/g)].map(firstCapture).join("\n"),
+      ),
     ].join("\n");
 
   const names = Object.keys(THRESHOLDS);
@@ -240,7 +249,7 @@ describe("2. MAX_* thresholds: none dead, none unknown", () => {
   });
 
   for (const name of names) {
-    it(`${name} is referenced in executable shell (a workflow fence or the cloud router)`, () => {
+    it(`${name} is referenced in executable shell (a workflow fence or the cloud router) or an engine route`, () => {
       expect(executableCorpus()).toMatch(new RegExp(`\\b${name}\\b`));
     });
   }
@@ -442,7 +451,7 @@ describe("4. completeness — every block that routes on or writes a counter der
   const names = counterNames(files);
 
   it("non-vacuity: counters are discovered from the corpus (route names and derive targets)", () => {
-    for (const n of ["VERIFY_ATTEMPT", "TEST_ATTEMPT", "DEBUG_ATTEMPT", "MERGE_ATTEMPT"]) {
+    for (const n of ["VERIFY_ATTEMPT", "TEST_ATTEMPT", "REVALIDATE_ATTEMPT", "MERGE_ATTEMPT"]) {
       expect(names).toContain(n);
     }
   });
@@ -454,12 +463,12 @@ describe("4. completeness — every block that routes on or writes a counter der
     );
   });
 
-  it("REVALIDATE_ATTEMPT (ship-revalidate-dispatch rows, not step-done rows) is derived by `bkit counters rows`", () => {
+  it("REVALIDATE_ATTEMPT (ship-revalidate-dispatch rows, not step-done rows) is derived by `bkit counters route --rows`", () => {
     expect(names).toContain("REVALIDATE_ATTEMPT");
     const blocks = files.flatMap((f) => fencedBlocks(f.content).map((b) => b.block));
     expect(
       blocks.some((b) =>
-        /\bREVALIDATE_ATTEMPT=\$\("\{BKIT\}" counters rows [^\n]*--type=ship-revalidate-dispatch --position=next \| jq -er \.value\) \|\| exit 2/.test(
+        /"\{BKIT\}" counters route --name=REVALIDATE_ATTEMPT --rows=ship-revalidate-dispatch:next --file="\{STATUS\}" --workflow=ship\b/.test(
           b,
         ),
       ),

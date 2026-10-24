@@ -119,7 +119,7 @@ function repo(branch = "feat/12-x", bkit?: Record<string, unknown>) {
 async function run(cwd: string, argv: string[]) {
   const out: string[] = [];
   const err: string[] = [];
-  const code = await runCommand(argv, [prsCommand], {
+  const code = await runCommand([...argv, "--json"], [prsCommand], {
     classicVerbs: new Set(),
     cwd,
     io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
@@ -164,6 +164,38 @@ describe("bkit prs open", () => {
     expect(gh.calls().find((c) => c.startsWith("pr create"))).toContain(
       "--base dev --head feat/12-x",
     );
+  });
+
+  it("--file records the open as an engine-action row; a re-run reuses that PR instead of exiting 3", async () => {
+    const cwd = repo("feat/12-x", GH);
+    const file = path.join(tmp("bkit-prs-status-"), "status.jsonl");
+    gh.view(pr());
+    const first = await open(cwd, `--file=${file}`, "--workflow=ship");
+    expect(first.code).toBe(0);
+    const rows = fs
+      .readFileSync(file, "utf-8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
+    expect(rows).toEqual([
+      expect.objectContaining({
+        type: "engine-action",
+        action: "pr-open",
+        ref: "https://github.com/o/r/pull/7",
+      }),
+    ]);
+    gh.list([pr()]);
+    const again = await open(cwd, `--file=${file}`, "--workflow=ship");
+    expect(again.code).toBe(0);
+    expect(again.json).toMatchObject({ created: false, number: 7 });
+    expect(gh.calls().filter((c) => c.startsWith("pr create"))).toHaveLength(1);
+    // Without the row, an open PR still refuses a blind create.
+    expect((await open(cwd)).code).toBe(3);
+  });
+
+  it("--file needs --workflow", async () => {
+    const cwd = repo("feat/12-x", GH);
+    expect((await open(cwd, "--file=s.jsonl")).code).toBe(2);
   });
 
   it("always writes the marker, even with no plan", async () => {
@@ -309,6 +341,7 @@ describe("bkit prs open", () => {
       base: "dev",
       head: "feat/12-x",
     });
+    expect(fs.readFileSync(auth.json.bodyFile, "utf-8")).toBe(auth.json.body);
 
     // `gh` off PATH but `git` still present: openPrFor resolves the repo root with git first.
     const noGh = tmp("bkit-prs-no-gh-");
@@ -684,6 +717,13 @@ describe("bkit prs merge", () => {
     );
     gh.view(pr());
     expect((await merge("--label=bkit:auto-paused")).json.subject).toBe("feat(12-x): thing (#7)");
+  });
+
+  it("drops the force-build marker from the title subject", async () => {
+    gh.view(pr({ title: "feat(12-x): thing bkit [force build]" }));
+    gh.viewAfterMerge(pr({ state: "MERGED" }));
+    expect((await merge()).json.subject).toBe("feat(12-x): thing (#7)");
+    expect(mergeCall()).toContain("--subject feat(12-x): thing (#7) --body");
   });
 
   it("takes an explicit --subject", async () => {

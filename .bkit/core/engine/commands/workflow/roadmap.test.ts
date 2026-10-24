@@ -24,7 +24,7 @@ function root() {
 async function fold(cwd: string, ...flags: string[]) {
   const out: string[] = [];
   const err: string[] = [];
-  const code = await runCommand(["roadmap", "fold", ...flags], [roadmapCommand], {
+  const code = await runCommand(["roadmap", "fold", ...flags, "--json"], [roadmapCommand], {
     classicVerbs: new Set(),
     cwd,
     io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
@@ -543,7 +543,7 @@ describe("bkit roadmap feature", () => {
   async function feat(cwd: string, ...flags: string[]) {
     const out: string[] = [];
     const err: string[] = [];
-    const code = await runCommand(["roadmap", "feature", ...flags], [roadmapCommand], {
+    const code = await runCommand(["roadmap", "feature", ...flags, "--json"], [roadmapCommand], {
       classicVerbs: new Set(),
       cwd,
       io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
@@ -636,7 +636,7 @@ describe("bkit roadmap mirror", () => {
   async function mirror(cwd: string, ...flags: string[]) {
     const out: string[] = [];
     const err: string[] = [];
-    const code = await runCommand(["roadmap", "mirror", ...flags], [roadmapCommand], {
+    const code = await runCommand(["roadmap", "mirror", ...flags, "--json"], [roadmapCommand], {
       classicVerbs: new Set(),
       cwd,
       io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },

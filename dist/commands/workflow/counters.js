@@ -11,35 +11,17 @@
 import * as path from "node:path";
 import { activeDoneSteps, lastDoneStepAllRuns, nextStrategy, runNumber, } from "../../ledgers/status.js";
 import { readBkitConfig } from "../../shared/settings.js";
+import { LOOP_PAUSE_THRESHOLDS, THRESHOLDS } from "../../shared/thresholds.js";
 import { CommandError, EXIT, git, runGit, } from "../lib.js";
 import { EXIT_NO_STATUS, FILE_FLAG, STEP_FLAG, SUB_PLAN_FLAG, WORKFLOW_FLAG, positiveInt, readRuns, readStatusRows, statusFile, str, } from "./status.js";
-/** Every MAX_* threshold the workflows route on. */
-export const THRESHOLDS = {
-    // build
-    MAX_VERIFY_ATTEMPT: 3,
-    MAX_TEST_ATTEMPT: 3,
-    MAX_CHALLENGE_REMEDIATE_ATTEMPT: 1,
-    // debug — mode-matched pairs
-    MAX_DEBUG_ATTEMPT: 3,
-    MAX_NORMAL_ATTEMPT: 3,
-    MAX_SOAK_ATTEMPT: 3,
-    // ship
-    MAX_MERGE_ATTEMPT: 3,
-    /** gate-refusal (10/11/14) poll-only re-entries into the sweep step */
-    MAX_REVALIDATE_ATTEMPT: 3,
-    // bkit-cloud.yml
-    /** distinct failed dev CI SHAs per FID that may each dispatch a debug run */
-    MAX_DEV_DISPATCH_ATTEMPTS: 3,
-};
-/**
- * Fix-loop caps `bkit.loopPause` (default on) lowers to one round. Running out then
- * routes to `--exceeded-paused`, where the owner decides whether another round runs.
- */
-export const LOOP_PAUSE_THRESHOLDS = {
-    MAX_VERIFY_ATTEMPT: 1,
-    MAX_TEST_ATTEMPT: 1,
-    MAX_MERGE_ATTEMPT: 1,
-};
+/** One MAX_* threshold by name; an unknown name is a usage error. */
+export function threshold(name) {
+    const value = THRESHOLDS[name];
+    if (value === undefined) {
+        throw new CommandError(EXIT.USAGE, `unknown threshold ${name}; known: ${Object.keys(THRESHOLDS).join(", ")}`);
+    }
+    return value;
+}
 /** Paths a fix round's code change is judged on: everything but plan logs and ledgers. */
 const SOURCE_PATHS = [
     ".",
@@ -78,6 +60,28 @@ function derivedOf(ctx) {
         throw new CommandError(EXIT_NO_OWN_ROW, `${steps[0]}: no DONE row in the active run — the step's own row is missing`);
     return position === "next" ? count + 1 : count;
 }
+/** Rows of `type` in `workflow`'s active run (since its last workflow-started row). */
+function typedRowCount(file, workflow, type) {
+    const rows = readStatusRows(file);
+    let start = -1;
+    rows.forEach((r, i) => {
+        if (r.type === "workflow-started" && r.workflow === workflow)
+            start = i;
+    });
+    return rows
+        .slice(start + 1)
+        .filter((r) => r.type === type && (r.workflow === undefined || r.workflow === workflow)).length;
+}
+/** `route --rows=<type>:<next|count>`: the value from typed rows of the active run. */
+function derivedRows(ctx) {
+    const [type, position] = String(ctx.flags.rows).split(":");
+    if (!type || !["next", "count"].includes(position ?? ""))
+        throw new CommandError(EXIT.USAGE, "--rows must be <row type>:<next|count>");
+    if (ctx.flags.file === undefined || ctx.flags.workflow === undefined)
+        throw new CommandError(EXIT.USAGE, "--rows needs --file and --workflow");
+    const count = typedRowCount(statusFile(ctx), String(ctx.flags.workflow), type);
+    return position === "next" ? count + 1 : count;
+}
 /** Whether `bkit.loopPause` is on for the checkout `cwd` sits in. */
 function loopPauseOn(cwd) {
     return readBkitConfig(git(cwd, ["rev-parse", "--show-toplevel"]) ?? cwd).loopPause;
@@ -104,13 +108,6 @@ export function loopTrend(rounds, codeChanged) {
     if (last < first && codeChanged !== false)
         return "closing";
     return "stuck";
-}
-function threshold(name) {
-    const value = THRESHOLDS[name];
-    if (value === undefined) {
-        throw new CommandError(EXIT.USAGE, `unknown threshold ${name}; known: ${Object.keys(THRESHOLDS).join(", ")}`);
-    }
-    return value;
 }
 export const countersCommand = {
     noun: "counters",
@@ -178,8 +175,13 @@ export const countersCommand = {
                     type: "string",
                     help: "<step>:<next|current|count> — derive the value from --file (active run); <step>,<step>...:count sums the listed steps",
                 },
-                { ...FILE_FLAG, required: false, help: "status.jsonl, with --of" },
-                { ...WORKFLOW_FLAG, required: false, help: "workflow, with --of" },
+                {
+                    name: "rows",
+                    type: "string",
+                    help: "<row type>:<next|count> — derive the value from rows of that type in --file's active run",
+                },
+                { ...FILE_FLAG, required: false, help: "status.jsonl, with --of or --rows" },
+                { ...WORKFLOW_FLAG, required: false, help: "workflow, with --of or --rows" },
                 { ...SUB_PLAN_FLAG, help: "with --of: only rows for this sub-plan" },
                 {
                     name: "since",
@@ -204,14 +206,19 @@ export const countersCommand = {
                 paused: "true when bkit.loopPause lowered --limit to one round",
             },
             exitCodes: {
-                [EXIT_NO_STATUS]: "--of: status.jsonl missing, unreadable, or not valid NDJSON",
+                [EXIT_NO_STATUS]: "--of / --rows: status.jsonl missing, unreadable, or not valid NDJSON",
                 [EXIT_NO_OWN_ROW]: "--of=<step>:current counted 0: the step's own row is missing",
             },
             run: (ctx) => {
                 const name = String(ctx.flags.name);
-                if ((ctx.flags.value === undefined) === (ctx.flags.of === undefined))
-                    throw new CommandError(EXIT.USAGE, "give exactly one of --value or --of");
-                const value = ctx.flags.of !== undefined ? derivedOf(ctx) : nonNegativeInt(ctx.flags.value, "value");
+                const sources = [ctx.flags.value, ctx.flags.of, ctx.flags.rows].filter((v) => v !== undefined).length;
+                if (sources !== 1)
+                    throw new CommandError(EXIT.USAGE, "give exactly one of --value, --of or --rows");
+                const value = ctx.flags.of !== undefined
+                    ? derivedOf(ctx)
+                    : ctx.flags.rows !== undefined
+                        ? derivedRows(ctx)
+                        : nonNegativeInt(ctx.flags.value, "value");
                 if ((ctx.flags.max === undefined) === (ctx.flags.limit === undefined)) {
                     throw new CommandError(EXIT.USAGE, "give exactly one of --max or --limit");
                 }
@@ -370,17 +377,7 @@ export const countersCommand = {
                 const position = String(ctx.flags.position);
                 if (!["next", "count"].includes(position))
                     throw new CommandError(EXIT.USAGE, "--position must be next or count");
-                const workflow = String(ctx.flags.workflow);
-                const type = String(ctx.flags.type);
-                const rows = readStatusRows(statusFile(ctx));
-                let start = -1;
-                rows.forEach((r, i) => {
-                    if (r.type === "workflow-started" && r.workflow === workflow)
-                        start = i;
-                });
-                const count = rows
-                    .slice(start + 1)
-                    .filter((r) => r.type === type && (r.workflow === undefined || r.workflow === workflow)).length;
+                const count = typedRowCount(statusFile(ctx), String(ctx.flags.workflow), String(ctx.flags.type));
                 ctx.emit({ value: position === "next" ? count + 1 : count, count });
                 return EXIT.OK;
             },

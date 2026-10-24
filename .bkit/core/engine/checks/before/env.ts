@@ -19,7 +19,7 @@ const TRACKER_TOKENS: Partial<Record<IssueTracker, { key: string; description: s
       "Linear personal API key for the Linear MCP server and the Linear preflight hook (generate at https://linear.app/settings/api)",
   },
   jira: {
-    key: "BKIT_JIRA_API_TOKEN",
+    key: "BKIT_JIRA_API_KEY",
     description:
       'Atlassian API token with scopes for the app "Atlassian MCP V2", sent as Bearer to the Jira MCP server (create at https://id.atlassian.com/manage-profile/security/api-tokens; see .bkit/trackers.md § jira)',
   },

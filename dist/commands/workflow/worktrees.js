@@ -385,6 +385,17 @@ export function removeWorktree(cwd, fid, branch, log) {
 // ---------------------------------------------------------------------------
 // Command
 // ---------------------------------------------------------------------------
+/**
+ * The warning ship prints when the branch it ships names neither the FID nor the
+ * issue (case-insensitive); null when it names one. A hand-made branch still ships.
+ */
+export function shipBranchWarning(branch, fid, issue) {
+    const b = branch.toLowerCase();
+    const id = (issue ?? "").replace(/^#/, "").toLowerCase();
+    if (b.includes(fid.toLowerCase()) || (id !== "" && b.includes(id)))
+        return null;
+    return `[bkit-ship] WARNING branch ${branch} not named for ${fid} — shipping it as named`;
+}
 export const worktreesCommand = {
     noun: "worktrees",
     summary: "Set up and remove the per-feature worktrees under .worktrees/.",
@@ -410,12 +421,18 @@ export const worktreesCommand = {
                     type: "string",
                     help: "ship only: the branch the session prompt names (default: feat/{fid} when it exists, else the session branch)",
                 },
+                {
+                    name: "issue",
+                    type: "string",
+                    help: "ship only: the issue id; a branch naming it (or the FID) prints no branchWarning",
+                },
             ],
             output: {
                 worktreePath: "directory the workflow must cd into",
                 repoRoot: "the main checkout",
                 branch: "branch checked out at worktreePath",
                 mode: "created | resumed | adopted",
+                branchWarning: "ship: the warning printed when the branch names neither the FID nor --issue, else null",
                 owned: "the .worktree-owned marker is present (a workflow created this worktree)",
                 rebaseConflict: "a resume rebase onto baseRef stopped on a conflict and is left in progress",
                 sentinel: "the .rebase-failed sentinel written on a failed rebase, else null",
@@ -456,6 +473,9 @@ export const worktreesCommand = {
                 const named = f.branch === undefined ? undefined : String(f.branch);
                 if (named !== undefined && workflow !== "ship") {
                     throw new CommandError(EXIT.USAGE, "--branch is ship only");
+                }
+                if (f.issue !== undefined && workflow !== "ship") {
+                    throw new CommandError(EXIT.USAGE, "--issue is ship only");
                 }
                 if (named !== undefined && !runGit(ctx.cwd, ["check-ref-format", "--branch", named]).ok) {
                     throw new CommandError(EXIT.USAGE, `--branch "${named}" is not a valid branch name`);
@@ -590,11 +610,18 @@ export const worktreesCommand = {
                 const wantInstall = done && config.worktreeInstall;
                 const installStatus = wantInstall ? install(wt, ctx.log) : 0;
                 const baseRef = devBase(wt);
+                const branch = git(wt, ["branch", "--show-current"]) ?? "";
+                const branchWarning = workflow === "ship"
+                    ? shipBranchWarning(branch, fid, f.issue === undefined ? undefined : String(f.issue))
+                    : null;
+                if (branchWarning !== null)
+                    ctx.log(branchWarning);
                 ctx.emit({
                     worktreePath: wt,
                     repoRoot: root,
-                    branch: git(wt, ["branch", "--show-current"]) ?? "",
+                    branch,
                     mode,
+                    branchWarning,
                     owned: fs.existsSync(marker),
                     rebaseConflict,
                     sentinel,

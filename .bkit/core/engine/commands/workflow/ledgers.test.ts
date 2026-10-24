@@ -12,6 +12,7 @@ import {
   bookPathspecs,
   ledgersCommand,
   newRecord,
+  readRecord,
   writeRecord,
 } from "./ledgers";
 
@@ -57,7 +58,7 @@ const staged = (root: string) => git(root, "diff", "--cached", "--name-only");
 async function run(cwd: string, argv: string[]) {
   const out: string[] = [];
   const err: string[] = [];
-  const code = await runCommand(["ledgers", ...argv], [ledgersCommand], {
+  const code = await runCommand(["ledgers", ...argv, "--json"], [ledgersCommand], {
     classicVerbs: new Set(),
     cwd,
     io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
@@ -286,6 +287,7 @@ describe("bkit ledgers commit (tests/book-commit.bats)", () => {
     commitAll(r);
     add(r, "docs/architecture.md", "b\n");
     add(r, "docs/plans/202610/logs/452d/status.jsonl", '{"a":1}\n');
+    git(r, "switch", "-q", "-c", "feat/452d");
     const base = ["--month=202610", "--fid=452d", "--mode=commit"];
 
     expect((await run(r, commitArgs(r, ...base, "--scope=core", "--message=core"))).code).toBe(0);
@@ -306,6 +308,7 @@ describe("bkit ledgers commit (tests/book-commit.bats)", () => {
     add(r, "docs/plans/202609/other-plan.md", "b\n");
     add(r, "docs/templates/bkit-plan.md", "b\n");
     add(r, "docs/plans/202610/logs/452n/status.jsonl", '{"a":1}\n');
+    git(r, "switch", "-q", "-c", "feat/452n");
     const res = await run(
       r,
       commitArgs(r, "--month=202610", "--fid=452n", "--scope=pr", "--mode=commit", "--message=pr"),
@@ -314,6 +317,36 @@ describe("bkit ledgers commit (tests/book-commit.bats)", () => {
     expect(stat(r)).not.toContain("other-plan.md");
     expect(stat(r)).not.toContain("bkit-plan.md");
   });
+
+  it.each([
+    ["main", ["switch", "-q", "main"]],
+    ["dev", ["switch", "-q", "-c", "dev"]],
+    ["a detached HEAD", ["switch", "-q", "--detach"]],
+  ])(
+    "scope=pr refuses to commit on %s (exit 12) with nothing committed",
+    async (_where, switchArgs) => {
+      const r = repo();
+      put(r, "docs/plans/202610/logs/452p/status.jsonl", "{}\n");
+      commitAll(r);
+      git(r, ...switchArgs);
+      add(r, "docs/plans/202610/logs/452p/status.jsonl", '{"a":1}\n');
+      const before = head(r);
+      const res = await run(
+        r,
+        commitArgs(
+          r,
+          "--month=202610",
+          "--fid=452p",
+          "--scope=pr",
+          "--mode=commit",
+          "--message=pr",
+        ),
+      );
+      expect(res.code).toBe(12);
+      expect(res.err).toContain("refusing");
+      expect(head(r)).toBe(before);
+    },
+  );
 
   it.each([
     [["--scope=wide", "--mode=commit", "--message=m"], "--scope must be"],
@@ -368,6 +401,117 @@ describe("bkit ledgers commit (tests/book-commit.bats)", () => {
     expect(staged(r).split("\n").sort()).toEqual([".bkit/new.jsonl", "src.ts"]);
     expect(head(r)).toBe(before);
   });
+
+  it("--stage-tracked-updates with --mode=commit commits the tracked changes with the bookkeeping", async () => {
+    const r = repo();
+    put(r, "docs/plans/202608/logs/1-a/status.jsonl", "{}\n");
+    put(r, "src.ts", "a\n");
+    commitAll(r);
+    add(r, "src.ts", "b\n");
+    add(r, "docs/plans/202608/logs/1-a/status.jsonl", "{}\n");
+    put(r, "scratch.txt", "x\n");
+    const res = await run(
+      r,
+      commitArgs(
+        r,
+        "--month=202608",
+        "--fid=1-a",
+        "--scope=full",
+        "--mode=commit",
+        "--stage-tracked-updates",
+        "--message=chore(1-a): conflict-resolve bkit [skip ci]",
+      ),
+    );
+    expect(res.code).toBe(0);
+    expect(res.json.outcome).toBe("committed");
+    expect(git(r, "show", "--name-only", "--format=", "HEAD").split("\n").sort()).toEqual([
+      "docs/plans/202608/logs/1-a/status.jsonl",
+      "src.ts",
+    ]);
+    expect(git(r, "status", "--porcelain")).toBe("?? scratch.txt");
+  });
+
+  it("--stage-tracked-updates with --mode=commit commits a tracked change even when no bookkeeping changed", async () => {
+    const r = repo();
+    put(r, "docs/plans/202608/logs/1-a/status.jsonl", "{}\n");
+    put(r, "src.ts", "a\n");
+    commitAll(r);
+    add(r, "src.ts", "b\n");
+    const res = await run(
+      r,
+      commitArgs(
+        r,
+        "--month=202608",
+        "--fid=1-a",
+        "--scope=full",
+        "--mode=commit",
+        "--stage-tracked-updates",
+        "--message=m",
+      ),
+    );
+    expect(res.code).toBe(0);
+    expect(res.json.outcome).toBe("committed");
+    expect(git(r, "show", "--name-only", "--format=", "HEAD")).toBe("src.ts");
+  });
+});
+
+describe("bkit ledgers commit --path", () => {
+  function planRepo() {
+    const r = repo();
+    put(r, "docs/plans/202610/679-x-plan.md", "plan\n");
+    put(r, "src.ts", "a\n");
+    commitAll(r);
+    return r;
+  }
+  const args = (r: string, ...flags: string[]) =>
+    commitArgs(r, "--month=202610", "--fid=679-x", ...flags);
+
+  it("commits the named path alone, leaving every other change in the tree", async () => {
+    const r = planRepo();
+    add(r, "docs/plans/202610/679-x-plan.md", "exception\n");
+    add(r, "src.ts", "b\n");
+    git(r, "add", "src.ts");
+    const res = await run(
+      r,
+      args(r, "--mode=commit", "--path=docs/plans/202610/679-x-plan.md", "--message=docs: x"),
+    );
+    expect(res.code).toBe(0);
+    expect(res.json.outcome).toBe("committed");
+    expect(res.json.paths).toEqual(["docs/plans/202610/679-x-plan.md"]);
+    expect(git(r, "show", "--name-only", "--format=", "HEAD")).toBe(
+      "docs/plans/202610/679-x-plan.md",
+    );
+    expect(staged(r)).toBe("src.ts");
+  });
+
+  it("an unchanged path is nothing-to-commit under --mode=commit", async () => {
+    const r = planRepo();
+    const before = head(r);
+    const res = await run(
+      r,
+      args(r, "--mode=commit", "--path=docs/plans/202610/679-x-plan.md", "--message=m"),
+    );
+    expect(res.code).toBe(0);
+    expect(res.json.outcome).toBe("nothing-to-commit");
+    expect(head(r)).toBe(before);
+  });
+
+  it("refuses --path with --mode=stage or --stage-tracked-updates", async () => {
+    const r = planRepo();
+    const p = "--path=docs/plans/202610/679-x-plan.md";
+    expect((await run(r, args(r, "--mode=stage", p))).code).toBe(2);
+    expect(
+      (await run(r, args(r, "--mode=commit", p, "--stage-tracked-updates", "--message=m"))).code,
+    ).toBe(2);
+  });
+
+  it("a path outside the checkout exits 6 with nothing committed", async () => {
+    const r = planRepo();
+    const before = head(r);
+    const res = await run(r, args(r, "--mode=commit", "--path=../elsewhere.md", "--message=m"));
+    expect(res.code).toBe(6);
+    expect(head(r)).toBe(before);
+  });
 });
 
 describe("bkit ledgers commit — a run in place on dev that shares its checkout", () => {
@@ -399,6 +543,24 @@ describe("bkit ledgers commit — a run in place on dev that shares its checkout
     const list = staged(r).split("\n");
     expect(list).toContain("src/own.txt");
     expect(list).not.toContain("src/a.txt");
+  });
+
+  it("--path records its commit on the run's record, like every other commit mode", async () => {
+    const r = shared();
+    add(r, `${LOGS}/exception.md`, "test-order exception\n");
+    const res = await run(
+      r,
+      commitArgs(
+        r,
+        "--month=202610",
+        `--fid=${FID}`,
+        "--mode=commit",
+        `--path=${LOGS}/exception.md`,
+        "--message=docs: x",
+      ),
+    );
+    expect(res.code).toBe(0);
+    expect(readRecord(r, FID)?.commits).toEqual([head(r)]);
   });
 
   it("a recorded ledger commits only the rows the run appended", async () => {

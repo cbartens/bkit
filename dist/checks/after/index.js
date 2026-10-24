@@ -10,7 +10,7 @@ import { readBkitConfig } from "../../shared/settings.js";
 import { detectOpencodeYmlProviderDrift } from "../../install/modules/opencode.js";
 import { detectManagedDuplicate, detectManagedStale } from "./managed.js";
 import { buildCloudDashboardsAdvisory, detectCiRouterSecrets, detectGhMcpToken } from "./auth.js";
-import { buildCloudSetupAdvisory, buildGithubProjectAdvisory, buildTrackerSetupAdvisory, detectActionsWritePermissions, detectMainBranchProtection, } from "./github.js";
+import { buildCloudSetupAdvisory, buildGithubProjectAdvisory, buildGithubProjectTokenScopeAdvisory, buildTrackerSetupAdvisory, detectActionsWritePermissions, detectMainBranchProtection, } from "./github.js";
 import { buildDepUpdaterSetupAdvisory, detectBkitStubs, detectValePackageNotSynced, detectWorkflowLintToolsMissing, } from "./tools.js";
 import { detectBkitCloudYmlAlwaysTrueGate, detectCiYmlCapstoneContractDrift, detectCiYmlMissingActionlint, detectCiYmlRunInjection, detectGhaFloatingTags, detectRunLevelsNotComposed, detectTaggedTestsWithoutCiHome, detectTestIntegrationEnv, detectTurboIntegrationInputs, } from "./ci-yml.js";
 import { dropTipSilencedAdvisories, setupTipsChecklistLines, setupTipsMarkdownLines, } from "../tips/index.js";
@@ -297,6 +297,9 @@ export function runPostInstallCheck(preflightAdvisories, cwd = process.cwd(), su
     const githubProjectSetup = buildGithubProjectAdvisory(cwd);
     if (githubProjectSetup)
         phase3.push(githubProjectSetup);
+    const githubProjectToken = buildGithubProjectTokenScopeAdvisory(cwd);
+    if (githubProjectToken)
+        phase3.push(githubProjectToken);
     const depUpdaterSetup = buildDepUpdaterSetupAdvisory(cwd);
     if (depUpdaterSetup)
         phase3.push(depUpdaterSetup);

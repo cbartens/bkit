@@ -49,7 +49,7 @@ function foreignCommit(cwd: string, message: string): string {
 async function bkit(cwd: string, ...argv: string[]) {
   const out: string[] = [];
   const err: string[] = [];
-  const code = await runCommand(argv, COMMANDS, {
+  const code = await runCommand([...argv, "--json"], COMMANDS, {
     classicVerbs: new Set(),
     cwd,
     io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },

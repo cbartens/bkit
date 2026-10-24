@@ -19,6 +19,7 @@ import {
   type Gh,
 } from "./runs";
 import type { GhResult } from "../lib";
+import { issueRef } from "./tracker";
 import { validate } from "../../ledgers/telemetry";
 import {
   appendLedgerRows,
@@ -67,7 +68,7 @@ const gitIn = (cwd: string, ...args: string[]) =>
 async function cli(cwd: string, argv: string[]) {
   const out: string[] = [];
   const err: string[] = [];
-  const code = await runCommand(["runs", ...argv], [runsCommand], {
+  const code = await runCommand(["runs", ...argv, "--json"], [runsCommand], {
     classicVerbs: new Set(),
     cwd,
     io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
@@ -263,6 +264,36 @@ describe("bkit runs gate", () => {
     expect(r.err).toContain("required head:  superseded-green-target");
     expect(r.err).toContain("SUPERSEDED");
     expect(r.json.testedHead).toBe("older-sha-stale-green");
+  });
+
+  it("--fetch refreshes origin/<branch> before gating", async () => {
+    fixtureGh();
+    const origin = tmp("bkit-runs-origin-");
+    gitIn(origin, "init", "--bare", "-q", "-b", "dev");
+    const seed = tmp("bkit-runs-seed-");
+    gitIn(seed, "init", "-q", "-b", "feat/superseded");
+    gitIn(seed, "commit", "--allow-empty", "-q", "-m", "seed");
+    gitIn(seed, "remote", "add", "origin", origin);
+    gitIn(seed, "push", "-q", "origin", "feat/superseded");
+    const clone = tmp("bkit-runs-clone-");
+    gitIn(clone, "init", "-q", "-b", "dev");
+    gitIn(clone, "remote", "add", "origin", origin);
+    const r = await gate(
+      clone,
+      "--head=superseded-green-target",
+      "--branch=feat/superseded",
+      "--fetch",
+    );
+    expect(r.code).toBe(14);
+    expect(gitIn(clone, "rev-parse", "origin/feat/superseded")).toBe(
+      gitIn(seed, "rev-parse", "HEAD"),
+    );
+  });
+
+  it("--fetch needs --branch (2)", async () => {
+    const r = await gate(tmp(), "--head=green-capstone", "--fetch");
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("--fetch needs --branch");
   });
 
   it("without --branch a superseded head is 10, not 14 (no invented attribution)", async () => {
@@ -1966,6 +1997,25 @@ describe("bkit runs context", () => {
       owner: "o",
       repo: "r",
     });
+  });
+
+  it("prints ref (#N on GitHub) and the labels the engine reads; a failed read is null", async () => {
+    const cwd = autoRepo();
+    const unread = await context(cwd, "Design", "12");
+    expect(unread.json).toMatchObject({ ref: "#12", labels: null });
+    fakeGhBin({});
+    const dir = process.env.PATH!.split(":")[0]!;
+    fs.mkdirSync(path.join(dir, "api-repos/o/r/issues"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "api-repos/o/r/issues/12"), '["bkit:auto","bkit:plan"]');
+    const r = await context(cwd, "Design", "12");
+    expect(r.json).toMatchObject({ ref: "#12", labels: ["bkit:auto", "bkit:plan"] });
+  });
+
+  it("ref uppercases a Linear or Jira key", () => {
+    expect(issueRef("eng-4", "linear")).toBe("ENG-4");
+    expect(issueRef("#12", "github")).toBe("#12");
+    expect(issueRef(null, "jira")).toBe("");
+    expect(issueRef("x", "none")).toBe("x");
   });
 
   it("CI_DEV: a slug argument is the FID, on dev at origin/dev", async () => {

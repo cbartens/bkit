@@ -3,21 +3,23 @@
  * comments out of future workflow inputs, and the ordering fix that makes the
  * `###### bkit:ignore-earlier` cut mean the same thing on both trackers.
  *
- * Stamping and filtering both live in `bkit issues` now: every comment body comes
- * from `bkit issues comment` / `bkit workstreams comment`, which open it with
+ * Stamping and filtering both live in the engine: every comment body comes from
+ * `bkit issues comment` / `bkit workstreams comment`, which open it with
  * `###### bkit:generated` (pinned in commands/workflow/issues.test.ts and
- * workstreams.test.ts), and `bkit issues text` drops marker-carrying comments and
- * applies the cut (pinned in issues.test.ts). What stays here is the wiring that keeps
+ * workstreams.test.ts), and the issue text joined by `bkit workflows input` and
+ * `bkit issues related` drops marker-carrying comments and applies the cut (pinned in
+ * issues.test.ts and workflows.test.ts). What stays here is the wiring that keeps
  * those commands the ONLY place either happens:
  *  1. No workflow hand-writes a ```comment template.
- *  2. Every join into `ISSUE_TEXT` / `RELATED_ISSUE_TEXT` goes through
- *     `bkit issues text`, and no workflow names the marker or the cut token at all.
+ *  2. Every phase joins its issue text through `bkit workflows input`, every sweep its
+ *     related issues through `bkit issues related`, and no workflow names the marker or
+ *     the cut token at all.
  *  3. Nothing bkit ships carries a whole-line cut marker, which would arm the next
  *     run's cut on bkit's own output.
- *  4. Every comment-fetch site normalises order with the same `sort oldest to
- *     newest` step, on both trackers. `bkit issues text` re-sorts by timestamp only
- *     when every comment carries one; for any other input the order it is handed
- *     is the order the cut sees.
+ *  4. Comments are read by the engine; a workflow never calls a tracker's comment
+ *     read itself, and every MCP fallback that writes the comments file writes them
+ *     oldest first. The join re-sorts by timestamp only when every comment carries
+ *     one; for any other input the order it is handed is the order the cut sees.
  */
 
 import * as fs from "node:fs";
@@ -65,9 +67,10 @@ describe("comment bodies come from bkit commands, never a hand-written template"
   }
 });
 
-describe("issue text is joined, filtered and cut only by bkit issues text", () => {
-  const ISSUE_JOIN = 'issues text --description-file="{OUTBOX}/issue-description.md"';
-  const RELATED_JOIN = 'issues text --description-file="{OUTBOX}/related-description.md"';
+describe("issue text is joined, filtered and cut only by the engine", () => {
+  const ISSUE_JOIN =
+    '--description-file="{SESSION_DIR}/issue-description.md" --comments-file="{SESSION_DIR}/issue-comments.json"';
+  const RELATED_JOIN = '"{BKIT}" issues related --hits-file=';
   const PHASES = WORKFLOW_FILES.filter((rel) => !rel.endsWith("bkit-auto.md"));
   const SWEEPS = [
     ".bkit/core/workflows/bkit-debug.md",
@@ -76,19 +79,21 @@ describe("issue text is joined, filtered and cut only by bkit issues text", () =
   ];
 
   for (const rel of PHASES) {
-    it(`${rel}: ISSUE_TEXT is the text bkit issues text prints`, () => {
+    it(`${rel}: the input artifact's issue text is joined by bkit workflows input`, () => {
       const content = read(rel);
-      expect(content.split(ISSUE_JOIN).length - 1, "issue-text join").toBe(1);
-      // The join's output is what the input artifact carries.
-      expect(content).toMatch(/`text` (as|→) `\{?ISSUE_TEXT\}?`|`ISSUE_TEXT` = `text` printed by/);
+      const inputs = content.split("\n").filter((l) => l.includes('"{BKIT}" workflows input '));
+      expect(inputs, "one workflows input call").toHaveLength(1);
+      expect(inputs[0], "issue-text join").toContain(ISSUE_JOIN);
+      expect(content).not.toContain("issues text");
+      expect(content).not.toContain("ISSUE_TEXT");
     });
   }
 
   for (const rel of SWEEPS) {
-    it(`${rel}: each related-issues hit is joined by bkit issues text`, () => {
+    it(`${rel}: each related-issues hit is joined by bkit issues related`, () => {
       const content = read(rel);
-      expect(content.split(RELATED_JOIN).length - 1).toBeGreaterThanOrEqual(1);
-      expect(content).toContain("RELATED_ISSUE_TEXT");
+      expect(content.split(RELATED_JOIN).length - 1).toBe(1);
+      expect(content).not.toContain("RELATED_ISSUE_TEXT");
     });
   }
 
@@ -130,47 +135,31 @@ describe("nothing bkit ships can carry a live cut marker", () => {
   });
 });
 
-describe("every comment-fetch site normalises order the same way", () => {
-  const SORT_STEP = "sort oldest to newest";
-  const CALL_SITE_RE = /method: "get_comments"|mcp__linear__list_comments/;
+describe("comments are read by the engine, oldest first", () => {
+  const CALL_SITE_RE = /method: "get_comments"|mcp__linear__list_comments|listJiraIssueComments/;
   const PROSE_LINE_RE = /^\s*>/;
+  const FALLBACK = "the comments oldest first as JSON to `{SESSION_DIR}/issue-comments.json`";
+  const PRESET = "`COMMENTS` oldest to newest as JSON to `{SESSION_DIR}/issue-comments.json`";
+  const PHASES = WORKFLOW_FILES.filter((rel) => !rel.endsWith("bkit-auto.md"));
 
+  /** Step lines (header prose excluded) that call a tracker's comment read. */
   const callSites = (rel: string) =>
     read(rel)
       .split("\n")
       .filter((line) => CALL_SITE_RE.test(line) && !PROSE_LINE_RE.test(line));
 
-  it(`carries the ${SORT_STEP} step at all 16 github and linear call sites`, () => {
-    const total = WORKFLOW_FILES.reduce(
-      (sum, rel) => sum + callSites(rel).filter((line) => line.includes(SORT_STEP)).length,
-      0,
-    );
-    expect(total).toBe(16);
+  it("no workflow step calls a tracker's comment read itself", () => {
+    for (const rel of WORKFLOW_FILES) {
+      expect(callSites(rel), `${rel} reads comments outside the engine`).toEqual([]);
+    }
   });
 
-  for (const rel of WORKFLOW_FILES) {
-    it(`${rel}: every comment-fetch site carries the ${SORT_STEP} step`, () => {
-      for (const line of callSites(rel)) {
-        expect(line, `no sort step on: ${line.trim().slice(0, 80)}…`).toContain(SORT_STEP);
-      }
-    });
-  }
-
-  // Jira call sites defer to the **Tracker** rule's comment-read recipe, which
-  // pages `listJiraIssueComments` oldest first, so they carry no sort step.
-  const JIRA_SITE = "read comments (**Tracker** comment reads)";
-  const JIRA_RECIPE =
-    'executeRead({ name: "listJiraIssueComments", inputs: { issueIdOrKey, maxResults: 100, startAt } })`, oldest first';
-  const jiraSites = (rel: string) =>
-    read(rel).toLowerCase().split(JIRA_SITE.toLowerCase()).length - 1;
-
-  it("carries a Tracker-rule comment read at all 8 jira call sites", () => {
-    expect(WORKFLOW_FILES.reduce((sum, rel) => sum + jiraSites(rel), 0)).toBe(8);
-  });
-
-  for (const rel of WORKFLOW_FILES.filter((file) => jiraSites(file) > 0)) {
-    it(`${rel}: a jira comment read uses the oldest-first recipe`, () => {
-      expect(read(rel)).toContain(JIRA_RECIPE);
+  for (const rel of PHASES) {
+    it(`${rel}: every write of the comments file is oldest first`, () => {
+      const content = read(rel);
+      expect(content.split(FALLBACK).length - 1, "exit-80 fallback").toBe(1);
+      expect(content.split(PRESET).length - 1, "AGENTS.md preset").toBe(1);
+      expect(content.split("issue-comments.json").length - 1).toBe(3);
     });
   }
 
@@ -182,9 +171,9 @@ describe("every comment-fetch site normalises order the same way", () => {
     }
   });
 
-  it("states the step as a sort, never as a tracker-specific reversal", () => {
+  it("states the order as a sort, never as a tracker-specific reversal", () => {
     // A reversal is only correct for the order the call happens to return today;
-    // a sort is correct either way, which is what lets both trackers share it.
+    // a sort is correct either way, which is what lets every tracker share it.
     for (const rel of WORKFLOW_FILES) {
       expect(read(rel), `${rel} reverts to reversal wording`).not.toContain("reverse to oldest");
     }

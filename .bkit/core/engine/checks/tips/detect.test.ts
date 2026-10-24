@@ -10,6 +10,7 @@ import {
   hasMcpServer,
   hasTestLinter,
   listMcpServers,
+  readsBkitText,
   unlockedMcpServers,
 } from "./detect";
 
@@ -187,5 +188,42 @@ describe("hasTestLinter", () => {
   it("rejects a package.json eslintConfig naming none", () => {
     write("package.json", JSON.stringify({ eslintConfig: { extends: "eslint:recommended" } }));
     expect(hasTestLinter(cwd)).toBe(false);
+  });
+});
+
+describe("readsBkitText", () => {
+  it.each([
+    [
+      ".claude/hooks/bkit-cloud-bootstrap.sh",
+      "P=$(\"$BKIT\" context list-blocks 2>/dev/null | jq -r '.provision[]')\n",
+    ],
+    [
+      "scripts/cleanup/bkit-disk-prune.mjs",
+      'spawnSync("pnpm", ["-s", "bkit", "worktrees", "remove", `--fid=${fid}`], {});\n',
+    ],
+    [".github/workflows/ci.yml", "      - run: pnpm bkit repo info | jq -r .bkit\n"],
+    [".husky/pre-push", "BASE=$(pnpm -s bkit ci push-base | jq -r .base)\n"],
+  ])("finds %s reading bkit output without --json", (file, content) => {
+    write(file, content);
+    expect(readsBkitText(cwd)).toEqual([file]);
+  });
+
+  it.each([
+    [
+      ".claude/hooks/bkit-cloud-bootstrap.sh",
+      "P=$(\"$BKIT\" context list-blocks --json 2>/dev/null | jq -r '.provision[]')\n",
+    ],
+    [
+      "scripts/cleanup/bkit-disk-prune.mjs",
+      'spawnSync("pnpm", ["-s", "bkit", "worktrees", "remove", `--fid=${fid}`, "--json"], {});\n',
+    ],
+    [".husky/pre-push", 'pnpm -s bkit ci min-push "$REFS"\ngh pr list --json number | jq length\n'],
+    [
+      "scripts/x/node_modules/y.mjs",
+      'spawnSync("bkit", ["repo", "info"]); // bkit repo info | jq\n',
+    ],
+  ])("leaves %s alone", (file, content) => {
+    write(file, content);
+    expect(readsBkitText(cwd)).toEqual([]);
   });
 });

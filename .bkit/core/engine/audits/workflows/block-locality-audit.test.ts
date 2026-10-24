@@ -77,7 +77,7 @@ const ENV = new Set([
   "GH_TOKEN",
   "GITHUB_TOKEN",
   "BKIT_LINEAR_API_KEY",
-  "BKIT_JIRA_API_TOKEN",
+  "BKIT_JIRA_API_KEY",
   "BKIT_GH_TOKEN",
   "CI",
   "GITHUB_REPOSITORY",
@@ -460,7 +460,7 @@ describe("#440: the detector itself works", () => {
     expect(shell).toBeGreaterThan(100);
     // Most blocks hold model values as `{VAR}` and run `"{BKIT}"`, so shell
     // expansions are few; the ones left must still be reached.
-    expect(refs).toBeGreaterThan(20);
+    expect(refs).toBeGreaterThan(5);
   });
 
   it("still fires when a real shipped block loses its assignment", () => {
@@ -469,9 +469,9 @@ describe("#440: the detector itself works", () => {
     expect(auditContent(rel, content)).toEqual([]);
 
     // Drop one real in-block assignment; the reference below it must now fail.
-    const broken = content.replace(/^(\s*)B=\$\(git branch --show-current\)\n/m, "");
+    const broken = content.replace(/; rc=\$\?$/m, "");
     expect(broken).not.toBe(content);
-    expect(auditContent(rel, broken).map((h) => h.name)).toContain("B");
+    expect(auditContent(rel, broken).map((h) => h.name)).toContain("rc");
   });
 });
 

@@ -62,7 +62,7 @@ Run these in order on a brand-new consumer repo.
 | --- | --- | --- |
 | 1 | `pnpm add -D @cbartens/bkit` — no token, no registry mapping | this section |
 | 2 | Run `bkit install --claude --cursor` to seed both hosts (writes `.bkit/.env.example`; `.envrc` is a template in `.bkit/templates/`) | this section |
-| 3 | Set up direnv + `.bkit/.env` for `BKIT_GH_TOKEN` (GitHub MCP), `BKIT_LINEAR_API_KEY` or `BKIT_JIRA_API_TOKEN` — no registry token | [§ Local env setup](#local-env-setup) |
+| 3 | Set up direnv + `.bkit/.env` for `BKIT_GH_TOKEN` (GitHub MCP), `BKIT_LINEAR_API_KEY` or `BKIT_JIRA_API_KEY` — no registry token | [§ Local env setup](#local-env-setup) |
 | 4 | Push to a feature branch and verify CI runs green | — |
 
 No CI step, secret, `.npmrc` mapping or Vercel env is needed — CI reaches npmjs anonymously.
@@ -119,7 +119,7 @@ Install and upgrade create two **relative symlinks** into the installed package,
 
 ### Local env setup
 
-Two flows — pick one. Both put `BKIT_GH_TOKEN` in shell for the GitHub MCP server; Linear repos also need `BKIT_LINEAR_API_KEY`, Jira repos `BKIT_JIRA_API_TOKEN` (`.bkit/trackers.md` § jira — setup and notes). Use `gh auth login` for CLI.
+Two flows — pick one. Both put `BKIT_GH_TOKEN` in shell for the GitHub MCP server; Linear repos also need `BKIT_LINEAR_API_KEY`, Jira repos `BKIT_JIRA_API_KEY` (`.bkit/trackers.md` § jira — setup and notes). Use `gh auth login` for CLI.
 
 #### Flow A — Shell export (quickest, no extra deps)
 
@@ -127,7 +127,7 @@ Two flows — pick one. Both put `BKIT_GH_TOKEN` in shell for the GitHub MCP ser
 # Add to ~/.zshrc (or ~/.bashrc)
 export BKIT_GH_TOKEN=<PAT — fine-grained (one owner) or classic (multiple owners)>   # GitHub MCP
 export BKIT_LINEAR_API_KEY=<Linear personal API key>        # Linear MCP + preflight
-export BKIT_JIRA_API_TOKEN=<Atlassian MCP V2 scoped token>   # Jira MCP
+export BKIT_JIRA_API_KEY=<Atlassian MCP V2 scoped token>   # Jira MCP
 
 # Reload
 source ~/.zshrc                                        # or: source ~/.bashrc
@@ -151,7 +151,7 @@ echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc && source ~/.zshrc
 # 3. One-time per consumer repo (after `bkit install`)
 cp .bkit/templates/.envrc .envrc                                   # unless you already have one
 cp .bkit/.env.example .bkit/.env
-# Edit .bkit/.env: set BKIT_GH_TOKEN, BKIT_LINEAR_API_KEY or BKIT_JIRA_API_TOKEN
+# Edit .bkit/.env: set BKIT_GH_TOKEN, BKIT_LINEAR_API_KEY or BKIT_JIRA_API_KEY
 direnv allow                                                       # trust the .envrc
 
 # 4. Verify
@@ -228,6 +228,7 @@ After writes, bkit re-runs credential and environment checks — some only accur
 | `gh-mcp-token-unset-shell` / `gh-mcp-token-empty-shell` | `BKIT_GH_TOKEN` (GitHub MCP auth) unset/empty in shell while a `github` MCP server is configured — the whole tracker/PR/board MCP surface fails to connect. Suppressed in CI. |
 | `tracker-setup-none` / `-github` / `-linear` / `-jira` | Optional post-install decision — which issue tracker is wired (`bkit.issueTracker`). `none` nudges `bkit install --tracker=…`. See [§ Optional post-install decisions](#optional-post-install-decisions). |
 | `github-project-board-sync-unconfigured` | GitHub tracker active but Projects v2 board sync is half-configured (`bkit.github.project` empty, absent or not a board URL, and/or `.mcp.json` lacks the `projects` toolset) — sync silently no-ops. Silence with `bkit.github.project: false`. |
+| `github-project-token-scope` | A board is configured but `BKIT_GH_TOKEN` cannot reach it: a classic token lacks the `project` scope, or a fine-grained token's board query returns nothing. Board moves fall back to the MCP. Checked live via `gh`; skipped on cloud / CI. |
 | `dep-updater-absent` | No Renovate or Dependabot config. Copy one example and own it. `bkit.depUpdater: "none"` silences this. See [§ Optional post-install decisions](#optional-post-install-decisions). |
 | `dep-updater-both` | Both updater configs are present. Keep one. |
 | `cloud-router-none` / `cloud-router` | Optional post-install decision — post-CI auto-routing (`bkit.cloudAgents`). `none` (undecided) nudges `bkit install --auto=<variant>`, except under the jira tracker (local runs only); `cloud-router` is informational once `bkit-cloud.yml` is present. See [§ Optional post-install decisions](#optional-post-install-decisions). |
@@ -284,7 +285,7 @@ Two capabilities **opt-in** — never wired by plain host/tooling install. Defau
 <!-- prettier-ignore -->
 | Decision | Default | Opt-in command | Advisory when unset |
 | --- | --- | --- | --- |
-| **Issue tracker** | `none` (workflows run; tracker calls are no-ops) | `bkit install --tracker=github` (`BKIT_GH_TOKEN`) `--tracker=linear` (`BKIT_LINEAR_API_KEY`) or `--tracker=jira` (`BKIT_JIRA_API_TOKEN` + `bkit.jira.site` / `bkit.jira.project`) | `tracker-setup-none` |
+| **Issue tracker** | `none` (workflows run; tracker calls are no-ops) | `bkit install --tracker=github` (`BKIT_GH_TOKEN`) `--tracker=linear` (`BKIT_LINEAR_API_KEY`) or `--tracker=jira` (`BKIT_JIRA_API_KEY` + `bkit.jira.site` / `bkit.jira.project`) | `tracker-setup-none` |
 | **Cloud agents** | none (zero cloud footprint) | `bkit install --auto=claude\|cursor\|opencode` — records the choice and points at the copy-and-own templates: `.claude/hooks/bkit-cloud-bootstrap.sh` (claude), the `bkit-cloud.yml` (claude + opencode jobs, secret-gated) and the Cursor Dockerfile/environment.json | `cloud-router-none` |
 
 **Dependency updater.** Copy one example and own it.

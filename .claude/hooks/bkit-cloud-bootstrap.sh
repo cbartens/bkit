@@ -137,7 +137,7 @@ if [ -f .agents/context.md ]; then
   if [ ! -x "$BKIT" ] || ! command -v jq >/dev/null 2>&1; then
     log "context-fetch provisioning: SKIPPED — bkit (node_modules/.bin/bkit) or jq is missing. Fix: a working 'pnpm install' and the cloud setup script from .claude/bkit-cloud.md."
   else
-    PROVISION=$("$BKIT" context list-blocks 2>/dev/null | jq -r '.provision[]' 2>/dev/null || true)
+    PROVISION=$("$BKIT" context list-blocks --json 2>/dev/null | jq -r '.provision[]' 2>/dev/null || true)
     if [ -n "$PROVISION" ]; then
       log "provisioning context-fetch CLIs from .agents/context.md"
       # pnpm refuses `add -g` unless its global-bin dir is on PATH (corepack pnpm skips

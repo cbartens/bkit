@@ -13,6 +13,7 @@
 // See DE-34 for the shared-entrypoint + crash-isolation contract.
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { markdownTable } from "../shared/text.js";
 import { runAnalysis } from "./analysis.js";
 /** The ledgers `bkit stats` reads, relative to the repo root. */
 export const STATS_SOURCES = [
@@ -25,17 +26,10 @@ export const STATS_REPORT = ".bkit/stats.md";
 /** Kinds the harvest owns: never counted in a repo's own report. */
 const HARVEST_KINDS = new Set(["chat", "run"]);
 const pct = (rate) => `${(rate * 100).toFixed(1)}%`;
-/** A markdown table, or nothing when there are no rows. Unpadded, so prettier leaves it alone. */
+/** A markdown table under a prettier-ignore marker, or nothing when there are no rows. */
 function table(head, rows) {
-    if (rows.length === 0)
-        return [];
-    return [
-        "<!-- prettier-ignore -->",
-        `| ${head.join(" | ")} |`,
-        `| ${head.map(() => "---").join(" | ")} |`,
-        ...rows.map((r) => `| ${r.join(" | ")} |`),
-        "",
-    ];
+    const lines = markdownTable(head, rows);
+    return lines.length === 0 ? [] : ["<!-- prettier-ignore -->", ...lines, ""];
 }
 /** Sorted `[key, count]` pairs of a count map, largest first, then by name. */
 function ranked(counts) {

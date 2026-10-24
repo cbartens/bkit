@@ -13,7 +13,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { readBkitVersion } from "../../install/version-file.js";
 import { APPEND_LEDGERS, SCHEMA, gitEnv, parse, mintTs, resolveRepoSlug, validate, writerProblem, } from "../../ledgers/telemetry.js";
-import { CommandError, EXIT, parseJson, } from "../lib.js";
+import { CommandError, EXIT, isSharedBranch, parseJson, } from "../lib.js";
 import { str } from "./status.js";
 /** Root is not a directory or repo, git is too old, or a ref does not resolve. */
 export const EXIT_ROOT = 3;
@@ -134,6 +134,8 @@ function dirtyTracked(root) {
 export const EXIT_FOREIGN_PATH = 10;
 /** check: the plan has no `**Ledger rows:**` line, it is unfilled, or a key it names is on no ledger. */
 export const EXIT_ROWS_MISSING = 11;
+/** commit --scope=pr: the checkout is on `dev`, `main` or a detached HEAD, so nothing is committed. */
+export const EXIT_SHARED_BRANCH = 12;
 const RECORD_DIR = "bkit/shared-checkout";
 const RECORD_FID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 /** The checkout's top: git status and pathspecs are relative to it, whatever `cwd` is. */
@@ -526,8 +528,7 @@ export const ledgersCommand = {
                 {
                     name: "scope",
                     type: "string",
-                    required: true,
-                    help: "core (logs + ledgers) | full (+ docs ledgers, skills) | pr (+ top-level docs/*.md)",
+                    help: "core (logs + ledgers) | full (+ docs ledgers, skills) | pr (+ top-level docs/*.md); not with --path",
                 },
                 {
                     name: "mode",
@@ -538,7 +539,12 @@ export const ledgersCommand = {
                 {
                     name: "stage-tracked-updates",
                     type: "boolean",
-                    help: "run `git add -u` first (stages every tracked change)",
+                    help: "run `git add -u` first (stages every tracked change; commit modes commit them too)",
+                },
+                {
+                    name: "path",
+                    type: "string",
+                    help: "commit this one path alone, relative to --root (commit modes only; no --scope)",
                 },
                 {
                     name: "squash-of",
@@ -555,15 +561,17 @@ export const ledgersCommand = {
             output: {
                 outcome: "committed | staged | nothing-to-commit | clean (no tracked changes, with --only-if-dirty-tracked)",
                 commit: "the new commit's sha, or null",
-                paths: "bookkeeping paths the allow-list matched",
+                paths: "bookkeeping paths the allow-list matched (the --path alone with --path)",
+                tracked: "tracked paths --stage-tracked-updates staged into the commit",
                 squashPaths: "paths the --squash-of ref brought in",
             },
             exitCodes: {
                 [EXIT_ROOT]: "root not a directory or git repo, git < 2.25, or --squash-of does not resolve",
                 [EXIT_STAGE]: "staging failed (git add / git add -u)",
                 [EXIT_COMMIT]: "git commit failed",
-                [EXIT_EMPTY]: "the allow-list matched nothing — refusing to commit the whole index",
+                [EXIT_EMPTY]: "the allow-list matched nothing — refusing to commit the whole index; or --path is outside the checkout",
                 [EXIT_FOREIGN_PATH]: "an in-place run's allow-listed path was already modified before the run and changed during it — nothing committed",
+                [EXIT_SHARED_BRANCH]: "--scope=pr commit on dev, main or a detached HEAD — refused, nothing committed",
             },
             run: (ctx) => commit(ctx),
         },
@@ -647,12 +655,64 @@ export const ledgersCommand = {
         },
     },
 };
+/** Commit one named path alone: `git add` it, then `git commit -- <path>`. */
+function commitOnePath(o, log) {
+    const { root, mode, message } = o;
+    const rel = o.path;
+    const abs = path.resolve(root, rel);
+    const inside = path.relative(root, abs);
+    if (inside === "" || inside.startsWith("..") || path.isAbsolute(inside)) {
+        throw new CommandError(EXIT_EMPTY, `--path is outside the checkout: ${rel}`);
+    }
+    const done = (outcome, sha) => ({
+        outcome,
+        commit: sha,
+        paths: [inside],
+        squashPaths: [],
+        tracked: [],
+    });
+    const add = gitRaw(root, ["add", "--", inside]);
+    if (add.status !== 0)
+        throw new CommandError(EXIT_STAGE, `'git add' failed: ${add.stderr}`);
+    if (mode === "commit" &&
+        gitRaw(root, ["diff", "--cached", "--quiet", "--", inside]).status === 0) {
+        log(`nothing to commit at ${inside}`);
+        return done("nothing-to-commit", null);
+    }
+    const made = gitRaw(root, [
+        "commit",
+        ...(mode === "commit-allow-empty" ? ["--allow-empty"] : []),
+        "-m",
+        message,
+        "--",
+        inside,
+    ]);
+    if (made.status !== 0) {
+        throw new CommandError(EXIT_COMMIT, `'git commit' failed: ${made.stderr || made.stdout.trim()}`);
+    }
+    const sha = gitRaw(root, ["rev-parse", "HEAD"]).stdout.trim();
+    if (activeRecord(root, o.fid) !== null)
+        appendRecordCommit(root, o.fid, sha);
+    return done("committed", sha);
+}
 /**
  * Stage (and commit) the bookkeeping allow-list for one feature. Throws a
  * CommandError with EXIT_ROOT / EXIT_STAGE / EXIT_COMMIT / EXIT_EMPTY.
  */
 export function commitBookkeeping(o, log) {
     const { root, month, fid, scope, mode, message, squashOf } = o;
+    if (o.path !== undefined) {
+        if (mode === "stage" || !MODES.includes(mode)) {
+            throw new CommandError(EXIT.USAGE, "--path needs --mode=commit or commit-allow-empty");
+        }
+        if (o.stageTrackedUpdates === true || squashOf !== undefined || o.onlyIfDirtyTracked === true) {
+            throw new CommandError(EXIT.USAGE, "--path commits one path alone; drop --stage-tracked-updates, --squash-of and --only-if-dirty-tracked");
+        }
+        if (!message)
+            throw new CommandError(EXIT.USAGE, `--message is required for --mode=${mode}`);
+        requireRepo(root);
+        return commitOnePath(o, log);
+    }
     if (!SCOPES.includes(scope)) {
         throw new CommandError(EXIT.USAGE, `--scope must be core, full, or pr (got '${scope}')`);
     }
@@ -665,6 +725,12 @@ export function commitBookkeeping(o, log) {
         throw new CommandError(EXIT.USAGE, "--squash-of applies to commit modes only");
     }
     requireRepo(root);
+    if (scope === "pr" && mode !== "stage") {
+        const branch = gitRaw(root, ["branch", "--show-current"]).stdout.trim();
+        if (branch === "" || isSharedBranch(branch)) {
+            throw new CommandError(EXIT_SHARED_BRANCH, `--scope=pr commits a feature branch's bookkeeping: refusing to commit on '${branch || "detached HEAD"}'`);
+        }
+    }
     if (squashOf !== undefined &&
         gitRaw(root, ["rev-parse", "-q", "--verify", `${squashOf}^{commit}`]).status !== 0) {
         throw new CommandError(EXIT_ROOT, `--squash-of: unknown commit: ${squashOf}`);
@@ -674,13 +740,14 @@ export function commitBookkeeping(o, log) {
         const dirty = dirtyTracked(root);
         if (dirty.length === 0) {
             log("no tracked file has uncommitted changes — nothing to commit");
-            return { outcome: "clean", commit: null, paths: [], squashPaths: [] };
+            return { outcome: "clean", commit: null, paths: [], squashPaths: [], tracked: [] };
         }
         for (const line of dirty)
             log(line);
     }
     // An in-place run on a shared branch: recorded paths are someone else's.
     const rec = squashOf === undefined ? activeRecord(root, fid) : null;
+    let tracked = [];
     if (o.stageTrackedUpdates === true) {
         // Throws EXIT_FOREIGN_PATH when any recorded path changed, before anything is staged.
         if (rec !== null)
@@ -689,6 +756,20 @@ export function commitBookkeeping(o, log) {
         const res = gitRaw(root, ["add", "-u", ...(keepOut.length > 0 ? ["--", ".", ...keepOut] : [])]);
         if (res.status !== 0)
             throw new CommandError(EXIT_STAGE, `'git add -u' failed: ${res.stderr}`);
+        if (mode !== "stage") {
+            const cached = gitRaw(root, [
+                "diff",
+                "--cached",
+                "--name-only",
+                "-z",
+                "--no-renames",
+                ...(keepOut.length > 0 ? ["--", ".", ...keepOut] : []),
+            ]);
+            if (cached.status !== 0) {
+                throw new CommandError(EXIT_STAGE, `'git diff --cached' failed: ${cached.stderr}`);
+            }
+            tracked = nulList(cached.stdout);
+        }
     }
     const specs = bookPathspecs(month, fid, scope);
     const listed = gitRaw(root, [
@@ -719,18 +800,19 @@ export function commitBookkeeping(o, log) {
         }
         squashPaths = nulList(diff.stdout);
     }
-    if (mode !== "stage" && paths.length + squashPaths.length + ledgerRows.length === 0) {
+    if (mode !== "stage" &&
+        paths.length + squashPaths.length + ledgerRows.length + tracked.length === 0) {
         // The pre-worktree commit records only bookkeeping; a dirty tree with none
         // of it (a fresh consumer repo) has nothing of ours to commit, and stopping
         // here never reaches `git commit`.
         if (o.onlyIfDirtyTracked === true) {
             log(`no bookkeeping under scope=${scope} in ${root} — nothing to commit`);
-            return { outcome: "nothing-to-commit", commit: null, paths, squashPaths };
+            return { outcome: "nothing-to-commit", commit: null, paths, squashPaths, tracked };
         }
         throw new CommandError(EXIT_EMPTY, `empty pathspec list — refusing to commit (nothing under scope=${scope} matched in ${root})`);
     }
     if (rec !== null && mode !== "stage" && ledgerRows.length > 0) {
-        const made = commitOwnSet(root, { plain: paths, ledgers: ledgerRows }, message, {
+        const made = commitOwnSet(root, { plain: [...paths, ...tracked], ledgers: ledgerRows }, message, {
             allowEmpty: mode === "commit-allow-empty",
             skipIfEmpty: mode === "commit",
         });
@@ -738,28 +820,30 @@ export function commitBookkeeping(o, log) {
             throw new CommandError(EXIT_COMMIT, `'git commit' failed: ${made.error}`);
         if (made.sha === null) {
             log("nothing to commit");
-            return { outcome: "nothing-to-commit", commit: null, paths, squashPaths };
+            return { outcome: "nothing-to-commit", commit: null, paths, squashPaths, tracked };
         }
         appendRecordCommit(root, fid, made.sha);
-        return { outcome: "committed", commit: made.sha, paths, squashPaths };
+        return { outcome: "committed", commit: made.sha, paths, squashPaths, tracked };
     }
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-ledgers-"));
     try {
         const bookList = path.join(tmp, "book");
         const commitList = path.join(tmp, "commit");
         fs.writeFileSync(bookList, paths.map((p) => `${p}\0`).join(""));
-        fs.writeFileSync(commitList, [...paths, ...squashPaths].map((p) => `${p}\0`).join(""));
+        const commitPaths = [...new Set([...paths, ...squashPaths, ...tracked])];
+        fs.writeFileSync(commitList, commitPaths.map((p) => `${p}\0`).join(""));
         const add = gitRaw(root, ["add", `--pathspec-from-file=${bookList}`, "--pathspec-file-nul"]);
         if (add.status !== 0)
             throw new CommandError(EXIT_STAGE, `'git add' failed: ${add.stderr}`);
         if (mode === "stage") {
             log(`staged (scope=${scope})`);
-            return { outcome: "staged", commit: null, paths, squashPaths };
+            return { outcome: "staged", commit: null, paths, squashPaths, tracked };
         }
         if (mode === "commit" &&
-            gitRaw(root, ["diff", "--cached", "--quiet", "--", ...specs, ...squashPaths]).status === 0) {
+            gitRaw(root, ["diff", "--cached", "--quiet", "--", ...specs, ...squashPaths, ...tracked])
+                .status === 0) {
             log("nothing to commit");
-            return { outcome: "nothing-to-commit", commit: null, paths, squashPaths };
+            return { outcome: "nothing-to-commit", commit: null, paths, squashPaths, tracked };
         }
         const made = gitRaw(root, [
             "commit",
@@ -775,7 +859,7 @@ export function commitBookkeeping(o, log) {
         const sha = gitRaw(root, ["rev-parse", "HEAD"]).stdout.trim();
         if (rec !== null)
             appendRecordCommit(root, fid, sha);
-        return { outcome: "committed", commit: sha, paths, squashPaths };
+        return { outcome: "committed", commit: sha, paths, squashPaths, tracked };
     }
     finally {
         fs.rmSync(tmp, { recursive: true, force: true });
@@ -788,12 +872,13 @@ function commit(ctx) {
             root: rootOf(ctx),
             month: required(ctx, "month"),
             fid: required(ctx, "fid"),
-            scope: String(f.scope),
+            scope: String(f.scope ?? ""),
             mode: String(f.mode),
             message: str(f.message),
             stageTrackedUpdates: f.stageTrackedUpdates === true,
             squashOf: str(f.squashOf),
             onlyIfDirtyTracked: f.onlyIfDirtyTracked === true,
+            path: str(f.path),
         }, ctx.log),
     });
     return EXIT.OK;

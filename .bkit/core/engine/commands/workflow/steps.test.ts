@@ -3,8 +3,9 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { parseText } from "../../shared/text";
 import { runCommand } from "../lib";
 import { COMMANDS } from "../registry";
 import { newRecord, readRecord, writeRecord } from "./ledgers";
@@ -46,7 +47,7 @@ const write = (cwd: string, rel: string, body: string) =>
 async function run(cwd: string, argv: string[]) {
   const out: string[] = [];
   const err: string[] = [];
-  const code = await runCommand(argv, COMMANDS, {
+  const code = await runCommand([...argv, "--json"], COMMANDS, {
     classicVerbs: new Set(),
     cwd,
     io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
@@ -562,10 +563,13 @@ describe("bkit steps finish", () => {
       parentSha: before,
       artifacts: ["logs/verify-1.md"],
     });
+    expect(r.json.parentSha).toBe(before);
     expect(git(cwd, "log", "-1", "--format=%s")).toBe("chore(1-x): plan-verify attempt 1");
     expect(r.json.comment).toContain(
       "### Step 7 — Plan Verify - Verdict: FAIL - Failures: 2 - Sub-plan: 1/2 - Attempt: 1",
     );
+    expect(fs.readFileSync(r.json.commentFile, "utf-8")).toBe(r.json.comment);
+    expect(git(cwd, "show", "--name-only", "--format=", "HEAD")).not.toContain("tmp/");
   });
 
   it("re-asks on a PENDING header (exit 5) and writes nothing", async () => {
@@ -629,6 +633,31 @@ describe("bkit steps finish", () => {
     ]);
     expect(r.code).toBe(0);
     expect(r.json.row).toMatchObject({ verdict: "CONCERNS", failures: 1, attempt: 0 });
+  });
+
+  it("text output leaves out the row and passing checks, and prints parentSha", async () => {
+    const cwd = repo();
+    const before = git(cwd, "rev-parse", "HEAD");
+    write(cwd, "logs/c1.md", "Verdict: PASS\nFailures: 0\n<!-- verdict:end -->\n");
+    const out: string[] = [];
+    const argv = [
+      ...FINISH,
+      "--step=build-challenge",
+      "--attempt=0",
+      "--agent=bkit-build-challenge-1",
+      "--artifact=logs/c1.md",
+      "--commit=none",
+    ];
+    const code = await runCommand(argv, COMMANDS, {
+      classicVerbs: new Set(),
+      cwd,
+      io: { stdout: (t) => out.push(t), stderr: () => {} },
+    });
+    expect(code).toBe(0);
+    const text = parseText(out.join(""));
+    expect(text).toMatchObject({ verdict: "PASS", parentSha: before, pass: true });
+    expect(text).not.toHaveProperty("row");
+    expect(text).not.toHaveProperty("checks");
   });
 
   it("records the header's Strategy on the row", async () => {
@@ -722,6 +751,118 @@ describe("bkit steps finish", () => {
     ]);
     expect(r.code).toBe(9);
     expect(r.json.outside).toContain("src.ts");
+  });
+});
+
+describe("bkit steps finish --post", () => {
+  const LOG = "docs/plans/202610/logs/eng-4-x";
+  const saved = process.env.BKIT_LINEAR_API_KEY;
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    if (saved === undefined) delete process.env.BKIT_LINEAR_API_KEY;
+    else process.env.BKIT_LINEAR_API_KEY = saved;
+  });
+
+  function linearRepo() {
+    const cwd = repo();
+    fs.writeFileSync(
+      path.join(cwd, "package.json"),
+      JSON.stringify({ bkit: { issueTracker: "linear" } }),
+    );
+    fs.mkdirSync(path.join(cwd, LOG), { recursive: true });
+    write(
+      cwd,
+      `${LOG}/verify-1.md`,
+      "Verdict: PASS\nFailures: 0\nFixable: false\n<!-- verdict:end -->\n",
+    );
+    return cwd;
+  }
+  const args = (...extra: string[]) => [
+    "steps",
+    "finish",
+    `--file=${LOG}/status.jsonl`,
+    "--workflow=build",
+    "--step=build-plan-verify",
+    "--sub-plan=1",
+    "--attempt=1",
+    "--agent=bkit-build-plan-verify",
+    `--artifact=${LOG}/verify-1.md`,
+    "--message=chore(eng-4-x): plan-verify",
+    "--number=7",
+    "--title=Plan Verify",
+    ...extra,
+  ];
+  function stubLinear() {
+    const sent: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_u: string, init: RequestInit) => {
+        const q = JSON.parse(String(init.body)) as { variables: { input: { body: string } } };
+        sent.push(q.variables.input.body);
+        return new Response(
+          JSON.stringify({
+            data: { commentCreate: { success: true, comment: { url: "https://l/c/1" } } },
+          }),
+        );
+      }),
+    );
+    return sent;
+  }
+  const rows = (cwd: string) =>
+    fs
+      .readFileSync(path.join(cwd, LOG, "status.jsonl"), "utf-8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+
+  it("posts, records the engine-action row before the step row, and commits both", async () => {
+    process.env.BKIT_LINEAR_API_KEY = "k";
+    const cwd = linearRepo();
+    const sent = stubLinear();
+    const r = await run(cwd, args("--post"));
+    expect(r.code).toBe(0);
+    expect(r.json.tracker).toEqual({ done: true, action: "comment", url: "https://l/c/1" });
+    expect(sent).toEqual([r.json.comment]);
+    const [action, step] = rows(cwd);
+    expect(action).toMatchObject({
+      type: "engine-action",
+      action: "comment",
+      key: "build/1/build-plan-verify/1/1/comment",
+      ref: "https://l/c/1",
+    });
+    expect(step).toMatchObject({ type: "step-done", step: "build-plan-verify" });
+    expect(git(cwd, "status", "--porcelain", "--", LOG)).toBe("");
+  });
+
+  it("a re-run of the same step and body is deduped: nothing posted again", async () => {
+    process.env.BKIT_LINEAR_API_KEY = "k";
+    const cwd = linearRepo();
+    const sent = stubLinear();
+    await run(cwd, args("--post"));
+    const again = await run(cwd, args("--post"));
+    expect(again.json.tracker).toEqual({
+      done: true,
+      action: "comment",
+      url: "https://l/c/1",
+      deduped: true,
+    });
+    expect(sent).toHaveLength(1);
+  });
+
+  it("a failed post keeps the exit code and prints done false; the row still lands", async () => {
+    const cwd = linearRepo();
+    const r = await run(cwd, args("--post"));
+    expect(r.code).toBe(0);
+    expect(r.json.tracker).toEqual({ done: false, action: "comment", reason: "auth" });
+    expect(rows(cwd).map((x) => x.type)).toEqual(["step-done"]);
+  });
+
+  it("--post needs --number; without --post there is no tracker key", async () => {
+    const cwd = linearRepo();
+    const noNumber = args("--post").filter((a) => !/^--(number|title)=/.test(a));
+    expect((await run(cwd, noNumber)).code).toBe(2);
+    const plain = await run(cwd, args("--commit=none"));
+    expect(plain.json).not.toHaveProperty("tracker");
   });
 });
 

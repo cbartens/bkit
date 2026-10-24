@@ -12,6 +12,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { debugStart } from "../../commands/workflow/status.js";
 import { BKIT_BUILD_GATES, BKIT_DEBUG_GATES, BKIT_GATE_SCRIPTS } from "../../install/manifest.js";
 import { getPromptsRoot, getWorkflowsRoot } from "../../shared/package-roots";
 
@@ -184,10 +185,18 @@ describe("bkit-local-gate-audit (#437)", () => {
 
       it(`passes every candidate, in descending depth, at each of its ${sites} call site(s)`, () => {
         expect(blocks).toHaveLength(sites);
-        for (const block of blocks) {
+        for (const block of blocks.filter((b) => !b.includes("{GATE_FLAGS}")))
           expect(gatesPassed(block)).toEqual([...gates]);
-        }
       });
+
+      // Debug passes the list `status route --prompt-file` printed as `gates`.
+      it.runIf(blocks.some((b) => b.includes("{GATE_FLAGS}")))(
+        "routes the engine's gate list where a block passes {GATE_FLAGS}",
+        () => {
+          expect(body).toContain("`gates` as `{GATES}`");
+          expect(debugStart([], "").gates).toEqual([...gates]);
+        },
+      );
 
       it("falls back to a gate install actually seeds, so the chain terminates", () => {
         expect(Object.keys(BKIT_GATE_SCRIPTS)).toContain(gates[gates.length - 1]);

@@ -27,13 +27,14 @@ import { readBkitConfig } from "../../shared/settings.js";
 import { TIMEOUTS } from "../../shared/timeouts.js";
 import { FID_PATTERNS, fromBranch, fromMarker, issueIdOf, readIssueTracker } from "./fids.js";
 import { AUTO_LABEL, AUTO_ROUTE_SUFFIX } from "./issues.js";
-import { pushBranch } from "./branches.js";
+import { fetchRemoteRef, pushBranch } from "./branches.js";
 import { activeRecord, checkOnlyBookkeeping, retriggerCommit } from "./ledgers.js";
 import { closeTransportRow, crossCheckFile, devRequiresChecks, prRepoSlug, probePr, } from "./prs.js";
 import { resolveOwnerRepo, splitSlug } from "./repo.js";
 import { restateOutcome } from "./run-facts.js";
 import { extraField, str } from "./status.js";
 import { writeStepRow } from "./steps.js";
+import { attempt, issueRef, readLabels, trackerTarget } from "./tracker.js";
 const GH_MISSING = "gh is not on PATH — use the mapped GitHub MCP tool instead";
 /** Not JSON reads as undefined: every caller treats that as an API error, distinct from an empty answer. */
 function jsonOrUndefined(raw) {
@@ -1079,6 +1080,15 @@ function runGate(ctx) {
     const given = [f.head, f.pr, f.squashOf].filter((v) => v !== undefined).length;
     if (given !== 1)
         throw new CommandError(EXIT.USAGE, "give exactly one of --head, --pr, --squash-of");
+    if (f.fetch === true) {
+        const branch = str(f.branch);
+        if (branch === undefined)
+            throw new CommandError(EXIT.USAGE, "--fetch needs --branch");
+        // Best-effort: the gate reads CI, not the local ref; a failed fetch is logged, not fatal.
+        const fetched = fetchRemoteRef(ctx.cwd, `origin/${branch}`);
+        if (fetched !== null && !fetched.ok)
+            ctx.log(`fetch of origin/${branch} failed: ${fetched.stderr.trim()}`);
+    }
     const root = checkoutRoot(ctx.cwd);
     const gh = (args) => runGh(ctx.cwd, args);
     const record = str(f.record);
@@ -1366,25 +1376,25 @@ async function runContext(ctx) {
         prState: null,
         runId: null,
     };
+    const tracker = readIssueTracker(ctx.cwd);
     if (chosen.mode === "BRIEF") {
-        ctx.emit({ ...out, issueId: arg });
+        ctx.emit(await withIssue(ctx, { ...out, issueId: arg }, tracker));
         return EXIT.OK;
     }
-    const tracker = readIssueTracker(ctx.cwd);
     if (!/^[0-9]+$/.test(arg)) {
         // CI_DEV: a post-merge dev failure names the FID slug; checked before any path sees it.
         if (!FID_PATTERNS.any.test(arg)) {
             ctx.log(`Invalid CI_DEV FID: ${arg}`);
             return EXIT_NO_FID;
         }
-        ctx.emit({
+        ctx.emit(await withIssue(ctx, {
             ...out,
             mode: "CI_DEV",
             fid: arg,
             issueId: tracker === "none" ? null : issueIdOf(arg, "any"),
             branch: DEV,
             headSha: git(ctx.cwd, ["rev-parse", "origin/dev"]) ?? "",
-        });
+        }, tracker));
         return EXIT.OK;
     }
     const view = runGh(ctx.cwd, [
@@ -1452,8 +1462,24 @@ async function runContext(ctx) {
         ctx.emit(out);
         return EXIT_NO_FID;
     }
-    ctx.emit({ ...out, fid: parsed.fid, issueId: parsed.issueId });
+    ctx.emit(await withIssue(ctx, { ...out, fid: parsed.fid, issueId: parsed.issueId }, tracker));
     return EXIT.OK;
+}
+/**
+ * `ref` (the issue as a workflow argument: `#N` on GitHub, the key uppercased on
+ * Linear / Jira) and `labels` (read from the tracker; null when there is no issue
+ * or the read failed, logged).
+ */
+async function withIssue(ctx, out, tracker) {
+    const id = typeof out.issueId === "string" && out.issueId !== "" ? out.issueId : null;
+    const ref = issueRef(id, tracker);
+    if (id === null || tracker === "none")
+        return { ...out, ref, labels: null };
+    let labels = null;
+    const read = await attempt("labels", ctx.log, async () => {
+        labels = await readLabels(trackerTarget(ctx.cwd, { issue: id }));
+    });
+    return { ...out, ref, labels: "done" in read && read.done ? labels : null };
 }
 async function runMirror(ctx) {
     const f = ctx.flags;
@@ -1651,6 +1677,11 @@ export const runsCommand = {
                     help: "PR branch: tells a superseded head (14) from no run (10)",
                 },
                 {
+                    name: "fetch",
+                    type: "boolean",
+                    help: "fetch origin/<--branch> first (best-effort, logged on failure)",
+                },
+                {
                     name: "event",
                     type: "string",
                     help: "count only runs fired by this event (push, pull_request)",
@@ -1807,6 +1838,8 @@ export const runsCommand = {
                 owner: "owner half",
                 repo: "repo half",
                 issueId: "the issue (BRIEF: the arg; CI: from the marker or branch; null under no tracker)",
+                ref: 'the issue as the phase workflow\'s argument: #N (GitHub), the key uppercased (Linear / Jira), else issueId verbatim or ""',
+                labels: "the issue's labels read from the tracker; null with no issue or when the read failed (read them via the tracker MCP)",
                 fid: "the FID (CI / CI_DEV), else null",
                 prNumber: "the PR (CI), else null",
                 branch: "the PR head branch (CI), dev (CI_DEV), else null",

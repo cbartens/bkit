@@ -15,6 +15,12 @@
 // step's own commit (if any). Forensic only — points to the commit that preceded
 // this step's work, not the commit that resulted from it.
 
+import { createHash } from "node:crypto";
+import * as fs from "node:fs";
+import * as path from "node:path";
+
+import { parseJson } from "../shared/json.js";
+
 export type Step = {
   step: string;
   status: "DONE" | "FAILED";
@@ -203,6 +209,73 @@ export function runOrStepField(runs: WorkflowRun[], workflow: string, field: str
     .filter((v) => v !== undefined && v !== null && v !== "")
     .at(-1);
   return fromStep === undefined ? "" : String(fromStep);
+}
+
+// ---------------------------------------------------------------------------
+// engine-action rows — an engine action unsafe to repeat (a tracker comment, a
+// marker commit, a CI re-trigger, a PR open) records itself here and is checked
+// first, so a re-run of the same block does not do it twice. Actions safe to
+// repeat (a label already set) record nothing. The fold and every status reader
+// skip the type.
+// ---------------------------------------------------------------------------
+
+export const ENGINE_ACTION = "engine-action";
+
+export type EngineActionRow = {
+  type: typeof ENGINE_ACTION;
+  /** What was done: `comment`, `commit`, `dispatch`, `pr-open`, … */
+  action: string;
+  /** The moment: workflow, run, step, sub-plan, attempt and kind, joined by `/`. */
+  key: string;
+  /** sha256 of the body or payload acted on. */
+  hash: string;
+  /** What the action made: comment URL, commit SHA, run id; null when it names none. */
+  ref: string | null;
+  at: string;
+};
+
+/** The `key` of an engine-action row: its parts joined by `/`, an absent part as `-`. */
+export const actionKey = (...parts: Array<string | number | undefined | null>): string =>
+  parts.map((p) => (p === undefined || p === null || p === "" ? "-" : String(p))).join("/");
+
+/** sha256 hex of an action's body or payload. */
+export const actionHash = (payload: string): string =>
+  createHash("sha256").update(payload).digest("hex");
+
+/** The engine-action rows of `file`; a missing file or a malformed line reads as none. */
+function engineActions(file: string): EngineActionRow[] {
+  if (!fs.existsSync(file)) return [];
+  const out: EngineActionRow[] = [];
+  for (const line of fs.readFileSync(file, "utf-8").split("\n")) {
+    if (line.trim() === "") continue;
+    const parsed = parseJson(line);
+    if (!parsed.ok) continue;
+    const r = parsed.value as Partial<EngineActionRow> | null;
+    if (r?.type === ENGINE_ACTION && typeof r.key === "string" && typeof r.hash === "string")
+      out.push(r as EngineActionRow);
+  }
+  return out;
+}
+
+/**
+ * The row recording this action already done (same key, same hash), or undefined.
+ * Same key with a different hash is a deliberate edit: act again.
+ */
+export function alreadyDone(file: string, key: string, hash: string): EngineActionRow | undefined {
+  return engineActions(file)
+    .filter((r) => r.key === key && r.hash === hash)
+    .at(-1);
+}
+
+/** Append the engine-action row for an action just done; returns the row. */
+export function recordAction(
+  file: string,
+  a: { action: string; key: string; hash: string; ref: string | null },
+): EngineActionRow {
+  const row: EngineActionRow = { type: ENGINE_ACTION, ...a, at: statusTimestamp() };
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.appendFileSync(file, appendLine(row));
+  return row;
 }
 
 export type Strategy = NonNullable<Step["strategy"]>;

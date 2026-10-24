@@ -235,6 +235,26 @@ export function runBkitDocs(dryRun, tokens, ws, logPrefix) {
     migrateShortcutsToLite(dryRun, ws, logPrefix);
     migrateRetiredDevLock(dryRun, ws, logPrefix);
     migrateLedgerSchema(dryRun, ws, logPrefix);
+    migrateJiraKeyName(dryRun, logPrefix);
+}
+// Migration (installs up to 5.5.x, `docs/migrations.md`): the Jira key was
+// `BKIT_JIRA_API_TOKEN`; the engine and the MCP configs now read `BKIT_JIRA_API_KEY`.
+// `.bkit/.env` lines naming the old key are renamed in place, value kept. Logged only,
+// never recorded in ws: a ws write gets a canonical hash, and a secrets file never does.
+// A file already naming the new key is left alone.
+const ENV_FILE = path.join(".bkit", ".env");
+const OLD_JIRA_KEY = "BKIT_JIRA_API_TOKEN";
+const NEW_JIRA_KEY = "BKIT_JIRA_API_KEY";
+export function migrateJiraKeyName(dryRun, logPrefix) {
+    if (!fs.lstatSync(ENV_FILE, { throwIfNoEntry: false })?.isFile())
+        return;
+    const text = fs.readFileSync(ENV_FILE, "utf-8");
+    const assigns = (key) => new RegExp(`^\\s*(export\\s+)?${key}=`, "m").test(text);
+    if (!assigns(OLD_JIRA_KEY) || assigns(NEW_JIRA_KEY))
+        return;
+    if (!dryRun)
+        fs.writeFileSync(ENV_FILE, text.split(OLD_JIRA_KEY).join(NEW_JIRA_KEY), "utf-8");
+    console.log(`${logPrefix} ${dryRun ? "[dry-run] " : ""}core: ${ENV_FILE} — ${OLD_JIRA_KEY} renamed to ${NEW_JIRA_KEY}`);
 }
 // Migration (5.1.0 – 5.2.4 installs, `docs/migrations.md`): the lite workflows lived at
 // `.agents/shortcuts.md`. The consumer's own lines below `bkit:end` (minus the seeded

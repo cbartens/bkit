@@ -54,6 +54,33 @@ describe("bkit stats", () => {
     expect(md).toContain("## Run durations");
   });
 
+  it("prints each table unpadded under a prettier-ignore marker", () => {
+    fs.writeFileSync(
+      path.join(root, ".bkit", "stats.jsonl"),
+      [row(1_700_000_000_001, "outcome"), row(1_700_000_000_002, "outcome")].join("\n") + "\n",
+    );
+
+    const md = buildRepoStats(root);
+
+    expect(md).toContain(
+      [
+        "## Rows",
+        "",
+        "<!-- prettier-ignore -->",
+        "| Kind | Rows |",
+        "| --- | --- |",
+        "| outcome | 2 |",
+        "",
+        "<!-- prettier-ignore -->",
+        "| Workflow | Rows |",
+        "| --- | --- |",
+        "| build | 2 |",
+        "",
+        "## Run durations",
+      ].join("\n"),
+    );
+  });
+
   it("says there are no rows yet when the ledger is missing", () => {
     expect(buildRepoStats(root)).toContain("No rows yet.");
   });

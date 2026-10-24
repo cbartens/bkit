@@ -1,7 +1,9 @@
 // bkit status route|meta|path|row — read and annotate a workflow's `status.jsonl`.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { activeDoneSteps, appendLine, fold, lastDoneStepAllRuns, lastRun, nextStrategy, runOrStepField, statusTimestamp, } from "../../ledgers/status.js";
+import { BKIT_DEBUG_GATES } from "../../install/manifest.js";
+import { THRESHOLDS } from "../../shared/thresholds.js";
+import { activeDoneSteps, appendLine, fold, lastDoneStepAllRuns, lastRun, nextStrategy, runNumber, runOrStepField, statusTimestamp, } from "../../ledgers/status.js";
 import { CommandError, EXIT, git, parseJson, statusLocation, } from "../lib.js";
 // ---------------------------------------------------------------------------
 // Shared with counters / steps
@@ -150,8 +152,11 @@ function route(runs, workflow, step, subPlan) {
         }
         else {
             out.verdict = last.verdict;
-            const failures = last.failures ?? 0;
-            if (Number.isInteger(failures) && failures >= 0)
+            // An absent count on FAIL is unknown, never 0: a FAIL always has failures.
+            const failures = last.failures ?? (last.verdict === "FAIL" ? null : 0);
+            if (failures === null)
+                out.failures = null;
+            else if (Number.isInteger(failures) && failures >= 0)
                 out.failures = failures;
             else
                 problems.failures = `${step} failures "${String(failures)}" is not a non-negative integer`;
@@ -179,6 +184,44 @@ function route(runs, workflow, step, subPlan) {
     const attempt = Number(lastRun(runs, workflow)?.debugAttempt ?? 0);
     out.debugAttempt = Number.isFinite(attempt) ? attempt : 0;
     return { out, problems };
+}
+/** The debug run's start decisions, from the session prompt and the current run only. */
+export function debugStart(runs, promptText) {
+    const attempt = runNumber(runs, "debug");
+    const latest = runs.at(-1);
+    // A resume: the newest run is debug's and still open. A finished run's rows and
+    // modes never carry into the next run.
+    const open = latest?.workflow === "debug" && latest.status === "IN_PROGRESS" ? latest : null;
+    const soaking = open !== null &&
+        (runOrStepField([open], "debug", "debugMode") === "SOAK" ||
+            open.steps.some((s) => s.step === "debug-failure-soak" && s.status === "DONE"));
+    const mode = promptText.includes("[soak]")
+        ? { debugMode: "SOAK", soakEntry: true }
+        : soaking
+            ? { debugMode: "SOAK", soakEntry: false }
+            : attempt >= THRESHOLDS.MAX_DEBUG_ATTEMPT
+                ? { debugMode: "SOAK", soakEntry: true }
+                : { debugMode: "NORMAL", soakEntry: false };
+    return {
+        debugAttempt: attempt,
+        ...mode,
+        repro: promptText.includes("[repro]"),
+        gates: promptText.includes("[live=off]")
+            ? BKIT_DEBUG_GATES.filter((g) => !g.endsWith("-live"))
+            : [...BKIT_DEBUG_GATES],
+    };
+}
+/** `--file`, else the debug status.jsonl `--fid` and `--month` name. */
+function routeFile(ctx) {
+    if (ctx.flags.file !== undefined)
+        return statusFile(ctx);
+    const fid = str(ctx.flags.fid);
+    const month = str(ctx.flags.month);
+    if (fid === undefined || month === undefined || ctx.flags.promptFile === undefined)
+        throw new CommandError(EXIT.USAGE, "give --file, or --prompt-file with --fid and --month");
+    if (!/^[0-9]{6}$/.test(month))
+        throw new CommandError(EXIT.USAGE, "--month must be YYYYMM");
+    return statusLocation({ cwd: ctx.cwd, workflow: "debug", fid, month }).path;
 }
 // ---------------------------------------------------------------------------
 // meta
@@ -245,9 +288,9 @@ export const statusCommand = {
             },
         },
         route: {
-            summary: "Routing state: last verdict / failures / strategy of a step, debug and push mode.",
+            summary: "Routing state: last verdict / failures / strategy of a step, debug and push mode; with --prompt-file, debug's start decisions.",
             flags: [
-                FILE_FLAG,
+                { ...FILE_FLAG, required: false, help: `${FILE_FLAG.help}; or --fid and --month` },
                 WORKFLOW_FLAG,
                 {
                     ...STEP_FLAG,
@@ -267,15 +310,25 @@ export const statusCommand = {
                     repeatable: true,
                     help: "field=value — fail (exit 4) unless the field holds this value, e.g. debugMode=NORMAL",
                 },
+                {
+                    name: "prompt-file",
+                    type: "string",
+                    help: "debug only: the session prompt; decides this run's attempt, mode, repro and gates (a missing status.jsonl is a fresh run)",
+                },
+                { name: "fid", type: "string", help: "with --prompt-file, in place of --file: feature id" },
+                { name: "month", type: "string", help: "with --prompt-file, in place of --file: YYYYMM" },
             ],
             output: {
                 verdict: "PASS|CONCERNS|FAIL of the step's last DONE row in the active run, or null",
-                failures: "its failures (absent with a verdict = 0), or null",
+                failures: "its failures (absent on PASS|CONCERNS = 0, absent on FAIL = null: count unknown), or null",
                 strategy: "the step's last strategy across ALL runs, or null",
                 nextStrategy: "next rung: STANDARD, PIVOT, FINAL (null without --step)",
-                debugMode: "NORMAL|SOAK of the active run, or null",
+                debugMode: "NORMAL|SOAK of the active run, or null; with --prompt-file, the mode this invocation runs in (first match: [soak] in the prompt, an open run already in SOAK, the attempt reached MAX_DEBUG_ATTEMPT, else NORMAL)",
                 pushMode: "PR|LOCAL of the active run, or null",
-                debugAttempt: "debugAttempt of the active run (0 when unset)",
+                debugAttempt: "debugAttempt of the active run (0 when unset); with --prompt-file, this invocation's run number (a resume keeps its number)",
+                soakEntry: "with --prompt-file: true when this run enters SOAK ([soak] in the prompt, or the attempt reached MAX_DEBUG_ATTEMPT), false when it continues one or runs NORMAL",
+                repro: "with --prompt-file: [repro] in the prompt",
+                gates: "with --prompt-file: the gates to try, deepest first; [live=off] in the prompt drops the live gate",
             },
             exitCodes: {
                 [EXIT_NO_STATUS]: "status.jsonl missing, unreadable, or not valid NDJSON",
@@ -303,8 +356,23 @@ export const statusCommand = {
                         throw new CommandError(EXIT.USAGE, `--require ${r} needs --step`);
                     }
                 }
-                const runs = readRuns(statusFile(ctx));
+                const promptFile = str(ctx.flags.promptFile);
+                if (promptFile !== undefined && ctx.flags.workflow !== "debug")
+                    throw new CommandError(EXIT.USAGE, "--prompt-file is for --workflow=debug");
+                const file = routeFile(ctx);
+                let promptText = "";
+                if (promptFile !== undefined) {
+                    const abs = path.resolve(ctx.cwd, promptFile);
+                    if (!fs.existsSync(abs))
+                        throw new CommandError(EXIT.USAGE, `--prompt-file ${abs} does not exist`);
+                    promptText = fs.readFileSync(abs, "utf-8");
+                }
+                const runs = promptFile !== undefined && !fs.existsSync(file) ? [] : readRuns(file);
                 const { out, problems } = route(runs, String(ctx.flags.workflow), step, positiveInt(ctx.flags.subPlan, "sub-plan"));
+                if (promptFile !== undefined) {
+                    Object.assign(out, debugStart(runs, promptText));
+                    delete problems.debugMode;
+                }
                 ctx.emit(out);
                 const failed = required.filter((r) => problems[r] !== undefined);
                 for (const r of failed)
@@ -323,7 +391,11 @@ export const statusCommand = {
                 WORKFLOW_FLAG,
                 { name: "debug-mode", type: "string", help: "NORMAL|SOAK" },
                 { name: "push-mode", type: "string", help: "PR|LOCAL" },
-                { name: "debug-attempt", type: "string", help: "positive integer" },
+                {
+                    name: "debug-attempt",
+                    type: "string",
+                    help: "positive integer, or run (the active run's number)",
+                },
                 { name: "plan-source", type: "string", help: "brief|plan" },
                 {
                     name: "soak-entry",
@@ -345,8 +417,9 @@ export const statusCommand = {
                 const fields = {};
                 for (const { key, check } of Object.values(META_FIELDS)) {
                     const v = str(ctx.flags[key]);
+                    // `--debug-attempt=run`: the active run's number, read once the log is known to exist.
                     if (v !== undefined)
-                        fields[key] = check(v);
+                        fields[key] = key === "debugAttempt" && v === "run" ? v : check(v);
                 }
                 for (const [flag, mark] of Object.entries(META_MARKS)) {
                     if (ctx.flags[camelFlag(flag)] === true)
@@ -359,6 +432,9 @@ export const statusCommand = {
                 }
                 if (!fs.existsSync(file))
                     throw new CommandError(EXIT_NO_STATUS, `${file} does not exist`);
+                if (fields.debugAttempt === "run") {
+                    fields.debugAttempt = runNumber(readRuns(file), String(ctx.flags.workflow));
+                }
                 const row = {
                     type: "workflow-meta",
                     workflow: String(ctx.flags.workflow),

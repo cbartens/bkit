@@ -19,6 +19,7 @@ import { buildCloudDashboardsAdvisory, detectCiRouterSecrets, detectGhMcpToken }
 import {
   buildCloudSetupAdvisory,
   buildGithubProjectAdvisory,
+  buildGithubProjectTokenScopeAdvisory,
   buildTrackerSetupAdvisory,
   detectActionsWritePermissions,
   detectMainBranchProtection,
@@ -394,6 +395,8 @@ export function runPostInstallCheck(
   // absent any prerequisite, sync silently no-ops.
   const githubProjectSetup = buildGithubProjectAdvisory(cwd);
   if (githubProjectSetup) phase3.push(githubProjectSetup);
+  const githubProjectToken = buildGithubProjectTokenScopeAdvisory(cwd);
+  if (githubProjectToken) phase3.push(githubProjectToken);
   const depUpdaterSetup = buildDepUpdaterSetupAdvisory(cwd);
   if (depUpdaterSetup) phase3.push(depUpdaterSetup);
   const cloudSetup = buildCloudSetupAdvisory(cwd);

@@ -51,7 +51,7 @@ function linked(cwd: string, fid = FID, owned = false) {
 async function run(cwd: string, argv: string[]) {
   const out: string[] = [];
   const err: string[] = [];
-  const code = await runCommand(["worktrees", ...argv], [worktreesCommand], {
+  const code = await runCommand(["worktrees", ...argv, "--json"], [worktreesCommand], {
     classicVerbs: new Set(),
     cwd,
     io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
@@ -104,6 +104,7 @@ describe("bkit worktrees setup — adopt in place", () => {
       repoRoot: cwd,
       branch: "claude/session",
       mode: "adopted",
+      branchWarning: null,
       owned: false,
       rebaseConflict: false,
       sentinel: null,
@@ -211,7 +212,7 @@ describe("bkit worktrees setup — debug in place on dev shares the checkout", (
 
   async function bkit(cwd: string, ...argv: string[]) {
     const out: string[] = [];
-    const code = await runCommand(argv, COMMANDS, {
+    const code = await runCommand([...argv, "--json"], COMMANDS, {
       classicVerbs: new Set(),
       cwd,
       io: { stdout: (t) => out.push(t), stderr: () => {} },
@@ -409,6 +410,28 @@ describe("bkit worktrees setup — ship branch", () => {
     expect(r.code).toBe(7);
     expect(r.err).toContain("refusing to ship main");
     expect(r.err).toContain("releases stay manual");
+  });
+
+  it("warns on stderr and in branchWarning when the ship branch names neither the FID nor the issue", async () => {
+    const cwd = repo("claude/work");
+    const r = await setup(cwd, "ship");
+    expect(r.code).toBe(0);
+    const warning = `[bkit-ship] WARNING branch claude/work not named for ${FID} — shipping it as named`;
+    expect(r.json.branchWarning).toBe(warning);
+    expect(r.err).toContain(warning);
+    git(cwd, "branch", "claude/ISSUE-77-fix");
+    expect(
+      (await setup(cwd, "ship", "--branch=claude/ISSUE-77-fix", "--issue=#77")).json.branchWarning,
+    ).toBe(null);
+    git(cwd, "branch", `feat/${FID.toUpperCase()}`);
+    expect(
+      (await setup(cwd, "ship", `--branch=feat/${FID.toUpperCase()}`, "--issue=")).json
+        .branchWarning,
+    ).toBe(null);
+  });
+
+  it("--issue is ship only", async () => {
+    expect((await setup(repo("dev"), "build", "--issue=7")).code).toBe(2);
   });
 
   it("adopts in place when the session is already on the ship branch, even with --worktrees", async () => {

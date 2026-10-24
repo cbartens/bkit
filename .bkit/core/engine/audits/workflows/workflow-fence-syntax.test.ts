@@ -115,3 +115,65 @@ describe("workflow shell fences", () => {
     expect(syntaxErrors("zsh")).toEqual([]);
   });
 });
+
+// Git, GitHub and file I/O belong to `bkit` verbs: a workflow fence never calls `git` or
+// `gh`, pipes into `jq`, or removes / copies files by hand. Each allow-list entry names
+// the one line shape it admits and why no verb can replace it.
+const RAW_CALL = /(^|[\s;&|($`])(git|gh)\s|\|\s*jq\b|(^|[\s;&|])(rm\s+-f|cp)\s/;
+const RAW_CALL_ALLOWED: ReadonlyArray<{ shape: RegExp; reason: string }> = [
+  {
+    shape:
+      /^"\$\(dirname "\$\(git rev-parse --path-format=absolute --git-common-dir\)"\)\/node_modules\/\.bin\/bkit" repo info\b/,
+    reason: "the bootstrap line that finds the bkit binary; no verb runs before it",
+  },
+];
+
+/** `file: text` for each fence line making a raw call no allow-list entry admits, once per file. */
+function rawCalls(list: Fence[]): string[] {
+  const seen = new Set<string>();
+  return list.flatMap((fence) =>
+    fence.body.split("\n").flatMap((raw) => {
+      const line = raw.trim();
+      if (!RAW_CALL.test(line) || RAW_CALL_ALLOWED.some((a) => a.shape.test(line))) return [];
+      const hit = `${fence.file}: ${line}`;
+      if (seen.has(hit)) return [];
+      seen.add(hit);
+      return [hit];
+    }),
+  );
+}
+
+describe("workflow shell fences — no raw git, gh, jq or file copies", () => {
+  it("every raw call is a bkit verb, bar the named allow-list", () => {
+    expect(rawCalls(fences)).toEqual([]);
+  });
+
+  it("every allow-list entry still matches a shipped line", () => {
+    const lines = fences.flatMap((f) => f.body.split("\n").map((l) => l.trim()));
+    for (const a of RAW_CALL_ALLOWED) {
+      expect(
+        lines.some((l) => a.shape.test(l)),
+        a.reason,
+      ).toBe(true);
+    }
+  });
+
+  it.each([
+    ['git push origin "DUMMY"'],
+    ["gh pr view 1 --json title"],
+    ["B=$(git branch --show-current)"],
+    ['X=$("DUMMY" counters run | jq -er .run)'],
+    ['rm -f "DUMMY/.rebase-failed"'],
+    ['cp "a.md" "b.md" || exit 1'],
+    ['cd "DUMMY" && git diff --quiet HEAD~1 HEAD'],
+  ])("flags %s", (line) => {
+    expect(rawCalls([{ file: "x.md", line: 1, body: `${line}\n` }])).toHaveLength(1);
+  });
+
+  it.each([['"DUMMY" branches push --mode=plain'], ['echo "digit 1 gh-pages"']])(
+    "passes %s",
+    (line) => {
+      expect(rawCalls([{ file: "x.md", line: 1, body: `${line}\n` }])).toEqual([]);
+    },
+  );
+});

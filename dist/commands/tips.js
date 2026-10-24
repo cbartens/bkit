@@ -7,11 +7,15 @@
 // for the person to decide (`bkit disk prune` notes) comes first, outside the tip cap.
 import { collectTips, formatTips } from "../checks/tips/index.js";
 import { formatNotes, readNotes } from "./workflow/disk.js";
-export function runTipsCommand(all, workflow, cwd = process.cwd()) {
+/** What `bkit tips` prints: disk-prune notes, then the tips; "" when nothing applies. */
+export function tipsText(all, workflow, cwd) {
     const { tips, star } = collectTips(cwd);
-    const output = [formatNotes(readNotes(cwd)), formatTips(tips, { all, workflow, star })]
+    return [formatNotes(readNotes(cwd)), formatTips(tips, { all, workflow, star })]
         .filter((part) => part !== "")
         .join("\n\n");
+}
+export function runTipsCommand(all, workflow, cwd = process.cwd()) {
+    const output = tipsText(all, workflow, cwd);
     if (output)
         console.log(output);
 }

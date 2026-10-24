@@ -81,7 +81,7 @@ describe("jira tracker render", () => {
         jira: {
           type: "http",
           url: "https://mcp.atlassian.com/v2/mcp",
-          headers: { Authorization: "Bearer ${BKIT_JIRA_API_TOKEN}" },
+          headers: { Authorization: "Bearer ${BKIT_JIRA_API_KEY}" },
         },
       },
     };

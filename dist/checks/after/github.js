@@ -7,6 +7,7 @@ import { execFileSync } from "node:child_process";
 import { MCP_TOOLSETS_HEADER, parseToolsets } from "../../install/write.js";
 import { parseJson, readJsonFile } from "../../shared/json.js";
 import { readBkitConfig } from "../../shared/settings.js";
+import { isCloudOrCi } from "../before/env.js";
 /**
  * Detect whether branch protection is configured on `main`.
  * Returns "present" | "missing" | "unknown".
@@ -64,7 +65,7 @@ export function detectActionsWritePermissions() {
  *
  * - `github`  → GitHub tracker: the GitHub MCP server authenticates with `BKIT_GH_TOKEN`; `gh` uses `gh auth login`.
  * - `linear`  → existing Linear setup message (BKIT_LINEAR_API_KEY + LINEAR_ISSUE_ID).
- * - `jira`    → admin switch, BKIT_JIRA_API_TOKEN and `bkit.jira` in package.json.
+ * - `jira`    → admin switch, BKIT_JIRA_API_KEY and `bkit.jira` in package.json.
  * - `none`    → prompt to run `bkit install --tracker=github`, `--tracker=linear` or `--tracker=jira`.
  *
  * Only fires when bkit workflows are installed (.claude/ or .cursor/ present).
@@ -96,7 +97,7 @@ export function buildTrackerSetupAdvisory(cwd) {
             id: "tracker-setup-jira",
             severity: "advisory",
             detect: "bkit tracker is configured as `jira`. Jira Cloud is the active tracker.",
-            action: 'Jira tracker: (1) an org admin turns on API-token sign-in for the Rovo MCP server (admin.atlassian.com → Rovo → Rovo MCP server → Authentication → "Allow API token authentication"); (2) create an API token with scopes for the app "Atlassian MCP V2" at https://id.atlassian.com/manage-profile/security/api-tokens and set it as `BKIT_JIRA_API_TOKEN` in `.bkit/.env`, then `direnv allow`; (3) set `bkit.jira.site` (e.g. `https://acme.atlassian.net`) and `bkit.jira.project` (the project key) in package.json. Full steps: `.bkit/trackers.md` § jira.',
+            action: 'Jira tracker: (1) an org admin turns on API-token sign-in for the Rovo MCP server (admin.atlassian.com → Rovo → Rovo MCP server → Authentication → "Allow API token authentication"); (2) create an API token with scopes for the app "Atlassian MCP V2" at https://id.atlassian.com/manage-profile/security/api-tokens and set it as `BKIT_JIRA_API_KEY` in `.bkit/.env`, then `direnv allow`; (3) set `bkit.jira.site` (e.g. `https://acme.atlassian.net`) and `bkit.jira.project` (the project key) in package.json. Full steps: `.bkit/trackers.md` § jira.',
         };
     }
     // tracker === "none". Distinguish opt-out (explicit `bkit.issueTracker: "none"`)
@@ -108,7 +109,7 @@ export function buildTrackerSetupAdvisory(cwd) {
         id: "tracker-setup-none",
         severity: "advisory",
         detect: "bkit tracker is not configured (`bkit.issueTracker` absent). Workflows run but every tracker call is a no-op.",
-        action: 'Optional post-install decision. Run `bkit install --tracker=github` (recommended), `--tracker=linear` or `--tracker=jira` to enable tracker integration. GitHub tracker requires `BKIT_GH_TOKEN` in `.bkit/.env` (fine-grained PAT for one owner, classic PAT across owners). Linear tracker requires `BKIT_LINEAR_API_KEY` in `.bkit/.env`. Jira tracker requires `BKIT_JIRA_API_TOKEN` in `.bkit/.env` and `bkit.jira` in package.json. To opt out and silence this advisory, set `bkit.issueTracker` to `"none"` in package.json.',
+        action: 'Optional post-install decision. Run `bkit install --tracker=github` (recommended), `--tracker=linear` or `--tracker=jira` to enable tracker integration. GitHub tracker requires `BKIT_GH_TOKEN` in `.bkit/.env` (fine-grained PAT for one owner, classic PAT across owners). Linear tracker requires `BKIT_LINEAR_API_KEY` in `.bkit/.env`. Jira tracker requires `BKIT_JIRA_API_KEY` in `.bkit/.env` and `bkit.jira` in package.json. To opt out and silence this advisory, set `bkit.issueTracker` to `"none"` in package.json.',
     };
 }
 /**
@@ -204,6 +205,77 @@ export function buildGithubProjectAdvisory(cwd) {
             "organization permission, so it reaches organization boards only; a classic PAT with the `project` scope reaches " +
             "organization and personal boards.\n\n" +
             "To opt out and silence this advisory, set `bkit.github.project` to `false` in package.json.",
+    };
+}
+/** `gh` run with the token the engine uses for tracker calls: BKIT_GH_TOKEN as GH_TOKEN when set. */
+function ghAsEngine(args) {
+    const token = process.env.BKIT_GH_TOKEN;
+    return execFileSync("gh", args, {
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: 5000,
+        env: token ? { ...process.env, GH_TOKEN: token } : process.env,
+    });
+}
+/**
+ * Whether the engine's token can move cards on the configured board: "present",
+ * "missing", or "unknown" (gh unavailable or unauthenticated). A classic token lists its
+ * scopes in `X-OAuth-Scopes` and needs `project`; a fine-grained token lists none, so the
+ * board itself is queried.
+ */
+export function detectProjectTokenScope(owner, number) {
+    let head;
+    try {
+        head = ghAsEngine(["api", "-i", "user"]).split(/\r?\n\r?\n/)[0] ?? "";
+    }
+    catch {
+        return "unknown";
+    }
+    const scopes = /^x-oauth-scopes:(.*)$/im.exec(head);
+    if (scopes) {
+        const list = scopes[1].split(",").map((x) => x.trim());
+        return list.includes("project") ? "present" : "missing";
+    }
+    const field = "projectV2(number: $n) { id }";
+    try {
+        const out = ghAsEngine([
+            "api",
+            "graphql",
+            "-f",
+            `query=query($login: String!, $n: Int!) { repositoryOwner(login: $login) { ... on User { ${field} } ... on Organization { ${field} } } }`,
+            "-f",
+            `login=${owner}`,
+            "-F",
+            `n=${number}`,
+        ]);
+        const parsed = parseJson(out);
+        const data = (parsed.ok ? parsed.value : null);
+        return data?.data?.repositoryOwner?.projectV2?.id ? "present" : "missing";
+    }
+    catch {
+        return "missing";
+    }
+}
+/**
+ * The engine moves board cards with `BKIT_GH_TOKEN`; a token that cannot reach the board
+ * makes every move fall back to the MCP. Checked live, so it runs only when a board is
+ * configured, the tracker is GitHub, and not on cloud / CI (no interactive owner to fix it).
+ */
+export function buildGithubProjectTokenScopeAdvisory(cwd) {
+    const config = readBkitConfig(cwd);
+    const board = config.github.project;
+    if (config.issueTracker !== "github" || !board || isCloudOrCi())
+        return null;
+    if (detectProjectTokenScope(board.owner, board.number) !== "missing")
+        return null;
+    return {
+        id: "github-project-token-scope",
+        severity: "advisory",
+        detect: `The GitHub token cannot reach the board \`${config.github.projectUrl}\`: a classic token lacks the \`project\` scope, ` +
+            "or a fine-grained token's board query returned nothing. Board moves fall back to the MCP.",
+        action: "Give `BKIT_GH_TOKEN` Projects read & write: a classic PAT needs the `project` scope (reaches organization and personal boards); " +
+            "a fine-grained PAT needs the organization permission Projects: Read and write (organization boards only). " +
+            "Then re-run `bkit check`.",
     };
 }
 /**

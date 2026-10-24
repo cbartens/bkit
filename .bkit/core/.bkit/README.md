@@ -134,7 +134,7 @@ BKIT_GH_TOKEN=""
 # ==========================================
 # BKIT: JIRA GITHUB INTEGRATION
 # ==========================================
-BKIT_JIRA_API_TOKEN=""
+BKIT_JIRA_API_KEY=""
 BKIT_GH_TOKEN=""
 ```
 
@@ -147,7 +147,7 @@ BKIT_GH_TOKEN=""
 | `BKIT_ANTHROPIC_API_KEY` | all | Claude Code (headless / CI) | Required when Claude invoked outside interactive session (cloud automation, CI). |
 | `BKIT_CURSOR_API_KEY` | all | Cursor Cloud Agent dashboard / programmatic invocation | Required for non-interactive Cursor sessions. |
 | `BKIT_LINEAR_API_KEY` | linear | Preflight hooks (`.{claude,cursor}/hooks/bkit-preflight.sh`); workflow Linear MCP via OAuth fallback | Query issue state + labels for `Auto` gate; fail-fast if absent. |
-| `BKIT_JIRA_API_TOKEN` | jira | Jira MCP server (`Authorization: Bearer`) | Atlassian MCP V2 scoped API token; site admin enables API-token sign-in for the Rovo MCP server first. Setup: `.bkit/trackers.md` § jira. |
+| `BKIT_JIRA_API_KEY` | jira | Jira MCP server (`Authorization: Bearer`) | Atlassian MCP V2 scoped API token; site admin enables API-token sign-in for the Rovo MCP server first. Setup: `.bkit/trackers.md` § jira. |
 | `LINEAR_WEBHOOK_SECRET` | linear | Linear → Cursor integration backend | Verifies webhook signatures on `@cursor` mentions. Set in Linear ↔ Cursor integration config. |
 
 `GITHUB_ISSUE_ID` (GitHub) and `LINEAR_ISSUE_ID` (Linear) set automatically by workflow context — do not set manually.
@@ -365,7 +365,7 @@ Slash commands at repo root:
 
 Claude reads issue, comments, plan files via tracker MCP.
 
-**Requirements:** `BKIT_GH_TOKEN`, active Claude Code session (subscription or `BKIT_ANTHROPIC_API_KEY`). `BKIT_LINEAR_API_KEY` when `bkit.issueTracker = "linear"`; `BKIT_JIRA_API_TOKEN` when `"jira"`. Session model = orchestrator pin in `.bkit/prompts.md` § Orchestrators (`Claude` column) — set via `/model` before invoking; not duplicated here.
+**Requirements:** `BKIT_GH_TOKEN`, active Claude Code session (subscription or `BKIT_ANTHROPIC_API_KEY`). `BKIT_LINEAR_API_KEY` when `bkit.issueTracker = "linear"`; `BKIT_JIRA_API_KEY` when `"jira"`. Session model = orchestrator pin in `.bkit/prompts.md` § Orchestrators (`Claude` column) — set via `/model` before invoking; not duplicated here.
 
 ### From Cursor (interactive — local)
 
@@ -377,7 +377,7 @@ Cursor 2.4+ honours `.cursor/commands/bkit-*.md` and `.cursor/agents/bkit-*.md`:
 
 Orchestrator reads `.cursor/commands/` workflow. Subagents via `Task`, `model:` from frontmatter (no host override).
 
-**Requirements:** `BKIT_GH_TOKEN` (GitHub, default) or `BKIT_LINEAR_API_KEY` (Linear) or `BKIT_JIRA_API_TOKEN` (Jira). Cursor account in good standing.
+**Requirements:** `BKIT_GH_TOKEN` (GitHub, default) or `BKIT_LINEAR_API_KEY` (Linear) or `BKIT_JIRA_API_KEY` (Jira). Cursor account in good standing.
 
 ---
 

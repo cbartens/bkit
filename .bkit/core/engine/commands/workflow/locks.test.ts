@@ -72,7 +72,7 @@ const step = (workflow: string, msAgo: number) => ({
 async function run(cwd: string, argv: string[]) {
   const out: string[] = [];
   const err: string[] = [];
-  const code = await runCommand(["locks", ...argv], [locksCommand], {
+  const code = await runCommand(["locks", ...argv, "--json"], [locksCommand], {
     classicVerbs: new Set(),
     cwd,
     io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },

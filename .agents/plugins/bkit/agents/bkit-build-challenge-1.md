@@ -42,7 +42,7 @@ tools:
 2. Re-read all supplied inputs once at session start; do not trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
 4. Update **Create** after each finding — append log at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line. **If** any `CRITICAL` finding → set `Verdict` = `FAIL` via `Edit` immediately; do not defer to final pass.
-5. Read supplied diff fully. **If** input Context flags partial-diff → record `partial diff coverage` in verdict; limit findings to provided content.
+5. Read supplied diff fully. **If** its first line says `partial diff coverage` → record `partial diff coverage` in verdict; limit findings to provided content.
 6. Explore bug / edge-case vectors — depth over breadth:
    - Null / undefined: missing guards, optional-chaining gaps, default-value drift.
    - Off-by-one / boundary: array indexing, range queries, pagination, slice / splice limits.

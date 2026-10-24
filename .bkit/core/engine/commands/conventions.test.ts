@@ -156,6 +156,8 @@ function commandSources(): string[] {
 const HELPER_SOURCES = new Set([
   // The measured blocks of a run's outcome row, shared by `workflows close` and `runs dispatch`.
   path.join("commands", "workflow", "run-facts.ts"),
+  // The engine's tracker client, shared by every verb that reads or writes the issue.
+  path.join("commands", "workflow", "tracker.ts"),
 ]);
 
 /** Every way a command source breaks "exports a command, and each is in COMMANDS"; empty = conforms. */

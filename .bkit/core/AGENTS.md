@@ -24,9 +24,10 @@
 
 **Else** scan entire session prompt for issue ID — try patterns in order, first match wins:
 
-1. `#\d+` → GitHub issue number (e.g. `#123`); strip `#`, set `ISSUE_ID` = `123`
-2. `[A-Z][A-Z0-9]*-\d+` → prefixed issue ID (e.g. Linear `LIN-123`, Jira `PROJ-123`, `ISSUE-123`)
-3. bare `\d+` → numeric fallback (GitHub provider only; ambiguous — prefer `#\d+`)
+1. `#\d+`, `owner/repo#\d+` or a GitHub issue URL (`…/{owner}/{repo}/issues/\d+`) into this repo (`owner/repo` of the `origin` remote) → GitHub issue number (e.g. `#123`); strip `#`, set `ISSUE_ID` = `123`
+2. `[A-Z][A-Z0-9]*-\d+` carrying the `package.json` `bkit.linear.team` / `bkit.jira.project` prefix, a Linear issue URL (`linear.app/…/issue/ID`) with that prefix, or a Jira browse URL (`…/browse/ID`) on the `bkit.jira.site` host with that prefix → prefixed issue ID (e.g. Linear `LIN-123`, Jira `PROJ-123`)
+
+A bare number with no `#` is not an issue ID; neither is a bare key with no team / project set, nor a tracker URL into another repo, team or site; the run is issue-less (same rule as `bkit fids parse`).
 
 Set `LABELS`, `DESCRIPTION`, `COMMENTS` = empty.
 

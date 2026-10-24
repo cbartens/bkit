@@ -1,6 +1,19 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+
 import { describe, expect, it } from "vitest";
 
-import { type StatusEvent, appendLine, fold } from "./status";
+import {
+  type StatusEvent,
+  actionHash,
+  actionKey,
+  alreadyDone,
+  appendLine,
+  fold,
+  recordAction,
+} from "./status";
+import { readStatusEvents } from "../commands/workflow/status";
 
 describe("fold — event log → run array", () => {
   it("folds a single run, step-done appends to the open run", () => {
@@ -136,5 +149,50 @@ describe("appendLine", () => {
       at: "2026-05-01T00:00:00Z",
     };
     expect(appendLine(e)).toBe(`${JSON.stringify(e)}\n`);
+  });
+});
+
+describe("engine-action rows", () => {
+  const tmpFile = () => {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-engine-action-"));
+    return path.join(d, "logs", "status.jsonl");
+  };
+
+  it("key joins its parts with /, an absent part as -; hash is sha256 hex", () => {
+    expect(actionKey("build", 2, "build-plan-verify", undefined, 1, "comment")).toBe(
+      "build/2/build-plan-verify/-/1/comment",
+    );
+    expect(actionHash("x")).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("records a row and finds it only by the same key and hash", () => {
+    const file = tmpFile();
+    expect(alreadyDone(file, "k", "h")).toBeUndefined();
+    const row = recordAction(file, { action: "comment", key: "k", hash: "h", ref: "https://c" });
+    expect(row).toMatchObject({ type: "engine-action", action: "comment", ref: "https://c" });
+    expect(alreadyDone(file, "k", "h")).toEqual(row);
+    expect(alreadyDone(file, "k", "h2")).toBeUndefined();
+    expect(alreadyDone(file, "k2", "h")).toBeUndefined();
+  });
+
+  it("skips malformed lines", () => {
+    const file = tmpFile();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, "not json\n");
+    recordAction(file, { action: "commit", key: "k", hash: "h", ref: null });
+    expect(alreadyDone(file, "k", "h")?.action).toBe("commit");
+  });
+
+  it("the fold ignores them", () => {
+    const file = tmpFile();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(
+      file,
+      appendLine({ type: "workflow-started", workflow: "build", at: "2026-10-01T00:00:00Z" }),
+    );
+    recordAction(file, { action: "comment", key: "k", hash: "h", ref: null });
+    expect(fold(readStatusEvents(file))).toEqual([
+      { workflow: "build", startedAt: "2026-10-01T00:00:00Z", status: "IN_PROGRESS", steps: [] },
+    ]);
   });
 });

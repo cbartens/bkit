@@ -416,7 +416,7 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
       type: "remote",
       url: "https://mcp.atlassian.com/v2/mcp",
       oauth: false,
-      headers: { Authorization: "Bearer {env:BKIT_JIRA_API_TOKEN}" },
+      headers: { Authorization: "Bearer {env:BKIT_JIRA_API_KEY}" },
     });
   });
 
@@ -683,7 +683,7 @@ describe("reconcileOpencodeJson — tracker mcp entry keeps consumer extras (#61
     const jira = JSON.parse(fs.readFileSync(DST, "utf-8")).mcp.jira;
     expect(jira.url).toBe(tmpl.url);
     expect(jira.headers).toEqual({
-      Authorization: "Bearer {env:BKIT_JIRA_API_TOKEN}",
+      Authorization: "Bearer {env:BKIT_JIRA_API_KEY}",
       "X-Mine": "1",
     });
     expect(ws.writes).toEqual([{ path: DST, action: "update" }]);

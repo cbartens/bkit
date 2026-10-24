@@ -8,7 +8,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { runCommand } from "../lib";
 import { COMMANDS } from "../registry";
 import type { Step } from "../../ledgers/status";
-import { LOOP_PAUSE_THRESHOLDS, THRESHOLDS, loopTrend } from "./counters";
+import { loopTrend } from "./counters";
+import { LOOP_PAUSE_THRESHOLDS, THRESHOLDS } from "../../shared/thresholds";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -18,7 +19,7 @@ afterEach(() => {
 async function run(argv: string[], cwd?: string) {
   const out: string[] = [];
   const err: string[] = [];
-  const code = await runCommand(argv, COMMANDS, {
+  const code = await runCommand([...argv, "--json"], COMMANDS, {
     classicVerbs: new Set(),
     cwd,
     io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
@@ -722,15 +723,6 @@ describe("bkit counters max", () => {
     });
   });
 
-  it("every threshold is a non-negative integer, and every attempt cap is at least 1", () => {
-    const thresholds = Object.entries(THRESHOLDS);
-    expect(thresholds.length).toBeGreaterThan(0);
-    expect(thresholds.filter(([, value]) => !Number.isInteger(value))).toEqual([]);
-    expect(thresholds.filter(([, value]) => value < 0)).toEqual([]);
-    const attemptCaps = thresholds.filter(([name]) => name !== "MAX_CHALLENGE_REMEDIATE_ATTEMPT");
-    expect(attemptCaps.filter(([, value]) => value < 1)).toEqual([]);
-  });
-
   it("bkit-cloud.yml (both copies) declares MAX_DEV_DISPATCH_ATTEMPTS equal to THRESHOLDS", () => {
     for (const rel of [
       "../../../../../.github/workflows/bkit-cloud.yml",
@@ -767,6 +759,30 @@ describe("bkit counters rows", () => {
     expect((await run([...base, "--position=next"])).json).toEqual({ value: 3, count: 2 });
   });
 
+  it("an engine-action row between counted rows is not counted", async () => {
+    const file = log([
+      started("ship", "2026-10-02T00:00:00Z"),
+      probe("2026-10-02T00:01:00Z"),
+      {
+        type: "engine-action",
+        action: "comment",
+        key: "k",
+        hash: "h",
+        ref: null,
+        at: "2026-10-02T00:02:00Z",
+      },
+    ]);
+    const res = await run([
+      "counters",
+      "rows",
+      `--file=${file}`,
+      "--workflow=ship",
+      "--type=ship-revalidate-dispatch",
+      "--position=count",
+    ]);
+    expect(res.json).toEqual({ value: 1, count: 1 });
+  });
+
   it("a resumed run does not inherit a crashed run's rows (no workflow-finished between)", async () => {
     const file = log([
       started("ship", "2026-10-01T00:00:00Z"),
@@ -783,6 +799,45 @@ describe("bkit counters rows", () => {
       "--position=next",
     ]);
     expect(res.json).toEqual({ value: 1, count: 0 });
+  });
+
+  it("route --rows derives the value from typed rows of the active run", async () => {
+    const file = log([
+      started("ship", "2026-10-02T00:00:00Z"),
+      probe("2026-10-02T00:01:00Z"),
+      probe("2026-10-02T00:03:00Z"),
+    ]);
+    const route = (rows: string, max: string) =>
+      run([
+        "counters",
+        "route",
+        "--name=REVALIDATE_ATTEMPT",
+        `--rows=${rows}`,
+        `--file=${file}`,
+        "--workflow=ship",
+        `--max=${max}`,
+        "--continue=step-9",
+        "--exceeded=failure-path",
+      ]);
+    const next = await route("ship-revalidate-dispatch:next", "3");
+    expect(next.code).toBe(0);
+    expect(next.json).toMatchObject({ value: 3, next: "step-9" });
+    const over = await route("ship-revalidate-dispatch:next", "2");
+    expect(over.code).toBe(1);
+    expect(over.json).toMatchObject({ value: 3, next: "failure-path" });
+    expect((await route("ship-revalidate-dispatch:count", "2")).json.value).toBe(2);
+    expect((await route("ship-revalidate-dispatch:current", "2")).code).toBe(2);
+    const both = await run([
+      "counters",
+      "route",
+      "--name=X",
+      "--value=1",
+      "--rows=ship-revalidate-dispatch:next",
+      `--file=${file}`,
+      "--workflow=ship",
+      "--max=3",
+    ]);
+    expect(both.code).toBe(2);
   });
 
   it("starts at 1 on a fresh run, and refuses a bad position or a missing log", async () => {

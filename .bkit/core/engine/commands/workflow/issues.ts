@@ -1,10 +1,11 @@
-// bkit issues text|labels|comment — tracker payloads, prepared but never sent.
+// bkit issues text|labels|comment — tracker payloads, and with --post / --write the call itself.
 //
-// The tracker calls stay in the workflows, through MCP: a workflow touches only
-// its own issue, and only through the tracker's MCP server. These verbs do the
-// arithmetic the workflows stated as prose — which comments count as human input,
-// which labels a transition adds and drops, the board update, and the exact text
-// of every `###### bkit:generated` comment — so no step re-derives it by hand.
+// These verbs do the arithmetic the workflows stated as prose — which comments count
+// as human input, which labels a transition adds and drops, the board update, and the
+// exact text of every `###### bkit:generated` comment — so no step re-derives it by
+// hand. A workflow touches only its own issue. The tracker I/O goes through
+// `tracker.ts`; when it fails the verb prints `tracker.done: false` and the workflow
+// sends the same payload through the tracker's MCP server.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -19,6 +20,28 @@ import {
 } from "../lib.js";
 import { readBkitConfig, type BkitConfig } from "../../shared/settings.js";
 import { str } from "./status.js";
+import { isCloudOrCi } from "../../checks/before/env.js";
+import {
+  COMMENT_FILE_OUTPUT,
+  GENERATED_MARKER,
+  POST_FLAG,
+  TRACKER_OUTPUT,
+  attempt,
+  classifyFailure,
+  commentFileOf,
+  fetchIssue,
+  moveOnBoard,
+  postForVerb,
+  readBlockers,
+  readLabels,
+  redact,
+  runActionKey,
+  skipOf,
+  stampMarker,
+  trackerTarget,
+  writeLabels,
+  type TrackerOutcome,
+} from "./tracker.js";
 
 /** Exit code: an input file is missing or not in the expected shape. */
 export const EXIT_BAD_INPUT = 3;
@@ -34,12 +57,17 @@ function readInput(cwd: string, file: string, flag: string): string {
 // text
 // ---------------------------------------------------------------------------
 
-/** First line of every comment bkit posts; such comments are never workflow input. */
-export const GENERATED_MARKER = "###### bkit:generated";
+export { GENERATED_MARKER };
 /** A human writes this as a whole line to discard everything above it. */
 export const CUT_MARKER = "###### bkit:ignore-earlier";
 // Whole line only: naming the token inline is prose, not a live marker.
 const CUT_LINE = /^[ \t]*###### bkit:ignore-earlier[ \t]*\r?$/;
+// The same cut as Jira's HTML comment page renders it: its own `<h6>` element.
+const CUT_ANY =
+  /^[ \t]*###### bkit:ignore-earlier[ \t]*\r?$|<h6\b[^>]*>\s*bkit:ignore-earlier\s*<\/h6>/gm;
+// The marker as a whole first line (bare or stamped with its hash), or as Jira's HTML `<h6>`.
+const GENERATED_FIRST =
+  /^(?:######[ \t]+bkit:generated(?:[ \t]+[0-9a-f]{12})?[ \t]*$|<h6\b[^>]*>\s*bkit:generated(?:\s+[0-9a-f]{12})?\s*<\/h6>)/;
 
 export interface IssueComment {
   body: string;
@@ -47,23 +75,13 @@ export interface IssueComment {
 }
 
 export const isGenerated = (body: string): boolean =>
-  (body.replace(/^\s+/, "").split(/\r?\n/, 1)[0] ?? "").trim() === GENERATED_MARKER;
+  GENERATED_FIRST.test(body.replace(/^\s+/, "").split(/\r?\n/, 1)[0] ?? "");
 
-/** Keep only what follows the LAST whole-line cut marker; the marker itself goes too. */
+/** Keep only what follows the LAST cut marker (whole line, or Jira's HTML `<h6>`); the marker itself goes too. */
 export function cutEarlier(text: string): { text: string; cut: boolean } {
-  const lines = text.split("\n");
-  let last = -1;
-  lines.forEach((line, i) => {
-    if (CUT_LINE.test(line)) last = i;
-  });
-  if (last === -1) return { text, cut: false };
-  return {
-    text: lines
-      .slice(last + 1)
-      .join("\n")
-      .replace(/^\s*\n/, ""),
-    cut: true,
-  };
+  const last = [...text.matchAll(CUT_ANY)].at(-1);
+  if (last === undefined) return { text, cut: false };
+  return { text: text.slice(last.index + last[0].length).replace(/^\s*\n/, ""), cut: true };
 }
 
 /**
@@ -249,6 +267,7 @@ const BOARD_STATES = new Set(["progress", "review"]);
 function boardPayload(
   ctx: RunContext,
   status: "progress" | "review",
+  target?: { issue: string; ownerRepo: string },
 ): { board: Record<string, unknown> | null; boardSkipped: string | null } {
   const { issueTracker: tracker, github } = readBkitConfig(repoRoot(ctx.cwd));
   if (tracker !== "github") {
@@ -265,8 +284,8 @@ function boardPayload(
     ctx.log(`bkit.github.project "${github.projectUrl}" is not a GitHub Projects board URL`);
     return { board: null, boardSkipped: "project-url-invalid" };
   }
-  const issue = String(ctx.flags.issue ?? "").replace(/^#/, "");
-  const ownerRepo = String(ctx.flags.ownerRepo ?? "");
+  const issue = (target?.issue ?? String(ctx.flags.issue ?? "")).replace(/^#/, "");
+  const ownerRepo = target?.ownerRepo ?? String(ctx.flags.ownerRepo ?? "");
   const [itemOwner, itemRepo, extra] = ownerRepo.split("/");
   if (!/^[0-9]+$/.test(issue) || !itemOwner || !itemRepo || extra !== undefined) {
     throw new CommandError(
@@ -291,7 +310,8 @@ function boardPayload(
   };
 }
 
-function labelsVerb(ctx: RunContext): number {
+/** The flags of a label transition, checked. */
+function labelTransition(ctx: RunContext): { t: LabelTransition; board: BoardState | undefined } {
   const phase = str(ctx.flags.phase);
   if (phase !== undefined && !PHASE_LABELS.includes(`bkit:${phase}`)) {
     throw new CommandError(
@@ -306,25 +326,92 @@ function labelsVerb(ctx: RunContext): number {
   if (board !== undefined && !BOARD_STATES.has(board)) {
     throw new CommandError(EXIT.USAGE, "--board must be progress or review");
   }
-  const t: LabelTransition = { phase, failed };
-  const { add, remove, labels } = transitionLabels(
-    (ctx.flags.label as string[] | undefined) ?? [],
-    t,
-  );
-  const { board: payload, boardSkipped } =
-    board === undefined
-      ? { board: null, boardSkipped: null }
-      : boardPayload(ctx, board as "progress" | "review");
-  ctx.emit({
+  return { t: { phase, failed }, board: board as BoardState | undefined };
+}
+
+type BoardState = "progress" | "review";
+
+/** The printed transition for `current` labels. */
+function transitionOut(ctx: RunContext, current: string[], t: LabelTransition, board?: string) {
+  const { add, remove, labels } = transitionLabels(current, t);
+  return {
     add,
     remove,
     labels,
     changed: add.length + remove.length > 0,
     autoRouteSuffix: labels.includes(AUTO_LABEL) ? AUTO_ROUTE_SUFFIX : "",
     trackerState: trackerState(t, board, readBkitConfig(repoRoot(ctx.cwd))),
-    board: payload,
-    boardSkipped,
+  };
+}
+
+function labelsVerb(ctx: RunContext): number | Promise<number> {
+  if (ctx.flags.write === true) return labelsWrite(ctx);
+  const { t, board } = labelTransition(ctx);
+  const out = transitionOut(ctx, (ctx.flags.label as string[] | undefined) ?? [], t, board);
+  const { board: payload, boardSkipped } =
+    board === undefined ? { board: null, boardSkipped: null } : boardPayload(ctx, board);
+  ctx.emit({ ...out, board: payload, boardSkipped });
+  return EXIT.OK;
+}
+
+/**
+ * `--write`: read the issue's labels, write the transition (and the Linear / Jira
+ * state), then move the board item. Each write that fails prints `done: false`
+ * with its reason; the workflow sends the printed payload through the MCP instead.
+ */
+async function labelsWrite(ctx: RunContext): Promise<number> {
+  const { t, board } = labelTransition(ctx);
+  const target = trackerTarget(ctx.cwd, { fid: str(ctx.flags.fid), issue: str(ctx.flags.issue) });
+  const skip = skipOf(target);
+  const given = (ctx.flags.label as string[] | undefined) ?? [];
+  if (skip) {
+    ctx.emit({
+      ...transitionOut(ctx, given, t, board),
+      board: null,
+      boardSkipped: null,
+      tracker: skip,
+    });
+    return EXIT.OK;
+  }
+  // A malformed board target is a usage error: refused before any label is written.
+  let { board: payload, boardSkipped } =
+    board === undefined
+      ? { board: null, boardSkipped: null as string | null }
+      : boardPayload(ctx, board, {
+          issue: target.issue ?? "",
+          ownerRepo: target.ownerRepo || String(ctx.flags.ownerRepo ?? ""),
+        });
+  let current = given;
+  const read = await attempt("labels", ctx.log, async () => {
+    current = await readLabels(target);
   });
+  const out = transitionOut(ctx, current, t, board);
+  const tracker =
+    "done" in read && !read.done
+      ? read
+      : await attempt("labels", ctx.log, () =>
+          writeLabels(target, {
+            add: out.add,
+            remove: out.remove,
+            labels: out.labels,
+            state: out.trackerState,
+          }),
+        );
+  let boardWrite: TrackerOutcome | null = null;
+  const project = readBkitConfig(repoRoot(ctx.cwd)).github;
+  if (payload !== null && board !== undefined && project.project) {
+    if (isCloudOrCi()) {
+      // A cloud run's token can comment and label but never reach a Projects v2 board.
+      payload = null;
+      boardSkipped = "cloud";
+    } else {
+      const { owner, number } = project.project;
+      boardWrite = await attempt("board", ctx.log, () =>
+        moveOnBoard(target, { owner, number, status: project[board] }),
+      );
+    }
+  }
+  ctx.emit({ ...out, board: payload, boardSkipped, tracker, boardWrite });
   return EXIT.OK;
 }
 
@@ -546,12 +633,15 @@ export function buildComment(cwd: string, o: CommentInput): string {
   }
 
   // A whole-line cut marker copied in from an artifact would fire on the next
-  // run's issue text; inline, it is only a mention.
-  return lines
-    .join("\n")
-    .split("\n")
-    .map((l) => (CUT_LINE.test(l) ? `\`${CUT_MARKER}\`` : l))
-    .join("\n");
+  // run's issue text; inline, it is only a mention. The marker carries the body's
+  // hash, which is how a re-run finds the comment already posted.
+  return stampMarker(
+    lines
+      .join("\n")
+      .split("\n")
+      .map((l) => (CUT_LINE.test(l) ? `\`${CUT_MARKER}\`` : l))
+      .join("\n"),
+  );
 }
 
 /** `bkit issues comment`'s flags as a `CommentInput`. */
@@ -586,12 +676,120 @@ export function commentBody(ctx: RunContext): string {
 }
 
 // ---------------------------------------------------------------------------
+// fetch / related — issue text straight to files, never through the orchestrator
+// ---------------------------------------------------------------------------
+
+/** Exit code 80 with the failure's reason, for the verbs that only talk to the tracker. */
+function useMcp(ctx: RunContext, err: unknown): number {
+  const reason = classifyFailure(err);
+  ctx.log(redact(`tracker read failed (${reason}): ${(err as Error).message ?? String(err)}`));
+  ctx.emit({ reason });
+  return EXIT.USE_MCP;
+}
+
+async function fetchVerb(ctx: RunContext): Promise<number> {
+  const out = str(ctx.flags.sessionDir) || str(ctx.flags.outbox);
+  if (!out) throw new CommandError(EXIT.USAGE, "give --session-dir or --outbox");
+  const t = trackerTarget(ctx.cwd, { fid: str(ctx.flags.fid), issue: str(ctx.flags.issue) });
+  const skip = skipOf(t);
+  if (skip) {
+    ctx.emit(skip);
+    return EXIT.OK;
+  }
+  let issue;
+  try {
+    issue = await fetchIssue(t);
+  } catch (err) {
+    return useMcp(ctx, err);
+  }
+  const dir = path.resolve(ctx.cwd, out);
+  const files = {
+    description: path.join(dir, "issue-description.md"),
+    comments: path.join(dir, "issue-comments.json"),
+    facts: path.join(dir, "issue-facts.json"),
+  };
+  const facts = { title: issue.title, url: issue.url, state: issue.state, labels: issue.labels };
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(files.description, issue.body);
+  const comments = sortOldestFirst(issue.comments).comments;
+  fs.writeFileSync(files.comments, `${JSON.stringify(comments, null, 2)}\n`);
+  fs.writeFileSync(files.facts, `${JSON.stringify(facts, null, 2)}\n`);
+  ctx.emit({ ...facts, files });
+  return EXIT.OK;
+}
+
+/** Hit ids from a search the orchestrator ran: ids, or objects carrying `number` / `identifier` / `key` / `id`. */
+function readHits(cwd: string, file: string): string[] {
+  const parsed = parseJson(readInput(cwd, file, "hits-file"));
+  const bad = () =>
+    new CommandError(EXIT_BAD_INPUT, `--hits-file ${file} is not a JSON list of issue ids`);
+  if (!parsed.ok || !Array.isArray(parsed.value)) throw bad();
+  return parsed.value.map((h: unknown) => {
+    const o = (h ?? {}) as Record<string, unknown>;
+    const id = typeof h === "object" ? (o.number ?? o.identifier ?? o.key ?? o.id) : h;
+    if (typeof id !== "string" && typeof id !== "number") throw bad();
+    return String(id).trim().replace(/^#/, "").toUpperCase();
+  });
+}
+
+async function relatedVerb(ctx: RunContext): Promise<number> {
+  const hitsFile = String(ctx.flags.hitsFile);
+  const outFile = String(ctx.flags.out);
+  const top = ctx.flags.top === undefined ? 10 : Number(ctx.flags.top);
+  if (!Number.isInteger(top) || top < 1)
+    throw new CommandError(EXIT.USAGE, "--top must be a positive integer");
+  const own = trackerTarget(ctx.cwd, { fid: str(ctx.flags.fid), issue: str(ctx.flags.issue) });
+  const hits = [...new Set(readHits(ctx.cwd, hitsFile))]
+    .filter((id) => id !== own.issue)
+    .slice(0, top);
+  const sections: string[] = [];
+  for (const id of hits) {
+    let issue;
+    try {
+      issue = await fetchIssue({ ...own, issue: id });
+    } catch (err) {
+      return useMcp(ctx, err);
+    }
+    const ref = own.tracker === "github" ? `#${id}` : id;
+    const { text } = issueText(issue.body, sortOldestFirst(issue.comments).comments);
+    sections.push(`## ${ref} — ${issue.title} (${issue.state})${text ? `\n\n${text}` : ""}\n`);
+  }
+  const body = sections.length === 0 ? "None.\n" : sections.join("\n");
+  const abs = path.resolve(ctx.cwd, outFile);
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  fs.writeFileSync(abs, body);
+  ctx.emit({ path: outFile, bytes: Buffer.byteLength(body), hits: hits.length });
+  return EXIT.OK;
+}
+
+async function blockedByVerb(ctx: RunContext): Promise<number> {
+  const t = trackerTarget(ctx.cwd, { fid: str(ctx.flags.fid), issue: str(ctx.flags.issue) });
+  const skip = skipOf(t);
+  if (skip) {
+    ctx.emit(skip);
+    return EXIT.OK;
+  }
+  let blockers;
+  try {
+    blockers = await readBlockers(t);
+  } catch (err) {
+    return useMcp(ctx, err);
+  }
+  ctx.emit({
+    blockers: blockers.map(({ id, state }) => ({ id, state })),
+    open: blockers.filter((b) => b.open).length,
+  });
+  return EXIT.OK;
+}
+
+// ---------------------------------------------------------------------------
 // Command
 // ---------------------------------------------------------------------------
 
 export const issuesCommand: CommandSpec = {
   noun: "issues",
-  summary: "Prepare tracker payloads (issue text, label transitions, comments); MCP sends them.",
+  summary:
+    "Tracker payloads (issue text, label transitions, comments); --post / --write send them.",
   verbs: {
     text: {
       summary: "ISSUE_TEXT: description + human comments, after the bkit:ignore-earlier cut.",
@@ -612,6 +810,78 @@ export const issuesCommand: CommandSpec = {
       exitCodes: { [EXIT_BAD_INPUT]: "an input file is missing or not a list of comments" },
       run: textVerb,
     },
+    fetch: {
+      summary:
+        "Read the run's issue into issue-description.md, issue-comments.json and issue-facts.json; prints the facts, never the body.",
+      flags: [
+        { name: "fid", type: "string", help: "the run's FID (names the issue)" },
+        { name: "issue", type: "string", help: "the issue id (instead of --fid)" },
+        { name: "session-dir", type: "string", help: "write the three files here" },
+        {
+          name: "outbox",
+          type: "string",
+          help: "write the three files here (instead of --session-dir)",
+        },
+      ],
+      output: {
+        title: "issue title",
+        url: "issue URL",
+        state: "tracker state name (GitHub: open | closed)",
+        labels: "label names",
+        files:
+          "{description, comments, facts}: raw description, comments oldest first as JSON, {title, url, state, labels} as JSON",
+        skipped: "no-issue | tracker-none: nothing read, nothing written",
+        reason:
+          "exit 80: network | auth | scope | rate-limit | not-found | http-<n>; read the issue via the tracker MCP",
+      },
+      exitCodes: {},
+      run: fetchVerb,
+    },
+    related: {
+      summary:
+        "Fetch each hit of the orchestrator's related-issue search and write the related-issues file.",
+      flags: [
+        {
+          name: "hits-file",
+          type: "string",
+          required: true,
+          help: "JSON list of hit ids (or objects with number / identifier / key) in rank order",
+        },
+        { name: "out", type: "string", required: true, help: "the related-issues file to write" },
+        { name: "top", type: "string", help: "keep the first N hits (default 10)" },
+        {
+          name: "fid",
+          type: "string",
+          help: "the run's FID: its own issue is dropped from the hits",
+        },
+        { name: "issue", type: "string", help: "the run's issue id (instead of --fid)" },
+      ],
+      output: {
+        path: "the file written: one `## {ref} — {title} ({state})` section per hit, else `None.`",
+        bytes: "its size in bytes",
+        hits: "hits fetched",
+        reason: "exit 80: why a hit could not be read; nothing was written",
+      },
+      exitCodes: { [EXIT_BAD_INPUT]: "--hits-file is missing or not a JSON list of issue ids" },
+      run: relatedVerb,
+    },
+    "blocked-by": {
+      summary: "The issues blocking the run's issue, with their states and the ones still open.",
+      flags: [
+        { name: "fid", type: "string", help: "the run's FID (names the issue)" },
+        { name: "issue", type: "string", help: "the issue id (instead of --fid)" },
+      ],
+      output: {
+        blockers:
+          "[{id, state}]: GitHub from the body's bkit:blocked-by block, Linear from blocks relations, Jira from is-blocked-by links",
+        open: "how many blockers are not closed / done / canceled (0 = unblocked)",
+        skipped: "no-issue | tracker-none: nothing read",
+        reason:
+          "exit 80: network | auth | scope | rate-limit | not-found | http-<n>; read the blockers via the tracker MCP",
+      },
+      exitCodes: {},
+      run: blockedByVerb,
+    },
     labels: {
       summary: "Label arithmetic for a transition, the tracker state, and the board payload.",
       flags: [
@@ -627,8 +897,18 @@ export const issuesCommand: CommandSpec = {
           type: "string",
           help: "also move the Projects v2 item: progress | review",
         },
-        { name: "issue", type: "string", help: "issue number (with --board)" },
+        {
+          name: "issue",
+          type: "string",
+          help: "issue number (with --board); with --write, the issue to write (instead of --fid)",
+        },
         { name: "owner-repo", type: "string", help: "<owner>/<repo> of the issue (with --board)" },
+        {
+          name: "write",
+          type: "boolean",
+          help: "read the issue's labels, write the transition and state, move the board; prints `tracker` and `boardWrite`",
+        },
+        { name: "fid", type: "string", help: "with --write: the run's FID (names the issue)" },
       ],
       output: {
         add: "labels to add",
@@ -640,7 +920,11 @@ export const issuesCommand: CommandSpec = {
           "Linear or Jira issue state for this transition, from package.json; null under github, none, or no state move",
         board: "projects_write payloads {addItem, updateItem}, or null",
         boardSkipped:
-          "why board is null with --board: opted-out | not-configured | project-url-invalid | tracker-<name>",
+          "why board is null with --board: opted-out | not-configured | project-url-invalid | tracker-<name> | cloud (--write on a cloud or CI runtime: the next local run moves it)",
+        tracker:
+          "with --write: the label (and state) write: {done: true, action: labels} | {done: false, action, reason} (write `labels` / `trackerState` via the tracker MCP) | {skipped}",
+        boardWrite:
+          "with --write and a board payload: {done: true, action: board} | {done: false, action, reason} (send `board` via the MCP); null when nothing to move",
       },
       run: labelsVerb,
     },
@@ -703,14 +987,48 @@ export const issuesCommand: CommandSpec = {
           type: "string",
           help: "failure: captured stderr (last 20 lines kept)",
         },
+        POST_FLAG,
+        { name: "fid", type: "string", help: "with --post: the run's FID (names the issue)" },
+        { name: "issue", type: "string", help: "with --post: the issue id (instead of --fid)" },
+        {
+          name: "file",
+          type: "string",
+          help: "with --post: the run's status.jsonl; the post is recorded there and a re-run of the same comment is deduped by that row",
+        },
       ],
-      output: { comment: "the comment body" },
+      output: {
+        comment: "the comment body",
+        commentFile: COMMENT_FILE_OUTPUT,
+        tracker: TRACKER_OUTPUT,
+      },
       exitCodes: {
         [EXIT_BAD_INPUT]:
           "a --body-file / --section / --stderr-file / --error-file file is missing",
       },
-      run: (ctx) => {
-        ctx.emit({ comment: commentBody(ctx) });
+      run: async (ctx) => {
+        const comment = commentBody(ctx);
+        const commentFile = commentFileOf(ctx.cwd, comment);
+        if (ctx.flags.post !== true) {
+          ctx.emit({ comment, commentFile });
+          return EXIT.OK;
+        }
+        const file = str(ctx.flags.file)
+          ? path.resolve(ctx.cwd, String(ctx.flags.file))
+          : undefined;
+        const key = runActionKey(
+          file,
+          str(ctx.flags.workflow),
+          str(ctx.flags.kind) ?? "step",
+          str(ctx.flags.stepNumber),
+          str(ctx.flags.subStep),
+          str(ctx.flags.attempt),
+        );
+        const tracker = await postForVerb(ctx, comment, {
+          fid: str(ctx.flags.fid),
+          issue: str(ctx.flags.issue),
+          ...(key === undefined ? {} : { file, key }),
+        });
+        ctx.emit({ comment, commentFile, tracker });
         return EXIT.OK;
       },
     },

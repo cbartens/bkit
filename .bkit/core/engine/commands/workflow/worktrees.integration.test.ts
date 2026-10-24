@@ -113,7 +113,7 @@ function advanceDev(f: Fixture, file: string, body: string): string {
 async function run(cwd: string, argv: string[]) {
   const out: string[] = [];
   const err: string[] = [];
-  const code = await runCommand(["worktrees", ...argv], [worktreesCommand], {
+  const code = await runCommand(["worktrees", ...argv, "--json"], [worktreesCommand], {
     classicVerbs: new Set(),
     cwd,
     io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },

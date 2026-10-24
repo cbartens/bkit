@@ -12,6 +12,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { parseText } from "../../shared/text";
 
 const DEFAULT_FID = "999-close-squash";
 const FID = DEFAULT_FID;
@@ -264,7 +265,7 @@ describe("bkit-design.md close with no issue", () => {
     });
 
     expect(res.status, res.stderr).toBe(80);
-    const printed = JSON.parse(res.stdout) as { stage: string; body: string };
+    const printed = parseText(res.stdout) as { stage: string; body: string };
     expect(printed.stage).toBe("open");
     expect(printed.body).toContain(`<!-- bkit:fid=${fid} -->`);
     expect(printed.body).not.toContain("bkit:issue=");

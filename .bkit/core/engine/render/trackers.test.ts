@@ -544,7 +544,7 @@ describe("real prompt sources", () => {
   it("audit agent posts its summary only when a tracker is wired", () => {
     const src = fs.readFileSync(path.join(PROMPTS_DIR, "bkit-audit-generate.md"), "utf-8");
     const github = substituteWorkflow(src, "github").output;
-    expect(github).toContain("issues comment --kind=audit");
+    expect(github).toContain('issues comment --post --issue="{ISSUE_ID}" --kind=audit');
     expect(github).toContain("mcp__github__add_issue_comment({");
     expect(github).not.toContain("mcp__linear__");
     expect(github).not.toContain("mcp__jira__");
@@ -553,7 +553,7 @@ describe("real prompt sources", () => {
     expect(linear).not.toContain("mcp__github__");
     expect(linear).not.toContain("mcp__jira__");
     const jira = substituteWorkflow(src, "jira").output;
-    expect(jira).toContain("issues comment --kind=audit");
+    expect(jira).toContain('issues comment --post --issue="{ISSUE_ID}" --kind=audit');
     expect(jira).toContain("mcp__jira__addOrEditJiraIssueComment({");
     expect(jira).not.toContain("mcp__github__");
     expect(jira).not.toContain("mcp__linear__");
@@ -574,27 +574,29 @@ describe("issue-scan call sites (#135)", () => {
     fs.readFileSync(path.join(REPO_ROOT, ".bkit", "core", "workflows", `${wf}.md`), "utf-8");
 
   for (const wf of scanned) {
-    it(`${wf} wires a github scan that fetches each hit's comments`, () => {
+    // The search stays an MCP call (it ranks by meaning); each hit's body and comments are
+    // read by `issues related`.
+    const RELATED = '"{BKIT}" issues related --hits-file="{OUTBOX}/related-hits.json"';
+
+    it(`${wf} wires a github scan whose hits the engine reads`, () => {
       const out = substituteWorkflow(read(wf), "github").output;
       expect(out).toContain("mcp__github__search_issues");
-      expect(out).toContain('method: "get_comments"');
-      expect(out).toContain('method: "get"');
+      expect(out).toContain(RELATED);
       expect(out).not.toContain(
         'gh api "repos/{OWNER}/{REPO}/issues/{number}/comments?per_page=100"',
       );
     });
 
-    it(`${wf} wires the linear scan with per-hit comment fetch`, () => {
+    it(`${wf} wires a linear scan whose hits the engine reads`, () => {
       const out = substituteWorkflow(read(wf), "linear").output;
       expect(out).toContain("mcp__linear__list_issues");
-      expect(out).toContain("mcp__linear__list_comments");
+      expect(out).toContain(RELATED);
     });
 
-    it(`${wf} wires the jira scan with per-hit comment read`, () => {
+    it(`${wf} wires a jira scan whose hits the engine reads`, () => {
       const out = substituteWorkflow(read(wf), "jira").output;
       expect(out).toContain("mcp__jira__searchJiraIssuesUsingJql");
-      expect(out).toContain("Read comments (**Tracker** comment reads)");
-      expect(out).toContain('name: "listJiraIssueComments"');
+      expect(out).toContain(RELATED);
     });
 
     it(`${wf} omits the scan entirely under none (no tracker call)`, () => {

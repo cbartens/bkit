@@ -330,7 +330,7 @@ function makeCodex(home, cwd) {
       ev(3, "response_item", {
         type: "function_call_output",
         call_id: "c1",
-        output: `Process exited with code 0\nOutput:\n{"parentSha":"${SHA2}"}`,
+        output: `Process exited with code 0\nOutput:\nfinalReturn: DONE\nparentSha: ${SHA2}\n`,
       }),
       ev(3, "event_msg", tokens(11500, 11000, 9000, 500)),
       ev(3, "event_msg", tokens(11500, 11000, 9000, 500)),

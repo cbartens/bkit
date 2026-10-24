@@ -5,9 +5,10 @@ import * as path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { StatusEvent } from "../../ledgers/status";
+import { type StatusEvent, appendLine, recordAction } from "../../ledgers/status";
 import { foldFrom, totalsProblem, validate } from "../../ledgers/telemetry";
 import { appendLedgerRows } from "./ledgers";
+import { readStatusEvents } from "./status";
 import {
   buildBlock,
   ciEntry,
@@ -178,6 +179,17 @@ describe("runStatusRows / stepsBlock / ciList", () => {
     expect(runStatusRows(events, "build", at(1)).map(labelOf)).toEqual([
       "workflow-started",
       "build-b",
+      "build-a",
+    ]);
+  });
+
+  it("leaves out engine-action rows (they carry no workflow)", () => {
+    const file = path.join(tmp(), "status.jsonl");
+    fs.writeFileSync(file, appendLine(started(1)));
+    recordAction(file, { action: "comment", key: "k", hash: "h", ref: null });
+    fs.appendFileSync(file, appendLine(step(3, "build-a")));
+    expect(runStatusRows(readStatusEvents(file), "build", at(1)).map(labelOf)).toEqual([
+      "workflow-started",
       "build-a",
     ]);
   });

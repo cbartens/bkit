@@ -534,6 +534,11 @@ to `docs/{{ledger}}.jsonl` in `.bkit/jsonl.md` format; check existing entries fi
 - workflow: required
 
 ```text
+**Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is `key: value` lines, nested keys indented under their parent (`a.b` = `b` under `a:`), lists of rows as tables: hold named keys as `{VAR}`, a `"quoted"` value without its quotes. Exit non-zero with no `Route:` for it → **Failure Path**; exit 80 → mapped MCP tool (**gh MCP fallback**); exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
+**Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is `key: value` lines, nested keys indented under their parent (`a.b` = `b` under `a:`), lists of rows as tables: hold named keys as `{VAR}`, a `"quoted"` value without its quotes. Exit non-zero with no `Route:` for it → **Failure Path**; exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
+```
+
+```retired
 **Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is one JSON object: hold named keys as `{VAR}`. Exit non-zero with no `Route:` for it → **Failure Path**; exit 80 → mapped MCP tool (**gh MCP fallback**); exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
 **Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is one JSON object: hold named keys as `{VAR}`. Exit non-zero with no `Route:` for it → **Failure Path**; exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
 ```
@@ -554,9 +559,12 @@ to `docs/{{ledger}}.jsonl` in `.bkit/jsonl.md` format; check existing entries fi
 ### workflow-resume
 
 - workflow: where-used
-- anchored: yes
 
 ```text
+**Resume:** `workflows start` prints `lastDoneStep`: non-null → pick up after that step; never fold status.jsonl by hand.
+```
+
+```retired
 **Resume:** On start, fold {{log}} — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 ```
 
@@ -566,6 +574,10 @@ to `docs/{{ledger}}.jsonl` in `.bkit/jsonl.md` format; check existing entries fi
 - anchored: yes
 
 ```text
+**Status:** {{log}} = append-only NDJSON event log, one event per line. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS|CONCERNS|FAIL`), `failures`, `attempt`, {{fields}}. **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
+```
+
+```retired
 **Status:** {{log}} = append-only NDJSON event log; fold to derive the run array. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS|CONCERNS|FAIL`), `failures`, `attempt`, {{fields}}. **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
 ```
 
@@ -610,10 +622,12 @@ to `docs/{{ledger}}.jsonl` in `.bkit/jsonl.md` format; check existing entries fi
 - workflow: where-used
 
 ```text
-**gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** a command exits 80, **or** `runtimeGithubCli` = false in the `runtime-resolved` row of `{STATUS}` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `bkit prs open` / `bkit branches land` stage `open` → `create_pull_request` with the printed `title` / `body` / `base` / `head`; `bkit prs probe --number` → `pull_request_read` (`get`, minimal fields); `bkit prs probe --head` / `bkit workflows handover --push` → `list_pull_requests`; `bkit prs merge` / `bkit branches land` stage `merge` → `merge_pull_request` (printed skip-token-free `subject` as `commit_message`, empty body; `--match-head` SHA as `sha`); `bkit prs verbose-ci` → `update_pull_request`; `bkit prs update-branch --number` → `update_pull_request_branch`; `bkit prs checks --number` → `pull_request_read` (`get_status`); `bkit runs wait` / `bkit runs dispatch` / `bkit runs revalidate` / `bkit runs gate` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit prs transport-row --file={STATUS} --kind=fallback --from=<gh command> --to=<MCP tool> --reason=<why> --asserted-by=<re-read>` — **Skip if** `{STATUS}` not set. Tracker calls always stay on MCP; never invent `gh` read-paths for trackers.
+**gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** a command exits 80, **or** `runtimeGithubCli` = false in the `runtime-resolved` row of `{STATUS}` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `bkit prs open` / `bkit branches land` stage `open` → `create_pull_request` with the printed `title` / `base` / `head` and the content of the printed `bodyFile` as `body`, byte-for-byte; `bkit prs probe --number` → `pull_request_read` (`get`, minimal fields); `bkit prs probe --head` / `bkit workflows handover --push` → `list_pull_requests`; `bkit prs merge` / `bkit branches land` stage `merge` → `merge_pull_request` (printed skip-token-free `subject` as `commit_message`, empty body; `--match-head` SHA as `sha`); `bkit prs verbose-ci` → `update_pull_request`; `bkit prs update-branch --number` → `update_pull_request_branch`; `bkit prs checks --number` → `pull_request_read` (`get_status`); `bkit runs wait` / `bkit runs dispatch` / `bkit runs revalidate` / `bkit runs gate` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit prs transport-row --file={STATUS} --kind=fallback --from=<gh command> --to=<MCP tool> --reason=<why> --asserted-by=<re-read>` — **Skip if** `{STATUS}` not set. Tracker reads and writes go through `bkit` verbs; the tracker MCP only when a verb prints `tracker.done: false` or exits 80.
 ```
 
 ```retired
+**gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** a command exits 80, **or** `runtimeGithubCli` = false in the `runtime-resolved` row of `{STATUS}` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `bkit prs open` / `bkit branches land` stage `open` → `create_pull_request` with the printed `title` / `body` / `base` / `head`; `bkit prs probe --number` → `pull_request_read` (`get`, minimal fields); `bkit prs probe --head` / `bkit workflows handover --push` → `list_pull_requests`; `bkit prs merge` / `bkit branches land` stage `merge` → `merge_pull_request` (printed skip-token-free `subject` as `commit_message`, empty body; `--match-head` SHA as `sha`); `bkit prs verbose-ci` → `update_pull_request`; `bkit prs update-branch --number` → `update_pull_request_branch`; `bkit prs checks --number` → `pull_request_read` (`get_status`); `bkit runs wait` / `bkit runs dispatch` / `bkit runs revalidate` / `bkit runs gate` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit prs transport-row --file={STATUS} --kind=fallback --from=<gh command> --to=<MCP tool> --reason=<why> --asserted-by=<re-read>` — **Skip if** `{STATUS}` not set. Tracker reads and writes go through `bkit` verbs; the tracker MCP only when a verb prints `tracker.done: false` or exits 80.
+**gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** a command exits 80, **or** `runtimeGithubCli` = false in the `runtime-resolved` row of `{STATUS}` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `bkit prs open` / `bkit branches land` stage `open` → `create_pull_request` with the printed `title` / `body` / `base` / `head`; `bkit prs probe --number` → `pull_request_read` (`get`, minimal fields); `bkit prs probe --head` / `bkit workflows handover --push` → `list_pull_requests`; `bkit prs merge` / `bkit branches land` stage `merge` → `merge_pull_request` (printed skip-token-free `subject` as `commit_message`, empty body; `--match-head` SHA as `sha`); `bkit prs verbose-ci` → `update_pull_request`; `bkit prs update-branch --number` → `update_pull_request_branch`; `bkit prs checks --number` → `pull_request_read` (`get_status`); `bkit runs wait` / `bkit runs dispatch` / `bkit runs revalidate` / `bkit runs gate` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit prs transport-row --file={STATUS} --kind=fallback --from=<gh command> --to=<MCP tool> --reason=<why> --asserted-by=<re-read>` — **Skip if** `{STATUS}` not set. Tracker calls always stay on MCP; never invent `gh` read-paths for trackers.
 **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** a command exits 80, **or** `runtimeGithubCli` = false in the `runtime-resolved` row of `{STATUS}` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `bkit prs open` / `bkit branches land` stage `open` → `create_pull_request` with the printed `title` / `body` / `base` / `head`; `bkit prs probe --number` → `pull_request_read` (`get`, minimal fields); `bkit prs probe --head` / `bkit workflows handover --push` → `list_pull_requests`; `bkit prs merge` / `bkit branches land` stage `merge` → `merge_pull_request` (printed skip-token-free `subject` as `commit_message`, empty body; `--match-head` SHA as `sha`); `bkit prs verbose-ci` → `update_pull_request`; `bkit prs update-branch --number` → `update_pull_request_branch`; `bkit prs checks --number` → `pull_request_read` (`get_status`); `bkit runs wait` / `bkit runs dispatch` / `bkit runs revalidate` / `bkit runs gate` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit prs transport-row --file={STATUS} --kind=fallback --from=<gh command> --to=<MCP tool> --reason=<why> --asserted-by=<re-read>` — **Skip if** `{STATUS}` not set. Tracker calls ALWAYS stay on MCP; NEVER invent `gh` read-paths for trackers.
 ```
 
@@ -622,8 +636,8 @@ to `docs/{{ledger}}.jsonl` in `.bkit/jsonl.md` format; check existing entries fi
 - workflow: required
 
 ```text
-**Tracker:** GitHub Issues via MCP server `github` (`.mcp.json` `mcpServers.github`). Tools: `mcp__github__issue_read` (method `get` / `get_comments` / `get_labels`), `mcp__github__issue_write` (method `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (method `add_project_item` / `update_project_item`); board status sync needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.github.project`, absent either → silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; writes best-effort, never gate; **If** failure → retry once after 5s → continue.
-**Tracker:** GitHub Issues via MCP server `github` (`.mcp.json` `mcpServers.github`). Tools: `mcp__github__issue_read` (method `get` / `get_comments` / `get_labels`), `mcp__github__issue_write` (method `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`. Assert `{ISSUE_ID}` non-empty before tool calls; writes best-effort, never gate; **If** failure → retry once after 5s → continue.
+**Tracker:** GitHub Issues — `bkit` verbs read and write it; MCP server `github` (`.mcp.json` `mcpServers.github`) only when a verb exits 80 or prints `done` = false. Tools: `mcp__github__issue_read` (method `get` / `get_comments` / `get_labels`), `mcp__github__issue_write` (method `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (method `add_project_item` / `update_project_item`); board status sync needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.github.project`, absent either → silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; writes best-effort, never gate; **If** failure → retry once after 5s → continue.
+**Tracker:** GitHub Issues — `bkit` verbs read and write it; MCP server `github` (`.mcp.json` `mcpServers.github`) only when a verb exits 80 or prints `done` = false. Tools: `mcp__github__issue_read` (method `get` / `get_comments` / `get_labels`), `mcp__github__issue_write` (method `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`. Assert `{ISSUE_ID}` non-empty before tool calls; writes best-effort, never gate; **If** failure → retry once after 5s → continue.
 ```
 
 ```retired
@@ -639,8 +653,8 @@ to `docs/{{ledger}}.jsonl` in `.bkit/jsonl.md` format; check existing entries fi
 - workflow: required
 
 ```text
-**Tracker:** Linear via MCP server `linear` (`.mcp.json` `mcpServers.linear`). Tools: `mcp__linear__get_issue`, `mcp__linear__save_issue`, `mcp__linear__save_issue_label`, `mcp__linear__save_comment`, `mcp__linear__list_comments`, `mcp__linear__list_issues`. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; `save_*` writes best-effort, never gate; **If** failure → retry once after 5s → continue. `save_issue` always includes `id` and is all-or-nothing (one state or label name the team lacks rejects the whole call) → labels and state in separate calls, labels first; create each printed `add` entry first via `save_issue_label({ name })` (`already exists` = done). `Could not find state` / `Could not find label` → log `Unapplied: <state|label> "<name>" not in team`, no retry, continue.
-**Tracker:** Linear via MCP server `linear` (`.mcp.json` `mcpServers.linear`). Tools: `mcp__linear__get_issue`, `mcp__linear__save_issue`, `mcp__linear__save_comment`, `mcp__linear__list_comments`, `mcp__linear__list_issues`. Assert `{ISSUE_ID}` non-empty before tool calls; `save_*` writes best-effort, never gate; **If** failure → retry once after 5s → continue. `save_issue` always includes `id`.
+**Tracker:** Linear — `bkit` verbs read and write it; MCP server `linear` (`.mcp.json` `mcpServers.linear`) only when a verb exits 80 or prints `done` = false. Tools: `mcp__linear__get_issue`, `mcp__linear__save_issue`, `mcp__linear__save_issue_label`, `mcp__linear__save_comment`, `mcp__linear__list_comments`, `mcp__linear__list_issues`. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; `save_*` writes best-effort, never gate; **If** failure → retry once after 5s → continue. `save_issue` always includes `id` and is all-or-nothing (one state or label name the team lacks rejects the whole call) → labels and state in separate calls, labels first; create each printed `add` entry first via `save_issue_label({ name })` (`already exists` = done). `Could not find state` / `Could not find label` → log `Unapplied: <state|label> "<name>" not in team`, no retry, continue.
+**Tracker:** Linear — `bkit` verbs read and write it; MCP server `linear` (`.mcp.json` `mcpServers.linear`) only when a verb exits 80 or prints `done` = false. Tools: `mcp__linear__get_issue`, `mcp__linear__save_issue`, `mcp__linear__save_comment`, `mcp__linear__list_comments`, `mcp__linear__list_issues`. Assert `{ISSUE_ID}` non-empty before tool calls; `save_*` writes best-effort, never gate; **If** failure → retry once after 5s → continue. `save_issue` always includes `id`.
 ```
 
 ```retired
@@ -656,8 +670,8 @@ to `docs/{{ledger}}.jsonl` in `.bkit/jsonl.md` format; check existing entries fi
 - workflow: required
 
 ```text
-**Tracker:** Jira via MCP server `jira` (`.mcp.json` `mcpServers.jira`). Tools: `mcp__jira__getJiraIssue`, `mcp__jira__editJiraIssue`, `mcp__jira__transitionJiraIssue`, `mcp__jira__addOrEditJiraIssueComment`, `mcp__jira__searchJiraIssuesUsingJql`, `mcp__jira__executeRead`; every call passes `cloudId: "{TRACKER_SITE}"`. Assert `{ISSUE_ID}` / `{TRACKER_SITE}` / `{STATE}` / `{LABELS}` non-empty before tool calls; writes best-effort, never gate; **If** failure → retry once after 5s → continue. `getJiraIssue` always passes `view: "evidence"` (other views omit labels). `editJiraIssue` `fields.labels` replaces the whole set → pass full printed `LABELS`; labels and status in separate calls, labels first; never pass `fields` / `update` to `transitionJiraIssue`. Status change: `executeRead({ name: "listJiraIssueTransitions", inputs: { issueIdOrKey } })` → transition whose `to.name` = target status → `transitionJiraIssue({ issueIdOrKey, transitionId })`; none → log `Unapplied: status "<name>" not reachable`, no retry, continue. Comment reads: `executeRead({ name: "listJiraIssueComments", inputs: { issueIdOrKey, maxResults: 100, startAt } })`, oldest first, raise `startAt` while `isLast` is false; page with `appliedContentFormat` = `html` → re-read it one comment per call (`maxResults: 1`).
-**Tracker:** Jira via MCP server `jira` (`.mcp.json` `mcpServers.jira`). Tools: `mcp__jira__getJiraIssue`, `mcp__jira__addOrEditJiraIssueComment`, `mcp__jira__searchJiraIssuesUsingJql`, `mcp__jira__executeRead`; every call passes `cloudId: "{TRACKER_SITE}"`. Assert `{ISSUE_ID}` / `{TRACKER_SITE}` non-empty before tool calls; writes best-effort, never gate; **If** failure → retry once after 5s → continue. `getJiraIssue` always passes `view: "evidence"` (other views omit labels).
+**Tracker:** Jira — `bkit` verbs read and write it over the same Rovo MCP endpoint; MCP server `jira` (`.mcp.json` `mcpServers.jira`) only when a verb exits 80 or prints `done` = false. Tools: `mcp__jira__getJiraIssue`, `mcp__jira__editJiraIssue`, `mcp__jira__transitionJiraIssue`, `mcp__jira__addOrEditJiraIssueComment`, `mcp__jira__searchJiraIssuesUsingJql`, `mcp__jira__executeRead`; every call passes `cloudId: "{TRACKER_SITE}"`. Assert `{ISSUE_ID}` / `{TRACKER_SITE}` / `{STATE}` / `{LABELS}` non-empty before tool calls; writes best-effort, never gate; **If** failure → retry once after 5s → continue. `getJiraIssue` always passes `view: "evidence"` (other views omit labels). `editJiraIssue` `fields.labels` replaces the whole set → pass full printed `LABELS`; labels and status in separate calls, labels first; never pass `fields` / `update` to `transitionJiraIssue`. Status change: `executeRead({ name: "listJiraIssueTransitions", inputs: { issueIdOrKey } })` → transition whose `to.name` = target status → `transitionJiraIssue({ issueIdOrKey, transitionId })`; none → log `Unapplied: status "<name>" not reachable`, no retry, continue. Comment reads: `executeRead({ name: "listJiraIssueComments", inputs: { issueIdOrKey, maxResults: 100, startAt } })`, oldest first, raise `startAt` while `isLast` is false; page with `appliedContentFormat` = `html` → re-read it one comment per call (`maxResults: 1`).
+**Tracker:** Jira — `bkit` verbs read and write it over the same Rovo MCP endpoint; MCP server `jira` (`.mcp.json` `mcpServers.jira`) only when a verb exits 80 or prints `done` = false. Tools: `mcp__jira__getJiraIssue`, `mcp__jira__addOrEditJiraIssueComment`, `mcp__jira__searchJiraIssuesUsingJql`, `mcp__jira__executeRead`; every call passes `cloudId: "{TRACKER_SITE}"`. Assert `{ISSUE_ID}` / `{TRACKER_SITE}` non-empty before tool calls; writes best-effort, never gate; **If** failure → retry once after 5s → continue. `getJiraIssue` always passes `view: "evidence"` (other views omit labels).
 ```
 
 ### workflow-labels
@@ -678,7 +692,51 @@ to `docs/{{ledger}}.jsonl` in `.bkit/jsonl.md` format; check existing entries fi
 - workflow: repeatable
 
 ```text
+`bkit issues labels --write` computes and writes each transition.
+```
+
+```retired
 `bkit issues labels` computes each transition; MCP writes it.
+```
+
+### workflow-labels-fallback
+
+- workflow: repeatable
+
+```text
+**If** `tracker.done` = false **or** `boardWrite.done` = false → apply the printed `labels` / `trackerState` / `board` via the tracker MCP (**Labels** fallback).
+```
+
+### workflow-labels-write-fallback
+
+- workflow: repeatable
+
+```text
+**If** `labelsWrite.done` = false → apply the printed `labels` / `trackerState` via the tracker MCP (**Labels** fallback).
+```
+
+### workflow-labels-fallback-github
+
+- workflow: where-used
+
+```text
+Fallback (`tracker.done` = false): `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`; `boardWrite.done` = false → `mcp__github__projects_write({BOARD}.addItem)` → `mcp__github__projects_write({BOARD}.updateItem)`.
+```
+
+### workflow-labels-fallback-linear
+
+- workflow: where-used
+
+```text
+Fallback (`tracker.done` = false): `mcp__linear__save_issue_label({ name })` per printed `add` entry → `mcp__linear__save_issue({ id: "{ISSUE_ID}", labels: [{LABELS}] })` → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "{TRACKER_STATE}" })`.
+```
+
+### workflow-labels-fallback-jira
+
+- workflow: where-used
+
+```text
+Fallback (`tracker.done` = false): `mcp__jira__editJiraIssue({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", fields: { labels: [{LABELS}] } })` → move status to `{TRACKER_STATE}` (**Tracker** status change).
 ```
 
 ### workflow-comments-github
@@ -686,10 +744,12 @@ to `docs/{{ledger}}.jsonl` in `.bkit/jsonl.md` format; check existing entries fi
 - workflow: required
 
 ```text
-**Comments:** Post the `comment` a step's `bkit` block prints as a new comment via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` before its gate; every gate includes `Issue comment attempted (Step N section)`. Post the printed `comment` byte-for-byte; never shorten, reword, or rebuild it. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
+**Comments:** A step's `bkit` block posts the `comment` it prints with `--post` before its gate and prints `tracker`; every gate includes `Issue comment attempted (Step N section)`. **If** `tracker.done` = false → post the content of the printed `commentFile` byte-for-byte as a new comment via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })`; never shorten, reword, or rebuild it. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
 ```
 
 ```retired
+**Comments:** A step's `bkit` block posts the `comment` it prints with `--post` before its gate and prints `tracker`; every gate includes `Issue comment attempted (Step N section)`. **If** `tracker.done` = false → post the printed `comment` byte-for-byte as a new comment via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })`; never shorten, reword, or rebuild it. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
+**Comments:** Post the `comment` a step's `bkit` block prints as a new comment via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` before its gate; every gate includes `Issue comment attempted (Step N section)`. Post the printed `comment` byte-for-byte; never shorten, reword, or rebuild it. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
 **Comments:** Post the `comment` a step's `bkit` block prints as a new comment via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` before its gate; every gate includes `Issue comment attempted (Step N section)`. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
 **Comments:** Post the `comment` a step's `bkit` block prints as a new comment via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` before its gate; every gate includes `Issue comment attempted (Step N section)`. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content. Comment ID tracking not required.
 **Comments:** Post the `comment` a step's `bkit` block prints as a NEW comment via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` before its gate; every gate includes `Issue comment attempted (Step N section)`. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content. Comment ID tracking NOT required.
@@ -700,10 +760,12 @@ to `docs/{{ledger}}.jsonl` in `.bkit/jsonl.md` format; check existing entries fi
 - workflow: required
 
 ```text
-**Comments:** Post the `comment` a step's `bkit` block prints as a new comment via `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` (no `id`) before its gate; every gate includes `Issue comment attempted (Step N section)`. Post the printed `comment` byte-for-byte; never shorten, reword, or rebuild it. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
+**Comments:** A step's `bkit` block posts the `comment` it prints with `--post` before its gate and prints `tracker`; every gate includes `Issue comment attempted (Step N section)`. **If** `tracker.done` = false → post the content of the printed `commentFile` byte-for-byte as a new comment via `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` (no `id`); never shorten, reword, or rebuild it. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
 ```
 
 ```retired
+**Comments:** A step's `bkit` block posts the `comment` it prints with `--post` before its gate and prints `tracker`; every gate includes `Issue comment attempted (Step N section)`. **If** `tracker.done` = false → post the printed `comment` byte-for-byte as a new comment via `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` (no `id`); never shorten, reword, or rebuild it. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
+**Comments:** Post the `comment` a step's `bkit` block prints as a new comment via `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` (no `id`) before its gate; every gate includes `Issue comment attempted (Step N section)`. Post the printed `comment` byte-for-byte; never shorten, reword, or rebuild it. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
 **Comments:** Post the `comment` a step's `bkit` block prints as a new comment via `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` (no `id`) before its gate; every gate includes `Issue comment attempted (Step N section)`. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
 **Comments:** Post the `comment` a step's `bkit` block prints as a new comment via `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` (no `id` — creates new comment) before its gate; every gate includes `Issue comment attempted (Step N section)`. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content. No edit-in-place.
 **Comments:** Post the `comment` a step's `bkit` block prints as a NEW comment via `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` (no `id` — creates new comment) before its gate; every gate includes `Issue comment attempted (Step N section)`. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content. No edit-in-place.
@@ -714,10 +776,12 @@ to `docs/{{ledger}}.jsonl` in `.bkit/jsonl.md` format; check existing entries fi
 - workflow: required
 
 ```text
-**Comments:** Post the `comment` a step's `bkit` block prints as a new comment via `mcp__jira__addOrEditJiraIssueComment({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", commentBody: "{BODY}" })` (no `commentId`) before its gate; every gate includes `Issue comment attempted (Step N section)`. Post the printed `comment` byte-for-byte; never shorten, reword, or rebuild it. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
+**Comments:** A step's `bkit` block posts the `comment` it prints with `--post` before its gate and prints `tracker`; every gate includes `Issue comment attempted (Step N section)`. **If** `tracker.done` = false → post the content of the printed `commentFile` byte-for-byte as a new comment via `mcp__jira__addOrEditJiraIssueComment({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", commentBody: "{BODY}" })` (no `commentId`); never shorten, reword, or rebuild it. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
 ```
 
 ```retired
+**Comments:** A step's `bkit` block posts the `comment` it prints with `--post` before its gate and prints `tracker`; every gate includes `Issue comment attempted (Step N section)`. **If** `tracker.done` = false → post the printed `comment` byte-for-byte as a new comment via `mcp__jira__addOrEditJiraIssueComment({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", commentBody: "{BODY}" })` (no `commentId`); never shorten, reword, or rebuild it. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
+**Comments:** Post the `comment` a step's `bkit` block prints as a new comment via `mcp__jira__addOrEditJiraIssueComment({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", commentBody: "{BODY}" })` (no `commentId`) before its gate; every gate includes `Issue comment attempted (Step N section)`. Post the printed `comment` byte-for-byte; never shorten, reword, or rebuild it. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
 **Comments:** Post the `comment` a step's `bkit` block prints as a new comment via `mcp__jira__addOrEditJiraIssueComment({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", commentBody: "{BODY}" })` (no `commentId`) before its gate; every gate includes `Issue comment attempted (Step N section)`. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
 ```
 
@@ -726,6 +790,10 @@ to `docs/{{ledger}}.jsonl` in `.bkit/jsonl.md` format; check existing entries fi
 - workflow: required
 
 ```text
+Fallback body over 32,767 characters → post as consecutive comments split at line breaks, in order (the engine splits its own posts the same way).
+```
+
+```retired
 Body over 32,767 characters → post as consecutive comments split at line breaks, in order.
 ```
 
@@ -746,16 +814,12 @@ Body over 32,767 characters → post as consecutive comments split at line break
 **Limits:** {{caps}} resolved by name via `bkit counters route --limit=` in fenced routing blocks below.
 ```
 
-### workflow-large-diff
+### workflow-diff-file
 
-- workflow: where-used
+- workflow: repeatable
 
 ```text
-**Large Diff Guard:** When a Read line passes `git diff {{base}}...HEAD` to a subagent, compute `DIFF_LINES=$(git diff {{base}}...HEAD | wc -l)`. **If** > 10000 → per-file budget mode (`--stat` → top 20 files by lines changed; `head -500` per file; cap 50 000 total lines; flag "partial diff coverage" in subagent verdict). **Else** → full diff.
-```
-
-```retired
-**Large Diff Guard:** When a Read line passes `git diff origin/dev..HEAD` to a subagent, compute `DIFF_LINES=$(git diff origin/dev..HEAD | wc -l)`. **If** > 10000 → per-file budget mode (`--stat` → top 20 files by lines changed; `head -500` per file; cap 50 000 total lines; flag "partial diff coverage" in subagent verdict). **Else** → full diff.
+Write the run's diff to the file the agent reads
 ```
 
 ### workflow-error-file
@@ -812,6 +876,10 @@ Record the failure, abort any rebase, release the lock
 - workflow: where-used
 
 ```text
+`bkit workflows handover --list-stray` (`--workflow` / `--fid` / `--month` / `--worktree` as below) → on a feature branch remove the unintended `modified` / `untracked` files; on `dev` / `main` (`shared` = true) remove nothing (only the run's own record lands, through a throwaway checkout). Then commit and push the run's record — NEVER onto a branch with an open PR; **Skip if** `{WORKTREE_PATH}` is not set:
+```
+
+```retired
 `git status --short` → on a feature branch remove unintended files; on `dev` / `main` remove nothing (only the run's own record lands, through a throwaway checkout). Then commit and push the run's record — NEVER onto a branch with an open PR; **Skip if** `{WORKTREE_PATH}` is not set:
 ```
 
@@ -829,10 +897,11 @@ Record the failure, abort any rebase, release the lock
 - anchored: yes
 
 ```text
-**Else** → post `comment` (when non-null **and** `ISSUE_ID` non-empty) → step {{step}}.
+**Else** → **If** `tracker.done` = false → post `comment` via the tracker MCP per the header's fallback section → step {{step}}.
 ```
 
 ```retired
+**Else** → post `comment` (when non-null **and** `ISSUE_ID` non-empty) → step {{step}}.
 **Else** → post `comment` (when non-null; skipped when `ISSUE_ID` empty) → step {{step}}.
 **Else** → post `comment` (when non-null) → step {{step}}.
 ```
@@ -842,6 +911,10 @@ Record the failure, abort any rebase, release the lock
 - workflow: repeatable
 
 ```text
+**If** `tracker.done` = false → post `comment` via the tracker MCP per the header's fallback section.
+```
+
+```retired
 Post `comment` (when non-null).
 ```
 
@@ -853,40 +926,40 @@ Post `comment` (when non-null).
 **STOP**, no further downstream steps.
 ```
 
+### workflow-session-prompt
+
+- workflow: where-used
+
+```text
+Write the session prompt verbatim to `{SESSION_DIR}/prompt.md` → read the issue and the `FID` it names:
+```
+
+### workflow-fid-named-held
+
+- workflow: where-used
+
+```text
+Hold `fidNamed` as `{FID_NAMED}`.
+```
+
 ### workflow-issue-id-preset
 
 - workflow: where-used
 
 ```text
-**If** `ISSUE_ID` already set by AGENTS.md → skip. **Else**:
-```
-
-### workflow-issue-id-github
-
-- workflow: where-used
-
-```text
-Extract from session prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`.
-```
-
-### workflow-issue-id-linear
-
-- workflow: where-used
-
-```text
-Extract from session prompt: `<id>{ID}</id>`, `<linear_issue>{ID}</linear_issue>`, `Linear issue: {ID}`, `ISSUE-{ID}`, or `[A-Z]+-\d+` → first match → `ISSUE_ID`.
+**If** `ISSUE_ID` already set by AGENTS.md → keep it.
 ```
 
 ```retired
-Extract from session prompt: `<id>{ID}</id>`, `<linear_issue>{ID}</linear_issue>`, `Linear issue: {ID}`, `ISSUE-{ID}`, or scan for `[A-Z]+-\d+` pattern → first match → `ISSUE_ID`.
+**If** `ISSUE_ID` already set by AGENTS.md → skip. **Else**:
 ```
 
-### workflow-issue-id-jira
+### workflow-issue-id-parsed
 
 - workflow: where-used
 
 ```text
-Extract from session prompt: `<id>{ID}</id>`, `<jira_issue>{ID}</jira_issue>`, `Jira issue: {ID}`, `ISSUE-{ID}`, a `/browse/{ID}` link, or `[A-Z][A-Z0-9]+-\d+` → first match → `ISSUE_ID`.
+**Else** → hold `issue` as `{ISSUE_ID}`, `ref` as `{REF}`.
 ```
 
 ### workflow-issue-id-missing
@@ -894,10 +967,11 @@ Extract from session prompt: `<id>{ID}</id>`, `<jira_issue>{ID}</jira_issue>`, `
 - workflow: repeatable
 
 ```text
-**If** no `ID` found → recover `ISSUE_ID` from the branch; no `FID` in the session prompt and `BRANCH` != `feat/{FID}` → as exit 0 with `issueId` null:
+**If** `ISSUE_ID` empty → recover `ISSUE_ID` from the branch, `{FID}` = `FID_NAMED`, else the `BRANCH` suffix; `FID_NAMED` null and `BRANCH` != `feat/{FID}` → as exit 0 with `issueId` null:
 ```
 
 ```retired
+**If** no `ID` found → recover `ISSUE_ID` from the branch; no `FID` in the session prompt and `BRANCH` != `feat/{FID}` → as exit 0 with `issueId` null:
 **If** no `ID` found → recover the issue from the branch, which needs a `FID` named in the session prompt or `BRANCH` = `feat/{FID}` (neither → as exit 0 with `issueId` null):
 **If** no `ID` found → with a `FID` named in the session prompt or `BRANCH` = `feat/{FID}`, run `"{BKIT}" fids parse --branch="feat/{FID}"` → hold a non-null `issueId` as `ISSUE_ID`. **Else** → set `ISSUE_ID=""`, emit the no-issue warning once `FID` is held, continue; never create a tracker issue.
 **If** no `ID` found → log `No issue ID in the session prompt.` never create a tracker issue.
@@ -936,15 +1010,24 @@ Extract from session prompt: `<id>{ID}</id>`, `<jira_issue>{ID}</jira_issue>`, `
 **If** exit 3 → **STOP**, telling the user `BRANCH` is not a lowercase slug: rename it to `feat/{lowercase-slug}` or name an issue in the session prompt; nothing started, never the Failure Path.
 ```
 
+### workflow-issue-id-parse-ambiguous
+
+- workflow: where-used
+
+```text
+**If** exit 8 → **STOP**; tell the user the prompt names more than one issue (`ambiguous`) and to name the issue as `#N`, its key or its URL; never the **Failure Path**.
+```
+
 ### workflow-issue-id-none
 
 - workflow: where-used
 
 ```text
-Scan session prompt for `<id>{ID}</id>` or `ISSUE-{ID}` → first match → `ISSUE_ID`. **If** no `ID` found → set `ISSUE_ID=""`, log `Tracker not wired — proceeding without issue ID.`, continue with FID derived from branch name.
+Log `Tracker not wired — proceeding without issue ID.`
 ```
 
 ```retired
+Scan session prompt for `<id>{ID}</id>` or `ISSUE-{ID}` → first match → `ISSUE_ID`. **If** no `ID` found → set `ISSUE_ID=""`, log `Tracker not wired — proceeding without issue ID.`, continue with FID derived from branch name.
 Scan session prompt for `<id>{ID}</id>` or `ISSUE-{ID}` → first match → `ISSUE_ID`. **If** no `ID` found → set `ISSUE_ID=""` and log `Tracker not wired — proceeding without issue ID.` Workflow continues with FID derived from branch name.
 ```
 
@@ -953,31 +1036,51 @@ Scan session prompt for `<id>{ID}</id>` or `ISSUE-{ID}` → first match → `ISS
 - workflow: where-used
 
 ```text
+**If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → write `DESCRIPTION` to `{SESSION_DIR}/issue-description.md` and `COMMENTS` oldest to newest as JSON to `{SESSION_DIR}/issue-comments.json` → skip. **Else**:
+```
+
+```retired
 **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → sort `COMMENTS` oldest to newest → skip. **Else**:
 ```
 
-### workflow-issue-read-github
+### workflow-issue-fetch
 
 - workflow: where-used
 
 ```text
-`mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`; `labels` → `LABELS`; `body` → `DESCRIPTION`; `title` → `TITLE`; `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → sort oldest to newest → `COMMENTS`.
+Read the issue into `{SESSION_DIR}`:
 ```
 
-### workflow-issue-read-linear
+### workflow-issue-fetch-hold
 
 - workflow: where-used
 
 ```text
-`mcp__linear__get_issue({ id: "{ISSUE_ID}" })` → extract `state.name` → `STATE`; `labels[].name` → `LABELS`; `description` → `DESCRIPTION`; `title` → `TITLE`; `url` → `URL`. Then `mcp__linear__list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → sort oldest to newest → `COMMENTS`.
+Hold `state` as `{STATE}`, `labels` as `{LABELS}`, `title` as `{TITLE}`, `url` as `{URL}`.
 ```
 
-### workflow-issue-read-jira
+### workflow-issue-fetch-fallback
 
 - workflow: where-used
 
 ```text
-`mcp__jira__getJiraIssue({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", view: "evidence" })` → extract `fields.status.name` → `STATE`; `fields.labels` → `LABELS`; `fields.description` → `DESCRIPTION`; `fields.summary` → `TITLE`; `{TRACKER_SITE}/browse/{ISSUE_ID}` → `URL`. Then read comments (**Tracker** comment reads) → `COMMENTS`.
+**If** exit 80 → read the issue via the tracker MCP (**Tracker**) → write the description raw to `{SESSION_DIR}/issue-description.md`, the comments oldest first as JSON to `{SESSION_DIR}/issue-comments.json` and `{ title, url, state, labels }` as JSON to `{SESSION_DIR}/issue-facts.json`.
+```
+
+### workflow-issue-reread-hold
+
+- workflow: repeatable
+
+```text
+Hold `state` as `{STATE}`, `labels` as `{LABELS}`.
+```
+
+### workflow-issue-reread-fallback
+
+- workflow: repeatable
+
+```text
+**If** exit 80 → read them via the tracker MCP (**Tracker**).
 ```
 
 ### workflow-issue-read-none
@@ -1014,35 +1117,40 @@ Hold `trackerTeam` as `{TRACKER_TEAM}`, `trackerProject` as `{TRACKER_PROJECT}`,
 - workflow: where-used
 
 ```text
-Resolve `FID` — first match wins; never borrow another feature's `FID` from a leftover lock or the newest bucket:
+Resolve `FID` — never borrow another feature's `FID` from a leftover lock or the newest bucket.
 ```
 
 ```retired
+Resolve `FID` — first match wins; never borrow another feature's `FID` from a leftover lock or the newest bucket:
 Resolve `FID` — first match wins; NEVER borrow another feature's `FID` from a leftover lock or the newest bucket:
 ```
 
-### workflow-fid-prompt
+### workflow-fid-title-file
 
 - workflow: where-used
 
 ```text
-Session prompt names it — an `FID` slug, a `feat/{FID}` branch, or a path under `docs/plans/{YYYYMM}/` (`{FID}-design.md`, `{FID}-plan.md`, `logs/{FID}/`).
+**If** `ISSUE_ID` empty → drop `--title-file`.
 ```
 
-### workflow-fid-branch
-
-- workflow: where-used
-
-```text
-`BRANCH` = `feat/{FID}` → that `FID`; with `ISSUE_ID` non-empty, only when `FID` starts with `ISSUE_ID` (lowercased).
+```retired
+**If** `ISSUE_ID` non-empty → write `TITLE` to `{SESSION_DIR}/title.txt`; `ISSUE_ID` empty → drop `--title-file`.
 ```
 
-### workflow-fid-issue
+### workflow-input-issue-files
 
 - workflow: where-used
 
 ```text
-`ISSUE_ID` non-empty → feature already logged for that issue:
+**If** `ISSUE_ID` empty → drop `--description-file` and `--comments-file`.
+```
+
+### workflow-input-write
+
+- workflow: where-used
+
+```text
+Write the input file — session prompt, issue text, plan (when present):
 ```
 
 ### workflow-exit-0
@@ -1062,65 +1170,12 @@ Session prompt names it — an `FID` slug, a `feat/{FID}` branch, or a path unde
 **If** exit 4 → **Failure Path** listing `fids` (name the `FID` in the session prompt to pick one).
 ```
 
-### workflow-else-next
-
-- workflow: repeatable
-
-```text
-**Else** → next.
-```
-
-### workflow-fid-mint
+### workflow-fid-bare-number
 
 - workflow: where-used
 
 ```text
-Mint: `FID` from `{ISSUE_ID}` and kebab from title or prompt, no stopwords, <=3 tokens, lowercase; `fids check` rejects it → re-mint once with every all-digit word dropped; a second reject → **Failure Path**.
-```
-
-```retired
-Mint: `FID` from `{ISSUE_ID}` and kebab from title or prompt, no stopwords, <=3 tokens, lowercase; the `fids check` below rejecting it → re-mint once with every all-digit word dropped, a second reject → **Failure Path**.
-Mint: `FID` from `{ISSUE_ID}` and kebab from title, no stopwords, <=3 tokens, lowercase.
-```
-
-### workflow-fid-free-gate
-
-- workflow: where-used
-
-```text
-**Run only if** sub-step 4 minted `FID` with `ISSUE_ID` empty — take the first name no finished run used:
-```
-
-### workflow-fid-free-reject
-
-- workflow: where-used
-
-```text
-**If** exit 1 → re-mint once with every all-digit word dropped → re-run this block; a second exit 1 → **Failure Path**.
-```
-
-```retired
-**If** exit 1 → re-mint once with every all-digit word dropped and re-run this block, a second exit 1 → **Failure Path**.
-```
-
-### workflow-fid-unset
-
-- workflow: where-used
-
-```text
-`ISSUE_ID` empty → `{branch-suffix}-{slug}`, slug from the session prompt with every all-digit word dropped.
-```
-
-```retired
-`ISSUE_ID` unset → `{branch-suffix}-{slug}`.
-```
-
-### workflow-fid-once
-
-- workflow: where-used
-
-```text
-One `FID` for all artifacts once set. Check its format for the wired tracker:
+**If** exit 9 → **STOP**; tell the user the prompt holds only a bare number and to name the issue as `#N`, its key or its URL; never the **Failure Path**.
 ```
 
 ### workflow-fid-held
@@ -1139,101 +1194,29 @@ One `FID` for all artifacts once set. Check its format for the wired tracker:
 Acquire concurrency lock:
 ```
 
-### workflow-labels-write-github
-
-- workflow: repeatable
-
-```text
-`mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`
-```
-
-### workflow-labels-write-linear
-
-- workflow: repeatable
-
-```text
-`mcp__linear__save_issue_label({ name })` per printed `add` entry → `mcp__linear__save_issue({ id: "{ISSUE_ID}", labels: [{LABELS}] })` → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "{TRACKER_STATE}" })`
-```
-
-```retired
-`mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "{TRACKER_STATE}", labels: [{LABELS}] })`
-```
-
-### workflow-state-write-linear
-
-- workflow: where-used
-
-```text
-Update state only; do not change labels → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "{TRACKER_STATE}" })`.
-```
-
-```retired
-Update state ONLY; do NOT change labels → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "{TRACKER_STATE}" })`.
-```
-
-### workflow-labels-write-jira
-
-- workflow: repeatable
-
-```text
-`mcp__jira__editJiraIssue({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", fields: { labels: [{LABELS}] } })` → move status to `{TRACKER_STATE}` (**Tracker** status change).
-```
-
-### workflow-state-write-jira
-
-- workflow: where-used
-
-```text
-Update status only; do not change labels → move status to `{TRACKER_STATE}` (**Tracker** status change).
-```
-
-### workflow-board-skipped
-
-- workflow: repeatable
-
-```text
-**If** `BOARD` = null → log `boardSkipped` → skip.
-```
-
-### workflow-board-move
-
-- workflow: repeatable
-
-```text
-**Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → set status `mcp__github__projects_write({BOARD}.updateItem)`.
-```
-
-```retired
-**Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → `mcp__github__projects_list({BOARD}.listItems)` → numeric `id` of entry whose content issue number == `{ISSUE_ID}` → `{ITEM_ID}` → set status `mcp__github__projects_write({BOARD}.updateItem + item_id: {ITEM_ID})`.
-**Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → resolve numeric item id `mcp__github__projects_list({BOARD}.listItems)` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({BOARD}.updateItem + item_id: {ITEM_ID})`.
-```
-
-### workflow-board-noop
-
-- workflow: repeatable
-
-```text
-No-op (log `Board status carried by issue state — no separate update.`).
-```
-
 ### workflow-gate-issue-id
 
 - workflow: where-used
 
 ```text
-Issue resolved (`ISSUE_ID` non-empty, the no-issue warning emitted, or no tracker wired)
+Issue resolved
 ```
 
 ```retired
+Issue resolved (`ISSUE_ID` non-empty, the no-issue warning emitted, or no tracker wired)
 Issue ID resolved (`ISSUE_ID` non-empty when tracker wired; may be empty under `none`)
 Issue resolved (`ISSUE_ID` non-empty, or the no-issue warning emitted)
 ```
 
 ### workflow-gate-steps-gate
 
-- workflow: where-used
+- workflow: repeatable
 
 ```text
+Mechanical checks passed (`steps gate`)
+```
+
+```retired
 Mechanical checks passed (`steps gate` exit 0: placeholders held, FID shape, lock held)
 ```
 
@@ -1242,6 +1225,10 @@ Mechanical checks passed (`steps gate` exit 0: placeholders held, FID shape, loc
 - workflow: repeatable
 
 ```text
+Mechanical checks passed (`steps finish`)
+```
+
+```retired
 Mechanical checks passed (`steps finish` exit 0)
 ```
 
@@ -1258,6 +1245,10 @@ Subagent invoked (`@{{agent}}`, no inline work)
 - workflow: where-used
 
 ```text
+Worktree ready
+```
+
+```retired
 Worktree ready, branch and run held (`WORKTREE_PATH`, `BRANCH`, `RUN`)
 ```
 
@@ -1266,6 +1257,10 @@ Worktree ready, branch and run held (`WORKTREE_PATH`, `BRANCH`, `RUN`)
 - workflow: where-used
 
 ```text
+Failing summary displayed
+```
+
+```retired
 Summary displayed verbatim before **Failure Path** (if `SUMMARY_VERDICT` = FAIL)
 ```
 
@@ -1274,7 +1269,35 @@ Summary displayed verbatim before **Failure Path** (if `SUMMARY_VERDICT` = FAIL)
 - workflow: where-used
 
 ```text
+Summary commit pushed
+```
+
+```retired
 Summary commit pushed to branch
+```
+
+### workflow-gate-issue-update
+
+- workflow: repeatable
+
+```text
+Issue update attempted
+```
+
+### workflow-gate-final-return
+
+- workflow: where-used
+
+```text
+Final return displayed
+```
+
+### workflow-gate-related-search
+
+- workflow: where-used
+
+```text
+Related-issues search attempted
 ```
 
 ### workflow-worktree-commit
@@ -1392,9 +1415,12 @@ Hold `verdict` as `SUMMARY_VERDICT`.
 ### workflow-close-links-gate
 
 - workflow: where-used
-- anchored: yes
 
 ```text
+Artifact link list and telemetry report posted
+```
+
+```retired
 Artifact link list and telemetry report embedded in `Step {{n}}` comment
 ```
 
@@ -1409,14 +1435,22 @@ Artifact link list and telemetry report embedded in `Step {{n}}` comment
 ### workflow-final-return
 
 - workflow: where-used
-- anchored: yes
 
 ```text
-Final return: Display `{{summary}}` content verbatim as final message to user; do not summarise or trim; do not auto-invoke.
+Final return: display `{FINAL_RETURN}` verbatim as the final message to the user; do not summarise or trim; do not auto-invoke.
 ```
 
 ```retired
+Final return: Display `{{summary}}` content verbatim as final message to user; do not summarise or trim; do not auto-invoke.
 Final return: Display `{{summary}}` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke.
+```
+
+### workflow-final-warning
+
+- workflow: where-used
+
+```text
+**If** the no-issue warning was emitted → add `--warning="<that warning>"`.
 ```
 
 ### suggested-replies-heading
@@ -1489,18 +1523,6 @@ Append `{BKIT_TIPS}`, unless empty.
 Append `{BKIT_TIPS}` under a `## bkit Tips` heading, unless empty.
 ```
 
-### workflow-issue-link
-
-- workflow: where-used
-
-```text
-Append the issue link [{ISSUE_ID} {TITLE}]({URL}) unless `ISSUE_ID` is empty
-```
-
-```retired
-Append issue link [{ISSUE_ID} {TITLE}]({URL})
-```
-
 ### workflow-no-issue-warning
 
 - workflow: required
@@ -1549,24 +1571,16 @@ Line 1 of the final message = the no-issue warning, when one was emitted.
 mismatch → **Failure Path** with nothing merged
 ```
 
-### workflow-gate-skip-no-issue
-
-- workflow: repeatable
-- except: bkit-auto
-
-```text
-skipped when `ISSUE_ID` empty)
-```
-
 ### workflow-related-search-github
 
 - workflow: where-used
 
 ```text
-never a keyword list → `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY_NL}", perPage: 15 })`; pass no sort parameter, never re-sort, drop any whose `number` == `{ISSUE_ID}`, keep first 10 in rank order → set `RELATED_ISSUES` empty → per hit:
+never a keyword list → `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY_NL}", perPage: 15, fields: ["number", "title", "state"] })`; pass no sort parameter, never re-sort, drop any whose `number` == `{ISSUE_ID}`, keep first 10 in rank order → write the kept hits' `number` values in rank order as a JSON list to `{OUTBOX}/related-hits.json`.
 ```
 
 ```retired
+never a keyword list → `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY_NL}", perPage: 15 })`; pass no sort parameter, never re-sort, drop any whose `number` == `{ISSUE_ID}`, keep first 10 in rank order → set `RELATED_ISSUES` empty → per hit:
 never a keyword list → `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY_NL}", perPage: 15 })` → top 15 `items` in rank order; pass no sort parameter, never re-sort, drop any whose `number` == `{ISSUE_ID}`, keep first 10 in rank order → set `RELATED_ISSUES` empty → per hit:
 NEVER a keyword list → `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY_NL}", perPage: 15 })` → top 15 `items` in RANK ORDER; pass NO sort parameter, NEVER re-sort, drop any whose `number` == `{ISSUE_ID}`, keep first 10 in RANK ORDER → set `RELATED_ISSUES` empty → per hit:
 ```
@@ -1576,10 +1590,11 @@ NEVER a keyword list → `mcp__github__search_issues({ owner: "{OWNER}", repo: "
 - workflow: where-used
 
 ```text
-never a keyword list → `mcp__linear__list_issues({ query: "{QUERY_NL}", team: "{TRACKER_TEAM}", project: "{TRACKER_PROJECT}", limit: 15 })` (omit null `team` / `project`); pass no `orderBy`, never re-sort, drop any whose `identifier` == `{ISSUE_ID}`, keep first 10 in rank order → set `RELATED_ISSUES` empty → per hit:
+never a keyword list → `mcp__linear__list_issues({ query: "{QUERY_NL}", team: "{TRACKER_TEAM}", project: "{TRACKER_PROJECT}", limit: 15 })` (omit null `team` / `project`); pass no `orderBy`, never re-sort, drop any whose `identifier` == `{ISSUE_ID}`, keep first 10 in rank order → write the kept hits' `identifier` values in rank order as a JSON list to `{OUTBOX}/related-hits.json`.
 ```
 
 ```retired
+never a keyword list → `mcp__linear__list_issues({ query: "{QUERY_NL}", team: "{TRACKER_TEAM}", project: "{TRACKER_PROJECT}", limit: 15 })` (omit null `team` / `project`); pass no `orderBy`, never re-sort, drop any whose `identifier` == `{ISSUE_ID}`, keep first 10 in rank order → set `RELATED_ISSUES` empty → per hit:
 never a keyword list → `mcp__linear__list_issues({ query: "{QUERY_NL}", team: "{LINEAR_TEAM}", limit: 15 })` → results in rank order; pass no `orderBy`, never re-sort, drop any whose `identifier` == `{ISSUE_ID}`, keep first 10 in rank order → set `RELATED_ISSUES` empty → per hit:
 NEVER a keyword list → `mcp__linear__list_issues({ query: "{QUERY_NL}", team: "{LINEAR_TEAM}", limit: 15 })` → results in RANK ORDER; pass NO `orderBy`, NEVER re-sort, drop any whose `identifier` == `{ISSUE_ID}`, keep first 10 in RANK ORDER → set `RELATED_ISSUES` empty → per hit:
 ```
@@ -1589,127 +1604,36 @@ NEVER a keyword list → `mcp__linear__list_issues({ query: "{QUERY_NL}", team: 
 - workflow: where-used
 
 ```text
-one `text ~` clause per term → `mcp__jira__searchJiraIssuesUsingJql({ cloudId: "{TRACKER_SITE}", jql: "project = {TRACKER_PROJECT} AND (text ~ '<term 1>' OR text ~ '<term 2>' …) AND key != {ISSUE_ID} ORDER BY updated DESC", maxResults: 10, fields: ["summary", "status", "description"] })` (drop `project = {TRACKER_PROJECT} AND` when `{TRACKER_PROJECT}` null; drop `AND key != {ISSUE_ID}` when `ISSUE_ID` empty) → set `RELATED_ISSUES` empty → per hit:
+one `text ~` clause per term → `mcp__jira__searchJiraIssuesUsingJql({ cloudId: "{TRACKER_SITE}", jql: "project = {TRACKER_PROJECT} AND (text ~ '<term 1>' OR text ~ '<term 2>' …) AND key != {ISSUE_ID} ORDER BY updated DESC", maxResults: 10, fields: ["summary", "status"] })` (drop `project = {TRACKER_PROJECT} AND` when `{TRACKER_PROJECT}` null; drop `AND key != {ISSUE_ID}` when `ISSUE_ID` empty) → write the kept hits' `key` values in rank order as a JSON list to `{OUTBOX}/related-hits.json`.
 ```
 
 ```retired
+one `text ~` clause per term → `mcp__jira__searchJiraIssuesUsingJql({ cloudId: "{TRACKER_SITE}", jql: "project = {TRACKER_PROJECT} AND (text ~ '<term 1>' OR text ~ '<term 2>' …) AND key != {ISSUE_ID} ORDER BY updated DESC", maxResults: 10, fields: ["summary", "status", "description"] })` (drop `project = {TRACKER_PROJECT} AND` when `{TRACKER_PROJECT}` null; drop `AND key != {ISSUE_ID}` when `ISSUE_ID` empty) → set `RELATED_ISSUES` empty → per hit:
 one `text ~` clause per term → `mcp__jira__searchJiraIssuesUsingJql({ cloudId: "{TRACKER_SITE}", jql: "project = {TRACKER_PROJECT} AND (text ~ '<term 1>' OR text ~ '<term 2>' …) AND key != {ISSUE_ID} ORDER BY updated DESC", maxResults: 10, fields: ["summary", "status", "description"] })` (drop `project = {TRACKER_PROJECT} AND` when `{TRACKER_PROJECT}` null) → set `RELATED_ISSUES` empty → per hit:
 ```
 
-### workflow-related-body-github
-
-- workflow: where-used
-
-```text
-`mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {number} })` → write `body` to `{OUTBOX}/related-description.md`.
-```
-
-### workflow-related-comments-github
-
-- workflow: where-used
-
-```text
-`mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {number} })` → sort oldest to newest → write JSON to `{OUTBOX}/related-comments.json`.
-```
-
-### workflow-related-body-linear
-
-- workflow: where-used
-
-```text
-Write `description` to `{OUTBOX}/related-description.md`.
-```
-
-### workflow-related-comments-linear
-
-- workflow: where-used
-
-```text
-`mcp__linear__list_comments({ issueId: "{identifier}", orderBy: "createdAt desc", limit: 250 })` → sort oldest to newest → write JSON to `{OUTBOX}/related-comments.json`.
-```
-
-### workflow-related-body-jira
-
-- workflow: where-used
-
-```text
-Write `fields.description` to `{OUTBOX}/related-description.md`.
-```
-
-### workflow-related-comments-jira
-
-- workflow: where-used
-
-```text
-Read comments (**Tracker** comment reads) → write JSON to `{OUTBOX}/related-comments.json`.
-```
-
-### workflow-related-text
+### workflow-related-unavailable
 
 - workflow: repeatable
 
 ```text
-Run the related-text block below → `text` → `RELATED_ISSUE_TEXT`.
+on call error / timeout → write `Search unavailable.` to `{{out}}` → skip the fetch below.
 ```
 
-### workflow-related-skip-github
+### workflow-related-fetch
 
 - workflow: where-used
 
 ```text
-**If** exit non-zero → append `## #{number} — {title} ({state})` heading plus `Skipped: comments did not parse.` to `RELATED_ISSUES` → next hit.
+Fetch each hit and write the file (`None.` when there are none):
 ```
 
-### workflow-related-skip-linear
+### workflow-related-fallback
 
 - workflow: where-used
 
 ```text
-**If** exit non-zero → append `## {identifier} — {title} ({state.name})` heading plus `Skipped: comments did not parse.` to `RELATED_ISSUES` → next hit.
-```
-
-### workflow-related-skip-jira
-
-- workflow: where-used
-
-```text
-**If** exit non-zero → append `## {key} — {fields.summary} ({fields.status.name})` heading plus `Skipped: comments did not parse.` to `RELATED_ISSUES` → next hit.
-```
-
-### workflow-related-append-github
-
-- workflow: where-used
-- anchored: yes
-
-```text
-Append `## #{number} — {title} ({state})` heading plus {{text}} to `RELATED_ISSUES` → discard `RELATED_ISSUE_TEXT` before next hit.
-```
-
-### workflow-related-append-linear
-
-- workflow: where-used
-- anchored: yes
-
-```text
-Append `## {identifier} — {title} ({state.name})` heading plus {{text}} to `RELATED_ISSUES` → discard `RELATED_ISSUE_TEXT` before next hit.
-```
-
-### workflow-related-append-jira
-
-- workflow: where-used
-- anchored: yes
-
-```text
-Append `## {key} — {fields.summary} ({fields.status.name})` heading plus {{text}} to `RELATED_ISSUES` → discard `RELATED_ISSUE_TEXT` before next hit.
-```
-
-### workflow-related-file
-
-- workflow: repeatable
-- anchored: yes
-
-```text
-After the last hit: create `docs/plans/{YYYYMM}/logs/{FID}/{{file}}` = `RELATED_ISSUES`; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
+**If** exit 80 → per hit read the issue via the tracker MCP (**Tracker**) → append `## {ref} — {title} ({state})` plus its description and human comments to `{{out}}`.
 ```
 
 ### workflow-bkit-advisory

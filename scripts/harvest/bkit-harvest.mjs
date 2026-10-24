@@ -196,7 +196,8 @@ const BKIT_LEAF_COMMANDS = new Set([
 const BKIT_VAR = /\b([A-Za-z_]\w*)=["']?[^\s;"']*\/bkit["']?(?=[\s;]|$)/g;
 /** The close step's own commands; their output carries the run's `parentSha`. */
 const CLOSE_CMD = /\bworkflows\s+(?:close|promote)\b/;
-const PARENT_SHA = /\\?"parentSha\\?"\s*:\s*\\?"([0-9a-f]{40})/g;
+/** `parentSha: <sha>` in text output, `"parentSha":"<sha>"` under `--json` (escaped inside a JSON string). */
+const PARENT_SHA = /\bparentSha(?:\\?")?\s*:\s*(?:\\?")?([0-9a-f]{40})\b/g;
 /** A prompt that starts with a workflow command: `/bkit-plan 650` (Cursor, opencode) or `$bkit-plan 650` (Codex). */
 const PROMPT_CMD = /^\s*[/$]bkit-([a-z-]+)\s+#?(\d+)\b/g;
 /** A workflow command a host pasted in expanded: bkit's opencode anchor + workflow heading, or Cursor's command block. */

@@ -905,7 +905,7 @@ Rules with no `- {surface}:` line reach agents only through the run-time read of
   - `bkit-utility-update-tracker:82`: Uses `gh label list` and `gh api .../milestones` as the primary path for labels and milestones; R49 allows CLI only as backup / fallback
 
 ```text
-**Tracker MCPs:** Issue reads / updates via configured MCP ONLY; use CLI / HTTP shell-outs as backup / fallback ONLY.
+**Tracker MCPs:** Tracker reads / writes via `bkit` verbs; configured tracker MCP ONLY when a verb prints `tracker.done: false` or exits 80.
 ```
 
 ### commits
@@ -1194,7 +1194,7 @@ Rules with no `- {surface}:` line reach agents only through the run-time read of
   - workflow all except `bkit-auto`: No 'max 1 transition per run' bound (R66 requires it); merge_pull_request passes an empty body where R62 requires explicit merge bodies; 'never invent gh read-paths for trackers' forbids the CLI/HTTP fallback R49 allows
 
 ```text
-**MCP fallback:** All substitutions of unavailable `gh` commands with MCP tools MUST be bounded (max 1 transition per run), recorded (`transport-fallback` rows), and success-asserted via independent re-reads. NEVER improvise unrecorded substitutions.
+**MCP fallback:** MCP tools stand in for engine work ONLY when the engine says so: a verb exits 80 or prints `tracker.done: false`. `gh` substitutions MUST be bounded (max 1 transition per run), recorded (`transport-fallback` rows), and success-asserted via independent re-reads; tracker fallbacks send the payload the verb printed, byte-for-byte. NEVER improvise unrecorded substitutions.
 ```
 
 ### reproduce-first

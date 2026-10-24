@@ -174,23 +174,21 @@ describe("bkit-ship.md — Step 10 gate-refusal re-entry is a bounded poll", () 
 
   it("bounds the re-entry by MAX_REVALIDATE_ATTEMPT through bkit counters route, never a local value", () => {
     expect(shipMd).toMatch(
-      /"\{BKIT\}" counters route --name=REVALIDATE_ATTEMPT --value="\$REVALIDATE_ATTEMPT" --limit=MAX_REVALIDATE_ATTEMPT --continue=step-9 --exceeded=failure-path/,
+      /"\{BKIT\}" counters route --name=REVALIDATE_ATTEMPT --rows=ship-revalidate-dispatch:next --file="\{STATUS\}" --workflow=ship --limit=MAX_REVALIDATE_ATTEMPT --continue=step-9 --exceeded=failure-path/,
     );
-    // The value lives in `bkit counters max` (commands/workflow/counters.ts).
+    // The value lives in `bkit counters max` (shared/thresholds.ts).
     expect(shipMd).not.toMatch(/^\s*MAX_REVALIDATE_ATTEMPT=/m);
   });
 
-  it("derives the attempt from this run's ship-revalidate-dispatch rows via bkit counters rows", () => {
+  it("derives the attempt from this run's ship-revalidate-dispatch rows via bkit counters route --rows", () => {
     // Run scoping (a resumed run does not inherit a prior run's rows) is
     // pinned in commands/workflow/counters.test.ts 'bkit counters rows'.
     const block = fences(shipMd).find((f) =>
       /"\{BKIT\}" counters route --name=REVALIDATE_ATTEMPT\b/.test(f),
     );
     expect(block, "REVALIDATE_ATTEMPT routing block not found").toBeDefined();
-    expect(block!).toContain(
-      'REVALIDATE_ATTEMPT=$("{BKIT}" counters rows --file="{STATUS}" --workflow=ship --type=ship-revalidate-dispatch --position=next | jq -er .value) || exit 2',
-    );
-    expect(block!).not.toMatch(/REVALIDATE_ATTEMPT=\$\(jq\b/);
+    expect(block!).toContain("--rows=ship-revalidate-dispatch:next");
+    expect(block!).not.toMatch(/REVALIDATE_ATTEMPT=|\bjq\b/);
   });
 });
 

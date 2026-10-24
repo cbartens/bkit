@@ -14,6 +14,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { markdownTable } from "../shared/text.js";
 import { runAnalysis, type AnalysisReport } from "./analysis.js";
 
 /** The ledgers `bkit stats` reads, relative to the repo root. */
@@ -31,16 +32,10 @@ const HARVEST_KINDS = new Set(["chat", "run"]);
 
 const pct = (rate: number): string => `${(rate * 100).toFixed(1)}%`;
 
-/** A markdown table, or nothing when there are no rows. Unpadded, so prettier leaves it alone. */
+/** A markdown table under a prettier-ignore marker, or nothing when there are no rows. */
 function table(head: string[], rows: (string | number)[][]): string[] {
-  if (rows.length === 0) return [];
-  return [
-    "<!-- prettier-ignore -->",
-    `| ${head.join(" | ")} |`,
-    `| ${head.map(() => "---").join(" | ")} |`,
-    ...rows.map((r) => `| ${r.join(" | ")} |`),
-    "",
-  ];
+  const lines = markdownTable(head, rows);
+  return lines.length === 0 ? [] : ["<!-- prettier-ignore -->", ...lines, ""];
 }
 
 /** Sorted `[key, count]` pairs of a count map, largest first, then by name. */

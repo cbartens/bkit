@@ -216,7 +216,7 @@ export function renderOpencodeJson(templatePath, tracker, provider, cwd = proces
         // Same "oauth": false reason as github: the API token in the header is the only auth
         // bkit wires, so a bad one fails as a 401, not as an OAuth sign-in prompt.
         mcpEntry =
-            '"jira": { "type": "remote", "url": "https://mcp.atlassian.com/v2/mcp", "oauth": false, "headers": { "Authorization": "Bearer {env:BKIT_JIRA_API_TOKEN}" } }';
+            '"jira": { "type": "remote", "url": "https://mcp.atlassian.com/v2/mcp", "oauth": false, "headers": { "Authorization": "Bearer {env:BKIT_JIRA_API_KEY}" } }';
     }
     else {
         mcpEntry = "";

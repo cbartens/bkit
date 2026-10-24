@@ -33,6 +33,12 @@ describe("shared/egress", () => {
     }
   });
 
+  it("the engine's tracker clients reach their APIs: GitHub REST / GraphQL, Linear GraphQL, Jira MCP", () => {
+    const hosts = BKIT_EGRESS_SOURCES.flatMap((row) => row.hosts);
+    for (const host of ["api.github.com", "api.linear.app", "mcp.atlassian.com"])
+      expect(hosts).toContain(host);
+  });
+
   it("every provider default names its env var in its key placeholder", () => {
     for (const [id, p] of Object.entries(OPENCODE_PROVIDER_DEFAULTS)) {
       expect(p.envVar, id).toMatch(/^BKIT_[A-Z0-9_]+_API_KEY$/);

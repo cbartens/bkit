@@ -14,6 +14,10 @@
 //
 // Bytes are counted as raw bytes (as `LC_ALL=C awk` counts them), never as
 // characters, so a multi-byte line is measured by what it costs on disk.
+//
+// A cut file keeps its untouched original as `{name}.raw.{ext}` in the outbox
+// (`keepRaw`), never under `logs/`; the record names it (`raw`) with the command
+// that produced the file (`source`) and when it ran (`fetchedAt`).
 
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -30,12 +34,17 @@ import {
   CommandError,
   EXIT,
   git,
+  outboxRel,
+  outboxRoot,
   type CommandSpec,
   type FlagSpec,
   type RunContext,
 } from "../lib.js";
 import { gitEnv, resolveRepoSlug } from "../../ledgers/telemetry.js";
+import { parseJson } from "../../shared/json.js";
+import { checkedTable } from "../../shared/text.js";
 import { buildComment } from "./issues.js";
+import { COMMENT_FILE_OUTPUT, commentFileOf } from "./tracker.js";
 import { EXIT_NO_STATUS, positiveInt, readRuns, str } from "./status.js";
 import { EXIT_COMMIT, writeStepRow } from "./steps.js";
 
@@ -84,7 +93,60 @@ export interface ClampRecord {
   keptBytes: number;
   lineCapped: number;
   ceilingHit: boolean;
+  /** The untouched original in the outbox, main-checkout relative; null when nothing was cut. */
+  raw: string | null;
+  /** The exact command and inputs that produced the file; null when the caller did not say. */
+  source: string | null;
+  /** When the source ran (UTC); a re-run returns the source's data now, not then. */
+  fetchedAt: string | null;
+  /** `context fetch` only: `table` when the output was rendered as a table, else `raw`. */
+  render?: Render;
 }
+
+/** How `context fetch` writes a block's output. */
+export type Render = "table" | "raw";
+const RENDERS: readonly Render[] = ["table", "raw"];
+
+/** Where a cut file's original goes and what produced it. */
+export interface Provenance {
+  /** Folder for `{name}.raw.{ext}`; null when there is none (outside a git repo). */
+  rawDir: string | null;
+  source?: string;
+  fetchedAt?: string;
+  /** An untouched copy already in the outbox (the runner's own log): no second copy. */
+  original?: string;
+}
+
+/**
+ * Copy the original of a file about to be trimmed or rendered to
+ * `{rawDir}/{name}.raw.{ext}`, byte for byte; `content` stands in for a file that
+ * was never written whole. Returns the copy's path.
+ */
+export function keepRaw(file: string, rawDir: string, content?: Buffer): string {
+  const ext = path.extname(file);
+  const raw = path.join(rawDir, `${path.basename(file, ext)}.raw${ext}`);
+  fs.mkdirSync(rawDir, { recursive: true });
+  if (content === undefined) fs.copyFileSync(file, raw);
+  else fs.writeFileSync(raw, content);
+  return raw;
+}
+
+/** `keepRaw`, with a failed copy handed back as its error so the caller picks the exit code. */
+function keepRawOrError(file: string, rawDir: string): string | Error {
+  try {
+    return keepRaw(file, rawDir);
+  } catch (err) {
+    return err instanceof Error ? err : new Error(String(err));
+  }
+}
+
+/** The outbox folder a feature's originals go to (the outbox root without a fid); null outside a repo. */
+export function rawDirFor(cwd: string, fid: string | undefined): string | null {
+  const root = outboxRoot(cwd);
+  return root === null ? null : path.join(root, fid ?? "");
+}
+
+const utcNow = () => new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 
 const LEDGER = { maxLines: 200, maxBytes: 51200 };
 const EVIDENCE = {
@@ -302,7 +364,12 @@ function selectEvidence(buf: Buffer): Selection {
  * left byte-identical; otherwise the kept content plus footer replace it via a
  * sibling temp file, never truncating in place.
  */
-export function clampFile(file: string, profile: string, artifact = file): ClampRecord {
+export function clampFile(
+  file: string,
+  profile: string,
+  artifact = file,
+  keep?: Provenance,
+): ClampRecord {
   if (!(CLAMP_PROFILES as readonly string[]).includes(profile)) {
     throw new CommandError(
       EXIT.USAGE,
@@ -315,6 +382,8 @@ export function clampFile(file: string, profile: string, artifact = file): Clamp
   }
   const buf = read.buf;
   const sel = profile === "ledger" ? selectLedger(buf) : selectEvidence(buf);
+  const source = keep?.source ?? null;
+  const fetchedAt = keep?.fetchedAt ?? (source === null ? null : utcNow());
   const untouched = (s: Selection | null): ClampRecord => ({
     artifact,
     clamped: false,
@@ -324,8 +393,23 @@ export function clampFile(file: string, profile: string, artifact = file): Clamp
     keptBytes: s?.keptBytes ?? buf.length,
     lineCapped: 0,
     ceilingHit: false,
+    raw: null,
+    source,
+    fetchedAt,
   });
   if (sel === null || sel.body.length === 0) return untouched(sel);
+
+  let raw: string | null = keep?.original ?? null;
+  if (raw === null && keep?.rawDir) {
+    const kept = keepRawOrError(file, keep.rawDir);
+    // The trim would lose the only copy: refuse it, the file stays whole.
+    if (kept instanceof Error)
+      throw new CommandError(
+        EXIT_ARTIFACT,
+        `cannot keep the original of '${artifact}': ${kept.message}`,
+      );
+    raw = kept;
+  }
 
   const footer: string[] = [];
   if (sel.lineCapped > 1) {
@@ -354,6 +438,9 @@ export function clampFile(file: string, profile: string, artifact = file): Clamp
     keptBytes: sel.keptBytes,
     lineCapped: sel.lineCapped,
     ceilingHit: sel.ceilingHit,
+    raw: raw === null ? null : outboxRel(path.dirname(file), raw),
+    source,
+    fetchedAt,
   };
 }
 
@@ -421,7 +508,16 @@ const RECORD_OUTPUT: Record<string, string> = {
   keptBytes: "content bytes kept",
   lineCapped: "over-long lines shortened in place",
   ceilingHit: "true when the hard ceiling dropped matching lines too",
+  raw: "the untouched original in the outbox ({name}.raw.{ext}), or null when nothing was cut",
+  source: "the command that produced the file (--source), or null",
+  fetchedAt: "when the source ran (UTC; the clamp time with --source), or null",
 };
+
+/** Say so when a cut had nowhere to keep its original. */
+function warnNoRaw(ctx: RunContext, record: ClampRecord, keep: Provenance) {
+  if (record.clamped && record.raw === null && keep.rawDir === null)
+    ctx.log(`${record.artifact}: not inside a git repo — original not kept`);
+}
 
 // ---------------------------------------------------------------------------
 // Ledger scan — plan Step 4's related deferrals / failures
@@ -639,6 +735,8 @@ export interface DiffArtifact {
   stat: DiffStat;
   diffLines: number;
   partial: boolean;
+  /** Files whose diff is not in the artifact whole: not shown, or cut. */
+  omitted: string[];
   record: ClampRecord;
 }
 
@@ -691,54 +789,71 @@ export function writeDiffArtifact(
   artifact: string,
   range: string,
   guard: DiffGuard = DIFF_GUARD,
+  keep: Provenance = { rawDir: null },
 ): DiffArtifact {
+  const fetchedAt = utcNow();
   const { files, stat } = diffNumstat(cwd, range);
   const full = gitBytes(cwd, ["diff", range, ...excludeSpec()]);
   const diffLines = records(full).length;
   let content: Buffer;
   let partial = false;
   let ceilingHit = false;
+  const omitted: string[] = [];
   if (diffLines === 0) {
     content = lineOf(`No changes in ${range} outside ${DIFF_EXCLUDES.join(", ")}.`);
   } else if (diffLines <= guard.fullLines) {
     content = full;
   } else {
     partial = true;
-    const shown = [...files]
-      .sort((a, b) => b.lines - a.lines || a.path.localeCompare(b.path))
-      .slice(0, guard.topFiles);
-    const parts: Buffer[] = [];
-    let total = 0;
-    const push = (b: Buffer) => {
-      parts.push(b);
-      total += records(b).length;
+    const ranked = [...files].sort((a, b) => b.lines - a.lines || a.path.localeCompare(b.path));
+    const shown = ranked.slice(0, guard.topFiles);
+    const stat0 = gitBytes(cwd, ["diff", "--stat", range, ...excludeSpec()]);
+    // Header, omitted-files line, a blank, --stat and a blank count toward the total.
+    const room0 = guard.totalLines - (4 + records(stat0).length);
+    const body: Buffer[] = [];
+    let used = 0;
+    const add = (b: Buffer) => {
+      body.push(b);
+      used += records(b).length;
     };
-    push(
-      lineOf(
-        `# ${PARTIAL_MARK}: ${range} has ${diffLines} diff lines across ${stat.filesChanged} files; showing the ${shown.length} largest files, ${guard.perFileLines} lines each, at most ${guard.totalLines} lines in all. Say "${PARTIAL_MARK}" in any verdict read from this file.`,
-      ),
-    );
-    push(lineOf(""));
-    push(gitBytes(cwd, ["diff", "--stat", range, ...excludeSpec()]));
-    push(lineOf(""));
-    for (const f of shown) {
-      const room = Math.min(guard.perFileLines, guard.totalLines - total);
+    let stopped = false;
+    for (const f of ranked) {
+      if (stopped || !shown.includes(f)) {
+        omitted.push(f.path);
+        continue;
+      }
+      const room = Math.min(guard.perFileLines, room0 - used);
       if (room <= 0) {
         ceilingHit = true;
-        push(lineOf(`# total line budget reached; ${f.path} and smaller files not shown`));
-        break;
+        stopped = true;
+        omitted.push(f.path);
+        add(lineOf(`# total line budget reached; ${f.path} and smaller files not shown`));
+        continue;
       }
       const lines = records(gitBytes(cwd, ["diff", range, "--", f.path]));
       const kept = lines.slice(0, room);
       if (kept.length < lines.length && room < guard.perFileLines) ceilingHit = true;
-      push(lineOf(`### ${f.path}`));
-      push(joinLines(kept));
-      if (kept.length < lines.length)
-        push(lineOf(`# ${lines.length - kept.length} more lines of ${f.path} not shown`));
-      push(lineOf(""));
+      add(lineOf(`### ${f.path}`));
+      add(joinLines(kept));
+      if (kept.length < lines.length) {
+        omitted.push(f.path);
+        add(lineOf(`# ${lines.length - kept.length} more lines of ${f.path} not shown`));
+      }
+      add(lineOf(""));
     }
-    content = Buffer.concat(parts);
+    omitted.sort((a, b) => a.localeCompare(b));
+    content = Buffer.concat([
+      lineOf(
+        `# ${PARTIAL_MARK}: ${range} has ${diffLines} diff lines across ${stat.filesChanged} files; showing the ${shown.length} largest files, ${guard.perFileLines} lines each, at most ${guard.totalLines} lines in all. Say "${PARTIAL_MARK}" in any verdict read from this file.`,
+      ),
+      lineOf(`# not shown whole: ${omitted.join(", ")}`),
+      lineOf(""),
+      stat0,
+      lineOf(""),
+      ...body,
+    ]);
   }
+  const raw = partial && keep.rawDir !== null ? keepRaw(out, keep.rawDir, full) : null;
   fs.mkdirSync(path.dirname(out), { recursive: true });
   fs.writeFileSync(out, content);
   const record: ClampRecord = {
@@ -750,13 +865,37 @@ export function writeDiffArtifact(
     keptBytes: content.length,
     lineCapped: 0,
     ceilingHit,
+    raw: raw === null ? null : outboxRel(cwd, raw),
+    source: `git diff ${range} -- . ${DIFF_EXCLUDES.map((e) => `':(exclude)${e}'`).join(" ")}`,
+    fetchedAt,
   };
-  return { range, stat, diffLines, partial, record };
+  return { range, stat, diffLines, partial, omitted, record };
 }
 
 // ---------------------------------------------------------------------------
 // Command
 // ---------------------------------------------------------------------------
+
+const RUN_BLOCK_FLAGS: FlagSpec[] = [
+  { name: "idx", type: "string", required: true, help: "block ordinal from list-blocks" },
+  {
+    name: "script",
+    type: "string",
+    required: true,
+    help: "file holding the block body as customised for this failure (run with bash)",
+  },
+  FID_FLAG,
+  MONTH_FLAG,
+  ...ATTEMPT_FLAGS,
+];
+
+const RUN_BLOCK_OUTPUT: Record<string, string> = {
+  outcome: "checked (data written) | self-skipped (skip line written) | silent (nothing) | not-run",
+  artifact: "the artifact path, or null when nothing was written",
+  skip: "the block's [context-fetch:<name>] stderr line, or null",
+  clamp: "the payload's clamp record, or null",
+  reason: "why the block was not run, or null",
+};
 
 export const contextCommand: CommandSpec = {
   noun: "context",
@@ -768,17 +907,31 @@ export const contextCommand: CommandSpec = {
       flags: [
         { name: "artifact", type: "string", required: true, help: "file to clamp" },
         { name: "profile", type: "string", required: true, help: "ledger | debug-evidence" },
+        {
+          name: "source",
+          type: "string",
+          help: "the exact command and inputs that produced the artifact (recorded with the time)",
+        },
         ...LOG_FLAGS,
       ],
       output: RECORD_OUTPUT,
-      exitCodes: { [EXIT_ARTIFACT]: "artifact missing, unreadable, or could not be replaced" },
+      exitCodes: {
+        [EXIT_ARTIFACT]:
+          "artifact missing, unreadable, or could not be replaced; or its original could not be kept",
+      },
       run: (ctx) => {
         const artifact = String(ctx.flags.artifact);
+        const keep: Provenance = {
+          rawDir: rawDirFor(ctx.cwd, str(ctx.flags.fid)),
+          source: str(ctx.flags.source),
+        };
         const record = clampFile(
           path.resolve(ctx.cwd, artifact),
           String(ctx.flags.profile),
           artifact,
+          keep,
         );
+        warnNoRaw(ctx, record, keep);
         const log = logPath(ctx);
         if (log !== undefined) appendRecord(log, record);
         if (record.clamped)
@@ -833,6 +986,7 @@ export const contextCommand: CommandSpec = {
         kept: "lines written (at most 40)",
         clamp: "the clamp record",
       },
+      textOmit: ["clamp"],
       exitCodes: { [EXIT_ARTIFACT]: "artifact could not be written or replaced" },
       run: (ctx) => {
         const log = logPath(ctx);
@@ -844,12 +998,18 @@ export const contextCommand: CommandSpec = {
         }
         const sourceFile = path.resolve(ctx.cwd, String(ctx.flags.source));
         const source = fs.existsSync(sourceFile) ? fs.readFileSync(sourceFile, "utf-8") : undefined;
-        const scan = ledgerScan(source, String(ctx.flags.terms));
+        const terms = String(ctx.flags.terms);
+        const scan = ledgerScan(source, terms);
         const artifact = String(ctx.flags.artifact);
         const out = path.resolve(ctx.cwd, artifact);
         fs.mkdirSync(path.dirname(out), { recursive: true });
         fs.writeFileSync(out, scan.content);
-        const clamp = clampFile(out, "ledger", artifact);
+        const keep: Provenance = {
+          rawDir: rawDirFor(ctx.cwd, str(ctx.flags.fid)),
+          source: `bkit context ledger-scan --source=${String(ctx.flags.source)} --terms="${terms}"`,
+        };
+        const clamp = clampFile(out, "ledger", artifact, keep);
+        warnNoRaw(ctx, clamp, keep);
         if (log !== undefined) appendRecord(log, clamp);
         ctx.log(`${artifact}: ${scan.total} matching line(s), ${scan.kept} kept`);
         ctx.emit({ total: scan.total, kept: scan.kept, clamp });
@@ -867,6 +1027,11 @@ export const contextCommand: CommandSpec = {
           help: `merge base or a group's start commit (default ${DIFF_BASE})`,
         },
         ...LOG_FLAGS,
+        {
+          name: "reset-log",
+          type: "boolean",
+          help: "empty the clamp log first (the step's first writer)",
+        },
       ],
       output: {
         artifact: "the artifact path as given",
@@ -878,8 +1043,12 @@ export const contextCommand: CommandSpec = {
         linesChanged: "linesAdded + linesDeleted",
         diffLines: "lines in the whole diff",
         partial: `true when the diff exceeded ${DIFF_GUARD.fullLines} lines and the per-file budget (${DIFF_GUARD.topFiles} files, ${DIFF_GUARD.perFileLines} lines each, ${DIFF_GUARD.totalLines} in all) was written instead`,
-        clamp: "the clamp record (clamped = partial)",
+        omitted:
+          "files whose diff is not in the artifact whole (not shown, or cut); [] unless partial — the artifact's second line lists them too",
+        clamp:
+          "the clamp record (clamped = partial; raw = the whole diff in the outbox when partial)",
       },
+      textOmit: ["clamp"],
       exitCodes: {
         [EXIT_BASE]: "--base does not name a commit",
         [EXIT_ARTIFACT]: "the artifact could not be written",
@@ -893,6 +1062,13 @@ export const contextCommand: CommandSpec = {
           );
         }
         const artifact = String(ctx.flags.artifact);
+        const log = logPath(ctx);
+        if (ctx.flags.resetLog === true) {
+          if (log === undefined)
+            throw new CommandError(EXIT.USAGE, "--reset-log needs --log, or --fid and --step");
+          fs.mkdirSync(path.dirname(log), { recursive: true });
+          fs.writeFileSync(log, "");
+        }
         let result: DiffArtifact;
         try {
           result = writeDiffArtifact(
@@ -900,11 +1076,12 @@ export const contextCommand: CommandSpec = {
             path.resolve(ctx.cwd, artifact),
             artifact,
             `${base}...HEAD`,
+            DIFF_GUARD,
+            { rawDir: rawDirFor(ctx.cwd, str(ctx.flags.fid)) },
           );
         } catch (e) {
           throw new CommandError(EXIT_ARTIFACT, `${artifact}: ${(e as Error).message}`);
         }
-        const log = logPath(ctx);
         if (log !== undefined) appendRecord(log, result.record);
         if (result.partial) {
           ctx.log(
@@ -918,6 +1095,7 @@ export const contextCommand: CommandSpec = {
           ...result.stat,
           diffLines: result.diffLines,
           partial: result.partial,
+          omitted: result.omitted,
           clamp: result.record,
         });
         return EXIT.OK;
@@ -967,31 +1145,41 @@ export const contextCommand: CommandSpec = {
     "run-block": {
       summary:
         "Run one customised block; write its output fenced (clamped first), its skip line, or nothing.",
-      flags: [
-        { name: "idx", type: "string", required: true, help: "block ordinal from list-blocks" },
-        {
-          name: "script",
-          type: "string",
-          required: true,
-          help: "file holding the block body as customised for this failure (run with bash)",
-        },
-        FID_FLAG,
-        MONTH_FLAG,
-        ...ATTEMPT_FLAGS,
-      ],
-      output: {
-        outcome:
-          "checked (data written) | self-skipped (skip line written) | silent (nothing) | not-run",
-        artifact: "the artifact path, or null when nothing was written",
-        skip: "the block's [context-fetch:<name>] stderr line, or null",
-        clamp: "the payload's clamp record, or null",
-        reason: "why the block was not run, or null",
-      },
+      flags: RUN_BLOCK_FLAGS,
+      output: RUN_BLOCK_OUTPUT,
+      textOmit: ["clamp"],
       exitCodes: {
         [EXIT_ARTIFACT]: "the payload could not be clamped or written",
         [EXIT_NO_STATUS]: "--file: status.jsonl missing, unreadable, or not valid NDJSON",
       },
       run: (ctx) => runBlock(ctx),
+    },
+    fetch: {
+      summary:
+        "run-block, with a JSON array of flat objects written as a markdown table; the raw output stays in the outbox.",
+      flags: [
+        ...RUN_BLOCK_FLAGS,
+        {
+          name: "render",
+          type: "string",
+          help: "table (default): a JSON array of flat objects becomes a markdown table when it reads back unchanged, else the output is written as printed; raw: as printed",
+        },
+      ],
+      output: {
+        ...RUN_BLOCK_OUTPUT,
+        render: "table | raw: how the output was written; null when nothing was written",
+      },
+      textOmit: ["clamp"],
+      exitCodes: {
+        [EXIT_ARTIFACT]: "the payload could not be clamped or written",
+        [EXIT_NO_STATUS]: "--file: status.jsonl missing, unreadable, or not valid NDJSON",
+      },
+      run: (ctx) => {
+        const render = str(ctx.flags.render) ?? "table";
+        if (!(RENDERS as readonly string[]).includes(render))
+          throw new CommandError(EXIT.USAGE, `--render must be ${RENDERS.join("|")}`);
+        return runBlock(ctx, render as Render);
+      },
     },
     finalise: {
       summary:
@@ -1024,6 +1212,7 @@ export const contextCommand: CommandSpec = {
         commit: "--record: the new commit's sha, else null",
         comment:
           "the step comment (with --number): verdict, contexts, artifact links, a NOT CONFIGURED line per context with no block; else null",
+        commentFile: COMMENT_FILE_OUTPUT,
       },
       exitCodes: {
         [EXIT_NO_STATUS]: "--file: status.jsonl missing, unreadable, or not valid NDJSON",
@@ -1106,6 +1295,7 @@ export const contextCommand: CommandSpec = {
           row: record ? written.row : null,
           commit: written.commit,
           comment,
+          commentFile: commentFileOf(ctx.cwd, comment),
         });
         return written.code;
       },
@@ -1113,7 +1303,22 @@ export const contextCommand: CommandSpec = {
   },
 };
 
-function runBlock(ctx: RunContext): number {
+/** A block's output as a checked markdown table, or why it stays as printed. */
+function tableOf(stdout: Buffer): { text: string } | { reason: string } {
+  const parsed = parseJson(stdout.toString("utf-8"));
+  if (!parsed.ok) return { reason: "not JSON" };
+  const table = checkedTable(parsed.value);
+  return table.ok ? { text: table.text } : { reason: table.reason };
+}
+
+/**
+ * Run consumer block `--idx` and write what it printed, fenced and clamped. With `render`
+ * (`context fetch`), a JSON array of flat objects is written as a table instead; the
+ * output as printed goes to the outbox first, and the record says which was written.
+ */
+function runBlock(ctx: RunContext, render?: Render): number {
+  const shape = (out: Record<string, unknown>, written: Render | null) =>
+    render === undefined ? out : { ...out, render: written };
   const idx = positiveInt(ctx.flags.idx, "idx")!;
   const attempt = debugAttempt(ctx);
   const fid = String(ctx.flags.fid);
@@ -1123,7 +1328,7 @@ function runBlock(ctx: RunContext): number {
   const block = fetchBlocks(consumerSection(readContextMd(ctx) ?? "")).find((b) => b.idx === idx);
   const notRun = (reason: string) => {
     ctx.log(`context-fetch: ${reason} — NOT RUN`);
-    ctx.emit({ outcome: "not-run", artifact: null, skip: null, clamp: null, reason });
+    ctx.emit(shape({ outcome: "not-run", artifact: null, skip: null, clamp: null, reason }, null));
     return EXIT.OK;
   };
   if (!block) return notRun(`no block ${idx} after <!-- bkit:end -->`);
@@ -1137,6 +1342,7 @@ function runBlock(ctx: RunContext): number {
     return notRun(`block ${idx} (context=${block.context} name=${label}) has no fenced body`);
 
   const repoRoot = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
+  const fetchedAt = utcNow();
   // The inline block ran inside the step's shell, so these were in scope for it.
   const res = spawnSync("bash", [script], {
     cwd: ctx.cwd,
@@ -1164,12 +1370,38 @@ function runBlock(ctx: RunContext): number {
 
   if (stdout.some((b) => b !== 0x0a && b !== 0)) {
     fs.mkdirSync(path.dirname(out), { recursive: true });
-    fs.writeFileSync(out, asCaptured(stdout));
-    const clamp = clampFile(out, "debug-evidence", artifact);
+    const keep: Provenance = {
+      rawDir: rawDirFor(ctx.cwd, fid),
+      source: fs.readFileSync(script, "utf-8"),
+      fetchedAt,
+    };
+    let payload = asCaptured(stdout);
+    let written: Render | null = null;
+    if (render !== undefined) {
+      const table = render === "table" ? tableOf(stdout) : null;
+      if (table !== null && "text" in table) {
+        // The table replaces the printed output: keep that output whole first.
+        if (keep.rawDir !== null) keep.original = keepRaw(out, keep.rawDir, stdout);
+        payload = Buffer.from(`${table.text}\n`);
+        written = "table";
+      } else {
+        if (table !== null) ctx.log(`render: raw (${table.reason})`);
+        written = "raw";
+      }
+    }
+    fs.writeFileSync(out, payload);
+    let clamp = clampFile(out, "debug-evidence", artifact, keep);
+    warnNoRaw(ctx, clamp, keep);
+    if (written !== null) {
+      const raw = clamp.raw ?? (keep.original ? outboxRel(path.dirname(out), keep.original) : null);
+      clamp = { ...clamp, raw, render: written };
+    }
     appendRecord(clampLogPath(ctx.cwd, fid, "context-fetch", attempt), clamp);
     fs.writeFileSync(out, fenced(fs.readFileSync(out)));
     ctx.log(`${shown} CHECKED — data returned`);
-    ctx.emit({ outcome: "checked", artifact, skip: skip ?? null, clamp, reason: null });
+    ctx.emit(
+      shape({ outcome: "checked", artifact, skip: skip ?? null, clamp, reason: null }, written),
+    );
     return EXIT.OK;
   }
   if (skip !== undefined) {
@@ -1178,12 +1410,14 @@ function runBlock(ctx: RunContext): number {
     ctx.log(
       `${shown} SELF-SKIPPED (${skip}) — NOT CHECKED; this is NOT evidence that this source was clean (Trusted egress may also silently block the host — see .agents/context.md § Allowed domains)`,
     );
-    ctx.emit({ outcome: "self-skipped", artifact, skip, clamp: null, reason: null });
+    ctx.emit(shape({ outcome: "self-skipped", artifact, skip, clamp: null, reason: null }, null));
     return EXIT.OK;
   }
   ctx.log(
     `${shown} produced neither data nor a skip breadcrumb — NOT CHECKED (unexpected silent exit; treat as unavailable, never as clean)`,
   );
-  ctx.emit({ outcome: "silent", artifact: null, skip: null, clamp: null, reason: null });
+  ctx.emit(
+    shape({ outcome: "silent", artifact: null, skip: null, clamp: null, reason: null }, null),
+  );
   return EXIT.OK;
 }

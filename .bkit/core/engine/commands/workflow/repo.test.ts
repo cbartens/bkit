@@ -45,7 +45,7 @@ afterEach(() => {
 async function run(argv: string[]) {
   const out: string[] = [];
   const err: string[] = [];
-  const code = await runCommand(["repo", "info", ...argv], [repoCommand], {
+  const code = await runCommand(["repo", "info", ...argv, "--json"], [repoCommand], {
     classicVerbs: new Set(),
     cwd,
     io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
@@ -207,7 +207,7 @@ describe("bkit repo info — where bkit, the repo root and the outbox live", () 
     const wt = path.join(cwd, ".worktrees", "1-x");
     git(cwd, "worktree", "add", "-q", wt, "-b", "feat/1-y");
     const out: string[] = [];
-    const code = await runCommand(["repo", "info"], [repoCommand], {
+    const code = await runCommand(["repo", "info", "--json"], [repoCommand], {
       classicVerbs: new Set(),
       cwd: wt,
       io: { stdout: (t) => out.push(t), stderr: () => undefined },
@@ -219,6 +219,43 @@ describe("bkit repo info — where bkit, the repo root and the outbox live", () 
     expect(json.outboxRoot).toBe(path.join(cwd, ".git", "bkit-outbox"));
   });
 });
+
+describe("bkit repo info — the per-run session folder", () => {
+  beforeEach(() => git(cwd, "remote", "add", "origin", "https://github.com/o/r.git"));
+
+  it("prints a fresh, existing sessionDir under the outbox's sessions/ on every call", async () => {
+    const a = await run([]);
+    const b = await run([]);
+    const sessions = path.join(cwd, ".git", "bkit-outbox", "sessions");
+    for (const r of [a, b]) {
+      expect(path.dirname(r.json.sessionDir)).toBe(sessions);
+      expect(path.basename(r.json.sessionDir)).toMatch(/^\d{8}T\d{6}Z-[0-9a-f]{8}$/);
+      expect(fs.statSync(r.json.sessionDir).isDirectory()).toBe(true);
+    }
+    expect(a.json.sessionDir).not.toBe(b.json.sessionDir);
+  });
+
+  it("prunes session folders older than 7 days and keeps newer ones and foreign names", async () => {
+    const sessions = path.join(cwd, ".git", "bkit-outbox", "sessions");
+    const old = path.join(sessions, "20200101T000000Z-deadbeef");
+    const recent = path.join(sessions, sessionStamp(new Date(Date.now() - 6 * 86_400_000)));
+    const foreign = path.join(sessions, "keep-me");
+    for (const d of [old, recent, foreign]) fs.mkdirSync(d, { recursive: true });
+    fs.writeFileSync(path.join(old, "prompt.md"), "x");
+    const r = await run([]);
+    expect(r.code).toBe(0);
+    expect(fs.existsSync(old)).toBe(false);
+    expect(fs.existsSync(recent)).toBe(true);
+    expect(fs.existsSync(foreign)).toBe(true);
+  });
+});
+
+function sessionStamp(d: Date): string {
+  return `${d
+    .toISOString()
+    .replace(/[-:]/g, "")
+    .replace(/\.\d{3}/, "")}-00000000`;
+}
 
 describe("bkit repo info — where the wired tracker's issues live", () => {
   const pkg = (bkit: Record<string, unknown>) =>
@@ -347,7 +384,7 @@ describe("bkit repo preflight", () => {
   async function preflight(...argv: string[]) {
     const out: string[] = [];
     const err: string[] = [];
-    const code = await runCommand(["repo", "preflight", ...argv], [repoCommand], {
+    const code = await runCommand(["repo", "preflight", ...argv, "--json"], [repoCommand], {
       classicVerbs: new Set(),
       cwd,
       io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },

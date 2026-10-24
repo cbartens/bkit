@@ -12,6 +12,7 @@ import {
   contextCommand,
   fetchBlocks,
   humanBytes,
+  keepRaw,
   writeDiffArtifact,
 } from "./context";
 import { parseContextFetchStart } from "../../checks/before/context-fetch";
@@ -29,7 +30,7 @@ afterAll(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
 async function run(argv: string[], cwd = tmpDir) {
   const out: string[] = [];
   const err: string[] = [];
-  const code = await runCommand(["context", ...argv], [contextCommand], {
+  const code = await runCommand(["context", ...argv, "--json"], [contextCommand], {
     classicVerbs: new Set(),
     cwd,
     io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
@@ -319,6 +320,84 @@ describe("bkit context clamp (#427 T1)", () => {
     const out = read(f);
     expect(out.startsWith("q 0\r\nq 1\r\n")).toBe(true);
     expect(out).toContain("\nq 4999\r\n> [bkit] TRUNCATED");
+  });
+});
+
+describe("untouched originals (keepRaw)", () => {
+  function gitDir(prefix: string) {
+    const dir = fs.mkdtempSync(path.join(tmpDir, prefix));
+    spawnSync("git", ["init", "-q"], { cwd: dir });
+    return dir;
+  }
+  const outbox = (dir: string, ...rest: string[]) => path.join(dir, ".git", "bkit-outbox", ...rest);
+  /** Every file under `root`, relative, so a test can say nothing landed there. */
+  const filesUnder = (root: string): string[] =>
+    fs.existsSync(root)
+      ? (fs.readdirSync(root, { recursive: true }) as string[]).filter((f) =>
+          fs.statSync(path.join(root, f)).isFile(),
+        )
+      : [];
+
+  it("keepRaw copies the original byte-identical to {name}.raw.{ext} in the folder given", () => {
+    const dir = gitDir("raw-");
+    const src = path.join(dir, "docs/plans/202610/logs/1-x/run-tests-1.md");
+    fs.mkdirSync(path.dirname(src), { recursive: true });
+    const bytes = Buffer.from("caf\u00e9\r\nline 2\n\u0000end");
+    fs.writeFileSync(src, bytes);
+    const raw = keepRaw(src, outbox(dir, "1-x"));
+    expect(raw).toBe(outbox(dir, "1-x", "run-tests-1.raw.md"));
+    expect(fs.readFileSync(raw).equals(bytes)).toBe(true);
+    const noExt = path.join(dir, "trace");
+    fs.writeFileSync(noExt, "t\n");
+    expect(path.basename(keepRaw(noExt, outbox(dir)))).toBe("trace.raw");
+  });
+
+  it("clamp keeps the original in the outbox, never under logs/, and the record names it with its source", async () => {
+    const dir = gitDir("clamp-raw-");
+    const artifact = "docs/plans/202610/logs/1-x/big.md";
+    const content = lines(250);
+    fs.mkdirSync(path.join(dir, path.dirname(artifact)), { recursive: true });
+    fs.writeFileSync(path.join(dir, artifact), content);
+    const r = await run(
+      [
+        "clamp",
+        `--artifact=${artifact}`,
+        "--profile=ledger",
+        "--fid=1-x",
+        "--step=s",
+        "--source=gh run view 42 --log-failed",
+      ],
+      dir,
+    );
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      clamped: true,
+      raw: ".git/bkit-outbox/1-x/big.raw.md",
+      source: "gh run view 42 --log-failed",
+    });
+    expect(r.json.fetchedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+    expect(read(outbox(dir, "1-x", "big.raw.md"))).toBe(content);
+    expect(filesUnder(path.join(dir, "docs"))).toEqual(["plans/202610/logs/1-x/big.md"]);
+    const logged = await run(["clamp-log", "--fid=1-x", "--step=s"], dir);
+    expect(logged.json.records).toEqual([r.json]);
+  });
+
+  it("a file left whole keeps no copy: raw is null", async () => {
+    const dir = gitDir("clamp-whole-");
+    fs.writeFileSync(path.join(dir, "small.md"), lines(3));
+    const r = await run(
+      ["clamp", "--artifact=small.md", "--profile=ledger", "--fid=1-x", "--step=s"],
+      dir,
+    );
+    expect(r.json).toMatchObject({ clamped: false, raw: null, source: null });
+    expect(fs.existsSync(outbox(dir, "1-x"))).toBe(false);
+  });
+
+  it("outside a git repo the original has nowhere to go: clamped, raw null, and it says so", async () => {
+    const f = write("no-repo/big.md", lines(250));
+    const r = await clamp(f, "ledger");
+    expect(r.json).toMatchObject({ clamped: true, raw: null });
+    expect(r.err).toContain("original not kept");
   });
 });
 
@@ -724,6 +803,26 @@ describe("bkit context run-block / finalise (#427 T4)", () => {
     expect(rec.keptLines).toBeLessThan(9002);
   });
 
+  it("a clamped fetch keeps the whole payload in the outbox; the record carries the block body as its source", async () => {
+    const dir = workspace();
+    const body = 'printf "FIRST\\n"; seq 1 9000 | sed "s/$/ quiet payload/"';
+    const r = await run(["run-block", "--idx=1", script(dir, body), ...base], dir);
+    expect(r.json.clamp).toMatchObject({
+      clamped: true,
+      raw: ".git/bkit-outbox/427-x/context-ci-github-1-1.raw.md",
+      source: body,
+    });
+    expect(r.json.clamp.fetchedAt).toMatch(/Z$/);
+    const raw = read(path.join(dir, ".git/bkit-outbox/427-x/context-ci-github-1-1.raw.md"));
+    expect(raw.split("\n")).toHaveLength(9002);
+    expect(raw).not.toContain(FENCE_OPEN);
+    expect(
+      fs
+        .readdirSync(path.join(dir, "docs/plans/202608/logs/427-x"))
+        .filter((f) => f.includes(".raw")),
+    ).toEqual([]);
+  });
+
   it("an unclamped payload is wrapped whole; the block sees its context variables", async () => {
     const dir = workspace();
     const r = await run(
@@ -927,6 +1026,8 @@ describe("bkit context run-block / finalise (#427 T4)", () => {
     expect(g("log", "-1", "--format=%s")).toBe("chore(427-x): fetch-context attempt 1");
     expect(r.json.comment).toContain("Step 4 — Fetch Context");
     expect(r.json.comment).toContain("Verdict: PASS");
+    expect(fs.readFileSync(r.json.commentFile, "utf-8")).toBe(r.json.comment);
+    expect(g("show", "--name-only", "--format=", "HEAD")).not.toContain("tmp/bkit-comment-");
   });
 
   it("finalise --record needs --file", async () => {
@@ -1069,6 +1170,55 @@ describe("bkit context diff", () => {
     expect(r.json.clamp.keptLines).toBe(lines.length - 1);
     const log = await run(["clamp-log", "--fid=1-x", "--step=build-diff", "--attempt=1"], dir);
     expect(log.json.records).toEqual([r.json.clamp]);
+  });
+
+  it("--reset-log empties the step's clamp log before the record lands", async () => {
+    const dir = repo("reset");
+    put(dir, "src.txt", "a\nb\nc\n");
+    commitAll(dir, "work");
+    const flags = [`--artifact=${ARTIFACT}`, "--fid=1-x", "--step=build-diff"];
+    await run(["diff", ...flags], dir);
+    await run(["diff", ...flags], dir);
+    const reset = await run(["diff", ...flags, "--reset-log"], dir);
+    expect(reset.code).toBe(0);
+    const log = await run(["clamp-log", "--fid=1-x", "--step=build-diff"], dir);
+    expect(log.json.records).toEqual([reset.json.clamp]);
+    expect((await run(["diff", `--artifact=${ARTIFACT}`, "--reset-log"], dir)).code).toBe(2);
+  });
+
+  it("partial: prints and writes the files not shown whole, and keeps the whole diff in the outbox", async () => {
+    const dir = repo("omitted");
+    put(dir, "a.txt", numbered(6, "a"));
+    put(dir, "b.txt", numbered(5, "b"));
+    put(dir, "c.txt", numbered(4, "c"));
+    commitAll(dir, "three files");
+    const out = path.join(dir, ARTIFACT);
+    const res = writeDiffArtifact(
+      dir,
+      out,
+      ARTIFACT,
+      "origin/dev...HEAD",
+      { fullLines: 5, topFiles: 2, perFileLines: 11, totalLines: 100 },
+      { rawDir: path.join(dir, ".git/bkit-outbox/1-x") },
+    );
+    expect(res.partial).toBe(true);
+    expect(res.omitted).toEqual(["a.txt", "c.txt"]);
+    const body = read(out);
+    expect(body.split("\n")[1]).toBe("# not shown whole: a.txt, c.txt");
+    expect(res.record.raw).toBe(".git/bkit-outbox/1-x/build-diff-1.raw.md");
+    expect(res.record.source).toBe("git diff origin/dev...HEAD -- . ':(exclude)docs/plans/**'");
+    const raw = read(path.join(dir, ".git/bkit-outbox/1-x/build-diff-1.raw.md"));
+    expect(raw).toContain("+c 4");
+    expect(raw).toContain("+a 6");
+  });
+
+  it("whole: nothing omitted and no copy kept", async () => {
+    const dir = repo("whole-raw");
+    put(dir, "src.txt", "a\nb\nc\n");
+    commitAll(dir, "work");
+    const r = await run(["diff", `--artifact=${ARTIFACT}`, "--fid=1-x", "--step=d"], dir);
+    expect(r.json).toMatchObject({ partial: false, omitted: [], clamp: { raw: null } });
+    expect(fs.existsSync(path.join(dir, ".git/bkit-outbox/1-x"))).toBe(false);
   });
 
   it("the budget honours topFiles and totalLines and says when the ceiling cut a file", () => {

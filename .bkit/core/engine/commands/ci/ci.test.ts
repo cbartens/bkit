@@ -141,7 +141,7 @@ const summary = (over: Record<string, number> = {}) => ({
 async function run(cwd: string, argv: string[], verb = "slop") {
   const out: string[] = [];
   const err: string[] = [];
-  const code = await runCommand(["ci", verb, ...argv], [ciCommand], {
+  const code = await runCommand(["ci", verb, ...argv, "--json"], [ciCommand], {
     classicVerbs: new Set(),
     cwd,
     io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },

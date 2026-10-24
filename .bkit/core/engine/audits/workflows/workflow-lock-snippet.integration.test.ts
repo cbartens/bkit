@@ -1,7 +1,7 @@
-// audits/workflows/workflow-lock-snippet.integration.test.ts — the Resolve FID issue lookup in
-// the phase workflows' Step 1 (`bkit fids find --issue`), plus the guard that every phase
+// audits/workflows/workflow-lock-snippet.integration.test.ts — the Resolve FID line in the
+// phase workflows' Step 1 (`bkit fids resolve`), plus the guard that every phase
 // takes its lock through `bkit locks acquire`. Spawns real bash to execute the extracted
-// lookup line against the repo's built dist/.
+// resolve line against the repo's built dist/.
 //
 // The month-bucket derivation and the refusal of a feature split across two
 // buckets live in `bkit locks acquire --kind=workflow`; their cases live in
@@ -13,6 +13,7 @@ import * as path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getWorkflowsRoot } from "../../shared/package-roots";
+import { parseText } from "../../shared/text";
 
 const WORKFLOWS_DIR = getWorkflowsRoot();
 const BKIT_BIN = path.resolve("dist/cli.js");
@@ -66,8 +67,8 @@ const workflowFiles = fs
   .filter((f) => f.endsWith(".md"))
   .map((f) => path.join(WORKFLOWS_DIR, f));
 
-// Resolve FID, rule 3: with an issue ID, every phase reuses the feature already
-// logged for THAT issue, never the newest leftover `.lock` or newest bucket.
+// Resolve FID: with an issue ID and nothing named, every phase reuses the feature
+// already logged for THAT issue, never the newest leftover `.lock` or newest bucket.
 const PHASES = ["bkit-build.md", "bkit-debug.md", "bkit-design.md", "bkit-plan.md", "bkit-ship.md"];
 const issueLookups = workflowFiles
   .map((file) => ({
@@ -76,41 +77,43 @@ const issueLookups = workflowFiles
       .readFileSync(file, "utf-8")
       .split("\n")
       .map((l) => l.trim())
-      .find((l) => l.startsWith('"{BKIT}" fids find --issue=')),
+      .find((l) => l.startsWith('"{BKIT}" fids resolve --prompt-file=')),
   }))
   .filter((x): x is { file: string; line: string } => x.line !== undefined);
 
 const HAS_ZSH = spawnSync("zsh", ["-c", "true"]).status === 0;
+
+interface Resolved {
+  fid: string | null;
+  source: string | null;
+  fids: string[];
+}
 
 function runLookup(
   lookup: { line: string },
   issueId: string,
   repoRoot: string,
   shell = "bash",
-): { status: number | null; json: { fid: string | null; fids: string[] } | null } {
-  const script = lookup.line
+  tracker = "github",
+): { status: number | null; out: Resolved | null } {
+  const session = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-fid-session-"));
+  roots.push(session);
+  fs.writeFileSync(path.join(session, "prompt.md"), "carry on\n");
+  fs.writeFileSync(
+    path.join(session, "issue-facts.json"),
+    JSON.stringify({ title: "Digital agent MVP" }),
+  );
+  const script = `${lookup.line
+    .replace(/<!--[^>]*-->/g, "")
     .replaceAll("{BKIT}", path.join(repoRoot, "node_modules/.bin/bkit"))
-    .replaceAll("{ISSUE_ID}", issueId);
+    .replaceAll("{SESSION_DIR}", session)
+    .replaceAll("{ISSUE_ID}", issueId)} --tracker=${tracker}`;
   const res = spawnSync(shell, ["-c", script], { cwd: repoRoot, encoding: "utf-8" });
   return {
     status: res.status,
-    json:
-      res.stdout.trim() === ""
-        ? null
-        : (JSON.parse(res.stdout) as { fid: string | null; fids: string[] }),
+    out: res.stdout.trim() === "" ? null : (parseText(res.stdout) as Resolved | null),
   };
 }
-
-describe("every phase takes its feature lock through bkit locks acquire", () => {
-  // The command owns the month bucket and the split-bucket refusal.
-  it.each(PHASES)("%s", (file) => {
-    const phase = file.replace(/^bkit-|\.md$/g, "");
-    const content = fs.readFileSync(path.join(WORKFLOWS_DIR, file), "utf-8");
-    expect(content).toMatch(
-      new RegExp(`"\\{BKIT\\}" locks acquire --kind=workflow --workflow=${phase} --fid=`),
-    );
-  });
-});
 
 describe("Resolve FID — issue lookup reuses only that issue's feature", () => {
   it("every phase workflow carries the lookup", () => {
@@ -120,39 +123,54 @@ describe("Resolve FID — issue lookup reuses only that issue's feature", () => 
   it.each(issueLookups)("$file: names issue 68's feature, not 680's or a locked one", (lookup) => {
     expect(runLookup(lookup, "68", issueRoot)).toEqual({
       status: 0,
-      json: { fid: FID, fids: [FID] },
+      out: expect.objectContaining({ fid: FID, source: "logged", fids: [FID] }),
     });
   });
 
   it.each(issueLookups)("$file: matches a Linear-style issue ID case-insensitively", (lookup) => {
-    expect(runLookup(lookup, "ABC-12", issueRoot).json?.fid).toBe("abc-12-linear-feature");
+    expect(runLookup(lookup, "ABC-12", issueRoot, "bash", "linear").out?.fid).toBe(
+      "abc-12-linear-feature",
+    );
   });
 
   it.each(issueLookups)("$file: matches a Jira-style issue key case-insensitively", (lookup) => {
-    expect(runLookup(lookup, "AB1-12", issueRoot).json?.fid).toBe("ab1-12-jira-feature");
+    expect(runLookup(lookup, "AB1-12", issueRoot, "bash", "jira").out?.fid).toBe(
+      "ab1-12-jira-feature",
+    );
   });
 
   it.each(issueLookups)("$file: lists both features when one issue has two (exit 4)", (lookup) => {
     expect(runLookup(lookup, "68", ambiguousRoot)).toEqual({
       status: 4,
-      json: { fid: null, fids: ["68-first-try", "68-second-try"] },
+      out: expect.objectContaining({ fid: null, fids: ["68-first-try", "68-second-try"] }),
     });
   });
 
-  it.each(issueLookups)("$file: finds nothing for an issue with no logs (exit 1)", (lookup) => {
+  it.each(issueLookups)("$file: mints from the title for an issue with no logs", (lookup) => {
     expect(runLookup(lookup, "999", issueRoot)).toEqual({
-      status: 1,
-      json: { fid: null, fids: [] },
+      status: 0,
+      out: expect.objectContaining({ fid: "999-digital-agent-mvp", source: "minted", fids: [] }),
     });
   });
 
-  it.each(issueLookups)("$file: finds nothing when docs/plans does not exist", (lookup) => {
-    expect(runLookup(lookup, "68", repoWith([])).status).toBe(1);
+  it.each(issueLookups)("$file: mints when docs/plans does not exist", (lookup) => {
+    expect(runLookup(lookup, "68", repoWith([])).out?.source).toBe("minted");
   });
 
   it.skipIf(!HAS_ZSH).each(issueLookups)("$file: runs the same under zsh", (lookup) => {
-    expect(runLookup(lookup, "68", issueRoot, "zsh").json?.fid).toBe(FID);
-    expect(runLookup(lookup, "999", issueRoot, "zsh").status).toBe(1);
+    expect(runLookup(lookup, "68", issueRoot, "zsh").out?.fid).toBe(FID);
+    expect(runLookup(lookup, "999", issueRoot, "zsh").out?.source).toBe("minted");
+  });
+});
+
+describe("every phase takes its feature lock through bkit locks acquire", () => {
+  // The command owns the month bucket and the split-bucket refusal.
+  it.each(PHASES)("%s", (file) => {
+    const phase = file.replace(/^bkit-|\.md$/g, "");
+    const content = fs.readFileSync(path.join(WORKFLOWS_DIR, file), "utf-8");
+    expect(content).toMatch(
+      new RegExp(`"\\{BKIT\\}" locks acquire --kind=workflow --workflow=${phase} --fid=`),
+    );
   });
 });
 

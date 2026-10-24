@@ -63,42 +63,148 @@ describe("gate logs", () => {
     },
   );
 
-  it("build copies the boundary gate log beside the run's artifacts before clamping it", () => {
-    expect(workflow("build")).toContain(
-      'cp "{OUTBOX}/build-subplan-gate-{SUB_PLAN}-{VERIFY_ATTEMPT}.log" "docs/plans/{YYYYMM}/logs/{FID}/build-subplan-gate-{SUB_PLAN}-{VERIFY_ATTEMPT}.md" || exit 2',
-    );
+  // `tests run --artifact` copies the log beside the run's artifacts, resets the
+  // step's clamp log and trims it in one call; no workflow does it by hand.
+  const ARTIFACTS: Array<[string, string]> = [
+    [
+      "build",
+      '--artifact="docs/plans/{YYYYMM}/logs/{FID}/build-subplan-gate-{SUB_PLAN}-{VERIFY_ATTEMPT}.md" --fid={FID} --step=build-subplan-gate-{SUB_PLAN} --attempt={VERIFY_ATTEMPT}',
+    ],
+    [
+      "build",
+      '--artifact="docs/plans/{YYYYMM}/logs/{FID}/run-tests-{TEST_ATTEMPT}.md" --fid={FID} --step=build-run-tests --attempt={TEST_ATTEMPT}',
+    ],
+    [
+      "debug",
+      '--artifact="docs/plans/{YYYYMM}/logs/{FID}/context-tests-local-{DEBUG_ATTEMPT}.md" --fid={FID} --step=debug-run-tests --attempt={DEBUG_ATTEMPT}',
+    ],
+  ];
+
+  it.each(ARTIFACTS)(
+    "%s writes the trimmed gate log with `tests run --artifact`",
+    (name, flags) => {
+      const lines = commandLines(workflow(name), "tests run").filter((l) => l.includes(flags));
+      expect(lines, flags).toHaveLength(1);
+    },
+  );
+
+  it.each(["build", "debug"])("%s never copies or clamps a gate log by hand", (name) => {
+    const text = workflow(name);
+    expect(text).not.toMatch(/^\s*cp "\{OUTBOX\}\/[^"]*\.log"/m);
+    for (const line of commandLines(text, "context clamp")) {
+      expect(line, line).not.toContain("--profile=debug-evidence");
+    }
   });
 
-  it("debug copies the test log beside the run's artifacts before clamping it", () => {
+  it.each(["build", "debug"])(
+    "%s routes the test failures on the engine's count, never a count from the log",
+    (name) => {
+      const text = workflow(name);
+      expect(text).toContain("`failures` as `{TEST_FAILURES}`");
+      expect(text).toContain(
+        "`{FAILURES_FLAG}` = `--failures={TEST_FAILURES}`, empty when `TEST_FAILURES` = null",
+      );
+      expect(text).not.toContain("failing test suites");
+    },
+  );
+});
+
+describe("debug Step 1 start decisions", () => {
+  const step1 = () => section(workflow("debug"), /Step 1 — Start Workflow/);
+
+  it("decides attempt, mode, repro and gates with one `status route --prompt-file`", () => {
+    const [line, ...more] = commandLines(step1(), "status route");
+    expect(more).toEqual([]);
+    expect(line).toContain('--prompt-file="{SESSION_DIR}/prompt.md"');
+    for (const held of [
+      "`debugAttempt` as `{DEBUG_ATTEMPT}`",
+      "`debugMode` as `{DEBUG_MODE}`",
+      "`soakEntry` as `{SOAK_ENTRY}`",
+      "`repro` as `{REPRO}`",
+      "`gates` as `{GATES}`",
+    ])
+      expect(step1()).toContain(held);
+  });
+
+  it("reconstructs nothing in shell or prose", () => {
+    const text = step1();
+    expect(text).not.toContain("jq ");
+    expect(text).not.toContain("SOAK_ROWS");
+    expect(text).not.toContain("counters route");
+  });
+
+  it("Step 3 reads `[live=off]` from the gates, never from the input file", () => {
     const step3 = section(workflow("debug"), /Step 3 — Run Tests/);
-    expect(step3).toContain(
-      'cp "{OUTBOX}/context-tests-local-{DEBUG_ATTEMPT}.log" "$TEST_LOG" || exit 2',
-    );
+    expect(step3).toContain('"{BKIT}" tests run {GATE_FLAGS} ');
+    expect(step3).not.toContain("live=off");
   });
 });
 
 describe("Step 1 FID check", () => {
-  it.each(PHASES)("%s checks the resolved FID at Step 1, outside every tracker block", (name) => {
-    const step1 = section(workflow(name), /Step 1 — Start Workflow/);
-    const at = step1.indexOf(`"{BKIT}" fids check --fid="{FID}"`);
-    expect(at, `${name}: no fids check in Step 1`).toBeGreaterThanOrEqual(0);
-    // Not inside a tracker block: the last block marker before it closes one (or there is none).
-    const before = step1.slice(0, at);
-    expect(
-      unclosedTrackerMarker(before),
-      `${name}: fids check sits inside a tracker block`,
-    ).toBeUndefined();
-    // Gate 1 re-checks the FID shape and the lock mechanically.
-    const gate = commandLines(step1, "steps gate");
-    expect(gate, name).toHaveLength(1);
-    expect(gate[0]).toContain("--fid={FID}");
-    expect(gate[0]).toContain("--token={LOCK_TOKEN}");
+  it.each(PHASES)(
+    "%s resolves the FID at Step 1 with `fids resolve`, outside every tracker block",
+    (name) => {
+      const step1 = section(workflow(name), /Step 1 — Start Workflow/);
+      const at = step1.indexOf(`"{BKIT}" fids resolve --prompt-file="{SESSION_DIR}/prompt.md"`);
+      expect(at, `${name}: no fids resolve in Step 1`).toBeGreaterThanOrEqual(0);
+      // Not inside a tracker block: the last block marker before it closes one (or there is none).
+      expect(
+        unclosedTrackerMarker(step1.slice(0, at)),
+        `${name}: fids resolve sits inside a tracker block`,
+      ).toBeUndefined();
+      const [line] = commandLines(step1, "fids resolve");
+      expect(line).toContain(`--workflow=${name}`);
+      expect(step1).toContain("**If** exit 0 → hold `fid` as `{FID}`");
+      expect(step1).toContain("**If** exit 4 → **Failure Path** listing `fids`");
+      // The chain, the suffixing and the format check all live in the engine.
+      for (const gone of ["fids find", "fids free", '"{BKIT}" fids check']) {
+        expect(step1, `${name}: ${gone}`).not.toContain(gone);
+      }
+      // Gate 1 re-checks the FID shape and the lock mechanically.
+      const gate = commandLines(step1, "steps gate");
+      expect(gate, name).toHaveLength(1);
+      expect(gate[0]).toContain("--fid={FID}");
+      expect(gate[0]).toContain("--token={LOCK_TOKEN}");
+    },
+  );
+
+  it.each(PHASES)(
+    "%s writes the session prompt to a file and reads it with `fids parse`",
+    (name) => {
+      const step1 = section(workflow(name), /Step 1 — Start Workflow/);
+      expect(step1).toContain("`sessionDir` as `{SESSION_DIR}`");
+      expect(step1).toContain("Write the session prompt verbatim to `{SESSION_DIR}/prompt.md`");
+      expect(step1).toContain('"{BKIT}" fids parse --prompt-file="{SESSION_DIR}/prompt.md"');
+      expect(step1).toContain("Hold `fidNamed` as `{FID_NAMED}`");
+      expect(step1).not.toContain("Extract from session prompt");
+      expect(step1).not.toContain("tr '[:upper:]' '[:lower:]'");
+    },
+  );
+});
+
+describe("resume facts", () => {
+  it.each(PHASES)("%s resumes from `lastDoneStep`, never a hand fold", (name) => {
+    const resume = workflow(name)
+      .split("\n")
+      .filter((l) => l.startsWith("> - **Resume:**"));
+    expect(resume, name).toHaveLength(1);
+    expect(resume[0]).toContain("`workflows start` prints `lastDoneStep`");
   });
 
-  it.each(PHASES)("%s finds an already-logged FID with `fids find --issue`", (name) => {
-    const step1 = section(workflow(name), /Step 1 — Start Workflow/);
-    expect(step1).toContain('"{BKIT}" fids find --issue="{ISSUE_ID}"');
-    expect(step1).not.toContain("tr '[:upper:]' '[:lower:]'");
+  it("build resumes an open decision from `openDecision`, not a file scan", () => {
+    const text = workflow("build");
+    expect(text).toContain("its `openDecision` != null");
+    for (const field of [
+      "decision",
+      "question",
+      "pauseStep",
+      "subPlan",
+      "verifyAttempt",
+      "testAttempt",
+      "plan",
+    ]) {
+      expect(text).toContain(`\`${field}\` as`);
+    }
   });
 });
 
@@ -129,7 +235,7 @@ describe("Failure Path", () => {
       const failure = section(workflow(name), /Failure Path/);
       const calls = commandLines(failure, "workflows handover").map((l) => l.trim());
       expect(calls, name).toEqual([
-        `"{BKIT}" workflows handover --workflow=${name} --fid={FID} --month={YYYYMM} --push --worktree="{WORKTREE_PATH}"`,
+        `"{BKIT}" workflows handover --post --workflow=${name} --fid={FID} --month={YYYYMM} --push --worktree="{WORKTREE_PATH}"`,
       ]);
       expect(failure).toContain("**Skip if** `{WORKTREE_PATH}` is not set");
       expect(failure).not.toContain("branches push --mode=abort");
@@ -139,7 +245,7 @@ describe("Failure Path", () => {
 
   it("ship flushes through `workflows handover --flush`", () => {
     const failure = section(workflow("ship"), /Failure Path/);
-    expect(failure).toContain('"{BKIT}" workflows handover --workflow=ship');
+    expect(failure).toContain('"{BKIT}" workflows handover --post --workflow=ship');
     expect(failure).toContain("--flush");
     expect(failure).not.toContain("ledgers union");
   });
@@ -152,32 +258,6 @@ describe("Failure Path", () => {
 
 describe("build", () => {
   const build = workflow("build");
-
-  it("passes each clamp flag as its own argument, never through a spliced variable", () => {
-    const lines = [
-      ...commandLines(build, "context clamp "),
-      ...commandLines(build, "context clamp-log"),
-    ];
-    expect(lines.length).toBeGreaterThan(0);
-    for (const line of lines) {
-      for (const flag of ["--fid=", "--step=", "--attempt="]) {
-        expect(line.split(flag).length - 1, `${flag} once in: ${line}`).toBe(1);
-      }
-      // An unquoted $VAR standing alone would word-split a flag list.
-      expect(line, line).not.toMatch(/\s\$[A-Za-z_][A-Za-z0-9_]*(?=\s|$)/);
-    }
-  });
-
-  it("commits the test log, clamped, beside the run's artifacts", () => {
-    const step14 = section(build, /Step 14 — Run Tests/);
-    expect(step14).toContain(
-      'cp "{OUTBOX}/run-tests-{TEST_ATTEMPT}.log" "docs/plans/{YYYYMM}/logs/{FID}/run-tests-{TEST_ATTEMPT}.md" || exit 2',
-    );
-    expect(step14).toContain(
-      '"{BKIT}" context clamp --artifact="docs/plans/{YYYYMM}/logs/{FID}/run-tests-{TEST_ATTEMPT}.md" --profile=debug-evidence',
-    );
-    expect(step14).toContain('--artifact="docs/plans/{YYYYMM}/logs/{FID}/run-tests-<attempt>.md"');
-  });
 
   it("Step 15's diagnose agent reads the committed log, not the outbox copy", () => {
     const step15 = section(build, /Step 15 — Failure Diagnose/);
@@ -274,14 +354,53 @@ describe("auto", () => {
   });
 });
 
-describe("Large Diff Guard", () => {
-  it.each(["build", "debug", "ship"])("%s carries it as its own header line", (name) => {
-    const lines = workflow(name).split("\n");
-    const guard = lines.filter((l) => l.includes("**Large Diff Guard:**"));
-    expect(guard, name).toHaveLength(1);
-    expect(guard[0]).toMatch(/^> - \*\*Large Diff Guard:\*\* /);
-    // Nothing else shares the line: one labelled bullet only.
-    expect(guard[0]!.match(/\*\*[A-Z][A-Za-z -]+:\*\*/g)).toHaveLength(1);
+describe("diff per reader", () => {
+  // Every agent that reads the run's diff gets a fresh `tmp/bkit-diff-{FID}.md`,
+  // written by `context diff` in the same sub-step, just before the agent.
+  // Debug runs on dev, so its diff names the base the run started from.
+  const BASE_FLAG: Record<string, string> = { build: "", debug: " --base={DIFF_BASE}", ship: "" };
+  const READERS: Array<[string, RegExp, string, string[]]> = [
+    ["build", /Failure Path/, "abort-handover", ["bkit-debug-abort-handover"]],
+    ["build", /Sub-Plan Loop/, "build-plan-verify", ["bkit-build-plan-verify"]],
+    ["build", /Step 9 — /, "build-plan-verify-holistic", ["bkit-build-plan-verify"]],
+    [
+      "build",
+      /Step 10 — Build Challenge/,
+      "build-challenge",
+      ["bkit-build-challenge-1", "bkit-build-challenge-2"],
+    ],
+    ["debug", /Failure Path/, "abort-handover", ["bkit-debug-abort-handover"]],
+    ["debug", /Step 10 — Summary/, "debug-summary", ["bkit-debug-summary"]],
+    ["ship", /Failure Path/, "abort-handover", ["bkit-debug-abort-handover"]],
+    ["ship", /Step 5 — /, "ship-deferred-sweep", ["bkit-ship-deferred-sweep"]],
+  ];
+
+  it.each(READERS)(
+    "%s %s writes the diff right before its agents",
+    (name, heading, step, agents) => {
+      const text = section(workflow(name), heading);
+      const [line, ...more] = commandLines(text, "context diff");
+      expect(more, `${step}: one diff call`).toEqual([]);
+      expect(line).toContain(
+        `context diff --reset-log --artifact="tmp/bkit-diff-{FID}.md"${BASE_FLAG[name]} --fid={FID} --step=${step}`,
+      );
+      for (const agent of agents) {
+        const invoke = text.indexOf(`**Subagent:** Invoke \`@${agent}\``);
+        expect(invoke, agent).toBeGreaterThan(text.indexOf(line!));
+        const read = text
+          .slice(invoke)
+          .split("\n")
+          .find((l) => l.trim().startsWith("Read:"));
+        expect(read, agent).toContain("`tmp/bkit-diff-{FID}.md` (the run's diff");
+      }
+    },
+  );
+
+  it.each(["build", "debug", "ship"])("%s hands no agent a raw `git diff`", (name) => {
+    const text = workflow(name);
+    expect(text).not.toContain("Large Diff Guard");
+    for (const read of text.split("\n").filter((l) => l.trim().startsWith("Read:")))
+      expect(read).not.toMatch(/`git diff [^`]*\.\.\.HEAD`/);
   });
 });
 
@@ -350,11 +469,15 @@ describe("design and plan close", () => {
   });
 
   it.each(["design", "plan", "debug"])(
-    "%s skips a related issue whose comments do not parse, and names it",
+    "%s reads its related issues through one `issues related` call",
     (name) => {
       const text = workflow(name);
-      // One per tracker: github, linear, jira.
-      expect(text.split("Skipped: comments did not parse.").length - 1, name).toBe(3);
+      const calls = commandLines(text, "issues related");
+      expect(calls, name).toHaveLength(1);
+      expect(calls[0]).toContain('--hits-file="{OUTBOX}/related-hits.json"');
+      expect(calls[0]).toContain("--out=");
+      // Unparseable comments are the engine's to skip, not the workflow's.
+      expect(text).not.toContain("Skipped: comments did not parse.");
     },
   );
 });
@@ -375,24 +498,41 @@ describe("locks", () => {
   });
 });
 
-describe("setup tips at the close", () => {
-  it.each(PHASES)("%s runs bkit tips in the step before Final return, which appends it", (name) => {
-    const lines = workflow(name).split("\n");
-    const finalIdx = lines.findIndex((l) => /^\d+\. Final return:/.test(l));
-    const collectIdx = lines.findIndex((l) => /^\d+\. Collect setup tips:/.test(l));
-    expect(collectIdx, name).toBeGreaterThanOrEqual(0);
-    expect(collectIdx, name).toBeLessThan(finalIdx);
-    const collect = lines.slice(collectIdx, finalIdx).join("\n");
-    expect(commandLines(collect, "tips"), name).toEqual([
-      expect.stringContaining(`"{BKIT}" tips --workflow=${name}`),
-    ]);
-    expect(collect).toContain("`{BKIT_TIPS}`");
-    // The whole Final return step: its indented lines, up to the next unindented line.
-    const final = lines
-      .slice(finalIdx)
-      .join("\n")
-      .split(/\n(?=\S)/)[0];
-    expect(final).toContain("Append `{BKIT_TIPS}`");
+describe("final return at the close", () => {
+  it.each(PHASES)(
+    "%s builds its final message in `workflows close` and displays it verbatim",
+    (name) => {
+      const text = workflow(name);
+      const lines = text.split("\n");
+      const close = commandLines(text, "workflows close").filter((l) =>
+        l.includes("--final-return"),
+      );
+      expect(close, name).toHaveLength(1);
+      expect(close[0]).toContain('--session-dir="{SESSION_DIR}"');
+      // Setup tips are appended by the engine, never collected by the workflow.
+      expect(commandLines(text, "tips"), name).toEqual([]);
+      expect(text).not.toContain("{BKIT_TIPS}");
+      const finalIdx = lines.findIndex((l) => /^\d+\. Final return:/.test(l));
+      expect(finalIdx, name).toBeGreaterThanOrEqual(0);
+      expect(lines[finalIdx]).toContain("display `{FINAL_RETURN}` verbatim");
+    },
+  );
+
+  it.each(PHASES.filter((p) => p !== "ship"))("%s passes its summary file", (name) => {
+    const close = commandLines(workflow(name), "workflows close").filter((l) =>
+      l.includes("--final-return"),
+    );
+    expect(close[0]).toContain("--summary-file=");
+  });
+
+  // Ship's summary may be absent (PR merged on entry): the engine supplies the missing line.
+  it("ship passes its summary path plus the missing-summary line", () => {
+    const close = commandLines(workflow("ship"), "workflows close").filter((l) =>
+      l.includes("--final-return"),
+    );
+    expect(close[0]).toContain(
+      '--summary="docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md" --summary-missing=',
+    );
   });
 });
 
@@ -489,11 +629,15 @@ const boardFences = (lines: string[]): number[] =>
 const commentPosts = (lines: string[]): number[] =>
   lines.flatMap((l, i) => (/[Pp]ost `comment`/.test(l) ? [i] : []));
 
-/** A Failure Path comment post is guarded on its own line or by a Skip line in its tracker block. */
+/**
+ * A Failure Path comment post is guarded on its own line, by a Skip line in its tracker block, or
+ * is the `tracker.done` = false fallback: with no issue the engine prints `skipped`, never `done`.
+ */
 function guardedPost(lines: string[], blocks: TrackerBlock[], i: number): boolean {
   const block = innermostBlock(blocks, i);
   return (
     /`ISSUE_ID` (?:non-)?empty/.test(lines[i]!) ||
+    lines[i]!.includes("`tracker.done` = false → post `comment`") ||
     (block !== undefined && lines.slice(block.start, i + 1).some((l) => l.includes(SKIP_NO_ISSUE)))
   );
 }
@@ -506,7 +650,7 @@ const blocksWithin = (lines: string[], from: number, to: number): TrackerBlock[]
 const blockerBlocks = (step1: string[]): TrackerBlock[] =>
   trackerBlocks(step1).filter(
     (b) =>
-      ["github", "linear", "jira"].includes(b.kind) &&
+      ["github", "linear", "jira", "true"].includes(b.kind) &&
       /blocked|blockers/.test(step1.slice(b.start, b.end + 1).join("\n")),
   );
 
@@ -548,21 +692,29 @@ describe("issue-less runs", () => {
 
   it.each(PHASES)("%s: no wired-tracker block STOPs on a missing issue", (name) => {
     const step1 = section(workflow(name), /Step 1 — Start Workflow/).split("\n");
-    const wired = trackerBlocks(step1).filter((b) => ["github", "linear", "jira"].includes(b.kind));
+    const wired = trackerBlocks(step1).filter((b) =>
+      ["github", "linear", "jira", "true"].includes(b.kind),
+    );
     expect(wired.length, name).toBeGreaterThan(0);
     for (const b of wired) {
-      const text = step1.slice(b.start, b.end + 1).join("\n");
-      expect(text, `${name}: ${b.kind} block at Step 1 line ${b.start + 1}`).not.toContain("STOP");
-      expect(text).not.toContain("No issue ID in the session prompt");
+      const block = step1.slice(b.start, b.end + 1);
+      // A STOP here answers an engine exit (a bad branch name, a ship of dev), never a missing issue.
+      for (const stop of block.filter((l) => l.includes("STOP"))) {
+        expect(stop, `${name}: ${b.kind} block at Step 1 line ${b.start + 1}`).toMatch(
+          /\*\*If\*\* exit \d+\b[^\n]*\*\*STOP\*\*/,
+        );
+        expect(stop).not.toContain("`ISSUE_ID` empty");
+      }
+      expect(block.join("\n")).not.toContain("No issue ID in the session prompt");
     }
   });
 
-  it.each(PHASES)("%s: fids check and steps gate carry --issue in every workflow", (name) => {
+  it.each(PHASES)("%s: fids resolve and steps gate carry --issue in every workflow", (name) => {
     // The flag sits in a tracker block (a `none` run has no issue), so read the wired render.
     const text = substituteWorkflow(workflow(name), "github").output;
     const step1 = section(text, /Step 1 — Start Workflow/);
-    expect(commandLines(step1, "fids check"), name).toEqual([
-      expect.stringContaining('--fid="{FID}" --issue="{ISSUE_ID}"'),
+    expect(commandLines(step1, "fids resolve"), name).toEqual([
+      expect.stringContaining('--issue="{ISSUE_ID}" --title-file="{SESSION_DIR}/issue-facts.json"'),
     ]);
     const gate = commandLines(step1, "steps gate");
     expect(gate, name).toHaveLength(1);
@@ -597,24 +749,24 @@ describe("issue-less runs", () => {
       .slice(finalAt)
       .join("\n")
       .split(/\n(?=\S)/)[0];
-    expect(final, `${name}: Final return`).toContain(FINAL_FIRST_LINE);
+    // The close passes the warning to the engine, which puts it first in `{FINAL_RETURN}`.
+    expect(final, `${name}: Final return`).toContain("`{FINAL_RETURN}` verbatim");
+    expect(text, `${name}: close --warning`).toContain(
+      '**If** the no-issue warning was emitted → add `--warning="<that warning>"`.',
+    );
     expect(section(text, /Failure Path/), `${name}: Failure Path STOP`).toContain(FINAL_FIRST_LINE);
     const failDisplay = lines.filter((l) => l.includes("`SUMMARY_VERDICT` = FAIL → display"));
     expect(failDisplay.length, `${name}: summary-FAIL display`).toBe(1);
     expect(failDisplay[0], `${name}: summary-FAIL display`).toContain(FINAL_FIRST_LINE);
   });
 
-  it.each(PHASES)("%s: the wired Extract lines leave the recovery to the true block", (name) => {
+  it.each(PHASES)("%s: no wired-tracker block extracts the issue from the prompt", (name) => {
     const step1 = section(workflow(name), /Step 1 — Start Workflow/).split("\n");
     const extract = trackerBlocks(step1)
       .filter((b) => ["github", "linear", "jira"].includes(b.kind))
       .map((b) => step1.slice(b.start, b.end + 1).join("\n"))
       .filter((t) => t.includes("Extract from session prompt"));
-    expect(extract, name).toHaveLength(3);
-    for (const t of extract) {
-      expect(t).not.toContain("fids parse");
-      expect(t).not.toContain("STOP");
-    }
+    expect(extract, name).toEqual([]);
   });
 
   it.each(PHASES)(
@@ -643,31 +795,25 @@ describe("issue-less runs", () => {
     },
   );
 
-  it.each(PHASES)("%s: sub-step 5.2 compares a held ISSUE_ID to the branch FID", (name) => {
-    const line = workflow(name)
-      .split("\n")
-      .find((l) => l.includes("`BRANCH` = `feat/{FID}` → that `FID`"));
-    expect(line, name).toBeDefined();
-    expect(line).toContain("with `ISSUE_ID` non-empty, only when `FID` starts with `ISSUE_ID`");
+  it("build counts sub-plans with `fids plans`, and ship checks the plan with it", () => {
+    expect(workflow("build")).toContain('"{BKIT}" fids plans --fid={FID} --month={YYYYMM}');
+    expect(workflow("build")).toContain('if [ "{PLAN_SOURCE}" = none ]; then');
+    expect(workflow("ship")).toContain('"{BKIT}" fids plans --fid="{FID}" --month="{YYYYMM}"');
+    expect(workflow("ship")).toContain('if [ "{PLAN_SOURCE}" = none ]; then');
+    for (const name of ["build", "ship"]) {
+      expect(workflow(name), name).not.toMatch(/find [^\n]*-name '\{FID\}-plan/);
+    }
   });
 
-  it.each(PHASES)(
-    "%s: a minted issue-less FID goes through fids free, which re-mints on exit 1",
-    (name) => {
-      const step1 = section(workflow(name), /Step 1 — Start Workflow/);
-      const lines = step1.split("\n");
-      const at = lines.findIndex((l) => l.includes("fids free"));
-      expect(at, name).toBeGreaterThan(0);
-      expect(lines[at]).toContain(`--workflow=${name}`);
-      const block = lines.slice(at - 3, at + 8).join("\n");
-      expect(block).toContain("**Run only if** sub-step 4 minted `FID` with `ISSUE_ID` empty");
-      expect(block).toContain("`{FID}` = the printed `fid`");
-      expect(block).toContain("**If** exit 1 → re-mint once");
-      expect(block).toContain("**Failure Path**");
-      // The suffix check comes before the format check on the resolved FID.
-      expect(step1.indexOf("fids free")).toBeLessThan(step1.indexOf('"{BKIT}" fids check'));
-    },
-  );
+  it("plan reads the parent design and audit reports from `fids design`", () => {
+    const step1 = section(workflow("plan"), /Step 1 — Start Workflow/);
+    expect(step1).toContain('--prompt-file="{SESSION_DIR}/prompt.md"');
+    expect(step1).toContain('--description-file="{SESSION_DIR}/issue-description.md"');
+    expect(step1).toContain("Hold `auditPaths` as `{AUDIT_PATHS}`");
+    expect(step1).toContain(
+      "hold `parentFid` as `{PARENT_FID}`, `parentMonth` as `{PARENT_YYYYMM}`",
+    );
+  });
 
   it.each(["design", "plan"])(
     "%s: the merge MCP fallback asserts base.ref = dev before merging",
@@ -762,7 +908,8 @@ describe("issue-less runs", () => {
   it("build Step 1 blocker check skips when ISSUE_ID is empty", () => {
     const step1 = section(workflow("build"), /Step 1 — Start Workflow/).split("\n");
     const blockers = blockerBlocks(step1);
-    expect(blockers).toHaveLength(3);
+    expect(blockers).toHaveLength(1);
+    expect(step1.join("\n")).toContain('"{BKIT}" issues blocked-by --issue="{ISSUE_ID}"');
     for (const b of blockers) {
       expect(step1.slice(b.start, b.end + 1).join("\n")).toContain(SKIP_NO_ISSUE);
     }
@@ -807,8 +954,8 @@ describe("debug on dev", () => {
 
   it("debug diffs against DIFF_BASE on dev", () => {
     expect(debug).not.toContain("origin/dev..HEAD");
-    const guard = debug.split("\n").find((l) => l.includes("**Large Diff Guard:**"));
-    expect(guard).toContain("git diff {DIFF_BASE}...HEAD");
+    for (const line of commandLines(debug, "context diff"))
+      expect(line).toContain("--base={DIFF_BASE}");
     const step2 = section(debug, /Step 2 — Worktree Setup/);
     expect(step2).toContain("`startSha` as `{DIFF_BASE}`");
     expect(step2).toContain("`origin/dev` when null");
@@ -829,8 +976,11 @@ describe("debug on dev", () => {
   });
 
   it("the TRIGGER_PR commit is unreachable on dev", () => {
-    const adds = debug.split("\n").filter((l) => l.includes("git add -A"));
-    expect(adds).toHaveLength(1);
+    const commits = debug
+      .split("\n")
+      .filter((l) => /"\{BKIT\}" branches push\b.*--commit=/.test(l));
+    expect(commits).toHaveLength(1);
+    expect(debug).not.toContain("git add -A");
     const step11 = section(debug, /Step 11 — Close Workflow/);
     expect(step11).toMatch(
       /`BRANCH` = `dev` \*\*or\*\* `main` → push to trigger branch \(CI fires\) → `TRIGGER_PR` = 0/,

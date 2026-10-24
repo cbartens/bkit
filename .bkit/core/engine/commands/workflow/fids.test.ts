@@ -9,13 +9,14 @@ import {
   fidProblem,
   featureIssueIds,
   fidsCommand,
-  freeFid,
   fromBranch,
   fromMarker,
   ISSUE_ID_PATTERNS,
   ISSUE_LESS_FID,
   issueIdOf,
+  mintFid,
   readIssueTracker,
+  slugWords,
 } from "./fids";
 
 const dirs: string[] = [];
@@ -55,7 +56,7 @@ function features(dir: string, ...keys: string[]) {
 async function run(cwd: string, argv: string[]) {
   const out: string[] = [];
   const err: string[] = [];
-  const code = await runCommand(["fids", ...argv], [fidsCommand], {
+  const code = await runCommand(["fids", ...argv, "--json"], [fidsCommand], {
     classicVerbs: new Set(),
     cwd,
     io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
@@ -227,6 +228,12 @@ describe("bkit fids check --issue", () => {
     const bad = await run(project(), ["check", "--fid=Fix_CI", "--tracker=any", "--issue="]);
     expect(bad.code).toBe(1);
     expect(bad.err).toContain("not a slug");
+  });
+
+  it('check --issue="#677" strips the # like find and resolve', async () => {
+    const r = await run(project(), ["check", "--fid=677-foo", "--tracker=github", "--issue=#677"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ valid: true, issueId: "677" });
   });
 
   it("check --issue=N requires the FID to embed that same issue", async () => {
@@ -707,87 +714,587 @@ describe("bkit fids design", () => {
   });
 });
 
-describe("bkit fids free", () => {
-  /** A git repo with a status log per `[month, fid, events]`. */
-  function logs(...entries: [month: string, fid: string, events: string[]][]) {
-    const d = project();
-    spawnSync("git", ["init", "-q"], { cwd: d });
-    for (const [month, fid, events] of entries) {
-      const dir = path.join(d, "docs", "plans", month, "logs", fid);
-      fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(
-        path.join(dir, "status.jsonl"),
-        events
-          .map(
-            (type) =>
-              `${JSON.stringify({ type, workflow: "debug", at: "2026-10-01T00:00:00Z" })}\n`,
-          )
-          .join(""),
-      );
-    }
-    return d;
+/** A git repo on `branch` with bkit.issueTracker = `tracker`, one commit, and `files` written. */
+function gitRepo(tracker: string, branch = "dev", files: Record<string, string> = {}) {
+  const d = project(tracker);
+  const g = (...a: string[]) =>
+    spawnSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...a], { cwd: d });
+  g("init", "-q", "-b", branch);
+  for (const [rel, body] of Object.entries(files)) {
+    fs.mkdirSync(path.dirname(path.join(d, rel)), { recursive: true });
+    fs.writeFileSync(path.join(d, rel), body);
   }
-  const finished = ["workflow-started", "workflow-done"];
+  g("add", "-A");
+  g("commit", "-q", "--allow-empty", "-m", "base");
+  return { d, g };
+}
 
-  it("returns the minted name when no run used it", async () => {
-    const d = logs(["202610", "other-thing", finished]);
-    expect(await run(d, ["free", "--fid=dev-ci", "--workflow=debug"])).toMatchObject({
+/** Writes the prompt (and any extra files) into the repo's tmp/ and returns its path. */
+function promptFile(d: string, text: string, name = "prompt.md") {
+  const file = path.join(d, "tmp", name);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, text);
+  return file;
+}
+
+describe("bkit fids parse --prompt-file", () => {
+  async function parse(tracker: string, text: string, files: Record<string, string> = {}) {
+    const { d } = gitRepo(tracker, "dev", files);
+    return run(d, ["parse", `--prompt-file=${promptFile(d, text)}`]);
+  }
+
+  it.each([
+    "please do #12 today",
+    "<id>12</id>",
+    "<github_issue>12</github_issue>",
+    "GitHub issue: #12",
+    "ISSUE-12 needs work",
+    "see o/r#12",
+    "https://github.com/o/r/issues/12",
+    "(#12)",
+  ])("github reads %j as issue 12", async (text) => {
+    expect(await parse("github", text)).toMatchObject({
       code: 0,
-      json: { fid: "dev-ci", requested: "dev-ci", suffixed: false },
+      json: { source: "github", issue: "12", ref: "#12", fidNamed: null },
     });
   });
 
-  it("takes -b when a finished run used the name, then -c, in any month bucket", async () => {
-    const d = logs(["202609", "dev-ci", finished]);
-    expect((await run(d, ["free", "--fid=dev-ci", "--workflow=debug"])).json).toEqual({
-      fid: "dev-ci-b",
-      requested: "dev-ci",
-      suffixed: true,
+  it.each([
+    "<id>ABC-12</id>",
+    "<linear_issue>ABC-12</linear_issue>",
+    "Linear issue: ABC-12",
+    "issue ABC-12",
+    "ISSUE-ABC-12",
+    "https://linear.app/acme/issue/ABC-12/some-title",
+    "https://linear.app/acme/issue/abc-12/some-title",
+  ])("linear reads %j as ABC-12", async (text) => {
+    expect((await parse("linear", text)).json).toMatchObject({
+      source: "linear",
+      issue: "ABC-12",
+      ref: "ABC-12",
     });
-    const e = logs(
-      ["202609", "dev-ci", finished],
-      ["202610", "dev-ci-b", ["workflow-started", "workflow-failed"]],
+  });
+
+  it.each([
+    "issue PROJ2-7",
+    "<id>PROJ2-7</id>",
+    "<jira_issue>PROJ2-7</jira_issue>",
+    "Jira issue: PROJ2-7",
+    "ISSUE-PROJ2-7",
+    "https://acme.atlassian.net/browse/PROJ2-7",
+  ])("jira reads %j as PROJ2-7", async (text) => {
+    expect((await parse("jira", text)).json).toMatchObject({
+      source: "jira",
+      issue: "PROJ2-7",
+      ref: "PROJ2-7",
+    });
+  });
+
+  it.each([
+    ["github", "12"],
+    ["github", "fix it in 12 steps"],
+    ["github", "fix ABC-12"],
+    ["linear", "#12"],
+    ["jira", "https://github.com/o/r/issues/12"],
+    ["none", "#12 and ABC-12"],
+  ])("%s: %j names no issue (source none)", async (tracker, text) => {
+    expect(await parse(tracker, text)).toMatchObject({
+      code: 0,
+      json: { source: "none", issue: "", ref: "", fidNamed: null },
+    });
+  });
+
+  it("an explicit form wins over a bare mention, with a warning naming the other", async () => {
+    const r = await parse("github", "do #7 after https://github.com/o/r/issues/9 and #7");
+    expect(r).toMatchObject({ code: 0, json: { issue: "9", ref: "#9" } });
+    expect(r.err).toContain("#7");
+  });
+
+  it.each([
+    ["priority #1, then GitHub issue: #677", "677"],
+    ["priority #1, then issue #677", "677"],
+    ["priority #1, then <id>677</id>", "677"],
+    ["priority #1, then https://github.com/o/r/issues/677", "677"],
+    ["set color: #123456 for the header, see #677", "677"],
+    ["header { background-color: #333; } and fix #677", "677"],
+    ["fix #677 (UTF-8 output)", "677"],
+  ])("github: %j reads as issue %s", async (text, issue) => {
+    expect(await parse("github", text)).toMatchObject({
+      code: 0,
+      json: { source: "github", issue },
+    });
+  });
+
+  it("github: a 3- or 6-digit #N outside a colour context stays an issue", async () => {
+    expect((await parse("github", "fixes: #123")).json).toMatchObject({ issue: "123" });
+  });
+
+  it("two bare mentions of different issues exit 8 and print them as ambiguous", async () => {
+    const r = await parse("github", "this is priority #1, then fix #677");
+    expect(r.code).toBe(8);
+    expect(r.json).toEqual({ ambiguous: ["#1", "#677"] });
+    expect(r.err).toContain("#N");
+  });
+
+  it("two explicit forms naming different issues exit 8", async () => {
+    const r = await parse("github", "GitHub issue: #5 and https://github.com/o/r/issues/6");
+    expect(r.code).toBe(8);
+    expect(r.json).toEqual({ ambiguous: ["#5", "#6"] });
+  });
+
+  /** package.json wiring the tracker with `bkit.linear.team` / `bkit.jira.project` set to `key`. */
+  const keyed = (tracker: string, key: string) => ({
+    "package.json": JSON.stringify({
+      bkit: {
+        issueTracker: tracker,
+        [tracker]: tracker === "linear" ? { team: key } : { project: key },
+      },
+    }),
+  });
+
+  it.each([
+    ["linear", "ABC", "Migrate hashing to SHA-256 for ABC-12", "ABC-12"],
+    ["linear", "abc", "fix ABC-12 (UTF-8 output)", "ABC-12"],
+    ["jira", "PROJ2", "Migrate hashing to SHA-256 for PROJ2-7", "PROJ2-7"],
+    ["jira", "PROJ2", "Linear issue: nope, Jira issue: PROJ2-7, UTF-8", "PROJ2-7"],
+  ])("%s with key %s configured: %j reads as %s", async (t, key, text, issue) => {
+    expect(await parse(t, text, keyed(t, key))).toMatchObject({
+      code: 0,
+      json: { source: t, issue },
+    });
+  });
+
+  it("linear with a team configured: a bare key of another prefix names no issue", async () => {
+    const r = await parse("linear", "fix #677 (UTF-8 output)", keyed("linear", "ENG"));
+    expect(r).toMatchObject({ code: 0, json: { source: "none", issue: "" } });
+  });
+
+  it("linear with an explicit form: the tag wins whatever the configured team", async () => {
+    const r = await parse("linear", "<id>OPS-4</id> see SHA-256", keyed("linear", "ENG"));
+    expect(r.json).toMatchObject({ source: "linear", issue: "OPS-4" });
+  });
+
+  it.each([
+    ["linear", "bkit.linear.team"],
+    ["jira", "bkit.jira.project"],
+  ])(
+    "%s with no key configured: a bare key names no issue, with a hint naming %s",
+    async (t, setting) => {
+      for (const text of ["Migrate to SHA-256", "Migrate hashing to SHA-256 for ABC-12"]) {
+        const r = await parse(t, text);
+        expect(r).toMatchObject({ code: 0, json: { source: "none", issue: "" } });
+        expect(r.err).toContain("SHA-256");
+        expect(r.err).toContain(setting);
+      }
+    },
+  );
+
+  it.each(["linear", "jira"])(
+    "%s with no key configured: a labelled key still counts",
+    async (t) => {
+      const r = await parse(t, "issue ABC-12, then SHA-256");
+      expect(r).toMatchObject({ code: 0, json: { source: t, issue: "ABC-12" } });
+      expect(r.err).not.toContain(`bkit.${t}`);
+    },
+  );
+
+  /** A github repo whose origin is `url`. */
+  async function parseWithOrigin(url: string, text: string) {
+    const { d, g } = gitRepo("github");
+    g("remote", "add", "origin", url);
+    return run(d, ["parse", `--prompt-file=${promptFile(d, text)}`]);
+  }
+
+  it.each([
+    ["see https://github.com/other/repo/issues/9 and fix #677", "677"],
+    ["see https://github.com/Other/Repo/issues/9", ""],
+    ["see https://github.com/o/r/issues/9 and fix #677", "9"],
+    ["see https://github.com/O/R/issues/9 and fix #677", "9"],
+    ["see other/repo#9 and fix #677", "677"],
+    ["see other/repo#9", ""],
+    ["see o/r#9 and fix #677", "9"],
+    ["see O/R#9", "9"],
+  ])("github with origin O/r: %j reads as %j", async (text, issue) => {
+    const r = await parseWithOrigin("git@github.com:O/r.git", text);
+    expect(r).toMatchObject({ code: 0, json: { issue } });
+  });
+
+  /** package.json wiring jira with `bkit.jira` set to `jira`. */
+  const jiraCfg = (jira: Record<string, string>) => ({
+    "package.json": JSON.stringify({ bkit: { issueTracker: "jira", jira } }),
+  });
+
+  it.each([
+    ["see https://linear.app/acme/issue/OPS-4/x and fix ABC-12", "ABC-12"],
+    ["see https://linear.app/acme/issue/OPS-4/x", ""],
+    ["see https://linear.app/acme/issue/abc-9/x and fix ABC-12", "ABC-9"],
+  ])("linear with team ABC: %j reads as %j", async (text, issue) => {
+    const r = await parse("linear", text, keyed("linear", "ABC"));
+    expect(r).toMatchObject({ code: 0, json: { issue } });
+  });
+
+  it.each([
+    [
+      { site: "https://acme.atlassian.net/", project: "PROJ2" },
+      "see https://other.atlassian.net/browse/PROJ2-9 and fix PROJ2-7",
+      "PROJ2-7",
+    ],
+    [
+      { site: "https://acme.atlassian.net", project: "PROJ2" },
+      "see https://acme.atlassian.net/browse/OPS-9 and fix PROJ2-7",
+      "PROJ2-7",
+    ],
+    [
+      { site: "https://ACME.atlassian.net", project: "PROJ2" },
+      "see https://acme.atlassian.net/browse/PROJ2-9 and fix PROJ2-7",
+      "PROJ2-9",
+    ],
+    [{ site: "https://acme.atlassian.net" }, "see https://other.atlassian.net/browse/PROJ2-9", ""],
+    [
+      { site: "https://acme.atlassian.net" },
+      "see https://acme.atlassian.net/browse/OPS-9",
+      "OPS-9",
+    ],
+    [
+      { project: "PROJ2" },
+      "see https://any.atlassian.net/browse/PROJ2-9 and fix PROJ2-7",
+      "PROJ2-9",
+    ],
+  ])("jira with %j: %j reads as %j", async (jira, text, issue) => {
+    const r = await parse("jira", text, jiraCfg(jira));
+    expect(r).toMatchObject({ code: 0, json: { issue } });
+  });
+
+  it("a bare number with no issue prints a hint to write #N", async () => {
+    const r = await parse("github", "/bkit-build 123");
+    expect(r).toMatchObject({ code: 0, json: { source: "none", issue: "" } });
+    expect(r.err).toContain("123 reads as a bare number; write #123");
+  });
+
+  it("fidNamed: feat/ and docs/plans paths always count; a bare word only with a log folder", async () => {
+    const logged = { "docs/plans/202610/logs/12-old-thing/status.jsonl": "" };
+    expect((await parse("github", "resume feat/12-old-thing please", logged)).json.fidNamed).toBe(
+      "12-old-thing",
     );
-    expect((await run(e, ["free", "--fid=dev-ci", "--workflow=debug"])).json.fid).toBe("dev-ci-c");
+    expect((await parse("github", "read docs/plans/202609/30-x-y-plan.md")).json.fidNamed).toBe(
+      "30-x-y",
+    );
+    expect((await parse("github", "see docs/plans/202609/30-x-y-design.md")).json.fidNamed).toBe(
+      "30-x-y",
+    );
+    expect(
+      (await parse("github", "see docs/plans/202609/logs/30-x-y/status.jsonl")).json.fidNamed,
+    ).toBe("30-x-y");
+    expect((await parse("github", "continue 12-old-thing", logged)).json.fidNamed).toBe(
+      "12-old-thing",
+    );
+    expect((await parse("github", "continue 12-old-thing")).json.fidNamed).toBeNull();
   });
 
-  it("continues a name whose last run of the workflow is IN_PROGRESS", async () => {
-    const d = logs(["202610", "dev-ci", ["workflow-started"]]);
-    expect((await run(d, ["free", "--fid=dev-ci", "--workflow=debug"])).json).toMatchObject({
-      fid: "dev-ci",
-      suffixed: false,
+  it("a missing prompt file exits 7; --prompt-file with --branch is a usage error", async () => {
+    const { d } = gitRepo("github");
+    expect((await run(d, ["parse", `--prompt-file=${path.join(d, "nope.md")}`])).code).toBe(7);
+    const file = promptFile(d, "#1");
+    expect((await run(d, ["parse", `--prompt-file=${file}`, "--branch=feat/1-x"])).code).toBe(2);
+  });
+});
+
+describe("slugWords and mintFid", () => {
+  it("drops stopwords and all-digit words, keeps the first three in text order", () => {
+    expect(slugWords("Engine resolves Step 1: the issue id, FID")).toEqual([
+      "engine",
+      "resolves",
+      "step",
+      "issue",
+      "id",
+      "fid",
+    ]);
+  });
+
+  it("folds non-ASCII letters to ASCII and drops what cannot fold", () => {
+    expect(slugWords("Café über naïve 日本")).toEqual(["cafe", "uber", "naive"]);
+  });
+
+  it("ignores URLs, tags and slash commands", () => {
+    expect(slugWords("/bkit-debug <id>4</id> https://x.io/a fix login")).toEqual(["fix", "login"]);
+  });
+
+  it("mints {issue}-{slug} from the title, else the prompt, else the workflow", () => {
+    expect(mintFid({ issue: "12", title: "Export the CSV report now", prompt: "x" })).toBe(
+      "12-export-csv-report",
+    );
+    expect(mintFid({ issue: "ABC-3", title: "The and of", prompt: "Sync calendar" })).toBe(
+      "abc-3-sync-calendar",
+    );
+    expect(mintFid({ issue: "12", title: "", prompt: "the", workflow: "design" })).toBe(
+      "12-design",
+    );
+  });
+
+  it("issue-less: the branch's last segment leads and does not count toward three words", () => {
+    expect(mintFid({ issue: "", prompt: "Fix the flaky login test today", branch: "dev" })).toBe(
+      "dev-fix-flaky-login",
+    );
+    expect(mintFid({ issue: "", prompt: "fix login", branch: "claude/tidy-up-2-things" })).toBe(
+      "tidy-up-things-fix-login",
+    );
+    expect(mintFid({ issue: "", prompt: "fix login", branch: null })).toBe("fix-login");
+  });
+});
+
+describe("bkit fids resolve", () => {
+  const finished = (wf = "debug") =>
+    `${JSON.stringify({ type: "workflow-started", workflow: wf, at: "2026-10-01T00:00:00Z" })}\n${JSON.stringify({ type: "workflow-done", workflow: wf, at: "2026-10-01T01:00:00Z" })}\n`;
+
+  async function resolve(
+    d: string,
+    o: { prompt: string; issue?: string; title?: string; workflow?: string },
+  ) {
+    const argv = [
+      "resolve",
+      `--prompt-file=${promptFile(d, o.prompt)}`,
+      `--issue=${o.issue ?? ""}`,
+      `--workflow=${o.workflow ?? "design"}`,
+    ];
+    if (o.title !== undefined) argv.push(`--title-file=${promptFile(d, o.title, "title.txt")}`);
+    return run(d, argv);
+  }
+
+  it("1. a FID the prompt names wins", async () => {
+    const { d } = gitRepo("github", "feat/12-branch-one");
+    const r = await resolve(d, { prompt: "resume feat/12-named-one", issue: "12", title: "T" });
+    expect(r).toMatchObject({
+      code: 0,
+      json: { fid: "12-named-one", source: "prompt", existing: false, month: null },
     });
-    const e = logs(["202610", "dev-ci", finished], ["202610", "dev-ci-b", ["workflow-started"]]);
-    expect((await run(e, ["free", "--fid=dev-ci", "--workflow=debug"])).json.fid).toBe("dev-ci-b");
   });
 
-  it("a log folder with no run of this workflow counts as used", async () => {
-    const d = logs(["202610", "dev-ci", finished]);
-    expect((await run(d, ["free", "--fid=dev-ci", "--workflow=build"])).json.fid).toBe("dev-ci-b");
+  it("2. the current feat/ branch, when it embeds the issue", async () => {
+    const { d } = gitRepo("github", "feat/12-branch-one", {
+      "docs/plans/202610/logs/12-branch-one/status.jsonl": "",
+    });
+    expect((await resolve(d, { prompt: "#12", issue: "12", title: "T" })).json).toEqual({
+      fid: "12-branch-one",
+      source: "branch",
+      month: "202610",
+      existing: true,
+      fids: [],
+    });
+    const other = await resolve(d, { prompt: "#13", issue: "13", title: "New thing" });
+    expect(other.json).toMatchObject({ fid: "13-new-thing", source: "minted" });
   });
 
-  it("exits 1 for a FID that is not an issue-less FID (an all-digit word, not a slug)", async () => {
-    for (const fid of ["123-fix", "fix-2-retry", "Fix_CI"]) {
-      const r = await run(logs(), ["free", `--fid=${fid}`, "--workflow=debug"]);
-      expect(r.code, fid).toBe(1);
-      expect(r.json).toBeUndefined();
-      expect(r.err).toContain("not an issue-less FID");
-    }
+  it("2. an issue-less run takes any feat/ slug", async () => {
+    const { d } = gitRepo("github", "feat/upgrade-react-19");
+    expect((await resolve(d, { prompt: "go" })).json).toMatchObject({
+      fid: "upgrade-react-19",
+      source: "branch",
+    });
   });
 
-  it("exits 5 when the name and every suffix are used", async () => {
-    const used = ["dev-ci", ..."bcdefghijklmnopqrstuvwxyz".split("").map((x) => `dev-ci-${x}`)];
-    const d = logs(...used.map((fid): [string, string, string[]] => ["202610", fid, finished]));
-    const r = await run(d, ["free", "--fid=dev-ci", "--workflow=debug"]);
-    expect(r.code).toBe(5);
-    expect(r.err).toContain("every -b");
+  it("3. a FID logged for the issue on origin/dev, even when the working tree lacks it", async () => {
+    const { d, g } = gitRepo("github", "dev", {
+      "docs/plans/202609/logs/12-old-name/status.jsonl": "{}\n",
+    });
+    g("update-ref", "refs/remotes/origin/dev", "HEAD");
+    g("checkout", "-q", "--orphan", "work");
+    g("rm", "-rq", "--cached", ".");
+    fs.rmSync(path.join(d, "docs"), { recursive: true, force: true });
+    const r = await resolve(d, { prompt: "#12", issue: "12", title: "A fresh title" });
+    expect(r.json).toMatchObject({ fid: "12-old-name", source: "logged", fids: ["12-old-name"] });
   });
 
-  it("freeFid looks in every root it is given", () => {
-    const d = logs(["202610", "dev-ci", finished]);
-    expect(freeFid([d], "dev-ci", "debug")).toBe("dev-ci-b");
-    const other = logs();
-    expect(freeFid([other, d], "dev-ci", "debug")).toBe("dev-ci-b");
-    expect(freeFid([other], "dev-ci", "debug")).toBe("dev-ci");
+  it("3. several FIDs logged for the issue exit 4 and list them", async () => {
+    const { d } = gitRepo("github", "dev", {
+      "docs/plans/202609/logs/12-a/status.jsonl": "",
+      "docs/plans/202610/logs/12-b/status.jsonl": "",
+    });
+    const r = await resolve(d, { prompt: "#12", issue: "12", title: "T" });
+    expect(r.code).toBe(4);
+    expect(r.json.fids).toEqual(["12-a", "12-b"]);
+  });
+
+  it("4. mints from the title file; a JSON file with a title key also works", async () => {
+    const { d } = gitRepo("linear", "dev");
+    expect(
+      (await resolve(d, { prompt: "ABC-3", issue: "ABC-3", title: "Sync the Calendar feed" })).json,
+    ).toMatchObject({ fid: "abc-3-sync-calendar-feed", source: "minted", existing: false });
+    const json = JSON.stringify({ title: "Export CSV", url: "u", state: "open", labels: [] });
+    expect((await resolve(d, { prompt: "ABC-3", issue: "ABC-3", title: json })).json.fid).toBe(
+      "abc-3-export-csv",
+    );
+  });
+
+  it("4. a stopword-only title falls back to the prompt; non-ASCII titles fold", async () => {
+    const { d } = gitRepo("github", "dev");
+    expect(
+      (await resolve(d, { prompt: "#5 rework café menu", issue: "5", title: "The and of" })).json
+        .fid,
+    ).toBe("5-rework-cafe-menu");
+    expect(
+      (await resolve(d, { prompt: "#5", issue: "5", title: "Crème brûlée über" })).json.fid,
+    ).toBe("5-creme-brulee-uber");
+  });
+
+  it("5. an issue-less mint a finished run used takes the next free suffix", async () => {
+    const { d } = gitRepo("github", "claude/tidy-2", {
+      "docs/plans/202610/logs/tidy-fix-login/status.jsonl": finished(),
+    });
+    const r = await resolve(d, { prompt: "Fix the login", workflow: "debug" });
+    expect(r.json).toMatchObject({ fid: "tidy-fix-login-b", source: "suffixed", existing: false });
+  });
+
+  it("refuses (exit 9) to mint from the workflow name when the prompt holds only a bare number", async () => {
+    const { d } = gitRepo("github", "dev");
+    const r = await resolve(d, { prompt: "/bkit-build 123", workflow: "build" });
+    expect(r.code).toBe(9);
+    expect(r.err).toContain("123 reads as a bare number; write #123");
+    expect(r.json).toBeUndefined();
+  });
+
+  it("a bare number beside words still mints from the words; tracker none mints from the workflow", async () => {
+    const { d } = gitRepo("github", "dev");
+    expect(
+      (await resolve(d, { prompt: "fix 2 flaky tests", workflow: "build" })).json,
+    ).toMatchObject({ fid: "dev-fix-flaky-tests", source: "minted" });
+    const none = gitRepo("none", "dev");
+    expect((await resolve(none.d, { prompt: "123", workflow: "build" })).json).toMatchObject({
+      fid: "dev-build",
+      source: "minted",
+    });
+  });
+
+  it("6. a FID that fails the format check exits 1", async () => {
+    const { d } = gitRepo("github", "dev");
+    const r = await resolve(d, { prompt: "resume feat/13-other", issue: "12", title: "T" });
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("13-other");
+  });
+
+  it("a missing title or prompt file exits 7", async () => {
+    const { d } = gitRepo("github", "dev");
+    const r = await run(d, [
+      "resolve",
+      `--prompt-file=${promptFile(d, "#1")}`,
+      "--issue=1",
+      `--title-file=${path.join(d, "tmp", "gone.txt")}`,
+      "--workflow=design",
+    ]);
+    expect(r.code).toBe(7);
+  });
+});
+
+describe("bkit fids plans", () => {
+  async function plans(files: string[]) {
+    const { d } = gitRepo("github", "dev", Object.fromEntries(files.map((f) => [f, "# p\n"])));
+    return run(d, ["plans", "--fid=12-x", "--month=202610"]);
+  }
+
+  it("none: no plan file at all", async () => {
+    expect((await plans(["docs/plans/202610/13-x-plan.md"])).json).toEqual({
+      count: 1,
+      single: true,
+      source: "none",
+      files: [],
+    });
+  });
+
+  it("single: the plan alone", async () => {
+    expect((await plans(["docs/plans/202610/12-x-plan.md"])).json).toEqual({
+      count: 1,
+      single: true,
+      source: "single",
+      files: ["docs/plans/202610/12-x-plan.md"],
+    });
+  });
+
+  it("split: the plan, then each sub-plan in number order; a stray file is ignored", async () => {
+    const r = await plans([
+      "docs/plans/202610/12-x-plan.md",
+      "docs/plans/202610/12-x-plan-10.md",
+      "docs/plans/202610/12-x-plan-2.md",
+      "docs/plans/202610/12-x-plan-1.md",
+      "docs/plans/202610/12-x-plan-notes.md",
+      "docs/plans/202610/12-x-design.md",
+    ]);
+    expect(r.json).toEqual({
+      count: 3,
+      single: false,
+      source: "split",
+      files: [
+        "docs/plans/202610/12-x-plan.md",
+        "docs/plans/202610/12-x-plan-1.md",
+        "docs/plans/202610/12-x-plan-2.md",
+        "docs/plans/202610/12-x-plan-10.md",
+      ],
+    });
+  });
+});
+
+describe("bkit fids design --description-file --prompt-file", () => {
+  const DESIGN = "docs/plans/202609/40-parent-design.md";
+  async function design(files: Record<string, string>, description?: string, prompt = "go") {
+    const { d } = gitRepo("github", "dev", { [DESIGN]: "# d\n", ...files });
+    const argv = ["design", "--fid=50-sync", "--month=202610"];
+    argv.push(`--prompt-file=${promptFile(d, prompt)}`);
+    if (description !== undefined)
+      argv.push(`--description-file=${promptFile(d, description, "description.md")}`);
+    return run(d, argv);
+  }
+
+  it("the issue's Parent design link wins; audit paths are listed in order", async () => {
+    const r = await design(
+      {
+        "docs/plans/202610/50-sync-design.md": "# own\n",
+        "docs/audits/202609/a.md": "a",
+        "docs/audits/202609/b.md": "b",
+      },
+      `**Parent design:** [40-parent-design.md](https://github.com/o/r/blob/dev/${DESIGN})\n**Audit reports:** docs/audits/202609/b.md, [a](docs/audits/202609/a.md)\n`,
+    );
+    expect(r).toMatchObject({
+      code: 0,
+      json: {
+        parentFid: "40-parent",
+        parentMonth: "202609",
+        parentPath: DESIGN,
+        parentSource: "link",
+        auditPaths: ["docs/audits/202609/b.md", "docs/audits/202609/a.md"],
+      },
+    });
+  });
+
+  it("no link: the feature's own design doc", async () => {
+    const r = await design({ "docs/plans/202610/50-sync-design.md": "# own\n" }, "nothing here");
+    expect(r.json).toMatchObject({
+      parentFid: "50-sync",
+      parentMonth: "202610",
+      parentPath: "docs/plans/202610/50-sync-design.md",
+      parentSource: "fid",
+      auditPaths: [],
+    });
+  });
+
+  it("none: no link and no own design doc (exit 1, nulls); a named audit path must exist", async () => {
+    const r = await design({}, undefined, "audit at docs/audits/202609/a.md");
+    expect(r.code).toBe(7);
+    const ok = await design(
+      { "docs/audits/202609/a.md": "a" },
+      undefined,
+      "see docs/audits/202609/a.md",
+    );
+    expect(ok).toMatchObject({
+      code: 1,
+      json: { parentFid: null, parentSource: null, auditPaths: ["docs/audits/202609/a.md"] },
+    });
+  });
+
+  it("a missing description file exits 7", async () => {
+    const { d } = gitRepo("github", "dev");
+    const r = await run(d, [
+      "design",
+      "--fid=50-sync",
+      `--description-file=${path.join(d, "tmp", "gone.md")}`,
+    ]);
+    expect(r.code).toBe(7);
   });
 });

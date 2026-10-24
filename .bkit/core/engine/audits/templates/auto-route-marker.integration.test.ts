@@ -69,6 +69,8 @@ function fixture(workflow: string): string {
     path.join(logs, "status.jsonl"),
     `${JSON.stringify({ type: "workflow-started", workflow, at: "2026-10-01T00:00:00Z", run: 1 })}\n`,
   );
+  // The close's --final-return reads the summary the summary step wrote.
+  fs.writeFileSync(path.join(logs, `${workflow}-summary.md`), "# Summary\n");
   execFileSync("git", ["-C", repo, "add", "-A"]);
   execFileSync("git", ["-C", repo, "commit", "-q", "-m", "start"]);
   return repo;
@@ -86,7 +88,8 @@ function runClose(file: string, workflow: string, labels: string[]) {
     .replaceAll("{OWNER_REPO}", "test/repo")
     .replaceAll("{OUTBOX}", path.join(tmp, "outbox"))
     .replaceAll("{STATUS}", `docs/plans/${MONTH}/logs/${FID}/status.jsonl`)
-    .replaceAll("{BRANCH}", `feat/${FID}`);
+    .replaceAll("{BRANCH}", `feat/${FID}`)
+    .replaceAll("{SESSION_DIR}", path.join(tmp, "session"));
   expect(script).not.toMatch(/\{[A-Z_]+\}/);
   const r = spawnSync("bash", ["-c", script], { encoding: "utf8", cwd: repo });
   const subject =

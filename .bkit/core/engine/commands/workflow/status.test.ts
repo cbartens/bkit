@@ -23,7 +23,7 @@ function tmp() {
 async function run(argv: string[], cwd = process.cwd()) {
   const out: string[] = [];
   const err: string[] = [];
-  const code = await runCommand(argv, COMMANDS, {
+  const code = await runCommand([...argv, "--json"], COMMANDS, {
     classicVerbs: new Set(["status"]),
     cwd,
     io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
@@ -147,6 +147,13 @@ describe("bkit status route", () => {
     expect(
       (await run([...base, `--file=${file}`, "--workflow=build", "--step=s"])).json.failures,
     ).toBe(0);
+  });
+
+  it("reads an absent failures count on FAIL as null: the count is unknown, not 0", async () => {
+    const file = log([done("build", "s", "2026-10-01T00:01:00Z", { verdict: "FAIL" })]);
+    const r = await run([...base, `--file=${file}`, "--workflow=build", "--step=s"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ verdict: "FAIL", failures: null });
   });
 
   it("does not leak a completed run's verdict into a fresh run", async () => {
@@ -336,6 +343,156 @@ describe("bkit status route", () => {
   });
 });
 
+describe("bkit status route --prompt-file (debug Step 1)", () => {
+  const GATES = [
+    "bkit:gate:static-unit-integration-e2e-live",
+    "bkit:gate:static-unit-integration-e2e",
+    "bkit:gate:static-unit",
+  ];
+  const prompt = (text: string) => {
+    const f = path.join(tmp(), "prompt.md");
+    fs.writeFileSync(f, text);
+    return f;
+  };
+  const route = (file: string, promptText = "/bkit-debug 7-x", ...extra: string[]) =>
+    run([
+      "status",
+      "route",
+      `--file=${file}`,
+      "--workflow=debug",
+      `--prompt-file=${prompt(promptText)}`,
+      ...extra,
+    ]);
+  const closed = (at: string) => ({ type: "workflow-done", workflow: "debug", at });
+  const soak = (at: string) => done("debug", "debug-failure-soak", at);
+
+  it("a fresh run: attempt 1, NORMAL, no repro, every gate", async () => {
+    const r = await route(path.join(tmp(), "status.jsonl"));
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      debugAttempt: 1,
+      debugMode: "NORMAL",
+      soakEntry: false,
+      repro: false,
+      gates: GATES,
+    });
+  });
+
+  it("a resumed run keeps its attempt number", async () => {
+    const file = log([
+      started("debug", "2026-10-01T00:00:00Z"),
+      closed("2026-10-01T00:01:00Z"),
+      started("debug", "2026-10-01T00:02:00Z"),
+    ]);
+    expect((await route(file)).json).toMatchObject({ debugAttempt: 2, debugMode: "NORMAL" });
+  });
+
+  it("the attempt that reaches MAX_DEBUG_ATTEMPT enters SOAK", async () => {
+    const file = log([
+      started("debug", "2026-10-01T00:00:00Z"),
+      closed("2026-10-01T00:01:00Z"),
+      started("debug", "2026-10-01T00:02:00Z"),
+      closed("2026-10-01T00:03:00Z"),
+    ]);
+    expect((await route(file)).json).toMatchObject({
+      debugAttempt: 3,
+      debugMode: "SOAK",
+      soakEntry: true,
+    });
+  });
+
+  it("[soak] and [repro] in the prompt", async () => {
+    const r = await route(path.join(tmp(), "status.jsonl"), "/bkit-debug 7-x [soak] [repro]");
+    expect(r.json).toMatchObject({ debugMode: "SOAK", soakEntry: true, repro: true });
+  });
+
+  it("a resumed run that soaked continues in SOAK without a new entry", async () => {
+    const file = log([started("debug", "2026-10-01T00:00:00Z"), soak("2026-10-01T00:01:00Z")]);
+    expect((await route(file)).json).toMatchObject({
+      debugAttempt: 1,
+      debugMode: "SOAK",
+      soakEntry: false,
+    });
+  });
+
+  it("soak rows of a finished run do not force SOAK on the next run", async () => {
+    const file = log([
+      started("debug", "2026-10-01T00:00:00Z"),
+      soak("2026-10-01T00:01:00Z"),
+      closed("2026-10-01T00:02:00Z"),
+    ]);
+    expect((await route(file)).json).toMatchObject({
+      debugAttempt: 2,
+      debugMode: "NORMAL",
+      soakEntry: false,
+    });
+  });
+
+  it("an escalation recorded only in workflow-meta survives a resume", async () => {
+    const file = log([
+      started("debug", "2026-10-01T00:00:00Z"),
+      {
+        type: "workflow-meta",
+        workflow: "debug",
+        at: "2026-10-01T00:00:01Z",
+        debugMode: "NORMAL",
+      },
+      {
+        type: "workflow-meta",
+        workflow: "debug",
+        at: "2026-10-01T00:05:00Z",
+        debugMode: "SOAK",
+        soakEntryAt: "2026-10-01T00:05:00Z",
+      },
+    ]);
+    expect((await route(file)).json).toMatchObject({ debugMode: "SOAK", soakEntry: false });
+  });
+
+  it("[live=off] in the prompt drops the live gate; the issue body is not read", async () => {
+    const off = await route(path.join(tmp(), "status.jsonl"), "/bkit-debug 7-x [live=off]");
+    expect(off.json.gates).toEqual(GATES.slice(1));
+    const body = path.join(tmp(), "issue-description.md");
+    fs.writeFileSync(body, "please run with [live=off]");
+    expect((await route(path.join(tmp(), "status.jsonl"))).json.gates).toEqual(GATES);
+  });
+
+  it("finds status.jsonl from --fid and --month", async () => {
+    const root = tmp();
+    spawnSync("git", ["init", "-q", "-b", "dev"], { cwd: root });
+    const dir = path.join(root, "docs/plans/202610/logs/7-x");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "status.jsonl"),
+      JSON.stringify(started("debug", "2026-10-01T00:00:00Z")) + "\n",
+    );
+    const argv = ["status", "route", "--workflow=debug", `--prompt-file=${prompt("x")}`];
+    const r = await run([...argv, "--fid=7-x", "--month=202610"], root);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ debugAttempt: 1 });
+    expect((await run([...argv, "--fid=8-y", "--month=202610"], root)).json.debugAttempt).toBe(1);
+  });
+
+  it("refuses --prompt-file for another workflow, and a missing --file without --fid", async () => {
+    const p = prompt("x");
+    const other = ["status", "route", "--workflow=build", `--prompt-file=${p}`];
+    expect((await run([...other, `--file=${path.join(tmp(), "s.jsonl")}`])).code).toBe(2);
+    expect((await run(["status", "route", "--workflow=debug", `--prompt-file=${p}`])).code).toBe(2);
+    expect((await run(["status", "route", "--workflow=debug"])).code).toBe(2);
+  });
+
+  it("a missing prompt file is a usage error", async () => {
+    const r = await run([
+      "status",
+      "route",
+      `--file=${path.join(tmp(), "status.jsonl")}`,
+      "--workflow=debug",
+      `--prompt-file=${path.join(tmp(), "nope.md")}`,
+    ]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("nope.md");
+  });
+});
+
 describe("bkit status route --expect", () => {
   const file = () =>
     log([
@@ -417,6 +574,23 @@ describe("bkit status meta", () => {
     expect(w.code).toBe(0);
     expect(w.json.row).toMatchObject({ openedPr: true, planSource: "brief" });
     expect(w.json.row.soakEntryAt).toBe(w.json.row.at);
+  });
+
+  it("--debug-attempt=run records the active run's number", async () => {
+    const file = log([
+      started("debug", "2026-10-01T00:00:00Z"),
+      { type: "workflow-done", workflow: "debug", at: "2026-10-01T01:00:00Z" },
+      started("debug", "2026-10-02T00:00:00Z"),
+    ]);
+    const w = await run([
+      "status",
+      "meta",
+      `--file=${file}`,
+      "--workflow=debug",
+      "--debug-attempt=run",
+    ]);
+    expect(w.code).toBe(0);
+    expect(w.json.row).toMatchObject({ debugAttempt: 2 });
   });
 
   it("records decisionAt at the row's own time", async () => {

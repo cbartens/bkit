@@ -73,7 +73,7 @@ const order = (cwd: string) =>
 async function prune(cwd: string, ...argv: string[]) {
   const out: string[] = [];
   const err: string[] = [];
-  const code = await runCommand(["disk", "prune", ...argv], [diskCommand], {
+  const code = await runCommand(["disk", "prune", ...argv, "--json"], [diskCommand], {
     classicVerbs: new Set(),
     cwd,
     io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },

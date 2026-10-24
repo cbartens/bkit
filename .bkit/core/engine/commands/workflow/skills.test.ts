@@ -73,7 +73,7 @@ function checkout(opts: {
 async function prune(cwd: string) {
   const out: string[] = [];
   const err: string[] = [];
-  const code = await runCommand(["skills", "prune"], [skillsCommand], {
+  const code = await runCommand(["skills", "prune", "--json"], [skillsCommand], {
     classicVerbs: new Set(),
     cwd,
     io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },

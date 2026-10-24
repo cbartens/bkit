@@ -878,6 +878,50 @@ describe("migrateRetiredDevLock (via runBkitDocs)", () => {
   });
 });
 
+describe("migrateJiraKeyName (via runBkitDocs)", () => {
+  const ENV = path.join(".bkit", ".env");
+  const run = (dryRun = false): { ctx: ModuleContext; logs: string[] } => {
+    const logs: string[] = [];
+    const spy = vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => {
+      logs.push(a.join(" "));
+    });
+    const ctx = makeCtx({ dryRun });
+    runBkitDocs(ctx.dryRun, ctx.tokens, ctx.ws, ctx.logPrefix);
+    spy.mockRestore();
+    return { ctx, logs };
+  };
+  const seed = (text: string): void => {
+    fs.mkdirSync(".bkit", { recursive: true });
+    fs.writeFileSync(ENV, text, "utf-8");
+  };
+
+  it("renames BKIT_JIRA_API_TOKEN to BKIT_JIRA_API_KEY in .bkit/.env, value kept, never logged or hashed", () => {
+    seed("BKIT_GH_TOKEN=gh\n# BKIT_JIRA_API_TOKEN — note\nBKIT_JIRA_API_TOKEN=atl-secret\n");
+    const { ctx, logs } = run();
+    expect(fs.readFileSync(ENV, "utf-8")).toBe(
+      "BKIT_GH_TOKEN=gh\n# BKIT_JIRA_API_KEY — note\nBKIT_JIRA_API_KEY=atl-secret\n",
+    );
+    expect(logs.join("\n")).toContain("BKIT_JIRA_API_KEY");
+    expect(logs.join("\n")).not.toContain("atl-secret");
+    expect(ctx.ws.writes.map((w) => path.normalize(w.path))).not.toContain(ENV);
+  });
+
+  it("dry-run leaves the file; a second run and an already-renamed file change nothing", () => {
+    seed("BKIT_JIRA_API_TOKEN=x\n");
+    run(true);
+    expect(fs.readFileSync(ENV, "utf-8")).toBe("BKIT_JIRA_API_TOKEN=x\n");
+    run();
+    run();
+    expect(fs.readFileSync(ENV, "utf-8")).toBe("BKIT_JIRA_API_KEY=x\n");
+  });
+
+  it("leaves both lines alone when the new name is already set", () => {
+    seed("BKIT_JIRA_API_KEY=new\nBKIT_JIRA_API_TOKEN=old\n");
+    run();
+    expect(fs.readFileSync(ENV, "utf-8")).toBe("BKIT_JIRA_API_KEY=new\nBKIT_JIRA_API_TOKEN=old\n");
+  });
+});
+
 describe("migrateLedgerSchema (via runBkitDocs)", () => {
   const LEDGER = path.join("docs", "deferrals.jsonl");
   const OLD =

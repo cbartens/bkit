@@ -11,7 +11,7 @@
 // and print the step's tracker comment.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { activeDoneSteps, appendLine, runOrStepField, statusTimestamp, } from "../../ledgers/status.js";
+import { actionKey, activeDoneSteps, appendLine, runNumber, runOrStepField, statusTimestamp, } from "../../ledgers/status.js";
 import { clampLogPath, readRecords } from "../../ledgers/clamp-log.js";
 import { resolveRepoSlug } from "../../ledgers/telemetry.js";
 import { getPromptsRoot } from "../../shared/package-roots.js";
@@ -21,6 +21,7 @@ import { buildComment } from "./issues.js";
 import { EXIT_FOREIGN_PATH, activeRecord, ownPathCommit, ownSet, } from "./ledgers.js";
 import { readHolder, resolveMonth, workflowLockPath } from "./locks.js";
 import { EXIT_NO_STATUS, FILE_FLAG, STEP_FLAG, SUB_PLAN_FLAG, WORKFLOW_FLAG, extraField, nonNegativeInt, positiveInt, readRuns, readRunsAt, statusFile, str, } from "./status.js";
+import { COMMENT_FILE_OUTPUT, POST_FLAG, TRACKER_OUTPUT, commentFileOf, postForVerb, } from "./tracker.js";
 const VERDICT_END = "<!-- verdict:end -->";
 const DEFAULT_VERDICTS = ["PASS", "CONCERNS", "FAIL"];
 const STRATEGIES = ["STANDARD", "PIVOT", "FINAL"];
@@ -497,7 +498,7 @@ const titleCase = (key) => key.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c
 /** `<attempt>` filled in, once the attempt is known. */
 const fill = (s, attempt) => attempt === undefined ? s : s.split(ATTEMPT_TOKEN).join(String(attempt));
 const list = (v) => v ?? [];
-function finish(ctx) {
+async function finish(ctx) {
     const f = ctx.flags;
     const file = statusFile(ctx);
     const workflow = String(f.workflow);
@@ -645,32 +646,6 @@ function finish(ctx) {
             runOrStepField(readRuns(file), workflow, "pushMode") === "LOCAL")
             message += " bkit [verbose ci]";
     }
-    const written = writeStepRow(ctx.cwd, {
-        file,
-        workflow,
-        step,
-        verdict,
-        failures,
-        attempt,
-        subPlan,
-        strategy,
-        artifacts,
-        extras,
-        parentSha: str(f.parentSha),
-        commit: commit,
-        message,
-    }, ctx.log);
-    const checks = gateChecks(ctx.cwd, {
-        file,
-        workflow,
-        step,
-        subPlan,
-        attempt,
-        artifacts,
-        verdictRequired: false,
-        allowed,
-        placeholders: [],
-    });
     // The step's tracker comment: header fields in one fixed order.
     let comment = null;
     const number = str(f.number);
@@ -720,6 +695,41 @@ function finish(ctx) {
             bodyFile: f.commentBody === true ? fileArtifacts[0] : undefined,
         });
     }
+    // --post: post, then record the engine-action row, then the step row and commit
+    // carry both. A re-run with the same key and body is deduped, never posted twice.
+    let tracker;
+    if (f.post === true) {
+        if (comment === null)
+            throw new CommandError(EXIT.USAGE, "--post needs --number");
+        const key = actionKey(workflow, fs.existsSync(file) ? runNumber(readRuns(file), workflow) : 1, step, subPlan, attempt, "comment");
+        tracker = await postForVerb(ctx, comment, { fid: fidOfStatusFile(file), file, key });
+    }
+    const written = writeStepRow(ctx.cwd, {
+        file,
+        workflow,
+        step,
+        verdict,
+        failures,
+        attempt,
+        subPlan,
+        strategy,
+        artifacts,
+        extras,
+        parentSha: str(f.parentSha),
+        commit: commit,
+        message,
+    }, ctx.log);
+    const checks = gateChecks(ctx.cwd, {
+        file,
+        workflow,
+        step,
+        subPlan,
+        attempt,
+        artifacts,
+        verdictRequired: false,
+        allowed,
+        placeholders: [],
+    });
     const pass = checks.every((c) => c.ok);
     for (const c of checks.filter((x) => !x.ok))
         ctx.log(`${c.check}: ${c.detail}`);
@@ -729,10 +739,14 @@ function finish(ctx) {
         attempt: attempt ?? null,
         fields,
         row: written.row,
+        parentSha: written.row.parentSha,
         commit: written.commit,
         pass,
         checks,
         comment,
+        // Written after the step's commit, so the commit never carries it.
+        commentFile: commentFileOf(ctx.cwd, comment),
+        ...(tracker === undefined ? {} : { tracker }),
     });
     if (written.code !== EXIT.OK)
         return written.code;
@@ -808,6 +822,7 @@ export const stepsCommand = {
                 row: "the appended step-done row",
                 commit: "the new commit's sha, or null with --commit=none",
             },
+            textOmit: ["row"],
             exitCodes: {
                 [EXIT_NO_STATUS]: "--attempt=next could not read status.jsonl",
                 [EXIT_ARTIFACT]: "an --artifact is missing, empty, or outside the working directory",
@@ -960,6 +975,10 @@ export const stepsCommand = {
                 },
                 { name: "number", type: "string", help: "step number: print the step's tracker comment" },
                 { name: "title", type: "string", help: "step title for the comment heading" },
+                {
+                    ...POST_FLAG,
+                    help: "post the comment (needs --number) to the issue the status file's FID names, before the row and commit; prints `tracker`",
+                },
                 { name: "sub-plan-count", type: "string", help: "y of the comment's Sub-plan x/y" },
                 {
                     name: "link-ref",
@@ -990,13 +1009,17 @@ export const stepsCommand = {
                 attempt: "the attempt recorded, or null",
                 fields: "the other header fields the agents' prompts declare (Spike, Mode, Affected)",
                 row: "the appended step-done row",
+                parentSha: "the row's parentSha: HEAD before the step's commit",
                 commit: "the new commit's sha, or null with --commit=none",
                 pass: "every gate check passed",
                 checks: "[{check, ok, detail}] per gate check",
                 comment: "the step's tracker comment body (with --number), else null",
+                commentFile: COMMENT_FILE_OUTPUT,
+                tracker: TRACKER_OUTPUT,
                 reask: "verdict read failed: {agent, artifact} to re-ask (exit 4 / 5 / 6 only)",
                 problem: "why the verdict read failed (exit 4 / 5 / 6 only)",
             },
+            textOmit: ["row", { key: "checks", when: (_checks, out) => out.pass === true }],
             exitCodes: {
                 [EXIT_NO_STATUS]: "status.jsonl is not valid NDJSON",
                 [EXIT_EMPTY]: "an --agent's artifact is missing or empty (nothing written)",

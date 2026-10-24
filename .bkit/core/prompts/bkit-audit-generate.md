@@ -130,11 +130,11 @@ maxTurns: 400
     3. Write Output format content from `## Stopped` through `## Recommended Next Step` to `{OUTBOX_ROOT}/audit-{slug}/comment.md`; `Embedded Directives` names sources only, never directive text; `Parent` = `missing` → omit the audit-parent block.
     4. Build body; **If** non-zero → `Issue` = `{ISSUE_ID} failed` (no `ISSUE_ID` → `None`, `{PARENT_COMMENT}` empty); skip step:
        ```bash
-       "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" issues comment --kind=audit --audit-slug="{slug}" --field="Status={STATUS}" --field="Findings=CRITICAL {n} · HIGH {n} · MEDIUM {n} · LOW {n}" --line="Report: {REPORT}" --body-file="{OUTBOX_ROOT}/audit-{slug}/comment.md"
+       "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" issues comment --post --issue="{ISSUE_ID}" --kind=audit --audit-slug="{slug}" --field="Status={STATUS}" --field="Findings=CRITICAL {n} · HIGH {n} · MEDIUM {n} · LOW {n}" --line="Report: {REPORT}" --body-file="{OUTBOX_ROOT}/audit-{slug}/comment.md"
        ```
        `{REPORT}` = `[{file name}](https://github.com/{OWNER}/{REPO}/blob/{BRANCH}/{Create})`; `BRANCH` null → **Create** path unlinked; no **Create** → `None`.
-       Hold `comment` as `{BODY}`.
-    5. Post `{BODY}` verbatim as new comment:
+       Hold `comment` as `{BODY}`. The block posts it to `{ISSUE_ID}` (empty → nothing posted).
+    5. **If** `tracker.done` = true → `Issue` = `{ISSUE_ID} posted`; skip the rest of this sub-step. **Else** → post `{BODY}` verbatim as new comment:
        <!-- bkit:tracker github start -->
        `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })`.
        <!-- bkit:tracker github end -->

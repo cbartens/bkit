@@ -108,7 +108,7 @@ function fakeGh(knobs: Record<string, string> = {}) {
 async function run(cwd: string, argv: string[]) {
   const out: string[] = [];
   const err: string[] = [];
-  const code = await runCommand(["setup", "protect-main", ...argv], [setupCommand], {
+  const code = await runCommand(["setup", "protect-main", ...argv, "--json"], [setupCommand], {
     classicVerbs: new Set(),
     cwd,
     io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },

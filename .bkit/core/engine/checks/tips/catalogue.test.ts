@@ -198,7 +198,7 @@ describe("SETUP_TIPS — detection", () => {
   it.each([
     ["github", ["BKIT_GH_TOKEN=x"]],
     ["linear", ["BKIT_GH_TOKEN=x", "BKIT_LINEAR_API_KEY=y"]],
-    ["jira", ["BKIT_GH_TOKEN=x", "BKIT_JIRA_API_TOKEN=y"]],
+    ["jira", ["BKIT_GH_TOKEN=x", "BKIT_JIRA_API_KEY=y"]],
   ] as const)("bkit-env fires until every token the %s tracker needs is set", (tracker, lines) => {
     vi.stubEnv("CI", "");
     vi.stubEnv("CLAUDE_CODE_REMOTE", "");
@@ -395,5 +395,13 @@ describe("SETUP_TIPS — detection", () => {
       JSON.stringify({ mcpServers: { s: { url: "https://mcp.sentry.dev/mcp" } } }),
     );
     expect(tip("mcp-scope").fires(cwd)).toBe(true);
+  });
+
+  it("bkit-output-json fires while a copied script reads bkit output without --json", () => {
+    expect(tip("bkit-output-json").fires(cwd)).toBe(false);
+    write(".claude/hooks/bkit-cloud-bootstrap.sh", '"$BKIT" context list-blocks | jq -r .x\n');
+    expect(tip("bkit-output-json").fires(cwd)).toBe(true);
+    write(".claude/hooks/bkit-cloud-bootstrap.sh", '"$BKIT" context list-blocks --json | jq .x\n');
+    expect(tip("bkit-output-json").fires(cwd)).toBe(false);
   });
 });

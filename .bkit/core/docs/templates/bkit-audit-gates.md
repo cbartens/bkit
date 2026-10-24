@@ -42,7 +42,7 @@ Maintenance sweeps find breakage; none prevent the next. Sibling audits repeat �
 - Required status checks and a merge queue (e.g. GitHub rulesets).
 - OpenSSF Scorecard checks, at the Scorecard version read.
 - DORA continuous integration capability.
-- bkit block of `docs/testing.md` (bkit version from `.bkit/version`): § CI test tiers (the bkit scaffold); § Accepted divergences; § Step names say whether a red is real; § Composite actions: two rules that fail silently
+- bkit block of `docs/testing.md` (bkit version from `.bkit/version`): § CI test tiers (the bkit scaffold); § Accepted divergences; § Step names say whether a red is real; § Composite actions: two rules that fail silently; § JUnit reports for bkit
 - bkit block of `docs/deployments.md` (bkit version from `.bkit/version`): § Commit-message force tags; § Workflow-file limits GitHub does not enforce visibly; § Ship gate + bookkeeping
 - bkit block of `docs/design.md` (bkit version from `.bkit/version`): § Machine-checked reference
 

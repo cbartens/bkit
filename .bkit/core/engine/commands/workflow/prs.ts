@@ -12,7 +12,16 @@ import * as path from "node:path";
 
 import type { IssueTracker } from "../../install/manifest.js";
 import { readBkitConfig } from "../../shared/settings.js";
-import { appendLine, statusTimestamp, type StatusRow } from "../../ledgers/status.js";
+import {
+  actionHash,
+  actionKey,
+  alreadyDone,
+  appendLine,
+  recordAction,
+  runNumber,
+  statusTimestamp,
+  type StatusRow,
+} from "../../ledgers/status.js";
 import {
   bodySkipToken,
   CommandError,
@@ -36,7 +45,8 @@ import {
 import { fidProblem } from "./fids.js";
 import { AUTO_LABEL, AUTO_ROUTE_SUFFIX } from "./issues.js";
 import { resolveOwnerRepo } from "./repo.js";
-import { EXIT_NO_STATUS, FILE_FLAG, readStatusRows, statusFile, str } from "./status.js";
+import { writeBodyFile } from "./tracker.js";
+import { EXIT_NO_STATUS, FILE_FLAG, readRuns, readStatusRows, statusFile, str } from "./status.js";
 
 // ---------------------------------------------------------------------------
 // gh
@@ -193,6 +203,10 @@ export function prBody(marker: string, notes: string[], plan: string | undefined
     .concat("\n");
 }
 
+/** The CI marker `branches force-build` puts on the PR title; `prs merge` drops it from the squash subject. */
+export const FORCE_BUILD = "[force build]";
+const FORCE_BUILD_TAG = / ?(bkit )?\[force build\]/g;
+
 export const EXIT_PR_EXISTS = 3;
 export const EXIT_SKIP_CI_TITLE = 4;
 export const EXIT_GH_FAILED = 5;
@@ -222,6 +236,8 @@ export interface OpenResult {
     head: string;
     title: string;
     body: string;
+    /** useMcp only: absolute path of a file holding `body` byte-for-byte. */
+    bodyFile?: string;
   } | null;
 }
 
@@ -262,7 +278,17 @@ export function openPrFor(cwd: string, o: OpenInput, log: (m: string) => void): 
     log(`${why} — create the PR through the GitHub MCP tool with this title and body`);
     return {
       code: EXIT.USE_MCP,
-      out: { created: false, useMcp: true, number: null, url: null, base, head, title, body },
+      out: {
+        created: false,
+        useMcp: true,
+        number: null,
+        url: null,
+        base,
+        head,
+        title,
+        body,
+        bodyFile: writeBodyFile(cwd, "pr-body", body),
+      },
     };
   };
 
@@ -345,6 +371,25 @@ export function openPrFor(cwd: string, o: OpenInput, log: (m: string) => void): 
 }
 
 function openPr(ctx: RunContext): number {
+  const fileFlag = str(ctx.flags.file);
+  const workflow = str(ctx.flags.workflow);
+  if (fileFlag !== undefined && workflow === undefined) {
+    throw new CommandError(EXIT.USAGE, "--file needs --workflow");
+  }
+  // A recorded open of this head into this base makes the PR now open on it this run's own.
+  let existing = str(ctx.flags.existing) as OpenInput["existing"];
+  let action: { file: string; key: string; hash: string } | undefined;
+  if (fileFlag !== undefined && workflow !== undefined) {
+    const file = path.resolve(ctx.cwd, fileFlag);
+    const head = str(ctx.flags.head) ?? currentBranch(ctx.cwd);
+    const run = fs.existsSync(file) ? runNumber(readRuns(file), workflow) : 1;
+    action = {
+      file,
+      key: actionKey(workflow, run, "pr-open"),
+      hash: actionHash(`${head}\n${str(ctx.flags.base) ?? DEV}`),
+    };
+    if (alreadyDone(action.file, action.key, action.hash)) existing = "reuse";
+  }
   const r = openPrFor(
     ctx.cwd,
     {
@@ -355,10 +400,18 @@ function openPr(ctx: RunContext): number {
       head: str(ctx.flags.head),
       plan: str(ctx.flags.plan),
       notes: (ctx.flags.note as string[] | undefined) ?? [],
-      existing: str(ctx.flags.existing) as OpenInput["existing"],
+      existing,
     },
     ctx.log,
   );
+  if (action && r.code === EXIT.OK && r.out?.created === true) {
+    recordAction(action.file, {
+      action: "pr-open",
+      key: action.key,
+      hash: action.hash,
+      ref: r.out.url,
+    });
+  }
   if (r.out) ctx.emit(r.out);
   return r.code;
 }
@@ -867,16 +920,25 @@ export const prsCommand: CommandSpec = {
           type: "string",
           help: "an open PR already on --head: fail (default, exit 3) | reuse",
         },
+        {
+          name: "file",
+          type: "string",
+          help: "status.jsonl: record the open as an engine-action row; a re-run this run reuses that PR (needs --workflow)",
+        },
+        { name: "workflow", type: "string", help: "--file: the workflow, for the run number" },
       ],
       output: {
         created: "true when this run created the PR",
-        useMcp: "true when gh is unavailable: create it through MCP with title/body/base/head",
+        useMcp:
+          "true when gh is unavailable: create it through MCP with title/base/head and the body read from bodyFile",
         number: "PR number, or null",
         url: "PR URL, or null",
         base: "base branch (read back from the PR when created)",
         head: "head branch",
         title: "PR title",
         body: "PR body, marker first",
+        bodyFile:
+          "useMcp only: absolute path of a file holding `body` byte-for-byte (the MCP fallback reads it); absent otherwise",
       },
       exitCodes: {
         [EXIT_PR_EXISTS]: "--head already has an open PR (with --existing=fail)",
@@ -988,7 +1050,7 @@ export const prsCommand: CommandSpec = {
             ctx.log(pr.kind === "failed" ? pr.message : `PR #${number} not found`);
             return EXIT_GH_FAILED;
           }
-          subject = `${pr.pr.title} (#${number})`;
+          subject = `${pr.pr.title.replace(FORCE_BUILD_TAG, "")} (#${number})`;
         }
         if (((ctx.flags.label as string[] | undefined) ?? []).includes(AUTO_LABEL))
           subject += AUTO_ROUTE_SUFFIX;

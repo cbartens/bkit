@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runCommand } from "../lib";
 import {
@@ -15,6 +15,7 @@ import {
   sortOldestFirst,
   transitionLabels,
 } from "./issues";
+import { stampMarker } from "./tracker";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -38,12 +39,52 @@ const write = (cwd: string, rel: string, body: string) => {
 async function run(cwd: string, argv: string[]) {
   const out: string[] = [];
   const err: string[] = [];
-  const code = await runCommand(argv, [issuesCommand], {
+  const code = await runCommand([...argv, "--json"], [issuesCommand], {
     classicVerbs: new Set(),
     cwd,
     io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
   });
   return { code, json: out.length ? JSON.parse(out.join("")) : undefined, err: err.join("") };
+}
+
+/**
+ * A Linear GraphQL stub: `commentCreate` appends to the issue's comments and to the
+ * returned `sent`; any other query answers the issue with those comments.
+ */
+function linearCommentServer(): string[] {
+  const sent: string[] = [];
+  const comments: Array<{ body: string; createdAt: string }> = [];
+  const create = (body: string) => {
+    sent.push(body);
+    comments.push({ body, createdAt: "2026-10-24T00:00:00Z" });
+    return { data: { commentCreate: { success: true, comment: { url: "https://l/c" } } } };
+  };
+  const read = () => ({
+    data: {
+      issue: {
+        identifier: "ENG-4",
+        title: "t",
+        url: "u",
+        description: "",
+        state: { name: "Todo" },
+        labels: { nodes: [] },
+        comments: { nodes: comments },
+      },
+    },
+  });
+  const answers: Record<string, (q: { variables: any }) => object> = {
+    create: (q) => create(q.variables.input.body),
+    read,
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_u: string, init: RequestInit) => {
+      const q = JSON.parse(String(init.body)) as { query: string; variables: any };
+      const kind = ["read", "create"][Number(q.query.includes("commentCreate"))]!;
+      return new Response(JSON.stringify(answers[kind]!(q)));
+    }),
+  );
+  return sent;
 }
 
 // ---------------------------------------------------------------------------
@@ -81,6 +122,21 @@ describe("bkit issues text", () => {
     ]);
     expect(r.cut).toBe(true);
     expect(r.text).toBe("Third plan.\n\nFollow-up.");
+  });
+
+  it("a stamped marker and Jira's HTML <h6> markers count; HTML prose does not", () => {
+    expect(isGenerated(`${GEN} 0123456789ab\n### Step 1`)).toBe(true);
+    expect(isGenerated("<h6>bkit:generated</h6><p>x</p>")).toBe(true);
+    expect(isGenerated('<h6 id="bkitgenerated">bkit:generated 0123456789ab</h6><p>x</p>')).toBe(
+      true,
+    );
+    expect(isGenerated("<p>see <h6>bkit:generated</h6></p>")).toBe(false);
+    expect(isGenerated(`${GEN} not-a-hash\nx`)).toBe(false);
+    const r = issueText("Old plan.", [
+      { body: "<p>first</p><h6>bkit:ignore-earlier</h6><p>Second plan.</p>" },
+      { body: "Follow-up." },
+    ]);
+    expect(r).toMatchObject({ text: "<p>Second plan.</p>\n\nFollow-up.", cut: true });
   });
 
   it("an inline mention of the cut token does not cut", () => {
@@ -371,9 +427,14 @@ describe("bkit issues labels", () => {
 // ---------------------------------------------------------------------------
 
 describe("bkit issues comment", () => {
+  // `body` is the comment with its marker unstamped; every call checks the stamp is
+  // the hash of the body below it.
   const comment = async (cwd: string, ...args: string[]) => {
     const r = await run(cwd, ["issues", "comment", ...args]);
-    return { ...r, body: r.json?.comment as string | undefined };
+    const printed = r.json?.comment as string | undefined;
+    const body = printed?.replace(/^(###### bkit:generated) [0-9a-f]{12}/, "$1");
+    if (body !== undefined) expect(stampMarker(body)).toBe(printed);
+    return { ...r, body };
   };
 
   it("Step 1 with the workflow heading and the tree link", async () => {
@@ -705,9 +766,534 @@ describe("bkit issues comment", () => {
   });
 });
 
-describe("issues stays off the tracker", () => {
-  it("never shells out — tracker reads and writes go through MCP", () => {
+describe("issues reaches the tracker only through tracker.ts", () => {
+  it("never shells out or fetches itself", () => {
     const src = fs.readFileSync(path.join(__dirname, "issues.ts"), "utf-8");
-    expect(src).not.toMatch(/node:child_process|spawnSync|execSync/);
+    expect(src).not.toMatch(/node:child_process|spawnSync|execSync|\bfetch\(/);
+    expect(src).toContain('from "./tracker.js"');
+  });
+});
+
+describe("bkit issues comment --post", () => {
+  const STEP = ["issues", "comment", "--step-number=3", "--step-title=Plan Verify"];
+  const saved = process.env.BKIT_LINEAR_API_KEY;
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    if (saved === undefined) delete process.env.BKIT_LINEAR_API_KEY;
+    else process.env.BKIT_LINEAR_API_KEY = saved;
+  });
+
+  it("without --post prints no tracker key and calls nothing", async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    const r = await run(dir({ issueTracker: "linear" }), STEP);
+    expect(r.code).toBe(0);
+    expect(r.json).not.toHaveProperty("tracker");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("skips tracker none and an issue-less FID", async () => {
+    expect(
+      (await run(dir({ issueTracker: "none" }), [...STEP, "--post", "--fid=x"])).json.tracker,
+    ).toEqual({ skipped: "tracker-none" });
+    expect(
+      (await run(dir({ issueTracker: "linear" }), [...STEP, "--post", "--fid=dev-ci-x"])).json
+        .tracker,
+    ).toEqual({ skipped: "no-issue" });
+  });
+
+  it("posts the printed body; an identical recent comment is not posted twice", async () => {
+    process.env.BKIT_LINEAR_API_KEY = "k";
+    const cwd = dir({ issueTracker: "linear" });
+    const sent = linearCommentServer();
+    const first = await run(cwd, [...STEP, "--post", "--fid=eng-4-x"]);
+    expect(first.json.tracker).toEqual({ done: true, action: "comment", url: "https://l/c" });
+    expect(sent).toEqual([first.json.comment]);
+    const again = await run(cwd, [...STEP, "--post", "--fid=eng-4-x"]);
+    expect(again.json.tracker).toMatchObject({ done: true, deduped: true });
+    expect(sent).toHaveLength(1);
+  });
+
+  it("a failed post exits 0 with done false and the reason", async () => {
+    const r = await run(dir({ issueTracker: "linear" }), [...STEP, "--post", "--issue=ENG-4"]);
+    expect(r.code).toBe(0);
+    expect(r.json.tracker).toEqual({ done: false, action: "comment", reason: "auth" });
+  });
+
+  it("prints commentFile: the multi-line comment byte-for-byte, for the MCP fallback", async () => {
+    const cwd = dir({ issueTracker: "linear" });
+    const r = await run(cwd, [
+      ...STEP,
+      "--line=first",
+      "--line=back\\slash",
+      "--post",
+      "--issue=ENG-4",
+    ]);
+    expect(r.json.tracker).toMatchObject({ done: false });
+    expect(r.json.comment).toContain("\nfirst\nback\\slash");
+    expect(fs.readFileSync(r.json.commentFile, "utf-8")).toBe(r.json.comment);
+  });
+
+  it("--file: an engine-action row per run dedups a re-run without reading the issue", async () => {
+    process.env.BKIT_LINEAR_API_KEY = "k";
+    const cwd = dir({ issueTracker: "linear" });
+    const file = path.join(cwd, "status.jsonl");
+    fs.writeFileSync(
+      file,
+      `${JSON.stringify({ type: "workflow-started", workflow: "build", at: "2026-10-24T00:00:00Z" })}\n`,
+    );
+    const sent = linearCommentServer();
+    const first = await run(cwd, [...STEP, "--post", "--issue=ENG-4", `--file=${file}`]);
+    expect(first.json.tracker).toEqual({ done: true, action: "comment", url: "https://l/c" });
+    const row = JSON.parse(fs.readFileSync(file, "utf-8").trim().split("\n").at(-1)!);
+    expect(row).toMatchObject({ type: "engine-action", action: "comment" });
+    expect(row.key).toBe("build/1/step/3/-/-/comment");
+    vi.stubGlobal("fetch", vi.fn());
+    const again = await run(cwd, [...STEP, "--post", "--issue=ENG-4", `--file=${file}`]);
+    expect(again.json.tracker).toMatchObject({ done: true, deduped: true, url: "https://l/c" });
+    expect(sent).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// fetch / related — the engine reads the issue straight to files
+// ---------------------------------------------------------------------------
+
+/** A Linear GraphQL stub answering `issue(id:)` from `issues`, keyed by identifier. */
+function linearIssues(
+  issues: Record<
+    string,
+    { title: string; state: string; description: string; comments: object[]; labels?: string[] }
+  >,
+) {
+  const calls: string[] = [];
+  const fetch = vi.fn(async (_u: string, init: RequestInit) => {
+    const q = JSON.parse(String(init.body)) as { query: string; variables: { id: string } };
+    calls.push(q.variables.id);
+    const i = issues[q.variables.id];
+    return new Response(
+      JSON.stringify({
+        data: {
+          issue: i
+            ? {
+                identifier: q.variables.id,
+                title: i.title,
+                url: `https://linear.app/x/issue/${q.variables.id}`,
+                description: i.description,
+                state: { name: i.state },
+                labels: { nodes: (i.labels ?? []).map((name) => ({ name })) },
+                comments: { nodes: i.comments },
+              }
+            : null,
+        },
+      }),
+    );
+  });
+  vi.stubGlobal("fetch", fetch);
+  return calls;
+}
+
+describe("bkit issues fetch", () => {
+  const saved = process.env.BKIT_LINEAR_API_KEY;
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    if (saved === undefined) delete process.env.BKIT_LINEAR_API_KEY;
+    else process.env.BKIT_LINEAR_API_KEY = saved;
+  });
+
+  it("writes the description raw, comments oldest first and the facts; prints facts, never the body", async () => {
+    process.env.BKIT_LINEAR_API_KEY = "k";
+    const cwd = dir({ issueTracker: "linear" });
+    linearIssues({
+      "ENG-4": {
+        title: "Export CSV",
+        state: "Todo",
+        labels: ["bkit:design"],
+        description: "The ask.\n<!-- raw html stays -->",
+        comments: [
+          { body: "second", createdAt: "2026-10-02T00:00:00Z" },
+          { body: "first", createdAt: "2026-10-01T00:00:00Z" },
+        ],
+      },
+    });
+    const out = path.join(cwd, "session");
+    const r = await run(cwd, ["issues", "fetch", "--fid=eng-4-export-csv", `--session-dir=${out}`]);
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({
+      title: "Export CSV",
+      url: "https://linear.app/x/issue/ENG-4",
+      state: "Todo",
+      labels: ["bkit:design"],
+      files: {
+        description: path.join(out, "issue-description.md"),
+        comments: path.join(out, "issue-comments.json"),
+        facts: path.join(out, "issue-facts.json"),
+      },
+    });
+    expect(fs.readFileSync(path.join(out, "issue-description.md"), "utf-8")).toBe(
+      "The ask.\n<!-- raw html stays -->",
+    );
+    const comments = JSON.parse(fs.readFileSync(path.join(out, "issue-comments.json"), "utf-8"));
+    expect(comments.map((c: { body: string }) => c.body)).toEqual(["first", "second"]);
+    expect(JSON.parse(fs.readFileSync(path.join(out, "issue-facts.json"), "utf-8"))).toEqual({
+      title: "Export CSV",
+      url: "https://linear.app/x/issue/ENG-4",
+      state: "Todo",
+      labels: ["bkit:design"],
+    });
+    // The files feed `issues text` unchanged.
+    const text = await run(cwd, [
+      "issues",
+      "text",
+      `--description-file=${path.join(out, "issue-description.md")}`,
+      `--comments-file=${path.join(out, "issue-comments.json")}`,
+    ]);
+    expect(text.json.text).toBe("The ask.\n<!-- raw html stays -->\n\nfirst\n\nsecond");
+  });
+
+  it("needs --session-dir or --outbox; skips tracker none and an issue-less run", async () => {
+    expect(
+      (await run(dir({ issueTracker: "linear" }), ["issues", "fetch", "--issue=ENG-4"])).code,
+    ).toBe(2);
+    const none = await run(dir({ issueTracker: "none" }), [
+      "issues",
+      "fetch",
+      "--fid=x",
+      "--outbox=o",
+    ]);
+    expect(none.code).toBe(0);
+    expect(none.json).toEqual({ skipped: "tracker-none" });
+    const noIssue = await run(dir({ issueTracker: "linear" }), [
+      "issues",
+      "fetch",
+      "--fid=dev-ci-x",
+      "--outbox=o",
+    ]);
+    expect(noIssue.json).toEqual({ skipped: "no-issue" });
+  });
+
+  it("exits 80 with the reason on a network failure and writes nothing", async () => {
+    process.env.BKIT_LINEAR_API_KEY = "k";
+    const cwd = dir({ issueTracker: "linear" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw Object.assign(new TypeError("fetch failed"), { cause: { code: "ENOTFOUND" } });
+      }),
+    );
+    const r = await run(cwd, ["issues", "fetch", "--issue=ENG-4", "--outbox=o"]);
+    expect(r.code).toBe(80);
+    expect(r.json).toEqual({ reason: "network" });
+    expect(fs.existsSync(path.join(cwd, "o"))).toBe(false);
+  });
+
+  it("exits 80 with reason auth when the key is unset, never printing a key", async () => {
+    delete process.env.BKIT_LINEAR_API_KEY;
+    const r = await run(dir({ issueTracker: "linear" }), [
+      "issues",
+      "fetch",
+      "--issue=ENG-4",
+      "--outbox=o",
+    ]);
+    expect(r.code).toBe(80);
+    expect(r.json).toEqual({ reason: "auth" });
+  });
+});
+
+function linearBlockers(nodes: object[] | null) {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            data: { issue: nodes && { inverseRelations: { nodes } } },
+          }),
+        ),
+    ),
+  );
+}
+
+function failingFetch() {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response("nope", { status: 401 })),
+  );
+}
+
+describe("bkit issues blocked-by", () => {
+  const saved = process.env.BKIT_LINEAR_API_KEY;
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    if (saved === undefined) delete process.env.BKIT_LINEAR_API_KEY;
+    else process.env.BKIT_LINEAR_API_KEY = saved;
+  });
+
+  it("prints each blocker's state and how many are still open", async () => {
+    process.env.BKIT_LINEAR_API_KEY = "k";
+    const cwd = dir({ issueTracker: "linear" });
+    linearBlockers([
+      {
+        type: "blocks",
+        issue: { identifier: "ENG-1", state: { name: "Done", type: "completed" } },
+      },
+      {
+        type: "related",
+        issue: { identifier: "ENG-2", state: { name: "Todo", type: "unstarted" } },
+      },
+      {
+        type: "blocks",
+        issue: { identifier: "ENG-3", state: { name: "Todo", type: "unstarted" } },
+      },
+    ]);
+    const r = await run(cwd, ["issues", "blocked-by", "--issue=ENG-4"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({
+      blockers: [
+        { id: "ENG-1", state: "Done" },
+        { id: "ENG-3", state: "Todo" },
+      ],
+      open: 1,
+    });
+  });
+
+  it("skips with tracker none", async () => {
+    const cwd = dir({ issueTracker: "none" });
+    const r = await run(cwd, ["issues", "blocked-by", "--issue=4"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({ skipped: "tracker-none" });
+  });
+
+  it("exits 80 with the reason when the tracker read fails", async () => {
+    process.env.BKIT_LINEAR_API_KEY = "k";
+    const cwd = dir({ issueTracker: "linear" });
+    failingFetch();
+    const r = await run(cwd, ["issues", "blocked-by", "--issue=ENG-4"]);
+    expect(r.code).toBe(80);
+    expect(r.json).toEqual({ reason: "auth" });
+  });
+});
+
+describe("bkit issues related", () => {
+  const saved = process.env.BKIT_LINEAR_API_KEY;
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    if (saved === undefined) delete process.env.BKIT_LINEAR_API_KEY;
+    else process.env.BKIT_LINEAR_API_KEY = saved;
+  });
+
+  it("fetches each hit in rank order, up to --top, and writes the related-issues layout", async () => {
+    process.env.BKIT_LINEAR_API_KEY = "k";
+    const cwd = dir({ issueTracker: "linear" });
+    const calls = linearIssues({
+      "ENG-9": {
+        title: "Nine",
+        state: "Done",
+        description: "nine body",
+        comments: [
+          { body: "###### bkit:generated\n### Step 1", createdAt: "2026-10-01T00:00:00Z" },
+          { body: "human", createdAt: "2026-10-02T00:00:00Z" },
+        ],
+      },
+      "ENG-2": { title: "Two", state: "Todo", description: "two body", comments: [] },
+      "ENG-3": { title: "Three", state: "Todo", description: "three", comments: [] },
+    });
+    write(
+      cwd,
+      "hits.json",
+      JSON.stringify([{ identifier: "ENG-9", title: "x" }, "eng-2", "ENG-4", "ENG-3"]),
+    );
+    const r = await run(cwd, [
+      "issues",
+      "related",
+      "--hits-file=hits.json",
+      "--issue=ENG-4",
+      "--top=2",
+      "--out=related-issues.md",
+    ]);
+    expect(r.code).toBe(0);
+    expect(calls).toEqual(["ENG-9", "ENG-2"]);
+    expect(r.json).toEqual({ path: "related-issues.md", bytes: expect.any(Number), hits: 2 });
+    const text = fs.readFileSync(path.join(cwd, "related-issues.md"), "utf-8");
+    expect(r.json.bytes).toBe(Buffer.byteLength(text));
+    expect(text).toBe(
+      "## ENG-9 — Nine (Done)\n\nnine body\n\nhuman\n\n## ENG-2 — Two (Todo)\n\ntwo body\n",
+    );
+  });
+
+  it("GitHub headings carry #N; no hits writes None.", async () => {
+    const cwd = dir({ issueTracker: "linear" });
+    write(cwd, "hits.json", "[]");
+    const r = await run(cwd, ["issues", "related", "--hits-file=hits.json", "--out=r.md"]);
+    expect(r.json.hits).toBe(0);
+    expect(fs.readFileSync(path.join(cwd, "r.md"), "utf-8")).toBe("None.\n");
+  });
+
+  it("a hit that cannot be fetched exits 80 and writes nothing", async () => {
+    delete process.env.BKIT_LINEAR_API_KEY;
+    const cwd = dir({ issueTracker: "linear" });
+    write(cwd, "hits.json", '["ENG-9"]');
+    const r = await run(cwd, ["issues", "related", "--hits-file=hits.json", "--out=r.md"]);
+    expect(r.code).toBe(80);
+    expect(r.json).toEqual({ reason: "auth" });
+    expect(fs.existsSync(path.join(cwd, "r.md"))).toBe(false);
+  });
+
+  it("a hits file that is not a list of ids exits 3", async () => {
+    const cwd = dir({ issueTracker: "linear" });
+    write(cwd, "hits.json", '{"a":1}');
+    expect(
+      (await run(cwd, ["issues", "related", "--hits-file=hits.json", "--out=r.md"])).code,
+    ).toBe(3);
+  });
+});
+
+describe("bkit issues labels --write", () => {
+  const saved = {
+    key: process.env.BKIT_LINEAR_API_KEY,
+    path: process.env.PATH,
+    ci: process.env.CI,
+  };
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    for (const [k, v] of [
+      ["BKIT_LINEAR_API_KEY", saved.key],
+      ["PATH", saved.path],
+      ["CI", saved.ci],
+    ] as const) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
+
+  it("reads the labels itself, writes the transition and the state, prints tracker done", async () => {
+    process.env.BKIT_LINEAR_API_KEY = "k";
+    const cwd = dir({ issueTracker: "linear", linear: { progress: "In Progress" } });
+    const bodies: Array<{ query: string; variables: any }> = [];
+    const answers = [
+      { data: { issue: { labels: { nodes: [{ name: "bkit:plan" }, { name: "next:build" }] } } } },
+      {
+        data: {
+          issue: {
+            id: "u4",
+            team: { id: "t", states: { nodes: [{ id: "s2", name: "In Progress" }] } },
+          },
+          issueLabels: {
+            nodes: [
+              { id: "l-build", name: "bkit:build", team: null },
+              { id: "l-plan", name: "bkit:plan", team: null },
+              { id: "l-next", name: "next:build", team: null },
+            ],
+          },
+        },
+      },
+      { data: { issueUpdate: { success: true } } },
+      { data: { issueUpdate: { success: true } } },
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_u: string, init: RequestInit) => {
+        bodies.push(JSON.parse(String(init.body)));
+        return new Response(JSON.stringify(answers.shift()));
+      }),
+    );
+    const r = await run(cwd, ["issues", "labels", "--phase=build", "--write", "--fid=eng-4-x"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      add: ["bkit:build"],
+      remove: ["bkit:plan", "next:build"],
+      trackerState: "In Progress",
+      tracker: { done: true, action: "labels" },
+      boardWrite: null,
+    });
+    expect(bodies[2]!.variables.input).toEqual({
+      addedLabelIds: ["l-build"],
+      removedLabelIds: ["l-plan", "l-next"],
+    });
+    expect(bodies[3]!.variables.input).toEqual({ stateId: "s2" });
+  });
+
+  it("a failed read prints done false and the transition of the given --label set", async () => {
+    delete process.env.BKIT_LINEAR_API_KEY;
+    const r = await run(dir({ issueTracker: "linear" }), [
+      "issues",
+      "labels",
+      "--label=bkit:plan",
+      "--phase=build",
+      "--write",
+      "--issue=ENG-4",
+    ]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      labels: ["bkit:build"],
+      tracker: { done: false, action: "labels", reason: "auth" },
+    });
+  });
+
+  it("skips tracker none and a run with no issue", async () => {
+    const none = await run(dir({ issueTracker: "none" }), [
+      "issues",
+      "labels",
+      "--phase=build",
+      "--write",
+    ]);
+    expect(none.json.tracker).toEqual({ skipped: "tracker-none" });
+  });
+
+  it("a malformed board target is refused before any label is written", async () => {
+    const cwd = dir({
+      issueTracker: "github",
+      github: { project: "https://github.com/orgs/acme/projects/3/views/1" },
+    });
+    const bin = path.join(cwd, "bin");
+    fs.mkdirSync(bin);
+    fs.writeFileSync(
+      path.join(bin, "gh"),
+      `#!/bin/sh\nprintf '%s\\n' "$*" >> "${path.join(cwd, "gh-calls")}"\necho '[]'\n`,
+      { mode: 0o755 },
+    );
+    fs.writeFileSync(path.join(cwd, "gh-calls"), "");
+    process.env.PATH = [bin, saved.path].join(":");
+    delete process.env.CI;
+    const r = await run(cwd, [
+      "issues",
+      "labels",
+      "--phase=build",
+      "--board=progress",
+      "--write",
+      "--issue=12",
+      "--owner-repo=not-a-slug",
+    ]);
+    expect(r.code).toBe(2);
+    expect(fs.readFileSync(path.join(cwd, "gh-calls"), "utf-8")).not.toMatch(
+      /--method (POST|DELETE)/,
+    );
+  });
+
+  it("on a cloud or CI runtime the board is skipped:cloud and never called", async () => {
+    const cwd = dir({
+      issueTracker: "github",
+      github: { project: "https://github.com/orgs/acme/projects/3/views/1" },
+    });
+    spawnSync("git", ["remote", "add", "origin", "https://github.com/acme/app.git"], { cwd });
+    const bin = path.join(cwd, "bin");
+    fs.mkdirSync(bin);
+    fs.writeFileSync(
+      path.join(bin, "gh"),
+      `#!/bin/sh\nprintf '%s\\n' "$*" >> "${path.join(cwd, "gh-calls")}"\necho '[]'\n`,
+      { mode: 0o755 },
+    );
+    process.env.PATH = [bin, saved.path].join(":");
+    process.env.CI = "true";
+    const r = await run(cwd, [
+      "issues",
+      "labels",
+      "--phase=build",
+      "--board=progress",
+      "--write",
+      "--issue=12",
+    ]);
+    expect(r.json).toMatchObject({ board: null, boardSkipped: "cloud", boardWrite: null });
+    expect(fs.readFileSync(path.join(cwd, "gh-calls"), "utf-8")).not.toContain("graphql");
   });
 });

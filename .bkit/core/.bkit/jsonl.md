@@ -325,6 +325,24 @@ Identity match = same thing — not automatically skip:
 - **Nothing changed** -> skip.
 - **Something changed** -> **append** (§ Updating a Row).
 
+## `engine-action` rows
+
+Not a ledger: a row in a run's `status.jsonl` (`.bkit/workflows.md` § `status.jsonl`). An engine action unsafe to repeat — a tracker comment, a marker commit, a CI re-trigger, a PR open — appends one once it is done, and checks for it first, so a re-run of the same block does not act twice. Actions safe to repeat (a label already set) record nothing.
+
+<!-- prettier-ignore -->
+| Field | Value |
+| --- | --- |
+| `type` | `engine-action` |
+| `action` | what was done: `comment`, `commit`, `dispatch`, `pr-open`, … |
+| `key` | the moment: workflow, run, step, sub-plan, attempt, kind, joined by `/`; an absent part is `-` (`build/2/build-plan-verify/1/3/comment`) |
+| `hash` | sha256 hex of the body or payload acted on |
+| `ref` | what the action made (comment URL, commit SHA, run id); `null` when it names none |
+| `at` | UTC, whole seconds |
+
+- **Same `key`, same `hash`** → already done: skip, print `deduped: true`.
+- **Same `key`, new `hash`** → a deliberate edit: act again, append another row.
+- **Helpers:** `actionKey`, `actionHash`, `alreadyDone`, `recordAction` in `.bkit/core/engine/ledgers/status.ts`. The row has no `workflow`; the fold, `runStatusRows`, `counters rows` and the status-holes audit all read by `type`, so they skip it.
+
 ## Versioning
 
 `schema: 2` = row format; `bkit.version` = the bkit that wrote it.

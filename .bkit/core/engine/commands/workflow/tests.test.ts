@@ -39,7 +39,9 @@ const scripts = (s: Record<string, string>) => JSON.stringify({ scripts: s });
 /**
  * A checkout declaring `scripts`, and a fake package runner on PATH that echoes
  * the script it was asked for on stdout and stderr, writes FAKE_JUNIT to
- * $BKIT_TEST_REPORT when both are set, then exits FAKE_EXIT.
+ * $BKIT_TEST_REPORT when both are set, writes FAKE_REPORT_A / FAKE_REPORT_B into
+ * $BKIT_TEST_REPORT_DIR (B one folder down), prints FAKE_LINES numbered lines,
+ * then exits FAKE_EXIT.
  */
 let cwd: string;
 let bin: string;
@@ -54,6 +56,9 @@ beforeEach(() => {
     path.join(bin, PACKAGE_RUNNER),
     '#!/bin/sh\necho "out: $1 in $(pwd)"\necho "err: $1" >&2\necho "arg: $2"\n' +
       'if [ -n "$BKIT_TEST_REPORT" ] && [ -n "$FAKE_JUNIT" ]; then printf "%s" "$FAKE_JUNIT" > "$BKIT_TEST_REPORT"; fi\n' +
+      'if [ -n "$FAKE_REPORT_A" ]; then printf "%s" "$FAKE_REPORT_A" > "$BKIT_TEST_REPORT_DIR/a.xml"; fi\n' +
+      'if [ -n "$FAKE_REPORT_B" ]; then mkdir -p "$BKIT_TEST_REPORT_DIR/tier" && printf "%s" "$FAKE_REPORT_B" > "$BKIT_TEST_REPORT_DIR/tier/b.xml"; fi\n' +
+      'if [ -n "$FAKE_LINES" ]; then seq 1 "$FAKE_LINES" | sed "s/$/ quiet runner line/"; fi\n' +
       'exit "${FAKE_EXIT:-0}"\n',
     { mode: 0o755 },
   );
@@ -69,7 +74,7 @@ afterEach(() => {
 async function run(argv: string[], at = cwd, verb = "run") {
   const out: string[] = [];
   const err: string[] = [];
-  const code = await runCommand(["tests", verb, ...argv], [testsCommand], {
+  const code = await runCommand(["tests", verb, ...argv, "--json"], [testsCommand], {
     classicVerbs: new Set(),
     cwd: at,
     io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
@@ -120,8 +125,11 @@ describe("bkit tests run", () => {
       gate: DEEP,
       scope: gateScope(DEEP),
       failures: 0,
+      reports: "logs/test.md.reports",
       log: "logs/test.md",
       logBytes: fs.statSync(path.join(cwd, "logs/test.md")).size,
+      artifact: null,
+      clamp: null,
     });
     expect(r.json.scope).toBe(`${PACKAGE_RUNNER} ${DEEP}`);
     expect(readLog()).toContain(`out: ${DEEP}`);
@@ -201,6 +209,145 @@ describe("bkit tests run", () => {
   it("--gate and --log are required", async () => {
     expect((await run(["--log=l.md"])).code).toBe(2);
     expect((await run([`--gate=${SHALLOW}`])).code).toBe(2);
+  });
+});
+
+describe("bkit tests run — failures from JUnit reports", () => {
+  const xml = (...cases: string[]) =>
+    `<?xml version="1.0"?><testsuites><testsuite name="s">${cases.join("")}</testsuite></testsuites>`;
+  const caseOf = (name: string, child = "") =>
+    child === "" ? `<testcase name="${name}"/>` : `<testcase name="${name}">${child}</testcase>`;
+  const failing = (name: string) => caseOf(name, '<failure message="boom">t</failure>');
+  const erroring = (name: string) => caseOf(name, '<error message="crash">t</error>');
+  const skippedCase = (name: string) => caseOf(name, "<skipped/>");
+
+  it("sums failing and erroring cases across every XML file in the report folder; skipped never counts", async () => {
+    vi.stubEnv("FAKE_EXIT", "1");
+    vi.stubEnv("FAKE_REPORT_A", xml(failing("a1"), caseOf("a2"), skippedCase("a3")));
+    vi.stubEnv("FAKE_REPORT_B", xml(erroring("b1"), failing("b2"), skippedCase("b3")));
+    const r = await run(BUILD);
+    expect(r.code).toBe(1);
+    expect(r.json).toMatchObject({ verdict: "FAIL", failures: 3, reports: "logs/test.md.reports" });
+    expect(fs.readdirSync(path.join(cwd, "logs/test.md.reports"))).toContain("a.xml");
+  });
+
+  it("FAIL with no report: failures null and a hint naming the folder, never a guessed count", async () => {
+    vi.stubEnv("FAKE_EXIT", "1");
+    const r = await run(BUILD);
+    expect(r.json).toMatchObject({ verdict: "FAIL", failures: null });
+    expect(r.err).toContain("BKIT_TEST_REPORT_DIR");
+    expect(r.err).toContain("JUnit");
+  });
+
+  it("FAIL whose reports hold no failing case: failures null (the gate failed outside its reported tests)", async () => {
+    vi.stubEnv("FAKE_EXIT", "1");
+    vi.stubEnv("FAKE_REPORT_A", xml(caseOf("ok"), skippedCase("s")));
+    const r = await run(BUILD);
+    expect(r.json).toMatchObject({ verdict: "FAIL", failures: null });
+    expect(r.err).toContain("outside");
+  });
+
+  it("PASS is 0 failures with or without reports", async () => {
+    expect((await run(BUILD)).json.failures).toBe(0);
+    vi.stubEnv("FAKE_REPORT_A", xml(caseOf("ok")));
+    expect((await run(BUILD)).json.failures).toBe(0);
+  });
+
+  it("clears a previous attempt's reports before the gate runs", async () => {
+    const stale = path.join(cwd, "logs/test.md.reports/old.xml");
+    fs.mkdirSync(path.dirname(stale), { recursive: true });
+    fs.writeFileSync(stale, xml(failing("old")));
+    vi.stubEnv("FAKE_EXIT", "1");
+    const r = await run(BUILD);
+    expect(r.json.failures).toBeNull();
+    expect(fs.existsSync(stale)).toBe(false);
+  });
+
+  it("hands the gate the report folder as an absolute BKIT_TEST_REPORT_DIR", async () => {
+    vi.stubEnv("FAKE_REPORT_A", xml(caseOf("ok")));
+    await run(BUILD, cwd);
+    expect(fs.existsSync(path.join(cwd, "logs/test.md.reports/a.xml"))).toBe(true);
+  });
+});
+
+describe("bkit tests run --artifact", () => {
+  const ART = "docs/plans/202610/logs/1-x/run-tests-2.md";
+  const ARGS = [
+    ...BUILD,
+    `--artifact=${ART}`,
+    "--fid=1-x",
+    "--step=build-run-tests",
+    "--attempt=2",
+  ];
+  const clampLog = () => path.join(cwd, "tmp/bkit-clamp-1-x-build-run-tests-2.jsonl");
+
+  it("copies the log to the artifact, trims the copy, keeps the log whole, and resets then records the clamp", async () => {
+    fs.mkdirSync(path.join(cwd, "tmp"), { recursive: true });
+    fs.writeFileSync(clampLog(), '{"stale":true}\n');
+    vi.stubEnv("FAKE_EXIT", "1");
+    vi.stubEnv("FAKE_LINES", "9000");
+    const r = await run(ARGS);
+    expect(r.code).toBe(1);
+    expect(r.json).toMatchObject({
+      artifact: ART,
+      clamp: {
+        artifact: ART,
+        clamped: true,
+        raw: "logs/test.md",
+        source: gateScope(DEEP),
+      },
+    });
+    expect(r.json.clamp.fetchedAt).toMatch(/Z$/);
+    expect(readLog().split("\n").length).toBeGreaterThan(9000);
+    const art = fs.readFileSync(path.join(cwd, ART), "utf-8");
+    expect(art).toContain("TRUNCATED");
+    expect(art.split("\n").length).toBeLessThan(9000);
+    const rows = fs
+      .readFileSync(clampLog(), "utf-8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
+    expect(rows).toEqual([r.json.clamp]);
+  });
+
+  it("a log under the outbox is named main-checkout relative in the record", async () => {
+    const log = path.join(cwd, ".git/bkit-outbox/1-x/run-tests-2.log");
+    vi.stubEnv("FAKE_LINES", "9000");
+    const r = await run([
+      ...BKIT_BUILD_GATES.map((g) => `--gate=${g}`),
+      `--log=${log}`,
+      `--artifact=${ART}`,
+      "--fid=1-x",
+      "--step=build-run-tests",
+      "--attempt=2",
+    ]);
+    expect(r.code).toBe(0);
+    expect(r.json.clamp).toMatchObject({
+      clamped: true,
+      raw: ".git/bkit-outbox/1-x/run-tests-2.log",
+      source: gateScope(DEEP),
+    });
+    expect(r.json.reports).toBe(`${log}.reports`);
+    expect(fs.readdirSync(path.dirname(path.join(cwd, ART)))).toEqual(["run-tests-2.md"]);
+  });
+
+  it("a log small enough is copied whole: not clamped, raw null", async () => {
+    const r = await run(ARGS);
+    expect(r.json.clamp).toMatchObject({ clamped: false, raw: null, source: gateScope(DEEP) });
+    expect(fs.readFileSync(path.join(cwd, ART), "utf-8")).toBe(readLog());
+  });
+
+  it("exit 5 when the artifact cannot be written; the verdict is still printed", async () => {
+    fs.writeFileSync(path.join(cwd, "docs"), "a file where a folder should be");
+    const r = await run(ARGS);
+    expect(r.code).toBe(5);
+    expect(r.json).toMatchObject({ verdict: "PASS", artifact: ART, clamp: null });
+    expect(r.err).toContain(ART);
+  });
+
+  it("--artifact needs --fid and --step", async () => {
+    expect((await run([...BUILD, `--artifact=${ART}`])).code).toBe(2);
+    expect((await run([...BUILD, `--artifact=${ART}`, "--fid=1-x"])).code).toBe(2);
   });
 });
 

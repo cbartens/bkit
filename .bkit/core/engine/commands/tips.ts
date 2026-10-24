@@ -10,14 +10,19 @@ import type { TipsContext } from "../cli.js";
 import { collectTips, formatTips } from "../checks/tips/index.js";
 import { formatNotes, readNotes } from "./workflow/disk.js";
 
+/** What `bkit tips` prints: disk-prune notes, then the tips; "" when nothing applies. */
+export function tipsText(all: boolean, workflow: TipsContext | null, cwd: string): string {
+  const { tips, star } = collectTips(cwd);
+  return [formatNotes(readNotes(cwd)), formatTips(tips, { all, workflow, star })]
+    .filter((part) => part !== "")
+    .join("\n\n");
+}
+
 export function runTipsCommand(
   all: boolean,
   workflow: TipsContext | null,
   cwd: string = process.cwd(),
 ): void {
-  const { tips, star } = collectTips(cwd);
-  const output = [formatNotes(readNotes(cwd)), formatTips(tips, { all, workflow, star })]
-    .filter((part) => part !== "")
-    .join("\n\n");
+  const output = tipsText(all, workflow, cwd);
   if (output) console.log(output);
 }

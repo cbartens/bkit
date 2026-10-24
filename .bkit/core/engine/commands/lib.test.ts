@@ -21,7 +21,11 @@ import {
   verbHelp,
   type CommandSpec,
   type FlagSpec,
+  type RunContext,
+  type VerbSpec,
 } from "./lib";
+import { parseText } from "../shared/text";
+import { COMMANDS } from "./registry";
 
 const FLAGS: FlagSpec[] = [
   { name: "fid", type: "string", required: true, help: "feature id" },
@@ -172,6 +176,22 @@ const CMD: CommandSpec = {
 
 const STATUS_CMD: CommandSpec = { ...CMD, noun: "status" };
 
+/** `widgets count` printing `row` (text leaves it out) and `checks` (left out when empty). */
+const OMITTING: CommandSpec = {
+  ...CMD,
+  verbs: {
+    count: {
+      ...CMD.verbs.count!,
+      output: { count: "how many", row: "the row", checks: "the checks" },
+      textOmit: ["row", { key: "checks", when: (v) => Array.isArray(v) && v.length === 0 }],
+      run: (ctx) => {
+        ctx.emit({ count: 2, row: { a: 1 }, checks: ctx.flags.dryRun ? [1] : [] });
+        return EXIT.OK;
+      },
+    },
+  },
+};
+
 function harness() {
   const out: string[] = [];
   const err: string[] = [];
@@ -191,11 +211,29 @@ describe("runCommand", () => {
     expect(await harness().run(["install", "--claude"])).toBeNull();
   });
 
-  it("runs a verb: one JSON object on stdout, tagged log on stderr", async () => {
+  it("runs a verb: text on stdout, tagged log on stderr", async () => {
     const h = harness();
     expect(await h.run(["widgets", "count", "--fid=467"])).toBe(EXIT.OK);
-    expect(h.out).toEqual(['{"count":2}\n']);
+    expect(h.out).toEqual(["count: 2\n"]);
     expect(h.err).toEqual(["[bkit-widgets] counting 467\n"]);
+  });
+
+  it("prints one JSON object with --json", async () => {
+    const h = harness();
+    expect(await h.run(["widgets", "count", "--fid=467", "--json"])).toBe(EXIT.OK);
+    expect(h.out).toEqual(['{"count":2}\n']);
+  });
+
+  it("leaves a verb's textOmit keys out of text and keeps them in --json", async () => {
+    const h = harness();
+    await h.run(["widgets", "count", "--fid=1"], [OMITTING]);
+    await h.run(["widgets", "count", "--fid=1", "--dry-run"], [OMITTING]);
+    await h.run(["widgets", "count", "--fid=1", "--json"], [OMITTING]);
+    expect(h.out).toEqual([
+      "count: 2\n",
+      "count: 2\nchecks:\n  - 1\n",
+      '{"count":2,"row":{"a":1},"checks":[]}\n',
+    ]);
   });
 
   it("passes the verb's own exit code through", async () => {
@@ -250,6 +288,144 @@ describe("runCommand", () => {
     expect(h.out[0]).toBe(commandHelp(STATUS_CMD));
     expect(h.err).toEqual([]);
   });
+
+  it("takes the global --json flag on any verb, sets ctx.json and prints JSON", async () => {
+    const seen: boolean[] = [];
+    const probe: CommandSpec = {
+      ...CMD,
+      verbs: {
+        count: {
+          ...CMD.verbs.count!,
+          run: (ctx) => {
+            seen.push(ctx.json);
+            ctx.emit({ count: 2, flags: ctx.flags });
+            return EXIT.OK;
+          },
+        },
+      },
+    };
+    const h = harness();
+    expect(await h.run(["widgets", "count", "--json", "--fid=467", "--json"], [probe])).toBe(
+      EXIT.OK,
+    );
+    expect(await h.run(["widgets", "count", "--fid=467"], [probe])).toBe(EXIT.OK);
+    expect(seen).toEqual([true, false]);
+    expect(h.out).toEqual([
+      '{"count":2,"flags":{"fid":"467"}}\n',
+      'count: 2\nflags:\n  fid: "467"\n',
+    ]);
+  });
+
+  it("refuses --json with a value", async () => {
+    const h = harness();
+    expect(await h.run(["widgets", "count", "--fid=1", "--json=yes"])).toBe(EXIT.USAGE);
+    expect(h.err).toEqual(["[bkit-widgets] --json takes no value\n"]);
+  });
+});
+
+/** What `argv` prints on stdout through `cmd`. */
+async function stdoutOf(cmd: CommandSpec, argv: string[]): Promise<string> {
+  const out: string[] = [];
+  await runCommand(argv, [cmd], {
+    classicVerbs: new Set(),
+    io: { stdout: (t) => out.push(t), stderr: () => {} },
+  });
+  return out.join("");
+}
+
+/** `full` less the keys `spec.textOmit` leaves out of text for it. */
+function withoutOmitted(spec: VerbSpec, full: Record<string, unknown>): Record<string, unknown> {
+  const omitted = (spec.textOmit ?? []).flatMap((o) =>
+    typeof o === "string" ? [o] : o.when(full[o.key], full) ? [o.key] : [],
+  );
+  return Object.fromEntries(Object.entries(full).filter(([k]) => !omitted.includes(k)));
+}
+
+describe("--json on every registered command", () => {
+  const args = (flags: FlagSpec[]) =>
+    flags
+      .filter((f) => f.required)
+      .map((f) => (f.type === "boolean" ? `--${f.name}` : `--${f.name}=x`));
+
+  it("no verb declares its own --json flag", () => {
+    const clashes = COMMANDS.flatMap((cmd) =>
+      Object.entries(cmd.verbs)
+        .filter(([, spec]) => spec.flags.some((f) => f.name === "json"))
+        .map(([verb]) => `${cmd.noun} ${verb}`),
+    );
+    expect(clashes).toEqual([]);
+  });
+
+  it("every verb's flag parsing accepts --json", async () => {
+    const seen: string[] = [];
+    const probes: CommandSpec[] = COMMANDS.map((cmd) => ({
+      ...cmd,
+      verbs: Object.fromEntries(
+        Object.entries(cmd.verbs).map(([verb, spec]) => [
+          verb,
+          {
+            ...spec,
+            run: (ctx: RunContext) => {
+              seen.push(`${cmd.noun} ${verb} json=${String(ctx.json)}`);
+              return EXIT.OK;
+            },
+          },
+        ]),
+      ),
+    }));
+    const expected: string[] = [];
+    for (const cmd of COMMANDS) {
+      for (const [verb, spec] of Object.entries(cmd.verbs)) {
+        expected.push(`${cmd.noun} ${verb} json=true`);
+        const code = await runCommand([cmd.noun, verb, ...args(spec.flags), "--json"], probes, {
+          classicVerbs: new Set(),
+          io: { stdout: () => {}, stderr: () => {} },
+        });
+        expect(code, `${cmd.noun} ${verb}`).toBe(EXIT.OK);
+      }
+    }
+    expect(seen).toEqual(expected);
+  });
+
+  /** Values of every shape the text renderer has a rule for, handed out in turn. */
+  const SHAPES: unknown[] = [
+    "F-1",
+    "681",
+    null,
+    true,
+    0,
+    "",
+    "null",
+    "a|b\nc",
+    [],
+    {},
+    ["x", 2, null],
+    [{ check: "row", ok: true, detail: "" }],
+    [{ a: 1 }, { b: "2" }],
+    { done: false, nested: { n: 1, list: [{ k: "v" }] } },
+    [{ a: { deep: 1 } }, "mixed"],
+  ];
+
+  it("every verb's text output reads back as its --json output, less its textOmit keys", async () => {
+    for (const cmd of COMMANDS) {
+      for (const [verb, spec] of Object.entries(cmd.verbs)) {
+        const output = Object.fromEntries(
+          Object.keys(spec.output).map((key, i) => [key, SHAPES[i % SHAPES.length]]),
+        );
+        const probe: CommandSpec = {
+          ...cmd,
+          verbs: { [verb]: { ...spec, run: (ctx: RunContext) => (ctx.emit(output), EXIT.OK) } },
+        };
+        const argv = [cmd.noun, verb, ...args(spec.flags)];
+        const full = JSON.parse(await stdoutOf(probe, [...argv, "--json"])) as Record<
+          string,
+          unknown
+        >;
+        const text = await stdoutOf(probe, argv);
+        expect(parseText(text), `${cmd.noun} ${verb}`).toEqual(withoutOmitted(spec, full));
+      }
+    }
+  });
 });
 
 describe("help", () => {
@@ -268,6 +444,28 @@ describe("help", () => {
     expect(help).toContain("--dry-run ");
     expect(help).toMatch(/^ {2}count +how many$/m);
     expect(help).toMatch(/^ {2}3 +no widgets at all$/m);
+    expect(help).toContain("Output (one object on stdout: `key: value` text, JSON with --json):");
+  });
+
+  it("verb help marks the keys text output leaves out", () => {
+    const cmd: CommandSpec = {
+      noun: "widgets",
+      summary: "w",
+      verbs: {
+        save: {
+          summary: "s",
+          flags: [],
+          output: { row: "the row", checks: "the checks", ok: "done" },
+          textOmit: ["row", { key: "checks", when: () => true }],
+          exitCodes: {},
+          run: () => EXIT.OK,
+        },
+      },
+    };
+    const help = verbHelp(cmd, "save");
+    expect(help).toMatch(/^ {2}row +the row \(--json only\)$/m);
+    expect(help).toMatch(/^ {2}checks +the checks \(text: only when it matters\)$/m);
+    expect(help).toMatch(/^ {2}ok +done$/m);
   });
 });
 

@@ -491,7 +491,7 @@ describe("self-hosted renovate workflow template (.bkit/templates/.github/workfl
     expect(content).not.toMatch(/secrets\.BKIT_ANTHROPIC_API_KEY/);
     expect(content).not.toMatch(/secrets\.LINEAR_API_KEY/);
     expect(content).not.toMatch(/secrets\.BKIT_LINEAR_API_KEY/);
-    expect(content).not.toMatch(/secrets\.BKIT_JIRA_API_TOKEN/);
+    expect(content).not.toMatch(/secrets\.BKIT_JIRA_API_KEY/);
   });
 
   it("uses least-privilege job permissions (contents: read)", () => {
@@ -585,7 +585,7 @@ describe(".bkit/.env.example keys are BKIT_-prefixed (direnv isolation)", () => 
   it("vendor API keys are BKIT_-prefixed", () => {
     for (const key of [
       "BKIT_LINEAR_API_KEY",
-      "BKIT_JIRA_API_TOKEN",
+      "BKIT_JIRA_API_KEY",
       "BKIT_ANTHROPIC_API_KEY",
       "BKIT_CURSOR_API_KEY",
       "BKIT_OPENCODE_API_KEY",

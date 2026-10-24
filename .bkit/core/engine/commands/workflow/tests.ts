@@ -6,6 +6,8 @@
 // order is the contract). Nothing declared is its own exit code, never an empty
 // command that exits 0 and reads as a clean run. A gate that exits 126 / 127 never
 // ran (not executable / not found), so it is not recorded as a failing test.
+// The failure count comes from the JUnit reports the gate's runners write into
+// `{log}.reports/` (`BKIT_TEST_REPORT_DIR`), never from reading the log.
 //
 // bkit tests red / green — test-first evidence for build tasks. Both run one test
 // file through the consumer's `bkit:test:file` script and judge its JUnit report,
@@ -19,6 +21,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { BKIT_TEST_FILE_SCRIPT } from "../../install/manifest.js";
+import { clampLogPath } from "../../ledgers/clamp-log.js";
 import { CommandError, EXIT, git, runGit, type CommandSpec } from "../lib.js";
 import { readPackageJson } from "../../shared/package-json.js";
 import { COULD_NOT_RUN_EXIT_CODES, scriptCommand } from "../../shared/package-manager.js";
@@ -32,11 +35,22 @@ import {
   str,
 } from "./status.js";
 import { writeStepRow } from "./steps.js";
+import { appendRecord, clampFile, type ClampRecord } from "./context.js";
 
 /** Exit code: no candidate gate is declared in package.json. */
 export const EXIT_NO_GATE = 3;
 /** Exit code: the gate could not run (exit 126 / 127, or the package runner is missing). */
 export const EXIT_COULD_NOT_RUN = 4;
+/** Exit code: --artifact could not be written, trimmed or recorded. */
+export const EXIT_ARTIFACT_STEP = 5;
+
+/** The env var naming the folder every runner a gate calls writes its JUnit XML into. */
+export const REPORT_DIR_ENV = "BKIT_TEST_REPORT_DIR";
+
+const NO_REPORT_HINT =
+  `no JUnit report in $${REPORT_DIR_ENV} — failures unknown; turn on each test runner's JUnit ` +
+  `reporter in the gate and point its output into $${REPORT_DIR_ENV} ` +
+  "(.bkit/workflows.md § Local gate scripts)";
 
 const DEFAULT_TAIL = 40;
 
@@ -88,6 +102,25 @@ export function runToLog(
   }
   if (res.status !== null) return res.status;
   return 128 + ((res.signal ? os.constants.signals[res.signal] : undefined) ?? 1);
+}
+
+/** `{log}.reports`, emptied: a previous attempt's reports never count toward this one. */
+function freshReportDir(log: string): string {
+  const dir = `${log}.reports`;
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+/** Failing plus erroring test cases across every `*.xml` under `dir`; null when there is none. */
+export function countReportFailures(dir: string): number | null {
+  const xml = (fs.readdirSync(dir, { recursive: true }) as string[]).filter(
+    (f) => f.endsWith(".xml") && fs.statSync(path.join(dir, f)).isFile(),
+  );
+  if (xml.length === 0) return null;
+  return xml
+    .flatMap((f) => parseJunit(fs.readFileSync(path.join(dir, f), "utf-8")))
+    .filter((c) => c.state === "failure" || c.state === "error").length;
 }
 
 const tailLines = (file: string, n: number) =>
@@ -614,24 +647,43 @@ export const testsCommand: CommandSpec = {
           type: "string",
           help: `lines of the log echoed to stderr afterwards (default ${DEFAULT_TAIL}; 0 for none)`,
         },
+        {
+          name: "artifact",
+          type: "string",
+          help: "copy the log here, trim the copy (debug-evidence) and record the clamp; needs --fid and --step",
+        },
+        { name: "fid", type: "string", help: "--artifact: feature id, for the clamp log" },
+        { name: "step", type: "string", help: "--artifact: step name, for the clamp log" },
+        { name: "attempt", type: "string", help: "--artifact: attempt, for the clamp log" },
       ],
       output: {
         verdict: "PASS | FAIL (null when the gate could not run)",
         exitCode: "the gate's exit code",
         gate: "the script that ran",
         scope: "the command that ran, as status rows record it",
-        failures: "0 on PASS; null otherwise — count failing suites from the log",
-        log: "where the full output was saved (as given)",
+        failures: `0 on PASS; on FAIL the failing + erroring test cases in the JUnit reports, or null when no report counts any (unknown, never 0)`,
+        reports: `{log}.reports — emptied before the run and passed to the gate as $${REPORT_DIR_ENV}`,
+        log: "where the full output was saved (as given); the untouched original",
         logBytes: "size of the saved output",
+        artifact: "--artifact as given, else null",
+        clamp: "the artifact's clamp record (raw = the log, source = scope), else null",
       },
+      textOmit: ["clamp"],
       exitCodes: {
         [EXIT_NO_GATE]: "no candidate gate is declared in package.json",
         [EXIT_COULD_NOT_RUN]: "the gate could not run (exit 126 / 127): not a test failure",
+        [EXIT_ARTIFACT_STEP]: "--artifact could not be written, trimmed or recorded",
       },
       run: (ctx) => {
         const candidates = ctx.flags.gate as string[];
         const logArg = String(ctx.flags.log);
         if (logArg === "") throw new CommandError(EXIT.USAGE, "--log must be non-empty");
+        const artifact = str(ctx.flags.artifact);
+        const fid = str(ctx.flags.fid);
+        const step = str(ctx.flags.step);
+        const attempt = positiveInt(ctx.flags.attempt, "attempt");
+        if (artifact !== undefined && (!fid || !step))
+          throw new CommandError(EXIT.USAGE, "--artifact needs --fid and --step");
         const tailRaw = str(ctx.flags.tail) ?? String(DEFAULT_TAIL);
         if (!/^[0-9]+$/.test(tailRaw)) {
           throw new CommandError(
@@ -653,21 +705,60 @@ export const testsCommand: CommandSpec = {
         }
         const scope = gateScope(gate);
         const log = path.resolve(ctx.cwd, logArg);
+        const reports = freshReportDir(log);
         ctx.log(`running ${scope} — full output in ${logArg}`);
-        const exitCode = runToLog(scriptCommand(gate), top, log);
+        const fetchedAt = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+        const exitCode = runToLog(scriptCommand(gate), top, log, { [REPORT_DIR_ENV]: reports });
         for (const line of Number(tailRaw) > 0 ? tailLines(log, Number(tailRaw)) : [])
           ctx.log(line);
         const couldNotRun = COULD_NOT_RUN_EXIT_CODES.has(exitCode);
         const verdict = couldNotRun ? null : exitCode === 0 ? "PASS" : "FAIL";
+        const counted = countReportFailures(reports);
+        if (counted === null) ctx.log(NO_REPORT_HINT);
+        else if (verdict === "FAIL" && counted === 0)
+          ctx.log(
+            `the JUnit reports in $${REPORT_DIR_ENV} hold no failing case — the gate failed outside its reported tests; failures unknown`,
+          );
+        const failures = verdict === "PASS" ? 0 : counted !== null && counted > 0 ? counted : null;
+        let clamp: ClampRecord | null = null;
+        let artifactFailed: string | null = null;
+        if (artifact !== undefined) {
+          try {
+            const out = path.resolve(ctx.cwd, artifact);
+            fs.mkdirSync(path.dirname(out), { recursive: true });
+            fs.copyFileSync(log, out);
+            const clampLog = clampLogPath(ctx.cwd, fid!, step!, attempt);
+            fs.mkdirSync(path.dirname(clampLog), { recursive: true });
+            fs.writeFileSync(clampLog, "");
+            clamp = clampFile(out, "debug-evidence", artifact, {
+              rawDir: null,
+              source: scope,
+              fetchedAt,
+              original: log,
+            });
+            appendRecord(clampLog, clamp);
+          } catch (err) {
+            // The verdict stands; the step's artifact is what failed.
+            clamp = null;
+            artifactFailed = (err as Error).message;
+          }
+        }
         ctx.emit({
           verdict,
           exitCode,
           gate,
           scope,
-          failures: verdict === "PASS" ? 0 : null,
+          failures,
+          reports: `${logArg}.reports`,
           log: logArg,
           logBytes: fs.statSync(log).size,
+          artifact: artifact ?? null,
+          clamp,
         });
+        if (artifactFailed !== null) {
+          ctx.log(`--artifact ${artifact}: ${artifactFailed}`);
+          return EXIT_ARTIFACT_STEP;
+        }
         if (couldNotRun) {
           ctx.log(
             `${scope} could not run (exit ${exitCode}: ${exitCode === 126 ? "not executable" : "command not found"}) — no tests executed; this is not a FAIL verdict`,
@@ -1032,12 +1123,15 @@ export const testsCommand: CommandSpec = {
                     "test-changed",
                     `\`${t.test}\` differs from its red snapshot for "${t.name}" (diff below)`,
                   );
-                const diff = spawnSync(
-                  "git",
-                  ["diff", "--no-index", "--no-color", "--", path.relative(top, snapAbs), t.test],
-                  { cwd: top, encoding: "utf-8" },
-                );
-                diffs.push({ task: s.task, test: t.test, diff: diff.stdout.trimEnd() });
+                const diff = runGit(top, [
+                  "diff",
+                  "--no-index",
+                  "--no-color",
+                  "--",
+                  path.relative(top, snapAbs),
+                  t.test,
+                ]);
+                diffs.push({ task: s.task, test: t.test, diff: diff.stdout });
               } else row.changed = "no";
             }
 

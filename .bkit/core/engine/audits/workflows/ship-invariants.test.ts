@@ -188,8 +188,7 @@ describe("bkit-ship.md — push-timing invariant (feature-branch pushes before m
     !/--delete\b/.test(line) &&
     (/\bgit\s+(-C\s+"[^"]+"\s+)?push\b/.test(line) || /"\{BKIT\}" branches push\b/.test(line));
   const isFeaturePush = (line: string) =>
-    isPush(line) &&
-    (/\{SHIP_BRANCH\}/.test(line) || /"\$B"/.test(line) || /--mode=feature\b/.test(line));
+    isPush(line) && (/\{SHIP_BRANCH\}/.test(line) || /--mode=(feature|plain)\b/.test(line));
   const isForcedPush = (line: string) =>
     isPush(line) && (/--force/.test(line) || /--mode=feature\b/.test(line));
   const isBareForcePush = (line: string) => isPush(line) && /--force(?!-with-lease)/.test(line);
@@ -224,7 +223,7 @@ describe("bkit-ship.md — push-timing invariant (feature-branch pushes before m
     const pushes = fencedLinesByStep(readShip())
       .filter(isBookkeepingPush)
       .map((l) => l.line);
-    expect(pushes).toEqual(['git push origin "{SHIP_BRANCH}"']);
+    expect(pushes).toEqual(['"{BKIT}" branches push --mode=plain >/dev/null']);
   });
 
   it("the pre-merge bookkeeping commit stages through bkit ledgers --scope=pr, after the step-done row", () => {
@@ -245,11 +244,13 @@ describe("bkit-ship.md — push-timing invariant (feature-branch pushes before m
     const lines = readShip().split("\n");
     const openIdx = lines.findIndex((l) => /"\{BKIT\}" prs open\b/.test(l));
     expect(openIdx, "Step 2 open-PR `bkit prs open` not found").toBeGreaterThan(-1);
-    const block = lines.slice(Math.max(0, openIdx - 8), openIdx + 1).join("\n");
-    expect(block).toMatch(/git push -u origin "\$B"/);
-    expect(block).not.toMatch(/--force/);
-    expect(block).toMatch(/AHEAD=\$\(git rev-list --count origin\/dev\.\.HEAD/);
-    expect(block).toMatch(/\[ "\$AHEAD" -gt 0 \] \|\| \{.*exit 1; \}/);
+    const block = lines.slice(Math.max(0, openIdx - 3), openIdx + 1).join("\n");
+    expect(block).toMatch(
+      /"\{BKIT\}" branches push --mode=plain --set-upstream --ahead-of=origin\/dev\b.*\|\| exit \$\?/,
+    );
+    expect(block).not.toMatch(/--force|\bgit\b/);
+    // A re-run after a crash reuses the PR the first run opened.
+    expect(lines[openIdx]).toMatch(/--file="\{STATUS\}" --workflow=ship\b/);
   });
 });
 
@@ -278,7 +279,7 @@ describe("bkit-ship.md — bookkeeping and status writes", () => {
     const lock = at(/"\{BKIT\}" locks acquire --kind=workflow/);
     const setup = at(/"\{BKIT\}" worktrees setup --workflow=ship/);
     const start = at(/"\{BKIT\}" workflows start --workflow=ship/);
-    const labels = at(/"\{BKIT\}" issues labels --phase=ship/);
+    const labels = at(/"\{BKIT\}" issues labels --write --phase=ship/);
     const preflight = at(/"\{BKIT\}" repo preflight/);
     expect(lock).toBeGreaterThan(-1);
     expect(setup).toBeGreaterThan(lock);
@@ -478,7 +479,9 @@ describe("bkit-ship.md — dev writes live in commands", () => {
       lines.some((l) => /"\{BKIT\}" workflows close --workflow=ship\b.*--flush\b/.test(l)),
     ).toBe(true);
     expect(
-      lines.some((l) => /"\{BKIT\}" workflows handover --workflow=ship\b.*--flush\b/.test(l)),
+      lines.some((l) =>
+        /"\{BKIT\}" workflows handover --post --workflow=ship\b.*--flush\b/.test(l),
+      ),
     ).toBe(true);
   });
 });
@@ -494,13 +497,12 @@ describe("bkit-ship.md — build-challenge remediation regressions", () => {
   it("F1: B2 conflict-resolve stages tracked source modifications before its commit and push", () => {
     const b2 = fences(readShip()).find((f) => /"\{BKIT\}" branches push --mode=feature\b/.test(f));
     expect(b2, "B2 conflict-resolve push block not found").toBeDefined();
-    const stage = b2!.search(
-      /"\{BKIT\}" ledgers commit [^\n]*--mode=stage [^\n]*--stage-tracked-updates/,
+    const commit = b2!.search(
+      /"\{BKIT\}" ledgers commit [^\n]*--mode=commit --stage-tracked-updates --message="chore\(\{FID\}\): conflict-resolve bkit \[skip ci\]"/,
     );
-    const commit = b2!.indexOf("git commit ");
     const push = b2!.indexOf('"{BKIT}" branches push --mode=feature');
-    expect(stage, "B2 does not stage tracked updates through bkit ledgers").toBeGreaterThan(-1);
-    expect(stage).toBeLessThan(commit);
+    expect(commit, "B2 does not commit tracked updates through bkit ledgers").toBeGreaterThan(-1);
+    expect(b2).not.toMatch(/\bgit commit\b/);
     expect(commit).toBeLessThan(push);
   });
 
@@ -563,7 +565,7 @@ describe("bkit-ship.md — #363: the auto-route marker comes from labels re-read
 
   it("Step 10 re-reads the labels through the tracker and passes them to the merge", () => {
     const step = section(readShip(), /^## .*Step \d+ — Merge Gate \+ Merge PR/, /^### .*Gate/);
-    const reread = step.search(/mcp__github__issue_read\(\{ method: "get"/);
+    const reread = step.search(/"\{BKIT\}" issues fetch --issue="\{ISSUE_ID\}" --outbox=/);
     const merge = step.indexOf('"{BKIT}" prs merge');
     expect(reread, "no tracker re-read in Step 10").toBeGreaterThan(-1);
     expect(reread).toBeLessThan(merge);
@@ -586,7 +588,7 @@ describe("bkit-ship.md — Failure Path single-write contract", () => {
   // --flush` — both in commands/workflow/workflows.test.ts.
   it("records the failure through bkit workflows fail, booked where the runtime books", () => {
     const fence = fences(failurePathBlock(readShip())).find((f) =>
-      /"\{BKIT\}" workflows fail --workflow=ship\b/.test(f),
+      /"\{BKIT\}" workflows fail --post --issue="\{ISSUE_ID\}" --workflow=ship\b/.test(f),
     );
     expect(fence, "no bkit workflows fail in the Failure Path").toBeDefined();
     expect(fence!).toMatch(/workflows fail .*--token=\{LOCK_TOKEN\}/);
@@ -594,7 +596,7 @@ describe("bkit-ship.md — Failure Path single-write contract", () => {
 
   it("flushes through bkit workflows handover --flush, once", () => {
     const calls = fences(failurePathBlock(readShip())).filter((f) =>
-      /"\{BKIT\}" workflows handover --workflow=ship [^\n]*--flush/.test(f),
+      /"\{BKIT\}" workflows handover --post --workflow=ship [^\n]*--flush/.test(f),
     );
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatch(/--worktree="\{WORKTREE_PATH\}"/);
@@ -666,19 +668,21 @@ describe("bkit-ship.md — issue-less runs and the main guard", () => {
     ].map((m) => ({ kind: m[1]!, text: m[0] }));
 
   it("Step 10 label re-read skips when ISSUE_ID is empty", () => {
-    const wired = blocks(step10()).filter((b) => b.kind !== "true");
-    expect(wired).toHaveLength(3);
+    // One engine re-read in a tracker true block; the MCP is only its exit-80 fallback.
+    const wired = blocks(step10()).filter((b) => b.text.includes("issues fetch"));
+    expect(wired).toHaveLength(1);
     for (const b of wired) expect(b.text, b.kind).toContain(SKIP);
     expect(step10()).toContain("empty when no tracker is wired or `ISSUE_ID` is empty");
   });
 
-  it("naming warning fires issue-less when the branch is not feat/FID", () => {
-    const step2 = section(readShip(), /^## .*Step 2 — Verify PR/, /^### /);
-    const line = step2.split("\n").find((l) => l.startsWith("2. **If** `BRANCH`"));
-    expect(line, "no naming-warning line").toBeDefined();
-    // An empty ISSUE_ID is contained in every branch name, so it cannot be the only test.
-    expect(line).toContain("`ISSUE_ID` empty **or**");
-    expect(line).toContain("does not contain `{FID}`");
+  it("naming warning comes from worktrees setup, which reads the issue only when there is one", () => {
+    const step1 = section(readShip(), /^## .*Step 1 — /, /^### /);
+    const setup = step1.split("\n").find((l) => l.includes('"{BKIT}" worktrees setup'));
+    expect(setup, "no worktrees setup line").toBeDefined();
+    // An empty ISSUE_ID is contained in every branch name, so it is dropped, never passed.
+    expect(setup).toMatch(/<!-- bkit:tracker true start --> --issue="\{ISSUE_ID\}"/);
+    expect(step1).toContain("**If** `ISSUE_ID` empty → drop `--issue`");
+    expect(step1).toContain("**If** `branchWarning` non-null → emit it → continue.");
   });
 
   it("Step 10 MCP merge asserts base dev", () => {
@@ -699,7 +703,8 @@ describe("bkit-ship.md — issue-less runs and the main guard", () => {
     expect(start).toBeGreaterThanOrEqual(0);
     const item = lines.slice(start, end).join("\n");
     const all = blocks(item);
-    expect(all.length, "no tracker blocks in sub-step 3").toBe(4);
+    expect(all.length, "no tracker blocks in sub-step 3").toBe(1);
+    expect(item).toContain('"{BKIT}" issues labels --write --phase=merged');
     for (const b of all) expect(b.text, b.kind).toContain(SKIP);
   });
 

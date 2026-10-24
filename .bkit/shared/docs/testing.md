@@ -260,6 +260,15 @@ A plan's `Derived Test Matrix` (`docs/templates/bkit-plan.md`) is the per-featur
 - **Test name:** as the runner reports it, or its last segment (`clamp > keeps a value inside the range` → `keeps a value inside the range`).
 - **The red test stays:** after the red, the test may gain tests or formatting; a weakened, removed or rewritten assertion fails the build's verify.
 
+## JUnit reports for bkit
+
+`bkit tests run` counts a gate's failures from JUnit XML, not from its log. It empties a report folder before each run and passes its absolute path to the gate as `$BKIT_TEST_REPORT_DIR`.
+
+- **Every runner in a gate writes JUnit there** when the variable is set: one file per runner or per run, `*.xml`, any name. Two runs in one gate never write the same file name.
+- **Counted:** failing plus erroring test cases across every file. Skipped cases do not count.
+- **No reports:** `failures` is `null` (count unknown) and a hint says to turn the reporters on. The verdict still comes from the gate's exit code.
+- **Unset variable:** the runner behaves as it always does, so a gate run by hand writes nothing extra.
+
 ## What each tier must do
 
 Tier-by-tier rules: **do** the rule, avoid the **Not** (the failure it prevents). Stack tools (Vitest / Playwright / a Supabase-style local stack / a Vercel-style preview) appear only as worked examples, because the rule is the principle; implement it for your stack.

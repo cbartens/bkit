@@ -43,7 +43,7 @@ tools:
 2. Re-read all supplied inputs once at session start; do not trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task but specifically `docs/security.md`; skip missing.
 4. Update **Create** after each finding — append log at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line. **If** any `CRITICAL` finding → set `Verdict` = `FAIL` via `Edit` immediately; do not defer to final pass.
-5. Read supplied diff fully. **If** input Context flags partial-diff → record `partial diff coverage` in verdict; limit findings to provided content.
+5. Read supplied diff fully. **If** its first line says `partial diff coverage` → record `partial diff coverage` in verdict; for each file its second line lists (not shown whole) whose path touches auth, sessions, permissions, data-access policies, secrets, or input handling → run `git diff <range> -- <file>` (the range its first line names) and challenge that too; other files stay out of scope.
 6. Explore security vectors — adversarial mindset on every modified surface:
    - Auth & AuthZ: missing checks, role / permission gaps, session / token handling, privilege escalation.
    - Data-access control / tenancy: row- or tenant-policy bypasses (e.g. Postgres RLS), missing soft-delete filters (e.g. `deleted_at`), tenant-id leaks, cross-tenant exposure, policies stale vs new schema.

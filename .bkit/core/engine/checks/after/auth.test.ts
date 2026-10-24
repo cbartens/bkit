@@ -189,7 +189,7 @@ describe("detectCiRouterSecrets", () => {
       for (const v of FEDERATION_VARIABLES)
         expect(findings[0]!.action).toContain(`gh variable set ${v}`);
       expect(findings[0]!.action).not.toContain("BKIT_LINEAR_API_KEY");
-      expect(findings[0]!.action).not.toContain("BKIT_JIRA_API_TOKEN");
+      expect(findings[0]!.action).not.toContain("BKIT_JIRA_API_KEY");
     },
   );
 
@@ -320,8 +320,8 @@ describe("buildCloudDashboardsAdvisory", () => {
     fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
     const result = buildCloudDashboardsAdvisory(tmpDir);
     expect(result).not.toBeNull();
-    expect(result!.detect).not.toContain("BKIT_JIRA_API_TOKEN");
-    expect(result!.action).not.toContain("BKIT_JIRA_API_TOKEN");
+    expect(result!.detect).not.toContain("BKIT_JIRA_API_KEY");
+    expect(result!.action).not.toContain("BKIT_JIRA_API_KEY");
     expect(result!.action).not.toContain("BKIT_LINEAR_API_KEY");
     expect(result!.action).toContain("BKIT_ANTHROPIC_API_KEY");
   });

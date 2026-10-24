@@ -1,6 +1,7 @@
 // commands/lib.ts — what every `bkit <noun> <verb>` command shares.
 //
-// Flag parsing, one JSON object on stdout, `[bkit-<noun>]`-tagged logs on stderr,
+// Flag parsing, one output object on stdout (text, or JSON with `--json`),
+// `[bkit-<noun>]`-tagged logs on stderr,
 // the exit-code table, `--help` rendering, and the repo facts several workflow
 // steps each re-derived by hand: repo root, UTC month, where `status.jsonl` lives,
 // the skip-CI tokens, and which branches are shared. A command declares its flags,
@@ -13,6 +14,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { gitEnv } from "../ledgers/telemetry.js";
+import { renderText } from "../shared/text.js";
 
 // ---------------------------------------------------------------------------
 // Exit codes
@@ -82,17 +84,31 @@ export interface RunContext {
   /** Parsed flags, keyed by camelCase name. */
   flags: Record<string, FlagValue>;
   cwd: string;
+  /** The global `--json` flag was given. Taken by every verb, never declared in a verb's spec. */
+  json: boolean;
   /** Human-readable line on stderr, tagged `[bkit-<noun>]`. */
   log(message: string): void;
-  /** The command's one JSON object on stdout. Call at most once. */
+  /**
+   * The command's one output object on stdout: text (`shared/text.ts` `renderText`,
+   * less the verb's `textOmit` keys), or one JSON object under `--json`. Call at most once.
+   */
   emit(output: Record<string, unknown>): void;
 }
+
+/**
+ * An output key the text output leaves out: always, or only `when` its value holds.
+ * `audits/workflows/text-omit.test.ts` fails when a workflow or prompt reads one.
+ */
+export type TextOmit =
+  string | { key: string; when: (value: unknown, output: Record<string, unknown>) => boolean };
 
 export interface VerbSpec {
   summary: string;
   flags: FlagSpec[];
   /** Output key -> meaning. Keys are camelCase, matching `status.jsonl`. */
   output: Record<string, string>;
+  /** Output keys no workflow or prompt reads: printed under `--json` only. */
+  textOmit?: readonly TextOmit[];
   /** This verb's own exit codes (3-79) -> meaning. */
   exitCodes?: Record<number, string>;
   run(ctx: RunContext): number | Promise<number>;
@@ -243,8 +259,8 @@ export function verbHelp(cmd: CommandSpec, verb: string): string {
     "Flags:",
     flags.length ? table(flags) : "  none",
     "",
-    "Output (one JSON object on stdout):",
-    table(Object.entries(spec.output)),
+    "Output (one object on stdout: `key: value` text, JSON with --json):",
+    table(Object.entries(spec.output).map(([key, help]) => [key, help + omitNote(spec, key)])),
     "",
     "Exit codes:",
     table(exitCodeRows(spec.exitCodes)),
@@ -269,6 +285,26 @@ const processIo: Io = {
 };
 
 const isHelp = (arg: string | undefined) => arg === "--help" || arg === "-h";
+
+/** Global boolean flag every verb takes; it is removed before the verb's own flags parse. */
+const JSON_FLAG = "--json";
+
+/** `output` less the keys `spec.textOmit` leaves out of text. */
+function textOutput(spec: VerbSpec, output: Record<string, unknown>): Record<string, unknown> {
+  const omit = new Set(
+    (spec.textOmit ?? []).flatMap((o) =>
+      typeof o === "string" ? [o] : o.when(output[o.key], output) ? [o.key] : [],
+    ),
+  );
+  return Object.fromEntries(Object.entries(output).filter(([k]) => !omit.has(k)));
+}
+
+/** `--help`'s note on an output key text leaves out: always, or only when it does not matter. */
+function omitNote(spec: VerbSpec, key: string): string {
+  const o = (spec.textOmit ?? []).find((x) => (typeof x === "string" ? x : x.key) === key);
+  if (o === undefined) return "";
+  return typeof o === "string" ? " (--json only)" : " (text: only when it matters)";
+}
 
 /**
  * Run `argv` (without the leading `bkit`) if it names a registered command.
@@ -310,15 +346,21 @@ export async function runCommand(
   const ctx: RunContext = {
     flags: {},
     cwd: options.cwd ?? process.cwd(),
+    json: false,
     log: (message) => io.stderr(`${tag} ${message}\n`),
     emit: (output) => {
-      if (emitted) throw new Error(`${tag} ${verb} emitted twice — one JSON object per run`);
+      if (emitted) throw new Error(`${tag} ${verb} emitted twice — one output object per run`);
       emitted = true;
-      io.stdout(`${JSON.stringify(output)}\n`);
+      io.stdout(ctx.json ? `${JSON.stringify(output)}\n` : renderText(textOutput(spec, output)));
     },
   };
   try {
-    ctx.flags = parseFlags(rest, spec.flags);
+    const own = rest.filter((arg) => arg !== JSON_FLAG);
+    if (own.some((arg) => arg.startsWith(`${JSON_FLAG}=`))) {
+      throw new CommandError(EXIT.USAGE, `${JSON_FLAG} takes no value`);
+    }
+    ctx.json = own.length !== rest.length;
+    ctx.flags = parseFlags(own, spec.flags);
     return await spec.run(ctx);
   } catch (err) {
     if (!(err instanceof CommandError)) throw err;
@@ -331,8 +373,8 @@ export async function runCommand(
 // Repo facts
 // ---------------------------------------------------------------------------
 
-/** Captured stdout / stderr cap for `runGit` / `runTool`; hook output (pre-push) counts. */
-const OUTPUT_LIMIT = 1 << 26;
+/** Captured stdout / stderr cap for every git / gh spawn; hook output (pre-push) counts. */
+export const OUTPUT_LIMIT = 1 << 26;
 
 /** Spawn error as a stderr lead line: ENOBUFS names the limit, anything else Node's message. */
 function spawnErrorText(cmd: string, args: string[], err: NodeJS.ErrnoException): string {
@@ -341,15 +383,16 @@ function spawnErrorText(cmd: string, args: string[], err: NodeJS.ErrnoException)
     : err.message;
 }
 
-/** `git <args>` in `cwd`, never throwing: exit status plus trimmed stdout / stderr. */
+/** `git <args>` in `cwd`, never throwing: exit status plus trimmed stdout / stderr; `env` adds vars. */
 export function runGit(
   cwd: string,
   args: string[],
+  env: Record<string, string> = {},
 ): { ok: boolean; stdout: string; stderr: string } {
   const res = spawnSync("git", args, {
     cwd,
     encoding: "utf-8",
-    env: gitEnv(),
+    env: { ...gitEnv(), ...env },
     maxBuffer: OUTPUT_LIMIT,
   });
   const stderr = (res.stderr ?? "").trim();
@@ -393,12 +436,12 @@ export function runTool(
   cmd: string,
   args: string[],
   cwd: string,
-  opts: { input?: string } = {},
+  opts: { input?: string; env?: Record<string, string> } = {},
 ): ToolResult {
   const res = spawnSync(cmd, args, {
     cwd,
     encoding: "utf-8",
-    env: gitEnv(),
+    env: { ...gitEnv(), ...opts.env },
     input: opts.input,
     maxBuffer: OUTPUT_LIMIT,
   });
@@ -430,9 +473,14 @@ export interface GhResult {
   status?: number;
 }
 
-/** `gh <args>` in `cwd`, never throwing; `input` goes to stdin. */
-export function runGh(cwd: string, args: string[], input?: string): GhResult {
-  const res = runTool("gh", args, cwd, { input });
+/** `gh <args>` in `cwd`, never throwing; `input` goes to stdin; `env` is added to the child's. */
+export function runGh(
+  cwd: string,
+  args: string[],
+  input?: string,
+  env?: Record<string, string>,
+): GhResult {
+  const res = runTool("gh", args, cwd, { input, env });
   return {
     ok: res.found && res.status === 0,
     stdout: res.stdout.trim(),
@@ -458,6 +506,20 @@ export function repoRoot(cwd: string): string {
   const common = git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
   if (!common) throw new CommandError(EXIT.USAGE, `not inside a git repository: ${cwd}`);
   return path.dirname(common);
+}
+
+/** `<git common dir>/bkit-outbox`: per-run scratch files, never committed; null outside a git repo. */
+export function outboxRoot(cwd: string): string | null {
+  const common = git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  return common ? path.join(common, "bkit-outbox") : null;
+}
+
+/** An outbox path as a committed record names it: relative to the main checkout, never a home path. */
+export function outboxRel(cwd: string, file: string): string {
+  const root = outboxRoot(cwd);
+  if (root === null) return file;
+  const rel = path.relative(path.dirname(path.dirname(root)), file);
+  return rel.startsWith("..") || path.isAbsolute(rel) ? file : rel.split(path.sep).join("/");
 }
 
 /** `YYYYMM` in UTC, so every workflow picks the same month bucket at a month boundary. */

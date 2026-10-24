@@ -182,7 +182,7 @@ describe("ship gate against the template's job names", () => {
     const out: string[] = [];
     const err: string[] = [];
     const code = await runCommand(
-      ["runs", "gate", "--repo=example/example", `--head=${head}`],
+      ["runs", "gate", "--repo=example/example", `--head=${head}`, "--json"],
       [runsCommand],
       {
         classicVerbs: new Set(),

@@ -17,19 +17,19 @@ Plan Feature — Autonomous plan generation
 > - **`Failures`:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
 > - **Friction:** Watch own context and subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → append rows to `.bkit/friction.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom) → continue or escalate; logging does not replace **Failure Path**.
 > - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{PARENT_FID}`, `{PARENT_YYYYMM}`, etc non-empty if required before making tool calls (`{ISSUE_ID}` may be empty). **Else** → **Failure Path**.
-> - **Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is one JSON object: hold named keys as `{VAR}`. Exit non-zero with no `Route:` for it → **Failure Path**; exit 80 → mapped MCP tool (**gh MCP fallback**); exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
+> - **Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is `key: value` lines, nested keys indented under their parent (`a.b` = `b` under `a:`), lists of rows as tables: hold named keys as `{VAR}`, a `"quoted"` value without its quotes. Exit non-zero with no `Route:` for it → **Failure Path**; exit 80 → mapped MCP tool (**gh MCP fallback**); exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
 > - **Finish:** `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, checks artifacts and row, writes the row, commits, prints `comment`. Exit 5 **or** 6 → invoke `reask.agent` again with `"Your prior output '<reask.artifact>' has an invalid header. Re-emit only its header fields + '<!-- verdict:end -->' at top of that file. Do not redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**. Hold `verdict` as the step's verdict, `fields` as its other header fields.
-> - **Resume:** On start, fold status.jsonl — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
-> - **Status:** `status.jsonl` = append-only NDJSON event log; fold to derive the run array. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS|CONCERNS|FAIL`), `failures`, `attempt`, `strategy` (`STANDARD|PIVOT|FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
+> - **Resume:** `workflows start` prints `lastDoneStep`: non-null → pick up after that step; never fold status.jsonl by hand.
+> - **Status:** `status.jsonl` = append-only NDJSON event log, one event per line. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS|CONCERNS|FAIL`), `failures`, `attempt`, `strategy` (`STANDARD|PIVOT|FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
 > - **Locks:** Step 1 takes `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` with `bkit locks acquire --kind=workflow` (hold `token`); release in last step with `bkit branches land` and in Failure Path with `bkit workflows fail`; a lock left in place → **Failure Path** with `Lock removal failed`. **If** existing lock — its owning workflow's folded status.jsonl decides: `IN_PROGRESS` and last step <30min idle → **Failure Path**; any other holder (`DONE`, `FAILED`, `IN_PROGRESS` idle >=30min, no run) → reclaimed.
 > - **Status branch:** status.jsonl committed on `{BRANCH}` (`$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`); per-step commits, no mid-lifecycle pushes. State reaches `dev` once, in Close Workflow: `bkit branches land` pushes a squash built off `origin/dev`, or squash-merges a PR when that push is refused.
 > - **Worktrees:** **If** `runtimeWorktrees` = true → Step 2 `bkit worktrees setup` mints / resumes `.worktrees/{FID}`. **Else** → adopts the current branch in place (`WORKTREE_PATH` = main checkout). Its block `cd`s into `worktreePath`. cwd persists across subsequent Bash calls. **If** steps ever find `pwd` != `{WORKTREE_PATH}` → **Failure Path**.
-> - **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** a command exits 80, **or** `runtimeGithubCli` = false in the `runtime-resolved` row of `{STATUS}` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `bkit prs open` / `bkit branches land` stage `open` → `create_pull_request` with the printed `title` / `body` / `base` / `head`; `bkit prs probe --number` → `pull_request_read` (`get`, minimal fields); `bkit prs probe --head` / `bkit workflows handover --push` → `list_pull_requests`; `bkit prs merge` / `bkit branches land` stage `merge` → `merge_pull_request` (printed skip-token-free `subject` as `commit_message`, empty body; `--match-head` SHA as `sha`); `bkit prs verbose-ci` → `update_pull_request`; `bkit prs update-branch --number` → `update_pull_request_branch`; `bkit prs checks --number` → `pull_request_read` (`get_status`); `bkit runs wait` / `bkit runs dispatch` / `bkit runs revalidate` / `bkit runs gate` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit prs transport-row --file={STATUS} --kind=fallback --from=<gh command> --to=<MCP tool> --reason=<why> --asserted-by=<re-read>` — **Skip if** `{STATUS}` not set. Tracker calls always stay on MCP; never invent `gh` read-paths for trackers.
+> - **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** a command exits 80, **or** `runtimeGithubCli` = false in the `runtime-resolved` row of `{STATUS}` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `bkit prs open` / `bkit branches land` stage `open` → `create_pull_request` with the printed `title` / `base` / `head` and the content of the printed `bodyFile` as `body`, byte-for-byte; `bkit prs probe --number` → `pull_request_read` (`get`, minimal fields); `bkit prs probe --head` / `bkit workflows handover --push` → `list_pull_requests`; `bkit prs merge` / `bkit branches land` stage `merge` → `merge_pull_request` (printed skip-token-free `subject` as `commit_message`, empty body; `--match-head` SHA as `sha`); `bkit prs verbose-ci` → `update_pull_request`; `bkit prs update-branch --number` → `update_pull_request_branch`; `bkit prs checks --number` → `pull_request_read` (`get_status`); `bkit runs wait` / `bkit runs dispatch` / `bkit runs revalidate` / `bkit runs gate` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit prs transport-row --file={STATUS} --kind=fallback --from=<gh command> --to=<MCP tool> --reason=<why> --asserted-by=<re-read>` — **Skip if** `{STATUS}` not set. Tracker reads and writes go through `bkit` verbs; the tracker MCP only when a verb prints `tracker.done: false` or exits 80.
 
 
-> - **Tracker:** GitHub Issues via MCP server `github` (`.mcp.json` `mcpServers.github`). Tools: `mcp__github__issue_read` (method `get` / `get_comments` / `get_labels`), `mcp__github__issue_write` (method `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (method `add_project_item` / `update_project_item`); board status sync needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.github.project`, absent either → silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; writes best-effort, never gate; **If** failure → retry once after 5s → continue.
-> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive; a phase start drops the old phase, every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path). `bkit issues labels` computes each transition; MCP writes it.
-> - **Comments:** Post the `comment` a step's `bkit` block prints as a new comment via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` before its gate; every gate includes `Issue comment attempted (Step N section)`. Post the printed `comment` byte-for-byte; never shorten, reword, or rebuild it. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
+> - **Tracker:** GitHub Issues — `bkit` verbs read and write it; MCP server `github` (`.mcp.json` `mcpServers.github`) only when a verb exits 80 or prints `done` = false. Tools: `mcp__github__issue_read` (method `get` / `get_comments` / `get_labels`), `mcp__github__issue_write` (method `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (method `add_project_item` / `update_project_item`); board status sync needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.github.project`, absent either → silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; writes best-effort, never gate; **If** failure → retry once after 5s → continue.
+> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive; a phase start drops the old phase, every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path). `bkit issues labels --write` computes and writes each transition. Fallback (`tracker.done` = false): `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`; `boardWrite.done` = false → `mcp__github__projects_write({BOARD}.addItem)` → `mcp__github__projects_write({BOARD}.updateItem)`.
+> - **Comments:** A step's `bkit` block posts the `comment` it prints with `--post` before its gate and prints `tracker`; every gate includes `Issue comment attempted (Step N section)`. **If** `tracker.done` = false → post the content of the printed `commentFile` byte-for-byte as a new comment via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })`; never shorten, reword, or rebuild it. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
 
 
 > - **No issue:** `ISSUE_ID` empty → run issue-less; skip every issue-tied tracker read, label, comment and board call. Once Step 1 sub-step 4 holds `FID`, emit: WARNING: no issue named — running issue-less as {FID}; no tracker reads, labels or comments. Name {FID} in the next prompt to continue this run.
@@ -42,22 +42,21 @@ Plan Feature — Autonomous plan generation
 
 ## 🤖 Failure Path
 
-1. Write the error message / tool response to `{OUTBOX_ROOT}/error.md` (`--error-file` dropped while `{OUTBOX_ROOT}` is not held). `{STDERR_FILE}` = `{OUTBOX}/stderr.log` holding the failed shell command's stderr — drop `--stderr-file` when the failure was not a shell command or `{OUTBOX}` is not set yet; drop `--token` when `{LOCK_TOKEN}` is empty; `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry. Record the failure, abort any rebase, release the lock:
+1. Write the error message / tool response to `{OUTBOX_ROOT}/error.md` (`--error-file` dropped while `{OUTBOX_ROOT}` is not held). `{STDERR_FILE}` = `{OUTBOX}/stderr.log` holding the failed shell command's stderr — drop `--stderr-file` when the failure was not a shell command or `{OUTBOX}` is not set yet; drop `--token` when `{LOCK_TOKEN}` is empty; `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry. Record the failure, abort any rebase, release the lock, delete the session folder (drop `--session-dir` while `{SESSION_DIR}` is not held):
    ```bash
-   "{BKIT}" workflows fail --workflow=plan --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} {LABEL_FLAGS} --step-number={N} --step-title="{Step Name}" --sub-step={M} --error-file="{OUTBOX_ROOT}/error.md" --stderr-file="{STDERR_FILE}"
+   "{BKIT}" workflows fail --post --issue="{ISSUE_ID}" --workflow=plan --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} {LABEL_FLAGS} --step-number={N} --step-title="{Step Name}" --sub-step={M} --error-file="{OUTBOX_ROOT}/error.md" --stderr-file="{STDERR_FILE}" --session-dir="{SESSION_DIR}"
    ```
    Route:
    - **If** exit 0 **or** 5 → hold `labels` as `{LABELS}`, `trackerState` as `{TRACKER_STATE}` → step 2.
    - **Else** → step 4.
-2. **Skip if** `ISSUE_ID` empty. `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
-   **Skip if** `ISSUE_ID` empty. Post `comment` (when non-null).
-3. `git status --short` → on a feature branch remove unintended files; on `dev` / `main` remove nothing (only the run's own record lands, through a throwaway checkout). Then commit and push the run's record — NEVER onto a branch with an open PR; **Skip if** `{WORKTREE_PATH}` is not set:
+2. **Skip if** `ISSUE_ID` empty. **If** `tracker.done` = false → post `comment` via the tracker MCP per the header's fallback section. **If** `labelsWrite.done` = false → apply the printed `labels` / `trackerState` via the tracker MCP (**Labels** fallback).
+3. `bkit workflows handover --list-stray` (`--workflow` / `--fid` / `--month` / `--worktree` as below) → on a feature branch remove the unintended `modified` / `untracked` files; on `dev` / `main` (`shared` = true) remove nothing (only the run's own record lands, through a throwaway checkout). Then commit and push the run's record — NEVER onto a branch with an open PR; **Skip if** `{WORKTREE_PATH}` is not set:
    ```bash
-   "{BKIT}" workflows handover --workflow=plan --fid={FID} --month={YYYYMM} --push --worktree="{WORKTREE_PATH}"
+   "{BKIT}" workflows handover --post --workflow=plan --fid={FID} --month={YYYYMM} --push --worktree="{WORKTREE_PATH}"
    ```
    Route:
    - **If** exit 80 → open PR on `{BRANCH}` via `list_pull_requests` → re-run with `--open-pr={number}` or `--open-pr=none`.
-   - **Else** → post `comment` (when non-null **and** `ISSUE_ID` non-empty) → step 4.
+   - **Else** → **If** `tracker.done` = false → post `comment` via the tracker MCP per the header's fallback section → step 4.
 4. **STOP**, no further downstream steps. Line 1 of the final message = the no-issue warning, when one was emitted.
 
 ---
@@ -68,11 +67,15 @@ Plan Feature — Autonomous plan generation
    ```bash
    "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" repo info --fetch
    ```
-   Hold `bkit` as `{BKIT}`, `ownerRepo` as `{OWNER_REPO}`, `owner` as `{OWNER}`, `repo` as `{REPO}`, `branch` as `{BRANCH}`, `repoRoot` as `{REPO_ROOT}`, `outboxRoot` as `{OUTBOX_ROOT}`, `bkitAdvisory` as `{BKIT_ADVISORY}`. **If** `BKIT_ADVISORY` != null → emit advisory `[bkit-plan] {BKIT_ADVISORY}`.
+   Hold `bkit` as `{BKIT}`, `ownerRepo` as `{OWNER_REPO}`, `owner` as `{OWNER}`, `repo` as `{REPO}`, `branch` as `{BRANCH}`, `repoRoot` as `{REPO_ROOT}`, `outboxRoot` as `{OUTBOX_ROOT}`, `sessionDir` as `{SESSION_DIR}`, `bkitAdvisory` as `{BKIT_ADVISORY}`. **If** `BKIT_ADVISORY` != null → emit advisory `[bkit-plan] {BKIT_ADVISORY}`.
    Hold `trackerTeam` as `{TRACKER_TEAM}`, `trackerProject` as `{TRACKER_PROJECT}`, `trackerSite` as `{TRACKER_SITE}`.
-2. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else**:
-   Extract from session prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`.
-   **If** no `ID` found → recover `ISSUE_ID` from the branch; no `FID` in the session prompt and `BRANCH` != `feat/{FID}` → as exit 0 with `issueId` null:
+2. Write the session prompt verbatim to `{SESSION_DIR}/prompt.md` → read the issue and the `FID` it names:
+   ```bash
+   "{BKIT}" fids parse --prompt-file="{SESSION_DIR}/prompt.md"
+   ```
+   **If** exit 8 → **STOP**; tell the user the prompt names more than one issue (`ambiguous`) and to name the issue as `#N`, its key or its URL; never the **Failure Path**.
+   Hold `fidNamed` as `{FID_NAMED}`. **If** `ISSUE_ID` already set by AGENTS.md → keep it. **Else** → hold `issue` as `{ISSUE_ID}`, `ref` as `{REF}`.
+   **If** `ISSUE_ID` empty → recover `ISSUE_ID` from the branch, `{FID}` = `FID_NAMED`, else the `BRANCH` suffix; `FID_NAMED` null and `BRANCH` != `feat/{FID}` → as exit 0 with `issueId` null:
    ```bash
    "{BKIT}" fids parse --branch="feat/{FID}"
    ```
@@ -81,65 +84,45 @@ Plan Feature — Autonomous plan generation
    - **If** exit 0 and `issueId` null → set `ISSUE_ID=""` → emit the no-issue warning once `FID` is held → continue; never create a tracker issue.
    - **If** exit 3 → **STOP**; tell the user to rename `BRANCH` to `feat/{lowercase-slug}` or name an issue; never the **Failure Path**.
    - **Else** → **Failure Path**.
-3. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → sort `COMMENTS` oldest to newest → skip. **Else**:
-   **If** `ISSUE_ID` empty → `STATE`, `LABELS`, `DESCRIPTION`, `COMMENTS` all empty; input artifact built from session prompt alone. **Else** → `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`; `labels` → `LABELS`; `body` → `DESCRIPTION`; `title` → `TITLE`; `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → sort oldest to newest → `COMMENTS`.
-4. Resolve `FID` — first match wins; never borrow another feature's `FID` from a leftover lock or the newest bucket:
-   1. Session prompt names it — an `FID` slug, a `feat/{FID}` branch, or a path under `docs/plans/{YYYYMM}/` (`{FID}-design.md`, `{FID}-plan.md`, `logs/{FID}/`).
-   2. `BRANCH` = `feat/{FID}` → that `FID`; with `ISSUE_ID` non-empty, only when `FID` starts with `ISSUE_ID` (lowercased).
-   3. `ISSUE_ID` non-empty → feature already logged for that issue:
-      ```bash
-      "{BKIT}" fids find --issue="{ISSUE_ID}"
-      ```
-      Route:
-      - **If** exit 0 → that `fid`.
-      - **If** exit 4 → **Failure Path** listing `fids` (name the `FID` in the session prompt to pick one).
-      - **Else** → next.
-   4. Mint: `FID` from `{ISSUE_ID}` and kebab from title or prompt, no stopwords, <=3 tokens, lowercase; `fids check` rejects it → re-mint once with every all-digit word dropped; a second reject → **Failure Path**. Format `{ISSUE_ID}-{slug}`; `ISSUE_ID` empty → `{branch-suffix}-{slug}`, slug from the session prompt with every all-digit word dropped.
-
-   **Run only if** sub-step 4 minted `FID` with `ISSUE_ID` empty — take the first name no finished run used:
-
+3. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → write `DESCRIPTION` to `{SESSION_DIR}/issue-description.md` and `COMMENTS` oldest to newest as JSON to `{SESSION_DIR}/issue-comments.json` → skip. **Else**:
+   **Skip if** `ISSUE_ID` empty (`STATE`, `LABELS` empty; input artifact built from session prompt alone). Read the issue into `{SESSION_DIR}`:
    ```bash
-   "{BKIT}" fids free --fid="{FID}" --workflow=plan
+   "{BKIT}" issues fetch --issue="{ISSUE_ID}" --session-dir="{SESSION_DIR}"
    ```
-
+   Hold `state` as `{STATE}`, `labels` as `{LABELS}`, `title` as `{TITLE}`, `url` as `{URL}`. **If** exit 80 → read the issue via the tracker MCP (**Tracker**) → write the description raw to `{SESSION_DIR}/issue-description.md`, the comments oldest first as JSON to `{SESSION_DIR}/issue-comments.json` and `{ title, url, state, labels }` as JSON to `{SESSION_DIR}/issue-facts.json`.
+4. Resolve `FID` — never borrow another feature's `FID` from a leftover lock or the newest bucket.
+   **If** `ISSUE_ID` empty → drop `--title-file`.
+   ```bash
+   "{BKIT}" fids resolve --prompt-file="{SESSION_DIR}/prompt.md" --issue="{ISSUE_ID}" --title-file="{SESSION_DIR}/issue-facts.json" --workflow=plan
+   ```
    Route:
-   - **If** exit 0 → `{FID}` = the printed `fid`.
-   - **If** exit 1 → re-mint once with every all-digit word dropped → re-run this block; a second exit 1 → **Failure Path**.
+   - **If** exit 0 → hold `fid` as `{FID}`; one `FID` for all artifacts.
+   - **If** exit 4 → **Failure Path** listing `fids` (name the `FID` in the session prompt to pick one).
+   - **If** exit 9 → **STOP**; tell the user the prompt holds only a bare number and to name the issue as `#N`, its key or its URL; never the **Failure Path**.
    - **Else** → **Failure Path**.
-
-   One `FID` for all artifacts once set. Check its format for the wired tracker:
-
-   ```bash
-   "{BKIT}" fids check --fid="{FID}" --issue="{ISSUE_ID}"
-   ```
-
-   → hold `fid` as `{FID}`.
-
 5. Acquire concurrency lock:
    ```bash
    "{BKIT}" locks acquire --kind=workflow --workflow=plan --fid={FID}
    ```
    Hold `token` as `{LOCK_TOKEN}`, `month` as `{YYYYMM}`.
-6. Extract plan inputs from issue `DESCRIPTION` and the session prompt.
-   - `PARENT_FID`: a `**Parent design:**` markdown link whose target ends in `docs/plans/{YYYYMM}/{FID}-design.md`. `PARENT_YYYYMM` = that bucket. Absent → this feature's own design doc:
-     ```bash
-     "{BKIT}" fids design --fid={FID} --month={YYYYMM}
-     ```
-     Decide `PARENT_FID`:
-     - **If** exit 0 → hold `fid` as `{PARENT_FID}`, `month` as `{PARENT_YYYYMM}`.
-     - **If** exit 1 → `PARENT_FID` empty.
-     - **Else** → **Failure Path**.
-   - `AUDIT_PATHS`: every `docs/audits/{YYYYMM}/*.md` path, from a `**Audit reports:**` line or any markdown link or bare path. Absent → empty. A named path that is not a file → **Failure Path**.
+6. Find the parent design and audit reports — a `**Parent design:**` link, else this feature's own design doc; every `docs/audits/{YYYYMM}/*.md` path named.
+   Pass `--description-file` only when `ISSUE_ID` is non-empty.
+   ```bash
+   "{BKIT}" fids design --fid={FID} --month={YYYYMM} --prompt-file="{SESSION_DIR}/prompt.md" --description-file="{SESSION_DIR}/issue-description.md"
+   ```
+   Hold `auditPaths` as `{AUDIT_PATHS}`. Route:
+   - **If** exit 0 → hold `parentFid` as `{PARENT_FID}`, `parentMonth` as `{PARENT_YYYYMM}`.
+   - **If** exit 1 → `PARENT_FID` empty.
+   - **Else** → **Failure Path**.
 7. **Skip if** `ISSUE_ID` empty. Compute the phase transition — `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry:
    ```bash
-   "{BKIT}" issues labels --phase=plan --board=progress --issue={ISSUE_ID} --owner-repo={OWNER_REPO} {LABEL_FLAGS}
+   "{BKIT}" issues labels --write --phase=plan --board=progress --issue={ISSUE_ID} --owner-repo={OWNER_REPO} {LABEL_FLAGS}
    ```
    Hold `labels` as `{LABELS}`, `trackerState` as `{TRACKER_STATE}`, `board` as `{BOARD}`.
-   **Skip if** `ISSUE_ID` empty. `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
-   **Skip if** `ISSUE_ID` empty. **If** `BOARD` = null → skip. **Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → set status `mcp__github__projects_write({BOARD}.updateItem)`.
+   **If** `tracker.done` = false **or** `boardWrite.done` = false → apply the printed `labels` / `trackerState` / `board` via the tracker MCP (**Labels** fallback).
 8. **Skip if** `ISSUE_ID` empty. Comment:
    ```bash
-   "{BKIT}" issues comment --workflow=plan --workflow-heading --step-number=1 --step-title="Start Workflow" --owner-repo={OWNER_REPO} --tree=dev --line="Parent design: {None|[{PARENT_FID}-design.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{PARENT_YYYYMM}/{PARENT_FID}-design.md)}" --line="Audit reports: {None|[{AUDIT_FILE}](https://github.com/{OWNER_REPO}/blob/dev/{AUDIT_PATH})}"
+   "{BKIT}" issues comment --post --issue="{ISSUE_ID}" --workflow=plan --workflow-heading --step-number=1 --step-title="Start Workflow" --owner-repo={OWNER_REPO} --tree=dev --line="Parent design: {None|[{PARENT_FID}-design.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{PARENT_YYYYMM}/{PARENT_FID}-design.md)}" --line="Audit reports: {None|[{AUDIT_FILE}](https://github.com/{OWNER_REPO}/blob/dev/{AUDIT_PATH})}"
    ```
    `Audit reports`: one link per `AUDIT_PATHS` entry, comma-separated; `{AUDIT_FILE}` = file name of `{AUDIT_PATH}`.
 
@@ -187,16 +170,16 @@ Plan Feature — Autonomous plan generation
    "{BKIT}" runtime assert --file="{LOG_DIR}/status.jsonl" --workflow=plan >/dev/null
    ```
    Hold `file` as `{STATUS}`, `run` as `{RUN}`.
-4. **Skip if** `ISSUE_ID` empty (`ISSUE_TEXT` empty). Write `DESCRIPTION` to `{OUTBOX}/issue-description.md` and `COMMENTS` (JSON array as the tracker read returned it, `[]` when none) to `{OUTBOX}/issue-comments.json` → derive `ISSUE_TEXT`:
+4. Write the input file — session prompt, issue text, parent design, audit reports; exit 13 (a design or report missing) → **Failure Path**:
+   **If** `PARENT_FID` empty → drop `--design`. **If** `AUDIT_PATHS` empty → drop `--audit`; **Else** → one `--audit` per path, in order.
+   **If** `ISSUE_ID` empty → drop `--description-file` and `--comments-file`.
    ```bash
-   "{BKIT}" issues text --description-file="{OUTBOX}/issue-description.md" --comments-file="{OUTBOX}/issue-comments.json"
+   "{BKIT}" workflows input --workflow=plan --fid={FID} --run={RUN} --file="{STATUS}" --prompt-file="{SESSION_DIR}/prompt.md" --description-file="{SESSION_DIR}/issue-description.md" --comments-file="{SESSION_DIR}/issue-comments.json" --design="docs/plans/{PARENT_YYYYMM}/{PARENT_FID}-design.md" --audit="<path>" || exit 1
    ```
-   Hold `text` as `ISSUE_TEXT`.
-   Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md` = session prompt + `ISSUE_TEXT`. **If** `PARENT_FID` empty → do not append a design. **Else** → append `docs/plans/{PARENT_YYYYMM}/{PARENT_FID}-design.md`; missing file → **Failure Path**. **If** `AUDIT_PATHS` empty → do not append reports. **Else** → append each path in order; a missing file → **Failure Path**.
 5. Finish:
    ```bash
    "{BKIT}" steps done --file="{STATUS}" --workflow=plan --step=plan-start-workflow --commit=none >/dev/null || exit 1
-   "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-worktree-setup --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md --message="chore({FID}): worktree-setup" --number=2 --title="Worktree Setup" --link-ref=dev
+   "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-worktree-setup --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md --message="chore({FID}): worktree-setup" --number=2 --post --title="Worktree Setup" --link-ref=dev
    ```
 
 ### 🔒 Gate 2 — Worktree Setup
@@ -215,7 +198,7 @@ Plan Feature — Autonomous plan generation
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`.
 2. Finish:
    ```bash
-   "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-generate --attempt=1 --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md --message="chore({FID}): generate-plan" --number=3 --title="Generate Plan" --link-ref=dev
+   "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-generate --attempt=1 --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md --message="chore({FID}): generate-plan" --number=3 --post --title="Generate Plan" --link-ref=dev
    ```
 
 ### 🔒 Gate 3 — Generate Plan
@@ -228,16 +211,12 @@ Plan Feature — Autonomous plan generation
 ## 🤖 Step 4 — Fetch Context
 
 1. `{QUERY}` = 3-6 keywords from `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md` (touched surfaces, feature nouns, no stopwords), space-separated.
-2. `{QUERY_NL}` = one natural-language sentence describing change, from `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`; never a keyword list → `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY_NL}", perPage: 15 })`; pass no sort parameter, never re-sort, drop any whose `number` == `{ISSUE_ID}`, keep first 10 in rank order → set `RELATED_ISSUES` empty → per hit:
-   - `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {number} })` → write `body` to `{OUTBOX}/related-description.md`.
-   - `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {number} })` → sort oldest to newest → write JSON to `{OUTBOX}/related-comments.json`.
-   - Run the related-text block below → `text` → `RELATED_ISSUE_TEXT`. **If** exit non-zero → append `## #{number} — {title} ({state})` heading plus `Skipped: comments did not parse.` to `RELATED_ISSUES` → next hit.
-   - Append `## #{number} — {title} ({state})` heading plus `RELATED_ISSUE_TEXT` to `RELATED_ISSUES` → discard `RELATED_ISSUE_TEXT` before next hit.
-   - After the last hit: create `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` = `RELATED_ISSUES`; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
-   Related-text block:
+2. `{QUERY_NL}` = one natural-language sentence describing change, from `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`; never a keyword list → `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY_NL}", perPage: 15, fields: ["number", "title", "state"] })`; pass no sort parameter, never re-sort, drop any whose `number` == `{ISSUE_ID}`, keep first 10 in rank order → write the kept hits' `number` values in rank order as a JSON list to `{OUTBOX}/related-hits.json`; on call error / timeout → write `Search unavailable.` to `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` → skip the fetch below.
+   Fetch each hit and write the file (`None.` when there are none):
    ```bash
-   "{BKIT}" issues text --description-file="{OUTBOX}/related-description.md" --comments-file="{OUTBOX}/related-comments.json"
+   "{BKIT}" issues related --hits-file="{OUTBOX}/related-hits.json" --out="docs/plans/{YYYYMM}/logs/{FID}/related-issues.md" --issue="{ISSUE_ID}"
    ```
+   **If** exit 80 → per hit read the issue via the tracker MCP (**Tracker**) → append `## {ref} — {title} ({state})` plus its description and human comments to `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md`.
 3. Scan `docs/deferrals.jsonl` and `docs/failures.jsonl` for `{QUERY}` overlaps → write `related-deferrals.md` and `related-failures.md`; first writer resets clamp log:
    ```bash
    "{BKIT}" context ledger-scan --terms='{QUERY}' --source=docs/deferrals.jsonl --artifact=docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md --fid={FID} --step=plan-fetch-context --reset-log || exit $?
@@ -252,7 +231,7 @@ Plan Feature — Autonomous plan generation
    - **Else** → **Failure Path**.
 5. Finish:
    ```bash
-   "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-fetch-context --attempt=1 --optional-artifact=docs/plans/{YYYYMM}/logs/{FID}/related-issues.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-draft-check.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/related-failures.md --clamp-log=plan-fetch-context --message="chore({FID}): fetch-context" --number=4 --title="Fetch Context" --link-ref=dev
+   "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-fetch-context --attempt=1 --optional-artifact=docs/plans/{YYYYMM}/logs/{FID}/related-issues.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-draft-check.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/related-failures.md --clamp-log=plan-fetch-context --message="chore({FID}): fetch-context" --number=4 --post --title="Fetch Context" --link-ref=dev
    ```
 
 ### 🔒 Gate 4 — Fetch Context
@@ -282,7 +261,7 @@ Plan Feature — Autonomous plan generation
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-review-3.md`.
 2. Wait for all subagents to complete, then finish — `verdict` = worst of the three (`FAIL > CONCERNS > PASS`), `failures` = their sum:
    ```bash
-   "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-review --attempt=1 --agent=bkit-plan-review-1 --agent=bkit-plan-review-2 --agent=bkit-plan-review-3 --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-review-1.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-review-2.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-review-3.md --message="chore({FID}): review-plan" --number=5 --title="Review Plan"
+   "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-review --attempt=1 --agent=bkit-plan-review-1 --agent=bkit-plan-review-2 --agent=bkit-plan-review-3 --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-review-1.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-review-2.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-review-3.md --message="chore({FID}): review-plan" --number=5 --post --title="Review Plan"
    ```
 
 ### 🔒 Gate 5 — Review Plan
@@ -300,7 +279,7 @@ Plan Feature — Autonomous plan generation
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md`.
 2. Finish:
    ```bash
-   "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-apply-review --attempt=1 --agent=bkit-plan-update --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md --message="chore({FID}): apply-review" --number=6 --title="Apply Review" --link-ref=dev
+   "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-apply-review --attempt=1 --agent=bkit-plan-update --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md --message="chore({FID}): apply-review" --number=6 --post --title="Apply Review" --link-ref=dev
    ```
 
 ### 🔒 Gate 6 — Apply Review
@@ -323,7 +302,7 @@ Plan Feature — Autonomous plan generation
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check-2.md`.
 2. Wait for all subagents to complete, then finish — `verdict` = worst of the two, `failures` = their sum:
    ```bash
-   "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-scope-check --attempt=1 --agent=bkit-plan-scope-check-1 --agent=bkit-plan-scope-check-2 --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check-1.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check-2.md --message="chore({FID}): scope-check" --number=7 --title="Scope Check"
+   "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-scope-check --attempt=1 --agent=bkit-plan-scope-check-1 --agent=bkit-plan-scope-check-2 --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check-1.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check-2.md --message="chore({FID}): scope-check" --number=7 --post --title="Scope Check"
    ```
 
 ### 🔒 Gate 7 — Scope Check
@@ -341,7 +320,7 @@ Plan Feature — Autonomous plan generation
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-v3-checked.md`.
 2. Finish:
    ```bash
-   "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-apply-scope --attempt=1 --agent=bkit-plan-update --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-v3-checked.md --message="chore({FID}): apply-scope" --number=8 --title="Apply Scope" --link-ref=dev
+   "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-apply-scope --attempt=1 --agent=bkit-plan-update --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-v3-checked.md --message="chore({FID}): apply-scope" --number=8 --post --title="Apply Scope" --link-ref=dev
    ```
 
 ### 🔒 Gate 8 — Apply Scope
@@ -382,7 +361,7 @@ Plan Feature — Autonomous plan generation
    - **Else** → **Failure Path**.
 5. Finish:
    ```bash
-   "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-complexity-split --attempt=1 --agent=bkit-plan-complexity-split --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-v4-split.md --message="chore({FID}): complexity-split" --number=9 --title="Complexity Split" --link-ref=dev
+   "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-complexity-split --attempt=1 --agent=bkit-plan-complexity-split --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-v4-split.md --message="chore({FID}): complexity-split" --number=9 --post --title="Complexity Split" --link-ref=dev
    ```
    **If** `verdict` = FAIL → **Failure Path**.
 
@@ -414,12 +393,12 @@ Plan Feature — Autonomous plan generation
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-summary.md`.
 3. Finish, then push the summary commit:
    ```bash
-   "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-summary --attempt=1 --agent=bkit-plan-summary --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-summary.md --message="chore({FID}): summary bkit [skip ci]" --number=10 --title=Summary --link-ref=dev --comment-body
+   "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-summary --attempt=1 --agent=bkit-plan-summary --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-summary.md --message="chore({FID}): summary bkit [skip ci]" --number=10 --post --title=Summary --link-ref=dev --comment-body
    ```
+   Hold `verdict` as `SUMMARY_VERDICT`.
    ```bash
    "{BKIT}" branches push --mode=feature
    ```
-   Hold `verdict` as `SUMMARY_VERDICT`.
 4. Route:
    - **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 11.
    - **If** `SUMMARY_VERDICT` = FAIL → display `plan-summary.md` content verbatim as final message to user. Line 1 of the final message = the no-issue warning, when one was emitted. → **Failure Path**.
@@ -441,10 +420,13 @@ Plan Feature — Autonomous plan generation
 **Run only if** `SUMMARY_VERDICT` = PASS or CONCERNS.
 
 1. Promote the final plan and its sub-plans to the canonical bucket (anchor stamped, a superseded set archived), then close the run and commit:
+   **If** the no-issue warning was emitted → add `--warning="<that warning>"`.
+   **If** `## Outstanding Questions` lists any question → add `--suggest="Want me to ask you the open questions one by one, with my recommendation for each? Then write 'yes, ask me one by one'."`.
    ```bash
    "{BKIT}" workflows promote --workflow=plan --fid={FID} --month={YYYYMM} --file="{STATUS}" || exit 1
-   "{BKIT}" workflows close --workflow=plan --fid={FID} --month={YYYYMM} --record-step --outbox="{OUTBOX}" --message="chore({FID}): close-workflow"
+   "{BKIT}" workflows close --workflow=plan --fid={FID} --month={YYYYMM} --record-step --outbox="{OUTBOX}" --message="chore({FID}): close-workflow" --final-return --summary-file="docs/plans/{YYYYMM}/logs/{FID}/plan-summary.md" --session-dir="{SESSION_DIR}"
    ```
+   Hold `finalReturn` as `{FINAL_RETURN}`.
 2. Land on `dev` — squash `{BRANCH}` onto `origin/dev` in a throwaway worktree and push it as `dev` (`dev` moved → rebuild and push again, with backoff); push refused → the PR squash-merge — audit it, fast-forward local `dev` when that is a pure fast-forward, release the lock:
    ```bash
    cd "{REPO_ROOT}" && "{BKIT}" branches land --workflow=plan --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --issue="{ISSUE_ID}" --branch="{BRANCH}"
@@ -456,29 +438,17 @@ Plan Feature — Autonomous plan generation
    - **Else** → **Failure Path**.
 3. **Skip if** `ISSUE_ID` empty. Compute the board move:
    ```bash
-   "{BKIT}" issues labels --board=review --issue={ISSUE_ID} --owner-repo={OWNER_REPO}
+   "{BKIT}" issues labels --write --board=review --issue={ISSUE_ID} --owner-repo={OWNER_REPO}
    ```
    Hold `trackerState` as `{TRACKER_STATE}`, `board` as `{BOARD}`.
-   No issue changes.
-   **Skip if** `ISSUE_ID` empty. **If** `BOARD` = null → skip. **Else** → ensure on board `mcp__github__projects_write({BOARD}.addItem)` → set status `mcp__github__projects_write({BOARD}.updateItem)`.
+   **If** `tracker.done` = false **or** `boardWrite.done` = false → apply the printed `labels` / `trackerState` / `board` via the tracker MCP (**Labels** fallback).
 4. **Skip if** `ISSUE_ID` empty. Comment — artifact links on `dev`, close telemetry report:
    ```bash
-   "{BKIT}" workflows links --workflow=plan --fid={FID} --month={YYYYMM} --ref={CANONICAL_REF} --outbox="{OUTBOX}" --number=11 --title="Close Workflow"
+   "{BKIT}" workflows links --workflow=plan --fid={FID} --month={YYYYMM} --ref={CANONICAL_REF} --outbox="{OUTBOX}" --number=11 --post --title="Close Workflow"
    ```
-5. Collect setup tips:
-   ```bash
-   "{BKIT}" tips --workflow=plan
-   ```
-   Plain text, not JSON. Hold stdout as `{BKIT_TIPS}`; prints nothing or exits non-zero → `{BKIT_TIPS}` empty.
-6. Final return: Display `plan-summary.md` content verbatim as final message to user; do not summarise or trim; do not auto-invoke. Line 1 of the final message = the no-issue warning, when one was emitted. **HARD STOP** — do not invoke `/bkit-build`.
-   Append the issue link [{ISSUE_ID} {TITLE}]({URL}) unless `ISSUE_ID` is empty
-   Append a `## Suggested Replies` heading.
-   **If** `## Outstanding Questions` lists any question → append `Want me to ask you the open questions one by one, with my recommendation for each? Then write 'yes, ask me one by one'.`
-   Append `Would you like me to explain any of this in plain English? Then write 'yes, explain in plain english'.`
-   Append a `## bkit Tips` heading, unless `{BKIT_TIPS}` is empty.
-   Append `{BKIT_TIPS}`, unless empty.
-7. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, NOT nouns; do not re-run any step.
-8. **If** user requests the open questions one by one → ask each `## Outstanding Questions` item on its own, verbatim, with its options, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step. Each answer that settles an architecture / technology decision → append its row to `docs/decisions.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom) at once; `by.step` = `plan-close-workflow`; `rationale` = `answered by owner: {human's answer}`; decision already on disk → same `key`.
+5. Final return: display `{FINAL_RETURN}` verbatim as the final message to the user; do not summarise or trim; do not auto-invoke. **HARD STOP** — do not invoke `/bkit-build`.
+6. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, NOT nouns; do not re-run any step.
+7. **If** user requests the open questions one by one → ask each `## Outstanding Questions` item on its own, verbatim, with its options, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step. Each answer that settles an architecture / technology decision → append its row to `docs/decisions.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom) at once; `by.step` = `plan-close-workflow`; `rationale` = `answered by owner: {human's answer}`; decision already on disk → same `key`.
 
 ### 🔒 Gate 11 — Close Workflow
 

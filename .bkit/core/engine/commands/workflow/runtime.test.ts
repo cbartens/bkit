@@ -51,7 +51,7 @@ afterEach(() => {
 async function run(argv: string[], at = cwd) {
   const out: string[] = [];
   const err: string[] = [];
-  const code = await runCommand(["runtime", ...argv], [runtimeCommand], {
+  const code = await runCommand(["runtime", ...argv, "--json"], [runtimeCommand], {
     classicVerbs: new Set(),
     cwd: at,
     io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
