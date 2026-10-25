@@ -39,6 +39,7 @@ import {
   detectContextFetchMissing,
   detectContextFetchProvisionMissing,
   detectContextFetchSourceNotEnabled,
+  detectContextFetchUnbounded,
 } from "./context-fetch.js";
 import { detectExtraMcpServers, detectMissingMcpServers } from "./mcp.js";
 
@@ -161,6 +162,9 @@ export function runPreflight(
 
   const contextFetchProvision = detectContextFetchProvisionMissing(cwd);
   if (contextFetchProvision) advisories.push(contextFetchProvision);
+
+  const contextFetchUnbounded = detectContextFetchUnbounded(cwd);
+  if (contextFetchUnbounded) advisories.push(contextFetchUnbounded);
 
   // bkit-not-on-path advisory — suggest the shell alias for local development.
   const bkitNotOnPath = detectBkitNotOnPath();

@@ -257,7 +257,7 @@ export const SETUP_TIPS: readonly SetupTip[] = [
     why: "This lets /bkit-debug read the actual errors from your error tracker, hosting and database. Without it the agent works from guesses, and real problems stay hidden because nothing brings in the evidence.",
     ask: "Copy the blocks for the services this project uses from .bkit/templates/context/ into .agents/context.md, below the `<!-- bkit:end -->` line, then tell me which tokens to add to .bkit/.env.",
     steps: "`.bkit/templates.md` § Context-fetch blocks.",
-    advisories: ["context-fetch-missing"],
+    advisories: ["context-fetch-missing", "context-fetch-unbounded"],
     fires: (cwd) => detectContextFetchMissing(cwd) !== null,
   },
   {

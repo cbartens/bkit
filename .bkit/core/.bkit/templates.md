@@ -94,7 +94,7 @@ Placeholders. Copies keep them raw; replace each in your copy:
 
 ## Context-fetch blocks — `.agents/context.md`
 
-`/bkit-debug` runs every `context-fetch` block below `<!-- bkit:end -->` in `.agents/context.md`; cloud setup runs every `context-fetch:provision` block there. One file per provider holds its fetch blocks (one per context; copy one or more), each fetch block's provision block (stack CLI only), the `allowed-domains` it needs beyond bkit's derived egress set, and its `mcp-servers` names. Block rules (markers, contexts, self-skip, output bounds) → the managed block of `.agents/context.md`.
+`/bkit-debug` runs every `context-fetch` block below `<!-- bkit:end -->` in `.agents/context.md`; cloud setup runs every `context-fetch:provision` block there. One file per provider holds its fetch blocks (one per context; copy one or more), each fetch block's provision block (stack CLI only), the `allowed-domains` it needs beyond bkit's derived egress set, and its `mcp-servers` names. Block rules (markers, contexts, self-skip, output bounds) → the managed block of `.agents/context.md`. Each fetch block bounds its own output at the source — a window, severity / level filter, row / line cap, page cap or per-lane tail — because everything it prints is written into an artifact an agent then reads; a block that bounds nothing downloads a whole-run dump and only the post-hoc clamp catches it (`bkit check` advises, `context-fetch-unbounded`).
 
 <!-- prettier-ignore -->
 | File | Fits | `context=` | Fetches | Secret / non-secret env | Domains | CLI (provision) |
@@ -140,7 +140,7 @@ Adopt:
 
 - No credentials, or an API / auth error → block self-skips: `exit 0` plus `[context-fetch:<name>] skipped — …` on stderr. `/bkit-debug` narrates that as not checked, never as clean. `TRUNCATED` on stdout = page cap or a failed later page stopped the read; raise the block's `*_MAX_PAGES` knob.
 - Runtime and EAS blocks' `# Customise:` suggests a positive control: run once over a window holding a known event; nothing back = reader broken, not clean.
-- `bkit check` advisories point at these files: `context-fetch-missing`, `context-fetch-context-missing`, `context-fetch-source-not-enabled`, `context-fetch-provision-missing`.
+- `bkit check` advisories point at these files: `context-fetch-missing`, `context-fetch-context-missing`, `context-fetch-source-not-enabled`, `context-fetch-provision-missing`, `context-fetch-unbounded`.
 - Another backend → author a block in the same shape (rules in the managed block of `.agents/context.md`).
 
 ## Gate tool scripts — `package.json`

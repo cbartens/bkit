@@ -1,5 +1,5 @@
 // checks/before/context-fetch.ts — the context-fetch blocks in `.agents/context.md`: present,
-// covering each context, sources enabled, provision blocks in place.
+// covering each context, sources enabled, provision blocks in place, output bounded.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -85,6 +85,151 @@ function parseContextFetchStarts(section: string): { name: string; context: stri
     if (parsed) out.push(parsed);
   }
   return out;
+}
+
+/**
+ * A `context-fetch` marker block with its fenced bash body, in document order. `context` is
+ * `""` for a provision block, which carries no `context=` attribute.
+ */
+type ContextFetchBlock = {
+  kind: "start" | "provision";
+  name: string;
+  context: string;
+  body: string[];
+};
+
+/**
+ * Parse a consumer section into its `context-fetch` blocks, each with its fenced body. Only
+ * NAMED start blocks can be matched to a provision sibling (keyed by name), so an unnamed
+ * block is parked under `""`. The `bkit context` runner (commands/workflow/context.ts) and
+ * these advisories read the same markers.
+ */
+function parseContextFetchBlocks(consumer: string): ContextFetchBlock[] {
+  const blocks: ContextFetchBlock[] = [];
+  let cur: ContextFetchBlock | null = null;
+  let inFence = false;
+  for (const line of consumer.split("\n")) {
+    const startM = parseContextFetchStart(line);
+    const provM = /^<!-- context-fetch:provision ([\w.-]+) -->$/.exec(line);
+    if (startM) {
+      cur = { kind: "start", name: startM.name, context: startM.context, body: [] };
+      inFence = false;
+      blocks.push(cur);
+      continue;
+    }
+    if (provM) {
+      cur = { kind: "provision", name: provM[1]!, context: "", body: [] };
+      inFence = false;
+      blocks.push(cur);
+      continue;
+    }
+    if (/^<!-- context-fetch:(end|none|start|provision)/.test(line)) {
+      cur = null;
+      inFence = false;
+      continue;
+    }
+    if (cur && /^```/.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (cur && inFence) cur.body.push(line);
+  }
+  return blocks;
+}
+
+/**
+ * Drop shell comments from a block body before matching bound markers, so a bound named
+ * only in the block's mandated `# Customise:` comment never makes an unbounded block look
+ * bounded. A full-line comment is always a comment; a `#` that starts a word outside quotes
+ * begins one too (the shell rule). A `#` inside quotes (a `jq` regex, a banner) is data and
+ * stays, or `printf "===== # ====="` would read as a comment and truncate the line. Quote
+ * state persists across lines because a quoted `jq` program may span several.
+ */
+function stripShellComments(text: string): string {
+  const out: string[] = [];
+  let quote: "'" | '"' | null = null;
+  let escaped = false;
+  for (const line of text.split("\n")) {
+    let end = line.length;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i]!;
+      if (quote === "'") {
+        if (ch === "'") quote = null;
+        continue;
+      }
+      if (quote === '"') {
+        if (escaped) escaped = false;
+        else if (ch === "\\") escaped = true;
+        else if (ch === '"') quote = null;
+        continue;
+      }
+      if (ch === "\\") {
+        i++;
+        continue;
+      }
+      if (ch === "'" || ch === '"') {
+        quote = ch;
+        continue;
+      }
+      if (ch === "#" && (i === 0 || /\s/.test(line[i - 1]!))) {
+        end = i;
+        break;
+      }
+    }
+    out.push(line.slice(0, end));
+  }
+  return out.join("\n");
+}
+
+/**
+ * Markers proving a `context-fetch` block bounds its own stdout at the source, matched
+ * against the block body with its shell comments removed. One entry maps to a real bound in
+ * a shipped block: a row / line cap (`--limit`, an API or SQL `limit`, `per_page`, `head` /
+ * `tail` / `--tail`, `--stat-count`, `--max-rows`, `max_results`, `grep -m` / `--max-count`,
+ * a jq / Python slice `[0:N]`, a `sed -n 'A,Bp'` range, an `awk 'NR<=N'` guard, a `size`
+ * field), a page / count cap (`*_MAX_*`, `*_MAX_PAGES`, a `*_N` knob, a shell loop `-lt`
+ * guard), or a window / severity filter (`--since` / `--until` / `--freshness`, `SINCE` /
+ * `UNTIL`, `statsPeriod`, a `severity` filter). The tavily block counts as bounded on its
+ * `max_results:5` and `head -c` alone. A body is unbounded only when it matches none.
+ */
+const CONTEXT_FETCH_BOUND_RES: readonly RegExp[] = [
+  // Row / line caps.
+  /--limit\b/,
+  /\blimit\b["']?[ \t]*[=:]?[ \t]*["'$]?\d/i,
+  /(^|[\s|;(])head[ \t]+-/,
+  /(^|[\s|;(])tail[ \t]+-/,
+  /--tail[= ]/,
+  /--stat-count/,
+  /--max-rows\b/,
+  /max_results/,
+  /\bper_page\b["']?[ \t]*[=:][ \t]*["'$]?\d/i,
+  /(^|[\s|;(])-m[ \t]+["'$]?\d/,
+  /--max-count\b/,
+  /[\[(][ \t]*\d*[ \t]*:[ \t]*\d+/, // jq / Python slice: .[0:10], [:10], [0:10]
+  /\bsed\b[^\n]*[ \t]-n[ \t]*['"]?[0-9]+[ \t]*,[ \t]*[0-9]+p/, // sed -n '1,200p'
+  /\bNR[ \t]*<=?[ \t]*[0-9$]/, // awk 'NR<=500'
+  /\bsize["']?[ \t]*[=:][ \t]*["']?\d/i, // request / option body field
+  // Page / count caps.
+  /_MAX_/,
+  /[A-Z][A-Z0-9]*_N\b/,
+  /(^|[\s|;(])-l[et][ \t]+["'$]?\d/, // shell loop guard: [ "$N" -lt 20 ]
+  // Window / severity filters.
+  /--since\b/,
+  /--until\b/,
+  /--freshness\b/,
+  /SINCE/,
+  /UNTIL/,
+  /statsPeriod/,
+  /--severity\b/,
+  /\bseverity[ \t]*([=:]|[<>]=?)/i,
+  /--level\b/,
+  /\blevel[ \t]*([=:]|[<>]=?)/i,
+];
+
+/** True when a `context-fetch` block body carries at least one output bound (see the list). */
+export function blockBoundsOutput(body: readonly string[]): boolean {
+  const text = stripShellComments(body.join("\n"));
+  return CONTEXT_FETCH_BOUND_RES.some((re) => re.test(text));
 }
 
 /**
@@ -333,38 +478,7 @@ export function detectContextFetchProvisionMissing(cwd: string): PreflightFindin
   if (contextFetchDismissesAll(consumer)) return null;
 
   // Parse the consumer section into named start / provision blocks with fenced bodies.
-  type Block = { kind: "start" | "provision"; name: string; body: string[] };
-  const blocks: Block[] = [];
-  let cur: Block | null = null;
-  let inFence = false;
-  for (const line of consumer.split("\n")) {
-    const startM = parseContextFetchStart(line);
-    const provM = /^<!-- context-fetch:provision ([\w.-]+) -->$/.exec(line);
-    if (startM) {
-      // Unnamed blocks cannot be matched to a provision sibling (which is keyed
-      // by name), so they are parked under "" and filtered out downstream.
-      cur = { kind: "start", name: startM.name, body: [] };
-      inFence = false;
-      blocks.push(cur);
-      continue;
-    }
-    if (provM) {
-      cur = { kind: "provision", name: provM[1]!, body: [] };
-      inFence = false;
-      blocks.push(cur);
-      continue;
-    }
-    if (/^<!-- context-fetch:(end|none|start|provision)/.test(line)) {
-      cur = null;
-      inFence = false;
-      continue;
-    }
-    if (cur && /^```/.test(line)) {
-      inFence = !inFence;
-      continue;
-    }
-    if (cur && inFence) cur.body.push(line);
-  }
+  const blocks = parseContextFetchBlocks(consumer);
 
   const provisionNames = new Set(blocks.filter((b) => b.kind === "provision").map((b) => b.name));
   const provisionBody = blocks
@@ -405,5 +519,44 @@ export function detectContextFetchProvisionMissing(cwd: string): PreflightFindin
     severity: "advisory",
     detect: `\`.agents/context.md\` enable${plural ? "" : "s"} context-fetch block${plural ? "s" : ""} that self-guard${plural ? "" : "s"} on a stack CLI but ship${plural ? "" : "s"} no matching \`<!-- context-fetch:provision <name> -->\` block below \`<!-- bkit:end -->\`: ${list}. bkit installs no stack CLIs itself, so in cloud the CLI is absent, the block's own \`command -v\` guard trips, and it self-skips (silent \`exit 0\`) — \`/bkit-debug\` fetches no runtime logs for ${plural ? "those sources" : "that source"} (reads as "clean", not "not wired up").`,
     action: `For each flagged block, add a sibling \`<!-- context-fetch:provision <name> -->\` block below \`<!-- bkit:end -->\` — SAME name as the fetch block — whose bash body installs the CLI, self-guarded and install-only: \`command -v ${firstCli} >/dev/null 2>&1 || <install ${firstCli}>\` (e.g. \`pnpm add -g ${firstCli}\` for an npm-published CLI). If \`.bkit/templates/context/\` ships a ready-made \`context-fetch:provision ${firstName}\` recipe, copy that. Then re-run \`bkit install\` so the recipe bakes into \`.claude/bkit-cloud.md\`'s setup script; \`.claude/hooks/bkit-cloud-bootstrap.sh\` runs the same recipe on gh-runner / resumed sessions. A block that fetches via an MCP tool or only universal tools (curl/jq/date) needs no provision.`,
+  };
+}
+
+/**
+ * Advisory: the consumer section enables a `context-fetch` block whose bash body bounds no
+ * output — no row / line cap, page cap or window filter. `/bkit-debug` runs every enabled
+ * block and writes its stdout straight into that context's artifact, so an unbounded block
+ * downloads a whole-run dump; only the post-hoc 3000-line / 400 KB clamp catches it, and
+ * the failure lines a diagnosis needs can fall outside the kept head 500 + tail 1000.
+ *
+ * Distinct from `context-fetch-missing` (which owns the no-blocks case): this only runs
+ * once at least one block exists. The blanket opt-out (`<!-- context-fetch:none intentional -->`)
+ * dismisses it; a context-scoped marker (`context-fetch:none e2e`) does not, because the
+ * runner still runs a block that is present.
+ */
+export function detectContextFetchUnbounded(cwd: string): PreflightFinding | null {
+  const filePath = path.join(cwd, ".agents", "context.md");
+  if (!fs.existsSync(filePath)) return null;
+  const content = fs.readFileSync(filePath, "utf-8");
+  const endIdx = content.search(/^<!-- bkit:end -->$/m);
+  if (endIdx === -1) return null;
+  const consumer = content.slice(endIdx);
+  if (contextFetchDismissesAll(consumer)) return null;
+
+  const starts = parseContextFetchBlocks(consumer).filter((b) => b.kind === "start");
+  // No blocks at all => `context-fetch-missing` owns it (no double-fire).
+  if (starts.length === 0) return null;
+
+  const unbounded = starts.filter((b) => !blockBoundsOutput(b.body));
+  if (unbounded.length === 0) return null;
+
+  const items = unbounded.map((b) => `${b.name || "(unnamed)"} (\`context=${b.context}\`)`);
+  const list = items.join(", ");
+  const plural = items.length > 1;
+  return {
+    id: "context-fetch-unbounded",
+    severity: "advisory",
+    detect: `\`.agents/context.md\` enables context-fetch block${plural ? "s" : ""} below \`<!-- bkit:end -->\` that bound no output: ${list}. \`/bkit-debug\` runs every enabled block and writes its stdout straight into that context's artifact, so ${plural ? "these blocks" : "this block"} download${plural ? "" : "s"} a whole-run dump — only the post-hoc 3000-line / 400 KB clamp catches it, and the failure lines a diagnosis needs can fall outside the kept head 500 + tail 1000.`,
+    action: `Bound each flagged block at the source: add a row / line cap (\`--limit N\`, \`head -n N\`, \`tail -n N\` / \`--tail N\`, \`--stat-count N\`, \`grep -m N\` / \`--max-count N\`, \`--max-rows N\`, a jq / SQL slice (\`.[0:N]\`, \`limit N\`), a \`sed -n 'A,Bp'\` / \`awk 'NR<=N'\` range, the API's \`max_results\` / \`per_page\` / \`limit\` param, or a request-body \`size\` field), a page cap (\`<NAME>_MAX_PAGES\`, a \`*_N\` count variable, or a shell loop guard \`[ "$N" -lt M ]\`), or a window / severity filter (\`--since\` / \`--until\` / \`--freshness\` / \`SINCE\` / \`UNTIL\`, \`statsPeriod\`, or a \`severity\` / \`level\` filter) in the block body — not only in its \`# Customise:\` comment. Raise the cap only when the cause sits outside the kept window: \`/bkit-debug\` clamps the artifact post hoc at 3000 lines / 400 KB (head 500 + tail 1000 + every error-matching line), so an unbounded dump can drop the very failure lines a diagnosis needs.`,
   };
 }

@@ -5,10 +5,12 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  blockBoundsOutput,
   detectContextFetchMissing,
   detectContextFetchProvisionMissing,
   detectContextFetchContextMissing,
   detectContextFetchSourceNotEnabled,
+  detectContextFetchUnbounded,
   parseContextFetchStart,
 } from "./context-fetch";
 
@@ -430,6 +432,211 @@ describe("detectContextFetchProvisionMissing", () => {
 
   it("returns null when .agents/context.md does not exist", () => {
     expect(detectContextFetchProvisionMissing(tmpDir)).toBeNull();
+  });
+});
+
+describe("blockBoundsOutput", () => {
+  it.each([
+    ["a gh --limit", ["gh run list --branch main --limit 1 --json databaseId"]],
+    ["a tail -n cap", ["gh run view 1 --job 2 --log-failed | tail -n 2000"]],
+    ["a head -n cap", ["head -n 300 report.txt"]],
+    ["a head -c cap", ['jq -r .err "$RESP" | head -c 140']],
+    ["a git --stat-count cap", ["git diff A..HEAD --stat --stat-count=200"]],
+    ["an API max_results cap", ['-d \'{"query":"x","max_results":5}\'']],
+    ["an API limit param", ["curl 'https://api.example/v1/events?limit=100'"]],
+    ["a SQL limit clause", ["select count() from logs group by hour limit 1000"]],
+    ["a *_MAX_PAGES loop cap", ['while [ "$PAGES" -lt "${VERCEL_MAX_PAGES:-20}" ]; do']],
+    ["an E2E_MAX_* file cap", ['printf "%s\\n" "$E2E_FILES" | head -n "$E2E_MAX_FILES"']],
+    ["a *_N count knob", ['SENTRY_N="${SENTRY_N:-25}"']],
+    ["a --since window", ['vercel logs --since "${SINCE:-4h}"']],
+    ["a --until window", ['vercel logs --until "$UNTIL"']],
+    ["a --freshness window", ['gcloud logging read "x" --freshness="${SINCE:-4h}"']],
+    ["a SINCE_ISO window", ['SUPA_FROM=$(jq -rn --arg t "${SINCE_ISO:-}" .)']],
+    ["a statsPeriod window", ["?statsPeriod=${SENTRY_SINCE:-24h}&sort=date"]],
+    // Bounds a real block carries that the first cut did not recognise (false positives).
+    ["a gh api per_page cap", ['gh api "repos/$R/actions/runs?per_page=20"']],
+    ["a gh api jq slice cap", ['gh api "repos/$R/issues" --jq ".[0:10]"']],
+    ["a grep -m cap", ['grep -m 20 -E "error" app.log']],
+    ["a grep --max-count cap", ["grep --max-count=50 -r error ."]],
+    ["a sed -n range cap", ["sed -n '1,200p' big.log"]],
+    ["an awk NR cap", ["awk 'NR<=500' big.log"]],
+    ["a docker --tail cap", ["docker logs --tail 100 c"]],
+    ["an uppercase SQL LIMIT", ["select * from logs LIMIT 1000"]],
+    ["a shell loop -lt bound", ['PAGES=0; while [ "$PAGES" -lt 20 ]; do echo x; done']],
+    ["a request body size cap", ['-d \'{"query":"x","size":10}\'']],
+    ["a --max-rows cap", ["mytool --max-rows 100"]],
+    // A severity filter bounds like the window filters already accepted.
+    ["a gcloud severity filter", ["gcloud logging read 'severity>=ERROR'"]],
+    ["a --severity flag", ["kubectl logs --severity=ERROR pod"]],
+    ["a --level flag", ["vercel logs --level error --level fatal"]],
+    ["a jq level filter", ['jq -c \'select(.level == "error")\' "$RESP"']],
+  ] as const)("accepts %s", (_label, body) => {
+    expect(blockBoundsOutput(body)).toBe(true);
+  });
+
+  it("rejects a body that bounds nothing", () => {
+    expect(blockBoundsOutput(["# Whole-run dump.", 'gh run view "$RUN_ID" --log'])).toBe(false);
+  });
+
+  it("ignores a bound named only in a full-line comment", () => {
+    expect(
+      blockBoundsOutput(["# Customise: raise --limit as needed.", 'gh run view "$RUN_ID" --log']),
+    ).toBe(false);
+  });
+
+  it("ignores a bound named only in a trailing comment", () => {
+    expect(
+      blockBoundsOutput(['gh run view "$RUN_ID" --log  # Customise: raise --limit as needed']),
+    ).toBe(false);
+  });
+
+  it("does not treat a `#` inside quotes as a comment start", () => {
+    // The quoted `#` is data; the real bound (`grep -m 3`) sits after it and must survive.
+    expect(blockBoundsOutput(['printf "%s" "# not a comment"; grep -m 3 -E err app.log'])).toBe(
+      true,
+    );
+  });
+});
+
+describe("detectContextFetchUnbounded", () => {
+  function writeConfig(content: string): void {
+    const dir = path.join(tmpDir, ".agents");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "context.md"), content, "utf-8");
+  }
+
+  const MANAGED = "<!-- bkit:start -->\n# Config\n<!-- bkit:end -->\n";
+  // `gh run view --log` with no cap and no window: a whole-run dump.
+  const UNBOUNDED =
+    "\n<!-- context-fetch:start gh-dump context=ci -->\n" +
+    "```bash\n" +
+    "command -v gh >/dev/null 2>&1 || exit 0\n" +
+    'gh run view "$RUN_ID" --log\n' +
+    "```\n" +
+    "<!-- context-fetch:end -->\n";
+  const BOUNDED =
+    "\n<!-- context-fetch:start aws context=runtime -->\n" +
+    "```bash\n" +
+    "aws logs filter-log-events --log-group-name app --limit 50\n" +
+    "```\n" +
+    "<!-- context-fetch:end -->\n";
+
+  it("flags an enabled block that bounds nothing, naming its block and context", () => {
+    writeConfig(MANAGED + UNBOUNDED);
+    const f = detectContextFetchUnbounded(tmpDir);
+    expect(f).toBeDefined();
+    expect(f?.id).toBe("context-fetch-unbounded");
+    expect(f?.severity).toBe("advisory");
+    expect(f?.detect).toContain("gh-dump");
+    expect(f?.detect).toContain("context=ci");
+    // The action inlines the fix — never a docs link.
+    expect(f?.action).toContain("--limit");
+    expect(f?.action).not.toContain("docs/");
+  });
+
+  it("does NOT flag a block that caps its rows", () => {
+    writeConfig(MANAGED + BOUNDED);
+    expect(detectContextFetchUnbounded(tmpDir)).toBeNull();
+  });
+
+  it("flags a block whose bound-like words sit only in its `# Customise:` comment", () => {
+    writeConfig(
+      MANAGED +
+        "\n<!-- context-fetch:start dump context=ci -->\n" +
+        "```bash\n" +
+        "# Customise: raise --limit as needed.\n" +
+        'gh run view "$RUN_ID" --log\n' +
+        "```\n" +
+        "<!-- context-fetch:end -->\n",
+    );
+    const f = detectContextFetchUnbounded(tmpDir);
+    expect(f?.id).toBe("context-fetch-unbounded");
+    expect(f?.detect).toContain("dump");
+  });
+
+  it("does NOT flag the bound shape of any real shipped block family", () => {
+    const shipped: string[] = [
+      // github ci — --limit + tail-bounded logs
+      'gh run list --branch main --limit 1 --json databaseId\nCI_LOG_TAIL=2000\ngh run view "$RUN_ID" --job "$JOB" --log-failed | tail -n "$CI_LOG_TAIL"',
+      // github diff — --stat-count
+      'git diff "$LAST_PASS_SHA..HEAD" --stat --stat-count="${DIFF_STAT_N:-200}"',
+      // tavily — max_results + head -c
+      "jq -nc '{query:$q, max_results:5}' | head -c 140",
+      // vercel — VERCEL_MAX_PAGES + --limit + --since
+      'while [ "$VERCEL_PAGES" -lt "${VERCEL_MAX_PAGES:-20}" ]; do vercel logs --limit 50 --since "${SINCE:-4h}"; done',
+      // supabase — SQL limit + SINCE_ISO window
+      'select count() from logs group by hour limit 1000\nSUPA_FROM=$(jq -rn --arg t "${SINCE_ISO:-}" .)',
+      // sentry — statsPeriod + limit
+      "?statsPeriod=${SENTRY_SINCE:-24h}&sort=date&limit=${SENTRY_N:-25}",
+      // cloudrun — --freshness + --limit
+      'gcloud logging read "$GCP_FILTER" --freshness="${SINCE:-4h}" --limit="${GCP_N:-50}"',
+      // playwright — head -n
+      'printf "%s\\n" "$E2E_FILES" | head -n "$E2E_MAX_FILES"',
+      // maestro — tail -n
+      'grep -F "$STEP" "$JOB_LOG" | tail -n "$MAESTRO_LOG_TAIL"',
+      // inngest — INNGEST_MAX_PAGES + received_after
+      'while :; do [ "$INNGEST_PAGES" -lt "${INNGEST_MAX_PAGES:-40}" ] || break; done',
+      // expo / expo-workflows — --limit + tail/head
+      'eas build:list --limit "${EAS_N:-50}" --json; tail -n "${EAS_LOG_N:-80}"',
+    ];
+    for (const [i, body] of shipped.entries()) {
+      writeConfig(
+        MANAGED +
+          `\n<!-- context-fetch:start src${i} context=runtime -->\n` +
+          "```bash\n" +
+          body +
+          "\n```\n<!-- context-fetch:end -->\n",
+      );
+      expect(detectContextFetchUnbounded(tmpDir), `shipped block shape ${i}`).toBeNull();
+    }
+  });
+
+  it("flags only the unbounded block when a bounded one sits beside it", () => {
+    writeConfig(MANAGED + BOUNDED + UNBOUNDED);
+    const f = detectContextFetchUnbounded(tmpDir);
+    expect(f?.detect).toContain("gh-dump");
+    expect(f?.detect).not.toContain("aws");
+  });
+
+  it("checks unnamed blocks too", () => {
+    writeConfig(
+      MANAGED +
+        "\n<!-- context-fetch:start -->\n```bash\ngcloud logging read ... --limit=50\n```\n<!-- context-fetch:end -->\n" +
+        "\n<!-- context-fetch:start -->\n```bash\nfull dump\n```\n<!-- context-fetch:end -->\n",
+    );
+    const f = detectContextFetchUnbounded(tmpDir);
+    expect(f?.id).toBe("context-fetch-unbounded");
+    expect(f?.detect).toContain("(unnamed)");
+  });
+
+  it("is dismissed by the context-fetch:none opt-out marker", () => {
+    writeConfig(MANAGED + "\n<!-- context-fetch:none intentional -->\n" + UNBOUNDED);
+    expect(detectContextFetchUnbounded(tmpDir)).toBeNull();
+  });
+
+  it("does NOT fire when the consumer section has zero fetch blocks (missing owns it)", () => {
+    writeConfig(
+      MANAGED +
+        "\n<!-- context-fetch:provision serena -->\n" +
+        "```bash\ncommand -v serena >/dev/null 2>&1 || true\n```\n<!-- context-fetch:end -->\n",
+    );
+    expect(detectContextFetchUnbounded(tmpDir)).toBeNull();
+    // The generic missing advisory still covers it.
+    expect(detectContextFetchMissing(tmpDir)?.id).toBe("context-fetch-missing");
+  });
+
+  it("ignores blocks that sit INSIDE the managed block (never run)", () => {
+    writeConfig("<!-- bkit:start -->\n" + UNBOUNDED.trim() + "\n<!-- bkit:end -->\n" + BOUNDED);
+    expect(detectContextFetchUnbounded(tmpDir)).toBeNull();
+  });
+
+  it("returns null when .agents/context.md has no bkit-managed block (consumer-owned)", () => {
+    writeConfig("# Config\nfully consumer-owned\n" + UNBOUNDED);
+    expect(detectContextFetchUnbounded(tmpDir)).toBeNull();
+  });
+
+  it("returns null when .agents/context.md does not exist", () => {
+    expect(detectContextFetchUnbounded(tmpDir)).toBeNull();
   });
 });
 

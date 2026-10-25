@@ -11,6 +11,12 @@
 //                   plus every line matching the signal pattern with 2 lines of
 //                   context. Lines over 2000 bytes are shortened in place. Hard
 //                   ceiling 12000 lines / 1.5 MB.
+//   ci / e2e /      the debug-evidence algorithm with their context's own section
+//   runtime         headers added to the signal pattern, so a header naming a kept
+//                   block's owner survives without a signal word (`===== job …
+//                   =====`, `===== file: … =====`, `===== step: …`, `===== vercel
+//                   …`). `context fetch` picks the profile of the block's
+//                   `context=`; any other context clamps as debug-evidence.
 //
 // Bytes are counted as raw bytes (as `LC_ALL=C awk` counts them), never as
 // characters, so a multi-byte line is measured by what it costs on disk.
@@ -106,7 +112,7 @@ const EVIDENCE = {
     hardLines: 12000,
     hardBytes: 1572864,
 };
-export const CLAMP_PROFILES = ["ledger", "debug-evidence"];
+export const CLAMP_PROFILES = ["ledger", "debug-evidence", "ci", "e2e", "runtime"];
 /**
  * Lowercase substrings matched against a lowercased line. Broad: `error` also covers
  * `##[error]`, `fail` covers `FAILED`; the ceiling bounds over-matching.
@@ -126,6 +132,51 @@ const SIGNALS = [
     "●",
     "×",
 ].map((s) => Buffer.from(s));
+/**
+ * Section-header markers a context's shipped blocks print, lowercased like them. A profile
+ * named for the context adds them, so a header that names a kept block's owner survives
+ * without a signal word. Sourced from `.bkit/templates/context/`: `github` (`ci`);
+ * `playwright` + `maestro` + `expo-workflows` (`e2e`); every runtime block that prints a
+ * banner — `vercel`, `cloudrun`, `supabase`, `inngest`, `resend`, `stripe`, `expo`
+ * (`runtime`). `sentry` prints no banner. A context with no entry clamps as
+ * `debug-evidence`.
+ */
+const CONTEXT_MARKERS = {
+    ci: ["===== job ", "===== run "],
+    e2e: [
+        "===== file: ",
+        "===== step: ",
+        "===== maestro job ",
+        "===== playwright report ",
+        // `expo-workflows` (`context=e2e`).
+        "===== eas workflow runs",
+        "===== failing steps",
+        "===== screen-hierarchy dumps",
+        "===== app js console per flow",
+        "===== distinct app messages",
+        "===== junit ",
+    ],
+    runtime: [
+        "===== vercel ",
+        "===== cloud run ",
+        "===== supabase ",
+        "===== inngest ",
+        "===== resend ",
+        "===== stripe ",
+        "===== webhook deliveries failed",
+        "===== eas builds",
+        "===== truncated: ",
+    ],
+};
+/** Each context profile's signal set: {@link SIGNALS} plus that context's markers. */
+const PROFILE_SIGNALS = Object.fromEntries(Object.entries(CONTEXT_MARKERS).map(([profile, markers]) => [
+    profile,
+    [...SIGNALS, ...markers.map((m) => Buffer.from(m))],
+]));
+/** The signals a profile matches; a profile with no markers of its own is the base set. */
+const signalsFor = (profile) => PROFILE_SIGNALS[profile] ?? SIGNALS;
+/** The clamp profile a block's context selects; any context without its own profile is `debug-evidence`. */
+const contextProfile = (context) => CONTEXT_MARKERS[context] === undefined ? "debug-evidence" : context;
 /** awk records: a final line with no newline is one, a trailing newline does not start another. */
 function records(buf) {
     const out = [];
@@ -140,12 +191,12 @@ function records(buf) {
         out.push(buf.subarray(start));
     return out;
 }
-function hasSignal(line) {
+function hasSignal(line, signals) {
     const lower = Buffer.from(line);
     for (let i = 0; i < lower.length; i++)
         if (lower[i] >= 65 && lower[i] <= 90)
             lower[i] += 32;
-    return SIGNALS.some((s) => lower.includes(s));
+    return signals.some((s) => lower.includes(s));
 }
 /** awk's human size: B, rounded KB, or MB to one decimal (ties to even, as printf). */
 export function humanBytes(b) {
@@ -187,7 +238,7 @@ function selectLedger(buf) {
         body: rows.slice(0, keep).flatMap((r) => [r, Buffer.from("\n")]),
     };
 }
-function selectEvidence(buf) {
+function selectEvidence(buf, signals) {
     const p = EVIDENCE;
     const raw = records(buf);
     const n = raw.length;
@@ -232,7 +283,7 @@ function selectEvidence(buf) {
     // otherwise lose its immunity.
     let ceiling = false;
     for (let i = 0; i < n; i++) {
-        if (!hasSignal(raw[i]))
+        if (!hasSignal(raw[i], signals))
             continue;
         const a = Math.max(0, i - p.context);
         const b = Math.min(n - 1, i + p.context);
@@ -314,7 +365,7 @@ export function clampFile(file, profile, artifact = file, keep) {
         throw new CommandError(EXIT_ARTIFACT, `cannot read artifact '${artifact}': ${read.problem}`);
     }
     const buf = read.buf;
-    const sel = profile === "ledger" ? selectLedger(buf) : selectEvidence(buf);
+    const sel = profile === "ledger" ? selectLedger(buf) : selectEvidence(buf, signalsFor(profile));
     const source = keep?.source ?? null;
     const fetchedAt = keep?.fetchedAt ?? (source === null ? null : utcNow());
     const untouched = (s) => ({
@@ -392,6 +443,43 @@ function replaceFile(file, tmp, content) {
         return err.message;
     }
 }
+/** The context-fetch context a clamp record belongs to, from its `context-<context>-…` artifact basename. */
+function contextOfArtifact(artifact) {
+    const context = /^context-([a-z0-9]+)-/.exec(path.basename(artifact))?.[1];
+    return context !== undefined && CONTEXT_FETCH_CONTEXTS.includes(context) ? context : undefined;
+}
+const numberOr0 = (v) => (typeof v === "number" ? v : 0);
+/** The context-fetch clamp records totalled per context; a record naming no context is skipped. */
+export function summariseRecords(records) {
+    const summary = {};
+    for (const value of records) {
+        const r = value;
+        if (r === null || typeof r.artifact !== "string")
+            continue;
+        const context = contextOfArtifact(r.artifact);
+        if (context === undefined)
+            continue;
+        const s = (summary[context] ??= {
+            artifacts: 0,
+            origLines: 0,
+            keptLines: 0,
+            origBytes: 0,
+            keptBytes: 0,
+            table: 0,
+            raw: 0,
+        });
+        s.artifacts++;
+        s.origLines += numberOr0(r.origLines);
+        s.keptLines += numberOr0(r.keptLines);
+        s.origBytes += numberOr0(r.origBytes);
+        s.keptBytes += numberOr0(r.keptBytes);
+        if (r.render === "table")
+            s.table++;
+        else if (r.render === "raw")
+            s.raw++;
+    }
+    return summary;
+}
 // ---------------------------------------------------------------------------
 // Clamp log — records cross the gap between the block that writes an artifact
 // and the block that records the step's status row.
@@ -435,6 +523,7 @@ const RECORD_OUTPUT = {
     raw: "the untouched original in the outbox ({name}.raw.{ext}), or null when nothing was cut",
     source: "the command that produced the file (--source), or null",
     fetchedAt: "when the source ran (UTC; the clamp time with --source), or null",
+    render: "context fetch only: table when the output was rendered as a table, else raw",
 };
 /** Say so when a cut had nowhere to keep its original. */
 function warnNoRaw(ctx, record, keep) {
@@ -962,7 +1051,7 @@ export const contextCommand = {
             summary: "Clamp an artifact to a size profile in place (a backstop, not a routine cap).",
             flags: [
                 { name: "artifact", type: "string", required: true, help: "file to clamp" },
-                { name: "profile", type: "string", required: true, help: "ledger | debug-evidence" },
+                { name: "profile", type: "string", required: true, help: CLAMP_PROFILES.join(" | ") },
                 {
                     name: "source",
                     type: "string",
@@ -1334,6 +1423,7 @@ export const contextCommand = {
                 artifacts: "those artifacts, relative to the working directory",
                 contextsConfigured: "contexts with at least one block",
                 clamped: "this attempt's clamp records",
+                clampSummary: "those records totalled per context: artifacts written, lines and bytes fetched -> kept, and how many were written as a table vs raw",
                 row: "--record: the step-done row written, else null",
                 commit: "--record: the new commit's sha, else null",
                 comment: "the step comment (with --number): verdict, contexts, artifact links, a NOT CONFIGURED line per context with no block; else null",
@@ -1360,6 +1450,7 @@ export const contextCommand = {
                 const blocks = fetchBlocks(consumerSection(readContextMd(ctx) ?? ""));
                 const contextsConfigured = CONTEXT_FETCH_CONTEXTS.filter((c) => blocks.some((b) => b.context === c));
                 const clamped = readRecords(clampLogPath(ctx.cwd, fid, "context-fetch", attempt), (l) => ctx.log(`skipping a malformed clamp record: ${l}`));
+                const clampSummary = summariseRecords(clamped);
                 const verdict = artifacts.length > 0 ? "PASS" : "FAIL";
                 let written = {
                     row: {},
@@ -1378,7 +1469,7 @@ export const contextCommand = {
                         verdict,
                         attempt,
                         artifacts,
-                        extras: { contextsConfigured, clamped },
+                        extras: { contextsConfigured, clamped, clampSummary },
                         commit: "auto",
                         message: str(ctx.flags.message),
                     }, ctx.log);
@@ -1407,6 +1498,7 @@ export const contextCommand = {
                     artifacts,
                     contextsConfigured,
                     clamped,
+                    clampSummary,
                     row: record ? written.row : null,
                     commit: written.commit,
                     comment,
@@ -1500,7 +1592,7 @@ function runBlock(ctx, render) {
             }
         }
         fs.writeFileSync(out, payload);
-        let clamp = clampFile(out, "debug-evidence", artifact, keep);
+        let clamp = clampFile(out, contextProfile(block.context), artifact, keep);
         warnNoRaw(ctx, clamp, keep);
         if (written !== null) {
             const raw = clamp.raw ?? (keep.original ? outboxRel(path.dirname(out), keep.original) : null);

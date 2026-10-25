@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { runCommand } from "../lib";
 import { COMMANDS } from "../registry";
 import {
+  CLAMP_PROFILES,
   FENCE_CLOSE,
   FENCE_INSTRUCTION_LINES,
   FENCE_OPEN,
@@ -14,7 +15,9 @@ import {
   fetchBlocks,
   humanBytes,
   keepRaw,
+  summariseRecords,
   writeDiffArtifact,
+  type ClampRecord,
 } from "./context";
 import { parseContextFetchStart } from "../../checks/before/context-fetch";
 
@@ -321,6 +324,179 @@ describe("bkit context clamp (#427 T1)", () => {
     const out = read(f);
     expect(out.startsWith("q 0\r\nq 1\r\n")).toBe(true);
     expect(out).toContain("\nq 4999\r\n> [bkit] TRUNCATED");
+  });
+});
+
+describe("bkit context clamp — per-context profiles (#697)", () => {
+  it("names the ledger, base and per-context profiles", () => {
+    expect(CLAMP_PROFILES).toEqual(["ledger", "debug-evidence", "ci", "e2e", "runtime"]);
+  });
+
+  /**
+   * One section header per context, each carrying no base signal word, buried past the
+   * kept head and tail. The `ci` marker is `bkit-github.md`'s `===== job … =====`; the
+   * `e2e` marker is `bkit-playwright.md`'s `===== file: … =====`; the `runtime` marker is
+   * `bkit-vercel.md`'s `===== TRUNCATED: … =====`.
+   */
+  const HEADERS: Record<string, string> = {
+    ci: "===== job build =====",
+    e2e: "===== file: test-results/checkout/missing.md (first 300 lines) =====",
+    runtime:
+      "===== TRUNCATED: stopped at VERCEL_MAX_PAGES=20 — lines older than 2026-01-31T22:50:00Z NOT read =====",
+  };
+  const PROFILES = ["ci", "e2e", "runtime"];
+
+  it("keeps each context's own section header and drops every other context's", async () => {
+    for (const profile of PROFILES) {
+      const line = HEADERS[profile]!;
+      const body = quietLines(9000);
+      body[4500] = line;
+      const content = body.join("\n") + "\n";
+      const own = write(`own-${profile}.md`, content);
+      await clamp(own, profile);
+      expect(read(own), `${profile} must keep its own header`).toContain(line);
+      for (const other of [...PROFILES, "debug-evidence"].filter((p) => p !== profile)) {
+        const file = write(`cross-${profile}-${other}.md`, content);
+        await clamp(file, other);
+        expect(read(file), `${other} must not keep ${profile}'s header`).not.toContain(line);
+      }
+    }
+  });
+
+  /**
+   * Every banner a context's shipped blocks print must survive that context's profile.
+   * Each banner below carries no base signal word, so only the profile whose block prints
+   * it keeps it and every other profile drops it. The remaining shipped banners
+   * (`supabase`, `inngest`, `stripe`, `expo`'s FAILURE runs, `===== failing steps …`)
+   * carry `error` / `fail` in their own text and are kept by every profile already;
+   * `sentry` prints no banner. Sourced from `.bkit/templates/context/`: `vercel`,
+   * `cloudrun`, `resend`, `expo` (`runtime`); `expo-workflows` (`e2e`).
+   */
+  const CONTEXT_BANNERS: Record<string, string[]> = {
+    runtime: [
+      "===== cloud run my-service, freshness 4h — 3 entr(ies), newest 50 max =====",
+      "===== resend outbound since 2026-01-01 — 1 send(s), 1 page(s) =====",
+      "===== eas builds, newest 50 (ios) — 3 build(s) =====",
+    ],
+    e2e: [
+      "===== eas workflow runs, newest 10 — 1 run(s) =====",
+      "===== JUnit (first 300 lines) =====",
+      "===== app JS console per flow (count, then the lines) =====",
+      "===== distinct app messages =====",
+    ],
+  };
+
+  it("keeps each context's own section banner and drops every other context's", async () => {
+    for (const [profile, banners] of Object.entries(CONTEXT_BANNERS)) {
+      for (const banner of banners) {
+        const body = quietLines(9000);
+        body[4500] = banner;
+        const content = body.join("\n") + "\n";
+        const own = write(`banner-own-${profile}.md`, content);
+        await clamp(own, profile);
+        expect(read(own), `${profile} must keep ${banner}`).toContain(banner);
+        for (const other of [...PROFILES, "debug-evidence"].filter((p) => p !== profile)) {
+          const file = write(`banner-cross-${profile}-${other}.md`, content);
+          await clamp(file, other);
+          expect(read(file), `${other} must not keep ${banner}`).not.toContain(banner);
+        }
+      }
+    }
+  });
+
+  it("a ci artifact keeps a section header that carries none of the base signal words", async () => {
+    const body = quietLines(9000);
+    body[4500] = "===== job build ===== — the lines below belong to this job";
+    const f = write("ci-header.md", body.join("\n") + "\n");
+    const r = await clamp(f, "ci");
+    expect(r.json).toMatchObject({ clamped: true });
+    expect(read(f)).toContain("===== job build =====");
+  });
+});
+
+describe("bkit context clamp — per-context saving (#697)", () => {
+  const record = (artifact: string, extra: Partial<ClampRecord> = {}): ClampRecord => ({
+    artifact,
+    clamped: true,
+    origLines: 10,
+    keptLines: 4,
+    origBytes: 100,
+    keptBytes: 40,
+    lineCapped: 0,
+    ceilingHit: false,
+    raw: null,
+    source: null,
+    fetchedAt: null,
+    ...extra,
+  });
+  const dir = "docs/plans/202608/logs/427-x";
+
+  it("totals artifacts, lines, bytes and table / raw per context", () => {
+    expect(
+      summariseRecords([
+        record(`${dir}/context-ci-github-1-1.md`, {
+          render: "table",
+          origLines: 10,
+          keptLines: 4,
+          origBytes: 100,
+          keptBytes: 40,
+        }),
+        record(`${dir}/context-ci-1-1.md`, {
+          render: "raw",
+          origLines: 20,
+          keptLines: 5,
+          origBytes: 200,
+          keptBytes: 50,
+        }),
+        record(`${dir}/context-runtime-vercel-1.md`, {
+          render: "table",
+          origLines: 8,
+          keptLines: 8,
+          origBytes: 80,
+          keptBytes: 80,
+        }),
+      ]),
+    ).toEqual({
+      ci: {
+        artifacts: 2,
+        origLines: 30,
+        keptLines: 9,
+        origBytes: 300,
+        keptBytes: 90,
+        table: 1,
+        raw: 1,
+      },
+      runtime: {
+        artifacts: 1,
+        origLines: 8,
+        keptLines: 8,
+        origBytes: 80,
+        keptBytes: 80,
+        table: 1,
+        raw: 0,
+      },
+    });
+  });
+
+  it("counts a record whose render is absent, and skips a record naming no context-fetch context", () => {
+    expect(
+      summariseRecords([
+        record(`${dir}/context-e2e-maestro-1.md`),
+        record(`${dir}/context-e2e-2-1.md`, { render: "raw" }),
+        record(`${dir}/run-tests-1.md`, { origLines: 999, keptLines: 1 }),
+        record(`${dir}/context-tests-local-1.md`, { origLines: 999, keptLines: 1 }),
+      ]),
+    ).toEqual({
+      e2e: {
+        artifacts: 2,
+        origLines: 20,
+        keptLines: 8,
+        origBytes: 200,
+        keptBytes: 80,
+        table: 0,
+        raw: 1,
+      },
+    });
   });
 });
 
@@ -960,6 +1136,18 @@ describe("bkit context run-block / finalise (#427 T4)", () => {
     ).toBe(2);
   });
 
+  it("clamps a ci block with the ci profile and a runtime block without it", async () => {
+    const dir = workspace();
+    const body =
+      '{ seq 1 4499 | sed "s/$/ quiet payload/"; echo "===== job build ====="; seq 4500 9000 | sed "s/$/ quiet payload/"; }';
+    const ci = await run(["run-block", "--idx=1", script(dir, body), ...base], dir);
+    expect(ci.json.clamp).toMatchObject({ clamped: true });
+    expect(read(path.join(dir, ci.json.artifact))).toContain("===== job build =====");
+    const rt = await run(["run-block", "--idx=2", script(dir, body), ...base], dir);
+    expect(rt.json.clamp).toMatchObject({ clamped: true });
+    expect(read(path.join(dir, rt.json.artifact))).not.toContain("===== job build =====");
+  });
+
   it("finalise derives verdict, artifacts, configured contexts and clamp records", async () => {
     const dir = workspace();
     await run(["run-block", "--idx=1", script(dir, "echo ci"), ...base], dir);
@@ -977,6 +1165,31 @@ describe("bkit context run-block / finalise (#427 T4)", () => {
     ]);
     expect(r.json.contextsConfigured).toEqual(["runtime", "ci", "web"]);
     expect(r.json.clamped).toHaveLength(2);
+    // render is absent on these run-block records: counted as neither table nor raw.
+    const one = {
+      artifacts: 1,
+      origLines: 1,
+      keptLines: 1,
+      origBytes: 3,
+      keptBytes: 3,
+      table: 0,
+      raw: 0,
+    };
+    expect(r.json.clampSummary).toEqual({ ci: one, runtime: one });
+  });
+
+  it("finalise totals a rendered fetch per context (table vs raw)", async () => {
+    const dir = workspace();
+    const fetched = await run(
+      ["fetch", "--idx=1", script(dir, `echo '[{"name":"widget","state":"open"}]'`), ...base],
+      dir,
+    );
+    expect(fetched.json.render).toBe("table");
+    const r = await run(["finalise", ...base], dir);
+    expect(r.json.verdict).toBe("PASS");
+    expect(r.json.clampSummary).toEqual({
+      ci: expect.objectContaining({ artifacts: 1, table: 1, raw: 0 }),
+    });
   });
 
   it("finalise with no artifacts is FAIL", async () => {
@@ -1022,6 +1235,17 @@ describe("bkit context run-block / finalise (#427 T4)", () => {
       attempt: 1,
       artifacts: ["docs/plans/202608/logs/427-x/context-ci-github-1-1.md"],
       contextsConfigured: ["runtime", "ci", "web"],
+      clampSummary: {
+        ci: {
+          artifacts: 1,
+          origLines: 1,
+          keptLines: 1,
+          origBytes: 3,
+          keptBytes: 3,
+          table: 0,
+          raw: 0,
+        },
+      },
     });
     expect(r.json.commit).toBe(g("rev-parse", "HEAD"));
     expect(g("log", "-1", "--format=%s")).toBe("chore(427-x): fetch-context attempt 1");

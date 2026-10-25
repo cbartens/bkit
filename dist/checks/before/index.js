@@ -16,7 +16,7 @@ import { readBkitConfig } from "../../shared/settings.js";
 import { detectBkitNotOnPath, detectMalformedPackageJson, detectNoPackageJson, detectNotGitRepo, detectInvalidAskSettings, detectInvalidTaskCaps, detectTaskCapFormStale, detectUnmarkedPlans, } from "./repo.js";
 import { MARKERED_TEXT_DRIFT_PATHS, detectGitignoreBlockDuplicates, detectPlaywrightReporterHostile, detectTier2JsonDrift, detectTier2TextDrift, } from "./files.js";
 import { detectBkitVersionMajorDowngrade, detectBkitVersionPinStale } from "./version.js";
-import { detectContextFetchContextMissing, detectContextFetchMissing, detectContextFetchProvisionMissing, detectContextFetchSourceNotEnabled, } from "./context-fetch.js";
+import { detectContextFetchContextMissing, detectContextFetchMissing, detectContextFetchProvisionMissing, detectContextFetchSourceNotEnabled, detectContextFetchUnbounded, } from "./context-fetch.js";
 import { detectExtraMcpServers, detectMissingMcpServers } from "./mcp.js";
 // ---------------------------------------------------------------------------
 // Internal helper
@@ -116,6 +116,9 @@ export function runPreflight(modules, cwd = process.cwd(), installingVersion, is
     const contextFetchProvision = detectContextFetchProvisionMissing(cwd);
     if (contextFetchProvision)
         advisories.push(contextFetchProvision);
+    const contextFetchUnbounded = detectContextFetchUnbounded(cwd);
+    if (contextFetchUnbounded)
+        advisories.push(contextFetchUnbounded);
     // bkit-not-on-path advisory — suggest the shell alias for local development.
     const bkitNotOnPath = detectBkitNotOnPath();
     if (bkitNotOnPath)
