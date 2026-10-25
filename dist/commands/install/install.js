@@ -17,6 +17,7 @@ import { findMissingOwnedHooks, detectOwnedHookMissing } from "../../checks/afte
 import { resolveTokens } from "../../install/placeholders.js";
 import { parseModelLookup, applyModelOverrides, unknownModelOverrides, buildOpencodeModelLookup, buildAntigravityModelLookup, parseEffortMap, } from "../../render/models.js";
 import { getBkitDocsRoot } from "../../shared/package-roots.js";
+import { migrateBkitLayout, migrateGithubProjectKey, migrateLinearTeamKey, } from "../../install/modules/core.js";
 import { removeUnusedTrackerMcpEntries, runUninstall } from "./uninstall.js";
 // ---------------------------------------------------------------------------
 // Staging scratch area
@@ -192,6 +193,17 @@ export async function runInstall(args, upgradeReport = false) {
         console.log(`${LOG_PREFIX} Checking advisories (read-only)`);
     else if (dryRun)
         console.log(`${LOG_PREFIX} Running in check (dry-run) mode`);
+    // The package.json key moves run before anything below reads `bkit` settings: the tracker,
+    // the opencode provider and the cloud agent are read from the new paths only, so a 5.x
+    // layout read first renders every host as if no tracker were set. The core module runs
+    // the same moves again; each is a no-op once applied. Check moves nothing and reports
+    // the old keys as drift.
+    const ws = { writes: [] };
+    if (!dryRun) {
+        migrateLinearTeamKey(false, ws, LOG_PREFIX);
+        migrateGithubProjectKey(false, ws, LOG_PREFIX);
+        migrateBkitLayout(false, ws, LOG_PREFIX);
+    }
     // `bkit check` scopes drift detection to what is INSTALLED (detected by sentinel files),
     // not to a fixed full set. `install` keeps its explicit resolved set, plus every installed
     // host when `--tracker=` is given: each host renders tracker-specific commands, agents and
@@ -314,7 +326,6 @@ export async function runInstall(args, upgradeReport = false) {
             action: "Delete the rows, or move each pin to the agent that now does that work (see .bkit/prompts.md § Models).",
         });
     }
-    const ws = { writes: [] };
     const postDispatch = [];
     // Symmetric cloud/tracker constraint (FINAL SCOPE decision 3/4) — see
     // validateCloudTrackerMatch for the full rationale. Checked BEFORE any

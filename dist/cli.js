@@ -620,7 +620,7 @@ function commandsUsage() {
     return [
         "",
         "",
-        "Workflow commands (bkit <noun> <verb> --flags; JSON on stdout; bkit <noun> --help):",
+        "Workflow commands (bkit <noun> <verb> --flags; text on stdout, --json for JSON; bkit <noun> --help):",
         ...COMMANDS.map((c) => `  bkit ${c.noun.padEnd(width)}  ${c.summary}`),
     ].join("\n");
 }

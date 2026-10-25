@@ -225,6 +225,7 @@ export const BKIT_GATE_SCRIPTS = {
 export const BKIT_DEBUG_GATES = [
     "bkit:gate:static-unit-integration-e2e-live",
     "bkit:gate:static-unit-integration-e2e",
+    "bkit:gate:static-unit-integration",
     "bkit:gate:static-unit",
 ];
 /**

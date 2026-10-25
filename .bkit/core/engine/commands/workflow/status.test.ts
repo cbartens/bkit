@@ -363,6 +363,7 @@ describe("bkit status route --prompt-file (debug Step 1)", () => {
   const GATES = [
     "bkit:gate:static-unit-integration-e2e-live",
     "bkit:gate:static-unit-integration-e2e",
+    "bkit:gate:static-unit-integration",
     "bkit:gate:static-unit",
   ];
   const prompt = (text: string) => {

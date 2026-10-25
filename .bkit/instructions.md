@@ -6185,12 +6185,23 @@ Bash(git -* push* -6f*)
 ### deny-root-delete
 
 - tier: deny
-- count: 3
+- count: 14
 
 ```text
 Bash(rm -rf /*)
 Bash(rm -rf ~/*)
 Bash(rm -rf $HOME/*)
+Bash(rm -rf ~)
+Bash(rm -rf $HOME)
+Bash(rm -rf ${HOME})
+Bash(rm -rf ${HOME}/*)
+Bash(rm -fr /*)
+Bash(rm -fr ~)
+Bash(rm -fr ~/*)
+Bash(rm -fr $HOME)
+Bash(rm -fr $HOME/*)
+Bash(rm -fr ${HOME})
+Bash(rm -fr ${HOME}/*)
 ```
 
 ### deny-root-chmod
@@ -6393,6 +6404,17 @@ WebSearch
     "rm -rf /*": "deny",
     "rm -rf ~/*": "deny",
     "rm -rf $HOME/*": "deny",
+    "rm -rf ~": "deny",
+    "rm -rf $HOME": "deny",
+    "rm -rf ${HOME}": "deny",
+    "rm -rf ${HOME}/*": "deny",
+    "rm -fr /*": "deny",
+    "rm -fr ~": "deny",
+    "rm -fr ~/*": "deny",
+    "rm -fr $HOME": "deny",
+    "rm -fr $HOME/*": "deny",
+    "rm -fr ${HOME}": "deny",
+    "rm -fr ${HOME}/*": "deny",
     "git push --force*": "deny",
     "git push -f*": "deny",
     "git push --force-with-lease*": "allow",

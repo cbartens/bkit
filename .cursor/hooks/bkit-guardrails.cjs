@@ -476,7 +476,13 @@ function denyRule(c) {
     const denied = g && gitDenyRule(g);
     if (denied) return denied;
   }
-  if (/\brm\s+-rf\s+(\/(?:\s|$|\*)|~\/\*|\$HOME\/\*)/.test(c)) {
+  // rm with both -r and -f (-rf, -fr, -Rf, -r -f) on /, ~ or $HOME itself, bare, with a
+  // trailing slash, or with a trailing /*. A path below them (~/projects/x) is not matched.
+  if (
+    /\brm\s+(?:-[a-zA-Z]*(?:[rR][a-zA-Z]*f|f[a-zA-Z]*[rR])[a-zA-Z]*|-[rR]\s+-f|-f\s+-[rR])\s+(?:\/|~\/?|\$HOME\/?|\$\{HOME\}\/?)\*?(?=\s|$|[;&|)])/.test(
+      c,
+    )
+  ) {
     return {
       what: "recursive delete of a filesystem root",
       fix: "Do not run rm -rf against /, ~, or $HOME. Narrow the path to the target directory.",

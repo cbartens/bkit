@@ -278,6 +278,7 @@ export const BKIT_GATE_SCRIPTS: Readonly<Record<string, string>> = {
 export const BKIT_DEBUG_GATES: readonly string[] = [
   "bkit:gate:static-unit-integration-e2e-live",
   "bkit:gate:static-unit-integration-e2e",
+  "bkit:gate:static-unit-integration",
   "bkit:gate:static-unit",
 ];
 

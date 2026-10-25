@@ -61,6 +61,7 @@ import {
 } from "../../render/models.js";
 import { readInstallingVersion } from "../../shared/package-json.js";
 import { readBkitConfig } from "../../shared/settings.js";
+import { SEEDED_BKIT_DEFAULTS } from "../../install/modules/core.js";
 import {
   CLAUDE_CLOUD_RELPATH,
   CURSOR_CLOUD_RELPATH,
@@ -834,8 +835,8 @@ export async function runUninstall(
     }
   }
 
-  // Targeted uninstall: drop the `bkit.*` keys the removed module records, so its advisories
-  // stop firing. Core keeps every other key.
+  // Targeted uninstall: reset the `bkit.*` keys the removed module records to unset, so its
+  // advisories stop firing. Core keeps every other key.
   if (!moduleList.includes("core")) {
     stripModuleBkitKeys(moduleList, ctx, result);
   }
@@ -1055,10 +1056,18 @@ function objectAt(
   return node;
 }
 
+/** The seeded value at dotted `key` in SEEDED_BKIT_DEFAULTS, copied. */
+function seededValue(key: string): unknown {
+  const segs = key.split(".");
+  const parent = objectAt(SEEDED_BKIT_DEFAULTS as Record<string, unknown>, segs.slice(0, -1));
+  return structuredClone(parent?.[segs[segs.length - 1]!]);
+}
+
 /**
- * Remove the `bkit.*` keys recorded by the modules in `moduleList` from the consumer's
- * package.json, keeping its indent, and drop each section the removal leaves empty. Lists
- * each removed key in `result.stripped`; a dry run lists without writing.
+ * Reset the `bkit.*` keys recorded by the modules in `moduleList` to the value install
+ * seeds (`""` / `[]`, read as unset), keeping the package.json indent. Deleting them
+ * would leave `bkit check` reporting the seeded key as missing. Lists each reset key in
+ * `result.stripped`; a dry run lists without writing.
  */
 function stripModuleBkitKeys(
   moduleList: ModuleName[],
@@ -1074,25 +1083,24 @@ function stripModuleBkitKeys(
   const pkg = parsed.ok ? (parsed.value as Record<string, unknown> | null) : null;
   if (pkg === null || !isJsonObject(pkg.bkit as JsonValue)) return;
   const bkit = pkg.bkit as Record<string, unknown>;
-  const present = keys.filter((k) => {
+  const reset = keys.filter((k) => {
     const segs = k.split(".");
     const parent = objectAt(bkit, segs.slice(0, -1));
-    return parent !== null && segs[segs.length - 1]! in parent;
+    const key = segs[segs.length - 1]!;
+    return (
+      parent !== null &&
+      key in parent &&
+      JSON.stringify(parent[key]) !== JSON.stringify(seededValue(k))
+    );
   });
-  if (present.length === 0) return;
-  for (const k of present) {
+  if (reset.length === 0) return;
+  for (const k of reset) {
     const segs = k.split(".");
-    delete objectAt(bkit, segs.slice(0, -1))![segs[segs.length - 1]!];
-    // Drop each section on the path the removal emptied, deepest first.
-    for (let depth = segs.length - 1; depth > 0; depth--) {
-      const section = objectAt(bkit, segs.slice(0, depth));
-      if (section === null || Object.keys(section).length > 0) break;
-      delete objectAt(bkit, segs.slice(0, depth - 1))![segs[depth - 1]!];
-    }
+    objectAt(bkit, segs.slice(0, -1))![segs[segs.length - 1]!] = seededValue(k);
     result.stripped.push(`package.json#bkit.${k}`);
   }
   console.log(
-    `${ctx.logPrefix}${ctx.dryRun ? " [dry-run]" : ""} package.json: removed bkit.${present.join(", bkit.")}`,
+    `${ctx.logPrefix}${ctx.dryRun ? " [dry-run]" : ""} package.json: reset bkit.${reset.join(", bkit.")} to unset`,
   );
   if (ctx.dryRun) return;
   const indentMatch = raw.match(/\n([ \t]+)"/);

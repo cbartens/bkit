@@ -660,7 +660,7 @@ describe("targeted uninstall drops the module's bkit.* keys", () => {
     return pkg.bkit;
   }
 
-  it("--auto removes bkit.cloud.agent and keeps every other key", async () => {
+  it("--auto resets bkit.cloud.agent to unset and keeps every other key", async () => {
     seed({
       tracker: { default: "github" },
       cloud: { agent: "claude" },
@@ -669,19 +669,24 @@ describe("targeted uninstall drops the module's bkit.* keys", () => {
     const result = await runUninstall(["cloud"], makeCtx());
     expect(readBkit()).toEqual({
       tracker: { default: "github" },
+      cloud: { agent: "" },
       providers: { opencode: { default: "ollama" } },
     });
     expect(result.stripped).toContain("package.json#bkit.cloud.agent");
   });
 
-  it("--opencode removes bkit.providers.opencode.default and bkit.providers.opencode.installed", async () => {
+  it("--opencode resets bkit.providers.opencode.default and .installed to unset", async () => {
     seed({
       tracker: { default: "jira" },
       cloud: { agent: "none" },
       providers: { opencode: { default: "ollama", installed: ["ollama", "openrouter"] } },
     });
     await runUninstall(["opencode"], makeCtx());
-    expect(readBkit()).toEqual({ tracker: { default: "jira" }, cloud: { agent: "none" } });
+    expect(readBkit()).toEqual({
+      tracker: { default: "jira" },
+      cloud: { agent: "none" },
+      providers: { opencode: { default: "", installed: [] } },
+    });
   });
 
   it("a dry run lists the keys and writes nothing", async () => {

@@ -1464,3 +1464,51 @@ describe("Scenario — tracker switch and active opencode provider removal leave
     runOk(["check"]);
   }, 240_000);
 });
+
+describe("5.x package.json layout — the tracker survives the first re-render", () => {
+  it("bkit install on the flat bkit.issueTracker layout renders the tracker and check passes", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "scratch-consumer", version: "0.0.0", devDependencies: {} }),
+    );
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    const cli = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../cli.ts");
+    const run = (...args: string[]) =>
+      spawnSync(requireTsx(), [cli, ...args], {
+        cwd: tmpDir,
+        encoding: "utf-8",
+        env: { ...process.env, NODE_NO_WARNINGS: "1" },
+        timeout: 60_000,
+      });
+
+    const first = run("install", "--claude", "--tracker=github");
+    expect(first.status, combinedOutput(first)).toBe(0);
+
+    // Put the tracker back where 5.5.x kept it.
+    const pkgPath = path.join(tmpDir, "package.json");
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
+      bkit: Record<string, unknown> & { tracker: Record<string, unknown> };
+    };
+    delete pkg.bkit.tracker.default;
+    pkg.bkit.issueTracker = "github";
+    fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
+    fs.rmSync(path.join(tmpDir, ".claude", "agents", "bkit-utility-update-tracker.md"));
+
+    const second = run("install", "--claude");
+    expect(second.status, combinedOutput(second)).toBe(0);
+
+    const after = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
+      bkit: { issueTracker?: unknown; tracker?: { default?: unknown } };
+    };
+    expect(after.bkit.issueTracker).toBeUndefined();
+    expect(after.bkit.tracker?.default).toBe("github");
+    const agent = fs.readFileSync(
+      path.join(tmpDir, ".claude", "agents", "bkit-utility-update-tracker.md"),
+      "utf-8",
+    );
+    expect(agent).toContain("mcp__github__");
+
+    const check = run("check");
+    expect(check.status, combinedOutput(check)).toBe(0);
+  });
+});

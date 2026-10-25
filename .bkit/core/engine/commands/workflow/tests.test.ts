@@ -115,6 +115,12 @@ describe("resolveGate", () => {
     checkout(scripts({ "bkit:gate:static-unit-integration-e2e": "e", [SHALLOW]: "x" }));
     expect(resolveGate(cwd, BKIT_DEBUG_GATES)).toBe("bkit:gate:static-unit-integration-e2e");
   });
+
+  it("with no e2e gate, debug runs the integration gate build runs", () => {
+    checkout(scripts({ "bkit:gate:static-unit-integration": "i", [SHALLOW]: "x" }));
+    expect(resolveGate(cwd, BKIT_DEBUG_GATES)).toBe("bkit:gate:static-unit-integration");
+    expect(resolveGate(cwd, BKIT_DEBUG_GATES)).toBe(resolveGate(cwd, BKIT_BUILD_GATES));
+  });
 });
 
 describe("bkit tests run", () => {
