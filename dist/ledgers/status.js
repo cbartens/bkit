@@ -105,17 +105,21 @@ export function lastRun(runs, workflow) {
     const i = lastIndexOfWorkflow(runs, workflow);
     return i < 0 ? undefined : runs[i];
 }
-const matches = (s, f) => s.step === f.step && s.status === "DONE" && (f.subPlan === undefined || s.subPlan === f.subPlan);
-/**
- * DONE rows for the step in the active run of `workflow`. `since` names a run
- * field holding a timestamp (SOAK's `soakEntryAt`): only rows after it count.
- */
-export function activeDoneSteps(runs, workflow, f, since) {
+const matches = (s, f) => s.step === f.step &&
+    s.status === "DONE" &&
+    (f.group === undefined || (s.group ?? s.subPlan) === f.group);
+/** DONE rows for the step in the active run of `workflow`. */
+export function activeDoneSteps(runs, workflow, f) {
     const run = lastRun(runs, workflow);
     if (!run)
         return [];
-    const floor = since === undefined ? undefined : String(run[since] ?? "");
-    return run.steps.filter((s) => matches(s, f) && (floor === undefined || s.at > floor));
+    return run.steps.filter((s) => matches(s, f));
+}
+/** DONE rows for the step across ALL runs of `workflow`: debug's limits span every run. */
+export function allRunsDoneSteps(runs, workflow, f) {
+    return runs
+        .filter((r) => r.workflow === workflow)
+        .flatMap((r) => r.steps.filter((s) => matches(s, f)));
 }
 /** The last DONE row for the step across ALL runs of `workflow`. */
 export function lastDoneStepAllRuns(runs, workflow, f) {

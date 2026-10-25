@@ -11,14 +11,6 @@
 >
 > **Rules:**
 >
-> - Read-only audit; never edit code, config, or data.
-> - `Universal Instructions` apply to all projects; `Project Instructions` apply only to this project.
-> - Local audit instructions / overrides → `Project Instructions` below the bkit-managed block; universal instructions stay in-block.
-> - Any tools mentioned in `Universal Instructions` are examples only; swap for actual tools in final output; drop inapplicable.
-> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
-> - Read `.agents/docs.md` → load docs for workflow / step / task; skip missing; cite docs inline where required.
-> - Every claim cites this run's evidence (`file:line`, or command / query and its output) and tool behind it; a previous report's figure, list, or status is a lead, not evidence.
-> - Read this document once at session start; do not trust session memory; do not re-read on every loop iteration.
 > - NEVER weaken, skip, delete, or quarantine a test to get green. A test that fails because it found a real bug is working.
 > - Mutation and clock probes restore the tree before the report finishes: in-place edits reverted, throwaway setup removed, `git status` clean on touched paths. Restore fails → STOP, restore, record as finding.
 > - Do not run suites that send mail, take payment, or write production tenants. Unit and local / throwaway targets only.
@@ -33,7 +25,7 @@ Green suite = tests passed — not that they could fail, that every promise has 
 
 **Cadence:** monthly — every product area and every package or app; record mutation cost per package. Package mutation tool cannot finish → `Not Checked` with that cost, never omitted. Extra pass when: test-toolchain major or config changes (mutation with force — incremental misses those); new route, worker, or external service; `bkit-audit-logs` or `bkit-audit-flakes` reports bug no test caught.
 
-**Anchor Standards:** record version and date read. Newer version → `Standards` step reads what changed.
+**Anchor Standards:**
 
 - Risk-based testing (e.g. ISO/IEC/IEEE 29119 Part 1:2022 and Part 2:2021, ISTQB Foundation Level syllabus).
 - Test-size model (e.g. Testing Trophy, Google test sizes); unversioned → record the date read.
@@ -71,22 +63,14 @@ Green suite = tests passed — not that they could fail, that every promise has 
 
 ### Pre-Flight / Dependencies
 
-**Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
-
-**Credentials:** probe direnv before marking a token / env var missing: `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'`; `unset` = missing. Run credentialed CLIs as `direnv exec . <cmd>`. No direnv (cloud session) → plain env check. Report names, never values.
-
 #### Core
 
-Always verify.
-
-- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied (here or in any step) → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`; run every step the remaining tools allow; work needing blocked call → `Not Checked`. never stop the run for a blocked call; never retry or reword a blocked call to get past it.
+- [ ] **Permissions:** blocked calls recorded
 - [ ] **Git:** Steps 1, 14 — `git rev-parse`, diff since previous report. Fallback: run marked baseline; ages and the what-changed pass `Not Checked`.
 - [ ] **Test Runner:** Steps 3, 6, 9, 10 — execute or read reports, e.g. Vitest, Jest, pytest. Fallback: static read only; counts, mutation, clock runs `Not Checked`.
 - [ ] **Web:** Step 13 — fetch anchor standards. Fallback: versions recorded as unread.
 
 #### Conditional
-
-Verify only when applicable.
 
 - [ ] **Mutation Tool:** Tool exists for the language → Step 6 — e.g. Stryker, mutmut. Fallback: hand-break code tests protect; scores `Not Checked`.
 - [ ] **E2E Runner:** Browser or device E2E → Steps 3, 7, 9 — e.g. Playwright, Cypress, Maestro. Fallback: unit and integration only.
@@ -96,15 +80,13 @@ Verify only when applicable.
 
 ### 🔒 Gate 1: Prerequisites Check
 
-**Checkpoint.** Verify and check `[x]` all applicable boxes above, then continue to `Probe Steps` without asking.
-
 - [ ] **Gaps named:** every missing item names its fallback and `Not Checked` entry.
-- [ ] **Gate 1 - Verified:** All Core items checked. All applicable Conditional items checked.
+- [ ] **Gate 1 — Verified:** All Core items checked. All applicable Conditional items checked.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Audited commit = this report's `bkit:anchor` `baseSha`. Read newest prior report for this slug under `docs/audits/`; its commit = its `bkit:anchor` `baseSha`, else the HEAD its `Previous Run` recorded. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
-- [ ] **Step 2 — Scope:** Every product area for Steps 3–5 (behaviour usually crosses packages). Every package or app for Steps 6–11. Area shared with native client → every platform; one defect can have a different cause on each. **Done when:** every area, every package, platforms in `Scope`; tools and commands in `Checked`.
+- [ ] **Step 1 — Previous Run:** **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 2 — Scope:** Every product area for Steps 3-5 (behaviour usually crosses packages). Every package or app for Steps 6-11. Area shared with native client → every platform; one defect can have a different cause on each. **Done when:** every area, every package, platforms in `Scope`; tools and commands in `Checked`.
 - [ ] **Step 3 — Behaviours:** Start from product should-do, not code — code finds untested code, not promises with no test or unguarded failures. Rows from:
   - Screens and routes (each action one row; finishing separate from opening).
   - Unattended work (workers, crons, inbound, webhooks, tool APIs).
@@ -146,7 +128,7 @@ Verify only when applicable.
   - Wrong surface. Write one place, assertion reads another — for every write, assertion reads surface write meant to change. Derived copies → `bkit-audit-database`.
   - Status-only assertion. Response code only on operation that succeeds when failed. Assert what was stored.
   - Two clients mocked as one. User-scoped and admin clients differ; same mock cannot see write through wrong one. Mocks keep runtime-different deps different.
-  - "Did not throw" only check on boundary (webhook, external API, DB write). Not throwing ≠ work happened. Step 6 usually confirms.
+  - "Did not throw" only check on boundary (webhook, external API, DB write). Not throwing != work happened. Step 6 usually confirms.
 
   New shape → propose under `Process Improvements`. Do not edit this list during run. **Done when:** every hit in `Shapes`, or `none`.
 
@@ -160,13 +142,11 @@ Verify only when applicable.
 
 ### 🔒 Gate 2: Probes Check
 
-**Checkpoint.** Verify and check `[x]` all boxes below, then continue to `Findings` without asking.
-
 - [ ] **Steps complete:** every step `[x]`, or explicit skip with evidence the surface is absent.
 - [ ] **Evidence:** every finding cites re-checkable evidence and the tool behind it.
 - [ ] **Tree clean:** mutation restores and throwaway clock setup removed; no test weakened, skipped, or deleted.
 - [ ] **Scores:** total and covered recorded, or mutation explicitly skipped with evidence.
-- [ ] **Gate 2 - Verified:** Every checkbox above independently verified and checked off.
+- [ ] **Gate 2 — Verified:** Every checkbox above independently verified and checked off.
 
 ## Findings
 
@@ -178,7 +158,7 @@ Verify only when applicable.
 | `MEDIUM` | Tier too low or too high; missing failure path; lint rule off that would catch a cannot-fail shape; duplicated procedures that disagree; snapshot that matches anything; suite that skips itself |
 | `LOW` | Equivalent mutant without a disable comment; cosmetic screen without a visual assertion; agreed duplicates |
 
-Scale per `.bkit/jsonl.md` § Severity. Within a severity: security / data first.
+Within a severity: security / data first.
 
 <!-- prettier-ignore -->
 | ID | Severity | Location | Evidence | Expected |
@@ -266,17 +246,13 @@ PENDING
 
 ### 🔒 Gate 3: Report Check
 
-**Checkpoint.** Verify and check `[x]` all boxes below, then stop.
-
-- [ ] **No placeholders:** Findings table and every `Report` section have no `PENDING`.
+- [ ] **No placeholders:** no `PENDING` left
 - [ ] **Summary:** names the single most important finding, count per severity, and both mutation scores per package (or the skip).
 - [ ] **Series:** test count and runtime per tier, and both scores, beside previous report's numbers, or marked baseline.
-- [ ] **Writes:** only this report and template `Project Instructions` changed; throwaway worktrees / remote targets removed.
-- [ ] **Process Improvements:** `Universal` = proposed step changes, template untouched; `Project` = edits applied below `bkit:end`; each `none` if empty.
+- [ ] **Writes:** only this report, template `Project Instructions`, and ledger rows changed; throwaway worktrees / remote targets removed.
+- [ ] **Process Improvements:** `Universal` and `Project` filled
 - [ ] **Suggested Issues:** every `MEDIUM`+ finding ID in exactly one row; every row has a `Next Step`.
-- [ ] **Gate 3 - Verified:** Every checkbox above independently verified and checked off.
-
-> `Project Instructions` below `bkit:end` are consumer-owned — `bkit install` never overwrites them, `bkit check` drift stays clean. Add project-specific tools, paths, commands, and checks there, keyed by section or step title; never results.
+- [ ] **Gate 3 — Verified:** Every checkbox above independently verified and checked off.
 
 <!-- bkit:end -->
 

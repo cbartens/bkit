@@ -282,7 +282,7 @@ describe("real workflow sources", () => {
     "TRACKER_TEAM",
     "TRACKER_PROJECT",
     "TRACKER_SITE",
-    "bkit.github.project", // Projects v2 board config
+    "bkit.tracker.github.project", // Projects v2 board config
     "projects_write",
   ];
 
@@ -334,7 +334,7 @@ describe("issue-less runs render only under a wired tracker", () => {
   // Text that only a wired tracker run can need: the warning, the recovery, the skips.
   const WIRED_ONLY = [
     "**No issue:**",
-    "WARNING: no issue named",
+    "Warning: no issue named",
     "**Skip if** `ISSUE_ID` empty",
     "fids parse --branch",
   ];
@@ -350,7 +350,7 @@ describe("issue-less runs render only under a wired tracker", () => {
       `${wf}: the %s render keeps the warning bullet once and the recovery in Step 1`,
       (tracker) => {
         const out = substituteWorkflow(source(wf), tracker).output;
-        expect(out.split("> - **No issue:**").length - 1).toBe(1);
+        expect(out.split("- **No issue:**").length - 1).toBe(1);
         expect(out.split('fids parse --branch="feat/{FID}"').length - 1).toBe(1);
         expect(out).toContain("**Skip if** `ISSUE_ID` empty");
       },
@@ -369,7 +369,7 @@ describe("none render baselines", () => {
 
   // The issue-less machinery (warning, recovery, skips, `--issue`) sits in tracker blocks, so
   // a none render differs from the render before issue-less runs only where the prose is
-  // tracker-independent: the shared wording clauses of `.bkit/wording.md` (FID mint, empty-FID
+  // tracker-independent: the shared clauses of `.bkit/instructions.md` (FID mint, empty-FID
   // rule, gate item, Failure Path comment), the gate-log copy (build), the ship refusal / naming
   // warning / merge base assert (ship), and the debug-on-`dev` prose (debug). A change that
   // shows up here is a change to the none render: review it, then `vitest -u`.
@@ -460,6 +460,7 @@ describe("real prompt sources", () => {
       "mcp__github__issue_read",
       "mcp__github__issue_write",
       "mcp__github__sub_issue_write",
+      "mcp__github__list_label",
       "mcp__github__projects_list",
       "mcp__github__projects_write",
     ]);

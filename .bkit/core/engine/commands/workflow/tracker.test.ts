@@ -101,10 +101,12 @@ function repo(bkit: Record<string, unknown>) {
   return cwd;
 }
 
-const github = () => repo({ issueTracker: "github" });
-const linear = () => repo({ issueTracker: "linear", linear: { team: "ENG" } });
+const github = () => repo({ tracker: { default: "github" } });
+const linear = () => repo({ tracker: { default: "linear", linear: { team: "ENG" } } });
 const jira = () =>
-  repo({ issueTracker: "jira", jira: { site: "https://acme.atlassian.net", project: "PROJ" } });
+  repo({
+    tracker: { default: "jira", jira: { site: "https://acme.atlassian.net", project: "PROJ" } },
+  });
 
 /** A fetch stub answering each call with the next queued response; records every request. */
 function stubFetch(...responses: Array<Response | Error>) {
@@ -506,9 +508,13 @@ describe("postCommentOnce", () => {
       await postCommentOnce(trackerTarget(github(), { fid: "dev-ci-x" }), "b", { log }),
     ).toEqual({ skipped: "no-issue" });
     expect(
-      await postCommentOnce(trackerTarget(repo({ issueTracker: "none" }), { fid: "x" }), "b", {
-        log,
-      }),
+      await postCommentOnce(
+        trackerTarget(repo({ tracker: { default: "none" } }), { fid: "x" }),
+        "b",
+        {
+          log,
+        },
+      ),
     ).toEqual({ skipped: "tracker-none" });
     expect(gh.calls()).toEqual([]);
   });

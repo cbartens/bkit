@@ -5,7 +5,7 @@
 //   1. Counts/rates/elapsed-time over telemetry rows.
 //   2. Size↔outcome regression (error rate per `lines.total.added` bucket) over
 //      `kind:"outcome"` rows.
-//   3. Dispatch-size threshold computation for plan-split.
+//   3. Dispatch-size threshold computation, printed by `bkit stats` and the harvest report.
 //   4. `counter.source` trust labelling: each outcome row is joined to its `counter` row
 //      (model-self-report or shell-bus).
 //   5. Per-rule compliance rate over `kind:"compliance"` rows.
@@ -17,6 +17,7 @@
 // See DE-34 for the shared-entrypoint + crash-isolation contract.
 
 import {
+  AGENT_CONTEXT_CAP,
   UNJUSTIFIED_REASON,
   foldFrom,
   type CompliancePayload,
@@ -107,6 +108,79 @@ export function computeElapsedStats(rows: OutcomeRow[]): ElapsedStats {
 }
 
 // ---------------------------------------------------------------------------
+// Build challenge size gate
+// ---------------------------------------------------------------------------
+
+export interface ChallengeGateCounts {
+  /** Build runs whose challenge block carries a size gate. */
+  runs: number;
+  /** Small changes: challenge-2 ran alone. */
+  small: number;
+  /** Large changes: both reviewers ran. */
+  large: number;
+}
+
+/** Over the outcome rows whose `build.challenge.gate` is set. */
+export function computeChallengeGate(rows: OutcomeRow[]): ChallengeGateCounts {
+  const out: ChallengeGateCounts = { runs: 0, small: 0, large: 0 };
+  for (const r of rows) {
+    const gate = r.build?.challenge?.gate;
+    if (gate === undefined) continue;
+    out.runs++;
+    if (gate.skipped) out.small++;
+    else out.large++;
+  }
+  return out;
+}
+
+export interface AgentContextEntry {
+  agent: string;
+  /** Subagents of this type, over every run. */
+  subagents: number;
+  /** Workflow runs that started one. */
+  runs: number;
+  /** The largest context any of them reached, tokens. */
+  peak: number;
+  /** Workflow runs in which one of them went past `cap`. */
+  overCap: number;
+}
+
+export interface AgentContextReport {
+  cap: number;
+  /** Outcome rows read, and those carrying a `context` block. */
+  outcomes: number;
+  recorded: number;
+  /** By agent type, largest peak first. */
+  byAgent: AgentContextEntry[];
+}
+
+/** Each agent type's context peak over the outcome rows' `context` blocks, against `cap`. */
+export function computeAgentContext(
+  rows: OutcomeRow[],
+  cap: number = AGENT_CONTEXT_CAP,
+): AgentContextReport {
+  const by: Record<string, AgentContextEntry> = {};
+  let recorded = 0;
+  for (const r of rows) {
+    if (r.context === undefined) continue;
+    recorded++;
+    for (const [agent, a] of Object.entries(r.context.byAgent)) {
+      const e = (by[agent] ??= { agent, subagents: 0, runs: 0, peak: 0, overCap: 0 });
+      e.subagents += a.runs;
+      e.runs++;
+      e.peak = Math.max(e.peak, a.peak);
+      if (a.peak > cap) e.overCap++;
+    }
+  }
+  return {
+    cap,
+    outcomes: rows.length,
+    recorded,
+    byAgent: Object.values(by).sort((a, b) => b.peak - a.peak || a.agent.localeCompare(b.agent)),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Size↔outcome regression
 //
 // Error rate per `lines.total.added` bucket. "Error" = the run added failures
@@ -126,7 +200,7 @@ export interface RegressionResult {
   buckets: SizeBucket[];
   /**
    * Dispatch-size threshold: the bucket where error rate first exceeds 50%,
-   * or the largest bucket if no bucket does. Feeds plan-complexity-split.
+   * or the largest bucket if no bucket does. Printed by `bkit stats` and the harvest report.
    */
   dispatchSizeThreshold: number;
   /**
@@ -390,6 +464,8 @@ export interface AnalysisReport {
   complianceRates: ComplianceRuleRate[];
   versionCompliance: VersionComplianceEntry[];
   deferralDiscipline: DeferralDisciplineEntry[];
+  challengeGate: ChallengeGateCounts;
+  agentContext: AgentContextReport;
   reportLines: string[];
 }
 
@@ -424,6 +500,8 @@ export function runAnalysis(
   const complianceRates = computeComplianceRates(complianceRows);
   const versionCompliance = computeVersionCompliance(complianceRows);
   const deferralDiscipline = computeDeferralDiscipline(deferralRows);
+  const challengeGate = computeChallengeGate(outcomeRows);
+  const agentContext = computeAgentContext(outcomeRows);
 
   const reportLines: string[] = [
     `[bkit-analysis] Telemetry rows: ${rowCount} | malformed: ${malformedLineCount}`,
@@ -452,6 +530,12 @@ export function runAnalysis(
   reportLines.push(
     `[bkit-analysis] counter.source trust: shell-bus=${regression.shellBusCount} (trusted) | model-self-report=${regression.modelSelfReportCount} (untrusted)`,
   );
+
+  if (challengeGate.runs > 0) {
+    reportLines.push(
+      `[bkit-analysis] Build challenge size: ${challengeGate.small} small (challenge-1 skipped) | ${challengeGate.large} large, of ${challengeGate.runs} runs`,
+    );
+  }
 
   // Compliance rates
   if (complianceRates.length > 0) {
@@ -500,6 +584,8 @@ export function runAnalysis(
     complianceRates,
     versionCompliance,
     deferralDiscipline,
+    challengeGate,
+    agentContext,
     reportLines,
   };
 }

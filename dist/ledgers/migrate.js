@@ -1,4 +1,4 @@
-// Ledger rows written before `schema: 2` rewritten in place into the current shape
+// Ledger rows written before `schema: 2` rewritten in place into the schema-2 shape
 // (`docs/migrations.md`). Each line goes through `normalize`; a line that already
 // carries `schema`, does not parse, or is not a JSON object stays byte-for-byte,
 // so a second run changes nothing. Readers still normalize: a union merge can

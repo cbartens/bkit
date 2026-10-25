@@ -189,6 +189,18 @@ export function applyModelOverrides(lookup, providerKey, overridesPath) {
         }
     }
 }
+/**
+ * Override rows (from `overridesPath`) naming no agent in `known`, deduplicated in file
+ * order. `applyModelOverrides` skips such rows, so they are reported, not applied.
+ */
+export function unknownModelOverrides(overridesPath, known) {
+    const out = [];
+    for (const o of parseModelOverrides(overridesPath)) {
+        if (!known.has(o.prompt) && !out.includes(o.prompt))
+            out.push(o.prompt);
+    }
+    return out;
+}
 // column → (sourceEffort → target)
 /**
  * Program → prompts.md effort-table column header.

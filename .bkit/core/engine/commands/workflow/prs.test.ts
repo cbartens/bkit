@@ -137,12 +137,12 @@ async function run(cwd: string, argv: string[]) {
 // ---------------------------------------------------------------------------
 
 describe("bkit prs open", () => {
-  const GH = { issueTracker: "github" };
+  const GH = { tracker: { default: "github" } };
   const open = (cwd: string, ...extra: string[]) =>
     run(cwd, ["prs", "open", "--fid=12-x", "--title=feat(12-x): thing", ...extra]);
 
   it("creates the PR with the github marker first and the plan in the bkit block", async () => {
-    const cwd = repo("feat/12-x", { issueTracker: "github" });
+    const cwd = repo("feat/12-x", { tracker: { default: "github" } });
     fs.mkdirSync(path.join(cwd, "docs"));
     fs.writeFileSync(path.join(cwd, "docs/12-x-plan.md"), "plan");
     gh.view(pr());
@@ -199,7 +199,7 @@ describe("bkit prs open", () => {
   });
 
   it("always writes the marker, even with no plan", async () => {
-    const cwd = repo("feat/12-x", { issueTracker: "github" });
+    const cwd = repo("feat/12-x", { tracker: { default: "github" } });
     gh.view(pr());
     const r = await open(cwd, "--issue=#12", "--plan=docs/missing-plan.md");
     expect(r.code).toBe(0);
@@ -219,7 +219,7 @@ describe("bkit prs open", () => {
   ])(
     "writes the %s marker shape, taking the tracker from package.json",
     async (tracker, fid, issue) => {
-      const cwd = repo(`feat/${fid}`, { issueTracker: tracker });
+      const cwd = repo(`feat/${fid}`, { tracker: { default: tracker } });
       gh.view(pr());
       const r = await run(cwd, ["prs", "open", `--fid=${fid}`, `--issue=${issue}`, "--title=t"]);
       expect(r.json.body).toBe(`<!-- bkit:issue=${issue} bkit:fid=${fid} -->\n`);
@@ -269,7 +269,7 @@ describe("bkit prs open", () => {
     ["jira", "12-x", "MBA-7"],
     ["none", "-x", undefined],
   ])("refuses a %s marker with fid %j issue %j (exit 2)", async (tracker, fid, issue) => {
-    const cwd = repo("feat/12-x", { issueTracker: tracker });
+    const cwd = repo("feat/12-x", { tracker: { default: tracker } });
     const r = await run(cwd, ["prs", "open", `--fid=${fid}`, "--title=t", ...issueArgs(issue)]);
     expect(r.code).toBe(2);
     expect(gh.calls()).toEqual([]);

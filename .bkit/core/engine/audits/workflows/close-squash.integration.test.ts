@@ -80,7 +80,7 @@ function initFixture(
   if (opts.tracker !== undefined) {
     write(
       path.join(repo, "package.json"),
-      JSON.stringify({ bkit: { issueTracker: opts.tracker } }),
+      JSON.stringify({ bkit: { tracker: { default: opts.tracker } } }),
     );
   }
   const docPath = `docs/plans/${MONTH}/${FID}-${workflow}.md`;

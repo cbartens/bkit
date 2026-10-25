@@ -5,7 +5,7 @@
 // sandbox) — or a tampered gateguard.js — fails `check`.
 //
 // `bkit check` takes no `--opencode=` flag; the render inputs fall back to the installed
-// provider (package.json `bkit.opencodeProvider`, the authoritative signal for the opencode
+// provider (package.json `bkit.providers.opencode.default`, the authoritative signal for the opencode
 // gateway whose on-disk block is keyed `opencode`) and the recorded tracker, so a clean
 // install checks green across providers.
 //
@@ -206,10 +206,9 @@ describe("#255 #8 — bkit check gates opencode drift (no false positives)", () 
     // Erase both provider signals: the package.json manifest field and the opencode.json block.
     const pkgPath = path.join(tmpDir, "package.json");
     const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
-      bkit?: { opencodeProvider?: unknown; opencodeProviders?: unknown };
+      bkit?: { providers?: unknown };
     };
-    delete pkg.bkit?.opencodeProvider;
-    delete pkg.bkit?.opencodeProviders;
+    delete pkg.bkit?.providers;
     fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf-8");
 
     const cfg = JSON.parse(fs.readFileSync(opencodeJsonPath(), "utf-8")) as Record<string, unknown>;
@@ -282,7 +281,7 @@ describe("bkit check — antigravity detected from any plugin file", () => {
 // The claude and codex hook commands are `test -f <file> && node <file> || true`. `bkit check`
 // exits 1 and names a missing file.
 // The required set follows what is installed: the hook files of each detected host, plus
-// `.claude/hooks/bkit-cloud-bootstrap.sh` only when `bkit.cloudAgents` is `claude`.
+// `.claude/hooks/bkit-cloud-bootstrap.sh` only when `bkit.cloud.agent` is `claude`.
 //
 // Strategy: unit-test findMissingOwnedHooks against hand-built trees, then spawn the real
 // install + check binaries against a tmpdir consumer for the exit code and message.
@@ -370,7 +369,7 @@ describe("check-owned-hooks", () => {
       for (const cloudAgents of ["cursor", "claude"]) {
         fs.writeFileSync(
           path.join(dir, "package.json"),
-          JSON.stringify({ name: "x", bkit: { cloudAgents } }),
+          JSON.stringify({ name: "x", bkit: { cloud: { agent: cloudAgents } } }),
         );
         expect(findMissingOwnedHooks(dir, new Set<ModuleFlag>(["core"]))).toEqual([]);
       }

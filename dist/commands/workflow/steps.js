@@ -11,7 +11,7 @@
 // and print the step's tracker comment.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { actionKey, activeDoneSteps, appendLine, runNumber, runOrStepField, statusTimestamp, } from "../../ledgers/status.js";
+import { actionKey, activeDoneSteps, allRunsDoneSteps, appendLine, runNumber, runOrStepField, statusTimestamp, } from "../../ledgers/status.js";
 import { clampLogPath, readRecords } from "../../ledgers/clamp-log.js";
 import { resolveRepoSlug } from "../../ledgers/telemetry.js";
 import { getPromptsRoot } from "../../shared/package-roots.js";
@@ -20,8 +20,9 @@ import { fidProblem, normaliseFid, readIssueTracker } from "./fids.js";
 import { buildComment } from "./issues.js";
 import { EXIT_FOREIGN_PATH, activeRecord, ownPathCommit, ownSet, } from "./ledgers.js";
 import { readHolder, resolveMonth, workflowLockPath } from "./locks.js";
-import { EXIT_NO_STATUS, FILE_FLAG, STEP_FLAG, SUB_PLAN_FLAG, WORKFLOW_FLAG, extraField, nonNegativeInt, positiveInt, readRuns, readRunsAt, statusFile, str, } from "./status.js";
+import { EXIT_NO_STATUS, FILE_FLAG, GROUP_FLAG, STEP_FLAG, WORKFLOW_FLAG, extraField, nonNegativeInt, positiveInt, readRuns, readRunsAt, statusFile, str, } from "./status.js";
 import { COMMENT_FILE_OUTPUT, POST_FLAG, TRACKER_OUTPUT, commentFileOf, postForVerb, } from "./tracker.js";
+import { addAllButCopied } from "./worktrees.js";
 const VERDICT_END = "<!-- verdict:end -->";
 const DEFAULT_VERDICTS = ["PASS", "CONCERNS", "FAIL"];
 const STRATEGIES = ["STANDARD", "PIVOT", "FINAL"];
@@ -222,22 +223,16 @@ export const ROW_FIELDS = {
     "plan/plan-fetch-context": ["attempt"],
     "plan/plan-review": ["attempt"],
     "plan/plan-apply-review": ["attempt"],
-    "plan/plan-scope-check": ["attempt"],
-    "plan/plan-apply-scope": ["attempt"],
-    "plan/plan-complexity-check": ["attempt"],
-    "plan/plan-complexity-split": ["attempt"],
     "plan/plan-summary": ["attempt"],
+    "build/build-plan-convert": ["attempt"],
     "build/build-plan-current": ["attempt"],
     "build/build-install-skills": ["attempt"],
     "build/build-plan-execute": ["attempt"],
     "build/build-plan-verify": ["attempt"],
-    "build/build-subplan-gate": ["attempt", "scope"],
+    "build/build-group-gate": ["attempt", "scope"],
     "build/build-plan-gaps-remediate": ["attempt", "strategy"],
     "build/build-plan-verify-holistic": ["attempt"],
     "build/build-challenge": ["attempt"],
-    "build/build-challenge-reconcile": ["attempt"],
-    "build/build-challenge-remediate": ["attempt"],
-    "build/build-challenge-tests": ["attempt"],
     "build/build-decision": ["attempt"],
     "build/build-run-tests": ["attempt", "scope"],
     "build/build-failure-diagnose": ["attempt", "strategy"],
@@ -270,7 +265,7 @@ const CORE_ROW_KEYS = new Set([
     "artifacts",
     "verdict",
     "attempt",
-    "subPlan",
+    "group",
     "failures",
     "strategy",
 ]);
@@ -320,7 +315,7 @@ export function writeStepRow(cwd, r, log) {
         artifacts: r.artifacts,
         ...(r.verdict === undefined ? {} : { verdict: r.verdict }),
         ...(r.attempt === undefined ? {} : { attempt: r.attempt }),
-        ...(r.subPlan === undefined ? {} : { subPlan: r.subPlan }),
+        ...(r.group === undefined ? {} : { group: r.group }),
         ...(r.failures === undefined ? {} : { failures: r.failures }),
         ...(r.strategy === undefined ? {} : { strategy: r.strategy }),
         ...(r.extras ?? {}),
@@ -363,7 +358,7 @@ export function writeStepRow(cwd, r, log) {
         }
         return { row, commit: runGit(cwd, ["rev-parse", "HEAD"]).stdout, code: EXIT.OK };
     }
-    const add = runGit(cwd, ["add", "-A"]);
+    const add = addAllButCopied(cwd);
     const made = add.ok ? runGit(cwd, ["commit", "--allow-empty", "-m", r.message]) : add;
     if (!made.ok) {
         log(`row written to ${r.file} but the commit failed: ${made.stderr || made.stdout}`);
@@ -427,7 +422,7 @@ function gateChecks(cwd, o) {
     if (o.file === undefined)
         return checks;
     const runs = o.ref === undefined ? readRuns(o.file) : readRunsAt(o.file, o.ref);
-    const rows = activeDoneSteps(runs, o.workflow, { step: o.step, subPlan: o.subPlan });
+    const rows = activeDoneSteps(runs, o.workflow, { step: o.step, group: o.group });
     const row = rows.filter((r) => o.attempt === undefined || r.attempt === o.attempt).at(-1);
     const rowProblems = [];
     if (!row) {
@@ -460,14 +455,22 @@ function gateChecks(cwd, o) {
 // finish
 // ---------------------------------------------------------------------------
 const POSITIONS = ["next", "current", "count"];
-/** `<step>:<next|current|count>[:<since>]` → the counter it names, from the active run. */
-function derivedCounter(file, workflow, spec, subPlan, since) {
-    const [step, position, specSince] = spec.split(":");
-    if (!step || !POSITIONS.includes(position ?? "")) {
-        throw new CommandError(EXIT.USAGE, `"${spec}" must be <step>:<next|current|count>[:<since>]`);
+/**
+ * `<step>:<next|current|count>[:all]` → the counter it names, from the active run, or
+ * from every run of the workflow with `:all`.
+ */
+function derivedCounter(file, workflow, spec, group) {
+    const [step, position, scope] = spec.split(":");
+    if (!step ||
+        !POSITIONS.includes(position ?? "") ||
+        (scope !== undefined && scope !== "all")) {
+        throw new CommandError(EXIT.USAGE, `"${spec}" must be <step>:<next|current|count>[:all]`);
     }
     const count = fs.existsSync(file)
-        ? activeDoneSteps(readRuns(file), workflow, { step, subPlan }, specSince ?? since).length
+        ? (scope === "all" ? allRunsDoneSteps : activeDoneSteps)(readRuns(file), workflow, {
+            step,
+            group,
+        }).length
         : 0;
     if (position === "current" && count === 0) {
         throw new CommandError(EXIT.NO, `${step}: no DONE row in the active run — the step's own row is missing`);
@@ -503,8 +506,7 @@ async function finish(ctx) {
     const file = statusFile(ctx);
     const workflow = String(f.workflow);
     const step = String(f.step);
-    const subPlan = positiveInt(f.subPlan, "sub-plan");
-    const since = str(f.since);
+    const group = positiveInt(f.group, "group");
     const agents = list(f.agent);
     // Attempt: given, next from the log, or another step's counter.
     if ([f.attempt, f.attemptOf].filter((v) => v !== undefined).length > 1)
@@ -512,11 +514,11 @@ async function finish(ctx) {
     let attempt;
     let derived = false;
     if (f.attemptOf !== undefined) {
-        attempt = derivedCounter(file, workflow, String(f.attemptOf), subPlan, since);
+        attempt = derivedCounter(file, workflow, String(f.attemptOf), group);
         derived = true;
     }
     else if (f.attempt === "next") {
-        attempt = derivedCounter(file, workflow, `${step}:next`, subPlan, since);
+        attempt = derivedCounter(file, workflow, `${step}:next`, group);
         derived = true;
     }
     else {
@@ -527,7 +529,7 @@ async function finish(ctx) {
         const eq = spec.indexOf("=");
         if (eq <= 0)
             throw new CommandError(EXIT.USAGE, `--count-field "${spec}" must be key=<counter>`);
-        extras[spec.slice(0, eq)] = derivedCounter(file, workflow, spec.slice(eq + 1), subPlan, since);
+        extras[spec.slice(0, eq)] = derivedCounter(file, workflow, spec.slice(eq + 1), group);
     }
     const scope = str(f.scope);
     if (scope !== undefined)
@@ -625,7 +627,7 @@ async function finish(ctx) {
     if (!["auto", "none"].includes(commit))
         throw new CommandError(EXIT.USAGE, "--commit must be auto or none");
     if (f.docsOnly === true && commit === "auto") {
-        runGit(ctx.cwd, ["add", "-A"]);
+        addAllButCopied(ctx.cwd);
         const outside = runGit(ctx.cwd, ["diff", "--cached", "--name-only"])
             .stdout.split("\n")
             .filter((p) => p !== "" && !DOCS_ONLY.test(p));
@@ -653,16 +655,14 @@ async function finish(ctx) {
         const title = str(f.title);
         if (title === undefined)
             throw new CommandError(EXIT.USAGE, "--number needs --title");
-        const count = str(f.subPlanCount);
+        const count = str(f.groupCount);
         const header = [
             ...(verdict === undefined ? [] : [["Verdict", verdict]]),
             ...(failures === undefined ? [] : [["Failures", String(failures)]]),
             ...(scope === undefined ? [] : [["Scope", scope]]),
-            ...(subPlan === undefined
+            ...(group === undefined
                 ? []
-                : [
-                    ["Sub-plan", `${subPlan}${count === undefined ? "" : `/${count}`}`],
-                ]),
+                : [["Group", `${group}${count === undefined ? "" : `/${count}`}`]]),
             ...(derived && attempt !== undefined
                 ? [["Attempt", String(attempt)]]
                 : []),
@@ -701,7 +701,7 @@ async function finish(ctx) {
     if (f.post === true) {
         if (comment === null)
             throw new CommandError(EXIT.USAGE, "--post needs --number");
-        const key = actionKey(workflow, fs.existsSync(file) ? runNumber(readRuns(file), workflow) : 1, step, subPlan, attempt, "comment");
+        const key = actionKey(workflow, fs.existsSync(file) ? runNumber(readRuns(file), workflow) : 1, step, group, attempt, "comment");
         tracker = await postForVerb(ctx, comment, { fid: fidOfStatusFile(file), file, key });
     }
     const written = writeStepRow(ctx.cwd, {
@@ -711,7 +711,7 @@ async function finish(ctx) {
         verdict,
         failures,
         attempt,
-        subPlan,
+        group,
         strategy,
         artifacts,
         extras,
@@ -723,7 +723,7 @@ async function finish(ctx) {
         file,
         workflow,
         step,
-        subPlan,
+        group,
         attempt,
         artifacts,
         verdictRequired: false,
@@ -772,7 +772,11 @@ const COMMIT_FLAGS = [
         type: "string",
         help: "commit the step started from (default: HEAD now, before this commit)",
     },
-    { name: "commit", type: "string", help: "auto (default: git add -A + commit) or none" },
+    {
+        name: "commit",
+        type: "string",
+        help: "auto (default: git add -A, never the worktree.copy entries, + commit) or none",
+    },
     { name: "message", type: "string", help: "commit message (required unless --commit=none)" },
 ];
 export const stepsCommand = {
@@ -802,7 +806,7 @@ export const stepsCommand = {
                     type: "string",
                     help: "non-negative integer (0 included), or `next` to derive it from the log",
                 },
-                SUB_PLAN_FLAG,
+                GROUP_FLAG,
                 { name: "strategy", type: "string", help: "STANDARD|PIVOT|FINAL" },
                 {
                     name: "artifact",
@@ -851,7 +855,7 @@ export const stepsCommand = {
                 if (strategy !== undefined && !STRATEGIES.includes(strategy)) {
                     throw new CommandError(EXIT.USAGE, "--strategy must be STANDARD|PIVOT|FINAL");
                 }
-                const subPlan = positiveInt(f.subPlan, "sub-plan");
+                const group = positiveInt(f.group, "group");
                 const commit = str(f.commit) ?? "auto";
                 if (!["auto", "none"].includes(commit))
                     throw new CommandError(EXIT.USAGE, "--commit must be auto or none");
@@ -860,7 +864,7 @@ export const stepsCommand = {
                 if (bad.length > 0)
                     throw new CommandError(EXIT_ARTIFACT, bad.join("; "));
                 const attempt = f.attempt === "next"
-                    ? derivedCounter(file, workflow, `${step}:next`, subPlan, undefined)
+                    ? derivedCounter(file, workflow, `${step}:next`, group)
                     : nonNegativeInt(f.attempt, "attempt");
                 const written = writeStepRow(ctx.cwd, {
                     file,
@@ -870,7 +874,7 @@ export const stepsCommand = {
                     verdict,
                     failures,
                     attempt,
-                    subPlan,
+                    group,
                     strategy,
                     artifacts,
                     extras: Object.fromEntries(list(f.field).map(extraField)),
@@ -924,17 +928,12 @@ export const stepsCommand = {
                     help: "<step>:<next|current|count> — the attempt is that step's counter in the active run",
                 },
                 {
-                    name: "since",
-                    type: "string",
-                    help: "run field holding a timestamp (soakEntryAt); only rows after it count",
-                },
-                {
                     name: "count-field",
                     type: "string",
                     repeatable: true,
-                    help: "key=<step>:<next|current|count>[:<since>] — a row field holding another counter",
+                    help: "key=<step>:<next|current|count>[:all] — a row field holding another counter; :all counts every run",
                 },
-                SUB_PLAN_FLAG,
+                GROUP_FLAG,
                 {
                     name: "strategy",
                     type: "string",
@@ -979,7 +978,7 @@ export const stepsCommand = {
                     ...POST_FLAG,
                     help: "post the comment (needs --number) to the issue the status file's FID names, before the row and commit; prints `tracker`",
                 },
-                { name: "sub-plan-count", type: "string", help: "y of the comment's Sub-plan x/y" },
+                { name: "group-count", type: "string", help: "y of the comment's Group x/y" },
                 {
                     name: "link-ref",
                     type: "string",
@@ -1076,7 +1075,7 @@ export const stepsCommand = {
                 },
                 WORKFLOW_FLAG,
                 STEP_FLAG,
-                SUB_PLAN_FLAG,
+                GROUP_FLAG,
                 {
                     name: "attempt",
                     type: "string",
@@ -1126,7 +1125,7 @@ export const stepsCommand = {
                 const f = ctx.flags;
                 const file = str(f.file) === undefined ? undefined : statusFile(ctx);
                 const workflow = String(f.workflow);
-                const subPlan = positiveInt(f.subPlan, "sub-plan");
+                const group = positiveInt(f.group, "group");
                 if (f.attempt !== undefined && f.attemptOf !== undefined)
                     throw new CommandError(EXIT.USAGE, "give --attempt or --attempt-of, not both");
                 if (f.attemptOf !== undefined && file === undefined)
@@ -1137,14 +1136,14 @@ export const stepsCommand = {
                 if (ref !== undefined && f.attemptOf !== undefined)
                     throw new CommandError(EXIT.USAGE, "--attempt-of reads the file on disk; give --attempt with --ref");
                 const attempt = f.attemptOf !== undefined
-                    ? derivedCounter(file, workflow, String(f.attemptOf), subPlan, undefined)
+                    ? derivedCounter(file, workflow, String(f.attemptOf), group)
                     : nonNegativeInt(f.attempt, "attempt");
                 const checks = gateChecks(ctx.cwd, {
                     file,
                     ref,
                     workflow,
                     step: String(f.step),
-                    subPlan,
+                    group,
                     attempt,
                     artifacts: list(f.artifact).map((a) => fill(a, attempt)),
                     verdictRequired: f.verdictRequired === true,

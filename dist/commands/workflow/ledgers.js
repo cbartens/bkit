@@ -1009,13 +1009,10 @@ export function appendLedgerRows(root, ledger, rows) {
     if (made)
         throw new CommandError(EXIT_STAGE, `mkdir failed for ${path.dirname(file)}: ${made}`);
     const block = out.map((r) => `${JSON.stringify(r)}\n`).join("");
-    try {
-        // A file missing its final newline would glue the first row onto its last one.
-        fs.appendFileSync(abs, endsMidLine(abs) ? `\n${block}` : block);
-    }
-    catch (err) {
-        throw new CommandError(EXIT_STAGE, `append failed: ${file} — ${err.message}`);
-    }
+    // A file missing its final newline would glue the first row onto its last one.
+    const appendErr = appendText(abs, endsMidLine(abs) ? `\n${block}` : block);
+    if (appendErr)
+        throw new CommandError(EXIT_STAGE, `append failed: ${file} — ${appendErr}`);
     return {
         ledger: ledger,
         file,
@@ -1047,13 +1044,10 @@ function endsMidLine(abs) {
 function append(ctx) {
     const root = path.resolve(ctx.cwd, str(ctx.flags.root) ?? ".");
     const src = String(ctx.flags.rows);
-    let text;
-    try {
-        text = fs.readFileSync(src === "-" ? 0 : path.resolve(ctx.cwd, src), "utf-8");
-    }
-    catch (err) {
-        throw new CommandError(EXIT.USAGE, `--rows unreadable: ${err.message}`);
-    }
+    const read = readText(src === "-" ? 0 : path.resolve(ctx.cwd, src));
+    if (!read.ok)
+        throw new CommandError(EXIT.USAGE, `--rows unreadable: ${read.error}`);
+    const text = read.text;
     if (text.trim() === "")
         throw new CommandError(EXIT.USAGE, "--rows holds no rows");
     const parsed = parseJson(text);
@@ -1120,6 +1114,27 @@ function mkdirp(dir) {
     catch (err) {
         // Reported as the command's staging exit code, with the reason.
         return err.message;
+    }
+}
+/** Append `text` to `file`; the error text, or undefined on success. */
+function appendText(file, text) {
+    try {
+        fs.appendFileSync(file, text);
+        return undefined;
+    }
+    catch (err) {
+        // Reported as the command's staging exit code, with the reason.
+        return err.message;
+    }
+}
+/** Read `file` (0 = stdin) as UTF-8; the text, or the error text. */
+function readText(file) {
+    try {
+        return { ok: true, text: fs.readFileSync(file, "utf-8") };
+    }
+    catch (err) {
+        // Reported as a usage error, with the reason.
+        return { ok: false, error: err.message };
     }
 }
 function copy(from, to) {

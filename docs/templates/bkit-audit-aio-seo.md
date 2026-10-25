@@ -11,14 +11,6 @@
 >
 > **Rules:**
 >
-> - Read-only audit; never edit code, config, or data.
-> - `Universal Instructions` apply to all projects; `Project Instructions` apply only to this project.
-> - Local audit instructions / overrides → `Project Instructions` below the bkit-managed block; universal instructions stay in-block.
-> - Any tools mentioned in `Universal Instructions` are examples only; swap for actual tools in final output; drop inapplicable.
-> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
-> - Read `.agents/docs.md` → load docs for workflow / step / task; skip missing; cite docs inline where required.
-> - Every claim cites this run's evidence (`file:line`, or command / query and its output) and tool behind it; a previous report's figure, list, or status is a lead, not evidence.
-> - Read this document once at session start; do not trust session memory; do not re-read on every loop iteration.
 > - never change search-console, webmaster, robots, sitemap, IndexNow, or firewall settings; record the owner's decision.
 > - Name a personal-data field and its page for `bkit-audit-privacy`; never copy a personal-data value into the report.
 
@@ -34,7 +26,7 @@
 
 **Cadence:** quarterly. Extra pass when routing, locales, or the public site change.
 
-**Anchor Standards:** record version and date read. Newer version → `Standards` step reads what changed.
+**Anchor Standards:**
 
 - Search essentials and the search-documentation updates log (e.g. Google Search Essentials, Bing Webmaster Guidelines); record the date of the newest entry read.
 - The engine's AI-features and generative-AI optimisation guides (e.g. Google's AI features and your website); record each page's last-updated date.
@@ -69,21 +61,13 @@
 
 ### Pre-Flight / Dependencies
 
-**Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
-
-**Credentials:** probe direnv before marking a token / env var missing: `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'`; `unset` = missing. Run credentialed CLIs as `direnv exec . <cmd>`. No direnv (cloud session) → plain env check. Report names, never values.
-
 #### Core
 
-Always verify.
-
-- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied (here or in any step) → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`; run every step the remaining tools allow; work needing blocked call → `Not Checked`. never stop the run for a blocked call; never retry or reword a blocked call to get past it.
-- [ ] **Live Fetch:** Steps 2–9 — request public URLs, headers, and HTML, e.g. `curl`, a browser. Fallback: source read; live claims = hypotheses.
+- [ ] **Permissions:** blocked calls recorded
+- [ ] **Live Fetch:** Steps 2-9 — request public URLs, headers, and HTML, e.g. `curl`, a browser. Fallback: source read; live claims = hypotheses.
 - [ ] **Web:** Step 10 — fetch anchor standards. Fallback: versions recorded as unread.
 
 #### Conditional
-
-Verify only when applicable.
 
 - [ ] **Search Consoles:** Indexable public pages → Step 9 — e.g. Google Search Console, Bing Webmaster Tools. Fallback: none; consoles missing while indexable pages exist = finding.
 - [ ] **Edge Logs:** Bot firewall or CDN → Step 6 — crawler status codes, e.g. Vercel Firewall, Cloudflare. Fallback: `robots.txt` only; log rows `Not Checked`.
@@ -92,22 +76,20 @@ Verify only when applicable.
 
 ### 🔒 Gate 1: Prerequisites Check
 
-**Checkpoint.** Verify and check `[x]` all applicable boxes above, then continue to `Probe Steps` without asking.
-
 - [ ] **Gaps named:** every missing item names its fallback and `Not Checked` entry.
-- [ ] **Gate 1 - Verified:** All Core items checked. All applicable Conditional items checked.
+- [ ] **Gate 1 — Verified:** All Core items checked. All applicable Conditional items checked.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Audited commit = this report's `bkit:anchor` `baseSha`. Read newest prior report for this slug under `docs/audits/`; its commit = its `bkit:anchor` `baseSha`, else the HEAD its `Previous Run` recorded. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 1 — Previous Run:** **Done when:** closure rate in `Previous Run`, or run marked baseline.
 - [ ] **Step 2 — Public URLs:** List public URLs from sitemap if present, else crawl from home. Record production host and tools available in `Checked`. First: no preview deployment indexable (`X-Robots-Tag: noindex` or host deployment protection); crawled preview competes with production and can expose unreleased pages. Marketing site outside repo → name where; audit from live URL. **Done when:** host, URL list, preview verdict in `Public URLs`. No web origin → `N/A` and STOP. No indexable page → say so; `Indexing` still runs; steps needing indexable page skip with evidence in `Not Checked`.
-- [ ] **Step 3 — Indexing:** `robots.txt` + sitemap: present, valid, public URLs only. `lastmod` only when that page's content changes — trusted only when consistently accurate. Sitemap submitted in each webmaster console. Robots meta + `X-Robots-Tag` per page type: auth/previews `noindex`, public indexable. No `noindex` also `Disallow`ed: blocked crawler never sees `noindex` → URL can stay indexed from links. Canonicals: absolute, production host, one per page. Host canonicalisation: `http`→`https`, apex↔`www`, trailing-slash policy each one hop; HSTS set; sitemap uses canonical form only. Status codes: chain ≤1 hop, no loops, missing →404. Locales: `hreflang` per variant → existing pages; `hreflang="x-default"`; sets reciprocal and include self; canonical same-locale, never another locale; no forced `/` redirect by `Accept-Language` or IP — crawler without `Accept-Language` from one country (e.g. Googlebot) must see other locales. Content in HTML without JavaScript. Rendered HTML: one URL per page type — no-JS view vs engine render after JS (e.g. URL Inspection). Mobile/desktop same content when engine indexes mobile (e.g. Google). **Done when:** `Indexing` row per check: met / finding / not applicable (why).
+- [ ] **Step 3 — Indexing:** `robots.txt` + sitemap: present, valid, public URLs only. `lastmod` only when that page's content changes — trusted only when consistently accurate. Sitemap submitted in each webmaster console. Robots meta + `X-Robots-Tag` per page type: auth/previews `noindex`, public indexable. No `noindex` also `Disallow`ed: blocked crawler never sees `noindex` → URL can stay indexed from links. Canonicals: absolute, production host, one per page. Host canonicalisation: `http`→`https`, apex↔`www`, trailing-slash policy each one hop; HSTS set; sitemap uses canonical form only. Status codes: chain <=1 hop, no loops, missing →404. Locales: `hreflang` per variant → existing pages; `hreflang="x-default"`; sets reciprocal and include self; canonical same-locale, never another locale; no forced `/` redirect by `Accept-Language` or IP — crawler without `Accept-Language` from one country (e.g. Googlebot) must see other locales. Content in HTML without JavaScript. Rendered HTML: one URL per page type — no-JS view vs engine render after JS (e.g. URL Inspection). Mobile/desktop same content when engine indexes mobile (e.g. Google). **Done when:** `Indexing` row per check: met / finding / not applicable (why).
 - [ ] **Step 4 — Metadata:** Indexable public page → title + description present, unique, right length. Open Graph + Twitter card tags; images exist, right size. `lang`, favicon, web manifest. Store listings → Smart App Banner (`apple-itunes-app`); `apple-app-site-association` + `assetlinks.json` reachable so search opens app. Link target screen → `bkit-audit-app-store`. **Done when:** `Metadata` row per page: tag · verdict, or skip in `Not Checked`.
-- [ ] **Step 5 — Structured Data:** Indexable public page → JSON-LD per page type: `Organization`, `WebSite`, `SoftwareApplication` or `MobileApplication` with store links, `FAQPage` only mirroring on-page Q&A, `BreadcrumbList` where depth exists. Validate each block; must match visible page — disagreeing markup worse than none. Engine rich-results test (supported) + schema.org validator (vocabulary). App types: engine software-app required props + `operatingSystem`, `applicationCategory`. Ratings from real on-page user ratings, never self-assigned. Retired rich-result type (`Project Instructions`) missing ≠ finding. Generative answers need no special markup; structured data earns rich results and states facts plainly. **Done when:** `Structured Data` row per block: type · valid · agrees with page · verdict, or skip in `Not Checked`.
+- [ ] **Step 5 — Structured Data:** Indexable public page → JSON-LD per page type: `Organization`, `WebSite`, `SoftwareApplication` or `MobileApplication` with store links, `FAQPage` only mirroring on-page Q&A, `BreadcrumbList` where depth exists. Validate each block; must match visible page — disagreeing markup worse than none. Engine rich-results test (supported) + schema.org validator (vocabulary). App types: engine software-app required props + `operatingSystem`, `applicationCategory`. Ratings from real on-page user ratings, never self-assigned. Retired rich-result type (`Project Instructions`) missing != finding. Generative answers need no special markup; structured data earns rich results and states facts plainly. **Done when:** `Structured Data` row per block: type · valid · agrees with page · verdict, or skip in `Not Checked`.
 - [ ] **Step 6 — Answer Engines:**
-  - `llms.txt` / `llms-full.txt` optional. Engines ignore or use unevenly → missing file ≠ finding. If present: current, links to existing pages; stale = `LOW`.
+  - `llms.txt` / `llms-full.txt` optional. Engines ignore or use unevenly → missing file != finding. If present: current, links to existing pages; stale = `LOW`.
   - Indexable page → plain facts in HTML text (not only images/scripts): product, audience, cost, platforms. Direct Q&A near top of owning page. One name for product/company across site, store, social. Off-site description/pricing/platforms match store, reviews, forums, press — answer engines often cite these over product site. List third-party sources prompt pass cited.
-  - AI crawler policy: `robots.txt` per group. Allow/block both fine; no recorded decision = finding. Owner decides; report records. Blocking one group ≠ blocking others. Training: GPTBot, ClaudeBot, Google-Extended, Applebot-Extended, CCBot. Search: OAI-SearchBot, Claude-SearchBot, PerplexityBot, Bingbot (feeds some assistants) — block → out of those answers. User-triggered: ChatGPT-User, Claude-User, Perplexity-User; some vendors say may not follow `robots.txt`. "Block training, allow search" common; write per group.
+  - AI crawler policy: `robots.txt` per group. Allow/block both fine; no recorded decision = finding. Owner decides; report records. Blocking one group != blocking others. Training: GPTBot, ClaudeBot, Google-Extended, Applebot-Extended, CCBot. Search: OAI-SearchBot, Claude-SearchBot, PerplexityBot, Bingbot (feeds some assistants) — block → out of those answers. User-triggered: ChatGPT-User, Claude-User, Perplexity-User; some vendors say may not follow `robots.txt`. "Block training, allow search" common; write per group.
   - Edge/firewall + CDN "block AI bots" agree with `robots.txt`. Firewall `403` to allowed search crawler overrides `robots.txt` silently. Check edge/server logs for each search crawler requests + status codes, not `robots.txt` alone.
   - Search-console control for generative answers inclusion/exclusion. Owner decides; report records. Does not govern training.
   - Indexable page → same questions to same answer engines. Record date, each answer, citations. Answers drift daily → signal not test; wrong answer = finding about these pages, not the engine. Repeatable: fixed prompts (brand, category, named competitor comparison, pricing); fixed engine set from ChatGPT search, Perplexity, Gemini, Google AI Mode, Copilot, Claude; signed out; verbatim answers + cited URLs; mention/citation share vs previous report or baseline.
@@ -123,13 +105,11 @@ Verify only when applicable.
 
 ### 🔒 Gate 2: Probes Check
 
-**Checkpoint.** Verify and check `[x]` all boxes below, then continue to `Findings` without asking.
-
 - [ ] **Steps complete:** every step `[x]`, or explicit skip with evidence the surface is absent.
 - [ ] **Evidence:** every finding cites re-checkable evidence and the tool behind it.
 - [ ] **Settings untouched:** no search-console, webmaster, robots, sitemap, IndexNow, or firewall setting changed.
 - [ ] **No values:** no personal-data value anywhere in the report.
-- [ ] **Gate 2 - Verified:** Every checkbox above independently verified and checked off.
+- [ ] **Gate 2 — Verified:** Every checkbox above independently verified and checked off.
 
 ## Findings
 
@@ -141,7 +121,7 @@ Verify only when applicable.
 | `MEDIUM` | Wrong or missing metadata; structured data that disagrees with the page; canonical, `hreflang`, or redirect defect; consoles absent while indexable pages exist; an answer engine states a wrong fact taken from these pages; off-site listing disagrees with the site |
 | `LOW` | Stale `llms.txt`; naming drift that does not change which page is indexed. A missing `llms.txt`, or a missing retired rich-result type, is not a finding |
 
-Scale per `.bkit/jsonl.md` § Severity. Within a severity: indexing first.
+Within a severity: indexing first.
 
 <!-- prettier-ignore -->
 | ID | Severity | Location | Evidence | Expected |
@@ -221,17 +201,13 @@ PENDING
 
 ### 🔒 Gate 3: Report Check
 
-**Checkpoint.** Verify and check `[x]` all boxes below, then stop.
-
-- [ ] **No placeholders:** Findings table and every `Report` section have no `PENDING`.
+- [ ] **No placeholders:** no `PENDING` left
 - [ ] **Summary:** names count per severity, whether any indexable public page exists, and the production host.
-- [ ] **Series:** mention and citation share, and console query deltas, beside the previous report's numbers, or marked baseline.
-- [ ] **Writes:** only this report and template `Project Instructions` changed; throwaway worktrees / remote targets removed.
-- [ ] **Process Improvements:** `Universal` = proposed step changes, template untouched; `Project` = edits applied below `bkit:end`; each `none` if empty.
+- [ ] **Series:** mention and citation share, and console query deltas, beside previous report's numbers, or marked baseline.
+- [ ] **Writes:** only this report, template `Project Instructions`, and ledger rows changed; throwaway worktrees / remote targets removed.
+- [ ] **Process Improvements:** `Universal` and `Project` filled
 - [ ] **Suggested Issues:** every `MEDIUM`+ finding ID in exactly one row; every row has a `Next Step`.
-- [ ] **Gate 3 - Verified:** Every checkbox above independently verified and checked off.
-
-> `Project Instructions` below `bkit:end` are consumer-owned — `bkit install` never overwrites them, `bkit check` drift stays clean. Add project-specific tools, paths, commands, and checks there, keyed by section or step title; never results.
+- [ ] **Gate 3 — Verified:** Every checkbox above independently verified and checked off.
 
 <!-- bkit:end -->
 

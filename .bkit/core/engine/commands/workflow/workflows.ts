@@ -1,4 +1,4 @@
-// bkit workflows start|fail|handover|close|promote|links — a phase workflow's
+// bkit workflows start|fail|handover|close|promote|links|summary — a phase workflow's
 // lifecycle state.
 //
 // start     takes the feature lock (or checks the one Step 1 took) and opens a run
@@ -17,8 +17,11 @@
 // promote   design / plan close: the highest versioned draft becomes the
 //           canonical doc (anchor stamped, a superseded canonical archived).
 // links     the feature docs and this workflow's logs on a ref, as markdown links.
+// summary   the Summary step: `{workflow}-summary.md` with its verdict, reasons and
+//           next command, from the run's rows, logs, plan and ledger rows.
 
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 
 import {
@@ -63,12 +66,13 @@ import {
   AUTO_LABEL,
   AUTO_ROUTE_SUFFIX,
   buildComment,
-  issueText,
+  issueParts,
   parseComments,
   sortOldestFirst,
   trackerState,
   transitionLabels,
   type IssueComment,
+  type IssuePart,
 } from "./issues.js";
 import {
   EXIT_EMPTY,
@@ -81,15 +85,24 @@ import {
   runRows,
   unionLedgers,
 } from "./ledgers.js";
+import { readIssueTracker } from "./fids.js";
 import {
+  agentContextBlock,
   buildBlock,
+  chatFingerprint,
   ciList,
+  claudeTranscripts,
+  hostChat,
   planBlock,
+  planFiles,
+  runChats,
   runLines,
   runStatusRows,
   stepsBlock,
   timeBlock,
 } from "./run-facts.js";
+import { buildSummary, refOf, SUMMARY_WORKFLOWS, type SummaryWorkflow } from "./summary.js";
+import { parseWorkstreams } from "./workstreams.js";
 import {
   EXIT_REMOVE_FAILED,
   EXIT_SPLIT_BUCKET,
@@ -100,6 +113,7 @@ import {
   resolveMonth,
   workflowLockPath,
 } from "./locks.js";
+import { highestVersion } from "./plan-versions.js";
 import { mergePr, probePr } from "./prs.js";
 import { FEATURE_STATUS } from "./roadmap.js";
 import {
@@ -148,6 +162,8 @@ export const EXIT_NO_VERSION = 12;
 export const EXIT_NO_INPUT = 13;
 /** Exit code (start --branch): the checkout is not on the named branch. */
 export const EXIT_WRONG_BRANCH = 15;
+/** Exit code (summary): the status file has no run of the workflow. */
+export const EXIT_NO_RUN = 16;
 
 // ---------------------------------------------------------------------------
 // Where things live
@@ -184,6 +200,36 @@ function whereInTree(
 
 const headSha = (cwd: string) => git(cwd, ["rev-parse", "HEAD"]) ?? "";
 
+/**
+ * Append a `session` row naming the chat that runs this start (`hostChat`), as its
+ * fingerprint, unless the current run's latest `session` row already names it. Nothing when
+ * the host names no chat. The close and the harvest read the run's chats from these rows.
+ */
+export function recordChat(file: string, workflow: string, env: NodeJS.ProcessEnv): void {
+  const chat = hostChat(env);
+  if (chat === undefined) return;
+  const session = chatFingerprint(chat.platform, chat.id);
+  const events = readStatusEvents(file);
+  const startAt = lastOfType(events, "workflow-started", workflow)?.at;
+  const last = (events as Array<Record<string, unknown>>)
+    .filter(
+      (e) =>
+        e.type === "session" &&
+        e.workflow === workflow &&
+        (startAt === undefined || String(e.at) >= startAt),
+    )
+    .at(-1);
+  if (last?.session === session) return;
+  const row = {
+    type: "session",
+    workflow,
+    at: statusTimestamp(),
+    platform: chat.platform,
+    session,
+  };
+  fs.appendFileSync(file, appendLine(row));
+}
+
 /** An OPEN Decision Pause file of the current run, as `workflows start` prints it. */
 export interface OpenDecision {
   file: string;
@@ -191,7 +237,7 @@ export interface OpenDecision {
   question: string | null;
   from: string | null;
   pauseStep: number | null;
-  subPlan: number | null;
+  group: number | null;
   verifyAttempt: number | null;
   testAttempt: number | null;
   plan: string | null;
@@ -231,7 +277,7 @@ export function openDecision(
       question: field("Question"),
       from: field("From"),
       pauseStep: num("Pause step"),
-      subPlan: num("Sub-plan"),
+      group: num("Group"),
       verifyAttempt: num("Verify attempt"),
       testAttempt: num("Test attempt"),
       plan: field("Plan"),
@@ -890,7 +936,7 @@ const byWorkflow = (r: Record<string, unknown>) =>
   (r.by as Record<string, unknown> | undefined)?.workflow;
 
 /** Rows of a JSONL ledger; malformed lines are skipped, a missing file is empty. */
-function ledgerRows(file: string): Array<Record<string, unknown>> {
+export function ledgerRows(file: string): Array<Record<string, unknown>> {
   if (!fs.existsSync(file)) return [];
   return fs
     .readFileSync(file, "utf-8")
@@ -1062,7 +1108,7 @@ export interface CloseInput {
  * Grade compliance, append the workflow-done row (and, with `recordStep`, the
  * close step's row first), the counter and outcome telemetry rows, and build the
  * report and artifact links; with `outbox`, write them for the close comment; with
- * `message`, commit everything (`git add -A`, minus the `bkit.worktree.copy` entries) in the tree, or, in an in-place run
+ * `message`, commit everything (`git add -A`, minus the `bkit.workflows.worktree.copy` entries) in the tree, or, in an in-place run
  * on a shared branch, only the run's own paths.
  */
 export function closeWorkflow(
@@ -1106,9 +1152,6 @@ export function closeWorkflow(
   const startKnown = Number.isFinite(startMs) ? startMs : undefined;
   const runRowsOf =
     startAt === undefined ? [] : runStatusRows(readStatusEvents(where.status), workflow, startAt);
-  const planSource = runRowsOf
-    .filter((e) => e.type === "workflow-meta" && typeof e.planSource === "string")
-    .at(-1)?.planSource as string | undefined;
   const base = typeof started?.parentSha === "string" ? started.parentSha : "";
   const lines = o.squashSha
     ? runLines(where.tree, `${o.squashSha}^`, o.squashSha)
@@ -1132,9 +1175,25 @@ export function closeWorkflow(
   const cov = workflow === "ship" ? coverage(where.tree) : undefined;
   const ci = ciList(runRowsOf);
   const plan = ["plan", "build", "ship"].includes(workflow)
-    ? planBlock(where.tree, where.month, o.fid, logDir, planSource)
+    ? planBlock(where.tree, where.month, o.fid, events)
     : undefined;
   const endMs = Date.parse(endAt);
+  /** This run's `docs/deferrals.jsonl` rows; none when its start is unknown. */
+  const runDeferrals = () =>
+    startKnown === undefined
+      ? []
+      : ledgerRows(path.join(where.tree, "docs", "deferrals.jsonl"))
+          .map((r) => normalize(r))
+          .filter((r) => byWorkflow(r) === workflow && Number(r.ts) >= startKnown);
+  const context =
+    startKnown === undefined
+      ? undefined
+      : agentContextBlock(
+          startKnown,
+          endMs,
+          claudeTranscripts(process.env, os.homedir()),
+          runChats(runRowsOf),
+        );
   const outcomeRow = {
     kind: "outcome",
     by,
@@ -1146,7 +1205,17 @@ export function closeWorkflow(
     ...(ci.length > 0 ? { ci } : {}),
     ledgers: ledgerCounts(where.tree, workflow, startKnown),
     ...(plan === undefined ? {} : { plan }),
-    ...(workflow === "build" ? { build: buildBlock(runRowsOf, logDir) } : {}),
+    ...(workflow === "build"
+      ? {
+          build: buildBlock(
+            runRowsOf,
+            logDir,
+            planFiles(where.tree, where.month, o.fid),
+            runDeferrals(),
+          ),
+        }
+      : {}),
+    ...(context === undefined ? {} : { context }),
     ...(cov ? { ship: { coverage: cov } } : {}),
   };
   const stats = path.join(where.tree, ".bkit", "stats.jsonl");
@@ -1383,20 +1452,6 @@ async function shipClose(
 // promote
 // ---------------------------------------------------------------------------
 
-/** The highest `{workflow}-v{N}-*.md` draft (sub-plan children `-v{N}-{k}.md` excluded), or null. */
-export function highestVersion(dir: string, workflow: string): { file: string; n: number } | null {
-  if (!fs.existsSync(dir)) return null;
-  const re = new RegExp(`^${workflow}-v([0-9]+)-(.+)\\.md$`);
-  let best: { file: string; n: number } | null = null;
-  for (const f of fs.readdirSync(dir).sort()) {
-    const m = re.exec(f);
-    if (!m || /^[0-9]+$/.test(m[2]!)) continue;
-    const n = Number(m[1]);
-    if (best === null || n > best.n) best = { file: f, n };
-  }
-  return best;
-}
-
 /** Stamp `file`'s anchor when a base commit is known (plan: with its design's own anchor; both: the bkit release). */
 function stamp(cwd: string, file: string, baseSha: string, design?: string): void {
   if (baseSha === "") return;
@@ -1426,7 +1481,7 @@ function promoteVerb(ctx: RunContext): number {
   }
   const final = path.join(logs, best.file);
   if (ctx.flags.resolve === true) {
-    ctx.emit({ final, canonical: null, archived: [], subPlans: [], baseSha: null });
+    ctx.emit({ final, canonical: null, archived: [], baseSha: null });
     return EXIT.OK;
   }
 
@@ -1447,15 +1502,8 @@ function promoteVerb(ctx: RunContext): number {
   const bucket = path.join("docs", "plans", month);
   const canonical = path.join(bucket, `${fid}-${workflow}.md`);
   stamp(ctx.cwd, final, baseSha, design);
-  const children =
-    workflow === "plan"
-      ? fs
-          .readdirSync(path.resolve(ctx.cwd, logs))
-          .filter((f) => new RegExp(`^plan-v${best.n}-[0-9]+\\.md$`).test(f))
-          .sort()
-      : [];
 
-  // A changed canonical moves to archive/ first — plan moves the whole set under one timestamp.
+  // A changed canonical moves to archive/ first.
   const archived: string[] = [];
   const canonicalAbs = path.resolve(ctx.cwd, canonical);
   if (
@@ -1468,47 +1516,116 @@ function promoteVerb(ctx: RunContext): number {
       .replace(/\.\d+Z$/, "Z");
     const archive = path.join(bucket, "archive");
     fs.mkdirSync(path.resolve(ctx.cwd, archive), { recursive: true });
-    const set = fs
-      .readdirSync(path.resolve(ctx.cwd, bucket))
-      .filter((f) =>
-        workflow === "plan"
-          ? f === `${fid}-plan.md` || new RegExp(`^${fid}-plan-[0-9]+\\.md$`).test(f)
-          : f === `${fid}-design.md`,
-      );
-    for (const f of set) {
-      const to = path.join(archive, `${ts}-${f}`);
-      fs.renameSync(path.resolve(ctx.cwd, bucket, f), path.resolve(ctx.cwd, to));
-      archived.push(to);
-    }
+    const to = path.join(archive, `${ts}-${fid}-${workflow}.md`);
+    fs.renameSync(canonicalAbs, path.resolve(ctx.cwd, to));
+    archived.push(to);
   }
   fs.mkdirSync(path.resolve(ctx.cwd, bucket), { recursive: true });
   fs.copyFileSync(path.resolve(ctx.cwd, final), canonicalAbs);
-  const subPlans: string[] = [];
-  for (const child of children) {
-    const k = /-([0-9]+)\.md$/.exec(child)![1]!;
-    stamp(ctx.cwd, path.join(logs, child), baseSha, design);
-    const to = path.join(bucket, `${fid}-plan-${k}.md`);
-    fs.copyFileSync(path.resolve(ctx.cwd, logs, child), path.resolve(ctx.cwd, to));
-    subPlans.push(to);
-  }
-  if (workflow === "plan") {
-    // Working names in the copies become the canonical names.
-    for (const f of [canonical, ...subPlans]) {
-      const abs = path.resolve(ctx.cwd, f);
-      fs.writeFileSync(
-        abs,
-        fs
-          .readFileSync(abs, "utf-8")
-          .replace(/plan-v[0-9]+-split\.md/g, `${fid}-plan.md`)
-          .replace(/plan-v[0-9]+-([0-9]+)\.md/g, `${fid}-plan-$1.md`),
-      );
-    }
-  }
   if (fs.statSync(canonicalAbs).size === 0) {
     ctx.log(`canonical empty: ${canonical}`);
     return EXIT_NO_VERSION;
   }
-  ctx.emit({ final, canonical, archived, subPlans, baseSha: baseSha || null });
+  ctx.emit({ final, canonical, archived, baseSha: baseSha || null });
+  return EXIT.OK;
+}
+
+// ---------------------------------------------------------------------------
+// summary
+// ---------------------------------------------------------------------------
+
+/** ship: the PR's size from `gh pr view`; undefined (logged) when gh cannot answer. */
+function prSize(cwd: string, pr: number, log: (m: string) => void) {
+  const res = runGh(cwd, ["pr", "view", String(pr), "--json", "additions,deletions,changedFiles"]);
+  const parsed = res.ok ? parseJson(res.stdout) : undefined;
+  const v = parsed?.ok === true ? (parsed.value as Record<string, unknown>) : undefined;
+  if (
+    typeof v?.additions !== "number" ||
+    typeof v.deletions !== "number" ||
+    typeof v.changedFiles !== "number"
+  ) {
+    log(`gh pr view ${pr} gave no size; the summary leaves the PR line out`);
+    return undefined;
+  }
+  return {
+    number: pr,
+    additions: v.additions,
+    deletions: v.deletions,
+    changedFiles: v.changedFiles,
+  };
+}
+
+function summaryVerb(ctx: RunContext): number {
+  const workflow = String(ctx.flags.workflow);
+  if (!(SUMMARY_WORKFLOWS as readonly string[]).includes(workflow))
+    throw new CommandError(EXIT.USAGE, `--workflow must be ${SUMMARY_WORKFLOWS.join(", ")}`);
+  const file = path.resolve(ctx.cwd, String(ctx.flags.file));
+  const logDir = path.dirname(file);
+  const fid = path.basename(logDir);
+  const month = path.basename(path.dirname(path.dirname(logDir)));
+  const tree = path.resolve(logDir, "..", "..", "..", "..", "..");
+  if (!/^[0-9]{6}$/.test(month) || path.join(tree, logDirRel(month, fid)) !== logDir)
+    throw new CommandError(
+      EXIT.USAGE,
+      `--file must be docs/plans/{YYYYMM}/logs/{FID}/status.jsonl, got ${file}`,
+    );
+
+  const events = readStatusEvents(file);
+  const started = lastOfType(events, "workflow-started", workflow);
+  if (started === undefined)
+    throw new CommandError(EXIT_NO_RUN, `${file} has no ${workflow} run (no workflow-started row)`);
+  const rows = runStatusRows(events, workflow, started.at);
+  const startMs = Date.parse(started.at);
+  const rel = (abs: string) => path.relative(tree, abs).split(path.sep).join("/");
+  const given = list(ctx.flags.plan).map((p) => path.resolve(ctx.cwd, p));
+  const plans = given.length > 0 ? given : workflow === "build" ? planFiles(tree, month, fid) : [];
+  const read = (r: string) => {
+    const abs = path.resolve(tree, r);
+    return fs.existsSync(abs) && fs.statSync(abs).isFile() ? fs.readFileSync(abs, "utf-8") : null;
+  };
+  const deferrals = ledgerRows(path.join(tree, "docs", "deferrals.jsonl"))
+    .map((r) => normalize(r))
+    .filter((r) => byWorkflow(r) === workflow && Number(r.ts) >= startMs);
+  const organisedPath = path.join(logDir, "design-v3-organised.md");
+  const organised =
+    workflow === "design" && fs.existsSync(organisedPath)
+      ? fs.readFileSync(organisedPath, "utf-8")
+      : undefined;
+  const prNumber = positiveInt(ctx.flags.pr, "pr");
+
+  const summary = buildSummary({
+    workflow: workflow as SummaryWorkflow,
+    fid,
+    ref: refOf(fid, readIssueTracker(tree)),
+    rows,
+    plans: plans.map((p) => ({ path: rel(p), text: fs.readFileSync(p, "utf-8") })),
+    deferrals,
+    deferralsAdded: ledgerCounts(tree, workflow, startMs).deferrals.added ?? 0,
+    decisionFiles:
+      (workflow === "build" || workflow === "ship") && fs.existsSync(logDir)
+        ? fs
+            .readdirSync(logDir)
+            .filter((f) => /^build-decision-.*\.md$/.test(f))
+            .sort()
+            .map((f) => rel(path.join(logDir, f)))
+        : [],
+    read,
+    workstreams: organised === undefined ? undefined : parseWorkstreams(organised),
+    organised,
+    pr:
+      workflow === "ship" && prNumber !== undefined
+        ? prSize(ctx.cwd, prNumber, ctx.log)
+        : undefined,
+  });
+  const out = path.join(logDir, `${workflow}-summary.md`);
+  fs.writeFileSync(out, summary.markdown);
+  ctx.emit({
+    verdict: summary.verdict,
+    failures: summary.failures,
+    reasons: summary.reasons,
+    file: rel(out),
+    nextStep: summary.nextStep,
+  });
   return EXIT.OK;
 }
 
@@ -1653,8 +1770,8 @@ function inputText(cwd: string, rel: string, flag: string): string {
   return fs.readFileSync(abs, "utf-8").replace(/\s+$/, "");
 }
 
-/** The run's issue text from `issues fetch`'s files, or "" for a run with no issue. */
-function inputIssueText(ctx: RunContext): string {
+/** The run's issue parts from `issues fetch`'s files, oldest first; none for a run with no issue. */
+function inputIssueParts(ctx: RunContext): IssuePart[] {
   const descFile = str(ctx.flags.descriptionFile);
   const commentsFile = str(ctx.flags.commentsFile);
   const description = descFile ? inputText(ctx.cwd, descFile, "description-file") : "";
@@ -1669,7 +1786,47 @@ function inputIssueText(ctx: RunContext): string {
       );
     comments = sortOldestFirst(list).comments;
   }
-  return issueText(description, comments).text;
+  return issueParts(description, comments);
+}
+
+/** An ISO-8601 time in UTC, or undefined when it does not parse. */
+function utc(at: string | undefined): string | undefined {
+  const t = at === undefined ? NaN : Date.parse(at);
+  return Number.isNaN(t) ? undefined : new Date(t).toISOString();
+}
+
+/**
+ * When a design or plan file last changed: the author date of its last commit (a
+ * rebase keeps it, unlike the committer date), or undefined (newer than any commit) when the file
+ * has uncommitted changes or no commit.
+ */
+function committedAt(cwd: string, rel: string): string | undefined {
+  if ((git(cwd, ["status", "--porcelain", "--", rel]) ?? "") !== "") return undefined;
+  return utc(git(cwd, ["log", "-1", "--format=%aI", "--", rel]) || undefined);
+}
+
+const fileDate = (cwd: string, rel: string) => {
+  const at = committedAt(cwd, rel);
+  return at === undefined ? "uncommitted changes, newer than any commit" : `last committed ${at}`;
+};
+
+function issueHeading(part: IssuePart): string {
+  if (part.kind === "description") return "Issue description — oldest";
+  const at = utc(part.createdAt);
+  return at === undefined
+    ? "Issue comment — no date, counts as oldest"
+    : `Issue comment — posted ${at}`;
+}
+
+/** Comments posted after the plan's last commit; none when the plan is missing or uncommitted. */
+function newerThanPlan(cwd: string, plan: string | undefined, parts: IssuePart[]): number {
+  if (!plan || !fs.existsSync(path.resolve(cwd, plan))) return 0;
+  const since = committedAt(cwd, plan);
+  if (since === undefined) return 0;
+  return parts.filter((p) => {
+    const at = utc(p.createdAt);
+    return p.kind === "comment" && at !== undefined && at > since;
+  }).length;
 }
 
 function inputVerb(ctx: RunContext): number {
@@ -1686,22 +1843,37 @@ function inputVerb(ctx: RunContext): number {
         month: resolveMonth(repoRoot(ctx.cwd), fid, str(ctx.flags.month) || undefined),
       }).path;
   const sections: Array<[string, string]> = [
-    ["Session Prompt", inputText(ctx.cwd, String(ctx.flags.promptFile), "prompt-file")],
+    [
+      "Session Prompt — this run's, newer than everything below",
+      inputText(ctx.cwd, String(ctx.flags.promptFile), "prompt-file"),
+    ],
   ];
-  const issue = inputIssueText(ctx);
-  if (issue !== "") sections.push(["Issue", issue]);
+  const issue = inputIssueParts(ctx);
+  for (const part of issue) sections.push([issueHeading(part), part.text]);
   const plan = str(ctx.flags.plan);
   if (plan && fs.existsSync(path.resolve(ctx.cwd, plan)))
-    sections.push([`Plan — ${plan}`, inputText(ctx.cwd, plan, "plan")]);
+    sections.push([
+      `Plan — ${plan} — ${fileDate(ctx.cwd, plan)}`,
+      inputText(ctx.cwd, plan, "plan"),
+    ]);
   const design = str(ctx.flags.design);
-  if (design) sections.push([`Design — ${design}`, inputText(ctx.cwd, design, "design")]);
-  for (const audit of list(ctx.flags.audit))
-    sections.push([`Audit Report — ${audit}`, inputText(ctx.cwd, audit, "audit")]);
+  if (design) {
+    const text = inputText(ctx.cwd, design, "design");
+    sections.push([`Design — ${design} — ${fileDate(ctx.cwd, design)}`, text]);
+  }
+  for (const audit of list(ctx.flags.audit)) {
+    const text = inputText(ctx.cwd, audit, "audit");
+    sections.push([`Audit Report — ${audit} — ${fileDate(ctx.cwd, audit)}`, text]);
+  }
   const body = sections.map(([h, text]) => `## ${h}\n\n${text}\n`).join("\n");
   const abs = path.join(path.dirname(status), `${workflow}-input-${run}.md`);
   fs.mkdirSync(path.dirname(abs), { recursive: true });
   fs.writeFileSync(abs, body);
-  ctx.emit({ path: path.relative(ctx.cwd, abs), bytes: Buffer.byteLength(body) });
+  ctx.emit({
+    path: path.relative(ctx.cwd, abs),
+    bytes: Buffer.byteLength(body),
+    newerThanPlan: newerThanPlan(ctx.cwd, plan, issue),
+  });
   return EXIT.OK;
 }
 
@@ -1724,7 +1896,8 @@ async function postClose(
 
 export const workflowsCommand: CommandSpec = {
   noun: "workflows",
-  summary: "Start, fail, hand over and close a phase workflow run; promote and link its documents.",
+  summary:
+    "Start, fail, hand over, summarize and close a phase workflow run; promote and link its documents.",
   verbs: {
     start: {
       summary: "Take the feature lock and open a run (workflow-started unless resuming).",
@@ -1753,7 +1926,7 @@ export const workflowsCommand: CommandSpec = {
         run: "which run of the workflow this is (1-based)",
         lastDoneStep: "the current run's last DONE step: resume after it (null on a new run)",
         openDecision:
-          "{file, decision, question, from, pauseStep, subPlan, verifyAttempt, testAttempt, plan} of the current run's highest {workflow}-decision-{run}-{N}.md holding Status: OPEN, else null",
+          "{file, decision, question, from, pauseStep, group, verifyAttempt, testAttempt, plan} of the current run's highest {workflow}-decision-{run}-{N}.md holding Status: OPEN, else null",
       },
       textOmit: ["row"],
       exitCodes: {
@@ -1825,6 +1998,7 @@ export const workflowsCommand: CommandSpec = {
           };
           fs.appendFileSync(file, appendLine(row as StatusEvent));
         }
+        recordChat(file, workflow, process.env);
         const runs = fold(readStatusEvents(file));
         const run = runNumber(runs, workflow);
         const current = resumed ? lastRun(runs, workflow) : undefined;
@@ -1936,7 +2110,7 @@ export const workflowsCommand: CommandSpec = {
         {
           name: "push",
           type: "boolean",
-          help: "feature branch: git add -A (minus bkit.worktree.copy entries), commit `docs({fid}): {workflow} aborted bkit [skip ci]`, push --mode=abort; dev / main / detached: lands like --flush, the checkout untouched",
+          help: "feature branch: git add -A (minus bkit.workflows.worktree.copy entries), commit `docs({fid}): {workflow} aborted bkit [skip ci]`, push --mode=abort; dev / main / detached: lands like --flush, the checkout untouched",
         },
         {
           name: "flush",
@@ -2023,7 +2197,7 @@ export const workflowsCommand: CommandSpec = {
         {
           name: "message",
           type: "string",
-          help: "then git add -A (minus bkit.worktree.copy entries) and commit with this message in the tree",
+          help: "then git add -A (minus bkit.workflows.worktree.copy entries) and commit with this message in the tree",
         },
         {
           name: "label",
@@ -2166,7 +2340,7 @@ export const workflowsCommand: CommandSpec = {
     },
     input: {
       summary:
-        "Write logs/{FID}/{workflow}-input-{run}.md: the session prompt, the issue text, then the plan, design and audit reports.",
+        "Write logs/{FID}/{workflow}-input-{run}.md: the session prompt, the issue description and each human comment, then the plan, design and audit reports, each section dated.",
       flags: [
         WORKFLOW_FLAG,
         FID_FLAG,
@@ -2204,6 +2378,8 @@ export const workflowsCommand: CommandSpec = {
       output: {
         path: "the input file written, relative to cwd",
         bytes: "its size in bytes",
+        newerThanPlan:
+          "issue comments posted after the plan's last commit (0 with no plan, or one with uncommitted changes)",
       },
       exitCodes: {
         [EXIT_SPLIT_BUCKET]: "no --month and the feature has logs in more than one month bucket",
@@ -2214,7 +2390,7 @@ export const workflowsCommand: CommandSpec = {
     },
     promote: {
       summary:
-        "Design / plan close: the highest versioned draft becomes the canonical doc (anchor stamped, a changed canonical archived, plan sub-plans copied).",
+        "Design / plan close: the highest versioned draft becomes the canonical doc (anchor stamped, a changed canonical archived).",
       flags: [
         { ...WORKFLOW_FLAG, help: "design | plan" },
         FID_FLAG,
@@ -2234,8 +2410,7 @@ export const workflowsCommand: CommandSpec = {
         final:
           "the highest versioned draft, e.g. docs/plans/202610/logs/12-x/design-v3-organised.md",
         canonical: "the canonical doc written, or null with --resolve",
-        archived: "superseded canonical docs moved to archive/",
-        subPlans: "plan: the canonical sub-plans written",
+        archived: "the superseded canonical doc moved to archive/, if any",
         baseSha: "the base commit stamped into the anchor, or null when none was recorded",
       },
       exitCodes: {
@@ -2308,6 +2483,43 @@ export const workflowsCommand: CommandSpec = {
         );
         return EXIT.OK;
       },
+    },
+    summary: {
+      summary:
+        "The Summary step: write {workflow}-summary.md next to --file with the run's verdict, reasons and next command.",
+      flags: [
+        { ...WORKFLOW_FLAG, help: "plan | design | build | debug | ship" },
+        {
+          name: "file",
+          type: "string",
+          required: true,
+          help: "the run's docs/plans/{YYYYMM}/logs/{FID}/status.jsonl; the summary is written beside it",
+        },
+        {
+          name: "plan",
+          type: "string",
+          repeatable: true,
+          help: "a plan file the run worked from (default: build reads {FID}-plan.md)",
+        },
+        {
+          name: "pr",
+          type: "string",
+          help: "ship: the PR number; its size comes from gh pr view (left out when gh cannot answer)",
+        },
+      ],
+      output: {
+        verdict: "PASS | CONCERNS | FAIL",
+        failures: "the count of FAIL reasons: 0 on PASS and CONCERNS",
+        reasons: "one line per reason, FAIL reasons first",
+        file: "the summary written, repo-relative",
+        nextStep:
+          "the recommended next command (with the issue ref), or the fixed line when there is none",
+      },
+      exitCodes: {
+        [EXIT_NO_STATUS]: "status.jsonl missing, unreadable, or not valid NDJSON (nothing written)",
+        [EXIT_NO_RUN]: "status.jsonl has no workflow-started row for --workflow (nothing written)",
+      },
+      run: summaryVerb,
     },
   },
 };

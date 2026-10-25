@@ -1,4 +1,4 @@
-// audits/templates/template-path-refs.test.ts — no workflow or prompt names a template file.
+// audits/templates/template-path-refs.test.ts — no workflow, prompt or shared clause names a template file.
 //
 // Templates are the consumer's once installed: they rename, delete or rewrite
 // them (a CI workflow, a hook, a lint config, a helper script). A workflow step
@@ -16,6 +16,7 @@ import { describe, expect, it } from "vitest";
 
 import { listFilesRecursive, remapTemplateDest } from "../../install/template-copies";
 import { getCoreRoot, getSharedRoot, getTemplatesRoot } from "../../shared/package-roots";
+import { parseInstructions } from "../../tools/instructions";
 
 const repo = path.resolve(__dirname, "../../../../..");
 
@@ -80,6 +81,16 @@ const ALLOWED: Array<{ file: string; text: string; why: string }> = [
     text: "`docs/capabilities.md` when present",
     why: "an optional read: the prior-art search uses the capability map only when the consumer adopted the graphify template, and treats an empty result as inconclusive",
   },
+  ...[
+    "bkit-plan-review-2",
+    "bkit-plan-generate",
+    "bkit-build-plan-execute",
+    "bkit-build-plan-gaps-remediate",
+  ].map((name) => ({
+    file: `.bkit/core/prompts/${name}.md`,
+    text: "`docs/capabilities.md` when present",
+    why: "the `**Rules:**` block copy of the Language server first rule: an optional read, used only when the consumer adopted the graphify template",
+  })),
 ];
 
 /** True when `line` is covered by an allowed text that itself names `name`. */
@@ -97,8 +108,12 @@ function corpus(): Array<{ file: string; text: string }> {
       .filter((f) => f.endsWith(".md"))
       .map((f) => path.join(d, f)),
   );
-  files.push(path.join(repo, ".bkit", "wording.md"));
-  return files.map((f) => ({ file: path.relative(repo, f), text: fs.readFileSync(f, "utf-8") }));
+  const store = path.join(".bkit", "instructions.md");
+  const clauses = parseInstructions(fs.readFileSync(path.join(repo, store), "utf-8")).clauses;
+  return [
+    ...files.map((f) => ({ file: path.relative(repo, f), text: fs.readFileSync(f, "utf-8") })),
+    { file: store, text: clauses.flatMap((c) => c.texts).join("\n") },
+  ];
 }
 
 describe("no workflow or prompt names a template path", () => {

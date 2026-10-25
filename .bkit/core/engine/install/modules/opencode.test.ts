@@ -79,7 +79,7 @@ describe("detectOpencodeYmlProviderDrift", () => {
   }
 
   function writePkg(provider: string | null): void {
-    const bkit = provider ? { bkit: { opencodeProvider: provider } } : {};
+    const bkit = provider ? { bkit: { providers: { opencode: { default: provider } } } } : {};
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "x", version: "0.0.0", ...bkit }, null, 2),
@@ -128,7 +128,7 @@ describe("detectOpencodeYmlProviderDrift", () => {
     expect(f?.detect).toContain("opencode-go/<model>");
   });
 
-  it("null when bkit.opencodeProvider is not recorded (cannot determine intended provider)", () => {
+  it("null when bkit.providers.opencode.default is not recorded (cannot determine intended provider)", () => {
     writePkg(null);
     writeOpencodeYml("openrouter/moonshotai/kimi-k3", "BKIT_OPENROUTER_API_KEY");
     expect(detectOpencodeYmlProviderDrift(tmpDir)).toBeNull();

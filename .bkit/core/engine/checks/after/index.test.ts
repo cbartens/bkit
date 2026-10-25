@@ -8,6 +8,7 @@ import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type PreflightFinding, runPreflight } from "../before/index";
 import * as auth from "./auth";
+import * as github from "./github";
 import * as tools from "./tools";
 import {
   formatChecklist,
@@ -137,7 +138,7 @@ describe("formatChecklist", () => {
       [{ id: "x", severity: "advisory", detect: "d", action: "a" }],
       [{ id: "tagged-tests-no-ci-home", scope: "tooling/eslint" }],
     );
-    expect(result).toContain("1 advisory suppressed by bkit.ignoreAdvisories:");
+    expect(result).toContain("1 advisory suppressed by bkit.advisories.ignore:");
     expect(result).toContain("- tagged-tests-no-ci-home (tooling/eslint)");
   });
 
@@ -150,7 +151,7 @@ describe("formatChecklist", () => {
       ],
     );
     expect(result).toContain("bkit advisories");
-    expect(result).toContain("2 advisories suppressed by bkit.ignoreAdvisories:");
+    expect(result).toContain("2 advisories suppressed by bkit.advisories.ignore:");
     expect(result).toContain("- test-integration-env-not-asserted (.)");
   });
 
@@ -237,7 +238,7 @@ describe("renderAdvisoriesMarkdown", () => {
       { id: "tagged-tests-no-ci-home", scope: "tooling/eslint" },
     ]);
     expect(md).not.toContain("**No advisories.**");
-    expect(md).toContain("1 advisory suppressed by bkit.ignoreAdvisories:");
+    expect(md).toContain("1 advisory suppressed by bkit.advisories.ignore:");
     expect(md).toContain("- tagged-tests-no-ci-home (tooling/eslint)");
   });
 
@@ -249,7 +250,7 @@ describe("renderAdvisoriesMarkdown", () => {
         version: "5.0.0",
       },
     );
-    expect(md).not.toContain("suppressed by bkit.ignoreAdvisories");
+    expect(md).not.toContain("suppressed by bkit.advisories.ignore");
   });
 });
 
@@ -387,7 +388,7 @@ describe("runPostInstallCheck deduplication", () => {
       JSON.stringify({
         name: "eslint",
         scripts: { test: "vitest run" },
-        bkit: { ignoreAdvisories: ["tagged-tests-no-ci-home"] },
+        bkit: { advisories: { ignore: ["tagged-tests-no-ci-home"] } },
       }),
     );
     fs.writeFileSync(path.join(pkgDir, "rule.test.ts"), 'it("uses @live", () => {});');
@@ -405,6 +406,37 @@ describe("runPostInstallCheck deduplication", () => {
 // ---------------------------------------------------------------------------
 // readChangelogVersionDelta — changelog header
 // ---------------------------------------------------------------------------
+
+describe("main-branch-protection-missing", () => {
+  it("names the capstone set in bkit.testing.ciCapstone as the required check", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", bkit: { testing: { ciCapstone: "app-gate" } } }),
+    );
+    const spy = vi.spyOn(github, "detectMainBranchProtection").mockReturnValue("missing");
+    try {
+      const f = runPostInstallCheck([], tmpDir).find(
+        (x) => x.id === "main-branch-protection-missing",
+      );
+      expect(f?.action).toContain("Require status checks: app-gate (");
+      expect(f?.action).not.toContain("Require status checks: bkit-tests-check");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("names the default capstone when none is configured", () => {
+    const spy = vi.spyOn(github, "detectMainBranchProtection").mockReturnValue("missing");
+    try {
+      const f = runPostInstallCheck([], tmpDir).find(
+        (x) => x.id === "main-branch-protection-missing",
+      );
+      expect(f?.action).toContain("Require status checks: bkit-tests-check (");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
 
 describe("readChangelogVersionDelta", () => {
   it("returns version-delta header string when CHANGELOG.md exists and version matches", () => {
@@ -468,16 +500,16 @@ describe("readChangelogVersionDelta", () => {
 });
 
 // ---------------------------------------------------------------------------
-// challenge-tests
+// edge cases
 // ---------------------------------------------------------------------------
-// challenge-tests — edge cases:
+// Edge cases:
 //
 //   Intra-phase dedup within Phase 3 with duplicate ids.
 //   An empty / whitespace-only .bkit-version file emits no
 //             bkit-version-major-downgrade advisory.
 //   Byte-for-byte snapshot of formatChecklist output.
 //   The blocker path through the public function API (no tsx subprocess).
-describe("challenge-tests", () => {
+describe("edge cases", () => {
   const { formatChecklist, runPostInstallCheck } = postinstall;
   const { detectShellGhMcpToken } = auth;
 
@@ -492,7 +524,7 @@ describe("challenge-tests", () => {
   beforeEach(() => {
     originalCwd = process.cwd();
     originalEnv = { ...process.env };
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-challenge-tests-"));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-after-edge-cases-"));
     process.chdir(tmpDir);
     // detectBkitNotOnPath() calls spawnSync("which", ["bkit"]); default to "found"
     // so the advisory does not fire and pollute findings during unrelated assertions.

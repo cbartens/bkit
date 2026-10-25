@@ -80,7 +80,7 @@ Everything a senior team would otherwise write down over years, in files you can
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-pipeline-dark.svg">
-    <img alt="The bkit pipeline: design, plan, build and ship, with debug fixing failed tests. Each dot is one of 41 AI agents: 10 in design, 10 in plan, 11 in build, 6 in debug and 4 in ship. It waits for your sign-off after design, after plan and before merge, merges into dev, and leaves production to you. Runs on Claude Code, Cursor, Codex, Antigravity and opencode." src=".github/assets/bkit-pipeline-light.svg" width="100%">
+    <img alt="The bkit pipeline: design, plan, build and ship, with debug fixing failed tests. Each dot is one of 30 AI agents: 9 in design, 5 in plan, 8 in build, 5 in debug and 3 in ship. It waits for your sign-off after design, after plan and before merge, merges into dev, and leaves production to you. Runs on Claude Code, Cursor, Codex, Antigravity and opencode." src=".github/assets/bkit-pipeline-light.svg" width="100%">
   </picture>
 </p>
 
@@ -109,23 +109,23 @@ Every agent in each phase, in the order it runs and what it checks: [pipeline re
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-models-dark.svg">
-    <img alt="Change the model, not the effort. The Claude model and effort behind each of bkit's 50 agents and 5 orchestrators. Opus 5.5 at Medium: /bkit-design, /bkit-plan, /bkit-debug, 2 agents; Opus 5.5 at High: 20 agents; Opus 5.5 at Extra: 8 agents; Sonnet 5.5 at Medium: /bkit-build, /bkit-ship, 7 agents; Sonnet 5.5 at High: 8 agents; Haiku 5.5 at High: 5 agents. Fable 5.1 is never pinned: use it by hand to refine an idea before /bkit-design, and at Extra for a bug /bkit-debug is stuck on. Pick the model at launch: claude-opus-5-5 for /bkit-design, /bkit-plan, /bkit-debug; claude-sonnet-5-5 for /bkit-build, /bkit-ship. Leave the effort alone: medium is the default on the 5.5 models, every agent sets its own, and never set CLAUDE_CODE_EFFORT_LEVEL. Past High, move up a model: Extra costs more than the next model up at High. Max is for one hard problem, never routine; ultracode is a setting, not a level." src=".github/assets/bkit-models-light.svg" width="100%">
+    <img alt="Change the model, not the effort. The Claude model and effort behind each of bkit's 39 agents and 5 orchestrators. Opus 5.5 at Medium: /bkit-design, /bkit-plan, /bkit-debug, 1 agents; Opus 5.5 at High: 19 agents; Opus 5.5 at Extra: 7 agents; Sonnet 5.5 at Medium: /bkit-build, /bkit-ship, 6 agents; Sonnet 5.5 at High: 6 agents. Fable 5.1 is never pinned: use it by hand to refine an idea before /bkit-design, and at Extra for a bug /bkit-debug is stuck on. Pick the model at launch: claude-opus-5-5 for /bkit-design, /bkit-plan, /bkit-debug; claude-sonnet-5-5 for /bkit-build, /bkit-ship. Leave the effort alone: medium is the default on the 5.5 models, every agent sets its own, and never set CLAUDE_CODE_EFFORT_LEVEL. Past High, move up a model: Extra costs more than the next model up at High. Max is for one hard problem, never routine; ultracode is a setting, not a level." src=".github/assets/bkit-models-light.svg" width="100%">
   </picture>
 </p>
 
 **How the picks are made.** Each kind of job has a bar: Claude's score on [LiveBench Agentic Coding](https://livebench.ai/#/?cats=Agentic+Coding), a public test where models fix real code in JavaScript, TypeScript and Python. For each tool, bkit takes the **cheapest model that reaches the bar**. Where nothing reaches it, the tool's best model gets the job. One model can fill two columns: on opencode, DeepSeek V4.1 Flash clears the bar for the hardest jobs, so it does the everyday jobs too, for a fraction of Claude's cost. Claude is never used on opencode, because opencode is where work goes when your Claude allowance runs out.
 
 <!-- prettier-ignore -->
-| Tool | Hardest jobs: design, plans, reviews, security, audits | Everyday jobs: writing code and docs, the second model in each review pair | Summaries |
-| --- | --- | --- | --- |
-| Claude Code | `claude-opus-5-5` · bar **65.2** | `claude-sonnet-5-5` · bar **59.4** | `claude-haiku-5-5` · bar **~51** |
-| Cursor | `cursor-grok-4.5-high` · 56.5 | `composer-2.5` · not measured | `composer-2.5` · not measured |
-| opencode + OpenRouter | `deepseek/deepseek-v4.1-flash` · 77.3; `moonshotai/kimi-k3` · 62.2 for risk, security and root-cause agents | `deepseek/deepseek-v4.1-flash` · 77.3 | `z-ai/glm-5.3-flash` · 56.8 |
-| opencode + Ollama | `deepseek-v4.1-flash` · 77.3; `kimi-k3` · 62.2 for risk, security and root-cause agents | `deepseek-v4.1-flash` · 77.3 | `deepseek-v4.1-flash` · 77.3 |
-| opencode + OpenCode Zen | `deepseek-v4.1-flash` · 77.3; `kimi-k3` · 62.2 for risk, security and root-cause agents | `deepseek-v4.1-flash` · 77.3 | `glm-5.3-flash` · 56.8 |
-| opencode + OpenCode Go | `deepseek-v4.1-flash` · 77.3; `kimi-k3` · 62.2 for risk, security and root-cause agents | `deepseek-v4.1-flash` · 77.3 | `deepseek-v4.1-flash` · 77.3 |
-| Codex | `gpt-6-astra` · not measured | `gpt-5.6-terra` · not measured | `gpt-6-luna` · 51.2 |
-| Google Antigravity | `gemini-3.8-pro` · not measured | `gemini-3.8-pro` · not measured | `gemini-3.8-flash` · not measured |
+| Tool | Hardest jobs: design, plans, reviews, security, audits | Everyday jobs: writing code and docs, the second model in each review pair |
+| --- | --- | --- |
+| Claude Code | `claude-opus-5-5` · bar **65.2** | `claude-sonnet-5-5` · bar **59.4** |
+| Cursor | `cursor-grok-4.5-high` · 56.5 | `composer-2.5` · not measured |
+| opencode + OpenRouter | `deepseek/deepseek-v4.1-flash` · 77.3; `moonshotai/kimi-k3` · 62.2 for risk, security and root-cause agents | `deepseek/deepseek-v4.1-flash` · 77.3 |
+| opencode + Ollama | `deepseek-v4.1-flash` · 77.3; `kimi-k3` · 62.2 for risk, security and root-cause agents | `deepseek-v4.1-flash` · 77.3 |
+| opencode + OpenCode Zen | `deepseek-v4.1-flash` · 77.3; `kimi-k3` · 62.2 for risk, security and root-cause agents | `deepseek-v4.1-flash` · 77.3 |
+| opencode + OpenCode Go | `deepseek-v4.1-flash` · 77.3; `kimi-k3` · 62.2 for risk, security and root-cause agents | `deepseek-v4.1-flash` · 77.3 |
+| Codex | `gpt-6-astra` · not measured | `gpt-5.6-terra` · not measured |
+| Google Antigravity | `gemini-3.8-pro` · not measured | `gemini-3.8-pro` · not measured |
 
 **Reading the table:**
 
@@ -282,7 +282,7 @@ All templates, what each is for, and how to install them: [`.bkit/templates.md`]
 
 ### Engineering know-how, built in
 
-- **Best model for each job, on every tool.** Each agent has its own model and thinking depth, per tool and provider: deep reasoning models for architecture and security review, quick ones for summaries. Starting a session on a cheaper model never quietly downgrades the reviewers. [Which model does each job](#models).
+- **Best model for each job, on every tool.** Each agent has its own model and thinking depth, per tool and provider: deep reasoning models for architecture and security review, faster ones for writing code and docs. Starting a session on a cheaper model never quietly downgrades the reviewers. [Which model does each job](#models).
 - **It tests ideas before you commit to them.** When reviewers flag an unknown a design depends on, design writes throwaway probe code to settle it before you approve. A design reviewer also checks failure modes and monitoring, not just whether it can be built.
 - **Big features are built a group at a time.** The plan's tasks are grouped by the code they share. Each group gets a fresh agent and a short brief from `bkit`, never the whole plan, and an independent check of just that group's changes before the next group starts.
 - **Numbers on your own work.** Every run records its time, size of change, retries and the tokens each agent read in `.bkit/stats.jsonl`, and posts them to the issue next to the median of your last five runs.
@@ -306,7 +306,7 @@ All templates, what each is for, and how to install them: [`.bkit/templates.md`]
 
 - **Decide in plain English, not code.** Before any code is written you approve two short documents: a design ("three ways to build this; we recommend this one, because…") and a plan ("these twelve steps, and how we'll know each is done").
 - **Three sign-offs, and production stays yours.** The full workflows stop after the design, after the plan and before merging. bkit merges into your `dev` branch and never touches `main`: promoting to production is always your call. Cloud mode ships on green without you only for issues you've labelled `bkit:auto`; removing the label stops it. Lite workflows skip the stops, and only run when you choose them for a small change.
-- **A fix that doesn't work comes back to you.** After one automatic fix round, build asks before trying again, with a report: problems per round, code changed, and whether it's closing in, stuck or getting worse. Set `bkit.loopPause` to `false` in `package.json` for up to 3 automatic rounds.
+- **A fix that doesn't work comes back to you.** After one automatic fix round, build asks before trying again, with a report: problems per round, code changed, and whether it's closing in, stuck or getting worse. Each place a run can ask has its own setting under `bkit.workflows` in `package.json`: whether to ask, and a hard limit (2 attempts by default) that no answer can raise.
 - **Questions don't stall the build.** When build needs your decision, it keeps working on the tasks the question doesn't touch. With nobody at the keyboard, it goes ahead on its own recommendation, marks it as assumed, and won't merge until you confirm it.
 - **Guardrails on the AI itself.** Dangerous commands like force-pushing or rewriting history are blocked, private keys can't be read, and each agent only gets the tools its job needs. [What each guard does](.bkit/providers.md#guardrails) and [what it tells agents](.bkit/prompts.md#hook-injected-text).
 
@@ -370,7 +370,7 @@ All templates, what each is for, and how to install them: [`.bkit/templates.md`]
 - **Set up Serena,** so agents ask where code is defined and what uses it, like your editor does. That's cheaper than reading whole files, and it doesn't miss callers that text search would.
 - **Switch off claude.ai connectors** (MCP servers from your claude.ai account) in Claude Code for this project: `"disableClaudeAiConnectors": true` in `.claude/settings.json`. Otherwise their tool lists are re-sent with every request, used or not.
 - **Lock MCP servers to this project.** A server that can see your whole account makes agents look up account and project IDs before every task; locked, those extra calls disappear.
-- **Summarise long sessions earlier:** `"autoCompactWindow": 300000` in `.claude/settings.json`, or `model_auto_compact_token_limit` in `.codex/config.toml`. By default a session grows close to the model's full size before it summarises, and every request re-reads all of it. Summaries lose some detail, so bkit suggests this rather than setting it.
+- **Summarise long sessions earlier:** `"autoCompactWindow": 300000` in `.claude/settings.json`, or `model_auto_compact_token_limit` in `.codex/config.toml`. By default a session grows close to the model's full size before it summarises, and every request re-reads all of it. Summaries lose some detail, so for your main session bkit suggests this rather than setting it. bkit's own Claude Code subagents already summarise at 300,000 tokens at the latest.
 
 ## FAQ
 
@@ -434,6 +434,7 @@ On real bkit sessions they saved 1–3% of the bill, and each changes what the a
 | [`.bkit/templates.md`](.bkit/templates.md) | Templates ready to adopt |
 | [`.bkit/lite.md`](.bkit/lite.md) | Lite workflows: shorter prompts for small changes |
 | [`.bkit/pipeline.md`](.bkit/pipeline.md) | Every agent in the order it runs, the CI scaffold, every audit template |
+| [`.bkit/authoring.md`](.bkit/authoring.md) | Rules for writing docs, prompts and workflows |
 | [`.bkit/comparison.md`](.bkit/comparison.md) | Comparison with other AI development frameworks and with _Agentic Design Patterns_ |
 | [`CHANGELOG.md`](CHANGELOG.md) | What changed in each release |
 

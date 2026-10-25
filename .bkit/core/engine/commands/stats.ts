@@ -16,6 +16,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { markdownTable } from "../shared/text.js";
 import { runAnalysis, type AnalysisReport } from "./analysis.js";
+import { CHALLENGE_SMALL } from "./workflow/challenge.js";
 
 /** The ledgers `bkit stats` reads, relative to the repo root. */
 export const STATS_SOURCES = [
@@ -100,6 +101,38 @@ export function renderStatsMarkdown(report: AnalysisReport, title: string, scope
     `Attempt counters: ${regression.shellBusCount} counted by the shell (trusted), ${regression.modelSelfReportCount} reported by the model (untrusted).`,
     "",
   );
+
+  if (report.challengeGate.runs > 0) {
+    const g = report.challengeGate;
+    out.push("## Build challenge size", "");
+    out.push(
+      `Small changes (under ${CHALLENGE_SMALL.lines} lines and ${CHALLENGE_SMALL.files} files) run the security reviewer alone.`,
+      "",
+    );
+    out.push(
+      ...table(["Runs", "Small (challenge-1 skipped)", "Large"], [[g.runs, g.small, g.large]]),
+    );
+  }
+
+  const context = report.agentContext;
+  out.push("## Agent context peaks", "");
+  if (context.recorded === 0) {
+    out.push(
+      "No context data. A close records it from the Claude Code session that ran the workflow.",
+      "",
+    );
+  } else {
+    out.push(
+      `Cap: ${context.cap} tokens per agent. ${context.recorded} of ${context.outcomes} runs recorded context.`,
+      "",
+    );
+    out.push(
+      ...table(
+        ["Agent type", "Subagents", "Runs", "Peak (tokens)", "Runs over cap"],
+        context.byAgent.map((a) => [a.agent, a.subagents, a.runs, a.peak, a.overCap]),
+      ),
+    );
+  }
 
   if (complianceRates.length > 0) {
     out.push("## Compliance by rule", "");

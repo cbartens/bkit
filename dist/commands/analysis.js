@@ -5,7 +5,7 @@
 //   1. Counts/rates/elapsed-time over telemetry rows.
 //   2. Size↔outcome regression (error rate per `lines.total.added` bucket) over
 //      `kind:"outcome"` rows.
-//   3. Dispatch-size threshold computation for plan-split.
+//   3. Dispatch-size threshold computation, printed by `bkit stats` and the harvest report.
 //   4. `counter.source` trust labelling: each outcome row is joined to its `counter` row
 //      (model-self-report or shell-bus).
 //   5. Per-rule compliance rate over `kind:"compliance"` rows.
@@ -15,7 +15,7 @@
 //
 // All computation is advisory + inform-only; never gates any workflow.
 // See DE-34 for the shared-entrypoint + crash-isolation contract.
-import { UNJUSTIFIED_REASON, foldFrom, } from "../ledgers/telemetry.js";
+import { AGENT_CONTEXT_CAP, UNJUSTIFIED_REASON, foldFrom, } from "../ledgers/telemetry.js";
 export function computeCounts(events) {
     const byKind = {};
     const byWorkflow = {};
@@ -52,6 +52,45 @@ export function computeElapsedStats(rows) {
         minMinutes: durations[0] ?? 0,
         maxMinutes: durations[durations.length - 1] ?? 0,
         p50Minutes: durations[Math.floor(durations.length / 2)] ?? 0,
+    };
+}
+/** Over the outcome rows whose `build.challenge.gate` is set. */
+export function computeChallengeGate(rows) {
+    const out = { runs: 0, small: 0, large: 0 };
+    for (const r of rows) {
+        const gate = r.build?.challenge?.gate;
+        if (gate === undefined)
+            continue;
+        out.runs++;
+        if (gate.skipped)
+            out.small++;
+        else
+            out.large++;
+    }
+    return out;
+}
+/** Each agent type's context peak over the outcome rows' `context` blocks, against `cap`. */
+export function computeAgentContext(rows, cap = AGENT_CONTEXT_CAP) {
+    const by = {};
+    let recorded = 0;
+    for (const r of rows) {
+        if (r.context === undefined)
+            continue;
+        recorded++;
+        for (const [agent, a] of Object.entries(r.context.byAgent)) {
+            const e = (by[agent] ??= { agent, subagents: 0, runs: 0, peak: 0, overCap: 0 });
+            e.subagents += a.runs;
+            e.runs++;
+            e.peak = Math.max(e.peak, a.peak);
+            if (a.peak > cap)
+                e.overCap++;
+        }
+    }
+    return {
+        cap,
+        outcomes: rows.length,
+        recorded,
+        byAgent: Object.values(by).sort((a, b) => b.peak - a.peak || a.agent.localeCompare(b.agent)),
     };
 }
 const SIZE_BUCKETS = [
@@ -249,6 +288,8 @@ export function runAnalysis(paths, skipKinds = new Set()) {
     const complianceRates = computeComplianceRates(complianceRows);
     const versionCompliance = computeVersionCompliance(complianceRows);
     const deferralDiscipline = computeDeferralDiscipline(deferralRows);
+    const challengeGate = computeChallengeGate(outcomeRows);
+    const agentContext = computeAgentContext(outcomeRows);
     const reportLines = [
         `[bkit-analysis] Telemetry rows: ${rowCount} | malformed: ${malformedLineCount}`,
         `[bkit-analysis] Kinds: ${JSON.stringify(counts.byKind)}`,
@@ -266,6 +307,9 @@ export function runAnalysis(paths, skipKinds = new Set()) {
         }
     }
     reportLines.push(`[bkit-analysis] counter.source trust: shell-bus=${regression.shellBusCount} (trusted) | model-self-report=${regression.modelSelfReportCount} (untrusted)`);
+    if (challengeGate.runs > 0) {
+        reportLines.push(`[bkit-analysis] Build challenge size: ${challengeGate.small} small (challenge-1 skipped) | ${challengeGate.large} large, of ${challengeGate.runs} runs`);
+    }
     // Compliance rates
     if (complianceRates.length > 0) {
         reportLines.push(`[bkit-analysis] Per-rule compliance rates:`);
@@ -299,6 +343,8 @@ export function runAnalysis(paths, skipKinds = new Set()) {
         complianceRates,
         versionCompliance,
         deferralDiscipline,
+        challengeGate,
+        agentContext,
         reportLines,
     };
 }

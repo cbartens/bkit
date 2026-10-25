@@ -11,14 +11,6 @@
 >
 > **Rules:**
 >
-> - Read-only audit; never edit code, config, or data.
-> - `Universal Instructions` apply to all projects; `Project Instructions` apply only to this project.
-> - Local audit instructions / overrides → `Project Instructions` below the bkit-managed block; universal instructions stay in-block.
-> - Any tools mentioned in `Universal Instructions` are examples only; swap for actual tools in final output; drop inapplicable.
-> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
-> - Read `.agents/docs.md` → load docs for workflow / step / task; skip missing; cite docs inline where required.
-> - Every claim cites this run's evidence (`file:line`, or command / query and its output) and tool behind it; a previous report's figure, list, or status is a lead, not evidence.
-> - Read this document once at session start; do not trust session memory; do not re-read on every loop iteration.
 > - Remote catalogue queries ONLY use `SELECT` (non-relational: read-only reads); writes run locally, or in explicitly rolled-back transactions; ALWAYS check remote unchanged.
 > - NEVER push schema to remote by hand; NEVER hard-delete; restore target = throwaway, deleted before report finishes.
 > - Every claim names the environment it ran against.
@@ -29,11 +21,11 @@
 
 Migrations and integration tests exercise queries; neither verifies privileges, policies, or constraints match code assumptions. Target failure: **a control that reads as enforced in migration text and is not enforced in the live catalogue** — e.g. `REVOKE` undone by platform default privileges, tenant table with no row-level policy, `CHECK` evaluating `NULL` (not `FALSE`) for the shape it should reject. Only the catalogue knows → query it.
 
-**Applies when:** migrations, schema file, or DB client in a manifest. None → one `N/A` row with evidence, never "clean". Relational DB → all steps. Non-relational store (e.g. Firestore, DynamoDB, MongoDB) → Steps 1–4, 6–9, 12–13, 17–19 against its own mechanism (e.g. Firestore security rules, IAM policies, admin SDK vs client SDK); Steps 5, 10–11, 14–16 only where it has an equivalent, else `N/A` with evidence.
+**Applies when:** migrations, schema file, or DB client in a manifest. None → one `N/A` row with evidence, never "clean". Relational DB → all steps. Non-relational store (e.g. Firestore, DynamoDB, MongoDB) → Steps 1-4, 6-9, 12-13, 17-19 against its own mechanism (e.g. Firestore security rules, IAM policies, admin SDK vs client SDK); Steps 5, 10-11, 14-16 only where it has an equivalent, else `N/A` with evidence.
 
 **Cadence:** monthly. Extra pass when a migration adds a privileged function, changes access policy, or adds a tenancy-scoped table.
 
-**Anchor Standards:** record version and date read. Newer version → `Standards` step reads what changed.
+**Anchor Standards:**
 
 - Platform production checklist and security guide (e.g. Supabase).
 - Platform advisors and inspection CLI (e.g. Supabase Advisors, `supabase inspect db`); record CLI version.
@@ -64,40 +56,30 @@ Migrations and integration tests exercise queries; neither verifies privileges, 
 
 ### Pre-Flight / Dependencies
 
-**Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
-
-**Credentials:** probe direnv before marking a token / env var missing: `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'`; `unset` = missing. Run credentialed CLIs as `direnv exec . <cmd>`. No direnv (cloud session) → plain env check. Report names, never values.
-
 #### Core
 
-Always verify.
-
-- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied (here or in any step) → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`; run every step the remaining tools allow; work needing blocked call → `Not Checked`. never stop the run for a blocked call; never retry or reword a blocked call to get past it.
-- [ ] **Catalogue Read:** Steps 3–16 — read-only SQL (or store's read-only API) per environment, e.g. platform MCP `execute_sql`, `psql` as read-only role. Fallback: local DB from migrations; remote claims = hypotheses.
+- [ ] **Permissions:** blocked calls recorded
+- [ ] **Catalogue Read:** Steps 3-16 — read-only SQL (or store's read-only API) per environment, e.g. platform MCP `execute_sql`, `psql` as read-only role. Fallback: local DB from migrations; remote claims = hypotheses.
 - [ ] **Local DB:** Steps 2, 10, 14 — replayable from migrations. Fallback: rolled-back transactions and remote re-check.
 - [ ] **Web:** Step 18 — fetch anchor standards. Fallback: versions recorded as unread.
 
 #### Conditional
 
-Verify only when applicable.
-
 - [ ] **Platform Advisors:** Managed platform → Step 3 — e.g. Supabase MCP `get_advisors`. Fallback: equivalent catalogue queries.
 - [ ] **Platform Settings:** Managed platform → Steps 4, 17 — network, MFA, owners, backups, point-in-time recovery, e.g. dashboard, management API. Fallback: none; items `Not Checked`.
-- [ ] **Inspection CLI:** Platforms with one → Steps 14–16 — e.g. `supabase inspect db`. Fallback: engine statistics views, e.g. `pg_stat_*`.
+- [ ] **Inspection CLI:** Platforms with one → Steps 14-16 — e.g. `supabase inspect db`. Fallback: engine statistics views, e.g. `pg_stat_*`.
 - [ ] **Migration Linter:** SQL migrations → Step 10 — e.g. Squawk. Fallback: apply its rules by reading.
 - [ ] **Restore Target:** Hosted DB → Step 17 — permission and tier to create throwaway project. Fallback: none; absence = finding.
 
 ### 🔒 Gate 1: Prerequisites Check
 
-**Checkpoint.** Verify and check `[x]` all applicable boxes above, then continue to `Probe Steps` without asking.
-
 - [ ] **Gaps named:** every missing item names its fallback and `Not Checked` entry.
-- [ ] **Gate 1 - Verified:** All Core items checked. All applicable Conditional items checked.
+- [ ] **Gate 1 — Verified:** All Core items checked. All applicable Conditional items checked.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Audited commit = this report's `bkit:anchor` `baseSha`. Read newest prior report for this slug under `docs/audits/`; its commit = its `bkit:anchor` `baseSha`, else the HEAD its `Previous Run` recorded. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
-- [ ] **Step 2 — Detect:** Find migrations / schema file / DB client. Confirm local DB matches migrations before trusting local measurements. Schema doc absent, migrations exist → missing doc = finding; still read migrations. **Done when:** evidence in `Checked`, or `N/A` and STOP.
+- [ ] **Step 1 — Previous Run:** **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 2 — Detect:** Find migrations / schema file / DB client. Confirm local DB matches migrations before trusting local measurements. Schema doc absent, migrations exist → missing doc = finding; still read migrations. **Done when:** evidence in `Checked`, or `N/A` and **STOP**.
 - [ ] **Step 3 — Advisors:** Run platform security and performance advisors; each row = candidate, not finding. One line per lint the platform's advisor runs, even when clean (e.g. Supabase: unindexed FKs, duplicate indexes, per-row auth in policy, multiple permissive policies, mutable function `search_path`, extension in public schema, exposed table without row-level security, owner-rights view). No advisor → engine-appropriate subset by catalogue query; rest `N/A`. Cite platform fix pattern per finding. **Done when:** every row dispositioned in `Advisors`.
 - [ ] **Step 4 — Checklist:** Walk platform production checklist against production, not memory: transport encryption enforced, network restrictions, org MFA, >1 owner, point-in-time recovery where size / RPO needs it, compute sized for `Connections` peak. **Done when:** every item met / not met (finding) / not applicable (why).
 - [ ] **Step 5 — Inventory:** Count tables, migrations, extensions. Applied vs directory, both directions — drift invalidates downstream. Hosted major vs platform support window; extensions blocking next major. **Done when:** counts, drift, version in `Environment`.
@@ -118,13 +100,11 @@ Verify only when applicable.
 
 ### 🔒 Gate 2: Probes Check
 
-**Checkpoint.** Verify and check `[x]` all boxes below, then continue to `Findings` without asking.
-
 - [ ] **Steps complete:** every step `[x]`, or explicit skip with evidence the surface is absent.
 - [ ] **Evidence:** every finding cites re-checkable evidence and the tool behind it.
 - [ ] **Environments:** every finding names the environment it ran against.
 - [ ] **Remote untouched:** no remote database changed; throwaway restore target deleted.
-- [ ] **Gate 2 - Verified:** Every checkbox above independently verified and checked off.
+- [ ] **Gate 2 — Verified:** Every checkbox above independently verified and checked off.
 
 ## Findings
 
@@ -132,11 +112,11 @@ Verify only when applicable.
 | Severity | Use |
 | --- | --- |
 | `CRITICAL` | Tenant data readable / writable across tenants or by anonymous role; anonymous-executable privileged function without identity check; write failing silently every call; migration dropping data without backfill |
-| `HIGH` | Tenancy table with no enforcing layer (no row policy, no app-layer scope); public bucket / owner-rights view exposing tenant data; constraint that cannot fire; lock-unsafe migration on live table; no proven restore, no recovery targets, or no off-platform backup; applied migrations ≠ directory |
-| `MEDIUM` | Missing index the query shape needs; housekeeping table without purge; vacuum lag; sequence >50%; role without timeouts; derived data without agreement check; schema doc ≠ migrations |
+| `HIGH` | Tenancy table with no enforcing layer (no row policy, no app-layer scope); public bucket / owner-rights view exposing tenant data; constraint that cannot fire; lock-unsafe migration on live table; no proven restore, no recovery targets, or no off-platform backup; applied migrations != directory |
+| `MEDIUM` | Missing index the query shape needs; housekeeping table without purge; vacuum lag; sequence >50%; role without timeouts; derived data without agreement check; schema doc != migrations |
 | `LOW` | Deny-all table without policies; naming drift changing neither access nor results |
 
-Scale per `.bkit/jsonl.md` § Severity. Within a severity: security / data first.
+Within a severity: security / data first.
 
 <!-- prettier-ignore -->
 | ID | Severity | Location | Evidence | Expected |
@@ -224,17 +204,13 @@ PENDING
 
 ### 🔒 Gate 3: Report Check
 
-**Checkpoint.** Verify and check `[x]` all boxes below, then stop.
-
-- [ ] **No placeholders:** Findings table and every `Report` section have no `PENDING`.
+- [ ] **No placeholders:** no `PENDING` left
 - [ ] **Summary:** names count per severity and environments measured.
 - [ ] **Series:** every series beside previous report's numbers, or marked baseline.
-- [ ] **Writes:** only this report and template `Project Instructions` changed; throwaway worktrees / remote targets removed.
-- [ ] **Process Improvements:** `Universal` = proposed step changes, template untouched; `Project` = edits applied below `bkit:end`; each `none` if empty.
+- [ ] **Writes:** only this report, template `Project Instructions`, and ledger rows changed; throwaway worktrees / remote targets removed.
+- [ ] **Process Improvements:** `Universal` and `Project` filled
 - [ ] **Suggested Issues:** every `MEDIUM`+ finding ID in exactly one row; every row has a `Next Step`.
-- [ ] **Gate 3 - Verified:** Every checkbox above independently verified and checked off.
-
-> `Project Instructions` below `bkit:end` are consumer-owned — `bkit install` never overwrites them, `bkit check` drift stays clean. Add project-specific tools, paths, commands, and checks there, keyed by section or step title; never results.
+- [ ] **Gate 3 — Verified:** Every checkbox above independently verified and checked off.
 
 <!-- bkit:end -->
 

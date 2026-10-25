@@ -43,7 +43,7 @@ export function suppressedNoteLines(suppressed) {
         return [];
     const n = suppressed.length;
     return [
-        `${n} advisor${n === 1 ? "y" : "ies"} suppressed by bkit.ignoreAdvisories:`,
+        `${n} advisor${n === 1 ? "y" : "ies"} suppressed by bkit.advisories.ignore:`,
         ...suppressed.map((note) => `- ${note.id} (${note.scope})`),
     ];
 }
@@ -243,7 +243,7 @@ export function readChangelogVersionDelta(version) {
  * cwd defaults to process.cwd().
  *
  * Pass `suppressed` to collect the advisories a package opted out of via
- * `bkit.ignoreAdvisories` (one note per id + owning package); the caller renders them with
+ * `bkit.advisories.ignore` (one note per id + owning package); the caller renders them with
  * `suppressedNoteLines` so a dismissal stays visible. Omitted by callers that do not render.
  */
 export function runPostInstallCheck(preflightAdvisories, cwd = process.cwd(), suppressed) {
@@ -265,11 +265,11 @@ export function runPostInstallCheck(preflightAdvisories, cwd = process.cwd(), su
     const ghMcpToken = detectGhMcpToken(cwd);
     if (ghMcpToken)
         phase3.push(ghMcpToken);
-    // Main branch protection — bkit's PR-base gates (build Step 17, ship Step 2)
+    // Main branch protection — bkit's PR-base gates (build Step 14, ship Step 2)
     // assert feat/* PRs target dev. Enforcing it at the GitHub layer needs branch
     // protection on main restricting merges to PRs from dev.
     const protectionStatus = detectMainBranchProtection();
-    const scriptHint = "\n\nQuick path: run `bkit setup protect-main --dry-run` to preview the policy, then drop `--dry-run` to apply. It requires the CI capstone job named by `package.json` `bkit.capstoneJob` (default `bkit-tests-check`, so the required check means 'validated', not just 'tests job did not fail') and pre-flights that the job exists in the `bkit.ciWorkflow` file before requiring it.";
+    const scriptHint = "\n\nQuick path: run `bkit setup protect-main --dry-run` to preview the policy, then drop `--dry-run` to apply. It requires the CI capstone job named by `package.json` `bkit.testing.ciCapstone` (default `bkit-tests-check`, so the required check means 'validated', not just 'tests job did not fail') and pre-flights that the job exists in the `bkit.testing.ciWorkflow` file before requiring it.";
     if (protectionStatus === "missing") {
         phase3.push({
             id: "main-branch-protection-missing",
@@ -278,7 +278,7 @@ export function runPostInstallCheck(preflightAdvisories, cwd = process.cwd(), su
             action: "main only ever moves via a release PR (release/* -> main); bkit's build/ship workflows keep all feat/* PRs on dev. Gate main at the GitHub layer:\n\n" +
                 "    Settings → Branches → Add rule → Branch name pattern: main\n" +
                 "    - Require a pull request before merging\n" +
-                "    - Require status checks: bkit-tests-check (the always-on capstone — required-check green then means 'the planned tiers ran', not just 'nothing failed'; do NOT require bkit-tests-scope, it is always green)\n" +
+                `    - Require status checks: ${readBkitConfig(cwd).capstoneJob} (the always-on capstone — required-check green then means 'the planned tiers ran', not just 'nothing failed'; do NOT require bkit-tests-scope, it is always green)\n` +
                 "    - Do not allow bypassing the above settings (enforce for admins)\n" +
                 "    - Require linear history; block force-pushes and deletions\n\n" +
                 "enforce-for-admins is load-bearing: agents act with the owner's admin token, so an admin-bypass exemption means the agent is the bypass. Covering admins is the only way protection actually constrains agents. dev is intentionally left unprotected — operators choose direct-push or feat/PR and own that tests ran." +
@@ -286,7 +286,7 @@ export function runPostInstallCheck(preflightAdvisories, cwd = process.cwd(), su
         });
     }
     // Optional post-install decisions (opt-in add-ons):
-    //   1. Issue tracker — branch on bkit.issueTracker.
+    //   1. Issue tracker — branch on bkit.tracker.default.
     //   2. Dependency updater — read-only. Suggests an example template. Never writes config.
     //   3. Cloud agents — branch on bkit-cloud.yml presence.
     const trackerSetup = buildTrackerSetupAdvisory(cwd);
@@ -409,6 +409,6 @@ export function runPostInstallCheck(preflightAdvisories, cwd = process.cwd(), su
     const phase3Ids = new Set(deduped.map((f) => f.id));
     const filteredPreflight = dedupedPreflight.filter((f) => !phase3Ids.has(f.id));
     // Final order: preflight advisories (that weren't superseded) first, then Phase 3.
-    // An advisory a setup tip reuses goes quiet with that tip (`bkit.ignoreAdvisories`).
+    // An advisory a setup tip reuses goes quiet with that tip (`bkit.advisories.ignore`).
     return dropTipSilencedAdvisories([...filteredPreflight, ...deduped], cwd, onSuppressed);
 }

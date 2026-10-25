@@ -29,7 +29,7 @@ import { COMMANDS } from "./registry";
 
 const FLAGS: FlagSpec[] = [
   { name: "fid", type: "string", required: true, help: "feature id" },
-  { name: "sub-plan", type: "string", help: "sub-plan number" },
+  { name: "verify-attempt", type: "string", help: "verify attempt number" },
   { name: "artifact", type: "string", repeatable: true, help: "artifact path" },
   { name: "dry-run", type: "boolean", help: "report only" },
 ];
@@ -47,9 +47,9 @@ const usage = (fn: () => unknown) => {
 
 describe("parseFlags", () => {
   it("accepts --flag=value and --flag value, camelCases kebab names", () => {
-    expect(parseFlags(["--fid=467", "--sub-plan", "2"], FLAGS)).toEqual({
+    expect(parseFlags(["--fid=467", "--verify-attempt", "2"], FLAGS)).toEqual({
       fid: "467",
-      subPlan: "2",
+      verifyAttempt: "2",
     });
   });
 
@@ -63,7 +63,7 @@ describe("parseFlags", () => {
 
   it.each([
     [["--fid=1", "--nope=x"], "unknown flag --nope"],
-    [["--sub-plan=1"], "missing required flag --fid"],
+    [["--verify-attempt=1"], "missing required flag --fid"],
     [["--fid=1", "--fid=2"], "--fid given twice"],
     [["--fid"], "--fid needs a value"],
     [["--fid", "--dry-run"], "--fid needs a value"],
@@ -85,7 +85,10 @@ describe("parseFlags", () => {
   });
 
   it("keeps an empty value for an optional string flag", () => {
-    expect(parseFlags(["--fid=1", "--sub-plan="], FLAGS)).toEqual({ fid: "1", subPlan: "" });
+    expect(parseFlags(["--fid=1", "--verify-attempt="], FLAGS)).toEqual({
+      fid: "1",
+      verifyAttempt: "",
+    });
   });
 
   it("fills a positional flag from one bare argument, and only once", () => {
@@ -101,7 +104,10 @@ describe("parseFlags", () => {
   });
 
   it("fills keys in argv order", () => {
-    expect(Object.keys(parseFlags(["--sub-plan=2", "--fid=1"], FLAGS))).toEqual(["subPlan", "fid"]);
+    expect(Object.keys(parseFlags(["--verify-attempt=2", "--fid=1"], FLAGS))).toEqual([
+      "verifyAttempt",
+      "fid",
+    ]);
   });
 
   it.each([

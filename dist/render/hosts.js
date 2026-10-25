@@ -110,6 +110,7 @@ export function applyOpencodeAgent(content, opencodeModelLookup, effortMap, prov
     const description = parsed.get("description") ?? "";
     const effort = parsed.get("effort");
     const toolsBlock = extractFrontmatterField(fmBlock, "tools");
+    // autoCompactWindow dropped: no per-agent setting, see providers.md § Context compaction.
     let newFm = "---\n";
     newFm += `mode: subagent\n`;
     newFm += `name: ${name}\n`;
@@ -195,6 +196,7 @@ export function applyCodexAgent(content, codexModelLookup, effortMap) {
     const { afterFm, parsed, name, model } = subagent;
     const body = afterFm.trim();
     const effort = parsed.get("effort");
+    // autoCompactWindow dropped: a role file's model_auto_compact_token_limit is discarded (openai/codex core/src/agent/role.rs:37-48).
     let out = "";
     out += tomlString("name", name);
     out += tomlString("description", parsed.get("description") ?? "");
@@ -358,6 +360,7 @@ export function applyT3(content, modelLookup, effortMap) {
     const description = parsed.get("description") ?? "";
     const effort = parsed.get("effort");
     const toolsBlock = extractFrontmatterField(fmBlock, "tools");
+    // autoCompactWindow dropped: no per-agent setting, see providers.md § Context compaction.
     let newFm = "---\n";
     newFm += `name: ${name}\n`;
     if (description.includes("\n")) {
@@ -421,6 +424,7 @@ export function applyAntigravityPrompt(content, modelLookup, effortMap) {
     const description = parsed.get("description") ?? "";
     const effort = parsed.get("effort");
     const toolsBlock = extractFrontmatterField(fmBlock, "tools");
+    // autoCompactWindow dropped: no per-agent setting, see providers.md § Context compaction.
     let newFm = "---\n";
     newFm += `name: ${name}\n`;
     if (description.includes("\n")) {

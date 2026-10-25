@@ -133,7 +133,7 @@ describe("bkit-ship.md — Step 9 re-validates through runs revalidate", () => {
     expect(shipMd).not.toMatch(/gh workflow run\b/);
   });
 
-  it("never names a hard-coded ci.yml (the CI file comes from bkit.ciWorkflow)", () => {
+  it("never names a hard-coded ci.yml (the CI file comes from bkit.testing.ciWorkflow)", () => {
     expect(shipMd).not.toMatch(/\bci\.yml\b/);
   });
 
@@ -172,23 +172,24 @@ describe("bkit-ship.md — Step 10 gate-refusal re-entry is a bounded poll", () 
     expect([...idx].sort((a, b) => a - b)).toEqual(idx);
   });
 
-  it("bounds the re-entry by MAX_REVALIDATE_ATTEMPT through bkit counters route, never a local value", () => {
+  it("bounds the re-entry by bkit.workflows.ship.merge through bkit counters route, never a local value", () => {
     expect(shipMd).toMatch(
-      /"\{BKIT\}" counters route --name=REVALIDATE_ATTEMPT --rows=ship-revalidate-dispatch:next --file="\{STATUS\}" --workflow=ship --limit=MAX_REVALIDATE_ATTEMPT --continue=step-9 --exceeded=failure-path/,
+      /"\{BKIT\}" counters route --name=MERGE_ATTEMPT --of=ship-merge-pr:count --rows=ship-gate-refusal:count --file="\{STATUS\}" --workflow=ship --point=ship\.merge --continue=step-9 --exceeded=failure-path/,
     );
-    // The value lives in `bkit counters max` (shared/thresholds.ts).
-    expect(shipMd).not.toMatch(/^\s*MAX_REVALIDATE_ATTEMPT=/m);
+    expect(shipMd).not.toMatch(/^\s*MERGE_ATTEMPT=/m);
   });
 
-  it("derives the attempt from this run's ship-revalidate-dispatch rows via bkit counters route --rows", () => {
+  it("one count covers refusals and failed merges: each merge route reads both row types", () => {
     // Run scoping (a resumed run does not inherit a prior run's rows) is
     // pinned in commands/workflow/counters.test.ts 'bkit counters rows'.
-    const block = fences(shipMd).find((f) =>
-      /"\{BKIT\}" counters route --name=REVALIDATE_ATTEMPT\b/.test(f),
+    const blocks = fences(shipMd).filter((f) =>
+      /"\{BKIT\}" counters route --name=MERGE_ATTEMPT\b/.test(f),
     );
-    expect(block, "REVALIDATE_ATTEMPT routing block not found").toBeDefined();
-    expect(block!).toContain("--rows=ship-revalidate-dispatch:next");
-    expect(block!).not.toMatch(/REVALIDATE_ATTEMPT=|\bjq\b/);
+    expect(blocks.length, "MERGE_ATTEMPT routing blocks").toBe(2);
+    for (const block of blocks) {
+      expect(block).toContain("--of=ship-merge-pr:count --rows=ship-gate-refusal:count");
+      expect(block).not.toMatch(/MERGE_ATTEMPT=|\bjq\b/);
+    }
   });
 });
 

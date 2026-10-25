@@ -121,7 +121,7 @@ export function detectOpencodeYmlProviderDrift(cwd) {
     const ymlPath = path.join(cwd, ".github", "workflows", "opencode.yml");
     if (!fs.existsSync(ymlPath))
         return null;
-    // The installed provider — package.json `bkit.opencodeProvider` is the authoritative record
+    // The installed provider — package.json `bkit.providers.opencode.default` is the authoritative record
     // written on install. Absent/broken/unsupported → the null-guard below skips silently.
     const provider = readBkitConfig(cwd).opencodeProvider;
     if (!provider)

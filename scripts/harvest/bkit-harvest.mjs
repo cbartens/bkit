@@ -28,14 +28,14 @@
  * Append-only. Every chat is written on every scan it changed in. `time.lastActivity` = the last
  * write to its files; `scan.settled` = unchanged for `--settle-hours` (a chat can still be
  * resumed later, so none is ever closed). A chat already in the ledger is read again only when
- * its size changed (a resumed or still-open chat) or it has since settled; it then gets a new row
- * with the same `key`, and readers keep the last one. Rows are never edited or removed. The report
+ * its size changed (a resumed or still-open chat), it has since settled, or its row has no
+ * `usage.byRun`; it then gets a new row with the same `key`, and readers keep the last one. Rows are never edited or removed. The report
  * counts open rows in totals and lists, marked `open`, and leaves them out of medians.
  *
  * The script records numbers; it judges none against a limit. Limits change, so a reader
  * applies them: per-task test counts are stored per task, each agent's largest turn per agent.
  *
- * Row format (`schema: 2`). Every row starts with the same top section:
+ * Row format (`schema: 3`). Every row starts with the same top section:
  *   schema, ts, kind, key, repo, bkit: {version, ...}, by: {workflow, step}
  * `by` = `chat-stats` / `scan` on a `chat` row, the run's workflow / `scan` on a `run` row.
  * Durations are minutes, named `totalMinutes` / `activeMinutes`; timestamps are unix ms. A field
@@ -53,14 +53,23 @@
  *   issue    id, all, mentioned, source (`command` | `summary` | `mention` | `none`)
  *   run      parentShas (printed by `bkit workflows close` in the chat)
  *   effort   turns per effort level
- *   usage    total {turns, tokens, ctx {start, peak}, compactions}, main {turns, tokens,
- *            ctx {peak}, compactions, mix}, byModel {<model>: {turns, tokens}}. tokens =
+ *   usage    total {turns, tokens, context {start, peak}, compactions}, main {turns, tokens,
+ *            context {peak}, compactions, mix}, byModel {<model>: {turns, tokens}}, byRun
+ *            {<run key>: {main {turns, tokens}, agents {turns, tokens}}}. context = what one model
+ *            call sent: input + cacheWrite + cacheRead. byRun = the chat's calls split by run, each
+ *            call counted for the run whose window (its first to its last status row) holds the
+ *            call's time, the later-started run when two do; the chat worked on a run its
+ *            `session` rows name, or one of its repo and issue it overlaps. `{}` = no run; null =
+ *            the host records no call times. tokens =
  *            {input (sent without the cache), cacheWrite (sent and stored in the cache),
  *            cacheRead (from the cache), output, outputEst (characters written / 4), read (all
  *            three sent types)}. mix = calls by what they did: read, edit, grep, shellRead,
  *            shellList, tests, serena.
- *   agents   total {n, errors}, byAgent {<agent type>: {n, errors, instances [{turns, ctxPeak}],
- *            usage {turns, tokens, ctx {peak}, compactions}, mix}}
+ *   agents   total {n, errors}, byAgent {<agent type>: {n, errors, instances [{turns,
+ *            contextPeak, contextAt10}], usage {turns, tokens, context {peak}, compactions}, mix,
+ *            planReads {full, partial}}}. contextAt10 = the 10th call's context, null under 10
+ *            calls. planReads = reads of `docs/plans/<YYYYMM>/<fid>-plan.md`: full = a read of the
+ *            whole file or `cat`, partial = a read with a line range or `sed` / `head` / `tail`.
  *   tools    total {calls, errors}, byTool {<tool>: {calls, errors, byCategory?}}, filesRead.
  *            byCategory = the tool's shell commands by kind (git, grep / rg, test runner, ...).
  *   scan     files, bytes, settled, tokensRecorded (false: the host records no token counts)
@@ -75,20 +84,32 @@
  *   ending   `done` | `close-failed` | `failed` | `decision-pause` | `stopped`
  *   ci       one entry per close step that dispatched CI: {status, reason?, attempts}
  *   steps    total {n, totalMinutes, activeMinutes}, byStep {<step>: {n, totalMinutes,
- *            activeMinutes}}; time before the first step is in time.totalMinutes only
+ *            activeMinutes}}; a step's minutes run from the row before it that is not a mark row
+ *            (`session`, `owner-pause`, `owner-answer`); time before the first step is in
+ *            time.totalMinutes only
+ *   owner    waitBeforeMinutes (since the folder's previous run's last row; null for its first),
+ *            total {stops, minutes}, stops [{minutes, open, reason}]: one stop per `owner-pause`
+ *            up to the next `owner-answer`, a pause inside an open stop joining it; an open stop
+ *            has null minutes
+ *   usage    {total, main, agents}, each {turns, tokens}: the sum of the `usage.byRun` entries
+ *            of the chats that worked on it; null when none did or one has no split
  *   lines    build and debug runs: total {added, deleted, changed, files}, code, tests, docs
  *            {added, deleted, files}, merges; null when git lacks the run's commits
- *   plan     a feature's last plan run: source `file`, total {tasks, kb}, subPlans [{kb,
- *            tasks [{tests, testFiles}]}] (null tests: the plan predates `Test first`),
- *            complexity? {verdict, tasksChecked}. A run started from a brief: {source: `brief`}.
- *   build    build runs: verify [{subPlan, attempt, verdict, failures, testOrderGaps}],
- *            gapsRemediate [{subPlan, attempt, verdict, strategy}], holistic? {verdict,
+ *   plan     a feature's last plan run: source `file`, total {tasks, kb}, groups [{tasks
+ *            [{tests, testFiles}]}] (null tests: the task has no `TEST FIRST`). An old-format
+ *            run: subPlans [{kb, tasks [{tests, testFiles}]}] (null tests: the plan predates
+ *            `Test first`), complexity? {verdict, tasksChecked}; one started from a brief:
+ *            {source: `brief`}.
+ *   build    build runs: verify [{group, attempt, verdict, failures, testOrderGaps}],
+ *            gapsRemediate [{group, attempt, verdict, strategy}] (an old run's rounds: `subPlan`
+ *            in place of `group`, as its status rows carry it), holistic? {verdict,
  *            failures}, challenge? {verdict, findings {total, CRITICAL, HIGH, MEDIUM, LOW} | null},
  *            redTests
  *   scan     rows, afterEnd (status rows after the end row), settled
  *
  * Every reader here goes through normalize(), so the report also reads rows written without
- * `schema` and the workflow rows (`outcome`, `counter`, `compliance`) the engine writes.
+ * `schema`, schema-2 chat rows (`ctx` / `ctxPeak` read as `context` / `contextPeak`) and the
+ * workflow rows (`outcome`, `counter`, `compliance`) the engine writes.
  *
  * Repo slugs, FIDs and issue numbers are stored only as fingerprints (`fp:` + the first 12 hex
  * of sha256 of `owner/repo`, `owner/repo:<FID>` or `owner/repo#123`). `harvest/stats.md` turns
@@ -359,6 +380,25 @@ export function bashClass(cmd) {
   return "other";
 }
 
+/** A plan file: `docs/plans/<YYYYMM>/<fid>-plan.md` or an old split plan's `-plan-<n>.md`; never a run log. */
+export const PLAN_FILE = /(?:^|\/)docs\/plans\/\d{6}\/[^/\s"']+-plan(?:-\d+)?\.md$/;
+const PLAN_IN_SHELL = /(?:^|[\s"'=/])docs\/plans\/\d{6}\/[^/\s"']+-plan(?:-\d+)?\.md(?=$|[\s"';|&)])/;
+
+/**
+ * Plan-file reads in one shell command, one entry per command part that reads a plan: `full`
+ * for `cat`, `partial` for `sed` / `head` / `tail`. Other commands on a plan (grep, wc) read none.
+ */
+export function shellPlanReads(cmd) {
+  const out = [];
+  for (const part of cmd.split(/&&|\|\||[;|\n]/)) {
+    if (!PLAN_IN_SHELL.test(part)) continue;
+    const word = part.trim().split(/\s+/)[0];
+    if (word === "cat") out.push("full");
+    else if (["sed", "head", "tail"].includes(word)) out.push("partial");
+  }
+  return out;
+}
+
 /** `mcp__server__tool` → `mcp__server`; other tools keep their name. */
 const toolKey = (name) =>
   name.startsWith("mcp__") ? name.split("__").slice(0, 2).join("__") : name;
@@ -429,6 +469,8 @@ export class Tally {
     this.useById = new Map();
     this.closeIds = new Set();
     this.filesRead = new Set();
+    /** Reads of a plan file: the whole file, or a line range of it. */
+    this.planReads = { full: 0, partial: 0 };
     this.workflows = [];
     this.summaryCmds = [];
     this.mentions = [];
@@ -464,12 +506,17 @@ export class Tally {
 
   /**
    * One assistant message. Repeat calls with the same id (a streamed message) count once;
-   * the last `usage` given wins. usage = {input, cacheWrite, cacheRead, output}.
+   * the last `usage` given wins. usage = {input, cacheWrite, cacheRead, output}. `at` = when the
+   * model was called (unix ms; absent when the host does not record it).
    */
-  turn(id, { model, effort, usage } = {}) {
+  turn(id, { model, effort, usage, at } = {}) {
     if (usage) this.usageById.set(id, usage);
     if (this.msgs.has(id)) return;
-    this.msgs.set(id, { model: model || "?", chars: this.pendingChars.get(id) ?? 0 });
+    this.msgs.set(id, {
+      model: model || "?",
+      chars: this.pendingChars.get(id) ?? 0,
+      at: Number.isFinite(at) ? at : null,
+    });
     bump(this.effort, effort ?? "?");
   }
 
@@ -484,9 +531,10 @@ export class Tally {
 
   /**
    * One tool call. `shell` = the command when the tool runs a shell command; `readPath` = the
-   * file when the tool reads one. A repeated `useId` counts once.
+   * file when the tool reads one, `partial` = it read only a line range. A repeated `useId`
+   * counts once.
    */
-  toolUse(useId, name, { shell, readPath } = {}) {
+  toolUse(useId, name, { shell, readPath, partial = false } = {}) {
     useId ??= `anon:${this.anonUses++}`;
     if (this.useById.has(useId)) return;
     this.useById.set(useId, name);
@@ -500,8 +548,12 @@ export class Tally {
       for (const [noun, verb] of bkitCalls(shell))
         bump(this.bkitCli, `${noun} ${verb ?? ""}`.trim());
       if (CLOSE_CMD.test(shell)) this.closeIds.add(useId);
+      for (const kind of shellPlanReads(shell)) this.planReads[kind]++;
     }
-    if (typeof readPath === "string") this.filesRead.add(readPath);
+    if (typeof readPath === "string") {
+      this.filesRead.add(readPath);
+      if (PLAN_FILE.test(readPath)) this.planReads[partial ? "partial" : "full"]++;
+    }
   }
 
   /** The result of tool call `useId`. `output` is only searched for a close step's `parentSha`. */
@@ -551,26 +603,33 @@ export class Tally {
     this.compactions++;
   }
 
-  /** The counts, or null when the transcript has no assistant message. */
+  /**
+   * The counts, or null when the transcript has no assistant message. `calls` = one entry per
+   * model call in call order, `{at, tokens}`: kept in memory to split the chat across runs, never
+   * written.
+   */
   done() {
     if (this.msgs.size === 0) return null;
     const us = [...this.usageById.values()];
-    const ctxOf = (u) => (u.input ?? 0) + (u.cacheWrite ?? 0) + (u.cacheRead ?? 0);
-    const ctx = us.map(ctxOf);
+    const contextOf = (u) => (u.input ?? 0) + (u.cacheWrite ?? 0) + (u.cacheRead ?? 0);
+    const context = us.map(contextOf);
     const sum = (k) => us.reduce((a, u) => a + (u[k] ?? 0), 0);
     const models = {};
-    for (const [id, { model, chars: c }] of this.msgs) {
+    const calls = [];
+    for (const [id, { model, chars: c, at }] of this.msgs) {
       const u = this.usageById.get(id) ?? {};
-      addModel(models, model, {
-        turns: 1,
-        read: ctxOf(u),
+      const tokens = {
+        read: contextOf(u),
         input: u.input ?? 0,
         cacheWrite: u.cacheWrite ?? 0,
         cacheRead: u.cacheRead ?? 0,
         output: u.output ?? 0,
         outputEst: Math.floor(c / 4),
-      });
+      };
+      addModel(models, model, { turns: 1, ...tokens });
+      calls.push({ at, tokens, recorded: this.usageById.has(id) });
     }
+    const tenthCall = calls[9];
     return {
       cwd: this.cwd,
       start: this.start,
@@ -593,15 +652,18 @@ export class Tally {
         cacheRead: sum("cacheRead"),
         output: sum("output"),
         outputEst: Math.floor(this.chars / 4),
-        read: ctx.reduce((a, b) => a + b, 0),
-        ctxStart: ctx[0] ?? 0,
-        ctxPeak: ctx.length ? Math.max(...ctx) : 0,
+        read: context.reduce((a, b) => a + b, 0),
+        contextStart: context[0] ?? 0,
+        contextPeak: context.length ? Math.max(...context) : 0,
+        contextAt10: tenthCall?.recorded ? tenthCall.tokens.read : null,
       },
+      calls,
       tools: this.tools,
       bash: this.bash,
       bashByTool: this.bashByTool,
       bkitCli: this.bkitCli,
       filesRead: this.filesRead.size,
+      planReads: { ...this.planReads },
       bkitVersionSeen: this.bkitVersionSeen,
       slugHint: this.slugHint,
     };
@@ -648,6 +710,7 @@ export async function scanTranscript(file) {
       t.turn(id, {
         model: m.model ?? d.requestedModel,
         effort: d.effort,
+        at: ts,
         usage: u && {
           input: u.input_tokens ?? 0,
           cacheWrite: u.cache_creation_input_tokens ?? 0,
@@ -665,6 +728,7 @@ export async function scanTranscript(file) {
           t.toolUse(b.id, b.name ?? "?", {
             shell: b.name === "Bash" ? (input.command ?? "") : undefined,
             readPath: b.name === "Read" ? (input.file_path ?? "") : undefined,
+            partial: input.offset !== undefined || input.limit !== undefined,
           });
         }
       }
@@ -694,7 +758,7 @@ const errorsOf = (c) => Object.values(c.tools).reduce((a, t) => a + t.errors, 0)
 const uniq = (xs) => [...new Set(xs)];
 const sumOf = (xs) => xs.reduce((a, b) => a + (b ?? 0), 0);
 /** Row format this script writes; rows without `schema` are read through normalize(). */
-export const SCHEMA = 2;
+export const SCHEMA = 3;
 const TOKEN_KEYS = ["input", "cacheWrite", "cacheRead", "output", "outputEst", "read"];
 const blankTokens = () => Object.fromEntries(TOKEN_KEYS.map((k) => [k, 0]));
 /** Add `from`'s token counts into `into` (both `{input, cacheWrite, cacheRead, output, outputEst, read}`). */
@@ -706,7 +770,7 @@ function addTokens(into, from) {
 const spansMs = (spans) => spans.reduce((a, [s, e]) => a + e - s, 0);
 
 /** Context sizes the report's agent table counts largest turns against. Presentation only: rows store the peaks. */
-export const REPORT_CTX_COLUMNS = [120000, 200000];
+export const REPORT_CONTEXT_COLUMNS = [120000, 200000];
 
 const TOOL_MIX = {
   read: /^(read|read_file|view)$/,
@@ -735,6 +799,52 @@ export function toolMix(c) {
 }
 
 /**
+ * The runs a chat worked on: one whose `session` rows name the chat, or one of the chat's repo
+ * whose issue the chat ran (`issue.all`) and whose window overlaps the chat.
+ * @param {{key: string, repo: string, issues: string[], start: number, end: number}} chat
+ * @param {object[]} runs  runWindows()
+ */
+export function chatRuns(chat, runs) {
+  const fp = fingerprint(chat.key);
+  return runs.filter(
+    (r) =>
+      r.sessions.includes(fp) ||
+      (r.issue !== null &&
+        r.repo === chat.repo &&
+        chat.issues.includes(r.issue) &&
+        chat.start <= r.end &&
+        chat.end >= r.start),
+  );
+}
+
+/**
+ * A chat's model calls split by run: `{<run key>: {main: {turns, tokens}, agents: {turns,
+ * tokens}}}`. Each call counts for the run whose window holds its time; when two windows do,
+ * for the run that started later. `{}` when the chat worked on no run; null when it did but a
+ * call has no time (the host does not record one).
+ */
+export function usageByRun(main, subs, runs) {
+  if (!runs.length) return {};
+  const parts = [["main", main], ...subs.map((s) => ["agents", s.counts])];
+  if (parts.some(([, c]) => (c.calls ?? []).some((k) => k.at === null))) return null;
+  const latestFirst = [...runs].sort((a, b) => b.start - a.start);
+  const out = {};
+  for (const [part, c] of parts) {
+    for (const call of c.calls ?? []) {
+      const r = latestFirst.find((w) => call.at >= w.start && call.at <= w.end);
+      if (!r) continue;
+      const e = (out[r.key] ??= {
+        main: { turns: 0, tokens: blankTokens() },
+        agents: { turns: 0, tokens: blankTokens() },
+      });
+      e[part].turns++;
+      addTokens(e[part].tokens, call.tokens);
+    }
+  }
+  return out;
+}
+
+/**
  * @param {string} platform  key of HOSTS
  * @param {string} sessionId
  * @param {object} main  Tally counts of the main session
@@ -742,8 +852,9 @@ export function toolMix(c) {
  * @param {{slug: string, root: string|null}} repo
  * @param {[number, string][]} history  versionHistory() of that repo
  * @param {{files: number, bytes: number}} source
+ * @param {object[]} [runs]  runWindows() of the repos found; `usage.byRun` splits the chat across them
  */
-export function chatRow(platform, sessionId, main, subs, repo, history, source) {
+export function chatRow(platform, sessionId, main, subs, repo, history, source, runs = []) {
   const all = [main, ...subs.map((s) => s.counts)];
   const start = Math.min(...all.map((c) => c.start ?? Infinity));
   const end = Math.max(...all.map((c) => c.end ?? 0));
@@ -781,10 +892,17 @@ export function chatRow(platform, sessionId, main, subs, repo, history, source) 
       n: 0,
       errors: 0,
       instances: [],
-      usage: { turns: 0, tokens: blankTokens(), ctx: { peak: 0 }, compactions: 0 },
+      usage: { turns: 0, tokens: blankTokens(), context: { peak: 0 }, compactions: 0 },
       mix: {},
+      planReads: { full: 0, partial: 0 },
     });
-    a.instances.push({ turns: c.turns, ctxPeak: c.tokens.ctxPeak });
+    a.instances.push({
+      turns: c.turns,
+      contextPeak: c.tokens.contextPeak,
+      contextAt10: c.tokens.contextAt10 ?? null,
+    });
+    a.planReads.full += c.planReads?.full ?? 0;
+    a.planReads.partial += c.planReads?.partial ?? 0;
     a.errors += errorsOf(c);
     a.usage.turns += c.turns;
     addTokens(a.usage.tokens, c.tokens);
@@ -793,7 +911,7 @@ export function chatRow(platform, sessionId, main, subs, repo, history, source) 
   }
   for (const a of Object.values(byAgent)) {
     a.n = a.instances.length;
-    a.usage.ctx.peak = Math.max(0, ...a.instances.map((i) => i.ctxPeak));
+    a.usage.context.peak = Math.max(0, ...a.instances.map((i) => i.contextPeak));
   }
   // A workflow named only in the host's summary of the chat was run before this chat began:
   // the chat keeps its issue, but is not counted as running it.
@@ -834,18 +952,21 @@ export function chatRow(platform, sessionId, main, subs, repo, history, source) 
   const main_ = {
     turns: main.turns,
     tokens: addTokens(blankTokens(), main.tokens),
-    ctx: { peak: main.tokens.ctxPeak },
+    context: { peak: main.tokens.contextPeak },
     compactions: main.compactions,
     mix: toolMix(main),
   };
   const timed = Number.isFinite(start) && Number.isFinite(end) && end >= start;
   const agentList = Object.values(byAgent);
+  const key = `${platform}:${sessionId}`;
+  const issueAll = issueNums.map((n) => issueFp(repo.slug, n));
+  const worked = chatRuns({ key, repo: repoFp(repo.slug), issues: issueAll, start, end }, runs);
 
   return {
     schema: SCHEMA,
     ts: end,
     kind: "chat",
-    key: `${platform}:${sessionId}`,
+    key,
     repo: repoFp(repo.slug),
     bkit: {
       version: version ?? null,
@@ -872,7 +993,7 @@ export function chatRow(platform, sessionId, main, subs, repo, history, source) 
     },
     issue: {
       id: issue === null ? null : issueFp(repo.slug, issue),
-      all: issueNums.map((n) => issueFp(repo.slug, n)),
+      all: issueAll,
       mentioned: mentioned.map((n) => issueFp(repo.slug, n)),
       source: issueSource,
     },
@@ -882,17 +1003,18 @@ export function chatRow(platform, sessionId, main, subs, repo, history, source) 
       total: {
         turns: sumOf(Object.values(byModel).map((m) => m.turns)),
         tokens: Object.values(byModel).reduce((t, m) => addTokens(t, m.tokens), blankTokens()),
-        ctx: {
-          start: main.tokens.ctxStart,
+        context: {
+          start: main.tokens.contextStart,
           peak: Math.max(
-            main_.ctx.peak,
-            ...agentList.flatMap((a) => a.instances.map((i) => i.ctxPeak)),
+            main_.context.peak,
+            ...agentList.flatMap((a) => a.instances.map((i) => i.contextPeak)),
           ),
         },
         compactions: main_.compactions + sumOf(agentList.map((a) => a.usage.compactions)),
       },
       main: main_,
       byModel,
+      byRun: usageByRun(main, subs, worked),
     },
     agents: {
       total: { n: sumOf(agentList.map((a) => a.n)), errors: sumOf(agentList.map((a) => a.errors)) },
@@ -1040,8 +1162,15 @@ export function withLineTotal({ code, tests, docs, merges }) {
     merges,
   };
 }
-/** A runbook task's first line: `- [ ] **Task 3:** …`, `- [ ] **Task 3 — title.**`, `- [ ] **T3 — title.**`. */
+/** An old-format plan's task line: `- [ ] **Task 3:** …`, `- [ ] **Task 3 — title.**`, `- [ ] **T3 — title.**`. */
 const TASK_START = /^(\s*)- \[[ xX]\] \*\*(?:Task \d+|T\d+)\b/;
+/**
+ * A plan's group and task markers, `<!-- bkit:task 3 start -->`, and a code fence (markers inside
+ * one are text): copies of `MARKER` and `FENCE` in
+ * `.bkit/core/engine/commands/workflow/plan-blocks.ts`; a test holds them equal.
+ */
+export const PLAN_MARKER = /^\s*<!--\s*bkit:(group|task)\s+(\d+)\s+(start|end)\s*-->\s*$/;
+export const PLAN_FENCE = /^\s*(`{3,}|~{3,})/;
 /** A reconciled challenge finding: a heading whose first severity word is the finding's. */
 const FINDING_HEADING = /^#{3,4} [^\n]*?\b(CRITICAL|HIGH|MEDIUM|LOW)\b/gm;
 const msOf = (iso) => (typeof iso === "string" ? Date.parse(iso) : NaN);
@@ -1082,10 +1211,73 @@ export function splitRuns(rows) {
   return runs;
 }
 
+const TEST_FIRST = /\*\*Test first:\*\*/i;
+
 /**
- * `{tasks, tests[], testFiles[], withField}` of one plan file's runbook tasks. A task's
- * `**Test first:**` entries are `;`-separated on its line, or one per bullet below it.
- * `withField` = tasks that have the field; plans written before it have none.
+ * A task block's `**Test first:**` / `**TEST FIRST:**` entries: `;`-separated on its line, or
+ * one per bullet below it; `n/a` = none. Null when the task has no such field.
+ */
+function testFirstEntries(block) {
+  const at = block.findIndex((l) => TEST_FIRST.test(l));
+  if (at < 0) return null;
+  const rest = block[at].split(TEST_FIRST)[1].trim();
+  const entries = /^n\/a\b/i.test(rest) ? [] : rest.split(";").filter((e) => e.trim());
+  const indent = block[at].search(/\S/);
+  for (const l of block.slice(at + 1)) {
+    if (!l.trim()) continue;
+    if (l.search(/\S/) <= indent) break;
+    if (/^\s*- /.test(l)) entries.push(l);
+  }
+  return entries;
+}
+
+/** Distinct test files of `Test first` entries: each entry's first backticked span. */
+const testFileCount = (entries) =>
+  uniq(entries.map((e) => e.match(/`([^`]+)`/)?.[1]).filter(Boolean)).length;
+
+/**
+ * A marker plan's groups in plan order, each `{tasks: [{tests, testFiles}]}`, read between
+ * `PLAN_MARKER` lines outside code fences; null counts = the task has no `TEST FIRST` field. A
+ * task outside a group is not counted, as in the parser.
+ */
+export function planGroups(text) {
+  const groups = [];
+  let fence = null;
+  let group = null;
+  let task = null;
+  for (const line of text.split("\n")) {
+    const mark = PLAN_FENCE.exec(line)?.[1];
+    if (mark !== undefined && (fence === null || mark.startsWith(fence))) {
+      fence = fence === null ? mark : null;
+      continue;
+    }
+    if (fence !== null) continue;
+    const m = PLAN_MARKER.exec(line);
+    if (!m) {
+      task?.push(line);
+      continue;
+    }
+    if (task) {
+      const entries = testFirstEntries(task);
+      group?.tasks.push(
+        entries === null
+          ? { tests: null, testFiles: null }
+          : { tests: entries.length, testFiles: testFileCount(entries) },
+      );
+      task = null;
+    }
+    if (m[1] === "group") {
+      group = m[3] === "start" ? { tasks: [] } : null;
+      if (group) groups.push(group);
+    } else if (m[3] === "start") task = [];
+  }
+  return groups;
+}
+
+/**
+ * `{tasks, tests[], testFiles[], withField}` of an old-format plan file's runbook tasks (task
+ * lines matching `TASK_START`, no markers). `withField` = tasks that have the `Test first`
+ * field; plans written before it have none.
  */
 export function planTasks(text) {
   const lines = text.split("\n");
@@ -1106,28 +1298,19 @@ export function planTasks(text) {
   const testFiles = [];
   let withField = 0;
   for (const block of blocks) {
-    const at = block.findIndex((l) => l.includes("**Test first:**"));
-    let entries = [];
-    if (at >= 0) {
-      withField++;
-      const rest = block[at].split("**Test first:**")[1].trim();
-      if (!/^n\/a\b/i.test(rest)) entries = rest.split(";").filter((e) => e.trim());
-      const indent = block[at].search(/\S/);
-      for (const l of block.slice(at + 1)) {
-        if (!l.trim()) continue;
-        if (l.search(/\S/) <= indent) break;
-        if (/^\s*- /.test(l)) entries.push(l);
-      }
-    }
+    const entries = testFirstEntries(block) ?? [];
+    if (block.some((l) => TEST_FIRST.test(l))) withField++;
     tests.push(entries.length);
-    testFiles.push(uniq(entries.map((e) => e.match(/`([^`]+)`/)?.[1]).filter(Boolean)).length);
+    testFiles.push(testFileCount(entries));
   }
   return { tasks: tests.length, tests, testFiles, withField };
 }
 
 /**
- * The row's `plan` block from a run log's frozen plan copies: `plan-v4-<n>.md` sub-plans, else
- * the last version as one sub-plan. Null when the folder has no plan copy.
+ * The row's `plan` block from a run log's frozen plan copies, the last `plan-v<N>-<name>.md`:
+ * with group markers, `{source, total {tasks, kb}, groups [{tasks [{tests, testFiles}]}]}`.
+ * An old-format run: its `plan-v<N>-<n>.md` sub-plans, else the last version as one sub-plan,
+ * plus the `plan-complexity-check.md` verdict. Null when the folder has no plan copy.
  */
 export function planShape(dir) {
   const files = fs.readdirSync(dir);
@@ -1138,10 +1321,15 @@ export function planShape(dir) {
   const finalFiles = subs.length ? subs : versions.slice(-1);
   if (!finalFiles.length) return null;
   const read = (f) => fs.readFileSync(path.join(dir, f), "utf8");
-  const parts = finalFiles.map((f) => ({
-    kb: Math.round(fs.statSync(path.join(dir, f)).size / 1024),
-    ...planTasks(read(f)),
-  }));
+  const kbOf = (f) => Math.round(fs.statSync(path.join(dir, f)).size / 1024);
+  const groups = subs.length ? [] : planGroups(read(finalFiles[0]));
+  if (groups.length)
+    return {
+      source: "file",
+      total: { tasks: sumOf(groups.map((g) => g.tasks.length)), kb: kbOf(finalFiles[0]) },
+      groups,
+    };
+  const parts = finalFiles.map((f) => ({ kb: kbOf(f), ...planTasks(read(f)) }));
   // null: the plan predates the `Test first` field. Per task, in task order; no limit applied.
   const hasField = parts.some((p) => p.withField > 0);
   const subPlans = parts.map((p) => ({
@@ -1180,7 +1368,7 @@ const readIf = (file) => (fs.existsSync(file) ? fs.readFileSync(file, "utf8") : 
  * and failure count.
  * @param {[number, number]} window  the run's start and the next build's start
  */
-function buildFacts(run, dir, isLastBuild, window) {
+export function buildFacts(run, dir, isLastBuild, window) {
   const ours = (file) => {
     const f = path.join(dir, file);
     if (!fs.existsSync(f)) return null;
@@ -1188,17 +1376,23 @@ function buildFacts(run, dir, isLastBuild, window) {
     return isLastBuild || (t >= window[0] && t < window[1]) ? fs.readFileSync(f, "utf8") : null;
   };
   const steps = run.rows.filter((r) => r.type === "step-done");
+  // A round's unit: `group`, or `subPlan` on an old run's status rows.
+  const unitOf = (r) =>
+    r.group === undefined && r.subPlan !== undefined
+      ? { subPlan: r.subPlan }
+      : { group: r.group ?? null };
   const verify = steps
     .filter((r) => r.step === "build-plan-verify")
     .map((r) => {
+      const unit = unitOf(r);
       const v = {
-        subPlan: r.subPlan ?? null,
+        ...unit,
         attempt: r.attempt ?? null,
         verdict: r.verdict ?? null,
         failures: r.failures ?? null,
         testOrderGaps: null,
       };
-      const text = ours(`build-plan-verify-${v.subPlan}-${v.attempt}.md`);
+      const text = ours(`build-plan-verify-${Object.values(unit)[0]}-${v.attempt}.md`);
       if (
         text &&
         text.match(/^Verdict:\s*(\w+)/m)?.[1] === v.verdict &&
@@ -1210,7 +1404,7 @@ function buildFacts(run, dir, isLastBuild, window) {
   const gapsRemediate = steps
     .filter((r) => r.step === "build-plan-gaps-remediate")
     .map((r) => ({
-      subPlan: r.subPlan ?? null,
+      ...unitOf(r),
       attempt: r.attempt ?? null,
       verdict: r.verdict ?? null,
       strategy: r.strategy ?? null,
@@ -1277,6 +1471,128 @@ export function endingOf(run, dir, ordinal) {
 }
 
 /**
+ * Audit rows that mark a moment, not the end of a step: a step's minutes run from the row before
+ * it that is not one of these. A copy of the engine's `MARK_ROWS`
+ * (`.bkit/core/engine/commands/workflow/run-facts.ts`); a test holds the two equal.
+ */
+export const MARK_ROWS = new Set(["session", "owner-pause", "owner-answer"]);
+
+/** A run row's key: `<fid fp>:<workflow>:<start>`. */
+const runKey = (slug, fid, workflow, start) =>
+  `${fingerprint(`${slug}:${fid}`)}:${workflow}:${start}`;
+
+/** Chat fingerprints a run's `session` rows name, each once. */
+const runSessions = (run) =>
+  uniq(run.rows.filter((r) => r.type === "session" && r.session).map((r) => r.session));
+
+/**
+ * The owner's waits in a run, from its `owner-pause` / `owner-answer` rows. A stop runs from a
+ * pause to the next answer; a pause while a stop is open is the same stop. A stop still open
+ * has `minutes: null`. `waitBeforeMinutes` = time since the folder's previous run's last row,
+ * null for the folder's first run.
+ */
+export function ownerBlock(run, prev) {
+  const stops = [];
+  let open = null;
+  for (const r of run.rows) {
+    if (r.type === "owner-pause") open ??= { at: msOf(r.at), reason: r.reason ?? null };
+    else if (r.type === "owner-answer" && open) {
+      stops.push({ ms: msOf(r.at) - open.at, open: false, reason: open.reason });
+      open = null;
+    }
+  }
+  if (open) stops.push({ ms: null, open: true, reason: open.reason });
+  const start = msOf(run.rows[0].at);
+  return {
+    waitBeforeMinutes: prev ? tenth(Math.max(0, start - msOf(prev.last.at))) : null,
+    total: {
+      stops: stops.length,
+      minutes: tenth(sumOf(stops.map((x) => x.ms))),
+    },
+    stops: stops.map(({ ms, open: o, reason }) => ({
+      minutes: ms === null ? null : tenth(ms),
+      open: o,
+      reason,
+    })),
+  };
+}
+
+/**
+ * Every run's window in the given repo roots, for splitting chats across runs:
+ * `{key, repo, issue, start, end, sessions}`; `end` = the run's last row.
+ */
+export function runWindows(roots) {
+  const out = [];
+  const seen = new Set();
+  for (const root of uniq(roots.filter(Boolean))) {
+    try {
+      const repo = resolveRepo(root);
+      const top = fs.realpathSync(repo.root ?? root);
+      if (seen.has(top)) continue;
+      seen.add(top);
+      for (const dir of runLogDirs(top)) {
+        const fid = path.basename(dir);
+        const n = fid.match(/^(\d+)-/)?.[1];
+        for (const run of splitRuns(readStatus(path.join(dir, "status.jsonl")))) {
+          const start = msOf(run.rows[0].at);
+          out.push({
+            key: runKey(repo.slug, fid, run.workflow, start),
+            repo: repoFp(repo.slug),
+            issue: n ? issueFp(repo.slug, Number(n)) : null,
+            start,
+            end: msOf(run.rows.at(-1).at),
+            sessions: runSessions(run),
+          });
+        }
+      }
+    } catch {
+      // scanRuns() reads the same folders and reports the error
+    }
+  }
+  return out;
+}
+
+/**
+ * A run's tokens from the chats that worked on it (chatRuns()), summed from each chat's
+ * `usage.byRun` entry for it: `{total, main, agents}`, each `{turns, tokens}`. Null when no
+ * chat worked on it, or one of them has no split (a chat row from before the split, or a host
+ * that records no call times).
+ * @param {Iterable<object>} chats  chat rows
+ */
+export function runUsageIndex(chats) {
+  const bySession = new Map();
+  const byIssue = new Map();
+  for (const row of chats) {
+    const c = normalize(row);
+    bySession.set(fingerprint(c.key), c);
+    for (const fp of c.issue?.all ?? [])
+      (byIssue.get(fp) ?? byIssue.set(fp, []).get(fp)).push(c);
+  }
+  const overlaps = (c, w) =>
+    Number.isFinite(c.time?.start) &&
+    Number.isFinite(c.time?.end) &&
+    c.time.start <= w.end &&
+    c.time.end >= w.start;
+  return (w) => {
+    const cs = new Set(w.sessions.map((fp) => bySession.get(fp)).filter(Boolean));
+    for (const c of byIssue.get(w.issue) ?? []) if (c.repo === w.repo && overlaps(c, w)) cs.add(c);
+    if (!cs.size || [...cs].some((c) => !c.usage?.byRun)) return null;
+    const part = () => ({ turns: 0, tokens: blankTokens() });
+    const u = { total: part(), main: part(), agents: part() };
+    for (const c of cs) {
+      const e = c.usage.byRun[w.key];
+      for (const k of ["main", "agents"]) {
+        u[k].turns += e?.[k]?.turns ?? 0;
+        addTokens(u[k].tokens, e?.[k]?.tokens);
+      }
+    }
+    u.total.turns = u.main.turns + u.agents.turns;
+    addTokens(addTokens(u.total.tokens, u.main.tokens), u.agents.tokens);
+    return u;
+  };
+}
+
+/**
  * Every run in one run-log folder → `run` rows. `fid` is the folder name; it is stored only as a
  * fingerprint, and `issue` as the fingerprint of its leading number.
  * @param {string} dir  `docs/plans/<YYYYMM>/logs/<FID>/`
@@ -1284,27 +1600,30 @@ export function endingOf(run, dir, ordinal) {
  * @param {[number, string][]} history  versionHistory() of that repo
  * @param {(issue: string|null, start: number, end: number) => {spans: number[][], from: object}|null} [activity]
  *   active spans of the chats that ran this issue's workflows during the run
+ * @param {(window: object) => object|null} [usage]  runUsageIndex(): the run's tokens
  */
-export function runRows(dir, repo, history, activity = () => null) {
+export function runRows(dir, repo, history, activity = () => null, usage = () => null) {
   const fid = path.basename(dir);
   const n = fid.match(/^(\d+)-/)?.[1];
   const runs = splitRuns(readStatus(path.join(dir, "status.jsonl")));
   const lastOf = (wf) => runs.findLast((r) => r.workflow === wf);
   const ordinals = {};
-  return runs.map((run) => {
+  return runs.map((run, i) => {
     const ordinal = (ordinals[run.workflow] = (ordinals[run.workflow] ?? 0) + 1);
     const start = msOf(run.rows[0].at);
     const end = msOf(run.rows.at(-1).at);
     const issue = n ? issueFp(repo.slug, Number(n)) : null;
     const act = activity(issue, start, end);
-    // A step's minutes = time since the row before it; its active minutes = the part of that
-    // time inside the chats' active spans. Summed in ms; rounded to a tenth only when written.
+    // A step's minutes = time since the row before it that is not a mark row; its active
+    // minutes = the part of that time inside the chats' active spans. Summed in ms; rounded to a
+    // tenth only when written.
     const stepMs = {};
-    for (let i = 1; i < run.rows.length; i++) {
-      const r = run.rows[i];
+    const timed = run.rows.filter((r) => !MARK_ROWS.has(r.type));
+    for (let j = 1; j < timed.length; j++) {
+      const r = timed[j];
       if (r.type !== "step-done" || !r.step) continue;
       const s = (stepMs[r.step] ??= { n: 0, ms: 0, active: 0 });
-      const from = msOf(run.rows[i - 1].at);
+      const from = msOf(timed[j - 1].at);
       s.n++;
       s.ms += msOf(r.at) - from;
       if (act) s.active += overlapMs(act.spans, from, msOf(r.at));
@@ -1329,6 +1648,7 @@ export function runRows(dir, repo, history, activity = () => null) {
     const writesCode = run.workflow === "build" || run.workflow === "debug";
     const close = lastClose(run);
     const fidFp = fingerprint(`${repo.slug}:${fid}`);
+    const key = runKey(repo.slug, fid, run.workflow, start);
     const brief = run.rows.some((r) => r.type === "workflow-meta" && r.planSource === "brief");
     let plan;
     if (run.workflow === "plan" && run === lastOf("plan")) plan = planShape(dir);
@@ -1342,7 +1662,7 @@ export function runRows(dir, repo, history, activity = () => null) {
       schema: SCHEMA,
       ts: end,
       kind: "run",
-      key: `${fidFp}:${run.workflow}:${start}`,
+      key,
       repo: repoFp(repo.slug),
       bkit: { version: versionAt(history, start) ?? null },
       by: { workflow: run.workflow, step: "scan" },
@@ -1372,6 +1692,15 @@ export function runRows(dir, repo, history, activity = () => null) {
           attempts: d.attempts ?? null,
         })),
       steps,
+      owner: ownerBlock(run, runs[i - 1]),
+      usage: usage({
+        key,
+        repo: repoFp(repo.slug),
+        issue,
+        start,
+        end,
+        sessions: runSessions(run),
+      }),
       ...(writesCode ? { lines: runLines(repo.root, parentShas) } : {}),
       ...(plan !== undefined ? { plan } : {}),
       ...(build ? { build } : {}),
@@ -1434,11 +1763,13 @@ export function activityIndex(chats) {
 /**
  * `run` rows to append for the given repo roots: every run, `settled` once its log's last row is
  * older than the settle window; again when its row count, the chats its active minutes came
- * from, or `settled` changed.
+ * from, its tokens, its owner waits or `settled` changed.
  */
 export function scanRuns({ roots, known, settledBefore, now = Date.now(), chats = [] }) {
   known = new Map([...known].map(([k, r]) => [k, normalize(r)]));
+  chats = [...chats];
   const activity = activityIndex(chats);
+  const usage = runUsageIndex(chats);
   const rows = [];
   const s = { found: 0, appended: 0, open: 0, unchanged: 0, error: null };
   const seen = new Set();
@@ -1451,7 +1782,7 @@ export function scanRuns({ roots, known, settledBefore, now = Date.now(), chats 
       seen.add(top);
       const history = versionHistory(top);
       for (const dir of runLogDirs(top)) {
-        for (const r of runRows(dir, { ...repo, root: top }, history, activity)) {
+        for (const r of runRows(dir, { ...repo, root: top }, history, activity, usage)) {
           s.found++;
           const settled = r.time.lastActivity <= settledBefore;
           if (!settled) s.open++;
@@ -1463,6 +1794,8 @@ export function scanRuns({ roots, known, settledBefore, now = Date.now(), chats 
             !(tasksUnknown(was) && !tasksUnknown(r)) &&
             was?.scan?.rows === r.scan.rows &&
             JSON.stringify(was.time?.activeFrom ?? null) === JSON.stringify(r.time.activeFrom) &&
+            JSON.stringify(was.usage ?? null) === JSON.stringify(r.usage) &&
+            JSON.stringify(was.owner ?? null) === JSON.stringify(r.owner) &&
             (was.scan?.settled ?? true) === settled
           ) {
             s.unchanged++;
@@ -1558,12 +1891,12 @@ function normalizeChat(r) {
       // Per-instance turns were stored only as a sum: known when the type ran once.
       instances: peaks.map((p) => ({
         turns: (a.n ?? 1) === 1 ? (a.turns ?? null) : null,
-        ctxPeak: p,
+        contextPeak: p,
       })),
       usage: {
         turns: a.turns ?? 0,
         tokens: oldTokens(a),
-        ctx: { peak: a.ctxPeakMax ?? Math.max(0, ...peaks) },
+        context: { peak: a.ctxPeakMax ?? Math.max(0, ...peaks) },
         compactions: a.compactions ?? 0,
       },
       mix: oldMix(a.mix),
@@ -1628,13 +1961,13 @@ function normalizeChat(r) {
               TOKEN_KEYS.map((k) => [k, sumOf(Object.values(byModel).map((x) => x.tokens[k]))]),
             )
           : oldTokens(r.tokens),
-        ctx: { start: r.tokens?.ctxStart ?? 0, peak: r.tokens?.ctxPeak ?? 0 },
+        context: { start: r.tokens?.ctxStart ?? 0, peak: r.tokens?.ctxPeak ?? 0 },
         compactions: r.compactions ?? 0,
       },
       main: defined({
         turns: m.turns ?? 0,
         tokens: oldTokens(m),
-        ctx: { peak: m.ctxPeak ?? 0 },
+        context: { peak: m.ctxPeak ?? 0 },
         compactions: m.compactions ?? 0,
         mix: oldMix(m.mix),
       }),
@@ -1794,16 +2127,49 @@ const OLD_TOP = [
   "phase",
 ];
 
+/** `{ctx, ...}` → `{context, ...}`; an object already renamed is kept. */
+const renamedCtx = (o) => {
+  if (!o || typeof o !== "object" || !("ctx" in o)) return o;
+  const { ctx, ...rest } = o;
+  return { ...rest, context: o.context ?? ctx };
+};
+
+/** A schema-2 chat row with schema-3 names: `ctx` → `context`, `ctxPeak` → `contextPeak`. */
+function renamedChat(r) {
+  const u = r.usage ?? {};
+  const byAgent = Object.fromEntries(
+    Object.entries(r.agents?.byAgent ?? {}).map(([k, a]) => [
+      k,
+      {
+        ...a,
+        usage: renamedCtx(a.usage),
+        instances: (a.instances ?? []).map(({ ctxPeak, ...i }) => ({
+          ...i,
+          contextPeak: i.contextPeak ?? ctxPeak,
+        })),
+      },
+    ]),
+  );
+  return {
+    ...r,
+    usage: { ...u, total: renamedCtx(u.total), main: renamedCtx(u.main) },
+    ...(r.agents ? { agents: { ...r.agents, byAgent } } : {}),
+  };
+}
+
 /**
- * Any stats row in the schema-2 shape. A row with `schema` passes through unchanged. A row
- * written without `schema` (any kind) is mapped as far as it has the data: top-level
+ * Any stats row in the schema-3 shape. A row with `schema` passes through unchanged, except a
+ * schema-2 `chat` row, which gets schema-3 names (`renamedChat()`) and keeps `schema: 2`: it has
+ * no `usage.byRun`. A row written without `schema` (any kind) is mapped as far as it has the data: top-level
  * `bkitVersion` / `workflow` / `step` / `subagent` / `model` -> `bkit.version` / `by.*`,
  * `parentSha` -> `run.parentSha`, and each kind's fields into their blocks. Fields the format
  * drops (`taskCount`, `phase`, `bkit: true`, the subagent counts, ...) are left out. The row in
  * the file is never changed.
  */
 export function normalize(row) {
-  if (!row || typeof row !== "object" || Array.isArray(row) || row.schema !== undefined) return row;
+  if (!row || typeof row !== "object" || Array.isArray(row)) return row;
+  if (row.schema === 2 && row.kind === "chat") return renamedChat(row);
+  if (row.schema !== undefined) return row;
   switch (row.kind) {
     case "chat":
       return normalizeChat(row);
@@ -1897,21 +2263,47 @@ export function validateTotals(row) {
           sumOf(models.map((m) => m.tokens?.[k])),
         );
     }
-    if (u.total && u.main) {
+    if (row.kind !== "run" && u.total && u.main) {
       same(
         "usage.total.compactions",
         u.total.compactions,
         u.main.compactions + sumOf(agents.map(([, a]) => a.usage?.compactions)),
       );
-      same(
-        "usage.total.ctx.peak",
-        u.total.ctx?.peak,
-        Math.max(
-          u.main.ctx?.peak ?? 0,
-          ...agents.flatMap(([, a]) => (a.instances ?? []).map((i) => i.ctxPeak)),
-        ),
-      );
+      if (u.main.context)
+        same(
+          "usage.total.context.peak",
+          u.total.context?.peak,
+          Math.max(
+            u.main.context.peak ?? 0,
+            ...agents.flatMap(([, a]) => (a.instances ?? []).map((i) => i.contextPeak)),
+          ),
+        );
     }
+    for (const [k, e] of Object.entries(u.byRun ?? {}))
+      for (const part of ["main", "agents"]) {
+        const x = e?.[part]?.tokens;
+        if (x)
+          same(
+            `usage.byRun.${k}.${part}.tokens.read`,
+            x.read,
+            x.input + x.cacheWrite + x.cacheRead,
+          );
+      }
+    if (row.kind === "run" && u.total && u.main && u.agents) {
+      same("usage.total.turns", u.total.turns, u.main.turns + u.agents.turns);
+      for (const k of TOKEN_KEYS)
+        same(
+          `usage.total.tokens.${k}`,
+          u.total.tokens?.[k],
+          (u.main.tokens?.[k] ?? 0) + (u.agents.tokens?.[k] ?? 0),
+        );
+    }
+  }
+  const o = row.owner;
+  if (o?.total && Array.isArray(o.stops)) {
+    same("owner.total.stops", o.total.stops, o.stops.length);
+    const closed = o.stops.filter((x) => x.minutes !== null);
+    near("owner.total.minutes", o.total.minutes, sumOf(closed.map((x) => x.minutes)), closed.length);
   }
   if (row.agents?.total) {
     for (const [k, a] of agents) same(`agents.byAgent.${k}.n`, a.n, (a.instances ?? []).length);
@@ -1937,7 +2329,10 @@ export function validateTotals(row) {
       parts.length,
     );
     if ("activeMinutes" in st.total) {
-      const unknown = parts.some((s) => s.activeMinutes === null || s.activeMinutes === undefined);
+      // A run with no steps yet and no counted chat has nothing to sum.
+      const unknown =
+        parts.some((s) => s.activeMinutes === null || s.activeMinutes === undefined) ||
+        (!parts.length && st.total.activeMinutes === null);
       if (unknown) {
         if (st.total.activeMinutes !== null)
           problems.push(
@@ -1953,9 +2348,10 @@ export function validateTotals(row) {
     }
   }
   const pl = row.plan;
-  if (pl?.total && Array.isArray(pl.subPlans) && pl.subPlans.every((s) => Array.isArray(s.tasks))) {
-    same("plan.total.tasks", pl.total.tasks, sumOf(pl.subPlans.map((s) => s.tasks.length)));
-    same("plan.total.kb", pl.total.kb, sumOf(pl.subPlans.map((s) => s.kb)));
+  const planParts = pl?.groups ?? pl?.subPlans;
+  if (pl?.total && Array.isArray(planParts) && planParts.every((s) => Array.isArray(s.tasks))) {
+    same("plan.total.tasks", pl.total.tasks, sumOf(planParts.map((s) => s.tasks.length)));
+    if (pl.subPlans) same("plan.total.kb", pl.total.kb, sumOf(pl.subPlans.map((s) => s.kb)));
   }
   const b = row.build;
   if (b && "redTests" in b && st?.byStep)
@@ -2351,6 +2747,7 @@ export async function scanCodex(file) {
         t.turn(id(), {
           model,
           effort,
+          at: ms,
           usage: {
             input: Math.max(0, (u.input_tokens ?? 0) - cached),
             cacheWrite: u.cache_write_input_tokens ?? 0,
@@ -2468,6 +2865,7 @@ export function scanOpencode(session, messages) {
       t.turn(id, {
         model: d.model?.id,
         effort: d.model?.variant,
+        at: row.time_created,
         usage: {
           input: tk.input ?? 0,
           cacheWrite: tk.cache?.write ?? 0,
@@ -2489,6 +2887,7 @@ export function scanOpencode(session, messages) {
         t.toolUse(c.id, c.name ?? "?", {
           shell: typeof shell === "string" ? shell : undefined,
           readPath: c.name === "read" ? input.filePath : undefined,
+          partial: input.offset !== undefined || input.limit !== undefined,
         });
         const exit = st.metadata?.exit;
         t.toolResult(c.id, {
@@ -2720,6 +3119,7 @@ export async function scanCursor(e) {
             t.toolUse(p.toolCallId, cursorTool(p.toolName, args), {
               shell: CURSOR_SHELL.has(p.toolName) ? args.command : undefined,
               readPath: p.toolName === "Read" ? args.path : undefined,
+              partial: args.offset !== undefined || args.limit !== undefined,
             });
           }
         }
@@ -2752,6 +3152,7 @@ export async function scanCursor(e) {
             t.toolUse(`${id}:${u++}`, cursorTool(p.name, args), {
               shell: CURSOR_SHELL.has(p.name) ? args.command : undefined,
               readPath: p.name === "Read" ? args.path : undefined,
+              partial: args.offset !== undefined || args.limit !== undefined,
             });
           }
         }
@@ -2845,6 +3246,7 @@ export async function scanAntigravity(file, root) {
         t.toolUse(pbStr(call, "1"), name, {
           shell: name === "run_command" ? args.CommandLine : undefined,
           readPath: name === "view_file" ? args.AbsolutePath : undefined,
+          partial: args.StartLine !== undefined || args.EndLine !== undefined,
         });
       }
     } else if (s.step_type === 101) t.closeOutput(pbStr(pay, "114.2.2") ?? "");
@@ -2895,6 +3297,8 @@ export async function scan({
   const rows = [];
   const byPlatform = {};
   const roots = [checkout];
+  // Every chat is listed before any is read: its row splits it across the runs of every repo found.
+  const changed = [];
   for (const { platform, list } of hosts) {
     const s = (byPlatform[platform] = {
       found: 0,
@@ -2912,32 +3316,47 @@ export async function scan({
         const settled = chat.mtime <= settledBefore;
         if (!settled) s.open++;
         const was = known.get(`${platform}:${chat.sessionId}`);
-        if (was?.scan?.bytes === chat.bytes && (was.scan?.settled ?? true) === settled) {
+        // A row from before the split across runs is read again.
+        if (
+          was?.scan?.bytes === chat.bytes &&
+          (was.scan?.settled ?? true) === settled &&
+          was.usage?.byRun !== undefined
+        ) {
           s.unchanged++;
           continue;
         }
-        const { main, subs } = await chat.load();
-        if (!main) {
-          s.empty++;
-          continue;
-        }
-        let repo = resolveRepo(main.cwd);
-        if (repo.slug === "none" && main.slugHint) repo = { slug: main.slugHint, root: null };
-        const row = chatRow(
-          platform,
-          chat.sessionId,
-          main,
-          subs,
-          repo,
-          versionHistory(repo.root),
-          chat,
-        );
-        row.time.lastActivity = Number.isFinite(chat.mtime) ? Math.round(chat.mtime) : now;
-        const { files, bytes, tokensRecorded } = row.scan;
-        row.scan = { files, bytes, settled, tokensRecorded };
-        rows.push(row);
-        s.appended++;
+        changed.push({ platform, chat, settled });
       }
+    } catch (err) {
+      s.error = err instanceof Error ? err.message : String(err);
+    }
+  }
+  const windows = runWindows(roots);
+  for (const { platform, chat, settled } of changed) {
+    const s = byPlatform[platform];
+    try {
+      const { main, subs } = await chat.load();
+      if (!main) {
+        s.empty++;
+        continue;
+      }
+      let repo = resolveRepo(main.cwd);
+      if (repo.slug === "none" && main.slugHint) repo = { slug: main.slugHint, root: null };
+      const row = chatRow(
+        platform,
+        chat.sessionId,
+        main,
+        subs,
+        repo,
+        versionHistory(repo.root),
+        chat,
+        windows,
+      );
+      row.time.lastActivity = Number.isFinite(chat.mtime) ? Math.round(chat.mtime) : now;
+      const { files, bytes, tokensRecorded } = row.scan;
+      row.scan = { files, bytes, settled, tokensRecorded };
+      rows.push(row);
+      s.appended++;
     } catch (err) {
       s.error = err instanceof Error ? err.message : String(err);
     }
@@ -3562,11 +3981,14 @@ export function renderReport(ledgerRows, names, now = Date.now(), logDirs = new 
   // Agents
   out.push(
     "## Agents\n\n" +
-      `Every bkit agent type across all chats, plus the main session of workflow runs. **Over ${REPORT_CTX_COLUMNS.map((n) => `${n / 1000}k`).join(" / ")}**: agents whose largest turn sent at least that much context (from the stored peaks; the lines are this report's choice). ` +
+      `Every bkit agent type across all chats, plus the main session of workflow runs. **Over ${REPORT_CONTEXT_COLUMNS.map((n) => `${n / 1000}k`).join(" / ")}**: agents whose largest turn sent at least that much context (from the stored peaks; the lines are this report's choice). **Turn-10 context**: median context an agent sent on its 10th model call (agents with fewer calls left out). **Plan reads**: reads of a plan file, whole / a line range. ` +
       "Tool columns are calls per agent: **grep** = Grep tool + `grep`/`rg`, **sed / cat** = those shell reads, **find / ls** = Glob + those shell lists, **tests** = test-runner commands, **Serena** = Serena MCP calls.\n",
   );
   const agentAgg = new Map();
-  /** a = {usage: {turns, tokens, ctx: {peak}, compactions}, peaks: [ctxPeak per agent], mix}. */
+  /**
+   * a = {usage: {turns, tokens, context: {peak}, compactions}, peaks: [contextPeak per agent],
+   * at10: [contextAt10 per agent], planReads?: {full, partial}, mix}.
+   */
   const addAgent = (type, a, n) => {
     const g =
       agentAgg.get(type) ??
@@ -3577,8 +3999,10 @@ export function renderReport(ledgerRows, names, now = Date.now(), logDirs = new 
           cacheRead: 0,
           input: 0,
           turns: 0,
-          ctxPeakMax: 0,
-          ctxPeaks: [],
+          contextPeakMax: 0,
+          contextPeaks: [],
+          at10: [],
+          planReads: { full: 0, partial: 0 },
           compactions: 0,
           mix: {},
           counted: true,
@@ -3588,8 +4012,11 @@ export function renderReport(ledgerRows, names, now = Date.now(), logDirs = new 
     for (const k of ["read", "cacheRead", "input"]) g[k] += a.usage.tokens[k] ?? 0;
     g.turns += a.usage.turns ?? 0;
     g.compactions += a.usage.compactions ?? 0;
-    g.ctxPeaks.push(...a.peaks);
-    g.ctxPeakMax = Math.max(g.ctxPeakMax, a.usage.ctx?.peak ?? 0);
+    g.contextPeaks.push(...a.peaks);
+    g.contextPeakMax = Math.max(g.contextPeakMax, a.usage.context?.peak ?? 0);
+    g.at10.push(...(a.at10 ?? []).filter((v) => typeof v === "number"));
+    g.planReads.full += a.planReads?.full ?? 0;
+    g.planReads.partial += a.planReads?.partial ?? 0;
     // Rows written before per-agent tool counts were stored have no `mix`.
     if (!a.mix) g.counted = false;
     for (const [k, v] of Object.entries(a.mix ?? {})) bump(g.mix, k, v);
@@ -3597,10 +4024,20 @@ export function renderReport(ledgerRows, names, now = Date.now(), logDirs = new 
   for (const c of counted(chats)) {
     for (const [t, a] of Object.entries(c.agents.byAgent))
       if (t.startsWith("bkit-"))
-        addAgent(t, { usage: a.usage, peaks: a.instances.map((i) => i.ctxPeak), mix: a.mix }, a.n);
+        addAgent(
+          t,
+          {
+            usage: a.usage,
+            peaks: a.instances.map((i) => i.contextPeak),
+            at10: a.instances.map((i) => i.contextAt10),
+            planReads: a.planReads,
+            mix: a.mix,
+          },
+          a.n,
+        );
     if (chatClass(c) === "workflow") {
       const m = c.usage.main;
-      addAgent("main session (workflow runs)", { usage: m, peaks: [m.ctx.peak], mix: m.mix }, 1);
+      addAgent("main session (workflow runs)", { usage: m, peaks: [m.context.peak], mix: m.mix }, 1);
     }
   }
   const per = (g, k) => (g.counted && g.n ? (g.mix[k] ?? 0) / g.n : null);
@@ -3614,7 +4051,9 @@ export function renderReport(ledgerRows, names, now = Date.now(), logDirs = new 
         "Cache-read share",
         "Turns per agent",
         "Peak context, k",
-        ...REPORT_CTX_COLUMNS.map((n) => `Over ${n / 1000}k`),
+        ...REPORT_CONTEXT_COLUMNS.map((n) => `Over ${n / 1000}k`),
+        "Turn-10 context, k",
+        "Plan reads",
         "Compactions",
         "Read",
         "Edit",
@@ -3633,8 +4072,10 @@ export function renderReport(ledgerRows, names, now = Date.now(), logDirs = new 
           (g.read / Math.max(1, g.n) / 1e6).toFixed(2),
           cacheShare(g),
           Math.round(g.turns / Math.max(1, g.n)),
-          Math.round(g.ctxPeakMax / 1000),
-          ...REPORT_CTX_COLUMNS.map((n) => g.ctxPeaks.filter((p) => p >= n).length),
+          Math.round(g.contextPeakMax / 1000),
+          ...REPORT_CONTEXT_COLUMNS.map((n) => g.contextPeaks.filter((p) => p >= n).length),
+          g.at10.length ? Math.round(median(g.at10) / 1000) : "-",
+          `${g.planReads.full} / ${g.planReads.partial}`,
           g.compactions,
           ...["read", "edit", "grep", "shellRead", "shellList", "tests", "serena"].map((k) =>
             one(per(g, k)),
@@ -3824,8 +4265,50 @@ export function renderReport(ledgerRows, names, now = Date.now(), logDirs = new 
   );
 
   out.push(
+    "### Tokens and owner waits per run\n\n" +
+      "The last 30 runs. **Tokens read, M**: the run's own model calls in the chats that worked on it, each call counted by its own time (`-` = a chat without that split, or a host that records no call times). " +
+      "**Owner stops**: waits for the owner's answers, from the run's `owner-pause` / `owner-answer` rows (`+ open` = still waiting). **Wait before**: minutes since the feature's previous run ended.\n",
+  );
+  const mOf = (u) => (u ? M(u.tokens.read) : "-");
+  out.push(
+    table(
+      [
+        "Started",
+        "Feature",
+        "Workflow",
+        "Ending",
+        "Minutes",
+        "Tokens read, M (main / agents)",
+        "Owner stops",
+        "Owner minutes",
+        "Wait before, minutes",
+      ],
+      runs
+        .slice(-30)
+        .reverse()
+        .map((r) => {
+          const o = r.owner;
+          const open = (o?.stops ?? []).some((x) => x.open);
+          return [
+            day(r.time.start),
+            featureName(r) + openMark(r),
+            wfOf(r),
+            r.ending,
+            Math.round(r.time.totalMinutes),
+            r.usage ? `${mOf(r.usage.total)} (${mOf(r.usage.main)} / ${mOf(r.usage.agents)})` : "-",
+            o ? `${o.total.stops - (open ? 1 : 0)}${open ? " + open" : ""}` : "-",
+            o ? Math.round(o.total.minutes) : "-",
+            o?.waitBeforeMinutes === null || o?.waitBeforeMinutes === undefined
+              ? "-"
+              : Math.round(o.waitBeforeMinutes),
+          ];
+        }),
+    ),
+  );
+
+  out.push(
     "### Build verify loop\n\n" +
-      "**Verify rounds**: per sub-plan, each round's verdict and failure count (`P` PASS, `C` CONCERNS, `F` FAIL). **Test-order gaps**: per round, in the same order, `no-red`, `late-red` and the like in the round's report (`-` = report not read); " +
+      "**Verify rounds**: per group (an old run's: per sub-plan), each round's verdict and failure count (`P` PASS, `C` CONCERNS, `F` FAIL). **Test-order gaps**: per round, in the same order, `no-red`, `late-red` and the like in the round's report (`-` = report not read); " +
       "a later build of the same feature overwrites the reports, so an earlier build has them only for files last written during that build. **Gaps fixes**: gaps-remediate rounds by strategy. " +
       "**Findings** are the reconciled challenge's, by severity (critical / high / medium / low), next to the code and test lines the build's own commits changed.\n",
   );
@@ -3856,7 +4339,7 @@ export function renderReport(ledgerRows, names, now = Date.now(), logDirs = new 
           const bySub = new Map();
           const gapsBySub = new Map();
           for (const v of b.verify ?? []) {
-            const k = v.subPlan ?? "-";
+            const k = v.group ?? v.subPlan ?? "-";
             (bySub.get(k) ?? bySub.set(k, []).get(k)).push(
               `${letter(v.verdict)}${v.failures ?? ""}`,
             );
@@ -3894,9 +4377,9 @@ export function renderReport(ledgerRows, names, now = Date.now(), logDirs = new 
 
   out.push(
     "### Plan shape\n\n" +
-      "Measured on the plan the run closed with: its sub-plans when split, else the last version. **Tests** and **test files** are per task, median / p90 / max, from each task's `Test first` entries " +
-      "(`-` = the plan predates that field); **at each count** = `count:tasks`. No limit is applied: the rows keep every task's numbers. " +
-      "**Complexity** is the check's own verdict; **Check's reason** quotes its `Session Fit Estimate` from the report on this machine.\n",
+      "Measured on the plan the run closed with: its last version, by group; an old-format run's sub-plans when split. **Tests** and **test files** are per task, median / p90 / max, from each task's `TEST FIRST` entries " +
+      "(`-` = a task without that field); **at each count** = `count:tasks`. No limit is applied: the rows keep every task's numbers. " +
+      "**Complexity** (old-format runs) is the check's own verdict; **Check's reason** quotes its `Session Fit Estimate` from the report on this machine.\n",
   );
   const mm = (xs) =>
     xs?.length ? `${median(xs)} / ${quantile(xs, 0.9)} / ${Math.max(...xs)}` : "-";
@@ -3916,6 +4399,7 @@ export function renderReport(ledgerRows, names, now = Date.now(), logDirs = new 
         "Feature",
         "bkit version",
         "Plan KB",
+        "Groups",
         "Sub-plans",
         "Tasks",
         "Tests per task",
@@ -3932,10 +4416,10 @@ export function renderReport(ledgerRows, names, now = Date.now(), logDirs = new 
         .reverse()
         .map((r) => {
           const p = r.plan;
-          const subs = p.subPlans ?? [];
+          const parts = p.groups ?? p.subPlans ?? [];
           // Per-task lists: null when the plan predates `Test first` or its grouping is not known.
-          const all = subs.every((x) => Array.isArray(x.tasks))
-            ? subs.flatMap((x) => x.tasks)
+          const all = parts.every((x) => Array.isArray(x.tasks))
+            ? parts.flatMap((x) => x.tasks)
             : null;
           const list = (k) =>
             all && all.every((t) => t[k] !== null) ? all.map((t) => t[k]) : null;
@@ -3945,7 +4429,8 @@ export function renderReport(ledgerRows, names, now = Date.now(), logDirs = new 
             featureName(r) + openMark(r),
             r.bkit.version ?? "none",
             p.total.kb,
-            subs.length || "-",
+            p.groups?.length ?? "-",
+            p.subPlans?.length || "-",
             p.total.tasks,
             mm(tests),
             atEach(tests),
@@ -4103,7 +4588,7 @@ export function renderReport(ledgerRows, names, now = Date.now(), logDirs = new 
         M(readOf(c)),
         turnsOf(c),
         c.agents.total.n,
-        Math.round(c.usage.total.ctx.peak / 1000),
+        Math.round(c.usage.total.context.peak / 1000),
         compactionsOf(c),
         c.tools.total.errors,
         c.session.prompts,

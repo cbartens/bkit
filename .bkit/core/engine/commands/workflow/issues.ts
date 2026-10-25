@@ -146,6 +146,32 @@ export function issueText(description: string, comments: IssueComment[]) {
   return { text, kept: human.length, dropped: comments.length - human.length, cut };
 }
 
+export interface IssuePart {
+  kind: "description" | "comment";
+  text: string;
+  createdAt?: string;
+}
+
+/**
+ * The issue as separate parts, oldest first: the description, then each human comment.
+ * The last cut marker drops every part above it and the text above it in its own part;
+ * nothing else is dropped.
+ */
+export function issueParts(description: string, comments: IssueComment[]): IssuePart[] {
+  const parts: IssuePart[] = [
+    { kind: "description", text: description },
+    ...comments
+      .filter((c) => !isGenerated(c.body))
+      .map((c): IssuePart => ({ kind: "comment", text: c.body, createdAt: c.createdAt })),
+  ];
+  const last = parts.map((p) => cutEarlier(p.text).cut).lastIndexOf(true);
+  const kept =
+    last === -1
+      ? parts
+      : [{ ...parts[last]!, text: cutEarlier(parts[last]!.text).text }, ...parts.slice(last + 1)];
+  return kept.map((p) => ({ ...p, text: p.text.trim() })).filter((p) => p.text !== "");
+}
+
 function textVerb(ctx: RunContext): number {
   const descFile = str(ctx.flags.descriptionFile);
   const commentsFile = str(ctx.flags.commentsFile);
@@ -227,7 +253,7 @@ export function transitionLabels(current: string[], t: LabelTransition) {
 
 /**
  * The issue state the workflows set for the same transition, on a tracker whose
- * board status is the issue state: `bkit.linear` or `bkit.jira`. A shipped
+ * board status is the issue state: `bkit.tracker.linear` or `bkit.tracker.jira`. A shipped
  * or failed issue waits on a human (`review`); a phase starting is `progress`.
  * The workflows write it alone, so a name the team or project lacks leaves the
  * labels landed. Null under github (the Projects v2 board moves instead) and
@@ -261,7 +287,7 @@ const BOARD_STATES = new Set(["progress", "review"]);
 
 /**
  * The two `projects_write` payloads that move an issue on the Projects v2 board,
- * from `bkit.github`. Payload keys are the MCP tool's own argument names: the
+ * from `bkit.tracker.github`. Payload keys are the MCP tool's own argument names: the
  * board item is found by its issue, and Status is set by option name.
  */
 function boardPayload(
@@ -281,7 +307,9 @@ function boardPayload(
       ctx.log("GitHub project not configured in package.json");
       return { board: null, boardSkipped: "not-configured" };
     }
-    ctx.log(`bkit.github.project "${github.projectUrl}" is not a GitHub Projects board URL`);
+    ctx.log(
+      `bkit.tracker.github.project "${github.projectUrl}" is not a GitHub Projects board URL`,
+    );
     return { board: null, boardSkipped: "project-url-invalid" };
   }
   const issue = (target?.issue ?? String(ctx.flags.issue ?? "")).replace(/^#/, "");
@@ -433,7 +461,7 @@ const FIELD_LABELS: Record<string, string> = {
   verdict: "Verdict",
   failures: "Failures",
   scope: "Scope",
-  subPlan: "Sub-plan",
+  group: "Group",
   attempt: "Attempt",
   strategy: "Strategy",
 };
@@ -452,12 +480,9 @@ function headerFields(ctx: RunContext): Array<[string, string]> {
         if (eq <= 0) throw new CommandError(EXIT.USAGE, `--field "${f}" must be Name=value`);
         out.push([f.slice(0, eq), f.slice(eq + 1)]);
       }
-    } else if (key === "subPlan") {
-      const count = str(ctx.flags.subPlanCount);
-      out.push([
-        "Sub-plan",
-        `${String(ctx.flags.subPlan)}${count === undefined ? "" : `/${count}`}`,
-      ]);
+    } else if (key === "group") {
+      const count = str(ctx.flags.groupCount);
+      out.push(["Group", `${String(ctx.flags.group)}${count === undefined ? "" : `/${count}`}`]);
     } else if (FIELD_LABELS[key] !== undefined) {
       out.push([FIELD_LABELS[key], String(ctx.flags[key])]);
     }
@@ -647,8 +672,8 @@ export function buildComment(cwd: string, o: CommentInput): string {
 /** `bkit issues comment`'s flags as a `CommentInput`. */
 export function commentBody(ctx: RunContext): string {
   const kind = str(ctx.flags.kind) ?? "step";
-  if (ctx.flags.subPlanCount !== undefined && ctx.flags.subPlan === undefined) {
-    throw new CommandError(EXIT.USAGE, "--sub-plan-count needs --sub-plan");
+  if (ctx.flags.groupCount !== undefined && ctx.flags.group === undefined) {
+    throw new CommandError(EXIT.USAGE, "--group-count needs --group");
   }
   return buildComment(ctx.cwd, {
     kind: kind as CommentInput["kind"],
@@ -945,8 +970,8 @@ export const issuesCommand: CommandSpec = {
         { name: "verdict", type: "string", help: "header field Verdict" },
         { name: "failures", type: "string", help: "header field Failures" },
         { name: "scope", type: "string", help: "header field Scope" },
-        { name: "sub-plan", type: "string", help: "header field Sub-plan (x of x/y)" },
-        { name: "sub-plan-count", type: "string", help: "y of Sub-plan x/y" },
+        { name: "group", type: "string", help: "header field Group (x of x/y)" },
+        { name: "group-count", type: "string", help: "y of Group x/y" },
         { name: "attempt", type: "string", help: "header field Attempt" },
         { name: "strategy", type: "string", help: "header field Strategy" },
         {

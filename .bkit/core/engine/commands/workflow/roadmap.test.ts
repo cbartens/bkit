@@ -573,7 +573,7 @@ describe("bkit roadmap feature", () => {
       "by",
     ]);
     expect(res.json.row).toMatchObject({
-      schema: 2,
+      schema: 3,
       kind: "feature",
       bkit: { version: "unknown" },
       by: { workflow: "build", step: "build-close-workflow" },

@@ -1128,11 +1128,9 @@ function install(ctx, root) {
 // ---------------------------------------------------------------------------
 /** What a design / plan close may bring to dev: docs and ledgers, nothing else. */
 const CLOSE_DOCS = /^docs\/plans\/|^docs\/roadmap\.md$|^docs\/[^/]+\.jsonl$|^\.bkit\/[^/]+\.jsonl$/;
-/** The canonical docs `ref` carries for the feature: design, or plan plus sub-plans. */
+/** The canonical doc `ref` carries for the feature: `{fid}-design.md` or `{fid}-plan.md`. */
 function canonicalDocs(root, ref, workflow, month, fid) {
-    const re = workflow === "plan"
-        ? new RegExp(`^docs/plans/${month}/${fid}-plan(-[0-9]+)?\\.md$`)
-        : new RegExp(`^docs/plans/${month}/${fid}-design\\.md$`);
+    const re = new RegExp(`^docs/plans/${month}/${fid}-${workflow}\\.md$`);
     return (git(root, ["ls-tree", "-r", "--name-only", ref, "--", `docs/plans/${month}/`]) ?? "")
         .split("\n")
         .filter((f) => re.test(f));

@@ -10,7 +10,7 @@
 > **Rules:**
 >
 > - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
-> - Notation: one job per mark — `.bkit/prompts.md` § `Notation`.
+> - Notation: one job per mark — `.bkit/authoring.md` § `Notation`.
 > - Describe current state / rules, not reasons / history; state what to do, not why.
 > - Check `.agents/docs.md` index first and confirm topic belongs in this doc, not another.
 > - Pre-push runs project gate set locally (see "Pre-push checklist" below); never `--no-verify`.
@@ -175,13 +175,13 @@ Composition guidance:
 - `steps.detect.outputs.should_force_build` / `should_run_full` = escalation into `full`.
 - No merged PR on `dev` push (auto cache bust, e.g. `TURBO_FORCE=1`) = recovery signal — partial CI with cache busted.
 - Health (or smoke, when the probe is a script rather than a health URL): separate workflow, `workflow_run` after CI success — not a required check. One of the two, unless the probes differ (§ Smoke trigger plumbing).
-- Capstone `bkit-tests-check` = SOLE branch-protection required check (`bkit setup protect-main` applies it, reading the check name from `bkit.capstoneJob` and the workflow from `bkit.ciWorkflow`). Green = expected tiers ran and passed (`green == validated`), not merely "tests job didn't fail". A `partial` or cache-skipped green is not a `full` validation.
+- Capstone `bkit-tests-check` = SOLE branch-protection required check (`bkit setup protect-main` applies it, reading the check name from `bkit.testing.ciCapstone` and the workflow from `bkit.testing.ciWorkflow`). Green = expected tiers ran and passed (`green == validated`), not merely "tests job didn't fail". A `partial` or cache-skipped green is not a `full` validation.
 
 ### Parallel test lanes (one lane per tier)
 
 Each tier = **own parallel lane** (job) — `bkit-tests-static` / `-unit` / `-integration` / `-e2e-web` (+ `-migration` / `-live-web`, and optional `-build-ios` / `-e2e-ios` / `-build-android` / `-e2e-android`) — **not** monolithic `bkit-tests` steps. Proven shape: bkit CI + consumer repos run separate lanes. Wall-clock = `max(lane)` not **sum** of serial steps; each tier gets honest coverage + executed-count + job-level permissions; slow tier can't serialise fast ones. Cost: per-lane setup duplicate (checkout / install, shared infra e.g. local DB) — mitigate with a remote task-runner cache (e.g. turbo) + DB service container. Capstone `needs:` **all** lanes; each emits executed-count for non-hollow assertion (`testing.md` § Validated means executed). Starter: `-static` + `-unit`; add lane per tier. Tiny repo: collapse tiers into one lane steps — capstone must assert each tier count via step outputs. E2E full-suite parity + local-vs-preview DB routing → `testing.md` § "E2E on PRs".
 
-**Shared resource: reset first, clean up last** (optional). WHEN: 2+ lanes use one long-lived resource. `bkit-tests-reset` runs after scope + migration, takes a lease, and puts the resource in its known state before any of those lanes start. `bkit-tests-cleanup` runs last, `if: always()`, and releases the lease. The lease is what serialises an overlapping PR and `dev` push. The planner names at most one target; an empty target skips both jobs. Capstone reds if a planned reset skipped or either job failed. DROP both when the resource is provisioned fresh per run (`testing.md` § Provision backing services fresh — the preferred answer).
+**Shared resource: reset first, clean up last** (optional). WHEN: 2+ lanes use one long-lived resource. `bkit-tests-reset` runs after scope + migration, takes a lease, and puts the resource in its known state before any of those lanes start. `bkit-tests-cleanup` runs last, `if: always()`, and releases the lease. The lease is what serialises an overlapping PR and `dev` push. The planner names at most one target; an empty target skips both jobs. Capstone reds if a planned reset skipped or either job failed. Drop both when the resource is provisioned fresh per run (`testing.md` § Provision backing services fresh — the preferred answer).
 
 **Runner size = per-lane lever, only for pole.** Flat graph → one lane defines wall-clock (commonly E2E). Larger runner (more vCPU / RAM) raises internal parallelism (more workers, concurrent E2E projects) → can cut long lane substantially; scope via `runs-on: <your-larger-runner-label>` to **one** lane, default runner elsewhere. Two caveats: (1) **higher per-minute rate** — confirm before adopting (may not appear until first invoice). [Depot](https://depot.dev/docs/github-actions/runner-types) labels (e.g. `depot-ubuntu-24.04-8`) ~30% cheaper than GitHub-hosted; `bkit-ci.yml`, `bkit-cloud.yml` and `bkit-renovate.yml` are templates you own, so set `runs-on` in your copy. (2) **Zero wall-clock** when aimed at non-pole lane: consumer measured bigger E2E runner **+0.0 min** while `@live` stayed pole — worth ~7 min only after `@live` gate removed and E2E became pole. Measure first, re-measure after: pole moves. (3) **A label that does not exist does not fail, so the job queues.** Typo'd / retired label → no error anywhere, job queued indefinitely, run neither reds nor completes. Label set in exactly one place, every `runs-on:` derived from it, planner fails closed on no label.
 
@@ -226,7 +226,7 @@ Optional. A same-repo promotion PR into the default branch — head `dev`, or a 
 | In progress | Waits (`--max-minutes 170`, job `timeout-minutes` 180 in this mode only) | `4` at the limit |
 | Failed / cancelled / capstone absent or skipped | Red | `1` |
 | None within 10 min (`[skip ci]` at the `dev` tip dispatches none) | Red — push a commit without it to `dev`, re-run the check | `3` |
-| GitHub API error 3× in a row | Red | `20` |
+| GitHub API error 3x in a row | Red | `20` |
 
 **Preconditions — mirroring copies whatever the push run validated:**
 
@@ -262,7 +262,7 @@ Undocumented, and invisible to the toolchain, because the file stays valid YAML,
 
 - **Trigger scope.** Dispatch jobs gate on `workflow_run.head_repository` being this repo, so a fork PR's CI completion never boots one; on `dev` the same gate excludes `conclusion == 'success'` outright, so a green post-merge run costs zero runner minutes (the merge already happened, so that run only confirms the regression check passed).
 - **FID recovery on `dev`.** No open PR exists, so `{FID}` comes from the squash-merge commit scope (`feat({FID}): …`, primary), falling back to the `bkit:fid` marker in the body of the merged same-repo PR for that SHA. Neither resolving → no-op, no dispatch.
-- **Loop bound.** A `dev` CI failure dispatches `/bkit-debug` under `MAX_DEV_DISPATCH_ATTEMPTS` — distinct failed CI SHAs per `{FID}`. `/bkit-debug` creates no branch of its own, so on this surface it remediates on `dev` itself and its push re-triggers this same router; the cap is what terminates that loop. `feat/**` is not capped here (in-session `MAX_DEBUG_ATTEMPT` bounds it).
+- **Loop bound.** A `dev` CI failure dispatches `/bkit-debug` until the `{FID}` has `bkit.workflows.debug.fix.maxAttempts` + `bkit.workflows.debug.soak.maxAttempts` distinct failed CI SHAs (2 + 2 by default). `/bkit-debug` creates no branch of its own, so on this surface it remediates on `dev` itself and its push re-triggers this same router; the cap is what terminates that loop. `feat/**` is not capped here (`/bkit-debug` bounds it with the same two limits, counted across every debug run of the feature).
 
 **Auto-route contract:** the `bkit [auto route]` free-tier gate marker is threaded by `/bkit-ship` onto the squash-merge `--subject` (not just the sync-merge commit) whenever the issue carries `bkit:auto` — this is what admits `dev`-triggered runs through the existing `bkit-cloud.yml` gate; there is no second gate path. The `[skip ci]` ship-DONE close commit that follows the squash merge never carries the marker and never triggers CI, so it cannot interact with this trigger. Trust surface, kill switch and the cap's tamper caveat → `docs/security.md` § CI Auto-Route Trust.
 
@@ -284,9 +284,9 @@ The merge gate (`bkit runs gate`) asserts the capstone job's `conclusion=success
 
 `bkit runs gate` covers the **common** violation shapes. A skipped non-capstone lane is **reported, not refused**, because the planned-vs-vacuous judgement belongs to the capstone, which takes every lane result as an input and already asserts it per lane. The gate cannot make that judgement itself: the jobs API reports no reason for a skip (a job skipped by a job-level `if:` never reaches a runner, so it carries an empty `steps` array).
 
-**Code 16 is opt-in, and must stay that way.** It fires only for lanes named in `bkit.shipGateRequiredLanes` (package.json array); the default empty list never refuses. A blanket refuse-on-any-skip is **unsatisfiable by construction** for the CI shape bkit ships: a lane whose `if:` is event-scoped — `bkit-tests-live-web` runs on a push to `dev` or the default branch only — cannot run pre-merge at any head, so a pre-merge gate demanding it refuses every PR forever. Device lanes (`-ios` / `-android`) use the same rule on a pull request and a push; do not treat them as post-merge canaries. Name a lane in `shipGateRequiredLanes` only when your capstone does not assert it and the lane genuinely can run pre-merge. `BKIT_SHIP_GATE_OVERRIDE` remains the audited per-head escape hatch. What still carries the anti-vacuity guarantee is codes 10-15: a run exists, at this head, completed, not cancelled, capstone present, capstone green. Code 14 (green at a superseded head) requires `--branch`: the head-keyed run query is filtered server-side, so a moved head returns the same empty list as a head that never ran, and only a second branch-scoped query separates them. A run that is **present but degraded-but-not-skipped** (e.g. a required lane ran with a reduced test set due to a consumer config the gate cannot see) is a **residual risk named here, not claimed as covered**: the capstone is green because bkit's own `run_level` planner computed `full`; a consumer narrowing inside a lane bkit does not own is invisible to the gate. Keep the capstone (`bkit-tests-check`) as the sole branch-protection required check so `green == validated` survives a docs-only push; do not add per-lane required checks (a hollow lane then green-bars the capstone).
+**Code 16 is opt-in, and must stay that way.** It fires only for lanes named in `bkit.testing.shipGate` (package.json array); the default empty list never refuses. A blanket refuse-on-any-skip is **unsatisfiable by construction** for the CI shape bkit ships: a lane whose `if:` is event-scoped — `bkit-tests-live-web` runs on a push to `dev` or the default branch only — cannot run pre-merge at any head, so a pre-merge gate demanding it refuses every PR forever. Device lanes (`-ios` / `-android`) use the same rule on a pull request and a push; do not treat them as post-merge canaries. Name a lane in `shipGateRequiredLanes` only when your capstone does not assert it and the lane genuinely can run pre-merge. `BKIT_SHIP_GATE_OVERRIDE` remains the audited per-head escape hatch. What still carries the anti-vacuity guarantee is codes 10-15: a run exists, at this head, completed, not cancelled, capstone present, capstone green. Code 14 (green at a superseded head) requires `--branch`: the head-keyed run query is filtered server-side, so a moved head returns the same empty list as a head that never ran, and only a second branch-scoped query separates them. A run that is **present but degraded-but-not-skipped** (e.g. a required lane ran with a reduced test set due to a consumer config the gate cannot see) is a **residual risk named here, not claimed as covered**: the capstone is green because bkit's own `run_level` planner computed `full`; a consumer narrowing inside a lane bkit does not own is invisible to the gate. Keep the capstone (`bkit-tests-check`) as the sole branch-protection required check so `green == validated` survives a docs-only push; do not add per-lane required checks (a hollow lane then green-bars the capstone).
 
-**No duplicate dispatch on an already-triggered head (ship Step 9):** a branch push / `gh pr update-branch` fires `pull_request` at the new SHA on its own. The scaffold keys a pull request on `pr-{number}` and a `workflow_dispatch` on `github.ref`. The two are separate groups, so a redundant dispatch is never cancelled and burns a full duplicate run. Ship probes the head whose CI the gate will check (`VALIDATED_HEAD`) with `bkit runs wait --head=<VALIDATED_HEAD> --branch=<branch> --until=present --dispatch-if-absent`, which dispatches only when no run appears; the probe is not a pass condition. The completion wait (`bkit runs wait --head=<VALIDATED_HEAD> --until=completed`) reads only runs at that exact head, so a completed run from a superseded head never answers it. Gate codes 10 / 11 / 14 / 17 re-enter that probe-and-poll only, never the deferred sweep, bounded by `MAX_REVALIDATE_ATTEMPT`.
+**No duplicate dispatch on an already-triggered head (ship Step 9):** a branch push / `gh pr update-branch` fires `pull_request` at the new SHA on its own. The scaffold keys a pull request on `pr-{number}` and a `workflow_dispatch` on `github.ref`. The two are separate groups, so a redundant dispatch is never cancelled and burns a full duplicate run. Ship probes the head whose CI the gate will check (`VALIDATED_HEAD`) with `bkit runs wait --head=<VALIDATED_HEAD> --branch=<branch> --until=present --dispatch-if-absent`, which dispatches only when no run appears; the probe is not a pass condition. The completion wait (`bkit runs wait --head=<VALIDATED_HEAD> --until=completed`) reads only runs at that exact head, so a completed run from a superseded head never answers it. Gate codes 10 / 11 / 14 / 17 re-enter that probe-and-poll only, never the deferred sweep, bounded by `bkit.workflows.ship.merge.maxAttempts`, which counts gate refusals and failed merges together.
 
 **No CI run for ship's own docs commit (validated-head carry-forward):** ship's pre-merge `[skip ci]` bookkeeping commit (docs, summaries, ledgers, skill removals) runs no CI. Every path between the last CI-tested commit and the PR head on the bookkeeping allow-list (`bkit ledgers only-bookkeeping`) → `bkit runs gate --validated=<sha>` checks CI at the tested commit; else code 17. Merge still pins the exact head (`--match-head-commit`). Green PR → zero extra runs. Bookkeeping commit merges untested; post-merge `dev` CI (`ship-merge-ci` row) is the backstop. `dev` REQUIRES status checks (classic branch protection or ruleset) → GitHub refuses a head with no run → ship runs CI at the PR head.
 
@@ -307,7 +307,7 @@ Smoke runs **after** deploy, in its own workflow, off the merge gate (what it ac
 
 - **Deploy happens inside CI** → key smoke to **`workflow_run`** (the CI workflow `completed` + `conclusion == 'success'`). Mind the 3-level `workflow_run` chain cap, because a fourth chained workflow will not fire.
 - **An external platform deploys after merge** (Vercel / Netlify-style Git integration) → key to a **post-deploy** signal — `deployment_status` (`state == 'success'`) or the platform's `repository_dispatch` event — so smoke fires when the deploy is actually **live**, not merely when CI finished. `workflow_run` here smokes a not-yet-serving (or about-to-be-replaced) deployment.
-- Either way: separate workflow, **non-blocking** (never a required check), and wait for the target to be **serving** before probing, because ready ≠ serving (`testing.md` § Deploy-reachability).
+- Either way: separate workflow, **non-blocking** (never a required check), and wait for the target to be **serving** before probing, because ready != serving (`testing.md` § Deploy-reachability).
 - **Not:** smoke wired into branch protection (it gates observability, not merges), or a `workflow_run`-keyed smoke against an externally-deployed app that probes the old build.
 
 ## Applying migrations at deploy time
@@ -380,7 +380,7 @@ Elevated-permission workflows (`packages: write`, `id-token: write`, `contents: 
 | Renovate (self-hosted runner) | `.bkit/templates/.github/workflows/bkit-renovate.yml` → `.github/workflows/bkit-renovate.yml` | Mend's 3 GB runner OOMs (`kernel-out-of-memory`) on a large pnpm graph. `ubuntu-latest` is ~16 GB. Edit `runs-on` in the copy. |
 | Dependabot | `.bkit/templates/.github/dependabot.yml` → `.github/dependabot.yml` | First-party GitHub. No App. One PR per package. No lockfile-maintenance job. |
 
-Use one. Both open PRs for the same packages. `bkit.depUpdater: "none"` skips the install-time absence advisory.
+Use one. Both open PRs for the same packages. `bkit.dependencies.updater: "none"` skips the install-time absence advisory.
 
 **Gate on known advisories.** Updater PRs never fail CI on a vulnerable version already in the lockfile. Copy `.bkit/templates/scripts/ci/check-dependency-audit.mjs`, its `.test.mjs` and `accepted-advisories.json` → `scripts/ci/`; the `Check Dependency Audit` step (`bkit-tests-static`) self-skips until then. It runs `pnpm audit --json`; a blocking advisory (default high / critical) without an acceptance fails:
 
@@ -435,7 +435,7 @@ Platform auth is a repo secret `BKIT_GH_TOKEN`, never `GITHUB_TOKEN` (those PRs 
 | Dependabot alerts | Read |
 | Metadata | Read-only |
 
-`Commit statuses: Read and write` is what opens the PR. Without it Renovate creates the branch and 403s on commit status. There is no separate Checks permission on a fine-grained PAT. Classic equivalent: scopes `repo`, `workflow`, `security_events` (plus `user:email` for commit authorship). Org-owned tokens cannot read the owner email; set the Actions variable `RENOVATE_GIT_AUTHOR` (for example `Renovate Bot <renovate@your-domain>`).
+`Commit statuses: Read and write` is what opens the PR. Without it Renovate creates the branch and 403s on commit status. A fine-grained PAT has no separate Checks permission. Classic equivalent: scopes `repo`, `workflow`, `security_events` (plus `user:email` for commit authorship). Org-owned tokens cannot read the owner email; set the Actions variable `RENOVATE_GIT_AUTHOR` (for example `Renovate Bot <renovate@your-domain>`).
 
 **pnpm 11 on Mend's runner.** A large graph can OOM during `pnpm update --lockfile-only`. The example sets `minimumReleaseAge: "7 days"` and caps `PNPM_WORKERS`. To clear the per-install gate, set `minimumReleaseAge: 0` in `pnpm-workspace.yaml`. Deleting the key does not: pnpm 11 defaults it to 1440. Self-hosted on `ubuntu-latest` has the memory; the freshness setting is still yours to keep or drop.
 
@@ -492,7 +492,7 @@ Every feature-branch push must pass same gates as CI. `.husky/pre-push` enforces
 
 **Revert-branch bypass:** `revert-*` branch or HEAD subject `Revert "` → run `pnpm bkit:gate:static` instead of `pnpm bkit:gate:static-unit`, dropping the unit lane only. Gates 5-9 still run — prose unaffected; slop:delta reports removals as `resolved`. Rollback trees intentionally inconsistent; surviving tests may reference deleted files. Non-revert: all applicable gates.
 
-**Min push:** every changed file matches `bkit.minPushPaths` (default plan logs, ledgers; bkit's own `package.json` sets `docs/**`, `.bkit/*.jsonl`, `CHANGELOG.md`, `README.md`) → `pnpm bkit:gate:min` only (format, tables, prose, slop:delta, ledger-integrity); `bkit:check:dist` + actionlint skipped. Files decide (`bkit ci min-push`), never `[skip ci]`. Push to `dev` / `main` whose skip-CI-token commit changes any other file → blocked.
+**Min push:** every changed file matches `bkit.testing.minPushPaths` (default plan logs, ledgers; bkit's own `package.json` sets `docs/**`, `.bkit/*.jsonl`, `CHANGELOG.md`, `README.md`) → `pnpm bkit:gate:min` only (format, tables, prose, slop:delta, ledger-integrity); `bkit:check:dist` + actionlint skipped. Files decide (`bkit ci min-push`), never `[skip ci]`. Push to `dev` / `main` whose skip-CI-token commit changes any other file → blocked.
 
 Pre-commit: `pnpm bkit:gate:format` — prettier over staged files, seconds. Prose is NOT here: `lint:prose` scans a fixed whole-repo file set, so it gates at pre-push inside `bkit:gate:static`. Enforcing slop gate: pre-push `pnpm slop:delta` via the same gate (Gate 6); `pnpm lint:slop` is report-only and sits in no lane. CI re-runs prose + slop:delta in `bkit-tests-static`.
 
@@ -528,11 +528,11 @@ GitHub Actions suppresses `pull_request` + `push` when HEAD has `[skip ci]` or `
 
 **Rule:** last push to CI-validated ref → HEAD without CI-suppressor + confirmed CI run for pushed HEAD. **CI-Dispatch Gate** (`.bkit/workflows.md` § "CI-Dispatch Gate"): (1) pre-push HEAD-message deny-list — `bkit branches push --require-ci` exits 6 on a CI-suppressing token anywhere in the HEAD message; (2) post-push `bkit runs dispatch` → run in `statusCheckRollup`, self-heal once via clean `re-trigger`, verdict `dispatched`/`self-healed`/`no-ci`/`unresolved`. A `[skip ci]` HEAD leaves an empty rollup.
 
-**Poll anchors the check NAMESPACE, not a lane name**: the capstone `bkit.capstoneJob` minus its last `-segment` (`bkit-tests-check` → any check containing `bkit-tests`). Single-job anchor PROHIBITED. Alignment: `.bkit/core/engine/audits/workflows/ci-dispatch-gate-alignment.test.ts`; legacy scaffolds: `ci-legacy-scaffold-job-names` advisory.
+**Poll anchors the check NAMESPACE, not a lane name**: the capstone `bkit.testing.ciCapstone` minus its last `-segment` (`bkit-tests-check` → any check containing `bkit-tests`). Single-job anchor PROHIBITED. Alignment: `.bkit/core/engine/audits/workflows/ci-dispatch-gate-alignment.test.ts`; legacy scaffolds: `ci-legacy-scaffold-job-names` advisory.
 
-**Gate sites (2):** build Step 18; debug Step 10 sub-step 6 (PR-mode and LOCAL-mode). Ship OUT — Step 14 reads the squash commit's capstone with `bkit runs gate --head=<SQUASH_SHA> --capstone-only`; CI-Dispatch there masks "essential tests skipped".
+**Gate sites (2):** build Step 15; debug Step 10 sub-step 6 (PR-mode and LOCAL-mode). Ship OUT — Step 14 reads the squash commit's capstone with `bkit runs gate --head=<SQUASH_SHA> --capstone-only`; CI-Dispatch there masks "essential tests skipped".
 
-**Open-PR pre-flight (build Step 18):** `bkit prs probe --base=dev` first; open PR → Failure Path (`feat/{FID} already has open PR #N to dev`). `bkit prs open` probes `--head` again before creating: exit 3 on an existing open PR (`--existing=fail`, the default), exit 5 on a `gh` error, never a blind create.
+**Open-PR pre-flight (build Step 15):** `bkit prs probe --base=dev` first; open PR → Failure Path (`feat/{FID} already has open PR #N to dev`). `bkit prs open` probes `--head` again before creating: exit 3 on an existing open PR (`--existing=fail`, the default), exit 5 on a `gh` error, never a blind create.
 
 **Abort-push guard (design / plan / build / debug Failure Path + `.bkit/workflows.md` § Failure Path step 4):** feature branch → the `[skip ci]` abort commit goes out via `bkit branches push --mode=abort`. Open PR → exit 7, no push. `gh` cannot answer → exit 80, no push; look up the PR via MCP, re-run with `--open-pr=<n>|none`. No PR → push. `dev` / `main` → nothing pushed from the checkout; only logs + ledgers land on `dev` via the throwaway `origin/dev` checkout.
 
@@ -543,7 +543,7 @@ GitHub Actions suppresses `pull_request` + `push` when HEAD has `[skip ci]` or `
 | --- | --- | --- |
 | `[skip ci]` / `[ci skip]` / `[no ci]` / `[skip actions]` / `[actions skip]` | YES — CI suppressor | GitHub Actions skips the workflow; `statusCheckRollup` empty. |
 | `bkit [skip ci]` | YES (substring match on `[skip ci]`) | bkit bookkeeping commits — build `worktree-setup`, `summary` (design / plan), ship bookkeeping, status pushes to `dev`. Intentionally silent; never on CI-triggering HEAD. |
-| `bkit [force build]` | NO (not a suppressor) | Forces full CI and Vercel build even on docs-only paths. Escape hatch for migrations / etc. There is no `bkit [skip build]` build-cancel tag — docs-only commits self-cancel via the host's affected-detection build-cancel; `bkit branches push --require-ci` does not check it (stack-agnostic — it enforces only platform-native CI suppressors). |
+| `bkit [force build]` | NO (not a suppressor) | Forces full CI and Vercel build even on docs-only paths. Escape hatch for migrations / etc. No `bkit [skip build]` build-cancel tag exists — docs-only commits self-cancel via the host's affected-detection build-cancel; `bkit branches push --require-ci` does not check it (stack-agnostic — it enforces only platform-native CI suppressors). |
 | `bkit [auto route]` | NO (not a suppressor) | Loud routing marker on close-workflow and debug re-trigger commits. Free-tier gate for `bkit-cloud.yml` CI auto-route. Present on opted-in close-workflow HEAD; `bkit branches push --require-ci` passes it. |
 | `bkit [verbose ci]` | NO (not a suppressor) | Escalates CI log detail for one run (debug path). |
 
@@ -598,14 +598,14 @@ The `bkit-cloud.yml` template (`bkit install --auto=…` points at it; copy it t
 
 ### Release test runs
 
-The full suite runs before every push to `dev`, in CI on every `dev` push, and in CI on the push to `main`. Every other release step reuses one of those results. Run by `utility-pre-release-check` and `utility-new-release`.
+The full suite runs before every push to `dev`, in CI on every `dev` push, and in CI on the push to `main`. `utility-pre-release-check` and `utility-new-release` run the local gate before reading CI; every other release step reuses one of those results.
 
 <!-- prettier-ignore -->
 | Release step | Suite | Reuses |
 | --- | --- | --- |
 | Push to `dev` (version bump, backmerge) | full — `.husky/pre-push` | — |
 | CI on every `dev` push | full | — |
-| `utility-pre-release-check` step 6, `utility-new-release` step 5 | none | `bkit-ci` push run on `dev` at `HEAD`; waits while it runs, STOP / `CRITICAL` when absent or red |
+| `utility-pre-release-check` step 6, `utility-new-release` step 5 | local — `pnpm bkit:gate:static-unit-integration` | `bkit-ci` push run on `dev` at `HEAD`; waits up to 30 min while it runs, STOP / `CRITICAL` when absent, timed out or red |
 | `release/X` push | none — the bkit-only `.husky/pre-push` block skips a non-`dev` / `main` branch whose tree equals the tree of `origin/dev` or `origin/main` | the `dev` push gates |
 | Release PR CI | none — mirror mode | `dev` push run at the PR head (§ One CI run per dev commit) |
 | CI on the push to `main` | full | — |
@@ -613,7 +613,7 @@ The full suite runs before every push to `dev`, in CI on every `dev` push, and i
 | Release workflow | none — asserts tag on `main`, `dist/` fresh, `CHANGELOG.md` block present | `main` push run |
 
 - **A push to `dev` or `main` always gates**, in the hook and in CI, even when its files match a tested tree. The skips cover branch-other-than-`dev`/`main` and tag pushes only.
-- **The agents never re-run the suite locally.** A red or missing `dev` push run is fixed on `dev` and pushed again.
+- **The agents run the local gate, then read the `dev` push run.** A red local gate, or a red or missing `dev` push run, is fixed on `dev` and pushed again.
 
 ### GitHub Release
 

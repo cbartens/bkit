@@ -2,7 +2,7 @@
 // apply to this repo. Each workflow passes its name at its close and gets the one tip that
 // matters most there (`audit` / `utility` for the audit agent and the ledger / roadmap
 // updaters); bare `bkit tips` prints the top three. The star line closes bare and phase
-// output unless `bkit-star` is in `bkit.ignoreAdvisories`. Local checks only, no network; prints
+// output unless `bkit-star` is in `bkit.advisories.ignore`. Local checks only, no network; prints
 // nothing when no tip fires and no star line shows; exits 0. What the last disk clean-up left
 // for the person to decide (`bkit disk prune` notes) comes first, outside the tip cap.
 

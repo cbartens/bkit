@@ -17,14 +17,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
 const TEMPLATE_PATH = path.join(REPO_ROOT, ".bkit/templates/.github/workflows/bkit-cloud.yml");
-// The workflow-level env the guards read; a missing declaration fails here, not at a silent 0.
-const DISPATCH_CAP = (() => {
-  const m = /^env:\n {2}MAX_DEV_DISPATCH_ATTEMPTS: (\d+)$/m.exec(
-    fs.readFileSync(TEMPLATE_PATH, "utf8"),
-  );
-  if (!m) throw new Error("bkit-cloud.yml declares no top-level MAX_DEV_DISPATCH_ATTEMPTS env");
-  return m[1]!;
-})();
 
 // The ctx step's dev-arm FID extraction relies on `sed -E ... \w+ ...`, a GNU
 // sed extension. GH Actions runners (ubuntu-latest) ship GNU sed, but macOS
@@ -131,6 +123,7 @@ function setupFixture(tmpRoot: string): Fixture {
 
   fs.mkdirSync(path.join(workspaceDir, "docs/plans"), { recursive: true });
   fs.writeFileSync(path.join(workspaceDir, "README.md"), "fixture\n");
+  fs.writeFileSync(path.join(workspaceDir, "package.json"), JSON.stringify({ name: "c" }));
   git(workspaceDir, "add", "-A");
   git(workspaceDir, "commit", "-qm", "base");
   git(workspaceDir, "push", "-u", "-q", "origin", "dev");
@@ -181,7 +174,6 @@ function runCtxStep(fixture: Fixture, env: Record<string, string>): RunResult {
       GITHUB_WORKSPACE: fixture.workspaceDir,
       GITHUB_REPOSITORY: "owner/repo",
       GH_TOKEN: "dummy",
-      MAX_DEV_DISPATCH_ATTEMPTS: DISPATCH_CAP,
       ...env,
     },
   });
@@ -367,7 +359,7 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
     (tracker) => {
       fs.writeFileSync(
         path.join(fixture.workspaceDir, "package.json"),
-        JSON.stringify({ name: "c", bkit: { issueTracker: tracker } }, null, 2),
+        JSON.stringify({ name: "c", bkit: { tracker: { default: tracker } } }, null, 2),
       );
       const result = runCtxStep(fixture, {
         EVENT: "workflow_run",
@@ -381,7 +373,7 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
       expect(result.status).toBe(0);
       expect(result.outputs.skip).toBe("true");
       expect(result.outputs.phase).toBeUndefined();
-      expect(result.stdout).toContain(`bkit.issueTracker is '${tracker}'`);
+      expect(result.stdout).toContain(`bkit.tracker.default is '${tracker}'`);
       expect(readStatusRows(fixture.workspaceDir, "bar-123-auth")).toEqual([]);
     },
   );
@@ -389,7 +381,7 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
   it("a github tracker in package.json passes the tracker gate and dispatches", () => {
     fs.writeFileSync(
       path.join(fixture.workspaceDir, "package.json"),
-      JSON.stringify({ name: "c", bkit: { issueTracker: "github" } }, null, 2),
+      JSON.stringify({ name: "c", bkit: { tracker: { default: "github" } } }, null, 2),
     );
     const result = runCtxStep(fixture, {
       EVENT: "workflow_run",
@@ -405,66 +397,69 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
   });
 
   // -------------------------------------------------------------------------
-  // T5 — MAX_DEV_DISPATCH_ATTEMPTS cap (distinct headSha count, not row count)
+  // T5 — debug dispatch cap: bkit.workflows.debug fix + soak maxAttempts
+  // (distinct headSha count, not row count)
   // -------------------------------------------------------------------------
   describe("dev path — cross-session loop cap (T5)", () => {
-    it("refuses to dispatch uncounted when the workflow env defines no whole-number cap", () => {
-      for (const cap of ["", "three"]) {
-        const result = runCtxStep(fixture, {
-          EVENT: "workflow_run",
-          CONCLUSION: "failure",
-          BRANCH: "dev",
-          COMMIT_MSG: "feat(363-widen-bkit-cloud-trigger): fix (#501) bkit [auto route]",
-          HEAD_SHA: "new-sha",
-          STUB_LATEST_CI_SHA: "new-sha",
-          STUB_ISSUE_LABELS: "bkit:auto",
-          MAX_DEV_DISPATCH_ATTEMPTS: cap,
-        });
-        expect(result.outputs.skip).toBe("true");
-        expect(`${result.stdout}${result.stderr}`).toContain("refusing to dispatch uncounted");
-      }
-    });
-
-    it("3 dev-dispatch rows with the SAME headSha count as ONE cycle — cap not tripped", () => {
-      seedDevDispatchRows(fixture.workspaceDir, "363-widen-bkit-cloud-trigger", [
-        "same-sha",
-        "same-sha",
-        "same-sha",
-      ]);
-      const result = runCtxStep(fixture, {
+    const devFailure = (headSha: string) =>
+      runCtxStep(fixture, {
         EVENT: "workflow_run",
         CONCLUSION: "failure",
         BRANCH: "dev",
         COMMIT_MSG: "feat(363-widen-bkit-cloud-trigger): fix (#501) bkit [auto route]",
-        HEAD_SHA: "new-sha",
-        STUB_LATEST_CI_SHA: "new-sha",
+        HEAD_SHA: headSha,
+        STUB_LATEST_CI_SHA: headSha,
         STUB_ISSUE_LABELS: "bkit:auto",
       });
+    const writePkg = (text: string) =>
+      fs.writeFileSync(path.join(fixture.workspaceDir, "package.json"), text);
+
+    it("refuses to dispatch uncounted when package.json cannot be read", () => {
+      writePkg("{ broken");
+      const result = devFailure("new-sha");
+      expect(result.outputs.skip).toBe("true");
+      expect(`${result.stdout}${result.stderr}`).toContain("refusing to dispatch uncounted");
+    });
+
+    it("4 dev-dispatch rows with the SAME headSha count as ONE cycle — cap not tripped", () => {
+      seedDevDispatchRows(fixture.workspaceDir, "363-widen-bkit-cloud-trigger", [
+        "same-sha",
+        "same-sha",
+        "same-sha",
+        "same-sha",
+      ]);
+      const result = devFailure("new-sha");
       expect(result.outputs.skip).toBe("false");
       expect(result.outputs.phase).toBe("debug");
     });
 
-    it("3 DISTINCT failed headShas exhaust the cap — 4th dispatch no-ops with an operator-review notice", () => {
+    it("4 DISTINCT failed headShas exhaust the default cap (2 + 2) — 5th dispatch no-ops with an operator-review notice", () => {
       seedDevDispatchRows(fixture.workspaceDir, "363-widen-bkit-cloud-trigger", [
         "sha-1",
         "sha-2",
         "sha-3",
+        "sha-4",
       ]);
-      const result = runCtxStep(fixture, {
-        EVENT: "workflow_run",
-        CONCLUSION: "failure",
-        BRANCH: "dev",
-        COMMIT_MSG: "feat(363-widen-bkit-cloud-trigger): fix (#504) bkit [auto route]",
-        HEAD_SHA: "sha-4",
-        STUB_LATEST_CI_SHA: "sha-4",
-        STUB_ISSUE_LABELS: "bkit:auto",
-      });
+      const result = devFailure("sha-5");
       expect(result.outputs.skip).toBe("true");
       expect(result.stdout).toContain("exhausted");
       expect(result.stdout).toContain("operator review required");
       // No new row written past the cap.
-      const rows = readStatusRows(fixture.workspaceDir, "363-widen-bkit-cloud-trigger");
-      expect(rows).toHaveLength(3);
+      expect(readStatusRows(fixture.workspaceDir, "363-widen-bkit-cloud-trigger")).toHaveLength(4);
+    });
+
+    it("the set debug limits size the cap; an invalid limit takes its default of 2", () => {
+      const fid = "363-widen-bkit-cloud-trigger";
+      writePkg(
+        JSON.stringify({
+          name: "c",
+          bkit: { workflows: { debug: { fix: { maxAttempts: 1 }, soak: { maxAttempts: 0 } } } },
+        }),
+      );
+      seedDevDispatchRows(fixture.workspaceDir, fid, ["sha-1", "sha-2"]);
+      expect(devFailure("sha-3").outputs.phase).toBe("debug");
+      seedDevDispatchRows(fixture.workspaceDir, fid, ["sha-1", "sha-2", "sha-3"]);
+      expect(devFailure("sha-4").outputs.skip).toBe("true");
     });
   });
 
@@ -566,7 +561,12 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
     });
 
     it("feat/** failure dispatches debug and is NOT subject to the dispatch cap", () => {
-      seedDevDispatchRows(fixture.workspaceDir, "363-widen-bkit-cloud-trigger", ["s1", "s2", "s3"]); // would exhaust the cap if consulted
+      seedDevDispatchRows(fixture.workspaceDir, "363-widen-bkit-cloud-trigger", [
+        "s1",
+        "s2",
+        "s3",
+        "s4",
+      ]); // would exhaust the cap if consulted
       const result = runCtxStep(fixture, {
         EVENT: "workflow_run",
         CONCLUSION: "failure",
@@ -580,9 +580,9 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
       expect(result.outputs.skip).toBe("false");
       expect(result.outputs.phase).toBe("debug");
       expect(result.outputs.arg).toBe("79");
-      // feat/** never writes a dev-dispatch row — the pre-seeded 3 rows are untouched.
+      // feat/** never writes a dev-dispatch row — the pre-seeded 4 rows are untouched.
       const rows = readStatusRows(fixture.workspaceDir, "363-widen-bkit-cloud-trigger");
-      expect(rows).toHaveLength(3);
+      expect(rows).toHaveLength(4);
     });
   });
 

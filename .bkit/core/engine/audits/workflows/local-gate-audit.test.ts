@@ -107,9 +107,7 @@ const GATE_CALLERS: ReadonlyArray<readonly [string, string]> = [
   [".bkit/templates/.husky/pre-push", "pnpm bkit:gate:min"],
   [".bkit/core/prompts/bkit-build-plan-execute.md", "pnpm bkit:gate:static"],
   [".bkit/core/prompts/bkit-build-plan-gaps-remediate.md", "pnpm bkit:gate:static-unit"],
-  [".bkit/core/prompts/bkit-build-challenge-remediate.md", "pnpm bkit:gate:static-unit"],
   [".bkit/core/prompts/bkit-debug-failure-remediate.md", "pnpm bkit:gate:static-unit"],
-  [".bkit/core/prompts/bkit-build-challenge-tests.md", "pnpm bkit:gate:static-unit"],
   [".bkit/core/prompts/bkit-build-plan-verify.md", "pnpm bkit:gate:static-unit"],
   [".bkit/core/prompts/bkit-ship-conflict-resolve.md", "pnpm bkit:gate:install-static-unit-build"],
   // bkit-build.md / bkit-debug.md are NOT listed: they run the gate through
@@ -194,7 +192,7 @@ describe("bkit-local-gate-audit (#437)", () => {
         "routes the engine's gate list where a block passes {GATE_FLAGS}",
         () => {
           expect(body).toContain("`gates` as `{GATES}`");
-          expect(debugStart([], "").gates).toEqual([...gates]);
+          expect(debugStart([], "", 2).gates).toEqual([...gates]);
         },
       );
 

@@ -11,14 +11,6 @@
 >
 > **Rules:**
 >
-> - Read-only audit; never edit code, config, or data.
-> - `Universal Instructions` apply to all projects; `Project Instructions` apply only to this project.
-> - Local audit instructions / overrides → `Project Instructions` below the bkit-managed block; universal instructions stay in-block.
-> - Any tools mentioned in `Universal Instructions` are examples only; swap for actual tools in final output; drop inapplicable.
-> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
-> - Read `.agents/docs.md` → load docs for workflow / step / task; skip missing; cite docs inline where required.
-> - Every claim cites this run's evidence (`file:line`, or command / query and its output) and tool behind it; a previous report's figure, list, or status is a lead, not evidence.
-> - Read this document once at session start; do not trust session memory; do not re-read on every loop iteration.
 > - never change a plan, cancel a resource, or edit a billing setting.
 > - NEVER copy an invoice number, payment-card detail, account id, or secret into the report.
 
@@ -34,7 +26,7 @@
 
 **Cadence:** monthly, after invoices close. Extra pass when a vendor or a paid plan is added or changed, a spend alert fires, or at launch.
 
-**Anchor Standards:** record version and date read. Newer version → `Standards` step reads what changed.
+**Anchor Standards:**
 
 - FinOps Framework (e.g. the current edition). Capabilities this audit uses: Allocation, Anomaly Management, Budgeting, Forecasting, Unit Economics, and Rate Optimization, across Public Cloud, SaaS, and AI.
 - FOCUS (FinOps Open Cost and Usage Specification); record the version.
@@ -74,41 +66,31 @@ One per vendor, and one per paid resource inside a vendor that has several.
 
 ### Pre-Flight / Dependencies
 
-**Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
-
-**Credentials:** probe direnv before marking a token / env var missing: `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'`; `unset` = missing. Run credentialed CLIs as `direnv exec . <cmd>`. No direnv (cloud session) → plain env check. Report names, never values.
-
 #### Core
 
-Always verify.
-
-- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied (here or in any step) → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`; run every step the remaining tools allow; work needing blocked call → `Not Checked`. never stop the run for a blocked call; never retry or reword a blocked call to get past it.
-- [ ] **Bills:** Steps 3–5, 8 — invoices or billing export (e.g. FOCUS), read-only plan/usage/cap pages (e.g. host dashboard, cloud billing console, vendor API). Fallback: unread vendor = `ASK`; tax, foreign exchange, and card fees `Not Checked`.
+- [ ] **Permissions:** blocked calls recorded
+- [ ] **Bills:** Steps 3-5, 8 — invoices or billing export (e.g. FOCUS), read-only plan/usage/cap pages (e.g. host dashboard, cloud billing console, vendor API). Fallback: unread vendor = `ASK`; tax, foreign exchange, and card fees `Not Checked`.
 - [ ] **Code Search:** Steps 3, 6, 7 — SDKs, outbound hosts, reference checks (e.g. ripgrep, language-server references). Fallback: docs and invoices only; `REMOVE` proof marked incomplete.
 - [ ] **Web:** Step 9 — fetch anchor standards. Fallback: versions recorded as unread.
 
 #### Conditional
-
-Verify only when applicable.
 
 - [ ] **Payment Reports:** Processor or store fees → Steps 3, 5 — fee and commission reports (e.g. card processor, app-store proceeds). Fallback: `Not Checked`.
 - [ ] **Legacy Accounts:** Migration map names replaced platform → Step 3 — confirm those subscriptions are not still billing. Fallback: `ASK`.
 
 ### 🔒 Gate 1: Prerequisites Check
 
-**Checkpoint.** Verify and check `[x]` all applicable boxes above, then continue to `Probe Steps` without asking.
-
 - [ ] **Gaps named:** every missing item names its fallback and `Not Checked` entry.
-- [ ] **Gate 1 - Verified:** All Core items checked. All applicable Conditional items checked.
+- [ ] **Gate 1 — Verified:** All Core items checked. All applicable Conditional items checked.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Audited commit = this report's `bkit:anchor` `baseSha`. Read newest prior report for this slug under `docs/audits/`; its commit = its `bkit:anchor` `baseSha`, else the HEAD its `Previous Run` recorded. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
-- [ ] **Step 2 — Detect:** Find paid vendors, usage-billed APIs, or payment / store fees (manifests, outbound hosts, vendor docs). **Done when:** evidence in `Checked`, or `N/A` and STOP.
+- [ ] **Step 1 — Previous Run:** **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 2 — Detect:** Find paid vendors, usage-billed APIs, or payment / store fees (manifests, outbound hosts, vendor docs). **Done when:** evidence in `Checked`, or `N/A` and **STOP**.
 - [ ] **Step 3 — Inventory:** Build list from code (SDKs, outbound hosts), docs (vendor list, secrets list), and owner-shared invoices; compare. In code, not docs = finding (doc fix → `bkit-audit-documentation`). On invoice, nowhere in code = `REMOVE` candidate. Count non-vendor-plan fees (card-processor, app-store commission): grow with paying accounts; no vendor dashboard. Replaced platform still billing after replacement shipped = `REMOVE` candidate. **Done when:** `Vendors` lists every vendor with its sources.
-- [ ] **Step 4 — Plans:** Per vendor: plan, billing model (flat, per seat, per use), spend last three months, usage driver, plan limit, proximity to limit. Split by environment; preview/dev billed like production = finding. Per usage-billed vendor: preview/E2E/CI vs production share, by feature where vendor can tell. Log audit environment split → start from `bkit-audit-logs`. E2E-driven usage on usage-billed vendor = `RIGHT-SIZE` candidate. Every free-tier resource production/CI depends on; behavior at limit (e.g. free DB pauses, free monitor stops). Free tier failing hard = finding even at $0 today. Compare monthly vs annual, prepaid credits, startup programmes, committed-use discounts; propose commitment only if usage stable ≥3 months. Record billing currency, card FX fees, sales tax/VAT/GST/reverse-charge correctness (invoice + card statement, not dashboards). **Done when:** `Vendors` row per vendor: verdict · plan · billing model · three-month spend · change since previous report · driver · limit · environment split. Total spend included.
-- [ ] **Step 5 — Unit Cost:** Total monthly cost ÷ active accounts and active users; split fixed/variable. Per metered feature, cost per action (e.g. per model assist, per inbound message). Series vs previous report: without unit cost, bill health is undecidable as usage grows. vs revenue: price × assumed conversion, less processor fees and store commission, vs cost per account. Account costing more than it pays = finding with assumptions. **Done when:** `Unit Cost` holds figures, trend, assumptions.
-- [ ] **Step 6 — Drivers:** Per usage-billed service: code driving the meter and worst case (retry, tenant fan-out, cron frequency). Multiplier with no upper bound = finding. Model-call multiplier also names `bkit-audit-llm` (in-code limits); other unbounded multipliers → `docs/failures.jsonl` row, which the audit agent writes. Egress/data transfer own line: grow with users, unnamed in code (DB egress, cached egress, host data transfer, origin transfer, storage transforms, log-drain egress); top routes/buckets by bytes. Observability metered: log drains, host observability events, replay, trace sample rates in code. From drivers, forecast monthly cost at 10× and 100× today's active accounts; name first vendor whose tier breaks and month at current growth. CI minutes → `bkit-audit-ci-performance`; do not analyse here. **Done when:** `Drivers` row per meter; `Forecast` holds 10×, 100×, first tier break, month.
+- [ ] **Step 4 — Plans:** Per vendor: plan, billing model (flat, per seat, per use), spend last three months, usage driver, plan limit, proximity to limit. Split by environment; preview/dev billed like production = finding. Per usage-billed vendor: preview/E2E/CI vs production share, by feature where vendor can tell. Log audit environment split → start from `bkit-audit-logs`. E2E-driven usage on usage-billed vendor = `RIGHT-SIZE` candidate. Every free-tier resource production/CI depends on; behavior at limit (e.g. free DB pauses, free monitor stops). Free tier failing hard = finding even at $0 today. Compare monthly vs annual, prepaid credits, startup programmes, committed-use discounts; propose commitment only if usage stable >=3 months. Record billing currency, card FX fees, sales tax/VAT/GST/reverse-charge correctness (invoice + card statement, not dashboards). **Done when:** `Vendors` row per vendor: verdict · plan · billing model · three-month spend · change since previous report · driver · limit · environment split. Total spend included.
+- [ ] **Step 5 — Unit Cost:** Total monthly cost ÷ active accounts and active users; split fixed/variable. Per metered feature, cost per action (e.g. per model assist, per inbound message). Series vs previous report: without unit cost, bill health is undecidable as usage grows. vs revenue: price x assumed conversion, less processor fees and store commission, vs cost per account. Account costing more than it pays = finding with assumptions. **Done when:** `Unit Cost` holds figures, trend, assumptions.
+- [ ] **Step 6 — Drivers:** Per usage-billed service: code driving the meter and worst case (retry, tenant fan-out, cron frequency). Multiplier with no upper bound = finding. Model-call multiplier also names `bkit-audit-llm` (in-code limits); other unbounded multipliers → `docs/failures.jsonl` row, which the audit agent writes. Egress/data transfer own line: grow with users, unnamed in code (DB egress, cached egress, host data transfer, origin transfer, storage transforms, log-drain egress); top routes/buckets by bytes. Observability metered: log drains, host observability events, replay, trace sample rates in code. From drivers, forecast monthly cost at 10x and 100x today's active accounts; name first vendor whose tier breaks and month at current growth. CI minutes → `bkit-audit-ci-performance`; do not analyse here. **Done when:** `Drivers` row per meter; `Forecast` holds 10x, 100x, first tier break, month.
 - [ ] **Step 7 — Leftovers:** Seats for people who no longer need them — cost only here; access → `bkit-audit-security`. Idle resources: projects, DBs, monitors, buckets, domains from experiments. Duplicates: two vendors, one job. **Done when:** `Leftovers` row per hit with monthly amount and verdict.
 - [ ] **Step 8 — Caps:** Per usage-billed vendor: spend cap or budget alert, amount, recipients. No cap and no alert = finding even when spend is small. When hit:
   - Notify, stop spend, or pause service; whether hit = outage. Notify-only may leave production serving; pause may take production down (e.g. host spend limit notifies unless production deploys paused). Record check frequency; lag → overshoot.
@@ -119,17 +101,15 @@ Verify only when applicable.
   Anomalies since previous report: how found (alert or invoice), time to find, cost avoided. Cap that only notifies, omits line items, or pauses production → owner decision on notify/cap/pause with what each would stop; this run does not set it. **Done when:** `Caps` row per usage-billed vendor, and anomaly list.
 
 - [ ] **Step 9 — Standards:** Confirm current version per anchor standard; read changes since previous report's version. `Standards Coverage`: one row per FinOps capability (Allocation, Anomaly Management, Budgeting, Forecasting, Unit Economics, and Rate Optimization) → checked (name step) / not applicable (why) / finding. Score each capability crawl, walk, or run; name next to raise. Per bkit anchor (doc section, rule, or issue shape): one row → followed (name step or evidence) / not applicable (why) / finding; departure with no recorded reason (e.g. `docs/decisions.jsonl` row, accepted-divergence entry) = finding. Unapplied recommended practice → adopt (propose step) / reject (why) / not applicable. **Done when:** no empty row.
-- [ ] **Step 10 — Anything Else:** (a) Everything changed since previous report's commit touching cost (SDKs, outbound hosts, vendors, plans, crons, schedules, fan-outs, model calls, sample rates, environment, seat changes) → one-line verdict each. (b) Bounded ~30 min pass: what senior FinOps flags that no step asks; read since previous run (incidents, log-audit reports under `docs/audits/`, new `docs/failures.jsonl` rows, vendor status incidents) — what would no step catch? Include invoice charges Steps 4–8 do not explain (new line item, fee, tax, FX, overage). **Done when:** `Beyond the Steps` holds both passes, or `none`. Class seen on 2 runs → propose step in `Process Improvements`.
+- [ ] **Step 10 — Anything Else:** (a) Everything changed since previous report's commit touching cost (SDKs, outbound hosts, vendors, plans, crons, schedules, fan-outs, model calls, sample rates, environment, seat changes) → one-line verdict each. (b) Bounded ~30 min pass: what senior FinOps flags that no step asks; read since previous run (incidents, log-audit reports under `docs/audits/`, new `docs/failures.jsonl` rows, vendor status incidents) — what would no step catch? Include invoice charges Steps 4-8 do not explain (new line item, fee, tax, FX, overage). **Done when:** `Beyond the Steps` holds both passes, or `none`. Class seen on 2 runs → propose step in `Process Improvements`.
 
 ### 🔒 Gate 2: Probes Check
-
-**Checkpoint.** Verify and check `[x]` all boxes below, then continue to `Findings` without asking.
 
 - [ ] **Steps complete:** every step `[x]`, or explicit skip with evidence the surface is absent.
 - [ ] **Evidence:** every finding cites re-checkable evidence and the tool behind it.
 - [ ] **No billing writes:** no plan, resource, cap, or billing setting changed.
 - [ ] **No account secrets:** no invoice number, card detail, account id, or secret in the report.
-- [ ] **Gate 2 - Verified:** Every checkbox above independently verified and checked off.
+- [ ] **Gate 2 — Verified:** Every checkbox above independently verified and checked off.
 
 ## Findings
 
@@ -141,7 +121,7 @@ Verify only when applicable.
 | `MEDIUM` | Plan no longer fits (`RIGHT-SIZE`); preview, end-to-end, or CI share of a usage bill; free tier that fails hard; cap that only notifies, omits line items, or pauses production; duplicate vendor; tax or foreign exchange applied wrongly |
 | `LOW` | Docs omit a vendor the code calls; a seat whose access is otherwise in scope for the security sweep; a currency note with no wrong charge |
 
-Scale per `.bkit/jsonl.md` § Severity. Within a severity: larger monthly amount first. No cap and no alert on a usage-billed vendor is at least `HIGH`, even when today's spend is small.
+Within a severity: larger monthly amount first. No cap and no alert on a usage-billed vendor is at least `HIGH`, even when today's spend is small.
 
 <!-- prettier-ignore -->
 | ID | Severity | Verdict | Location | Evidence | Expected |
@@ -213,17 +193,13 @@ PENDING
 
 ### 🔒 Gate 3: Report Check
 
-**Checkpoint.** Verify and check `[x]` all boxes below, then stop.
-
-- [ ] **No placeholders:** Findings table and every `Report` section have no `PENDING`.
+- [ ] **No placeholders:** no `PENDING` left
 - [ ] **Summary:** names count per severity and total monthly spend.
 - [ ] **Series:** `Vendors` spend, `Unit Cost`, and `Forecast` beside previous report's numbers, or marked baseline.
-- [ ] **Writes:** only this report and template `Project Instructions` changed; throwaway worktrees / remote targets removed.
-- [ ] **Process Improvements:** `Universal` = proposed step changes, template untouched; `Project` = edits applied below `bkit:end`; each `none` if empty.
+- [ ] **Writes:** only this report, template `Project Instructions`, and ledger rows changed; throwaway worktrees / remote targets removed.
+- [ ] **Process Improvements:** `Universal` and `Project` filled
 - [ ] **Suggested Issues:** every `MEDIUM`+ finding ID in exactly one row; every row has a `Next Step`.
-- [ ] **Gate 3 - Verified:** Every checkbox above independently verified and checked off.
-
-> `Project Instructions` below `bkit:end` are consumer-owned — `bkit install` never overwrites them, `bkit check` drift stays clean. Add project-specific tools, paths, commands, and checks there, keyed by section or step title; never results.
+- [ ] **Gate 3 — Verified:** Every checkbox above independently verified and checked off.
 
 <!-- bkit:end -->
 

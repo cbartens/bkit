@@ -717,10 +717,16 @@ describe("bkit ci min-push", () => {
     expect(r.json.outside).toEqual(["src/c.ts"]);
   });
 
-  it("reads bkit.minPushPaths from package.json; an explicit [] turns it off", async () => {
-    const custom = pushed({ "notes/today.md": "x\n" }, { bkit: { minPushPaths: ["notes/**"] } });
+  it("reads bkit.testing.minPushPaths from package.json; an explicit [] turns it off", async () => {
+    const custom = pushed(
+      { "notes/today.md": "x\n" },
+      { bkit: { testing: { minPushPaths: ["notes/**"] } } },
+    );
     expect((await run(custom.cwd, [`--ref=${custom.head}`], "min-push")).code).toBe(0);
-    const off = pushed({ "docs/decisions.jsonl": "{}\n" }, { bkit: { minPushPaths: [] } });
+    const off = pushed(
+      { "docs/decisions.jsonl": "{}\n" },
+      { bkit: { testing: { minPushPaths: [] } } },
+    );
     const r = await run(off.cwd, [`--ref=${off.head}`], "min-push");
     expect(r.code).toBe(1);
     expect(r.json.reason).toBe("no-paths");

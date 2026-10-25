@@ -43,6 +43,7 @@ docs/roadmap.md
 # a run's artifacts. The text is command output, not markdown; prettier would
 # escape and reflow it, and a gate's own format check would fail on it.
 docs/plans/*/logs/*/run-tests-*.md
+docs/plans/*/logs/*/build-group-gate-*.md
 docs/plans/*/logs/*/build-subplan-gate-*.md
 docs/plans/*/logs/*/context-tests-local-*.md
 # bkit's reference copies of its templates — refreshed by `bkit upgrade`, never

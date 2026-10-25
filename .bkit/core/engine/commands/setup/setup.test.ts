@@ -154,9 +154,9 @@ describe("bkit setup protect-main — apply", () => {
     });
   });
 
-  it("reads bkit.capstoneJob and bkit.ciWorkflow from package.json", async () => {
+  it("reads bkit.testing.ciCapstone and bkit.testing.ciWorkflow from package.json", async () => {
     const cwd = repo({
-      bkit: { capstoneJob: "gate", ciWorkflow: "tests.yml" },
+      bkit: { testing: { ciCapstone: "gate", ciWorkflow: "tests.yml" } },
       ciName: "tests.yml",
       ci: "jobs:\n  gate:\n    runs-on: x\n",
     });
@@ -168,7 +168,7 @@ describe("bkit setup protect-main — apply", () => {
   });
 
   it("resolves config from the repo root when run from a subdirectory", async () => {
-    const cwd = repo({ bkit: { capstoneJob: "bkit-tests" } });
+    const cwd = repo({ bkit: { testing: { ciCapstone: "bkit-tests" } } });
     fs.mkdirSync(path.join(cwd, "sub"));
     fakeGh();
     const r = await run(path.join(cwd, "sub"), ["--dry-run"]);

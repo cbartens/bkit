@@ -11,14 +11,6 @@
 >
 > **Rules:**
 >
-> - Read-only audit; never edit code, config, or data.
-> - `Universal Instructions` apply to all projects; `Project Instructions` apply only to this project.
-> - Local audit instructions / overrides → `Project Instructions` below the bkit-managed block; universal instructions stay in-block.
-> - Any tools mentioned in `Universal Instructions` are examples only; swap for actual tools in final output; drop inapplicable.
-> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
-> - Read `.agents/docs.md` → load docs for workflow / step / task; skip missing; cite docs inline where required.
-> - Every claim cites this run's evidence (`file:line`, or command / query and its output) and tool behind it; a previous report's figure, list, or status is a lead, not evidence.
-> - Read this document once at session start; do not trust session memory; do not re-read on every loop iteration.
 > - NEVER append or edit a ledger line. Close, regression, triage, and knowledge rows live in `Expected` only. `ts` is minted at append (`.bkit/jsonl.md` § Write Idiom), never written in this report.
 > - A security row (`category: "security"`, or an auth, secrets, or data-exposure hole) carries key, verdict, and severity only. `file:line` stays in the ledger row. A public repo uses a draft repository security advisory, not this report.
 
@@ -39,7 +31,7 @@ Row text that says found by reading and must be confirmed later = hypothesis, no
 
 **Cadence:** once per ship cycle, and at least monthly when no cycle ships. Extra pass when new `CRITICAL` row lands (age target 7 days), or after incident on production or preview.
 
-**Anchor Standards:** record version and date read. Newer version → `Standards` step reads what changed.
+**Anchor Standards:**
 
 - Problem management and the known-error database (e.g. ITIL 4; record the edition). The deferred and known-error review it describes (e.g. ITIL-aligned known-error monitoring).
 - Postmortem action items (e.g. Google SRE Workbook, Postmortem Culture).
@@ -86,22 +78,14 @@ Row text awaiting confirmation = UNCONFIRMED until reproduced or read end to end
 
 ### Pre-Flight / Dependencies
 
-**Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
-
-**Credentials:** probe direnv before marking a token / env var missing: `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'`; `unset` = missing. Run credentialed CLIs as `direnv exec . <cmd>`. No direnv (cloud session) → plain env check. Report names, never values.
-
 #### Core
 
-Always verify.
-
-- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied (here or in any step) → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`; run every step the remaining tools allow; work needing blocked call → `Not Checked`. never stop the run for a blocked call; never retry or reword a blocked call to get past it.
-- [ ] **Ledger:** Steps 3–7 — `docs/failures.jsonl` and `.bkit/jsonl.md`. Fallback: file absent → one `N/A` row after Step 3 and STOP.
+- [ ] **Permissions:** blocked calls recorded
+- [ ] **Ledger:** Steps 3-7 — `docs/failures.jsonl` and `.bkit/jsonl.md`. Fallback: file absent → one `N/A` row after Step 3 and STOP.
 - [ ] **Git History:** Steps 2, 5 — commits since the previous report, fix commits. Fallback: closures and regression-by-commit `Not Checked`.
 - [ ] **Web:** Step 8 — fetch anchor standards. Fallback: versions recorded as unread.
 
 #### Conditional
-
-Verify only when applicable.
 
 - [ ] **Language Server:** Typed language → Step 4 — symbol at current path, caller chain, diagnostics for one file without full typecheck, e.g. Serena, `tsserver`. Fallback: text search. Reach and close needing callers stay hypotheses until corroborated.
 - [ ] **Error Tracker:** Production or preview events exist → Steps 4, 5 — event counts and flows after fix commit, e.g. Sentry, platform logs. Log access: `.agents/context.md` `context-fetch` blocks below `bkit:end` are ready-made read-only readers (`bkit context list-blocks` → each block's `context` and `body`); set a body's `# Customise:` knobs to the audit window; run it via `direnv exec . bash`. Fallback: code only. Event counts `Not Checked`.
@@ -110,14 +94,12 @@ Verify only when applicable.
 
 ### 🔒 Gate 1: Prerequisites Check
 
-**Checkpoint.** Verify and check `[x]` all applicable boxes above, then continue to `Probe Steps` without asking.
-
 - [ ] **Gaps named:** every missing item names its fallback and `Not Checked` entry.
-- [ ] **Gate 1 - Verified:** All Core items checked. All applicable Conditional items checked.
+- [ ] **Gate 1 — Verified:** All Core items checked. All applicable Conditional items checked.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Audited commit = this report's `bkit:anchor` `baseSha`. Read newest prior report for this slug under `docs/audits/`; its commit = its `bkit:anchor` `baseSha`, else the HEAD its `Previous Run` recorded. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 1 — Previous Run:** **Done when:** closure rate in `Previous Run`, or run marked baseline.
 - [ ] **Step 2 — Closures:** Re-verify every FIXED and MIS-FRAMED row from previous report at `HEAD`. Each no longer holding = finding, with what changed. **Done when:** `Closures` holds every row, each failure, and failure rate, or run marked baseline.
 - [ ] **Step 3 — Fold:** Last-row-wins per `key`, not per line. Append-only file (`.gitattributes` `merge=union`); editing a line keeps stale copy beside replacement. Highest numeric `ts` wins (`.bkit/jsonl.md` § Updating a Row). `key` whose `ts` is not a number → last line in file is latest. Open = every winning row with `status != "CLOSED"`, including `TRIAGED` (diagnosed is not fixed), `RESOLVED`, `FIXED`, `SUPERSEDED`, and rows with no `status`. Word that looks finished is not done. `RESOLVED` or `FIXED` row really done → `CLOSED` row in `Expected`, with `references` that closed it. Not skipped because word looks finished. Order: `CRITICAL`, then `HIGH`, then oldest `ts`. Compare `severity` case-insensitively. No `severity` → assign with verdict. Age from row's first `ts`: list every `CRITICAL` older than 7 days and every `HIGH` older than 30 days. Where CI check goes red while any `CRITICAL` row has `status != "CLOSED"`, report whether installed. Green check beside such row = finding (gate not reading ledger). Absent → record in `Checked`. Large open set may be partial pass → record rows verified / rows open. Winning future `ts` that would outrank close → name `key`. No later `ts` invented. **Done when:** `Trend` holds open counts, age-target breaches, gate result, and verified / open, or `N/A` and STOP.
 - [ ] **Step 4 — Source:** No verdict before this step. Under-reporting biases toward closing live bug.
@@ -136,10 +118,10 @@ Pace reference queries. Re-run empty or surprisingly low result before close ver
 
 Incident rows (seen on production or preview, not in review) need follow-ups checked. Remediation usually names more than code fix: regression test, monitor, alert, doc change. Check each landed. Fix landed, test or monitor did not → not FIXED. `Expected` names each missing follow-up and issue to open.
 
-Each incident: written postmortem; ≥1 action preventing or detecting repeat, with owner and tracking issue at top priority. User-affecting outage needs ≥1 top-priority bug. Missing postmortem, or postmortem with only mitigation items = finding. `Expected` = issue to open. **Done when:** every row verified this pass has evidence and tool on finding. `Incidents` lists follow-ups and postmortem gaps, or `none`. Unverified rows stay counted in `Trend`; not passed.
+Each incident: written postmortem; >=1 action preventing or detecting repeat, with owner and tracking issue at top priority. User-affecting outage needs >=1 top-priority bug. Missing postmortem, or postmortem with only mitigation items = finding. `Expected` = issue to open. **Done when:** every row verified this pass has evidence and tool on finding. `Incidents` lists follow-ups and postmortem gaps, or `none`. Unverified rows stay counted in `Trend`; not passed.
 
 - [ ] **Step 5 — Recurrences:** Same-`key` append recording defect seen again = recurrence (`.bkit/jsonl.md` § Updating a Row). Omit appends that only change `status`. For `category: "testing"`, flake count = `key`'s row count under that rule. Rank open rows by count. Then regressions: each row `CLOSED` since previous report → look for later row same `key`, new row same defect under another `key`, or error-tracker events on matching issue after close. Each → `Expected` = `OPEN` row to append. **Done when:** `Recurrences` ranks open rows and lists regressions, or `none`.
-- [ ] **Step 6 — Classes:** (a) Known errors carry workaround. For every `TRIAGED` or CONFIRMED row agents keep hitting (≥2 recurrences in Step 5, or parked row whose blocker not in winning row), check `docs/knowledge.jsonl` has `ACTIVE` row with workaround. Missing → finding. `Expected` = knowledge row to append. (b) Count open and recently closed rows by `category`, package, root-cause class. Top recurring class this run = gate candidate → name for `bkit-audit-gates`. **Done when:** `Classes` holds workaround gaps, counts, gate candidate, or `none`.
+- [ ] **Step 6 — Classes:** (a) Known errors carry workaround. For every `TRIAGED` or CONFIRMED row agents keep hitting (>=2 recurrences in Step 5, or parked row whose blocker not in winning row), check `docs/knowledge.jsonl` has `ACTIVE` row with workaround. Missing → finding. `Expected` = knowledge row to append. (b) Count open and recently closed rows by `category`, package, root-cause class. Top recurring class this run = gate candidate → name for `bkit-audit-gates`. **Done when:** `Classes` holds workaround gaps, counts, gate candidate, or `none`.
 - [ ] **Step 7 — Classify:** Every row, as Step 4 left it, gets one verdict. This run does not append or open issues. Security row → `bkit-audit-security`: key, verdict, severity only in this report. Flaky test diagnosis → `bkit-audit-flakes`. Older flake diagnoses may sit on tracker issues predating that audit. Search those too.
 
 <!-- prettier-ignore -->
@@ -167,13 +149,11 @@ Each incident: written postmortem; ≥1 action preventing or detecting repeat, w
 
 ### 🔒 Gate 2: Probes Check
 
-**Checkpoint.** Verify and check `[x]` all boxes below, then continue to `Findings` without asking.
-
 - [ ] **Steps complete:** every step `[x]`, or explicit skip with evidence the surface is absent.
 - [ ] **Evidence:** every finding cites re-checkable evidence and the tool behind it.
 - [ ] **Read-only:** no ledger line, code, or config changed. Every close, regression, and knowledge row is `Expected` only.
 - [ ] **Security:** security rows carry key, verdict, and severity only. No exploit detail, no `file:line`.
-- [ ] **Gate 2 - Verified:** Every checkbox above independently verified and checked off.
+- [ ] **Gate 2 — Verified:** Every checkbox above independently verified and checked off.
 
 ## Findings
 
@@ -185,7 +165,7 @@ Each incident: written postmortem; ≥1 action preventing or detecting repeat, w
 | `MEDIUM` | Mis-framed or understated. Recurrence or regression. Known error with no workaround on record. Age target breached. Hypothesis still open |
 | `LOW` | Duplicate key. Path drift that does not change reach. Missing `severity` |
 
-Scale per `.bkit/jsonl.md` § Severity. Within a severity: oldest `ts` first. Finding keeps severity when it becomes ledger row or issue. Row's bucket = ledger severity, or verdict assigns.
+Within a severity: oldest `ts` first. Finding keeps severity when it becomes ledger row or issue. Row's bucket = ledger severity, or verdict assigns.
 
 <!-- prettier-ignore -->
 | ID | Severity | Verdict | Location | Evidence | Expected |
@@ -253,17 +233,13 @@ PENDING
 
 ### 🔒 Gate 3: Report Check
 
-**Checkpoint.** Verify and check `[x]` all boxes below, then stop.
-
-- [ ] **No placeholders:** Findings table and every `Report` section have no `PENDING`.
+- [ ] **No placeholders:** no `PENDING` left
 - [ ] **Summary:** names count per severity, age-target breach count, and rows verified / rows open.
 - [ ] **Series:** open count and the recurrence ranking beside previous report's numbers, or marked baseline.
-- [ ] **Writes:** only this report and template `Project Instructions` changed; throwaway worktrees / remote targets removed.
-- [ ] **Process Improvements:** `Universal` = proposed step changes, template untouched; `Project` = edits applied below `bkit:end`; each `none` if empty.
+- [ ] **Writes:** only this report, template `Project Instructions`, and ledger rows changed; throwaway worktrees / remote targets removed.
+- [ ] **Process Improvements:** `Universal` and `Project` filled
 - [ ] **Suggested Issues:** every `MEDIUM`+ finding ID in exactly one row; every row has a `Next Step`.
-- [ ] **Gate 3 - Verified:** Every checkbox above independently verified and checked off.
-
-> `Project Instructions` below `bkit:end` are consumer-owned — `bkit install` never overwrites them, `bkit check` drift stays clean. Add project-specific tools, paths, commands, and checks there, keyed by section or step title; never results.
+- [ ] **Gate 3 — Verified:** Every checkbox above independently verified and checked off.
 
 <!-- bkit:end -->
 

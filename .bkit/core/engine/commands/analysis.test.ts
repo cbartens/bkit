@@ -9,6 +9,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  computeChallengeGate,
   computeComplianceRates,
   computeCounts,
   computeDeferralDiscipline,
@@ -395,9 +396,9 @@ describe("computeDeferralDiscipline", () => {
       repo: "cbartens/bkit",
       bkit: { version: "4.10.0" },
       by: {
-        workflow: "build",
-        step: "build-challenge-remediate",
-        subagent: subagent ?? "bkit-build-challenge-remediate",
+        workflow: "ship",
+        step: "ship-deferred-sweep",
+        subagent: subagent ?? "bkit-ship-deferred-sweep",
         model: model ?? "claude-sonnet-5",
       },
       reason: "scope-declared",
@@ -424,11 +425,11 @@ describe("computeDeferralDiscipline", () => {
       deferral({ key: "e", subagent: "bkit-design-generate", model: "claude-opus-5" }),
     ]);
 
-    const remediate = result.find((d) => d.writer === "bkit-build-challenge-remediate")!;
-    expect(remediate.total).toBe(4);
-    expect(remediate.unjustifiedCount).toBe(2);
-    expect(remediate.unjustifiedRate).toBe(0.5);
-    expect(remediate.byReason).toEqual({ unjustified: 2, "hard-blocked": 1, "scope-declared": 1 });
+    const sweep = result.find((d) => d.writer === "bkit-ship-deferred-sweep")!;
+    expect(sweep.total).toBe(4);
+    expect(sweep.unjustifiedCount).toBe(2);
+    expect(sweep.unjustifiedRate).toBe(0.5);
+    expect(sweep.byReason).toEqual({ unjustified: 2, "hard-blocked": 1, "scope-declared": 1 });
 
     const design = result.find((d) => d.writer === "bkit-design-generate")!;
     expect(design.unjustifiedCount).toBe(0);
@@ -512,6 +513,31 @@ describe("computeElapsedStats", () => {
     const stats = computeElapsedStats([]);
     expect(stats.count).toBe(0);
     expect(stats.totalMinutes).toBe(0);
+  });
+});
+
+describe("computeChallengeGate", () => {
+  const withGate = (ts: number, gate?: { size: string; skipped: boolean }): OutcomeRow => ({
+    ...outcomeRow(ts, 10, 1),
+    build: {
+      challenge: {
+        verdict: "PASS",
+        findings: null,
+        ...(gate && { gate: { ...gate, linesChanged: 1, filesChanged: 1 } }),
+      },
+    },
+  });
+
+  it("counts build runs by challenge size, leaving out runs with no gate", () => {
+    expect(
+      computeChallengeGate([
+        withGate(1, { size: "small", skipped: true }),
+        withGate(2, { size: "small", skipped: true }),
+        withGate(3, { size: "large", skipped: false }),
+        withGate(4),
+        outcomeRow(5, 10, 1),
+      ]),
+    ).toEqual({ runs: 3, small: 2, large: 1 });
   });
 });
 
@@ -633,9 +659,9 @@ describe("runAnalysis — full report (WS4-T3)", () => {
       severity: "LOW",
       description: "d",
       by: {
-        workflow: "build",
-        step: "build-challenge-remediate",
-        subagent: "bkit-build-challenge-remediate",
+        workflow: "ship",
+        step: "ship-deferred-sweep",
+        subagent: "bkit-ship-deferred-sweep",
         model: "claude-sonnet-5",
       },
       reason,
@@ -652,7 +678,7 @@ describe("runAnalysis — full report (WS4-T3)", () => {
 
     expect(report.deferralDiscipline).toHaveLength(1);
     const entry = report.deferralDiscipline[0]!;
-    expect(entry.writer).toBe("bkit-build-challenge-remediate");
+    expect(entry.writer).toBe("bkit-ship-deferred-sweep");
     expect(entry.total).toBe(2);
     expect(entry.unjustifiedCount).toBe(1);
     expect(entry.unjustifiedRate).toBe(0.5);

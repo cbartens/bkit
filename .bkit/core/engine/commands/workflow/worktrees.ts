@@ -233,7 +233,7 @@ function rebaseInProgress(wt: string): boolean {
 }
 
 /**
- * `git add -A` in `tree`, leaving out the `bkit.worktree.copy` entries setup
+ * `git add -A` in `tree`, leaving out the `bkit.workflows.worktree.copy` entries setup
  * copies in from the main checkout (`.env` and the like): no bkit commit may
  * carry them, gitignored or not.
  */
@@ -547,7 +547,7 @@ export const worktreesCommand: CommandSpec = {
         [EXIT_SHARED_BUSY]:
           "in place on dev: another feature's run holds this checkout (its shared-checkout record has a live workflow lock); nothing written",
         [EXIT_DISK_FULL]:
-          "free disk under bkit.disk.minFreeGb even after your max cleanup steps (`bkit disk prune`); nothing created",
+          "free disk under bkit.workflows.minFreeGb even after your max cleanup steps (`bkit disk prune`); nothing created",
       },
       run: async (ctx) => {
         const f = ctx.flags;

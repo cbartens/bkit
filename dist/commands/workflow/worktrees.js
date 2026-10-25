@@ -191,7 +191,7 @@ function rebaseInProgress(wt) {
     });
 }
 /**
- * `git add -A` in `tree`, leaving out the `bkit.worktree.copy` entries setup
+ * `git add -A` in `tree`, leaving out the `bkit.workflows.worktree.copy` entries setup
  * copies in from the main checkout (`.env` and the like): no bkit commit may
  * carry them, gitignored or not.
  */
@@ -458,7 +458,7 @@ export const worktreesCommand = {
                 [EXIT_REBASE_NOT_STARTED]: "resume rebase could not start, even after committing what an earlier run left (e.g. a commit hook refused that commit)",
                 [EXIT_NOT_A_WORKTREE]: ".worktrees/{fid} exists but is not a registered git worktree",
                 [EXIT_SHARED_BUSY]: "in place on dev: another feature's run holds this checkout (its shared-checkout record has a live workflow lock); nothing written",
-                [EXIT_DISK_FULL]: "free disk under bkit.disk.minFreeGb even after your max cleanup steps (`bkit disk prune`); nothing created",
+                [EXIT_DISK_FULL]: "free disk under bkit.workflows.minFreeGb even after your max cleanup steps (`bkit disk prune`); nothing created",
             },
             run: async (ctx) => {
                 const f = ctx.flags;

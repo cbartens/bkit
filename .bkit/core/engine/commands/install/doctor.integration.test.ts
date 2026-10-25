@@ -306,7 +306,7 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
     (tracker, ownKeys) => {
       fs.writeFileSync(
         path.join(tmpDir, "package.json"),
-        JSON.stringify({ name: "x", bkit: { issueTracker: tracker } }),
+        JSON.stringify({ name: "x", bkit: { tracker: { default: tracker } } }),
         "utf-8",
       );
       fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
@@ -399,8 +399,7 @@ function seedMultiProvider(dir: string): void {
     JSON.stringify({
       name: "test-consumer",
       bkit: {
-        opencodeProvider: "openrouter",
-        opencodeProviders: ["openrouter", "ollama"],
+        providers: { opencode: { default: "openrouter", installed: ["openrouter", "ollama"] } },
       },
     }),
     "utf-8",

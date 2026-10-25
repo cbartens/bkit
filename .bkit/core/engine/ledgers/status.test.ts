@@ -8,6 +8,7 @@ import {
   type StatusEvent,
   actionHash,
   actionKey,
+  activeDoneSteps,
   alreadyDone,
   appendLine,
   fold,
@@ -129,6 +130,36 @@ describe("fold — event log → run array", () => {
     ];
     const runs = fold(events);
     expect(runs[0].steps.map((s) => s.step)).toEqual(["first", "second"]);
+  });
+
+  it("fold reads an old subPlan row as its group", () => {
+    const events: StatusEvent[] = [
+      { type: "workflow-started", workflow: "build", at: "2026-05-01T00:00:00Z" },
+      ...[1, 2].map((n): StatusEvent => ({
+        type: "step-done",
+        workflow: "build",
+        step: "verify",
+        status: "DONE",
+        at: `2026-05-01T00:00:0${n}Z`,
+        parentSha: "aaa",
+        artifacts: [],
+        subPlan: n,
+      })),
+      {
+        type: "step-done",
+        workflow: "build",
+        step: "verify",
+        status: "DONE",
+        at: "2026-05-01T00:00:03Z",
+        parentSha: "aaa",
+        artifacts: [],
+        group: 2,
+      },
+    ];
+    const runs = fold(events);
+    expect(activeDoneSteps(runs, "build", { step: "verify", group: 2 })).toHaveLength(2);
+    expect(activeDoneSteps(runs, "build", { step: "verify", group: 1 })).toHaveLength(1);
+    expect(activeDoneSteps(runs, "build", { step: "verify" })).toHaveLength(3);
   });
 
   it("merges workflow-meta onto the run (debugAttempt)", () => {

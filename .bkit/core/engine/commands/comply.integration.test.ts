@@ -317,7 +317,7 @@ describe("bkit comply — row labels", () => {
     expect(rows.length).toBeGreaterThan(0);
     for (const row of rows) {
       expect(row).toMatchObject({
-        schema: 2,
+        schema: 3,
         kind: "compliance",
         repo: "acme/widgets",
         bkit: { version: "5.5.1" },

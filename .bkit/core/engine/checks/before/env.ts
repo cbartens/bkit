@@ -37,7 +37,7 @@ function tokenKeys(tracker: IssueTracker): string[] {
  * copied it to .bkit/.env and filled in their tokens.
  */
 // `tracker` adds its own token to the token prose (`TRACKER_TOKENS`). Defaults to
-// `linear`; the real Phase-3 caller passes the consumer's resolved `bkit.issueTracker`.
+// `linear`; the real Phase-3 caller passes the consumer's resolved `bkit.tracker.default`.
 export function detectMissingDotenv(
   cwd: string,
   tracker: IssueTracker = "linear",

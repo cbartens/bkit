@@ -11,14 +11,6 @@
 >
 > **Rules:**
 >
-> - Read-only audit; never edit code, config, or data.
-> - `Universal Instructions` apply to all projects; `Project Instructions` apply only to this project.
-> - Local audit instructions / overrides → `Project Instructions` below the bkit-managed block; universal instructions stay in-block.
-> - Any tools mentioned in `Universal Instructions` are examples only; swap for actual tools in final output; drop inapplicable.
-> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
-> - Read `.agents/docs.md` → load docs for workflow / step / task; skip missing; cite docs inline where required.
-> - Every claim cites this run's evidence (`file:line`, or command / query and its output) and tool behind it; a previous report's figure, list, or status is a lead, not evidence.
-> - Read this document once at session start; do not trust session memory; do not re-read on every loop iteration.
 > - NEVER delete code, files, routes, schema objects, or dependencies. The report names the destination; applying it is the next step.
 > - A detector proves use, never absence. Dead only when every method that would have found a use found none, and the file was opened. never write a finding from tool output alone.
 
@@ -32,7 +24,7 @@ Dead code = control that looks live, is not: limiter on unset env var; E2E asser
 
 **Cadence:** quarterly; extra pass when a cycle deletes a feature or moves a package.
 
-**Anchor Standards:** record version and date read. Newer version → `Standards` step reads what changed.
+**Anchor Standards:**
 
 - Reachability scanner, version run, including production mode, workspaces, and issue types (e.g. knip, ts-prune, vulture).
 - Compiler unused and unreachable options (e.g. TypeScript `noUnusedLocals`, `noUnusedParameters`, `allowUnreachableCode`; Ruff `F401`, `F841`).
@@ -73,26 +65,18 @@ Dead code = control that looks live, is not: limiter on unset env var; E2E asser
 
 ### Pre-Flight / Dependencies
 
-**Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
-
-**Credentials:** probe direnv before marking a token / env var missing: `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'`; `unset` = missing. Run credentialed CLIs as `direnv exec . <cmd>`. No direnv (cloud session) → plain env check. Report names, never values.
-
 #### Core
 
-Always verify.
-
-- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied (here or in any step) → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`; run every step the remaining tools allow; work needing blocked call → `Not Checked`. never stop the run for a blocked call; never retry or reword a blocked call to get past it.
-- [ ] **Clean Tree:** Steps 2–17 — clean `git status` at recorded commit; one checkout all steps. Fallback: detached worktree off integration branch; dirty-path candidates = hypotheses.
-- [ ] **Text Search:** Steps 5–14 — repo search (`git grep`, ripgrep). Fallback: none → those steps `Not Checked`.
-- [ ] **Reachability Scanner:** Steps 3–4 — ad hoc, not committed dependency (e.g. `pnpm dlx knip`, vulture). Fallback: language-server refs + text search; scanner categories `Not Checked`.
+- [ ] **Permissions:** blocked calls recorded
+- [ ] **Clean Tree:** Steps 2-17 — clean `git status` at recorded commit; one checkout all steps. Fallback: detached worktree off integration branch; dirty-path candidates = hypotheses.
+- [ ] **Text Search:** Steps 5-14 — repo search (`git grep`, ripgrep). Fallback: none → those steps `Not Checked`.
+- [ ] **Reachability Scanner:** Steps 3-4 — ad hoc, not committed dependency (e.g. `pnpm dlx knip`, vulture). Fallback: language-server refs + text search; scanner categories `Not Checked`.
 - [ ] **Web:** Step 16 — fetch anchor standards. Fallback: versions unread.
 
 #### Conditional
 
-Verify only when applicable.
-
 - [ ] **Compiler Unused Checks:** Compiled language → Step 2 — resolved compiler/linter config, not base file. Fallback: `Detectors` `Not Checked`.
-- [ ] **Language Server:** Typed language → Steps 13–14 — refs (Serena, `tsserver`, pyright). Fallback: text search only; name it; re-run every empty result before recording dead.
+- [ ] **Language Server:** Typed language → Steps 13-14 — refs (Serena, `tsserver`, pyright). Fallback: text search only; name it; re-run every empty result before recording dead.
 - [ ] **Git History:** Flags or introduction dates → Step 6 — `git log -S`. Fallback: flag ages `Not Checked`.
 - [ ] **E2E Locators:** E2E asserts test ids → Step 7. Fallback: skip with evidence; `Assertions` = `N/A`.
 - [ ] **Hosted DB:** SQL migrations or hosted DB → Step 10 — inspection CLI + unused-index advisor (e.g. `supabase inspect db`, Splinter `0005_unused_index`). Fallback: static grep only; runtime zero-use `Not Checked`.
@@ -100,14 +84,12 @@ Verify only when applicable.
 
 ### 🔒 Gate 1: Prerequisites Check
 
-**Checkpoint.** Verify and check `[x]` all applicable boxes above, then continue to `Probe Steps` without asking.
-
 - [ ] **Gaps named:** every missing item names its fallback and `Not Checked` entry.
-- [ ] **Gate 1 - Verified:** All Core items checked. All applicable Conditional items checked.
+- [ ] **Gate 1 — Verified:** All Core items checked. All applicable Conditional items checked.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Audited commit = this report's `bkit:anchor` `baseSha`. Read newest prior report for this slug under `docs/audits/`; its commit = its `bkit:anchor` `baseSha`, else the HEAD its `Previous Run` recorded. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 1 — Previous Run:** **Done when:** closure rate in `Previous Run`, or run marked baseline.
 - [ ] **Step 2 — Detectors:** Compiled language → scanner sees module exports only; dead branch/parameter inside live function → compiler + linter. Read resolved config per workspace, not base: unused-local, unused-parameter, no-unreachable-code; linter unused-vars, unreachable, always-true/false (e.g. `@typescript-eslint/no-unnecessary-condition`). Workspace override or file disable switches one off silently. Detector off = finding → `bkit-audit-gates` (gate candidate). Linter cannot run on project's compiler version (e.g. peer dependency range excludes it) → same detector-off finding; its rules → `Not Checked`. **Done when:** `Detectors` lists each config and resolved value.
 - [ ] **Step 3 — Reachability:** Ad hoc scanner, same resolved version both runs; record version. Do not add it as a dependency, and do not wire a CI gate this run. Report baseline-config readiness. First readiness check: scanner ignores exports used inside their own file (e.g. knip `ignoreExportsUsedInFile`); without it export signal = noise → run with and without, report both counts. Gate before `False Positives` exclusions encoded → structural noise → disabled. Do not encode test-only code as ignore entries or negated project patterns — plugins add test files as entries; production mode separates. Check scanner stderr before trusting: plugin load failure drops entry class → false unused files. Signal: files, exports, types, duplicates. Dependency categories → `Dependencies` pass, not mixed. Same version in production mode (or strict: implies production + each workspace uses only its own deps). Export used default run, unused production → test/config-only class. Report both runs side by side. Scanner has no class-member check (e.g. knip 6: no `classMembers` issue type) and project has classes → gap in `Not Checked`; fallback = language-server references per public member. **Done when:** version, both runs, with/without in-file-use counts, plugin-load errors in `Reachability`.
 - [ ] **Step 4 — Dependencies:** Scanner dependency mode per workspace, categories the scanner offers (e.g. knip: unused, unlisted, unresolved, unlisted binaries, catalog entries unreferenced). Before unused verdict → search name across manifest scripts, config, CI. Config-only consumers (e.g. linter, formatter, CSS presets, bundler plugins, `@types/*`) = usual false hits. Unused = install/supply-chain surface; unlisted = hoisted from another workspace. Unlisted or advisory → `bkit-audit-dependencies`. **Done when:** `Dependencies` row per candidate: name · class · config-or-CI reader · verdict.
@@ -121,19 +103,17 @@ Verify only when applicable.
 - [ ] **Step 12 — Strings:** (a) Message catalogue — diff keys vs reads each app/shared UI both ways (`i18n-check` or search script). No reader = dead; read missing = renders key name; language server often blind → search. Missing catalogue → `bkit-audit-usability`. (b) Static assets — list shipped (incl. email templates); search basename in code, config, CSS; scanner skips assets; native bundle ships unused. (c) Scripts — per manifest script + scripts tree file → search name in CI, hooks, task runner, docs, other scripts, plus its stem and every process-spawn site (e.g. `spawn`, `exec`, a directory listing filtered by extension) — runtime-built path misses name search; no invoker = candidate; doc-only = candidate + reader to update. **Done when:** `Strings` row per unused key, missing key, unread asset, uninvoked script.
 - [ ] **Step 13 — False Positives:** Filter these before reading anything as a finding. They are structural and recur every run. Ambient module augmentation: zero importers by design; applied through the compiler include. Never dead. Platform file splits (e.g. RN `.ios` / `.android` / `.web`): one specifier resolves to a per-platform file the scanner cannot follow, so unresolved entries are noise. The filter hides the opposite, so check once per run: for each platform pair, the platform that would load that variant imports the parent. A single-platform component carrying the other platform's file is dead and invisible, because both resolve through the same specifier. Files referenced from config, not code: check the referencing config before believing unused (app config, CI, test-runner project dependencies, agent hooks, deployed functions, an explicit worker registry). Test-only exports: only importer is a test = a seam, not dead code. Report separately from unreferenced code; never delete. A drift test is not a reader: generated artefact referenced only by its generator and a drift test (no runtime reader) = finding, not seam. A default export a preview server requires while code imports the named one. Mock-factory keys: no scanner and no language server sees them; a key inside a mock factory is a real use. **Done when:** `Candidates` names each class and what it removed.
 - [ ] **Step 14 — Eliminate:** Language server before opening files. One reference found means the candidate is not dead, and that verdict is sound even though the converse is not. Per surviving unused-export candidate: find the symbol, then find references. Any hit ends it. Empty → fall through to text search, and re-run the empty language-server query once more before recording it. Record both measurements. Pace reference queries: back-to-back calls collapse to zero, and a partial answer looks exactly like a dead symbol. Empty is inconclusive, not absence. Text search over-reports (comments, same-named symbols in other modules); the language server under-reports. Agreement is the signal. Run search in addition to the language server, never instead of it. An unused export needs zero matches repo-wide other than its own definition: search, subtract the defining file, ignore prose comments. An unused file is not reached from JSON, YAML, or other config no typed tool reads. An env-var finding is a control, not an optional setting with a working default. A test id asserted in end-to-end tests exists on a component. No finding without opening the file. Cite `file:line` and the method. Non-typed surfaces (markdown, ledgers, YAML, SQL, shell, string literals) are search, not the language server. **Done when:** every survivor in `Candidates` has `file:line`, method, and the zero-reference re-run.
-- [ ] **Step 15 — Runtime:** Production request/job/query stats → static says unreferenced; production says ran. Rank survivors: recent window of per-route counts/logs, job runs, SQL function query stats. "Zero executions" ≠ "zero static references". Thin/pre-launch → signal, never proof; uncalled route ≠ dead. **Done when:** `Runtime` holds window, source, zero-execution rows, or skip.
+- [ ] **Step 15 — Runtime:** Production request/job/query stats → static says unreferenced; production says ran. Rank survivors: recent window of per-route counts/logs, job runs, SQL function query stats. "Zero executions" != "zero static references". Thin/pre-launch → signal, never proof; uncalled route != dead. **Done when:** `Runtime` holds window, source, zero-execution rows, or skip.
 - [ ] **Step 16 — Standards:** Confirm current version per anchor standard; read changes since previous report's version. `Standards Coverage`: row per anchor + scanner issue type → checked (name step) / not applicable (why) / finding. Unapplied recommended practice → adopt (propose step) / reject (why) / not applicable. **Done when:** no empty row.
 - [ ] **Step 17 — Anything Else:** (a) Since previous commit, reachability-touching changes (features/packages deleted/moved, exports/files, deps, env/flags, routes/fetch URLs, events/functions/crons, migrations, i18n, assets, manifest scripts) → one-line verdict each. (b) ~30 min bounded pass: senior code-health flags no step asks; since previous run (incidents, new `docs/failures.jsonl`, `bkit-audit-logs` reports, vendor status) — what would no step catch? **Done when:** `Beyond the Steps` holds both passes, or `none`. Class seen on 2 runs → propose step in `Process Improvements`.
 
 ### 🔒 Gate 2: Probes Check
 
-**Checkpoint.** Verify and check `[x]` all boxes below, then continue to `Findings` without asking.
-
 - [ ] **Steps complete:** every step `[x]`, or explicit skip with evidence the surface is absent.
 - [ ] **Evidence:** every finding cites re-checkable evidence and the tool behind it.
 - [ ] **Candidates eliminated:** every survivor opened the file; a method that found a use ended it; every zero-reference result was re-run and both measurements are recorded.
 - [ ] **Tree untouched:** no code, config, schema, or dependency change.
-- [ ] **Gate 2 - Verified:** Every checkbox above independently verified and checked off.
+- [ ] **Gate 2 — Verified:** Every checkbox above independently verified and checked off.
 
 ## Findings
 
@@ -145,7 +125,7 @@ Verify only when applicable.
 | `MEDIUM` | File or export with zero references after elimination; feature flag older than 90 days with rollout complete; unused or unlisted dependency; i18n key with no reader, or a reader missing from the catalogue |
 | `LOW` | Doc comment naming a moved path; test-only export (own class, never a delete); preview-only default export |
 
-Scale per `.bkit/jsonl.md` § Severity. Within a severity: dead controls first.
+Within a severity: dead controls first.
 
 <!-- prettier-ignore -->
 | ID | Severity | Location | Evidence | Expected |
@@ -245,17 +225,13 @@ PENDING
 
 ### 🔒 Gate 3: Report Check
 
-**Checkpoint.** Verify and check `[x]` all boxes below, then stop.
-
-- [ ] **No placeholders:** Findings table and every `Report` section have no `PENDING`.
+- [ ] **No placeholders:** no `PENDING` left
 - [ ] **Summary:** names count per severity and candidate / surviving counts.
 - [ ] **Series:** `Reachability` counts and `Runtime` zeroes beside previous report's numbers, or marked baseline.
-- [ ] **Writes:** only this report and template `Project Instructions` changed; throwaway worktrees / remote targets removed.
-- [ ] **Process Improvements:** `Universal` = proposed step changes, template untouched; `Project` = edits applied below `bkit:end`; each `none` if empty.
+- [ ] **Writes:** only this report, template `Project Instructions`, and ledger rows changed; throwaway worktrees / remote targets removed.
+- [ ] **Process Improvements:** `Universal` and `Project` filled
 - [ ] **Suggested Issues:** every `MEDIUM`+ finding ID in exactly one row; every row has a `Next Step`.
-- [ ] **Gate 3 - Verified:** Every checkbox above independently verified and checked off.
-
-> `Project Instructions` below `bkit:end` are consumer-owned — `bkit install` never overwrites them, `bkit check` drift stays clean. Add project-specific tools, paths, commands, and checks there, keyed by section or step title; never results.
+- [ ] **Gate 3 — Verified:** Every checkbox above independently verified and checked off.
 
 <!-- bkit:end -->
 

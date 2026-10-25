@@ -220,6 +220,18 @@ export function applyModelOverrides(
 }
 
 /**
+ * Override rows (from `overridesPath`) naming no agent in `known`, deduplicated in file
+ * order. `applyModelOverrides` skips such rows, so they are reported, not applied.
+ */
+export function unknownModelOverrides(overridesPath: string, known: ReadonlySet<string>): string[] {
+  const out: string[] = [];
+  for (const o of parseModelOverrides(overridesPath)) {
+    if (!known.has(o.prompt) && !out.includes(o.prompt)) out.push(o.prompt);
+  }
+  return out;
+}
+
+/**
  * Effort → provider thinking map from prompts.md.
  * Row key = Default column (canonical prompt `effort:`).
  * Other columns = value emitted per host/provider at install.

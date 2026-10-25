@@ -182,7 +182,7 @@ describe("detectMissingMcpServers", () => {
     (tracker, other) => {
       fs.writeFileSync(
         path.join(tmpDir, "package.json"),
-        JSON.stringify({ name: "test", bkit: { issueTracker: tracker } }),
+        JSON.stringify({ name: "test", bkit: { tracker: { default: tracker } } }),
         "utf-8",
       );
       fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
@@ -205,7 +205,7 @@ describe("detectMissingMcpServers", () => {
     (tracker, servers) => {
       fs.writeFileSync(
         path.join(tmpDir, "package.json"),
-        JSON.stringify({ name: "test", bkit: { issueTracker: tracker } }),
+        JSON.stringify({ name: "test", bkit: { tracker: { default: tracker } } }),
         "utf-8",
       );
       fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
@@ -394,7 +394,7 @@ describe("detectExtraMcpServers", () => {
     (tracker, stale) => {
       fs.writeFileSync(
         path.join(tmpDir, "package.json"),
-        JSON.stringify({ name: "test", bkit: { issueTracker: tracker } }),
+        JSON.stringify({ name: "test", bkit: { tracker: { default: tracker } } }),
         "utf-8",
       );
       fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
@@ -418,7 +418,7 @@ describe("detectExtraMcpServers", () => {
     (stale) => {
       fs.writeFileSync(
         path.join(tmpDir, "package.json"),
-        JSON.stringify({ name: "test", bkit: { issueTracker: "github" } }),
+        JSON.stringify({ name: "test", bkit: { tracker: { default: "github" } } }),
         "utf-8",
       );
       fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });

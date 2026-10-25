@@ -18,7 +18,7 @@ name: bkit-cloud
 #   - workflow_run (CI completion on feat/**): success -> ship, failure -> debug
 #   - workflow_run (CI completion on dev): success -> no-op (regression check passed),
 #     failure -> /bkit-debug {FID} (FID recovered from squash-merge commit scope;
-#     loop-bounded by MAX_DEV_DISPATCH_ATTEMPTS). [skip ci] close commits never trigger CI.
+#     capped at debug fix + soak maxAttempts dispatches). [skip ci] close commits never trigger CI.
 #   - workflow_dispatch: pick ANY phase (ship|debug|design|plan|build) for an issue.
 #     design/plan/build have no tracker-event trigger; they run only via dispatch.
 #
@@ -82,11 +82,6 @@ concurrency:
   # pending run can be dropped. The ctx step's stale-run guard then writes a
   # `dev-dispatch-dropped` row to the job summary + a `::warning::`.
   cancel-in-progress: ${{ github.event.workflow_run.head_branch != 'dev' }}
-
-# Cap on dev-triggered debug dispatches per FID (distinct failed dev CI SHAs).
-# A bkit test holds it equal to MAX_DEV_DISPATCH_ATTEMPTS in `bkit counters max`.
-env:
-  MAX_DEV_DISPATCH_ATTEMPTS: 3
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -192,9 +187,9 @@ jobs:
           set -euo pipefail
           # Cloud runs serve the GitHub tracker only: Linear cloud runs start from Cursor's
           # Linear integration, and Jira runs locally only. Unset tracker → continue.
-          TRACKER=$(sed -n 's/.*"issueTracker"[[:space:]]*:[[:space:]]*"\([a-z]*\)".*/\1/p' package.json 2>/dev/null | head -1 || true)
+          TRACKER=$(jq -r '.bkit.tracker.default // empty | strings' package.json 2>/dev/null || true)
           if [ -n "$TRACKER" ] && [ "$TRACKER" != "github" ]; then
-            echo "::notice::bkit.issueTracker is '$TRACKER' — bkit-cloud.yml serves the GitHub tracker only; no-op exit."
+            echo "::notice::bkit.tracker.default is '$TRACKER' — bkit-cloud.yml serves the GitHub tracker only; no-op exit."
             echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
           if [ "$EVENT" = "workflow_dispatch" ]; then
@@ -216,8 +211,12 @@ jobs:
             # bkit_dev_dispatch_guard <FID> <HEAD_SHA> — cap-check +
             # counter-write + fail-closed-verify for the post-merge debug
             # surface (dev CI failure). One post-feat/** debug budget per FID.
-            # Returns 1 (caller must skip) once the FID has MAX_DEV_DISPATCH_
-            # ATTEMPTS distinct failed-CI SHAs recorded, or if the counter row
+            # Returns 1 (caller must skip) once the FID has DEBUG_CAP distinct
+            # failed-CI SHAs recorded — DEBUG_CAP = package.json
+            # bkit.workflows.debug fix + soak maxAttempts (2 each when unset or
+            # not a whole number of 1 or more; the engine falls back the same
+            # way) — every debug run makes at least one attempt, so more
+            # dispatches could never run one — or if the counter row
             # cannot be durably landed on origin/dev (fail-closed: one push
             # retry against a re-fetched dev, then VERIFY landing before
             # proceeding). Returns 0 to proceed to dispatch.
@@ -235,11 +234,14 @@ jobs:
               # The caller invokes this function as `... || { skip }`, which
               # suppresses `set -e` for the whole body. An explicit test, not
               # `${VAR:?}`: the `:?` expansion exits the whole shell even from
-              # inside a `|| {}`-guarded function. Fail closed when the
-              # workflow-level env does not define a whole-number cap.
-              case "${MAX_DEV_DISPATCH_ATTEMPTS:-}" in
+              # inside a `|| {}`-guarded function. Fail closed when the cap
+              # cannot be read as a whole number.
+              local debug_cap
+              debug_cap=$(jq -r 'def lim($p): ((if ($p | type) == "object" then $p.maxAttempts else null end) // 2) | if type == "number" and . >= 1 and floor == . then . else 2 end;
+                (.bkit.workflows.debug // {}) as $d | lim($d.fix // {}) + lim($d.soak // {})' package.json 2>/dev/null || true)
+              case "${debug_cap:-}" in
                 '' | *[!0-9]*)
-                  echo "::notice::MAX_DEV_DISPATCH_ATTEMPTS is not set to a whole number — refusing to dispatch uncounted (fail-closed)."
+                  echo "::notice::package.json bkit.workflows.debug limits are unreadable — refusing to dispatch uncounted (fail-closed)."
                   return 1
                   ;;
               esac
@@ -265,8 +267,8 @@ jobs:
                   return 1
                 fi
               fi
-              if [ "$dev_count" -ge "$MAX_DEV_DISPATCH_ATTEMPTS" ]; then
-                echo "::notice::FID $guard_fid exhausted $MAX_DEV_DISPATCH_ATTEMPTS dev-triggered debug dispatches — operator review required (delete dev-dispatch rows in status.jsonl to reset)."
+              if [ "$dev_count" -ge "$debug_cap" ]; then
+                echo "::notice::FID $guard_fid exhausted $debug_cap dev-triggered debug dispatches — operator review required (delete dev-dispatch rows in status.jsonl to reset)."
                 return 1
               fi
               parent_sha=$(git -C "$GITHUB_WORKSPACE" rev-parse origin/dev 2>/dev/null || echo "")
@@ -441,9 +443,9 @@ jobs:
                 fi
               fi
 
-              # feat/** is NOT capped by MAX_DEV_DISPATCH_ATTEMPTS: pre-merge,
-              # PR-scoped, bounded by the in-session MAX_DEBUG_ATTEMPT /
-              # MAX_NORMAL_ATTEMPT counters. The dev arm above is the only
+              # feat/** is NOT capped here: pre-merge, PR-scoped, bounded by
+              # the debug workflow's fix and soak limits, which count across
+              # every debug run of the FID. The dev arm above is the only
               # capped surface.
             fi
           fi

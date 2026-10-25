@@ -15,7 +15,7 @@
 // `skip-token` — whether a commit message carries a GitHub skip-CI token
 // (`SKIP_CI_TOKEN`), for the `.husky/pre-push` CI-suppressor guard.
 //
-// `min-push` — whether every file a push changes matches `bkit.minPushPaths`, so
+// `min-push` — whether every file a push changes matches `bkit.testing.minPushPaths`, so
 // `.husky/pre-push` runs `bkit:gate:min`. Files decide, never `[skip ci]` (a typed label
 // GitHub reads off the last commit only).
 import { spawnSync } from "node:child_process";
@@ -383,7 +383,7 @@ function skipToken(ctx) {
 // ---------------------------------------------------------------------------
 // min-push
 // ---------------------------------------------------------------------------
-/** `bkit.minPushPaths` as git pathspecs: `:(glob)` unless an entry carries its own magic. */
+/** `bkit.testing.minPushPaths` as git pathspecs: `:(glob)` unless an entry carries its own magic. */
 export const minPushPathspecs = (paths) => paths.map((p) => (p.startsWith(":") ? p : `:(glob)${p}`));
 /** Where a pushed commit's range starts: its merge-base with origin/dev, else origin/main. */
 export function pushBase(cwd, sha) {
@@ -438,7 +438,7 @@ function minPush(ctx) {
         return code;
     };
     if (paths.length === 0) {
-        return result("no-paths", EXIT.NO, "bkit.minPushPaths is empty — not a min push");
+        return result("no-paths", EXIT.NO, "bkit.testing.minPushPaths is empty — not a min push");
     }
     if (changed.size === 0) {
         return result("no-changes", EXIT.NO, "the push changes no files — not proven a min push");
@@ -512,7 +512,7 @@ export const ciCommand = {
             run: skipToken,
         },
         "min-push": {
-            summary: "Exit 0 when every file a push changes matches bkit.minPushPaths (the pre-push light gate).",
+            summary: "Exit 0 when every file a push changes matches bkit.testing.minPushPaths (the pre-push light gate).",
             flags: [
                 {
                     name: "ref",
@@ -523,11 +523,11 @@ export const ciCommand = {
                 { name: "base", type: "string", help: "start every range here instead" },
             ],
             output: {
-                minPush: "true when every changed file matches bkit.minPushPaths",
+                minPush: "true when every changed file matches bkit.testing.minPushPaths",
                 reason: "null when a min push; else no-paths | no-changes | outside | unknown",
                 changed: "files the push changes, across every ref",
                 outside: "the changed files no min-push path matches",
-                paths: "bkit.minPushPaths as read",
+                paths: "bkit.testing.minPushPaths as read",
             },
             exitCodes: {
                 [EXIT_RANGE_UNKNOWN]: "a pushed commit, its base, or its git diff could not be read",

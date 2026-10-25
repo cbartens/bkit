@@ -3,13 +3,13 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runCommand } from "../lib";
 import { COMMANDS } from "../registry";
 import type { Step } from "../../ledgers/status";
 import { loopTrend } from "./counters";
-import { LOOP_PAUSE_THRESHOLDS, THRESHOLDS } from "../../shared/thresholds";
+import { ASK_POINTS } from "../../shared/settings";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -103,76 +103,32 @@ describe("bkit counters derive", () => {
     expect((await derive(file, "verify", "next")).json.value).toBe(1);
   });
 
-  it("keeps sub-plans apart", async () => {
+  it("counters isolate by group", async () => {
     const file = log([
-      done("build", "verify", "2026-10-01T00:01:00Z", { subPlan: 1 }),
-      done("build", "verify", "2026-10-01T00:02:00Z", { subPlan: 1 }),
-      done("build", "verify", "2026-10-01T00:03:00Z", { subPlan: 2 }),
+      done("build", "verify", "2026-10-01T00:01:00Z", { group: 1 }),
+      done("build", "verify", "2026-10-01T00:02:00Z", { group: 1 }),
+      done("build", "verify", "2026-10-01T00:03:00Z", { group: 2 }),
     ]);
-    expect((await derive(file, "verify", "count", "--sub-plan=1")).json.value).toBe(2);
-    expect((await derive(file, "verify", "count", "--sub-plan=2")).json.value).toBe(1);
+    expect((await derive(file, "verify", "count", "--group=1")).json.value).toBe(2);
+    expect((await derive(file, "verify", "count", "--group=2")).json.value).toBe(1);
     expect((await derive(file, "verify", "count")).json.value).toBe(3);
   });
 
-  it("rejects an empty or non-integer --sub-plan instead of silently counting every sub-plan", async () => {
+  it("rejects an empty or non-integer --group instead of silently counting every group", async () => {
     const file = log(rows);
-    expect((await derive(file, "verify", "count", "--sub-plan=")).code).toBe(2);
-    expect((await derive(file, "verify", "count", "--sub-plan=x")).code).toBe(2);
+    expect((await derive(file, "verify", "count", "--group=")).code).toBe(2);
+    expect((await derive(file, "verify", "count", "--group=x")).code).toBe(2);
   });
 
-  it("--since counts only rows after the run field's timestamp", async () => {
+  it("a decision row never resets the count, and --since is refused", async () => {
     const file = log([
       started("build", "2026-10-01T00:00:00Z"),
-      done("build", "soak", "2026-10-01T00:01:00Z"),
-      {
-        type: "workflow-meta",
-        workflow: "build",
-        at: "2026-10-01T00:02:00Z",
-        soakEntryAt: "2026-10-01T00:02:00Z",
-      },
-      done("build", "soak", "2026-10-01T00:03:00Z"),
+      done("build", "verify", "2026-10-01T00:01:00Z", { group: 1 }),
+      { type: "workflow-meta", workflow: "build", at: "2026-10-01T00:02:00Z", decisionAt: "x" },
+      done("build", "verify", "2026-10-01T00:03:00Z", { group: 1 }),
     ]);
-    expect((await derive(file, "soak", "count", "--since=soakEntryAt")).json.value).toBe(1);
-    expect((await derive(file, "soak", "count", "--since=neverSet")).json.value).toBe(2);
-  });
-
-  it("--since=decisionAt restarts a route's budget at the newest decision", async () => {
-    const decision = (at: string) => ({
-      type: "workflow-meta",
-      workflow: "build",
-      at,
-      decisionAt: at,
-    });
-    const file = log([
-      started("build", "2026-10-01T00:00:00Z"),
-      done("build", "verify", "2026-10-01T00:01:00Z", { subPlan: 1 }),
-      decision("2026-10-01T00:02:00Z"),
-      done("build", "verify", "2026-10-01T00:03:00Z", { subPlan: 1 }),
-      decision("2026-10-01T00:04:00Z"),
-      done("build", "verify", "2026-10-01T00:05:00Z", { subPlan: 1 }),
-    ]);
-    const since = ["--sub-plan=1", "--since=decisionAt"];
-    expect((await derive(file, "verify", "count", ...since)).json.value).toBe(1);
-    expect((await derive(file, "verify", "count", "--sub-plan=1")).json.value).toBe(3);
-  });
-
-  it("two soakEntryAt markers in the same second fold to one marker", async () => {
-    const marker = {
-      type: "workflow-meta",
-      workflow: "build",
-      at: "2026-10-01T00:02:00Z",
-      soakEntryAt: "2026-10-01T00:02:00Z",
-    };
-    const file = log([
-      started("build", "2026-10-01T00:00:00Z"),
-      done("build", "soak", "2026-10-01T00:01:00Z", { parentSha: "s1" }),
-      marker,
-      marker,
-      done("build", "soak", "2026-10-01T00:03:00Z", { parentSha: "s2" }),
-    ]);
-    expect((await derive(file, "soak", "count", "--since=soakEntryAt")).json.value).toBe(1);
-    expect((await derive(file, "soak", "next", "--since=soakEntryAt")).json.value).toBe(2);
-    expect((await derive(file, "soak", "count")).json.value).toBe(2);
+    expect((await derive(file, "verify", "count", "--group=1")).json.value).toBe(2);
+    expect((await derive(file, "verify", "count", "--since=decisionAt")).code).toBe(2);
   });
 
   it("de-dupes: distinct parentSha = two attempts, byte-identical replay = one", async () => {
@@ -316,7 +272,7 @@ describe("bkit counters route", () => {
       exceeded: false,
       next: "step-8",
       max: 3,
-      paused: false,
+      ask: false,
     });
     expect((await route("1", "3")).code).toBe(0);
   });
@@ -329,7 +285,7 @@ describe("bkit counters route", () => {
       exceeded: true,
       next: "failure-path",
       max: 3,
-      paused: false,
+      ask: false,
     });
     expect(r.err).toContain("counter VERIFY_ATTEMPT exceeded max=3 (value=4)");
   });
@@ -342,7 +298,7 @@ describe("bkit counters route", () => {
       exceeded: false,
       next: "step-8",
       max: 0,
-      paused: false,
+      ask: false,
     });
     const over = await route("1", "0");
     expect(over.code).toBe(1);
@@ -351,7 +307,7 @@ describe("bkit counters route", () => {
       exceeded: true,
       next: "failure-path",
       max: 0,
-      paused: false,
+      ask: false,
     });
     expect(over.err).toContain("counter VERIFY_ATTEMPT exceeded max=0 (value=1)");
   });
@@ -373,31 +329,23 @@ describe("bkit counters route", () => {
     }
   });
 
-  it("takes the max from a threshold name with --limit", async () => {
+  it("takes the max from an ask point with --point", async () => {
     const r = await run(
-      ["counters", "route", "--name=x", "--value=4", "--limit=MAX_VERIFY_ATTEMPT"],
-      pkgDir({ loopPause: false }),
+      ["counters", "route", "--name=x", "--value=3", "--point=build.verify"],
+      pkgDir({ workflows: { build: { verify: { ask: false } } } }),
     );
     expect(r.code).toBe(1);
-    expect(r.json).toEqual({ value: 4, exceeded: true, next: null, max: 3, paused: false });
+    expect(r.json).toEqual({ value: 3, exceeded: true, next: null, max: 2, ask: false });
   });
 
-  it("needs exactly one of --max and --limit", async () => {
+  it("needs exactly one of --max and --point", async () => {
     expect((await run(["counters", "route", "--name=x", "--value=1"])).code).toBe(2);
     expect(
-      (
-        await run([
-          "counters",
-          "route",
-          "--name=x",
-          "--value=1",
-          "--max=3",
-          "--limit=MAX_TEST_ATTEMPT",
-        ])
-      ).code,
+      (await run(["counters", "route", "--name=x", "--value=1", "--max=3", "--point=build.tests"]))
+        .code,
     ).toBe(2);
     expect(
-      (await run(["counters", "route", "--name=x", "--value=1", "--limit=MAX_NOPE"])).code,
+      (await run(["counters", "route", "--name=x", "--value=1", "--point=build.nope"])).code,
     ).toBe(2);
   });
 });
@@ -408,7 +356,7 @@ describe("bkit counters route --of", () => {
       started("build", "2026-10-01T00:00:00Z"),
       done("build", "build-run-tests", "2026-10-01T00:01:00Z", { attempt: 1 }),
       done("build", "build-run-tests", "2026-10-01T00:02:00Z", { attempt: 2 }),
-      done("build", "build-plan-verify", "2026-10-01T00:03:00Z", { subPlan: 2, attempt: 1 }),
+      done("build", "build-plan-verify", "2026-10-01T00:03:00Z", { group: 2, attempt: 1 }),
     ]);
   const route = (file: string, of: string, max: string, ...extra: string[]) =>
     run([
@@ -431,17 +379,17 @@ describe("bkit counters route --of", () => {
       exceeded: false,
       next: "step-15",
       max: 2,
-      paused: false,
+      ask: false,
     });
     const next = await route(file, "build-run-tests:next", "2");
     expect(next.code).toBe(1);
     expect(next.json).toMatchObject({ value: 3, exceeded: true, next: "failure-path" });
   });
 
-  it("counts one sub-plan's rows with --sub-plan", async () => {
+  it("counts one group's rows with --group", async () => {
     const file = rows();
-    expect((await route(file, "build-plan-verify:count", "3", "--sub-plan=2")).json.value).toBe(1);
-    expect((await route(file, "build-plan-verify:count", "3", "--sub-plan=1")).json.value).toBe(0);
+    expect((await route(file, "build-plan-verify:count", "3", "--group=2")).json.value).toBe(1);
+    expect((await route(file, "build-plan-verify:count", "3", "--group=1")).json.value).toBe(0);
   });
 
   it("exits 4 when :current finds the step's own row missing", async () => {
@@ -484,91 +432,88 @@ describe("bkit counters route --of", () => {
   });
 });
 
-describe("bkit counters route under bkit.loopPause", () => {
-  const route = (value: string, limit: string, cwd: string) =>
+describe("bkit counters route --point", () => {
+  const route = (value: string, point: string, cwd: string) =>
     run(
       [
         "counters",
         "route",
         "--name=VERIFY_ATTEMPT",
         `--value=${value}`,
-        `--limit=${limit}`,
+        `--point=${point}`,
         "--continue=step-8",
         "--exceeded=failure-path",
-        "--exceeded-paused=decision-pause",
       ],
       cwd,
     );
 
-  it("loopPause on caps covered limits at 1 and takes --exceeded-paused", async () => {
-    for (const cwd of [pkgDir({ loopPause: true }), pkgDir({})]) {
-      for (const limit of Object.keys(LOOP_PAUSE_THRESHOLDS)) {
-        expect((await route("1", limit, cwd)).json).toEqual({
-          value: 1,
-          exceeded: false,
-          next: "step-8",
-          max: 1,
-          paused: true,
-        });
-        const over = await route("2", limit, cwd);
-        expect(over.code).toBe(1);
-        expect(over.json).toEqual({
-          value: 2,
-          exceeded: true,
-          next: "decision-pause",
-          max: 1,
-          paused: true,
-        });
-      }
+  const DEFAULT_MAX: Record<string, number> = {
+    "design.grill": 6,
+    "build.verify": 2,
+    "build.challenge": 2,
+    "build.tests": 2,
+    "debug.fix": 2,
+    "debug.soak": 2,
+    "ship.merge": 2,
+  };
+
+  it("takes each point's default limit and asks when nothing is set", async () => {
+    const cwd = pkgDir({});
+    expect(Object.keys(DEFAULT_MAX)).toEqual([...ASK_POINTS]);
+    for (const point of ASK_POINTS) {
+      const max = DEFAULT_MAX[point]!;
+      expect((await route(String(max), point, cwd)).json).toEqual({
+        value: max,
+        exceeded: false,
+        next: "step-8",
+        max,
+        ask: true,
+      });
+      const over = await route(String(max + 1), point, cwd);
+      expect(over.code).toBe(1);
+      expect(over.json).toMatchObject({ exceeded: true, next: "failure-path", ask: true });
     }
   });
 
-  it("loopPause off keeps today's limits and --exceeded", async () => {
-    const cwd = pkgDir({ loopPause: false });
-    expect((await route("3", "MAX_VERIFY_ATTEMPT", cwd)).json).toMatchObject({
+  it("reads ask and the limit from bkit.workflows", async () => {
+    const cwd = pkgDir({
+      workflows: {
+        build: { verify: { ask: false, maxAttempts: 3 } },
+        design: { grill: { maxTurns: 1 } },
+      },
+    });
+    expect((await route("3", "build.verify", cwd)).json).toMatchObject({
       exceeded: false,
       max: 3,
-      paused: false,
+      ask: false,
     });
-    expect((await route("4", "MAX_TEST_ATTEMPT", cwd)).json).toMatchObject({
+    expect((await route("2", "design.grill", cwd)).json).toMatchObject({
       exceeded: true,
-      next: "failure-path",
-      paused: false,
+      max: 1,
+      ask: true,
     });
   });
 
-  it("falls back to --exceeded when no --exceeded-paused is given", async () => {
-    const r = await run(
-      [
-        "counters",
-        "route",
-        "--name=x",
-        "--value=2",
-        "--limit=MAX_MERGE_ATTEMPT",
-        "--exceeded=failure-path",
-      ],
-      pkgDir({}),
-    );
-    expect(r.json).toMatchObject({ next: "failure-path", max: 1, paused: true });
+  it("an invalid limit or ask takes its default", async () => {
+    const cwd = pkgDir({ workflows: { ship: { merge: { ask: "no", maxAttempts: 0 } } } });
+    expect((await route("1", "ship.merge", cwd)).json).toMatchObject({ max: 2, ask: true });
   });
 
-  it("uncovered limits and --max ignore loopPause", async () => {
-    const cwd = pkgDir({});
-    for (const limit of ["MAX_REVALIDATE_ATTEMPT", "MAX_NORMAL_ATTEMPT", "MAX_SOAK_ATTEMPT"])
-      expect((await route("3", limit, cwd)).json).toMatchObject({ max: 3, paused: false });
-    const r = await run(
-      ["counters", "route", "--name=x", "--value=2", "--max=3", "--exceeded-paused=decision-pause"],
-      cwd,
-    );
-    expect(r.json).toMatchObject({ exceeded: false, max: 3, paused: false });
+  it("a headless run never asks", async () => {
+    vi.stubEnv("BKIT_RUNTIME", "GITHUB_ACTION");
+    try {
+      expect((await route("1", "debug.fix", pkgDir({}))).json).toMatchObject({ ask: false });
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
 
 describe("bkit counters progress", () => {
   const verify = (at: string, failures: number, sha: string, extra: Record<string, unknown> = {}) =>
-    done("build", "build-plan-verify", at, { failures, parentSha: sha, subPlan: 1, ...extra });
+    done("build", "build-plan-verify", at, { failures, parentSha: sha, group: 1, ...extra });
   const fix = (at: string, strategy: string) =>
-    done("build", "build-plan-gaps-remediate", at, { strategy, subPlan: 1 });
+    done("build", "build-plan-gaps-remediate", at, { strategy, group: 1 });
   const progress = (file: string, ...extra: string[]) =>
     run([
       "counters",
@@ -577,7 +522,7 @@ describe("bkit counters progress", () => {
       "--workflow=build",
       "--check=build-plan-verify",
       "--fix=build-plan-gaps-remediate",
-      "--sub-plan=1",
+      "--group=1",
       ...extra,
     ]);
 
@@ -621,31 +566,6 @@ describe("bkit counters progress", () => {
       recommend: "stop",
       nextStrategy: "FINAL",
       finalSpent: true,
-    });
-  });
-
-  it("counts only rounds after --since, and calls a lone round first-round", async () => {
-    const file = log([
-      started("build", "2026-10-01T00:00:00Z"),
-      verify("2026-10-01T00:10:00Z", 5, "a"),
-      fix("2026-10-01T00:20:00Z", "STANDARD"),
-      verify("2026-10-01T00:30:00Z", 3, "b"),
-      {
-        type: "workflow-meta",
-        workflow: "build",
-        at: "2026-10-01T00:40:00Z",
-        decisionAt: "2026-10-01T00:40:00Z",
-      },
-      verify("2026-10-01T00:50:00Z", 3, "c"),
-    ]);
-    const r = await progress(file, "--since=decisionAt");
-    expect(r.json).toMatchObject({
-      counts: "3",
-      lastStrategy: null,
-      nextStrategy: "PIVOT",
-      minutesPerRound: null,
-      trend: "first-round",
-      recommend: null,
     });
   });
 
@@ -713,26 +633,24 @@ describe("loopTrend", () => {
 });
 
 describe("bkit counters max", () => {
-  it("returns one threshold or all of them", async () => {
-    expect((await run(["counters", "max", "--name=MAX_DEV_DISPATCH_ATTEMPTS"])).json).toEqual({
-      value: 3,
+  it("returns one point's limit and ask setting, or every point as set", async () => {
+    const cwd = pkgDir({ workflows: { debug: { fix: { ask: false, maxAttempts: 4 } } } });
+    expect((await run(["counters", "max", "--point=debug.fix"], cwd)).json).toEqual({
+      value: 4,
+      ask: false,
     });
-    expect((await run(["counters", "max"])).json).toEqual({
-      thresholds: THRESHOLDS,
-      loopPauseThresholds: LOOP_PAUSE_THRESHOLDS,
+    expect((await run(["counters", "max", "--point=design.grill"], cwd)).json).toEqual({
+      value: 6,
+      ask: true,
     });
+    const all = (await run(["counters", "max"], cwd)).json;
+    expect(Object.keys(all.points)).toEqual([...ASK_POINTS]);
+    expect(all.points["debug.fix"]).toEqual({ ask: false, max: 4 });
+    expect(all.points["ship.merge"]).toEqual({ ask: true, max: 2 });
   });
 
-  it("bkit-cloud.yml (both copies) declares MAX_DEV_DISPATCH_ATTEMPTS equal to THRESHOLDS", () => {
-    for (const rel of [
-      "../../../../../.github/workflows/bkit-cloud.yml",
-      "../../../../templates/.github/workflows/bkit-cloud.yml",
-    ]) {
-      const yml = fs.readFileSync(path.resolve(__dirname, rel), "utf-8");
-      const m = /^env:\n {2}MAX_DEV_DISPATCH_ATTEMPTS: (\d+)$/m.exec(yml);
-      expect(m, rel).not.toBeNull();
-      expect(Number(m![1])).toBe(THRESHOLDS.MAX_DEV_DISPATCH_ATTEMPTS);
-    }
+  it("refuses an unknown point", async () => {
+    expect((await run(["counters", "max", "--point=build.nope"], pkgDir({}))).code).toBe(2);
   });
 });
 
@@ -811,7 +729,7 @@ describe("bkit counters rows", () => {
       run([
         "counters",
         "route",
-        "--name=REVALIDATE_ATTEMPT",
+        "--name=MERGE_ATTEMPT",
         `--rows=${rows}`,
         `--file=${file}`,
         "--workflow=ship",
@@ -819,20 +737,19 @@ describe("bkit counters rows", () => {
         "--continue=step-9",
         "--exceeded=failure-path",
       ]);
-    const next = await route("ship-revalidate-dispatch:next", "3");
-    expect(next.code).toBe(0);
-    expect(next.json).toMatchObject({ value: 3, next: "step-9" });
-    const over = await route("ship-revalidate-dispatch:next", "2");
+    const within = await route("ship-revalidate-dispatch:count", "2");
+    expect(within.code).toBe(0);
+    expect(within.json).toMatchObject({ value: 2, next: "step-9" });
+    const over = await route("ship-revalidate-dispatch:count", "1");
     expect(over.code).toBe(1);
-    expect(over.json).toMatchObject({ value: 3, next: "failure-path" });
-    expect((await route("ship-revalidate-dispatch:count", "2")).json.value).toBe(2);
-    expect((await route("ship-revalidate-dispatch:current", "2")).code).toBe(2);
+    expect(over.json).toMatchObject({ value: 2, next: "failure-path" });
+    expect((await route("ship-revalidate-dispatch:next", "2")).code).toBe(2);
     const both = await run([
       "counters",
       "route",
       "--name=X",
       "--value=1",
-      "--rows=ship-revalidate-dispatch:next",
+      "--rows=ship-revalidate-dispatch:count",
       `--file=${file}`,
       "--workflow=ship",
       "--max=3",

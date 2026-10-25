@@ -363,12 +363,12 @@ describe("bkit runs gate", () => {
   });
 
   describe("skipped lanes (16 is opt-in)", () => {
-    /** A checkout whose package.json declares `bkit.shipGateRequiredLanes`. */
+    /** A checkout whose package.json declares `bkit.testing.shipGate`. */
     const requiring = (lanes: string[]) => {
       const d = tmp();
       fs.writeFileSync(
         path.join(d, "package.json"),
-        JSON.stringify({ name: "x", bkit: { shipGateRequiredLanes: lanes } }),
+        JSON.stringify({ name: "x", bkit: { testing: { shipGate: lanes } } }),
       );
       return d;
     };
@@ -382,7 +382,7 @@ describe("bkit runs gate", () => {
       expect(r.err).toContain("owns the planned-vs-vacuous judgement");
     });
 
-    it("refuses a skipped lane named in bkit.shipGateRequiredLanes (16)", async () => {
+    it("refuses a skipped lane named in bkit.testing.shipGate (16)", async () => {
       fixtureGh();
       const r = await gate(requiring(["test"]), "--head=skipped-lane");
       expect(r.code).toBe(16);
@@ -513,7 +513,7 @@ describe("bkit runs gate", () => {
     it("capstone and CI workflow resolve from package.json when not passed", async () => {
       fixtureGh();
       const r = await gate(
-        pkg({ capstoneJob: "app-check", ciWorkflow: "build.yml" }),
+        pkg({ testing: { ciCapstone: "app-check", ciWorkflow: "build.yml" } }),
         "--head=green-capstone",
       );
       expect(r.json).toMatchObject({ capstone: "app-check", ciWorkflow: "build.yml" });
@@ -522,9 +522,9 @@ describe("bkit runs gate", () => {
       expect((await gate(tmp(), "--head=green-capstone")).code).toBe(0);
     });
 
-    it("bkit.shipGateRequiredLanes resolves from package.json", async () => {
+    it("bkit.testing.shipGate resolves from package.json", async () => {
       fixtureGh();
-      const r = await gate(pkg({ shipGateRequiredLanes: ["test"] }), "--head=skipped-lane");
+      const r = await gate(pkg({ testing: { shipGate: ["test"] } }), "--head=skipped-lane");
       expect(r.code).toBe(16);
       expect(r.err).toContain("vacuous green: test");
     });
@@ -536,7 +536,7 @@ describe("bkit runs gate", () => {
 
     it("a malformed shipGateRequiredLanes falls back to none, never crashes", async () => {
       fixtureGh();
-      expect((await gate(pkg({ shipGateRequiredLanes: "test" }), "--head=skipped-lane")).code).toBe(
+      expect((await gate(pkg({ testing: { shipGate: "test" } }), "--head=skipped-lane")).code).toBe(
         0,
       );
     });
@@ -544,13 +544,13 @@ describe("bkit runs gate", () => {
     it("a configured capstone that is a job in the run passes; one that is not is absent (13)", async () => {
       fixtureGh();
       const r = await gate(
-        pkg({ capstoneJob: "lint", ciWorkflow: "other.yml" }),
+        pkg({ testing: { ciCapstone: "lint", ciWorkflow: "other.yml" } }),
         "--head=green-capstone",
       );
       expect(r.code).toBe(0);
       expect(r.json).toMatchObject({ capstone: "lint", ciWorkflow: "other.yml" });
       expect(r.err).toContain("capstone lint=success");
-      const absent = await gate(pkg({ capstoneJob: "nope" }), "--head=green-capstone");
+      const absent = await gate(pkg({ testing: { ciCapstone: "nope" } }), "--head=green-capstone");
       expect(absent.code).toBe(13);
       expect(absent.err).toContain("capstone job 'nope' ABSENT");
     });
@@ -662,7 +662,7 @@ describe("bkit runs gate", () => {
       const d = tmp();
       fs.writeFileSync(
         path.join(d, "package.json"),
-        JSON.stringify({ name: "x", bkit: { shipGateRequiredLanes: ["test"] } }),
+        JSON.stringify({ name: "x", bkit: { testing: { shipGate: ["test"] } } }),
       );
       expect((await gate(d, "--head=skipped-lane", "--capstone-only")).code).toBe(0);
       expect((await gate(d, "--head=skipped-lane")).code).toBe(16);
@@ -1121,7 +1121,7 @@ describe("bkit runs wait", () => {
     const cwd = tmp();
     fs.writeFileSync(
       path.join(cwd, "package.json"),
-      JSON.stringify({ bkit: { ciWorkflow: "build.yml" } }),
+      JSON.stringify({ bkit: { testing: { ciWorkflow: "build.yml" } } }),
     );
     const r = await cli(cwd, [
       "wait",
@@ -1199,7 +1199,7 @@ describe("bkit runs dispatch", { timeout: 20_000 }, () => {
     if (opts.capstone) {
       fs.writeFileSync(
         path.join(cwd, "package.json"),
-        JSON.stringify({ bkit: { capstoneJob: opts.capstone } }),
+        JSON.stringify({ bkit: { testing: { ciCapstone: opts.capstone } } }),
       );
     }
     gitIn(cwd, "add", "-A");
@@ -1363,7 +1363,7 @@ describe("bkit runs dispatch", { timeout: 20_000 }, () => {
     expect(gitIn(cwd, "rev-list", "--count", "HEAD")).toBe(count);
   });
 
-  it("the probe namespace follows bkit.capstoneJob", async () => {
+  it("the probe namespace follows bkit.testing.ciCapstone", async () => {
     const { cwd } = closeRepo({ capstone: "app-tests-check" });
     const r = await ciDispatchGate(base(cwd), {
       gh: sequenceGh([rollup("app-tests-unit")]).gh,
@@ -1579,7 +1579,7 @@ const ROLLUP_FOUND = JSON.stringify({
 // ---------------------------------------------------------------------------
 
 describe("bkit runs declared", () => {
-  it("exit 0 when .github/workflows/<bkit.ciWorkflow> exists, 1 when not", async () => {
+  it("exit 0 when .github/workflows/<bkit.testing.ciWorkflow> exists, 1 when not", async () => {
     const cwd = tmp();
     let r = await cli(cwd, ["declared"]);
     expect(r.code).toBe(1);
@@ -1590,7 +1590,7 @@ describe("bkit runs declared", () => {
     });
     fs.writeFileSync(
       path.join(cwd, "package.json"),
-      JSON.stringify({ bkit: { ciWorkflow: "build.yml" } }),
+      JSON.stringify({ bkit: { testing: { ciWorkflow: "build.yml" } } }),
     );
     fs.mkdirSync(path.join(cwd, ".github/workflows"), { recursive: true });
     // The default file does not count once another name is configured.
@@ -1603,7 +1603,7 @@ describe("bkit runs declared", () => {
     expect(r.code).toBe(0);
   });
 
-  it("the default bkit-ci.yml counts when no bkit.ciWorkflow is configured", async () => {
+  it("the default bkit-ci.yml counts when no bkit.testing.ciWorkflow is configured", async () => {
     const cwd = tmp();
     fs.writeFileSync(path.join(cwd, "package.json"), JSON.stringify({ name: "x" }));
     fs.mkdirSync(path.join(cwd, ".github/workflows"), { recursive: true });
@@ -1968,7 +1968,7 @@ describe("bkit runs context", () => {
     gitIn(cwd, "update-ref", "refs/remotes/origin/dev", "HEAD");
     fs.writeFileSync(
       path.join(cwd, "package.json"),
-      JSON.stringify({ bkit: { issueTracker: "github" } }),
+      JSON.stringify({ bkit: { tracker: { default: "github" } } }),
     );
     // No real gh: owner/repo comes from the origin remote, never the network.
     fakeGhBin({});

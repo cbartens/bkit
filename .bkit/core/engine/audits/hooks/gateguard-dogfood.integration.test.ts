@@ -1,7 +1,7 @@
 // audits/hooks/gateguard-dogfood.integration.test.ts — the bkit-repo-only authoring advisories.
 //
 // `.bkit/core/workflows/*.md` and `.bkit/core/prompts/*.md` have authoring rules (see
-// the sections in `.bkit/workflows.md` and `.bkit/prompts.md`); the hooks fire a
+// `.bkit/authoring.md`); the hooks fire a
 // path-scoped advisory at the moment of the edit.
 //
 // This region lives OUTSIDE the bkit:start/bkit:end markers in this repo's four
@@ -110,14 +110,15 @@ describe("dogfood authoring advisories — fire on the right paths", () => {
     it(`${host}: a .bkit/core/workflows/ file gets the workflow advisory`, () => {
       const a = run(".bkit/core/workflows/bkit-build.md");
       expect(a).toContain(".bkit/core/workflows/*.md authoring");
-      expect(a).toContain("Cross-workflow alignment");
+      expect(a).toContain("Human questions");
       expect(a).not.toContain(".bkit/core/prompts/*.md authoring");
     });
 
     it(`${host}: a .bkit/core/prompts/ file gets the prompt advisory`, () => {
       const a = run(".bkit/core/prompts/bkit-plan-generate.md");
       expect(a).toContain(".bkit/core/prompts/*.md authoring");
-      expect(a).toContain("Cross-prompt alignment");
+      expect(a).toContain("Cross-file alignment");
+      expect(a).not.toContain("Human questions");
       expect(a).not.toContain(".bkit/core/workflows/*.md authoring");
     });
 
@@ -128,7 +129,7 @@ describe("dogfood authoring advisories — fire on the right paths", () => {
       // never get is the execution-surface advisory: the file STATING the rules is
       // not itself authored under them. The trailing slash in the prefix is what
       // separates `.bkit/workflows.md` from `.bkit/core/workflows/`.
-      for (const f of [".bkit/workflows.md", ".bkit/prompts.md"]) {
+      for (const f of [".bkit/workflows.md", ".bkit/prompts.md", ".bkit/authoring.md"]) {
         const a = run(f);
         expect(a, f).not.toContain(".bkit/core/workflows/*.md authoring");
         expect(a, f).not.toContain(".bkit/core/prompts/*.md authoring");
@@ -269,7 +270,7 @@ describe("dogfood region — placement guarantees", () => {
     // One omission: the "check `.agents/docs.md` index first" line (bkit's own reference
     // docs under `.bkit/` are not in that index).
     const OMITTED = [
-      "- Check .agents/docs.md index first and confirm topic belongs in THIS doc, not another.\\n",
+      "- Check the .agents/docs.md index first and confirm the topic belongs in this doc, not another.\\n",
     ];
     const shipped = bullets("docAuthoringAdvisory").filter((b) => !OMITTED.includes(b));
     expect(bullets("bkitDocAuthoringAdvisory")).toEqual(shipped);
@@ -304,7 +305,7 @@ describe("dogfood advisories — carry EVERY rule from their source section", ()
   // without being carried across.
   function sectionLeads(doc: string, heading: string): string[] {
     const src = fs.readFileSync(path.join(getBkitDocsRoot(), path.basename(doc)), "utf-8");
-    const start = src.indexOf(`## ${heading}`);
+    const start = src.indexOf(`\n## ${heading}\n`);
     expect(start).toBeGreaterThanOrEqual(0);
     const rest = src.slice(start + heading.length);
     const end = rest.indexOf("\n## ");
@@ -337,10 +338,18 @@ describe("dogfood advisories — carry EVERY rule from their source section", ()
     // the same test encodes the exclusion twice: FENCED_WORKFLOWS lists only
     // bkit-debug.md, and UNTRUSTED_ARTIFACTS excludes tracker dumps by lookahead
     "Tracker content is not fenced": "commands/workflow/context.test.ts",
+    "Argument placeholders": "audits/workflows/slash-arg-expansion.test.ts",
     // source prompts must carry no bkit:managed marker
     "Managed-version marker": "audits/workflows/prompt-notation.test.ts",
     // near-copies and hand-edited single copies fail the corpus check
-    "Shared wording": "tools/wording.test.ts",
+    "Shared wording": "tools/instructions.test.ts",
+    // the block check fails a missing, repeated or misordered block, a CAUTION box,
+    // a clause outside its block, and a rule copied outside the Rules block
+    "Header blocks": "tools/instructions.test.ts",
+    Protocol: "tools/instructions.test.ts",
+    Contract: "tools/instructions.test.ts",
+    Rules: "tools/instructions.test.ts",
+    "Which block": "tools/instructions.test.ts",
   };
 
   it("every exempted rule's enforcing test still exists", () => {
@@ -371,6 +380,12 @@ describe("dogfood advisories — carry EVERY rule from their source section", ()
     "Standalone-runnable",
     // the master rule names "output format blocks" as a repeated section to copy
     "Output section shape",
+    "Short structured fields",
+    "Freeform, multi-finding, or multi-paragraph",
+    "Conditionals inside `[…]`",
+    "Shape, not rules",
+    // the master rule names "variables" as a shape to copy
+    "Variable names",
   ]);
 
   // One lead is reworded, recorded here; any other upstream rule not carried across fails.
@@ -385,7 +400,7 @@ describe("dogfood advisories — carry EVERY rule from their source section", ()
     "Labeled decision blocks": "labeled decision",
     // the advisory reads only the parent Self-contained line, which carries this
     // sub-rule as its supplied-template exception
-    "Template owns its rules": "carry their own rules",
+    "Template is shape, prompt owns rules": "read for shape only",
   };
 
   /** The phrase the advisory must carry for a doc rule lead: its alias, else the lead's first clause. */
@@ -395,24 +410,24 @@ describe("dogfood advisories — carry EVERY rule from their source section", ()
   // rule of their own, so the advisory has nothing to carry across.
   const NOT_A_RULE = new Set(["Banned shapes", "External content handling", "Enforced elsewhere"]);
 
+  const AUTHORING = ".bkit/authoring.md";
   const cases = [
     {
       host: ".bkit/core/workflows/bkit-build.md",
-      doc: ".bkit/workflows.md",
-      heading: "Workflow Authoring Rules",
+      headings: ["All Agent-Read Files", "Prompts and Workflows", "Workflows Only"],
     },
     {
       host: ".bkit/core/prompts/bkit-plan-generate.md",
-      doc: ".bkit/prompts.md",
-      heading: "Prompt Authoring Rules",
+      headings: ["All Agent-Read Files", "Prompts and Workflows", "Prompts Only"],
     },
   ];
 
   for (const c of cases) {
-    it(`${c.doc}: every § ${c.heading} rule appears in the advisory`, () => {
+    it(`${c.host}: every rule of ${AUTHORING} § ${c.headings.join(", § ")} appears in the advisory`, () => {
       const advisory = claudeAdvisory(c.host);
       const haystack = words(advisory);
-      const missing = sectionLeads(c.doc, c.heading)
+      const missing = c.headings
+        .flatMap((h) => sectionLeads(AUTHORING, h))
         .filter((lead) => !(lead in ENFORCED_BY))
         .filter((lead) => !SUBSUMED_BY_MASTER.has(lead))
         .filter((lead) => {
@@ -421,7 +436,7 @@ describe("dogfood advisories — carry EVERY rule from their source section", ()
       expect(missing).toEqual([]);
     });
 
-    it(`${c.doc}: the advisory does NOT defer to the section`, () => {
+    it(`${c.host}: the advisory does NOT defer to the section`, () => {
       const advisory = claudeAdvisory(c.host);
       expect(advisory).not.toContain("for the rest");
       expect(advisory).not.toContain("See .bkit/");
@@ -444,20 +459,28 @@ describe("dogfood advisories — shared rules read from their section at hook ti
   const SHARED = [
     {
       host: ".bkit/core/workflows/bkit-build.md",
-      doc: ".bkit/workflows.md",
+      doc: ".bkit/authoring.md",
       leads: [
+        "These files are their own template",
+        "Bash decides, prose routes",
+        "Current state",
+        "Notation",
         "Dense instructions only",
-        "Cross-workflow alignment",
+        "Cross-file alignment",
+        "Human questions",
         "Self-contained",
         "Removal = delete",
       ],
     },
     {
       host: ".bkit/core/prompts/bkit-plan-generate.md",
-      doc: ".bkit/prompts.md",
+      doc: ".bkit/authoring.md",
       leads: [
+        "These files are their own template",
+        "Current state",
+        "Notation",
         "Dense instructions only",
-        "Cross-prompt alignment",
+        "Cross-file alignment",
         "Self-contained",
         "Removal = delete",
       ],
@@ -475,6 +498,15 @@ describe("dogfood advisories — shared rules read from their section at hook ti
           expect(line, `${c.doc} :: ${lead}`).toBeTruthy();
           expect(advisory, lead).toContain(`- ${lead}: ${line!.slice(prefix.length)}`);
         }
+      });
+
+      it(`${host}: ${c.host} carries the § Notation Grammar paragraph as .bkit/authoring.md states it`, () => {
+        const src = fs.readFileSync(path.join(getBkitDocsRoot(), "authoring.md"), "utf-8");
+        const prefix = "**Grammar.** ";
+        const line = src.split("\n").find((l) => l.startsWith(prefix));
+        expect(line, ".bkit/authoring.md :: Grammar").toBeTruthy();
+        expect(line).toContain("Write normal English sentences");
+        expect(run(c.host)).toContain(`- Grammar: ${line!.slice(prefix.length)}`);
       });
     }
   }
@@ -496,7 +528,10 @@ describe("dogfood advisories — shared rules read from their section at hook ti
       expect(res.status).toBe(0);
       const advisory = String(JSON.parse(res.stdout).hookSpecificOutput.additionalContext);
       expect(advisory).toContain(
-        "- Self-contained: unreadable here; read `.bkit/prompts.md` § Prompt Authoring Rules.",
+        "- Self-contained: unreadable here; read `.bkit/authoring.md` § Prompts and Workflows.",
+      );
+      expect(advisory).toContain(
+        "- Grammar: unreadable here; read `.bkit/authoring.md` § Notation.",
       );
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
@@ -543,14 +578,17 @@ describe("dogfood advisories — .agents/rules.md § Repo Authoring", () => {
   it("every file and section the Repo Authoring rules name exists", () => {
     const rules = fs.readFileSync(".agents/rules.md", "utf-8");
     expect(rules).toContain("#### Repo Authoring");
-    for (const [doc, heading] of [
-      [".bkit/workflows.md", "Workflow Authoring Rules"],
-      [".bkit/prompts.md", "Prompt Authoring Rules"],
+    const authoring = fs.readFileSync(path.join(getBkitDocsRoot(), "authoring.md"), "utf-8");
+    expect(rules).toContain("`.bkit/authoring.md` § ");
+    for (const heading of [
+      "All Agent-Read Files",
+      "Docs",
+      "Prompts and Workflows",
+      "Prompts Only",
+      "Workflows Only",
     ]) {
-      expect(rules).toContain(`\`${doc}\` § ${heading}`);
-      expect(fs.readFileSync(path.join(getBkitDocsRoot(), path.basename(doc!)), "utf-8")).toContain(
-        `\n## ${heading}\n`,
-      );
+      expect(rules).toContain(`§ ${heading}`);
+      expect(authoring).toContain(`\n## ${heading}\n`);
     }
     const compress = ".bkit/core/prompts/bkit-utility-compress-markdown.md";
     expect(rules).toContain(`\`${compress}\``);

@@ -605,7 +605,7 @@ jobs:
   # ── bkit-tests-check ──────────────────────────────────────────────────────
   # Capstone and sole branch-protection required check. `bkit runs gate` (/bkit-ship) merges
   # only when this job is present and green at the head; `bkit setup protect-main` requires
-  # it. Its name is `package.json` `bkit.capstoneJob` (default bkit-tests-check).
+  # it. Its name is `package.json` `bkit.testing.ciCapstone` (default bkit-tests-check).
   # needs: every lane — a lane missing here cannot red the capstone. if: !cancelled(), never
   # always(): a concurrency cancel must not stamp a failure. Each lane must succeed; a failed,
   # skipped or cancelled lane reds it. A lane that writes an executed-test count must have run

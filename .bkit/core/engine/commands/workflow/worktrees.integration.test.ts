@@ -231,11 +231,13 @@ describe("bkit worktrees setup — mint (create)", () => {
     expect(fs.existsSync(path.join(wtOf(f), ".vale/styles/write-good"))).toBe(false);
   });
 
-  it("reads package.json bkit.worktree: copy list (files and folders) and install off", async () => {
+  it("reads package.json bkit.workflows.worktree: copy list (files and folders) and install off", async () => {
     const f = fixture();
     fs.writeFileSync(
       path.join(f.repo, "package.json"),
-      JSON.stringify({ bkit: { worktree: { copy: ["config/local", ".env"], install: false } } }),
+      JSON.stringify({
+        bkit: { workflows: { worktree: { copy: ["config/local", ".env"], install: false } } },
+      }),
     );
     fs.mkdirSync(path.join(f.repo, "config/local"), { recursive: true });
     fs.writeFileSync(path.join(f.repo, "config/local/k.json"), "{}");

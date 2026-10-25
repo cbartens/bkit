@@ -98,6 +98,34 @@ describe("runPreflight", () => {
     expect(JSON.parse(r.stdout)).not.toContain("bkit-version-major-downgrade");
   });
 
+  it("reports advisory plan-task-markers-missing for a plan with no task markers", () => {
+    fs.writeFileSync(path.join(tmpDir, "package.json"), '{"name":"test"}', "utf-8");
+    fs.mkdirSync(path.join(tmpDir, "docs", "plans", "202610"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "docs", "plans", "202610", "1-a-plan.md"),
+      "# Plan\n",
+      "utf-8",
+    );
+    const { advisories } = runPreflight(makeModules("core"), tmpDir);
+    expect(advisories.filter((f) => f.id === "plan-task-markers-missing")).toHaveLength(1);
+  });
+
+  it("reports advisory bkit-tasks-form-stale when the change form shows another cap", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ bkit: { workflows: { tasks: { maxPerGroup: 5 } } } }),
+      "utf-8",
+    );
+    fs.mkdirSync(path.join(tmpDir, ".github", "ISSUE_TEMPLATE"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "ISSUE_TEMPLATE", "bkit-change.yml"),
+      "description: up to `bkit.workflows.tasks.maxPerGroup` tasks (default 3)\n",
+      "utf-8",
+    );
+    const { advisories } = runPreflight(makeModules("core"), tmpDir);
+    expect(advisories.filter((f) => f.id === "bkit-tasks-form-stale")).toHaveLength(1);
+  });
+
   it("not-git-repo does NOT fire when --core is not requested", () => {
     // No package.json, no .git, but no --core either — not-git-repo should not fire
     fs.writeFileSync(path.join(tmpDir, "package.json"), '{"name":"test"}', "utf-8");

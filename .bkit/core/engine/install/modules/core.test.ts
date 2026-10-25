@@ -4,7 +4,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as os from "node:os";
-import { guardCoreRoot, removeOrphans } from "./core";
+import { guardCoreRoot, listMdFiles, removeOrphans } from "./core";
 import { CODEX_SKILLS_DIR } from "./codex";
 import { ANTIGRAVITY_AGENTS_DIR, ANTIGRAVITY_SKILLS_DIR } from "./antigravity";
 
@@ -132,6 +132,16 @@ describe("removeOrphans — prune stale bkit mirror files, allowlisted dirs only
       "bkit-notes.txt",
       "custom.md",
     ]);
+  });
+
+  it("upgrade removes the complexity-split agent mirror", () => {
+    // Built from parts: catalog-parity.test.ts refuses the retired name in shipped files.
+    const retired = `bkit-plan-complexity-${"split"}.md`;
+    const prompts = path.resolve(__dirname, "../../../prompts");
+    const sources = new Set(listMdFiles(prompts, "bkit-"));
+    seed(".claude/agents", [...sources, retired]);
+    expect(removeOrphans(".claude/agents", sources, false, "bkit-")).toEqual([retired]);
+    expect(fs.existsSync(`.claude/agents/${retired}`)).toBe(false);
   });
 
   it("dry-run reports orphans without deleting them", () => {

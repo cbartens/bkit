@@ -1,4 +1,4 @@
-// shared/json.ts — `JSON.parse` without the throw, for consumer-authored input.
+// shared/json.ts — `JSON.parse` and file reads without the throw, for consumer-authored input.
 //
 // Every read of a file bkit does not own (package.json, .mcp.json, settings JSON,
 // .bkit/version) must fail open into a result the caller reports in its own terms,
@@ -16,15 +16,28 @@ export function parseJson(raw) {
         return { ok: false };
     }
 }
-/** `parseJson` over the file at `file`; `{ ok: false }` also when the file cannot be read. */
-export function readJsonFile(file) {
-    let raw;
+/** The file at `file` as UTF-8 text, or `{ ok: false }` when it cannot be read. */
+export function readTextFile(file) {
     try {
-        raw = fs.readFileSync(file, "utf-8");
+        return { ok: true, text: fs.readFileSync(file, "utf-8") };
     }
     catch {
-        // Missing, unreadable or a directory: the result says so, like malformed JSON.
+        // Missing, unreadable or a directory: the result says so, and the caller reports it.
         return { ok: false };
     }
-    return parseJson(raw);
+}
+/** The entry names of the directory `dir`, or `{ ok: false }` when it cannot be read. */
+export function readDirNames(dir) {
+    try {
+        return { ok: true, names: fs.readdirSync(dir) };
+    }
+    catch {
+        // Missing, unreadable or not a directory: the result says so, and the caller reports it.
+        return { ok: false };
+    }
+}
+/** `parseJson` over the file at `file`; `{ ok: false }` also when the file cannot be read. */
+export function readJsonFile(file) {
+    const read = readTextFile(file);
+    return read.ok ? parseJson(read.text) : { ok: false };
 }

@@ -10,6 +10,7 @@
 //   readBkitConfig        — from shared/settings.ts (the consumer's `bkit` settings)
 //   readInstallingVersion — from shared/package-json.ts (the version of the bkit doing the install)
 //   readTemplate          — from render/parts.ts (template with its shared parts spliced in)
+//   parsePlanBlocks       — from commands/workflow/plan-blocks.ts (a plan's group and task blocks)
 
 import type { ModuleFlag } from "../../cli.js";
 import { readInstallingVersion } from "../../shared/package-json.js";
@@ -20,6 +21,10 @@ import {
   detectMalformedPackageJson,
   detectNoPackageJson,
   detectNotGitRepo,
+  detectInvalidAskSettings,
+  detectInvalidTaskCaps,
+  detectTaskCapFormStale,
+  detectUnmarkedPlans,
 } from "./repo.js";
 import {
   MARKERED_TEXT_DRIFT_PATHS,
@@ -75,7 +80,7 @@ export function dedupeById(findings: PreflightFinding[]): PreflightFinding[] {
  * installingVersion: used by detectBkitVersionMajorDowngrade; defaults to the
  * package's own version read from its package.json at runtime.
  * issueTracker: when provided, narrows tracker-specific checks (e.g. MCP server
- * requirements). When omitted, read from consumer's `bkit.issueTracker` in package.json.
+ * requirements). When omitted, read from consumer's `bkit.tracker.default` in package.json.
  *
  * GitHub tracker gate: when `issueTracker === "github"`, the Linear preflight
  * gate is a no-op — the GitHub gate is enforced by workflow Step 1 via MCP.
@@ -127,6 +132,18 @@ export function runPreflight(
 
   const versionPinStale = detectBkitVersionPinStale(cwd);
   if (versionPinStale) advisories.push(versionPinStale);
+
+  const invalidTaskCaps = detectInvalidTaskCaps(cwd);
+  if (invalidTaskCaps) advisories.push(invalidTaskCaps);
+
+  const taskCapFormStale = detectTaskCapFormStale(cwd);
+  if (taskCapFormStale) advisories.push(taskCapFormStale);
+
+  const invalidAsks = detectInvalidAskSettings(cwd);
+  if (invalidAsks) advisories.push(invalidAsks);
+
+  const unmarkedPlans = detectUnmarkedPlans(cwd);
+  if (unmarkedPlans) advisories.push(unmarkedPlans);
 
   // BAR-224: [verbose ci] marker advisories
 

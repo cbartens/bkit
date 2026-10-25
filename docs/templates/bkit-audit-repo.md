@@ -11,14 +11,6 @@
 >
 > **Rules:**
 >
-> - Read-only audit; never edit code, config, or data.
-> - `Universal Instructions` apply to all projects; `Project Instructions` apply only to this project.
-> - Local audit instructions / overrides → `Project Instructions` below the bkit-managed block; universal instructions stay in-block.
-> - Any tools mentioned in `Universal Instructions` are examples only; swap for actual tools in final output; drop inapplicable.
-> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
-> - Read `.agents/docs.md` → load docs for workflow / step / task; skip missing; cite docs inline where required.
-> - Every claim cites this run's evidence (`file:line`, or command / query and its output) and tool behind it; a previous report's figure, list, or status is a lead, not evidence.
-> - Read this document once at session start; do not trust session memory; do not re-read on every loop iteration.
 > - NEVER delete, prune, push, drop a stash, or rewrite history; name the command, do not run it.
 > - NEVER copy a secret or personal-data value into the report; name the file and line.
 > - Name the machine. Local leftovers absent on a fresh checkout stay `Not Checked`.
@@ -33,7 +25,7 @@ Every task leaves a worktree, branch, stash, or scratch directory; nothing's job
 
 **Cadence:** monthly. Extra pass after a burst of parallel agent work (worktrees and branches pile up fastest).
 
-**Anchor Standards:** record version and date read. Newer version → `Standards` step reads what changed.
+**Anchor Standards:**
 
 - OpenSSF Scorecard checks; record the version run.
 - OpenSSF OSPS Baseline, the version marked current.
@@ -79,38 +71,28 @@ Every task leaves a worktree, branch, stash, or scratch directory; nothing's job
 
 ### Pre-Flight / Dependencies
 
-**Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
-
-**Credentials:** probe direnv before marking a token / env var missing: `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'`; `unset` = missing. Run credentialed CLIs as `direnv exec . <cmd>`. No direnv (cloud session) → plain env check. Report names, never values.
-
 #### Core
 
-Always verify.
-
-- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied (here or in any step) → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`; run every step the remaining tools allow; work needing blocked call → `Not Checked`. never stop the run for a blocked call; never retry or reword a blocked call to get past it.
-- [ ] **Git:** Steps 2–7, 9 — local checkout, worktrees, branches, stashes. Fallback: none; no checkout → `N/A` and STOP.
+- [ ] **Permissions:** blocked calls recorded
+- [ ] **Git:** Steps 2-7, 9 — local checkout, worktrees, branches, stashes. Fallback: none; no checkout → `N/A` and STOP.
 - [ ] **Host API:** Steps 4, 8 — read-only, e.g. `gh api`. Fallback: local git only; remote branches, pull requests, and settings `Not Checked`.
 - [ ] **Web:** Step 10 — fetch anchor standards. Fallback: versions recorded as unread.
 
 #### Conditional
 
-Verify only when applicable.
-
-- [ ] **Secret Scanners:** Leftovers or history → Steps 6–7 — e.g. gitleaks, TruffleHog. Fallback: pattern search; verified-credential check `Not Checked`. Reports outside the repo.
+- [ ] **Secret Scanners:** Leftovers or history → Steps 6-7 — e.g. gitleaks, TruffleHog. Fallback: pattern search; verified-credential check `Not Checked`. Reports outside the repo.
 - [ ] **Repo Sizer:** History size → Step 7 — e.g. git-sizer. Fallback: `git rev-list` blob sizes.
 - [ ] **Dependency Version Linter:** Workspaces → Step 7 — e.g. sherif, syncpack. Fallback: diff manifests by reading.
 - [ ] **Scorecard:** Host exposes one → Step 8 — e.g. OpenSSF Scorecard, read-only token. Fallback: settings API only; scores `Not Checked`.
 
 ### 🔒 Gate 1: Prerequisites Check
 
-**Checkpoint.** Verify and check `[x]` all applicable boxes above, then continue to `Probe Steps` without asking.
-
 - [ ] **Gaps named:** every missing item names its fallback and `Not Checked` entry.
-- [ ] **Gate 1 - Verified:** All Core items checked. All applicable Conditional items checked.
+- [ ] **Gate 1 — Verified:** All Core items checked. All applicable Conditional items checked.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Audited commit = this report's `bkit:anchor` `baseSha`. Read newest prior report for this slug under `docs/audits/`; its commit = its `bkit:anchor` `baseSha`, else the HEAD its `Previous Run` recorded. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 1 — Previous Run:** **Done when:** closure rate in `Previous Run`, or run marked baseline.
 - [ ] **Step 2 — Checkout:** Name machine and checkout. Worktrees, stashes, scratch directories are local — fresh cloud checkout sees none; say so, not clean. Remote branches and pull requests are shared; every run checks those. **Done when:** machine, checkout, and which surfaces are local-only in `Checked`.
 - [ ] **Step 3 — Worktrees:** `git worktree list --porcelain`. Per worktree: branch, ahead/behind integration branch, `git cherry`, pull-request state, uncommitted changes (`git status --porcelain`), last commit date, size (`du -sh`). Locked or files modified in the last day → KEEP or ASK, never REMOVE (agent may still be running). Also `git worktree prune --dry-run` for entries whose directory is gone. Never prune for real. **Done when:** `Worktrees` row per entry with verdict; totals in `Totals`.
 - [ ] **Step 4 — Branches:** Local: merged by ancestry, merged by squash (pull request merged, or `git cherry` all `-`), upstream gone, agent-prefix branches with no worktree. Remote: branches other than integration, production, dependency-update bot's, with pull-request state. Record delete-on-merge; when off, merged pull request leaves its branch. Unmerged with no pull request: every commit is RESCUE until shown otherwise. Open pull requests with no activity for 30 days, and old drafts. Tags no release or deploy uses. **Done when:** `Branches` row per item with verdict; counts in `Totals`.
@@ -124,13 +106,11 @@ Verify only when applicable.
 
 ### 🔒 Gate 2: Probes Check
 
-**Checkpoint.** Verify and check `[x]` all boxes below, then continue to `Findings` without asking.
-
 - [ ] **Steps complete:** every step `[x]`, or explicit skip with evidence the surface is absent.
 - [ ] **Evidence:** every finding cites re-checkable evidence and the tool behind it.
 - [ ] **No values:** no secret or personal-data value anywhere in the report.
 - [ ] **Nothing removed:** no worktree, branch, stash, file, or remote ref deleted or pushed.
-- [ ] **Gate 2 - Verified:** Every checkbox above independently verified and checked off.
+- [ ] **Gate 2 — Verified:** Every checkbox above independently verified and checked off.
 
 ## Findings
 
@@ -142,7 +122,7 @@ Verify only when applicable.
 | `MEDIUM` | Leftover a test or script keeps producing; toolchain versions disagree; repository setting below the standard |
 | `LOW` | Regenerable cache, reported by size; naming drift; contribution scaffolding the owner must decide |
 
-Scale per `.bkit/jsonl.md` § Severity. Within a severity: live credentials, then RESCUE, before REMOVE.
+Within a severity: live credentials, then RESCUE, before REMOVE.
 
 <!-- prettier-ignore -->
 | ID | Severity | Verdict | Location | Evidence | Expected |
@@ -218,17 +198,13 @@ PENDING
 
 ### 🔒 Gate 3: Report Check
 
-**Checkpoint.** Verify and check `[x]` all boxes below, then stop.
-
-- [ ] **No placeholders:** Findings table and every `Report` section have no `PENDING`.
+- [ ] **No placeholders:** no `PENDING` left
 - [ ] **Summary:** names count per severity, the machine, and the checkout.
 - [ ] **Series:** `Totals` beside previous report's numbers, or marked baseline.
-- [ ] **Writes:** only this report and template `Project Instructions` changed; throwaway worktrees / remote targets removed.
-- [ ] **Process Improvements:** `Universal` = proposed step changes, template untouched; `Project` = edits applied below `bkit:end`; each `none` if empty.
+- [ ] **Writes:** only this report, template `Project Instructions`, and ledger rows changed; throwaway worktrees / remote targets removed.
+- [ ] **Process Improvements:** `Universal` and `Project` filled
 - [ ] **Suggested Issues:** every `MEDIUM`+ finding ID in exactly one row; every row has a `Next Step`.
-- [ ] **Gate 3 - Verified:** Every checkbox above independently verified and checked off.
-
-> `Project Instructions` below `bkit:end` are consumer-owned — `bkit install` never overwrites them, `bkit check` drift stays clean. Add project-specific tools, paths, commands, and checks there, keyed by section or step title; never results.
+- [ ] **Gate 3 — Verified:** Every checkbox above independently verified and checked off.
 
 <!-- bkit:end -->
 

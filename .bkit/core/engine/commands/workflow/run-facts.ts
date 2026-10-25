@@ -3,6 +3,7 @@
 // `status.jsonl` rows and its log folder. bkit's unshipped harvest script
 // (`scripts/harvest/bkit-harvest.mjs`) computes the same blocks for its `run` rows, with the same rules.
 
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -11,22 +12,21 @@ import {
   foldFrom,
   type BuildBlock,
   CiDispatch,
+  type ContextBlock,
   LineCounts,
   LinesBlock,
   PlanBlock,
   PlanTask,
   StepsBlock,
+  type TelemetryEvent,
   type TimeBlock,
 } from "../../ledgers/telemetry.js";
+import { parseJson, readDirNames, readJsonFile, readTextFile } from "../../shared/json.js";
 import { git } from "../lib.js";
 import { appendLedgerRows } from "./ledgers.js";
 import { readStatusEvents } from "./status.js";
-import {
-  MAX_TASKS_PER_PLAN,
-  MAX_TEST_FILES_PER_TASK,
-  MAX_TESTS_PER_TASK,
-  readTestFirst,
-} from "./tests.js";
+import { parsePlanBlocks } from "./plan-blocks.js";
+import { readTestFirst } from "./tests.js";
 
 type Row = StatusEvent & Record<string, unknown>;
 
@@ -112,8 +112,9 @@ export function runStatusRows(events: StatusEvent[], workflow: string, startAt: 
     .sort((a, b) => msOf(a.at) - msOf(b.at));
 }
 
-/** Per step: its step-done rows and the minutes since the row before each. */
-export function stepsBlock(rows: Row[]): StepsBlock {
+/** Per step: its step-done rows and the minutes since the row before each, `MARK_ROWS` skipped. */
+export function stepsBlock(all: Row[]): StepsBlock {
+  const rows = all.filter((r) => !MARK_ROWS.has(r.type));
   const ms: Record<string, { n: number; ms: number }> = {};
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i]!;
@@ -155,84 +156,56 @@ export function ciEntry(d: Record<string, unknown>): CiDispatch {
 
 const kbOf = (file: string) => Math.round(fs.statSync(file).size / 1024);
 
-/** Per task, its `Test first` tests and distinct test files; null when the task has no such field. */
-function planTasks(text: string): PlanTask[] {
-  return readTestFirst(text).map((s) =>
-    s.kind === "test"
-      ? { tests: s.tests.length, testFiles: new Set(s.tests.map((t) => t.test)).size }
-      : s.kind === "missing"
-        ? { tests: null, testFiles: null }
-        : { tests: 0, testFiles: 0 },
+/**
+ * Per plan group, per task: its TEST FIRST tests and distinct test files; null when the
+ * task has no such field.
+ */
+export function planTasks(text: string): PlanTask[][] {
+  return parsePlanBlocks(text).groups.map((g) =>
+    readTestFirst(text, g.group).map((s) =>
+      s.kind === "test"
+        ? { tests: s.tests.length, testFiles: new Set(s.tests.map((t) => t.test)).size }
+        : s.kind === "missing"
+          ? { tests: null, testFiles: null }
+          : { tests: 0, testFiles: 0 },
+    ),
   );
 }
 
-/** Why `plan-complexity-check` split a plan: `over-12-tasks`, `task-N-over-10-tests`, `task-N-over-3-test-files`. */
-function splitReasons(text: string): string[] {
-  const specs = readTestFirst(text);
-  const out = specs.length > MAX_TASKS_PER_PLAN ? [`over-${MAX_TASKS_PER_PLAN}-tasks`] : [];
-  for (const s of specs) {
-    if (s.kind !== "test") continue;
-    if (s.tests.length > MAX_TESTS_PER_TASK)
-      out.push(`task-${s.task}-over-${MAX_TESTS_PER_TASK}-tests`);
-    if (new Set(s.tests.map((t) => t.test)).size > MAX_TEST_FILES_PER_TASK)
-      out.push(`task-${s.task}-over-${MAX_TEST_FILES_PER_TASK}-test-files`);
-  }
-  return out;
+/** The plan file the run worked from, absolute: `[{FID}-plan.md]`, [] when it does not exist. */
+export function planFiles(tree: string, month: string, fid: string): string[] {
+  const file = path.join(tree, "docs", "plans", month, `${fid}-plan.md`);
+  return fs.existsSync(file) ? [file] : [];
 }
 
 /**
- * The plan the run worked from: `{FID}-plan-{N}.md` sub-plans in N order, else
- * `{FID}-plan.md`; `complexity` from the log folder's `plan-complexity-check.md`
- * and the plan it read (`plan-v3-checked.md`). Undefined when no plan file exists.
+ * The plan the run worked from: `{FID}-plan.md`, its tasks per group. `source` is
+ * `converted` when the FID's status rows hold a `build-plan-convert` step row, else
+ * `file`. Undefined when no plan file exists.
  */
 export function planBlock(
   tree: string,
   month: string,
   fid: string,
-  logDir: string,
-  source: string | undefined,
+  events: StatusEvent[],
 ): PlanBlock | undefined {
-  if (source === "brief") return { source: "brief" };
-  const dir = path.join(tree, "docs", "plans", month);
-  const files = fs.existsSync(dir) ? fs.readdirSync(dir) : [];
-  const sub = new RegExp(`^${fid.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-plan-(\\d+)\\.md$`);
-  const subs = files
-    .map((f) => sub.exec(f))
-    .filter((m) => m !== null)
-    .sort((a, b) => Number(a[1]) - Number(b[1]))
-    .map((m) => m[0]);
-  const chosen = subs.length > 0 ? subs : files.filter((f) => f === `${fid}-plan.md`);
-  if (chosen.length === 0) return undefined;
-  const subPlans = chosen.map((f) => {
-    const file = path.join(dir, f);
-    return { kb: kbOf(file), tasks: planTasks(fs.readFileSync(file, "utf-8")) };
-  });
-  const plan: PlanBlock = {
-    source: "file",
-    total: {
-      tasks: subPlans.reduce((a, s) => a + s.tasks.length, 0),
-      kb: subPlans.reduce((a, s) => a + s.kb, 0),
-    },
-    subPlans,
+  const [file] = planFiles(tree, month, fid);
+  if (file === undefined) return undefined;
+  const groups = planTasks(fs.readFileSync(file, "utf-8")).map((tasks) => ({ tasks }));
+  const converted = events.some(
+    (e) => e.type === "step-done" && e.workflow === "build" && e.step === "build-plan-convert",
+  );
+  return {
+    source: converted ? "converted" : "file",
+    total: { tasks: groups.reduce((a, g) => a + g.tasks.length, 0), kb: kbOf(file) },
+    groups,
   };
-  const check = path.join(logDir, "plan-complexity-check.md");
-  if (fs.existsSync(check)) {
-    const verdict = /^Verdict:\s*(\w+)/m.exec(fs.readFileSync(check, "utf-8"))?.[1] ?? null;
-    const checked = path.join(logDir, "plan-v3-checked.md");
-    const text = fs.existsSync(checked) ? fs.readFileSync(checked, "utf-8") : null;
-    plan.complexity = {
-      verdict,
-      tasksChecked: text === null ? null : readTestFirst(text).length,
-      reasons: text === null || verdict !== "SPLIT" ? [] : splitReasons(text),
-    };
-  }
-  return plan;
 }
 
 const TEST_ORDER_GAP =
   /—\s*(no-red|late-red|red-mismatch|red-evidence-missing|test-changed)\s*—\s*not fixable/g;
-/** A reconciled challenge finding: a heading whose first severity word is the finding's. */
-const FINDING_HEADING = /^#{3,4} [^\n]*?\b(CRITICAL|HIGH|MEDIUM|LOW)\b/gm;
+/** A task `bkit challenge merge` appended: its severity field. Planned tasks carry none. */
+const APPENDED_SEVERITY = /\*\*Severity:\*\*\s*(CRITICAL|HIGH|MEDIUM|LOW)\b/;
 
 const field = (r: Row, k: string) => (r[k] === undefined ? null : r[k]);
 const num = (v: unknown) => (typeof v === "number" ? v : null);
@@ -240,11 +213,19 @@ const str = (v: unknown) => (typeof v === "string" ? v : null);
 
 /**
  * Build-only facts from the run's step rows and its log folder: every verify and
- * gaps-remediate round, the holistic verify, the challenge (findings counted from
- * the reconciled report) and the red-test runs. A verify report counts its
- * test-order gaps only when its verdict and failure count match the round's row.
+ * gaps-remediate round, the holistic verify, the challenge and the red-test runs. A
+ * verify report counts its test-order gaps only when its verdict and failure count
+ * match the round's row. Challenge findings are counted once a `build-challenge` row
+ * exists: CRITICAL / HIGH / MEDIUM from the tasks `challenge merge` appended to
+ * `plans`, LOW from its `build-challenge` rows among `deferrals` (the run's rows). The
+ * challenge block carries the latest `challenge-gate` row's size as `gate`, when one exists.
  */
-export function buildBlock(rows: Row[], logDir: string): BuildBlock {
+export function buildBlock(
+  rows: Row[],
+  logDir: string,
+  plans: string[],
+  deferrals: Array<Record<string, unknown>>,
+): BuildBlock {
   const read = (file: string) => {
     const f = path.join(logDir, file);
     return fs.existsSync(f) ? fs.readFileSync(f, "utf-8") : null;
@@ -254,13 +235,13 @@ export function buildBlock(rows: Row[], logDir: string): BuildBlock {
     .filter((r) => r.step === "build-plan-verify")
     .map((r) => {
       const v = {
-        subPlan: field(r, "subPlan"),
+        group: field(r, "group"),
         attempt: field(r, "attempt"),
         verdict: field(r, "verdict"),
         failures: field(r, "failures"),
         testOrderGaps: null as number | null,
       };
-      const text = read(`build-plan-verify-${String(v.subPlan)}-${String(v.attempt)}.md`);
+      const text = read(`build-plan-verify-${String(v.group)}-${String(v.attempt)}.md`);
       if (
         text !== null &&
         /^Verdict:\s*(\w+)/m.exec(text)?.[1] === v.verdict &&
@@ -272,7 +253,7 @@ export function buildBlock(rows: Row[], logDir: string): BuildBlock {
   const gapsRemediate = steps
     .filter((r) => r.step === "build-plan-gaps-remediate")
     .map((r) => ({
-      subPlan: field(r, "subPlan"),
+      group: field(r, "group"),
       attempt: field(r, "attempt"),
       verdict: field(r, "verdict"),
       strategy: field(r, "strategy"),
@@ -280,21 +261,190 @@ export function buildBlock(rows: Row[], logDir: string): BuildBlock {
   const lastOf = (step: string) => steps.filter((r) => r.step === step).at(-1);
   const hol = lastOf("build-plan-verify-holistic");
   const ch = lastOf("build-challenge");
-  const reconciled = steps.some((r) => r.step === "build-challenge-reconcile");
-  const chText = reconciled ? read("build-challenge.md") : null;
+  // `challenge-gate` rows are not fold events: read them as plain status rows.
+  const gate = (rows as Array<Record<string, unknown>>)
+    .filter((r) => r.type === "challenge-gate")
+    .at(-1);
   let findings: NonNullable<NonNullable<BuildBlock["challenge"]>["findings"]> | null = null;
-  if (chText !== null) {
+  if (ch !== undefined) {
     const f = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
-    for (const m of chText.matchAll(FINDING_HEADING)) f[m[1] as keyof typeof f]++;
+    for (const file of plans.filter((p) => fs.existsSync(p)))
+      for (const t of parsePlanBlocks(fs.readFileSync(file, "utf-8")).tasks) {
+        const sev = APPENDED_SEVERITY.exec(t.text)?.[1] as keyof typeof f | undefined;
+        if (sev !== undefined && sev !== "LOW") f[sev]++;
+      }
+    f.LOW = new Set(
+      deferrals
+        .filter(
+          (r) =>
+            r.kind === "deferral" &&
+            r.severity === "LOW" &&
+            (r.by as Record<string, unknown> | undefined)?.step === "build-challenge",
+        )
+        .map((r) => String(r.key)),
+    ).size;
     findings = { total: f.CRITICAL + f.HIGH + f.MEDIUM + f.LOW, ...f };
   }
   return {
     verify,
     gapsRemediate,
     holistic: hol ? { verdict: str(hol.verdict), failures: num(hol.failures) } : null,
-    challenge: ch ? { verdict: str(ch.verdict), findings } : null,
+    challenge: ch
+      ? {
+          verdict: str(ch.verdict),
+          findings,
+          ...(gate === undefined
+            ? {}
+            : {
+                gate: {
+                  size: str(gate.size),
+                  linesChanged: num(gate.linesChanged),
+                  filesChanged: num(gate.filesChanged),
+                  skipped: gate.skipped === true,
+                },
+              }),
+        }
+      : null,
     redTests: steps.filter((r) => r.step === "build-task-red").length,
   };
+}
+
+/** Where Claude Code keeps the transcripts of the chats that ran a workflow. */
+export interface ClaudeTranscripts {
+  /** The running chat's id; undefined outside Claude Code. */
+  sessionId: string | undefined;
+  /** Claude Code's config dir: `CLAUDE_CONFIG_DIR`, else `~/.claude`. */
+  claudeDir: string;
+}
+
+/**
+ * Claude Code sets `CLAUDE_CODE_SESSION_ID` in the environment of every shell command its
+ * session runs, so `bkit workflows close` (run by the workflow's own session) knows whose
+ * transcripts hold the run's subagents.
+ */
+export function claudeTranscripts(env: NodeJS.ProcessEnv, home: string): ClaudeTranscripts {
+  return {
+    sessionId: env.CLAUDE_CODE_SESSION_ID,
+    claudeDir: env.CLAUDE_CONFIG_DIR || path.join(home, ".claude"),
+  };
+}
+
+const SESSION_ID = /^[0-9A-Za-z][0-9A-Za-z_-]*$/;
+
+/**
+ * The chat a host runs this command in, or undefined when the host names none. Claude Code
+ * only: it sets `CLAUDE_CODE_SESSION_ID`; nothing in this repo confirms a variable naming the
+ * chat on Codex, opencode, Cursor or Antigravity.
+ */
+export function hostChat(
+  env: NodeJS.ProcessEnv,
+): { platform: "claude-code"; id: string } | undefined {
+  const id = env.CLAUDE_CODE_SESSION_ID;
+  return id !== undefined && SESSION_ID.test(id) ? { platform: "claude-code", id } : undefined;
+}
+
+/**
+ * A chat's fingerprint on `session` status rows: `fp:` + the first 12 hex of
+ * sha256(`<platform>:<chat id>`), the same as the harvest's fingerprint of its `chat` row key.
+ */
+export const chatFingerprint = (platform: string, id: string) =>
+  `fp:${createHash("sha256").update(`${platform}:${id}`).digest("hex").slice(0, 12)}`;
+
+/** Status rows that mark a moment rather than the end of a piece of work: step minutes skip them. */
+export const MARK_ROWS: ReadonlySet<string> = new Set(["session", "owner-pause", "owner-answer"]);
+
+/** The `session` fingerprints on the run's status rows, in row order, each once. */
+export function runChats(rows: Row[]): string[] {
+  const out: string[] = [];
+  for (const r of rows as Array<Record<string, unknown>>)
+    if (r.type === "session" && typeof r.session === "string" && !out.includes(r.session))
+      out.push(r.session);
+  return out;
+}
+
+/** One Claude Code subagent transcript's model calls: `[ms, context]` each, or null when unreadable. */
+function subagentCalls(file: string): Array<[number, number]> | null {
+  const read = readTextFile(file);
+  if (!read.ok) return null;
+  const calls: Array<[number, number]> = [];
+  for (const line of read.text.split("\n")) {
+    const parsed = line.trim() === "" ? null : parseJson(line);
+    if (parsed === null || !parsed.ok) continue;
+    const d = parsed.value as Record<string, unknown> | null;
+    if (d === null || typeof d !== "object") continue;
+    const m = d.message as Record<string, unknown> | undefined;
+    // `<synthetic>`: a message Claude Code wrote itself (an API error notice), not a model call.
+    if (d.type !== "assistant" || typeof m !== "object" || m === null) continue;
+    if (m.model === "<synthetic>") continue;
+    const at = msOf(d.timestamp);
+    if (!Number.isFinite(at)) continue;
+    const u = (m.usage ?? {}) as Record<string, unknown>;
+    const n = (k: string) => (typeof u[k] === "number" ? (u[k] as number) : 0);
+    calls.push([
+      at,
+      n("input_tokens") + n("cache_creation_input_tokens") + n("cache_read_input_tokens"),
+    ]);
+  }
+  return calls;
+}
+
+/**
+ * The run's subagents' context peaks per agent type, from every Claude Code chat that ran
+ * it: the chat running the close, and each chat whose fingerprint `chats` holds (the run's
+ * `session` rows). Transcripts: `<claudeDir>/projects/<project>/<session>/subagents/agent-*.jsonl`,
+ * each with its `agent-*.meta.json` naming the agent type (`unknown` without one). Each model
+ * call goes by its own timestamp: a subagent counts in `runs` when one of its calls falls in
+ * [startMs, endMs], and `peak` is the largest of those calls. Context of one model call =
+ * input + cache write + cache read tokens, the same sum the harvest's `contextPeak` takes.
+ * Undefined when no chat is known, no transcript is found or no subagent called the model
+ * in the run. Never throws: a folder or transcript that cannot be read counts as absent.
+ *
+ * Claude Code only. The other hosts bkit renders for record nothing here:
+ * - Cursor keeps no token counts in its local chats (the harvest reads them and finds none).
+ * - Codex (`~/.codex/sessions/.../rollout-*.jsonl`, `token_count` events) and opencode
+ *   (`~/.local/share/opencode/opencode.db`) keep token counts, but nothing in this repo
+ *   confirms an environment variable naming the running session, so a close cannot tell its
+ *   own run's transcripts from another chat's.
+ * - Antigravity keeps protobuf in SQLite whose token fields nothing in this repo documents.
+ */
+export function agentContextBlock(
+  startMs: number,
+  endMs: number,
+  src: ClaudeTranscripts,
+  chats: readonly string[] = [],
+): ContextBlock | undefined {
+  const sid = src.sessionId !== undefined && SESSION_ID.test(src.sessionId) ? src.sessionId : null;
+  const wanted = new Set(chats);
+  if (sid === null && wanted.size === 0) return undefined;
+  const projects = path.join(src.claudeDir, "projects");
+  const top = readDirNames(projects);
+  if (!top.ok) return undefined;
+  const files: string[] = [];
+  for (const p of top.names.sort()) {
+    const names = readDirNames(path.join(projects, p));
+    for (const name of names.ok ? names.names.sort() : []) {
+      if (!SESSION_ID.test(name)) continue;
+      if (name !== sid && !wanted.has(chatFingerprint("claude-code", name))) continue;
+      const dir = path.join(projects, p, name, "subagents");
+      const subs = readDirNames(dir);
+      for (const f of subs.ok ? subs.names.sort() : [])
+        if (f.endsWith(".jsonl")) files.push(path.join(dir, f));
+    }
+  }
+  const byAgent: ContextBlock["byAgent"] = {};
+  for (const file of files) {
+    const inRun = (subagentCalls(file) ?? []).filter(([at]) => at >= startMs && at <= endMs);
+    if (inRun.length === 0) continue;
+    const meta = readJsonFile(file.slice(0, -".jsonl".length) + ".meta.json");
+    const type = meta.ok ? (meta.value as Record<string, unknown> | null)?.agentType : undefined;
+    const a = (byAgent[typeof type === "string" && type !== "" ? type : "unknown"] ??= {
+      peak: 0,
+      runs: 0,
+    });
+    a.runs++;
+    a.peak = Math.max(a.peak, ...inRun.map(([, c]) => c));
+  }
+  return Object.keys(byAgent).length === 0 ? undefined : { host: "claude-code", byAgent };
 }
 
 /**
@@ -324,7 +474,8 @@ export function restateOutcome(
   const outcome = fs.existsSync(stats)
     ? [...foldFrom([stats]).state.values()]
         .filter(
-          (e) => e.kind === "outcome" && e.by?.workflow === workflow && e.run?.parentSha === sha,
+          (e): e is Extract<TelemetryEvent, { kind: "outcome" }> =>
+            e.kind === "outcome" && e.by?.workflow === workflow && e.run?.parentSha === sha,
         )
         .at(-1)
     : undefined;
@@ -334,9 +485,9 @@ export function restateOutcome(
     );
     return false;
   }
-  const { schema: _s, ts: _t, bkit: _b, ...draft } = outcome as unknown as Record<string, unknown>;
+  const { schema: _s, ts: _t, bkit: _b, ...draft } = outcome;
   const entry = ciEntry(dispatch);
-  const ci = [...((draft.ci as CiDispatch[] | undefined) ?? []), entry];
+  const ci = [...(draft.ci ?? []), entry];
   try {
     appendLedgerRows(tree, "stats", [
       { ...draft, ending: entry.status === "unresolved" ? "close-failed" : "done", ci },

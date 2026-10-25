@@ -158,6 +158,14 @@ const HELPER_SOURCES = new Set([
   path.join("commands", "workflow", "run-facts.ts"),
   // The engine's tracker client, shared by every verb that reads or writes the issue.
   path.join("commands", "workflow", "tracker.ts"),
+  // The summary `workflows summary` writes: verdict rules, next step, markdown.
+  path.join("commands", "workflow", "summary.ts"),
+  // Each workflow's ordered steps and resume rule, read by `status resume`.
+  path.join("commands", "workflow", "step-table.ts"),
+  // The newest numbered draft in a run's log folder, read by `workflow promote` and run-facts.
+  path.join("commands", "workflow", "plan-versions.ts"),
+  // The plan's group and task blocks, read by `tests`, `challenge`, the summary and run-facts.
+  path.join("commands", "workflow", "plan-blocks.ts"),
 ]);
 
 /** Every way a command source breaks "exports a command, and each is in COMMANDS"; empty = conforms. */
@@ -246,8 +254,8 @@ describe("the convention checker rejects what it should", () => {
     verbs: {
       count: {
         summary: "Count them.",
-        flags: [{ name: "sub-plan", type: "string", help: "which sub-plan" }],
-        output: { subPlan: "echoed" },
+        flags: [{ name: "verify-attempt", type: "string", help: "which verify attempt" }],
+        output: { verifyAttempt: "echoed" },
         exitCodes: { 3: "none found" },
         run: () => EXIT.OK,
       },
@@ -261,7 +269,7 @@ describe("the convention checker rejects what it should", () => {
   it.each([
     [
       "a camelCase flag",
-      { flags: [{ name: "subPlan", type: "string" as const, help: "x" }] },
+      { flags: [{ name: "verifyAttempt", type: "string" as const, help: "x" }] },
       "not kebab-case",
     ],
     ["a snake_case output key", { output: { sub_plan: "x" } }, "not camelCase"],

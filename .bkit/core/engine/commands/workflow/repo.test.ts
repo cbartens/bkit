@@ -264,9 +264,11 @@ describe("bkit repo info — where the wired tracker's issues live", () => {
 
   it("prints the Linear team and project under linear", async () => {
     pkg({
-      issueTracker: "linear",
-      linear: { team: "ENG", project: "Mobile" },
-      jira: { site: "x" },
+      tracker: {
+        default: "linear",
+        linear: { team: "ENG", project: "Mobile" },
+        jira: { site: "x" },
+      },
     });
     expect((await run([])).json).toMatchObject({
       trackerTeam: "ENG",
@@ -277,9 +279,11 @@ describe("bkit repo info — where the wired tracker's issues live", () => {
 
   it("prints the Jira site and project under jira", async () => {
     pkg({
-      issueTracker: "jira",
-      linear: { team: "ENG" },
-      jira: { site: "https://a.atlassian.net/", project: "MBA" },
+      tracker: {
+        default: "jira",
+        linear: { team: "ENG" },
+        jira: { site: "https://a.atlassian.net/", project: "MBA" },
+      },
     });
     expect((await run([])).json).toMatchObject({
       trackerTeam: null,
@@ -289,7 +293,9 @@ describe("bkit repo info — where the wired tracker's issues live", () => {
   });
 
   it("prints the board under github", async () => {
-    pkg({ issueTracker: "github", github: { project: "https://github.com/users/me/projects/1" } });
+    pkg({
+      tracker: { default: "github", github: { project: "https://github.com/users/me/projects/1" } },
+    });
     expect((await run([])).json).toMatchObject({
       trackerTeam: null,
       trackerProject: null,
@@ -298,11 +304,44 @@ describe("bkit repo info — where the wired tracker's issues live", () => {
     });
   });
 
+  it.each([
+    ["github", {}, "In progress", "In review"],
+    ["linear", {}, "started", "In Review"],
+    ["jira", {}, "In Progress", "In Review"],
+    ["linear", { progress: "Doing", review: "QA" }, "Doing", "QA"],
+  ])(
+    "prints the %s progress and review states, defaults for a key left unset",
+    async (tracker, states, progress, review) => {
+      pkg({ tracker: { default: tracker, [tracker]: states } });
+      expect((await run([])).json).toMatchObject({
+        trackerProgress: progress,
+        trackerReview: review,
+      });
+    },
+  );
+
+  it("prints null progress and review states under none", async () => {
+    pkg({ tracker: { default: "none", github: { progress: "Doing" } } });
+    expect((await run([])).json).toMatchObject({ trackerProgress: null, trackerReview: null });
+  });
+
+  it("prints the plan caps from bkit.workflows.tasks, defaults for a key left unset", async () => {
+    pkg({ workflows: { tasks: { maxPerGroup: 4, maxTestsPerTask: 0 } } });
+    expect((await run([])).json.tasks).toEqual({
+      maxPerGroup: 4,
+      maxTestsPerGroup: 15,
+      maxTestsPerTask: 10,
+      maxTestFilesPerTask: 3,
+    });
+  });
+
   it("prints nulls under github without a board, and for keys left unset", async () => {
     pkg({
-      issueTracker: "github",
-      linear: { team: "ENG" },
-      jira: { site: "https://a.atlassian.net", project: "MBA" },
+      tracker: {
+        default: "github",
+        linear: { team: "ENG" },
+        jira: { site: "https://a.atlassian.net", project: "MBA" },
+      },
     });
     expect((await run([])).json).toMatchObject({
       trackerTeam: null,
@@ -310,11 +349,13 @@ describe("bkit repo info — where the wired tracker's issues live", () => {
       trackerSite: null,
       trackerBoard: null,
     });
-    pkg({ issueTracker: "linear", github: { project: "https://github.com/orgs/a/projects/1" } });
+    pkg({
+      tracker: { default: "linear", github: { project: "https://github.com/orgs/a/projects/1" } },
+    });
     expect((await run([])).json).toMatchObject({ trackerBoard: null });
-    pkg({ issueTracker: "linear" });
+    pkg({ tracker: { default: "linear" } });
     expect((await run([])).json).toMatchObject({ trackerTeam: null, trackerProject: null });
-    pkg({ issueTracker: "jira" });
+    pkg({ tracker: { default: "jira" } });
     expect((await run([])).json).toMatchObject({ trackerProject: null, trackerSite: null });
   });
 });

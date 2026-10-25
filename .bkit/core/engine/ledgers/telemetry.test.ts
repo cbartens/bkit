@@ -11,6 +11,7 @@ import {
   FEATURE_STATUSES,
   KIND_WRITERS,
   MAX_ROWS_BEFORE_ROLLUP,
+  SCHEMA,
   SEVERITY_KINDS,
   TRIAGE_STATUSES,
   UNJUSTIFIED_REASON,
@@ -28,6 +29,7 @@ import {
   identity,
   mintTs,
   normalize,
+  normalizeEvent,
   parse,
   totalsProblem,
   validate,
@@ -74,7 +76,7 @@ function timeOf(minutes: number, start = 1_700_000_000_000) {
 
 function baseEnvelope(kind: TelemetryEvent["kind"], overrides: Row = {}): TelemetryEvent {
   const base = {
-    schema: 2,
+    schema: SCHEMA,
     ts: 1_700_000_000_000,
     kind,
     repo: "cbartens/bkit",
@@ -1260,6 +1262,28 @@ describe("parse — tolerant reader", () => {
     const result = parse(raw);
     expect(result.events).toHaveLength(2);
   });
+
+  it("parse keeps an old row with subPlans", () => {
+    const task = { tests: 2, testFiles: 1 };
+    const old = {
+      ...outcomeEvent(),
+      schema: 2,
+      plan: {
+        source: "file",
+        total: { tasks: 3, kb: 30 },
+        subPlans: [
+          { kb: 10, tasks: [task] },
+          { kb: 20, tasks: [task, task] },
+        ],
+        complexity: { verdict: "SPLIT", tasksChecked: 3, reasons: ["over-12-tasks"] },
+      },
+    };
+    expect(old.schema).toBeLessThan(SCHEMA);
+    const result = parse(JSON.stringify(old));
+    expect(result.malformedLineCount).toBe(0);
+    expect(result.events).toStrictEqual([old]);
+    expect(normalize(result.events[0])).toStrictEqual(old);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1272,12 +1296,20 @@ describe("outcome — shape and inline-jq parity", () => {
     expect(validate(e).ok).toBe(true);
   });
 
-  it("plan.source: brief and file validate; any other value is rejected", () => {
-    expect(validate(outcomeEvent({ plan: { source: "brief" } })).ok).toBe(true);
-    expect(validate(outcomeEvent({ plan: { source: "file" } })).ok).toBe(true);
-    const bad = validate(outcomeEvent({ plan: { source: "plan" } }));
-    expect(bad.ok).toBe(false);
-    expect(bad.reason).toContain("plan.source");
+  it("validate refuses plan.source brief on write", () => {
+    const groups = [
+      { tasks: [{ tests: 2, testFiles: 1 }] },
+      { tasks: [{ tests: 1, testFiles: 1 }] },
+    ];
+    for (const source of ["file", "converted"]) {
+      const plan = { source, total: { tasks: 2, kb: 12 }, groups };
+      expect(validate(outcomeEvent({ plan }))).toEqual({ ok: true });
+    }
+    for (const source of ["brief", "plan"]) {
+      const bad = validate(outcomeEvent({ plan: { source } }));
+      expect(bad.ok).toBe(false);
+      expect(bad.reason).toBe(`outcome plan.source must be file|converted (got: ${source})`);
+    }
   });
 
   it("folds outcome by (repo, run.pr)", () => {
@@ -1291,7 +1323,7 @@ describe("outcome — shape and inline-jq parity", () => {
     // Simulate what `jq -nc '... | .ts = (now*1000|floor)'` would produce:
     // A plain JSON object with ms ts (integer) and all required fields.
     const jqRow = {
-      schema: 2,
+      schema: SCHEMA,
       ts: Math.floor(Date.now()),
       kind: "outcome",
       repo: "cbartens/bkit",
@@ -1500,10 +1532,12 @@ describe("workflowTelemetry — this-run vs med·5 baseline", () => {
     expect(fline).toMatch(/\b2\b/); // med·5 of [0,1,2,3,4]
   });
 
-  it("baselines a brief run only against prior brief runs, and shows plan.source", () => {
-    // Five planned runs at 10 minutes, then three brief runs at 1; this run is brief.
+  it("workflowTelemetry splits the baseline on converted", () => {
+    // Five file runs at 10 minutes, two old brief rows and one converted run at 1;
+    // this run is converted. Old brief rows count as converted.
     const planned = { plan: { source: "file" } };
-    const brief = { plan: { source: "brief" } };
+    const brief = { schema: 2, plan: { source: "brief" } };
+    const converted = { plan: { source: "converted" } };
     const durs: [number, Row][] = [
       [10, planned],
       [10, planned],
@@ -1512,17 +1546,30 @@ describe("workflowTelemetry — this-run vs med·5 baseline", () => {
       [10, planned],
       [1, brief],
       [1, brief],
-      [1, brief],
-      [1.5, brief],
+      [1, converted],
+      [1.5, converted],
     ];
     const runs = durs.map(([minutes, source], i) =>
       outcomeEvent({ ts: 2000 + i, run: { parentSha: `b${i}` }, time: timeOf(minutes), ...source }),
     );
     const s = workflowTelemetry(foldFrom([writeStats(runs)]), "build");
     const dline = s.lines.find((l) => l.startsWith("| time.totalMinutes "));
-    expect(dline).toContain("1 (1m)"); // med of prior brief runs, not the 10-minute planned ones
+    expect(dline).toContain("1 (1m)"); // med of prior converted runs, not the 10-minute file ones
     expect(dline).not.toContain("10 (");
-    expect(s.lines.some((l) => l.startsWith("| plan.source | brief "))).toBe(true);
+    expect(s.lines.some((l) => l.startsWith("| plan.source "))).toBe(false);
+    expect(s.lines.join("\n")).not.toContain("brief runs");
+    expect(s.lines.some((l) => l.includes("previous 5 build converted runs"))).toBe(true);
+    expect(s.lines.filter((l) => l.includes("`plan.source: brief`"))).toEqual([
+      "Old `plan.source: brief` rows count as `converted`.",
+    ]);
+
+    // A file run baselines against file runs only, with no brief note.
+    const file = workflowTelemetry(
+      foldFrom([writeStats([...runs, outcomeEvent({ ts: 3000, time: timeOf(12), ...planned })])]),
+      "build",
+    );
+    expect(file.lines.find((l) => l.startsWith("| time.totalMinutes "))).toContain("10 (10m)");
+    expect(file.lines.join("\n")).not.toContain("brief");
   });
 
   it("prints — for the baseline until at least 3 prior runs exist", () => {
@@ -1831,8 +1878,8 @@ describe("writerProblem", () => {
     expect(writerProblem(row({ subagent: "bkit-plan-review-1", model: "m" }))).toContain(
       "does not write decision rows",
     );
-    expect(writerProblem(row({ workflow: "ship" }))).toContain(
-      "the ship orchestrator does not write decision rows (orchestrators: build, plan)",
+    expect(writerProblem(row({ workflow: "debug" }))).toContain(
+      "the debug orchestrator does not write decision rows (orchestrators: build, plan, ship)",
     );
   });
 
@@ -1855,9 +1902,9 @@ describe("writerProblem", () => {
       expect(writerProblem({ kind, by: { workflow: "audit" } })).toContain(
         `does not write ${kind} rows`,
       );
-      expect(writerProblem({ kind, by: { subagent: "bkit-build-summary", model: "m" } })).toContain(
-        `does not write ${kind} rows`,
-      );
+      expect(
+        writerProblem({ kind, by: { subagent: "bkit-build-plan-verify", model: "m" } }),
+      ).toContain(`does not write ${kind} rows`);
     }
   });
 });
@@ -1946,6 +1993,8 @@ describe("normalize — schema-1 rows to schema 2", () => {
     bkit: { version: "4.1.4" },
     by: { workflow: "build", step: "build-close-workflow" },
   };
+  /** A normalized row restamped with {@link SCHEMA}: schema 2 and 3 differ only in the outcome plan block. */
+  const restamped = (row: Row): Row => ({ ...row, schema: SCHEMA });
 
   it("compliance: rule / result / evidence / parentSha move into run and rule; phase is dropped", () => {
     const old = v1("compliance", {
@@ -1962,7 +2011,7 @@ describe("normalize — schema-1 rows to schema 2", () => {
       run: { parentSha: "abc123" },
       rule: { id: "skip-ci-not-head", verdict: "fail", evidence: "HEAD carries [skip ci]" },
     });
-    expect(validate(row).ok).toBe(true);
+    expect(validate(restamped(row)).ok).toBe(true);
   });
 
   it("counter: counterName / Value / Source and parentSha move into counter and run", () => {
@@ -1979,7 +2028,7 @@ describe("normalize — schema-1 rows to schema 2", () => {
       run: { parentSha: "abc123" },
       counter: { name: "BUILD_ATTEMPT", value: 2, source: "shell-bus" },
     });
-    expect(validate(row).ok).toBe(true);
+    expect(validate(restamped(row)).ok).toBe(true);
   });
 
   it("outcome: run fields move into their blocks; the fields with no place are dropped", () => {
@@ -2089,7 +2138,7 @@ describe("normalize — schema-1 rows to schema 2", () => {
       tokensRecorded: true,
     });
     const row = normalize(old);
-    expect(validate(row)).toEqual({ ok: true });
+    expect(validate(restamped(row))).toEqual({ ok: true });
     expect(row).toMatchObject({
       schema: 2,
       key: "claude-code:abc",
@@ -2120,10 +2169,10 @@ describe("normalize — schema-1 rows to schema 2", () => {
       issue: { id: "fp:i1", all: ["fp:i1"], mentioned: [], source: "command" },
       run: { parentShas: ["deadbeef"] },
       usage: {
-        total: { turns: 4, ctx: { start: 100, peak: 900 }, compactions: 1 },
+        total: { turns: 4, context: { start: 100, peak: 900 }, compactions: 1 },
         main: {
           turns: 3,
-          ctx: { peak: 900 },
+          context: { peak: 900 },
           mix: { read: 1, edit: 2, grep: 3, shellRead: 4, shellList: 5, tests: 6, serena: 0 },
         },
         byModel: { "claude-opus-5-5": { turns: 4 } },
@@ -2134,8 +2183,8 @@ describe("normalize — schema-1 rows to schema 2", () => {
           "bkit-build-plan-execute": {
             n: 1,
             errors: 2,
-            instances: [{ turns: 1, ctxPeak: 500 }],
-            usage: { turns: 1, ctx: { peak: 500 }, compactions: 0 },
+            instances: [{ turns: 1, contextPeak: 500 }],
+            usage: { turns: 1, context: { peak: 500 }, compactions: 0 },
           },
         },
       },
@@ -2197,7 +2246,7 @@ describe("normalize — schema-1 rows to schema 2", () => {
       settled: true,
     });
     const row = normalize(old);
-    expect(validate(row)).toEqual({ ok: true });
+    expect(validate(restamped(row))).toEqual({ ok: true });
     expect(row).toMatchObject({
       schema: 2,
       bkit: { version: "5.0.0" },
@@ -2242,8 +2291,9 @@ describe("normalize — schema-1 rows to schema 2", () => {
   it("a keyed kind (deferral) moves its top fields into bkit / by and keeps its payload", () => {
     const old = v1("deferral", {
       key: "k",
-      step: "build-challenge-remediate",
-      subagent: "bkit-build-challenge-remediate",
+      workflow: "ship",
+      step: "ship-deferred-sweep",
+      subagent: "bkit-ship-deferred-sweep",
       model: "claude-opus-5-5",
       references: ["#1"],
       type: "issue",
@@ -2261,9 +2311,9 @@ describe("normalize — schema-1 rows to schema 2", () => {
       repo: "cbartens/bkit",
       bkit: { version: "4.1.4" },
       by: {
-        workflow: "build",
-        step: "build-challenge-remediate",
-        subagent: "bkit-build-challenge-remediate",
+        workflow: "ship",
+        step: "ship-deferred-sweep",
+        subagent: "bkit-ship-deferred-sweep",
         model: "claude-opus-5-5",
       },
       references: ["#1"],
@@ -2273,7 +2323,7 @@ describe("normalize — schema-1 rows to schema 2", () => {
       description: "d",
       reason: "low-severity",
     });
-    expect(validate(row).ok).toBe(true);
+    expect(validate(restamped(row)).ok).toBe(true);
   });
 
   it("a row carrying schema passes through unchanged", () => {
@@ -2336,7 +2386,7 @@ describe("normalize — schema-1 rows to schema 2", () => {
 
 describe("fold — schema-1 and schema-2 rows of one identity", () => {
   const oldRow = (ts: number, result: string): TelemetryEvent =>
-    ({
+    normalizeEvent({
       ts,
       kind: "compliance",
       repo: "cbartens/bkit",
@@ -2347,7 +2397,7 @@ describe("fold — schema-1 and schema-2 rows of one identity", () => {
       result,
       phase: "build",
       parentSha: "abc123",
-    }) as unknown as TelemetryEvent;
+    });
 
   it("fold the two into one entry; the newer ts wins whichever shape it has", () => {
     const newer = ruleRow("no-mirror-edit", { ts: 2_000 }, "fail");
@@ -2478,14 +2528,14 @@ describe("totals — validate refuses a total that does not match its parts", ()
     ).toEqual(refused("usage.total.compactions"));
   });
 
-  it("usage.total.ctx.peak = the max of usage.main and every agent instance", () => {
-    const usage = { total: { ctx: { peak: 900 } }, main: { ctx: { peak: 900 } } };
+  it("usage.total.context.peak = the max of usage.main and every agent instance", () => {
+    const usage = { total: { context: { peak: 900 } }, main: { context: { peak: 900 } } };
     expect(
       totalsOf(
-        { usage, agents: { byAgent: { x: { instances: [{ ctxPeak: 500 }] } } } },
-        { usage, agents: { byAgent: { x: { instances: [{ ctxPeak: 1000 }] } } } },
+        { usage, agents: { byAgent: { x: { instances: [{ contextPeak: 500 }] } } } },
+        { usage, agents: { byAgent: { x: { instances: [{ contextPeak: 1000 }] } } } },
       ),
-    ).toEqual(refused("usage.total.ctx.peak"));
+    ).toEqual(refused("usage.total.context.peak"));
   });
 
   it.each(["n", "errors"])("agents.total.%s = the sum of byAgent", (f) => {
@@ -2556,41 +2606,15 @@ describe("totals — validate refuses a total that does not match its parts", ()
     },
   );
 
-  it.each(["tasks", "kb"])("plan.total.%s = the sum over subPlans", (f) => {
+  it("totalsProblem sums groups", () => {
     const task = { tests: 1, testFiles: 1 };
-    const subPlans = [
-      { kb: 10, tasks: [task] },
-      { kb: 20, tasks: [task, task] },
-    ];
-    const total = { tasks: 3, kb: 30 };
-    expect(
-      totalsOf(
-        { plan: { source: "file", total, subPlans } },
-        {
-          plan: {
-            source: "file",
-            total: { ...total, [f]: total[f as keyof typeof total] + 1 },
-            subPlans,
-          },
-        },
-      ),
-    ).toEqual(refused(`plan.total.${f}`));
-  });
-
-  it("plan totals are not checked against sub-plans whose tasks were never recorded", () => {
-    const row: Row = {
-      ...chatEvent("claude-code:abc", {
-        plan: {
-          source: "file",
-          total: { tasks: 19, kb: 194 },
-          subPlans: [
-            { kb: null, tasks: null },
-            { kb: null, tasks: null },
-          ],
-        },
-      }),
-    };
-    expect(totalsProblem(row)).toBeUndefined();
+    const groups = [{ tasks: [task] }, { tasks: [task, task] }];
+    const plan = (tasks: number) => ({
+      plan: { source: "file", total: { tasks, kb: 30 }, groups },
+    });
+    expect(totalsProblem(plan(3))).toBeUndefined();
+    expect(totalsProblem(plan(4))).toBe("plan.total.tasks is 4, its parts sum to 3");
+    expect(totalsOf(plan(3), plan(2))).toEqual(refused("plan.total.tasks"));
   });
 
   it('build.redTests = steps.byStep["build-task-red"].n', () => {
@@ -2619,12 +2643,16 @@ describe("totals — validate refuses a total that does not match its parts", ()
 // ---------------------------------------------------------------------------
 
 describe("validate — schema-2 top section", () => {
-  it("refuses a row without schema: 2", () => {
+  it("refuses a row without schema: 3", () => {
     const { schema: _schema, ...noSchema } = complianceEvent();
-    for (const row of [noSchema, { ...complianceEvent(), schema: 1 }]) {
+    for (const row of [
+      noSchema,
+      { ...complianceEvent(), schema: 1 },
+      { ...complianceEvent(), schema: 2 },
+    ]) {
       const r = validate(row);
       expect(r.ok).toBe(false);
-      expect(r.reason).toContain("schema must be 2");
+      expect(r.reason).toContain("schema must be 3");
     }
   });
 
@@ -2645,7 +2673,7 @@ describe("validate — schema-2 top section", () => {
     expect(
       validate(
         failureEvent("k", {
-          by: { workflow: "build", step: "s", subagent: "bkit-build-summary", model: "m" },
+          by: { workflow: "build", step: "s", subagent: "bkit-build-plan-verify", model: "m" },
         }),
       ).ok,
     ).toBe(true);

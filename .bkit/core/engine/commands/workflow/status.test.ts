@@ -118,18 +118,18 @@ describe("the status fold", () => {
 describe("bkit status route", () => {
   const base = ["status", "route"];
 
-  it("reads the last verdict and failures of a step in the active run, per sub-plan", async () => {
+  it("reads the last verdict and failures of a step in the active run, per group", async () => {
     const file = log([
       started("build", "2026-10-01T00:00:00Z"),
       done("build", "build-plan-verify", "2026-10-01T00:01:00Z", {
         verdict: "FAIL",
         failures: 2,
-        subPlan: 1,
+        group: 1,
       }),
       done("build", "build-plan-verify", "2026-10-01T00:02:00Z", {
         verdict: "PASS",
         failures: 0,
-        subPlan: 2,
+        group: 2,
       }),
     ]);
     const r = await run([
@@ -137,9 +137,25 @@ describe("bkit status route", () => {
       `--file=${file}`,
       "--workflow=build",
       "--step=build-plan-verify",
-      "--sub-plan=1",
+      "--group=1",
     ]);
     expect(r.json).toMatchObject({ verdict: "FAIL", failures: 2 });
+  });
+
+  it("prints the parentSha of the step's last row in the active run, per group", async () => {
+    const g1 = "1".repeat(40);
+    const g2 = "2".repeat(40);
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      done("build", "build-group-start", "2026-10-01T00:01:00Z", { group: 1, parentSha: g1 }),
+      done("build", "build-group-start", "2026-10-01T00:02:00Z", { group: 2, parentSha: g2 }),
+    ]);
+    const at = (group: string) =>
+      run([...base, `--file=${file}`, "--workflow=build", "--step=build-group-start", group]);
+    expect((await at("--group=1")).json.parentSha).toBe(g1);
+    expect((await at("--group=2")).json.parentSha).toBe(g2);
+    const none = await run([...base, `--file=${file}`, "--workflow=build"]);
+    expect(none.json.parentSha).toBeNull();
   });
 
   it("counts absent failures as 0 when a verdict is present", async () => {
@@ -316,16 +332,16 @@ describe("bkit status route", () => {
     expect(r.json).toMatchObject({ verdict: null, failures: null });
   });
 
-  it("reads strategy per sub-plan, from the step's last DONE row, within its own workflow", async () => {
+  it("reads strategy per group, from the step's last DONE row, within its own workflow", async () => {
     const file = log([
-      done("build", "s", "2026-10-01T00:01:00Z", { subPlan: 1, strategy: "PIVOT" }),
-      done("build", "s", "2026-10-01T00:02:00Z", { subPlan: 2 }),
+      done("build", "s", "2026-10-01T00:01:00Z", { group: 1, strategy: "PIVOT" }),
+      done("build", "s", "2026-10-01T00:02:00Z", { group: 2 }),
       done("debug", "s", "2026-10-01T00:03:00Z", { strategy: "FINAL" }),
     ]);
     const q = async (...f: string[]) =>
       (await run([...base, `--file=${file}`, "--workflow=build", "--step=s", ...f])).json;
-    expect(await q("--sub-plan=1")).toMatchObject({ strategy: "PIVOT", nextStrategy: "FINAL" });
-    expect(await q("--sub-plan=2")).toMatchObject({ strategy: null, nextStrategy: "STANDARD" });
+    expect(await q("--group=1")).toMatchObject({ strategy: "PIVOT", nextStrategy: "FINAL" });
+    expect(await q("--group=2")).toMatchObject({ strategy: null, nextStrategy: "STANDARD" });
     expect(await q()).toMatchObject({ strategy: null, nextStrategy: "STANDARD" });
   });
 
@@ -363,6 +379,7 @@ describe("bkit status route --prompt-file (debug Step 1)", () => {
       `--prompt-file=${prompt(promptText)}`,
       ...extra,
     ]);
+  const fixRound = (at: string) => done("debug", "debug-failure-remediate", at);
   const closed = (at: string) => ({ type: "workflow-done", workflow: "debug", at });
   const soak = (at: string) => done("debug", "debug-failure-soak", at);
 
@@ -372,7 +389,6 @@ describe("bkit status route --prompt-file (debug Step 1)", () => {
     expect(r.json).toMatchObject({
       debugAttempt: 1,
       debugMode: "NORMAL",
-      soakEntry: false,
       repro: false,
       gates: GATES,
     });
@@ -387,31 +403,47 @@ describe("bkit status route --prompt-file (debug Step 1)", () => {
     expect((await route(file)).json).toMatchObject({ debugAttempt: 2, debugMode: "NORMAL" });
   });
 
-  it("the attempt that reaches MAX_DEBUG_ATTEMPT enters SOAK", async () => {
+  it("fix rounds used up across runs (debug.fix.maxAttempts) enter SOAK", async () => {
     const file = log([
       started("debug", "2026-10-01T00:00:00Z"),
-      closed("2026-10-01T00:01:00Z"),
-      started("debug", "2026-10-01T00:02:00Z"),
-      closed("2026-10-01T00:03:00Z"),
+      fixRound("2026-10-01T00:01:00Z"),
+      closed("2026-10-01T00:02:00Z"),
+      started("debug", "2026-10-01T00:03:00Z"),
+      fixRound("2026-10-01T00:04:00Z"),
+      closed("2026-10-01T00:05:00Z"),
     ]);
-    expect((await route(file)).json).toMatchObject({
-      debugAttempt: 3,
-      debugMode: "SOAK",
-      soakEntry: true,
-    });
+    expect((await route(file)).json).toMatchObject({ debugAttempt: 3, debugMode: "SOAK" });
+  });
+
+  it("the fix limit comes from bkit.workflows.debug.fix.maxAttempts", async () => {
+    const cwd = tmp();
+    fs.writeFileSync(
+      path.join(cwd, "package.json"),
+      JSON.stringify({ bkit: { workflows: { debug: { fix: { maxAttempts: 3 } } } } }),
+    );
+    const file = log([
+      started("debug", "2026-10-01T00:00:00Z"),
+      fixRound("2026-10-01T00:01:00Z"),
+      fixRound("2026-10-01T00:02:00Z"),
+    ]);
+    const args = ["status", "route", `--file=${file}`, "--workflow=debug"];
+    const at = async () =>
+      (await run([...args, `--prompt-file=${prompt("/bkit-debug 7-x")}`], cwd)).json.debugMode;
+    expect(await at()).toBe("NORMAL");
+    fs.appendFileSync(file, JSON.stringify(fixRound("2026-10-01T00:03:00Z")) + "\n");
+    expect(await at()).toBe("SOAK");
   });
 
   it("[soak] and [repro] in the prompt", async () => {
     const r = await route(path.join(tmp(), "status.jsonl"), "/bkit-debug 7-x [soak] [repro]");
-    expect(r.json).toMatchObject({ debugMode: "SOAK", soakEntry: true, repro: true });
+    expect(r.json).toMatchObject({ debugMode: "SOAK", repro: true });
   });
 
-  it("a resumed run that soaked continues in SOAK without a new entry", async () => {
+  it("a resumed run that soaked continues in SOAK", async () => {
     const file = log([started("debug", "2026-10-01T00:00:00Z"), soak("2026-10-01T00:01:00Z")]);
     expect((await route(file)).json).toMatchObject({
       debugAttempt: 1,
       debugMode: "SOAK",
-      soakEntry: false,
     });
   });
 
@@ -424,7 +456,6 @@ describe("bkit status route --prompt-file (debug Step 1)", () => {
     expect((await route(file)).json).toMatchObject({
       debugAttempt: 2,
       debugMode: "NORMAL",
-      soakEntry: false,
     });
   });
 
@@ -442,10 +473,9 @@ describe("bkit status route --prompt-file (debug Step 1)", () => {
         workflow: "debug",
         at: "2026-10-01T00:05:00Z",
         debugMode: "SOAK",
-        soakEntryAt: "2026-10-01T00:05:00Z",
       },
     ]);
-    expect((await route(file)).json).toMatchObject({ debugMode: "SOAK", soakEntry: false });
+    expect((await route(file)).json).toMatchObject({ debugMode: "SOAK" });
   });
 
   it("[live=off] in the prompt drops the live gate; the issue body is not read", async () => {
@@ -560,20 +590,15 @@ describe("bkit status meta", () => {
     expect(r.json).toMatchObject({ debugMode: "SOAK", debugAttempt: 2 });
   });
 
-  it("records soakEntryAt at the row's own time, openedPr and planSource", async () => {
+  it("records openedPr, and refuses the removed --soak-entry and --decision", async () => {
     const file = log([started("debug", "2026-10-01T00:00:00Z")]);
-    const w = await run([
-      "status",
-      "meta",
-      `--file=${file}`,
-      "--workflow=debug",
-      "--soak-entry",
-      "--opened-pr",
-      "--plan-source=brief",
-    ]);
+    const meta = (...flags: string[]) =>
+      run(["status", "meta", `--file=${file}`, "--workflow=debug", ...flags]);
+    const w = await meta("--opened-pr");
     expect(w.code).toBe(0);
-    expect(w.json.row).toMatchObject({ openedPr: true, planSource: "brief" });
-    expect(w.json.row.soakEntryAt).toBe(w.json.row.at);
+    expect(w.json.row).toMatchObject({ openedPr: true });
+    expect((await meta("--soak-entry")).code).toBe(2);
+    expect((await meta("--decision")).code).toBe(2);
   });
 
   it("--debug-attempt=run records the active run's number", async () => {
@@ -593,15 +618,20 @@ describe("bkit status meta", () => {
     expect(w.json.row).toMatchObject({ debugAttempt: 2 });
   });
 
-  it("records decisionAt at the row's own time", async () => {
+  it("meta refuses --plan-source", async () => {
     const file = log([started("build", "2026-10-01T00:00:00Z")]);
-    const w = await run(["status", "meta", `--file=${file}`, "--workflow=build", "--decision"]);
-    expect(w.code).toBe(0);
-    expect(w.json.row.decisionAt).toBe(w.json.row.at);
+    const w = await run([
+      "status",
+      "meta",
+      `--file=${file}`,
+      "--workflow=build",
+      "--plan-source=brief",
+    ]);
+    expect(w.code).toBe(2);
+    expect(w.err).toContain("unknown flag --plan-source");
   });
 
   it.each([
-    [["--plan-source=guess"], 2],
     [["--debug-mode=TURBO"], 2],
     [["--push-mode=REMOTE"], 2],
     [["--debug-attempt=0"], 2],

@@ -1041,7 +1041,7 @@ describe("bkit ledgers append", () => {
       "by",
     ]);
     expect(a).toMatchObject({
-      schema: 2,
+      schema: 3,
       repo: "unknown/repo",
       bkit: { version: "5.5.1" },
       by: { workflow: "build", step: "build-challenge" },
@@ -1130,9 +1130,9 @@ describe("bkit ledgers append", () => {
     const rows = lines(r, ".bkit/stats.jsonl");
     expect(rows.map((x) => x.kind)).toEqual(["compliance", "counter", "outcome"]);
     expect(rows.map((x) => [x.schema, (x.run as { parentSha: string }).parentSha])).toEqual([
-      [2, sha],
-      [2, sha],
-      [2, sha],
+      [3, sha],
+      [3, sha],
+      [3, sha],
     ]);
   });
 

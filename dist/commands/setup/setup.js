@@ -5,7 +5,7 @@
 // The policy also binds admins. `dev` is left unprotected — operators choose
 // direct-push or feat/PR.
 //
-// The required check is `bkit.capstoneJob`, the always-on job that asserts every
+// The required check is `bkit.testing.ciCapstone`, the always-on job that asserts every
 // expected tier ran and passed, so "required check green" means validated, not
 // merely "the tests job did not fail". Before requiring it the command checks a
 // job by that name exists in the CI workflow: a required check no job produces
@@ -16,9 +16,9 @@ import { readBkitConfig } from "../../shared/settings.js";
 import { CommandError, EXIT, parseJson, repoRoot, runGh, } from "../lib.js";
 /** Exit code: `gh repo view` did not name the repository. */
 export const EXIT_NO_REPO = 3;
-/** Exit code: the CI workflow file named by `bkit.ciWorkflow` does not exist. */
+/** Exit code: the CI workflow file named by `bkit.testing.ciWorkflow` does not exist. */
 export const EXIT_NO_CI_WORKFLOW = 4;
-/** Exit code: the CI workflow has no job named `bkit.capstoneJob`. */
+/** Exit code: the CI workflow has no job named `bkit.testing.ciCapstone`. */
 export const EXIT_NO_CAPSTONE_JOB = 5;
 /** Exit code: a `gh api` call failed. */
 export const EXIT_GH_API_FAILED = 6;
@@ -138,8 +138,8 @@ export const setupCommand = {
             output: {
                 repo: "owner/name the policy targets",
                 branch: "always main",
-                requiredCheck: "the required status check (bkit.capstoneJob)",
-                ciWorkflow: "the CI workflow checked for that job (bkit.ciWorkflow)",
+                requiredCheck: "the required status check (bkit.testing.ciCapstone)",
+                ciWorkflow: "the CI workflow checked for that job (bkit.testing.ciWorkflow)",
                 dryRun: "true with --dry-run",
                 applied: "true when the policy was written to GitHub",
                 payload: "the protection body sent (or that would be sent)",
@@ -148,8 +148,8 @@ export const setupCommand = {
             },
             exitCodes: {
                 [EXIT_NO_REPO]: "gh repo view could not name the repository",
-                [EXIT_NO_CI_WORKFLOW]: "the CI workflow file (bkit.ciWorkflow) does not exist",
-                [EXIT_NO_CAPSTONE_JOB]: "the CI workflow has no job named bkit.capstoneJob",
+                [EXIT_NO_CI_WORKFLOW]: "the CI workflow file (bkit.testing.ciWorkflow) does not exist",
+                [EXIT_NO_CAPSTONE_JOB]: "the CI workflow has no job named bkit.testing.ciCapstone",
                 [EXIT_GH_API_FAILED]: "a gh api call failed",
             },
             run: protectMain,

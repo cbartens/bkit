@@ -203,10 +203,11 @@ describe("bkit-ship.md — push-timing invariant (feature-branch pushes before m
       ),
     ].sort();
 
-  it("pushes the feature branch only to open a missing PR, in Integrate (B2), and in Commit + Push Bookkeeping", () => {
+  it("pushes the feature branch only to open a missing PR, in Integrate (B2), in Commit + Push Bookkeeping and after a Failure Remediate fix", () => {
     expect(stepsWhere(isFeaturePush)).toEqual(
       [
         "Commit + Push Bookkeeping",
+        "Failure Remediate",
         "Integrate (Path B only)",
         "Verify PR (Worktree Setup + Regression Guard)",
       ].sort(),
@@ -538,7 +539,7 @@ describe("bkit-ship.md — build-challenge remediation regressions", () => {
     expect(lines[idx]).toMatch(/\b17\b/);
     const block = lines.slice(idx, idx + 12).join("\n");
     expect(block, "codes 10/11/14/17 must route to Step 9, not Failure Path").toMatch(
-      /"\{BKIT\}" counters route --name=REVALIDATE_ATTEMPT .*--continue=step-9 /,
+      /"\{BKIT\}" counters route --name=MERGE_ATTEMPT .*--continue=step-9 /,
     );
   });
 });
@@ -630,10 +631,10 @@ describe("bkit-ship.md — Failure Path single-write contract", () => {
     }
   });
 
-  it("wires bkit ledgers into exactly 2 bash regions", () => {
-    // B2 stage, Commit + Push Bookkeeping. The Failure Path flush, the
-    // re-validate bookkeeping check and the close flush run inside commands.
-    expect(ledgersBlocks(readShip())).toHaveLength(2);
+  it("wires bkit ledgers into exactly 3 bash regions", () => {
+    // B2 stage, Commit + Push Bookkeeping, the Failure Remediate fix commit. The Failure Path
+    // flush, the re-validate bookkeeping check and the close flush run inside commands.
+    expect(ledgersBlocks(readShip())).toHaveLength(3);
   });
 
   it("every bkit ledgers stage / commit stops the step on a non-zero exit", () => {
@@ -672,7 +673,9 @@ describe("bkit-ship.md — issue-less runs and the main guard", () => {
     const wired = blocks(step10()).filter((b) => b.text.includes("issues fetch"));
     expect(wired).toHaveLength(1);
     for (const b of wired) expect(b.text, b.kind).toContain(SKIP);
-    expect(step10()).toContain("empty when no tracker is wired or `ISSUE_ID` is empty");
+    expect(step10()).toContain(
+      "empty when no tracker is wired<!-- bkit:tracker true start --> or `ISSUE_ID` is empty<!-- bkit:tracker true end -->",
+    );
   });
 
   it("naming warning comes from worktrees setup, which reads the issue only when there is one", () => {

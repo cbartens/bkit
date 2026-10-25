@@ -19,7 +19,7 @@ import { writeNetworkAllowlist } from "../network-allowlist.js";
 import type { PreflightFinding } from "../../checks/before/index.js";
 import { parseJson, readJsonFile } from "../../shared/json.js";
 import { readInstallingVersion } from "../../shared/package-json.js";
-import { CONFIG_DEFAULTS } from "../../shared/settings.js";
+import { ASK_POINTS, CONFIG_DEFAULTS, limitKey } from "../../shared/settings.js";
 import {
   getCoreRoot,
   getSharedRoot,
@@ -250,10 +250,11 @@ function runCoreTemplates(
 // in-repo without spelunking node_modules. Force-overwritten (Tier 1) — bkit owns
 // them, so a consumer edit is replaced. Source of truth is the package's own
 // `.bkit/core/.bkit/<name>`. (`advisories.md` is a regenerated runtime artifact and
-// `wording.md` is repo-only tooling — neither belongs here. `LICENSE.md` is the MIT
+// `instructions.md` is repo-only tooling — neither belongs here. `LICENSE.md` is the MIT
 // notice that travels with the files bkit writes: MIT requires the copyright and
 // permission notice in every copy.)
 export const BKIT_CANONICAL_DOCS = [
+  "authoring.md",
   "cloud.md",
   "comparison.md",
   "install.md",
@@ -437,6 +438,9 @@ export function seedCorePackageJsonScripts(
   if (migrateGithubProjectKey(dryRun, ws, logPrefix) && !written.includes("package.json")) {
     written.push("package.json");
   }
+  if (migrateBkitLayout(dryRun, ws, logPrefix) && !written.includes("package.json")) {
+    written.push("package.json");
+  }
   if (seedBkitDefaults(dryRun, ws, logPrefix) && !written.includes("package.json")) {
     written.push("package.json");
   }
@@ -449,39 +453,56 @@ export function seedCorePackageJsonScripts(
  * yet is `""` or `[]`, which every reader treats as unset.
  */
 export const SEEDED_BKIT_DEFAULTS: Readonly<Record<string, unknown>> = {
-  issueTracker: "",
-  cloudAgents: "",
-  github: {
-    project: "",
-    progress: CONFIG_DEFAULTS.github.progress,
-    review: CONFIG_DEFAULTS.github.review,
+  tracker: {
+    default: "",
+    github: {
+      project: "",
+      progress: CONFIG_DEFAULTS.github.progress,
+      review: CONFIG_DEFAULTS.github.review,
+    },
+    linear: {
+      team: "",
+      project: "",
+      progress: CONFIG_DEFAULTS.linear.progress,
+      review: CONFIG_DEFAULTS.linear.review,
+    },
+    jira: {
+      site: "",
+      project: "",
+      progress: CONFIG_DEFAULTS.jira.progress,
+      review: CONFIG_DEFAULTS.jira.review,
+    },
   },
-  linear: {
-    team: "",
-    project: "",
-    progress: CONFIG_DEFAULTS.linear.progress,
-    review: CONFIG_DEFAULTS.linear.review,
+  cloud: { agent: "" },
+  providers: { opencode: { default: "", installed: [] } },
+  testing: {
+    ciWorkflow: CONFIG_DEFAULTS.ciWorkflow,
+    ciCapstone: CONFIG_DEFAULTS.capstoneJob,
+    shipGate: [...CONFIG_DEFAULTS.shipGateRequiredLanes],
+    minPushPaths: [...CONFIG_DEFAULTS.minPushPaths],
   },
-  jira: {
-    site: "",
-    project: "",
-    progress: CONFIG_DEFAULTS.jira.progress,
-    review: CONFIG_DEFAULTS.jira.review,
+  workflows: {
+    minFreeGb: CONFIG_DEFAULTS.diskMinFreeGb,
+    worktree: { copy: [...CONFIG_DEFAULTS.worktreeCopy], install: CONFIG_DEFAULTS.worktreeInstall },
+    tasks: { ...CONFIG_DEFAULTS.tasks },
+    ...askBlocks(),
   },
-  opencodeProvider: "",
-  opencodeProviders: [],
-  ciWorkflow: CONFIG_DEFAULTS.ciWorkflow,
-  capstoneJob: CONFIG_DEFAULTS.capstoneJob,
-  shipGateRequiredLanes: [...CONFIG_DEFAULTS.shipGateRequiredLanes],
-  minPushPaths: [...CONFIG_DEFAULTS.minPushPaths],
-  worktree: { copy: [...CONFIG_DEFAULTS.worktreeCopy], install: CONFIG_DEFAULTS.worktreeInstall },
-  disk: { minFreeGb: CONFIG_DEFAULTS.diskMinFreeGb },
-  loopPause: CONFIG_DEFAULTS.loopPause,
   // bkit-utility-update-roadmap list length; the prompt falls back to 25 too.
-  roadmapNext: 25,
-  depUpdater: "",
-  ignoreAdvisories: [],
+  prompts: { roadmapNext: 25 },
+  dependencies: { updater: "" },
+  advisories: { ignore: [] },
 };
+
+/** `{design: {grill: {ask, maxTurns}}, build: {...}, ...}`, from `CONFIG_DEFAULTS.asks`. */
+function askBlocks(): Record<string, Record<string, Record<string, unknown>>> {
+  const out: Record<string, Record<string, Record<string, unknown>>> = {};
+  for (const point of ASK_POINTS) {
+    const [workflow, name] = point.split(".") as [string, string];
+    const d = CONFIG_DEFAULTS.asks[point];
+    (out[workflow] ??= {})[name] = { ask: d.ask, [limitKey(point)]: d.max };
+  }
+  return out;
+}
 
 const plainObject = (v: unknown): v is Record<string, unknown> =>
   v !== null && typeof v === "object" && !Array.isArray(v);
@@ -595,9 +616,110 @@ export function migrateGithubProjectKey(dryRun: boolean, ws: WriteSet, logPrefix
   console.log(`${logPrefix} ${tag}core: moved bkit.githubProject to bkit.github in package.json`);
   for (const moment of unnamed)
     console.log(
-      `${logPrefix} ${tag}core: bkit.githubProject named its ${moment} Status option by id; set bkit.github.${moment} to that option's name (default "${CONFIG_DEFAULTS.github[moment]}")`,
+      `${logPrefix} ${tag}core: bkit.githubProject named its ${moment} Status option by id; set bkit.tracker.github.${moment} to that option's name (default "${CONFIG_DEFAULTS.github[moment]}")`,
     );
   return true;
+}
+
+// Migration (up to 5.5.x installs, `docs/migrations.md`): `bkit` settings sat flat; they
+// are grouped into named sections. Each old key moves to its new path; a value already at
+// the new path wins, and two blocks merge key by key. `loopPause: true|false` becomes
+// `ask` on every point under `workflows.<workflow>`, where an `ask` already set wins.
+// Runs after the linearTeam and githubProject moves, which write the flat keys. Returns
+// true when package.json changed.
+export const BKIT_LAYOUT_MOVES: readonly (readonly [string, string])[] = [
+  ["issueTracker", "tracker.default"],
+  ["github", "tracker.github"],
+  ["linear", "tracker.linear"],
+  ["jira", "tracker.jira"],
+  ["cloudAgents", "cloud.agent"],
+  ["opencodeProvider", "providers.opencode.default"],
+  ["opencodeProviders", "providers.opencode.installed"],
+  ["minPushPaths", "testing.minPushPaths"],
+  ["capstoneJob", "testing.ciCapstone"],
+  ["ciWorkflow", "testing.ciWorkflow"],
+  ["shipGateRequiredLanes", "testing.shipGate"],
+  ["disk.minFreeGb", "workflows.minFreeGb"],
+  ["worktree", "workflows.worktree"],
+  ["tasks", "workflows.tasks"],
+  ["roadmapNext", "prompts.roadmapNext"],
+  ["depUpdater", "dependencies.updater"],
+  ["ignoreAdvisories", "advisories.ignore"],
+];
+
+// Fill `into` with each `from` key it lacks, descending into blocks both sides hold.
+function mergeMissing(into: Record<string, unknown>, from: Record<string, unknown>): void {
+  for (const [k, v] of Object.entries(from)) {
+    if (into[k] === undefined) into[k] = v;
+    else if (plainObject(v) && plainObject(into[k])) mergeMissing(into[k], v);
+  }
+}
+
+export function migrateBkitLayout(dryRun: boolean, ws: WriteSet, logPrefix: string): boolean {
+  const pkgPath = "package.json";
+  if (!fs.existsSync(pkgPath)) return false;
+  const raw = fs.readFileSync(pkgPath, "utf-8");
+  const parsed = parseJson(raw);
+  if (!parsed.ok) return false;
+  const pkg = parsed.value as Record<string, unknown>;
+  if (!plainObject(pkg.bkit)) return false;
+  const cfg = pkg.bkit;
+  const moved: string[] = [];
+  for (const [from, to] of BKIT_LAYOUT_MOVES) {
+    const fromPath = from.split(".");
+    const fromParent = fromPath
+      .slice(0, -1)
+      .reduce<unknown>((o, k) => (plainObject(o) ? o[k] : undefined), cfg);
+    const fromKey = fromPath[fromPath.length - 1]!;
+    if (!plainObject(fromParent) || !Object.prototype.hasOwnProperty.call(fromParent, fromKey))
+      continue;
+    const old = fromParent[fromKey];
+    const toPath = to.split(".");
+    let parent: Record<string, unknown> = cfg;
+    let blocked = false;
+    for (const k of toPath.slice(0, -1)) {
+      if (parent[k] === undefined) parent[k] = {};
+      if (!plainObject(parent[k])) {
+        blocked = true;
+        break;
+      }
+      parent = parent[k];
+    }
+    // A non-object where the new section belongs: leave the old key for `bkit check` to show.
+    if (blocked) continue;
+    const toKey = toPath[toPath.length - 1]!;
+    if (parent[toKey] === undefined) parent[toKey] = old;
+    else if (plainObject(parent[toKey]) && plainObject(old)) mergeMissing(parent[toKey], old);
+    delete fromParent[fromKey];
+    if (fromParent !== cfg && Object.keys(fromParent).length === 0) delete cfg[fromPath[0]!];
+    moved.push(`bkit.${from} -> bkit.${to}`);
+  }
+  if (Object.prototype.hasOwnProperty.call(cfg, "loopPause")) {
+    const old = cfg.loopPause;
+    if (typeof old === "boolean") {
+      if (cfg.workflows === undefined) cfg.workflows = {};
+      if (plainObject(cfg.workflows)) mergeMissing(cfg.workflows, askOnly(old));
+    }
+    delete cfg.loopPause;
+    moved.push("bkit.loopPause -> bkit.workflows.<workflow>.<point>.ask");
+  }
+  if (moved.length === 0) return false;
+  ws.writes.push({ path: pkgPath, action: "update" });
+  if (!dryRun) writePackageJsonLike(raw, pkg);
+  console.log(
+    `${logPrefix} ${dryRun ? "[dry-run] " : ""}core: moved ${moved.join(", ")} in package.json`,
+  );
+  return true;
+}
+
+/** `{design: {grill: {ask}}, build: {verify: {ask}, ...}, ...}` with every `ask` = `ask`. */
+function askOnly(ask: boolean): Record<string, unknown> {
+  const out: Record<string, Record<string, Record<string, unknown>>> = {};
+  for (const point of ASK_POINTS) {
+    const [workflow, name] = point.split(".") as [string, string];
+    (out[workflow] ??= {})[name] = { ask };
+  }
+  return out;
 }
 
 // Migration (up to 5.4.x installs, `docs/migrations.md`): the Linear team lived at

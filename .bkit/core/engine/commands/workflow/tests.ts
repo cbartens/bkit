@@ -23,17 +23,25 @@ import * as path from "node:path";
 import { BKIT_TEST_FILE_SCRIPT } from "../../install/manifest.js";
 import { clampLogPath } from "../../ledgers/clamp-log.js";
 import { CommandError, EXIT, git, runGit, type CommandSpec } from "../lib.js";
+import { parseJson } from "../../shared/json.js";
 import { readPackageJson } from "../../shared/package-json.js";
 import { COULD_NOT_RUN_EXIT_CODES, scriptCommand } from "../../shared/package-manager.js";
+import { CONFIG_DEFAULTS, readBkitConfig, type TaskCaps } from "../../shared/settings.js";
 import {
   FILE_FLAG,
-  SUB_PLAN_FLAG,
+  GROUP_FLAG,
   WORKFLOW_FLAG,
   positiveInt,
   readStatusRows,
   statusFile,
   str,
 } from "./status.js";
+import {
+  fenceNeverClosed,
+  parsePlanBlocks,
+  reuseInventory,
+  type PlanTaskBlock,
+} from "./plan-blocks.js";
 import { writeStepRow } from "./steps.js";
 import { appendRecord, clampFile, type ClampRecord } from "./context.js";
 
@@ -124,7 +132,11 @@ export function countReportFailures(dir: string): number | null {
 }
 
 const tailLines = (file: string, n: number) =>
-  fs.readFileSync(file, "utf-8").replace(/\n$/, "").split("\n").slice(-n);
+  fs
+    .readFileSync(file, "utf-8")
+    .replace(/\r?\n$/, "")
+    .split(/\r?\n/)
+    .slice(-n);
 
 // ---------------------------------------------------------------------------
 // Test-first: JUnit reading, plan `Test first:` lines, red / green judgement
@@ -259,140 +271,351 @@ export type TestFirst =
   | { task: number; kind: "na"; reason: string }
   | { task: number; kind: "missing" | "malformed" };
 
-/** A runbook task's bullet: `**Task N:**`, `**Task N — {title}.**`, `**Task N.**` or `**Task N**`. */
-const TASK_LINE = /^\s*- \[[ xX]\] \*\*Task (\d+)(?=[\s:.*—–-])/;
-/** A checkbox whose label is `Test first` itself: the template's Gate 2 item, a checklist line, never a test entry. */
-const GATE_TEST_FIRST_LINE = /^\s*- \[[ xX]\] \*\*Test first:\*\*/;
-const TEST_FIRST = "**Test first:**";
-const TEST_ORDER_EXCEPTION = "**Test-order exception:**";
+/** The task field naming a task's tests, and the one recording an accepted test-order gap. */
+export const TEST_FIRST = "**TEST FIRST:**";
+export const TEST_EXCEPTION = "**TEST EXCEPTION:**";
+/** Why `tests green` refuses a plan with no group and task blocks. */
+export const NO_MARKERS_REASON =
+  "this plan has no task markers; run /bkit-build again to convert it";
 
-/** Plan-time caps (`.bkit/workflows.md` § Test-first): over any one → the plan is split before build. */
-export const MAX_TASKS_PER_PLAN = 12;
-export const MAX_TESTS_PER_TASK = 10;
-export const MAX_TEST_FILES_PER_TASK = 3;
+/** The plan caps `package.json` `bkit.workflows.tasks` sets for the checkout `cwd` sits in. */
+export const planCaps = (cwd: string): TaskCaps => readBkitConfig(toplevel(cwd)).tasks;
 
-/** Per `;`-separated entry, the backticked spans; an entry with two or more names a test. */
-const entrySpans = (text: string) =>
-  splitEntries(text).map((e) => [...e.matchAll(/`([^`]+)`/g)].map((m) => m[1]!.trim()));
-const plannedTests = (entries: string[][]): PlannedTest[] =>
-  entries
-    .filter((spans) => spans.length >= 2)
-    .map((spans) => ({ test: path.posix.normalize(spans[0]!), name: spans[1]! }));
+/** The caps as the plan-check report and help state them. */
+export const capsText = (c: TaskCaps) =>
+  `${c.maxPerGroup} tasks and ${c.maxTestsPerGroup} TEST FIRST tests per group; ${c.maxTestsPerTask} tests across ${c.maxTestFilesPerTask} test files per task`;
 
-/** `text` split on `;` outside backticks. */
-function splitEntries(text: string): string[] {
-  const out: string[] = [];
-  let cur = "";
-  let quoted = false;
-  for (const ch of text) {
-    if (ch === "`") quoted = !quoted;
-    if (ch === ";" && !quoted) {
-      out.push(cur);
-      cur = "";
-    } else cur += ch;
-  }
-  return [...out, cur];
+/** A task block's TEST FIRST read as one `TestFirst`; a TEST EXCEPTION with no TEST FIRST is its `n/a`. */
+function testFirstOf(t: PlanTaskBlock): TestFirst {
+  const { task, testFirst: tf, testException: exc } = t;
+  const plain = (tests: PlannedTest[]) => tests.map(({ test, name }) => ({ test, name }));
+  if (tf === undefined)
+    return exc === undefined ? { task, kind: "missing" } : { task, kind: "na", reason: exc.text };
+  if (tf.malformed.length > 0 || (tf.tests.length === 0 && tf.na === undefined))
+    return { task, kind: "malformed" };
+  if (tf.tests.length === 0) return { task, kind: "na", reason: tf.na! };
+  const tests = plain(tf.tests);
+  return exc === undefined || exc.tests.length === 0
+    ? { task, kind: "test", tests }
+    : { task, kind: "test", tests, exception: { tests: plain(exc.tests), lines: exc.lines } };
 }
 
 /**
- * Each runbook task's `Test first:` line: one or more tests separated by `;` (per entry,
- * first backticked span = file, second = test name), `n/a — {reason}`, missing, or
- * malformed (an entry with one span, or no test at all). A task's text runs from its
- * bullet to the next bullet or heading. A `Test-order exception:` line inside it ends
- * the `Test first` text and names, in the same entry form, the tests it covers.
+ * Each task block's TEST FIRST field (`plan-blocks.ts`): one test per sub-bullet (first
+ * backticked span = file, second = test name), `n/a — {reason}`, missing, or malformed
+ * (an entry with fewer than two spans, or no entry). A TEST EXCEPTION field names, in
+ * the same entry form, the tests whose test-order gaps it accepts. `group` narrows to
+ * one group's tasks.
  */
-export function readTestFirst(plan: string): TestFirst[] {
-  const out: TestFirst[] = [];
-  const lines = plan.split("\n");
-  for (const { task, start: i, end } of taskSpans(lines)) {
-    const own = lines.slice(i, end);
-    const text = own.join(" ");
-    const at = text.indexOf(TEST_FIRST);
-    if (at < 0) {
-      out.push({ task, kind: "missing" });
-      continue;
-    }
-    const cut = text.indexOf(TEST_ORDER_EXCEPTION, at);
-    const rest = text.slice(at + TEST_FIRST.length, cut < 0 ? undefined : cut).trim();
-    if (/^n\/a\b/i.test(rest)) {
-      out.push({ task, kind: "na", reason: rest.replace(/^n\/a\s*[—–-]?\s*/i, "") });
-      continue;
-    }
-    const entries = entrySpans(rest);
-    const tests = plannedTests(entries);
-    if (tests.length === 0 || entries.some((spans) => spans.length === 1)) {
-      out.push({ task, kind: "malformed" });
-      continue;
-    }
-    const first = own.findIndex((l) => l.includes(TEST_ORDER_EXCEPTION));
-    const excepted =
-      cut < 0 ? [] : plannedTests(entrySpans(text.slice(cut + TEST_ORDER_EXCEPTION.length)));
-    if (first < 0 || excepted.length === 0) {
-      out.push({ task, kind: "test", tests });
-      continue;
-    }
-    let last = own.length - 1;
-    while (last > first && own[last]!.trim() === "") last--;
-    const span = Array.from({ length: last - first + 1 }, (_, k) => i + first + k + 1);
-    out.push({ task, kind: "test", tests, exception: { tests: excepted, lines: span } });
-  }
-  return out;
-}
-
-/** Each task bullet's number and its 0-based line span: the bullet to the next bullet or heading. */
-function taskSpans(lines: string[]): Array<{ task: number; start: number; end: number }> {
-  const out: Array<{ task: number; start: number; end: number }> = [];
-  for (let i = 0; i < lines.length; i++) {
-    const head = TASK_LINE.exec(lines[i]!);
-    if (!head) continue;
-    let end = i + 1;
-    while (end < lines.length && !/^\s*(- |#)/.test(lines[end]!)) end++;
-    out.push({ task: Number(head[1]), start: i, end });
-  }
-  return out;
-}
-
-/**
- * 1-based lines carrying `**Test first:**` that no task bullet claims, so `readTestFirst`
- * never reads them. Mentions inside inline code or a fenced block are prose, not entries;
- * a checkbox labelled `Test first` itself (the template's Gate 2 item) is a checklist
- * line, not an entry.
- */
-export function unclaimedTestFirst(plan: string): number[] {
-  const lines = plan.split("\n");
-  const claimed = new Set(
-    taskSpans(lines).flatMap(({ start, end }) =>
-      Array.from({ length: end - start }, (_, k) => start + k),
-    ),
-  );
-  const out: number[] = [];
-  let fence: string | null = null;
-  for (const [i, line] of lines.entries()) {
-    const marker = /^\s*(`{3,}|~{3,})/.exec(line)?.[1];
-    if (marker !== undefined && (fence === null || marker.startsWith(fence))) {
-      fence = fence === null ? marker : null;
-      continue;
-    }
-    if (fence !== null || claimed.has(i)) continue;
-    if (GATE_TEST_FIRST_LINE.test(line)) continue;
-    if (line.replace(/(`+)[\s\S]*?\1/g, "").includes(TEST_FIRST)) out.push(i + 1);
-  }
-  return out;
+export function readTestFirst(plan: string, group?: number): TestFirst[] {
+  return parsePlanBlocks(plan)
+    .tasks.filter((t) => group === undefined || t.group === group)
+    .map(testFirstOf);
 }
 
 export interface TaskSize {
   task: number;
+  group: number;
   tests: number;
   files: number;
 }
 
 /** Per task, the planned tests and distinct test files it names (`n/a`, missing and malformed count 0). */
-export const taskSizes = (specs: TestFirst[]): TaskSize[] =>
+export const taskSizes = (specs: TestFirst[]): Array<Omit<TaskSize, "group">> =>
   specs.map((s) =>
     s.kind === "test"
       ? { task: s.task, tests: s.tests.length, files: new Set(s.tests.map((t) => t.test)).size }
       : { task: s.task, tests: 0, files: 0 },
   );
+
+export interface GroupSize {
+  group: number;
+  title: string;
+  tasks: number;
+  /** Planned TEST FIRST tests, summed over the group's tasks. */
+  tests: number;
+  /** The group block's size, KB to one decimal. */
+  kb: number;
+}
+
+export interface PlanProblem {
+  /** 1-based plan line. */
+  line: number;
+  kind: "format" | "stray" | "field" | "depends" | "cap" | "inventory" | "markers";
+  message: string;
+}
+
+export interface PlanCheck {
+  groups: GroupSize[];
+  sizes: TaskSize[];
+  /** Tasks naming more than `maxTestsPerTask` tests or `maxTestFilesPerTask` test files. */
+  overCap: TaskSize[];
+  /** Every reason the plan is refused, in line order; the existence check is `planExistence`. */
+  problems: PlanProblem[];
+}
+
+/**
+ * Files with a NEW row in the plan's Reuse Inventory table (`reuseInventory`): the
+ * paths in the `File` cell of each row whose `Decision` cell reads NEW.
+ */
+export function inventoryNewFiles(text: string): Set<string> {
+  const rows = reuseInventory(text)?.rows ?? [];
+  return new Set(rows.filter((r) => /^\**new\b/i.test(r.decision)).flatMap((r) => r.files));
+}
+
+const kb1 = (bytes: number) => Math.round((bytes / 1024) * 10) / 10;
+
+/**
+ * One plan's groups and tasks against the caps and the block format: parse errors and
+ * task-like text outside every block, a task without DONE WHEN or without TEST FIRST and
+ * TEST EXCEPTION, a malformed TEST FIRST, a DEPENDS ON naming a missing task or one in a
+ * later group, a group or task over a cap in `caps`, a CREATE file with no NEW Reuse
+ * Inventory row.
+ */
+export function checkPlanText(text: string, caps: TaskCaps = CONFIG_DEFAULTS.tasks): PlanCheck {
+  const blocks = parsePlanBlocks(text);
+  const lines = text.split(/\r?\n/);
+  const problems: PlanProblem[] = blocks.errors.map((e) => ({
+    line: e.line,
+    kind: e.kind,
+    message: e.message,
+  }));
+  if (blocks.tasks.length === 0 && blocks.fenceOpen === undefined)
+    problems.push({
+      line: 1,
+      kind: "markers",
+      message:
+        "no task markers: write each task as a `<!-- bkit:task N start -->` block inside a `<!-- bkit:group N start -->` block",
+    });
+  const specs = new Map(blocks.tasks.map((t) => [t.task, testFirstOf(t)]));
+  const sizes: TaskSize[] = blocks.tasks.map((t) => {
+    const s = specs.get(t.task)!;
+    const tests = s.kind === "test" ? s.tests : [];
+    return {
+      task: t.task,
+      group: t.group,
+      tests: tests.length,
+      files: new Set(tests.map((x) => x.test)).size,
+    };
+  });
+  const overCap = sizes.filter(
+    (t) => t.tests > caps.maxTestsPerTask || t.files > caps.maxTestFilesPerTask,
+  );
+  const byTask = new Map(blocks.tasks.map((t) => [t.task, t]));
+  const newFiles = inventoryNewFiles(text);
+  for (const t of blocks.tasks) {
+    const field = (message: string, line = t.line) =>
+      problems.push({ line, kind: "field", message: `TASK ${t.task}: ${message}` });
+    if (t.doneWhen === undefined || t.doneWhen === "") field("has no **DONE WHEN:** field");
+    const s = specs.get(t.task)!;
+    if (s.kind === "missing") field("has neither **TEST FIRST:** nor **TEST EXCEPTION:**");
+    for (const line of t.testFirst?.malformed ?? [])
+      field("TEST FIRST entry is neither `test file` `test name` nor `n/a — {reason}`", line);
+    if (s.kind === "malformed" && (t.testFirst?.malformed.length ?? 0) === 0)
+      field("TEST FIRST names no test", t.testFirst!.line);
+    for (const d of t.dependsOn) {
+      const dep = byTask.get(d);
+      const message =
+        d === t.task
+          ? `TASK ${t.task} depends on itself`
+          : dep === undefined
+            ? `TASK ${t.task} depends on TASK ${d}, but TASK ${d} does not exist`
+            : dep.group > t.group
+              ? `TASK ${t.task} depends on TASK ${d}, which is in a later group (GROUP ${dep.group}); groups build in order`
+              : undefined;
+      if (message !== undefined) problems.push({ line: t.line, kind: "depends", message });
+    }
+    const size = sizes.find((x) => x.task === t.task)!;
+    if (size.tests > caps.maxTestsPerTask)
+      problems.push({
+        line: t.line,
+        kind: "cap",
+        message: `TASK ${t.task} names ${size.tests} TEST FIRST tests, over the cap of ${caps.maxTestsPerTask}`,
+      });
+    if (size.files > caps.maxTestFilesPerTask)
+      problems.push({
+        line: t.line,
+        kind: "cap",
+        message: `TASK ${t.task} names ${size.files} test files, over the cap of ${caps.maxTestFilesPerTask}`,
+      });
+    for (const c of t.create)
+      if (!newFiles.has(path.posix.normalize(c.file)))
+        problems.push({
+          line: c.line,
+          kind: "inventory",
+          message: `TASK ${t.task}: CREATE in \`${c.file}\` has no NEW row naming it in the Reuse Inventory's File column`,
+        });
+  }
+  const groups: GroupSize[] = blocks.groups.map((g) => {
+    const tests = sizes.filter((s) => s.group === g.group).reduce((n, s) => n + s.tests, 0);
+    const bytes = Buffer.byteLength(lines.slice(g.line - 1, g.end).join("\n"));
+    return { group: g.group, title: g.title, tasks: g.tasks.length, tests, kb: kb1(bytes) };
+  });
+  for (const g of groups) {
+    const at = blocks.groups.find((x) => x.group === g.group)!.line;
+    if (g.tasks > caps.maxPerGroup)
+      problems.push({
+        line: at,
+        kind: "cap",
+        message: `GROUP ${g.group} has ${g.tasks} tasks, over the cap of ${caps.maxPerGroup}`,
+      });
+    if (g.tests > caps.maxTestsPerGroup)
+      problems.push({
+        line: at,
+        kind: "cap",
+        message: `GROUP ${g.group} has ${g.tests} TEST FIRST tests, over the cap of ${caps.maxTestsPerGroup}`,
+      });
+  }
+  problems.sort((a, b) => a.line - b.line);
+  return { groups, sizes, overCap, problems };
+}
+
+export interface ExistenceFinding {
+  line: number;
+  task: number;
+  message: string;
+}
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const wordIn = (body: string, word: string) =>
+  new RegExp(`(?<![\\w$])${escapeRe(word)}(?![\\w$])`).test(body);
+
+/** The 1-based lines of `body` that are a Markdown heading reading exactly `heading`. */
+const headingLines = (body: string, heading: string): number[] =>
+  body.split(/\r?\n/).flatMap((l, i) => {
+    const h = /^#{1,6}\s+(.*?)(?:\s+#+)?\s*$/.exec(l);
+    return h !== null && h[1]!.trim() === heading ? [i + 1] : [];
+  });
+
+/** A key path's segments nested in indented `key:` lines (YAML): each one inside the block of the one before. */
+function nestedKeys(body: string, segs: string[]): boolean {
+  const lines = body.split(/\r?\n/);
+  const indent = (l: string) => /^\s*/.exec(l)![0].length;
+  const walk = (from: number, to: number, k: number, above: number): boolean => {
+    const key = new RegExp(`^\\s*["']?${escapeRe(segs[k]!)}["']?\\s*:`);
+    for (let i = from; i < to; i++) {
+      const l = lines[i]!;
+      if (l.trim() === "" || indent(l) <= above || !key.test(l)) continue;
+      if (k === segs.length - 1) return true;
+      let end = i + 1;
+      while (end < to && (lines[end]!.trim() === "" || indent(lines[end]!) > indent(l))) end++;
+      if (walk(i + 1, end, k + 1, indent(l))) return true;
+    }
+    return false;
+  };
+  return walk(0, lines.length, 0, -1);
+}
+
+/** A key path as a `[table]` header holding its first segments and a `key =` line for the rest (TOML). */
+function tableKey(body: string, segs: string[]): boolean {
+  const lines = body.split(/\r?\n/);
+  for (let k = 1; k < segs.length; k++) {
+    const table = segs.slice(0, k).join(".");
+    const key = segs.slice(k).join(".");
+    const start = lines.findIndex((l) => l.trim() === `[${table}]`);
+    if (start < 0) continue;
+    const end = lines.findIndex((l, i) => i > start && /^\s*\[/.test(l));
+    const keyRe = new RegExp(`^\\s*${escapeRe(key)}\\s*=`);
+    if (lines.slice(start + 1, end < 0 ? undefined : end).some((l) => keyRe.test(l))) return true;
+  }
+  return false;
+}
+
+/** Config files whose dotted keys must be there as the whole key path. */
+const CONFIG_EXTS = new Set([".json", ".jsonc", ".yaml", ".yml", ".toml"]);
+
+/** Whether parsed JSON `value` holds `segs` as nested object keys. */
+function jsonPath(value: unknown, segs: string[]): boolean {
+  let at = value;
+  for (const s of segs) {
+    if (typeof at !== "object" || at === null || Array.isArray(at) || !Object.hasOwn(at, s))
+      return false;
+    at = (at as Record<string, unknown>)[s];
+  }
+  return true;
+}
+
+/**
+ * Whether config `body` of `file` holds the dotted key `bare` as the whole key path: a
+ * `.json` file that parses is walked as JSON; otherwise the key is written whole, nested
+ * in indented `key:` / `"key":` lines (YAML, indented JSON), or a `[table]` and its
+ * `key =` line (TOML).
+ */
+function hasDottedKey(file: string, body: string, bare: string): boolean {
+  const segs = bare.split(".");
+  const json =
+    path.posix.extname(file).toLowerCase() === ".json" ? parseJson(body) : { ok: false as const };
+  if (json.ok) return jsonPath(json.value, segs);
+  return wordIn(body, bare) || nestedKeys(body, segs) || tableKey(body, segs);
+}
+
+/**
+ * Each READ / UPDATE / DELETE line of an unticked task whose file or symbol is not
+ * there, read from `root`: a plain word-boundary search in the named file. `§ heading`
+ * must equal one of the file's heading lines; a dotted key in a config file (`CONFIG_EXTS`)
+ * must be there as the whole key path, and in any other file matches on its last segment;
+ * a file-only line checks the file exists. A line naming
+ * what the task itself or a task it DEPENDS ON creates is not checked: it does not
+ * exist yet.
+ */
+export function planExistence(text: string, root: string): ExistenceFinding[] {
+  const blocks = parsePlanBlocks(text);
+  const byTask = new Map(blocks.tasks.map((t) => [t.task, t]));
+  const out: ExistenceFinding[] = [];
+  const cache = new Map<string, string | null>();
+  const read = (file: string) => {
+    if (!cache.has(file)) {
+      const abs = path.resolve(root, file);
+      const inside = !path.relative(root, abs).startsWith("..");
+      cache.set(
+        file,
+        inside && fs.statSync(abs, { throwIfNoEntry: false })?.isFile()
+          ? fs.readFileSync(abs, "utf-8")
+          : null,
+      );
+    }
+    return cache.get(file)!;
+  };
+  for (const t of blocks.tasks) {
+    if (t.done) continue;
+    const created = [t, ...t.dependsOn.map((d) => byTask.get(d)).filter((d) => d !== undefined)]
+      .flatMap((d) => d.create)
+      .map((c) => ({ file: path.posix.normalize(c.file), symbol: c.symbol }));
+    for (const ref of [...t.read, ...t.update, ...t.delete]) {
+      const file = path.posix.normalize(ref.file);
+      if (
+        created.some((c) => c.file === file && (c.symbol === undefined || c.symbol === ref.symbol))
+      )
+        continue;
+      const body = read(file);
+      const miss = (message: string) => out.push({ line: ref.line, task: t.task, message });
+      if (body === null) {
+        miss(`TASK ${t.task}: \`${ref.file}\` does not exist`);
+        continue;
+      }
+      if (ref.symbol === undefined) continue;
+      if (ref.symbol.startsWith("§")) {
+        const heading = ref.symbol.replace(/^§\s*/, "").trim();
+        if (headingLines(body, heading).length === 0)
+          miss(`TASK ${t.task}: no heading \`${heading}\` in \`${ref.file}\``);
+        continue;
+      }
+      const bare = ref.symbol.replace(/\(\)$/, "");
+      const key = bare.split(".").at(-1)!;
+      if (bare.includes(".") && CONFIG_EXTS.has(path.posix.extname(file).toLowerCase())) {
+        if (!hasDottedKey(file, body, bare))
+          miss(`TASK ${t.task}: \`${bare}\` is not in \`${ref.file}\``);
+      } else if (!wordIn(body, key))
+        miss(
+          key === bare
+            ? `TASK ${t.task}: \`${key}\` is not in \`${ref.file}\``
+            : `TASK ${t.task}: \`${key}\` (last segment of \`${ref.symbol}\`) is not in \`${ref.file}\``,
+        );
+    }
+  }
+  return out.sort((a, b) => a.line - b.line);
+}
 
 /** True when `after` keeps every non-blank line of `before`, in order, ignoring whitespace: lines were only added. */
 export function onlyAddsLines(before: string, after: string): boolean {
@@ -461,6 +684,9 @@ export const TEST_ORDER_GAPS: ReadonlySet<string> = new Set([
   "test-changed",
 ]);
 
+/** The gap for a task whose only test field is a TEST EXCEPTION that is not honoured. */
+export const EXCEPTION_REFUSED = "exception-refused";
+
 /** The status row step plan-execute's finish writes; its commit carries the code of each task its log records DONE. */
 export const PLAN_EXECUTE_STEP = "build-plan-execute";
 
@@ -477,13 +703,11 @@ function taskCodeCommits(
   cwd: string,
   file: string,
   workflow: string,
-  subPlan: number | undefined,
 ): Map<number, string> {
   const statusRel = repoRel(top, cwd, file);
   const commits = new Map<number, string>();
   for (const r of readStatusRows(file) as Array<Record<string, unknown>>) {
     if (r.type !== "step-done" || r.workflow !== workflow || r.step !== PLAN_EXECUTE_STEP) continue;
-    if (subPlan !== undefined && r.subPlan !== subPlan) continue;
     const log = Array.isArray(r.artifacts) ? r.artifacts.map(String)[0] : undefined;
     if (typeof r.parentSha !== "string" || log === undefined) continue;
     const range = `${r.parentSha}..HEAD`;
@@ -493,14 +717,18 @@ function taskCodeCommits(
     const text =
       commit === undefined ? null : git(top, ["show", `${commit}:${repoRel(top, cwd, log)}`]);
     if (commit === undefined || text === null) continue;
-    for (const m of text.matchAll(/^DONE\s*[—–-]+\s*Task\s+(\d+)\b/gm))
-      if (!commits.has(Number(m[1]))) commits.set(Number(m[1]), commit);
+    for (const n of doneTasks(text)) if (!commits.has(n)) commits.set(n, commit);
   }
   return commits;
 }
 
+/** The task numbers a plan-execute log records `DONE — TASK N` for, in log order. */
+export function doneTasks(log: string): number[] {
+  return [...log.matchAll(/^DONE\s*[—–-]+\s*TASK\s+(\d+)\b/gim)].map((m) => Number(m[1]));
+}
+
 /**
- * Why a task's `Test-order exception:` lines do not count, or null when they do: every
+ * Why a task's `TEST EXCEPTION` lines do not count, or null when they do: every
  * line committed, and last changed by a commit that does not write the status file.
  * Every workflow step commit writes it, so a line riding one is refused; agents are
  * barred from committing, so the remaining commits are human-made.
@@ -524,6 +752,145 @@ function exceptionRefusal(
   return null;
 }
 
+const withoutExt = (p: string) => p.replace(/\.[^./]*$/, "");
+
+/**
+ * Whether a grep hit for `stem` in `file` refers to something other than the files of
+ * `targets` (repo-relative): false for a hit inside a target, or a line whose every
+ * path-like mention of `stem` resolves to a target. A `./` or `../` path resolves
+ * against `file`'s folder; any other path with a `/` matches a target ending in it.
+ */
+function namesOldPath(stem: string, targets: string[]) {
+  const bare = targets.map(withoutExt);
+  const isTarget = (token: string, file: string) => {
+    const t = withoutExt(token);
+    if (t.startsWith("./") || t.startsWith("../"))
+      return bare.includes(path.posix.join(path.posix.dirname(file), t));
+    return t.includes("/") && bare.some((b) => b === t || b.endsWith(`/${t}`));
+  };
+  return (file: string, text: string) => {
+    if (targets.includes(file)) return false;
+    const mentions = text
+      .split(/[^\w./@-]+/)
+      .filter((tok) => path.posix.basename(withoutExt(tok)) === stem);
+    return mentions.length === 0 || mentions.some((tok) => !isTarget(tok, file));
+  };
+}
+
+/** The gap for a DELETE line whose file or symbol the tree still holds or refers to. */
+export const DELETE_STILL_REFERENCED = "delete-still-referenced";
+
+/**
+ * One `delete-still-referenced` gap per DELETE line of `tasks` the tree at `top` still
+ * holds: a file-only line whose file exists, or whose file name (no extension) a tracked
+ * or untracked file names as a word; a symbol (a dotted key's last segment) named as a
+ * word; a `§ heading` written as `§ heading`, or still a heading of its file. The plan
+ * file and the folder it sits in are not searched. A line naming what a task of
+ * `planTasks` CREATEs is a move, not checked. A file-only line whose file name a CREATE
+ * of `planTasks` reuses is a file move: the created file, and lines whose every mention
+ * of the name is a path to the created file, are not references. A word search hits
+ * other things of the same name, so this is a gap for verify to judge, never a refusal.
+ */
+function deleteGaps(
+  top: string,
+  planRel: string,
+  tasks: PlanTaskBlock[],
+  planTasks: PlanTaskBlock[],
+): Gap[] {
+  const created = planTasks.flatMap((t) => t.create);
+  const planDir = path.posix.dirname(planRel);
+  const excludes = [`:(exclude)${planRel}`, ...(planDir === "." ? [] : [`:(exclude)${planDir}`])];
+  const grep = (term: string, word: boolean, keep?: (file: string, text: string) => boolean) => {
+    const res = spawnSync(
+      "git",
+      [
+        "grep",
+        "-n",
+        "-z",
+        "-I",
+        "--untracked",
+        ...(word ? ["-w"] : []),
+        "-F",
+        "-e",
+        term,
+        "--",
+        ".",
+        ...excludes,
+      ],
+      { cwd: top, encoding: "utf-8" },
+    );
+    if (res.status === 1) return { hits: [] as string[] };
+    if (res.status !== 0)
+      return {
+        failed: `git grep exited ${res.status ?? res.signal}: ${(res.stderr ?? "").trim()}`,
+      };
+    const hits = res.stdout
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => l.split("\0"))
+      .filter(([file, , text]) => keep === undefined || keep(file!, text ?? ""))
+      .map((parts) => parts.slice(0, 2).join(":"));
+    return { hits };
+  };
+  const listed = (hits: string[]) =>
+    hits
+      .slice(0, 5)
+      .map((h) => `\`${h}\``)
+      .join(", ") + (hits.length > 5 ? `, and ${hits.length - 5} more` : "");
+  const gaps: Gap[] = [];
+  for (const t of tasks)
+    for (const ref of t.delete) {
+      const file = path.posix.normalize(ref.file);
+      const moved = created.some((c) =>
+        ref.symbol === undefined ? path.posix.normalize(c.file) === file : c.symbol === ref.symbol,
+      );
+      if (moved) continue;
+      const movedTo =
+        ref.symbol === undefined
+          ? created
+              .filter(
+                (c) =>
+                  c.symbol === undefined &&
+                  path.posix.basename(path.posix.normalize(c.file)) === path.posix.basename(file),
+              )
+              .map((c) => path.posix.normalize(c.file))
+          : [];
+      const gap = (detail: string) =>
+        gaps.push({ task: t.task, kind: DELETE_STILL_REFERENCED, detail });
+      const abs = path.join(top, file);
+      const exists = fs.statSync(abs, { throwIfNoEntry: false })?.isFile() === true;
+      let what: string;
+      let found: { hits?: string[]; failed?: string };
+      if (ref.symbol === undefined) {
+        if (exists) {
+          gap(`DELETE \`${ref.file}\`: the file still exists`);
+          continue;
+        }
+        const stem = path.posix.basename(file).replace(/\.[^.]*$/, "");
+        what = `DELETE \`${ref.file}\` is still referenced as \`${stem}\``;
+        found = grep(stem, true, movedTo.length === 0 ? undefined : namesOldPath(stem, movedTo));
+      } else if (ref.symbol.startsWith("§")) {
+        const heading = ref.symbol.replace(/^§\s*/, "").trim();
+        what = `DELETE ${ref.symbol} in \`${ref.file}\` is still referenced`;
+        found = grep(`§ ${heading}`, false);
+        if (exists && found.hits !== undefined)
+          found.hits.push(
+            ...headingLines(fs.readFileSync(abs, "utf-8"), heading).map((n) => `${file}:${n}`),
+          );
+      } else {
+        const bare = ref.symbol.replace(/\(\)$/, "");
+        what = `DELETE \`${ref.symbol}\` in \`${ref.file}\` is still referenced`;
+        found = grep(bare.split(".").at(-1)!, true);
+      }
+      if (found.failed !== undefined)
+        gap(
+          `${what.replace(/ is still referenced.*$/, "")}: references not checked — ${found.failed}`,
+        );
+      else if (found.hits!.length > 0) gap(`${what}: ${listed([...new Set(found.hits)].sort())}`);
+    }
+  return gaps;
+}
+
 interface ExceptionResult {
   task: number;
   refusal: string | null;
@@ -538,16 +905,14 @@ interface AuditRow {
   green: string;
 }
 
-/** The red rows of status.jsonl for this workflow and sub-plan, oldest first. */
-function redRows(file: string, workflow: string, subPlan: number | undefined) {
+/**
+ * The red rows of status.jsonl for this workflow, oldest first. Task numbers are unique
+ * across the plan, so a red matches its task by number whatever group recorded it.
+ */
+export function redRows(file: string, workflow: string) {
   return readStatusRows(file).filter((r) => {
     const row = r as Record<string, unknown>;
-    return (
-      row.type === "step-done" &&
-      row.workflow === workflow &&
-      row.step === RED_STEP &&
-      (subPlan === undefined || row.subPlan === subPlan)
-    );
+    return row.type === "step-done" && row.workflow === workflow && row.step === RED_STEP;
   }) as Array<Record<string, unknown>>;
 }
 
@@ -590,7 +955,7 @@ function writeAuditReport(
   if (o.gaps.length === 0) out.push("None.");
   for (const g of o.gaps)
     out.push(`- ${g.task === null ? "Plan" : `Task ${g.task}`} \`${g.kind}\` — ${g.detail}`);
-  if (o.exceptions.length > 0) out.push("", "## Test-order exceptions", "");
+  if (o.exceptions.length > 0) out.push("", "## Test exceptions", "");
   for (const e of o.exceptions)
     out.push(
       e.refusal === null
@@ -600,7 +965,7 @@ function writeAuditReport(
   if (o.lateUnchecked.length > 0) out.push("", "## Late-red check", "");
   for (const task of o.lateUnchecked)
     out.push(
-      `- Task ${task} — not checked: no plan-execute step commit's log records \`DONE — Task ${task}\`, so when its code landed is unknown`,
+      `- Task ${task} — not checked: no plan-execute step commit's log records \`DONE — TASK ${task}\`, so when its code landed is unknown`,
     );
   for (const d of o.diffs) {
     const fence = fenceFor(d.diff);
@@ -775,7 +1140,7 @@ export const testsCommand: CommandSpec = {
       flags: [
         FILE_FLAG,
         WORKFLOW_FLAG,
-        SUB_PLAN_FLAG,
+        GROUP_FLAG,
         {
           name: "task",
           type: "string",
@@ -817,7 +1182,7 @@ export const testsCommand: CommandSpec = {
       },
       run: (ctx) => {
         const workflow = String(ctx.flags.workflow);
-        const subPlan = positiveInt(ctx.flags.subPlan, "sub-plan");
+        const group = positiveInt(ctx.flags.group, "group");
         const task = positiveInt(ctx.flags.task, "task")!;
         const name = String(ctx.flags.name).trim();
         if (name === "") throw new CommandError(EXIT.USAGE, "--name must be non-empty");
@@ -832,7 +1197,7 @@ export const testsCommand: CommandSpec = {
         const blob = git(top, ["hash-object", "--", test]);
         const status = statusFile(ctx);
         const prior = fs.existsSync(status)
-          ? redRows(status, workflow, subPlan)
+          ? redRows(status, workflow)
               .reverse()
               .find((r) => r.task === task && r.test === test && r.testName === name)
           : undefined;
@@ -869,7 +1234,7 @@ export const testsCommand: CommandSpec = {
             file: statusFile(ctx),
             workflow,
             step: RED_STEP,
-            subPlan,
+            group,
             artifacts: [path.relative(ctx.cwd, log), path.relative(ctx.cwd, snapshot)],
             extras: {
               task,
@@ -890,22 +1255,17 @@ export const testsCommand: CommandSpec = {
     },
     green: {
       summary:
-        "Audit a sub-plan's test-first evidence (a red per planned test recorded before the task's code commit, the test only added to since, the named test passing now); exit 0 no gaps, 1 gaps.",
+        "Audit a plan's test-first evidence (a red per TEST FIRST test recorded before the task's code commit, the test only added to since, the named test passing now); exit 0 no gaps, 1 gaps or a plan with no task markers.",
       flags: [
         FILE_FLAG,
         WORKFLOW_FLAG,
-        SUB_PLAN_FLAG,
+        { ...GROUP_FLAG, help: "audit only this plan group's tasks (positive integer)" },
         {
           name: "plan",
           type: "string",
           required: true,
           repeatable: true,
           help: "candidate plan file; the first that exists is audited",
-        },
-        {
-          name: "brief",
-          type: "string",
-          help: "the build input, audited when no plan file exists and it carries `**Task N:**` lines with `Test first:`",
         },
         {
           name: "log",
@@ -915,14 +1275,15 @@ export const testsCommand: CommandSpec = {
         },
       ],
       output: {
-        enforced: "false when there is nothing to audit (reason says why)",
+        enforced:
+          "false when the audit could not run: no plan file, a plan with no task markers (exit 1), or the test-file script undeclared (exit 0)",
         reason: "why test-first is not enforced",
-        plan: "the plan file audited (the brief when no plan file exists and it carries Test first lines)",
-        gaps: "[{task, kind, detail}]: no-test-first | test-first-malformed | test-first-unread (task null) | no-red | late-red | red-mismatch | red-evidence-missing | test-changed | not-green",
+        plan: "the plan file audited",
+        gaps: "[{task, kind, detail}]: no-test-first | test-first-malformed | test-first-unread (task null: a plan-level format problem) | no-red | late-red | red-mismatch | red-evidence-missing | test-changed | not-green | exception-refused (a task whose only test field is a TEST EXCEPTION not honoured) | delete-still-referenced (a DELETE line's file still exists, or its name is still found in the tree)",
         testOrderOnly:
           "true when there are gaps and every one is a test-order gap (no-red | late-red | red-mismatch | red-evidence-missing | test-changed)",
         lateRedUnchecked:
-          "tasks with a red but no plan-execute step commit whose log records `DONE — Task N`: the late-red check could not run for them",
+          "tasks with a red but no plan-execute step commit whose log records `DONE — TASK N`: the late-red check could not run for them",
         log: "where the report was written (as given)",
       },
       exitCodes: {
@@ -930,34 +1291,37 @@ export const testsCommand: CommandSpec = {
       },
       run: (ctx) => {
         const workflow = String(ctx.flags.workflow);
-        const subPlan = positiveInt(ctx.flags.subPlan, "sub-plan");
+        const group = positiveInt(ctx.flags.group, "group");
         const logArg = String(ctx.flags.log);
         if (logArg === "") throw new CommandError(EXIT.USAGE, "--log must be non-empty");
         const log = path.resolve(ctx.cwd, logArg);
         const top = toplevel(ctx.cwd);
         const exists = (p: string) => fs.existsSync(path.resolve(ctx.cwd, p));
-        const planFile = (ctx.flags.plan as string[]).find(exists);
-        const briefArg = str(ctx.flags.brief);
-        const brief =
-          planFile === undefined && briefArg !== undefined && exists(briefArg)
-            ? briefArg
-            : undefined;
-        const plan = planFile ?? brief;
+        const plan = (ctx.flags.plan as string[]).find(exists);
         const planText = plan ? fs.readFileSync(path.resolve(ctx.cwd, plan), "utf-8") : "";
-        const specs = readTestFirst(planText);
-        // A `Test first:` line no task bullet claims keeps the audit on: the plan has
-        // test-first entries this reader cannot place, never "nothing to audit".
-        const unread = unclaimedTestFirst(planText);
-        const reason =
+        const parsed = parsePlanBlocks(planText);
+        const specs = readTestFirst(planText, group);
+        // A plan with no task markers is an old-format plan: nothing it says can be audited,
+        // and passing it would let its tests go unchecked.
+        const refusal =
           plan === undefined
-            ? "no plan file — the build runs from its brief"
-            : !specs.some((s) => s.kind !== "missing") && unread.length === 0
-              ? brief !== undefined
-                ? "no plan file, and the brief has no `**Task N:**` lines with `Test first:`"
-                : "the plan has no `Test first:` lines"
-              : resolveGate(top, [BKIT_TEST_FILE_SCRIPT]) === null
-                ? `\`${BKIT_TEST_FILE_SCRIPT}\` is not declared in package.json`
-                : undefined;
+            ? `no plan file; ${NO_MARKERS_REASON}`
+            : parsed.tasks.length === 0
+              ? parsed.fenceOpen === undefined
+                ? NO_MARKERS_REASON
+                : fenceNeverClosed(parsed.fenceOpen)
+              : undefined;
+        if (refusal === undefined && group !== undefined) {
+          const g = parsed.groups.find((x) => x.group === group);
+          if (g === undefined) throw new CommandError(EXIT.USAGE, `the plan has no GROUP ${group}`);
+          if (g.tasks.length === 0)
+            throw new CommandError(EXIT.USAGE, `GROUP ${group} has no tasks; nothing to audit`);
+        }
+        const reason =
+          refusal ??
+          (resolveGate(top, [BKIT_TEST_FILE_SCRIPT]) === null
+            ? `\`${BKIT_TEST_FILE_SCRIPT}\` is not declared in package.json`
+            : undefined);
         const empty = {
           rows: [],
           gaps: [],
@@ -979,12 +1343,12 @@ export const testsCommand: CommandSpec = {
             log: logArg,
           });
           ctx.log(`test-first not enforced: ${reason}`);
-          return EXIT.OK;
+          return refusal === undefined ? EXIT.OK : EXIT.NO;
         }
 
-        const reds = redRows(statusFile(ctx), workflow, subPlan);
+        const reds = redRows(statusFile(ctx), workflow);
         const statusRel = repoRel(top, ctx.cwd, statusFile(ctx));
-        const codeCommits = taskCodeCommits(top, ctx.cwd, statusFile(ctx), workflow, subPlan);
+        const codeCommits = taskCodeCommits(top, ctx.cwd, statusFile(ctx), workflow);
         const exceptions: ExceptionResult[] = [];
         const lateUnchecked = new Set<number>();
         const gaps: Gap[] = [];
@@ -1010,15 +1374,36 @@ export const testsCommand: CommandSpec = {
           return run;
         };
         for (const s of specs) {
-          if (s.kind === "na") continue;
+          if (s.kind === "na") {
+            const block = parsed.tasks.find((t) => t.task === s.task)!;
+            if (block.testFirst !== undefined || block.testException === undefined) continue;
+            const refused = exceptionRefusal(
+              top,
+              repoRel(top, ctx.cwd, plan!),
+              block.testException.lines,
+              statusRel,
+            );
+            exceptions.push({
+              task: s.task,
+              refusal: refused,
+              cleared: refused === null ? ["the task's `TEST FIRST` check"] : [],
+            });
+            if (refused !== null)
+              gaps.push({
+                task: s.task,
+                kind: EXCEPTION_REFUSED,
+                detail: `the task's only test field is a \`**TEST EXCEPTION:**\`, not honoured: ${refused}`,
+              });
+            continue;
+          }
           if (s.kind !== "test") {
             gaps.push({
               task: s.task,
               kind: s.kind === "missing" ? "no-test-first" : "test-first-malformed",
               detail:
                 s.kind === "missing"
-                  ? "the task has no `Test first:` line"
-                  : "`Test first:` is neither `n/a — {reason}` nor `;`-separated entries of a backticked test file and test name",
+                  ? "the task has neither a `**TEST FIRST:**` nor a `**TEST EXCEPTION:**` field"
+                  : "`**TEST FIRST:**` is neither `n/a — {reason}` nor one sub-bullet per test naming a backticked test file and test name",
             });
             continue;
           }
@@ -1095,7 +1480,7 @@ export const testsCommand: CommandSpec = {
                 row.red = `late — ${row.red}`;
                 gap(
                   "late-red",
-                  `the red for "${t.name}" was recorded on ${on.slice(0, 7)}, on or after ${code.slice(0, 7)}, the first commit whose plan-execute log records Task ${s.task} DONE — the task's code already existed`,
+                  `the red for "${t.name}" was recorded on ${on.slice(0, 7)}, on or after ${code.slice(0, 7)}, the first commit whose plan-execute log records TASK ${s.task} DONE — the task's code already existed`,
                 );
               }
               const snap = (Array.isArray(red.artifacts) ? red.artifacts : [])
@@ -1151,11 +1536,19 @@ export const testsCommand: CommandSpec = {
             }
           }
         }
-        for (const line of unread)
+        gaps.push(
+          ...deleteGaps(
+            top,
+            repoRel(top, ctx.cwd, plan!),
+            parsed.tasks.filter((t) => group === undefined || t.group === group),
+            parsed.tasks,
+          ),
+        );
+        for (const e of parsed.errors)
           gaps.push({
             task: null,
             kind: "test-first-unread",
-            detail: `\`${plan}:${line}\` carries \`**Test first:**\` outside every task bullet (\`- [ ] **Task N:**\`), so its tests were not audited — the plan's task line needs fixing`,
+            detail: `\`${plan}:${e.line}\` ${e.message} — tests there were not audited; the plan's blocks need fixing`,
           });
         const testOrderOnly = gaps.length > 0 && gaps.every((g) => TEST_ORDER_GAPS.has(g.kind));
         writeAuditReport(log, {
@@ -1182,159 +1575,106 @@ export const testsCommand: CommandSpec = {
       },
     },
     "plan-check": {
-      summary:
-        "Count a plan's tasks and each task's Test first tests and test files against the caps, and find Test first lines no task claims; prints SINGLE | SPLIT; exit 0 read, 1 unread lines (or, with --children, a sub-plan still over a cap).",
+      summary: `Check a plan's group and task blocks: the block format, DONE WHEN and TEST FIRST on every task, DEPENDS ON order, the caps from package.json \`bkit.workflows.tasks\` (defaults: ${capsText(CONFIG_DEFAULTS.tasks)}), a Reuse Inventory NEW row per CREATE file, and that each READ / UPDATE / DELETE file and symbol exists; exit 0 no problems, 1 refused.`,
       flags: [
         {
           name: "plan",
           type: "string",
           required: true,
-          repeatable: true,
-          help: "candidate plan file; the first that exists is checked, with its `{stem}-{N}.md` sub-plans when any exist",
+          help: "the plan file checked",
         },
         {
-          name: "brief",
+          name: "existence",
           type: "string",
-          help: "the build input, checked when no plan file exists",
-        },
-        {
-          name: "children",
-          type: "boolean",
-          help: "check only the sub-plans `{stem}-{N}.md` beside the first --plan `{stem}.md` (that file need not exist); each must fit (SINGLE)",
+          help: "refuse (default): a missing READ / UPDATE / DELETE file or symbol refuses the plan; report: it is listed only",
         },
         {
           name: "log",
           type: "string",
           required: true,
-          help: "file the report is written to, `Verdict:` header first (directories are created)",
+          help: "file the report is written to, `Problems:` header first (directories are created)",
         },
       ],
       output: {
-        verdict: `SPLIT when a plan has more than ${MAX_TASKS_PER_PLAN} tasks or a task names more than ${MAX_TESTS_PER_TASK} tests or ${MAX_TEST_FILES_PER_TASK} test files; else SINGLE`,
-        plans:
-          "[{plan, tasks, sizes: [{task, tests, files}], overCap: [{task, tests, files}], unread: [line], quotes: [line text]}]: every file checked; [] when none exists",
-        unread: "count of `**Test first:**` lines no task bullet claims, across every file",
+        plan: "the plan file checked (as given)",
+        groups:
+          "[{group, title, tasks, tests, kb}]: each group's tasks, planned TEST FIRST tests and size",
+        tasks: "[{task, group, tests, files}]: each task's planned tests and distinct test files",
+        problems:
+          "[{line, kind, message}]: format | stray | field | depends | cap | inventory | markers — each refuses the plan",
+        existence:
+          "[{line, task, message}]: READ / UPDATE / DELETE files or symbols not found; refuses only with --existence=refuse",
         log: "where the report was written (as given)",
       },
       run: (ctx) => {
         const logArg = String(ctx.flags.log);
         if (logArg === "") throw new CommandError(EXIT.USAGE, "--log must be non-empty");
-        const exists = (p: string) => fs.existsSync(path.resolve(ctx.cwd, p));
-        const briefArg = str(ctx.flags.brief);
-        /** `{stem}-{N}.md` beside `base` (`{stem}.md`), in N order; `base` itself need not exist. */
-        const siblings = (base: string): string[] => {
-          const dir = path.dirname(base);
-          const stem = path.basename(base, ".md");
-          const escaped = stem.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-          const child = new RegExp(`^${escaped}-(\\d+)\\.md$`);
-          const abs = path.resolve(ctx.cwd, dir);
-          return (fs.existsSync(abs) ? fs.readdirSync(abs) : [])
-            .map((f) => child.exec(f))
-            .filter((m) => m !== null)
-            .sort((a, b) => Number(a[1]) - Number(b[1]))
-            .map((m) => path.posix.join(dir.split(path.sep).join("/"), m[0]));
-        };
-        const planArgs = ctx.flags.plan as string[];
-        const children = ctx.flags.children === true;
-        let files: string[];
-        if (children) {
-          files = siblings(planArgs[0]!);
-          if (files.length === 0) {
-            const stem = path.basename(planArgs[0]!, ".md");
-            throw new CommandError(
-              EXIT.USAGE,
-              `no sub-plans \`${stem}-{N}.md\` in ${path.dirname(planArgs[0]!)}`,
-            );
-          }
-        } else {
-          // A split feature's master plan holds no tasks: its sub-plans carry them, so they
-          // are checked with it. The brief never has sub-plans.
-          const plan = planArgs.find(exists);
-          const brief = briefArg !== undefined && exists(briefArg) ? briefArg : undefined;
-          files =
-            plan !== undefined ? [plan, ...siblings(plan)] : brief !== undefined ? [brief] : [];
-        }
-        const plans = files.map((plan) => {
-          const text = fs.readFileSync(path.resolve(ctx.cwd, plan), "utf-8");
-          const sizes = taskSizes(readTestFirst(text));
-          const overCap = sizes.filter(
-            (t) => t.tests > MAX_TESTS_PER_TASK || t.files > MAX_TEST_FILES_PER_TASK,
+        const existenceArg = str(ctx.flags.existence) ?? "refuse";
+        if (existenceArg !== "refuse" && existenceArg !== "report")
+          throw new CommandError(
+            EXIT.USAGE,
+            `--existence must be refuse or report, got "${existenceArg}"`,
           );
-          const unread = unclaimedTestFirst(text);
-          const lines = text.split("\n");
-          const quotes = unread.map((n) => lines[n - 1]!.trim());
-          return { plan, tasks: sizes.length, sizes, overCap, unread, quotes };
-        });
-        const tooBig = plans.filter((p) => p.tasks > MAX_TASKS_PER_PLAN || p.overCap.length > 0);
-        const verdict = tooBig.length > 0 ? "SPLIT" : "SINGLE";
-        const unread = plans.reduce((n, p) => n + p.unread.length, 0);
+        const plan = String(ctx.flags.plan);
+        const planAbs = path.resolve(ctx.cwd, plan);
+        if (!fs.statSync(planAbs, { throwIfNoEntry: false })?.isFile())
+          throw new CommandError(EXIT.USAGE, `--plan ${plan} does not exist`);
+        const text = fs.readFileSync(planAbs, "utf-8");
+        const caps = planCaps(ctx.cwd);
+        const { groups, sizes, problems } = checkPlanText(text, caps);
+        const existence = planExistence(text, toplevel(ctx.cwd));
+        const refused = problems.length > 0 || (existenceArg === "refuse" && existence.length > 0);
 
-        const caps = `${MAX_TASKS_PER_PLAN} tasks per plan, ${MAX_TESTS_PER_TASK} \`Test first\` tests and ${MAX_TEST_FILES_PER_TASK} test files per task`;
-        const why = (p: (typeof plans)[number]) => [
-          ...(p.tasks > MAX_TASKS_PER_PLAN ? [`${p.tasks} tasks`] : []),
-          ...p.overCap.map(
-            (t) => `Task ${t.task} names ${t.tests} tests across ${t.files} test files`,
-          ),
-        ];
-        const fit =
-          plans.length === 0
-            ? "No plan file or brief exists, so nothing was checked."
-            : tooBig.length === 0
-              ? `${plans.map((p) => `\`${p.plan}\`: ${p.tasks} tasks`).join("; ")}; every task within the caps (${caps}).`
-              : `Over the caps (${caps}): ${tooBig.map((p) => `\`${p.plan}\` — ${why(p).join("; ")}`).join(". ")}.`;
         const out = [
-          `Verdict: ${verdict}`,
-          `Unread: ${unread}`,
+          `Problems: ${problems.length}`,
+          `Existence: ${existence.length}`,
           "",
           "<!-- verdict:end -->",
           "",
           "# Plan Check",
           "",
-          "## Session Fit Estimate",
+          `Plan: \`${plan}\`. Caps: ${capsText(caps)}.`,
           "",
-          fit,
+          "## Groups",
+          "",
         ];
-        for (const p of plans) {
-          const { sizes } = p;
-          out.push("", `## Tasks — \`${p.plan}\``, "");
-          if (sizes.length === 0) out.push("No task bullets read.");
-          else {
-            out.push("| Task | Tests | Test files | Over cap |", "| --- | --- | --- | --- |");
-            for (const t of sizes) {
-              const over = [
-                ...(t.tests > MAX_TESTS_PER_TASK ? [`tests > ${MAX_TESTS_PER_TASK}`] : []),
-                ...(t.files > MAX_TEST_FILES_PER_TASK
-                  ? [`files > ${MAX_TEST_FILES_PER_TASK}`]
-                  : []),
-              ];
-              out.push(
-                `| ${t.task} | ${t.tests} | ${t.files} | ${over.length ? over.join(", ") : "no"} |`,
-              );
-            }
-          }
-        }
-        out.push("", "## Unread `Test first` lines", "");
-        if (unread === 0) out.push("None.");
-        for (const p of plans) {
-          p.unread.forEach((line, i) =>
-            out.push(
-              `- \`${p.plan}:${line}\` — \`**Test first:**\` outside every task bullet; write the task as \`- [ ] **Task N:** … **Test first:** …\``,
-              `  > ${p.quotes[i]}`,
-            ),
+        if (groups.length === 0) out.push("No group blocks read.");
+        else {
+          out.push(
+            "| Group | Title | Tasks | TEST FIRST tests | KB |",
+            "| --- | --- | --- | --- | --- |",
           );
-          if (p.tasks === 0 && p.unread.length > 0)
-            out.push(
-              `- \`${p.plan}\`: no \`- [ ] **Task N:**\` bullet was read. Tasks labelled another way (\`**T1:**\`, a \`**Test first:**\` sub-bullet under the task) are not tasks to the engine; relabel each as \`- [ ] **Task N:** … **Test first:** …\` on one bullet.`,
-            );
+          for (const g of groups)
+            out.push(`| ${g.group} | ${g.title} | ${g.tasks} | ${g.tests} | ${g.kb.toFixed(1)} |`);
         }
+        if (sizes.length > 0) {
+          out.push(
+            "",
+            "## Tasks",
+            "",
+            "| Task | Group | Tests | Test files |",
+            "| --- | --- | --- | --- |",
+          );
+          for (const t of sizes) out.push(`| ${t.task} | ${t.group} | ${t.tests} | ${t.files} |`);
+        }
+        out.push("", "## Problems", "");
+        if (problems.length === 0) out.push("None.");
+        for (const p of problems) out.push(`- \`${plan}:${p.line}\` \`${p.kind}\` — ${p.message}`);
+        out.push(
+          "",
+          `## Existence (${existenceArg === "refuse" ? "refuses the plan" : "reported only"})`,
+          "",
+        );
+        if (existence.length === 0) out.push("None.");
+        for (const e of existence) out.push(`- \`${plan}:${e.line}\` — ${e.message}`);
         const log = path.resolve(ctx.cwd, logArg);
         fs.mkdirSync(path.dirname(log), { recursive: true });
         fs.writeFileSync(log, `${out.join("\n")}\n`);
-        ctx.emit({ verdict, plans, unread, log: logArg });
+        ctx.emit({ plan, groups, tasks: sizes, problems, existence, log: logArg });
         ctx.log(
-          `plan check: ${verdict}, ${unread} unread \`Test first\` line(s) — report in ${logArg}`,
+          `plan check: ${problems.length} problem(s), ${existence.length} existence finding(s)${refused ? " — refused" : ""}; report in ${logArg}`,
         );
-        return unread > 0 || (children && verdict === "SPLIT") ? EXIT.NO : EXIT.OK;
+        return refused ? EXIT.NO : EXIT.OK;
       },
     },
   },

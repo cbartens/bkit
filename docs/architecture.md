@@ -10,7 +10,7 @@
 > **Rules:**
 >
 > - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
-> - Notation: one job per mark — `.bkit/prompts.md` § `Notation`.
+> - Notation: one job per mark — `.bkit/authoring.md` § `Notation`.
 > - Describe current state / rules, not reasons / history; state what to do, not why.
 > - Check `.agents/docs.md` index first and confirm topic belongs in this doc, not another.
 > - Topology / boundaries only; operational rules and library lists → domain docs.
@@ -74,7 +74,9 @@ cbartens/bkit (this repo)
 │   │   ├── package-roots.ts     # Single resolver seam — getCoreRoot / getSharedRoot / getTemplatesRoot / getPkgRoot
 │   │   ├── protected-paths.ts   # IDE mirror prefix table (`isMirrorPath`); used by the compliance grader
 │   │   └── settings.ts          # The consumer's `package.json` `bkit` key: `readBkitConfig` is its only reader
-│   ├── tools/wording.ts         # repo-only `pnpm wording:sync`, not a bkit command
+│   ├── tools/instructions.ts    # repo-only `pnpm instructions:sync` / `instructions:show`, not a bkit command
+│   ├── tools/instructions-sources.ts # `.bkit/instructions.md` copy sections (Rules, Project Rules, Hook Text, Permissions, Special Behaviors, Authoring Rules) checked and synced against their masters
+│   ├── tools/grammar-density.ts # repo-only `pnpm grammar:density`, not a bkit command
 │   └── audits/                  # tests only: read shipped text (workflows/ templates/ hooks/ repo/)
 ├── dist/                   # Compiled output (committed; published in tarball)
 ├── .bkit/core/             # Payload bkit writes and keeps current: engine/, workflows/,
@@ -116,7 +118,7 @@ pnpm bkit install [--module-flags] [--auto-revert]
     │
     └─ Phase 3: Post-install re-detection + commit
         ├─ Credential detectors (GitHub MCP token, cloud router secrets)
-        ├─ Checks on the consumer's own bkit-ci.yml (actionlint, run injection, capstone contract, bkit-stub)
+        ├─ Checks on the consumer's CI workflow, bkit.testing.ciWorkflow (actionlint, run injection, capstone contract, bkit-stub)
         ├─ Vale package sync check
         ├─ Render unified advisory checklist
         ├─ Phase 3 blockers → exit 1 with recovery line; --auto-revert calls runUninstall first
@@ -125,7 +127,7 @@ pnpm bkit install [--module-flags] [--auto-revert]
 
 CLI verbs:
 
-- `pnpm bkit install` — all three phases. Requires ≥1 module flag or `--tracker=` (re-renders every installed host); bare `bkit install` errors.
+- `pnpm bkit install` — all three phases. Requires >=1 module flag or `--tracker=` (re-renders every installed host); bare `bkit install` errors.
 - `pnpm bkit check` — Phase 1 + Phase 3 read-only; exit 1 on Tier-1 / Tier-2 drift, no writes.
 - `pnpm bkit doctor` — Phase 1 + Phase 3 detection; never writes; always exit 0.
 - `pnpm bkit status` — read-only; installed host (claude / cursor / opencode) + configured provider.
@@ -190,7 +192,7 @@ Deterministic, advisory-only grader on `git diff parentSha..HEAD` → `kind:"com
 
 `docs/knowledge.jsonl` (`kind:"knowledge"`) + `docs/decisions.jsonl` (`kind:"decision"`) = NDJSON ledgers. Consumer-inherited (`.gitattributes` managed block, `merge=union`).
 
-**Data topology:** shared `TelemetryEnvelope` top section (schema: 2, ts, kind, key, repo, bkit.version, by.{workflow, step, subagent, model}, references[]) + kind payloads (`KnowledgePayload` / `DecisionPayload`) in `.bkit/core/engine/ledgers/telemetry.ts`; readers `normalize()` rows written without `schema`, and `bkit install` / `bkit upgrade` rewrite them once (`.bkit/core/engine/ledgers/migrate.ts`).
+**Data topology:** shared `TelemetryEnvelope` top section (schema: 3, ts, kind, key, repo, bkit.version, by.{workflow, step, subagent, model}, references[]) + kind payloads (`KnowledgePayload` / `DecisionPayload`) in `.bkit/core/engine/ledgers/telemetry.ts`; readers `normalize()` rows written without `schema`, and `bkit install` / `bkit upgrade` rewrite them once (`.bkit/core/engine/ledgers/migrate.ts`).
 
 `references[]` = single cross-entry pointer for EVERY kind (envelope, not payload) — feature ids, tracker ids, PRs, SHAs, paths, sibling `ts`, `KN-N` / `DE-N` ids. No separate identity field. `ts` = id; `references[]` = pointers. Contract: `.bkit/jsonl.md` § Key & References. Cite slug `key`, never bare number.
 
@@ -201,7 +203,7 @@ Deterministic, advisory-only grader on `git diff parentSha..HEAD` → `kind:"com
 **Components:**
 
 - `bkit roadmap fold` (`.bkit/core/engine/commands/workflow/roadmap.ts`) — deterministic status tier, fail-open. It rewrites the whole generated region of `docs/roadmap.md` in one pass: the `bkit:roadmap-status` block from `.bkit/issues.jsonl`, the `bkit:roadmap-analysis` block carried through verbatim, and two consumer `## Notes` blocks carried through verbatim. Every phase close calls it. No tracker table is rendered, because a wired tracker already shows its own issues, and a regenerated copy can only go stale. Everything above the first marker is preserved. `roadmap-notes-post` is last.
-- `.bkit/core/prompts/bkit-utility-update-roadmap.md` (`@bkit-utility-update-roadmap`) — the only writer of the `roadmap-analysis` block. Runs `bkit roadmap fold` itself, then ranks from the board, in-flight `docs/plans/**` artifacts, open deferrals / failures, and — when a tracker is wired — its OPEN issues (read-only, never comments). Always names the next milestone and the next distinct umbrella; includes a child only when it is open, unblocked, and able to start now. Those two stay visible; the list stays priority order, one row per container. Length is `package.json` `bkit.roadmapNext` (positive integer; absent or invalid → 25). Due audits (`docs/templates/bkit-audit-*.md` cadence vs newest `docs/audits/` report) compete by priority (risk covered first, then how overdue) for at most 3 rows. The length hint sits in the generated `roadmap-status` header.
+- `.bkit/core/prompts/bkit-utility-update-roadmap.md` (`@bkit-utility-update-roadmap`) — the only writer of the `roadmap-analysis` block. Runs `bkit roadmap fold` itself, then ranks from the board, in-flight `docs/plans/**` artifacts, open deferrals / failures, and — when a tracker is wired — its OPEN issues (read-only, never comments). Always names the next milestone and the next distinct umbrella; includes a child only when it is open, unblocked, and able to start now. Those two stay visible; the list stays priority order, one row per container. Length is `package.json` `bkit.prompts.roadmapNext` (positive integer; absent or invalid → 25). Due audits (`docs/templates/bkit-audit-*.md` cadence vs newest `docs/audits/` report) compete by priority (risk covered first, then how overdue) for at most 3 rows. The length hint sits in the generated `roadmap-status` header.
 
 **Ownership boundary:** `docs/roadmap.md` is consumer-owned — `bkit install` never creates or overwrites it and `bkit check` drift stays clean. bkit rewrites only the mechanical `roadmap-status` tables; the two `## Notes` blocks and `roadmap-analysis` are carried through. `roadmap-notes-post` is last. `roadmap-analysis` is written ONLY by `@bkit-utility-update-roadmap`; the fold carries it through untouched, so a phase close never blanks it. Ship stages both roadmap paths through the frozen `BOOK_PATHS` allow-list.
 

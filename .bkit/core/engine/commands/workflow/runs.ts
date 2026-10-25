@@ -98,7 +98,7 @@ export function checkNamespace(capstoneJob: string): string {
   return i > 0 ? capstoneJob.slice(0, i) : capstoneJob;
 }
 
-/** Whether `.github/workflows/<bkit.ciWorkflow>` exists — the only honest ground for a `no-ci` pass. */
+/** Whether `.github/workflows/<bkit.testing.ciWorkflow>` exists — the only honest ground for a `no-ci` pass. */
 export function ciDeclared(root: string): { declared: boolean; ciWorkflow: string; path: string } {
   const { ciWorkflow } = readBkitConfig(root);
   const rel = path.join(".github", "workflows", ciWorkflow);
@@ -528,7 +528,7 @@ export const GATE = {
   SUPERSEDED: 14,
   /** The selected run was cancelled. */
   CANCELLED: 15,
-  /** A lane named in bkit.shipGateRequiredLanes concluded skipped. */
+  /** A lane named in bkit.testing.shipGate concluded skipped. */
   LANE_SKIPPED: 16,
   /** --validated is not an ancestor of the head plus bookkeeping-only commits. */
   NOT_BOOKKEEPING: 17,
@@ -963,7 +963,7 @@ export function shipGate(o: GateOptions, gh: Gh, log: (m: string) => void): Gate
     );
     const required = r.skippedLanes.filter((l) => requiredLanes.includes(l));
     if (required.length) {
-      log(`declared in bkit.shipGateRequiredLanes: ${requiredLanes.join(",")}`);
+      log(`declared in bkit.testing.shipGate: ${requiredLanes.join(",")}`);
       return refuse(
         GATE.LANE_SKIPPED,
         `required lane(s) concluded 'skipped' at head ${r.head} — vacuous green: ${required.join(", ")}`,
@@ -1127,12 +1127,12 @@ const REPO_FLAG: FlagSpec = {
 const CI_WORKFLOW_FLAG: FlagSpec = {
   name: "ci-workflow",
   type: "string",
-  help: "CI workflow file (default: package.json bkit.ciWorkflow)",
+  help: "CI workflow file (default: package.json bkit.testing.ciWorkflow)",
 };
 const CAPSTONE_FLAG: FlagSpec = {
   name: "capstone",
   type: "string",
-  help: "capstone job name (default: package.json bkit.capstoneJob)",
+  help: "capstone job name (default: package.json bkit.testing.ciCapstone)",
 };
 const BUDGET_FLAG: FlagSpec = { name: "budget-s", type: "string", help: "poll budget in seconds" };
 const INTERVAL_FLAG: FlagSpec = {
@@ -2318,7 +2318,7 @@ export const runsCommand: CommandSpec = {
     },
     declared: {
       summary:
-        "Whether the repo declares a CI workflow: .github/workflows/<bkit.ciWorkflow> exists (exit 0) or not (exit 1).",
+        "Whether the repo declares a CI workflow: .github/workflows/<bkit.testing.ciWorkflow> exists (exit 0) or not (exit 1).",
       flags: [],
       output: {
         declared: "the workflow file exists",

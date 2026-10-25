@@ -25,7 +25,7 @@ afterEach(() => {
   for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
 });
 
-/** A directory whose package.json declares `bkit.issueTracker` (or no package.json at all). */
+/** A directory whose package.json declares `bkit.tracker.default` (or no package.json at all). */
 function project(tracker?: string, raw?: string) {
   const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-fids-")));
   dirs.push(d);
@@ -33,7 +33,7 @@ function project(tracker?: string, raw?: string) {
   else if (tracker !== undefined) {
     fs.writeFileSync(
       path.join(d, "package.json"),
-      JSON.stringify({ bkit: { issueTracker: tracker } }),
+      JSON.stringify({ bkit: { tracker: { default: tracker } } }),
     );
   }
   return d;
@@ -65,7 +65,7 @@ async function run(cwd: string, argv: string[]) {
 }
 
 describe("readIssueTracker", () => {
-  it.each(["github", "linear", "jira"])("reads bkit.issueTracker %s", (tracker) => {
+  it.each(["github", "linear", "jira"])("reads bkit.tracker.default %s", (tracker) => {
     expect(readIssueTracker(project(tracker))).toBe(tracker);
   });
 
@@ -714,7 +714,7 @@ describe("bkit fids design", () => {
   });
 });
 
-/** A git repo on `branch` with bkit.issueTracker = `tracker`, one commit, and `files` written. */
+/** A git repo on `branch` with bkit.tracker.default = `tracker`, one commit, and `files` written. */
 function gitRepo(tracker: string, branch = "dev", files: Record<string, string> = {}) {
   const d = project(tracker);
   const g = (...a: string[]) =>
@@ -842,12 +842,14 @@ describe("bkit fids parse --prompt-file", () => {
     expect(r.json).toEqual({ ambiguous: ["#5", "#6"] });
   });
 
-  /** package.json wiring the tracker with `bkit.linear.team` / `bkit.jira.project` set to `key`. */
+  /** package.json wiring the tracker with `bkit.tracker.linear.team` / `bkit.tracker.jira.project` set to `key`. */
   const keyed = (tracker: string, key: string) => ({
     "package.json": JSON.stringify({
       bkit: {
-        issueTracker: tracker,
-        [tracker]: tracker === "linear" ? { team: key } : { project: key },
+        tracker: {
+          default: tracker,
+          [tracker]: tracker === "linear" ? { team: key } : { project: key },
+        },
       },
     }),
   });
@@ -875,8 +877,8 @@ describe("bkit fids parse --prompt-file", () => {
   });
 
   it.each([
-    ["linear", "bkit.linear.team"],
-    ["jira", "bkit.jira.project"],
+    ["linear", "bkit.tracker.linear.team"],
+    ["jira", "bkit.tracker.jira.project"],
   ])(
     "%s with no key configured: a bare key names no issue, with a hint naming %s",
     async (t, setting) => {
@@ -919,9 +921,9 @@ describe("bkit fids parse --prompt-file", () => {
     expect(r).toMatchObject({ code: 0, json: { issue } });
   });
 
-  /** package.json wiring jira with `bkit.jira` set to `jira`. */
+  /** package.json wiring jira with `bkit.tracker.jira` set to `jira`. */
   const jiraCfg = (jira: Record<string, string>) => ({
-    "package.json": JSON.stringify({ bkit: { issueTracker: "jira", jira } }),
+    "package.json": JSON.stringify({ bkit: { tracker: { default: "jira", jira } } }),
   });
 
   it.each([
@@ -1192,42 +1194,18 @@ describe("bkit fids plans", () => {
 
   it("none: no plan file at all", async () => {
     expect((await plans(["docs/plans/202610/13-x-plan.md"])).json).toEqual({
-      count: 1,
-      single: true,
       source: "none",
-      files: [],
+      plan: null,
     });
   });
 
-  it("single: the plan alone", async () => {
-    expect((await plans(["docs/plans/202610/12-x-plan.md"])).json).toEqual({
-      count: 1,
-      single: true,
-      source: "single",
-      files: ["docs/plans/202610/12-x-plan.md"],
-    });
-  });
-
-  it("split: the plan, then each sub-plan in number order; a stray file is ignored", async () => {
+  it("single: the plan; numbered files beside it are not plans", async () => {
     const r = await plans([
       "docs/plans/202610/12-x-plan.md",
-      "docs/plans/202610/12-x-plan-10.md",
-      "docs/plans/202610/12-x-plan-2.md",
       "docs/plans/202610/12-x-plan-1.md",
-      "docs/plans/202610/12-x-plan-notes.md",
       "docs/plans/202610/12-x-design.md",
     ]);
-    expect(r.json).toEqual({
-      count: 3,
-      single: false,
-      source: "split",
-      files: [
-        "docs/plans/202610/12-x-plan.md",
-        "docs/plans/202610/12-x-plan-1.md",
-        "docs/plans/202610/12-x-plan-2.md",
-        "docs/plans/202610/12-x-plan-10.md",
-      ],
-    });
+    expect(r.json).toEqual({ source: "single", plan: "docs/plans/202610/12-x-plan.md" });
   });
 });
 

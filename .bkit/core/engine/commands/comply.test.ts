@@ -392,7 +392,7 @@ describe("appendComplianceRows", () => {
       "skip-ci-not-head",
     ]);
     for (const r of rows) {
-      expect(r.schema).toBe(2);
+      expect(r.schema).toBe(3);
       expect(typeof r.ts).toBe("number");
       expect(r.bkit).toEqual({ version: "4.1.4" });
       expect(typeof r.repo).toBe("string");

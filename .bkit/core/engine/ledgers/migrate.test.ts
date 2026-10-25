@@ -4,21 +4,21 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { isSchemaLedger, migrateLedgerText, migrateLedgers, SCHEMA_LEDGERS } from "./migrate.js";
-import { normalize, SCHEMA } from "./telemetry.js";
+import { normalize } from "./telemetry.js";
 
 const OLD_DEFERRAL = {
   ts: 1718900000123,
   kind: "deferral",
   repo: "cbartens/bkit",
   bkitVersion: "4.2.0",
-  workflow: "build",
-  step: "build-challenge",
-  subagent: "bkit-build-challenge-remediate",
+  workflow: "ship",
+  step: "ship-deferred-sweep",
+  subagent: "bkit-ship-deferred-sweep",
   model: "sonnet",
   key: "flaky-retry",
   category: "testing",
   severity: "LOW",
-  reason: "low-severity",
+  reason: "own-cycle",
   description: "retry is flaky",
 };
 
@@ -44,11 +44,12 @@ describe("migrateLedgerText", () => {
       .map((l) => JSON.parse(l) as Record<string, unknown>);
     expect(rows[0]).toEqual(normalize(OLD_DEFERRAL));
     expect(rows[1]).toEqual(normalize(OLD_OUTCOME));
-    expect(rows.every((r) => r["schema"] === SCHEMA)).toBe(true);
+    // A rewritten row carries `schema: 2`, the shape normalize builds.
+    expect(rows.every((r) => r["schema"] === 2)).toBe(true);
     expect(rows[0]?.["by"]).toEqual({
-      workflow: "build",
-      step: "build-challenge",
-      subagent: "bkit-build-challenge-remediate",
+      workflow: "ship",
+      step: "ship-deferred-sweep",
+      subagent: "bkit-ship-deferred-sweep",
       model: "sonnet",
     });
     expect(rows[0]?.["ts"]).toBe(OLD_DEFERRAL.ts);

@@ -210,6 +210,18 @@ describe("audit templates — managed block plus consumer stub", () => {
       );
     },
   );
+
+  // The plan template has no Project Instructions: its copy ends at `bkit:end`.
+  it("docs/templates/bkit-plan.md dogfood matches the template but for the managed-version stamp", () => {
+    const relPath = "docs/templates/bkit-plan.md";
+    const template = fs.readFileSync(path.join(CORE_ROOT, relPath), "utf-8");
+    const dogfood = fs.readFileSync(path.resolve(relPath), "utf-8");
+    const stamp = dogfood.match(
+      /^<!-- bkit:managed v\S+ — do not edit; run `bkit upgrade` to refresh -->$/m,
+    )?.[0];
+    expect(stamp, relPath).toBeTruthy();
+    expect(dogfood).toBe(template.replace("{{BKIT_MANAGED_MARKER}}", stamp!));
+  });
 });
 
 describe("Group A templates — html-comment markers (md/mdc files)", () => {

@@ -39,7 +39,7 @@ let cwd: string;
 const ignore = (ids: string[]) =>
   fs.writeFileSync(
     path.join(cwd, "package.json"),
-    JSON.stringify({ bkit: { ignoreAdvisories: ids } }),
+    JSON.stringify({ bkit: { advisories: { ignore: ids } } }),
   );
 
 beforeEach(() => {
@@ -159,7 +159,7 @@ describe("formatTips", () => {
       [
         '**Title quality.** Line quality. Ask your agent: "Ask quality."',
         "",
-        '**Want to silence this tip?** Ask your agent to "add `quality` to `bkit.ignoreAdvisories` in package.json".',
+        '**Want to silence this tip?** Ask your agent to "add `quality` to `bkit.advisories.ignore` in package.json".',
       ].join("\n"),
     );
     expect(build).not.toContain(tipsIntro(1));
@@ -185,7 +185,7 @@ describe("formatTips — star line", () => {
         "",
         "**Do you like bkit?** Then give it a star at [https://github.com/cbartens/bkit](https://github.com/cbartens/bkit)!",
         "",
-        '**Want to silence these tips?** Ask your agent to "add `a` and `bkit-star` to `bkit.ignoreAdvisories` in package.json".',
+        '**Want to silence these tips?** Ask your agent to "add `a` and `bkit-star` to `bkit.advisories.ignore` in package.json".',
       ].join("\n"),
     );
     expect(formatTips([], { workflow: "ship", star: true })).toBe(

@@ -147,10 +147,13 @@ export const repoCommand = {
                 bkitLatest: "newest published @cbartens/bkit, asked at most once a day (null when offline, opted out via BKIT_NO_UPDATE_CHECK, or unpinned)",
                 bkitOutdated: "true when bkitVersion is older than bkitLatest (null when either is unknown)",
                 bkitAdvisory: "one line to show the user when bkitOutdated, else null",
-                trackerTeam: "package.json bkit.linear.team under linear, else null",
-                trackerProject: "package.json bkit.linear.project under linear, bkit.jira.project under jira, else null",
-                trackerSite: "package.json bkit.jira.site under jira (the MCP cloudId), else null",
-                trackerBoard: "{ownerType, owner, number} read from package.json bkit.github.project under github, else null",
+                trackerTeam: "package.json bkit.tracker.linear.team under linear, else null",
+                trackerProject: "package.json bkit.tracker.linear.project under linear, bkit.tracker.jira.project under jira, else null",
+                trackerSite: "package.json bkit.tracker.jira.site under jira (the MCP cloudId), else null",
+                trackerBoard: "{ownerType, owner, number} read from package.json bkit.tracker.github.project under github, else null",
+                trackerProgress: "the state an issue moves to when work starts: package.json bkit.tracker.<tracker>.progress for the wired tracker, at its default when unset (github `In progress`, linear `started`, jira `In Progress`); null under none",
+                trackerReview: "the state an issue moves to when it is handed to a human: package.json bkit.tracker.<tracker>.review for the wired tracker, at its default when unset (github `In review`, linear `In Review`, jira `In Review`); null under none",
+                tasks: "{maxPerGroup, maxTestsPerGroup, maxTestsPerTask, maxTestFilesPerTask}: the plan caps from package.json bkit.workflows.tasks, each missing or invalid key at its default",
             },
             exitCodes: {
                 [EXIT_NO_REPO]: "neither gh nor the origin remote named an owner/repo",
@@ -184,6 +187,8 @@ export const repoCommand = {
                 if (latest.advisory !== null)
                     ctx.log(latest.advisory);
                 const outbox = outboxRoot(ctx.cwd) ?? path.join(root, ".git", "bkit-outbox");
+                const config = readBkitConfig(root);
+                const states = config.issueTracker === "none" ? null : config[config.issueTracker];
                 ctx.emit({
                     ...resolved,
                     owner,
@@ -198,7 +203,10 @@ export const repoCommand = {
                     bkitLatest: latest.latest,
                     bkitOutdated: latest.outdated,
                     bkitAdvisory: latest.advisory,
-                    ...trackerScope(readBkitConfig(root)),
+                    ...trackerScope(config),
+                    trackerProgress: states?.progress ?? null,
+                    trackerReview: states?.review ?? null,
+                    tasks: config.tasks,
                 });
                 if (branch === null && ctx.flags.allowDetached !== true) {
                     ctx.log("HEAD is detached — no current branch");

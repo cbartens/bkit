@@ -3,13 +3,14 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { validate } from "../../ledgers/telemetry";
 import { runCommand } from "../lib";
 import { tipsText } from "../tips";
 import { newRecord, writeRecord } from "./ledgers";
 import { locksCommand } from "./locks";
+import { chatFingerprint } from "./run-facts";
 import { workflowsCommand } from "./workflows";
 
 // Real git repos and worktrees per test; a busy machine needs more than the default 5s.
@@ -161,6 +162,53 @@ describe("bkit workflows start", () => {
     expect(r.code).toBe(0);
     expect(r.json).toMatchObject({ resumed: true, row: null, run: 1 });
     expect(rows(statusOf(cwd))).toHaveLength(1);
+  });
+
+  describe("start records the chat that runs the workflow", () => {
+    const A = "0a0a0a0a-1111-2222-3333-444455556666";
+    const B = "0b0b0b0b-1111-2222-3333-444455556666";
+    const fp = (id: string) => chatFingerprint("claude-code", id);
+    const sessions = (cwd: string) => rows(statusOf(cwd)).filter((x) => x.type === "session");
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it("writes one session row per chat; a resume in the same chat adds none", async () => {
+      const cwd = repo();
+      vi.stubEnv("CLAUDE_CODE_SESSION_ID", A);
+      const token = `--token=${(await run(cwd, wf("start", "build"))).json.lock.token}`;
+      expect((await run(cwd, wf("start", "build", "--lock-held", token))).json.resumed).toBe(true);
+      expect(sessions(cwd)).toEqual([
+        expect.objectContaining({ workflow: "build", platform: "claude-code", session: fp(A) }),
+      ]);
+      vi.stubEnv("CLAUDE_CODE_SESSION_ID", B);
+      expect((await run(cwd, wf("start", "build", "--lock-held", token))).code).toBe(0);
+      expect(sessions(cwd).map((x) => x.session)).toEqual([fp(A), fp(B)]);
+      expect(JSON.stringify(rows(statusOf(cwd)))).not.toContain(A);
+    });
+
+    it("a new run in the same chat gets its own session row", async () => {
+      const cwd = repo();
+      write(
+        cwd,
+        `${REL}/status.jsonl`,
+        jsonl([
+          { type: "workflow-started", workflow: "build", at: "2026-07-01T00:00:00Z" },
+          { type: "session", workflow: "build", at: "2026-07-01T00:00:01Z", session: fp(A) },
+          { type: "workflow-done", workflow: "build", at: "2026-07-01T01:00:00Z" },
+        ]),
+      );
+      vi.stubEnv("CLAUDE_CODE_SESSION_ID", A);
+      await run(cwd, wf("start", "build"));
+      expect(sessions(cwd)).toHaveLength(2);
+    });
+
+    it("writes none outside Claude Code", async () => {
+      const cwd = repo();
+      vi.stubEnv("CLAUDE_CODE_SESSION_ID", "");
+      await run(cwd, wf("start", "build"));
+      expect(sessions(cwd)).toEqual([]);
+    });
   });
 
   it("opens the next run after a finished one, and after another workflow's run", async () => {
@@ -321,7 +369,7 @@ describe("bkit workflows start — resume facts", () => {
       jsonl([
         started("2026-07-01T00:00:00Z"),
         done("build-start-workflow", "2026-07-01T00:01:00Z"),
-        done("build-plan-verify", "2026-07-01T00:05:00Z", { subPlan: 2, attempt: 3 }),
+        done("build-plan-verify", "2026-07-01T00:05:00Z", { group: 2, attempt: 3 }),
       ]),
     );
     writeDecision(cwd, 1, 1, ["Status: DECIDED", "Question: CHALLENGE", "From: challenge"]);
@@ -330,9 +378,9 @@ describe("bkit workflows start — resume facts", () => {
       "Question: VERIFY_LOOP",
       "From: verify",
       "Pause step: 7",
-      "Sub-plan: 2",
+      "Group: 2",
       "Verify attempt: 3",
-      `Plan: docs/plans/${M}/${FID}-plan-2.md`,
+      `Plan: docs/plans/${M}/${FID}-plan.md`,
     ]);
     const r = await run(cwd, wf("start", "build"));
     expect(r.code).toBe(0);
@@ -343,10 +391,10 @@ describe("bkit workflows start — resume facts", () => {
       question: "VERIFY_LOOP",
       from: "verify",
       pauseStep: 7,
-      subPlan: 2,
+      group: 2,
       verifyAttempt: 3,
       testAttempt: null,
-      plan: `docs/plans/${M}/${FID}-plan-2.md`,
+      plan: `docs/plans/${M}/${FID}-plan.md`,
     });
   });
 
@@ -357,8 +405,7 @@ describe("bkit workflows start — resume facts", () => {
       "Status: OPEN",
       "Question: TESTS_LOOP",
       "From: tests",
-      "Pause step: 14",
-      "Sub-plan: 1",
+      "Pause step: 11",
       "Test attempt: 4",
       `Plan: docs/plans/${M}/${FID}-plan.md`,
     ]);
@@ -366,7 +413,7 @@ describe("bkit workflows start — resume facts", () => {
     expect(r.json.openDecision).toMatchObject({
       decision: 1,
       from: "tests",
-      pauseStep: 14,
+      pauseStep: 11,
       verifyAttempt: null,
       testAttempt: 4,
     });
@@ -529,11 +576,11 @@ describe("bkit workflows fail", () => {
   });
 
   it.each([
-    [{ issueTracker: "linear" }, "In Review"],
-    [{ issueTracker: "linear", linear: { review: "Code Review" } }, "Code Review"],
-    [{ issueTracker: "jira" }, "In Review"],
-    [{ issueTracker: "jira", jira: { review: "QA" } }, "QA"],
-    [{ issueTracker: "github" }, null],
+    [{ tracker: { default: "linear" } }, "In Review"],
+    [{ tracker: { default: "linear", linear: { review: "Code Review" } } }, "Code Review"],
+    [{ tracker: { default: "jira" } }, "In Review"],
+    [{ tracker: { default: "jira", jira: { review: "QA" } } }, "QA"],
+    [{ tracker: { default: "github" } }, null],
   ])("a failed issue under %j moves to review status %j", async (bkit, state) => {
     const cwd = repo();
     write(cwd, "package.json", JSON.stringify({ bkit }));
@@ -609,6 +656,84 @@ describe("bkit workflows close", () => {
   const writtenOutcome = (cwd: string) => statsOf(cwd).find((x) => x.kind === "outcome");
   const NO_LINES = { added: 0, deleted: 0, files: 0 };
 
+  // A close reads the running Claude Code session's transcripts: tests run inside one.
+  beforeEach(() => {
+    vi.stubEnv("CLAUDE_CODE_SESSION_ID", "");
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  describe("context peaks", () => {
+    const SID = "0f0e0d0c-1111-2222-3333-444455556666";
+    /** A Claude config dir whose session SID ran one `bkit-build-plan-execute` subagent. */
+    function claudeDir() {
+      const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-claude-")));
+      dirs.push(dir);
+      const sub = path.join(dir, "projects", "-repo", SID, "subagents");
+      fs.mkdirSync(sub, { recursive: true });
+      const line = {
+        type: "assistant",
+        timestamp: "2026-01-01T00:00:00.000Z",
+        message: {
+          id: "m1",
+          model: "m",
+          usage: { input_tokens: 1, cache_creation_input_tokens: 2, cache_read_input_tokens: 3 },
+        },
+      };
+      fs.writeFileSync(path.join(sub, "agent-a.jsonl"), `${JSON.stringify(line)}\n`);
+      fs.writeFileSync(
+        path.join(sub, "agent-a.meta.json"),
+        JSON.stringify({ agentType: "bkit-build-plan-execute" }),
+      );
+      return dir;
+    }
+
+    it("records each agent type's peak from the closing Claude Code session", async () => {
+      vi.stubEnv("CLAUDE_CONFIG_DIR", claudeDir());
+      vi.stubEnv("CLAUDE_CODE_SESSION_ID", SID);
+      const cwd = closable();
+      expect((await run(cwd, wf("close", "build"))).code).toBe(0);
+      const outcome = writtenOutcome(cwd);
+      expect(outcome?.context).toEqual({
+        host: "claude-code",
+        byAgent: { "bkit-build-plan-execute": { peak: 6, runs: 1 } },
+      });
+      expect(validate(outcome)).toEqual({ ok: true });
+    });
+
+    it("counts subagents of an earlier chat the run's session rows name", async () => {
+      vi.stubEnv("CLAUDE_CONFIG_DIR", claudeDir());
+      vi.stubEnv("CLAUDE_CODE_SESSION_ID", "");
+      const cwd = closable();
+      fs.appendFileSync(
+        statusOf(cwd),
+        jsonl([
+          {
+            type: "session",
+            workflow: "build",
+            at: "2020-01-01T00:00:01Z",
+            platform: "claude-code",
+            session: chatFingerprint("claude-code", SID),
+          },
+        ]),
+      );
+      expect((await run(cwd, wf("close", "build"))).code).toBe(0);
+      expect(writtenOutcome(cwd)?.context).toEqual({
+        host: "claude-code",
+        byAgent: { "bkit-build-plan-execute": { peak: 6, runs: 1 } },
+      });
+    });
+
+    it("records no context block, and still closes, outside a Claude Code session", async () => {
+      vi.stubEnv("CLAUDE_CONFIG_DIR", claudeDir());
+      vi.stubEnv("CLAUDE_CODE_SESSION_ID", "");
+      const cwd = closable();
+      expect((await run(cwd, wf("close", "build"))).code).toBe(0);
+      expect(writtenOutcome(cwd)).not.toHaveProperty("context");
+    });
+  });
+
   it("writes workflow-done and schema-valid counter + outcome rows", async () => {
     const cwd = closable();
     const head = git(cwd, "rev-parse", "HEAD");
@@ -626,7 +751,7 @@ describe("bkit workflows close", () => {
     for (const row of all) expect(validate(row)).toEqual({ ok: true });
     const [counter, outcome] = all.slice(2);
     expect(counter).toMatchObject({
-      schema: 2,
+      schema: 3,
       kind: "counter",
       repo: "cbartens/bkit",
       bkit: { version: "4.6.3" },
@@ -635,7 +760,7 @@ describe("bkit workflows close", () => {
       counter: { name: "BUILD_ATTEMPT", value: 1, source: "shell-bus" },
     });
     expect(outcome).toMatchObject({
-      schema: 2,
+      schema: 3,
       kind: "outcome",
       by: { workflow: "build", step: "build-close-workflow" },
       run: { parentSha: head },
@@ -688,21 +813,33 @@ describe("bkit workflows close", () => {
     }
   });
 
-  it("carries planSource from this run's workflow-meta and the repo / per-run ledger counts", async () => {
+  it("writes plan source converted from a build-plan-convert row, ignores a planSource meta, and carries the repo / per-run ledger counts", async () => {
     const cwd = closable();
     fs.appendFileSync(
       statusOf(cwd),
       jsonl([
-        { type: "workflow-meta", workflow: "build", at: "2019-12-31T00:00:00Z", planSource: "old" },
         {
           type: "workflow-meta",
           workflow: "build",
           at: "2020-01-01T00:00:01Z",
           planSource: "brief",
         },
+        {
+          type: "step-done",
+          workflow: "build",
+          step: "build-plan-convert",
+          at: "2020-01-01T00:00:02Z",
+          parentSha: "0".repeat(40),
+          attempt: 1,
+          artifacts: [`docs/plans/${M}/${FID}-plan.md`],
+        },
       ]),
     );
-    write(cwd, `docs/plans/${M}/${FID}-plan.md`, "- [ ] one\n- [x] two\n  - [ ] nested\n");
+    write(
+      cwd,
+      `docs/plans/${M}/${FID}-plan.md`,
+      "<!-- bkit:group 1 start -->\n### GROUP 1: Work\n<!-- bkit:task 1 start -->\n- [ ] **TASK 1:** One.\n<!-- bkit:task 1 end -->\n<!-- bkit:group 1 end -->\n",
+    );
     write(
       cwd,
       "docs/deferrals.jsonl",
@@ -715,22 +852,30 @@ describe("bkit workflows close", () => {
     const r = await run(cwd, wf("close", "build"));
     expect(r.code).toBe(0);
     const outcome = writtenOutcome(cwd);
-    // A brief run carries only its source, whatever plan files exist.
-    expect(outcome!.plan).toEqual({ source: "brief" });
+    expect(validate(outcome)).toEqual({ ok: true });
+    expect(outcome!.plan).toEqual({
+      source: "converted",
+      total: { tasks: 1, kb: 0 },
+      groups: [{ tasks: [{ tests: null, testFiles: null }] }],
+    });
     expect((outcome!.ledgers as Record<string, unknown>).deferrals).toEqual({ repo: 2, added: 1 });
   });
 
   it("counts plan tasks from the task headings, never the sub-step checkboxes", async () => {
     const cwd = closable();
-    const taskLine = (n: number) =>
-      `- [ ] **Task ${n}:** Do ${n}. **Done when:** done. **Test first:** \`a.test.ts\` \`t${n}\` fails.`;
-    const steps = (n: number) => [1, 2, 3].map((i) => `  - [ ] Step ${n}.${i}`).join("\n");
-    write(
-      cwd,
-      `docs/plans/${M}/${FID}-plan-1.md`,
-      `# Plan 1\n\n${taskLine(1)}\n${steps(1)}\n${taskLine(2)}\n${steps(2)}\n`,
-    );
-    write(cwd, `docs/plans/${M}/${FID}-plan-2.md`, `# Plan 2\n\n${taskLine(3)}\n${steps(3)}\n`);
+    const taskBlock = (n: number) =>
+      [
+        `<!-- bkit:task ${n} start -->`,
+        `- [ ] **TASK ${n}:** Do ${n}.`,
+        "  - **DONE WHEN:** done.",
+        "  - **TEST FIRST:**",
+        `    - \`a.test.ts\` \`t${n}\``,
+        ...[1, 2, 3].map((i) => `  - [ ] Step ${n}.${i}`),
+        `<!-- bkit:task ${n} end -->`,
+      ].join("\n");
+    const group = (g: number, ...ns: number[]) =>
+      `<!-- bkit:group ${g} start -->\n### GROUP ${g}: Work\n${ns.map(taskBlock).join("\n")}\n<!-- bkit:group ${g} end -->`;
+    write(cwd, `docs/plans/${M}/${FID}-plan.md`, `# Plan\n\n${group(1, 1, 2)}\n${group(2, 3)}\n`);
     expect((await run(cwd, wf("close", "build"))).code).toBe(0);
     const outcome = writtenOutcome(cwd);
     expect(validate(outcome)).toEqual({ ok: true });
@@ -738,7 +883,7 @@ describe("bkit workflows close", () => {
     expect(outcome!.plan).toMatchObject({
       source: "file",
       total: { tasks: 3 },
-      subPlans: [
+      groups: [
         {
           tasks: [
             { tests: 1, testFiles: 1 },
@@ -938,7 +1083,7 @@ describe("bkit workflows close — commit, outbox, comment", () => {
     expect(git(cwd, "status", "--porcelain")).toBe("");
   });
 
-  it("--message never commits the bkit.worktree.copy entries (.env)", async () => {
+  it("--message never commits the bkit.workflows.worktree.copy entries (.env)", async () => {
     const cwd = started();
     write(cwd, ".env", "SECRET=1\n");
     write(cwd, "a.txt", "changed\n");
@@ -1039,7 +1184,7 @@ describe("bkit workflows handover", () => {
     });
   });
 
-  it("--push never commits the bkit.worktree.copy entries (.env), gitignored or not", async () => {
+  it("--push never commits the bkit.workflows.worktree.copy entries (.env), gitignored or not", async () => {
     const { cwd, remote } = withRemote();
     write(cwd, `${REL}/status.jsonl`, jsonl([{ type: "workflow-failed", workflow: "build" }]));
     write(cwd, ".env", "SECRET=1\n");
@@ -1663,24 +1808,25 @@ describe("bkit workflows promote", () => {
     }
   });
 
-  it("plan: copies the split's children as canonical sub-plans and renames working names", async () => {
+  it("promote copies the plan only", async () => {
     const cwd = repo();
-    write(cwd, `${REL}/plan-v4-split.md`, "see plan-v4-1.md and plan-v4-2.md\n");
-    write(cwd, `${REL}/plan-v4-1.md`, "child of plan-v4-split.md\n");
-    write(cwd, `${REL}/plan-v4-2.md`, "two\n");
-    write(cwd, `${REL}/plan-v3-checked.md`, "older\n");
+    const bucket = path.join(cwd, `docs/plans/${M}`);
+    write(cwd, `${REL}/plan-v2-reviewed.md`, "NEW, see plan-v2-1.md\n");
+    write(cwd, `${REL}/plan-v2-1.md`, "stray child\n");
+    write(cwd, `docs/plans/${M}/${FID}-plan.md`, "OLD\n");
+    write(cwd, `docs/plans/${M}/${FID}-plan-2.md`, "stray sub-plan\n");
     const r = await run(cwd, wf("promote", "plan", `--month=${M}`));
     expect(r.code).toBe(0);
-    expect(r.json.subPlans).toEqual([
-      `docs/plans/${M}/${FID}-plan-1.md`,
-      `docs/plans/${M}/${FID}-plan-2.md`,
-    ]);
-    expect(fs.readFileSync(path.join(cwd, `docs/plans/${M}/${FID}-plan.md`), "utf-8")).toBe(
-      `see ${FID}-plan-1.md and ${FID}-plan-2.md\n`,
+    expect(r.json).not.toHaveProperty("subPlans");
+    expect(fs.readFileSync(path.join(bucket, `${FID}-plan.md`), "utf-8")).toBe(
+      "NEW, see plan-v2-1.md\n",
     );
-    expect(fs.readFileSync(path.join(cwd, `docs/plans/${M}/${FID}-plan-1.md`), "utf-8")).toBe(
-      `child of ${FID}-plan.md\n`,
+    expect(r.json.archived).toHaveLength(1);
+    expect(r.json.archived[0]).toMatch(new RegExp(`-${FID}-plan\\.md$`));
+    expect(fs.readFileSync(path.join(bucket, `${FID}-plan-2.md`), "utf-8")).toBe(
+      "stray sub-plan\n",
     );
+    expect(fs.existsSync(path.join(bucket, `${FID}-plan-1.md`))).toBe(false);
   });
 
   it("rejects a workflow other than design or plan", async () => {
@@ -1768,7 +1914,7 @@ describe("--post on fail / links", () => {
     write(
       cwd,
       "package.json",
-      JSON.stringify({ bkit: { issueTracker: "linear", linear: { review: "In Review" } } }),
+      JSON.stringify({ bkit: { tracker: { default: "linear", linear: { review: "In Review" } } } }),
     );
     const bodies: Array<{ query: string; variables: any }> = [];
     const answers: Record<string, object> = {
@@ -1830,7 +1976,7 @@ describe("--post on fail / links", () => {
   it("fail --post with the run's token: an engine-action row in status.jsonl dedups a re-run; commentFile holds the body", async () => {
     process.env.BKIT_LINEAR_API_KEY = "k";
     const cwd = repo();
-    write(cwd, "package.json", JSON.stringify({ bkit: { issueTracker: "linear" } }));
+    write(cwd, "package.json", JSON.stringify({ bkit: { tracker: { default: "linear" } } }));
     git(cwd, "commit", "-qam", "linear");
     const fid = "eng-4-x";
     const started = await run(cwd, [
@@ -1867,7 +2013,7 @@ describe("--post on fail / links", () => {
   it("links --post posts the close comment once: an identical latest comment is not posted again", async () => {
     process.env.BKIT_LINEAR_API_KEY = "k";
     const cwd = repo();
-    write(cwd, "package.json", JSON.stringify({ bkit: { issueTracker: "linear" } }));
+    write(cwd, "package.json", JSON.stringify({ bkit: { tracker: { default: "linear" } } }));
     const outbox = path.join(cwd, "tmp", "outbox");
     write(cwd, "tmp/outbox/close-telemetry.md", "telemetry line\n");
     const posted = linearCommentServer();
@@ -2060,29 +2206,64 @@ describe("bkit workflows input", () => {
     "--comments-file=s/issue-comments.json",
   ];
 
-  it("writes {workflow}-input-{run}.md: the prompt, then the issue text; prints only path and bytes", async () => {
+  const PROMPT =
+    "## Session Prompt — this run's, newer than everything below\n\n/bkit-design #12\n\nplease\n";
+  /** The author date git records for the last commit of `rel`, in UTC. */
+  const authored = (cwd: string, rel: string) =>
+    new Date(git(cwd, "log", "-1", "--format=%aI", "--", rel)).toISOString();
+  const commitAt = (cwd: string, rel: string, at: string) => {
+    git(cwd, "add", "--", rel);
+    spawnSync("git", ["commit", "-qm", rel, "--", rel], {
+      cwd,
+      env: { ...process.env, GIT_AUTHOR_DATE: at, GIT_COMMITTER_DATE: at },
+    });
+  };
+
+  it("writes {workflow}-input-{run}.md: the prompt, the description, each human comment dated", async () => {
     const cwd = withIssue();
     const r = await run(cwd, input("design", ...ISSUE));
     expect(r.code).toBe(0);
     const rel = `${REL}/design-input-2.md`;
     const text = fs.readFileSync(path.join(cwd, rel), "utf-8");
-    expect(r.json).toEqual({ path: rel, bytes: Buffer.byteLength(text) });
+    expect(r.json).toEqual({ path: rel, bytes: Buffer.byteLength(text), newerThanPlan: 0 });
     expect(text).toBe(
-      "## Session Prompt\n\n/bkit-design #12\n\nplease\n\n## Issue\n\nThe ask.\n\nearlier\n\nlater\n",
+      `${PROMPT}\n## Issue description — oldest\n\nThe ask.\n\n` +
+        "## Issue comment — posted 2026-10-01T00:00:00.000Z\n\nearlier\n\n" +
+        "## Issue comment — posted 2026-10-02T00:00:00.000Z\n\nlater\n",
+    );
+  });
+
+  it("the last bkit:ignore-earlier drops every part above it; a comment with no date counts as oldest", async () => {
+    const cwd = withIssue();
+    write(
+      cwd,
+      "s/issue-comments.json",
+      JSON.stringify([
+        { body: "dropped", createdAt: "2026-10-01T00:00:00Z" },
+        {
+          body: "also dropped\n###### bkit:ignore-earlier\nkept",
+          createdAt: "2026-10-02T00:00:00Z",
+        },
+        "undated",
+      ]),
+    );
+    await run(cwd, input("design", ...ISSUE));
+    expect(fs.readFileSync(path.join(cwd, REL, "design-input-2.md"), "utf-8")).toBe(
+      `${PROMPT}\n## Issue comment — posted 2026-10-02T00:00:00.000Z\n\nkept\n\n` +
+        "## Issue comment — no date, counts as oldest\n\nundated\n",
     );
   });
 
   it("a run with no issue holds the prompt alone", async () => {
     const cwd = withIssue();
     await run(cwd, input("design"));
-    expect(fs.readFileSync(path.join(cwd, REL, "design-input-2.md"), "utf-8")).toBe(
-      "## Session Prompt\n\n/bkit-design #12\n\nplease\n",
-    );
+    expect(fs.readFileSync(path.join(cwd, REL, "design-input-2.md"), "utf-8")).toBe(PROMPT);
   });
 
-  it("plan appends the parent design and the audit reports in order; a missing one exits 13", async () => {
+  it("plan appends the parent design and the audit reports in order, each dated; a missing one exits 13", async () => {
     const cwd = withIssue();
     write(cwd, "docs/plans/202606/9-parent-design.md", "# Design\n");
+    commitAt(cwd, "docs/plans/202606/9-parent-design.md", "2026-09-30T08:00:00+10:00");
     write(cwd, "docs/audits/a.md", "A report\n");
     write(cwd, "docs/audits/b.md", "B report\n");
     const r = await run(
@@ -2096,10 +2277,10 @@ describe("bkit workflows input", () => {
     );
     expect(r.code).toBe(0);
     expect(fs.readFileSync(path.join(cwd, REL, "plan-input-2.md"), "utf-8")).toBe(
-      "## Session Prompt\n\n/bkit-design #12\n\nplease\n\n" +
-        "## Design — docs/plans/202606/9-parent-design.md\n\n# Design\n\n" +
-        "## Audit Report — docs/audits/b.md\n\nB report\n\n" +
-        "## Audit Report — docs/audits/a.md\n\nA report\n",
+      `${PROMPT}\n` +
+        "## Design — docs/plans/202606/9-parent-design.md — last committed 2026-09-29T22:00:00.000Z\n\n# Design\n\n" +
+        "## Audit Report — docs/audits/b.md — uncommitted changes, newer than any commit\n\nB report\n\n" +
+        "## Audit Report — docs/audits/a.md — uncommitted changes, newer than any commit\n\nA report\n",
     );
     const missing = await run(cwd, input("plan", "--design=docs/plans/202606/gone.md"));
     expect(missing.code).toBe(13);
@@ -2111,13 +2292,32 @@ describe("bkit workflows input", () => {
     write(cwd, `docs/plans/${M}/${FID}-plan.md`, "# Plan\n");
     await run(cwd, input("build", `--plan=docs/plans/${M}/${FID}-plan.md`));
     expect(fs.readFileSync(path.join(cwd, REL, "build-input-2.md"), "utf-8")).toContain(
-      `## Plan — docs/plans/${M}/${FID}-plan.md\n\n# Plan\n`,
+      `## Plan — docs/plans/${M}/${FID}-plan.md — uncommitted changes, newer than any commit\n\n# Plan\n`,
     );
     const r = await run(cwd, input("ship", `--plan=docs/plans/${M}/none.md`));
     expect(r.code).toBe(0);
     expect(fs.readFileSync(path.join(cwd, REL, "ship-input-2.md"), "utf-8")).not.toContain(
       "## Plan",
     );
+  });
+
+  it("newerThanPlan counts the comments posted after the plan's last commit, by author date", async () => {
+    const cwd = withIssue();
+    const plan = `docs/plans/${M}/${FID}-plan.md`;
+    write(cwd, plan, "# Plan\n");
+    commitAt(cwd, plan, "2026-10-01T06:00:00Z");
+    // A rebase rewrites the committer date; the author date stays the plan's own.
+    expect(authored(cwd, plan)).toBe("2026-10-01T06:00:00.000Z");
+    const r = await run(cwd, input("build", ...ISSUE, `--plan=${plan}`));
+    expect(r.json).toMatchObject({ newerThanPlan: 1 });
+    expect(fs.readFileSync(path.join(cwd, REL, "build-input-2.md"), "utf-8")).toContain(
+      `## Plan — ${plan} — last committed 2026-10-01T06:00:00.000Z\n`,
+    );
+    // Uncommitted edits make the plan the newest text: nothing is newer.
+    write(cwd, plan, "# Plan, edited\n");
+    expect((await run(cwd, input("build", ...ISSUE, `--plan=${plan}`))).json).toMatchObject({
+      newerThanPlan: 0,
+    });
   });
 
   it("a missing prompt file exits 13", async () => {
@@ -2326,5 +2526,166 @@ describe("--session-dir on fail / close", () => {
   it("without --session-dir prints no sessionRemoved", async () => {
     const r = await run(repo(), wf("fail", "build"));
     expect(r.json).not.toHaveProperty("sessionRemoved");
+  });
+});
+
+describe("bkit workflows summary", () => {
+  const SFID = "682-summary-verb";
+  const SREL = `docs/plans/${M}/logs/${SFID}`;
+  const START = "2020-01-01T00:00:00Z";
+  const START_MS = Date.parse(START);
+  const done = (step: string, at: string, extra: object = {}) => ({
+    type: "step-done",
+    workflow: "build",
+    step,
+    status: "DONE",
+    at,
+    attempt: 1,
+    ...extra,
+  });
+  const task = (n: number, ticked: boolean) =>
+    [
+      `<!-- bkit:task ${n} start -->`,
+      `- [${ticked ? "x" : " "}] **TASK ${n}:** Do ${n}.`,
+      "  - **DONE WHEN:** done.",
+      "  - **TEST FIRST:**",
+      `    - \`a.test.ts\` \`t${n}\``,
+      `<!-- bkit:task ${n} end -->`,
+    ].join("\n");
+  /** A plan holding `tasks` in GROUP 1. */
+  const planOf = (...tasks: string[]) =>
+    `# Plan\n\n<!-- bkit:group 1 start -->\n### GROUP 1: Work\n${tasks.join("\n")}\n<!-- bkit:group 1 end -->\n`;
+
+  /** A github-tracked tree with one build run's status rows. */
+  function tree(steps: object[], plan?: string) {
+    const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-summary-")));
+    dirs.push(cwd);
+    write(cwd, "package.json", JSON.stringify({ bkit: { tracker: { default: "github" } } }));
+    write(
+      cwd,
+      `${SREL}/status.jsonl`,
+      jsonl([{ type: "workflow-started", workflow: "build", at: START }, ...steps]),
+    );
+    if (plan !== undefined) write(cwd, `docs/plans/${M}/${SFID}-plan.md`, plan);
+    return cwd;
+  }
+  const summarize = (cwd: string, workflow = "build") =>
+    run(cwd, [
+      "workflows",
+      "summary",
+      `--workflow=${workflow}`,
+      `--file=${path.join(cwd, SREL, "status.jsonl")}`,
+    ]);
+
+  it("summary is FAIL when a plan task is not done", async () => {
+    const cwd = tree(
+      [done("build-plan-verify", "2020-01-01T00:10:00Z", { verdict: "PASS", failures: 0 })],
+      planOf(task(1, true), task(2, false)),
+    );
+    const r = await summarize(cwd);
+    expect(r.code).toBe(0);
+    expect(r.json.verdict).toBe("FAIL");
+    expect(r.json.failures).toBeGreaterThanOrEqual(1);
+    expect(r.json.file).toBe(`${SREL}/build-summary.md`);
+    const md = fs.readFileSync(path.join(cwd, SREL, "build-summary.md"), "utf-8");
+    expect(md.startsWith("Verdict: FAIL\nFailures: ")).toBe(true);
+    expect(md).toContain("<!-- verdict:end -->");
+  });
+
+  it("summary is CONCERNS when a deferral was written", async () => {
+    const cwd = tree(
+      [done("build-plan-verify", "2020-01-01T00:10:00Z", { verdict: "PASS", failures: 0 })],
+      planOf(task(1, true)),
+    );
+    write(
+      cwd,
+      "docs/deferrals.jsonl",
+      jsonl([
+        { kind: "deferral", key: "old", by: { workflow: "build" }, ts: START_MS - 1 },
+        { kind: "deferral", key: "new", by: { workflow: "build" }, ts: START_MS + 5 },
+      ]),
+    );
+    const r = await summarize(cwd);
+    expect(r.code).toBe(0);
+    expect(r.json.verdict).toBe("CONCERNS");
+    expect(r.json.failures).toBe(0);
+  });
+
+  it("summary recommends /bkit-debug on FAIL", async () => {
+    const failed = tree(
+      [done("build-run-tests", "2020-01-01T00:10:00Z", { verdict: "FAIL", failures: 2 })],
+      planOf(task(1, true)),
+    );
+    const r = await summarize(failed);
+    expect(r.json.verdict).toBe("FAIL");
+    expect(r.json.nextStep).toBe("/bkit-debug #682");
+
+    const passed = tree(
+      [done("build-run-tests", "2020-01-01T00:10:00Z", { verdict: "PASS", failures: 0 })],
+      planOf(task(1, true)),
+    );
+    const p = await summarize(passed);
+    expect(p.json.verdict).toBe("PASS");
+    expect(p.json.nextStep).toBe("/bkit-ship #682");
+  });
+
+  it("summary reports the last attempt", async () => {
+    const cwd = tree(
+      [
+        done("build-plan-verify", "2020-01-01T00:10:00Z", {
+          verdict: "FAIL",
+          failures: 1,
+          group: 1,
+        }),
+        done("build-plan-verify", "2020-01-01T00:20:00Z", {
+          verdict: "PASS",
+          failures: 0,
+          group: 1,
+          attempt: 2,
+        }),
+      ],
+      planOf(task(1, true)),
+    );
+    const r = await summarize(cwd);
+    expect(r.json.verdict).not.toBe("FAIL");
+    const md = fs.readFileSync(path.join(cwd, SREL, "build-summary.md"), "utf-8");
+    const line = md.split("\n").find((l) => l.startsWith("| build-plan-verify"));
+    expect(line).toMatch(/\| PASS \| 0 \| 2 \|/);
+  });
+
+  it("summary is CONCERNS when a step recorded CONCERNS", async () => {
+    const cwd = tree(
+      [done("build-plan-verify-holistic", "2020-01-01T00:10:00Z", { verdict: "CONCERNS" })],
+      planOf(task(1, true)),
+    );
+    const r = await summarize(cwd);
+    expect(r.json.verdict).toBe("CONCERNS");
+    expect(r.json.reasons).toContain("build-plan-verify-holistic CONCERNS");
+  });
+
+  it("a design summary carries the organised design's open questions", async () => {
+    const cwd = tree([]);
+    write(
+      cwd,
+      `${SREL}/status.jsonl`,
+      jsonl([{ type: "workflow-started", workflow: "design", at: START }]),
+    );
+    write(
+      cwd,
+      `${SREL}/design-v3-organised.md`,
+      "# Design\n\n## Risks & Open Questions\n\n- Which store? Recommended: A.\n\n## Suggested Workstreams\n\nNone\n",
+    );
+    const r = await summarize(cwd, "design");
+    expect(r.code).toBe(0);
+    const md = fs.readFileSync(path.join(cwd, SREL, "design-summary.md"), "utf-8");
+    expect(md).toContain("## Open Questions\n\n- Which store? Recommended: A.\n");
+  });
+
+  it("refuses a status file with no run of the workflow, and a missing one", async () => {
+    const cwd = tree([]);
+    expect((await summarize(cwd, "ship")).code).toBe(16);
+    fs.rmSync(path.join(cwd, SREL, "status.jsonl"));
+    expect((await summarize(cwd)).code).toBe(3);
+    expect((await summarize(cwd, "release")).code).toBe(2);
   });
 });

@@ -24,7 +24,7 @@
 
 ## What this is
 
-bkit turns a single coding-agent request into gated, peer-reviewed engineering: five commands (`/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`), 49 single-purpose subagents, 35 audit templates, same pipeline on Claude Code, Cursor, Codex, Google Antigravity and opencode. Every subagent in execution order and every audit template: [`.bkit/pipeline.md`](pipeline.md).
+bkit turns a single coding-agent request into gated, peer-reviewed engineering: five commands (`/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`), 39 single-purpose subagents, 35 audit templates, same pipeline on Claude Code, Cursor, Codex, Google Antigravity and opencode. Every subagent in execution order and every audit template: [`.bkit/pipeline.md`](pipeline.md).
 
 This doc: bkit vs 10 other AI development frameworks (one table, then agents and CI in detail), then bkit vs Gulli's agentic patterns.
 
@@ -125,11 +125,11 @@ Benchmark: Antonio Gulli's _Agentic Design Patterns: A Hands-On Guide to Buildin
 | --- | --- | --- |
 | Prompt Chaining | Already does | Every workflow is prompt chaining at slash-command granularity. |
 | Routing | Already does | `Verdict` routing (PASS/CONCERNS/FAIL), strategy escalation, CI-router dispatch to ship vs debug. |
-| Parallelization | Already does | Parallel pairs and triplets, with a tighter constraint than the book: no sibling reads, plus cross-model pairing on design brainstorm / design review / plan scope-check. |
+| Parallelization | Already does | Parallel pairs and triplets, with a tighter constraint than the book: no sibling reads, plus cross-model pairing on design brainstorm / design review. |
 | Reflection (producer-critic) | Already does | Build execute → verify → remediate loop; plan and design generate → review → update. |
 | Tool Use | Already does | Per-role minimum-capability tool allowlists — stricter than the book's additive model. |
 | Planning | Already does | `/bkit-plan` is a first-class artifact with a template and durable checkbox state. |
-| Multi-Agent Collaboration | Already does | 49 subagents, orchestrator-as-coordinator; subagents are leaves (no nested orchestration). |
+| Multi-Agent Collaboration | Already does | 39 subagents, orchestrator-as-coordinator; subagents are leaves (no nested orchestration). |
 | Model Context Protocol (MCP) | Already does | Tracker MCP held at the workflow layer only — cleaner separation than the book's examples. |
 | Exception Handling & Recovery | Already does | Universal failure path, bounded retries (3), 3600s timeouts, runaway-turn caps, human handover. |
 | Human-in-the-Loop | Already does | Mandatory hard stops after design / plan / ship; "recommend, do not decide." |
@@ -137,7 +137,7 @@ Benchmark: Antonio Gulli's _Agentic Design Patterns: A Hands-On Guide to Buildin
 | Context Engineering | Already does | Phase doc-matrix, lazy-load, output caps, stubbed-output pattern; consumer `context-fetch` blocks add CI, diff, e2e, runtime and web signal in debug. |
 | Memory Management | Partial | Filesystem and grep episodic memory (`status.jsonl`, knowledge / decisions). No vector retrieval, by scale choice. |
 | Learning & Adaptation | Partial | `friction.jsonl` drives human-reviewed prompt edits; entries carry confidence, scope, and last-confirmed fields. No auto prompt-tuning — deliberate, to keep humans in the loop. |
-| Goal Setting & Monitoring | Already does | Issue = goal, phase labels = state, verdicts = criteria. Per-task `Done when:` in the plan template; verifier ticks only on confirmed artifacts; deferred-sweep FAILs merge on any unplanned gap; `stats.jsonl` tracks every run. |
+| Goal Setting & Monitoring | Already does | Issue = goal, phase labels = state, verdicts = criteria. Per-task `DONE WHEN:` in the plan template; verifier ticks only on confirmed artifacts; deferred-sweep FAILs merge on any unplanned gap; `stats.jsonl` tracks every run. |
 | Knowledge Retrieval (RAG) | Partial | Deterministic doc-matrix retrieval plus web search in design review. No embedding RAG (Grep wins at repo scale). |
 | Reasoning Techniques | Partial | Extended thinking (CoT) plus parallel-pair-reconcile (a form of self-consistency). No formal ToT or ReAct trace. |
 | Guardrails / Safety | Partial | Tool sandbox, destructive-git bans, locks, verdict checks, and an advisory edit-investigation plus gate-config hook (GateGuard), and an advisory repeat-read hook (ReadGuard). `bkit steps finish` validates each step's verdict and artifacts structurally. No content-level output validators (e.g. safety classifiers). |
@@ -151,7 +151,7 @@ Benchmark: Antonio Gulli's _Agentic Design Patterns: A Hands-On Guide to Buildin
 ### Where bkit goes beyond the catalogue
 
 - **Producer-critic with circular-reasoning guard.** Sibling reviewers cannot read each other's output. Book permits self-reflection.
-- **Cross-model diversity where breadth beats depth.** Design brainstorm, design review, plan scope-check groups pair Opus + Sonnet (Grok + Composer on Cursor) → two reasoners review same work. Depth-sensitive lenses (plan review, build challenge) stay on top tier.
+- **Cross-model diversity where breadth beats depth.** Design brainstorm and design review groups pair Opus + Sonnet (Grok + Composer on Cursor) → two reasoners review same work. Depth-sensitive lenses (plan review, plan scope check, build challenge) stay on top tier.
 - **Resume-from-state as single source of truth.** `status.jsonl` makes every run inspectable and restartable; book treats this only obliquely under memory.
 - **Human-in-the-loop as non-negotiable.** Hard stops after design / plan / ship; book treats HITL as one option.
 - **Fail-soft external context in debug.** Provider-agnostic `context-fetch` blocks (CI logs, diff, e2e, runtime, web) feed `/bkit-debug`; each self-skips to a narrated `CHECKED` / `SELF-SKIPPED` / `NOT CONFIGURED` state, so a context with no block is never read as a clean result.

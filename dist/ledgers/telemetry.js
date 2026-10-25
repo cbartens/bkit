@@ -102,8 +102,13 @@ export function resolveRepoSlug(cwd) {
 // ---------------------------------------------------------------------------
 // Shared envelope (A2-mandatory fields on EVERY row, every kind)
 // ---------------------------------------------------------------------------
-/** Row format version. Rows written without `schema` are read through {@link normalize}. */
-export const SCHEMA = 2;
+/**
+ * Row format version. Rows written without `schema` are read through {@link normalize}.
+ * A schema-2 row differs only in its outcome `plan` block ({@link StoredPlanBlock}).
+ */
+export const SCHEMA = 3;
+/** The schema {@link normalize} stamps on a row written without one: the shape it builds. */
+const NORMALIZED_SCHEMA = 2;
 export const VALID_KINDS = new Set([
     "compliance",
     "outcome",
@@ -168,7 +173,6 @@ export const DEFERRAL_WRITERS = new Set([
     "bkit-design-generate",
     "bkit-plan-generate",
     "bkit-plan-update",
-    "bkit-build-challenge-remediate",
     "bkit-debug-abort-handover",
     "bkit-ship-deferred-sweep",
     "bkit-utility-update-deferrals",
@@ -203,15 +207,18 @@ export const KIND_WRITERS = {
             "bkit-plan-update",
             "bkit-utility-update-decisions",
         ]),
-        // Build: Decision Pause accept; plan: an open question answered after close.
-        // Both ONLY after explicit human approval.
-        orchestrators: new Set(["build", "plan"]),
+        // Build: Decision Pause accept; plan: an open question answered after close; ship: an
+        // assumed accept the owner confirms (`bkit decisions apply --by=owner`). All ONLY after
+        // explicit human approval.
+        orchestrators: new Set(["build", "plan", "ship"]),
     },
-    deferral: { subagents: DEFERRAL_WRITERS, orchestrators: new Set() },
+    // Build: `bkit challenge merge` writes each LOW challenge finding (`low-severity`). Ship:
+    // `bkit decisions pending --defer` writes each assumed accept nobody confirmed (`needs-decision`).
+    deferral: { subagents: DEFERRAL_WRITERS, orchestrators: new Set(["build", "ship"]) },
     failure: { subagents: ANY_WRITER, orchestrators: ANY_WRITER },
     knowledge: {
         subagents: new Set([
-            "bkit-build-challenge-remediate",
+            "bkit-build-plan-execute",
             "bkit-build-plan-gaps-remediate",
             "bkit-debug-failure-remediate",
             "bkit-utility-update-knowledge",
@@ -273,6 +280,11 @@ export function mintTs(after) {
         ts = after + 1;
     return ts % 1000 === 0 ? ts + 1 : ts;
 }
+/**
+ * The context one subagent may fill before it hands over (the plan template's "about 160k
+ * tokens" per build group). Rows store peaks only; readers judge them against this.
+ */
+export const AGENT_CONTEXT_CAP = 160_000;
 export const OUTCOME_ENDINGS = new Set(["done", "close-failed"]);
 export const RUN_ENDINGS = new Set([
     "done",
@@ -344,11 +356,11 @@ const MOVED = {
 };
 const TOP_MOVED = ["schema", "bkitVersion", "workflow", "step", "subagent", "model", "parentSha"];
 /**
- * A row in the current shape. A row that carries `schema` is returned as it is; a
- * row written without one has its top section (`bkitVersion` -> `bkit.version`,
+ * A row in a `schema` shape. A row that carries `schema` is returned as it is; a
+ * row written without one is stamped `schema: 2` and has its top section (`bkitVersion` -> `bkit.version`,
  * `workflow` / `step` / `subagent` / `model` -> `by.*`) and the stats kinds' run
  * fields moved into their blocks as far as the row holds them. Fields with no
- * place in the current shape are dropped, and any kind's `parentSha` moves to
+ * place in the schema-2 shape are dropped, and any kind's `parentSha` moves to
  * `run.parentSha`. `bkit install` / `bkit upgrade` rewrite old rows through it
  * (`./migrate.ts`); readers still call it, as a union merge can bring an old line back.
  */
@@ -362,7 +374,7 @@ export function normalize(raw) {
     const rest = Object.fromEntries(Object.entries(raw).filter(([k]) => !moved.has(k)));
     const { ts, kind: _kind, key, repo, references, ...payload } = rest;
     const out = defined({
-        schema: SCHEMA,
+        schema: NORMALIZED_SCHEMA,
         ts,
         kind: raw["kind"],
         key,
@@ -476,12 +488,12 @@ function oldChat(r) {
             // Per-instance turns were stored only as a sum: known when the type ran once.
             instances: peaks.map((p) => ({
                 turns: n === 1 ? numOr(a["turns"], null) : null,
-                ctxPeak: p,
+                contextPeak: p,
             })),
             usage: {
                 turns: numOr(a["turns"]),
                 tokens: oldTokens(a),
-                ctx: { peak: numOr(a["ctxPeakMax"], Math.max(0, ...peaks)) },
+                context: { peak: numOr(a["ctxPeakMax"], Math.max(0, ...peaks)) },
                 compactions: numOr(a["compactions"]),
             },
             mix: oldMix(a["mix"]),
@@ -552,13 +564,13 @@ function oldChat(r) {
                 tokens: Object.keys(byModel).length > 0
                     ? Object.fromEntries(TOKENS.map((k) => [k, sumNums(Object.values(byModel).map((x) => x.tokens[k]))]))
                     : oldTokens(tokens),
-                ctx: { start: numOr(tokens["ctxStart"]), peak: numOr(tokens["ctxPeak"]) },
+                context: { start: numOr(tokens["ctxStart"]), peak: numOr(tokens["ctxPeak"]) },
                 compactions: numOr(r["compactions"]),
             },
             main: defined({
                 turns: numOr(m["turns"]),
                 tokens: oldTokens(m),
-                ctx: { peak: numOr(m["ctxPeak"]) },
+                context: { peak: numOr(m["ctxPeak"]) },
                 compactions: numOr(m["compactions"]),
                 mix: oldMix(m["mix"]),
             }),
@@ -752,15 +764,10 @@ export function totalsProblem(row) {
         }
     }
     const plan = row["plan"];
-    // Sub-plans with `tasks: null` (never recorded) give no parts to check against.
-    if (isObj(plan) &&
-        isObj(plan["total"]) &&
-        Array.isArray(plan["subPlans"]) &&
-        plan["subPlans"].every((p) => Array.isArray(field(p, "tasks")))) {
-        const subs = plan["subPlans"];
+    if (isObj(plan) && isObj(plan["total"]) && Array.isArray(plan["groups"])) {
+        const groups = plan["groups"];
         const total = plan["total"];
-        checks.push(() => eq("plan.total.tasks", total["tasks"], sumOf(subs.map((p) => field(p, "tasks").length))));
-        checks.push(() => eq("plan.total.kb", total["kb"], sumOf(subs.map((p) => field(p, "kb")))));
+        checks.push(() => eq("plan.total.tasks", total["tasks"], sumOf(groups.map((g) => arrOf(field(g, "tasks")).length))));
     }
     const build = row["build"];
     if (isObj(build)) {
@@ -804,16 +811,16 @@ export function totalsProblem(row) {
                 ...byAgent.map((a) => field(a, "usage", "compactions")),
             ])));
         }
-        const peak = field(total, "ctx", "peak");
+        const peak = field(total, "context", "peak");
         if (typeof peak === "number") {
             const peaks = [
-                field(usage, "main", "ctx", "peak"),
+                field(usage, "main", "context", "peak"),
                 ...byAgent.flatMap((a) => Array.isArray(field(a, "instances"))
-                    ? field(a, "instances").map((i) => field(i, "ctxPeak"))
+                    ? field(a, "instances").map((i) => field(i, "contextPeak"))
                     : []),
             ].filter((v) => typeof v === "number");
             if (peaks.length > 0)
-                checks.push(() => eq("usage.total.ctx.peak", peak, Math.max(...peaks)));
+                checks.push(() => eq("usage.total.context.peak", peak, Math.max(...peaks)));
         }
     }
     if (isObj(agents) && isObj(agents["total"]) && isObj(agents["byAgent"])) {
@@ -1046,11 +1053,26 @@ export function validate(event) {
             }
         }
         const source = field(e["plan"], "source");
-        if (e["plan"] !== undefined && source !== "file" && source !== "brief") {
+        if (e["plan"] !== undefined && source !== "file" && source !== "converted") {
             return {
                 ok: false,
-                reason: `outcome plan.source must be file|brief (got: ${String(source)})`,
+                reason: `outcome plan.source must be file|converted (got: ${String(source)})`,
             };
+        }
+        const context = e["context"];
+        if (context !== undefined) {
+            const byAgent = field(context, "byAgent");
+            if (!isObj(context) || typeof context["host"] !== "string" || !isObj(byAgent)) {
+                return { ok: false, reason: "outcome context needs host and a byAgent object" };
+            }
+            for (const [agent, a] of Object.entries(byAgent)) {
+                if (typeof field(a, "peak") !== "number" || typeof field(a, "runs") !== "number") {
+                    return {
+                        ok: false,
+                        reason: `outcome context.byAgent.${agent} needs numeric peak and runs`,
+                    };
+                }
+            }
         }
         const cov = field(e["ship"], "coverage");
         if (cov !== undefined) {
@@ -1315,12 +1337,14 @@ export function workflowTelemetry(result, workflow) {
         .filter((e) => e.kind === "outcome" && e.by?.workflow === workflow)
         .sort(compareTs);
     const cur = runs.at(-1);
-    // Baseline only against runs of the same plan source — a brief run (no plan)
-    // has no tasks and a different shape, so mixing them skews every median.
-    const brief = (r) => r?.plan?.source === "brief";
+    // Baseline only against runs of the same plan source — a converted run's plan was
+    // written by the build from its input, so mixing it with file runs skews every median.
+    // An old `brief` row (no plan file) counts as converted.
+    const oldBrief = (r) => r?.plan?.source === "brief";
+    const converted = (r) => r?.plan?.source === "converted" || oldBrief(r);
     const prev = runs
         .slice(0, -1)
-        .filter((r) => brief(r) === brief(cur))
+        .filter((r) => converted(r) === converted(cur))
         .slice(-RUN_BASELINE_WINDOW);
     const repo = cur?.repo ?? events[0]?.repo ?? "unknown/repo";
     // Rendered as a Markdown table so it drops straight into the tracker comment
@@ -1352,8 +1376,6 @@ export function workflowTelemetry(result, workflow) {
             row("lines.total.changed", `${total.changed} (+${total.added}/-${total.deleted})`, medCell((r) => r.lines?.total?.changed));
             show("lines.total.files", (r) => r.lines?.total?.files);
         }
-        if (brief(cur))
-            row("plan.source", "brief", "—");
         show("plan.total.tasks", (r) => r.plan?.total?.tasks);
         if (cur.ending === "close-failed")
             row("ending", "close-failed", "—");
@@ -1389,7 +1411,9 @@ export function workflowTelemetry(result, workflow) {
     if (tableRows.length > 0) {
         lines.push(`| metric | this run | med·${RUN_BASELINE_WINDOW} |`, "| --- | --- | --- |", ...tableRows, "");
     }
-    lines.push(`\`med·${RUN_BASELINE_WINDOW}\` = median of the previous ${RUN_BASELINE_WINDOW} ${workflow}${brief(cur) ? " brief" : ""} runs (— if < ${RUN_BASELINE_MIN}) · ledger ${result.rowCount} rows, ${result.malformedLineCount} malformed`);
+    lines.push(`\`med·${RUN_BASELINE_WINDOW}\` = median of the previous ${RUN_BASELINE_WINDOW} ${workflow}${converted(cur) ? " converted" : ""} runs (— if < ${RUN_BASELINE_MIN}) · ledger ${result.rowCount} rows, ${result.malformedLineCount} malformed`);
+    if ([cur, ...prev].some(oldBrief))
+        lines.push("Old `plan.source: brief` rows count as `converted`.");
     lines.push(...maxRowsLines);
     return { ...base, lines };
 }

@@ -568,8 +568,8 @@ describe("gateguard structural parity", () => {
       "[bkit GateGuard]",
       "quality-gate config",
       "docs/*.md authoring",
-      "Self-review is weak",
-      "Bolt-on drift starts here",
+      "First edit to",
+      "Evolve existing code first",
     ]) {
       expect(oc).toContain(marker);
       expect(cj).toContain(marker);

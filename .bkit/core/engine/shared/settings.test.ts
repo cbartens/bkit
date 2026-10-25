@@ -4,7 +4,13 @@ import * as path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { CONFIG_DEFAULTS, readBkitConfig } from "./settings";
+import {
+  ASK_POINTS,
+  CONFIG_DEFAULTS,
+  invalidAskSettings,
+  invalidTaskCaps,
+  readBkitConfig,
+} from "./settings";
 import {
   LOCKFILE_REGENERATE,
   PACKAGE_RUNNER,
@@ -36,12 +42,16 @@ describe("readBkitConfig", () => {
       root(
         JSON.stringify({
           bkit: {
-            ciWorkflow: "test.yml",
-            capstoneJob: "decide",
-            worktree: { copy: [".env", "apps/web/.env.preview"], install: false },
-            issueTracker: "linear",
-            github: { project: "https://github.com/users/me/projects/1/views/2", review: "QA" },
-            shipGateRequiredLanes: ["bkit-tests-e2e", ""],
+            testing: {
+              ciWorkflow: "test.yml",
+              ciCapstone: "decide",
+              shipGate: ["bkit-tests-e2e", ""],
+            },
+            workflows: { worktree: { copy: [".env", "apps/web/.env.preview"], install: false } },
+            tracker: {
+              default: "linear",
+              github: { project: "https://github.com/users/me/projects/1/views/2", review: "QA" },
+            },
           },
         }),
       ),
@@ -64,14 +74,14 @@ describe("readBkitConfig", () => {
     });
   });
 
-  it.each(["github", "linear", "jira", "none"])("reads issueTracker %s", (tracker) => {
-    const cfg = readBkitConfig(root(JSON.stringify({ bkit: { issueTracker: tracker } })));
+  it.each(["github", "linear", "jira", "none"])("reads tracker.default %s", (tracker) => {
+    const cfg = readBkitConfig(root(JSON.stringify({ bkit: { tracker: { default: tracker } } })));
     expect(cfg.issueTracker).toBe(tracker);
     expect(cfg.issueTrackerExplicit).toBe(true);
   });
 
-  it("reads an unsupported issueTracker as the default", () => {
-    const cfg = readBkitConfig(root(JSON.stringify({ bkit: { issueTracker: "asana" } })));
+  it("reads an unsupported tracker.default as the default", () => {
+    const cfg = readBkitConfig(root(JSON.stringify({ bkit: { tracker: { default: "asana" } } })));
     expect(cfg.issueTracker).toBe(CONFIG_DEFAULTS.issueTracker);
   });
 
@@ -80,12 +90,14 @@ describe("readBkitConfig", () => {
       root(
         JSON.stringify({
           bkit: {
-            linear: { team: " ENG ", project: "Mobile app", review: "Code Review" },
-            jira: {
-              site: "https://acme.atlassian.net/",
-              project: "MBA",
-              progress: " Doing ",
-              review: "",
+            tracker: {
+              linear: { team: " ENG ", project: "Mobile app", review: "Code Review" },
+              jira: {
+                site: "https://acme.atlassian.net/",
+                project: "MBA",
+                progress: " Doing ",
+                review: "",
+              },
             },
           },
         }),
@@ -103,7 +115,9 @@ describe("readBkitConfig", () => {
       progress: "Doing",
       review: "In Review",
     });
-    const wrong = readBkitConfig(root(JSON.stringify({ bkit: { linear: "x", jira: [1] } })));
+    const wrong = readBkitConfig(
+      root(JSON.stringify({ bkit: { tracker: { linear: "x", jira: [1] } } })),
+    );
     expect(wrong.linear).toEqual(CONFIG_DEFAULTS.linear);
     expect(wrong.jira).toEqual(CONFIG_DEFAULTS.jira);
   });
@@ -113,9 +127,10 @@ describe("readBkitConfig", () => {
       root(
         JSON.stringify({
           bkit: {
-            opencodeProvider: "opencode-go",
-            opencodeProviders: ["openrouter", "opencode-go"],
-            cloudAgents: "claude",
+            providers: {
+              opencode: { default: "opencode-go", installed: ["openrouter", "opencode-go"] },
+            },
+            cloud: { agent: "claude" },
           },
         }),
       ),
@@ -128,16 +143,18 @@ describe("readBkitConfig", () => {
 
   it("reads an unsupported or wrongly typed opencode provider as none", () => {
     const provider = (v: unknown) =>
-      readBkitConfig(root(JSON.stringify({ bkit: { opencodeProvider: v } }))).opencodeProvider;
+      readBkitConfig(root(JSON.stringify({ bkit: { providers: { opencode: { default: v } } } })))
+        .opencodeProvider;
     expect(provider("not-a-provider")).toBeNull();
     expect(provider("")).toBeNull();
     expect(provider(7)).toBeNull();
     expect(provider(["openrouter"])).toBeNull();
   });
 
-  it("keeps only supported provider names in opencodeProviders, and reads a non-array as none", () => {
+  it("keeps only supported provider names in providers.opencode.installed, and reads a non-array as none", () => {
     const providers = (v: unknown) =>
-      readBkitConfig(root(JSON.stringify({ bkit: { opencodeProviders: v } }))).opencodeProviders;
+      readBkitConfig(root(JSON.stringify({ bkit: { providers: { opencode: { installed: v } } } })))
+        .opencodeProviders;
     expect(providers(["ollama", "bogus", 3, null, "opencode-zen"])).toEqual([
       "ollama",
       "opencode-zen",
@@ -146,9 +163,9 @@ describe("readBkitConfig", () => {
     expect(providers({ 0: "ollama" })).toEqual([]);
   });
 
-  it("falls back to the default cloud variant on an unknown or wrongly typed cloudAgents", () => {
+  it("falls back to the default cloud variant on an unknown or wrongly typed cloud.agent", () => {
     const cloud = (v: unknown) =>
-      readBkitConfig(root(JSON.stringify({ bkit: { cloudAgents: v } })));
+      readBkitConfig(root(JSON.stringify({ bkit: { cloud: { agent: v } } })));
     expect(cloud("cursor").cloudAgents).toBe("cursor");
     expect(cloud("opencode").cloudAgents).toBe("opencode");
     expect(cloud("none").cloudAgents).toBe("none");
@@ -158,7 +175,8 @@ describe("readBkitConfig", () => {
 
   it("opts out of the dependency-updater advisory only on the exact string none", () => {
     const optOut = (v: unknown) =>
-      readBkitConfig(root(JSON.stringify({ bkit: { depUpdater: v } }))).depUpdaterOptOut;
+      readBkitConfig(root(JSON.stringify({ bkit: { dependencies: { updater: v } } })))
+        .depUpdaterOptOut;
     expect(optOut("none")).toBe(true);
     expect(optOut("renovate")).toBe(false);
     expect(optOut("None")).toBe(false);
@@ -166,18 +184,21 @@ describe("readBkitConfig", () => {
     expect(readBkitConfig(root('{"bkit":{}}')).depUpdaterOptOut).toBe(false);
   });
 
-  it("tells an explicitly set issueTracker and cloudAgents from an absent or empty one, whatever the value", () => {
+  it("tells an explicitly set tracker.default and cloud.agent from an absent or empty one, whatever the value", () => {
     const explicit = (bkit: unknown) => {
       const cfg = readBkitConfig(root(JSON.stringify({ bkit })));
       return [cfg.issueTrackerExplicit, cfg.cloudAgentsExplicit];
     };
     expect(explicit({})).toEqual([false, false]);
     expect(explicit(null)).toEqual([false, false]);
-    expect(explicit({ issueTracker: "none", cloudAgents: "none" })).toEqual([true, true]);
-    expect(explicit({ issueTracker: 5 })).toEqual([true, false]);
-    expect(explicit({ cloudAgents: "bogus" })).toEqual([false, true]);
-    expect(explicit({ issueTracker: null })).toEqual([true, false]);
-    expect(explicit({ issueTracker: "", cloudAgents: "" })).toEqual([false, false]);
+    expect(explicit({ tracker: { default: "none" }, cloud: { agent: "none" } })).toEqual([
+      true,
+      true,
+    ]);
+    expect(explicit({ tracker: { default: 5 } })).toEqual([true, false]);
+    expect(explicit({ cloud: { agent: "bogus" } })).toEqual([false, true]);
+    expect(explicit({ tracker: { default: null } })).toEqual([true, false]);
+    expect(explicit({ tracker: { default: "" }, cloud: { agent: "" } })).toEqual([false, false]);
   });
 
   it("reports nothing explicit without package.json or with unparseable JSON", () => {
@@ -188,18 +209,19 @@ describe("readBkitConfig", () => {
     }
   });
 
-  it("reads disk.minFreeGb as a number 0 or more, else the default", () => {
-    const minFree = (disk: unknown) =>
-      readBkitConfig(root(JSON.stringify({ bkit: { disk } }))).diskMinFreeGb;
+  it("reads workflows.minFreeGb as a number 0 or more, else the default", () => {
+    const minFree = (workflows: unknown) =>
+      readBkitConfig(root(JSON.stringify({ bkit: { workflows } }))).diskMinFreeGb;
     expect(minFree({ minFreeGb: 80 })).toBe(80);
     expect(minFree({ minFreeGb: 0 })).toBe(0);
     for (const bad of [{ minFreeGb: -1 }, { minFreeGb: "80" }, { minFreeGb: null }, {}, 5, null])
       expect(minFree(bad)).toBe(CONFIG_DEFAULTS.diskMinFreeGb);
   });
 
-  it("reads github.project as a board, false as an opt-out, anything else as not configured", () => {
+  it("reads tracker.github.project as a board, false as an opt-out, anything else as not configured", () => {
     const project = (value: unknown) =>
-      readBkitConfig(root(JSON.stringify({ bkit: { github: { project: value } } }))).github;
+      readBkitConfig(root(JSON.stringify({ bkit: { tracker: { github: { project: value } } } })))
+        .github;
     expect(project("https://github.com/orgs/acme/projects/7").project).toEqual({
       ownerType: "org",
       owner: "acme",
@@ -220,24 +242,27 @@ describe("readBkitConfig", () => {
     const cfg = readBkitConfig(
       root(
         JSON.stringify({
-          bkit: { ciWorkflow: "", capstoneJob: 3, worktree: { copy: [".env", 1], install: "yes" } },
+          bkit: {
+            testing: { ciWorkflow: "", ciCapstone: 3 },
+            workflows: { worktree: { copy: [".env", 1], install: "yes" } },
+          },
         }),
       ),
     );
     expect(cfg).toEqual(CONFIG_DEFAULTS);
   });
 
-  it("keeps only non-empty string lanes, and reads a non-array shipGateRequiredLanes as none", () => {
+  it("keeps only non-empty string lanes, and reads a non-array testing.shipGate as none", () => {
     const lanes = (v: unknown) =>
-      readBkitConfig(root(JSON.stringify({ bkit: { shipGateRequiredLanes: v } })))
+      readBkitConfig(root(JSON.stringify({ bkit: { testing: { shipGate: v } } })))
         .shipGateRequiredLanes;
     expect(lanes(["bkit-tests-unit", 42, null])).toEqual(["bkit-tests-unit"]);
     expect(lanes("bkit-tests-unit")).toEqual([]);
   });
 
-  it("reads minPushPaths as non-empty strings, keeps an explicit [], else the default", () => {
+  it("reads testing.minPushPaths as non-empty strings, keeps an explicit [], else the default", () => {
     const book = (v: unknown) =>
-      readBkitConfig(root(JSON.stringify({ bkit: { minPushPaths: v } }))).minPushPaths;
+      readBkitConfig(root(JSON.stringify({ bkit: { testing: { minPushPaths: v } } }))).minPushPaths;
     expect(book(["docs/plans/**", "", 3])).toEqual(["docs/plans/**"]);
     expect(book([])).toEqual([]);
     for (const bad of ["docs/plans/**", null, { 0: "docs/**" }])
@@ -245,13 +270,81 @@ describe("readBkitConfig", () => {
     expect(CONFIG_DEFAULTS.minPushPaths.some((p) => /^docs\/\*\*/.test(p))).toBe(false);
   });
 
-  it("reads loopPause as a boolean, else true", () => {
-    const pause = (v: unknown) =>
-      readBkitConfig(root(JSON.stringify({ bkit: { loopPause: v } }))).loopPause;
-    expect(pause(false)).toBe(false);
-    expect(pause(true)).toBe(true);
-    for (const bad of ["yes", "false", 1, 0, null]) expect(pause(bad)).toBe(true);
-    expect(readBkitConfig(root(JSON.stringify({ bkit: {} }))).loopPause).toBe(true);
+  it("asks at every point with 2 attempts by default, and 6 turns for the grill", () => {
+    const asks = readBkitConfig(root()).asks;
+    expect(Object.keys(asks)).toEqual([...ASK_POINTS]);
+    expect(asks["design.grill"]).toEqual({ ask: true, max: 6 });
+    for (const p of ASK_POINTS.slice(1)) expect(asks[p]).toEqual({ ask: true, max: 2 });
+  });
+
+  it("reads each ask point's ask and limit, falling back per key", () => {
+    const asks = (workflows: unknown) =>
+      readBkitConfig(root(JSON.stringify({ bkit: { workflows } }))).asks;
+    const set = asks({
+      design: { grill: { ask: false, maxTurns: 4 } },
+      build: { verify: { ask: false, maxAttempts: 3 }, tests: { maxAttempts: 0, ask: "no" } },
+      debug: { fix: 5 },
+      ship: { merge: { ask: false } },
+    });
+    expect(set["design.grill"]).toEqual({ ask: false, max: 4 });
+    expect(set["build.verify"]).toEqual({ ask: false, max: 3 });
+    expect(set["build.tests"]).toEqual({ ask: true, max: 2 });
+    expect(set["debug.fix"]).toEqual({ ask: true, max: 2 });
+    expect(set["ship.merge"]).toEqual({ ask: false, max: 2 });
+    // The grill counts turns, not attempts: maxAttempts on it is ignored.
+    expect(asks({ design: { grill: { maxAttempts: 9 } } })["design.grill"].max).toBe(6);
+  });
+
+  it("names each invalid ask setting by its dotted key", () => {
+    expect(
+      invalidAskSettings({
+        build: { verify: { ask: "yes", maxAttempts: 2.5 }, tests: 3 },
+        design: { grill: { maxTurns: 0 } },
+      }),
+    ).toEqual([
+      "design.grill.maxTurns",
+      "build.verify.ask",
+      "build.verify.maxAttempts",
+      "build.tests",
+    ]);
+    expect(invalidAskSettings({})).toEqual([]);
+  });
+
+  it("tasks defaults to 3, 15, 10 and 3", () => {
+    const want = {
+      maxPerGroup: 3,
+      maxTestsPerGroup: 15,
+      maxTestsPerTask: 10,
+      maxTestFilesPerTask: 3,
+    };
+    expect(CONFIG_DEFAULTS.tasks).toEqual(want);
+    expect(readBkitConfig(root()).tasks).toEqual(want);
+    expect(readBkitConfig(root(JSON.stringify({ bkit: {} }))).tasks).toEqual(want);
+    const set = {
+      maxPerGroup: 4,
+      maxTestsPerGroup: 20,
+      maxTestsPerTask: 12,
+      maxTestFilesPerTask: 4,
+    };
+    expect(
+      readBkitConfig(root(JSON.stringify({ bkit: { workflows: { tasks: set } } }))).tasks,
+    ).toEqual(set);
+  });
+
+  it("tasks falls back on an invalid value", () => {
+    const caps = (tasks: unknown) =>
+      readBkitConfig(root(JSON.stringify({ bkit: { workflows: { tasks } } }))).tasks;
+    for (const bad of [0, -1, 2.5, "4", null, true, [4]])
+      expect(caps({ maxPerGroup: bad, maxTestsPerTask: 12 })).toEqual({
+        ...CONFIG_DEFAULTS.tasks,
+        maxTestsPerTask: 12,
+      });
+    for (const bad of ["x", 4, null, [1]]) expect(caps(bad)).toEqual(CONFIG_DEFAULTS.tasks);
+    expect(
+      invalidTaskCaps({ maxPerGroup: 0, maxTestsPerGroup: 20, maxTestFilesPerTask: "3" }),
+    ).toEqual(["maxPerGroup", "maxTestFilesPerTask"]);
+    expect(invalidTaskCaps(undefined)).toEqual([]);
+    expect(invalidTaskCaps(7)).toEqual(["tasks"]);
   });
 });
 

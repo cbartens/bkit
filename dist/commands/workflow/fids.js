@@ -381,21 +381,12 @@ export function namedFid(text, roots) {
 }
 /** `#N` for GitHub, the key itself for Linear and Jira, "" with no issue. */
 export const issueRef = (issue, tracker) => issue === "" ? "" : tracker === "github" ? `#${issue}` : issue;
-/** The plan files of a feature in a month bucket, as build and ship read them. */
+/** A feature's plan in a month bucket, as ship reads it: `{FID}-plan.md`, or none. */
 export function planFiles(root, fid, month) {
-    const dir = path.join(root, "docs", "plans", month);
-    const names = fs.existsSync(dir) ? fs.readdirSync(dir) : [];
-    const prefix = `${fid}-plan-`;
-    const subNumber = (n) => n.startsWith(prefix) && /^[0-9]+\.md$/.test(n.slice(prefix.length))
-        ? Number(n.slice(prefix.length, -3))
-        : null;
-    const subs = names
-        .filter((n) => subNumber(n) !== null)
-        .sort((a, b) => subNumber(a) - subNumber(b));
-    const main = names.includes(`${fid}-plan.md`) ? [`${fid}-plan.md`] : [];
-    const files = [...main, ...subs].map((n) => `docs/plans/${month}/${n}`);
-    const source = subs.length > 0 ? "split" : main.length > 0 ? "single" : "none";
-    return { count: Math.max(subs.length, 1), single: subs.length === 0, source, files };
+    const name = `${fid}-plan.md`;
+    return fs.existsSync(path.join(root, "docs", "plans", month, name))
+        ? { source: "single", plan: `docs/plans/${month}/${name}` }
+        : { source: "none", plan: null };
 }
 /** The `**Parent design:**` link target's FID and month in the text, or null. */
 export function parentDesignLink(text) {
@@ -433,14 +424,14 @@ function mainConfig(cwd) {
     const common = git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
     return readBkitConfig(common ? path.dirname(common) : cwd);
 }
-/** `package.json` `bkit.issueTracker` at the main checkout (cwd outside git); default `none`. */
+/** `package.json` `bkit.tracker.default` at the main checkout (cwd outside git); default `none`. */
 export function readIssueTracker(cwd) {
     return mainConfig(cwd).issueTracker;
 }
 /**
  * Where this repo's issues live, per tracker: github the `origin` owner/repo (read from the
- * remote, not gh, so a prompt parse makes no network call); linear `bkit.linear.team`; jira
- * `bkit.jira.project` and `bkit.jira.site`. Each is null when unset.
+ * remote, not gh, so a prompt parse makes no network call); linear `bkit.tracker.linear.team`; jira
+ * `bkit.tracker.jira.project` and `bkit.tracker.jira.site`. Each is null when unset.
  */
 function issueScope(cwd, tracker) {
     if (tracker === "github")
@@ -453,7 +444,10 @@ function issueScope(cwd, tracker) {
         : { key: cfg.jira.project, site: cfg.jira.site };
 }
 /** The setting that names the issue-key prefix of a keyed tracker. */
-const KEY_SETTING = { linear: "bkit.linear.team", jira: "bkit.jira.project" };
+const KEY_SETTING = {
+    linear: "bkit.tracker.linear.team",
+    jira: "bkit.tracker.jira.project",
+};
 /** The stderr hint for bare keys skipped because no key prefix is configured. */
 function skippedKeyHint(skipped, tracker) {
     return `${skipped.join(", ")} not read as an issue: bare keys count only once ${KEY_SETTING[tracker]} is set in package.json; or name the issue as "issue KEY-N"`;
@@ -573,7 +567,7 @@ export function fromBranch(branch, tracker, known) {
 const TRACKER_FLAG = {
     name: "tracker",
     type: "string",
-    help: "github | linear | jira | none (default: package.json bkit.issueTracker, else none)",
+    help: "github | linear | jira | none (default: package.json bkit.tracker.default, else none)",
 };
 export const fidsCommand = {
     noun: "fids",
@@ -634,7 +628,7 @@ export const fidsCommand = {
             ],
             output: {
                 source: "--prompt-file: github | linear | jira — the wired tracker, when the prompt names one of its issues; none otherwise (a bare number, another tracker's form, tracker none). --marker / --branch: marker | branch",
-                issue: '--prompt-file: the issue named (github: the number, linear / jira: the key): an explicit form (<id> tag, "GitHub issue: #N", "issue #N" / "issue KEY", owner/repo#N or a tracker URL into the origin repo / bkit.linear.team / bkit.jira.site + bkit.jira.project; a URL elsewhere is ignored) over a bare #N / key; a bare Linear / Jira key only with the bkit.linear.team / bkit.jira.project prefix set; else ""',
+                issue: '--prompt-file: the issue named (github: the number, linear / jira: the key): an explicit form (<id> tag, "GitHub issue: #N", "issue #N" / "issue KEY", owner/repo#N or a tracker URL into the origin repo / bkit.tracker.linear.team / bkit.tracker.jira.site + bkit.tracker.jira.project; a URL elsewhere is ignored) over a bare #N / key; a bare Linear / Jira key only with the bkit.tracker.linear.team / bkit.tracker.jira.project prefix set; else ""',
                 ambiguous: "--prompt-file, exit 8 only: the issues named, as a person types them (then no other key prints)",
                 ref: '--prompt-file: the issue as a person types it (github: #N, linear / jira: the key), else ""',
                 fidNamed: "--prompt-file: the first FID the prompt names (feat/{FID}, a docs/plans/{YYYYMM}/ path, or a bare word with a logs/{word}/ folder), else null",
@@ -814,16 +808,14 @@ export const fidsCommand = {
             },
         },
         plans: {
-            summary: "A feature's plan files in a month bucket: the plan, then each {FID}-plan-{N}.md sub-plan in number order.",
+            summary: "A feature's plan in a month bucket: docs/plans/{YYYYMM}/{FID}-plan.md, or none.",
             flags: [
                 { name: "fid", type: "string", required: true, help: "feature id" },
                 { name: "month", type: "string", required: true, help: "YYYYMM bucket" },
             ],
             output: {
-                count: "sub-plans to build: their number, 1 for a single plan or none",
-                single: "true when there is no sub-plan",
-                source: "split (sub-plans) | single ({FID}-plan.md alone) | none (no plan file: a brief run)",
-                files: "repo-relative plan files: {FID}-plan.md first, then the sub-plans",
+                source: "single ({FID}-plan.md exists) | none (no plan file)",
+                plan: "the repo-relative plan file, or null",
             },
             run: (ctx) => {
                 const top = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;

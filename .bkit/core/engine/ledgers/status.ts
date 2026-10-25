@@ -29,6 +29,9 @@ export type Step = {
   artifacts: string[];
   verdict?: "PASS" | "FAIL" | "CONCERNS" | "SINGLE" | "SPLIT";
   attempt?: number;
+  /** The plan group the step ran for. */
+  group?: number;
+  /** A row written before groups replaced sub-plans; read as its group. */
   subPlan?: number;
   failures?: number;
   strategy?: "STANDARD" | "PIVOT" | "FINAL";
@@ -149,26 +152,26 @@ export function lastRun(runs: WorkflowRun[], workflow: string): WorkflowRun | un
 
 export interface StepFilter {
   step: string;
-  subPlan?: number;
+  group?: number;
 }
 
 const matches = (s: Step, f: StepFilter) =>
-  s.step === f.step && s.status === "DONE" && (f.subPlan === undefined || s.subPlan === f.subPlan);
+  s.step === f.step &&
+  s.status === "DONE" &&
+  (f.group === undefined || (s.group ?? s.subPlan) === f.group);
 
-/**
- * DONE rows for the step in the active run of `workflow`. `since` names a run
- * field holding a timestamp (SOAK's `soakEntryAt`): only rows after it count.
- */
-export function activeDoneSteps(
-  runs: WorkflowRun[],
-  workflow: string,
-  f: StepFilter,
-  since?: string,
-): Step[] {
+/** DONE rows for the step in the active run of `workflow`. */
+export function activeDoneSteps(runs: WorkflowRun[], workflow: string, f: StepFilter): Step[] {
   const run = lastRun(runs, workflow);
   if (!run) return [];
-  const floor = since === undefined ? undefined : String(run[since] ?? "");
-  return run.steps.filter((s) => matches(s, f) && (floor === undefined || s.at > floor));
+  return run.steps.filter((s) => matches(s, f));
+}
+
+/** DONE rows for the step across ALL runs of `workflow`: debug's limits span every run. */
+export function allRunsDoneSteps(runs: WorkflowRun[], workflow: string, f: StepFilter): Step[] {
+  return runs
+    .filter((r) => r.workflow === workflow)
+    .flatMap((r) => r.steps.filter((s) => matches(s, f)));
 }
 
 /** The last DONE row for the step across ALL runs of `workflow`. */
@@ -225,7 +228,7 @@ export type EngineActionRow = {
   type: typeof ENGINE_ACTION;
   /** What was done: `comment`, `commit`, `dispatch`, `pr-open`, … */
   action: string;
-  /** The moment: workflow, run, step, sub-plan, attempt and kind, joined by `/`. */
+  /** The moment: workflow, run, step, plan group, attempt and kind, joined by `/`. */
   key: string;
   /** sha256 of the body or payload acted on. */
   hash: string;

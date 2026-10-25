@@ -461,7 +461,7 @@ Usage:
                                  workflow runs this at its close; audit and utility do the
                                  same for audits and the ledger / roadmap updaters);
                                  --all lists every one. Ends with a star line ("bkit-star"
-                                 in bkit.ignoreAdvisories silences it), except under
+                                 in bkit.advisories.ignore silences it), except under
                                  --workflow=audit|utility. Local checks only. Exits 0.
   bkit status                   Read-only host/provider status. Reports current host+provider
                                  (sampled from .claude/, .cursor/, package.json, and the
@@ -524,7 +524,7 @@ Module flags (composable; symmetric install ↔ uninstall):
                   Ships .opencode/** (agents, commands, opencode.json, bkit-gateguard.js,
                   bkit-readguard.js).
                   Configure your provider key; verify with \`bkit doctor\`. All installed
-                  providers tracked in bkit.opencodeProviders.
+                  providers tracked in bkit.providers.opencode.installed.
   --codex         Codex CLI host. BARE flag — takes no value: Codex runs on one gateway
                   (openai), so only --opencode is provider-pluggable. Ships .codex/agents/*.toml
                   + .codex/hooks.json + .codex/hooks/bkit-{gateguard,guardrails,readguard}.cjs,
@@ -555,7 +555,7 @@ Dependency updaters (copy an example and own it):
 
 Cross-cutting / modifiers:
   --tracker=<name>      Wire issue tracker integration. Values: github, linear, jira, none
-                        (default). Records bkit.issueTracker in package.json and substitutes
+                        (default). Records bkit.tracker.default in package.json and substitutes
                         tracker snippets into command mirrors. Re-renders every installed
                         host, and works alone (bkit install --tracker=github). Switching is
                         free; a switch removes the old linear or jira MCP entry unless you
@@ -573,7 +573,7 @@ Uninstall flags:
   --dry-run       Print decision table (FILE / DECISION / REASON) without writing.
   --opencode=<provider>
                   Surgical provider removal: removes that provider's block from
-                  opencode.json + drops it from bkit.opencodeProviders. Does NOT remove
+                  opencode.json + drops it from bkit.providers.opencode.installed. Does NOT remove
                   agents/commands/gateguard. If the removed provider was active, the first
                   remaining provider becomes active and the agents are re-rendered to its
                   model pins.

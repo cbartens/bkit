@@ -81,6 +81,61 @@ describe("bkit stats", () => {
     );
   });
 
+  it("counts build challenges by size, small ones having skipped challenge-1", () => {
+    const gate = (ts: number, size: string) =>
+      row(ts, "outcome", {
+        run: { parentSha: String(ts).padStart(40, "0") },
+        build: {
+          challenge: {
+            verdict: "PASS",
+            findings: null,
+            gate: { size, linesChanged: 1, filesChanged: 1, skipped: size === "small" },
+          },
+        },
+      });
+    fs.writeFileSync(
+      path.join(root, ".bkit", "stats.jsonl"),
+      [gate(1_700_000_000_001, "small"), gate(1_700_000_000_002, "large")].join("\n") + "\n",
+    );
+    const md = buildRepoStats(root);
+    expect(md).toContain("## Build challenge size");
+    expect(md).toContain("| 2 | 1 | 1 |");
+  });
+
+  it("shows each agent type's context peak against the 160000-token cap", () => {
+    const withCtx = (ts: number, byAgent: Record<string, { peak: number; runs: number }>) =>
+      row(ts, "outcome", {
+        run: { parentSha: String(ts).padStart(40, "0") },
+        context: { host: "claude-code", byAgent },
+      });
+    fs.writeFileSync(
+      path.join(root, ".bkit", "stats.jsonl"),
+      [
+        withCtx(1_700_000_000_001, {
+          "bkit-build-plan-execute": { peak: 120_000, runs: 2 },
+          "bkit-build-plan-verify": { peak: 40_000, runs: 1 },
+        }),
+        withCtx(1_700_000_000_002, { "bkit-build-plan-execute": { peak: 171_000, runs: 3 } }),
+        row(1_700_000_000_003, "outcome", { run: { parentSha: "c".repeat(40) } }),
+      ].join("\n") + "\n",
+    );
+    const md = buildRepoStats(root);
+    expect(md).toContain("## Agent context peaks");
+    expect(md).toContain("Cap: 160000 tokens per agent. 2 of 3 runs recorded context.");
+    expect(md).toContain("| bkit-build-plan-execute | 5 | 2 | 171000 | 1 |");
+    expect(md).toContain("| bkit-build-plan-verify | 1 | 1 | 40000 | 0 |");
+  });
+
+  it("says there is no context data when no outcome row records any", () => {
+    fs.writeFileSync(
+      path.join(root, ".bkit", "stats.jsonl"),
+      row(1_700_000_000_001, "outcome", { run: { parentSha: "a".repeat(40) } }) + "\n",
+    );
+    const md = buildRepoStats(root);
+    expect(md).toContain("## Agent context peaks");
+    expect(md).toContain("No context data.");
+  });
+
   it("says there are no rows yet when the ledger is missing", () => {
     expect(buildRepoStats(root)).toContain("No rows yet.");
   });

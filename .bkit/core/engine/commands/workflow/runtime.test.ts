@@ -6,7 +6,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { runCommand } from "../lib";
-import { normFlag, runtimeCommand } from "./runtime";
+import { classifyAt, normFlag, runtimeCommand } from "./runtime";
 
 const dirs: string[] = [];
 const tmp = (prefix: string) => {
@@ -152,6 +152,29 @@ describe("bkit runtime detect — the table", () => {
     const r = await run(["detect", "--fid=42-x"], path.join(cwd, ".worktrees", "42-x"));
     expect(r.json.runtime).toBe("CLOUD_CURSOR");
     expect(r.json.worktreePath).toBe(path.join(cwd, ".worktrees", "42-x"));
+  });
+
+  it("classifyAt reads the marker from the main checkout inside a linked worktree", () => {
+    spawnSync(
+      "git",
+      ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "i"],
+      { cwd },
+    );
+    spawnSync("git", ["worktree", "add", "-q", "-b", "feat/42-x", ".worktrees/42-x"], { cwd });
+    const wt = path.join(cwd, ".worktrees", "42-x");
+    expect(classifyAt(wt)).toBe("LOCAL");
+    fs.mkdirSync(path.join(cwd, ".bkit"));
+    fs.writeFileSync(path.join(cwd, ".bkit", ".runtime-cursor"), "");
+    expect(classifyAt(wt)).toBe("CLOUD_CURSOR");
+    expect(classifyAt(cwd)).toBe("CLOUD_CURSOR");
+  });
+
+  it("classifyAt outside a git repo reads the marker under the folder itself", () => {
+    const loose = tmp("bkit-runtime-loose-");
+    expect(classifyAt(loose)).toBe("LOCAL");
+    fs.mkdirSync(path.join(loose, ".bkit"));
+    fs.writeFileSync(path.join(loose, ".bkit", ".runtime-cursor"), "");
+    expect(classifyAt(loose)).toBe("CLOUD_CURSOR");
   });
 
   it("BKIT_RUNTIME overrides every primitive; an invalid value falls to UNKNOWN, loudly", async () => {

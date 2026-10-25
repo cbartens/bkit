@@ -919,11 +919,13 @@ describe("runUninstall — .bkit/version install-state (4.6.3)", () => {
 
   // The bkit block a consumer holds for each tracker, its tracker config included.
   const TRACKER_BKIT_BLOCKS = [
-    ["github", { issueTracker: "github" }],
-    ["linear", { issueTracker: "linear", linear: { team: "ENG", review: "In Review" } }],
+    ["github", { tracker: { default: "github" } }],
+    ["linear", { tracker: { default: "linear", linear: { team: "ENG", review: "In Review" } } }],
     [
       "jira",
-      { issueTracker: "jira", jira: { site: "https://acme.atlassian.net", project: "PROJ" } },
+      {
+        tracker: { default: "jira", jira: { site: "https://acme.atlassian.net", project: "PROJ" } },
+      },
     ],
   ] as const;
 
@@ -938,9 +940,8 @@ describe("runUninstall — .bkit/version install-state (4.6.3)", () => {
             name: "consumer",
             bkit: {
               ...trackerBlock,
-              opencodeProvider: "opencode-zen",
-              opencodeProviders: ["opencode-zen"],
-              depUpdater: "renovate",
+              providers: { opencode: { default: "opencode-zen", installed: ["opencode-zen"] } },
+              dependencies: { updater: "renovate" },
             },
           },
           null,

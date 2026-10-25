@@ -692,7 +692,7 @@ jobs:
 
   # ── bkit-tests-check ──────────────────────────────────────────────────────
   # Capstone and sole branch-protection required check (`bkit setup protect-main` reads
-  # bkit.capstoneJob). Needs every lane; if: !cancelled(), never always(). Asserts
+  # bkit.testing.ciCapstone). Needs every lane; if: !cancelled(), never always(). Asserts
   # bkit-tests-scope succeeded and, when run_level != none, every test lane succeeded and
   # unit + integration each executed >0 tests. bkit-tests-scope is the planner, not a
   # lane: SCOPE_RESULT asserts it by name, outside the per-lane loop. In release-PR mirror

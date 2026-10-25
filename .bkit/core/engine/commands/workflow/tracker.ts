@@ -361,7 +361,7 @@ export class JiraSession {
 }
 
 function jiraSite(t: TrackerTarget): string {
-  if (!t.jiraSite) throw new TrackerError("not-found", "bkit.jira.site is not set");
+  if (!t.jiraSite) throw new TrackerError("not-found", "bkit.tracker.jira.site is not set");
   return t.jiraSite;
 }
 
@@ -931,7 +931,7 @@ export async function readBlockers(t: TrackerTarget): Promise<Blocker[]> {
   throw new TrackerError("not-found", "issue tracker none");
 }
 
-/** A Projects v2 board from `bkit.github.project`. */
+/** A Projects v2 board from `bkit.tracker.github.project`. */
 export interface Board {
   owner: string;
   number: number;

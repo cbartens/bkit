@@ -204,7 +204,7 @@ describe("detectTestIntegrationEnv", () => {
       path.join(tmpDir, "package.json"),
       JSON.stringify({
         scripts: { "test:integration": "vitest run --config vitest.integration.config.ts" },
-        bkit: { ignoreAdvisories: ["test-integration-env-not-asserted"] },
+        bkit: { advisories: { ignore: ["test-integration-env-not-asserted"] } },
       }),
     );
     const notes: SuppressionNote[] = [];
@@ -217,7 +217,7 @@ describe("detectTestIntegrationEnv", () => {
       path.join(tmpDir, "package.json"),
       JSON.stringify({
         scripts: { "test:integration": "vitest run --config vitest.integration.config.ts" },
-        bkit: { ignoreAdvisories: ["tagged-tests-no-ci-home"] },
+        bkit: { advisories: { ignore: ["tagged-tests-no-ci-home"] } },
       }),
     );
     const notes: SuppressionNote[] = [];
@@ -640,6 +640,87 @@ describe("detectCiYmlCapstoneContractDrift", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Configured CI workflow / capstone — package.json bkit.testing.ciWorkflow / ciCapstone
+// ---------------------------------------------------------------------------
+
+describe("CI workflow detectors read the configured bkit.testing.ciWorkflow / ciCapstone", () => {
+  function configure(testing: Record<string, string>) {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", bkit: { testing } }),
+    );
+  }
+  function writeWorkflow(file: string, content: string) {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "workflows", file), content);
+  }
+  const ADOPTED =
+    "name: CI\n" + "jobs:\n" + "  bkit-tests:\n" + "    runs-on: ubuntu-latest\n" + "    steps:\n";
+
+  it("actionlint: fires on the configured workflow and names its path", () => {
+    configure({ ciWorkflow: "ci.yml" });
+    writeWorkflow("ci.yml", ADOPTED + "      - run: pnpm test\n");
+    const f = detectCiYmlMissingActionlint(tmpDir);
+    expect(f?.id).toBe("ci-yml-missing-actionlint");
+    expect(f?.detect).toContain(".github/workflows/ci.yml");
+    expect(f?.action).toContain(".github/workflows/ci.yml");
+    expect(`${f?.detect}${f?.action}`).not.toContain("bkit-ci.yml");
+  });
+
+  it("actionlint: ignores a bkit-ci.yml that is not the configured workflow", () => {
+    configure({ ciWorkflow: "ci.yml" });
+    writeWorkflow("bkit-ci.yml", ADOPTED + "      - run: pnpm test\n");
+    expect(detectCiYmlMissingActionlint(tmpDir)).toBeNull();
+  });
+
+  it("run injection: fires on the configured workflow and names its path", () => {
+    configure({ ciWorkflow: "ci.yml" });
+    writeWorkflow("ci.yml", ADOPTED + '      - run: echo "${{ github.head_ref }}"\n');
+    const f = detectCiYmlRunInjection(tmpDir);
+    expect(f?.id).toBe("ci-yml-run-injection");
+    expect(f?.detect).toContain(".github/workflows/ci.yml");
+    expect(f?.detect).not.toContain("bkit-ci.yml");
+  });
+
+  it("capstone drift: fires on the configured workflow and capstone job, naming both", () => {
+    configure({ ciWorkflow: "ci.yml", ciCapstone: "app.gate" });
+    writeWorkflow(
+      "ci.yml",
+      "name: CI\njobs:\n  app.gate:\n    if: ${{ always() }}\n    steps: []\n",
+    );
+    const f = detectCiYmlCapstoneContractDrift(tmpDir);
+    expect(f?.id).toBe("ci-yml-capstone-contract-drift");
+    expect(f?.detect).toContain(".github/workflows/ci.yml");
+    expect(f?.detect).toContain("app.gate");
+    expect(f?.detect).not.toContain("bkit-ci.yml");
+    expect(f?.detect).not.toContain("bkit-tests-check");
+  });
+
+  it("capstone drift: matches the configured capstone name literally (regex-escaped)", () => {
+    configure({ ciCapstone: "app.gate" });
+    writeWorkflow("bkit-ci.yml", "name: CI\njobs:\n  appXgate:\n    if: ${{ always() }}\n");
+    expect(detectCiYmlCapstoneContractDrift(tmpDir)).toBeNull();
+  });
+
+  it("capstone drift: a default-named job is not the configured capstone", () => {
+    configure({ ciCapstone: "app-gate" });
+    writeWorkflow("bkit-ci.yml", "name: CI\njobs:\n  bkit-tests-check:\n    if: ${{ always() }}\n");
+    expect(detectCiYmlCapstoneContractDrift(tmpDir)).toBeNull();
+  });
+
+  it("run levels: fires on the configured workflow, names its path, and still reads siblings", () => {
+    configure({ ciWorkflow: "ci.yml" });
+    writeWorkflow("ci.yml", "      - name: Detect Direct Push\n        run: echo detect\n");
+    const f = detectRunLevelsNotComposed(tmpDir);
+    expect(f?.id).toBe("run-levels-not-composed");
+    expect(`${f?.detect}${f?.action}`).toContain(".github/workflows/ci.yml");
+    expect(`${f?.detect}${f?.action}`).not.toContain("bkit-ci.yml");
+    writeWorkflow("bkit-ci.yml", "    if: steps.detect.outputs.should_run_full == 'true'\n");
+    expect(detectRunLevelsNotComposed(tmpDir)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // detectTaggedTestsWithoutCiHome
 // ---------------------------------------------------------------------------
 
@@ -666,7 +747,11 @@ describe("detectTaggedTestsWithoutCiHome", () => {
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(
       path.join(dir, "package.json"),
-      JSON.stringify({ name: relDir || "root", scripts, bkit: { ignoreAdvisories } }),
+      JSON.stringify({
+        name: relDir || "root",
+        scripts,
+        bkit: { advisories: { ignore: ignoreAdvisories } },
+      }),
     );
   }
 
@@ -785,6 +870,6 @@ describe("detectTaggedTestsWithoutCiHome", () => {
     writePkg("packages/api", { "test:live": "vitest --project live" }); // convention active
     writePkg("tooling/eslint", { test: "vitest run" });
     writeTest("tooling/eslint/rule.test.ts", 'it("uses @live", () => {});');
-    expect(detectTaggedTestsWithoutCiHome(tmpDir)?.action).toContain("ignoreAdvisories");
+    expect(detectTaggedTestsWithoutCiHome(tmpDir)?.action).toContain(`"advisories": { "ignore"`);
   });
 });

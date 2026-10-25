@@ -188,6 +188,7 @@ describe("getInstallManifest", () => {
     // prompts.md is markered-text (carries the consumer-owned `## Model Overrides`
     // section below `bkit:end`); the rest are whole-file byte-equal.
     const byteEqualDocs = [
+      "authoring.md",
       "cloud.md",
       "comparison.md",
       "install.md",

@@ -13,13 +13,19 @@ import * as path from "node:path";
 
 import {
   activeDoneSteps,
+  allRunsDoneSteps,
   lastDoneStepAllRuns,
   nextStrategy,
   runNumber,
   type Step,
 } from "../../ledgers/status.js";
-import { readBkitConfig } from "../../shared/settings.js";
-import { LOOP_PAUSE_THRESHOLDS, THRESHOLDS } from "../../shared/thresholds.js";
+import {
+  ASK_POINTS,
+  readBkitConfig,
+  type AskPoint,
+  type AskSetting,
+} from "../../shared/settings.js";
+import { headlessRun } from "./runtime.js";
 import {
   CommandError,
   EXIT,
@@ -32,8 +38,8 @@ import {
 import {
   EXIT_NO_STATUS,
   FILE_FLAG,
+  GROUP_FLAG,
   STEP_FLAG,
-  SUB_PLAN_FLAG,
   WORKFLOW_FLAG,
   positiveInt,
   readRuns,
@@ -42,16 +48,19 @@ import {
   str,
 } from "./status.js";
 
-/** One MAX_* threshold by name; an unknown name is a usage error. */
-export function threshold(name: string): number {
-  const value = (THRESHOLDS as Readonly<Record<string, number>>)[name];
-  if (value === undefined) {
-    throw new CommandError(
-      EXIT.USAGE,
-      `unknown threshold ${name}; known: ${Object.keys(THRESHOLDS).join(", ")}`,
-    );
-  }
-  return value;
+/** An ask point by name (`build.verify`); an unknown name is a usage error. */
+export function askPoint(name: string): AskPoint {
+  if (!(ASK_POINTS as readonly string[]).includes(name))
+    throw new CommandError(EXIT.USAGE, `unknown point ${name}; known: ${ASK_POINTS.join(", ")}`);
+  return name as AskPoint;
+}
+
+/** The checkout `cwd` sits in. */
+const checkoutRoot = (cwd: string): string => git(cwd, ["rev-parse", "--show-toplevel"]) ?? cwd;
+
+/** `bkit.workflows.<point>` for the checkout `cwd` sits in. */
+export function askSetting(cwd: string, point: AskPoint): AskSetting {
+  return readBkitConfig(checkoutRoot(cwd)).asks[point];
 }
 
 /** Paths a fix round's code change is judged on: everything but plan logs and ledgers. */
@@ -78,7 +87,8 @@ const nonNegativeInt = (v: FlagValue, flag: string): number => {
 
 /**
  * `--of=<step>:<position>` over `--file` / `--workflow`: the counter at that position.
- * `--of=<step>,<step>...:count` sums the DONE rows of every listed step.
+ * `--of=<step>,<step>...:count` sums the DONE rows of every listed step. `--all-runs`
+ * counts every run of the workflow in the file, not only the active one.
  */
 function derivedOf(ctx: RunContext): number {
   const [list, position] = String(ctx.flags.of).split(":");
@@ -90,12 +100,10 @@ function derivedOf(ctx: RunContext): number {
   if (ctx.flags.file === undefined || ctx.flags.workflow === undefined)
     throw new CommandError(EXIT.USAGE, "--of needs --file and --workflow");
   const runs = readRuns(statusFile(ctx));
-  const subPlan = positiveInt(ctx.flags.subPlan, "sub-plan");
+  const group = positiveInt(ctx.flags.group, "group");
+  const doneSteps = ctx.flags.allRuns === true ? allRunsDoneSteps : activeDoneSteps;
   const count = steps.reduce(
-    (n, step) =>
-      n +
-      activeDoneSteps(runs, String(ctx.flags.workflow), { step, subPlan }, str(ctx.flags.since))
-        .length,
+    (n, step) => n + doneSteps(runs, String(ctx.flags.workflow), { step, group }).length,
     0,
   );
   if (position === "current" && count === 0)
@@ -105,6 +113,13 @@ function derivedOf(ctx: RunContext): number {
     );
   return position === "next" ? count + 1 : count;
 }
+
+/** `--all-runs`: count every run of the workflow in `--file`, not only the active one. */
+const ALL_RUNS_FLAG = {
+  name: "all-runs",
+  type: "boolean",
+  help: "count every run of the workflow in --file, not only the active one",
+} as const;
 
 /** Rows of `type` in `workflow`'s active run (since its last workflow-started row). */
 function typedRowCount(file: string, workflow: string, type: string): number {
@@ -118,20 +133,14 @@ function typedRowCount(file: string, workflow: string, type: string): number {
     .filter((r) => r.type === type && (r.workflow === undefined || r.workflow === workflow)).length;
 }
 
-/** `route --rows=<type>:<next|count>`: the value from typed rows of the active run. */
+/** `route --rows=<type>:count`: rows of that type in the active run. */
 function derivedRows(ctx: RunContext): number {
   const [type, position] = String(ctx.flags.rows).split(":");
-  if (!type || !["next", "count"].includes(position ?? ""))
-    throw new CommandError(EXIT.USAGE, "--rows must be <row type>:<next|count>");
+  if (!type || position !== "count")
+    throw new CommandError(EXIT.USAGE, "--rows must be <row type>:count");
   if (ctx.flags.file === undefined || ctx.flags.workflow === undefined)
     throw new CommandError(EXIT.USAGE, "--rows needs --file and --workflow");
-  const count = typedRowCount(statusFile(ctx), String(ctx.flags.workflow), type);
-  return position === "next" ? count + 1 : count;
-}
-
-/** Whether `bkit.loopPause` is on for the checkout `cwd` sits in. */
-function loopPauseOn(cwd: string): boolean {
-  return readBkitConfig(git(cwd, ["rev-parse", "--show-toplevel"]) ?? cwd).loopPause;
+  return typedRowCount(statusFile(ctx), String(ctx.flags.workflow), type);
 }
 
 /** The checkout a status.jsonl under `docs/plans/` belongs to; `cwd` when it is elsewhere. */
@@ -157,9 +166,72 @@ export function loopTrend(rounds: Step[], codeChanged: boolean | null): LoopTren
   return "stuck";
 }
 
+export interface LoopProgress {
+  rounds: { attempt: number | null; failures: number | null; at: string }[];
+  counts: string;
+  codeChanged: boolean | null;
+  lastStrategy: string | null;
+  nextStrategy: string;
+  finalSpent: boolean;
+  minutesPerRound: number | null;
+  trend: LoopTrend;
+  recommend: "try-again" | "stop" | null;
+}
+
+/** A fix loop's progress in the active run: `check` counts problems, `fix` fixes them. */
+export function loopProgress(
+  file: string,
+  cwd: string,
+  workflow: string,
+  check: string,
+  fix: string,
+  group: number | undefined,
+): LoopProgress {
+  const runs = readRuns(file);
+  const rounds = activeDoneSteps(runs, workflow, { step: check, group });
+  const fixes = activeDoneSteps(runs, workflow, { step: fix, group });
+  const first = rounds[0];
+  const last = rounds.at(-1);
+  let codeChanged: boolean | null = null;
+  if (first && last && first !== last && first.parentSha && last.parentSha) {
+    const diff = runGit(checkoutOf(file, cwd), [
+      "diff",
+      "--quiet",
+      first.parentSha,
+      last.parentSha,
+      "--",
+      ...SOURCE_PATHS,
+    ]);
+    // --quiet: exit 0 = no change, 1 = changed; anything else (unknown sha) leaves null.
+    if (diff.ok) codeChanged = false;
+    else if (diff.stderr === "") codeChanged = true;
+  }
+  const ladder = lastDoneStepAllRuns(runs, workflow, { step: fix, group })?.strategy;
+  const trend = loopTrend(rounds, codeChanged);
+  const span =
+    first && last && rounds.length > 1
+      ? (Date.parse(last.at) - Date.parse(first.at)) / 60000 / (rounds.length - 1)
+      : null;
+  return {
+    rounds: rounds.map((r) => ({
+      attempt: r.attempt ?? null,
+      failures: r.failures ?? null,
+      at: r.at,
+    })),
+    counts: rounds.map((r) => (r.failures === undefined ? "?" : String(r.failures))).join(" → "),
+    codeChanged,
+    lastStrategy: fixes.at(-1)?.strategy ?? null,
+    nextStrategy: nextStrategy(ladder),
+    finalSpent: fixes.some((r) => r.strategy === "FINAL") || ladder === "FINAL",
+    minutesPerRound: span === null || Number.isNaN(span) ? null : Math.round(span),
+    trend,
+    recommend: trend === "first-round" ? null : trend === "closing" ? "try-again" : "stop",
+  };
+}
+
 export const countersCommand: CommandSpec = {
   noun: "counters",
-  summary: "Attempt counters derived from status.jsonl, and the MAX_* thresholds.",
+  summary: "Attempt counters derived from status.jsonl, and the ask points' limits.",
   verbs: {
     derive: {
       summary: "Count a step's DONE rows in the active run, at one of three positions.",
@@ -167,18 +239,14 @@ export const countersCommand: CommandSpec = {
         FILE_FLAG,
         WORKFLOW_FLAG,
         STEP_FLAG,
-        SUB_PLAN_FLAG,
+        GROUP_FLAG,
         {
           name: "position",
           type: "string",
           required: true,
           help: "next (step start: count+1) | current (after own row: count, 0 refused) | count (other step: 0 legal)",
         },
-        {
-          name: "since",
-          type: "string",
-          help: "run field holding a timestamp; only rows after it count (soakEntryAt)",
-        },
+        ALL_RUNS_FLAG,
       ],
       output: { value: "the counter at that position", count: "DONE rows counted" },
       exitCodes: {
@@ -190,11 +258,10 @@ export const countersCommand: CommandSpec = {
         if (!["next", "current", "count"].includes(position)) {
           throw new CommandError(EXIT.USAGE, "--position must be next, current, or count");
         }
-        const count = activeDoneSteps(
+        const count = (ctx.flags.allRuns === true ? allRunsDoneSteps : activeDoneSteps)(
           readRuns(statusFile(ctx)),
           String(ctx.flags.workflow),
-          { step: String(ctx.flags.step), subPlan: positiveInt(ctx.flags.subPlan, "sub-plan") },
-          str(ctx.flags.since),
+          { step: String(ctx.flags.step), group: positiveInt(ctx.flags.group, "group") },
         ).length;
         if (position === "current" && count === 0) {
           ctx.log(
@@ -217,13 +284,14 @@ export const countersCommand: CommandSpec = {
       },
     },
     route: {
-      summary: "Compare a counter to its max: exit 0 continue, exit 1 exceeded.",
+      summary:
+        "Compare a counter to its max: exit 0 continue, exit 1 exceeded; with --point, also whether to ask.",
       flags: [
         { name: "name", type: "string", required: true, help: "counter name, for the log line" },
         {
           name: "value",
           type: "string",
-          help: "counter value (non-negative integer), or derive it with --of",
+          help: "counter value (non-negative integer), or derive it with --of / --rows",
         },
         {
           name: "of",
@@ -233,32 +301,27 @@ export const countersCommand: CommandSpec = {
         {
           name: "rows",
           type: "string",
-          help: "<row type>:<next|count> — derive the value from rows of that type in --file's active run",
+          help: "<row type>:count — rows of that type in --file's active run; with --of, added to it",
         },
         { ...FILE_FLAG, required: false, help: "status.jsonl, with --of or --rows" },
         { ...WORKFLOW_FLAG, required: false, help: "workflow, with --of or --rows" },
-        { ...SUB_PLAN_FLAG, help: "with --of: only rows for this sub-plan" },
+        { ...GROUP_FLAG, help: "with --of: only rows for this plan group" },
+        { ...ALL_RUNS_FLAG, help: "with --of: count every run of the workflow in --file" },
+        { name: "max", type: "string", help: "max as a number (or use --point)" },
         {
-          name: "since",
+          name: "point",
           type: "string",
-          help: "with --of: run field holding a timestamp; only rows after it count (soakEntryAt)",
+          help: `ask point whose limit is the max: ${ASK_POINTS.join(" | ")}`,
         },
-        { name: "max", type: "string", help: "max as a number (or use --limit)" },
-        { name: "limit", type: "string", help: "max as a threshold name, e.g. MAX_VERIFY_ATTEMPT" },
         { name: "continue", type: "string", help: "step to go to when value <= max" },
         { name: "exceeded", type: "string", help: "step to go to when value > max" },
-        {
-          name: "exceeded-paused",
-          type: "string",
-          help: "step to go to when value > max and bkit.loopPause lowered --limit to one round",
-        },
       ],
       output: {
         value: "the counter compared",
         exceeded: "true when value > max",
-        next: "--continue, --exceeded or --exceeded-paused step, whichever applies (null when not given)",
+        next: "--continue or --exceeded step, whichever applies (null when not given)",
         max: "the max compared against",
-        paused: "true when bkit.loopPause lowered --limit to one round",
+        ask: "with --point: the point's ask setting, false when headless (GITHUB_ACTION); else false",
       },
       exitCodes: {
         [EXIT_NO_STATUS]: "--of / --rows: status.jsonl missing, unreadable, or not valid NDJSON",
@@ -266,67 +329,56 @@ export const countersCommand: CommandSpec = {
       },
       run: (ctx) => {
         const name = String(ctx.flags.name);
-        const sources = [ctx.flags.value, ctx.flags.of, ctx.flags.rows].filter(
-          (v) => v !== undefined,
-        ).length;
-        if (sources !== 1)
-          throw new CommandError(EXIT.USAGE, "give exactly one of --value, --of or --rows");
-        const value =
-          ctx.flags.of !== undefined
-            ? derivedOf(ctx)
-            : ctx.flags.rows !== undefined
-              ? derivedRows(ctx)
-              : nonNegativeInt(ctx.flags.value, "value");
-        if ((ctx.flags.max === undefined) === (ctx.flags.limit === undefined)) {
-          throw new CommandError(EXIT.USAGE, "give exactly one of --max or --limit");
+        const derived = ctx.flags.of !== undefined || ctx.flags.rows !== undefined;
+        if (derived === (ctx.flags.value !== undefined))
+          throw new CommandError(EXIT.USAGE, "give --value, or --of and/or --rows");
+        const value = derived
+          ? (ctx.flags.of !== undefined ? derivedOf(ctx) : 0) +
+            (ctx.flags.rows !== undefined ? derivedRows(ctx) : 0)
+          : nonNegativeInt(ctx.flags.value, "value");
+        if ((ctx.flags.max === undefined) === (ctx.flags.point === undefined)) {
+          throw new CommandError(EXIT.USAGE, "give exactly one of --max or --point");
         }
-        const limit = str(ctx.flags.limit);
-        const paused =
-          limit !== undefined && limit in LOOP_PAUSE_THRESHOLDS && loopPauseOn(ctx.cwd);
-        const max =
-          limit === undefined
-            ? nonNegativeInt(ctx.flags.max, "max")
-            : paused
-              ? (LOOP_PAUSE_THRESHOLDS[limit] ?? threshold(limit))
-              : threshold(limit);
+        const point = ctx.flags.point === undefined ? undefined : askPoint(String(ctx.flags.point));
+        const setting = point === undefined ? undefined : askSetting(ctx.cwd, point);
+        const max = setting === undefined ? nonNegativeInt(ctx.flags.max, "max") : setting.max;
         const exceeded = value > max;
         if (exceeded) ctx.log(`counter ${name} exceeded max=${max} (value=${value})`);
-        const exceededTo = paused
-          ? (str(ctx.flags.exceededPaused) ?? str(ctx.flags.exceeded))
-          : str(ctx.flags.exceeded);
         ctx.emit({
           value,
           exceeded,
-          next: (exceeded ? exceededTo : str(ctx.flags.continue)) ?? null,
+          next: (exceeded ? str(ctx.flags.exceeded) : str(ctx.flags.continue)) ?? null,
           max,
-          paused,
+          ask: setting !== undefined && setting.ask && !headlessRun(ctx.cwd),
         });
         return exceeded ? EXIT.NO : EXIT.OK;
       },
     },
     max: {
-      summary: "The MAX_* thresholds: one by --name, or all.",
-      flags: [
-        { name: "name", type: "string", help: "threshold name, e.g. MAX_DEV_DISPATCH_ATTEMPTS" },
-      ],
+      summary: "The ask points' limits and ask settings: one by --point, or all.",
+      flags: [{ name: "point", type: "string", help: "ask point, e.g. debug.fix" }],
       output: {
-        value: "the named threshold (with --name)",
-        thresholds: "every threshold (without --name)",
-        loopPauseThresholds: "the caps bkit.loopPause lowers to one round (without --name)",
+        value: "the point's limit (with --point)",
+        ask: "the point's ask setting, false when headless (with --point)",
+        points: "every point's {ask, max} as set (without --point)",
       },
       run: (ctx) => {
-        const name = str(ctx.flags.name);
-        ctx.emit(
-          name === undefined
-            ? { thresholds: THRESHOLDS, loopPauseThresholds: LOOP_PAUSE_THRESHOLDS }
-            : { value: threshold(name) },
-        );
+        const name = str(ctx.flags.point);
+        if (name === undefined) {
+          ctx.emit({ points: readBkitConfig(checkoutRoot(ctx.cwd)).asks });
+          return EXIT.OK;
+        }
+        const setting = askSetting(ctx.cwd, askPoint(name));
+        ctx.emit({
+          value: setting.max,
+          ask: setting.ask && !headlessRun(ctx.cwd),
+        });
         return EXIT.OK;
       },
     },
     progress: {
       summary:
-        "Progress report for a fix loop since a run field's timestamp: counts per round, code change, strategy, trend.",
+        "Progress report for a fix loop in the active run: counts per round, code change, strategy, trend.",
       flags: [
         FILE_FLAG,
         WORKFLOW_FLAG,
@@ -342,12 +394,7 @@ export const countersCommand: CommandSpec = {
           required: true,
           help: "the step that fixes them, e.g. build-plan-gaps-remediate",
         },
-        SUB_PLAN_FLAG,
-        {
-          name: "since",
-          type: "string",
-          help: "run field holding a timestamp; only rows after it count (decisionAt)",
-        },
+        GROUP_FLAG,
       ],
       output: {
         rounds: "the check rounds counted: attempt, failures, at",
@@ -363,54 +410,15 @@ export const countersCommand: CommandSpec = {
       },
       exitCodes: { [EXIT_NO_STATUS]: "status.jsonl missing, unreadable, or not valid NDJSON" },
       run: (ctx) => {
-        const file = statusFile(ctx);
-        const runs = readRuns(file);
-        const workflow = String(ctx.flags.workflow);
-        const subPlan = positiveInt(ctx.flags.subPlan, "sub-plan");
-        const since = str(ctx.flags.since);
-        const check = String(ctx.flags.check);
-        const fix = String(ctx.flags.fix);
-        const rounds = activeDoneSteps(runs, workflow, { step: check, subPlan }, since);
-        const fixes = activeDoneSteps(runs, workflow, { step: fix, subPlan }, since);
-        const first = rounds[0];
-        const last = rounds.at(-1);
-        let codeChanged: boolean | null = null;
-        if (first && last && first !== last && first.parentSha && last.parentSha) {
-          const diff = runGit(checkoutOf(file, ctx.cwd), [
-            "diff",
-            "--quiet",
-            first.parentSha,
-            last.parentSha,
-            "--",
-            ...SOURCE_PATHS,
-          ]);
-          // --quiet: exit 0 = no change, 1 = changed; anything else (unknown sha) leaves null.
-          if (diff.ok) codeChanged = false;
-          else if (diff.stderr === "") codeChanged = true;
-        }
-        const lastStrategy = fixes.at(-1)?.strategy ?? null;
-        const ladder = lastDoneStepAllRuns(runs, workflow, { step: fix, subPlan })?.strategy;
-        const trend = loopTrend(rounds, codeChanged);
-        const span =
-          first && last && rounds.length > 1
-            ? (Date.parse(last.at) - Date.parse(first.at)) / 60000 / (rounds.length - 1)
-            : null;
         ctx.emit({
-          rounds: rounds.map((r) => ({
-            attempt: r.attempt ?? null,
-            failures: r.failures ?? null,
-            at: r.at,
-          })),
-          counts: rounds
-            .map((r) => (r.failures === undefined ? "?" : String(r.failures)))
-            .join(" → "),
-          codeChanged,
-          lastStrategy,
-          nextStrategy: nextStrategy(ladder),
-          finalSpent: fixes.some((r) => r.strategy === "FINAL") || ladder === "FINAL",
-          minutesPerRound: span === null || Number.isNaN(span) ? null : Math.round(span),
-          trend,
-          recommend: trend === "first-round" ? null : trend === "closing" ? "try-again" : "stop",
+          ...loopProgress(
+            statusFile(ctx),
+            ctx.cwd,
+            String(ctx.flags.workflow),
+            String(ctx.flags.check),
+            String(ctx.flags.fix),
+            positiveInt(ctx.flags.group, "group"),
+          ),
         });
         return EXIT.OK;
       },

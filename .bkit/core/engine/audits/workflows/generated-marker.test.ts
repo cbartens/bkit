@@ -137,16 +137,17 @@ describe("nothing bkit ships can carry a live cut marker", () => {
 
 describe("comments are read by the engine, oldest first", () => {
   const CALL_SITE_RE = /method: "get_comments"|mcp__linear__list_comments|listJiraIssueComments/;
-  const PROSE_LINE_RE = /^\s*>/;
+
   const FALLBACK = "the comments oldest first as JSON to `{SESSION_DIR}/issue-comments.json`";
   const PRESET = "`COMMENTS` oldest to newest as JSON to `{SESSION_DIR}/issue-comments.json`";
   const PHASES = WORKFLOW_FILES.filter((rel) => !rel.endsWith("bkit-auto.md"));
 
-  /** Step lines (header prose excluded) that call a tracker's comment read. */
-  const callSites = (rel: string) =>
-    read(rel)
-      .split("\n")
-      .filter((line) => CALL_SITE_RE.test(line) && !PROSE_LINE_RE.test(line));
+  /** Step lines (the header blocks, up to the `---` after front matter, excluded) that call a tracker's comment read. */
+  const callSites = (rel: string) => {
+    const lines = read(rel).split("\n");
+    const headerEnd = lines.indexOf("---", lines.indexOf("---", 1) + 1);
+    return lines.slice(headerEnd + 1).filter((line) => CALL_SITE_RE.test(line));
+  };
 
   it("no workflow step calls a tracker's comment read itself", () => {
     for (const rel of WORKFLOW_FILES) {

@@ -746,11 +746,11 @@ describe("MCP config — fresh install and a consumer's own file", () => {
         expect(Object.keys(mcpJson.mcpServers), rel).toEqual([tracker]);
       }
 
-      // bkit.issueTracker persisted to package.json
+      // bkit.tracker.default persisted to package.json
       const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
-        bkit?: { issueTracker?: string };
+        bkit?: { tracker?: { default?: string } };
       };
-      expect(pkg.bkit?.issueTracker).toBe(tracker);
+      expect(pkg.bkit?.tracker?.default).toBe(tracker);
 
       // workflow mirror must have no remaining bkit:tracker OR bkit:when-tracker markers,
       // and call only the tracker's own MCP server
@@ -883,7 +883,7 @@ describe("Challenge Finding 3 — cloud/tracker constraint-before-write regressi
   );
 
   it.each(MISMATCHES)(
-    "--tracker=%s --auto=%s does NOT write bkit.issueTracker to package.json (no partial write)",
+    "--tracker=%s --auto=%s does NOT write bkit.tracker.default to package.json (no partial write)",
     (tracker, cloud) => {
       // Finding 3 (b): the "no state written on hard error" invariant.
       // The pre-remediation code wrote issueTracker BEFORE the constraint check,
@@ -905,19 +905,19 @@ describe("Challenge Finding 3 — cloud/tracker constraint-before-write regressi
         },
       );
 
-      // package.json must NOT have bkit.issueTracker set (no partial write).
+      // package.json must NOT have bkit.tracker.default set (no partial write).
       const afterPkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
-        bkit?: { issueTracker?: string };
+        bkit?: { tracker?: { default?: string } };
       };
 
       expect(
-        afterPkg.bkit?.issueTracker,
-        "bkit.issueTracker must NOT be written when the install exits due to a cloud/tracker constraint mismatch",
+        afterPkg.bkit?.tracker?.default,
+        "bkit.tracker.default must NOT be written when the install exits due to a cloud/tracker constraint mismatch",
       ).toBeUndefined();
     },
   );
 
-  it("--tracker=linear --auto=cursor exits 0 and writes bkit.issueTracker=linear (matching pair)", () => {
+  it("--tracker=linear --auto=cursor exits 0 and writes bkit.tracker.default=linear (matching pair)", () => {
     // Complementary positive case: the matching pair must succeed and persist state.
 
     const initialPkg = { name: "constraint-test", version: "0.0.0" };
@@ -942,11 +942,11 @@ describe("Challenge Finding 3 — cloud/tracker constraint-before-write regressi
     ).toBe(0);
 
     const afterPkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
-      bkit?: { issueTracker?: string; cloudAgents?: string };
+      bkit?: { tracker?: { default?: string }; cloud?: { agent?: string } };
     };
 
-    expect(afterPkg.bkit?.issueTracker).toBe("linear");
-    expect(afterPkg.bkit?.cloudAgents).toBe("cursor");
+    expect(afterPkg.bkit?.tracker?.default).toBe("linear");
+    expect(afterPkg.bkit?.cloud?.agent).toBe("cursor");
   });
 });
 
@@ -1069,7 +1069,7 @@ describe("#252 — install requires ≥1 module flag; check/upgrade take none", 
       const r = run(["install", `--tracker=${tracker}`]);
       expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0);
       const pkg = JSON.parse(fs.readFileSync(path.join(tmp, "package.json"), "utf-8"));
-      expect(pkg.bkit.issueTracker).toBe(tracker);
+      expect(pkg.bkit.tracker.default).toBe(tracker);
       expect(fs.readFileSync(path.join(tmp, ".cursor", "mcp.json"), "utf-8")).toContain(
         `"${tracker}"`,
       );
@@ -1097,7 +1097,11 @@ describe("detectOpencodeProviders — multi-provider tracking (issue #281 Task 2
       path.join(tmpDir, "package.json"),
       JSON.stringify({
         name: "x",
-        bkit: { opencodeProvider: "openrouter", opencodeProviders: ["openrouter", "openrouter"] },
+        bkit: {
+          providers: {
+            opencode: { default: "openrouter", installed: ["openrouter", "openrouter"] },
+          },
+        },
       }),
       "utf-8",
     );
@@ -1116,7 +1120,9 @@ describe("detectOpencodeProviders — multi-provider tracking (issue #281 Task 2
       path.join(tmpDir, "package.json"),
       JSON.stringify({
         name: "x",
-        bkit: { opencodeProviders: ["openrouter", "bad-provider", "openrouter"] },
+        bkit: {
+          providers: { opencode: { installed: ["openrouter", "bad-provider", "openrouter"] } },
+        },
       }),
       "utf-8",
     );
@@ -1166,22 +1172,22 @@ describe("opencodeProviders persist block — sequential installs (issue #281 Ta
     expect(r1.status, `first install failed:\n${r1.stdout}\n${r1.stderr}`).toBe(0);
 
     const pkg1 = JSON.parse(fs.readFileSync(path.join(tmp, "package.json"), "utf-8")) as {
-      bkit?: { opencodeProvider?: string; opencodeProviders?: string[] };
+      bkit?: { providers?: { opencode?: { default?: string; installed?: string[] } } };
     };
-    expect(pkg1.bkit?.opencodeProvider).toBe("openrouter");
-    expect(pkg1.bkit?.opencodeProviders).toEqual(["openrouter"]);
+    expect(pkg1.bkit?.providers?.opencode?.default).toBe("openrouter");
+    expect(pkg1.bkit?.providers?.opencode?.installed).toEqual(["openrouter"]);
 
     // Second install: ollama
     const r2 = run(["install", "--opencode=ollama"]);
     expect(r2.status, `second install failed:\n${r2.stdout}\n${r2.stderr}`).toBe(0);
 
     const pkg2 = JSON.parse(fs.readFileSync(path.join(tmp, "package.json"), "utf-8")) as {
-      bkit?: { opencodeProvider?: string; opencodeProviders?: string[] };
+      bkit?: { providers?: { opencode?: { default?: string; installed?: string[] } } };
     };
-    expect(pkg2.bkit?.opencodeProvider).toBe("ollama");
-    expect(pkg2.bkit?.opencodeProviders).toContain("openrouter");
-    expect(pkg2.bkit?.opencodeProviders).toContain("ollama");
-    expect(pkg2.bkit?.opencodeProviders).toHaveLength(2);
+    expect(pkg2.bkit?.providers?.opencode?.default).toBe("ollama");
+    expect(pkg2.bkit?.providers?.opencode?.installed).toContain("openrouter");
+    expect(pkg2.bkit?.providers?.opencode?.installed).toContain("ollama");
+    expect(pkg2.bkit?.providers?.opencode?.installed).toHaveLength(2);
   });
 });
 

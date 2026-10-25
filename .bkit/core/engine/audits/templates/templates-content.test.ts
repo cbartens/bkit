@@ -615,6 +615,7 @@ describe("consumer .prettierignore template (.bkit/templates/.prettierignore)", 
 
   it.each([
     ["run-tests-1.md", true],
+    ["build-group-gate-1-1.md", true],
     ["build-subplan-gate-1-1.md", true],
     ["context-tests-local-1.md", true],
     ["build-plan-verify-1-1.md", false],

@@ -465,13 +465,13 @@ describe("bkit worktrees setup — resume guard", () => {
       const cwd = repo("dev");
       fs.writeFileSync(
         path.join(cwd, "package.json"),
-        JSON.stringify({ bkit: { disk: { minFreeGb } } }),
+        JSON.stringify({ bkit: { workflows: { minFreeGb } } }),
       );
       return cwd;
     };
     afterEach(() => vi.unstubAllEnvs());
 
-    it("stops before minting when free disk stays under bkit.disk.minFreeGb after the max steps", async () => {
+    it("stops before minting when free disk stays under bkit.workflows.minFreeGb after the max steps", async () => {
       const cwd = local(1e9);
       fs.mkdirSync(path.join(cwd, "scripts", "cleanup"), { recursive: true });
       fs.writeFileSync(
@@ -480,7 +480,7 @@ describe("bkit worktrees setup — resume guard", () => {
       );
       const r = await setup(cwd, "build", "--worktrees");
       expect(r.code).toBe(12);
-      expect(r.err).toContain("still under bkit.disk.minFreeGb");
+      expect(r.err).toContain("still under bkit.workflows.minFreeGb");
       expect(fs.existsSync(path.join(cwd, "ran"))).toBe(true);
       expect(fs.existsSync(worktreeDir(cwd, FID))).toBe(false);
     });
@@ -496,7 +496,7 @@ describe("bkit worktrees setup — resume guard", () => {
     const cwd = repo("dev");
     fs.writeFileSync(
       path.join(cwd, "package.json"),
-      JSON.stringify({ bkit: { worktree: { install: false } } }),
+      JSON.stringify({ bkit: { workflows: { worktree: { install: false } } } }),
     );
     const wt = linked(cwd);
     const r = await setup(cwd, "ship", "--worktrees");
@@ -517,7 +517,9 @@ describe("bkit worktrees setup — resume guard", () => {
     const cwd = repo("dev");
     fs.writeFileSync(
       path.join(cwd, "package.json"),
-      JSON.stringify({ bkit: { worktree: { copy: ["../secrets"], install: false } } }),
+      JSON.stringify({
+        bkit: { workflows: { worktree: { copy: ["../secrets"], install: false } } },
+      }),
     );
     linked(cwd);
     const r = await setup(cwd, "ship", "--worktrees");

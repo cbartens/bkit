@@ -76,7 +76,7 @@ describe("bkit-runtime-prose-audit (presence, NOT behaviour)", () => {
     it("auto has no gh MCP fallback: its one gh read (`runs context`) routes exit 80 to the Failure Path", () => {
       const auto = readWorkflow("bkit-auto.md");
       expect(auto).not.toContain("**gh MCP fallback:**");
-      expect(auto).toMatch(/^> - \*\*External tools:\*\* [^\n]*exit 80\) → \*\*Failure Path\*\*/m);
+      expect(auto).toMatch(/^- \*\*External tools:\*\* [^\n]*exit 80\) → \*\*Failure Path\*\*/m);
     });
 
     it("every phase workflow carries the same gh MCP fallback line, and its transport-row call passes --file", () => {
@@ -84,7 +84,7 @@ describe("bkit-runtime-prose-audit (presence, NOT behaviour)", () => {
       const lines = phases.map((f) =>
         readWorkflow(f)
           .split("\n")
-          .filter((l) => l.startsWith("> - **gh MCP fallback:**")),
+          .filter((l) => l.startsWith("- **gh MCP fallback:**")),
       );
       for (const [i, found] of lines.entries()) {
         expect(found, `${phases[i]} carries exactly one gh MCP fallback line`).toHaveLength(1);

@@ -106,7 +106,7 @@ describe("modules-upgrade", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // opencode reconverge on upgrade (sub-plan 4)
+  // opencode reconverge on upgrade
   // Tests that consumer keys in opencode.json survive writeTier2JsonContained
   // while bkit-managed keys are reconverged.
   // ---------------------------------------------------------------------------

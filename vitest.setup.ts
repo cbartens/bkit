@@ -41,6 +41,12 @@ for (const key of Object.keys(process.env)) {
 // Tests of that lookup clear it with `vi.stubEnv("BKIT_NO_UPDATE_CHECK", "")`.
 process.env.BKIT_NO_UPDATE_CHECK = "1";
 
+// No test reads the developer's real Claude Code transcripts: `workflows close` finds the
+// running session's subagent transcripts from `CLAUDE_CODE_SESSION_ID` under
+// `CLAUDE_CONFIG_DIR` (`commands/workflow/run-facts.ts`). A test of that read sets both.
+delete process.env.CLAUDE_CODE_SESSION_ID;
+delete process.env.CLAUDE_CONFIG_DIR;
+
 // No test reads or writes the developer's real bkit config and cache folders: a real
 // `~/.config/bkit/disk-prune.mjs` holds delete steps, and any test that mints a worktree
 // runs `bkit disk prune`'s low-disk check (`commands/workflow/disk.ts`). Each worker gets

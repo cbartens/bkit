@@ -32,6 +32,7 @@ import {
   type EffortMap,
   parseModelLookup,
   applyModelOverrides,
+  unknownModelOverrides,
   buildOpencodeModelLookup,
   buildAntigravityModelLookup,
   parseEffortMap,
@@ -68,7 +69,7 @@ export function discardAllStaging(cwd = process.cwd()): void {
  * The installed opencode provider, or exit(1) with the fix.
  *
  * `bkit check` / `bkit upgrade` take no `--opencode=` flag, so they read the provider the
- * consumer actually installed (package.json `bkit.opencodeProvider`, else the opencode.json
+ * consumer actually installed (package.json `bkit.providers.opencode.default`, else the opencode.json
  * provider block). There is no default: a repo carrying `.opencode/` with no recorded
  * provider is a broken install.
  *
@@ -79,7 +80,7 @@ export function requireOpencodeProvider(cwd: string, context: string): string {
   if (!detected) {
     console.error(
       `${LOG_PREFIX} ${context}: the opencode host is installed but no provider is recorded ` +
-        `(package.json \`bkit.opencodeProvider\` and .opencode/opencode.json are both silent). ` +
+        `(package.json \`bkit.providers.opencode.default\` and .opencode/opencode.json are both silent). ` +
         `Re-run \`bkit install --opencode=<provider>\` — one of ${OPENCODE_PROVIDERS.join(", ")}.`,
     );
     process.exit(1);
@@ -131,11 +132,20 @@ export function validateCloudTrackerMatch(
   );
 }
 
+/** `parent[key]` as an object, set to a fresh `{}` first when it is absent or not an object. */
+function section(parent: Record<string, unknown>, key: string): Record<string, unknown> {
+  const v = parent[key];
+  if (v !== null && typeof v === "object" && !Array.isArray(v)) return v as Record<string, unknown>;
+  const fresh: Record<string, unknown> = {};
+  parent[key] = fresh;
+  return fresh;
+}
+
 /**
  * Detect the bkit opencode provider key a consumer installed.
  *
  * Resolution order:
- *  1. `package.json` `bkit.opencodeProvider` — the authoritative record written on install.
+ *  1. `package.json` `bkit.providers.opencode.default` — the authoritative record written on install.
  *     This is the ONLY signal for managed-auth gateways (opencode) whose opencode.json carries no
  *     custom provider block.
  *  2. `.opencode/opencode.json` first provider key — for installs without the manifest field
@@ -165,7 +175,7 @@ export function detectOpencodeProvider(cwd: string): string | null {
 
 /**
  * Returns all bkit-installed opencode providers from the consumer package.json
- * `bkit.opencodeProviders` array, filtered to valid OPENCODE_PROVIDERS entries; [] when
+ * `bkit.providers.opencode.installed` array, filtered to valid OPENCODE_PROVIDERS entries; [] when
  * the field is absent.
  */
 export function detectOpencodeProviders(cwd: string): string[] {
@@ -240,14 +250,14 @@ export async function runInstall(
 
   // RENDER-input provider resolution. `bkit check` takes no `--opencode=` flag, so the parsed
   // `opencodeProvider` is null on the check path; it falls back to the INSTALLED provider
-  // (package.json `bkit.opencodeProvider`, else the opencode.json provider block). On install
+  // (package.json `bkit.providers.opencode.default`, else the opencode.json provider block). On install
   // `?? detect` fires only when opencode joins as an installed host under `--tracker=`; with
   // `--opencode=<provider>` the flag wins. The PARSED `opencodeProvider` alone drives the persist-to-package.json logic
   // below (gated on `!dryRun` + a real flag). The tracker is resolved from package.json below,
   // so the tracker-dependent opencode mcp block renders the same way on check.
   const renderOpencodeProvider = opencodeProvider ?? detectOpencodeProvider(process.cwd());
 
-  // Resolve issueTracker: --tracker= flag overrides; else read bkit.issueTracker from consumer
+  // Resolve issueTracker: --tracker= flag overrides; else read bkit.tracker.default from consumer
   // package.json; else default to "none".
   // A `--tracker=` value always applies, whether first-set or a re-set of an
   // already-recorded tracker.
@@ -344,6 +354,19 @@ export async function runInstall(
 
   // Seed preflight advisories into ctx so modules can accumulate into the same list.
   const advisories: PreflightFinding[] = [...preflightAdvisories];
+  const deadOverrides =
+    modelLookup.size > 0
+      ? unknownModelOverrides(consumerPromptsMdPath, new Set(modelLookup.keys()))
+      : [];
+  if (deadOverrides.length > 0) {
+    advisories.push({
+      id: "model-override-unknown-agent",
+      severity: "advisory",
+      detect: `.bkit/prompts.md § Model Overrides names agents bkit no longer ships: ${deadOverrides.join(", ")}. Those rows are not applied.`,
+      action:
+        "Delete the rows, or move each pin to the agent that now does that work (see .bkit/prompts.md § Models).",
+    });
+  }
 
   const ws: WriteSet = { writes: [] };
   const postDispatch: Array<() => void> = [];
@@ -375,8 +398,8 @@ export async function runInstall(
 
   // Persist bkit manifest fields to consumer package.json AFTER all hard-error gates pass.
   // This preserves the "no files written on mismatch" invariant. Two fields are recorded:
-  //   - issueTracker: when a `--tracker=` value was given this run.
-  //   - opencodeProvider: when an `--opencode=<provider>` value was given this run. This is
+  //   - tracker.default: when a `--tracker=` value was given this run.
+  //   - providers.opencode.default: when an `--opencode=<provider>` value was given this run. This is
   //     the authoritative provider record detectOpencodeProvider reads on upgrade — REQUIRED
   //     for managed-auth gateways (opencode), whose opencode.json carries no provider block to
   //     detect from. Both are merged in one read-modify-write to avoid double-writing.
@@ -391,20 +414,20 @@ export async function runInstall(
         const parsed = parseJson(raw);
         if (parsed.ok) {
           const pkg = parsed.value as Record<string, unknown>;
-          const bkit = (pkg.bkit ?? {}) as Record<string, unknown>;
-          if (persistTracker) bkit.issueTracker = tracker;
+          const bkit = section(pkg, "bkit");
+          if (persistTracker) section(bkit, "tracker").default = tracker;
           if (persistProvider) {
-            bkit.opencodeProvider = opencodeProvider; // active (drives agent frontmatter)
+            const opencode = section(section(bkit, "providers"), "opencode");
+            opencode.default = opencodeProvider; // active (drives agent frontmatter)
             // Update providers array (deduped).
-            const existingArr: string[] = Array.isArray(bkit.opencodeProviders)
-              ? [...(bkit.opencodeProviders as string[])]
+            const existingArr: string[] = Array.isArray(opencode.installed)
+              ? [...(opencode.installed as string[])]
               : [];
             if (!existingArr.includes(opencodeProvider!)) {
               existingArr.push(opencodeProvider!);
             }
-            bkit.opencodeProviders = existingArr;
+            opencode.installed = existingArr;
           }
-          pkg.bkit = bkit;
           const indentMatch = raw.match(/\n([ \t]+)"/);
           const indent = indentMatch ? indentMatch[1] : "  ";
           const trailingNewline = raw.endsWith("\n") ? "\n" : "";
@@ -414,11 +437,11 @@ export async function runInstall(
             "utf-8",
           );
           if (persistTracker) {
-            console.log(`${LOG_PREFIX} Set bkit.issueTracker = "${tracker}" in package.json`);
+            console.log(`${LOG_PREFIX} Set bkit.tracker.default = "${tracker}" in package.json`);
           }
           if (persistProvider) {
             console.log(
-              `${LOG_PREFIX} Set bkit.opencodeProvider = "${opencodeProvider}" and updated bkit.opencodeProviders in package.json`,
+              `${LOG_PREFIX} Set bkit.providers.opencode.default = "${opencodeProvider}" and updated bkit.providers.opencode.installed in package.json`,
             );
           }
         }

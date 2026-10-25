@@ -1,6 +1,6 @@
-// bkit context clamp|clamp-log|ledger-scan|diff|list-blocks|run-block|finalise —
-// size-bound context artifacts, write the run's diff, and fetch the consumer's
-// evidence.
+// bkit context clamp|clamp-log|ledger-scan|diff|brief|list-blocks|run-block|finalise —
+// size-bound context artifacts, write the run's diff and a build group's brief,
+// and fetch the consumer's evidence.
 //
 // clamp is a runaway backstop, NOT a routine cap: a normal run never fires it.
 // Every removal is marked in place and footered. Profiles:
@@ -30,9 +30,11 @@ import { gitEnv, resolveRepoSlug } from "../../ledgers/telemetry.js";
 import { parseJson } from "../../shared/json.js";
 import { checkedTable } from "../../shared/text.js";
 import { buildComment } from "./issues.js";
+import { parsePlanBlocks, reuseInventory, } from "./plan-blocks.js";
 import { COMMENT_FILE_OUTPUT, commentFileOf } from "./tracker.js";
 import { EXIT_NO_STATUS, positiveInt, readRuns, str } from "./status.js";
 import { EXIT_COMMIT, writeStepRow } from "./steps.js";
+import { doneTasks, redRows } from "./tests.js";
 /** Exit code: the artifact to clamp is missing, unreadable, or could not be replaced. */
 export const EXIT_ARTIFACT = 4;
 // ---------------------------------------------------------------------------
@@ -634,6 +636,16 @@ export function diffNumstat(cwd, range) {
     };
 }
 const joinLines = (lines) => lines.length === 0 ? Buffer.alloc(0) : Buffer.concat([...lines.flatMap((l) => [l, lineOf("")])]);
+/** {@link writeDiffArtifact}; the artifact, or the error text when the write fails. */
+function tryWriteDiffArtifact(...args) {
+    try {
+        return { ok: true, result: writeDiffArtifact(...args) };
+    }
+    catch (err) {
+        // Reported as the artifact exit code, with the reason.
+        return { ok: false, error: err.message };
+    }
+}
 /** Write the range's diff to `out`: whole under the guard, else a per-file budget; the record says which. */
 export function writeDiffArtifact(cwd, out, artifact, range, guard = DIFF_GUARD, keep = { rawDir: null }) {
     const fetchedAt = utcNow();
@@ -718,6 +730,209 @@ export function writeDiffArtifact(cwd, out, artifact, range, guard = DIFF_GUARD,
     return { range, stat, diffLines, partial, omitted, record };
 }
 // ---------------------------------------------------------------------------
+// Brief — what one group's build agents read
+//
+// The engine writes it so the orchestrator never reads the plan: the plan's
+// why and what, where the group sits, the group's open task blocks verbatim,
+// one-line summaries of the earlier tasks they depend on, the Reuse Inventory
+// rows and Architecture entries for the open tasks' files, and the deviations
+// note when there is one.
+// ---------------------------------------------------------------------------
+/** A brief whose work section is over this many bytes warns: the group may not fit one fresh context. */
+export const BRIEF_WORK_WARN_BYTES = 8 * 1024;
+/** The plan sections a brief carries as its why and what, by heading text. */
+const BRIEF_SECTIONS = ["Context & Goals", "Narrative", "Success Criteria", "Out of Scope"];
+/** The plan-execute logs whose `DONE — TASK N` lines mark a task done. */
+const EXECUTE_LOG = /^build-plan-execute-.+-log\.md$/;
+/** A heading's text without leading emoji and marks. */
+const headingText = (text) => text.replace(/^[^A-Za-z0-9]+/, "").trim();
+/**
+ * The body of the first heading named `name`, up to the next heading of the
+ * same or a higher level. Lines inside code fences are never headings.
+ */
+function planSection(lines, name) {
+    let start = -1;
+    let level = 0;
+    let fence = false;
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (/^\s*(`{3,}|~{3,})/.test(line))
+            fence = !fence;
+        const m = fence ? null : /^(#{1,6})\s+(.*)$/.exec(line);
+        if (m === null)
+            continue;
+        if (start >= 0 && m[1].length <= level)
+            return lines.slice(start, i).join("\n").trim();
+        if (start < 0 && headingText(m[2]) === name) {
+            start = i + 1;
+            level = m[1].length;
+        }
+    }
+    return start < 0 ? undefined : lines.slice(start).join("\n").trim();
+}
+/** Every task number a plan-execute log in `dir` records `DONE`. */
+function loggedDone(dir) {
+    const done = new Set();
+    if (!fs.existsSync(dir))
+        return done;
+    for (const f of fs.readdirSync(dir).filter((f) => EXECUTE_LOG.test(f)))
+        for (const n of doneTasks(fs.readFileSync(path.join(dir, f), "utf-8")))
+            done.add(n);
+    return done;
+}
+/** The plan sections whose entries a brief copies for the group's files. */
+const INVENTORY_SECTION = "Reuse Inventory";
+const ARCHITECTURE_SECTION = "Architecture & Component Changes";
+/** Backticked repo-relative paths in `text`, normalised. */
+const backticked = (text) => [...text.matchAll(/`([^`]+)`/g)].map((m) => path.posix.normalize(m[1]));
+/**
+ * The Reuse Inventory table's header and separator lines (`reuseInventory`), and its rows
+ * whose `File` cell names a file in `files`. No table or no `File` column → no rows.
+ */
+function inventoryRows(lines, files) {
+    const table = reuseInventory(lines.join("\n"));
+    if (table === null)
+        return { head: [], rows: [] };
+    const rows = table.rows.filter((r) => r.files.some((f) => files.has(f))).map((r) => r.line);
+    return { head: table.head, rows };
+}
+/**
+ * The Architecture & Component Changes entries whose heading names a file in `files`:
+ * the heading through the line before the next heading of the same or a higher level.
+ * Lines inside code fences are never headings.
+ */
+function architectureEntries(lines, files) {
+    const body = (planSection(lines, ARCHITECTURE_SECTION) ?? "").split("\n");
+    const heads = [];
+    let fence = false;
+    body.forEach((line, i) => {
+        if (/^\s*(`{3,}|~{3,})/.test(line))
+            fence = !fence;
+        const m = fence ? null : /^(#{1,6})\s+(.*)$/.exec(line);
+        if (m !== null)
+            heads.push({ i, level: m[1].length, text: m[2] });
+    });
+    return heads.flatMap((h, k) => {
+        if (!backticked(h.text).some((f) => files.has(f)))
+            return [];
+        const end = heads.slice(k + 1).find((n) => n.level <= h.level)?.i ?? body.length;
+        return [body.slice(h.i, end).join("\n").trim()];
+    });
+}
+/** The next free `build-brief-{group}-{n}.md` in `dir`. */
+function nextBriefPath(dir, group) {
+    const re = new RegExp(`^build-brief-${group}-([0-9]+)\\.md$`);
+    const taken = fs.existsSync(dir)
+        ? fs.readdirSync(dir).map((f) => Number(re.exec(f)?.[1] ?? 0))
+        : [];
+    return path.join(dir, `build-brief-${group}-${Math.max(0, ...taken) + 1}.md`);
+}
+/** The brief's text and its work section's size in bytes. */
+export function briefText(o) {
+    const lines = o.plan.split("\n");
+    const title = lines.find((l) => /^#\s/.test(l))?.replace(/^#\s+/, "") ?? "Plan";
+    const out = [`# Brief: group ${o.group.group} — ${o.group.title}`, "", `Plan: ${title}`, ""];
+    out.push("## Why and what", "");
+    for (const name of BRIEF_SECTIONS) {
+        const body = planSection(lines, name);
+        if (body !== undefined && body !== "")
+            out.push(`### ${name}`, "", body, "");
+    }
+    out.push("## Where it fits", "");
+    const nextGroup = o.groups.find((g) => g.group > o.group.group && g.tasks.some((t) => !o.isDone(t)));
+    for (const g of o.groups) {
+        const state = g.tasks.every(o.isDone)
+            ? "done"
+            : g === o.group
+                ? "this group"
+                : g === nextGroup
+                    ? "next"
+                    : g.group > o.group.group
+                        ? "later"
+                        : "open";
+        out.push(`- Group ${g.group}: ${g.title} — ${state}`);
+        for (const t of g.tasks)
+            out.push(`  - TASK ${t.task}: ${t.title} — ${o.isDone(t) ? "done" : "open"}`);
+    }
+    out.push("");
+    const open = o.group.tasks.filter((t) => !o.isDone(t));
+    const work = ["## The work", ""];
+    for (const t of open)
+        work.push(t.text.trim(), "");
+    const openNums = new Set(open.map((t) => t.task));
+    const reds = o.reds.filter((r) => openNums.has(Number(r.task)));
+    if (reds.length > 0) {
+        work.push("### Reds already recorded", "");
+        for (const r of reds)
+            work.push(`- TASK ${Number(r.task)}: red already recorded for \`${String(r.test)}\` \`${String(r.testName)}\` — test written and seen failing; code may be partly done in the files it names`);
+        work.push("");
+    }
+    const deps = [...new Set(open.flatMap((t) => t.dependsOn))]
+        .filter((n) => !o.group.tasks.some((t) => t.task === n))
+        .sort((a, b) => a - b)
+        .map((n) => o.groups.flatMap((g) => g.tasks).find((t) => t.task === n))
+        .filter((t) => t !== undefined);
+    if (deps.length > 0) {
+        work.push("### Earlier tasks this group depends on", "");
+        for (const t of deps) {
+            const files = [...new Set([...t.create, ...t.update, ...t.delete].map((r) => r.file))];
+            const where = files.length > 0 ? ` — ${files.map((f) => `\`${f}\``).join(", ")}` : "";
+            work.push(`- TASK ${t.task} (group ${t.group}, ${o.isDone(t) ? "done" : "open"}): ${t.title}${where}`);
+        }
+        work.push("");
+    }
+    work.push(...planEntries(lines, open, work, o.planFile));
+    out.push(...work);
+    if (o.note !== undefined)
+        out.push("## Deviations", "", o.note.trim(), "");
+    return {
+        text: out.join("\n"),
+        workBytes: Buffer.byteLength(work.join("\n")),
+    };
+}
+/**
+ * The Reuse Inventory rows, then the Architecture entries, for the files on the open
+ * tasks' CREATE / UPDATE / DELETE lines, each in plan order while the work section stays
+ * within BRIEF_WORK_WARN_BYTES; the rest are counted in a closing line naming where to
+ * read them.
+ */
+function planEntries(lines, open, work, planFile) {
+    const files = new Set(open.flatMap((t) => [...t.create, ...t.update, ...t.delete].map((r) => path.posix.normalize(r.file))));
+    const inventory = inventoryRows(lines, files);
+    const arch = architectureEntries(lines, files);
+    const keptRows = [];
+    const keptArch = [];
+    const render = (rowsLeft, archLeft) => {
+        const part = [];
+        if (keptRows.length > 0)
+            part.push("### Reuse Inventory rows", "", ...inventory.head, ...keptRows, "");
+        if (keptArch.length > 0)
+            part.push("### Architecture entries", "", ...keptArch.flatMap((e) => [e, ""]));
+        if (rowsLeft + archLeft > 0)
+            part.push(`Reuse Inventory rows left out: ${rowsLeft}; Architecture entries left out: ${archLeft} — read them in ${planFile} § ${INVENTORY_SECTION} and § ${ARCHITECTURE_SECTION}.`, "");
+        return part;
+    };
+    const fits = (rowsLeft, archLeft) => Buffer.byteLength([...work, ...render(rowsLeft, archLeft)].join("\n")) <= BRIEF_WORK_WARN_BYTES;
+    // The counts passed to `fits` are those not yet kept, an upper bound on the final ones.
+    let rowsLeft = inventory.rows.length;
+    let archLeft = arch.length;
+    for (const row of inventory.rows) {
+        keptRows.push(row);
+        if (fits(rowsLeft - 1, archLeft))
+            rowsLeft--;
+        else
+            keptRows.pop();
+    }
+    for (const entry of arch) {
+        keptArch.push(entry);
+        if (fits(rowsLeft, archLeft - 1))
+            archLeft--;
+        else
+            keptArch.pop();
+    }
+    return render(rowsLeft, archLeft);
+}
+// ---------------------------------------------------------------------------
 // Command
 // ---------------------------------------------------------------------------
 const RUN_BLOCK_FLAGS = [
@@ -741,7 +956,7 @@ const RUN_BLOCK_OUTPUT = {
 };
 export const contextCommand = {
     noun: "context",
-    summary: "Clamp context artifacts; scan ledgers; list, run and record consumer context-fetch blocks.",
+    summary: "Clamp context artifacts; scan ledgers; write the run's diff and a build group's brief; list, run and record consumer context-fetch blocks.",
     verbs: {
         clamp: {
             summary: "Clamp an artifact to a size profile in place (a backstop, not a routine cap).",
@@ -899,13 +1114,10 @@ export const contextCommand = {
                     fs.mkdirSync(path.dirname(log), { recursive: true });
                     fs.writeFileSync(log, "");
                 }
-                let result;
-                try {
-                    result = writeDiffArtifact(ctx.cwd, path.resolve(ctx.cwd, artifact), artifact, `${base}...HEAD`, DIFF_GUARD, { rawDir: rawDirFor(ctx.cwd, str(ctx.flags.fid)) });
-                }
-                catch (e) {
-                    throw new CommandError(EXIT_ARTIFACT, `${artifact}: ${e.message}`);
-                }
+                const written = tryWriteDiffArtifact(ctx.cwd, path.resolve(ctx.cwd, artifact), artifact, `${base}...HEAD`, DIFF_GUARD, { rawDir: rawDirFor(ctx.cwd, str(ctx.flags.fid)) });
+                if (!written.ok)
+                    throw new CommandError(EXIT_ARTIFACT, `${artifact}: ${written.error}`);
+                const result = written.result;
                 if (log !== undefined)
                     appendRecord(log, result.record);
                 if (result.partial) {
@@ -920,6 +1132,109 @@ export const contextCommand = {
                     partial: result.partial,
                     omitted: result.omitted,
                     clamp: result.record,
+                });
+                return EXIT.OK;
+            },
+        },
+        brief: {
+            summary: "Write one group's brief (why and what, where it fits, its open task blocks, the earlier tasks they depend on, the Reuse Inventory rows and Architecture entries for their files, deviations) as build-brief-{group}-{n}.md, and print only its path and sizes.",
+            flags: [
+                { name: "plan", type: "string", required: true, help: "the plan file" },
+                { name: "group", type: "string", help: "the group to brief" },
+                {
+                    name: "next",
+                    type: "boolean",
+                    help: "brief the first group with an open task (none open → nothing written, group null)",
+                },
+                {
+                    name: "dir",
+                    type: "string",
+                    required: true,
+                    help: "the run's logs folder: the brief is written there, and its build-plan-execute-*-log.md DONE lines mark tasks done",
+                },
+                {
+                    name: "file",
+                    type: "string",
+                    help: "status.jsonl, to name the reds already recorded for open tasks",
+                },
+                {
+                    name: "note-file",
+                    type: "string",
+                    help: "text for the Deviations section (left out when not given)",
+                },
+            ],
+            output: {
+                artifact: "the brief's path (null when --next finds no open group)",
+                bytes: "the brief's size in bytes",
+                group: "the group briefed (null when --next finds no open group)",
+                tasks: "the open task numbers the brief carries",
+                workBytes: "the work section's size in bytes (0 when --next finds no open group)",
+                workCap: `the work section's cap in bytes (${BRIEF_WORK_WARN_BYTES}): Reuse Inventory rows and Architecture entries past it are left out and counted; task blocks over it warn on stderr`,
+            },
+            exitCodes: {
+                [EXIT_ARTIFACT]: "the plan or note file is missing, or the plan's blocks do not parse",
+                [EXIT_NO_STATUS]: "--file names a missing or malformed status.jsonl",
+            },
+            run: (ctx) => {
+                const groupFlag = positiveInt(ctx.flags.group, "group");
+                if ((groupFlag === undefined) === (ctx.flags.next !== true))
+                    throw new CommandError(EXIT.USAGE, "give exactly one of --group=N and --next");
+                const planFile = path.resolve(ctx.cwd, String(ctx.flags.plan));
+                if (!fs.existsSync(planFile))
+                    throw new CommandError(EXIT_ARTIFACT, `${String(ctx.flags.plan)} does not exist`);
+                const plan = fs.readFileSync(planFile, "utf-8");
+                const blocks = parsePlanBlocks(plan);
+                if (blocks.errors.length > 0) {
+                    const e = blocks.errors[0];
+                    throw new CommandError(EXIT_ARTIFACT, `${String(ctx.flags.plan)}:${e.line}: ${e.message} — run \`bkit tests plan-check\``);
+                }
+                const dir = path.resolve(ctx.cwd, String(ctx.flags.dir));
+                const done = loggedDone(dir);
+                const isDone = (t) => t.done || done.has(t.task);
+                const group = groupFlag === undefined
+                    ? blocks.groups.find((g) => g.tasks.some((t) => !isDone(t)))
+                    : blocks.groups.find((g) => g.group === groupFlag);
+                if (group === undefined && groupFlag !== undefined)
+                    throw new CommandError(EXIT.USAGE, `the plan has no group ${groupFlag}`);
+                if (group === undefined) {
+                    ctx.emit({
+                        artifact: null,
+                        bytes: 0,
+                        group: null,
+                        tasks: [],
+                        workBytes: 0,
+                        workCap: BRIEF_WORK_WARN_BYTES,
+                    });
+                    return EXIT.OK;
+                }
+                const noteFlag = str(ctx.flags.noteFile);
+                const noteFile = noteFlag === undefined ? undefined : path.resolve(ctx.cwd, noteFlag);
+                if (noteFile !== undefined && !fs.existsSync(noteFile))
+                    throw new CommandError(EXIT_ARTIFACT, `${noteFlag} does not exist`);
+                const status = str(ctx.flags.file);
+                const { text, workBytes } = briefText({
+                    plan,
+                    planFile: String(ctx.flags.plan),
+                    group,
+                    groups: blocks.groups,
+                    isDone,
+                    reds: status === undefined ? [] : redRows(path.resolve(ctx.cwd, status), "build"),
+                    note: noteFile === undefined ? undefined : fs.readFileSync(noteFile, "utf-8"),
+                });
+                const out = nextBriefPath(dir, group.group);
+                fs.mkdirSync(dir, { recursive: true });
+                fs.writeFileSync(out, text);
+                if (workBytes > BRIEF_WORK_WARN_BYTES) {
+                    ctx.log(`${out}: the work section is ${humanBytes(workBytes)}, over ${humanBytes(BRIEF_WORK_WARN_BYTES)} — the group may not fit one fresh context`);
+                }
+                const artifact = path.isAbsolute(String(ctx.flags.dir)) ? out : path.relative(ctx.cwd, out);
+                ctx.emit({
+                    artifact,
+                    bytes: Buffer.byteLength(text),
+                    group: group.group,
+                    tasks: group.tasks.filter((t) => !isDone(t)).map((t) => t.task),
+                    workBytes,
+                    workCap: BRIEF_WORK_WARN_BYTES,
                 });
                 return EXIT.OK;
             },

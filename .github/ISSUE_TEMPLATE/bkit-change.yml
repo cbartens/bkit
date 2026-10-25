@@ -8,9 +8,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        Write this as the plan: a build with no plan builds from this issue.
-        - `/bkit-plan #<issue number>` turns it into a checked plan; the build then proves each **Test first** test fails before its code exists.
-        - `/bkit-build #<issue number>` builds straight from this issue and, when Tasks keep the exact shape below, proves each **Test first** test fails before its code exists. **Done when** guides rather than gates.
+        Write this as the plan: a build with no plan converts this issue into one.
+        - `/bkit-plan #<issue number>` turns it into a checked plan; the build then proves each **TEST FIRST** test fails before its code exists.
+        - `/bkit-build #<issue number>` converts this issue into a plan, then builds it and proves each **TEST FIRST** test fails before its code exists.
         - `build:lite` builds from this issue too but checks nothing: no failing-test proof, gates, PR or CI.
 
         Keep the title short: it names the feature folder. Nothing ticks boxes in an issue.
@@ -56,9 +56,30 @@ body:
     attributes:
       label: Tasks
       description: |
-        In build order, one line each, in exactly this shape. **Done when** = a check you can verify in the code (file exists, test passes, behaviour observable). **Test first** = the matrix test that fails before the code exists, as `` `test file` `test name` fails on what it asserts ``; or `n/a — reason` for docs, config, a pure refactor, or E2E / @live only.
+        In build order, preferably in this shape, the same group and task blocks a plan uses: groups of up to `bkit.workflows.tasks.maxPerGroup` tasks (default 3) and `bkit.workflows.tasks.maxTestsPerGroup` **TEST FIRST** tests (default 15), each task a block, task numbers unique across the issue. **CREATE** / **READ** / **UPDATE** / **DELETE** = one line per file the task touches, as `` `symbol` in `file`: what to do `` or `` `file`: what to do ``. **DEPENDS ON** = the numbers of tasks it builds on, in the same or an earlier group. **DONE WHEN** = a check you can verify in the code (file exists, test passes, behaviour observable). **TEST FIRST** = the matrix tests that fail before the code exists, 1 to `bkit.workflows.tasks.maxTestsPerTask` per task (default 10) across up to `bkit.workflows.tasks.maxTestFilesPerTask` test files (default 3), one line each as `` `test file` `test name` fails on what goes wrong ``; or `n/a — reason` for docs, config, a pure refactor, or E2E / @live only. **TEST EXCEPTION** = written only by the owner: tests whose test-order gap you accept, each as in **TEST FIRST** ending `— reason`; it counts once committed alone in the plan. A **TEST EXCEPTION** written here is a request: the build copies it word for word, stops on it, and the owner confirms it at the build's Decision Pause, where Accept rewrites it with the owner's reason and date. Free text works too: the build converts it. A plan file for this issue wins: once one exists, the build reads its tasks only from the plan, never from here.
       placeholder: |
-        - [ ] **Task 1:** What changes. **Done when:** what you can check. **Test first:** `path/to/list.test` `rejects an empty name` fails on the thrown error.
+        <!-- bkit:group 1 start -->
+        ### GROUP 1: Saving items
+        <!-- bkit:task 1 start -->
+        - [ ] **TASK 1:** Refuse an empty item name
+          - **UPDATE:** `saveItem` in `path/to/items`: refuse an empty name
+          - **READ:** `path/to/list`: where saved items show
+          - **DONE WHEN:** saving an empty name stores nothing and shows why
+          - **TEST FIRST:**
+            - `path/to/list.test` `rejects an empty name` fails on an empty name being saved
+        <!-- bkit:task 1 end -->
+        <!-- bkit:task 2 start -->
+        - [ ] **TASK 2:** Show saved items in the list
+          - **CREATE:** `path/to/list-row`: one row per saved item
+          - **DELETE:** `ItemPreview` in `path/to/list`: replaced by the new row
+          - **DEPENDS ON:** 1
+          - **DONE WHEN:** a saved item appears in the list
+          - **TEST FIRST:**
+            - `path/to/list.test` `shows a saved item` fails on the list staying empty
+          - **TEST EXCEPTION:**
+            - `path/to/list.test` `shows a saved item` — the old preview already shows saved items, so it cannot fail first
+        <!-- bkit:task 2 end -->
+        <!-- bkit:group 1 end -->
     validations:
       required: true
   - type: textarea

@@ -354,8 +354,12 @@ describe("#440: audit scope is bkit source, never the rendered mirrors", () => {
 
   it("does cover the whole source corpus", () => {
     const files = auditedFiles();
-    expect(files.filter((f) => f.startsWith(".bkit/core/workflows/")).length).toBeGreaterThan(5);
-    expect(files.filter((f) => f.startsWith(".bkit/core/prompts/")).length).toBeGreaterThan(40);
+    expect(
+      files.filter((f) => f.startsWith(".bkit/core/workflows/")).length,
+    ).toBeGreaterThanOrEqual(6);
+    expect(files.filter((f) => f.startsWith(".bkit/core/prompts/")).length).toBeGreaterThanOrEqual(
+      38,
+    );
   });
 });
 

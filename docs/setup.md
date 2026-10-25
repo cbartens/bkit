@@ -10,7 +10,7 @@
 > **Rules:**
 >
 > - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
-> - Notation: one job per mark — `.bkit/prompts.md` § `Notation`.
+> - Notation: one job per mark — `.bkit/authoring.md` § `Notation`.
 > - Describe current state / rules, not reasons / history; state what to do, not why.
 > - Check `.agents/docs.md` index first and confirm topic belongs in this doc, not another.
 > - Local seed / test fixtures must never run against remote projects.
@@ -82,7 +82,7 @@ pnpm tsx .bkit/core/engine/cli.ts check                                # drift g
 vale sync                                                               # one-off; pulls lint:prose styles
 ```
 
-`install` requires ≥1 module flag or `--tracker=` (which re-renders every installed host), because bare `install` exits 1. `bkit upgrade` is flag-free; re-renders every installed module.
+`install` requires >=1 module flag or `--tracker=` (which re-renders every installed host), because bare `install` exits 1. `bkit upgrade` is flag-free; re-renders every installed module.
 
 Consumer repos: `pnpm add -D @cbartens/bkit && pnpm exec bkit install --claude --cursor` (not the dogfood call).
 

@@ -43,14 +43,13 @@ const VOCABULARY = new Set([
   "LOW",
   "DONE",
   "BLOCKED",
+  "HANDOVER",
   "SETTLED",
   "DISPROVEN",
   "TRUE",
   "FALSE",
   "SOAK",
   "NORMAL",
-  "SINGLE",
-  "SPLIT",
   "PENDING",
   "TRIAGED",
   "DEGRADED",
@@ -128,7 +127,7 @@ describe("prompt notation: the scan reaches real prose", () => {
     const lines = promptLines();
     expect(lines.filter((l) => !l.fenced).length).toBeGreaterThan(1000);
     expect(lines.filter((l) => l.fenced).length).toBeGreaterThan(200);
-    expect(new Set(lines.map((l) => l.file)).size).toBeGreaterThan(40);
+    expect(new Set(lines.map((l) => l.file)).size).toBeGreaterThanOrEqual(38);
   });
 });
 
@@ -255,7 +254,7 @@ describe("prompt notation: fenced output templates stay literal", () => {
       ).toEqual([]);
       seen.push(line.file);
     }
-    expect(seen.length).toBeGreaterThan(25);
+    expect(seen.length).toBeGreaterThanOrEqual(21);
   });
 });
 

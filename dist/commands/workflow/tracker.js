@@ -311,7 +311,7 @@ export class JiraSession {
 }
 function jiraSite(t) {
     if (!t.jiraSite)
-        throw new TrackerError("not-found", "bkit.jira.site is not set");
+        throw new TrackerError("not-found", "bkit.tracker.jira.site is not set");
     return t.jiraSite;
 }
 // ---------------------------------------------------------------------------

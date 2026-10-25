@@ -115,28 +115,28 @@ function isGateConfig(filePath) {
 function investigationChecklist(filePath) {
   const base = path.basename(filePath);
   return (
-    `[bkit GateGuard] First edit to \`${base}\` this session - confirm following, and investigate anything you cannot answer BEFORE editing:\n` +
-    `- Confirm you read this file and exact symbols / lines you are about to change.\n` +
-    `- Confirm precise field names, types, and signatures being changed.\n` +
-    `- Confirm callers / importers changes affect (search code / read source, do NOT assume).\n` +
-    `- Confirm symbols / flags / configs changes require exist (search code / read source, do NOT assume).\n` +
-    `- Confirm external data contracts (DB schemas, APIs / SDKs) changes affect (verify actual shape, do NOT assume).\n` +
-    `- Confirm changes follow patterns / conventions already in this file / its neighbours where feasible (read source, do NOT assume).\n` +
-    `- Confirm user instructions or plan tasks changes serve (quote them, do NOT trust memory).\n` +
-    `Self-review is weak; the investigation itself is what changes the output. Advisory — proceed once satisfied.`
+    `[bkit GateGuard] First edit to \`${base}\` this session — confirm the following, and investigate anything you cannot answer before editing:\n` +
+    `- Confirm you read this file and the exact symbols / lines you are about to change.\n` +
+    `- Confirm the precise field names, types and signatures being changed.\n` +
+    `- Confirm the callers / importers the change affects: search code / read source, do not assume.\n` +
+    `- Confirm the symbols / flags / configs the change requires exist: search code / read source, do not assume.\n` +
+    `- Confirm the external data contracts (DB schemas, APIs / SDKs) the change affects: verify the actual shape, do not assume.\n` +
+    `- Confirm the change follows the patterns / conventions already in this file / its neighbours where feasible: read source, do not assume.\n` +
+    `- Confirm the user instructions or plan tasks the change serves: quote them, do not trust memory.\n` +
+    `Advisory — proceed once satisfied.`
   );
 }
 
 function reuseChecklist(filePath) {
   const base = path.basename(filePath);
   return (
-    `[bkit GateGuard] New file \`${base}\` this session - confirm following, and investigate anything you cannot answer BEFORE adding:\n` +
-    `- Confirm existing code does NOT already provide capability (search code / read source, do NOT assume).\n` +
-    `- Confirm existing code CANNOT be reused / extended to provide capability (search code / read source, do NOT assume).\n` +
-    `- Confirm anything code supersedes is deleted, NOT left as duplicate work (verify removal, do NOT assume).\n` +
-    `- Confirm location / naming fits project architecture / topology / standards (search code / read source, do NOT assume).\n` +
-    `- Confirm structures / patterns / conventions follow closest equivalent files where feasible (read source, do NOT assume).\n` +
-    `Bolt-on drift starts here; evolve existing code first. Advisory — proceed once satisfied.`
+    `[bkit GateGuard] New file \`${base}\` this session — confirm the following, and investigate anything you cannot answer before adding:\n` +
+    `- Confirm existing code does not already provide the capability: search code / read source, do not assume.\n` +
+    `- Confirm existing code cannot be reused / extended to provide the capability: search code / read source, do not assume.\n` +
+    `- Confirm anything the new code supersedes is deleted, not left as duplicate work: verify the removal, do not assume.\n` +
+    `- Confirm the location / naming fits the project architecture / topology / standards: search code / read source, do not assume.\n` +
+    `- Confirm the structures / patterns / conventions follow the closest equivalent files where feasible: read source, do not assume.\n` +
+    `Evolve existing code first. Advisory — proceed once satisfied.`
   );
 }
 
@@ -155,10 +155,10 @@ function isDocsPath(filePath) {
 function docAuthoringAdvisory() {
   return (
     `[bkit GateGuard] docs/*.md authoring:\n` +
-    `- Read THIS file's header block and follow its purpose and rules if present.\n` +
-    `- Check .agents/docs.md index first and confirm topic belongs in THIS doc, not another.\n` +
-    `- Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.\n` +
-    `- Describe current state / rules, NOT reasons / history; state what to do, NOT why. ONLY exceptions: Docs where purpose IS the record.\n` +
+    `- Read this file's header block and follow its purpose and rules if present.\n` +
+    `- Check the .agents/docs.md index first and confirm the topic belongs in this doc, not another.\n` +
+    `- Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.\n` +
+    `- Describe current state / rules, not reasons / history; state what to do, not why. only exceptions: docs where purpose is the record.\n` +
     `Advisory — proceed once satisfied.`
   );
 }
@@ -167,9 +167,10 @@ function configAdvisory(filePath) {
   const base = path.basename(filePath);
   return (
     `[bkit GateGuard] \`${base}\` quality-gate config (lint / format / types / test / slop):\n` +
-    `- Prefer FIXING code over weakening any gates.\n` +
-    `- If changes genuinely warranted, use targeted per-file / per-rule opt-outs over blanket disable.\n` +
-    `- ALWAYS get explicit human sign-off for any quality-gate config changes.\n` +
+    `- Prefer fixing code over weakening any gate.\n` +
+    `- If a change is genuinely warranted, use targeted per-file / per-rule opt-outs over a blanket disable.\n` +
+    `- ALWAYS get explicit human sign-off for any quality-gate config change.\n` +
+    `- Inside \`/bkit-*\` workflows no sign-off is available: record the block and continue; NEVER self-approve the opt-out.\n` +
     `Set BKIT_ALLOW_CONFIG_EDIT=1 to silence this. Advisory — proceed once satisfied.`
   );
 }
@@ -282,8 +283,8 @@ import { fileURLToPath } from "node:url";
 // Codex, opencode); ships in no template and reaches no consumer install
 // (.bkit/core/workflows/ and .bkit/core/prompts/ never exist outside this repo). Lives
 // outside the managed block so it survives every `bkit install` / `bkit upgrade`.
-// Rules the advisories share with .bkit/workflows.md and .bkit/prompts.md are read
-// from their package sources (`.bkit/core/.bkit/`) at hook time, never copied.
+// Rules the advisories share with .bkit/authoring.md are read from its package source
+// (`.bkit/core/.bkit/authoring.md`) at hook time, never copied.
 // ---------------------------------------------------------------------------
 
 function isBkitWorkflowPath(filePath) {
@@ -318,33 +319,65 @@ function sectionRule(source, heading, lead, doc) {
     : `- ${lead}: unreadable here; read \`${doc}\` § ${heading}.`;
 }
 
+const AUTHORING_SOURCE = ".bkit/core/.bkit/authoring.md";
+const AUTHORING_DOC = ".bkit/authoring.md";
+
+/** One rule of `.bkit/core/.bkit/authoring.md` § `heading` as an advisory bullet. */
+function authoringRule(heading, lead) {
+  return sectionRule(AUTHORING_SOURCE, heading, lead, AUTHORING_DOC);
+}
+
+/**
+ * One `**Lead.** text` paragraph of `.bkit/core/.bkit/authoring.md` § Notation as an
+ * advisory bullet. Missing doc or paragraph → a bullet naming where to read it instead.
+ */
+function notationParagraph(lead) {
+  const file = path.join(bkitRepoRoot(), AUTHORING_SOURCE);
+  const src = fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
+  const start = src.indexOf("\n### Notation\n");
+  const rest = start >= 0 ? src.slice(start + 14) : "";
+  const end = rest.search(/\n##? /);
+  const body = end >= 0 ? rest.slice(0, end) : rest;
+  const prefix = `**${lead}.** `;
+  const line = body.split("\n").find((l) => l.startsWith(prefix));
+  return line
+    ? `- ${lead}: ${line.slice(prefix.length)}`
+    : `- ${lead}: unreadable here; read \`${AUTHORING_DOC}\` § Notation.`;
+}
+
 function workflowAuthoringAdvisory() {
-  const rule = (lead) =>
-    sectionRule(".bkit/core/.bkit/workflows.md", "Workflow Authoring Rules", lead, ".bkit/workflows.md");
+  const shared = (lead) => authoringRule("Prompts and Workflows", lead);
+  const all = (lead) => authoringRule("All Agent-Read Files", lead);
   return [
     "[bkit GateGuard] .bkit/core/workflows/*.md authoring:",
-    "- These files ARE their own template: ALWAYS `grep .bkit/core/workflows/` for closest existing cases and copy shapes verbatim BEFORE inventing wording / formatting (phrasing, variables, operators, conditionals, routes, jump targets, bolding, backticks, indentation, line breaks, punctuation, spacing). Match shapes for repeated sections (subagent invocations, `bash` blocks, conditional routes, comment fences, gate checklists). Bash decides, prose routes; `→` is intentional process glyph, 1 process branch → inline; 2+ branches → labeled decision / route block.",
-    rule("Notation"),
-    rule("Dense instructions only"),
-    rule("Cross-workflow alignment"),
-    rule("Human questions"),
-    rule("Self-contained"),
-    rule("Removal = delete"),
+    shared("These files are their own template"),
+    authoringRule("Workflows Only", "Bash decides, prose routes"),
+    all("Current state"),
+    all("Notation"),
+    notationParagraph("Grammar"),
+    shared("Dense instructions only"),
+    shared("Cross-file alignment"),
+    authoringRule("Workflows Only", "Human questions"),
+    shared("Self-contained"),
+    all("Removal = delete"),
     REPO_AUTHORING_RULE,
     "Advisory — proceed once satisfied.",
   ].join("\n");
 }
 
 function promptAuthoringAdvisory() {
-  const rule = (lead) =>
-    sectionRule(".bkit/core/.bkit/prompts.md", "Prompt Authoring Rules", lead, ".bkit/prompts.md");
+  const shared = (lead) => authoringRule("Prompts and Workflows", lead);
+  const all = (lead) => authoringRule("All Agent-Read Files", lead);
   return [
     "[bkit GateGuard] .bkit/core/prompts/*.md authoring:",
-    "- These files ARE their own template: ALWAYS `grep .bkit/core/prompts/` for closest existing cases and copy shapes verbatim BEFORE inventing wording / formatting (phrasing, plurals, variables, operators, conditionals, bolding, backticks, indentation, line breaks, punctuation, spacing). Match shapes for repeated sections (contract clauses, process steps, output format blocks, verdict mappings). `→` is intentional process glyph, adopt do NOT convert.",
-    rule("Dense instructions only"),
-    rule("Cross-prompt alignment"),
-    rule("Self-contained"),
-    rule("Removal = delete"),
+    shared("These files are their own template"),
+    all("Current state"),
+    all("Notation"),
+    notationParagraph("Grammar"),
+    shared("Dense instructions only"),
+    shared("Cross-file alignment"),
+    shared("Self-contained"),
+    all("Removal = delete"),
     REPO_AUTHORING_RULE,
     "Advisory — proceed once satisfied.",
   ].join("\n");
@@ -353,9 +386,9 @@ function promptAuthoringAdvisory() {
 function bkitDocAuthoringAdvisory() {
   return (
     "[bkit GateGuard] bkit `.md` doc authoring:\n" +
-    "- Read THIS file's header block and follow its purpose and rules if present.\n" +
-    "- Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.\n" +
-    "- Describe current state / rules, NOT reasons / history; state what to do, NOT why. ONLY exceptions: Docs where purpose IS the record.\n" +
+    "- Read this file's header block and follow its purpose and rules if present.\n" +
+    "- Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.\n" +
+    "- Describe current state / rules, not reasons / history; state what to do, not why. only exceptions: docs where purpose is the record.\n" +
     "Advisory — proceed once satisfied."
   );
 }

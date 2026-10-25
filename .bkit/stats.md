@@ -37,9 +37,9 @@ A run counts as an error when it added failures. Dispatch-size threshold: 0 line
 <!-- prettier-ignore -->
 | Lines added | Runs | Errors | Error rate |
 | --- | --- | --- | --- |
-| XS (0–49) | 1 | 1 | 100.0% |
-| M (200–499) | 2 | 1 | 50.0% |
-| L (500–999) | 1 | 0 | 0.0% |
+| XS (0-49) | 1 | 1 | 100.0% |
+| M (200-499) | 2 | 1 | 50.0% |
+| L (500-999) | 1 | 0 | 0.0% |
 | XL (1000+) | 16 | 9 | 56.3% |
 
 Attempt counters: 17 counted by the shell (trusted), 3 reported by the model (untrusted).

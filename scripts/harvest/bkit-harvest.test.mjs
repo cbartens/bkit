@@ -18,6 +18,7 @@ import { pathToFileURL } from "node:url";
 import {
   activeSpans,
   activityIndex,
+  buildFacts,
   checkReason,
   endingOf,
   bkitCalls,
@@ -31,10 +32,14 @@ import {
   latestOutcomes,
   latestRows,
   lineClass,
+  MARK_ROWS,
   mergeSpans,
   modelFamily,
   normalize,
   overlapMs,
+  PLAN_FILE,
+  PLAN_FENCE,
+  PLAN_MARKER,
   planShape,
   planTasks,
   readLedger,
@@ -46,10 +51,14 @@ import {
   runCheck,
   runLogDirs,
   runRows,
+  runUsageIndex,
+  runWindows,
   scan,
   scanRuns,
+  shellPlanReads,
   slugFromRemote,
   splitRuns,
+  Tally,
   testOrderGaps,
   toolMix,
   validateTotals,
@@ -726,7 +735,7 @@ await test("claude-code: one folded row per chat, with fingerprints and no prose
   const res = await scanHosts(["claude-code"]);
   assert.equal(res.rows.length, 1);
   const row = rowOf(`claude-code:${sid}`);
-  assert.equal(row.schema, 2);
+  assert.equal(row.schema, 3);
   assert.equal(row.kind, "chat");
   assert.equal(row.key, `claude-code:${sid}`);
   assert.deepEqual(row.by, { workflow: "chat-stats", step: "scan" });
@@ -754,7 +763,7 @@ await test("claude-code: one folded row per chat, with fingerprints and no prose
   assert.deepEqual(Object.keys(row.usage.byModel).sort(), ["claude-opus-5-5", "claude-sonnet-5-5"]);
   assert.equal(row.usage.byModel["claude-opus-5-5"].tokens.read, 4000);
   assert.equal(row.usage.total.tokens.read, 6000);
-  assert.deepEqual(row.usage.total.ctx, { start: 1000, peak: 3000 });
+  assert.deepEqual(row.usage.total.context, { start: 1000, peak: 3000 });
   assert.equal(row.scan.tokensRecorded, true);
   assert.equal(row.scan.settled, true);
   assert.equal(row.scan.files, 2);
@@ -785,7 +794,7 @@ await test("claude-code: one folded row per chat, with fingerprints and no prose
   assert.equal(agent.mix.read, 1, "the Read tool counts as a read");
   assert.deepEqual(
     agent.instances,
-    [{ turns: 1, ctxPeak: 2000 }],
+    [{ turns: 1, contextPeak: 2000, contextAt10: null }],
     "each agent's largest turn is kept",
   );
   assert.equal(row.usage.main.tokens.cacheRead, 3980);
@@ -818,6 +827,18 @@ await test("a second scan appends nothing when the chats are unchanged", async (
   const res = await scanHosts(["claude-code"]);
   assert.equal(res.rows.length, 0);
   assert.equal(res.byPlatform["claude-code"].unchanged, 1);
+});
+
+await test("a stored chat row without the split across runs is read again", async () => {
+  const last = rowOf(`claude-code:${sid}`);
+  assert.deepEqual(last.usage.byRun, {}, "the chat worked on no run");
+  const { byRun, ...usageWithout } = last.usage;
+  const before = fs.readFileSync(statsFile, "utf8");
+  fs.appendFileSync(statsFile, line({ ...last, schema: 2, usage: usageWithout }));
+  const res = await scanHosts(["claude-code"]);
+  assert.equal(res.rows.length, 1);
+  assert.deepEqual(rowOf(`claude-code:${sid}`).usage.byRun, {});
+  fs.writeFileSync(statsFile, before);
 });
 
 await test("a resumed chat gets a new row with the same key; nothing is rewritten", async () => {
@@ -997,8 +1018,9 @@ function counts(over = {}) {
       output: 0,
       outputEst: 0,
       read: 0,
-      ctxStart: 0,
-      ctxPeak: 0,
+      contextStart: 0,
+      contextPeak: 0,
+      contextAt10: null,
     },
     tools: {},
     bash: {},
@@ -1038,14 +1060,19 @@ await test("toolMix counts each host's tool names and the shell commands by what
 });
 
 await test("a workflow named only in the host's summary keeps the issue but is not a workflow run", () => {
-  const ctx = (peak) => ({ ...counts().tokens, read: peak, cacheRead: peak, ctxPeak: peak });
+  const context = (peak) => ({
+    ...counts().tokens,
+    read: peak,
+    cacheRead: peak,
+    contextPeak: peak,
+  });
   const row = chatRow(
     "claude-code",
     "s1",
     counts({ summaryCmds: [["build", 650]] }),
     [
-      { agentType: "bkit-build-plan-verify", counts: counts({ tokens: ctx(130_000) }) },
-      { agentType: "bkit-build-plan-verify", counts: counts({ tokens: ctx(210_000) }) },
+      { agentType: "bkit-build-plan-verify", counts: counts({ tokens: context(130_000) }) },
+      { agentType: "bkit-build-plan-verify", counts: counts({ tokens: context(210_000) }) },
     ],
     { slug: "acme/widget", root: null },
     [],
@@ -1056,10 +1083,10 @@ await test("a workflow named only in the host's summary keeps the issue but is n
   assert.deepEqual(row.bkit.via, ["subagent"]);
   assert.equal(chatClass(row), "bkit agents only");
   assert.deepEqual(row.agents.byAgent["bkit-build-plan-verify"].instances, [
-    { turns: 1, ctxPeak: 130_000 },
-    { turns: 1, ctxPeak: 210_000 },
+    { turns: 1, contextPeak: 130_000, contextAt10: null },
+    { turns: 1, contextPeak: 210_000, contextAt10: null },
   ]);
-  assert.equal(row.usage.total.ctx.peak, 210_000);
+  assert.equal(row.usage.total.context.peak, 210_000);
   assert.deepEqual(validateTotals(row), { ok: true });
 });
 
@@ -1257,7 +1284,7 @@ await test("scan appends one run row per finished run, with fingerprints and no 
   assert.equal(res.runs.appended, 3);
   const [plan, b1, b2] = runs;
   const fid = fingerprint(`acme/widget:${FID}`);
-  assert.equal(plan.schema, 2);
+  assert.equal(plan.schema, 3);
   assert.equal(plan.key, `${fid}:plan:${ms(100)}`);
   assert.deepEqual(plan.by, { workflow: "plan", step: "scan" });
   assert.deepEqual(plan.bkit, { version: "5.5.1" });
@@ -1413,10 +1440,42 @@ await test("the report shows token types, agents, features, the verify loop, pla
   assert.match(md, /\| failed \| 21 \| - \| 1: F2 F20 \| 1: - 20 \|/);
   assert.match(
     md,
-    /\| 650-secret-feature \| 5\.5\.1 \| 0 \| 2 \| 3 \| 2 \/ 6 \/ 6 \| 0:1 2:1 6:1 \| 2 \/ 2 \/ 2 \| 0:1 2:2 \| 1 \| SPLIT \| 13 tasks \\\| over the 12 threshold\. Task 1 names 6 tests\. \|/,
+    /\| 650-secret-feature \| 5\.5\.1 \| 0 \| - \| 2 \| 3 \| 2 \/ 6 \/ 6 \| 0:1 2:1 6:1 \| 2 \/ 2 \/ 2 \| 0:1 2:2 \| 1 \| SPLIT \| 13 tasks \\\| over the 12 threshold\. Task 1 names 6 tests\. \|/,
   );
   assert.match(md, /#### build \(2 runs, 0 with active minutes\)/);
   assert.match(md, /\| Active minutes median \| Active minutes max \| Share of active time \|/);
+});
+
+await test("the plan shape report reads a group plan", () => {
+  const planRun = structuredClone(
+    readLedger(statsFile)
+      .filter((r) => r.kind === "run" && r.schema === 3 && r.plan?.subPlans)
+      .at(-1),
+  );
+  planRun.plan = {
+    source: "file",
+    total: { tasks: 3, kb: 5 },
+    groups: [
+      {
+        tasks: [
+          { tests: 3, testFiles: 2 },
+          { tests: 0, testFiles: 0 },
+        ],
+      },
+      { tasks: [{ tests: 1, testFiles: 1 }] },
+    ],
+  };
+  planRun.ts += 1;
+  const md = renderReport(
+    [...readLedger(statsFile), planRun],
+    new Map([[fingerprint(`acme/widget:${FID}`), FID]]),
+    T0 + DAY,
+  );
+  assert.match(md, /\| Plan KB \| Groups \| Sub-plans \| Tasks \|/);
+  assert.match(
+    md,
+    /\| 650-secret-feature \| 5\.5\.1 \| 5 \| 2 \| - \| 3 \| 1 \/ 3 \/ 3 \| 0:1 1:1 3:1 \| 1 \/ 2 \/ 2 \| 0:1 1:1 2:1 \| 1 \| - \| - \|/,
+  );
 });
 
 // Active time ---------------------------------------------------------------------------------
@@ -1668,6 +1727,176 @@ await test("plan shape stores every task's numbers and judges none; the reason i
   assert.ok(!/SPLIT_|CTX_LIMITS/.test(fs.readFileSync(SCRIPT, "utf8")), "no limit in the script");
 });
 
+await test("plan marker and fence regexes are the TS parser's", () => {
+  const parser = fs.readFileSync(
+    new URL("../../.bkit/core/engine/commands/workflow/plan-blocks.ts", import.meta.url),
+    "utf8",
+  );
+  const copied = (name) => parser.match(new RegExp(`^const ${name} = (/.*/[a-z]*);$`, "m"))?.[1];
+  assert.equal(String(PLAN_MARKER), copied("MARKER"));
+  assert.equal(String(PLAN_FENCE), copied("FENCE"));
+});
+
+/** A build run of `step-done` rows, as splitRuns gives it. */
+const buildRun = (...rows) => ({
+  rows: rows.map((r) => ({ type: "step-done", workflow: "build", ...r })),
+});
+
+await test("buildFacts keys verify rounds by group", () => {
+  const dir = path.join(tmp, "group-build");
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, "build-plan-verify-2-1.md"),
+    "Verdict: FAIL\nFailures: 1\n\nTask 4: `a.test.ts` `one` — no-red — not fixable\n",
+  );
+  const b = buildFacts(
+    buildRun(
+      { step: "build-plan-verify", group: 2, attempt: 1, verdict: "FAIL", failures: 1 },
+      { step: "build-plan-gaps-remediate", group: 2, attempt: 1, verdict: "PASS", strategy: "STANDARD" },
+    ),
+    dir,
+    true,
+    [0, Infinity],
+  );
+  assert.deepEqual(b.verify, [
+    { group: 2, attempt: 1, verdict: "FAIL", failures: 1, testOrderGaps: 1 },
+  ]);
+  assert.deepEqual(b.gapsRemediate, [
+    { group: 2, attempt: 1, verdict: "PASS", strategy: "STANDARD" },
+  ]);
+});
+
+await test("buildFacts still reads an old subPlan run", () => {
+  const dir = path.join(tmp, "sub-plan-build");
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, "build-plan-verify-1-2.md"),
+    "Verdict: FAIL\nFailures: 1\n\nTask 1: `a.test.ts` `one` — late-red — not fixable\n",
+  );
+  const b = buildFacts(
+    buildRun(
+      { step: "build-plan-verify", subPlan: 1, attempt: 2, verdict: "FAIL", failures: 1 },
+      { step: "build-plan-gaps-remediate", subPlan: 1, attempt: 2, verdict: "PASS", strategy: "STANDARD" },
+    ),
+    dir,
+    true,
+    [0, Infinity],
+  );
+  assert.deepEqual(b.verify, [
+    { subPlan: 1, attempt: 2, verdict: "FAIL", failures: 1, testOrderGaps: 1 },
+  ]);
+  assert.deepEqual(b.gapsRemediate, [
+    { subPlan: 1, attempt: 2, verdict: "PASS", strategy: "STANDARD" },
+  ]);
+});
+
+await test("the build verify report groups rounds by group, and an old run's by sub-plan", () => {
+  const buildRow = structuredClone(
+    readLedger(statsFile)
+      .filter((r) => r.kind === "run" && r.schema === 3 && r.build?.challenge)
+      .at(-1),
+  );
+  buildRow.ts += 1;
+  buildRow.build.verify = [
+    { group: 1, attempt: 1, verdict: "PASS", failures: 0, testOrderGaps: null },
+    { group: 2, attempt: 1, verdict: "FAIL", failures: 3, testOrderGaps: 1 },
+    { group: 2, attempt: 2, verdict: "PASS", failures: 0, testOrderGaps: null },
+  ];
+  const md = renderReport(
+    [...readLedger(statsFile), buildRow],
+    new Map([[fingerprint(`acme/widget:${FID}`), FID]]),
+    T0 + DAY,
+  );
+  assert.match(md, /\*\*Verify rounds\*\*: per group \(an old run's: per sub-plan\)/);
+  assert.match(md, /\| 1: P0 · 2: F3 P0 \| 1: - · 2: 1 - \|/);
+});
+
+await test("planShape reads groups", () => {
+  const dir = path.join(tmp, "groups-plan");
+  fs.mkdirSync(dir, { recursive: true });
+  const task = (n, ...body) => [
+    `<!-- bkit:task ${n} start -->`,
+    `- [ ] **TASK ${n}:** Task ${n}.`,
+    ...body,
+    `<!-- bkit:task ${n} end -->`,
+  ];
+  const plan = [
+    "# Plan",
+    "```",
+    "<!-- bkit:group 9 start -->",
+    "<!-- bkit:task 9 start -->",
+    "- [ ] **TASK 9:** an example inside a fence, not a task",
+    "<!-- bkit:task 9 end -->",
+    "<!-- bkit:group 9 end -->",
+    "```",
+    "<!-- bkit:group 1 start -->",
+    "### GROUP 1: One",
+    ...task(
+      1,
+      "  - **DONE WHEN:** ok",
+      "  - **TEST FIRST:**",
+      "    - `a.test.ts` `one` fails on x",
+      "    - `a.test.ts` `two` fails on y",
+      "    - `b.test.ts` `three` fails on z",
+    ),
+    ...task(2, "  - **TEST FIRST:** n/a — docs only"),
+    "<!-- bkit:group 1 end -->",
+    "<!-- bkit:group 2 start -->",
+    "### GROUP 2: Two",
+    ...task(3, "  - **DONE WHEN:** no test field"),
+    "<!-- bkit:group 2 end -->",
+  ].join("\n");
+  fs.writeFileSync(path.join(dir, "plan-v1-draft.md"), "# draft\n");
+  fs.writeFileSync(path.join(dir, "plan-v2-reviewed.md"), plan);
+  assert.deepEqual(planShape(dir), {
+    source: "file",
+    total: { tasks: 3, kb: 1 },
+    groups: [
+      {
+        tasks: [
+          { tests: 3, testFiles: 2 },
+          { tests: 0, testFiles: 0 },
+        ],
+      },
+      { tasks: [{ tests: null, testFiles: null }] },
+    ],
+  });
+});
+
+await test("planShape still reads an old sub-plan run", () => {
+  const dir = path.join(tmp, "old-sub-plans");
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, "plan-v3-checked.md"),
+    "- [ ] **Task 1:** a.\n- [ ] **Task 2:** b.\n- [ ] **Task 3:** c.\n",
+  );
+  fs.writeFileSync(
+    path.join(dir, "plan-v4-1.md"),
+    "- [ ] **Task 1:** a. **Test first:** `x.test.ts` `one` fails; `y.test.ts` `two` fails\n" +
+      "- [ ] **Task 2:** b. **Test first:** n/a — docs only\n",
+  );
+  fs.writeFileSync(
+    path.join(dir, "plan-v4-2.md"),
+    "- [ ] **Task 3:** c. **Test first:** `z.test.ts` `three` fails\n",
+  );
+  fs.writeFileSync(path.join(dir, "plan-complexity-check.md"), "Verdict: SPLIT\n");
+  assert.deepEqual(planShape(dir), {
+    source: "file",
+    total: { tasks: 3, kb: 0 },
+    subPlans: [
+      {
+        kb: 0,
+        tasks: [
+          { tests: 2, testFiles: 2 },
+          { tests: 0, testFiles: 0 },
+        ],
+      },
+      { kb: 0, tasks: [{ tests: 1, testFiles: 1 }] },
+    ],
+    complexity: { verdict: "SPLIT", tasksChecked: 3 },
+  });
+});
+
 await test("the report lists open runs, marked, and leaves them out of the medians", () => {
   const run = (start, minutes, settled) => ({
     ts: start,
@@ -1717,7 +1946,7 @@ const writtenChat = () => structuredClone(rowOf(`claude-code:${sid}`));
 const writtenRun = () =>
   structuredClone(
     readLedger(statsFile)
-      .filter((r) => r.kind === "run" && r.schema === 2 && r.build?.challenge)
+      .filter((r) => r.kind === "run" && r.schema === 3 && r.build?.challenge)
       .at(-1),
   );
 const refuses = (row, why) => {
@@ -1727,7 +1956,7 @@ const refuses = (row, why) => {
 };
 
 await test("validateTotals accepts every row the scans wrote", () => {
-  const written = readLedger(statsFile).filter((r) => r.schema === 2);
+  const written = readLedger(statsFile).filter((r) => r.schema === 3);
   assert.ok(written.length >= 8);
   for (const r of written) assert.deepEqual(validateTotals(r), { ok: true }, r.key);
 });
@@ -1778,6 +2007,15 @@ await test("validateTotals refuses each kind of mismatched total", () => {
   refuses(structuredClone(r), "plan.total.tasks");
   r.plan.total = { tasks: 1, kb: 4 };
   refuses(r, "plan.total.kb");
+  r = writtenRun();
+  r.plan = {
+    source: "file",
+    total: { tasks: 2, kb: 3 },
+    groups: [{ tasks: [{ tests: 1, testFiles: 1 }] }],
+  };
+  refuses(structuredClone(r), "plan.total.tasks");
+  r.plan.total.tasks = 1;
+  assert.deepEqual(validateTotals(r), { ok: true }, "a group plan's kb is the file's own");
 
   let c = writtenChat();
   c.time.activeMinutes += 1;
@@ -1798,8 +2036,8 @@ await test("validateTotals refuses each kind of mismatched total", () => {
   c.usage.total.compactions += 1;
   refuses(c, "usage.total.compactions");
   c = writtenChat();
-  c.usage.total.ctx.peak += 1;
-  refuses(c, "usage.total.ctx.peak");
+  c.usage.total.context.peak += 1;
+  refuses(c, "usage.total.context.peak");
   c = writtenChat();
   c.agents.total.n += 1;
   refuses(c, "agents.total.n");
@@ -1807,7 +2045,7 @@ await test("validateTotals refuses each kind of mismatched total", () => {
   c.agents.total.errors += 1;
   refuses(c, "agents.total.errors");
   c = writtenChat();
-  c.agents.byAgent["bkit-plan-generate"].instances.push({ turns: 1, ctxPeak: 1 });
+  c.agents.byAgent["bkit-plan-generate"].instances.push({ turns: 1, contextPeak: 1 });
   refuses(c, "agents.byAgent.bkit-plan-generate.n");
   c = writtenChat();
   c.tools.total.calls += 1;
@@ -1925,10 +2163,10 @@ const OLD_CHAT = {
   settled: false,
 };
 
-await test("normalize maps a schema-1 chat row into the schema-2 shape", () => {
+await test("normalize maps a schema-1 chat row into the schema-3 shape", () => {
   const n = normalize(OLD_CHAT);
   assert.deepEqual(n, {
-    schema: 2,
+    schema: 3,
     ts: 1792722243262,
     kind: "chat",
     key: "claude-code:ece8",
@@ -1964,13 +2202,13 @@ await test("normalize maps a schema-1 chat row into the schema-2 shape", () => {
       total: {
         turns: 2,
         tokens: { input: 1, cacheWrite: 9, cacheRead: 20, output: 4, outputEst: 5, read: 30 },
-        ctx: { start: 7, peak: 26 },
+        context: { start: 7, peak: 26 },
         compactions: 2,
       },
       main: {
         turns: 1,
         tokens: { input: 1, cacheWrite: 4, cacheRead: 5, output: 3, outputEst: 2, read: 10 },
-        ctx: { peak: 26 },
+        context: { peak: 26 },
         compactions: 1,
         mix: { read: 3, edit: 16, grep: 25, shellRead: 13, shellList: 0, tests: 8, serena: 0 },
       },
@@ -1987,11 +2225,11 @@ await test("normalize maps a schema-1 chat row into the schema-2 shape", () => {
         "bkit-build-challenge-remediate": {
           n: 1,
           errors: 3,
-          instances: [{ turns: 1, ctxPeak: 20 }],
+          instances: [{ turns: 1, contextPeak: 20 }],
           usage: {
             turns: 1,
             tokens: { input: 0, cacheWrite: 5, cacheRead: 15, output: 1, outputEst: 3, read: 20 },
-            ctx: { peak: 20 },
+            context: { peak: 20 },
             compactions: 1,
           },
           mix: { read: 0, edit: 3, grep: 64, shellRead: 57, shellList: 0, tests: 33, serena: 0 },
@@ -2008,7 +2246,7 @@ await test("normalize maps a schema-1 chat row into the schema-2 shape", () => {
     },
     scan: { files: 2, bytes: 5957523, settled: false, tokensRecorded: true },
   });
-  assert.equal(normalize(n), n, "a schema-2 row passes through unchanged");
+  assert.equal(normalize(n), n, "a schema-3 row passes through unchanged");
   assert.equal(normalize({ ...OLD_CHAT, bkitVersion: "none" }).bkit.version, null);
   const two = normalize({
     ...OLD_CHAT,
@@ -2019,11 +2257,38 @@ await test("normalize maps a schema-1 chat row into the schema-2 shape", () => {
   assert.deepEqual(
     two.agents.byAgent.x.instances,
     [
-      { turns: null, ctxPeak: 5 },
-      { turns: null, ctxPeak: 20 },
+      { turns: null, contextPeak: 5 },
+      { turns: null, contextPeak: 20 },
     ],
     "per-instance turns of a two-agent type were not stored",
   );
+});
+
+await test("a schema-2 chat row reads with context names", () => {
+  const two = {
+    schema: 2,
+    kind: "chat",
+    key: "claude-code:s2",
+    usage: {
+      total: { turns: 2, ctx: { start: 7, peak: 26 }, compactions: 0 },
+      main: { turns: 1, ctx: { peak: 26 } },
+      byModel: {},
+    },
+    agents: {
+      total: { n: 1, errors: 0 },
+      byAgent: { x: { n: 1, instances: [{ turns: 1, ctxPeak: 20 }], usage: { ctx: { peak: 20 } } } },
+    },
+  };
+  const n = normalize(two);
+  assert.equal(n.schema, 2, "it keeps its schema: it has no split across runs");
+  assert.deepEqual(n.usage.total.context, { start: 7, peak: 26 });
+  assert.deepEqual(n.usage.main.context, { peak: 26 });
+  assert.equal("ctx" in n.usage.total, false);
+  assert.deepEqual(n.agents.byAgent.x.instances, [{ turns: 1, contextPeak: 20 }]);
+  assert.deepEqual(n.agents.byAgent.x.usage, { context: { peak: 20 } });
+  assert.equal(two.usage.total.ctx.peak, 26, "the stored row is not changed");
+  const renamed = normalize(n);
+  assert.deepEqual(renamed.usage.total.context, { start: 7, peak: 26 }, "already renamed is kept");
 });
 
 await test("normalize maps a schema-1 run row, its plan and build facts", () => {
@@ -2068,7 +2333,7 @@ await test("normalize maps a schema-1 run row, its plan and build facts", () => 
     settled: true,
   });
   assert.deepEqual(n, {
-    schema: 2,
+    schema: 3,
     ts: 9,
     kind: "run",
     key: "fp:f:build:1",
@@ -2239,7 +2504,7 @@ await test("normalize maps schema-1 outcome, counter and compliance rows", () =>
       coverage: { unit: { lines: 78.41 } },
     }),
     {
-      schema: 2,
+      schema: 3,
       ts: 5,
       kind: "outcome",
       repo: "cbartens/bkit",
@@ -2272,7 +2537,7 @@ await test("normalize maps schema-1 outcome, counter and compliance rows", () =>
       parentSha: SHA,
     }),
     {
-      schema: 2,
+      schema: 3,
       ts: 6,
       kind: "counter",
       repo: "cbartens/bkit",
@@ -2297,7 +2562,7 @@ await test("normalize maps schema-1 outcome, counter and compliance rows", () =>
       evidence: "HEAD is [skip ci]",
     }),
     {
-      schema: 2,
+      schema: 3,
       ts: 7,
       kind: "compliance",
       repo: "cbartens/bkit",
@@ -2501,6 +2766,220 @@ await test("the run check pairs outcome rows with run rows on parentSha, per rep
   const md = renderRunCheck(runCheck(rows), new Map([[fp, "widget"]]));
   assert.match(md, /\| widget \| 1 \| 1 \| 1 \|/);
   assert.match(md, /\| widget \| run only \| build \| .* \| cccccccc \|/);
+});
+
+// Per-run tokens, context at turn 10, plan reads, owner waits -----------------------------------
+
+/** Tally counts of `n` model calls at minutes `mins`, each sending `read` context. */
+function tallied(mins, read = 100) {
+  const t = new Tally();
+  mins.forEach((m, i) => {
+    t.at(ms(m));
+    t.turn(`m${i}`, {
+      model: "m",
+      at: ms(m),
+      usage: { input: 10, cacheWrite: 0, cacheRead: read - 10, output: 1 },
+    });
+  });
+  return t.done();
+}
+
+await test("run usage splits one chat by turn time", () => {
+  const repo = { slug: "acme/widget", root: null };
+  const win = (key, from, to, extra = {}) => ({
+    key,
+    repo: repoFp("acme/widget"),
+    issue: issueFp("acme/widget", 650),
+    start: ms(from),
+    end: ms(to),
+    sessions: [],
+    ...extra,
+  });
+  // Run A 0-10, run B 5-20 overlaps it; run C names the chat on a session row only.
+  const runs = [
+    win("A", 0, 10),
+    win("B", 5, 20),
+    win("C", 30, 40, { issue: issueFp("acme/widget", 9), sessions: [fingerprint("claude-code:s1")] }),
+    win("D", 0, 40, { issue: issueFp("acme/widget", 9) }),
+  ];
+  const main = tallied([1, 6, 12, 25, 31]);
+  main.workflows = [{ workflow: "build", issue: 650, at: ms(1) }];
+  const sub = tallied([7, 8]);
+  const row = chatRow("claude-code", "s1", main, [{ agentType: "x", counts: sub }], repo, [], {
+    files: 1,
+    bytes: 1,
+  }, runs);
+  const part = (turns) => ({
+    turns,
+    tokens: { input: 10 * turns, cacheWrite: 0, cacheRead: 90 * turns, output: turns, outputEst: 0, read: 100 * turns },
+  });
+  assert.deepEqual(row.usage.byRun, {
+    A: { main: part(1), agents: part(0) },
+    B: { main: part(2), agents: part(2) },
+    C: { main: part(1), agents: part(0) },
+  }, "a call in two windows counts for the later-started run; minute 25 is in no run; D is another issue");
+  assert.deepEqual(validateTotals(row), { ok: true });
+
+  const usage = runUsageIndex([row]);
+  assert.deepEqual(usage(runs[1]), {
+    total: part(4),
+    main: part(2),
+    agents: part(2),
+  });
+  assert.equal(usage(win("E", 100, 110)), null, "no chat worked on it");
+  const old = { ...row, key: "claude-code:old", usage: { ...row.usage, byRun: undefined } };
+  assert.equal(runUsageIndex([row, old])(runs[1]), null, "a chat without the split leaves it unknown");
+
+  const untimed = tallied([1]);
+  untimed.calls[0].at = null;
+  untimed.workflows = [{ workflow: "build", issue: 650, at: null }];
+  const cursor = chatRow("cursor", "c1", untimed, [], repo, [], { files: 1, bytes: 1 }, runs);
+  assert.equal(cursor.usage.byRun, null, "a host with no call times cannot be split");
+  const none = chatRow("claude-code", "s2", tallied([1]), [], repo, [], { files: 1, bytes: 1 }, runs);
+  assert.deepEqual(none.usage.byRun, {}, "a chat that worked on no run");
+});
+
+await test("agent instance records context at turn 10", () => {
+  const ten = tallied(Array.from({ length: 12 }, (_, i) => i), 100);
+  assert.equal(ten.tokens.contextAt10, 100);
+  assert.equal(tallied([1, 2, 3]).tokens.contextAt10, null, "fewer than 10 calls");
+  const row = chatRow(
+    "claude-code",
+    "s1",
+    tallied([0]),
+    [{ agentType: "x", counts: ten }],
+    { slug: "acme/widget", root: null },
+    [],
+    { files: 1, bytes: 1 },
+  );
+  assert.deepEqual(row.agents.byAgent.x.instances, [
+    { turns: 12, contextPeak: 100, contextAt10: 100 },
+  ]);
+});
+
+await test("plan reads count full and partial", () => {
+  const t = new Tally();
+  const plan = "/r/docs/plans/202610/688-stats-plan.md";
+  t.toolUse("r1", "Read", { readPath: plan });
+  t.toolUse("r2", "Read", { readPath: plan, partial: true });
+  t.toolUse("r3", "Read", { readPath: "/r/docs/plans/202609/12-x-plan-2.md" });
+  t.toolUse("r4", "Read", { readPath: "/r/docs/plans/202610/logs/688-stats/build-plan.md" });
+  t.toolUse("r5", "Read", { readPath: "/r/docs/plans/202610/688-stats-design.md" });
+  t.toolUse("b1", "Bash", { shell: `cat docs/plans/202610/688-stats-plan.md` });
+  t.toolUse("b2", "Bash", { shell: `sed -n 1,40p "docs/plans/202610/688-stats-plan.md" | head -5` });
+  t.toolUse("b3", "Bash", { shell: `grep -n Task docs/plans/202610/688-stats-plan.md` });
+  t.turn("m", { model: "m" });
+  assert.deepEqual(t.done().planReads, { full: 3, partial: 2 });
+  assert.deepEqual(shellPlanReads("cd x && tail -20 docs/plans/202610/a-plan.md"), ["partial"]);
+  assert.ok(PLAN_FILE.test("docs/plans/202610/a-plan.md"));
+  const row = chatRow(
+    "claude-code",
+    "s1",
+    tallied([0]),
+    [
+      { agentType: "x", counts: t.done() },
+      { agentType: "x", counts: t.done() },
+    ],
+    { slug: "acme/widget", root: null },
+    [],
+    { files: 1, bytes: 1 },
+  );
+  assert.deepEqual(row.agents.byAgent.x.planReads, { full: 6, partial: 4 });
+});
+
+await test("run row records owner waits and stops", () => {
+  const dir = path.join(tmp, "owner", "docs", "plans", "202610", "logs", "650-owner");
+  fs.mkdirSync(dir, { recursive: true });
+  const rows = [
+    status(0, "workflow-started", { workflow: "design" }),
+    status(1, "session", { workflow: "design", session: "fp:aaa" }),
+    status(2, "owner-pause", { workflow: "design", reason: "grill" }),
+    status(5, "owner-answer", { workflow: "design" }),
+    status(6, "owner-pause", { workflow: "design", reason: "draft" }),
+    status(7, "owner-pause", { workflow: "design", reason: "draft" }),
+    status(16, "owner-answer", { workflow: "design" }),
+    step(20, "design", "design-grill"),
+    status(21, "workflow-done", { workflow: "design" }),
+    status(81, "workflow-started", { workflow: "build" }),
+    status(85, "owner-pause", { workflow: "build", reason: "decision" }),
+  ];
+  fs.writeFileSync(path.join(dir, "status.jsonl"), rows.join(""));
+  const [design, build] = runRows(dir, { slug: "acme/widget", root: null }, []);
+  assert.deepEqual(design.owner, {
+    waitBeforeMinutes: null,
+    total: { stops: 2, minutes: 13 },
+    stops: [
+      { minutes: 3, open: false, reason: "grill" },
+      { minutes: 10, open: false, reason: "draft" },
+    ],
+  });
+  assert.deepEqual(
+    design.steps.byStep["design-grill"],
+    { n: 1, totalMinutes: 20, activeMinutes: null },
+    "a step's minutes run from the row before it that is not a mark row",
+  );
+  assert.deepEqual(build.owner, {
+    waitBeforeMinutes: 60,
+    total: { stops: 1, minutes: 0 },
+    stops: [{ minutes: null, open: true, reason: "decision" }],
+  });
+  assert.equal(design.usage, null, "no chat worked on it");
+  for (const r of [design, build]) assert.deepEqual(validateTotals(r), { ok: true });
+  const bad = structuredClone(design);
+  bad.owner.total.minutes = 20;
+  assert.match(validateTotals(bad).reason, /^owner\.total\.minutes/);
+  bad.owner.total.stops = 3;
+  assert.match(validateTotals(bad).reason, /^owner\.total\.stops/);
+  const w = runWindows([]);
+  assert.deepEqual(w, [], "no roots, no windows");
+});
+
+await test("MARK_ROWS is the engine's", () => {
+  const facts = fs.readFileSync(
+    new URL("../../.bkit/core/engine/commands/workflow/run-facts.ts", import.meta.url),
+    "utf8",
+  );
+  const list = facts.match(/export const MARK_ROWS[^=]*= new Set\((\[[^\]]*\])\)/)?.[1];
+  assert.deepEqual([...MARK_ROWS], JSON.parse(list));
+});
+
+await test("report shows per-run tokens and owner waits", () => {
+  const fid = fingerprint("acme/widget:650-owner");
+  const part = (turns, read) => ({
+    turns,
+    tokens: { input: 0, cacheWrite: 0, cacheRead: read, output: 0, outputEst: 0, read },
+  });
+  const runRow = {
+    schema: 3,
+    ts: ms(30),
+    kind: "run",
+    key: `${fid}:design:${ms(0)}`,
+    repo: repoFp("acme/widget"),
+    bkit: { version: "5.5.1" },
+    by: { workflow: "design", step: "scan" },
+    run: { fid, issue: issueFp("acme/widget", 650), n: 1, parentSha: null, parentShas: [] },
+    time: { start: ms(0), end: ms(21), totalMinutes: 21, activeMinutes: null, activeFrom: null },
+    ending: "done",
+    ci: [],
+    steps: { total: { n: 0, totalMinutes: 0, activeMinutes: null }, byStep: {} },
+    owner: {
+      waitBeforeMinutes: 60,
+      total: { stops: 2, minutes: 13 },
+      stops: [
+        { minutes: 13, open: false, reason: "grill" },
+        { minutes: null, open: true, reason: "draft" },
+      ],
+    },
+    usage: { total: part(3, 3_000_000), main: part(1, 1_000_000), agents: part(2, 2_000_000) },
+    scan: { rows: 9, afterEnd: 0, settled: true },
+  };
+  const md = renderReport(
+    [...readLedger(statsFile), runRow],
+    new Map([[fid, "650-owner"]]),
+    ms(100),
+  );
+  assert.match(md, /### Tokens and owner waits per run/);
+  assert.match(md, /\| design \| done \| 21 \| 3\.0 \(1\.0 \/ 2\.0\) \| 1 \+ open \| 13 \| 60 \|/);
 });
 
 /** The Cursor transcript has no folder, so its issue is fingerprinted under the "none" repo. */

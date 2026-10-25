@@ -322,8 +322,8 @@ describe("bkit issues labels", () => {
 
   const project = { project: "https://github.com/orgs/acme/projects/3/views/1" };
 
-  it("builds the two board payloads from bkit.github.project", async () => {
-    const cwd = dir({ issueTracker: "github", github: project });
+  it("builds the two board payloads from bkit.tracker.github.project", async () => {
+    const cwd = dir({ tracker: { default: "github", github: project } });
     const r = await labels(
       cwd,
       "--label=bkit:plan",
@@ -361,15 +361,15 @@ describe("bkit issues labels", () => {
   });
 
   it.each([
-    [{ issueTracker: "github", github: { project: false } }, "opted-out"],
-    [{ issueTracker: "github" }, "not-configured"],
-    [{ issueTracker: "github", github: { review: "QA" } }, "not-configured"],
+    [{ tracker: { default: "github", github: { project: false } } }, "opted-out"],
+    [{ tracker: { default: "github" } }, "not-configured"],
+    [{ tracker: { default: "github", github: { review: "QA" } } }, "not-configured"],
     [
-      { issueTracker: "github", github: { project: "https://github.com/acme/app" } },
+      { tracker: { default: "github", github: { project: "https://github.com/acme/app" } } },
       "project-url-invalid",
     ],
-    [{ issueTracker: "linear", github: project }, "tracker-linear"],
-    [{ issueTracker: "jira", github: project }, "tracker-jira"],
+    [{ tracker: { default: "linear", github: project } }, "tracker-linear"],
+    [{ tracker: { default: "jira", github: project } }, "tracker-jira"],
     [{}, "tracker-none"],
   ])("board is null with a reason for %j", async (bkit, reason) => {
     const r = await labels(dir(bkit), "--board=progress", "--issue=12", "--owner-repo=acme/app");
@@ -378,12 +378,20 @@ describe("bkit issues labels", () => {
   });
 
   it.each([
-    [{ issueTracker: "linear" }, "started", "In Review"],
-    [{ issueTracker: "linear", linear: { review: "Code Review" } }, "started", "Code Review"],
-    [{ issueTracker: "jira" }, "In Progress", "In Review"],
-    [{ issueTracker: "jira", jira: { review: "Code Review" } }, "In Progress", "Code Review"],
-    [{ issueTracker: "jira", jira: { progress: "Doing", review: "QA" } }, "Doing", "QA"],
-    [{ issueTracker: "github" }, null, null],
+    [{ tracker: { default: "linear" } }, "started", "In Review"],
+    [
+      { tracker: { default: "linear", linear: { review: "Code Review" } } },
+      "started",
+      "Code Review",
+    ],
+    [{ tracker: { default: "jira" } }, "In Progress", "In Review"],
+    [
+      { tracker: { default: "jira", jira: { review: "Code Review" } } },
+      "In Progress",
+      "Code Review",
+    ],
+    [{ tracker: { default: "jira", jira: { progress: "Doing", review: "QA" } } }, "Doing", "QA"],
+    [{ tracker: { default: "github" } }, null, null],
     [{}, null, null],
   ])("trackerState for %j: phase start %j, hand-off %j", async (bkit, progress, review) => {
     const cwd = dir(bkit);
@@ -397,11 +405,13 @@ describe("bkit issues labels", () => {
 
   it("targets a personal board as owner_type user, with the Status option names overridden", async () => {
     const cwd = dir({
-      issueTracker: "github",
-      github: {
-        project: "https://github.com/users/me/projects/1",
-        progress: "Doing",
-        review: "QA",
+      tracker: {
+        default: "github",
+        github: {
+          project: "https://github.com/users/me/projects/1",
+          progress: "Doing",
+          review: "QA",
+        },
       },
     });
     const r = await labels(cwd, "--board=progress", "--issue=12", "--owner-repo=acme/app");
@@ -416,7 +426,7 @@ describe("bkit issues labels", () => {
   });
 
   it("--board on a configured board needs --issue and --owner-repo", async () => {
-    const cwd = dir({ issueTracker: "github", github: project });
+    const cwd = dir({ tracker: { default: "github", github: project } });
     expect((await labels(cwd, "--board=progress", "--owner-repo=acme/app")).code).toBe(2);
     expect((await labels(cwd, "--board=progress", "--issue=12", "--owner-repo=acme")).code).toBe(2);
   });
@@ -464,6 +474,22 @@ describe("bkit issues comment", () => {
     ).toBe("###### bkit:generated\n## bkit Auto\n### Step 1 — Start Workflow - Phase: build");
   });
 
+  it("progress header reads Group: x/y", async () => {
+    const verify = await comment(
+      dir(),
+      "--step-number=7",
+      "--step-title=Plan Verify",
+      "--verdict=FAIL",
+      "--failures=2",
+      "--group=1",
+      "--group-count=3",
+      "--attempt=2",
+    );
+    expect(verify.body).toBe(
+      "###### bkit:generated\n### Step 7 — Plan Verify - Verdict: FAIL - Failures: 2 - Group: 1/3 - Attempt: 2",
+    );
+  });
+
   it("renders header fields in the order the flags were given", async () => {
     const verify = await comment(
       dir(),
@@ -471,24 +497,24 @@ describe("bkit issues comment", () => {
       "--step-title=Plan Verify",
       "--verdict=FAIL",
       "--failures=2",
-      "--sub-plan=1",
-      "--sub-plan-count=3",
       "--attempt=2",
+      "--group=1",
+      "--group-count=3",
     );
     expect(verify.body).toBe(
-      "###### bkit:generated\n### Step 7 — Plan Verify - Verdict: FAIL - Failures: 2 - Sub-plan: 1/3 - Attempt: 2",
+      "###### bkit:generated\n### Step 7 — Plan Verify - Verdict: FAIL - Failures: 2 - Attempt: 2 - Group: 1/3",
     );
     const gaps = await comment(
       dir(),
       "--step-number=8",
       "--step-title=Plan Gaps Remediate",
       "--verdict=PASS",
-      "--sub-plan=1",
-      "--sub-plan-count=1",
+      "--group=1",
+      "--group-count=1",
       "--attempt=1",
       "--strategy=PIVOT",
     );
-    expect(gaps.body).toContain("- Sub-plan: 1/1 - Attempt: 1 - Strategy: PIVOT");
+    expect(gaps.body).toContain("- Group: 1/1 - Attempt: 1 - Strategy: PIVOT");
     const diag = await comment(
       dir(),
       "--step-number=15",
@@ -748,7 +774,7 @@ describe("bkit issues comment", () => {
     [["--step-number=1", "--step-title=X", "--owner-repo=o/r", "--artifact=a.md"]],
     [["--step-number=1", "--step-title=X", "--owner-repo=o/r", "--ref=dev", "--artifact=a.md#"]],
     [["--step-number=1", "--step-title=X", "--field=novalue"]],
-    [["--step-number=1", "--step-title=X", "--sub-plan-count=2"]],
+    [["--step-number=1", "--step-title=X", "--group-count=2"]],
     [["--step-number=1", "--step-title=X", "--workflow-heading"]],
     [["--kind=audit"]],
     [["--kind=audit", "--audit-slug=Bad Slug"]],
@@ -786,7 +812,7 @@ describe("bkit issues comment --post", () => {
   it("without --post prints no tracker key and calls nothing", async () => {
     const fetch = vi.fn();
     vi.stubGlobal("fetch", fetch);
-    const r = await run(dir({ issueTracker: "linear" }), STEP);
+    const r = await run(dir({ tracker: { default: "linear" } }), STEP);
     expect(r.code).toBe(0);
     expect(r.json).not.toHaveProperty("tracker");
     expect(fetch).not.toHaveBeenCalled();
@@ -794,17 +820,18 @@ describe("bkit issues comment --post", () => {
 
   it("skips tracker none and an issue-less FID", async () => {
     expect(
-      (await run(dir({ issueTracker: "none" }), [...STEP, "--post", "--fid=x"])).json.tracker,
+      (await run(dir({ tracker: { default: "none" } }), [...STEP, "--post", "--fid=x"])).json
+        .tracker,
     ).toEqual({ skipped: "tracker-none" });
     expect(
-      (await run(dir({ issueTracker: "linear" }), [...STEP, "--post", "--fid=dev-ci-x"])).json
-        .tracker,
+      (await run(dir({ tracker: { default: "linear" } }), [...STEP, "--post", "--fid=dev-ci-x"]))
+        .json.tracker,
     ).toEqual({ skipped: "no-issue" });
   });
 
   it("posts the printed body; an identical recent comment is not posted twice", async () => {
     process.env.BKIT_LINEAR_API_KEY = "k";
-    const cwd = dir({ issueTracker: "linear" });
+    const cwd = dir({ tracker: { default: "linear" } });
     const sent = linearCommentServer();
     const first = await run(cwd, [...STEP, "--post", "--fid=eng-4-x"]);
     expect(first.json.tracker).toEqual({ done: true, action: "comment", url: "https://l/c" });
@@ -815,13 +842,17 @@ describe("bkit issues comment --post", () => {
   });
 
   it("a failed post exits 0 with done false and the reason", async () => {
-    const r = await run(dir({ issueTracker: "linear" }), [...STEP, "--post", "--issue=ENG-4"]);
+    const r = await run(dir({ tracker: { default: "linear" } }), [
+      ...STEP,
+      "--post",
+      "--issue=ENG-4",
+    ]);
     expect(r.code).toBe(0);
     expect(r.json.tracker).toEqual({ done: false, action: "comment", reason: "auth" });
   });
 
   it("prints commentFile: the multi-line comment byte-for-byte, for the MCP fallback", async () => {
-    const cwd = dir({ issueTracker: "linear" });
+    const cwd = dir({ tracker: { default: "linear" } });
     const r = await run(cwd, [
       ...STEP,
       "--line=first",
@@ -836,7 +867,7 @@ describe("bkit issues comment --post", () => {
 
   it("--file: an engine-action row per run dedups a re-run without reading the issue", async () => {
     process.env.BKIT_LINEAR_API_KEY = "k";
-    const cwd = dir({ issueTracker: "linear" });
+    const cwd = dir({ tracker: { default: "linear" } });
     const file = path.join(cwd, "status.jsonl");
     fs.writeFileSync(
       file,
@@ -903,7 +934,7 @@ describe("bkit issues fetch", () => {
 
   it("writes the description raw, comments oldest first and the facts; prints facts, never the body", async () => {
     process.env.BKIT_LINEAR_API_KEY = "k";
-    const cwd = dir({ issueTracker: "linear" });
+    const cwd = dir({ tracker: { default: "linear" } });
     linearIssues({
       "ENG-4": {
         title: "Export CSV",
@@ -953,9 +984,10 @@ describe("bkit issues fetch", () => {
 
   it("needs --session-dir or --outbox; skips tracker none and an issue-less run", async () => {
     expect(
-      (await run(dir({ issueTracker: "linear" }), ["issues", "fetch", "--issue=ENG-4"])).code,
+      (await run(dir({ tracker: { default: "linear" } }), ["issues", "fetch", "--issue=ENG-4"]))
+        .code,
     ).toBe(2);
-    const none = await run(dir({ issueTracker: "none" }), [
+    const none = await run(dir({ tracker: { default: "none" } }), [
       "issues",
       "fetch",
       "--fid=x",
@@ -963,7 +995,7 @@ describe("bkit issues fetch", () => {
     ]);
     expect(none.code).toBe(0);
     expect(none.json).toEqual({ skipped: "tracker-none" });
-    const noIssue = await run(dir({ issueTracker: "linear" }), [
+    const noIssue = await run(dir({ tracker: { default: "linear" } }), [
       "issues",
       "fetch",
       "--fid=dev-ci-x",
@@ -974,7 +1006,7 @@ describe("bkit issues fetch", () => {
 
   it("exits 80 with the reason on a network failure and writes nothing", async () => {
     process.env.BKIT_LINEAR_API_KEY = "k";
-    const cwd = dir({ issueTracker: "linear" });
+    const cwd = dir({ tracker: { default: "linear" } });
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => {
@@ -989,7 +1021,7 @@ describe("bkit issues fetch", () => {
 
   it("exits 80 with reason auth when the key is unset, never printing a key", async () => {
     delete process.env.BKIT_LINEAR_API_KEY;
-    const r = await run(dir({ issueTracker: "linear" }), [
+    const r = await run(dir({ tracker: { default: "linear" } }), [
       "issues",
       "fetch",
       "--issue=ENG-4",
@@ -1031,7 +1063,7 @@ describe("bkit issues blocked-by", () => {
 
   it("prints each blocker's state and how many are still open", async () => {
     process.env.BKIT_LINEAR_API_KEY = "k";
-    const cwd = dir({ issueTracker: "linear" });
+    const cwd = dir({ tracker: { default: "linear" } });
     linearBlockers([
       {
         type: "blocks",
@@ -1058,7 +1090,7 @@ describe("bkit issues blocked-by", () => {
   });
 
   it("skips with tracker none", async () => {
-    const cwd = dir({ issueTracker: "none" });
+    const cwd = dir({ tracker: { default: "none" } });
     const r = await run(cwd, ["issues", "blocked-by", "--issue=4"]);
     expect(r.code).toBe(0);
     expect(r.json).toEqual({ skipped: "tracker-none" });
@@ -1066,7 +1098,7 @@ describe("bkit issues blocked-by", () => {
 
   it("exits 80 with the reason when the tracker read fails", async () => {
     process.env.BKIT_LINEAR_API_KEY = "k";
-    const cwd = dir({ issueTracker: "linear" });
+    const cwd = dir({ tracker: { default: "linear" } });
     failingFetch();
     const r = await run(cwd, ["issues", "blocked-by", "--issue=ENG-4"]);
     expect(r.code).toBe(80);
@@ -1084,7 +1116,7 @@ describe("bkit issues related", () => {
 
   it("fetches each hit in rank order, up to --top, and writes the related-issues layout", async () => {
     process.env.BKIT_LINEAR_API_KEY = "k";
-    const cwd = dir({ issueTracker: "linear" });
+    const cwd = dir({ tracker: { default: "linear" } });
     const calls = linearIssues({
       "ENG-9": {
         title: "Nine",
@@ -1122,7 +1154,7 @@ describe("bkit issues related", () => {
   });
 
   it("GitHub headings carry #N; no hits writes None.", async () => {
-    const cwd = dir({ issueTracker: "linear" });
+    const cwd = dir({ tracker: { default: "linear" } });
     write(cwd, "hits.json", "[]");
     const r = await run(cwd, ["issues", "related", "--hits-file=hits.json", "--out=r.md"]);
     expect(r.json.hits).toBe(0);
@@ -1131,7 +1163,7 @@ describe("bkit issues related", () => {
 
   it("a hit that cannot be fetched exits 80 and writes nothing", async () => {
     delete process.env.BKIT_LINEAR_API_KEY;
-    const cwd = dir({ issueTracker: "linear" });
+    const cwd = dir({ tracker: { default: "linear" } });
     write(cwd, "hits.json", '["ENG-9"]');
     const r = await run(cwd, ["issues", "related", "--hits-file=hits.json", "--out=r.md"]);
     expect(r.code).toBe(80);
@@ -1140,7 +1172,7 @@ describe("bkit issues related", () => {
   });
 
   it("a hits file that is not a list of ids exits 3", async () => {
-    const cwd = dir({ issueTracker: "linear" });
+    const cwd = dir({ tracker: { default: "linear" } });
     write(cwd, "hits.json", '{"a":1}');
     expect(
       (await run(cwd, ["issues", "related", "--hits-file=hits.json", "--out=r.md"])).code,
@@ -1168,7 +1200,7 @@ describe("bkit issues labels --write", () => {
 
   it("reads the labels itself, writes the transition and the state, prints tracker done", async () => {
     process.env.BKIT_LINEAR_API_KEY = "k";
-    const cwd = dir({ issueTracker: "linear", linear: { progress: "In Progress" } });
+    const cwd = dir({ tracker: { default: "linear", linear: { progress: "In Progress" } } });
     const bodies: Array<{ query: string; variables: any }> = [];
     const answers = [
       { data: { issue: { labels: { nodes: [{ name: "bkit:plan" }, { name: "next:build" }] } } } },
@@ -1215,7 +1247,7 @@ describe("bkit issues labels --write", () => {
 
   it("a failed read prints done false and the transition of the given --label set", async () => {
     delete process.env.BKIT_LINEAR_API_KEY;
-    const r = await run(dir({ issueTracker: "linear" }), [
+    const r = await run(dir({ tracker: { default: "linear" } }), [
       "issues",
       "labels",
       "--label=bkit:plan",
@@ -1231,7 +1263,7 @@ describe("bkit issues labels --write", () => {
   });
 
   it("skips tracker none and a run with no issue", async () => {
-    const none = await run(dir({ issueTracker: "none" }), [
+    const none = await run(dir({ tracker: { default: "none" } }), [
       "issues",
       "labels",
       "--phase=build",
@@ -1242,8 +1274,10 @@ describe("bkit issues labels --write", () => {
 
   it("a malformed board target is refused before any label is written", async () => {
     const cwd = dir({
-      issueTracker: "github",
-      github: { project: "https://github.com/orgs/acme/projects/3/views/1" },
+      tracker: {
+        default: "github",
+        github: { project: "https://github.com/orgs/acme/projects/3/views/1" },
+      },
     });
     const bin = path.join(cwd, "bin");
     fs.mkdirSync(bin);
@@ -1272,8 +1306,10 @@ describe("bkit issues labels --write", () => {
 
   it("on a cloud or CI runtime the board is skipped:cloud and never called", async () => {
     const cwd = dir({
-      issueTracker: "github",
-      github: { project: "https://github.com/orgs/acme/projects/3/views/1" },
+      tracker: {
+        default: "github",
+        github: { project: "https://github.com/orgs/acme/projects/3/views/1" },
+      },
     });
     spawnSync("git", ["remote", "add", "origin", "https://github.com/acme/app.git"], { cwd });
     const bin = path.join(cwd, "bin");

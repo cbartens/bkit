@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { runCommand } from "../lib";
+import { COMMANDS } from "../registry";
 import {
   FENCE_CLOSE,
   FENCE_INSTRUCTION_LINES,
@@ -1106,6 +1107,49 @@ describe("bkit context diff", () => {
     expect(body).not.toContain("first.txt");
   });
 
+  it("diff from a group start covers only the group's commits", async () => {
+    const dir = repo("group-start");
+    put(dir, "group1.txt", "one\n");
+    commitAll(dir, "group 1 work");
+    const all = async (argv: string[]) => {
+      const out: string[] = [];
+      const code = await runCommand([...argv, "--json"], COMMANDS, {
+        classicVerbs: new Set(["status"]),
+        cwd: dir,
+        io: { stdout: (t) => out.push(t), stderr: () => {} },
+      });
+      return { code, json: JSON.parse(out.join("")) };
+    };
+    const status = "docs/plans/202610/logs/1-x/status.jsonl";
+    const start = await all([
+      "steps",
+      "done",
+      `--file=${status}`,
+      "--workflow=build",
+      "--step=build-group-start",
+      "--group=2",
+      "--commit=none",
+    ]);
+    expect(start.code).toBe(0);
+    put(dir, "group2.txt", "two\ntwo\n");
+    commitAll(dir, "group 2 work");
+    const routed = await all([
+      "status",
+      "route",
+      `--file=${status}`,
+      "--workflow=build",
+      "--step=build-group-start",
+      "--group=2",
+    ]);
+    expect(routed.json.parentSha).toBe(start.json.row.parentSha);
+    const r = await run(["diff", `--artifact=${ARTIFACT}`, `--base=${routed.json.parentSha}`], dir);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ filesChanged: 1, linesAdded: 2 });
+    const body = read(path.join(dir, ARTIFACT));
+    expect(body).toContain("group2.txt");
+    expect(body).not.toContain("group1.txt");
+  });
+
   it("a base that is not a commit exits 5 and writes nothing", async () => {
     const dir = repo("nobase");
     const r = await run(["diff", `--artifact=${ARTIFACT}`, "--base=origin/nowhere"], dir);
@@ -1242,5 +1286,288 @@ describe("bkit context diff", () => {
     expect(body).toContain("# total line budget reached; b.txt and smaller files not shown");
     expect(body).not.toContain("c.txt\n###");
     expect(res.record.keptLines).toBe(body.split("\n").length - 1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// brief
+// ---------------------------------------------------------------------------
+
+describe("bkit context brief", () => {
+  const task = (n: number, title: string, done: boolean, extra: string[] = []) => [
+    `<!-- bkit:task ${n} start -->`,
+    "",
+    `- [${done ? "x" : " "}] **TASK ${n}:** ${title}`,
+    `  - **UPDATE:** \`src/t${n}.ts\`: task ${n} code`,
+    ...extra,
+    `  - **DONE WHEN:** task ${n} works`,
+    `  - **TEST FIRST:** n/a — docs only`,
+    "",
+    `<!-- bkit:task ${n} end -->`,
+    "",
+  ];
+  const group = (n: number, title: string, tasks: string[][]) => [
+    `<!-- bkit:group ${n} start -->`,
+    "",
+    `### GROUP ${n}: ${title}`,
+    "",
+    ...tasks.flat(),
+    `<!-- bkit:group ${n} end -->`,
+    "",
+  ];
+  const PLAN = [
+    "# Widget Status Implementation Plan",
+    "",
+    "## Context & Goals",
+    "",
+    "Widgets need a status the API can set.",
+    "",
+    "## Acceptance Scenario",
+    "",
+    "### Narrative",
+    "",
+    "A user marks a widget done and sees it move.",
+    "",
+    "### Success Criteria",
+    "",
+    "- The status survives a reload.",
+    "",
+    "### Edge Cases",
+    "",
+    "Edge text that stays out of the brief.",
+    "",
+    "## Out of Scope",
+    "",
+    "- Bulk status changes.",
+    "",
+    "## Agent Execution Runbook",
+    "",
+    ...group(1, "Schema", [
+      task(1, "Add the status column", true),
+      task(2, "Add the status type", false),
+    ]),
+    ...group(2, "API", [
+      task(3, "Set the status", false, ["  - **DEPENDS ON:** 1, 2"]),
+      task(4, "Validate the status", false),
+      task(5, "Log the change", false),
+    ]),
+    ...group(3, "UI", [task(6, "Show the status", false, ["  - **DEPENDS ON:** 3"])]),
+  ].join("\n");
+
+  /** A logs folder where group 1 is done (task 2 by its DONE line) and group 2 has task 4 DONE. */
+  function setup(name: string) {
+    const dir = path.join(tmpDir, "brief", name);
+    fs.mkdirSync(dir, { recursive: true });
+    const plan = path.join(dir, "1-x-plan.md");
+    fs.writeFileSync(plan, PLAN);
+    const logs = path.join(dir, "logs");
+    fs.mkdirSync(logs, { recursive: true });
+    fs.writeFileSync(path.join(logs, "build-plan-execute-1-log.md"), "DONE — TASK 2\n");
+    fs.writeFileSync(
+      path.join(logs, "build-plan-execute-2-log.md"),
+      "notes\nDONE — TASK 4: validated\n",
+    );
+    return { dir, plan, logs };
+  }
+
+  it("brief --next picks the first group with an open task", async () => {
+    const { dir, plan, logs } = setup("next");
+    const r = await run(["brief", `--plan=${plan}`, "--next", `--dir=${logs}`], dir);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ group: 2, tasks: [3, 5] });
+    expect(r.json.artifact).toBe(path.join(logs, "build-brief-2-1.md"));
+    const body = read(r.json.artifact);
+    expect(body).toContain("Widgets need a status the API can set.");
+    expect(body).toContain("A user marks a widget done and sees it move.");
+    expect(body).toContain("- The status survives a reload.");
+    expect(body).toContain("- Bulk status changes.");
+    expect(body).not.toContain("Edge text that stays out of the brief.");
+    expect(body).toMatch(/Group 1: Schema — done/);
+    expect(body).toMatch(/Group 2: API — this group/);
+    expect(body).toMatch(/Group 3: UI — next/);
+    // A second brief for the same group takes the next number.
+    const again = await run(["brief", `--plan=${plan}`, "--next", `--dir=${logs}`], dir);
+    expect(again.json.artifact).toBe(path.join(logs, "build-brief-2-2.md"));
+  });
+
+  it("brief --next with every task done writes nothing and reports no group", async () => {
+    const { dir, plan, logs } = setup("all-done");
+    fs.writeFileSync(
+      path.join(logs, "build-plan-execute-2-log.md"),
+      "DONE — TASK 3\nDONE — TASK 4\nDONE — TASK 5\n",
+    );
+    fs.writeFileSync(path.join(logs, "build-plan-execute-3-log.md"), "DONE — TASK 6\n");
+    const r = await run(["brief", `--plan=${plan}`, "--next", `--dir=${logs}`], dir);
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({
+      artifact: null,
+      bytes: 0,
+      group: null,
+      tasks: [],
+      workBytes: 0,
+      workCap: 8192,
+    });
+    expect(fs.readdirSync(logs).some((f) => f.startsWith("build-brief-"))).toBe(false);
+  });
+
+  it("brief leaves out tasks with a DONE line", async () => {
+    const { dir, plan, logs } = setup("done-line");
+    const r = await run(["brief", `--plan=${plan}`, "--group=2", `--dir=${logs}`], dir);
+    expect(r.code).toBe(0);
+    const work = read(r.json.artifact).split("## The work")[1]!;
+    expect(work).toContain("- [ ] **TASK 3:** Set the status");
+    expect(work).toContain("- [ ] **TASK 5:** Log the change");
+    expect(work).not.toContain("**TASK 4:**");
+  });
+
+  it("brief carries DEPENDS ON summaries from earlier groups", async () => {
+    const { dir, plan, logs } = setup("depends");
+    const r = await run(["brief", `--plan=${plan}`, "--group=2", `--dir=${logs}`], dir);
+    const work = read(r.json.artifact).split("## The work")[1]!;
+    expect(work).toContain("- TASK 1 (group 1, done): Add the status column — `src/t1.ts`");
+    expect(work).toContain("- TASK 2 (group 1, done): Add the status type — `src/t2.ts`");
+    // Group 1's task blocks are not copied in whole.
+    expect(work).not.toContain("**TASK 1:**");
+    expect(work).not.toContain("task 1 works");
+  });
+
+  it("brief includes the note file under deviations", async () => {
+    const { dir, plan, logs } = setup("note");
+    const note = path.join(dir, "note.md");
+    fs.writeFileSync(note, "Task 3 must keep the old column name.\n");
+    const r = await run(
+      ["brief", `--plan=${plan}`, "--group=2", `--dir=${logs}`, `--note-file=${note}`],
+      dir,
+    );
+    const body = read(r.json.artifact);
+    expect(body.split("## Deviations")[1]).toContain("Task 3 must keep the old column name.");
+    const plain = await run(["brief", `--plan=${plan}`, "--group=2", `--dir=${logs}`], dir);
+    expect(read(plain.json.artifact)).not.toContain("## Deviations");
+  });
+
+  it("brief names a red already recorded for an open task", async () => {
+    const { dir, plan, logs } = setup("red");
+    const status = path.join(dir, "status.jsonl");
+    fs.writeFileSync(
+      status,
+      JSON.stringify({
+        type: "step-done",
+        workflow: "build",
+        step: "build-task-red",
+        task: 5,
+        test: "src/t5.test.ts",
+        testName: "logs the change",
+      }) + "\n",
+    );
+    const r = await run(
+      ["brief", `--plan=${plan}`, "--group=2", `--dir=${logs}`, `--file=${status}`],
+      dir,
+    );
+    expect(read(r.json.artifact)).toContain(
+      "TASK 5: red already recorded for `src/t5.test.ts` `logs the change` — test written and seen failing; code may be partly done in the files it names",
+    );
+  });
+
+  it("brief prints path and sizes only", async () => {
+    const { dir, plan, logs } = setup("stdout");
+    const r = await run(["brief", `--plan=${plan}`, "--group=2", `--dir=${logs}`], dir);
+    expect(Object.keys(r.json).sort()).toEqual([
+      "artifact",
+      "bytes",
+      "group",
+      "tasks",
+      "workBytes",
+      "workCap",
+    ]);
+    expect(r.json.bytes).toBe(fs.statSync(r.json.artifact).size);
+    const work = "## The work" + read(r.json.artifact).split("## The work")[1]!;
+    expect(r.json.workBytes).toBe(Buffer.byteLength(work.trimEnd() + "\n"));
+    expect(r.json.workCap).toBe(8192);
+    expect(JSON.stringify(r.json)).not.toContain("Set the status");
+    expect(r.err).toBe("");
+  });
+
+  /** The setup plan with a Reuse Inventory and Architecture section before the runbook. */
+  function setupWithSections(name: string, arch: (file: string) => string[]) {
+    const s = setup(name);
+    const sections = [
+      "## Reuse Inventory",
+      "",
+      "| Capability | File | Search performed | Existing candidates | Decision | Justification |",
+      "| --- | --- | --- | --- | --- | --- |",
+      "| set status | `src/t3.ts` | grep setStatus | `src/t3.ts` | EXTEND | add the setter |",
+      "| validate status | `src/t4.ts` | grep validate | `src/t4.ts` | EXTEND | add the check |",
+      "| log change | `./src/t5.ts` | grep log | None | NEW | (a) no candidate |",
+      "| show status | `src/t6.ts` | grep show | `src/t6.ts` | EXTEND | add the badge |",
+      "",
+      "## Architecture & Component Changes",
+      "",
+      "### API",
+      "",
+      ...arch("src/t3.ts"),
+      ...arch("src/t5.ts"),
+      "### UI",
+      "",
+      ...arch("src/t6.ts"),
+      "## Agent Execution Runbook",
+    ].join("\n");
+    fs.writeFileSync(s.plan, PLAN.replace("## Agent Execution Runbook", sections));
+    return s;
+  }
+  const smallArch = (file: string) => [
+    `#### [MODIFY] \`${file}\``,
+    "",
+    `- **Existence Check:** ${file} exists.`,
+    `- ${file} gains its part.`,
+    "",
+  ];
+
+  it("brief carries the Reuse Inventory rows and Architecture entries for the group's files", async () => {
+    const { dir, plan, logs } = setupWithSections("sections", smallArch);
+    const r = await run(["brief", `--plan=${plan}`, "--group=2", `--dir=${logs}`], dir);
+    expect(r.code).toBe(0);
+    const work = read(r.json.artifact).split("## The work")[1]!;
+    const inventory = work.split("### Reuse Inventory rows")[1]!.split("###")[0]!;
+    expect(inventory).toContain("| Capability | File |");
+    expect(inventory).toContain("| set status | `src/t3.ts` |");
+    expect(inventory).toContain("| log change | `./src/t5.ts` |");
+    // Task 4 is done and task 6 is in group 3: their rows stay out.
+    expect(inventory).not.toContain("src/t4.ts");
+    expect(inventory).not.toContain("src/t6.ts");
+    const archPart = work.split("### Architecture entries")[1]!;
+    expect(archPart).toContain("#### [MODIFY] `src/t3.ts`");
+    expect(archPart).toContain("- src/t3.ts gains its part.");
+    expect(archPart).toContain("#### [MODIFY] `src/t5.ts`");
+    expect(archPart).not.toContain("src/t6.ts");
+    expect(work).not.toContain("left out");
+    expect(r.err).toBe("");
+  });
+
+  it("brief leaves out entries past the 8KB work cap and says how many and where", async () => {
+    const bigArch = (file: string) => [
+      `#### UPDATE \`${file}\``,
+      "",
+      ...Array.from({ length: 60 }, (_, i) => `- ${file} detail ${i}: ${"x".repeat(60)}`),
+      "",
+    ];
+    const { dir, plan, logs } = setupWithSections("cap", bigArch);
+    const r = await run(["brief", `--plan=${plan}`, "--group=2", `--dir=${logs}`], dir);
+    expect(r.code).toBe(0);
+    const work = read(r.json.artifact).split("## The work")[1]!;
+    expect(work).toContain("| set status | `src/t3.ts` |");
+    expect(work).toContain("#### UPDATE `src/t3.ts`");
+    expect(work).not.toContain("#### UPDATE `src/t5.ts`");
+    expect(work).toContain(
+      `Reuse Inventory rows left out: 0; Architecture entries left out: 1 — read them in ${plan} § Reuse Inventory and § Architecture & Component Changes.`,
+    );
+    expect(r.json.workBytes).toBeLessThanOrEqual(8192);
+    expect(r.err).toBe("");
+  });
+
+  it("brief refuses a group the plan does not have", async () => {
+    const { dir, plan, logs } = setup("nogroup");
+    const r = await run(["brief", `--plan=${plan}`, "--group=9", `--dir=${logs}`], dir);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("no group 9");
   });
 });

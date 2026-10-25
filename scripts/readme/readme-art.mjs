@@ -555,7 +555,7 @@ function pipeline(t) {
       g: [
         [3, "rival designs"],
         [3, "critique + probe code"],
-        [4, "merge, refine, sum up"],
+        [3, "merge, refine, organise"],
       ],
       out: "→ design to approve",
     },
@@ -564,9 +564,9 @@ function pipeline(t) {
       cmd: "/bkit-plan",
       title: "Plan",
       g: [
-        [3, "critique the plan"],
-        [2, "check the scope"],
-        [5, "write, merge, size up"],
+        [2, "critique the plan"],
+        [1, "check the scope"],
+        [2, "write + merge"],
       ],
       out: "→ plan to approve",
     },
@@ -575,9 +575,9 @@ function pipeline(t) {
       cmd: "/bkit-build",
       title: "Build",
       g: [
-        [4, "write + verify vs plan"],
+        [2, "check plan, add skills"],
+        [3, "write + verify vs plan"],
         [2, "hunt bugs + security"],
-        [5, "merge, fix, add tests"],
       ],
       out: "→ tested pull request",
     },
@@ -588,7 +588,7 @@ function pipeline(t) {
       g: [
         [1, "resolve conflicts"],
         [1, "check nothing's missing"],
-        [2, "update docs + summary"],
+        [1, "update docs"],
       ],
       out: "→ merged to dev",
     },
@@ -639,7 +639,7 @@ function pipeline(t) {
   b += `<rect x="${dx}" y="${dy}" width="${CW}" height="6" rx="3" fill="${dcol}"/>`;
   b += text(dx + 24, dy + 40, "/bkit-debug", { size: 17, fill: dcol, font: MONO, weight: 600 });
   b += text(dx + 24, dy + 74, "Debug", { size: 26, weight: 700, fill: t.text });
-  b += dots(dx + 32, dy + 100, 6, dcol);
+  b += dots(dx + 32, dy + 100, 5, dcol);
   b += text(dx + 24, dy + 132, "find cause, fix, remember", { size: 17, fill: t.text });
 
   // Ship -> merged to dev; production stays with you
@@ -680,7 +680,7 @@ function pipeline(t) {
     W,
     footH(672),
     b + footer(t, W, 672, 48, 40),
-    "The bkit pipeline: design, plan, build and ship, with debug fixing failed tests. Each dot is one of 41 AI agents: 10 in design, 10 in plan, 11 in build, 6 in debug and 4 in ship. It waits for your sign-off after design, after plan and before merge, merges into dev, and leaves production to you. Runs on Claude Code, Cursor, Codex, Antigravity and opencode.",
+    "The bkit pipeline: design, plan, build and ship, with debug fixing failed tests. Each dot is one of 30 AI agents: 9 in design, 5 in plan, 8 in build, 5 in debug and 3 in ship. It waits for your sign-off after design, after plan and before merge, merges into dev, and leaves production to you. Runs on Claude Code, Cursor, Codex, Antigravity and opencode.",
   );
 }
 
@@ -2050,7 +2050,7 @@ const EFFORTS = [
 ];
 const FAMILIES = {
   fable: { role: "by hand, never pinned", empty: {} },
-  opus: { role: "judgement", empty: { low: "use Haiku", max: "never" } },
+  opus: { role: "judgement", empty: { low: "use Haiku", xhigh: "unmeasured", max: "never" } },
   sonnet: { role: "execution", empty: { low: "use Haiku", xhigh: "use Opus", max: "use Opus" } },
   haiku: { role: "summaries", empty: {} },
 };
@@ -2198,8 +2198,8 @@ function models(t) {
         return;
       }
       for (const o of c.orchestrators) {
-        b += text(x + 16, ly, o, { size: 14, weight: 600, fill: t[o.slice(6)], font: MONO });
-        ly += 19;
+        b += text(x + 16, ly, o, { size: 13, weight: 600, fill: t[o.slice(6)], font: MONO });
+        ly += 16;
       }
       if (c.agents.length) {
         if (c.orchestrators.length) ly += 4;
