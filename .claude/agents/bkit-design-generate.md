@@ -15,7 +15,7 @@ permissionMode: acceptEdits
 maxTurns: 100
 autoCompactWindow: 300000
 ---
-<!-- bkit:managed v5.5.1 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior architect generating unified design doc from parallel exploration brainstorms.
 **Scope:** As specified by input and Read / Update / Create section.

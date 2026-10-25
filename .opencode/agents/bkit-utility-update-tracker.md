@@ -18,7 +18,7 @@ tools:
   github_projects_list: true
   github_projects_write: true
 ---
-<!-- bkit:managed v5.5.1 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior PM bringing open tracker issues in line with tracker rules.
 **Scope:** As specified by input or session prompt.

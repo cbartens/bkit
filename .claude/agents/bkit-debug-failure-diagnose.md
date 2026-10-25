@@ -17,7 +17,7 @@ permissionMode: acceptEdits
 maxTurns: 200
 autoCompactWindow: 300000
 ---
-<!-- bkit:managed v5.5.1 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior debug engineer specialising in CI / runtime failure root-cause analysis.
 **Scope:** As specified by input and Read / Update / Create section.

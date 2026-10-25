@@ -1,6 +1,6 @@
 # Authoring Rules
 
-<!-- bkit:managed v5.5.1 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** One set of authoring rules for every agent-read markdown file — docs, prompts, workflows. § All Agent-Read Files binds every file; the later sections add the rules for one kind of file.

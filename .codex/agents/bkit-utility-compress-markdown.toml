@@ -1,4 +1,4 @@
-# <!-- bkit:managed v5.5.1 — do not edit; run `bkit upgrade` to refresh -->
+# <!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
 name = "bkit-utility-compress-markdown"
 description = "Senior technical editor compressing markdown without changing meaning, cadence, or load-bearing tokens."
 model = "gpt-5.6-terra"

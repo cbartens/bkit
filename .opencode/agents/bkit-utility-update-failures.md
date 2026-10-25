@@ -13,7 +13,7 @@ tools:
   edit: true
   bash: true
 ---
-<!-- bkit:managed v5.5.1 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior editor closing failures the codebase has already resolved.
 **Scope:** As specified by input or session prompt.

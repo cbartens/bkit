@@ -17,7 +17,7 @@ permissionMode: acceptEdits
 maxTurns: 400
 autoCompactWindow: 300000
 ---
-<!-- bkit:managed v5.5.1 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior PM ranking next best items to work on from board and ledgers.
 **Scope:** As specified by input or session prompt.

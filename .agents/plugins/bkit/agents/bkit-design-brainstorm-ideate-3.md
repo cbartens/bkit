@@ -10,7 +10,7 @@ tools:
   - mcp__serena__*
   - write_to_file
 ---
-<!-- bkit:managed v5.5.1 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior architect proposing 2-3 design approaches framed by failure mode — scale, drift, on-call, handover.
 **Scope:** As specified by input and Read / Update / Create section.

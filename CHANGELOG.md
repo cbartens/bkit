@@ -6,7 +6,7 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
-## [Unreleased]
+## [6.0.0] — 2026-10-25
 
 ### Breaking Changes
 
