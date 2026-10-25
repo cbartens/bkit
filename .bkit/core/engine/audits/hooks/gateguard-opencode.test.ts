@@ -295,7 +295,7 @@ describe("gateguard opencode plugin — advisory mode (default)", () => {
     expect(result.threw).toBe(false);
     expect(result.advice).toContain("[bkit GateGuard]");
     expect(result.advice).toContain("foo-does-not-exist.ts");
-    expect(result.advice).toContain("Bolt-on drift");
+    expect(result.advice).toContain("Evolve existing code first");
   });
 
   it("keeps the reuse checklist when the write CREATES the file (pre-write snapshot)", async () => {
@@ -331,7 +331,7 @@ describe("gateguard opencode plugin — advisory mode (default)", () => {
         await hooks["execute.after"]!({ ...event, status: "completed", result }, {});
         const advice = result.content.map((part) => part.text).join("");
         expect(advice).toContain("[bkit GateGuard]");
-        expect(advice).toContain("Bolt-on drift");
+        expect(advice).toContain("Evolve existing code first");
       });
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
@@ -354,7 +354,7 @@ describe("gateguard opencode plugin — advisory mode (default)", () => {
         const afterOutput = { title: "", output: "", metadata: {} };
         await hooks["tool.execute.after"]!({ ...hookInput, args: { path: target } }, afterOutput);
         expect(afterOutput.output).toContain("[bkit GateGuard]");
-        expect(afterOutput.output).toContain("Bolt-on drift");
+        expect(afterOutput.output).toContain("Evolve existing code first");
       });
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
@@ -368,8 +368,8 @@ describe("gateguard opencode plugin — advisory mode (default)", () => {
       BKIT_GATEGUARD: undefined,
     });
     expect(result.threw).toBe(false);
-    expect(result.advice).toContain("investigation");
-    expect(result.advice).not.toContain("Bolt-on drift");
+    expect(result.advice).toContain("First edit to");
+    expect(result.advice).not.toContain("Evolve existing code first");
   });
 
   it("emits investigation checklist on first edit to a file", async () => {

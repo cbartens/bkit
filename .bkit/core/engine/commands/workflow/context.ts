@@ -1,5 +1,6 @@
-// bkit context clamp|clamp-log|ledger-scan|list-blocks|run-block|finalise —
-// size-bound context artifacts and fetch the consumer's evidence.
+// bkit context clamp|clamp-log|ledger-scan|diff|brief|list-blocks|run-block|finalise —
+// size-bound context artifacts, write the run's diff and a build group's brief,
+// and fetch the consumer's evidence.
 //
 // clamp is a runaway backstop, NOT a routine cap: a normal run never fires it.
 // Every removal is marked in place and footered. Profiles:
@@ -13,6 +14,10 @@
 //
 // Bytes are counted as raw bytes (as `LC_ALL=C awk` counts them), never as
 // characters, so a multi-byte line is measured by what it costs on disk.
+//
+// A cut file keeps its untouched original as `{name}.raw.{ext}` in the outbox
+// (`keepRaw`), never under `logs/`; the record names it (`raw`) with the command
+// that produced the file (`source`) and when it ran (`fetchedAt`).
 
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -29,14 +34,26 @@ import {
   CommandError,
   EXIT,
   git,
+  outboxRel,
+  outboxRoot,
   type CommandSpec,
   type FlagSpec,
   type RunContext,
 } from "../lib.js";
-import { resolveRepoSlug } from "../../ledgers/telemetry.js";
+import { gitEnv, resolveRepoSlug } from "../../ledgers/telemetry.js";
+import { parseJson } from "../../shared/json.js";
+import { checkedTable } from "../../shared/text.js";
 import { buildComment } from "./issues.js";
+import {
+  parsePlanBlocks,
+  reuseInventory,
+  type PlanGroup,
+  type PlanTaskBlock,
+} from "./plan-blocks.js";
+import { COMMENT_FILE_OUTPUT, commentFileOf } from "./tracker.js";
 import { EXIT_NO_STATUS, positiveInt, readRuns, str } from "./status.js";
 import { EXIT_COMMIT, writeStepRow } from "./steps.js";
+import { doneTasks, redRows } from "./tests.js";
 
 /** Exit code: the artifact to clamp is missing, unreadable, or could not be replaced. */
 export const EXIT_ARTIFACT = 4;
@@ -83,7 +100,60 @@ export interface ClampRecord {
   keptBytes: number;
   lineCapped: number;
   ceilingHit: boolean;
+  /** The untouched original in the outbox, main-checkout relative; null when nothing was cut. */
+  raw: string | null;
+  /** The exact command and inputs that produced the file; null when the caller did not say. */
+  source: string | null;
+  /** When the source ran (UTC); a re-run returns the source's data now, not then. */
+  fetchedAt: string | null;
+  /** `context fetch` only: `table` when the output was rendered as a table, else `raw`. */
+  render?: Render;
 }
+
+/** How `context fetch` writes a block's output. */
+export type Render = "table" | "raw";
+const RENDERS: readonly Render[] = ["table", "raw"];
+
+/** Where a cut file's original goes and what produced it. */
+export interface Provenance {
+  /** Folder for `{name}.raw.{ext}`; null when there is none (outside a git repo). */
+  rawDir: string | null;
+  source?: string;
+  fetchedAt?: string;
+  /** An untouched copy already in the outbox (the runner's own log): no second copy. */
+  original?: string;
+}
+
+/**
+ * Copy the original of a file about to be trimmed or rendered to
+ * `{rawDir}/{name}.raw.{ext}`, byte for byte; `content` stands in for a file that
+ * was never written whole. Returns the copy's path.
+ */
+export function keepRaw(file: string, rawDir: string, content?: Buffer): string {
+  const ext = path.extname(file);
+  const raw = path.join(rawDir, `${path.basename(file, ext)}.raw${ext}`);
+  fs.mkdirSync(rawDir, { recursive: true });
+  if (content === undefined) fs.copyFileSync(file, raw);
+  else fs.writeFileSync(raw, content);
+  return raw;
+}
+
+/** `keepRaw`, with a failed copy handed back as its error so the caller picks the exit code. */
+function keepRawOrError(file: string, rawDir: string): string | Error {
+  try {
+    return keepRaw(file, rawDir);
+  } catch (err) {
+    return err instanceof Error ? err : new Error(String(err));
+  }
+}
+
+/** The outbox folder a feature's originals go to (the outbox root without a fid); null outside a repo. */
+export function rawDirFor(cwd: string, fid: string | undefined): string | null {
+  const root = outboxRoot(cwd);
+  return root === null ? null : path.join(root, fid ?? "");
+}
+
+const utcNow = () => new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 
 const LEDGER = { maxLines: 200, maxBytes: 51200 };
 const EVIDENCE = {
@@ -301,7 +371,12 @@ function selectEvidence(buf: Buffer): Selection {
  * left byte-identical; otherwise the kept content plus footer replace it via a
  * sibling temp file, never truncating in place.
  */
-export function clampFile(file: string, profile: string, artifact = file): ClampRecord {
+export function clampFile(
+  file: string,
+  profile: string,
+  artifact = file,
+  keep?: Provenance,
+): ClampRecord {
   if (!(CLAMP_PROFILES as readonly string[]).includes(profile)) {
     throw new CommandError(
       EXIT.USAGE,
@@ -314,6 +389,8 @@ export function clampFile(file: string, profile: string, artifact = file): Clamp
   }
   const buf = read.buf;
   const sel = profile === "ledger" ? selectLedger(buf) : selectEvidence(buf);
+  const source = keep?.source ?? null;
+  const fetchedAt = keep?.fetchedAt ?? (source === null ? null : utcNow());
   const untouched = (s: Selection | null): ClampRecord => ({
     artifact,
     clamped: false,
@@ -323,8 +400,23 @@ export function clampFile(file: string, profile: string, artifact = file): Clamp
     keptBytes: s?.keptBytes ?? buf.length,
     lineCapped: 0,
     ceilingHit: false,
+    raw: null,
+    source,
+    fetchedAt,
   });
   if (sel === null || sel.body.length === 0) return untouched(sel);
+
+  let raw: string | null = keep?.original ?? null;
+  if (raw === null && keep?.rawDir) {
+    const kept = keepRawOrError(file, keep.rawDir);
+    // The trim would lose the only copy: refuse it, the file stays whole.
+    if (kept instanceof Error)
+      throw new CommandError(
+        EXIT_ARTIFACT,
+        `cannot keep the original of '${artifact}': ${kept.message}`,
+      );
+    raw = kept;
+  }
 
   const footer: string[] = [];
   if (sel.lineCapped > 1) {
@@ -353,6 +445,9 @@ export function clampFile(file: string, profile: string, artifact = file): Clamp
     keptBytes: sel.keptBytes,
     lineCapped: sel.lineCapped,
     ceilingHit: sel.ceilingHit,
+    raw: raw === null ? null : outboxRel(path.dirname(file), raw),
+    source,
+    fetchedAt,
   };
 }
 
@@ -420,7 +515,16 @@ const RECORD_OUTPUT: Record<string, string> = {
   keptBytes: "content bytes kept",
   lineCapped: "over-long lines shortened in place",
   ceilingHit: "true when the hard ceiling dropped matching lines too",
+  raw: "the untouched original in the outbox ({name}.raw.{ext}), or null when nothing was cut",
+  source: "the command that produced the file (--source), or null",
+  fetchedAt: "when the source ran (UTC; the clamp time with --source), or null",
 };
+
+/** Say so when a cut had nowhere to keep its original. */
+function warnNoRaw(ctx: RunContext, record: ClampRecord, keep: Provenance) {
+  if (record.clamped && record.raw === null && keep.rawDir === null)
+    ctx.log(`${record.artifact}: not inside a git repo — original not kept`);
+}
 
 // ---------------------------------------------------------------------------
 // Ledger scan — plan Step 4's related deferrals / failures
@@ -594,30 +698,495 @@ function asCaptured(out: Buffer): Buffer {
 }
 
 // ---------------------------------------------------------------------------
+// Diff artifact — the one definition of "the run's diff"
+//
+// Build briefs, the challenge size gate and per-group verify read the same range
+// the same way: `{base}...HEAD` with `docs/plans/**` excluded, written to one
+// file. Past the guard the file holds a per-file budget instead of the whole diff
+// (`--stat`, then the largest files first, each cut), and its first line says so.
+// ---------------------------------------------------------------------------
+
+/** Exit code: --base does not name a commit. */
+export const EXIT_BASE = 5;
+
+export const DIFF_BASE = "origin/dev";
+export const DIFF_EXCLUDES = ["docs/plans/**"];
+export const PARTIAL_MARK = "partial diff coverage";
+
+export interface DiffGuard {
+  /** A diff longer than this is written as a per-file budget. */
+  fullLines: number;
+  /** Files shown in budget mode, largest change first. */
+  topFiles: number;
+  /** Lines kept per shown file. */
+  perFileLines: number;
+  /** Lines kept in all; the file stops there. */
+  totalLines: number;
+}
+export const DIFF_GUARD: DiffGuard = {
+  fullLines: 10000,
+  topFiles: 20,
+  perFileLines: 500,
+  totalLines: 50000,
+};
+
+export interface DiffStat {
+  filesChanged: number;
+  linesAdded: number;
+  linesDeleted: number;
+  linesChanged: number;
+}
+
+export interface DiffArtifact {
+  range: string;
+  stat: DiffStat;
+  diffLines: number;
+  partial: boolean;
+  /** Files whose diff is not in the artifact whole: not shown, or cut. */
+  omitted: string[];
+  record: ClampRecord;
+}
+
+/** git's stdout as bytes; empty when git fails (a range it rejects diffs as nothing). */
+function gitBytes(cwd: string, args: string[]): Buffer {
+  const res = spawnSync("git", args, { cwd, env: gitEnv(), maxBuffer: 1 << 29 });
+  return res.status === 0 ? (res.stdout ?? Buffer.alloc(0)) : Buffer.alloc(0);
+}
+
+const excludeSpec = (): string[] => ["--", ".", ...DIFF_EXCLUDES.map((e) => `:(exclude)${e}`)];
+
+/** Per-file `--numstat` rows over the range and excludes; a binary file counts with no lines. */
+export function diffNumstat(
+  cwd: string,
+  range: string,
+): { files: { path: string; lines: number }[]; stat: DiffStat } {
+  const files: { path: string; lines: number }[] = [];
+  let linesAdded = 0;
+  let linesDeleted = 0;
+  const rows = gitBytes(cwd, ["diff", "--numstat", "--no-renames", range, ...excludeSpec()])
+    .toString("utf-8")
+    .split("\n");
+  for (const row of rows) {
+    if (row === "") continue;
+    const [a, d, ...rest] = row.split("\t");
+    const added = Number(a) || 0;
+    const deleted = Number(d) || 0;
+    linesAdded += added;
+    linesDeleted += deleted;
+    files.push({ path: rest.join("\t"), lines: added + deleted });
+  }
+  return {
+    files,
+    stat: {
+      filesChanged: files.length,
+      linesAdded,
+      linesDeleted,
+      linesChanged: linesAdded + linesDeleted,
+    },
+  };
+}
+
+const joinLines = (lines: Buffer[]): Buffer =>
+  lines.length === 0 ? Buffer.alloc(0) : Buffer.concat([...lines.flatMap((l) => [l, lineOf("")])]);
+
+/** {@link writeDiffArtifact}; the artifact, or the error text when the write fails. */
+function tryWriteDiffArtifact(
+  ...args: Parameters<typeof writeDiffArtifact>
+): { ok: true; result: DiffArtifact } | { ok: false; error: string } {
+  try {
+    return { ok: true, result: writeDiffArtifact(...args) };
+  } catch (err) {
+    // Reported as the artifact exit code, with the reason.
+    return { ok: false, error: (err as Error).message };
+  }
+}
+
+/** Write the range's diff to `out`: whole under the guard, else a per-file budget; the record says which. */
+export function writeDiffArtifact(
+  cwd: string,
+  out: string,
+  artifact: string,
+  range: string,
+  guard: DiffGuard = DIFF_GUARD,
+  keep: Provenance = { rawDir: null },
+): DiffArtifact {
+  const fetchedAt = utcNow();
+  const { files, stat } = diffNumstat(cwd, range);
+  const full = gitBytes(cwd, ["diff", range, ...excludeSpec()]);
+  const diffLines = records(full).length;
+  let content: Buffer;
+  let partial = false;
+  let ceilingHit = false;
+  const omitted: string[] = [];
+  if (diffLines === 0) {
+    content = lineOf(`No changes in ${range} outside ${DIFF_EXCLUDES.join(", ")}.`);
+  } else if (diffLines <= guard.fullLines) {
+    content = full;
+  } else {
+    partial = true;
+    const ranked = [...files].sort((a, b) => b.lines - a.lines || a.path.localeCompare(b.path));
+    const shown = ranked.slice(0, guard.topFiles);
+    const stat0 = gitBytes(cwd, ["diff", "--stat", range, ...excludeSpec()]);
+    // Header, omitted-files line, a blank, --stat and a blank count toward the total.
+    const room0 = guard.totalLines - (4 + records(stat0).length);
+    const body: Buffer[] = [];
+    let used = 0;
+    const add = (b: Buffer) => {
+      body.push(b);
+      used += records(b).length;
+    };
+    let stopped = false;
+    for (const f of ranked) {
+      if (stopped || !shown.includes(f)) {
+        omitted.push(f.path);
+        continue;
+      }
+      const room = Math.min(guard.perFileLines, room0 - used);
+      if (room <= 0) {
+        ceilingHit = true;
+        stopped = true;
+        omitted.push(f.path);
+        add(lineOf(`# total line budget reached; ${f.path} and smaller files not shown`));
+        continue;
+      }
+      const lines = records(gitBytes(cwd, ["diff", range, "--", f.path]));
+      const kept = lines.slice(0, room);
+      if (kept.length < lines.length && room < guard.perFileLines) ceilingHit = true;
+      add(lineOf(`### ${f.path}`));
+      add(joinLines(kept));
+      if (kept.length < lines.length) {
+        omitted.push(f.path);
+        add(lineOf(`# ${lines.length - kept.length} more lines of ${f.path} not shown`));
+      }
+      add(lineOf(""));
+    }
+    omitted.sort((a, b) => a.localeCompare(b));
+    content = Buffer.concat([
+      lineOf(
+        `# ${PARTIAL_MARK}: ${range} has ${diffLines} diff lines across ${stat.filesChanged} files; showing the ${shown.length} largest files, ${guard.perFileLines} lines each, at most ${guard.totalLines} lines in all. Say "${PARTIAL_MARK}" in any verdict read from this file.`,
+      ),
+      lineOf(`# not shown whole: ${omitted.join(", ")}`),
+      lineOf(""),
+      stat0,
+      lineOf(""),
+      ...body,
+    ]);
+  }
+  const raw = partial && keep.rawDir !== null ? keepRaw(out, keep.rawDir, full) : null;
+  fs.mkdirSync(path.dirname(out), { recursive: true });
+  fs.writeFileSync(out, content);
+  const record: ClampRecord = {
+    artifact,
+    clamped: partial,
+    origLines: diffLines,
+    keptLines: partial ? records(content).length : diffLines,
+    origBytes: full.length,
+    keptBytes: content.length,
+    lineCapped: 0,
+    ceilingHit,
+    raw: raw === null ? null : outboxRel(cwd, raw),
+    source: `git diff ${range} -- . ${DIFF_EXCLUDES.map((e) => `':(exclude)${e}'`).join(" ")}`,
+    fetchedAt,
+  };
+  return { range, stat, diffLines, partial, omitted, record };
+}
+
+// ---------------------------------------------------------------------------
+// Brief — what one group's build agents read
+//
+// The engine writes it so the orchestrator never reads the plan: the plan's
+// why and what, where the group sits, the group's open task blocks verbatim,
+// one-line summaries of the earlier tasks they depend on, the Reuse Inventory
+// rows and Architecture entries for the open tasks' files, and the deviations
+// note when there is one.
+// ---------------------------------------------------------------------------
+
+/** A brief whose work section is over this many bytes warns: the group may not fit one fresh context. */
+export const BRIEF_WORK_WARN_BYTES = 8 * 1024;
+
+/** The plan sections a brief carries as its why and what, by heading text. */
+const BRIEF_SECTIONS = ["Context & Goals", "Narrative", "Success Criteria", "Out of Scope"];
+
+/** The plan-execute logs whose `DONE — TASK N` lines mark a task done. */
+const EXECUTE_LOG = /^build-plan-execute-.+-log\.md$/;
+
+/** A heading's text without leading emoji and marks. */
+const headingText = (text: string) => text.replace(/^[^A-Za-z0-9]+/, "").trim();
+
+/**
+ * The body of the first heading named `name`, up to the next heading of the
+ * same or a higher level. Lines inside code fences are never headings.
+ */
+function planSection(lines: string[], name: string): string | undefined {
+  let start = -1;
+  let level = 0;
+  let fence = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (/^\s*(`{3,}|~{3,})/.test(line)) fence = !fence;
+    const m = fence ? null : /^(#{1,6})\s+(.*)$/.exec(line);
+    if (m === null) continue;
+    if (start >= 0 && m[1]!.length <= level) return lines.slice(start, i).join("\n").trim();
+    if (start < 0 && headingText(m[2]!) === name) {
+      start = i + 1;
+      level = m[1]!.length;
+    }
+  }
+  return start < 0 ? undefined : lines.slice(start).join("\n").trim();
+}
+
+/** Every task number a plan-execute log in `dir` records `DONE`. */
+function loggedDone(dir: string): Set<number> {
+  const done = new Set<number>();
+  if (!fs.existsSync(dir)) return done;
+  for (const f of fs.readdirSync(dir).filter((f) => EXECUTE_LOG.test(f)))
+    for (const n of doneTasks(fs.readFileSync(path.join(dir, f), "utf-8"))) done.add(n);
+  return done;
+}
+
+/** The plan sections whose entries a brief copies for the group's files. */
+const INVENTORY_SECTION = "Reuse Inventory";
+const ARCHITECTURE_SECTION = "Architecture & Component Changes";
+
+/** Backticked repo-relative paths in `text`, normalised. */
+const backticked = (text: string) =>
+  [...text.matchAll(/`([^`]+)`/g)].map((m) => path.posix.normalize(m[1]!));
+
+/**
+ * The Reuse Inventory table's header and separator lines (`reuseInventory`), and its rows
+ * whose `File` cell names a file in `files`. No table or no `File` column → no rows.
+ */
+function inventoryRows(lines: string[], files: Set<string>): { head: string[]; rows: string[] } {
+  const table = reuseInventory(lines.join("\n"));
+  if (table === null) return { head: [], rows: [] };
+  const rows = table.rows.filter((r) => r.files.some((f) => files.has(f))).map((r) => r.line);
+  return { head: table.head, rows };
+}
+
+/**
+ * The Architecture & Component Changes entries whose heading names a file in `files`:
+ * the heading through the line before the next heading of the same or a higher level.
+ * Lines inside code fences are never headings.
+ */
+function architectureEntries(lines: string[], files: Set<string>): string[] {
+  const body = (planSection(lines, ARCHITECTURE_SECTION) ?? "").split("\n");
+  const heads: Array<{ i: number; level: number; text: string }> = [];
+  let fence = false;
+  body.forEach((line, i) => {
+    if (/^\s*(`{3,}|~{3,})/.test(line)) fence = !fence;
+    const m = fence ? null : /^(#{1,6})\s+(.*)$/.exec(line);
+    if (m !== null) heads.push({ i, level: m[1]!.length, text: m[2]! });
+  });
+  return heads.flatMap((h, k) => {
+    if (!backticked(h.text).some((f) => files.has(f))) return [];
+    const end = heads.slice(k + 1).find((n) => n.level <= h.level)?.i ?? body.length;
+    return [body.slice(h.i, end).join("\n").trim()];
+  });
+}
+
+/** The next free `build-brief-{group}-{n}.md` in `dir`. */
+function nextBriefPath(dir: string, group: number): string {
+  const re = new RegExp(`^build-brief-${group}-([0-9]+)\\.md$`);
+  const taken = fs.existsSync(dir)
+    ? fs.readdirSync(dir).map((f) => Number(re.exec(f)?.[1] ?? 0))
+    : [];
+  return path.join(dir, `build-brief-${group}-${Math.max(0, ...taken) + 1}.md`);
+}
+
+export interface BriefInput {
+  plan: string;
+  /** The plan's path as given, named where left-out entries can be read. */
+  planFile: string;
+  group: PlanGroup;
+  groups: PlanGroup[];
+  isDone: (t: PlanTaskBlock) => boolean;
+  reds: Array<Record<string, unknown>>;
+  note?: string;
+}
+
+/** The brief's text and its work section's size in bytes. */
+export function briefText(o: BriefInput): { text: string; workBytes: number } {
+  const lines = o.plan.split("\n");
+  const title = lines.find((l) => /^#\s/.test(l))?.replace(/^#\s+/, "") ?? "Plan";
+  const out = [`# Brief: group ${o.group.group} — ${o.group.title}`, "", `Plan: ${title}`, ""];
+
+  out.push("## Why and what", "");
+  for (const name of BRIEF_SECTIONS) {
+    const body = planSection(lines, name);
+    if (body !== undefined && body !== "") out.push(`### ${name}`, "", body, "");
+  }
+
+  out.push("## Where it fits", "");
+  const nextGroup = o.groups.find(
+    (g) => g.group > o.group.group && g.tasks.some((t) => !o.isDone(t)),
+  );
+  for (const g of o.groups) {
+    const state = g.tasks.every(o.isDone)
+      ? "done"
+      : g === o.group
+        ? "this group"
+        : g === nextGroup
+          ? "next"
+          : g.group > o.group.group
+            ? "later"
+            : "open";
+    out.push(`- Group ${g.group}: ${g.title} — ${state}`);
+    for (const t of g.tasks)
+      out.push(`  - TASK ${t.task}: ${t.title} — ${o.isDone(t) ? "done" : "open"}`);
+  }
+  out.push("");
+
+  const open = o.group.tasks.filter((t) => !o.isDone(t));
+  const work = ["## The work", ""];
+  for (const t of open) work.push(t.text.trim(), "");
+  const openNums = new Set(open.map((t) => t.task));
+  const reds = o.reds.filter((r) => openNums.has(Number(r.task)));
+  if (reds.length > 0) {
+    work.push("### Reds already recorded", "");
+    for (const r of reds)
+      work.push(
+        `- TASK ${Number(r.task)}: red already recorded for \`${String(r.test)}\` \`${String(r.testName)}\` — test written and seen failing; code may be partly done in the files it names`,
+      );
+    work.push("");
+  }
+  const deps = [...new Set(open.flatMap((t) => t.dependsOn))]
+    .filter((n) => !o.group.tasks.some((t) => t.task === n))
+    .sort((a, b) => a - b)
+    .map((n) => o.groups.flatMap((g) => g.tasks).find((t) => t.task === n))
+    .filter((t): t is PlanTaskBlock => t !== undefined);
+  if (deps.length > 0) {
+    work.push("### Earlier tasks this group depends on", "");
+    for (const t of deps) {
+      const files = [...new Set([...t.create, ...t.update, ...t.delete].map((r) => r.file))];
+      const where = files.length > 0 ? ` — ${files.map((f) => `\`${f}\``).join(", ")}` : "";
+      work.push(
+        `- TASK ${t.task} (group ${t.group}, ${o.isDone(t) ? "done" : "open"}): ${t.title}${where}`,
+      );
+    }
+    work.push("");
+  }
+  work.push(...planEntries(lines, open, work, o.planFile));
+  out.push(...work);
+
+  if (o.note !== undefined) out.push("## Deviations", "", o.note.trim(), "");
+  return {
+    text: out.join("\n"),
+    workBytes: Buffer.byteLength(work.join("\n")),
+  };
+}
+
+/**
+ * The Reuse Inventory rows, then the Architecture entries, for the files on the open
+ * tasks' CREATE / UPDATE / DELETE lines, each in plan order while the work section stays
+ * within BRIEF_WORK_WARN_BYTES; the rest are counted in a closing line naming where to
+ * read them.
+ */
+function planEntries(
+  lines: string[],
+  open: PlanTaskBlock[],
+  work: string[],
+  planFile: string,
+): string[] {
+  const files = new Set(
+    open.flatMap((t) =>
+      [...t.create, ...t.update, ...t.delete].map((r) => path.posix.normalize(r.file)),
+    ),
+  );
+  const inventory = inventoryRows(lines, files);
+  const arch = architectureEntries(lines, files);
+  const keptRows: string[] = [];
+  const keptArch: string[] = [];
+  const render = (rowsLeft: number, archLeft: number) => {
+    const part: string[] = [];
+    if (keptRows.length > 0)
+      part.push("### Reuse Inventory rows", "", ...inventory.head, ...keptRows, "");
+    if (keptArch.length > 0)
+      part.push("### Architecture entries", "", ...keptArch.flatMap((e) => [e, ""]));
+    if (rowsLeft + archLeft > 0)
+      part.push(
+        `Reuse Inventory rows left out: ${rowsLeft}; Architecture entries left out: ${archLeft} — read them in ${planFile} § ${INVENTORY_SECTION} and § ${ARCHITECTURE_SECTION}.`,
+        "",
+      );
+    return part;
+  };
+  const fits = (rowsLeft: number, archLeft: number) =>
+    Buffer.byteLength([...work, ...render(rowsLeft, archLeft)].join("\n")) <= BRIEF_WORK_WARN_BYTES;
+  // The counts passed to `fits` are those not yet kept, an upper bound on the final ones.
+  let rowsLeft = inventory.rows.length;
+  let archLeft = arch.length;
+  for (const row of inventory.rows) {
+    keptRows.push(row);
+    if (fits(rowsLeft - 1, archLeft)) rowsLeft--;
+    else keptRows.pop();
+  }
+  for (const entry of arch) {
+    keptArch.push(entry);
+    if (fits(rowsLeft, archLeft - 1)) archLeft--;
+    else keptArch.pop();
+  }
+  return render(rowsLeft, archLeft);
+}
+
+// ---------------------------------------------------------------------------
 // Command
 // ---------------------------------------------------------------------------
+
+const RUN_BLOCK_FLAGS: FlagSpec[] = [
+  { name: "idx", type: "string", required: true, help: "block ordinal from list-blocks" },
+  {
+    name: "script",
+    type: "string",
+    required: true,
+    help: "file holding the block body as customised for this failure (run with bash)",
+  },
+  FID_FLAG,
+  MONTH_FLAG,
+  ...ATTEMPT_FLAGS,
+];
+
+const RUN_BLOCK_OUTPUT: Record<string, string> = {
+  outcome: "checked (data written) | self-skipped (skip line written) | silent (nothing) | not-run",
+  artifact: "the artifact path, or null when nothing was written",
+  skip: "the block's [context-fetch:<name>] stderr line, or null",
+  clamp: "the payload's clamp record, or null",
+  reason: "why the block was not run, or null",
+};
 
 export const contextCommand: CommandSpec = {
   noun: "context",
   summary:
-    "Clamp context artifacts; scan ledgers; list, run and record consumer context-fetch blocks.",
+    "Clamp context artifacts; scan ledgers; write the run's diff and a build group's brief; list, run and record consumer context-fetch blocks.",
   verbs: {
     clamp: {
       summary: "Clamp an artifact to a size profile in place (a backstop, not a routine cap).",
       flags: [
         { name: "artifact", type: "string", required: true, help: "file to clamp" },
         { name: "profile", type: "string", required: true, help: "ledger | debug-evidence" },
+        {
+          name: "source",
+          type: "string",
+          help: "the exact command and inputs that produced the artifact (recorded with the time)",
+        },
         ...LOG_FLAGS,
       ],
       output: RECORD_OUTPUT,
-      exitCodes: { [EXIT_ARTIFACT]: "artifact missing, unreadable, or could not be replaced" },
+      exitCodes: {
+        [EXIT_ARTIFACT]:
+          "artifact missing, unreadable, or could not be replaced; or its original could not be kept",
+      },
       run: (ctx) => {
         const artifact = String(ctx.flags.artifact);
+        const keep: Provenance = {
+          rawDir: rawDirFor(ctx.cwd, str(ctx.flags.fid)),
+          source: str(ctx.flags.source),
+        };
         const record = clampFile(
           path.resolve(ctx.cwd, artifact),
           String(ctx.flags.profile),
           artifact,
+          keep,
         );
+        warnNoRaw(ctx, record, keep);
         const log = logPath(ctx);
         if (log !== undefined) appendRecord(log, record);
         if (record.clamped)
@@ -672,6 +1241,7 @@ export const contextCommand: CommandSpec = {
         kept: "lines written (at most 40)",
         clamp: "the clamp record",
       },
+      textOmit: ["clamp"],
       exitCodes: { [EXIT_ARTIFACT]: "artifact could not be written or replaced" },
       run: (ctx) => {
         const log = logPath(ctx);
@@ -683,15 +1253,213 @@ export const contextCommand: CommandSpec = {
         }
         const sourceFile = path.resolve(ctx.cwd, String(ctx.flags.source));
         const source = fs.existsSync(sourceFile) ? fs.readFileSync(sourceFile, "utf-8") : undefined;
-        const scan = ledgerScan(source, String(ctx.flags.terms));
+        const terms = String(ctx.flags.terms);
+        const scan = ledgerScan(source, terms);
         const artifact = String(ctx.flags.artifact);
         const out = path.resolve(ctx.cwd, artifact);
         fs.mkdirSync(path.dirname(out), { recursive: true });
         fs.writeFileSync(out, scan.content);
-        const clamp = clampFile(out, "ledger", artifact);
+        const keep: Provenance = {
+          rawDir: rawDirFor(ctx.cwd, str(ctx.flags.fid)),
+          source: `bkit context ledger-scan --source=${String(ctx.flags.source)} --terms="${terms}"`,
+        };
+        const clamp = clampFile(out, "ledger", artifact, keep);
+        warnNoRaw(ctx, clamp, keep);
         if (log !== undefined) appendRecord(log, clamp);
         ctx.log(`${artifact}: ${scan.total} matching line(s), ${scan.kept} kept`);
         ctx.emit({ total: scan.total, kept: scan.kept, clamp });
+        return EXIT.OK;
+      },
+    },
+    diff: {
+      summary:
+        "Write the run's diff ({base}...HEAD, docs/plans/** excluded) as one artifact — whole, or a per-file budget past the guard — and print its numbers.",
+      flags: [
+        { name: "artifact", type: "string", required: true, help: "file to write" },
+        {
+          name: "base",
+          type: "string",
+          help: `merge base or a group's start commit (default ${DIFF_BASE})`,
+        },
+        ...LOG_FLAGS,
+        {
+          name: "reset-log",
+          type: "boolean",
+          help: "empty the clamp log first (the step's first writer)",
+        },
+      ],
+      output: {
+        artifact: "the artifact path as given",
+        base: "the base used",
+        range: "the range diffed ({base}...HEAD)",
+        filesChanged: "files in the diff (--numstat, same excludes)",
+        linesAdded: "lines added",
+        linesDeleted: "lines deleted",
+        linesChanged: "linesAdded + linesDeleted",
+        diffLines: "lines in the whole diff",
+        partial: `true when the diff exceeded ${DIFF_GUARD.fullLines} lines and the per-file budget (${DIFF_GUARD.topFiles} files, ${DIFF_GUARD.perFileLines} lines each, ${DIFF_GUARD.totalLines} in all) was written instead`,
+        omitted:
+          "files whose diff is not in the artifact whole (not shown, or cut); [] unless partial — the artifact's second line lists them too",
+        clamp:
+          "the clamp record (clamped = partial; raw = the whole diff in the outbox when partial)",
+      },
+      textOmit: ["clamp"],
+      exitCodes: {
+        [EXIT_BASE]: "--base does not name a commit",
+        [EXIT_ARTIFACT]: "the artifact could not be written",
+      },
+      run: (ctx) => {
+        const base = str(ctx.flags.base) ?? DIFF_BASE;
+        if (git(ctx.cwd, ["rev-parse", "-q", "--verify", `${base}^{commit}`]) === null) {
+          throw new CommandError(
+            EXIT_BASE,
+            `--base ${base} does not name a commit (fetch origin, or pass the group's start sha)`,
+          );
+        }
+        const artifact = String(ctx.flags.artifact);
+        const log = logPath(ctx);
+        if (ctx.flags.resetLog === true) {
+          if (log === undefined)
+            throw new CommandError(EXIT.USAGE, "--reset-log needs --log, or --fid and --step");
+          fs.mkdirSync(path.dirname(log), { recursive: true });
+          fs.writeFileSync(log, "");
+        }
+        const written = tryWriteDiffArtifact(
+          ctx.cwd,
+          path.resolve(ctx.cwd, artifact),
+          artifact,
+          `${base}...HEAD`,
+          DIFF_GUARD,
+          { rawDir: rawDirFor(ctx.cwd, str(ctx.flags.fid)) },
+        );
+        if (!written.ok) throw new CommandError(EXIT_ARTIFACT, `${artifact}: ${written.error}`);
+        const result = written.result;
+        if (log !== undefined) appendRecord(log, result.record);
+        if (result.partial) {
+          ctx.log(
+            `${artifact}: ${result.diffLines} diff lines, over the ${DIFF_GUARD.fullLines}-line guard — per-file budget written (${PARTIAL_MARK})`,
+          );
+        }
+        ctx.emit({
+          artifact,
+          base,
+          range: result.range,
+          ...result.stat,
+          diffLines: result.diffLines,
+          partial: result.partial,
+          omitted: result.omitted,
+          clamp: result.record,
+        });
+        return EXIT.OK;
+      },
+    },
+    brief: {
+      summary:
+        "Write one group's brief (why and what, where it fits, its open task blocks, the earlier tasks they depend on, the Reuse Inventory rows and Architecture entries for their files, deviations) as build-brief-{group}-{n}.md, and print only its path and sizes.",
+      flags: [
+        { name: "plan", type: "string", required: true, help: "the plan file" },
+        { name: "group", type: "string", help: "the group to brief" },
+        {
+          name: "next",
+          type: "boolean",
+          help: "brief the first group with an open task (none open → nothing written, group null)",
+        },
+        {
+          name: "dir",
+          type: "string",
+          required: true,
+          help: "the run's logs folder: the brief is written there, and its build-plan-execute-*-log.md DONE lines mark tasks done",
+        },
+        {
+          name: "file",
+          type: "string",
+          help: "status.jsonl, to name the reds already recorded for open tasks",
+        },
+        {
+          name: "note-file",
+          type: "string",
+          help: "text for the Deviations section (left out when not given)",
+        },
+      ],
+      output: {
+        artifact: "the brief's path (null when --next finds no open group)",
+        bytes: "the brief's size in bytes",
+        group: "the group briefed (null when --next finds no open group)",
+        tasks: "the open task numbers the brief carries",
+        workBytes: "the work section's size in bytes (0 when --next finds no open group)",
+        workCap: `the work section's cap in bytes (${BRIEF_WORK_WARN_BYTES}): Reuse Inventory rows and Architecture entries past it are left out and counted; task blocks over it warn on stderr`,
+      },
+      exitCodes: {
+        [EXIT_ARTIFACT]: "the plan or note file is missing, or the plan's blocks do not parse",
+        [EXIT_NO_STATUS]: "--file names a missing or malformed status.jsonl",
+      },
+      run: (ctx) => {
+        const groupFlag = positiveInt(ctx.flags.group, "group");
+        if ((groupFlag === undefined) === (ctx.flags.next !== true))
+          throw new CommandError(EXIT.USAGE, "give exactly one of --group=N and --next");
+        const planFile = path.resolve(ctx.cwd, String(ctx.flags.plan));
+        if (!fs.existsSync(planFile))
+          throw new CommandError(EXIT_ARTIFACT, `${String(ctx.flags.plan)} does not exist`);
+        const plan = fs.readFileSync(planFile, "utf-8");
+        const blocks = parsePlanBlocks(plan);
+        if (blocks.errors.length > 0) {
+          const e = blocks.errors[0]!;
+          throw new CommandError(
+            EXIT_ARTIFACT,
+            `${String(ctx.flags.plan)}:${e.line}: ${e.message} — run \`bkit tests plan-check\``,
+          );
+        }
+        const dir = path.resolve(ctx.cwd, String(ctx.flags.dir));
+        const done = loggedDone(dir);
+        const isDone = (t: PlanTaskBlock) => t.done || done.has(t.task);
+        const group =
+          groupFlag === undefined
+            ? blocks.groups.find((g) => g.tasks.some((t) => !isDone(t)))
+            : blocks.groups.find((g) => g.group === groupFlag);
+        if (group === undefined && groupFlag !== undefined)
+          throw new CommandError(EXIT.USAGE, `the plan has no group ${groupFlag}`);
+        if (group === undefined) {
+          ctx.emit({
+            artifact: null,
+            bytes: 0,
+            group: null,
+            tasks: [],
+            workBytes: 0,
+            workCap: BRIEF_WORK_WARN_BYTES,
+          });
+          return EXIT.OK;
+        }
+        const noteFlag = str(ctx.flags.noteFile);
+        const noteFile = noteFlag === undefined ? undefined : path.resolve(ctx.cwd, noteFlag);
+        if (noteFile !== undefined && !fs.existsSync(noteFile))
+          throw new CommandError(EXIT_ARTIFACT, `${noteFlag} does not exist`);
+        const status = str(ctx.flags.file);
+        const { text, workBytes } = briefText({
+          plan,
+          planFile: String(ctx.flags.plan),
+          group,
+          groups: blocks.groups,
+          isDone,
+          reds: status === undefined ? [] : redRows(path.resolve(ctx.cwd, status), "build"),
+          note: noteFile === undefined ? undefined : fs.readFileSync(noteFile, "utf-8"),
+        });
+        const out = nextBriefPath(dir, group.group);
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(out, text);
+        if (workBytes > BRIEF_WORK_WARN_BYTES) {
+          ctx.log(
+            `${out}: the work section is ${humanBytes(workBytes)}, over ${humanBytes(BRIEF_WORK_WARN_BYTES)} — the group may not fit one fresh context`,
+          );
+        }
+        const artifact = path.isAbsolute(String(ctx.flags.dir)) ? out : path.relative(ctx.cwd, out);
+        ctx.emit({
+          artifact,
+          bytes: Buffer.byteLength(text),
+          group: group.group,
+          tasks: group.tasks.filter((t) => !isDone(t)).map((t) => t.task),
+          workBytes,
+          workCap: BRIEF_WORK_WARN_BYTES,
+        });
         return EXIT.OK;
       },
     },
@@ -739,31 +1507,41 @@ export const contextCommand: CommandSpec = {
     "run-block": {
       summary:
         "Run one customised block; write its output fenced (clamped first), its skip line, or nothing.",
-      flags: [
-        { name: "idx", type: "string", required: true, help: "block ordinal from list-blocks" },
-        {
-          name: "script",
-          type: "string",
-          required: true,
-          help: "file holding the block body as customised for this failure (run with bash)",
-        },
-        FID_FLAG,
-        MONTH_FLAG,
-        ...ATTEMPT_FLAGS,
-      ],
-      output: {
-        outcome:
-          "checked (data written) | self-skipped (skip line written) | silent (nothing) | not-run",
-        artifact: "the artifact path, or null when nothing was written",
-        skip: "the block's [context-fetch:<name>] stderr line, or null",
-        clamp: "the payload's clamp record, or null",
-        reason: "why the block was not run, or null",
-      },
+      flags: RUN_BLOCK_FLAGS,
+      output: RUN_BLOCK_OUTPUT,
+      textOmit: ["clamp"],
       exitCodes: {
         [EXIT_ARTIFACT]: "the payload could not be clamped or written",
         [EXIT_NO_STATUS]: "--file: status.jsonl missing, unreadable, or not valid NDJSON",
       },
       run: (ctx) => runBlock(ctx),
+    },
+    fetch: {
+      summary:
+        "run-block, with a JSON array of flat objects written as a markdown table; the raw output stays in the outbox.",
+      flags: [
+        ...RUN_BLOCK_FLAGS,
+        {
+          name: "render",
+          type: "string",
+          help: "table (default): a JSON array of flat objects becomes a markdown table when it reads back unchanged, else the output is written as printed; raw: as printed",
+        },
+      ],
+      output: {
+        ...RUN_BLOCK_OUTPUT,
+        render: "table | raw: how the output was written; null when nothing was written",
+      },
+      textOmit: ["clamp"],
+      exitCodes: {
+        [EXIT_ARTIFACT]: "the payload could not be clamped or written",
+        [EXIT_NO_STATUS]: "--file: status.jsonl missing, unreadable, or not valid NDJSON",
+      },
+      run: (ctx) => {
+        const render = str(ctx.flags.render) ?? "table";
+        if (!(RENDERS as readonly string[]).includes(render))
+          throw new CommandError(EXIT.USAGE, `--render must be ${RENDERS.join("|")}`);
+        return runBlock(ctx, render as Render);
+      },
     },
     finalise: {
       summary:
@@ -796,6 +1574,7 @@ export const contextCommand: CommandSpec = {
         commit: "--record: the new commit's sha, else null",
         comment:
           "the step comment (with --number): verdict, contexts, artifact links, a NOT CONFIGURED line per context with no block; else null",
+        commentFile: COMMENT_FILE_OUTPUT,
       },
       exitCodes: {
         [EXIT_NO_STATUS]: "--file: status.jsonl missing, unreadable, or not valid NDJSON",
@@ -878,6 +1657,7 @@ export const contextCommand: CommandSpec = {
           row: record ? written.row : null,
           commit: written.commit,
           comment,
+          commentFile: commentFileOf(ctx.cwd, comment),
         });
         return written.code;
       },
@@ -885,7 +1665,22 @@ export const contextCommand: CommandSpec = {
   },
 };
 
-function runBlock(ctx: RunContext): number {
+/** A block's output as a checked markdown table, or why it stays as printed. */
+function tableOf(stdout: Buffer): { text: string } | { reason: string } {
+  const parsed = parseJson(stdout.toString("utf-8"));
+  if (!parsed.ok) return { reason: "not JSON" };
+  const table = checkedTable(parsed.value);
+  return table.ok ? { text: table.text } : { reason: table.reason };
+}
+
+/**
+ * Run consumer block `--idx` and write what it printed, fenced and clamped. With `render`
+ * (`context fetch`), a JSON array of flat objects is written as a table instead; the
+ * output as printed goes to the outbox first, and the record says which was written.
+ */
+function runBlock(ctx: RunContext, render?: Render): number {
+  const shape = (out: Record<string, unknown>, written: Render | null) =>
+    render === undefined ? out : { ...out, render: written };
   const idx = positiveInt(ctx.flags.idx, "idx")!;
   const attempt = debugAttempt(ctx);
   const fid = String(ctx.flags.fid);
@@ -895,7 +1690,7 @@ function runBlock(ctx: RunContext): number {
   const block = fetchBlocks(consumerSection(readContextMd(ctx) ?? "")).find((b) => b.idx === idx);
   const notRun = (reason: string) => {
     ctx.log(`context-fetch: ${reason} — NOT RUN`);
-    ctx.emit({ outcome: "not-run", artifact: null, skip: null, clamp: null, reason });
+    ctx.emit(shape({ outcome: "not-run", artifact: null, skip: null, clamp: null, reason }, null));
     return EXIT.OK;
   };
   if (!block) return notRun(`no block ${idx} after <!-- bkit:end -->`);
@@ -909,6 +1704,7 @@ function runBlock(ctx: RunContext): number {
     return notRun(`block ${idx} (context=${block.context} name=${label}) has no fenced body`);
 
   const repoRoot = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
+  const fetchedAt = utcNow();
   // The inline block ran inside the step's shell, so these were in scope for it.
   const res = spawnSync("bash", [script], {
     cwd: ctx.cwd,
@@ -936,12 +1732,38 @@ function runBlock(ctx: RunContext): number {
 
   if (stdout.some((b) => b !== 0x0a && b !== 0)) {
     fs.mkdirSync(path.dirname(out), { recursive: true });
-    fs.writeFileSync(out, asCaptured(stdout));
-    const clamp = clampFile(out, "debug-evidence", artifact);
+    const keep: Provenance = {
+      rawDir: rawDirFor(ctx.cwd, fid),
+      source: fs.readFileSync(script, "utf-8"),
+      fetchedAt,
+    };
+    let payload = asCaptured(stdout);
+    let written: Render | null = null;
+    if (render !== undefined) {
+      const table = render === "table" ? tableOf(stdout) : null;
+      if (table !== null && "text" in table) {
+        // The table replaces the printed output: keep that output whole first.
+        if (keep.rawDir !== null) keep.original = keepRaw(out, keep.rawDir, stdout);
+        payload = Buffer.from(`${table.text}\n`);
+        written = "table";
+      } else {
+        if (table !== null) ctx.log(`render: raw (${table.reason})`);
+        written = "raw";
+      }
+    }
+    fs.writeFileSync(out, payload);
+    let clamp = clampFile(out, "debug-evidence", artifact, keep);
+    warnNoRaw(ctx, clamp, keep);
+    if (written !== null) {
+      const raw = clamp.raw ?? (keep.original ? outboxRel(path.dirname(out), keep.original) : null);
+      clamp = { ...clamp, raw, render: written };
+    }
     appendRecord(clampLogPath(ctx.cwd, fid, "context-fetch", attempt), clamp);
     fs.writeFileSync(out, fenced(fs.readFileSync(out)));
     ctx.log(`${shown} CHECKED — data returned`);
-    ctx.emit({ outcome: "checked", artifact, skip: skip ?? null, clamp, reason: null });
+    ctx.emit(
+      shape({ outcome: "checked", artifact, skip: skip ?? null, clamp, reason: null }, written),
+    );
     return EXIT.OK;
   }
   if (skip !== undefined) {
@@ -950,12 +1772,14 @@ function runBlock(ctx: RunContext): number {
     ctx.log(
       `${shown} SELF-SKIPPED (${skip}) — NOT CHECKED; this is NOT evidence that this source was clean (Trusted egress may also silently block the host — see .agents/context.md § Allowed domains)`,
     );
-    ctx.emit({ outcome: "self-skipped", artifact, skip, clamp: null, reason: null });
+    ctx.emit(shape({ outcome: "self-skipped", artifact, skip, clamp: null, reason: null }, null));
     return EXIT.OK;
   }
   ctx.log(
     `${shown} produced neither data nor a skip breadcrumb — NOT CHECKED (unexpected silent exit; treat as unavailable, never as clean)`,
   );
-  ctx.emit({ outcome: "silent", artifact: null, skip: null, clamp: null, reason: null });
+  ctx.emit(
+    shape({ outcome: "silent", artifact: null, skip: null, clamp: null, reason: null }, null),
+  );
   return EXIT.OK;
 }

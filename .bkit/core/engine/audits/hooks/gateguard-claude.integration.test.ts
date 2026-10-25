@@ -128,8 +128,8 @@ describe("gateguard hook — reuse advisory (new-file Write)", () => {
     });
     expect(r.status).toBe(0);
     const ctx = hookOutput(r)["additionalContext"] as string;
-    expect(ctx).toContain("Bolt-on drift");
-    expect(ctx).not.toContain("the investigation itself");
+    expect(ctx).toContain("Evolve existing code first");
+    expect(ctx).not.toContain("First edit to");
   });
 
   it("a Write to an EXISTING path gets the investigation checklist, not reuse", () => {
@@ -139,15 +139,15 @@ describe("gateguard hook — reuse advisory (new-file Write)", () => {
       tool_input: { file_path: "package.json" },
     });
     const ctx = hookOutput(r)["additionalContext"] as string;
-    expect(ctx).toContain("the investigation itself");
-    expect(ctx).not.toContain("Bolt-on drift");
+    expect(ctx).toContain("First edit to");
+    expect(ctx).not.toContain("Evolve existing code first");
   });
 
   it("an Edit to a nonexistent path stays on the investigation checklist (reuse is Write-only)", () => {
     const r = run(editPayload("src/edit-nonexistent.ts", newSession()));
     const ctx = hookOutput(r)["additionalContext"] as string;
-    expect(ctx).toContain("the investigation itself");
-    expect(ctx).not.toContain("Bolt-on drift");
+    expect(ctx).toContain("First edit to");
+    expect(ctx).not.toContain("Evolve existing code first");
   });
 });
 
@@ -156,6 +156,13 @@ describe("gateguard hook — config protection (item D)", () => {
     const r = run(editPayload("tsconfig.json", newSession()));
     expect(r.status).toBe(0);
     expect(hookOutput(r)["additionalContext"]).toContain("quality-gate config");
+  });
+
+  it("tells agents inside /bkit-* workflows to record the block, never self-approve", () => {
+    const r = run(editPayload("tsconfig.json", newSession()));
+    expect(hookOutput(r)["additionalContext"]).toContain(
+      "Inside `/bkit-*` workflows no sign-off is available: record the block and continue; NEVER self-approve the opt-out.",
+    );
   });
 
   it.each([

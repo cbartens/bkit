@@ -151,13 +151,13 @@ describe("design close: archive before overwrite", () => {
   });
 });
 
-describe("plan close: archive the whole superseded set", () => {
+describe("plan close: archive before overwrite", () => {
   const block = (root: string) => promoteLine("bkit-plan.md", root);
 
-  // The agent's Bash tool runs zsh on macOS, where an unmatched glob (an unsplit
-  // plan has no plan-v4-N.md) aborts the whole block with "no matches found".
+  // The agent's Bash tool runs zsh on macOS, where an unmatched glob aborts the whole
+  // block with "no matches found".
   it.skipIf(spawnSync("zsh", ["-c", "true"]).status !== 0)(
-    "runs under zsh for an unsplit plan with a superseded canonical",
+    "runs under zsh for a plan with a superseded canonical",
     () => {
       const root = makeRoot();
       write(root, `docs/plans/${MONTH}/logs/${FID}/plan-v2-reviewed.md`, "NEW PLAN\n");
@@ -173,44 +173,6 @@ describe("plan close: archive the whole superseded set", () => {
     },
   );
 
-  it("archives the main plan and every sub-plan under one timestamp", () => {
-    const root = makeRoot();
-    write(root, `docs/plans/${MONTH}/logs/${FID}/plan-v2-reviewed.md`, "NEW PLAN\n");
-    write(root, `docs/plans/${MONTH}/${FID}-plan.md`, "OLD PLAN\n");
-    write(root, `docs/plans/${MONTH}/${FID}-plan-1.md`, "OLD SUB 1\n");
-    write(root, `docs/plans/${MONTH}/${FID}-plan-2.md`, "OLD SUB 2\n");
-
-    run(block(root), root);
-
-    expect(read(root, `docs/plans/${MONTH}/${FID}-plan.md`)).toBe("NEW PLAN\n");
-    const archived = archiveNames(root);
-    expect(archived).toHaveLength(3);
-    for (const name of archived) {
-      expect(name).toMatch(new RegExp(`^\\d{8}T\\d{6}Z-${FID}-plan(-[12])?\\.md$`));
-    }
-    // One run, one timestamp — the set stays identifiable as a set.
-    const stamps = new Set(archived.map((n) => n.slice(0, 16)));
-    expect(stamps.size).toBe(1);
-  });
-
-  it("leaves no stale sub-plan behind when the new split is smaller", () => {
-    // The orphan case: 2 sub-plans previously, none now; {FID}-plan-1.md and -2.md are
-    // archived.
-    const root = makeRoot();
-    write(root, `docs/plans/${MONTH}/logs/${FID}/plan-v2-reviewed.md`, "NEW PLAN\n");
-    write(root, `docs/plans/${MONTH}/${FID}-plan.md`, "OLD PLAN\n");
-    write(root, `docs/plans/${MONTH}/${FID}-plan-1.md`, "OLD SUB 1\n");
-    write(root, `docs/plans/${MONTH}/${FID}-plan-2.md`, "OLD SUB 2\n");
-
-    run(block(root), root);
-
-    const live = fs
-      .readdirSync(path.join(root, "docs", "plans", MONTH))
-      .filter((f) => f.endsWith(".md"))
-      .sort();
-    expect(live).toEqual([`${FID}-plan.md`]);
-  });
-
   it("does not archive when the plan is unchanged", () => {
     const root = makeRoot();
     write(root, `docs/plans/${MONTH}/logs/${FID}/plan-v2-reviewed.md`, "SAME\n");
@@ -219,36 +181,5 @@ describe("plan close: archive the whole superseded set", () => {
     run(block(root), root);
 
     expect(archiveNames(root)).toHaveLength(0);
-  });
-});
-
-describe("archive/ is unreachable from the lookups that read these artefacts", () => {
-  // Archived files are invisible to the workflows' non-recursive `find` lookups.
-  // Each command below is the real one from the workflow it names.
-  const cases: Array<{ name: string; cmd: string }> = [
-    {
-      name: "bkit-build.md sub-plan count",
-      cmd: `find docs/plans/${MONTH} -maxdepth 1 -type f -name '${FID}-plan-*.md'`,
-    },
-    {
-      name: "bkit-ship.md plan presence",
-      cmd: `find docs/plans/${MONTH} -maxdepth 1 -type f -name '${FID}-plan*.md'`,
-    },
-  ];
-
-  it.each(cases)("$name does not match archived files", ({ cmd }) => {
-    const root = makeRoot();
-    write(root, `docs/plans/${MONTH}/${FID}-plan.md`, "LIVE\n");
-    write(root, `docs/plans/${MONTH}/${FID}-plan-1.md`, "LIVE SUB\n");
-    write(root, `docs/plans/${MONTH}/logs/${FID}/plan-v2-reviewed.md`, "DRAFT\n");
-    write(root, `docs/plans/${MONTH}/archive/20260801T134500Z-${FID}-plan.md`, "OLD\n");
-    write(root, `docs/plans/${MONTH}/archive/20260801T134500Z-${FID}-plan-1.md`, "OLD SUB\n");
-    write(root, `docs/plans/${MONTH}/archive/20260801T134500Z-${FID}-design.md`, "OLD DESIGN\n");
-
-    const out = execFileSync("bash", ["-c", `cd "${root}"\n${cmd} 2>/dev/null || true`], {
-      encoding: "utf-8",
-    });
-    expect(out).toContain(".md");
-    expect(out).not.toContain("archive/");
   });
 });

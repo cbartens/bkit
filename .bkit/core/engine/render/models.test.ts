@@ -14,6 +14,7 @@ import {
   buildOpencodeModelLookup,
   parseModelOverrides,
   applyModelOverrides,
+  unknownModelOverrides,
   parseModelLookupForColumn,
   opencodeProviderId,
 } from "./models";
@@ -47,6 +48,23 @@ function promptAgentNames(): string[] {
     .flatMap((fmMatch) => (fmMatch ? [parseFrontmatter(fmMatch[1]).get("name") ?? ""] : []))
     .filter((name) => name !== "");
 }
+
+/** A test-only prompt on the haiku tier: no shipped prompt pins `claude-haiku-5-5`. */
+const HAIKU_FIXTURE = "bkit-fixture-haiku";
+
+/**
+ * The shipped prompts.md with one haiku-tier row added under the § Models header, so the
+ * tier's per-provider pins stay pinned while no shipped agent uses them.
+ */
+const HAIKU_PROMPTS = (() => {
+  const real = fs.readFileSync(path.join(getBkitDocsRoot(), "prompts.md"), "utf-8");
+  const header = real.indexOf("| Prompt | Anthropic |");
+  const afterSeparator = real.indexOf("\n", real.indexOf("\n", header) + 1) + 1;
+  const row = `| \`${HAIKU_FIXTURE}\` | \`claude-haiku-5-5\` | \`composer-2.5\` | \`z-ai/glm-5.3-flash\` | \`deepseek-v4.1-flash\` | \`glm-5.3-flash\` | \`deepseek-v4.1-flash\` | \`gpt-6-luna\` | \`gemini-3.8-flash\` | \`high\` | 50 | test fixture |\n`;
+  const file = path.join(os.tmpdir(), `haiku-prompts-${process.pid}.md`);
+  fs.writeFileSync(file, real.slice(0, afterSeparator) + row + real.slice(afterSeparator));
+  return file;
+})();
 
 // ---------------------------------------------------------------------------
 // parseModelLookup — 42 rows, no missing names
@@ -116,7 +134,7 @@ describe("parseEffortMap", () => {
     expect(effortColumnForProgram("cursor")).toBe("Cursor");
     expect(effortColumnForProgram("opencode")).toBe("OpenCode");
     expect(lookupEffort(effortMap, "opencode", "xhigh")).toBe("max");
-    expect(lookupEffort(effortMap, "opencode", "medium")).toBe("high");
+    expect(lookupEffort(effortMap, "opencode", "medium")).toBe("max");
   });
 
   // A gateway key reaching this function throws; no fallback ladder.
@@ -209,32 +227,26 @@ describe("buildOpencodeModelLookup — default column reader", () => {
 
 describe("buildOpencodeModelLookup — per-provider model resolution", () => {
   // The four OpenAI-compatible providers ship curated columns.
-  // Tier anchors: ideate-1 = opus, ideate-2 = sonnet, design-summary = haiku,
+  // Tier anchors: ideate-1 = opus, ideate-2 = sonnet, HAIKU_FIXTURE = haiku,
   // build-challenge-2 / debug-failure-diagnose = convergent (CoT reasoner).
   // OpenRouter opus+sonnet collapse onto V4.1 Flash (clears both Claude targets).
   // Haiku stays on the cheapest sufficient pin; convergent stays a distinct family.
   it("openrouter: v4.1-flash opus+sonnet, glm-5.3-flash haiku, kimi-k3 convergent", () => {
-    const lookup = buildOpencodeModelLookup(
-      path.join(getBkitDocsRoot(), "prompts.md"),
-      "openrouter",
-    );
+    const lookup = buildOpencodeModelLookup(HAIKU_PROMPTS, "openrouter");
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("deepseek/deepseek-v4.1-flash");
     expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("deepseek/deepseek-v4.1-flash");
-    expect(lookup.get("bkit-design-summary")).toBe("z-ai/glm-5.3-flash");
+    expect(lookup.get(HAIKU_FIXTURE)).toBe("z-ai/glm-5.3-flash");
     expect(lookup.get("bkit-build-challenge-2")).toBe("moonshotai/kimi-k3");
     expect(lookup.get("bkit-debug-failure-diagnose")).toBe("moonshotai/kimi-k3");
     // The gateway prefix belongs to the renderer, not the table.
-    expect(formatModelPin("opencode", "openrouter", lookup.get("bkit-design-summary")!)).toBe(
+    expect(formatModelPin("opencode", "openrouter", lookup.get(HAIKU_FIXTURE)!)).toBe(
       "openrouter/z-ai/glm-5.3-flash",
     );
   });
 
   // Convergent is not a DeepSeek slug; haiku is not V4 Flash.
   it("openrouter: convergent is kimi-k3; frozen/dated v4-pro slugs stay off the column", () => {
-    const lookup = buildOpencodeModelLookup(
-      path.join(getBkitDocsRoot(), "prompts.md"),
-      "openrouter",
-    );
+    const lookup = buildOpencodeModelLookup(HAIKU_PROMPTS, "openrouter");
     const pins = [...lookup.values()];
     expect(pins).not.toContain("deepseek/deepseek-v4-pro");
     expect(pins).not.toContain("deepseek/deepseek-v4-pro-0813");
@@ -256,13 +268,13 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
   });
 
   it("ollama (cloud): deepseek-v4.1-flash opus+sonnet+haiku, kimi-k3 convergent", () => {
-    const lookup = buildOpencodeModelLookup(path.join(getBkitDocsRoot(), "prompts.md"), "ollama");
+    const lookup = buildOpencodeModelLookup(HAIKU_PROMPTS, "ollama");
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("deepseek-v4.1-flash");
     expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("deepseek-v4.1-flash");
-    expect(lookup.get("bkit-design-summary")).toBe("deepseek-v4.1-flash");
+    expect(lookup.get(HAIKU_FIXTURE)).toBe("deepseek-v4.1-flash");
     expect(lookup.get("bkit-build-challenge-2")).toBe("kimi-k3");
     expect(lookup.get("bkit-debug-failure-diagnose")).toBe("kimi-k3");
-    expect(formatModelPin("opencode", "ollama", lookup.get("bkit-design-summary")!)).toBe(
+    expect(formatModelPin("opencode", "ollama", lookup.get(HAIKU_FIXTURE)!)).toBe(
       "ollama/deepseek-v4.1-flash",
     );
   });
@@ -287,10 +299,7 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
 
   it("opencode-zen: curated OpenCode Zen column (opencode/<id> — models.dev built-in id)", () => {
     // CLI key is opencode-zen; agent pins use the OpenCode built-in provider id `opencode`.
-    const lookup = buildOpencodeModelLookup(
-      path.join(getBkitDocsRoot(), "prompts.md"),
-      "opencode-zen",
-    );
+    const lookup = buildOpencodeModelLookup(HAIKU_PROMPTS, "opencode-zen");
     expect(lookup.size).toBeGreaterThan(0);
     // Cells are bare; the pin is built by formatModelPin, which maps the bkit gateway key
     // `opencode-zen` onto the OpenCode-side provider id `opencode` — NOT a pass-through.
@@ -303,17 +312,14 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     // `variant:` pin there hard-errors on OpenCode 2.0 (V4.1 Flash exposes them).
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("deepseek-v4.1-flash"); // opus
     expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("deepseek-v4.1-flash"); // sonnet
-    expect(lookup.get("bkit-design-summary")).toBe("glm-5.3-flash"); // haiku
+    expect(lookup.get(HAIKU_FIXTURE)).toBe("glm-5.3-flash"); // haiku
     expect(lookup.get("bkit-build-challenge-2")).toBe("kimi-k3"); // convergent
   });
 
   it("opencode-go: curated OpenCode Go column (deepseek-v4.1-flash / kimi-k3)", () => {
     // opencode-go = the budget open-weight-only plan (https://opencode.ai/zen/go/v1). Go catalog is
     // invisible to /zen/v1/models — sourced via models.dev.
-    const lookup = buildOpencodeModelLookup(
-      path.join(getBkitDocsRoot(), "prompts.md"),
-      "opencode-go",
-    );
+    const lookup = buildOpencodeModelLookup(HAIKU_PROMPTS, "opencode-go");
     expect(lookup.size).toBeGreaterThan(0);
     for (const [, model] of lookup) {
       expect(model).not.toMatch(/^opencode-go\//);
@@ -321,7 +327,7 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     }
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("deepseek-v4.1-flash"); // opus
     expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("deepseek-v4.1-flash"); // sonnet
-    expect(lookup.get("bkit-design-summary")).toBe("deepseek-v4.1-flash"); // haiku
+    expect(lookup.get(HAIKU_FIXTURE)).toBe("deepseek-v4.1-flash"); // haiku
     expect(lookup.get("bkit-build-challenge-2")).toBe("kimi-k3"); // convergent
   });
 });
@@ -342,12 +348,12 @@ describe("model overrides (consumer-owned, below bkit:end)", () => {
 
   it("parses override rows; ignores header + separator", () => {
     const f = writeOverrides(
-      "| bkit-design-summary | openrouter | openrouter/x |\n| bkit-build-summary | ollama | ollama/y |\n",
+      "| bkit-design-generate | openrouter | openrouter/x |\n| bkit-build-plan-verify | ollama | ollama/y |\n",
     );
     const rows = parseModelOverrides(f);
     expect(rows).toEqual([
-      { prompt: "bkit-design-summary", provider: "openrouter", model: "openrouter/x" },
-      { prompt: "bkit-build-summary", provider: "ollama", model: "ollama/y" },
+      { prompt: "bkit-design-generate", provider: "openrouter", model: "openrouter/x" },
+      { prompt: "bkit-build-plan-verify", provider: "ollama", model: "ollama/y" },
     ]);
     fs.rmSync(f);
   });
@@ -389,6 +395,15 @@ describe("model overrides (consumer-owned, below bkit:end)", () => {
     expect(lookup.get("keep-me")).toBe("openrouter/override"); // provider match → overridden
     expect(lookup.get("leave-me")).toBe("openrouter/base2"); // not in override table → unchanged
     expect(lookup.has("unknown-agent")).toBe(false); // not a known agent → not added
+    fs.rmSync(f);
+  });
+
+  it("unknown agent override reported", () => {
+    const f = writeOverrides(
+      "| gone-agent | openrouter | openrouter/z |\n| keep-me | openrouter | openrouter/x |\n| gone-agent | ollama | ollama/y |\n",
+    );
+    expect(unknownModelOverrides(f, new Set(["keep-me"]))).toEqual(["gone-agent"]);
+    expect(unknownModelOverrides(f, new Set(["keep-me", "gone-agent"]))).toEqual([]);
     fs.rmSync(f);
   });
 

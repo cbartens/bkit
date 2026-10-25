@@ -63,6 +63,42 @@ export interface JiraConfig extends TrackerStates {
   project: string | null;
 }
 
+/** `bkit.workflows.tasks`: the plan caps `tests plan-check` and `challenge merge` enforce. */
+export interface TaskCaps {
+  /** Tasks in one plan group. */
+  maxPerGroup: number;
+  /** Planned TEST FIRST tests in one plan group. */
+  maxTestsPerGroup: number;
+  /** TEST FIRST tests one task names. */
+  maxTestsPerTask: number;
+  /** Distinct test files one task's TEST FIRST names. */
+  maxTestFilesPerTask: number;
+}
+
+/** Every point a workflow can stop and ask the owner at, as `<workflow>.<point>`. */
+export const ASK_POINTS = [
+  "design.grill",
+  "build.verify",
+  "build.challenge",
+  "build.tests",
+  "debug.fix",
+  "debug.soak",
+  "ship.merge",
+] as const;
+export type AskPoint = (typeof ASK_POINTS)[number];
+
+/** One `bkit.workflows.<workflow>.<point>` block. */
+export interface AskSetting {
+  /** Stop and ask the owner; false = carry on with the recommendation. Headless never asks. */
+  ask: boolean;
+  /** The hard limit: `maxTurns` for the grill, `maxAttempts` elsewhere. */
+  max: number;
+}
+
+/** The limit key a point's block holds. */
+export const limitKey = (point: AskPoint): "maxTurns" | "maxAttempts" =>
+  point === "design.grill" ? "maxTurns" : "maxAttempts";
+
 export interface BkitConfig {
   /** CI workflow file under `.github/workflows/`. */
   ciWorkflow: string;
@@ -95,11 +131,15 @@ export interface BkitConfig {
   opencodeProviders: OpencodeProvider[];
   /** The post-CI cloud-agent variant; `none` is both the default and the explicit opt-out. */
   cloudAgents: CloudAgents;
-  /** `bkit.depUpdater` is `"none"`: silences the missing-dependency-updater advisory. */
+  /** Per ask point: whether to ask, and its hard limit; each invalid key takes its default. */
+  asks: Record<AskPoint, AskSetting>;
+  /** Plan caps; each key that is not an integer >= 1 takes its default. */
+  tasks: TaskCaps;
+  /** `bkit.dependencies.updater` is `"none"`: silences the missing-dependency-updater advisory. */
   depUpdaterOptOut: boolean;
-  /** `bkit.issueTracker` is present with any value, so `none` is a choice, not an undecided install. */
+  /** `bkit.tracker.default` is set, so `none` is a choice; absent or `""` (what install seeds) = undecided. */
   issueTrackerExplicit: boolean;
-  /** `bkit.cloudAgents` is present with any value, so `none` is a choice, not an undecided install. */
+  /** `bkit.cloud.agent` is set, so `none` is a choice; absent or `""` (what install seeds) = undecided. */
   cloudAgentsExplicit: boolean;
 }
 
@@ -122,6 +162,18 @@ export const CONFIG_DEFAULTS: Readonly<BkitConfig> = {
   opencodeProvider: null,
   opencodeProviders: [],
   cloudAgents: DEFAULT_CLOUD_AGENTS,
+  // `.bkit/workflows.md` § Ask points.
+  asks: {
+    "design.grill": { ask: true, max: 6 },
+    "build.verify": { ask: true, max: 2 },
+    "build.challenge": { ask: true, max: 2 },
+    "build.tests": { ask: true, max: 2 },
+    "debug.fix": { ask: true, max: 2 },
+    "debug.soak": { ask: true, max: 2 },
+    "ship.merge": { ask: true, max: 2 },
+  },
+  // Plan caps, `.bkit/workflows.md` § Test-first.
+  tasks: { maxPerGroup: 3, maxTestsPerGroup: 15, maxTestsPerTask: 10, maxTestFilesPerTask: 3 },
   depUpdaterOptOut: false,
   issueTrackerExplicit: false,
   cloudAgentsExplicit: false,
@@ -142,6 +194,75 @@ function trackerStates(raw: Record<string, unknown>, defaults: TrackerStates): T
   };
 }
 
+const TASK_CAP_KEYS = Object.keys(CONFIG_DEFAULTS.tasks) as (keyof TaskCaps)[];
+
+const validCap = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 1;
+
+/**
+ * The keys of a `bkit.workflows.tasks` value that fall back to their default: each set key
+ * that is not an integer >= 1, or `["tasks"]` when the value is set but not an object.
+ */
+export function invalidTaskCaps(raw: unknown): string[] {
+  if (raw === undefined) return [];
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return ["tasks"];
+  const set = raw as Record<string, unknown>;
+  return TASK_CAP_KEYS.filter((k) => set[k] !== undefined && !validCap(set[k]));
+}
+
+/** `bkit.workflows.tasks` read key by key; a missing or invalid key takes its default. */
+function taskCaps(raw: unknown): TaskCaps {
+  const set = record(raw);
+  const caps = { ...CONFIG_DEFAULTS.tasks };
+  for (const k of TASK_CAP_KEYS) if (validCap(set[k])) caps[k] = set[k];
+  return caps;
+}
+
+/** The `bkit.workflows.<workflow>.<point>` block `workflows` holds for `point`. */
+const askBlock = (workflows: Record<string, unknown>, point: AskPoint): unknown => {
+  const [workflow, name] = point.split(".") as [string, string];
+  const block = workflows[workflow];
+  return block !== null && typeof block === "object" && !Array.isArray(block)
+    ? (block as Record<string, unknown>)[name]
+    : undefined;
+};
+
+/**
+ * The dotted keys under `bkit.workflows` that fall back to their default: each set `ask`
+ * that is not a boolean, each set limit that is not an integer >= 1, or the point itself
+ * when it is set but not an object.
+ */
+export function invalidAskSettings(workflows: unknown): string[] {
+  const set = record(workflows);
+  const bad: string[] = [];
+  for (const point of ASK_POINTS) {
+    const raw = askBlock(set, point);
+    if (raw === undefined) continue;
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+      bad.push(point);
+      continue;
+    }
+    const block = raw as Record<string, unknown>;
+    if (block.ask !== undefined && typeof block.ask !== "boolean") bad.push(`${point}.ask`);
+    const key = limitKey(point);
+    if (block[key] !== undefined && !validCap(block[key])) bad.push(`${point}.${key}`);
+  }
+  return bad;
+}
+
+/** Every ask point read from `bkit.workflows`; a missing or invalid key takes its default. */
+function askSettings(workflows: Record<string, unknown>): Record<AskPoint, AskSetting> {
+  const out = {} as Record<AskPoint, AskSetting>;
+  for (const point of ASK_POINTS) {
+    const block = record(askBlock(workflows, point));
+    const limit = block[limitKey(point)];
+    out[point] = {
+      ask: typeof block.ask === "boolean" ? block.ask : CONFIG_DEFAULTS.asks[point].ask,
+      max: validCap(limit) ? limit : CONFIG_DEFAULTS.asks[point].max,
+    };
+  }
+  return out;
+}
+
 /**
  * Read `package.json` `bkit` from `root` (the main checkout). A missing file,
  * missing key, or wrongly typed value falls back to the default for that key.
@@ -149,21 +270,30 @@ function trackerStates(raw: Record<string, unknown>, defaults: TrackerStates): T
 export function readBkitConfig(root: string): BkitConfig {
   // A missing or unparseable package.json takes every default; `bkit check` reports the file.
   const read = readPackageJson(root);
-  const bkit = ((read.ok ? read.pkg.bkit : undefined) ?? {}) as Record<string, unknown>;
-  const worktree = (bkit.worktree ?? {}) as Record<string, unknown>;
+  const bkit = record(read.ok ? read.pkg.bkit : undefined);
+  const tracker = record(bkit.tracker);
+  const cloud = record(bkit.cloud);
+  const opencode = record(record(bkit.providers).opencode);
+  const testing = record(bkit.testing);
+  const workflows = record(bkit.workflows);
+  const worktree = record(workflows.worktree);
   const copy = worktree.copy;
-  const minFreeGb = ((bkit.disk ?? {}) as Record<string, unknown>).minFreeGb;
-  const lanes = bkit.shipGateRequiredLanes;
-  const book = bkit.minPushPaths;
-  const provider = bkit.opencodeProvider;
-  const providers = bkit.opencodeProviders;
-  const github = record(bkit.github);
-  const linear = record(bkit.linear);
-  const jira = record(bkit.jira);
+  const minFreeGb = workflows.minFreeGb;
+  const lanes = testing.shipGate;
+  const book = testing.minPushPaths;
+  const provider = opencode.default;
+  const providers = opencode.installed;
+  const github = record(tracker.github);
+  const linear = record(tracker.linear);
+  const jira = record(tracker.jira);
   const projectUrl = optionalString(github.project);
   return {
-    ciWorkflow: nonEmptyString(bkit.ciWorkflow) ? bkit.ciWorkflow : CONFIG_DEFAULTS.ciWorkflow,
-    capstoneJob: nonEmptyString(bkit.capstoneJob) ? bkit.capstoneJob : CONFIG_DEFAULTS.capstoneJob,
+    ciWorkflow: nonEmptyString(testing.ciWorkflow)
+      ? testing.ciWorkflow
+      : CONFIG_DEFAULTS.ciWorkflow,
+    capstoneJob: nonEmptyString(testing.ciCapstone)
+      ? testing.ciCapstone
+      : CONFIG_DEFAULTS.capstoneJob,
     worktreeCopy:
       Array.isArray(copy) && copy.every(nonEmptyString)
         ? [...copy]
@@ -174,7 +304,7 @@ export function readBkitConfig(root: string): BkitConfig {
       typeof minFreeGb === "number" && Number.isFinite(minFreeGb) && minFreeGb >= 0
         ? minFreeGb
         : CONFIG_DEFAULTS.diskMinFreeGb,
-    issueTracker: parseIssueTracker(bkit.issueTracker) ?? CONFIG_DEFAULTS.issueTracker,
+    issueTracker: parseIssueTracker(tracker.default) ?? CONFIG_DEFAULTS.issueTracker,
     github: {
       project:
         github.project === false ? false : projectUrl ? parseGithubBoardUrl(projectUrl) : null,
@@ -203,11 +333,18 @@ export function readBkitConfig(root: string): BkitConfig {
           (v): v is OpencodeProvider => typeof v === "string" && isOpencodeProvider(v),
         )
       : [],
-    cloudAgents: parseCloudAgents(bkit.cloudAgents) ?? CONFIG_DEFAULTS.cloudAgents,
-    depUpdaterOptOut: bkit.depUpdater === "none",
-    issueTrackerExplicit: bkit.issueTracker !== undefined,
-    cloudAgentsExplicit: bkit.cloudAgents !== undefined,
+    cloudAgents: parseCloudAgents(cloud.agent) ?? CONFIG_DEFAULTS.cloudAgents,
+    asks: askSettings(workflows),
+    tasks: taskCaps(workflows.tasks),
+    depUpdaterOptOut: record(bkit.dependencies).updater === "none",
+    issueTrackerExplicit: tracker.default !== undefined && tracker.default !== "",
+    cloudAgentsExplicit: cloud.agent !== undefined && cloud.agent !== "",
   };
+}
+
+/** The CI workflow file `bkit.testing.ciWorkflow` names, as `.github/workflows/<file>` relative to `root`. */
+export function ciWorkflowPath(root: string): string {
+  return `.github/workflows/${readBkitConfig(root).ciWorkflow}`;
 }
 
 /** Where the wired tracker's issues live, for the workflows' tracker calls. */

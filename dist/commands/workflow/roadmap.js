@@ -16,7 +16,7 @@
 // a bad ledger or an unwritable board, and never gates the caller's close.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { compareTs, parse, resolveRepoSlug, validate } from "../../ledgers/telemetry.js";
+import { SCHEMA, compareTs, mintTs, parse, resolveRepoSlug, validate, } from "../../ledgers/telemetry.js";
 import { readBkitVersion } from "../../install/version-file.js";
 import { CommandError, DEV, EXIT, git, parseJson, repoRoot, runGit, } from "../lib.js";
 import { landDir, pushToDev } from "../land.js";
@@ -42,7 +42,7 @@ export const MARKERS = {
 const ANALYSIS_PLACEHOLDER = "_(no analysis yet; run @bkit-utility-update-roadmap to populate)_";
 const NOTES_PRE_PLACEHOLDER = "## Notes\n\n_(above the bkit list — yours, never overwritten)_";
 const NOTES_POST_PLACEHOLDER = "## Notes\n\n_(end of the board — yours, never overwritten)_";
-const BANNER = "> Generated tables — do not hand-edit the `bkit` tables; append to `.bkit/issues.jsonl` instead (an `ABANDONED` row hides a FID from every section). `## Notes` blocks are yours and are never overwritten. Everything above the first marker is also yours. notes-post is last. Analysis list length: `package.json` key `bkit.roadmapNext` (positive integer; absent or invalid → 25).";
+const BANNER = "> Generated tables — do not hand-edit the `bkit` tables; append to `.bkit/issues.jsonl` instead (an `ABANDONED` row hides a FID from every section). `## Notes` blocks are yours and are never overwritten. Everything above the first marker is also yours. notes-post is last. Analysis list length: `package.json` key `bkit.prompts.roadmapNext` (positive integer; absent or invalid → 25).";
 /** Fixed related-utilities line; `@bkit-audit-generate` ends every run with the same text. */
 export const RELATED_UTILITIES = "> Related utilities, run on demand: `@bkit-utility-update-roadmap` ranks the next best items in `docs/roadmap.md`; `@bkit-utility-update-tracker` brings tracker issues in line with the tracker rules; `@bkit-utility-update-deferrals` and `@bkit-utility-update-failures` close ledger rows the code already resolved; `@bkit-utility-update-decisions`, `@bkit-utility-update-knowledge` and `@bkit-utility-update-documentation` correct ledgers and docs the code has since contradicted.";
 /** Newest SHIPPED rows on the board; older ones stay in the ledger. */
@@ -264,13 +264,15 @@ function fold(ctx) {
 export function featureRow(root, o) {
     const phase = o.workflow.charAt(0).toUpperCase() + o.workflow.slice(1);
     return {
-        ts: Date.now(),
+        schema: SCHEMA,
+        ts: mintTs(),
         kind: "feature",
-        repo: resolveRepoSlug(root) || "unknown/repo",
-        bkitVersion: readBkitVersion(path.join(root, ".bkit", "version"))?.pinnedVersion || "unknown",
-        workflow: o.workflow,
-        step: o.step,
         key: o.fid,
+        repo: resolveRepoSlug(root) || "unknown/repo",
+        bkit: {
+            version: readBkitVersion(path.join(root, ".bkit", "version"))?.pinnedVersion || "unknown",
+        },
+        by: { workflow: o.workflow, step: o.step },
         category: "agentic",
         description: `${phase} closed for ${o.fid}`,
         status: o.status,

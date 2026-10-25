@@ -10,6 +10,8 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runCommand } from "../lib";
+import { COMMANDS } from "../registry";
+import { newRecord, writeRecord } from "./ledgers";
 import { ownershipMarker, worktreeDir, worktreesCommand } from "./worktrees";
 
 const FID = "42-thing";
@@ -49,7 +51,7 @@ function linked(cwd: string, fid = FID, owned = false) {
 async function run(cwd: string, argv: string[]) {
   const out: string[] = [];
   const err: string[] = [];
-  const code = await runCommand(["worktrees", ...argv], [worktreesCommand], {
+  const code = await runCommand(["worktrees", ...argv, "--json"], [worktreesCommand], {
     classicVerbs: new Set(),
     cwd,
     io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
@@ -102,12 +104,15 @@ describe("bkit worktrees setup — adopt in place", () => {
       repoRoot: cwd,
       branch: "claude/session",
       mode: "adopted",
+      branchWarning: null,
       owned: false,
       rebaseConflict: false,
       sentinel: null,
       logDir: path.join(cwd, "docs/plans", MONTH, "logs", FID),
       baseRef: "origin/dev",
       baseSha: null,
+      carriedSha: null,
+      carriedDropped: [],
       copied: [],
       copyMissing: [],
       direnvAllowed: false,
@@ -134,6 +139,29 @@ describe("bkit worktrees setup — adopt in place", () => {
     git(cwd, "branch", `feat/${FID}`);
     const r = await setup(cwd, workflow, ...extraArgs);
     expect(r.code).toBe(7);
+  });
+
+  it("build in place on main is refused", async () => {
+    const r = await setup(repo("main"), "build");
+    expect(r.code).toBe(7);
+    expect(r.err).toContain("refusing to work in place on main");
+  });
+
+  it("design and plan in place on main are refused", async () => {
+    for (const workflow of ["design", "plan"]) {
+      const r = await setup(repo("main"), workflow);
+      expect(r.code).toBe(7);
+      expect(r.err).toContain("refusing to work in place on main");
+    }
+  });
+
+  it("still adopts a cloud session branch whose upstream is main", async () => {
+    const cwd = repo("claude/session");
+    git(cwd, "config", "branch.claude/session.remote", "origin");
+    git(cwd, "config", "branch.claude/session.merge", "refs/heads/main");
+    const r = await setup(cwd, "build");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ branch: "claude/session", mode: "adopted" });
   });
 
   it("refuses a detached HEAD", async () => {
@@ -174,6 +202,182 @@ describe("bkit worktrees setup — debug", () => {
   });
 });
 
+describe("bkit worktrees setup — debug in place on dev shares the checkout", () => {
+  const OTHER = "43-other";
+  const recordFile = (cwd: string, fid = FID) =>
+    path.resolve(cwd, git(cwd, "rev-parse", "--git-path", `bkit/shared-checkout/${fid}.json`));
+  const record = (cwd: string, fid = FID) =>
+    JSON.parse(fs.readFileSync(recordFile(cwd, fid), "utf-8")) as Record<string, unknown>;
+  const hashOf = (cwd: string, rel: string) => git(cwd, "hash-object", "--", rel);
+
+  async function bkit(cwd: string, ...argv: string[]) {
+    const out: string[] = [];
+    const code = await runCommand([...argv, "--json"], COMMANDS, {
+      classicVerbs: new Set(),
+      cwd,
+      io: { stdout: (t) => out.push(t), stderr: () => {} },
+    });
+    return { code, json: out.length ? JSON.parse(out.join("")) : undefined };
+  }
+  /** Take `fid`'s workflow lock and open its run, so the lock is live. */
+  async function liveRun(cwd: string, fid: string) {
+    const lock = await bkit(
+      cwd,
+      "locks",
+      "acquire",
+      "--kind=workflow",
+      "--workflow=debug",
+      `--fid=${fid}`,
+      `--month=${MONTH}`,
+    );
+    expect(lock.code).toBe(0);
+    const start = await bkit(
+      cwd,
+      "workflows",
+      "start",
+      "--workflow=debug",
+      `--fid=${fid}`,
+      `--month=${MONTH}`,
+      "--lock-held",
+      `--token=${lock.json.token}`,
+    );
+    expect(start.code).toBe(0);
+    // A run counts as live once it has stepped (locks.ts liveReason), as it has by Step 2's end.
+    const stepped = await bkit(
+      cwd,
+      "steps",
+      "done",
+      `--file=docs/plans/${MONTH}/logs/${fid}/status.jsonl`,
+      "--workflow=debug",
+      "--step=debug-start-workflow",
+      "--commit=none",
+    );
+    expect(stepped.code).toBe(0);
+  }
+
+  /** dev with a bare origin, one local commit beyond it, and foreign work in flight. */
+  function shared() {
+    const cwd = repo("dev");
+    const origin = `${cwd}-origin.git`;
+    dirs.push(origin);
+    git(cwd, "init", "-q", "--bare", "-b", "dev", origin);
+    fs.mkdirSync(path.join(cwd, "src"));
+    fs.mkdirSync(path.join(cwd, ".bkit"));
+    fs.writeFileSync(path.join(cwd, "src/a.txt"), "a\n");
+    fs.writeFileSync(path.join(cwd, ".bkit/issues.jsonl"), '{"id":"base"}\n');
+    git(cwd, "add", "src", ".bkit");
+    git(cwd, "commit", "-q", "-m", "base");
+    git(cwd, "remote", "add", "origin", origin);
+    git(cwd, "push", "-q", "-u", "origin", "dev");
+    git(cwd, "commit", "-q", "--allow-empty", "-m", "foreign local commit");
+    fs.writeFileSync(path.join(cwd, "src/a.txt"), "a\nforeign\n");
+    fs.writeFileSync(path.join(cwd, "notes.md"), "foreign notes\n");
+    fs.appendFileSync(path.join(cwd, ".bkit/issues.jsonl"), '{"id":"foreign"}\n');
+    return cwd;
+  }
+
+  it("in-place debug on dev writes the shared-checkout record", async () => {
+    const cwd = shared();
+    const r = await setup(cwd, "debug");
+    expect(r.code).toBe(0);
+    expect(fs.existsSync(recordFile(cwd))).toBe(true);
+    const rec = record(cwd);
+    expect(rec).toMatchObject({
+      fid: FID,
+      branch: "dev",
+      startSha: git(cwd, "rev-parse", "HEAD"),
+      aheadAtStart: 1,
+      commits: [],
+    });
+    expect(rec.paths).toEqual(
+      expect.arrayContaining([
+        { path: "src/a.txt", hash: hashOf(cwd, "src/a.txt") },
+        { path: "notes.md", hash: hashOf(cwd, "notes.md") },
+        { path: ".bkit/issues.jsonl", hash: hashOf(cwd, ".bkit/issues.jsonl"), lines: 2 },
+      ]),
+    );
+  });
+
+  it("in-place debug on dev returns startSha and aheadAtStart", async () => {
+    const cwd = shared();
+    const r = await setup(cwd, "debug");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ startSha: git(cwd, "rev-parse", "HEAD"), aheadAtStart: 1 });
+  });
+
+  it("a new run of the same FID rewrites startSha", async () => {
+    const cwd = shared();
+    await setup(cwd, "debug");
+    git(cwd, "commit", "-q", "--allow-empty", "-m", "another foreign commit");
+    const r = await setup(cwd, "debug");
+    expect(r.code).toBe(0);
+    expect(record(cwd).startSha).toBe(git(cwd, "rev-parse", "HEAD"));
+    expect(r.json.aheadAtStart).toBe(2);
+  });
+
+  it("a resume of the same FID reuses the record", async () => {
+    const cwd = shared();
+    await setup(cwd, "debug");
+    const first = fs.readFileSync(recordFile(cwd), "utf-8");
+    await liveRun(cwd, FID);
+    git(cwd, "commit", "-q", "--allow-empty", "-m", "the run's own commit");
+    const r = await setup(cwd, "debug");
+    expect(r.code).toBe(0);
+    expect(fs.readFileSync(recordFile(cwd), "utf-8")).toBe(first);
+  });
+
+  it("setup refuses with EXIT_SHARED_BUSY when another FID has a record and a live lock", async () => {
+    const cwd = shared();
+    writeRecord(cwd, newRecord(cwd, OTHER, "dev"));
+    await liveRun(cwd, OTHER);
+    const r = await setup(cwd, "debug");
+    expect(r.code).toBe(13);
+    expect(r.err).toContain(OTHER);
+    expect(fs.existsSync(recordFile(cwd))).toBe(false);
+  });
+
+  it("setup refuses with EXIT_SHARED_BUSY for a closed run that has not released its lock yet", async () => {
+    const cwd = shared();
+    writeRecord(cwd, newRecord(cwd, OTHER, "dev"));
+    await liveRun(cwd, OTHER);
+    // The run closed (it still pushes and waits for CI) but its lock file is fresh.
+    fs.appendFileSync(
+      path.join(cwd, "docs", "plans", MONTH, "logs", OTHER, "status.jsonl"),
+      `${JSON.stringify({ type: "workflow-done", workflow: "debug", at: new Date().toISOString() })}\n`,
+    );
+    const r = await setup(cwd, "debug");
+    expect(r.code).toBe(13);
+    expect(r.err).toContain(OTHER);
+    expect(fs.existsSync(recordFile(cwd))).toBe(false);
+    expect(fs.existsSync(recordFile(cwd, OTHER))).toBe(true);
+  });
+
+  it("setup refuses while another setup holds the guard, and clears a stale guard", async () => {
+    const cwd = shared();
+    const guard = path.join(path.dirname(recordFile(cwd)), ".setup.lock");
+    fs.mkdirSync(path.dirname(guard), { recursive: true });
+    fs.writeFileSync(guard, "");
+    const busy = await setup(cwd, "debug");
+    expect(busy.code).toBe(13);
+    expect(fs.existsSync(recordFile(cwd))).toBe(false);
+    const old = new Date(Date.now() - 120_000);
+    fs.utimesSync(guard, old, old);
+    const ok = await setup(cwd, "debug");
+    expect(ok.code).toBe(0);
+    expect(fs.existsSync(recordFile(cwd))).toBe(true);
+    expect(fs.existsSync(guard)).toBe(false);
+  });
+
+  it("a stale record without a lock is replaced", async () => {
+    const cwd = shared();
+    writeRecord(cwd, newRecord(cwd, OTHER, "dev"));
+    const r = await setup(cwd, "debug");
+    expect(r.code).toBe(0);
+    expect(fs.existsSync(recordFile(cwd))).toBe(true);
+    expect(fs.existsSync(recordFile(cwd, OTHER))).toBe(false);
+  });
+});
+
 describe("bkit worktrees setup — ship branch", () => {
   it("ships the prompt-named branch, else feat/{fid} when it exists, else the session branch", async () => {
     const cwd = repo("claude/work");
@@ -185,16 +389,49 @@ describe("bkit worktrees setup — ship branch", () => {
     expect((await setup(cwd, "ship")).json.branch).toBe(`feat/${FID}`);
   });
 
-  it("falls back to feat/{fid} from a dev session and refuses when it cannot switch there", async () => {
+  it("ship names a missing feat branch", async () => {
     const r = await setup(repo("dev"), "ship");
     expect(r.code).toBe(7);
-    expect(r.err).toContain(`cannot switch to feat/${FID}`);
+    expect(r.err).toContain(`feat/${FID} does not exist — name the feature branch to ship`);
+    expect(r.err).not.toContain("commit or stash");
+  });
+
+  it("ship on dev refuses with the releases-stay-manual text", async () => {
+    const r = await setup(repo("dev"), "ship", "--branch=dev");
+    expect(r.code).toBe(7);
+    expect(r.err).toContain("refusing to ship dev");
+    expect(r.err).toContain("ships a feature branch into dev only");
+    expect(r.err).toContain("releases stay manual");
+    expect(r.err).toContain("Name the feature branch to ship.");
   });
 
   it("refuses dev / main as the ship branch", async () => {
     const r = await setup(repo("claude/work"), "ship", "--branch=main");
     expect(r.code).toBe(7);
     expect(r.err).toContain("refusing to ship main");
+    expect(r.err).toContain("releases stay manual");
+  });
+
+  it("warns on stderr and in branchWarning when the ship branch names neither the FID nor the issue", async () => {
+    const cwd = repo("claude/work");
+    const r = await setup(cwd, "ship");
+    expect(r.code).toBe(0);
+    const warning = `[bkit-ship] WARNING branch claude/work not named for ${FID} — shipping it as named`;
+    expect(r.json.branchWarning).toBe(warning);
+    expect(r.err).toContain(warning);
+    git(cwd, "branch", "claude/ISSUE-77-fix");
+    expect(
+      (await setup(cwd, "ship", "--branch=claude/ISSUE-77-fix", "--issue=#77")).json.branchWarning,
+    ).toBe(null);
+    git(cwd, "branch", `feat/${FID.toUpperCase()}`);
+    expect(
+      (await setup(cwd, "ship", `--branch=feat/${FID.toUpperCase()}`, "--issue=")).json
+        .branchWarning,
+    ).toBe(null);
+  });
+
+  it("--issue is ship only", async () => {
+    expect((await setup(repo("dev"), "build", "--issue=7")).code).toBe(2);
   });
 
   it("adopts in place when the session is already on the ship branch, even with --worktrees", async () => {
@@ -228,13 +465,13 @@ describe("bkit worktrees setup — resume guard", () => {
       const cwd = repo("dev");
       fs.writeFileSync(
         path.join(cwd, "package.json"),
-        JSON.stringify({ bkit: { disk: { minFreeGb } } }),
+        JSON.stringify({ bkit: { workflows: { minFreeGb } } }),
       );
       return cwd;
     };
     afterEach(() => vi.unstubAllEnvs());
 
-    it("stops before minting when free disk stays under bkit.disk.minFreeGb after the max steps", async () => {
+    it("stops before minting when free disk stays under bkit.workflows.minFreeGb after the max steps", async () => {
       const cwd = local(1e9);
       fs.mkdirSync(path.join(cwd, "scripts", "cleanup"), { recursive: true });
       fs.writeFileSync(
@@ -243,7 +480,7 @@ describe("bkit worktrees setup — resume guard", () => {
       );
       const r = await setup(cwd, "build", "--worktrees");
       expect(r.code).toBe(12);
-      expect(r.err).toContain("still under bkit.disk.minFreeGb");
+      expect(r.err).toContain("still under bkit.workflows.minFreeGb");
       expect(fs.existsSync(path.join(cwd, "ran"))).toBe(true);
       expect(fs.existsSync(worktreeDir(cwd, FID))).toBe(false);
     });
@@ -259,7 +496,7 @@ describe("bkit worktrees setup — resume guard", () => {
     const cwd = repo("dev");
     fs.writeFileSync(
       path.join(cwd, "package.json"),
-      JSON.stringify({ bkit: { worktree: { install: false } } }),
+      JSON.stringify({ bkit: { workflows: { worktree: { install: false } } } }),
     );
     const wt = linked(cwd);
     const r = await setup(cwd, "ship", "--worktrees");
@@ -280,7 +517,9 @@ describe("bkit worktrees setup — resume guard", () => {
     const cwd = repo("dev");
     fs.writeFileSync(
       path.join(cwd, "package.json"),
-      JSON.stringify({ bkit: { worktree: { copy: ["../secrets"], install: false } } }),
+      JSON.stringify({
+        bkit: { workflows: { worktree: { copy: ["../secrets"], install: false } } },
+      }),
     );
     linked(cwd);
     const r = await setup(cwd, "ship", "--worktrees");

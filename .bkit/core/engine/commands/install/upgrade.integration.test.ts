@@ -371,7 +371,7 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
       path.join(tmpDir, "package.json"),
       JSON.stringify({
         name: "consumer",
-        bkit: { depUpdater: "renovate", renovateRunner: "self" },
+        bkit: { dependencies: { updater: "renovate" }, renovateRunner: "self" },
       }),
       "utf-8",
     );
@@ -1476,7 +1476,7 @@ describe("upgrade-render", () => {
           name: "upgrade-render-consumer",
           version: "0.0.0",
           devDependencies: {},
-          bkit: { issueTracker: "github" },
+          bkit: { tracker: { default: "github" } },
         },
         null,
         2,
@@ -1561,15 +1561,38 @@ describe("upgrade-render", () => {
       expect(promptsAfter).toContain(OVERRIDE_ROW);
     }, 180_000);
 
+    it("dead override reported: upgrade names an override row for an agent bkit no longer ships, exit 0", () => {
+      const install = runBkit(["install", "--claude"]);
+      expect(`${install.stdout}\n${install.stderr}`).toMatch(/\[bkit-install\]/);
+      const promptsPath = path.join(tmpDir, ".bkit", "prompts.md");
+      const dead = `bkit-retired-${"agent"}`;
+      const prompts = fs.readFileSync(promptsPath, "utf-8");
+      const end = prompts.indexOf("<!-- bkit:end -->");
+      const sep = prompts.indexOf("| --- | --- | --- |\n", end);
+      expect(sep, "installed prompts.md carries an empty Model Overrides table").toBeGreaterThan(
+        end,
+      );
+      const at = sep + "| --- | --- | --- |\n".length;
+      fs.writeFileSync(
+        promptsPath,
+        `${prompts.slice(0, at)}| ${dead} | cursor | some-model |\n${prompts.slice(at)}`,
+        "utf-8",
+      );
+      const upgrade = runBkit(["upgrade", "--auto-apply"]);
+      const combined = `${upgrade.stdout}\n${upgrade.stderr}`;
+      expect(upgrade.status, combined).toBe(0);
+      expect(combined).toContain(dead);
+    }, 180_000);
+
     it.each(["github", "linear", "jira"])(
       "upgrade renders opencode.json with provider/tracker sentinels resolved for %s (no raw @@…@@ leak, #245)",
       (tracker) => {
         // Record the tracker the render reads.
         const pkgPath = path.join(tmpDir, "package.json");
         const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
-          bkit: Record<string, unknown>;
+          bkit: { tracker: { default: string } };
         };
-        pkg.bkit.issueTracker = tracker;
+        pkg.bkit.tracker.default = tracker;
         fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2), "utf-8");
 
         // Install the opencode host (openrouter) — opencode.json is templated with @@OPENCODE_*@@
@@ -1638,9 +1661,9 @@ describe("upgrade-render", () => {
 
       // (2) The provider is recorded in the manifest — the authoritative upgrade-time detection signal.
       const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
-        bkit?: { opencodeProvider?: string };
+        bkit?: { providers?: { opencode?: { default?: string } } };
       };
-      expect(pkg.bkit?.opencodeProvider).toBe("opencode-go");
+      expect(pkg.bkit?.providers?.opencode?.default).toBe("opencode-go");
 
       // (3) Agents seeded with the opencode-go prefix (opencode-go/…).
       const agentsDir = path.join(tmpDir, ".opencode", "agents");

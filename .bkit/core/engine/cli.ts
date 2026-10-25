@@ -11,8 +11,7 @@ import { runCommand } from "./commands/lib.js";
 import { launchApp } from "./commands/launch.js";
 import { runStatus, runDoctor } from "./commands/install/doctor.js";
 import { runComplyCommand } from "./commands/comply.js";
-import { runHarvestCommand } from "./commands/harvest.js";
-import { runAnalysisCommand } from "./commands/analysis.js";
+import { runStatsCommand } from "./commands/stats.js";
 import { runTelemetryCommand } from "./commands/telemetry.js";
 import { runTipsCommand } from "./commands/tips.js";
 import { runUpgradeCommand } from "./commands/install/upgrade.js";
@@ -47,8 +46,7 @@ export const CLASSIC_VERBS: ReadonlySet<string> = new Set([
   "uninstall",
   "upgrade",
   "comply",
-  "harvest",
-  "analysis",
+  "stats",
   "telemetry",
   "tips",
   "cursor",
@@ -66,8 +64,7 @@ export type Verb =
   | "cursor"
   | "opencode"
   | "comply"
-  | "harvest"
-  | "analysis"
+  | "stats"
   | "telemetry"
   | "tips"
   | "help";
@@ -260,24 +257,12 @@ export function parseArgs(argv: string[]): ParsedArgs {
   } else if (firstArg === "comply") {
     verb = "comply";
     args.shift();
-  } else if (firstArg === "harvest") {
-    verb = "harvest";
+  } else if (firstArg === "stats") {
+    verb = "stats";
     args.shift();
-    // harvest takes no flags — reject any remaining args
+    // stats takes no flags — reject any remaining positional args
     if (args.length > 0 && !args[0]?.startsWith("-")) {
-      console.error(
-        `[bkit] \`bkit harvest\` takes no positional args. Run \`bkit help\` for usage.`,
-      );
-      process.exit(1);
-    }
-  } else if (firstArg === "analysis") {
-    verb = "analysis";
-    args.shift();
-    // analysis takes no flags — reject any remaining positional args
-    if (args.length > 0 && !args[0]?.startsWith("-")) {
-      console.error(
-        `[bkit] \`bkit analysis\` takes no positional args. Run \`bkit help\` for usage.`,
-      );
+      console.error(`[bkit] \`bkit stats\` takes no positional args. Run \`bkit help\` for usage.`);
       process.exit(1);
     }
   } else if (firstArg === "telemetry") {
@@ -629,7 +614,7 @@ Usage:
                                  workflow runs this at its close; audit and utility do the
                                  same for audits and the ledger / roadmap updaters);
                                  --all lists every one. Ends with a star line ("bkit-star"
-                                 in bkit.ignoreAdvisories silences it), except under
+                                 in bkit.advisories.ignore silences it), except under
                                  --workflow=audit|utility. Local checks only. Exits 0.
   bkit status                   Read-only host/provider status. Reports current host+provider
                                  (sampled from .claude/, .cursor/, package.json, and the
@@ -650,18 +635,6 @@ Usage:
                                  never gates a workflow. Appends kind:"compliance"
                                  rows to .bkit/stats.jsonl. Fail-open: always exits 0.
                                  Valid phases: design, plan, build, debug, ship.
-  bkit harvest                  Cross-repo harvest — COPIES consumer .bkit/stats.jsonl
-                                 and MOVES .bkit/friction.jsonl into harvest/ (COUNT-ONLY
-                                 for docs/deferrals.jsonl and docs/failures.jsonl).
-                                 Reads consumer paths from harvest/consumers.md.
-                                 DESTRUCTIVE: harvested friction rows are REMOVED from
-                                 the consumer, but only after they are fsync'd and read
-                                 back from harvest/. stats.jsonl is never modified.
-                                 harvest/ accumulates and is never cleared; it is
-                                 gitignored, so it is the only record of pruned rows —
-                                 back it up. Never commits
-                                 in any repo. Deduplicates by per-kind composite
-                                 identity. Advisory + fail-open: exits 0.
   bkit telemetry summary [--phase=<workflow>]
                                  Per-workflow telemetry report: THIS run's metrics
                                  (duration, size, friction/deferrals/failures added,
@@ -671,13 +644,12 @@ Usage:
                                  --phase=<workflow>: the workflow to report
                                  (design|plan|build|debug|ship). Without it, prints the
                                  ledger-health line only. Read-only: exits 0.
-  bkit analysis                 Cross-repo analysis — reports counts/rates/elapsed-time,
-                                 change-size vs outcome regression, dispatch-size threshold,
-                                 counterSource trust labelling, per-rule compliance
-                                 rate over kind:"compliance" rows, and the
-                                 unjustified-deferral rate per (subagent, model)
-                                 over kind:"deferral" rows. Reads from harvest/,
-                                 .bkit/stats.jsonl and docs/deferrals.jsonl.
+  bkit stats                    This repo's stats report: counts, durations, change-size vs
+                                 outcome, counterSource trust, per-rule and per-version
+                                 compliance, and the unjustified-deferral rate per
+                                 (subagent, model). Reads .bkit/stats.jsonl,
+                                 .bkit/friction.jsonl and docs/deferrals.jsonl of THIS repo
+                                 only; writes .bkit/stats.md and prints it.
                                  Advisory + inform-only: exits 0.
   bkit help                     Print this message.
 
@@ -705,7 +677,7 @@ Module flags (composable; symmetric install ↔ uninstall):
                   Ships .opencode/** (agents, commands, opencode.json, bkit-gateguard.js,
                   bkit-readguard.js).
                   Configure your provider key; verify with \`bkit doctor\`. All installed
-                  providers tracked in bkit.opencodeProviders.
+                  providers tracked in bkit.providers.opencode.installed.
   --codex         Codex CLI host. BARE flag — takes no value: Codex runs on one gateway
                   (openai), so only --opencode is provider-pluggable. Ships .codex/agents/*.toml
                   + .codex/hooks.json + .codex/hooks/bkit-{gateguard,guardrails,readguard}.cjs,
@@ -736,7 +708,7 @@ Dependency updaters (copy an example and own it):
 
 Cross-cutting / modifiers:
   --tracker=<name>      Wire issue tracker integration. Values: github, linear, jira, none
-                        (default). Records bkit.issueTracker in package.json and substitutes
+                        (default). Records bkit.tracker.default in package.json and substitutes
                         tracker snippets into command mirrors. Re-renders every installed
                         host, and works alone (bkit install --tracker=github). Switching is
                         free; a switch removes the old linear or jira MCP entry unless you
@@ -754,7 +726,7 @@ Uninstall flags:
   --dry-run       Print decision table (FILE / DECISION / REASON) without writing.
   --opencode=<provider>
                   Surgical provider removal: removes that provider's block from
-                  opencode.json + drops it from bkit.opencodeProviders. Does NOT remove
+                  opencode.json + drops it from bkit.providers.opencode.installed. Does NOT remove
                   agents/commands/gateguard. If the removed provider was active, the first
                   remaining provider becomes active and the agents are re-rendered to its
                   model pins.
@@ -802,7 +774,7 @@ function commandsUsage(): string {
   return [
     "",
     "",
-    "Workflow commands (bkit <noun> <verb> --flags; JSON on stdout; bkit <noun> --help):",
+    "Workflow commands (bkit <noun> <verb> --flags; text on stdout, --json for JSON; bkit <noun> --help):",
     ...COMMANDS.map((c) => `  bkit ${c.noun.padEnd(width)}  ${c.summary}`),
   ].join("\n");
 }
@@ -884,13 +856,8 @@ export async function main() {
     return;
   }
 
-  if (verb === "harvest") {
-    runHarvestCommand();
-    return;
-  }
-
-  if (verb === "analysis") {
-    runAnalysisCommand();
+  if (verb === "stats") {
+    runStatsCommand();
     return;
   }
 

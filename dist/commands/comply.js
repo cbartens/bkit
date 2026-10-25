@@ -14,12 +14,10 @@
 //
 // See DE-34 for the shared-entrypoint + crash-isolation contract.
 import { execFileSync } from "node:child_process";
-import * as fs from "node:fs";
 import * as path from "node:path";
-import { readJsonFile } from "../shared/json.js";
-import { getPkgRoot } from "../shared/package-roots.js";
 import { isMirrorPath } from "../shared/protected-paths.js";
-import { gitEnv, resolveGitSha, resolveRepoSlug, } from "../ledgers/telemetry.js";
+import { gitEnv, resolveGitSha, } from "../ledgers/telemetry.js";
+import { appendLedgerRows } from "./workflow/ledgers.js";
 /** SHA charset guard — only raw hex SHAs from the ledger are accepted. */
 const SHA_RE = /^[0-9a-f]{7,40}$/;
 export const realGitAdapter = {
@@ -134,89 +132,74 @@ export function runGrader(input) {
 /**
  * Build one `kind:"compliance"` row per rule.
  * Rules that produced no violation emit a "pass" row.
- * Every row carries `bkitVersion`.
- *
- * Called by the CLI dispatch after `runGrader`.
  */
 export function buildComplianceRows(input) {
-    const ts = Date.now();
-    const { violations, phase, parentSha, repo, bkitVersion, extra } = input;
+    const { violations, workflow, parentSha, step } = input;
     const violationByRule = new Map();
     for (const v of violations) {
         violationByRule.set(v.ruleId, v);
     }
     const ALL_RULES = ["no-mirror-edit", "skip-ci-not-head"];
-    const rows = [];
-    for (const ruleId of ALL_RULES) {
+    return ALL_RULES.map((ruleId) => {
         const violation = violationByRule.get(ruleId);
-        const result = violation != null ? violation.result : "pass";
+        const verdict = violation != null ? violation.result : "pass";
         const evidence = violation?.evidence;
-        const envelope = {
-            ts: ts + rows.length, // micro-offset so each row has a unique ts within the batch
+        return {
             kind: "compliance",
-            repo,
-            bkitVersion,
-            workflow: phase,
-            step: "close-gate",
-            ...(extra ?? {}),
+            by: { workflow, step },
+            run: { parentSha },
+            rule: { id: ruleId, verdict, ...(evidence != null ? { evidence } : {}) },
         };
-        const payload = {
-            rule: ruleId,
-            result,
-            ...(evidence != null ? { evidence } : {}),
-            phase,
-            parentSha,
-        };
-        rows.push({ ...envelope, ...payload });
-    }
-    return rows;
+    });
 }
 // ---------------------------------------------------------------------------
 // Append helper — writes rows to .bkit/stats.jsonl (best-effort)
 // ---------------------------------------------------------------------------
 /**
- * Append compliance rows to the stats ledger.
- * Best-effort: prints `[bkit-comply] append failed: …` on error, never throws.
+ * Append compliance rows to `<root>/.bkit/stats.jsonl` through `bkit ledgers append`.
+ * Best-effort: prints `[bkit-comply] append failed: …` and returns false on error,
+ * never throws.
  */
-export function appendComplianceRows(rows, statsPath) {
+export function appendComplianceRows(rows, root, log = (m) => console.error(m)) {
+    if (rows.length === 0)
+        return false;
     try {
-        const ndjson = rows.map((r) => JSON.stringify(r)).join("\n") + "\n";
-        fs.appendFileSync(statsPath, ndjson, "utf8");
+        appendLedgerRows(root, "stats", rows);
+        return true;
     }
     catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.error(`[bkit-comply] append failed: ${statsPath} — ${msg}`);
+        log(`[bkit-comply] append failed: ${path.join(root, ".bkit", "stats.jsonl")} — ${msg}`);
+        return false;
     }
 }
-// ---------------------------------------------------------------------------
-// One grading pass, as `bkit workflows close` runs it before its report
-// ---------------------------------------------------------------------------
 /**
  * Grade `phase` over HEAD~1..HEAD (HEAD alone in a one-commit repo) and append
  * its compliance rows to `<cwd>/.bkit/stats.jsonl`. With `squashSha` (ship's
  * close, run in the feature worktree) the squash commit is graded instead —
  * its subject and `squash~1..squash` — so the grade covers the whole feature
- * as it reaches main, not the worktree's last commit. Fail-open: any
- * error is logged and returns null, so a close never stops on the grader.
+ * as it reaches main, not the worktree's last commit. The rows carry `run`'s
+ * `parentSha` and step (default: HEAD and `close-gate`), so they join the
+ * close's other rows. Fail-open: any error is logged and returns null, so a
+ * close never stops on the grader.
  */
-export function gradeCompliance(cwd, phase, log, squashSha) {
+export function gradeCompliance(cwd, phase, log, squashSha, run) {
     try {
         const squashParent = squashSha === undefined ? "" : resolveGitSha(`${squashSha}~1`, cwd);
-        const parentSha = squashParent || resolveGitSha("HEAD~1", cwd) || resolveGitSha("HEAD", cwd);
-        if (!parentSha) {
+        const base = squashParent || resolveGitSha("HEAD~1", cwd) || resolveGitSha("HEAD", cwd);
+        if (!base) {
             log("[bkit-comply] cannot resolve a parent SHA (no commits?) — skipping grade");
             return null;
         }
         const headSha = squashParent ? squashSha : undefined;
-        const violations = runGrader({ parentSha, phase, cwd, ...(headSha ? { headSha } : {}) });
+        const violations = runGrader({ parentSha: base, phase, cwd, ...(headSha ? { headSha } : {}) });
         const rows = buildComplianceRows({
             violations,
-            phase,
-            parentSha,
-            repo: resolveRepoSlug(cwd) || "unknown/repo",
-            bkitVersion: readBkitVersion(),
+            workflow: phase,
+            parentSha: run?.parentSha ?? resolveGitSha("HEAD", cwd),
+            step: run?.step ?? "close-gate",
         });
-        appendComplianceRows(rows, path.join(cwd, ".bkit", "stats.jsonl"));
+        appendComplianceRows(rows, cwd, log);
         log(violations.length > 0
             ? `[bkit-comply] Compliance violations found:\n${formatComplianceSummary(violations)}`
             : "[bkit-comply] All rules pass.");
@@ -247,34 +230,6 @@ export function formatComplianceSummary(violations) {
     ];
     return lines.join("\n");
 }
-// ---------------------------------------------------------------------------
-// bkitVersion reader (used by CLI dispatch and tests)
-// ---------------------------------------------------------------------------
-/**
- * Read the bkit version from the package.json nearest to `searchFrom` (default: the
- * running bkit package's root). Returns "0.0.0" on any read/parse error (fail-open).
- */
-export function readBkitVersion(searchFrom) {
-    // Walk up looking for a package.json with a `version` field; stop at the filesystem root.
-    let dir = path.resolve(searchFrom ?? getPkgRoot());
-    for (let i = 0; i < 8; i++) {
-        const candidate = path.join(dir, "package.json");
-        if (fs.existsSync(candidate)) {
-            const read = readJsonFile(candidate);
-            // Fail-open: a package.json that cannot be read ends the search with the default.
-            if (!read.ok || read.value === null)
-                return "0.0.0";
-            const pkg = read.value;
-            if (typeof pkg.version === "string")
-                return pkg.version;
-        }
-        const parent = path.dirname(dir);
-        if (parent === dir)
-            break;
-        dir = parent;
-    }
-    return "0.0.0";
-}
 // comply — compliance grader (advisory, never gating, fail-open).
 // Runs `runGrader` over `git diff parentSha..HEAD`, appends `kind:"compliance"`
 // rows to `.bkit/stats.jsonl`, and logs violations.  Always exits 0 (fail-open);
@@ -286,22 +241,25 @@ export function runComplyCommand(complyPhase) {
         const cwd = process.cwd();
         const phase = complyPhase ?? "unknown";
         const logPrefix = "[bkit-comply]";
-        // parentSha MUST be a resolved hex SHA: diffPaths returns [] for anything not
-        // matching /^[0-9a-f]{7,40}$/, and parentSha is part of the compliance identity().
-        // Resolves HEAD~1, else HEAD; neither → skip the grade.
-        const statsPath = path.join(cwd, ".bkit", "stats.jsonl");
-        const parentSha = resolveGitSha("HEAD~1", cwd) || resolveGitSha("HEAD", cwd);
-        if (!parentSha) {
+        // The grade's diff base MUST be a resolved hex SHA: diffPaths returns [] for anything
+        // not matching /^[0-9a-f]{7,40}$/. Resolves HEAD~1, else HEAD; neither → skip the grade.
+        const base = resolveGitSha("HEAD~1", cwd) || resolveGitSha("HEAD", cwd);
+        if (!base) {
             console.log(`${logPrefix} cannot resolve a parent SHA (no commits?) — skipping grade`);
             return;
         }
-        console.log(`${logPrefix} Running compliance grader (phase=${phase}, parentSha=${parentSha})`);
-        const violations = runGrader({ parentSha, phase, cwd });
-        // The origin remote's owner/repo, the same slug every other telemetry writer uses.
-        const repo = resolveRepoSlug(cwd) || "unknown/repo";
-        const bkitVersion = readBkitVersion();
-        const rows = buildComplianceRows({ violations, phase, parentSha, repo, bkitVersion });
-        appendComplianceRows(rows, statsPath);
+        console.log(`${logPrefix} Running compliance grader (phase=${phase}, base=${base})`);
+        const violations = runGrader({ parentSha: base, phase, cwd });
+        // A row names the closing workflow it grades: without one, the grade is printed only.
+        const rows = complyPhase === null
+            ? []
+            : buildComplianceRows({
+                violations,
+                workflow: complyPhase,
+                parentSha: resolveGitSha("HEAD", cwd),
+                step: "close-gate",
+            });
+        const written = complyPhase !== null && appendComplianceRows(rows, cwd);
         if (violations.length > 0) {
             const summary = formatComplianceSummary(violations);
             console.log(`${logPrefix} Compliance violations found:\n${summary}`);
@@ -309,7 +267,12 @@ export function runComplyCommand(complyPhase) {
         else {
             console.log(`${logPrefix} All rules pass.`);
         }
-        console.log(`${logPrefix} Appended ${rows.length} compliance row(s) to .bkit/stats.jsonl (advisory — not gating).`);
+        if (complyPhase === null) {
+            console.log(`${logPrefix} no --phase: rows not written to .bkit/stats.jsonl.`);
+        }
+        else if (written) {
+            console.log(`${logPrefix} Appended ${rows.length} compliance row(s) to .bkit/stats.jsonl (advisory — not gating).`);
+        }
     }
     catch (err) {
         // Fail-open: any unexpected error in the dispatch body must not gate the workflow.

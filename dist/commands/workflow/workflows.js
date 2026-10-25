@@ -1,4 +1,4 @@
-// bkit workflows start|fail|handover|close|promote|links — a phase workflow's
+// bkit workflows start|fail|handover|close|promote|links|summary — a phase workflow's
 // lifecycle state.
 //
 // start     takes the feature lock (or checks the one Step 1 took) and opens a run
@@ -7,7 +7,7 @@
 // fail      the Failure Path's state and payloads: `workflow-failed` row, abort an
 //           in-progress rebase, release the lock, clear the sentinels, say whether
 //           a handover is due, and print the `bkit:failed` label set and the
-//           failure comment. The tracker calls stay in the workflow.
+//           failure comment; `--post` sends both to the issue.
 // handover  after the handover subagent: commit and abort-push it (`--push`), or
 //           ship's one-commit flush (`--flush`), and print the handover comment.
 // close     grade compliance, then the `workflow-done` row, the run's counter and
@@ -17,24 +17,33 @@
 // promote   design / plan close: the highest versioned draft becomes the
 //           canonical doc (anchor stamped, a superseded canonical archived).
 // links     the feature docs and this workflow's logs on a ref, as markdown links.
+// summary   the Summary step: `{workflow}-summary.md` with its verdict, reasons and
+//           next command, from the run's rows, logs, plan and ledger rows.
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
-import { appendLine, fold, runNumber, runOrStepField, statusTimestamp, } from "../../ledgers/status.js";
-import { appendLine as telemetryLine, foldFrom, resolveRepoSlug, validate, workflowTelemetry, } from "../../ledgers/telemetry.js";
-import { readBkitVersion } from "../../install/version-file.js";
+import { appendLine, fold, lastRun, runNumber, runOrStepField, statusTimestamp, } from "../../ledgers/status.js";
+import { foldFrom, normalize, resolveRepoSlug, workflowTelemetry, } from "../../ledgers/telemetry.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { gradeCompliance } from "../comply.js";
 import { landDir, pushToDev } from "../land.js";
 import { CommandError, DEV, EXIT, git, isSharedBranch, parseJson, repoRoot, runGh, runGit, statusLocation, statusRelPath, } from "../lib.js";
 import { anchorBkitStatus, pushBranch, readAnchor, stampAnchor } from "./branches.js";
-import { AUTO_LABEL, AUTO_ROUTE_SUFFIX, buildComment, trackerState, transitionLabels, } from "./issues.js";
-import { EXIT_EMPTY, commitBookkeeping, unionLedgers } from "./ledgers.js";
+import { AUTO_LABEL, AUTO_ROUTE_SUFFIX, buildComment, issueParts, parseComments, sortOldestFirst, trackerState, transitionLabels, } from "./issues.js";
+import { EXIT_EMPTY, activeRecord, commitBookkeeping, ownPathCommit, ownSet, removeRecord, appendLedgerRows, runRows, unionLedgers, } from "./ledgers.js";
+import { readIssueTracker } from "./fids.js";
+import { agentContextBlock, buildBlock, chatFingerprint, ciList, claudeTranscripts, hostChat, planBlock, planFiles, runChats, runLines, runStatusRows, stepsBlock, timeBlock, } from "./run-facts.js";
+import { buildSummary, refOf, SUMMARY_WORKFLOWS } from "./summary.js";
+import { parseWorkstreams } from "./workstreams.js";
 import { EXIT_REMOVE_FAILED, EXIT_SPLIT_BUCKET, acquireWorkflowLock, owns, readHolder, releaseLock, resolveMonth, workflowLockPath, } from "./locks.js";
+import { highestVersion } from "./plan-versions.js";
 import { mergePr, probePr } from "./prs.js";
 import { FEATURE_STATUS } from "./roadmap.js";
 import { EXIT_NO_STATUS, WORKFLOW_FLAG, positiveInt, readRuns, readStatusEvents, readStatusRows, str, } from "./status.js";
-import { writeStepRow } from "./steps.js";
-import { removeWorktree } from "./worktrees.js";
+import { COMMENT_FILE_OUTPUT, POST_FLAG, TRACKER_OUTPUT, attempt, commentFileOf, postForVerb, issueRef, readLabels, endedRunActionKey, skipOf, trackerTarget, writeLabels, } from "./tracker.js";
+import { tipsText } from "../tips.js";
+import { EXIT_NO_RECORD, requireRecordOnShared, writeStepRow } from "./steps.js";
+import { addAllButCopied, removeWorktree } from "./worktrees.js";
 /** Sentinels a workflow leaves in its logs folder; either one existing means a handover is due. */
 export const SENTINELS = [".rebase-failed", ".deferred-blocked"];
 /** Exit code (start --lock-held): the lock is missing or belongs to another owner. */
@@ -47,6 +56,12 @@ export const EXIT_PUSH_FAILED = 10;
 export const EXIT_FLUSH_FAILED = 11;
 /** Exit code (promote): no versioned draft to promote. */
 export const EXIT_NO_VERSION = 12;
+/** Exit code (input): a named input file is missing or not in the expected shape. */
+export const EXIT_NO_INPUT = 13;
+/** Exit code (start --branch): the checkout is not on the named branch. */
+export const EXIT_WRONG_BRANCH = 15;
+/** Exit code (summary): the status file has no run of the workflow. */
+export const EXIT_NO_RUN = 16;
 function workflowName(workflow) {
     if (!Object.hasOwn(FEATURE_STATUS, workflow))
         throw new CommandError(EXIT.USAGE, `--workflow must be ${Object.keys(FEATURE_STATUS).join(", ")}`);
@@ -61,6 +76,72 @@ function whereInTree(cwd, o) {
     return { root, month, tree, status };
 }
 const headSha = (cwd) => git(cwd, ["rev-parse", "HEAD"]) ?? "";
+/**
+ * Append a `session` row naming the chat that runs this start (`hostChat`), as its
+ * fingerprint, unless the current run's latest `session` row already names it. Nothing when
+ * the host names no chat. The close and the harvest read the run's chats from these rows.
+ */
+export function recordChat(file, workflow, env) {
+    const chat = hostChat(env);
+    if (chat === undefined)
+        return;
+    const session = chatFingerprint(chat.platform, chat.id);
+    const events = readStatusEvents(file);
+    const startAt = lastOfType(events, "workflow-started", workflow)?.at;
+    const last = events
+        .filter((e) => e.type === "session" &&
+        e.workflow === workflow &&
+        (startAt === undefined || String(e.at) >= startAt))
+        .at(-1);
+    if (last?.session === session)
+        return;
+    const row = {
+        type: "session",
+        workflow,
+        at: statusTimestamp(),
+        platform: chat.platform,
+        session,
+    };
+    fs.appendFileSync(file, appendLine(row));
+}
+/**
+ * The highest-numbered `{workflow}-decision-{run}-{N}.md` in `logDir` whose header holds
+ * `Status: OPEN`, or null. Only the given run's files count, so an earlier run's pause
+ * never resurfaces. `file` is relative to `tree`.
+ */
+export function openDecision(logDir, tree, workflow, run) {
+    if (!fs.existsSync(logDir))
+        return null;
+    const name = new RegExp(`^${workflow}-decision-${run}-([0-9]+)\\.md$`);
+    const found = fs
+        .readdirSync(logDir)
+        .map((f) => ({ f, m: name.exec(f) }))
+        .filter((x) => x.m !== null)
+        .map(({ f, m }) => ({ f, n: Number(m[1]) }))
+        .sort((a, b) => b.n - a.n);
+    for (const { f, n } of found) {
+        const text = fs.readFileSync(path.join(logDir, f), "utf-8");
+        const field = (key) => new RegExp(`^${key}:[ \\t]*(.+?)[ \\t]*$`, "m").exec(text)?.[1] ?? null;
+        if (field("Status") !== "OPEN")
+            continue;
+        const num = (key) => {
+            const v = field(key);
+            return v !== null && /^[0-9]+$/.test(v) ? Number(v) : null;
+        };
+        return {
+            file: path.relative(tree, path.join(logDir, f)),
+            decision: n,
+            question: field("Question"),
+            from: field("From"),
+            pauseStep: num("Pause step"),
+            group: num("Group"),
+            verifyAttempt: num("Verify attempt"),
+            testAttempt: num("Test attempt"),
+            plan: field("Plan"),
+        };
+    }
+    return null;
+}
 const logDirRel = (month, fid) => path.join("docs", "plans", month, "logs", fid);
 const list = (v) => v ?? [];
 // ---------------------------------------------------------------------------
@@ -143,9 +224,9 @@ function failState(ctx, workflow, fid) {
             fs.rmSync(p, { force: true });
         }
     }
-    return { row, rebaseAborted, lock, sentinels, removeFailed, soak };
+    return { row, rebaseAborted, lock, sentinels, removeFailed, soak, status };
 }
-function failVerb(ctx) {
+async function failVerb(ctx) {
     const workflow = workflowName(String(ctx.flags.workflow));
     // An empty value is a placeholder not held yet (the failure came before it was set).
     const fid = str(ctx.flags.fid) || undefined;
@@ -162,6 +243,7 @@ function failVerb(ctx) {
             sentinels: [],
             removeFailed: false,
             soak: false,
+            status: undefined,
         }
         : failState(ctx, workflow, fid);
     // Labels: bkit:failed added; a ship whose PR already merged also moves to bkit:merged.
@@ -173,11 +255,16 @@ function failVerb(ctx) {
     }
     const merged = prState === "MERGED";
     const transition = merged ? { phase: "merged" } : { failed: true };
+    const failedSet = (current) => {
+        const labels = transitionLabels(current, transition).labels;
+        if (merged && !labels.includes("bkit:failed"))
+            labels.push("bkit:failed");
+        return labels;
+    };
     const current = list(ctx.flags.label);
-    const labels = transitionLabels(current, transition).labels;
-    if (merged && !labels.includes("bkit:failed"))
-        labels.push("bkit:failed");
+    const labels = failedSet(current);
     const add = labels.filter((l) => !current.includes(l));
+    const failedState = trackerState(transition, undefined, readBkitConfig(repoRoot(ctx.cwd)));
     // The failure comment, when the step is named.
     let comment = null;
     const stepNumber = str(ctx.flags.stepNumber);
@@ -193,6 +280,18 @@ function failVerb(ctx) {
             stderrFile: str(ctx.flags.stderrFile) || undefined,
         });
     }
+    if (ctx.flags.post === true && comment === null)
+        throw new CommandError(EXIT.USAGE, "--post needs --step-number");
+    // Once per run and step: an engine-action row where the run's status.jsonl exists.
+    const key = endedRunActionKey(state.status, workflow, "failure", stepNumber, str(ctx.flags.subStep) || undefined);
+    const tracker = ctx.flags.post === true && comment !== null
+        ? await postForVerb(ctx, comment, {
+            fid,
+            issue: str(ctx.flags.issue),
+            ...(key === undefined ? {} : { file: state.status, key }),
+        })
+        : undefined;
+    const labelsWrite = ctx.flags.post === true ? await writeFailedLabels(ctx, fid, failedSet, failedState) : undefined;
     ctx.emit({
         row: state.row,
         rebaseAborted: state.rebaseAborted,
@@ -202,11 +301,35 @@ function failVerb(ctx) {
             (ctx.flags.maxExceeded === true || state.sentinels.length > 0 || state.soak),
         add,
         labels,
-        trackerState: trackerState(transition, undefined, readBkitConfig(repoRoot(ctx.cwd))),
+        trackerState: failedState,
         prState,
         comment,
+        commentFile: commentFileOf(ctx.cwd, comment),
+        ...(tracker === undefined ? {} : { tracker }),
+        ...(labelsWrite === undefined ? {} : { labelsWrite }),
+        ...sessionRemoval(ctx),
     });
     return state.removeFailed ? EXIT_REMOVE_FAILED : EXIT.OK;
+}
+/**
+ * `fail --post`: read the issue's labels, write the failed set and the review state.
+ * The set comes from the labels read, not `--label`, so a label added since Step 1 stays.
+ */
+async function writeFailedLabels(ctx, fid, failedSet, state) {
+    const t = trackerTarget(ctx.cwd, { fid, issue: str(ctx.flags.issue) });
+    const skip = skipOf(t);
+    if (skip)
+        return skip;
+    return attempt("labels", ctx.log, async () => {
+        const current = await readLabels(t);
+        const labels = failedSet(current);
+        await writeLabels(t, {
+            add: labels.filter((l) => !current.includes(l)),
+            remove: current.filter((l) => !labels.includes(l)),
+            labels,
+            state,
+        });
+    });
 }
 /** A text file's content, trailing newlines dropped; a missing file is a usage error. */
 function readText(cwd, rel) {
@@ -254,19 +377,56 @@ const SHARED_LEDGERS = [
     ":(exclude).bkit/issues.jsonl",
 ];
 /**
+ * Kinds no workflow run writes: bkit's harvest script writes them to `harvest/`, and a
+ * `run` row names any feature's workflow (`.bkit/jsonl.md` § Ledgers & Writers).
+ */
+const NOT_A_RUNS_OWN_KIND = new Set(["chat", "run"]);
+/** HEAD and every `parentSha` the run's status rows of `workflow` carry: the shas its `run.parentSha` can name. */
+function runShas(src, status, workflow) {
+    const shas = new Set([headSha(src)]);
+    for (const e of fs.existsSync(status) ? readStatusEvents(status) : []) {
+        const sha = e.parentSha;
+        if (e.workflow === workflow && typeof sha === "string")
+            shas.add(sha);
+    }
+    shas.delete("");
+    return shas;
+}
+/** A feature id in `references`: a bare number or `{N}-{slug}`. */
+const FEATURE_REF = /^\d+(-[a-z0-9-]+)?$/;
+/**
+ * A shared-ledger row (normalized) of THIS run: a row of `workflow` at or after its
+ * start, never a kind no run writes. A row with `run.parentSha` (compliance, counter,
+ * outcome) must name one of the run's shas; any other row must not point at a
+ * different feature in its `references`.
+ */
+function isRunsOwnRow(row, o, shas) {
+    if (byWorkflow(row) !== o.workflow || !(Number(row.ts) >= o.startMs))
+        return false;
+    if (NOT_A_RUNS_OWN_KIND.has(String(row.kind)))
+        return false;
+    const sha = row.run?.parentSha;
+    if (sha !== undefined)
+        return typeof sha === "string" && shas.has(sha);
+    const features = (Array.isArray(row.references) ? row.references : [])
+        .map(String)
+        .filter((r) => FEATURE_REF.test(r));
+    const n = /^(\d+)-/.exec(o.fid)?.[1];
+    return features.length === 0 || features.some((r) => r === o.fid || r === n);
+}
+/**
  * Carry ONLY the run's own record out of a dev / main / detached checkout, which
  * other sessions and local-only commits share: the `.md` logs it wrote in its log
  * folder; the lines of that folder's `.jsonl` files its HEAD lacks; and, from the
- * shared ledgers, lines its HEAD lacks that are rows of `workflow` at or after
- * the run's start (`startMs`). No start known → no shared-ledger row is carried.
+ * shared ledgers, lines its HEAD lacks that are this run's rows ({@link isRunsOwnRow}).
+ * No start known → no shared-ledger row is carried.
  */
 function carryOwnBook(src, dst, o, log) {
     const rel = logDirRel(o.month, o.fid);
     const carried = { files: carryLogs(src, dst, rel), lines: new Map() };
-    const uncommitted = (file) => {
-        const head = new Set(textLines(git(src, ["show", `HEAD:${file}`]) ?? "").map((l) => l.trim()));
-        return textLines(fs.readFileSync(path.join(src, file), "utf-8")).filter((l) => !head.has(l.trim()));
-    };
+    // Rows the run appended; on a shared checkout, recorded foreign rows are never carried.
+    const rec = activeRecord(src, o.fid);
+    const uncommitted = (file) => runRows(src, file, rec);
     const add = (file, lines) => {
         const to = path.join(dst, file);
         const existing = fs.existsSync(to) ? fs.readFileSync(to, "utf-8") : "";
@@ -288,11 +448,11 @@ function carryOwnBook(src, dst, o, log) {
         log(`no ${o.workflow} start row for ${o.fid} — no shared-ledger row carried`);
         return carried;
     }
+    const shas = runShas(src, path.join(src, statusRelPath(o.month, o.fid)), o.workflow);
     for (const file of listed(SHARED_LEDGERS)) {
         const own = uncommitted(file).filter((l) => {
-            const parsed = parseJson(l);
-            const row = parsed.ok ? parsed.value : null;
-            return row?.workflow === o.workflow && Number(row.ts) >= o.startMs;
+            const row = parseObject(l);
+            return row !== undefined && isRunsOwnRow(normalize(row), o, shas);
         });
         if (own.length > 0)
             add(file, own);
@@ -305,14 +465,18 @@ function carryOwnBook(src, dst, o, log) {
  * log identical to the landed copy is removed when untracked, or returns to HEAD
  * when tracked. A carried ledger loses exactly the carried lines; it returns to
  * HEAD when that leaves it equal, and an untracked one left empty is removed.
- * Anything staged, or a log changed since it landed, stays and is named.
+ * Anything staged, or a log changed since it landed, stays and is named. A path
+ * the shared-checkout record lists is never reset or removed.
  */
-function handBack(tree, sha, carried, log) {
+function handBack(tree, sha, carried, log, recorded = new Set()) {
     const back = [];
     const kept = [];
     const staged = (rel) => !runGit(tree, ["diff", "--cached", "--quiet", "--", rel]).ok;
     const tracked = (rel) => runGit(tree, ["ls-files", "--error-unmatch", "--", rel]).ok;
     for (const rel of carried.files) {
+        // A path that was dirty before the run started is not the run's to reset.
+        if (recorded.has(rel))
+            continue;
         const abs = path.join(tree, rel);
         const landed = runGit(tree, ["show", `${sha}:${rel}`]);
         const same = landed.ok && fs.existsSync(abs) && fs.readFileSync(abs, "utf-8").trim() === landed.stdout;
@@ -451,6 +615,18 @@ async function landFailedRecord(ctx, o) {
             return stop(EXIT_FLUSH_FAILED, `throwaway checkout failed: ${res.stderr}`);
     }
 }
+/**
+ * What `handover --push` would sweep into the abort commit besides the run's own
+ * logs: tracked files with changes, and untracked files (each one listed, not its folder).
+ */
+function strayPaths(tree, logDir) {
+    const outside = (out) => (out ?? "").split("\0").filter((p) => p !== "" && p !== logDir && !p.startsWith(`${logDir}/`));
+    return {
+        // Staged and unstaged changes alike, against HEAD.
+        modified: outside(git(tree, ["diff", "--name-only", "-z", "--no-renames", "HEAD"])),
+        untracked: outside(git(tree, ["ls-files", "-z", "--others", "--exclude-standard"])),
+    };
+}
 async function handoverVerb(ctx) {
     const workflow = workflowName(String(ctx.flags.workflow));
     const fid = String(ctx.flags.fid);
@@ -474,7 +650,14 @@ async function handoverVerb(ctx) {
     const branch = git(tree, ["branch", "--show-current"]) ?? "";
     // A dev / main / detached checkout is shared: only the run's own record leaves it.
     const shared = branch === "" || isSharedBranch(branch);
+    if (ctx.flags.listStray === true) {
+        if (push || flush || ctx.flags.post === true)
+            throw new CommandError(EXIT.USAGE, "--list-stray only lists: drop --push, --flush and --post");
+        ctx.emit({ shared, ...strayPaths(tree, logDirRel(month, fid)) });
+        return EXIT.OK;
+    }
     let handed;
+    const rec = shared && (push || flush) ? activeRecord(tree, fid) : null;
     if (push && shared) {
         const r = await landFailedRecord(ctx, { workflow, fid, month, book: tree, shared });
         if (r.sha !== undefined && r.carried !== undefined)
@@ -485,11 +668,11 @@ async function handoverVerb(ctx) {
         skipped = r.skipped;
     }
     else if (push) {
-        runGit(tree, ["add", "-A"]);
+        addAllButCopied(tree);
         const made = runGit(tree, ["commit", "-m", `docs(${fid}): ${workflow} aborted bkit [skip ci]`]);
         if (!made.ok)
             ctx.log(`abort commit: ${made.stderr || made.stdout}`);
-        const r = pushBranch(tree, { mode: "abort", openPr: str(ctx.flags.openPr) }, ctx.log);
+        const r = await pushBranch(tree, { mode: "abort", openPr: str(ctx.flags.openPr) }, ctx.log);
         if (r.code === EXIT.USE_MCP)
             return r.code;
         pushed = r.out.pushed;
@@ -521,19 +704,30 @@ async function handoverVerb(ctx) {
             bodyFile: artifact,
         })
         : null;
-    if (handed !== undefined)
-        handBack(tree, handed.sha, handed.carried, ctx.log);
+    if (handed !== undefined) {
+        handBack(tree, handed.sha, handed.carried, ctx.log, new Set(rec?.paths.map((p) => p.path)));
+    }
+    // The run is over once its record is handed back: the next run starts a fresh one.
+    if (rec !== null)
+        removeRecord(tree, fid);
+    const tracker = ctx.flags.post === true && comment !== null
+        ? await postForVerb(ctx, comment, { fid })
+        : undefined;
     ctx.emit({
         handover: present ? artifact : null,
         pushed,
         ref: pushed ? ref : null,
         skipped,
         comment,
+        commentFile: commentFileOf(ctx.cwd, comment),
+        ...(tracker === undefined ? {} : { tracker }),
     });
     return code;
 }
+/** The row's `by.workflow`, on a row already normalized. */
+const byWorkflow = (r) => r.by?.workflow;
 /** Rows of a JSONL ledger; malformed lines are skipped, a missing file is empty. */
-function ledgerRows(file) {
+export function ledgerRows(file) {
     if (!fs.existsSync(file))
         return [];
     return fs
@@ -562,45 +756,26 @@ const distinctKeys = (rows) => new Set(rows.filter((r) => r.key !== undefined).m
  * counting the ledger's whole history as this run's.
  */
 function ledgerCounts(tree, workflow, startMs) {
-    const deferrals = ledgerRows(path.join(tree, "docs", "deferrals.jsonl"));
-    const failures = ledgerRows(path.join(tree, "docs", "failures.jsonl"));
-    const friction = ledgerRows(path.join(tree, ".bkit", "friction.jsonl"));
-    const added = (rows) => distinctKeys(rows.filter((r) => r.workflow === workflow && Number(r.ts) >= startMs));
+    const read = (file) => ledgerRows(file).map((r) => normalize(r));
+    const deferrals = read(path.join(tree, "docs", "deferrals.jsonl"));
+    const failures = read(path.join(tree, "docs", "failures.jsonl"));
+    const friction = read(path.join(tree, ".bkit", "friction.jsonl"));
+    const added = (rows) => startMs === undefined
+        ? {}
+        : {
+            added: distinctKeys(rows.filter((r) => byWorkflow(r) === workflow && Number(r.ts) >= startMs)),
+        };
     return {
-        deferrals: distinctKeys(deferrals.filter((r) => r.kind === "deferral")),
-        failures: distinctKeys(failures.filter((r) => r.kind === "failure")),
-        ...(startMs === undefined
-            ? {}
-            : {
-                frictionAdded: added(friction),
-                deferralsAdded: added(deferrals),
-                failuresAdded: added(failures),
-            }),
+        deferrals: {
+            repo: distinctKeys(deferrals.filter((r) => r.kind === "deferral")),
+            ...added(deferrals),
+        },
+        failures: {
+            repo: distinctKeys(failures.filter((r) => r.kind === "failure")),
+            ...added(failures),
+        },
+        friction: added(friction),
     };
-}
-/** `git diff --shortstat` numbers; 0 for anything absent or a range git rejects. */
-export function diffStat(cwd, range) {
-    const out = runGit(cwd, ["diff", "--shortstat", range]).stdout;
-    const num = (re) => Number(re.exec(out)?.[1] ?? 0);
-    const linesAdded = num(/(\d+) insertions?\(/);
-    const linesDeleted = num(/(\d+) deletions?\(/);
-    return {
-        linesAdded,
-        linesDeleted,
-        linesChanged: linesAdded + linesDeleted,
-        filesChanged: num(/(\d+) files? changed/),
-    };
-}
-/** Checklist items (`- [`) across the feature's plan and sub-plans. */
-function taskCount(tree, month, fid) {
-    const dir = path.join(tree, "docs", "plans", month);
-    if (!fs.existsSync(dir))
-        return 0;
-    return fs
-        .readdirSync(dir)
-        .filter((f) => f.startsWith(`${fid}-plan`) && f.endsWith(".md"))
-        .flatMap((f) => fs.readFileSync(path.join(dir, f), "utf-8").split("\n"))
-        .filter((l) => l.startsWith("- [")).length;
 }
 /** Per-tier coverage from `coverage/{tier}/coverage-summary.json`; undefined when none. */
 function coverage(tree) {
@@ -629,23 +804,15 @@ function lastOfType(events, type, workflow) {
         .sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0))
         .at(-1);
 }
-/** Append telemetry rows; best-effort, so a bad path is logged and never fails the close. */
-function appendStats(file, rows, log) {
-    const valid = rows.filter((r) => {
-        const v = validate(r);
-        if (!v.ok)
-            log(`[bkit-telemetry] ${String(r.kind)} row invalid, not written: ${v.reason}`);
-        return v.ok;
-    });
-    if (valid.length === 0)
-        return false;
+/** Append the close's stats rows; best-effort, so a refused row or a bad path is logged and never fails the close. */
+function appendStats(tree, rows, log) {
     try {
-        fs.appendFileSync(file, valid.map((r) => `${telemetryLine(r)}\n`).join(""));
+        appendLedgerRows(tree, "stats", rows);
         return true;
     }
     catch (err) {
-        // Telemetry never gates a close: report the failed append and carry on.
-        log(`[bkit-telemetry] append failed: ${file} — ${err.message}`);
+        // Telemetry never gates a close: report the refused append and carry on.
+        log(`[bkit-telemetry] stats rows not written: ${err.message}`);
         return false;
     }
 }
@@ -683,7 +850,8 @@ function closeComment(cwd, outbox, o) {
  * Grade compliance, append the workflow-done row (and, with `recordStep`, the
  * close step's row first), the counter and outcome telemetry rows, and build the
  * report and artifact links; with `outbox`, write them for the close comment; with
- * `message`, commit everything (`git add -A`) in the tree.
+ * `message`, commit everything (`git add -A`, minus the `bkit.workflows.worktree.copy` entries) in the tree, or, in an in-place run
+ * on a shared branch, only the run's own paths.
  */
 export function closeWorkflow(cwd, o, log) {
     const workflow = workflowName(o.workflow);
@@ -691,67 +859,83 @@ export function closeWorkflow(cwd, o, log) {
     const events = readStatusEvents(where.status);
     if (o.squashSha !== undefined && !/^[0-9a-f]{7,40}$/.test(o.squashSha))
         throw new CommandError(EXIT.USAGE, `--squash-sha "${o.squashSha}" is not a commit sha`);
-    // Graded first, so the report below carries this run's grade.
-    const violations = gradeCompliance(where.tree, workflow, log, o.squashSha);
+    // An in-place run on a shared branch commits its own paths only; a refusal
+    // comes before any row is appended, so the re-run after the human's fix writes each row once.
+    const rec = o.message === undefined ? null : activeRecord(where.tree, o.fid);
+    if (o.message !== undefined)
+        requireRecordOnShared(where.tree, workflow, rec);
+    if (rec !== null)
+        ownSet(where.tree, rec);
     const step = `${workflow}-close-workflow`;
+    // The run's join key: every row of this run carries HEAD at close as `run.parentSha`.
+    const parentSha = headSha(where.tree);
+    // Graded first, so the report below carries this run's grade.
+    const violations = gradeCompliance(where.tree, workflow, log, o.squashSha, { parentSha, step });
     if (o.recordStep === true) {
         writeStepRow(where.tree, { file: where.status, workflow, step, artifacts: [], commit: "none" }, log);
     }
-    const row = { type: "workflow-done", workflow, at: statusTimestamp() };
+    const endAt = statusTimestamp();
+    const row = { type: "workflow-done", workflow, at: endAt, parentSha };
     fs.appendFileSync(where.status, appendLine(row));
     const repo = resolveRepoSlug(where.root) || "unknown/repo";
-    const bkitVersion = readBkitVersion(path.join(where.root, ".bkit", "version"))?.pinnedVersion || "unknown";
-    const parentSha = headSha(where.tree);
     const started = lastOfType(events, "workflow-started", workflow);
     const startAt = started?.at;
     const startMs = startAt ? Date.parse(startAt) : NaN;
     const startKnown = Number.isFinite(startMs) ? startMs : undefined;
-    const planSource = events
-        .filter((e) => e.type === "workflow-meta" &&
-        e.workflow === workflow &&
-        (startAt === undefined || e.at >= startAt) &&
-        e.planSource)
-        .at(-1);
+    const runRowsOf = startAt === undefined ? [] : runStatusRows(readStatusEvents(where.status), workflow, startAt);
     const base = typeof started?.parentSha === "string" ? started.parentSha : "";
-    const range = o.squashSha
-        ? `${o.squashSha}^..${o.squashSha}`
-        : base
-            ? `${base}..HEAD`
-            : "origin/dev...HEAD";
-    const durationSeconds = startKnown === undefined ? 0 : Math.max(0, Math.floor((Date.now() - startKnown) / 1000));
+    const lines = o.squashSha
+        ? runLines(where.tree, `${o.squashSha}^`, o.squashSha)
+        : runLines(where.tree, base, parentSha);
     const startedRows = new Set(events.filter((e) => e.type === "workflow-started" && e.workflow === workflow).map((e) => e.at)).size;
-    const ts = Date.now();
+    const logDir = path.join(where.tree, logDirRel(where.month, o.fid));
+    const by = { workflow, step };
     const counterRow = {
-        ts,
         kind: "counter",
-        workflow,
-        repo,
-        bkitVersion,
-        step,
-        counterName: `${workflow.toUpperCase()}_ATTEMPT`,
-        counterValue: Math.max(1, startedRows),
-        counterSource: "shell-bus",
-        parentSha,
+        by,
+        run: { parentSha },
+        counter: {
+            name: `${workflow.toUpperCase()}_ATTEMPT`,
+            value: Math.max(1, startedRows),
+            source: "shell-bus",
+        },
     };
     const cov = workflow === "ship" ? coverage(where.tree) : undefined;
+    const ci = ciList(runRowsOf);
+    const plan = ["plan", "build", "ship"].includes(workflow)
+        ? planBlock(where.tree, where.month, o.fid, events)
+        : undefined;
+    const endMs = Date.parse(endAt);
+    /** This run's `docs/deferrals.jsonl` rows; none when its start is unknown. */
+    const runDeferrals = () => startKnown === undefined
+        ? []
+        : ledgerRows(path.join(where.tree, "docs", "deferrals.jsonl"))
+            .map((r) => normalize(r))
+            .filter((r) => byWorkflow(r) === workflow && Number(r.ts) >= startKnown);
+    const context = startKnown === undefined
+        ? undefined
+        : agentContextBlock(startKnown, endMs, claudeTranscripts(process.env, os.homedir()), runChats(runRowsOf));
     const outcomeRow = {
-        ts: ts + 1,
         kind: "outcome",
-        workflow,
-        repo,
-        bkitVersion,
-        step,
-        parentSha,
-        ...(o.prNumber === undefined ? {} : { prNumber: o.prNumber }),
-        ...diffStat(where.tree, range),
-        taskCount: taskCount(where.tree, where.month, o.fid),
-        durationSeconds,
-        ...ledgerCounts(where.tree, workflow, startKnown),
-        ...(planSource?.planSource ? { planSource: planSource.planSource } : {}),
-        ...(cov ? { coverage: cov } : {}),
+        by,
+        run: { parentSha, ...(o.prNumber === undefined ? {} : { pr: o.prNumber }) },
+        time: startKnown === undefined ? null : timeBlock(startKnown, Math.max(startKnown, endMs)),
+        ending: "done",
+        lines,
+        ...(runRowsOf.length > 0 ? { steps: stepsBlock(runRowsOf) } : {}),
+        ...(ci.length > 0 ? { ci } : {}),
+        ledgers: ledgerCounts(where.tree, workflow, startKnown),
+        ...(plan === undefined ? {} : { plan }),
+        ...(workflow === "build"
+            ? {
+                build: buildBlock(runRowsOf, logDir, planFiles(where.tree, where.month, o.fid), runDeferrals()),
+            }
+            : {}),
+        ...(context === undefined ? {} : { context }),
+        ...(cov ? { ship: { coverage: cov } } : {}),
     };
     const stats = path.join(where.tree, ".bkit", "stats.jsonl");
-    const telemetryWritten = appendStats(stats, [counterRow, outcomeRow], log);
+    const telemetryWritten = appendStats(where.tree, [counterRow, outcomeRow], log);
     const report = fs.existsSync(stats)
         ? workflowTelemetry(foldFrom([stats]), workflow).lines
         : ["[bkit-telemetry] stats.jsonl not found — no telemetry rows yet"];
@@ -788,16 +972,24 @@ export function closeWorkflow(cwd, o, log) {
             message += " bkit [verbose ci]";
         if ((o.labels ?? []).includes(AUTO_LABEL))
             message += AUTO_ROUTE_SUFFIX;
-        const add = runGit(where.tree, ["add", "-A"]);
-        const made = add.ok ? runGit(where.tree, ["commit", "--allow-empty", "-m", message]) : add;
-        if (!made.ok)
-            throw new CommandError(EXIT.NO, `close commit failed: ${made.stderr || made.stdout}`);
+        if (rec !== null) {
+            const made = ownPathCommit(where.tree, rec, message, { allowEmpty: true });
+            if (!made.ok)
+                throw new CommandError(EXIT.NO, `close commit failed: ${made.error}`);
+        }
+        else {
+            const add = addAllButCopied(where.tree);
+            const made = add.ok ? runGit(where.tree, ["commit", "--allow-empty", "-m", message]) : add;
+            if (!made.ok)
+                throw new CommandError(EXIT.NO, `close commit failed: ${made.stderr || made.stdout}`);
+        }
         commit = headSha(where.tree);
     }
     return {
         row,
-        counterRow: validate(counterRow).ok ? counterRow : null,
-        outcomeRow: validate(outcomeRow).ok ? outcomeRow : null,
+        // The rows as drafted; the ledger copies add the top section `ledgers append` fills.
+        counterRow: telemetryWritten ? counterRow : null,
+        outcomeRow: telemetryWritten ? outcomeRow : null,
         telemetryWritten,
         compliance: violations === null ? null : violations.length,
         report,
@@ -945,22 +1137,6 @@ async function shipClose(ctx, o, token) {
 // ---------------------------------------------------------------------------
 // promote
 // ---------------------------------------------------------------------------
-/** The highest `{workflow}-v{N}-*.md` draft (sub-plan children `-v{N}-{k}.md` excluded), or null. */
-export function highestVersion(dir, workflow) {
-    if (!fs.existsSync(dir))
-        return null;
-    const re = new RegExp(`^${workflow}-v([0-9]+)-(.+)\\.md$`);
-    let best = null;
-    for (const f of fs.readdirSync(dir).sort()) {
-        const m = re.exec(f);
-        if (!m || /^[0-9]+$/.test(m[2]))
-            continue;
-        const n = Number(m[1]);
-        if (best === null || n > best.n)
-            best = { file: f, n };
-    }
-    return best;
-}
 /** Stamp `file`'s anchor when a base commit is known (plan: with its design's own anchor; both: the bkit release). */
 function stamp(cwd, file, baseSha, design) {
     if (baseSha === "")
@@ -989,7 +1165,7 @@ function promoteVerb(ctx) {
     }
     const final = path.join(logs, best.file);
     if (ctx.flags.resolve === true) {
-        ctx.emit({ final, canonical: null, archived: [], subPlans: [], baseSha: null });
+        ctx.emit({ final, canonical: null, archived: [], baseSha: null });
         return EXIT.OK;
     }
     // The base commit Step 2 recorded on the runtime-resolved row.
@@ -1007,13 +1183,7 @@ function promoteVerb(ctx) {
     const bucket = path.join("docs", "plans", month);
     const canonical = path.join(bucket, `${fid}-${workflow}.md`);
     stamp(ctx.cwd, final, baseSha, design);
-    const children = workflow === "plan"
-        ? fs
-            .readdirSync(path.resolve(ctx.cwd, logs))
-            .filter((f) => new RegExp(`^plan-v${best.n}-[0-9]+\\.md$`).test(f))
-            .sort()
-        : [];
-    // A changed canonical moves to archive/ first — plan moves the whole set under one timestamp.
+    // A changed canonical moves to archive/ first.
     const archived = [];
     const canonicalAbs = path.resolve(ctx.cwd, canonical);
     if (fs.existsSync(canonicalAbs) &&
@@ -1024,42 +1194,103 @@ function promoteVerb(ctx) {
             .replace(/\.\d+Z$/, "Z");
         const archive = path.join(bucket, "archive");
         fs.mkdirSync(path.resolve(ctx.cwd, archive), { recursive: true });
-        const set = fs
-            .readdirSync(path.resolve(ctx.cwd, bucket))
-            .filter((f) => workflow === "plan"
-            ? f === `${fid}-plan.md` || new RegExp(`^${fid}-plan-[0-9]+\\.md$`).test(f)
-            : f === `${fid}-design.md`);
-        for (const f of set) {
-            const to = path.join(archive, `${ts}-${f}`);
-            fs.renameSync(path.resolve(ctx.cwd, bucket, f), path.resolve(ctx.cwd, to));
-            archived.push(to);
-        }
+        const to = path.join(archive, `${ts}-${fid}-${workflow}.md`);
+        fs.renameSync(canonicalAbs, path.resolve(ctx.cwd, to));
+        archived.push(to);
     }
     fs.mkdirSync(path.resolve(ctx.cwd, bucket), { recursive: true });
     fs.copyFileSync(path.resolve(ctx.cwd, final), canonicalAbs);
-    const subPlans = [];
-    for (const child of children) {
-        const k = /-([0-9]+)\.md$/.exec(child)[1];
-        stamp(ctx.cwd, path.join(logs, child), baseSha, design);
-        const to = path.join(bucket, `${fid}-plan-${k}.md`);
-        fs.copyFileSync(path.resolve(ctx.cwd, logs, child), path.resolve(ctx.cwd, to));
-        subPlans.push(to);
-    }
-    if (workflow === "plan") {
-        // Working names in the copies become the canonical names.
-        for (const f of [canonical, ...subPlans]) {
-            const abs = path.resolve(ctx.cwd, f);
-            fs.writeFileSync(abs, fs
-                .readFileSync(abs, "utf-8")
-                .replace(/plan-v[0-9]+-split\.md/g, `${fid}-plan.md`)
-                .replace(/plan-v[0-9]+-([0-9]+)\.md/g, `${fid}-plan-$1.md`));
-        }
-    }
     if (fs.statSync(canonicalAbs).size === 0) {
         ctx.log(`canonical empty: ${canonical}`);
         return EXIT_NO_VERSION;
     }
-    ctx.emit({ final, canonical, archived, subPlans, baseSha: baseSha || null });
+    ctx.emit({ final, canonical, archived, baseSha: baseSha || null });
+    return EXIT.OK;
+}
+// ---------------------------------------------------------------------------
+// summary
+// ---------------------------------------------------------------------------
+/** ship: the PR's size from `gh pr view`; undefined (logged) when gh cannot answer. */
+function prSize(cwd, pr, log) {
+    const res = runGh(cwd, ["pr", "view", String(pr), "--json", "additions,deletions,changedFiles"]);
+    const parsed = res.ok ? parseJson(res.stdout) : undefined;
+    const v = parsed?.ok === true ? parsed.value : undefined;
+    if (typeof v?.additions !== "number" ||
+        typeof v.deletions !== "number" ||
+        typeof v.changedFiles !== "number") {
+        log(`gh pr view ${pr} gave no size; the summary leaves the PR line out`);
+        return undefined;
+    }
+    return {
+        number: pr,
+        additions: v.additions,
+        deletions: v.deletions,
+        changedFiles: v.changedFiles,
+    };
+}
+function summaryVerb(ctx) {
+    const workflow = String(ctx.flags.workflow);
+    if (!SUMMARY_WORKFLOWS.includes(workflow))
+        throw new CommandError(EXIT.USAGE, `--workflow must be ${SUMMARY_WORKFLOWS.join(", ")}`);
+    const file = path.resolve(ctx.cwd, String(ctx.flags.file));
+    const logDir = path.dirname(file);
+    const fid = path.basename(logDir);
+    const month = path.basename(path.dirname(path.dirname(logDir)));
+    const tree = path.resolve(logDir, "..", "..", "..", "..", "..");
+    if (!/^[0-9]{6}$/.test(month) || path.join(tree, logDirRel(month, fid)) !== logDir)
+        throw new CommandError(EXIT.USAGE, `--file must be docs/plans/{YYYYMM}/logs/{FID}/status.jsonl, got ${file}`);
+    const events = readStatusEvents(file);
+    const started = lastOfType(events, "workflow-started", workflow);
+    if (started === undefined)
+        throw new CommandError(EXIT_NO_RUN, `${file} has no ${workflow} run (no workflow-started row)`);
+    const rows = runStatusRows(events, workflow, started.at);
+    const startMs = Date.parse(started.at);
+    const rel = (abs) => path.relative(tree, abs).split(path.sep).join("/");
+    const given = list(ctx.flags.plan).map((p) => path.resolve(ctx.cwd, p));
+    const plans = given.length > 0 ? given : workflow === "build" ? planFiles(tree, month, fid) : [];
+    const read = (r) => {
+        const abs = path.resolve(tree, r);
+        return fs.existsSync(abs) && fs.statSync(abs).isFile() ? fs.readFileSync(abs, "utf-8") : null;
+    };
+    const deferrals = ledgerRows(path.join(tree, "docs", "deferrals.jsonl"))
+        .map((r) => normalize(r))
+        .filter((r) => byWorkflow(r) === workflow && Number(r.ts) >= startMs);
+    const organisedPath = path.join(logDir, "design-v3-organised.md");
+    const organised = workflow === "design" && fs.existsSync(organisedPath)
+        ? fs.readFileSync(organisedPath, "utf-8")
+        : undefined;
+    const prNumber = positiveInt(ctx.flags.pr, "pr");
+    const summary = buildSummary({
+        workflow: workflow,
+        fid,
+        ref: refOf(fid, readIssueTracker(tree)),
+        rows,
+        plans: plans.map((p) => ({ path: rel(p), text: fs.readFileSync(p, "utf-8") })),
+        deferrals,
+        deferralsAdded: ledgerCounts(tree, workflow, startMs).deferrals.added ?? 0,
+        decisionFiles: (workflow === "build" || workflow === "ship") && fs.existsSync(logDir)
+            ? fs
+                .readdirSync(logDir)
+                .filter((f) => /^build-decision-.*\.md$/.test(f))
+                .sort()
+                .map((f) => rel(path.join(logDir, f)))
+            : [],
+        read,
+        workstreams: organised === undefined ? undefined : parseWorkstreams(organised),
+        organised,
+        pr: workflow === "ship" && prNumber !== undefined
+            ? prSize(ctx.cwd, prNumber, ctx.log)
+            : undefined,
+    });
+    const out = path.join(logDir, `${workflow}-summary.md`);
+    fs.writeFileSync(out, summary.markdown);
+    ctx.emit({
+        verdict: summary.verdict,
+        failures: summary.failures,
+        reasons: summary.reasons,
+        file: rel(out),
+        nextStep: summary.nextStep,
+    });
     return EXIT.OK;
 }
 // ---------------------------------------------------------------------------
@@ -1089,10 +1320,224 @@ const OWNER_REPO_FLAG = {
 const COMMENT_FLAGS = [
     { name: "number", type: "string", help: "step number: print the close comment (needs --outbox)" },
     { name: "title", type: "string", help: "step title of the close comment" },
+    {
+        ...POST_FLAG,
+        help: "post the close comment (needs --number) to the FID's issue unless one of its latest comments carries the same marker hash; prints `tracker`",
+    },
 ];
+const SESSION_DIR_FLAG = {
+    name: "session-dir",
+    type: "string",
+    help: "the run's session folder (`repo info` sessionDir): deleted once this run ends",
+};
+const SESSION_REMOVED_OUTPUT = "with --session-dir: the folder was deleted (false: not under <git common dir>/bkit-outbox/sessions/, kept)";
+/**
+ * `--session-dir`: delete the run's session folder. Only a folder directly under
+ * `<git common dir>/bkit-outbox/sessions/` is deleted; any other path is kept and logged.
+ */
+function sessionRemoval(ctx) {
+    const given = str(ctx.flags.sessionDir);
+    if (!given)
+        return {};
+    const common = git(ctx.cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+    const real = (p) => (fs.existsSync(p) ? fs.realpathSync(p) : p);
+    const sessions = common === null ? null : real(path.join(common, "bkit-outbox", "sessions"));
+    const abs = path.resolve(ctx.cwd, given);
+    if (sessions === null || real(path.dirname(abs)) !== sessions) {
+        ctx.log(`--session-dir ${given} is not a session folder under ${sessions ?? "the outbox"}; kept`);
+        return { sessionRemoved: false };
+    }
+    fs.rmSync(abs, { recursive: true, force: true });
+    return { sessionRemoved: true };
+}
+const PLAIN_ENGLISH_REPLY = "Would you like me to explain any of this in plain English? Then write 'yes, explain in plain english'.";
+/**
+ * `--final-return`: the run's last message, read up front (the close may remove the tree
+ * holding the summary, and `--session-dir` the issue facts). Tips are added at print time.
+ */
+function finalReturnParts(ctx, fid) {
+    if (ctx.flags.finalReturn !== true)
+        return null;
+    const summaryFile = str(ctx.flags.summaryFile);
+    const summary = str(ctx.flags.summary);
+    if (summaryFile !== undefined && summary !== undefined)
+        throw new CommandError(EXIT.USAGE, "give --summary-file or --summary, not both");
+    if (!summaryFile && !summary)
+        throw new CommandError(EXIT.USAGE, "--final-return needs --summary-file or --summary");
+    const parts = [];
+    const warning = str(ctx.flags.warning);
+    if (warning)
+        parts.push(warning);
+    parts.push(summary ? summaryOrMissing(ctx, summary) : inputText(ctx.cwd, summaryFile, "summary-file"));
+    parts.push(...list(ctx.flags.line));
+    const session = str(ctx.flags.sessionDir);
+    const factsFile = session ? path.resolve(ctx.cwd, session, "issue-facts.json") : "";
+    if (factsFile && fs.existsSync(factsFile)) {
+        const parsed = parseJson(fs.readFileSync(factsFile, "utf-8"));
+        const facts = (parsed.ok ? parsed.value : {});
+        const t = trackerTarget(ctx.cwd, { fid });
+        const title = typeof facts.title === "string" ? facts.title : "";
+        const label = [issueRef(t.issue, t.tracker), title].filter(Boolean).join(" ");
+        if (typeof facts.url === "string" && facts.url)
+            parts.push(`[${label}](${facts.url})`);
+    }
+    parts.push("## Suggested Replies", ...list(ctx.flags.suggest), PLAIN_ENGLISH_REPLY);
+    return parts;
+}
+/**
+ * `--summary`: the summary file's text, or the `--summary-missing` line when the
+ * file is absent; with `--outbox`, the text is also kept there under the file's
+ * name, outside the tree the close may remove.
+ */
+function summaryOrMissing(ctx, rel) {
+    const missing = str(ctx.flags.summaryMissing);
+    if (!missing)
+        throw new CommandError(EXIT.USAGE, "--summary needs --summary-missing");
+    const abs = path.resolve(ctx.cwd, rel);
+    const text = fs.existsSync(abs) ? fs.readFileSync(abs, "utf-8").replace(/\s+$/, "") : missing;
+    const outbox = str(ctx.flags.outbox);
+    if (outbox) {
+        const dir = path.resolve(ctx.cwd, outbox);
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, path.basename(abs)), `${text}\n`);
+    }
+    return text;
+}
+function finalReturnText(ctx, workflow, parts) {
+    if (parts === null)
+        return {};
+    const tips = tipsText(false, workflow, ctx.cwd);
+    return { finalReturn: [...parts, ...(tips ? ["## bkit Tips", tips] : [])].join("\n\n") };
+}
+// ---------------------------------------------------------------------------
+// input
+// ---------------------------------------------------------------------------
+/** A required input file's text, trailing newlines dropped; missing exits EXIT_NO_INPUT. */
+function inputText(cwd, rel, flag) {
+    const abs = path.resolve(cwd, rel);
+    if (!fs.existsSync(abs))
+        throw new CommandError(EXIT_NO_INPUT, `--${flag} ${rel} does not exist`);
+    return fs.readFileSync(abs, "utf-8").replace(/\s+$/, "");
+}
+/** The run's issue parts from `issues fetch`'s files, oldest first; none for a run with no issue. */
+function inputIssueParts(ctx) {
+    const descFile = str(ctx.flags.descriptionFile);
+    const commentsFile = str(ctx.flags.commentsFile);
+    const description = descFile ? inputText(ctx.cwd, descFile, "description-file") : "";
+    let comments = [];
+    if (commentsFile) {
+        const parsed = parseJson(inputText(ctx.cwd, commentsFile, "comments-file"));
+        const list = parsed.ok ? parseComments(parsed.value) : null;
+        if (list === null)
+            throw new CommandError(EXIT_NO_INPUT, `--comments-file ${commentsFile} is not a list of comments`);
+        comments = sortOldestFirst(list).comments;
+    }
+    return issueParts(description, comments);
+}
+/** An ISO-8601 time in UTC, or undefined when it does not parse. */
+function utc(at) {
+    const t = at === undefined ? NaN : Date.parse(at);
+    return Number.isNaN(t) ? undefined : new Date(t).toISOString();
+}
+/**
+ * When a design or plan file last changed: the author date of its last commit (a
+ * rebase keeps it, unlike the committer date), or undefined (newer than any commit) when the file
+ * has uncommitted changes or no commit.
+ */
+function committedAt(cwd, rel) {
+    if ((git(cwd, ["status", "--porcelain", "--", rel]) ?? "") !== "")
+        return undefined;
+    return utc(git(cwd, ["log", "-1", "--format=%aI", "--", rel]) || undefined);
+}
+const fileDate = (cwd, rel) => {
+    const at = committedAt(cwd, rel);
+    return at === undefined ? "uncommitted changes, newer than any commit" : `last committed ${at}`;
+};
+function issueHeading(part) {
+    if (part.kind === "description")
+        return "Issue description — oldest";
+    const at = utc(part.createdAt);
+    return at === undefined
+        ? "Issue comment — no date, counts as oldest"
+        : `Issue comment — posted ${at}`;
+}
+/** Comments posted after the plan's last commit; none when the plan is missing or uncommitted. */
+function newerThanPlan(cwd, plan, parts) {
+    if (!plan || !fs.existsSync(path.resolve(cwd, plan)))
+        return 0;
+    const since = committedAt(cwd, plan);
+    if (since === undefined)
+        return 0;
+    return parts.filter((p) => {
+        const at = utc(p.createdAt);
+        return p.kind === "comment" && at !== undefined && at > since;
+    }).length;
+}
+function inputVerb(ctx) {
+    const workflow = workflowName(String(ctx.flags.workflow));
+    const fid = String(ctx.flags.fid);
+    const run = positiveInt(ctx.flags.run, "run");
+    const file = str(ctx.flags.file);
+    const status = file
+        ? path.resolve(ctx.cwd, file)
+        : statusLocation({
+            cwd: ctx.cwd,
+            workflow,
+            fid,
+            month: resolveMonth(repoRoot(ctx.cwd), fid, str(ctx.flags.month) || undefined),
+        }).path;
+    const sections = [
+        [
+            "Session Prompt — this run's, newer than everything below",
+            inputText(ctx.cwd, String(ctx.flags.promptFile), "prompt-file"),
+        ],
+    ];
+    const issue = inputIssueParts(ctx);
+    for (const part of issue)
+        sections.push([issueHeading(part), part.text]);
+    const plan = str(ctx.flags.plan);
+    if (plan && fs.existsSync(path.resolve(ctx.cwd, plan)))
+        sections.push([
+            `Plan — ${plan} — ${fileDate(ctx.cwd, plan)}`,
+            inputText(ctx.cwd, plan, "plan"),
+        ]);
+    const design = str(ctx.flags.design);
+    if (design) {
+        const text = inputText(ctx.cwd, design, "design");
+        sections.push([`Design — ${design} — ${fileDate(ctx.cwd, design)}`, text]);
+    }
+    for (const audit of list(ctx.flags.audit)) {
+        const text = inputText(ctx.cwd, audit, "audit");
+        sections.push([`Audit Report — ${audit} — ${fileDate(ctx.cwd, audit)}`, text]);
+    }
+    const body = sections.map(([h, text]) => `## ${h}\n\n${text}\n`).join("\n");
+    const abs = path.join(path.dirname(status), `${workflow}-input-${run}.md`);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, body);
+    ctx.emit({
+        path: path.relative(ctx.cwd, abs),
+        bytes: Buffer.byteLength(body),
+        newerThanPlan: newerThanPlan(ctx.cwd, plan, issue),
+    });
+    return EXIT.OK;
+}
+/**
+ * Close / links output gains `commentFile`; with `--post`, the close comment once,
+ * deduped by marker hash against the issue's latest comments (the close commit is
+ * already made, so no engine-action row can land in it).
+ */
+async function postClose(ctx, fid, out) {
+    const comment = typeof out.comment === "string" ? out.comment : null;
+    const withFile = { ...out, commentFile: commentFileOf(ctx.cwd, comment) };
+    if (ctx.flags.post !== true)
+        return withFile;
+    if (comment === null)
+        throw new CommandError(EXIT.USAGE, "--post needs --number");
+    return { ...withFile, tracker: await postForVerb(ctx, comment, { fid }) };
+}
 export const workflowsCommand = {
     noun: "workflows",
-    summary: "Start, fail, hand over and close a phase workflow run; promote and link its documents.",
+    summary: "Start, fail, hand over, summarize and close a phase workflow run; promote and link its documents.",
     verbs: {
         start: {
             summary: "Take the feature lock and open a run (workflow-started unless resuming).",
@@ -1107,6 +1552,11 @@ export const workflowsCommand = {
                     help: "Step 1 already took the lock: check it is ours instead of acquiring",
                 },
                 TOKEN_FLAG,
+                {
+                    name: "branch",
+                    type: "string",
+                    help: "the branch the checkout must be on; refuse (15) before anything is written when it is not",
+                },
             ],
             output: {
                 lock: "{path, month, token, reclaimed} of the lock taken, or {path} with --lock-held",
@@ -1114,11 +1564,15 @@ export const workflowsCommand = {
                 resumed: "the latest run was this workflow, IN_PROGRESS: no new row",
                 row: "the appended workflow-started row, or null when resuming",
                 run: "which run of the workflow this is (1-based)",
+                lastDoneStep: "the current run's last DONE step: resume after it (null on a new run)",
+                openDecision: "{file, decision, question, from, pauseStep, group, verifyAttempt, testAttempt, plan} of the current run's highest {workflow}-decision-{run}-{N}.md holding Status: OPEN, else null",
             },
+            textOmit: ["row"],
             exitCodes: {
                 [EXIT_NO_STATUS]: "status.jsonl is not valid",
                 [EXIT_SPLIT_BUCKET]: "the feature has logs in more than one month bucket",
                 [EXIT_LOCK_NOT_HELD]: "--lock-held: the lock is missing or belongs to another owner",
+                [EXIT_WRONG_BRANCH]: "--branch: the checkout is on another branch",
             },
             run: (ctx) => {
                 const workflow = workflowName(String(ctx.flags.workflow));
@@ -1126,6 +1580,14 @@ export const workflowsCommand = {
                 const token = str(ctx.flags.token);
                 if (token !== undefined && ctx.flags.lockHeld !== true)
                     throw new CommandError(EXIT.USAGE, "--token applies with --lock-held only");
+                const branch = str(ctx.flags.branch);
+                if (branch !== undefined) {
+                    const on = git(ctx.cwd, ["branch", "--show-current"]) ?? "";
+                    if (on !== branch) {
+                        ctx.log(`[bkit-${workflow}] not on ${branch} in ${ctx.cwd} (on '${on}')`);
+                        return EXIT_WRONG_BRANCH;
+                    }
+                }
                 const where = whereInTree(ctx.cwd, {
                     workflow,
                     fid,
@@ -1153,6 +1615,16 @@ export const workflowsCommand = {
                 fs.mkdirSync(path.dirname(file), { recursive: true });
                 if (!fs.existsSync(file))
                     fs.writeFileSync(file, "");
+                // A ship decides its handover afresh: a sentinel an earlier run left is stale.
+                if (workflow === "ship") {
+                    for (const name of SENTINELS) {
+                        const p = path.join(path.dirname(file), name);
+                        if (!fs.existsSync(p))
+                            continue;
+                        fs.rmSync(p, { force: true });
+                        ctx.log(`cleared stale ${name}`);
+                    }
+                }
                 const latest = fold(readStatusEvents(file)).at(-1);
                 const resumed = latest?.workflow === workflow && latest.status === "IN_PROGRESS";
                 let row = null;
@@ -1165,12 +1637,20 @@ export const workflowsCommand = {
                     };
                     fs.appendFileSync(file, appendLine(row));
                 }
+                recordChat(file, workflow, process.env);
+                const runs = fold(readStatusEvents(file));
+                const run = runNumber(runs, workflow);
+                const current = resumed ? lastRun(runs, workflow) : undefined;
                 ctx.emit({
                     lock,
                     file,
                     resumed,
                     row,
-                    run: runNumber(fold(readStatusEvents(file)), workflow),
+                    run,
+                    lastDoneStep: current?.steps.filter((s) => s.status === "DONE").at(-1)?.step ?? null,
+                    openDecision: resumed
+                        ? openDecision(path.dirname(file), where.tree, workflow, run)
+                        : null,
                 });
                 return EXIT.OK;
             },
@@ -1220,6 +1700,16 @@ export const workflowsCommand = {
                     type: "string",
                     help: "the failed shell command's stderr (last 20 lines kept)",
                 },
+                {
+                    ...POST_FLAG,
+                    help: "post the failure comment (needs --step-number) to the --fid / --issue issue and write its failed labels; prints `tracker` and `labelsWrite`",
+                },
+                {
+                    name: "issue",
+                    type: "string",
+                    help: "with --post: the issue id when there is no --fid yet",
+                },
+                SESSION_DIR_FLAG,
             ],
             output: {
                 row: "the appended workflow-failed row, or null (no --token, or no status.jsonl)",
@@ -1232,7 +1722,12 @@ export const workflowsCommand = {
                 trackerState: "the Linear or Jira state for the failed issue (null under github, none)",
                 prState: "the --pr PR's state, or null",
                 comment: "the failure comment body (with --step-number), else null",
+                commentFile: COMMENT_FILE_OUTPUT,
+                tracker: TRACKER_OUTPUT,
+                labelsWrite: "with --post: the label and state write, read fresh from the issue: {done: true, action: labels} | {done: false, action, reason} (write `labels` / `trackerState` via the tracker MCP) | {skipped}",
+                sessionRemoved: SESSION_REMOVED_OUTPUT,
             },
+            textOmit: ["row"],
             exitCodes: {
                 [EXIT_SPLIT_BUCKET]: "no --month and the feature has logs in more than one month bucket",
                 [EXIT_REMOVE_FAILED]: "the lock file is still there after removing it (everything else was done; the comment says so)",
@@ -1248,7 +1743,7 @@ export const workflowsCommand = {
                 {
                     name: "push",
                     type: "boolean",
-                    help: "feature branch: git add -A, commit `docs({fid}): {workflow} aborted bkit [skip ci]`, push --mode=abort; dev / main / detached: lands like --flush, the checkout untouched",
+                    help: "feature branch: git add -A (minus bkit.workflows.worktree.copy entries), commit `docs({fid}): {workflow} aborted bkit [skip ci]`, push --mode=abort; dev / main / detached: lands like --flush, the checkout untouched",
                 },
                 {
                     name: "flush",
@@ -1262,11 +1757,17 @@ export const workflowsCommand = {
                 },
                 { name: "ref", type: "string", help: "link the handover at this ref (no push / flush)" },
                 {
+                    name: "list-stray",
+                    type: "boolean",
+                    help: "only list what --push would sweep in besides the run's logs (modified, untracked) and whether the checkout is shared; writes nothing",
+                },
+                {
                     name: "worktree",
                     type: "string",
                     help: "the run's tree: holds the handover and the logs, and is where --push commits (default: cwd's checkout)",
                 },
                 OWNER_REPO_FLAG,
+                { ...POST_FLAG, help: "post the handover comment to the FID's issue; prints `tracker`" },
             ],
             output: {
                 handover: "the handover artifact, or null when absent",
@@ -1274,6 +1775,11 @@ export const workflowsCommand = {
                 ref: "where the handover now lives, or null when nothing was pushed",
                 skipped: "why nothing was pushed: open-pr | skip-ci | nothing-to-commit (null otherwise)",
                 comment: "the handover comment body (null when there is no handover); links only when pushed",
+                commentFile: COMMENT_FILE_OUTPUT,
+                tracker: `${TRACKER_OUTPUT}; absent when there is no handover`,
+                shared: "--list-stray: the checkout is dev / main / detached (remove nothing)",
+                modified: "--list-stray: tracked paths with changes, outside the run's logs",
+                untracked: "--list-stray: untracked paths, outside the run's logs",
             },
             exitCodes: {
                 [EXIT_SPLIT_BUCKET]: "no --month and the feature has logs in more than one month bucket",
@@ -1319,7 +1825,7 @@ export const workflowsCommand = {
                 {
                     name: "message",
                     type: "string",
-                    help: "then git add -A and commit with this message in the tree",
+                    help: "then git add -A (minus bkit.workflows.worktree.copy entries) and commit with this message in the tree",
                 },
                 {
                     name: "label",
@@ -1345,6 +1851,40 @@ export const workflowsCommand = {
                     type: "string",
                     help: "--flush: the shipped branch, deleted locally and on origin with the worktree once the close is on dev",
                 },
+                SESSION_DIR_FLAG,
+                {
+                    name: "final-return",
+                    type: "boolean",
+                    help: "print finalReturn: the run's last message to the person (needs --summary-file)",
+                },
+                {
+                    name: "summary-file",
+                    type: "string",
+                    help: "--final-return: the summary shown verbatim (read before the close runs)",
+                },
+                {
+                    name: "summary",
+                    type: "string",
+                    help: "--final-return: like --summary-file, but a missing file shows --summary-missing; a copy is kept in --outbox",
+                },
+                {
+                    name: "summary-missing",
+                    type: "string",
+                    help: "--summary: the line shown when the summary file does not exist",
+                },
+                { name: "warning", type: "string", help: "--final-return: line 1, before the summary" },
+                {
+                    name: "line",
+                    type: "string",
+                    repeatable: true,
+                    help: "--final-return: a line after the summary, before the issue link",
+                },
+                {
+                    name: "suggest",
+                    type: "string",
+                    repeatable: true,
+                    help: "--final-return: a suggested reply, before the plain-English offer",
+                },
             ],
             output: {
                 row: "the appended workflow-done row",
@@ -1358,16 +1898,23 @@ export const workflowsCommand = {
                 parentSha: "HEAD before the --message commit (the close step's parentSha)",
                 commit: "the --message commit, or null",
                 comment: "the close comment (--number with --outbox), else null",
+                commentFile: COMMENT_FILE_OUTPUT,
+                tracker: TRACKER_OUTPUT,
                 roadmapFoldNeeded: "always true: append the feature row and re-render the board (not run here)",
                 featureStatus: "roadmap status this close moves the feature to",
                 landed: "--flush: {ref, via: head-push | close-pr | close-pr-open}",
                 worktree: "--flush: the `bkit worktrees remove` result once the close is on dev; null while the close PR is unmerged or the removal failed",
+                sessionRemoved: SESSION_REMOVED_OUTPUT,
+                finalReturn: "--final-return: the warning, the summary verbatim, the issue link from {session-dir}/issue-facts.json, `## Suggested Replies` (each --suggest, then the plain-English offer) and `## bkit Tips` (what `bkit tips --workflow` prints, when anything)",
             },
+            textOmit: ["row", "counterRow", "outcomeRow"],
             exitCodes: {
                 [EXIT_NO_STATUS]: "status.jsonl missing, unreadable, or not valid NDJSON (nothing written)",
+                [EXIT_NO_INPUT]: "--final-return: --summary-file does not exist (nothing written)",
                 [EXIT_SPLIT_BUCKET]: "no --month and the feature has logs in more than one month bucket",
-                [EXIT_PUSH_FAILED]: "--flush: dev moved before every push, or the push failed without a server answer; the lock is kept",
+                [EXIT_PUSH_FAILED]: "--flush: dev moved before every push, or the push failed without a server answer; the lock is kept. Without --flush, --message in an in-place run: a path that was dirty before the run changed during it (EXIT_FOREIGN_PATH) — no row written, nothing committed",
                 [EXIT_FLUSH_FAILED]: "--flush: the dev fetch, the throwaway checkout or the close commit failed, the close PR could not be opened (the lock is kept), or the lock could not be removed",
+                [EXIT_NO_RECORD]: "--message in a debug run on dev/main with no shared-checkout record: no row written, nothing committed",
             },
             run: async (ctx) => {
                 const f = ctx.flags;
@@ -1389,20 +1936,76 @@ export const workflowsCommand = {
                     title: str(f.title),
                     tree: str(f.tree),
                 };
+                const finalParts = finalReturnParts(ctx, input.fid);
                 if (f.flush === true) {
                     if (input.workflow !== "ship")
                         throw new CommandError(EXIT.USAGE, "--flush is ship only");
                     const r = await shipClose(ctx, { ...input, branch: str(f.branch) }, str(f.token));
-                    if (r.out)
-                        ctx.emit(r.out);
+                    if (r.out) {
+                        const out = r.out;
+                        const posted = typeof out.comment === "string"
+                            ? await postClose(ctx, input.fid, out)
+                            : { ...out, commentFile: null };
+                        const final = finalReturnText(ctx, input.workflow, finalParts);
+                        ctx.emit({ ...posted, ...final, ...sessionRemoval(ctx) });
+                    }
                     return r.code;
                 }
-                ctx.emit(closeWorkflow(ctx.cwd, input, ctx.log));
+                const out = await postClose(ctx, input.fid, { ...closeWorkflow(ctx.cwd, input, ctx.log) });
+                const final = finalReturnText(ctx, input.workflow, finalParts);
+                ctx.emit({ ...out, ...final, ...sessionRemoval(ctx) });
                 return EXIT.OK;
             },
         },
+        input: {
+            summary: "Write logs/{FID}/{workflow}-input-{run}.md: the session prompt, the issue description and each human comment, then the plan, design and audit reports, each section dated.",
+            flags: [
+                WORKFLOW_FLAG,
+                FID_FLAG,
+                MONTH_FLAG,
+                {
+                    ...STATUS_FILE_FLAG,
+                    help: "status.jsonl: the input file goes beside it (default: derived)",
+                },
+                { name: "run", type: "string", required: true, help: "the run number ({RUN})" },
+                {
+                    name: "prompt-file",
+                    type: "string",
+                    required: true,
+                    help: "the session prompt ({SESSION_DIR}/prompt.md)",
+                },
+                {
+                    name: "description-file",
+                    type: "string",
+                    help: "issue-description.md from `issues fetch` (omit for a run with no issue)",
+                },
+                {
+                    name: "comments-file",
+                    type: "string",
+                    help: "issue-comments.json from `issues fetch`: bkit:generated comments dropped, the ignore-earlier cut applied",
+                },
+                { name: "plan", type: "string", help: "appended under `## Plan — <path>` when it exists" },
+                { name: "design", type: "string", help: "plan: the parent design, appended (must exist)" },
+                {
+                    name: "audit",
+                    type: "string",
+                    repeatable: true,
+                    help: "plan: an audit report, appended in flag order (must exist)",
+                },
+            ],
+            output: {
+                path: "the input file written, relative to cwd",
+                bytes: "its size in bytes",
+                newerThanPlan: "issue comments posted after the plan's last commit (0 with no plan, or one with uncommitted changes)",
+            },
+            exitCodes: {
+                [EXIT_SPLIT_BUCKET]: "no --month and the feature has logs in more than one month bucket",
+                [EXIT_NO_INPUT]: "the prompt, description, comments, design or an audit file is missing, or the comments are not a list",
+            },
+            run: inputVerb,
+        },
         promote: {
-            summary: "Design / plan close: the highest versioned draft becomes the canonical doc (anchor stamped, a changed canonical archived, plan sub-plans copied).",
+            summary: "Design / plan close: the highest versioned draft becomes the canonical doc (anchor stamped, a changed canonical archived).",
             flags: [
                 { ...WORKFLOW_FLAG, help: "design | plan" },
                 FID_FLAG,
@@ -1421,8 +2024,7 @@ export const workflowsCommand = {
             output: {
                 final: "the highest versioned draft, e.g. docs/plans/202610/logs/12-x/design-v3-organised.md",
                 canonical: "the canonical doc written, or null with --resolve",
-                archived: "superseded canonical docs moved to archive/",
-                subPlans: "plan: the canonical sub-plans written",
+                archived: "the superseded canonical doc moved to archive/, if any",
                 baseSha: "the base commit stamped into the anchor, or null when none was recorded",
             },
             exitCodes: {
@@ -1454,11 +2056,13 @@ export const workflowsCommand = {
                 artifacts: "[{name, path, url}]",
                 artifactLinks: "the same as markdown `- [name](url)` lines",
                 comment: "the close comment (--number with --outbox): Artifacts and Telemetry sections, else null",
+                commentFile: COMMENT_FILE_OUTPUT,
+                tracker: TRACKER_OUTPUT,
             },
             exitCodes: {
                 [EXIT_SPLIT_BUCKET]: "no --month and the feature has logs in more than one month bucket",
             },
-            run: (ctx) => {
+            run: async (ctx) => {
                 const workflow = workflowName(String(ctx.flags.workflow));
                 const fid = String(ctx.flags.fid);
                 const root = repoRoot(ctx.cwd);
@@ -1481,9 +2085,44 @@ export const workflowsCommand = {
                 else if (ctx.flags.number !== undefined) {
                     throw new CommandError(EXIT.USAGE, "--number needs --outbox");
                 }
-                ctx.emit({ artifacts, artifactLinks: linkLines(artifacts), comment });
+                ctx.emit(await postClose(ctx, fid, { artifacts, artifactLinks: linkLines(artifacts), comment }));
                 return EXIT.OK;
             },
+        },
+        summary: {
+            summary: "The Summary step: write {workflow}-summary.md next to --file with the run's verdict, reasons and next command.",
+            flags: [
+                { ...WORKFLOW_FLAG, help: "plan | design | build | debug | ship" },
+                {
+                    name: "file",
+                    type: "string",
+                    required: true,
+                    help: "the run's docs/plans/{YYYYMM}/logs/{FID}/status.jsonl; the summary is written beside it",
+                },
+                {
+                    name: "plan",
+                    type: "string",
+                    repeatable: true,
+                    help: "a plan file the run worked from (default: build reads {FID}-plan.md)",
+                },
+                {
+                    name: "pr",
+                    type: "string",
+                    help: "ship: the PR number; its size comes from gh pr view (left out when gh cannot answer)",
+                },
+            ],
+            output: {
+                verdict: "PASS | CONCERNS | FAIL",
+                failures: "the count of FAIL reasons: 0 on PASS and CONCERNS",
+                reasons: "one line per reason, FAIL reasons first",
+                file: "the summary written, repo-relative",
+                nextStep: "the recommended next command (with the issue ref), or the fixed line when there is none",
+            },
+            exitCodes: {
+                [EXIT_NO_STATUS]: "status.jsonl missing, unreadable, or not valid NDJSON (nothing written)",
+                [EXIT_NO_RUN]: "status.jsonl has no workflow-started row for --workflow (nothing written)",
+            },
+            run: summaryVerb,
         },
     },
 };

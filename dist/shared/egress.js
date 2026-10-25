@@ -103,6 +103,13 @@ export const BKIT_EGRESS_SOURCES = [
         hosts: ["api.githubcopilot.com"],
         bases: ["githubcopilot.com"],
     },
+    // The engine's own tracker calls (`gh api` REST and GraphQL), beside the MCP server.
+    {
+        id: "tracker-github-api",
+        kind: "tracker-mcp",
+        hosts: ["api.github.com"],
+        bases: ["github.com"],
+    },
     {
         id: "mcp-linear",
         kind: "tracker-mcp",

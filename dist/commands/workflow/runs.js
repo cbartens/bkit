@@ -27,11 +27,14 @@ import { readBkitConfig } from "../../shared/settings.js";
 import { TIMEOUTS } from "../../shared/timeouts.js";
 import { FID_PATTERNS, fromBranch, fromMarker, issueIdOf, readIssueTracker } from "./fids.js";
 import { AUTO_LABEL, AUTO_ROUTE_SUFFIX } from "./issues.js";
-import { checkOnlyBookkeeping } from "./ledgers.js";
-import { closeTransportRow, crossCheckFile, prRepoSlug, probePr } from "./prs.js";
+import { fetchRemoteRef, pushBranch } from "./branches.js";
+import { activeRecord, checkOnlyBookkeeping, retriggerCommit } from "./ledgers.js";
+import { closeTransportRow, crossCheckFile, devRequiresChecks, prRepoSlug, probePr, } from "./prs.js";
 import { resolveOwnerRepo, splitSlug } from "./repo.js";
+import { restateOutcome } from "./run-facts.js";
 import { extraField, str } from "./status.js";
 import { writeStepRow } from "./steps.js";
+import { attempt, issueRef, readLabels, trackerTarget } from "./tracker.js";
 const GH_MISSING = "gh is not on PATH — use the mapped GitHub MCP tool instead";
 /** Not JSON reads as undefined: every caller treats that as an API error, distinct from an empty answer. */
 function jsonOrUndefined(raw) {
@@ -53,7 +56,7 @@ export function checkNamespace(capstoneJob) {
     const i = capstoneJob.lastIndexOf("-");
     return i > 0 ? capstoneJob.slice(0, i) : capstoneJob;
 }
-/** Whether `.github/workflows/<bkit.ciWorkflow>` exists — the only honest ground for a `no-ci` pass. */
+/** Whether `.github/workflows/<bkit.testing.ciWorkflow>` exists — the only honest ground for a `no-ci` pass. */
 export function ciDeclared(root) {
     const { ciWorkflow } = readBkitConfig(root);
     const rel = path.join(".github", "workflows", ciWorkflow);
@@ -197,7 +200,20 @@ export async function ciDispatchGate(o, deps) {
     const root = checkoutRoot(o.cwd);
     const { capstoneJob } = readBkitConfig(root);
     const declared = ciDeclared(root);
-    const head = () => git(o.cwd, ["rev-parse", "HEAD"]) ?? "";
+    const branch = git(o.cwd, ["branch", "--show-current"]) ?? "";
+    const shared = branch !== "" && isSharedBranch(branch);
+    // A run in place on a shared branch has no PR: CI is the push-event run at the pushed sha.
+    const byRun = o.pr === null && shared;
+    // The sha an own-commit push landed; null while the head is local HEAD.
+    let landed = byRun ? (o.sha ?? null) : null;
+    const head = () => landed ?? git(o.cwd, ["rev-parse", "HEAD"]) ?? "";
+    /** The landed copy lives on the remote only; the scan and the suppressor check read it locally. */
+    const fetchLanded = () => {
+        if (landed === null || runGit(o.cwd, ["cat-file", "-e", `${landed}^{commit}`]).ok)
+            return;
+        runGit(o.cwd, ["fetch", "origin", branch]);
+    };
+    fetchLanded();
     const res = {
         phase: "done",
         handoff: 0,
@@ -206,13 +222,22 @@ export async function ciDispatchGate(o, deps) {
         attempts: 0,
         retrigger: o.retriggered,
         ciWorkflow: declared.ciWorkflow,
+        runBranch: byRun ? branch : null,
     };
-    const target = {
-        kind: "pr-present",
-        pr: o.pr ?? undefined,
-        ciWorkflow: declared.ciWorkflow,
-        namespace: checkNamespace(capstoneJob),
-    };
+    const target = byRun
+        ? {
+            kind: "run-present",
+            head: res.head,
+            branch,
+            ciWorkflow: declared.ciWorkflow,
+            namespace: checkNamespace(capstoneJob),
+        }
+        : {
+            kind: "pr-present",
+            pr: o.pr ?? undefined,
+            ciWorkflow: declared.ciWorkflow,
+            namespace: checkNamespace(capstoneJob),
+        };
     const poll = async (phase) => {
         // A supplied result answers only the poll that was handed off; later polls run fresh.
         if (o.supplied && (phase === "repoll") === o.retriggered) {
@@ -220,9 +245,13 @@ export async function ciDispatchGate(o, deps) {
             return o.supplied;
         }
         // No PR to read is the shell's empty-PR poll: zero attempts, all errored.
-        if (o.pr === null)
+        if (o.pr === null && !byRun)
             return { pollResult: "err", attempts: 0, allErrored: true };
-        deps.log(`polling for a ${target.namespace} check on PR #${o.pr} (budget ${o.budgetS}s, interval ${o.intervalS}s)`);
+        if (byRun)
+            target.head = head();
+        deps.log(byRun
+            ? `polling for a ${target.ciWorkflow} run on ${branch} at ${target.head} (budget ${o.budgetS}s, interval ${o.intervalS}s)`
+            : `polling for a ${target.namespace} check on PR #${o.pr} (budget ${o.budgetS}s, interval ${o.intervalS}s)`);
         const w = await waitLoop({ budgetS: o.budgetS, intervalS: o.intervalS, once: false }, () => pollOnce(target, deps.gh), deps.sleep, deps.log);
         if (w.blocked || w.ghMissing) {
             res.phase = phase;
@@ -258,13 +287,35 @@ export async function ciDispatchGate(o, deps) {
             deps.log("unresolved(timeout-dirty): no run and the pushed head carries a CI suppressor — not re-triggering a dirty head");
             return verdict("unresolved", "timeout-dirty");
         }
-        const committed = runGit(o.cwd, [
-            "commit",
-            "--allow-empty",
-            "-m",
-            `chore(${o.fid}): re-trigger${o.autoRouteSuffix}`,
-        ]).ok;
-        if (!committed || !pushCurrentBranch(o.cwd)) {
+        const message = `chore(${o.fid}): re-trigger${o.autoRouteSuffix}`;
+        // A run in place on a shared branch commits and pushes only its own work; with
+        // no record of the run there, nothing is committed or pushed.
+        const rec = shared ? activeRecord(o.cwd, o.fid) : null;
+        if (shared && rec === null) {
+            deps.log(`no shared-checkout record for ${o.fid} on ${branch} — refusing to re-trigger: a commit and push here would carry work the run does not own; route to the Failure Path`);
+            res.phase = "repoll";
+            res.handoff = EXIT_RETRIGGER_FAILED;
+            return res;
+        }
+        let pushed;
+        if (rec === null) {
+            landed = null;
+            pushed =
+                runGit(o.cwd, ["commit", "--allow-empty", "-m", message]).ok && pushCurrentBranch(o.cwd);
+        }
+        else {
+            const made = retriggerCommit(o.cwd, rec, message);
+            if (!made.ok)
+                deps.log(`re-trigger commit failed: ${made.error}`);
+            const out = made.ok
+                ? await pushBranch(o.cwd, { mode: "feature", fid: o.fid }, deps.log)
+                : null;
+            landed = out?.out.pushed === true ? out.out.sha : landed;
+            pushed = out?.out.pushed === true && out.out.sha !== null;
+            if (pushed)
+                fetchLanded();
+        }
+        if (!pushed) {
             deps.log("re-trigger commit or push failed — no verdict; route to the Failure Path");
             res.phase = "repoll";
             res.handoff = EXIT_RETRIGGER_FAILED;
@@ -315,7 +366,7 @@ export const GATE = {
     SUPERSEDED: 14,
     /** The selected run was cancelled. */
     CANCELLED: 15,
-    /** A lane named in bkit.shipGateRequiredLanes concluded skipped. */
+    /** A lane named in bkit.testing.shipGate concluded skipped. */
     LANE_SKIPPED: 16,
     /** --validated is not an ancestor of the head plus bookkeeping-only commits. */
     NOT_BOOKKEEPING: 17,
@@ -613,7 +664,7 @@ export function shipGate(o, gh, log) {
         log(`note: capstone '${r.capstone}' is green and owns the planned-vs-vacuous judgement for those lanes`);
         const required = r.skippedLanes.filter((l) => requiredLanes.includes(l));
         if (required.length) {
-            log(`declared in bkit.shipGateRequiredLanes: ${requiredLanes.join(",")}`);
+            log(`declared in bkit.testing.shipGate: ${requiredLanes.join(",")}`);
             return refuse(GATE.LANE_SKIPPED, `required lane(s) concluded 'skipped' at head ${r.head} — vacuous green: ${required.join(", ")}`, url);
         }
     }
@@ -733,12 +784,12 @@ const REPO_FLAG = {
 const CI_WORKFLOW_FLAG = {
     name: "ci-workflow",
     type: "string",
-    help: "CI workflow file (default: package.json bkit.ciWorkflow)",
+    help: "CI workflow file (default: package.json bkit.testing.ciWorkflow)",
 };
 const CAPSTONE_FLAG = {
     name: "capstone",
     type: "string",
-    help: "capstone job name (default: package.json bkit.capstoneJob)",
+    help: "capstone job name (default: package.json bkit.testing.ciCapstone)",
 };
 const BUDGET_FLAG = { name: "budget-s", type: "string", help: "poll budget in seconds" };
 const INTERVAL_FLAG = {
@@ -874,6 +925,14 @@ async function runDispatch(ctx) {
         }
         pr = found.pr;
     }
+    const sha = str(f.sha);
+    if (sha !== undefined && !/^[0-9a-f]{40}$/i.test(sha)) {
+        throw new CommandError(EXIT.USAGE, "--sha must be the full 40-hex-digit commit sha (the CI run is matched on the full sha)");
+    }
+    const onShared = isSharedBranch(git(ctx.cwd, ["branch", "--show-current"]) ?? "");
+    if (sha !== undefined && (pr !== null || !onShared)) {
+        throw new CommandError(EXIT.USAGE, "--sha goes with a run in place on a shared branch that has no PR");
+    }
     const pollResult = str(f.pollResult);
     if (pollResult !== undefined && !["found", "none", "err"].includes(pollResult)) {
         throw new CommandError(EXIT.USAGE, "--poll-result must be found, none, or err");
@@ -898,6 +957,7 @@ async function runDispatch(ctx) {
                 allErrored: f.allErrored === true,
             },
         retriggered: f.retriggered === true,
+        sha,
     }, d);
     const scanResult = r.ciDispatch && r.ciDispatch.outcome !== "unresolved" ? scanBody(ctx.cwd, r.head) : null;
     // With --file / --step: the verdict lands on the step's row, and a passed one is
@@ -922,6 +982,10 @@ async function runDispatch(ctx) {
             },
             commit: "none",
         }, ctx.log).row;
+        if (/-close-workflow$/.test(step)) {
+            const tree = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
+            restateOutcome(tree, status, String(f.workflow ?? "build"), { ...r.ciDispatch }, ctx.log);
+        }
         if (code === EXIT.OK || code === EXIT_SKIP_TOKEN) {
             const check = crossCheckFile(status, "gh", ctx.log);
             if (!check.ok) {
@@ -965,7 +1029,10 @@ async function runDispatch(ctx) {
 function dispatchCode(r, pr, scanResult, log) {
     if (r.handoff === EXIT.AGENT_WAIT || r.handoff === EXIT.USE_MCP) {
         const again = r.phase === "repoll" ? " --retriggered" : "";
-        log(`${r.handoff === EXIT.USE_MCP ? GH_MISSING : "this runtime cannot wait"}: resolve the ${r.phase} each turn with \`bkit runs wait --pr=${pr ?? "<n>"} --once\`, then re-run with --poll-result=<found|none|err> --attempts=<total>${again}`);
+        const [wait, keep] = r.runBranch === null
+            ? [`--pr=${pr ?? "<n>"}`, ""]
+            : [`--head=${r.head} --branch=${r.runBranch} --until=present`, ` --sha=${r.head}`];
+        log(`${r.handoff === EXIT.USE_MCP ? GH_MISSING : "this runtime cannot wait"}: resolve the ${r.phase} each turn with \`bkit runs wait ${wait} --once\`, then re-run with --poll-result=<found|none|err> --attempts=<total>${again}${keep}`);
         return r.handoff;
     }
     if (r.handoff !== 0)
@@ -1013,6 +1080,15 @@ function runGate(ctx) {
     const given = [f.head, f.pr, f.squashOf].filter((v) => v !== undefined).length;
     if (given !== 1)
         throw new CommandError(EXIT.USAGE, "give exactly one of --head, --pr, --squash-of");
+    if (f.fetch === true) {
+        const branch = str(f.branch);
+        if (branch === undefined)
+            throw new CommandError(EXIT.USAGE, "--fetch needs --branch");
+        // Best-effort: the gate reads CI, not the local ref; a failed fetch is logged, not fatal.
+        const fetched = fetchRemoteRef(ctx.cwd, `origin/${branch}`);
+        if (fetched !== null && !fetched.ok)
+            ctx.log(`fetch of origin/${branch} failed: ${fetched.stderr.trim()}`);
+    }
     const root = checkoutRoot(ctx.cwd);
     const gh = (args) => runGh(ctx.cwd, args);
     const record = str(f.record);
@@ -1148,14 +1224,6 @@ function runGate(ctx) {
 // ---------------------------------------------------------------------------
 // revalidate
 // ---------------------------------------------------------------------------
-/** Whether dev demands status checks (ruleset or branch protection): CI must then pass at the PR head. */
-function devRequiresChecks(gh, repo) {
-    const rules = gh(["api", `repos/${repo}/rules/branches/dev`]);
-    const list = rules.ok ? arr(jsonOrUndefined(rules.stdout)) : [];
-    if (list.some((r) => obj(r).type === "required_status_checks"))
-        return true;
-    return gh(["api", `repos/${repo}/branches/dev/protection/required_status_checks`]).ok;
-}
 async function runRevalidate(ctx) {
     const f = ctx.flags;
     const repoFlag = str(f.repo);
@@ -1308,25 +1376,25 @@ async function runContext(ctx) {
         prState: null,
         runId: null,
     };
+    const tracker = readIssueTracker(ctx.cwd);
     if (chosen.mode === "BRIEF") {
-        ctx.emit({ ...out, issueId: arg });
+        ctx.emit(await withIssue(ctx, { ...out, issueId: arg }, tracker));
         return EXIT.OK;
     }
-    const tracker = readIssueTracker(ctx.cwd);
     if (!/^[0-9]+$/.test(arg)) {
         // CI_DEV: a post-merge dev failure names the FID slug; checked before any path sees it.
         if (!FID_PATTERNS.any.test(arg)) {
             ctx.log(`Invalid CI_DEV FID: ${arg}`);
             return EXIT_NO_FID;
         }
-        ctx.emit({
+        ctx.emit(await withIssue(ctx, {
             ...out,
             mode: "CI_DEV",
             fid: arg,
             issueId: tracker === "none" ? null : issueIdOf(arg, "any"),
             branch: DEV,
             headSha: git(ctx.cwd, ["rev-parse", "origin/dev"]) ?? "",
-        });
+        }, tracker));
         return EXIT.OK;
     }
     const view = runGh(ctx.cwd, [
@@ -1389,8 +1457,29 @@ async function runContext(ctx) {
         ctx.emit(out);
         return EXIT_NO_FID;
     }
-    ctx.emit({ ...out, fid: parsed.fid, issueId: parsed.issueId });
+    if (parsed.issueId === null && tracker !== "none") {
+        ctx.log(`FID ${parsed.fid} names no issue; /bkit-auto runs from an issue only`);
+        ctx.emit(out);
+        return EXIT_NO_FID;
+    }
+    ctx.emit(await withIssue(ctx, { ...out, fid: parsed.fid, issueId: parsed.issueId }, tracker));
     return EXIT.OK;
+}
+/**
+ * `ref` (the issue as a workflow argument: `#N` on GitHub, the key uppercased on
+ * Linear / Jira) and `labels` (read from the tracker; null when there is no issue
+ * or the read failed, logged).
+ */
+async function withIssue(ctx, out, tracker) {
+    const id = typeof out.issueId === "string" && out.issueId !== "" ? out.issueId : null;
+    const ref = issueRef(id, tracker);
+    if (id === null || tracker === "none")
+        return { ...out, ref, labels: null };
+    let labels = null;
+    const read = await attempt("labels", ctx.log, async () => {
+        labels = await readLabels(trackerTarget(ctx.cwd, { issue: id }));
+    });
+    return { ...out, ref, labels: "done" in read && read.done ? labels : null };
 }
 async function runMirror(ctx) {
     const f = ctx.flags;
@@ -1469,12 +1558,17 @@ export const runsCommand = {
             run: runWait,
         },
         dispatch: {
-            summary: "CI-Dispatch Gate after the last push: poll, one clean re-trigger, the ciDispatch verdict, and the body scan.",
+            summary: "CI-Dispatch Gate after the last push: poll, one clean re-trigger, the ciDispatch verdict, and the body scan. A run in place on dev has no PR: it polls the push-event run at the pushed sha, and its re-trigger commits and pushes only the run's own work.",
             flags: [
                 {
                     name: "pr",
                     type: "string",
-                    help: "PR number (default: the open PR from this branch into dev)",
+                    help: "PR number (default: the open PR from this branch into dev; none on dev itself: the push-event run at --sha is read instead)",
+                },
+                {
+                    name: "sha",
+                    type: "string",
+                    help: "a run in place on dev (no PR): the full 40-hex sha its push landed, which the CI run is looked up at (default: HEAD); an own-commit push lands copies, so pass the push's `sha`",
                 },
                 {
                     name: "fid",
@@ -1529,8 +1623,8 @@ export const runsCommand = {
             output: {
                 ciDispatch: "{outcome, head, attempts, retrigger, reason?} — record with `bkit steps done --field ciDispatch=…` (local only, never pushed); null on a hand-off",
                 phase: "done | poll | repoll (which poll was handed to the agent)",
-                pr: "PR number polled (null when none was found)",
-                head: "the pushed head (the re-trigger commit after a re-trigger)",
+                pr: "PR number polled (null when none was found, or a run in place on dev, whose run is read at head)",
+                head: "the pushed head (the re-trigger commit after a re-trigger; on dev with a record, the sha its own-commit push landed)",
                 attempts: "poll attempts so far",
                 retrigger: "a re-trigger commit was pushed",
                 scanResult: "clean | skip-token-found | error — the pushed head's BODY scan; null when unresolved",
@@ -1581,6 +1675,11 @@ export const runsCommand = {
                     name: "branch",
                     type: "string",
                     help: "PR branch: tells a superseded head (14) from no run (10)",
+                },
+                {
+                    name: "fetch",
+                    type: "boolean",
+                    help: "fetch origin/<--branch> first (best-effort, logged on failure)",
                 },
                 {
                     name: "event",
@@ -1739,6 +1838,8 @@ export const runsCommand = {
                 owner: "owner half",
                 repo: "repo half",
                 issueId: "the issue (BRIEF: the arg; CI: from the marker or branch; null under no tracker)",
+                ref: 'the issue as the phase workflow\'s argument: #N (GitHub), the key uppercased (Linear / Jira), else issueId verbatim or ""',
+                labels: "the issue's labels read from the tracker; null with no issue or when the read failed (read them via the tracker MCP)",
                 fid: "the FID (CI / CI_DEV), else null",
                 prNumber: "the PR (CI), else null",
                 branch: "the PR head branch (CI), dev (CI_DEV), else null",
@@ -1751,12 +1852,12 @@ export const runsCommand = {
                 [EXIT_UNKNOWN_PHASE]: "the phase word is not one bkit dispatches",
                 [EXIT_PR_NOT_OPEN]: "the PR is not OPEN",
                 [EXIT_NO_RUN_ID]: "no CI run at the PR head",
-                [EXIT_NO_FID]: "no valid FID (CI_DEV slug off the allowlist, or no marker / feat/{FID} branch)",
+                [EXIT_NO_FID]: "no valid FID or no issue (CI_DEV slug off the allowlist, no marker / feat/{FID} branch, or an issue-less FID: /bkit-auto runs issue-only)",
             },
             run: runContext,
         },
         declared: {
-            summary: "Whether the repo declares a CI workflow: .github/workflows/<bkit.ciWorkflow> exists (exit 0) or not (exit 1).",
+            summary: "Whether the repo declares a CI workflow: .github/workflows/<bkit.testing.ciWorkflow> exists (exit 0) or not (exit 1).",
             flags: [],
             output: {
                 declared: "the workflow file exists",

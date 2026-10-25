@@ -10,11 +10,12 @@ import { parseJson } from "../../shared/json.js";
 // ---------------------------------------------------------------------------
 /**
  * Persist a `bkit.<field>` value into the consumer's package.json so the
- * post-install advisory can tell "deliberately none" from "undecided". Mirrors
- * the `bkit.issueTracker` persist logic in commands/install/install.ts. Used for the opt-in
- * decisions recorded by their owning modules (`cloudAgents`). No-op
- * on dry-run or when package.json is absent/unparseable (non-fatal — the config
- * file presence is still the primary signal).
+ * post-install advisory can tell "deliberately none" from "undecided". `field` is a
+ * dotted path (`cloud.agent`); each missing section on the way is created. Mirrors
+ * the `bkit.tracker.default` persist logic in commands/install/install.ts. Used for the opt-in
+ * decisions recorded by their owning modules (`cloud.agent`). No-op
+ * on dry-run, when package.json is absent/unparseable, or when a section on the path
+ * holds a non-object (non-fatal — the config file presence is still the primary signal).
  */
 function setConsumerBkitField(field, value, dryRun) {
     if (dryRun)
@@ -28,11 +29,19 @@ function setConsumerBkitField(field, value, dryRun) {
         if (!parsed.ok)
             return;
         const pkg = parsed.value;
-        const bkit = (pkg.bkit ?? {});
-        if (bkit[field] === value)
+        const keys = ["bkit", ...field.split(".")];
+        const leaf = keys.pop();
+        let parent = pkg;
+        for (const k of keys) {
+            parent[k] ??= {};
+            const next = parent[k];
+            if (next === null || typeof next !== "object" || Array.isArray(next))
+                return;
+            parent = next;
+        }
+        if (parent[leaf] === value)
             return; // already set — avoid a no-op rewrite
-        bkit[field] = value;
-        pkg.bkit = bkit;
+        parent[leaf] = value;
         const indentMatch = raw.match(/\n([ \t]+)"/);
         const indent = indentMatch ? indentMatch[1] : "  ";
         const trailingNewline = raw.endsWith("\n") ? "\n" : "";
@@ -51,7 +60,7 @@ const CLOUD_WORKFLOW_ADOPT_STEP = "  - Copy `.bkit/templates/.github/workflows/b
 //
 // NOT shipped by a default install — opt-in via `bkit install --auto=<variant>`,
 // so a default install ships ZERO cloud footprint. Every variant records
-// `bkit.cloudAgents` and prints its setup advisories; none writes a file. The cloud
+// `bkit.cloud.agent` and prints its setup advisories; none writes a file. The cloud
 // workflow (bkit-cloud.yml), bkit-cloud-bootstrap.sh and the Cursor Background Agent
 // files (.cursor/Dockerfile, .cursor/environment.json) are templates the advisories
 // point at.
@@ -66,7 +75,7 @@ export function runCloudModule(ctx) {
     if (variant === "claude") {
         // --- cloud=claude: GitHub-tracker path ---
         // Record the variant so the post-install advisory and `bkit check` stay consistent.
-        setConsumerBkitField("cloudAgents", "claude", dryRun);
+        setConsumerBkitField("cloud.agent", "claude", dryRun);
         // Advisory — cloud=claude setup checklist (App required; id-token: write).
         advisories.push({
             id: "bkit-cloud-setup",
@@ -103,7 +112,7 @@ export function runCloudModule(ctx) {
     else if (variant === "opencode") {
         // --- cloud=opencode: GitHub-tracker path (same bkit-cloud.yml template, no OIDC) ---
         // Record the variant.
-        setConsumerBkitField("cloudAgents", "opencode", dryRun);
+        setConsumerBkitField("cloud.agent", "opencode", dryRun);
         // Advisory — cloud=opencode setup checklist.
         advisories.push({
             id: "bkit-cloud-setup",
@@ -123,7 +132,7 @@ export function runCloudModule(ctx) {
     else {
         // --- cloud=cursor: Linear-tracker path ---
         // Record the variant.
-        setConsumerBkitField("cloudAgents", "cursor", dryRun);
+        setConsumerBkitField("cloud.agent", "cursor", dryRun);
         // Advisory — cloud=cursor setup checklist.
         advisories.push({
             id: "bkit-cloud-setup",

@@ -2,9 +2,9 @@
 
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.5.1 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
 
-- **Rules:** Read `.agents/rules.md` → follow all rules.
+- **Rules file:** Read `.agents/rules.md` → follow all rules.
 
 > [!CAUTION]
 > This file is a **workflow router only**. It does not execute workflows.
@@ -13,42 +13,36 @@
 
 ## Route
 
-### Step 1 — Extract from prompt XML (not MCP)
+### Step 1 — Find issue ID in prompt
 
-**If** prompt contains `<LINEAR_ISSUE>` XML block (Linear integration):
-
-- `ISSUE_ID` ← `<id>` tag value (e.g. `LIN-123` or team-specific prefix)
-- `DESCRIPTION` ← `<description>` tag content
-- `LABELS` ← all `<label name="...">` values in `<labels>` block
-- `COMMENTS` ← all `<comment>` entries from `<comment_thread>` + `<other_comment_threads>`, sorted newest-first by `created` attribute
+**If** prompt contains `<LINEAR_ISSUE>` XML block (Linear integration) → `ISSUE_ID` ← `<id>` tag value (e.g. `LIN-123` or team-specific prefix).
 
 **Else** scan entire session prompt for issue ID — try patterns in order, first match wins:
 
-1. `#\d+` → GitHub issue number (e.g. `#123`); strip `#`, set `ISSUE_ID` = `123`
-2. `[A-Z][A-Z0-9]*-\d+` → prefixed issue ID (e.g. Linear `LIN-123`, Jira `PROJ-123`, `ISSUE-123`)
-3. bare `\d+` → numeric fallback (GitHub provider only; ambiguous — prefer `#\d+`)
+1. `#\d+`, `owner/repo#\d+` or a GitHub issue URL (`…/{owner}/{repo}/issues/\d+`) into this repo (`owner/repo` of the `origin` remote) → GitHub issue number (e.g. `#123`); strip `#`, set `ISSUE_ID` = `123`
+2. `[A-Z][A-Z0-9]*-\d+` carrying the `package.json` `bkit.tracker.linear.team` / `bkit.tracker.jira.project` prefix, a Linear issue URL (`linear.app/…/issue/ID`) with that prefix, or a Jira browse URL (`…/browse/ID`) on the `bkit.tracker.jira.site` host with that prefix → prefixed issue ID (e.g. Linear `LIN-123`, Jira `PROJ-123`)
 
-Set `LABELS`, `DESCRIPTION`, `COMMENTS` = empty.
+A bare number with no `#` is not an issue ID; neither is a bare key with no team / project set, nor a tracker URL into another repo, team or site; the run is issue-less (same rule as `bkit fids parse`).
 
-**If** no `ISSUE_ID` → **STOP** with `No issue ID provided.`
+Set `LABELS`, `DESCRIPTION` = empty.
+
+**If** no `ISSUE_ID` → keep `ISSUE_ID` empty → Step 2.
 
 ### Step 2 — Route from user message
 
-In the bottom-most `USER:` entry in `# Message history` scan for commands (case-insensitive: Ship, Debug, Build, Plan, Design) → first match → `COMMAND`. **If** matched → skip Steps 3–4.
+In the bottom-most `USER:` entry in `# Message history` scan for commands (case-insensitive: Ship, Debug, Build, Plan, Design) → first match → `COMMAND`. **If** matched → skip Step 3.
 
-### Step 3 — Route from XML labels
+### Step 3 — Route from issue labels
 
-Scan `LABELS` for commands (Ship, Debug, Build, Plan, Design) → first match → `COMMAND`. **If** matched → skip Step 4.
+Only if `ISSUE_ID` non-empty: read current issue labels and description via the configured tracker MCP (GitHub: `mcp__github__issue_read({ method: "get", ... })`; Linear: `mcp__linear__get_issue({ id: "{ISSUE_ID}" })`; Jira: `mcp__jira__getJiraIssue({ cloudId: "<package.json bkit.tracker.jira.site>", issueIdOrKey: "{ISSUE_ID}", view: "evidence" })` → `fields.labels`) → `LABELS`, `DESCRIPTION`. **If** the MCP read fails and the prompt holds a `<LINEAR_ISSUE>` block → fallback: `LABELS` ← all `<label name="...">` values in its `<labels>` block, `DESCRIPTION` ← its `<description>` tag content.
 
-### Step 4 — MCP fallback (labels only)
+Scan `LABELS` for commands (Ship, Debug, Build, Plan, Design) → first match → `COMMAND`.
 
-Only if Steps 2–3 yield no `COMMAND`: read current issue labels via the configured tracker MCP (GitHub: `mcp__github__issue_read({ method: "get_labels", ... })`; Linear: `mcp__linear__get_issue({ id: "{ISSUE_ID}" })`; Jira: `mcp__jira__getJiraIssue({ cloudId: "<package.json bkit.jira.site>", issueIdOrKey: "{ISSUE_ID}", view: "evidence" })` → `fields.labels`) → scan returned labels → first match → `COMMAND`. Update `LABELS`, `DESCRIPTION`.
+### Step 4 — No match
 
-### Step 5 — No match
+Emit: `Workflow not found for issue {ISSUE_ID}. Valid commands: Design / Plan / Build / Debug / Ship.` (drop `for issue {ISSUE_ID}` when `ISSUE_ID` empty) → **STOP**; do not post a tracker comment.
 
-Emit: `Workflow not found for issue {ISSUE_ID}. Valid commands: Design / Plan / Build / Debug / Ship.` → **STOP**. (Do not post a tracker comment — the router does not know which tracker MCP to call at this point.)
-
-### Step 6 — Execute command
+### Step 5 — Execute command
 
 Read and execute the matched command file for the current IDE.
 

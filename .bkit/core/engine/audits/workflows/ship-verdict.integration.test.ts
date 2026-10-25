@@ -83,10 +83,10 @@ describe("Step 6 SHIPPED row via bkit roadmap feature --strict (#380, matrix row
       .map((l) => JSON.parse(l));
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
+      schema: 3,
       kind: "feature",
-      workflow: "ship",
       key: FID,
-      step: "ship-update-docs",
+      by: { workflow: "ship", step: "ship-update-docs" },
       status: "SHIPPED",
     });
   });

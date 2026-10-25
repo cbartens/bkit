@@ -5,15 +5,14 @@
  * by `bkit steps finish --attempt=next|--attempt-of=<step>:<pos>|--count-field=`, and
  * by `bkit counters route --of=<step>:<pos>`, which also compares them to their cap; what those commands
  * compute (positions, de-dupe, run boundaries, a resume keeping its run number,
- * the MAX_* values) is pinned in commands/workflow/counters.test.ts. This audit
+ * the ask points' limits) is pinned in commands/workflow/counters.test.ts. This audit
  * pins the WIRING the commands cannot see — every rule below is a way a
  * workflow could hand a model-authored number to a router or a status row:
  *
  *   1. No bare `*_ATTEMPT` token and no counter arithmetic in prose: a prose
  *      "increment X" or "X + 1" is the model computing the counter.
- *   2. Every MAX_* threshold is live (named by a routing block or the cloud
- *      router), and every threshold a workflow names exists — `--limit=` /
- *      `--name=` is parsed by the command, and an unknown name exits 2.
+ *   2. Every ask point is live (read by `--point=` in a routing block), and
+ *      every point a workflow names exists — an unknown point exits 2.
  *   3. Commit cadence: a counted step's row-writing block commits in-block (so
  *      its `parentSha` advances and the next attempt counts as distinct), or is
  *      on an explicit exemption list.
@@ -38,7 +37,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { THRESHOLDS } from "../../commands/workflow/counters";
+import { ASK_POINTS } from "../../shared/settings";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -178,7 +177,7 @@ describe("1. no bare *_ATTEMPT token and no counter arithmetic in workflow prose
     const knownBad = [
       "Init counters: `VERIFY_ATTEMPT` = 0",
       "Increment `TEST_ATTEMPT` + 1",
-      "`CHALLENGE_REMEDIATE_ATTEMPT` < 1",
+      "`GAPS_REMEDIATE_ATTEMPT` < 1",
       "`NORMAL_ATTEMPT` > 1",
       "`SOAK_ATTEMPT` reset to 0",
       "cost `${TEST_ATTEMPT}` in prose",
@@ -204,55 +203,45 @@ describe("1. no bare *_ATTEMPT token and no counter arithmetic in workflow prose
 });
 
 // ---------------------------------------------------------------------------
-// 2. Thresholds — every MAX_* is live, every named one exists
+// 2. Ask points — every point is live, every named one exists
 // ---------------------------------------------------------------------------
 
-describe("2. MAX_* thresholds: none dead, none unknown", () => {
-  /**
-   * Shell surfaces outside the markdown corpus that enforce a cap directly.
-   * `bkit-cloud.yml` gates dev-triggered dispatch in its own `run:` shell
-   * (its workflow-level env, whose parity with THRESHOLDS is pinned in
-   * counters.test.ts), so a cap consumed only there is live.
-   */
-  const SHELL_ENFORCEMENT_FILES = [
-    ".github/workflows/bkit-cloud.yml",
-    ".bkit/templates/.github/workflows/bkit-cloud.yml",
-  ];
-
-  /** Drop comment-only lines — a cap named solely in a comment enforces nothing. */
+describe("2. ask points: none dead, none unknown", () => {
+  /** Drop comment-only lines — a point named solely in a comment enforces nothing. */
   const executable = (text: string) =>
     text
       .split("\n")
       .filter((l) => !/^\s*#/.test(l))
       .join("\n");
 
-  const executableCorpus = () =>
-    [
-      ...realFiles().flatMap((f) => fencedBlocks(f.content).map((b) => executable(b.block))),
-      ...SHELL_ENFORCEMENT_FILES.map((f) => executable(readRepo(f))),
-    ].join("\n");
+  const named = () =>
+    realFiles().flatMap((f) =>
+      fencedBlocks(f.content).flatMap((b) =>
+        [...executable(b.block).matchAll(/--point=([\w.]+)/g)].map(firstCapture),
+      ),
+    );
 
-  const names = Object.keys(THRESHOLDS);
-
-  it("enumerates the thresholds from the command (no hardcoded list)", () => {
-    expect(names.length).toBeGreaterThan(5);
-    expect(names).toContain("MAX_CHALLENGE_REMEDIATE_ATTEMPT");
-  });
-
-  for (const name of names) {
-    it(`${name} is referenced in executable shell (a workflow fence or the cloud router)`, () => {
-      expect(executableCorpus()).toMatch(new RegExp(`\\b${name}\\b`));
+  for (const point of ASK_POINTS) {
+    it(`${point} is read by --point= in a workflow fence`, () => {
+      expect(named()).toContain(point);
     });
   }
 
-  it("every threshold a workflow passes by name (--limit= / counters max --name=) exists", () => {
-    const named = [
-      ...executableCorpus().matchAll(
-        /--limit=(MAX_\w+)|counters max --name=(MAX_\w+)|--name=(MAX_\w+)/g,
-      ),
-    ].map(firstCapture);
-    expect(named.length).toBeGreaterThan(0);
-    for (const n of named) expect(names, `unknown threshold ${n} exits 2`).toContain(n);
+  it("every point a workflow passes by --point= exists", () => {
+    const points = named();
+    expect(points.length).toBeGreaterThan(0);
+    for (const n of points) expect(ASK_POINTS, `unknown point ${n} exits 2`).toContain(n);
+  });
+
+  it("the cloud router reads both debug limits from bkit.workflows", () => {
+    for (const f of [
+      ".github/workflows/bkit-cloud.yml",
+      ".bkit/templates/.github/workflows/bkit-cloud.yml",
+    ]) {
+      const yml = executable(readRepo(f));
+      expect(yml, f).toContain(".bkit.workflows.debug");
+      expect(yml, f).toMatch(/lim\(\$d\.fix[^)]*\) \+ lim\(\$d\.soak/);
+    }
   });
 });
 
@@ -442,7 +431,7 @@ describe("4. completeness — every block that routes on or writes a counter der
   const names = counterNames(files);
 
   it("non-vacuity: counters are discovered from the corpus (route names and derive targets)", () => {
-    for (const n of ["VERIFY_ATTEMPT", "TEST_ATTEMPT", "DEBUG_ATTEMPT", "MERGE_ATTEMPT"]) {
+    for (const n of ["VERIFY_ATTEMPT", "TEST_ATTEMPT", "MERGE_ATTEMPT"]) {
       expect(names).toContain(n);
     }
   });
@@ -454,12 +443,11 @@ describe("4. completeness — every block that routes on or writes a counter der
     );
   });
 
-  it("REVALIDATE_ATTEMPT (ship-revalidate-dispatch rows, not step-done rows) is derived by `bkit counters rows`", () => {
-    expect(names).toContain("REVALIDATE_ATTEMPT");
+  it("MERGE_ATTEMPT counts ship-merge-pr rows plus ship-gate-refusal rows through `bkit counters route`", () => {
     const blocks = files.flatMap((f) => fencedBlocks(f.content).map((b) => b.block));
     expect(
       blocks.some((b) =>
-        /\bREVALIDATE_ATTEMPT=\$\("\{BKIT\}" counters rows [^\n]*--type=ship-revalidate-dispatch --position=next \| jq -er \.value\) \|\| exit 2/.test(
+        /"\{BKIT\}" counters route --name=MERGE_ATTEMPT --of=ship-merge-pr:count --rows=ship-gate-refusal:count --file="\{STATUS\}" --workflow=ship\b/.test(
           b,
         ),
       ),
@@ -480,12 +468,12 @@ describe("4. completeness — every block that routes on or writes a counter der
   it("RED-PROOF: a counter derived by a raw jq length count reds the completeness rule", () => {
     const injected = [
       "```bash",
-      `REVALIDATE_ATTEMPT=$(jq -s '[.[] | select(.type=="ship-revalidate-dispatch")] | length + 1' "$STATUS" 2>/dev/null)`,
-      '"{BKIT}" counters route --name=REVALIDATE_ATTEMPT --value="$REVALIDATE_ATTEMPT" --limit=MAX_REVALIDATE_ATTEMPT',
+      `MERGE_ATTEMPT=$(jq -s '[.[] | select(.type=="ship-gate-refusal")] | length + 1' "$STATUS" 2>/dev/null)`,
+      '"{BKIT}" counters route --name=MERGE_ATTEMPT --value="$MERGE_ATTEMPT" --point=ship.merge',
       "```",
     ].join("\n");
     const v = findIncompleteBlocks([{ path: "synthetic.md", content: injected }], names);
-    expect(v.some((x) => x.counter === "REVALIDATE_ATTEMPT")).toBe(true);
+    expect(v.some((x) => x.counter === "MERGE_ATTEMPT")).toBe(true);
   });
 
   const injectionShapes = [
@@ -493,7 +481,7 @@ describe("4. completeness — every block that routes on or writes a counter der
     "echo $TEST_ATTEMPT",
     'echo "${TEST_ATTEMPT}"',
     '"{BKIT}" steps finish --step=build-run-tests --attempt="${TEST_ATTEMPT}"',
-    '"{BKIT}" counters route --name=TEST_ATTEMPT --value=$TEST_ATTEMPT --limit=MAX_TEST_ATTEMPT',
+    '"{BKIT}" counters route --name=TEST_ATTEMPT --value=$TEST_ATTEMPT --point=build.tests',
   ];
   for (const line of injectionShapes) {
     it(`RED-PROOF (shape): ${line} reds the rule in a non-deriving block`, () => {
@@ -505,7 +493,7 @@ describe("4. completeness — every block that routes on or writes a counter der
 
   it("RED-PROOF: a held placeholder on a routing or row-writing flag reds the rule", () => {
     for (const line of [
-      '"{BKIT}" counters route --name=TEST_ATTEMPT --value="{TEST_ATTEMPT}" --limit=MAX_TEST_ATTEMPT',
+      '"{BKIT}" counters route --name=TEST_ATTEMPT --value="{TEST_ATTEMPT}" --point=build.tests',
       '"{BKIT}" steps finish --step=build-run-tests --attempt={TEST_ATTEMPT} --commit=none',
       '"{BKIT}" steps gate --step=context-fetch --attempt={DEBUG_ATTEMPT}',
     ]) {
@@ -582,12 +570,13 @@ describe("5. no $(( )) arithmetic on a counter — positions are the command's j
 // ---------------------------------------------------------------------------
 
 const COUNTER_STEP_MAP: Record<string, string[]> = {
+  "build-plan-execute": ["build-plan-execute"],
   "build-plan-verify": ["build-plan-verify"],
   "build-plan-gaps-remediate": ["build-plan-verify"],
-  "build-subplan-gate": ["build-plan-verify"],
-  "build-challenge": ["build-challenge-remediate"],
-  "build-challenge-reconcile": ["build-challenge-remediate"],
-  "build-challenge-remediate": ["build-challenge-remediate"],
+  "build-group-gate": ["build-plan-verify"],
+  "build-plan-convert": ["build-plan-convert"],
+  "build-challenge": ["build-challenge"],
+  "build-decision": ["build-decision"],
   "build-run-tests": ["build-run-tests"],
   "build-failure-diagnose": ["build-run-tests"],
   "build-failure-remediate": ["build-run-tests"],

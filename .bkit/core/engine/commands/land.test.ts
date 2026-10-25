@@ -5,6 +5,7 @@ import * as path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { replayBuild } from "./workflow/branches";
 import { devMoved, devRefused, landBackoffMs, landDir, pushToDev, withoutHooks } from "./land";
 
 vi.mock("../shared/timeouts", async (importOriginal) => {
@@ -33,6 +34,9 @@ function fixture() {
   const root = tmp("main");
   git(remote, "init", "-q", "--bare", "-b", "dev");
   git(root, "init", "-q", "-b", "dev");
+  // The engine's own git calls (the replay's cherry-pick) carry no -c identity.
+  git(root, "config", "user.email", "t@t");
+  git(root, "config", "user.name", "t");
   fs.writeFileSync(path.join(root, ".gitignore"), ".worktrees/\n");
   fs.writeFileSync(path.join(root, "notes.txt"), "base\n");
   git(root, "add", "-A");
@@ -234,6 +238,59 @@ describe("pushToDev", () => {
     expect(builds).toBe(1);
     expect(seen).toEqual(["land row.txt", expect.stringContaining("dev is protected")]);
     expect(fs.existsSync(dir)).toBe(false);
+  });
+
+  it("pushToDev replays a commit range onto origin/dev", async () => {
+    const { root, remote, dir } = fixture();
+    // Local dev holds a foreign commit, then two commits of a run.
+    git(root, "commit", "-q", "--allow-empty", "-m", "foreign wip");
+    fs.writeFileSync(path.join(root, "one.txt"), "1\n");
+    git(root, "add", "one.txt");
+    git(root, "commit", "-qm", "run one");
+    const one = git(root, "rev-parse", "HEAD");
+    fs.writeFileSync(path.join(root, "two.txt"), "2\n");
+    git(root, "add", "two.txt");
+    git(root, "commit", "-qm", "run two");
+    const two = git(root, "rev-parse", "HEAD");
+    const res = await pushToDev({ root, dir, build: replayBuild([one, two]), log: () => {} });
+    expect(res).toEqual({ kind: "landed", attempts: 1, sha: git(remote, "rev-parse", "dev") });
+    expect(git(remote, "log", "--format=%s", "dev")).toBe("run two\nrun one\ninit");
+    expect(fs.existsSync(dir)).toBe(false);
+  });
+
+  it("a replay retries on the new dev when dev moved", async () => {
+    const { root, remote, dir } = fixture();
+    fs.writeFileSync(path.join(root, "one.txt"), "1\n");
+    git(root, "add", "one.txt");
+    git(root, "commit", "-qm", "run one");
+    const one = git(root, "rev-parse", "HEAD");
+    const replay = replayBuild([one]);
+    const raceFirst = once(() => race(remote));
+    const res = await pushToDev({
+      root,
+      dir,
+      build: (d) => {
+        replay(d);
+        raceFirst();
+      },
+      log: () => {},
+    });
+    expect(res).toMatchObject({ kind: "landed", attempts: 2 });
+    expect(git(remote, "log", "-2", "--format=%s", "dev")).toBe("run one\nforeign");
+  });
+
+  it("pushToDev log line names what it lands", async () => {
+    const { root, dir } = fixture();
+    const log: string[] = [];
+    await pushToDev({
+      root,
+      dir,
+      build: (d) => commitIn(d, "row.txt", "row\n"),
+      log: (l) => log.push(l),
+    });
+    const line = log.find((l) => l.startsWith("git hooks skipped"));
+    expect(line).toContain("it lands bookkeeping, or the commits a debug run on dev made");
+    expect(log.join("\n")).not.toContain("bookkeeping only");
   });
 
   it("runs no git hooks in the throwaway checkout, and says so", async () => {

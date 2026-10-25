@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.5.1 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Setup
 
@@ -10,7 +10,7 @@
 > **Rules:**
 >
 > - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
-> - Notation: one job per mark — `.bkit/prompts.md` § `Notation`.
+> - Notation: one job per mark — `.bkit/authoring.md` § `Notation`.
 > - Describe current state / rules, not reasons / history; state what to do, not why.
 > - Check `.agents/docs.md` index first and confirm topic belongs in this doc, not another.
 > - Local seed / test fixtures must never run against remote projects.
@@ -64,7 +64,7 @@ brew install direnv
 echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc && source ~/.zshrc   # zsh; bash: ~/.bashrc
 
 # One-time per repo clone
-cp .bkit/.env.example .bkit/.env   # fill BKIT_GH_TOKEN + your tracker's token (BKIT_LINEAR_API_KEY / BKIT_JIRA_API_TOKEN) (+ optional BKIT_ANTHROPIC_API_KEY / BKIT_CURSOR_API_KEY)
+cp .bkit/.env.example .bkit/.env   # fill BKIT_GH_TOKEN + your tracker's token (BKIT_LINEAR_API_KEY / BKIT_JIRA_API_KEY) (+ optional BKIT_ANTHROPIC_API_KEY / BKIT_CURSOR_API_KEY)
 direnv allow                            # trust .envrc; auto-loads on subsequent cd
 
 # Verify
@@ -82,7 +82,7 @@ pnpm tsx .bkit/core/engine/cli.ts check                                # drift g
 vale sync                                                               # one-off; pulls lint:prose styles
 ```
 
-`install` requires ≥1 module flag or `--tracker=` (which re-renders every installed host), because bare `install` exits 1. `bkit upgrade` is flag-free; re-renders every installed module.
+`install` requires >=1 module flag or `--tracker=` (which re-renders every installed host), because bare `install` exits 1. `bkit upgrade` is flag-free; re-renders every installed module.
 
 Consumer repos: `pnpm add -D @cbartens/bkit && pnpm exec bkit install --claude --cursor` (not the dogfood call).
 

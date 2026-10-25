@@ -37,8 +37,11 @@ function fences(content: string): string[] {
   );
 }
 
-const dispatchFences = (md: string) =>
+const allDispatchFences = (md: string) =>
   fences(md).filter((f) => /"\{BKIT\}" runs dispatch\b/.test(f));
+/** The PR-mode gate; debug's `--sha` gate for a run in place on `dev` is `devDispatchFences`. */
+const dispatchFences = (md: string) => allDispatchFences(md).filter((f) => !/--sha[= ]/.test(f));
+const devDispatchFences = (md: string) => allDispatchFences(md).filter((f) => /--sha[= ]/.test(f));
 
 // ---------------------------------------------------------------------------
 // 1. Build and debug run the gate, once each, and record its verdict locally
@@ -47,8 +50,9 @@ describe.each([
   ["bkit-build.md", buildMd],
   ["bkit-debug.md", debugMd],
 ] as const)("%s — CI-Dispatch gate wiring", (name, md) => {
-  it("runs bkit runs dispatch in exactly one block", () => {
-    // Debug's PR-mode close and its created-PR path share one block.
+  it("runs bkit runs dispatch in exactly one PR-mode block", () => {
+    // Debug's PR-mode close and its created-PR path share one block; its run in place
+    // on dev has its own `--sha` block, pinned in the dev section below.
     expect(dispatchFences(md)).toHaveLength(1);
   });
 
@@ -129,7 +133,7 @@ describe("bkit-ship.md — Step 9 re-validates through runs revalidate", () => {
     expect(shipMd).not.toMatch(/gh workflow run\b/);
   });
 
-  it("never names a hard-coded ci.yml (the CI file comes from bkit.ciWorkflow)", () => {
+  it("never names a hard-coded ci.yml (the CI file comes from bkit.testing.ciWorkflow)", () => {
     expect(shipMd).not.toMatch(/\bci\.yml\b/);
   });
 
@@ -168,25 +172,24 @@ describe("bkit-ship.md — Step 10 gate-refusal re-entry is a bounded poll", () 
     expect([...idx].sort((a, b) => a - b)).toEqual(idx);
   });
 
-  it("bounds the re-entry by MAX_REVALIDATE_ATTEMPT through bkit counters route, never a local value", () => {
+  it("bounds the re-entry by bkit.workflows.ship.merge through bkit counters route, never a local value", () => {
     expect(shipMd).toMatch(
-      /"\{BKIT\}" counters route --name=REVALIDATE_ATTEMPT --value="\$REVALIDATE_ATTEMPT" --limit=MAX_REVALIDATE_ATTEMPT --continue=step-9 --exceeded=failure-path/,
+      /"\{BKIT\}" counters route --name=MERGE_ATTEMPT --of=ship-merge-pr:count --rows=ship-gate-refusal:count --file="\{STATUS\}" --workflow=ship --point=ship\.merge --continue=step-9 --exceeded=failure-path/,
     );
-    // The value lives in `bkit counters max` (commands/workflow/counters.ts).
-    expect(shipMd).not.toMatch(/^\s*MAX_REVALIDATE_ATTEMPT=/m);
+    expect(shipMd).not.toMatch(/^\s*MERGE_ATTEMPT=/m);
   });
 
-  it("derives the attempt from this run's ship-revalidate-dispatch rows via bkit counters rows", () => {
+  it("one count covers refusals and failed merges: each merge route reads both row types", () => {
     // Run scoping (a resumed run does not inherit a prior run's rows) is
     // pinned in commands/workflow/counters.test.ts 'bkit counters rows'.
-    const block = fences(shipMd).find((f) =>
-      /"\{BKIT\}" counters route --name=REVALIDATE_ATTEMPT\b/.test(f),
+    const blocks = fences(shipMd).filter((f) =>
+      /"\{BKIT\}" counters route --name=MERGE_ATTEMPT\b/.test(f),
     );
-    expect(block, "REVALIDATE_ATTEMPT routing block not found").toBeDefined();
-    expect(block!).toContain(
-      'REVALIDATE_ATTEMPT=$("{BKIT}" counters rows --file="{STATUS}" --workflow=ship --type=ship-revalidate-dispatch --position=next | jq -er .value) || exit 2',
-    );
-    expect(block!).not.toMatch(/REVALIDATE_ATTEMPT=\$\(jq\b/);
+    expect(blocks.length, "MERGE_ATTEMPT routing blocks").toBe(2);
+    for (const block of blocks) {
+      expect(block).toContain("--of=ship-merge-pr:count --rows=ship-gate-refusal:count");
+      expect(block).not.toMatch(/MERGE_ATTEMPT=|\bjq\b/);
+    }
   });
 });
 
@@ -232,5 +235,88 @@ describe("bkit-debug.md — close decides from live PR state", () => {
 
   it("runs the CI-Dispatch gate on every feature-branch close", () => {
     expect(debugMd).toMatch(/\*\*Run only if\*\* `\{PR_OPEN\}` = 1 \*\*or\*\* `TRIGGER_PR` = 1/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 6. Debug Step 11 on `dev`: a run in place pushes its own commits, then dispatches,
+//    waits for and gates the dev CI run at the pushed sha before it releases the lock.
+//
+// The commands behind each call are covered in commands/workflow/runs.test.ts and
+// branches.test.ts; here: the close wires them in the order the record depends on.
+// ---------------------------------------------------------------------------
+describe("bkit-debug.md — Step 11 on dev", () => {
+  const start = debugMd.indexOf("## 🤖 Step 11 — Close Workflow");
+  const step11 = debugMd.slice(start, debugMd.indexOf("### 🔒 Gate 11", start));
+  const step11Fences = fences(step11);
+  const at = (re: RegExp) => step11Fences.findIndex((f) => re.test(f));
+  const releaseFences = step11Fences.flatMap((f, i) =>
+    /"\{BKIT\}" locks release\b/.test(f) ? [i] : [],
+  );
+  const refusalRoute = step11
+    .split("\n")
+    .find((l) => l.includes("exit 8") && l.includes("exit 11"));
+
+  it("debug Step 11 on dev waits for and gates the dev CI run", () => {
+    const wait = at(/"\{BKIT\}" runs wait --head="?\{DEV_SHA\}"? --branch=dev --until=completed/);
+    const gate = at(/"\{BKIT\}" runs gate --head="?\{DEV_SHA\}"?[^\n]*--capstone-only/);
+    expect(wait, "no runs wait --head --until=completed block").toBeGreaterThan(-1);
+    expect(gate, "no runs gate --capstone-only block").toBeGreaterThan(wait);
+  });
+
+  it("debug Step 11 on dev dispatches by pushed sha", () => {
+    const dev = devDispatchFences(step11);
+    expect(dev, "no runs dispatch --sha block").toHaveLength(1);
+    expect(dev[0]!).toMatch(/"\{BKIT\}" runs dispatch [^\n]*--sha="?\{DEV_SHA\}"?/);
+    expect(dev[0]!).not.toMatch(/--pr[= ]/);
+    // The sha is the push's own `sha`, never a local HEAD (an own-commit push lands copies).
+    expect(step11).toContain("hold `sha` as `{DEV_SHA}`");
+    expect(step11).not.toContain("git rev-parse HEAD");
+    expect(at(/"\{BKIT\}" branches push --mode=dev\b/)).toBeGreaterThan(-1);
+  });
+
+  it("debug Step 11 on dev pushes its own record and re-holds the dispatched head", () => {
+    // The push selects the run's record by FID, not by the branch (two runs can share `dev`).
+    expect(at(/"\{BKIT\}" branches push --mode=dev --require-ci --fid=\{FID\}/)).toBeGreaterThan(
+      -1,
+    );
+    expect(step11).toMatch(/exit 20 \(the run's record is gone, nothing pushed\)/);
+    // A re-trigger commit lands a new sha: the wait and gate follow the dispatch's printed head.
+    expect(step11).toContain("hold the printed `head` as `{DEV_SHA}`");
+    expect(step11).toContain('`--sha="{DEV_SHA}"` re-held from each printed `head`');
+  });
+
+  it("debug Step 11 on dev releases the lock after the CI wait", () => {
+    const push = at(/"\{BKIT\}" branches push --mode=dev\b/);
+    const wait = at(/"\{BKIT\}" runs wait --head=/);
+    expect(push).toBeGreaterThan(-1);
+    expect(wait).toBeGreaterThan(push);
+    // The dev push block holds no release; one release follows the wait.
+    expect(step11Fences[push]!).not.toContain("locks release");
+    expect(
+      releaseFences.some((i) => i > wait),
+      "no locks release after runs wait",
+    ).toBe(true);
+  });
+
+  it("debug Step 11 on dev records the close against the pushed sha", () => {
+    expect(step11).toMatch(/`BRANCH` = `dev` → `\{CLOSE_PARENT\}` = `\{DEV_SHA\}`/);
+    const record = at(/"\{BKIT\}" steps done [^\n]*--parent-sha=\{CLOSE_PARENT\}/);
+    const audit = at(/"\{BKIT\}" prs transport-row [^\n]*--sha=\{CLOSE_PARENT\}/);
+    expect(record).toBeGreaterThan(-1);
+    expect(audit).toBeGreaterThan(-1);
+  });
+
+  it("debug Step 11 on dev routes a red run to the Failure Path naming the run", () => {
+    const after = step11.slice(step11.indexOf('"{BKIT}" runs wait --head='));
+    const route = after.split("\n").find((l) => l.includes("`conclusion` != `success`"));
+    expect(route, "no red-conclusion route after runs wait").toBeDefined();
+    expect(route).toContain("**Failure Path**");
+    expect(route).toContain("naming the run");
+  });
+
+  it("debug Step 11 on dev sends a refused push or a replay conflict to the Failure Path", () => {
+    expect(refusalRoute, "no push-refusal route").toBeDefined();
+    expect(refusalRoute).toContain("**Failure Path**");
   });
 });

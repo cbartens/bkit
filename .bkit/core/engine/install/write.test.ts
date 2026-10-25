@@ -812,7 +812,7 @@ describe("writeTier2JsonContained", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Phase 3 — install/write.ts doc-block terminology check (BAR-167 sub-plan C Task 26)
+// install/write.ts doc-block terminology check
 // ---------------------------------------------------------------------------
 
 describe("Phase 3 — install/write.ts doc-block no Tier 1/2/3 strings", () => {

@@ -4,7 +4,21 @@ import * as path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { parseJson, readJsonFile } from "./json";
+import { parseJson, readDirNames, readJsonFile } from "./json";
+
+describe("readDirNames", () => {
+  it("the directory's entry names, or { ok: false } when it is missing or a file", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-json-dir-"));
+    try {
+      fs.writeFileSync(path.join(dir, "a.txt"), "");
+      expect(readDirNames(dir)).toEqual({ ok: true, names: ["a.txt"] });
+      expect(readDirNames(path.join(dir, "a.txt"))).toEqual({ ok: false });
+      expect(readDirNames(path.join(dir, "missing"))).toEqual({ ok: false });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("parseJson", () => {
   it("returns the parsed value for any valid JSON", () => {

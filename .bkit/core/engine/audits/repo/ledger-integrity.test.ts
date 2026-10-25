@@ -18,6 +18,7 @@ import {
   UNJUSTIFIED_REASON,
   foldFrom,
   identity,
+  normalize,
   parse,
 } from "../../ledgers/telemetry";
 
@@ -30,11 +31,11 @@ const LEDGERS: Record<string, string[]> = {
   "docs/deferrals.jsonl": ["deferral"],
   "docs/failures.jsonl": ["failure"],
   ".bkit/friction.jsonl": ["friction"],
-  ".bkit/stats.jsonl": ["compliance", "counter", "outcome"],
+  ".bkit/stats.jsonl": ["compliance", "counter", "outcome", "chat", "run"],
 };
 
 /**
- * The one ledger rows are REMOVED from (`bkit harvest` drains it), and therefore
+ * The one ledger rows are REMOVED from (bkit's harvest script drains it), and therefore
  * the one that must NOT carry `merge=union` in the shipped block — union would
  * resurrect rows a drain deleted. Every other ledger in {@link LEDGERS} is
  * strictly append-only and must carry it.
@@ -42,12 +43,13 @@ const LEDGERS: Record<string, string[]> = {
 const DRAINED_LEDGER = ".bkit/friction.jsonl";
 
 /**
- * Envelope fields gated here: the ones every reader needs to route, attribute
- * and dedupe a row. `workflow` and `step` are NOT gated (some rows were authored
- * outside any phase workflow, `step: "manual-investigation"`); tracked as
- * `ledger-envelope-workflow-field-not-universal`.
+ * Top-section fields gated here: the ones every reader needs to route, attribute
+ * and dedupe a row (`.bkit/jsonl.md` § Generic Fields). `by` is NOT gated: some
+ * rows were authored outside any phase workflow, with no `by.step`; tracked as
+ * `ledger-envelope-workflow-field-not-universal`. A row without `schema` is one
+ * `bkit upgrade` has not migrated yet (a union merge can bring one back).
  */
-const ENVELOPE = ["ts", "kind", "repo", "bkitVersion"] as const;
+const ENVELOPE = ["schema", "ts", "kind", "repo", "bkit"] as const;
 
 function rows(rel: string): { line: number; raw: string }[] {
   const abs = path.join(REPO_ROOT, rel);
@@ -162,13 +164,18 @@ function lacksReasonSince(row: Record<string, unknown>, from: number): boolean {
   return typeof row.ts === "number" && row.ts >= from && !row.reason;
 }
 
+/** The row's `by.subagent`, in either row shape. */
+const subagentOf = (row: Record<string, unknown>): unknown =>
+  (normalize(row)["by"] as Record<string, unknown> | undefined)?.["subagent"];
+
 /** True when a folded deferral updated at or after `from` names a writer outside the sanctioned list. */
 function hasUnsanctionedWriterSince(row: Record<string, unknown>, from: number): boolean {
+  const subagent = subagentOf(row);
   return (
     typeof row.ts === "number" &&
     row.ts >= from &&
-    typeof row.subagent === "string" &&
-    !DEFERRAL_WRITERS.has(row.subagent)
+    typeof subagent === "string" &&
+    !DEFERRAL_WRITERS.has(subagent)
   );
 }
 
@@ -236,7 +243,7 @@ describe("live ledgers are machine-readable", () => {
     it("no entity since the cutoff names an unsanctioned writer", () => {
       const rogue = entities()
         .filter((row) => hasUnsanctionedWriterSince(row, REASON_REQUIRED_FROM))
-        .map((row) => `${String(row.key)}: subagent=${String(row.subagent)}`);
+        .map((row) => `${String(row.key)}: subagent=${String(subagentOf(row))}`);
       expect(rogue).toEqual([]);
     });
   });

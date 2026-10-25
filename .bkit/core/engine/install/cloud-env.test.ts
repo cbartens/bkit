@@ -638,7 +638,7 @@ describe("cursorCloudPolicy", () => {
       const block = renderCloudEnvBlock(resolveCloudEnvVars(tmpDir, policy), policy);
       expect(block, tracker).toContain("BKIT_GH_TOKEN=real");
       expect(block, tracker).not.toContain("BKIT_LINEAR_API_KEY");
-      expect(block, tracker).not.toContain("BKIT_JIRA_API_TOKEN");
+      expect(block, tracker).not.toContain("BKIT_JIRA_API_KEY");
     }
   });
 });
@@ -755,7 +755,7 @@ describe("writeCursorCloudDoc — end-to-end render (real template)", () => {
       writeCursorCloudDoc(tmpDir, TOKENS, tracker);
       const out = fs.readFileSync(path.join(tmpDir, ".cursor", "bkit-cloud.md"), "utf-8");
       expect(out, tracker).not.toMatch(/^BKIT_LINEAR_API_KEY=/m);
-      expect(out, tracker).not.toMatch(/^BKIT_JIRA_API_TOKEN=/m);
+      expect(out, tracker).not.toMatch(/^BKIT_JIRA_API_KEY=/m);
     }
   });
 

@@ -10,7 +10,7 @@
 > **Rules:**
 >
 > - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
-> - Notation: one job per mark — `.bkit/prompts.md` § `Notation`.
+> - Notation: one job per mark — `.bkit/authoring.md` § `Notation`.
 > - Describe current state / rules, not reasons / history; state what to do, not why.
 > - Check `.agents/docs.md` index first and confirm topic belongs in this doc, not another.
 > - Tiers strictly separated — Static · Unit · Integration · E2E · @live · Smoke.
@@ -79,7 +79,7 @@ Scripts these files do not ship, so the plan names them and you write them: mark
 - **`bkit-tests-build-web`** — web compile, or the host deployment gate (e.g. Vercel: create this SHA's deployment, publish `deployment_url` + `deployment_id`, leave it un-promoted on the default branch). Emits no `*_ran`.
 - **`bkit-tests-build-ios` / `-e2e-ios` / `bkit-tests-build-android` / `-e2e-android`** (optional) — device build and device flows. Same rule on a PR, a push, and a dispatch: not a post-merge canary. `bkit-tests-e2e-ios` `needs:` scope, migration, reset, `bkit-tests-build-ios`, and `bkit-tests-build-web`. Android matches, with `bkit-tests-build-android`. A planned red reds the capstone. Drop any platform you do not ship. e.g. a hosted build service plus a device-flow runner.
 - **`bkit-tests-live-web`** runs `@live` against the deployed URL (`run_live`; drop the job if no deploy). Push to `dev` or the default branch only, when `web_affected`. Not a pull request. Not a dispatch. `needs:` planner + migration + reset + `bkit-tests-build-web`. Do **not** gate behind static / unit / integration / e2e. A planned failure reds the capstone. `/bkit-ship` still filters a job named `bkit-tests-live`; this name does not match, so the capstone is the gate.
-- **`bkit-tests-reset` / `bkit-tests-cleanup`** (optional; one shared long-lived resource) — reset takes the lease and puts the resource in its known state **before** any lane uses it; cleanup runs last, `if: always()`, and releases the lease. Planner names at most one target. Empty target skips both. Capstone reds if a planned reset skipped or either job failed. DROP both when the resource is provisioned fresh per run (§ Provision backing services fresh — the preferred answer).
+- **`bkit-tests-reset` / `bkit-tests-cleanup`** (optional; one shared long-lived resource) — reset takes the lease and puts the resource in its known state **before** any lane uses it; cleanup runs last, `if: always()`, and releases the lease. Planner names at most one target. Empty target skips both. Capstone reds if a planned reset skipped or either job failed. Drop both when the resource is provisioned fresh per run (§ Provision backing services fresh — the preferred answer).
 - **Logging probe** (optional step, not a lane) — inside each runtime lane, emit one marked event and ask the error tracker whether it arrived. e.g. Sentry. Skip when that lane did not run the probe.
 - **`bkit-tests-deploy`** (optional) — on a push to the default branch only, **before** the E2E / `@live` lanes. Promotes the exact `deployment_id` `bkit-tests-build-web` published; each tenant lane `needs:` it and starts by proving production serves this run's build (by deployment id). Carries its own `concurrency:` group (`cancel-in-progress: false`) and is not a required check. A red job means the previous deployment stays live.
 - **Health** (optional, separate workflow) — `workflow_run` after CI succeeds on the default branch; smoke the deployment this SHA promoted. Not a required check. Copy the stub to `.github/workflows/health.yml`.
@@ -260,6 +260,15 @@ A plan's `Derived Test Matrix` (`docs/templates/bkit-plan.md`) is the per-featur
 - **Test name:** as the runner reports it, or its last segment (`clamp > keeps a value inside the range` → `keeps a value inside the range`).
 - **The red test stays:** after the red, the test may gain tests or formatting; a weakened, removed or rewritten assertion fails the build's verify.
 
+## JUnit reports for bkit
+
+`bkit tests run` counts a gate's failures from JUnit XML, not from its log. It empties a report folder before each run and passes its absolute path to the gate as `$BKIT_TEST_REPORT_DIR`.
+
+- **Every runner in a gate writes JUnit there** when the variable is set: one file per runner or per run, `*.xml`, any name. Two runs in one gate never write the same file name.
+- **Counted:** failing plus erroring test cases across every file. Skipped cases do not count.
+- **No reports:** `failures` is `null` (count unknown) and a hint says to turn the reporters on. The verdict still comes from the gate's exit code.
+- **Unset variable:** the runner behaves as it always does, so a gate run by hand writes nothing extra.
+
 ## What each tier must do
 
 Tier-by-tier rules: **do** the rule, avoid the **Not** (the failure it prevents). Stack tools (Vitest / Playwright / a Supabase-style local stack / a Vercel-style preview) appear only as worked examples, because the rule is the principle; implement it for your stack.
@@ -288,8 +297,8 @@ Tier-by-tier rules: **do** the rule, avoid the **Not** (the failure it prevents)
 
 ### Deploy-reachability (between integration and E2E)
 
-- Before any tier runs against a freshly-deployed URL, assert it is **actually serving** — **ready ≠ serving**. A platform can report a deployment ready while it 404s / 500s; a bare "did the deploy finish" check passes anyway.
-- Make a missing target an **honest failure**, not a silent skip: assert ≥1 reachability test actually ran (per-file executed-count), so an unreachable target reds the build instead of green-no-op.
+- Before any tier runs against a freshly-deployed URL, assert it is **actually serving** — **ready != serving**. A platform can report a deployment ready while it 404s / 500s; a bare "did the deploy finish" check passes anyway.
+- Make a missing target an **honest failure**, not a silent skip: assert >=1 reachability test actually ran (per-file executed-count), so an unreachable target reds the build instead of green-no-op.
 - **Not:** an E2E suite that "passes" because every spec silently skipped against a target that was never serving.
 
 ### E2E
@@ -382,9 +391,9 @@ bkit's `bkit-tests-migration` lane (`bkit-stub:bkit-tests-migration`) is the rea
 
 Beyond the gates above, three practices raise confidence further — opt-in, not baseline:
 
-- **Mutation testing** (e.g. StrykerJS over a Vitest suite) automates the "executed ≠ exercised" intent: it injects bugs into production code and fails when no test catches them. Run it locally, on demand. It is not a CI lane and not a nightly workflow. Gate a local run on a survival-score threshold, never 100% (equivalent mutants make perfection unreachable). Capstone asks "did tests run?"; mutation asks "do they catch injected bugs?".
+- **Mutation testing** (e.g. StrykerJS over a Vitest suite) automates the "executed != exercised" intent: it injects bugs into production code and fails when no test catches them. Run it locally, on demand. It is not a CI lane and not a nightly workflow. Gate a local run on a survival-score threshold, never 100% (equivalent mutants make perfection unreachable). Capstone asks "did tests run?"; mutation asks "do they catch injected bugs?".
 - **E2E sharding** (`--shard` matrix + report merge) cuts wall-clock on a large browser suite, but it is **gated on per-shard data isolation** (the unique-ID independence above). A single shared seed pins `workers: 1` and blocks sharding until the data is isolated. Isolated data is still not enough once several invocations share one job — § Concurrent invocations collide on disk, not just in the database.
-- **Bounded flaky-retry with tracking.** A capped retry on the flake-prone E2E tier is low-risk **only** when paired with explicit flake **tracking**, because an auto-retry that silently passes hides a real regression, the inverse of "validated ≠ didn't fail".
+- **Bounded flaky-retry with tracking.** A capped retry on the flake-prone E2E tier is low-risk **only** when paired with explicit flake **tracking**, because an auto-retry that silently passes hides a real regression, the inverse of "validated != didn't fail".
 
 ## Coverage on PRs
 
@@ -398,7 +407,7 @@ Report coverage on each PR **without a paid product or a third-party service** �
 - **Reporters are load-bearing.** The action reads `coverage-summary.json` (from the `json-summary` reporter, mandatory) and `coverage-final.json` (from `json`, required for `file-coverage-mode: changes`). Enable both in `coverage.reporter` or the step no-ops.
 - **Two runs, separate dirs.** `vitest run --coverage --coverage.reportsDirectory=coverage/unit --exclude '**/*.integration.test.ts'` for unit; a second run into `coverage/integration` for the integration tier. Separate dirs also avoid the last-writer-wins **clobber** a second same-dir `--coverage` run would cause.
 - **Thresholds are opt-in and per tier:**
-  - **Unit = the gate.** Put `coverage.thresholds.branches: <current>` in a `vitest.unit.config.ts` (`mergeConfig` over `vitest.config`) that **only** the unit run loads via `-c`, because **branches** is the meaningful floor (line / statement % overstates confidence); set it to your **current** coverage and ratchet up. vitest coverage is per-**run** (root config), **not** per-project, so `projects` does **not** scope it and a `thresholds` block in `vitest.config` would red **both** runs; the `-c` file is what keeps the gate off integration. A `--coverage.thresholds.branches=<n>` CLI flag also gates, but the report step cannot read it. 80% is convention, not best practice, because a fetishised high bar breeds assertion-free line-touching tests; the executed-≠-exercised rule (§ Validated means executed) matters far more than the number.
+  - **Unit = the gate.** Put `coverage.thresholds.branches: <current>` in a `vitest.unit.config.ts` (`mergeConfig` over `vitest.config`) that **only** the unit run loads via `-c`, because **branches** is the meaningful floor (line / statement % overstates confidence); set it to your **current** coverage and ratchet up. vitest coverage is per-**run** (root config), **not** per-project, so `projects` does **not** scope it and a `thresholds` block in `vitest.config` would red **both** runs; the `-c` file is what keeps the gate off integration. A `--coverage.thresholds.branches=<n>` CLI flag also gates, but the report step cannot read it. 80% is convention, not best practice, because a fetishised high bar breeds assertion-free line-touching tests; the executed-!=-exercised rule (§ Validated means executed) matters far more than the number.
   - **Floor beside the figure.** The unit report step runs on **every** event (a red run too, via `!cancelled()` plus a `hashFiles` guard), passes `vite-config-path: vitest.unit.config.ts`, and comments only on same-repo PRs (`comment-on: pr`, else `none`), so every job summary, pushes included, shows the measured % against its 🎯 floor. The action regex-matches `<metric>: <number>` in that file's raw text: keep the floor on one unquoted line and no other metric name + colon + number in the file, because a broken match drops the target silently while the gate keeps passing.
   - **Integration = report-only.** Gate integration on **execution** (the capstone's `integration_ran > 0`), **not** a %. A whole-repo integration % is denominator-noise, because integration covers boundaries / flows, not pure logic, and rarely drives every branch, so a hard threshold on it punishes the correct pyramid shape. If you want a real integration %, add `--coverage.include='src/server/**'` on the integration run (same CLI-flag idiom as `--exclude`) to scope it to the integration surface, **then** set a floor, or **ratchet from current** — never a number picked from thin air.
 - **Share the unit gate with the build workflow.** Put the unit run (`vitest run -c vitest.unit.config.ts --coverage …`) in a `test:coverage:unit` script and chain it into `bkit:gate:static-unit` in place of `pnpm test`, never beside it (both run every unit test, so each runs twice) — the CI unit lane calls the script, `/bkit-build` Run Tests calls the gate, so the floor has **one source** and a regression fails in the worktree, not only on the PR. Never duplicate the command and sync it by comment, because that drifts. The build runs only the deepest declared `bkit:gate:*`, never the script by name: **left out of the chain, it never gates the build**. (bkit's own repo does exactly this.)

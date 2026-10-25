@@ -15,11 +15,12 @@ import type { ModuleContext } from "./index.js";
 
 /**
  * Persist a `bkit.<field>` value into the consumer's package.json so the
- * post-install advisory can tell "deliberately none" from "undecided". Mirrors
- * the `bkit.issueTracker` persist logic in commands/install/install.ts. Used for the opt-in
- * decisions recorded by their owning modules (`cloudAgents`). No-op
- * on dry-run or when package.json is absent/unparseable (non-fatal — the config
- * file presence is still the primary signal).
+ * post-install advisory can tell "deliberately none" from "undecided". `field` is a
+ * dotted path (`cloud.agent`); each missing section on the way is created. Mirrors
+ * the `bkit.tracker.default` persist logic in commands/install/install.ts. Used for the opt-in
+ * decisions recorded by their owning modules (`cloud.agent`). No-op
+ * on dry-run, when package.json is absent/unparseable, or when a section on the path
+ * holds a non-object (non-fatal — the config file presence is still the primary signal).
  */
 function setConsumerBkitField(field: string, value: string, dryRun: boolean): void {
   if (dryRun) return;
@@ -30,10 +31,17 @@ function setConsumerBkitField(field: string, value: string, dryRun: boolean): vo
     const parsed = parseJson(raw);
     if (!parsed.ok) return;
     const pkg = parsed.value as Record<string, unknown>;
-    const bkit = (pkg.bkit ?? {}) as Record<string, unknown>;
-    if (bkit[field] === value) return; // already set — avoid a no-op rewrite
-    bkit[field] = value;
-    pkg.bkit = bkit;
+    const keys = ["bkit", ...field.split(".")];
+    const leaf = keys.pop()!;
+    let parent = pkg;
+    for (const k of keys) {
+      parent[k] ??= {};
+      const next = parent[k];
+      if (next === null || typeof next !== "object" || Array.isArray(next)) return;
+      parent = next as Record<string, unknown>;
+    }
+    if (parent[leaf] === value) return; // already set — avoid a no-op rewrite
+    parent[leaf] = value;
     const indentMatch = raw.match(/\n([ \t]+)"/);
     const indent = indentMatch ? indentMatch[1] : "  ";
     const trailingNewline = raw.endsWith("\n") ? "\n" : "";
@@ -54,7 +62,7 @@ const CLOUD_WORKFLOW_ADOPT_STEP =
 //
 // NOT shipped by a default install — opt-in via `bkit install --auto=<variant>`,
 // so a default install ships ZERO cloud footprint. Every variant records
-// `bkit.cloudAgents` and prints its setup advisories; none writes a file. The cloud
+// `bkit.cloud.agent` and prints its setup advisories; none writes a file. The cloud
 // workflow (bkit-cloud.yml), bkit-cloud-bootstrap.sh and the Cursor Background Agent
 // files (.cursor/Dockerfile, .cursor/environment.json) are templates the advisories
 // point at.
@@ -72,7 +80,7 @@ export function runCloudModule(ctx: ModuleContext): void {
     // --- cloud=claude: GitHub-tracker path ---
 
     // Record the variant so the post-install advisory and `bkit check` stay consistent.
-    setConsumerBkitField("cloudAgents", "claude", dryRun);
+    setConsumerBkitField("cloud.agent", "claude", dryRun);
 
     // Advisory — cloud=claude setup checklist (App required; id-token: write).
     advisories.push({
@@ -115,7 +123,7 @@ export function runCloudModule(ctx: ModuleContext): void {
     // --- cloud=opencode: GitHub-tracker path (same bkit-cloud.yml template, no OIDC) ---
 
     // Record the variant.
-    setConsumerBkitField("cloudAgents", "opencode", dryRun);
+    setConsumerBkitField("cloud.agent", "opencode", dryRun);
 
     // Advisory — cloud=opencode setup checklist.
     advisories.push({
@@ -138,7 +146,7 @@ export function runCloudModule(ctx: ModuleContext): void {
     // --- cloud=cursor: Linear-tracker path ---
 
     // Record the variant.
-    setConsumerBkitField("cloudAgents", "cursor", dryRun);
+    setConsumerBkitField("cloud.agent", "cursor", dryRun);
 
     // Advisory — cloud=cursor setup checklist.
     advisories.push({

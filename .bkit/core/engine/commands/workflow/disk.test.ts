@@ -73,7 +73,7 @@ const order = (cwd: string) =>
 async function prune(cwd: string, ...argv: string[]) {
   const out: string[] = [];
   const err: string[] = [];
-  const code = await runCommand(["disk", "prune", ...argv], [diskCommand], {
+  const code = await runCommand(["disk", "prune", ...argv, "--json"], [diskCommand], {
     classicVerbs: new Set(),
     cwd,
     io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
@@ -282,7 +282,7 @@ describe("bkit disk prune --auto", () => {
     // Threshold 0 and today's min already started, so nothing is spawned from the test.
     fs.writeFileSync(
       path.join(cwd, "package.json"),
-      JSON.stringify({ bkit: { disk: { minFreeGb: 0 } } }),
+      JSON.stringify({ bkit: { workflows: { minFreeGb: 0 } } }),
     );
     plan(cwd, "min", 0);
     const r = await prune(cwd, "--mode=min", "--auto");
@@ -310,7 +310,7 @@ describe("ensureDiskSpace", () => {
     const cwd = repo(marks(["a", "min"], ["b", "max"]));
     const why = await check(cwd, 1e9);
     expect(order(cwd)).toEqual(["a", "b"]);
-    expect(why).toContain("still under bkit.disk.minFreeGb");
+    expect(why).toContain("still under bkit.workflows.minFreeGb");
   });
 });
 

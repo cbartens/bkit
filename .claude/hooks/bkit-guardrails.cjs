@@ -31,7 +31,7 @@
 
 // bkit:start
 
-// bkit:managed v5.5.1 — do not edit; run `bkit upgrade` to refresh
+// bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -228,9 +228,8 @@ function shellEditTargets(cmd) {
 function shellEditAdvisory(hits) {
   return (
     `bkit guardrails: this command edits files through the shell (${hits.join("; ")}). ` +
-    "Pre-edit gates only see edit/write tools, so a shell rewrite bypasses every one of " +
-    "them. Use the edit/write tool instead unless this is one of the sanctioned exceptions " +
-    "in .agents/rules.md (generating files from a script, or a bulk mechanical rewrite). " +
+    "Pre-edit gates only see edit/write tools, so a shell rewrite bypasses every one of them. " +
+    "Use the edit/write tool instead unless this is one of the sanctioned exceptions in .agents/rules.md (generating files from a script, a bulk mechanical rewrite, or appending a log line to your own step output file). " +
     "Not blocked — proceed if it is."
   );
 }

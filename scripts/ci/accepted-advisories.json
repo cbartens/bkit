@@ -3,12 +3,5 @@
     "critical": 7,
     "high": 30
   },
-  "accepted": [
-    {
-      "advisory": "GHSA-vfj7-8cjw-p6xm",
-      "module": "braces",
-      "reason": "No patched release exists (patched range <0.0.0). Reached only through the slop-scan dev tool (slop-scan > globby > fast-glob > micromatch > braces), which reads this repo's own glob patterns; never shipped in the package. Re-check for a braces release or a slop-scan bump at expiry.",
-      "expires": "2026-11-16"
-    }
-  ]
+  "accepted": []
 }

@@ -6,7 +6,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { runCommand } from "../lib";
-import { prBody, prMarker, prsCommand } from "./prs";
+import { EXIT_BASE_MAIN, EXIT_BASE_NOT_DEV, prBody, prMarker, prsCommand } from "./prs";
 
 const dirs: string[] = [];
 const ORIGINAL_PATH = process.env.PATH;
@@ -20,10 +20,21 @@ const tmp = (prefix: string) => {
 
 // A `gh` stand-in driven by files in $FAKE_GH_DIR: list.json / view.json are
 // printed for `pr list` / `pr view`; `<verb>-exit` makes that verb exit with the
-// code inside; `create-fails` counts down failed creates. Every call is logged.
+// code inside; `create-fails` counts down failed creates. `api` reads dev's
+// rulesets from dev-rules.json (none when absent) and its classic protection
+// from the dev-protected marker; `api-exit` fails every api call. Every call is logged.
 const FAKE_GH = `#!/bin/sh
 d="$FAKE_GH_DIR"
 printf '%s\\n' "$*" >> "$d/calls"
+if [ "$1" = "api" ]; then
+  if [ -f "$d/api-exit" ]; then echo "gh api failed" >&2; exit "$(cat "$d/api-exit")"; fi
+  case "$2" in
+    */rules/branches/dev) cat "$d/dev-rules.json" 2>/dev/null || echo '[]' ;;
+    */protection/required_status_checks) [ -f "$d/dev-protected" ] || { echo "Branch not protected" >&2; exit 1; } ;;
+    *) exit 1 ;;
+  esac
+  exit 0
+fi
 verb="$2"
 if [ -f "$d/$verb-exit" ]; then echo "gh $verb failed" >&2; exit "$(cat "$d/$verb-exit")"; fi
 case "$verb" in
@@ -108,7 +119,7 @@ function repo(branch = "feat/12-x", bkit?: Record<string, unknown>) {
 async function run(cwd: string, argv: string[]) {
   const out: string[] = [];
   const err: string[] = [];
-  const code = await runCommand(argv, [prsCommand], {
+  const code = await runCommand([...argv, "--json"], [prsCommand], {
     classicVerbs: new Set(),
     cwd,
     io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
@@ -126,12 +137,12 @@ async function run(cwd: string, argv: string[]) {
 // ---------------------------------------------------------------------------
 
 describe("bkit prs open", () => {
-  const GH = { issueTracker: "github" };
+  const GH = { tracker: { default: "github" } };
   const open = (cwd: string, ...extra: string[]) =>
     run(cwd, ["prs", "open", "--fid=12-x", "--title=feat(12-x): thing", ...extra]);
 
   it("creates the PR with the github marker first and the plan in the bkit block", async () => {
-    const cwd = repo("feat/12-x", { issueTracker: "github" });
+    const cwd = repo("feat/12-x", { tracker: { default: "github" } });
     fs.mkdirSync(path.join(cwd, "docs"));
     fs.writeFileSync(path.join(cwd, "docs/12-x-plan.md"), "plan");
     gh.view(pr());
@@ -155,8 +166,40 @@ describe("bkit prs open", () => {
     );
   });
 
+  it("--file records the open as an engine-action row; a re-run reuses that PR instead of exiting 3", async () => {
+    const cwd = repo("feat/12-x", GH);
+    const file = path.join(tmp("bkit-prs-status-"), "status.jsonl");
+    gh.view(pr());
+    const first = await open(cwd, `--file=${file}`, "--workflow=ship");
+    expect(first.code).toBe(0);
+    const rows = fs
+      .readFileSync(file, "utf-8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
+    expect(rows).toEqual([
+      expect.objectContaining({
+        type: "engine-action",
+        action: "pr-open",
+        ref: "https://github.com/o/r/pull/7",
+      }),
+    ]);
+    gh.list([pr()]);
+    const again = await open(cwd, `--file=${file}`, "--workflow=ship");
+    expect(again.code).toBe(0);
+    expect(again.json).toMatchObject({ created: false, number: 7 });
+    expect(gh.calls().filter((c) => c.startsWith("pr create"))).toHaveLength(1);
+    // Without the row, an open PR still refuses a blind create.
+    expect((await open(cwd)).code).toBe(3);
+  });
+
+  it("--file needs --workflow", async () => {
+    const cwd = repo("feat/12-x", GH);
+    expect((await open(cwd, "--file=s.jsonl")).code).toBe(2);
+  });
+
   it("always writes the marker, even with no plan", async () => {
-    const cwd = repo("feat/12-x", { issueTracker: "github" });
+    const cwd = repo("feat/12-x", { tracker: { default: "github" } });
     gh.view(pr());
     const r = await open(cwd, "--issue=#12", "--plan=docs/missing-plan.md");
     expect(r.code).toBe(0);
@@ -176,12 +219,41 @@ describe("bkit prs open", () => {
   ])(
     "writes the %s marker shape, taking the tracker from package.json",
     async (tracker, fid, issue) => {
-      const cwd = repo(`feat/${fid}`, { issueTracker: tracker });
+      const cwd = repo(`feat/${fid}`, { tracker: { default: tracker } });
       gh.view(pr());
       const r = await run(cwd, ["prs", "open", `--fid=${fid}`, `--issue=${issue}`, "--title=t"]);
       expect(r.json.body).toBe(`<!-- bkit:issue=${issue} bkit:fid=${fid} -->\n`);
     },
   );
+
+  it("prMarker writes a FID-only marker with github wired and no issue", async () => {
+    expect(prMarker("github", "dev-ci-failures", undefined)).toBe(
+      "<!-- bkit:fid=dev-ci-failures -->",
+    );
+    expect(prMarker("linear", "dev-ci-failures", "")).toBe("<!-- bkit:fid=dev-ci-failures -->");
+    expect(prMarker("jira", "dev-ci-failures", "")).toBe("<!-- bkit:fid=dev-ci-failures -->");
+    const cwd = repo("feat/dev-ci-failures", GH);
+    gh.view(pr({ headRefName: "feat/dev-ci-failures" }));
+    const r = await run(cwd, ["prs", "open", "--fid=dev-ci-failures", "--title=t"]);
+    expect(r.code).toBe(0);
+    expect(r.json.body).toBe("<!-- bkit:fid=dev-ci-failures -->\n");
+    expect(gh.sent("body")).toBe("<!-- bkit:fid=dev-ci-failures -->\n");
+  });
+
+  it("a FID-only marker takes any slug, a tracker-shaped one included", () => {
+    for (const fid of ["12-x", "fix-2-retry", "upgrade-react-19", "2024-roadmap"]) {
+      expect(prMarker("github", fid, undefined)).toBe(`<!-- bkit:fid=${fid} -->`);
+      expect(prMarker("linear", fid, "")).toBe(`<!-- bkit:fid=${fid} -->`);
+    }
+    expect(() => prMarker("github", "Fix_CI", undefined)).toThrow(/not a slug/);
+  });
+
+  it("a marker with an issue needs the FID to embed that same issue", () => {
+    expect(prMarker("github", "123-foo", "123")).toBe("<!-- bkit:issue=#123 bkit:fid=123-foo -->");
+    expect(() => prMarker("github", "123-foo", "456")).toThrow(/embeds issue 123, not the run's/);
+    expect(() => prMarker("linear", "abc-1-x", "ABC-2")).toThrow(/embeds issue ABC-1/);
+    expect(() => prMarker("jira", "mba-7-x", "MBA-8")).toThrow(/embeds issue MBA-7/);
+  });
 
   it("writes the no-tracker marker shape", () => {
     expect(prMarker("none", "x-y", undefined)).toBe("<!-- bkit:fid=x-y -->");
@@ -189,17 +261,15 @@ describe("bkit prs open", () => {
 
   it.each([
     ["github", "../../etc", "12"],
-    ["github", "12-x", undefined],
     ["github", "12-x", "abc"],
+    ["github", "12-x", "13"],
     ["linear", "12-x", "ABC-1"],
-    ["linear", "abc-1-x", undefined],
     ["linear", "ab2-1-x", "AB2-1"],
     ["jira", "mba-7-x", "mba-7"],
     ["jira", "12-x", "MBA-7"],
-    ["jira", "mba-7-x", undefined],
     ["none", "-x", undefined],
   ])("refuses a %s marker with fid %j issue %j (exit 2)", async (tracker, fid, issue) => {
-    const cwd = repo("feat/12-x", { issueTracker: tracker });
+    const cwd = repo("feat/12-x", { tracker: { default: tracker } });
     const r = await run(cwd, ["prs", "open", `--fid=${fid}`, "--title=t", ...issueArgs(issue)]);
     expect(r.code).toBe(2);
     expect(gh.calls()).toEqual([]);
@@ -271,6 +341,7 @@ describe("bkit prs open", () => {
       base: "dev",
       head: "feat/12-x",
     });
+    expect(fs.readFileSync(auth.json.bodyFile, "utf-8")).toBe(auth.json.body);
 
     // `gh` off PATH but `git` still present: openPrFor resolves the repo root with git first.
     const noGh = tmp("bkit-prs-no-gh-");
@@ -280,6 +351,34 @@ describe("bkit prs open", () => {
     const missing = await open(cwd, "--issue=12", "--head=feat/12-x");
     expect(missing.code).toBe(80);
     expect(missing.json.useMcp).toBe(true);
+  });
+
+  it("prs open refuses --base=main", async () => {
+    const cwd = repo("feat/12-x", GH);
+    gh.view(pr({ baseRefName: "main" }));
+    const r = await open(cwd, "--issue=12", "--base=main");
+    expect(r.code).toBe(EXIT_BASE_MAIN);
+    expect(r.err).toContain("main");
+    expect(gh.calls()).toEqual([]);
+    expect(r.out).toBe("");
+  });
+
+  it.each(["refs/heads/main", "origin/main", "heads/main", "refs/remotes/origin/main"])(
+    "prs open refuses --base=%s, the same branch as main",
+    async (base) => {
+      const cwd = repo("feat/12-x", GH);
+      gh.view(pr({ baseRefName: "main" }));
+      const r = await open(cwd, "--issue=12", `--base=${base}`);
+      expect(r.code).toBe(EXIT_BASE_MAIN);
+      expect(gh.calls()).toEqual([]);
+    },
+  );
+
+  it("prs open still opens against any other base", async () => {
+    const cwd = repo("feat/12-x", GH);
+    gh.view(pr({ baseRefName: "release" }));
+    const r = await open(cwd, "--issue=12", "--base=release");
+    expect(r.code).toBe(0);
   });
 
   it("exits 6 when the created PR's base is not --base", async () => {
@@ -620,6 +719,13 @@ describe("bkit prs merge", () => {
     expect((await merge("--label=bkit:auto-paused")).json.subject).toBe("feat(12-x): thing (#7)");
   });
 
+  it("drops the force-build marker from the title subject", async () => {
+    gh.view(pr({ title: "feat(12-x): thing bkit [force build]" }));
+    gh.viewAfterMerge(pr({ state: "MERGED" }));
+    expect((await merge()).json.subject).toBe("feat(12-x): thing (#7)");
+    expect(mergeCall()).toContain("--subject feat(12-x): thing (#7) --body");
+  });
+
   it("takes an explicit --subject", async () => {
     gh.view(pr());
     gh.viewAfterMerge(pr({ state: "MERGED" }));
@@ -642,6 +748,41 @@ describe("bkit prs merge", () => {
     expect(r.json).toMatchObject({ merged: false, state: "OPEN", verdict: "FAIL", failures: 1 });
     gh.view(pr());
     expect((await merge("--expect-merged")).code).toBe(7);
+  });
+
+  it("prs merge refuses a PR whose base is main", async () => {
+    gh.view(pr({ baseRefName: "main" }));
+    gh.viewAfterMerge(pr({ baseRefName: "main", state: "MERGED" }));
+    const r = await merge();
+    expect(r.code).toBe(EXIT_BASE_NOT_DEV);
+    expect(r.err).toContain("main");
+    expect(r.json).toMatchObject({ merged: false, verdict: "FAIL" });
+    expect(mergeCall()).toBe("");
+  });
+
+  it("prs merge fails loudly when the base changed between the check and the merge", async () => {
+    gh.view(pr());
+    gh.viewAfterMerge(pr({ baseRefName: "main", state: "MERGED", mergeCommit: { oid: "s" } }));
+    const r = await merge();
+    expect(r.code).toBe(EXIT_BASE_NOT_DEV);
+    expect(r.err).toContain("INTEGRITY FAILURE");
+    expect(r.err).toContain("merged into main");
+    expect(r.json).toMatchObject({ merged: true, verdict: "FAIL", failures: 1 });
+  });
+
+  it("prs merge refuses when the PR base is unknown", async () => {
+    gh.view(pr({ baseRefName: undefined }));
+    gh.viewAfterMerge(pr({ state: "MERGED" }));
+    const r = await merge();
+    expect(r.code).toBe(EXIT_BASE_NOT_DEV);
+    expect(mergeCall()).toBe("");
+  });
+
+  it("prs merge reads the base from the one pr view it already makes", async () => {
+    gh.view(pr());
+    gh.viewAfterMerge(pr({ state: "MERGED" }));
+    await merge("--subject=s");
+    expect(gh.calls().filter((c) => c.startsWith("pr view"))).toHaveLength(2);
   });
 
   it("exits 80 when gh needs auth, and 2 on a bad --number", async () => {
@@ -682,6 +823,71 @@ describe("bkit prs update-branch", () => {
 
   it("exits 2 on a bad --number", async () => {
     expect((await run(repo(), ["prs", "update-branch", "--number=x"])).code).toBe(2);
+  });
+
+  it("never reads dev's required checks without --only-if-required", async () => {
+    await update();
+    expect(gh.calls().some((c) => c.startsWith("api "))).toBe(false);
+  });
+});
+
+describe("bkit prs update-branch --only-if-required", () => {
+  const onGithub = () => {
+    const cwd = repo();
+    git(cwd, "remote", "add", "origin", "https://github.com/o/r.git");
+    return cwd;
+  };
+  const update = () =>
+    run(onGithub(), ["prs", "update-branch", "--number=7", "--only-if-required"]);
+  const updated = () => gh.calls().some((c) => c.startsWith("pr update-branch"));
+
+  it("skips the update when dev requires no status checks", async () => {
+    const r = await update();
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({ number: "7", updated: false });
+    expect(updated()).toBe(false);
+    expect(gh.calls()).toContain("api repos/o/r/rules/branches/dev");
+    expect(r.err).toContain("dev push run tests the merged result");
+  });
+
+  it("updates when a dev ruleset requires status checks", async () => {
+    fs.writeFileSync(
+      path.join(fake, "dev-rules.json"),
+      JSON.stringify([{ type: "deletion" }, { type: "required_status_checks" }]),
+    );
+    const r = await update();
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({ number: "7", updated: true });
+    expect(updated()).toBe(true);
+  });
+
+  it("updates when dev's branch protection requires status checks", async () => {
+    fs.writeFileSync(path.join(fake, "dev-protected"), "");
+    const r = await update();
+    expect(r.json).toEqual({ number: "7", updated: true });
+    expect(updated()).toBe(true);
+  });
+
+  it("ignores dev rulesets that require no checks", async () => {
+    fs.writeFileSync(path.join(fake, "dev-rules.json"), JSON.stringify([{ type: "deletion" }]));
+    const r = await update();
+    expect(r.json).toEqual({ number: "7", updated: false });
+    expect(updated()).toBe(false);
+  });
+
+  it("updates when the repo cannot be resolved", async () => {
+    const r = await run(repo(), ["prs", "update-branch", "--number=7", "--only-if-required"]);
+    expect(r.json).toEqual({ number: "7", updated: true });
+    expect(updated()).toBe(true);
+    expect(r.err).toContain("cannot resolve the repo");
+  });
+
+  it("exits 80 without updating when gh cannot read dev's required checks", async () => {
+    gh.exit("api", 4);
+    const r = await update();
+    expect(r.code).toBe(80);
+    expect(r.err).toContain("update_pull_request_branch");
+    expect(updated()).toBe(false);
   });
 });
 

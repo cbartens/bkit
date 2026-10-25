@@ -11,14 +11,6 @@
 >
 > **Rules:**
 >
-> - Read-only audit; never edit code, config, or data.
-> - `Universal Instructions` apply to all projects; `Project Instructions` apply only to this project.
-> - Local audit instructions / overrides → `Project Instructions` below the bkit-managed block; universal instructions stay in-block.
-> - Any tools mentioned in `Universal Instructions` are examples only; swap for actual tools in final output; drop inapplicable.
-> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
-> - Read `.agents/docs.md` → load docs for workflow / step / task; skip missing; cite docs inline where required.
-> - Every claim cites this run's evidence (`file:line`, or command / query and its output) and tool behind it; a previous report's figure, list, or status is a lead, not evidence.
-> - Read this document once at session start; do not trust session memory; do not re-read on every loop iteration.
 > - NEVER copy a secret, token, key, or personal-data value into the report; name the location only.
 > - NEVER change a secret, workflow, platform setting, or remote row. Header and DNS reads are one read-only request each.
 > - NEVER send an exploit payload, a write, or a request at production. Hostile proof against a running deployment → `bkit-audit-red-team`.
@@ -33,9 +25,9 @@ Fixes land on call sites a sweep already knew; the doc records the rule. A later
 
 **Cadence:** monthly; extra pass when a change touches auth, webhook, rate limiter, or third-party processor.
 
-**Anchor Standards:** record version and date read. Newer version → `Standards` step reads what changed.
+**Anchor Standards:**
 
-- OWASP Application Security Verification Standard (e.g. ASVS 5.0, chapters V1–V17).
+- OWASP Application Security Verification Standard (e.g. ASVS 5.0, chapters V1-V17).
 - OWASP Top 10 (e.g. 2025) and OWASP API Security Top 10 (e.g. 2023).
 - OWASP Mobile Application Security Verification Standard, when a native app ships (e.g. MASVS 2.1).
 - RFC 9116, `security.txt`.
@@ -81,24 +73,16 @@ Fixes land on call sites a sweep already knew; the doc records the rule. A later
 
 ### Pre-Flight / Dependencies
 
-**Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
-
-**Credentials:** probe direnv before marking a token / env var missing: `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'`; `unset` = missing. Run credentialed CLIs as `direnv exec . <cmd>`. No direnv (cloud session) → plain env check. Report names, never values.
-
 #### Core
 
-Always verify.
-
-- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied (here or in any step) → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`; run every step the remaining tools allow; work needing blocked call → `Not Checked`. never stop the run for a blocked call; never retry or reword a blocked call to get past it.
-- [ ] **Text Search:** Steps 2, 5–14, 17, 19 — literals, env names, routes, workflows, e.g. `git grep`, ripgrep. Fallback: none; name gap. Literal searched as regex matching nothing reads as clean — name tool and whether pattern was literal.
+- [ ] **Permissions:** blocked calls recorded
+- [ ] **Text Search:** Steps 2, 5-14, 17, 19 — literals, env names, routes, workflows, e.g. `git grep`, ripgrep. Fallback: none; name gap. Literal searched as regex matching nothing reads as clean — name tool and whether pattern was literal.
 - [ ] **Call Graph:** Steps 5, 9 — who calls a guard, e.g. language server `find_referencing_symbols`, `tsserver`. Fallback: text search only; empty = inconclusive, not absence.
 - [ ] **Live Read:** Steps 7, 11, 22 — one read-only GET per web origin; DNS for mail auth; `security.txt` fetch. Fallback: committed config only; served headers, DNS, `security.txt` → `Not Checked`.
 - [ ] **Git History:** Steps 14, 17 — full history for secrets and new dependencies. Fallback: current tree only; history → `Not Checked`.
 - [ ] **Web:** Steps 8, 17, 23 — auth-provider docs, framework advisories, anchor standards. Fallback: versions unread.
 
 #### Conditional
-
-Verify only when applicable.
 
 - [ ] **Hosted Auth:** Managed auth provider → Step 8 — password, OTP, redirect, MFA settings + provider auth lints, e.g. dashboard, management API. Fallback: config file only; live settings → `Not Checked`.
 - [ ] **Platform Access:** Third-party consoles reaching production → Step 15 — members, roles, 2FA, token last-use. Fallback: none; items → `Not Checked`.
@@ -110,18 +94,16 @@ Verify only when applicable.
 
 ### 🔒 Gate 1: Prerequisites Check
 
-**Checkpoint.** Verify and check `[x]` all applicable boxes above, then continue to `Probe Steps` without asking.
-
 - [ ] **Gaps named:** every missing item names its fallback and `Not Checked` entry.
-- [ ] **Gate 1 - Verified:** All Core items checked. All applicable Conditional items checked.
+- [ ] **Gate 1 — Verified:** All Core items checked. All applicable Conditional items checked.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Audited commit = this report's `bkit:anchor` `baseSha`. Read newest prior report for this slug under `docs/audits/`; its commit = its `bkit:anchor` `baseSha`, else the HEAD its `Previous Run` recorded. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 1 — Previous Run:** **Done when:** closure rate in `Previous Run`, or run marked baseline.
 - [ ] **Step 2 — Classes:** Before any new pass, re-grep all previously swept classes. Signatures = prior report class list + `Project Instructions`. No prior class list (baseline) → seed classes from threat model's literal rules (a call, name, or path; e.g. a banned call, a required guard) + `Project Instructions`; prose rules stay with Step 3; no threat model → `Project Instructions` alone, say so. Each: literal signature, owner file if any, hits outside owner. Clean class = result — record it. Env var read (e.g. `process.env.X`, `os.environ[...]`) and never declared = control never executed; reachability → `bkit-audit-dead-code`. Patterns literal, never regex. Literal class = candidate CI guard → propose under `Process Improvements`; do not add this run. **Done when:** `Classes` row per class: signature · hits outside owner · clean or finding; baseline names its seed source.
 - [ ] **Step 3 — Threat Model:** Read threat model. STRIDE (or model method) per boundary: web, native, machine clients, inbound mail, webhooks, background jobs, privileged service credentials. Diff vs shipped since previous report commit. Uncovered boundary = finding; propose update, do not edit doc. No threat model = first finding. **Done when:** `Threat Model` lists every boundary: covered / finding.
 - [ ] **Step 4 — Pass:** Broad pass all current Top 10 categories and ASVS chapters before targeted steps; use project application-security checklist or skill if present. Targeted steps = proof; this pass catches categories no later step names. **Done when:** each category in `Checked` as checked (name later step) / finding / `none`.
-- [ ] **Step 5 — Auth:** Per auth, role, machine-token, CORS, open-redirect docs. Build route inventory from code: framework route handlers; server actions (each = publicly POSTable endpoint); other HTTP routers; machine-client tools; background-job serve endpoint; webhooks — guard-diff inventory. Every member-required route calls the guard. Language-server call set on guard + siblings → diff inventory; route missing from reference set = finding. Authorise in handler, not only middleware (framework bypassed middleware before — Step 17). Local token fallback: pin algorithm (no `none`, no HMAC/RSA confusion); check `iss`, `aud`, `exp`, `nbf`; bounded-cache key rotation. Machine tokens: issuance, scope, revocation; CSPRNG ≥128 bits (ASVS 7.2.3); hash-only storage; constant-time compare; expiry or recorded reason for none; never logged; never in query string. Each run re-check latent constraints: in-process server-side call skipping CSRF origin check; rate-limit key falling through to shared bucket when forwarding header absent — still latent only. CORS/CSRF origin lists exact-match: must not reflect `Origin`, accept `null`, pair `*` with credentials, or suffix-match shared platform suffix (e.g. `*.vercel.app`, `*.github.io`). Language-server empty = inconclusive; pace reference queries; corroborate via text search; name tool per count. Apparent unguarded control → confirm middleware is not doing it out of sight. **Done when:** `Routes` row per surface: guard · authorises in handler · verdict.
+- [ ] **Step 5 — Auth:** Per auth, role, machine-token, CORS, open-redirect docs. Build route inventory from code: framework route handlers; server actions (each = publicly POSTable endpoint); other HTTP routers; machine-client tools; background-job serve endpoint; webhooks — guard-diff inventory. Every member-required route calls the guard. Language-server call set on guard + siblings → diff inventory; route missing from reference set = finding. Authorise in handler, not only middleware (framework bypassed middleware before — Step 17). Local token fallback: pin algorithm (no `none`, no HMAC/RSA confusion); check `iss`, `aud`, `exp`, `nbf`; bounded-cache key rotation. Machine tokens: issuance, scope, revocation; CSPRNG >=128 bits (ASVS 7.2.3); hash-only storage; constant-time compare; expiry or recorded reason for none; never logged; never in query string. Each run re-check latent constraints: in-process server-side call skipping CSRF origin check; rate-limit key falling through to shared bucket when forwarding header absent — still latent only. CORS/CSRF origin lists exact-match: must not reflect `Origin`, accept `null`, pair `*` with credentials, or suffix-match shared platform suffix (e.g. `*.vercel.app`, `*.github.io`). Language-server empty = inconclusive; pace reference queries; corroborate via text search; name tool per count. Apparent unguarded control → confirm middleware is not doing it out of sight. **Done when:** `Routes` row per surface: guard · authorises in handler · verdict.
 - [ ] **Step 6 — Limits:** Map each sensitive flow → limiter, key, threshold: sign-in, sign-up, password reset/OTP, invitation send, machine-token issue, inbound per tenant, model-token spend paths. No limiter = finding. Step 2 only checks limiter constructed in owner. Arbitrary-address email flows: per-sender and per-recipient caps; no attacker-controlled free text in body. Plan, entitlement, price from server-side billing (price-id allow-list, webhook-set plan), never client field. Plan limits hold under concurrent creates. Body size limit; list endpoints cap `limit`/page size; JSON endpoints enforce `Content-Type`. **Done when:** `Limits` row per flow: limiter · key · threshold · verdict.
 - [ ] **Step 7 — Headers:** One read-only GET per production origin and preview origin (if any). Record CSP, HSTS, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Permissions-Policy`. CSP: no script `unsafe-inline`/`unsafe-eval`; `frame-ancestors`; `object-src 'none'`. Diff served vs framework header config and middleware. Every auth cookie: `Secure`, `HttpOnly`, `SameSite`, `Domain`, `Path`, `__Host-` prefix, lifetime. Session cookie without `HttpOnly` → recorded reason + strict CSP. Name environment per read. **Done when:** `Headers` holds both origins and every auth cookie, or live read → `Not Checked`.
 - [ ] **Step 8 — Sessions:** Record auth-provider settings each run (e.g. Supabase Auth, Auth0, in-house); setting the provider lacks → not applicable: min password length; leaked-password protection (record plan — may be paid); OTP/magic-link expiry; email confirmation; site URL; redirect allow-list (no broad wildcards); anonymous sign-in off; MFA available; provider auth lints. Member removal, role change, password change → next request. Record tenant/role source: token claims (stale until expiry) vs database; token lifetime; refresh rotation + reuse detection. Password-reset tokens single-use, expire. Email change → re-verification. OAuth linking never auto-links unverified email. Sign-in, sign-up, password reset, invitation send/accept must not reveal account existence (body, status, timing). OAuth/OIDC if any: PKCE, `state`, `nonce`, exact redirect URIs; native redirects via verified universal/app links. **Done when:** `Sessions` records every setting: met / finding / not applicable (why).
@@ -144,13 +126,11 @@ Verify only when applicable.
 
 ### 🔒 Gate 2: Probes Check
 
-**Checkpoint.** Verify and check `[x]` all boxes below, then continue to `Findings` without asking.
-
 - [ ] **Steps complete:** every step `[x]`, or explicit skip with evidence the surface is absent.
 - [ ] **Evidence:** every finding cites re-checkable evidence and the tool behind it.
 - [ ] **No values:** no secret, token, key, or personal-data value anywhere in the report.
 - [ ] **Read-only:** no workflow, secret, setting, or remote row changed; no exploit payload sent.
-- [ ] **Gate 2 - Verified:** Every checkbox above independently verified and checked off.
+- [ ] **Gate 2 — Verified:** Every checkbox above independently verified and checked off.
 
 ## Findings
 
@@ -162,7 +142,7 @@ Verify only when applicable.
 | `MEDIUM` | Sensitive flow with no limiter; CSP allows `unsafe-inline` scripts; DMARC `p=none`; long-lived token with no expiry and no recorded reason; processor missing from the doc; security event with no alert; preview holding a production secret |
 | `LOW` | Header or cookie attribute missing on a non-sensitive response; naming drift that changes no access; documented control already covered and still running |
 
-Scale per `.bkit/jsonl.md` § Severity. Within severity: cross-tenant and secrets first. `Expected` = destination + safer fix.
+Within severity: cross-tenant and secrets first. `Expected` = destination + safer fix.
 
 <!-- prettier-ignore -->
 | ID | Severity | Location | Evidence | Expected |
@@ -270,17 +250,13 @@ PENDING
 
 ### 🔒 Gate 3: Report Check
 
-**Checkpoint.** Verify and check `[x]` all boxes below, then stop.
-
-- [ ] **No placeholders:** Findings table and every `Report` section have no `PENDING`.
+- [ ] **No placeholders:** no `PENDING` left
 - [ ] **Summary:** names count per severity.
 - [ ] **Classes:** every standing class has a row, including the clean ones.
-- [ ] **Writes:** only this report and template `Project Instructions` changed; throwaway worktrees / remote targets removed.
-- [ ] **Process Improvements:** `Universal` = proposed step changes, template untouched; `Project` = edits applied below `bkit:end`; each `none` if empty.
+- [ ] **Writes:** only this report, template `Project Instructions`, and ledger rows changed; throwaway worktrees / remote targets removed.
+- [ ] **Process Improvements:** `Universal` and `Project` filled
 - [ ] **Suggested Issues:** every `MEDIUM`+ finding ID in exactly one row; every row has a `Next Step`.
-- [ ] **Gate 3 - Verified:** Every checkbox above independently verified and checked off.
-
-> `Project Instructions` below `bkit:end` are consumer-owned — `bkit install` never overwrites them, `bkit check` drift stays clean. Add project-specific tools, paths, commands, and checks there, keyed by section or step title; never results.
+- [ ] **Gate 3 — Verified:** Every checkbox above independently verified and checked off.
 
 <!-- bkit:end -->
 

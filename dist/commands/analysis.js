@@ -1,57 +1,96 @@
-// commands/analysis.ts — Analysis CLI for bkit telemetry.
+// commands/analysis.ts — the computations behind `bkit stats` (commands/stats.ts) and the
+// cross-repo section of the harvest report (scripts/harvest/, bkit's checkout only).
 //
 // Provides:
 //   1. Counts/rates/elapsed-time over telemetry rows.
-//   2. Size↔outcome regression (logistic approximation: error ~ log(linesAdded)
-//      + filesChanged) over `kind:"outcome"` rows.
-//   3. Dispatch-size threshold computation for plan-complexity-check / plan-split.
-//   4. `counterSource` trust labelling: each outcome row is joined to its `counter` row
-//      (model-self-report pre-P3, shell-bus post-P3).
+//   2. Size↔outcome regression (error rate per `lines.total.added` bucket) over
+//      `kind:"outcome"` rows.
+//   3. Dispatch-size threshold computation, printed by `bkit stats` and the harvest report.
+//   4. `counter.source` trust labelling: each outcome row is joined to its `counter` row
+//      (model-self-report or shell-bus).
 //   5. Per-rule compliance rate over `kind:"compliance"` rows.
-//   6. Per-`bkitVersion`→CHANGELOG release-attributed regression.
+//   6. Per-`bkit.version` release-attributed regression.
 //
-// Backfill scope (DE-37): GitHub-API backfill limited to the repo where bkit is
-// installed; PRs closed >= `--since` date; fields: additions, deletions, changedFiles,
-// commits count (for correctiveCommits proxy). Model-self-report counterSource.
+// Rows are read folded, so rows written without `schema` arrive in the current shape.
 //
 // All computation is advisory + inform-only; never gates any workflow.
 // See DE-34 for the shared-entrypoint + crash-isolation contract.
-import * as fs from "node:fs";
-import * as path from "node:path";
-import { UNJUSTIFIED_REASON, foldFrom, } from "../ledgers/telemetry.js";
-import { HARVEST_DEST_DIR } from "./harvest.js";
+import { AGENT_CONTEXT_CAP, UNJUSTIFIED_REASON, foldFrom, } from "../ledgers/telemetry.js";
 export function computeCounts(events) {
     const byKind = {};
     const byWorkflow = {};
     const byRepo = {};
     for (const ev of events) {
         byKind[ev.kind] = (byKind[ev.kind] ?? 0) + 1;
-        byWorkflow[ev.workflow] = (byWorkflow[ev.workflow] ?? 0) + 1;
+        const workflow = ev.by?.workflow ?? "unknown";
+        byWorkflow[workflow] = (byWorkflow[workflow] ?? 0) + 1;
         byRepo[ev.repo] = (byRepo[ev.repo] ?? 0) + 1;
     }
     return { total: events.length, byKind, byWorkflow, byRepo };
 }
+/** Over the rows that carry `time.totalMinutes`. */
 export function computeElapsedStats(rows) {
-    if (rows.length === 0) {
+    const durations = rows
+        .map((r) => r.time?.totalMinutes)
+        .filter((m) => typeof m === "number")
+        .sort((a, b) => a - b);
+    if (durations.length === 0) {
         return {
             count: 0,
-            totalSeconds: 0,
-            meanSeconds: 0,
-            minSeconds: 0,
-            maxSeconds: 0,
-            p50Seconds: 0,
+            totalMinutes: 0,
+            meanMinutes: 0,
+            minMinutes: 0,
+            maxMinutes: 0,
+            p50Minutes: 0,
         };
     }
-    const durations = rows.map((r) => r.durationSeconds).sort((a, b) => a - b);
     const total = durations.reduce((s, v) => s + v, 0);
-    const p50 = durations[Math.floor(durations.length / 2)] ?? 0;
     return {
-        count: rows.length,
-        totalSeconds: total,
-        meanSeconds: total / rows.length,
-        minSeconds: durations[0] ?? 0,
-        maxSeconds: durations[durations.length - 1] ?? 0,
-        p50Seconds: p50,
+        count: durations.length,
+        totalMinutes: total,
+        meanMinutes: total / durations.length,
+        minMinutes: durations[0] ?? 0,
+        maxMinutes: durations[durations.length - 1] ?? 0,
+        p50Minutes: durations[Math.floor(durations.length / 2)] ?? 0,
+    };
+}
+/** Over the outcome rows whose `build.challenge.gate` is set. */
+export function computeChallengeGate(rows) {
+    const out = { runs: 0, small: 0, large: 0 };
+    for (const r of rows) {
+        const gate = r.build?.challenge?.gate;
+        if (gate === undefined)
+            continue;
+        out.runs++;
+        if (gate.skipped)
+            out.small++;
+        else
+            out.large++;
+    }
+    return out;
+}
+/** Each agent type's context peak over the outcome rows' `context` blocks, against `cap`. */
+export function computeAgentContext(rows, cap = AGENT_CONTEXT_CAP) {
+    const by = {};
+    let recorded = 0;
+    for (const r of rows) {
+        if (r.context === undefined)
+            continue;
+        recorded++;
+        for (const [agent, a] of Object.entries(r.context.byAgent)) {
+            const e = (by[agent] ??= { agent, subagents: 0, runs: 0, peak: 0, overCap: 0 });
+            e.subagents += a.runs;
+            e.runs++;
+            e.peak = Math.max(e.peak, a.peak);
+            if (a.peak > cap)
+                e.overCap++;
+        }
+    }
+    return {
+        cap,
+        outcomes: rows.length,
+        recorded,
+        byAgent: Object.values(by).sort((a, b) => b.peak - a.peak || a.agent.localeCompare(b.agent)),
     };
 }
 const SIZE_BUCKETS = [
@@ -64,7 +103,7 @@ const SIZE_BUCKETS = [
 /**
  * Per-run NEW failures = this row's cumulative total minus the previous row's.
  *
- * `outcome.failures` is the repo's CUMULATIVE distinct-failure count at ship time.
+ * `ledgers.failures.repo` is the repo's CUMULATIVE distinct-failure count at close.
  *
  * Previous = the newest outcome row for the SAME repo strictly before this one; the
  * first row for a repo has no predecessor, so its total IS its delta.
@@ -75,25 +114,22 @@ export function newFailuresThisRun(row, allRows) {
     const previous = allRows
         .filter((r) => r.repo === row.repo && r.ts < row.ts)
         .sort((a, b) => b.ts - a.ts)[0];
+    const failures = (r) => r.ledgers?.failures?.repo ?? 0;
     if (!previous)
-        return row.failures;
-    return Math.max(0, row.failures - previous.failures);
+        return failures(row);
+    return Math.max(0, failures(row) - failures(previous));
 }
-function isErrorRun(row, allRows) {
-    return ((row.ciTrySuccess !== undefined && row.ciTrySuccess > 1) ||
-        (row.correctiveCommits !== undefined && row.correctiveCommits > 0) ||
-        (row.reviewIterations !== undefined && row.reviewIterations > 1) ||
-        newFailuresThisRun(row, allRows) > 0);
-}
+const isErrorRun = (row, allRows) => newFailuresThisRun(row, allRows) > 0;
 /** Identity of one workflow run: the key the close writes on both its counter and outcome rows. */
 function runKey(row) {
-    return row.parentSha ? JSON.stringify([row.repo, row.workflow, row.parentSha]) : undefined;
+    const sha = row.run?.parentSha;
+    return sha ? JSON.stringify([row.repo, row.by?.workflow, sha]) : undefined;
 }
 export function computeRegression(rows, counterRows) {
     const shellBusRuns = new Set();
     for (const c of counterRows) {
         const key = runKey(c);
-        if (c.counterSource === "shell-bus" && key !== undefined)
+        if (c.counter?.source === "shell-bus" && key !== undefined)
             shellBusRuns.add(key);
     }
     const buckets = SIZE_BUCKETS.map((b) => ({
@@ -115,8 +151,8 @@ export function computeRegression(rows, counterRows) {
         else {
             modelSelfReportCount++;
         }
-        // Bucket by linesAdded
-        const lines = row.linesAdded;
+        // Bucket by lines added
+        const lines = row.lines?.total?.added ?? 0;
         for (const bucket of buckets) {
             if (lines >= bucket.minLines && lines <= bucket.maxLines) {
                 bucket.count++;
@@ -150,14 +186,15 @@ export function computeRegression(rows, counterRows) {
 export function computeComplianceRates(rows) {
     const byRule = {};
     for (const row of rows) {
-        if (!byRule[row.rule]) {
-            byRule[row.rule] = { passCount: 0, failCount: 0, naCount: 0, totalCount: 0 };
+        const id = row.rule?.id ?? "unknown";
+        if (!byRule[id]) {
+            byRule[id] = { passCount: 0, failCount: 0, naCount: 0, totalCount: 0 };
         }
-        const r = byRule[row.rule];
+        const r = byRule[id];
         r.totalCount++;
-        if (row.result === "pass")
+        if (row.rule?.verdict === "pass")
             r.passCount++;
-        else if (row.result === "fail")
+        else if (row.rule?.verdict === "fail")
             r.failCount++;
         else
             r.naCount++;
@@ -171,20 +208,21 @@ export function computeComplianceRates(rows) {
 export function computeVersionCompliance(rows) {
     const byVersion = {};
     for (const row of rows) {
-        if (!byVersion[row.bkitVersion])
-            byVersion[row.bkitVersion] = { pass: 0, total: 0 };
-        const v = byVersion[row.bkitVersion];
+        const version = row.bkit?.version ?? "unknown";
+        if (!byVersion[version])
+            byVersion[version] = { pass: 0, total: 0 };
+        const v = byVersion[version];
         v.total++;
-        if (row.result === "pass")
+        if (row.rule?.verdict === "pass")
             v.pass++;
     }
     return Object.entries(byVersion)
-        .map(([bkitVersion, { pass, total }]) => ({
-        bkitVersion,
+        .map(([version, { pass, total }]) => ({
+        version,
         passRate: total > 0 ? pass / total : 0,
         totalRuns: total,
     }))
-        .sort((a, b) => a.bkitVersion.localeCompare(b.bkitVersion, undefined, { numeric: true }));
+        .sort((a, b) => a.version.localeCompare(b.version, undefined, { numeric: true }));
 }
 /**
  * Unjustified-rate per `(subagent, model)`.
@@ -196,8 +234,8 @@ export function computeVersionCompliance(rows) {
 export function computeDeferralDiscipline(rows) {
     const byWriter = {};
     for (const row of rows) {
-        const writer = row.subagent ?? (row.workflow ? `${row.workflow} (orchestrator)` : "unattributed");
-        const model = row.model ?? "unknown";
+        const writer = row.by?.subagent ?? (row.by?.workflow ? `${row.by.workflow} (orchestrator)` : "unattributed");
+        const model = row.by?.model ?? "unknown";
         const id = `${writer}\u0000${model}`;
         if (!byWriter[id])
             byWriter[id] = { writer, model, total: 0, unjustifiedCount: 0, byReason: {} };
@@ -222,9 +260,10 @@ export function computeDeferralDiscipline(rows) {
         b.total - a.total ||
         a.writer.localeCompare(b.writer));
 }
-export function runAnalysis(paths) {
+/** Analyse the folded rows of `paths`, leaving out rows of `skipKinds`. */
+export function runAnalysis(paths, skipKinds = new Set()) {
     const { state, rowCount, malformedLineCount } = foldFrom(paths);
-    const events = [...state.values()];
+    const events = [...state.values()].filter((ev) => !skipKinds.has(ev.kind));
     const outcomeRows = [];
     const counterRows = [];
     const complianceRows = [];
@@ -249,6 +288,8 @@ export function runAnalysis(paths) {
     const complianceRates = computeComplianceRates(complianceRows);
     const versionCompliance = computeVersionCompliance(complianceRows);
     const deferralDiscipline = computeDeferralDiscipline(deferralRows);
+    const challengeGate = computeChallengeGate(outcomeRows);
+    const agentContext = computeAgentContext(outcomeRows);
     const reportLines = [
         `[bkit-analysis] Telemetry rows: ${rowCount} | malformed: ${malformedLineCount}`,
         `[bkit-analysis] Kinds: ${JSON.stringify(counts.byKind)}`,
@@ -256,16 +297,19 @@ export function runAnalysis(paths) {
         `[bkit-analysis] Run outcomes: ${outcomeRows.length} | Compliance rows: ${complianceRows.length}`,
     ];
     if (elapsed.count > 0) {
-        reportLines.push(`[bkit-analysis] Duration (s): mean=${elapsed.meanSeconds.toFixed(0)} | p50=${elapsed.p50Seconds.toFixed(0)} | min=${elapsed.minSeconds} | max=${elapsed.maxSeconds}`);
+        reportLines.push(`[bkit-analysis] Duration (min): mean=${elapsed.meanMinutes.toFixed(1)} | p50=${elapsed.p50Minutes.toFixed(1)} | min=${elapsed.minMinutes} | max=${elapsed.maxMinutes}`);
     }
     // Regression report
-    reportLines.push(`[bkit-analysis] #183 Size↔outcome regression (dispatch-size threshold: ${regression.dispatchSizeThreshold} linesAdded):`);
+    reportLines.push(`[bkit-analysis] #183 Size↔outcome regression (dispatch-size threshold: ${regression.dispatchSizeThreshold} lines added):`);
     for (const b of regression.buckets) {
         if (b.count > 0) {
             reportLines.push(`  ${b.label}: ${b.count} runs, ${b.errorCount} errors (${(b.errorRate * 100).toFixed(1)}%)`);
         }
     }
-    reportLines.push(`[bkit-analysis] counterSource trust: shell-bus=${regression.shellBusCount} (trusted) | model-self-report=${regression.modelSelfReportCount} (untrusted, pre-P3)`);
+    reportLines.push(`[bkit-analysis] counter.source trust: shell-bus=${regression.shellBusCount} (trusted) | model-self-report=${regression.modelSelfReportCount} (untrusted)`);
+    if (challengeGate.runs > 0) {
+        reportLines.push(`[bkit-analysis] Build challenge size: ${challengeGate.small} small (challenge-1 skipped) | ${challengeGate.large} large, of ${challengeGate.runs} runs`);
+    }
     // Compliance rates
     if (complianceRates.length > 0) {
         reportLines.push(`[bkit-analysis] Per-rule compliance rates:`);
@@ -275,9 +319,9 @@ export function runAnalysis(paths) {
     }
     // Version compliance
     if (versionCompliance.length > 0) {
-        reportLines.push(`[bkit-analysis] Per-bkitVersion compliance:`);
+        reportLines.push(`[bkit-analysis] Per-bkit.version compliance:`);
         for (const v of versionCompliance) {
-            reportLines.push(`  v${v.bkitVersion}: ${(v.passRate * 100).toFixed(1)}% pass (${v.totalRuns} runs)`);
+            reportLines.push(`  v${v.version}: ${(v.passRate * 100).toFixed(1)}% pass (${v.totalRuns} runs)`);
         }
     }
     // Deferral discipline — who defers work they should have finished.
@@ -299,43 +343,8 @@ export function runAnalysis(paths) {
         complianceRates,
         versionCompliance,
         deferralDiscipline,
+        challengeGate,
+        agentContext,
         reportLines,
     };
-}
-// analysis — cross-repo analysis CLI.
-// Reports counts/rates/elapsed-time, size↔outcome regression, per-rule compliance
-// rate, dispatch-size threshold, counterSource trust labelling. Advisory + inform-only.
-// See DE-34 for the shared-entrypoint + crash-isolation contract.
-export function runAnalysisCommand() {
-    try {
-        const cwd = process.cwd();
-        // Analyse: bkit's own stats.jsonl + harvested consumer rows.
-        // Harvest dest is sourced from the constant, NOT re-spelled here.
-        const statsPath = path.join(cwd, ".bkit", "stats.jsonl");
-        const harvestStatsPath = path.join(cwd, HARVEST_DEST_DIR, "stats.jsonl");
-        const harvestFrictionPath = path.join(cwd, HARVEST_DEST_DIR, "friction.jsonl");
-        const frictionPath = path.join(cwd, ".bkit", "friction.jsonl");
-        // deferrals is LOCAL-only: harvest takes it count-only (prose never leaves the
-        // consumer), so the discipline rate is this repo's own writers, not a fleet view.
-        const deferralsPath = path.join(cwd, "docs", "deferrals.jsonl");
-        const paths = [
-            statsPath,
-            harvestStatsPath,
-            harvestFrictionPath,
-            frictionPath,
-            deferralsPath,
-        ].filter((p) => fs.existsSync(p));
-        if (paths.length === 0) {
-            console.log("[bkit-analysis] No telemetry files found. Run `bkit harvest` first, or accumulate telemetry via bkit workflows.");
-            return;
-        }
-        const report = runAnalysis(paths);
-        for (const line of report.reportLines) {
-            console.log(line);
-        }
-    }
-    catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.error(`[bkit-analysis] analysis error (fail-open): ${msg}`);
-    }
 }

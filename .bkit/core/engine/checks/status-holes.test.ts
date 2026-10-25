@@ -489,6 +489,23 @@ describe("auditStatusJsonl (end-to-end)", () => {
     expect(report.sourceCanonicalDrift).toEqual([]);
   });
 
+  it("Path A with engine-action rows interleaved: same report", () => {
+    const action = JSON.stringify({
+      type: "engine-action",
+      action: "comment",
+      key: "ship/1/ship-start-workflow/-/-/comment",
+      hash: "h",
+      ref: null,
+      at: "2026-05-01T00:00:00Z",
+    });
+    const withActions = pathAStatus()
+      .split("\n")
+      .filter((l) => l.trim() !== "")
+      .flatMap((l) => [l, action])
+      .join("\n");
+    expect(auditStatusJsonl(withActions, shipMd)).toEqual(auditStatusJsonl(pathAStatus(), shipMd));
+  });
+
   it("Path B: no holes against real bkit-ship.md", () => {
     const report = auditStatusJsonl(pathBStatus(), shipMd);
     expect(report.path).toBe("PATH_B");

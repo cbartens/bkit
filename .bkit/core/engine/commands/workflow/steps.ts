@@ -14,8 +14,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import {
+  actionKey,
   activeDoneSteps,
+  allRunsDoneSteps,
   appendLine,
+  runNumber,
   runOrStepField,
   statusTimestamp,
   type Step,
@@ -26,6 +29,8 @@ import { getPromptsRoot } from "../../shared/package-roots.js";
 import {
   CommandError,
   EXIT,
+  git,
+  isSharedBranch,
   repoRoot,
   runGit,
   type CommandSpec,
@@ -33,14 +38,22 @@ import {
   type FlagValue,
   type RunContext,
 } from "../lib.js";
-import { FID_PATTERNS, normaliseFid, readIssueTracker } from "./fids.js";
+import { fidProblem, normaliseFid, readIssueTracker } from "./fids.js";
 import { buildComment } from "./issues.js";
+import {
+  EXIT_FOREIGN_PATH,
+  activeRecord,
+  ownPathCommit,
+  ownSet,
+  type OwnCommit,
+  type SharedCheckoutRecord,
+} from "./ledgers.js";
 import { readHolder, resolveMonth, workflowLockPath } from "./locks.js";
 import {
   EXIT_NO_STATUS,
   FILE_FLAG,
+  GROUP_FLAG,
   STEP_FLAG,
-  SUB_PLAN_FLAG,
   WORKFLOW_FLAG,
   extraField,
   nonNegativeInt,
@@ -50,6 +63,15 @@ import {
   statusFile,
   str,
 } from "./status.js";
+import {
+  COMMENT_FILE_OUTPUT,
+  POST_FLAG,
+  TRACKER_OUTPUT,
+  commentFileOf,
+  postForVerb,
+  type TrackerOutcome,
+} from "./tracker.js";
+import { addAllButCopied } from "./worktrees.js";
 
 const VERDICT_END = "<!-- verdict:end -->";
 const DEFAULT_VERDICTS = ["PASS", "CONCERNS", "FAIL"];
@@ -281,22 +303,17 @@ export const ROW_FIELDS: Record<string, readonly RowField[]> = {
   "plan/plan-fetch-context": ["attempt"],
   "plan/plan-review": ["attempt"],
   "plan/plan-apply-review": ["attempt"],
-  "plan/plan-scope-check": ["attempt"],
-  "plan/plan-apply-scope": ["attempt"],
-  "plan/plan-complexity-check": ["attempt"],
-  "plan/plan-complexity-split": ["attempt"],
   "plan/plan-summary": ["attempt"],
+  "build/build-plan-convert": ["attempt"],
   "build/build-plan-current": ["attempt"],
   "build/build-install-skills": ["attempt"],
   "build/build-plan-execute": ["attempt"],
   "build/build-plan-verify": ["attempt"],
-  "build/build-subplan-gate": ["attempt", "scope"],
+  "build/build-group-gate": ["attempt", "scope"],
   "build/build-plan-gaps-remediate": ["attempt", "strategy"],
   "build/build-plan-verify-holistic": ["attempt"],
   "build/build-challenge": ["attempt"],
-  "build/build-challenge-reconcile": ["attempt"],
-  "build/build-challenge-remediate": ["attempt"],
-  "build/build-challenge-tests": ["attempt"],
+  "build/build-decision": ["attempt"],
   "build/build-run-tests": ["attempt", "scope"],
   "build/build-failure-diagnose": ["attempt", "strategy"],
   "build/build-failure-remediate": ["attempt", "strategy"],
@@ -336,7 +353,7 @@ const CORE_ROW_KEYS = new Set([
   "artifacts",
   "verdict",
   "attempt",
-  "subPlan",
+  "group",
   "failures",
   "strategy",
 ]);
@@ -344,6 +361,13 @@ const CORE_ROW_KEYS = new Set([
 // ---------------------------------------------------------------------------
 // Writing the row
 // ---------------------------------------------------------------------------
+
+/** The FID a `docs/plans/{month}/logs/{fid}/status.jsonl` path belongs to; undefined for any other file. */
+function fidOfStatusFile(file: string): string | undefined {
+  return /(?:^|\/)docs\/plans\/[0-9]{6}\/logs\/([^/]+)\/status\.jsonl$/.exec(
+    file.split(path.sep).join("/"),
+  )?.[1];
+}
 
 export interface StepRow {
   file: string;
@@ -353,15 +377,37 @@ export interface StepRow {
   verdict?: string;
   failures?: number;
   attempt?: number;
-  subPlan?: number;
+  group?: number;
   strategy?: string;
   artifacts: string[];
   extras?: Record<string, unknown>;
   /** Default: HEAD now, before this step's commit. */
   parentSha?: string;
-  /** auto: `git add -A` + commit `message`; none: the row only. */
+  /** auto: `git add -A` minus the `bkit.workflows.worktree.copy` entries + commit `message` (an in-place shared-branch run: its own paths only); none: the row only. */
   commit: "auto" | "none";
   message?: string;
+}
+
+/** Exit code: a debug run on a shared branch has no shared-checkout record, so nothing was written or committed. */
+export const EXIT_NO_RECORD = 14;
+
+/**
+ * A debug run on `dev` / `main` works in place, so its record must exist before
+ * it writes or commits (`git add -A` there would carry work the run does not own).
+ * Throws EXIT_NO_RECORD when the checkout is on a shared branch and `rec` is null.
+ */
+export function requireRecordOnShared(
+  cwd: string,
+  workflow: string,
+  rec: SharedCheckoutRecord | null,
+): void {
+  if (workflow !== "debug" || rec !== null) return;
+  const branch = git(cwd, ["branch", "--show-current"]) ?? "";
+  if (!isSharedBranch(branch)) return;
+  throw new CommandError(
+    EXIT_NO_RECORD,
+    `no shared-checkout record for this run on ${branch} — nothing written or committed (the record is gone or belongs to another run); a plain commit here would carry work the run does not own`,
+  );
 }
 
 /**
@@ -393,16 +439,45 @@ export function writeStepRow(
     artifacts: r.artifacts,
     ...(r.verdict === undefined ? {} : { verdict: r.verdict as Step["verdict"] }),
     ...(r.attempt === undefined ? {} : { attempt: r.attempt }),
-    ...(r.subPlan === undefined ? {} : { subPlan: r.subPlan }),
+    ...(r.group === undefined ? {} : { group: r.group }),
     ...(r.failures === undefined ? {} : { failures: r.failures }),
     ...(r.strategy === undefined ? {} : { strategy: r.strategy as Step["strategy"] }),
     ...(r.extras ?? {}),
   };
+  // An in-place run on a shared branch commits its own paths only; a refusal
+  // comes before the append, so a re-run after the human's fix writes the row once.
+  const fid = r.commit === "auto" ? fidOfStatusFile(r.file) : undefined;
+  const rec = fid === undefined ? null : activeRecord(cwd, fid);
+  if (r.commit === "auto") requireRecordOnShared(cwd, r.workflow, rec);
+  if (rec !== null) {
+    try {
+      ownSet(cwd, rec);
+    } catch (err) {
+      if (!(err instanceof CommandError) || err.code !== EXIT_FOREIGN_PATH) throw err;
+      log(`no row written to ${r.file}: the commit would be refused: ${err.message}`);
+      return { row, commit: null, code: EXIT_FOREIGN_PATH };
+    }
+  }
   fs.mkdirSync(path.dirname(r.file), { recursive: true });
   fs.appendFileSync(r.file, appendLine(row));
 
   if (r.commit === "none") return { row, commit: null, code: EXIT.OK };
-  const add = runGit(cwd, ["add", "-A"]);
+  if (rec !== null) {
+    let own: OwnCommit;
+    try {
+      own = ownPathCommit(cwd, rec, r.message!, { allowEmpty: true });
+    } catch (err) {
+      if (!(err instanceof CommandError) || err.code !== EXIT_FOREIGN_PATH) throw err;
+      log(`row written to ${r.file} but the commit was refused: ${err.message}`);
+      return { row, commit: null, code: EXIT_FOREIGN_PATH };
+    }
+    if (!own.ok) {
+      log(`row written to ${r.file} but the commit failed: ${own.error}`);
+      return { row, commit: null, code: EXIT_COMMIT };
+    }
+    return { row, commit: runGit(cwd, ["rev-parse", "HEAD"]).stdout, code: EXIT.OK };
+  }
+  const add = addAllButCopied(cwd);
   const made = add.ok ? runGit(cwd, ["commit", "--allow-empty", "-m", r.message!]) : add;
   if (!made.ok) {
     log(`row written to ${r.file} but the commit failed: ${made.stderr || made.stdout}`);
@@ -427,12 +502,14 @@ interface GateOptions {
   ref?: string;
   workflow: string;
   step: string;
-  subPlan?: number;
+  group?: number;
   attempt?: number;
   artifacts: string[];
   verdictRequired: boolean;
   allowed: string[];
   fid?: string;
+  /** The run's issue id, "" for a run with no issue; absent checks the tracker shape alone. */
+  issue?: string;
   month?: string;
   token?: string;
   placeholders: string[];
@@ -459,10 +536,8 @@ function gateChecks(cwd: string, o: GateOptions): Check[] {
     const fid = normaliseFid(o.fid, tracker);
     add(
       `fid ${fid}`,
-      FID_PATTERNS[tracker].test(fid)
-        ? undefined
-        : `does not match the ${tracker} shape ${FID_PATTERNS[tracker].source}`,
-      `${tracker} shape`,
+      fidProblem(fid, tracker, o.issue),
+      o.issue === "" && tracker !== "none" ? "issue-less shape" : `${tracker} shape`,
     );
     if (o.token !== undefined) {
       const root = repoRoot(cwd);
@@ -480,6 +555,8 @@ function gateChecks(cwd: string, o: GateOptions): Check[] {
     }
   } else if (o.token !== undefined) {
     throw new CommandError(EXIT.USAGE, "--token needs --fid");
+  } else if (o.issue !== undefined) {
+    throw new CommandError(EXIT.USAGE, "--issue needs --fid");
   }
 
   for (const a of o.artifacts) {
@@ -513,7 +590,7 @@ function gateChecks(cwd: string, o: GateOptions): Check[] {
 
   if (o.file === undefined) return checks;
   const runs = o.ref === undefined ? readRuns(o.file) : readRunsAt(o.file, o.ref);
-  const rows = activeDoneSteps(runs, o.workflow, { step: o.step, subPlan: o.subPlan });
+  const rows = activeDoneSteps(runs, o.workflow, { step: o.step, group: o.group });
   const row = rows.filter((r) => o.attempt === undefined || r.attempt === o.attempt).at(-1);
   const rowProblems: string[] = [];
   if (!row) {
@@ -549,20 +626,29 @@ function gateChecks(cwd: string, o: GateOptions): Check[] {
 
 const POSITIONS = ["next", "current", "count"] as const;
 
-/** `<step>:<next|current|count>[:<since>]` → the counter it names, from the active run. */
+/**
+ * `<step>:<next|current|count>[:all]` → the counter it names, from the active run, or
+ * from every run of the workflow with `:all`.
+ */
 function derivedCounter(
   file: string,
   workflow: string,
   spec: string,
-  subPlan: number | undefined,
-  since: string | undefined,
+  group: number | undefined,
 ): number {
-  const [step, position, specSince] = spec.split(":");
-  if (!step || !(POSITIONS as readonly string[]).includes(position ?? "")) {
-    throw new CommandError(EXIT.USAGE, `"${spec}" must be <step>:<next|current|count>[:<since>]`);
+  const [step, position, scope] = spec.split(":");
+  if (
+    !step ||
+    !(POSITIONS as readonly string[]).includes(position ?? "") ||
+    (scope !== undefined && scope !== "all")
+  ) {
+    throw new CommandError(EXIT.USAGE, `"${spec}" must be <step>:<next|current|count>[:all]`);
   }
   const count = fs.existsSync(file)
-    ? activeDoneSteps(readRuns(file), workflow, { step, subPlan }, specSince ?? since).length
+    ? (scope === "all" ? allRunsDoneSteps : activeDoneSteps)(readRuns(file), workflow, {
+        step,
+        group,
+      }).length
     : 0;
   if (position === "current" && count === 0) {
     throw new CommandError(
@@ -603,13 +689,12 @@ const fill = (s: string, attempt: number | undefined) =>
 
 const list = (v: FlagValue) => (v as string[] | undefined) ?? [];
 
-function finish(ctx: RunContext): number {
+async function finish(ctx: RunContext): Promise<number> {
   const f = ctx.flags;
   const file = statusFile(ctx);
   const workflow = String(f.workflow);
   const step = String(f.step);
-  const subPlan = positiveInt(f.subPlan, "sub-plan");
-  const since = str(f.since);
+  const group = positiveInt(f.group, "group");
   const agents = list(f.agent);
 
   // Attempt: given, next from the log, or another step's counter.
@@ -618,10 +703,10 @@ function finish(ctx: RunContext): number {
   let attempt: number | undefined;
   let derived = false;
   if (f.attemptOf !== undefined) {
-    attempt = derivedCounter(file, workflow, String(f.attemptOf), subPlan, since);
+    attempt = derivedCounter(file, workflow, String(f.attemptOf), group);
     derived = true;
   } else if (f.attempt === "next") {
-    attempt = derivedCounter(file, workflow, `${step}:next`, subPlan, since);
+    attempt = derivedCounter(file, workflow, `${step}:next`, group);
     derived = true;
   } else {
     attempt = nonNegativeInt(f.attempt, "attempt");
@@ -631,7 +716,7 @@ function finish(ctx: RunContext): number {
     const eq = spec.indexOf("=");
     if (eq <= 0)
       throw new CommandError(EXIT.USAGE, `--count-field "${spec}" must be key=<counter>`);
-    extras[spec.slice(0, eq)] = derivedCounter(file, workflow, spec.slice(eq + 1), subPlan, since);
+    extras[spec.slice(0, eq)] = derivedCounter(file, workflow, spec.slice(eq + 1), group);
   }
   const scope = str(f.scope);
   if (scope !== undefined) extras.scope = scope;
@@ -736,7 +821,7 @@ function finish(ctx: RunContext): number {
   if (!["auto", "none"].includes(commit))
     throw new CommandError(EXIT.USAGE, "--commit must be auto or none");
   if (f.docsOnly === true && commit === "auto") {
-    runGit(ctx.cwd, ["add", "-A"]);
+    addAllButCopied(ctx.cwd);
     const outside = runGit(ctx.cwd, ["diff", "--cached", "--name-only"])
       .stdout.split("\n")
       .filter((p) => p !== "" && !DOCS_ONLY.test(p));
@@ -760,53 +845,20 @@ function finish(ctx: RunContext): number {
       message += " bkit [verbose ci]";
   }
 
-  const written = writeStepRow(
-    ctx.cwd,
-    {
-      file,
-      workflow,
-      step,
-      verdict,
-      failures,
-      attempt,
-      subPlan,
-      strategy,
-      artifacts,
-      extras,
-      parentSha: str(f.parentSha),
-      commit: commit as "auto" | "none",
-      message,
-    },
-    ctx.log,
-  );
-  const checks = gateChecks(ctx.cwd, {
-    file,
-    workflow,
-    step,
-    subPlan,
-    attempt,
-    artifacts,
-    verdictRequired: false,
-    allowed,
-    placeholders: [],
-  });
-
   // The step's tracker comment: header fields in one fixed order.
   let comment: string | null = null;
   const number = str(f.number);
   if (number !== undefined) {
     const title = str(f.title);
     if (title === undefined) throw new CommandError(EXIT.USAGE, "--number needs --title");
-    const count = str(f.subPlanCount);
+    const count = str(f.groupCount);
     const header: Array<[string, string]> = [
       ...(verdict === undefined ? [] : [["Verdict", verdict] as [string, string]]),
       ...(failures === undefined ? [] : [["Failures", String(failures)] as [string, string]]),
       ...(scope === undefined ? [] : [["Scope", scope] as [string, string]]),
-      ...(subPlan === undefined
+      ...(group === undefined
         ? []
-        : [
-            ["Sub-plan", `${subPlan}${count === undefined ? "" : `/${count}`}`] as [string, string],
-          ]),
+        : [["Group", `${group}${count === undefined ? "" : `/${count}`}`] as [string, string]]),
       ...(derived && attempt !== undefined
         ? [["Attempt", String(attempt)] as [string, string]]
         : []),
@@ -841,6 +893,53 @@ function finish(ctx: RunContext): number {
     });
   }
 
+  // --post: post, then record the engine-action row, then the step row and commit
+  // carry both. A re-run with the same key and body is deduped, never posted twice.
+  let tracker: TrackerOutcome | undefined;
+  if (f.post === true) {
+    if (comment === null) throw new CommandError(EXIT.USAGE, "--post needs --number");
+    const key = actionKey(
+      workflow,
+      fs.existsSync(file) ? runNumber(readRuns(file), workflow) : 1,
+      step,
+      group,
+      attempt,
+      "comment",
+    );
+    tracker = await postForVerb(ctx, comment, { fid: fidOfStatusFile(file), file, key });
+  }
+
+  const written = writeStepRow(
+    ctx.cwd,
+    {
+      file,
+      workflow,
+      step,
+      verdict,
+      failures,
+      attempt,
+      group,
+      strategy,
+      artifacts,
+      extras,
+      parentSha: str(f.parentSha),
+      commit: commit as "auto" | "none",
+      message,
+    },
+    ctx.log,
+  );
+  const checks = gateChecks(ctx.cwd, {
+    file,
+    workflow,
+    step,
+    group,
+    attempt,
+    artifacts,
+    verdictRequired: false,
+    allowed,
+    placeholders: [],
+  });
+
   const pass = checks.every((c) => c.ok);
   for (const c of checks.filter((x) => !x.ok)) ctx.log(`${c.check}: ${c.detail}`);
   ctx.emit({
@@ -849,10 +948,14 @@ function finish(ctx: RunContext): number {
     attempt: attempt ?? null,
     fields,
     row: written.row,
+    parentSha: written.row.parentSha,
     commit: written.commit,
     pass,
     checks,
     comment,
+    // Written after the step's commit, so the commit never carries it.
+    commentFile: commentFileOf(ctx.cwd, comment),
+    ...(tracker === undefined ? {} : { tracker }),
   });
   if (written.code !== EXIT.OK) return written.code;
   return pass ? EXIT.OK : EXIT.NO;
@@ -882,7 +985,11 @@ const COMMIT_FLAGS: FlagSpec[] = [
     type: "string",
     help: "commit the step started from (default: HEAD now, before this commit)",
   },
-  { name: "commit", type: "string", help: "auto (default: git add -A + commit) or none" },
+  {
+    name: "commit",
+    type: "string",
+    help: "auto (default: git add -A, never the worktree.copy entries, + commit) or none",
+  },
   { name: "message", type: "string", help: "commit message (required unless --commit=none)" },
 ];
 
@@ -914,7 +1021,7 @@ export const stepsCommand: CommandSpec = {
           type: "string",
           help: "non-negative integer (0 included), or `next` to derive it from the log",
         },
-        SUB_PLAN_FLAG,
+        GROUP_FLAG,
         { name: "strategy", type: "string", help: "STANDARD|PIVOT|FINAL" },
         {
           name: "artifact",
@@ -934,10 +1041,15 @@ export const stepsCommand: CommandSpec = {
         row: "the appended step-done row",
         commit: "the new commit's sha, or null with --commit=none",
       },
+      textOmit: ["row"],
       exitCodes: {
         [EXIT_NO_STATUS]: "--attempt=next could not read status.jsonl",
         [EXIT_ARTIFACT]: "an --artifact is missing, empty, or outside the working directory",
         [EXIT_COMMIT]: "the row was written but the commit failed",
+        [EXIT_FOREIGN_PATH]:
+          "nothing written, nothing committed: a path that was dirty before an in-place run changed during it",
+        [EXIT_NO_RECORD]:
+          "a debug run on dev/main with no shared-checkout record: nothing written or committed",
       },
       run: (ctx) => {
         const f = ctx.flags;
@@ -959,7 +1071,7 @@ export const stepsCommand: CommandSpec = {
         if (strategy !== undefined && !STRATEGIES.includes(strategy)) {
           throw new CommandError(EXIT.USAGE, "--strategy must be STANDARD|PIVOT|FINAL");
         }
-        const subPlan = positiveInt(f.subPlan, "sub-plan");
+        const group = positiveInt(f.group, "group");
         const commit = str(f.commit) ?? "auto";
         if (!["auto", "none"].includes(commit))
           throw new CommandError(EXIT.USAGE, "--commit must be auto or none");
@@ -970,7 +1082,7 @@ export const stepsCommand: CommandSpec = {
 
         const attempt =
           f.attempt === "next"
-            ? derivedCounter(file, workflow, `${step}:next`, subPlan, undefined)
+            ? derivedCounter(file, workflow, `${step}:next`, group)
             : nonNegativeInt(f.attempt, "attempt");
 
         const written = writeStepRow(
@@ -983,7 +1095,7 @@ export const stepsCommand: CommandSpec = {
             verdict,
             failures,
             attempt,
-            subPlan,
+            group,
             strategy,
             artifacts,
             extras: Object.fromEntries(list(f.field).map(extraField)),
@@ -1040,17 +1152,12 @@ export const stepsCommand: CommandSpec = {
           help: "<step>:<next|current|count> — the attempt is that step's counter in the active run",
         },
         {
-          name: "since",
-          type: "string",
-          help: "run field holding a timestamp (soakEntryAt); only rows after it count",
-        },
-        {
           name: "count-field",
           type: "string",
           repeatable: true,
-          help: "key=<step>:<next|current|count>[:<since>] — a row field holding another counter",
+          help: "key=<step>:<next|current|count>[:all] — a row field holding another counter; :all counts every run",
         },
-        SUB_PLAN_FLAG,
+        GROUP_FLAG,
         {
           name: "strategy",
           type: "string",
@@ -1093,7 +1200,11 @@ export const stepsCommand: CommandSpec = {
         },
         { name: "number", type: "string", help: "step number: print the step's tracker comment" },
         { name: "title", type: "string", help: "step title for the comment heading" },
-        { name: "sub-plan-count", type: "string", help: "y of the comment's Sub-plan x/y" },
+        {
+          ...POST_FLAG,
+          help: "post the comment (needs --number) to the issue the status file's FID names, before the row and commit; prints `tracker`",
+        },
+        { name: "group-count", type: "string", help: "y of the comment's Group x/y" },
         {
           name: "link-ref",
           type: "string",
@@ -1123,13 +1234,17 @@ export const stepsCommand: CommandSpec = {
         attempt: "the attempt recorded, or null",
         fields: "the other header fields the agents' prompts declare (Spike, Mode, Affected)",
         row: "the appended step-done row",
+        parentSha: "the row's parentSha: HEAD before the step's commit",
         commit: "the new commit's sha, or null with --commit=none",
         pass: "every gate check passed",
         checks: "[{check, ok, detail}] per gate check",
         comment: "the step's tracker comment body (with --number), else null",
+        commentFile: COMMENT_FILE_OUTPUT,
+        tracker: TRACKER_OUTPUT,
         reask: "verdict read failed: {agent, artifact} to re-ask (exit 4 / 5 / 6 only)",
         problem: "why the verdict read failed (exit 4 / 5 / 6 only)",
       },
+      textOmit: ["row", { key: "checks", when: (_checks, out) => out.pass === true }],
       exitCodes: {
         [EXIT_NO_STATUS]: "status.jsonl is not valid NDJSON",
         [EXIT_EMPTY]: "an --agent's artifact is missing or empty (nothing written)",
@@ -1140,6 +1255,10 @@ export const stepsCommand: CommandSpec = {
         [EXIT_ARTIFACT]:
           "an --artifact is missing, empty, or outside the working directory (nothing written)",
         [EXIT_COMMIT]: "the row was written but the commit failed",
+        [EXIT_FOREIGN_PATH]:
+          "nothing written, nothing committed: a path that was dirty before an in-place run changed during it",
+        [EXIT_NO_RECORD]:
+          "a debug run on dev/main with no shared-checkout record: nothing written or committed",
         [EXIT_OUTSIDE_DOCS]:
           "--docs-only and the step staged a file outside the artifact tree (nothing written)",
       },
@@ -1194,7 +1313,7 @@ export const stepsCommand: CommandSpec = {
         },
         WORKFLOW_FLAG,
         STEP_FLAG,
-        SUB_PLAN_FLAG,
+        GROUP_FLAG,
         {
           name: "attempt",
           type: "string",
@@ -1224,6 +1343,11 @@ export const stepsCommand: CommandSpec = {
           help: "NAME=value — the held placeholder must be non-empty",
         },
         { name: "fid", type: "string", help: "the FID must match the wired tracker's shape" },
+        {
+          name: "issue",
+          type: "string",
+          help: 'the run\'s issue id, or "" for a run with no issue (then the FID must be issue-less); needs --fid',
+        },
         { name: "month", type: "string", help: "month bucket of the lock (with --token)" },
         {
           name: "token",
@@ -1240,7 +1364,7 @@ export const stepsCommand: CommandSpec = {
         const f = ctx.flags;
         const file = str(f.file) === undefined ? undefined : statusFile(ctx);
         const workflow = String(f.workflow);
-        const subPlan = positiveInt(f.subPlan, "sub-plan");
+        const group = positiveInt(f.group, "group");
         if (f.attempt !== undefined && f.attemptOf !== undefined)
           throw new CommandError(EXIT.USAGE, "give --attempt or --attempt-of, not both");
         if (f.attemptOf !== undefined && file === undefined)
@@ -1255,19 +1379,20 @@ export const stepsCommand: CommandSpec = {
           );
         const attempt =
           f.attemptOf !== undefined
-            ? derivedCounter(file!, workflow, String(f.attemptOf), subPlan, undefined)
+            ? derivedCounter(file!, workflow, String(f.attemptOf), group)
             : nonNegativeInt(f.attempt, "attempt");
         const checks = gateChecks(ctx.cwd, {
           file,
           ref,
           workflow,
           step: String(f.step),
-          subPlan,
+          group,
           attempt,
           artifacts: list(f.artifact).map((a) => fill(a, attempt)),
           verdictRequired: f.verdictRequired === true,
           allowed: allowedVerdicts(f),
           fid: str(f.fid),
+          issue: str(f.issue),
           month: str(f.month),
           token: str(f.token),
           placeholders: list(f.placeholder),

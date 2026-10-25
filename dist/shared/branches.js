@@ -5,7 +5,9 @@
 // this one rule.
 /** The integration branch feature work lands on. */
 export const DEV = "dev";
+/** The release branch: bkit never opens a PR into it or merges into it. */
+export const MAIN = "main";
 /** True for `dev` and `main`: no feature work happens on them, no force-push touches them. */
 export function isSharedBranch(branch) {
-    return branch === DEV || branch === "main";
+    return branch === DEV || branch === MAIN;
 }

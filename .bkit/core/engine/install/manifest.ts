@@ -65,7 +65,7 @@ export type ModuleName =
 export const ISSUE_TRACKERS = ["github", "linear", "jira", "none"] as const;
 export type IssueTracker = (typeof ISSUE_TRACKERS)[number];
 
-/** Default tracker when consumer manifest has no `bkit.issueTracker` field. */
+/** Default tracker when consumer manifest has no `bkit.tracker.default` field. */
 export const DEFAULT_ISSUE_TRACKER: IssueTracker = "none";
 
 /**
@@ -94,17 +94,17 @@ export function parseIssueTracker(value: unknown): IssueTracker | null {
  *               presence). Requires `tracker=github` + local opencode host (`bkit install --opencode=<provider>`).
  * - `none`    — explicit opt-out; silences the post-install nudge advisory.
  *
- * Recorded in `package.json` `bkit.cloudAgents`. Presence of the adopted copy
+ * Recorded in `package.json` `bkit.cloud.agent`. Presence of the adopted copy
  * (`bkit-cloud.yml` for github-host variants; `.cursor/Dockerfile` for cursor) is the authoritative
  * "active" signal; the package.json field only distinguishes an opt-out from
  * an undecided install.
  *
- * Single self-describing field (mirrors `bkit.issueTracker`).
+ * Single self-describing field (mirrors `bkit.tracker.default`).
  */
 export const CLOUD_MODES = ["claude", "cursor", "opencode", "none"] as const;
 export type CloudAgents = (typeof CLOUD_MODES)[number];
 
-/** Default when consumer manifest has no `bkit.cloudAgents` field (undecided). */
+/** Default when consumer manifest has no `bkit.cloud.agent` field (undecided). */
 export const DEFAULT_CLOUD_AGENTS: CloudAgents = "none";
 
 /** Narrow an unknown string to `CloudAgents` or return `null` if invalid. */
@@ -138,6 +138,7 @@ const CORE_MANIFEST: ManifestEntry[] = [
   // consumer copies are force-overwritten mirrors (writeTier1) so a consumer can read
   // them in-repo. Whole file is bkit-owned → byte-equal-text (refreshed every install);
   // prompts.md and lite.md are markered-text, keeping the consumer section below `bkit:end`.
+  { path: ".bkit/authoring.md", format: "byte-equal-text", module: "core" },
   { path: ".bkit/cloud.md", format: "byte-equal-text", module: "core" },
   { path: ".bkit/comparison.md", format: "byte-equal-text", module: "core" },
   { path: ".bkit/install.md", format: "byte-equal-text", module: "core" },
@@ -208,7 +209,7 @@ const CLAUDE_MANIFEST: ManifestEntry[] = [
 // (bkit-tests-static / -unit / -integration / -e2e / -live). Where a step is not a
 // tier (`format`, the ship gate) the name spells out the actual steps. One exception:
 // `min` sits off the chain: the least a push runs, on a push that changes no code
-// (`bkit.minPushPaths`); its steps are whatever that push can still break.
+// (`bkit.testing.minPushPaths`); its steps are whatever that push can still break.
 //
 // The consumer owns every value: a turbo monorepo writes `turbo run … --filter`,
 // a Python repo writes `ruff check && pytest`. bkit never reads a value — only
@@ -238,7 +239,7 @@ export const BKIT_GATE_SCRIPTS: Readonly<Record<string, string>> = {
   // `.husky/pre-commit`: prettier --write over staged files, and nothing else —
   // seconds, not minutes. Prose is a whole-repo scan, so it gates at pre-push.
   "bkit:gate:format": "pnpm lint-staged",
-  // `.husky/pre-push` on a min push (every file matches `bkit.minPushPaths`): no code, so
+  // `.husky/pre-push` on a min push (every file matches `bkit.testing.minPushPaths`): no code, so
   // no typecheck, lint or tests. Off the chain. Add any test that reads a min-push file.
   "bkit:gate:min": "pnpm format:check && pnpm lint:prose && pnpm slop:delta",
   // Everything that needs no test runner. Every part has a matching step in the
@@ -248,7 +249,7 @@ export const BKIT_GATE_SCRIPTS: Readonly<Record<string, string>> = {
   "bkit:gate:static":
     "pnpm typecheck && pnpm lint && pnpm format:check && pnpm lint:prose && pnpm slop:delta",
   // The default local gate: `.husky/pre-push` (when no `…-integration` gate is declared),
-  // build Step 14, the remediates. `pnpm test` is the unit tier only: a test file the
+  // build Step 11, the remediates. `pnpm test` is the unit tier only: a test file the
   // integration gate also runs must not match it.
   "bkit:gate:static-unit": "pnpm bkit:gate:static && pnpm test",
   // Ship's conflict-resolve, the only caller whose dependency graph may have just
@@ -277,11 +278,12 @@ export const BKIT_GATE_SCRIPTS: Readonly<Record<string, string>> = {
 export const BKIT_DEBUG_GATES: readonly string[] = [
   "bkit:gate:static-unit-integration-e2e-live",
   "bkit:gate:static-unit-integration-e2e",
+  "bkit:gate:static-unit-integration",
   "bkit:gate:static-unit",
 ];
 
 /**
- * What `/bkit-build` Step 14 will run, in DESCENDING order — first one declared wins.
+ * What `/bkit-build` Step 11 will run, in DESCENDING order — first one declared wins.
  *
  * Build stops at integration; E2E and live are not in this list.
  *
@@ -497,7 +499,7 @@ export const ANTIGRAVITY_MANIFEST: ManifestEntry[] = [
 // (bkit-cloud.yml), bkit-cloud-bootstrap.sh and the Cursor Background Agent files
 // (.cursor/Dockerfile, .cursor/environment.json) ship as templates
 // (`.bkit/templates.md`); the consumer copies and owns them. Each variant only
-// records `bkit.cloudAgents` and prints its setup advisories.
+// records `bkit.cloud.agent` and prints its setup advisories.
 export const CLOUD_MANIFEST_CLAUDE: ManifestEntry[] = [];
 
 export const CLOUD_MANIFEST_OPENCODE: ManifestEntry[] = [];

@@ -251,7 +251,7 @@ describe("reconcileMcpJson — bkit owns only its tracker entry", () => {
     const ws = makeWriteSet();
     reconcileMcpJson(template, ".mcp.json", "jira", false, ws);
     expect(read().mcpServers.jira.headers).toEqual({
-      Authorization: "Bearer ${BKIT_JIRA_API_TOKEN}",
+      Authorization: "Bearer ${BKIT_JIRA_API_KEY}",
       "X-Mine": "1",
     });
     expect(ws.writes).toEqual([{ path: ".mcp.json", action: "update" }]);
@@ -433,7 +433,7 @@ describe("Scenario: .bkit/.env.example (owned) and .envrc (template)", () => {
     const content = fs.readFileSync(envExamplePath, "utf-8");
     expect(content).toContain("BKIT_GH_TOKEN=");
     expect(content).toContain("BKIT_LINEAR_API_KEY=");
-    expect(content).toContain("BKIT_JIRA_API_TOKEN=");
+    expect(content).toContain("BKIT_JIRA_API_KEY=");
   });
 
   it("install never writes .envrc (a template the consumer copies)", () => {

@@ -12,8 +12,10 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { parseText } from "../../shared/text";
 
-const FID = "999-close-squash";
+const DEFAULT_FID = "999-close-squash";
+const FID = DEFAULT_FID;
 const MONTH = "202610";
 const BKIT_BIN = path.resolve("dist/cli.js");
 
@@ -56,7 +58,11 @@ interface Fixture {
 
 // A main checkout on dev, a remote, and feat/{FID} checked out in
 // .worktrees/{FID} carrying this run's design or plan doc.
-function initFixture(workflow: "design" | "plan", opts: { docOnDev?: string } = {}): Fixture {
+function initFixture(
+  workflow: "design" | "plan",
+  opts: { docOnDev?: string; fid?: string; tracker?: string } = {},
+): Fixture {
+  const FID = opts.fid ?? DEFAULT_FID;
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-close-squash-"));
   temps.push(tmp);
   const remote = path.join(tmp, "remote.git");
@@ -71,6 +77,12 @@ function initFixture(workflow: "design" | "plan", opts: { docOnDev?: string } = 
   write(path.join(repo, ".gitignore"), ".worktrees/\nnode_modules/\ndocs/plans/*/logs/**/.lock\n");
   write(path.join(repo, "docs/roadmap.md"), "# Roadmap\n");
   write(path.join(repo, "src/app.ts"), "export {};\n");
+  if (opts.tracker !== undefined) {
+    write(
+      path.join(repo, "package.json"),
+      JSON.stringify({ bkit: { tracker: { default: opts.tracker } } }),
+    );
+  }
   const docPath = `docs/plans/${MONTH}/${FID}-${workflow}.md`;
   if (opts.docOnDev !== undefined) write(path.join(repo, docPath), opts.docOnDev);
   git(repo, "add", "-A");
@@ -97,23 +109,25 @@ function initFixture(workflow: "design" | "plan", opts: { docOnDev?: string } = 
 function runClose(
   workflow: "design" | "plan",
   repo: string,
-): { status: number | null; stderr: string } {
+  opts: { fid?: string; issue?: string; env?: Record<string, string> } = {},
+): { status: number | null; stdout: string; stderr: string } {
+  const FID = opts.fid ?? DEFAULT_FID;
   const script = landLine(workflow)
     .replaceAll("{REPO_ROOT}", repo)
     .replaceAll("{BKIT}", path.join(repo, "node_modules/.bin/bkit"))
     .replaceAll("{FID}", FID)
     .replaceAll("{YYYYMM}", MONTH)
     .replaceAll("{LOCK_TOKEN}", "no-lock-held")
-    .replaceAll("{ISSUE_ID}", "999")
+    .replaceAll("{ISSUE_ID}", opts.issue ?? "999")
     .replaceAll("{BRANCH}", `feat/${FID}`);
   expect(script).not.toMatch(/\{[A-Z_]+\}/);
   // The worktree is the cwd the orchestrator runs the close from; the line cds to the main checkout.
   const res = spawnSync("bash", ["-c", script], {
     cwd: path.join(repo, ".worktrees", FID),
     encoding: "utf-8",
-    env: { ...process.env, BKIT_RUNTIME: "LOCAL" },
+    env: { ...process.env, BKIT_RUNTIME: "LOCAL", ...opts.env },
   });
-  return { status: res.status, stderr: res.stderr };
+  return { status: res.status, stdout: res.stdout, stderr: res.stderr };
 }
 
 function remoteDev(repo: string): string {
@@ -225,5 +239,35 @@ describe.each(["design", "plan"] as const)("bkit-%s.md local close squash", (wor
     expect(git(fx.repo, "ls-remote", "origin", `refs/heads/feat/${FID}`)).toBe("");
     expect(fs.existsSync(path.join(fx.repo, ".worktrees", FID))).toBe(false);
     expect(git(fx.repo, "status", "--porcelain", "--", "src/app.ts")).toBe("M src/app.ts");
+  });
+});
+
+describe("bkit-design.md close with no issue", () => {
+  it("lands an issue-less run with a FID-only marker", () => {
+    const fid = "dev-close-squash";
+    const fx = initFixture("design", { fid, tracker: "github" });
+    // dev refuses the direct push, so the close goes through a PR; with gh unavailable the
+    // command prints the PR body for the MCP tool to create.
+    const remote = path.join(path.dirname(fx.repo), "remote.git");
+    write(
+      path.join(remote, "hooks/pre-receive"),
+      '#!/bin/sh\nwhile read o n ref; do [ "$ref" = refs/heads/dev ] && { echo "dev is protected" >&2; exit 1; }; done\nexit 0\n',
+    );
+    fs.chmodSync(path.join(remote, "hooks/pre-receive"), 0o755);
+    const bin = path.join(path.dirname(fx.repo), "bin");
+    write(path.join(bin, "gh"), "#!/bin/sh\nexit 4\n");
+    fs.chmodSync(path.join(bin, "gh"), 0o755);
+
+    const res = runClose("design", fx.repo, {
+      fid,
+      issue: "",
+      env: { PATH: [bin, process.env.PATH].join(path.delimiter) },
+    });
+
+    expect(res.status, res.stderr).toBe(80);
+    const printed = parseText(res.stdout) as { stage: string; body: string };
+    expect(printed.stage).toBe("open");
+    expect(printed.body).toContain(`<!-- bkit:fid=${fid} -->`);
+    expect(printed.body).not.toContain("bkit:issue=");
   });
 });

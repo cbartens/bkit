@@ -87,7 +87,7 @@ function judge(cwd, wt, fid) {
 
 /** Remove worktree `wt`; null when gone, else why not. */
 function removeWorktree(cwd, wt, fid) {
-  const r = spawnSync("pnpm", ["-s", "bkit", "worktrees", "remove", `--fid=${fid}`], {
+  const r = spawnSync("pnpm", ["-s", "bkit", "worktrees", "remove", `--fid=${fid}`, "--json"], {
     cwd,
     encoding: "utf8",
   });

@@ -45,7 +45,7 @@ afterEach(() => {
 async function run(argv: string[]) {
   const out: string[] = [];
   const err: string[] = [];
-  const code = await runCommand(["repo", "info", ...argv], [repoCommand], {
+  const code = await runCommand(["repo", "info", ...argv, "--json"], [repoCommand], {
     classicVerbs: new Set(),
     cwd,
     io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
@@ -207,7 +207,7 @@ describe("bkit repo info — where bkit, the repo root and the outbox live", () 
     const wt = path.join(cwd, ".worktrees", "1-x");
     git(cwd, "worktree", "add", "-q", wt, "-b", "feat/1-y");
     const out: string[] = [];
-    const code = await runCommand(["repo", "info"], [repoCommand], {
+    const code = await runCommand(["repo", "info", "--json"], [repoCommand], {
       classicVerbs: new Set(),
       cwd: wt,
       io: { stdout: (t) => out.push(t), stderr: () => undefined },
@@ -220,6 +220,43 @@ describe("bkit repo info — where bkit, the repo root and the outbox live", () 
   });
 });
 
+describe("bkit repo info — the per-run session folder", () => {
+  beforeEach(() => git(cwd, "remote", "add", "origin", "https://github.com/o/r.git"));
+
+  it("prints a fresh, existing sessionDir under the outbox's sessions/ on every call", async () => {
+    const a = await run([]);
+    const b = await run([]);
+    const sessions = path.join(cwd, ".git", "bkit-outbox", "sessions");
+    for (const r of [a, b]) {
+      expect(path.dirname(r.json.sessionDir)).toBe(sessions);
+      expect(path.basename(r.json.sessionDir)).toMatch(/^\d{8}T\d{6}Z-[0-9a-f]{8}$/);
+      expect(fs.statSync(r.json.sessionDir).isDirectory()).toBe(true);
+    }
+    expect(a.json.sessionDir).not.toBe(b.json.sessionDir);
+  });
+
+  it("prunes session folders older than 7 days and keeps newer ones and foreign names", async () => {
+    const sessions = path.join(cwd, ".git", "bkit-outbox", "sessions");
+    const old = path.join(sessions, "20200101T000000Z-deadbeef");
+    const recent = path.join(sessions, sessionStamp(new Date(Date.now() - 6 * 86_400_000)));
+    const foreign = path.join(sessions, "keep-me");
+    for (const d of [old, recent, foreign]) fs.mkdirSync(d, { recursive: true });
+    fs.writeFileSync(path.join(old, "prompt.md"), "x");
+    const r = await run([]);
+    expect(r.code).toBe(0);
+    expect(fs.existsSync(old)).toBe(false);
+    expect(fs.existsSync(recent)).toBe(true);
+    expect(fs.existsSync(foreign)).toBe(true);
+  });
+});
+
+function sessionStamp(d: Date): string {
+  return `${d
+    .toISOString()
+    .replace(/[-:]/g, "")
+    .replace(/\.\d{3}/, "")}-00000000`;
+}
+
 describe("bkit repo info — where the wired tracker's issues live", () => {
   const pkg = (bkit: Record<string, unknown>) =>
     fs.writeFileSync(path.join(cwd, "package.json"), JSON.stringify({ name: "x", bkit }));
@@ -227,9 +264,11 @@ describe("bkit repo info — where the wired tracker's issues live", () => {
 
   it("prints the Linear team and project under linear", async () => {
     pkg({
-      issueTracker: "linear",
-      linear: { team: "ENG", project: "Mobile" },
-      jira: { site: "x" },
+      tracker: {
+        default: "linear",
+        linear: { team: "ENG", project: "Mobile" },
+        jira: { site: "x" },
+      },
     });
     expect((await run([])).json).toMatchObject({
       trackerTeam: "ENG",
@@ -240,9 +279,11 @@ describe("bkit repo info — where the wired tracker's issues live", () => {
 
   it("prints the Jira site and project under jira", async () => {
     pkg({
-      issueTracker: "jira",
-      linear: { team: "ENG" },
-      jira: { site: "https://a.atlassian.net/", project: "MBA" },
+      tracker: {
+        default: "jira",
+        linear: { team: "ENG" },
+        jira: { site: "https://a.atlassian.net/", project: "MBA" },
+      },
     });
     expect((await run([])).json).toMatchObject({
       trackerTeam: null,
@@ -252,7 +293,9 @@ describe("bkit repo info — where the wired tracker's issues live", () => {
   });
 
   it("prints the board under github", async () => {
-    pkg({ issueTracker: "github", github: { project: "https://github.com/users/me/projects/1" } });
+    pkg({
+      tracker: { default: "github", github: { project: "https://github.com/users/me/projects/1" } },
+    });
     expect((await run([])).json).toMatchObject({
       trackerTeam: null,
       trackerProject: null,
@@ -261,11 +304,44 @@ describe("bkit repo info — where the wired tracker's issues live", () => {
     });
   });
 
+  it.each([
+    ["github", {}, "In progress", "In review"],
+    ["linear", {}, "started", "In Review"],
+    ["jira", {}, "In Progress", "In Review"],
+    ["linear", { progress: "Doing", review: "QA" }, "Doing", "QA"],
+  ])(
+    "prints the %s progress and review states, defaults for a key left unset",
+    async (tracker, states, progress, review) => {
+      pkg({ tracker: { default: tracker, [tracker]: states } });
+      expect((await run([])).json).toMatchObject({
+        trackerProgress: progress,
+        trackerReview: review,
+      });
+    },
+  );
+
+  it("prints null progress and review states under none", async () => {
+    pkg({ tracker: { default: "none", github: { progress: "Doing" } } });
+    expect((await run([])).json).toMatchObject({ trackerProgress: null, trackerReview: null });
+  });
+
+  it("prints the plan caps from bkit.workflows.tasks, defaults for a key left unset", async () => {
+    pkg({ workflows: { tasks: { maxPerGroup: 4, maxTestsPerTask: 0 } } });
+    expect((await run([])).json.tasks).toEqual({
+      maxPerGroup: 4,
+      maxTestsPerGroup: 15,
+      maxTestsPerTask: 10,
+      maxTestFilesPerTask: 3,
+    });
+  });
+
   it("prints nulls under github without a board, and for keys left unset", async () => {
     pkg({
-      issueTracker: "github",
-      linear: { team: "ENG" },
-      jira: { site: "https://a.atlassian.net", project: "MBA" },
+      tracker: {
+        default: "github",
+        linear: { team: "ENG" },
+        jira: { site: "https://a.atlassian.net", project: "MBA" },
+      },
     });
     expect((await run([])).json).toMatchObject({
       trackerTeam: null,
@@ -273,11 +349,13 @@ describe("bkit repo info — where the wired tracker's issues live", () => {
       trackerSite: null,
       trackerBoard: null,
     });
-    pkg({ issueTracker: "linear", github: { project: "https://github.com/orgs/a/projects/1" } });
+    pkg({
+      tracker: { default: "linear", github: { project: "https://github.com/orgs/a/projects/1" } },
+    });
     expect((await run([])).json).toMatchObject({ trackerBoard: null });
-    pkg({ issueTracker: "linear" });
+    pkg({ tracker: { default: "linear" } });
     expect((await run([])).json).toMatchObject({ trackerTeam: null, trackerProject: null });
-    pkg({ issueTracker: "jira" });
+    pkg({ tracker: { default: "jira" } });
     expect((await run([])).json).toMatchObject({ trackerProject: null, trackerSite: null });
   });
 });
@@ -347,7 +425,7 @@ describe("bkit repo preflight", () => {
   async function preflight(...argv: string[]) {
     const out: string[] = [];
     const err: string[] = [];
-    const code = await runCommand(["repo", "preflight", ...argv], [repoCommand], {
+    const code = await runCommand(["repo", "preflight", ...argv, "--json"], [repoCommand], {
       classicVerbs: new Set(),
       cwd,
       io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },

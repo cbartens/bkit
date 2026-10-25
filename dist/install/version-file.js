@@ -15,6 +15,7 @@ import * as path from "node:path";
 import * as crypto from "node:crypto";
 import { parseJson } from "../shared/json.js";
 import { getTemplatesRoot, templateRelPath } from "../shared/package-roots.js";
+import { isSchemaLedger } from "../ledgers/migrate.js";
 // ---------------------------------------------------------------------------
 // Parse
 // ---------------------------------------------------------------------------
@@ -131,13 +132,16 @@ export function mergeCanonicalHashes(cwd, existing, fresh, removing = []) {
     for (const [relPath, hash] of Object.entries(existing)) {
         if (!fs.existsSync(path.join(cwd, relPath)) ||
             isRemoving(relPath) ||
-            isTemplateSetPath(relPath)) {
+            isTemplateSetPath(relPath) ||
+            isSchemaLedger(relPath)) {
             pruned++;
             continue;
         }
         canonicalHashes[relPath] = hash;
     }
-    return { canonicalHashes: { ...canonicalHashes, ...fresh }, pruned };
+    // A ledger is append-only data a migration may rewrite, never a managed file.
+    const kept = Object.fromEntries(Object.entries(fresh).filter(([p]) => !isSchemaLedger(p)));
+    return { canonicalHashes: { ...canonicalHashes, ...kept }, pruned };
 }
 /** True when `dest` is a member of the package's copy-and-own template set. */
 function isTemplateSetPath(dest) {

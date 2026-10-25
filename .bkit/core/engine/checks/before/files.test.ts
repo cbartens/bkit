@@ -224,6 +224,23 @@ describe("detectPlaywrightReporterHostile", () => {
     const f = detectPlaywrightReporterHostile(tmpDir);
     expect(f).toBeNull();
   });
+
+  it("reads the workflow named by bkit.testing.ciWorkflow and names its path", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", bkit: { testing: { ciWorkflow: "ci.yml" } } }),
+    );
+    const dir = path.join(tmpDir, ".github", "workflows");
+    fs.mkdirSync(dir, { recursive: true });
+    const hostile = "jobs:\n  e2e:\n    steps:\n      - run: playwright test --reporter=line\n";
+    fs.writeFileSync(path.join(dir, "bkit-ci.yml"), hostile);
+    expect(detectPlaywrightReporterHostile(tmpDir)).toBeNull();
+    fs.writeFileSync(path.join(dir, "ci.yml"), hostile);
+    const f = detectPlaywrightReporterHostile(tmpDir);
+    expect(f?.id).toBe("playwright-reporter-line-override-hostile");
+    expect(f?.detect).toContain(".github/workflows/ci.yml");
+    expect(f?.detect).not.toContain("bkit-ci.yml");
+  });
 });
 
 // ---------------------------------------------------------------------------

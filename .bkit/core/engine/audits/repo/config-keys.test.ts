@@ -12,25 +12,25 @@ import { describe, expect, it } from "vitest";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
 
-function ownBkit(): Record<string, unknown> | undefined {
-  const pkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf-8")) as Record<
-    string,
-    Record<string, unknown>
-  >;
-  return pkg.bkit;
+function ownTesting(): Record<string, unknown> | undefined {
+  const pkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf-8")) as {
+    bkit?: { testing?: Record<string, unknown> };
+  };
+  return pkg.bkit?.testing;
 }
 
 describe("bkit's own package.json", () => {
-  it("declares bkit.capstoneJob 'bkit-tests-check'", () => {
-    expect(ownBkit()?.capstoneJob).toBe("bkit-tests-check");
+  it("declares bkit.testing.ciCapstone 'bkit-tests-check'", () => {
+    expect(ownTesting()?.ciCapstone).toBe("bkit-tests-check");
   });
 
-  it("declares bkit.ciWorkflow 'bkit-ci.yml'", () => {
-    expect(ownBkit()?.ciWorkflow).toBe("bkit-ci.yml");
+  it("declares bkit.testing.ciWorkflow 'bkit-ci.yml'", () => {
+    expect(ownTesting()?.ciWorkflow).toBe("bkit-ci.yml");
   });
 
   // Code 16 is opt-in (a lane whose `if:` is event-scoped cannot run pre-merge).
-  it("does NOT declare bkit.shipGateRequiredLanes", () => {
-    expect(ownBkit()?.shipGateRequiredLanes).toBeUndefined();
+  // Install seeds `[]`, which reads the same as absent: the capstone's green decides.
+  it("declares no bkit.testing.shipGate lane", () => {
+    expect([undefined, []]).toContainEqual(ownTesting()?.shipGate);
   });
 });

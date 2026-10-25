@@ -267,12 +267,16 @@ describe("realGitAdapter — hook variables", () => {
 describe("bkit comply — row labels", () => {
   const pkgRoot = path.resolve(__dirname, "../../../..");
   const cli = path.join(pkgRoot, ".bkit", "core", "engine", "cli.ts");
-  function comply(cwd: string): Array<Record<string, unknown>> {
+  /** The test's environment without the GIT_* variables a hook may have leaked. */
+  function gitFreeEnv(): NodeJS.ProcessEnv {
     const env: NodeJS.ProcessEnv = { ...process.env, NODE_NO_WARNINGS: "1" };
     for (const key of Object.keys(env)) if (key.startsWith("GIT_")) delete env[key];
+    return env;
+  }
+  function comply(cwd: string): Array<Record<string, unknown>> {
     const r = childProcess.spawnSync(requireTsx(), [cli, "comply", "--phase=build"], {
       cwd,
-      env,
+      env: gitFreeEnv(),
       encoding: "utf-8",
       timeout: 60_000,
     });
@@ -301,23 +305,43 @@ describe("bkit comply — row labels", () => {
     commit(tmpDir, "feat: change");
   }
 
-  it("labels rows with the origin remote's owner/repo (resolveRepoSlug) and bkit's own version", () => {
+  it("labels rows with the origin remote's owner/repo (resolveRepoSlug) and the repo's pinned bkit version", () => {
     repoWithTwoCommits();
+    fs.writeFileSync(
+      path.join(tmpDir, ".bkit", "version"),
+      JSON.stringify({ pinnedVersion: "5.5.1", canonicalHashes: {} }),
+    );
     run("git remote add origin https://github.com/acme/widgets.git", tmpDir);
+    const head = run("git rev-parse HEAD", tmpDir).trim();
     const rows = comply(tmpDir);
     expect(rows.length).toBeGreaterThan(0);
-    const own = (
-      JSON.parse(fs.readFileSync(path.join(pkgRoot, "package.json"), "utf-8")) as {
-        version: string;
-      }
-    ).version;
     for (const row of rows) {
-      expect(row).toMatchObject({ kind: "compliance", repo: "acme/widgets", bkitVersion: own });
+      expect(row).toMatchObject({
+        schema: 3,
+        kind: "compliance",
+        repo: "acme/widgets",
+        bkit: { version: "5.5.1" },
+        by: { workflow: "build", step: "close-gate" },
+        run: { parentSha: head },
+      });
     }
   });
 
   it("falls back to unknown/repo without an origin remote, never to bkit.repoSlug", () => {
     repoWithTwoCommits();
     for (const row of comply(tmpDir)) expect(row.repo).toBe("unknown/repo");
+  });
+
+  it("without --phase grades, writes no rows and says so", () => {
+    repoWithTwoCommits();
+    const r = childProcess.spawnSync(requireTsx(), [cli, "comply"], {
+      cwd: tmpDir,
+      env: gitFreeEnv(),
+      encoding: "utf-8",
+      timeout: 60_000,
+    });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain("no --phase: rows not written");
+    expect(fs.existsSync(path.join(tmpDir, ".bkit", "stats.jsonl"))).toBe(false);
   });
 });

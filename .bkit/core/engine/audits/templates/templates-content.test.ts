@@ -5,6 +5,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import * as prettier from "prettier";
 import { describe, expect, it } from "vitest";
 import { parse as parseYamlText } from "yaml";
 import { listFilesRecursive } from "../../install/template-copies";
@@ -490,7 +491,7 @@ describe("self-hosted renovate workflow template (.bkit/templates/.github/workfl
     expect(content).not.toMatch(/secrets\.BKIT_ANTHROPIC_API_KEY/);
     expect(content).not.toMatch(/secrets\.LINEAR_API_KEY/);
     expect(content).not.toMatch(/secrets\.BKIT_LINEAR_API_KEY/);
-    expect(content).not.toMatch(/secrets\.BKIT_JIRA_API_TOKEN/);
+    expect(content).not.toMatch(/secrets\.BKIT_JIRA_API_KEY/);
   });
 
   it("uses least-privilege job permissions (contents: read)", () => {
@@ -584,7 +585,7 @@ describe(".bkit/.env.example keys are BKIT_-prefixed (direnv isolation)", () => 
   it("vendor API keys are BKIT_-prefixed", () => {
     for (const key of [
       "BKIT_LINEAR_API_KEY",
-      "BKIT_JIRA_API_TOKEN",
+      "BKIT_JIRA_API_KEY",
       "BKIT_ANTHROPIC_API_KEY",
       "BKIT_CURSOR_API_KEY",
       "BKIT_OPENCODE_API_KEY",
@@ -610,6 +611,22 @@ describe("consumer .prettierignore template (.bkit/templates/.prettierignore)", 
 
   it("carries no bkit:start / bkit:end block (bkit never writes a template)", () => {
     expect(content).not.toMatch(/^# bkit:(start|end)\b/m);
+  });
+
+  it.each([
+    ["run-tests-1.md", true],
+    ["build-group-gate-1-1.md", true],
+    ["build-subplan-gate-1-1.md", true],
+    ["context-tests-local-1.md", true],
+    ["build-plan-verify-1-1.md", false],
+  ])("prettier ignores the committed gate log %s: %s", async (name, ignored) => {
+    const file = path.join(
+      path.dirname(CONSUMER_PRETTIERIGNORE_TEMPLATE),
+      "docs/plans/202610/logs/1-x",
+      name,
+    );
+    const info = await prettier.getFileInfo(file, { ignorePath: CONSUMER_PRETTIERIGNORE_TEMPLATE });
+    expect(info.ignored).toBe(ignored);
   });
 });
 

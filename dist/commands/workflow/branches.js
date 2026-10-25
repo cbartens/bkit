@@ -1,9 +1,11 @@
-// bkit branches sync|push|rebase|switch|land|anchor-stamp|anchor-read — the
-// branch mechanics every phase workflow repeated inline: bring a feature branch
-// up to date with dev, push it the one safe way for its kind, auto-resolve the
-// rebase conflicts that lose nothing, return the main checkout to dev after a
-// merge, land a design / plan close on dev, and stamp / read the base commit a
-// design or plan doc was written against.
+// bkit branches sync|push|rebase|switch|land|fast-forward|scan-diff|force-build|
+// anchor-stamp|anchor-read — the branch mechanics every phase workflow repeated
+// inline: bring a feature branch up to date with dev, push it the one safe way
+// for its kind, auto-resolve the rebase conflicts that lose nothing, return the
+// main checkout to dev after a merge, land a design / plan close on dev,
+// fast-forward onto a remote branch, route on what a branch's diff holds, force
+// a full CI build, and stamp / read the base commit a design or plan doc was
+// written against.
 //
 // Every verb works on `origin` and the integration branch `dev`, as the
 // workflows do. A push is always EXACTLY ONE `git push`: `dev` / `main` get a
@@ -14,16 +16,18 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { gitEnv } from "../../ledgers/telemetry.js";
-import { bodySkipToken, CommandError, DEV, EXIT, git, isSharedBranch, parseJson, repoRoot, runGit, SKIP_CI_TOKEN, } from "../lib.js";
+import { actionHash, actionKey, alreadyDone, recordAction } from "../../ledgers/status.js";
+import { bodySkipToken, CommandError, DEV, EXIT, ghUnavailable, git, isSharedBranch, OUTPUT_LIMIT, parseJson, repoRoot, runGh, runGit, SKIP_CI_TOKEN, } from "../lib.js";
 import { bkitVersionStatus } from "../../shared/bkit-latest.js";
 import { landBackoffMs, landDir, pushToDev, sleep } from "../land.js";
 import { TIMEOUTS } from "../../shared/timeouts.js";
-import { commitBookkeeping } from "./ledgers.js";
+import { activeRecord, commitBookkeeping, markRecordPushed, recordOnBranch, } from "./ledgers.js";
 import { releaseLock, resolveMonth, workflowLockPath } from "./locks.js";
-import { closeTransportRow, crossCheckRows, mergePr, openPrFor, probePr, updateBranch, } from "./prs.js";
+import { EXIT_BASE_NOT_DEV, FORCE_BUILD, closeTransportRow, crossCheckRows, mergePr, openPrFor, probePr, updateBranch, } from "./prs.js";
+import { AUTO_LABEL, AUTO_ROUTE_SUFFIX } from "./issues.js";
 import { appendFeature } from "./roadmap.js";
 import { detect } from "./runtime.js";
-import { readStatusRows, readStatusRowsAt } from "./status.js";
+import { readRuns, readStatusRows, readStatusRowsAt } from "./status.js";
 import { removeWorktree, worktreeDir } from "./worktrees.js";
 import { COULD_NOT_RUN_EXIT_CODES, LOCKFILE_REGENERATE, installCommand, } from "../../shared/package-manager.js";
 import { str } from "./status.js";
@@ -45,25 +49,24 @@ export const EXIT_INSTALL_FAILED = 16;
 export const EXIT_LAND_STOPPED = 17;
 export const EXIT_LANDED_UNVERIFIED = 18;
 export const EXIT_LOCK_LEFT = 19;
+export const EXIT_NO_RECORD = 20;
+export const EXIT_NOTHING_TO_PUSH = 21;
+export const EXIT_DIVERGED = 22;
+export const EXIT_DIFF_FAILED = 23;
 // ---------------------------------------------------------------------------
 // Process helpers
 // ---------------------------------------------------------------------------
 /** git with a non-interactive editor, so `--continue` / `--skip` / merge commits never open one. */
-const quietGit = (cwd, args) => {
-    const res = spawnSync("git", args, {
-        cwd,
-        encoding: "utf-8",
-        env: { ...gitEnv(), GIT_EDITOR: "true" },
-    });
-    return {
-        ok: res.status === 0,
-        stdout: (res.stdout ?? "").trim(),
-        stderr: (res.stderr ?? "").trim(),
-    };
-};
-/** `git show :<stage>:<path>` as raw bytes; empty when that stage does not exist. */
+const quietGit = (cwd, args) => runGit(cwd, args, { GIT_EDITOR: "true" });
+/** `git show :<stage>:<path>` as raw bytes; empty when that stage does not exist, null when git could not run. */
 function stageBytes(top, stage, file) {
-    const res = spawnSync("git", ["show", `:${stage}:${file}`], { cwd: top, env: gitEnv() });
+    const res = spawnSync("git", ["show", `:${stage}:${file}`], {
+        cwd: top,
+        env: gitEnv(),
+        maxBuffer: OUTPUT_LIMIT,
+    });
+    if (res.error)
+        return null;
     // A missing stage is a legitimate shape (add/add, delete/modify): merge against empty.
     return res.status === 0 ? res.stdout : Buffer.alloc(0);
 }
@@ -91,7 +94,7 @@ const currentBranch = (cwd) => git(cwd, ["branch", "--show-current"]) ?? "";
  * ledger or is missing.
  *
  * `.bkit/friction.jsonl` ships WITHOUT `merge=union` but is listed here; a row union
- * resurrects after `bkit harvest` drained it is re-banked by the next harvest.
+ * resurrects after the harvest drained it is re-banked by the next harvest.
  *
  * `docs/roadmap.md` is not append-only — it is regenerated from
  * `.bkit/issues.jsonl` — but every workflow close re-folds it, so both sides of
@@ -147,7 +150,10 @@ export function unionResolve(top, file) {
     try {
         const sides = { base: 1, ours: 2, theirs: 3 };
         for (const [name, stage] of Object.entries(sides)) {
-            fs.writeFileSync(path.join(tmp, name), stageBytes(top, stage, file));
+            const bytes = stageBytes(top, stage, file);
+            if (bytes === null)
+                return { ok: false, problem: `git show :${stage}:${file} failed` };
+            fs.writeFileSync(path.join(tmp, name), bytes);
         }
         const merged = spawnSync("git", [
             "merge-file",
@@ -156,9 +162,9 @@ export function unionResolve(top, file) {
             path.join(tmp, "ours"),
             path.join(tmp, "base"),
             path.join(tmp, "theirs"),
-        ], { cwd: top, env: gitEnv() });
+        ], { cwd: top, env: gitEnv(), maxBuffer: OUTPUT_LIMIT });
         // --union never leaves conflict markers, so a non-zero exit is an I/O failure.
-        if (merged.status !== 0)
+        if (merged.error || merged.status !== 0)
             return { ok: false, problem: "git merge-file --union failed" };
         let text = merged.stdout.toString("utf-8");
         if (file.endsWith(".jsonl")) {
@@ -362,6 +368,7 @@ function openPrNumber(cwd, branch) {
     const res = spawnSync("gh", ["pr", "list", "--head", branch, "--state", "open", "--json", "number,state"], {
         cwd,
         encoding: "utf-8",
+        maxBuffer: OUTPUT_LIMIT,
     });
     const parsed = res.status === 0 ? parseJson(res.stdout ?? "") : { ok: false };
     const prs = parsed.ok ? parsed.value : undefined;
@@ -433,8 +440,11 @@ function rebaseVerb(ctx) {
  * Push the current branch with exactly one `git push`: plain for dev / main,
  * `--force-with-lease` otherwise. `abort` never pushes into an open PR (`openPr`:
  * the answer MCP gave; undefined asks gh, which throws EXIT.USE_MCP when it cannot).
+ * An in-place run on dev (a shared-checkout record exists) pushes only the
+ * commits it made: plain when they are all that local dev holds beyond
+ * origin/dev, else replayed onto a fresh origin/dev through `pushToDev`.
  */
-export function pushBranch(cwd, o, log) {
+export async function pushBranch(cwd, o, log) {
     const { mode, openPr: openPrFlag } = o;
     if (openPrFlag !== undefined && openPrFlag !== "none" && !/^[1-9][0-9]*$/.test(openPrFlag)) {
         throw new CommandError(EXIT.USAGE, `--open-pr must be a PR number or none, got "${openPrFlag}"`);
@@ -449,6 +459,7 @@ export function pushBranch(cwd, o, log) {
             forced: false,
             skipped: null,
             prNumber: null,
+            replayed: false,
             ...extra,
         },
     });
@@ -460,14 +471,30 @@ export function pushBranch(cwd, o, log) {
         log(`--mode=dev pushes ${DEV}, but the checkout is on ${branch}`);
         return notPushed(EXIT_NOT_DEV);
     }
+    if (mode === "plain")
+        return pushPlain(cwd, branch, o, log, notPushed);
+    const shared = isSharedBranch(branch);
+    const rec = !shared
+        ? null
+        : o.fid === undefined
+            ? recordOnBranch(cwd, branch)
+            : activeRecord(cwd, o.fid);
+    // Without the run's record the push would carry all of local dev, not the run's commits.
+    if (shared && rec === null && (mode === "dev" || o.fid !== undefined)) {
+        log(`no shared-checkout record${o.fid === undefined ? "" : ` for ${o.fid}`} on ${branch} — refusing to push: it would carry commits the run does not own`);
+        return notPushed(EXIT_NO_RECORD);
+    }
     if (o.requireCi === true) {
-        const message = git(cwd, ["log", "-1", "--pretty=%B"]) ?? "";
+        // With a record, the commit that reaches the remote last is the run's own.
+        const last = rec?.commits.at(-1) ?? "HEAD";
+        const message = git(cwd, ["log", "-1", "--pretty=%B", last]) ?? "";
         if (SKIP_CI_TOKEN.test(message)) {
             log(`HEAD message on ${branch} carries a CI-suppressing token, and this push needs a CI run — refusing`);
             return notPushed(EXIT_SKIP_CI, { skipped: "skip-ci" });
         }
     }
-    const shared = isSharedBranch(branch);
+    if (rec !== null)
+        return pushOwnCommits(cwd, rec, o, log, notPushed);
     if (mode === "abort" && !shared) {
         const pr = openPrFlag === undefined
             ? openPrNumber(cwd, branch)
@@ -503,24 +530,475 @@ export function pushBranch(cwd, o, log) {
             forced: !shared,
             skipped: null,
             prNumber: null,
+            replayed: false,
         },
     };
 }
-function pushVerb(ctx) {
-    const mode = String(ctx.flags.mode);
-    if (!["feature", "abort", "dev"].includes(mode)) {
-        throw new CommandError(EXIT.USAGE, "--mode must be feature, abort, or dev");
+/**
+ * `git fetch` of `ref` when it names a branch of origin (`origin/<b>`); null when
+ * it names anything else (a SHA, a local branch), which needs no fetch.
+ */
+export function fetchRemoteRef(cwd, ref) {
+    const m = new RegExp(`^${REMOTE}/(.+)$`).exec(ref);
+    if (!m)
+        return null;
+    return runGit(cwd, ["fetch", REMOTE, `+refs/heads/${m[1]}:refs/remotes/${REMOTE}/${m[1]}`]);
+}
+/** Commits HEAD holds beyond `ref`; 0 when the count cannot be read. */
+function commitsAhead(cwd, ref) {
+    const n = Number(git(cwd, ["rev-list", "--count", `${ref}..HEAD`]) ?? "0");
+    return Number.isFinite(n) ? n : 0;
+}
+/**
+ * `--mode=plain`: one `git push [-u] origin <branch>`, never forced. A feature
+ * branch only: dev / main and a branch with nothing beyond `aheadOf` have nothing to ship.
+ */
+function pushPlain(cwd, branch, o, log, notPushed) {
+    if (isSharedBranch(branch)) {
+        log(`Nothing to ship: on '${branch}', no feature branch`);
+        return notPushed(EXIT_NOTHING_TO_PUSH);
     }
-    const r = pushBranch(ctx.cwd, {
+    if (o.aheadOf !== undefined) {
+        const fetched = fetchRemoteRef(cwd, o.aheadOf);
+        if (fetched !== null && !fetched.ok) {
+            log(`git fetch for ${o.aheadOf} failed: ${fetched.stderr} — counting against the local ref`);
+        }
+        if (commitsAhead(cwd, o.aheadOf) === 0) {
+            log(`Nothing to ship: ${branch} has no commits ahead of ${o.aheadOf}`);
+            return notPushed(EXIT_NOTHING_TO_PUSH);
+        }
+    }
+    if (o.requireCi === true && SKIP_CI_TOKEN.test(git(cwd, ["log", "-1", "--pretty=%B"]) ?? "")) {
+        log(`HEAD message on ${branch} carries a CI-suppressing token, and this push needs a CI run — refusing`);
+        return notPushed(EXIT_SKIP_CI, { skipped: "skip-ci" });
+    }
+    const args = ["push", ...(o.setUpstream === true ? ["-u"] : []), REMOTE, branch];
+    const res = runGit(cwd, args);
+    if (!res.ok) {
+        log(`git ${args.join(" ")} failed: ${res.stderr}`);
+        return notPushed(EXIT_PUSH_FAILED);
+    }
+    log(`pushed ${branch}`);
+    return {
+        code: EXIT.OK,
+        out: {
+            pushed: true,
+            ref: branch,
+            sha: git(cwd, ["rev-parse", "HEAD"]),
+            forced: false,
+            skipped: null,
+            prNumber: null,
+            replayed: false,
+        },
+    };
+}
+/**
+ * The `key` of an engine-action row for a marker commit this run makes: keyed on the
+ * workflow's latest run, in progress or just closed by `workflows close`.
+ */
+function markerKey(file, workflow, what) {
+    const runs = fs.existsSync(file) ? readRuns(file).filter((r) => r.workflow === workflow) : [];
+    return actionKey(workflow, Math.max(runs.length, 1), what);
+}
+/**
+ * Make a marker commit once per run: an engine-action row with the same key and
+ * message whose commit is still on HEAD means it is already made (`deduped`).
+ * `addAll` stages every change first (`git add -A`); the commit is always
+ * allowed to be empty. The row is written before the caller pushes.
+ */
+function markerCommit(cwd, o) {
+    const hash = actionHash(o.message);
+    const prior = alreadyDone(o.file, o.key, hash);
+    if (prior?.ref && runGit(cwd, ["merge-base", "--is-ancestor", prior.ref, "HEAD"]).ok) {
+        return { sha: prior.ref, deduped: true };
+    }
+    if (o.addAll) {
+        const added = runGit(cwd, ["add", "-A"]);
+        if (!added.ok)
+            throw new CommandError(EXIT_PUSH_FAILED, `git add -A failed: ${added.stderr}`);
+    }
+    const made = runGit(cwd, ["commit", "--allow-empty", "-m", o.message]);
+    if (!made.ok) {
+        throw new CommandError(EXIT_PUSH_FAILED, `git commit failed: ${made.stderr || made.stdout}`);
+    }
+    const sha = git(cwd, ["rev-parse", "HEAD"]) ?? "";
+    recordAction(o.file, { action: "commit", key: o.key, hash, ref: sha });
+    return { sha, deduped: false };
+}
+const autoRouteSuffix = (labels) => labels.includes(AUTO_LABEL) ? AUTO_ROUTE_SUFFIX : "";
+/** A replayed commit that does not apply onto origin/dev without the foreign commits it builds on. */
+class ReplayConflict extends Error {
+}
+/**
+ * The `pushToDev` build callback that replays `shas` (oldest first) onto the
+ * fresh origin/dev in `dir`, each as a cherry-pick that keeps its message and
+ * author and keeps empty commits. A commit that does not apply throws a
+ * ReplayConflict naming the conflicting paths, after aborting the cherry-pick.
+ */
+export function replayBuild(shas) {
+    return (dir) => {
+        for (const sha of shas) {
+            const picked = runGit(dir, ["cherry-pick", "--allow-empty", "--keep-redundant-commits", sha]);
+            if (picked.ok)
+                continue;
+            const paths = (git(dir, ["diff", "--name-only", "--diff-filter=U"]) ?? "")
+                .split("\n")
+                .filter(Boolean);
+            runGit(dir, ["cherry-pick", "--abort"]);
+            throw new ReplayConflict(`commit ${sha.slice(0, 12)} does not apply onto ${UPSTREAM} without the local ${DEV} commits it builds on — ${paths.length > 0 ? `conflicts in: ${paths.join(", ")}` : picked.stderr}`);
+        }
+    };
+}
+/**
+ * Push only the commits an in-place run on dev made (the record's `commits`).
+ * Plain push of their tip SHA when origin/dev is an ancestor of local dev and they
+ * are exactly what local dev holds beyond it; otherwise (a foreign commit among
+ * them, origin/dev moved, or the plain push is rejected) they are replayed onto a
+ * fresh origin/dev in the throwaway checkout and pushed from there.
+ */
+async function pushOwnCommits(cwd, rec, o, log, notPushed) {
+    const gone = rec.commits.filter((c) => !runGit(cwd, ["merge-base", "--is-ancestor", c, "HEAD"]).ok);
+    if (gone.length > 0) {
+        log(`the run's commit(s) ${gone.map((c) => c.slice(0, 12)).join(", ")} are no longer on ${rec.branch} — refusing to push`);
+        return notPushed(EXIT_PUSH_FAILED);
+    }
+    const fetched = runGit(cwd, ["fetch", REMOTE, `+refs/heads/${DEV}:refs/remotes/${UPSTREAM}`]);
+    if (!fetched.ok) {
+        log(`git fetch ${REMOTE} ${DEV} failed: ${fetched.stderr}`);
+        return notPushed(EXIT_FETCH_FAILED);
+    }
+    // Oldest first, minus what origin/dev already has (pushed plain before) and
+    // what an earlier replay already landed.
+    const mine = new Set(rec.commits);
+    const landed = new Set(rec.pushed ?? []);
+    const range = runGit(cwd, ["rev-parse", "-q", "--verify", `${rec.startSha}^{commit}`]).ok
+        ? `${rec.startSha}..HEAD`
+        : "HEAD";
+    const pending = (git(cwd, ["rev-list", "--reverse", range]) ?? "")
+        .split("\n")
+        .filter((c) => mine.has(c) &&
+        !landed.has(c) &&
+        !runGit(cwd, ["merge-base", "--is-ancestor", c, UPSTREAM]).ok);
+    if (pending.length === 0) {
+        log("every commit the run made is already on origin/dev — nothing to push");
+        return notPushed(EXIT.OK, { skipped: "no-run-commits" });
+    }
+    const ahead = (git(cwd, ["rev-list", "--reverse", `${UPSTREAM}..HEAD`]) ?? "")
+        .split("\n")
+        .filter(Boolean);
+    // Plain only when origin/dev is an ancestor of local dev (a fast-forward) and
+    // the run's commits are all local dev holds beyond it; the explicit SHA keeps
+    // a commit made after the check out of the push.
+    const fastForward = runGit(cwd, ["merge-base", "--is-ancestor", UPSTREAM, "HEAD"]).ok;
+    if (fastForward && ahead.length === pending.length && ahead.every((c, i) => c === pending[i])) {
+        const last = pending[pending.length - 1];
+        const args = [
+            "push",
+            ...(o.setUpstream === true ? ["-u"] : []),
+            REMOTE,
+            `${last}:refs/heads/${rec.branch}`,
+        ];
+        const res = runGit(cwd, args);
+        if (res.ok) {
+            log(`pushed ${rec.branch}: the run's ${pending.length} commit(s) are all local dev holds`);
+            return {
+                code: EXIT.OK,
+                out: {
+                    pushed: true,
+                    ref: rec.branch,
+                    sha: last,
+                    forced: false,
+                    skipped: null,
+                    prNumber: null,
+                    replayed: false,
+                },
+            };
+        }
+        log(`git ${args.join(" ")} failed: ${res.stderr} — replaying onto a fresh ${UPSTREAM}`);
+    }
+    const root = repoRoot(cwd);
+    let res;
+    try {
+        res = await pushToDev({
+            root,
+            dir: landDir(root, rec.fid),
+            build: replayBuild(pending),
+            log,
+        });
+    }
+    catch (err) {
+        if (!(err instanceof ReplayConflict))
+            throw err;
+        log(`replaying the run's commits onto ${UPSTREAM} stopped: ${err.message}`);
+        return notPushed(EXIT_MERGE_CONFLICT);
+    }
+    switch (res.kind) {
+        case "landed":
+            markRecordPushed(cwd, rec.fid, pending);
+            log(`pushed ${pending.length} commit(s) of the run to ${DEV} as copies on a fresh ${UPSTREAM} (${res.sha.slice(0, 12)}); local ${DEV} still holds the originals beside other commits — resync with: git pull --rebase ${REMOTE} ${DEV}`);
+            return {
+                code: EXIT.OK,
+                out: {
+                    pushed: true,
+                    ref: rec.branch,
+                    sha: res.sha,
+                    forced: false,
+                    skipped: null,
+                    prNumber: null,
+                    replayed: true,
+                },
+            };
+        case "refused":
+            log(`${DEV} refused the push: ${res.stderr}`);
+            return notPushed(EXIT_PUSH_FAILED);
+        case "push-failed":
+            log(`push to ${DEV} failed without a server answer: ${res.stderr}`);
+            return notPushed(EXIT_PUSH_FAILED);
+        case "exhausted":
+            log(`${DEV} moved before each of ${res.attempts} pushes`);
+            return notPushed(EXIT_PUSH_FAILED);
+        case "fetch-failed":
+            log(`git fetch ${REMOTE} ${DEV} failed: ${res.stderr}`);
+            return notPushed(EXIT_FETCH_FAILED);
+        case "setup-failed":
+            log(`throwaway checkout failed: ${res.stderr}`);
+            return notPushed(EXIT_PUSH_FAILED);
+    }
+}
+async function pushVerb(ctx) {
+    const mode = String(ctx.flags.mode);
+    if (!["feature", "abort", "dev", "plain"].includes(mode)) {
+        throw new CommandError(EXIT.USAGE, "--mode must be feature, abort, dev, or plain");
+    }
+    const aheadOf = str(ctx.flags.aheadOf);
+    if (aheadOf !== undefined && mode !== "plain") {
+        throw new CommandError(EXIT.USAGE, "--ahead-of applies to --mode=plain only");
+    }
+    const commitMessage = str(ctx.flags.commit);
+    let marker;
+    if (commitMessage !== undefined) {
+        const file = str(ctx.flags.file);
+        const workflow = str(ctx.flags.workflow);
+        if (mode !== "feature" || file === undefined || workflow === undefined) {
+            throw new CommandError(EXIT.USAGE, "--commit needs --mode=feature, --file (status.jsonl) and --workflow");
+        }
+        const branch = currentBranch(ctx.cwd);
+        if (branch === "") {
+            ctx.log("no branch checked out (detached HEAD) — refusing to commit and push");
+            return EXIT_DETACHED;
+        }
+        if (isSharedBranch(branch)) {
+            ctx.log(`Nothing to ship: --commit makes a marker commit on a feature branch, not '${branch}'`);
+            return EXIT_NOTHING_TO_PUSH;
+        }
+        const message = `${commitMessage}${autoRouteSuffix(ctx.flags.label ?? [])}`;
+        if (ctx.flags.requireCi === true && SKIP_CI_TOKEN.test(message)) {
+            ctx.log("the --commit message carries a CI-suppressing token, and this push needs a CI run — refusing");
+            ctx.emit({
+                pushed: false,
+                ref: null,
+                sha: null,
+                forced: false,
+                skipped: "skip-ci",
+                prNumber: null,
+                replayed: false,
+            });
+            return EXIT_SKIP_CI;
+        }
+        marker = markerCommit(ctx.cwd, {
+            file: path.resolve(ctx.cwd, file),
+            key: markerKey(path.resolve(ctx.cwd, file), workflow, "push-commit"),
+            message,
+            addAll: true,
+        });
+        if (marker.deduped)
+            ctx.log(`marker commit ${marker.sha.slice(0, 12)} already made this run — pushing it`);
+    }
+    const r = await pushBranch(ctx.cwd, {
         mode: mode,
         setUpstream: ctx.flags.setUpstream === true,
+        aheadOf,
         requireCi: ctx.flags.requireCi === true,
         openPr: str(ctx.flags.openPr),
+        fid: str(ctx.flags.fid),
     }, ctx.log);
     // A detached HEAD and a wrong checkout print nothing, as the push never got to run.
-    if (r.code !== EXIT_DETACHED && r.code !== EXIT_NOT_DEV)
-        ctx.emit(r.out);
+    if (r.code !== EXIT_DETACHED && r.code !== EXIT_NOT_DEV) {
+        ctx.emit(marker === undefined ? r.out : { ...r.out, commit: marker.sha, deduped: marker.deduped });
+    }
     return r.code;
+}
+function fastForwardVerb(ctx) {
+    const onto = String(ctx.flags.onto);
+    const top = topLevel(ctx.cwd);
+    const fetched = fetchRemoteRef(top, onto);
+    if (fetched !== null && !fetched.ok) {
+        ctx.log(`git fetch for ${onto} failed: ${fetched.stderr}`);
+        return EXIT_FETCH_FAILED;
+    }
+    if (!runGit(top, ["rev-parse", "-q", "--verify", `${onto}^{commit}`]).ok) {
+        ctx.log(`unknown ref: ${onto}`);
+        return EXIT_FETCH_FAILED;
+    }
+    const before = git(top, ["rev-parse", "HEAD"]);
+    if (runGit(top, ["merge-base", "--is-ancestor", onto, "HEAD"]).ok) {
+        ctx.emit({ moved: false, head: before });
+        return EXIT.OK;
+    }
+    const merged = runGit(top, ["merge", "--ff-only", onto]);
+    if (!merged.ok) {
+        ctx.log(`local ${currentBranch(top) || "HEAD"} diverged from ${onto} — reconcile, then re-run`);
+        return EXIT_DIVERGED;
+    }
+    const head = git(top, ["rev-parse", "HEAD"]);
+    ctx.log(`fast-forwarded onto ${onto} (${head?.slice(0, 12) ?? ""})`);
+    ctx.emit({ moved: head !== before, head });
+    return EXIT.OK;
+}
+/** Paths a source-change check leaves out: plan logs and the append-only ledgers. */
+const NOT_CODE = [":(exclude)docs/plans", ":(exclude)docs/*.jsonl", ":(exclude).bkit/*.jsonl"];
+function scanDiffVerb(ctx) {
+    const base = String(ctx.flags.base);
+    const pattern = str(ctx.flags.paths);
+    const marker = str(ctx.flags.marker);
+    const code = ctx.flags.code === true;
+    if ([pattern !== undefined, marker !== undefined, code].filter(Boolean).length !== 1) {
+        throw new CommandError(EXIT.USAGE, "give exactly one of --paths, --marker, --code");
+    }
+    let re;
+    if (pattern !== undefined) {
+        try {
+            re = new RegExp(pattern, "i");
+        }
+        catch (err) {
+            ctx.log(`--paths is not a valid pattern: ${err.message}`);
+            return EXIT.USAGE;
+        }
+    }
+    const top = topLevel(ctx.cwd);
+    const fetched = fetchRemoteRef(top, base);
+    if (fetched !== null && !fetched.ok) {
+        ctx.log(`git fetch for ${base} failed: ${fetched.stderr} — diffing against the local ref`);
+    }
+    if (!runGit(top, ["rev-parse", "-q", "--verify", `${base}^{commit}`]).ok) {
+        ctx.log(`unknown base: ${base}`);
+        return EXIT_DIFF_FAILED;
+    }
+    const range = `${base}...HEAD`;
+    let paths;
+    if (marker !== undefined) {
+        const diff = quietGit(top, ["diff", "--no-renames", range, "--", ".", ":(exclude)docs/plans"]);
+        if (!diff.ok) {
+            ctx.log(`git diff ${range} failed: ${diff.stderr}`);
+            return EXIT_DIFF_FAILED;
+        }
+        const hits = new Set();
+        let file = "";
+        for (const line of diff.stdout.split("\n")) {
+            if (line.startsWith("+++ ")) {
+                file = line.replace(/^\+\+\+ (b\/)?/, "");
+                continue;
+            }
+            if (line.startsWith("+") && line.includes(marker))
+                hits.add(file);
+        }
+        paths = [...hits];
+    }
+    else {
+        const diff = quietGit(top, [
+            "diff",
+            "--name-only",
+            "-z",
+            "--no-renames",
+            range,
+            ...(code ? ["--", ".", ...NOT_CODE] : []),
+        ]);
+        if (!diff.ok) {
+            ctx.log(`git diff ${range} failed: ${diff.stderr}`);
+            return EXIT_DIFF_FAILED;
+        }
+        paths = diff.stdout.split("\0").filter(Boolean);
+        if (re !== undefined)
+            paths = paths.filter((p) => re.test(p));
+    }
+    ctx.emit({ found: paths.length > 0, paths });
+    if (ctx.flags.expectNone === true) {
+        if (paths.length > 0) {
+            ctx.log(marker !== undefined
+                ? `added lines still carry ${marker} in: ${paths.join(", ")}`
+                : `expected no match, found: ${paths.join(", ")}`);
+        }
+        return paths.length > 0 ? EXIT.NO : EXIT.OK;
+    }
+    return paths.length > 0 ? EXIT.OK : EXIT.NO;
+}
+async function forceBuildVerb(ctx) {
+    const f = ctx.flags;
+    const fid = String(f.fid);
+    const file = path.resolve(ctx.cwd, String(f.file));
+    const workflow = String(f.workflow);
+    const openPrFlag = str(f.openPr);
+    if (openPrFlag !== undefined && openPrFlag !== "none" && !/^[1-9][0-9]*$/.test(openPrFlag)) {
+        throw new CommandError(EXIT.USAGE, `--open-pr must be a PR number or none, got "${openPrFlag}"`);
+    }
+    const branch = currentBranch(ctx.cwd);
+    if (branch === "") {
+        ctx.log("no branch checked out (detached HEAD) — refusing to force a build");
+        return EXIT_DETACHED;
+    }
+    if (isSharedBranch(branch)) {
+        ctx.log(`Nothing to ship: force-build marks a feature branch, not '${branch}'`);
+        return EXIT_NOTHING_TO_PUSH;
+    }
+    // (1) The PR title: CI reads the marker from it on pull_request events.
+    const viaMcp = (why) => {
+        ctx.log(`${why} — add " bkit ${FORCE_BUILD}" to the open PR's title through update_pull_request (skip when no PR is open), then re-run with --title-set`);
+        return EXIT.USE_MCP;
+    };
+    let prNumber = null;
+    let titleChanged = false;
+    if (f.titleSet !== true && openPrFlag !== "none") {
+        const probe = probePr(ctx.cwd, openPrFlag === undefined
+            ? { head: branch, state: "open" }
+            : { number: openPrFlag, state: "open" });
+        if (probe.kind !== "ok")
+            return viaMcp(probe.message);
+        if (probe.pr) {
+            prNumber = probe.pr.number;
+            if (!probe.pr.title.includes(FORCE_BUILD)) {
+                const next = `${probe.pr.title} bkit ${FORCE_BUILD}`;
+                const edit = runGh(ctx.cwd, ["pr", "edit", String(prNumber), "--title", next]);
+                if (!edit.ok) {
+                    return viaMcp(ghUnavailable(edit)
+                        ? "gh unavailable for gh pr edit"
+                        : `gh pr edit ${prNumber} failed: ${edit.stderr}`);
+                }
+                titleChanged = true;
+                ctx.log(`PR #${prNumber} title now carries ${FORCE_BUILD}`);
+            }
+        }
+    }
+    // (2) The empty marker commit, once per run; its push is the event that starts the run.
+    const message = `chore(${fid}): force build bkit ${FORCE_BUILD}${autoRouteSuffix(f.label ?? [])}`;
+    const marker = markerCommit(ctx.cwd, {
+        file,
+        key: markerKey(file, workflow, "force-build"),
+        message,
+        addAll: false,
+    });
+    if (marker.deduped)
+        ctx.log(`force-build commit ${marker.sha.slice(0, 12)} already made this run — pushing it`);
+    const pushed = await pushBranch(ctx.cwd, { mode: "feature", requireCi: true }, ctx.log);
+    ctx.emit({
+        prNumber,
+        titleChanged,
+        commit: marker.sha,
+        deduped: marker.deduped,
+        pushed: pushed.out.pushed,
+        ref: pushed.out.ref,
+        sha: pushed.out.sha,
+    });
+    return pushed.code;
 }
 /** Resolve sync's docs-merge conflicts: ledgers by union, other `docs/` paths take dev's side. */
 function resolveDocsMerge(top) {
@@ -620,11 +1098,6 @@ function syncVerb(ctx) {
  */
 function syncDevVerb(ctx) {
     const root = repoRoot(ctx.cwd);
-    // `bkit install` can leave core.bare=true on the main checkout, which breaks `merge --ff-only` there.
-    if (git(root, ["config", "--get", "core.bare"]) === "true" &&
-        fs.statSync(path.join(root, ".git"), { throwIfNoEntry: false })?.isDirectory()) {
-        runGit(root, ["config", "core.bare", "false"]);
-    }
     const fetch = runGit(root, ["fetch", REMOTE, DEV]);
     if (!fetch.ok) {
         ctx.log(`git fetch ${REMOTE} ${DEV} failed: ${fetch.stderr}`);
@@ -655,11 +1128,9 @@ function install(ctx, root) {
 // ---------------------------------------------------------------------------
 /** What a design / plan close may bring to dev: docs and ledgers, nothing else. */
 const CLOSE_DOCS = /^docs\/plans\/|^docs\/roadmap\.md$|^docs\/[^/]+\.jsonl$|^\.bkit\/[^/]+\.jsonl$/;
-/** The canonical docs `ref` carries for the feature: design, or plan plus sub-plans. */
+/** The canonical doc `ref` carries for the feature: `{fid}-design.md` or `{fid}-plan.md`. */
 function canonicalDocs(root, ref, workflow, month, fid) {
-    const re = workflow === "plan"
-        ? new RegExp(`^docs/plans/${month}/${fid}-plan(-[0-9]+)?\\.md$`)
-        : new RegExp(`^docs/plans/${month}/${fid}-design\\.md$`);
+    const re = new RegExp(`^docs/plans/${month}/${fid}-${workflow}\\.md$`);
     return (git(root, ["ls-tree", "-r", "--name-only", ref, "--", `docs/plans/${month}/`]) ?? "")
         .split("\n")
         .filter((f) => re.test(f));
@@ -825,7 +1296,7 @@ async function landPr(ctx, root, o) {
             .filter((p) => p !== "" && !CLOSE_DOCS.test(p));
         if (stray.length)
             throw new Stop(EXIT_LAND_STOPPED, `${o.workflow} close diff carries non-doc files:\n${stray.join("\n")}`);
-        const pushed = pushBranch(tree, { mode: "feature" }, ctx.log);
+        const pushed = await pushBranch(tree, { mode: "feature" }, ctx.log);
         if (pushed.code !== EXIT.OK)
             throw new Stop(EXIT_PUSH_FAILED, "close-commit push failed — the PR would not carry the roadmap row or the close status rows");
         const opened = openPrFor(tree, {
@@ -853,6 +1324,8 @@ async function landPr(ctx, root, o) {
                 ctx.emit({ stage: "merge", prNumber: Number(prNumber), subject, body: "" });
                 return EXIT.USE_MCP;
             }
+            if (merged.code === EXIT_BASE_NOT_DEV)
+                throw new Stop(EXIT_LAND_STOPPED, `PR ${prNumber} does not target ${DEV} — bkit merges into ${DEV} only, releases stay manual; nothing merged, PR left open`);
             if (merged.out.merged) {
                 sha = merged.out.mergeCommitOid ?? "";
                 break;
@@ -954,11 +1427,6 @@ async function landVerb(ctx) {
     const fid = String(ctx.flags.fid);
     const root = repoRoot(ctx.cwd);
     const month = resolveMonth(root, fid, str(ctx.flags.month));
-    // `bkit install` can leave core.bare=true on the main checkout, which breaks every worktree below.
-    if (git(root, ["config", "--get", "core.bare"]) === "true" &&
-        fs.statSync(path.join(root, ".git"), { throwIfNoEntry: false })?.isDirectory()) {
-        runGit(root, ["config", "core.bare", "false"]);
-    }
     const worktreeStatus = path.join(git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? root, "docs", "plans", month, "logs", fid, "status.jsonl");
     try {
         const devPushes = devPushesOf(root, worktreeStatus, ctx.log);
@@ -1178,9 +1646,27 @@ export const branchesCommand = {
                     name: "mode",
                     type: "string",
                     required: true,
-                    help: "feature (a step's push) | abort (Failure Path: never into an open PR) | dev (the checkout must be on dev)",
+                    help: "feature (a step's push) | abort (Failure Path: never into an open PR) | dev (the checkout must be on dev) | plain (a feature branch, never forced)",
                 },
                 { name: "set-upstream", type: "boolean", help: "push with -u" },
+                {
+                    name: "ahead-of",
+                    type: "string",
+                    help: "--mode=plain: refuse (21) when HEAD has no commits beyond this ref; an origin/<branch> ref is fetched first",
+                },
+                {
+                    name: "commit",
+                    type: "string",
+                    help: "--mode=feature: `git add -A`, then an allow-empty commit with this message (plus ` bkit [auto route]` when --label holds bkit:auto), once per run, before the push",
+                },
+                {
+                    name: "label",
+                    type: "string",
+                    repeatable: true,
+                    help: "--commit: the issue's labels, one per flag",
+                },
+                { name: "file", type: "string", help: "--commit: status.jsonl for the engine-action row" },
+                { name: "workflow", type: "string", help: "--commit: the workflow, for the run number" },
                 {
                     name: "require-ci",
                     type: "boolean",
@@ -1191,23 +1677,137 @@ export const branchesCommand = {
                     type: "string",
                     help: "--mode=abort: the open-PR answer from MCP (a number, or none) instead of asking gh",
                 },
+                {
+                    name: "fid",
+                    type: "string",
+                    help: "an in-place run on dev: its FID, which selects the run's shared-checkout record; with it a missing record refuses the push",
+                },
             ],
             output: {
                 pushed: "true when the push ran and succeeded",
+                replayed: "true when the run's commits went out as copies cherry-picked onto a fresh origin/dev (an in-place run on dev whose local dev holds other commits); sha is then the landed origin/dev commit",
                 ref: "the branch pushed — link handover artifacts to this ref; null when nothing was pushed",
                 sha: "HEAD commit pushed (null when not pushed)",
                 forced: "true when pushed with --force-with-lease",
-                skipped: "why the push did not run: open-pr | skip-ci (null otherwise)",
+                skipped: "why the push did not run: open-pr | skip-ci | no-run-commits (an in-place run on dev with nothing new to push) (null otherwise)",
                 prNumber: "the open PR that stopped an abort push (null otherwise)",
+                commit: "--commit: the marker commit's sha",
+                deduped: "--commit: the marker commit was already made this run (not made again)",
             },
             exitCodes: {
                 [EXIT_DETACHED]: "no branch checked out",
+                [EXIT_NOTHING_TO_PUSH]: "--mode=plain or --commit on dev / main, or --ahead-of and HEAD has no commits beyond it",
                 [EXIT_SKIP_CI]: "--require-ci and the HEAD message carries a skip-CI token",
                 [EXIT_OPEN_PR]: "--mode=abort and the branch has an open PR: push skipped, remote HEAD kept",
-                [EXIT_PUSH_FAILED]: "git push failed",
+                [EXIT_PUSH_FAILED]: "git push failed, or dev refused a replayed push (in-place run on dev: the refusal is printed)",
                 [EXIT_NOT_DEV]: "--mode=dev and the checkout is not on dev",
+                [EXIT_NO_RECORD]: "--mode=dev, or --fid, on dev with no shared-checkout record for the run: nothing pushed",
+                [EXIT_FETCH_FAILED]: "in-place run on dev: fetching origin/dev failed",
+                [EXIT_MERGE_CONFLICT]: "in-place run on dev: a run commit does not apply onto origin/dev without the local commits it builds on; the conflicting paths are printed, nothing pushed",
             },
             run: pushVerb,
+        },
+        "fast-forward": {
+            summary: "Fetch a remote branch and fast-forward the checkout onto it; refuse when diverged.",
+            flags: [
+                {
+                    name: "onto",
+                    type: "string",
+                    required: true,
+                    help: "the ref to fast-forward onto; an origin/<branch> ref is fetched first",
+                },
+            ],
+            output: { moved: "HEAD moved", head: "HEAD after" },
+            exitCodes: {
+                [EXIT_FETCH_FAILED]: "fetching --onto failed, or it does not resolve",
+                [EXIT_DIVERGED]: "the checkout has commits --onto lacks: nothing moved",
+            },
+            run: fastForwardVerb,
+        },
+        "scan-diff": {
+            summary: "Exit 0 when the branch's diff from --base matches (paths, an added marker line, or a source change); 1 when not.",
+            flags: [
+                {
+                    name: "base",
+                    type: "string",
+                    required: true,
+                    help: "diff <base>...HEAD; an origin/<branch> base is fetched first",
+                },
+                {
+                    name: "paths",
+                    type: "string",
+                    help: "a changed path matches this pattern (case-insensitive)",
+                },
+                {
+                    name: "marker",
+                    type: "string",
+                    help: "an added line carries this text, outside docs/plans",
+                },
+                {
+                    name: "code",
+                    type: "boolean",
+                    help: "a path changed outside docs/plans, docs/*.jsonl and .bkit/*.jsonl",
+                },
+                {
+                    name: "expect-none",
+                    type: "boolean",
+                    help: "invert the exit: 0 when nothing matched, 1 (naming the paths on stderr) when something did",
+                },
+            ],
+            output: { found: "something matched", paths: "the matching paths" },
+            exitCodes: {
+                [EXIT_DIFF_FAILED]: "--base does not resolve, or git diff failed",
+            },
+            run: scanDiffVerb,
+        },
+        "force-build": {
+            summary: `Force a full CI build: put ${FORCE_BUILD} on the open PR's title, then push an empty marker commit (once per run).`,
+            flags: [
+                { name: "fid", type: "string", required: true, help: "feature id, for the commit subject" },
+                {
+                    name: "file",
+                    type: "string",
+                    required: true,
+                    help: "status.jsonl for the engine-action row",
+                },
+                {
+                    name: "workflow",
+                    type: "string",
+                    required: true,
+                    help: "the workflow, for the run number",
+                },
+                {
+                    name: "label",
+                    type: "string",
+                    repeatable: true,
+                    help: "the issue's labels; bkit:auto adds ` bkit [auto route]` to the commit",
+                },
+                {
+                    name: "open-pr",
+                    type: "string",
+                    help: "the open-PR answer from MCP (a number, or none) instead of asking gh",
+                },
+                {
+                    name: "title-set",
+                    type: "boolean",
+                    help: "the title is handled (set through MCP, or no PR is open): skip gh",
+                },
+            ],
+            output: {
+                prNumber: "the open PR whose title was checked, or null",
+                titleChanged: `the title gained ${FORCE_BUILD}`,
+                commit: "the marker commit's sha",
+                deduped: "the marker commit was already made this run",
+                pushed: "the push ran and succeeded",
+                ref: "the branch pushed",
+                sha: "HEAD pushed",
+            },
+            exitCodes: {
+                [EXIT_DETACHED]: "no branch checked out",
+                [EXIT_NOTHING_TO_PUSH]: "on dev / main",
+                [EXIT_PUSH_FAILED]: "git commit or git push failed",
+            },
+            run: forceBuildVerb,
         },
         rebase: {
             summary: "Drive a rebase to completion, auto-resolving ledger (union) and lockfile (regenerate) conflicts; refuse and abort on anything else.",
@@ -1296,7 +1896,7 @@ export const branchesCommand = {
             exitCodes: {
                 [EXIT_PUSH_FAILED]: "dev moved before every one of LAND_ATTEMPTS pushes, or the PR branch push failed (nothing landed)",
                 [EXIT_FETCH_FAILED]: `git fetch ${REMOTE} ${DEV} failed (nothing landed)`,
-                [EXIT_LAND_STOPPED]: "a guard stopped the land: stray files, failed squash, staged non-doc files, canonical blob mismatch, no checkout holds the branch, PR not opened / not merged after LAND_ATTEMPTS tries (nothing landed; the PR stays open)",
+                [EXIT_LAND_STOPPED]: "a guard stopped the land: stray files, failed squash, staged non-doc files, canonical blob mismatch, no checkout holds the branch, PR not opened / not merged after LAND_ATTEMPTS tries, PR base not dev or unreadable (nothing landed; the PR stays open)",
                 [EXIT_LANDED_UNVERIFIED]: "landed, but the body scan, transport cross-check or canonical-on-dev check failed",
                 [EXIT_LOCK_LEFT]: "landed and audited, but the workflow lock file survived removal",
             },

@@ -146,12 +146,12 @@ describe("runCloudModule — opt-in cloud agents (post-CI auto-routing)", () => 
   });
 
   for (const variant of ["claude", "opencode", "cursor"] as const) {
-    it(`cloud=${variant}: persists bkit.cloudAgents = '${variant}' to package.json`, () => {
+    it(`cloud=${variant}: persists bkit.cloud.agent = '${variant}' to package.json`, () => {
       runCloudModule(makeCtx({ cloudVariant: variant }));
       const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
-        bkit?: { cloudAgents?: string };
+        bkit?: { cloud?: { agent?: string } };
       };
-      expect(pkg.bkit?.cloudAgents).toBe(variant);
+      expect(pkg.bkit?.cloud?.agent).toBe(variant);
     });
   }
 

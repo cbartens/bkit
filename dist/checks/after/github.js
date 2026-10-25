@@ -7,6 +7,7 @@ import { execFileSync } from "node:child_process";
 import { MCP_TOOLSETS_HEADER, parseToolsets } from "../../install/write.js";
 import { parseJson, readJsonFile } from "../../shared/json.js";
 import { readBkitConfig } from "../../shared/settings.js";
+import { isCloudOrCi } from "../before/env.js";
 /**
  * Detect whether branch protection is configured on `main`.
  * Returns "present" | "missing" | "unknown".
@@ -64,7 +65,7 @@ export function detectActionsWritePermissions() {
  *
  * - `github`  → GitHub tracker: the GitHub MCP server authenticates with `BKIT_GH_TOKEN`; `gh` uses `gh auth login`.
  * - `linear`  → existing Linear setup message (BKIT_LINEAR_API_KEY + LINEAR_ISSUE_ID).
- * - `jira`    → admin switch, BKIT_JIRA_API_TOKEN and `bkit.jira` in package.json.
+ * - `jira`    → admin switch, BKIT_JIRA_API_KEY and `bkit.tracker.jira` in package.json.
  * - `none`    → prompt to run `bkit install --tracker=github`, `--tracker=linear` or `--tracker=jira`.
  *
  * Only fires when bkit workflows are installed (.claude/ or .cursor/ present).
@@ -96,10 +97,10 @@ export function buildTrackerSetupAdvisory(cwd) {
             id: "tracker-setup-jira",
             severity: "advisory",
             detect: "bkit tracker is configured as `jira`. Jira Cloud is the active tracker.",
-            action: 'Jira tracker: (1) an org admin turns on API-token sign-in for the Rovo MCP server (admin.atlassian.com → Rovo → Rovo MCP server → Authentication → "Allow API token authentication"); (2) create an API token with scopes for the app "Atlassian MCP V2" at https://id.atlassian.com/manage-profile/security/api-tokens and set it as `BKIT_JIRA_API_TOKEN` in `.bkit/.env`, then `direnv allow`; (3) set `bkit.jira.site` (e.g. `https://acme.atlassian.net`) and `bkit.jira.project` (the project key) in package.json. Full steps: `.bkit/trackers.md` § jira.',
+            action: 'Jira tracker: (1) an org admin turns on API-token sign-in for the Rovo MCP server (admin.atlassian.com → Rovo → Rovo MCP server → Authentication → "Allow API token authentication"); (2) create an API token with scopes for the app "Atlassian MCP V2" at https://id.atlassian.com/manage-profile/security/api-tokens and set it as `BKIT_JIRA_API_KEY` in `.bkit/.env`, then `direnv allow`; (3) set `bkit.tracker.jira.site` (e.g. `https://acme.atlassian.net`) and `bkit.tracker.jira.project` (the project key) in package.json. Full steps: `.bkit/trackers.md` § jira.',
         };
     }
-    // tracker === "none". Distinguish opt-out (explicit `bkit.issueTracker: "none"`)
+    // tracker === "none". Distinguish opt-out (explicit `bkit.tracker.default: "none"`)
     // from undecided (field absent). An explicit `none` silences the nudge, as with the
     // dep-updater advisory.
     if (issueTrackerExplicit)
@@ -107,12 +108,12 @@ export function buildTrackerSetupAdvisory(cwd) {
     return {
         id: "tracker-setup-none",
         severity: "advisory",
-        detect: "bkit tracker is not configured (`bkit.issueTracker` absent). Workflows run but every tracker call is a no-op.",
-        action: 'Optional post-install decision. Run `bkit install --tracker=github` (recommended), `--tracker=linear` or `--tracker=jira` to enable tracker integration. GitHub tracker requires `BKIT_GH_TOKEN` in `.bkit/.env` (fine-grained PAT for one owner, classic PAT across owners). Linear tracker requires `BKIT_LINEAR_API_KEY` in `.bkit/.env`. Jira tracker requires `BKIT_JIRA_API_TOKEN` in `.bkit/.env` and `bkit.jira` in package.json. To opt out and silence this advisory, set `bkit.issueTracker` to `"none"` in package.json.',
+        detect: "bkit tracker is not configured (`bkit.tracker.default` absent). Workflows run but every tracker call is a no-op.",
+        action: 'Optional post-install decision. Run `bkit install --tracker=github` (recommended), `--tracker=linear` or `--tracker=jira` to enable tracker integration. GitHub tracker requires `BKIT_GH_TOKEN` in `.bkit/.env` (fine-grained PAT for one owner, classic PAT across owners). Linear tracker requires `BKIT_LINEAR_API_KEY` in `.bkit/.env`. Jira tracker requires `BKIT_JIRA_API_KEY` in `.bkit/.env` and `bkit.tracker.jira` in package.json. To opt out and silence this advisory, set `bkit.tracker.default` to `"none"` in package.json.',
     };
 }
 /**
- * Classify the `bkit.github.project` board-sync config in package.json:
+ * Classify the `bkit.tracker.github.project` board-sync config in package.json:
  *   - "configured" → a Projects v2 board URL
  *   - "opted-out"  → set to `false` ("no board sync" — stay quiet)
  *   - "invalid"    → a string that is not a board URL
@@ -154,13 +155,13 @@ export function detectProjectsToolset(cwd) {
 /**
  * GitHub Projects v2 board-sync prerequisite advisory. Board status sync needs
  * THREE things, none of which install seeds or verifies end-to-end:
- * `bkit.github.project` (the board URL), the `projects` MCP toolset, and a PAT
+ * `bkit.tracker.github.project` (the board URL), the `projects` MCP toolset, and a PAT
  * with Projects R/W. Absent any of the first two (the detectable ones), board
  * sync silently no-ops — the URL alone is useless if the toolset lacks
  * `projects`, and vice versa. Emits one advisory naming what's missing.
  *
  * Gates: workflows installed (.claude/ or .cursor/) AND tracker === "github".
- * Stays quiet on explicit opt-out (`bkit.github.project: false`) or when both
+ * Stays quiet on explicit opt-out (`bkit.tracker.github.project: false`) or when both
  * detectable prerequisites are satisfied (PAT scope can't be checked locally).
  */
 export function buildGithubProjectAdvisory(cwd) {
@@ -180,9 +181,9 @@ export function buildGithubProjectAdvisory(cwd) {
         return null;
     const missing = [];
     if (configState === "absent")
-        missing.push("`bkit.github.project` is absent from package.json");
+        missing.push("`bkit.tracker.github.project` is empty or absent in package.json");
     if (configState === "invalid")
-        missing.push("`bkit.github.project` is not a GitHub Projects board URL");
+        missing.push("`bkit.tracker.github.project` is not a GitHub Projects board URL");
     if (toolset === "missing")
         missing.push("the `projects` toolset is missing from `.mcp.json` `X-MCP-Toolsets`");
     const missingPhrase = missing.length > 0 ? `: ${missing.join("; ")}` : "";
@@ -194,7 +195,9 @@ export function buildGithubProjectAdvisory(cwd) {
         action: "Board status sync is optional (workflows never gate on it) but invisible when half-configured. All three prerequisites are required:\n\n" +
             "1. Add the board's URL to package.json, as the browser shows it on the board (`/orgs/<org>/…` for an organization board, `/users/<login>/…` for a personal one; a trailing `/views/<n>` is fine):\n\n" +
             '       "bkit": {\n' +
-            '         "github": { "project": "https://github.com/orgs/<org>/projects/<number>" }\n' +
+            '         "tracker": {\n' +
+            '           "github": { "project": "https://github.com/orgs/<org>/projects/<number>" }\n' +
+            "         }\n" +
             "       }\n\n" +
             "   Workflows set the board's Status field by option name: `In progress` when a phase starts, `In review` at hand-off. " +
             'A board whose Status options are named differently sets `"progress"` and `"review"` beside `"project"` to its own names.\n\n' +
@@ -203,7 +206,78 @@ export function buildGithubProjectAdvisory(cwd) {
             "3. The `BKIT_GH_TOKEN` PAT needs Projects read & write (repo scope is not enough): a fine-grained PAT gets it as an " +
             "organization permission, so it reaches organization boards only; a classic PAT with the `project` scope reaches " +
             "organization and personal boards.\n\n" +
-            "To opt out and silence this advisory, set `bkit.github.project` to `false` in package.json.",
+            "To opt out and silence this advisory, set `bkit.tracker.github.project` to `false` in package.json.",
+    };
+}
+/** `gh` run with the token the engine uses for tracker calls: BKIT_GH_TOKEN as GH_TOKEN when set. */
+function ghAsEngine(args) {
+    const token = process.env.BKIT_GH_TOKEN;
+    return execFileSync("gh", args, {
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: 5000,
+        env: token ? { ...process.env, GH_TOKEN: token } : process.env,
+    });
+}
+/**
+ * Whether the engine's token can move cards on the configured board: "present",
+ * "missing", or "unknown" (gh unavailable or unauthenticated). A classic token lists its
+ * scopes in `X-OAuth-Scopes` and needs `project`; a fine-grained token lists none, so the
+ * board itself is queried.
+ */
+export function detectProjectTokenScope(owner, number) {
+    let head;
+    try {
+        head = ghAsEngine(["api", "-i", "user"]).split(/\r?\n\r?\n/)[0] ?? "";
+    }
+    catch {
+        return "unknown";
+    }
+    const scopes = /^x-oauth-scopes:(.*)$/im.exec(head);
+    if (scopes) {
+        const list = scopes[1].split(",").map((x) => x.trim());
+        return list.includes("project") ? "present" : "missing";
+    }
+    const field = "projectV2(number: $n) { id }";
+    try {
+        const out = ghAsEngine([
+            "api",
+            "graphql",
+            "-f",
+            `query=query($login: String!, $n: Int!) { repositoryOwner(login: $login) { ... on User { ${field} } ... on Organization { ${field} } } }`,
+            "-f",
+            `login=${owner}`,
+            "-F",
+            `n=${number}`,
+        ]);
+        const parsed = parseJson(out);
+        const data = (parsed.ok ? parsed.value : null);
+        return data?.data?.repositoryOwner?.projectV2?.id ? "present" : "missing";
+    }
+    catch {
+        return "missing";
+    }
+}
+/**
+ * The engine moves board cards with `BKIT_GH_TOKEN`; a token that cannot reach the board
+ * makes every move fall back to the MCP. Checked live, so it runs only when a board is
+ * configured, the tracker is GitHub, and not on cloud / CI (no interactive owner to fix it).
+ */
+export function buildGithubProjectTokenScopeAdvisory(cwd) {
+    const config = readBkitConfig(cwd);
+    const board = config.github.project;
+    if (config.issueTracker !== "github" || !board || isCloudOrCi())
+        return null;
+    if (detectProjectTokenScope(board.owner, board.number) !== "missing")
+        return null;
+    return {
+        id: "github-project-token-scope",
+        severity: "advisory",
+        detect: `The GitHub token cannot reach the board \`${config.github.projectUrl}\`: a classic token lacks the \`project\` scope, ` +
+            "or a fine-grained token's board query returned nothing. Board moves fall back to the MCP.",
+        action: "Give `BKIT_GH_TOKEN` Projects read & write: a classic PAT needs the `project` scope (reaches organization and personal boards); " +
+            "a fine-grained PAT needs the organization permission Projects: Read and write (organization boards only). " +
+            "Then re-run `bkit check`.",
     };
 }
 /**
@@ -213,15 +287,15 @@ export function buildGithubProjectAdvisory(cwd) {
  * consumers to make the choice post-install.
  *
  * Also performs the cloud=claude config-consistency assertion: when
- * `bkit.cloudAgents === "claude"` but the installed `bkit-cloud.yml` lacks
+ * `bkit.cloud.agent === "claude"` but the installed `bkit-cloud.yml` lacks
  * `id-token: write`, it surfaces a consistency warning (exit-1 signal surfaced via
  * the `blocker` severity in the checks/before/index.ts caller).
  *
  * Resolution order (file presence is authoritative, package.json field is the
  * opt-out):
  *   - `.github/workflows/bkit-cloud.yml` present → `cloud-router` (informational; active)
- *   - `bkit.cloudAgents === "none"`                  → null (opt-out — stay quiet)
- *   - `bkit.issueTracker === "jira"`                 → null (Jira runs locally only)
+ *   - `bkit.cloud.agent === "none"`                  → null (opt-out — stay quiet)
+ *   - `bkit.tracker.default === "jira"`                 → null (Jira runs locally only)
  *   - otherwise (undecided)                          → `cloud-router-none` (nudge to choose)
  *
  * Only fires when there is a `.github/workflows/` dir (the router wakes on a CI
@@ -239,7 +313,7 @@ export function buildCloudSetupAdvisory(cwd) {
                 return {
                     id: "cloud-claude-missing-id-token",
                     severity: "blocker",
-                    detect: "`bkit.cloudAgents` is `claude` but `.github/workflows/bkit-cloud.yml` lacks `id-token: write`. `claude-code-action@v1` will fail at boot with an OIDC error.",
+                    detect: "`bkit.cloud.agent` is `claude` but `.github/workflows/bkit-cloud.yml` lacks `id-token: write`. `claude-code-action@v1` will fail at boot with an OIDC error.",
                     action: "Re-run `pnpm bkit install --auto=claude --tracker=github` to regenerate the workflow with `id-token: write` and the App-auth framing. Also verify the Claude GitHub App is installed (`/install-github-app`). See bkit's `cloud.md` § Post-CI auto-routing.",
                 };
             }
@@ -267,6 +341,6 @@ export function buildCloudSetupAdvisory(cwd) {
         detect: "Cloud agents: post-CI auto-routing is not configured. `.github/workflows/` exists but no `bkit-cloud.yml` — CI pass/fail does not auto-dispatch bkit-ship / bkit-debug.",
         action: "Optional post-install decision. For a GitHub-tracker repo: `pnpm bkit install --auto=claude --tracker=github`. For a Linear-tracker repo: `pnpm bkit install --auto=cursor --tracker=linear`.\n\n" +
             "Prerequisites for `--auto=claude`: `ANTHROPIC_API_KEY` repo secret (or the `ANTHROPIC_FEDERATION_RULE_ID` + `ANTHROPIC_ORGANIZATION_ID` repo variables for keyless workload identity federation) + Claude GitHub App (`/install-github-app`) + GitHub Actions write permissions.\n\n" +
-            'To opt out and silence this advisory, set `bkit.cloudAgents` to `"none"` in package.json.',
+            'To opt out and silence this advisory, set `bkit.cloud.agent` to `"none"` in package.json.',
     };
 }

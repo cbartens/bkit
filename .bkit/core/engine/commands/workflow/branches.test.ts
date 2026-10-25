@@ -8,7 +8,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runCommand } from "../lib";
 import { LOCKFILE_REGENERATE, PACKAGE_RUNNER } from "../../shared/package-manager";
-import { LEDGERS, branchesCommand, classifyConflict, readAnchor, stampAnchor } from "./branches";
+import {
+  LEDGERS,
+  branchesCommand,
+  classifyConflict,
+  readAnchor,
+  replayBuild,
+  stampAnchor,
+} from "./branches";
+import { appendRecordCommit, newRecord, writeRecord } from "./ledgers";
 
 // `branches land` retries without waiting, three tries in all.
 vi.mock("../../shared/timeouts", async (importOriginal) => {
@@ -57,7 +65,7 @@ async function run(cwd: string, argv: string[], env: Record<string, string> = {}
   const out: string[] = [];
   const err: string[] = [];
   try {
-    const code = await runCommand(["branches", ...argv], [branchesCommand], {
+    const code = await runCommand(["branches", ...argv, "--json"], [branchesCommand], {
       classicVerbs: new Set(),
       cwd,
       io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
@@ -941,6 +949,7 @@ describe("branches push", { timeout: GIT_TIMEOUT }, () => {
       forced: true,
       skipped: null,
       prNumber: null,
+      replayed: false,
     });
     expect(remoteSha(origin, "feat/1-x")).toBe(sha(clone));
     // A rebased (rewritten) branch still pushes: that is what the lease is for.
@@ -949,17 +958,28 @@ describe("branches push", { timeout: GIT_TIMEOUT }, () => {
     expect(remoteSha(origin, "feat/1-x")).toBe(sha(clone));
   });
 
-  it("pushes dev plainly, so a non-fast-forward is refused rather than forced", async () => {
-    const { origin, clone } = withOrigin("push-dev");
+  it("refuses a dev push with no shared-checkout record (exit 20) and pushes nothing", async () => {
+    const { origin, clone } = withOrigin("push-dev-norecord");
+    const before = sha(origin, "dev");
     commit(clone, { "a.txt": "a\n" }, "docs: x");
     const r = await run(clone, ["push", "--mode=dev"]);
-    expect(r.code).toBe(0);
-    expect(r.json).toMatchObject({ pushed: true, ref: "dev", forced: false });
+    expect(r.code).toBe(20);
+    expect(r.json).toMatchObject({ pushed: false, ref: null });
+    expect(sha(origin, "dev")).toBe(before);
+    const named = await run(clone, ["push", "--mode=dev", "--fid=gone"]);
+    expect(named.code).toBe(20);
+    expect(sha(origin, "dev")).toBe(before);
+  });
+
+  it("a feature-mode push of an amended dev is refused rather than forced", async () => {
+    const { origin, clone } = withOrigin("push-dev-amended");
+    commit(clone, { "a.txt": "a\n" }, "docs: x");
+    git(clone, "push", "-q", "origin", "dev");
     git(clone, "commit", "-q", "--amend", "-m", "docs: rewritten");
     const again = await run(clone, ["push", "--mode=feature"]);
     expect(again.code).toBe(8);
     expect(again.json).toMatchObject({ pushed: false, ref: null });
-    expect(remoteSha(origin, "dev")).not.toBe(sha(clone));
+    expect(sha(origin, "dev")).not.toBe(sha(clone));
   });
 
   it("pushes when the pre-push hook prints more than Node's 1MB default", async () => {
@@ -1038,6 +1058,7 @@ describe("branches push", { timeout: GIT_TIMEOUT }, () => {
       forced: false,
       skipped: "open-pr",
       prNumber: 12,
+      replayed: false,
     });
     expect(fs.readFileSync(log, "utf-8")).toContain(
       "pr list --head feat/1-x --state open --json number,state",
@@ -1110,9 +1131,583 @@ describe("branches push", { timeout: GIT_TIMEOUT }, () => {
   });
 });
 
+describe(
+  "branches push — in place on dev with a shared-checkout record",
+  { timeout: GIT_TIMEOUT },
+  () => {
+    const FID = "650-own-push";
+    const remoteLog = (origin: string) => git(origin, "log", "--format=%s", "dev").out.split("\n");
+
+    /** A clone on dev with one foreign commit already ahead; the run starts after it. */
+    function started(name: string) {
+      const { origin, clone } = withOrigin(name);
+      commit(clone, { "foreign-before.txt": "f\n" }, "foreign: made before the run");
+      writeRecord(clone, newRecord(clone, FID, "dev"));
+      return { origin, clone };
+    }
+    /** A commit the run made: recorded the way the engine records it. */
+    function runCommit(clone: string, files: Record<string, string>, message: string) {
+      commit(clone, files, message);
+      appendRecordCommit(clone, FID, sha(clone));
+      return sha(clone);
+    }
+
+    it("push after a replay reports the pushToDev sha not HEAD", async () => {
+      const { origin, clone } = started("replay-sha");
+      runCommit(clone, { "run.txt": "r\n" }, "fix: the run's commit");
+      const r = await run(clone, ["push", "--mode=dev"]);
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ pushed: true, ref: "dev", forced: false, replayed: true });
+      expect(r.json?.sha).toBe(sha(origin, "dev"));
+      expect(r.json?.sha).not.toBe(sha(clone));
+      expect(remoteLog(origin)).toContain("fix: the run's commit");
+      expect(remoteLog(origin)).not.toContain("foreign: made before the run");
+      expect(r.err).toContain("git pull --rebase origin dev");
+    });
+
+    it("replay build callback cherry-picks exactly the recorded SHAs", () => {
+      const { origin, clone } = started("replay-build");
+      const first = runCommit(clone, { "one.txt": "1\n" }, "run one");
+      commit(clone, { "foreign-mid.txt": "m\n" }, "foreign: mid-run");
+      const second = runCommit(clone, { "two.txt": "2\n" }, "run two");
+      git(clone, "fetch", "-q", "origin", "dev");
+      const dir = path.join(tmp("replay-dir"), "wt");
+      git(clone, "worktree", "add", "--detach", dir, "origin/dev");
+      replayBuild([first, second])(dir);
+      expect(git(dir, "log", "--format=%s", "origin/dev..HEAD").out).toBe("run two\nrun one");
+      expect(fs.existsSync(path.join(dir, "foreign-mid.txt"))).toBe(false);
+      expect(fs.existsSync(path.join(dir, "two.txt"))).toBe(true);
+      expect(sha(origin, "dev")).toBe(sha(dir, "origin/dev"));
+    });
+
+    it("replay conflict exits non-zero naming the paths and removes the throwaway checkout", async () => {
+      const { origin, clone } = withOrigin("replay-conflict");
+      commit(clone, { "src.txt": "foreign line\n" }, "foreign: touches src.txt");
+      writeRecord(clone, newRecord(clone, FID, "dev"));
+      // The run's commit rewrites the foreign line, so it cannot apply without it.
+      fs.writeFileSync(path.join(clone, "src.txt"), "code v0\nrun rewrote it\n");
+      git(clone, "add", "-A");
+      git(clone, "commit", "-q", "-m", "fix: depends on the foreign commit");
+      appendRecordCommit(clone, FID, sha(clone));
+      const before = sha(origin, "dev");
+      const r = await run(clone, ["push", "--mode=dev"]);
+      expect(r.code).toBe(11);
+      expect(r.err).toContain("src.txt");
+      expect(sha(origin, "dev")).toBe(before);
+      expect(fs.existsSync(path.join(clone, ".worktrees", `_land-${FID}`))).toBe(false);
+      expect(git(clone, "worktree", "list", "--porcelain").out).not.toContain("_land-");
+    });
+
+    it("a server-refused pushToDev exits EXIT_PUSH_FAILED naming the refusal", async () => {
+      const { origin, clone } = started("replay-refused");
+      runCommit(clone, { "run.txt": "r\n" }, "fix: refused");
+      fs.writeFileSync(
+        path.join(origin, "hooks", "pre-receive"),
+        '#!/bin/sh\necho "dev is protected" >&2\nexit 1\n',
+        { mode: 0o755 },
+      );
+      const calls = path.join(tmp("calls"), "git");
+      const bin = stubBin({
+        git: `[ "$1" = push ] && echo "$*" >> "${calls}"\nexec "${REAL_GIT}" "$@"`,
+      });
+      const r = await run(clone, ["push", "--mode=dev"], { PATH: withBin(bin) });
+      expect(r.code).toBe(8);
+      expect(r.err).toContain("dev is protected");
+      // The one push went out of the throwaway checkout as HEAD:dev, not from the main checkout.
+      expect(fs.readFileSync(calls, "utf-8")).toBe("push origin HEAD:dev\n");
+      expect(r.json).toMatchObject({ pushed: false, ref: null, sha: null });
+      expect(fs.existsSync(path.join(clone, ".worktrees", `_land-${FID}`))).toBe(false);
+    });
+
+    it("skip-ci HEAD on the replay is refused", async () => {
+      const { origin, clone } = started("replay-skipci");
+      runCommit(clone, { "run.txt": "r\n" }, "chore(650): close bkit [skip ci]");
+      commit(clone, { "foreign-top.txt": "t\n" }, "foreign: top commit, no token");
+      const refused = await run(clone, ["push", "--mode=dev", "--require-ci"]);
+      expect(refused.code).toBe(6);
+      expect(refused.json).toMatchObject({ pushed: false, skipped: "skip-ci" });
+      expect(remoteLog(origin)).not.toContain("chore(650): close bkit [skip ci]");
+    });
+
+    it("a skip-ci foreign HEAD does not block a replay whose last run commit is clean", async () => {
+      const { origin, clone } = started("replay-skipci-foreign");
+      runCommit(clone, { "run.txt": "r\n" }, "fix: the run's last commit");
+      commit(clone, { "foreign-top.txt": "t\n" }, "foreign: wip [skip ci]");
+      const r = await run(clone, ["push", "--mode=dev", "--require-ci"]);
+      expect(r.code).toBe(0);
+      expect(remoteLog(origin)).toContain("fix: the run's last commit");
+    });
+
+    it("abort mode on dev with a record pushes only recorded SHAs", async () => {
+      const { origin, clone } = started("replay-abort");
+      runCommit(clone, { "run.txt": "r\n" }, "fix: recorded");
+      commit(clone, { "foreign-mid.txt": "m\n" }, "foreign: mid-run");
+      const calls = path.join(tmp("calls"), "git");
+      const bin = stubBin({
+        git: `[ "$1" = push ] && echo "$*" >> "${calls}"\nexec "${REAL_GIT}" "$@"`,
+      });
+      const r = await run(clone, ["push", "--mode=abort"], { PATH: withBin(bin) });
+      expect(r.code).toBe(0);
+      expect(remoteLog(origin)).toContain("fix: recorded");
+      expect(remoteLog(origin)).not.toContain("foreign: mid-run");
+      expect(fs.readFileSync(calls, "utf-8")).not.toContain("push origin dev");
+    });
+
+    it("a level local dev is a plain push, recording nothing extra", async () => {
+      const { origin, clone } = withOrigin("replay-level");
+      writeRecord(clone, newRecord(clone, FID, "dev"));
+      runCommit(clone, { "run.txt": "r\n" }, "fix: only the run");
+      const r = await run(clone, ["push", "--mode=dev"]);
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ pushed: true, replayed: false, sha: sha(clone) });
+      expect(sha(origin, "dev")).toBe(sha(clone));
+    });
+
+    it("a record with no commits pushes nothing", async () => {
+      const { origin, clone } = started("replay-empty");
+      const before = sha(origin, "dev");
+      const r = await run(clone, ["push", "--mode=dev"]);
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ pushed: false, skipped: "no-run-commits" });
+      expect(sha(origin, "dev")).toBe(before);
+    });
+
+    it("without a record the dev push is refused (exit 20), pushing nothing", async () => {
+      const { origin, clone } = withOrigin("replay-none");
+      const before = sha(origin, "dev");
+      commit(clone, { "a.txt": "a\n" }, "docs: x");
+      const r = await run(clone, ["push", "--mode=dev"]);
+      expect(r.code).toBe(20);
+      expect(r.json).toMatchObject({ pushed: false });
+      expect(sha(origin, "dev")).toBe(before);
+    });
+  },
+);
+
 // ---------------------------------------------------------------------------
 // sync
 // ---------------------------------------------------------------------------
+
+/** A feature branch `feat/1-x` one commit ahead of origin/dev. */
+function featureBranch(name: string) {
+  const { origin, clone } = withOrigin(name);
+  git(clone, "checkout", "-q", "-b", "feat/1-x");
+  commit(clone, { "a.txt": "a\n" }, "feat(1-x): work");
+  return { origin, clone };
+}
+
+/** A status.jsonl outside the clone, so `git add -A` never sweeps it into a commit. */
+const statusOutside = () => path.join(tmp("status"), "status.jsonl");
+const actionRows = (file: string) =>
+  fs.existsSync(file)
+    ? fs
+        .readFileSync(file, "utf-8")
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => JSON.parse(l) as Record<string, unknown>)
+        .filter((r) => r.type === "engine-action")
+    : [];
+
+describe("branches push --mode=plain", { timeout: GIT_TIMEOUT }, () => {
+  it("pushes the branch without a force flag and records the upstream", async () => {
+    const { origin, clone } = featureBranch("plain-push");
+    const log = path.join(tmp("log"), "calls");
+    const bin = stubBin({
+      git: `[ "$1" = push ] && echo "$@" >> "${log}"\nexec "${REAL_GIT}" "$@"`,
+    });
+    const r = await run(clone, ["push", "--mode=plain", "--set-upstream"], { PATH: withBin(bin) });
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ pushed: true, ref: "feat/1-x", sha: sha(clone), forced: false });
+    expect(fs.readFileSync(log, "utf-8")).toBe("push -u origin feat/1-x\n");
+    expect(git(origin, "rev-parse", "feat/1-x").out).toBe(sha(clone));
+    expect(git(clone, "config", "branch.feat/1-x.remote").out).toBe("origin");
+  });
+
+  it("a rewritten branch is refused, never forced", async () => {
+    const { origin, clone } = featureBranch("plain-rewritten");
+    expect((await run(clone, ["push", "--mode=plain"])).code).toBe(0);
+    git(clone, "commit", "-q", "--amend", "-m", "feat(1-x): reworded");
+    const r = await run(clone, ["push", "--mode=plain"]);
+    expect(r.code).toBe(8);
+    expect(git(origin, "rev-parse", "feat/1-x").out).not.toBe(sha(clone));
+  });
+
+  it("refuses dev and main with exit 21 and pushes nothing", async () => {
+    const { origin, clone } = withOrigin("plain-dev");
+    const before = sha(origin, "dev");
+    commit(clone, { "a.txt": "a\n" }, "docs: x");
+    const r = await run(clone, ["push", "--mode=plain"]);
+    expect(r.code).toBe(21);
+    expect(r.err).toContain("Nothing to ship");
+    expect(sha(origin, "dev")).toBe(before);
+  });
+
+  it("--ahead-of fetches the ref and refuses a branch with no commits beyond it (exit 21)", async () => {
+    const { origin, clone } = withOrigin("plain-ahead");
+    git(clone, "checkout", "-q", "-b", "feat/1-x");
+    const none = await run(clone, ["push", "--mode=plain", "--ahead-of=origin/dev"]);
+    expect(none.code).toBe(21);
+    expect(none.err).toContain("no commits ahead of origin/dev");
+    expect(git(origin, "rev-parse", "--verify", "--quiet", "feat/1-x").ok).toBe(false);
+
+    commit(clone, { "a.txt": "a\n" }, "feat(1-x): work");
+    landOnDev(origin, { "b.txt": "b\n" });
+    const r = await run(clone, ["push", "--mode=plain", "--ahead-of=origin/dev"]);
+    expect(r.code).toBe(0);
+    // The fetch brought origin/dev up to the remote's dev.
+    expect(sha(clone, "origin/dev")).toBe(git(origin, "rev-parse", "dev").out);
+  });
+
+  it("refuses a detached HEAD (exit 5)", async () => {
+    const { clone } = featureBranch("plain-detached");
+    git(clone, "checkout", "-q", "--detach");
+    expect((await run(clone, ["push", "--mode=plain"])).code).toBe(5);
+  });
+});
+
+describe("branches push --commit", { timeout: GIT_TIMEOUT }, () => {
+  const args = (file: string, ...more: string[]) => [
+    "push",
+    "--mode=feature",
+    "--require-ci",
+    "--commit=chore(1-x): create-pr bkit [verbose ci]",
+    `--file=${file}`,
+    "--workflow=debug",
+    ...more,
+  ];
+
+  it("stages everything, makes the marker commit with the auto-route suffix, and pushes it", async () => {
+    const { origin, clone } = featureBranch("commit-push");
+    write(clone, "new.txt", "n\n");
+    const file = statusOutside();
+    const r = await run(clone, args(file, "--label=bkit:auto", "--label=bug"));
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ pushed: true, ref: "feat/1-x", sha: sha(clone) });
+    expect(git(clone, "log", "-1", "--pretty=%s").out).toBe(
+      "chore(1-x): create-pr bkit [verbose ci] bkit [auto route]",
+    );
+    expect(git(clone, "show", "--name-only", "--format=", "HEAD").out).toBe("new.txt");
+    expect(git(origin, "rev-parse", "feat/1-x").out).toBe(sha(clone));
+    expect(actionRows(file)).toEqual([
+      expect.objectContaining({ action: "commit", ref: sha(clone) }),
+    ]);
+  });
+
+  it("an empty tree still gets the marker commit, without the suffix when bkit:auto is absent", async () => {
+    const { clone } = featureBranch("commit-empty");
+    const before = sha(clone);
+    const r = await run(clone, args(statusOutside()));
+    expect(r.code).toBe(0);
+    expect(sha(clone, "HEAD~1")).toBe(before);
+    expect(git(clone, "log", "-1", "--pretty=%s").out).toBe(
+      "chore(1-x): create-pr bkit [verbose ci]",
+    );
+  });
+
+  it("a re-run after the commit landed pushes again without a second marker commit", async () => {
+    const { origin, clone } = featureBranch("commit-rerun");
+    const file = statusOutside();
+    expect((await run(clone, args(file))).code).toBe(0);
+    const first = sha(clone);
+    const again = await run(clone, args(file));
+    expect(again.code).toBe(0);
+    expect(again.json).toMatchObject({ deduped: true });
+    expect(sha(clone)).toBe(first);
+    expect(git(origin, "rev-parse", "feat/1-x").out).toBe(first);
+    expect(actionRows(file)).toHaveLength(1);
+  });
+
+  it("--commit needs --file and --workflow, and refuses a skip-CI token in the message", async () => {
+    const { clone } = featureBranch("commit-usage");
+    expect(
+      (await run(clone, ["push", "--mode=feature", "--commit=chore: x", "--workflow=debug"])).code,
+    ).toBe(2);
+    const before = sha(clone);
+    const r = await run(clone, [
+      "push",
+      "--mode=feature",
+      "--require-ci",
+      "--commit=chore(1-x): x [skip ci]",
+      `--file=${statusOutside()}`,
+      "--workflow=debug",
+    ]);
+    expect(r.code).toBe(6);
+    expect(sha(clone)).toBe(before);
+  });
+});
+
+describe("branches fast-forward", { timeout: GIT_TIMEOUT }, () => {
+  it("fetches and fast-forwards onto the remote branch", async () => {
+    const { origin, clone } = featureBranch("ff-ok");
+    git(clone, "push", "-q", "origin", "feat/1-x");
+    const other = tmp("ff-other");
+    git(other, "clone", "-q", "-b", "feat/1-x", origin, ".");
+    commit(other, { "b.txt": "b\n" }, "feat(1-x): more");
+    git(other, "push", "-q", "origin", "feat/1-x");
+    const r = await run(clone, ["fast-forward", "--onto=origin/feat/1-x"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ moved: true, head: sha(other) });
+    expect(sha(clone)).toBe(sha(other));
+  });
+
+  it("an up-to-date branch is a no-op", async () => {
+    const { clone } = featureBranch("ff-same");
+    git(clone, "push", "-q", "origin", "feat/1-x");
+    const r = await run(clone, ["fast-forward", "--onto=origin/feat/1-x"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ moved: false });
+  });
+
+  it("refuses a diverged branch with exit 22 and leaves HEAD where it was", async () => {
+    const { origin, clone } = featureBranch("ff-diverged");
+    git(clone, "push", "-q", "origin", "feat/1-x");
+    const other = tmp("ff-div-other");
+    git(other, "clone", "-q", "-b", "feat/1-x", origin, ".");
+    commit(other, { "b.txt": "b\n" }, "feat(1-x): theirs");
+    git(other, "push", "-q", "origin", "feat/1-x");
+    commit(clone, { "c.txt": "c\n" }, "feat(1-x): mine");
+    const before = sha(clone);
+    const r = await run(clone, ["fast-forward", "--onto=origin/feat/1-x"]);
+    expect(r.code).toBe(22);
+    expect(r.err).toContain("diverged");
+    expect(sha(clone)).toBe(before);
+  });
+
+  it("a fetch that fails exits 10", async () => {
+    const { clone } = featureBranch("ff-nofetch");
+    const r = await run(clone, ["fast-forward", "--onto=origin/feat/never-pushed"]);
+    expect(r.code).toBe(10);
+  });
+});
+
+describe("branches scan-diff", { timeout: GIT_TIMEOUT }, () => {
+  it("--paths finds a changed path matching the pattern (exit 0) and names it", async () => {
+    const { clone } = featureBranch("scan-paths");
+    commit(clone, { "db/migrations/001.sql": "create\n" }, "feat(1-x): migrate");
+    const r = await run(clone, [
+      "scan-diff",
+      "--base=origin/dev",
+      "--paths=(^|/)(migrations|migrate)/",
+    ]);
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({ found: true, paths: ["db/migrations/001.sql"] });
+  });
+
+  it("--paths with no match exits 1", async () => {
+    const { clone } = featureBranch("scan-nopaths");
+    const r = await run(clone, ["scan-diff", "--base=origin/dev", "--paths=(^|/)migrations/"]);
+    expect(r.code).toBe(1);
+    expect(r.json).toEqual({ found: false, paths: [] });
+  });
+
+  it("--paths that is not a valid pattern is a usage error (exit 2)", async () => {
+    const { clone } = featureBranch("scan-badpaths");
+    const r = await run(clone, ["scan-diff", "--base=origin/dev", "--paths=(unclosed"]);
+    expect(r.code).toBe(2);
+  });
+
+  it("--marker finds an added line carrying the marker outside docs/plans", async () => {
+    const { clone } = featureBranch("scan-marker");
+    commit(clone, { "docs/plans/p.md": "[DEBUG-OBSERVE] note\n" }, "docs");
+    const clean = await run(clone, ["scan-diff", "--base=origin/dev", "--marker=[DEBUG-OBSERVE]"]);
+    expect(clean.code).toBe(1);
+    commit(clone, { "src/x.ts": "log('[DEBUG-OBSERVE] x')\n" }, "probe");
+    const r = await run(clone, ["scan-diff", "--base=origin/dev", "--marker=[DEBUG-OBSERVE]"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({ found: true, paths: ["src/x.ts"] });
+  });
+
+  it("--marker reads a diff over 1 MiB", async () => {
+    const { clone } = featureBranch("scan-bigdiff");
+    const big = `${"x".repeat(99)}\n`.repeat(12_000);
+    commit(clone, { "pnpm-lock.yaml": big, "src/x.ts": "log('[DEBUG-OBSERVE] x')\n" }, "big");
+    const r = await run(clone, ["scan-diff", "--base=origin/dev", "--marker=[DEBUG-OBSERVE]"]);
+    expect(r.err).toBe("");
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({ found: true, paths: ["src/x.ts"] });
+  });
+
+  it("--expect-none turns the answer round: 0 when nothing matched, 1 naming the hits", async () => {
+    const { clone } = featureBranch("scan-expect-none");
+    const args = ["scan-diff", "--base=origin/dev", "--marker=[DEBUG-OBSERVE]", "--expect-none"];
+    const clean = await run(clone, args);
+    expect(clean.code).toBe(0);
+    expect(clean.json).toEqual({ found: false, paths: [] });
+    commit(clone, { "src/x.ts": "log('[DEBUG-OBSERVE] x')\n" }, "probe");
+    const r = await run(clone, args);
+    expect(r.code).toBe(1);
+    expect(r.json).toEqual({ found: true, paths: ["src/x.ts"] });
+    expect(r.err).toContain("src/x.ts");
+  });
+
+  it("--code finds a change outside docs/plans and the ledgers (exit 0), and none when only they changed", async () => {
+    const { clone } = featureBranch("scan-code");
+    commit(clone, { "docs/plans/202610/logs/1-x/log.md": "x\n", "docs/k.jsonl": "{}\n" }, "logs");
+    expect((await run(clone, ["scan-diff", "--base=HEAD~1", "--code"])).code).toBe(1);
+    commit(clone, { "src/y.ts": "y\n" }, "code");
+    const r = await run(clone, ["scan-diff", "--base=HEAD~1", "--code"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({ found: true, paths: ["src/y.ts"] });
+  });
+
+  it("needs exactly one of --paths, --marker, --code; an unknown base exits 23", async () => {
+    const { clone } = featureBranch("scan-usage");
+    expect((await run(clone, ["scan-diff", "--base=origin/dev"])).code).toBe(2);
+    expect(
+      (await run(clone, ["scan-diff", "--base=origin/dev", "--code", "--marker=x"])).code,
+    ).toBe(2);
+    expect((await run(clone, ["scan-diff", "--base=nope", "--code"])).code).toBe(23);
+  });
+});
+
+describe("branches force-build", { timeout: GIT_TIMEOUT }, () => {
+  /** gh stub: `pr list` prints GH_STUB_LIST, `pr view` prints GH_STUB_VIEW, every call is logged. */
+  const ghPr = () =>
+    stubBin({
+      gh: [
+        'echo "$@" >> "$GH_STUB_LOG"',
+        'case "$1 $2" in',
+        '  "pr list") printf \'%s\' "$GH_STUB_LIST" ;;',
+        '  "pr view") printf \'%s\' "$GH_STUB_VIEW" ;;',
+        '  "pr edit") exit "${GH_STUB_EDIT_EXIT:-0}" ;;',
+        "esac",
+      ].join("\n"),
+    });
+  const pr = (title: string) =>
+    JSON.stringify({ number: 9, title, url: "u", state: "OPEN", headRefOid: "x" });
+  const args = (file: string, ...more: string[]) => [
+    "force-build",
+    "--fid=1-x",
+    `--file=${file}`,
+    "--workflow=build",
+    ...more,
+  ];
+
+  it("with an open PR: adds the marker to the title, then pushes the empty marker commit", async () => {
+    const { origin, clone } = featureBranch("fb-pr");
+    git(clone, "push", "-q", "origin", "feat/1-x");
+    const log = path.join(tmp("log"), "gh");
+    const file = statusOutside();
+    const r = await run(clone, args(file, "--label=bkit:auto"), {
+      PATH: withBin(ghPr()),
+      GH_STUB_LOG: log,
+      GH_STUB_LIST: `[${pr("feat(1-x): thing")}]`,
+    });
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      prNumber: 9,
+      titleChanged: true,
+      pushed: true,
+      deduped: false,
+      commit: sha(clone),
+    });
+    expect(fs.readFileSync(log, "utf-8")).toContain(
+      "pr edit 9 --title feat(1-x): thing bkit [force build]",
+    );
+    expect(git(clone, "log", "-1", "--pretty=%s").out).toBe(
+      "chore(1-x): force build bkit [force build] bkit [auto route]",
+    );
+    expect(git(clone, "diff", "--name-only", "HEAD~1", "HEAD").out).toBe("");
+    expect(git(origin, "rev-parse", "feat/1-x").out).toBe(sha(clone));
+    expect(actionRows(file)).toHaveLength(1);
+  });
+
+  it("a title that already carries the marker is left alone", async () => {
+    const { clone } = featureBranch("fb-titled");
+    const log = path.join(tmp("log"), "gh");
+    const r = await run(clone, args(statusOutside()), {
+      PATH: withBin(ghPr()),
+      GH_STUB_LOG: log,
+      GH_STUB_LIST: `[${pr("feat(1-x): thing bkit [force build]")}]`,
+    });
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ titleChanged: false, pushed: true });
+    expect(fs.readFileSync(log, "utf-8")).not.toContain("pr edit");
+  });
+
+  it("with no open PR: pushes the marker commit and edits no title", async () => {
+    const { origin, clone } = featureBranch("fb-nopr");
+    const log = path.join(tmp("log"), "gh");
+    const r = await run(clone, args(statusOutside()), {
+      PATH: withBin(ghPr()),
+      GH_STUB_LOG: log,
+      GH_STUB_LIST: "[]",
+    });
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ prNumber: null, titleChanged: false, pushed: true });
+    expect(git(clone, "log", "-1", "--pretty=%s").out).toBe(
+      "chore(1-x): force build bkit [force build]",
+    );
+    expect(git(origin, "rev-parse", "feat/1-x").out).toBe(sha(clone));
+  });
+
+  it("a re-run is deduped: no second marker commit", async () => {
+    const { clone } = featureBranch("fb-rerun");
+    const file = statusOutside();
+    const env = {
+      PATH: withBin(ghPr()),
+      GH_STUB_LOG: path.join(tmp("log"), "gh"),
+      GH_STUB_LIST: "[]",
+    };
+    expect((await run(clone, args(file), env)).code).toBe(0);
+    const first = sha(clone);
+    const again = await run(clone, args(file), env);
+    expect(again.code).toBe(0);
+    expect(again.json).toMatchObject({ deduped: true, commit: first });
+    expect(sha(clone)).toBe(first);
+    expect(actionRows(file)).toHaveLength(1);
+  });
+
+  it("keys the row on the run that just closed, so the next run makes its own commit", async () => {
+    const { clone } = featureBranch("fb-runkey");
+    const file = statusOutside();
+    const started = '{"type":"workflow-started","workflow":"build","at":"2026-10-01T00:00:00Z"}\n';
+    const done = '{"type":"workflow-done","workflow":"build","at":"2026-10-01T01:00:00Z"}\n';
+    fs.writeFileSync(file, started + done);
+    const env = {
+      PATH: withBin(ghPr()),
+      GH_STUB_LOG: path.join(tmp("log"), "gh"),
+      GH_STUB_LIST: "[]",
+    };
+    expect((await run(clone, args(file), env)).code).toBe(0);
+    expect(actionRows(file).map((r) => r.key)).toEqual(["build/1/force-build"]);
+    const first = sha(clone);
+    fs.appendFileSync(file, started.replace("00:00:00", "02:00:00"));
+    const second = await run(clone, args(file), env);
+    expect(second.code).toBe(0);
+    expect(second.json).toMatchObject({ deduped: false });
+    expect(sha(clone)).not.toBe(first);
+    expect(actionRows(file).map((r) => r.key)).toEqual([
+      "build/1/force-build",
+      "build/2/force-build",
+    ]);
+  });
+
+  it("gh unavailable hands the PR to MCP (80) before committing anything", async () => {
+    const { clone } = featureBranch("fb-nogh");
+    const bin = tmp("only-git");
+    fs.symlinkSync(REAL_GIT, path.join(bin, "git"));
+    const before = sha(clone);
+    const r = await run(clone, args(statusOutside()), { PATH: bin });
+    expect(r.code).toBe(80);
+    expect(r.err).toContain("--title-set");
+    expect(sha(clone)).toBe(before);
+  });
+
+  it("--title-set skips gh entirely", async () => {
+    const { clone } = featureBranch("fb-titleset");
+    const bin = tmp("only-git");
+    fs.symlinkSync(REAL_GIT, path.join(bin, "git"));
+    const r = await run(clone, args(statusOutside(), "--title-set"), { PATH: bin });
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ prNumber: null, titleChanged: false, pushed: true });
+  });
+
+  it("refuses dev and main (exit 21)", async () => {
+    const { clone } = withOrigin("fb-dev");
+    expect((await run(clone, args(statusOutside(), "--title-set"))).code).toBe(21);
+  });
+});
 
 describe("branches sync", { timeout: GIT_TIMEOUT }, () => {
   function feature(name: string) {
@@ -1291,13 +1886,6 @@ describe("branches sync-dev", { timeout: GIT_TIMEOUT }, () => {
     const { clone } = shipped("sync-nofetch");
     git(clone, "remote", "set-url", "origin", path.join(tmp("gone"), "missing"));
     expect((await run(clone, ["sync-dev"])).code).toBe(10);
-  });
-
-  it("puts core.bare back to false on the main checkout", async () => {
-    const { clone } = shipped("sync-bare");
-    git(clone, "config", "core.bare", "true");
-    await run(clone, ["sync-dev"]);
-    expect(git(clone, "config", "--get", "core.bare").out).toBe("false");
   });
 });
 
@@ -1503,7 +2091,7 @@ describe("branches land", { timeout: GIT_TIMEOUT }, () => {
   });
 
   /** gh for PR 5: the first merge refuses, the second lands `merged`; every update-branch is logged. */
-  const ghMergingOnRetry = (merged: string, state = "OPEN") => {
+  const ghMergingOnRetry = (merged: string, state = "OPEN", prBase = "dev") => {
     const base = tmp("gh");
     return {
       base,
@@ -1513,7 +2101,7 @@ describe("branches land", { timeout: GIT_TIMEOUT }, () => {
           `  "pr merge") n=$(cat "${base}/n" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "${base}/n"`,
           `    [ $n -ge 2 ] && { : > "${base}/merged"; exit 0; }; echo "not mergeable" >&2; exit 1 ;;`,
           `  "pr update-branch") echo update >> "${base}/updates"; exit 0 ;;`,
-          `  "pr view") if [ -f "${base}/merged" ]; then echo '{"number":5,"state":"MERGED","mergeCommit":{"oid":"${merged}"}}'; elif [ "${state}" = UNREAD ] && [ ! -f "${base}/read" ]; then : > "${base}/read"; echo "HTTP 502" >&2; exit 1; elif [ "${state}" = UNREAD ]; then echo '{"number":5,"state":"OPEN"}'; else echo '{"number":5,"state":"${state}"}'; fi ;;`,
+          `  "pr view") if [ -f "${base}/merged" ]; then echo '{"number":5,"state":"MERGED","baseRefName":"dev","mergeCommit":{"oid":"${merged}"}}'; elif [ "${state}" = UNREAD ] && [ ! -f "${base}/read" ]; then : > "${base}/read"; echo "HTTP 502" >&2; exit 1; elif [ "${state}" = UNREAD ]; then echo '{"number":5,"state":"OPEN","baseRefName":"${prBase}"}'; else echo '{"number":5,"state":"${state}","baseRefName":"${prBase}"}'; fi ;;`,
           `esac`,
         ].join("\n"),
       }),
@@ -1618,7 +2206,7 @@ describe("branches land", { timeout: GIT_TIMEOUT }, () => {
         `case "$1 $2" in`,
         `  "pr merge") echo "not mergeable" >&2; exit 1 ;;`,
         `  "pr update-branch") echo update >> "${base}/updates"; exit 0 ;;`,
-        `  "pr view") echo '{"number":5,"state":"OPEN"}' ;;`,
+        `  "pr view") echo '{"number":5,"state":"OPEN","baseRefName":"dev"}' ;;`,
         `esac`,
       ].join("\n"),
     });
@@ -1669,6 +2257,55 @@ describe("branches land", { timeout: GIT_TIMEOUT }, () => {
     expect(r.code).toBe(0);
     expect(git(remote, "log", "-1", "--format=%s", "dev").out).toBe(DONE);
     expect(fs.existsSync(left)).toBe(false);
+  });
+
+  /** gh for PR 5 that logs every call; `pr view` prints `view` (JSON), `pr merge` always succeeds. */
+  const ghLogging = (view: string) => {
+    const base = tmp("gh-log");
+    return {
+      base,
+      bin: stubBin({
+        gh: [
+          `echo "$*" >> "${base}/calls"`,
+          `case "$1 $2" in`,
+          `  "pr merge") : > "${base}/merged"; exit 0 ;;`,
+          `  "pr update-branch") exit 0 ;;`,
+          `  "pr view") echo '${view}' ;;`,
+          `esac`,
+        ].join("\n"),
+      }),
+    };
+  };
+  const callsOf = (base: string) =>
+    fs.existsSync(path.join(base, "calls")) ? read(base, "calls").trim().split("\n") : [];
+
+  it("landPr refuses a main-based PR without retrying", async () => {
+    const { repo } = fixture();
+    const gh = ghLogging('{"number":5,"state":"OPEN","baseRefName":"main"}');
+    const r = await land(
+      repo,
+      { BKIT_RUNTIME: "CLOUD_CLAUDE", PATH: withBin(gh.bin) },
+      "--pr=5",
+      `--branch=feat/${FID}`,
+    );
+    expect(r.code).toBe(17);
+    expect(r.err).toContain("releases stay manual");
+    expect(callsOf(gh.base).filter((c) => c.startsWith("pr merge"))).toEqual([]);
+    expect(callsOf(gh.base).filter((c) => c.startsWith("pr update-branch"))).toEqual([]);
+  });
+
+  it("landPr refuses when the PR base is unknown", async () => {
+    const { repo } = fixture();
+    const gh = ghLogging('{"number":5,"state":"OPEN"}');
+    const r = await land(
+      repo,
+      { BKIT_RUNTIME: "CLOUD_CLAUDE", PATH: withBin(gh.bin) },
+      "--pr=5",
+      `--branch=feat/${FID}`,
+    );
+    expect(r.code).toBe(17);
+    expect(callsOf(gh.base).filter((c) => c.startsWith("pr merge"))).toEqual([]);
+    expect(callsOf(gh.base).filter((c) => c.startsWith("pr update-branch"))).toEqual([]);
   });
 
   it("PR not open (closed): stops (17) at once, no retry", async () => {

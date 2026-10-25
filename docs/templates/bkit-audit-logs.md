@@ -2,7 +2,7 @@
 
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.5.1 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Log Triage
 
@@ -11,14 +11,6 @@
 >
 > **Rules:**
 >
-> - Read-only audit; never edit code, config, or data.
-> - `Universal Instructions` apply to all projects; `Project Instructions` apply only to this project.
-> - Local audit instructions / overrides → `Project Instructions` below the bkit-managed block; universal instructions stay in-block.
-> - Any tools mentioned in `Universal Instructions` are examples only; swap for actual tools in final output; drop inapplicable.
-> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
-> - Read `.agents/docs.md` → load docs for workflow / step / task; skip missing; cite docs inline where required.
-> - Every claim cites this run's evidence (`file:line`, or command / query and its output) and tool behind it; a previous report's figure, list, or status is a lead, not evidence.
-> - Read this document once at session start; do not trust session memory; do not re-read on every loop iteration.
 > - never resolve, archive, mute, or edit tracker issues, dashboards, alert rules, or sample rates.
 > - never copy log free text, an event payload, or a personal-data value into the report. Cite ids, status codes, error codes, and timestamps.
 > - Before first vendor-config or error-text read → name fields that can carry credentials (e.g. request headers in monitor config, URLs with query tokens, error messages echoing a request). Field decides, not value shape: value with no secret prefix still counts. Report field and class only (e.g. `auth header present`), never value.
@@ -33,7 +25,7 @@ An error tracker does not distinguish a bug from a handled outcome logged at err
 
 **Cadence:** every two weeks, whole window since previous report. Extra pass: after release on a rail with no other coverage; when production event count > zero; after vendor status incident while those logs still hold it. Retention shorter than interval = finding → drain or shorter cadence.
 
-**Anchor Standards:** record version and date read. Newer version → `Standards` step reads what changed.
+**Anchor Standards:**
 
 - Error-tracker release health (e.g. Sentry). Record SDK versions; unversioned docs record the date read.
 - Source maps and debug symbols (e.g. Sentry Debug IDs, Hermes maps, dSYM, ProGuard).
@@ -80,21 +72,13 @@ A test-origin tag narrows the lane. It does not make something noise, and it doe
 
 ### Pre-Flight / Dependencies
 
-**Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
-
-**Credentials:** probe direnv before marking a token / env var missing: `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'`; `unset` = missing. Run credentialed CLIs as `direnv exec . <cmd>`. No direnv (cloud session) → plain env check. Report names, never values.
-
 #### Core
 
-Always verify.
-
-- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied (here or in any step) → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`; run every step the remaining tools allow; work needing blocked call → `Not Checked`. never stop the run for a blocked call; never retry or reword a blocked call to get past it.
-- [ ] **Error Tracker:** Steps 3–9 — read-only issue, event, and alert APIs, e.g. tracker MCP, REST. Fallback: skip tracker steps; runtime-log steps still run; tracker sections `Not Checked`. Never "clean".
+- [ ] **Permissions:** blocked calls recorded
+- [ ] **Error Tracker:** Steps 3-9 — read-only issue, event, and alert APIs, e.g. tracker MCP, REST. Fallback: skip tracker steps; runtime-log steps still run; tracker sections `Not Checked`. Never "clean".
 - [ ] **Web:** Step 13 — fetch anchor standards. Fallback: versions recorded as unread.
 
 #### Conditional
-
-Verify only when applicable.
 
 - [ ] **Runtime Logs:** Hosted platforms → Step 11 — read-only log APIs, e.g. vendor CLIs, MCPs. Log access: `.agents/context.md` `context-fetch` blocks below `bkit:end` are ready-made read-only readers (`bkit context list-blocks` → each block's `context` and `body`); set a body's `# Customise:` knobs to the audit window; run it via `direnv exec . bash`. Skipped credential = not read, never clean. Fallback: each skipped source named in `Not Checked`.
 - [ ] **Language Server:** Typed language → Step 7 — references, e.g. Serena, `tsserver`. Fallback: text search only; name it on every blast-radius row.
@@ -103,15 +87,13 @@ Verify only when applicable.
 
 ### 🔒 Gate 1: Prerequisites Check
 
-**Checkpoint.** Verify and check `[x]` all applicable boxes above, then continue to `Probe Steps` without asking.
-
 - [ ] **Gaps named:** every missing item names its fallback and `Not Checked` entry.
-- [ ] **Gate 1 - Verified:** All Core items checked. All applicable Conditional items checked.
+- [ ] **Gate 1 — Verified:** All Core items checked. All applicable Conditional items checked.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Audited commit = this report's `bkit:anchor` `baseSha`. Read newest prior report for this slug under `docs/audits/`; its commit = its `bkit:anchor` `baseSha`, else the HEAD its `Previous Run` recorded. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
-- [ ] **Step 2 — Detect:** Find error tracker, runtime logs, or both. **Done when:** evidence in `Checked`, or `N/A` and STOP.
+- [ ] **Step 1 — Previous Run:** **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 2 — Detect:** Find error tracker, runtime logs, or both. **Done when:** evidence in `Checked`, or `N/A` and **STOP**.
 - [ ] **Step 3 — Board:** Same figures every run for comparison. Window = since previous report; also trailing-30-day when that is tracker default:
   - Unresolved count, and issue short ids.
   - Regressed count.
@@ -141,7 +123,7 @@ Verify only when applicable.
 - [ ] **Step 7 — Root Cause:** Each `GENUINE ERROR` and any issue whose verdict depends on call site. Message = symptom. Read call site → path → blast radius. Call-site table = artefact: callers sharing broken mechanism vs not. Language server, where available: stack symbol → every referencing symbol → diagnostics for that file. Pace reference queries; partial answer = indistinguishable from real. Re-run surprising low count. Empty = inconclusive → corroborate with text search; say which count from where. Ask why no test caught it. Every suite mocking SDK = second finding. Verify constraints against live system, not memory: actual predicate, rolled-back insert, host vs published IP ranges. Say what is unverifiable. Teardown often deletes rows an event points at → non-production findings corroborated by mechanism, not row. A mechanism that fits is not a confirmed cause. **Done when:** each `GENUINE ERROR` row in `Issues` has root cause, call-site table, the method that produced it, what is not established, and the file a later change would touch.
 - [ ] **Step 8 — Level:** Each `WRONG LEVEL`: recommend error-level log → warning, plus `docs/noise.md` row (call site, reason). Do not edit. Do not recommend tracker denylist for app code. Before downgrading, check hypothesis that would make it real defect; record check. Read both symbols; do not search column name. Fingerprint explosion: message with varying payload (ids, arrays) needs stable grouping key and pinned test before left in stream. **Done when:** each `WRONG LEVEL` row names the level change, the hypothesis checked, any fingerprint gap, and the file a later change would touch.
 - [ ] **Step 9 — Disposition:** Recommend resolve, archive, or leave open and why, per issue. This run does not resolve or archive. Recommend resolve only when code that files the issue changed and shipped. Resolving ahead of fix hides only signal on rails with no other coverage. Archived / muted issues too: per `docs/noise.md` archive or mute row, compare window events with the row's recorded trigger. Past trigger → recommend un-archive. **Done when:** `Issues` states resolve, archive, or leave open for every issue; every archive / mute row checked against its trigger.
-- [ ] **Step 10 — Invisible:** Tracker only sees errors that reach it. Caught then neither logged nor rethrown = invisible to caller and this sweep. Quiet board ≠ evidence shape absent. Look only in code behind this sweep's issues (`bkit-audit-reliability` sweeps rest):
+- [ ] **Step 10 — Invisible:** Tracker only sees errors that reach it. Caught then neither logged nor rethrown = invisible to caller and this sweep. Quiet board != evidence shape absent. Look only in code behind this sweep's issues (`bkit-audit-reliability` sweeps rest):
   - `catch` blocks that neither rethrow, return error, nor log at warn or above. Start with DB writes and outbound calls.
   - Client calls whose error is never read: result discarded, or success destructured without error.
   - Promises started without `await` or rejection handler on write path.
@@ -171,13 +153,11 @@ Verify only when applicable.
 
 ### 🔒 Gate 2: Probes Check
 
-**Checkpoint.** Verify and check `[x]` all boxes below, then continue to `Findings` without asking.
-
 - [ ] **Steps complete:** every step `[x]`, or explicit skip with evidence the surface is absent.
 - [ ] **Evidence:** every finding cites re-checkable evidence and the tool behind it.
 - [ ] **No tracker writes:** nothing resolved, archived, muted, or edited; no sample rate or alert rule changed.
 - [ ] **No payloads:** no log free text, event payload, personal-data value, or credential-field value in the report.
-- [ ] **Gate 2 - Verified:** Every checkbox above independently verified and checked off.
+- [ ] **Gate 2 — Verified:** Every checkbox above independently verified and checked off.
 
 ## Findings
 
@@ -189,7 +169,7 @@ Verify only when applicable.
 | `MEDIUM` | Handled outcome filed at error; unsymbolicated stack; no owner on most unresolved issues; alert that has never fired, or fires with no action; fingerprint explosion; user report with no event |
 | `LOW` | Noise with a named vendor frame; test-traffic issue already tagged; `docs/noise.md` wording drift |
 
-Scale per `.bkit/jsonl.md` § Severity. Within a severity: production first, then blast radius. A test-origin tag does not lower severity. A quiet board is not a pass.
+Within a severity: production first, then blast radius. A test-origin tag does not lower severity. A quiet board is not a pass.
 
 <!-- prettier-ignore -->
 | ID | Severity | Verdict | Location | Evidence | Expected |
@@ -265,17 +245,13 @@ PENDING
 
 ### 🔒 Gate 3: Report Check
 
-**Checkpoint.** Verify and check `[x]` all boxes below, then stop.
-
-- [ ] **No placeholders:** Findings table and every `Report` section have no `PENDING`.
+- [ ] **No placeholders:** no `PENDING` left
 - [ ] **Summary:** names count per severity, what is new, the single most important finding, the unresolved count, and the production event count.
-- [ ] **Series:** `Board` counts beside previous report's counts, or marked baseline.
-- [ ] **Writes:** only this report and template `Project Instructions` changed; throwaway worktrees / remote targets removed.
-- [ ] **Process Improvements:** `Universal` = proposed step changes, template untouched; `Project` = edits applied below `bkit:end`; each `none` if empty.
+- [ ] **Series:** `Board` counts beside previous report's numbers, or marked baseline.
+- [ ] **Writes:** only this report, template `Project Instructions`, and ledger rows changed; throwaway worktrees / remote targets removed.
+- [ ] **Process Improvements:** `Universal` and `Project` filled
 - [ ] **Suggested Issues:** every `MEDIUM`+ finding ID in exactly one row; every row has a `Next Step`.
-- [ ] **Gate 3 - Verified:** Every checkbox above independently verified and checked off.
-
-> `Project Instructions` below `bkit:end` are consumer-owned — `bkit install` never overwrites them, `bkit check` drift stays clean. Add project-specific tools, paths, commands, and checks there, keyed by section or step title; never results.
+- [ ] **Gate 3 — Verified:** Every checkbox above independently verified and checked off.
 
 <!-- bkit:end -->
 

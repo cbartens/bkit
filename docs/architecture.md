@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.5.1 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Architecture
 
@@ -10,7 +10,7 @@
 > **Rules:**
 >
 > - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
-> - Notation: one job per mark — `.bkit/prompts.md` § `Notation`.
+> - Notation: one job per mark — `.bkit/authoring.md` § `Notation`.
 > - Describe current state / rules, not reasons / history; state what to do, not why.
 > - Check `.agents/docs.md` index first and confirm topic belongs in this doc, not another.
 > - Topology / boundaries only; operational rules and library lists → domain docs.
@@ -43,8 +43,8 @@ cbartens/bkit (this repo)
 │   │   ├── install/uninstall.ts # `bkit uninstall` orchestrator — surgical format-aware removal
 │   │   ├── launch.ts            # `bkit cursor` / `bkit opencode` launcher verbs — merges .bkit/.env over process.env and exec's the app binary directly (`open -a` routes via launchd, which DROPS the env — #279/#280)
 │   │   ├── comply.ts            # Compliance grader (#234 WS-2) — no-mirror-edit + skip-ci-not-head rules; emits kind:"compliance" rows; `bkit comply --phase <p>` (fail-open)
-│   │   ├── harvest.ts           # Cross-repo harvest CLI (#234 WS-4, #343) — COPIES consumer .bkit/stats.jsonl (never modified); MOVES .bkit/friction.jsonl into harvest/ at repo root, pruning drained rows from the consumer; COUNT-ONLY for docs/{deferrals,failures}.jsonl; store keeps every distinct row, deduped by content (never rewritten from the fold); prune gated on byte-for-byte content (NOT identity — fold collapses colliding rows) after copy→fsync→read-back; store accumulates, never cleared; never commits in any repo; `bkit harvest`
-│   │   ├── analysis.ts          # Analysis CLI (#234 WS-4) — counts/rates/elapsed, #183 size↔outcome regression, dispatch-size threshold, counterSource trust labelling, per-rule compliance rate over kind:"compliance" rows; `bkit analysis`
+│   │   ├── stats.ts             # `bkit stats` — this repo's .bkit/stats.jsonl + friction + deferrals → .bkit/stats.md (committed, no timestamp); never reads harvest/ or chats; chat/run rows not counted; fail-open
+│   │   ├── analysis.ts          # Computations behind `bkit stats` and the harvest report — counts/rates/elapsed, #183 size↔outcome regression, dispatch-size threshold, counter.source trust labelling, per-rule compliance rate over kind:"compliance" rows
 │   │   └── workflow/ ci/ setup/ # `bkit <noun> <verb>` workflow commands
 │   ├── install/                 # what gets written into a consumer repo, and how
 │   │   ├── modules/index.ts     # Phase 2 — module dispatcher (MODULE_REGISTRY)
@@ -65,15 +65,18 @@ cbartens/bkit (this repo)
 │   │   └── after/               # Phase 3 — index.ts runs one file per group of findings (auth, github,
 │   │                            #   vercel, ci-yml, tools, managed); checklist formatter
 │   ├── ledgers/                 # JSONL ledger codecs
+│   │   ├── migrate.ts           # Install / upgrade rewrite of ledger rows without `schema` into the current shape via `normalize`; `isSchemaLedger` keeps ledgers out of canonicalHashes
 │   │   ├── status.ts            # status.jsonl workflow-log contract + fold reducer + invariant validator (the `bkit status` verb lives in commands/install/doctor.ts)
-│   │   └── telemetry.ts         # Unified JSONL telemetry codec — TelemetryEvent union, parse/fold/foldFrom/validate/appendLine (#234 WS-1)
+│   │   └── telemetry.ts         # Unified JSONL telemetry codec — TelemetryEvent union, normalize/parse/fold/foldFrom/validate/totalsProblem/appendLine (#234 WS-1)
 │   ├── shared/                  # helpers every folder uses
 │   │   ├── json.ts              # `parseJson` / `readJsonFile`: the only place a failed JSON parse is caught; `audits/repo/json-parse-owner.test.ts` fails on a `JSON.parse` inside a `try` anywhere else
 │   │   ├── package-json.ts      # `readPackageJson` (a checkout's manifest, or why it could not be read); `readInstallingVersion` is the only reader of the version of the bkit doing the install and throws when bkit's own `package.json` is missing, not a JSON object, or has no string `version`
 │   │   ├── package-roots.ts     # Single resolver seam — getCoreRoot / getSharedRoot / getTemplatesRoot / getPkgRoot
 │   │   ├── protected-paths.ts   # IDE mirror prefix table (`isMirrorPath`); used by the compliance grader
 │   │   └── settings.ts          # The consumer's `package.json` `bkit` key: `readBkitConfig` is its only reader
-│   ├── tools/wording.ts         # repo-only `pnpm wording:sync`, not a bkit command
+│   ├── tools/instructions.ts    # repo-only `pnpm instructions:sync` / `instructions:show`, not a bkit command
+│   ├── tools/instructions-sources.ts # `.bkit/instructions.md` copy sections (Rules, Project Rules, Hook Text, Permissions, Special Behaviors, Authoring Rules) checked and synced against their masters
+│   ├── tools/grammar-density.ts # repo-only `pnpm grammar:density`, not a bkit command
 │   └── audits/                  # tests only: read shipped text (workflows/ templates/ hooks/ repo/)
 ├── dist/                   # Compiled output (committed; published in tarball)
 ├── .bkit/core/             # Payload bkit writes and keeps current: engine/, workflows/,
@@ -84,14 +87,14 @@ cbartens/bkit (this repo)
 │                           #   .env.example, settings/hooks/mcp JSON, bkit-cloud.md, docs/*.md blocks
 └── .bkit/templates/        # Copy-and-own templates: copied raw to the consumer's
                             #   .bkit/templates/, never applied
-├── harvest/                # Central store for `bkit harvest` — consumer stats/friction rows (#343)
+├── harvest/                # Central store for `pnpm harvest` — every repo's stats/friction rows + chat/run scan (#343, #683)
 │                           # + consumers.md (maintainer-local consumer checkout paths, one per line).
 │                           # bkit-repo only; deliberately OUTSIDE .bkit/ (that is bkit's managed
 │                           # install surface; harvested consumer data is neither managed nor shipped).
 │                           # Gitignored: private consumer content + local paths never enter the
 │                           # public repo. Holds every distinct row ever harvested; readers fold it by
 │                           # identity. Accumulates across runs and is never cleared — once harvest
-│                           # prunes a consumer's friction row, this local store is the only copy.
+│                           # prunes a repo's friction or chat/run row, this local store is the only copy.
 └── package.json            # bin: bkit → dist/cli.js
 ```
 
@@ -115,7 +118,7 @@ pnpm bkit install [--module-flags] [--auto-revert]
     │
     └─ Phase 3: Post-install re-detection + commit
         ├─ Credential detectors (GitHub MCP token, cloud router secrets)
-        ├─ Checks on the consumer's own bkit-ci.yml (actionlint, run injection, capstone contract, bkit-stub)
+        ├─ Checks on the consumer's CI workflow, bkit.testing.ciWorkflow (actionlint, run injection, capstone contract, bkit-stub)
         ├─ Vale package sync check
         ├─ Render unified advisory checklist
         ├─ Phase 3 blockers → exit 1 with recovery line; --auto-revert calls runUninstall first
@@ -124,15 +127,15 @@ pnpm bkit install [--module-flags] [--auto-revert]
 
 CLI verbs:
 
-- `pnpm bkit install` — all three phases. Requires ≥1 module flag or `--tracker=` (re-renders every installed host); bare `bkit install` errors.
+- `pnpm bkit install` — all three phases. Requires >=1 module flag or `--tracker=` (re-renders every installed host); bare `bkit install` errors.
 - `pnpm bkit check` — Phase 1 + Phase 3 read-only; exit 1 on Tier-1 / Tier-2 drift, no writes.
 - `pnpm bkit doctor` — Phase 1 + Phase 3 detection; never writes; always exit 0.
 - `pnpm bkit status` — read-only; installed host (claude / cursor / opencode) + configured provider.
 - `pnpm bkit uninstall` — surgical format-aware removal: fully-managed delete / markered-text strip / byte-equal-text hash-guarded delete; `--dry-run`, `--force`, `--nuke`, `--yes`. package.json scripts and devDeps are never removed (the `bkit` install-state block goes on a full uninstall).
 - `pnpm bkit upgrade` — diff engine vs `canonicalHashes`; non-conflicts auto-apply, conflicts stderr (`--auto-apply` non-zero on conflict). Conflicts come only from the payload walk's whole files; `renderManagedOutputs` outputs (agents, commands, skills, `.bkit/*.md`) always re-render, and `bkit check` flags an edit to one. Module-scoped. Re-renders at **installed** version (offline). `--to=<version>` / `--latest` (#296) bump `@cbartens/bkit` (`pnpm add`) → re-exec fresh binary → re-render + re-pin atomically, so version bump cannot drift mirrors; bare `pnpm add` does not re-render.
 - `pnpm bkit comply --phase <p>` (#234 WS-2) — grader over `git diff parentSha..HEAD`; advisory-only, fail-open.
-- `pnpm bkit harvest` (#234 WS-4, #343) — bkit-repo only; COPIES `stats.jsonl`, MOVES `friction.jsonl` (prunes consumer), count-only `docs/{deferrals,failures}.jsonl`. Never commits.
-- `pnpm bkit analysis` (#234 WS-4) — harvested store counts / rates; size↔outcome regression, per-rule compliance.
+- `pnpm bkit stats` (#683) — this repo's ledgers only → `.bkit/stats.md` (committed); size↔outcome regression, per-rule compliance; exit 0.
+- `pnpm harvest` (#683, bkit repo only, unshipped: `scripts/harvest/`) — copies every repo's `stats.jsonl` + `friction.jsonl` into `harvest/` and prunes friction + `chat`/`run` rows from them; count-only `docs/{deferrals,failures}.jsonl`; scans chats + run logs → `harvest/stats.jsonl`; run check; `harvest/stats.md`. Never commits. `docs/observability.md` § Harvest.
 - `pnpm bkit telemetry summary [--phase=<workflow>]` (#234 WS-5) — per-workflow telemetry report against the median of the previous 5 runs; read-only.
 - `pnpm bkit cursor` / `pnpm bkit opencode` — launch host with `.bkit/.env` merged (macOS GUI apps skip login-shell / direnv env).
 
@@ -151,7 +154,7 @@ Consumer repo
 │   └── skills/             # installed agent skills (cross-IDE)
 └── .bkit/                  # bkit install state + config (consumer-side)
     ├── version             # JSON: { pinnedVersion, canonicalHashes, claudeAllowDerived }
-    ├── friction.jsonl      # friction ledger — appended by phase workflows, drained by bkit harvest
+    ├── friction.jsonl      # friction ledger — appended by phase workflows, drained by bkit's harvest
     ├── advisories.md       # generated artifact (gitignored) — last install/check findings
     ├── .env.example        # fully-managed — token placeholders
     ├── templates/          # raw template copies (bkit-ci.yml, hooks, tool configs, context/<provider>.md …) — copy and own
@@ -189,7 +192,7 @@ Deterministic, advisory-only grader on `git diff parentSha..HEAD` → `kind:"com
 
 `docs/knowledge.jsonl` (`kind:"knowledge"`) + `docs/decisions.jsonl` (`kind:"decision"`) = NDJSON ledgers. Consumer-inherited (`.gitattributes` managed block, `merge=union`).
 
-**Data topology:** shared `TelemetryEnvelope` (ts, kind, repo, bkitVersion, workflow, step, key, references[]) + kind payloads (`KnowledgePayload` / `DecisionPayload`) in `.bkit/core/engine/ledgers/telemetry.ts`.
+**Data topology:** shared `TelemetryEnvelope` top section (schema: 3, ts, kind, key, repo, bkit.version, by.{workflow, step, subagent, model}, references[]) + kind payloads (`KnowledgePayload` / `DecisionPayload`) in `.bkit/core/engine/ledgers/telemetry.ts`; readers `normalize()` rows written without `schema`, and `bkit install` / `bkit upgrade` rewrite them once (`.bkit/core/engine/ledgers/migrate.ts`).
 
 `references[]` = single cross-entry pointer for EVERY kind (envelope, not payload) — feature ids, tracker ids, PRs, SHAs, paths, sibling `ts`, `KN-N` / `DE-N` ids. No separate identity field. `ts` = id; `references[]` = pointers. Contract: `.bkit/jsonl.md` § Key & References. Cite slug `key`, never bare number.
 
@@ -200,7 +203,7 @@ Deterministic, advisory-only grader on `git diff parentSha..HEAD` → `kind:"com
 **Components:**
 
 - `bkit roadmap fold` (`.bkit/core/engine/commands/workflow/roadmap.ts`) — deterministic status tier, fail-open. It rewrites the whole generated region of `docs/roadmap.md` in one pass: the `bkit:roadmap-status` block from `.bkit/issues.jsonl`, the `bkit:roadmap-analysis` block carried through verbatim, and two consumer `## Notes` blocks carried through verbatim. Every phase close calls it. No tracker table is rendered, because a wired tracker already shows its own issues, and a regenerated copy can only go stale. Everything above the first marker is preserved. `roadmap-notes-post` is last.
-- `.bkit/core/prompts/bkit-utility-update-roadmap.md` (`@bkit-utility-update-roadmap`) — the only writer of the `roadmap-analysis` block. Runs `bkit roadmap fold` itself, then ranks from the board, in-flight `docs/plans/**` artifacts, open deferrals / failures, and — when a tracker is wired — its OPEN issues (read-only, never comments). Always names the next milestone and the next distinct umbrella; includes a child only when it is open, unblocked, and able to start now. Those two stay visible; the list stays priority order, one row per container. Length is `package.json` `bkit.roadmapNext` (positive integer; absent or invalid → 25). Due audits (`docs/templates/bkit-audit-*.md` cadence vs newest `docs/audits/` report) compete by priority (risk covered first, then how overdue) for at most 3 rows. The length hint sits in the generated `roadmap-status` header.
+- `.bkit/core/prompts/bkit-utility-update-roadmap.md` (`@bkit-utility-update-roadmap`) — the only writer of the `roadmap-analysis` block. Runs `bkit roadmap fold` itself, then ranks from the board, in-flight `docs/plans/**` artifacts, open deferrals / failures, and — when a tracker is wired — its OPEN issues (read-only, never comments). Always names the next milestone and the next distinct umbrella; includes a child only when it is open, unblocked, and able to start now. Those two stay visible; the list stays priority order, one row per container. Length is `package.json` `bkit.prompts.roadmapNext` (positive integer; absent or invalid → 25). Due audits (`docs/templates/bkit-audit-*.md` cadence vs newest `docs/audits/` report) compete by priority (risk covered first, then how overdue) for at most 3 rows. The length hint sits in the generated `roadmap-status` header.
 
 **Ownership boundary:** `docs/roadmap.md` is consumer-owned — `bkit install` never creates or overwrites it and `bkit check` drift stays clean. bkit rewrites only the mechanical `roadmap-status` tables; the two `## Notes` blocks and `roadmap-analysis` are carried through. `roadmap-notes-post` is last. `roadmap-analysis` is written ONLY by `@bkit-utility-update-roadmap`; the fold carries it through untouched, so a phase close never blanks it. Ship stages both roadmap paths through the frozen `BOOK_PATHS` allow-list.
 

@@ -9,6 +9,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { CommandError, EXIT } from "../lib.js";
+import { COMMENT_FILE_OUTPUT, GENERATED_MARKER, commentFileOf, stampMarker } from "./tracker.js";
 /** Exit code: no workstream parsed — the workflow's Failure Path. */
 export const EXIT_NONE = 3;
 const HEADING = /^(#{1,6})\s+(.*?)\s*$/;
@@ -74,14 +75,15 @@ export const requiresList = (w) => `[${w.requires.join(", ")}]`;
 export function commentBody(ws, opts) {
     const doc = `docs/plans/${opts.month}/${opts.fid}-design.md`;
     const url = `https://github.com/${opts.ownerRepo}/blob/dev/${doc}`;
-    return [
-        "###### bkit:generated",
+    const lines = [
+        GENERATED_MARKER,
         "### Step 11 — Suggested Workstreams",
         "Advisory only. NEVER auto-trigger.",
         ...ws.map((w) => `- ${w.id}: ${w.name}. Requires: ${requiresList(w)}`),
         `Filing one issue per workstream: put \`**Parent design:** [${opts.fid}-design.md](${url})\` in its body, and list the issues it requires in a blocked-by block (.bkit/trackers.md § Issue shapes).`,
         `[${doc}](${url})`,
-    ].join("\n");
+    ];
+    return stampMarker(lines.join("\n"));
 }
 const ARTIFACT_FLAG = {
     name: "artifact",
@@ -126,7 +128,11 @@ export const workstreamsCommand = {
                     help: "owner/repo for the design doc link",
                 },
             ],
-            output: { comment: "the comment body", workstreams: "the parsed workstreams" },
+            output: {
+                comment: "the comment body",
+                commentFile: COMMENT_FILE_OUTPUT,
+                workstreams: "the parsed workstreams",
+            },
             exitCodes: { [EXIT_NONE]: "no workstream parsed (Failure Path)" },
             run: (ctx) => {
                 const workstreams = read(ctx);
@@ -135,7 +141,7 @@ export const workstreamsCommand = {
                     month: String(ctx.flags.month),
                     fid: String(ctx.flags.fid),
                 });
-                ctx.emit({ comment: body, workstreams });
+                ctx.emit({ comment: body, commentFile: commentFileOf(ctx.cwd, body), workstreams });
                 return EXIT.OK;
             },
         },

@@ -14,7 +14,7 @@
 # Revert-branch bypass: on a revert branch the unit and integration tiers are skipped; lint +
 # typecheck still run.
 #
-# Min push: every changed file matches `bkit.minPushPaths` (package.json; default plan logs,
+# Min push: every changed file matches `bkit.testing.minPushPaths` (package.json; default plan logs,
 # ledgers) → `bkit:gate:min` replaces the full gate; MIN_PUSH=1 for repo extras. Files decide,
 # never `[skip ci]`.
 set -e
@@ -148,7 +148,7 @@ case "$BRANCH" in
 esac
 
 # Min push: `bkit ci min-push` exits 0 only when every file changed since each pushed
-# commit left origin/dev (else origin/main) matches `bkit.minPushPaths`. Anything else
+# commit left origin/dev (else origin/main) matches `bkit.testing.minPushPaths`. Anything else
 # (code, no files, unreadable range, no refs) → MIN_PUSH=0, full gate: a skip on no
 # evidence reads as a pass.
 MIN_PUSH=0
@@ -168,7 +168,7 @@ for push_sha in $PUSH_SHARED_SHAS; do
   if pnpm -s bkit ci skip-token --ref="$push_sha" < /dev/null > /dev/null; then
     if [ "$MIN_PUSH" != "1" ] &&
       ! pnpm -s bkit ci min-push --ref="$push_sha" < /dev/null > /dev/null; then
-      echo "[pre-push] BLOCKED: $push_sha carries a CI-suppressing token and changes files outside bkit.minPushPaths — that code would land on dev / main with no CI run." >&2
+      echo "[pre-push] BLOCKED: $push_sha carries a CI-suppressing token and changes files outside bkit.testing.minPushPaths — that code would land on dev / main with no CI run." >&2
       echo "[pre-push] Add a clean trigger commit and re-push:  git commit --allow-empty -m \"chore: trigger CI\" && git push" >&2
       exit 1
     fi
@@ -218,6 +218,13 @@ fi
 if [ "$MIN_PUSH" != "1" ]; then
   pnpm bkit:check:dist < /dev/null
   pnpm bkit:lint:workflows < /dev/null
+fi
+
+# bkit repo only: the dependency audit CI's static job runs. It reads the npm advisory
+# database, so it can fail on an unchanged tree: an advisory appears, or one that
+# scripts/ci/accepted-advisories.json accepts is withdrawn. Runs on a min push too.
+if [ -f scripts/ci/check-dependency-audit.mjs ]; then
+  node scripts/ci/check-dependency-audit.mjs < /dev/null
 fi
 
 # bkit repo only: the graphify register gate (pasted from
@@ -286,7 +293,7 @@ fi
 
 # disk prune — keep this block last, so it runs only once every gate above passed. Starts
 # your max cleanup steps (`bkit disk prune`, .bkit/templates.md § Disk prune) in the
-# background, at most once a day, or hourly while free disk is under bkit.disk.minFreeGb;
+# background, at most once a day, or hourly while free disk is under bkit.workflows.minFreeGb;
 # with no step files it does nothing. Not a gate: a failure warns and the push goes on.
 pnpm -s bkit disk prune --mode=max --auto < /dev/null > /dev/null ||
   echo "[pre-push] WARN: disk prune failed; push continues" >&2

@@ -180,7 +180,7 @@ export async function runDoctor(
         id: "opencode-provider-missing",
         severity: "blocker",
         detect:
-          "`.opencode/` is present but no provider is recorded — neither package.json `bkit.opencodeProvider` nor an `opencode.json` provider block.",
+          "`.opencode/` is present but no provider is recorded — neither package.json `bkit.providers.opencode.default` nor an `opencode.json` provider block.",
         action: `Re-run \`bkit install --opencode=<provider>\` (${OPENCODE_PROVIDERS.join(", ")}). Until then \`bkit check\` and \`bkit upgrade\` exit 1 rather than render every agent pin against a substitute provider.`,
       });
     }
@@ -222,7 +222,7 @@ export async function runDoctor(
     let detectedProvider: string | null = detectOpencodeProvider(process.cwd());
     if (opencodeProvider) detectedProvider = opencodeProvider;
 
-    // Multi-provider: all installed providers. bkit.opencodeProviders when populated,
+    // Multi-provider: all installed providers. bkit.providers.opencode.installed when populated,
     // else the single detected provider.
     const allProviders = detectOpencodeProviders(process.cwd());
     const activeProvider = detectedProvider ?? allProviders[0] ?? null;

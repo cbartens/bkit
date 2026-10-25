@@ -171,23 +171,23 @@ describe("SETUP_TIPS — detection", () => {
     pkg({});
     expect(buildTrackerSetupAdvisory(cwd)?.id).toBe("tracker-setup-none");
     expect(tip("tracker").fires(cwd)).toBe(true);
-    pkg({ issueTracker: "none" });
+    pkg({ tracker: { default: "none" } });
     expect(buildTrackerSetupAdvisory(cwd)).toBeNull();
     expect(tip("tracker").fires(cwd)).toBe(false);
   });
 
   it.each(["github", "linear", "jira"])("tracker stays quiet once %s is chosen", (tracker) => {
-    pkg({ issueTracker: tracker });
+    pkg({ tracker: { default: tracker } });
     expect(buildTrackerSetupAdvisory(cwd)?.id).toBe(`tracker-setup-${tracker}`);
     expect(tip("tracker").fires(cwd)).toBe(false);
   });
 
   it("gh-mcp fires only for the GitHub tracker", () => {
-    pkg({ issueTracker: "linear" });
+    pkg({ tracker: { default: "linear" } });
     expect(tip("gh-mcp").fires(cwd)).toBe(false);
-    pkg({ issueTracker: "jira" });
+    pkg({ tracker: { default: "jira" } });
     expect(tip("gh-mcp").fires(cwd)).toBe(false);
-    pkg({ issueTracker: "github" });
+    pkg({ tracker: { default: "github" } });
     expect(tip("gh-mcp").fires(cwd)).toBe(true); // no github server entry
     write(".mcp.json", JSON.stringify({ mcpServers: { github: { url: "https://x" } } }));
     vi.stubEnv("CI", "");
@@ -198,12 +198,12 @@ describe("SETUP_TIPS — detection", () => {
   it.each([
     ["github", ["BKIT_GH_TOKEN=x"]],
     ["linear", ["BKIT_GH_TOKEN=x", "BKIT_LINEAR_API_KEY=y"]],
-    ["jira", ["BKIT_GH_TOKEN=x", "BKIT_JIRA_API_TOKEN=y"]],
+    ["jira", ["BKIT_GH_TOKEN=x", "BKIT_JIRA_API_KEY=y"]],
   ] as const)("bkit-env fires until every token the %s tracker needs is set", (tracker, lines) => {
     vi.stubEnv("CI", "");
     vi.stubEnv("CLAUDE_CODE_REMOTE", "");
     vi.stubEnv("CURSOR_REMOTE_AGENT", "");
-    pkg({ issueTracker: tracker });
+    pkg({ tracker: { default: tracker } });
     write(".bkit/.env.example", "BKIT_GH_TOKEN=\n");
     expect(tip("bkit-env").fires(cwd)).toBe(true); // no .bkit/.env
     for (let i = 1; i < lines.length; i++) {
@@ -215,11 +215,11 @@ describe("SETUP_TIPS — detection", () => {
   });
 
   it("issue-forms fires only for the GitHub tracker with no issue template folder", () => {
-    pkg({ issueTracker: "linear" });
+    pkg({ tracker: { default: "linear" } });
     expect(tip("issue-forms").fires(cwd)).toBe(false);
-    pkg({ issueTracker: "jira" });
+    pkg({ tracker: { default: "jira" } });
     expect(tip("issue-forms").fires(cwd)).toBe(false);
-    pkg({ issueTracker: "github" });
+    pkg({ tracker: { default: "github" } });
     expect(tip("issue-forms").fires(cwd)).toBe(true);
     write(".github/ISSUE_TEMPLATE/bug_report.md");
     expect(tip("issue-forms").fires(cwd)).toBe(false);
@@ -309,7 +309,7 @@ describe("SETUP_TIPS — detection", () => {
   it("cloud fires only once cloud agents are chosen", () => {
     pkg({});
     expect(tip("cloud").fires(cwd)).toBe(false);
-    pkg({ cloudAgents: "claude" });
+    pkg({ cloud: { agent: "claude" } });
     expect(tip("cloud").fires(cwd)).toBe(true);
     write(".github/workflows/bkit-cloud.yml");
     expect(tip("cloud").fires(cwd)).toBe(true); // bootstrap hook still missing
@@ -317,11 +317,16 @@ describe("SETUP_TIPS — detection", () => {
     expect(tip("cloud").fires(cwd)).toBe(false);
   });
 
-  it("ci-workflow follows a renamed bkit.ciWorkflow", () => {
-    pkg({ ciWorkflow: "ci.yml" });
+  it("ci-workflow follows a renamed bkit.testing.ciWorkflow", () => {
+    pkg({ testing: { ciWorkflow: "ci.yml" } });
     expect(tip("ci-workflow").fires(cwd)).toBe(true);
     write(".github/workflows/ci.yml");
     expect(tip("ci-workflow").fires(cwd)).toBe(false);
+  });
+
+  it("ci-workflow asks for the copy at the file bkit.testing.ciWorkflow names", () => {
+    expect(tip("ci-workflow").ask).toContain("bkit.testing.ciWorkflow");
+    expect(tip("ci-workflow").ask).not.toContain("to .github/workflows/bkit-ci.yml");
   });
 
   it("serena needs both the project file and an MCP entry", () => {
@@ -395,5 +400,13 @@ describe("SETUP_TIPS — detection", () => {
       JSON.stringify({ mcpServers: { s: { url: "https://mcp.sentry.dev/mcp" } } }),
     );
     expect(tip("mcp-scope").fires(cwd)).toBe(true);
+  });
+
+  it("bkit-output-json fires while a copied script reads bkit output without --json", () => {
+    expect(tip("bkit-output-json").fires(cwd)).toBe(false);
+    write(".claude/hooks/bkit-cloud-bootstrap.sh", '"$BKIT" context list-blocks | jq -r .x\n');
+    expect(tip("bkit-output-json").fires(cwd)).toBe(true);
+    write(".claude/hooks/bkit-cloud-bootstrap.sh", '"$BKIT" context list-blocks --json | jq .x\n');
+    expect(tip("bkit-output-json").fires(cwd)).toBe(false);
   });
 });

@@ -1,5 +1,5 @@
 // checks/after/suppression.test.ts — Unit tests for the per-package advisory opt-out
-// (`package.json` `bkit.ignoreAdvisories`).
+// (`package.json` `bkit.advisories.ignore`).
 
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -46,21 +46,21 @@ describe("ignoredAdvisoryIds", () => {
     writePkg({ bkit: ["tagged-tests-no-ci-home"] });
     expect([...ignoredAdvisoryIds(tmpDir)]).toEqual([]);
   });
-  it("returns no ids when ignoreAdvisories is not an array", () => {
-    writePkg({ bkit: { ignoreAdvisories: "tagged-tests-no-ci-home" } });
+  it("returns no ids when advisories.ignore is not an array", () => {
+    writePkg({ bkit: { advisories: { ignore: "tagged-tests-no-ci-home" } } });
     expect([...ignoredAdvisoryIds(tmpDir)]).toEqual([]);
   });
   it("returns the ids of a valid array", () => {
-    writePkg({ bkit: { ignoreAdvisories: ["tagged-tests-no-ci-home", "x"] } });
+    writePkg({ bkit: { advisories: { ignore: ["tagged-tests-no-ci-home", "x"] } } });
     expect([...ignoredAdvisoryIds(tmpDir)].sort()).toEqual(["tagged-tests-no-ci-home", "x"]);
   });
   it("drops non-string entries", () => {
-    writePkg({ bkit: { ignoreAdvisories: ["a", 1, null, { b: 2 }] } });
+    writePkg({ bkit: { advisories: { ignore: ["a", 1, null, { b: 2 }] } } });
     expect([...ignoredAdvisoryIds(tmpDir)]).toEqual(["a"]);
   });
   it("reads the given package directory, not the cwd", () => {
     const nested = path.join(tmpDir, "tooling", "eslint");
-    writePkg({ bkit: { ignoreAdvisories: ["tagged-tests-no-ci-home"] } }, nested);
+    writePkg({ bkit: { advisories: { ignore: ["tagged-tests-no-ci-home"] } } }, nested);
     expect([...ignoredAdvisoryIds(nested)]).toEqual(["tagged-tests-no-ci-home"]);
     expect([...ignoredAdvisoryIds(tmpDir)]).toEqual([]);
   });
@@ -68,17 +68,17 @@ describe("ignoredAdvisoryIds", () => {
 
 describe("isAdvisorySuppressed", () => {
   it("is true for an advisory whose id is listed", () => {
-    writePkg({ bkit: { ignoreAdvisories: ["tagged-tests-no-ci-home"] } });
+    writePkg({ bkit: { advisories: { ignore: ["tagged-tests-no-ci-home"] } } });
     expect(isAdvisorySuppressed(tmpDir, "tagged-tests-no-ci-home", "advisory")).toBe(true);
   });
   it("is false for an advisory whose id is not listed", () => {
-    writePkg({ bkit: { ignoreAdvisories: ["tagged-tests-no-ci-home"] } });
+    writePkg({ bkit: { advisories: { ignore: ["tagged-tests-no-ci-home"] } } });
     expect(isAdvisorySuppressed(tmpDir, "test-integration-env-not-asserted", "advisory")).toBe(
       false,
     );
   });
   it("is false for a blocker even when its id is listed", () => {
-    writePkg({ bkit: { ignoreAdvisories: ["bkit-managed-stale"] } });
+    writePkg({ bkit: { advisories: { ignore: ["bkit-managed-stale"] } } });
     expect(isAdvisorySuppressed(tmpDir, "bkit-managed-stale", "blocker")).toBe(false);
   });
 });

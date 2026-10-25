@@ -45,7 +45,9 @@ describe("runStatus — read-only host/provider status", () => {
     );
     fs.writeFileSync(
       path.join(cwd, "package.json"),
-      JSON.stringify({ bkit: { opencodeProviders: ["openrouter", "openrouter"] } }),
+      JSON.stringify({
+        bkit: { providers: { opencode: { installed: ["openrouter", "openrouter"] } } },
+      }),
       "utf-8",
     );
     runStatus(cwd, "[bkit]");
@@ -86,7 +88,7 @@ describe("runStatus — read-only host/provider status", () => {
     fs.writeFileSync(
       path.join(cwd, "package.json"),
       JSON.stringify({
-        bkit: { opencodeProvider: "openrouter", opencodeProviders: ["openrouter"] },
+        bkit: { providers: { opencode: { default: "openrouter", installed: ["openrouter"] } } },
       }),
       "utf-8",
     );

@@ -23,7 +23,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { statusTimestamp } from "../../ledgers/status.js";
-import { CommandError, EXIT, repoRoot, runTool } from "../lib.js";
+import { CommandError, EXIT, git, repoRoot, runTool, } from "../lib.js";
 import { EXIT_NO_STATUS, FILE_FLAG, WORKFLOW_FLAG, readStatusEvents, statusFile, str, } from "./status.js";
 export const RUNTIMES = [
     "LOCAL",
@@ -88,6 +88,17 @@ export function classify(env, root, log) {
 const capable = (runtime) => runtime === "LOCAL" || runtime === "GITHUB_ACTION" || runtime === "CLOUD_CURSOR";
 /** No human can reply into the session: a GitHub Actions run. */
 const headless = (runtime) => runtime === "GITHUB_ACTION";
+/**
+ * `classify` for a process working in `cwd`, which may be a build worktree: the Cursor
+ * marker sits in the main checkout (`repoRoot`), as `runtime detect` reads it. Outside a
+ * git repo the marker is looked for under `cwd`.
+ */
+export function classifyAt(cwd) {
+    const common = git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+    return classify(process.env, common ? path.dirname(common) : cwd, () => undefined);
+}
+/** Whether a process working in `cwd` runs headless, classified like `runtime detect`. */
+export const headlessRun = (cwd) => headless(classifyAt(cwd));
 /** The full table: classification, default capabilities, and the one live gh probe. */
 export function detect(cwd, root, log) {
     const runtime = classify(process.env, root, log);

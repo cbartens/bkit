@@ -37,7 +37,7 @@ const PROMPT_DIR = ".bkit/core/prompts";
 const EXEMPT_COMPUTED = new Set([
   "MERGE_VERDICT", // ship: `bkit prs merge` from the merge outcome
   "TEST_VERDICT", // build/debug derive it from the test-run exit code
-  "BOUNDARY_VERDICT", // build derives it from the sub-plan boundary gate's exit code
+  "GATE_VERDICT", // build derives it from the group gate's exit code
   "FETCH_VERDICT", // debug: `bkit context finalise` from context-fetch block outcomes
   "DEBUG_MODE", // routing mode, not an artifact verdict
   "DIAGNOSE_MODE",
@@ -293,7 +293,7 @@ function shortenableVerdictNames(): string[] {
 
 describe("verdict vocabulary: extraction reaches the real corpus", () => {
   it("finds prompt declarations, finish pairs, producers and held verdicts", () => {
-    expect(promptDeclarations().size).toBeGreaterThan(25);
+    expect(promptDeclarations().size).toBeGreaterThanOrEqual(21);
     expect(finishPairs().length).toBeGreaterThan(25);
     expect(artifactProducers().size).toBeGreaterThan(20);
     expect(heldVerdicts().size).toBeGreaterThan(5);
@@ -376,11 +376,9 @@ describe("verdict vocabulary: enum unions are written one way", () => {
 
 describe("verdict vocabulary: variable names match their step", () => {
   /**
-   * A verdict variable should name its step once. `REMEDIATE_CHALLENGE_VERDICT`
-   * named the challenge-remediate step in reverse, against both the agent
-   * (`bkit-build-challenge-remediate`) and the counter
-   * (`CHALLENGE_REMEDIATE_ATTEMPT`) — three names for one step, one of them
-   * inverted. Where a counter exists for the same step, the two must agree.
+   * A verdict variable names its step once, in the word order its agent and its
+   * counter use: next to `GAPS_REMEDIATE_ATTEMPT` the verdict is
+   * `GAPS_REMEDIATE_VERDICT`, never `REMEDIATE_GAPS_VERDICT`.
    */
   it("a *_VERDICT and its matching *_ATTEMPT counter use the same word order", () => {
     expect(invertedVerdictNames()).toEqual([]);

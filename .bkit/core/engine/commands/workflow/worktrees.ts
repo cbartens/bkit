@@ -17,6 +17,7 @@ import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+import { lastRun } from "../../ledgers/status.js";
 import { gitEnv } from "../../ledgers/telemetry.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { COULD_NOT_RUN_EXIT_CODES, installCommand } from "../../shared/package-manager.js";
@@ -26,13 +27,23 @@ import {
   EXIT,
   git,
   isSharedBranch,
+  MAIN,
   repoRoot,
   runGit,
   type CommandSpec,
 } from "../lib.js";
 import { ensureDiskSpace } from "./disk.js";
+import {
+  listRecords,
+  newRecord,
+  readRecord,
+  removeRecord,
+  withSetupGuard,
+  writeRecord,
+} from "./ledgers.js";
+import { workflowLockFresh, workflowLockLive } from "./locks.js";
 import { detect } from "./runtime.js";
-import { WORKFLOW_FLAG } from "./status.js";
+import { WORKFLOW_FLAG, readRuns } from "./status.js";
 
 const WORKFLOWS = ["design", "plan", "build", "debug", "ship"];
 const ORIGIN_DEV = `origin/${DEV}`;
@@ -47,6 +58,7 @@ export const EXIT_REBASE_NOT_STARTED = 9;
 export const EXIT_NOT_A_WORKTREE = 10;
 export const EXIT_REMOVE = 11;
 export const EXIT_DISK_FULL = 12;
+export const EXIT_SHARED_BUSY = 13;
 
 const FID_FLAG = { name: "fid", type: "string", required: true, help: "feature id" } as const;
 
@@ -109,6 +121,41 @@ function fetchBranch(cwd: string, branch: string): void {
   if (!res.ok) {
     throw new CommandError(EXIT_FETCH, `could not fetch origin ${branch}: ${res.stderr}`);
   }
+}
+
+/**
+ * The shared-checkout record for an in-place run on `dev`. Another feature's
+ * record with a live workflow lock means that run owns the checkout; one
+ * without is left over and removed. The same feature with an open run in
+ * `{logDir}/status.jsonl` is a resume and keeps its record; a new run rewrites it.
+ */
+function openSharedRecord(root: string, fid: string, workflow: string, logDir: string) {
+  const busy = (other: string) =>
+    new CommandError(
+      EXIT_SHARED_BUSY,
+      `${other} is running in this checkout (workflow lock held) — wait for it to finish, then re-run`,
+    );
+  const guarded = withSetupGuard(root, () => {
+    for (const other of listRecords(root)) {
+      if (other.fid === fid) continue;
+      // A closed run that has not released its lock still pushes and waits for CI.
+      if (workflowLockLive(root, other.fid) || workflowLockFresh(root, other.fid)) {
+        throw busy(other.fid);
+      }
+      removeRecord(root, other.fid);
+    }
+    const existing = readRecord(root, fid);
+    const statusFile = path.join(logDir, "status.jsonl");
+    const open =
+      fs.existsSync(statusFile) &&
+      lastRun(readRuns(statusFile), workflow)?.status === "IN_PROGRESS";
+    if (existing !== null && existing.branch === DEV && open) return existing;
+    const fresh = newRecord(root, fid, DEV);
+    writeRecord(root, fresh);
+    return fresh;
+  });
+  if (guarded === null) throw busy("another run");
+  return guarded.value;
 }
 
 /** Ship's branch: the one the prompt names, else `feat/{fid}` when it exists, else the session's. */
@@ -183,6 +230,61 @@ function rebaseInProgress(wt: string): boolean {
     const dir = git(wt, ["rev-parse", "--path-format=absolute", "--git-path", p]);
     return dir !== null && fs.existsSync(dir);
   });
+}
+
+/**
+ * `git add -A` in `tree`, leaving out the `bkit.workflows.worktree.copy` entries setup
+ * copies in from the main checkout (`.env` and the like): no bkit commit may
+ * carry them, gitignored or not.
+ */
+export function addAllButCopied(
+  tree: string,
+  copied: string[] = readBkitConfig(tree).worktreeCopy,
+): ReturnType<typeof runGit> {
+  const keep = copied.map((e) => `:(exclude)${path.normalize(e)}`);
+  return runGit(tree, ["add", "-A", "--", ".", ...keep]);
+}
+
+/**
+ * Commit what an earlier run left uncommitted in a resumed worktree, so the
+ * resume rebase can start: a failed ship's flush lands its record on dev and
+ * leaves the worktree as it was, for whatever runs next. An untracked file in a
+ * log folder of this feature that `onto` already holds is dropped first: dev's
+ * copy, landed by that flush, wins, and a second copy would stop the rebase.
+ * The `worktreeCopy` entries setup copies in are never committed. Clean tree →
+ * null; a failed commit is narrated and leaves the tree for the rebase to refuse.
+ */
+function carryLeftovers(
+  wt: string,
+  o: { fid: string; onto: string; statusFile: string; copied: string[] },
+  log: (m: string) => void,
+): { sha: string | null; dropped: string[] } | null {
+  const dirty = () => (git(wt, ["status", "--porcelain", "--untracked-files=all"]) ?? "") !== "";
+  if (!dirty()) return null;
+  const logs = new RegExp(`^docs/plans/[^/]+/logs/${o.fid.replace(/\./g, "\\.")}/`);
+  const dropped = (git(wt, ["ls-files", "--others", "--exclude-standard"]) ?? "")
+    .split("\n")
+    .filter((f) => logs.test(f) && runGit(wt, ["cat-file", "-e", `${o.onto}:${f}`]).ok);
+  for (const f of dropped) fs.rmSync(path.join(wt, f));
+  if (dropped.length > 0)
+    log(
+      `dropped ${dropped.length} untracked log(s) ${o.onto} already holds: ${dropped.join(", ")}`,
+    );
+  if (!dirty()) return { sha: null, dropped };
+
+  const prior = fs.existsSync(o.statusFile) ? readRuns(o.statusFile).at(-1) : undefined;
+  const what =
+    prior === undefined
+      ? "uncommitted work left in the worktree"
+      : `the ${prior.status === "FAILED" ? "failed " : ""}${prior.workflow} record left uncommitted`;
+  addAllButCopied(wt, o.copied);
+  const made = runGit(wt, ["commit", "-m", `chore(${o.fid}): carry ${what} bkit`]);
+  if (!made.ok) {
+    log(`could not commit what an earlier run left in ${wt}: ${made.stderr || made.stdout}`);
+    return { sha: null, dropped };
+  }
+  log(`committed ${what} before the resume rebase`);
+  return { sha: git(wt, ["rev-parse", "HEAD"]), dropped };
 }
 
 // ---------------------------------------------------------------------------
@@ -359,6 +461,17 @@ export function removeWorktree(
 // Command
 // ---------------------------------------------------------------------------
 
+/**
+ * The warning ship prints when the branch it ships names neither the FID nor the
+ * issue (case-insensitive); null when it names one. A hand-made branch still ships.
+ */
+export function shipBranchWarning(branch: string, fid: string, issue?: string): string | null {
+  const b = branch.toLowerCase();
+  const id = (issue ?? "").replace(/^#/, "").toLowerCase();
+  if (b.includes(fid.toLowerCase()) || (id !== "" && b.includes(id))) return null;
+  return `[bkit-ship] WARNING branch ${branch} not named for ${fid} — shipping it as named`;
+}
+
 export const worktreesCommand: CommandSpec = {
   noun: "worktrees",
   summary: "Set up and remove the per-feature worktrees under .worktrees/.",
@@ -384,12 +497,19 @@ export const worktreesCommand: CommandSpec = {
           type: "string",
           help: "ship only: the branch the session prompt names (default: feat/{fid} when it exists, else the session branch)",
         },
+        {
+          name: "issue",
+          type: "string",
+          help: "ship only: the issue id; a branch naming it (or the FID) prints no branchWarning",
+        },
       ],
       output: {
         worktreePath: "directory the workflow must cd into",
         repoRoot: "the main checkout",
         branch: "branch checked out at worktreePath",
         mode: "created | resumed | adopted",
+        branchWarning:
+          "ship: the warning printed when the branch names neither the FID nor --issue, else null",
         owned: "the .worktree-owned marker is present (a workflow created this worktree)",
         rebaseConflict:
           "a resume rebase onto baseRef stopped on a conflict and is left in progress",
@@ -398,11 +518,19 @@ export const worktreesCommand: CommandSpec = {
         baseRef:
           "dev when local dev is a fast-forward of origin/dev (unpushed commits), else origin/dev",
         baseSha: "git merge-base baseRef HEAD at worktreePath, or null",
+        carriedSha:
+          "resume: the commit holding what an earlier run left uncommitted (a failed ship's record), made before the rebase; else null",
+        carriedDropped:
+          "resume: untracked logs of this feature dropped because baseRef already holds them (dev's copy wins)",
         copied: "worktree copy entries copied from the main checkout",
         copyMissing: "worktree copy entries absent from the main checkout",
         direnvAllowed:
           "direnv allow ran on the worktree's .envrc (present and identical to the main checkout's)",
         installed: "dependencies were installed",
+        startSha:
+          "in place on dev (debug): HEAD when the run started, recorded in the shared-checkout record; absent otherwise",
+        aheadAtStart:
+          "in place on dev (debug): commits local dev held beyond origin/dev when the run started; absent otherwise",
       },
       exitCodes: {
         [EXIT_REBASE_CONFLICT]:
@@ -411,12 +539,15 @@ export const worktreesCommand: CommandSpec = {
         [EXIT_INSTALL]: "dependency install failed",
         [EXIT_INSTALL_COULD_NOT_RUN]: "the package manager could not run (exit 126 / 127)",
         [EXIT_REFUSED]:
-          "refused: dev / main as the working branch, detached HEAD, or ship could not switch to its branch",
+          "refused: main as the working branch (dev too, except debug in place), ship of dev / main, detached HEAD, or ship could not switch to its branch (a missing feat/{fid} is named)",
         [EXIT_WORKTREE_ADD]: "git worktree add failed",
-        [EXIT_REBASE_NOT_STARTED]: "resume rebase could not start (e.g. uncommitted changes)",
+        [EXIT_REBASE_NOT_STARTED]:
+          "resume rebase could not start, even after committing what an earlier run left (e.g. a commit hook refused that commit)",
         [EXIT_NOT_A_WORKTREE]: ".worktrees/{fid} exists but is not a registered git worktree",
+        [EXIT_SHARED_BUSY]:
+          "in place on dev: another feature's run holds this checkout (its shared-checkout record has a live workflow lock); nothing written",
         [EXIT_DISK_FULL]:
-          "free disk under bkit.disk.minFreeGb even after your max cleanup steps (`bkit disk prune`); nothing created",
+          "free disk under bkit.workflows.minFreeGb even after your max cleanup steps (`bkit disk prune`); nothing created",
       },
       run: async (ctx) => {
         const f = ctx.flags;
@@ -430,6 +561,9 @@ export const worktreesCommand: CommandSpec = {
         const named = f.branch === undefined ? undefined : String(f.branch);
         if (named !== undefined && workflow !== "ship") {
           throw new CommandError(EXIT.USAGE, "--branch is ship only");
+        }
+        if (f.issue !== undefined && workflow !== "ship") {
+          throw new CommandError(EXIT.USAGE, "--issue is ship only");
         }
         if (named !== undefined && !runGit(ctx.cwd, ["check-ref-format", "--branch", named]).ok) {
           throw new CommandError(EXIT.USAGE, `--branch "${named}" is not a valid branch name`);
@@ -446,7 +580,12 @@ export const worktreesCommand: CommandSpec = {
         }
         const target = workflow === "ship" ? shipBranch(root, fid, named, session) : `feat/${fid}`;
         if (isSharedBranch(target)) {
-          throw new CommandError(EXIT_REFUSED, `refusing to ship ${target} as a feature branch`);
+          throw new CommandError(
+            EXIT_REFUSED,
+            workflow === "ship"
+              ? `refusing to ship ${target}: /bkit-ship ships a feature branch into ${DEV} only; it never opens a PR from ${DEV} into ${MAIN} or merges into ${MAIN}, releases stay manual. Name the feature branch to ship.`
+              : `refusing to ship ${target} as a feature branch`,
+          );
         }
 
         // Ship mints only when the session is not already on the branch it ships:
@@ -491,6 +630,12 @@ export const worktreesCommand: CommandSpec = {
           if (workflow === "ship" && git(root, ["branch", "--show-current"]) !== target) {
             const sw = runGit(root, ["switch", target]);
             if (!sw.ok) {
+              if (!hasLocal(root, target) && remoteHas(root, target) !== "yes") {
+                throw new CommandError(
+                  EXIT_REFUSED,
+                  `${target} does not exist — name the feature branch to ship`,
+                );
+              }
               throw new CommandError(
                 EXIT_REFUSED,
                 `adopt mode: cannot switch to ${target} — commit or stash local changes, then re-run (${sw.stderr})`,
@@ -498,8 +643,8 @@ export const worktreesCommand: CommandSpec = {
             }
           }
           const here = git(root, ["branch", "--show-current"]) ?? "";
-          const refused = workflow === "debug" ? "main" : DEV;
-          if (here === "" || here === refused) {
+          // Debug may work in place on dev (its shared-checkout path); nothing works in place on main.
+          if (here === "" || here === MAIN || (here === DEV && workflow !== "debug")) {
             throw new CommandError(
               EXIT_REFUSED,
               here === ""
@@ -509,8 +654,16 @@ export const worktreesCommand: CommandSpec = {
           }
         }
 
+        // An in-place run on a shared branch records what was dirty before it, so its
+        // commits and push take only its own work.
+        const shared =
+          mode === "adopted" && isSharedBranch(git(root, ["branch", "--show-current"]) ?? "")
+            ? openSharedRecord(root, fid, workflow, logDir)
+            : undefined;
+
         let rebaseConflict = false;
         let sentinel: string | null = null;
+        let carried: ReturnType<typeof carryLeftovers> = null;
         const sentinelPath = path.join(logDir, ".rebase-failed");
         if (mode === "resumed" && workflow !== "ship") {
           // Cleared before every attempt: a sentinel left by an earlier run would
@@ -526,7 +679,19 @@ export const worktreesCommand: CommandSpec = {
           } else {
             fetchBranch(wt, DEV);
             const onto = devBase(wt, ctx.log);
+            carried = carryLeftovers(
+              wt,
+              {
+                fid,
+                onto,
+                statusFile: path.join(logDir, "status.jsonl"),
+                copied: config.worktreeCopy,
+              },
+              ctx.log,
+            );
             const rb = runGit(wt, ["rebase", "--rebase-merges", onto]);
+            // The rebase replays the carry commit on top: report the replayed one.
+            if (rb.ok && carried?.sha) carried.sha = git(wt, ["rev-parse", "HEAD"]);
             if (!rb.ok) {
               failure = {
                 conflict: rebaseInProgress(wt),
@@ -564,21 +729,33 @@ export const worktreesCommand: CommandSpec = {
         const installStatus = wantInstall ? install(wt, ctx.log) : 0;
 
         const baseRef = devBase(wt);
+        const branch = git(wt, ["branch", "--show-current"]) ?? "";
+        const branchWarning =
+          workflow === "ship"
+            ? shipBranchWarning(branch, fid, f.issue === undefined ? undefined : String(f.issue))
+            : null;
+        if (branchWarning !== null) ctx.log(branchWarning);
         ctx.emit({
           worktreePath: wt,
           repoRoot: root,
-          branch: git(wt, ["branch", "--show-current"]) ?? "",
+          branch,
           mode,
+          branchWarning,
           owned: fs.existsSync(marker),
           rebaseConflict,
           sentinel,
           logDir,
           baseRef,
           baseSha: git(wt, ["merge-base", baseRef, "HEAD"]),
+          carriedSha: carried?.sha ?? null,
+          carriedDropped: carried?.dropped ?? [],
           copied,
           copyMissing,
           direnvAllowed,
           installed: wantInstall && installStatus === 0,
+          ...(shared === undefined
+            ? {}
+            : { startSha: shared.startSha, aheadAtStart: shared.aheadAtStart }),
         });
         if (sentinel !== null)
           return rebaseConflict ? EXIT_REBASE_CONFLICT : EXIT_REBASE_NOT_STARTED;

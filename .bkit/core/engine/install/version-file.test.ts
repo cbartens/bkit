@@ -194,6 +194,23 @@ describe("P4.T4 — canonicalHashes + isConsumerModified", () => {
   });
 });
 
+describe("mergeCanonicalHashes — ledgers are never hashed", () => {
+  it("prunes an existing ledger entry and keeps no fresh one", () => {
+    fs.mkdirSync(path.join(tmpDir, "docs"));
+    fs.mkdirSync(path.join(tmpDir, ".bkit"));
+    fs.writeFileSync(path.join(tmpDir, "docs", "deferrals.jsonl"), "{}\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".bkit", "stats.jsonl"), "{}\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, "live.md"), "live", "utf-8");
+    const { canonicalHashes, pruned } = mergeCanonicalHashes(
+      tmpDir,
+      { "docs/deferrals.jsonl": "old", "live.md": "old" },
+      { ".bkit/stats.jsonl": "new", "fresh.md": "fresh" },
+    );
+    expect(canonicalHashes).toEqual({ "live.md": "old", "fresh.md": "fresh" });
+    expect(pruned).toBe(1);
+  });
+});
+
 describe("mergeCanonicalHashes — fresh overwrites, absent paths are pruned", () => {
   it("drops an entry whose path is no longer on disk, and counts it", () => {
     fs.writeFileSync(path.join(tmpDir, "live.md"), "live", "utf-8");

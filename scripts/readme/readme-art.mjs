@@ -1,4 +1,4 @@
-// Renders the root README images (hero, features grid, pipeline, fences, context map, CI, fence details, audit map, token use, models and effort), light + dark,
+// Renders the root README images (hero, features grid, pipeline, fences, context map, CI, fence details, audit map, token use, re-reading, models and effort), light + dark,
 // plus the repo's social preview card, into .github/assets/ as both .svg and .png. Edit the copy
 // below, then: node scripts/readme/readme-art.mjs
 // Text is not auto-wrapped: keep tile lines short and eyeball the output at ~880px.
@@ -555,7 +555,7 @@ function pipeline(t) {
       g: [
         [3, "rival designs"],
         [3, "critique + probe code"],
-        [4, "merge, refine, sum up"],
+        [3, "merge, refine, organise"],
       ],
       out: "→ design to approve",
     },
@@ -564,9 +564,9 @@ function pipeline(t) {
       cmd: "/bkit-plan",
       title: "Plan",
       g: [
-        [3, "critique the plan"],
-        [2, "check the scope"],
-        [5, "write, merge, size up"],
+        [2, "critique the plan"],
+        [1, "check the scope"],
+        [2, "write + merge"],
       ],
       out: "→ plan to approve",
     },
@@ -575,9 +575,9 @@ function pipeline(t) {
       cmd: "/bkit-build",
       title: "Build",
       g: [
-        [4, "write + verify vs plan"],
+        [2, "check plan, add skills"],
+        [3, "write + verify vs plan"],
         [2, "hunt bugs + security"],
-        [5, "merge, fix, add tests"],
       ],
       out: "→ tested pull request",
     },
@@ -588,7 +588,7 @@ function pipeline(t) {
       g: [
         [1, "resolve conflicts"],
         [1, "check nothing's missing"],
-        [2, "update docs + summary"],
+        [1, "update docs"],
       ],
       out: "→ merged to dev",
     },
@@ -639,7 +639,7 @@ function pipeline(t) {
   b += `<rect x="${dx}" y="${dy}" width="${CW}" height="6" rx="3" fill="${dcol}"/>`;
   b += text(dx + 24, dy + 40, "/bkit-debug", { size: 17, fill: dcol, font: MONO, weight: 600 });
   b += text(dx + 24, dy + 74, "Debug", { size: 26, weight: 700, fill: t.text });
-  b += dots(dx + 32, dy + 100, 6, dcol);
+  b += dots(dx + 32, dy + 100, 5, dcol);
   b += text(dx + 24, dy + 132, "find cause, fix, remember", { size: 17, fill: t.text });
 
   // Ship -> merged to dev; production stays with you
@@ -680,7 +680,7 @@ function pipeline(t) {
     W,
     footH(672),
     b + footer(t, W, 672, 48, 40),
-    "The bkit pipeline: design, plan, build and ship, with debug fixing failed tests. Each dot is one of 41 AI agents: 10 in design, 10 in plan, 11 in build, 6 in debug and 4 in ship. It waits for your sign-off after design, after plan and before merge, merges into dev, and leaves production to you. Runs on Claude Code, Cursor, Codex, Antigravity and opencode.",
+    "The bkit pipeline: design, plan, build and ship, with debug fixing failed tests. Each dot is one of 30 AI agents: 9 in design, 5 in plan, 8 in build, 5 in debug and 3 in ship. It waits for your sign-off after design, after plan and before merge, merges into dev, and leaves production to you. Runs on Claude Code, Cursor, Codex, Antigravity and opencode.",
   );
 }
 
@@ -1628,6 +1628,309 @@ function tokens(t) {
   );
 }
 
+// ---------- Token use (what bkit does instead: stop the re-reading) ----------
+// Every printed figure is published third-party work; bkit's own numbers join once measured.
+// Bar: shares of input tokens across 13.5M GitHub Copilot agent sessions, June 2026 (Liu et al., "Agentic
+// Coding in the Wild", arxiv.org/abs/2608.00101): history 48%, tool results 28%, system prompt 14%, repository
+// instructions and other 10%; median input:output over 275:1. Compression on Claude Code, total billed cost:
+// RTK -2.7%, Headroom +48.4% (Weinberger & Hozez, "Token Reduction Is Not Cost Reduction", arxiv.org/abs/2607.12161).
+// Read:written ~100:1 (Manus, manus.im/en/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus);
+// 18 models all decline with length (Chroma, research.trychroma.com/context-rot); 11 of 13 below half
+// their short-context score at 32k (NoLiMa, ICML 2025, arxiv.org/abs/2502.05167); sub-agents return 1-2k tokens
+// (anthropic.com/engineering/effective-context-engineering-for-ai-agents). Band: HumanLayer's 40-60% of a
+// 200k window and Huntley's ~170k usable (humanlayer.dev/blog/advanced-context-engineering). Claude Code compacts
+// native-1M models at about 967K by default (code.claude.com/docs/en/model-config). No JetBrains observation-masking
+// figure: bkit can't hide old tool output on any host (docs/decisions.jsonl 663-observation-masking-not-possible).
+// The curve is an illustration, unlabelled on the turn axis: both lines replay the per-turn context growth
+// of one bkit-build-plan-execute agent (#650, Claude Code subagent transcript, usage deduped by message id).
+// "Today" compacts only near REREAD_FULL (a repo without bkit's autoCompactWindow); bkit hands over to a
+// fresh agent whenever the next turn would pass REREAD_CAP.
+const REREAD_CURVE = `
+17,22,34,43,65,88,92,93,95,99,108,115,122,127,129,134,137,142,144,152,155,159,163,167,169,170,173,179,185,188,192,196,199,205,208,210,219,232,233,236,
+236,238,239,243,245,249,251,252,253,253,256,264,32,34,49,53,64,68,72,73,76,80,83,84,88,92,97,100,103,108,110,116,118,122,135,140,148,157,159,159,
+172,177,181,190,199,199,201,205,212,213,214,221,222,227,230,231,233,236,237,239,242,243,244,249,250,252,253,265,28,35,43,46,51,62,66,69,75,78,80,84,
+87,90,92,97,99,103,107,118,120,129,133,136,141,146,153,155,158,161,163,165,167,169,171,175,177,181,188,190,191,193,196,199,201,203,203,204,210,216,219,227,
+231,234,237,241,244,245,250,253,254,255,256,258,259,265,30,37,37,38,41,42,44,44,45,45,48,53,54,56,57,68,78,82,83,88,94,98,100,107,111,115,
+119,121,128,135,137,143,144,151,153,155,157,158,163,164,167,168,168,169,171,173,175,177,178,179,181,185,187,190,194,196,197,198,201,202,204,205,208,209,210,213,
+215,217,218,219,221,223,225,226,227,228,230,232,239,239,245,248,249,250,250,251,256,259,259,260,262,265,266,31,33,45,51,55,58,60,62,64,65,70,73,75,
+76,77,78,80,81,84,86,87,87,90,92,93,96,102,109,112,113,115,116,117,120,122,125,126,127,129,130,131,135,137,141,143,144,145,146,147,149,150,152,155,
+158,159,160,162,164,164,166,167,168,170,173,174,175,177,177,180,180,181,182,184,185,188,189,190,191,193,199,200,200,202,205,208,209,211,213,215,216,217,219,220,
+224,225,228,230,231,232,233,234,235,237,237,239,239,240,241,242,242,243,244,245,245,246,246,247,248,250,250,251,252,253,253,254,255,256,257,258,258,259,260,260
+`
+  .split(",")
+  .map(Number);
+const REREAD_CAP = 160,
+  REREAD_START = 22,
+  REREAD_FULL = 1000,
+  REREAD_AFTER = 30,
+  REREAD_BAND = [80, 170];
+// Replays the growth: start at `start`, and when the next turn would pass `cap`, drop to `reset`.
+function rereadRun(start, cap, reset) {
+  let cur = start;
+  const line = [cur];
+  for (let i = 1; i < REREAD_CURVE.length; i++) {
+    const grow = Math.max(0, REREAD_CURVE[i] - REREAD_CURVE[i - 1]);
+    cur = cur + grow > cap ? reset : cur + grow;
+    line.push(cur);
+  }
+  return line;
+}
+function reread(t) {
+  const W = 1200,
+    X0 = 60,
+    BW = W - 2 * X0,
+    BY = 340,
+    BH = 56;
+  const dark = t.bg === THEMES.dark.bg;
+  const grey = dark ? "#484f58" : "#afb8c1";
+  const now = rereadRun(17, REREAD_FULL, REREAD_AFTER),
+    line = rereadRun(REREAD_START, REREAD_CAP, REREAD_START);
+
+  let b = "";
+  b += text(X0, 64, "TOKEN USE", { size: 14, weight: 700, fill: t.plan, ls: 2.4 });
+  b += text(X0 - 2, 128, "Compression shrinks the output.", {
+    size: 56,
+    weight: 800,
+    fill: t.muted,
+    ls: -1.5,
+  });
+  b += text(X0 - 2, 190, "bkit stops the re-reading.", {
+    size: 56,
+    weight: 800,
+    fill: t.text,
+    ls: -1.5,
+  });
+  b += text(
+    X0,
+    234,
+    "What a coding agent reads on each request, across 13.5M GitHub Copilot sessions.",
+    { size: 19, fill: t.muted },
+  );
+  b += text(X0, 292, "72%: re-reading, on every request", { size: 20, weight: 700, fill: t.text });
+  b += text(
+    X0,
+    318,
+    "the conversation so far, the system prompt and instructions: what bkit cuts",
+    {
+      size: 15,
+      fill: t.muted,
+    },
+  );
+  b += text(W - X0, 292, "28%: tool output", {
+    size: 20,
+    weight: 700,
+    fill: t.text,
+    anchor: "end",
+  });
+  b += text(W - X0, 318, "all a compressor can touch", { size: 15, fill: t.muted, anchor: "end" });
+  // Shares of input tokens (Liu et al., GitHub Copilot).
+  const seg = [
+    [48, t.plan, "Conversation so far 48%", t.gateInk],
+    [14, t.plan, "System 14%", t.gateInk],
+    [10, t.plan, "Other 10%", t.gateInk],
+    [28, grey, "Tool output 28%", t.text],
+  ];
+  let x = X0;
+  b += `<clipPath id="reread-bar"><rect x="${X0}" y="${BY}" width="${BW}" height="${BH}" rx="8"/></clipPath><g clip-path="url(#reread-bar)">`;
+  const labels = [];
+  seg.forEach(([pct, fill, label, ink], i) => {
+    const w = (BW * pct) / 100,
+      l = x + (i ? 1.5 : 0),
+      r = x + w - (i < seg.length - 1 ? 1.5 : 0);
+    b += `<rect x="${l.toFixed(1)}" y="${BY}" width="${(r - l).toFixed(1)}" height="${BH}" fill="${fill}"/>`;
+    labels.push(text(l + 14, BY + 34, label, { size: 15, weight: 700, fill: ink }));
+    x += w;
+  });
+  b += "</g>" + labels.join("");
+  const tx = X0 + BW - 1;
+  b += `<line x1="${tx}" y1="${BY + BH + 2}" x2="${tx}" y2="${BY + BH + 26}" stroke="${t.muted}"/>`;
+  b += `<text x="${tx - 8}" y="${BY + BH + 24}" font-family="${SANS}" font-size="16" fill="${t.muted}" text-anchor="end">Best published compression result on Claude Code: <tspan font-weight="800" fill="${t.text}">2.7%</tspan> off the whole bill. Another tool added 48%.</text>`;
+  b += text(
+    X0,
+    BY + BH + 60,
+    "The model's own writing: about 1 token for every 100–275 it reads, too thin to show.",
+    { size: 16, fill: t.muted },
+  );
+  b += text(
+    X0,
+    BY + BH + 86,
+    "Sources: Liu et al., GitHub Copilot at production scale (2026); Weinberger & Hozez, 2,848 Claude Code runs (2026); Manus (2025).",
+    { size: 14, fill: t.muted },
+  );
+
+  // The mechanism: an agent's cost is the area under its context line.
+  const PY = 570;
+  b += `<line x1="${X0}" y1="${PY - 50}" x2="${W - X0}" y2="${PY - 50}" stroke="${t.border}"/>`;
+  b += text(X0, PY, "An agent's cost is the area under its context line.", {
+    size: 28,
+    weight: 800,
+    fill: t.text,
+    ls: -0.5,
+  });
+  b += text(
+    X0,
+    PY + 34,
+    "Each request re-sends the whole conversation. A token costs the same at 900k as at 9k, but a turn at 900k sends 100× as many.",
+    { size: 17, fill: t.muted },
+  );
+  const CX0 = X0 + 56,
+    CX1 = W - X0,
+    CY0 = PY + 80,
+    CY1 = PY + 400,
+    YMAX = 1050;
+  const n = REREAD_CURVE.length;
+  const px = (i) => CX0 + ((CX1 - CX0) * i) / (n - 1);
+  const py = (k) => CY1 - ((CY1 - CY0) * k) / YMAX;
+  [0, 250, 500, 750, 1000].forEach((k) => {
+    b += `<line x1="${CX0}" y1="${py(k)}" x2="${CX1}" y2="${py(k)}" stroke="${t.border}"/>`;
+    b += text(CX0 - 10, py(k) + 5, k ? (k < 1000 ? `${k}k` : "1M") : "0", {
+      size: 14,
+      fill: t.muted,
+      anchor: "end",
+    });
+  });
+  b += text(CX1, CY1 + 26, "turns →", { size: 14, fill: t.muted, anchor: "end" });
+  b += text(CX0 - 10, CY0 - 14, "context, tokens", { size: 14, fill: t.muted });
+  b += text(CX0, CY1 + 26, "Illustration: the same work, drawn both ways.", {
+    size: 14,
+    fill: t.muted,
+  });
+  const area = (vals) =>
+    `M${px(0)} ${CY1} ` +
+    vals.map((v, i) => `L${px(i).toFixed(1)} ${py(v).toFixed(1)}`).join(" ") +
+    ` L${px(n - 1)} ${CY1} Z`;
+  const path = (vals) =>
+    vals.map((v, i) => `${i ? "L" : "M"}${px(i).toFixed(1)} ${py(v).toFixed(1)}`).join(" ");
+  const [bandLo, bandHi] = REREAD_BAND;
+  b += `<rect x="${CX0}" y="${py(bandHi).toFixed(1)}" width="${CX1 - CX0}" height="${(py(bandLo) - py(bandHi)).toFixed(1)}" fill="${t.plan}" fill-opacity="0.14"/>`;
+  b += `<path d="${area(now)}" fill="${grey}" fill-opacity="0.45"/>`;
+  b += `<path d="${path(now)}" fill="none" stroke="${t.muted}" stroke-width="1.5"/>`;
+  b += `<path d="${area(line)}" fill="${t.plan}" fill-opacity="0.45"/>`;
+  b += `<path d="${path(line)}" fill="none" stroke="${t.plan}" stroke-width="2"/>`;
+  now.forEach((v, i) => {
+    if (i && v < now[i - 1] - 100)
+      b += `<circle cx="${px(i - 1).toFixed(1)}" cy="${py(now[i - 1]).toFixed(1)}" r="5" fill="${t.muted}"/>`;
+  });
+  const legend = [
+    [grey, 1, "Today: one agent until about 967k, where Claude Code summarises it (●)"],
+    [t.plan, 0.25, `Handover band, ${bandLo}–${bandHi}k: where practitioners say to start fresh`],
+  ];
+  legend.forEach(([fill, op, s], i) => {
+    const ly = CY0 + 16 + i * 28;
+    b += `<rect x="${CX0 + 20}" y="${ly - 12}" width="14" height="14" rx="3" fill="${fill}" fill-opacity="${op}"/>`;
+    b += text(CX0 + 44, ly, s, { size: 15, fill: t.text });
+  });
+
+  // Published findings, one figure each.
+  const SY = CY1 + 84;
+  b += text(X0, SY, "What published work finds", { size: 17, weight: 700, fill: t.text });
+  const facts = [
+    [
+      "11 of 13",
+      "models score under half their",
+      "short-context result by 32k tokens",
+      "NoLiMa, ICML 2025",
+    ],
+    [
+      "40–60%",
+      "is as full as a context should get",
+      "before you start a fresh one",
+      "HumanLayer, 2025",
+    ],
+    [
+      "1–2k tokens",
+      "is what a sub-agent hands back",
+      "from tens of thousands it read",
+      "Anthropic, 2025",
+    ],
+  ];
+  const FW = BW / 3;
+  facts.forEach(([big, l1, l2, src], i) => {
+    const fx = X0 + i * FW;
+    b += text(fx, SY + 52, big, { size: 40, weight: 800, fill: t.plan, ls: -1 });
+    b += text(fx, SY + 80, l1, { size: 15, fill: t.text });
+    b += text(fx, SY + 100, l2, { size: 15, fill: t.text });
+    b += text(fx, SY + 122, src, { size: 13, fill: t.muted });
+  });
+  b += text(
+    X0,
+    SY + 160,
+    "All 18 models Chroma tested (2025) got worse as their context grew. 967k: Claude Code's default compaction point on 1M models.",
+    { size: 14, fill: t.muted },
+  );
+  b += text(
+    X0,
+    SY + 180,
+    "Measure your own runs: bkit records the tokens each agent read in .bkit/stats.jsonl, and bkit stats writes a report to .bkit/stats.md.",
+    { size: 14, fill: t.muted },
+  );
+
+  // How bkit gets there.
+  const GY = SY + 260;
+  b += `<line x1="${X0}" y1="${GY - 50}" x2="${W - X0}" y2="${GY - 50}" stroke="${t.border}"/>`;
+  b += text(X0, GY, "How bkit reads less, and loses nothing", {
+    size: 28,
+    weight: 800,
+    fill: t.text,
+    ls: -0.5,
+  });
+  const ways = [
+    [
+      "Fresh agents with short briefs.",
+      [
+        "Each group of tasks gets its own agent and a brief of a",
+        "few KB, never the whole plan. None runs past 160k.",
+      ],
+    ],
+    [
+      "Code does the bookkeeping.",
+      [
+        "Ledger rows, test-first order, summaries and where to resume",
+        "come from bkit commands: no model turns, same answer every time.",
+      ],
+    ],
+    [
+      "One round, then you decide.",
+      [
+        "One plan review round. A fix that fails once comes back",
+        "to you with a report, instead of retrying the same thing.",
+      ],
+    ],
+    [
+      "Each agent carries only its own rules.",
+      [
+        "Rules sit in the prompts of the agents that act on them.",
+        "Plans hold tasks, not pages of instructions.",
+      ],
+    ],
+  ];
+  const CW = (BW - 40) / 2;
+  ways.forEach(([lead, rest], i) => {
+    const cx = X0 + (i % 2) * (CW + 40),
+      cy = GY + 56 + Math.floor(i / 2) * 104;
+    b += `<circle cx="${cx + 11}" cy="${cy - 6}" r="11" fill="${t.plan}"/>`;
+    b += text(cx + 11, cy, String(i + 1), {
+      size: 14,
+      weight: 800,
+      fill: t.gateInk,
+      anchor: "middle",
+    });
+    b += text(cx + 32, cy, lead, { size: 18, weight: 700, fill: t.text });
+    rest.forEach((s, j) => {
+      b += text(cx + 32, cy + 26 + j * 22, s, { size: 15, fill: t.muted });
+    });
+  });
+  const H = GY + 56 + 104 + 60;
+  return svg(
+    W,
+    footH(H),
+    `<rect x="0.5" y="0.5" width="${W - 1}" height="${footH(H) - 1}" rx="18" fill="${t.bg}" stroke="${t.border}"/>` +
+      b +
+      footer(t, W, H),
+    `Compression shrinks the output; bkit stops the re-reading. What a coding agent reads on each request, across 13.5 million GitHub Copilot sessions: 72 percent is re-reading on every request, the conversation so far at 48 percent, the system prompt at 14 percent and instructions and other context at 10 percent, which is what bkit cuts; 28 percent is tool output, all a compressor can touch. The best published compression result on Claude Code took 2.7 percent off the whole bill, and another tool added 48 percent. The model's own writing is about 1 token for every 100 to 275 it reads. Sources: Liu et al., GitHub Copilot at production scale, 2026; Weinberger and Hozez, 2,848 Claude Code runs, 2026; Manus, 2025. An agent's cost is the area under its context line: each request re-sends the whole conversation, and a token costs the same at 900 thousand as at 9 thousand, but a turn at 900 thousand sends 100 times as many. In an illustration of the same work drawn both ways, today one agent runs until about 967 thousand tokens, where Claude Code summarises it and drops detail; bkit hands over to a fresh agent with a short brief in the ${REREAD_BAND[0]} to ${REREAD_BAND[1]} thousand band, where practitioners say to start fresh. What published work finds: 11 of 13 models score under half their short-context result by 32 thousand tokens (NoLiMa, ICML 2025); a context should get no more than 40 to 60 percent full before you start a fresh one (HumanLayer, 2025); a sub-agent hands back 1 to 2 thousand tokens from tens of thousands it read (Anthropic, 2025); all 18 models Chroma tested got worse as their context grew. Measure your own runs: bkit records the tokens each agent read in .bkit/stats.jsonl, and bkit stats writes a report of your runs to .bkit/stats.md. How bkit reads less: fresh agents with short briefs, never the whole plan, none past ${REREAD_CAP} thousand tokens; code does the bookkeeping, so ledger rows, test-first order, summaries and resume points come from bkit commands with the same answer every time; one round, then you decide; each agent carries only its own rules.`,
+  );
+}
+
 // ---------- What's in the box ----------
 function features(t) {
   const W = 1000;
@@ -1648,8 +1951,8 @@ function features(t) {
       key: "plan",
       cmd: "/bkit-plan",
       tiles: [
-        ["Five reviewers", "Scope, order, regressions", "and testability checked"],
-        ["Big work split", "Oversized plans become", "buildable sub-plans"],
+        ["One review round", "Plan, regressions and", "scope checked in parallel"],
+        ["Self-contained tasks", "Each names the code it", "touches and its test"],
         ["Learns from the past", "Past bugs and postponed", "work go to reviewers"],
         [">30 audits", "Findings feed straight", "into the plan"],
       ],
@@ -1730,7 +2033,7 @@ function features(t) {
     W,
     footH(H),
     b + footer(t, W, H, M),
-    "What ships with bkit, one coloured row per phase. Design: three rival designs, probe code for the risky unknowns, reads your history, reviewed for failure modes. Plan: five reviewers, big work split up, learns from past bugs and postponed work, more than 30 audits. Build: test first and verified, hunts bugs and security holes, checks the plan is still current, skills on demand. Debug: outside evidence from CI and your platforms, root cause first, hard-bug mode, knows when to stop. Ship: honest CI, nothing quietly dropped, docs and memory, never touches main. Every phase: any AI tool, best model per job, independent review, laptop to cloud.",
+    "What ships with bkit, one coloured row per phase. Design: three rival designs, probe code for the risky unknowns, reads your history, reviewed for failure modes. Plan: one review round, self-contained tasks, learns from past bugs and postponed work, more than 30 audits. Build: test first and verified, hunts bugs and security holes, checks the plan is still current, skills on demand. Debug: outside evidence from CI and your platforms, root cause first, hard-bug mode, knows when to stop. Ship: honest CI, nothing quietly dropped, docs and memory, never touches main. Every phase: any AI tool, best model per job, independent review, laptop to cloud.",
   );
 }
 
@@ -1747,7 +2050,7 @@ const EFFORTS = [
 ];
 const FAMILIES = {
   fable: { role: "by hand, never pinned", empty: {} },
-  opus: { role: "judgement", empty: { low: "use Haiku", max: "never" } },
+  opus: { role: "judgement", empty: { low: "use Haiku", xhigh: "unmeasured", max: "never" } },
   sonnet: { role: "execution", empty: { low: "use Haiku", xhigh: "use Opus", max: "use Opus" } },
   haiku: { role: "summaries", empty: {} },
 };
@@ -1895,8 +2198,8 @@ function models(t) {
         return;
       }
       for (const o of c.orchestrators) {
-        b += text(x + 16, ly, o, { size: 14, weight: 600, fill: t[o.slice(6)], font: MONO });
-        ly += 19;
+        b += text(x + 16, ly, o, { size: 13, weight: 600, fill: t[o.slice(6)], font: MONO });
+        ly += 16;
       }
       if (c.agents.length) {
         if (c.orchestrators.length) ly += 4;
@@ -2020,6 +2323,7 @@ for (const [name, t] of Object.entries(THEMES)) {
   images.push([`bkit-fences-details-${name}`, fenceDetails(t)]);
   images.push([`bkit-audits-${name}`, audits(t)]);
   images.push([`bkit-tokens-${name}`, tokens(t)]);
+  images.push([`bkit-reread-${name}`, reread(t)]);
   images.push([`bkit-models-${name}`, models(t)]);
 }
 // One social image: link previews have no light/dark switch, and dark reads on both.

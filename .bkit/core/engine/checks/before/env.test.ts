@@ -47,7 +47,7 @@ afterEach(() => {
 /** Each tracker that needs its own `.bkit/.env` token beside BKIT_GH_TOKEN, with that token. */
 const TRACKER_KEYS = [
   ["linear", "BKIT_LINEAR_API_KEY"],
-  ["jira", "BKIT_JIRA_API_TOKEN"],
+  ["jira", "BKIT_JIRA_API_KEY"],
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -87,7 +87,7 @@ describe("detectMissingDotenv", () => {
     const linear = detectMissingDotenv(tmpDir, "linear")!;
     expect(linear.action).toContain("BKIT_LINEAR_API_KEY");
     const jira = detectMissingDotenv(tmpDir, "jira")!;
-    expect(jira.action).toContain("BKIT_GH_TOKEN, BKIT_JIRA_API_TOKEN");
+    expect(jira.action).toContain("BKIT_GH_TOKEN, BKIT_JIRA_API_KEY");
     expect(jira.action).not.toContain("BKIT_LINEAR_API_KEY");
   });
 });
@@ -128,15 +128,15 @@ describe("detectBlankDotenvKeys", () => {
     expect(ids).not.toContain("mcp-env-blank-key-bkit_linear_api_key");
   });
 
-  it("jira tracker: flags a blank BKIT_JIRA_API_TOKEN, not BKIT_LINEAR_API_KEY", () => {
+  it("jira tracker: flags a blank BKIT_JIRA_API_KEY, not BKIT_LINEAR_API_KEY", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".bkit", ".env"),
-      "BKIT_GH_TOKEN=ghp_test\nBKIT_LINEAR_API_KEY=\nBKIT_JIRA_API_TOKEN=\n",
+      "BKIT_GH_TOKEN=ghp_test\nBKIT_LINEAR_API_KEY=\nBKIT_JIRA_API_KEY=\n",
       "utf-8",
     );
     const findings = detectBlankDotenvKeys(tmpDir, "jira");
-    expect(findings.map((f) => f.id)).toEqual(["mcp-env-blank-key-bkit_jira_api_token"]);
+    expect(findings.map((f) => f.id)).toEqual(["mcp-env-blank-key-bkit_jira_api_key"]);
     expect(findings[0]!.action).toContain("Atlassian MCP V2");
     // Jira has no preflight hook; only the Linear token feeds one.
     expect(findings[0]!.action).not.toContain("preflight hook");
@@ -257,9 +257,9 @@ describe("detectDirenvMissing", () => {
   });
 
   it.each([
-    ["github", "BKIT_GH_TOKEN", ["BKIT_LINEAR_API_KEY", "BKIT_JIRA_API_TOKEN"]],
-    ["linear", "BKIT_GH_TOKEN, BKIT_LINEAR_API_KEY", ["BKIT_JIRA_API_TOKEN"]],
-    ["jira", "BKIT_GH_TOKEN, BKIT_JIRA_API_TOKEN", ["BKIT_LINEAR_API_KEY"]],
+    ["github", "BKIT_GH_TOKEN", ["BKIT_LINEAR_API_KEY", "BKIT_JIRA_API_KEY"]],
+    ["linear", "BKIT_GH_TOKEN, BKIT_LINEAR_API_KEY", ["BKIT_JIRA_API_KEY"]],
+    ["jira", "BKIT_GH_TOKEN, BKIT_JIRA_API_KEY", ["BKIT_LINEAR_API_KEY"]],
   ] as const)("%s tracker: setup steps name only its own tokens", (tracker, keys, absent) => {
     fs.writeFileSync(path.join(tmpDir, ".envrc"), "dotenv_if_exists .bkit/.env\n", "utf-8");
     delete process.env.CI;

@@ -13,6 +13,18 @@ export function parseGithubBoardUrl(url) {
         return null;
     return { ownerType: m[1] === "orgs" ? "org" : "user", owner: m[2], number: Number(m[3]) };
 }
+/** Every point a workflow can stop and ask the owner at, as `<workflow>.<point>`. */
+export const ASK_POINTS = [
+    "design.grill",
+    "build.verify",
+    "build.challenge",
+    "build.tests",
+    "debug.fix",
+    "debug.soak",
+    "ship.merge",
+];
+/** The limit key a point's block holds. */
+export const limitKey = (point) => point === "design.grill" ? "maxTurns" : "maxAttempts";
 export const CONFIG_DEFAULTS = {
     ciWorkflow: "bkit-ci.yml",
     capstoneJob: "bkit-tests-check",
@@ -32,6 +44,18 @@ export const CONFIG_DEFAULTS = {
     opencodeProvider: null,
     opencodeProviders: [],
     cloudAgents: DEFAULT_CLOUD_AGENTS,
+    // `.bkit/workflows.md` § Ask points.
+    asks: {
+        "design.grill": { ask: true, max: 6 },
+        "build.verify": { ask: true, max: 2 },
+        "build.challenge": { ask: true, max: 2 },
+        "build.tests": { ask: true, max: 2 },
+        "debug.fix": { ask: true, max: 2 },
+        "debug.soak": { ask: true, max: 2 },
+        "ship.merge": { ask: true, max: 2 },
+    },
+    // Plan caps, `.bkit/workflows.md` § Test-first.
+    tasks: { maxPerGroup: 3, maxTestsPerGroup: 15, maxTestsPerTask: 10, maxTestFilesPerTask: 3 },
     depUpdaterOptOut: false,
     issueTrackerExplicit: false,
     cloudAgentsExplicit: false,
@@ -46,6 +70,75 @@ function trackerStates(raw, defaults) {
         review: nonEmptyString(raw.review) ? raw.review.trim() : defaults.review,
     };
 }
+const TASK_CAP_KEYS = Object.keys(CONFIG_DEFAULTS.tasks);
+const validCap = (v) => Number.isInteger(v) && v >= 1;
+/**
+ * The keys of a `bkit.workflows.tasks` value that fall back to their default: each set key
+ * that is not an integer >= 1, or `["tasks"]` when the value is set but not an object.
+ */
+export function invalidTaskCaps(raw) {
+    if (raw === undefined)
+        return [];
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw))
+        return ["tasks"];
+    const set = raw;
+    return TASK_CAP_KEYS.filter((k) => set[k] !== undefined && !validCap(set[k]));
+}
+/** `bkit.workflows.tasks` read key by key; a missing or invalid key takes its default. */
+function taskCaps(raw) {
+    const set = record(raw);
+    const caps = { ...CONFIG_DEFAULTS.tasks };
+    for (const k of TASK_CAP_KEYS)
+        if (validCap(set[k]))
+            caps[k] = set[k];
+    return caps;
+}
+/** The `bkit.workflows.<workflow>.<point>` block `workflows` holds for `point`. */
+const askBlock = (workflows, point) => {
+    const [workflow, name] = point.split(".");
+    const block = workflows[workflow];
+    return block !== null && typeof block === "object" && !Array.isArray(block)
+        ? block[name]
+        : undefined;
+};
+/**
+ * The dotted keys under `bkit.workflows` that fall back to their default: each set `ask`
+ * that is not a boolean, each set limit that is not an integer >= 1, or the point itself
+ * when it is set but not an object.
+ */
+export function invalidAskSettings(workflows) {
+    const set = record(workflows);
+    const bad = [];
+    for (const point of ASK_POINTS) {
+        const raw = askBlock(set, point);
+        if (raw === undefined)
+            continue;
+        if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+            bad.push(point);
+            continue;
+        }
+        const block = raw;
+        if (block.ask !== undefined && typeof block.ask !== "boolean")
+            bad.push(`${point}.ask`);
+        const key = limitKey(point);
+        if (block[key] !== undefined && !validCap(block[key]))
+            bad.push(`${point}.${key}`);
+    }
+    return bad;
+}
+/** Every ask point read from `bkit.workflows`; a missing or invalid key takes its default. */
+function askSettings(workflows) {
+    const out = {};
+    for (const point of ASK_POINTS) {
+        const block = record(askBlock(workflows, point));
+        const limit = block[limitKey(point)];
+        out[point] = {
+            ask: typeof block.ask === "boolean" ? block.ask : CONFIG_DEFAULTS.asks[point].ask,
+            max: validCap(limit) ? limit : CONFIG_DEFAULTS.asks[point].max,
+        };
+    }
+    return out;
+}
 /**
  * Read `package.json` `bkit` from `root` (the main checkout). A missing file,
  * missing key, or wrongly typed value falls back to the default for that key.
@@ -53,21 +146,30 @@ function trackerStates(raw, defaults) {
 export function readBkitConfig(root) {
     // A missing or unparseable package.json takes every default; `bkit check` reports the file.
     const read = readPackageJson(root);
-    const bkit = ((read.ok ? read.pkg.bkit : undefined) ?? {});
-    const worktree = (bkit.worktree ?? {});
+    const bkit = record(read.ok ? read.pkg.bkit : undefined);
+    const tracker = record(bkit.tracker);
+    const cloud = record(bkit.cloud);
+    const opencode = record(record(bkit.providers).opencode);
+    const testing = record(bkit.testing);
+    const workflows = record(bkit.workflows);
+    const worktree = record(workflows.worktree);
     const copy = worktree.copy;
-    const minFreeGb = (bkit.disk ?? {}).minFreeGb;
-    const lanes = bkit.shipGateRequiredLanes;
-    const book = bkit.minPushPaths;
-    const provider = bkit.opencodeProvider;
-    const providers = bkit.opencodeProviders;
-    const github = record(bkit.github);
-    const linear = record(bkit.linear);
-    const jira = record(bkit.jira);
+    const minFreeGb = workflows.minFreeGb;
+    const lanes = testing.shipGate;
+    const book = testing.minPushPaths;
+    const provider = opencode.default;
+    const providers = opencode.installed;
+    const github = record(tracker.github);
+    const linear = record(tracker.linear);
+    const jira = record(tracker.jira);
     const projectUrl = optionalString(github.project);
     return {
-        ciWorkflow: nonEmptyString(bkit.ciWorkflow) ? bkit.ciWorkflow : CONFIG_DEFAULTS.ciWorkflow,
-        capstoneJob: nonEmptyString(bkit.capstoneJob) ? bkit.capstoneJob : CONFIG_DEFAULTS.capstoneJob,
+        ciWorkflow: nonEmptyString(testing.ciWorkflow)
+            ? testing.ciWorkflow
+            : CONFIG_DEFAULTS.ciWorkflow,
+        capstoneJob: nonEmptyString(testing.ciCapstone)
+            ? testing.ciCapstone
+            : CONFIG_DEFAULTS.capstoneJob,
         worktreeCopy: Array.isArray(copy) && copy.every(nonEmptyString)
             ? [...copy]
             : [...CONFIG_DEFAULTS.worktreeCopy],
@@ -75,7 +177,7 @@ export function readBkitConfig(root) {
         diskMinFreeGb: typeof minFreeGb === "number" && Number.isFinite(minFreeGb) && minFreeGb >= 0
             ? minFreeGb
             : CONFIG_DEFAULTS.diskMinFreeGb,
-        issueTracker: parseIssueTracker(bkit.issueTracker) ?? CONFIG_DEFAULTS.issueTracker,
+        issueTracker: parseIssueTracker(tracker.default) ?? CONFIG_DEFAULTS.issueTracker,
         github: {
             project: github.project === false ? false : projectUrl ? parseGithubBoardUrl(projectUrl) : null,
             projectUrl,
@@ -100,11 +202,17 @@ export function readBkitConfig(root) {
         opencodeProviders: Array.isArray(providers)
             ? providers.filter((v) => typeof v === "string" && isOpencodeProvider(v))
             : [],
-        cloudAgents: parseCloudAgents(bkit.cloudAgents) ?? CONFIG_DEFAULTS.cloudAgents,
-        depUpdaterOptOut: bkit.depUpdater === "none",
-        issueTrackerExplicit: bkit.issueTracker !== undefined,
-        cloudAgentsExplicit: bkit.cloudAgents !== undefined,
+        cloudAgents: parseCloudAgents(cloud.agent) ?? CONFIG_DEFAULTS.cloudAgents,
+        asks: askSettings(workflows),
+        tasks: taskCaps(workflows.tasks),
+        depUpdaterOptOut: record(bkit.dependencies).updater === "none",
+        issueTrackerExplicit: tracker.default !== undefined && tracker.default !== "",
+        cloudAgentsExplicit: cloud.agent !== undefined && cloud.agent !== "",
     };
+}
+/** The CI workflow file `bkit.testing.ciWorkflow` names, as `.github/workflows/<file>` relative to `root`. */
+export function ciWorkflowPath(root) {
+    return `.github/workflows/${readBkitConfig(root).ciWorkflow}`;
 }
 export function trackerScope(cfg) {
     const none = { trackerTeam: null, trackerProject: null, trackerSite: null, trackerBoard: null };

@@ -5,6 +5,7 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { runCommand } from "../lib";
+import { stampMarker } from "./tracker";
 import { parseWorkstreams, workstreamsCommand } from "./workstreams";
 
 const dirs: string[] = [];
@@ -19,7 +20,7 @@ async function run(argv: string[], file: string) {
   const out: string[] = [];
   const err: string[] = [];
   const code = await runCommand(
-    ["workstreams", ...argv, "--artifact=organised.md"],
+    ["workstreams", ...argv, "--artifact=organised.md", "--json"],
     [workstreamsCommand],
     {
       classicVerbs: new Set(),
@@ -131,7 +132,9 @@ describe("bkit workstreams comment", () => {
       ORGANISED,
     );
     expect(r.code).toBe(0);
-    expect(r.json.comment).toBe(
+    expect(fs.readFileSync(r.json.commentFile, "utf-8")).toBe(r.json.comment);
+    expect(stampMarker(r.json.comment)).toBe(r.json.comment);
+    expect(r.json.comment.replace(/^(###### bkit:generated) [0-9a-f]{12}\n/, "$1\n")).toBe(
       [
         "###### bkit:generated",
         "### Step 11 — Suggested Workstreams",

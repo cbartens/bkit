@@ -1,6 +1,6 @@
 {
   "name": "@cbartens/bkit",
-  "version": "5.5.1",
+  "version": "6.0.0",
   "private": false,
   "description": "From vibe coding to production code. A senior engineering team's process, ready-made: AI agents design, plan, build, review, fix and ship your features on Claude Code, Cursor, Codex, Google Antigravity and opencode.",
   "keywords": [
@@ -68,16 +68,18 @@
     "lint": "oxlint -c .oxlintrc.json --type-aware --tsconfig tsconfig.test.json --deny-warnings .bkit/core/engine",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "format:tables": "node scripts/prettier/bkit-insert-ignore.mjs .agents docs README.md .bkit/shared .bkit/core/.agents .bkit/core/docs",
-    "format:tables:check": "node scripts/prettier/bkit-insert-ignore.mjs --check .agents docs README.md .bkit/shared .bkit/core/.agents .bkit/core/docs",
+    "format:tables": "node scripts/prettier/bkit-insert-ignore.mjs .agents docs README.md .bkit/instructions.md .bkit/shared .bkit/core/.agents .bkit/core/docs",
+    "format:tables:check": "node scripts/prettier/bkit-insert-ignore.mjs --check .agents docs README.md .bkit/instructions.md .bkit/shared .bkit/core/.agents .bkit/core/docs",
     "lint:prose": "bkit ci prose --glob='.agents/*.md' --glob='.bkit/core/.bkit/*.md' --glob='.bkit/core/workflows/**/*.md' --glob='.bkit/core/prompts/**/*.md' --glob='.bkit/core/.agents/*.md' --glob='.bkit/shared/docs/**/*.md' --glob='.bkit/core/docs/**/*.md' --glob='.bkit/templates/**/*.md' --glob='docs/*.md' --glob='*.md'",
     "lint:slop": "slop-scan scan .",
     "slop:delta": "bkit ci slop",
     "bkit:lint:workflows": "bash -c 'if command -v actionlint >/dev/null 2>&1; then actionlint; else echo \"[bkit] actionlint missing — skipping workflow lint (install actionlint to enable)\"; fi'",
     "test": "vitest run",
+    "harvest": "tsx scripts/harvest/bkit-harvest.mjs",
+    "test:harvest": "node scripts/harvest/bkit-harvest.test.mjs",
     "test:integration": "vitest run integration.test",
-    "test:coverage:unit": "vitest run -c vitest.unit.config.ts --coverage --coverage.reportsDirectory=coverage/unit --exclude '**/*.integration.test.ts' --coverage.include='.bkit/core/engine/{cli,commands/analysis,install/cloud-env,commands/comply,commands/harvest,commands/install/install,commands/launch,install/manifest,install/managed-block,shared/package-roots,shared/protected-paths,checks/after/index,checks/after/auth,checks/after/ci-yml,checks/after/github,checks/after/managed,checks/after/tools,checks/after/suppression,checks/before/index,checks/before/context-fetch,checks/before/env,checks/before/files,checks/before/mcp,checks/before/repo,checks/before/version,ledgers/status,ledgers/telemetry,install/write,install/placeholders,install/template-copies,render/trackers,render/hosts,render/models,commands/install/uninstall,commands/install/upgrade,install/version-file,tools/wording}.ts' --coverage.include='.bkit/core/engine/commands/**/*.ts' --coverage.include='.bkit/core/engine/shared/{settings,package-json,package-manager,timeouts}.ts'",
-    "bkit:test:bats": "pnpm exec bats tests/*.bats",
+    "test:coverage:unit": "vitest run -c vitest.unit.config.ts --coverage --coverage.reportsDirectory=coverage/unit --exclude '**/*.integration.test.ts' --coverage.include='.bkit/core/engine/{cli,commands/analysis,install/cloud-env,commands/comply,commands/install/install,commands/launch,install/manifest,install/managed-block,shared/package-roots,shared/protected-paths,checks/after/index,checks/after/auth,checks/after/ci-yml,checks/after/github,checks/after/managed,checks/after/tools,checks/after/suppression,checks/before/index,checks/before/context-fetch,checks/before/env,checks/before/files,checks/before/mcp,checks/before/repo,checks/before/version,ledgers/status,ledgers/telemetry,install/write,install/placeholders,install/template-copies,render/trackers,render/hosts,render/models,commands/install/uninstall,commands/install/upgrade,install/version-file,tools/instructions}.ts' --coverage.include='.bkit/core/engine/commands/**/*.ts' --coverage.include='.bkit/core/engine/shared/{settings,package-json,package-manager,timeouts}.ts'",
+    "bkit:test:bats": "pnpm exec bats ${BKIT_TEST_REPORT_DIR:+--report-formatter junit --output \"$BKIT_TEST_REPORT_DIR\"} tests/*.bats",
     "build": "tsc && chmod +x dist/cli.js",
     "bkit:check:dist": "rm -rf dist && tsc && chmod +x dist/cli.js && git diff --exit-code dist/ || (echo '[bkit] dist/ is stale — run pnpm build and commit the result' && exit 1)",
     "graph": "bash scripts/graphify/bkit-graphify.sh build",
@@ -90,7 +92,9 @@
     "graph:tree": "bash scripts/graphify/bkit-graphify.sh tree",
     "graph:update": "bash scripts/graphify/bkit-graphify.sh update",
     "bkit:audit:status": "tsx .bkit/core/engine/checks/status-holes.ts docs/plans/*/logs/*/status.jsonl",
-    "wording:sync": "tsx .bkit/core/engine/tools/wording.ts --write",
+    "grammar:density": "tsx .bkit/core/engine/tools/grammar-density.ts",
+    "instructions:show": "tsx .bkit/core/engine/tools/instructions.ts --show",
+    "instructions:sync": "tsx .bkit/core/engine/tools/instructions.ts --write",
     "prepare": "husky"
   },
   "devDependencies": {
@@ -117,24 +121,109 @@
     }
   },
   "bkit": {
-    "issueTracker": "github",
-    "cloudAgents": "claude",
-    "github": {
-      "project": "https://github.com/users/cbartens/projects/1"
+    "tracker": {
+      "default": "github",
+      "github": {
+        "project": "https://github.com/users/cbartens/projects/1",
+        "progress": "In progress",
+        "review": "In review"
+      },
+      "linear": {
+        "team": "",
+        "project": "",
+        "progress": "started",
+        "review": "In Review"
+      },
+      "jira": {
+        "site": "",
+        "project": "",
+        "progress": "In Progress",
+        "review": "In Review"
+      }
     },
-    "opencodeProvider": "openrouter",
-    "opencodeProviders": [
-      "opencode-go",
-      "openrouter"
-    ],
-    "minPushPaths": [
-      "docs/**",
-      ".bkit/*.jsonl",
-      "CHANGELOG.md",
-      "README.md"
-    ],
-    "capstoneJob": "bkit-tests-check",
-    "ciWorkflow": "bkit-ci.yml",
-    "roadmapNext": 25
+    "cloud": {
+      "agent": "claude"
+    },
+    "providers": {
+      "opencode": {
+        "default": "openrouter",
+        "installed": [
+          "opencode-go",
+          "openrouter"
+        ]
+      }
+    },
+    "testing": {
+      "minPushPaths": [
+        "docs/**",
+        ".bkit/*.jsonl",
+        "CHANGELOG.md",
+        "README.md"
+      ],
+      "ciCapstone": "bkit-tests-check",
+      "ciWorkflow": "bkit-ci.yml",
+      "shipGate": []
+    },
+    "workflows": {
+      "minFreeGb": 40,
+      "worktree": {
+        "copy": [
+          ".env",
+          ".env.local"
+        ],
+        "install": true
+      },
+      "tasks": {
+        "maxPerGroup": 3,
+        "maxTestsPerGroup": 15,
+        "maxTestsPerTask": 10,
+        "maxTestFilesPerTask": 3
+      },
+      "design": {
+        "grill": {
+          "ask": true,
+          "maxTurns": 6
+        }
+      },
+      "build": {
+        "verify": {
+          "ask": true,
+          "maxAttempts": 2
+        },
+        "challenge": {
+          "ask": true,
+          "maxAttempts": 2
+        },
+        "tests": {
+          "ask": true,
+          "maxAttempts": 2
+        }
+      },
+      "debug": {
+        "fix": {
+          "ask": true,
+          "maxAttempts": 2
+        },
+        "soak": {
+          "ask": true,
+          "maxAttempts": 2
+        }
+      },
+      "ship": {
+        "merge": {
+          "ask": true,
+          "maxAttempts": 2
+        }
+      }
+    },
+    "prompts": {
+      "roadmapNext": 25
+    },
+    "dependencies": {
+      "updater": ""
+    },
+    "advisories": {
+      "ignore": []
+    }
   }
 }

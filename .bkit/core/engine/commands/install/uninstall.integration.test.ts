@@ -16,8 +16,6 @@
 //     Uninstall simply removes T1 files.
 //   - Tier-2 files: consumer content PRESERVED byte-identical; bkit block removed
 //   - package.json scripts and devDeps: PRESERVED, whatever their value (bkit owns none)
-//
-// Re-used by sub-plan-3 P3.T9 and sub-plan-4 P4.T7.
 
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -164,7 +162,7 @@ describe("surgical uninstall — heavy-customised consumer fixture", () => {
     };
     pkg.scripts = { ...pkg.scripts, ...BKIT_GATE_SCRIPTS, prepare: "husky" };
     pkg.devDependencies = { ...pkg.devDependencies, husky: "^9.1.7", "lint-staged": "^15.2.10" };
-    pkg.bkit = { issueTracker: "github" };
+    pkg.bkit = { tracker: { default: "github" } };
     fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf-8");
 
     await runUninstall(["core", "claude", "cursor", "opencode", "codex", "cloud"], makeCtx());
@@ -222,7 +220,6 @@ describe("surgical uninstall — heavy-customised consumer fixture", () => {
 
 // ---------------------------------------------------------------------------
 // opencode uninstall — install → zero-drift → uninstall → zero footprint
-// P4.T7 — sub-plan-4 opencode round-trip
 // ---------------------------------------------------------------------------
 
 describe("opencode uninstall — zero footprint after uninstall", () => {
@@ -532,9 +529,10 @@ describe("surgical --opencode=<provider> removal (#281 Task 4)", () => {
     );
   }
 
-  function readPackageJsonBkit(): Record<string, unknown> {
+  type Bkit = { providers?: { opencode?: { installed?: string[]; default?: string } } };
+  function readPackageJsonBkit(): Bkit {
     const raw = fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8");
-    const pkg = JSON.parse(raw) as { bkit?: Record<string, unknown> };
+    const pkg = JSON.parse(raw) as { bkit?: Bkit };
     return pkg.bkit ?? {};
   }
 
@@ -546,8 +544,7 @@ describe("surgical --opencode=<provider> removal (#281 Task 4)", () => {
   it("removes exactly ONE provider block; the other provider remains intact", async () => {
     seedOpencode(OPENCODE_JSON_TWO_PROVIDERS);
     seedPackageJson({
-      opencodeProviders: ["openrouter", "ollama"],
-      opencodeProvider: "ollama",
+      providers: { opencode: { installed: ["openrouter", "ollama"], default: "ollama" } },
     });
 
     // Seed a bkit-prefix agent mirror so we can detect if full teardown was (wrongly) triggered
@@ -572,41 +569,41 @@ describe("surgical --opencode=<provider> removal (#281 Task 4)", () => {
     ).toBe(true);
   });
 
-  it("updates bkit.opencodeProviders array in package.json", async () => {
+  it("updates bkit.providers.opencode.installed array in package.json", async () => {
     seedOpencode(OPENCODE_JSON_TWO_PROVIDERS);
     seedPackageJson({
-      opencodeProviders: ["openrouter", "ollama"],
-      opencodeProvider: "ollama",
+      providers: { opencode: { installed: ["openrouter", "ollama"], default: "ollama" } },
     });
 
     await runSurgicalOpencodeUninstall("openrouter", false, tmpDir);
 
     const bkit = readPackageJsonBkit();
-    expect(bkit.opencodeProviders).toEqual(["ollama"]);
+    expect(bkit.providers?.opencode?.installed).toEqual(["ollama"]);
     // Active provider unchanged (openrouter was not active)
-    expect(bkit.opencodeProvider).toBe("ollama");
+    expect(bkit.providers?.opencode?.default).toBe("ollama");
   });
 
-  it("re-points bkit.opencodeProvider when the active provider is removed", async () => {
+  it("re-points bkit.providers.opencode.default when the active provider is removed", async () => {
     seedOpencode(OPENCODE_JSON_TWO_PROVIDERS);
     // openrouter is the ACTIVE provider
     seedPackageJson({
-      opencodeProviders: ["openrouter", "ollama"],
-      opencodeProvider: "openrouter",
+      providers: { opencode: { installed: ["openrouter", "ollama"], default: "openrouter" } },
     });
 
     await runSurgicalOpencodeUninstall("openrouter", false, tmpDir);
 
     const bkit = readPackageJsonBkit();
     // opencodeProviders updated
-    expect(bkit.opencodeProviders).toEqual(["ollama"]);
+    expect(bkit.providers?.opencode?.installed).toEqual(["ollama"]);
     // Active provider re-pointed to first remaining
-    expect(bkit.opencodeProvider).toBe("ollama");
+    expect(bkit.providers?.opencode?.default).toBe("ollama");
   });
 
   it("falls through to full teardown when the last provider is removed", async () => {
     seedOpencode(OPENCODE_JSON_ONE_PROVIDER);
-    seedPackageJson({ opencodeProviders: ["openrouter"], opencodeProvider: "openrouter" });
+    seedPackageJson({
+      providers: { opencode: { installed: ["openrouter"], default: "openrouter" } },
+    });
 
     // Seed bkit-prefix mirrors so we can verify full teardown was triggered
     const agentDir = path.join(tmpDir, ".opencode", "agents");
@@ -663,29 +660,40 @@ describe("targeted uninstall drops the module's bkit.* keys", () => {
     return pkg.bkit;
   }
 
-  it("--auto removes bkit.cloudAgents and keeps every other key", async () => {
-    seed({ issueTracker: "github", cloudAgents: "claude", opencodeProvider: "ollama" });
+  it("--auto resets bkit.cloud.agent to unset and keeps every other key", async () => {
+    seed({
+      tracker: { default: "github" },
+      cloud: { agent: "claude" },
+      providers: { opencode: { default: "ollama" } },
+    });
     const result = await runUninstall(["cloud"], makeCtx());
-    expect(readBkit()).toEqual({ issueTracker: "github", opencodeProvider: "ollama" });
-    expect(result.stripped).toContain("package.json#bkit.cloudAgents");
+    expect(readBkit()).toEqual({
+      tracker: { default: "github" },
+      cloud: { agent: "" },
+      providers: { opencode: { default: "ollama" } },
+    });
+    expect(result.stripped).toContain("package.json#bkit.cloud.agent");
   });
 
-  it("--opencode removes bkit.opencodeProvider and bkit.opencodeProviders", async () => {
+  it("--opencode resets bkit.providers.opencode.default and .installed to unset", async () => {
     seed({
-      issueTracker: "jira",
-      cloudAgents: "none",
-      opencodeProvider: "ollama",
-      opencodeProviders: ["ollama", "openrouter"],
+      tracker: { default: "jira" },
+      cloud: { agent: "none" },
+      providers: { opencode: { default: "ollama", installed: ["ollama", "openrouter"] } },
     });
     await runUninstall(["opencode"], makeCtx());
-    expect(readBkit()).toEqual({ issueTracker: "jira", cloudAgents: "none" });
+    expect(readBkit()).toEqual({
+      tracker: { default: "jira" },
+      cloud: { agent: "none" },
+      providers: { opencode: { default: "", installed: [] } },
+    });
   });
 
   it("a dry run lists the keys and writes nothing", async () => {
-    seed({ cloudAgents: "cursor" });
+    seed({ cloud: { agent: "cursor" } });
     const before = fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8");
     const result = await runUninstall(["cloud"], makeCtx({ dryRun: true }));
-    expect(result.stripped).toContain("package.json#bkit.cloudAgents");
+    expect(result.stripped).toContain("package.json#bkit.cloud.agent");
     expect(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")).toBe(before);
   });
 });

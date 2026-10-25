@@ -31,7 +31,7 @@
 
 // bkit:start
 
-// bkit:managed v5.5.1 — do not edit; run `bkit upgrade` to refresh
+// bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh
 
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -253,9 +253,9 @@ function repeatReadMessage(repeats, cwd) {
       `- \`${displayPath(file, cwd)}\` lines ${range[0]}-${range[1] === OPEN_END ? "end" : range[1]}`,
   );
   return (
-    `[bkit ReadGuard] Repeat read this conversation - unchanged since your last read:\n` +
+    `[bkit ReadGuard] Repeat read this conversation — unchanged since your last read:\n` +
     `${lines.join("\n")}\n` +
-    `Use the earlier output; do NOT read these lines again. Re-read ONLY if that output is no longer in your context (summarised, or read by another agent).\n` +
+    `Use the earlier output; do not read these lines again. Re-read ONLY if that output is no longer in your context (summarised, or read by another agent).\n` +
     `Advisory — proceed once satisfied.`
   );
 }

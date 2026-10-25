@@ -8,7 +8,7 @@
 // runs, and worktree setup checks nothing.
 //
 // `--auto` is the hooks' entry: a mode runs at most once a day per machine, and `max` at
-// most once an hour while free disk is under `bkit.disk.minFreeGb`; the sweep then runs
+// most once an hour while free disk is under `bkit.workflows.minFreeGb`; the sweep then runs
 // detached and logs to the bkit cache folder, so the hook does not wait. `bkit worktrees
 // setup` calls `ensureDiskSpace` before it mints. A lock in the cache folder keeps one sweep
 // at a time across every repo. CI and cloud sessions run nothing.
@@ -29,7 +29,7 @@ import { tryCreate } from "./locks.js";
 const MODES = ["min", "max"];
 export const REPO_STEPS = "scripts/cleanup/bkit-disk-prune.mjs";
 const TEMPLATES = ".bkit/templates/scripts/cleanup/";
-const SETTING = "bkit.disk.minFreeGb";
+const SETTING = "bkit.workflows.minFreeGb";
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 /** A lock this old, or whose process is gone, belongs to a sweep that died. */

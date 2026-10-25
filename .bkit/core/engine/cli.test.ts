@@ -17,6 +17,7 @@ import {
   type ModuleFlag,
   validateModuleFlagsForVerb,
   CLOUD_VARIANTS,
+  CLASSIC_VERBS,
 } from "./cli";
 import type { Verb } from "./cli";
 
@@ -776,40 +777,21 @@ describe("printUsage — comply verb in help text", () => {
 });
 
 // ---------------------------------------------------------------------------
-// parseArgs — harvest verb
+// parseArgs — stats verb; harvest and analysis are gone
 // ---------------------------------------------------------------------------
 
-describe("parseArgs — harvest verb (WS4-T5)", () => {
-  it("harvest verb is parsed correctly", () => {
-    expect(parseArgs(["harvest"]).verb).toBe("harvest");
+describe("parseArgs — stats verb", () => {
+  it("stats verb is parsed correctly", () => {
+    expect(parseArgs(["stats"]).verb).toBe("stats");
   });
 
-  it("harvest verb sets no module flags", () => {
-    const result = parseArgs(["harvest"]);
-    expect(result.moduleFlags.size).toBe(0);
+  it("stats verb sets no module flags", () => {
+    expect(parseArgs(["stats"]).moduleFlags.size).toBe(0);
   });
 
-  it("harvest verb sets complyPhase to null", () => {
-    expect(parseArgs(["harvest"]).complyPhase).toBeNull();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// parseArgs — analysis verb
-// ---------------------------------------------------------------------------
-
-describe("parseArgs — analysis verb (WS4-T5)", () => {
-  it("analysis verb is parsed correctly", () => {
-    expect(parseArgs(["analysis"]).verb).toBe("analysis");
-  });
-
-  it("analysis verb sets no module flags", () => {
-    const result = parseArgs(["analysis"]);
-    expect(result.moduleFlags.size).toBe(0);
-  });
-
-  it("analysis verb sets complyPhase to null", () => {
-    expect(parseArgs(["analysis"]).complyPhase).toBeNull();
+  it("harvest and analysis are no longer verbs", () => {
+    expect(CLASSIC_VERBS.has("harvest")).toBe(false);
+    expect(CLASSIC_VERBS.has("analysis")).toBe(false);
   });
 });
 
@@ -864,10 +846,10 @@ describe("parseArgs — tips verb", () => {
 });
 
 // ---------------------------------------------------------------------------
-// printUsage — harvest + analysis verbs in help text (WS4-T5)
+// printUsage — stats verb in help text
 // ---------------------------------------------------------------------------
 
-describe("printUsage — harvest + analysis verbs in help text (WS4-T5)", () => {
+describe("printUsage — stats verb in help text", () => {
   function usage(): string {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     try {
@@ -878,20 +860,16 @@ describe("printUsage — harvest + analysis verbs in help text (WS4-T5)", () => 
     }
   }
 
-  it("documents bkit harvest", () => {
-    expect(usage()).toContain("harvest");
-  });
-
-  it("documents bkit analysis", () => {
-    expect(usage()).toContain("analysis");
-  });
-
-  it("documents that harvest never writes to consumer repos", () => {
-    // The help text may span lines; use a combined check for key terms
+  it("documents bkit stats and its report file", () => {
     const text = usage();
-    expect(text).toMatch(/harvest/);
-    expect(text).toMatch(/[Nn]ever/);
-    expect(text).toMatch(/consumer/);
+    expect(text).toContain("bkit stats");
+    expect(text).toContain(".bkit/stats.md");
+  });
+
+  it("documents neither bkit harvest nor bkit analysis", () => {
+    const text = usage();
+    expect(text).not.toContain("bkit harvest");
+    expect(text).not.toContain("bkit analysis");
   });
 });
 
@@ -989,7 +967,7 @@ describe("validateModuleFlagsForVerb — #252 Step 2/3 verb/module-flag validati
   });
 
   it("does not constrain other verbs (uninstall, doctor, help, ...)", () => {
-    const otherVerbs: Verb[] = ["uninstall", "doctor", "help", "status", "harvest"];
+    const otherVerbs: Verb[] = ["uninstall", "doctor", "help", "status", "stats"];
     for (const verb of otherVerbs) {
       expect(validateModuleFlagsForVerb(verb, flags())).toBeNull();
       expect(validateModuleFlagsForVerb(verb, flags(["claude", "cursor"]))).toBeNull();

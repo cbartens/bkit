@@ -156,13 +156,13 @@ describe("detectOpencodeProvider — provider resolution (manifest-first)", () =
     expect(detectOpencodeProvider(cwd)).toBeNull();
   });
 
-  it("reads a valid bkit.opencodeProvider from package.json", () => {
-    writePkg({ opencodeProvider: "openrouter" });
+  it("reads a valid bkit.providers.opencode.default from package.json", () => {
+    writePkg({ providers: { opencode: { default: "openrouter" } } });
     expect(detectOpencodeProvider(cwd)).toBe("openrouter");
   });
 
   it("rejects a provider key outside the allowlist (zen is not opencode-zen)", () => {
-    writePkg({ opencodeProvider: "zen" });
+    writePkg({ providers: { opencode: { default: "zen" } } });
     expect(detectOpencodeProvider(cwd)).toBeNull();
   });
 
@@ -173,7 +173,7 @@ describe("detectOpencodeProvider — provider resolution (manifest-first)", () =
   });
 
   it("ignores an out-of-allowlist provider and falls through to null", () => {
-    writePkg({ opencodeProvider: "gpt-9" });
+    writePkg({ providers: { opencode: { default: "gpt-9" } } });
     expect(detectOpencodeProvider(cwd)).toBeNull();
   });
 
@@ -204,13 +204,15 @@ describe("detectOpencodeProviders — all installed providers", () => {
     expect(detectOpencodeProviders(cwd)).toEqual([]);
   });
 
-  it("reads and allowlist-filters bkit.opencodeProviders", () => {
-    writePkg({ opencodeProviders: ["openrouter", "zen", "opencode-zen", "bogus"] });
+  it("reads and allowlist-filters bkit.providers.opencode.installed", () => {
+    writePkg({
+      providers: { opencode: { installed: ["openrouter", "zen", "opencode-zen", "bogus"] } },
+    });
     expect(detectOpencodeProviders(cwd)).toEqual(["openrouter", "opencode-zen"]);
   });
 
-  it("returns [] when bkit.opencodeProviders is absent, whatever bkit.opencodeProvider says", () => {
-    writePkg({ opencodeProvider: "openrouter" });
+  it("returns [] when bkit.providers.opencode.installed is absent, whatever bkit.providers.opencode.default says", () => {
+    writePkg({ providers: { opencode: { default: "openrouter" } } });
     expect(detectOpencodeProviders(cwd)).toEqual([]);
   });
 });

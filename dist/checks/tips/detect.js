@@ -167,3 +167,35 @@ export function hasTestLinter(cwd) {
     }
     return eslintConfigs.some((text) => TEST_LINT_PLUGIN.test(text));
 }
+/** Consumer-owned folders whose files may run bkit and read what it prints. */
+const OUTPUT_READER_DIRS = [".claude/hooks", ".husky", ".github/workflows", "scripts"];
+/**
+ * A line that reads bkit's stdout as JSON without asking for it: a bkit call piped to `jq`,
+ * or a bkit argument list (`"bkit", "<noun>", "<verb>", …]`) passed to a spawn.
+ */
+const READS_BKIT_TEXT = [
+    /\bbkit\b(?:(?!--json)[^\n|])*\|\s*jq\b/i,
+    /"bkit",\s*"[a-z-]+",\s*"[a-z-]+"(?:(?!"--json")[^\n\]])*\]/,
+];
+/** Files under `dir` (relative to `cwd`), `node_modules` left out, at most 4 levels down. */
+function filesUnder(cwd, dir, depth = 4) {
+    const abs = path.join(cwd, dir);
+    if (depth === 0 || !fs.existsSync(abs) || !fs.statSync(abs).isDirectory())
+        return [];
+    return fs.readdirSync(abs, { withFileTypes: true }).flatMap((e) => {
+        const rel = path.posix.join(dir, e.name);
+        if (e.isDirectory())
+            return e.name === "node_modules" ? [] : filesUnder(cwd, rel, depth - 1);
+        return e.isFile() ? [rel] : [];
+    });
+}
+/**
+ * Hooks, CI workflows and scripts that parse bkit's output as JSON without `--json`;
+ * bkit prints text by default, so each one reads nothing.
+ */
+export function readsBkitText(cwd) {
+    return OUTPUT_READER_DIRS.flatMap((dir) => filesUnder(cwd, dir)).filter((rel) => {
+        const text = readText(cwd, rel);
+        return text.split("\n").some((line) => READS_BKIT_TEXT.some((re) => re.test(line)));
+    });
+}

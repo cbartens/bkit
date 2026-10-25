@@ -2,7 +2,7 @@
 
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.5.1 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Analytics Audit
 
@@ -11,14 +11,6 @@
 >
 > **Rules:**
 >
-> - Read-only audit; never edit code, config, or data.
-> - `Universal Instructions` apply to all projects; `Project Instructions` apply only to this project.
-> - Local audit instructions / overrides → `Project Instructions` below the bkit-managed block; universal instructions stay in-block.
-> - Any tools mentioned in `Universal Instructions` are examples only; swap for actual tools in final output; drop inapplicable.
-> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
-> - Read `.agents/docs.md` → load docs for workflow / step / task; skip missing; cite docs inline where required.
-> - Every claim cites this run's evidence (`file:line`, or command / query and its output) and tool behind it; a previous report's figure, list, or status is a lead, not evidence.
-> - Read this document once at session start; do not trust session memory; do not re-read on every loop iteration.
 > - Name the field and where it lives; never copy a personal-data value into the report.
 > - Vendor consoles are read-only: NEVER publish a container, change a property, or send a live collection hit.
 > - Every container, property, and capture names the environment it ran against.
@@ -33,7 +25,7 @@ Tracking decays quietly: one-sided renames, funnel steps that stop after refacto
 
 **Cadence:** quarterly. Extra pass after a change to a core flow, and on the run that first finds product tracking (mark baseline).
 
-**Anchor Standards:** record version and date read. Newer version → `Standards` step reads what changed.
+**Anchor Standards:**
 
 - Product-analytics collection docs (e.g. GA4 developer guides, Analytics Help: collection/config limits, user-id, recommended events, Measurement Protocol, warehouse export). Record date read.
 - Tag-manager docs (e.g. GTM Help: workspaces, environments, preview, tag diagnostics). Record date read.
@@ -75,38 +67,28 @@ Tracking decays quietly: one-sided renames, funnel steps that stop after refacto
 
 ### Pre-Flight / Dependencies
 
-**Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
-
-**Credentials:** probe direnv before marking a token / env var missing: `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'`; `unset` = missing. Run credentialed CLIs as `direnv exec . <cmd>`. No direnv (cloud session) → plain env check. Report names, never values.
-
 #### Core
 
-Always verify.
-
-- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied (here or in any step) → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`; run every step the remaining tools allow; work needing blocked call → `Not Checked`. never stop the run for a blocked call; never retry or reword a blocked call to get past it.
+- [ ] **Permissions:** blocked calls recorded
 - [ ] **Web:** Step 18 — fetch anchor standards. Fallback: versions recorded as unread.
 
 #### Conditional
 
-Verify only when applicable.
-
 - [ ] **Request Capture:** Product tracking in code → Step 12 — browser network panel or a test-runner intercept, e.g. Playwright `page.route`, Cypress `intercept`. Fallback: code only; firing claims = hypotheses in `Not Checked`.
 - [ ] **Tag Manager:** A tag manager sits between app and vendor → Steps 5, 6, 10, 12 — container export, preview, and diagnostics, e.g. GTM JSON export, Tag Assistant. Fallback: code and network only; container diff `Not Checked`.
 - [ ] **Analytics Admin:** A hosted property exists → Steps 9, 11, 13, 14 — retention, filters, redaction, and user-deletion, e.g. GA4 Admin API, Firebase console, Amplitude settings. Fallback: none; settings `Not Checked`.
-- [ ] **Native Debug:** A native analytics SDK exists → Steps 10–12 — debug view, e.g. Firebase DebugView. Fallback: `Not Checked`. Confirm debug flags never ship in a release build.
+- [ ] **Native Debug:** A native analytics SDK exists → Steps 10-12 — debug view, e.g. Firebase DebugView. Fallback: `Not Checked`. Confirm debug flags never ship in a release build.
 - [ ] **Warehouse:** An export is linked → Step 17 — row counts, e.g. BigQuery, Snowflake. Fallback: vendor-UI counts only; reconciliation `Not Checked`.
 
 ### 🔒 Gate 1: Prerequisites Check
 
-**Checkpoint.** Verify and check `[x]` all applicable boxes above, then continue to `Probe Steps` without asking.
-
 - [ ] **Gaps named:** every missing item names its fallback and `Not Checked` entry.
-- [ ] **Gate 1 - Verified:** All Core items checked. All applicable Conditional items checked.
+- [ ] **Gate 1 — Verified:** All Core items checked. All applicable Conditional items checked.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Audited commit = this report's `bkit:anchor` `baseSha`. Read newest prior report for this slug under `docs/audits/`; its commit = its `bkit:anchor` `baseSha`, else the HEAD its `Previous Run` recorded. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
-- [ ] **Step 2 — Detect:** Find every analytics SDK, tag-manager snippet, and event call on web, native, and server — vendor packages, hosts, wrapper. Error-tracker SDKs are not product analytics. None → docs claiming tracking; unmet claim = finding → `bkit-audit-documentation`; then `N/A` and STOP. Record tools in `Checked`. **Done when:** surfaces in `Checked`, or `N/A` and STOP.
+- [ ] **Step 1 — Previous Run:** **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 2 — Detect:** Find every analytics SDK, tag-manager snippet, and event call on web, native, and server — vendor packages, hosts, wrapper. Error-tracker SDKs are not product analytics. None → docs claiming tracking; unmet claim = finding → `bkit-audit-documentation`; then `N/A` and STOP. Record tools in `Checked`. **Done when:** surfaces in `Checked`, or `N/A` and **STOP**.
 - [ ] **Step 3 — Events:** Every code-sent event: name, fire site, property types = tracking plan as implemented. No written intended plan = finding (Step 4). **Done when:** `Events` lists every event and change since the previous run, or marked baseline.
 - [ ] **Step 4 — Plan:** Each business question: owner + map to named events, key events, custom dimensions. Event without question wastes limits = finding; question without event = gap. Intended plan `Events` compares to. **Done when:** `Plan` row per question: owner · events · verdict against `Events`.
 - [ ] **Step 5 — Data Layer:** Tag manager between app and vendor (e.g. GA4 through GTM) → (a) Push to data layer only via one typed wrapper; tag manager picks destinations. Direct vendor calls (e.g. `gtag(`), in-component SDK calls, bypass pushes = finding. (b) Layer retains keys across pushes → leak without reset; clear prior object before each commerce push (e.g. `ecommerce: null`). (c) One page view per navigation: non-full-load router sends `page_view` from history auto **or** manual virtual, never both; preview five routes → five hits with new location/title. (d) Snippet once from root layout, after Step 10 consent defaults, only after grant; each deploy loads `Container` environment expected. No tag manager → skip with evidence. **Done when:** `Data Layer` holds the five-route count and each breach = finding.
@@ -118,22 +100,20 @@ Verify only when applicable.
 - [ ] **Step 11 — Identity:** Login → internal user id only (never email/personal), via vendor's user-id mechanism only (e.g. GA4 `user_id` config parameter) — never event param, user property, or registered custom dimension; sent every page load while signed in. Logout → null, not `""`, `" "`, or `"null"`; never-signed-in → no user id. Native mirrors login/logout. One property stitches web+app (e.g. Blended/Observed); household model documented (e.g. low-cardinality user property). Never register per-household/per-user id as custom dimension. Verify sign-in/nav/sign-out in preview (web) + debug view (native); record user-id presence/shape, never value. Personal id or post-logout survival → plan from this report + `bkit-audit-privacy` if personal data left. **Done when:** `Identity` row per stage: signed out · signed in · after logout · never signed in.
 - [ ] **Step 12 — Firing:** Run each core flow (E2E or manual) → capture requests vs `Events`. Events in code that never fire = dead tracking; fire-not-in-code = auto-collection decision; payload mismatch = bug. Web: tag-manager preview + network. Per flow: tags + consent state, data layer per push, outgoing hits. Native: debug view; debug flags never in release. One screen view per screen (name/class match web routes) + auto events (e.g. `first_open`, `session_start`, Android `app_remove`). **Done when:** `Firing` row per core flow: expected · captured · verdict.
 - [ ] **Step 13 — Dashboards:** Vendor reports/conversions use existing events; internal/test filtered. Each run: unset page/landing shares, collapsed high-cardinality size, unassigned channel, self-referrals + delta vs previous run. Alert on core-flow key event → zero between runs. Tracking-changing releases annotated. Dashboard on dead event → owner with report + event. **Done when:** `Dashboards` holds quality shares, alerts, and annotations.
-- [ ] **Step 14 — Property:** Hosted property (e.g. GA4) → screenshot or admin API dump per setting; name property. (a) Deliberate retention (past short default) + reset-on-new-activity vs `bkit-audit-privacy` rules. (b) Internal/dev traffic filters active (not testing); permanent exclusions; app streams exclude at source (CI/synthetic/test). (c) Unwanted referrals: checkout, OAuth, auth hosts — else sign-in/purchase credit lost. (d) Each `Coverage` completion = key event (non-trivial); counting method chosen; within doc limit (record limit). (e) Report params registered as custom dims/metrics within limits; no high-cardinality ids. (f) Auto-collection toggles: SPA form noise; site-search param names; downloads may leak filenames (personal). (g) Signals/demographics threshold risk — record decision; off or device identity if core data hidden. (h) Granular location/device + user-provided data per region; user-provided off unless enhanced conversions. (i) TZ/currency match business; session/engaged timers; cross-domain if marketing ≠ app domain. Other vendor → equivalent settings or skip. Undecided drift → owner + diff/screenshot. **Done when:** `Property` row per setting: value · decided · verdict.
+- [ ] **Step 14 — Property:** Hosted property (e.g. GA4) → screenshot or admin API dump per setting; name property. (a) Deliberate retention (past short default) + reset-on-new-activity vs `bkit-audit-privacy` rules. (b) Internal/dev traffic filters active (not testing); permanent exclusions; app streams exclude at source (CI/synthetic/test). (c) Unwanted referrals: checkout, OAuth, auth hosts — else sign-in/purchase credit lost. (d) Each `Coverage` completion = key event (non-trivial); counting method chosen; within doc limit (record limit). (e) Report params registered as custom dims/metrics within limits; no high-cardinality ids. (f) Auto-collection toggles: SPA form noise; site-search param names; downloads may leak filenames (personal). (g) Signals/demographics threshold risk — record decision; off or device identity if core data hidden. (h) Granular location/device + user-provided data per region; user-provided off unless enhanced conversions. (i) TZ/currency match business; session/engaged timers; cross-domain if marketing != app domain. Other vendor → equivalent settings or skip. Undecided drift → owner + diff/screenshot. **Done when:** `Property` row per setting: value · decided · verdict.
 - [ ] **Step 15 — Server Events:** List server-protocol sends (e.g. webhook subscription lifecycle, inbound message, job outcomes). Reuse client id (web) or app instance id (native); session id only in vendor window. Validate via vendor debug endpoint; API secret in secrets store, rotated. No client twin or shared dedup key (e.g. `transaction_id`); subscription revenue from webhook, not client success page. Server strips personal data (redaction N/A). Document first-party script + same-origin path (e.g. `/metrics`) via host/CDN + server container strip; no decision = finding; if adopted check domain, prod instance count vs vendor guidance, strip rules. **Done when:** `Server Events` row per event: client id reused · deduped · personal data stripped · verdict.
 - [ ] **Step 16 — Campaigns:** Written UTM taxonomy: lowercase fixed source/medium vocabulary + campaign id matching vendor channel groups; no internal UTMs; invite/reply/reset links carry UTMs. Auth redirects preserve params (e.g. `utm_*`, `gclid`, `gbraid`, `wbraid`) through sign-up → confirm → callback → first landing; test tagged sign-up + first page view/sign-up hit. Record attribution model, key-event lookbacks, custom channel groups (incl. assistant-referrer for `bkit-audit-aio-seo`). Installs: store referrer, campaign links, deferred invite deep links → first open. Lost params/untagged email → plan, name flow. **Done when:** `Campaigns` row per item: written · tested · verdict.
-- [ ] **Step 17 — Integrations:** Search Console when public pages exist. Warehouse export → project observability stack, daily (+ streaming if needed), all streams; record region/expiry/cost; daily volume vs export limit (record limit; chronic exceed → pause risk). One processed day: vendor UI count vs warehouse rows (device id identity, matched TZ); doc gap (e.g. 2–5%) OK, more = finding. Ads + auto-tagging/enhanced conversions only if paid acquisition else "not linked". Link native projects + store billing if IAP. Missing link → owner. **Done when:** `Integrations` row per link: linked / not linked / not applicable.
+- [ ] **Step 17 — Integrations:** Search Console when public pages exist. Warehouse export → project observability stack, daily (+ streaming if needed), all streams; record region/expiry/cost; daily volume vs export limit (record limit; chronic exceed → pause risk). One processed day: vendor UI count vs warehouse rows (device id identity, matched TZ); doc gap (e.g. 2-5%) OK, more = finding. Ads + auto-tagging/enhanced conversions only if paid acquisition else "not linked". Link native projects + store billing if IAP. Missing link → owner. **Done when:** `Integrations` row per link: linked / not linked / not applicable.
 - [ ] **Step 18 — Standards:** Confirm current version per anchor standard; read changes since previous report's version. `Standards Coverage`: row per consent signal, collection/config limit, user-id rule, tag-manager governance, server-protocol requirement → checked (name step) / not applicable (why) / finding. Unapplied recommended practice → adopt (propose step) / reject (why) / not applicable. **Done when:** no empty row.
 - [ ] **Step 19 — Anything Else:** (a) Since previous commit, every tracking touch (events, data-layer wrapper, container, property/stream, consent banner/mode, native config, server events, auth redirects) → one-line verdict. (b) ~30 min senior pass + incidents/`bkit-audit-logs`/`docs/failures.jsonl`/vendor status since last run — gaps no step covers. **Done when:** `Beyond the Steps` holds both passes, or `none`. Class seen on 2 runs → propose step in `Process Improvements`.
 
 ### 🔒 Gate 2: Probes Check
 
-**Checkpoint.** Verify and check `[x]` all boxes below, then continue to `Findings` without asking.
-
 - [ ] **Steps complete:** every step `[x]`, or explicit skip with evidence the surface is absent.
 - [ ] **Evidence:** every finding cites re-checkable evidence and the tool behind it.
 - [ ] **No values:** no personal-data value anywhere in the report.
 - [ ] **Consoles untouched:** no container published, no property setting changed, no live collection hit sent.
-- [ ] **Gate 2 - Verified:** Every checkbox above independently verified and checked off.
+- [ ] **Gate 2 — Verified:** Every checkbox above independently verified and checked off.
 
 ## Findings
 
@@ -145,7 +125,7 @@ Verify only when applicable.
 | `MEDIUM` | Dead, duplicate, or misshapen event; client mismatch; no measurement plan; key event missing or trivial; filter left in testing; campaign parameters stripped; dashboard on a dead event |
 | `LOW` | Naming drift that changes no report; missing annotation; unused paused tag |
 
-Scale per `.bkit/jsonl.md` § Severity. Within a severity: personal data / consent first. Personal data in an event, a tag that loads before consent, consent defaults that are not denied before the snippet, and a user id that is personal data are each at least `HIGH`. `Expected` names where it goes.
+Within a severity: personal data / consent first. Personal data in an event, a tag that loads before consent, consent defaults that are not denied before the snippet, and a user id that is personal data are each at least `HIGH`. `Expected` names where it goes.
 
 <!-- prettier-ignore -->
 | Finding | Goes to |
@@ -260,17 +240,13 @@ PENDING
 
 ### 🔒 Gate 3: Report Check
 
-**Checkpoint.** Verify and check `[x]` all boxes below, then stop.
-
-- [ ] **No placeholders:** Findings table and every `Report` section have no `PENDING`.
+- [ ] **No placeholders:** no `PENDING` left
 - [ ] **Summary:** names count per severity, whether the audit applied, and the event-list change vs the previous run (or baseline).
 - [ ] **Series:** `Dashboards` shares and the `Container` diff beside previous report's, or marked baseline.
-- [ ] **Writes:** only this report and template `Project Instructions` changed; throwaway worktrees / remote targets removed.
-- [ ] **Process Improvements:** `Universal` = proposed step changes, template untouched; `Project` = edits applied below `bkit:end`; each `none` if empty.
+- [ ] **Writes:** only this report, template `Project Instructions`, and ledger rows changed; throwaway worktrees / remote targets removed.
+- [ ] **Process Improvements:** `Universal` and `Project` filled
 - [ ] **Suggested Issues:** every `MEDIUM`+ finding ID in exactly one row; every row has a `Next Step`.
-- [ ] **Gate 3 - Verified:** Every checkbox above independently verified and checked off.
-
-> `Project Instructions` below `bkit:end` are consumer-owned — `bkit install` never overwrites them, `bkit check` drift stays clean. Add project-specific tools, paths, commands, and checks there, keyed by section or step title; never results.
+- [ ] **Gate 3 — Verified:** Every checkbox above independently verified and checked off.
 
 <!-- bkit:end -->
 

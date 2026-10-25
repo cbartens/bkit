@@ -6,10 +6,11 @@
 // workflows already describe: "parse git remote"). The current branch, how far it
 // trails `origin/dev`, the main checkout, the bkit binary every later block calls,
 // and whether that bkit is behind the newest release ride along so Step 1 is one call.
+import { randomBytes } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseRemoteUrlToSlug } from "../../ledgers/telemetry.js";
-import { DEV, EXIT, git, repoRoot, runGit, runTool } from "../lib.js";
+import { DEV, EXIT, git, outboxRoot, repoRoot, runGit, runTool } from "../lib.js";
 import { bkitVersionStatus } from "../../shared/bkit-latest.js";
 import { readBkitConfig, trackerScope } from "../../shared/settings.js";
 /** Exit code: neither gh nor the origin remote named an owner/repo. */
@@ -26,9 +27,14 @@ export function resolveOwnerRepo(cwd) {
     const gh = runTool("gh", ["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"], cwd);
     if (gh.status === 0 && splitSlug(gh.stdout))
         return { ownerRepo: gh.stdout.trim(), source: "gh" };
+    const slug = originOwnerRepo(cwd);
+    return slug === null ? null : { ownerRepo: slug, source: "remote" };
+}
+/** `owner/repo` from the `origin` remote URL alone (no network); null when origin names none. */
+export function originOwnerRepo(cwd) {
     const url = git(cwd, ["remote", "get-url", "origin"]);
     const slug = url ? parseRemoteUrlToSlug(url) : "";
-    return splitSlug(slug) ? { ownerRepo: slug, source: "remote" } : null;
+    return splitSlug(slug) ? slug : null;
 }
 /**
  * How far HEAD trails `origin/dev`, from whatever was last fetched. null when
@@ -80,6 +86,33 @@ export function actionsPermissionsReadable(cwd, ownerRepo) {
         .at(-1) ?? "";
     return { readable: res.found && res.status === 0, status: res.status, detail };
 }
+/** Session folders older than this are pruned by `repo info`. */
+export const SESSION_TTL_MS = 7 * 86_400_000;
+const SESSION_NAME = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z-[0-9a-f]+$/;
+/**
+ * Creates `<outboxRoot>/sessions/<utc-time>-<random>/` and prunes session folders
+ * whose name stamps them older than {@link SESSION_TTL_MS}. Folders named any
+ * other way are left alone.
+ */
+export function newSessionDir(outboxRoot, now = new Date()) {
+    const sessions = path.join(outboxRoot, "sessions");
+    fs.mkdirSync(sessions, { recursive: true });
+    for (const name of fs.readdirSync(sessions)) {
+        const m = SESSION_NAME.exec(name);
+        if (!m)
+            continue;
+        const at = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+        if (now.getTime() - at > SESSION_TTL_MS)
+            fs.rmSync(path.join(sessions, name), { recursive: true, force: true });
+    }
+    const stamp = now
+        .toISOString()
+        .replace(/[-:]/g, "")
+        .replace(/\.\d{3}/, "");
+    const dir = path.join(sessions, `${stamp}-${randomBytes(4).toString("hex")}`);
+    fs.mkdirSync(dir);
+    return dir;
+}
 export const repoCommand = {
     noun: "repo",
     summary: "Repo facts for Step 1: owner/repo, current branch, and how far it trails dev.",
@@ -109,14 +142,18 @@ export const repoCommand = {
                 repoRoot: "the main checkout (the same from any worktree)",
                 bkit: "the bkit binary the workflow blocks call: <repoRoot>/node_modules/.bin/bkit, else `bkit` on PATH",
                 outboxRoot: "<git common dir>/bkit-outbox: per-run scratch files, never committed",
+                sessionDir: "<outboxRoot>/sessions/<utc-time>-<random>/: a new, empty folder per call for this run's prompt.md and issue files; folders older than 7 days are pruned",
                 bkitVersion: ".bkit/version pinnedVersion: the release this repo's bkit files came from (null when unpinned)",
                 bkitLatest: "newest published @cbartens/bkit, asked at most once a day (null when offline, opted out via BKIT_NO_UPDATE_CHECK, or unpinned)",
                 bkitOutdated: "true when bkitVersion is older than bkitLatest (null when either is unknown)",
                 bkitAdvisory: "one line to show the user when bkitOutdated, else null",
-                trackerTeam: "package.json bkit.linear.team under linear, else null",
-                trackerProject: "package.json bkit.linear.project under linear, bkit.jira.project under jira, else null",
-                trackerSite: "package.json bkit.jira.site under jira (the MCP cloudId), else null",
-                trackerBoard: "{ownerType, owner, number} read from package.json bkit.github.project under github, else null",
+                trackerTeam: "package.json bkit.tracker.linear.team under linear, else null",
+                trackerProject: "package.json bkit.tracker.linear.project under linear, bkit.tracker.jira.project under jira, else null",
+                trackerSite: "package.json bkit.tracker.jira.site under jira (the MCP cloudId), else null",
+                trackerBoard: "{ownerType, owner, number} read from package.json bkit.tracker.github.project under github, else null",
+                trackerProgress: "the state an issue moves to when work starts: package.json bkit.tracker.<tracker>.progress for the wired tracker, at its default when unset (github `In progress`, linear `started`, jira `In Progress`); null under none",
+                trackerReview: "the state an issue moves to when it is handed to a human: package.json bkit.tracker.<tracker>.review for the wired tracker, at its default when unset (github `In review`, linear `In Review`, jira `In Review`); null under none",
+                tasks: "{maxPerGroup, maxTestsPerGroup, maxTestsPerTask, maxTestFilesPerTask}: the plan caps from package.json bkit.workflows.tasks, each missing or invalid key at its default",
             },
             exitCodes: {
                 [EXIT_NO_REPO]: "neither gh nor the origin remote named an owner/repo",
@@ -149,6 +186,9 @@ export const repoCommand = {
                 const latest = bkitVersionStatus(root, common);
                 if (latest.advisory !== null)
                     ctx.log(latest.advisory);
+                const outbox = outboxRoot(ctx.cwd) ?? path.join(root, ".git", "bkit-outbox");
+                const config = readBkitConfig(root);
+                const states = config.issueTracker === "none" ? null : config[config.issueTracker];
                 ctx.emit({
                     ...resolved,
                     owner,
@@ -157,12 +197,16 @@ export const repoCommand = {
                     ...behind,
                     repoRoot: root,
                     bkit: resolveBkitBinary(root),
-                    outboxRoot: path.join(common ?? path.join(root, ".git"), "bkit-outbox"),
+                    outboxRoot: outbox,
+                    sessionDir: newSessionDir(outbox),
                     bkitVersion: latest.version,
                     bkitLatest: latest.latest,
                     bkitOutdated: latest.outdated,
                     bkitAdvisory: latest.advisory,
-                    ...trackerScope(readBkitConfig(root)),
+                    ...trackerScope(config),
+                    trackerProgress: states?.progress ?? null,
+                    trackerReview: states?.review ?? null,
+                    tasks: config.tasks,
                 });
                 if (branch === null && ctx.flags.allowDetached !== true) {
                     ctx.log("HEAD is detached — no current branch");

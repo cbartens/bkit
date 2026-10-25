@@ -12,7 +12,16 @@ import * as path from "node:path";
 
 import type { IssueTracker } from "../../install/manifest.js";
 import { readBkitConfig } from "../../shared/settings.js";
-import { appendLine, statusTimestamp, type StatusRow } from "../../ledgers/status.js";
+import {
+  actionHash,
+  actionKey,
+  alreadyDone,
+  appendLine,
+  recordAction,
+  runNumber,
+  statusTimestamp,
+  type StatusRow,
+} from "../../ledgers/status.js";
 import {
   bodySkipToken,
   CommandError,
@@ -21,6 +30,7 @@ import {
   ghUnavailable,
   git,
   isSharedBranch,
+  MAIN,
   parseJson,
   repoRoot,
   runGh,
@@ -32,8 +42,11 @@ import {
   type GhResult,
   type RunContext,
 } from "../lib.js";
+import { fidProblem } from "./fids.js";
 import { AUTO_LABEL, AUTO_ROUTE_SUFFIX } from "./issues.js";
-import { EXIT_NO_STATUS, FILE_FLAG, readStatusRows, statusFile, str } from "./status.js";
+import { resolveOwnerRepo } from "./repo.js";
+import { writeBodyFile } from "./tracker.js";
+import { EXIT_NO_STATUS, FILE_FLAG, readRuns, readStatusRows, statusFile, str } from "./status.js";
 
 // ---------------------------------------------------------------------------
 // gh
@@ -165,29 +178,18 @@ function refFlag(value: FlagValue, flag: string): string {
 // open
 // ---------------------------------------------------------------------------
 
-/** FID allowlists per tracker — the same ones `/bkit-auto` asserts when it reads the marker back. */
-const FID_FORMAT: Record<IssueTracker, RegExp> = {
-  github: /^[0-9]+-[a-z0-9-]+$/,
-  linear: /^[a-z]+-[0-9]+-[a-z0-9-]+$/,
-  jira: /^[a-z][a-z0-9]+-[0-9]+-[a-z0-9-]+$/,
-  none: /^[a-z0-9][a-z0-9-]*$/,
-};
-const ISSUE_FORMAT: Record<Exclude<IssueTracker, "none">, RegExp> = {
-  github: /^[0-9]+$/,
-  linear: /^[A-Z]+-[0-9]+$/,
-  jira: /^[A-Z][A-Z0-9]+-[0-9]+$/,
-};
-
-/** The PR-body marker line for this tracker (`.bkit/trackers.md` `pr-body-marker`). */
+/**
+ * The PR-body marker line for this tracker (`.bkit/trackers.md` `pr-body-marker`). With
+ * no issue the marker is FID-only (`<!-- bkit:fid={FID} -->`, the `none` shape) and the
+ * FID any slug; with an issue, the FID must embed that same issue id.
+ */
 export function prMarker(tracker: IssueTracker, fid: string, issue: string | undefined): string {
-  if (!FID_FORMAT[tracker].test(fid)) {
-    throw new CommandError(EXIT.USAGE, `--fid "${fid}" is not a ${tracker} FID slug`);
-  }
-  if (tracker === "none") return `<!-- bkit:fid=${fid} -->`;
   const id = (issue ?? "").replace(/^#/, "");
-  if (!ISSUE_FORMAT[tracker].test(id)) {
-    throw new CommandError(EXIT.USAGE, `--issue "${issue ?? ""}" is not a ${tracker} issue id`);
+  const problem = fidProblem(fid, tracker, id);
+  if (problem !== undefined) {
+    throw new CommandError(EXIT.USAGE, `--fid "${fid}" / --issue "${issue ?? ""}": ${problem}`);
   }
+  if (tracker === "none" || id === "") return `<!-- bkit:fid=${fid} -->`;
   return tracker === "github"
     ? `<!-- bkit:issue=#${id} bkit:fid=${fid} -->`
     : `<!-- bkit:issue=${id} bkit:fid=${fid} -->`;
@@ -201,10 +203,16 @@ export function prBody(marker: string, notes: string[], plan: string | undefined
     .concat("\n");
 }
 
+/** The CI marker `branches force-build` puts on the PR title; `prs merge` drops it from the squash subject. */
+export const FORCE_BUILD = "[force build]";
+const FORCE_BUILD_TAG = / ?(bkit )?\[force build\]/g;
+
 export const EXIT_PR_EXISTS = 3;
 export const EXIT_SKIP_CI_TITLE = 4;
 export const EXIT_GH_FAILED = 5;
 export const EXIT_WRONG_BASE = 6;
+/** Exit code (open): `--base=main` — bkit never opens a PR into `main`. */
+export const EXIT_BASE_MAIN = 7;
 
 export interface OpenInput {
   fid: string;
@@ -228,6 +236,8 @@ export interface OpenResult {
     head: string;
     title: string;
     body: string;
+    /** useMcp only: absolute path of a file holding `body` byte-for-byte. */
+    bodyFile?: string;
   } | null;
 }
 
@@ -246,6 +256,13 @@ export function openPrFor(cwd: string, o: OpenInput, log: (m: string) => void): 
   }
 
   const base = refFlag(o.base ?? DEV, "base");
+  // `refs/heads/main`, `origin/main` and `heads/main` name the same branch for gh.
+  if (base.replace(/^(?:refs\/)?(?:heads\/|remotes\/)?(?:origin\/)?/, "") === MAIN) {
+    log(
+      `refusing to open a PR into ${MAIN}: bkit opens PRs into ${DEV} only, releases stay manual`,
+    );
+    return { code: EXIT_BASE_MAIN, out: null };
+  }
   const head = o.head === undefined ? currentBranch(cwd) : refFlag(o.head, "head");
   if (head === base || isSharedBranch(head)) {
     throw new CommandError(EXIT.USAGE, `refusing to open a PR from "${head}" into "${base}"`);
@@ -261,7 +278,17 @@ export function openPrFor(cwd: string, o: OpenInput, log: (m: string) => void): 
     log(`${why} — create the PR through the GitHub MCP tool with this title and body`);
     return {
       code: EXIT.USE_MCP,
-      out: { created: false, useMcp: true, number: null, url: null, base, head, title, body },
+      out: {
+        created: false,
+        useMcp: true,
+        number: null,
+        url: null,
+        base,
+        head,
+        title,
+        body,
+        bodyFile: writeBodyFile(cwd, "pr-body", body),
+      },
     };
   };
 
@@ -344,6 +371,25 @@ export function openPrFor(cwd: string, o: OpenInput, log: (m: string) => void): 
 }
 
 function openPr(ctx: RunContext): number {
+  const fileFlag = str(ctx.flags.file);
+  const workflow = str(ctx.flags.workflow);
+  if (fileFlag !== undefined && workflow === undefined) {
+    throw new CommandError(EXIT.USAGE, "--file needs --workflow");
+  }
+  // A recorded open of this head into this base makes the PR now open on it this run's own.
+  let existing = str(ctx.flags.existing) as OpenInput["existing"];
+  let action: { file: string; key: string; hash: string } | undefined;
+  if (fileFlag !== undefined && workflow !== undefined) {
+    const file = path.resolve(ctx.cwd, fileFlag);
+    const head = str(ctx.flags.head) ?? currentBranch(ctx.cwd);
+    const run = fs.existsSync(file) ? runNumber(readRuns(file), workflow) : 1;
+    action = {
+      file,
+      key: actionKey(workflow, run, "pr-open"),
+      hash: actionHash(`${head}\n${str(ctx.flags.base) ?? DEV}`),
+    };
+    if (alreadyDone(action.file, action.key, action.hash)) existing = "reuse";
+  }
   const r = openPrFor(
     ctx.cwd,
     {
@@ -354,10 +400,18 @@ function openPr(ctx: RunContext): number {
       head: str(ctx.flags.head),
       plan: str(ctx.flags.plan),
       notes: (ctx.flags.note as string[] | undefined) ?? [],
-      existing: str(ctx.flags.existing) as OpenInput["existing"],
+      existing,
     },
     ctx.log,
   );
+  if (action && r.code === EXIT.OK && r.out?.created === true) {
+    recordAction(action.file, {
+      action: "pr-open",
+      key: action.key,
+      hash: action.hash,
+      ref: r.out.url,
+    });
+  }
   if (r.out) ctx.emit(r.out);
   return r.code;
 }
@@ -368,6 +422,8 @@ function openPr(ctx: RunContext): number {
 
 /** Exit code (merge --expect-merged): the PR did not reach MERGED. */
 export const EXIT_NOT_MERGED = 7;
+/** Exit code (merge): the PR's base is not `dev`, or could not be read — nothing merged. */
+export const EXIT_BASE_NOT_DEV = 8;
 
 export interface MergeInput {
   number: string;
@@ -392,7 +448,9 @@ export interface MergeResult {
 
 /**
  * Squash-merge a PR with an explicit empty body (never the default concatenated
- * subjects), unless it is already MERGED, then read the state back. gh missing →
+ * subjects), unless it is already MERGED, then read the state back. A PR whose base
+ * (read by the same `pr view` that reads its state) is not `dev`, or is unreadable, is
+ * never merged (EXIT_BASE_NOT_DEV). gh missing →
  * EXIT.USE_MCP (merge through `merge_pull_request` with `subject`).
  */
 export function mergePr(cwd: string, o: MergeInput, log: (m: string) => void): MergeResult {
@@ -422,6 +480,12 @@ export function mergePr(cwd: string, o: MergeInput, log: (m: string) => void): M
     return result(EXIT_GH_FAILED, undefined, false);
   }
   if (before.pr?.state === "MERGED") return result(EXIT.OK, before.pr, true);
+  if (before.pr?.baseRefName !== DEV) {
+    log(
+      `refusing to merge PR ${o.number}: its base is ${before.pr?.baseRefName ?? "unknown"}, not ${DEV} — bkit merges into ${DEV} only, releases stay manual`,
+    );
+    return result(EXIT_BASE_NOT_DEV, before.pr, false);
+  }
   const args = ["pr", "merge", o.number, "--squash", "--subject", o.subject, "--body", ""];
   if (o.deleteBranch === true) args.push("--delete-branch");
   if (o.matchHead !== undefined) args.push("--match-head-commit", o.matchHead);
@@ -439,6 +503,14 @@ export function mergePr(cwd: string, o: MergeInput, log: (m: string) => void): M
     log(after.message);
     return result(EXIT_GH_FAILED, undefined, false);
   }
+  // A retarget between the base check and the merge is caught here, loudly.
+  if (after.pr?.state === "MERGED" && after.pr.baseRefName !== DEV) {
+    log(
+      `INTEGRITY FAILURE: PR ${o.number} merged into ${after.pr.baseRefName ?? "an unknown base"}, not ${DEV} — its base changed after the check; revert the merge`,
+    );
+    const r = result(EXIT_BASE_NOT_DEV, after.pr, false);
+    return { ...r, out: { ...r.out, verdict: "FAIL", failures: 1 } };
+  }
   return result(EXIT.OK, after.pr, false);
 }
 
@@ -451,17 +523,60 @@ export interface UpdateBranchResult {
   out: { number: string; updated: boolean } | null;
 }
 
+/** Whether dev demands status checks (ruleset or branch protection): CI must then pass at the PR head. */
+export function devRequiresChecks(gh: (args: string[]) => GhResult, repo: string): boolean {
+  const rules = gh(["api", `repos/${repo}/rules/branches/dev`]);
+  const read = rules.ok ? parseJson(rules.stdout) : { ok: false as const };
+  const list: unknown[] = read.ok && Array.isArray(read.value) ? read.value : [];
+  const hasCheckRule = list.some(
+    (r) =>
+      r !== null &&
+      typeof r === "object" &&
+      (r as { type?: unknown }).type === "required_status_checks",
+  );
+  if (hasCheckRule) return true;
+  return gh(["api", `repos/${repo}/branches/dev/protection/required_status_checks`]).ok;
+}
+
 /**
  * Request a server-side base-into-head refresh (ship Step 4 B1). GitHub authors
  * the merge commit, so bkit cannot set its message and there is no local head to
  * read back — ship's Step 9 poll observes the new head. gh missing →
  * EXIT.USE_MCP (route through `update_pull_request_branch`).
+ *
+ * `onlyIfRequired`: refresh only when dev requires status checks. Otherwise the
+ * PR merges at the head CI already passed at, and the dev push run tests the
+ * merged result — a refresh would only re-run CI on the same feature change.
  */
 export function updateBranch(
   cwd: string,
   number: string,
   log: (m: string) => void,
+  o: { onlyIfRequired?: boolean } = {},
 ): UpdateBranchResult {
+  if (o.onlyIfRequired === true) {
+    const repo = resolveOwnerRepo(cwd)?.ownerRepo;
+    let ghMissing = false;
+    const gh = (args: string[]) => {
+      const res = runGh(cwd, args);
+      if (ghUnavailable(res)) ghMissing = true;
+      return res;
+    };
+    const required = repo === undefined || devRequiresChecks(gh, repo);
+    if (ghMissing) {
+      log(
+        "gh unavailable to read dev's required checks — update the branch through update_pull_request_branch",
+      );
+      return { code: EXIT.USE_MCP, out: null };
+    }
+    if (!required) {
+      log(
+        `dev requires no status checks — PR ${number} merges at the head CI passed at; the dev push run tests the merged result`,
+      );
+      return { code: EXIT.OK, out: { number, updated: false } };
+    }
+    if (repo === undefined) log("cannot resolve the repo to read dev's required checks — updating");
+  }
   const res = runGh(cwd, ["pr", "update-branch", number]);
   if (ghUnavailable(res)) {
     log(
@@ -805,22 +920,32 @@ export const prsCommand: CommandSpec = {
           type: "string",
           help: "an open PR already on --head: fail (default, exit 3) | reuse",
         },
+        {
+          name: "file",
+          type: "string",
+          help: "status.jsonl: record the open as an engine-action row; a re-run this run reuses that PR (needs --workflow)",
+        },
+        { name: "workflow", type: "string", help: "--file: the workflow, for the run number" },
       ],
       output: {
         created: "true when this run created the PR",
-        useMcp: "true when gh is unavailable: create it through MCP with title/body/base/head",
+        useMcp:
+          "true when gh is unavailable: create it through MCP with title/base/head and the body read from bodyFile",
         number: "PR number, or null",
         url: "PR URL, or null",
         base: "base branch (read back from the PR when created)",
         head: "head branch",
         title: "PR title",
         body: "PR body, marker first",
+        bodyFile:
+          "useMcp only: absolute path of a file holding `body` byte-for-byte (the MCP fallback reads it); absent otherwise",
       },
       exitCodes: {
         [EXIT_PR_EXISTS]: "--head already has an open PR (with --existing=fail)",
         [EXIT_SKIP_CI_TITLE]: "the title carries a CI-suppressing token",
         [EXIT_GH_FAILED]: "gh errored (probe, create after one retry, or read-back)",
         [EXIT_WRONG_BASE]: "the created PR's base is not --base",
+        [EXIT_BASE_MAIN]: `--base is ${MAIN}: bkit opens PRs into ${DEV} only (no gh call made)`,
       },
       run: (ctx) => {
         const existing = str(ctx.flags.existing);
@@ -908,6 +1033,7 @@ export const prsCommand: CommandSpec = {
       exitCodes: {
         [EXIT_GH_FAILED]: "gh could not read the PR",
         [EXIT_NOT_MERGED]: "--expect-merged and the PR did not reach MERGED",
+        [EXIT_BASE_NOT_DEV]: `the PR's base is not ${DEV}, or could not be read — nothing merged`,
       },
       run: (ctx) => {
         const number = String(ctx.flags.number);
@@ -924,7 +1050,7 @@ export const prsCommand: CommandSpec = {
             ctx.log(pr.kind === "failed" ? pr.message : `PR #${number} not found`);
             return EXIT_GH_FAILED;
           }
-          subject = `${pr.pr.title} (#${number})`;
+          subject = `${pr.pr.title.replace(FORCE_BUILD_TAG, "")} (#${number})`;
         }
         if (((ctx.flags.label as string[] | undefined) ?? []).includes(AUTO_LABEL))
           subject += AUTO_ROUTE_SUFFIX;
@@ -946,10 +1072,18 @@ export const prsCommand: CommandSpec = {
     "update-branch": {
       summary:
         "Refresh a PR's head from its base server-side (exit 80: use update_pull_request_branch).",
-      flags: [{ name: "number", type: "string", required: true, help: "the PR number" }],
+      flags: [
+        { name: "number", type: "string", required: true, help: "the PR number" },
+        {
+          name: "only-if-required",
+          type: "boolean",
+          help: "skip the update (updated: false) when dev requires no status checks",
+        },
+      ],
       output: {
         number: "the PR number",
-        updated: "the update request succeeded (true even when already up to date)",
+        updated:
+          "the update request succeeded (true even when already up to date); false when --only-if-required skipped it",
       },
       exitCodes: {
         [EXIT_GH_FAILED]: "gh could not update the branch (403 = actions:write scope)",
@@ -958,7 +1092,9 @@ export const prsCommand: CommandSpec = {
         const number = String(ctx.flags.number);
         if (!/^[1-9][0-9]*$/.test(number))
           throw new CommandError(EXIT.USAGE, "--number must be a PR number");
-        const r = updateBranch(ctx.cwd, number, ctx.log);
+        const r = updateBranch(ctx.cwd, number, ctx.log, {
+          onlyIfRequired: ctx.flags.onlyIfRequired === true,
+        });
         if (r.out) ctx.emit(r.out);
         return r.code;
       },

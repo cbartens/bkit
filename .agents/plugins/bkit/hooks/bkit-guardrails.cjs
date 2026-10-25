@@ -35,7 +35,7 @@
 
 // bkit:start
 
-// bkit:managed v5.5.1 — do not edit; run `bkit upgrade` to refresh
+// bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh
 
 const fs = require("node:fs");
 const os = require("node:os");
@@ -233,9 +233,8 @@ function shellEditTargets(cmd) {
 function shellEditAdvisory(hits) {
   return (
     `bkit guardrails: this command edits files through the shell (${hits.join("; ")}). ` +
-    "Pre-edit gates only see edit/write tools, so a shell rewrite bypasses every one of " +
-    "them. Use the edit/write tool instead unless this is one of the sanctioned exceptions " +
-    "in .agents/rules.md (generating files from a script, or a bulk mechanical rewrite). " +
+    "Pre-edit gates only see edit/write tools, so a shell rewrite bypasses every one of them. " +
+    "Use the edit/write tool instead unless this is one of the sanctioned exceptions in .agents/rules.md (generating files from a script, a bulk mechanical rewrite, or appending a log line to your own step output file). " +
     "Not blocked — proceed if it is."
   );
 }
@@ -488,7 +487,13 @@ function denyRule(c) {
     const denied = g && gitDenyRule(g);
     if (denied) return denied;
   }
-  if (/\brm\s+-rf\s+(\/(?:\s|$|\*)|~\/\*|\$HOME\/\*)/.test(c)) {
+  // rm with both -r and -f (-rf, -fr, -Rf, -r -f) on /, ~ or $HOME itself, bare, with a
+  // trailing slash, or with a trailing /*. A path below them (~/projects/x) is not matched.
+  if (
+    /\brm\s+(?:-[a-zA-Z]*(?:[rR][a-zA-Z]*f|f[a-zA-Z]*[rR])[a-zA-Z]*|-[rR]\s+-f|-f\s+-[rR])\s+(?:\/|~\/?|\$HOME\/?|\$\{HOME\}\/?)\*?(?=\s|$|[;&|)])/.test(
+      c,
+    )
+  ) {
     return {
       what: "recursive delete of a filesystem root",
       fix: "Do not run rm -rf against /, ~, or $HOME. Narrow the path to the target directory.",

@@ -1,6 +1,6 @@
 # Cloud agent environments — Claude Code on the web + Cursor Cloud Agents + opencode
 
-<!-- bkit:managed v5.5.1 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** Canonical reference for Claude Code on the web (mobile / web), Cursor Cloud Agents, and opencode cloud runners. Claude + opencode → **GitHub** tracker (unified `bkit-cloud.yml`); Cursor → **Linear**; **Jira** → local runs only (no Jira-side cloud trigger). Not interchangeable per repo — pick agent matching your tracker (see § Cloud-agent support matrix).
@@ -177,12 +177,12 @@ SUPABASE_ACCESS_TOKEN=<Supabase Management API token — https://supabase.com/da
 | Issues | Read & write | `gh issue` |
 | Actions | Read & write | `gh run view` logs, `gh workflow run` |
 | Workflows | Read & write | `gh workflow` (edit `.github/workflows/*`) |
-| Projects (org) | Read & write | GitHub Projects v2 board status sync (`bkit.github.project`) — org-owned boards only; see note |
+| Projects (org) | Read & write | GitHub Projects v2 board status sync (`bkit.tracker.github.project`) — org-owned boards only; see note |
 | Metadata | Read | mandatory, auto-included |
 
 `gh` does **not** read `BKIT_GH_TOKEN` — pipe once after session start: `printf '%s' "$BKIT_GH_TOKEN" | gh auth login --with-token` (e.g. in `.claude/hooks/bkit-cloud-bootstrap.sh`). Locally, `gh auth login` and leave `GH_TOKEN` unset so keyring not overridden.
 
-> **Projects v2 board sync (`bkit.github.project`):** **Projects** permission is **Organization** permission (table row above) — appears only when token **resource owner is the org**, _not_ personal account; org may require token **approved**. Under token UI **Organizations** tab, not Repository permissions; governs `…/orgs/{org}/projectsV2/…`. User-owned (personal-account) boards unreachable by fine-grained PATs — see below.
+> **Projects v2 board sync (`bkit.tracker.github.project`):** **Projects** permission is **Organization** permission (table row above) — appears only when token **resource owner is the org**, _not_ personal account; org may require token **approved**. Under token UI **Organizations** tab, not Repository permissions; governs `…/orgs/{org}/projectsV2/…`. User-owned (personal-account) boards unreachable by fine-grained PATs — see below.
 
 #### When classic is still required
 
@@ -218,7 +218,7 @@ Token management by session type:
 
 ## MCP issue-tracker integration
 
-bkit wires the chosen tracker's MCP server (`bkit.issueTracker`) into `.mcp.json` at repo root (project-shared, read by Claude Code `/mcp` UI). Cursor reads same shape from `.cursor/mcp.json`. All **remote HTTP MCPs** — no docker. GitHub: `BKIT_GH_TOKEN` PAT in the `Authorization` header — no OAuth. Linear: OAuth on first use — Claude Code launches browser auth on first server touch, stores token in own secret store. Jira: `BKIT_JIRA_API_TOKEN` scoped token in the `Authorization` header — no OAuth.
+bkit wires the chosen tracker's MCP server (`bkit.tracker.default`) into `.mcp.json` at repo root (project-shared, read by Claude Code `/mcp` UI). Cursor reads same shape from `.cursor/mcp.json`. All **remote HTTP MCPs** — no docker. GitHub: `BKIT_GH_TOKEN` PAT in the `Authorization` header — no OAuth. Linear: OAuth on first use — Claude Code launches browser auth on first server touch, stores token in own secret store. Jira: `BKIT_JIRA_API_KEY` scoped token in the `Authorization` header — no OAuth.
 
 > Note: `mcpServers` in `.claude/settings.json` silently ignored by Claude Code — definitions only from `.mcp.json` (project) or `claude mcp add` (user scope). `mcp__<name>__*` in `.claude/settings.json` `permissions.allow` are tool-permission allowlists — different concern, remain there.
 
@@ -233,7 +233,7 @@ bkit wires the chosen tracker's MCP server (`bkit.issueTracker`) into `.mcp.json
   "jira": {
     "type": "http",
     "url": "https://mcp.atlassian.com/v2/mcp",
-    "headers": { "Authorization": "Bearer ${BKIT_JIRA_API_TOKEN}" }
+    "headers": { "Authorization": "Bearer ${BKIT_JIRA_API_KEY}" }
   }
 }
 ```
@@ -241,14 +241,14 @@ bkit wires the chosen tracker's MCP server (`bkit.issueTracker`) into `.mcp.json
 `"type": "http"` required — without it Claude Code defaults to stdio transport and rejects entry for missing `command`.
 
 - **GitHub** — official GitHub MCP at `api.githubcopilot.com` (not gated by Copilot subscription). Surface: `issue_write`, `add_issue_comment`, `label_write`, `projects_write`, etc. Used under GitHub provider. Endpoint does **not** support OAuth DCR → auth via `Authorization: Bearer ${BKIT_GH_TOKEN}` (MCP-only env var — see § Environment variables and KN-CORE-8).
-- **Linear** — full Linear workspace surface (`get_issue`, `save_issue`, `save_comment`, `list_*`). Used when `bkit.issueTracker` = `linear`. OAuth (Dynamic Client Registration) — browser flow on first use, no env var.
-- **Jira** — Atlassian Rovo MCP at `mcp.atlassian.com/v2/mcp`. Surface: `getJiraIssue`, `editJiraIssue`, `transitionJiraIssue`, `addOrEditJiraIssueComment`, `searchJiraIssuesUsingJql`, `executeRead` / `executeWrite`. Used when `bkit.issueTracker` = `jira`. Auth via `Authorization: Bearer ${BKIT_JIRA_API_TOKEN}` — a scoped **Atlassian MCP V2** token; org admin must allow API-token sign-in (`.bkit/trackers.md` § jira — setup and notes).
+- **Linear** — full Linear workspace surface (`get_issue`, `save_issue`, `save_comment`, `list_*`). Used when `bkit.tracker.default` = `linear`. OAuth (Dynamic Client Registration) — browser flow on first use, no env var.
+- **Jira** — Atlassian Rovo MCP at `mcp.atlassian.com/v2/mcp`. Surface: `getJiraIssue`, `editJiraIssue`, `transitionJiraIssue`, `addOrEditJiraIssueComment`, `searchJiraIssuesUsingJql`, `executeRead` / `executeWrite`. Used when `bkit.tracker.default` = `jira`. Auth via `Authorization: Bearer ${BKIT_JIRA_API_KEY}` — a scoped **Atlassian MCP V2** token; org admin must allow API-token sign-in (`.bkit/trackers.md` § jira — setup and notes).
 
 **Auth flow per server:**
 
 - **GitHub:** Claude Code substitutes `${BKIT_GH_TOKEN}` from environment at session start. Unset → server fails. Set in shell (`export BKIT_GH_TOKEN=...`) or cloud dashboard.
 - **Linear:** Claude Code prompts browser authorize on first use; token in Claude's secret store. No further action.
-- **Jira:** Claude Code substitutes `${BKIT_JIRA_API_TOKEN}` from environment at session start. Unset or classic token → every Jira call fails.
+- **Jira:** Claude Code substitutes `${BKIT_JIRA_API_KEY}` from environment at session start. Unset or classic token → every Jira call fails.
 
 **`gh auth login` required for gh CLI surface** (PR creation, branch ops, git push). Locally, keyring — do not export `GH_TOKEN` from `.bkit/.env`. Cloud/headless: `bkit-cloud-bootstrap.sh` runs `printf '%s' "$BKIT_GH_TOKEN" | gh auth login --with-token` at SessionStart (guarded by the `bkit runtime detect` gh probe, no-ops on Actions runner where `GITHUB_TOKEN` auths) — no manual step. Same PAT value fine; different env-var name keeps local `gh` on keyring.
 
@@ -396,7 +396,7 @@ When bkit reference Dockerfile changes (e.g. vale bump):
 
 # Post-CI auto-routing
 
-After `bkit-build` Step 18 close-workflow pushes CI-trigger commit (`chore({FID}): close-workflow`, no skip tags) and exits, post-CI router decides ship vs. debug and dispatches matching skill in fresh cloud session — no operator action between CI completion and dispatched session.
+After `bkit-build` Step 15 close-workflow pushes CI-trigger commit (`chore({FID}): close-workflow`, no skip tags) and exits, post-CI router decides ship vs. debug and dispatches matching skill in fresh cloud session — no operator action between CI completion and dispatched session.
 
 Routing **logic** in single bkit-managed slash-command orchestrator (`.bkit/core/workflows/bkit-auto.md`, mirrored to `.claude/commands/bkit-auto.md` + `.cursor/commands/bkit-auto.md` on each `pnpm bkit install`). Routing **trigger** wired separately per IDE — different event surfaces.
 
@@ -435,7 +435,7 @@ Flip **both** org and repo before first router run — else `actions/checkout` 4
 | `ANTHROPIC_FEDERATION_RULE_ID` + `ANTHROPIC_ORGANIZATION_ID` variables | `claude` | Keyless alternative: the action trades the job's GitHub OIDC token for a short-lived Claude API token. | IDs, not secrets — repo **variables**. Optional `ANTHROPIC_SERVICE_ACCOUNT_ID` / `ANTHROPIC_WORKSPACE_ID`. § Claude — workload identity federation. |
 | `OPENCODE_PROVIDER_KEY` | `opencode` | Fanned out to every cloud provider's env var name (`BKIT_OPENROUTER_API_KEY`, `BKIT_OLLAMA_API_KEY`, `BKIT_OPENCODE_API_KEY`) so the `.opencode/opencode.json` `{env:VAR}` reference resolves whichever provider is installed. | Provider API key for whichever provider you configured. |
 
-A `context` job (`Check runner credentials` step) checks both credentials and resolves phase + arg once, no-op unless `package.json` `bkit.issueTracker` is `github` or unset (Linear cloud runs start from Cursor's Linear integration; Jira runs locally only); each runner job needs it and runs only when its own credential is set. Claude credential = `ANTHROPIC_API_KEY`, or **both** federation variables (one alone → `::notice::` naming the missing one, claude no-op). Only claude credential → claude job only. Only `OPENCODE_PROVIDER_KEY` → opencode only. Both → both jobs (additive coexistence). **No `BKIT_LINEAR_API_KEY`** — `bkit-cloud.yml` GitHub-tracker only for both jobs. Workflow grants `id-token: write` per-job for claude only (Claude GitHub App + federation token exchange; opencode no OIDC).
+A `context` job (`Check runner credentials` step) checks both credentials and resolves phase + arg once, no-op unless `package.json` `bkit.tracker.default` is `github` or unset (Linear cloud runs start from Cursor's Linear integration; Jira runs locally only); each runner job needs it and runs only when its own credential is set. Claude credential = `ANTHROPIC_API_KEY`, or **both** federation variables (one alone → `::notice::` naming the missing one, claude no-op). Only claude credential → claude job only. Only `OPENCODE_PROVIDER_KEY` → opencode only. Both → both jobs (additive coexistence). **No `BKIT_LINEAR_API_KEY`** — `bkit-cloud.yml` GitHub-tracker only for both jobs. Workflow grants `id-token: write` per-job for claude only (Claude GitHub App + federation token exchange; opencode no OIDC).
 
 ## Claude — workload identity federation
 
@@ -496,8 +496,8 @@ Skip conditions emit single GitHub-comment no-op line and exit 0 — only real f
 
 ## Operating notes
 
-- **Loop bound (pre-merge `feat/**`):** `/bkit-debug` enforces `MAX_DEBUG_ATTEMPT = 3` internally; router never counts attempts. After three red CI runs, debug fires handover path and stops dispatching.
-- **Loop bound (`dev`):** `MAX_DEV_DISPATCH_ATTEMPTS = 3` distinct failed CI SHAs per `{FID}`, all-time. This is the surface that needs a cross-session cap: `/bkit-debug` adopts `dev` in place, so its fix push re-reds `dev` CI and re-triggers this same router. Checked and written by the ctx step of `bkit-cloud.yml`'s `context` job immediately before dispatch — the in-session counters reset on every new cloud dispatch and cannot bound a cross-session loop. The counter row (`type: "dev-dispatch"`) is committed to `dev` with `[skip ci]` before dispatch, and its presence on `origin/dev` is verified after one retry — a row landing nowhere durable would degrade the cap to unbounded. Exhausted → no-op + `::notice::` for operator review (delete the rows in `status.jsonl` to reset).
+- **Loop bound (pre-merge `feat/**`):** `/bkit-debug` enforces `bkit.workflows.debug.fix` and `.soak` `maxAttempts` internally, counted across every debug run of the feature; the router never counts attempts. Once fix attempts are used up debug switches to soak; once soak attempts are used up it takes the Failure Path (handover) and stops.
+- **Loop bound (`dev`):** `bkit.workflows.debug.fix.maxAttempts` + `bkit.workflows.debug.soak.maxAttempts` (2 + 2 by default) distinct failed CI SHAs per `{FID}`, all-time — every debug run makes at least one attempt, so more dispatches could never run one. The router reads both from `package.json` with `jq` (bkit is not installed at that point), falling back to 2 for a missing or bad value as the engine does. This is the surface that needs a cross-session cap: `/bkit-debug` adopts `dev` in place, so its fix push re-reds `dev` CI and re-triggers this same router. Checked and written by the ctx step of `bkit-cloud.yml`'s `context` job immediately before dispatch, so a run that could not record its own attempts is still bounded. The counter row (`type: "dev-dispatch"`) is committed to `dev` with `[skip ci]` before dispatch, and its presence on `origin/dev` is verified after one retry — a row landing nowhere durable would degrade the cap to unbounded. Exhausted → no-op + `::notice::` for operator review (delete the rows in `status.jsonl` to reset).
 - **GHA 6 h cap:** `3 x ~3600s` per debug attempt = well under GHA runner ceiling. Ship is short.
 - **Concurrency:** `cancel-in-progress` is `true` for `feat/**` (latest-wins) and `false` for `dev`, so an in-flight `/bkit-debug` finishes instead of being cancelled mid-run with a half-written `status.jsonl` or a held worktree lock. GHA queues at most one pending run per group; the queued run re-checks the dispatch cap when it starts, so the same `{FID}` needs no manual re-trigger. Cursor dashboard trigger → "latest-supersedes." Ship squash-merge atomic — mid-run cancels cannot corrupt PR state.
 - **`bkit-auto-dev` is one concurrency group for all FIDs.** GHA resolves `concurrency.group` from trigger-payload context before the ctx step derives the `{FID}`, so the group cannot be keyed on it. Two different FIDs failing `dev` CI near-simultaneously → queue-collapse can drop the older, different FID's pending run. The stale-run guard detects it (its head SHA no longer matches the most-recent-completed `dev` CI run) and writes a `dev-dispatch-dropped` row to the job summary plus a `::warning::`, rather than discarding it silently. Job summary, not a committed `status.jsonl`: this branch is only reached because `dev` already advanced, so committing the row would usually be a non-fast-forward and be lost in exactly the case it records.

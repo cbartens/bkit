@@ -62,7 +62,7 @@ Run these in order on a brand-new consumer repo.
 | --- | --- | --- |
 | 1 | `pnpm add -D @cbartens/bkit` — no token, no registry mapping | this section |
 | 2 | Run `bkit install --claude --cursor` to seed both hosts (writes `.bkit/.env.example`; `.envrc` is a template in `.bkit/templates/`) | this section |
-| 3 | Set up direnv + `.bkit/.env` for `BKIT_GH_TOKEN` (GitHub MCP), `BKIT_LINEAR_API_KEY` or `BKIT_JIRA_API_TOKEN` — no registry token | [§ Local env setup](#local-env-setup) |
+| 3 | Set up direnv + `.bkit/.env` for `BKIT_GH_TOKEN` (GitHub MCP), `BKIT_LINEAR_API_KEY` or `BKIT_JIRA_API_KEY` — no registry token | [§ Local env setup](#local-env-setup) |
 | 4 | Push to a feature branch and verify CI runs green | — |
 
 No CI step, secret, `.npmrc` mapping or Vercel env is needed — CI reaches npmjs anonymously.
@@ -119,7 +119,7 @@ Install and upgrade create two **relative symlinks** into the installed package,
 
 ### Local env setup
 
-Two flows — pick one. Both put `BKIT_GH_TOKEN` in shell for the GitHub MCP server; Linear repos also need `BKIT_LINEAR_API_KEY`, Jira repos `BKIT_JIRA_API_TOKEN` (`.bkit/trackers.md` § jira — setup and notes). Use `gh auth login` for CLI.
+Two flows — pick one. Both put `BKIT_GH_TOKEN` in shell for the GitHub MCP server; Linear repos also need `BKIT_LINEAR_API_KEY`, Jira repos `BKIT_JIRA_API_KEY` (`.bkit/trackers.md` § jira — setup and notes). Use `gh auth login` for CLI.
 
 #### Flow A — Shell export (quickest, no extra deps)
 
@@ -127,7 +127,7 @@ Two flows — pick one. Both put `BKIT_GH_TOKEN` in shell for the GitHub MCP ser
 # Add to ~/.zshrc (or ~/.bashrc)
 export BKIT_GH_TOKEN=<PAT — fine-grained (one owner) or classic (multiple owners)>   # GitHub MCP
 export BKIT_LINEAR_API_KEY=<Linear personal API key>        # Linear MCP + preflight
-export BKIT_JIRA_API_TOKEN=<Atlassian MCP V2 scoped token>   # Jira MCP
+export BKIT_JIRA_API_KEY=<Atlassian MCP V2 scoped token>   # Jira MCP
 
 # Reload
 source ~/.zshrc                                        # or: source ~/.bashrc
@@ -151,7 +151,7 @@ echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc && source ~/.zshrc
 # 3. One-time per consumer repo (after `bkit install`)
 cp .bkit/templates/.envrc .envrc                                   # unless you already have one
 cp .bkit/.env.example .bkit/.env
-# Edit .bkit/.env: set BKIT_GH_TOKEN, BKIT_LINEAR_API_KEY or BKIT_JIRA_API_TOKEN
+# Edit .bkit/.env: set BKIT_GH_TOKEN, BKIT_LINEAR_API_KEY or BKIT_JIRA_API_KEY
 direnv allow                                                       # trust the .envrc
 
 # 4. Verify
@@ -226,11 +226,12 @@ After writes, bkit re-runs credential and environment checks — some only accur
 | --- | --- |
 | `bkit-managed-duplicate` | A managed markdown file holds an older unmarked copy of its block outside `bkit:start`/`bkit:end`: the block's `# ` title plus 10+ of its long lines verbatim, fenced code ignored. Install never updates that copy. Names each file and title line; delete the copy. |
 | `gh-mcp-token-unset-shell` / `gh-mcp-token-empty-shell` | `BKIT_GH_TOKEN` (GitHub MCP auth) unset/empty in shell while a `github` MCP server is configured — the whole tracker/PR/board MCP surface fails to connect. Suppressed in CI. |
-| `tracker-setup-none` / `-github` / `-linear` / `-jira` | Optional post-install decision — which issue tracker is wired (`bkit.issueTracker`). `none` nudges `bkit install --tracker=…`. See [§ Optional post-install decisions](#optional-post-install-decisions). |
-| `github-project-board-sync-unconfigured` | GitHub tracker active but Projects v2 board sync is half-configured (`bkit.github.project` absent or not a board URL, and/or `.mcp.json` lacks the `projects` toolset) — sync silently no-ops. Silence with `bkit.github.project: false`. |
-| `dep-updater-absent` | No Renovate or Dependabot config. Copy one example and own it. `bkit.depUpdater: "none"` silences this. See [§ Optional post-install decisions](#optional-post-install-decisions). |
+| `tracker-setup-none` / `-github` / `-linear` / `-jira` | Optional post-install decision — which issue tracker is wired (`bkit.tracker.default`). `none` nudges `bkit install --tracker=…`. See [§ Optional post-install decisions](#optional-post-install-decisions). |
+| `github-project-board-sync-unconfigured` | GitHub tracker active but Projects v2 board sync is half-configured (`bkit.tracker.github.project` empty, absent or not a board URL, and/or `.mcp.json` lacks the `projects` toolset) — sync silently no-ops. Silence with `bkit.tracker.github.project: false`. |
+| `github-project-token-scope` | A board is configured but `BKIT_GH_TOKEN` cannot reach it: a classic token lacks the `project` scope, or a fine-grained token's board query returns nothing. Board moves fall back to the MCP. Checked live via `gh`; skipped on cloud / CI. |
+| `dep-updater-absent` | No Renovate or Dependabot config. Copy one example and own it. `bkit.dependencies.updater: "none"` silences this. See [§ Optional post-install decisions](#optional-post-install-decisions). |
 | `dep-updater-both` | Both updater configs are present. Keep one. |
-| `cloud-router-none` / `cloud-router` | Optional post-install decision — post-CI auto-routing (`bkit.cloudAgents`). `none` (undecided) nudges `bkit install --auto=<variant>`, except under the jira tracker (local runs only); `cloud-router` is informational once `bkit-cloud.yml` is present. See [§ Optional post-install decisions](#optional-post-install-decisions). |
+| `cloud-router-none` / `cloud-router` | Optional post-install decision — post-CI auto-routing (`bkit.cloud.agent`). `none` (undecided) nudges `bkit install --auto=<variant>`, except under the jira tracker (local runs only); `cloud-router` is informational once `bkit-cloud.yml` is present. See [§ Optional post-install decisions](#optional-post-install-decisions). |
 | `actions-write-permissions-missing` | `bkit-cloud.yml` present but repo Actions permissions are read-only / PR creation disabled — `actions/checkout` + `gh pr create` 403. Repo-level check; org policy can override. |
 | `opencode-setup` | opencode host installed (`--opencode=<provider>`) — names the provider key to set (e.g. `BKIT_OPENROUTER_API_KEY`; `BKIT_OPENCODE_API_KEY` for `opencode-zen` / `opencode-go`), confirms the pre-seeded base URL, and notes all four providers ship curated per-agent pins (re-pin via `.bkit/prompts.md` § Model Overrides). Verify with `bkit doctor` + `bkit status`. |
 | `vale-package-not-synced` | vale on PATH but `.vale/styles/write-good/` absent |
@@ -242,7 +243,7 @@ After writes, bkit re-runs credential and environment checks — some only accur
 
 Phase 1 and Phase 3 findings merged and deduplicated by `id` (Phase 3 wins on conflict — re-detection more accurate post-write). Zero findings → no banner.
 
-**`bkit check` (dry-run)** runs Phase 1 and Phase 3 (read-only) — same advisory set as `bkit install` minus writes. Changes no managed file (regenerates `.bkit/advisories.md` artifact) and **exits 1 when any managed-file write would occur** in installed module — Tier-2 JSON deep-containment or markered-block drift, whole-file byte-equal mismatch, **host agent/command mirror content drift** (would-write / orphan delete), or when any file bkit writes (rendered agents / commands / skills, managed blocks, owned whole files) carries a stale managed-version marker (`bkit-managed-stale`). Gate covers the **installed** module set ({core, claude, cursor, codex, antigravity} plus **opencode**, each detected by sentinel files: a host's `agents/` dir; antigravity any of `.agents/plugins/bkit/{plugin.json,hooks.json,agents,skills,hooks}`, so a deleted plugin manifest is reported as a missing file, not an absent host; `bkit status` uses the same detection). A missing `bkit:gate:*` name counts as a write. antigravity gated: `.agents/plugins/bkit/**` (plugin manifest, hooks, agents, skills) and root `GEMINI.md`. opencode gated: `.opencode/opencode.json` (provider block + the recorded tracker's `mcp` entry + permission sandbox; another tracker's `mcp` entry the consumer edited, kept by a tracker switch, is not drift — `mcp-extra-server-linear--opencode-opencode-json` advises removing it) and the `bkit-gateguard.js` / `bkit-readguard.js` plugins drift fail `check` — render inputs fall back to installed provider (`package.json` `bkit.opencodeProvider`, authoritative for `opencode-zen` / `opencode-go`; all installed providers tracked in `bkit.opencodeProviders: string[]`) and recorded tracker, so clean install across providers checks green (no false drift). Remaining **opt-in** module (cloud) is not drift-gated. A missing bkit-owned hook file also fails `check`, one line per file naming it and the `bkit install` flag that restores it: the hook files of every installed host (`.claude/hooks/*`, `.cursor/hooks/*`, `.codex/hooks/*`, `.agents/plugins/bkit/hooks/*`, `.opencode/plugin/bkit-gateguard.js`, `.opencode/plugin/bkit-readguard.js`) — the hook commands skip a missing file (`test -f … || true`), so without this the guard would be off with no signal. Updater configs are not bkit files, so `bkit check` does not report them. Phase 3 stays read-only through read-only detector paths, not by being skipped.
+**`bkit check` (dry-run)** runs Phase 1 and Phase 3 (read-only) — same advisory set as `bkit install` minus writes. Changes no managed file (regenerates `.bkit/advisories.md` artifact) and **exits 1 when any managed-file write would occur** in installed module — Tier-2 JSON deep-containment or markered-block drift, whole-file byte-equal mismatch, **host agent/command mirror content drift** (would-write / orphan delete), or when any file bkit writes (rendered agents / commands / skills, managed blocks, owned whole files) carries a stale managed-version marker (`bkit-managed-stale`). Gate covers the **installed** module set ({core, claude, cursor, codex, antigravity} plus **opencode**, each detected by sentinel files: a host's `agents/` dir; antigravity any of `.agents/plugins/bkit/{plugin.json,hooks.json,agents,skills,hooks}`, so a deleted plugin manifest is reported as a missing file, not an absent host; `bkit status` uses the same detection). A missing `bkit:gate:*` name counts as a write. antigravity gated: `.agents/plugins/bkit/**` (plugin manifest, hooks, agents, skills) and root `GEMINI.md`. opencode gated: `.opencode/opencode.json` (provider block + the recorded tracker's `mcp` entry + permission sandbox; another tracker's `mcp` entry the consumer edited, kept by a tracker switch, is not drift — `mcp-extra-server-linear--opencode-opencode-json` advises removing it) and the `bkit-gateguard.js` / `bkit-readguard.js` plugins drift fail `check` — render inputs fall back to installed provider (`package.json` `bkit.providers.opencode.default`, authoritative for `opencode-zen` / `opencode-go`; all installed providers tracked in `bkit.providers.opencode.installed: string[]`) and recorded tracker, so clean install across providers checks green (no false drift). Remaining **opt-in** module (cloud) is not drift-gated. A missing bkit-owned hook file also fails `check`, one line per file naming it and the `bkit install` flag that restores it: the hook files of every installed host (`.claude/hooks/*`, `.cursor/hooks/*`, `.codex/hooks/*`, `.agents/plugins/bkit/hooks/*`, `.opencode/plugin/bkit-gateguard.js`, `.opencode/plugin/bkit-readguard.js`) — the hook commands skip a missing file (`test -f … || true`), so without this the guard would be off with no signal. Updater configs are not bkit files, so `bkit check` does not report them. Phase 3 stays read-only through read-only detector paths, not by being skipped.
 
 **`bkit upgrade`** (not `--dry-run`) ends with the same read-only pass as `bkit check`: prints the checklist and rewrites `.bkit/advisories.md` (`Mode: upgrade`). Drift and blockers it finds are reported only — upgrade's exit code is unchanged.
 
@@ -264,7 +265,7 @@ Findings render as `--- i/N [severity] id ---` with `Detect:` and `Action:` line
 ```json
 {
   "bkit": {
-    "ignoreAdvisories": ["tagged-tests-no-ci-home"]
+    "advisories": { "ignore": ["tagged-tests-no-ci-home"] }
   }
 }
 ```
@@ -279,12 +280,12 @@ Findings render as `--- i/N [severity] id ---` with `Detect:` and `Action:` line
 
 ## Optional post-install decisions
 
-Two capabilities **opt-in** — never wired by plain host/tooling install. Default install never enables them; post-install advisory banner nudges you to choose, once. Each recorded in `package.json` (`bkit.issueTracker`, `bkit.cloudAgents`) so the nudge knows whether you've decided or deliberately opted out.
+Two capabilities **opt-in** — never wired by plain host/tooling install. Default install never enables them; post-install advisory banner nudges you to choose, once. Each recorded in `package.json` (`bkit.tracker.default`, `bkit.cloud.agent`) so the nudge knows whether you've decided or deliberately opted out.
 
 <!-- prettier-ignore -->
 | Decision | Default | Opt-in command | Advisory when unset |
 | --- | --- | --- | --- |
-| **Issue tracker** | `none` (workflows run; tracker calls are no-ops) | `bkit install --tracker=github` (`BKIT_GH_TOKEN`) `--tracker=linear` (`BKIT_LINEAR_API_KEY`) or `--tracker=jira` (`BKIT_JIRA_API_TOKEN` + `bkit.jira.site` / `bkit.jira.project`) | `tracker-setup-none` |
+| **Issue tracker** | `none` (workflows run; tracker calls are no-ops) | `bkit install --tracker=github` (`BKIT_GH_TOKEN`) `--tracker=linear` (`BKIT_LINEAR_API_KEY`) or `--tracker=jira` (`BKIT_JIRA_API_KEY` + `bkit.tracker.jira.site` / `bkit.tracker.jira.project`) | `tracker-setup-none` |
 | **Cloud agents** | none (zero cloud footprint) | `bkit install --auto=claude\|cursor\|opencode` — records the choice and points at the copy-and-own templates: `.claude/hooks/bkit-cloud-bootstrap.sh` (claude), the `bkit-cloud.yml` (claude + opencode jobs, secret-gated) and the Cursor Dockerfile/environment.json | `cloud-router-none` |
 
 **Dependency updater.** Copy one example and own it.
@@ -296,7 +297,7 @@ Two capabilities **opt-in** — never wired by plain host/tooling install. Defau
 | Renovate self-hosted runner | `.bkit/templates/.github/workflows/bkit-renovate.yml` |
 | Dependabot | `.bkit/templates/.github/dependabot.yml` |
 
-Use one. `bkit.depUpdater: "none"` skips the install-time absence advisory. Setup: `docs/deployments.md` § Dependency updaters.
+Use one. `bkit.dependencies.updater: "none"` skips the install-time absence advisory. Setup: `docs/deployments.md` § Dependency updaters.
 
 **Security scan.** Updater only offers fixes once a fixed release exists. To fail CI on known-vulnerable packages, risky config or committed secrets, copy `.bkit/templates/.github/workflows/bkit-trivy.yml` and own it. No advisory; `bkit tips` suggests it. Setup: `.bkit/templates.md` § Trivy.
 
@@ -312,10 +313,10 @@ Use one. `bkit.depUpdater: "none"` skips the install-time absence advisory. Setu
 **How to decide:**
 
 1. Run `bkit install --claude --cursor` (or whichever modules you want). Post-install banner lists `tracker-setup-none`, `dep-updater-absent`, `cloud-router-none` if undecided.
-2. Pick tracker: `bkit install --tracker=github` (or `linear` / `jira`). Needs no host flag; re-renders every installed host. Persisted to `bkit.issueTracker`; future installs preserve (switching free).
+2. Pick tracker: `bkit install --tracker=github` (or `linear` / `jira`). Needs no host flag; re-renders every installed host. Persisted to `bkit.tracker.default`; future installs preserve (switching free).
 3. Copy one updater example (table above). Land Renovate config on the default branch before installing the App.
-4. Enable cloud agents: `bkit install --auto=claude|cursor|opencode`. Persisted to `bkit.cloudAgents`; install prints secrets + permissions + dashboard checklist (`bkit-auto-setup`). Shipped `bkit-cloud.yml` carries claude job (`ANTHROPIC_API_KEY` repo secret or federation repo variables — `.bkit/cloud.md` § Claude — workload identity federation) and opencode job (`OPENCODE_PROVIDER_KEY`), each runtime-gated.
-5. **To opt out and silence the nudge**, set the field to `"none"` in `package.json` (`bkit.issueTracker` / `bkit.depUpdater` / `bkit.cloudAgents`). Advisory stays quiet.
+4. Enable cloud agents: `bkit install --auto=claude|cursor|opencode`. Persisted to `bkit.cloud.agent`; install prints secrets + permissions + dashboard checklist (`bkit-auto-setup`). Shipped `bkit-cloud.yml` carries claude job (`ANTHROPIC_API_KEY` repo secret or federation repo variables — `.bkit/cloud.md` § Claude — workload identity federation) and opencode job (`OPENCODE_PROVIDER_KEY`), each runtime-gated.
+5. **To opt out and silence the nudge**, set the field to `"none"` in `package.json` (`bkit.tracker.default` / `bkit.dependencies.updater` / `bkit.cloud.agent`). Advisory stays quiet. The `""` install seeds means undecided and keeps the nudge.
 
 Tracker and cloud agents reverse by re-running install with the other flag. Updater files stay until you delete them.
 
@@ -340,7 +341,7 @@ bkit tips --all              # every firing tip
 | Reuse | A tip for a gap an advisory already detects calls that advisory's detector — tip and advisory never disagree. |
 | Artifact | `bkit install` / `check` / `upgrade` / `doctor` list every firing tip, with its id, in `.bkit/advisories.md` § Setup tips and the console banner: line, why, caution, ask-your-agent sentence, agent steps. |
 | Star line | `Do you like bkit? Then give it a star at [https://github.com/cbartens/bkit](https://github.com/cbartens/bkit)!` (markdown link) closes bare `bkit tips`, after the tips and outside the cap; in a phase workflow it follows the tip with `Do you like bkit?` in bold, and the silence line follows it. Never under `--workflow=audit` / `utility` (those agents often run back to back), in `.bkit/advisories.md` or the console banner. |
-| Silence | Root `package.json` `bkit.ignoreAdvisories`: a tip id (a workflow's `## bkit Tips` ends with `` **Want to silence these tips?** Ask your agent to "add `<id>` and `bkit-star` to `bkit.ignoreAdvisories` in package.json". ``, naming what it showed), or an advisory id the tip reuses, silences the tip and those advisories together; both show in the suppressed block. `bkit-star` (or the older `star`) silences the star line. |
+| Silence | Root `package.json` `bkit.advisories.ignore`: a tip id (a workflow's `## bkit Tips` ends with `` **Want to silence these tips?** Ask your agent to "add `<id>` and `bkit-star` to `bkit.advisories.ignore` in package.json". ``, naming what it showed), or an advisory id the tip reuses, silences the tip and those advisories together; both show in the suppressed block. `bkit-star` (or the older `star`) silences the star line. |
 | Exit | Always 0. Prints nothing when no tip fires and no star line shows. |
 
 ## Doctor
@@ -378,7 +379,7 @@ bkit uninstall --dry-run
 
 # Uninstall specific modules (targeted — leaves core + the other modules intact)
 bkit uninstall --claude       # removes the claude host only
-bkit uninstall --auto         # clears the cloudAgents key (cloud files are copy-and-own)
+bkit uninstall --auto         # clears the bkit.cloud.agent key (cloud files are copy-and-own)
 
 # Force-delete byte-equal-text files even if consumer modified them
 bkit uninstall --force

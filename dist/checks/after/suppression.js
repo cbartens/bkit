@@ -1,5 +1,5 @@
 // checks/after/suppression.ts — per-package advisory opt-out (`package.json`
-// `bkit.ignoreAdvisories`).
+// `bkit.advisories.ignore`).
 //
 // A detector can be right in general and still fire on a package where the condition is
 // deliberately not applicable (a rule-linter whose test titles mention `@live`, an
@@ -12,9 +12,9 @@
 // suppressible whatever the manifest says.
 import { readPackageJson } from "../../shared/package-json.js";
 /**
- * Advisory ids `dir/package.json` opts out of. A missing manifest, a `bkit` key that is
- * absent or not an object, and an `ignoreAdvisories` that is absent or not an array all
- * yield no ids — never a throw.
+ * Advisory ids `dir/package.json` opts out of. A missing manifest, a `bkit` or
+ * `bkit.advisories` key that is absent or not an object, and an `advisories.ignore` that is
+ * absent or not an array all yield no ids — never a throw.
  */
 export function ignoredAdvisoryIds(dir) {
     const read = readPackageJson(dir);
@@ -23,7 +23,10 @@ export function ignoredAdvisoryIds(dir) {
     const bkit = read.pkg.bkit;
     if (typeof bkit !== "object" || bkit === null || Array.isArray(bkit))
         return new Set();
-    const list = bkit.ignoreAdvisories;
+    const advisories = bkit.advisories;
+    if (typeof advisories !== "object" || advisories === null || Array.isArray(advisories))
+        return new Set();
+    const list = advisories.ignore;
     if (!Array.isArray(list))
         return new Set();
     return new Set(list.filter((id) => typeof id === "string"));

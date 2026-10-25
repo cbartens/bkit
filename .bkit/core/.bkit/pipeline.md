@@ -24,7 +24,7 @@
 
 ## What this is
 
-bkit turns a single coding-agent request into gated, peer-reviewed engineering. Five commands — `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship` — each fans out to specialised single-purpose subagents (49 in total, phases + audit + utilities). Many run parallel under different _lenses_ (bug review vs security review) → independent review before human sees output. Same pipeline on five hosts: Claude Code, Cursor, Codex, Google Antigravity, opencode.
+bkit turns a single coding-agent request into gated, peer-reviewed engineering. Five commands — `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship` — each fans out to specialised single-purpose subagents (39 in total, phases + audit + utilities). Many run parallel under different _lenses_ (bug review vs security review) → independent review before human sees output. Same pipeline on five hosts: Claude Code, Cursor, Codex, Google Antigravity, opencode.
 
 Beside those commands, 35 read-only audit templates live at `docs/templates/bkit-audit-*.md`. `@bkit-audit-generate` runs one and writes `docs/audits/{YYYYMM}/{slug}.md`. `/bkit-plan` takes a design, one or more of those reports, or both.
 
@@ -59,40 +59,49 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
                          throwaway probe code, confined to the run's log folder)
   7. update design       (fold reviews + spike back in)
   8. organise            (decompose into workstreams + DAG)
-  9. summary             (tracker-facing)
+  9. summary             (engine-written from status rows, tracker-facing)
 
 /bkit-plan ───── output: detailed plan ───────────────────────────────────────
-  1. generate plan
+  1. generate plan       (groups within bkit.workflows.tasks caps, in build order;
+                         engine plan-check right after, one fix retry)
   2. fetch context       (tracker: related issues; ledgers: prior deferrals,
                          prior failures, strongest term-overlap first, top 40
                          → feeds all three reviewers below)
-  3. review × 3 (parallel, distinct lenses)
-     • tightness + design-coverage  • dependency-correctness  • regression-risk
-  4. update plan         (merge critiques, max-wins on CRITICAL)
-  5. scope-check × 2 (parallel)
-     • internal-completeness  • scope audit (cross-family)
-  6. update plan         (merge scope findings)
-  7. complexity-check    (single vs split)
-  8. complexity-split    (only if SPLIT)
-  9. summary             (tracker-facing)
+  3. review × 2 + scope-check (parallel, one round, distinct lenses)
+     • plan text: tightness, dependency order  • code: regression risk
+     • scope check: template, criteria, verification
+  4. update plan         (merge all three in one pass, max-wins on CRITICAL;
+                         engine plan-check right after, one fix retry)
+  5. summary             (engine-written from status rows, tracker-facing)
 
 /bkit-build ─── output: code, PR to dev, CI takes over ──────────────────────
-  1. plan-current        (plan still executable against code landed since it was written?)
-  2. install-skills
-  3. execute build       (producer — implement tasks)
-  4. verify build        (critic — verify each task; tick only on confirmed artifacts)
-                         ↶ producer-critic loop, capped 3 attempts
-  5. gaps-remediate      (fix verifier gaps, re-verify)
-  6. verify build        (holistic second pass across whole plan)
-  7. challenge × 2 (parallel, distinct lenses, no sibling reads)
-    • bug-hunting  • security
-  8. challenge-reconcile (merge findings, severity + verdict max-wins)
-  9. challenge-remediate (classify-gate: architectural → FAIL; else fix + test)
-  10. challenge-tests    (edge-case tests for changed files)
+  1. plan-check          (engine: plan in group and task blocks, within caps?)
+    ↳ no plan, no task markers, or comments newer than the plan → plan-convert writes {FID}-plan.md
+      (from the prompt, issue and any plan; where they disagree, the newer text wins)
+  2. plan-current        (plan still executable against code landed since it was written?)
+  3. install-skills
+  ┌ per plan group, in order ─────────────────────────────────────────────
+  │ 4. brief             (engine: the group's open tasks + plan context)
+  │ 5. execute group     (producer — implement the group's tasks, reds first;
+  │                       turn cap near → HANDOVER, re-run once)
+  │ 6. verify group      (critic — the group's own diff; tick only on confirmed artifacts)
+  │                       ↶ producer-critic loop, capped 3 attempts;
+  │                         unfixable gaps / no progress → Decision Pause (human, in session)
+  │ 7. gaps-remediate    (fix verifier gaps, re-verify)
+  └ group gate between groups ─────────────────────────────────────────────
+  8. verify build        (holistic second pass across whole plan, once)
+  9. challenge           (size gate first: under 300 lines and 10 files → security only;
+                         else both in parallel, distinct lenses, no sibling reads)
+    • bug-hunting (large changes)  • security (always)
+  10. challenge merge    (engine: findings become plan tasks, each with a test first;
+                         a repeated finding reopens its open task; LOW → deferred;
+                         fixable → back to the group loop, once; unfixable or a
+                         second round's findings → Decision Pause; two rounds at most)
   11. run tests          (local tier: lint + typecheck + unit + slop:delta + bkit check;
                          no integration / e2e / @live — those run in CI)
     ↳ on test failure → /bkit-debug (debug-failure-diagnose + remediate)
-  12. summary            (tracker-facing + PR link)
+  12. summary            (engine-written from status rows + plan tasks, tracker-facing;
+                         no plan file or an unticked task → FAIL)
   → PR opened; CI runs the full multi-tier scaffold (see "CI test scaffold" below)
 
 /bkit-debug ─── side-rail, invoked on test/CI failure ────────────────────────
@@ -112,7 +121,7 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
                         Standard → Pivot → Final strategy escalation)
   4. remediate          (apply diagnosis fix)
   5. re-run tests
-  6. summary
+  6. summary            (engine-written from status rows)
     ↳ if diagnose can't localise, or loop exhausts 3 strategies → Soak mode
   Soak mode (non-localisable / runtime-only failure):
   1. soak loop          (one accumulating context per iteration:
@@ -129,7 +138,7 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
                          a planned bkit-tests-live-web failure reds it)
   4. merge               (orchestrator-only guarded git op)
     ↳ on post-merge failure → /bkit-debug (diagnose + remediate)
-  5. update-docs / summary (parallel)
+  5. update-docs, then summary (engine-written, with PR size)
   6. prune skills + update local dev + close  (orchestrator-only;
                          close removes the worktree)
 ```
@@ -172,28 +181,21 @@ Output: reviewed design (`docs/plans/{YYYYMM}/{FID}-design.md`). Hard stop for h
 | `bkit-design-spike` | Probe unknowns | Only when a review flags load-bearing unknowns: settles them with throwaway probe code, confined to the run's log folder. |
 | `bkit-design-update` | Apply review | Folds both reviews (and the spike, if run) back into the design. |
 | `bkit-design-organise` | Structure | Cleans and organises the final design doc. |
-| `bkit-design-summary` | Summarise | Writes the tracker-facing summary (capped, scannable). |
 
 <a id="bkit-plan"></a>
 
 ## Phase 2 — `/bkit-plan`
 
-Output: executable plan (`{FID}-plan.md`, split into `-plan-N.md` if too large). Consumes design. Hard stop.
+Output: executable plan (`{FID}-plan.md`, its tasks in groups the build runs one at a time). Consumes design. Hard stop.
 
 <!-- prettier-ignore -->
 | Subagent | Lens / focus | What it does |
 | --- | --- | --- |
-| `bkit-plan-generate` | Generate | Turns the design into a tasked plan. |
-| `bkit-plan-review-1` | Tightness + design-coverage | Read-only critique; flags vague or missing `Done when:` as CRITICAL. Parallel. |
-| `bkit-plan-review-2` | Dependency-correctness | Same scope, dependency lens. Depth-sensitive: stays on the top model tier. Parallel. |
-| `bkit-plan-review-3` | Regression-risk | Same scope, regression lens. Parallel. |
-| `bkit-plan-update` | Apply review (merge) | Merges all three critiques, max-wins on CRITICAL findings. |
-| `bkit-plan-scope-check-1` | Internal-completeness | Mechanical scope audit — verifies template structure and criteria slots. Parallel. |
-| `bkit-plan-scope-check-2` | Scope audit (cross-family) | Second scope audit in parallel for independent coverage. |
-| `bkit-plan-update` | Apply scope fixes | Second merge pass folding scope-check findings in. |
-| `bkit-plan-complexity-check` | Single → split classifier | Decides whether the plan is too big for one build and must be split. |
-| `bkit-plan-complexity-split` | Splitter | If SPLIT: divides the plan into sequenced sub-plans. |
-| `bkit-plan-summary` | Summarise | Tracker-facing summary. |
+| `bkit-plan-generate` | Generate | Turns the design into groups of task blocks, in build order. |
+| `bkit-plan-review-1` | Tightness + dependency order + design-coverage | Read-only critique of the plan text; flags drift, out-of-order tasks and missing prerequisites as CRITICAL. Parallel. |
+| `bkit-plan-review-2` | Regression-risk | Same scope, reads the code: traces each task's surfaces to their consumers. Parallel. |
+| `bkit-plan-scope-check` | Internal-completeness | Mechanical scope audit — verifies template structure, scope and verification per task; per-task `DONE WHEN` / `TEST FIRST` belong to `bkit tests plan-check`. Depth-sensitive: stays on the top model tier. Parallel. |
+| `bkit-plan-update` | Apply review (merge) | Merges all three critiques in one pass, max-wins on CRITICAL findings. |
 
 <a id="bkit-build"></a>
 
@@ -204,20 +206,17 @@ Output: PR to `dev`. Heaviest phase — most steps verify rather than produce. C
 <!-- prettier-ignore -->
 | Subagent | Lens / focus | What it does |
 | --- | --- | --- |
+| `bkit-build-plan-convert` | Plan writer | Only when the plan is missing, has no task markers, or is older than an issue comment: writes `{FID}-plan.md` as groups of task blocks within the `bkit.workflows.tasks` caps — from the build-input file (prompt and issue) and any existing plan, whose other sections it keeps; where they disagree, the newer text wins. |
 | `bkit-build-plan-current` | Plan freshness | Judges whether changes landed since the plan was written leave it executable; findings feed execute. |
 | `bkit-build-install-skills` | Setup | Installs the skills the plan needs for this build. |
-| `bkit-build-plan-execute` | Producer | Implements the plan tasks; iterates edit → lint/typecheck/test → edit. |
-| `bkit-build-plan-verify` | Critic | Verifies each task against the plan; ticks boxes only on confirmed artifacts. Producer-critic loop, capped at 3 attempts. |
+| `bkit-build-plan-execute` | Producer | Implements one plan group's tasks from its brief, each task's tests seen failing first; iterates edit → lint/typecheck/test → edit. Near its turn cap it hands over (`HANDOVER`) and the group re-runs once. |
+| `bkit-build-plan-verify` | Critic | Verifies each task of one group against the group's own diff; ticks boxes only on confirmed artifacts. Producer-critic loop, capped at 3 attempts per group. |
 | `bkit-build-plan-gaps-remediate` | Gap-fixer | Fills gaps the verifier found, then re-verifies. |
 | `bkit-build-plan-verify` | Holistic critic | Second, whole-of-plan verification pass across everything built. |
-| `bkit-build-challenge-1` | Bug-hunting | Adversarial review of the full diff. Forbidden from reading its sibling. Parallel. |
-| `bkit-build-challenge-2` | Security | Same diff, security lens. Depth-sensitive: stays on the top model tier. Parallel. |
-| `bkit-build-challenge-reconcile` | Merge findings | Unifies both challenges. `Severity` and verdict max-wins; downgrades need explicit justification. |
-| `bkit-build-challenge-remediate` | Fixer (classify-gate) | Any architectural finding → FAIL (no silent fixes); else applies mechanical fixes and re-runs tests. |
-| `bkit-build-challenge-tests` | Test author | Adds edge-case tests for changed files; runs the test suite. |
+| `bkit-build-challenge-1` | Bug-hunting | Adversarial review of the full diff; writes each finding as a plan task with a test first. Forbidden from reading its sibling. Parallel. Runs only on a large change (300+ lines or 10+ files, `docs/plans/**` excluded, measured by `bkit challenge gate`); a small one runs `-2` alone. `bkit challenge merge` then appends the findings to the plan, and execute + verify fix them. |
+| `bkit-build-challenge-2` | Security | Same diff, security lens. Depth-sensitive: stays on the top model tier. Runs on every change, alone on a small one. |
 | `bkit-debug-failure-diagnose` | Diagnostician | (If tests fail) diagnoses with Standard / Pivot / Final strategy escalation. Shared with debug. |
 | `bkit-debug-failure-remediate` | Fixer | (If tests fail) applies the diagnosed fix. |
-| `bkit-build-summary` | Summarise | Tracker-facing summary plus PR link. |
 
 <a id="bkit-debug"></a>
 
@@ -235,7 +234,6 @@ Output: remediated commit on feature branch. Two modes — normal (diagnose → 
 | `bkit-debug-failure-reproduce` | Reproducer (`[repro]` only) | Nothing fails yet → tests failing on the reported symptoms, never a fix; soak mode → tests repeat the scenario. Not reproduced → tests removed, run ends at Summary; reproduced but the re-run passes with no fix → Summary. |
 | `bkit-debug-failure-diagnose` | Diagnostician | Reproduces and diagnoses. Accumulates per-attempt context; escalates Standard → Pivot → Final. |
 | `bkit-debug-failure-remediate` | Fixer | Applies whatever the strategy-aware diagnosis produced, with a test loop. |
-| `bkit-debug-summary` | Summarise | Tracker-facing summary. |
 
 **Soak mode**
 
@@ -261,11 +259,10 @@ Output: squash-merged PR, updated docs, pruned skills, torn-down worktree. Safet
 | Subagent | Lens / focus | What it does |
 | --- | --- | --- |
 | `bkit-ship-conflict-resolve` | Conflict resolver | Resolves merge conflicts against the integration branch, then runs the tests. |
-| `bkit-ship-deferred-sweep` | Pre-merge completeness gate | Builds the intended-delivery set from plan `Acceptance Scenario` sections + `Done when` lines; FAILs the merge if any unplanned gap (silent `TODO`, skipped test) is found. Declared deferrals resurfaced, never blocking. Gates only what the repo can prove — plan gate checkboxes, `Verification Plan` boxes and `Manual Verification` steps are build-phase process, never gated, and no plan precondition or merge condition blocks however a log or summary restates it. |
+| `bkit-ship-deferred-sweep` | Pre-merge completeness gate | Builds the intended-delivery set from plan `Acceptance Scenario` sections + `DONE WHEN` fields; FAILs the merge if any unplanned gap (silent `TODO`, skipped test) is found. Declared deferrals resurfaced, never blocking. Gates only what the repo can prove — plan gate checkboxes, `Verification Plan` boxes and `Manual Verification` steps are build-phase process, never gated, and no plan precondition or merge condition blocks however a log or summary restates it. |
 | `bkit-debug-failure-diagnose` | Diagnostician | (If post-merge checks fail) diagnoses the regression. Shared with debug. |
 | `bkit-debug-failure-remediate` | Fixer | (If post-merge checks fail) applies the fix. |
-| `bkit-ship-update-docs` | Docs | Updates knowledge / decisions / completed docs. Parallel with summary. |
-| `bkit-ship-summary` | Summarise | Final tracker-facing summary. Parallel with docs. |
+| `bkit-ship-update-docs` | Docs | Updates knowledge / decisions / completed docs. |
 
 Orchestrator-only ship steps: regression guard, merge, skill pruning, update local dev (`bkit branches sync-dev`; never checks out `dev`), close (removes the worktree). Guarded git / tracker ops orchestrator performs directly, not subagents.
 

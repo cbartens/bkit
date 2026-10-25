@@ -201,7 +201,7 @@
       }
     },
     {
-      "files": [".bkit/core/engine/commands/harvest.ts"],
+      "files": ["scripts/harvest/ledgers.ts"],
       "_reason": "canonicalRow() is a NAMED CONTRACT, not a pass-through: it is the single definition of the byte-for-byte serialisation the friction prune gate compares against, used by both the store writer and the gate. Inlining JSON.stringify at both call sites to satisfy the rule would be exactly the 'rewire callers to satisfy a lint' that rules.md forbids, and would let the two sides drift apart \u2014 the gate guards a DELETE, so drift is not free. Scoped to this one file + rule.",
       "rules": {
         "structure.pass-through-wrappers": {

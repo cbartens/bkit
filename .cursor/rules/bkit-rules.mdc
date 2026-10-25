@@ -5,8 +5,8 @@ alwaysApply: true
 
 <!-- bkit:start -->
 
-<!-- bkit:managed v5.5.1 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
 
-- **Rules:** Read `.agents/rules.md` → FOLLOW ALL rules.
+- **Rules file:** Read `.agents/rules.md` → follow all rules.
 
 <!-- bkit:end -->

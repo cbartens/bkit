@@ -300,26 +300,26 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
   it.each([
     ["github", []],
     ["linear", ["BKIT_LINEAR_API_KEY"]],
-    ["jira", ["BKIT_JIRA_API_TOKEN"]],
+    ["jira", ["BKIT_JIRA_API_KEY"]],
   ] as const)(
     "%s tracker: mcp-env-blank-key flags BKIT_GH_TOKEN and only that tracker's own token",
     (tracker, ownKeys) => {
       fs.writeFileSync(
         path.join(tmpDir, "package.json"),
-        JSON.stringify({ name: "x", bkit: { issueTracker: tracker } }),
+        JSON.stringify({ name: "x", bkit: { tracker: { default: tracker } } }),
         "utf-8",
       );
       fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
       fs.writeFileSync(
         path.join(tmpDir, ".bkit", ".env"),
-        "BKIT_GH_TOKEN=\nBKIT_LINEAR_API_KEY=\nBKIT_JIRA_API_TOKEN=\n",
+        "BKIT_GH_TOKEN=\nBKIT_LINEAR_API_KEY=\nBKIT_JIRA_API_KEY=\n",
         "utf-8",
       );
 
       const findings = runPostInstallCheck([], tmpDir);
       const ids = findings.map((a) => a.id);
       expect(ids).toContain("mcp-env-blank-key-bkit_gh_token");
-      const flagged = ["BKIT_LINEAR_API_KEY", "BKIT_JIRA_API_TOKEN"].filter((key) =>
+      const flagged = ["BKIT_LINEAR_API_KEY", "BKIT_JIRA_API_KEY"].filter((key) =>
         ids.includes(`mcp-env-blank-key-${key.toLowerCase()}`),
       );
       expect(flagged).toEqual(ownKeys);
@@ -399,8 +399,7 @@ function seedMultiProvider(dir: string): void {
     JSON.stringify({
       name: "test-consumer",
       bkit: {
-        opencodeProvider: "openrouter",
-        opencodeProviders: ["openrouter", "ollama"],
+        providers: { opencode: { default: "openrouter", installed: ["openrouter", "ollama"] } },
       },
     }),
     "utf-8",

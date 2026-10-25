@@ -59,28 +59,28 @@ function isGateConfig(filePath) {
 function investigationChecklist(filePath) {
   const base = path.basename(filePath);
   return (
-    `[bkit GateGuard] First edit to \`${base}\` this session - confirm following, and investigate anything you cannot answer BEFORE editing:\n` +
-    `- Confirm you read this file and exact symbols / lines you are about to change.\n` +
-    `- Confirm precise field names, types, and signatures being changed.\n` +
-    `- Confirm callers / importers changes affect (search code / read source, do NOT assume).\n` +
-    `- Confirm symbols / flags / configs changes require exist (search code / read source, do NOT assume).\n` +
-    `- Confirm external data contracts (DB schemas, APIs / SDKs) changes affect (verify actual shape, do NOT assume).\n` +
-    `- Confirm changes follow patterns / conventions already in this file / its neighbours where feasible (read source, do NOT assume).\n` +
-    `- Confirm user instructions or plan tasks changes serve (quote them, do NOT trust memory).\n` +
-    `Self-review is weak; the investigation itself is what changes the output. Advisory — proceed once satisfied.`
+    `[bkit GateGuard] First edit to \`${base}\` this session — confirm the following, and investigate anything you cannot answer before editing:\n` +
+    `- Confirm you read this file and the exact symbols / lines you are about to change.\n` +
+    `- Confirm the precise field names, types and signatures being changed.\n` +
+    `- Confirm the callers / importers the change affects: search code / read source, do not assume.\n` +
+    `- Confirm the symbols / flags / configs the change requires exist: search code / read source, do not assume.\n` +
+    `- Confirm the external data contracts (DB schemas, APIs / SDKs) the change affects: verify the actual shape, do not assume.\n` +
+    `- Confirm the change follows the patterns / conventions already in this file / its neighbours where feasible: read source, do not assume.\n` +
+    `- Confirm the user instructions or plan tasks the change serves: quote them, do not trust memory.\n` +
+    `Advisory — proceed once satisfied.`
   );
 }
 
 function reuseChecklist(filePath) {
   const base = path.basename(filePath);
   return (
-    `[bkit GateGuard] New file \`${base}\` this session - confirm following, and investigate anything you cannot answer BEFORE adding:\n` +
-    `- Confirm existing code does NOT already provide capability (search code / read source, do NOT assume).\n` +
-    `- Confirm existing code CANNOT be reused / extended to provide capability (search code / read source, do NOT assume).\n` +
-    `- Confirm anything code supersedes is deleted, NOT left as duplicate work (verify removal, do NOT assume).\n` +
-    `- Confirm location / naming fits project architecture / topology / standards (search code / read source, do NOT assume).\n` +
-    `- Confirm structures / patterns / conventions follow closest equivalent files where feasible (read source, do NOT assume).\n` +
-    `Bolt-on drift starts here; evolve existing code first. Advisory — proceed once satisfied.`
+    `[bkit GateGuard] New file \`${base}\` this session — confirm the following, and investigate anything you cannot answer before adding:\n` +
+    `- Confirm existing code does not already provide the capability: search code / read source, do not assume.\n` +
+    `- Confirm existing code cannot be reused / extended to provide the capability: search code / read source, do not assume.\n` +
+    `- Confirm anything the new code supersedes is deleted, not left as duplicate work: verify the removal, do not assume.\n` +
+    `- Confirm the location / naming fits the project architecture / topology / standards: search code / read source, do not assume.\n` +
+    `- Confirm the structures / patterns / conventions follow the closest equivalent files where feasible: read source, do not assume.\n` +
+    `Evolve existing code first. Advisory — proceed once satisfied.`
   );
 }
 
@@ -99,10 +99,10 @@ function isDocsPath(filePath) {
 function docAuthoringAdvisory() {
   return (
     `[bkit GateGuard] docs/*.md authoring:\n` +
-    `- Read THIS file's header block and follow its purpose and rules if present.\n` +
-    `- Check .agents/docs.md index first and confirm topic belongs in THIS doc, not another.\n` +
-    `- Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.\n` +
-    `- Describe current state / rules, NOT reasons / history; state what to do, NOT why. ONLY exceptions: Docs where purpose IS the record.\n` +
+    `- Read this file's header block and follow its purpose and rules if present.\n` +
+    `- Check the .agents/docs.md index first and confirm the topic belongs in this doc, not another.\n` +
+    `- Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.\n` +
+    `- Describe current state / rules, not reasons / history; state what to do, not why. only exceptions: docs where purpose is the record.\n` +
     `Advisory — proceed once satisfied.`
   );
 }
@@ -111,9 +111,10 @@ function configAdvisory(filePath) {
   const base = path.basename(filePath);
   return (
     `[bkit GateGuard] \`${base}\` quality-gate config (lint / format / types / test / slop):\n` +
-    `- Prefer FIXING code over weakening any gates.\n` +
-    `- If changes genuinely warranted, use targeted per-file / per-rule opt-outs over blanket disable.\n` +
-    `- ALWAYS get explicit human sign-off for any quality-gate config changes.\n` +
+    `- Prefer fixing code over weakening any gate.\n` +
+    `- If a change is genuinely warranted, use targeted per-file / per-rule opt-outs over a blanket disable.\n` +
+    `- ALWAYS get explicit human sign-off for any quality-gate config change.\n` +
+    `- Inside \`/bkit-*\` workflows no sign-off is available: record the block and continue; NEVER self-approve the opt-out.\n` +
     `Set BKIT_ALLOW_CONFIG_EDIT=1 to silence this. Advisory — proceed once satisfied.`
   );
 }

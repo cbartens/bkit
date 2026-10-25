@@ -11,6 +11,7 @@ import {
   detectMainBranchProtection,
   buildCloudSetupAdvisory,
   buildTrackerSetupAdvisory,
+  buildGithubProjectTokenScopeAdvisory,
 } from "./github";
 
 // ---------------------------------------------------------------------------
@@ -157,60 +158,62 @@ describe("buildGithubProjectAdvisory", () => {
 
   it("returns null when workflows are not installed", () => {
     fs.rmSync(path.join(tmpDir, ".claude"), { recursive: true, force: true });
-    pkg({ issueTracker: "github" });
+    pkg({ tracker: { default: "github" } });
     expect(buildGithubProjectAdvisory(tmpDir)).toBeNull();
   });
 
   it.each(["linear", "jira"])("returns null when tracker is %s", (tracker) => {
-    pkg({ issueTracker: tracker, github: board });
+    pkg({ tracker: { default: tracker, github: board } });
     expect(buildGithubProjectAdvisory(tmpDir)).toBeNull();
   });
 
   it("flags both prerequisites when config absent and toolset missing", () => {
-    pkg({ issueTracker: "github" });
+    pkg({ tracker: { default: "github" } });
     writeToolset("context,issues,pull_requests"); // no projects
     const result = buildGithubProjectAdvisory(tmpDir);
     expect(result).not.toBeNull();
     expect(result!.id).toBe("github-project-board-sync-unconfigured");
-    expect(result!.detect).toContain("`bkit.github.project` is absent");
+    expect(result!.detect).toContain("`bkit.tracker.github.project` is empty or absent");
     expect(result!.detect).toContain("`projects` toolset is missing");
   });
 
   it("flags only the toolset when config is present but projects toolset missing", () => {
-    pkg({ issueTracker: "github", github: board });
+    pkg({ tracker: { default: "github", github: board } });
     writeToolset("context,issues,pull_requests");
     const result = buildGithubProjectAdvisory(tmpDir);
     expect(result).not.toBeNull();
     expect(result!.detect).toContain("`projects` toolset is missing");
-    expect(result!.detect).not.toContain("`bkit.github.project`");
+    expect(result!.detect).not.toContain("`bkit.tracker.github.project`");
   });
 
-  it("flags only the config when toolset present but bkit.github.project absent", () => {
-    pkg({ issueTracker: "github", github: { progress: "Doing" } });
+  it("flags only the config when toolset present but bkit.tracker.github.project absent", () => {
+    pkg({ tracker: { default: "github", github: { progress: "Doing" } } });
     writeToolset("context,issues,projects");
     const result = buildGithubProjectAdvisory(tmpDir);
     expect(result).not.toBeNull();
-    expect(result!.detect).toContain("`bkit.github.project` is absent");
+    expect(result!.detect).toContain("`bkit.tracker.github.project` is empty or absent");
     expect(result!.detect).not.toContain("`projects` toolset is missing");
   });
 
   it("returns null when both prerequisites are satisfied", () => {
-    pkg({ issueTracker: "github", github: board });
+    pkg({ tracker: { default: "github", github: board } });
     writeToolset("context,issues,projects");
     expect(buildGithubProjectAdvisory(tmpDir)).toBeNull();
   });
 
   it("accepts a personal board URL with a trailing view", () => {
     pkg({
-      issueTracker: "github",
-      github: { project: "https://github.com/users/me/projects/1/views/1" },
+      tracker: {
+        default: "github",
+        github: { project: "https://github.com/users/me/projects/1/views/1" },
+      },
     });
     writeToolset("context,issues,projects");
     expect(buildGithubProjectAdvisory(tmpDir)).toBeNull();
   });
 
-  it("stays quiet on explicit opt-out (bkit.github.project: false), even with toolset missing", () => {
-    pkg({ issueTracker: "github", github: { project: false } });
+  it("stays quiet on explicit opt-out (bkit.tracker.github.project: false), even with toolset missing", () => {
+    pkg({ tracker: { default: "github", github: { project: false } } });
     writeToolset("context,issues,pull_requests");
     expect(buildGithubProjectAdvisory(tmpDir)).toBeNull();
   });
@@ -220,15 +223,17 @@ describe("buildGithubProjectAdvisory", () => {
     "https://github.com/orgs/acme/projects/0",
     "github.com/orgs/acme/projects/7",
   ])("flags a project that is not a board URL (%s)", (project) => {
-    pkg({ issueTracker: "github", github: { project } });
+    pkg({ tracker: { default: "github", github: { project } } });
     writeToolset("context,issues,projects");
     const result = buildGithubProjectAdvisory(tmpDir);
     expect(result).not.toBeNull();
-    expect(result!.detect).toContain("`bkit.github.project` is not a GitHub Projects board URL");
+    expect(result!.detect).toContain(
+      "`bkit.tracker.github.project` is not a GitHub Projects board URL",
+    );
   });
 
   it("shows the URL form for both owner kinds and the token each reaches", () => {
-    pkg({ issueTracker: "github" });
+    pkg({ tracker: { default: "github" } });
     writeToolset("context,issues,pull_requests"); // force the advisory to fire
     const action = buildGithubProjectAdvisory(tmpDir)!.action;
     expect(action).toContain(
@@ -302,16 +307,16 @@ describe("buildCloudSetupAdvisory", () => {
     expect(buildCloudSetupAdvisory(tmpDir)).toBeNull();
   });
 
-  it("stays quiet when bkit.cloudAgents is explicitly 'none' (deliberate opt-out)", () => {
+  it("stays quiet when bkit.cloud.agent is explicitly 'none' (deliberate opt-out)", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "x", bkit: { cloudAgents: "none" } }),
+      JSON.stringify({ name: "x", bkit: { cloud: { agent: "none" } } }),
     );
     expect(buildCloudSetupAdvisory(tmpDir)).toBeNull();
   });
 
-  it("still nudges when bkit.cloudAgents is absent (undecided, not opted out)", () => {
+  it("still nudges when bkit.cloud.agent is absent (undecided, not opted out)", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "x" }));
     const result = buildCloudSetupAdvisory(tmpDir);
@@ -319,16 +324,25 @@ describe("buildCloudSetupAdvisory", () => {
     expect(result!.id).toBe("cloud-router-none");
   });
 
+  it("still nudges when bkit.cloud.agent is the empty value install seeds", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", bkit: { cloud: { agent: "" } } }),
+    );
+    expect(buildCloudSetupAdvisory(tmpDir)?.id).toBe("cloud-router-none");
+  });
+
   it("jira tracker: no nudge (Jira runs locally only)", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "x", bkit: { issueTracker: "jira" } }),
+      JSON.stringify({ name: "x", bkit: { tracker: { default: "jira" } } }),
     );
     expect(buildCloudSetupAdvisory(tmpDir)).toBeNull();
   });
 
-  it("router presence wins over a stale bkit.cloudAgents=none field", () => {
+  it("router presence wins over a stale bkit.cloud.agent=none field", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
@@ -336,7 +350,7 @@ describe("buildCloudSetupAdvisory", () => {
     );
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "x", bkit: { cloudAgents: "none" } }),
+      JSON.stringify({ name: "x", bkit: { cloud: { agent: "none" } } }),
     );
     const result = buildCloudSetupAdvisory(tmpDir);
     expect(result).not.toBeNull();
@@ -355,7 +369,7 @@ describe("buildTrackerSetupAdvisory — explicit-none opt-out symmetry", () => {
     fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
   });
 
-  it("nudges (tracker-setup-none) when bkit.issueTracker is absent (undecided)", () => {
+  it("nudges (tracker-setup-none) when bkit.tracker.default is absent (undecided)", () => {
     fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "x" }));
     const result = buildTrackerSetupAdvisory(tmpDir);
     expect(result).not.toBeNull();
@@ -365,10 +379,18 @@ describe("buildTrackerSetupAdvisory — explicit-none opt-out symmetry", () => {
     }
   });
 
-  it("stays quiet when bkit.issueTracker is explicitly 'none' (deliberate opt-out)", () => {
+  it("nudges when bkit.tracker.default is the empty value install seeds", () => {
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "x", bkit: { issueTracker: "none" } }),
+      JSON.stringify({ name: "x", bkit: { tracker: { default: "" } } }),
+    );
+    expect(buildTrackerSetupAdvisory(tmpDir)?.id).toBe("tracker-setup-none");
+  });
+
+  it("stays quiet when bkit.tracker.default is explicitly 'none' (deliberate opt-out)", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", bkit: { tracker: { default: "none" } } }),
     );
     expect(buildTrackerSetupAdvisory(tmpDir)).toBeNull();
   });
@@ -376,11 +398,11 @@ describe("buildTrackerSetupAdvisory — explicit-none opt-out symmetry", () => {
   it.each([
     ["github", "BKIT_GH_TOKEN"],
     ["linear", "BKIT_LINEAR_API_KEY"],
-    ["jira", "BKIT_JIRA_API_TOKEN"],
+    ["jira", "BKIT_JIRA_API_KEY"],
   ] as const)("informational when tracker is %s, naming %s", (tracker, token) => {
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "x", bkit: { issueTracker: tracker } }),
+      JSON.stringify({ name: "x", bkit: { tracker: { default: tracker } } }),
     );
     const result = buildTrackerSetupAdvisory(tmpDir);
     expect(result).not.toBeNull();
@@ -393,7 +415,7 @@ describe("buildTrackerSetupAdvisory — explicit-none opt-out symmetry", () => {
     (tracker) => {
       fs.writeFileSync(
         path.join(tmpDir, "package.json"),
-        JSON.stringify({ name: "x", bkit: { issueTracker: tracker } }),
+        JSON.stringify({ name: "x", bkit: { tracker: { default: tracker } } }),
       );
       fs.rmSync(path.join(tmpDir, ".claude"), { recursive: true, force: true });
       expect(buildTrackerSetupAdvisory(tmpDir)).toBeNull();
@@ -405,21 +427,113 @@ describe("buildTrackerSetupAdvisory — explicit-none opt-out symmetry", () => {
   it("jira: names the admin switch, the token and the package.json keys", () => {
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "x", bkit: { issueTracker: "jira" } }),
+      JSON.stringify({ name: "x", bkit: { tracker: { default: "jira" } } }),
     );
     const result = buildTrackerSetupAdvisory(tmpDir)!;
     expect(result.id).toBe("tracker-setup-jira");
     for (const s of [
       "Allow API token authentication",
       "Atlassian MCP V2",
-      "BKIT_JIRA_API_TOKEN",
-      "bkit.jira.site",
-      "bkit.jira.project",
+      "BKIT_JIRA_API_KEY",
+      "bkit.tracker.jira.site",
+      "bkit.tracker.jira.project",
     ]) {
       expect(result.action).toContain(s);
     }
     // No Linear-style per-session issue injection and no preflight hook under jira.
     expect(result.action).not.toContain("LINEAR_ISSUE_ID");
     expect(result.action).not.toContain("preflight hook");
+  });
+});
+
+describe("buildGithubProjectTokenScopeAdvisory", () => {
+  const pkg = (bkit: Record<string, unknown>) =>
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "x", bkit }));
+  const board = { project: "https://github.com/orgs/acme/projects/7" };
+  const userResponse = (scopes: string | null) =>
+    `HTTP/2.0 200 OK\r\n${scopes === null ? "" : `X-Oauth-Scopes: ${scopes}\r\n`}Content-Type: application/json\r\n\r\n{"login":"me"}`;
+  /** `gh api -i user` answers with `user`; the board query answers with `graphql` (or throws). */
+  const ghAnswers = (user: string, graphql: string | Error = "") =>
+    execFileSync.mockImplementation((_cmd: string, args: string[]) => {
+      if (args[1] === "-i") return user;
+      if (graphql instanceof Error) throw graphql;
+      return graphql;
+    });
+
+  beforeEach(() => {
+    delete process.env.CI;
+    delete process.env.CLAUDE_CODE_REMOTE;
+    delete process.env.CURSOR_REMOTE_AGENT;
+  });
+
+  it("classic token with the project scope: quiet", () => {
+    pkg({ tracker: { default: "github", github: board } });
+    ghAnswers(userResponse("repo, project, read:org"));
+    expect(buildGithubProjectTokenScopeAdvisory(tmpDir)).toBeNull();
+  });
+
+  it("classic token without the project scope: names the fix", () => {
+    pkg({ tracker: { default: "github", github: board } });
+    ghAnswers(userResponse("repo, read:org"));
+    const r = buildGithubProjectTokenScopeAdvisory(tmpDir);
+    expect(r?.id).toBe("github-project-token-scope");
+    expect(r?.detect).toContain("`project` scope");
+    expect(r?.action).toContain("BKIT_GH_TOKEN");
+  });
+
+  it("fine-grained token that can see the board: quiet", () => {
+    pkg({ tracker: { default: "github", github: board } });
+    ghAnswers(
+      userResponse(null),
+      JSON.stringify({ data: { repositoryOwner: { projectV2: { id: "PVT_1" } } } }),
+    );
+    expect(buildGithubProjectTokenScopeAdvisory(tmpDir)).toBeNull();
+    const query = execFileSync.mock.calls[1]![1] as string[];
+    expect(query).toContain("login=acme");
+    expect(query).toContain("n=7");
+  });
+
+  it("fine-grained token whose board query returns null: names the fix", () => {
+    pkg({ tracker: { default: "github", github: board } });
+    ghAnswers(
+      userResponse(null),
+      JSON.stringify({ data: { repositoryOwner: { projectV2: null } } }),
+    );
+    expect(buildGithubProjectTokenScopeAdvisory(tmpDir)?.id).toBe("github-project-token-scope");
+  });
+
+  it("fine-grained token whose board query is refused: names the fix", () => {
+    pkg({ tracker: { default: "github", github: board } });
+    ghAnswers(userResponse(null), new Error("gh: Could not resolve to a ProjectV2"));
+    expect(buildGithubProjectTokenScopeAdvisory(tmpDir)?.id).toBe("github-project-token-scope");
+  });
+
+  it("gh unavailable or unauthenticated: quiet (cannot judge)", () => {
+    pkg({ tracker: { default: "github", github: board } });
+    execFileSync.mockImplementation(() => {
+      throw new Error("gh: not logged in");
+    });
+    expect(buildGithubProjectTokenScopeAdvisory(tmpDir)).toBeNull();
+  });
+
+  it("no board configured, another tracker, or cloud: no gh call at all", () => {
+    pkg({ tracker: { default: "github" } });
+    expect(buildGithubProjectTokenScopeAdvisory(tmpDir)).toBeNull();
+    pkg({ tracker: { default: "linear", github: board } });
+    expect(buildGithubProjectTokenScopeAdvisory(tmpDir)).toBeNull();
+    pkg({ tracker: { default: "github", github: board } });
+    process.env.CI = "true";
+    expect(buildGithubProjectTokenScopeAdvisory(tmpDir)).toBeNull();
+    expect(execFileSync).not.toHaveBeenCalled();
+  });
+
+  it("never prints the token", () => {
+    pkg({ tracker: { default: "github", github: board } });
+    process.env.BKIT_GH_TOKEN = "ghp_secretvalue";
+    ghAnswers(userResponse("repo"));
+    const r = buildGithubProjectTokenScopeAdvisory(tmpDir);
+    expect(JSON.stringify(r)).not.toContain("ghp_secretvalue");
+    const env = (execFileSync.mock.calls[0]![2] as { env: NodeJS.ProcessEnv }).env;
+    expect(env.GH_TOKEN).toBe("ghp_secretvalue");
   });
 });

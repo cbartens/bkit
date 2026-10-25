@@ -61,6 +61,7 @@ import {
 } from "../../render/models.js";
 import { readInstallingVersion } from "../../shared/package-json.js";
 import { readBkitConfig } from "../../shared/settings.js";
+import { SEEDED_BKIT_DEFAULTS } from "../../install/modules/core.js";
 import {
   CLAUDE_CLOUD_RELPATH,
   CURSOR_CLOUD_RELPATH,
@@ -818,7 +819,7 @@ export async function runUninstall(
   }
 
   // Full/core uninstall: strip the `bkit` install-state object from package.json
-  // (issueTracker / opencodeProvider(s) / cloudAgents), whatever keys it holds. Scripts
+  // (tracker / providers / cloud and every other section), whatever keys it holds. Scripts
   // and devDeps are the consumer's and stay. No try/catch — malformed package.json is a hard failure on full
   // teardown (same as a missing dest would be).
   if (moduleList.includes("core") && !ctx.dryRun) {
@@ -834,8 +835,8 @@ export async function runUninstall(
     }
   }
 
-  // Targeted uninstall: drop the `bkit.*` keys the removed module records, so its advisories
-  // stop firing. Core keeps every other key.
+  // Targeted uninstall: reset the `bkit.*` keys the removed module records to unset, so its
+  // advisories stop firing. Core keeps every other key.
   if (!moduleList.includes("core")) {
     stripModuleBkitKeys(moduleList, ctx, result);
   }
@@ -1035,16 +1036,38 @@ export async function runUninstall(
   return result;
 }
 
-/** `package.json` `bkit.*` keys each module records on install. */
+/** `package.json` `bkit.*` keys (dotted paths) each module records on install. */
 const MODULE_BKIT_KEYS: Partial<Record<ModuleName, readonly string[]>> = {
-  cloud: ["cloudAgents"],
-  opencode: ["opencodeProvider", "opencodeProviders"],
+  cloud: ["cloud.agent"],
+  opencode: ["providers.opencode.default", "providers.opencode.installed"],
 };
 
+/** The object at dotted `keys` under `root`; null when a step is absent or not an object. */
+function objectAt(
+  root: Record<string, unknown>,
+  keys: readonly string[],
+): Record<string, unknown> | null {
+  let node: Record<string, unknown> = root;
+  for (const k of keys) {
+    const next = node[k];
+    if (!isJsonObject(next as JsonValue)) return null;
+    node = next as Record<string, unknown>;
+  }
+  return node;
+}
+
+/** The seeded value at dotted `key` in SEEDED_BKIT_DEFAULTS, copied. */
+function seededValue(key: string): unknown {
+  const segs = key.split(".");
+  const parent = objectAt(SEEDED_BKIT_DEFAULTS as Record<string, unknown>, segs.slice(0, -1));
+  return structuredClone(parent?.[segs[segs.length - 1]!]);
+}
+
 /**
- * Remove the `bkit.*` keys recorded by the modules in `moduleList` from the consumer's
- * package.json, keeping its indent. Lists each removed key in `result.stripped`; a dry run
- * lists without writing.
+ * Reset the `bkit.*` keys recorded by the modules in `moduleList` to the value install
+ * seeds (`""` / `[]`, read as unset), keeping the package.json indent. Deleting them
+ * would leave `bkit check` reporting the seeded key as missing. Lists each reset key in
+ * `result.stripped`; a dry run lists without writing.
  */
 function stripModuleBkitKeys(
   moduleList: ModuleName[],
@@ -1060,14 +1083,24 @@ function stripModuleBkitKeys(
   const pkg = parsed.ok ? (parsed.value as Record<string, unknown> | null) : null;
   if (pkg === null || !isJsonObject(pkg.bkit as JsonValue)) return;
   const bkit = pkg.bkit as Record<string, unknown>;
-  const present = keys.filter((k) => k in bkit);
-  if (present.length === 0) return;
-  for (const k of present) {
-    delete bkit[k];
+  const reset = keys.filter((k) => {
+    const segs = k.split(".");
+    const parent = objectAt(bkit, segs.slice(0, -1));
+    const key = segs[segs.length - 1]!;
+    return (
+      parent !== null &&
+      key in parent &&
+      JSON.stringify(parent[key]) !== JSON.stringify(seededValue(k))
+    );
+  });
+  if (reset.length === 0) return;
+  for (const k of reset) {
+    const segs = k.split(".");
+    objectAt(bkit, segs.slice(0, -1))![segs[segs.length - 1]!] = seededValue(k);
     result.stripped.push(`package.json#bkit.${k}`);
   }
   console.log(
-    `${ctx.logPrefix}${ctx.dryRun ? " [dry-run]" : ""} package.json: removed bkit.${present.join(", bkit.")}`,
+    `${ctx.logPrefix}${ctx.dryRun ? " [dry-run]" : ""} package.json: reset bkit.${reset.join(", bkit.")} to unset`,
   );
   if (ctx.dryRun) return;
   const indentMatch = raw.match(/\n([ \t]+)"/);
@@ -1084,8 +1117,8 @@ function stripModuleBkitKeys(
  *
  * Distinct from bare `bkit uninstall --opencode` (full host teardown):
  *   - Removes the provider block from `.opencode/opencode.json`
- *   - Updates `bkit.opencodeProviders` in `package.json`
- *   - If the removed provider was the active one, re-points `bkit.opencodeProvider`
+ *   - Updates `bkit.providers.opencode.installed` in `package.json`
+ *   - If the removed provider was the active one, re-points `bkit.providers.opencode.default`
  *     to the first remaining provider and emits a re-render advisory
  *   - If no providers remain, falls through to full host teardown via `runUninstall`
  */
@@ -1105,7 +1138,7 @@ export async function runSurgicalOpencodeUninstall(
     console.log(`${LOG_PREFIX}${tag} removed provider block "${providerKey}" from opencode.json`);
   }
 
-  // 2. Update bkit.opencodeProviders in package.json (read inline — no detectOpencodeProviders import)
+  // 2. Update bkit.providers.opencode.installed in package.json (read inline — no detectOpencodeProviders import)
   const pkgPath = path.join(cwd, "package.json");
   let remainingProviders: string[] = [];
   let wasActive = false;
@@ -1119,32 +1152,36 @@ export async function runSurgicalOpencodeUninstall(
       console.warn(`${LOG_PREFIX} package.json is malformed — skipping bkit section update`);
       return;
     }
-    const bkit = (pkg.bkit ?? {}) as Record<string, unknown>;
-    const arr = Array.isArray(bkit.opencodeProviders)
-      ? [...(bkit.opencodeProviders as string[])]
-      : [];
+    const opencode = objectAt(pkg, ["bkit", "providers", "opencode"]) ?? {};
+    const arr = Array.isArray(opencode.installed) ? [...(opencode.installed as string[])] : [];
     remainingProviders = arr.filter((p) => p !== providerKey);
-    wasActive = bkit.opencodeProvider === providerKey;
+    wasActive = opencode.default === providerKey;
     if (wasActive && remainingProviders.length > 0) {
       newActive = remainingProviders[0]!;
     }
 
     if (!dryRun) {
-      bkit.opencodeProviders = remainingProviders;
+      opencode.installed = remainingProviders;
       if (wasActive) {
         if (newActive !== null) {
-          bkit.opencodeProvider = newActive;
+          opencode.default = newActive;
         } else {
-          delete bkit.opencodeProvider;
+          delete opencode.default;
         }
       }
-      pkg.bkit = bkit;
+      if (objectAt(pkg, ["bkit", "providers", "opencode"]) === null) {
+        const bkit = objectAt(pkg, ["bkit"]) ?? {};
+        const providers = objectAt(bkit, ["providers"]) ?? {};
+        providers.opencode = opencode;
+        bkit.providers = providers;
+        pkg.bkit = bkit;
+      }
       const indentMatch = raw.match(/\n([ \t]+)"/);
       const indent = indentMatch ? indentMatch[1] : "  ";
       fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, indent) + "\n", "utf-8");
       console.log(
-        `${LOG_PREFIX} updated package.json: opencodeProviders=[${remainingProviders.join(", ")}]` +
-          (wasActive ? ` opencodeProvider=${newActive ?? "(removed)"}` : ""),
+        `${LOG_PREFIX} updated package.json: bkit.providers.opencode.installed=[${remainingProviders.join(", ")}]` +
+          (wasActive ? ` bkit.providers.opencode.default=${newActive ?? "(removed)"}` : ""),
       );
     }
   }

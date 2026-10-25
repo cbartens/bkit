@@ -44,7 +44,7 @@ graphify-out/
 
 # <!-- bkit:start -->
 
-# <!-- bkit:managed v5.5.1 — do not edit; run `bkit upgrade` to refresh -->
+# <!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Worktrees, plan logs, per-run sentinels. Sentinels are written mid-run, read by
 # the same run's Failure Path, cleared at next Step 1 — never bookkeeping, so
@@ -118,6 +118,6 @@ __pycache__/
 # Secrets sync: fingerprint + time of each push.
 scripts/secrets/bkit-secrets-state.json
 
-# `bkit harvest` store + consumer list: private consumer content and local paths.
-# Local only; the store is the sole copy of pruned consumer friction.
+# Harvest store + consumer list (`pnpm harvest`): private repo content and local paths.
+# Local only and not backed up by bkit; the store is the sole copy of pruned rows.
 harvest/

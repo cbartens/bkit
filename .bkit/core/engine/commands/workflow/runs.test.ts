@@ -19,6 +19,15 @@ import {
   type Gh,
 } from "./runs";
 import type { GhResult } from "../lib";
+import { issueRef } from "./tracker";
+import { validate } from "../../ledgers/telemetry";
+import {
+  appendLedgerRows,
+  appendRecordCommit,
+  newRecord,
+  readRecord,
+  writeRecord,
+} from "./ledgers";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
 const FIXTURES = path.join(REPO_ROOT, "tests", "fixtures", "gh");
@@ -59,7 +68,7 @@ const gitIn = (cwd: string, ...args: string[]) =>
 async function cli(cwd: string, argv: string[]) {
   const out: string[] = [];
   const err: string[] = [];
-  const code = await runCommand(["runs", ...argv], [runsCommand], {
+  const code = await runCommand(["runs", ...argv, "--json"], [runsCommand], {
     classicVerbs: new Set(),
     cwd,
     io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
@@ -257,6 +266,36 @@ describe("bkit runs gate", () => {
     expect(r.json.testedHead).toBe("older-sha-stale-green");
   });
 
+  it("--fetch refreshes origin/<branch> before gating", async () => {
+    fixtureGh();
+    const origin = tmp("bkit-runs-origin-");
+    gitIn(origin, "init", "--bare", "-q", "-b", "dev");
+    const seed = tmp("bkit-runs-seed-");
+    gitIn(seed, "init", "-q", "-b", "feat/superseded");
+    gitIn(seed, "commit", "--allow-empty", "-q", "-m", "seed");
+    gitIn(seed, "remote", "add", "origin", origin);
+    gitIn(seed, "push", "-q", "origin", "feat/superseded");
+    const clone = tmp("bkit-runs-clone-");
+    gitIn(clone, "init", "-q", "-b", "dev");
+    gitIn(clone, "remote", "add", "origin", origin);
+    const r = await gate(
+      clone,
+      "--head=superseded-green-target",
+      "--branch=feat/superseded",
+      "--fetch",
+    );
+    expect(r.code).toBe(14);
+    expect(gitIn(clone, "rev-parse", "origin/feat/superseded")).toBe(
+      gitIn(seed, "rev-parse", "HEAD"),
+    );
+  });
+
+  it("--fetch needs --branch (2)", async () => {
+    const r = await gate(tmp(), "--head=green-capstone", "--fetch");
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("--fetch needs --branch");
+  });
+
   it("without --branch a superseded head is 10, not 14 (no invented attribution)", async () => {
     fixtureGh();
     const r = await gate(tmp(), "--head=superseded-green-target");
@@ -324,12 +363,12 @@ describe("bkit runs gate", () => {
   });
 
   describe("skipped lanes (16 is opt-in)", () => {
-    /** A checkout whose package.json declares `bkit.shipGateRequiredLanes`. */
+    /** A checkout whose package.json declares `bkit.testing.shipGate`. */
     const requiring = (lanes: string[]) => {
       const d = tmp();
       fs.writeFileSync(
         path.join(d, "package.json"),
-        JSON.stringify({ name: "x", bkit: { shipGateRequiredLanes: lanes } }),
+        JSON.stringify({ name: "x", bkit: { testing: { shipGate: lanes } } }),
       );
       return d;
     };
@@ -343,7 +382,7 @@ describe("bkit runs gate", () => {
       expect(r.err).toContain("owns the planned-vs-vacuous judgement");
     });
 
-    it("refuses a skipped lane named in bkit.shipGateRequiredLanes (16)", async () => {
+    it("refuses a skipped lane named in bkit.testing.shipGate (16)", async () => {
       fixtureGh();
       const r = await gate(requiring(["test"]), "--head=skipped-lane");
       expect(r.code).toBe(16);
@@ -474,7 +513,7 @@ describe("bkit runs gate", () => {
     it("capstone and CI workflow resolve from package.json when not passed", async () => {
       fixtureGh();
       const r = await gate(
-        pkg({ capstoneJob: "app-check", ciWorkflow: "build.yml" }),
+        pkg({ testing: { ciCapstone: "app-check", ciWorkflow: "build.yml" } }),
         "--head=green-capstone",
       );
       expect(r.json).toMatchObject({ capstone: "app-check", ciWorkflow: "build.yml" });
@@ -483,9 +522,9 @@ describe("bkit runs gate", () => {
       expect((await gate(tmp(), "--head=green-capstone")).code).toBe(0);
     });
 
-    it("bkit.shipGateRequiredLanes resolves from package.json", async () => {
+    it("bkit.testing.shipGate resolves from package.json", async () => {
       fixtureGh();
-      const r = await gate(pkg({ shipGateRequiredLanes: ["test"] }), "--head=skipped-lane");
+      const r = await gate(pkg({ testing: { shipGate: ["test"] } }), "--head=skipped-lane");
       expect(r.code).toBe(16);
       expect(r.err).toContain("vacuous green: test");
     });
@@ -497,7 +536,7 @@ describe("bkit runs gate", () => {
 
     it("a malformed shipGateRequiredLanes falls back to none, never crashes", async () => {
       fixtureGh();
-      expect((await gate(pkg({ shipGateRequiredLanes: "test" }), "--head=skipped-lane")).code).toBe(
+      expect((await gate(pkg({ testing: { shipGate: "test" } }), "--head=skipped-lane")).code).toBe(
         0,
       );
     });
@@ -505,13 +544,13 @@ describe("bkit runs gate", () => {
     it("a configured capstone that is a job in the run passes; one that is not is absent (13)", async () => {
       fixtureGh();
       const r = await gate(
-        pkg({ capstoneJob: "lint", ciWorkflow: "other.yml" }),
+        pkg({ testing: { ciCapstone: "lint", ciWorkflow: "other.yml" } }),
         "--head=green-capstone",
       );
       expect(r.code).toBe(0);
       expect(r.json).toMatchObject({ capstone: "lint", ciWorkflow: "other.yml" });
       expect(r.err).toContain("capstone lint=success");
-      const absent = await gate(pkg({ capstoneJob: "nope" }), "--head=green-capstone");
+      const absent = await gate(pkg({ testing: { ciCapstone: "nope" } }), "--head=green-capstone");
       expect(absent.code).toBe(13);
       expect(absent.err).toContain("capstone job 'nope' ABSENT");
     });
@@ -623,7 +662,7 @@ describe("bkit runs gate", () => {
       const d = tmp();
       fs.writeFileSync(
         path.join(d, "package.json"),
-        JSON.stringify({ name: "x", bkit: { shipGateRequiredLanes: ["test"] } }),
+        JSON.stringify({ name: "x", bkit: { testing: { shipGate: ["test"] } } }),
       );
       expect((await gate(d, "--head=skipped-lane", "--capstone-only")).code).toBe(0);
       expect((await gate(d, "--head=skipped-lane")).code).toBe(16);
@@ -1082,7 +1121,7 @@ describe("bkit runs wait", () => {
     const cwd = tmp();
     fs.writeFileSync(
       path.join(cwd, "package.json"),
-      JSON.stringify({ bkit: { ciWorkflow: "build.yml" } }),
+      JSON.stringify({ bkit: { testing: { ciWorkflow: "build.yml" } } }),
     );
     const r = await cli(cwd, [
       "wait",
@@ -1160,7 +1199,7 @@ describe("bkit runs dispatch", { timeout: 20_000 }, () => {
     if (opts.capstone) {
       fs.writeFileSync(
         path.join(cwd, "package.json"),
-        JSON.stringify({ bkit: { capstoneJob: opts.capstone } }),
+        JSON.stringify({ bkit: { testing: { ciCapstone: opts.capstone } } }),
       );
     }
     gitIn(cwd, "add", "-A");
@@ -1324,7 +1363,7 @@ describe("bkit runs dispatch", { timeout: 20_000 }, () => {
     expect(gitIn(cwd, "rev-list", "--count", "HEAD")).toBe(count);
   });
 
-  it("the probe namespace follows bkit.capstoneJob", async () => {
+  it("the probe namespace follows bkit.testing.ciCapstone", async () => {
     const { cwd } = closeRepo({ capstone: "app-tests-check" });
     const r = await ciDispatchGate(base(cwd), {
       gh: sequenceGh([rollup("app-tests-unit")]).gh,
@@ -1375,6 +1414,162 @@ describe("bkit runs dispatch", { timeout: 20_000 }, () => {
   });
 });
 
+describe("bkit runs dispatch on dev (a debug run in place)", { timeout: 30_000 }, () => {
+  const FID = "1-x";
+
+  /**
+   * A clone on `dev` of a bare origin: one pushed base commit, a foreign local commit,
+   * then (with `record`) a shared-checkout record and one commit the run made.
+   */
+  function devRepo(o: { record: boolean }) {
+    const root = tmp();
+    const remote = path.join(root, "remote.git");
+    const cwd = path.join(root, "work");
+    gitIn(root, "init", "-q", "--bare", "-b", "dev", remote);
+    gitIn(root, "init", "-q", "-b", "dev", cwd);
+    gitIn(cwd, "config", "user.email", "t@t");
+    gitIn(cwd, "config", "user.name", "t");
+    gitIn(cwd, "commit", "-q", "--allow-empty", "-m", "base");
+    gitIn(cwd, "remote", "add", "origin", remote);
+    gitIn(cwd, "push", "-q", "-u", "origin", "dev");
+    gitIn(cwd, "commit", "-q", "--allow-empty", "-m", "foreign local commit");
+    if (o.record) writeRecord(cwd, newRecord(cwd, FID, "dev"));
+    gitIn(cwd, "commit", "-q", "--allow-empty", "-m", `chore(${FID}): run commit`);
+    if (o.record) appendRecordCommit(cwd, FID, gitIn(cwd, "rev-parse", "HEAD"));
+    const remoteTip = () => gitIn(remote, "rev-parse", "dev");
+    const remoteLog = () => gitIn(remote, "log", "--format=%s", "dev").split("\n");
+    return { root, remote, cwd, remoteTip, remoteLog };
+  }
+
+  const gateBase = (cwd: string) => ({
+    cwd,
+    pr: "7",
+    fid: FID,
+    autoRouteSuffix: "",
+    budgetS: 60,
+    intervalS: 10,
+    retriggered: false,
+  });
+  const quiet = { sleep: instant, log: noLog };
+  const NONE = rollup("vercel");
+  const FOUND = rollup("bkit-tests-unit");
+
+  /** A gh whose `run list` is empty for `emptyFor` calls, then shows a run at origin's dev tip. */
+  const runAtRemoteTip = (remote: string, emptyFor: number): Gh => {
+    let n = 0;
+    return (args) => {
+      if (args[0] !== "run" || args[1] !== "list") return fail;
+      if (++n <= emptyFor) return ok("[]");
+      const headSha = gitIn(remote, "rev-parse", "dev");
+      return ok(JSON.stringify([{ status: "queued", conclusion: "", headSha }]));
+    };
+  };
+
+  it("dispatch on dev with a pushed sha and no pr proves the run started", async () => {
+    const { cwd, root, remote } = devRepo({ record: true });
+    // The pushed sha is a copy the push made on origin; the clone does not have it yet.
+    const other = path.join(root, "other");
+    gitIn(root, "clone", "-q", "-b", "dev", remote, other);
+    gitIn(other, "commit", "-q", "--allow-empty", "-m", `chore(${FID}): landed copy`);
+    gitIn(other, "push", "-q", "origin", "dev");
+    const sha = gitIn(other, "rev-parse", "HEAD");
+    fakeGhBin({
+      "pr-list": "[]",
+      "run-list": JSON.stringify([{ status: "queued", conclusion: "", headSha: sha }]),
+    });
+    const r = await cli(cwd, ["dispatch", `--fid=${FID}`, `--sha=${sha}`]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      ciDispatch: { outcome: "dispatched", head: sha, retrigger: false },
+      phase: "done",
+      pr: null,
+      head: sha,
+      scanResult: "clean",
+    });
+  });
+
+  it("re-trigger on dev with a record pushes through the own-commit push", async () => {
+    const { cwd, remote, remoteTip, remoteLog } = devRepo({ record: true });
+    const r = await ciDispatchGate(gateBase(cwd), {
+      gh: sequenceGh([NONE, NONE, NONE, NONE, NONE, NONE, FOUND]).gh,
+      ...quiet,
+    });
+    // The foreign local commit never reaches origin; the run's commits do.
+    expect(remoteLog()).not.toContain("foreign local commit");
+    expect(remoteLog()).toContain(`chore(${FID}): run commit`);
+    expect(remoteLog()[0]).toBe(`chore(${FID}): re-trigger`);
+    // The gate follows the landed copy, not the local commit it was made as.
+    expect(r.ciDispatch).toMatchObject({ outcome: "self-healed", head: remoteTip() });
+    expect(r.head).toBe(remoteTip());
+    expect(gitIn(remote, "rev-list", "--count", "dev")).toBe("3");
+    expect(readRecord(cwd, FID)?.commits).toHaveLength(2);
+  });
+
+  it("re-trigger on dev with a record never commits a foreign staged path", async () => {
+    const { cwd, remoteLog } = devRepo({ record: true });
+    fs.writeFileSync(path.join(cwd, "foreign.txt"), "user work\n");
+    gitIn(cwd, "add", "foreign.txt");
+    await ciDispatchGate(gateBase(cwd), {
+      gh: sequenceGh([NONE, NONE, NONE, NONE, NONE, NONE, FOUND]).gh,
+      ...quiet,
+    });
+    const retrigger = gitIn(cwd, "log", "-1", "--format=%H", "--grep=re-trigger");
+    expect(gitIn(cwd, "show", "--name-only", "--format=", retrigger)).toBe("");
+    expect(gitIn(cwd, "diff", "--cached", "--name-only")).toBe("foreign.txt");
+    expect(remoteLog()).not.toContain("foreign local commit");
+  });
+
+  it("dispatch on dev with no pr and a record follows the landed sha through the re-trigger", async () => {
+    const { cwd, remote, remoteTip } = devRepo({ record: true });
+    const r = await ciDispatchGate(
+      { ...gateBase(cwd), pr: null },
+      { gh: runAtRemoteTip(remote, 6), ...quiet },
+    );
+    expect(r.ciDispatch).toMatchObject({
+      outcome: "self-healed",
+      retrigger: true,
+      head: remoteTip(),
+    });
+    expect(gitIn(remote, "log", "-1", "--format=%s", "dev")).toBe(`chore(${FID}): re-trigger`);
+  });
+
+  it("re-trigger on dev without a record commits and pushes nothing, and hands off to the Failure Path", async () => {
+    const { cwd, remoteTip, remoteLog } = devRepo({ record: false });
+    const headBefore = gitIn(cwd, "rev-parse", "HEAD");
+    const tipBefore = remoteTip();
+    const r = await ciDispatchGate(gateBase(cwd), {
+      gh: sequenceGh([NONE, NONE, NONE, NONE, NONE, NONE, FOUND]).gh,
+      ...quiet,
+    });
+    expect(r).toMatchObject({ phase: "repoll", handoff: 6 });
+    expect(r.ciDispatch).not.toMatchObject({ outcome: "self-healed" });
+    expect(gitIn(cwd, "rev-parse", "HEAD")).toBe(headBefore);
+    expect(remoteTip()).toBe(tipBefore);
+    expect(remoteLog()).not.toContain("foreign local commit");
+  });
+
+  it("re-trigger on dev only uses the record of its own FID", async () => {
+    const { cwd, remoteTip, remoteLog } = devRepo({ record: true });
+    const tipBefore = remoteTip();
+    const r = await ciDispatchGate(
+      { ...gateBase(cwd), fid: "some-other-run" },
+      { gh: sequenceGh([NONE, NONE, NONE, NONE, NONE, NONE, FOUND]).gh, ...quiet },
+    );
+    expect(r).toMatchObject({ handoff: 6 });
+    expect(remoteTip()).toBe(tipBefore);
+    expect(remoteLog()).not.toContain("some-other-run");
+  });
+
+  it.each(["abc1234", "0123456789abcdef0123456789abcdef0123456"])(
+    "dispatch --sha=%s is refused: the CI run is matched on the full 40-hex sha",
+    async (sha) => {
+      const { cwd } = devRepo({ record: true });
+      const r = await cli(cwd, ["dispatch", `--fid=${FID}`, `--sha=${sha}`]);
+      expect(r.code).toBe(2);
+    },
+  );
+});
+
 const ROLLUP_FOUND = JSON.stringify({
   statusCheckRollup: [{ name: "bkit-tests-unit", status: "QUEUED" }],
 });
@@ -1384,7 +1579,7 @@ const ROLLUP_FOUND = JSON.stringify({
 // ---------------------------------------------------------------------------
 
 describe("bkit runs declared", () => {
-  it("exit 0 when .github/workflows/<bkit.ciWorkflow> exists, 1 when not", async () => {
+  it("exit 0 when .github/workflows/<bkit.testing.ciWorkflow> exists, 1 when not", async () => {
     const cwd = tmp();
     let r = await cli(cwd, ["declared"]);
     expect(r.code).toBe(1);
@@ -1395,7 +1590,7 @@ describe("bkit runs declared", () => {
     });
     fs.writeFileSync(
       path.join(cwd, "package.json"),
-      JSON.stringify({ bkit: { ciWorkflow: "build.yml" } }),
+      JSON.stringify({ bkit: { testing: { ciWorkflow: "build.yml" } } }),
     );
     fs.mkdirSync(path.join(cwd, ".github/workflows"), { recursive: true });
     // The default file does not count once another name is configured.
@@ -1408,7 +1603,7 @@ describe("bkit runs declared", () => {
     expect(r.code).toBe(0);
   });
 
-  it("the default bkit-ci.yml counts when no bkit.ciWorkflow is configured", async () => {
+  it("the default bkit-ci.yml counts when no bkit.testing.ciWorkflow is configured", async () => {
     const cwd = tmp();
     fs.writeFileSync(path.join(cwd, "package.json"), JSON.stringify({ name: "x" }));
     fs.mkdirSync(path.join(cwd, ".github/workflows"), { recursive: true });
@@ -1773,7 +1968,7 @@ describe("bkit runs context", () => {
     gitIn(cwd, "update-ref", "refs/remotes/origin/dev", "HEAD");
     fs.writeFileSync(
       path.join(cwd, "package.json"),
-      JSON.stringify({ bkit: { issueTracker: "github" } }),
+      JSON.stringify({ bkit: { tracker: { default: "github" } } }),
     );
     // No real gh: owner/repo comes from the origin remote, never the network.
     fakeGhBin({});
@@ -1802,6 +1997,25 @@ describe("bkit runs context", () => {
       owner: "o",
       repo: "r",
     });
+  });
+
+  it("prints ref (#N on GitHub) and the labels the engine reads; a failed read is null", async () => {
+    const cwd = autoRepo();
+    const unread = await context(cwd, "Design", "12");
+    expect(unread.json).toMatchObject({ ref: "#12", labels: null });
+    fakeGhBin({});
+    const dir = process.env.PATH!.split(":")[0]!;
+    fs.mkdirSync(path.join(dir, "api-repos/o/r/issues"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "api-repos/o/r/issues/12"), '["bkit:auto","bkit:plan"]');
+    const r = await context(cwd, "Design", "12");
+    expect(r.json).toMatchObject({ ref: "#12", labels: ["bkit:auto", "bkit:plan"] });
+  });
+
+  it("ref uppercases a Linear or Jira key", () => {
+    expect(issueRef("eng-4", "linear")).toBe("ENG-4");
+    expect(issueRef("#12", "github")).toBe("#12");
+    expect(issueRef(null, "jira")).toBe("");
+    expect(issueRef("x", "none")).toBe("x");
   });
 
   it("CI_DEV: a slug argument is the FID, on dev at origin/dev", async () => {
@@ -1872,6 +2086,22 @@ describe("bkit runs context", () => {
     fakeGhBin({ "pr-view": "EXIT:4" });
     expect((await context(cwd, "ship", "42")).code).toBe(80);
   });
+
+  it("runs context refuses an issue-less marker and branch naming the missing issue", async () => {
+    const cwd = autoRepo();
+    const runs = JSON.stringify([{ databaseId: 5, headSha: "sha12" }]);
+    const cases = [
+      { headRefName: "feat/other", body: "<!-- bkit:fid=dev-ci-failures -->\n" },
+      { headRefName: "feat/dev-ci-failures", body: "" },
+    ];
+    for (const pr of cases) {
+      fakeGhBin({ "pr-view": prJson(pr), "run-list": runs });
+      const r = await context(cwd, "ship", "42");
+      expect(r.err).toContain("dev-ci-failures names no issue");
+      expect(r.code).toBe(9);
+      expect(r.json.fid).toBeNull();
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1931,6 +2161,64 @@ describe(
         scanResult: "clean",
       });
       expect(r.json.row).toEqual(rows[0]);
+    });
+
+    /** The close's workflow-done row and its outcome row, as `bkit workflows close` leaves them. */
+    function closedRun(cwd: string, file: string) {
+      const sha = gitIn(cwd, "rev-parse", "HEAD");
+      fs.writeFileSync(
+        file,
+        `${JSON.stringify({ type: "workflow-done", workflow: "build", at: new Date().toISOString(), parentSha: sha })}\n`,
+      );
+      appendLedgerRows(cwd, "stats", [
+        {
+          kind: "outcome",
+          by: { workflow: "build", step: "build-close-workflow" },
+          run: { parentSha: sha },
+          time: null,
+          ending: "done",
+          ledgers: { deferrals: { repo: 0 }, failures: { repo: 0 }, friction: {} },
+        },
+      ]);
+      return { sha, stats: path.join(cwd, ".bkit", "stats.jsonl") };
+    }
+    const dispatchClose = (cwd: string, file: string, ...extra: string[]) =>
+      cli(cwd, [
+        "dispatch",
+        "--fid=1-x",
+        "--pr=7",
+        `--file=${file}`,
+        "--workflow=build",
+        "--step=build-close-workflow",
+        ...extra,
+      ]);
+
+    it("--step=build-close-workflow appends a newer outcome row with the dispatch added to ci", async () => {
+      const { cwd, file } = pushedRepo();
+      const { sha, stats } = closedRun(cwd, file);
+      fakeGhBin({ "pr-view": ROLLUP_FOUND, "pr-list": '[{"number":7}]' });
+      expect((await dispatchClose(cwd, file)).code).toBe(0);
+      const [close, restated] = rowsOf(stats);
+      expect(restated).toMatchObject({
+        kind: "outcome",
+        by: { workflow: "build", step: "build-close-workflow" },
+        run: { parentSha: sha },
+        ending: "done",
+        ci: [{ status: "dispatched", reason: null, attempts: 1 }],
+      });
+      expect(restated!.ts as number).toBeGreaterThan(close!.ts as number);
+      expect(validate(restated)).toEqual({ ok: true });
+    });
+
+    it("--step=build-close-workflow with an unresolved dispatch restates the outcome as close-failed", async () => {
+      const { cwd, file } = pushedRepo();
+      const { stats } = closedRun(cwd, file);
+      fakeGhBin({ "pr-view": "EXIT:1" });
+      expect((await dispatchClose(cwd, file, "--budget-s=1", "--interval-s=1")).code).toBe(1);
+      expect(rowsOf(stats).at(-1)).toMatchObject({
+        ending: "close-failed",
+        ci: [{ status: "unresolved", reason: "gh-error" }],
+      });
     });
 
     it("--file and --step go together", async () => {

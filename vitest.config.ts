@@ -1,10 +1,27 @@
+import * as path from "node:path";
+
 import { defineConfig } from "vitest/config";
 
 import { unitTimeouts } from "./vitest.timeout-budget.ts";
 
+// `bkit tests run` hands every gate a folder in BKIT_TEST_REPORT_DIR and counts the
+// failing test cases in the JUnit files written there. One file per vitest process,
+// so the unit and integration runs of one gate never overwrite each other.
+const reportDir = process.env.BKIT_TEST_REPORT_DIR;
+const junit = reportDir
+  ? {
+      reporters: ["default", "junit"],
+      outputFile: { junit: path.join(reportDir, `vitest-${process.pid}.xml`) },
+    }
+  : {};
+
 export default defineConfig({
   test: {
-    include: [".bkit/core/engine/**/*.test.ts", ".bkit/core/engine/**/*.integration.test.ts"],
+    include: [
+      ".bkit/core/engine/**/*.test.ts",
+      ".bkit/core/engine/**/*.integration.test.ts",
+      "scripts/harvest/**/*.test.ts",
+    ],
     // Strip inherited GIT_* env vars in every worker so temp-repo git ops can
     // never hit the real repo when the suite runs from a git hook (see
     // vitest.setup.ts for the 2026-07-13 branch-hijack incident).
@@ -13,6 +30,7 @@ export default defineConfig({
     // sampled ONCE; vitest.setup.ts re-reads the same budget as each test FILE starts, so a
     // load ramp mid-run cannot starve late files past a stale limit.
     ...unitTimeouts(),
+    ...junit,
     // Report-only coverage — dogfoods the bkit-stub:coverage scaffold shipped to
     // consumers. json-summary + json are load-bearing: vitest-coverage-report-action
     // reads coverage-summary.json and coverage-final.json. No thresholds here, so the

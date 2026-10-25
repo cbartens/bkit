@@ -9,8 +9,10 @@ import { ciCommand } from "./ci/ci.js";
 import type { CommandSpec } from "./lib.js";
 import { setupCommand } from "./setup/setup.js";
 import { branchesCommand } from "./workflow/branches.js";
+import { challengeCommand } from "./workflow/challenge.js";
 import { contextCommand } from "./workflow/context.js";
 import { countersCommand } from "./workflow/counters.js";
+import { decisionsCommand } from "./workflow/decisions.js";
 import { diskCommand } from "./workflow/disk.js";
 import { fidsCommand } from "./workflow/fids.js";
 import { issuesCommand } from "./workflow/issues.js";
@@ -37,6 +39,8 @@ export const COMMANDS: readonly CommandSpec[] = [
   repoCommand,
   fidsCommand,
   testsCommand,
+  challengeCommand,
+  decisionsCommand,
   locksCommand,
   workflowsCommand,
   worktreesCommand,

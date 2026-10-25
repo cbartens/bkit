@@ -36,7 +36,7 @@ afterEach(() => {
 function seedConsumer(dir: string, tracker: keyof typeof TRACKER_URLS): void {
   fs.writeFileSync(
     path.join(dir, "package.json"),
-    JSON.stringify({ name: "test-consumer", bkit: { issueTracker: tracker } }),
+    JSON.stringify({ name: "test-consumer", bkit: { tracker: { default: tracker } } }),
     "utf-8",
   );
   fs.writeFileSync(

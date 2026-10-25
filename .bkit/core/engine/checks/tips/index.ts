@@ -32,10 +32,10 @@ export function silenceLine(ids: readonly string[]): string {
   const names = ids.map((id) => `\`${id}\``);
   const list = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names[0];
   const what = ids.length > 1 ? "these tips" : "this tip";
-  return `**Want to silence ${what}?** Ask your agent to "add ${list} to \`bkit.ignoreAdvisories\` in package.json".`;
+  return `**Want to silence ${what}?** Ask your agent to "add ${list} to \`bkit.advisories.ignore\` in package.json".`;
 }
 
-/** `bkit.ignoreAdvisories` key that silences `STAR_TIP`. */
+/** `bkit.advisories.ignore` key that silences `STAR_TIP`. */
 export const STAR_TIP_ID = "bkit-star";
 
 /** Older key that also silences `STAR_TIP`, so repos that set it keep the line off. */
@@ -54,7 +54,7 @@ export const STAR_TIP_PARAGRAPH = STAR_TIP.replace("Do you like bkit?", "**Do yo
 
 /** Intro of the Setup tips section: who reads which field, and how to silence a tip. */
 export const TIPS_SECTION_INTRO =
-  "Things not set up yet, most useful first. For the person: each tip says what goes wrong today and a sentence to ask your agent. For an AI agent: follow each tip's Agent steps unless the person declines it. Silence a tip by adding its id to `bkit.ignoreAdvisories` in package.json. Full template catalogue: .bkit/templates.md.";
+  "Things not set up yet, most useful first. For the person: each tip says what goes wrong today and a sentence to ask your agent. For an AI agent: follow each tip's Agent steps unless the person declines it. Silence a tip by adding its id to `bkit.advisories.ignore` in package.json. Full template catalogue: .bkit/templates.md.";
 
 /** True when advisory `id` matches catalogue pattern `pattern` (trailing `*` = prefix). */
 export function matchesAdvisory(pattern: string, id: string): boolean {
@@ -71,9 +71,9 @@ export function isTipSilenced(tip: SetupTip, ignored: ReadonlySet<string>): bool
 export interface TipsResult {
   /** Firing tips, in priority order. */
   tips: SetupTip[];
-  /** Firing tips the root `bkit.ignoreAdvisories` silenced. */
+  /** Firing tips the root `bkit.advisories.ignore` silenced. */
   suppressed: SuppressionNote[];
-  /** False when the root `bkit.ignoreAdvisories` names `STAR_TIP_ID` or `STAR_TIP_OLD_ID`. */
+  /** False when the root `bkit.advisories.ignore` names `STAR_TIP_ID` or `STAR_TIP_OLD_ID`. */
   star: boolean;
 }
 
@@ -93,7 +93,7 @@ export function collectTips(cwd: string, catalogue: readonly SetupTip[] = SETUP_
 
 /**
  * Drop advisory findings whose tip the root package.json silenced, so one
- * `bkit.ignoreAdvisories` entry silences a tip and the advisories it reuses. Blockers are
+ * `bkit.advisories.ignore` entry silences a tip and the advisories it reuses. Blockers are
  * never dropped.
  */
 export function dropTipSilencedAdvisories(

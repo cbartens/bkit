@@ -3,10 +3,13 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { DEFERRAL_WRITERS, KIND_WRITERS } from "../../ledgers/telemetry";
+import { parseText } from "../../shared/text";
 import { runCommand } from "../lib";
 import { COMMANDS } from "../registry";
+import { newRecord, readRecord, writeRecord } from "./ledgers";
 import { ROW_FIELDS, placeholderLines, promptHeader, promptVerdicts, readHeader } from "./steps";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
@@ -34,7 +37,7 @@ function repo() {
   write(
     cwd,
     "logs/verify-1.md",
-    "Verdict: FAIL\nFailures: 2\n\n<!-- verdict:end -->\n\n# Verify\n\nTwo gaps.\n",
+    "Verdict: FAIL\nFailures: 2\nFixable: true\n\n<!-- verdict:end -->\n\n# Verify\n\nTwo gaps.\n",
   );
   return cwd;
 }
@@ -45,7 +48,7 @@ const write = (cwd: string, rel: string, body: string) =>
 async function run(cwd: string, argv: string[]) {
   const out: string[] = [];
   const err: string[] = [];
-  const code = await runCommand(argv, COMMANDS, {
+  const code = await runCommand([...argv, "--json"], COMMANDS, {
     classicVerbs: new Set(),
     cwd,
     io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
@@ -60,7 +63,7 @@ const doneArgs = (...extra: string[]) => [
   ...STEP,
   "--verdict=FAIL",
   "--failures=2",
-  "--sub-plan=1",
+  "--group=1",
   "--artifact=logs/verify-1.md",
   "--message=chore(1-x): plan-verify",
   ...extra,
@@ -80,7 +83,7 @@ describe("bkit steps done", () => {
       parentSha: before,
       verdict: "FAIL",
       failures: 2,
-      subPlan: 1,
+      group: 1,
       attempt: 1,
       artifacts: ["logs/verify-1.md"],
     });
@@ -90,6 +93,14 @@ describe("bkit steps done", () => {
     expect(JSON.parse(fs.readFileSync(path.join(cwd, "logs/status.jsonl"), "utf-8"))).toEqual(
       r.json.row,
     );
+  });
+
+  it("done --group writes group on the row", async () => {
+    const cwd = repo();
+    const r = await run(cwd, [...doneArgs().filter((a) => a !== "--group=1"), "--group=2"]);
+    expect(r.code).toBe(0);
+    expect(r.json.row).toMatchObject({ group: 2 });
+    expect(r.json.row).not.toHaveProperty("subPlan");
   });
 
   it("--attempt=next advances with each row, so the next parentSha differs", async () => {
@@ -111,6 +122,28 @@ describe("bkit steps done", () => {
     ]);
     expect(r.json.commit).toBeNull();
     expect(git(cwd, "status", "--porcelain")).toContain("logs/");
+  });
+
+  it("build-group-start records parentSha and group", async () => {
+    const cwd = repo();
+    const before = git(cwd, "rev-parse", "HEAD");
+    const r = await run(cwd, [
+      "steps",
+      "done",
+      "--file=logs/status.jsonl",
+      "--workflow=build",
+      "--step=build-group-start",
+      "--group=2",
+      "--commit=none",
+    ]);
+    expect(r.code).toBe(0);
+    expect(r.json.row).toMatchObject({
+      step: "build-group-start",
+      status: "DONE",
+      parentSha: before,
+      group: 2,
+    });
+    expect(r.json.commit).toBeNull();
   });
 
   it("carries extra fields, parsed as JSON when they are JSON", async () => {
@@ -189,7 +222,10 @@ describe("bkit steps verdict", () => {
       "--field=Failures",
     ]);
     expect(r.code).toBe(0);
-    expect(r.json).toEqual({ verdict: "FAIL", fields: { Verdict: "FAIL", Failures: "2" } });
+    expect(r.json).toEqual({
+      verdict: "FAIL",
+      fields: { Verdict: "FAIL", Failures: "2", Fixable: "true" },
+    });
   });
 
   it("a missing artifact exits 4", async () => {
@@ -217,21 +253,17 @@ describe("bkit steps verdict", () => {
     ).toBe(6);
   });
 
-  it("takes the allowed values from the subagent's own prompt", async () => {
-    expect(promptVerdicts("bkit-plan-complexity-check")).toEqual(["SINGLE", "SPLIT"]);
+  it("takes the allowed values from the subagent's own prompt, or from --allowed", async () => {
     expect(promptVerdicts("bkit-build-plan-verify")).toEqual(["PASS", "CONCERNS", "FAIL"]);
     const cwd = repo();
     write(cwd, "logs/c.md", "Verdict: SPLIT\n<!-- verdict:end -->\n");
     expect((await run(cwd, ["steps", "verdict", "--file=logs/c.md"])).code).toBe(6);
     expect(
-      (
-        await run(cwd, [
-          "steps",
-          "verdict",
-          "--file=logs/c.md",
-          "--agent=bkit-plan-complexity-check",
-        ])
-      ).code,
+      (await run(cwd, ["steps", "verdict", "--file=logs/c.md", "--agent=bkit-build-plan-verify"]))
+        .code,
+    ).toBe(6);
+    expect(
+      (await run(cwd, ["steps", "verdict", "--file=logs/c.md", "--allowed=SINGLE,SPLIT"])).code,
     ).toBe(0);
   });
 
@@ -251,7 +283,7 @@ describe("bkit steps verdict", () => {
 
 describe("bkit steps gate", () => {
   const gate = (cwd: string, ...extra: string[]) =>
-    run(cwd, ["steps", "gate", ...STEP, "--sub-plan=1", "--artifact=logs/verify-1.md", ...extra]);
+    run(cwd, ["steps", "gate", ...STEP, "--group=1", "--artifact=logs/verify-1.md", ...extra]);
 
   it("passes after done wrote the row for the artifact", async () => {
     const cwd = repo();
@@ -310,7 +342,7 @@ describe("bkit steps gate", () => {
       ...STEP,
       "--verdict=PASS",
       "--failures=0",
-      "--sub-plan=1",
+      "--group=1",
       "--artifact=logs/verify-1.md",
       "--message=m",
     ]);
@@ -326,7 +358,7 @@ describe("bkit steps gate", () => {
       "steps",
       "done",
       ...STEP,
-      "--sub-plan=1",
+      "--group=1",
       "--attempt=1",
       "--artifact=logs/other.md",
       "--message=m",
@@ -362,36 +394,35 @@ describe("status row field names", () => {
     expect((await run(cwd, doneArgs("--attempt=1.5"))).code).toBe(2);
   });
 
-  it("records the complexity verdict as `verdict`, from the agent's own verdict set", async () => {
+  it("records a verdict outside PASS|CONCERNS|FAIL as `verdict`, from the --allowed set", async () => {
     const cwd = repo();
-    write(cwd, "logs/complexity.md", "Verdict: SPLIT\n\n<!-- verdict:end -->\n");
+    write(cwd, "logs/check.md", "Verdict: STOP\n\n<!-- verdict:end -->\n");
     const args = [
       "steps",
       "done",
       "--file=logs/status.jsonl",
       "--workflow=plan",
-      "--step=plan-complexity-check",
-      "--verdict=SPLIT",
+      "--step=plan-generate",
+      "--verdict=STOP",
       "--attempt=1",
-      "--artifact=logs/complexity.md",
+      "--artifact=logs/check.md",
       "--commit=none",
     ];
-    const r = await run(cwd, [...args, "--agent=bkit-plan-complexity-check"]);
+    const r = await run(cwd, [...args, "--allowed=GO,STOP"]);
     expect(r.code).toBe(0);
-    expect(r.json.row).toMatchObject({ verdict: "SPLIT" });
-    expect(r.json.row).not.toHaveProperty("complexity");
-    // Without the agent the default PASS|CONCERNS|FAIL set refuses it.
+    expect(r.json.row).toMatchObject({ verdict: "STOP" });
+    // Without --allowed the default PASS|CONCERNS|FAIL set refuses it.
     expect((await run(cwd, args)).code).toBe(2);
     const g = await run(cwd, [
       "steps",
       "gate",
       "--file=logs/status.jsonl",
       "--workflow=plan",
-      "--step=plan-complexity-check",
+      "--step=plan-generate",
       "--attempt=1",
-      "--artifact=logs/complexity.md",
+      "--artifact=logs/check.md",
       "--verdict-required",
-      "--agent=bkit-plan-complexity-check",
+      "--allowed=GO,STOP",
     ]);
     expect(g.code).toBe(0);
   });
@@ -475,7 +506,7 @@ describe("bkit steps gate checks attempt / strategy / scope where the step write
   }
 
   it("fails a row missing its attempt", async () => {
-    const r = await rowThenGate("build", "build-plan-verify", ["--sub-plan=1"], ["--sub-plan=1"]);
+    const r = await rowThenGate("build", "build-plan-verify", ["--group=1"], ["--group=1"]);
     expect(r.code).toBe(1);
     expect(r.err).toContain("row is missing attempt");
   });
@@ -521,6 +552,34 @@ describe("bkit steps gate checks attempt / strategy / scope where the step write
   });
 });
 
+/** The challenge steps `bkit challenge merge` replaced; built here so the names stay out of the source. */
+const REMOVED_CHALLENGE_STEPS = ["reconcile", "remediate", "tests"].map(
+  (s) => `build-challenge-${s}`,
+);
+
+describe("the build challenge is one step", () => {
+  it("no removed challenge step in the attempt table", () => {
+    expect(
+      Object.keys(ROW_FIELDS).filter((k) => REMOVED_CHALLENGE_STEPS.includes(k.split("/")[1]!)),
+    ).toEqual([]);
+  });
+
+  it("no writer list names a removed agent", () => {
+    const prompts = path.join(REPO_ROOT, ".bkit", "core", "prompts");
+    const named = [
+      ...DEFERRAL_WRITERS,
+      ...Object.values(KIND_WRITERS)
+        .map((w) => w.subagents)
+        .filter((s): s is ReadonlySet<string> => s instanceof Set)
+        .flatMap((s) => [...s]),
+    ];
+    expect(named.filter((n) => !fs.existsSync(path.join(prompts, `${n}.md`)))).toEqual([]);
+    expect(named.filter((n) => REMOVED_CHALLENGE_STEPS.includes(n.replace(/^bkit-/, "")))).toEqual(
+      [],
+    );
+  });
+});
+
 describe("placeholderLines", () => {
   it("flags a bare PENDING or a field left at PENDING, not prose that mentions it", () => {
     const d = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-ph-"));
@@ -542,14 +601,14 @@ describe("bkit steps finish", () => {
     const r = await run(cwd, [
       ...FINISH,
       "--step=build-plan-verify",
-      "--sub-plan=1",
+      "--group=1",
       "--attempt-of=build-plan-verify:next",
       "--agent=bkit-build-plan-verify",
       "--artifact=logs/verify-<attempt>.md",
       "--message=chore(1-x): plan-verify attempt <attempt>",
       "--number=7",
       "--title=Plan Verify",
-      "--sub-plan-count=2",
+      "--group-count=2",
     ]);
     expect(r.code).toBe(0);
     expect(r.json).toMatchObject({ verdict: "FAIL", failures: 2, attempt: 1, pass: true });
@@ -558,14 +617,17 @@ describe("bkit steps finish", () => {
       verdict: "FAIL",
       failures: 2,
       attempt: 1,
-      subPlan: 1,
+      group: 1,
       parentSha: before,
       artifacts: ["logs/verify-1.md"],
     });
+    expect(r.json.parentSha).toBe(before);
     expect(git(cwd, "log", "-1", "--format=%s")).toBe("chore(1-x): plan-verify attempt 1");
     expect(r.json.comment).toContain(
-      "### Step 7 — Plan Verify - Verdict: FAIL - Failures: 2 - Sub-plan: 1/2 - Attempt: 1",
+      "### Step 7 — Plan Verify - Verdict: FAIL - Failures: 2 - Group: 1/2 - Attempt: 1",
     );
+    expect(fs.readFileSync(r.json.commentFile, "utf-8")).toBe(r.json.comment);
+    expect(git(cwd, "show", "--name-only", "--format=", "HEAD")).not.toContain("tmp/");
   });
 
   it("re-asks on a PENDING header (exit 5) and writes nothing", async () => {
@@ -629,6 +691,31 @@ describe("bkit steps finish", () => {
     ]);
     expect(r.code).toBe(0);
     expect(r.json.row).toMatchObject({ verdict: "CONCERNS", failures: 1, attempt: 0 });
+  });
+
+  it("text output leaves out the row and passing checks, and prints parentSha", async () => {
+    const cwd = repo();
+    const before = git(cwd, "rev-parse", "HEAD");
+    write(cwd, "logs/c1.md", "Verdict: PASS\nFailures: 0\n<!-- verdict:end -->\n");
+    const out: string[] = [];
+    const argv = [
+      ...FINISH,
+      "--step=build-challenge",
+      "--attempt=0",
+      "--agent=bkit-build-challenge-1",
+      "--artifact=logs/c1.md",
+      "--commit=none",
+    ];
+    const code = await runCommand(argv, COMMANDS, {
+      classicVerbs: new Set(),
+      cwd,
+      io: { stdout: (t) => out.push(t), stderr: () => {} },
+    });
+    expect(code).toBe(0);
+    const text = parseText(out.join(""));
+    expect(text).toMatchObject({ verdict: "PASS", parentSha: before, pass: true });
+    expect(text).not.toHaveProperty("row");
+    expect(text).not.toHaveProperty("checks");
   });
 
   it("records the header's Strategy on the row", async () => {
@@ -723,6 +810,171 @@ describe("bkit steps finish", () => {
     expect(r.code).toBe(9);
     expect(r.json.outside).toContain("src.ts");
   });
+
+  /** A repo whose worktree.copy names `.env` and `config/local`, both copied in and not gitignored. */
+  function copiedRepo() {
+    const cwd = repo();
+    write(
+      cwd,
+      "package.json",
+      JSON.stringify({ bkit: { workflows: { worktree: { copy: [".env", "config/local"] } } } }),
+    );
+    git(cwd, "add", "package.json");
+    git(cwd, "commit", "-q", "-m", "config");
+    write(cwd, ".env", "SECRET=1\n");
+    fs.mkdirSync(path.join(cwd, "config"));
+    write(cwd, "config/local", "x\n");
+    return cwd;
+  }
+
+  it("--commit=auto never stages a copied-in worktree.copy file", async () => {
+    const cwd = copiedRepo();
+    write(cwd, "src.ts", "export {};\n");
+    const r = await run(cwd, [
+      ...FINISH,
+      "--step=build-branch-sync",
+      "--artifact=logs/verify-1.md",
+      "--message=m",
+    ]);
+    expect(r.code).toBe(0);
+    const committed = git(cwd, "show", "--name-only", "--format=", "HEAD").split("\n");
+    expect(committed).toContain("src.ts");
+    expect(committed).not.toContain(".env");
+    expect(committed).not.toContain("config/local");
+    expect(git(cwd, "status", "--porcelain").split("\n").sort()).toEqual(["?? .env", "?? config/"]);
+  });
+
+  it("--docs-only does not count a copied-in worktree.copy file as outside docs/plans/", async () => {
+    const cwd = copiedRepo();
+    git(cwd, "add", "logs");
+    git(cwd, "commit", "-q", "-m", "logs");
+    fs.mkdirSync(path.join(cwd, "docs/plans/202610"), { recursive: true });
+    write(cwd, "docs/plans/202610/sync.md", "Verdict: PASS\nFailures: 0\n\n<!-- verdict:end -->\n");
+    const r = await run(cwd, [
+      "steps",
+      "finish",
+      "--file=docs/plans/202610/status.jsonl",
+      "--workflow=build",
+      "--step=build-branch-sync",
+      "--artifact=docs/plans/202610/sync.md",
+      "--docs-only",
+      "--message=m",
+    ]);
+    expect(r.code).toBe(0);
+    expect(git(cwd, "ls-files", ".env", "config/local")).toBe("");
+  });
+});
+
+describe("bkit steps finish --post", () => {
+  const LOG = "docs/plans/202610/logs/eng-4-x";
+  const saved = process.env.BKIT_LINEAR_API_KEY;
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    if (saved === undefined) delete process.env.BKIT_LINEAR_API_KEY;
+    else process.env.BKIT_LINEAR_API_KEY = saved;
+  });
+
+  function linearRepo() {
+    const cwd = repo();
+    fs.writeFileSync(
+      path.join(cwd, "package.json"),
+      JSON.stringify({ bkit: { tracker: { default: "linear" } } }),
+    );
+    fs.mkdirSync(path.join(cwd, LOG), { recursive: true });
+    write(
+      cwd,
+      `${LOG}/verify-1.md`,
+      "Verdict: PASS\nFailures: 0\nFixable: false\n<!-- verdict:end -->\n",
+    );
+    return cwd;
+  }
+  const args = (...extra: string[]) => [
+    "steps",
+    "finish",
+    `--file=${LOG}/status.jsonl`,
+    "--workflow=build",
+    "--step=build-plan-verify",
+    "--group=1",
+    "--attempt=1",
+    "--agent=bkit-build-plan-verify",
+    `--artifact=${LOG}/verify-1.md`,
+    "--message=chore(eng-4-x): plan-verify",
+    "--number=7",
+    "--title=Plan Verify",
+    ...extra,
+  ];
+  function stubLinear() {
+    const sent: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_u: string, init: RequestInit) => {
+        const q = JSON.parse(String(init.body)) as { variables: { input: { body: string } } };
+        sent.push(q.variables.input.body);
+        return new Response(
+          JSON.stringify({
+            data: { commentCreate: { success: true, comment: { url: "https://l/c/1" } } },
+          }),
+        );
+      }),
+    );
+    return sent;
+  }
+  const rows = (cwd: string) =>
+    fs
+      .readFileSync(path.join(cwd, LOG, "status.jsonl"), "utf-8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+
+  it("posts, records the engine-action row before the step row, and commits both", async () => {
+    process.env.BKIT_LINEAR_API_KEY = "k";
+    const cwd = linearRepo();
+    const sent = stubLinear();
+    const r = await run(cwd, args("--post"));
+    expect(r.code).toBe(0);
+    expect(r.json.tracker).toEqual({ done: true, action: "comment", url: "https://l/c/1" });
+    expect(sent).toEqual([r.json.comment]);
+    const [action, step] = rows(cwd);
+    expect(action).toMatchObject({
+      type: "engine-action",
+      action: "comment",
+      key: "build/1/build-plan-verify/1/1/comment",
+      ref: "https://l/c/1",
+    });
+    expect(step).toMatchObject({ type: "step-done", step: "build-plan-verify" });
+    expect(git(cwd, "status", "--porcelain", "--", LOG)).toBe("");
+  });
+
+  it("a re-run of the same step and body is deduped: nothing posted again", async () => {
+    process.env.BKIT_LINEAR_API_KEY = "k";
+    const cwd = linearRepo();
+    const sent = stubLinear();
+    await run(cwd, args("--post"));
+    const again = await run(cwd, args("--post"));
+    expect(again.json.tracker).toEqual({
+      done: true,
+      action: "comment",
+      url: "https://l/c/1",
+      deduped: true,
+    });
+    expect(sent).toHaveLength(1);
+  });
+
+  it("a failed post keeps the exit code and prints done false; the row still lands", async () => {
+    const cwd = linearRepo();
+    const r = await run(cwd, args("--post"));
+    expect(r.code).toBe(0);
+    expect(r.json.tracker).toEqual({ done: false, action: "comment", reason: "auth" });
+    expect(rows(cwd).map((x) => x.type)).toEqual(["step-done"]);
+  });
+
+  it("--post needs --number; without --post there is no tracker key", async () => {
+    const cwd = linearRepo();
+    const noNumber = args("--post").filter((a) => !/^--(number|title)=/.test(a));
+    expect((await run(cwd, noNumber)).code).toBe(2);
+    const plain = await run(cwd, args("--commit=none"));
+    expect(plain.json).not.toHaveProperty("tracker");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -798,6 +1050,76 @@ describe("bkit steps gate — placeholders, FID, derived attempt", () => {
     expect((await gate("../escape")).code).toBe(1);
   });
 
+  describe("--issue", () => {
+    function wired(tracker = "github") {
+      const cwd = repo();
+      write(cwd, "package.json", JSON.stringify({ bkit: { tracker: { default: tracker } } }));
+      return cwd;
+    }
+    const gate = (cwd: string, fid: string, ...extra: string[]) =>
+      run(cwd, [
+        "steps",
+        "gate",
+        "--workflow=design",
+        "--step=design-start-workflow",
+        `--fid=${fid}`,
+        ...extra,
+      ]);
+
+    it('gate --issue="" fails the fid check for a non-slug FID and passes 123-fix under github', async () => {
+      const bad = await gate(wired(), "Fix_CI", "--issue=");
+      expect(bad.code).toBe(1);
+      expect(bad.json.checks[0]).toMatchObject({ check: "fid Fix_CI", ok: false });
+      expect(bad.err).toContain("not a slug");
+      expect((await gate(wired(), "123-fix", "--issue=")).code).toBe(0);
+    });
+
+    it('gate --issue="" passes the fid check for dev-ci-failures under github', async () => {
+      const r = await gate(wired(), "dev-ci-failures", "--issue=");
+      expect(r.code).toBe(0);
+      expect(r.json.checks[0]).toMatchObject({ check: "fid dev-ci-failures", ok: true });
+    });
+
+    it("gate with --issue=<id> requires the tracker shape and a tracker issue id", async () => {
+      expect((await gate(wired(), "650-x", "--issue=650")).code).toBe(0);
+      expect((await gate(wired(), "dev-ci", "--issue=650")).code).toBe(1);
+      expect((await gate(wired(), "650-x", "--issue=ABC-1")).code).toBe(1);
+      expect((await gate(wired("linear"), "abc-1-x", "--issue=ABC-1")).code).toBe(0);
+    });
+
+    it("gate with --issue absent is unchanged: the tracker shape alone", async () => {
+      expect((await gate(wired(), "650-x")).code).toBe(0);
+      expect((await gate(wired(), "dev-ci-failures")).code).toBe(1);
+      expect((await gate(wired(), "Fix_CI", "--issue=")).code).toBe(1);
+    });
+
+    it("gate --fid=123-foo --issue=456 fails: the FID embeds another issue", async () => {
+      const r = await gate(wired(), "123-foo", "--issue=456");
+      expect(r.code).toBe(1);
+      expect(r.json.checks[0]).toMatchObject({ check: "fid 123-foo", ok: false });
+      expect(r.err).toContain("embeds issue 123, not the run's issue 456");
+      expect((await gate(wired(), "123-foo", "--issue=123")).code).toBe(0);
+    });
+
+    it("gate --issue without --fid is a usage error", async () => {
+      expect(
+        (
+          await run(wired(), [
+            "steps",
+            "gate",
+            "--workflow=design",
+            "--step=design-start-workflow",
+            "--issue=",
+          ])
+        ).code,
+      ).toBe(2);
+    });
+
+    it('gate --issue="" under none keeps today\'s check', async () => {
+      expect((await gate(repo(), "123-fix", "--issue=")).code).toBe(0);
+    });
+  });
+
   it("--attempt-of checks the row carries the derived counter", async () => {
     const cwd = repo();
     await run(cwd, doneArgs("--attempt=next"));
@@ -806,7 +1128,7 @@ describe("bkit steps gate — placeholders, FID, derived attempt", () => {
         "steps",
         "gate",
         ...STEP,
-        "--sub-plan=1",
+        "--group=1",
         `--attempt-of=${spec}`,
         "--artifact=logs/verify-<attempt>.md",
       ]);
@@ -816,5 +1138,109 @@ describe("bkit steps gate — placeholders, FID, derived attempt", () => {
       (await run(cwd, ["steps", "gate", "--workflow=build", "--step=x", "--attempt-of=x:next"]))
         .code,
     ).toBe(2);
+  });
+});
+
+describe("bkit steps done — a run in place on dev that shares its checkout", () => {
+  const FID = "650-shared";
+  const LOGS = `docs/plans/202610/logs/${FID}`;
+
+  /** A repo on dev holding foreign work (modified, untracked, staged) and the run's record. */
+  function shared() {
+    const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-steps-shared-")));
+    dirs.push(cwd);
+    git(cwd, "init", "-q", "-b", "dev");
+    git(cwd, "config", "user.email", "t@t");
+    git(cwd, "config", "user.name", "t");
+    fs.mkdirSync(path.join(cwd, "src"));
+    write(cwd, "src/a.txt", "a\n");
+    write(cwd, "src/staged.txt", "s\n");
+    git(cwd, "add", "-A");
+    git(cwd, "commit", "-q", "-m", "base");
+    write(cwd, "src/a.txt", "a\nforeign\n");
+    write(cwd, "notes.md", "foreign notes\n");
+    write(cwd, "src/staged.txt", "s\nforeign\n");
+    git(cwd, "add", "src/staged.txt");
+    writeRecord(cwd, newRecord(cwd, FID, "dev"));
+    fs.mkdirSync(path.join(cwd, LOGS), { recursive: true });
+    write(cwd, `${LOGS}/verify-1.md`, "Verdict: PASS\nFailures: 0\n\n<!-- verdict:end -->\n");
+    return cwd;
+  }
+  const step = (cwd: string) =>
+    run(cwd, [
+      "steps",
+      "done",
+      `--file=${LOGS}/status.jsonl`,
+      "--workflow=debug",
+      "--step=debug-verify",
+      "--verdict=PASS",
+      "--failures=0",
+      `--artifact=${LOGS}/verify-1.md`,
+      `--message=chore(${FID}): verify`,
+    ]);
+  const committed = (cwd: string) =>
+    git(cwd, "show", "--name-only", "--format=", "HEAD").split("\n").sort();
+  const staged = (cwd: string) => git(cwd, "diff", "--cached", "--name-only");
+
+  it("writeStepRow with a shared-checkout record never commits a recorded path", async () => {
+    const cwd = shared();
+    const r = await step(cwd);
+    expect(r.code).toBe(0);
+    expect(committed(cwd)).toEqual([`${LOGS}/status.jsonl`, `${LOGS}/verify-1.md`]);
+    expect(staged(cwd)).toBe("src/staged.txt");
+    expect(fs.readFileSync(path.join(cwd, "src/a.txt"), "utf-8")).toBe("a\nforeign\n");
+  });
+
+  it("writeStepRow refuses when a recorded path changed", async () => {
+    const cwd = shared();
+    const head = git(cwd, "rev-parse", "HEAD");
+    write(cwd, "src/a.txt", "a\nforeign\nedited mid-run\n");
+    const r = await step(cwd);
+    expect(r.code).toBe(10);
+    expect(r.err).toContain("src/a.txt");
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+    // No row is written, so the re-run after the human's fix writes it once.
+    expect(fs.existsSync(path.join(cwd, LOGS, "status.jsonl"))).toBe(false);
+    write(cwd, "src/a.txt", "a\nforeign\n");
+    expect((await step(cwd)).code).toBe(0);
+    const rows = fs
+      .readFileSync(path.join(cwd, LOGS, "status.jsonl"), "utf-8")
+      .trim()
+      .split("\n");
+    expect(rows).toHaveLength(1);
+  });
+
+  it("writeStepRow exits 14 with no row and no commit when the run has no record on dev", async () => {
+    const cwd = shared();
+    fs.rmSync(
+      path.resolve(cwd, git(cwd, "rev-parse", "--git-path", `bkit/shared-checkout/${FID}.json`)),
+    );
+    const head = git(cwd, "rev-parse", "HEAD");
+    const r = await step(cwd);
+    expect(r.code).toBe(14);
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+    expect(fs.existsSync(path.join(cwd, LOGS, "status.jsonl"))).toBe(false);
+    expect(staged(cwd)).toBe("src/staged.txt");
+  });
+
+  it("writeStepRow appends its commit sha to the record", async () => {
+    const cwd = shared();
+    const r = await step(cwd);
+    expect(r.code).toBe(0);
+    expect(readRecord(cwd, FID)?.commits).toEqual([git(cwd, "rev-parse", "HEAD")]);
+  });
+
+  it("a hook-refused own-path commit exits without staging a recorded path", async () => {
+    const cwd = shared();
+    const head = git(cwd, "rev-parse", "HEAD");
+    fs.mkdirSync(path.join(cwd, ".git/hooks"), { recursive: true });
+    write(cwd, ".git/hooks/pre-commit", "#!/bin/sh\necho blocked >&2\nexit 1\n");
+    fs.chmodSync(path.join(cwd, ".git/hooks/pre-commit"), 0o755);
+    const r = await step(cwd);
+    expect(r.code).toBe(8);
+    expect(r.err).toContain("blocked");
+    expect(staged(cwd)).toBe("src/staged.txt");
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+    expect(readRecord(cwd, FID)).toMatchObject({ commits: [] });
   });
 });

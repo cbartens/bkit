@@ -89,7 +89,7 @@ Placeholders. Copies keep them raw; replace each in your copy:
 - **What changed on upgrade.** `bkit upgrade` lists changed / added / removed template paths. For each one you adopted: `diff .bkit/templates/<path> <path>`, merge what you want (placeholder lines differ by design). `git diff .bkit/templates` in the upgrade commit = the package change.
 - Repo gates that scan the whole repo (prettier, Vale, slop-scan, eslint, tsc) → ignore `.bkit/templates/`. The `.prettierignore`, `.vale.ini`, `slop-scan.config.json` and `.oxlintrc.json` templates already do; check your adopted copy does too.
 - Templates are written in Node unless the tool they wrap already needs another runtime (graphify and Serena: Python + shell launchers; git hooks: POSIX `sh`; local stack lock: bash + perl, as shell runners source it).
-- `bkit.depUpdater: "none"` → skips install-time absence advisory for updaters.
+- `bkit.dependencies.updater: "none"` → skips install-time absence advisory for updaters.
 - No manifest key for any template. `docs/templates/bkit-audit-adoption.md` lists every template each run: adopted and wired, or not adopted and why.
 
 ## Context-fetch blocks — `.agents/context.md`
@@ -181,13 +181,13 @@ pnpm add -D prettier@^3.5.3 slop-scan@^0.3.0 lint-staged@^17.0.0 husky@^9.1.7
 
 ## CI workflow — `bkit-ci.yml`
 
-Parallel lanes `bkit-tests-static` (typecheck, lint, prettier, Vale, slop, actionlint, `bkit check`) and `bkit-tests-unit`, joined by the `bkit-tests-check` capstone, plus the commented full CI scaffold reference for the other tiers. Workflows care: `/bkit-ship` waits on its runs and merges only when the `bkit.capstoneJob` job (default `bkit-tests-check`) is present and green at the head; `bkit setup protect-main` makes that job the required check; `bkit-cloud.yml` triggers on a workflow named `bkit-ci`. `bkit install` reads your copy for advisories (`bkit-stub-*`, `ci-yml-missing-actionlint`, `ci-yml-capstone-contract-drift`). Reference: https://docs.github.com/en/actions.
+Parallel lanes `bkit-tests-static` (typecheck, lint, prettier, Vale, slop, actionlint, `bkit check`) and `bkit-tests-unit`, joined by the `bkit-tests-check` capstone, plus the commented full CI scaffold reference for the other tiers. Workflows care: `/bkit-ship` waits on its runs and merges only when the `bkit.testing.ciCapstone` job (default `bkit-tests-check`) is present and green at the head; `bkit setup protect-main` makes that job the required check; `bkit-cloud.yml` triggers on a workflow named `bkit-ci`. `bkit install` reads your copy for advisories (`bkit-stub-*`, `ci-yml-missing-actionlint`, `ci-yml-capstone-contract-drift`). Reference: https://docs.github.com/en/actions.
 
 - Install: nothing beyond the gate tool scripts above, a `test` script, and `packageManager` in `package.json` (`pnpm/action-setup` reads it; do not add `with: version:`).
 - Adapt: `{{DEFAULT_BRANCH}}`, `{{NODE_VERSION}}`. Non-Node repo → replace the Node / pnpm setup, install and check steps with your stack's.
-- Capstone: `bkit-tests-check` `needs:` every lane and runs on `!cancelled()`, never `always()`. Each lane you adopt from the reference goes into its `needs:` and its assert, or that lane's failure cannot red the merge. Its assert is `scripts/ci/check-capstone.mjs` (copy it and `check-capstone.test.mjs` from `.bkit/templates/scripts/ci/` with the workflow; REQUIRED — the step reds with a copy-the-script message when the file is missing, and never skips). The script reds on a lane that did not succeed, a lane that ran when the plan said skip, a lane that succeeded with 0 tests or a non-numeric count, and a plan that does not parse. It reads each lane's executed-test count once the lane writes one (the `Run Unit Tests` step comment shows the vitest form); `EMPTY_COUNT: warn` makes an unreported count a warning, a count of 0 a failure. Each lane you adopt goes into `LANES` and its `<LANE>_RESULT` / `<LANE>_RAN` variables. Renaming the job → set `bkit.capstoneJob`.
+- Capstone: `bkit-tests-check` `needs:` every lane and runs on `!cancelled()`, never `always()`. Each lane you adopt from the reference goes into its `needs:` and its assert, or that lane's failure cannot red the merge. Its assert is `scripts/ci/check-capstone.mjs` (copy it and `check-capstone.test.mjs` from `.bkit/templates/scripts/ci/` with the workflow; REQUIRED — the step reds with a copy-the-script message when the file is missing, and never skips). The script reds on a lane that did not succeed, a lane that ran when the plan said skip, a lane that succeeded with 0 tests or a non-numeric count, and a plan that does not parse. It reads each lane's executed-test count once the lane writes one (the `Run Unit Tests` step comment shows the vitest form); `EMPTY_COUNT: warn` makes an unreported count a warning, a count of 0 a failure. Each lane you adopt goes into `LANES` and its `<LANE>_RESULT` / `<LANE>_RAN` variables. Renaming the job → set `bkit.testing.ciCapstone`.
 - Adopt a scaffold lane only when its tier exists (`docs/testing.md`). Each `# bkit-stub:<id> —` header raises an install advisory until you enable or delete that stub.
-- Keep the `name: bkit-ci` line, or rename `workflows: [bkit-ci]` in `bkit-cloud.yml` and set `bkit.ciWorkflow` to the new file name.
+- Keep the `name: bkit-ci` line, or rename `workflows: [bkit-ci]` in `bkit-cloud.yml` and set `bkit.testing.ciWorkflow` to the new file name.
 - Keep `fetch-depth: 0` on the static lane: `slop:delta` checks the PR base out as a worktree.
 
 ## Cloud-agent workflow — `bkit-cloud.yml`
@@ -210,7 +210,7 @@ chmod +x .husky/pre-commit .husky/pre-push
 
 - `.gitignore`: `.husky/_` (bkit's `.gitignore` block already lists it).
 - Adapt: repo-only checks go below the bkit lines in each hook. What a gate runs belongs in the `bkit:gate:*` script, not the hook.
-- Min push: every file changed since each pushed commit left `origin/dev` (else `origin/main`) matches `bkit.minPushPaths` (`package.json` globs: `*` one folder, `**` any depth; default `docs/plans/**`, `docs/*.jsonl`, `.bkit/*.jsonl`; `[]` = off) → `bkit:gate:min` replaces the full gate; `MIN_PUSH=1`. `bkit ci min-push` decides from files, never `[skip ci]` (a typed label; GitHub reads the last commit only). No files / unreadable range / no ref list → full gate.
+- Min push: every file changed since each pushed commit left `origin/dev` (else `origin/main`) matches `bkit.testing.minPushPaths` (`package.json` globs: `*` one folder, `**` any depth; default `docs/plans/**`, `docs/*.jsonl`, `.bkit/*.jsonl`; `[]` = off) → `bkit:gate:min` replaces the full gate; `MIN_PUSH=1`. `bkit ci min-push` decides from files, never `[skip ci]` (a typed label; GitHub reads the last commit only). No files / unreadable range / no ref list → full gate.
 - Min-push paths: files no code, build or test reads. Never `docs/**` (a doc can be test input). A test reading a ledger → into `bkit:gate:min`.
 - `[skip ci]` guards: feature branch → blocked only while a PR is open (workflows push `[skip ci]` code heads mid-run). `dev` / `main` → blocked unless a min push: GitHub skips CI for the whole push.
 - Slop base: `dev` push + `scripts/ci/lanes/resolve-push-base.mjs` copied → the hook runs it with `--local --branch=dev --head=<pushed sha>` and exports `SLOP_BASE_REF` = CI's push base (head of the last green CI push run on `dev`, else `origin/dev`), printing the base and its source. Pre-push and CI slop then share a base, so a finding an earlier red push landed fails locally too. Run lookup fails (`gh` missing, logged out) → loud `WARNING`, base `origin/dev`, push goes on. Other branches, or no copy → `bkit ci slop` merge-base default. A repo-owned pre-push check that diffs against CI's base (migration immutability) reads `SLOP_BASE_REF` when set.
@@ -228,6 +228,7 @@ pnpm add -D prettier@^3.5.3
 2. Add `format:check` (§ Gate tool scripts). Reference: https://prettier.io/docs/install.
 
 - Keep the `.bkit/templates/` line.
+- Keep the three `docs/plans/*/logs/*/` gate-log lines: build and debug commit raw `bkit tests run` output there, and `format:check` fails on it.
 
 ## lint-staged — `.lintstagedrc.json`
 
@@ -405,7 +406,7 @@ misconfigurations:
 - Past `expired_at` the finding fails again. Keep it within the fix-time policy (`docs/deployments.md` § Dependency updaters).
 - `scripts/ci/check-dependency-audit.mjs` adopted → the scan skips `pnpm-lock.yaml`; accept pnpm advisories in `accepted-advisories.json` only.
 - Keep `--include-dev-deps`: without it Trivy drops npm / yarn / pnpm dev dependencies, and a dev-tooling lockfile scans zero packages and passes.
-- Pin = image tag + `sha256:` digest; Renovate bumps both. Never `aquasecurity/trivy-action` or `setup-trivy` by tag (tags re-pointed at a credential stealer, March 2026); never releases 0.69.4 – 0.69.6.
+- Pin = image tag + `sha256:` digest; Renovate bumps both. Never `aquasecurity/trivy-action` or `setup-trivy` by tag (tags re-pointed at a credential stealer, March 2026); never releases 0.69.4-0.69.6.
 - The `.cursor/Dockerfile` template runs as root → `DS-0002`. Add a non-root `USER` or accept it.
 - Reads Dockerfiles, not built images. OS packages in an image you build → add a step after your build running the same pinned image with `image <your-image-ref>`.
 - Results print in the job log. Security-tab upload (SARIF) is free on public repos only.
@@ -452,11 +453,11 @@ Issues are the first input every workflow reads. One form per way work starts; e
 | Form | Use when | Next step | Asks for |
 | --- | --- | --- | --- |
 | `bkit-idea.yml` | How it should work is still open | `/bkit-design #N` | problem, outcome, success criteria, constraints and non-goals, decisions already made, open questions |
-| `bkit-change.yml` | What to build and "done" are known | `/bkit-plan #N`, or `/bkit-build #N` / `build:lite` with no plan | the plan in short: narrative, success criteria, edge cases, test matrix, tasks with `Done when` + `Test first`, breaking changes and names, out of scope |
+| `bkit-change.yml` | What to build and "done" are known | `/bkit-plan #N`, or `/bkit-build #N` / `build:lite` with no plan | the plan in short: narrative, success criteria, edge cases, test matrix, tasks with `DONE WHEN` + `TEST FIRST` as plan group and task blocks showing every plan task field (`CREATE` / `READ` / `UPDATE` / `DELETE`, `DEPENDS ON`, `DONE WHEN`, `TEST FIRST`, `TEST EXCEPTION`), breaking changes and names, out of scope |
 | `bkit-bug.yml` | Something does not work | a test or CI run already fails → `/bkit-debug #N`; nothing fails yet → `/bkit-debug #N [repro]` | failing test or CI run, what happened, what should, repro steps, how often, affected area, where and when, evidence |
 
 - Every form ends with References. The change form shows the lines workflows read: `**Parent design:**` and `**Audit reports:**` (plan), the blocked-by block (build). Other references are not fetched; write exact paths, ledger `key`s and `#N — title`.
-- A change issue is the plan's source when no design or audit report exists: its narrative, success criteria, edge cases, test rows and tasks carry over verbatim. `/bkit-build` with no plan builds those tasks and checks each `Test first` test failed before its code; `build:lite` checks nothing. Nothing ticks the boxes.
+- A change issue is the plan's source when no design or audit report exists: its narrative, success criteria, edge cases, test rows and tasks carry over verbatim. `/bkit-build` with no plan first writes `{FID}-plan.md` from them (`@bkit-build-plan-convert`), then builds its tasks and checks each `TEST FIRST` test failed before its code; an existing `{FID}-plan.md` wins and the issue text is not read; `build:lite` checks nothing. Nothing ticks the boxes.
 - Debug commits to the branch it runs on: start it on the branch the fix lands on.
 - Copy the folder, commit on the default branch; GitHub reads forms from there only. Blank issues stay enabled.
 - `labels:` applies `enhancement` / `bug` only when the repo has them; missing labels are skipped, never created. Never add `bkit:*` labels: workflows own them.
@@ -604,7 +605,7 @@ Prettier aligns markdown tables with no config toggle; one edited cell re-pads e
 - Walks skip `skills/` trees (vendored), `docs/audits/`, `docs/plans/` (records, kept as written). A file named on the command line is always processed. New and edited records get it at commit: § lint-staged names each staged file.
 - Skips tables inside ``` / ~~~ fences, inside multi-line `<!-- -->` comments, and tables already wrapped. A comment opens on a line starting with `<!--` and runs to the first line holding `-->`; a one-line comment hides nothing.
 - A pipe inside an inline-code span is escaped to `\|` only when that restores the separator's column count; an existing `\|` stays literal.
-- Exit 1 on damage it cannot repair, with or without `--check`: `truncated-row` (more cells than the separator; GFM drops the overflow) and `unrendered-table` (header ≠ separator count; GFM renders raw text). A bare pipe in cell prose is indistinguishable from a delimiter → escape it as `\|` by hand. Under `docs/audits/` and `docs/plans/` the same damage prints as a `WARN` and exits 0: records hold text quoted from elsewhere (issue comments, CI logs) that nobody can fix in place.
+- Exit 1 on damage it cannot repair, with or without `--check`: `truncated-row` (more cells than the separator; GFM drops the overflow) and `unrendered-table` (header != separator count; GFM renders raw text). A bare pipe in cell prose is indistinguishable from a delimiter → escape it as `\|` by hand. Under `docs/audits/` and `docs/plans/` the same damage prints as a `WARN` and exits 0: records hold text quoted from elsewhere (issue comments, CI logs) that nobody can fix in place.
 
 ## tmp/ prune — old scratch files
 
@@ -643,8 +644,8 @@ cp .bkit/templates/scripts/cleanup/bkit-disk-prune.machine.mjs ~/.config/bkit/di
 - Example worktree step: removes a `.worktrees/*` only when nothing is lost — clean, every commit on a remote or at a merged pull request's head (`gh`; squash merges) — via `bkit worktrees remove`, or plain `git worktree remove` when no workflow made it. Branches stay. Keeps a locked one or one committed to in 2 days; notes the rest.
 - Adapt: keep a step only when what it deletes comes back by itself. Left out on purpose: named Docker volumes (local databases), runtimes and SDKs, whole pnpm store (`node_modules` hard-link into it).
 - Wiring: last block of each Husky template — `pre-commit` → `--mode=min --auto`; `pre-push` → `--mode=max --auto`, after every gate (workflow pushes too). Missing → paste at the end of yours.
-- `--auto`: detached, always exit 0. Each mode at most once a day per machine; `max` at most hourly while free disk < `bkit.disk.minFreeGb` (`package.json`, GB, default 40). Log: `~/.cache/bkit/disk-prune.log` (`$XDG_CACHE_HOME/bkit/` when set).
-- Worktrees: `bkit worktrees setup` create / resume under `bkit.disk.minFreeGb` → runs `max` steps, waits. Still under → exit 12, nothing created; stderr lists what `max` steps still cover. No step file → no check.
+- `--auto`: detached, always exit 0. Each mode at most once a day per machine; `max` at most hourly while free disk < `bkit.workflows.minFreeGb` (`package.json`, GB, default 40). Log: `~/.cache/bkit/disk-prune.log` (`$XDG_CACHE_HOME/bkit/` when set).
+- Worktrees: `bkit worktrees setup` create / resume under `bkit.workflows.minFreeGb` → runs `max` steps, waits. Still under → exit 12, nothing created; stderr lists what `max` steps still cover. No step file → no check.
 - One sweep per machine at a time (`disk-prune.lock` beside the log). Failed step → logged, next runs. CI / cloud → nothing runs.
 - Hand run: `pnpm bkit disk prune --mode=max --dry-run` → each step + its `paths` size; without `--dry-run` → runs now. Exit 1 = a step failed or a step file did not load.
 

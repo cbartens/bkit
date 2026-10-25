@@ -168,7 +168,7 @@ describe("detectCiRouterSecrets", () => {
   function writeRouter(content: string, issueTracker = "github"): void {
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "c", version: "1.0.0", bkit: { issueTracker } }),
+      JSON.stringify({ name: "c", version: "1.0.0", bkit: { tracker: { default: issueTracker } } }),
     );
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"), content);
@@ -189,7 +189,7 @@ describe("detectCiRouterSecrets", () => {
       for (const v of FEDERATION_VARIABLES)
         expect(findings[0]!.action).toContain(`gh variable set ${v}`);
       expect(findings[0]!.action).not.toContain("BKIT_LINEAR_API_KEY");
-      expect(findings[0]!.action).not.toContain("BKIT_JIRA_API_TOKEN");
+      expect(findings[0]!.action).not.toContain("BKIT_JIRA_API_KEY");
     },
   );
 
@@ -298,7 +298,7 @@ describe("buildCloudDashboardsAdvisory", () => {
   it("github tracker: omits BKIT_LINEAR_API_KEY from the secrets checklist (issue #138)", () => {
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "c", version: "1.0.0", bkit: { issueTracker: "github" } }),
+      JSON.stringify({ name: "c", version: "1.0.0", bkit: { tracker: { default: "github" } } }),
     );
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
@@ -315,13 +315,13 @@ describe("buildCloudDashboardsAdvisory", () => {
   it("jira tracker: the checklist names no tracker token (Jira runs locally only)", () => {
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "c", version: "1.0.0", bkit: { issueTracker: "jira" } }),
+      JSON.stringify({ name: "c", version: "1.0.0", bkit: { tracker: { default: "jira" } } }),
     );
     fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
     const result = buildCloudDashboardsAdvisory(tmpDir);
     expect(result).not.toBeNull();
-    expect(result!.detect).not.toContain("BKIT_JIRA_API_TOKEN");
-    expect(result!.action).not.toContain("BKIT_JIRA_API_TOKEN");
+    expect(result!.detect).not.toContain("BKIT_JIRA_API_KEY");
+    expect(result!.action).not.toContain("BKIT_JIRA_API_KEY");
     expect(result!.action).not.toContain("BKIT_LINEAR_API_KEY");
     expect(result!.action).toContain("BKIT_ANTHROPIC_API_KEY");
   });
@@ -342,7 +342,7 @@ describe("buildCloudDashboardsAdvisory", () => {
     (tracker) => {
       fs.writeFileSync(
         path.join(tmpDir, "package.json"),
-        JSON.stringify({ name: "c", version: "1.0.0", bkit: { issueTracker: tracker } }),
+        JSON.stringify({ name: "c", version: "1.0.0", bkit: { tracker: { default: tracker } } }),
       );
       fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
       const result = buildCloudDashboardsAdvisory(tmpDir);
@@ -355,7 +355,7 @@ describe("buildCloudDashboardsAdvisory", () => {
   it("linear tracker, .cursor/ only: falls back to the cursor checklist", () => {
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "c", version: "1.0.0", bkit: { issueTracker: "linear" } }),
+      JSON.stringify({ name: "c", version: "1.0.0", bkit: { tracker: { default: "linear" } } }),
     );
     fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
     const result = buildCloudDashboardsAdvisory(tmpDir);
@@ -370,7 +370,7 @@ describe("buildCloudDashboardsAdvisory", () => {
       JSON.stringify({
         name: "c",
         version: "1.0.0",
-        bkit: { issueTracker: "linear", cloudAgents: "cursor" },
+        bkit: { tracker: { default: "linear" }, cloud: { agent: "cursor" } },
       }),
     );
     fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });

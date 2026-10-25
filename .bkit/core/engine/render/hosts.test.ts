@@ -497,7 +497,7 @@ describe("applyOpencodeAgent", () => {
     expect(result).toContain("description: Execute plan tasks");
     // effort: medium → a separate `variant:` field (never a `#`-suffix on the model).
     expect(result).toContain("model: openrouter/qwen2.5:7b\n");
-    expect(result).toContain("variant: high\n");
+    expect(result).toContain("variant: max\n");
     expect(result).toContain("tools:");
   });
 
@@ -525,11 +525,11 @@ describe("applyOpencodeAgent", () => {
     expect(result).not.toContain("mcp__");
   });
 
-  it("maps effort: medium → variant: high (OpenCode column ceilings out)", () => {
+  it("maps effort: medium → variant: max (OpenCode column ceilings out)", () => {
     const input = `---\nname: build-plan\ndescription: desc\neffort: medium\nmodel: claude-sonnet-4-6\n---\nBody.\n`;
     const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "openrouter");
     expect(result).toContain("model: openrouter/qwen2.5:7b\n");
-    expect(result).toContain("variant: high\n");
+    expect(result).toContain("variant: max\n");
     expect(result).not.toContain("qwen2.5:7b#");
     expect(result).not.toContain("effort:");
     expect(result).not.toContain("reasoningEffort:");
@@ -569,7 +569,7 @@ describe("applyOpencodeAgent", () => {
     expect(result).not.toContain("variant:");
   });
 
-  it("opencode provider column: medium → variant high, high/xhigh → max, low → none", () => {
+  it("opencode provider column: medium/high/xhigh → variant max, low → none", () => {
     const zaiLookup = new Map([
       ["build-plan", "glm-5.1"],
       ["design-synthesize", "glm-5.2"],
@@ -581,7 +581,7 @@ describe("applyOpencodeAgent", () => {
         effortMap,
         "openrouter",
       ),
-    ).toContain("model: openrouter/glm-5.1\nvariant: high\n");
+    ).toContain("model: openrouter/glm-5.1\nvariant: max\n");
     expect(
       applyOpencodeAgent(
         `---\nname: design-synthesize\ndescription: desc\neffort: high\nmodel: claude-opus-5\n---\nBody.\n`,
@@ -862,5 +862,43 @@ describe("subagent renderers — shared opening (name required, model looked up,
   it.each(renderers)("%s: content without frontmatter passes through", (_host, render) => {
     const bare = "# No frontmatter\nBody.\n";
     expect(render(bare)).toBe(bare);
+  });
+});
+
+describe("autoCompactWindow — Claude-only per-agent compaction window", () => {
+  const withWindow = md("name: a\ndescription: d\neffort: high\nautoCompactWindow: 300000");
+
+  it("opencode agent drops autoCompactWindow", () => {
+    const out = applyOpencodeAgent(withWindow, lookup, effortMap, "openrouter");
+    expect(out).toContain("name: a\n");
+    expect(out).not.toContain("autoCompactWindow");
+  });
+
+  it("codex agent drops autoCompactWindow", () => {
+    const out = applyCodexAgent(withWindow, lookup, effortMap);
+    expect(readToml(out).name).toBe("a");
+    expect(out).not.toContain("autoCompactWindow");
+    expect(out).not.toContain("model_auto_compact_token_limit");
+  });
+
+  it("cursor and antigravity agents drop autoCompactWindow", () => {
+    for (const out of [
+      applyT3(withWindow, lookup, effortMap),
+      applyAntigravityPrompt(withWindow, lookup, effortMap),
+    ]) {
+      expect(out).toContain("name: a\n");
+      expect(out).not.toContain("autoCompactWindow");
+    }
+  });
+
+  const src = path.join(REPO_ROOT, ".bkit/core/prompts");
+  const files = fs.readdirSync(src).filter((f) => f.startsWith("bkit-") && f.endsWith(".md"));
+
+  it("every bkit source agent sets autoCompactWindow 300000", () => {
+    expect(files).toHaveLength(39);
+    const frontmatter = (f: string) =>
+      fs.readFileSync(path.join(src, f), "utf-8").split("\n---\n")[0];
+    const wrong = files.filter((f) => !/^autoCompactWindow: 300000$/m.test(frontmatter(f)));
+    expect(wrong).toEqual([]);
   });
 });

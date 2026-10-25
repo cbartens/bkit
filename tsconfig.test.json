@@ -6,6 +6,6 @@
     "module": "ESNext",
     "moduleResolution": "Bundler"
   },
-  "include": [".bkit/core/engine/**/*.ts"],
+  "include": [".bkit/core/engine/**/*.ts", "scripts/harvest/**/*.ts"],
   "exclude": ["node_modules", "dist", "tmp", ".worktrees"]
 }

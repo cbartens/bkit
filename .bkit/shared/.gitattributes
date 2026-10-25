@@ -23,7 +23,7 @@ docs/roadmap.md      merge=union
 .bkit/stats.jsonl    merge=union
 
 # `.bkit/friction.jsonl` is deliberately absent: it is the one ledger rows are
-# REMOVED from (`bkit harvest` drains it). Union would resurrect rows a drain
+# REMOVED from (bkit's harvest drains it). Union would resurrect rows a drain
 # deleted, so a conflict there carries real information and must stay blocking.
 
 # Append-only NDJSON workflow status logs: union auto-concatenates both branches'

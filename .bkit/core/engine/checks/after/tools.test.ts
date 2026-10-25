@@ -223,6 +223,33 @@ describe("detectBkitStubs", () => {
     const ids = detectBkitStubs(tmpDir).map((f) => f.id);
     expect(ids).toContain("bkit-stub-pair-e2e-without-vercel");
   });
+
+  it("reads the workflow named by bkit.testing.ciWorkflow and names its path", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", bkit: { testing: { ciWorkflow: "ci.yml" } } }),
+    );
+    const dir = path.join(tmpDir, ".github", "workflows");
+    fs.mkdirSync(dir, { recursive: true });
+    const content = [
+      "      - name: Run E2E Tests",
+      "        run: pnpm test:e2e",
+      "      # bkit-stub:vercel-await — header",
+      "      # - name: Await Vercel Preview",
+    ].join("\n");
+    fs.writeFileSync(path.join(dir, "bkit-ci.yml"), content);
+    expect(detectBkitStubs(tmpDir)).toEqual([]);
+    fs.writeFileSync(path.join(dir, "ci.yml"), content);
+    const findings = detectBkitStubs(tmpDir);
+    expect(findings.map((f) => f.id).sort()).toEqual([
+      "bkit-stub-pair-e2e-without-vercel",
+      "bkit-stub-vercel-await",
+    ]);
+    for (const f of findings) {
+      expect(f.detect).toContain(".github/workflows/ci.yml");
+      expect(`${f.detect}${f.action}`).not.toContain("bkit-ci.yml");
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -261,20 +288,23 @@ describe("buildDepUpdaterSetupAdvisory", () => {
     expect(buildDepUpdaterSetupAdvisory(tmpDir)).toBeNull();
   });
 
-  it("stays quiet when bkit.depUpdater is explicitly 'none'", () => {
+  it("stays quiet when bkit.dependencies.updater is explicitly 'none'", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "x", bkit: { depUpdater: "none" } }),
+      JSON.stringify({ name: "x", bkit: { dependencies: { updater: "none" } } }),
     );
     expect(buildDepUpdaterSetupAdvisory(tmpDir)).toBeNull();
   });
 
-  it("a bkit.depUpdater value other than none does not silence", () => {
+  it("a bkit.dependencies.updater value other than none does not silence", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "x", bkit: { depUpdater: "renovate", renovateRunner: "self" } }),
+      JSON.stringify({
+        name: "x",
+        bkit: { dependencies: { updater: "renovate" }, renovateRunner: "self" },
+      }),
     );
     expect(buildDepUpdaterSetupAdvisory(tmpDir)?.id).toBe("dep-updater-absent");
   });
@@ -287,7 +317,7 @@ describe("buildDepUpdaterSetupAdvisory", () => {
     );
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "x", bkit: { depUpdater: "none" } }),
+      JSON.stringify({ name: "x", bkit: { dependencies: { updater: "none" } } }),
     );
     expect(buildDepUpdaterSetupAdvisory(tmpDir)).toBeNull();
   });

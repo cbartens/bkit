@@ -7,6 +7,7 @@ import { extractManagedBlock, stripManagedBlock } from "../../install/managed-bl
 import { readTemplate } from "../../render/parts.js";
 import { findTemplateSource, getPkgRoot } from "../../shared/package-roots.js";
 import { parseJson } from "../../shared/json.js";
+import { ciWorkflowPath } from "../../shared/settings.js";
 /**
  * Strip out content inside bkit-managed block markers (HTML and slash style).
  * Used by detectors that need to inspect only consumer-owned content.
@@ -67,11 +68,12 @@ export function detectGitignoreBlockDuplicates(cwd) {
  * surfaces — pure cost (artifact upload + storage) with zero diagnostic payoff.
  *
  * "Hostile" gap per the BAR-224 signal-vs-noise classification. Reads the consumer's
- * own bkit-ci.yml, active lines only: YAML comment lines are dropped first, so a commented
+ * own CI workflow (`bkit.testing.ciWorkflow`, default `bkit-ci.yml`), active lines only: YAML comment lines are dropped first, so a commented
  * template stub or a commented-out example never fires.
  */
 export function detectPlaywrightReporterHostile(cwd) {
-    const ciPath = path.join(cwd, ".github", "workflows", "bkit-ci.yml");
+    const ciRel = ciWorkflowPath(cwd);
+    const ciPath = path.join(cwd, ciRel);
     if (!fs.existsSync(ciPath))
         return null;
     const content = fs.readFileSync(ciPath, "utf-8");
@@ -92,7 +94,7 @@ export function detectPlaywrightReporterHostile(cwd) {
     return {
         id: "playwright-reporter-line-override-hostile",
         severity: "advisory",
-        detect: ".github/workflows/bkit-ci.yml has a `playwright test` invocation that passes `--reporter=line`. Under `[verbose ci]` with `--trace=on`, trace artifacts are written but no reporter surfaces them — pure cost.",
+        detect: `${ciRel} has a \`playwright test\` invocation that passes \`--reporter=line\`. Under \`[verbose ci]\` with \`--trace=on\`, trace artifacts are written but no reporter surfaces them — pure cost.`,
         action: 'Drop the `--reporter=line` flag so `playwright.config.ts`\'s configured reporter chain runs (typically `[list, html, github, json]`). Verbose-aware pattern: have `test:e2e` read `VERBOSE_CI` and append `--trace=on` to its own `playwright test` call (e.g. `TRACE=; [ "$VERBOSE_CI" = "1" ] && TRACE=--trace=on; playwright test $TRACE`), then run it plainly as `pnpm test:e2e` — do NOT pass `--trace=on` through a turbo / pnpm `-- --trace=on` passthrough, which appends to the script string and breaks any test:e2e ending in a bash construct (fi / done / esac). Never pass `--reporter`. Note that `--video` and `--screenshot` are NOT Playwright CLI flags (they\'re `use:` keys in playwright.config.ts); the trace.zip already captures snapshots / network / console / source. Default-mode output stays clean via the config\'s `list` reporter.',
     };
 }

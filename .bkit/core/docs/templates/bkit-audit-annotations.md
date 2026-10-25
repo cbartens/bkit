@@ -11,14 +11,6 @@
 >
 > **Rules:**
 >
-> - Read-only audit; never edit code, config, or data.
-> - `Universal Instructions` apply to all projects; `Project Instructions` apply only to this project.
-> - Local audit instructions / overrides → `Project Instructions` below the bkit-managed block; universal instructions stay in-block.
-> - Any tools mentioned in `Universal Instructions` are examples only; swap for actual tools in final output; drop inapplicable.
-> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
-> - Read `.agents/docs.md` → load docs for workflow / step / task; skip missing; cite docs inline where required.
-> - Every claim cites this run's evidence (`file:line`, or command / query and its output) and tool behind it; a previous report's figure, list, or status is a lead, not evidence.
-> - Read this document once at session start; do not trust session memory; do not re-read on every loop iteration.
 > - never edit a workflow, composite action, or other CI config; a recommended change is a finding for a human.
 > - NEVER dispatch a workflow, push, or otherwise start a run to verify a fix.
 
@@ -32,7 +24,7 @@ Green CI hides costly warnings. Two failure modes: step success while the operat
 
 **Cadence:** weekly, and before every release to the production branch. In-passing sweeps are not a control. Extra pass when: CI-vendor deprecation/retirement post or runner-image announcement touches these workflows; workflow, composite action, or reusable workflow changes (conditional lane annotates only when it runs); deprecation deadline before next weekly sweep.
 
-**Anchor Standards:** record version and date read. Newer version → `Standards` step reads what changed.
+**Anchor Standards:**
 
 - CI vendor changelog, deprecation, and retirement posts (e.g. GitHub Changelog deprecation label). Living; record the date read.
 - Runner-image announcements (e.g. `actions/runner-images` Announcement label). Living; record the date read.
@@ -75,22 +67,14 @@ One per annotation. **SILENT FAILURE** outranks every other verdict.
 
 ### Pre-Flight / Dependencies
 
-**Checkpoint:** Check off all core items. Check conditional items only when applicable. Each item: available → tool and version; missing → fallback, gap in `Not Checked`, fix in `Process Improvements`. Unnamed gap reads as passed. never abort for a missing capability.
-
-**Credentials:** probe direnv before marking a token / env var missing: `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'`; `unset` = missing. Run credentialed CLIs as `direnv exec . <cmd>`. No direnv (cloud session) → plain env check. Report names, never values.
-
 #### Core
 
-Always verify.
-
-- [ ] **Permissions:** Before Step 1 — one cheap read-only call per tool this run uses (every item below, every rule under `Project Instructions` `Permissions`), e.g. `gh run list --limit 1`, one MCP read, one anchor-standard fetch. Blocked / denied (here or in any step) → record call verbatim and narrow allow rule clearing it (e.g. `Bash(gh run list *)`) in `Not Checked`, `Process Improvements`, and `Project Instructions` `Permissions`; run every step the remaining tools allow; work needing blocked call → `Not Checked`. never stop the run for a blocked call; never retry or reword a blocked call to get past it.
+- [ ] **Permissions:** blocked calls recorded
 - [ ] **CI Read:** Steps 2, 5, 11 — annotations and step logs for recent runs of every workflow, e.g. `gh api` check-run annotations, `gh run view --log`, GitLab job-trace API. Log access: `.agents/context.md` `context-fetch` blocks below `bkit:end` are ready-made read-only readers (`bkit context list-blocks` → each block's `context` and `body`); set a body's `# Customise:` knobs to the audit window; run it via `direnv exec . bash`. Fallback: saved logs; runs not fetched `Not Checked`.
 - [ ] **Workflow Files:** Steps 4, 6, 8 — workflows, composite actions, reusable workflows on disk. Fallback: none.
 - [ ] **Web:** Steps 3, 12 — vendor changelog, runner-image announcements, anchor standards. Fallback: versions recorded as unread.
 
 #### Conditional
-
-Verify only when applicable.
 
 - [ ] **Workflow Linters:** Workflows on disk → Step 6 — e.g. actionlint, zizmor, shellcheck. Fallback: read the workflows; name each check skipped.
 - [ ] **Language Server:** Typed language and a lint annotation → Step 9 — per-file diagnostics, e.g. Serena, `tsserver`. Fallback: lint that file; say so. Empty is inconclusive; corroborate with text search.
@@ -98,14 +82,12 @@ Verify only when applicable.
 
 ### 🔒 Gate 1: Prerequisites Check
 
-**Checkpoint.** Verify and check `[x]` all applicable boxes above, then continue to `Probe Steps` without asking.
-
 - [ ] **Gaps named:** every missing item names its fallback and `Not Checked` entry.
-- [ ] **Gate 1 - Verified:** All Core items checked. All applicable Conditional items checked.
+- [ ] **Gate 1 — Verified:** All Core items checked. All applicable Conditional items checked.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Audited commit = this report's `bkit:anchor` `baseSha`. Read newest prior report for this slug under `docs/audits/`; its commit = its `bkit:anchor` `baseSha`, else the HEAD its `Previous Run` recorded. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 1 — Previous Run:** **Done when:** closure rate in `Previous Run`, or run marked baseline.
 - [ ] **Step 2 — Collect:** No CI → one `N/A` row with evidence and STOP. Else read annotation lists for recent runs of every workflow, not last run of one pipeline. Deprecations surface on whichever workflow uses the old action. Include scheduled, manual, and bot-triggered runs. Collect mechanically, not by eye from the UI. Window = since previous report, and at least latest completed run of each workflow. Save list; diff vs previous report: new, resolved, persisting. Annotations capped (e.g. GitHub: 10 warnings, 10 errors, and 10 notices per step, and 50 per job). Step at cap → grep raw job log for warning and error markers; triage overflow. Record run ids and commit. Id, run, or path you cannot re-open → do not cite it. **Done when:** `Annotations` holds diff (new, resolved, persisting) and run ids.
 - [ ] **Step 3 — Deprecations:** Read vendor deprecation/retirement posts and runner-image announcements since previous report. List every dated change touching these workflows: runtimes, runner images, events, actions. Changelog notice precedes run notice. Each → DEPRECATION with date and bump. Dependency bot already tracks bump → say so; schedule rest next step. **Done when:** `Deprecations` row per dated change: what · date · bump · bot already tracking?
 - [ ] **Step 4 — Runtimes:** Every `uses:` (or the CI system's equivalent) in workflows, local composite actions, and reusable workflows — resolved version and declared runtime (e.g. `runs.using`). Action declaring removed runtime (e.g. `node20` after runners dropped it) runs on forced runtime with no opt-out → finding, unless seen working there. List leftover opt-out env keys that no longer change anything. **Done when:** `Runtimes` row per action: version · declared runtime · verdict, plus leftover keys.
@@ -121,13 +103,11 @@ Verify only when applicable.
 
 ### 🔒 Gate 2: Probes Check
 
-**Checkpoint.** Verify and check `[x]` all boxes below, then continue to `Findings` without asking.
-
 - [ ] **Steps complete:** every step `[x]`, or explicit skip with evidence the surface is absent.
 - [ ] **Evidence:** every finding cites re-checkable evidence and the tool behind it.
 - [ ] **Workflows untouched:** no workflow, composite action, or CI config edited.
 - [ ] **No dispatch:** no workflow run triggered, and no push.
-- [ ] **Gate 2 - Verified:** Every checkbox above independently verified and checked off.
+- [ ] **Gate 2 — Verified:** Every checkbox above independently verified and checked off.
 
 ## Findings
 
@@ -139,7 +119,7 @@ Verify only when applicable.
 | `MEDIUM` | Lint warning that points at code; deprecation with a deadline still after the next release; dead suppression; static-analysis finding that is not itself a silent failure |
 | `LOW` | Leftover env key that changes nothing; accepted annotation with no written record; cosmetic notice |
 
-Scale per `.bkit/jsonl.md` § Severity. Within a severity: silent failures first.
+Within a severity: silent failures first.
 
 <!-- prettier-ignore -->
 | ID | Severity | Verdict | Location | Evidence | Expected |
@@ -223,18 +203,14 @@ PENDING
 
 ### 🔒 Gate 3: Report Check
 
-**Checkpoint.** Verify and check `[x]` all boxes below, then stop.
-
-- [ ] **No placeholders:** Findings table and every `Report` section have no `PENDING`.
+- [ ] **No placeholders:** no `PENDING` left
 - [ ] **Summary:** names count per severity and the runs read.
-- [ ] **Series:** new / resolved / persisting counts beside previous report's, or marked baseline.
+- [ ] **Series:** new / resolved / persisting counts beside previous report's numbers, or marked baseline.
 - [ ] **Verified:** states what was checked locally and what still needs a real run.
-- [ ] **Writes:** only this report and template `Project Instructions` changed; throwaway worktrees / remote targets removed.
-- [ ] **Process Improvements:** `Universal` = proposed step changes, template untouched; `Project` = edits applied below `bkit:end`; each `none` if empty.
+- [ ] **Writes:** only this report, template `Project Instructions`, and ledger rows changed; throwaway worktrees / remote targets removed.
+- [ ] **Process Improvements:** `Universal` and `Project` filled
 - [ ] **Suggested Issues:** every `MEDIUM`+ finding ID in exactly one row; every row has a `Next Step`.
-- [ ] **Gate 3 - Verified:** Every checkbox above independently verified and checked off.
-
-> `Project Instructions` below `bkit:end` are consumer-owned — `bkit install` never overwrites them, `bkit check` drift stays clean. Add project-specific tools, paths, commands, and checks there, keyed by section or step title; never results.
+- [ ] **Gate 3 — Verified:** Every checkbox above independently verified and checked off.
 
 <!-- bkit:end -->
 

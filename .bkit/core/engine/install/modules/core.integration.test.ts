@@ -17,11 +17,15 @@ import {
   runBkitDocs,
   migrateLinearTeamKey,
   migrateGithubProjectKey,
+  migrateBkitLayout,
+  seedBkitDefaults,
+  SEEDED_BKIT_DEFAULTS,
 } from "./core";
 import { dispatchModules, listStampedFiles, type ModuleContext } from "./index";
 import { readInstallingVersion } from "../../shared/package-json";
 import { getBkitDocsRoot, getPkgRoot } from "../../shared/package-roots";
 import { BKIT_GATE_SCRIPTS } from "../manifest";
+import { readBkitConfig } from "../../shared/settings";
 import { hashFile, readBkitVersion, readManagedVersion, writeBkitVersion } from "../version-file";
 import { applyTokens } from "../placeholders";
 
@@ -89,6 +93,7 @@ describe("bkit canonical docs pass (runBkitDocs, #218)", () => {
   // The package's canonical docs source (getBkitDocsRoot) — what runBkitDocs copies from.
   const PKG_DOCS_ROOT = getBkitDocsRoot();
   const DOCS = [
+    "authoring.md",
     "cloud.md",
     "comparison.md",
     "install.md",
@@ -640,7 +645,149 @@ describe("migrateLinearTeamKey (via seedCorePackageJsonScripts)", () => {
   it("is idempotent, and runs on every install through the core module", () => {
     seed({ linearTeam: "ENG" });
     dispatchModules(new Set(["core"]), makeCtx({}));
-    expect(bkitKey().linear).toEqual({ team: "ENG" });
+    // The full install also moves it under bkit.tracker and seeds the other linear keys.
+    expect((bkitKey().tracker as Record<string, unknown>).linear).toMatchObject({ team: "ENG" });
+    expect(touched(run())).toBe(false);
+  });
+});
+
+describe("seedBkitDefaults (via seedCorePackageJsonScripts)", () => {
+  const seed = (pkg: Record<string, unknown>): void =>
+    fs.writeFileSync(
+      "package.json",
+      JSON.stringify({ name: "x", ...pkg }, null, 4) + "\n",
+      "utf-8",
+    );
+  const read = (): string => fs.readFileSync("package.json", "utf-8");
+  const run = (dryRun = false): ModuleContext => {
+    const ctx = makeCtx({ dryRun });
+    seedBkitDefaults(ctx.dryRun, ctx.ws, ctx.logPrefix);
+    return ctx;
+  };
+  const touched = (ctx: ModuleContext): boolean =>
+    ctx.ws.writes.some((w) => w.path === "package.json");
+
+  it("writes every bkit setting when missing, creating the bkit block, keeping the indent", () => {
+    seed({});
+    expect(touched(run())).toBe(true);
+    expect(JSON.parse(read()).bkit).toEqual(SEEDED_BKIT_DEFAULTS);
+    expect(read()).toMatch(/\n {4}"bkit"/);
+  });
+
+  it("writes defaults where a key has one and an empty value only for a choice not made", () => {
+    expect(SEEDED_BKIT_DEFAULTS).toMatchObject({
+      tracker: {
+        default: "",
+        github: { project: "", progress: "In progress", review: "In review" },
+        linear: { team: "", project: "", progress: "started", review: "In Review" },
+        jira: { site: "", project: "", progress: "In Progress", review: "In Review" },
+      },
+      cloud: { agent: "" },
+      providers: { opencode: { default: "", installed: [] } },
+      testing: {
+        ciWorkflow: "bkit-ci.yml",
+        ciCapstone: "bkit-tests-check",
+        shipGate: [],
+        minPushPaths: ["docs/plans/**", "docs/*.jsonl", ".bkit/*.jsonl"],
+      },
+      workflows: {
+        minFreeGb: 40,
+        worktree: { copy: [".env", ".env.local"], install: true },
+        tasks: {
+          maxPerGroup: 3,
+          maxTestsPerGroup: 15,
+          maxTestsPerTask: 10,
+          maxTestFilesPerTask: 3,
+        },
+        design: { grill: { ask: true, maxTurns: 6 } },
+        build: {
+          verify: { ask: true, maxAttempts: 2 },
+          challenge: { ask: true, maxAttempts: 2 },
+          tests: { ask: true, maxAttempts: 2 },
+        },
+        debug: { fix: { ask: true, maxAttempts: 2 }, soak: { ask: true, maxAttempts: 2 } },
+        ship: { merge: { ask: true, maxAttempts: 2 } },
+      },
+      prompts: { roadmapNext: 25 },
+      dependencies: { updater: "" },
+      advisories: { ignore: [] },
+    });
+  });
+
+  it("reads back as the same config as an empty bkit block", () => {
+    seed({});
+    const empty = readBkitConfig(".");
+    run();
+    expect(readBkitConfig(".")).toEqual(empty);
+  });
+
+  it("fills missing keys inside a present block and never touches a value already set", () => {
+    seed({
+      bkit: {
+        tracker: { default: "github", github: { project: false } },
+        testing: { minPushPaths: [] },
+        workflows: { worktree: { copy: [] }, build: { verify: { ask: "yes" } } },
+      },
+    });
+    run();
+    const bkit = JSON.parse(read()).bkit;
+    expect(bkit.tracker.default).toBe("github");
+    expect(bkit.tracker.github).toEqual({
+      project: false,
+      progress: "In progress",
+      review: "In review",
+    });
+    expect(bkit.testing.minPushPaths).toEqual([]);
+    expect(bkit.workflows.worktree).toEqual({ copy: [], install: true });
+    expect(bkit.workflows.build.verify).toEqual({ ask: "yes", maxAttempts: 2 });
+    const before = read();
+    expect(touched(run())).toBe(false);
+    expect(read()).toBe(before);
+  });
+
+  it("install writes tasks when missing and keeps a set value", () => {
+    seed({ bkit: { cloud: { agent: "" } } });
+    run();
+    expect(JSON.parse(read()).bkit.workflows.tasks).toEqual({
+      maxPerGroup: 3,
+      maxTestsPerGroup: 15,
+      maxTestsPerTask: 10,
+      maxTestFilesPerTask: 3,
+    });
+    seed({ bkit: { workflows: { tasks: { maxPerGroup: 5, maxTestsPerTask: 0 } } } });
+    run();
+    expect(JSON.parse(read()).bkit.workflows.tasks).toEqual({
+      maxPerGroup: 5,
+      maxTestsPerTask: 0,
+      maxTestsPerGroup: 15,
+      maxTestFilesPerTask: 3,
+    });
+  });
+
+  it("leaves a non-object nested block alone", () => {
+    seed({ bkit: { tracker: { github: "x" } } });
+    run();
+    expect(JSON.parse(read()).bkit.tracker.github).toBe("x");
+  });
+
+  it("leaves a non-object bkit value alone", () => {
+    seed({ bkit: "x" });
+    const before = read();
+    expect(touched(run())).toBe(false);
+    expect(read()).toBe(before);
+  });
+
+  it("under dry-run records the same write and leaves the file, so `bkit check` reports it", () => {
+    seed({});
+    const before = read();
+    expect(touched(run(true))).toBe(true);
+    expect(read()).toBe(before);
+  });
+
+  it("is idempotent, and runs on every install through the core module", () => {
+    seed({});
+    dispatchModules(new Set(["core"]), makeCtx({}));
+    expect(JSON.parse(read()).bkit).toEqual(SEEDED_BKIT_DEFAULTS);
     expect(touched(run())).toBe(false);
   });
 });
@@ -691,8 +838,8 @@ describe("migrateGithubProjectKey (via seedCorePackageJsonScripts)", () => {
     run();
     spy.mockRestore();
     expect(bkitKey()).toEqual({ github: { project: "https://github.com/orgs/acme/projects/1" } });
-    expect(lines.join("\n")).toContain("set bkit.github.review to that option's name");
-    expect(lines.join("\n")).not.toContain("bkit.github.progress");
+    expect(lines.join("\n")).toContain("set bkit.tracker.github.review to that option's name");
+    expect(lines.join("\n")).not.toContain("bkit.tracker.github.progress");
   });
 
   it("keeps an existing bkit.github.project and drops a malformed old key", () => {
@@ -728,7 +875,128 @@ describe("migrateGithubProjectKey (via seedCorePackageJsonScripts)", () => {
   it("is idempotent, and runs on every install through the core module", () => {
     seed({ githubProject: templateBoard });
     dispatchModules(new Set(["core"]), makeCtx({}));
-    expect(bkitKey().github).toEqual({ project: "https://github.com/orgs/acme/projects/1" });
+    // The full install also moves it under bkit.tracker and seeds the other github keys.
+    expect((bkitKey().tracker as Record<string, unknown>).github).toMatchObject({
+      project: "https://github.com/orgs/acme/projects/1",
+    });
+    expect(touched(run())).toBe(false);
+  });
+});
+
+describe("migrateBkitLayout (via seedCorePackageJsonScripts)", () => {
+  const seed = (bkit: unknown): void =>
+    fs.writeFileSync("package.json", JSON.stringify({ name: "x", bkit }, null, 4) + "\n", "utf-8");
+  const read = (): string => fs.readFileSync("package.json", "utf-8");
+  const bkitKey = (): Record<string, unknown> => JSON.parse(read()).bkit;
+  const run = (dryRun = false): ModuleContext => {
+    const ctx = makeCtx({ dryRun });
+    migrateBkitLayout(ctx.dryRun, ctx.ws, ctx.logPrefix);
+    return ctx;
+  };
+  const touched = (ctx: ModuleContext): boolean =>
+    ctx.ws.writes.some((w) => w.path === "package.json");
+
+  it("moves every flat 5.5.x key to its section, keeping the file's indent", () => {
+    seed({
+      issueTracker: "linear",
+      linear: { team: "ENG" },
+      cloudAgents: "claude",
+      opencodeProvider: "openrouter",
+      opencodeProviders: ["openrouter"],
+      ciWorkflow: "ci.yml",
+      capstoneJob: "gate",
+      minPushPaths: ["docs/**"],
+      shipGateRequiredLanes: ["e2e"],
+      disk: { minFreeGb: 20 },
+      worktree: { install: false },
+      tasks: { maxPerGroup: 4 },
+      roadmapNext: 10,
+      depUpdater: "none",
+      ignoreAdvisories: ["x"],
+    });
+    expect(touched(run())).toBe(true);
+    expect(bkitKey()).toEqual({
+      tracker: { default: "linear", linear: { team: "ENG" } },
+      cloud: { agent: "claude" },
+      providers: { opencode: { default: "openrouter", installed: ["openrouter"] } },
+      testing: {
+        minPushPaths: ["docs/**"],
+        ciCapstone: "gate",
+        ciWorkflow: "ci.yml",
+        shipGate: ["e2e"],
+      },
+      workflows: { minFreeGb: 20, worktree: { install: false }, tasks: { maxPerGroup: 4 } },
+      prompts: { roadmapNext: 10 },
+      dependencies: { updater: "none" },
+      advisories: { ignore: ["x"] },
+    });
+    expect(read()).toMatch(/\n {4}"bkit"/);
+  });
+
+  it("a value already at the new path wins; two blocks merge key by key", () => {
+    seed({
+      issueTracker: "github",
+      tracker: { default: "jira" },
+      github: { project: false, review: "QA" },
+      testing: { ciWorkflow: "new.yml" },
+      ciWorkflow: "old.yml",
+    });
+    run();
+    expect(bkitKey()).toEqual({
+      tracker: { default: "jira", github: { project: false, review: "QA" } },
+      testing: { ciWorkflow: "new.yml" },
+    });
+    seed({ linear: { team: "OLD", review: "R" }, tracker: { linear: { team: "NEW" } } });
+    run();
+    expect(bkitKey()).toEqual({ tracker: { linear: { team: "NEW", review: "R" } } });
+  });
+
+  it("turns loopPause into ask on every point, keeping an ask already set", () => {
+    seed({ loopPause: false, workflows: { build: { verify: { ask: true, maxAttempts: 3 } } } });
+    run();
+    const workflows = bkitKey().workflows as Record<string, Record<string, unknown>>;
+    expect(bkitKey()).not.toHaveProperty("loopPause");
+    expect(workflows.build).toEqual({
+      verify: { ask: true, maxAttempts: 3 },
+      challenge: { ask: false },
+      tests: { ask: false },
+    });
+    expect(workflows.design).toEqual({ grill: { ask: false } });
+    expect(workflows.debug).toEqual({ fix: { ask: false }, soak: { ask: false } });
+    expect(workflows.ship).toEqual({ merge: { ask: false } });
+    seed({ loopPause: "yes" });
+    run();
+    expect(bkitKey()).toEqual({});
+  });
+
+  it("leaves an old key in place when a non-object holds its new section", () => {
+    seed({ cloud: "x", cloudAgents: "claude" });
+    run();
+    expect(bkitKey()).toEqual({ cloud: "x", cloudAgents: "claude" });
+  });
+
+  it("leaves a config already in the new layout alone", () => {
+    seed({ tracker: { default: "github" }, workflows: { minFreeGb: 40 } });
+    const before = read();
+    expect(touched(run())).toBe(false);
+    expect(read()).toBe(before);
+  });
+
+  it("under dry-run records the same write and leaves the file", () => {
+    seed({ issueTracker: "github" });
+    const before = read();
+    expect(touched(run(true))).toBe(true);
+    expect(read()).toBe(before);
+  });
+
+  it("is idempotent, and runs on every install through the core module", () => {
+    seed({ issueTracker: "github", loopPause: false, disk: { minFreeGb: 12 } });
+    dispatchModules(new Set(["core"]), makeCtx({}));
+    const bkit = bkitKey() as Record<string, Record<string, unknown>>;
+    expect(bkit.tracker!.default).toBe("github");
+    expect(bkit.workflows!.minFreeGb).toBe(12);
+    expect(bkit.workflows!.ship).toEqual({ merge: { ask: false, maxAttempts: 2 } });
+    expect(bkit).not.toHaveProperty("disk");
     expect(touched(run())).toBe(false);
   });
 });
@@ -768,6 +1036,95 @@ describe("migrateRetiredDevLock (via runBkitDocs)", () => {
     fs.mkdirSync(LOCK);
     expect(paths(run())).not.toContain(LOCK);
     expect(fs.statSync(LOCK).isDirectory()).toBe(true);
+  });
+});
+
+describe("migrateJiraKeyName (via runBkitDocs)", () => {
+  const ENV = path.join(".bkit", ".env");
+  const run = (dryRun = false): { ctx: ModuleContext; logs: string[] } => {
+    const logs: string[] = [];
+    const spy = vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => {
+      logs.push(a.join(" "));
+    });
+    const ctx = makeCtx({ dryRun });
+    runBkitDocs(ctx.dryRun, ctx.tokens, ctx.ws, ctx.logPrefix);
+    spy.mockRestore();
+    return { ctx, logs };
+  };
+  const seed = (text: string): void => {
+    fs.mkdirSync(".bkit", { recursive: true });
+    fs.writeFileSync(ENV, text, "utf-8");
+  };
+
+  it("renames BKIT_JIRA_API_TOKEN to BKIT_JIRA_API_KEY in .bkit/.env, value kept, never logged or hashed", () => {
+    seed("BKIT_GH_TOKEN=gh\n# BKIT_JIRA_API_TOKEN — note\nBKIT_JIRA_API_TOKEN=atl-secret\n");
+    const { ctx, logs } = run();
+    expect(fs.readFileSync(ENV, "utf-8")).toBe(
+      "BKIT_GH_TOKEN=gh\n# BKIT_JIRA_API_KEY — note\nBKIT_JIRA_API_KEY=atl-secret\n",
+    );
+    expect(logs.join("\n")).toContain("BKIT_JIRA_API_KEY");
+    expect(logs.join("\n")).not.toContain("atl-secret");
+    expect(ctx.ws.writes.map((w) => path.normalize(w.path))).not.toContain(ENV);
+  });
+
+  it("dry-run leaves the file; a second run and an already-renamed file change nothing", () => {
+    seed("BKIT_JIRA_API_TOKEN=x\n");
+    run(true);
+    expect(fs.readFileSync(ENV, "utf-8")).toBe("BKIT_JIRA_API_TOKEN=x\n");
+    run();
+    run();
+    expect(fs.readFileSync(ENV, "utf-8")).toBe("BKIT_JIRA_API_KEY=x\n");
+  });
+
+  it("leaves both lines alone when the new name is already set", () => {
+    seed("BKIT_JIRA_API_KEY=new\nBKIT_JIRA_API_TOKEN=old\n");
+    run();
+    expect(fs.readFileSync(ENV, "utf-8")).toBe("BKIT_JIRA_API_KEY=new\nBKIT_JIRA_API_TOKEN=old\n");
+  });
+});
+
+describe("migrateLedgerSchema (via runBkitDocs)", () => {
+  const LEDGER = path.join("docs", "deferrals.jsonl");
+  const OLD =
+    '{"ts":1760000000123,"kind":"deferral","repo":"acme/widgets","bkitVersion":"5.5.0","workflow":"build","step":"build-challenge","key":"k","category":"other","severity":"LOW","reason":"low-severity","description":"d"}\n';
+  const run = (dryRun = false): ModuleContext => {
+    const ctx = makeCtx({ dryRun });
+    runBkitDocs(ctx.dryRun, ctx.tokens, ctx.ws, ctx.logPrefix);
+    return ctx;
+  };
+  const paths = (ctx: ModuleContext): string[] => ctx.ws.writes.map((w) => path.normalize(w.path));
+  const seed = (): void => {
+    fs.mkdirSync("docs", { recursive: true });
+    fs.writeFileSync(LEDGER, OLD, "utf-8");
+  };
+
+  it("rewrites a 5.5.x ledger row to schema 2 and records the write", () => {
+    seed();
+    const ctx = run();
+    const row = JSON.parse(fs.readFileSync(LEDGER, "utf-8")) as Record<string, unknown>;
+    expect(row).toMatchObject({
+      schema: 2,
+      ts: 1760000000123,
+      bkit: { version: "5.5.0" },
+      by: { workflow: "build", step: "build-challenge" },
+    });
+    expect(row["bkitVersion"]).toBeUndefined();
+    expect(paths(ctx)).toContain(LEDGER);
+  });
+
+  it("under dry-run records the same write and leaves the file", () => {
+    seed();
+    const ctx = run(true);
+    expect(fs.readFileSync(LEDGER, "utf-8")).toBe(OLD);
+    expect(paths(ctx)).toContain(LEDGER);
+  });
+
+  it("is idempotent", () => {
+    seed();
+    run();
+    const once = fs.readFileSync(LEDGER, "utf-8");
+    expect(paths(run())).not.toContain(LEDGER);
+    expect(fs.readFileSync(LEDGER, "utf-8")).toBe(once);
   });
 });
 

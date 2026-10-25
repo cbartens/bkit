@@ -19,7 +19,7 @@
 // Detection rules: every `fires` is local (files, settings, environment) — no network.
 // Where an advisory already detects the gap, `fires` calls that detector and `advisories`
 // names its ids, so the tip and the advisory can never disagree and one
-// `bkit.ignoreAdvisories` entry silences both.
+// `bkit.advisories.ignore` entry silences both.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -48,11 +48,12 @@ import {
   hasLintStagedConfig,
   hasMcpServer,
   hasTestLinter,
+  readsBkitText,
   unlockedMcpServers,
 } from "./detect.js";
 
 export interface SetupTip {
-  /** `bkit.ignoreAdvisories` key; never an advisory id (those go in `advisories`). */
+  /** `bkit.advisories.ignore` key; never an advisory id (those go in `advisories`). */
   id: string;
   /** Contexts the tip matters in; absent = shown only after every context's own tips. */
   workflows?: readonly TipsContext[];
@@ -90,9 +91,9 @@ export const SETUP_TIPS: readonly SetupTip[] = [
     title: "Connect an issue tracker",
     line: "bkit isn't connected to an issue tracker, so it can't read the task it's working on or record what it did. Connect GitHub, Linear or Jira, or switch this tip off if you don't want one.",
     why: "Every workflow starts by reading the issue it's working on and reports progress back to it as it goes. Without a tracker, you have to paste in what the agent should look at each time, and nothing records what changed or why.",
-    ask: 'Connect bkit to GitHub Issues: re-run `bkit install` with the tool flags I use plus `--tracker=github` (it records `bkit.issueTracker` in package.json and adds the tracker server to .mcp.json). If I don\'t want a tracker, set `"issueTracker": "none"` under `bkit` in package.json instead.',
+    ask: 'Connect bkit to GitHub Issues: re-run `bkit install` with the tool flags I use plus `--tracker=github` (it records `bkit.tracker.default` in package.json and adds the tracker server to .mcp.json). If I don\'t want a tracker, set `"issueTracker": "none"` under `bkit` in package.json instead.',
     steps:
-      '`.bkit/install.md` § Optional post-install decisions. Opt out: `"bkit": { "issueTracker": "none" }` in `package.json`.',
+      '`.bkit/install.md` § Optional post-install decisions. Opt out: `"bkit": { "tracker": { "default": "none" } }` in `package.json`.',
     advisories: ["tracker-setup-none"],
     fires: (cwd) => buildTrackerSetupAdvisory(cwd)?.id === "tracker-setup-none",
   },
@@ -164,7 +165,7 @@ export const SETUP_TIPS: readonly SetupTip[] = [
     title: "Automatic checks on every change",
     line: "Nothing checks your changes automatically before they're merged, so broken code can land unnoticed. Add bkit's check workflow.",
     why: 'This runs your tests and checks on GitHub every time something changes, and bkit\'s ship step waits for it to pass before merging. Without it, "shipped" only means "merged", not "checked".',
-    ask: "Copy .bkit/templates/.github/workflows/bkit-ci.yml to .github/workflows/bkit-ci.yml, replace `main` and `{{NODE_VERSION}}` in it with my default branch and Node major version, and add the `typecheck`, `lint`, `format:check`, `lint:prose`, `slop:delta` and `test` scripts to package.json as listed in .bkit/templates.md § Gate tool scripts.",
+    ask: "Copy .bkit/templates/.github/workflows/bkit-ci.yml to .github/workflows/<the file package.json `bkit.testing.ciWorkflow` names; default bkit-ci.yml>, replace `main` and `{{NODE_VERSION}}` in it with my default branch and Node major version, and add the `typecheck`, `lint`, `format:check`, `lint:prose`, `slop:delta` and `test` scripts to package.json as listed in .bkit/templates.md § Gate tool scripts.",
     steps: "`.bkit/templates.md` § CI workflow and § Gate tool scripts.",
     fires: (cwd) => !exists(cwd, `.github/workflows/${readBkitConfig(cwd).ciWorkflow}`),
   },
@@ -406,6 +407,16 @@ export const SETUP_TIPS: readonly SetupTip[] = [
   },
 
   // --- setup: only some setups -----------------------------------------------------------
+  {
+    id: "bkit-output-json",
+    title: "Scripts that read bkit's replies",
+    line: "A hook, script or CI step reads bkit's replies as JSON, but bkit replies in plain text unless the call passes `--json`. Add `--json` to those bkit calls.",
+    why: "bkit answers in short text lines by default because agents read them. A script expecting JSON gets nothing it can parse, so its step quietly does nothing.",
+    ask: "Add --json to every bkit call whose output a hook, script or CI workflow parses (piped to jq, or read with JSON.parse), then rerun `bkit tips` until this tip is gone.",
+    steps:
+      "`.bkit/workflows.md` § Workflow commands. Files: `.claude/hooks/`, `.husky/`, `.github/workflows/`, `scripts/`.",
+    fires: (cwd) => readsBkitText(cwd).length > 0,
+  },
   {
     id: "cursor-files",
     title: "Cursor editor settings",

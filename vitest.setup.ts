@@ -41,6 +41,12 @@ for (const key of Object.keys(process.env)) {
 // Tests of that lookup clear it with `vi.stubEnv("BKIT_NO_UPDATE_CHECK", "")`.
 process.env.BKIT_NO_UPDATE_CHECK = "1";
 
+// No test reads the developer's real Claude Code transcripts: `workflows close` finds the
+// running session's subagent transcripts from `CLAUDE_CODE_SESSION_ID` under
+// `CLAUDE_CONFIG_DIR` (`commands/workflow/run-facts.ts`). A test of that read sets both.
+delete process.env.CLAUDE_CODE_SESSION_ID;
+delete process.env.CLAUDE_CONFIG_DIR;
+
 // No test reads or writes the developer's real bkit config and cache folders: a real
 // `~/.config/bkit/disk-prune.mjs` holds delete steps, and any test that mints a worktree
 // runs `bkit disk prune`'s low-disk check (`commands/workflow/disk.ts`). Each worker gets
@@ -68,3 +74,18 @@ process.env.XDG_CACHE_HOME = path.join(xdg, "cache");
 // (in `loadFactor`), so the gate stays strict there.
 const testPath = expect.getState().testPath ?? "";
 vi.setConfig(tierTimeouts(testPath.endsWith(".integration.test.ts")));
+
+// Every test runs as on a laptop: GitHub Actions sets `GITHUB_ACTIONS` and `CI`, and the
+// engine reads those (and the cloud markers) as "headless, nobody to ask"
+// (`commands/workflow/runtime.ts`, `checks/before/env.ts`). Left set, a test passes on the
+// laptop and fails in CI. Cleared after the budget above has read `CI`. A test of another
+// runtime sets its own with `vi.stubEnv`.
+for (const key of [
+  "BKIT_RUNTIME",
+  "CLAUDE_CODE_REMOTE",
+  "CURSOR_REMOTE_AGENT",
+  "GITHUB_ACTIONS",
+  "CI",
+]) {
+  delete process.env[key];
+}
