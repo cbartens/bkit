@@ -220,6 +220,13 @@ if [ "$MIN_PUSH" != "1" ]; then
   pnpm bkit:lint:workflows < /dev/null
 fi
 
+# bkit repo only: the dependency audit CI's static job runs. It reads the npm advisory
+# database, so it can fail on an unchanged tree: an advisory appears, or one that
+# scripts/ci/accepted-advisories.json accepts is withdrawn. Runs on a min push too.
+if [ -f scripts/ci/check-dependency-audit.mjs ]; then
+  node scripts/ci/check-dependency-audit.mjs < /dev/null
+fi
+
 # bkit repo only: the graphify register gate (pasted from
 # scripts/graphify/bkit-graph-pre-push.sh, above the gates).
 # Capability register current on dev. BLOCKS a push to dev when docs/capabilities.md is not
