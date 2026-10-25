@@ -382,7 +382,7 @@ Elevated-permission workflows (`packages: write`, `id-token: write`, `contents: 
 
 Use one. Both open PRs for the same packages. `bkit.dependencies.updater: "none"` skips the install-time absence advisory.
 
-**Gate on known advisories.** Updater PRs never fail CI on a vulnerable version already in the lockfile. Copy `.bkit/templates/scripts/ci/check-dependency-audit.mjs`, its `.test.mjs` and `accepted-advisories.json` → `scripts/ci/`; the `Check Dependency Audit` step (`bkit-tests-static`) self-skips until then. It runs `pnpm audit --json`; a blocking advisory (default high / critical) without an acceptance fails:
+**Gate on known advisories.** Updater PRs never fail CI on a vulnerable version already in the lockfile. Copy `.bkit/templates/scripts/ci/check-dependency-audit.mjs`, its `.test.mjs` and `accepted-advisories.json` → `scripts/ci/`; the `Check Dependency Audit` step (`bkit-tests-static`) self-skips until then, and the `.husky/pre-push` template runs the same gate above the gates, so a known advisory fails at the push rather than a remote run. It runs `pnpm audit --json`; a blocking advisory (default high / critical) without an acceptance fails:
 
 <!-- prettier-ignore -->
 | Fails on | Fix |
@@ -392,7 +392,7 @@ Use one. Both open PRs for the same packages. `bkit.dependencies.updater: "none"
 | `expires` further out than the severity's `blocking` days (default critical 7, high 30) | Shorten it |
 | Row whose advisory the audit no longer reports | Delete the row |
 | Row without `advisory`, `reason` or a `YYYY-MM-DD` `expires`, or listed twice | Fix the row |
-| Audit prints no report after 3 tries | Fails closed; rerun |
+| Audit prints no report after 3 tries, or the registry is unreachable | Fails closed; rerun. A refused or unresolved registry fails in under a second — `--unreachable=warn` relaxes only that case |
 
 `blocking` = severity → max days per acceptance: the repo's fix-time policy, held only there. Not `auditConfig.ignoreGhsas`: it ignores forever and records no reason. New advisory reds an unrelated push → upgrade or accept in the next push. Non-pnpm repo → adapt `blockingFindings()`, or let the Trivy scan own the lockfile.
 

@@ -8,7 +8,11 @@
  * Exit: 0 = all tests passed, 1 = at least one test failed.
  */
 
-import { blockingFindings, checkAcceptances } from "./check-dependency-audit.mjs";
+import {
+  blockingFindings,
+  checkAcceptances,
+  classifyAuditOutput,
+} from "./check-dependency-audit.mjs";
 
 let passed = 0;
 let failed = 0;
@@ -121,6 +125,30 @@ test("a row with no reason, a bad date, or a repeat is invalid", () => {
 
 test("a report with no advisories has nothing to block", () => {
   assert(blockingFindings({ advisories: {} }).length === 0, "found something");
+});
+
+test("classifies a report as ok", () => {
+  const r = classifyAuditOutput(JSON.stringify({ advisories: {} }));
+  assert(r.status === "ok", `got ${r.status}`);
+});
+
+test("classifies an unreachable registry by its network code", () => {
+  const r = classifyAuditOutput(
+    JSON.stringify({ error: { code: "ENOTFOUND", message: "getaddrinfo ENOTFOUND" } }),
+  );
+  assert(r.status === "unreachable" && r.code === "ENOTFOUND", JSON.stringify(r));
+});
+
+test("a registry that answered badly is a failure, not unreachable", () => {
+  for (const code of ["ERR_PNPM_AUDIT_BAD_RESPONSE", "ERR_PNPM_AUDIT_ENDPOINT_NOT_EXISTS"]) {
+    const r = classifyAuditOutput(JSON.stringify({ error: { code, message: code } }));
+    assert(r.status === "failed", `${code} → ${r.status}`);
+  }
+});
+
+test("empty or non-JSON output is a failure", () => {
+  assert(classifyAuditOutput("").status === "failed", "empty");
+  assert(classifyAuditOutput("not json").status === "failed", "not json");
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

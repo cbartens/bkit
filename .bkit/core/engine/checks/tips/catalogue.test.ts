@@ -101,7 +101,14 @@ describe("SETUP_TIPS — catalogue", () => {
 
   it("audit tips are the code-reading, CI and dependency-safety ones", () => {
     const audit = ownTipsFor("audit").map((t) => t.id);
-    expect(audit).toEqual(["serena", "ci-workflow", "graphify", "dependabot-renovate", "trivy"]);
+    expect(audit).toEqual([
+      "serena",
+      "ci-workflow",
+      "graphify",
+      "dependabot-renovate",
+      "trivy",
+      "dependency-audit",
+    ]);
   });
 
   it("every template path an ask names exists", () => {
@@ -362,6 +369,14 @@ describe("SETUP_TIPS — detection", () => {
     expect(tip("tmp-prune").fires(cwd)).toBe(true);
     write("scripts/cleanup/bkit-tmp-prune.mjs");
     expect(tip("tmp-prune").fires(cwd)).toBe(false);
+  });
+
+  it("dependency-audit fires only once a pre-push hook exists without the gate script", () => {
+    expect(tip("dependency-audit").fires(cwd)).toBe(false);
+    write(".husky/pre-push");
+    expect(tip("dependency-audit").fires(cwd)).toBe(true);
+    write("scripts/ci/check-dependency-audit.mjs");
+    expect(tip("dependency-audit").fires(cwd)).toBe(false);
   });
 
   it("min-push fires only once a pre-push hook exists without the min-push check", () => {

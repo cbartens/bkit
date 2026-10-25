@@ -237,6 +237,14 @@ describe("check-dependency-audit", () => {
       runAuditGuard({ error: { code: "ERR_PNPM_AUDIT_BAD_RESPONSE" } }, { accepted: [] }),
     ).toBe(1);
   });
+
+  it("rejects an --unreachable value that is neither fail nor warn", () => {
+    const res = spawnSync(process.execPath, [AUDIT, "--unreachable=sometimes"], {
+      encoding: "utf-8",
+    });
+    expect(res.status).toBe(1);
+    expect(res.stderr).toContain("--unreachable");
+  });
 });
 
 const SHIPPED_SCRIPTS_DIR = path.resolve(".bkit/templates/scripts");

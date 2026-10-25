@@ -497,6 +497,25 @@ describe(".husky/pre-push template fast checks", () => {
     expect(gateAt(r.calls)).toBe(-1);
   });
 
+  it("the dependency audit runs before any gate, when its script is present", () => {
+    fs.mkdirSync(path.join(tmp, "scripts", "ci"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmp, "scripts", "ci", "check-dependency-audit.mjs"),
+      `import { appendFileSync } from "node:fs";\nappendFileSync(${JSON.stringify(path.join(tmp, "calls.log"))}, "audit\\n");\n`,
+    );
+    const r = runHook(0);
+    expect(r.status).toBe(0);
+    const at = r.calls.indexOf("audit");
+    expect(at).toBeGreaterThanOrEqual(0);
+    expect(gateAt(r.calls)).toBeGreaterThan(at);
+  });
+
+  it("no dependency-audit script → skipped, the gates still run", () => {
+    const r = runHook(0);
+    expect(r.calls).not.toContain("audit");
+    expect(gateAt(r.calls)).toBeGreaterThanOrEqual(0);
+  });
+
   it("no register script → skipped, the gates still run", () => {
     const r = runHook(null);
     expect(r.status).toBe(0);

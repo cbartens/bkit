@@ -48,7 +48,7 @@ Adoption order = `bkit tips` order. Local stack lock has no tip (nothing in a re
 | Tool | Copy from | To | Output you commit |
 | --- | --- | --- | --- |
 | CI workflow | `.bkit/templates/.github/workflows/bkit-ci.yml` | `.github/workflows/bkit-ci.yml` | that file |
-| CI scripts | `.bkit/templates/scripts/ci/` | `scripts/ci/` | the scripts you adopt (`lanes/resolve-push-base.mjs` + `.test.mjs`, CI's push base, also run by pre-push; `check-accepted-divergences.mjs` + `accepted-divergences.json`; `check-dependency-audit.mjs` + `accepted-advisories.json`). `check-capstone.mjs` + `check-capstone.test.mjs` are required with `bkit-ci.yml`, not optional |
+| CI scripts | `.bkit/templates/scripts/ci/` | `scripts/ci/` | the scripts you adopt (`lanes/resolve-push-base.mjs` + `.test.mjs`, CI's push base, also run by pre-push; `check-accepted-divergences.mjs` + `accepted-divergences.json`; `check-dependency-audit.mjs` + `accepted-advisories.json`, also run by pre-push). `check-capstone.mjs` + `check-capstone.test.mjs` are required with `bkit-ci.yml`, not optional |
 | Cloud-agent workflow | `.bkit/templates/.github/workflows/bkit-cloud.yml` | `.github/workflows/bkit-cloud.yml` | that file |
 | Git hooks (Husky) | `.bkit/templates/.husky/pre-commit`, `.bkit/templates/.husky/pre-push` | `.husky/pre-commit`, `.husky/pre-push` | both files |
 | Prettier ignore list | `.bkit/templates/.prettierignore` | `.prettierignore` | that file |
@@ -201,7 +201,7 @@ Post-CI router: CI pass on `feat/**` → `/bkit-ship`, fail → `/bkit-debug`; f
 
 ## Git hooks — Husky
 
-`pre-commit` runs `bkit:gate:format`; `pre-push` runs `bkit check` first, so a drifted install fails in seconds, then `bkit:gate:static-unit-integration` when package.json declares it, else `bkit:gate:static-unit` (`bkit:gate:static` on revert branches / commits; `bkit:gate:min` on a min push), plus the CI-suppressing-token guards and the `tmp/` prune (§ tmp/ prune). Each hook ends by starting the disk prune (§ Disk prune). Workflows care: they commit and push without `--no-verify`, so a failing hook stops a workflow. One exception: the throwaway `.worktrees/_land-{FID}` checkout that lands bookkeeping on `dev` (docs, logs, ledgers, `[skip ci]`) runs no hooks and logs that it skipped them. Reference: https://typicode.github.io/husky/.
+`pre-commit` runs `bkit:gate:format`; `pre-push` runs `bkit check` first, so a drifted install fails in seconds, then `bkit:gate:static-unit-integration` when package.json declares it, else `bkit:gate:static-unit` (`bkit:gate:static` on revert branches / commits; `bkit:gate:min` on a min push), plus the CI-suppressing-token guards, the dependency audit (§ Dependency audit) and the `tmp/` prune (§ tmp/ prune). Each hook ends by starting the disk prune (§ Disk prune). Workflows care: they commit and push without `--no-verify`, so a failing hook stops a workflow. One exception: the throwaway `.worktrees/_land-{FID}` checkout that lands bookkeeping on `dev` (docs, logs, ledgers, `[skip ci]`) runs no hooks and logs that it skipped them. Reference: https://typicode.github.io/husky/.
 
 ```bash
 pnpm add -D husky@^9.1.7   # plus "prepare": "husky" (§ Gate tool scripts)
@@ -381,6 +381,24 @@ gh secret set BKIT_GH_TOKEN
 - `enabled: false` on a Renovate package rule does not stop digest pinning; use `ignorePaths` to keep Renovate off a file.
 - Land config on default branch before bot runs. Examples set `baseBranchPatterns: ["dev"]`.
 - App install, self-hosted token, private-package host rule, CVE handling → `docs/deployments.md` § Dependency updaters.
+
+## Dependency audit — known-vulnerable dependencies fail the push
+
+A library with a published security advisory can sit in the lockfile for months: the updater only offers a fix, and nothing fails the check when one is missing. This gate stops a known high or critical advisory on the machine — at the push, before it reaches a remote run. Optional; the files are yours once copied. Reference: https://docs.npmjs.com/cli/v10/commands/npm-audit.
+
+```bash
+mkdir -p scripts/ci
+cp .bkit/templates/scripts/ci/check-dependency-audit.mjs \
+   .bkit/templates/scripts/ci/check-dependency-audit.test.mjs \
+   .bkit/templates/scripts/ci/accepted-advisories.json scripts/ci/
+```
+
+- Wiring: the `Dependency audit` block in the `.husky/pre-push` template runs it above the gates; skipped while `scripts/ci/check-dependency-audit.mjs` is absent. Your hook lacks the block → paste it above the gates. The `Check Dependency Audit` step (`bkit-tests-static`) self-skips until the script is copied.
+- Recommendation: adopt it and an advisory is seen at the first push, not at the first remote run. It reads the advisory registry the push already needs, so the network is no extra requirement.
+- Acceptances: a row in `scripts/ci/accepted-advisories.json` needs `advisory`, `reason` and a `YYYY-MM-DD` `expires`. The expiry may not run past the severity's `blocking` days (default critical 7, high 30), and a row the audit no longer reports fails. Upgrade before accepting: `pnpm update -r <pkg>`.
+- Fails closed: a blocking advisory, an unusable answer or an unreachable registry stops the push, never a pass on no answer. `--unreachable=warn` relaxes only the unreachable case — one warning, the push goes on — for a caller that leaves the check to CI; the shipped hook and the CI step both use the default `fail`. A registry that answered badly (401, 500, a missing endpoint) is a failure, not "unreachable".
+- The audit runs with pnpm's fetch retries off, so a refused or unresolved registry fails in under a second instead of hanging the push. A slow, working registry is never cut off.
+- Once adopted, the Trivy scan skips `pnpm-lock.yaml`: accept pnpm advisories here only (§ Trivy).
 
 ## Trivy — vulnerability, config and secret scan
 

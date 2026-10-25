@@ -276,8 +276,8 @@ const ADOPTED: Record<string, Entry> = {
         kind: "bkit-only",
         what: "dist freshness and actionlint",
         region: {
-          template: ["pnpm bkit check < /dev/null\n", "\n# disk prune"],
-          copy: ["pnpm bkit check < /dev/null\n", "\n# disk prune"],
+          template: ["# Slop base on a dev push", "\n# disk prune"],
+          copy: ["# Slop base on a dev push", "\n# disk prune"],
         },
       },
     ],

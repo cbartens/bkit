@@ -20,7 +20,12 @@
  * patched_versions, findings }). Another package manager → adapt `blockingFindings()`.
  *
  * Usage:  node scripts/ci/check-dependency-audit.mjs [--registry=<file>] [--report=<file>]
+ *                                                  [--unreachable=fail|warn]
  *         --report reads a saved `pnpm audit --json` instead of running the audit.
+ *         --unreachable (default fail) is what the LIVE audit does when the registry cannot
+ *         be reached at all: `fail` stops the run (CI's choice), `warn` prints one warning
+ *         and passes (a local hook that leaves the check to CI). A registry that answered
+ *         badly (401, 500, a missing endpoint) is never "unreachable": its answer stands.
  * Exit:   0 = every blocking advisory accepted and every row live, 1 = drift or no report.
  */
 
@@ -33,8 +38,32 @@ import { parseArgs } from "node:util";
 /** Severity → the most days an acceptance may run. Severities not listed never block. */
 export const DEFAULT_BLOCKING = { critical: 7, high: 30 };
 
+/**
+ * Error codes that mean the registry could not be reached at all — no DNS answer, a
+ * refused or reset connection, no route. A reachable registry that answers *badly*
+ * (`ERR_PNPM_AUDIT_BAD_RESPONSE` on a 401/500, `ERR_PNPM_AUDIT_ENDPOINT_NOT_EXISTS`) is
+ * not one of these: it answered, so its answer stands.
+ */
+export const UNREACHABLE_CODES = new Set([
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ETIMEDOUT",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ECONNABORTED",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "EPIPE",
+]);
+
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const DAY_MS = 24 * 60 * 60 * 1000;
+/**
+ * Pure backstop so a hung process cannot stall a push forever. A refused or unresolved
+ * registry returns in well under a second (`fetch-retries=0` below); this only catches a
+ * black hole, and stays generous so a slow legitimate registry is never cut off.
+ */
+const AUDIT_TIMEOUT_MS = 180_000;
 
 /** `YYYY-MM-DD` of a Date, in UTC. */
 export function isoDay(date) {
@@ -111,43 +140,98 @@ export function checkAcceptances(findings, registry, today) {
 }
 
 /**
- * Run `pnpm audit --json`, retrying when it prints no report (a registry blip).
- * pnpm exits 1 whenever it finds an advisory, so the exit code is not the signal; the report is.
- * @returns {object | null} the parsed report, or null after three attempts.
+ * Classify what a `pnpm audit --json` run printed. `--json` writes either the report or an
+ * `{ "error": { "code": … } }` object to stdout.
+ * @returns {{status:"ok", report:object}
+ *   | {status:"unreachable", code:string}
+ *   | {status:"failed", detail:string}}
+ */
+export function classifyAuditOutput(stdout) {
+  let parsed;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    return { status: "failed", detail: "not JSON" };
+  }
+  if (parsed && typeof parsed.advisories === "object") return { status: "ok", report: parsed };
+  const code = parsed?.error?.code;
+  if (typeof code === "string" && UNREACHABLE_CODES.has(code)) {
+    return { status: "unreachable", code };
+  }
+  return { status: "failed", detail: typeof code === "string" ? `error ${code}` : "no advisories" };
+}
+
+/**
+ * Run `pnpm audit --json`. pnpm exits 1 whenever it finds an advisory, so the exit code is
+ * not the signal; the report is. `fetch-retries=0` makes an unreachable registry fail in
+ * under a second instead of hanging through pnpm's retry backoff. A *reachable* failure (a
+ * registry blip) is retried; an unreachable registry returns at once.
+ * @returns {ReturnType<typeof classifyAuditOutput>}
  */
 function runAudit() {
   for (let attempt = 1; attempt <= 3; attempt++) {
     const res = spawnSync("pnpm", ["audit", "--json"], {
       encoding: "utf-8",
       maxBuffer: 64 * 1024 * 1024,
+      timeout: AUDIT_TIMEOUT_MS,
+      killSignal: "SIGKILL",
+      env: { ...process.env, npm_config_fetch_retries: "0" },
     });
-    let parseError = "";
-    try {
-      const report = JSON.parse(res.stdout);
-      if (report && typeof report.advisories === "object") return report;
-    } catch (err) {
-      parseError = `not JSON (${err.message}): `;
-    }
+    if (res.error?.code === "ETIMEDOUT") return { status: "unreachable", code: "ETIMEDOUT" };
+    const outcome = classifyAuditOutput(res.stdout ?? "");
+    if (outcome.status !== "failed") return outcome;
     const tail = (res.stderr || res.stdout || "").trim().split("\n").slice(-3).join(" | ");
-    const detail = parseError + tail;
-    console.error(`::warning::dependency-audit: attempt ${attempt} printed no report — ${detail}`);
+    console.error(
+      `::warning::dependency-audit: attempt ${attempt} printed no report — ${outcome.detail}; ${tail}`,
+    );
   }
-  return null;
+  return { status: "failed", detail: "no report after 3 attempts" };
 }
 
 function main(argv) {
   const { values } = parseArgs({
     args: argv,
-    options: { registry: { type: "string" }, report: { type: "string" } },
+    options: {
+      registry: { type: "string" },
+      report: { type: "string" },
+      unreachable: { type: "string" },
+    },
     strict: false,
   });
   const registryPath = values.registry ?? path.join("scripts", "ci", "accepted-advisories.json");
   const reportPath = values.report ?? null;
+  const unreachable = values.unreachable ?? "fail";
+  if (unreachable !== "fail" && unreachable !== "warn") {
+    console.error(
+      `::error::dependency-audit: --unreachable takes fail or warn, not ${unreachable}`,
+    );
+    process.exit(1);
+  }
 
   const registry = fs.existsSync(registryPath)
     ? JSON.parse(fs.readFileSync(registryPath, "utf-8"))
     : { accepted: [] };
-  const report = reportPath ? JSON.parse(fs.readFileSync(reportPath, "utf-8")) : runAudit();
+
+  let report;
+  if (reportPath) {
+    // A saved report is the offline replay; only the live audit is ever "unreachable".
+    report = JSON.parse(fs.readFileSync(reportPath, "utf-8"));
+  } else {
+    const outcome = runAudit();
+    if (outcome.status === "unreachable") {
+      if (unreachable === "warn") {
+        console.error(
+          `::warning::dependency-audit: registry unreachable (${outcome.code}) — NOT checked; CI re-checks this push`,
+        );
+        process.exit(0);
+      }
+      console.error(
+        `::error::dependency-audit: registry unreachable (${outcome.code}) — failing closed`,
+      );
+      process.exit(1);
+    }
+    report = outcome.report;
+  }
   if (!report || typeof report.advisories !== "object") {
     console.error("::error::dependency-audit: the audit printed no report — failing closed");
     process.exit(1);

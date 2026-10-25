@@ -129,6 +129,17 @@ done
 # Fix: `pnpm bkit install`, stage the regenerated files, commit, push.
 pnpm bkit check < /dev/null
 
+# Dependency audit — the same gate CI's static lane runs. A high or critical advisory
+# stops the push here, so a remote run is not spent on a red this machine could have
+# caught. It reads the advisory registry: the push it precedes needs the network anyway.
+# Fails closed — a blocking advisory, an unusable answer or an unreachable registry stops
+# the push, never a pass on no answer. `--unreachable=warn` relaxes only the last of those.
+# A recommendation: adopt it, and CI stops being the first place an advisory is seen.
+# Skipped until scripts/ci/ holds the script (bkit install never writes it).
+if [ -f scripts/ci/check-dependency-audit.mjs ]; then
+  node scripts/ci/check-dependency-audit.mjs < /dev/null
+fi
+
 # Slop base on a dev push — the commit CI's slop scan compares against: the head of the last
 # green CI push run on dev, else origin/dev (scripts/ci/lanes/resolve-push-base.mjs, the
 # script CI's planner runs, in local mode). Exported as SLOP_BASE_REF, which `bkit ci slop`
