@@ -413,7 +413,8 @@ export function requireRecordOnShared(
 /**
  * Append one `step-done` row, then commit (parentSha first, the row, then the
  * commit — the order the fold's de-dup relies on). Returns the row and the new
- * commit; `code` is EXIT_COMMIT when the row landed but the commit failed.
+ * commit; `code` is EXIT_COMMIT when the commit failed, and the appended row is
+ * rolled back, so a re-run after the human's fix writes the same attempt once.
  */
 export function writeStepRow(
   cwd: string,
@@ -459,7 +460,17 @@ export function writeStepRow(
     }
   }
   fs.mkdirSync(path.dirname(r.file), { recursive: true });
-  fs.appendFileSync(r.file, appendLine(row));
+  const before = fs.existsSync(r.file) ? fs.statSync(r.file).size : -1;
+  const line = appendLine(row);
+  fs.appendFileSync(r.file, line);
+  // A refused commit takes the row back off `r.file`: the exit code means nothing was
+  // written, and the step's attempt is unchanged, so a re-run after the human's fix
+  // lands the same attempt once instead of opening the next. A concurrent append leaves
+  // the file alone rather than truncating another writer's row.
+  const rollback = () => {
+    if (before < 0) fs.rmSync(r.file, { force: true });
+    else if (fs.readFileSync(r.file, "utf-8").endsWith(line)) fs.truncateSync(r.file, before);
+  };
 
   if (r.commit === "none") return { row, commit: null, code: EXIT.OK };
   if (rec !== null) {
@@ -468,11 +479,13 @@ export function writeStepRow(
       own = ownPathCommit(cwd, rec, r.message!, { allowEmpty: true });
     } catch (err) {
       if (!(err instanceof CommandError) || err.code !== EXIT_FOREIGN_PATH) throw err;
-      log(`row written to ${r.file} but the commit was refused: ${err.message}`);
+      rollback();
+      log(`no row written to ${r.file}: the commit was refused: ${err.message}`);
       return { row, commit: null, code: EXIT_FOREIGN_PATH };
     }
     if (!own.ok) {
-      log(`row written to ${r.file} but the commit failed: ${own.error}`);
+      rollback();
+      log(`no row written to ${r.file}: the commit failed: ${own.error}`);
       return { row, commit: null, code: EXIT_COMMIT };
     }
     return { row, commit: runGit(cwd, ["rev-parse", "HEAD"]).stdout, code: EXIT.OK };
@@ -480,7 +493,8 @@ export function writeStepRow(
   const add = addAllButCopied(cwd);
   const made = add.ok ? runGit(cwd, ["commit", "--allow-empty", "-m", r.message!]) : add;
   if (!made.ok) {
-    log(`row written to ${r.file} but the commit failed: ${made.stderr || made.stdout}`);
+    rollback();
+    log(`no row written to ${r.file}: the commit failed: ${made.stderr || made.stdout}`);
     return { row, commit: null, code: EXIT_COMMIT };
   }
   return { row, commit: runGit(cwd, ["rev-parse", "HEAD"]).stdout, code: EXIT.OK };
@@ -1045,7 +1059,8 @@ export const stepsCommand: CommandSpec = {
       exitCodes: {
         [EXIT_NO_STATUS]: "--attempt=next could not read status.jsonl",
         [EXIT_ARTIFACT]: "an --artifact is missing, empty, or outside the working directory",
-        [EXIT_COMMIT]: "the row was written but the commit failed",
+        [EXIT_COMMIT]:
+          "nothing written, nothing committed: the commit failed and the row was rolled back",
         [EXIT_FOREIGN_PATH]:
           "nothing written, nothing committed: a path that was dirty before an in-place run changed during it",
         [EXIT_NO_RECORD]:
@@ -1254,7 +1269,8 @@ export const stepsCommand: CommandSpec = {
           "an --agent's header is invalid (no verdict:end, a value outside its set, Failures disagreeing with Verdict) — re-ask it (nothing written)",
         [EXIT_ARTIFACT]:
           "an --artifact is missing, empty, or outside the working directory (nothing written)",
-        [EXIT_COMMIT]: "the row was written but the commit failed",
+        [EXIT_COMMIT]:
+          "nothing written, nothing committed: the commit failed and the row was rolled back",
         [EXIT_FOREIGN_PATH]:
           "nothing written, nothing committed: a path that was dirty before an in-place run changed during it",
         [EXIT_NO_RECORD]:

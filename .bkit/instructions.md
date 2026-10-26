@@ -2220,11 +2220,11 @@ One `### {name}` per clause, in the lines of § Format, Clause section lines. He
 - carriers: workflow all except `bkit-auto`
 
 ```text
-**Finish:** `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, {{work}}, prints `comment`. Exit 5 **or** 6 → invoke `reask.agent` again with `"Your prior output '<reask.artifact>' has an invalid header. Re-emit only its header fields + '<!-- verdict:end -->' at top of that file. Do not redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**. Hold `verdict` as the step's verdict, `fields` as its other header fields{{attempt?}}.
+**Finish:** `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, {{work}}, prints `comment`. Exit 5 **or** 6 → invoke `reask.agent` again with `"Your prior output '<reask.artifact>' has an invalid header. Re-emit only its header fields + '<!-- verdict:end -->' at top of that file. Do not redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**. Exit 8 → nothing written, nothing committed: fix what the hook's message names, then re-run this block — the step's attempt is unchanged. Hold `verdict` as the step's verdict, `fields` as its other header fields{{attempt?}}.
 ```
 
 ```retired
-**Finish:** `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, {{work}}, prints `comment`. Exit 5 **or** 6 → invoke `reask.agent` again with `"Your prior output '<reask.artifact>' has an invalid header. Re-emit ONLY its header fields + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**. Hold `verdict` as the step's verdict, `fields` as its other header fields{{attempt?}}.
+**Finish:** `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, {{work}}, prints `comment`. Exit 5 **or** 6 → invoke `reask.agent` again with `"Your prior output '<reask.artifact>' has an invalid header. Re-emit only its header fields + '<!-- verdict:end -->' at top of that file. Do not redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**. Hold `verdict` as the step's verdict, `fields` as its other header fields{{attempt?}}.
 ```
 
 ### workflow-resume
@@ -6730,7 +6730,7 @@ Header bullets of the 6 workflow files, block by block, in file order; `.bkit/au
 | **Timeouts** | Protocol | all 6 | Workflow or subagent run > 3600 seconds → **Failure Path**. |
 | **CI wait turn-loop** | Protocol | build, debug | CI-wait block exits 81 (or 80) → resolve the poll in the agent turn loop, then re-run the block with the result. |
 | **Friction** | Contract | all 6 | Confirm prompts, manual installs, rework, repeated tool failures, destructive backouts → append `.bkit/friction.jsonl` rows → continue or escalate; never replaces **Failure Path**. |
-| **Finish** | Contract | design, plan, build, debug, ship | `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, derives the attempt, checks what the gate checks, writes the row, commits, prints `comment`. Exit 5 or 6 → re-ask `reask.agent` for its header only, re-run the block; still non-zero → **Failure Path**. |
+| **Finish** | Contract | design, plan, build, debug, ship | `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, derives the attempt, checks what the gate checks, writes the row, commits, prints `comment`. Exit 5 or 6 → re-ask `reask.agent` for its header only, re-run the block; still non-zero → **Failure Path**. Exit 8 → nothing written, nothing committed: fix what the hook's message names, then re-run the block; the attempt is unchanged. |
 | **Resume** | Contract | design, plan, build, debug, ship | After Step 2, `bkit status resume` folds status.jsonl and names the step after the last `DONE` step of the active `IN_PROGRESS` run; for build, `workflows start` also prints the run's `OPEN` decision as `openDecision`. |
 | **Plan** | Contract | build | The plan path, in task-block form, with the `bkit.workflows.tasks` group caps held at Step 1; one group per pass of the execute-verify loop; tasks tick `[x]` only in verify. |
 | **Status** | Contract | design, plan, build, debug, ship | `status.jsonl` = append-only NDJSON event log, folded to the run array; `step-done` carries `parentSha` captured at step START plus optional `verdict`, `failures`, `attempt`, `strategy`; build adds `group`, debug a `workflow-meta` `debugAttempt`. |
@@ -6855,7 +6855,7 @@ Mid-stream termination after verdict line → usable verdict + truncated body (d
    - Re-issue same subagent: "Your prior output `{file}` is missing/invalid verdict. Re-emit only the verdict header (`Verdict: {one of your verdict words}` + `<!-- verdict:end -->`) at the top of that file. Do not redo the work; the body is already in place."
    - `VERDICT_RETRY` = 1.
 5. **If retry fails** (`VERDICT_RETRY` > 1) → **Failure Path**.
-   - `bkit steps finish` exit 5 (a field still PENDING) and exit 6 (invalid verdict or a field the prompt declares missing) both re-ask the agent `reask` names for its header only (the workflows' **Finish** header line); any other non-zero → **Failure Path**. Every workflow routes every finish this way; a multi-agent finish names the offending artifact in `reask`.
+   - `bkit steps finish` exit 5 (a field still PENDING) and exit 6 (invalid verdict or a field the prompt declares missing) both re-ask the agent `reask` names for its header only (the workflows' **Finish** header line); exit 8 → nothing written, nothing committed, fix what the hook's message names and re-run the block; any other non-zero → **Failure Path**. Every workflow routes every finish this way; a multi-agent finish names the offending artifact in `reask`.
 6. Orchestrator never synthesizes verdict — masks truncation/budget signals.
 
 **Per-step gate item (verdict-bearing steps):**

@@ -201,7 +201,7 @@ describe("bkit steps done", () => {
     expect((await run(repo(), ["steps", "done", ...STEP])).code).toBe(2);
   });
 
-  it("reports a failed commit with exit 8 after writing the row", async () => {
+  it("reports a failed commit with exit 8 without writing the row", async () => {
     const cwd = repo();
     fs.mkdirSync(path.join(cwd, ".git/hooks"), { recursive: true });
     write(cwd, ".git/hooks/pre-commit", "#!/bin/sh\necho blocked >&2\nexit 1\n");
@@ -209,7 +209,7 @@ describe("bkit steps done", () => {
     const r = await run(cwd, doneArgs());
     expect(r.code).toBe(8);
     expect(r.err).toContain("blocked");
-    expect(fs.existsSync(path.join(cwd, "logs/status.jsonl"))).toBe(true);
+    expect(fs.existsSync(path.join(cwd, "logs/status.jsonl"))).toBe(false);
   });
 });
 
@@ -1260,7 +1260,7 @@ describe("bkit steps done — a run in place on dev that shares its checkout", (
     expect(readRecord(cwd, FID)?.commits).toEqual([git(cwd, "rev-parse", "HEAD")]);
   });
 
-  it("a hook-refused own-path commit exits without staging a recorded path", async () => {
+  it("a hook-refused own-path commit exits without staging a recorded path or writing the row", async () => {
     const cwd = shared();
     const head = git(cwd, "rev-parse", "HEAD");
     fs.mkdirSync(path.join(cwd, ".git/hooks"), { recursive: true });
@@ -1272,5 +1272,6 @@ describe("bkit steps done — a run in place on dev that shares its checkout", (
     expect(staged(cwd)).toBe("src/staged.txt");
     expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
     expect(readRecord(cwd, FID)).toMatchObject({ commits: [] });
+    expect(fs.existsSync(path.join(cwd, LOGS, "status.jsonl"))).toBe(false);
   });
 });
