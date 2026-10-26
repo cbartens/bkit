@@ -1,6 +1,18 @@
 {
   "version": 1,
   "skills": {
+    "Hook Development": {
+      "source": "anthropics/claude-code",
+      "sourceType": "github",
+      "skillPath": "plugins/plugin-dev/skills/hook-development/SKILL.md",
+      "computedHash": "a1721df65785b6c0439d4326cdee0cb2b6aa98de09fc98463afc3e040fe00ce9"
+    },
+    "bash-defensive-patterns": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/shell-scripting/skills/bash-defensive-patterns/SKILL.md",
+      "computedHash": "273cd627fc3b12b9313f6a5fbfd2bb7ac9ee469716d01fb2104477f7b47a9bf9"
+    },
     "find-skills": {
       "source": "vercel-labs/skills",
       "sourceType": "github",
