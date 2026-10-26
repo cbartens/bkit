@@ -320,5 +320,6 @@
       }
     ]
   },
-  "autoCompactWindow": 300000
+  "autoCompactWindow": 300000,
+  "disableClaudeAiConnectors": true
 }
