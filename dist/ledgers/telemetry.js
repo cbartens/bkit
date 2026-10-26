@@ -207,10 +207,11 @@ export const KIND_WRITERS = {
             "bkit-plan-update",
             "bkit-utility-update-decisions",
         ]),
-        // Build: Decision Pause accept; plan: an open question answered after close; ship: an
-        // assumed accept the owner confirms (`bkit decisions apply --by=owner`). All ONLY after
-        // explicit human approval.
-        orchestrators: new Set(["build", "plan", "ship"]),
+        // Build: Decision Pause accept; plan: an open question answered after close; design: an
+        // open question answered by the owner at close (the human decides, the orchestrator
+        // records); ship: an assumed accept the owner confirms (`bkit decisions apply --by=owner`).
+        // All ONLY after explicit human approval.
+        orchestrators: new Set(["design", "build", "plan", "ship"]),
     },
     // Build: `bkit challenge merge` writes each LOW challenge finding (`low-severity`). Ship:
     // `bkit decisions pending --defer` writes each assumed accept nobody confirmed (`needs-decision`).
@@ -227,7 +228,7 @@ export const KIND_WRITERS = {
     },
     friction: {
         subagents: new Set(),
-        orchestrators: new Set(["design", "plan", "build", "debug", "ship"]),
+        orchestrators: new Set(["design", "plan", "build", "debug", "ship", "auto"]),
     },
     compliance: { subagents: new Set(), orchestrators: CLOSING_WORKFLOWS },
     counter: { subagents: new Set(), orchestrators: CLOSING_WORKFLOWS },

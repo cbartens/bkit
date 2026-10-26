@@ -1872,6 +1872,7 @@ describe("writerProblem", () => {
   it("admits a listed subagent and the listed orchestrator", () => {
     expect(writerProblem(row({ subagent: "bkit-plan-generate", model: "m" }))).toBeUndefined();
     expect(writerProblem(row({}))).toBeUndefined();
+    expect(writerProblem(row({ workflow: "design" }))).toBeUndefined();
   });
 
   it("refuses an unlisted subagent or orchestrator", () => {
@@ -1879,7 +1880,14 @@ describe("writerProblem", () => {
       "does not write decision rows",
     );
     expect(writerProblem(row({ workflow: "debug" }))).toContain(
-      "the debug orchestrator does not write decision rows (orchestrators: build, plan, ship)",
+      "the debug orchestrator does not write decision rows (orchestrators: design, build, plan, ship)",
+    );
+  });
+
+  it("admits the auto orchestrator on friction rows", () => {
+    expect(writerProblem({ kind: "friction", by: { workflow: "auto" } })).toBeUndefined();
+    expect(writerProblem({ kind: "friction", by: { workflow: "audit" } })).toContain(
+      "the audit orchestrator does not write friction rows",
     );
   });
 

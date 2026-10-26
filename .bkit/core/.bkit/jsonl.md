@@ -49,11 +49,11 @@ One file per `kind`; writers:
 | `counter` | `.bkit/stats.jsonl` | `bkit workflows close` of design / plan / build / debug / ship (attempt counters) |
 | `chat` | `harvest/stats.jsonl` (bkit repo only) | bkit's harvest script: per agent chat on the maintainer's machine, any repo or host |
 | `run` | `harvest/stats.jsonl` (bkit repo only) | Same script: per workflow run in the run logs of every repo a chat ran in |
-| `friction` | `.bkit/friction.jsonl` | orchestrator workflows (design / plan / build / debug / ship) on observed friction |
+| `friction` | `.bkit/friction.jsonl` | orchestrator workflows (design / plan / build / debug / ship / auto) on observed friction |
 | `deferral` | `docs/deferrals.jsonl` | `@bkit-design-generate`, `@bkit-plan-generate`, `@bkit-plan-update`, `@bkit-debug-abort-handover`, `@bkit-ship-deferred-sweep` (adjudication only), `@bkit-utility-update-deferrals` (close / triage / locator), build orchestrator (`LOW` challenge finding → `low-severity`, through `bkit challenge merge`), ship orchestrator (assumed accept nobody confirmed → `needs-decision`, through `bkit decisions pending --defer`) |
 | `failure` | `docs/failures.jsonl` | any agent on a discovered bug; `@bkit-debug-abort-handover`; `@bkit-audit-generate` (`MEDIUM`+ findings; rerun closes rows it no longer finds); `@bkit-utility-update-failures` (close / triage / locator) |
 | `knowledge` | `docs/knowledge.jsonl` | `@bkit-build-plan-execute`, `@bkit-build-plan-gaps-remediate`, `@bkit-debug-failure-remediate` (after verified fix), `@bkit-utility-update-knowledge` (supersede / correct) |
-| `decision` | `docs/decisions.jsonl` | `@bkit-debug-failure-remediate` (forced arch), `@bkit-plan-generate`, `@bkit-plan-update` (decision changed by review), `@bkit-utility-update-decisions` (supersede / correct), build orchestrator (Decision Pause accept), plan orchestrator (open question answered after close), ship orchestrator (assumed accept confirmed by the owner, through `bkit decisions apply --by=owner`); orchestrators ONLY after explicit human approval |
+| `decision` | `docs/decisions.jsonl` | `@bkit-debug-failure-remediate` (forced arch), `@bkit-plan-generate`, `@bkit-plan-update` (decision changed by review), `@bkit-utility-update-decisions` (supersede / correct), build orchestrator (Decision Pause accept), design orchestrator (owner's answer to an open question after close), plan orchestrator (open question answered after close), ship orchestrator (assumed accept confirmed by the owner, through `bkit decisions apply --by=owner`); orchestrators ONLY after explicit human approval |
 | `feature` | `.bkit/issues.jsonl` | design / plan / build / debug orchestrators at their phase close; ship Step 6 into the worktree ledger (rides the PR); `ABANDONED` only by a human, or an agent on explicit human instruction |
 
 **Writers are exhaustive:** only agents listed as writers for a given kind are allowed to write that specific kind; no exceptions. For the five `bkit ledgers append` kinds this column is `KIND_WRITERS` in `.bkit/core/engine/ledgers/telemetry.ts`, the check `append` runs; `telemetry.test.ts` fails when either side changes alone.
@@ -71,7 +71,7 @@ Every row opens with the same top section, in this order:
 | `key` | `string?` | Keyed kinds only (`friction` / `deferral` / `failure` / `knowledge` / `decision` / `feature` / `chat` / `run`). See § Key & References. |
 | `repo` | `string` | Origin repo slug, e.g. `cbartens/bkit`; its fingerprint on `chat` / `run` rows (§ Per-Kind Fields). |
 | `bkit` | `{version}` | `version` = bkit version that emitted the row (`null` on `chat` / `run` when none found). `chat` adds its bkit-use fields. |
-| `by` | `{workflow?, step, subagent?, model?}` | Who wrote it — § Who Wrote It. `workflow`: `design` / `plan` / `build` / `debug` / `ship` / `audit`; `chat-stats` on `chat` (the harvest script's scan); the run's workflow on `run`. |
+| `by` | `{workflow?, step, subagent?, model?}` | Who wrote it — § Who Wrote It. `workflow`: `design` / `plan` / `build` / `debug` / `ship` / `auto` / `audit`; `chat-stats` on `chat` (the harvest script's scan); the run's workflow on `run`. |
 | `references` | `string[]?` | Pointers that place the row: feature ids, tracker ids, PRs, commit SHAs, paths, a sibling `ts`. See § Key & References. |
 
 Values, every kind:
