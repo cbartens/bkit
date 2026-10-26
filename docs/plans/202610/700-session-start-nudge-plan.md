@@ -121,7 +121,7 @@ Source: `#700` `### Narrative`, verbatim (owner-supplied; no design and no audit
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Acceptance Scenario confirmed:** I have reviewed the Narrative, Success Criteria, Process Sketch, Concrete Example, Edge Cases, and Derived Test Matrix above. They correctly describe what "done" looks like.
+- [x] **Acceptance Scenario confirmed:** I have reviewed the Narrative, Success Criteria, Process Sketch, Concrete Example, Edge Cases, and Derived Test Matrix above. They correctly describe what "done" looks like.
 
 ---
 
@@ -145,7 +145,7 @@ Installed mirrors gain the same basenames under `.opencode/plugin/`, `.codex/hoo
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Breaking Changes confirmed:** I have reviewed all breaking changes and naming decisions above.
+- [x] **Breaking Changes confirmed:** I have reviewed all breaking changes and naming decisions above.
 
 ---
 
@@ -171,7 +171,7 @@ Installed mirrors gain the same basenames under `.opencode/plugin/`, `.codex/hoo
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Open Questions & Assumptions confirmed:** I have resolved or explicitly accepted every open question and assumption above.
+- [x] **Open Questions & Assumptions confirmed:** I have resolved or explicitly accepted every open question and assumption above.
 
 ---
 
@@ -233,12 +233,12 @@ None — no new API routes, DB tables/columns, secrets, user input, redirects or
 
 ### 🔒 Gate 1: Prerequisites Check
 
-- [ ] **Acceptance Scenario confirmed:** Human confirmed `👤 Acceptance Scenario` section (checkbox is `[x]`).
-- [ ] **Breaking Changes confirmed:** Human confirmed `⚠️ Breaking Changes & Naming Review` section (checkbox is `[x]`).
-- [ ] **Open Questions confirmed:** Human confirmed `👤 Open Questions & Assumptions` section (checkbox is `[x]`).
+- [x] **Acceptance Scenario confirmed:** Human confirmed `👤 Acceptance Scenario` section (checkbox is `[x]`).
+- [x] **Breaking Changes confirmed:** Human confirmed `⚠️ Breaking Changes & Naming Review` section (checkbox is `[x]`).
+- [x] **Open Questions confirmed:** Human confirmed `👤 Open Questions & Assumptions` section (checkbox is `[x]`).
 - [x] **Security & Privacy checked:** no applicable row; `None` justified above.
 - [x] **Reuse Inventory complete:** every capability has a row with `Search performed` and `Decision`; every `NEW` cites its reason.
-- [ ] **Gate 1 - Verified:** Core items and applicable Conditional items checked.
+- [x] **Gate 1 - Verified:** Core items and applicable Conditional items checked.
 
 ## Data Schema Integration
 
