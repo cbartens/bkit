@@ -67,7 +67,7 @@ bkit asks the owner questions in five workflows and labels the answer options th
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Pin the option layout in the canonical description and add the audit that holds the whole corpus to it
+- [x] **TASK 2:** Pin the option layout in the canonical description and add the audit that holds the whole corpus to it
   - **CREATE:** `.bkit/core/engine/audits/workflows/question-option-format.test.ts`: the corpus audit — every `Options:` line in `.bkit/core/workflows/*.md`, `.bkit/core/prompts/*.md`, `.bkit/core/docs/templates/*.md` and `.bkit/core/.bkit/*.md` letters each entry `A) … / B) …`; every `Recommended:` line in the workflows names a letter; every open-question rule in the prompts names the lettered form; a not-vacuous guard that counts the option lines found per directory; RED-PROOF cases feeding a synthetic `Options: A / B` and a synthetic `Options: Accept / Fix now` and asserting the rule fires
   - **UPDATE:** `.bkit/core/.bkit/workflows.md`: the `§ Ask points` **Question layout** bullet — `Options: A) … / B) …` and `Recommended: A) X — {reason}`
   - **UPDATE:** `.bkit/core/.bkit/authoring.md`: `§ Human questions` — pin the options as lettered `A)`, `B)`, `C)`, including options that carry a name; record behaviour only, never this issue's number
@@ -79,7 +79,7 @@ bkit asks the owner questions in five workflows and labels the answer options th
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** Letter every option line the five phase workflows state, and refresh the `none` render baselines
+- [x] **TASK 3:** Letter every option line the five phase workflows state, and refresh the `none` render baselines
   - **UPDATE:** `.bkit/core/workflows/bkit-debug.md`: the Loop Question's `Options: Try again / Stop` line and its `Recommended:` line — `Options: A) Try again / B) Stop`, the recommendation naming the chosen letter
   - **UPDATE:** `.bkit/core/workflows/bkit-ship.md`: the Confirm Assumed Items line — `Options: A) Confirm / B) Reject`; the merge fix-round line — `Options: A) Try again / B) Stop`, its `Recommended:` naming the chosen letter
   - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: the `§ Decision Pause` step 4 rendering line — name the lettered `Options:` and `Recommended:` lines the question carries
@@ -100,7 +100,7 @@ bkit asks the owner questions in five workflows and labels the answer options th
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** Letter the open-question and audit decision-question option shape in the prompts and templates
+- [x] **TASK 4:** Letter the open-question and audit decision-question option shape in the prompts and templates
   - **UPDATE:** `.bkit/instructions.md`: the `### plan-open-questions` clause — its today's canonical text moves to the `retired` block and the new canonical text states each open question's options lettered `A) {option} — {trade-off} · B) …`; `pnpm instructions:sync` then writes it into the four carriers (`bkit-plan-generate`, `bkit-plan-review-1`, `bkit-plan-scope-check`, `bkit-plan-update`), never edited by hand
   - **UPDATE:** `.bkit/core/prompts/bkit-design-generate.md`: the `Risks & Open Questions` rule — an open question carries lettered options and a lettered `Recommended`
   - **UPDATE:** `.bkit/core/prompts/bkit-design-update.md`: the `Risks & Open Questions` rule — the same lettered option shape
