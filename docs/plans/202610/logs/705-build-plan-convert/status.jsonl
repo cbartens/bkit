@@ -1,0 +1,5 @@
+{"type":"workflow-started","workflow":"build","at":"2026-10-26T13:07:19Z","parentSha":"ee0687d3d16dc50a5c07ee407e8186dad3932d07"}
+{"type":"runtime-resolved","workflow":"build","at":"2026-10-26T13:07:21Z","runtime":"LOCAL","runtimeWorktrees":true,"runtimeDevPushes":true,"runtimeGithubCli":true,"runtimeGithubCliExit":0,"runtimeGithubCliErr":"","baseSha":""}
+{"type":"step-done","workflow":"build","step":"build-start-workflow","status":"DONE","at":"2026-10-26T13:07:27Z","parentSha":"ee0687d3d16dc50a5c07ee407e8186dad3932d07","artifacts":[]}
+{"type":"engine-action","action":"comment","key":"build/1/build-worktree-setup/-/-/comment","hash":"eb606110a949eeeffbca63060fd1311e506d2cf9ed28223baeb976afe822b439","ref":"https://github.com/cbartens/bkit/issues/705#issuecomment-6416752777","at":"2026-10-26T13:07:28Z"}
+{"type":"step-done","workflow":"build","step":"build-worktree-setup","status":"DONE","at":"2026-10-26T13:07:28Z","parentSha":"ee0687d3d16dc50a5c07ee407e8186dad3932d07","artifacts":["docs/plans/202610/logs/705-build-plan-convert/build-input-1.md"]}
