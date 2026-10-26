@@ -95,11 +95,20 @@ describe("bkit decisions compose", () => {
     expect(text).toContain(
       "**Q1 — Task 3 [src/a.ts:10]:** MEDIUM: the retry has no cap. Accept it?",
     );
-    expect(text).toContain("Recommended: Fix now — a secret reaches the log");
+    expect(text).toContain("Recommended: B) Fix now — a secret reaches the log");
     expect(text).toContain("No recommendation — only the owner can waive test-first");
     expect(text.trimEnd().split("\n").at(-1)).toBe(
       'Reply per question. "yes" takes every recommendation. "stop" writes a handover; the run can be resumed.',
     );
+  });
+
+  it("compose letters every option and the recommended one", async () => {
+    const { root, logs } = checkout();
+    const { out } = await compose(root, logs, [ITEMS[1]]);
+    const text = fs.readFileSync(out, "utf-8");
+    expect(text).toContain("Options: A) Accept / B) Fix now");
+    expect(text).toContain("Recommended: B) Fix now — a secret reaches the log");
+    expect(text).not.toContain("Options: Accept / Fix now");
   });
 
   it("refuses an item whose recommendation is not one of its options", async () => {
@@ -146,8 +155,42 @@ describe("bkit decisions compose", () => {
     expect(text).toContain("build verify: attempt 2 of 2");
     expect(text).toContain("Problems after each round: 4 → 4");
     expect(text).toMatch(/\*\*Q1 — Verify:\*\* decide the items below/);
-    expect(text).toContain("Options: Try again / Decide");
+    expect(text).toContain("Options: A) Try again / B) Decide");
     expect(text).toContain("**Q2 — Task 3 [src/a.ts:10]:**");
+  });
+
+  it("--loop letters the loop question's options and recommendation", async () => {
+    const { root, logs } = checkout();
+    const status = path.join(logs, "status.jsonl");
+    fs.writeFileSync(
+      status,
+      [
+        { type: "workflow-started", workflow: "build", at: "2026-10-01T00:00:00Z" },
+        {
+          type: "step-done",
+          workflow: "build",
+          step: "build-plan-verify",
+          status: "DONE",
+          at: "2026-10-01T00:10:00Z",
+          group: 1,
+          failures: 2,
+        },
+      ]
+        .map((x) => JSON.stringify(x))
+        .join("\n") + "\n",
+    );
+    const { out } = await compose(
+      root,
+      logs,
+      ITEMS,
+      "--loop=verify",
+      `--file=${status}`,
+      "--group=1",
+    );
+    const text = fs.readFileSync(out, "utf-8");
+    expect(text).toContain("Options: A) Try again / B) Decide");
+    expect(text).not.toContain("Options: Try again / Decide");
+    expect(text).toMatch(/Recommended: [AB]\) (Try again|Decide) — /);
   });
 
   it("--loop needs --file", async () => {
@@ -212,6 +255,44 @@ describe("bkit decisions apply --by=headless", () => {
   });
 });
 
+describe("parseDecisionItems", () => {
+  it("parseDecisionItems keeps the bare option name, dropping the letter", () => {
+    const text = [
+      "Status: OPEN",
+      "",
+      "**Q1 — Task 3 [src/a.ts:10]:** accept it?",
+      "Options: A) Accept / B) Fix now",
+      "Recommended: B) Fix now — a secret reaches the log",
+      "",
+    ].join("\n");
+    const item = parseDecisionItems(text)[0]!;
+    expect(item.options).toEqual(["Accept", "Fix now"]);
+    expect(item.recommended).toBe("Fix now");
+    expect(item.reason).toBe("a secret reaches the log");
+  });
+
+  it("a decision file written before the letters still parses", () => {
+    const legacy = [
+      "Status: OPEN",
+      "",
+      "**Q1 — Task 3 [src/a.ts:10]:** accept it?",
+      "Options: Accept / Fix now",
+      "Recommended: Accept — the caller already caps it",
+      "",
+    ].join("\n");
+    const items = parseDecisionItems(legacy);
+    expect(items[0]!.options).toEqual(["Accept", "Fix now"]);
+    expect(items[0]!.recommended).toBe("Accept");
+    const lettered = parseDecisionItems(
+      legacy
+        .replace("Options: Accept / Fix now", "Options: A) Accept / B) Fix now")
+        .replace("Recommended: Accept —", "Recommended: A) Accept —"),
+    );
+    expect(lettered[0]!.options).toEqual(items[0]!.options);
+    expect(lettered[0]!.recommended).toEqual(items[0]!.recommended);
+  });
+});
+
 describe("applyRecommendations", () => {
   it("a Try again loop answer settles the loop alone; the items wait for the next round", () => {
     const text = [
@@ -229,6 +310,20 @@ describe("applyRecommendations", () => {
     const r = applyRecommendations(text, "LOCAL", "ask:false");
     expect(r).toMatchObject({ applied: [1], hardBlockers: [], loop: "Try again" });
     expect(parseDecisionItems(r.text)[1]!.decision).toBeNull();
+  });
+
+  it("a lettered recommendation still settles its item by name", () => {
+    const text = [
+      "Status: OPEN",
+      "",
+      "**Q1 — Gap:** accept it?",
+      "Options: A) Accept / B) Fix now",
+      "Recommended: A) Accept — minor",
+      "",
+    ].join("\n");
+    const r = applyRecommendations(text, "LOCAL", "ask:false");
+    expect(r).toMatchObject({ applied: [1], hardBlockers: [], loop: null });
+    expect(parseDecisionItems(r.text)[0]!.decision).toMatch(/^Accept \(assumed\) — minor \(/);
   });
 });
 
@@ -302,6 +397,15 @@ describe("bkit decisions apply --by=owner and pending", () => {
     expect(rows.map((x) => x.reason)).toEqual(["needs-decision", "needs-decision"]);
     expect(rows[0]).toMatchObject({ kind: "deferral", severity: "MEDIUM", status: "OPEN" });
     expect((await pending(root)).json.count).toBe(0);
+  });
+
+  it("--defer letters the options in the deferral row", async () => {
+    const { root } = await assumed();
+    await pending(root, "--defer");
+    const row = JSON.parse(
+      fs.readFileSync(path.join(root, "docs/deferrals.jsonl"), "utf-8").trim().split("\n")[0]!,
+    );
+    expect(row.description).toContain("Options: A) Accept / B) Fix now");
   });
 
   it("refuses a malformed --month", async () => {
