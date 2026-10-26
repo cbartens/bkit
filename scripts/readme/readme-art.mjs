@@ -1,4 +1,4 @@
-// Renders the root README images (hero, features grid, pipeline, fences, context map, CI, fence details, audit map, token use, re-reading, models and effort), light + dark,
+// Renders the root README images (hero, features grid, pipeline, fences, context map, CI, fence details, audit map, token use, re-reading, engine and agents, models and effort), light + dark,
 // plus the repo's social preview card, into .github/assets/ as both .svg and .png. Edit the copy
 // below, then: node scripts/readme/readme-art.mjs
 // Text is not auto-wrapped: keep tile lines short and eyeball the output at ~880px.
@@ -1865,49 +1865,178 @@ function reread(t) {
     { size: 14, fill: t.muted },
   );
 
-  // How bkit gets there.
-  const GY = SY + 260;
-  b += `<line x1="${X0}" y1="${GY - 50}" x2="${W - X0}" y2="${GY - 50}" stroke="${t.border}"/>`;
-  b += text(X0, GY, "How bkit reads less, and loses nothing", {
-    size: 28,
+  // How bkit gets there is the engine image, in the README's "Code keeps every run on track".
+  const H = SY + 192;
+  return svg(
+    W,
+    footH(H),
+    `<rect x="0.5" y="0.5" width="${W - 1}" height="${footH(H) - 1}" rx="18" fill="${t.bg}" stroke="${t.border}"/>` +
+      b +
+      footer(t, W, H),
+    `Compression shrinks the output; bkit stops the re-reading. What a coding agent reads on each request, across 13.5 million GitHub Copilot sessions: 72 percent is re-reading on every request, the conversation so far at 48 percent, the system prompt at 14 percent and instructions and other context at 10 percent, which is what bkit cuts; 28 percent is tool output, all a compressor can touch. The best published compression result on Claude Code took 2.7 percent off the whole bill, and another tool added 48 percent. The model's own writing is about 1 token for every 100 to 275 it reads. Sources: Liu et al., GitHub Copilot at production scale, 2026; Weinberger and Hozez, 2,848 Claude Code runs, 2026; Manus, 2025. An agent's cost is the area under its context line: each request re-sends the whole conversation, and a token costs the same at 900 thousand as at 9 thousand, but a turn at 900 thousand sends 100 times as many. In an illustration of the same work drawn both ways, today one agent runs until about 967 thousand tokens, where Claude Code summarises it and drops detail; bkit hands over to a fresh agent with a short brief in the ${REREAD_BAND[0]} to ${REREAD_BAND[1]} thousand band, where practitioners say to start fresh. What published work finds: 11 of 13 models score under half their short-context result by 32 thousand tokens (NoLiMa, ICML 2025); a context should get no more than 40 to 60 percent full before you start a fresh one (HumanLayer, 2025); a sub-agent hands back 1 to 2 thousand tokens from tens of thousands it read (Anthropic, 2025); all 18 models Chroma tested got worse as their context grew. Measure your own runs: bkit records the tokens each agent read in .bkit/stats.jsonl, and bkit stats writes a report of your runs to .bkit/stats.md.`,
+  );
+}
+
+// ---------- Engine and agents ----------
+// One /bkit-build run in three rows: fresh agents on top, the bkit commands that brief them and
+// check their work in the middle, the repo files the commands read and write at the bottom. Each
+// command's line restates its summary in .bkit/core/engine/commands/workflow/.
+const ENGINE_COMMANDS = [
+  ["context brief", "cuts each group's part", "out of the plan"],
+  ["tests red", "proves each new test fails", "before its code exists"],
+  ["steps gate", "stops a step missing", "its verdict or files"],
+  ["counters route", "counts fix rounds,", "stops at the limit"],
+  ["status resume", "where a stopped run", "picks up, on any tool"],
+  ["ledgers append", "writes lessons and", "decisions as checked rows"],
+  ["workflows summary", "writes the run's verdict,", "reasons and next command"],
+];
+
+function engine(t) {
+  const W = 1200,
+    X0 = 60,
+    LX = 250,
+    LW = W - X0 - LX;
+  const arrow = (x, y1, y2, stroke) => {
+    const d = y2 > y1 ? 1 : -1;
+    return (
+      `<line x1="${x}" y1="${y1}" x2="${x}" y2="${y2 - d * 7}" stroke="${stroke}" stroke-width="2"/>` +
+      `<path d="M${x - 6} ${y2 - d * 9} L${x} ${y2} L${x + 6} ${y2 - d * 9} Z" fill="${stroke}"/>`
+    );
+  };
+  let b = "";
+  b += text(X0, 64, "THE ENGINE", { size: 14, weight: 700, fill: t.plan, ls: 2.4 });
+  b += text(X0 - 2, 128, "Code keeps the run on track.", {
+    size: 56,
+    weight: 800,
+    fill: t.muted,
+    ls: -1.5,
+  });
+  b += text(X0 - 2, 190, "Agents make the calls.", {
+    size: 56,
     weight: 800,
     fill: t.text,
-    ls: -0.5,
+    ls: -1.5,
   });
+  b += text(
+    X0,
+    234,
+    "One /bkit-build run. Anything with one right answer is a bkit command; the models get only the judgement.",
+    { size: 19, fill: t.muted },
+  );
+  const laneLabel = (y, title, l1, l2, color) => {
+    b += text(X0, y, title, { size: 14, weight: 700, fill: color, ls: 2.4 });
+    b += text(X0, y + 26, l1, { size: 15, fill: t.text });
+    if (l2) b += text(X0, y + 46, l2, { size: 15, fill: t.muted });
+  };
+
+  // Agents: each starts on its brief and hands over before the cap.
+  const AY = 296,
+    AH = 156,
+    AW = 196,
+    AG = (LW - 4 * AW) / 3;
+  laneLabel(AY + 30, "AGENTS", "models, each one fresh", "the judgement calls", t.build);
+  const agents = [
+    ["Builds group 1", "tasks 1–3", 0.55],
+    ["Builds group 2", "tasks 4–6", 0.7],
+    ["Builds group 3", "tasks 7–9", 0.45],
+    ["Reviews the diff", "bugs and security", 0.35],
+  ];
+  agents.forEach(([title, sub, used], i) => {
+    const x = LX + i * (AW + AG),
+      gx = x + 18,
+      gy = AY + 76,
+      gw = AW - 36;
+    b += `<rect x="${x}" y="${AY}" width="${AW}" height="${AH}" rx="12" fill="${t.bg}" stroke="${t.build}" stroke-width="1.5"/>`;
+    b += text(gx, AY + 32, title, { size: 17, weight: 700, fill: t.text });
+    b += text(gx, AY + 54, sub, { size: 14, fill: t.muted });
+    b += `<rect x="${gx}" y="${gy}" width="${gw}" height="14" rx="4" fill="${t.surface}" stroke="${t.border}"/>`;
+    b += `<rect x="${gx}" y="${gy}" width="${(gw * used).toFixed(1)}" height="14" rx="4" fill="${t.build}" fill-opacity="0.35"/>`;
+    b += `<rect x="${gx}" y="${gy}" width="10" height="14" rx="3" fill="${t.build}"/>`;
+    b += text(gx, gy + 32, "starts on a brief of a few KB", { size: 13, fill: t.muted });
+    b += text(gx, gy + 50, `hands over before ${REREAD_CAP}k`, { size: 13, fill: t.muted });
+  });
+  const EY = AY + AH + 64;
+  agents.forEach((_, i) => {
+    const x = LX + i * (AW + AG) + AW / 2;
+    b += arrow(x - 24, EY - 4, AY + AH + 4, t.plan);
+    b += arrow(x + 24, AY + AH + 4, EY - 4, t.build);
+  });
+  b += text(LX + AW / 2 - 34, AY + AH + 38, "brief", {
+    size: 13,
+    weight: 700,
+    fill: t.plan,
+    anchor: "end",
+  });
+  b += text(LX + AW / 2 + 34, AY + AH + 38, "log, verdict", {
+    size: 13,
+    weight: 700,
+    fill: t.build,
+  });
+
+  // Engine: the commands, four on the first row, three on the second.
+  const EH = 196;
+  laneLabel(EY + 30, "ENGINE", "bkit commands, plain code", "same answer every time", t.plan);
+  b += `<rect x="${LX}" y="${EY}" width="${LW}" height="${EH}" rx="12" fill="${t.surface}" stroke="${t.plan}" stroke-width="1.5"/>`;
+  const CW = (LW - 40) / 4;
+  ENGINE_COMMANDS.forEach(([cmd, l1, l2], k) => {
+    const cx = LX + 20 + (k % 4) * CW,
+      cy = EY + 40 + Math.floor(k / 4) * 84;
+    b += text(cx, cy, cmd, { size: 15, weight: 700, fill: t.plan, font: MONO });
+    b += text(cx, cy + 22, l1, { size: 14, fill: t.text });
+    b += text(cx, cy + 40, l2, { size: 14, fill: t.text });
+  });
+  b += text(LX + LW - 20, EY + EH - 22, "TypeScript, covered by 5,800+ tests", {
+    size: 13,
+    fill: t.muted,
+    anchor: "end",
+  });
+  const RY = EY + EH + 64;
+  [0.25, 0.5, 0.75].forEach((f) => {
+    const x = LX + LW * f;
+    b += arrow(x - 10, EY + EH + 4, RY - 4, t.muted);
+    b += arrow(x + 10, RY - 4, EY + EH + 4, t.muted);
+  });
+
+  // Repo: the files the commands read and write.
+  const RH = 64,
+    FG = 14;
+  laneLabel(RY + 22, "YOUR REPO", "plain files", "", t.muted);
+  const files = ["the whole plan", "run state", "step logs", "4 ledgers", "run stats"];
+  const FW = (LW - FG * (files.length - 1)) / files.length;
+  files.forEach((f, i) => {
+    const x = LX + i * (FW + FG);
+    b += `<rect x="${x}" y="${RY}" width="${FW}" height="${RH}" rx="10" fill="${t.bg}" stroke="${t.border}"/>`;
+    b += text(x + FW / 2, RY + 39, f, { size: 15, weight: 600, fill: t.text, anchor: "middle" });
+  });
+  b += text(
+    LX,
+    RY + RH + 30,
+    "Build agents never get the whole plan: the engine reads it and hands each one only its part.",
+    { size: 15, fill: t.muted },
+  );
+
+  // What the split gets you.
+  const GY = RY + RH + 116;
+  b += `<line x1="${X0}" y1="${GY - 50}" x2="${W - X0}" y2="${GY - 50}" stroke="${t.border}"/>`;
+  b += text(X0, GY, "What the split gets you", { size: 28, weight: 800, fill: t.text, ls: -0.5 });
   const ways = [
     [
-      "Fresh agents with short briefs.",
-      [
-        "Each group of tasks gets its own agent and a brief of a",
-        "few KB, never the whole plan. None runs past 160k.",
-      ],
+      "Steps that can't be faked.",
+      ["A step missing its verdict or files", "can't finish, whatever the agent says."],
     ],
     [
-      "Code does the bookkeeping.",
-      [
-        "Ledger rows, test-first order, summaries and where to resume",
-        "come from bkit commands: no model turns, same answer every time.",
-      ],
+      "The same answer every time.",
+      ["Code answers alike on every tool:", "Claude Code, Cursor, Codex and more."],
     ],
     [
-      "One round, then you decide.",
-      [
-        "One plan review round. A fix that fails once comes back",
-        "to you with a report, instead of retrying the same thing.",
-      ],
-    ],
-    [
-      "Each agent carries only its own rules.",
-      [
-        "Rules sit in the prompts of the agents that act on them.",
-        "Plans hold tasks, not pages of instructions.",
-      ],
+      "Fewer tokens, as a bonus.",
+      ["No model turn spent on bookkeeping,", "and no agent carries a long history."],
     ],
   ];
-  const CW = (BW - 40) / 2;
+  const WW = (W - 2 * X0 - 2 * 32) / 3;
   ways.forEach(([lead, rest], i) => {
-    const cx = X0 + (i % 2) * (CW + 40),
-      cy = GY + 56 + Math.floor(i / 2) * 104;
+    const cx = X0 + i * (WW + 32),
+      cy = GY + 56;
     b += `<circle cx="${cx + 11}" cy="${cy - 6}" r="11" fill="${t.plan}"/>`;
     b += text(cx + 11, cy, String(i + 1), {
       size: 14,
@@ -1920,14 +2049,14 @@ function reread(t) {
       b += text(cx + 32, cy + 26 + j * 22, s, { size: 15, fill: t.muted });
     });
   });
-  const H = GY + 56 + 104 + 60;
+  const H = GY + 56 + 48 + 12;
   return svg(
     W,
     footH(H),
     `<rect x="0.5" y="0.5" width="${W - 1}" height="${footH(H) - 1}" rx="18" fill="${t.bg}" stroke="${t.border}"/>` +
       b +
       footer(t, W, H),
-    `Compression shrinks the output; bkit stops the re-reading. What a coding agent reads on each request, across 13.5 million GitHub Copilot sessions: 72 percent is re-reading on every request, the conversation so far at 48 percent, the system prompt at 14 percent and instructions and other context at 10 percent, which is what bkit cuts; 28 percent is tool output, all a compressor can touch. The best published compression result on Claude Code took 2.7 percent off the whole bill, and another tool added 48 percent. The model's own writing is about 1 token for every 100 to 275 it reads. Sources: Liu et al., GitHub Copilot at production scale, 2026; Weinberger and Hozez, 2,848 Claude Code runs, 2026; Manus, 2025. An agent's cost is the area under its context line: each request re-sends the whole conversation, and a token costs the same at 900 thousand as at 9 thousand, but a turn at 900 thousand sends 100 times as many. In an illustration of the same work drawn both ways, today one agent runs until about 967 thousand tokens, where Claude Code summarises it and drops detail; bkit hands over to a fresh agent with a short brief in the ${REREAD_BAND[0]} to ${REREAD_BAND[1]} thousand band, where practitioners say to start fresh. What published work finds: 11 of 13 models score under half their short-context result by 32 thousand tokens (NoLiMa, ICML 2025); a context should get no more than 40 to 60 percent full before you start a fresh one (HumanLayer, 2025); a sub-agent hands back 1 to 2 thousand tokens from tens of thousands it read (Anthropic, 2025); all 18 models Chroma tested got worse as their context grew. Measure your own runs: bkit records the tokens each agent read in .bkit/stats.jsonl, and bkit stats writes a report of your runs to .bkit/stats.md. How bkit reads less: fresh agents with short briefs, never the whole plan, none past ${REREAD_CAP} thousand tokens; code does the bookkeeping, so ledger rows, test-first order, summaries and resume points come from bkit commands with the same answer every time; one round, then you decide; each agent carries only its own rules.`,
+    `Code keeps the run on track; agents make the calls. One /bkit-build run in three rows. Agents: models, each one fresh, making the judgement calls. Three each build one group of tasks and one reviews the diff for bugs and security; each starts on a brief of a few KB and hands over before ${REREAD_CAP} thousand tokens, takes its brief from the engine and hands back a log and a verdict. Engine: bkit commands, plain code with the same answer every time, covered by 5,800+ tests. ${ENGINE_COMMANDS.map(([cmd, l1, l2]) => `${cmd}: ${l1} ${l2}`).join("; ")}. Your repo: the plain files the engine reads and writes: the whole plan, run state, step logs, 4 ledgers and run stats. Build agents never get the whole plan: the engine reads it and hands each one only its part. What the split gets you: steps that can't be faked, because a step missing its verdict or files can't finish, whatever the agent says; the same answer every time, on every tool; and, as a bonus, fewer tokens, because no model turn is spent on bookkeeping and no agent carries a long history.`,
   );
 }
 
@@ -2324,6 +2453,7 @@ for (const [name, t] of Object.entries(THEMES)) {
   images.push([`bkit-audits-${name}`, audits(t)]);
   images.push([`bkit-tokens-${name}`, tokens(t)]);
   images.push([`bkit-reread-${name}`, reread(t)]);
+  images.push([`bkit-engine-${name}`, engine(t)]);
   images.push([`bkit-models-${name}`, models(t)]);
 }
 // One social image: link previews have no light/dark switch, and dark reads on both.
