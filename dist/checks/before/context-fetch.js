@@ -124,8 +124,9 @@ function parseContextFetchBlocks(consumer) {
 /**
  * Drop shell comments from a block body before matching bound markers, so a bound named
  * only in the block's mandated `# Customise:` comment never makes an unbounded block look
- * bounded. A full-line comment is always a comment; a `#` that starts a word outside quotes
- * begins one too (the shell rule). A `#` inside quotes (a `jq` regex, a banner) is data and
+ * bounded. A full-line comment is always a comment; a `#` at the start of a word outside
+ * quotes begins one too (the shell rule), including straight after a control operator
+ * (`;`, `|`, `&`, `(`, `)`). A `#` inside quotes (a `jq` regex, a banner) is data and
  * stays, or `printf "===== # ====="` would read as a comment and truncate the line. Quote
  * state persists across lines because a quoted `jq` program may span several.
  */
@@ -159,7 +160,7 @@ function stripShellComments(text) {
                 quote = ch;
                 continue;
             }
-            if (ch === "#" && (i === 0 || /\s/.test(line[i - 1]))) {
+            if (ch === "#" && (i === 0 || /[\s;|&()]/.test(line[i - 1]))) {
                 end = i;
                 break;
             }
@@ -172,12 +173,14 @@ function stripShellComments(text) {
  * Markers proving a `context-fetch` block bounds its own stdout at the source, matched
  * against the block body with its shell comments removed. One entry maps to a real bound in
  * a shipped block: a row / line cap (`--limit`, an API or SQL `limit`, `per_page`, `head` /
- * `tail` / `--tail`, `--stat-count`, `--max-rows`, `max_results`, `grep -m` / `--max-count`,
- * a jq / Python slice `[0:N]`, a `sed -n 'A,Bp'` range, an `awk 'NR<=N'` guard, a `size`
- * field), a page / count cap (`*_MAX_*`, `*_MAX_PAGES`, a `*_N` knob, a shell loop `-lt`
- * guard), or a window / severity filter (`--since` / `--until` / `--freshness`, `SINCE` /
- * `UNTIL`, `statsPeriod`, a `severity` filter). The tavily block counts as bounded on its
- * `max_results:5` and `head -c` alone. A body is unbounded only when it matches none.
+ * `tail` / `--tail`, `--stat-count`, any `--max-*` such as `--max-rows` / `--max-pages` /
+ * `--max-items` / `--max-results`, `max_results`, `grep -m` / `--max-count`, `--page-size` /
+ * `--per-page` / `--first`, a jq / Python slice `[0:N]`, a `sed -n 'A,Bp'` range, an
+ * `awk 'NR<=N'` guard, a `size` field), a page / count cap (`*_MAX_*`, `*_MAX_PAGES`, a `*_N`
+ * knob, a shell loop `-lt` guard), or a window / severity filter (`--since` / `--until` /
+ * `--freshness` / `SINCE` / `UNTIL` / `statsPeriod` / a lowercase `since=` / `until=`, a
+ * `severity` filter). The tavily block counts as bounded on its `max_results:5` and `head -c`
+ * alone. A body is unbounded only when it matches none.
  */
 const CONTEXT_FETCH_BOUND_RES = [
     // Row / line caps.
@@ -187,9 +190,12 @@ const CONTEXT_FETCH_BOUND_RES = [
     /(^|[\s|;(])tail[ \t]+-/,
     /--tail[= ]/,
     /--stat-count/,
-    /--max-rows\b/,
+    /--max-[\w-]+/, // --max-pages / --max-items / --max-results / --max-rows / --max-count
     /max_results/,
     /\bper_page\b["']?[ \t]*[=:][ \t]*["'$]?\d/i,
+    /--page-size\b/,
+    /--per-page\b/,
+    /--first\b/,
     /(^|[\s|;(])-m[ \t]+["'$]?\d/,
     /--max-count\b/,
     /[\[(][ \t]*\d*[ \t]*:[ \t]*\d+/, // jq / Python slice: .[0:10], [:10], [0:10]
@@ -204,6 +210,8 @@ const CONTEXT_FETCH_BOUND_RES = [
     /--since\b/,
     /--until\b/,
     /--freshness\b/,
+    /\bsince[ \t]*[=:]/i, // since=1h, since: 2h
+    /\buntil[ \t]*[=:]/i,
     /SINCE/,
     /UNTIL/,
     /statsPeriod/,
@@ -532,11 +540,16 @@ export function detectContextFetchUnbounded(cwd) {
     const consumer = content.slice(endIdx);
     if (contextFetchDismissesAll(consumer))
         return null;
-    const starts = parseContextFetchBlocks(consumer).filter((b) => b.kind === "start");
-    // No blocks at all => `context-fetch-missing` owns it (no double-fire).
-    if (starts.length === 0)
+    // Only the blocks the runner actually runs can download anything: a block whose
+    // `context=` is unknown is narrated NOT RUN, and one with no fenced body is refused
+    // before it runs (`bkit context list-blocks` / `run-block`). Neither is bounded here.
+    const runnable = parseContextFetchBlocks(consumer).filter((b) => b.kind === "start" &&
+        CONTEXT_FETCH_CONTEXTS.includes(b.context) &&
+        b.body.some((l) => l.trim() !== ""));
+    // No runnable block => `context-fetch-missing` owns the empty case (no double-fire).
+    if (runnable.length === 0)
         return null;
-    const unbounded = starts.filter((b) => !blockBoundsOutput(b.body));
+    const unbounded = runnable.filter((b) => !blockBoundsOutput(b.body));
     if (unbounded.length === 0)
         return null;
     const items = unbounded.map((b) => `${b.name || "(unnamed)"} (\`context=${b.context}\`)`);
@@ -546,6 +559,6 @@ export function detectContextFetchUnbounded(cwd) {
         id: "context-fetch-unbounded",
         severity: "advisory",
         detect: `\`.agents/context.md\` enables context-fetch block${plural ? "s" : ""} below \`<!-- bkit:end -->\` that bound no output: ${list}. \`/bkit-debug\` runs every enabled block and writes its stdout straight into that context's artifact, so ${plural ? "these blocks" : "this block"} download${plural ? "" : "s"} a whole-run dump — only the post-hoc 3000-line / 400 KB clamp catches it, and the failure lines a diagnosis needs can fall outside the kept head 500 + tail 1000.`,
-        action: `Bound each flagged block at the source: add a row / line cap (\`--limit N\`, \`head -n N\`, \`tail -n N\` / \`--tail N\`, \`--stat-count N\`, \`grep -m N\` / \`--max-count N\`, \`--max-rows N\`, a jq / SQL slice (\`.[0:N]\`, \`limit N\`), a \`sed -n 'A,Bp'\` / \`awk 'NR<=N'\` range, the API's \`max_results\` / \`per_page\` / \`limit\` param, or a request-body \`size\` field), a page cap (\`<NAME>_MAX_PAGES\`, a \`*_N\` count variable, or a shell loop guard \`[ "$N" -lt M ]\`), or a window / severity filter (\`--since\` / \`--until\` / \`--freshness\` / \`SINCE\` / \`UNTIL\`, \`statsPeriod\`, or a \`severity\` / \`level\` filter) in the block body — not only in its \`# Customise:\` comment. Raise the cap only when the cause sits outside the kept window: \`/bkit-debug\` clamps the artifact post hoc at 3000 lines / 400 KB (head 500 + tail 1000 + every error-matching line), so an unbounded dump can drop the very failure lines a diagnosis needs.`,
+        action: `Bound each flagged block at the source: add a row / line cap (\`--limit N\`, \`head -n N\`, \`tail -n N\` / \`--tail N\`, \`--stat-count N\`, \`grep -m N\` / \`--max-count N\`, any \`--max-*\` (\`--max-rows N\`, \`--max-pages N\`, \`--max-items N\`, \`--max-results N\`), \`--page-size N\` / \`--per-page N\` / \`--first N\`, a jq / SQL slice (\`.[0:N]\`, \`limit N\`), a \`sed -n 'A,Bp'\` / \`awk 'NR<=N'\` range, the API's \`max_results\` / \`per_page\` / \`limit\` param, or a request-body \`size\` field), a page cap (\`<NAME>_MAX_PAGES\`, a \`*_N\` count variable, or a shell loop guard \`[ "$N" -lt M ]\`), or a window / severity filter (\`--since\` / \`--until\` / \`--freshness\` / \`SINCE\` / \`UNTIL\`, \`statsPeriod\`, or a \`severity\` / \`level\` filter) in the block body — not only in its \`# Customise:\` comment. Raise the cap only when the cause sits outside the kept window: \`/bkit-debug\` clamps the artifact post hoc at 3000 lines / 400 KB (head 500 + tail 1000 + every error-matching line), so an unbounded dump can drop the very failure lines a diagnosis needs.`,
     };
 }

@@ -465,6 +465,13 @@ describe("blockBoundsOutput", () => {
     ["a shell loop -lt bound", ['PAGES=0; while [ "$PAGES" -lt 20 ]; do echo x; done']],
     ["a request body size cap", ['-d \'{"query":"x","size":10}\'']],
     ["a --max-rows cap", ["mytool --max-rows 100"]],
+    ["a --max-pages cap", ["mytool --max-pages 5"]],
+    ["a --max-items cap", ["mytool --max-items 10"]],
+    ["a --max-results cap", ["mytool --max-results 10"]],
+    ["a --page-size cap", ["mytool --page-size 50"]],
+    ["a --first cap", ["mytool --first 20"]],
+    ["a lowercase since= window", ["mytool since=1h"]],
+    ["a lowercase until= window", ["mytool until=2026-01-01"]],
     // A severity filter bounds like the window filters already accepted.
     ["a gcloud severity filter", ["gcloud logging read 'severity>=ERROR'"]],
     ["a --severity flag", ["kubectl logs --severity=ERROR pod"]],
@@ -488,6 +495,15 @@ describe("blockBoundsOutput", () => {
     expect(
       blockBoundsOutput(['gh run view "$RUN_ID" --log  # Customise: raise --limit as needed']),
     ).toBe(false);
+  });
+
+  it("ignores a bound in a comment after a shell control operator", () => {
+    // A `#` after `;`, `|` or `&` begins a comment too (the shell rule), so its bound
+    // words are not evidence the block bounds anything.
+    expect(blockBoundsOutput(["x=1;# --limit 5"])).toBe(false);
+    expect(blockBoundsOutput(["echo hi |# --limit 5"])).toBe(false);
+    expect(blockBoundsOutput(["x=1 &# --limit 5"])).toBe(false);
+    expect(blockBoundsOutput(["cat x )# --limit 5"])).toBe(false);
   });
 
   it("does not treat a `#` inside quotes as a comment start", () => {
@@ -607,6 +623,33 @@ describe("detectContextFetchUnbounded", () => {
     const f = detectContextFetchUnbounded(tmpDir);
     expect(f?.id).toBe("context-fetch-unbounded");
     expect(f?.detect).toContain("(unnamed)");
+  });
+
+  it("does NOT flag a block whose context= is unknown (the runner refuses it)", () => {
+    writeConfig(
+      MANAGED +
+        "\n<!-- context-fetch:start weird context=foo -->\n" +
+        "```bash\nfull dump\n```\n<!-- context-fetch:end -->\n",
+    );
+    expect(detectContextFetchUnbounded(tmpDir)).toBeNull();
+  });
+
+  it("does NOT fire when the only start block has no fenced body", () => {
+    writeConfig(
+      MANAGED + "\n<!-- context-fetch:start noblock context=ci -->\n<!-- context-fetch:end -->\n",
+    );
+    expect(detectContextFetchUnbounded(tmpDir)).toBeNull();
+  });
+
+  it("does NOT flag a no-body block sitting beside a genuinely unbounded one", () => {
+    writeConfig(
+      MANAGED +
+        "\n<!-- context-fetch:start noblock context=ci -->\n<!-- context-fetch:end -->\n" +
+        UNBOUNDED,
+    );
+    const f = detectContextFetchUnbounded(tmpDir);
+    expect(f?.detect).toContain("gh-dump");
+    expect(f?.detect).not.toContain("noblock");
   });
 
   it("is dismissed by the context-fetch:none opt-out marker", () => {
