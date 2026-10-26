@@ -51,7 +51,7 @@ export function detectMissingDotenv(
     id: "mcp-env-missing-dotenv",
     severity: "advisory",
     detect: `.bkit/.env.example exists but .bkit/.env does not. MCP servers and agent tooling will not have access to ${tokens}.`,
-    action: `[mcp-env] Copy .bkit/.env.example to .bkit/.env and fill in your tokens (${tokens}). Then run \`direnv allow\` to auto-export them into your shell. .bkit/.env is gitignored and safe to commit-skip.`,
+    action: `[mcp-env] Copy .bkit/.env.example to .bkit/.env and fill in your tokens (${tokens}) — in a git worktree, copy the main checkout's .bkit/.env instead, or run \`bkit worktrees setup\` to link it. Then run \`direnv allow\` to auto-export them into your shell. .bkit/.env is gitignored and safe to commit-skip.`,
   };
 }
 

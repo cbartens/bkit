@@ -169,8 +169,7 @@
       "worktree": {
         "copy": [
           ".env",
-          ".env.local",
-          ".bkit/.env"
+          ".env.local"
         ],
         "install": true
       },

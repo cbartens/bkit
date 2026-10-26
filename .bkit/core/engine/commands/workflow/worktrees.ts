@@ -234,10 +234,17 @@ function rebaseInProgress(wt: string): boolean {
 }
 
 /**
+ * bkit's own worktree copy entry, excluded from every bkit commit beside
+ * `bkit.workflows.worktree.copy`: it holds the sign-in tokens, and a consumer whose
+ * `.gitignore` lost bkit's `.bkit/.env` line would otherwise commit a link to them.
+ */
+export const BKIT_OWN_COPY: readonly string[] = [".bkit/.env"];
+
+/**
  * `git add -A` in `tree`, leaving out the `bkit.workflows.worktree.copy` entries setup
- * copies in from the main checkout (`.env` and the like): no bkit commit may
- * carry them, gitignored or not. A copied entry git already ignores is left out
- * of the exclude list: naming it in a `:(exclude)` pathspec trips git's
+ * copies in from the main checkout (`.env` and the like) and `BKIT_OWN_COPY`: no bkit
+ * commit may carry them, gitignored or not. A copied entry git already ignores is left
+ * out of the exclude list: naming it in a `:(exclude)` pathspec trips git's
  * ignored-paths guard and fails the whole `add`, and `git add -A` skips an
  * ignored file anyway, so it needs no exclusion.
  */
@@ -245,7 +252,7 @@ export function addAllButCopied(
   tree: string,
   copied: string[] = readBkitConfig(tree).worktreeCopy,
 ): ReturnType<typeof runGit> {
-  const keep = copied
+  const keep = [...copied, ...BKIT_OWN_COPY]
     .map((e) => path.normalize(e))
     .filter((e) => !isIgnoredPath(tree, e))
     .map((e) => `:(exclude)${e}`);
@@ -320,6 +327,48 @@ function copyListed(root: string, wt: string, entries: string[], log: (m: string
     copied.push(rel);
   }
   return { copied, copyMissing };
+}
+
+/** What `linkBkitEnv` did with a worktree's `.bkit/.env` (the `bkitEnv` output key). */
+export type BkitEnvState = "linked" | "unchanged" | "copied" | "differs" | "none";
+
+/**
+ * bkit's own token file, `.bkit/.env`, in a worktree. `copyListed` covers the app env
+ * files a repo configures; this one is bkit's, and it is gitignored — so a fresh
+ * checkout has none, `.envrc`'s `dotenv_if_exists .bkit/.env` loads nothing and says
+ * nothing, and every sign-in here fails with nothing looking wrong.
+ *
+ * Link to the main checkout's copy: one source of truth, so rotating a token needs no
+ * second edit and no copy goes stale. Fall back to a copy where the filesystem refuses
+ * a symlink. A regular file that already differs from the main checkout's is left for a
+ * human to read, like a differing `.envrc`; `none` means the main checkout holds no
+ * `.bkit/.env` to bring in, which the tip and the advisory then report.
+ */
+function linkBkitEnv(root: string, wt: string, log: (m: string) => void): BkitEnvState {
+  const main = path.join(root, ".bkit", ".env");
+  if (!fs.existsSync(main)) return "none";
+  const dest = path.join(wt, ".bkit", ".env");
+  // lstat, so a dangling link is seen (and replaced) rather than followed and missed.
+  const stat = fs.lstatSync(dest, { throwIfNoEntry: false });
+  if (stat?.isSymbolicLink() && fs.existsSync(dest)) return "unchanged";
+  if (stat?.isFile() && !fs.readFileSync(dest).equals(fs.readFileSync(main))) {
+    log(
+      `bkit-env: ${dest} differs from the main checkout's — left as it is; delete it to link the main checkout's copy`,
+    );
+    return "differs";
+  }
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.rmSync(dest, { recursive: true, force: true });
+  try {
+    fs.symlinkSync(main, dest);
+    return "linked";
+  } catch (err) {
+    fs.cpSync(main, dest);
+    log(
+      `bkit-env: symlink failed (${(err as Error).message}) — copied the main checkout's .bkit/.env`,
+    );
+    return "copied";
+  }
 }
 
 /**
@@ -531,6 +580,8 @@ export const worktreesCommand: CommandSpec = {
           "resume: untracked logs of this feature dropped because baseRef already holds them (dev's copy wins)",
         copied: "worktree copy entries copied from the main checkout",
         copyMissing: "worktree copy entries absent from the main checkout",
+        bkitEnv:
+          "bkit's own .bkit/.env: linked to the main checkout's copy, or copied where a symlink is refused; unchanged when already linked, differs when a differing file was left to read, none when the main checkout holds none, null in adopt mode",
         direnvAllowed:
           "direnv allow ran on the worktree's .envrc (present and identical to the main checkout's)",
         installed: "dependencies were installed",
@@ -692,7 +743,7 @@ export const worktreesCommand: CommandSpec = {
                 fid,
                 onto,
                 statusFile: path.join(logDir, "status.jsonl"),
-                copied: config.worktreeCopy,
+                copied: [...config.worktreeCopy, ...BKIT_OWN_COPY],
               },
               ctx.log,
             );
@@ -731,6 +782,7 @@ export const worktreesCommand: CommandSpec = {
         const { copied, copyMissing } = done
           ? copyListed(root, wt, config.worktreeCopy, ctx.log)
           : { copied: [], copyMissing: [] };
+        const bkitEnv = done ? linkBkitEnv(root, wt, ctx.log) : null;
         const direnvAllowed = done && allowDirenv(root, wt, ctx.log);
         const wantInstall = done && config.worktreeInstall;
         const installStatus = wantInstall ? install(wt, ctx.log) : 0;
@@ -758,6 +810,7 @@ export const worktreesCommand: CommandSpec = {
           carriedDropped: carried?.dropped ?? [],
           copied,
           copyMissing,
+          bkitEnv,
           direnvAllowed,
           installed: wantInstall && installStatus === 0,
           ...(shared === undefined

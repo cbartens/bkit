@@ -249,6 +249,29 @@ describe("bkit worktrees setup — mint (create)", () => {
     expect(installCalls()).toBe("");
   });
 
+  it("links bkit's own .bkit/.env to the main checkout's, so the worktree can sign in", async () => {
+    const f = fixture();
+    fs.mkdirSync(path.join(f.repo, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(f.repo, ".bkit/.env"), "BKIT_GH_TOKEN=tok\n");
+
+    const r = await setup(f.repo, "build", "--worktrees");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ bkitEnv: "linked" });
+    const env = path.join(wtOf(f), ".bkit/.env");
+    expect(fs.lstatSync(env).isSymbolicLink()).toBe(true);
+    expect(fs.readlinkSync(env)).toBe(path.join(f.repo, ".bkit/.env"));
+    expect(fs.readFileSync(env, "utf-8")).toBe("BKIT_GH_TOKEN=tok\n");
+  });
+
+  it("creates no .bkit/.env and reports none when the main checkout has none", async () => {
+    const f = fixture();
+
+    const r = await setup(f.repo, "build", "--worktrees");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ bkitEnv: "none" });
+    expect(fs.existsSync(path.join(wtOf(f), ".bkit/.env"))).toBe(false);
+  });
+
   it.each(["design", "plan"])("%s installs dependencies like build and debug", async (workflow) => {
     const f = fixture();
     const r = await setup(f.repo, workflow, "--worktrees");
@@ -431,6 +454,54 @@ describe("bkit worktrees setup — mint (resume)", () => {
     const r = await setup(f.repo, "build", "--worktrees");
     expect(r.code).toBe(0);
     expect(git(wtOf(f), "show", "--name-only", "--format=", "HEAD")).toBe("a.txt");
+  });
+
+  it("never commits bkit's own .bkit/.env, even where .gitignore lost its line", async () => {
+    const f = fixture();
+    fs.mkdirSync(path.join(f.repo, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(f.repo, ".bkit/.env"), "BKIT_GH_TOKEN=tok\n");
+    expect((await setup(f.repo, "build", "--worktrees")).code).toBe(0);
+    fs.writeFileSync(path.join(wtOf(f), "a.txt"), "left behind\n");
+    advanceDev(f, "b.txt", "new\n");
+
+    const r = await setup(f.repo, "build", "--worktrees");
+    expect(r.code).toBe(0);
+    expect(git(wtOf(f), "show", "--name-only", "--format=", "HEAD")).toBe("a.txt");
+    expect(git(wtOf(f), "ls-files", ".bkit")).toBe("");
+    expect(fs.lstatSync(path.join(wtOf(f), ".bkit/.env")).isSymbolicLink()).toBe(true);
+  });
+
+  it("re-links bkit's own .bkit/.env on resume, so a worktree made earlier heals itself", async () => {
+    const f = fixture();
+    fs.mkdirSync(path.join(f.repo, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(f.repo, ".bkit/.env"), "BKIT_GH_TOKEN=tok\n");
+    expect((await setup(f.repo, "build", "--worktrees")).code).toBe(0);
+    fs.rmSync(path.join(wtOf(f), ".bkit/.env"));
+
+    const again = await setup(f.repo, "build", "--worktrees");
+    expect(again.code).toBe(0);
+    expect(again.json).toMatchObject({ mode: "resumed", bkitEnv: "linked" });
+    expect(fs.readFileSync(path.join(wtOf(f), ".bkit/.env"), "utf-8")).toBe("BKIT_GH_TOKEN=tok\n");
+  });
+
+  it("leaves a worktree .bkit/.env that differs from the main checkout's, and says so", async () => {
+    const f = fixture();
+    fs.writeFileSync(path.join(f.seed, ".gitignore"), ".bkit/.env\n");
+    git(f.seed, "add", ".gitignore");
+    git(f.seed, "commit", "-q", "-m", "gitignore");
+    git(f.seed, "push", "-q", "origin", "HEAD:dev");
+    git(f.repo, "pull", "-q", "origin", "dev");
+    fs.mkdirSync(path.join(f.repo, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(f.repo, ".bkit/.env"), "BKIT_GH_TOKEN=tok\n");
+    expect((await setup(f.repo, "build", "--worktrees")).code).toBe(0);
+    fs.rmSync(path.join(wtOf(f), ".bkit/.env"));
+    fs.writeFileSync(path.join(wtOf(f), ".bkit/.env"), "BKIT_GH_TOKEN=hand\n");
+
+    const again = await setup(f.repo, "build", "--worktrees");
+    expect(again.code).toBe(0);
+    expect(again.json).toMatchObject({ mode: "resumed", bkitEnv: "differs" });
+    expect(again.err).toContain("differs from the main checkout's");
+    expect(fs.readFileSync(path.join(wtOf(f), ".bkit/.env"), "utf-8")).toBe("BKIT_GH_TOKEN=hand\n");
   });
 
   it("leaves a clean worktree's history alone", async () => {

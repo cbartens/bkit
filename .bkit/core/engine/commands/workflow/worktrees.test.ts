@@ -115,6 +115,7 @@ describe("bkit worktrees setup — adopt in place", () => {
       carriedDropped: [],
       copied: [],
       copyMissing: [],
+      bkitEnv: null,
       direnvAllowed: false,
       installed: false,
     });

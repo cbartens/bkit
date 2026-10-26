@@ -67,7 +67,7 @@ export const SETUP_TIPS = [
         title: "Create bkit's private settings file",
         line: "bkit's private settings file (.bkit/.env) is missing or has blank entries, so nothing that needs to sign in can. Create it and fill it in.",
         why: "This one file holds the sign-in tokens every bkit tool reads. It's never shared or committed. Most other tips depend on it, so do this one early.",
-        ask: "Copy .bkit/.env.example to .bkit/.env and tell me which values I need to fill in.",
+        ask: "Copy .bkit/.env.example to .bkit/.env and tell me which values I need to fill in — in a git worktree, copy the main checkout's .bkit/.env instead, whose tokens are already filled in.",
         steps: "`.bkit/install.md` § Local env setup.",
         advisories: ["mcp-env-missing-dotenv", "mcp-env-blank-key-*"],
         fires: (cwd) => {
