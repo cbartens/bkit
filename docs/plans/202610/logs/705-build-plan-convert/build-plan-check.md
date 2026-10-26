@@ -12,7 +12,7 @@ Plan: `docs/plans/202610/705-build-plan-convert-plan.md`. Caps: 3 tasks and 15 T
 <!-- prettier-ignore -->
 | Group | Title | Tasks | TEST FIRST tests | KB |
 | --- | --- | --- | --- | --- |
-| 1 | Plan Convert becomes its own numbered step | 1 | 9 | 4.2 |
+| 1 | Plan Convert becomes its own numbered step | 1 | 9 | 5.8 |
 | 2 | Plan Current posts on both routes | 1 | 3 | 1.8 |
 | 3 | Shipped reference and generated copies | 3 | 1 | 3.5 |
 
