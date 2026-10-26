@@ -200,6 +200,7 @@
 - **Advisories self-contained:** `PreflightFinding.action` text in `.bkit/core/engine/checks/before/index.ts` MUST inline the load-bearing fix (command, key params, and decisive context); NEVER link out to `docs/*.md`.
 - **Consumer names:** NEVER name bkit consumers (repo, org, product, domain, checkout path, abbreviation) in tracked files, commit / tag messages, release notes, or tracker text; write `a consumer`.
 - **Verify before complete:** Done = both full suite (`pnpm vitest run`, NEVER scoped) and real dogfood (`pnpm build` → `node dist/cli.js <verb> <flags>` on a fresh scratch consumer; inspect on-disk footprint). Green tests != proof.
+- **Engine builds:** Editing `.bkit/core/engine/**/*.ts` → ALWAYS `pnpm build && git add dist/` in the same commit.
 
 ## Project Settings
 
