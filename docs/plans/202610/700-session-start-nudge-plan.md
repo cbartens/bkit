@@ -25,7 +25,7 @@ Verdict: CONCERNS
 
 **Goal.** On every supported platform (Claude Code, Cursor, opencode, Codex, Google Antigravity), deliver one soft, advisory session-start nudge that names **`.agents/rules.md` only, never `AGENTS.md`**, before any other action. The advisory never blocks a session and never errors the host (fail-open). Delivery rides each host's earliest event: `SessionStart` where the host has one (Claude Code, Cursor), and the first tool call where it does not (opencode, Codex, Antigravity).
 
-**Inputs and precedence.** No design doc and no audit report — the issue body is a `change`-shape issue (`#700`), so its `Narrative`, `Success Criteria`, `Edge Cases`, `Derived Test Matrix`, `Open Questions & Assumptions`, `Breaking Changes & Naming` and `Out of Scope` are the spec, kept word for word; its `Tasks` are the spec, expanded into the runbook below (5 hosts, three new hook files, install wiring, docs). One issue comment (2026-10-26) records the decision (idea 1 only) and the tracker links; it adds no scope.
+**Inputs and precedence.** No design doc and no audit report — the issue body is a `change`-shape issue (`#700`), so its `Narrative`, `Success Criteria`, `Edge Cases`, `Derived Test Matrix`, `Open Questions & Assumptions`, `Breaking Changes & Naming` and `Out of Scope` are the spec, kept word for word; its `Tasks` are the spec, expanded into the runbook below (5 hosts, three new hook files, install wiring, docs). Two issue comments follow the body; neither changes scope, an end state or a test. The first (2026-10-26T03:24:06Z) records the decision (idea 1 only) and the tracker links. The second (2026-10-26T04:55:18Z) is newer than this plan and unblocks the build: the Step 2 `bkit steps finish` commit failure that aborted build run 1 is fixed — `addAllButCopied` no longer names a gitignored `bkit.workflows.worktree.copy` entry in its `:(exclude)` pathspec, so the copied `.bkit/.env` no longer fails every worktree commit — and failure row `worktree-copy-gitignored-file-breaks-commit` is CLOSED. The fix sits in this worktree; the commits are not yet pushed to origin.
 
 **Related Issues:**
 
@@ -221,7 +221,7 @@ None — no new API routes, DB tables/columns, secrets, user input, redirects or
 - [x] **User Context:** file access confirmed (worktree `.worktrees/700-session-start-nudge`); no missing user information.
 - [x] **Project Context:** read `.bkit/providers.md` § Hooks / § GateGuard / § ReadGuard, `docs/architecture.md` § Consumer Integration Model, `docs/testing.md` § "Which tier does a behaviour need?" and § Key test files, `docs/decisions.jsonl` keys `668-readguard-nudge-out-of-scope`, `gateguard-advisory-default-fail-open-pure-engine`, and the tests this plan turns red — `.bkit/core/engine/render/parts.test.ts`, `.bkit/core/engine/commands/install/check.integration.test.ts`, `.bkit/core/engine/audits/hooks/preflight-sh.integration.test.ts` — plus `slop-scan.config.json`, `.bkit/core/engine/audits/repo/dogfood-templates.test.ts` and `.bkit/core/engine/audits/repo/shipped-docs-refs.test.ts`.
 - [x] **Testing & Quality:** matches `docs/testing.md` — every plan-added row is `Integration`, the tier § Key test files records for the sibling `audits/hooks/*` files (a spawned-hook check plus a source-level assertion) and the tier the `*.integration.test.ts` naming rule declares. No DB, no external / deployed boundary → no `@live`, E2E or fresh-DB replay row.
-- [x] **Prerequisite Plans:** None. The three new opt-in-host files reach an existing consumer on `bkit upgrade` only through the closed fix `upgrade-skips-new-optin-host-files` (an absent opt-in path is let through when that module is installed) — a regression of that path silently stops this advisory reaching installed consumers.
+- [x] **Prerequisite Plans:** None. The three new opt-in-host files reach an existing consumer on `bkit upgrade` only through the closed fix `upgrade-skips-new-optin-host-files` (an absent opt-in path is let through when that module is installed) — a regression of that path silently stops this advisory reaching installed consumers. Build run 1 aborted at Step 2 on failure `worktree-copy-gitignored-file-breaks-commit`; the issue's newest comment records it CLOSED and its fix (a gitignored `worktree.copy` entry stays out of `addAllButCopied`'s exclude pathspec) is in this worktree, so every task's commit can land.
 
 ### Conditional
 
@@ -390,8 +390,8 @@ Code-only — `git revert` sufficient.
 
 - [ ] **TASK 1:** Deliver the rules-read advisory at session start on Claude Code and Cursor
   - **CREATE:** `.bkit/core/hooks/preflight-rules.sh`: the canonical advisory string and the `emit_context` call for the two `SessionStart` hosts
-  - **UPDATE:** `.bkit/core/.claude/hooks/bkit-preflight.sh`: splice the part before the `LINEAR_ISSUE_ID` bail; make `emit_context` accumulate and write one JSON document from an `EXIT` trap, on a `printf` path that needs no `python3`
-  - **UPDATE:** `.bkit/core/.cursor/hooks/bkit-preflight.sh`: same shape, with the `emit_context` definition and the advisory spline moved above the `is_background_agent` bail, and the same `python3`-free writer on the advisory-only path
+  - **UPDATE:** `.bkit/core/.claude/hooks/bkit-preflight.sh`: splice `# {{BKIT_PART preflight-rules.sh}}` after `emit_context` is defined and before the `LINEAR_ISSUE_ID` bail, so an IDE session gets it too; make `emit_context` accumulate and write the one JSON document from an `EXIT` trap, on a `printf` path that needs no `python3`
+  - **UPDATE:** `.bkit/core/.cursor/hooks/bkit-preflight.sh`: move the `emit_context` definition and the advisory spline above the `is_background_agent` `grep` bail, and give the advisory-only path the same `python3`-free writer
   - **UPDATE:** `.bkit/core/engine/audits/hooks/preflight-sh.integration.test.ts`: invert the three IDE-skip assertions that today assert empty stdout — `exits 0 silently when LINEAR_ISSUE_ID is empty (existing IDE-skip preserved)`, `a Jira session (token set, no LINEAR_ISSUE_ID) exits 0 silently`, `exits 0 silently when the session is not a background agent` — to expect the advisory on stdout and exit 0, leaving the guard assertions (`JSON.parse(stdout)` + `HARD STOP`) passing
   - **READ:** `.bkit/core/hooks/preflight-linear.sh`: the shared guard, unchanged — its `emit_context` calls now accumulate
   - **READ:** `.bkit/core/engine/render/parts.ts`: how `{{BKIT_PART}}` splices shared parts
@@ -469,9 +469,11 @@ Code-only — `git revert` sufficient.
   - **UPDATE:** `docs/architecture.md`: § Consumer Integration Model — the hook-list paragraph: the three new hook files, the two shared parts, and the advisory now on both `bkit-preflight.sh` hooks
   - **UPDATE:** `docs/testing.md`: § Key test files — the new `session-rules-advisory.integration.test.ts` and the changed IDE-skip scope of `preflight-sh.integration.test.ts`
   - **UPDATE:** `docs/knowledge.jsonl`: row `kn-hooks-sessionstart-stdout-is-one-json-document`
+  - **UPDATE:** `docs/decisions.jsonl`: row `700-session-start-rules-read-advisory` (ACTIVE) — the shipped hook shape: two single-value Codex matcher groups, no `export` on the JS part, the advisory sentence duplicated per language and held together by a test
+  - **UPDATE:** `docs/deferrals.jsonl`: rows `700-first-action-deny-gate`, `700-rules-content-hash-acknowledgement`, `700-provider-auto-load-rules` (OPEN) — the three rejected ideas
   - **READ:** `.bkit/core/engine/install/manifest.ts`: the `.bkit/providers.md` byte-equal-text entry
   - **DEPENDS ON:** 1, 2, 3
-  - **DONE WHEN:** `.bkit/core/.bkit/providers.md` describes the advisory, its per-host delivery, the Codex matcher shape and the dedup scope; `docs/architecture.md` lists the three hook files and two parts; `docs/testing.md` names the new test file; the knowledge row exists
+  - **DONE WHEN:** `.bkit/core/.bkit/providers.md` describes the advisory, its per-host delivery, the Codex matcher shape and the dedup scope; `docs/architecture.md` lists the three hook files and two parts; `docs/testing.md` names the new test file; the knowledge row, the decision row and the three deferral rows exist
   - **TEST FIRST:** n/a — docs
 
 <!-- bkit:task 4 end -->
