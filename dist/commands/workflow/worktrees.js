@@ -152,12 +152,54 @@ export function devBase(cwd, log) {
     }
     return ORIGIN_DEV;
 }
+/** Workflows whose close lands docs and ledgers only: their branch may carry no unpushed dev work. */
+const DOCS_ONLY_WORKFLOWS = ["design", "plan"];
+/**
+ * The ref a feature branch starts from and rebases onto. A docs-only workflow
+ * (design, plan) always starts from `origin/dev`: its close lands docs and
+ * ledgers on `origin/dev` and may carry nothing else, so a branch holding
+ * unpushed `dev` commits could never land (issue #639). Every other workflow
+ * keeps `devBase`'s choice — local `dev` while it is a fast-forward of `origin/dev`.
+ */
+export function worktreeBase(cwd, workflow, log) {
+    if (!DOCS_ONLY_WORKFLOWS.includes(workflow))
+        return devBase(cwd, log);
+    const local = git(cwd, ["rev-parse", "-q", "--verify", `refs/heads/${DEV}`]);
+    const remote = git(cwd, ["rev-parse", "-q", "--verify", `refs/remotes/${ORIGIN_DEV}`]);
+    if (local !== null &&
+        remote !== null &&
+        local !== remote &&
+        runGit(cwd, ["merge-base", "--is-ancestor", remote, local]).ok) {
+        const count = git(cwd, ["rev-list", "--count", `${remote}..${local}`]) ?? "?";
+        log?.(`local ${DEV} is ${count} commit(s) ahead of ${ORIGIN_DEV} — basing this ${workflow} branch on ${ORIGIN_DEV}: its close lands docs and ledgers only`);
+    }
+    return ORIGIN_DEV;
+}
+/**
+ * The commits `branch` carries that local `dev` holds and `origin/dev` does not:
+ * work inherited from unpushed `dev`. A docs-only close lands on `origin/dev` and
+ * may bring docs and ledgers only, so such a branch can never land.
+ */
+function inheritedDevCommits(root, branch) {
+    const unpushed = new Set((git(root, ["rev-list", `${ORIGIN_DEV}..${DEV}`]) ?? "").split("\n").filter(Boolean));
+    if (unpushed.size === 0)
+        return [];
+    return (git(root, ["rev-list", branch, "--not", ORIGIN_DEV]) ?? "")
+        .split("\n")
+        .filter((c) => unpushed.has(c));
+}
+/** Why a docs-only branch carrying unpushed `dev` cannot land, and what unblocks it. */
+function inheritedDevRefusal(root, target, workflow, count) {
+    const ahead = git(root, ["rev-list", "--count", `${ORIGIN_DEV}..${DEV}`]) ?? "?";
+    const tip = git(root, ["rev-parse", "--short", DEV]) ?? DEV;
+    return `${target} carries ${count} commit(s) of unpushed ${DEV} (tip ${tip}, ${ahead} commit(s) ahead of ${ORIGIN_DEV}), and a ${workflow} close lands docs and ledgers only — this branch cannot land. Publish ${DEV} (git push origin ${DEV}), then re-run.`;
+}
 /**
  * `git worktree add` for `branch`: the local branch, else a tracking branch off
- * `origin`, else (when `mayCreate`) a new branch off `devBase` after a fresh
+ * `origin`, else (when `mayCreate`) a new branch off `worktreeBase` after a fresh
  * fetch. Returns false when there was nothing to add and `mayCreate` is off.
  */
-function addWorktree(root, wt, branch, mayCreate, log) {
+function addWorktree(root, wt, branch, mayCreate, workflow, log) {
     let args;
     if (hasLocal(root, branch)) {
         args = [wt, branch];
@@ -173,7 +215,7 @@ function addWorktree(root, wt, branch, mayCreate, log) {
         }
         else if (mayCreate) {
             fetchBranch(root, DEV);
-            args = [wt, "-b", branch, devBase(root, log)];
+            args = [wt, "-b", branch, worktreeBase(root, workflow, log)];
         }
         else {
             return false;
@@ -503,7 +545,7 @@ export const worktreesCommand = {
                 [EXIT_FETCH]: "could not fetch from origin",
                 [EXIT_INSTALL]: "dependency install failed",
                 [EXIT_INSTALL_COULD_NOT_RUN]: "the package manager could not run (exit 126 / 127)",
-                [EXIT_REFUSED]: "refused: main as the working branch (dev too, except debug in place), ship of dev / main, detached HEAD, or ship could not switch to its branch (a missing feat/{fid} is named)",
+                [EXIT_REFUSED]: "refused: main as the working branch (dev too, except debug in place), ship of dev / main, detached HEAD, ship could not switch to its branch (a missing feat/{fid} is named), or a design / plan branch carrying unpushed dev commits (publish dev, then re-run)",
                 [EXIT_WORKTREE_ADD]: "git worktree add failed",
                 [EXIT_REBASE_NOT_STARTED]: "resume rebase could not start, even after committing what an earlier run left (e.g. a commit hook refused that commit)",
                 [EXIT_NOT_A_WORKTREE]: ".worktrees/{fid} exists but is not a registered git worktree",
@@ -571,7 +613,7 @@ export const worktreesCommand = {
                     }
                     else if (workflow !== "debug" || session !== target) {
                         // Debug adopts an existing feat/{fid}; it never mints a branch of its own.
-                        if (addWorktree(root, wtDir, target, workflow !== "debug", ctx.log))
+                        if (addWorktree(root, wtDir, target, workflow !== "debug", workflow, ctx.log))
                             mode = "created";
                     }
                 }
@@ -605,6 +647,16 @@ export const worktreesCommand = {
                 let sentinel = null;
                 let carried = null;
                 const sentinelPath = path.join(logDir, ".rebase-failed");
+                // A docs-only branch cannot land while it carries unpushed dev work: refuse
+                // now, not after the whole phase. Checked before the resume rebase, which
+                // replays such commits under new SHAs this commit-by-commit check no longer
+                // knows; the close itself names them then.
+                if (DOCS_ONLY_WORKFLOWS.includes(workflow) && mode !== "adopted") {
+                    const inherited = inheritedDevCommits(root, target);
+                    if (inherited.length > 0) {
+                        throw new CommandError(EXIT_REFUSED, inheritedDevRefusal(root, target, workflow, inherited.length));
+                    }
+                }
                 if (mode === "resumed" && workflow !== "ship") {
                     // Cleared before every attempt: a sentinel left by an earlier run would
                     // send this one to the Failure Path after a clean rebase.
@@ -614,12 +666,12 @@ export const worktreesCommand = {
                         failure = {
                             conflict: true,
                             detail: "a rebase is already in progress",
-                            onto: devBase(wt),
+                            onto: worktreeBase(wt, workflow),
                         };
                     }
                     else {
                         fetchBranch(wt, DEV);
-                        const onto = devBase(wt, ctx.log);
+                        const onto = worktreeBase(wt, workflow, ctx.log);
                         carried = carryLeftovers(wt, {
                             fid,
                             onto,
@@ -660,7 +712,7 @@ export const worktreesCommand = {
                 const direnvAllowed = done && allowDirenv(root, wt, ctx.log);
                 const wantInstall = done && config.worktreeInstall;
                 const installStatus = wantInstall ? install(wt, ctx.log) : 0;
-                const baseRef = devBase(wt);
+                const baseRef = worktreeBase(wt, workflow);
                 const branch = git(wt, ["branch", "--show-current"]) ?? "";
                 const branchWarning = workflow === "ship"
                     ? shipBranchWarning(branch, fid, f.issue === undefined ? undefined : String(f.issue))

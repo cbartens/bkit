@@ -2064,6 +2064,45 @@ describe("branches land", { timeout: GIT_TIMEOUT }, () => {
     expect(r.err).toContain("close staged non-doc files");
   });
 
+  it("local: names unpushed dev as the cause when the branch carries it", async () => {
+    const { repo } = fixture();
+    // The branch's own base is an unpushed dev commit: the squash carries its paths.
+    git(repo, "checkout", "-q", "dev");
+    write(repo, "src/app.ts", "export {};\n");
+    git(repo, "add", "-A");
+    git(repo, "commit", "-qm", "unpushed dev work");
+    git(repo, "checkout", "-q", `feat/${FID}`);
+    git(repo, "rebase", "-q", "dev");
+
+    const r = await land(repo, { BKIT_RUNTIME: "LOCAL" });
+    expect(r.code).toBe(17);
+    expect(r.err).toContain("close staged non-doc files");
+    expect(r.err).toContain("src/app.ts");
+    expect(r.err).toContain("all of them are local dev's content");
+    expect(r.err).toContain("1 commit(s) ahead of origin/dev");
+    expect(r.err).toContain("publish dev (git push origin dev)");
+    expect(git(repo, "log", "--format=%s", "origin/dev")).not.toContain(DONE);
+  });
+
+  it("local: separates this run's own non-doc file from the unpushed dev work it inherited", async () => {
+    const { repo } = fixture();
+    git(repo, "checkout", "-q", "dev");
+    write(repo, "src/app.ts", "export {};\n");
+    git(repo, "add", "-A");
+    git(repo, "commit", "-qm", "unpushed dev work");
+    git(repo, "checkout", "-q", `feat/${FID}`);
+    write(repo, "src/mine.ts", "export const mine = 1;\n");
+    git(repo, "add", "-A");
+    git(repo, "commit", "-qm", "code this run made");
+    git(repo, "rebase", "-q", "dev");
+
+    const r = await land(repo, { BKIT_RUNTIME: "LOCAL" });
+    expect(r.code).toBe(17);
+    expect(r.err).toContain("src/app.ts");
+    expect(r.err).toContain("src/mine.ts");
+    expect(r.err).toContain("1 of them are local dev's content");
+  });
+
   it("PR shape: dev refuses the push → pushes the roadmap commit, then hands PR creation to MCP (80, stage open) without gh", async () => {
     const { repo, remote } = fixture();
     protectDev(remote);
