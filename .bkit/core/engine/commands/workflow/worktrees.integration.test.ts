@@ -156,17 +156,33 @@ describe("bkit worktrees setup — mint (create)", () => {
     expect(installCalls()).toBe(`${wtOf(f)} install --frozen-lockfile`);
   });
 
-  it("cuts feat/{fid} off local dev when it is ahead of origin/dev, and says so", async () => {
+  it("cuts feat/{fid} off origin/dev for design and plan, even while local dev is ahead", async () => {
+    const f = fixture();
+    fs.writeFileSync(path.join(f.repo, "held.txt"), "unpushed\n");
+    git(f.repo, "add", "held.txt");
+    git(f.repo, "commit", "-q", "-m", "held on local dev");
+    const tip = git(f.repo, "rev-parse", "origin/dev");
+
+    const r = await setup(f.repo, "plan", "--worktrees");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ mode: "created", baseRef: "origin/dev", baseSha: tip });
+    expect(git(wtOf(f), "rev-parse", "HEAD")).toBe(tip);
+    expect(fs.existsSync(path.join(wtOf(f), "held.txt"))).toBe(false);
+    expect(r.err).toContain("basing this plan branch on origin/dev");
+  });
+
+  it("cuts feat/{fid} off local dev for build while it is ahead of origin/dev, and says so", async () => {
     const f = fixture();
     fs.writeFileSync(path.join(f.repo, "held.txt"), "unpushed\n");
     git(f.repo, "add", "held.txt");
     git(f.repo, "commit", "-q", "-m", "held on local dev");
     const local = git(f.repo, "rev-parse", "dev");
 
-    const r = await setup(f.repo, "plan", "--worktrees");
+    const r = await setup(f.repo, "build", "--worktrees");
     expect(r.code).toBe(0);
     expect(r.json).toMatchObject({ mode: "created", baseRef: "dev", baseSha: local });
     expect(git(wtOf(f), "rev-parse", "HEAD")).toBe(local);
+    expect(fs.existsSync(path.join(wtOf(f), "held.txt"))).toBe(true);
     expect(r.err).toContain("local dev is 1 commit(s) ahead of origin/dev");
   });
 
@@ -406,6 +422,27 @@ describe("bkit worktrees setup — mint (resume)", () => {
     expect(r.code).toBe(0);
     expect(r.json).toMatchObject({ mode: "resumed", baseRef: "dev", baseSha: local });
     expect(git(wtOf(f), "rev-parse", "HEAD~1")).toBe(local);
+  });
+
+  it("refuses a resumed design / plan worktree whose branch carries unpushed dev work", async () => {
+    const f = await minted("plan");
+    fs.writeFileSync(path.join(f.repo, "held.txt"), "unpushed\n");
+    git(f.repo, "add", "held.txt");
+    git(f.repo, "commit", "-q", "-m", "held on local dev");
+    const tip = git(f.repo, "rev-parse", "--short", "dev");
+    git(wtOf(f), "rebase", "-q", "dev");
+
+    const r = await setup(f.repo, "plan", "--worktrees");
+    expect(r.code).toBe(7);
+    expect(r.err).toContain("1 commit(s) of unpushed dev");
+    expect(r.err).toContain(`tip ${tip}`);
+    expect(r.err).toContain("this branch cannot land");
+    expect(r.err).toContain("git push origin dev");
+
+    // The same worktree resumes for build, whose PR carries dev's work by design.
+    const build = await setup(f.repo, "build", "--worktrees");
+    expect(build.code).toBe(0);
+    expect(build.json).toMatchObject({ mode: "resumed" });
   });
 
   it.each(["debug", "build"])(
