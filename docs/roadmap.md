@@ -13,8 +13,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-10-23T01:49:03Z)_
-_(refreshed 2026-10-23T01:49:04Z)_
+_(refreshed 2026-10-26T03:56:30Z)_
 
 ### Design
 
@@ -30,6 +29,7 @@ _(refreshed 2026-10-23T01:49:04Z)_
 | --- | --- | --- |
 | 504-example-project | 504-example-project | 1791870640742 |
 | 651-sops-env-backup | 651-sops-env-backup | 1792633642892 |
+| 700-session-start-nudge | 700-session-start-nudge | 1792986990130 |
 
 ### Build
 
