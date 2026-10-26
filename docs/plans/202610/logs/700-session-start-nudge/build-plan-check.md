@@ -12,7 +12,7 @@ Plan: `docs/plans/202610/700-session-start-nudge-plan.md`. Caps: 3 tasks and 15 
 <!-- prettier-ignore -->
 | Group | Title | Tasks | TEST FIRST tests | KB |
 | --- | --- | --- | --- | --- |
-| 1 | Advisory delivery across the five hosts | 3 | 14 | 9.8 |
+| 1 | Advisory delivery across the five hosts | 3 | 14 | 10.3 |
 | 2 | References and close-out | 2 | 0 | 3.4 |
 
 ## Tasks

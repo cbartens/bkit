@@ -395,7 +395,7 @@ Code-only — `git revert` sufficient.
   - **UPDATE:** `.bkit/core/engine/audits/hooks/preflight-sh.integration.test.ts`: invert the three IDE-skip assertions that today assert empty stdout — `exits 0 silently when LINEAR_ISSUE_ID is empty (existing IDE-skip preserved)`, `a Jira session (token set, no LINEAR_ISSUE_ID) exits 0 silently`, `exits 0 silently when the session is not a background agent` — to expect the advisory on stdout and exit 0, leaving the guard assertions (`JSON.parse(stdout)` + `HARD STOP`) passing
   - **READ:** `.bkit/core/hooks/preflight-linear.sh`: the shared guard, unchanged — its `emit_context` calls now accumulate
   - **READ:** `.bkit/core/engine/render/parts.ts`: how `{{BKIT_PART}}` splices shared parts
-  - **DONE WHEN:** both rendered hooks carry the advisory on an IDE session and on a cloud session; neither rendered hook names `AGENTS.md`; the three inverted IDE-skip assertions and the existing preflight guard assertions pass; a fresh-session dogfood on Claude and on Cursor shows the advisory
+  - **DONE WHEN:** both rendered hooks carry the advisory on an IDE session and on a cloud session; neither rendered hook names `AGENTS.md`; the three inverted IDE-skip assertions and the existing preflight guard assertions pass; a fresh-session dogfood on Claude and on Cursor shows the advisory; `pnpm build && git add dist/` ran in this task's commit, so `dist/` matches the edited `.bkit/core/engine/**` sources (`.agents/rules.md` § Repo Authoring, "Engine builds")
   - **TEST FIRST:**
     - `.bkit/core/engine/audits/hooks/preflight-sh.integration.test.ts` `emits the rules advisory on a Claude IDE session` fails while the hook prints empty stdout on an empty `LINEAR_ISSUE_ID`
     - `.bkit/core/engine/audits/hooks/preflight-sh.integration.test.ts` `names .agents/rules.md and never AGENTS.md` fails while the emitted context names `AGENTS.md` or names no file
@@ -419,7 +419,7 @@ Code-only — `git revert` sufficient.
   - **READ:** `.bkit/core/.opencode/plugin/bkit-gateguard.js`: the dual-shape driver the new plugin mirrors
   - **READ:** `.bkit/core/hooks/readguard-engine.js`: the OS-temp dedup / TTL pattern the helper follows
   - **DEPENDS ON:** 1
-  - **DONE WHEN:** the opencode plugin appends the advisory to the first tool result only, and fails open on a malformed input; `parts.test.ts`, `check.integration.test.ts` and `dogfood-templates.test.ts` pass and `pnpm slop:delta` is clean; a fresh-session dogfood shows the advisory once
+  - **DONE WHEN:** the opencode plugin appends the advisory to the first tool result only, and fails open on a malformed input; `parts.test.ts`, `check.integration.test.ts` and `dogfood-templates.test.ts` pass and `pnpm slop:delta` is clean; a fresh-session dogfood shows the advisory once; `pnpm build && git add dist/` ran in this task's commit, so `dist/` matches the edited `.bkit/core/engine/**` sources (`.agents/rules.md` § Repo Authoring, "Engine builds")
   - **TEST FIRST:**
     - `.bkit/core/engine/audits/hooks/session-rules-advisory.integration.test.ts` `opencode plugin appends the rules advisory to the first tool result` fails while the first tool result carries no advisory
     - `.bkit/core/engine/audits/hooks/session-rules-advisory.integration.test.ts` `opencode plugin appends nothing on the second call in the same session` fails while the advisory repeats
@@ -446,7 +446,7 @@ Code-only — `git revert` sufficient.
   - **READ:** `.bkit/core/hooks/antigravity-hook.js`: the envelope adapter and `adviseOnce` deny-once delivery
   - **READ:** `.bkit/core/.codex/hooks/bkit-gateguard.cjs`: the stdin/stdout + fail-open shape the Codex hook mirrors
   - **DEPENDS ON:** 2
-  - **DONE WHEN:** the Codex rendered hook writes the advisory once as `additionalContext`; the Antigravity rendered hook denies the first tool call once with the advisory as its reason and allows the retry; both fail open on an empty payload and on a payload carrying no session id; `parts.test.ts`, `check.integration.test.ts` and `dogfood-templates.test.ts` pass and `pnpm slop:delta` is clean; a fresh-session dogfood on Codex and on Antigravity shows the advisory
+  - **DONE WHEN:** the Codex rendered hook writes the advisory once as `additionalContext`; the Antigravity rendered hook denies the first tool call once with the advisory as its reason and allows the retry; both fail open on an empty payload and on a payload carrying no session id; `parts.test.ts`, `check.integration.test.ts` and `dogfood-templates.test.ts` pass and `pnpm slop:delta` is clean; a fresh-session dogfood on Codex and on Antigravity shows the advisory; `pnpm build && git add dist/` ran in this task's commit, so `dist/` matches the edited `.bkit/core/engine/**` sources (`.agents/rules.md` § Repo Authoring, "Engine builds")
   - **TEST FIRST:**
     - `.bkit/core/engine/audits/hooks/session-rules-advisory.integration.test.ts` `codex hook writes the rules advisory as additionalContext once per session` fails while the rendered Codex hook writes no `additionalContext`
     - `.bkit/core/engine/audits/hooks/session-rules-advisory.integration.test.ts` `codex hook fails open on an empty payload` fails while the rendered Codex hook exits non-zero or throws
