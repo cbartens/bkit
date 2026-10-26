@@ -105,7 +105,7 @@ _notation, e.g._ **WHEN** a user submits the form with a valid file **→ THEN**
 - **Assumption:** [what the plan takes as given] → [what breaks if it's wrong]
 - **Open Question:** [decision needed] → [who / how to resolve]
   - **Options:** A) [option] — [trade-off] · B) [option] — [trade-off] · C) [option] — [trade-off, optional]
-  - **Recommended:** [A] — [why, 1 line]
+  - **Recommended:** A) [option] — [why, 1 line]
   - **Default if unanswered:** [what the agent proceeds with]
 
 ### 👤 ✅ Human Confirmation
