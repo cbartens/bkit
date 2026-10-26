@@ -41,7 +41,7 @@ bkit asks the owner questions in five workflows and labels the answer options th
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** Letter the Decision Pause's options and recommendation in the renderer, and strip the letter back off in the parser
+- [x] **TASK 1:** Letter the Decision Pause's options and recommendation in the renderer, and strip the letter back off in the parser
   - **UPDATE:** `.bkit/core/engine/commands/workflow/decisions.ts`: `itemLines` renders `Options: A) {A} / B) {B}` and `Recommended: A) {A} — {reason}`, lettering each option and the recommended one by its index in `options`; `No recommendation — {why}` stays as it is
   - **UPDATE:** `.bkit/core/engine/commands/workflow/decisions.ts`: `parseDecisionItems` strips a leading `{A-Z}) ` from each `Options:` entry and from the `Recommended:` value, so `options` and `recommended` stay bare names (`Accept`, `Fix now`, `Try again`, `Decide`, `Stop`); a file written before the letters parses unchanged
   - **UPDATE:** `.bkit/core/engine/commands/workflow/decisions.ts`: `deferralRow`'s `description` letters the options it quotes, and the file-header layout comment names the lettered forms
