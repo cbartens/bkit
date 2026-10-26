@@ -29,10 +29,6 @@ Plan: `docs/plans/202610/705-build-plan-convert-plan.md`
 - Task 1 `test-changed` — `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` differs from its red snapshot for "build's comment numbers match the step table" (diff below)
 - Task 1 `test-changed` — `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` differs from its red snapshot for "the convert step posts under Plan Convert's number and title" (diff below)
 
-## Late-red check
-
-- Task 1 — not checked: no plan-execute step commit's log records `DONE — TASK 1`, so when its code landed is unknown
-
 ## Diff since red — Task 1 `.bkit/core/engine/audits/workflows/workflow-shape.test.ts`
 
 ```diff
