@@ -1217,6 +1217,15 @@ describe("bkit runs dispatch", { timeout: 20_000 }, () => {
     return { cwd, remoteHead };
   }
 
+  /** A pre-push hook that refuses every push — the mandated-gate-failed shape. */
+  function failingPushHook(cwd: string) {
+    const hook = path.join(cwd, ".git", "hooks", "pre-push");
+    fs.mkdirSync(path.dirname(hook), { recursive: true });
+    fs.writeFileSync(hook, "#!/bin/sh\necho 'pre-push gate refused' >&2\nexit 1\n", {
+      mode: 0o755,
+    });
+  }
+
   const base = (cwd: string) => ({
     cwd,
     pr: "7",
@@ -1254,6 +1263,34 @@ describe("bkit runs dispatch", { timeout: 20_000 }, () => {
     expect(gitIn(cwd, "log", "-1", "--format=%s")).toBe("chore(1-x): re-trigger bkit [auto route]");
     expect(remoteHead()).toBe(head);
     expect(r.ciDispatch).toEqual({ outcome: "self-healed", head, attempts: 7, retrigger: true });
+  });
+
+  it("a failed re-trigger push names the cause in the log", async () => {
+    const { cwd } = closeRepo();
+    failingPushHook(cwd);
+    const logs: string[] = [];
+    const r = await ciDispatchGate(base(cwd), {
+      gh: sequenceGh([NONE, NONE, NONE, NONE, NONE, NONE, FOUND]).gh,
+      sleep: instant,
+      log: (m) => logs.push(m),
+    });
+    expect(r).toMatchObject({ phase: "repoll", handoff: 6, ciDispatch: null });
+    expect(logs.join("\n")).toContain("pre-push gate refused");
+  });
+
+  it("a failed re-trigger push leaves no orphan commit behind", async () => {
+    const { cwd, remoteHead } = closeRepo();
+    failingPushHook(cwd);
+    const before = gitIn(cwd, "rev-parse", "HEAD");
+    const tip = remoteHead();
+    const r = await ciDispatchGate(base(cwd), {
+      gh: sequenceGh([NONE, NONE, NONE, NONE, NONE, NONE, FOUND]).gh,
+      ...quiet,
+    });
+    expect(r).toMatchObject({ phase: "repoll", handoff: 6, ciDispatch: null });
+    // The commit never reached the remote: it is dropped, not left to pile up on a re-run.
+    expect(gitIn(cwd, "rev-parse", "HEAD")).toBe(before);
+    expect(remoteHead()).toBe(tip);
   });
 
   it("no-ci only when no CI workflow is declared; a declared one's silence is ci-declared-no-run", async () => {
