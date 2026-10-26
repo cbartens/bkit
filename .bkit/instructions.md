@@ -1978,6 +1978,14 @@ Rules below `bkit:end` in `.agents/rules.md`: bkit's own, never shipped; no ship
 **Verify before complete:** Done = both full suite (`pnpm vitest run`, NEVER scoped) and real dogfood (`pnpm build` → `node dist/cli.js <verb> <flags>` on a fresh scratch consumer; inspect on-disk footprint). Green tests ≠ proof.
 ```
 
+### engine-builds
+
+- rule: P18 · Project Rules › Universal Rules › Repo Authoring
+
+```text
+**Engine builds:** Editing `.bkit/core/engine/**/*.ts` → ALWAYS `pnpm build && git add dist/` in the same commit.
+```
+
 ## Clauses
 
 One `### {name}` per clause, in the lines of § Format, Clause section lines. Header clauses come in block order: Protocol, Contract, Rules.
