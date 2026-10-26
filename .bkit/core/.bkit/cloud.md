@@ -95,7 +95,7 @@ Open `claude.ai/code` → environment selector → **+ Add environment**. Three 
 
 ## In-repo side
 
-- `.claude/hooks/bkit-preflight.sh` — Tracker opt-in guard. Skips silently when tracker issue ID env var unset (IDE sessions). Non-zero exit informational only on Claude (`SessionStart` cannot block); agent reads `HARD STOP` text from `additionalContext`.
+- `.claude/hooks/bkit-preflight.sh` — Tracker opt-in guard plus the rules-read advisory, one JSON document (`.bkit/providers.md` § Rules-read advisory). Tracker issue ID env var unset (IDE session) → the advisory alone, exit 0. Non-zero exit informational only on Claude (`SessionStart` cannot block); the agent reads `HARD STOP` text from `additionalContext`.
 - `.claude/hooks/bkit-cloud-bootstrap.sh` — runs `pnpm install --frozen-lockfile` + `vale sync` when `CLAUDE_CODE_REMOTE=true`; then, through the just-installed bkit (`bkit runtime detect` gh probe, `bkit context list-blocks` provision recipes, read with `jq`), gh auth and context-fetch CLI provisioning — skipped with a loud log line when bkit or `jq` is missing. No-op locally.
 - Both registered in `.claude/settings.json` under `hooks.SessionStart`.
 
@@ -295,7 +295,7 @@ Everything in repo under `.cursor/`. bkit ships canonical content for all four f
 | `.cursor/Dockerfile` | Cloud image — vale + gh + Node 24 (template default) + pnpm (corepack-pinned); Node, gh and vale are version-pinned and sha256-checked; browsers etc. added by the consumer | Template: copy from `.bkit/templates/.cursor/Dockerfile`; yours after |
 | `.cursor/environment.json` | Build pointer + per-snapshot `install` hook (`pnpm install --frozen-lockfile` + `vale sync` if `.vale.ini`) | Template: copy from `.bkit/templates/.cursor/environment.json`; yours after |
 | `.cursor/hooks.json` | Wires `sessionStart` → `bkit-preflight.sh` (`failClosed: true`) | Tier 2 contained JSON |
-| `.cursor/hooks/bkit-preflight.sh` | Tracker opt-in guard — `bkit:auto` label + non-terminal status. Skips silently on IDE sessions | Tier 2 contained (bkit:start/end markers) |
+| `.cursor/hooks/bkit-preflight.sh` | Tracker opt-in guard — `bkit:auto` label + non-terminal status — plus the rules-read advisory (`.bkit/providers.md` § Rules-read advisory). IDE session → the advisory alone, exit 0 | Tier 2 contained (bkit:start/end markers) |
 
 ## How GitHub dispatch works
 
