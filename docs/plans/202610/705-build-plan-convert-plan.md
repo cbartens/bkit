@@ -186,6 +186,12 @@ None — no new routes, DB writes, secrets or user input.
     - `.bkit/core/engine/commands/workflow/step-table.test.ts` `a build that stopped after Plan Current resumes at Install Skills (Step 6)` fails on Install Skills still numbered 5
     - `.bkit/core/engine/commands/workflow/step-table.test.ts` `a build that stopped after Plan Verify resumes at Plan Verify (Step 8)` fails on the verify loop still numbered 7
     - `.bkit/core/engine/render/trackers.test.ts` `bkit-build: the none render matches its baseline byte for byte` fails on the baseline still carrying the pre-split Step 3 body
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `Branch Sync merges docs and finishes as its own step` fails on Step 3 still running the plan check and dispatching the convert agent — red evidence predates a module-level helper extraction in the same file; test body unchanged (owner, 2026-10-27)
+    - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `Plan Convert checks the plan, converts one with no task markers, and re-checks` fails on no Step 4 section holding the check, the dispatch and the second check — red evidence predates a module-level helper extraction in the same file; test body unchanged (owner, 2026-10-27)
+    - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `Plan Convert leaves a valid plan with no newer comments alone` fails on the convert step running for a plan that needs none — red evidence predates a module-level helper extraction in the same file; test body unchanged (owner, 2026-10-27)
+    - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `build's comment numbers match the step table` fails on a finish line posting a number its step's row does not carry — assertion loop rewritten into equivalent helper calls after the red run; the same three checks hold (owner, 2026-10-27)
+    - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `the convert step posts under Plan Convert's number and title` fails on the convert finish posting `--number=3` with Branch Sync's title — red evidence predates a module-level helper extraction in the same file; test body unchanged (owner, 2026-10-27)
 
 <!-- bkit:task 1 end -->
 
