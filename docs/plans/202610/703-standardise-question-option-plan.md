@@ -180,7 +180,7 @@ bkit asks the owner questions in five workflows and labels the answer options th
 
 <!-- bkit:task 8 start -->
 
-- [ ] **TASK 8:** The corpus audit reads only the first `Options:` label on a line, so the second list on `.bkit/core/.bkit/authoring.md:114` can revert to `Options: Accept / Fix now` and the suite stays green
+- [x] **TASK 8:** The corpus audit reads only the first `Options:` label on a line, so the second list on `.bkit/core/.bkit/authoring.md:114` can revert to `Options: Accept / Fix now` and the suite stays green
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/audits/workflows/question-option-format.test.ts:88` · **Round:** 1
   - **DONE WHEN:** `optionLists` reports every `Options:` list a line carries — each match of the label, not just the first, and each list's entries read to its own closing code span — and the four corpus assertions (`every option line in the workflows letters every entry`, `every option line in the prompts, the templates and the authoring docs letters every entry`, `the plan template letters every option of its Open Questions placeholder`, the not-vacuous guard) still pass on the untouched corpus. Reproduction on this tree: with the audit's own `optionLists` / `optionViolations`, reverting the second list of `.bkit/core/.bkit/authoring.md:114` from `` `Options: A) Accept / B) Fix now` `` to `` `Options: Accept / Fix now` `` yields **zero** violations, while reverting the first list yields two.
   - **TEST FIRST:**
@@ -190,7 +190,7 @@ bkit asks the owner questions in five workflows and labels the answer options th
 <!-- bkit:task 8 end -->
 <!-- bkit:task 9 start -->
 
-- [ ] **TASK 9:** The `Recommended:` rule runs over the workflows only, so the plan template's `Recommended: [A] — [why, 1 line]` diverges from the canonical `Recommended: A) X — {reason}` with nothing holding it
+- [x] **TASK 9:** The `Recommended:` rule runs over the workflows only, so the plan template's `Recommended: [A] — [why, 1 line]` diverges from the canonical `Recommended: A) X — {reason}` with nothing holding it
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/audits/workflows/question-option-format.test.ts:230` · **Round:** 1
   - **DONE WHEN:** the recommendation rule runs over `PROMPTS`, `TEMPLATES` and `AUTHORING` as well as `WORKFLOWS`, and `.bkit/core/docs/templates/bkit-plan.md:108` plus its `docs/templates/bkit-plan.md` mirror state the lettered form (`**Recommended:** A) [option] — [why, 1 line]`) — so the Open Questions block every plan is generated from shows the same recommendation shape as the canonical `**Question layout**` bullet the audit names, and no other template, prompt or authoring line fails the widened rule.
   - **TEST FIRST:**
@@ -199,7 +199,7 @@ bkit asks the owner questions in five workflows and labels the answer options th
 <!-- bkit:task 9 end -->
 <!-- bkit:task 10 start -->
 
-- [ ] **TASK 10:** The prompts index is left stating the pre-change option rule for the prompts this change edited — the same-change index update the repo rules mandate, with no gate behind it
+- [x] **TASK 10:** The prompts index is left stating the pre-change option rule for the prompts this change edited — the same-change index update the repo rules mandate, with no gate behind it
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/.bkit/prompts.md:267` · **Round:** 1
   - **DONE WHEN:** every row of the prompts index that states the open-question option rule names the lettered form the prompt now states — at least `bkit-design-generate` (:255), `bkit-design-review-2` (:257), `bkit-plan-generate` (:267), `bkit-plan-scope-check` (:270) and the `bkit-plan-update` row — the dogfood install re-renders `.bkit/prompts.md` from that source so the two agree, and a test holds the agreement instead of a reader's memory.
   - **TEST FIRST:**
