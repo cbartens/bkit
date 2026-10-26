@@ -1,0 +1,14 @@
+cwd (the run's worktree)      : /Users/christian/Documents/GitHub/bkit/.worktrees/699-engine-run-completeness
+repoRoot(cwd)                 : /Users/christian/Documents/GitHub/bkit
+worktree toplevel             : /Users/christian/Documents/GitHub/bkit/.worktrees/699-engine-run-completeness
+statusLocation.bookRoot       : /Users/christian/Documents/GitHub/bkit/.worktrees/699-engine-run-completeness
+statusLocation.path           : /Users/christian/Documents/GitHub/bkit/.worktrees/699-engine-run-completeness/docs/plans/202610/logs/699-engine-run-completeness/status.jsonl
+
+repoRoot == worktree toplevel : false
+
+main-checkout .bkit/friction.jsonl : /Users/christian/Documents/GitHub/bkit/.bkit/friction.jsonl  ino=373714637 size=0
+worktree      .bkit/friction.jsonl : /Users/christian/Documents/GitHub/bkit/.worktrees/699-engine-run-completeness/.bkit/friction.jsonl  ino=375531166 size=0
+same file (same inode)             : false
+
+where the workflow prose's own `bkit ledgers append` writes (--root default: cwd):
+  /Users/christian/Documents/GitHub/bkit/.worktrees/699-engine-run-completeness/.bkit/friction.jsonl  == worktree copy: true

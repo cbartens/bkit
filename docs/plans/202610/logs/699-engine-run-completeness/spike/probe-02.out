@@ -1,0 +1,23 @@
+design sections=12 tableEntries=12 dedup=12 numbers+titlesEqual=true stepKeyProblems=1 callSites=45
+        Step 2: md --step=design-start-workflow not in table
+plan   sections= 8 tableEntries= 8 dedup=8 numbers+titlesEqual=true stepKeyProblems=1 callSites=41
+        Step 2: md --step=plan-start-workflow not in table
+build  sections=15 tableEntries=19 dedup=15 numbers+titlesEqual=true stepKeyProblems=8 callSites=101
+        Step 2: md --step=build-start-workflow not in table
+        Step 7: md --step=build-group-start not in table
+        Step 7: md --step=build-group-gate- not in table
+        Step 8: md --step=build-plan-verify not in table
+        Step 8: md --step=build-group-gate not in table
+        Step 12: md --step=build-run-tests not in table
+        Step 13: md --step=build-failure-diagnose not in table
+        Step 13: md --step=build-run-tests not in table
+debug  sections=11 tableEntries=12 dedup=11 numbers+titlesEqual=true stepKeyProblems=2 callSites=81
+        Step 2: md --step=debug-start-workflow not in table
+        Step 7: md --step=debug-failure-diagnose not in table
+ship   sections=14 tableEntries=16 dedup=14 numbers+titlesEqual=true stepKeyProblems=3 callSites=84
+        Step 3: md --step=ship-regression-guard not in table
+        Step 9: md --step=ship-bookkeeping-push not in table
+        Step 12: md --step=ship-merge-pr not in table
+
+TOTAL "{BKIT}" call sites: 352; distinct nouns: 21; distinct noun+verb pairs: 78
+all workflows: derived numbers+titles == deduped WORKFLOW_STEPS: true

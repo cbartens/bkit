@@ -1,0 +1,14 @@
+  run  1 design rows= 15 steps=11 repeatSteps=0 postDoneStepRows=0
+  run  2 design rows=  8 steps=5 repeatSteps=0 postDoneStepRows=0
+  run  3 plan   rows= 15 steps=11 repeatSteps=0 postDoneStepRows=0
+  run  4 plan   rows= 15 steps=12 repeatSteps=0 postDoneStepRows=0
+  run  5 build  rows= 94 steps=9 repeatSteps=3 [build-task-red,build-plan-verify,build-plan-gaps-remediate] postDoneStepRows=21
+  run  6 build  rows= 63 steps=21 repeatSteps=6 [build-task-red,build-plan-execute,build-plan-verify] postDoneStepRows=4
+  run  7 plan   rows= 14 steps=11 repeatSteps=0 postDoneStepRows=0
+  run  8 design rows= 24 steps=6 repeatSteps=0 postDoneStepRows=0
+
+corpus files: 4
+runs: 8
+files with out-of-order 'at' in file order (merge=union interleave): 0/4
+runs with a repeated step name (group loop / retry): 2/8
+runs with step rows after workflow-done/failed: 2/8 (25 rows)

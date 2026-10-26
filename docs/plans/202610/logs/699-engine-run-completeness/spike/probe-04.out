@@ -1,0 +1,19 @@
+run rows: 63 (file rows 172, run starts at 110)
+
+BASELINE stepsBlock (no journal rows):
+{"total":{"n":59,"totalMinutes":1208.1},"byStep":{"build-start-workflow":{"n":1,"totalMinutes":0.4},"build-worktree-setup":{"n":1,"totalMinutes":0},"build-branch-sync":{"n":1,"totalMinutes":0.2},"build-plan-current":{"n":1,"totalMinutes":3.5},"build-install-skills":{"n":1,"totalMinutes":0.4},"build-plan-execute":{"n":2,"totalMinutes":137.6},"build-plan-verify":{"n":4,"totalMinutes":42.7},"build-subplan-gate":{"n":1,"totalMinutes":16},"build-task-red":{"n":31,"totalMinutes":39},"build-plan-gaps-remediate":{"n":2,"totalMinutes":25.9},"build-plan-verify-holistic":{"n":1,"totalMinutes":6.7},"build-challenge":{"n":1,"totalMinutes":11.5},"build-challenge-reconcile":{"n":1,"totalMinutes":4.2},"build-challenge-remediate":{"n":1,"totalMinutes":876.2},"build-challenge-tests":{"n":1,"totalMinutes":1},"build-run-tests":{"n":2,"totalMinutes":6.7},"build-failure-diagnose":{"n":1,"totalMinutes":0.5},"build-failure-remediate":{"n":1,"totalMinutes":0.3},"build-summary":{"n":1,"totalMinutes":6},"build-create-pr":{"n":1,"totalMinutes":3.1},"build-close-workflow":{"n":3,"totalMinutes":26.2}}}
+
+injected engine-call rows: 59
+
+stepsBlock WITH journal rows, MARK_ROWS UNCHANGED (current 3 entries):
+{"total":{"n":59,"totalMinutes":0.7},"byStep":{"build-start-workflow":{"n":1,"totalMinutes":0},"build-worktree-setup":{"n":1,"totalMinutes":0},"build-branch-sync":{"n":1,"totalMinutes":0},"build-plan-current":{"n":1,"totalMinutes":0},"build-install-skills":{"n":1,"totalMinutes":0},"build-plan-execute":{"n":2,"totalMinutes":0},"build-plan-verify":{"n":4,"totalMinutes":0.1},"build-subplan-gate":{"n":1,"totalMinutes":0},"build-task-red":{"n":31,"totalMinutes":0.5},"build-plan-gaps-remediate":{"n":2,"totalMinutes":0},"build-plan-verify-holistic":{"n":1,"totalMinutes":0},"build-challenge":{"n":1,"totalMinutes":0},"build-challenge-reconcile":{"n":1,"totalMinutes":0},"build-challenge-remediate":{"n":1,"totalMinutes":0},"build-challenge-tests":{"n":1,"totalMinutes":0},"build-run-tests":{"n":2,"totalMinutes":0},"build-failure-diagnose":{"n":1,"totalMinutes":0},"build-failure-remediate":{"n":1,"totalMinutes":0},"build-summary":{"n":1,"totalMinutes":0},"build-create-pr":{"n":1,"totalMinutes":0},"build-close-workflow":{"n":3,"totalMinutes":0.1}}}
+
+stepsBlock WITH journal rows, MARK_ROWS EXTENDED with engine-call + completeness:
+{"total":{"n":59,"totalMinutes":1208.1},"byStep":{"build-start-workflow":{"n":1,"totalMinutes":0.4},"build-worktree-setup":{"n":1,"totalMinutes":0},"build-branch-sync":{"n":1,"totalMinutes":0.2},"build-plan-current":{"n":1,"totalMinutes":3.5},"build-install-skills":{"n":1,"totalMinutes":0.4},"build-plan-execute":{"n":2,"totalMinutes":137.6},"build-plan-verify":{"n":4,"totalMinutes":42.7},"build-subplan-gate":{"n":1,"totalMinutes":16},"build-task-red":{"n":31,"totalMinutes":39},"build-plan-gaps-remediate":{"n":2,"totalMinutes":25.9},"build-plan-verify-holistic":{"n":1,"totalMinutes":6.7},"build-challenge":{"n":1,"totalMinutes":11.5},"build-challenge-reconcile":{"n":1,"totalMinutes":4.2},"build-challenge-remediate":{"n":1,"totalMinutes":876.2},"build-challenge-tests":{"n":1,"totalMinutes":1},"build-run-tests":{"n":2,"totalMinutes":6.7},"build-failure-diagnose":{"n":1,"totalMinutes":0.5},"build-failure-remediate":{"n":1,"totalMinutes":0.3},"build-summary":{"n":1,"totalMinutes":6},"build-create-pr":{"n":1,"totalMinutes":3.1},"build-close-workflow":{"n":3,"totalMinutes":26.2}}}
+
+baseline == extended-MARK_ROWS output: true
+baseline == unchanged-MARK_ROWS output: false
+
+harvest splitRuns, last run:
+  corpus : rows=61 afterEnd=2 last=2026-10-23T02:18:28Z (close-transport)
+  journal: rows=116 afterEnd=6 last=2026-10-23T02:18:28Z (close-transport)

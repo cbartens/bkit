@@ -1,0 +1,102 @@
+
+=== design (12 step sections) ===
+  Step  1 Start Workflow                                                    | 1. Resolve repo and initial branch:
+  Step  2 Worktree Setup                                                    | 1. Commit any uncommitted changes before new worktree branch — NEVER push:
+  Step  3 Grill                                                             | 1. Read the runtime: `runtime assert`, then the grill settings (`bkit.workflows.desi
+  Step  4 Brainstorm & Ideate                                               | 1. <!-- bkit:tracker github start -->
+  Step  5 Generate Design                                                   | 1. **Subagent:** Invoke `@bkit-design-generate` using `Agent` tool:
+  Step  6 Design Review                                                     | 1. Launch these subagents in parallel using `Agent` tool:
+  Step  7 Spike                              ruleA                          | **Run only if** Step 6 `REVIEW_SPIKE` = true.
+  Step  8 Apply Review                                                      | 1. **Subagent:** Invoke `@bkit-design-update` using `Agent` tool:
+  Step  9 Design Organise                                                   | 1. **Subagent:** Invoke `@bkit-design-organise` using `Agent` tool:
+  Step 10 Summary                                                           | 1. Resolve the highest design version:
+  Step 11 Suggest Workstreams                col0-skip x1 *** MISS ***      | <!-- bkit:tracker true start -->
+        missed marker: **Skip if** `ISSUE_ID` empty → Step 12.
+        missed marker: **Run only if** `SUMMARY_VERDICT` = PASS or CONCERNS.
+  Step 12 Close Workflow                     ruleA                          | **Run only if** `SUMMARY_VERDICT` = PASS or CONCERNS.
+
+=== plan (8 step sections) ===
+  Step  1 Start Workflow                                                    | 1. Read repo facts, fetching `origin/dev` first:
+  Step  2 Worktree Setup                                                    | 1. Commit any uncommitted changes before new worktree branch — NEVER push:
+  Step  3 Generate Plan                                                     | 1. **Subagent:** Invoke `@bkit-plan-generate` using `Agent` tool:
+  Step  4 Fetch Context                                                     | 1. `{QUERY}` = 3-6 keywords from `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md` (
+  Step  5 Review Plan                                                       | 1. Launch these subagents in parallel using `Agent` tool:
+  Step  6 Apply Review                                                      | 1. **If** any of `plan-review-1.md`, `plan-review-2.md`, `plan-scope-check.md` is mi
+  Step  7 Summary                                                           | 1. Resolve the highest plan version:
+  Step  8 Close Workflow                     ruleA                          | **Run only if** `SUMMARY_VERDICT` = PASS or CONCERNS.
+
+=== build (15 step sections) ===
+  Step  1 Start Workflow                                                    | 1. Resolve repo, branch, and distance behind dev:
+  Step  2 Worktree Setup                                                    | 1. Commit any uncommitted changes before new worktree branch — NEVER push:
+  Step  3 Branch Sync                                                       | 1. Merge `origin/dev` when feature branch `docs/` is behind (conflicts: ledgers unio
+  Step  4 Plan Current                                                      | 1. Resolve plan base commit and collect code landed since:
+  Step  5 Install Skills                     col0-skip x1 *** MISS ***      | **Skip if** the session prompt or `DESCRIPTION` contains `[skills=false]`.
+        missed marker: **Skip if** the session prompt or `DESCRIPTION` contains `[skills=false]`.
+  Step  6 Plan Execute                                                      | 1. Once per run: **If** the session prompt (`{SESSION_DIR}/prompt.md`) carries run i
+  Step  7 Plan Verify                                                       | 1. Derive the attempt the verify artifact is named for:
+  Step  8 Plan Gaps Remediate                ruleA                          | **Run only if** Step 7 sub-step 10 or the **Decision Pause** routed here.
+  Step  9 Plan Verify Holistic                                              | Runs once, after the last group; challenge fix groups pass through here on the way b
+  Step 10 Build Challenge                                                   | 1. Set the challenge round. **If** `CHALLENGE_DONE` = true → Step 11. **If** `CHALLE
+  Step 11 Run Tests                                                         | 1. Derive the attempt the test log is named for:
+  Step 12 Failure Diagnose                   ruleA                          | **Run only if** Step 11 tests FAIL.
+  Step 13 Failure Remediate                  ruleA                          | **Run only if** Step 11 tests FAIL.
+  Step 14 Summary                            ruleA                          | **Run only if** all Step 11 tests PASS.
+  Step 15 Close Workflow & Create PR         ruleA                          | **Run only if** `SUMMARY_VERDICT` = PASS or CONCERNS.
+
+=== debug (11 step sections) ===
+  Step  1 Start Workflow                                                    | 1. Read repo facts (fetches `origin/dev` first):
+  Step  2 Worktree Setup                                                    | 1. Resume worktree, adopt existing `feat/{FID}` branch, or adopt current session bra
+  Step  3 Run Tests                                                         | 1. Run the deepest declared gate; it writes the trimmed log to the artifact (`{GATE_
+  Step  4 Fetch Context                      ruleA                          | **Run only if** `TEST_VERDICT` = FAIL **or** `REPRO` = true.
+  Step  5 Failure Reproduce                  ruleA                          | **Run only if** `TEST_VERDICT` = PASS **and** `REPRO` = true.
+  Step  6 Failure Diagnose                   ruleA                          | **Run only if** `DEBUG_MODE` != SOAK.
+  Step  7 Failure Remediate                  ruleA                          | **Run only if** `DEBUG_MODE` != SOAK.
+  Step  8 Failure Remediate Soak             ruleA                          | **Run only if** `DEBUG_MODE` = SOAK.
+  Step  9 Push Remediation                   ruleA                          | **Run only if** `TEST_VERDICT` = PASS **and** Step 3 routed here.
+  Step 10 Summary                            ruleA                          | **Run only if** `TEST_VERDICT` = PASS.
+  Step 11 Close Workflow                     ruleA                          | **Run only if** `TEST_VERDICT` = PASS.
+
+=== ship (14 step sections) ===
+  Step  1 Start Workflow                                                    | 1. Resolve repo and branch:
+  Step  2 Verify PR (Worktree Setup + Regres                                | 1. Write the input file — session prompt, issue text, plan (when present):
+  Step  3 Base Check                                                        | 1. Determine whether `origin/dev` is an ancestor of the PR head:
+  Step  4 Integrate (Path B only)            ruleA ruleB                    | **Run only if** `BASE_PATH` = B.
+  Step  5 Deferred Sweep                                                    | 1. Fast-forward to the PR head — never onto a diverged branch:
+  Step  6 Update Docs & Summary                                             | 1. **Subagent:** Invoke `@bkit-ship-update-docs` using `Agent` tool:
+  Step  7 Prune Skills                                                      | 1. Prune feature-specific skills — uninstall any skill not listed in `.agents/skills
+  Step  8 Commit + Push Bookkeeping                                         | 1. Record the step on the code head, then commit the bookkeeping (`--scope=pr`: docs
+  Step  9 Re-validate                                                       | 1. Resolve the head CI must pass at, then re-validate on code movement **or** on `{R
+  Step 10 Merge Gate + Merge PR                                             | 1. Assert the gate at the PR's current head, CI checked at `VALIDATED_HEAD` (the ONL
+  Step 11 Failure Diagnose                   ruleA                          | **Run only if** `state` != MERGED.
+  Step 12 Failure Remediate                  ruleA                          | **Run only if** `state` != MERGED.
+  Step 13 Update Local Dev                   ruleA                          | **Run only if** `state` = MERGED.
+  Step 14 Close Workflow                                                    | 1. Assert the capstone passed at the squash commit, recording the squash-merge CI ve
+
+TOTAL rule-misses (step-level marker not classified conditional): 2
+TOTAL over-classifications: 0
+
+=== every column-0 conditional marker and its owner ===
+  design L 387 Step 7 Spike :: **Run only if** Step 6 `REVIEW_SPIKE` = true.
+  design L 480 Step 11 Suggest Workstreams :: **Skip if** `ISSUE_ID` empty → Step 12.
+  design L 481 Step 11 Suggest Workstreams :: **Run only if** `SUMMARY_VERDICT` = PASS or CONCERNS.
+  design L 514 Step 12 Close Workflow :: **Run only if** `SUMMARY_VERDICT` = PASS or CONCERNS.
+  plan   L 410 Step 8 Close Workflow :: **Run only if** `SUMMARY_VERDICT` = PASS or CONCERNS.
+  build  L 424 Step 5 Install Skills :: **Skip if** the session prompt or `DESCRIPTION` contains `[skills=fals
+  build  L 565 Step 8 Plan Gaps Remediate :: **Run only if** Step 7 sub-step 10 or the **Decision Pause** routed he
+  build  L 748 Step 12 Failure Diagnose :: **Run only if** Step 11 tests FAIL.
+  build  L 778 Step 13 Failure Remediate :: **Run only if** Step 11 tests FAIL.
+  build  L 810 Step 14 Summary :: **Run only if** all Step 11 tests PASS.
+  build  L 849 Step 15 Close Workflow & Create PR :: **Run only if** `SUMMARY_VERDICT` = PASS or CONCERNS.
+  debug  L 352 Step 4 Fetch Context :: **Run only if** `TEST_VERDICT` = FAIL **or** `REPRO` = true.
+  debug  L 415 Step 5 Failure Reproduce :: **Run only if** `TEST_VERDICT` = PASS **and** `REPRO` = true.
+  debug  L 441 Step 6 Failure Diagnose :: **Run only if** `DEBUG_MODE` != SOAK.
+  debug  L 475 Step 7 Failure Remediate :: **Run only if** `DEBUG_MODE` != SOAK.
+  debug  L 503 Step 8 Failure Remediate Soak :: **Run only if** `DEBUG_MODE` = SOAK.
+  debug  L 525 Step 9 Push Remediation :: **Run only if** `TEST_VERDICT` = PASS **and** Step 3 routed here.
+  debug  L 550 Step 10 Summary :: **Run only if** `TEST_VERDICT` = PASS.
+  debug  L 581 Step 11 Close Workflow :: **Run only if** `TEST_VERDICT` = PASS.
+  ship   L 352 Step 4 Integrate (Path B only) :: **Run only if** `BASE_PATH` = B.
+  ship   L 591 Step 11 Failure Diagnose :: **Run only if** `state` != MERGED.
+  ship   L 628 Step 12 Failure Remediate :: **Run only if** `state` != MERGED.
+  ship   L 665 Step 13 Update Local Dev :: **Run only if** `state` = MERGED.
+TOTAL column-0 conditional markers: 23

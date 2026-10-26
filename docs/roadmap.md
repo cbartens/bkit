@@ -13,13 +13,14 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-10-26T03:56:30Z)_
+_(refreshed 2026-10-26T04:28:16Z)_
 
 ### Design
 
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 699-engine-run-completeness | 699-engine-run-completeness | 1792988896823 |
 | 80-audit-workflow | 80-audit-workflow | 1785311294164 |
 
 ### Plan

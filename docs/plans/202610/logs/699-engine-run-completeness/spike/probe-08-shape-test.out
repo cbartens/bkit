@@ -1,0 +1,9 @@
+
+ RUN  v5.0.3 /Users/christian/Documents/GitHub/bkit/.worktrees/699-engine-run-completeness
+
+
+ Test Files  1 passed (1)
+      Tests  228 passed (228)
+   Start at  14:19:01
+   Duration  505ms (transform 72%, tests 14%, import 13%, setup 1%)
+
