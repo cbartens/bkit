@@ -343,12 +343,50 @@ describe("Failure Path", () => {
   });
 });
 
+/** The build step table's numbers carried by more than one step, each list sorted. */
+function sharedStepNumbers(): string[][] {
+  const byNumber = new Map<number, string[]>();
+  for (const row of WORKFLOW_STEPS.build.filter((s) => s.step !== undefined)) {
+    const steps = byNumber.get(row.number) ?? [];
+    steps.push(row.step!);
+    byNumber.set(row.number, steps);
+  }
+  return [...byNumber.values()]
+    .filter((steps) => steps.length > 1)
+    .map((steps) => steps.sort())
+    .sort((a, b) => a[0]!.localeCompare(b[0]!));
+}
+
+/** Finish lines in `text` posting a number or title the build step table's row does not carry. */
+function commentNumberProblems(text: string): string[] {
+  const rows = WORKFLOW_STEPS.build.filter((s) => s.step !== undefined);
+  const byStep = new Map(rows.map((s) => [s.step!, s]));
+  const byNumber = new Map<number, string[]>();
+  for (const row of rows)
+    byNumber.set(row.number, [...(byNumber.get(row.number) ?? []), row.step!]);
+  return commandLines(text, "steps finish").flatMap((line) => {
+    const step = /--step=([a-z0-9-]+)/.exec(line)?.[1];
+    // The Decision Pause writes its own row under the paused step's number.
+    if (step === undefined || step === "build-decision") return [];
+    const row = byStep.get(step);
+    if (row === undefined) return [`${step}: no row in the build step table`];
+    if (!line.includes(`--number=${row.number}`))
+      return [`${step}: posts a number other than ${row.number}`];
+    // A number two steps share lets each post under its own title.
+    if (byNumber.get(row.number)!.length > 1) return [];
+    const title = row.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`--title="?${title}"?(?=\\s)`).test(line)
+      ? []
+      : [`${step}: posts a title other than "${row.title}"`];
+  });
+}
+
 describe("build", () => {
   const build = workflow("build");
 
-  it("Step 12's diagnose agent reads the committed log, not the outbox copy", () => {
-    const step12 = section(build, /Step 12 — Failure Diagnose/);
-    const read = step12.split("\n").find((l) => l.trim().startsWith("Read:"));
+  it("Step 13's diagnose agent reads the committed log, not the outbox copy", () => {
+    const step13 = section(build, /Step 13 — Failure Diagnose/);
+    const read = step13.split("\n").find((l) => l.trim().startsWith("Read:"));
     expect(read).toContain("`docs/plans/{YYYYMM}/logs/{FID}/run-tests-{TEST_ATTEMPT}.md`");
     expect(read).not.toContain("{OUTBOX}");
   });
@@ -361,9 +399,9 @@ describe("build", () => {
     expect(build).not.toContain("ATTEMPT_FLAG");
   });
 
-  it("Step 10 merges the findings into the plan and routes on the merge", () => {
-    const step10 = section(build, /Step 10 — Build Challenge/);
-    const merge = commandLines(step10, "challenge merge");
+  it("Step 11 merges the findings into the plan and routes on the merge", () => {
+    const step11 = section(build, /Step 11 — Build Challenge/);
+    const merge = commandLines(step11, "challenge merge");
     expect(merge).toHaveLength(1);
     for (const flag of [
       '--report="docs/plans/{YYYYMM}/logs/{FID}/build-challenge-1.md"',
@@ -374,24 +412,24 @@ describe("build", () => {
     ])
       expect(merge[0], flag).toContain(flag);
     for (const route of [
-      "`route` = `none` → Step 11",
+      "`route` = `none` → Step 12",
       "`route` = `pause`",
       "`route` = `fix`",
       "exit 22",
     ])
-      expect(step10, route).toContain(route);
-    expect(step10).toContain(
-      "`PAUSE_STEP` = 10, `PAUSE_POINT` = `build.challenge`, `PAUSE_QUESTION` = `CHALLENGE`",
+      expect(step11, route).toContain(route);
+    expect(step11).toContain(
+      "`PAUSE_STEP` = 11, `PAUSE_POINT` = `build.challenge`, `PAUSE_QUESTION` = `CHALLENGE`",
     );
   });
 
-  it("Step 10 records its round on the challenge row and reads it back from status.jsonl", () => {
-    const step10 = section(build, /Step 10 — Build Challenge/);
-    const finish = commandLines(step10, "steps finish");
+  it("Step 11 records its round on the challenge row and reads it back from status.jsonl", () => {
+    const step11 = section(build, /Step 11 — Build Challenge/);
+    const finish = commandLines(step11, "steps finish");
     expect(finish).toHaveLength(1);
     expect(finish[0]).toContain("--field=round={CHALLENGE_ROUND}");
-    expect(commandLines(step10, "status resume")).toHaveLength(1);
-    expect(step10).toContain("`CHALLENGE_ROUND` = `challengeRound`");
+    expect(commandLines(step11, "status resume")).toHaveLength(1);
+    expect(step11).toContain("`CHALLENGE_ROUND` = `challengeRound`");
     expect(build, "the round is never searched for in plan files").not.toMatch(
       /grep -l '[^']*Round:/,
     );
@@ -400,7 +438,7 @@ describe("build", () => {
   it("a resumed challenge pause rebuilds CHALLENGE_TASKS from `challenge merge`, not the decision file", () => {
     const resumeLine = build.split("\n").find((l) => l.includes("**Resume:**"))!;
     expect(resumeLine).not.toContain("the decision file's task numbers");
-    expect(resumeLine).toContain("Step 10 sub-steps 2 and 5");
+    expect(resumeLine).toContain("Step 11 sub-steps 2 and 5");
     expect(resumeLine).toContain("`fixTasks` as `{CHALLENGE_TASKS}`");
     expect(resumeLine).toContain("never sub-step 6");
   });
@@ -424,28 +462,28 @@ describe("build", () => {
     expect(pause).toContain(
       "`CHALLENGE_ROUND` = `CHALLENGE_MAX` already → `CHALLENGE_DONE` = true",
     );
-    expect(section(build, /Step 10 — Build Challenge/)).toContain(
+    expect(section(build, /Step 11 — Build Challenge/)).toContain(
       '"{BKIT}" counters max --point=build.challenge',
     );
-    const step10 = section(build, /Step 10 — Build Challenge/);
-    const first = step10.slice(step10.indexOf("\n1. "), step10.indexOf("\n2. "));
-    expect(first).toContain("`CHALLENGE_DONE` = true → Step 11");
+    const step11 = section(build, /Step 11 — Build Challenge/);
+    const first = step11.slice(step11.indexOf("\n1. "), step11.indexOf("\n2. "));
+    expect(first).toContain("`CHALLENGE_DONE` = true → Step 12");
     expect(first).toContain("`challengeDone`");
     const resumeLine = build.split("\n").find((l) => l.includes("**Resume:**"))!;
     expect(resumeLine).toContain("`CHALLENGE_DONE` = `challengeDone`");
   });
 
   it("challenge merge exit 23 gets the same one retry as exit 22", () => {
-    const step10 = section(build, /Step 10 — Build Challenge/);
-    expect(step10).toMatch(/exit 22 \*\*or\*\* 23/);
-    expect(step10).toContain("`problems`");
+    const step11 = section(build, /Step 11 — Build Challenge/);
+    expect(step11).toMatch(/exit 22 \*\*or\*\* 23/);
+    expect(step11).toContain("`problems`");
   });
 
   it("an execute cap stop is a handover, never a FAIL attempt", () => {
-    const step6 = stepBody(build, /Step 6 — Plan Execute/);
-    expect(step6).toContain("Hold `verdict` as `EXECUTE_VERDICT`");
-    expect(step6).toContain("`EXECUTE_VERDICT` = HANDOVER");
-    expect(step6).toContain("not a failed attempt");
+    const step7 = stepBody(build, /Step 7 — Plan Execute/);
+    expect(step7).toContain("Hold `verdict` as `EXECUTE_VERDICT`");
+    expect(step7).toContain("`EXECUTE_VERDICT` = HANDOVER");
+    expect(step7).toContain("not a failed attempt");
     const prompt = fs.readFileSync(
       path.join(REPO_ROOT, ".bkit", "core", "prompts", "bkit-build-plan-execute.md"),
       "utf-8",
@@ -456,20 +494,20 @@ describe("build", () => {
   });
 
   it("build challenge runs the size gate first", () => {
-    const step10 = section(build, /Step 10 — Build Challenge/);
-    const gate = commandLines(step10, "challenge gate");
+    const step11 = section(build, /Step 11 — Build Challenge/);
+    const gate = commandLines(step11, "challenge gate");
     expect(gate.map((l) => l.trim())).toEqual(['"{BKIT}" challenge gate --file="{STATUS}"']);
-    expect(step10.indexOf("challenge gate")).toBeLessThan(
-      step10.indexOf("Invoke `@bkit-build-challenge-1`"),
+    expect(step11.indexOf("challenge gate")).toBeLessThan(
+      step11.indexOf("Invoke `@bkit-build-challenge-1`"),
     );
-    expect(step10).toContain("hold `size` as `{CHALLENGE_SIZE}`");
-    const small = step10.split("\n").filter((l) => l.includes("`CHALLENGE_SIZE` = small"));
+    expect(step11).toContain("hold `size` as `{CHALLENGE_SIZE}`");
+    const small = step11.split("\n").filter((l) => l.includes("`CHALLENGE_SIZE` = small"));
     expect(small.join("\n")).toContain("`@bkit-build-challenge-2` only");
     expect(small.join("\n")).toContain("--agent=bkit-build-challenge-1");
     expect(small.join("\n")).toContain("--report");
-    expect(commandLines(step10, "steps finish")).toHaveLength(1);
-    expect(commandLines(step10, "challenge merge")).toHaveLength(1);
-    expect(step10).toContain("Change sized (`challenge gate`)");
+    expect(commandLines(step11, "steps finish")).toHaveLength(1);
+    expect(commandLines(step11, "challenge merge")).toHaveLength(1);
+    expect(step11).toContain("Change sized (`challenge gate`)");
   });
 
   it("names no removed challenge agent, step or limit", () => {
@@ -481,17 +519,65 @@ describe("build", () => {
       expect(build, gone).not.toContain(gone);
   });
 
-  it("Branch Sync checks the plan, converts one with no task markers, and checks again", () => {
+  it("Branch Sync merges docs and finishes as its own step", () => {
     const step3 = section(build, /Step 3 — Branch Sync/);
-    const checks = commandLines(step3, "tests plan-check");
+    expect(step3).toContain('"{BKIT}" branches sync --merge-docs');
+    expect(step3).not.toContain("tests plan-check");
+    expect(step3).not.toContain("Invoke `@bkit-build-plan-convert`");
+    const finish = commandLines(step3, "steps finish");
+    expect(finish).toHaveLength(1);
+    expect(finish[0]).toContain("--step=build-branch-sync");
+    expect(finish[0]).toContain("--number=3");
+    expect(finish[0]).toContain('--post --title="Branch Sync"');
+    // Its gate names the docs merge alone; the plan check gates Plan Convert.
+    expect(stepBody(build, /Gate 3 — Branch Sync/)).not.toContain("plan-check");
+  });
+
+  it("Plan Convert checks the plan, converts one with no task markers, and re-checks", () => {
+    const step4 = section(build, /Step 4 — Plan Convert/);
+    const checks = commandLines(step4, "tests plan-check");
     expect(checks.length).toBeGreaterThanOrEqual(1);
     for (const line of checks) expect(line).toContain('--plan="docs/plans/{YYYYMM}/{FID}-plan.md"');
-    const convert = step3.indexOf("Invoke `@bkit-build-plan-convert`");
+    const convert = step4.indexOf("Invoke `@bkit-build-plan-convert`");
     expect(convert, "no convert dispatch").toBeGreaterThan(-1);
-    expect(step3.indexOf('"{BKIT}" tests plan-check')).toBeLessThan(convert);
-    // The converted plan goes back through the same check before Step 3 finishes.
-    expect(step3.slice(convert)).toMatch(/re-run sub-step 2/);
-    expect(step3).toContain("`markers`");
+    expect(step4.indexOf('"{BKIT}" tests plan-check')).toBeLessThan(convert);
+    // The converted plan goes back through the same check before the step finishes.
+    expect(step4.slice(convert)).toMatch(/re-run sub-step 1/);
+    expect(step4).toContain("`markers`");
+  });
+
+  it("Plan Convert leaves a valid plan with no newer comments alone", () => {
+    const step4 = section(build, /Step 4 — Plan Convert/);
+    const skip =
+      "**If** exit 0 **and** (`NEWER_COMMENTS` = 0 **or** `CONVERTED` is held) → Step 5.";
+    expect(step4).toContain(skip);
+    // That route leaves the step at once: no dispatch, no row and no comment.
+    expect(step4.indexOf(skip)).toBeLessThan(step4.indexOf("Invoke `@bkit-build-plan-convert`"));
+    expect(commandLines(step4, "steps finish")).toHaveLength(1);
+    expect(step4.indexOf("--step=build-plan-convert")).toBeGreaterThan(
+      step4.indexOf("Invoke `@bkit-build-plan-convert`"),
+    );
+  });
+
+  it("build's comment numbers match the step table", () => {
+    // One number per step; only the pairs sharing a step heading share one.
+    expect(sharedStepNumbers()).toEqual([
+      ["build-close-workflow", "build-create-pr"],
+      ["build-group-gate", "build-plan-verify"],
+      ["build-group-start", "build-plan-execute"],
+    ]);
+    // Each finish line posts the number and title of its own table row.
+    expect(commentNumberProblems(build)).toEqual([]);
+  });
+
+  it("the convert step posts under Plan Convert's number and title", () => {
+    const finish = commandLines(section(build, /Step 4 — Plan Convert/), "steps finish").filter(
+      (l) => l.includes("--step=build-plan-convert"),
+    );
+    expect(finish).toHaveLength(1);
+    expect(finish[0]).toContain("--number=4");
+    expect(finish[0]).toContain('--post --title="Plan Convert"');
+    expect(section(build, /Step 3 — Branch Sync/)).not.toContain("--step=build-plan-convert");
   });
 
   it("issue comments newer than a valid plan send the build through convert once", () => {
@@ -500,11 +586,11 @@ describe("build", () => {
     expect(section(build, /Step 2 — Worktree Setup/)).toContain(
       "Hold `newerThanPlan` as `{NEWER_COMMENTS}`.",
     );
-    const step3 = section(build, /Step 3 — Branch Sync/);
-    expect(step3).toContain(
-      "**If** exit 0 **and** (`NEWER_COMMENTS` = 0 **or** `CONVERTED` is held) → sub-step 5.",
+    const step4 = section(build, /Step 4 — Plan Convert/);
+    expect(step4).toContain(
+      "**If** exit 0 **and** (`NEWER_COMMENTS` = 0 **or** `CONVERTED` is held) → Step 5.",
     );
-    expect(step3).toMatch(
+    expect(step4).toMatch(
       /`CONVERTED` is not held \*\*and\*\* \(exit 0 with `NEWER_COMMENTS` > 0,/,
     );
   });
@@ -518,33 +604,33 @@ describe("build", () => {
     expect(build).not.toMatch(/sub-plan|SUB_PLAN|SUB_COUNT|NEW_SUB_PLAN/i);
   });
 
-  it("Step 6 takes the next group's brief and hands execute its path", () => {
-    const step6 = stepBody(build, /Step 6 — Plan Execute/);
-    const brief = commandLines(step6, "context brief");
+  it("Step 7 takes the next group's brief and hands execute its path", () => {
+    const step7 = stepBody(build, /Step 7 — Plan Execute/);
+    const brief = commandLines(step7, "context brief");
     expect(brief).toHaveLength(1);
     expect(brief[0]).toContain("--next");
     expect(brief[0]).toContain('--plan="docs/plans/{YYYYMM}/{FID}-plan.md"');
     expect(brief[0]).toContain('--note-file="{SESSION_DIR}/brief-note.md"');
-    expect(step6).toContain("drop `--note-file` when `{SESSION_DIR}/brief-note.md` does not exist");
-    expect(step6).toContain("`{BRIEF}`");
-    expect(step6.indexOf("context brief")).toBeLessThan(
-      step6.indexOf("Invoke `@bkit-build-plan-execute`"),
+    expect(step7).toContain("drop `--note-file` when `{SESSION_DIR}/brief-note.md` does not exist");
+    expect(step7).toContain("`{BRIEF}`");
+    expect(step7.indexOf("context brief")).toBeLessThan(
+      step7.indexOf("Invoke `@bkit-build-plan-execute`"),
     );
-    const finish = commandLines(step6, "steps finish");
+    const finish = commandLines(step7, "steps finish");
     expect(finish).toHaveLength(1);
     expect(finish[0]).toContain("--group={GROUP}");
   });
 
-  it("Step 7 verifies a diff cut from the group's start commit", () => {
-    const step7 = stepBody(build, /Step 7 — Plan Verify/);
-    const diff = commandLines(step7, "context diff");
+  it("Step 8 verifies a diff cut from the group's start commit", () => {
+    const step8 = stepBody(build, /Step 8 — Plan Verify/);
+    const diff = commandLines(step8, "context diff");
     expect(diff).toHaveLength(1);
     expect(diff[0]).toContain("--base={GROUP_BASE}");
-    expect(step7).toMatch(/status route --step=build-group-start --group=\{GROUP\}/);
-    expect(step7.indexOf("context diff")).toBeLessThan(
-      step7.indexOf("Invoke `@bkit-build-plan-verify`"),
+    expect(step8).toMatch(/status route --step=build-group-start --group=\{GROUP\}/);
+    expect(step8.indexOf("context diff")).toBeLessThan(
+      step8.indexOf("Invoke `@bkit-build-plan-verify`"),
     );
-    const green = commandLines(step7, "tests green");
+    const green = commandLines(step8, "tests green");
     expect(green).toHaveLength(1);
     expect(green[0]).toContain("--group={GROUP}");
   });
@@ -585,7 +671,7 @@ describe("build", () => {
     expect(input).toBeDefined();
     for (const flag of ["--prompt-file=", "--description-file=", "--comments-file=", "--plan="])
       expect(input, flag).toContain(flag);
-    expect(section(build, /Step 3 — Branch Sync/)).not.toContain("workflows input");
+    expect(section(build, /Step 4 — Plan Convert/)).not.toContain("workflows input");
   });
 
   describe("convert and plan-generate prompts", () => {
@@ -735,10 +821,10 @@ describe("diff per reader", () => {
   const BASE_FLAG: Record<string, string> = { build: "", debug: " --base={DIFF_BASE}", ship: "" };
   const READERS: Array<[string, RegExp, string, string[]]> = [
     ["build", /Failure Path/, "abort-handover", ["bkit-debug-abort-handover"]],
-    ["build", /Step 9 — /, "build-plan-verify-holistic", ["bkit-build-plan-verify"]],
+    ["build", /Step 10 — /, "build-plan-verify-holistic", ["bkit-build-plan-verify"]],
     [
       "build",
-      /Step 10 — Build Challenge/,
+      /Step 11 — Build Challenge/,
       "build-challenge",
       ["bkit-build-challenge-1", "bkit-build-challenge-2"],
     ],
@@ -769,7 +855,7 @@ describe("diff per reader", () => {
   );
 
   it("build group verify cuts its own diff from the group's start, right before the agent", () => {
-    const text = stepBody(workflow("build"), /Step 7 — /);
+    const text = stepBody(workflow("build"), /Step 8 — /);
     const [line, ...more] = commandLines(text, "context diff");
     expect(more).toEqual([]);
     expect(line).toContain(
@@ -1398,9 +1484,9 @@ describe("issue-less runs", () => {
     }
   });
 
-  it("build 15.9 and debug 11.9 kill-switch checks skip when ISSUE_ID is empty", () => {
+  it("build 16.9 and debug 11.9 kill-switch checks skip when ISSUE_ID is empty", () => {
     for (const [name, step] of [
-      ["build", /Step 15 — Close Workflow/],
+      ["build", /Step 16 — Close Workflow/],
       ["debug", /Step 11 — Close Workflow/],
     ] as const) {
       const lines = section(workflow(name), step).split("\n");
