@@ -388,7 +388,7 @@ Code-only — `git revert` sufficient.
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** Deliver the rules-read advisory at session start on Claude Code and Cursor
+- [x] **TASK 1:** Deliver the rules-read advisory at session start on Claude Code and Cursor
   - **CREATE:** `.bkit/core/hooks/preflight-rules.sh`: the canonical advisory string and the `emit_context` call for the two `SessionStart` hosts
   - **UPDATE:** `.bkit/core/.claude/hooks/bkit-preflight.sh`: splice `# {{BKIT_PART preflight-rules.sh}}` after `emit_context` is defined and before the `LINEAR_ISSUE_ID` bail, so an IDE session gets it too; make `emit_context` accumulate and write the one JSON document from an `EXIT` trap, on a `printf` path that needs no `python3`
   - **UPDATE:** `.bkit/core/.cursor/hooks/bkit-preflight.sh`: move the `emit_context` definition and the advisory spline above the `is_background_agent` `grep` bail, and give the advisory-only path the same `python3`-free writer
@@ -406,7 +406,7 @@ Code-only — `git revert` sufficient.
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Deliver the advisory at the first tool call on opencode
+- [x] **TASK 2:** Deliver the advisory at the first tool call on opencode
   - **CREATE:** `.bkit/core/hooks/session-rules-advisory.js`: plain `const RULES_READ_ADVISORY = …` and `function rulesReadAdviceOnce(sessionId) {…}` declarations (no `export`, no `import`), spliced as a part
   - **CREATE:** `.bkit/core/.opencode/plugin/bkit-rules.js`: the opencode plugin, dual `setup()` / `server()` shape, appends the advisory to the first tool result once per session, carrying its `// bkit:start` / `{{BKIT_MANAGED_MARKER}}` / `// bkit:end` block with `// {{BKIT_PART session-rules-advisory.js}}` inside it
   - **UPDATE:** `.bkit/core/engine/install/modules/opencode.ts`: write the new plugin beside the two existing ones
@@ -431,7 +431,7 @@ Code-only — `git revert` sufficient.
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** Deliver the advisory at the first tool call on Codex and Antigravity
+- [x] **TASK 3:** Deliver the advisory at the first tool call on Codex and Antigravity
   - **CREATE:** `.bkit/core/.codex/hooks/bkit-rules.cjs`: `PreToolUse` hook writing the advisory once as `additionalContext`, carrying its `// bkit:start` / `{{BKIT_MANAGED_MARKER}}` / `// bkit:end` block with `// {{BKIT_PART session-rules-advisory.js}}` inside it
   - **CREATE:** `.bkit/core/.agents/plugins/bkit/hooks/bkit-rules.cjs`: `PreToolUse` hook denying the first tool call once with the advisory as its reason, carrying the same managed block and part line
   - **UPDATE:** `.bkit/core/engine/install/modules/codex.ts`: write the new Codex hook file beside the two existing ones
