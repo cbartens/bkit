@@ -266,7 +266,7 @@
     ".opencode/agents/bkit-build-plan-convert.md": "d92d55cab671b8b9f3897f7e7cb8471ecb8c2bac3f983e624aa63a5216dd43d7",
     ".codex/agents/bkit-build-plan-convert.toml": "114f3d7eb538b94088ae441b3181648f41511fa94bbd090b5ade02f225b2d0cc",
     ".bkit/authoring.md": "3ed815ec886f46a41e8c4a0c35326fe24f4ec1301325da2472846d987354ee1e",
-    ".opencode/plugin/bkit-rules.js": "ee9ab878d4939f7569d377930cb8ab0c608916f3846d82bdf10f5e228de7e3ec",
+    ".opencode/plugin/bkit-rules.js": "c1490239625cf0e7e87c7a52c788731c5108f342378a86de2292b1d8cf1641c6",
     ".codex/hooks/bkit-rules.cjs": "d692d543a9295b0ba351ee0c456eedd672454654391288582b6fb706f50b33a6"
   },
   "claudeAllowDerived": [

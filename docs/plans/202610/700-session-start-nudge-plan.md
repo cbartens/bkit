@@ -496,6 +496,31 @@ Code-only — `git revert` sufficient.
 
 <!-- bkit:group 2 end -->
 
+<!-- bkit:group 3 start -->
+
+### GROUP 3: Challenge round 1 findings
+
+<!-- bkit:task 6 start -->
+
+- [ ] **TASK 6:** The opencode plugin consumes the once-per-session advisory token before it knows it can deliver it, so a first tool call whose result is missing (or not `completed`) loses the advisory for the whole session
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/.opencode/plugin/bkit-rules.js:63` · **Round:** 1
+  - **DONE WHEN:** both drivers check the delivery shape _before_ calling `rulesReadAdviceOnce()` — V2 `if (!event || event.status !== "completed" || !event.result) return;` and V1 `if (!output || typeof output !== "object") return;` ahead of the consume — so a call that cannot carry the advisory leaves the session token unconsumed and the next call delivers it, exactly as `bkit-gateguard.js` (`bkitGateGuardAfterV2`/`…V1`) and `bkit-readguard.js` (`bkitReadGuardAfterV2`/`…V1`) already do.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/hooks/session-rules-advisory.integration.test.ts` `opencode plugin keeps the advisory for the next call when the first result is missing` fails on the finding — today the first `execute.after` event with no `event.result` returns `""` **and** consumes the token, so the second (well-formed) call also returns `""`; the test asserts the second call carries `.agents/rules.md`.
+    - `.bkit/core/engine/audits/hooks/session-rules-advisory.integration.test.ts` `the 1.x driver keeps the advisory when the first output is not an object` fails on the finding — the V1 hook with a non-object `output` consumes the token and never appends it.
+
+<!-- bkit:task 6 end -->
+<!-- bkit:task 7 start -->
+
+- [ ] **TASK 7:** The exit-8 rollback removes the appended step row from the working tree but leaves it staged in the index, so "nothing written, nothing committed" is false and a later pathspec-less commit commits the row
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/steps.ts:470` · **Round:** 1
+  - **DONE WHEN:** the `rec === null` branch's rollback (the `addAllButCopied(cwd)` + `runGit(cwd, ["commit", "--allow-empty", …])` path at `steps.ts:493-499`, whose failure calls `rollback()` at `:496`) also restores the index entry it staged, so after an exit-8 the index matches the rolled-back working tree and no later commit can carry the row. Verified reproduction: `git add -A` then a pre-commit hook that exits 1 leaves `status.jsonl` staged; removing the working-tree file leaves `git status --porcelain` reporting `AD status.jsonl` and a pathspec-less `git commit` still commits the row. The `rec !== null` branch is already safe — `commitOwnSet` unstages on failure (`ledgers.ts:613-620`) — so only the worktree path needs the unstage.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/steps.test.ts` `a failed commit leaves no row staged in the index` fails on the finding — after the exit-8 path (`reports a failed commit with exit 8 without writing the row`, whose pre-commit hook exits 1) the test asserts `git(cwd, ["diff", "--cached", "--name-only"])` does **not** list the `status.jsonl` row.
+
+<!-- bkit:task 7 end -->
+<!-- bkit:group 3 end -->
+
 ### 🔒 Gate 2: Code Implementation Check
 
 - [ ] **No bolt-on / no gate-weakening:** every `[NEW]` traces to a `Reuse Inventory` `NEW` row; every `EXTEND` landed in its named artifact; no gate weakened.

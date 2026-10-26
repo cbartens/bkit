@@ -211,6 +211,21 @@ describe("bkit steps done", () => {
     expect(r.err).toContain("blocked");
     expect(fs.existsSync(path.join(cwd, "logs/status.jsonl"))).toBe(false);
   });
+
+  it("a failed commit leaves no row staged in the index", async () => {
+    const cwd = repo();
+    fs.mkdirSync(path.join(cwd, ".git/hooks"), { recursive: true });
+    write(cwd, ".git/hooks/pre-commit", "#!/bin/sh\necho blocked >&2\nexit 1\n");
+    fs.chmodSync(path.join(cwd, ".git/hooks/pre-commit"), 0o755);
+    const r = await run(cwd, doneArgs());
+    expect(r.code).toBe(8);
+    // The rollback takes the row off disk, so the index must lose it too: a pathspec-less
+    // commit would otherwise carry the row the failed attempt was refused. Nothing else
+    // the attempt staged is left behind either — the index matches the rolled-back tree.
+    const staged = git(cwd, "diff", "--cached", "--name-only");
+    expect(staged).not.toContain("status.jsonl");
+    expect(staged).toBe("");
+  });
 });
 
 describe("bkit steps verdict", () => {

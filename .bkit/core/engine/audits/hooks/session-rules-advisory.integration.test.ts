@@ -78,8 +78,20 @@ interface HookOutcome {
 
 type HookFn = (input: unknown, output: unknown) => Promise<void>;
 
+/** How the 2.0 `execute.after` event is shaped when the call cannot carry the advisory. */
+interface V2EventShape {
+  /** Leave `result` off the event, as a call whose result never arrived. */
+  omitResult?: boolean;
+  /** The event's status; `"completed"` unless a test asks for another. */
+  status?: string;
+}
+
 /** Drive the plugin as OpenCode 2.0 does: `setup()`, then `execute.after` with a result. */
-async function runV2(plugin: RulesPlugin, hookInput: unknown): Promise<HookOutcome> {
+async function runV2(
+  plugin: RulesPlugin,
+  hookInput: unknown,
+  shape: V2EventShape = {},
+): Promise<HookOutcome> {
   const hooks: Record<string, HookFn> = {};
   const ctx = {
     tool: {
@@ -96,11 +108,11 @@ async function runV2(plugin: RulesPlugin, hookInput: unknown): Promise<HookOutco
   const after = hooks["execute.after"];
   if (typeof after !== "function") return { threw: false, advice: "" };
   const result: { content: { type: string; text: string }[] } = { content: [] };
-  const event = {
+  const event: Record<string, unknown> = {
     ...(typeof hookInput === "object" && hookInput !== null ? hookInput : {}),
-    status: "completed",
-    result,
+    status: shape.status ?? "completed",
   };
+  if (shape.omitResult !== true) event.result = result;
   try {
     await after(event, {});
   } catch {
@@ -109,8 +121,23 @@ async function runV2(plugin: RulesPlugin, hookInput: unknown): Promise<HookOutco
   return { threw: false, advice: result.content.map((part) => part.text).join("") };
 }
 
-/** Drive the plugin as OpenCode 1.x does: `server()`, then `tool.execute.after`. */
-async function runV1(plugin: RulesPlugin, hookInput: unknown): Promise<HookOutcome> {
+/** The result text a 1.x `output` carries, or "" when it is no result object at all. */
+function outputText(output: unknown): string {
+  if (typeof output !== "object" || output === null) return "";
+  const text = "output" in output ? output.output : undefined;
+  return typeof text === "string" ? text : "";
+}
+
+/**
+ * Drive the plugin as OpenCode 1.x does: `server()`, then `tool.execute.after`. `output`
+ * defaults to a well-formed result object; a test passes its own to drive a call whose
+ * output is not an object.
+ */
+async function runV1(
+  plugin: RulesPlugin,
+  hookInput: unknown,
+  output: unknown = { title: "", output: "", metadata: {} },
+): Promise<HookOutcome> {
   let hooks: Record<string, HookFn>;
   try {
     hooks = (await plugin.server()) as Record<string, HookFn>;
@@ -119,13 +146,12 @@ async function runV1(plugin: RulesPlugin, hookInput: unknown): Promise<HookOutco
   }
   const after = hooks["tool.execute.after"];
   if (typeof after !== "function") return { threw: false, advice: "" };
-  const output = { title: "", output: "", metadata: {} };
   try {
     await after(hookInput ?? {}, output);
   } catch {
     return { threw: true, advice: "" };
   }
-  return { threw: false, advice: output.output };
+  return { threw: false, advice: outputText(output) };
 }
 
 describe("opencode plugin — the rules-read advisory", () => {
@@ -167,6 +193,24 @@ describe("opencode plugin — the rules-read advisory", () => {
     expect(result.advice).toContain(".agents/rules.md");
   });
 
+  it("opencode plugin keeps the advisory for the next call when the first result is missing", async () => {
+    const call = {
+      tool: "read",
+      sessionID: newSession(),
+      id: "call-1",
+      input: { path: "src/index.ts" },
+    };
+    // No result to append to: nothing to deliver, and the session's one advisory must
+    // stay unspent so the next call — the one that can carry it — still gets it.
+    const first = await runV2(plugin, call, { omitResult: true });
+    expect(first.threw).toBe(false);
+    expect(first.advice).toBe("");
+
+    const second = await runV2(plugin, { ...call, id: "call-2" });
+    expect(second.threw).toBe(false);
+    expect(second.advice).toContain(".agents/rules.md");
+  });
+
   it("the 1.x driver delivers the same advisory once per session", async () => {
     const call = { tool: "read", sessionID: newSession(), callID: "call-1", args: {} };
     const first = await runV1(plugin, call);
@@ -175,6 +219,19 @@ describe("opencode plugin — the rules-read advisory", () => {
     const second = await runV1(plugin, { ...call, callID: "call-2" });
     expect(second.threw).toBe(false);
     expect(second.advice).toBe("");
+  });
+
+  it("the 1.x driver keeps the advisory when the first output is not an object", async () => {
+    const call = { tool: "read", sessionID: newSession(), callID: "call-1", args: {} };
+    // A call whose `output` is no result object cannot carry the advisory either, so the
+    // session's one advisory stays unspent for the next call.
+    const first = await runV1(plugin, call, null);
+    expect(first.threw).toBe(false);
+    expect(first.advice).toBe("");
+
+    const second = await runV1(plugin, { ...call, callID: "call-2" });
+    expect(second.threw).toBe(false);
+    expect(second.advice).toContain(".agents/rules.md");
   });
 });
 
