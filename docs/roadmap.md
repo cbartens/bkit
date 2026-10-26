@@ -13,7 +13,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-10-26T08:12:06Z)_
+_(refreshed 2026-10-26T20:37:32Z)_
 
 ### Design
 
@@ -30,7 +30,6 @@ _(refreshed 2026-10-26T08:12:06Z)_
 | 504-example-project | 504-example-project | 1791870640742 |
 | 651-sops-env-backup | 651-sops-env-backup | 1792633642892 |
 | 699-engine-run-completeness | 699-engine-run-completeness | 1793002326175 |
-| 700-session-start-nudge | 700-session-start-nudge | 1792986990130 |
 | 701-engine-work-build | 701-engine-work-build | 1793002272742 |
 
 ### Build
@@ -39,6 +38,7 @@ _(refreshed 2026-10-26T08:12:06Z)_
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
+| 700-session-start-nudge | 700-session-start-nudge | 1793047051619 |
 
 ### Debug
 
