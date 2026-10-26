@@ -167,7 +167,7 @@ None — no new routes, DB writes, secrets or user input.
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** Split Branch Sync and Plan Convert into Steps 3 and 4 and renumber the build to sixteen steps
+- [x] **TASK 1:** Split Branch Sync and Plan Convert into Steps 3 and 4 and renumber the build to sixteen steps
   - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: `## 🤖 Step 3 — Branch Sync` keeps `branches sync --merge-docs` and finishes `--step=build-branch-sync … --number=3 --post --title="Branch Sync" --tree={BRANCH}`; the plan check, the `@bkit-build-plan-convert` dispatch and the re-check move into a new `## 🧠 Step 4 — Plan Convert` finishing `--step=build-plan-convert … --number=4 --post --title="Plan Convert"`; Step 5 — Plan Current and every step after it shifts by one in its heading, gate label, `--number=`, the Create PR comment's `--step-number=`, routing jump, Resume reference, Plan contract line, Group Loop paragraph and Decision Pause route
   - **UPDATE:** `WORKFLOW_STEPS` in `.bkit/core/engine/commands/workflow/step-table.ts`: `build-plan-convert` at 4 titled `Plan Convert` with `resumeAt: "build-plan-convert"`, `build-branch-sync` at 3 without `resumeAt`, and rows 5-16 shifted to match the headings
   - **UPDATE:** `.bkit/core/engine/audits/workflows/workflow-shape.test.ts`: the plan-check, convert, `markers` and `newerThanPlan` assertions retarget to `/Step 4 — Plan Convert/`, plus tests for Step 3 holding only the docs merge, every finish's `--number` against the step table, and the convert step's own number and title
