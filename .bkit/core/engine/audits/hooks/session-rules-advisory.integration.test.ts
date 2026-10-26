@@ -330,6 +330,39 @@ describe("antigravity hook — the rules-read advisory", () => {
     expect(retry.status).toBe(0);
     expect(JSON.parse(retry.stdout).decision).toBe("allow");
   });
+
+  it("the antigravity retry store never persists a raw command line", () => {
+    const session = newSession();
+    const marker = `AWS_SECRET_ACCESS_KEY=secret-${session}`;
+    const payload = JSON.stringify({
+      conversationId: session,
+      toolCall: { name: "run_command", args: { CommandLine: `export ${marker}`, Cwd: "/w" } },
+      workspacePaths: ["/w"],
+    });
+    const retryFile = path.join(
+      os.tmpdir(),
+      "bkit-antigravity-retry",
+      `rules.${safeKey(session)}.json`,
+    );
+    try {
+      const first = runHook(ANTIGRAVITY_HOOK, payload);
+      expect(first.status).toBe(0);
+      expect(JSON.parse(first.stdout).decision).toBe("deny");
+
+      // The deny-once store is world-readable, has no TTL and is left behind when the
+      // agent rephrases instead of retrying, so it must hold a one-way digest of the
+      // call signature — never the command line, which can carry an inline secret.
+      const stored = fs.readFileSync(retryFile, "utf-8");
+      expect(stored).not.toContain(marker);
+      expect(stored).not.toContain("AWS_SECRET_ACCESS_KEY");
+
+      const retry = runHook(ANTIGRAVITY_HOOK, payload);
+      expect(retry.status).toBe(0);
+      expect(JSON.parse(retry.stdout).decision).toBe("allow");
+    } finally {
+      fs.rmSync(retryFile, { force: true });
+    }
+  });
 });
 
 describe("every rendered advisory hook", () => {

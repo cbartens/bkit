@@ -42,12 +42,22 @@ emit_context() {
 # JSON-escape one string, so a context carrying a quote or a backslash cannot break the
 # document.
 bkit_json_escape() {
-  local s=$1
+  local s=$1 i oct ch esc
   s=${s//\\/\\\\}
   s=${s//\"/\\\"}
   s=${s//$'\n'/\\n}
   s=${s//$'\r'/\\r}
   s=${s//$'\t'/\\t}
+  # The rest of the C0 range (U+0000–U+001F) — bash cannot hold NUL, so 1–31 minus the
+  # three above. A raw control byte makes the whole document unparseable and the host
+  # discards it, taking the advisory and the Linear guard result with it.
+  for (( i = 1; i < 32; i++ )); do
+    case $i in 9 | 10 | 13) continue ;; esac
+    printf -v oct '%03o' "$i"
+    printf -v ch "\\$oct"
+    printf -v esc '\\u%04x' "$i"
+    s=${s//$ch/$esc}
+  done
   printf '%s' "$s"
 }
 

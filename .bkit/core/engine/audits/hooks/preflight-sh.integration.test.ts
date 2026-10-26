@@ -100,6 +100,16 @@ describe("BAR-186 — Claude SessionStart preflight.sh runtime behaviour", () =>
     expect(result.stderr).toContain("BKIT_LINEAR_API_KEY not set");
     expect(JSON.parse(result.stdout).hookSpecificOutput.additionalContext).toContain("HARD STOP");
   });
+
+  it("a context carrying a control character still yields one parseable JSON document", () => {
+    // The Linear guard interpolates LINEAR_ISSUE_ID verbatim into the key-missing FAIL
+    // message. A control byte in it must not yield a document the host discards whole,
+    // which would silently drop the HARD STOP and the advisory with it.
+    const result = runPreflight(CLAUDE_HOOK, { LINEAR_ISSUE_ID: "BAR-186-\u000b-test" });
+    expect(result.status).toBe(1);
+    const doc = JSON.parse(result.stdout);
+    expect(doc.hookSpecificOutput.additionalContext).toContain("HARD STOP");
+  });
 });
 
 describe("Claude SessionStart preflight.sh — no Jira guard", () => {
