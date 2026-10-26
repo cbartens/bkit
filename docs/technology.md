@@ -55,7 +55,7 @@ bkit renders agent payload for five IDE / agent-host runtimes. Hosts additive â€
 | --- | --- | --- |
 | Claude Code (`.claude/`) | always-on (no flag) | Anthropic first-party agent CLI; `CLAUDE.md` owned by `--claude` module |
 | Cursor (`.cursor/`) | always-on (no flag) | Cursor IDE agent runtime |
-| Codex CLI (`.codex/`) | `--codex` | OpenAI Codex CLI host; `.codex/agents/*.toml` + GateGuard/ReadGuard/guardrails hooks; workflows ship as skills at `.agents/skills/bkit-*/SKILL.md`; project-local hooks load only once `.codex/` is trusted |
+| Codex CLI (`.codex/`) | `--codex` | OpenAI Codex CLI host; `.codex/agents/*.toml` + GateGuard / ReadGuard / guardrails / rules hooks; workflows ship as skills at `.agents/skills/bkit-*/SKILL.md`; project-local hooks load only once `.codex/` is trusted |
 | Google Antigravity (`.agents/plugins/bkit/`) | `--antigravity` | Google Antigravity IDE host, installed as a workspace plugin: `plugin.json` + `skills/bkit-*/SKILL.md` + `agents/*.md` + `hooks.json` + `hooks/` + root `GEMINI.md`; one gateway (`google`) |
 | opencode (`.opencode/`) | `--opencode=<provider>` | sst/opencode universal agent host; four allowlisted providers (`OPENCODE_PROVIDERS`, strict â€” no arbitrary-endpoint fallback): `openrouter`, `ollama`, `opencode-zen`, `opencode-go` |
 

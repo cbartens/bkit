@@ -13,7 +13,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-10-26T20:37:32Z)_
+_(refreshed 2026-10-26T22:49:33Z)_
 
 ### Design
 
@@ -38,7 +38,6 @@ _(refreshed 2026-10-26T20:37:32Z)_
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
-| 700-session-start-nudge | 700-session-start-nudge | 1793047051619 |
 
 ### Debug
 
@@ -49,6 +48,7 @@ _(none)_
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 700-session-start-nudge | 700-session-start-nudge | 1793054973314 |
 | 380-roadmap-analysis-refresh | Roadmap ledger, two-tier generated board, fold + cadence + on-demand utility | 1787868628424 |
 | 342-injection-hardening | Prompt-injection hardening | 1787201470000 |
 | 363-widen-bkit-cloud-trigger | Widen bkit-cloud trigger to post-merge dev CI | 1785451674356 |
@@ -58,7 +58,6 @@ _(none)_
 | completed-three-runtimes-workflow-execution-341 | Three-runtimes workflow execution — #341 | 1785196800000 |
 | 58-workflow-counters | Workflow counters read decision variables from status.jsonl | 1784704423000 |
 | 234-telemetry-jsonl | Unified telemetry jsonl — stats, friction, deferrals, failures, harvest | 1784092348000 |
-| 325 | Self-hosted Renovate GitHub Actions OOM — move to Mend hosted runner | 1783234091000 |
 <!-- bkit:roadmap-status end -->
 
 <!-- bkit:roadmap-analysis start -->

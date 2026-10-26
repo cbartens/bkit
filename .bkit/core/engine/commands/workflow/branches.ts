@@ -1463,11 +1463,13 @@ function buildClose(
   const staged = (git(dir, ["diff", "--cached", "--name-only"]) ?? "")
     .split("\n")
     .filter((p) => p !== "" && !CLOSE_DOCS.test(p));
-  if (staged.length)
+  if (staged.length) {
+    const inherited = localDevCopies(dir, staged, (p) => `:${p}`);
     throw new Stop(
       EXIT_LAND_STOPPED,
-      `${o.workflow} close staged non-doc files:\n${staged.join("\n")}`,
+      `${o.workflow} close staged non-doc files:\n${staged.join("\n")}${unpushedDevCause(dir, inherited.length, staged.length, ", then re-run the close.")}`,
     );
+  }
   const docs = canonicalDocs(dir, o.branch, o.workflow, o.month, o.fid);
   const main = `docs/plans/${o.month}/${o.fid}-${o.workflow}.md`;
   if (!docs.includes(main))
@@ -1745,6 +1747,32 @@ function notOnDev(root: string, branch: string): string[] {
     });
 }
 
+/**
+ * Those of `paths` whose content at `spec(p)` is already local `dev`'s: work the
+ * branch carries because `dev` is unpushed, not work a run in this branch made.
+ * `spec` names the side to compare — the index (`:path`) or a commit (`ref:path`).
+ */
+function localDevCopies(root: string, paths: string[], spec: (p: string) => string): string[] {
+  if (git(root, ["rev-parse", "-q", "--verify", `refs/heads/${DEV}`]) === null) return [];
+  return paths.filter((p) => {
+    const at = git(root, ["rev-parse", "-q", "--verify", `${DEV}:${p}`]);
+    return at !== null && at === git(root, ["rev-parse", "-q", "--verify", spec(p)]);
+  });
+}
+
+/**
+ * What a close refusal adds when some of the paths it names are unpushed `dev`'s
+ * own content: the branch inherited them, and publishing `dev` is what unblocks
+ * the close. Empty when none are, so the refusal reads as it did before.
+ */
+function unpushedDevCause(root: string, inherited: number, total: number, then: string): string {
+  if (inherited === 0) return "";
+  const ahead = git(root, ["rev-list", "--count", `${UPSTREAM}..${DEV}`]) ?? "?";
+  const tip = git(root, ["rev-parse", "--short", DEV]) ?? DEV;
+  const which = inherited === total ? "all of them" : `${inherited} of them`;
+  return `\n${which} are local ${DEV}'s content (tip ${tip}, ${ahead} commit(s) ahead of ${UPSTREAM}): this branch carries unpushed ${DEV} work — publish ${DEV} (git push ${REMOTE} ${DEV})${then}`;
+}
+
 /** Uncommitted or untracked files in the feature worktree; [] when there is no worktree. */
 function uncommitted(root: string, fid: string): string[] {
   const wt = worktreeDir(root, fid);
@@ -1826,11 +1854,13 @@ async function landVerb(ctx: RunContext): Promise<number> {
         `canonical ${workflow} missing on ${UPSTREAM}: ${missing.join(", ")}`,
       );
     const notLanded = notOnDev(root, branch);
-    if (notLanded.length)
+    if (notLanded.length) {
+      const inherited = localDevCopies(root, notLanded, (p) => `${branch}:${p}`);
       throw new Stop(
         EXIT_LANDED_UNVERIFIED,
-        `${branch} carries work ${UPSTREAM} does not — ${branch} and its worktree kept:\n${notLanded.join("\n")}`,
+        `${branch} carries work ${UPSTREAM} does not — ${branch} and its worktree kept:\n${notLanded.join("\n")}${unpushedDevCause(root, inherited.length, notLanded.length, "; the close landed without it.")}`,
       );
+    }
 
     let worktree: Record<string, unknown> | null = null;
     const left = devPushes ? uncommitted(root, fid) : [];

@@ -1,0 +1,215 @@
+// audits/hooks/session-rules-advisory.integration.test.ts — the rules-read advisory on
+// the hosts with no session-start event (opencode, Codex, Antigravity): it lands at the
+// first tool call, once per session.
+//
+// The opencode plugin is imported as install generates it (shared part spliced in) and
+// driven through the dual shape OpenCode 1.x (`server()`) and 2.0 (`setup(ctx)`) load.
+// The Codex and Antigravity hooks are spawned as their host runs them: rendered hook,
+// JSON on stdin, JSON on stdout.
+
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { pathToFileURL } from "node:url";
+import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import { readTemplate } from "../../render/parts";
+
+const HOOK_SOURCES = path.join(__dirname, "..", "..", "..", "..", "core");
+const PARTS_DIR = path.join(HOOK_SOURCES, "hooks");
+
+const GENERATED = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-rules-"));
+afterAll(() => fs.rmSync(GENERATED, { recursive: true, force: true }));
+
+// The plugin as install generates it. `.mjs`: it is an ES module and the temp dir has no
+// package.json saying so.
+const OPENCODE_PLUGIN = path.join(GENERATED, "bkit-rules.mjs");
+fs.writeFileSync(
+  OPENCODE_PLUGIN,
+  readTemplate(path.join(HOOK_SOURCES, ".opencode", "plugin", "bkit-rules.js")),
+);
+
+// ---------------------------------------------------------------------------
+// Delivered-once state — the advisory is keyed by session id and lives in the OS temp
+// dir, so tests use their own ids and clear them (plus the shared no-session bucket).
+// ---------------------------------------------------------------------------
+
+const STATE_DIR = path.join(os.tmpdir(), "bkit-rules-advisory");
+const safeKey = (id: string) => id.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 128);
+
+let sessionCounter = 0;
+const usedSessions: string[] = [];
+function newSession(): string {
+  sessionCounter += 1;
+  const id = `rules-test-${process.pid}-${sessionCounter}`;
+  usedSessions.push(id);
+  return id;
+}
+
+afterEach(() => {
+  if (!fs.existsSync(STATE_DIR)) return;
+  fs.rmSync(path.join(STATE_DIR, "no-session.json"), { force: true });
+  for (const id of usedSessions.splice(0)) {
+    fs.rmSync(path.join(STATE_DIR, `${safeKey(id)}.json`), { force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// The opencode plugin, driven the way each OpenCode release drives it.
+// ---------------------------------------------------------------------------
+
+interface RulesPlugin {
+  id: string;
+  setup: (ctx: object) => Promise<void>;
+  server: () => Promise<Record<string, unknown>>;
+}
+
+async function loadPlugin(): Promise<RulesPlugin> {
+  const { default: plugin } = await import(pathToFileURL(OPENCODE_PLUGIN).href);
+  return plugin;
+}
+
+interface HookOutcome {
+  threw: boolean;
+  /** The text the host surfaces to the model in the tool result, or "". */
+  advice: string;
+}
+
+type HookFn = (input: unknown, output: unknown) => Promise<void>;
+
+/** Drive the plugin as OpenCode 2.0 does: `setup()`, then `execute.after` with a result. */
+async function runV2(plugin: RulesPlugin, hookInput: unknown): Promise<HookOutcome> {
+  const hooks: Record<string, HookFn> = {};
+  const ctx = {
+    tool: {
+      hook: async (name: string, cb: HookFn) => {
+        hooks[name] = cb;
+      },
+    },
+  };
+  try {
+    await plugin.setup(ctx);
+  } catch {
+    return { threw: true, advice: "" };
+  }
+  const after = hooks["execute.after"];
+  if (typeof after !== "function") return { threw: false, advice: "" };
+  const result: { content: { type: string; text: string }[] } = { content: [] };
+  const event = {
+    ...(typeof hookInput === "object" && hookInput !== null ? hookInput : {}),
+    status: "completed",
+    result,
+  };
+  try {
+    await after(event, {});
+  } catch {
+    return { threw: true, advice: "" };
+  }
+  return { threw: false, advice: result.content.map((part) => part.text).join("") };
+}
+
+/** Drive the plugin as OpenCode 1.x does: `server()`, then `tool.execute.after`. */
+async function runV1(plugin: RulesPlugin, hookInput: unknown): Promise<HookOutcome> {
+  let hooks: Record<string, HookFn>;
+  try {
+    hooks = (await plugin.server()) as Record<string, HookFn>;
+  } catch {
+    return { threw: true, advice: "" };
+  }
+  const after = hooks["tool.execute.after"];
+  if (typeof after !== "function") return { threw: false, advice: "" };
+  const output = { title: "", output: "", metadata: {} };
+  try {
+    await after(hookInput ?? {}, output);
+  } catch {
+    return { threw: true, advice: "" };
+  }
+  return { threw: false, advice: output.output };
+}
+
+describe("opencode plugin — the rules-read advisory", () => {
+  let plugin: RulesPlugin;
+  beforeEach(async () => {
+    plugin = await loadPlugin();
+  });
+
+  it("opencode plugin appends the rules advisory to the first tool result", async () => {
+    const result = await runV2(plugin, {
+      tool: "read",
+      sessionID: newSession(),
+      id: "call-1",
+      input: { path: "src/index.ts" },
+    });
+    expect(result.threw).toBe(false);
+    expect(result.advice).toContain(".agents/rules.md");
+  });
+
+  it("opencode plugin appends nothing on the second call in the same session", async () => {
+    const call = {
+      tool: "read",
+      sessionID: newSession(),
+      id: "call-1",
+      input: { path: "src/index.ts" },
+    };
+    const first = await runV2(plugin, call);
+    expect(first.threw).toBe(false);
+    expect(first.advice).toContain(".agents/rules.md");
+
+    const second = await runV2(plugin, { ...call, id: "call-2" });
+    expect(second.threw).toBe(false);
+    expect(second.advice).toBe("");
+  });
+
+  it("opencode plugin fails open on a malformed hook input", async () => {
+    const result = await runV2(plugin, null);
+    expect(result.threw).toBe(false);
+    expect(result.advice).toContain(".agents/rules.md");
+  });
+
+  it("the 1.x driver delivers the same advisory once per session", async () => {
+    const call = { tool: "read", sessionID: newSession(), callID: "call-1", args: {} };
+    const first = await runV1(plugin, call);
+    expect(first.threw).toBe(false);
+    expect(first.advice).toContain(".agents/rules.md");
+    const second = await runV1(plugin, { ...call, callID: "call-2" });
+    expect(second.threw).toBe(false);
+    expect(second.advice).toBe("");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The shared advisory text — one sentence, declared once per language, held together by
+// these two assertions.
+// ---------------------------------------------------------------------------
+
+/** The advisory sentence the shell part declares. */
+function shellAdvisory(): string {
+  const src = fs.readFileSync(path.join(PARTS_DIR, "preflight-rules.sh"), "utf-8");
+  const m = /^BKIT_RULES_ADVISORY='([^']*)'$/m.exec(src);
+  expect(m, "BKIT_RULES_ADVISORY not found in preflight-rules.sh").not.toBeNull();
+  return m![1]!;
+}
+
+/** The advisory sentence the JS part declares. */
+function jsAdvisory(): string {
+  const src = fs.readFileSync(path.join(PARTS_DIR, "session-rules-advisory.js"), "utf-8");
+  const m = /^const RULES_READ_ADVISORY =\s*"([^"]*)";$/m.exec(src);
+  expect(m, "RULES_READ_ADVISORY not found in session-rules-advisory.js").not.toBeNull();
+  return m![1]!;
+}
+
+describe("the shared rules-read advisory", () => {
+  it("the shared advisory names .agents/rules.md and not AGENTS.md", () => {
+    for (const [name, advisory] of [
+      ["shell", shellAdvisory()],
+      ["js", jsAdvisory()],
+    ] as const) {
+      expect(advisory, name).toContain(".agents/rules.md");
+      expect(advisory, name).not.toContain("AGENTS.md");
+    }
+  });
+
+  it("the shell part and the JS part hold the byte-identical advisory string", () => {
+    expect(jsAdvisory()).toBe(shellAdvisory());
+  });
+});

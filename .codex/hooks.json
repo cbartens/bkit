@@ -30,6 +30,26 @@
             "statusMessage": "bkit ReadGuard"
           }
         ]
+      },
+      {
+        "matcher": "apply_patch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "test -f .codex/hooks/bkit-rules.cjs && node .codex/hooks/bkit-rules.cjs || true",
+            "statusMessage": "bkit rules"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "test -f .codex/hooks/bkit-rules.cjs && node .codex/hooks/bkit-rules.cjs || true",
+            "statusMessage": "bkit rules"
+          }
+        ]
       }
     ],
     "PreCompact": [

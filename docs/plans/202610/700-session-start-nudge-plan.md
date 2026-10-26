@@ -25,7 +25,7 @@ Verdict: CONCERNS
 
 **Goal.** On every supported platform (Claude Code, Cursor, opencode, Codex, Google Antigravity), deliver one soft, advisory session-start nudge that names **`.agents/rules.md` only, never `AGENTS.md`**, before any other action. The advisory never blocks a session and never errors the host (fail-open). Delivery rides each host's earliest event: `SessionStart` where the host has one (Claude Code, Cursor), and the first tool call where it does not (opencode, Codex, Antigravity).
 
-**Inputs and precedence.** No design doc and no audit report — the issue body is a `change`-shape issue (`#700`), so its `Narrative`, `Success Criteria`, `Edge Cases`, `Derived Test Matrix`, `Open Questions & Assumptions`, `Breaking Changes & Naming` and `Out of Scope` are the spec, kept word for word; its `Tasks` are the spec, expanded into the runbook below (5 hosts, three new hook files, install wiring, docs). One issue comment (2026-10-26) records the decision (idea 1 only) and the tracker links; it adds no scope.
+**Inputs and precedence.** No design doc and no audit report — the issue body is a `change`-shape issue (`#700`), so its `Narrative`, `Success Criteria`, `Edge Cases`, `Derived Test Matrix`, `Open Questions & Assumptions`, `Breaking Changes & Naming` and `Out of Scope` are the spec, kept word for word; its `Tasks` are the spec, expanded into the runbook below (5 hosts, three new hook files, install wiring, docs). Two issue comments follow the body; neither changes scope, an end state or a test. The first (2026-10-26T03:24:06Z) records the decision (idea 1 only) and the tracker links. The second (2026-10-26T04:55:18Z) is newer than this plan and unblocks the build: the Step 2 `bkit steps finish` commit failure that aborted build run 1 is fixed — `addAllButCopied` no longer names a gitignored `bkit.workflows.worktree.copy` entry in its `:(exclude)` pathspec, so the copied `.bkit/.env` no longer fails every worktree commit — and failure row `worktree-copy-gitignored-file-breaks-commit` is CLOSED. The fix sits in this worktree; the commits are not yet pushed to origin.
 
 **Related Issues:**
 
@@ -221,7 +221,7 @@ None — no new API routes, DB tables/columns, secrets, user input, redirects or
 - [x] **User Context:** file access confirmed (worktree `.worktrees/700-session-start-nudge`); no missing user information.
 - [x] **Project Context:** read `.bkit/providers.md` § Hooks / § GateGuard / § ReadGuard, `docs/architecture.md` § Consumer Integration Model, `docs/testing.md` § "Which tier does a behaviour need?" and § Key test files, `docs/decisions.jsonl` keys `668-readguard-nudge-out-of-scope`, `gateguard-advisory-default-fail-open-pure-engine`, and the tests this plan turns red — `.bkit/core/engine/render/parts.test.ts`, `.bkit/core/engine/commands/install/check.integration.test.ts`, `.bkit/core/engine/audits/hooks/preflight-sh.integration.test.ts` — plus `slop-scan.config.json`, `.bkit/core/engine/audits/repo/dogfood-templates.test.ts` and `.bkit/core/engine/audits/repo/shipped-docs-refs.test.ts`.
 - [x] **Testing & Quality:** matches `docs/testing.md` — every plan-added row is `Integration`, the tier § Key test files records for the sibling `audits/hooks/*` files (a spawned-hook check plus a source-level assertion) and the tier the `*.integration.test.ts` naming rule declares. No DB, no external / deployed boundary → no `@live`, E2E or fresh-DB replay row.
-- [x] **Prerequisite Plans:** None. The three new opt-in-host files reach an existing consumer on `bkit upgrade` only through the closed fix `upgrade-skips-new-optin-host-files` (an absent opt-in path is let through when that module is installed) — a regression of that path silently stops this advisory reaching installed consumers.
+- [x] **Prerequisite Plans:** None. The three new opt-in-host files reach an existing consumer on `bkit upgrade` only through the closed fix `upgrade-skips-new-optin-host-files` (an absent opt-in path is let through when that module is installed) — a regression of that path silently stops this advisory reaching installed consumers. Build run 1 aborted at Step 2 on failure `worktree-copy-gitignored-file-breaks-commit`; the issue's newest comment records it CLOSED and its fix (a gitignored `worktree.copy` entry stays out of `addAllButCopied`'s exclude pathspec) is in this worktree, so every task's commit can land.
 
 ### Conditional
 
@@ -388,14 +388,14 @@ Code-only — `git revert` sufficient.
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** Deliver the rules-read advisory at session start on Claude Code and Cursor
+- [x] **TASK 1:** Deliver the rules-read advisory at session start on Claude Code and Cursor
   - **CREATE:** `.bkit/core/hooks/preflight-rules.sh`: the canonical advisory string and the `emit_context` call for the two `SessionStart` hosts
-  - **UPDATE:** `.bkit/core/.claude/hooks/bkit-preflight.sh`: splice the part before the `LINEAR_ISSUE_ID` bail; make `emit_context` accumulate and write one JSON document from an `EXIT` trap, on a `printf` path that needs no `python3`
-  - **UPDATE:** `.bkit/core/.cursor/hooks/bkit-preflight.sh`: same shape, with the `emit_context` definition and the advisory spline moved above the `is_background_agent` bail, and the same `python3`-free writer on the advisory-only path
+  - **UPDATE:** `.bkit/core/.claude/hooks/bkit-preflight.sh`: splice `# {{BKIT_PART preflight-rules.sh}}` after `emit_context` is defined and before the `LINEAR_ISSUE_ID` bail, so an IDE session gets it too; make `emit_context` accumulate and write the one JSON document from an `EXIT` trap, on a `printf` path that needs no `python3`
+  - **UPDATE:** `.bkit/core/.cursor/hooks/bkit-preflight.sh`: move the `emit_context` definition and the advisory spline above the `is_background_agent` `grep` bail, and give the advisory-only path the same `python3`-free writer
   - **UPDATE:** `.bkit/core/engine/audits/hooks/preflight-sh.integration.test.ts`: invert the three IDE-skip assertions that today assert empty stdout — `exits 0 silently when LINEAR_ISSUE_ID is empty (existing IDE-skip preserved)`, `a Jira session (token set, no LINEAR_ISSUE_ID) exits 0 silently`, `exits 0 silently when the session is not a background agent` — to expect the advisory on stdout and exit 0, leaving the guard assertions (`JSON.parse(stdout)` + `HARD STOP`) passing
   - **READ:** `.bkit/core/hooks/preflight-linear.sh`: the shared guard, unchanged — its `emit_context` calls now accumulate
   - **READ:** `.bkit/core/engine/render/parts.ts`: how `{{BKIT_PART}}` splices shared parts
-  - **DONE WHEN:** both rendered hooks carry the advisory on an IDE session and on a cloud session; neither rendered hook names `AGENTS.md`; the three inverted IDE-skip assertions and the existing preflight guard assertions pass; a fresh-session dogfood on Claude and on Cursor shows the advisory
+  - **DONE WHEN:** both rendered hooks carry the advisory on an IDE session and on a cloud session; neither rendered hook names `AGENTS.md`; the three inverted IDE-skip assertions and the existing preflight guard assertions pass; a fresh-session dogfood on Claude and on Cursor shows the advisory; `pnpm build && git add dist/` ran in this task's commit, so `dist/` matches the edited `.bkit/core/engine/**` sources (`.agents/rules.md` § Repo Authoring, "Engine builds")
   - **TEST FIRST:**
     - `.bkit/core/engine/audits/hooks/preflight-sh.integration.test.ts` `emits the rules advisory on a Claude IDE session` fails while the hook prints empty stdout on an empty `LINEAR_ISSUE_ID`
     - `.bkit/core/engine/audits/hooks/preflight-sh.integration.test.ts` `names .agents/rules.md and never AGENTS.md` fails while the emitted context names `AGENTS.md` or names no file
@@ -406,7 +406,7 @@ Code-only — `git revert` sufficient.
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Deliver the advisory at the first tool call on opencode
+- [x] **TASK 2:** Deliver the advisory at the first tool call on opencode
   - **CREATE:** `.bkit/core/hooks/session-rules-advisory.js`: plain `const RULES_READ_ADVISORY = …` and `function rulesReadAdviceOnce(sessionId) {…}` declarations (no `export`, no `import`), spliced as a part
   - **CREATE:** `.bkit/core/.opencode/plugin/bkit-rules.js`: the opencode plugin, dual `setup()` / `server()` shape, appends the advisory to the first tool result once per session, carrying its `// bkit:start` / `{{BKIT_MANAGED_MARKER}}` / `// bkit:end` block with `// {{BKIT_PART session-rules-advisory.js}}` inside it
   - **UPDATE:** `.bkit/core/engine/install/modules/opencode.ts`: write the new plugin beside the two existing ones
@@ -419,7 +419,7 @@ Code-only — `git revert` sufficient.
   - **READ:** `.bkit/core/.opencode/plugin/bkit-gateguard.js`: the dual-shape driver the new plugin mirrors
   - **READ:** `.bkit/core/hooks/readguard-engine.js`: the OS-temp dedup / TTL pattern the helper follows
   - **DEPENDS ON:** 1
-  - **DONE WHEN:** the opencode plugin appends the advisory to the first tool result only, and fails open on a malformed input; `parts.test.ts`, `check.integration.test.ts` and `dogfood-templates.test.ts` pass and `pnpm slop:delta` is clean; a fresh-session dogfood shows the advisory once
+  - **DONE WHEN:** the opencode plugin appends the advisory to the first tool result only, and fails open on a malformed input; `parts.test.ts`, `check.integration.test.ts` and `dogfood-templates.test.ts` pass and `pnpm slop:delta` is clean; a fresh-session dogfood shows the advisory once; `pnpm build && git add dist/` ran in this task's commit, so `dist/` matches the edited `.bkit/core/engine/**` sources (`.agents/rules.md` § Repo Authoring, "Engine builds")
   - **TEST FIRST:**
     - `.bkit/core/engine/audits/hooks/session-rules-advisory.integration.test.ts` `opencode plugin appends the rules advisory to the first tool result` fails while the first tool result carries no advisory
     - `.bkit/core/engine/audits/hooks/session-rules-advisory.integration.test.ts` `opencode plugin appends nothing on the second call in the same session` fails while the advisory repeats
@@ -431,7 +431,7 @@ Code-only — `git revert` sufficient.
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** Deliver the advisory at the first tool call on Codex and Antigravity
+- [x] **TASK 3:** Deliver the advisory at the first tool call on Codex and Antigravity
   - **CREATE:** `.bkit/core/.codex/hooks/bkit-rules.cjs`: `PreToolUse` hook writing the advisory once as `additionalContext`, carrying its `// bkit:start` / `{{BKIT_MANAGED_MARKER}}` / `// bkit:end` block with `// {{BKIT_PART session-rules-advisory.js}}` inside it
   - **CREATE:** `.bkit/core/.agents/plugins/bkit/hooks/bkit-rules.cjs`: `PreToolUse` hook denying the first tool call once with the advisory as its reason, carrying the same managed block and part line
   - **UPDATE:** `.bkit/core/engine/install/modules/codex.ts`: write the new Codex hook file beside the two existing ones
@@ -446,7 +446,7 @@ Code-only — `git revert` sufficient.
   - **READ:** `.bkit/core/hooks/antigravity-hook.js`: the envelope adapter and `adviseOnce` deny-once delivery
   - **READ:** `.bkit/core/.codex/hooks/bkit-gateguard.cjs`: the stdin/stdout + fail-open shape the Codex hook mirrors
   - **DEPENDS ON:** 2
-  - **DONE WHEN:** the Codex rendered hook writes the advisory once as `additionalContext`; the Antigravity rendered hook denies the first tool call once with the advisory as its reason and allows the retry; both fail open on an empty payload and on a payload carrying no session id; `parts.test.ts`, `check.integration.test.ts` and `dogfood-templates.test.ts` pass and `pnpm slop:delta` is clean; a fresh-session dogfood on Codex and on Antigravity shows the advisory
+  - **DONE WHEN:** the Codex rendered hook writes the advisory once as `additionalContext`; the Antigravity rendered hook denies the first tool call once with the advisory as its reason and allows the retry; both fail open on an empty payload and on a payload carrying no session id; `parts.test.ts`, `check.integration.test.ts` and `dogfood-templates.test.ts` pass and `pnpm slop:delta` is clean; a fresh-session dogfood on Codex and on Antigravity shows the advisory; `pnpm build && git add dist/` ran in this task's commit, so `dist/` matches the edited `.bkit/core/engine/**` sources (`.agents/rules.md` § Repo Authoring, "Engine builds")
   - **TEST FIRST:**
     - `.bkit/core/engine/audits/hooks/session-rules-advisory.integration.test.ts` `codex hook writes the rules advisory as additionalContext once per session` fails while the rendered Codex hook writes no `additionalContext`
     - `.bkit/core/engine/audits/hooks/session-rules-advisory.integration.test.ts` `codex hook fails open on an empty payload` fails while the rendered Codex hook exits non-zero or throws
@@ -464,21 +464,23 @@ Code-only — `git revert` sufficient.
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** Document the advisory and its per-host delivery in the references
+- [x] **TASK 4:** Document the advisory and its per-host delivery in the references
   - **UPDATE:** `.bkit/core/.bkit/providers.md`: § Hooks parts table — one row each for `preflight-rules.sh` and `session-rules-advisory.js`; § Hooks / § GateGuard — the advisory, its per-host delivery, the no-session-start note for opencode / Codex / Antigravity, the Codex two-group matcher and the per-session dedup scope. Shipped doc: `shipped-docs-refs.test.ts` rejects tracker numbers, ledger keys and finding ids at the package source, so record behaviour only
   - **UPDATE:** `docs/architecture.md`: § Consumer Integration Model — the hook-list paragraph: the three new hook files, the two shared parts, and the advisory now on both `bkit-preflight.sh` hooks
   - **UPDATE:** `docs/testing.md`: § Key test files — the new `session-rules-advisory.integration.test.ts` and the changed IDE-skip scope of `preflight-sh.integration.test.ts`
   - **UPDATE:** `docs/knowledge.jsonl`: row `kn-hooks-sessionstart-stdout-is-one-json-document`
+  - **UPDATE:** `docs/decisions.jsonl`: row `700-session-start-rules-read-advisory` (ACTIVE) — the shipped hook shape: two single-value Codex matcher groups, no `export` on the JS part, the advisory sentence duplicated per language and held together by a test
+  - **UPDATE:** `docs/deferrals.jsonl`: rows `700-first-action-deny-gate`, `700-rules-content-hash-acknowledgement`, `700-provider-auto-load-rules` (OPEN) — the three rejected ideas
   - **READ:** `.bkit/core/engine/install/manifest.ts`: the `.bkit/providers.md` byte-equal-text entry
   - **DEPENDS ON:** 1, 2, 3
-  - **DONE WHEN:** `.bkit/core/.bkit/providers.md` describes the advisory, its per-host delivery, the Codex matcher shape and the dedup scope; `docs/architecture.md` lists the three hook files and two parts; `docs/testing.md` names the new test file; the knowledge row exists
+  - **DONE WHEN:** `.bkit/core/.bkit/providers.md` describes the advisory, its per-host delivery, the Codex matcher shape and the dedup scope; `docs/architecture.md` lists the three hook files and two parts; `docs/testing.md` names the new test file; the knowledge row, the decision row and the three deferral rows exist
   - **TEST FIRST:** n/a — docs
 
 <!-- bkit:task 4 end -->
 
 <!-- bkit:task 5 start -->
 
-- [ ] **TASK 5:** Refresh this repo's installed mirrors and close out
+- [x] **TASK 5:** Refresh this repo's installed mirrors and close out
   - **UPDATE:** `.claude/hooks/bkit-preflight.sh`: regenerated by `bkit install` — the advisory merge into the managed block, never hand-edited
   - **UPDATE:** `.cursor/hooks/bkit-preflight.sh`: regenerated by `bkit install` — the advisory merge into the managed block
   - **UPDATE:** `.opencode/opencode.json`: regenerated by `bkit install` — the `plugin` array gains `./plugin/bkit-rules.js`
@@ -493,6 +495,55 @@ Code-only — `git revert` sufficient.
 <!-- bkit:task 5 end -->
 
 <!-- bkit:group 2 end -->
+
+<!-- bkit:group 3 start -->
+
+### GROUP 3: Challenge round 1 findings
+
+<!-- bkit:task 6 start -->
+
+- [x] **TASK 6:** The opencode plugin consumes the once-per-session advisory token before it knows it can deliver it, so a first tool call whose result is missing (or not `completed`) loses the advisory for the whole session
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/.opencode/plugin/bkit-rules.js:63` · **Round:** 1
+  - **DONE WHEN:** both drivers check the delivery shape _before_ calling `rulesReadAdviceOnce()` — V2 `if (!event || event.status !== "completed" || !event.result) return;` and V1 `if (!output || typeof output !== "object") return;` ahead of the consume — so a call that cannot carry the advisory leaves the session token unconsumed and the next call delivers it, exactly as `bkit-gateguard.js` (`bkitGateGuardAfterV2`/`…V1`) and `bkit-readguard.js` (`bkitReadGuardAfterV2`/`…V1`) already do.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/hooks/session-rules-advisory.integration.test.ts` `opencode plugin keeps the advisory for the next call when the first result is missing` fails on the finding — today the first `execute.after` event with no `event.result` returns `""` **and** consumes the token, so the second (well-formed) call also returns `""`; the test asserts the second call carries `.agents/rules.md`.
+    - `.bkit/core/engine/audits/hooks/session-rules-advisory.integration.test.ts` `the 1.x driver keeps the advisory when the first output is not an object` fails on the finding — the V1 hook with a non-object `output` consumes the token and never appends it.
+
+<!-- bkit:task 6 end -->
+<!-- bkit:task 7 start -->
+
+- [x] **TASK 7:** The exit-8 rollback removes the appended step row from the working tree but leaves it staged in the index, so "nothing written, nothing committed" is false and a later pathspec-less commit commits the row
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/steps.ts:470` · **Round:** 1
+  - **DONE WHEN:** the `rec === null` branch's rollback (the `addAllButCopied(cwd)` + `runGit(cwd, ["commit", "--allow-empty", …])` path at `steps.ts:493-499`, whose failure calls `rollback()` at `:496`) also restores the index entry it staged, so after an exit-8 the index matches the rolled-back working tree and no later commit can carry the row. Verified reproduction: `git add -A` then a pre-commit hook that exits 1 leaves `status.jsonl` staged; removing the working-tree file leaves `git status --porcelain` reporting `AD status.jsonl` and a pathspec-less `git commit` still commits the row. The `rec !== null` branch is already safe — `commitOwnSet` unstages on failure (`ledgers.ts:613-620`) — so only the worktree path needs the unstage.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/steps.test.ts` `a failed commit leaves no row staged in the index` fails on the finding — after the exit-8 path (`reports a failed commit with exit 8 without writing the row`, whose pre-commit hook exits 1) the test asserts `git(cwd, ["diff", "--cached", "--name-only"])` does **not** list the `status.jsonl` row.
+
+<!-- bkit:task 7 end -->
+<!-- bkit:group 3 end -->
+
+<!-- bkit:group 4 start -->
+
+### GROUP 4: Challenge round 2 findings
+
+<!-- bkit:task 8 start -->
+
+- [x] **TASK 8:** Antigravity `bkit-rules.cjs` registers on `run_command`, so the deny-once store persists the first call's full shell command line — inline secrets included — in cleartext, world-readable, with no TTL
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/hooks/antigravity-hook.js:63` · **Round:** 2
+  - **DONE WHEN:** `adviseOnce` no longer stores the raw call signature — it writes and compares a one-way hash (e.g. SHA-256) of the signature, so no tool argument of any host hook rests on disk in cleartext; deny-once retry behaviour is unchanged on all three Antigravity hooks. Today `agCallSignature` keeps every non-label arg, so a first `run_command` call's `CommandLine` (e.g. `export AWS_SECRET_ACCESS_KEY=…`, `curl -H "Authorization: Bearer …"`) is written verbatim by `fs.writeFileSync(file, signature)` to `os.tmpdir()/bkit-antigravity-retry/rules.<session>.json` at default 0644, and the file is removed only when the identical call is retried — an agent that rephrases instead of retrying leaves it forever, readable by any local user on a multi-user host. The pre-existing GateGuard registered edit tools only (file paths); this diff's matcher `write_to_file|replace_file_content|view_file|run_command` (`.bkit/shared/.agents/plugins/bkit/hooks.json`, `.agents/plugins/bkit/hooks.json`) widens the at-rest exposure from paths to command lines.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/hooks/session-rules-advisory.integration.test.ts` `the antigravity retry store never persists a raw command line` fails on the finding — spawn the rendered Antigravity hook with a `run_command` payload whose `CommandLine` carries a marker string; after the deny, `os.tmpdir()/bkit-antigravity-retry/rules.<safe>.json` contains the marker verbatim today, and the test asserts it does not (hashed form) while the identical retry is still allowed.
+
+<!-- bkit:task 8 end -->
+<!-- bkit:task 9 start -->
+
+- [x] **TASK 9:** The hand-rolled `bkit_json_escape` leaves every control character except `\n` `\r` `\t` raw, so untrusted guard content carrying one yields an unparseable SessionStart document the host discards whole — silently dropping the Linear guard's HARD STOP with the advisory
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/.claude/hooks/bkit-preflight.sh:46` · **Round:** 2
+  - **DONE WHEN:** `bkit_write_document` emits a document that parses for any byte the accumulated context can hold — the full U+0000–U+001F range is escaped (or the writer routes through a JSON encoder when one is on PATH, keeping the `printf` path as the no-`python3` fallback) — in both SessionStart templates and their rendered mirrors (`.bkit/core/.claude/hooks/bkit-preflight.sh:46`, `.bkit/core/.cursor/hooks/bkit-preflight.sh:44`, `.claude/hooks/bkit-preflight.sh`, `.cursor/hooks/bkit-preflight.sh`). Reproduced: `bkit_json_escape` on a context containing `\x0b` emits it raw and `JSON.parse` rejects the document ("Bad control character in string literal"). The content path is untrusted: the Linear guard interpolates the API's `identifier` / custom `state` / `labels` names and the env `LINEAR_ISSUE_ID` verbatim into `emit_context` (`.bkit/core/hooks/preflight-linear.sh:8,35,68,72`); the removed `python3 json.dumps` path escaped the full range, so this is a regression, and the diff's own knowledge row `kn-hooks-sessionstart-stdout-is-one-json-document` records that a rejected document drops bkit's whole output with a zero exit.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/hooks/preflight-sh.integration.test.ts` `a context carrying a control character still yields one parseable JSON document` fails on the finding — run the rendered Claude hook with `LINEAR_ISSUE_ID` carrying `\x0b` and no `BKIT_LINEAR_API_KEY` (the key-missing FAIL message interpolates the id verbatim); today `JSON.parse(result.stdout)` throws, and the test asserts the document parses and its context still contains the HARD STOP.
+
+<!-- bkit:task 9 end -->
+<!-- bkit:group 4 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
 

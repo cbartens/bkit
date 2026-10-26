@@ -445,8 +445,9 @@ export function runOpencodeModule(ctx) {
             }
         }
     }
-    // --- bkit-gateguard.js / bkit-readguard.js — Tier-2 markered-text (slash-comment); see install/manifest.ts ---
-    for (const plugin of ["bkit-gateguard.js", "bkit-readguard.js"]) {
+    // --- bkit-gateguard.js / bkit-readguard.js / bkit-rules.js — Tier-2 markered-text
+    // (slash-comment); see install/manifest.ts ---
+    for (const plugin of ["bkit-gateguard.js", "bkit-readguard.js", "bkit-rules.js"]) {
         const opencodeCore = path.join(getCoreRoot(), ".opencode", "plugin");
         const pluginSrc = path.join(opencodeCore, plugin);
         const pluginDst = `.opencode/plugin/${plugin}`;

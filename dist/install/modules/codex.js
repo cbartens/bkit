@@ -141,8 +141,9 @@ export function runCodexModule(ctx) {
                 console.log(`${logPrefix} ${tag}codex: ${jsonDst}`);
         }
     }
-    // --- bkit-gateguard.cjs / bkit-readguard.cjs — Tier-2 markered-text, twins of the Claude hooks ---
-    for (const hook of ["bkit-gateguard.cjs", "bkit-readguard.cjs"]) {
+    // --- bkit-gateguard.cjs / bkit-readguard.cjs / bkit-rules.cjs — Tier-2 markered-text,
+    // twins of the Claude hooks ---
+    for (const hook of ["bkit-gateguard.cjs", "bkit-readguard.cjs", "bkit-rules.cjs"]) {
         const hookSrc = path.join(codexHooks, hook);
         const hookDst = `.codex/hooks/${hook}`;
         if (fs.existsSync(hookSrc)) {

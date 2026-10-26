@@ -1431,7 +1431,7 @@ export const contextCommand = {
             },
             exitCodes: {
                 [EXIT_NO_STATUS]: "--file: status.jsonl missing, unreadable, or not valid NDJSON",
-                [EXIT_COMMIT]: "--record: the row was written but the commit failed",
+                [EXIT_COMMIT]: "--record: nothing written, nothing committed: the commit failed and the row was rolled back",
             },
             run: (ctx) => {
                 const attempt = debugAttempt(ctx);

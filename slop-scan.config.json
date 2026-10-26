@@ -84,7 +84,9 @@
         ".bkit/core/.opencode/plugin/bkit-gateguard.js",
         ".opencode/plugin/bkit-gateguard.js",
         ".bkit/core/.opencode/plugin/bkit-readguard.js",
-        ".opencode/plugin/bkit-readguard.js"
+        ".opencode/plugin/bkit-readguard.js",
+        ".bkit/core/.opencode/plugin/bkit-rules.js",
+        ".opencode/plugin/bkit-rules.js"
       ],
       "rules": {
         "defensive.empty-catch": {
@@ -108,6 +110,10 @@
         ".bkit/core/hooks/readguard-engine.js",
         ".bkit/core/hooks/readguard-payload.js",
         ".bkit/core/hooks/antigravity-hook.js",
+        ".bkit/core/.opencode/plugin/bkit-rules.js",
+        ".bkit/core/hooks/session-rules-advisory.js",
+        ".bkit/core/.codex/hooks/bkit-rules.cjs",
+        ".bkit/core/.agents/plugins/bkit/hooks/bkit-rules.cjs",
         "**/.claude/hooks/bkit-gateguard.cjs",
         "**/.cursor/hooks/bkit-gateguard.cjs",
         "**/.codex/hooks/bkit-gateguard.cjs",
@@ -117,7 +123,10 @@
         "**/.cursor/hooks/bkit-readguard.cjs",
         "**/.codex/hooks/bkit-readguard.cjs",
         "**/.agents/plugins/bkit/hooks/bkit-readguard.cjs",
-        "**/.opencode/plugin/bkit-readguard.js"
+        "**/.opencode/plugin/bkit-readguard.js",
+        "**/.opencode/plugin/bkit-rules.js",
+        "**/.codex/hooks/bkit-rules.cjs",
+        "**/.agents/plugins/bkit/hooks/bkit-rules.cjs"
       ],
       "rules": {
         "structure.duplicate-function-signatures": {
