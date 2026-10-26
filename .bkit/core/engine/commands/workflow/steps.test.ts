@@ -863,6 +863,36 @@ describe("bkit steps finish", () => {
     expect(r.code).toBe(0);
     expect(git(cwd, "ls-files", ".env", "config/local")).toBe("");
   });
+
+  /** Like `copiedRepo`, but a copy entry is gitignored — the #700 shape. */
+  function copiedRepoGitignored() {
+    const cwd = repo();
+    write(cwd, ".gitignore", ".bkit/.env\n");
+    write(
+      cwd,
+      "package.json",
+      JSON.stringify({ bkit: { workflows: { worktree: { copy: [".env", ".bkit/.env"] } } } }),
+    );
+    git(cwd, "add", ".gitignore", "package.json");
+    git(cwd, "commit", "-q", "-m", "config");
+    fs.mkdirSync(path.join(cwd, ".bkit"), { recursive: true });
+    write(cwd, ".bkit/.env", "SECRET=1\n");
+    return cwd;
+  }
+
+  it("--commit=auto commits when a copied-in worktree.copy entry is gitignored (#700)", async () => {
+    const cwd = copiedRepoGitignored();
+    write(cwd, "src.ts", "export {};\n");
+    const r = await run(cwd, [
+      ...FINISH,
+      "--step=build-branch-sync",
+      "--artifact=logs/verify-1.md",
+      "--message=m",
+    ]);
+    expect(r.code).toBe(0);
+    expect(git(cwd, "show", "--name-only", "--format=", "HEAD")).toContain("src.ts");
+    expect(git(cwd, "ls-files", ".bkit/.env")).toBe("");
+  });
 });
 
 describe("bkit steps finish --post", () => {

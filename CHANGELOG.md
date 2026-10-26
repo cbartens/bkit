@@ -6,6 +6,12 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **A `bkit.workflows.worktree.copy` entry that is also gitignored no longer fails every commit in a worktree.** `addAllButCopied` named each copied entry in a `:(exclude)` pathspec; git refuses an `add` whose pathspec names an ignored file, so `bkit steps finish` — and `workflows handover --push`, `workflows close` and the resume cleanup — exited 8 at Step 2 whenever setup had copied a gitignored entry such as `.bkit/.env`. The helper now leaves an ignored copied entry out of the exclude list (`git add -A` skips it anyway). `bkit branches push --commit` stages through the same helper, so its marker commit no longer commits a copied-in secret; `bkit ledgers commit --path` and `commitOwnSet` name a gitignored path in the error instead of leaking git's ignored-paths guard. #700
+
 ## [6.0.0] — 2026-10-25
 
 ### Breaking Changes

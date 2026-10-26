@@ -28,7 +28,7 @@ import { AUTO_LABEL, AUTO_ROUTE_SUFFIX } from "./issues.js";
 import { appendFeature } from "./roadmap.js";
 import { detect } from "./runtime.js";
 import { readRuns, readStatusRows, readStatusRowsAt } from "./status.js";
-import { removeWorktree, worktreeDir } from "./worktrees.js";
+import { addAllButCopied, removeWorktree, worktreeDir } from "./worktrees.js";
 import { COULD_NOT_RUN_EXIT_CODES, LOCKFILE_REGENERATE, installCommand, } from "../../shared/package-manager.js";
 import { str } from "./status.js";
 const REMOTE = "origin";
@@ -613,7 +613,7 @@ function markerCommit(cwd, o) {
         return { sha: prior.ref, deduped: true };
     }
     if (o.addAll) {
-        const added = runGit(cwd, ["add", "-A"]);
+        const added = addAllButCopied(cwd);
         if (!added.ok)
             throw new CommandError(EXIT_PUSH_FAILED, `git add -A failed: ${added.stderr}`);
     }

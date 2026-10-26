@@ -13,7 +13,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { readBkitVersion } from "../../install/version-file.js";
 import { APPEND_LEDGERS, SCHEMA, gitEnv, parse, mintTs, resolveRepoSlug, validate, writerProblem, } from "../../ledgers/telemetry.js";
-import { CommandError, EXIT, isSharedBranch, parseJson, } from "../lib.js";
+import { CommandError, EXIT, isIgnoredPath, isSharedBranch, parseJson, } from "../lib.js";
 import { str } from "./status.js";
 /** Root is not a directory or repo, git is too old, or a ref does not resolve. */
 export const EXIT_ROOT = 3;
@@ -422,6 +422,13 @@ export function commitOwnSet(cwd, set, message, o = {}) {
     try {
         const list = path.join(tmp, "list");
         const all = [...set.plain, ...set.ledgers.map((l) => l.path)];
+        // `dirtyPaths` drops ignored entries, so `all` never holds one today; name the
+        // failure if a future caller passes a gitignored path, rather than let git's
+        // ignored-paths guard surface as an opaque stage error.
+        const ignored = all.filter((p) => isIgnoredPath(top, p));
+        if (ignored.length > 0) {
+            return { ok: false, error: `refusing to stage gitignored path(s): ${ignored.join(", ")}` };
+        }
         fs.writeFileSync(list, all.map((p) => `${p}\0`).join(""));
         const stagedBefore = new Set(nulList(gitRaw(top, ["diff", "--cached", "--name-only", "-z"]).stdout));
         const tail = ["-m", message];
@@ -671,6 +678,9 @@ function commitOnePath(o, log) {
         squashPaths: [],
         tracked: [],
     });
+    if (isIgnoredPath(root, inside)) {
+        throw new CommandError(EXIT_STAGE, `--path is gitignored, refusing to stage it: ${inside}`);
+    }
     const add = gitRaw(root, ["add", "--", inside]);
     if (add.status !== 0)
         throw new CommandError(EXIT_STAGE, `'git add' failed: ${add.stderr}`);

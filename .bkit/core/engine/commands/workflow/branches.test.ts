@@ -1393,6 +1393,16 @@ describe("branches push --commit", { timeout: GIT_TIMEOUT }, () => {
     ]);
   });
 
+  it("the marker commit leaves out a copied-in worktree.copy entry (.env)", async () => {
+    const { origin, clone } = featureBranch("commit-copy");
+    write(clone, ".env", "SECRET=1\n");
+    const r = await run(clone, args(statusOutside()));
+    expect(r.code).toBe(0);
+    expect(git(clone, "show", "--name-only", "--format=", "HEAD").out).not.toContain(".env");
+    expect(git(origin, "show", "--name-only", "--format=", "feat/1-x").out).not.toContain(".env");
+    expect(git(clone, "status", "--porcelain").out).toBe("?? .env");
+  });
+
   it("an empty tree still gets the marker commit, without the suffix when bkit:auto is absent", async () => {
     const { clone } = featureBranch("commit-empty");
     const before = sha(clone);

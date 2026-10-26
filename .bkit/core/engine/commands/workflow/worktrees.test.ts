@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { runCommand } from "../lib";
 import { COMMANDS } from "../registry";
 import { newRecord, writeRecord } from "./ledgers";
-import { ownershipMarker, worktreeDir, worktreesCommand } from "./worktrees";
+import { addAllButCopied, ownershipMarker, worktreeDir, worktreesCommand } from "./worktrees";
 
 const FID = "42-thing";
 const MONTH = "202610";
@@ -525,6 +525,24 @@ describe("bkit worktrees setup — resume guard", () => {
     const r = await setup(cwd, "ship", "--worktrees");
     expect(r.json).toMatchObject({ copied: [], copyMissing: [] });
     expect(r.err).toContain("outside the main checkout");
+  });
+});
+
+describe("addAllButCopied", () => {
+  it("omits a copied entry git ignores instead of naming it in the exclude pathspec (#700)", () => {
+    const cwd = repo("dev");
+    fs.writeFileSync(path.join(cwd, ".gitignore"), ".bkit/.env\n");
+    fs.mkdirSync(path.join(cwd, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(cwd, ".bkit/.env"), "SECRET=1\n");
+    fs.writeFileSync(path.join(cwd, "a.txt"), "a\n");
+    git(cwd, "add", ".gitignore");
+    git(cwd, "commit", "-q", "-m", "ignore");
+    fs.writeFileSync(path.join(cwd, "a.txt"), "changed\n");
+
+    const res = addAllButCopied(cwd, [".env", ".bkit/.env"]);
+    expect(res.ok).toBe(true);
+    git(cwd, "commit", "-q", "-m", "row");
+    expect(git(cwd, "show", "--name-only", "--format=", "HEAD")).toBe("a.txt");
   });
 });
 

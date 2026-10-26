@@ -28,6 +28,7 @@ import {
 import {
   CommandError,
   EXIT,
+  isIgnoredPath,
   isSharedBranch,
   parseJson,
   type CommandSpec,
@@ -536,6 +537,13 @@ export function commitOwnSet(
   try {
     const list = path.join(tmp, "list");
     const all = [...set.plain, ...set.ledgers.map((l) => l.path)];
+    // `dirtyPaths` drops ignored entries, so `all` never holds one today; name the
+    // failure if a future caller passes a gitignored path, rather than let git's
+    // ignored-paths guard surface as an opaque stage error.
+    const ignored = all.filter((p) => isIgnoredPath(top, p));
+    if (ignored.length > 0) {
+      return { ok: false, error: `refusing to stage gitignored path(s): ${ignored.join(", ")}` };
+    }
     fs.writeFileSync(list, all.map((p) => `${p}\0`).join(""));
     const stagedBefore = new Set(
       nulList(gitRaw(top, ["diff", "--cached", "--name-only", "-z"]).stdout),
@@ -840,6 +848,9 @@ function commitOnePath(o: BookkeepingCommit, log: (m: string) => void): Bookkeep
     squashPaths: [],
     tracked: [],
   });
+  if (isIgnoredPath(root, inside)) {
+    throw new CommandError(EXIT_STAGE, `--path is gitignored, refusing to stage it: ${inside}`);
+  }
   const add = gitRaw(root, ["add", "--", inside]);
   if (add.status !== 0) throw new CommandError(EXIT_STAGE, `'git add' failed: ${add.stderr}`);
   if (

@@ -26,6 +26,7 @@ import {
   DEV,
   EXIT,
   git,
+  isIgnoredPath,
   isSharedBranch,
   MAIN,
   repoRoot,
@@ -235,13 +236,19 @@ function rebaseInProgress(wt: string): boolean {
 /**
  * `git add -A` in `tree`, leaving out the `bkit.workflows.worktree.copy` entries setup
  * copies in from the main checkout (`.env` and the like): no bkit commit may
- * carry them, gitignored or not.
+ * carry them, gitignored or not. A copied entry git already ignores is left out
+ * of the exclude list: naming it in a `:(exclude)` pathspec trips git's
+ * ignored-paths guard and fails the whole `add`, and `git add -A` skips an
+ * ignored file anyway, so it needs no exclusion.
  */
 export function addAllButCopied(
   tree: string,
   copied: string[] = readBkitConfig(tree).worktreeCopy,
 ): ReturnType<typeof runGit> {
-  const keep = copied.map((e) => `:(exclude)${path.normalize(e)}`);
+  const keep = copied
+    .map((e) => path.normalize(e))
+    .filter((e) => !isIgnoredPath(tree, e))
+    .map((e) => `:(exclude)${e}`);
   return runGit(tree, ["add", "-A", "--", ".", ...keep]);
 }
 

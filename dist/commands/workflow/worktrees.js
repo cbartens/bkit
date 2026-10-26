@@ -19,7 +19,7 @@ import { lastRun } from "../../ledgers/status.js";
 import { gitEnv } from "../../ledgers/telemetry.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { COULD_NOT_RUN_EXIT_CODES, installCommand } from "../../shared/package-manager.js";
-import { CommandError, DEV, EXIT, git, isSharedBranch, MAIN, repoRoot, runGit, } from "../lib.js";
+import { CommandError, DEV, EXIT, git, isIgnoredPath, isSharedBranch, MAIN, repoRoot, runGit, } from "../lib.js";
 import { ensureDiskSpace } from "./disk.js";
 import { listRecords, newRecord, readRecord, removeRecord, withSetupGuard, writeRecord, } from "./ledgers.js";
 import { workflowLockFresh, workflowLockLive } from "./locks.js";
@@ -193,10 +193,16 @@ function rebaseInProgress(wt) {
 /**
  * `git add -A` in `tree`, leaving out the `bkit.workflows.worktree.copy` entries setup
  * copies in from the main checkout (`.env` and the like): no bkit commit may
- * carry them, gitignored or not.
+ * carry them, gitignored or not. A copied entry git already ignores is left out
+ * of the exclude list: naming it in a `:(exclude)` pathspec trips git's
+ * ignored-paths guard and fails the whole `add`, and `git add -A` skips an
+ * ignored file anyway, so it needs no exclusion.
  */
 export function addAllButCopied(tree, copied = readBkitConfig(tree).worktreeCopy) {
-    const keep = copied.map((e) => `:(exclude)${path.normalize(e)}`);
+    const keep = copied
+        .map((e) => path.normalize(e))
+        .filter((e) => !isIgnoredPath(tree, e))
+        .map((e) => `:(exclude)${e}`);
     return runGit(tree, ["add", "-A", "--", ".", ...keep]);
 }
 /**

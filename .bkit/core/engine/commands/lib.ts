@@ -411,6 +411,16 @@ export function git(cwd: string, args: string[]): string | null {
   return res.ok ? res.stdout : null;
 }
 
+/**
+ * True when git's ignore rules match `rel` in `cwd`. A tracked file reads as not
+ * ignored, so an ignored `rel` is always an untracked file git would refuse to
+ * `add` when a pathspec names it (the guard `:(exclude)` and `--pathspec-from-file`
+ * trip). Check before naming a path in an add pathspec.
+ */
+export function isIgnoredPath(cwd: string, rel: string): boolean {
+  return runGit(cwd, ["check-ignore", "-q", "--", rel]).ok;
+}
+
 /** `JSON.parse` as a result instead of a throw; each caller says what bad input means for it. */
 // Shared with the files that are not commands (checks, install): re-exported here
 // for the command modules that already import it from this module.

@@ -10,6 +10,7 @@ import {
   EXIT_ROWS_MISSING,
   EXIT_ROW_REFUSED,
   bookPathspecs,
+  commitOwnSet,
   ledgersCommand,
   newRecord,
   readRecord,
@@ -511,6 +512,31 @@ describe("bkit ledgers commit --path", () => {
     const res = await run(r, args(r, "--mode=commit", "--path=../elsewhere.md", "--message=m"));
     expect(res.code).toBe(6);
     expect(head(r)).toBe(before);
+  });
+
+  it("refuses a --path git ignores, naming the guard instead of leaking git's message", async () => {
+    const r = planRepo();
+    put(r, ".gitignore", "secret.env\n");
+    put(r, "secret.env", "S=1\n");
+    git(r, "add", ".gitignore");
+    git(r, "commit", "-q", "-m", "ignore");
+    const before = head(r);
+    const res = await run(r, args(r, "--mode=commit", "--path=secret.env", "--message=m"));
+    expect(res.code).toBe(4);
+    expect(res.err).toContain("gitignored");
+    expect(head(r)).toBe(before);
+  });
+});
+
+describe("commitOwnSet", () => {
+  it("refuses a gitignored path in the set instead of letting git fail opaquely", () => {
+    const r = repo();
+    put(r, ".gitignore", "secret.env\n");
+    put(r, "secret.env", "S=1\n");
+    git(r, "add", ".gitignore");
+    git(r, "commit", "-q", "-m", "ignore");
+    const res = commitOwnSet(r, { plain: ["secret.env"], ledgers: [] }, "m");
+    expect(res).toEqual({ ok: false, error: expect.stringContaining("gitignored") });
   });
 });
 
