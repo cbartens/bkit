@@ -11,16 +11,28 @@ Lens: Security — auth, secrets, input validation, data exposure, OWASP, data-a
 
 None.
 
+## Round-1 Fix Verification
+
+All three round-1 MEDIUM fixes confirmed on disk and green (`pnpm vitest run .bkit/core/engine/audits/workflows/question-option-format.test.ts` → 15/15 passed):
+
+- **TASK 8:** `optionLists` iterates `line.matchAll(OPTIONS_LABEL)` — every `Options:` label on a line is read, each list bounded by its own closing code span (`.bkit/core/engine/audits/workflows/question-option-format.test.ts:98-115`); the `RED-PROOF: a second Options: list on one line still fires the option rule` test exists and passes.
+- **TASK 9:** the recommendation rule now scans `[PROMPTS, TEMPLATES, AUTHORING]`; `.bkit/core/docs/templates/bkit-plan.md:108` and its `docs/templates/bkit-plan.md:108` mirror both state `**Recommended:** A) [option] — [why, 1 line]`.
+- **TASK 10:** `.bkit/core/.bkit/prompts.md` rows 255, 257, 267, 270 name the lettered `Options: A) …` form; the `.bkit/prompts.md` mirror agrees (6 `lettered` hits each) and the index-vs-mirror agreement test holds.
+
 ## Coverage Notes
 
-Code surfaces challenged (diff read in full; mirrors and snapshots verified identical to their sources):
+Current diff (round-2 products included) challenged in full; mirrors and snapshots correspond to their sources:
 
-- `.bkit/core/engine/commands/workflow/decisions.ts` (#703 surface): `bareName` (`/^[A-Z]\)[ \t]*/`), `letterAt`, `letteredOptions`, `letterOf` are pure, linear string transforms on engine/owner-authored decision files; no shell, path, or eval sink; regexes bounded (no ReDoS). Legacy letterless files still parse; a literal owner option named `A) x` losing its prefix is a data nit, not a security boundary.
-- `.bkit/core/engine/commands/workflow/branches.ts` (inherited): `localDevCopies` / `unpushedDevCause` run git through the array-arg `spawnSync` helper with repo-derived paths (`git diff --cached --name-only`); args are `dev:{path}` / `{branch}:{path}` refspecs that cannot begin with `-`; no shell interpolation possible.
-- `.bkit/core/engine/commands/workflow/steps.ts` (inherited): the row rollback captures size before append, truncates only when the file still ends with the appended line, and `rmSync`s only a file it created; the workflow lock protocol holds the concurrency guarantee; nothing logged contains secrets.
-- `.bkit/core/engine/commands/workflow/worktrees.ts` (inherited): `--workflow` allowlisted, `fidOf` enforces `/^[A-Za-z0-9][A-Za-z0-9._-]*$/` and rejects `..` (path-traversal safe per `docs/security.md` FID slug allowlist), `--month` is `^[0-9]{6}$`, ship's `--branch` passes `git check-ref-format --branch`; the new `git rev-list {branch} --not origin/dev` call uses array args on the internally built `feat/{fid}`.
-- `.bkit/core/engine/audits/workflows/question-option-format.test.ts` (new): read-only corpus scanner over constant repo paths; fixed-width lookbehind and linear separator regexes; reads no untrusted content.
-- `.prettierignore` / `.bkit/templates/.prettierignore` (owner-authorised): ignore additions scoped to `docs/plans/*/logs/*/` raw-output families; prettier is a format gate, not a security control.
-- `.bkit/version`: SHA-256 mirror hashes only. `.bkit/friction.jsonl` / `docs/knowledge.jsonl` additions: name the bkit repo itself (permitted), no consumer names, no tokens, no PII; `.bkit/.env` referenced by path only.
+- `.bkit/core/engine/commands/workflow/decisions.ts`: `letterAt` / `bareName` / `letteredOptions` / `letterOf` are pure, linear string transforms over engine- and owner-authored decision text; no shell, path, eval or network sink; `lineOf`'s dynamic regex keys off a fixed label set, not caller input. The 27+-option `letterAt` overflow is the round-1 deferred LOW (`docs/deferrals.jsonl` key `…-decisions-ts-52`) — correctness, not security; not re-raised.
+- `.bkit/core/engine/commands/workflow/steps.ts`: the `writeStepRow` rollback guards truncation with an `endsWith(line)` check and removes only a file it created; the concurrent-append window is the round-1 deferred LOW (`…-steps-ts-463`) — integrity nit on a local ledger behind the workflow lock, not a security boundary; not re-raised.
+- `.bkit/core/engine/commands/workflow/worktrees.ts` (`worktreeBase`, `inheritedDevCommits`, `inheritedDevRefusal`) and `branches.ts` (`localDevCopies`, `unpushedDevCause`): every git call runs through `runGit` → `spawnSync("git", args)` with array args (verified `commands/lib.ts:387-412`), satisfying `docs/security.md` § Shell Injection; interpolated values are constants (`dev`, `origin/dev`), the internally built `feat/{fid}` (FID slug-allowlisted upstream, cannot lead with `-`), and repo-relative paths from `git diff --cached --name-only` used only in `rev-parse --verify` refspec comparisons — no filesystem write, no option injection, no traversal.
+- `.bkit/core/engine/audits/workflows/question-option-format.test.ts` (new): read-only corpus scanner over constant first-party paths; regexes are linear on single lines (fixed-width lookbehind, no nested quantifiers); reads no untrusted content; a pathological 27+-entry list would throw in-test (loud), never pass silently.
+- `.bkit/core/engine/commands/workflow/context.ts`: exit-code description string only; no behaviour change.
+- `dist/commands/workflow/*.js`: compiled output matches the source edits; freshness gated by `bkit:check:dist` and the new `.agents/rules.md` engine-builds rule.
+- `.prettierignore` / `.bkit/templates/.prettierignore`: ignore additions scoped to `docs/plans/*/logs/*/` raw-output families; a format gate, not a security control — the logs commit either way, unchanged exposure.
+- `.bkit/version`: SHA-256 content hashes of tracked files — integrity data, not credentials.
+- Ledger appends (`.bkit/friction.jsonl`, `docs/deferrals.jsonl`, `docs/knowledge.jsonl`): no tokens, no PII, no consumer names; `.bkit/.env` referenced by path only. Secret-pattern sweep over the full diff (token / key / private-key shapes): no hits.
+- Supply chain: no `package.json`, lockfile, or `.github/` change in the diff — no new dependency, action, or install script surface.
+- Auth, sessions, tenancy / RLS: not applicable — no database, server, or user-auth surface (`docs/security.md` § Scope, § RLS); no diff hunk touches a data-access policy or an auth check.
 
-Cross-checked against `docs/security.md`: Shell Injection (all subprocess calls array-form `spawnSync`/`execFileSync` — holds), Secrets Management (no new credential surfaces), Untrusted Content (no fetched/external text parsed), PII (none), supply chain (no new dependencies, no workflow / action changes).
+Cross-checked against `docs/security.md`: Shell Injection (array-form spawn holds), Secrets Management (no new credential surfaces), Untrusted Content & Prompt Injection (no fetched/external text parsed; edited prose is first-party instruction text), PII (none logged), CI Auto-Route Trust (FID allowlist assumption intact — the new `rev-list` call consumes the internally built branch name).
