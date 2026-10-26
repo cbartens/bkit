@@ -14,9 +14,10 @@
 # HARD STOP instruction) AND `stderr` (visible to the user). Exit code is
 # informational only.
 #
-# bkit generates the managed block at install: the Linear guard is shared with the
-# Cursor hook (bkit's `hooks/preflight-linear.sh`); the trigger, the brew check
-# and the output shape below are Claude's own.
+# bkit generates the managed block at install: the Linear guard and the rules-read
+# advisory are shared with the Cursor hook (bkit's `hooks/preflight-linear.sh` and
+# `hooks/preflight-rules.sh`); the trigger, the brew check and the output shape below
+# are Claude's own.
 
 # <!-- bkit:start -->
 
@@ -28,21 +29,41 @@ set -euo pipefail
 # Claude SessionStart payload: { session_id, transcript_path, cwd, permission_mode } — unused here.
 INPUT=$(cat)
 
-# emit_context — Claude SessionStart expects { hookSpecificOutput: { hookEventName, additionalContext } }.
+# emit_context — Claude SessionStart expects ONE JSON document
+# { hookSpecificOutput: { hookEventName, additionalContext } } on stdout. Each call
+# accumulates its string; the EXIT trap writes the document once, so the advisory and
+# the Linear guard result ride one document (two documents are unparseable).
 # (Cursor variant: emits { additional_context: ... } directly.)
+BKIT_CONTEXT=""
 emit_context() {
-  python3 - "$1" <<'PY'
-import json, sys
-print(json.dumps({
-  "hookSpecificOutput": {
-    "hookEventName": "SessionStart",
-    "additionalContext": sys.argv[1],
-  },
-}))
-PY
+  [[ -z "$BKIT_CONTEXT" ]] || BKIT_CONTEXT+=$'\n\n'
+  BKIT_CONTEXT+="$1"
 }
 
-# IDE session detection — skip silently when this isn't a background/cloud run.
+# JSON-escape one string, so a context carrying a quote or a backslash cannot break the
+# document. No python3 on this path: a python3-less IDE session must still get the
+# advisory (Claude cannot block, so a lost advisory would be silent).
+bkit_json_escape() {
+  local s=$1
+  s=${s//\\/\\\\}
+  s=${s//\"/\\\"}
+  s=${s//$'\n'/\\n}
+  s=${s//$'\r'/\\r}
+  s=${s//$'\t'/\\t}
+  printf '%s' "$s"
+}
+
+bkit_write_document() {
+  [[ -n "$BKIT_CONTEXT" ]] || return 0
+  printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' \
+    "$(bkit_json_escape "$BKIT_CONTEXT")"
+}
+
+trap bkit_write_document EXIT
+
+# {{BKIT_PART preflight-rules.sh}}
+
+# IDE session detection — the advisory above already fired; nothing else runs here.
 # Claude has no native is-background flag, so we use empty LINEAR_ISSUE_ID as the proxy.
 # (Cursor variant: parses `is_background_agent` from stdin JSON.)
 if [[ -z "${LINEAR_ISSUE_ID:-}" ]]; then
