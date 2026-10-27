@@ -239,7 +239,7 @@ None — no new routes, DB writes, secrets or user input.
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** Regenerate the host mirrors and the built CLI
+- [x] **TASK 4:** Regenerate the host mirrors and the built CLI
   - **UPDATE:** `.bkit/workflows.md`: regenerated from `.bkit/core/.bkit/workflows.md`
   - **UPDATE:** `.claude/commands/bkit-build.md`: regenerated from the edited workflow
   - **UPDATE:** `.cursor/commands/bkit-build.md`: regenerated from the edited workflow
@@ -255,7 +255,7 @@ None — no new routes, DB writes, secrets or user input.
 
 <!-- bkit:task 5 start -->
 
-- [ ] **TASK 5:** Bring the testing doc and the knowledge ledger onto the new step numbers
+- [x] **TASK 5:** Bring the testing doc and the knowledge ledger onto the new step numbers
   - **UPDATE:** `docs/testing.md`: the `workflow-shape.test.ts` row names Plan Convert instead of Branch Sync and carries the shifted build step numbers
   - **UPDATE:** `docs/knowledge.jsonl`: one same-`key` append through `bkit ledgers append --ledger=knowledge` to the winning `plan-line-anchors-…` row, its `references` and its sentences reading `Step 5 — Plan Current`; no existing line edited, and the row goes in through a writer `.bkit/core/.bkit/jsonl.md` § Ledgers & Writers allows (the plan-execute agent is one)
   - **DEPENDS ON:** 1
