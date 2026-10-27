@@ -13,7 +13,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-10-26T22:49:33Z)_
+_(refreshed 2026-10-27T06:01:17Z)_
 
 ### Design
 
@@ -38,6 +38,7 @@ _(refreshed 2026-10-26T22:49:33Z)_
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
+| 703-standardise-question-option | 703-standardise-question-option | 1793080876396 |
 
 ### Debug
 
