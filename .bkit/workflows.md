@@ -24,7 +24,7 @@ Canonical source: `.bkit/core/workflows/`. `bkit install` regenerates `.claude/c
 .bkit/core/workflows/
 ├── bkit-design.md         # Workflow 1/5 — 12 steps; hard stop after summary
 ├── bkit-plan.md           # Workflow 2/5 — 8 steps; hard stop after summary
-├── bkit-build.md          # Workflow 3/5 — 15 steps; CI takes over after PR
+├── bkit-build.md          # Workflow 3/5 — 16 steps; CI takes over after PR
 ├── bkit-debug.md          # Workflow 4/5 — 11 steps; normal / soak modes, `[repro]`
 ├── bkit-ship.md           # Workflow 5/5 — 14 steps; merge → archive → In Review (human closes)
 └── bkit-auto.md          # Utility — phase-routed cloud dispatch (plan/build by dispatch; debug/ship by CI on a PR or post-merge `dev`)
