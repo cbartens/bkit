@@ -113,7 +113,7 @@ Every agent in each phase, in the order it runs and what it checks: [pipeline re
   </picture>
 </p>
 
-**How the picks are made.** Each kind of job has a bar: Claude's score on [LiveBench Agentic Coding](https://livebench.ai/#/?cats=Agentic+Coding), a public test where models fix real code in JavaScript, TypeScript and Python. For each tool, bkit takes the **cheapest model that reaches the bar**. Where nothing reaches it, the tool's best model gets the job. One model can fill two columns: on opencode, DeepSeek V4.1 Flash clears the bar for the hardest jobs, so it does the everyday jobs too, for a fraction of Claude's cost. Claude is never used on opencode, because opencode is where work goes when your Claude allowance runs out.
+**How the picks are made.** Each kind of job has a bar: Claude's score on [LiveBench](https://livebench.ai/) Agentic Coding (v1, last release `2026-06-25`), a public test where models fix real code in JavaScript, TypeScript and Python. LiveBench has moved to 2.0, which measures long multi-turn work on its own scale and does not convert; the 2.0 re-probe, and what it would move, is on [the 2.0 board](.bkit/providers.md#livebench-20-board--2026-10-25). For each tool, bkit takes the **cheapest model that reaches the bar**. Where nothing reaches it, the tool's best model gets the job. One model can fill two columns: on opencode, DeepSeek V4.1 Flash clears the bar for the hardest jobs, so it does the everyday jobs too, for a fraction of Claude's cost. Claude is never used on opencode, because opencode is where work goes when your Claude allowance runs out.
 
 <!-- prettier-ignore -->
 | Tool | Hardest jobs: design, plans, reviews, security, audits | Everyday jobs: writing code and docs, the second model in each review pair |

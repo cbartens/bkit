@@ -554,14 +554,14 @@ Filters (not above score): endpoint count; automatic prompt caching (bkit sends 
 <!-- prettier-ignore -->
 | Pri | Source | Decides | URL |
 | --- | --- | --- | --- |
-| 1 | LiveBench Agentic Coding | Pin score (JS / TS / PY mean) | https://livebench.ai/#/?cats=Agentic+Coding — CSV `https://raw.githubusercontent.com/LiveBench/new-livebench/main/public/table_2026_06_25.csv` |
+| 1 | LiveBench 2.0 | Pin score — **Long Agentic** | `https://livebench.ai/data/<YYYYMMDD>/table.csv`, beside it `categories.json` (category → columns + `_overall_weights`), `cost.csv`, `breakdown.json`. Releases `20261014`, `20261025` (latest `20261025`). **The v1 path is dead:** `raw.githubusercontent.com/LiveBench/new-livebench/…/public/table_<date>.csv` 404s for 2.0 and stops at `2026-06-25` |
 | 1 | AA Intelligence Index | General intelligence | https://artificialanalysis.ai/leaderboards/models |
 | 1 | DeepSWE | Long-horizon repo work — public board only | https://deepswe.datacurve.ai |
 | 1 | LMArena Code Arena — WebDev | Web-dev preference | https://lmarena.ai (Code / WebDev) |
 | 1 | Design Arena — Code | Web-app preference | https://designarena.ai/leaderboard/code |
 | 1 | CursorBench | Agentic coding at **every effort level** (`low` → `max`) with $/task — the source for choosing an agent's `effort:`; cross-checks LiveBench. Cursor's own `composer-*` rows count as vendor-only | https://cursor.com/cursorbench |
 | 2-3 | AA cost / latency | $/task, tok/s, TTFT, E2E | same AA leaderboard |
-| 2 | LiveBench cost table | Agentic $/task — rescale to billed provider | `cost_2026_06_25.csv` beside the LiveBench table |
+| 2 | LiveBench cost table | $/task per category — `out_<category>` = dollars per successful task; rescale to billed provider | `https://livebench.ai/data/<YYYYMMDD>/cost.csv` |
 | 2 | OpenRouter model page | List in/out + cache-read | https://openrouter.ai/models/{slug} |
 | filter | OpenRouter endpoints | Host count; 1 = reject | `GET /api/v1/models/{slug}/endpoints` |
 | filter | OpenRouter prompt-caching doc | Auto vs `cache_control`; ignore `supports_implicit_caching` | https://openrouter.ai/docs/features/prompt-caching |
@@ -569,7 +569,66 @@ Filters (not above score): endpoint count; automatic prompt caching (bkit sends 
 
 **Do not pin from:** OpenRouter volume; BenchGecko; vendor-only Terminal-Bench / SWE; launch blogs.
 
+**Goal — each column as close to its Claude tier as that provider's own catalog allows.** A tier cell is that column's answer to the Claude bar; it is never a copy of another column's cell. Matching cells across providers are a catalog coincidence, not an objective — never hold a column back from a stronger model to keep the matrix uniform, and never move one forward because a sibling column moved. Divergence between columns is expected output; a column whose ceiling sits under a bar records that in its Notes cell rather than borrowing another column's pin.
+
+### LiveBench 2.0 board — 2026-10-25
+
+Re-probed `https://livebench.ai/data/20261025/table.csv` + `cost.csv` (§ Selecting pins § Sources). **Pin score = Long Agentic** — 2.0's headline category, weighted 2x in the overall, and the multi-turn long-horizon work every agent runs. **Coding = sanity check**, never the criterion. 2.0 replaced v1's single Agentic Coding category with seven, each its own task set: **v1 and 2.0 scores do not convert** — never carry a v1 number forward or bridge across the gap.
+
+**Bars (Claude, 2.0):** opus `claude-opus-5.5` **72.8** · sonnet `claude-sonnet-5.5` **63.4** · haiku `claude-haiku-5.5` **40.0**. All three are measured on this release — no bridging, no held-over 5.0 rows.
+
+| Model                      | Long Agentic (pin) | Coding | Overall | LA $/task | OR endpoints | Pinnable on            |
+| -------------------------- | ------------------ | ------ | ------- | --------- | ------------ | ---------------------- |
+| `claude-fable-5.1`         | **77.9**           | 97.7   | 85.7    | $928.31   | —            | — (Claude)             |
+| `gpt-6-astra`              | **77.5**           | 93.7   | 85.6    | $690.82   | 7            | or · zen               |
+| `claude-opus-5.5`          | **72.8**           | 96.3   | 85.1    | $684.16   | —            | **opus bar**           |
+| `gpt-6.1-sol`              | **68.7**           | 96.0   | 84.1    | $116.78   | 8            | or · zen               |
+| `claude-sonnet-5.5`        | **63.4**           | 94.7   | 80.0    | $630.21   | —            | **sonnet bar**         |
+| `gemini-4-argon`           | **61.2**           | 89.7   | 79.3    | $249.15   | 6            | or · zen · go          |
+| `muse-wonder-1.0`          | **52.6**           | 86.2   | 74.2    | $249.07   | —            | or · zen               |
+| `gpt-6.1-terra`            | **48.6**           | 94.3   | 77.8    | $116.42   | 4            | or                     |
+| `grok-4.7`                 | **46.1**           | 84.5   | 70.1    | $337.79   | 5            | or · zen · go          |
+| `deepseek-v4.1-flash-1017` | **40.9**           | 96.0   | 74.0    | $25.96    | 36           | or · zen · go · ollama |
+| `claude-haiku-5.5`         | **40.0**           | 91.4   | 69.8    | $188.84   | —            | **haiku bar**          |
+| `kimi-k3.1-pro`            | **39.1**           | 81.8   | 71.3    | $133.67   | 2            | or · go                |
+| `mimo-v2.6-pro`            | **35.2**           | 81.5   | 68.5    | $21.86    | 5            | or · go                |
+| `gpt-5.6-terra`            | **33.1**           | 86.2   | 67.8    | $211.62   | 7            | or                     |
+| `gpt-6-luna`               | **30.9**           | 84.5   | 64.6    | $17.42    | 7            | or · zen · go          |
+| `qwen3.8-max`              | **29.9**           | 60.3   | 61.6    | $268.74   | 2            | or · zen · go          |
+| `minimax-m3.1-flash`       | **28.8**           | 83.9   | 66.9    | $19.50    | 12           | or · go · ollama       |
+| `grok-4.6`                 | **28.0**           | 89.1   | 67.8    | $184.39   | 6            | or · zen               |
+| `kimi-k3`                  | **26.4**           | 59.3   | 64.6    | $323.83   | 30           | or · zen · go · ollama |
+| `muse-spark-1.3`           | **25.5**           | 90.2   | 63.0    | $160.10   | —            | or · zen               |
+| `qwen3.8-27b`              | **20.6**           | 86.8   | 58.4    | $111.08   | —            | or                     |
+| `step-5-preview`           | **19.4**           | 85.6   | 58.6    | $162.98   | 3            | or · go                |
+| `glm-5.3-flash`            | **19.0**           | 80.6   | 62.1    | $29.32    | 38           | or · zen · go · ollama |
+| `gemini-3.8-flash`         | **16.5**           | 82.2   | 59.2    | $126.70   | 7            | or · zen               |
+
+**One release is a weak signal.** `kimi-k3` read 42.8 on `20261014` and 26.4 on `20261025` for the same category, so a re-pin takes a second release as corroboration unless the gap exceeds the bar's margin. `$` is LiveBench's own direct-vendor basis; a gateway pin is billed at the gateway's price (Zen `deepseek-v4.1-flash` $0.30/$1.20, Go $0.15/$0.60, Go `gemini-4-argon` $2/$10, Zen `gpt-6-astra` $10/$50).
+
+**Unmeasured on 2.0 — keep their v1 basis, do not re-derive:** `composer-2.5` and `cursor-grok-4.5-high` (Cursor), `gemini-3.8-pro` (Google/Antigravity).
+
+**Re-pin the 2.0 board proposes — NOT APPLIED.** Pins stay as listed in § Per-tier lineup until a human signs off; the arrows show what "closest to its Claude bar, cheapest that reaches" yields on the 2026-10-25 data.
+
+| Column         | Tier          | Current pin                | 2.0 proposal                                                                 | Cost (LA $/task)              |
+| -------------- | ------------- | -------------------------- | ---------------------------------------------------------------------------- | ----------------------------- |
+| `openrouter`   | opus          | `deepseek-v4.1-flash-1017` | `gpt-6-astra` 77.5 — the only non-Claude model over the 72.8 bar             | $25.96 → $690.82 (×26.6)      |
+| `openrouter`   | sonnet        | `deepseek-v4.1-flash-1017` | `gpt-6.1-sol` 68.7 — cheapest over 63.4                                      | $25.96 → $116.78 (×4.5)       |
+| `openrouter`   | haiku         | `glm-5.3-flash`            | `deepseek-v4.1-flash-1017` 40.9 — GLM's 19.0 misses the 40.0 bar             | $29.32 → $25.96               |
+| `openrouter`   | convergent    | `kimi-k3`                  | `kimi-k3.1-pro` 39.1 — stronger and cheaper, but **2 endpoints, one vendor** | $323.83 → $133.67             |
+| `opencode-zen` | opus          | `deepseek-v4.1-flash`      | `gpt-6-astra` 77.5                                                           | Zen $10/$50 (v1 basis $25.96) |
+| `opencode-zen` | sonnet        | `deepseek-v4.1-flash`      | `gpt-6.1-sol` 68.7                                                           | Zen $2/$10                    |
+| `opencode-zen` | haiku         | `glm-5.3-flash`            | `deepseek-v4.1-flash` 40.9                                                   | Zen $0.30/$1.20               |
+| `opencode-zen` | convergent    | `kimi-k3`                  | `kimi-k3` — Zen serves no `kimi-k3.1-pro`                                    | unchanged                     |
+| `opencode-go`  | opus + sonnet | `deepseek-v4.1-flash`      | `gemini-4-argon` 61.2 — column ceiling, 2.2 under the sonnet bar             | Go $2/$10                     |
+| `opencode-go`  | haiku         | `deepseek-v4.1-flash`      | `deepseek-v4.1-flash` 40.9                                                   | Go $0.15/$0.60                |
+| `opencode-go`  | convergent    | `kimi-k3`                  | `kimi-k3.1-pro` 39.1                                                         | $323.83 → $133.67             |
+| `ollama`       | all tiers     | `deepseek-v4.1-flash:1017` | unchanged — column ceiling 40.9, nothing else over the haiku bar             | $25.96                        |
+| `ollama`       | convergent    | `kimi-k3`                  | unchanged — Ollama serves no `kimi-k3.1-pro`                                 | $323.83                       |
+
 ### Agentic-coding parity board
+
+**v1 generation — superseded by the 2.0 board above; kept because every current pin was chosen from it.** LiveBench closed v1 at `2026-06-25`. 2.0 restarted the categories and weights, so the scores below do not convert to 2.0 — read them only against each other.
 
 Source: [LiveBench](https://livebench.ai/#/?cats=Agentic+Coding), release **2026-06-25** (`table_2026_06_25.csv` / `cost_2026_06_25.csv`, `LiveBench/new-livebench`). **Score** = mean of the category's three tasks (`javascript`, `typescript`, `python`), per `public/categories_<date>.json`. **$/task** = category dollars ÷ 72 questions, from LiveBench's own cost table. Process + sources: § Selecting pins. Artificial Analysis stays the source for price/latency and general capability; agentic-coding score decides a **pin**, because that is the workload every bkit agent runs.
 
