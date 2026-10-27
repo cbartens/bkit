@@ -203,7 +203,7 @@ None — no new routes, DB writes, secrets or user input.
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Post a Plan Current comment whether the step runs or self-skips
+- [x] **TASK 2:** Post a Plan Current comment whether the step runs or self-skips
   - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: Step 5 — Plan Current's `anchor-read` exit 12 route finishes the step with no `--agent` and no artifact, posting `--comment-field="Status=skipped (no plan anchor)"` under `--number=5 --post --title="Plan Current"` before moving on; its exit 0 route keeps the agent, its `--number=5` finish and the plan-currency advisory; the gate names both routes
   - **UPDATE:** `.bkit/core/engine/audits/workflows/workflow-shape.test.ts`: a test holding both routes to a `--post` finish and the skip's own status field
   - **UPDATE:** `.bkit/core/engine/render/__snapshots__/bkit-build.none.txt`: regenerated from the edited workflow
