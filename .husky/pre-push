@@ -241,7 +241,7 @@ fi
 # (`check-at`): uncommitted edits, a concurrent session's included, cannot change the answer.
 # Other graphify release → blocked, with the install command. graphify NOT INSTALLED → warn
 # only, saying the check did not run: a cloud session without it must still push; CI's Check
-# Capability Register runs the same check on every push to dev. Revert pushes (IS_REVERT=1)
+# Capability Register runs the same check on every push to dev and every pull request. Revert pushes (IS_REVERT=1)
 # skip it, as they skip the test tiers. Other branches → warn-only staleness note.
 CAP_DOC="docs/capabilities.md"
 if [ -f scripts/graphify/bkit-graphify.sh ] && [ -f "$CAP_DOC" ]; then

@@ -515,23 +515,28 @@ jobs:
       # silently. Self-skips when the graphify wrapper is absent — a repo that did not adopt
       # scripts/graphify/ is a no-op. graphify is pinned because its output must match the
       # committed register to the byte: bump GRAPHIFY_SPEC (bkit-graphify.sh) and refresh the register together.
-      # Push events only — a pull_request checkout is the MERGE ref, whose tree (base + head)
-      # can differ from the head the register was built against: a false red no author can clear.
+      # Every event, PRs included. A pull_request checkout is the MERGE ref (base + head); the
+      # register was never built against that tree, so checking it there is a false red no
+      # author can clear. This checks `check-at` on the PR's HEAD commit (a throwaway worktree),
+      # not the working tree; on a push that commit is HEAD. Same primitive the pre-push gate runs.
       - name: Setup uv
-        if: github.event_name == 'push' && hashFiles('scripts/graphify/bkit-graphify.sh') != ''
+        if: hashFiles('scripts/graphify/bkit-graphify.sh') != ''
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           version: "0.13.0"
 
       - name: Check Capability Register
-        if: github.event_name == 'push' && hashFiles('scripts/graphify/bkit-graphify.sh') != ''
+        if: hashFiles('scripts/graphify/bkit-graphify.sh') != ''
+        env:
+          # PR → the head commit the author built the register against; push / dispatch → HEAD.
+          REGISTER_REV: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         # graphify release pinned once: GRAPHIFY_SPEC in bkit-graphify.sh. Same release here,
         # in the pre-push gate and by hand.
         run: |
           uv tool install "$(bash scripts/graphify/bkit-graphify.sh spec)"
           # `uv tool install` drops the shim in ~/.local/bin, not on this step's PATH.
           export PATH="$HOME/.local/bin:$PATH"
-          pnpm graph:check
+          bash scripts/graphify/bkit-graphify.sh check-at "$REGISTER_REV"
 
   # ── bkit-tests-unit ───────────────────────────────────────────────────────
   # Unit lane. Parallel sibling of bkit-tests-static and bkit-tests-integration.
