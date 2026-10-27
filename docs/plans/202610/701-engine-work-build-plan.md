@@ -625,7 +625,7 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Create the `tasks` noun with `tick`, and wire the verifier, the tick and the holistic pass to it
+- [x] **TASK 2:** Create the `tasks` noun with `tick`, and wire the verifier, the tick and the holistic pass to it
   - **CREATE:** `.bkit/core/engine/commands/workflow/tasks.ts`: the `tasks` command over a plan's task blocks — the noun and `tick --plan= --group= (--tasks= | --green=)`; Tasks 3 and 4 `UPDATE` this same file with `open` and `currency`, so no verb is declared without a handler. `--green` matches Task 1's report gap lines
   - **UPDATE:** `COMMANDS` in `.bkit/core/engine/commands/registry.ts`: register `tasksCommand`
   - **UPDATE:** `.bkit/core/prompts/bkit-build-plan-verify.md`: the verifier no longer edits the plan; its header carries the satisfied task numbers (`Tasks: 1, 2`, or `Tasks: none`) and the mandate drops the plan-write clause
@@ -652,7 +652,7 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** `tasks open` — the group's tasks with no `DONE` / `BLOCKED` line
+- [x] **TASK 3:** `tasks open` — the group's tasks with no `DONE` / `BLOCKED` line
   - **UPDATE:** `open` in `.bkit/core/engine/commands/workflow/tasks.ts`: print the group's tasks with neither line and `handover: true` when any exist; read the log's lines through the shared `doneTasks` reader `context.ts` already imports, never a second parser
   - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: Step 6 sub-step 5 reads the verb instead of the prose set difference
   - **UPDATE:** `.bkit/core/prompts/bkit-build-plan-verify.md`: Process 6-7 drop the `DONE` log cross-reference
