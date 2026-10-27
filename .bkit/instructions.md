@@ -7110,8 +7110,8 @@ Once per run: **If** the session prompt (`{SESSION_DIR}/prompt.md`) carries run 
 Hold `artifact` as `{BRIEF}`, `group` as `{GROUP}`, `tasks` as `{GROUP_TASKS}`. **If** `group` = null → Step 9.
 Record the group's start commit, once per group:
 **If** `parentSha` = null →
-Route — the log's `DONE` and `BLOCKED` lines are the handover; only Step 7 ticks tasks:
-**If** (`EXECUTE_VERDICT` = HANDOVER **or** a task of `GROUP_TASKS` has neither a `DONE — TASK {N}` nor a `BLOCKED — TASK {N}` line in the log) **and** `EXECUTE_RESUMED` is not held for `GROUP` → the agent stopped at its turn cap: a handover, not a failed attempt → `EXECUTE_RESUMED` = `GROUP` → re-run Step 6; its brief leaves out the `DONE` tasks.
+Route — the engine reads the group's open tasks:
+**If** (`EXECUTE_VERDICT` = HANDOVER **or** `EXECUTE_HANDOVER` = true) **and** `EXECUTE_RESUMED` is not held for `GROUP` → the agent stopped at its turn cap: a handover, not a failed attempt → `EXECUTE_RESUMED` = `GROUP` → re-run Step 6; its brief leaves out the `DONE` tasks.
 Group briefed (`context brief`), start commit recorded
 Source files implemented
 Derive the attempt the verify artifact is named for:
@@ -7119,11 +7119,12 @@ Derive the attempt the verify artifact is named for:
 **If** exit >= 2 → **Failure Path**.
 Cut the group's own diff, from the commit it started at:
 Hold `parentSha` as `{GROUP_BASE}`; null → **Failure Path**.
+Tick the plan with the satisfied task numbers; a task the test-first report gaps stays open:
 **If** `VERIFY_VERDICT` = PASS → list the plan's groups:
-**If** exit non-zero → **Failure Path**. **If** the printed `groups` hold a group numbered above `GROUP` → sub-step 7. **Else** → `GATE_VERDICT` = SKIPPED → sub-step 9.
-**Else** → `GATE_VERDICT` = SKIPPED → sub-step 9.
+**If** exit non-zero → **Failure Path**. **If** the printed `groups` hold a group numbered above `GROUP` → sub-step 8. **Else** → `GATE_VERDICT` = SKIPPED → sub-step 10.
+**Else** → `GATE_VERDICT` = SKIPPED → sub-step 10.
 Run the group gate; it writes the trimmed log to the artifact:
-**If** exit 0 **or** 1 → hold `verdict` as `{GATE_VERDICT}`, `scope` as `{TEST_SCOPE}` → sub-step 8.
+**If** exit 0 **or** 1 → hold `verdict` as `{GATE_VERDICT}`, `scope` as `{TEST_SCOPE}` → sub-step 9.
 **If** `VERIFY_VERDICT` = PASS **and** `GATE_VERDICT` != FAIL → Step 6 (the next group, or Step 9 when none is open).
 **If** `VERIFY_VERDICT` = CONCERNS or FAIL, **or** `GATE_VERDICT` = FAIL → route on the group's verify rounds:
 **If** exit 1 → **Failure Path** (`build.verify.maxAttempts` used up).
@@ -7145,6 +7146,7 @@ Strategy computed before invocation
 No-progress attempt routed
 Check whether it already ran in this run:
 **If** `verdict` non-null → Step 10.
+Tick each group's satisfied tasks — one call per plan group, `{GROUP}` that group and `{VERIFIED_TASKS}` the numbers `Tasks:` names for it:
 [fit `workflow-summary-route` 0.80; keep: routes on the printed `verdict`, not `SUMMARY_VERDICT`] **If** `verdict` = PASS or CONCERNS → Step 10.
 Subagent invoked (`@bkit-build-plan-verify`, holistic, no inline work)
 Set the challenge round. **If** `CHALLENGE_DONE` = true → Step 11. **If** `CHALLENGE_ROUND` is held → keep it. **Else** → read it from status.jsonl:
@@ -7707,8 +7709,8 @@ A gap you leave `Fixable: false` is a `FAIL`.
 `Late-red check` section → each task not checked in `Notes`; no gap.
 Update **Create** — set `Failures` via `Edit` = count of unresolved gaps; set `Fixable` via `Edit` = `true` when any of those is `Fixable: true`, else `false`; set `Verdict` via `Edit` = the roll-up over the `Fixable` you decided: any `false` → `FAIL`, **Else** any `true` → `CONCERNS`, **Else** → `PASS`; never the report's `null`.
 Determine `Mode` from input Context (`Group` or `Holistic`).
-**If** `Group` → the supplied briefs' task blocks are the work; judge them against the supplied group diff (the changes since the group started), not the whole branch; a brief's `Deviations` section holds the owner's run instructions → judge the tasks it names as it directs. Every task field and gate maps to real codebase changes. Find missing components, skipped steps, unimplemented edge cases. Cross-reference the tasks vs the execute log's `DONE — TASK {N}` lines; a `DONE` line is a claim to check, never proof.
-[R78] **If** `Holistic` → same task / gate / `DONE` log cross-reference across every group of the plan, plus integration: groups' components work together? API contracts match? Shared state consistent? Cross-domain boundaries respected? Run `pnpm bkit:gate:static-unit`.
+**If** `Group` → the supplied briefs' task blocks are the work; judge them against the supplied group diff (the changes since the group started), not the whole branch; a brief's `Deviations` section holds the owner's run instructions → judge the tasks it names as it directs. Every task field and gate maps to real codebase changes. Find missing components, skipped steps, unimplemented edge cases.
+[R78] **If** `Holistic` → the same task and gate check across every group of the plan, plus integration: groups' components work together? API contracts match? Shared state consistent? Cross-domain boundaries respected? Run `pnpm bkit:gate:static-unit`.
 `delete-still-referenced` → read each hit; a different thing with the same name → no gap; else `Fixable: true`.
 `no-red` on a task the plan-currency report classifies `Broken` with work already landed **and** the execute log records `DONE — TASK {N}: already landed` → no gap, overriding the gap's `Fixable: false`.
 ```

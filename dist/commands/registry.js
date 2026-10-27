@@ -24,6 +24,7 @@ import { runtimeCommand } from "./workflow/runtime.js";
 import { skillsCommand } from "./workflow/skills.js";
 import { statusCommand } from "./workflow/status.js";
 import { stepsCommand } from "./workflow/steps.js";
+import { tasksCommand } from "./workflow/tasks.js";
 import { testsCommand } from "./workflow/tests.js";
 import { workflowsCommand } from "./workflow/workflows.js";
 import { workstreamsCommand } from "./workflow/workstreams.js";
@@ -32,6 +33,7 @@ export const COMMANDS = [
     statusCommand,
     countersCommand,
     stepsCommand,
+    tasksCommand,
     runtimeCommand,
     repoCommand,
     fidsCommand,

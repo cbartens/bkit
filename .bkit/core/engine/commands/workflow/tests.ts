@@ -773,9 +773,16 @@ function taskCodeCommits(
   return commits;
 }
 
-/** The task numbers a plan-execute log records `DONE — TASK N` for, in log order. */
-export function doneTasks(log: string): number[] {
-  return [...log.matchAll(/^DONE\s*[—–-]+\s*TASK\s+(\d+)\b/gim)].map((m) => Number(m[1]));
+/**
+ * The task numbers a plan-execute log records `DONE — TASK N` for, in log order. `verbs`
+ * widens the reader to the log's other closing lines (`BLOCKED`), so one parser serves
+ * every caller; the default reads `DONE` only, which is what "the task is done" means.
+ */
+export function doneTasks(log: string, verbs: readonly string[] = ["DONE"]): number[] {
+  const closing = verbs.map((v) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+  return [...log.matchAll(new RegExp(`^(?:${closing})\\s*[—–-]+\\s*TASK\\s+(\\d+)\\b`, "gim"))].map(
+    (m) => Number(m[1]),
+  );
 }
 
 /**
