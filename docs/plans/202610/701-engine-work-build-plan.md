@@ -698,7 +698,7 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
 
 <!-- bkit:task 5 start -->
 
-- [ ] **TASK 5:** `tests plan-check` refuses an unmapped matrix row and a `DELETE` with no Supersession row
+- [x] **TASK 5:** `tests plan-check` refuses an unmapped matrix row and a `DELETE` with no Supersession row
   - **UPDATE:** `plan-check` in `.bkit/core/engine/commands/workflow/tests.ts`: add problem kinds `matrix` and `supersession`, and update the verb's `summary`, `output.problems` and help text. **`matrix` semantics:** no `Derived Test Matrix` section → no problem (the refusal is on a row); with the table present, a header with no `Task` column → one problem naming the column, a row whose `Task` cell names no task / an undefined task / two or more tasks → one problem at the row, and a test-bearing task no row names → one problem at its task line (an `n/a`-only task needs no row). `supersession`: a `DELETE` whose file is in no `Supersession Inventory` row
   - **UPDATE:** `.bkit/core/engine/commands/workflow/plan-blocks.ts`: add `derivedTestMatrix` and `supersessionInventory` beside `reuseInventory`, over the same `tableCells` helper
   - **UPDATE:** `.bkit/core/engine/commands/workflow/challenge.ts`: `appendTasks` writes a `Derived Test Matrix` row per finding task it appends, so the bidirectional check holds inside its own written range
@@ -727,7 +727,7 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
 
 <!-- bkit:task 6 start -->
 
-- [ ] **TASK 6:** `branches scan-diff --disabled-tests`
+- [x] **TASK 6:** `branches scan-diff --disabled-tests`
   - **UPDATE:** `scan-diff` in `.bkit/core/engine/commands/workflow/branches.ts`: gain `--disabled-tests` — added lines only from `{base}...HEAD`, `docs/plans/**` excluded, matching `.skip` / `.todo` / `.fixme` / `xfail`, `t.Skip()`, `#[ignore]`, `@Disabled` and a removed assertion line inside a test file; exit 1 on any hit, printing `file:line` and the test name; the marker set is the one `.bkit/templates/scripts/slop/bkit-slop-type-suppression.mjs` carries, and the `--help` states that this flag inverts `--paths` / `--marker` / `--code`'s polarity and composes with `--expect-none`, so the two are never passed together
   - **UPDATE:** `.bkit/core/prompts/bkit-ship-deferred-sweep.md`: Process 8 reads the verb instead of scanning the diff
   - **UPDATE:** `.bkit/core/workflows/bkit-ship.md`: Step 5 passes the diff base (`origin/dev`) the scan runs against, so the sweep never guesses it
