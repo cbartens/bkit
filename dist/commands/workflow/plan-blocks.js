@@ -118,6 +118,17 @@ export function supersessionInventory(text) {
     }
     return rows;
 }
+/** The plan's `Out of Scope` rows over `tableCells`; null when the plan has no such table. */
+export function outOfScope(text) {
+    const lines = text.split(/\r?\n/);
+    const table = firstTable(lines, /^#{2,4} .*Out of Scope/i);
+    if (table === null)
+        return null;
+    const rows = [];
+    for (let i = table.head + 2; i < lines.length && /^\s*\|/.test(lines[i]); i++)
+        rows.push({ line: lines[i], number: i + 1, cells: tableCells(lines[i]) });
+    return rows;
+}
 /** The error for a code fence opened at `line` and never closed. */
 export const fenceNeverClosed = (line) => `the code fence at line ${line} is never closed; nothing after it is read`;
 /** The fields a task writes at most once; CREATE / READ / UPDATE / DELETE repeat, one line per ref. */

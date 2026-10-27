@@ -247,6 +247,27 @@ export function supersessionInventory(text: string): SupersessionRow[] | null {
   return rows;
 }
 
+/** One `Out of Scope` row: the line as written, its 1-based line, and its cells. */
+export interface OutOfScopeRow {
+  /** The row as written. */
+  line: string;
+  /** 1-based plan line. */
+  number: number;
+  /** The row's cells, in header order. */
+  cells: string[];
+}
+
+/** The plan's `Out of Scope` rows over `tableCells`; null when the plan has no such table. */
+export function outOfScope(text: string): OutOfScopeRow[] | null {
+  const lines = text.split(/\r?\n/);
+  const table = firstTable(lines, /^#{2,4} .*Out of Scope/i);
+  if (table === null) return null;
+  const rows: OutOfScopeRow[] = [];
+  for (let i = table.head + 2; i < lines.length && /^\s*\|/.test(lines[i]!); i++)
+    rows.push({ line: lines[i]!, number: i + 1, cells: tableCells(lines[i]!) });
+  return rows;
+}
+
 /** The error for a code fence opened at `line` and never closed. */
 export const fenceNeverClosed = (line: number) =>
   `the code fence at line ${line} is never closed; nothing after it is read`;

@@ -1129,7 +1129,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-annotations`, `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:516`: "probe for a run at it first, dispatch only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per .bkit/workflows.md:1007) when no run is found; R63 says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:520`: "probe for a run at it first, dispatch only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per .bkit/workflows.md:1007) when no run is found; R63 says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -1359,7 +1359,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:516`: "probe for a run at it first, dispatch only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per .bkit/workflows.md:1007) when no run is found; R63 says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:520`: "probe for a run at it first, dispatch only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per .bkit/workflows.md:1007) when no run is found; R63 says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -7466,6 +7466,7 @@ Fast-forward to the PR head — never onto a diverged branch:
 Plan check:
 [fit `workflow-summary-route` 0.62; keep: routes on PASS alone, not PASS or CONCERNS] **If** `verdict` = PASS → Step 6.
 Worktree fast-forwarded
+Write the FID's deferral lines to the artifact the docs agent reads `Pending Items` from:
 Wait for the subagent to complete, then append the `SHIPPED` row to the worktree ledger and re-render the mechanical `roadmap-status` board from it (exit 1 when the row did not land), and finish the step (bookkeeping to `$BOOK_ROOT`):
 Write `ship-summary.md` from this run's status rows and the PR's size:
 Ledger row appended and roadmap board re-rendered
@@ -8100,9 +8101,10 @@ Per intended deliverable item under `Planned vs Delivered` → assert codebase s
 [R12] **If** deliverable itself absent, stub only, or produces wrong observable result, shown by named files, symbols, or failing tests and never inferred from plan sentences → mark item `Blocked`.
 [R72] **If** guards removed / weakened (auth, validation, data-loss, secret handling), or paths known to be broken → mark item `Blocked`.
 **If** shipped surfaces instruct consumers to run something that fails at runtime → mark item `Blocked`.
-[R04; R41] Scan `docs/deferrals.jsonl` for any plan related entries including recently appended rows → verify each `reason` holds at ship time as per `.bkit/jsonl.md` deferral reason tests; `reason` = `low-severity` with `severity` = `LOW` holds without the tests:
-**If** holds → record under / move to `Exempt Deferrals` → continue; append no row, `reason` is set once and carried verbatim.
-[R41] **Else** → record under / keep under `Lazy Deferrals` → append row to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), same `key` and prior fields verbatim, set `reason` to `unjustified`, set `status` to `TRIAGED`, `description` naming failed deferral tests.
+[R04; R41] Bucket the plan-related deferral rows of the FID in your Context with `bkit ledgers triage --fid=` the FID in your Context `--plan=` the plan file. The verb applies the deferral tests and writes every `unjustified` / `TRIAGED` row itself; each of its `rows` carries the row's `key`, its `bucket` and the test result:
+**If** `bucket` = `Exempt` → record under / move to `Exempt Deferrals`; the row stands as written.
+[R41] **Else** → record under / keep under `Lazy Deferrals`, naming the tests the verb reports for it.
+**If** the plan file is absent → nothing to test against; record each plan-related row under `Exempt Deferrals` naming the missing plan.
 Update **Create** — set `Failures` via `Edit` = `Blocking Deferrals` entry count; set `Lazy` via `Edit` = `Lazy Deferrals` entry count.
 `PASS` = no remaining `Planned` items; every intended deliverable `Delivered`, `Exempt`, or `Lazy`; no `Blocking Deferrals`.
 `FAIL` = any intended deliverables `Blocked`; any test the run's diff disabled; any `Blocking Deferrals`.
@@ -8117,7 +8119,7 @@ Scan plan `Acceptance Scenario` sections and `DONE WHEN` lines for intended deli
 **Role:** Senior tech writer syncing project docs with state shipped this cycle.
 **Exceptions:** Do not update `docs/knowledge.jsonl`, `docs/decisions.jsonl`.
 [R68] Run `git rev-parse --is-shallow-repository`; **If** `true` → name the boundary commit in output, older history unread. Run `git log --oneline --stat origin/dev..HEAD` for shipped files this cycle.
-[R41] Grep `docs/deferrals.jsonl` for `{FID}` matches → surface in output `Pending Items` for human review (do not write `docs/deferrals.jsonl`).
+[R41] Fill `Pending Items` from the `ship-pending-items.md` deferral scan supplied in your Read paths, one entry per line (do not write `docs/deferrals.jsonl`).
 ```
 
 #### bkit-utility-compress-markdown
