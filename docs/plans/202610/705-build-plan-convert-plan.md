@@ -227,7 +227,7 @@ None — no new routes, DB writes, secrets or user input.
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** Record the new step in the shipped workflow catalogue and re-sync the clauses drawn from it
+- [x] **TASK 3:** Record the new step in the shipped workflow catalogue and re-sync the clauses drawn from it
   - **UPDATE:** `.bkit/core/.bkit/workflows.md`: the build step table gains `4 — Plan Convert` holding what the convert does today, `3 — Branch Sync` cut back to the docs merge, rows 5-16 renumbered, and the prose references moved with them (§ Anchor Block, § Cross-step invariants, the Group loop paragraph, the "No plan" note, the convert and plan-current agent rows)
   - **UPDATE:** `.bkit/instructions.md`: re-synced from the edited catalogue with `pnpm instructions:sync`, so the mirrored § Cross-step invariants names the new build step numbers
   - **DEPENDS ON:** 1
