@@ -115,3 +115,7 @@
 {"type":"step-done","workflow":"build","step":"build-plan-execute","status":"DONE","at":"2026-10-27T14:33:01Z","parentSha":"094f40ca9acab2fa516bf8df815d888c6ead89d5","artifacts":["docs/plans/202610/logs/701-engine-work-build/build-plan-execute-6-log.md"],"verdict":"PASS","attempt":1,"group":6}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-verify/6/1/comment","hash":"ab208c42bab8a4d0dcc995822f3334f6f3d02fde1fe1ab1ba09ea0000997ed82","ref":"https://github.com/cbartens/bkit/issues/701#issuecomment-6454328395","at":"2026-10-27T21:42:49Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-10-27T21:42:49Z","parentSha":"e44077002d0eb70c750814bd57f147f2c4e1e2d6","artifacts":["docs/plans/202610/logs/701-engine-work-build/build-plan-verify-6-1.md"],"verdict":"CONCERNS","attempt":1,"group":6,"failures":1}
+{"type":"owner-pause","workflow":"build","at":"2026-10-27T21:43:09Z","reason":"decision"}
+{"type":"owner-answer","workflow":"build","at":"2026-10-27T21:54:59Z"}
+{"type":"engine-action","action":"comment","key":"build/1/build-decision/-/1/comment","hash":"65b5ab8ac18a0a217cfeaf9ff75a386d11f75cfa35b5bae82cb445f7ff6c3da6","ref":"https://github.com/cbartens/bkit/issues/701#issuecomment-6454585257","at":"2026-10-27T21:55:18Z"}
+{"type":"step-done","workflow":"build","step":"build-decision","status":"DONE","at":"2026-10-27T21:55:18Z","parentSha":"eacd98f76118e82ad4357d3004d6cd5157865e34","artifacts":["docs/plans/202610/logs/701-engine-work-build/build-decision-1-1.md"],"attempt":1,"route":"retry"}
