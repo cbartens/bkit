@@ -299,7 +299,7 @@ None — no new routes, DB writes, secrets or user input.
 
 <!-- bkit:task 8 start -->
 
-- [ ] **TASK 8:** Plan Convert's finish asserts an artifact the no-plan route never writes, so a `/bkit-build` on an issue with no plan dies at `steps finish` (exit 7) before posting its Plan Convert comment — the whole point of #705
+- [x] **TASK 8:** Plan Convert's finish asserts an artifact the no-plan route never writes, so a `/bkit-build` on an issue with no plan dies at `steps finish` (exit 7) before posting its Plan Convert comment — the whole point of #705
       **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/workflows/bkit-build.md:391` · **Round:** 2
   - **DONE WHEN:** Step 4's finish records `docs/plans/{YYYYMM}/logs/{FID}/build-plan-check.md` as an optional artifact (or the check log is guaranteed to exist before the finish), so the missing-plan route completes: `tests plan-check` exit 2 routes to the convert, the convert writes the plan, the finish returns 0 and posts `### Step 4 — Plan Convert`.
   - **TEST FIRST:**
