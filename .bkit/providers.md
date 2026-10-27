@@ -539,7 +539,7 @@ Re-pin **one provider column at a time**. Cells: `prompts.md` § Models. Board b
 2. **Cost** — cheapest that clears (or the ceiling). AA $/task + LiveBench $/task, rescaled to the billed provider.
 3. **Speed** — remaining ties: AA tok/s, TTFT, think→answer, E2E 500-token.
 
-Filters (not above score): endpoint count; automatic prompt caching (bkit sends no `cache_control`). **Never pin Claude** on OpenRouter / Ollama / OpenCode. Convergent = distinct CoT family, not a fourth rung.
+Filters (not above score): endpoint count; automatic prompt caching (bkit sends no `cache_control`); **no Anthropic and no OpenAI model on an opencode column** (§ Vendor rule). Convergent = distinct CoT family, not a fourth rung.
 
 **Steps.**
 
@@ -570,6 +570,8 @@ Filters (not above score): endpoint count; automatic prompt caching (bkit sends 
 **Do not pin from:** OpenRouter volume; BenchGecko; vendor-only Terminal-Bench / SWE; launch blogs.
 
 **Goal — each column as close to its Claude tier as that provider's own catalog allows.** A tier cell is that column's answer to the Claude bar; it is never a copy of another column's cell. Matching cells across providers are a catalog coincidence, not an objective — never hold a column back from a stronger model to keep the matrix uniform, and never move one forward because a sibling column moved. Divergence between columns is expected output; a column whose ceiling sits under a bar records that in its Notes cell rather than borrowing another column's pin.
+
+**Vendor rule — no Anthropic and no OpenAI model on an opencode column.** Those two vendors are bought as subscriptions when you want them; paying their token rates through a gateway is not cost effective, so a `gpt-*` row is a catalog fact, never a candidate, and neither is a Claude one. The column reaches toward Claude with what remains — Google, xAI, Moonshot, DeepSeek, Z.AI, MiniMax, Qwen, Mistral and open-weight hosts. The rule is on the vendor, not the price: a cheap OpenAI model is still out. First-party columns keep their own vendor (`OpenAI` / Codex, `Google` / Antigravity), and Cursor keeps `cursor-*` / `composer-*`.
 
 ### LiveBench 2.0 board — 2026-10-25
 
@@ -604,27 +606,28 @@ Re-probed `https://livebench.ai/data/20261025/table.csv` + `cost.csv` (§ Select
 | `glm-5.3-flash`            | **19.0**           | 80.6   | 62.1    | $29.32    | 38           | or · zen · go · ollama |
 | `gemini-3.8-flash`         | **16.5**           | 82.2   | 59.2    | $126.70   | 7            | or · zen               |
 
-**One release is a weak signal.** `kimi-k3` read 42.8 on `20261014` and 26.4 on `20261025` for the same category, so a re-pin takes a second release as corroboration unless the gap exceeds the bar's margin. `$` is LiveBench's own direct-vendor basis; a gateway pin is billed at the gateway's price (Zen `deepseek-v4.1-flash` $0.30/$1.20, Go $0.15/$0.60, Go `gemini-4-argon` $2/$10, Zen `gpt-6-astra` $10/$50).
+**`gpt-*` rows are catalog facts, not candidates.** `gpt-6-astra`, `gpt-6.1-sol`, `gpt-6.1-terra`, `gpt-5.6-terra` and `gpt-6-luna` sit on the board because LiveBench measured them and the `OpenAI`/Codex column pins them; § Vendor rule bars all five from every opencode column.
+
+**One release is a weak signal.** `kimi-k3` read 42.8 on `20261014` and 26.4 on `20261025` for the same category, so a re-pin takes a second release as corroboration unless the gap exceeds the bar's margin. `$` is LiveBench's own direct-vendor basis; a gateway pin is billed at the gateway's price (Zen `deepseek-v4.1-flash` $0.30/$1.20, Go $0.15/$0.60, `gemini-4-argon` $2/$10 on both gateways).
 
 **Unmeasured on 2.0 — keep their v1 basis, do not re-derive:** `composer-2.5` and `cursor-grok-4.5-high` (Cursor), `gemini-3.8-pro` (Google/Antigravity).
 
-**Re-pin the 2.0 board proposes — NOT APPLIED.** Pins stay as listed in § Per-tier lineup until a human signs off; the arrows show what "closest to its Claude bar, cheapest that reaches" yields on the 2026-10-25 data.
+**Re-pin the 2.0 board proposes — NOT APPLIED.** Pins stay as listed in § Per-tier lineup until a human signs off. With Anthropic and OpenAI excluded (§ Vendor rule) the opencode ceiling is `gemini-4-argon` 61.2 on OpenRouter, Zen and Go — 11.6 under the opus bar, 2.2 under the sonnet one — and 40.9 on Ollama.
 
-| Column         | Tier          | Current pin                | 2.0 proposal                                                                 | Cost (LA $/task)              |
-| -------------- | ------------- | -------------------------- | ---------------------------------------------------------------------------- | ----------------------------- |
-| `openrouter`   | opus          | `deepseek-v4.1-flash-1017` | `gpt-6-astra` 77.5 — the only non-Claude model over the 72.8 bar             | $25.96 → $690.82 (×26.6)      |
-| `openrouter`   | sonnet        | `deepseek-v4.1-flash-1017` | `gpt-6.1-sol` 68.7 — cheapest over 63.4                                      | $25.96 → $116.78 (×4.5)       |
-| `openrouter`   | haiku         | `glm-5.3-flash`            | `deepseek-v4.1-flash-1017` 40.9 — GLM's 19.0 misses the 40.0 bar             | $29.32 → $25.96               |
-| `openrouter`   | convergent    | `kimi-k3`                  | `kimi-k3.1-pro` 39.1 — stronger and cheaper, but **2 endpoints, one vendor** | $323.83 → $133.67             |
-| `opencode-zen` | opus          | `deepseek-v4.1-flash`      | `gpt-6-astra` 77.5                                                           | Zen $10/$50 (v1 basis $25.96) |
-| `opencode-zen` | sonnet        | `deepseek-v4.1-flash`      | `gpt-6.1-sol` 68.7                                                           | Zen $2/$10                    |
-| `opencode-zen` | haiku         | `glm-5.3-flash`            | `deepseek-v4.1-flash` 40.9                                                   | Zen $0.30/$1.20               |
-| `opencode-zen` | convergent    | `kimi-k3`                  | `kimi-k3` — Zen serves no `kimi-k3.1-pro`                                    | unchanged                     |
-| `opencode-go`  | opus + sonnet | `deepseek-v4.1-flash`      | `gemini-4-argon` 61.2 — column ceiling, 2.2 under the sonnet bar             | Go $2/$10                     |
-| `opencode-go`  | haiku         | `deepseek-v4.1-flash`      | `deepseek-v4.1-flash` 40.9                                                   | Go $0.15/$0.60                |
-| `opencode-go`  | convergent    | `kimi-k3`                  | `kimi-k3.1-pro` 39.1                                                         | $323.83 → $133.67             |
-| `ollama`       | all tiers     | `deepseek-v4.1-flash:1017` | unchanged — column ceiling 40.9, nothing else over the haiku bar             | $25.96                        |
-| `ollama`       | convergent    | `kimi-k3`                  | unchanged — Ollama serves no `kimi-k3.1-pro`                                 | $323.83                       |
+| Column         | Tier          | Current pin                | 2.0 proposal                                                                 | Cost (LA $/task)           |
+| -------------- | ------------- | -------------------------- | ---------------------------------------------------------------------------- | -------------------------- |
+| `openrouter`   | opus          | `deepseek-v4.1-flash-1017` | `gemini-4-argon` 61.2 — column ceiling, 11.6 under the 72.8 bar              | $25.96 → $249.15 (×9.6)    |
+| `openrouter`   | sonnet        | `deepseek-v4.1-flash-1017` | `gemini-4-argon` 61.2 — 2.2 under 63.4; nothing between it and the bar       | same                       |
+| `openrouter`   | haiku         | `glm-5.3-flash`            | `deepseek-v4.1-flash-1017` 40.9 — GLM's 19.0 misses the 40.0 bar             | $29.32 → $25.96            |
+| `openrouter`   | convergent    | `kimi-k3`                  | `kimi-k3.1-pro` 39.1 — stronger and cheaper, but **2 endpoints, one vendor** | $323.83 → $133.67          |
+| `opencode-zen` | opus + sonnet | `deepseek-v4.1-flash`      | `gemini-4-argon` 61.2 — Zen serves it                                        | Zen $2/$10 (basis $249.15) |
+| `opencode-zen` | haiku         | `glm-5.3-flash`            | `deepseek-v4.1-flash` 40.9                                                   | Zen $0.30/$1.20            |
+| `opencode-zen` | convergent    | `kimi-k3`                  | `kimi-k3` — Zen serves no `kimi-k3.1-pro`                                    | unchanged                  |
+| `opencode-go`  | opus + sonnet | `deepseek-v4.1-flash`      | `gemini-4-argon` 61.2 — Go serves it                                         | Go $2/$10                  |
+| `opencode-go`  | haiku         | `deepseek-v4.1-flash`      | `deepseek-v4.1-flash` 40.9                                                   | Go $0.15/$0.60             |
+| `opencode-go`  | convergent    | `kimi-k3`                  | `kimi-k3.1-pro` 39.1                                                         | $323.83 → $133.67          |
+| `ollama`       | all tiers     | `deepseek-v4.1-flash:1017` | unchanged — column ceiling 40.9, nothing else over the haiku bar             | $25.96                     |
+| `ollama`       | convergent    | `kimi-k3`                  | unchanged — Ollama serves no `kimi-k3.1-pro`                                 | $323.83                    |
 
 ### Agentic-coding parity board
 
