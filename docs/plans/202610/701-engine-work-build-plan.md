@@ -601,7 +601,7 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** `tests green` emits `verdict`, a `fixable` per gap and the gap log lines
+- [x] **TASK 1:** `tests green` emits `verdict`, a `fixable` per gap and the gap log lines
   - **UPDATE:** `green` in `.bkit/core/engine/commands/workflow/tests.ts`: emit `verdict` (`PASS` no gaps · `FAIL` any gap unfixable · `CONCERNS` otherwise · `null` when any gap needs a diff read) plus `fixable` and `logLine` on each gap, carried into `writeAuditReport` too; `fixable: null` for `delete-still-referenced`, `test-changed`, `red-mismatch` and the row state `Changed since red = added lines only`; emit the `test-changed` gap the added-lines-only row does not produce today
   - **UPDATE:** `.bkit/core/prompts/bkit-build-plan-verify.md`: drop the kind→`Fixable` table and the verdict mapping from Process 8 and 10; keep the four diff reads, the `no-red` "work already landed" override, the `Enforced: false` and `Late-red check` bullets, and the `— Fixable: false` log contract; Process 4 substitutes the verifier's decided `Fixable` where the engine printed `null`; the header `Verdict:` is the post-judgement roll-up and the header gains the `Tasks:` line with the empty form `Tasks: none`
   - **READ:** `.bkit/core/engine/commands/workflow/plan-blocks.ts`: the parsed task / gap shapes the audit reads
