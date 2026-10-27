@@ -7041,7 +7041,7 @@ Orchestrator exits and the dispatched skill owns the session
 
 ```text
 **Scope:** Build feature and raise PR for default integration branch.
-**Plan:** `docs/plans/{YYYYMM}/{FID}-plan.md`, in task-block form (`docs/templates/bkit-plan.md` § Agent Execution Runbook): groups of <= `{MAX_TASKS_PER_GROUP}` tasks and <= `{MAX_TESTS_PER_GROUP}` `TEST FIRST` tests (`bkit.workflows.tasks`, held at Step 1). One group runs per pass of Steps 6-8; tasks tick `[x]` only in verify.
+**Plan:** `docs/plans/{YYYYMM}/{FID}-plan.md`, in task-block form (`docs/templates/bkit-plan.md` § Agent Execution Runbook): groups of <= `{MAX_TASKS_PER_GROUP}` tasks and <= `{MAX_TESTS_PER_GROUP}` `TEST FIRST` tests (`bkit.workflows.tasks`, held at Step 1). One group runs per pass of Steps 7-9; tasks tick `[x]` only in verify.
 Derive the decision number:
 `PAUSE_QUESTION` = `VERIFY_GAPS` **or** `VERIFY_LOOP` → each `## Identified Gaps Log` line of `build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}.md` with its last `BLOCKED` reason in `build-plan-gaps-remediate-{GROUP}-*-log.md` (if any). Fixable gap → options `["Accept", "Fix now"]`, recommended per item. Test-order gap (`no-red`, `late-red`, `red-mismatch`, `red-evidence-missing`, `test-changed`) → hard blocker, options `["Accept", "Stop"]`, question ends `Accept it? You write the reason, and it is recorded as your TEST EXCEPTION.` Other unfixable gap (`no-test-first`, `test-first-malformed`, `test-first-unread`, `exception-refused`) → hard blocker, options `["Accept", "Fix now", "Stop"]`. Group-gate failures are never items: they are always fixed.
 `PAUSE_QUESTION` = `CHALLENGE` → each task of `CHALLENGE_TASKS` in the plan that says `**Fixable:** false` (any severity), or every one of them on the last round (`CHALLENGE_ROUND` = `CHALLENGE_MAX`). **If** `CHALLENGE_OVERFLOW` is set → the merge wrote nothing: items = each `CRITICAL|HIGH|MEDIUM` finding of the merged reports (`build-challenge-2.md`, plus `build-challenge-1.md` when large), one per `Location`. Title = the task number (when it has one) and its `Location` in brackets. `**Fixable:** false` → hard blocker, options `["Accept", "Fix now", "Stop"]`; else options `["Accept", "Fix now"]`, recommended per finding.
@@ -7069,10 +7069,10 @@ Any `Fix now` → `DECISION_ROUTE` = `fix`.
 The loop question = `Try again` → `DECISION_ROUTE` = `retry`.
 `From: verify` → `DECISION_ROUTE` = `verify`.
 **Else** (`From: tests` **or** `From: challenge`) → `DECISION_ROUTE` = `tests`.
-**If** `DECISION_ROUTE` = `fix` → Step 6.
-**If** `DECISION_ROUTE` = `retry` **and** `From: verify` → Step 8.
-**If** `DECISION_ROUTE` = `retry` → Step 12.
-**If** `DECISION_ROUTE` = `verify` → re-run Step 7.
+**If** `DECISION_ROUTE` = `fix` → Step 7.
+**If** `DECISION_ROUTE` = `retry` **and** `From: verify` → Step 9.
+**If** `DECISION_ROUTE` = `retry` → Step 13.
+**If** `DECISION_ROUTE` = `verify` → re-run Step 8.
 [R106] Record the wait (step 4 `owner-pause` block). Create `docs/plans/{YYYYMM}/logs/{FID}/build-handover.md` = the decision file plus the line `Stopped by the owner ({RUNTIME}); run stays IN_PROGRESS. /bkit-build {REF} resumes at this pause.`; `REF` empty → `{FID}`. Then push the record — NEVER onto a branch with an open PR:
 Release the lock; never `workflows fail`:
 Decision file written in the question layout (`decisions compose`)
@@ -7089,27 +7089,29 @@ Enter worktree, open run, record runtime:
 Input file written (`workflows input`)
 Merge `origin/dev` when feature branch `docs/` is behind (conflicts: ledgers union, other `docs/` prefer `dev`):
 Check the plan is in task-block form, within the group caps:
-**If** exit 0 **and** (`NEWER_COMMENTS` = 0 **or** `CONVERTED` is held) → sub-step 5.
-**If** `CONVERTED` is not held **and** (exit 0 with `NEWER_COMMENTS` > 0, **or** exit 2 with no `docs/plans/{YYYYMM}/{FID}-plan.md`, **or** exit 1 with a `markers` problem) → sub-step 3.
-**If** exit 1, `CONVERTED` is held **and** `CONVERT_RETRY` is not held → `CONVERT_RETRY` = the printed `problems` → sub-step 3.
+**If** exit 0 **and** (`NEWER_COMMENTS` = 0 **or** `CONVERTED` is held) → Step 5.
+**If** `CONVERTED` is not held **and** (exit 0 with `NEWER_COMMENTS` > 0, **or** exit 2 with no `docs/plans/{YYYYMM}/{FID}-plan.md`, **or** exit 1 with a `markers` problem) → sub-step 2.
+**If** exit 1, `CONVERTED` is held **and** `CONVERT_RETRY` is not held → `CONVERT_RETRY` = the printed `problems` → sub-step 2.
 **Else** → **Failure Path** naming each problem in the report.
-Finish, then re-run sub-step 2 with `CONVERTED` = true:
+Finish, then re-run sub-step 1 with `CONVERTED` = true:
 Docs synced (`branches sync`)
-Plan checked (`tests plan-check`), converted (`@bkit-build-plan-convert`, no inline work) when it had no task markers or issue comments are newer than it
+Plan checked (`tests plan-check`)
+Converted (`@bkit-build-plan-convert`, no inline work) when it had no task markers or issue comments are newer than it
+Converted plan checked again (`tests plan-check`)
 Resolve plan base commit and collect code landed since:
-**If** exit 12 → Step 5.
-**If** `verdict` = CONCERNS or FAIL → emit plan-currency advisory `[bkit-build] plan currency {verdict} — {fields.Affected} affected task(s); build continues, findings carried into Step 6`. Every verdict → Step 5.
+**If** exit 12 → Step 6.
+**If** `verdict` = CONCERNS or FAIL → emit plan-currency advisory `[bkit-build] plan currency {verdict} — {fields.Affected} affected task(s); build continues, findings carried into Step 7`. Every verdict → Step 6.
 Base commit resolved
 Plan not revised
 Advisory emitted
 New skills installed
-One pass of Steps 6-8 per plan group, in group order: Step 6 briefs the first group with an open task, Step 7 verifies that group's own diff, Step 8 closes its gaps. Attempt budgets count per group (`--group`). Per-group file naming: `{step}-{GROUP}-{ATTEMPT}.md`. No group left open → Step 9.
+One pass of Steps 7-9 per plan group, in group order: Step 7 briefs the first group with an open task, Step 8 verifies that group's own diff, Step 9 closes its gaps. Attempt budgets count per group (`--group`). Per-group file naming: `{step}-{GROUP}-{ATTEMPT}.md`. No group left open → Step 10.
 Once per run: **If** the session prompt (`{SESSION_DIR}/prompt.md`) carries run instructions beyond naming the issue (a redo, a resume, a constraint) → write them word for word to `{SESSION_DIR}/brief-note.md`. Brief the first group with an open task — a task neither ticked `[x]` nor logged `DONE` in a `build-plan-execute-*-log.md`; drop `--note-file` when `{SESSION_DIR}/brief-note.md` does not exist:
-Hold `artifact` as `{BRIEF}`, `group` as `{GROUP}`, `tasks` as `{GROUP_TASKS}`. **If** `group` = null → Step 9.
+Hold `artifact` as `{BRIEF}`, `group` as `{GROUP}`, `tasks` as `{GROUP_TASKS}`. **If** `group` = null → Step 10.
 Record the group's start commit, once per group:
 **If** `parentSha` = null →
-Route — the log's `DONE` and `BLOCKED` lines are the handover; only Step 7 ticks tasks:
-**If** (`EXECUTE_VERDICT` = HANDOVER **or** a task of `GROUP_TASKS` has neither a `DONE — TASK {N}` nor a `BLOCKED — TASK {N}` line in the log) **and** `EXECUTE_RESUMED` is not held for `GROUP` → the agent stopped at its turn cap: a handover, not a failed attempt → `EXECUTE_RESUMED` = `GROUP` → re-run Step 6; its brief leaves out the `DONE` tasks.
+Route — the log's `DONE` and `BLOCKED` lines are the handover; only Step 8 ticks tasks:
+**If** (`EXECUTE_VERDICT` = HANDOVER **or** a task of `GROUP_TASKS` has neither a `DONE — TASK {N}` nor a `BLOCKED — TASK {N}` line in the log) **and** `EXECUTE_RESUMED` is not held for `GROUP` → the agent stopped at its turn cap: a handover, not a failed attempt → `EXECUTE_RESUMED` = `GROUP` → re-run Step 7; its brief leaves out the `DONE` tasks.
 Group briefed (`context brief`), start commit recorded
 Source files implemented
 Derive the attempt the verify artifact is named for:
@@ -7122,12 +7124,12 @@ Hold `parentSha` as `{GROUP_BASE}`; null → **Failure Path**.
 **Else** → `GATE_VERDICT` = SKIPPED → sub-step 9.
 Run the group gate; it writes the trimmed log to the artifact:
 **If** exit 0 **or** 1 → hold `verdict` as `{GATE_VERDICT}`, `scope` as `{TEST_SCOPE}` → sub-step 8.
-**If** `VERIFY_VERDICT` = PASS **and** `GATE_VERDICT` != FAIL → Step 6 (the next group, or Step 9 when none is open).
+**If** `VERIFY_VERDICT` = PASS **and** `GATE_VERDICT` != FAIL → Step 7 (the next group, or Step 10 when none is open).
 **If** `VERIFY_VERDICT` = CONCERNS or FAIL, **or** `GATE_VERDICT` = FAIL → route on the group's verify rounds:
 **If** exit 1 → **Failure Path** (`build.verify.maxAttempts` used up).
 **If** exit 0 **and** `VERIFY_VERDICT` = FAIL **and** (`VERIFY_FIXABLE` = false **or** `VERIFY_ROUNDS` = `PAUSE_MAX`) → `PAUSE_QUESTION` = `VERIFY_GAPS` → **Decision Pause**.
-**If** exit 0 **and** `VERIFY_VERDICT` = FAIL → Step 8 (a fixable-only round first).
-**If** exit 0 **and** `VERIFY_VERDICT` = PASS (group gate FAIL alone) **and** `VERIFY_ROUNDS` < `PAUSE_MAX` → Step 8; group-gate failures are always fixed, never asked.
+**If** exit 0 **and** `VERIFY_VERDICT` = FAIL → Step 9 (a fixable-only round first).
+**If** exit 0 **and** `VERIFY_VERDICT` = PASS (group gate FAIL alone) **and** `VERIFY_ROUNDS` < `PAUSE_MAX` → Step 9; group-gate failures are always fixed, never asked.
 **If** exit 0 **and** `VERIFY_VERDICT` = PASS → **Failure Path** (no round left to fix the group gate).
 **If** exit 0 **and** `VERIFY_ROUNDS` < `PAUSE_MAX` → `PAUSE_QUESTION` = `VERIFY_LOOP` → **Decision Pause**.
 Test-first reds audited (`tests green`)
@@ -7138,15 +7140,15 @@ Exhausted fix loop routed
 Read status.jsonl and derive next `STRATEGY`:
 Finish — the header's `Strategy` is recorded:
 Check the attempt changed source, not only logs and ledgers:
-**If** exit 1 (no source change) **or** `VERIFY_FIXED` = 0 → `PAUSE_STEP` = 8, `PAUSE_POINT` = `build.verify`, `PAUSE_QUESTION` = `VERIFY_GAPS` → **Decision Pause**.
+**If** exit 1 (no source change) **or** `VERIFY_FIXED` = 0 → `PAUSE_STEP` = 9, `PAUSE_POINT` = `build.verify`, `PAUSE_QUESTION` = `VERIFY_GAPS` → **Decision Pause**.
 Strategy computed before invocation
 No-progress attempt routed
 Check whether it already ran in this run:
-**If** `verdict` non-null → Step 10.
-[fit `workflow-summary-route` 0.80; keep: routes on the printed `verdict`, not `SUMMARY_VERDICT`] **If** `verdict` = PASS or CONCERNS → Step 10.
+**If** `verdict` non-null → Step 11.
+[fit `workflow-summary-route` 0.80; keep: routes on the printed `verdict`, not `SUMMARY_VERDICT`] **If** `verdict` = PASS or CONCERNS → Step 11.
 Subagent invoked (`@bkit-build-plan-verify`, holistic, no inline work)
-Set the challenge round. **If** `CHALLENGE_DONE` = true → Step 11. **If** `CHALLENGE_ROUND` is held → keep it. **Else** → read it from status.jsonl:
-`CHALLENGE_ROUND` = `challengeRound`; `challengeDone` = true → Step 11. Then read the round limit, on every path:
+Set the challenge round. **If** `CHALLENGE_DONE` = true → Step 12. **If** `CHALLENGE_ROUND` is held → keep it. **Else** → read it from status.jsonl:
+`CHALLENGE_ROUND` = `challengeRound`; `challengeDone` = true → Step 12. Then read the round limit, on every path:
 Hold `value` as `{CHALLENGE_MAX}` → sub-step 2. A round over the limit never runs: sub-step 5's `challenge merge --round` refuses it (exit 2 → **Failure Path**).
 Size the change — under 300 lines and 10 files (`docs/plans/**` excluded) is small:
 [R104] **Subagent:** Invoke `@bkit-build-challenge-1`
@@ -7156,9 +7158,9 @@ Merge the findings into the plan — `CRITICAL` / `HIGH` / `MEDIUM` findings bec
 exit 22 (a report not in task-block form) → `Your last report was not in task-block form: {printed reason}. Write every finding under ## Findings Log as a task block.`
 exit 23 (a finding names no test or passes the test caps) → hold the printed `problems` → `Your last findings failed the plan check: {problems}. Give every finding a TEST FIRST within the plan caps.`
 Clear `CHALLENGE_REFORMAT`. Route:
-**If** `route` = `none` → Step 11.
-**If** `route` = `pause` → `PAUSE_STEP` = 10, `PAUSE_POINT` = `build.challenge`, `PAUSE_QUESTION` = `CHALLENGE` → **Decision Pause**.
-**If** `route` = `fix` → `CHALLENGE_ROUND` = `CHALLENGE_ROUND` + 1 → Step 6; its brief takes the first new group.
+**If** `route` = `none` → Step 12.
+**If** `route` = `pause` → `PAUSE_STEP` = 11, `PAUSE_POINT` = `build.challenge`, `PAUSE_QUESTION` = `CHALLENGE` → **Decision Pause**.
+**If** `route` = `fix` → `CHALLENGE_ROUND` = `CHALLENGE_ROUND` + 1 → Step 7; its brief takes the first new group.
 Change sized (`challenge gate`)
 [R105] Subagents invoked (`@bkit-build-challenge-2`, plus `@bkit-build-challenge-1` when large; no inline work)
 Findings merged into the plan (`challenge merge`)
@@ -7169,7 +7171,7 @@ Run verbatim:
 **If** exit 1 **or** `TEST_ROUNDS` = `PAUSE_MAX` → **Failure Path** (`build.tests.maxAttempts` used up; no round left).
 Tests executed
 Exhausted test loop routed
-Finish → re-run Step 11:
+Finish → re-run Step 12:
 Write `build-summary.md` from this run's status rows and the plan's tasks:
 Finish, then probe for a pre-existing open PR on `{BRANCH}` before the push:
 **If** exit 80 → open PR on `{BRANCH}` via `list_pull_requests` (base `dev`) → found → **Failure Path**; **Else** → sub-step 3.
