@@ -13,8 +13,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-10-27T09:52:19Z)_
-_(refreshed 2026-10-27T09:52:20Z)_
+_(refreshed 2026-10-27T11:30:57Z)_
 
 ### Design
 
@@ -39,7 +38,6 @@ _(refreshed 2026-10-27T09:52:20Z)_
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
-| 705-build-plan-convert | 705-build-plan-convert | 1793094739491 |
 
 ### Debug
 
@@ -50,6 +48,7 @@ _(none)_
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 705-build-plan-convert | 705-build-plan-convert | 1793100657723 |
 | 703-standardise-question-option | 703-standardise-question-option | 1793090828870 |
 | 700-session-start-nudge | 700-session-start-nudge | 1793054973314 |
 | 380-roadmap-analysis-refresh | Roadmap ledger, two-tier generated board, fold + cadence + on-demand utility | 1787868628424 |
@@ -59,7 +58,6 @@ _(none)_
 | completed-ship-bookkeeping-path-a-b-with-tiered-quality-carriers-38-b1b1268 | Ship bookkeeping Path A/B with tiered quality carriers — #384 | 1785283200000 |
 | 341-three-runtimes | Workflows run in all runtimes — local, GH Actions, claude.ai | 1785220571000 |
 | completed-three-runtimes-workflow-execution-341 | Three-runtimes workflow execution — #341 | 1785196800000 |
-| 58-workflow-counters | Workflow counters read decision variables from status.jsonl | 1784704423000 |
 <!-- bkit:roadmap-status end -->
 
 <!-- bkit:roadmap-analysis start -->
