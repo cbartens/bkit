@@ -39,6 +39,24 @@ const PLAN_TEMPLATE = ".bkit/core/docs/templates/bkit-plan.md";
 const PROMPTS_INDEX = ".bkit/core/.bkit/prompts.md";
 const PROMPTS_INDEX_MIRROR = ".bkit/prompts.md";
 
+/** The two design prompts stating the open-question rule, and the review that checks it. */
+const DESIGN_GENERATE = `${PROMPTS}/bkit-design-generate.md`;
+const DESIGN_UPDATE = `${PROMPTS}/bkit-design-update.md`;
+const DESIGN_REVIEW_2 = `${PROMPTS}/bkit-design-review-2.md`;
+/** The rendered design review, one file per installed provider. */
+const DESIGN_REVIEW_2_MIRRORS = [
+  ".claude/agents/bkit-design-review-2.md",
+  ".cursor/agents/bkit-design-review-2.md",
+  ".opencode/agents/bkit-design-review-2.md",
+  ".agents/plugins/bkit/agents/bkit-design-review-2.md",
+  ".codex/agents/bkit-design-review-2.toml",
+];
+/**
+ * The parts every open question must carry, as the design prompts name them:
+ * lettered options, a lettered `Recommended`, and `Default if unanswered`.
+ */
+const OPEN_QUESTION_PARTS = ["A)", "Recommended", "Default if unanswered"];
+
 /**
  * The label opening an option list. Global, so every list a line carries is read,
  * not just the first. The lookbehind keeps headers that merely end in `Options`
@@ -207,6 +225,14 @@ function openQuestionRules(): Array<{ file: string; no: number; text: string }> 
   );
 }
 
+/** The open-question rule lines of one file, joined in line order. */
+function openQuestionRuleLines(file: string): string {
+  return read(file)
+    .split("\n")
+    .filter((line) => OPEN_QUESTION.test(line) && OPTIONS_WORD.test(line))
+    .join("\n");
+}
+
 /** Every row of a prompts index that names open questions and the options they carry. */
 function indexOpenQuestionRules(file: string): Array<{ no: number; text: string }> {
   return read(file)
@@ -282,6 +308,33 @@ describe("question option format: one layout across the corpus", () => {
       indexOpenQuestionRules(PROMPTS_INDEX_MIRROR).map((rule) => rule.text),
       `${PROMPTS_INDEX_MIRROR} is stale — run the dogfood install`,
     ).toEqual(rules.map((rule) => rule.text));
+  });
+
+  it("the design review names every part the design prompts require", () => {
+    // The two design prompts demand the same parts of an open question, so the
+    // review that flags a malformed one cannot check a shorter list.
+    for (const file of [DESIGN_GENERATE, DESIGN_UPDATE]) {
+      const rule = openQuestionRuleLines(file);
+      expect(rule, `${file} states no open-question rule`).not.toBe("");
+      for (const part of OPEN_QUESTION_PARTS) {
+        expect(rule, `${file} does not require \`${part}\``).toContain(part);
+      }
+    }
+    // The review, its rendered mirrors and the index row describing it.
+    for (const file of [DESIGN_REVIEW_2, ...DESIGN_REVIEW_2_MIRRORS]) {
+      const rule = openQuestionRuleLines(file);
+      expect(rule, `${file} states no open-question rule`).not.toBe("");
+      for (const part of OPEN_QUESTION_PARTS) {
+        expect(rule, `${file} does not name \`${part}\``).toContain(part);
+      }
+    }
+    const row = indexOpenQuestionRules(PROMPTS_INDEX).find((r) =>
+      r.text.includes("bkit-design-review-2"),
+    );
+    expect(row, `${PROMPTS_INDEX} has no bkit-design-review-2 row`).toBeDefined();
+    for (const part of OPEN_QUESTION_PARTS) {
+      expect(row!.text, `${PROMPTS_INDEX}:${row!.no} does not name \`${part}\``).toContain(part);
+    }
   });
 
   it("the plan template letters every option of its Open Questions placeholder", () => {

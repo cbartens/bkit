@@ -73,7 +73,7 @@ autoCompactWindow: 300000
    - Runbook obviousness from alert payload (vs context-chasing).
    - Recovery action — automatic, idempotent, or human judgement?
    - Alert noise — threshold tuned, or pages on transient blips?
-8. Failure-mode coverage: cross-check `Risks & Open Questions` covers enumerated failure modes. Gaps → `OPTIONAL` or `CRITICAL` by `severity`. Any open questions lacking lettered options (`A)`, `B)`, `C)`) or a lettered `Recommended` → `OPTIONAL` findings naming missing parts.
+8. Failure-mode coverage: cross-check `Risks & Open Questions` covers enumerated failure modes. Gaps → `OPTIONAL` or `CRITICAL` by `severity`. Any open questions lacking lettered options (`A)`, `B)`, `C)`), a lettered `Recommended` or a `Default if unanswered` → `OPTIONAL` findings naming missing parts.
 9. Operational dependencies: new on-call burden (dashboard / alert / runbook)? Surface explicitly; not blocker but must be acknowledged.
 10. Update **Create** — set `Verdict` via `Edit`; mapping:
     - `PASS` = operable as designed; failure modes have observability and recovery paths; proceed.
