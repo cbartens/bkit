@@ -802,7 +802,7 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
 
 <!-- bkit:task 10 start -->
 
-- [ ] **TASK 10:** Sync the docs the change touches
+- [x] **TASK 10:** Sync the docs the change touches
   - **UPDATE:** `.bkit/core/.bkit/prompts.md`: the changed scope of `bkit-build-plan-verify`, `bkit-build-plan-current`, `bkit-ship-deferred-sweep`, `bkit-ship-update-docs` and `bkit-plan-scope-check`; no name, effort, model or `maxTurns` moves
   - **UPDATE:** `.bkit/core/.bkit/workflows.md`: § `/bkit-build` — 15 steps (Steps 3 and 5's matrix route and Fix-now row, Step 6's handover check, Steps 7 and 9's tick), § `/bkit-ship` — 14 steps (Step 5's two verbs, Step 6's scan artifact)
   - **UPDATE:** `docs/testing.md`: § Key test files — rows for `tasks.test.ts`, `plan-blocks.test.ts` and `challenge.test.ts`, and the extended rows for `tests.test.ts`, `branches.test.ts` and `ledgers.test.ts`
