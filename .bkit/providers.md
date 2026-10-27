@@ -535,7 +535,7 @@ Re-pin **one provider column at a time**. Cells: `prompts.md` § Models. Board b
 
 **Priority — do not invert.**
 
-0. **Budget band** — hard ceiling on what an opencode column may bill: **≤ `$2.00` input / `$10.00` output per Mtok**. A model outside the band is disqualified at any score (§ Budget band).
+0. **Budget band** — hard ceiling on what an opencode column may bill over a subscription gap: **cache-read price per Mtok** (ceiling pending, § Budget band). A model outside the band is disqualified at any score.
 1. **Claude parity** — LiveBench Long Agentic (pin score) + AA Intelligence Index. Inside the band, closest to the bar wins; a column whose best in-band model misses the bar records the gap.
 2. **Cost** — inside the band, cheapest that reaches the bar; ties fall through to price. AA $/task + LiveBench $/task, rescaled to the billed provider.
 3. **Speed** — remaining ties: AA tok/s, TTFT, think→answer, E2E 500-token.
@@ -578,9 +578,19 @@ Filters (not above score): endpoint count; automatic prompt caching (bkit sends 
 
 **Usage intent.** An opencode column runs between subscription resets: after the week's Claude and OpenAI credits are gone, until they return. Days, not a month. A pin that would burn a month's worth of cost inside such a gap fails its purpose however well it scores, so **cost is a ceiling checked before parity, not a tie-break after it**.
 
-**Band: ≤ `$2.00` input / `$10.00` output per Mtok, billed on that column.** Worked example — a heavy agent day at ~2M input + 200k output tokens lands near **$6 inside the band** (`gemini-4-argon`, `kimi-k3.1-pro`), **~$0.85** on DeepSeek V4.1 Flash and **~$30 outside it** (`gpt-6-astra` at `$10/$50`), so a five-day gap costs tens of dollars inside the band against hundreds outside. Move any input and the band moves with it: **this paragraph is the only place the number lives.**
+**The band is a cache-read ceiling, because cache reads are the bill.** Measured across 21 days of real agent work (Claude Code transcripts, deduped by message): a normal day carries **~1.0–1.2B cache-read tokens**, ~20M cache writes, ~1.6–2.4M output and ~0 fresh input — roughly **600 cache-read tokens per output token**, so cache reads exceed 95% of what a gap costs. Cache-read price spans ~170x across the board while input price spans ~13x, so an input/output band cannot predict what a gap costs.
 
-Outside the band on the 2026-10-25 board: `gpt-6-astra` $10/$50, `muse-wonder-1.0` $4/$20, `gpt-5.6-terra` $2/$12, `kimi-k3` $3/$15. `kimi-k3` is the one live violation — it is the current convergent pin on all four opencode columns.
+| Cache-read ceiling (per Mtok) | Normal day | 2-day gap | Models that survive                          |
+| ----------------------------- | ---------- | --------- | -------------------------------------------- |
+| ≤ `$0.005`                    | ~$8        | ~$30      | `deepseek-v4.1-flash-1017` ($0.003)          |
+| ≤ `$0.015`                    | ~$17       | ~$60      | + `minimax-m3.1-flash` ($0.015)              |
+| ≤ `$0.04`                     | ~$47       | ~$150     | + `glm-5.3-flash` ($0.03)                    |
+| ≤ `$0.10`                     | ~$105      | ~$240     | + `gemini-4-argon` ($0.10)                   |
+| ≤ `$0.20`                     | ~$200      | ~$500     | + `kimi-k3.1-pro` ($0.20), `kimi-k3` ($0.19) |
+
+`grok-4.7` ($0.50 cache read) fails every row. **Ceiling not yet chosen** — pick the gap budget, then read the rack down from there: the ceiling is the only place the number lives.
+
+Cache-read prices on the current pins: `deepseek-v4.1-flash` $0.003, `glm-5.3-flash` $0.03, `kimi-k3` **$0.19**. `kimi-k3` is the live violation at every ceiling above $0.005 — it is the current convergent pin on all four opencode columns.
 
 ### LiveBench 2.0 board — 2026-10-25
 
@@ -621,24 +631,13 @@ Re-probed `https://livebench.ai/data/20261025/table.csv` + `cost.csv` (§ Select
 
 **Unmeasured on 2.0 — keep their v1 basis, do not re-derive:** `composer-2.5` and `cursor-grok-4.5-high` (Cursor), `gemini-3.8-pro` (Google/Antigravity).
 
-**Re-pin the 2.0 board proposes — NOT APPLIED.** Pins stay as listed in § Per-tier lineup until a human signs off. Read through § Budget band first: with Anthropic and OpenAI excluded (§ Vendor rule) and the band applied, the opencode ceiling is `gemini-4-argon` 61.2 on OpenRouter, Zen and Go — 11.6 under the opus bar, 2.2 under the sonnet one — and 40.9 on Ollama.
+**Re-pin — NOT APPLIED, and re-cut pending the ceiling.** No pin moves until the § Budget band ceiling is chosen, because the ceiling decides the matrix and nothing else does:
 
-| Column         | Tier          | Current pin                | Proposal                                                                                  | Billed (in/out per Mtok) |
-| -------------- | ------------- | -------------------------- | ----------------------------------------------------------------------------------------- | ------------------------ |
-| `openrouter`   | opus          | `deepseek-v4.1-flash-1017` | `gemini-4-argon` 61.2 — in-band ceiling, 11.6 under the 72.8 bar                          | $2 / $10                 |
-| `openrouter`   | sonnet        | `deepseek-v4.1-flash-1017` | `gemini-4-argon` 61.2 — 2.2 under 63.4; nothing in band sits between it and the bar       | $2 / $10                 |
-| `openrouter`   | haiku         | `glm-5.3-flash`            | `deepseek-v4.1-flash-1017` 40.9 — GLM's 19.0 misses the 40.0 bar                          | ≤ $0.30 / $1.20          |
-| `openrouter`   | convergent    | `kimi-k3`                  | `kimi-k3.1-pro` 39.1 — replaces an out-of-band pin with a stronger, cheaper one           | $2 / $10 (2 endpoints)   |
-| `opencode-zen` | opus + sonnet | `deepseek-v4.1-flash`      | `gemini-4-argon` 61.2                                                                     | $2 / $10                 |
-| `opencode-zen` | haiku         | `glm-5.3-flash`            | `deepseek-v4.1-flash` 40.9                                                                | $0.30 / $1.20            |
-| `opencode-zen` | convergent    | `kimi-k3`                  | `qwen3.8-max` 29.9 — no `kimi-k3.1-pro` on Zen, and `grok-4.7` breaks the band past 200k  | $2 / $6                  |
-| `opencode-go`  | opus + sonnet | `deepseek-v4.1-flash`      | `gemini-4-argon` 61.2                                                                     | $2 / $10                 |
-| `opencode-go`  | haiku         | `deepseek-v4.1-flash`      | `deepseek-v4.1-flash` 40.9                                                                | $0.15 / $0.60            |
-| `opencode-go`  | convergent    | `kimi-k3`                  | `kimi-k3.1-pro` 39.1 — `mimo-v2.6-pro` 35.2 at $0.435/$0.87 is the cheap alternative      | $2 / $10                 |
-| `ollama`       | all tiers     | `deepseek-v4.1-flash:1017` | unchanged — column ceiling 40.9, nothing else in band over the haiku bar                  | $0.15 / $0.60            |
-| `ollama`       | convergent    | `kimi-k3`                  | `minimax-m3.1-flash` 28.8 — no `kimi-k3.1-pro` on Ollama, and `kimi-k3` bills out of band | $0.15 / $0.60            |
+- **≤ `$0.04`** — every opencode tier collapses onto `deepseek-v4.1-flash` (40.9), the only in-band model over the haiku bar on all four columns; convergent takes `minimax-m3.1-flash` (28.8, $0.015) where it is served, `glm-5.3-flash` on Zen.
+- **≤ `$0.10`** — opus and sonnet move to `gemini-4-argon` (61.2, 11.6 under the opus bar) on OpenRouter, Zen and Go; haiku and convergent stay as above.
+- **≤ `$0.20`** — convergent may keep a Kimi on OpenRouter and Go (`kimi-k3.1-pro`, 39.1), which is stronger than `kimi-k3` and half its cache-read price.
 
-LiveBench `$/task` deltas (long-horizon basis, not the gap's real cost): OpenRouter opus and sonnet `$25.96 → $249.15`, haiku `$29.32 → $25.96`, convergent `$323.83 → $133.67`. Every proposed cell bills inside the band; the only current pins outside it are `kimi-k3` on Zen, Go and Ollama.
+Strength-for-cost reference: LiveBench `$/task` puts OpenRouter `gemini-4-argon` at `$249.15` against `deepseek-v4.1-flash-1017` at `$25.96`, but that long-horizon figure understates what a gap costs — measured cache-read volume puts a normal day at ~$100 on Gemini and ~$8 on DeepSeek (§ Budget band).
 
 ### Agentic-coding parity board
 
