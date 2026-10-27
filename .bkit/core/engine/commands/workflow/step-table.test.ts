@@ -111,7 +111,7 @@ describe("bkit status resume", () => {
     expect(await round([...verified, done("build", "build-challenge", { round: 2 })])).toBe(2);
     expect(await round([...verified, done("build", "build-challenge", { round: 1 })])).toBe(1);
     expect(await round(verified)).toBe(1);
-    // A round-1 challenge that sent the build back to Step 6 (route fix), or to a decision.
+    // A round-1 challenge that sent the build back to Step 7 (route fix), or to a decision.
     const fixed = [...verified, done("build", "build-challenge", { round: 1 })];
     expect(await round([...fixed, done("build", "build-plan-execute")])).toBe(2);
     expect(await round([...fixed, done("build", "build-decision")])).toBe(2);
