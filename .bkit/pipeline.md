@@ -84,7 +84,7 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
   │ 4. brief             (engine: the group's open tasks + plan context)
   │ 5. execute group     (producer — implement the group's tasks, reds first;
   │                       turn cap near → HANDOVER, re-run once)
-  │ 6. verify group      (critic — the group's own diff; tick only on confirmed artifacts)
+  │ 6. verify group      (critic — the group's own diff; passes satisfied task numbers, engine ticks)
   │                       ↶ producer-critic loop, capped 3 attempts;
   │                         unfixable gaps / no progress → Decision Pause (human, in session)
   │ 7. gaps-remediate    (fix verifier gaps, re-verify)
@@ -210,7 +210,7 @@ Output: PR to `dev`. Heaviest phase — most steps verify rather than produce. C
 | `bkit-build-plan-current` | Plan freshness | Judges whether changes landed since the plan was written leave it executable; findings feed execute. |
 | `bkit-build-install-skills` | Setup | Installs the skills the plan needs for this build. |
 | `bkit-build-plan-execute` | Producer | Implements one plan group's tasks from its brief, each task's tests seen failing first; iterates edit → lint/typecheck/test → edit. Near its turn cap it hands over (`HANDOVER`) and the group re-runs once. |
-| `bkit-build-plan-verify` | Critic | Verifies each task of one group against the group's own diff; ticks boxes only on confirmed artifacts. Producer-critic loop, capped at 3 attempts per group. |
+| `bkit-build-plan-verify` | Critic | Verifies each task of one group against the group's own diff; passes the satisfied task numbers, and `bkit tasks tick` sets the boxes. Producer-critic loop, capped at 3 attempts per group. |
 | `bkit-build-plan-gaps-remediate` | Gap-fixer | Fills gaps the verifier found, then re-verifies. |
 | `bkit-build-plan-verify` | Holistic critic | Second, whole-of-plan verification pass across everything built. |
 | `bkit-build-challenge-1` | Bug-hunting | Adversarial review of the full diff; writes each finding as a plan task with a test first. Forbidden from reading its sibling. Parallel. Runs only on a large change (300+ lines or 10+ files, `docs/plans/**` excluded, measured by `bkit challenge gate`); a small one runs `-2` alone. `bkit challenge merge` then appends the findings to the plan, and execute + verify fix them. |
