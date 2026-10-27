@@ -259,7 +259,7 @@ description: "Ship Feature — Autonomous merge and archive"
    - **If** `ASSUMED_COUNT` = 0 → return to Step 2.
    - **If** `RUNTIME_HEADLESS` = true → step 4, no one to ask.
    - **Else** → step 2.
-2. Ask the human in this session; plain text, no host question tool; NEVER hand the questions to subagents. One message — per entry of `ASSUMED_ITEMS`, in order, numbered from 1: `**Q{n} — {title}:** accepted without you during build ({reason}). Confirm it?`, then `Options: A) Confirm / B) Reject`, then `No recommendation — only you can accept it`; then the line `Reply per question. Ship merges either way; anything not confirmed is written as a needs-decision deferral.` Record the wait → end turn → wait for answers:
+2. Ask the human in this session; plain text, no host question tool; NEVER hand the questions to subagents. State what the owner must decide and what each option does, in plain English, before naming any file, test or identifier. One message — per entry of `ASSUMED_ITEMS`, in order, numbered from 1: `**Q{n} — {title}:** accepted without you during build ({reason}). Confirm it?`, then `Options: A) Confirm / B) Reject`, then `No recommendation — only you can accept it`; then the line `Reply per question. Ship merges either way; anything not confirmed is written as a needs-decision deferral.` Record the wait → end turn → wait for answers:
    ```bash
    "{BKIT}" status row --file="{STATUS}" --workflow=ship --type=owner-pause --field=reason=assumed >/dev/null || exit 1
    ```
@@ -554,7 +554,7 @@ description: "Ship Feature — Autonomous merge and archive"
    ```bash
    "{BKIT}" steps finish --workflow=ship --step=ship-failure-diagnose --file="{STATUS}" --attempt-of=ship-merge-pr:current --agent=bkit-debug-failure-diagnose --artifact="docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-<attempt>.md" --commit=none --number=11 --post --title="Failure Diagnose"
    ```
-3. Ask before the fix round. **If** `MERGE_ASK` = false → narrate `ship merge: attempt {MERGE_ROUNDS} of {MERGE_MAX}, fix round taken without asking` → Step 12. **Else** → ask the human in this session, plain text, one message: `ship merge: attempt {MERGE_ROUNDS} of {MERGE_MAX}`, then `**Q1 — Merge:** failed because {the diagnosed cause}. Run a fix round?`, `Options: A) Try again / B) Stop`, `Recommended: {A) Try again when the diagnosis names a cause, else B) Stop} — {reason}`, and the line `Reply per question. "yes" takes every recommendation. "stop" writes a handover; the run can be resumed.` Record the wait → end turn → wait for the answer:
+3. Ask before the fix round. State the failure in plain English before the technical cause. **If** `MERGE_ASK` = false → narrate `ship merge: attempt {MERGE_ROUNDS} of {MERGE_MAX}, fix round taken without asking` → Step 12. **Else** → ask the human in this session, plain text, one message: `ship merge: attempt {MERGE_ROUNDS} of {MERGE_MAX}`, then `**Q1 — Merge:** failed because {the diagnosed cause}. Run a fix round?`, `Options: A) Try again / B) Stop`, `Recommended: {A) Try again when the diagnosis names a cause, else B) Stop} — {reason}`, and the line `Reply per question. "yes" takes every recommendation. "stop" writes a handover; the run can be resumed.` Record the wait → end turn → wait for the answer:
    ```bash
    "{BKIT}" status row --file="{STATUS}" --workflow=ship --type=owner-pause --field=reason=merge >/dev/null || exit 1
    ```

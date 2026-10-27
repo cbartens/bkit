@@ -84,7 +84,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 ## 🤖 Loop Question
 
 1. **If** `LOOP_ASK` = false → narrate `debug {LOOP_POINT}: attempt {LOOP_ATTEMPT} of {LOOP_MAX}, taken without asking` → return to the calling step.
-2. Ask the human in this session; plain text, no host question tool. One message:
+2. Ask the human in this session; plain text, no host question tool. State what the owner must decide and what each option does, in plain English, before naming any file, test or identifier. One message:
    - `debug {LOOP_POINT}: attempt {LOOP_ATTEMPT} of {LOOP_MAX}`, then the newest diagnosis (`debug-failure-diagnose-*.md`) or soak log (`debug-failure-soak-*-log.md`) in one line each.
    - `LOOP_POINT` = `fix` → `**Q1 — Fix:** another fix attempt?`. `LOOP_POINT` = `soak` and `{LOOP_ATTEMPT}` = 1 → `**Q1 — Soak:** fix attempts used up. Start soak (a slower, step-by-step investigation)?`. **Else** → `**Q1 — Soak:** another soak attempt?`.
    - `Options: A) Try again / B) Stop`, then `Recommended: {A) Try again|B) Stop} — {the trend: failures falling → A, else B}`.

@@ -163,7 +163,7 @@ _No tracker connected, skip step._
    - Read `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`. **If** an earlier run left a `docs/plans/{YYYYMM}/logs/{FID}/design-grill-*.md` → the newest one's `Settled` entries stay settled and its `Draft Acceptance Scenario` is the starting draft for step 4; ask only what they leave open or what the issue text changed since.
    - Map open decisions as a tree: each decision branches into the decisions that depend on it. Frontier = every unsettled decision whose prerequisites are settled.
    - One turn = the whole frontier in one message; a question depending on another in the same turn waits for a later turn.
-   - Per question: `**Q{n} — {title}:** {question}` and its options lettered `A)`, `B)`, `C)`, then `Recommended: A) {answer}` on its own line; number from `Q1` across turns; word each so "yes" accepts the recommendation; plain text, no host question tool.
+   - Per question: `**Q{n} — {title}:** {question}` and its options lettered `A)`, `B)`, `C)`, then `Recommended: A) {answer}` on its own line; number from `Q1` across turns; word each so "yes" accepts the recommendation; plain text, no host question tool. State what the owner must decide and what each option does, in plain English, before naming any file, test or identifier.
    - Look up facts in repo, docs and tools; never ask the human. Pending lookups hold back only the questions that depend on them.
    - Decide nothing on the human's behalf. Narrate `design grill: turn {k} of {GRILL_TURNS}` → record the wait → end turn → wait for answers:
      ```bash
