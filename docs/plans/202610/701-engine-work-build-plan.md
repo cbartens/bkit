@@ -836,7 +836,7 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
 
 <!-- bkit:task 12 start -->
 
-- [ ] **TASK 12:** `ledgers triage` adjudicates a genuine `own-cycle` ("new architecture") deferral as `unjustified` and appends a permanent wrong verdict — `.bkit/jsonl.md` test 1 requires "not a new architecture", and no predicate implements it nor excludes `own-cycle`
+- [x] **TASK 12:** `ledgers triage` adjudicates a genuine `own-cycle` ("new architecture") deferral as `unjustified` and appends a permanent wrong verdict — `.bkit/jsonl.md` test 1 requires "not a new architecture", and no predicate implements it nor excludes `own-cycle`
       **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/ledgers.ts:1724` · **Round:** 1
   - **DONE WHEN:** a `reason: "own-cycle"` deferral is bucketed `Exempt` (or fails `bounded-remediation`) whatever its `remediation` names, and no `unjustified` row is written for it; a test pins it
   - **TEST FIRST:**
@@ -845,7 +845,7 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
 <!-- bkit:task 12 end -->
 <!-- bkit:task 13 start -->
 
-- [ ] **TASK 13:** `scan-diff --disabled-tests` reports every removed line of a test file that matches `ASSERTION` (`expect|assert\w*|should|should_\w+`), so deleting a comment, an import line or an assertion moved elsewhere sets exit 1 and the sweep records a `Blocking Deferral` + `Verdict: FAIL`
+- [x] **TASK 13:** `scan-diff --disabled-tests` reports every removed line of a test file that matches `ASSERTION` (`expect|assert\w*|should|should_\w+`), so deleting a comment, an import line or an assertion moved elsewhere sets exit 1 and the sweep records a `Blocking Deferral` + `Verdict: FAIL`
       **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/branches.ts:1084` · **Round:** 1
   - **DONE WHEN:** a removed line that is a comment, a non-assertion statement or an assertion re-added elsewhere in the same diff is not reported; a removed assertion call (a net drop in the file) still is; the sweep's `disabled` list and exit code follow
   - **TEST FIRST:**
