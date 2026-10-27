@@ -99,7 +99,7 @@ Usage: pnpm graph[:clean|:update|:rollup|:refresh|:check|:graphml|:tree|:scoped]
   graph:refresh   Rebuild the register in a clean checkout of HEAD, copy it
                   over docs/capabilities.md. Fixes a red gate; commit it.
   check-at <rev>  `check` in a throwaway checkout of <rev>. Pre-push runs it
-                  for every push to dev; CI runs `check` on every push to dev.
+                  for every push to dev; CI runs it for every push and pull request.
   spec            Print the pinned graphify release (pip spec).
   graph:rollup    Collapse the symbol graph into a package view (~24 nodes, the
                   architecture) and a module view (~133 nodes, the subsystems),
@@ -340,8 +340,9 @@ case "${1:-build}" in
     ;;
   update) run_local update . && repair && cluster ;;
   check)
-    # Gate on every push to dev: pre-push runs it via `check-at` in a clean
-    # checkout of the pushed commit; CI runs it in its own clean checkout.
+    # Gate on every push to dev and every pull request: pre-push runs it via
+    # `check-at` in a clean checkout of the pushed commit; CI runs `check-at` on
+    # the pushed commit (push) or the PR head (pull_request).
     # Rebuild graph from this tree → regenerate register into a throwaway copy
     # → fail if it differs from the tracked file. Writes nothing tracked; fix a
     # red with `pnpm graph:refresh` plus a commit.

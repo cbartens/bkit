@@ -197,7 +197,7 @@ description: "Design Feature — Autonomous design phase"
    - Read `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`. **If** an earlier run left a `docs/plans/{YYYYMM}/logs/{FID}/design-grill-*.md` → the newest one's `Settled` entries stay settled and its `Draft Acceptance Scenario` is the starting draft for step 4; ask only what they leave open or what the issue text changed since.
    - Map open decisions as a tree: each decision branches into the decisions that depend on it. Frontier = every unsettled decision whose prerequisites are settled.
    - One turn = the whole frontier in one message; a question depending on another in the same turn waits for a later turn.
-   - Per question: `**Q{n} — {title}:** {question, options}`, then `Recommended: {answer}` on its own line; number from `Q1` across turns; word each so "yes" accepts the recommendation; plain text, no host question tool.
+   - Per question: `**Q{n} — {title}:** {question}` and its options lettered `A)`, `B)`, `C)`, then `Recommended: A) {answer}` on its own line; number from `Q1` across turns; word each so "yes" accepts the recommendation; plain text, no host question tool.
    - Look up facts in repo, docs and tools; never ask the human. Pending lookups hold back only the questions that depend on them.
    - Decide nothing on the human's behalf. Narrate `design grill: turn {k} of {GRILL_TURNS}` → record the wait → end turn → wait for answers:
      ```bash
@@ -217,7 +217,7 @@ description: "Design Feature — Autonomous design phase"
      - `Success Criteria` — <=5 measurable outcomes; no tests, no implementation steps.
      - `Key Edge Cases` — design-shaping only (concurrency, conflicts, failure modes, cross-feature interactions).
      - `Process Sketch` — 3-7 `WHEN X → THEN Y` lines with the same examples; outcomes, not implementation steps.
-   - Show the whole draft, then one question per item the draft inferred rather than took from the context or an answer, per step 2 format with the recommended answer = as drafted; last question: `**Q{n} — Draft acceptance scenario:** accept the draft with the answers above as the design's starting point?` with `Recommended: yes`. Narrate `design grill: turn {k} of {GRILL_TURNS} — draft acceptance scenario` → record the wait (step 2 block with `reason=draft`) → end turn → wait for answers; record each reply per step 2.
+   - Show the whole draft, then one question per item the draft inferred rather than took from the context or an answer, per step 2 format with the recommended answer = as drafted; last question: `**Q{n} — Draft acceptance scenario:** accept the draft with the answers above as the design's starting point?` with `Options: A) yes / B) no` and `Recommended: A) yes`. Narrate `design grill: turn {k} of {GRILL_TURNS} — draft acceptance scenario` → record the wait (step 2 block with `reason=draft`) → end turn → wait for answers; record each reply per step 2.
    - Fold the answers into the draft. Route:
      - **If** an answer opens new decisions **and** fewer than `GRILL_TURNS` - 1 turns asked → step 2, next turn; the draft turn repeats after.
      - **Else** → step 5; new decisions left unasked → `Open`.
@@ -479,7 +479,7 @@ description: "Design Feature — Autonomous design phase"
    ```
 5. Final return: display `{FINAL_RETURN}` verbatim as the final message to the user; do not summarise or trim; do not auto-invoke. **HARD STOP** — do not invoke `/bkit-plan`.
 6. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, not nouns; do not re-run any step.
-7. **If** user requests the open questions one by one → ask each `## Open Questions` item on its own, verbatim, with its options, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step. Each answer that settles an architecture / technology decision → append its row to `docs/decisions.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom) at once; `by.step` = `design-close-workflow`; `rationale` = `answered by owner: {human's answer}`; decision already on disk → same `key`.
+7. **If** user requests the open questions one by one → ask each `## Open Questions` item on its own, verbatim, with its options lettered `A)`, `B)`, `C)`, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step. Each answer that settles an architecture / technology decision → append its row to `docs/decisions.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom) at once; `by.step` = `design-close-workflow`; `rationale` = `answered by owner: {human's answer}`; decision already on disk → same `key`.
 
 ### 🔒 Gate 12 — Close Workflow
 

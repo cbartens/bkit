@@ -39,6 +39,7 @@
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const crypto = require("node:crypto");
 
 // Antigravity's file-writing tools. `write_to_file` creates or overwrites a whole file;
 // `replace_file_content` edits in place. `Edit` / `Write` are accepted as matchers too.

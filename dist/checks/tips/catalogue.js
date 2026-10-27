@@ -16,7 +16,9 @@
 // section opener and in the README's "Templates ready to adopt" row; change all three in
 // the same commit.
 //
-// Detection rules: every `fires` is local (files, settings, environment) — no network.
+// Detection rules: every `fires` is local (files, settings, environment) — no network. The
+// `cwd` it receives is the main checkout (checks/tips/index.ts `tipsBase`), never the
+// calling worktree, so a tip reflects the repo the integration branch carries.
 // Where an advisory already detects the gap, `fires` calls that detector and `advisories`
 // names its ids, so the tip and the advisory can never disagree and one
 // `bkit.advisories.ignore` entry silences both.

@@ -11,7 +11,19 @@ import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 
+import { tierTimeouts } from "../../../../../vitest.timeout-budget";
+
 const SCRIPT = path.resolve("scripts/ci/lanes/resolve-push-base.mjs");
+
+/**
+ * The `exit 0 always` cases below spawn the real script — node, plus the fake `gh` / `git`
+ * this test puts on PATH — so their wall time is subprocess latency, not CPU: 0.4-0.7s idle,
+ * but past the 5s unit base under a loaded full gate. They ride the load-scaled
+ * integration-tier budget instead (30s, and higher while the box is contended; CI pins the
+ * factor to 1) — the shape `audits/templates/ci-scripts.test.ts` already gives its
+ * spawned-suite case.
+ */
+const SPAWN_CASE = { timeout: tierTimeouts(true).testTimeout };
 
 interface PushBaseInput {
   lastGreenSha: string;
@@ -119,7 +131,7 @@ describe("resolve-push-base", () => {
     expect(newestRunSha([{ run_number: "x", head_sha: "a" }, { head_sha: 3 }])).toBe("");
   });
 
-  describe("exit 0 always", () => {
+  describe("exit 0 always", SPAWN_CASE, () => {
     const runWithFakes = (gh: string, git: string, args: string[] = [], env = {}) => {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), "push-base-"));
       try {

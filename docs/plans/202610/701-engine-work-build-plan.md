@@ -22,7 +22,7 @@ Verdict: PASS
 
 **Inputs and precedence.** No design doc and no audit report. `#701` is a `change`-shape issue (`.bkit/trackers.md` § Issue shapes), so its `Narrative`, `Success Criteria`, `Edge Cases`, `Derived Test Matrix`, `Tasks`, `Open Questions & Assumptions`, `Breaking Changes & Naming` and `Out of Scope` are the spec, kept word for word. The plan-input's newest section is the session prompt (`#701` alone), which adds nothing. Two places where the issue's own text disagrees are resolved in this plan and named in `Open Questions & Assumptions` (rows 5 and 6): the order of `fixable` values in `Tasks` Task 1's `DONE WHEN`, and the `tick` default between `Open Questions` item 3 and `Tasks` Task 2.
 
-**Review round merged.** Three lenses reviewed this plan as `plan-v1-draft.md`: plan review (tightness, dependency order, design coverage), code review (regression risk) and the scope check (scope, criteria, verification). Their findings are merged here. Six seams they named are settled and named in `Open Questions & Assumptions` (rows 7-11) or in the sections they touch: the `fixable: null` / `verdict: null` seam at the verifier boundary (the engine's `logLine` is a template the verifier substitutes its decided `Fixable` into, and the artifact header `Verdict:` is the post-judgement roll-up, never the report's `null`); the `no-red` "work already landed" exemption kept in the prompt as a verifier override; the holistic verify's cross-group tick path; the `matrix` check's semantics, the three in-build producers it would otherwise strand, and the recovery route for a legacy plan; `tasks currency`'s diff range (`{base}..{against}`, `against` = `origin/dev`); and the `Changed since red = added lines only` gap (kind `test-changed`, `fixable: null`).
+**Review round merged.** Three lenses reviewed this plan as `plan-v1-draft.md`: plan review (tightness, dependency order, design coverage), code review (regression risk) and the scope check (scope, criteria, verification). Their findings are merged here. Six seams they named are settled and named in `Open Questions & Assumptions` (rows 7-11) or in the sections they touch: the `fixable: null` / `verdict: null` seam at the verifier boundary (the engine's `logLine` is a template the verifier substitutes its decided `Fixable` into, and the artifact header `Verdict:` is the post-judgement roll-up, never the report's `null`); the `no-red` "work already landed" exemption kept in the prompt as a verifier override; the holistic verify's group-required tick path; the `matrix` check's semantics, the three in-build producers it would otherwise strand, and the recovery route for a legacy plan; `tasks currency`'s diff range (`{base}...{against}`, `against` = `origin/dev` — three dots is merge-base(`{base}`, `{against}`)..`{against}`, identical to two dots when `{base}` is an ancestor of `{against}`, the normal case now that design and plan worktrees base on `origin/dev`, and it matches `branches scan-diff`, which already diffs `<base>...HEAD`); and the `Changed since red = added lines only` gap (kind `test-changed`, `fixable: null`).
 
 **Related Issues:**
 
@@ -67,9 +67,9 @@ A bkit maintainer wants the build and ship subagents to stop re-deriving facts t
 
 - **WHEN** the build's verify step runs `bkit tests green --group={N}` **→ THEN** the report and stdout carry a `verdict` and each gap carries `fixable` (`true` / `false` / `null`) and its ready-to-append log line.
 - **WHEN** a gap needs a diff read (`test-changed`, `red-mismatch`, `delete-still-referenced`, a row `Changed since red = added lines only`) **→ THEN** that gap prints `fixable: null` and the report's `verdict` is `null`; the verifier decides each one from the diff it reads, logs the line with its decided `Fixable: true|false` in place of `null`, and its artifact header `Verdict:` is the post-judgement roll-up (`PASS` / `CONCERNS` / `FAIL`), never `null`.
-- **WHEN** the verifier judges a task's `DONE WHEN` satisfied **→ THEN** its header carries the satisfied task numbers and the workflow ticks them with `bkit tasks tick` — per group at Step 7 (`--group`), cross-group at the holistic Step 9 (`--tasks` alone); no agent edits the plan.
+- **WHEN** the verifier judges a task's `DONE WHEN` satisfied **→ THEN** its header carries the satisfied task numbers and the workflow ticks them with `bkit tasks tick --group=` — at Step 7 for that group, and at the holistic Step 9 once per group; no agent edits the plan.
 - **WHEN** a build group's execute log holds neither a `DONE` nor a `BLOCKED` line for some of the group's tasks **→ THEN** `bkit tasks open` lists exactly those tasks and prints `handover: true`.
-- **WHEN** the plan-currency step runs `bkit tasks currency --base={BASE_SHA}` **→ THEN** each task whose paths or needles moved between `{BASE_SHA}` and `origin/dev` is printed with its matched paths and diff hunks, and no hunk outside that set appears.
+- **WHEN** the plan-currency step runs `bkit tasks currency --base={BASE_SHA}` **→ THEN** each task whose paths or needles moved between `{BASE_SHA}` and `origin/dev` (the `{BASE_SHA}...origin/dev` three-dot range) is printed with its matched paths and diff hunks, and no hunk outside that set appears.
 - **WHEN** the ship step runs `bkit branches scan-diff --disabled-tests --base=origin/dev` **→ THEN** it exits 1 on an added `.skip` / `.todo` / `.fixme` / `xfail`, `t.Skip()`, `#[ignore]`, `@Disabled` or deleted assertion, printing `file:line` and the test name; a skip predating the base is ignored.
 - **WHEN** the ship step runs `bkit ledgers triage --fid={FID} --plan={PLAN}` **→ THEN** each deferral row prints its bucket (`Exempt` / `Lazy`) and, when the reason does not hold, a same-`key` `unjustified` / `TRIAGED` row is appended with a minted `ts` — a `low-severity` `LOW` row stays `Exempt` and writes nothing.
 
@@ -96,14 +96,14 @@ A bkit maintainer wants the build and ship subagents to stop re-deriving facts t
 | --- | --- |
 | a gap kind needs a diff read (`test-changed`) | `tests green` prints `fixable: null` and `verdict: null`; the verifier classifies it |
 | a plan has no task blocks | `tasks tick` / `open` / `currency` refuse, naming the plan-check reason |
-| a task number named to `tick` sits in another group | `tick --group=` exits 2 and names the task and its group; with no `--group` (the holistic call) a number naming no task the plan defines exits 2 |
+| a task number named to `tick` sits in another group | `tick --group=` exits 2 and names the task and its group; a call with no `--group` exits 2 |
 | a `Derived Test Matrix` row maps to two tasks | `plan-check` exits 1, naming the row and both tasks |
 | a `DELETE` has no `Supersession Inventory` row | `plan-check` exits 1, naming the missing row |
 | the diff adds a `.skip` inside a planned test | `scan-diff --disabled-tests` exits 1 with `file:line` and the test name |
 | a `.skip` predates `--base` | `scan-diff` ignores it |
 | a deferral's `reason` is `low-severity` with `severity: LOW` | `ledgers triage` keeps it `Exempt` and writes no row |
 | a deferral's `reason` does not hold at ship time | `ledgers triage` marks it `Lazy` and writes an `unjustified` / `TRIAGED` row with a minted `ts` |
-| `green` finds no gap at all (plan-added) | it prints `verdict: PASS` with `gaps: []`, exit 0; the workflow ticks the group's tasks with `bkit tasks tick` and logs no gap |
+| `green` finds no gap at all (plan-added) | it prints `verdict: PASS` with `gaps: []`, exit 0; the workflow ticks the group's tasks with `bkit tasks tick --plan= --group= --green={GREEN_REPORT}` and logs no gap |
 | a `Derived Test Matrix` carries no `Task` column (plan-added) | `plan-check` exits 1 with one `matrix` problem naming the column to add, never one problem per row |
 | a `Derived Test Matrix` row names a task the plan does not define (plan-added) | `plan-check` exits 1, naming the row and the unknown number |
 | a task whose only `TEST FIRST` entry is `n/a — {reason}` (plan-added) | no matrix row is required for it; `plan-check` accepts the plan |
@@ -119,12 +119,12 @@ A bkit maintainer wants the build and ship subagents to stop re-deriving facts t
 | a red's test gained added lines only (plan-added) | `green` emits one `test-changed` gap with `fixable: null`, the row's `changed` = `added lines only`, and exits 1; the verifier clears it only when the added lines sit outside every planned test |
 | a report gap prints `fixable: null` / the report `verdict` is `null` (plan-added) | the verifier logs the line with its decided `Fixable: true\|false` and its artifact header `Verdict:` carries the roll-up (`PASS` / `CONCERNS` / `FAIL`), never `null` |
 | `no-red` on a task the plan-currency report classifies `Broken` with work already landed, and the execute log records `DONE — TASK {N}: already landed` (plan-added) | the verifier overrides the engine's `no-red` `fixable: false` and records no gap — the build does not regress to a Decision Pause |
-| the holistic verify judges a task in an earlier group satisfied (plan-added) | the workflow runs `bkit tasks tick --plan= --tasks={NUMBERS}` with no `--group`, so the ship summary sees no unticked task |
+| the holistic verify judges a task in an earlier group satisfied (plan-added) | the workflow runs one `bkit tasks tick --plan= --group={N} --tasks={NUMBERS}` per group, each naming its group and that group's numbers, so the ship summary sees no unticked task |
 | dev moves an affected task's paths after `{BASE_SHA}` (plan-added) | `currency --base={BASE_SHA} --against=origin/dev` matches it; a change the branch itself landed since the base does not match |
 
 ### Derived Test Matrix
 
-`Type` = a tier from `docs/testing.md`: Static, Unit, Integration, @live (golden), E2E, fresh-DB replay, Smoke. Rows 1-18 are `#701` `### Derived Test Matrix` verbatim (their `unit` label is the issue's own word; the tier `docs/testing.md` records for these files is `Unit` — `.bkit/core/engine/commands/**/*.test.ts` is the unit lane, `branches.test.ts` / `ledgers.test.ts` run real temp git repos as that tier's boundary form). Rows 19+ are plan-added, all `Unit`, each from an `Edge Cases` row or from a seam the review round named (the `verdict: null` roll-up, the added-lines-only gap, the `matrix` semantics and the producers it touches, `currency`'s range, the cross-group tick, the `triage` edge cases). `Task` maps each row to exactly one runbook task. `challenge.test.ts` / `plan-blocks.test.ts` are the two files the `matrix` work and the plan-block readers add to the lane.
+`Type` = a tier from `docs/testing.md`: Static, Unit, Integration, @live (golden), E2E, fresh-DB replay, Smoke. Rows 1-18 are `#701` `### Derived Test Matrix` verbatim (their `unit` label is the issue's own word; the tier `docs/testing.md` records for these files is `Unit` — `.bkit/core/engine/commands/**/*.test.ts` is the unit lane, `branches.test.ts` / `ledgers.test.ts` run real temp git repos as that tier's boundary form). Rows 19+ are plan-added, all `Unit`, each from an `Edge Cases` row or from a seam the review round named (the `verdict: null` roll-up, the added-lines-only gap, the `matrix` semantics and the producers it touches, `currency`'s range, the group-required tick, the `triage` edge cases). `Task` maps each row to exactly one runbook task. `challenge.test.ts` / `plan-blocks.test.ts` are the two files the `matrix` work and the plan-block readers add to the lane.
 
 <!-- prettier-ignore -->
 | Test description | Type | Target file | Task |
@@ -163,9 +163,9 @@ A bkit maintainer wants the build and ship subagents to stop re-deriving facts t
 | `tick` refuses a `--tasks` value that is not a task number | Unit | `.bkit/core/engine/commands/workflow/tasks.test.ts` | 2 |
 | `tick` refuses a `--plan` that is no file | Unit | `.bkit/core/engine/commands/workflow/tasks.test.ts` | 2 |
 | `tick` leaves every other plan line byte-identical | Unit | `.bkit/core/engine/commands/workflow/tasks.test.ts` | 2 |
-| `tick` with no `--group` ticks named tasks across groups | Unit | `.bkit/core/engine/commands/workflow/tasks.test.ts` | 2 |
+| `tick` refuses a call with no `--group` or with neither selector | Unit | `.bkit/core/engine/commands/workflow/tasks.test.ts` | 2 |
 | `currency` exits 0 with no hunks when no task matches | Unit | `.bkit/core/engine/commands/workflow/tasks.test.ts` | 4 |
-| `currency` judges `base..against` (`origin/dev`), not `base..HEAD` | Unit | `.bkit/core/engine/commands/workflow/tasks.test.ts` | 4 |
+| `currency` judges `base...against` (`origin/dev`), not `base...HEAD` | Unit | `.bkit/core/engine/commands/workflow/tasks.test.ts` | 4 |
 | `plan-check` refuses a matrix header with no `Task` column, naming the column to add | Unit | `.bkit/core/engine/commands/workflow/tests.test.ts` | 5 |
 | `plan-check` refuses a `Task` cell naming an undefined task | Unit | `.bkit/core/engine/commands/workflow/tests.test.ts` | 5 |
 | `plan-check` accepts a task whose only `TEST FIRST` is `n/a` | Unit | `.bkit/core/engine/commands/workflow/tests.test.ts` | 5 |
@@ -178,7 +178,7 @@ A bkit maintainer wants the build and ship subagents to stop re-deriving facts t
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Acceptance Scenario confirmed:** I have reviewed the Narrative, Success Criteria, Process Sketch, Concrete Example, Edge Cases, and Derived Test Matrix above. They correctly describe what "done" looks like.
+- [x] **Acceptance Scenario confirmed:** I have reviewed the Narrative, Success Criteria, Process Sketch, Concrete Example, Edge Cases, and Derived Test Matrix above. They correctly describe what "done" looks like.
 
 ---
 
@@ -198,10 +198,10 @@ Additions the review round named, none of which the issue's list holds:
 
 - **The verifier's artifact header.** `Verdict:` in `build-plan-verify-*.md` stays one of `PASS` / `CONCERNS` / `FAIL` (`steps finish` refuses any other word), so a report `verdict: null` never reaches it: the header is the verifier's post-judgement roll-up over the gaps it decided. A gap line's `Fixable:` is likewise the verifier's decided `true` / `false`, substituted into the engine's `logLine` where the engine printed `null` (see `Open Questions` row 8).
 - **The `no-red` "work already landed" exemption is kept.** The engine emits `no-red` → `fixable: false` unconditionally; the prompt keeps its override (plan-currency `Broken` + the execute log's `DONE — TASK {N}: already landed` → no gap), so a resumed build whose work already landed does not regress to a Decision Pause (see `Open Questions` row 7).
-- **`bkit tasks tick` ticks a task outside `--group` when no `--group` is given.** The holistic verify (build Step 9) judges satisfied tasks across every group and must tick them or the ship summary blocks; `--group` narrows and then refuses a number outside it (see `Open Questions` row 9).
+- **`bkit tasks tick` requires `--group` and one of `--tasks=` / `--green=`.** A call with no `--group` exits 2 — there is no cross-group call — and a call with neither selector exits 2 too; inside the group, `--tasks=` ticks exactly those numbers and `--green=` ticks the group's gap-free tasks. The holistic verify (build Step 9) judges satisfied tasks across every group, so it buckets the numbers the artifact judged satisfied per group and runs one `tick` per group, naming that group (see `Open Questions` rows 9 and 11).
 - **`challenge merge` and build Step 5's `Fix now` write a `Derived Test Matrix` row per task they append.** Both append test-bearing tasks into a plan that carries a matrix, so the bidirectional `matrix` check would otherwise refuse their own append; a one-row-per-task write keeps the check true (see `Open Questions` row 4).
 - **Build Steps 3 and 7 route a `matrix` / `supersession` problem to `@bkit-build-plan-convert`**, as they already route a `markers` problem — the recovery path for a plan written before the `Task` column (see `Open Questions` row 4).
-- **`bkit tasks currency` diffs `{base}..{against}`** (`--against` defaults to `origin/dev`), not `{base}..HEAD`: the search it replaces judges landed changes on `origin/dev`, and on a worktree `HEAD` is the feature branch (see `Open Questions` row 12).
+- **`bkit tasks currency` diffs `{base}...{against}`** (`--against` defaults to `origin/dev`), not `{base}...HEAD`: the search it replaces judges landed changes on `origin/dev`, and on a worktree `HEAD` is the feature branch (see `Open Questions` row 12).
 
 **New names:**
 
@@ -211,7 +211,7 @@ Additions the review round named, none of which the issue's list holds:
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Breaking Changes confirmed:** I have reviewed all breaking changes and naming decisions above.
+- [x] **Breaking Changes confirmed:** I have reviewed all breaking changes and naming decisions above.
 
 ---
 
@@ -229,7 +229,7 @@ Additions the review round named, none of which the issue's list holds:
   - **Options:** A — always · B — behind `--verdict`.
   - **Recommended:** A — the audit log is already machine-read.
   - **Default if unanswered:** A.
-- **Open Question:** does `tick` tick the whole group or only `--tasks=`? → `#701` `Open Questions` item 3, carried forward; the plan's tasks and matrix rows pin both halves, so this is a confirmation, not an open fork. The holistic call (row 9) passes `--tasks` with no `--group`, which ticks across groups.
+- **Open Question:** does `tick` tick the whole group or only `--tasks=`? → `#701` `Open Questions` item 3, carried forward; the plan's tasks and matrix rows pin both halves, so this is a confirmation, not an open fork. **Owner answered B:** the group-wide gap-free set is what `--green` selects, and `--tasks=` narrows it.
   - **Options:** A — only the named tasks · B — every task in the group with no gap, narrowed by `--tasks=`.
   - **Recommended:** B — the verifier passes the numbers it judged satisfied, so a named-only `tick` would lose the engine's own test-first gap filter; `--tasks=` narrows it.
   - **Default if unanswered:** B.
@@ -253,22 +253,22 @@ Additions the review round named, none of which the issue's list holds:
   - **Options:** A — the header is the verifier's post-judgement roll-up (any decided `false` → `FAIL`; else any decided `true` → `CONCERNS`; else `PASS`), and each gap line carries the verifier's decided `Fixable` in place of the engine's `null` · B — the report's `null` is copied into the header and `steps finish` is widened to accept it.
   - **Recommended:** A — the header is the step's own contract and the log line feeds `bkit-build-plan-gaps-remediate`, which must see a decided value.
   - **Default if unanswered:** A.
-- **Open Question:** how does the holistic verify (build Step 9) tick a task in an earlier group, when `tick --group=` exits 2 on a task outside the group?
-  - **Options:** A — `--group` is optional: with it, a named number outside the group exits 2; without it, `tick --tasks=` ticks every named task the plan defines, whatever its group · B — Step 9 runs one `tick` per group, over the numbers that group holds.
-  - **Recommended:** A — one call, and the group constraint stays the guard it is for the per-group caller.
-  - **Default if unanswered:** A.
+- **Open Question:** how does the holistic verify (build Step 9) tick a task in an earlier group, when `tick --group=` exits 2 on a task outside the group? **Owner answered B.**
+  - **Options:** A — `--group` is optional: with it, a named number outside the group exits 2; without it, `tick --tasks=` ticks every named task the plan defines, whatever its group · B — Step 9 runs one `tick` per group, over the numbers that group holds, with `--group` required and no call without it.
+  - **Recommended:** B — one `tick` per group keeps one call shape for every caller, and the group guard stays the verb's, not the workflow's.
+  - **Default if unanswered:** B — the owner's answer.
 - **Open Question:** which gap kind does a red whose test gained added lines only emit? Today that row produces no gap at all.
   - **Options:** A — `test-changed`, the kind already in `TEST_ORDER_GAPS` and already one of the prompt's four diff reads; the row's `changed` = `added lines only` tells the verifier which read applies · B — a new kind (e.g. `red-added-lines`) joining `TEST_ORDER_GAPS`, the workflow's test-order gap list and the prompt.
   - **Recommended:** A — no new kind, no new set membership, and the verifier already distinguishes the case by the row state; B widens four lists for one row state.
   - **Default if unanswered:** A.
-- **Open Question:** `tick` with neither `--tasks` nor `--green` ticks every gap-free task in the group (row 3, option B) — a caller that forgets `--tasks=` ticks tasks no agent judged satisfied.
+- **Open Question:** `tick` with neither `--tasks` nor `--green` ticks every gap-free task in the group (row 3, option B) — a caller that forgets `--tasks=` ticks tasks no agent judged satisfied. **Owner answered B.**
   - **Options:** A — keep the default and name its only intended caller in the verb's `--help` · B — require one of `--tasks` / `--green`, exit 2 otherwise.
-  - **Recommended:** A — the verifier always passes `--tasks`, and B would make the verb unusable for the step-7 call that legitimately has no gaps to exclude.
-  - **Default if unanswered:** A.
-- **Open Question:** what does `currency` compare against? The process it replaces judges `{BASE_SHA}..origin/dev`; the plan's first draft said `{base}..HEAD`.
-  - **Options:** A — `{base}..{against}` with `--against` defaulting to `origin/dev`, and the plan-current prompt passes `--base={BASE_SHA}` · B — `{base}..HEAD`.
-  - **Recommended:** A — on the build worktree `HEAD` is the feature branch and Step 3 merges only `docs/` from dev, so `{base}..HEAD` misses dev's code-side movement, the check's whole signal, and on a resume flags every earlier group.
-  - **Default if unanswered:** A.
+  - **Recommended:** B — a call with neither selector exits 2, and the verb's `--help` states the two required flags instead of a default's caller.
+  - **Default if unanswered:** B — the owner's answer.
+- **Open Question:** what does `currency` compare against? The process it replaces judges `{BASE_SHA}...origin/dev`; the plan's first draft said `{base}...HEAD`. **Owner answered A**, refined to three dots.
+  - **Options:** A — `{base}...{against}` with `--against` defaulting to `origin/dev`, and the plan-current prompt passes `--base={BASE_SHA}` · B — `{base}...HEAD`.
+  - **Recommended:** A — on the build worktree `HEAD` is the feature branch and Step 3 merges only `docs/` from dev, so `{base}...HEAD` misses dev's code-side movement, the check's whole signal, and on a resume flags every earlier group; three dots equals two dots whenever `{base}` is an ancestor of `{against}`, and it matches `branches scan-diff`'s `diff <base>...HEAD`.
+  - **Default if unanswered:** A — the owner's answer.
 - **Assumption:** the engine's `fixable` vocabulary is `true` / `false` / `null`, where `null` means "the answer needs a diff read" — the four sites the issue names (`delete-still-referenced`, `test-changed`, `red-mismatch`, row `Changed since red = added lines only`). → if wrong (for example the engine is expected to decide `delete-still-referenced` itself), the verifier loses a judgement it must keep and the `deleteGaps` codebase read becomes load-bearing; the mapping is one table in `tests.ts` and moves in one edit.
 - **Assumption:** the `Task` column is the plan's only mapping carrier, the `matrix` check is a no-op on a plan that carries no `Derived Test Matrix` section, and every in-flight plan that carries the table gets the column added mechanically before it is built. → if wrong, a resumed build of an older matrix-bearing plan stops in Step 3's `plan-check` with one `matrix` problem naming the missing column (never a per-row flood) and Steps 3 and 7 route it to `@bkit-build-plan-convert`; a plan with no table at all is never refused for the absence.
 - **Assumption:** `tick` may write the plan file, so the file it writes is the one `plan-check` reads back, and the write is line-addressed through `parsePlanBlocks`'s task `line` field, never a re-render. → if wrong, a plan re-render would lose consumer prose; `DONE WHEN` pins the line-addressed write and `tasks.test.ts` pins that no other line changes.
@@ -283,7 +283,7 @@ Additions the review round named, none of which the issue's list holds:
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Open Questions & Assumptions confirmed:** I have resolved or explicitly accepted every open question and assumption above.
+- [x] **Open Questions & Assumptions confirmed:** I have resolved or explicitly accepted every open question and assumption above.
 
 ---
 
@@ -300,8 +300,7 @@ Additions the review round named, none of which the issue's list holds:
 - **Copy the report's `null` verdict into the verify artifact's header** (`Open Questions` row 8 option B). Rejected: `steps finish` refuses any word but `PASS` / `CONCERNS` / `FAIL`, and the verifier's gap lines feed `bkit-build-plan-gaps-remediate`, which reads a decided `Fixable`.
 - **Teach `tests green` to suppress a `no-red` gap itself** (`Open Questions` row 7 option B). Rejected: the exemption needs the plan-currency report's `Broken` call and the execute log's `already landed` line, neither of which this verb reads; suppressing inside the audit widens it for a case only the verifier can judge.
 - **A new gap kind for the added-lines-only row** (`Open Questions` row 10 option B). Rejected: it would join `TEST_ORDER_GAPS`, the workflow's test-order gap list and the prompt's four diff reads for one row state the report's `changed` column already names.
-- **One `tick` call per group at the holistic Step 9** (`Open Questions` row 9 option B). Rejected: the holistic artifact names numbers across groups, so the workflow would have to bucket them per group; one `--tasks` call with no `--group` keeps the group guard for the per-group caller.
-- **Judge `currency`'s diff over `{base}..HEAD`** (`Open Questions` row 12 option B). Rejected on evidence: on the build worktree `HEAD` is the feature branch and Step 3 merges only `docs/` from dev, so this range misses dev's code-side movement — the check's whole signal — and flags the branch's own landed work on every resume.
+- **Judge `currency`'s diff over `{base}...HEAD`** (`Open Questions` row 12 option B). Rejected on evidence: on the build worktree `HEAD` is the feature branch and Step 3 merges only `docs/` from dev, so this range misses dev's code-side movement — the check's whole signal — and flags the branch's own landed work on every resume.
 - **Refuse every plan whose `Derived Test Matrix` section is absent** (the `matrix` semantics). Rejected: it strands issue-form and converted plans and breaks the shipped `trackers.md` / issue-form examples; the check is a no-op when the table is absent, and the table's absence is a plan-shape question the template owns.
 - **Recommendation for a future phase:** after this lands, the same treatment is due to the design-workflow prompts, which have no run measurements yet (`docs/deferrals.jsonl` key `701-design-workflow-reviewer-audit`).
 
@@ -370,12 +369,12 @@ _Two surfaces are write paths and stay inside the existing privilege_: `bkit tas
 
 ### 🔒 Gate 1: Prerequisites Check
 
-- [ ] **Acceptance Scenario confirmed:** Human confirmed `👤 Acceptance Scenario` section (checkbox is `[x]`).
-- [ ] **Breaking Changes confirmed:** Human confirmed `⚠️ Breaking Changes & Naming Review` section (checkbox is `[x]`).
-- [ ] **Open Questions confirmed:** Human confirmed `👤 Open Questions & Assumptions` section (checkbox is `[x]`).
+- [x] **Acceptance Scenario confirmed:** Human confirmed `👤 Acceptance Scenario` section (checkbox is `[x]`).
+- [x] **Breaking Changes confirmed:** Human confirmed `⚠️ Breaking Changes & Naming Review` section (checkbox is `[x]`).
+- [x] **Open Questions confirmed:** Human confirmed `👤 Open Questions & Assumptions` section (checkbox is `[x]`).
 - [x] **Security & Privacy checked:** the one applicable row verified; the rest justified `None`.
 - [x] **Reuse Inventory complete:** every capability has a row with `Search performed` and `Decision`; every `NEW` cites its reason.
-- [ ] **Gate 1 - Verified:** Core items and applicable Conditional items checked.
+- [x] **Gate 1 - Verified:** Core items and applicable Conditional items checked.
 
 ## Data Schema Integration
 
@@ -383,7 +382,7 @@ No database in this repo. The two machine-read text contracts this change reads 
 
 ### Data Schema Usage
 
-- **Input (Read):** the plan file's group / task blocks (`<!-- bkit:group N start -->` … `<!-- bkit:group N end -->`, `<!-- bkit:task N start -->` … `<!-- bkit:task N end -->`, the uppercase fields) via `parsePlanBlocks`; the plan's `Derived Test Matrix` table and its `Task` column; the plan's `Supersession Inventory` table; the plan's `Out of Scope` table; `docs/deferrals.jsonl` rows (`key`, `type`, `category`, `severity`, `reason`, `description`, `remediation`, `references`, `status`); the `bkit tests green` audit report's `gaps: [{task, kind, detail, fixable, logLine}]` and its `verdict`; the build execute log's `DONE — TASK {N}` / `BLOCKED — TASK {N}` / `DONE — TASK {N}: already landed` lines; `{base}..{against}` and `{base}...HEAD` diffs.
+- **Input (Read):** the plan file's group / task blocks (`<!-- bkit:group N start -->` … `<!-- bkit:group N end -->`, `<!-- bkit:task N start -->` … `<!-- bkit:task N end -->`, the uppercase fields) via `parsePlanBlocks`; the plan's `Derived Test Matrix` table and its `Task` column; the plan's `Supersession Inventory` table; the plan's `Out of Scope` table; `docs/deferrals.jsonl` rows (`key`, `type`, `category`, `severity`, `reason`, `description`, `remediation`, `references`, `status`); the `bkit tests green` audit report's `gaps: [{task, kind, detail, fixable, logLine}]` and its `verdict`; the build execute log's `DONE — TASK {N}` / `BLOCKED — TASK {N}` / `DONE — TASK {N}: already landed` lines; `{base}...{against}` and `{base}...HEAD` diffs.
 - **Output (Write):** the plan file's task line (`- [ ] **TASK {N}:**` → `- [x] **TASK {N}:**`), line-addressed by `parsePlanBlocks`'s task `line`; the plan file's `Derived Test Matrix` rows the in-build producers append; `docs/deferrals.jsonl` rows (`schema`, `ts`, `kind`, `key`, `repo`, `bkit`, `by`, `references`, `type`, `category`, `severity`, `reason`, `status`, `description`, `remediation`) written through the existing `ledgers append` validation with a minted `ts`.
 
 ### Data Schema Changes
@@ -408,9 +407,9 @@ No database in this repo. The two machine-read text contracts this change reads 
 
 ## Architecture & Component Changes
 
-**Ledger rows:** `701-tasks-command-noun`, `701-green-always-prints-verdict`, `701-tick-narrows-by-tasks`, `701-matrix-task-column`, `701-verify-header-rollup`, `701-no-red-exemption-kept-in-prompt`, `701-added-lines-only-gap-kind`, `701-currency-against`, `701-design-workflow-reviewer-audit`, `701-sweep-deliverable-verification-stays-in-prompt`, `701-plan-current-classification-stays-in-prompt`, `701-verify-diff-reads-stay-in-prompt`
+**Ledger rows:** `701-tasks-command-noun`, `701-green-always-prints-verdict`, `701-tick-narrows-by-tasks`, `701-matrix-task-column`, `701-verify-header-rollup`, `701-no-red-exemption-kept-in-prompt`, `701-added-lines-only-gap-kind`, `701-currency-against`, `701-not-green-fixable-true`, `701-verdict-precedence`, `701-tick-requires-selector`, `701-currency-range-three-dot`, `701-design-workflow-reviewer-audit`, `701-sweep-deliverable-verification-stays-in-prompt`, `701-plan-current-classification-stays-in-prompt`, `701-verify-diff-reads-stay-in-prompt`
 
-`701-tick-narrows-by-tasks` and `701-matrix-task-column` each gain a same-`key` row for the refinement the review round forced (the cross-group tick; the `matrix` semantics and the producers' row write).
+`701-tick-narrows-by-tasks` and `701-matrix-task-column` each gain a same-`key` row for the refinement the review round forced (the tick's required `--group` and selector; the `matrix` semantics and the producers' row write).
 
 ### Database Migrations
 
@@ -435,9 +434,9 @@ None — no database.
 
 - **Reuse Check:** `Reuse Inventory` row "The `tasks` noun (`tick`, `open`, `currency`)" — reason (b).
 - `noun: "tasks"`, `summary`, verbs `tick` / `open` / `currency`, each with `flags`, `output` and `exitCodes` per `lib.ts`'s `VerbSpec`; imports `parsePlanBlocks` (and `derivedTestMatrix` only if a verb needs it) rather than re-parsing the block format, and imports `doneTasks` from `./tests.js` rather than re-parsing an execute log. Task 2 lands the noun and `tick`; Tasks 3 and 4 `UPDATE` this file with `open` and `currency`, so no verb is declared without a handler.
-- `tick --plan= [--group=] [--tasks=] [--green=]`: candidates are `--group`'s tasks, or every task the plan defines when no `--group` is given (the holistic Step 9 call). `--green` (a `tests green` audit report) drops every task the report gaps — it matches the report's `- Task {N} \`{kind}\` — {detail}`gap lines and its`gaps: [{task, kind, …}]`payload, the shape Task 1 writes.`--tasks`(repeatable, positive integers) intersects with the numbers given. With neither`--tasks`nor`--green`it ticks every gap-free candidate in`--group`; the verb's `--help`names the verifier as that default's only intended caller. Ticks each remaining task's`- [ ] **TASK {N}:**`line to`- [x]`, addressed by `parsePlanBlocks`'s task `line`, leaving every other line byte-identical; prints each ticked number. Exit 0 ticked (including none — idempotent); exit 1 a plan with no task blocks, naming the `plan-check`reason; exit 2 a`--tasks`value that is not a positive integer or names a task the plan does not define, a task named outside a given`--group`(naming the task and its group), or a`--plan` that is no file.
+- `tick --plan= --group= (--tasks= | --green=)`: `--group` is required — there is no cross-group call, and a call naming no `--group` exits 2. Candidates are `--group`'s tasks. One of `--tasks=` / `--green=` is required; with neither the verb exits 2. `--tasks` (repeatable, positive integers) ticks exactly those numbers, and a number outside the group exits 2, naming the task and its group. `--green` (a `tests green` audit report) drops every task the report gaps — it matches the report's `- Task {N} \`{kind}\` — {detail}`gap lines and its`gaps: [{task, kind, …}]`payload, the shape Task 1 writes — so`--green`alone ticks the group's gap-free tasks and both together intersect. Ticks each remaining task's`- [ ] **TASK {N}:**`line to`- [x]`, addressed by `parsePlanBlocks`'s task `line`, leaving every other line byte-identical; prints each ticked number. The verb's `--help`states the two required flags. Exit 0 ticked (including none — idempotent); exit 1 a plan with no task blocks, naming the`plan-check`reason; exit 2 no`--group`, neither selector, a `--tasks`value that is not a positive integer or names a task the plan does not define, a task named outside the given`--group`(naming the task and its group), or a`--plan` that is no file.
 - `open --plan= --group= --log=`: prints the group's tasks holding neither a `DONE — TASK {N}` nor a `BLOCKED — TASK {N}` line in `--log` (the log's own line forms, read through the shared `doneTasks` reader), and `handover: true` when at least one is open, else `false`. Exit 0 (including an empty list); exit 1 a plan with no task blocks, naming the `plan-check` reason; exit 2 a missing `--plan` / `--log` file.
-- `currency --plan= [--base=] [--against=]`: per task, the paths and needles its `CREATE` / `READ` / `UPDATE` / `DELETE` fields name, matched against `git diff --name-only {base}..{against}` (default `origin/dev`) and `git diff {base}..{against} -S{needle} --name-only`; for matched tasks only, print the matched paths, the needles that matched and `git diff {base}..{against} -- {paths}`; no hunk outside the matched set. `--against` exists because the search this verb replaces judges landed changes on `origin/dev`, while on the build worktree `HEAD` is the feature branch. Exit 0 (including no match); exit 1 a plan with no task blocks, naming the `plan-check` reason; exit 2 a `--plan` that is no file; the existing diff-failure code when `--base` or `--against` does not resolve.
+- `currency --plan= [--base=] [--against=]`: per task, the paths and needles its `CREATE` / `READ` / `UPDATE` / `DELETE` fields name, matched against `git diff --name-only {base}...{against}` (three dots — merge-base(`{base}`, `{against}`)..`{against}`, matching `branches scan-diff`'s `{base}...HEAD`; default `origin/dev`) and `git diff {base}...{against} -S{needle} --name-only`; for matched tasks only, print the matched paths, the needles that matched and `git diff {base}...{against} -- {paths}`; no hunk outside the matched set. `--against` exists because the search this verb replaces judges landed changes on `origin/dev`, while on the build worktree `HEAD` is the feature branch. Exit 0 (including no match); exit 1 a plan with no task blocks, naming the `plan-check` reason; exit 2 a `--plan` that is no file; the existing diff-failure code when `--base` or `--against` does not resolve.
 
 #### [MODIFY] `.bkit/core/engine/commands/workflow/branches.ts`
 
@@ -521,7 +520,7 @@ One line per `Supersession Inventory` row, named here so the removals are visibl
 - Step 6 sub-step 5: replace the prose set difference with `bkit tasks open --plan={PLAN} --group={GROUP} --log={EXECUTE_LOG}`, routing on `handover: true` — the existing `EXECUTE_VERDICT` = `HANDOVER` disjunct and the `EXECUTE_RESUMED` guard are preserved as they are.
 - Step 7 sub-step 4: the subagent's `Update:` line drops the plan (the verifier writes no plan file) and its `Read:` list keeps the diff and the green report; sub-step 4's hold gains the satisfied task numbers from the verify artifact's header as the field `Tasks` (so the number survives the tool-call boundary through `steps finish`; the empty form is `Tasks: none`); a new sub-step runs `bkit tasks tick --plan={PLAN} --group={GROUP} --tasks={VERIFIED_TASKS} --green={GREEN_REPORT}` before the step finishes.
 - Step 7 sub-step 6's `tests plan-check` route: a `matrix` / `supersession` problem joins the `markers` arm → `@bkit-build-plan-convert` there too.
-- Step 9: the same tick runs after the holistic verify — `bkit tasks tick --plan={PLAN} --tasks={VERIFIED_TASKS} --green={GREEN_REPORT}` with no `--group`, because the holistic artifact names satisfied tasks across every group and ship's summary blocks on an unticked task. The subagent's `Update:` line is dropped for the same reason as Step 7's.
+- Step 9: the tick runs after the holistic verify once per group — the workflow buckets the satisfied numbers the holistic artifact names per group and runs `bkit tasks tick --plan={PLAN} --group={GROUP} --tasks={VERIFIED_TASKS} --green={GREEN_REPORT}` for each group, because the artifact names satisfied tasks across every group and ship's summary blocks on an unticked task. The subagent's `Update:` line is dropped for the same reason as Step 7's.
 
 #### [MODIFY] `.bkit/core/workflows/bkit-ship.md`
 
@@ -627,16 +626,16 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
 <!-- bkit:task 2 start -->
 
 - [ ] **TASK 2:** Create the `tasks` noun with `tick`, and wire the verifier, the tick and the holistic pass to it
-  - **CREATE:** `.bkit/core/engine/commands/workflow/tasks.ts`: the `tasks` command over a plan's task blocks — the noun and `tick --plan= [--group=] [--tasks=] [--green=]`; Tasks 3 and 4 `UPDATE` this same file with `open` and `currency`, so no verb is declared without a handler. `--green` matches Task 1's report gap lines
+  - **CREATE:** `.bkit/core/engine/commands/workflow/tasks.ts`: the `tasks` command over a plan's task blocks — the noun and `tick --plan= --group= (--tasks= | --green=)`; Tasks 3 and 4 `UPDATE` this same file with `open` and `currency`, so no verb is declared without a handler. `--green` matches Task 1's report gap lines
   - **UPDATE:** `COMMANDS` in `.bkit/core/engine/commands/registry.ts`: register `tasksCommand`
   - **UPDATE:** `.bkit/core/prompts/bkit-build-plan-verify.md`: the verifier no longer edits the plan; its header carries the satisfied task numbers (`Tasks: 1, 2`, or `Tasks: none`) and the mandate drops the plan-write clause
-  - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: Step 7 sub-step 4's `Update:` no longer names the plan, the hold reads the satisfied task numbers as the field `Tasks`, and a new sub-step runs `bkit tasks tick --plan={PLAN} --group={GROUP} --tasks={VERIFIED_TASKS} --green={GREEN_REPORT}` before the step finishes; Step 9 runs the same verb with no `--group` after the holistic verify, and its subagent `Update:` line is dropped
+  - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: Step 7 sub-step 4's `Update:` no longer names the plan, the hold reads the satisfied task numbers as the field `Tasks`, and a new sub-step runs `bkit tasks tick --plan={PLAN} --group={GROUP} --tasks={VERIFIED_TASKS} --green={GREEN_REPORT}` before the step finishes; Step 9 runs the same verb once per group after the holistic verify, each call naming its group with that group's satisfied numbers, and its subagent `Update:` line is dropped
   - **DEPENDS ON:** 1
   - **READ:** `.bkit/core/engine/commands/workflow/plan-blocks.ts`: `parsePlanBlocks` and the task block's `line` / `end` fields the tick address
   - **READ:** `.bkit/core/engine/commands/workflow/tests.ts`: the verb / flag / exit-code conventions `bkit tests` follows, and the `writeAuditReport` gap lines `--green` matches
   - **READ:** `.bkit/core/engine/commands/registry.ts`: what registering a command costs
   - **READ:** `.bkit/core/engine/commands/conventions.test.ts`: the rules a new command source must satisfy
-  - **DONE WHEN:** `bkit tasks --help` lists `tick` and names the default's intended caller; `bkit tasks tick --plan= --group= --tasks=` ticks exactly the named tasks and prints their numbers, leaving every other plan line byte-identical; `bkit tasks tick --plan= --tasks=` with no `--group` ticks a named task in any group; re-ticking a ticked task changes nothing and exits 0; `bkit-build-plan-verify.md` names no plan tick edit and `bkit-build.md` Steps 7 and 9 call the verb; `pnpm vitest run .bkit/core/engine/commands/conventions.test.ts .bkit/core/engine/audits/workflows/workflow-shape.test.ts` is green
+  - **DONE WHEN:** `bkit tasks --help` lists `tick` and states the two required flags (`--group`, and one of `--tasks` / `--green`); `bkit tasks tick --plan= --group= --tasks=` ticks exactly the named tasks and prints their numbers, leaving every other plan line byte-identical; `bkit tasks tick --plan= --tasks=` with no `--group`, and `bkit tasks tick --plan= --group=` with neither `--tasks` nor `--green`, each exits 2 and writes no line; re-ticking a ticked task changes nothing and exits 0; `bkit-build-plan-verify.md` names no plan tick edit and `bkit-build.md` Steps 7 and 9 call the verb; `pnpm vitest run .bkit/core/engine/commands/conventions.test.ts .bkit/core/engine/audits/workflows/workflow-shape.test.ts` is green
   - **TEST FIRST:**
     - `.bkit/core/engine/commands/workflow/tasks.test.ts` `tick marks only the named tasks` fails while an unnamed group task is ticked
     - `.bkit/core/engine/commands/workflow/tasks.test.ts` `tick refuses a task in another group` fails while it exits 0
@@ -646,7 +645,7 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
     - `.bkit/core/engine/commands/workflow/tasks.test.ts` `tick refuses a --tasks value that is not a task number` fails while a non-numeric value exits 0 or writes a line
     - `.bkit/core/engine/commands/workflow/tasks.test.ts` `tick refuses a --plan that is no file` fails while a missing path exits 0
     - `.bkit/core/engine/commands/workflow/tasks.test.ts` `tick leaves every other plan line byte-identical` fails while an untouched line moves
-    - `.bkit/core/engine/commands/workflow/tasks.test.ts` `tick with no --group ticks named tasks across groups` fails while a cross-group number exits 2 or stays unticked
+    - `.bkit/core/engine/commands/workflow/tasks.test.ts` `tick refuses a call with no --group or with neither selector` fails while a call naming no `--group`, or naming neither `--tasks` nor `--green`, exits 0 and writes a line
     - `.bkit/core/engine/commands/conventions.test.ts` `each export a command, and every exported command is in COMMANDS (reachable)` fails while `tasks.ts` exports `tasksCommand` and `COMMANDS` does not list it
 
 <!-- bkit:task 2 end -->
@@ -677,17 +676,17 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
 <!-- bkit:task 4 start -->
 
 - [ ] **TASK 4:** `tasks currency` — plan-current's path and symbol match
-  - **UPDATE:** `currency` in `.bkit/core/engine/commands/workflow/tasks.ts`: per task print the matched paths and needles and the diff hunks for its `CREATE` / `READ` / `UPDATE` / `DELETE` fields over `{base}..{against}` (`--against` defaulting to `origin/dev`), not `{base}..HEAD`
-  - **UPDATE:** `.bkit/core/prompts/bkit-build-plan-current.md`: drop Process 5-7's search and call `bkit tasks currency --base={BASE_SHA} --against=origin/dev`; keep the `Executable` / `Reword` / `Broken` call
+  - **UPDATE:** `currency` in `.bkit/core/engine/commands/workflow/tasks.ts`: per task print the matched paths and needles and the diff hunks for its `CREATE` / `READ` / `UPDATE` / `DELETE` fields over `{base}...{against}` (`--against` defaulting to `origin/dev`), not `{base}...HEAD`
+  - **UPDATE:** `.bkit/core/prompts/bkit-build-plan-current.md`: drop Process 5-7's search and call `bkit tasks currency --base={BASE_SHA} --against=origin/dev` (its `{BASE_SHA}...origin/dev` three-dot range); keep the `Executable` / `Reword` / `Broken` call
   - **DEPENDS ON:** 2
   - **READ:** `.bkit/core/engine/commands/workflow/branches.ts`: the `git diff` base guard and the `--name-only` forms the verb copies
-  - **DONE WHEN:** `bkit tasks currency --plan= --base= --against=` prints each task whose paths or needles moved between `{base}` and `{against}` with its matched paths and needles and the diff hunks, and no hunk for a path outside the matched set; a change the branch itself landed since `{base}` does not match, and a change dev landed after `{base}` does; the plan-current prompt names no `git diff` search of its own and passes both flags; an unmatched plan prints no hunks and exits 0
+  - **DONE WHEN:** `bkit tasks currency --plan= --base= --against=` prints each task whose paths or needles moved between `{base}` and `{against}` (the `{base}...{against}` three-dot range) with its matched paths and needles and the diff hunks, and no hunk for a path outside the matched set; a change the branch itself landed since `{base}` does not match, and a change dev landed after `{base}` does; the plan-current prompt names no `git diff` search of its own and passes both flags; an unmatched plan prints no hunks and exits 0
   - **TEST FIRST:**
     - `.bkit/core/engine/commands/workflow/tasks.test.ts` `currency matches a task on a moved symbol` fails while the task is not listed
     - `.bkit/core/engine/commands/workflow/tasks.test.ts` `currency emits no hunk outside the matched set` fails while an unmatched path's diff appears
     - `.bkit/core/engine/commands/workflow/tasks.test.ts` `currency refuses a plan with no task blocks` fails while it prints an empty result and exits 0
     - `.bkit/core/engine/commands/workflow/tasks.test.ts` `currency exits 0 with no hunks when no task matches` fails while an unmatched plan exits non-zero or prints a hunk
-    - `.bkit/core/engine/commands/workflow/tasks.test.ts` `currency judges base..against (origin/dev), not base..HEAD` fails while a change the branch itself landed since the base is reported as a match
+    - `.bkit/core/engine/commands/workflow/tasks.test.ts` `currency judges base...against (origin/dev), not base...HEAD` fails while a change the branch itself landed since the base is reported as a match
 
 <!-- bkit:task 4 end -->
 
@@ -857,7 +856,7 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
 - [ ] **Full Local Gate Suite:** `pnpm bkit:gate:static-unit-integration` (which includes `slop:delta`) and `bkit check` pass.
 - [ ] **Test Synchronization:** `conventions.test.ts` (the new source is registered and tested), `catalog-parity.test.ts` + `workflow-shape.test.ts` (the build / ship step bodies moved, including Step 3 / 5 / 7 / 9), `instructions.test.ts` (a synced clause), `dogfood-templates.test.ts` + `template-shape.test.ts` (the template's new column), `verdict-vocabulary.test.ts` and `models-table-parity.test.ts` (no prompt name, verdict line or step key moved), `ledger-integrity.test.ts` (the rows this plan writes), `challenge.test.ts` and `plan-blocks.test.ts` (the merge writes a matrix row; the new readers), and the existing `tests.test.ts` fixtures the new `matrix` kind touches (the check is a no-op on a plan with no `Derived Test Matrix`, so a matrix-less fixture stays green).
 - [ ] **Build Configuration:** no new test-only config; `tasks.test.ts` sits beside its source under `.bkit/core/engine/commands/workflow/` and stays out of the production build as today.
-- [ ] **Unit (`.bkit/core/engine/commands/workflow/tests.test.ts`, `tasks.test.ts`, `branches.test.ts`, `ledgers.test.ts`, `challenge.test.ts`, `plan-blocks.test.ts`, `conventions.test.ts`):** the 46 `Derived Test Matrix` rows — `green`'s `verdict` / `fixable` / `logLine` and its added-lines-only gap, `tick` / `open` / `currency` on real temp plan files and temp git repos (including the cross-group tick and `currency`'s `--against`), `plan-check`'s `matrix` / `supersession` problems with an accepting control and the no-matrix no-op, `scan-diff --disabled-tests` on real temp git repos, `ledgers triage` writing a real row through `append`, the `challenge` merge append, and the three `plan-blocks.ts` readers.
+- [ ] **Unit (`.bkit/core/engine/commands/workflow/tests.test.ts`, `tasks.test.ts`, `branches.test.ts`, `ledgers.test.ts`, `challenge.test.ts`, `plan-blocks.test.ts`, `conventions.test.ts`):** the 46 `Derived Test Matrix` rows — `green`'s `verdict` / `fixable` / `logLine` and its added-lines-only gap, `tick` / `open` / `currency` on real temp plan files and temp git repos (including the group-required tick and `currency`'s `--against`), `plan-check`'s `matrix` / `supersession` problems with an accepting control and the no-matrix no-op, `scan-diff --disabled-tests` on real temp git repos, `ledgers triage` writing a real row through `append`, the `challenge` merge append, and the three `plan-blocks.ts` readers.
 - [ ] **Apply local migrations:** N/A — no database.
 - [ ] **Run all tests:** `pnpm vitest run` (full, never scoped) passes.
 

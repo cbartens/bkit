@@ -324,14 +324,16 @@ export interface DispatchResult {
 /** Exit code: the re-trigger commit or its push failed. */
 export const EXIT_RETRIGGER_FAILED = 6;
 
-function pushCurrentBranch(cwd: string): boolean {
+/** Push the current branch; the failure text is kept so the gate can name why. */
+function pushCurrentBranch(cwd: string): { ok: boolean; error: string } {
   const branch = git(cwd, ["branch", "--show-current"]);
-  if (!branch) return false;
+  if (!branch) return { ok: false, error: "no branch checked out (detached HEAD)" };
   // Shared branches never force; a feature branch is rewritten only by this run.
   const args = isSharedBranch(branch)
     ? ["push", "origin", branch]
     : ["push", "--force-with-lease", "origin", branch];
-  return runGit(cwd, args).ok;
+  const res = runGit(cwd, args);
+  return { ok: res.ok, error: res.ok ? "" : res.stderr || res.stdout };
 }
 
 /**
@@ -454,10 +456,24 @@ export async function ciDispatchGate(
       return res;
     }
     let pushed: boolean;
+    let failure = "";
     if (rec === null) {
       landed = null;
-      pushed =
-        runGit(o.cwd, ["commit", "--allow-empty", "-m", message]).ok && pushCurrentBranch(o.cwd);
+      const before = git(o.cwd, ["rev-parse", "HEAD"]);
+      const made = runGit(o.cwd, ["commit", "--allow-empty", "-m", message]);
+      if (!made.ok) {
+        pushed = false;
+        failure = made.stderr || made.stdout;
+      } else {
+        const push = pushCurrentBranch(o.cwd);
+        pushed = push.ok;
+        if (!push.ok) {
+          failure = push.error;
+          // The commit never reached the remote: drop it so a re-run does not pile
+          // up orphan re-triggers. --soft restores the index exactly as the commit left it.
+          if (before !== null) runGit(o.cwd, ["reset", "--soft", before]);
+        }
+      }
     } else {
       const made = retriggerCommit(o.cwd, rec, message);
       if (!made.ok) deps.log(`re-trigger commit failed: ${made.error}`);
@@ -469,7 +485,9 @@ export async function ciDispatchGate(
       if (pushed) fetchLanded();
     }
     if (!pushed) {
-      deps.log("re-trigger commit or push failed — no verdict; route to the Failure Path");
+      deps.log(
+        `re-trigger commit or push failed${failure ? `: ${failure}` : ""} — no verdict; route to the Failure Path`,
+      );
       res.phase = "repoll";
       res.handoff = EXIT_RETRIGGER_FAILED;
       return res;

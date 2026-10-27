@@ -368,14 +368,14 @@ const ADOPTED: Record<string, Entry> = {
       {
         kind: "bkit-only",
         what: "the core hook sources share their mirrors' opt-outs",
-        fill: '"files": [".opencode/plugin/bkit-gateguard.js", ".opencode/plugin/bkit-readguard.js"]',
-        with: '"files": [\n        ".bkit/core/.opencode/plugin/bkit-gateguard.js",\n        ".opencode/plugin/bkit-gateguard.js",\n        ".bkit/core/.opencode/plugin/bkit-readguard.js",\n        ".opencode/plugin/bkit-readguard.js"\n      ]',
+        fill: '"files": [\n        ".opencode/plugin/bkit-gateguard.js",\n        ".opencode/plugin/bkit-readguard.js",\n        ".opencode/plugin/bkit-rules.js"\n      ]',
+        with: '"files": [\n        ".bkit/core/.opencode/plugin/bkit-gateguard.js",\n        ".opencode/plugin/bkit-gateguard.js",\n        ".bkit/core/.opencode/plugin/bkit-readguard.js",\n        ".opencode/plugin/bkit-readguard.js",\n        ".bkit/core/.opencode/plugin/bkit-rules.js",\n        ".opencode/plugin/bkit-rules.js"\n      ]',
       },
       {
         kind: "bkit-only",
         what: "the core hook sources share their mirrors' opt-outs",
         fill: '      "files": [\n        "**/.claude/hooks/bkit-gateguard.cjs",\n',
-        with: '      "files": [\n        ".bkit/core/.claude/hooks/bkit-gateguard.cjs",\n        ".bkit/core/.cursor/hooks/bkit-gateguard.cjs",\n        ".bkit/core/.codex/hooks/bkit-gateguard.cjs",\n        ".bkit/core/.opencode/plugin/bkit-gateguard.js",\n        ".bkit/core/hooks/gateguard-engine.js",\n        ".bkit/core/hooks/gateguard-edit-payload.js",\n        ".bkit/core/.claude/hooks/bkit-readguard.cjs",\n        ".bkit/core/.cursor/hooks/bkit-readguard.cjs",\n        ".bkit/core/.codex/hooks/bkit-readguard.cjs",\n        ".bkit/core/.agents/plugins/bkit/hooks/bkit-readguard.cjs",\n        ".bkit/core/.opencode/plugin/bkit-readguard.js",\n        ".bkit/core/hooks/readguard-engine.js",\n        ".bkit/core/hooks/readguard-payload.js",\n        ".bkit/core/hooks/antigravity-hook.js",\n        "**/.claude/hooks/bkit-gateguard.cjs",\n',
+        with: '      "files": [\n        ".bkit/core/.claude/hooks/bkit-gateguard.cjs",\n        ".bkit/core/.cursor/hooks/bkit-gateguard.cjs",\n        ".bkit/core/.codex/hooks/bkit-gateguard.cjs",\n        ".bkit/core/.opencode/plugin/bkit-gateguard.js",\n        ".bkit/core/hooks/gateguard-engine.js",\n        ".bkit/core/hooks/gateguard-edit-payload.js",\n        ".bkit/core/.claude/hooks/bkit-readguard.cjs",\n        ".bkit/core/.cursor/hooks/bkit-readguard.cjs",\n        ".bkit/core/.codex/hooks/bkit-readguard.cjs",\n        ".bkit/core/.agents/plugins/bkit/hooks/bkit-readguard.cjs",\n        ".bkit/core/.opencode/plugin/bkit-readguard.js",\n        ".bkit/core/hooks/readguard-engine.js",\n        ".bkit/core/hooks/readguard-payload.js",\n        ".bkit/core/hooks/antigravity-hook.js",\n        ".bkit/core/.opencode/plugin/bkit-rules.js",\n        ".bkit/core/hooks/session-rules-advisory.js",\n        ".bkit/core/.codex/hooks/bkit-rules.cjs",\n        ".bkit/core/.agents/plugins/bkit/hooks/bkit-rules.cjs",\n        "**/.claude/hooks/bkit-gateguard.cjs",\n',
       },
       {
         kind: "bkit-only",

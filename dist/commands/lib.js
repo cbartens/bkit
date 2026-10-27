@@ -365,14 +365,23 @@ export function runGh(cwd, args, input, env) {
  */
 export const ghUnavailable = (res) => res.missing || res.status === 4 || (!res.ok && /\bHTTP 403\b/.test(res.stderr));
 /**
+ * The main checkout's root from any worktree, or `null` when not inside a git repo.
+ * `--git-common-dir` points at the shared `.git`, so a linked worktree resolves to the
+ * same root as the main one.
+ */
+export function mainCheckoutRoot(cwd) {
+    const common = git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+    return common ? path.dirname(common) : null;
+}
+/**
  * The main checkout's root, from any worktree. `--git-common-dir` points at the
  * shared `.git`, so a linked worktree resolves to the same root as the main one.
  */
 export function repoRoot(cwd) {
-    const common = git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
-    if (!common)
+    const root = mainCheckoutRoot(cwd);
+    if (!root)
         throw new CommandError(EXIT.USAGE, `not inside a git repository: ${cwd}`);
-    return path.dirname(common);
+    return root;
 }
 /** `<git common dir>/bkit-outbox`: per-run scratch files, never committed; null outside a git repo. */
 export function outboxRoot(cwd) {

@@ -291,6 +291,23 @@ export function requireRecordOnShared(cwd, workflow, rec) {
         return;
     throw new CommandError(EXIT_NO_RECORD, `no shared-checkout record for this run on ${branch} — nothing written or committed (the record is gone or belongs to another run); a plain commit here would carry work the run does not own`);
 }
+/** The paths staged in `cwd`, NUL-delimited so a path holding a newline stays one entry. */
+function stagedPaths(cwd) {
+    return new Set(runGit(cwd, ["diff", "--cached", "--name-only", "-z"])
+        .stdout.split("\0")
+        .filter((p) => p !== ""));
+}
+/**
+ * Take this attempt's staging back off the index: every path staged now that was not
+ * staged before it ran. A refused commit wrote nothing, so the index must match the
+ * rolled-back working tree — a row left staged rides the next pathspec-less commit. A
+ * path the caller had already staged is never touched.
+ */
+function unstageStaged(cwd, stagedBefore) {
+    const staged = [...stagedPaths(cwd)].filter((p) => !stagedBefore.has(p));
+    if (staged.length > 0)
+        runGit(cwd, ["reset", "-q", "--", ...staged]);
+}
 /**
  * Append one `step-done` row, then commit (parentSha first, the row, then the
  * commit — the order the fold's de-dup relies on). Returns the row and the new
@@ -373,10 +390,15 @@ export function writeStepRow(cwd, r, log) {
         }
         return { row, commit: runGit(cwd, ["rev-parse", "HEAD"]).stdout, code: EXIT.OK };
     }
+    const stagedBefore = stagedPaths(cwd);
     const add = addAllButCopied(cwd);
     const made = add.ok ? runGit(cwd, ["commit", "--allow-empty", "-m", r.message]) : add;
     if (!made.ok) {
         rollback();
+        // `addAllButCopied` put the row — and the rest of the tree — in the index, so the
+        // rollback has to take the index back with the working tree: exit 8 means nothing was
+        // written or committed, and a row left staged rides the next pathspec-less commit.
+        unstageStaged(cwd, stagedBefore);
         log(`no row written to ${r.file}: the commit failed: ${made.stderr || made.stdout}`);
         return { row, commit: null, code: EXIT_COMMIT };
     }

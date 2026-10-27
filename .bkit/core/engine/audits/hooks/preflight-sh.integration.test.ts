@@ -5,10 +5,10 @@
 //
 // The Claude hook runs as a Claude SessionStart hook, the Cursor one as a Cursor Cloud
 // sessionStart hook (a different surface from the install-time TS preflight). Covered:
-//   - IDE-skip paths (Claude: empty LINEAR_ISSUE_ID; Cursor: no is_background_agent)
-//     exit 0 silently.
+//   - IDE sessions (Claude: empty LINEAR_ISSUE_ID; Cursor: no is_background_agent) exit 0
+//     carrying the rules-read advisory, built without python3.
 //   - Missing BKIT_LINEAR_API_KEY / LINEAR_ISSUE_ID hard-stop, in each host's own
-//     output shape.
+//     output shape, with the advisory riding the same one JSON document.
 //   - Neither hook calls bkit: both run with no node_modules at all.
 //   - Jira has no preflight guard: a Jira session passes through, and neither hook
 //     reads the Jira token or calls Atlassian.
@@ -36,6 +36,7 @@ function runPreflight(
   hook: string,
   env: Record<string, string | undefined>,
   input = "{}",
+  opts: { path?: string } = {},
 ): { status: number | null; stdout: string; stderr: string } {
   // Strip undefined keys so we don't leak the parent process env back in.
   const cleanEnv: Record<string, string> = {};
@@ -45,7 +46,7 @@ function runPreflight(
   // cwd outside any git repo: Cursor's runtime marker write is skipped.
   const result = spawnSync("bash", [hook], {
     cwd: GENERATED,
-    env: { PATH: process.env.PATH ?? "", ...cleanEnv },
+    env: { PATH: opts.path ?? process.env.PATH ?? "", ...cleanEnv },
     input,
     encoding: "utf-8",
     timeout: 10_000,
@@ -57,11 +58,37 @@ function runPreflight(
   };
 }
 
+// A `python3` that behaves like a missing one (127 = command not found), so a PATH
+// holding it is a python3-less session. The advisory path must build its JSON without
+// python3: Cursor's `failClosed: true` blocks a session on a non-zero exit, and Claude
+// would lose the advisory silently.
+const NO_PYTHON_BIN = path.join(GENERATED, "no-python-bin");
+fs.mkdirSync(NO_PYTHON_BIN, { recursive: true });
+const NO_PYTHON_STUB = path.join(NO_PYTHON_BIN, "python3");
+fs.writeFileSync(NO_PYTHON_STUB, "#!/bin/sh\nexit 127\n");
+fs.chmodSync(NO_PYTHON_STUB, 0o755);
+const NO_PYTHON_PATH = `${NO_PYTHON_BIN}${path.delimiter}${process.env.PATH ?? ""}`;
+
+/** The context string a rendered hook writes, in that host's own stdout envelope. */
+function emittedContext(stdout: string): string {
+  const doc = JSON.parse(stdout);
+  return doc.hookSpecificOutput?.additionalContext ?? doc.additional_context;
+}
+
 describe("BAR-186 — Claude SessionStart preflight.sh runtime behaviour", () => {
-  it("exits 0 silently when LINEAR_ISSUE_ID is empty (existing IDE-skip preserved)", () => {
+  it("emits the rules advisory on a Claude IDE session", () => {
     const result = runPreflight(CLAUDE_HOOK, {});
     expect(result.status).toBe(0);
-    expect(result.stdout).toBe("");
+    expect(emittedContext(result.stdout)).toContain(".agents/rules.md");
+  });
+
+  it("a cloud session prints one JSON document carrying the advisory and the Linear guard result", () => {
+    const result = runPreflight(CLAUDE_HOOK, { LINEAR_ISSUE_ID: "BAR-186-test" });
+    expect(result.status).toBe(1);
+    expect(result.stdout.trim().split("\n")).toHaveLength(1);
+    const context = emittedContext(result.stdout);
+    expect(context).toContain(".agents/rules.md");
+    expect(context).toContain("HARD STOP");
   });
 
   it("missing BKIT_LINEAR_API_KEY hard-stops when LINEAR_ISSUE_ID is present (regression guard)", () => {
@@ -73,13 +100,23 @@ describe("BAR-186 — Claude SessionStart preflight.sh runtime behaviour", () =>
     expect(result.stderr).toContain("BKIT_LINEAR_API_KEY not set");
     expect(JSON.parse(result.stdout).hookSpecificOutput.additionalContext).toContain("HARD STOP");
   });
+
+  it("a context carrying a control character still yields one parseable JSON document", () => {
+    // The Linear guard interpolates LINEAR_ISSUE_ID verbatim into the key-missing FAIL
+    // message. A control byte in it must not yield a document the host discards whole,
+    // which would silently drop the HARD STOP and the advisory with it.
+    const result = runPreflight(CLAUDE_HOOK, { LINEAR_ISSUE_ID: "BAR-186-\u000b-test" });
+    expect(result.status).toBe(1);
+    const doc = JSON.parse(result.stdout);
+    expect(doc.hookSpecificOutput.additionalContext).toContain("HARD STOP");
+  });
 });
 
 describe("Claude SessionStart preflight.sh — no Jira guard", () => {
-  it("a Jira session (token set, no LINEAR_ISSUE_ID) exits 0 silently", () => {
+  it("a Jira session (token set, no LINEAR_ISSUE_ID) emits the advisory and exits 0", () => {
     const result = runPreflight(CLAUDE_HOOK, { BKIT_JIRA_API_KEY: "t" });
     expect(result.status).toBe(0);
-    expect(result.stdout).toBe("");
+    expect(emittedContext(result.stdout)).toContain(".agents/rules.md");
     expect(result.stderr).toBe("");
   });
 
@@ -93,10 +130,12 @@ describe("Claude SessionStart preflight.sh — no Jira guard", () => {
 });
 
 describe("Cursor sessionStart preflight.sh runtime behaviour", () => {
-  it("exits 0 silently when the session is not a background agent", () => {
-    const result = runPreflight(CURSOR_HOOK, {}, '{"is_background_agent": false}');
+  it("a Cursor session emits the advisory without python3 and exits 0", () => {
+    const result = runPreflight(CURSOR_HOOK, {}, '{"is_background_agent": false}', {
+      path: NO_PYTHON_PATH,
+    });
     expect(result.status).toBe(0);
-    expect(result.stdout).toBe("");
+    expect(emittedContext(result.stdout)).toContain(".agents/rules.md");
   });
 
   it("a background agent without BKIT_LINEAR_API_KEY hard-stops in Cursor's shape", () => {
@@ -114,6 +153,23 @@ describe("Cursor sessionStart preflight.sh runtime behaviour", () => {
     );
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("LINEAR_ISSUE_ID not set");
+  });
+});
+
+describe("preflight.sh — the rules-read advisory", () => {
+  it("names .agents/rules.md and never AGENTS.md", () => {
+    const sessions: Array<[string, string]> = [
+      [CLAUDE_HOOK, "{}"],
+      [CURSOR_HOOK, '{"is_background_agent": false}'],
+    ];
+    for (const [hook, input] of sessions) {
+      const result = runPreflight(hook, {}, input);
+      expect(result.status, hook).toBe(0);
+      const context = emittedContext(result.stdout);
+      expect(context, hook).toContain(".agents/rules.md");
+      expect(context, hook).not.toContain("AGENTS.md");
+      expect(fs.readFileSync(hook, "utf-8"), hook).not.toContain("AGENTS.md");
+    }
   });
 });
 

@@ -14,6 +14,7 @@ _(above the bkit list — yours, never overwritten)_
 ## bkit
 
 _(refreshed 2026-10-27T09:52:19Z)_
+_(refreshed 2026-10-27T09:52:20Z)_
 
 ### Design
 
@@ -30,7 +31,6 @@ _(refreshed 2026-10-27T09:52:19Z)_
 | 504-example-project | 504-example-project | 1791870640742 |
 | 651-sops-env-backup | 651-sops-env-backup | 1792633642892 |
 | 699-engine-run-completeness | 699-engine-run-completeness | 1793002326175 |
-| 700-session-start-nudge | 700-session-start-nudge | 1792986990130 |
 | 701-engine-work-build | 701-engine-work-build | 1793002272742 |
 
 ### Build
@@ -50,6 +50,8 @@ _(none)_
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 703-standardise-question-option | 703-standardise-question-option | 1793090828870 |
+| 700-session-start-nudge | 700-session-start-nudge | 1793054973314 |
 | 380-roadmap-analysis-refresh | Roadmap ledger, two-tier generated board, fold + cadence + on-demand utility | 1787868628424 |
 | 342-injection-hardening | Prompt-injection hardening | 1787201470000 |
 | 363-widen-bkit-cloud-trigger | Widen bkit-cloud trigger to post-merge dev CI | 1785451674356 |
@@ -58,8 +60,6 @@ _(none)_
 | 341-three-runtimes | Workflows run in all runtimes — local, GH Actions, claude.ai | 1785220571000 |
 | completed-three-runtimes-workflow-execution-341 | Three-runtimes workflow execution — #341 | 1785196800000 |
 | 58-workflow-counters | Workflow counters read decision variables from status.jsonl | 1784704423000 |
-| 234-telemetry-jsonl | Unified telemetry jsonl — stats, friction, deferrals, failures, harvest | 1784092348000 |
-| 325 | Self-hosted Renovate GitHub Actions OOM — move to Mend hosted runner | 1783234091000 |
 <!-- bkit:roadmap-status end -->
 
 <!-- bkit:roadmap-analysis start -->

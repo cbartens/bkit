@@ -922,7 +922,7 @@ Every point where a run can ask the owner has two settings under `package.json` 
 - **Limits are hard:** over the limit → Failure Path (debug fix → SOAK first). A question never resets a count.
 - **Headless** (`runtimeHeadless` true, GitHub Actions only) behaves as `ask: false` at every point. `bkit counters route` and `counters max` print `ask` already false when headless.
 - **`ask: false`:** loop questions take the recommendation; `Fix now` is applied; `Accept` is recorded as assumed. Hard blockers are still asked in a session and go to the Failure Path headless.
-- **Question layout**, every point: the `{workflow} {point}: attempt {n} of {max}` line (loop questions; `turn` for the grill), then per question `**Q{n} — {title}:** {question}`, `Options: A / B`, and `Recommended: X — {reason}` or `No recommendation — {why}`; then `Reply per question. "yes" takes every recommendation. "stop" writes a handover; the run can be resumed.` Option names: `Try again` / `Decide` / `Stop`, `Accept` / `Fix now`, `Confirm` / `Reject`.
+- **Question layout**, every point: the `{workflow} {point}: attempt {n} of {max}` line (loop questions; `turn` for the grill), then per question `**Q{n} — {title}:** {question}`, `Options: A) … / B) …`, and `Recommended: A) X — {reason}` or `No recommendation — {why}`; then `Reply per question. "yes" takes every recommendation. "stop" writes a handover; the run can be resumed.` Option names: `Try again` / `Decide` / `Stop`, `Accept` / `Fix now`, `Confirm` / `Reject`.
 - **Progress report:** `bkit counters progress --check=<step> --fix=<step>` (and `decisions compose --loop`) → the `## Progress` block of a loop question. Counted from `status.jsonl` and git, never judged by an agent:
 
   <!-- prettier-ignore -->

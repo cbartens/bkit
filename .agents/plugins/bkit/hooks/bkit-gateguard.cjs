@@ -39,6 +39,7 @@
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const crypto = require("node:crypto");
 
 // Antigravity's file-writing tools. `write_to_file` creates or overwrites a whole file;
 // `replace_file_content` edits in place. `Edit` / `Write` are accepted as matchers too.
@@ -259,8 +260,8 @@ function firstTouchAdvice(filePath, sessionId, isNewFile) {
 }
 
 // --- Antigravity hook contract: identical in bkit's three Antigravity hooks (bkit renders
-// it from one source). Needs `fs`, `os` and `path` in scope; the host's own code above
-// declares them.
+// it from one source). Needs `fs`, `os`, `path` and `crypto` in scope; the host's own code
+// above declares them.
 //
 // Live-verified on the agy CLI: PreToolUse stdin is `{ conversationId, toolCall: { name,
 // args }, workspacePaths, stepIdx, ... }` — no tool_name / tool_input / session_id / cwd.
@@ -314,13 +315,17 @@ function agRetryFile(hook, sessionId) {
  */
 function adviseOnce(hook, sessionId, signature, advisory) {
   const file = agRetryFile(hook, sessionId);
+  // One-way digest of the call signature: the retry store is world-readable and has no
+  // TTL, so no tool argument (a shell command line with an inline secret, a file path)
+  // may rest on disk in cleartext.
+  const digest = crypto.createHash("sha256").update(signature).digest("hex");
   const last = fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
-  if (last === signature) {
+  if (last === digest) {
     fs.rmSync(file, { force: true });
     return { decision: "allow" };
   }
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, signature, "utf-8");
+  fs.writeFileSync(file, digest, "utf-8");
   return {
     decision: "deny",
     reason: `${advisory}\nBlocked once so you see this; repeat the same call to proceed.`,

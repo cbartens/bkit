@@ -30,6 +30,16 @@
             "statusMessage": "bkit ReadGuard"
           }
         ]
+      },
+      {
+        "matcher": "write_to_file|replace_file_content|view_file|run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=hooks/bkit-rules.cjs; test -f \"$f\" || f=.agents/plugins/bkit/$f; test -f \"$f\" && node \"$f\" || true",
+            "statusMessage": "bkit rules"
+          }
+        ]
       }
     ]
   }

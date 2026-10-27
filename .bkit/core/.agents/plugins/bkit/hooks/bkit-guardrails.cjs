@@ -40,6 +40,7 @@
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const crypto = require("node:crypto");
 
 // {{BKIT_PART guardrails-shell.js}}
 

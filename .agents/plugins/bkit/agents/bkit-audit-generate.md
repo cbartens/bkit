@@ -152,7 +152,7 @@ tools:
 
 **Report format:**
 
-See `docs/templates/bkit-audit-*.md`.
+See `docs/templates/bkit-audit-*.md`. An open question the report poses carries lettered options `A)`, `B)` and a `Recommended` naming the chosen letter.
 
 **Output format:**
 

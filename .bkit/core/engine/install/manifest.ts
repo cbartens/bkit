@@ -412,6 +412,13 @@ export const OPENCODE_MANIFEST: ManifestEntry[] = [
     format: "markered-text",
     module: "opencode",
   },
+  // bkit-rules.js — same split as bkit-gateguard.js. Delivers the rules-read advisory
+  // on the session's first tool call (opencode has no session-start event).
+  {
+    path: ".opencode/plugin/bkit-rules.js",
+    format: "markered-text",
+    module: "opencode",
+  },
   // Agent and command mirrors are managed dynamically (not listed individually here —
   // the exact set depends on the bkit-prefix prompt/workflow files at install time).
   // Uninstall uses the BKIT_PREFIX filter for .opencode/agents/ and .opencode/commands/.
@@ -449,6 +456,14 @@ export const CODEX_MANIFEST: ManifestEntry[] = [
     format: "markered-text",
     module: "codex",
   },
+  // bkit-rules.cjs — Tier-2 markered-text. Delivers the rules-read advisory once per
+  // session as `additionalContext` on the first tool call (Codex has no session-start
+  // event). Registered on two single-value matchers, `apply_patch` and `Bash`.
+  {
+    path: ".codex/hooks/bkit-rules.cjs",
+    format: "markered-text",
+    module: "codex",
+  },
   // Agent mirrors (.codex/agents/*.toml) and workflow skills (.agents/skills/bkit-*/) are
   // managed dynamically — the set follows the bkit-prefix prompt/workflow files at install.
 ];
@@ -483,6 +498,14 @@ export const ANTIGRAVITY_MANIFEST: ManifestEntry[] = [
   // on matcher `view_file|run_command`, Antigravity's file-read and shell tool names.
   {
     path: ".agents/plugins/bkit/hooks/bkit-guardrails.cjs",
+    format: "markered-text",
+    module: "antigravity",
+  },
+  // bkit-rules.cjs — Tier-2 markered-text. Delivers the rules-read advisory once per
+  // session by denying the first tool call with the advisory as the reason (Antigravity's
+  // only channel to the model); the identical retry is allowed.
+  {
+    path: ".agents/plugins/bkit/hooks/bkit-rules.cjs",
     format: "markered-text",
     module: "antigravity",
   },

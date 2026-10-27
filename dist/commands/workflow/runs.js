@@ -182,15 +182,17 @@ function currentPr(cwd, gh) {
 }
 /** Exit code: the re-trigger commit or its push failed. */
 export const EXIT_RETRIGGER_FAILED = 6;
+/** Push the current branch; the failure text is kept so the gate can name why. */
 function pushCurrentBranch(cwd) {
     const branch = git(cwd, ["branch", "--show-current"]);
     if (!branch)
-        return false;
+        return { ok: false, error: "no branch checked out (detached HEAD)" };
     // Shared branches never force; a feature branch is rewritten only by this run.
     const args = isSharedBranch(branch)
         ? ["push", "origin", branch]
         : ["push", "--force-with-lease", "origin", branch];
-    return runGit(cwd, args).ok;
+    const res = runGit(cwd, args);
+    return { ok: res.ok, error: res.ok ? "" : res.stderr || res.stdout };
 }
 /**
  * The CI-Dispatch Gate after build / debug's last push. Never pushes after the
@@ -298,10 +300,26 @@ export async function ciDispatchGate(o, deps) {
             return res;
         }
         let pushed;
+        let failure = "";
         if (rec === null) {
             landed = null;
-            pushed =
-                runGit(o.cwd, ["commit", "--allow-empty", "-m", message]).ok && pushCurrentBranch(o.cwd);
+            const before = git(o.cwd, ["rev-parse", "HEAD"]);
+            const made = runGit(o.cwd, ["commit", "--allow-empty", "-m", message]);
+            if (!made.ok) {
+                pushed = false;
+                failure = made.stderr || made.stdout;
+            }
+            else {
+                const push = pushCurrentBranch(o.cwd);
+                pushed = push.ok;
+                if (!push.ok) {
+                    failure = push.error;
+                    // The commit never reached the remote: drop it so a re-run does not pile
+                    // up orphan re-triggers. --soft restores the index exactly as the commit left it.
+                    if (before !== null)
+                        runGit(o.cwd, ["reset", "--soft", before]);
+                }
+            }
         }
         else {
             const made = retriggerCommit(o.cwd, rec, message);
@@ -316,7 +334,7 @@ export async function ciDispatchGate(o, deps) {
                 fetchLanded();
         }
         if (!pushed) {
-            deps.log("re-trigger commit or push failed — no verdict; route to the Failure Path");
+            deps.log(`re-trigger commit or push failed${failure ? `: ${failure}` : ""} — no verdict; route to the Failure Path`);
             res.phase = "repoll";
             res.handoff = EXIT_RETRIGGER_FAILED;
             return res;
