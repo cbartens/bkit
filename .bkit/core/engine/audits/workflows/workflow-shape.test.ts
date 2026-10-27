@@ -391,6 +391,48 @@ function withNoAgent(lines: string[]): string[] {
   return lines.filter((l) => !l.includes("--agent"));
 }
 
+/** A live doc naming a build step by number, and the build table row its sentence means. */
+const LIVE_DOC_CLAIMS: ReadonlyArray<{ file: string; pattern: RegExp; step: string }> = [
+  {
+    file: "docs/deployments.md",
+    pattern: /Gate sites \(2\):\*\* build Step (\d+)/,
+    step: "build-close-workflow",
+  },
+  {
+    file: "docs/deployments.md",
+    pattern: /Open-PR pre-flight \(build Step (\d+)\)/,
+    step: "build-close-workflow",
+  },
+  {
+    file: ".bkit/cloud.md",
+    pattern: /`bkit-build` Step (\d+) close-workflow/,
+    step: "build-close-workflow",
+  },
+  {
+    file: ".bkit/core/.bkit/cloud.md",
+    pattern: /`bkit-build` Step (\d+) close-workflow/,
+    step: "build-close-workflow",
+  },
+];
+
+/** Each live-doc build-step number that disagrees with the number its table row carries. */
+function staleStepRefs(
+  claims: ReadonlyArray<{ file: string; pattern: RegExp; step: string }>,
+): string[] {
+  const numbers = new Map(
+    WORKFLOW_STEPS.build.map((s): [string, number] => [s.step ?? "", s.number]),
+  );
+  return claims.flatMap(({ file, pattern, step }) => {
+    const expected = numbers.get(step);
+    const named = pattern.exec(fs.readFileSync(path.join(REPO_ROOT, file), "utf-8"))?.[1];
+    if (expected === undefined) return [`${file}: the build table carries no ${step} row`];
+    if (named === undefined) return [`${file}: no ${step} step number named`];
+    return Number(named) === expected
+      ? []
+      : [`${file}: ${step} at Step ${named}, the table carries ${expected}`];
+  });
+}
+
 describe("build", () => {
   const build = workflow("build");
 
@@ -741,6 +783,12 @@ describe("build", () => {
       l.includes("--step=build-create-pr"),
     );
     expect(line).toContain("--artifact={PR_URL}");
+  });
+});
+
+describe("live docs", () => {
+  it("live docs name no build step the table does not carry", () => {
+    expect(staleStepRefs(LIVE_DOC_CLAIMS)).toEqual([]);
   });
 });
 

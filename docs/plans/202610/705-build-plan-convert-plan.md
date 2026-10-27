@@ -268,3 +268,27 @@ None — no new routes, DB writes, secrets or user input.
 <!-- bkit:task 5 end -->
 
 <!-- bkit:group 3 end -->
+
+<!-- bkit:group 4 start -->
+
+### GROUP 4: Challenge round 1 findings
+
+<!-- bkit:task 6 start -->
+
+- [ ] **TASK 6:** Stale build-step numbers in `docs/deployments.md` survive the renumbering (CI-dispatch / PR-pre-flight pointed at the wrong step)
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `docs/deployments.md:533` · **Round:** 1
+  - **DONE WHEN:** every build-step reference in `docs/deployments.md` matches the new table — the CI-Dispatch Gate site and the open-PR pre-flight both read `build Step 16` (was 15), and no `build Step 15` remains.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `live docs name no build step the table does not carry` fails on `docs/deployments.md:533` / `:535` still reading `build Step 15` against the Close Workflow row at 16
+
+<!-- bkit:task 6 end -->
+<!-- bkit:task 7 start -->
+
+- [ ] **TASK 7:** The shipped cloud doc and its source still say `bkit-build` Step 15 closes the workflow
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/cloud.md:399` · **Round:** 1
+  - **DONE WHEN:** `.bkit/core/.bkit/cloud.md` and its shipped copy `.bkit/cloud.md` both read `bkit-build Step 16` for the close-workflow push, and the two stay byte-identical where they were before.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `live docs name no build step the table does not carry` fails on `.bkit/cloud.md:399` / `.bkit/core/.bkit/cloud.md:399` still reading `Step 15` for close-workflow
+
+<!-- bkit:task 7 end -->
+<!-- bkit:group 4 end -->
