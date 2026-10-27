@@ -12,6 +12,7 @@ PASS
 
 ## Steps
 
+<!-- prettier-ignore -->
 | Step | Verdict | Failures | Attempts | Artifact |
 | --- | --- | --- | --- | --- |
 | ship-start-workflow | - | - | 1 | - |
