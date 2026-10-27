@@ -213,6 +213,9 @@ None — no new routes, DB writes, secrets or user input.
     - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `Plan Current posts a comment whether it runs or skips` fails on the exit-12 route posting nothing
     - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `Plan Current's skipped comment says no plan anchor` fails on the skip's comment carrying no status field
     - `.bkit/core/engine/render/trackers.test.ts` `bkit-build: the none render matches its baseline byte for byte` fails on the baseline still showing one Plan Current finish
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `Plan Current posts a comment whether it runs or skips` fails on the exit-12 route posting nothing — setup predicate moved into a module-level helper after the red for `vitest(no-conditional-in-test)`; assertions unchanged (owner, 2026-10-27)
+    - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `Plan Current's skipped comment says no plan anchor` fails on the skip's comment carrying no status field — same helper extraction after the red; assertions unchanged (owner, 2026-10-27)
 
 <!-- bkit:task 2 end -->
 
