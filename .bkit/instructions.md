@@ -2587,7 +2587,7 @@ Produce **Create** output.
 
 - prompt: where-used
 - except: bkit-design-review-1
-- carriers: prompt `bkit-build-challenge-*`, `bkit-design-review-*`, `bkit-plan-review-*`, `bkit-build-plan-current`, `bkit-build-plan-execute`, `bkit-build-plan-gaps-remediate`, `bkit-build-plan-verify`, `bkit-debug-failure-diagnose`, `bkit-debug-failure-remediate`, `bkit-debug-failure-soak`, `bkit-design-organise`, `bkit-design-spike`, `bkit-design-update`, `bkit-plan-scope-check`, `bkit-plan-update`, `bkit-ship-conflict-resolve`, `bkit-ship-deferred-sweep`
+- carriers: prompt `bkit-build-challenge-*`, `bkit-design-review-*`, `bkit-plan-review-*`, `bkit-build-plan-current`, `bkit-build-plan-execute`, `bkit-build-plan-gaps-remediate`, `bkit-debug-failure-diagnose`, `bkit-debug-failure-remediate`, `bkit-debug-failure-soak`, `bkit-design-organise`, `bkit-design-spike`, `bkit-design-update`, `bkit-plan-scope-check`, `bkit-plan-update`, `bkit-ship-conflict-resolve`, `bkit-ship-deferred-sweep`
 
 ```text
 Update **Create** — set `Verdict` via `Edit`; mapping:
@@ -7698,24 +7698,19 @@ Read the group's briefs (its task blocks), plan gaps, the group gate log (if sup
 
 ```text
 **Role:** Senior verifier checking that plan deliverables actually exist in the codebase.
-**If** test-first audit report supplied (`Enforced` / `Gaps` header) → map its gaps per task:
-`not-green` → `Fixable: true`.
+**If** test-first audit report supplied (`Enforced` / `Verdict` / `Gaps` header) → decide each gap: its `fixable` stands unless `null`, and a `null` one you decide from the diff it names:
 [R72] `test-changed` → read its diff; only formatting → no gap; weakened, removed or rewritten assertions → `Fixable: false`.
-[R72] Row `Changed since red` = `added lines only` → read its diff; any line added inside a planned test or in setup it runs (`beforeEach`, fixture, mock) → `test-changed` gap, `Fixable: false`; added lines only outside every planned test → no gap.
+[R72] `test-changed` on a row whose `Changed since red` = `added lines only` → read its diff; any line added inside a planned test or in setup it runs (`beforeEach`, fixture, mock) → `Fixable: false`; added lines only outside every planned test → no gap.
 `red-mismatch` → recorded test is the planned one renamed or moved **and** passes now → no gap, nor for that test's `not-green`; else `Fixable: false`.
+A gap you leave `Fixable: false` is a `FAIL`.
 `Enforced: false` → reason in `Notes`; no gap.
 `Late-red check` section → each task not checked in `Notes`; no gap.
-Update **Create** — set `Failures` via `Edit` = count of unresolved gaps; set `Fixable` via `Edit` = `true` when any of those is `Fixable: true`, else `false`; set `Verdict` via `Edit`; mapping:
-`PASS` = no gaps.
-`FAIL` = any gap `Fixable: false`.
-`CONCERNS` = every gap `Fixable: true`.
+Update **Create** — set `Failures` via `Edit` = count of unresolved gaps; set `Fixable` via `Edit` = `true` when any of those is `Fixable: true`, else `false`; set `Verdict` via `Edit` = the roll-up over the `Fixable` you decided: any `false` → `FAIL`, **Else** any `true` → `CONCERNS`, **Else** → `PASS`; never the report's `null`.
 Determine `Mode` from input Context (`Group` or `Holistic`).
 **If** `Group` → the supplied briefs' task blocks are the work; judge them against the supplied group diff (the changes since the group started), not the whole branch; a brief's `Deviations` section holds the owner's run instructions → judge the tasks it names as it directs. Every task field and gate maps to real codebase changes. Find missing components, skipped steps, unimplemented edge cases. Cross-reference the tasks vs the execute log's `DONE — TASK {N}` lines; a `DONE` line is a claim to check, never proof.
 [R78] **If** `Holistic` → same task / gate / `DONE` log cross-reference across every group of the plan, plus integration: groups' components work together? API contracts match? Shared state consistent? Cross-domain boundaries respected? Run `pnpm bkit:gate:static-unit`.
 `delete-still-referenced` → read each hit; a different thing with the same name → no gap; else `Fixable: true`.
-`no-red` on a task the plan-currency report classifies `Broken` with work already landed **and** the execute log records `DONE — TASK {N}: already landed` → no gap.
-`no-red`, `late-red`, `no-test-first`, `test-first-malformed`, `test-first-unread`, `red-evidence-missing`, `exception-refused` → `Fixable: false`.
-Test-order gap (`no-red`, `late-red`, `red-mismatch`, `red-evidence-missing`, `test-changed`) → log as ``TASK {N}: `{test file}` `{test name}` — {kind} — Fixable: false``.
+`no-red` on a task the plan-currency report classifies `Broken` with work already landed **and** the execute log records `DONE — TASK {N}: already landed` → no gap, overriding the gap's `Fixable: false`.
 ```
 
 #### bkit-debug-abort-handover

@@ -1498,23 +1498,32 @@ describe("bkit tests red / green", () => {
         task: 1,
         kind: "delete-still-referenced",
         detail: "DELETE `oldGate` in `src/gate.ts` is still referenced: `src/use.ts:3`",
+        fixable: null,
+        logLine: "TASK 1: delete-still-referenced — Fixable: null",
       },
       {
         task: 1,
         kind: "delete-still-referenced",
         detail: "DELETE `src/legacyShim.ts` is still referenced as `legacyShim`: `src/use.ts:2`",
+        fixable: null,
+        logLine: "TASK 1: delete-still-referenced — Fixable: null",
       },
       {
         task: 1,
         kind: "delete-still-referenced",
         detail: "DELETE `src/still.ts`: the file still exists",
+        fixable: null,
+        logLine: "TASK 1: delete-still-referenced — Fixable: null",
       },
       {
         task: 1,
         kind: "delete-still-referenced",
         detail: "DELETE § Old section in `docs/d.md` is still referenced: `docs/d.md:3`",
+        fixable: null,
+        logLine: "TASK 1: delete-still-referenced — Fixable: null",
       },
     ]);
+    expect(r.json.verdict).toBe(null);
     expect(report()).toContain("- Task 1 `delete-still-referenced` — DELETE `oldGate`");
   });
 
@@ -1547,11 +1556,13 @@ describe("bkit tests red / green", () => {
         task: 1,
         kind: "delete-still-referenced",
         detail: "DELETE `src/moved.ts` is still referenced as `moved`: `src/stale.ts:1`",
+        fixable: null,
+        logLine: "TASK 1: delete-still-referenced — Fixable: null",
       },
     ]);
   });
 
-  it("green: red recorded, test unchanged, named test passing -> no gaps", async () => {
+  it("green with no gaps prints verdict PASS and an empty gaps", async () => {
     writePlan([
       TASK_1,
       taskBlock(2, ["  - **DONE WHEN:** done", "  - **TEST FIRST:** n/a — docs."]),
@@ -1563,9 +1574,94 @@ describe("bkit tests red / green", () => {
     vi.stubEnv("FAKE_JUNIT", junit(passed(`clamp > ${NAME}`)));
     const r = await green();
     expect(r.code).toBe(0);
-    expect(r.json).toMatchObject({ enforced: true, gaps: [] });
+    expect(r.json).toMatchObject({ enforced: true, gaps: [], verdict: "PASS" });
     expect(report()).toContain("Gaps: 0");
+    expect(report()).toContain("Verdict: PASS");
     expect(report()).toContain("| 1 |");
+  });
+
+  it("green prints a verdict and a fixable per gap", async () => {
+    const OTHER = "src/range.test.ts";
+    writePlan([TASK_1, testTask(2, [[TEST, "second"]]), testTask(3, [[OTHER, "third"]])]);
+    fs.writeFileSync(path.join(cwd, OTHER), "expect(clamp(0, 1, 10)).toBe(1);\n");
+    vi.stubEnv("FAKE_EXIT", "1");
+    vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
+    expect((await red()).code).toBe(0);
+    vi.stubEnv("FAKE_JUNIT", junit(failed(NAME), failed("third")));
+    const thirdRed = await run(
+      [
+        `--file=${STATUS}`,
+        "--workflow=build",
+        "--group=1",
+        "--task=3",
+        `--test=${OTHER}`,
+        "--name=third",
+        "--log=logs/build-task-red-1-3.md",
+      ],
+      cwd,
+      "red",
+    );
+    expect(thirdRed.code).toBe(0);
+    fs.writeFileSync(path.join(cwd, OTHER), "expect(clamp(9, 1, 10)).toBe(9);\n");
+    vi.stubEnv("FAKE_JUNIT", junit(failed(NAME), passed("second"), passed("third")));
+    const r = await green();
+    expect(r.code).toBe(1);
+    expect(r.json.verdict).toBe(null);
+    expect(
+      (r.json.gaps as Array<{ kind: string; fixable: boolean | null }>).map(
+        (g) => `${g.kind}:${g.fixable}`,
+      ),
+    ).toEqual(["not-green:true", "no-red:false", "test-changed:null"]);
+    expect(report()).toContain("Verdict: null");
+    expect(report()).toContain(`TASK 1: \`${TEST}\` \`${NAME}\` — not-green — Fixable: true`);
+    expect(report()).toContain("Fixable: false");
+    expect(report()).toContain("Fixable: null");
+  });
+
+  it("green verdict is FAIL when a gap is unfixable", async () => {
+    writePlan([testTask(1, [[TEST, NAME]])]);
+    fs.mkdirSync(path.join(cwd, "logs"), { recursive: true });
+    fs.writeFileSync(
+      path.join(cwd, STATUS),
+      `${JSON.stringify({ type: "step-done", workflow: "build", step: "build-worktree-setup", status: "DONE", artifacts: [] })}\n`,
+    );
+    vi.stubEnv("FAKE_EXIT", "0");
+    vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
+    const r = await green();
+    expect(r.code).toBe(1);
+    expect(r.json.verdict).toBe("FAIL");
+    expect((r.json.gaps as Array<{ kind: string; fixable: boolean }>)[0]).toMatchObject({
+      kind: "no-red",
+      fixable: false,
+    });
+    expect(report()).toContain("Verdict: FAIL");
+  });
+
+  it("green leaves a diff-reading kind fixable null", async () => {
+    writePlan([testTask(1, [[TEST, "planned name"]])]);
+    vi.stubEnv("FAKE_EXIT", "1");
+    vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
+    expect((await red()).code).toBe(0);
+    vi.stubEnv("FAKE_JUNIT", junit(passed("planned name")));
+    const r = await green();
+    const gaps = r.json.gaps as Array<{ kind: string; fixable: boolean | null }>;
+    expect(gaps.map((g) => g.kind)).toEqual(["red-mismatch"]);
+    expect(gaps[0]!.fixable).toBe(null);
+    expect(r.json.verdict).toBe(null);
+  });
+
+  it("green prints verdict null when a gap needs a diff read", async () => {
+    writePlan([TASK_1]);
+    vi.stubEnv("FAKE_EXIT", "1");
+    vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
+    expect((await red()).code).toBe(0);
+    fs.writeFileSync(path.join(cwd, TEST), "expect(true).toBe(true);\n");
+    vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
+    const r = await green();
+    expect(r.code).toBe(1);
+    expect((r.json.gaps as Array<{ kind: string }>).map((g) => g.kind)).toEqual(["test-changed"]);
+    expect(r.json.verdict).toBe(null);
+    expect(report()).toContain("Verdict: null");
   });
 
   it("green: lists each gap kind, with the diff for a test changed since its red", async () => {
@@ -1765,7 +1861,7 @@ describe("bkit tests red / green", () => {
       );
     });
 
-    it("a test file that only gained lines since its red is no gap; the diff stays in the report", async () => {
+    it("green emits a test-changed gap for a red whose test gained added lines only", async () => {
       writePlan([TASK_1]);
       vi.stubEnv("FAKE_EXIT", "1");
       vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
@@ -1774,8 +1870,11 @@ describe("bkit tests red / green", () => {
       vi.stubEnv("FAKE_EXIT", "0");
       vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
       const r = await green();
-      expect(r.code).toBe(0);
-      expect(r.json.gaps).toEqual([]);
+      expect(r.code).toBe(1);
+      expect(r.json.gaps).toEqual([
+        expect.objectContaining({ task: 1, kind: "test-changed", fixable: null }),
+      ]);
+      expect(r.json.verdict).toBe(null);
       expect(report()).toContain("| added lines only |");
       expect(report()).toContain("+expect(clamp(0, 1, 10)).toBe(1);");
     });

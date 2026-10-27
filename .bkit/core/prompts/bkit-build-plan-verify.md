@@ -60,26 +60,21 @@ autoCompactWindow: 300000
 1. Initialise **Create** output stub with `PENDING` placeholders.
 2. Re-read all supplied inputs once at session start; do not trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
-4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available. Per gap — append log at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line; each entry ends `— Fixable: true` or `— Fixable: false` (by gap-remediate). **If** any gap `Fixable: false` → set `Verdict` = `FAIL` via `Edit` immediately; do not defer to final pass.
+4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available. Per gap — append log at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line; `{log entry}` is the gap's report `logLine` with your decided `Fixable: true` / `Fixable: false` in place of the engine's `Fixable: null`; each entry ends `— Fixable: true` or `— Fixable: false` (by gap-remediate). **If** any gap `Fixable: false` → set `Verdict` = `FAIL` via `Edit` immediately; do not defer to final pass.
 5. Determine `Mode` from input Context (`Group` or `Holistic`).
 6. **If** `Group` → the supplied briefs' task blocks are the work; judge them against the supplied group diff (the changes since the group started), not the whole branch; a brief's `Deviations` section holds the owner's run instructions → judge the tasks it names as it directs. Every task field and gate maps to real codebase changes. Find missing components, skipped steps, unimplemented edge cases. Cross-reference the tasks vs the execute log's `DONE — TASK {N}` lines; a `DONE` line is a claim to check, never proof.
 7. **If** `Holistic` → same task / gate / `DONE` log cross-reference across every group of the plan, plus integration: groups' components work together? API contracts match? Shared state consistent? Cross-domain boundaries respected? Run `pnpm bkit:gate:static-unit`.
-8. **If** test-first audit report supplied (`Enforced` / `Gaps` header) → map its gaps per task:
-   - `not-green` → `Fixable: true`.
+8. **If** test-first audit report supplied (`Enforced` / `Verdict` / `Gaps` header) → decide each gap: its `fixable` stands unless `null`, and a `null` one you decide from the diff it names:
    - `delete-still-referenced` → read each hit; a different thing with the same name → no gap; else `Fixable: true`.
    - `test-changed` → read its diff; only formatting → no gap; weakened, removed or rewritten assertions → `Fixable: false`.
-   - Row `Changed since red` = `added lines only` → read its diff; any line added inside a planned test or in setup it runs (`beforeEach`, fixture, mock) → `test-changed` gap, `Fixable: false`; added lines only outside every planned test → no gap.
+   - `test-changed` on a row whose `Changed since red` = `added lines only` → read its diff; any line added inside a planned test or in setup it runs (`beforeEach`, fixture, mock) → `Fixable: false`; added lines only outside every planned test → no gap.
    - `red-mismatch` → recorded test is the planned one renamed or moved **and** passes now → no gap, nor for that test's `not-green`; else `Fixable: false`.
-   - `no-red` on a task the plan-currency report classifies `Broken` with work already landed **and** the execute log records `DONE — TASK {N}: already landed` → no gap.
-   - `no-red`, `late-red`, `no-test-first`, `test-first-malformed`, `test-first-unread`, `red-evidence-missing`, `exception-refused` → `Fixable: false`.
-   - Test-order gap (`no-red`, `late-red`, `red-mismatch`, `red-evidence-missing`, `test-changed`) → log as ``TASK {N}: `{test file}` `{test name}` — {kind} — Fixable: false``.
+   - `no-red` on a task the plan-currency report classifies `Broken` with work already landed **and** the execute log records `DONE — TASK {N}: already landed` → no gap, overriding the gap's `Fixable: false`.
    - `Enforced: false` → reason in `Notes`; no gap.
    - `Late-red check` section → each task not checked in `Notes`; no gap.
+   - A gap you leave `Fixable: false` is a `FAIL`.
 9. Per task → assert codebase satisfies `DONE WHEN` (file exists, signature matches, test passes, observable behaviour) and has no test-first audit gap; `BLOCKED` log lines, `docs/deferrals.jsonl` rows, and out-of-scope notes never satisfy it; gaps a supplied decision record accepts (`Decision: Accept`, or `Decision: Accept (assumed)`) are no gap (name the record in `Notes`; an assumed accept is taken without the owner, so add `assumed, not the owner's acceptance`). **If** satisfied → tick its `- [ ] **TASK {N}:**` line `[x]` in the plan file; tick nothing else. **If** not satisfied or missing → leave `[ ]`, append log; **If** the gap is `Fixable: false` → set `Verdict` = `FAIL` via `Edit` immediately; do not defer to final pass.
-10. Update **Create** — set `Failures` via `Edit` = count of unresolved gaps; set `Fixable` via `Edit` = `true` when any of those is `Fixable: true`, else `false`; set `Verdict` via `Edit`; mapping:
-    - `PASS` = no gaps.
-    - `FAIL` = any gap `Fixable: false`.
-    - `CONCERNS` = every gap `Fixable: true`.
+10. Update **Create** — set `Failures` via `Edit` = count of unresolved gaps; set `Fixable` via `Edit` = `true` when any of those is `Fixable: true`, else `false`; set `Verdict` via `Edit` = the roll-up over the `Fixable` you decided: any `false` → `FAIL`, **Else** any `true` → `CONCERNS`, **Else** → `PASS`; never the report's `null`.
 
 **Output format:**
 
@@ -87,6 +82,7 @@ autoCompactWindow: 300000
 Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 Failures: <integer >= 0>
 Fixable: true | false
+Tasks: <the task numbers you judged satisfied, comma-separated; none when there are none>
 
 <!-- verdict:end -->
 

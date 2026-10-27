@@ -37,7 +37,7 @@ function repo() {
   write(
     cwd,
     "logs/verify-1.md",
-    "Verdict: FAIL\nFailures: 2\nFixable: true\n\n<!-- verdict:end -->\n\n# Verify\n\nTwo gaps.\n",
+    "Verdict: FAIL\nFailures: 2\nFixable: true\nTasks: none\n\n<!-- verdict:end -->\n\n# Verify\n\nTwo gaps.\n",
   );
   return cwd;
 }
@@ -239,7 +239,7 @@ describe("bkit steps verdict", () => {
     expect(r.code).toBe(0);
     expect(r.json).toEqual({
       verdict: "FAIL",
-      fields: { Verdict: "FAIL", Failures: "2", Fixable: "true" },
+      fields: { Verdict: "FAIL", Failures: "2", Fixable: "true", Tasks: "none" },
     });
   });
 
@@ -929,7 +929,7 @@ describe("bkit steps finish --post", () => {
     write(
       cwd,
       `${LOG}/verify-1.md`,
-      "Verdict: PASS\nFailures: 0\nFixable: false\n<!-- verdict:end -->\n",
+      "Verdict: PASS\nFailures: 0\nFixable: false\nTasks: none\n<!-- verdict:end -->\n",
     );
     return cwd;
   }

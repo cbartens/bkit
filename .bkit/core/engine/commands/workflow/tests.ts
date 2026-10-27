@@ -668,12 +668,63 @@ const toplevel = (cwd: string) => git(cwd, ["rev-parse", "--show-toplevel"]) ?? 
 const fenceFor = (text: string) =>
   "`".repeat(Math.max(3, ...[...text.matchAll(/`+/g)].map((m) => m[0].length + 1)));
 
+/**
+ * Every gap the audit emits, and the verifier's `Fixable` for it: `null` = the
+ * answer needs a diff read, which only the verifier can make.
+ */
+const GAP_FIXABLE = {
+  "not-green": true,
+  "delete-still-referenced": null,
+  "test-changed": null,
+  "red-mismatch": null,
+  "no-red": false,
+  "late-red": false,
+  "no-test-first": false,
+  "test-first-malformed": false,
+  "test-first-unread": false,
+  "red-evidence-missing": false,
+  "exception-refused": false,
+} as const satisfies Record<string, boolean | null>;
+
+type GapKind = keyof typeof GAP_FIXABLE;
+
 interface Gap {
   /** null for a plan-level gap (`test-first-unread`). */
   task: number | null;
-  kind: string;
+  kind: GapKind;
   detail: string;
+  fixable: boolean | null;
+  /** The line the verifier appends, carrying `Fixable: null` for a decision it makes itself. */
+  logLine: string;
 }
+
+/** One gap, with the `fixable` its kind settles and the ready-to-append log line. */
+function gapOf(
+  task: number | null,
+  kind: GapKind,
+  detail: string,
+  test?: { file: string; name: string },
+): Gap {
+  const fixable = GAP_FIXABLE[kind];
+  const subject = test === undefined ? "" : `\`${test.file}\` \`${test.name}\` — `;
+  return {
+    task,
+    kind,
+    detail,
+    fixable,
+    logLine: `${task === null ? "Plan" : `TASK ${task}`}: ${subject}${kind} — Fixable: ${fixable}`,
+  };
+}
+
+/** The report's verdict from its gaps: a decision one gap still needs (`null`) outranks one it refuses. */
+const verdictOf = (gaps: Gap[]): "PASS" | "FAIL" | "CONCERNS" | null =>
+  gaps.length === 0
+    ? "PASS"
+    : gaps.some((g) => g.fixable === null)
+      ? null
+      : gaps.some((g) => g.fixable === false)
+        ? "FAIL"
+        : "CONCERNS";
 
 /** Gaps about when a test was seen failing; no edit made after the task's code can close one. */
 export const TEST_ORDER_GAPS: ReadonlySet<string> = new Set([
@@ -855,8 +906,7 @@ function deleteGaps(
               )
               .map((c) => path.posix.normalize(c.file))
           : [];
-      const gap = (detail: string) =>
-        gaps.push({ task: t.task, kind: DELETE_STILL_REFERENCED, detail });
+      const gap = (detail: string) => gaps.push(gapOf(t.task, DELETE_STILL_REFERENCED, detail));
       const abs = path.join(top, file);
       const exists = fs.statSync(abs, { throwIfNoEntry: false })?.isFile() === true;
       let what: string;
@@ -922,6 +972,7 @@ function writeAuditReport(
     enforced: boolean;
     reason?: string;
     plan?: string;
+    verdict: "PASS" | "FAIL" | "CONCERNS" | null;
     rows: AuditRow[];
     gaps: Gap[];
     testOrderOnly: boolean;
@@ -933,6 +984,7 @@ function writeAuditReport(
 ): void {
   const out = [
     `Enforced: ${o.enforced}`,
+    `Verdict: ${o.verdict}`,
     `Gaps: ${o.gaps.length}`,
     `Test order only: ${o.testOrderOnly}`,
     "",
@@ -954,7 +1006,9 @@ function writeAuditReport(
   out.push("## Gaps", "");
   if (o.gaps.length === 0) out.push("None.");
   for (const g of o.gaps)
-    out.push(`- ${g.task === null ? "Plan" : `Task ${g.task}`} \`${g.kind}\` — ${g.detail}`);
+    out.push(
+      `- ${g.task === null ? "Plan" : `Task ${g.task}`} \`${g.kind}\` — ${g.detail} — Fixable: ${g.fixable} — log: ${g.logLine}`,
+    );
   if (o.exceptions.length > 0) out.push("", "## Test exceptions", "");
   for (const e of o.exceptions)
     out.push(
@@ -1279,7 +1333,9 @@ export const testsCommand: CommandSpec = {
           "false when the audit could not run: no plan file, a plan with no task markers (exit 1), or the test-file script undeclared (exit 0)",
         reason: "why test-first is not enforced",
         plan: "the plan file audited",
-        gaps: "[{task, kind, detail}]: no-test-first | test-first-malformed | test-first-unread (task null: a plan-level format problem) | no-red | late-red | red-mismatch | red-evidence-missing | test-changed | not-green | exception-refused (a task whose only test field is a TEST EXCEPTION not honoured) | delete-still-referenced (a DELETE line's file still exists, or its name is still found in the tree)",
+        verdict:
+          "PASS no gaps | FAIL a gap's fixable is false | CONCERNS every gap's fixable is true | null when a gap needs a diff read, or the audit could not run",
+        gaps: "[{task, kind, detail, fixable, logLine}]: no-test-first | test-first-malformed | test-first-unread (task null: a plan-level format problem) | no-red | late-red | red-mismatch | red-evidence-missing | test-changed | not-green | exception-refused (a task whose only test field is a TEST EXCEPTION not honoured) | delete-still-referenced (a DELETE line's file still exists, or its name is still found in the tree); fixable is null when the gap needs a diff read; logLine is the line the verifier appends",
         testOrderOnly:
           "true when there are gaps and every one is a test-order gap (no-red | late-red | red-mismatch | red-evidence-missing | test-changed)",
         lateRedUnchecked:
@@ -1323,6 +1379,7 @@ export const testsCommand: CommandSpec = {
             ? `\`${BKIT_TEST_FILE_SCRIPT}\` is not declared in package.json`
             : undefined);
         const empty = {
+          verdict: null,
           rows: [],
           gaps: [],
           testOrderOnly: false,
@@ -1337,6 +1394,7 @@ export const testsCommand: CommandSpec = {
             enforced: false,
             reason,
             plan: plan ?? null,
+            verdict: null,
             gaps: [],
             testOrderOnly: false,
             lateRedUnchecked: [],
@@ -1389,22 +1447,25 @@ export const testsCommand: CommandSpec = {
               cleared: refused === null ? ["the task's `TEST FIRST` check"] : [],
             });
             if (refused !== null)
-              gaps.push({
-                task: s.task,
-                kind: EXCEPTION_REFUSED,
-                detail: `the task's only test field is a \`**TEST EXCEPTION:**\`, not honoured: ${refused}`,
-              });
+              gaps.push(
+                gapOf(
+                  s.task,
+                  EXCEPTION_REFUSED,
+                  `the task's only test field is a \`**TEST EXCEPTION:**\`, not honoured: ${refused}`,
+                ),
+              );
             continue;
           }
           if (s.kind !== "test") {
-            gaps.push({
-              task: s.task,
-              kind: s.kind === "missing" ? "no-test-first" : "test-first-malformed",
-              detail:
+            gaps.push(
+              gapOf(
+                s.task,
+                s.kind === "missing" ? "no-test-first" : "test-first-malformed",
                 s.kind === "missing"
                   ? "the task has neither a `**TEST FIRST:**` nor a `**TEST EXCEPTION:**` field"
                   : "`**TEST FIRST:**` is neither `n/a — {reason}` nor one sub-bullet per test naming a backticked test file and test name",
-            });
+              ),
+            );
             continue;
           }
           const excepted = s.exception;
@@ -1439,10 +1500,10 @@ export const testsCommand: CommandSpec = {
               excepted!.tests.some((e) => e.test === t.test && e.name === t.name)
                 ? exception
                 : undefined;
-            const gap = (kind: string, detail: string) => {
+            const gap = (kind: GapKind, detail: string) => {
               if (clearing !== undefined && TEST_ORDER_GAPS.has(kind))
                 clearing.cleared.push(`\`${kind}\` for \`${t.test}\` "${t.name}"`);
-              else gaps.push({ task: s.task, kind, detail });
+              else gaps.push(gapOf(s.task, kind, detail, { file: t.test, name: t.name }));
             };
             const red = [...taskReds]
               .reverse()
@@ -1503,11 +1564,12 @@ export const testsCommand: CommandSpec = {
                   fs.readFileSync(testAbs, "utf-8"),
                 );
                 row.changed = added ? "added lines only" : "yes";
-                if (!added)
-                  gap(
-                    "test-changed",
-                    `\`${t.test}\` differs from its red snapshot for "${t.name}" (diff below)`,
-                  );
+                gap(
+                  "test-changed",
+                  added
+                    ? `\`${t.test}\` gained lines since its red snapshot for "${t.name}" (diff below)`
+                    : `\`${t.test}\` differs from its red snapshot for "${t.name}" (diff below)`,
+                );
                 const diff = runGit(top, [
                   "diff",
                   "--no-index",
@@ -1545,15 +1607,19 @@ export const testsCommand: CommandSpec = {
           ),
         );
         for (const e of parsed.errors)
-          gaps.push({
-            task: null,
-            kind: "test-first-unread",
-            detail: `\`${plan}:${e.line}\` ${e.message} — tests there were not audited; the plan's blocks need fixing`,
-          });
+          gaps.push(
+            gapOf(
+              null,
+              "test-first-unread",
+              `\`${plan}:${e.line}\` ${e.message} — tests there were not audited; the plan's blocks need fixing`,
+            ),
+          );
         const testOrderOnly = gaps.length > 0 && gaps.every((g) => TEST_ORDER_GAPS.has(g.kind));
+        const verdict = verdictOf(gaps);
         writeAuditReport(log, {
           enforced: true,
           plan,
+          verdict,
           rows,
           gaps,
           testOrderOnly,
@@ -1565,6 +1631,7 @@ export const testsCommand: CommandSpec = {
         ctx.emit({
           enforced: true,
           plan,
+          verdict,
           gaps,
           testOrderOnly,
           lateRedUnchecked: [...lateUnchecked].sort((a, b) => a - b),
