@@ -1,11 +1,15 @@
 /**
- * commands/workflow/tasks.test.ts — `bkit tasks`: the plan tick and the group's open set.
+ * commands/workflow/tasks.test.ts — `bkit tasks`: the plan tick, the group's open set
+ * and the path / symbol match against landed changes.
  *
  * Each test writes a plan and (for `open`) an execute log in a temp folder and reads
  * the command's one output object; the plan file's other lines are compared byte for
- * byte, because the tick rewrites one heading line and nothing else.
+ * byte, because the tick rewrites one heading line and nothing else. `currency` runs
+ * against a real temp git repo: the commit range is its subject, so a stub diff would
+ * test nothing.
  */
 
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -69,6 +73,46 @@ const write = (name: string, text: string) => {
   return file;
 };
 const read = (file: string) => fs.readFileSync(file, "utf-8");
+
+/** git in a fixture repo; a non-zero exit is the fixture's bug, so it throws. */
+const git = (repo: string, ...args: string[]) => {
+  const r = spawnSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], {
+    cwd: repo,
+    encoding: "utf-8",
+  });
+  if (r.status !== 0) throw new Error(`git ${args.join(" ")}: ${r.stderr}`);
+  return (r.stdout ?? "").trim();
+};
+const writeIn = (repo: string, rel: string, body: string) => {
+  const abs = path.join(repo, rel);
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  fs.writeFileSync(abs, body);
+};
+const commit = (repo: string, message: string) => {
+  git(repo, "add", "-A");
+  git(repo, "commit", "-q", "-m", message);
+  return git(repo, "rev-parse", "HEAD");
+};
+/** A fixture repo on `main` holding `files`, its first commit made. */
+const repo = (files: Record<string, string>) => {
+  const d = tmp();
+  git(d, "init", "-q", "-b", "main");
+  for (const [rel, body] of Object.entries(files)) writeIn(d, rel, body);
+  commit(d, "base");
+  return d;
+};
+/** A plan whose one task refs `refs` as `` `symbol` in `file`: what `` UPDATE lines. */
+const refPlan = (...refs: string[]) =>
+  planText(
+    group(1, [
+      "<!-- bkit:task 4 start -->",
+      "- [ ] **TASK 4:** Currency task.",
+      ...refs.map((r) => `  - **UPDATE:** ${r}`),
+      "  - **DONE WHEN:** done",
+      "  - **TEST FIRST:** n/a — docs only",
+      "<!-- bkit:task 4 end -->",
+    ]),
+  );
 
 async function run(argv: string[]) {
   const out: string[] = [];
@@ -229,5 +273,89 @@ describe("bkit tasks open", () => {
     const r = await run(["open", `--plan=${plan}`, "--group=1", `--log=${log}`]);
     expect(r.code).toBe(1);
     expect(r.err).toMatch(/no task markers/);
+  });
+});
+
+describe("bkit tasks currency", () => {
+  it("currency matches a task on a moved symbol", async () => {
+    cwd = repo({ "src/money.ts": "export const price = 1;\n" });
+    const base = git(cwd, "rev-parse", "HEAD");
+    writeIn(cwd, "src/money.ts", "export const total = 1;\n");
+    commit(cwd, "rename price to total");
+    const plan = write(
+      "currency-symbol.md",
+      refPlan("`total` in `src/money.ts`: renamed from price"),
+    );
+    const r = await run(["currency", `--plan=${plan}`, `--base=${base}`, "--against=HEAD"]);
+    expect(r.code).toBe(0);
+    expect(r.json.tasks.map((t: { task: number }) => t.task)).toEqual([4]);
+    expect(r.json.tasks[0].paths).toEqual(["src/money.ts"]);
+    expect(r.json.tasks[0].needles).toEqual(["total"]);
+    expect(r.json.tasks[0].hunks.join("\n")).toContain("total");
+  });
+
+  it("currency emits no hunk outside the matched set", async () => {
+    cwd = repo({
+      "src/matched.ts": "export const alpha = 1;\n",
+      "src/other.ts": "export const beta = 1;\n",
+    });
+    const base = git(cwd, "rev-parse", "HEAD");
+    writeIn(cwd, "src/matched.ts", "export const alpha = 2;\n");
+    writeIn(cwd, "src/other.ts", "export const beta = 2;\n");
+    commit(cwd, "both change");
+    const plan = write("currency-hunks.md", refPlan("`alpha` in `src/matched.ts`: value changed"));
+    const r = await run(["currency", `--plan=${plan}`, `--base=${base}`, "--against=HEAD"]);
+    expect(r.code).toBe(0);
+    const hunks = r.json.tasks[0].hunks.join("\n");
+    expect(hunks).toContain("src/matched.ts");
+    expect(hunks).not.toContain("src/other.ts");
+  });
+
+  it("currency refuses a plan with no task blocks", async () => {
+    cwd = repo({ "src/x.ts": "x\n" });
+    const plan = write("currency-plain.md", "# Plan\n\nNo task blocks here.\n");
+    const r = await run(["currency", `--plan=${plan}`]);
+    expect(r.code).toBe(1);
+    expect(r.err).toMatch(/no task markers/);
+  });
+
+  it("currency exits 0 with no hunks when no task matches", async () => {
+    cwd = repo({ "src/untouched.ts": "one\n", "src/elsewhere.ts": "one\n" });
+    const base = git(cwd, "rev-parse", "HEAD");
+    writeIn(cwd, "src/elsewhere.ts", "two\n");
+    commit(cwd, "elsewhere changed");
+    const plan = write(
+      "currency-nomatch.md",
+      refPlan("`absent` in `src/untouched.ts`: nothing moved"),
+    );
+    const r = await run(["currency", `--plan=${plan}`, `--base=${base}`, "--against=HEAD"]);
+    expect(r.code).toBe(0);
+    expect(r.json.tasks).toEqual([]);
+  });
+
+  it("currency judges base...against (origin/dev), not base...HEAD", async () => {
+    cwd = repo({
+      "src/base.ts": "base\n",
+      "src/dev-moved.ts": "one\n",
+      "src/branch-moved.ts": "one\n",
+    });
+    const base = git(cwd, "rev-parse", "HEAD");
+    git(cwd, "checkout", "-q", "-b", "dev");
+    writeIn(cwd, "src/dev-moved.ts", "two\n");
+    commit(cwd, "dev moves");
+    git(cwd, "checkout", "-q", "-b", "feature", base);
+    writeIn(cwd, "src/branch-moved.ts", "two\n");
+    commit(cwd, "branch moves");
+    const plan = write(
+      "currency-range.md",
+      refPlan(
+        "`devMoved` in `src/dev-moved.ts`: moved on dev",
+        "`branchMoved` in `src/branch-moved.ts`: moved on the branch",
+      ),
+    );
+    const r = await run(["currency", `--plan=${plan}`, `--base=${base}`, "--against=dev"]);
+    expect(r.code).toBe(0);
+    expect(r.json.tasks[0].paths).toEqual(["src/dev-moved.ts"]);
+    expect(r.json.tasks[0].hunks.join("\n")).not.toContain("branch-moved");
   });
 });

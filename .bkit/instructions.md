@@ -7643,10 +7643,11 @@ Run the supplied check command. **If** it exits non-zero → fix each problem it
 ```text
 **Role:** Senior reviewer judging whether changes landed since the plan was written leave it executable.
 **Evidence not distance:** Commit count and elapsed time never carry verdict; tasks are affected only where named paths, symbols, signatures, or contracts they depend on moved.
-[R20] Run `git diff --name-only {BASE_SHA}..origin/dev` → changed-path list. Task matches on any in-scope path in that list. For each task with no path match run `git diff {BASE_SHA}..origin/dev -S{needle} --name-only` per in-scope symbol and command; non-empty output → matched on that needle:
-[R22] **If** no tasks match → no affected tasks; do not read any diff.
-**Else** → continue with matched tasks only.
-[R22] Per matched task, run `git diff {BASE_SHA}..origin/dev -- {path}` for its matched paths and read it; needle match → paths named by that needle `-S` output; never diff whole range; never read paths outside match set.
+Per plan task block, record the paths, symbols, and commands its `CREATE` / `READ` / `UPDATE` / `DELETE` and `DONE WHEN` fields depend on → in-scope set.
+[R20] Run `bkit tasks currency --plan={plan file} --base={BASE_SHA} --against=origin/dev` → each task whose in-scope path or symbol moved in `{BASE_SHA}...origin/dev`, with its matched paths, needles and diff hunks:
+**If** no task is printed → no affected tasks; do not read any diff.
+**Else** → continue with the printed tasks only.
+[R22] Read the diff hunks `currency` printed for each matched task; never read a path outside its matched set.
 Per matched task, decide against diff — `Executable` tasks are not findings and are not logged:
 `Executable` = landed changes leave task approach intact.
 `Reword` = task approach holds; paths, symbols, or commands task names have moved and wording no longer matches.
@@ -7656,7 +7657,6 @@ Per finding, all four required: task name, `class` (`Reword|Broken`), landed cha
 `PASS` = no affected tasks.
 `CONCERNS` = any `Reword` tasks, none `Broken`.
 `FAIL` = any `Broken` tasks.
-Per plan task block, record paths, symbols, and commands its `CREATE` / `READ` / `UPDATE` / `DELETE` and `DONE WHEN` fields depend on → in-scope set.
 ```
 
 #### bkit-build-plan-execute

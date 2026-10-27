@@ -6,13 +6,25 @@
 // task already ticked is not rewritten and never repeated in `ticked`. `--green` reads a
 // `bkit tests green` report and drops every task it gaps, so a group's gap-free tasks
 // tick without the caller re-reading the report.
+//
+// `open` reads the execute log for the group's `DONE` / `BLOCKED` lines; `currency`
+// matches each task's `CREATE` / `READ` / `UPDATE` / `DELETE` paths and symbols against
+// `{base}...{against}` and prints the matched paths, needles and diff hunks — the
+// mechanical half of the plan-currency judgement, which stays with the agent.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { parseJson } from "../../shared/json.js";
-import { CommandError, EXIT, type CommandSpec } from "../lib.js";
-import { parsePlanBlocks, type PlanGroup, type PlanTaskBlock } from "./plan-blocks.js";
+import { CommandError, EXIT, type CommandSpec, git, runGit } from "../lib.js";
+import { EXIT_DIFF_FAILED, fetchRemoteRef } from "./branches.js";
+import { DIFF_BASE } from "./context.js";
+import {
+  parsePlanBlocks,
+  type PlanGroup,
+  type PlanRef,
+  type PlanTaskBlock,
+} from "./plan-blocks.js";
 import { positiveInt, str } from "./status.js";
 import { NO_MARKERS_REASON, doneTasks } from "./tests.js";
 
@@ -95,6 +107,31 @@ function headBox(lines: string[], task: PlanTaskBlock): { index: number; ticked:
   }
   return null;
 }
+
+/** The refs a task names: its four path-and-symbol fields. */
+const taskRefs = (task: PlanTaskBlock): PlanRef[] => [
+  ...task.create,
+  ...task.read,
+  ...task.update,
+  ...task.delete,
+];
+
+/**
+ * A plan symbol as a `git diff -S` needle: a Markdown section's heading text, a flag,
+ * or the leading identifier of an applied symbol (`doneTasks(log, verbs)` -> `doneTasks`).
+ */
+export function needleOf(symbol: string): string | undefined {
+  const s = symbol.trim();
+  if (s === "") return undefined;
+  const heading = /^§\s*(.+)$/.exec(s);
+  if (heading) return heading[1]!.trim();
+  const token = /^(--?[\w-]+|[A-Za-z_$][\w$]*)/.exec(s)?.[0];
+  if (token === undefined) return s;
+  return /^[A-Za-z_$][\w$]*\s*[(\[]/.test(s) || token === s ? token : s;
+}
+
+/** `paths` as git printed them, split on NUL; empty output is no path. */
+const splitPaths = (stdout: string): string[] => stdout.split("\0").filter(Boolean);
 
 export const tasksCommand: CommandSpec = {
   noun: "tasks",
@@ -229,6 +266,125 @@ export const tasksCommand: CommandSpec = {
         const open = candidates.filter((t) => !t.done && !closed.has(t.task)).map((t) => t.task);
         for (const n of open) ctx.log(`TASK ${n} is open`);
         ctx.emit({ plan: planArg, group, tasks: open, handover: open.length > 0 });
+        return EXIT.OK;
+      },
+    },
+    currency: {
+      summary:
+        "Print each task whose CREATE / READ / UPDATE / DELETE paths or symbols moved between --base and --against, with its matched paths, needles and diff hunks; exit 0 (including no match), 1 a plan with no task blocks, 2 a bad plan.",
+      flags: [
+        {
+          name: "plan",
+          type: "string",
+          required: true,
+          help: "plan file holding the task blocks",
+        },
+        {
+          name: "base",
+          type: "string",
+          help: "the commit the plan was written against (default origin/dev)",
+        },
+        {
+          name: "against",
+          type: "string",
+          help: "the commit landed changes are judged on (default origin/dev)",
+        },
+      ],
+      output: {
+        plan: "the plan file read, as given",
+        base: "the commit the plan was written against",
+        against: "the commit landed changes were judged on",
+        tasks:
+          "each matched task ({task, group, paths, needles, hunks}): the changed paths and the needles that moved, and the diff over those paths only",
+      },
+      exitCodes: {
+        [EXIT_DIFF_FAILED]: "--base or --against does not resolve, or git diff failed",
+      },
+      run: (ctx) => {
+        const planArg = String(ctx.flags.plan);
+        const base = str(ctx.flags.base) ?? DIFF_BASE;
+        const against = str(ctx.flags.against) ?? DIFF_BASE;
+        if (base === "") throw new CommandError(EXIT.USAGE, "--base must be non-empty");
+        if (against === "") throw new CommandError(EXIT.USAGE, "--against must be non-empty");
+        const plan = readPlan(ctx.cwd, planArg);
+        const top = git(ctx.cwd, ["rev-parse", "--show-toplevel"]);
+        if (top === null)
+          throw new CommandError(EXIT.USAGE, `not inside a git work tree: ${ctx.cwd}`);
+        for (const ref of [base, against]) {
+          const fetched = fetchRemoteRef(top, ref);
+          if (fetched !== null && !fetched.ok)
+            ctx.log(
+              `git fetch for ${ref} failed — judging against the last fetch: ${fetched.stderr}`,
+            );
+          if (git(top, ["rev-parse", "-q", "--verify", `${ref}^{commit}`]) === null)
+            throw new CommandError(EXIT_DIFF_FAILED, `${ref} does not resolve to a commit`);
+        }
+        const range = `${base}...${against}`;
+        const changed = runGit(top, ["diff", "--name-only", "-z", "--no-renames", range]);
+        if (!changed.ok)
+          throw new CommandError(EXIT_DIFF_FAILED, `git diff ${range} failed: ${changed.stderr}`);
+        const changedPaths = splitPaths(changed.stdout);
+        const needleCache = new Map<string, string[]>();
+        /** The paths `needle` moved in, read once per needle. */
+        const needleMoves = (needle: string): string[] => {
+          const cached = needleCache.get(needle);
+          if (cached !== undefined) return cached;
+          const diff = runGit(top, [
+            "diff",
+            "--no-renames",
+            "-S",
+            needle,
+            "--name-only",
+            "-z",
+            range,
+          ]);
+          if (!diff.ok)
+            throw new CommandError(
+              EXIT_DIFF_FAILED,
+              `git diff ${range} -S${needle} failed: ${diff.stderr}`,
+            );
+          const paths = splitPaths(diff.stdout);
+          needleCache.set(needle, paths);
+          return paths;
+        };
+        const tasks: Array<{
+          task: number;
+          group: number;
+          paths: string[];
+          needles: string[];
+          hunks: string[];
+        }> = [];
+        for (const task of plan.tasks) {
+          const refs = taskRefs(task);
+          const files = [...new Set(refs.map((r) => r.file.trim()).filter((f) => f !== ""))];
+          const paths = changedPaths.filter((p) =>
+            files.some((f) => p === f || p.startsWith(`${f}/`)),
+          );
+          const needles: string[] = [];
+          for (const ref of refs) {
+            if (ref.symbol === undefined) continue;
+            const needle = needleOf(ref.symbol);
+            if (needle === undefined || needles.includes(needle)) continue;
+            if (needleMoves(needle).length > 0) needles.push(needle);
+          }
+          const matched =
+            paths.length > 0
+              ? paths
+              : [...new Set(needles.flatMap((needle) => needleMoves(needle)))].sort();
+          if (matched.length === 0) continue;
+          const diff = runGit(top, ["diff", "--no-renames", range, "--", ...matched]);
+          if (!diff.ok)
+            throw new CommandError(EXIT_DIFF_FAILED, `git diff ${range} failed: ${diff.stderr}`);
+          tasks.push({
+            task: task.task,
+            group: task.group,
+            paths: matched,
+            needles,
+            hunks: diff.stdout === "" ? [] : diff.stdout.split("\n"),
+          });
+        }
+        for (const t of tasks) ctx.log(`TASK ${t.task}: ${t.paths.join(", ")}`);
+        ctx.emit({ plan: planArg, base, against, tasks });
         return EXIT.OK;
       },
     },
