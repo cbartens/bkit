@@ -110,3 +110,5 @@
 {"type":"workflow-done","workflow":"build","at":"2026-10-27T09:52:22Z","parentSha":"0cf86e41ed459164601ad4d333c96ff72f628591"}
 {"type":"step-done","workflow":"build","step":"build-create-pr","status":"DONE","at":"2026-10-27T09:55:47Z","parentSha":"5bb66d75029f1fb9ab835525870f937c96d85916","artifacts":["https://github.com/cbartens/bkit/pull/712"]}
 {"type":"step-done","workflow":"build","step":"build-close-workflow","status":"DONE","at":"2026-10-27T10:00:31Z","parentSha":"4a0da8973cc7e2f9f0c0f37eb5d773fea7370ad1","artifacts":[],"ciDispatch":{"outcome":"unresolved","head":"4a0da8973cc7e2f9f0c0f37eb5d773fea7370ad1","attempts":12,"retrigger":true,"reason":"ci-declared-no-run"}}
+{"type":"step-done","workflow":"build","step":"build-close-workflow","status":"DONE","at":"2026-10-27T10:24:09Z","parentSha":"73f3aade3b9c85b3dbb1bea5fcf4a5ea8eed862e","artifacts":[],"ciDispatch":{"outcome":"dispatched","head":"73f3aade3b9c85b3dbb1bea5fcf4a5ea8eed862e","attempts":2,"retrigger":false}}
+{"type":"close-transport","shape":"push","sha":"73f3aade3b9c85b3dbb1bea5fcf4a5ea8eed862e","scanResult":"clean","at":"2026-10-27T10:24:09Z"}
