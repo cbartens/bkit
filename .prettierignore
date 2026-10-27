@@ -44,6 +44,7 @@ docs/roadmap.md
 # escape and reflow it, and a gate's own format check would fail on it.
 docs/plans/*/logs/*/run-tests-*.md
 docs/plans/*/logs/*/build-task-red-*.md
+docs/plans/*/logs/*/build-diff-*.md
 docs/plans/*/logs/*/build-group-gate-*.md
 docs/plans/*/logs/*/build-subplan-gate-*.md
 docs/plans/*/logs/*/context-tests-local-*.md
