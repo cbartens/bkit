@@ -1,6 +1,15 @@
 // checks/tips/index.ts — collect the firing setup tips and render them for `bkit tips`, the
 // console checklist and `.bkit/advisories.md`. Catalogue + priority: ./catalogue.ts.
+//
+// Every `fires` reads the directory `tipsBase` returns — the main checkout, the tree the
+// integration branch is checked out in — never the calling directory. A workflow runs in a
+// worktree, but a worktree is an ephemeral branch: an empty or half-created one would fire
+// every "file is missing" tip as a false gap. When no checkout is found at all, nothing fires.
 
+import * as fs from "node:fs";
+import * as path from "node:path";
+
+import { git } from "../../commands/lib.js";
 import type { PreflightFinding } from "../before/index.js";
 import {
   ignoredAdvisoryIds,
@@ -9,6 +18,22 @@ import {
 } from "../after/suppression.js";
 import type { TipsContext } from "../../cli.js";
 import { ALL_WORKFLOWS, SETUP_TIPS, type SetupTip } from "./catalogue.js";
+
+/**
+ * The directory the tips are checked against: the main checkout's root — the tree the
+ * integration branch is checked out in — resolved from any worktree through git's common
+ * dir, else `cwd` when git cannot say. `null` when that root is not a checkout (holds
+ * neither `.git` nor `package.json`): a directory with nothing to check fires no tip
+ * rather than every "missing" tip as a false gap.
+ */
+export function tipsBase(cwd: string): string | null {
+  const common = git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  const base = common ? path.dirname(common) : cwd;
+  if (!fs.existsSync(base)) return null;
+  return fs.existsSync(path.join(base, ".git")) || fs.existsSync(path.join(base, "package.json"))
+    ? base
+    : null;
+}
 
 /** Tips `bkit tips` prints without `--all` or `--workflow`. */
 export const TIPS_CAP = 3;
@@ -79,11 +104,13 @@ export interface TipsResult {
 
 /** Every firing tip in priority order, minus the ones the root package.json silences. */
 export function collectTips(cwd: string, catalogue: readonly SetupTip[] = SETUP_TIPS): TipsResult {
-  const ignored = ignoredAdvisoryIds(cwd);
+  const base = tipsBase(cwd);
+  if (base === null) return { tips: [], suppressed: [], star: false };
+  const ignored = ignoredAdvisoryIds(base);
   const tips: SetupTip[] = [];
   const suppressed: SuppressionNote[] = [];
   for (const tip of catalogue) {
-    if (!tip.fires(cwd)) continue;
+    if (!tip.fires(base)) continue;
     if (isTipSilenced(tip, ignored)) suppressed.push({ id: tip.id, scope: "." });
     else tips.push(tip);
   }
@@ -102,7 +129,9 @@ export function dropTipSilencedAdvisories(
   onSuppressed?: SuppressionReporter,
   catalogue: readonly SetupTip[] = SETUP_TIPS,
 ): PreflightFinding[] {
-  const ignored = ignoredAdvisoryIds(cwd);
+  const base = tipsBase(cwd);
+  if (base === null) return findings;
+  const ignored = ignoredAdvisoryIds(base);
   if (ignored.size === 0) return findings;
   const patterns = catalogue
     .filter((tip) => isTipSilenced(tip, ignored))

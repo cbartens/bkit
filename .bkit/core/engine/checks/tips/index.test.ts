@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { PreflightFinding } from "../before/index";
 import type { SuppressionNote } from "../after/suppression";
@@ -21,6 +22,7 @@ import {
   setupTipsChecklistLines,
   setupTipsMarkdownLines,
   silenceLine,
+  tipsBase,
   tipsIntro,
 } from "./index";
 
@@ -44,9 +46,39 @@ const ignore = (ids: string[]) =>
 
 beforeEach(() => {
   cwd = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-tips-"));
+  fs.writeFileSync(path.join(cwd, "package.json"), "{}");
 });
 afterEach(() => {
   fs.rmSync(cwd, { recursive: true, force: true });
+});
+
+describe("tipsBase", () => {
+  it("is null for a directory that is not a checkout and holds no manifest", () => {
+    fs.rmSync(path.join(cwd, "package.json"));
+    expect(tipsBase(cwd)).toBeNull();
+  });
+
+  it("returns the repo root from a nested directory, not the directory itself", () => {
+    expect(spawnSync("git", ["init", "-q"], { cwd }).status).toBe(0);
+    const nested = path.join(cwd, "docs", "plans");
+    fs.mkdirSync(nested, { recursive: true });
+    expect(tipsBase(nested)).toBe(fs.realpathSync(cwd));
+  });
+
+  it("returns the main checkout from a worktree, not the worktree", () => {
+    const g = (...args: string[]) =>
+      spawnSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], { cwd });
+    expect(g("init", "-q").status).toBe(0);
+    g("add", "package.json");
+    expect(g("commit", "-q", "-m", "init").status).toBe(0);
+    const wt = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-tips-wt-"));
+    try {
+      expect(g("worktree", "add", "-q", wt).status).toBe(0);
+      expect(tipsBase(wt)).toBe(fs.realpathSync(cwd));
+    } finally {
+      fs.rmSync(wt, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("matchesAdvisory / isTipSilenced", () => {
@@ -70,6 +102,15 @@ describe("collectTips", () => {
 
   it("keeps firing tips in catalogue order", () => {
     expect(collectTips(cwd, catalogue).tips.map((t) => t.id)).toEqual(["a", "c"]);
+  });
+
+  it("fires nothing and hides the star when there is no checkout to check", () => {
+    fs.rmSync(path.join(cwd, "package.json"));
+    expect(collectTips(cwd, [fake("a", true)])).toEqual({
+      tips: [],
+      suppressed: [],
+      star: false,
+    });
   });
 
   it("keeps the star line until its id is ignored", () => {
