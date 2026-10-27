@@ -2823,6 +2823,10 @@ Read supplied diff fully. **If** its first line says `partial diff coverage` →
 - carriers: prompt `bkit-plan-generate`, `bkit-plan-review-1`, `bkit-plan-scope-check`, `bkit-plan-update`
 
 ```text
+**Scenario detail:** `Process Sketch` restates the `Concrete Example` and `Edge Cases` as 3-7 `WHEN X → THEN Y` outcome lines, with no new examples. `Concrete Example` is one scenario: role, starting state, numbered steps, observable outcome. `Edge Cases` keep the design's Key Edge Cases, else the issue's rows, word for word, and add validation, error and boundary cases. `Derived Test Matrix` has one row per testable behaviour, each with a target file and a `Task` cell naming the one runbook task that lands its test; issue rows stay word for word, and each in-scope audit behaviour has a row.
+```
+
+```retired
 **Scenario detail:** `Process Sketch` restates the `Concrete Example` and `Edge Cases` as 3-7 `WHEN X → THEN Y` outcome lines, with no new examples. `Concrete Example` is one scenario: role, starting state, numbered steps, observable outcome. `Edge Cases` keep the design's Key Edge Cases, else the issue's rows, word for word, and add validation, error and boundary cases. `Derived Test Matrix` has one row per testable behaviour, each with a target file; issue rows stay word for word, and each in-scope audit behaviour has a row.
 ```
 
@@ -7632,6 +7636,7 @@ Per selected skill, run `npx skills add <owner/repo>@<skill> -y` — one named s
 ```text
 **Role:** Senior engineer turning an issue or a free-form plan into a plan in task-block form.
 **Same scope:** Every task traces to the input file or the existing plan; add no work they do not ask for, drop none they do.
+**Matrix shape:** The plan's `Derived Test Matrix` has a `Task` column beside `Test description`, `Type` and `Target file`; each cell names the one runbook task that lands that row's test.
 Read `docs/templates/bkit-plan.md` § `Agent Execution Runbook` → the group and task-block shape; the rules are **Runbook tasks**, **TEST FIRST** and **TEST EXCEPTION** above.
 **If** the plan file exists → keep every section except `Agent Execution Runbook` as written and rewrite the runbook. **Else** → create the plan with `# {title} Implementation Plan`, `## Context & Goals` (the goal in 1-3 lines), `## Reuse Inventory` and `## Agent Execution Runbook`. Either way, carry over every end state and test the inputs name, tightened and never weakened, in their order.
 Split the work into tasks, each one testable change. Group them in build order: each group within the per-group plan caps your Context names (`bkit.workflows.tasks`: tasks, and `TEST FIRST` tests in all); a group's `DEPENDS ON` names only tasks in earlier groups or its own. Number tasks from 1 across the plan.

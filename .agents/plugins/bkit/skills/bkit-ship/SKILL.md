@@ -369,7 +369,7 @@ description: "Ship Feature — Autonomous merge and archive"
    cd "{WORKTREE_PATH}" && "{BKIT}" context diff --reset-log --artifact="tmp/bkit-diff-{FID}.md" --fid={FID} --step=ship-deferred-sweep >/dev/null || exit 2
    ```
    **Subagent:** Invoke `view_file` `.agents/plugins/bkit/agents/bkit-ship-deferred-sweep.md` using `view_file` tool:
-   Context: You are a subagent in the Ship phase. Pre-merge completeness gate. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
+   Context: You are a subagent in the Ship phase. Pre-merge completeness gate. Diff base: `origin/dev` — run `bkit branches scan-diff --disabled-tests --base=origin/dev`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/ship-input-{RUN}.md`, `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), `docs/plans/{YYYYMM}/{FID}-design.md` (if present), `{STATUS}`, `docs/deferrals.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/*-plan-verify*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/*-challenge*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/*-summary.md`, `tmp/bkit-diff-{FID}.md` (the run's diff).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-deferred-sweep.md`.
 3. Finish (bookkeeping to `$BOOK_ROOT`):
@@ -394,26 +394,30 @@ description: "Ship Feature — Autonomous merge and archive"
 
 ## 🧠 Step 6 — Update Docs & Summary
 
-1. **Subagent:** Invoke `view_file` `.agents/plugins/bkit/agents/bkit-ship-update-docs.md` using `view_file` tool:
+1. Write the FID's deferral lines to the artifact the docs agent reads `Pending Items` from:
+   ```bash
+   cd "{WORKTREE_PATH}" && "{BKIT}" context ledger-scan --terms="{FID}" --source=docs/deferrals.jsonl --artifact="{OUTBOX}/ship-pending-items.md" --fid={FID} --step=ship-update-docs --reset-log >/dev/null || exit 1
+   ```
+2. **Subagent:** Invoke `view_file` `.agents/plugins/bkit/agents/bkit-ship-update-docs.md` using `view_file` tool:
    Context: You are a subagent in the Ship phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), glob `docs/plans/{YYYYMM}/logs/{FID}/*.md` (excluding `*-summary.md` / `*-handover.md`).
+   Read: `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), glob `docs/plans/{YYYYMM}/logs/{FID}/*.md` (excluding `*-summary.md` / `*-handover.md`), `{OUTBOX}/ship-pending-items.md`.
    Update: Doc files.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-update-docs.md`.
-2. Wait for the subagent to complete, then append the `SHIPPED` row to the worktree ledger and re-render the mechanical `roadmap-status` board from it (exit 1 when the row did not land), and finish the step (bookkeeping to `$BOOK_ROOT`):
+3. Wait for the subagent to complete, then append the `SHIPPED` row to the worktree ledger and re-render the mechanical `roadmap-status` board from it (exit 1 when the row did not land), and finish the step (bookkeeping to `$BOOK_ROOT`):
    ```bash
    "{BKIT}" roadmap feature --root="{WORKTREE_PATH}" --workflow=ship --fid="{FID}" --step=ship-update-docs --strict >/dev/null || exit 1
    "{BKIT}" steps finish --workflow=ship --step=ship-update-docs --file="{STATUS}" --artifact="docs/plans/{YYYYMM}/logs/{FID}/ship-update-docs.md" --commit=none >/dev/null || exit 1
    ```
-3. Write `ship-summary.md` from this run's status rows and the PR's size:
+4. Write `ship-summary.md` from this run's status rows and the PR's size:
    ```bash
    "{BKIT}" workflows summary --workflow=ship --file="{STATUS}" --pr={PR_NUMBER}
    ```
    **If** exit non-zero → **Failure Path**. Hold `verdict` as `SUMMARY_VERDICT`, `failures` as `SUMMARY_FAILURES`.
-4. Finish (bookkeeping to `$BOOK_ROOT`):
+5. Finish (bookkeeping to `$BOOK_ROOT`):
    ```bash
    "{BKIT}" steps finish --workflow=ship --step=ship-summary --file="{STATUS}" --attempt=1 --verdict={SUMMARY_VERDICT} --failures={SUMMARY_FAILURES} --artifact="docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md" --commit=none --number=6 --post --title="Update Docs & Summary" --link-ref=dev --comment-body
    ```
-5. Route:
+6. Route:
    - **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 7.
    - **If** `SUMMARY_VERDICT` = FAIL → display `ship-summary.md` content verbatim as final message to user. Line 1 of the final message = the no-issue warning, when one was emitted. → **Failure Path**.
    - **Else** → **Failure Path**.

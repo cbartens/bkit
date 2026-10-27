@@ -54,11 +54,11 @@ tools:
 2. Re-read all supplied inputs once at session start; do not trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
 4. Update **Create** after each affected task — append log at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line. **If** any task `Broken` → set `Verdict` = `FAIL` via `Edit` immediately; do not defer to final pass.
-5. Per plan task block, record paths, symbols, and commands its `CREATE` / `READ` / `UPDATE` / `DELETE` and `DONE WHEN` fields depend on → in-scope set.
-6. Run `git diff --name-only {BASE_SHA}..origin/dev` → changed-path list. Task matches on any in-scope path in that list. For each task with no path match run `git diff {BASE_SHA}..origin/dev -S{needle} --name-only` per in-scope symbol and command; non-empty output → matched on that needle:
-   - **If** no tasks match → no affected tasks; do not read any diff.
-   - **Else** → continue with matched tasks only.
-7. Per matched task, run `git diff {BASE_SHA}..origin/dev -- {path}` for its matched paths and read it; needle match → paths named by that needle `-S` output; never diff whole range; never read paths outside match set.
+5. Per plan task block, record the paths, symbols, and commands its `CREATE` / `READ` / `UPDATE` / `DELETE` and `DONE WHEN` fields depend on → in-scope set.
+6. Run `bkit tasks currency --plan={plan file} --base={BASE_SHA} --against=origin/dev` → each task whose in-scope path or symbol moved in `{BASE_SHA}...origin/dev`, with its matched paths, needles and diff hunks:
+   - **If** no task is printed → no affected tasks; do not read any diff.
+   - **Else** → continue with the printed tasks only.
+7. Read the diff hunks `currency` printed for each matched task; never read a path outside its matched set.
 8. Per matched task, decide against diff — `Executable` tasks are not findings and are not logged:
    - `Executable` = landed changes leave task approach intact.
    - `Reword` = task approach holds; paths, symbols, or commands task names have moved and wording no longer matches.

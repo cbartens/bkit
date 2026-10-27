@@ -54,14 +54,15 @@ developer_instructions = """
      - **If** shipped surfaces instruct consumers to run something that fails at runtime → mark item `Blocked`.
    - Any `Blocked` items → move to `Blocking Deferrals` and append test details with source evidence → set `Verdict` = `FAIL` via `Edit` immediately; do not defer to final pass.
    - Any leftover `Planned` items → mark items `Lazy` → move to `Lazy Deferrals` → append deferral rows to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first; set `reason` to `unjustified`, set `status` to `TRIAGED`.
-8. Scan supplied diff for any disabled tests (`.skip` / `.todo` / `.fixme` / `xfail`, `t.Skip()`, `#[ignore]`, `@Disabled` added, or assertions deleted); skips predating supplied diff do not count → record all under `Blocking Deferrals` with source evidence (`file:line`, test name) → set `Verdict` = `FAIL` via `Edit` immediately; do not defer to final pass.
-9. Scan `docs/deferrals.jsonl` for any plan related entries including recently appended rows → verify each `reason` holds at ship time as per `.bkit/jsonl.md` deferral reason tests; `reason` = `low-severity` with `severity` = `LOW` holds without the tests:
-   - **If** holds → record under / move to `Exempt Deferrals` → continue; append no row, `reason` is set once and carried verbatim.
-   - **Else** → record under / keep under `Lazy Deferrals` → append row to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), same `key` and prior fields verbatim, set `reason` to `unjustified`, set `status` to `TRIAGED`, `description` naming failed deferral tests.
+8. Scan the run's diff for disabled tests with `bkit branches scan-diff --disabled-tests --base=` the diff base your Context names — its `disabled` list holds each hit's `file:line` and test name → **If** exit 1 → record every entry under `Blocking Deferrals` with source evidence (`file:line`, test name) → set `Verdict` = `FAIL` via `Edit` immediately; do not defer to final pass.
+9. Bucket the plan-related deferral rows of the FID in your Context with `bkit ledgers triage --fid=` the FID in your Context `--plan=` the plan file. The verb applies the deferral tests and writes every `unjustified` / `TRIAGED` row itself; each of its `rows` carries the row's `key`, its `bucket` and the test result:
+   - **If** `bucket` = `Exempt` → record under / move to `Exempt Deferrals`; the row stands as written.
+   - **Else** → record under / keep under `Lazy Deferrals`, naming the tests the verb reports for it.
+   - **If** the plan file is absent → nothing to test against; record each plan-related row under `Exempt Deferrals` naming the missing plan.
 10. Update **Create** — set `Failures` via `Edit` = `Blocking Deferrals` entry count; set `Lazy` via `Edit` = `Lazy Deferrals` entry count.
 11. Update **Create** — set `Verdict` via `Edit`; mapping:
     - `PASS` = no remaining `Planned` items; every intended deliverable `Delivered`, `Exempt`, or `Lazy`; no `Blocking Deferrals`.
-    - `FAIL` = any intended deliverables `Blocked`; any tests in supplied diff disabled; any `Blocking Deferrals`.
+    - `FAIL` = any intended deliverables `Blocked`; any test the run's diff disabled; any `Blocking Deferrals`.
 
 **Output format:**
 
@@ -80,7 +81,7 @@ Lazy: <integer >= 0>
 
 ## Blocking Deferrals
 
-[Unmet deliverables that passed any blocking tests, and every test supplied diff disabled; per entry: test details with source evidence (`file:line`, test, grep); blocks merge. **If** none → `None`; initially set to `PENDING`.]
+[Unmet deliverables that passed any blocking tests, and every test the run's diff disabled; per entry: test details with source evidence (`file:line`, test, grep); blocks merge. **If** none → `None`; initially set to `PENDING`.]
 
 ## Exempt Deferrals
 

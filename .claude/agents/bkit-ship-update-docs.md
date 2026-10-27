@@ -60,7 +60,7 @@ autoCompactWindow: 300000
 4. Per doc, always follow its `Rules` headers when making edits.
 5. Per doc, four passes in order: Sync content (gaps vs implementation) → reorganize structure (dedupe, move misplaced) → compress wording (more token-efficient) → update cross-references (inline `docs/*.md` links).
 6. Ensure agent memories (`MEMORY.md` / `memory/*.md`) do not duplicate content and only contain pointers (path, section, one-line hook) to relevant `docs/*.md` sections / `docs/*.jsonl` entries. **If** memory contains duplicate / stale content → update memory.
-7. Grep `docs/deferrals.jsonl` for `{FID}` matches → surface in output `Pending Items` for human review (do not write `docs/deferrals.jsonl`).
+7. Fill `Pending Items` from the `ship-pending-items.md` deferral scan supplied in your Read paths, one entry per line (do not write `docs/deferrals.jsonl`).
 8. Produce **Create** output.
 
 **Output format:**
@@ -78,7 +78,7 @@ autoCompactWindow: 300000
 
 ## Pending Items
 
-[`{FID}` matches in `docs/deferrals.jsonl` for human review. **If** no matches → `None`.]
+[`{FID}` matches from the `ship-pending-items.md` deferral scan, for human review. **If** no matches → `None`.]
 
 ## Blockers
 
