@@ -16,7 +16,7 @@
 <p align="center">
   <a href="#how-it-works">How it works</a> ·
   <a href="#why-its-different">Why it's different</a> ·
-  <a href="#memory">Memory</a> ·
+  <a href="#knowledge">Knowledge store</a> ·
   <a href="#audits">Audits</a> ·
   <a href="#templates">Templates</a> ·
   <a href="#token-costs">Token costs</a> ·
@@ -219,24 +219,52 @@ How the lanes join into the one final check, and what happens on green or red: [
 - **The same answer on every tool.** Where a stopped run resumes, what goes in a ledger row and what each agent's brief holds are worked out by code, so Claude Code, Cursor, Codex, Antigravity and opencode run the same steps the same way.
 - **Fewer tokens, as a bonus.** No model turn is spent on bookkeeping, and each build agent starts on a brief of a few KB instead of the whole plan ([spending fewer tokens](#token-costs)).
 
+<a id="knowledge"></a>
 <a id="memory"></a>
 
-## Right context at the right step
+## Knowledge store that writes itself
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-context-dark.svg">
-    <img alt="What it knows: right context, right step, written back as it learns. In your repo, bkit reads project docs at every step and updates them at ship; reads and writes lessons, decisions, postponed work and known bugs; writes designs and plans that later steps read; reads audit reports at plan and a code map at every step; keeps run state and stats at every step; adds skills at build and removes them at ship. Outside your repo, it reads and updates the GitHub, Linear or Jira issue at every step, searches related issues at design, plan and debug, searches the web at design and debug, reads CI runs and test reports at debug and ship, reads runtime platforms such as Sentry, Vercel, Supabase and Stripe at debug, and opens, fixes and merges the pull request." src=".github/assets/bkit-context-light.svg" width="100%">
+    <img alt="Knowledge store: each kind of fact has one home, in a file in your repo or on your tracker. In your repo, bkit reads project docs at every step and updates them at ship; reads and writes lessons, decisions, postponed work and known bugs; writes designs and plans that later steps read; reads audit reports at plan and a code map at every step; keeps run state and stats at every step; adds skills at build and removes them at ship. Outside your repo, it reads and updates the GitHub, Linear or Jira issue at every step, searches related issues at design, plan and debug, searches the web at design and debug, reads CI runs and test reports at debug and ship, reads runtime platforms such as Sentry, Vercel, Supabase and Stripe at debug, and opens, fixes and merges the pull request." src=".github/assets/bkit-context-light.svg" width="100%">
   </picture>
 </p>
 
-**A chat forgets everything when it ends; bkit doesn't.** It keeps what it knows in plain files in your repo and on your tracker issues. Each step reads what it needs and writes back what it learned:
+**Each kind of fact has one home**, in a plain file in your repo or a comment on your tracker issue. Agents read them directly, the way you do, and write back as they work. Lessons from fixes, decisions and the reasons behind them, work consciously postponed, known bugs, doc updates, tracker comments — the store accrues as the project runs, and every change arrives through git.
 
-- **Docs that keep themselves current.** Install sets up the docs a professional project keeps: architecture, data schema, deployments, testing, security, monitoring, design system, tech stack and local setup. Agents fill them in as they work, `/bkit-ship` updates them after every feature, and [an index](.agents/docs.md) tells each agent which docs to read at each step. They stay current because the agents depend on them.
-- **Project memory agents actually read.** Four ledgers record lessons from every fix (`docs/knowledge.jsonl`), decisions and their reasons (`docs/decisions.jsonl`), work consciously postponed (`docs/deferrals.jsonl`) and known bugs (`docs/failures.jsonl`). Plan reviewers see the past bugs and postponed work closest to the new feature, debug reads the lessons first, and `/bkit-ship` checks nothing postponed was quietly dropped. Four utility agents keep them honest: they correct lessons and decisions the code has since contradicted, and close postponed work and known bugs that have already been fixed.
-- **Tracker issues are memory too.** Every step reads the whole tracker issue (e.g. GitHub, Linear, Jira), comments included, and adds what it did as a new comment without editing earlier ones, so the issue becomes the feature's running record. bkit skips its own comments when it reads, so agents act on what people wrote. Design, plan and debug also search your other tracker issues, closed ones included, for earlier designs, duplicate work and past incidents.
-- **Outside evidence, when it's needed.** Design searches the web for feasibility. Debug pulls failed CI logs, the diff since the last green run, end-to-end reports and runtime errors. 10+ ready-made connectors cover GitHub, Sentry, Vercel, Supabase, Stripe, Expo, Playwright, Maestro, Inngest, Resend, Cloud Run, Tavily web search and Serena, each easy to customise, extend or leave out. Each fetches only the window, severity and fields it needs and tail-bounds what it returns, so a debug run reads lines rather than megabytes. A connector that isn't set up is reported as such, never read as "all clear".
-- **Progress lives in your repo, not a chat window.** Run state is saved after every step, so a crashed run resumes where it stopped, on any tool.
+**Outside evidence, fetched when it's needed, not kept.** Design searches the web for feasibility. Debug pulls failed CI logs, the diff since the last green run, end-to-end reports and runtime errors. 10+ ready-made connectors cover GitHub, Sentry, Vercel, Supabase, Stripe, Expo, Playwright, Maestro, Inngest, Resend, Cloud Run, Tavily web search and Serena, each easy to customise, extend or leave out. Each fetches only the window, severity and fields it needs and tail-bounds what it returns, so a debug run reads lines rather than megabytes. A connector that isn't set up is reported as such, never read as "all clear".
+
+**Where every kind of fact lives, who writes it, when the next step reads it:**
+
+<!-- prettier-ignore -->
+| Kind of fact | Lives in | Written by | Read at |
+| --- | --- | --- | --- |
+| What the project is | `docs/*.md`: architecture, security, testing, deployments, data schema, observability, technology, design | Agents fill them in as they work; `/bkit-ship` updates them after every feature | Every step, per the [docs index](.agents/docs.md) |
+| Lessons from fixes | `docs/knowledge.jsonl` | `/bkit-debug` on root cause; a utility agent closes rows the code has since contradicted | `/bkit-debug` first; plan reviewers |
+| Decisions and reasons | `docs/decisions.jsonl` | `/bkit-design` and `/bkit-plan`; a utility agent corrects contradicted ones | `/bkit-design`, `/bkit-plan` |
+| Work consciously postponed | `docs/deferrals.jsonl` | Any phase that defers; a utility agent closes done ones | Plan reviewers; `/bkit-ship` checks nothing was quietly dropped |
+| Known bugs | `docs/failures.jsonl` | `/bkit-debug`; a utility agent closes fixed ones | Plan reviewers |
+| A feature's running record | Tracker issue comments (GitHub, Linear or Jira) | Every step appends one new comment and never edits older ones | Every step reads the whole issue; design, plan and debug also search other issues, closed ones included |
+| Audit findings | `docs/audits/{YYYYMM}/` | `@bkit-audit-generate` | `/bkit-plan` when fixing |
+| Run state and stats | `.bkit/status.jsonl`, `.bkit/stats.jsonl` | The engine, after every step | `bkit` on resume (any tool); `bkit stats` for your own numbers |
+
+**Here's one run working through it** — a feature building _"Add password reset"_ (issue #123), with the exact file each phase draws from and the exact row it leaves behind:
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-knowledge-flow-dark.svg">
+    <img alt="Example run of the five bkit phases on issue #123, 'Add password reset'. Design reads docs/architecture.md (current auth boundaries) and docs/decisions.jsonl ('session cookies, not JWTs'), and writes docs/plans/{feature}/design.md plus a new decisions.jsonl row ('recovery link TTL = 1 h'). Plan reads design.md and docs/failures.jsonl (a known 'email verify race' bug) and writes docs/plans/{feature}/plan.md plus a tracker comment on #123. Build reads a ~2 KB brief of plan.md for its task group and writes a tracker comment per closed task. Debug reads docs/knowledge.jsonl (a past 'timezone-aware token' lesson) and writes a new knowledge.jsonl row ('tests in UTC, token in local'). Ship reads docs/deferrals.jsonl ('rate limit, later' — open) and writes an updated docs/security.md with a new rate-limit section, closing the deferral. Underneath: no index to rebuild, no retrieval service to run, no embeddings — just files you can grep, blame and revert." src=".github/assets/bkit-knowledge-flow-light.svg" width="100%">
+  </picture>
+</p>
+
+**It's not a knowledge graph.** No nodes and edges, no embeddings, no retrieval service to keep running. The strength is the opposite — boring files, append-only ledgers, one home per fact:
+
+- **You can read it.** Open any `.md` or `.jsonl` and see exactly what's there. No reconstruction from vectors, no "ask the graph" step.
+- **Every change lands as a diff.** New lessons, decisions and doc updates arrive through git: review, blame, revert. A wrong fact is corrected the same way a wrong line of code is.
+- **The "why" has a timestamp.** Ledger rows are append-only with a date and a reason, so you can replay how an opinion changed. A graph node loses that unless you build an audit layer yourself.
+- **The agent writes to it in the same loop it works in.** Most "AI knowledge" setups are read-only from the model's side; bkit's agents update docs and ledgers as part of normal work, and utility agents close the rows the code has since contradicted. bkit skips its own tracker comments when it reads, so agents act on what people wrote, not on what the last agent said.
+- **Nothing to run.** No index to rebuild, no embeddings to refresh, no service to fail. The agent's file reading is the lookup.
 
 <a id="audits"></a>
 
