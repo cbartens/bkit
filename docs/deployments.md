@@ -530,9 +530,9 @@ GitHub Actions suppresses `pull_request` + `push` when HEAD has `[skip ci]` or `
 
 **Poll anchors the check NAMESPACE, not a lane name**: the capstone `bkit.testing.ciCapstone` minus its last `-segment` (`bkit-tests-check` → any check containing `bkit-tests`). Single-job anchor PROHIBITED. Alignment: `.bkit/core/engine/audits/workflows/ci-dispatch-gate-alignment.test.ts`; legacy scaffolds: `ci-legacy-scaffold-job-names` advisory.
 
-**Gate sites (2):** build Step 15; debug Step 10 sub-step 6 (PR-mode and LOCAL-mode). Ship OUT — Step 14 reads the squash commit's capstone with `bkit runs gate --head=<SQUASH_SHA> --capstone-only`; CI-Dispatch there masks "essential tests skipped".
+**Gate sites (2):** build Step 16; debug Step 10 sub-step 6 (PR-mode and LOCAL-mode). Ship OUT — Step 14 reads the squash commit's capstone with `bkit runs gate --head=<SQUASH_SHA> --capstone-only`; CI-Dispatch there masks "essential tests skipped".
 
-**Open-PR pre-flight (build Step 15):** `bkit prs probe --base=dev` first; open PR → Failure Path (`feat/{FID} already has open PR #N to dev`). `bkit prs open` probes `--head` again before creating: exit 3 on an existing open PR (`--existing=fail`, the default), exit 5 on a `gh` error, never a blind create.
+**Open-PR pre-flight (build Step 16):** `bkit prs probe --base=dev` first; open PR → Failure Path (`feat/{FID} already has open PR #N to dev`). `bkit prs open` probes `--head` again before creating: exit 3 on an existing open PR (`--existing=fail`, the default), exit 5 on a `gh` error, never a blind create.
 
 **Abort-push guard (design / plan / build / debug Failure Path + `.bkit/workflows.md` § Failure Path step 4):** feature branch → the `[skip ci]` abort commit goes out via `bkit branches push --mode=abort`. Open PR → exit 7, no push. `gh` cannot answer → exit 80, no push; look up the PR via MCP, re-run with `--open-pr=<n>|none`. No PR → push. `dev` / `main` → nothing pushed from the checkout; only logs + ledgers land on `dev` via the throwaway `origin/dev` checkout.
 
