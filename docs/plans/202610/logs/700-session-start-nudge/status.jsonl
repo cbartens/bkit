@@ -131,3 +131,7 @@
 {"type":"ship-merge-ci","workflow":"ship","at":"2026-10-26T23:02:53Z","sha":"2790b41816191ddae803d552a8f516bf644c175b","run":"40416374038","verdict":"FAIL","reason":"capstone 'bkit-tests-check' concluded 'failure' (not success) at head 2790b41816191ddae803d552a8f516bf644c175b"}
 {"type":"workflow-failed","workflow":"ship","at":"2026-10-26T23:03:12Z"}
 {"type":"engine-action","action":"comment","key":"ship/1/failure/14/1/comment","hash":"f3f348526cd615102bca3661fcb8fbe04fd1230d44cbdeade87422fa1c584851","ref":"https://github.com/cbartens/bkit/issues/700#issuecomment-6429388862","at":"2026-10-26T23:03:14Z"}
+{"type":"ship-gate-override","at":"2026-10-27T01:57:56Z","head":"2790b41816191ddae803d552a8f516bf644c175b","assertedBy":"bkit runs gate"}
+{"type":"ship-merge-ci","workflow":"ship","at":"2026-10-27T01:57:56Z","sha":"2790b41816191ddae803d552a8f516bf644c175b","run":"40416374038","verdict":"PASS","reason":""}
+{"type":"step-done","workflow":"ship","step":"ship-close-workflow","status":"DONE","at":"2026-10-27T01:58:06Z","parentSha":"9871db9ef6dfa8dbc5177b4c5cb7019348ebde1c","artifacts":[]}
+{"type":"workflow-done","workflow":"ship","at":"2026-10-27T01:58:06Z","parentSha":"9871db9ef6dfa8dbc5177b4c5cb7019348ebde1c"}

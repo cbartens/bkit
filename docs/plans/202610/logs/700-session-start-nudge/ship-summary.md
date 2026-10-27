@@ -12,7 +12,6 @@ PASS
 
 ## Steps
 
-<!-- prettier-ignore -->
 | Step | Verdict | Failures | Attempts | Artifact |
 | --- | --- | --- | --- | --- |
 | ship-start-workflow | - | - | 1 | - |
@@ -20,10 +19,15 @@ PASS
 | ship-regression-guard | PASS | - | 1 | - |
 | ship-deferred-sweep | PASS | 0 | 1 | `docs/plans/202610/logs/700-session-start-nudge/ship-deferred-sweep.md` |
 | ship-update-docs | - | - | 1 | `docs/plans/202610/logs/700-session-start-nudge/ship-update-docs.md` |
+| ship-summary | PASS | 0 | 1 | `docs/plans/202610/logs/700-session-start-nudge/ship-summary.md` |
+| ship-prune-skills | - | - | 1 | - |
+| ship-bookkeeping-push | - | - | 1 | - |
+| ship-merge-pr | PASS | 0 | 1 | - |
+| ship-switch-to-dev | - | - | 1 | - |
 
 ## Pull Request
 
-PR #708: +32130 / -232 lines across 196 files.
+PR #708: +29804 / -4631 lines across 217 files.
 
 ## Risks and Action Items
 
