@@ -675,7 +675,7 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** `tasks currency` — plan-current's path and symbol match
+- [x] **TASK 4:** `tasks currency` — plan-current's path and symbol match
   - **UPDATE:** `currency` in `.bkit/core/engine/commands/workflow/tasks.ts`: per task print the matched paths and needles and the diff hunks for its `CREATE` / `READ` / `UPDATE` / `DELETE` fields over `{base}...{against}` (`--against` defaulting to `origin/dev`), not `{base}...HEAD`
   - **UPDATE:** `.bkit/core/prompts/bkit-build-plan-current.md`: drop Process 5-7's search and call `bkit tasks currency --base={BASE_SHA} --against=origin/dev` (its `{BASE_SHA}...origin/dev` three-dot range); keep the `Executable` / `Reword` / `Broken` call
   - **DEPENDS ON:** 2
