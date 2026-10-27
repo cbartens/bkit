@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-design-brainstorm-ideate-1
 description: Senior architect proposing 2-3 pragmatic design approaches — existing code, minimal new infra, explicit trade-offs.
-model: openrouter/deepseek/deepseek-v4.1-flash
+model: openrouter/deepseek/deepseek-v4.1-flash-1017
 variant: max
 tools:
   read: true

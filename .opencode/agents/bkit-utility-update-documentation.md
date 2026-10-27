@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-utility-update-documentation
 description: Senior tech writer syncing project docs with system state after multiple plans.
-model: openrouter/deepseek/deepseek-v4.1-flash
+model: openrouter/deepseek/deepseek-v4.1-flash-1017
 variant: max
 tools:
   read: true

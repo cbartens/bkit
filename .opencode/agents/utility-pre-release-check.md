@@ -2,7 +2,7 @@
 mode: subagent
 name: utility-pre-release-check
 description: Senior pre-release reviewer auditing a bkit candidate against what it advertises.
-model: openrouter/deepseek/deepseek-v4.1-flash
+model: openrouter/deepseek/deepseek-v4.1-flash-1017
 variant: max
 tools:
   read: true

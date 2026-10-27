@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-design-review-2
 description: Senior engineer assessing operability of designs — failure modes, observability, on-call ergonomics.
-model: openrouter/deepseek/deepseek-v4.1-flash
+model: openrouter/deepseek/deepseek-v4.1-flash-1017
 variant: max
 tools:
   read: true

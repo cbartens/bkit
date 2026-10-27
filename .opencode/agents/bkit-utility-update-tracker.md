@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-utility-update-tracker
 description: Senior PM bringing open tracker issues in line with tracker rules.
-model: openrouter/deepseek/deepseek-v4.1-flash
+model: openrouter/deepseek/deepseek-v4.1-flash-1017
 variant: max
 tools:
   read: true

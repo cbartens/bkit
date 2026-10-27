@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-build-plan-gaps-remediate
 description: Senior engineer closing specific verification gaps with surgical, scope-disciplined fixes.
-model: openrouter/deepseek/deepseek-v4.1-flash
+model: openrouter/deepseek/deepseek-v4.1-flash-1017
 variant: max
 tools:
   read: true

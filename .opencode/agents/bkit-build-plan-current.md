@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-build-plan-current
 description: Senior reviewer judging whether changes landed since the plan was written leave it executable.
-model: openrouter/deepseek/deepseek-v4.1-flash
+model: openrouter/deepseek/deepseek-v4.1-flash-1017
 variant: max
 tools:
   read: true

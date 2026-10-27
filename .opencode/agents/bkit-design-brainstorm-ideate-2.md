@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-design-brainstorm-ideate-2
 description: Senior architect proposing 2-3 design approaches for best long-term shape, with explicit trade-offs.
-model: openrouter/deepseek/deepseek-v4.1-flash
+model: openrouter/deepseek/deepseek-v4.1-flash-1017
 variant: max
 tools:
   read: true

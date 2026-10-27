@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-ship-conflict-resolve
 description: Senior engineer resolving mechanical rebase conflicts before handover.
-model: openrouter/deepseek/deepseek-v4.1-flash
+model: openrouter/deepseek/deepseek-v4.1-flash-1017
 variant: max
 tools:
   read: true

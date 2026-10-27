@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-plan-review-1
 description: Senior reviewer prioritising plan tightness, task dependency order, and design-coverage.
-model: openrouter/deepseek/deepseek-v4.1-flash
+model: openrouter/deepseek/deepseek-v4.1-flash-1017
 variant: max
 tools:
   read: true
