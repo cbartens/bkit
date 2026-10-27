@@ -397,6 +397,93 @@ Text hooks add to an agent's context mid-run — every agent and subagent, no fr
 | **Plan task ticking owned by verify** | `bkit-build-plan-execute` (ticks only applicable Pre-Flight and gate boxes), `bkit-build-plan-verify` (ticks task boxes `[ ]`→`[x]` only on verified codebase artifact) | Task checkboxes are verify's derived view of the codebase. The executor's durable progress record is its flat append-only log of `DONE —` lines, which keeps resume safe and keeps per-task `Edit` ticks out of its turn budget. Execute ticks each applicable Pre-Flight and gate box as that gate passes and continues without asking; it never ticks a task box or a human-confirmation box. |
 | **Flat append-only log for source modifiers** | `bkit-build-plan-execute`, `bkit-build-plan-gaps-remediate`, `bkit-debug-failure-remediate` | Output format collapses to a single H1 + flat log body (no separate `Brief` / `Strategy` body sections — `Strategy` lives in machine-parseable header alongside `Verdict`; reasoning is implicit in `DONE —` / `BLOCKED —` lines). Stub state: `Verdict: PENDING` header + H1 + empty body. After every discrete unit of work (task / gap / finding / fix step): `Bash echo "DONE — {Unit} {N}: {name} — {outcome} ({path or commit ref})" >> {artifact}`. On failure: `BLOCKED — {Unit} {N}: {name} — {reason}`. Step 4 standing directive: `Update **Create** output — append DONE/BLOCKED log entries at EOF as content becomes available.` (vs canonical `replace each PENDING via Edit` for multi-section verdict-bearing agents). `Verdict` flips PENDING → PASS / CONCERNS / FAIL at the end via `Edit` on the header line. **Two wins:** (1) timeout resilience — partial progress is on disk after every appended line, so a budget-exhausted agent leaves a usable record (vs the prior antipattern: ~30 ticks clustered at end → all lost on timeout); (2) `Bash echo >>` is cheaper than `Edit` (no file-read for `old_string` match). **Skip-done logic** (read prior attempts via Read glob, skip units already in `DONE —`) added only where workflow already attempt-numbers and globs the artifact: `bkit-build-plan-gaps-remediate` (via `VERIFY_ATTEMPT`, glob already in its Read) and `bkit-build-plan-execute` (one `build-plan-execute-{GROUP}-log.md` per group; every attempt — a turn-cap re-run or a Decision Pause `Fix now` re-run — appends to it, and `bkit context brief --next` leaves out tasks it logs `DONE — TASK {N}:`). On PENDING (subagent timeout) the verify→remediate loop bounded by `build.verify.maxAttempts` absorbs recovery via `bkit-build-plan-gaps-remediate`. `bkit-debug-failure-remediate` is diagnosis-driven (each attempt fresh-strategy via `bkit-debug-failure-diagnose`) — skip-done would be wrong shape; gets stub+log only, but flat log still feeds `bkit-debug-failure-diagnose`'s loop-context glob with finer evidence. |
 
+## Model Presets
+
+Three settings for the opencode columns between subscription resets, priced against measured cache-read volume (`.bkit/providers.md` § Budget band) per **2-day gap** — the days after the week's Claude and OpenAI credits run out. **Copy one block into § Model Overrides below**; rows you leave out fall back to the shipped default.
+
+| Preset                                          | Who runs what                                                                                                           | 2-day gap (normal / push) |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| **Option 1 — cheapest (default)**               | `deepseek-v4.1-flash-1017` on every agent; the five convergent lenses on `xiaomi/mimo-v2.6-pro`                         | **$17 / $34**             |
+| **Option 2 — balanced**                         | the ten spine agents (synthesizers + gates) on `google/gemini-4-argon`; the rest on DeepSeek; lenses on `mimo-v2.6-pro` | **$82 / $169**            |
+| **Option 3 — highest outside Anthropic/OpenAI** | every agent on `google/gemini-4-argon`; lenses on `moonshotai/kimi-k3.1-pro`                                            | **$305 / $637**           |
+
+**Option 1 — cheapest.** The five convergent lenses — the distinct-CoT second opinion on risk, security and root cause — run `xiaomi/mimo-v2.6-pro`, a Xiaomi family at DeepSeek's cache-read price, so the variance survives at no measurable cost. OpenRouter only; Zen, Go and Ollama follow the same ceiling by their own catalogs.
+
+<!-- prettier-ignore -->
+| Prompt | Provider | Model |
+| --- | --- | --- |
+| bkit-design-brainstorm-ideate-3 | openrouter | openrouter/xiaomi/mimo-v2.6-pro |
+| bkit-plan-review-2 | openrouter | openrouter/xiaomi/mimo-v2.6-pro |
+| bkit-build-challenge-2 | openrouter | openrouter/xiaomi/mimo-v2.6-pro |
+| bkit-debug-failure-diagnose | openrouter | openrouter/xiaomi/mimo-v2.6-pro |
+| bkit-debug-failure-soak | openrouter | openrouter/xiaomi/mimo-v2.6-pro |
+
+**Option 2 — balanced.** The ten spine agents run `google/gemini-4-argon` (61.2 Long Agentic, 11.6 under the 72.8 opus bar): the synthesizers that author a design, plan or audit, and the gates that verify one. Everything else stays on DeepSeek; the lenses keep the Xiaomi family. +20.3 Long Agentic wherever the artifact is written or judged.
+
+<!-- prettier-ignore -->
+| Prompt | Provider | Model |
+| --- | --- | --- |
+| bkit-design-generate | openrouter | openrouter/google/gemini-4-argon |
+| bkit-design-update | openrouter | openrouter/google/gemini-4-argon |
+| bkit-design-organise | openrouter | openrouter/google/gemini-4-argon |
+| bkit-plan-generate | openrouter | openrouter/google/gemini-4-argon |
+| bkit-plan-update | openrouter | openrouter/google/gemini-4-argon |
+| bkit-plan-scope-check | openrouter | openrouter/google/gemini-4-argon |
+| bkit-build-plan-verify | openrouter | openrouter/google/gemini-4-argon |
+| bkit-build-plan-current | openrouter | openrouter/google/gemini-4-argon |
+| bkit-audit-generate | openrouter | openrouter/google/gemini-4-argon |
+| bkit-ship-deferred-sweep | openrouter | openrouter/google/gemini-4-argon |
+| bkit-design-brainstorm-ideate-3 | openrouter | openrouter/xiaomi/mimo-v2.6-pro |
+| bkit-plan-review-2 | openrouter | openrouter/xiaomi/mimo-v2.6-pro |
+| bkit-build-challenge-2 | openrouter | openrouter/xiaomi/mimo-v2.6-pro |
+| bkit-debug-failure-diagnose | openrouter | openrouter/xiaomi/mimo-v2.6-pro |
+| bkit-debug-failure-soak | openrouter | openrouter/xiaomi/mimo-v2.6-pro |
+
+**Option 3 — highest quality outside Anthropic and OpenAI.** Every agent runs `google/gemini-4-argon`, the closest any allowed vendor gets to the opus bar; the lenses run `moonshotai/kimi-k3.1-pro` (39.1, distinct family, $0.20 cache read). More than a month of subscription for one gap, against roughly a quarter of the same work at Claude list price — opt in when the work matters more than the week.
+
+<!-- prettier-ignore -->
+| Prompt | Provider | Model |
+| --- | --- | --- |
+| bkit-design-brainstorm-ideate-1 | openrouter | openrouter/google/gemini-4-argon |
+| bkit-design-brainstorm-ideate-2 | openrouter | openrouter/google/gemini-4-argon |
+| bkit-design-generate | openrouter | openrouter/google/gemini-4-argon |
+| bkit-design-review-1 | openrouter | openrouter/google/gemini-4-argon |
+| bkit-design-review-2 | openrouter | openrouter/google/gemini-4-argon |
+| bkit-design-spike | openrouter | openrouter/google/gemini-4-argon |
+| bkit-design-update | openrouter | openrouter/google/gemini-4-argon |
+| bkit-design-organise | openrouter | openrouter/google/gemini-4-argon |
+| bkit-plan-generate | openrouter | openrouter/google/gemini-4-argon |
+| bkit-plan-review-1 | openrouter | openrouter/google/gemini-4-argon |
+| bkit-plan-scope-check | openrouter | openrouter/google/gemini-4-argon |
+| bkit-plan-update | openrouter | openrouter/google/gemini-4-argon |
+| bkit-build-plan-convert | openrouter | openrouter/google/gemini-4-argon |
+| bkit-build-plan-current | openrouter | openrouter/google/gemini-4-argon |
+| bkit-build-install-skills | openrouter | openrouter/google/gemini-4-argon |
+| bkit-build-plan-execute | openrouter | openrouter/google/gemini-4-argon |
+| bkit-build-plan-verify | openrouter | openrouter/google/gemini-4-argon |
+| bkit-build-plan-gaps-remediate | openrouter | openrouter/google/gemini-4-argon |
+| bkit-build-challenge-1 | openrouter | openrouter/google/gemini-4-argon |
+| bkit-debug-failure-reproduce | openrouter | openrouter/google/gemini-4-argon |
+| bkit-debug-failure-remediate | openrouter | openrouter/google/gemini-4-argon |
+| bkit-debug-abort-handover | openrouter | openrouter/google/gemini-4-argon |
+| bkit-ship-conflict-resolve | openrouter | openrouter/google/gemini-4-argon |
+| bkit-ship-deferred-sweep | openrouter | openrouter/google/gemini-4-argon |
+| bkit-ship-update-docs | openrouter | openrouter/google/gemini-4-argon |
+| bkit-audit-generate | openrouter | openrouter/google/gemini-4-argon |
+| bkit-utility-update-deferrals | openrouter | openrouter/google/gemini-4-argon |
+| bkit-utility-update-failures | openrouter | openrouter/google/gemini-4-argon |
+| bkit-utility-update-decisions | openrouter | openrouter/google/gemini-4-argon |
+| bkit-utility-update-knowledge | openrouter | openrouter/google/gemini-4-argon |
+| bkit-utility-update-roadmap | openrouter | openrouter/google/gemini-4-argon |
+| bkit-utility-update-tracker | openrouter | openrouter/google/gemini-4-argon |
+| bkit-utility-compress-markdown | openrouter | openrouter/google/gemini-4-argon |
+| bkit-utility-update-documentation | openrouter | openrouter/google/gemini-4-argon |
+| bkit-design-brainstorm-ideate-3 | openrouter | openrouter/moonshotai/kimi-k3.1-pro |
+| bkit-plan-review-2 | openrouter | openrouter/moonshotai/kimi-k3.1-pro |
+| bkit-build-challenge-2 | openrouter | openrouter/moonshotai/kimi-k3.1-pro |
+| bkit-debug-failure-diagnose | openrouter | openrouter/moonshotai/kimi-k3.1-pro |
+| bkit-debug-failure-soak | openrouter | openrouter/moonshotai/kimi-k3.1-pro |
+
 <!-- bkit:end -->
 
 ## Model Overrides
