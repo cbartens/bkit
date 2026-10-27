@@ -860,6 +860,8 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
   - **DONE WHEN:** an added `@pytest.mark.skip` / `@unittest.skip` / bare `.skip(` line in a `test_*.py` or `*.test.*` file is reported with its line and test name and exits 1, while `TEST_FILE`'s existing Python class still applies
   - **TEST FIRST:**
     - `.bkit/core/engine/commands/workflow/branches.test.ts` `scan-diff finds an added pytest mark skip` fails today: a diff adding `@pytest.mark.skip(reason="flaky")` above `def test_a` exits 0 with an empty `disabled`
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/commands/workflow/branches.test.ts` `scan-diff finds an added pytest mark skip` fails on a diff that adds `@pytest.mark.skip(reason="flaky")` above `def test_a`, which exits 0 with an empty `disabled` — accepted by owner: "accept" (owner, 2026-10-28)
 
 <!-- bkit:task 14 end -->
 <!-- bkit:group 7 end -->
