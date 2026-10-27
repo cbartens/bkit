@@ -120,8 +120,8 @@ Every agent in each phase, in the order it runs and what it checks: [pipeline re
 | --- | --- | --- |
 | Claude Code | `claude-opus-5-5` · bar **65.2** | `claude-sonnet-5-5` · bar **59.4** |
 | Cursor | `cursor-grok-4.5-high` · 56.5 | `composer-2.5` · not measured |
-| opencode + OpenRouter | `deepseek/deepseek-v4.1-flash` · 77.3; `moonshotai/kimi-k3` · 62.2 for risk, security and root-cause agents | `deepseek/deepseek-v4.1-flash` · 77.3 |
-| opencode + Ollama | `deepseek-v4.1-flash` · 77.3; `kimi-k3` · 62.2 for risk, security and root-cause agents | `deepseek-v4.1-flash` · 77.3 |
+| opencode + OpenRouter | `deepseek/deepseek-v4.1-flash-1017` · 77.3; `moonshotai/kimi-k3` · 62.2 for risk, security and root-cause agents | `deepseek/deepseek-v4.1-flash-1017` · 77.3 |
+| opencode + Ollama | `deepseek-v4.1-flash:1017` · 77.3; `kimi-k3` · 62.2 for risk, security and root-cause agents | `deepseek-v4.1-flash:1017` · 77.3 |
 | opencode + OpenCode Zen | `deepseek-v4.1-flash` · 77.3; `kimi-k3` · 62.2 for risk, security and root-cause agents | `deepseek-v4.1-flash` · 77.3 |
 | opencode + OpenCode Go | `deepseek-v4.1-flash` · 77.3; `kimi-k3` · 62.2 for risk, security and root-cause agents | `deepseek-v4.1-flash` · 77.3 |
 | Codex | `gpt-6-astra` · not measured | `gpt-5.6-terra` · not measured |

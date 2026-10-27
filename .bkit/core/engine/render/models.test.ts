@@ -60,7 +60,7 @@ const HAIKU_PROMPTS = (() => {
   const real = fs.readFileSync(path.join(getBkitDocsRoot(), "prompts.md"), "utf-8");
   const header = real.indexOf("| Prompt | Anthropic |");
   const afterSeparator = real.indexOf("\n", real.indexOf("\n", header) + 1) + 1;
-  const row = `| \`${HAIKU_FIXTURE}\` | \`claude-haiku-5-5\` | \`composer-2.5\` | \`z-ai/glm-5.3-flash\` | \`deepseek-v4.1-flash\` | \`glm-5.3-flash\` | \`deepseek-v4.1-flash\` | \`gpt-6-luna\` | \`gemini-3.8-flash\` | \`high\` | 50 | test fixture |\n`;
+  const row = `| \`${HAIKU_FIXTURE}\` | \`claude-haiku-5-5\` | \`composer-2.5\` | \`z-ai/glm-5.3-flash\` | \`deepseek-v4.1-flash:1017\` | \`glm-5.3-flash\` | \`deepseek-v4.1-flash\` | \`gpt-6-luna\` | \`gemini-3.8-flash\` | \`high\` | 50 | test fixture |\n`;
   const file = path.join(os.tmpdir(), `haiku-prompts-${process.pid}.md`);
   fs.writeFileSync(file, real.slice(0, afterSeparator) + row + real.slice(afterSeparator));
   return file;
@@ -231,10 +231,10 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
   // build-challenge-2 / debug-failure-diagnose = convergent (CoT reasoner).
   // OpenRouter opus+sonnet collapse onto V4.1 Flash (clears both Claude targets).
   // Haiku stays on the cheapest sufficient pin; convergent stays a distinct family.
-  it("openrouter: v4.1-flash opus+sonnet, glm-5.3-flash haiku, kimi-k3 convergent", () => {
+  it("openrouter: v4.1-flash-1017 opus+sonnet, glm-5.3-flash haiku, kimi-k3 convergent", () => {
     const lookup = buildOpencodeModelLookup(HAIKU_PROMPTS, "openrouter");
-    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("deepseek/deepseek-v4.1-flash");
-    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("deepseek/deepseek-v4.1-flash");
+    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("deepseek/deepseek-v4.1-flash-1017");
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("deepseek/deepseek-v4.1-flash-1017");
     expect(lookup.get(HAIKU_FIXTURE)).toBe("z-ai/glm-5.3-flash");
     expect(lookup.get("bkit-build-challenge-2")).toBe("moonshotai/kimi-k3");
     expect(lookup.get("bkit-debug-failure-diagnose")).toBe("moonshotai/kimi-k3");
@@ -251,7 +251,7 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     expect(pins).not.toContain("deepseek/deepseek-v4-pro");
     expect(pins).not.toContain("deepseek/deepseek-v4-pro-0813");
     expect(pins.some((m) => m === "moonshotai/kimi-k3")).toBe(true);
-    expect(pins.some((m) => m === "deepseek/deepseek-v4.1-flash")).toBe(true);
+    expect(pins.some((m) => m === "deepseek/deepseek-v4.1-flash-1017")).toBe(true);
     expect(pins.some((m) => m === "z-ai/glm-5.3-flash")).toBe(true);
   });
 
@@ -267,15 +267,15 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     }
   });
 
-  it("ollama (cloud): deepseek-v4.1-flash opus+sonnet+haiku, kimi-k3 convergent", () => {
+  it("ollama (cloud): deepseek-v4.1-flash:1017 opus+sonnet+haiku, kimi-k3 convergent", () => {
     const lookup = buildOpencodeModelLookup(HAIKU_PROMPTS, "ollama");
-    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("deepseek-v4.1-flash");
-    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("deepseek-v4.1-flash");
-    expect(lookup.get(HAIKU_FIXTURE)).toBe("deepseek-v4.1-flash");
+    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("deepseek-v4.1-flash:1017");
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("deepseek-v4.1-flash:1017");
+    expect(lookup.get(HAIKU_FIXTURE)).toBe("deepseek-v4.1-flash:1017");
     expect(lookup.get("bkit-build-challenge-2")).toBe("kimi-k3");
     expect(lookup.get("bkit-debug-failure-diagnose")).toBe("kimi-k3");
     expect(formatModelPin("opencode", "ollama", lookup.get(HAIKU_FIXTURE)!)).toBe(
-      "ollama/deepseek-v4.1-flash",
+      "ollama/deepseek-v4.1-flash:1017",
     );
   });
 

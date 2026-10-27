@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-audit-generate
 description: Senior auditor running one audit template into a report.
-model: openrouter/deepseek/deepseek-v4.1-flash
+model: openrouter/deepseek/deepseek-v4.1-flash-1017
 variant: max
 tools:
   read: true

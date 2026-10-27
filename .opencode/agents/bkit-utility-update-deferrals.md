@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-utility-update-deferrals
 description: Senior editor closing deferrals the codebase has already resolved.
-model: openrouter/deepseek/deepseek-v4.1-flash
+model: openrouter/deepseek/deepseek-v4.1-flash-1017
 variant: max
 tools:
   read: true

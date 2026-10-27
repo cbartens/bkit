@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-build-plan-convert
 description: Senior engineer turning an issue or a free-form plan into a plan in task-block form.
-model: openrouter/deepseek/deepseek-v4.1-flash
+model: openrouter/deepseek/deepseek-v4.1-flash-1017
 variant: max
 tools:
   read: true

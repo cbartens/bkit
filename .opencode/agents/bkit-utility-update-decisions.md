@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-utility-update-decisions
 description: Senior editor correcting decisions the docs or codebase have since contradicted.
-model: openrouter/deepseek/deepseek-v4.1-flash
+model: openrouter/deepseek/deepseek-v4.1-flash-1017
 variant: max
 tools:
   read: true

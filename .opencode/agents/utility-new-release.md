@@ -2,7 +2,7 @@
 mode: subagent
 name: utility-new-release
 description: Senior release engineer promoting a bkit version dev → main and publishing its npm tag.
-model: openrouter/deepseek/deepseek-v4.1-flash
+model: openrouter/deepseek/deepseek-v4.1-flash-1017
 variant: high
 tools:
   read: true

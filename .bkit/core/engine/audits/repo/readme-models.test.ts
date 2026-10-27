@@ -36,9 +36,14 @@ const README_ROWS: Record<string, string> = {
   "Google Antigravity": "Google",
 };
 
-/** Catalog id → the name the parity board lists the model under. */
+/**
+ * Catalog id → the name the parity board lists the model under. A dated snapshot
+ * (`…-1017`, `…:1017`) inherits its family's row — the board scores the family, not each snapshot.
+ */
 const BOARD_NAME: Record<string, string> = {
   "cursor-grok-4.5-high": "grok-4.5",
+  "deepseek/deepseek-v4.1-flash-1017": "deepseek-v4.1-flash",
+  "deepseek-v4.1-flash:1017": "deepseek-v4.1-flash",
 };
 
 /** Cells of the first markdown table after `heading`; header row first, separator row dropped. */

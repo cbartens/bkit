@@ -8,6 +8,10 @@ Format: `## [version] — YYYY-MM-DD`
 
 ## [Unreleased]
 
+### Changed
+
+- **The opencode OpenRouter and Ollama columns pin the dated DeepSeek V4.1 Flash `1017` snapshot.** The undated `deepseek/deepseek-v4.1-flash` slug OpenRouter serves is frozen on the 2026-09-10 snapshot and does not float, so the two columns move to the October 17 refresh: `deepseek/deepseek-v4.1-flash-1017` (35 endpoints) on OpenRouter and `deepseek-v4.1-flash:1017` on Ollama. DeepSeek's model card puts 1017 ahead of the previous snapshot across its agentic benchmarks (Terminal-Bench 4.0 31.2 → 42.3, Apex Bench v1.1 64.6 → 72.1) with shorter outputs and faster task completion, and reports no API price change; the OpenCode Zen and Go gateways carry no dated snapshot yet and stay on the undated slug. `bkit upgrade` picks it up. #205
+
 ### Fixed
 
 - **The capability-register gate runs on pull requests, not only dev pushes.** `Check Capability Register` was push-only because a `pull_request` checkout is the merge ref (base + head), whose tree the register was never built against — a false red no author could clear. It now runs on every event and checks `check-at` on the PR head commit (a throwaway worktree) via `REGISTER_REV` (`github.event.pull_request.head.sha` on a PR, `github.sha` otherwise), the same primitive the pre-push dev gate uses. A register that drifts in a PR reds the PR lane and the capstone instead of reaching dev and reding the post-merge push run, which the ship gate pins to the squash commit and cannot retro-green. Copy the `Check Capability Register` step from `.bkit/templates/.github/workflows/bkit-ci.yml` into your adopted `bkit-ci.yml`. #444
