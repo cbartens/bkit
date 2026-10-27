@@ -1389,6 +1389,24 @@ describe("bkit ledgers triage", () => {
     expect(lines(r)).toHaveLength(1);
   });
 
+  it("triage keeps an own-cycle deferral exempt", async () => {
+    const r = triageRepo([
+      deferral({ key: "701-new-architecture", reason: "own-cycle", status: "OPEN" }),
+    ]);
+    const res = await triage(r);
+    expect(res.code).toBe(0);
+    expect(res.json.rows.map((x: { key: string; bucket: string }) => [x.key, x.bucket])).toEqual([
+      ["701-new-architecture", "Exempt"],
+    ]);
+    expect(held(res.json.rows[0])).toEqual([
+      "in-scope-surface",
+      "no-external-blocker",
+      "own-declaration",
+    ]);
+    expect(res.json.written).toBe(0);
+    expect(lines(r)).toHaveLength(1);
+  });
+
   it("triage marks an unjustified deferral lazy", async () => {
     const r = triageRepo([deferral()]);
     const res = await triage(r);

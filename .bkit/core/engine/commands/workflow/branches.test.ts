@@ -1607,6 +1607,127 @@ describe("branches scan-diff", { timeout: GIT_TIMEOUT }, () => {
     expect(r.json?.disabled).toEqual([]);
   });
 
+  it("scan-diff ignores a removed comment in a test file", async () => {
+    const { clone } = featureBranch("scan-disabled-comment");
+    write(clone, "src/a.test.ts", testFile("// should not be reached"));
+    commit(clone, {}, "test");
+    write(clone, "src/a.test.ts", testFile());
+    commit(clone, {}, "comment gone");
+    const r = await run(clone, ["scan-diff", "--base=HEAD~1", "--disabled-tests"]);
+    expect(r.code).toBe(0);
+    expect(r.json?.disabled).toEqual([]);
+  });
+
+  it("scan-diff ignores an assertion moved within the file", async () => {
+    const { clone } = featureBranch("scan-disabled-move");
+    write(
+      clone,
+      "src/a.test.ts",
+      [
+        "it('keeps a', () => {",
+        "  expect(1).toBe(1);",
+        "});",
+        "",
+        "it('keeps b', () => {",
+        "  expect(2).toBe(2);",
+        "});",
+        "",
+      ].join("\n"),
+    );
+    commit(clone, {}, "test");
+    write(
+      clone,
+      "src/a.test.ts",
+      [
+        "it('keeps a', () => {",
+        "  expect(1).toBe(1);",
+        "  expect(2).toBe(2);",
+        "});",
+        "",
+        "it('keeps b', () => {",
+        "  doSomething();",
+        "});",
+        "",
+      ].join("\n"),
+    );
+    commit(clone, {}, "move");
+    const r = await run(clone, ["scan-diff", "--base=HEAD~1", "--disabled-tests"]);
+    expect(r.code).toBe(0);
+    expect(r.json?.disabled).toEqual([]);
+  });
+
+  it("scan-diff still reports a removed assertion", async () => {
+    const { clone } = featureBranch("scan-disabled-drop");
+    write(
+      clone,
+      "src/a.test.ts",
+      ["it('keeps a', () => {", "  expect(1).toBe(1);", "  expect(2).toBe(2);", "});", ""].join(
+        "\n",
+      ),
+    );
+    commit(clone, {}, "test");
+    write(
+      clone,
+      "src/a.test.ts",
+      ["it('keeps a', () => {", "  expect(1).toBe(1);", "});", ""].join("\n"),
+    );
+    commit(clone, {}, "drop");
+    const r = await run(clone, ["scan-diff", "--base=HEAD~1", "--disabled-tests"]);
+    expect(r.code).toBe(1);
+    expect(r.json?.disabled).toEqual([{ file: "src/a.test.ts", line: 3, test: "keeps a" }]);
+  });
+
+  it("scan-diff finds an added pytest mark skip", async () => {
+    const { clone } = featureBranch("scan-disabled-pytest");
+    write(clone, "tests/test_a.py", "def test_a():\n    assert 1 == 1\n");
+    commit(clone, {}, "test");
+    write(
+      clone,
+      "tests/test_a.py",
+      ['@pytest.mark.skip(reason="flaky")', "def test_a():", "    assert 1 == 1", ""].join("\n"),
+    );
+    commit(clone, {}, "skip");
+    const r = await run(clone, ["scan-diff", "--base=origin/dev", "--disabled-tests"]);
+    expect(r.code).toBe(1);
+    expect(r.json?.disabled).toEqual([{ file: "tests/test_a.py", line: 1, test: "test_a" }]);
+  });
+
+  it("scan-diff finds an added unittest skip", async () => {
+    const { clone } = featureBranch("scan-disabled-unittest");
+    const body = (decorator: string[]) =>
+      [
+        "import unittest",
+        "",
+        "class A(unittest.TestCase):",
+        ...decorator,
+        "    def test_a(self):",
+        "        self.assertEqual(1, 1)",
+        "",
+      ].join("\n");
+    write(clone, "tests/test_a.py", body([]));
+    commit(clone, {}, "test");
+    write(clone, "tests/test_a.py", body(['    @unittest.skip("flaky")']));
+    commit(clone, {}, "skip");
+    const r = await run(clone, ["scan-diff", "--base=HEAD~1", "--disabled-tests"]);
+    expect(r.code).toBe(1);
+    expect(r.json?.disabled).toEqual([{ file: "tests/test_a.py", line: 4, test: "test_a" }]);
+  });
+
+  it("scan-diff finds an added bare skip call", async () => {
+    const { clone } = featureBranch("scan-disabled-pyskip");
+    write(clone, "tests/test_a.py", "def test_a():\n    assert 1 == 1\n");
+    commit(clone, {}, "test");
+    write(
+      clone,
+      "tests/test_a.py",
+      ["def test_a():", '    pytest.skip("flaky")', "    assert 1 == 1", ""].join("\n"),
+    );
+    commit(clone, {}, "skip");
+    const r = await run(clone, ["scan-diff", "--base=HEAD~1", "--disabled-tests"]);
+    expect(r.code).toBe(1);
+    expect(r.json?.disabled).toEqual([{ file: "tests/test_a.py", line: 2, test: "test_a" }]);
+  });
+
   it("needs exactly one of --paths, --marker, --code; an unknown base exits 23", async () => {
     const { clone } = featureBranch("scan-usage");
     expect((await run(clone, ["scan-diff", "--base=origin/dev"])).code).toBe(2);

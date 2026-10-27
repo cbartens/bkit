@@ -1723,7 +1723,8 @@ export function triageDeferrals(root: string, fid: string, planPath: string): Tr
     }
     const paths = namedPaths(row);
     const verdicts: Record<DeferralTest, boolean> = {
-      "bounded-remediation": existsIn(root, paths),
+      // Test 1 reads "not a new architecture": an `own-cycle` row declares itself plan-sized.
+      "bounded-remediation": row["reason"] !== "own-cycle" && existsIn(root, paths),
       "in-scope-surface": paths.some((p) => scope.some((s) => within(p, s))),
       "no-external-blocker": row["reason"] !== "hard-blocked" && row["reason"] !== "needs-decision",
       "own-declaration": !declares(row, fid, issue, declared),

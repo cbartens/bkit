@@ -1080,8 +1080,27 @@ const DISABLED_MARKERS = [
   /@Disabled\b/,
 ];
 
-/** An assertion call a change deletes from a test file. */
-const ASSERTION = /\b(?:expect|assert\w*|should|should_\w+)\b/;
+/** Added-line markers only a test file carries: Python's decorators and a bare `skip` call. */
+const TEST_FILE_MARKERS = [/@pytest\.mark\.skip\b/, /@unittest\.skip\b/, /\.skip\s*\(/];
+
+/** Every added-line marker, test file or not. */
+const ALL_MARKERS = [...DISABLED_MARKERS, ...TEST_FILE_MARKERS];
+
+/** The markers that apply to an added line of `file`. */
+const markersFor = (file: string) => (TEST_FILE.test(file) ? ALL_MARKERS : DISABLED_MARKERS);
+
+/** An assertion call a change deletes from a test file: `expect(…)`, `assert.equal(…)`, `should(…)`. */
+const ASSERTION = /(?<![\w$])(?:expect|assert\w*|should_\w+|should)\s*[(.]/;
+
+/** Python's bare `assert x` statement, which calls nothing but asserts. */
+const BARE_ASSERT = /^\s*assert\s+\S/;
+
+/** A commented-out line: its words are prose, not a call. */
+const COMMENT = /^\s*(?:\/\/|\/\*|\*|#|--)/;
+
+/** True when a removed `line` takes an assertion, rather than being a comment or an import. */
+const isAssertion = (line: string) =>
+  !COMMENT.test(line) && (ASSERTION.test(line) || BARE_ASSERT.test(line));
 
 /** A test declaration's name on `line`, or null when the line declares no test. */
 function declaredName(line: string): string | null {
@@ -1104,7 +1123,15 @@ function declaredName(line: string): string | null {
 function testAt(body: string | null, line: string, at: number): string {
   if (body !== null) {
     const lines = body.split(/\r?\n/);
-    for (let i = Math.min(at, lines.length) - 1; i >= 0; i--) {
+    const from = Math.min(at, lines.length) - 1;
+    // A decorator (`@pytest.mark.skip`) names the test it sits on, which is below it.
+    if (line.trimStart().startsWith("@")) {
+      for (let i = from + 1; i < lines.length; i++) {
+        const name = declaredName(lines[i]!);
+        if (name !== null) return name;
+      }
+    }
+    for (let i = from; i >= 0; i--) {
       const name = declaredName(lines[i]!);
       if (name !== null) return name;
     }
@@ -1116,7 +1143,8 @@ const HUNK = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
 
 /**
  * The added lines of a `--no-renames` unified diff that disable a test, and the removed
- * assertion lines of a test file: each with its new-file line and the test it sits in.
+ * assertion lines of a test file the same diff does not add back: each with its new-file
+ * line and the test it sits in.
  */
 export function disabledTestsIn(diff: string, root: string): DisabledTest[] {
   const out: DisabledTest[] = [];
@@ -1133,6 +1161,9 @@ export function disabledTestsIn(diff: string, root: string): DisabledTest[] {
     }
     return bodies.get(rel)!;
   };
+  /** Trimmed texts of the added lines, so a removed assertion re-added elsewhere is not a drop. */
+  const readded = new Map<string, number>();
+  const removed: Array<{ file: string; line: number; text: string }> = [];
   let file = "";
   let next = 0;
   for (const raw of diff.split("\n")) {
@@ -1148,13 +1179,24 @@ export function disabledTestsIn(diff: string, root: string): DisabledTest[] {
     }
     if (raw.startsWith("+")) {
       const text = raw.slice(1);
-      if (DISABLED_MARKERS.some((m) => m.test(text)))
+      if (markersFor(file).some((m) => m.test(text)))
         out.push({ file, line: next, test: testAt(body(file), text, next) });
+      const key = text.trim();
+      readded.set(key, (readded.get(key) ?? 0) + 1);
       next++;
     } else if (raw.startsWith("-")) {
-      if (TEST_FILE.test(file) && ASSERTION.test(raw.slice(1)))
-        out.push({ file, line: next, test: testAt(body(file), raw.slice(1), next) });
+      const text = raw.slice(1);
+      if (TEST_FILE.test(file) && isAssertion(text)) removed.push({ file, line: next, text });
     } else if (raw.startsWith(" ")) next++;
+  }
+  for (const r of removed) {
+    const key = r.text.trim();
+    const left = readded.get(key) ?? 0;
+    if (left > 0) {
+      readded.set(key, left - 1);
+      continue;
+    }
+    out.push({ file: r.file, line: r.line, test: testAt(body(r.file), r.text, r.line) });
   }
   return out;
 }
@@ -2272,7 +2314,7 @@ export const branchesCommand: CommandSpec = {
         {
           name: "disabled-tests",
           type: "boolean",
-          help: "an added line disables a test (`.skip` / `.todo` / `.fixme` / `xfail`, `t.Skip()`, `#[ignore]`, `@Disabled`) or a test file loses an assertion; inverts --paths / --marker / --code's polarity, so never pass it with --expect-none",
+          help: "an added line disables a test (`.skip` / `.todo` / `.fixme` / `xfail`, `t.Skip()`, `#[ignore]`, `@Disabled`, a test file's `@pytest.mark.skip` / `@unittest.skip`) or a test file drops an assertion no line adds back; inverts --paths / --marker / --code's polarity, so never pass it with --expect-none",
         },
         {
           name: "expect-none",
@@ -2284,7 +2326,7 @@ export const branchesCommand: CommandSpec = {
         found: "something matched",
         paths: "the matching paths",
         disabled:
-          "[{file, line, test}]: added lines that disable a test, and removed assertion lines of a test file (only with --disabled-tests)",
+          "[{file, line, test}]: added lines that disable a test, and removed assertion lines of a test file that no added line re-adds (only with --disabled-tests)",
       },
       exitCodes: {
         [EXIT_DIFF_FAILED]: "--base does not resolve, or git diff failed",
