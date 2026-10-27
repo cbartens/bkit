@@ -214,7 +214,7 @@ bkit asks the owner questions in five workflows and labels the answer options th
 
 <!-- bkit:task 11 start -->
 
-- [ ] **TASK 11:** The design review's open-question criterion dropped `Default if unanswered`, so a design whose open question carries options and a lettered `Recommended` but no default passes `bkit-design-review-2` while `bkit-design-generate` and `bkit-design-update` still demand that default and the prompts index still tells a reader the review checks it
+- [x] **TASK 11:** The design review's open-question criterion dropped `Default if unanswered`, so a design whose open question carries options and a lettered `Recommended` but no default passes `bkit-design-review-2` while `bkit-design-generate` and `bkit-design-update` still demand that default and the prompts index still tells a reader the review checks it
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/prompts/bkit-design-review-2.md:76` · **Round:** 2
   - **DONE WHEN:** the design review enumerates every part the design prompts require of an open question — lettered options, a lettered `Recommended`, and `Default if unanswered` — so an open question missing its default is flagged again; `.bkit/core/.bkit/prompts.md:257`, the regenerated `.bkit/prompts.md` and `.claude/agents/bkit-design-review-2.md`, `.cursor/`, `.codex/` and `.opencode/` mirrors carry the same three parts, and `bkit check` stays drift-clean after the install.
   - **TEST FIRST:**
