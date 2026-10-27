@@ -7,19 +7,18 @@
 // every "file is missing" tip as a false gap. When no checkout is found at all, nothing fires.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { git } from "../../commands/lib.js";
+import { mainCheckoutRoot } from "../../commands/lib.js";
 import { ignoredAdvisoryIds, } from "../after/suppression.js";
 import { ALL_WORKFLOWS, SETUP_TIPS } from "./catalogue.js";
 /**
  * The directory the tips are checked against: the main checkout's root — the tree the
- * integration branch is checked out in — resolved from any worktree through git's common
- * dir, else `cwd` when git cannot say. `null` when that root is not a checkout (holds
- * neither `.git` nor `package.json`): a directory with nothing to check fires no tip
- * rather than every "missing" tip as a false gap.
+ * integration branch is checked out in — resolved from any worktree by
+ * `mainCheckoutRoot` (git's common dir), else `cwd` when git cannot say. `null` when that
+ * root is not a checkout (holds neither `.git` nor `package.json`): a directory with
+ * nothing to check fires no tip rather than every "missing" tip as a false gap.
  */
 export function tipsBase(cwd) {
-    const common = git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
-    const base = common ? path.dirname(common) : cwd;
+    const base = mainCheckoutRoot(cwd) ?? cwd;
     if (!fs.existsSync(base))
         return null;
     return fs.existsSync(path.join(base, ".git")) || fs.existsSync(path.join(base, "package.json"))
