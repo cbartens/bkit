@@ -642,6 +642,87 @@ Re-probed `https://livebench.ai/data/20261025/table.csv` + `cost.csv` (§ Select
 
 **Ceiling for the default: ≤ `$0.005` cache read per Mtok** — Option 1's dearest cell is `mimo-v2.6-pro` at `$0.0036`. Options 2 and 3 breach the ceiling deliberately; they are opt-in through § Model Overrides and each states its own gap cost, so no default pin ever drifts above the ceiling. The current `kimi-k3` lenses are the one live violation at `$0.19`.
 
+#### Preset override tables — ready to paste
+
+Copy one block into `prompts.md` § Model Overrides, replacing any preset rows already there; rows you leave out fall back to the shipped default. OpenRouter only — Zen, Go and Ollama pins follow the same ceiling by their own catalogs.
+
+**Option 1 — cheapest.** `deepseek-v4.1-flash-1017` carries every tier; the five convergent lenses — the distinct-CoT second opinion on risk, security and root cause — run `xiaomi/mimo-v2.6-pro`, a Xiaomi family at DeepSeek's cache-read price, so the variance survives at no measurable cost. **~$17 per 2-day gap**, ~$34 on two push days.
+
+<!-- prettier-ignore -->
+| Prompt | Provider | Model |
+| --- | --- | --- |
+| bkit-design-brainstorm-ideate-3 | openrouter | openrouter/xiaomi/mimo-v2.6-pro |
+| bkit-plan-review-2 | openrouter | openrouter/xiaomi/mimo-v2.6-pro |
+| bkit-build-challenge-2 | openrouter | openrouter/xiaomi/mimo-v2.6-pro |
+| bkit-debug-failure-diagnose | openrouter | openrouter/xiaomi/mimo-v2.6-pro |
+| bkit-debug-failure-soak | openrouter | openrouter/xiaomi/mimo-v2.6-pro |
+
+**Option 2 — balanced.** The ten spine agents run `google/gemini-4-argon` (61.2 Long Agentic, 11.6 under the 72.8 opus bar): the synthesizers that author a design, plan or audit, and the gates that verify one. Everything else stays on DeepSeek; the lenses keep the Xiaomi family. **~$82 per gap**, ~$169 on push days, for +20.3 Long Agentic wherever the artifact is written or judged.
+
+<!-- prettier-ignore -->
+| Prompt | Provider | Model |
+| --- | --- | --- |
+| bkit-design-generate | openrouter | openrouter/google/gemini-4-argon |
+| bkit-design-update | openrouter | openrouter/google/gemini-4-argon |
+| bkit-design-organise | openrouter | openrouter/google/gemini-4-argon |
+| bkit-plan-generate | openrouter | openrouter/google/gemini-4-argon |
+| bkit-plan-update | openrouter | openrouter/google/gemini-4-argon |
+| bkit-plan-scope-check | openrouter | openrouter/google/gemini-4-argon |
+| bkit-build-plan-verify | openrouter | openrouter/google/gemini-4-argon |
+| bkit-build-plan-current | openrouter | openrouter/google/gemini-4-argon |
+| bkit-audit-generate | openrouter | openrouter/google/gemini-4-argon |
+| bkit-ship-deferred-sweep | openrouter | openrouter/google/gemini-4-argon |
+| bkit-design-brainstorm-ideate-3 | openrouter | openrouter/xiaomi/mimo-v2.6-pro |
+| bkit-plan-review-2 | openrouter | openrouter/xiaomi/mimo-v2.6-pro |
+| bkit-build-challenge-2 | openrouter | openrouter/xiaomi/mimo-v2.6-pro |
+| bkit-debug-failure-diagnose | openrouter | openrouter/xiaomi/mimo-v2.6-pro |
+| bkit-debug-failure-soak | openrouter | openrouter/xiaomi/mimo-v2.6-pro |
+
+**Option 3 — highest quality outside Anthropic and OpenAI.** Every agent runs `google/gemini-4-argon`, the closest any allowed vendor gets to the opus bar, and the lenses run `moonshotai/kimi-k3.1-pro` (39.1, distinct family, $0.20 cache read). **~$305 per gap**, ~$637 on push days — more than a month of subscription for one gap, against roughly a quarter of the same work at Claude list price.
+
+<!-- prettier-ignore -->
+| Prompt | Provider | Model |
+| --- | --- | --- |
+| bkit-design-brainstorm-ideate-1 | openrouter | openrouter/google/gemini-4-argon |
+| bkit-design-brainstorm-ideate-2 | openrouter | openrouter/google/gemini-4-argon |
+| bkit-design-generate | openrouter | openrouter/google/gemini-4-argon |
+| bkit-design-review-1 | openrouter | openrouter/google/gemini-4-argon |
+| bkit-design-review-2 | openrouter | openrouter/google/gemini-4-argon |
+| bkit-design-spike | openrouter | openrouter/google/gemini-4-argon |
+| bkit-design-update | openrouter | openrouter/google/gemini-4-argon |
+| bkit-design-organise | openrouter | openrouter/google/gemini-4-argon |
+| bkit-plan-generate | openrouter | openrouter/google/gemini-4-argon |
+| bkit-plan-review-1 | openrouter | openrouter/google/gemini-4-argon |
+| bkit-plan-scope-check | openrouter | openrouter/google/gemini-4-argon |
+| bkit-plan-update | openrouter | openrouter/google/gemini-4-argon |
+| bkit-build-plan-convert | openrouter | openrouter/google/gemini-4-argon |
+| bkit-build-plan-current | openrouter | openrouter/google/gemini-4-argon |
+| bkit-build-install-skills | openrouter | openrouter/google/gemini-4-argon |
+| bkit-build-plan-execute | openrouter | openrouter/google/gemini-4-argon |
+| bkit-build-plan-verify | openrouter | openrouter/google/gemini-4-argon |
+| bkit-build-plan-gaps-remediate | openrouter | openrouter/google/gemini-4-argon |
+| bkit-build-challenge-1 | openrouter | openrouter/google/gemini-4-argon |
+| bkit-debug-failure-reproduce | openrouter | openrouter/google/gemini-4-argon |
+| bkit-debug-failure-remediate | openrouter | openrouter/google/gemini-4-argon |
+| bkit-debug-abort-handover | openrouter | openrouter/google/gemini-4-argon |
+| bkit-ship-conflict-resolve | openrouter | openrouter/google/gemini-4-argon |
+| bkit-ship-deferred-sweep | openrouter | openrouter/google/gemini-4-argon |
+| bkit-ship-update-docs | openrouter | openrouter/google/gemini-4-argon |
+| bkit-audit-generate | openrouter | openrouter/google/gemini-4-argon |
+| bkit-utility-update-deferrals | openrouter | openrouter/google/gemini-4-argon |
+| bkit-utility-update-failures | openrouter | openrouter/google/gemini-4-argon |
+| bkit-utility-update-decisions | openrouter | openrouter/google/gemini-4-argon |
+| bkit-utility-update-knowledge | openrouter | openrouter/google/gemini-4-argon |
+| bkit-utility-update-roadmap | openrouter | openrouter/google/gemini-4-argon |
+| bkit-utility-update-tracker | openrouter | openrouter/google/gemini-4-argon |
+| bkit-utility-compress-markdown | openrouter | openrouter/google/gemini-4-argon |
+| bkit-utility-update-documentation | openrouter | openrouter/google/gemini-4-argon |
+| bkit-design-brainstorm-ideate-3 | openrouter | openrouter/moonshotai/kimi-k3.1-pro |
+| bkit-plan-review-2 | openrouter | openrouter/moonshotai/kimi-k3.1-pro |
+| bkit-build-challenge-2 | openrouter | openrouter/moonshotai/kimi-k3.1-pro |
+| bkit-debug-failure-diagnose | openrouter | openrouter/moonshotai/kimi-k3.1-pro |
+| bkit-debug-failure-soak | openrouter | openrouter/moonshotai/kimi-k3.1-pro |
+
 ### Agentic-coding parity board
 
 **v1 generation — superseded by the 2.0 board above; kept because every current pin was chosen from it.** LiveBench closed v1 at `2026-06-25`. 2.0 restarted the categories and weights, so the scores below do not convert to 2.0 — read them only against each other.
