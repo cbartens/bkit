@@ -631,13 +631,16 @@ Re-probed `https://livebench.ai/data/20261025/table.csv` + `cost.csv` (§ Select
 
 **Unmeasured on 2.0 — keep their v1 basis, do not re-derive:** `composer-2.5` and `cursor-grok-4.5-high` (Cursor), `gemini-3.8-pro` (Google/Antigravity).
 
-**Re-pin — NOT APPLIED, and re-cut pending the ceiling.** No pin moves until the § Budget band ceiling is chosen, because the ceiling decides the matrix and nothing else does:
+**Three presets, one default.** Ready to paste in `prompts.md` § Model Overrides; the gap cost is measured (§ Budget band), not modelled.
 
-- **≤ `$0.04`** — every opencode tier collapses onto `deepseek-v4.1-flash` (40.9), the only in-band model over the haiku bar on all four columns; convergent takes `minimax-m3.1-flash` (28.8, $0.015) where it is served, `glm-5.3-flash` on Zen.
-- **≤ `$0.10`** — opus and sonnet move to `gemini-4-argon` (61.2, 11.6 under the opus bar) on OpenRouter, Zen and Go; haiku and convergent stay as above.
-- **≤ `$0.20`** — convergent may keep a Kimi on OpenRouter and Go (`kimi-k3.1-pro`, 39.1), which is stronger than `kimi-k3` and half its cache-read price.
+| Preset                                          | Who runs what                                                                                                            | 2-day gap (normal / push) | Long Agentic              |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------- | ------------------------- |
+| **Option 1 — cheapest (default)**               | `deepseek-v4.1-flash-1017` on every agent; the five convergent lenses on `xiaomi/mimo-v2.6-pro`                          | **$17 / $34**             | 40.9 workhorse, 35.2 lens |
+| **Option 2 — balanced**                         | the ten spine agents — synthesizers and gates — on `gemini-4-argon`; the rest on DeepSeek; the lenses on `mimo-v2.6-pro` | **$82 / $169**            | 61.2 spine, 40.9 rest     |
+| **Option 3 — highest outside Anthropic/OpenAI** | every agent on `gemini-4-argon`; the lenses on `moonshotai/kimi-k3.1-pro`                                                | **$305 / $637**           | 61.2 everywhere           |
+| _(shipped until Option 1 lands)_                | DeepSeek everywhere; the lenses on `kimi-k3`                                                                             | $78 / $162                | 40.9 / 26.4               |
 
-Strength-for-cost reference: LiveBench `$/task` puts OpenRouter `gemini-4-argon` at `$249.15` against `deepseek-v4.1-flash-1017` at `$25.96`, but that long-horizon figure understates what a gap costs — measured cache-read volume puts a normal day at ~$100 on Gemini and ~$8 on DeepSeek (§ Budget band).
+**Ceiling for the default: ≤ `$0.005` cache read per Mtok** — Option 1's dearest cell is `mimo-v2.6-pro` at `$0.0036`. Options 2 and 3 breach the ceiling deliberately; they are opt-in through § Model Overrides and each states its own gap cost, so no default pin ever drifts above the ceiling. The current `kimi-k3` lenses are the one live violation at `$0.19`.
 
 ### Agentic-coding parity board
 
