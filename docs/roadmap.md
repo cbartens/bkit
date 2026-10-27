@@ -13,7 +13,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-10-27T08:47:08Z)_
+_(refreshed 2026-10-27T09:52:20Z)_
 
 ### Design
 
@@ -38,6 +38,7 @@ _(refreshed 2026-10-27T08:47:08Z)_
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
+| 705-build-plan-convert | 705-build-plan-convert | 1793094739491 |
 
 ### Debug
 
