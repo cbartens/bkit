@@ -17,3 +17,8 @@
 {"type":"workflow-done","workflow":"plan","at":"2026-10-26T07:58:28Z","parentSha":"9da84621aa119b730546e8a60f84011fa057c339"}
 {"type":"workflow-failed","workflow":"plan","at":"2026-10-26T07:59:10Z"}
 {"type":"engine-action","action":"comment","key":"plan/1/failure/8/2/comment","hash":"91306bb0d43631e55ee5fac5adafe0b3819fe70013e88987d4b8ef2fc64d48b9","ref":"https://github.com/cbartens/bkit/issues/701#issuecomment-6411068788","at":"2026-10-26T07:59:11Z"}
+{"type":"workflow-started","workflow":"build","at":"2026-10-27T10:59:37Z","parentSha":"79bf45172c08ed558e07b68b1a0c6f08113fc106"}
+{"type":"runtime-resolved","workflow":"build","at":"2026-10-27T10:59:40Z","runtime":"LOCAL","runtimeWorktrees":true,"runtimeDevPushes":true,"runtimeGithubCli":true,"runtimeGithubCliExit":0,"runtimeGithubCliErr":"","baseSha":""}
+{"type":"step-done","workflow":"build","step":"build-start-workflow","status":"DONE","at":"2026-10-27T10:59:49Z","parentSha":"79bf45172c08ed558e07b68b1a0c6f08113fc106","artifacts":[]}
+{"type":"engine-action","action":"comment","key":"build/1/build-worktree-setup/-/-/comment","hash":"2224956a9813819e575ac0c08db7eecb989da174d15452efb71d41cb1b246a03","ref":"https://github.com/cbartens/bkit/issues/701#issuecomment-6440223567","at":"2026-10-27T10:59:50Z"}
+{"type":"step-done","workflow":"build","step":"build-worktree-setup","status":"DONE","at":"2026-10-27T10:59:50Z","parentSha":"79bf45172c08ed558e07b68b1a0c6f08113fc106","artifacts":["docs/plans/202610/logs/701-engine-work-build/build-input-1.md"]}
