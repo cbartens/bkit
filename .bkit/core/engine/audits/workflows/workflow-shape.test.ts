@@ -632,6 +632,24 @@ describe("build", () => {
     expect(section(build, /Step 3 — Branch Sync/)).not.toContain("--step=build-plan-convert");
   });
 
+  it("Plan Convert's finish carries the plan-check log as an optional artifact", () => {
+    // A plan-less run routes to the convert before the check writes its log, so the log
+    // can be absent when the finish runs; a required artifact would exit 7 there and the
+    // Plan Convert comment would never post. Optional records it whenever it exists.
+    const finish = commandLines(section(build, /Step 4 — Plan Convert/), "steps finish").filter(
+      (l) => l.includes("--step=build-plan-convert"),
+    );
+    expect(finish).toHaveLength(1);
+    expect(finish[0]).toContain(
+      "--optional-artifact=docs/plans/{YYYYMM}/logs/{FID}/build-plan-check.md",
+    );
+    expect(finish[0]).not.toContain(
+      "--artifact=docs/plans/{YYYYMM}/logs/{FID}/build-plan-check.md",
+    );
+    // The plan itself stays a required artifact: the finish only runs once it exists.
+    expect(finish[0]).toContain("--artifact=docs/plans/{YYYYMM}/{FID}-plan.md");
+  });
+
   it("Plan Current posts a comment whether it runs or skips", () => {
     const finish = stepFinishLines(section(build, /Step 5 — Plan Current/), "build-plan-current");
     expect(finish).toHaveLength(2);
