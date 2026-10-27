@@ -105,7 +105,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 2. Ask the human in this session; plain text, no host question tool. One message:
    - `debug {LOOP_POINT}: attempt {LOOP_ATTEMPT} of {LOOP_MAX}`, then the newest diagnosis (`debug-failure-diagnose-*.md`) or soak log (`debug-failure-soak-*-log.md`) in one line each.
    - `LOOP_POINT` = `fix` → `**Q1 — Fix:** another fix attempt?`. `LOOP_POINT` = `soak` and `{LOOP_ATTEMPT}` = 1 → `**Q1 — Soak:** fix attempts used up. Start soak (a slower, step-by-step investigation)?`. **Else** → `**Q1 — Soak:** another soak attempt?`.
-   - `Options: Try again / Stop`, then `Recommended: {Try again|Stop} — {the trend: failures falling → Try again, else Stop}`.
+   - `Options: A) Try again / B) Stop`, then `Recommended: {A) Try again|B) Stop} — {the trend: failures falling → A, else B}`.
    - The line `Reply per question. "yes" takes every recommendation. "stop" writes a handover; the run can be resumed.`
      Record the wait → end turn → wait for the answer:
    ```bash

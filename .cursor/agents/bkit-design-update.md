@@ -60,7 +60,7 @@ tools:
 5. Apply every `CRITICAL` item; no consensus required. **If** findings conflict → prefer the stricter wording.
 6. Identify `OPTIONAL` items — apply each on merit; no consensus required. **If** conflict with applied `CRITICAL` or scope expansion → skip.
 7. **If** a spike input is supplied → revise every design element its `Design Impact` names as invalidated, to what the recorded evidence supports; record `Unsettled` claims as open questions under `Risks & Open Questions`.
-8. **If** applied findings add / reword open questions under `Risks & Open Questions` → each MUST carry 2-3 concrete options with trade-offs, a `Recommended` option with one-line rationale, and a `Default if unanswered`; bare questions are not acceptable output. Questions in regions no finding touches stay verbatim.
+8. **If** applied findings add / reword open questions under `Risks & Open Questions` → each MUST carry 2-3 concrete options with trade-offs as the lettered `Options: A) {option} — {trade-off} · B) …`, a `Recommended` naming the chosen letter with one-line rationale, and a `Default if unanswered`; bare questions are not acceptable output. Questions in regions no finding touches stay verbatim.
 9. Update **Create** — set `Verdict` via `Edit`; mapping:
    - `PASS` = all `CRITICAL` items applied; `OPTIONAL` items applied on merit.
    - `CONCERNS` = some `OPTIONAL` items skipped.

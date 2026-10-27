@@ -4,8 +4,8 @@
 // lines, an optional progress block, then one item per question:
 //
 //   **Q{n} — {title}:** {question}
-//   Options: {A} / {B}
-//   Recommended: {A} — {reason}          (a hard blocker: `No recommendation — {why}`)
+//   Options: A) {A} / B) {B}
+//   Recommended: A) {A} — {reason}       (a hard blocker: `No recommendation — {why}`)
 //   Decision: {answer} — {words}         (once decided)
 //
 // `apply --by=headless` takes each recommendation when nobody can or should be asked: an
@@ -26,6 +26,14 @@ import { positiveInt, str } from "./status.js";
 export const EXIT_HARD_BLOCKERS = 4;
 const ITEM_SPLIT = /^(?=\*\*Q\d+ — )/m;
 const lineOf = (text, key) => new RegExp(`^${key}:[ \\t]*(.+?)[ \\t]*$`, "m").exec(text)?.[1] ?? null;
+/** `A`, `B`, … for option index `i`. */
+const letterAt = (i) => String.fromCharCode(65 + i);
+/** An option entry's leading letter (`A) `) dropped, so a parsed name stays bare. */
+const bareName = (s) => s.replace(/^[A-Z]\)[ \t]*/, "");
+/** The option list as it is written: `A) {A} / B) {B}`. */
+const letteredOptions = (options) => options.map((o, i) => `${letterAt(i)}) ${o}`).join(" / ");
+/** The letter `name` holds in `options`, or null when it is not one of them. */
+const letterOf = (options, name) => options.includes(name) ? letterAt(options.indexOf(name)) : null;
 /** The items of a decision file's text, in file order. */
 export function parseDecisionItems(text) {
     return text
@@ -43,9 +51,9 @@ export function parseDecisionItems(text) {
             text: part.trimEnd(),
             options: (lineOf(part, "Options") ?? "")
                 .split(" / ")
-                .map((o) => o.trim())
+                .map((o) => bareName(o.trim()))
                 .filter(Boolean),
-            recommended: none || rec === null ? null : (option ?? "").trim(),
+            recommended: none || rec === null ? null : bareName((option ?? "").trim()),
             reason: why.join(" — ").trim(),
             decision,
             assumed: decision !== null && /^Accept \(assumed\)/.test(decision),
@@ -128,13 +136,17 @@ function composeItems(raw) {
         };
     });
 }
-const itemLines = (n, it) => [
-    `**Q${n} — ${it.title}:** ${it.question}`,
-    `Options: ${it.options.join(" / ")}`,
-    it.noRecommendation
-        ? `No recommendation — ${it.noRecommendation}`
-        : `Recommended: ${it.recommended} — ${it.reason || "the orchestrator's call"}`,
-];
+const itemLines = (n, it) => {
+    const rec = it.recommended ?? "";
+    const letter = letterOf(it.options, rec);
+    return [
+        `**Q${n} — ${it.title}:** ${it.question}`,
+        `Options: ${letteredOptions(it.options)}`,
+        it.noRecommendation
+            ? `No recommendation — ${it.noRecommendation}`
+            : `Recommended: ${letter === null ? rec : `${letter}) ${rec}`} — ${it.reason || "the orchestrator's call"}`,
+    ];
+};
 // ---------------------------------------------------------------------------
 // apply
 // ---------------------------------------------------------------------------
@@ -192,7 +204,7 @@ function deferralRow(file, it) {
         severity,
         reason: "needs-decision",
         summary: `${fid}: ${it.title} accepted without the owner (${ref})`,
-        description: `Decision needed: accept or fix "${it.title}". Options: ${it.options.join(" / ")}. ${it.rejected ? "The owner rejected the assumed accept at ship." : "Nobody confirmed the assumed accept before the merge."} Item: ${it.text.split("\n")[0]}`,
+        description: `Decision needed: accept or fix "${it.title}". Options: ${letteredOptions(it.options)}. ${it.rejected ? "The owner rejected the assumed accept at ship." : "Nobody confirmed the assumed accept before the merge."} Item: ${it.text.split("\n")[0]}`,
         status: "OPEN",
     };
 }
