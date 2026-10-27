@@ -208,6 +208,21 @@ bkit asks the owner questions in five workflows and labels the answer options th
 <!-- bkit:task 10 end -->
 <!-- bkit:group 4 end -->
 
+<!-- bkit:group 5 start -->
+
+### GROUP 5: Challenge round 2 findings
+
+<!-- bkit:task 11 start -->
+
+- [ ] **TASK 11:** The design review's open-question criterion dropped `Default if unanswered`, so a design whose open question carries options and a lettered `Recommended` but no default passes `bkit-design-review-2` while `bkit-design-generate` and `bkit-design-update` still demand that default and the prompts index still tells a reader the review checks it
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/prompts/bkit-design-review-2.md:76` · **Round:** 2
+  - **DONE WHEN:** the design review enumerates every part the design prompts require of an open question — lettered options, a lettered `Recommended`, and `Default if unanswered` — so an open question missing its default is flagged again; `.bkit/core/.bkit/prompts.md:257`, the regenerated `.bkit/prompts.md` and `.claude/agents/bkit-design-review-2.md`, `.cursor/`, `.codex/` and `.opencode/` mirrors carry the same three parts, and `bkit check` stays drift-clean after the install.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/workflows/question-option-format.test.ts` `the design review names every part the design prompts require` fails while `.bkit/core/prompts/bkit-design-review-2.md:76` reads ``lacking lettered options (`A)`, `B)`, `C)`) or a lettered `Recommended` `` and never names `Default if unanswered`, which `.bkit/core/prompts/bkit-design-generate.md:133` and `.bkit/core/prompts/bkit-design-update.md:65` still require.
+
+<!-- bkit:task 11 end -->
+<!-- bkit:group 5 end -->
+
 ### 🔒 Gate 2: Code Implementation Check
 
 - [ ] **No bolt-on / no gate-weakening:** every `[NEW]` traces to a `Reuse Inventory` `NEW` row; every `EXTEND` landed in its named artifact; no gate weakened.
