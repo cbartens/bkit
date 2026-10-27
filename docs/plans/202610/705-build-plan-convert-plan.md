@@ -233,7 +233,7 @@ None — no new routes, DB writes, secrets or user input.
   - **DEPENDS ON:** 1
   - **DONE WHEN:** the build step table reads steps 1-16 with Plan Convert at 4 and no prose reference to an old number; `grep -n "Plan Convert" .bkit/core/.bkit/workflows.md` shows the new row; `pnpm instructions:sync` leaves the working tree unchanged on a second run; `pnpm vitest run .bkit/core/engine/tools/instructions.test.ts` passes
   - **TEST FIRST:**
-    - `.bkit/core/engine/tools/instructions.test.ts` `sync has nothing left to rewrite` fails on the mirrored § Cross-step invariants still naming the old build step numbers
+    - `.bkit/core/engine/tools/instructions-sources.test.ts` `each Special Behaviors row and authoring section has one equal entry` fails on the mirrored § Cross-step invariants still naming the old build step numbers
 
 <!-- bkit:task 3 end -->
 
