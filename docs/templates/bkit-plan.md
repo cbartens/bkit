@@ -65,16 +65,16 @@ _notation, e.g._ **WHEN** a user submits the form with a valid file **→ THEN**
 
 ### Derived Test Matrix
 
-`Type` = a tier from `docs/testing.md`: Static, Unit, Integration, @live (golden), E2E, fresh-DB replay, Smoke.
+`Type` = a tier from `docs/testing.md`: Static, Unit, Integration, @live (golden), E2E, fresh-DB replay, Smoke. `Task` = the one runbook task that lands the row's test.
 
 <!-- prettier-ignore -->
-| Test description | Type | Target file |
-| --- | --- | --- |
-| [e.g., Happy path: user creates event, sees it in list] | E2E | [e.g. `apps/web/e2e/[feature].spec.ts`] |
-| [e.g., Service correctly parses payload] | Unit | [e.g. `packages/[pkg]/[module].test.ts`] |
-| [e.g., API endpoint enforces tenant isolation] | Integration | [e.g. `packages/api/[feature].integration.test.ts`] |
-| [e.g., Real 3rd-party API returns expected shape and a boundary-only identity — not "did not throw"] | @live (golden) | [e.g. `packages/[pkg]/[feature].live.test.ts`] |
-| [e.g., New migration replays from empty and seed loads] | fresh-DB replay | [e.g. `supabase/migrations/*`] (replayed by `bkit-tests-migration`) |
+| Test description | Type | Target file | Task |
+| --- | --- | --- | --- |
+| [e.g., Happy path: user creates event, sees it in list] | E2E | [e.g. `apps/web/e2e/[feature].spec.ts`] | 2 |
+| [e.g., Service correctly parses payload] | Unit | [e.g. `packages/[pkg]/[module].test.ts`] | 2 |
+| [e.g., API endpoint enforces tenant isolation] | Integration | [e.g. `packages/api/[feature].integration.test.ts`] | 2 |
+| [e.g., Real 3rd-party API returns expected shape and a boundary-only identity — not "did not throw"] | @live (golden) | [e.g. `packages/[pkg]/[feature].live.test.ts`] | 2 |
+| [e.g., New migration replays from empty and seed loads] | fresh-DB replay | [e.g. `supabase/migrations/*`] (replayed by `bkit-tests-migration`) | 1 |
 
 ### 👤 ✅ Human Confirmation
 

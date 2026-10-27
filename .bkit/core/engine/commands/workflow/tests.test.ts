@@ -672,9 +672,14 @@ function fencedText(md: string): string {
     .join("\n");
 }
 
-/** Issue task blocks wrapped as a plan: a Reuse Inventory NEW row per CREATE file, then the blocks. */
+/**
+ * Issue task blocks wrapped as a plan: a Reuse Inventory NEW row per CREATE file and a
+ * Supersession Inventory row per DELETE file, then the blocks.
+ */
 function asPlan(blocks: string): string {
-  const files = parsePlanBlocks(blocks).tasks.flatMap((t) => t.create.map((c) => c.file));
+  const parsed = parsePlanBlocks(blocks).tasks;
+  const files = parsed.flatMap((t) => t.create.map((c) => c.file));
+  const removed = parsed.flatMap((t) => t.delete.map((d) => d.file));
   return [
     "# Plan",
     "",
@@ -683,6 +688,16 @@ function asPlan(blocks: string): string {
     "| Capability | File | Search performed | Existing candidates | Decision (EXTEND/NEW) | Justification |",
     "| --- | --- | --- | --- | --- | --- |",
     ...files.map((f) => `| x | \`${f}\` | rg x | none | NEW | nothing to extend |`),
+    ...(removed.length === 0
+      ? []
+      : [
+          "",
+          "## Supersession Inventory",
+          "",
+          "| Existing artifact | Replaced by | Decision | Justification |",
+          "| --- | --- | --- | --- |",
+          ...removed.map((f) => `| \`${f}\` | - | DELETE | replaced |`),
+        ]),
     "",
     blocks,
   ].join("\n");
@@ -816,6 +831,26 @@ describe("bkit tests plan-check", () => {
       "| Capability | File | Search performed | Existing candidates | Decision (EXTEND/NEW) | Justification |",
       "| --- | --- | --- | --- | --- | --- |",
       ...files.map((f) => `| x | \`${f}\` | rg x | none | NEW | nothing to extend |`),
+    ].join("\n");
+  /** A Derived Test Matrix table: its `cols`, then one row per `row` cell list. */
+  const matrix = (cols: string[], ...rows: string[][]) =>
+    [
+      "## Derived Test Matrix",
+      "",
+      `| ${cols.join(" | ")} |`,
+      `| ${cols.map(() => "---").join(" | ")} |`,
+      ...rows.map((r) => `| ${r.join(" | ")} |`),
+    ].join("\n");
+  /** The matrix header the reader maps rows to tasks by. */
+  const MATRIX = ["Test description", "Type", "Target file", "Task"];
+  /** A Supersession Inventory table with one DELETE row per file. */
+  const supersession = (...files: string[]) =>
+    [
+      "## Supersession Inventory",
+      "",
+      "| Existing artifact | Replaced by | Decision | Justification |",
+      "| --- | --- | --- | --- |",
+      ...files.map((f) => `| \`${f}\` | \`src/new.ts\` | DELETE | replaced |`),
     ].join("\n");
 
   it("states the caps the template and workflows doc name", () => {
@@ -1083,6 +1118,163 @@ describe("bkit tests plan-check", () => {
     write("plan.md", inventory("src/threads.ts"), groupBlock(1, okTask(1, 1, 1, create)));
     r = await check();
     expect(r.code).toBe(0);
+  });
+
+  it("plan-check refuses an unmapped matrix row", async () => {
+    write(
+      "plan.md",
+      matrix(
+        MATRIX,
+        ["case a", "Unit", "`t0.test.ts`", ""],
+        ["case b", "Unit", "`t0.test.ts`", "1"],
+      ),
+      groupBlock(1, okTask(1)),
+    );
+    const r = await check();
+    expect(r.code).toBe(1);
+    expect(r.json.problems).toEqual([
+      expect.objectContaining({ kind: "matrix", line: lineOf("plan.md", "| case a") }),
+    ]);
+    expect(report()).toContain("row maps to no task");
+  });
+
+  it("plan-check refuses a delete with no supersession row", async () => {
+    fs.mkdirSync(path.join(cwd, "src"));
+    fs.writeFileSync(path.join(cwd, "src/old.ts"), "export const oldThing = 1;\n");
+    const del = ["  - **DELETE:** `oldThing` in `src/old.ts`: gone"];
+    write("plan.md", groupBlock(1, okTask(1, 1, 1, del)));
+    let r = await check();
+    expect(r.code).toBe(1);
+    expect(r.json.problems).toEqual([
+      expect.objectContaining({ kind: "supersession", line: lineOf("plan.md", "**DELETE:**") }),
+    ]);
+    expect(r.json.problems[0].message).toContain("src/old.ts");
+    write("plan.md", supersession("src/old.ts"), groupBlock(1, okTask(1, 1, 1, del)));
+    r = await check();
+    expect(r.code).toBe(0);
+  });
+
+  it("plan-check refuses a matrix row mapped to two tasks", async () => {
+    write(
+      "plan.md",
+      matrix(
+        MATRIX,
+        ["case a", "Unit", "`t0.test.ts`", "1"],
+        ["case b", "Unit", "`t0.test.ts`", "2"],
+        ["case c", "Unit", "`t0.test.ts`", "1, 2"],
+      ),
+      groupBlock(1, okTask(1), okTask(2)),
+    );
+    const r = await check();
+    expect(r.code).toBe(1);
+    expect(r.json.problems).toEqual([
+      expect.objectContaining({ kind: "matrix", line: lineOf("plan.md", "| case c") }),
+    ]);
+    expect(r.json.problems[0].message).toContain("TASK 1");
+    expect(r.json.problems[0].message).toContain("TASK 2");
+  });
+
+  it("plan-check refuses a task no matrix row maps to", async () => {
+    write(
+      "plan.md",
+      matrix(MATRIX, ["case a", "Unit", "`t0.test.ts`", "1"]),
+      groupBlock(1, okTask(1), okTask(2)),
+    );
+    const r = await check();
+    expect(r.code).toBe(1);
+    expect(r.json.problems).toEqual([
+      expect.objectContaining({
+        kind: "matrix",
+        line: lineOf("plan.md", "<!-- bkit:task 2 start -->"),
+      }),
+    ]);
+    expect(r.json.problems[0].message).toContain("TASK 2");
+  });
+
+  it("plan-check accepts a matrix that maps every test-bearing task", async () => {
+    write(
+      "plan.md",
+      matrix(
+        MATRIX,
+        ["case a", "Unit", "`t0.test.ts`", "1"],
+        ["case b", "Unit", "`t1.test.ts`", "2"],
+      ),
+      groupBlock(1, okTask(1), okTask(2)),
+    );
+    const r = await check();
+    expect(r.code).toBe(0);
+    expect(r.json.problems).toEqual([]);
+    // The same plan minus one row is refused: the acceptance is the mapping, not the section.
+    write(
+      "plan.md",
+      matrix(MATRIX, ["case a", "Unit", "`t0.test.ts`", "1"]),
+      groupBlock(1, okTask(1), okTask(2)),
+    );
+    const missing = await check();
+    expect(missing.code).toBe(1);
+  });
+
+  it("plan-check refuses a matrix header with no Task column, naming the column to add", async () => {
+    write(
+      "plan.md",
+      matrix(
+        ["Test description", "Type", "Target file"],
+        ["case a", "Unit", "`t0.test.ts`"],
+        ["case b", "Unit", "`t1.test.ts`"],
+      ),
+      groupBlock(1, okTask(1), okTask(2)),
+    );
+    const r = await check();
+    expect(r.code).toBe(1);
+    expect(r.json.problems).toEqual([
+      expect.objectContaining({ kind: "matrix", line: lineOf("plan.md", "| Test description") }),
+    ]);
+    expect(r.json.problems[0].message).toContain("Task");
+    expect(report().match(/`matrix`/g)).toHaveLength(1);
+  });
+
+  it("plan-check refuses a Task cell naming an undefined task", async () => {
+    write(
+      "plan.md",
+      matrix(
+        MATRIX,
+        ["case a", "Unit", "`t0.test.ts`", "1"],
+        ["case b", "Unit", "`t1.test.ts`", "9"],
+      ),
+      groupBlock(1, okTask(1)),
+    );
+    const r = await check();
+    expect(r.code).toBe(1);
+    expect(r.json.problems).toEqual([
+      expect.objectContaining({ kind: "matrix", line: lineOf("plan.md", "| case b") }),
+    ]);
+    expect(r.json.problems[0].message).toContain("TASK 9");
+  });
+
+  it("plan-check accepts a task whose only TEST FIRST is n/a", async () => {
+    write(
+      "plan.md",
+      matrix(MATRIX, ["case a", "Unit", "`t0.test.ts`", "1"]),
+      groupBlock(
+        1,
+        okTask(1),
+        taskBlock(2, [
+          "  - **DONE WHEN:** the docs are updated",
+          "  - **TEST FIRST:** n/a — docs only",
+        ]),
+      ),
+    );
+    const r = await check();
+    expect(r.code).toBe(0);
+    expect(r.json.problems).toEqual([]);
+    // A task naming a test and no row is refused: only `n/a` is exempt from a row.
+    write(
+      "plan.md",
+      matrix(MATRIX, ["case a", "Unit", "`t0.test.ts`", "1"]),
+      groupBlock(1, okTask(1), okTask(2)),
+    );
+    const missing = await check();
+    expect(missing.code).toBe(1);
   });
 
   it("plan-check refuses a group with 4 tasks", async () => {

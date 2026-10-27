@@ -3,7 +3,7 @@ import * as path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { parsePlanBlocks, reuseInventory } from "./plan-blocks";
+import { derivedTestMatrix, parsePlanBlocks, reuseInventory } from "./plan-blocks";
 
 const task = (n: number, body: string[] = [], tick = " ") => [
   `<!-- bkit:task ${n} start -->`,
@@ -370,4 +370,26 @@ describe("reuseInventory", () => {
     const text = ["## Reuse Inventory", "None.", "## Other", "| File |", "| --- |", "| `x` |"];
     expect(reuseInventory(text.join("\n"))).toBeNull();
   });
+});
+
+it("derivedTestMatrix returns a null column index when the header has no Task column", () => {
+  const text = [
+    "# Plan",
+    "",
+    "## Derived Test Matrix",
+    "",
+    "| Test description | Type | Target file |",
+    "| --- | --- | --- |",
+    "| case a | Unit | `t.test.ts` |",
+    "",
+    "## Next",
+    "",
+    "| Not | A | Matrix |",
+    "| --- | --- | --- |",
+    "| x | y | z |",
+  ].join("\n");
+  const matrix = derivedTestMatrix(text);
+  expect(matrix?.taskColumn).toBeNull();
+  expect(matrix?.line).toBe(5);
+  expect(matrix?.rows.map((r) => r.cells)).toEqual([["case a", "Unit", "`t.test.ts`"]]);
 });

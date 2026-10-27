@@ -149,7 +149,7 @@ description: "Build Feature — Autonomous implementation"
      - Test-order gap or `exception-refused` gap → a `- **TEST EXCEPTION:**` field as the last field of the task's block in `docs/plans/{YYYYMM}/{FID}-plan.md`, one sub-bullet per test in `TEST FIRST` form, each ending `— {human's reason} (owner, {YYYY-MM-DD})`; a task with no `TEST FIRST` → the field holds `{human's reason} (owner, {YYYY-MM-DD})` alone. The field replaces the task's existing `TEST EXCEPTION` field; NEVER add a second.
      - Other → append one `docs/decisions.jsonl` row with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); `by.step` = `build-decision`; `summary` names `{FID}`, step `{PAUSE_STEP}` and the gap or finding; `rationale` = `accepted by owner: {human's reason}`. An item that is a challenge task → also tick it `[x]` in the plan and end its title with ` — accepted by owner`.
    - **Accept (assumed)** (written by `decisions apply`) → write nothing else: no `docs/decisions.jsonl` row, no `TEST EXCEPTION`. An item that is a challenge task → tick it `[x]` and end its title with ` — accepted (assumed)`. Ship asks the owner to confirm it.
-   - **Fix now** → an item that is a challenge task → keep that task open; it runs as it is. **Else** → write a task block (`docs/templates/bkit-plan.md` § Agent Execution Runbook) numbered one above the plan's highest task, with `**DONE WHEN:**` and `**TEST FIRST:**` (one sub-bullet per test, `` `{test file}` `{test name}` fails on {what goes wrong} ``); the human's direction, when given, shapes the task:
+   - **Fix now** → an item that is a challenge task → keep that task open; it runs as it is. **Else** → write a task block (`docs/templates/bkit-plan.md` § Agent Execution Runbook) numbered one above the plan's highest task, with `**DONE WHEN:**` and `**TEST FIRST:**` (one sub-bullet per test, `` `{test file}` `{test name}` fails on {what goes wrong} ``), and one `Derived Test Matrix` row per test in that `TEST FIRST` (``| {test name} | {tier} | `{test file}` | {task} |``, the tier its file's name gives); the human's direction, when given, shapes the task:
      - `From: verify` and group `{GROUP}` stays within `{MAX_TASKS_PER_GROUP}` tasks and `{MAX_TESTS_PER_GROUP}` `TEST FIRST` tests with it → inside group `{GROUP}`.
      - `From: verify`, over either cap → a new group right after `{GROUP}`; add 1 to every later group's number, in its markers and `### GROUP` heading.
      - `From: tests` or `From: challenge` → a new last group, each new group within the caps.
@@ -365,7 +365,7 @@ description: "Build Feature — Autonomous implementation"
    ```
    Route:
    - **If** exit 0 **and** (`NEWER_COMMENTS` = 0 **or** `CONVERTED` is held) → sub-step 5.
-   - **If** `CONVERTED` is not held **and** (exit 0 with `NEWER_COMMENTS` > 0, **or** exit 2 with no `docs/plans/{YYYYMM}/{FID}-plan.md`, **or** exit 1 with a `markers` problem) → sub-step 3.
+   - **If** `CONVERTED` is not held **and** (exit 0 with `NEWER_COMMENTS` > 0, **or** exit 2 with no `docs/plans/{YYYYMM}/{FID}-plan.md`, **or** exit 1 with a `markers`, `matrix` or `supersession` problem) → sub-step 3.
    - **If** exit 1, `CONVERTED` is held **and** `CONVERT_RETRY` is not held → `CONVERT_RETRY` = the printed `problems` → sub-step 3.
    - **Else** → **Failure Path** naming each problem in the report.
 3. **Subagent:** Invoke `@bkit-build-plan-convert` using `Agent` tool:
@@ -526,7 +526,11 @@ One pass of Steps 6-8 per plan group, in group order: Step 6 briefs the first gr
      ```bash
      "{BKIT}" tests plan-check --plan="docs/plans/{YYYYMM}/{FID}-plan.md" --existence=report --log="{OUTBOX}/build-plan-check-{GROUP}.md"
      ```
-     **If** exit non-zero → **Failure Path**. **If** the printed `groups` hold a group numbered above `GROUP` → sub-step 8. **Else** → `GATE_VERDICT` = SKIPPED → sub-step 10.
+     Route:
+     - **If** exit 1 with a `matrix` or `supersession` problem, **and** `CONVERT_RETRY` is not held → `CONVERT_RETRY` = the printed `problems` → Step 3 sub-step 3.
+     - **If** exit non-zero → **Failure Path**.
+     - **If** the printed `groups` hold a group numbered above `GROUP` → sub-step 8.
+     - **Else** → `GATE_VERDICT` = SKIPPED → sub-step 10.
    - **Else** → `GATE_VERDICT` = SKIPPED → sub-step 10.
 8. Run the group gate; it writes the trimmed log to the artifact:
    ```bash

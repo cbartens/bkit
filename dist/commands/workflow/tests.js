@@ -26,7 +26,7 @@ import { readPackageJson } from "../../shared/package-json.js";
 import { COULD_NOT_RUN_EXIT_CODES, scriptCommand } from "../../shared/package-manager.js";
 import { CONFIG_DEFAULTS, readBkitConfig } from "../../shared/settings.js";
 import { FILE_FLAG, GROUP_FLAG, WORKFLOW_FLAG, positiveInt, readStatusRows, statusFile, str, } from "./status.js";
-import { fenceNeverClosed, parsePlanBlocks, reuseInventory, } from "./plan-blocks.js";
+import { derivedTestMatrix, fenceNeverClosed, parsePlanBlocks, reuseInventory, supersessionInventory, } from "./plan-blocks.js";
 import { writeStepRow } from "./steps.js";
 import { appendRecord, clampFile } from "./context.js";
 /** Exit code: no candidate gate is declared in package.json. */
@@ -246,7 +246,8 @@ const kb1 = (bytes) => Math.round((bytes / 1024) * 10) / 10;
  * task-like text outside every block, a task without DONE WHEN or without TEST FIRST and
  * TEST EXCEPTION, a malformed TEST FIRST, a DEPENDS ON naming a missing task or one in a
  * later group, a group or task over a cap in `caps`, a CREATE file with no NEW Reuse
- * Inventory row.
+ * Inventory row, a `Derived Test Matrix` row naming no task / an undefined task / two
+ * tasks or a test-bearing task no row names, and a DELETE file with no Supersession row.
  */
 export function checkPlanText(text, caps = CONFIG_DEFAULTS.tasks) {
     const blocks = parsePlanBlocks(text);
@@ -320,6 +321,61 @@ export function checkPlanText(text, caps = CONFIG_DEFAULTS.tasks) {
                     message: `TASK ${t.task}: CREATE in \`${c.file}\` has no NEW row naming it in the Reuse Inventory's File column`,
                 });
     }
+    // The matrix maps each row to one task and each test-bearing task to a row. A plan with no
+    // matrix section yields no problem: the refusal is on a row, and issue-form plans carry none.
+    const matrix = derivedTestMatrix(text);
+    if (matrix !== null) {
+        if (matrix.taskColumn === null)
+            problems.push({
+                line: matrix.line,
+                kind: "matrix",
+                message: "the Derived Test Matrix header has no `Task` column; add one naming the task each row's test belongs to",
+            });
+        else {
+            const mapped = new Set();
+            for (const row of matrix.rows) {
+                const named = row.tasks.map((n) => `TASK ${n}`);
+                if (row.tasks.length === 0)
+                    problems.push({
+                        line: row.number,
+                        kind: "matrix",
+                        message: `Derived Test Matrix row maps to no task: name one in its \`Task\` cell`,
+                    });
+                else if (row.tasks.length > 1)
+                    problems.push({
+                        line: row.number,
+                        kind: "matrix",
+                        message: `Derived Test Matrix row maps to ${named.join(" and ")}; name exactly one task`,
+                    });
+                else {
+                    const n = row.tasks[0];
+                    if (!byTask.has(n))
+                        problems.push({
+                            line: row.number,
+                            kind: "matrix",
+                            message: `Derived Test Matrix row maps to TASK ${n}, which the plan does not define`,
+                        });
+                    mapped.add(n);
+                }
+            }
+            for (const t of blocks.tasks)
+                if (specs.get(t.task).kind === "test" && !mapped.has(t.task))
+                    problems.push({
+                        line: t.line,
+                        kind: "matrix",
+                        message: `TASK ${t.task} names TEST FIRST tests but no Derived Test Matrix row maps to it`,
+                    });
+        }
+    }
+    const superseded = new Set((supersessionInventory(text) ?? []).flatMap((r) => r.files));
+    for (const t of blocks.tasks)
+        for (const d of t.delete)
+            if (!superseded.has(path.posix.normalize(d.file)))
+                problems.push({
+                    line: d.line,
+                    kind: "supersession",
+                    message: `TASK ${t.task}: DELETE in \`${d.file}\` has no row naming it in the Supersession Inventory`,
+                });
     const groups = blocks.groups.map((g) => {
         const tests = sizes.filter((s) => s.group === g.group).reduce((n, s) => n + s.tests, 0);
         const bytes = Buffer.byteLength(lines.slice(g.line - 1, g.end).join("\n"));
@@ -1339,7 +1395,7 @@ export const testsCommand = {
             },
         },
         "plan-check": {
-            summary: `Check a plan's group and task blocks: the block format, DONE WHEN and TEST FIRST on every task, DEPENDS ON order, the caps from package.json \`bkit.workflows.tasks\` (defaults: ${capsText(CONFIG_DEFAULTS.tasks)}), a Reuse Inventory NEW row per CREATE file, and that each READ / UPDATE / DELETE file and symbol exists; exit 0 no problems, 1 refused.`,
+            summary: `Check a plan's group and task blocks: the block format, DONE WHEN and TEST FIRST on every task, DEPENDS ON order, the caps from package.json \`bkit.workflows.tasks\` (defaults: ${capsText(CONFIG_DEFAULTS.tasks)}), a Reuse Inventory NEW row per CREATE file, a Supersession Inventory row per DELETE, a \`Task\` on every Derived Test Matrix row and a row per test-bearing task, and that each READ / UPDATE / DELETE file and symbol exists; exit 0 no problems, 1 refused.`,
             flags: [
                 {
                     name: "plan",
@@ -1363,7 +1419,7 @@ export const testsCommand = {
                 plan: "the plan file checked (as given)",
                 groups: "[{group, title, tasks, tests, kb}]: each group's tasks, planned TEST FIRST tests and size",
                 tasks: "[{task, group, tests, files}]: each task's planned tests and distinct test files",
-                problems: "[{line, kind, message}]: format | stray | field | depends | cap | inventory | markers — each refuses the plan",
+                problems: "[{line, kind, message}]: format | stray | field | depends | cap | inventory | matrix | supersession | markers — each refuses the plan",
                 existence: "[{line, task, message}]: READ / UPDATE / DELETE files or symbols not found; refuses only with --existence=refuse",
                 log: "where the report was written (as given)",
             },
