@@ -750,7 +750,7 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
 
 <!-- bkit:task 7 start -->
 
-- [ ] **TASK 7:** `ledgers triage`
+- [x] **TASK 7:** `ledgers triage`
   - **UPDATE:** `.bkit/core/engine/commands/workflow/ledgers.ts`: add the `triage` verb — read the FID's `docs/deferrals.jsonl` rows, apply the closed-enum reason tests from `.bkit/jsonl.md`, print each row's bucket (`Exempt` / `Lazy`) and result, and write the `unjustified` / `TRIAGED` rows with a minted `ts` through the existing append path
   - **UPDATE:** `.bkit/core/engine/commands/workflow/plan-blocks.ts`: add `outOfScope` beside `reuseInventory`, so the fourth reason test reads the plan's own `Out of Scope` rows rather than a second parser
   - **UPDATE:** `.bkit/core/prompts/bkit-ship-deferred-sweep.md`: Process 9-11 read the verb; Process 7 (deliverable verification, and the `unjustified` / `TRIAGED` row it writes for an unmet deliverable) stays
@@ -772,7 +772,7 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
 
 <!-- bkit:task 8 start -->
 
-- [ ] **TASK 8:** `ship-update-docs` `Pending Items` from the engine
+- [x] **TASK 8:** `ship-update-docs` `Pending Items` from the engine
   - **UPDATE:** `.bkit/core/prompts/bkit-ship-update-docs.md`: drop Process 7 (the `docs/deferrals.jsonl` grep); `Pending Items` is filled from the passed scan artifact
   - **UPDATE:** `.bkit/core/workflows/bkit-ship.md`: Step 6 runs `context ledger-scan --terms='{FID}' --source=docs/deferrals.jsonl --artifact="{OUTBOX}/ship-pending-items.md" --fid={FID} --step=ship-update-docs --reset-log` and lists that artifact in the subagent's `Read:`
   - **READ:** `.bkit/core/engine/commands/workflow/context.ts`: `ledger-scan`'s required flags (`--terms`, `--source`, `--artifact`), its clamp and its keep-cap, so the step's call is complete and the FID term's over-match is accepted (the scan's truncation notice is what `Pending Items` tolerates)
