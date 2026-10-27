@@ -381,6 +381,16 @@ function commentNumberProblems(text: string): string[] {
   });
 }
 
+/** The `steps finish` lines in `text` running `step`. */
+function stepFinishLines(text: string, step: string): string[] {
+  return commandLines(text, "steps finish").filter((l) => l.includes(`--step=${step}`));
+}
+
+/** `lines` without the ones naming an agent. */
+function withNoAgent(lines: string[]): string[] {
+  return lines.filter((l) => !l.includes("--agent"));
+}
+
 describe("build", () => {
   const build = workflow("build");
 
@@ -578,6 +588,27 @@ describe("build", () => {
     expect(finish[0]).toContain("--number=4");
     expect(finish[0]).toContain('--post --title="Plan Convert"');
     expect(section(build, /Step 3 — Branch Sync/)).not.toContain("--step=build-plan-convert");
+  });
+
+  it("Plan Current posts a comment whether it runs or skips", () => {
+    const finish = stepFinishLines(section(build, /Step 5 — Plan Current/), "build-plan-current");
+    expect(finish).toHaveLength(2);
+    for (const line of finish) expect(line).toContain("--number=5");
+    for (const line of finish) expect(line).toContain('--post --title="Plan Current"');
+  });
+
+  it("Plan Current's skipped comment says no plan anchor", () => {
+    const step5 = section(build, /Step 5 — Plan Current/);
+    const skip = withNoAgent(stepFinishLines(step5, "build-plan-current"));
+    expect(skip).toHaveLength(1);
+    expect(skip[0]).not.toContain("--artifact");
+    expect(skip[0]).toContain('--comment-field="Status=skipped (no plan anchor)"');
+    // The skip finishes at once: after the anchor read, before any dispatch.
+    const anchor = step5.indexOf('"{BKIT}" branches anchor-read');
+    const field = step5.indexOf('--comment-field="Status=skipped (no plan anchor)"');
+    expect(anchor).toBeGreaterThan(-1);
+    expect(anchor).toBeLessThan(field);
+    expect(field).toBeLessThan(step5.indexOf("Invoke `@bkit-build-plan-current`"));
   });
 
   it("issue comments newer than a valid plan send the build through convert once", () => {

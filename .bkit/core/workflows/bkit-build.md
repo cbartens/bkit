@@ -407,26 +407,31 @@ description: "Build Feature — Autonomous implementation"
    "{BKIT}" branches anchor-read --file=docs/plans/{YYYYMM}/{FID}-plan.md --field=baseSha --against=origin/dev
    ```
    Route:
-   - **If** exit 12 → Step 6.
-   - **If** exit 0 → hold `value` as `{BASE_SHA}` → sub-step 2.
+   - **If** exit 12 → sub-step 2.
+   - **If** exit 0 → hold `value` as `{BASE_SHA}` → sub-step 3.
    - **Else** → **Failure Path**.
-2. **Subagent:** Invoke `@bkit-build-plan-current` using `Agent` tool:
+2. No plan anchor: finish the step with no agent and no artifact, its comment naming the skip:
+   ```bash
+   "{BKIT}" steps finish --workflow=build --step=build-plan-current --file="{STATUS}" --attempt=1 --number=5 --post --title="Plan Current" --comment-field="Status=skipped (no plan anchor)" --message="chore({FID}): plan-current skipped"
+   ```
+   Every outcome → Step 6.
+3. **Subagent:** Invoke `@bkit-build-plan-current` using `Agent` tool:
    Context: You are a subagent in the Build phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations. The plan was written against base commit `{BASE_SHA}`; judge it against `origin/dev`.
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-plan-current.md`.
-3. Finish:
+4. Finish:
    ```bash
    "{BKIT}" steps finish --workflow=build --step=build-plan-current --file="{STATUS}" --attempt=1 --agent=bkit-build-plan-current --artifact=docs/plans/{YYYYMM}/logs/{FID}/build-plan-current.md --number=5 --post --title="Plan Current" --message="chore({FID}): plan-current"
    ```
-4. **If** `verdict` = CONCERNS or FAIL → emit plan-currency advisory `[bkit-build] plan currency {verdict} — {fields.Affected} affected task(s); build continues, findings carried into Step 7`. Every verdict → Step 6.
+5. **If** `verdict` = CONCERNS or FAIL → emit plan-currency advisory `[bkit-build] plan currency {verdict} — {fields.Affected} affected task(s); build continues, findings carried into Step 7`. Every verdict → Step 6.
 
 ### 🔒 Gate 5 — Plan Current
 
-- [ ] Base commit resolved
-- [ ] Subagent invoked (`@bkit-build-plan-current`, no inline work)
+- [ ] Base commit resolved, or the missing anchor named as the skip
+- [ ] Subagent invoked (`@bkit-build-plan-current`, no inline work) when the base commit resolved
 - [ ] Mechanical checks passed (`steps finish`)
 - [ ] Plan not revised
-- [ ] Advisory emitted
+- [ ] Advisory emitted when the base commit resolved
 
 ---
 

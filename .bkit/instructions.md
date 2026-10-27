@@ -7099,11 +7099,13 @@ Plan checked (`tests plan-check`)
 Converted (`@bkit-build-plan-convert`, no inline work) when it had no task markers or issue comments are newer than it
 Converted plan checked again (`tests plan-check`)
 Resolve plan base commit and collect code landed since:
-**If** exit 12 → Step 6.
+**If** exit 12 → sub-step 2.
+No plan anchor: finish the step with no agent and no artifact, its comment naming the skip:
+Every outcome → Step 6.
 **If** `verdict` = CONCERNS or FAIL → emit plan-currency advisory `[bkit-build] plan currency {verdict} — {fields.Affected} affected task(s); build continues, findings carried into Step 7`. Every verdict → Step 6.
-Base commit resolved
+Base commit resolved, or the missing anchor named as the skip
 Plan not revised
-Advisory emitted
+Advisory emitted when the base commit resolved
 New skills installed
 One pass of Steps 7-9 per plan group, in group order: Step 7 briefs the first group with an open task, Step 8 verifies that group's own diff, Step 9 closes its gaps. Attempt budgets count per group (`--group`). Per-group file naming: `{step}-{GROUP}-{ATTEMPT}.md`. No group left open → Step 10.
 Once per run: **If** the session prompt (`{SESSION_DIR}/prompt.md`) carries run instructions beyond naming the issue (a redo, a resume, a constraint) → write them word for word to `{SESSION_DIR}/brief-note.md`. Brief the first group with an open task — a task neither ticked `[x]` nor logged `DONE` in a `build-plan-execute-*-log.md`; drop `--note-file` when `{SESSION_DIR}/brief-note.md` does not exist:
