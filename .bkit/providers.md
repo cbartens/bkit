@@ -592,13 +592,14 @@ Filters (not above score): endpoint count; automatic prompt caching (bkit sends 
 
 **What the A$70 cap buys on that day** (A$0.703/USD, 2-day gap): about **three** Gemini-class agents out of 39, or thirteen on `mimo-v2.6-pro` for A$33. A$140 buys **nine** Gemini-class agents (A$137); thirteen of them land at A$187 and breach it.
 
-| Cache-read ceiling (per Mtok) | Normal day | 2-day gap | Models that survive                          |
-| ----------------------------- | ---------- | --------- | -------------------------------------------- |
-| ≤ `$0.005`                    | ~$8        | ~$30      | `deepseek-v4.1-flash-1017` ($0.003)          |
-| ≤ `$0.015`                    | ~$17       | ~$60      | + `minimax-m3.1-flash` ($0.015)              |
-| ≤ `$0.04`                     | ~$47       | ~$150     | + `glm-5.3-flash` ($0.03)                    |
-| ≤ `$0.10`                     | ~$105      | ~$240     | + `gemini-4-argon` ($0.10)                   |
-| ≤ `$0.20`                     | ~$200      | ~$500     | + `kimi-k3.1-pro` ($0.20), `kimi-k3` ($0.19) |
+<!-- prettier-ignore -->
+| Cache-read ceiling (per Mtok) | Normal day | 2-day gap | Models that survive |
+| --- | --- | --- | --- |
+| ≤ `$0.005` | ~$8 | ~$30 | `deepseek-v4.1-flash-1017` ($0.003) |
+| ≤ `$0.015` | ~$17 | ~$60 | + `minimax-m3.1-flash` ($0.015) |
+| ≤ `$0.04` | ~$47 | ~$150 | + `glm-5.3-flash` ($0.03) |
+| ≤ `$0.10` | ~$105 | ~$240 | + `gemini-4-argon` ($0.10) |
+| ≤ `$0.20` | ~$200 | ~$500 | + `kimi-k3.1-pro` ($0.20), `kimi-k3` ($0.19) |
 
 `grok-4.7` ($0.50 cache read) fails every row. **Ceiling not yet chosen** — pick the gap budget, then read the rack down from there: the ceiling is the only place the number lives.
 
@@ -610,32 +611,33 @@ Re-probed `https://livebench.ai/data/20261025/table.csv` + `cost.csv` (§ Select
 
 **Bars (Claude, 2.0):** opus `claude-opus-5.5` **72.8** · sonnet `claude-sonnet-5.5` **63.4** · haiku `claude-haiku-5.5` **40.0**. All three are measured on this release — no bridging, no held-over 5.0 rows.
 
-| Model                      | Long Agentic (pin) | Coding | Overall | LA $/task | OR endpoints | Pinnable on            |
-| -------------------------- | ------------------ | ------ | ------- | --------- | ------------ | ---------------------- |
-| `claude-fable-5.1`         | **77.9**           | 97.7   | 85.7    | $928.31   | —            | — (Claude)             |
-| `gpt-6-astra`              | **77.5**           | 93.7   | 85.6    | $690.82   | 7            | or · zen               |
-| `claude-opus-5.5`          | **72.8**           | 96.3   | 85.1    | $684.16   | —            | **opus bar**           |
-| `gpt-6.1-sol`              | **68.7**           | 96.0   | 84.1    | $116.78   | 8            | or · zen               |
-| `claude-sonnet-5.5`        | **63.4**           | 94.7   | 80.0    | $630.21   | —            | **sonnet bar**         |
-| `gemini-4-argon`           | **61.2**           | 89.7   | 79.3    | $249.15   | 6            | or · zen · go          |
-| `muse-wonder-1.0`          | **52.6**           | 86.2   | 74.2    | $249.07   | —            | or · zen               |
-| `gpt-6.1-terra`            | **48.6**           | 94.3   | 77.8    | $116.42   | 4            | or                     |
-| `grok-4.7`                 | **46.1**           | 84.5   | 70.1    | $337.79   | 5            | or · zen · go          |
-| `deepseek-v4.1-flash-1017` | **40.9**           | 96.0   | 74.0    | $25.96    | 36           | or · zen · go · ollama |
-| `claude-haiku-5.5`         | **40.0**           | 91.4   | 69.8    | $188.84   | —            | **haiku bar**          |
-| `kimi-k3.1-pro`            | **39.1**           | 81.8   | 71.3    | $133.67   | 2            | or · go                |
-| `mimo-v2.6-pro`            | **35.2**           | 81.5   | 68.5    | $21.86    | 5            | or · go                |
-| `gpt-5.6-terra`            | **33.1**           | 86.2   | 67.8    | $211.62   | 7            | or                     |
-| `gpt-6-luna`               | **30.9**           | 84.5   | 64.6    | $17.42    | 7            | or · zen · go          |
-| `qwen3.8-max`              | **29.9**           | 60.3   | 61.6    | $268.74   | 2            | or · zen · go          |
-| `minimax-m3.1-flash`       | **28.8**           | 83.9   | 66.9    | $19.50    | 12           | or · go · ollama       |
-| `grok-4.6`                 | **28.0**           | 89.1   | 67.8    | $184.39   | 6            | or · zen               |
-| `kimi-k3`                  | **26.4**           | 59.3   | 64.6    | $323.83   | 30           | or · zen · go · ollama |
-| `muse-spark-1.3`           | **25.5**           | 90.2   | 63.0    | $160.10   | —            | or · zen               |
-| `qwen3.8-27b`              | **20.6**           | 86.8   | 58.4    | $111.08   | —            | or                     |
-| `step-5-preview`           | **19.4**           | 85.6   | 58.6    | $162.98   | 3            | or · go                |
-| `glm-5.3-flash`            | **19.0**           | 80.6   | 62.1    | $29.32    | 38           | or · zen · go · ollama |
-| `gemini-3.8-flash`         | **16.5**           | 82.2   | 59.2    | $126.70   | 7            | or · zen               |
+<!-- prettier-ignore -->
+| Model | Long Agentic (pin) | Coding | Overall | LA $/task | OR endpoints | Pinnable on |
+| --- | --- | --- | --- | --- | --- | --- |
+| `claude-fable-5.1` | **77.9** | 97.7 | 85.7 | $928.31 | — | — (Claude) |
+| `gpt-6-astra` | **77.5** | 93.7 | 85.6 | $690.82 | 7 | or · zen |
+| `claude-opus-5.5` | **72.8** | 96.3 | 85.1 | $684.16 | — | **opus bar** |
+| `gpt-6.1-sol` | **68.7** | 96.0 | 84.1 | $116.78 | 8 | or · zen |
+| `claude-sonnet-5.5` | **63.4** | 94.7 | 80.0 | $630.21 | — | **sonnet bar** |
+| `gemini-4-argon` | **61.2** | 89.7 | 79.3 | $249.15 | 6 | or · zen · go |
+| `muse-wonder-1.0` | **52.6** | 86.2 | 74.2 | $249.07 | — | or · zen |
+| `gpt-6.1-terra` | **48.6** | 94.3 | 77.8 | $116.42 | 4 | or |
+| `grok-4.7` | **46.1** | 84.5 | 70.1 | $337.79 | 5 | or · zen · go |
+| `deepseek-v4.1-flash-1017` | **40.9** | 96.0 | 74.0 | $25.96 | 36 | or · zen · go · ollama |
+| `claude-haiku-5.5` | **40.0** | 91.4 | 69.8 | $188.84 | — | **haiku bar** |
+| `kimi-k3.1-pro` | **39.1** | 81.8 | 71.3 | $133.67 | 2 | or · go |
+| `mimo-v2.6-pro` | **35.2** | 81.5 | 68.5 | $21.86 | 5 | or · go |
+| `gpt-5.6-terra` | **33.1** | 86.2 | 67.8 | $211.62 | 7 | or |
+| `gpt-6-luna` | **30.9** | 84.5 | 64.6 | $17.42 | 7 | or · zen · go |
+| `qwen3.8-max` | **29.9** | 60.3 | 61.6 | $268.74 | 2 | or · zen · go |
+| `minimax-m3.1-flash` | **28.8** | 83.9 | 66.9 | $19.50 | 12 | or · go · ollama |
+| `grok-4.6` | **28.0** | 89.1 | 67.8 | $184.39 | 6 | or · zen |
+| `kimi-k3` | **26.4** | 59.3 | 64.6 | $323.83 | 30 | or · zen · go · ollama |
+| `muse-spark-1.3` | **25.5** | 90.2 | 63.0 | $160.10 | — | or · zen |
+| `qwen3.8-27b` | **20.6** | 86.8 | 58.4 | $111.08 | — | or |
+| `step-5-preview` | **19.4** | 85.6 | 58.6 | $162.98 | 3 | or · go |
+| `glm-5.3-flash` | **19.0** | 80.6 | 62.1 | $29.32 | 38 | or · zen · go · ollama |
+| `gemini-3.8-flash` | **16.5** | 82.2 | 59.2 | $126.70 | 7 | or · zen |
 
 **`gpt-*` rows are catalog facts, not candidates.** `gpt-6-astra`, `gpt-6.1-sol`, `gpt-6.1-terra`, `gpt-5.6-terra` and `gpt-6-luna` sit on the board because LiveBench measured them and the `OpenAI`/Codex column pins them; § Vendor rule bars all five from every opencode column.
 
@@ -645,9 +647,10 @@ Re-probed `https://livebench.ai/data/20261025/table.csv` + `cost.csv` (§ Select
 
 **Two presets, one budget.** Tables and the per-agent matrix live in `prompts.md` § Model Presets. _Judges_ = the 13 reviewers, verifiers, escalators and convergent lenses; _builders_ = the other 26. The overflow column is capped against a Max subscription, A$300/month ≈ A$70/week, using the 2-day gap as the binding case.
 
-| Preset                    | Judges                               | Builders                        | 2-day gap | Cap   |
-| ------------------------- | ------------------------------------ | ------------------------------- | --------- | ----- |
-| **Option 1 — default**    | `mimo-v2.6-pro` 35.2                 | `deepseek-v4.1-flash-1017` 40.9 | **A$28**  | A$70  |
+<!-- prettier-ignore -->
+| Preset | Judges | Builders | 2-day gap | Cap |
+| --- | --- | --- | --- | --- |
+| **Option 1 — default** | `mimo-v2.6-pro` 35.2 | `deepseek-v4.1-flash-1017` 40.9 | **A$28** | A$70 |
 | **Option 2 — spend more** | `gemini-4-argon` 61.2 on nine judges | `deepseek-v4.1-flash-1017` 40.9 | **A$137** | A$140 |
 
 **Option 3 is retired.** Two templates only: the default that fits the cap, and one that doubles it for work that matters more than the week.
@@ -720,7 +723,7 @@ Cells show pin · score · $/task. Deltas are against that column's target. Conv
 | Provider | opus — target 72.8 | sonnet — target 63.4 | haiku — target 40.0 | convergent | Notes |
 | --- | --- | --- | --- | --- | --- |
 | `claude` | `claude-opus-5-5` 72.8 — the bar | `claude-sonnet-5-5` 63.4 — the bar | `claude-haiku-5-5` 40.0 — the bar | (opus) | Pins are 5.5 ($4/$20 opus, $2/$10 sonnet, $0.10/$0.50 haiku, 1M context). Targets are the 5.5 scores on the 2.0 board: `claude-opus-5-5` **72.8**, `claude-sonnet-5-5` **63.4**, `claude-haiku-5-5` **40.0**. |
-| `openrouter` | `deepseek/deepseek-v4.1-flash-1017` 40.9 · $25.96 (−31.9) | same (−22.5) | `z-ai/glm-5.3-flash` 19.0 · $29.32 (−21.0) | `moonshotai/kimi-k3` 26.4 · $323.83 | Aggregator; broad catalog to re-pin from. Opus+sonnet collapse on V4.1 Flash (the 40.9 workhorse sits 31.9 under the 72.8 opus bar). **Dated `1017` snapshot pinned** — the undated alias is frozen on the 2026-09-10 snapshot and does not float. Haiku = GLM-5.3 Flash (cheapest sufficient). Convergent = Kimi K3 (distinct CoT). All three auto-cache. Never pin `anthropic/*` — column carries Claude-quota overflow. |
+| `openrouter` | `deepseek/deepseek-v4.1-flash-1017` 40.9 · $25.96 (−31.9) | same (−22.5) | `z-ai/glm-5.3-flash` 19.0 · $29.32 (−21.0) | `xiaomi/mimo-v2.6-pro` 35.2 · $1.84 | Aggregator; broad catalog to re-pin from. Opus+sonnet collapse on V4.1 Flash (the 40.9 workhorse sits 31.9 under the 72.8 opus bar). **Dated `1017` snapshot pinned** — the undated alias is frozen on the 2026-09-10 snapshot and does not float. Haiku = GLM-5.3 Flash (cheapest sufficient). Convergent = Kimi K3 (distinct CoT). All three auto-cache. Never pin `anthropic/*` — column carries Claude-quota overflow. |
 | `cursor` | `cursor-grok-4.5-high` **n/m** | `composer-2.5` **n/m** | `composer-2.5` **n/m** | (opus) | Ceiling is grok-4.5 — no Cursor model reaches the opus target, which is the correct outcome, not a gap. `composer-2.5` is the one unresolved cell in the matrix: vendor-claimed ~ Opus 4.7 (which measures 50.7), never on LiveBench. Probe or override before relying on it for sonnet-tier work. Haiku stays `composer-2.5` too: the only measured first-party model over the haiku bar is `cursor-grok-4.5-high` (v1 56.5, unmeasured on 2.0), at about 8x the cost. |
 | `ollama` (cloud) | `deepseek-v4.1-flash:1017` 40.9 · $25.96 (−31.9) | same (−22.5) | `deepseek-v4.1-flash:1017` 40.9 · $25.96 (0.0) | `kimi-k3` 26.4 · $323.83 | **Whole column needs a paid Ollama plan.** **No model variants** — the ollama provider builds catalog entries with none, so bkit omits `variant:` on this column (2.0 would reject it); agents run at opencode's default reasoning. Opus+sonnet+haiku collapse on V4.1 Flash (the 40.9 workhorse sits 31.9 under the 72.8 opus bar); convergent = Kimi K3 (distinct CoT), matching `openrouter`. The free `qwen3.5:397b` / `gpt-oss:20b` are unmeasured or ~10 — free-tier users re-pin in `prompts.md` § Model Overrides and accept unverified quality. |
 | `opencode-zen` | `opencode/deepseek-v4.1-flash` 40.9 · $25.96 (−31.9) | same (−22.5) | `opencode/glm-5.3-flash` 19.0 · $29.32 (−21.0) | `opencode/kimi-k3` 26.4 · $323.83 | Opus+sonnet re-pinned from `kimi-k2.7-code` (45.7 · $0.39): 2.0 hard-errors on a `variant:` the model does not expose, and `kimi-k2.7-code` exposes none. V4.1 Flash carries variants and sits 31.9 under the opus bar; **Zen bills it at $0.30/$1.20** (higher than the LiveBench $/task shown). Haiku = GLM-5.3 Flash. Convergent = Kimi K3 (distinct CoT), billed $3/$15. Existence-validated via models.dev. |

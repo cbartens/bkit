@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-plan-review-2
 description: Senior reviewer surfacing regression risk and design-coverage for plan task surfaces.
-model: openrouter/moonshotai/kimi-k3
+model: openrouter/google/gemini-4-argon
 variant: max
 tools:
   read: true

@@ -231,26 +231,27 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
   // build-challenge-2 / debug-failure-diagnose = convergent (CoT reasoner).
   // OpenRouter opus+sonnet collapse onto V4.1 Flash (clears both Claude targets).
   // Haiku stays on the cheapest sufficient pin; convergent stays a distinct family.
-  it("openrouter: v4.1-flash-1017 opus+sonnet, glm-5.3-flash haiku, kimi-k3 convergent", () => {
+  it("openrouter: v4.1-flash-1017 opus+sonnet, glm-5.3-flash haiku, mimo-v2.6-pro convergent", () => {
     const lookup = buildOpencodeModelLookup(HAIKU_PROMPTS, "openrouter");
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("deepseek/deepseek-v4.1-flash-1017");
     expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("deepseek/deepseek-v4.1-flash-1017");
     expect(lookup.get(HAIKU_FIXTURE)).toBe("z-ai/glm-5.3-flash");
-    expect(lookup.get("bkit-build-challenge-2")).toBe("moonshotai/kimi-k3");
-    expect(lookup.get("bkit-debug-failure-diagnose")).toBe("moonshotai/kimi-k3");
+    expect(lookup.get("bkit-build-challenge-2")).toBe("xiaomi/mimo-v2.6-pro");
+    expect(lookup.get("bkit-debug-failure-diagnose")).toBe("xiaomi/mimo-v2.6-pro");
     // The gateway prefix belongs to the renderer, not the table.
     expect(formatModelPin("opencode", "openrouter", lookup.get(HAIKU_FIXTURE)!)).toBe(
       "openrouter/z-ai/glm-5.3-flash",
     );
   });
 
-  // Convergent is not a DeepSeek slug; haiku is not V4 Flash.
-  it("openrouter: convergent is kimi-k3; frozen/dated v4-pro slugs stay off the column", () => {
+  // Judges run the Xiaomi family; kimi-k3 and the frozen slugs stay off the column.
+  it("openrouter: judges are mimo-v2.6-pro; kimi-k3 and frozen v4-pro slugs stay off the column", () => {
     const lookup = buildOpencodeModelLookup(HAIKU_PROMPTS, "openrouter");
     const pins = [...lookup.values()];
     expect(pins).not.toContain("deepseek/deepseek-v4-pro");
     expect(pins).not.toContain("deepseek/deepseek-v4-pro-0813");
-    expect(pins.some((m) => m === "moonshotai/kimi-k3")).toBe(true);
+    expect(pins).not.toContain("moonshotai/kimi-k3");
+    expect(pins.some((m) => m === "xiaomi/mimo-v2.6-pro")).toBe(true);
     expect(pins.some((m) => m === "deepseek/deepseek-v4.1-flash-1017")).toBe(true);
     expect(pins.some((m) => m === "z-ai/glm-5.3-flash")).toBe(true);
   });

@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-debug-failure-soak
 description: Senior debug engineer soaking unknown-cause runtime failures — one accumulating-context instrument-and-fix step per iteration.
-model: openrouter/moonshotai/kimi-k3
+model: openrouter/google/gemini-4-argon
 variant: max
 tools:
   read: true

@@ -120,7 +120,7 @@ Every agent in each phase, in the order it runs and what it checks: [pipeline re
 | --- | --- | --- |
 | Claude Code | `claude-opus-5-5` · bar **72.8** | `claude-sonnet-5-5` · bar **63.4** |
 | Cursor | `cursor-grok-4.5-high` · not measured | `composer-2.5` · not measured |
-| opencode + OpenRouter | `deepseek/deepseek-v4.1-flash-1017` · 40.9; `moonshotai/kimi-k3` · 26.4 for risk, security and root-cause agents | `deepseek/deepseek-v4.1-flash-1017` · 40.9 |
+| opencode + OpenRouter | `deepseek/deepseek-v4.1-flash-1017` · 40.9; `xiaomi/mimo-v2.6-pro` · 35.2 for risk, security and root-cause agents | `deepseek/deepseek-v4.1-flash-1017` · 40.9 |
 | opencode + Ollama | `deepseek-v4.1-flash:1017` · 40.9; `kimi-k3` · 26.4 for risk, security and root-cause agents | `deepseek-v4.1-flash:1017` · 40.9 |
 | opencode + OpenCode Zen | `deepseek-v4.1-flash` · 40.9; `kimi-k3` · 26.4 for risk, security and root-cause agents | `deepseek-v4.1-flash` · 40.9 |
 | opencode + OpenCode Go | `deepseek-v4.1-flash` · 40.9; `kimi-k3` · 26.4 for risk, security and root-cause agents | `deepseek-v4.1-flash` · 40.9 |
