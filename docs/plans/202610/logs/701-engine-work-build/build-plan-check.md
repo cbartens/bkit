@@ -18,6 +18,10 @@ Plan: `docs/plans/202610/701-engine-work-build-plan.md`. Caps: 3 tasks and 15 TE
 | 4 | The plan's matrix, the ship diff and the producers they touch become engine checks | 2 | 14 | 7.3 |
 | 5 | The sweep's deferral rules move to the engine | 2 | 8 | 4.5 |
 | 6 | Producers, docs, indexes and mirrors | 3 | 0 | 4.6 |
+| 7 | Challenge round 1 findings | 3 | 4 | 3.4 |
+| 8 | Plan matrix repair | 1 | 0 | 0.8 |
+| 9 | Challenge round 1 findings | 3 | 3 | 2.7 |
+| 10 | Challenge round 1 findings | 1 | 1 | 1.0 |
 
 ## Tasks
 
@@ -35,6 +39,14 @@ Plan: `docs/plans/202610/701-engine-work-build-plan.md`. Caps: 3 tasks and 15 TE
 | 9 | 6 | 0 | 0 |
 | 10 | 6 | 0 | 0 |
 | 11 | 6 | 0 | 0 |
+| 12 | 7 | 1 | 1 |
+| 13 | 7 | 2 | 1 |
+| 14 | 7 | 1 | 1 |
+| 19 | 8 | 0 | 0 |
+| 15 | 9 | 1 | 1 |
+| 16 | 9 | 1 | 1 |
+| 17 | 9 | 1 | 1 |
+| 18 | 10 | 1 | 1 |
 
 ## Problems
 

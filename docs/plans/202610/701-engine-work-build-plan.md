@@ -868,7 +868,22 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
 
 <!-- bkit:group 8 start -->
 
-### GROUP 8: Challenge round 1 findings
+### GROUP 8: Plan matrix repair
+
+<!-- bkit:task 19 start -->
+
+- [ ] **TASK 19:** Add the `Derived Test Matrix` rows tasks 12-18 are missing, so the plan passes its own `matrix` check
+  - **UPDATE:** `docs/plans/202610/701-engine-work-build-plan.md`: one `Derived Test Matrix` row per `TEST FIRST` test of tasks 12-18, each `Task` cell naming its task
+  - **DONE WHEN:** `node dist/cli.js tests plan-check --plan=docs/plans/202610/701-engine-work-build-plan.md` (this worktree's build) exits 0 with no `matrix` problem, and each new row's `Test description` / `Type` / `Target file` / `Task` cells match the test it names
+  - **TEST FIRST:** n/a — plan table text repair; `tests plan-check` is the check
+
+<!-- bkit:task 19 end -->
+
+<!-- bkit:group 8 end -->
+
+<!-- bkit:group 9 start -->
+
+### GROUP 9: Challenge round 1 findings
 
 <!-- bkit:task 15 start -->
 
@@ -897,11 +912,11 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
     - `.bkit/core/engine/commands/workflow/ledgers.test.ts` `triage reports an adjudicated unjustified row outside exempt` fails today: the second run prints `Exempt` for a row `reason: "unjustified"`
 
 <!-- bkit:task 17 end -->
-<!-- bkit:group 8 end -->
+<!-- bkit:group 9 end -->
 
-<!-- bkit:group 9 start -->
+<!-- bkit:group 10 start -->
 
-### GROUP 9: Challenge round 1 findings
+### GROUP 10: Challenge round 1 findings
 
 <!-- bkit:task 18 start -->
 
@@ -912,7 +927,7 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
     - `.bkit/core/engine/commands/workflow/ledgers.test.ts` `triage refuses a plan with no task blocks` fails today: exit 0 with `rows: [{bucket: "Exempt"}]` and no message
 
 <!-- bkit:task 18 end -->
-<!-- bkit:group 9 end -->
+<!-- bkit:group 10 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
 
