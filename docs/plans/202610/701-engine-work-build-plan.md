@@ -880,7 +880,7 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
 
 <!-- bkit:task 19 start -->
 
-- [ ] **TASK 19:** Add the `Derived Test Matrix` rows tasks 12-18 are missing, so the plan passes its own `matrix` check
+- [x] **TASK 19:** Add the `Derived Test Matrix` rows tasks 12-18 are missing, so the plan passes its own `matrix` check
   - **UPDATE:** `docs/plans/202610/701-engine-work-build-plan.md`: one `Derived Test Matrix` row per `TEST FIRST` test of tasks 12-18, each `Task` cell naming its task
   - **DONE WHEN:** `node dist/cli.js tests plan-check --plan=docs/plans/202610/701-engine-work-build-plan.md` (this worktree's build) exits 0 with no `matrix` problem, and each new row's `Test description` / `Type` / `Target file` / `Task` cells match the test it names
   - **TEST FIRST:** n/a — plan table text repair; `tests plan-check` is the check
