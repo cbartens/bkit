@@ -272,6 +272,36 @@ describe("bkit challenge merge", () => {
     expect(checkPlanText(merged).problems).toEqual([]);
   });
 
+  it("challenge merge refuses a matrix row a pipe in the test name would break", async () => {
+    write(
+      PLAN,
+      [
+        plan(2),
+        "",
+        "## Derived Test Matrix",
+        "",
+        "<!-- prettier-ignore -->",
+        "| Test description | Type | Target file | Task |",
+        "| --- | --- | --- | --- |",
+        "| case 1 | Unit | `src/a.test.ts` | 1 |",
+        "",
+      ].join("\n"),
+    );
+    write(
+      R1,
+      report({
+        sev: "HIGH",
+        loc: "src/a.ts:10",
+        tests: ["`src/a.test.ts` `splits | 9` fails on the bug"],
+      }),
+    );
+    const before = read(PLAN);
+    const r = await merge(...args([R1]));
+    expect(r.code).toBe(23);
+    expect(r.json.problems.join("\n")).toMatch(/TASK 3 \(src\/a\.ts:10\).*\|/);
+    expect(read(PLAN)).toBe(before);
+  });
+
   it("leaves the plan unchanged when plan-check fails", async () => {
     write(PLAN, plan(2));
     write(R1, report({ sev: "HIGH", loc: "src/a.ts:10", tests: [] }));

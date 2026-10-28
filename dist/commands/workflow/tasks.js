@@ -250,7 +250,8 @@ export const tasksCommand = {
                 const plan = readPlan(ctx.cwd, planArg);
                 const candidates = groupTasks(plan, planArg, group);
                 const closed = new Set(doneTasks(fs.readFileSync(logFile, "utf-8"), ["DONE", "BLOCKED"]));
-                const open = candidates.filter((t) => !t.done && !closed.has(t.task)).map((t) => t.task);
+                // The log decides, not the box: a ticked task with no log line is still open.
+                const open = candidates.filter((t) => !closed.has(t.task)).map((t) => t.task);
                 for (const n of open)
                     ctx.log(`TASK ${n} is open`);
                 ctx.emit({ plan: planArg, group, tasks: open, handover: open.length > 0 });

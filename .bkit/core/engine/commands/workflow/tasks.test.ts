@@ -276,6 +276,15 @@ describe("bkit tasks open", () => {
     expect(r.json.handover).toBe(false);
   });
 
+  it("open lists a ticked task with no log line", async () => {
+    const plan = write("open-ticked.md", planText(group(1, task(1, "x"), task(2, "x"))));
+    const log = write("open-ticked-log.md", "DONE — TASK 1: First — implemented (a.ts)\n");
+    const r = await run(["open", `--plan=${plan}`, "--group=1", `--log=${log}`]);
+    expect(r.code).toBe(0);
+    expect(r.json.tasks).toEqual([2]);
+    expect(r.json.handover).toBe(true);
+  });
+
   it("open refuses a plan with no task blocks", async () => {
     const plan = write("open-plain.md", "# Plan\n\nNo task blocks here.\n");
     const log = write("open-plain-log.md", "");

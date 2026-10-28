@@ -12,6 +12,7 @@ import {
   LEDGERS,
   branchesCommand,
   classifyConflict,
+  disabledTestsIn,
   readAnchor,
   replayBuild,
   stampAnchor,
@@ -1834,6 +1835,33 @@ describe("branches scan-diff", { timeout: GIT_TIMEOUT }, () => {
     const r = await run(clone, ["scan-diff", "--base=HEAD~1", "--disabled-tests"]);
     expect(r.code).toBe(1);
     expect(r.json?.disabled).toEqual([{ file: "src/a.test.ts", line: 2, test: "keeps a" }]);
+  });
+
+  it("scan-diff never opens a symlinked test file's outside target", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-scan-link-"));
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-scan-outside-"));
+    try {
+      fs.writeFileSync(path.join(outside, "secret"), "it('leaked secret line', () => {\n\n");
+      fs.mkdirSync(path.join(root, "src"));
+      fs.symlinkSync(path.join(outside, "secret"), path.join(root, "src", "a.test.ts"));
+      fs.writeFileSync(path.join(root, "src", "b.test.ts"), "it('in repo', () => {\n  x;\n");
+      const diff = (file: string) =>
+        [
+          `diff --git a/${file} b/${file}`,
+          `--- a/${file}`,
+          `+++ b/${file}`,
+          "@@ -1,0 +2,1 @@",
+          "+  test.skip;",
+        ].join("\n");
+      const found = disabledTestsIn(
+        [diff("src/a.test.ts"), diff("src/b.test.ts"), ""].join("\n"),
+        root,
+      );
+      expect(found.map((d) => d.test)).toEqual(["test.skip;", "in repo"]);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
   });
 
   it("needs exactly one of --paths, --marker, --code; an unknown base exits 23", async () => {

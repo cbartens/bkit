@@ -218,14 +218,19 @@ const testTier = (file) => /\.integration\.test\./.test(file)
 /**
  * One `Derived Test Matrix` row per test a finding task appends: the test's own name and
  * file from its `TEST FIRST` entry, its tier from the file's name, and the task number.
+ * A file or name holding a `|` would split the row's cells, so it is refused, not written.
  */
 function matrixRows(findings, firstTask) {
-    return findings.flatMap((f, i) => f.tests.map((entry) => {
+    const refused = [];
+    const rows = findings.flatMap((f, i) => f.tests.map((entry) => {
         const spans = [...entry.matchAll(/`([^`]+)`/g)].map((m) => m[1].trim());
         const file = spans[0] ?? "";
         const name = spans[1] ?? entry.replace(/[`|]/g, "").trim();
+        if (file.includes("|") || name.includes("|"))
+            refused.push(`TASK ${firstTask + i} (${f.location}): its TEST FIRST test file or name holds a \`|\`, which breaks the Derived Test Matrix row`);
         return `| ${name} | ${testTier(file)} | \`${file}\` | ${firstTask + i} |`;
     }));
+    return { rows, refused };
 }
 /**
  * The findings as groups of task blocks, numbered from `firstTask` and `firstGroup`: a
@@ -271,12 +276,15 @@ export function appendTasks(plan, findings, round, firstTask, caps) {
     const firstGroup = Math.max(0, ...blocks.groups.map((g) => g.group)) + 1;
     const { lines: block, tasks } = findingGroups(findings, firstTask, firstGroup, round, caps);
     const matrix = derivedTestMatrix(plan);
-    const rows = matrix === null ? [] : matrixRows(findings, firstTask);
+    const { rows, refused } = matrix === null ? { rows: [], refused: [] } : matrixRows(findings, firstTask);
     // The matrix table's last row, or its separator line when it holds none: 0-based index.
     const matrixAt = matrix === null ? -1 : (matrix.rows.at(-1)?.number ?? matrix.line + 1);
     const lines = plan.split("\n");
     if (matrixAt >= 0)
         lines.splice(matrixAt, 0, ...rows);
+    const rowLines = matrixAt >= 0 && rows.length > 0
+        ? { from: matrixAt + 1, to: matrixAt + rows.length }
+        : undefined;
     const last = blocks.groups.at(-1);
     if (last === undefined) {
         const body = lines.join("\n").replace(/\n*$/, "");
@@ -284,23 +292,35 @@ export function appendTasks(plan, findings, round, firstTask, caps) {
         return {
             text: `${body}\n\n${block.join("\n")}\n`,
             tasks,
-            written: { from, to: from + block.length - 1 },
+            written: { from, to: from + block.length - 1, rows: rowLines, refused },
         };
     }
     const shift = matrixAt >= 0 && matrixAt <= last.end ? rows.length : 0;
     lines.splice(last.end + shift, 0, "", ...block);
     const from = last.end + shift + 2;
-    return { text: lines.join("\n"), tasks, written: { from, to: from + block.length - 1 } };
+    // Matrix rows below the last group move down by the block and its blank line.
+    const moved = rowLines !== undefined && shift === 0
+        ? { from: rowLines.from + block.length + 1, to: rowLines.to + block.length + 1 }
+        : rowLines;
+    return {
+        text: lines.join("\n"),
+        tasks,
+        written: { from, to: from + block.length - 1, rows: moved, refused },
+    };
 }
 /**
- * Why the merged `text` may not be written: a plan-check problem on the lines the merge
- * wrote (a malformed block, a group or task over its cap), or a written task whose
- * TEST FIRST names no test.
+ * Why the merged `text` may not be written: a refused matrix row, a plan-check problem on
+ * the lines the merge wrote (a malformed block, a group or task over its cap, a broken
+ * matrix row), or a written task whose TEST FIRST names no test.
  */
 function planProblems(text, written, added, caps) {
-    const problems = checkPlanText(text, caps)
-        .problems.filter((p) => p.line >= written.from && p.line <= written.to)
-        .map((p) => `line ${p.line}: ${p.message}`);
+    const at = (line, r) => r !== undefined && line >= r.from && line <= r.to;
+    const problems = [
+        ...written.refused,
+        ...checkPlanText(text, caps)
+            .problems.filter((p) => at(p.line, written) || at(p.line, written.rows))
+            .map((p) => `line ${p.line}: ${p.message}`),
+    ];
     const kinds = readTestFirst(text);
     for (const n of added) {
         const kind = kinds.find((s) => s.task === n)?.kind ?? "missing";

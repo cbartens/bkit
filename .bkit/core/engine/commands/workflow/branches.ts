@@ -1166,6 +1166,24 @@ function goneTestAt(lines: Array<{ at: number; text: string }>, at: number, line
 const HUNK = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
 
 /**
+ * The text of the regular file `rel` names under `root`, or null when it is missing, a
+ * symlink, or resolves outside `root` — so a diff path never opens a file the repo does not hold.
+ */
+function inRepoFile(root: string, rel: string): string | null {
+  const abs = path.resolve(root, rel);
+  const inside = (base: string, p: string) => {
+    const r = path.relative(base, p);
+    return r !== "" && !r.startsWith("..") && !path.isAbsolute(r);
+  };
+  if (!inside(root, abs)) return null;
+  const stat = fs.lstatSync(abs, { throwIfNoEntry: false });
+  if (stat === undefined || stat.isSymbolicLink() || !stat.isFile()) return null;
+  // A symlinked parent directory can still lead outside the repo.
+  if (!inside(fs.realpathSync(root), fs.realpathSync(abs))) return null;
+  return fs.readFileSync(abs, "utf-8");
+}
+
+/**
  * The added lines of a `--no-renames` unified diff that disable a test, and the removed
  * assertion lines of a test file whose added assertion lines no longer outnumber them: each
  * with its line and the test it sits in. A deleted test file reports its removed assertions
@@ -1175,15 +1193,7 @@ export function disabledTestsIn(diff: string, root: string): DisabledTest[] {
   const out: DisabledTest[] = [];
   const bodies = new Map<string, string | null>();
   const body = (rel: string) => {
-    if (!bodies.has(rel)) {
-      const abs = path.resolve(root, rel);
-      bodies.set(
-        rel,
-        fs.statSync(abs, { throwIfNoEntry: false })?.isFile()
-          ? fs.readFileSync(abs, "utf-8")
-          : null,
-      );
-    }
+    if (!bodies.has(rel)) bodies.set(rel, inRepoFile(root, rel));
     return bodies.get(rel)!;
   };
   /** Added assertion lines per test file, so a rewritten or moved assertion is not a drop. */
