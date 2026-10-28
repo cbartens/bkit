@@ -341,8 +341,9 @@ case "${1:-build}" in
   update) run_local update . && repair && cluster ;;
   check)
     # Gate on every push to dev and every pull request: pre-push runs it via
-    # `check-at` in a clean checkout of the pushed commit; CI runs `check-at` on
-    # the pushed commit (push) or the PR head (pull_request).
+    # `check-at` in a clean checkout of the pushed commit; CI runs `check-at HEAD` on
+    # the checked-out commit: the pushed commit (push) or GitHub's test merge of the PR
+    # into its base (pull_request), the tree a squash merge lands.
     # Rebuild graph from this tree → regenerate register into a throwaway copy
     # → fail if it differs from the tracked file. Writes nothing tracked; fix a
     # red with `pnpm graph:refresh` plus a commit.
