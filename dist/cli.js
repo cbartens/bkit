@@ -542,6 +542,8 @@ Dependency updaters (copy an example and own it):
   .bkit/templates/.github/renovate.json5
   .bkit/templates/.github/workflows/bkit-renovate.yml   (self-hosted runner, optional)
   .bkit/templates/.github/dependabot.yml
+  Install records the one present in bkit.dependencies.updater; bkit check
+  blocks when that value and the configs disagree.
   All templates and install steps: .bkit/templates.md
 
   --auto=<claude|cursor|opencode>

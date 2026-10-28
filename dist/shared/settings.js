@@ -4,6 +4,7 @@
 // a check name, or an app folder.
 import { DEFAULT_CLOUD_AGENTS, DEFAULT_ISSUE_TRACKER, parseCloudAgents, parseIssueTracker, } from "../install/manifest.js";
 import { isOpencodeProvider } from "../render/models.js";
+import { DEP_UPDATERS } from "./dep-updater.js";
 import { readPackageJson } from "./package-json.js";
 const BOARD_URL = /^https:\/\/github\.com\/(orgs|users)\/([^/?#\s]+)\/projects\/([1-9][0-9]*)(?:[/?#].*)?$/;
 /** The board a `https://github.com/{orgs|users}/<login>/projects/<n>[/views/…]` URL names; null otherwise. */
@@ -56,7 +57,7 @@ export const CONFIG_DEFAULTS = {
     },
     // Plan caps, `.bkit/workflows.md` § Test-first.
     tasks: { maxPerGroup: 3, maxTestsPerGroup: 15, maxTestsPerTask: 10, maxTestFilesPerTask: 3 },
-    depUpdaterOptOut: false,
+    depUpdater: null,
     issueTrackerExplicit: false,
     cloudAgentsExplicit: false,
 };
@@ -70,6 +71,7 @@ function trackerStates(raw, defaults) {
         review: nonEmptyString(raw.review) ? raw.review.trim() : defaults.review,
     };
 }
+const parseDepUpdater = (v) => v === "none" || DEP_UPDATERS.includes(v) ? v : null;
 const TASK_CAP_KEYS = Object.keys(CONFIG_DEFAULTS.tasks);
 const validCap = (v) => Number.isInteger(v) && v >= 1;
 /**
@@ -205,7 +207,7 @@ export function readBkitConfig(root) {
         cloudAgents: parseCloudAgents(cloud.agent) ?? CONFIG_DEFAULTS.cloudAgents,
         asks: askSettings(workflows),
         tasks: taskCaps(workflows.tasks),
-        depUpdaterOptOut: record(bkit.dependencies).updater === "none",
+        depUpdater: parseDepUpdater(record(bkit.dependencies).updater),
         issueTrackerExplicit: tracker.default !== undefined && tracker.default !== "",
         cloudAgentsExplicit: cloud.agent !== undefined && cloud.agent !== "",
     };

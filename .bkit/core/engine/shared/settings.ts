@@ -12,6 +12,7 @@ import {
   type IssueTracker,
 } from "../install/manifest.js";
 import { isOpencodeProvider } from "../render/models.js";
+import { DEP_UPDATERS, type DepUpdater } from "./dep-updater.js";
 import type { OpencodeProvider } from "./egress.js";
 import { readPackageJson } from "./package-json.js";
 
@@ -65,9 +66,9 @@ export interface JiraConfig extends TrackerStates {
 
 /** `bkit.workflows.tasks`: the plan caps `tests plan-check` and `challenge merge` enforce. */
 export interface TaskCaps {
-  /** Tasks in one plan group. */
+  /** Tasks in one task group. */
   maxPerGroup: number;
-  /** Planned TEST FIRST tests in one plan group. */
+  /** Planned TEST FIRST tests in one task group. */
   maxTestsPerGroup: number;
   /** TEST FIRST tests one task names. */
   maxTestsPerTask: number;
@@ -135,8 +136,8 @@ export interface BkitConfig {
   asks: Record<AskPoint, AskSetting>;
   /** Plan caps; each key that is not an integer >= 1 takes its default. */
   tasks: TaskCaps;
-  /** `bkit.dependencies.updater` is `"none"`: silences the missing-dependency-updater advisory. */
-  depUpdaterOptOut: boolean;
+  /** `bkit.dependencies.updater`: the updater the repo runs, or `none`; null = absent, `""` or unrecognised. */
+  depUpdater: DepUpdater | "none" | null;
   /** `bkit.tracker.default` is set, so `none` is a choice; absent or `""` (what install seeds) = undecided. */
   issueTrackerExplicit: boolean;
   /** `bkit.cloud.agent` is set, so `none` is a choice; absent or `""` (what install seeds) = undecided. */
@@ -174,7 +175,7 @@ export const CONFIG_DEFAULTS: Readonly<BkitConfig> = {
   },
   // Plan caps, `.bkit/workflows.md` § Test-first.
   tasks: { maxPerGroup: 3, maxTestsPerGroup: 15, maxTestsPerTask: 10, maxTestFilesPerTask: 3 },
-  depUpdaterOptOut: false,
+  depUpdater: null,
   issueTrackerExplicit: false,
   cloudAgentsExplicit: false,
 };
@@ -193,6 +194,9 @@ function trackerStates(raw: Record<string, unknown>, defaults: TrackerStates): T
     review: nonEmptyString(raw.review) ? raw.review.trim() : defaults.review,
   };
 }
+
+const parseDepUpdater = (v: unknown): DepUpdater | "none" | null =>
+  v === "none" || DEP_UPDATERS.includes(v as DepUpdater) ? (v as DepUpdater | "none") : null;
 
 const TASK_CAP_KEYS = Object.keys(CONFIG_DEFAULTS.tasks) as (keyof TaskCaps)[];
 
@@ -336,7 +340,7 @@ export function readBkitConfig(root: string): BkitConfig {
     cloudAgents: parseCloudAgents(cloud.agent) ?? CONFIG_DEFAULTS.cloudAgents,
     asks: askSettings(workflows),
     tasks: taskCaps(workflows.tasks),
-    depUpdaterOptOut: record(bkit.dependencies).updater === "none",
+    depUpdater: parseDepUpdater(record(bkit.dependencies).updater),
     issueTrackerExplicit: tracker.default !== undefined && tracker.default !== "",
     cloudAgentsExplicit: cloud.agent !== undefined && cloud.agent !== "",
   };

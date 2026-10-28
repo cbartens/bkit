@@ -283,7 +283,7 @@ export const SETUP_TIPS = [
         title: "Automatic updates",
         line: "Nothing keeps the project's libraries up to date. Add an updater so you get small, safe updates instead of one big risky one later.",
         why: "An updater opens a small pull request whenever a library you use has a new version. Skip it and updates pile up into one large upgrade that's far more likely to break something.",
-        ask: "Copy .bkit/templates/.github/dependabot.yml to .github/dependabot.yml (or .bkit/templates/.github/renovate.json5 to .github/renovate.json5 for Renovate instead) and commit it to the default branch.",
+        ask: 'Copy .bkit/templates/.github/dependabot.yml to .github/dependabot.yml (or .bkit/templates/.github/renovate.json5 to .github/renovate.json5 for Renovate instead), set `bkit.dependencies.updater` in package.json to `"dependabot"` (or `"renovate"`), and commit both to the default branch.',
         steps: "`.bkit/templates.md` § Dependabot and Renovate.",
         advisories: ["dep-updater-absent"],
         fires: (cwd) => buildDepUpdaterSetupAdvisory(cwd)?.id === "dep-updater-absent",

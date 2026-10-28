@@ -220,7 +220,7 @@
       "roadmapNext": 25
     },
     "dependencies": {
-      "updater": ""
+      "updater": "renovate"
     },
     "advisories": {
       "ignore": []

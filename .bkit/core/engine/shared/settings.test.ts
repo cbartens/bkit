@@ -173,15 +173,16 @@ describe("readBkitConfig", () => {
     expect(cloud(true).cloudAgents).toBe(CONFIG_DEFAULTS.cloudAgents);
   });
 
-  it("opts out of the dependency-updater advisory only on the exact string none", () => {
-    const optOut = (v: unknown) =>
-      readBkitConfig(root(JSON.stringify({ bkit: { dependencies: { updater: v } } })))
-        .depUpdaterOptOut;
-    expect(optOut("none")).toBe(true);
-    expect(optOut("renovate")).toBe(false);
-    expect(optOut("None")).toBe(false);
-    expect(optOut(true)).toBe(false);
-    expect(readBkitConfig(root('{"bkit":{}}')).depUpdaterOptOut).toBe(false);
+  it("reads the dependency updater as renovate, dependabot or none; anything else is unset", () => {
+    const updater = (v: unknown) =>
+      readBkitConfig(root(JSON.stringify({ bkit: { dependencies: { updater: v } } }))).depUpdater;
+    expect(updater("renovate")).toBe("renovate");
+    expect(updater("dependabot")).toBe("dependabot");
+    expect(updater("none")).toBe("none");
+    expect(updater("")).toBeNull();
+    expect(updater("Renovate")).toBeNull();
+    expect(updater(true)).toBeNull();
+    expect(readBkitConfig(root('{"bkit":{}}')).depUpdater).toBeNull();
   });
 
   it("tells an explicitly set tracker.default and cloud.agent from an absent or empty one, whatever the value", () => {

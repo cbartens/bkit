@@ -19,6 +19,7 @@ import { writeNetworkAllowlist } from "../network-allowlist.js";
 import type { PreflightFinding } from "../../checks/before/index.js";
 import { parseJson, readJsonFile } from "../../shared/json.js";
 import { readInstallingVersion } from "../../shared/package-json.js";
+import { detectDepUpdater, type DepUpdater } from "../../shared/dep-updater.js";
 import { ASK_POINTS, CONFIG_DEFAULTS, limitKey } from "../../shared/settings.js";
 import {
   getCoreRoot,
@@ -451,7 +452,8 @@ export function seedCorePackageJsonScripts(
 /**
  * Every `bkit.*` setting, written on every install and upgrade so consumers see them all;
  * add-if-missing, nested blocks included. A key with a default gets it; a choice not made
- * yet is `""` or `[]`, which every reader treats as unset.
+ * yet is `""` or `[]`, which every reader treats as unset. `dependencies.updater` is the one
+ * choice install makes: `seedBkitDefaults` fills it from the updater config present.
  */
 export const SEEDED_BKIT_DEFAULTS: Readonly<Record<string, unknown>> = {
   tracker: {
@@ -540,14 +542,31 @@ export function seedBkitDefaults(dryRun: boolean, ws: WriteSet, logPrefix: strin
   const cfg = (pkg.bkit ?? {}) as Record<string, unknown>;
   const added: string[] = [];
   addMissingKeys(cfg, SEEDED_BKIT_DEFAULTS, "bkit.", added);
-  if (added.length === 0) return false;
+  const updater = fillDepUpdater(cfg);
+  if (added.length === 0 && !updater) return false;
   pkg.bkit = cfg;
   ws.writes.push({ path: pkgPath, action: "update" });
   if (!dryRun) writePackageJsonLike(raw, pkg);
-  console.log(
-    `${logPrefix} ${dryRun ? "[dry-run] " : ""}core: added ${added.join(", ")} to package.json`,
-  );
+  const dry = dryRun ? "[dry-run] " : "";
+  if (added.length > 0) {
+    console.log(`${logPrefix} ${dry}core: added ${added.join(", ")} to package.json`);
+  }
+  if (updater) {
+    console.log(
+      `${logPrefix} ${dry}core: set bkit.dependencies.updater to "${updater}" (its config is present)`,
+    );
+  }
   return true;
+}
+
+// An empty `dependencies.updater` takes the one updater whose config is present; a set value
+// stays. Returns the updater written, else null.
+function fillDepUpdater(cfg: Record<string, unknown>): DepUpdater | null {
+  const deps = cfg.dependencies;
+  if (!plainObject(deps) || deps.updater !== "") return null;
+  const found = detectDepUpdater(".");
+  if (found) deps.updater = found;
+  return found;
 }
 
 /** Rewrite package.json with `pkg`, keeping the file's indent and trailing newline. */

@@ -778,6 +778,41 @@ describe("seedBkitDefaults (via seedCorePackageJsonScripts)", () => {
     expect(read()).toBe(before);
   });
 
+  it("sets dependencies.updater to the one updater whose config is present", () => {
+    fs.mkdirSync(".github", { recursive: true });
+    fs.writeFileSync(path.join(".github", "renovate.json5"), "{}\n");
+    seed({});
+    run();
+    expect(JSON.parse(read()).bkit.dependencies.updater).toBe("renovate");
+    seed({ bkit: { dependencies: { updater: "" } } });
+    expect(touched(run())).toBe(true);
+    expect(JSON.parse(read()).bkit.dependencies.updater).toBe("renovate");
+    const before = read();
+    expect(touched(run())).toBe(false);
+    expect(read()).toBe(before);
+  });
+
+  it("never overwrites a set dependencies.updater, and leaves it empty when both configs are present", () => {
+    fs.mkdirSync(".github", { recursive: true });
+    fs.writeFileSync(path.join(".github", "dependabot.yml"), "version: 2\n");
+    seed({ bkit: { dependencies: { updater: "none" } } });
+    run();
+    expect(JSON.parse(read()).bkit.dependencies.updater).toBe("none");
+    fs.writeFileSync(path.join(".github", "renovate.json5"), "{}\n");
+    seed({});
+    run();
+    expect(JSON.parse(read()).bkit.dependencies.updater).toBe("");
+  });
+
+  it("under dry-run records the updater write and leaves the file", () => {
+    fs.mkdirSync(".github", { recursive: true });
+    fs.writeFileSync(path.join(".github", "dependabot.yml"), "version: 2\n");
+    seed({ bkit: SEEDED_BKIT_DEFAULTS });
+    const before = read();
+    expect(touched(run(true))).toBe(true);
+    expect(read()).toBe(before);
+  });
+
   it("under dry-run records the same write and leaves the file, so `bkit check` reports it", () => {
     seed({});
     const before = read();

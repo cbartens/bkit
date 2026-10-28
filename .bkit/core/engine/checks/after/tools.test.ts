@@ -272,6 +272,10 @@ describe("buildDepUpdaterSetupAdvisory", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"), "name: cloud\n");
     fs.writeFileSync(path.join(tmpDir, ".github", "renovate.json5"), "{ enabled: false }\n");
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", bkit: { dependencies: { updater: "renovate" } } }),
+    );
     expect(buildDepUpdaterSetupAdvisory(tmpDir)).toBeNull();
   });
 
@@ -288,37 +292,63 @@ describe("buildDepUpdaterSetupAdvisory", () => {
     expect(buildDepUpdaterSetupAdvisory(tmpDir)).toBeNull();
   });
 
-  it("stays quiet when bkit.dependencies.updater is explicitly 'none'", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+  const setUpdater = (updater: unknown): void =>
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "x", bkit: { dependencies: { updater: "none" } } }),
+      JSON.stringify({ name: "x", bkit: { dependencies: { updater } } }),
     );
+  const renovateConfig = (): void => {
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "renovate.json5"), "{}\n");
+  };
+
+  it("stays quiet when bkit.dependencies.updater is 'none' and no config is present", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    setUpdater("none");
     expect(buildDepUpdaterSetupAdvisory(tmpDir)).toBeNull();
   });
 
-  it("a bkit.dependencies.updater value other than none does not silence", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({
-        name: "x",
-        bkit: { dependencies: { updater: "renovate" }, renovateRunner: "self" },
-      }),
-    );
-    expect(buildDepUpdaterSetupAdvisory(tmpDir)?.id).toBe("dep-updater-absent");
+  it("stays quiet when bkit.dependencies.updater names the config that is present", () => {
+    renovateConfig();
+    setUpdater("renovate");
+    expect(buildDepUpdaterSetupAdvisory(tmpDir)).toBeNull();
   });
 
-  it("config that names bkit-cloud.yml wins over a stale depUpdater=none", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".github", "renovate.json5"),
-      '{ ignorePaths: [".github/workflows/bkit-cloud.yml"] }\n',
-    );
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "x", bkit: { dependencies: { updater: "none" } } }),
-    );
+  it.each([[""], [undefined], ["Renovate"]])(
+    "blocks (dep-updater-unset) when a Renovate config is present and the updater is %j",
+    (updater) => {
+      renovateConfig();
+      setUpdater(updater);
+      const result = buildDepUpdaterSetupAdvisory(tmpDir);
+      expect(result).toMatchObject({ id: "dep-updater-unset", severity: "blocker" });
+      expect(result?.detect).toContain(".github/renovate.json5");
+      expect(result?.action).toContain('"renovate"');
+    },
+  );
+
+  it.each([["dependabot"], ["none"]])(
+    "blocks (dep-updater-mismatch) when a Renovate config is present and the updater is %s",
+    (updater) => {
+      renovateConfig();
+      setUpdater(updater);
+      const result = buildDepUpdaterSetupAdvisory(tmpDir);
+      expect(result).toMatchObject({ id: "dep-updater-mismatch", severity: "blocker" });
+      expect(result?.detect).toContain(`"${updater}"`);
+      expect(result?.action).toContain('"renovate"');
+    },
+  );
+
+  it("blocks (dep-updater-mismatch) when the updater names a config that is not present", () => {
+    setUpdater("dependabot");
+    const result = buildDepUpdaterSetupAdvisory(tmpDir);
+    expect(result).toMatchObject({ id: "dep-updater-mismatch", severity: "blocker" });
+    expect(result?.detect).toMatch(/no Dependabot config/);
+    expect(result?.action).toContain(".bkit/templates/.github/dependabot.yml");
+  });
+
+  it("finds a Renovate config at the repo root, not only under .github/", () => {
+    fs.writeFileSync(path.join(tmpDir, "renovate.json"), "{}\n");
+    setUpdater("renovate");
     expect(buildDepUpdaterSetupAdvisory(tmpDir)).toBeNull();
   });
 });

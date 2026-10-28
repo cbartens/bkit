@@ -276,6 +276,9 @@ describe("SETUP_TIPS — detection", () => {
     expect(buildDepUpdaterSetupAdvisory(cwd)?.id).toBe("dep-updater-absent");
     expect(tip("dependabot-renovate").fires(cwd)).toBe(true);
     write(".github/dependabot.yml", "version: 2\n");
+    expect(buildDepUpdaterSetupAdvisory(cwd)?.id).toBe("dep-updater-unset");
+    expect(tip("dependabot-renovate").fires(cwd)).toBe(false);
+    write("package.json", JSON.stringify({ bkit: { dependencies: { updater: "dependabot" } } }));
     expect(buildDepUpdaterSetupAdvisory(cwd)).toBeNull();
     expect(tip("dependabot-renovate").fires(cwd)).toBe(false);
   });

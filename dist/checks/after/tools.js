@@ -4,6 +4,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { ciWorkflowPath, readBkitConfig } from "../../shared/settings.js";
+import { DEP_UPDATER_NAMES, findDepUpdaterConfigs, } from "../../shared/dep-updater.js";
 /** True when `cmd --version` runs (binary on PATH, exits 0). */
 function toolVersionRuns(cmd) {
     const res = spawnSync(cmd, ["--version"], {
@@ -244,32 +245,23 @@ const UPDATER_EXAMPLE_PATHS = [
     ".bkit/templates/.github/workflows/bkit-renovate.yml",
     ".bkit/templates/.github/dependabot.yml",
 ].join("\n  ");
-function updaterConfigPaths(cwd) {
-    const renovateJson5 = path.join(cwd, ".github", "renovate.json5");
-    const renovateJson = path.join(cwd, ".github", "renovate.json");
-    const dependabotYml = path.join(cwd, ".github", "dependabot.yml");
-    const dependabotYaml = path.join(cwd, ".github", "dependabot.yaml");
-    const renovate = fs.existsSync(renovateJson5)
-        ? renovateJson5
-        : fs.existsSync(renovateJson)
-            ? renovateJson
-            : null;
-    const dependabot = fs.existsSync(dependabotYml)
-        ? dependabotYml
-        : fs.existsSync(dependabotYaml)
-            ? dependabotYaml
-            : null;
-    return { renovate, dependabot };
-}
+const UPDATER_EXAMPLE = {
+    renovate: ".bkit/templates/.github/renovate.json5",
+    dependabot: ".bkit/templates/.github/dependabot.yml",
+};
 /**
- * Read-only dependency-updater check.
+ * Read-only dependency-updater check: `bkit.dependencies.updater` against the configs present.
  *
  * - Both Renovate and Dependabot configs → they open competing PRs.
- * - No updater config, workflows exist, and the opt-out is unset → point
+ * - One config, and the setting does not name it → blocker.
+ * - The setting names an updater whose config is absent → blocker.
+ * - No updater config, workflows exist, and the setting is unset → point
  *   at the example templates.
  */
 export function buildDepUpdaterSetupAdvisory(cwd) {
-    const { renovate, dependabot } = updaterConfigPaths(cwd);
+    const configs = findDepUpdaterConfigs(cwd);
+    const { renovate, dependabot } = configs;
+    const setting = readBkitConfig(cwd).depUpdater;
     if (renovate && dependabot) {
         return {
             id: "dep-updater-both",
@@ -278,9 +270,37 @@ export function buildDepUpdaterSetupAdvisory(cwd) {
             action: "Keep one. Delete the config you are not using, and turn off that bot in the host UI.",
         };
     }
-    if (renovate || dependabot)
-        return null;
-    if (readBkitConfig(cwd).depUpdaterOptOut)
+    const found = renovate ? "renovate" : dependabot ? "dependabot" : null;
+    if (found) {
+        if (setting === found)
+            return null;
+        const name = DEP_UPDATER_NAMES[found];
+        const file = configs[found];
+        if (setting === null) {
+            return {
+                id: "dep-updater-unset",
+                severity: "blocker",
+                detect: `${name} config found (\`${file}\`), but \`bkit.dependencies.updater\` is not \`"${found}"\`.`,
+                action: `Set \`bkit.dependencies.updater\` to \`"${found}"\` in package.json. \`bkit upgrade\` sets it when the field is empty.`,
+            };
+        }
+        return {
+            id: "dep-updater-mismatch",
+            severity: "blocker",
+            detect: `\`bkit.dependencies.updater\` is \`"${setting}"\`, but the repo has a ${name} config (\`${file}\`).`,
+            action: `Set \`bkit.dependencies.updater\` to \`"${found}"\` in package.json, or delete \`${file}\` and turn ${name} off in the host UI.`,
+        };
+    }
+    if (setting === "renovate" || setting === "dependabot") {
+        const name = DEP_UPDATER_NAMES[setting];
+        return {
+            id: "dep-updater-mismatch",
+            severity: "blocker",
+            detect: `\`bkit.dependencies.updater\` is \`"${setting}"\`, but no ${name} config was found, so nothing bumps dependencies.`,
+            action: `Copy \`${UPDATER_EXAMPLE[setting]}\` into place and own it, or set \`bkit.dependencies.updater\` to the updater you run, or \`"none"\`. See .bkit/templates.md.`,
+        };
+    }
+    if (setting === "none")
         return null;
     if (!fs.existsSync(path.join(cwd, ".github", "workflows")))
         return null;
@@ -290,6 +310,6 @@ export function buildDepUpdaterSetupAdvisory(cwd) {
         detect: "No dependency updater config. SHA-pinned actions and package bumps will not refresh on their own.",
         action: "Copy one example and own it:\n\n" +
             `  ${UPDATER_EXAMPLE_PATHS}\n\n` +
-            'Use one updater, not both. To silence this advisory, set `bkit.dependencies.updater` to `"none"` in package.json. See .bkit/templates.md.',
+            'Use one updater, not both, and set `bkit.dependencies.updater` to its name (`"renovate"` or `"dependabot"`) in package.json. To silence this advisory, set it to `"none"`. See .bkit/templates.md.',
     };
 }

@@ -231,6 +231,8 @@ After writes, bkit re-runs credential and environment checks — some only accur
 | `github-project-token-scope` | A board is configured but `BKIT_GH_TOKEN` cannot reach it: a classic token lacks the `project` scope, or a fine-grained token's board query returns nothing. Board moves fall back to the MCP. Checked live via `gh`; skipped on cloud / CI. |
 | `dep-updater-absent` | No Renovate or Dependabot config. Copy one example and own it. `bkit.dependencies.updater: "none"` silences this. See [§ Optional post-install decisions](#optional-post-install-decisions). |
 | `dep-updater-both` | Both updater configs are present. Keep one. |
+| `dep-updater-unset` | Blocker. One updater's config is present but `bkit.dependencies.updater` does not name it (empty or unrecognised). Set it, or run `bkit upgrade`, which fills an empty value. |
+| `dep-updater-mismatch` | Blocker. `bkit.dependencies.updater` names one updater (or `none`) while the other's config is present, or names an updater with no config. Fix the value or the config. |
 | `cloud-router-none` / `cloud-router` | Optional post-install decision — post-CI auto-routing (`bkit.cloud.agent`). `none` (undecided) nudges `bkit install --auto=<variant>`, except under the jira tracker (local runs only); `cloud-router` is informational once `bkit-cloud.yml` is present. See [§ Optional post-install decisions](#optional-post-install-decisions). |
 | `actions-write-permissions-missing` | `bkit-cloud.yml` present but repo Actions permissions are read-only / PR creation disabled — `actions/checkout` + `gh pr create` 403. Repo-level check; org policy can override. |
 | `opencode-setup` | opencode host installed (`--opencode=<provider>`) — names the provider key to set (e.g. `BKIT_OPENROUTER_API_KEY`; `BKIT_OPENCODE_API_KEY` for `opencode-zen` / `opencode-go`), confirms the pre-seeded base URL, and notes all four providers ship curated per-agent pins (re-pin via `.bkit/prompts.md` § Model Overrides). Verify with `bkit doctor` + `bkit status`. |
@@ -297,7 +299,7 @@ Two capabilities **opt-in** — never wired by plain host/tooling install. Defau
 | Renovate self-hosted runner | `.bkit/templates/.github/workflows/bkit-renovate.yml` |
 | Dependabot | `.bkit/templates/.github/dependabot.yml` |
 
-Use one. `bkit.dependencies.updater: "none"` skips the install-time absence advisory. Setup: `docs/deployments.md` § Dependency updaters.
+Use one, and record it in `bkit.dependencies.updater` (`"renovate"` / `"dependabot"`); install and upgrade fill an empty value from the config present. `"none"` skips the install-time absence advisory. Setup: `docs/deployments.md` § Dependency updaters.
 
 **Security scan.** Updater only offers fixes once a fixed release exists. To fail CI on known-vulnerable packages, risky config or committed secrets, copy `.bkit/templates/.github/workflows/bkit-trivy.yml` and own it. No advisory; `bkit tips` suggests it. Setup: `.bkit/templates.md` § Trivy.
 
@@ -314,7 +316,7 @@ Use one. `bkit.dependencies.updater: "none"` skips the install-time absence advi
 
 1. Run `bkit install --claude --cursor` (or whichever modules you want). Post-install banner lists `tracker-setup-none`, `dep-updater-absent`, `cloud-router-none` if undecided.
 2. Pick tracker: `bkit install --tracker=github` (or `linear` / `jira`). Needs no host flag; re-renders every installed host. Persisted to `bkit.tracker.default`; future installs preserve (switching free).
-3. Copy one updater example (table above). Land Renovate config on the default branch before installing the App.
+3. Copy one updater example (table above). Land Renovate config on the default branch before installing the App. The next `bkit install` / `bkit upgrade` sets `bkit.dependencies.updater` to it.
 4. Enable cloud agents: `bkit install --auto=claude|cursor|opencode`. Persisted to `bkit.cloud.agent`; install prints secrets + permissions + dashboard checklist (`bkit-auto-setup`). Shipped `bkit-cloud.yml` carries claude job (`ANTHROPIC_API_KEY` repo secret or federation repo variables — `.bkit/cloud.md` § Claude — workload identity federation) and opencode job (`OPENCODE_PROVIDER_KEY`), each runtime-gated.
 5. **To opt out and silence the nudge**, set the field to `"none"` in `package.json` (`bkit.tracker.default` / `bkit.dependencies.updater` / `bkit.cloud.agent`). Advisory stays quiet. The `""` install seeds means undecided and keeps the nudge.
 
