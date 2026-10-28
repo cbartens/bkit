@@ -570,9 +570,17 @@ Filters (not above score): endpoint count; automatic prompt caching (bkit sends 
 
 **Do not pin from:** OpenRouter volume; BenchGecko; vendor-only Terminal-Bench / SWE; launch blogs.
 
-**Goal — each column as close to its Claude tier as that provider's own catalog allows.** A tier cell is that column's answer to the Claude bar; it is never a copy of another column's cell. Matching cells across providers are a catalog coincidence, not an objective — never hold a column back from a stronger model to keep the matrix uniform, and never move one forward because a sibling column moved. Divergence between columns is expected output; a column whose ceiling sits under a bar records that in its Notes cell rather than borrowing another column's pin.
+**Four column classes — each answers a different question.**
 
-**Vendor rule — no Anthropic and no OpenAI model on an opencode column.** Those two vendors are bought as subscriptions when you want them; paying their token rates through a gateway is not cost effective, so a `gpt-*` row is a catalog fact, never a candidate, and neither is a Claude one. The column reaches toward Claude with what remains — Google, xAI, Moonshot, DeepSeek, Z.AI, MiniMax, Qwen, Mistral and open-weight hosts. The rule is on the vendor, not the price: a cheap OpenAI model is still out. First-party columns keep their own vendor (`OpenAI` / Codex, `Google` / Antigravity), and Cursor keeps `cursor-*` / `composer-*`.
+<!-- prettier-ignore -->
+| Class | Columns | What the pin answers |
+| --- | --- | --- |
+| First-party plan | `Anthropic` (Claude Code), `OpenAI` (Codex), `Google` (Antigravity) | The best model for each subagent **from that vendor's own ladder**, spending the plan's included usage where it buys the most. A Codex pin is the best OpenAI model for the job, never an imitation of Claude; no cross-vendor parity target. |
+| Metered gateway | `Ollama`, `OpenCode Zen`, `OpenCode Go` | The same question against that gateway's own catalog — the best model for the job the plan serves. |
+| Overflow default | `OpenRouter` Option 1 | OpenRouter exists for the days the OpenAI, Anthropic and Google credits are spent, so its default uses **none of those three vendors**: the best model for each job from everything else, at the lowest cost that holds the quality. |
+| Overflow opt-in | `OpenRouter` Options 2 and 3 | Option 2 mixes the big three in where they add the most; Option 3 drops every restriction and takes the best model for each job, any vendor. |
+
+**The question is per subagent, not per column.** Every pin answers "what is the best model for _this_ agent's job", judged on the board's Long Agentic score with the agent's role in mind: judges, reviewers, verifiers and escalators need the strongest model the class allows (see the reviewer rule below), while mechanical writers and summarisers should not pay flagship prices. Matching cells across columns are a catalog coincidence, never an objective.
 
 ### Budget band — the gap between subscription resets
 
@@ -631,18 +639,17 @@ Re-probed `https://livebench.ai/data/20261025/table.csv` + `cost.csv` (§ Select
 
 **Unmeasured on 2.0 — keep their v1 basis, do not re-derive:** `composer-2.5` and `cursor-grok-4.5-high` (Cursor), `gemini-3.8-pro` (Google/Antigravity).
 
-**Three presets, one default.** Ready to paste in `prompts.md` § Model Overrides; the gap cost is measured (§ Budget band), not modelled.
+**Three presets, priced.** Tables and the per-agent matrix live in `prompts.md` § Model Presets. _Judges_ = the 13 reviewers, verifiers, escalators and convergent lenses; _builders_ = the other 26.
 
-| Preset                                          | Who runs what                                                                                       | 2-day gap (normal / push) | Long Agentic              |
-| ----------------------------------------------- | --------------------------------------------------------------------------------------------------- | ------------------------- | ------------------------- |
-| **Option 1 — cheapest (default)**               | `deepseek-v4.1-flash-1017` on the 34 working agents; the five convergent lenses on `gemini-4-argon` | **$47 / $98**             | 40.9 workhorse, 61.2 lens |
-| **Option 2 — balanced**                         | the ten spine agents plus the five lenses on `gemini-4-argon`; the rest on DeepSeek                 | **$112 / $233**           | 61.2 spine, 40.9 rest     |
-| **Option 3 — highest outside Anthropic/OpenAI** | every agent on `gemini-4-argon`                                                                     | **$268 / $558**           | 61.2 everywhere           |
-| _(shipped until Option 1 lands)_                | DeepSeek everywhere; the lenses on `kimi-k3`                                                        | $78 / $162                | 40.9 / 26.4               |
+| Preset                                             | Judges                 | Builders                        | 2-day gap (normal / push) |
+| -------------------------------------------------- | ---------------------- | ------------------------------- | ------------------------- |
+| **Option 1 — default, no OpenAI/Anthropic/Google** | `muse-wonder` 52.6     | `deepseek-v4.1-flash-1017` 40.9 | **$237 / $489**           |
+| **Option 2 — mix**                                 | `gpt-6.1-sol` 68.7     | `deepseek-v4.1-flash-1017` 40.9 | **$130 / $268**           |
+| **Option 3 — maximum, any vendor**                 | `claude-opus-5.5` 72.8 | `gpt-6.1-sol` 68.7              | **$480 / $991**           |
 
-**The lens must out-score the workhorse.** A convergent lens exists to catch what the main model misses; a weaker lens buys token variance but cannot see past the workhorse's own ceiling. Against DeepSeek's 40.9, every cheap candidate loses — `mimo-v2.6-pro` 35.2 at $17 per gap, `kimi-k3.1-pro` 39.1 at $85 — and `gemini-4-argon` 61.2 is stronger _and_ cheaper per cached token ($0.10) than `muse-wonder` 52.6 ($0.20, ~$100) or `grok-4.7` 46.1 ($0.50, ~$167).
+**Judges out-rank builders.** Any agent that judges, challenges, verifies or escalates runs the strongest model its column class allows, and always above the builder it checks — a judge on the executor's own model adds a second pass but no second opinion. The set: `design-review-1`/`-2`, `plan-review-1`/`-2`, `plan-scope-check`, `build-challenge-1`/`-2`, `build-plan-verify`, `build-plan-current`, `ship-deferred-sweep`, plus the five convergent lenses.
 
-**Default budget: ≤ `$50` per 2-day gap at the measured profile.** Option 1 lands at $47, so the ceiling is a gap budget rather than a flat per-token cap: the workhorse carries `$0.003` cache read, the five lens cells carry `$0.10`, and no other default cell exceeds `$0.003`. Options 2 and 3 are opt-in through § Model Overrides and each states its own cost. The current `kimi-k3` lenses are the live violation at `$0.19`.
+**Option 1's vendor rule is policy, not thrift.** The strongest model OpenRouter may serve without the big three is `muse-wonder` 52.6 at $20/Mtok of output — double `gpt-6.1-sol`'s $10 for 16 points less, while `claude-opus-5.5` matches muse's cache read with 20 more points. Option 1 therefore costs more than Option 2 at equal volume; it exists to keep the overflow column off vendors you already subscribe to. A judges-on-DeepSeek variant costs $17 per gap and drops the second opinion.
 
 **Where the presets live:** `prompts.md` § Model Presets, in the managed region above `bkit:end` — the full 39-agent matrix with each option's model per agent, plus copy-paste blocks for Options 2 and 3. **Option 1 needs no block: it is the shipped default.** Presets live above `bkit:end` because a consumer's § Model Overrides below it is preserved by install and upgrade — text placed there would never reach an existing install. That consumer region stays deliberately thin: a usage line and the empty table.
 
