@@ -268,13 +268,13 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     }
   });
 
-  it("ollama (cloud): deepseek-v4.1-flash:1017 opus+sonnet+haiku, kimi-k3 convergent", () => {
+  it("ollama (cloud): deepseek-v4.1-flash:1017 opus+sonnet+haiku, minimax-m3.1-flash judges", () => {
     const lookup = buildOpencodeModelLookup(HAIKU_PROMPTS, "ollama");
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("deepseek-v4.1-flash:1017");
     expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("deepseek-v4.1-flash:1017");
     expect(lookup.get(HAIKU_FIXTURE)).toBe("deepseek-v4.1-flash:1017");
-    expect(lookup.get("bkit-build-challenge-2")).toBe("kimi-k3");
-    expect(lookup.get("bkit-debug-failure-diagnose")).toBe("kimi-k3");
+    expect(lookup.get("bkit-build-challenge-2")).toBe("minimax-m3.1-flash");
+    expect(lookup.get("bkit-debug-failure-diagnose")).toBe("minimax-m3.1-flash");
     expect(formatModelPin("opencode", "ollama", lookup.get(HAIKU_FIXTURE)!)).toBe(
       "ollama/deepseek-v4.1-flash:1017",
     );
@@ -314,10 +314,10 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("deepseek-v4.1-flash"); // opus
     expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("deepseek-v4.1-flash"); // sonnet
     expect(lookup.get(HAIKU_FIXTURE)).toBe("glm-5.3-flash"); // haiku
-    expect(lookup.get("bkit-build-challenge-2")).toBe("kimi-k3"); // convergent
+    expect(lookup.get("bkit-build-challenge-2")).toBe("glm-5.3-flash"); // judges
   });
 
-  it("opencode-go: curated OpenCode Go column (deepseek-v4.1-flash / kimi-k3)", () => {
+  it("opencode-go: curated OpenCode Go column (deepseek-v4.1-flash / mimo-v2.6-pro)", () => {
     // opencode-go = the budget open-weight-only plan (https://opencode.ai/zen/go/v1). Go catalog is
     // invisible to /zen/v1/models — sourced via models.dev.
     const lookup = buildOpencodeModelLookup(HAIKU_PROMPTS, "opencode-go");
@@ -329,7 +329,7 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("deepseek-v4.1-flash"); // opus
     expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("deepseek-v4.1-flash"); // sonnet
     expect(lookup.get(HAIKU_FIXTURE)).toBe("deepseek-v4.1-flash"); // haiku
-    expect(lookup.get("bkit-build-challenge-2")).toBe("kimi-k3"); // convergent
+    expect(lookup.get("bkit-build-challenge-2")).toBe("mimo-v2.6-pro"); // judges
   });
 });
 

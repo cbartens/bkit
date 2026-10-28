@@ -121,16 +121,16 @@ Every agent in each phase, in the order it runs and what it checks: [pipeline re
 | Claude Code | `claude-opus-5-5` · bar **72.8** | `claude-sonnet-5-5` · bar **63.4** |
 | Cursor | `cursor-grok-4.5-high` · not measured | `composer-2.5` · not measured |
 | opencode + OpenRouter | `deepseek/deepseek-v4.1-flash-1017` · 40.9; `xiaomi/mimo-v2.6-pro` · 35.2 for risk, security and root-cause agents | `deepseek/deepseek-v4.1-flash-1017` · 40.9 |
-| opencode + Ollama | `deepseek-v4.1-flash:1017` · 40.9; `kimi-k3` · 26.4 for risk, security and root-cause agents | `deepseek-v4.1-flash:1017` · 40.9 |
-| opencode + OpenCode Zen | `deepseek-v4.1-flash` · 40.9; `kimi-k3` · 26.4 for risk, security and root-cause agents | `deepseek-v4.1-flash` · 40.9 |
-| opencode + OpenCode Go | `deepseek-v4.1-flash` · 40.9; `kimi-k3` · 26.4 for risk, security and root-cause agents | `deepseek-v4.1-flash` · 40.9 |
+| opencode + Ollama | `deepseek-v4.1-flash:1017` · 40.9; `minimax-m3.1-flash` · 28.8 for risk, security and root-cause agents | `deepseek-v4.1-flash:1017` · 40.9 |
+| opencode + OpenCode Zen | `deepseek-v4.1-flash` · 40.9; `glm-5.3-flash` · 19.0 for risk, security and root-cause agents | `deepseek-v4.1-flash` · 40.9 |
+| opencode + OpenCode Go | `deepseek-v4.1-flash` · 40.9; `mimo-v2.6-pro` · 35.2 for risk, security and root-cause agents | `deepseek-v4.1-flash` · 40.9 |
 | Codex | `gpt-6-astra` · 77.5 | `gpt-5.6-terra` · 33.1 |
 | Google Antigravity | `gemini-4-argon` · 61.2 | `gemini-4-argon` · 61.2 |
 
 **Reading the table:**
 
 - **The bars are the 5.5 scores.** `claude-opus-5.5` scores **72.8** and `claude-sonnet-5.5` **63.4** on Long Agentic; bkit runs both. A model under a bar does not get that tier's job.
-- **Risk, security and root-cause agents get a second model** that reasons differently from the main one, so they don't share its blind spots. On every opencode provider that second model is Kimi K3, which scores a little under the bar for the hardest jobs.
+- **Risk, security and root-cause agents get a second model** that reasons differently from the main one, so they don't share its blind spots. On opencode that second model is picked per provider — `mimo-v2.6-pro` on OpenRouter and Go, `minimax-m3.1-flash` on Ollama, `glm-5.3-flash` on Zen — always a different family from the DeepSeek workhorse.
 - **Cursor's own models don't reach the bar.** Claude models in Cursor spend paid API credits, so they're opt-in: paste the ready-made Opus block from [Model Overrides](.bkit/prompts.md#model-overrides).
 - **"Not measured" means LiveBench 2.0 hasn't scored that model.** Those Cursor picks follow each vendor's own description of the model. Check them before you rely on them.
 - **Ollama needs a paid plan for every column.** The free models are far below the bar or not scored.
