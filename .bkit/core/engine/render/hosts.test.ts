@@ -15,7 +15,6 @@ import {
   applyOpencodeAgent,
   applyOpencodeCommand,
   applyOpencodeToolRewrites,
-  applyAntigravityPrompt,
   applyAntigravitySkill,
   applyAntigravityToolRewrites,
   antigravityToolsBlock,
