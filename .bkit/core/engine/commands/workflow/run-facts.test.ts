@@ -221,6 +221,18 @@ describe("runStatusRows / stepsBlock / ciList", () => {
     expect(totalsProblem({ steps })).toBeUndefined();
   });
 
+  it("leaves a run's step minutes unchanged when journal rows land between step rows", () => {
+    const plain = [started(0), step(1, "build-a"), step(4, "build-b")];
+    const journaled = [
+      started(0),
+      step(1, "build-a"),
+      { type: "engine-call", workflow: "build", at: at(2), noun: "steps", verb: "finish" } as Row,
+      { type: "completeness", workflow: "build", at: at(3), verdict: "complete" } as Row,
+      step(4, "build-b"),
+    ];
+    expect(stepsBlock(journaled)).toEqual(stepsBlock(plain));
+  });
+
   it("is empty when the run has only its start row", () => {
     expect(stepsBlock([started(0)])).toEqual({ total: { n: 0, totalMinutes: 0 }, byStep: {} });
   });

@@ -2970,6 +2970,7 @@ await test("MARK_ROWS is the engine's", () => {
   );
   const list = facts.match(/export const MARK_ROWS[^=]*= new Set\((\[[^\]]*\])\)/)?.[1];
   assert.deepEqual([...MARK_ROWS], JSON.parse(list.replace(/,\s*\]$/, "]")));
+  for (const t of ["engine-call", "completeness"]) assert.ok(MARK_ROWS.has(t), `${t} is a mark row`);
 });
 
 await test("report shows per-run tokens and owner waits", () => {
