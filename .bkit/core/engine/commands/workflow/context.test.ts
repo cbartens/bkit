@@ -893,7 +893,6 @@ describe("bkit context list-blocks", () => {
     const r = await run(["list-blocks"], fs.mkdtempSync(path.join(tmpDir, "empty-")));
     expect(r.json.blocks).toEqual([]);
     expect(r.json.provision).toEqual([]);
-    expect(r.json.provisionBlocks).toEqual([]);
     expect(r.err).toContain("NO BLOCKS CONFIGURED");
   });
 
@@ -926,11 +925,63 @@ describe("bkit context list-blocks", () => {
     );
     const r = await run(["list-blocks"], path.join(tmpDir, "prov"));
     expect(r.json.provision).toEqual(["command -v a || install-a", "command -v b || install-b"]);
-    expect(r.json.provisionBlocks).toEqual([
-      { name: "a", body: "command -v a || install-a" },
-      { name: "b", body: "command -v b || install-b" },
-    ]);
     expect(r.json.blocks).toHaveLength(1);
+  });
+});
+
+describe("bkit context provision", () => {
+  const recipe = (name: string, body: string) => [
+    `<!-- context-fetch:provision ${name} -->`,
+    "```bash",
+    body,
+    "```",
+    "<!-- context-fetch:end -->",
+  ];
+  const unavailable = (dir: string) => path.join(dir, ".bkit/.unavailable");
+
+  it("runs every recipe, lists each failed one with its last error line, and keeps going", async () => {
+    const dir = path.join(tmpDir, "pv");
+    write(
+      "pv/.agents/context.md",
+      [
+        "<!-- bkit:end -->",
+        ...recipe(
+          "db",
+          'echo "pulling" >&2\necho "db unavailable: 3 GB free, needs 10 GB" >&2\nexit 1',
+        ),
+        ...recipe("ok", "touch ran-ok"),
+        ...recipe("cli", "false"),
+      ].join("\n"),
+    );
+    const r = await run(["provision"], dir);
+    expect(r.code).toBe(0);
+    expect(fs.existsSync(path.join(dir, "ran-ok"))).toBe(true);
+    expect(r.json.recipes).toBe(3);
+    expect(r.json.unavailable).toEqual([
+      { name: "db", reason: "db unavailable: 3 GB free, needs 10 GB" },
+      { name: "cli", reason: "exit 1" },
+    ]);
+    expect(r.json.file).toBe(".bkit/.unavailable");
+    expect(fs.readFileSync(unavailable(dir), "utf-8")).toBe(
+      "db: db unavailable: 3 GB free, needs 10 GB\ncli: exit 1\n",
+    );
+  });
+
+  it("removes a stale failure file once every recipe succeeds", async () => {
+    const dir = path.join(tmpDir, "pv-ok");
+    write("pv-ok/.agents/context.md", ["<!-- bkit:end -->", ...recipe("ok", "true")].join("\n"));
+    write("pv-ok/.bkit/.unavailable", "ok: old failure\n");
+    const r = await run(["provision"], dir);
+    expect(r.json).toMatchObject({ recipes: 1, unavailable: [], file: null });
+    expect(fs.existsSync(unavailable(dir))).toBe(false);
+  });
+
+  it("with no recipes, runs nothing and removes a stale failure file", async () => {
+    const dir = fs.mkdtempSync(path.join(tmpDir, "pv-none-"));
+    write(`${path.basename(dir)}/.bkit/.unavailable`, "x: old\n");
+    const r = await run(["provision"], dir);
+    expect(r.json).toMatchObject({ recipes: 0, unavailable: [], file: null });
+    expect(fs.existsSync(unavailable(dir))).toBe(false);
   });
 });
 

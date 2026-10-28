@@ -242,9 +242,8 @@ export function extractContextFetchProvisionRecipes(cwd) {
 /**
  * {@link extractContextFetchProvisionRecipes} with each block's name — the word after
  * `context-fetch:provision` in its opening marker, limited to `[A-Za-z0-9._-]` so it is
- * safe inside a quoted shell string; "" when the marker names none. `bkit context
- * list-blocks` returns it as `provisionBlocks`, which `.claude/hooks/bkit-cloud-bootstrap.sh`
- * runs one recipe at a time.
+ * safe inside a quoted shell string; "" when the marker names none.
+ * {@link renderCloudContextFetchProvision} reports a failing recipe by this name.
  */
 export function extractContextFetchProvisionBlocks(cwd) {
     const filePath = path.join(cwd, ".agents", "context.md");
@@ -320,36 +319,70 @@ export function renderCloudCacheBust(cwd, today) {
 const CLOUD_PNPM_GLOBAL_PATH_SETUP = "# pnpm refuses `add -g` unless its global-bin dir is on PATH (corepack pnpm skips `pnpm setup`).\n" +
     'export PNPM_HOME="${PNPM_HOME:-$HOME/.local/share/pnpm}"\n' +
     'export PATH="$PNPM_HOME:$PNPM_HOME/bin:$PATH"';
+/** Where a cloud environment lists the provision recipes that failed in it, from the repo root. */
+export const UNAVAILABLE_RELPATH = ".bkit/.unavailable";
+/**
+ * Runs one provision recipe (a function named in `$2`) in its own `set -e` subshell. Its
+ * stdout goes to stderr, so a caller's stdout carries only its own report. A failure is
+ * named on stderr with the recipe's last error line, added to `$BKIT_UNAVAILABLE`, and
+ * appended to `$BKIT_UNAVAILABLE_FILE` as `<name>: <reason>` when that is set. The
+ * subshell is never the left side of `||`: bash ignores `set -e` there, so only the
+ * recipe's last command would count.
+ */
+const CLOUD_PROVISION_RUNNER = "bkit_provision() {\n" +
+    "  bkit_err=$(mktemp)\n" +
+    '  ( set -e; "$2" ) >&2 2>"$bkit_err"\n' +
+    "  bkit_rc=$?\n" +
+    '  cat "$bkit_err" >&2\n' +
+    '  if [ "$bkit_rc" -ne 0 ]; then\n' +
+    "    bkit_why=$(grep -v '^[[:space:]]*$' \"$bkit_err\" | tail -n 1 | cut -c 1-300)\n" +
+    '    [ -n "$bkit_why" ] || bkit_why="exit $bkit_rc"\n' +
+    "    echo \"[cloud-setup] provision '$1' failed (non-blocking): $bkit_why\" >&2\n" +
+    '    BKIT_UNAVAILABLE="${BKIT_UNAVAILABLE:+$BKIT_UNAVAILABLE, }$1"\n' +
+    '    [ -z "$BKIT_UNAVAILABLE_FILE" ] || printf \'%s: %s\\n\' "$1" "$bkit_why" >> "$BKIT_UNAVAILABLE_FILE"\n' +
+    "  fi\n" +
+    '  rm -f "$bkit_err"\n' +
+    "}";
 /**
  * Render the `@@CLOUD_CONTEXT_FETCH_PROVISION@@` setup-script region: the consumer's
  * `context-fetch:provision` recipes, or "" when none are enabled. Placed AFTER the
- * corepack line in the template so `pnpm add -g …` recipes have pnpm available.
+ * corepack line in the template so `pnpm add -g …` recipes have pnpm available. `bkit
+ * context provision` runs the same region, so every cloud platform runs the recipes one way.
  *
  * The setup script is `set -euo pipefail`, so a bare failing recipe (e.g. a heavy
  * `curl | bash` CLI installer that trips over a missing base-image dep) would abort the
  * whole snapshot build and discard every CLI provisioned before it. So errexit is off
- * around the region and back on after it, and each recipe runs in its own `set -e`
- * subshell: a failing command stops only its own recipe, and that recipe is named on
- * stderr. The subshell is never the left side of `||` — bash ignores `set -e` there, so
- * only the recipe's last command would count. Non-blocking like the per-session hook.
+ * around the region and back on after it, and each recipe runs on its own through
+ * {@link CLOUD_PROVISION_RUNNER}: a failing command stops only its own recipe.
+ *
+ * With `$REPO_ROOT` set, the region rewrites {@link UNAVAILABLE_RELPATH} under it
+ * (removed when nothing failed) for the cloud agent to read. The Claude setup script runs
+ * before the clone, with no `$REPO_ROOT`; there the session hook writes the file. The
+ * region leaves `$BKIT_UNAVAILABLE` set for the script's closing line.
  */
 export function renderCloudContextFetchProvision(cwd) {
-    const blocks = extractContextFetchProvisionBlocks(cwd);
-    if (blocks.length === 0)
+    const recipes = extractContextFetchProvisionBlocks(cwd)
+        .map(({ name, body }, i) => ({ label: name === "" ? `#${i + 1}` : name, body }))
+        .filter(({ body }) => body.trim() !== "");
+    if (recipes.length === 0)
         return "";
-    const runs = blocks.map(({ name, body }, i) => {
-        const label = name === "" ? `#${i + 1}` : name;
-        return ("(\n  set -e\n" +
-            body +
-            '\n)\n[ "$?" -eq 0 ] || echo "[cloud-setup] context-fetch provision ' +
-            `'${label}' failed (non-blocking); its CLI will be absent" >&2`);
-    });
-    return ("# context-fetch CLIs (from .agents/context.md provision blocks) — each runs on its own;\n" +
-        "# a failing one is named on stderr and never stops the install.\n" +
+    const runs = recipes.map(({ label, body }, i) => `bkit_provision_${i + 1}() {\n${body}\n}\nbkit_provision '${label}' bkit_provision_${i + 1}`);
+    return ("# context-fetch provision recipes (from .agents/context.md) — each runs on its own. A\n" +
+        "# failing one is named with its last error line and never stops this script.\n" +
         CLOUD_PNPM_GLOBAL_PATH_SETUP +
         "\nset +e\n" +
+        'BKIT_UNAVAILABLE=""\n' +
+        `BKIT_UNAVAILABLE_FILE="\${REPO_ROOT:+$REPO_ROOT/${UNAVAILABLE_RELPATH}}"\n` +
+        '[ -z "$BKIT_UNAVAILABLE_FILE" ] || { mkdir -p "${BKIT_UNAVAILABLE_FILE%/*}"; : > "$BKIT_UNAVAILABLE_FILE"; }\n' +
+        CLOUD_PROVISION_RUNNER +
+        "\n" +
         runs.join("\n") +
-        "\nset -e");
+        '\nif [ -n "$BKIT_UNAVAILABLE" ]; then\n' +
+        '  echo "[cloud-setup] UNAVAILABLE in this environment: $BKIT_UNAVAILABLE. Their setup failed: treat them as absent and do not retry the install." >&2\n' +
+        "else\n" +
+        '  [ -z "$BKIT_UNAVAILABLE_FILE" ] || rm -f "$BKIT_UNAVAILABLE_FILE"\n' +
+        "fi\n" +
+        "set -e");
 }
 /**
  * Entries of every `<!-- {tag}:start --> … <!-- {tag}:end -->` list block BELOW
@@ -744,28 +777,28 @@ export function writeClaudeCloudDoc(cwd, tokens) {
 }
 /**
  * Render the `@@CURSOR_CONTEXT_FETCH@@` region of `.cursor/bkit-cloud.md`: the consumer's
- * `context-fetch:provision` recipes formatted for the Cursor mechanic, or "" when none
- * are enabled. On Claude these CLIs are baked into the pasted setup script (see
- * renderCloudContextFetchProvision); Cursor has no setup script, so — to keep the two
- * cloud environments aligned — the same recipes are surfaced as a copy-paste block for
- * the per-snapshot `install` command in `.cursor/environment.json`. The recipes are
- * already idempotent (`command -v X || pnpm add -g X`), so they are safe to re-run on
- * every snapshot build. Reuses the SAME extractor as the Claude path so the two clouds
- * never diverge on which CLIs they provision.
+ * `context-fetch:provision` recipes by name, or "" when none are enabled. On Claude and
+ * Codex they are inlined into the pasted script ({@link renderCloudContextFetchProvision});
+ * Cursor has no pasted script, so the `install` command in `.cursor/environment.json` runs
+ * `bkit context provision`, which runs that same region. The section names the recipes and
+ * the line a copy of `environment.json` without it needs.
  */
 export function renderCursorContextFetchProvision(cwd) {
-    const recipes = extractContextFetchProvisionRecipes(cwd);
+    const blocks = extractContextFetchProvisionBlocks(cwd);
     // Empty → "" and the template's sentinel line collapses to a single blank between
     // sections; non-empty → a self-contained section with its own leading/trailing blank.
-    if (recipes.length === 0)
+    if (blocks.length === 0)
         return "";
+    const names = blocks.map(({ name }, i) => `\`${name === "" ? `#${i + 1}` : name}\``);
     return ("\n## Context-fetch CLIs (parity with the Claude setup script)\n\n" +
-        "Your `.agents/context.md` declares these context-fetch CLIs. The Claude setup script\n" +
-        "bakes them into its snapshot; for the SAME tools on Cursor, chain them into the\n" +
-        "`install` command in `.cursor/environment.json` (idempotent — safe every rebuild):\n\n" +
+        `Your \`.agents/context.md\` declares these provision recipes: ${names.join(", ")}. The\n` +
+        "`install` command in `.cursor/environment.json` runs them each snapshot build, after\n" +
+        "`pnpm install`, by ending with:\n\n" +
         "```bash\n" +
-        recipes.join("\n") +
-        "\n```\n");
+        "&& pnpm exec bkit context provision\n" +
+        "```\n\n" +
+        "A recipe that fails is named in the install log and listed in `.bkit/.unavailable`\n" +
+        "for the agent; the install still succeeds.\n");
 }
 /**
  * The Cursor and Codex allowlist: the fenced paste block and the notes under it. bkit's

@@ -86,6 +86,8 @@ Two halves of customisation:
 - **Cloud-side install** (one-time, cached): Claude → setup script in app. Cursor → `.cursor/Dockerfile`.
 - **Repo-side install** (per-session, lockfile-aware): Claude → `.claude/hooks/bkit-cloud-bootstrap.sh`. Cursor → `.cursor/environment.json` `install` field.
 
+**Failed provision recipes:** every host runs each `context-fetch:provision` recipe on its own — Claude setup script and Codex install script inline, Claude session hook and Cursor `install` through `bkit context provision`. A failing recipe never fails setup; it is named with its last error line in the setup log and in the closing `cloud setup done` line, and listed in `.bkit/.unavailable` (one `<name>: <reason>` line each; removed when none fail). The Claude session hook prints that file into the session's context; `.agents/rules.md` § Cloud setup gaps tells every agent to read it.
+
 # Claude Code on the web
 
 > [!TIP]
@@ -98,7 +100,7 @@ Open `claude.ai/code` → environment selector → **+ Add environment**. Three 
 ## In-repo side
 
 - `.claude/hooks/bkit-preflight.sh` — Tracker opt-in guard plus the rules-read advisory, one JSON document (`.bkit/providers.md` § Rules-read advisory). Tracker issue ID env var unset (IDE session) → the advisory alone, exit 0. Non-zero exit informational only on Claude (`SessionStart` cannot block); the agent reads `HARD STOP` text from `additionalContext`.
-- `.claude/hooks/bkit-cloud-bootstrap.sh` — runs `pnpm install --frozen-lockfile` + `vale sync` when `CLAUDE_CODE_REMOTE=true`; then, through the just-installed bkit (`bkit runtime detect` gh probe, `bkit context list-blocks` provision recipes, read with `jq`), gh auth and context-fetch CLI provisioning — skipped with a loud log line when bkit or `jq` is missing. No-op locally.
+- `.claude/hooks/bkit-cloud-bootstrap.sh` — runs `pnpm install --frozen-lockfile` + `vale sync` when `CLAUDE_CODE_REMOTE=true`; then gh auth, and context-fetch CLI provisioning through the just-installed bkit (`bkit context provision`) — provisioning skipped with a loud log line when bkit is missing; a failed recipe's `.bkit/.unavailable` line goes to stdout, into the session's context. No-op locally.
 - Both registered in `.claude/settings.json` under `hooks.SessionStart`.
 
 Ships with repo — don't paste into app.
@@ -295,7 +297,7 @@ Everything in repo under `.cursor/`. bkit ships canonical content for all four f
 | File | Role | bkit ownership |
 | --- | --- | --- |
 | `.cursor/Dockerfile` | Cloud image — vale + gh + Node 24 (template default) + pnpm (corepack-pinned); Node, gh and vale are version-pinned and sha256-checked; browsers etc. added by the consumer | Template: copy from `.bkit/templates/.cursor/Dockerfile`; yours after |
-| `.cursor/environment.json` | Build pointer + per-snapshot `install` hook (`pnpm install --frozen-lockfile` + `vale sync` if `.vale.ini`) | Template: copy from `.bkit/templates/.cursor/environment.json`; yours after |
+| `.cursor/environment.json` | Build pointer + per-snapshot `install` hook (`pnpm install --frozen-lockfile` + `vale sync` if `.vale.ini` + `pnpm exec bkit context provision`) | Template: copy from `.bkit/templates/.cursor/environment.json`; yours after |
 | `.cursor/hooks.json` | Wires `sessionStart` → `bkit-preflight.sh` (`failClosed: true`) | Tier 2 contained JSON |
 | `.cursor/hooks/bkit-preflight.sh` | Tracker opt-in guard — `bkit:auto` label + non-terminal status — plus the rules-read advisory (`.bkit/providers.md` § Rules-read advisory). IDE session → the advisory alone, exit 0 | Tier 2 contained (bkit:start/end markers) |
 

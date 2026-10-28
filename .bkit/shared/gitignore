@@ -50,6 +50,9 @@ docs/plans/*/logs/**/.rebase-failed
 # Cursor background-agent runtime marker
 .bkit/.runtime-cursor
 
+# Provision recipes that failed in this cloud environment (`bkit context provision`)
+.bkit/.unavailable
+
 .bkit/.roadmap-shortlist.json
 .bkit/.roadmap-reverse-sync.json
 

@@ -49,7 +49,7 @@ if [ -n "${BKIT_GH_TOKEN:-}" ]; then
     || echo "[cloud-setup] gh auth login failed (non-blocking); gh will be unauthenticated" >&2
 fi
 
-echo "cloud env ready: node $(node --version), $(vale --version), $(gh --version | head -1), jq $(jq --version), pnpm $(pnpm -v)"
+echo "cloud setup done: node $(node --version), $(vale --version), $(gh --version | head -1), jq $(jq --version), pnpm $(pnpm -v)${BKIT_UNAVAILABLE:+ — UNAVAILABLE: $BKIT_UNAVAILABLE (see .bkit/.unavailable)}"
 ```
 
 ## 4 · Environment variables

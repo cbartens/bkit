@@ -102,7 +102,7 @@ fi
 
 @@CLOUD_CONTEXT_FETCH_PROVISION@@
 
-echo "cloud env ready: node $(node --version), $(vale --version), $(gh --version | head -1), jq $(jq --version), pnpm $(pnpm -v)"
+echo "cloud setup done: node $(node --version), $(vale --version), $(gh --version | head -1), jq $(jq --version), pnpm $(pnpm -v)${BKIT_UNAVAILABLE:+ — UNAVAILABLE: $BKIT_UNAVAILABLE}"
 ```
 
 Keep total runtime under ~5 minutes or the snapshot won't build. `pnpm install`

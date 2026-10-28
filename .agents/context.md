@@ -55,8 +55,10 @@ The `ci` / `diff` / `e2e` templates are GitHub Actions + Playwright / Maestro. P
 
 Fetch block _runs_ in cloud only if CLI present — else self-skips, cloud `/bkit-debug` gets **no** runtime logs (silent `exit 0`, not error). bkit installs no stack CLIs; **declare** each block's install recipe in sibling `<!-- context-fetch:provision <name> --> … <!-- context-fetch:end -->`; bkit stack-agnostic tooling runs both cloud paths:
 
-- `.claude/hooks/bkit-cloud-bootstrap.sh` — every `context-fetch:provision` block on session start (gh-runner + resumed web sessions),
-- `bkit install` — same recipes into generated `.claude/bkit-cloud.md` setup script (web snapshot — install-once).
+- `.claude/hooks/bkit-cloud-bootstrap.sh` + `.cursor/environment.json` `install` — every `context-fetch:provision` block, through `bkit context provision` (session start / Cursor snapshot),
+- `bkit install` — same recipes into generated `.claude/bkit-cloud.md` setup script (web snapshot — install-once) + `.codex/bkit-cloud.md` install script.
+
+Each recipe runs on its own; a failing one never fails setup → named with its last stderr line, listed in `.bkit/.unavailable`. Recipe that can't work here (no runtime, too little disk) → `exit 1` after one `echo "<what> unavailable: <why>" >&2` line, so the reason reaches the agent.
 
 Provision block rules: **self-guard** (`command -v <cli> >/dev/null 2>&1 || <install>`) → re-run no-op; install-only (no fetching); **same name** as fetch block. MCP / `curl`/API fetch needs no CLI — omit provision. Only stack-CLI blocks need one. A provision block with no fetch block installs a tool the session itself uses (e.g. an MCP server).
 

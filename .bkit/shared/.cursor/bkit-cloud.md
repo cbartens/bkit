@@ -57,8 +57,8 @@ identical bkit toolchain:
   `bkit toolchain` section as shipped; set Node major / Playwright / extra apt deps
   outside it).
 - `.cursor/environment.json` — per-snapshot `install` (`pnpm install
-  --frozen-lockfile` + `vale sync`), the analogue of Claude's
-  `.claude/hooks/bkit-cloud-bootstrap.sh`. (`install` / `start` / `terminals` are the
+  --frozen-lockfile` + `vale sync` + `pnpm exec bkit context provision`), the analogue
+  of Claude's `.claude/hooks/bkit-cloud-bootstrap.sh`. (`install` / `start` / `terminals` are the
   environment.json fields Cursor runs.)
 
 After changing either, run `pnpm bkit install` and commit — the first session

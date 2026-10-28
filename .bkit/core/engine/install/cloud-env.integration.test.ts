@@ -203,27 +203,56 @@ describe("cloud install script pieces, run by bash", () => {
     expect(res.stdout).toContain(`pnpm install --frozen-lockfile in ${fs.realpathSync(tmpDir)}`);
   });
 
-  it("names each failing provision block, keeps going, and never fails the install", () => {
+  it("names each failing provision block with its last error line, keeps going, and never fails the install", () => {
     writeFile(
       ".agents/context.md",
       "<!-- bkit:end -->\n" +
         block("fails-first", "false\necho fails-first-kept-going") +
         block("good", "echo good-ran") +
-        block("fails-last", "exit 3"),
+        block("fails-last", 'echo "pulling" >&2\necho "no docker CLI" >&2\nexit 3'),
     );
     const region = renderCloudContextFetchProvision(tmpDir);
-    const res = bash(`set -euo pipefail\n${region}\necho after-region`, {
+    const closing = 'echo "done${BKIT_UNAVAILABLE:+ — UNAVAILABLE: $BKIT_UNAVAILABLE}"';
+    const res = bash(`set -euo pipefail\n${region}\n${closing}`, {
       ...process.env,
       HOME: tmpDir,
+      REPO_ROOT: tmpDir,
     });
     expect(res.status).toBe(0);
-    expect(res.stdout).toContain("good-ran");
-    expect(res.stdout).toContain("after-region");
+    expect(res.stderr).toContain("good-ran");
     // `false` stops its own block, even though the block's last command would succeed.
-    expect(res.stdout).not.toContain("fails-first-kept-going");
-    expect(res.stderr).toContain("context-fetch provision 'fails-first' failed");
-    expect(res.stderr).toContain("context-fetch provision 'fails-last' failed");
+    expect(res.stderr).not.toContain("fails-first-kept-going");
+    expect(res.stderr).toContain("provision 'fails-first' failed (non-blocking): exit 1");
+    expect(res.stderr).toContain("provision 'fails-last' failed (non-blocking): no docker CLI");
     expect(res.stderr).not.toContain("'good' failed");
+    expect(res.stderr).toContain("UNAVAILABLE in this environment: fails-first, fails-last.");
+    expect(res.stdout).toBe("done — UNAVAILABLE: fails-first, fails-last\n");
+    expect(read(".bkit/.unavailable")).toBe("fails-first: exit 1\nfails-last: no docker CLI\n");
+  });
+
+  it("writes no failure file without REPO_ROOT, and clears it when every block succeeds", () => {
+    writeFile(".agents/context.md", "<!-- bkit:end -->\n" + block("bad", "exit 1"));
+    const closing = 'echo "done${BKIT_UNAVAILABLE:+ — UNAVAILABLE: $BKIT_UNAVAILABLE}"';
+    const noRoot = bash(
+      `set -euo pipefail\n${renderCloudContextFetchProvision(tmpDir)}\n${closing}`,
+      {
+        ...process.env,
+        HOME: tmpDir,
+        REPO_ROOT: "",
+      },
+    );
+    expect(noRoot.stdout).toBe("done — UNAVAILABLE: bad\n");
+    expect(fs.existsSync(path.join(tmpDir, ".bkit/.unavailable"))).toBe(false);
+
+    writeFile(".bkit/.unavailable", "bad: old\n");
+    writeFile(".agents/context.md", "<!-- bkit:end -->\n" + block("good", "true"));
+    const ok = bash(`set -euo pipefail\n${renderCloudContextFetchProvision(tmpDir)}\n${closing}`, {
+      ...process.env,
+      HOME: tmpDir,
+      REPO_ROOT: tmpDir,
+    });
+    expect(ok.stdout).toBe("done\n");
+    expect(fs.existsSync(path.join(tmpDir, ".bkit/.unavailable"))).toBe(false);
   });
 
   it("switches stop-on-error back on after the provision block", () => {
@@ -242,10 +271,12 @@ describe("cloud install script pieces, run by bash", () => {
       path.dirname(new URL(import.meta.url).pathname),
       "../../../templates/.claude/hooks/bkit-cloud-bootstrap.sh",
     );
-    const runHook = (listBlocks: object) => {
-      writeFile(".agents/context.md", "<!-- bkit:end -->\n");
-      writeFile("list-blocks.json", JSON.stringify(listBlocks));
-      writeFile("node_modules/.bin/bkit", `#!/bin/bash\ncat "${tmpDir}/list-blocks.json"\n`, 0o755);
+    const runHook = (
+      contextMd: string,
+      bkit = `#!/bin/bash\nexec "${requireTsx()}" "${bkitInstallPath}" "$@"\n`,
+    ) => {
+      writeFile(".agents/context.md", contextMd);
+      writeFile("node_modules/.bin/bkit", bkit, 0o755);
       const {
         GH_TOKEN: _gh,
         GITHUB_TOKEN: _github,
@@ -259,33 +290,53 @@ describe("cloud install script pieces, run by bash", () => {
         cwd: tmpDir,
         encoding: "utf-8",
         input: "{}",
-        timeout: 30_000,
-        env: { ...env, HOME: tmpDir, CLAUDE_CODE_REMOTE: "true", CLAUDE_PROJECT_DIR: tmpDir },
+        timeout: 60_000,
+        env: {
+          ...env,
+          HOME: tmpDir,
+          CLAUDE_CODE_REMOTE: "true",
+          CLAUDE_PROJECT_DIR: tmpDir,
+          NODE_NO_WARNINGS: "1",
+        },
       });
     };
 
-    it("names each failing recipe and still runs the rest", () => {
-      const res = runHook({
-        provisionBlocks: [
-          { name: "fails-first", body: "false\necho fails-first-kept-going" },
-          { name: "good", body: "echo good-ran" },
-          { name: "", body: "exit 3" },
-        ],
-      });
+    it("runs every recipe through bkit context provision and tells the agent on stdout what failed", () => {
+      const res = runHook(
+        "<!-- bkit:end -->\n" +
+          block("fails-first", "false\necho fails-first-kept-going") +
+          block("good", "echo good-ran") +
+          block("", 'echo "local Supabase unavailable: 3 GB free" >&2\nexit 3'),
+      );
       expect(res.status).toBe(0);
-      expect(res.stdout).toContain("good-ran");
+      expect(res.stderr).toContain("good-ran");
       // `false` stops its own recipe, even though the recipe's last command would succeed.
-      expect(res.stdout).not.toContain("fails-first-kept-going");
-      expect(res.stderr).toContain("context-fetch provision 'fails-first' failed");
-      expect(res.stderr).toContain("context-fetch provision '#3' failed");
+      expect(res.stderr).not.toContain("fails-first-kept-going");
+      expect(res.stderr).toContain("provision 'fails-first' failed (non-blocking): exit 1");
+      expect(res.stderr).toContain(
+        "provision '#3' failed (non-blocking): local Supabase unavailable",
+      );
       expect(res.stderr).not.toContain("'good' failed");
-    });
+      expect(res.stdout).toBe(
+        "Cloud setup could not provide these in this session (setup failed; treat them as absent, do not retry the install):\n" +
+          "fails-first: exit 1\n#3: local Supabase unavailable: 3 GB free\n",
+      );
+    }, 90_000);
 
-    it("runs the unnamed recipes of a bkit whose list-blocks has no provisionBlocks", () => {
-      const res = runHook({ provision: ["echo old-shape-ran", "exit 4"] });
+    it("prints nothing to stdout when every recipe succeeds", () => {
+      writeFile(".bkit/.unavailable", "good: old\n");
+      const res = runHook("<!-- bkit:end -->\n" + block("good", "echo good-ran"));
       expect(res.status).toBe(0);
-      expect(res.stdout).toContain("old-shape-ran");
-      expect(res.stderr).toContain("context-fetch provision '#2' failed");
+      expect(res.stderr).toContain("good-ran");
+      expect(res.stdout).toBe("");
+      expect(fs.existsSync(path.join(tmpDir, ".bkit/.unavailable"))).toBe(false);
+    }, 90_000);
+
+    it("logs and carries on when the installed bkit has no provision verb", () => {
+      const res = runHook("<!-- bkit:end -->\n" + block("good", "true"), "#!/bin/bash\nexit 2\n");
+      expect(res.status).toBe(0);
+      expect(res.stderr).toContain("bkit context provision did not run (non-blocking)");
+      expect(res.stdout).toBe("");
     });
   });
 });

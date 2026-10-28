@@ -128,38 +128,25 @@ fi
 # bkit runs whatever `context-fetch:provision` recipe each block carries (self-guarded with
 # `command -v <cli> || <install>`), so no stack name is baked into bkit. Runs every session
 # (a no-op once the CLI is present); the web setup script bakes the same recipes into its
-# snapshot, so this is the gh-runner + resumed-session path. `bkit context list-blocks`
-# returns each block below `bkit:end` as `provisionBlocks` ({name, body}); a bkit without
-# that field gives the bodies alone as `provision`. bkit (installed by the `pnpm install`
-# above) lists them and jq (installed by the cloud setup script) reads the JSON. See
-# .agents/context.md.
+# snapshot, so this is the gh-runner + resumed-session path. `bkit context provision`
+# (installed by the `pnpm install` above) runs the same region the setup scripts inline:
+# each recipe on its own, a failure named with its last error line, and the failures listed
+# in .bkit/.unavailable. See .agents/context.md.
 if [ -f .agents/context.md ]; then
   BKIT="$REPO_ROOT/node_modules/.bin/bkit"
-  if [ ! -x "$BKIT" ] || ! command -v jq >/dev/null 2>&1; then
-    log "context-fetch provisioning: SKIPPED — bkit (node_modules/.bin/bkit) or jq is missing. Fix: a working 'pnpm install' and the cloud setup script from .claude/bkit-cloud.md."
+  if [ ! -x "$BKIT" ]; then
+    log "context-fetch provisioning: SKIPPED — bkit (node_modules/.bin/bkit) is missing. Fix: a working 'pnpm install'."
   else
-    PROVISION=$("$BKIT" context list-blocks --json 2>/dev/null \
-      | jq -c '.provisionBlocks // ((.provision // []) | map({name: "", body: .}))' 2>/dev/null || true)
-    COUNT=$(printf '%s' "$PROVISION" | jq 'length' 2>/dev/null || true)
-    if [ "${COUNT:-0}" -gt 0 ]; then
-      log "provisioning context-fetch CLIs from .agents/context.md"
-      # pnpm refuses `add -g` unless its global-bin dir is on PATH (corepack pnpm skips
-      # `pnpm setup`); export it so `pnpm add -g` provision recipes don't self-skip. Mirrors
-      # the web setup script's provision region, which bkit's install engine renders.
-      export PNPM_HOME="${PNPM_HOME:-$HOME/.local/share/pnpm}"
-      export PATH="$PNPM_HOME:$PNPM_HOME/bin:$PATH"
-      # Each recipe runs in its own bash with stop-on-error on: a failing command stops
-      # that recipe, the log names it, and the next recipe still runs.
-      i=0
-      while [ "$i" -lt "$COUNT" ]; do
-        NAME=$(printf '%s' "$PROVISION" | jq -r ".[$i].name")
-        [ -n "$NAME" ] || NAME="#$((i + 1))"
-        printf '%s\n' "$PROVISION" | jq -r ".[$i].body" | bash -e \
-          || log "context-fetch provision '$NAME' failed (non-blocking); its CLI will be absent"
-        i=$((i + 1))
-      done
-    fi
+    log "provisioning from .agents/context.md (bkit context provision)"
+    "$BKIT" context provision >/dev/null || log "bkit context provision did not run (non-blocking)"
   fi
+fi
+
+# SessionStart stdout is added to the session's context: tell the agent what setup could
+# not provide, so it treats those as absent instead of retrying their install.
+if [ -s .bkit/.unavailable ]; then
+  printf 'Cloud setup could not provide these in this session (setup failed; treat them as absent, do not retry the install):\n'
+  cat .bkit/.unavailable
 fi
 
 # --- Per-repo install steps -------------------------------------------------

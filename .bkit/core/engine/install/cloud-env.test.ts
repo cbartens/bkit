@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  UNAVAILABLE_RELPATH,
   parseEnvrc,
   parseDotenv,
   resolveConsumerPnpm,
@@ -367,20 +368,21 @@ describe("extractContextFetchProvisionRecipes / renderCloudContextFetchProvision
     const rendered = renderCloudContextFetchProvision(tmpDir);
     expect(rendered).toContain("pnpm add -g vercel");
     expect(rendered).toContain("pnpm add -g supabase");
-    expect(rendered).toContain(".agents/context.md provision blocks");
+    expect(rendered).toContain("context-fetch provision recipes (from .agents/context.md)");
     // pnpm's global-bin dir must be on PATH before any `pnpm add -g` recipe, else it
     // aborts the setup script ("global bin directory … is not in PATH").
     expect(rendered).toContain('export PNPM_HOME="${PNPM_HOME:-$HOME/.local/share/pnpm}"');
     expect(rendered).toContain('export PATH="$PNPM_HOME:$PNPM_HOME/bin:$PATH"');
     // The PATH export must come BEFORE the first pnpm-add recipe.
     expect(rendered.indexOf("PNPM_HOME")).toBeLessThan(rendered.indexOf("pnpm add -g"));
-    // Each recipe runs in its own `set -e` subshell with the script's errexit off around
-    // them, so a failing recipe neither aborts the snapshot build nor hides behind a
-    // later command that succeeds; its own block name is reported.
+    // Each recipe runs through the one runner, by its block name, with the script's
+    // errexit off around them; the closing line reads $BKIT_UNAVAILABLE.
     expect(rendered.indexOf("set +e")).toBeLessThan(rendered.indexOf("pnpm add -g"));
-    expect(rendered.match(/^\(\n {2}set -e$/gm)).toHaveLength(2);
-    expect(rendered).toContain("[cloud-setup] context-fetch provision 'vercel' failed");
-    expect(rendered).toContain("[cloud-setup] context-fetch provision 'supabase' failed");
+    expect(rendered.match(/^bkit_provision\(\) \{$/gm)).toHaveLength(1);
+    expect(rendered).toContain("bkit_provision 'vercel' bkit_provision_1");
+    expect(rendered).toContain("bkit_provision 'supabase' bkit_provision_2");
+    expect(rendered).toContain('BKIT_UNAVAILABLE=""');
+    expect(rendered).toContain(`$REPO_ROOT/${UNAVAILABLE_RELPATH}`);
     expect(rendered.trimEnd().endsWith("\nset -e")).toBe(true);
   });
 
@@ -390,7 +392,7 @@ describe("extractContextFetchProvisionRecipes / renderCloudContextFetchProvision
       "<!-- bkit:end -->\n<!-- context-fetch:provision -->\n```bash\necho hi\n```\n<!-- context-fetch:end -->\n",
     );
     expect(renderCloudContextFetchProvision(tmpDir)).toContain(
-      "[cloud-setup] context-fetch provision '#1' failed",
+      "bkit_provision '#1' bkit_provision_1",
     );
   });
 
@@ -624,6 +626,27 @@ describe("cloudAutoModeEnvironment / renderCloudUserSettings", () => {
   });
 });
 
+describe("cloud setup scripts — the closing line names failed provision recipes", () => {
+  const TOKENS: TokenMap = { DEFAULT_BRANCH: "main", PROJECT_NAME: "p", REPO_SLUG: "o/p" };
+
+  it.each([
+    [".claude", writeClaudeCloudDoc],
+    [".codex", writeCodexCloudDoc],
+  ] as const)("%s: closes with $BKIT_UNAVAILABLE, after the recipes run", (dir, render) => {
+    write(
+      ".agents/context.md",
+      "<!-- bkit:end -->\n<!-- context-fetch:provision db -->\n```bash\ntrue\n```\n<!-- context-fetch:end -->\n",
+    );
+    render(tmpDir, TOKENS);
+    const doc = fs.readFileSync(path.join(tmpDir, dir, "bkit-cloud.md"), "utf-8");
+    const closing = doc.indexOf('echo "cloud setup done: ');
+    expect(closing).toBeGreaterThan(doc.indexOf("bkit_provision 'db' bkit_provision_1"));
+    expect(doc.slice(closing).split("\n")[0]).toContain(
+      "${BKIT_UNAVAILABLE:+ — UNAVAILABLE: $BKIT_UNAVAILABLE",
+    );
+  });
+});
+
 describe("cloud docs — the env block never depends on the tracker", () => {
   const TOKENS: TokenMap = {
     DEFAULT_BRANCH: "main",
@@ -683,8 +706,10 @@ describe("renderCursorContextFetchProvision", () => {
         "<!-- context-fetch:provision vercel -->\n```bash\ncommand -v vercel || pnpm add -g vercel\n```\n<!-- context-fetch:end -->\n",
     );
     const out = renderCursorContextFetchProvision(tmpDir);
-    expect(out).toContain("command -v vercel || pnpm add -g vercel");
+    expect(out).toContain("`vercel`");
     expect(out).toContain(".cursor/environment.json");
+    expect(out).toContain("pnpm exec bkit context provision");
+    expect(out).toContain(UNAVAILABLE_RELPATH);
   });
 });
 
