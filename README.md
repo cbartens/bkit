@@ -124,7 +124,7 @@ Every agent in each phase, in the order it runs and what it checks: [pipeline re
 | opencode + Ollama | `deepseek-v4.1-flash:1017` · 40.9; `minimax-m3.1-flash` · 28.8 for risk, security and root-cause agents | `deepseek-v4.1-flash:1017` · 40.9 |
 | opencode + OpenCode Zen | `deepseek-v4.1-flash` · 40.9; `glm-5.3-flash` · 19.0 for risk, security and root-cause agents | `deepseek-v4.1-flash` · 40.9 |
 | opencode + OpenCode Go | `deepseek-v4.1-flash` · 40.9; `mimo-v2.6-pro` · 35.2 for risk, security and root-cause agents | `deepseek-v4.1-flash` · 40.9 |
-| Codex | `gpt-6-astra` · 77.5 | `gpt-6.1-sol` · 68.7 |
+| Codex | `gpt-6-astra` · 77.5; `gpt-6.1-sol` · 68.7 for the builders | `gpt-6.1-sol` · 68.7 |
 | Google Antigravity | `gemini-4-argon` · 61.2 | `gemini-4-argon` · 61.2 |
 
 **Reading the table:**
