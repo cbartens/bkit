@@ -7,7 +7,7 @@
 // The pruning tests cover: the store accumulates, malformed lines are never pruned,
 // unharvested rows survive.
 
-import { execSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -24,6 +24,7 @@ import {
   stampRepo,
 } from "./ledgers";
 import { normalize, type TelemetryEvent } from "../../.bkit/core/engine/ledgers/telemetry";
+import { requireTsx } from "../../vitest.tsx-bin";
 
 interface FileSnapshot {
   content: string;
@@ -644,5 +645,90 @@ describe("consumerPathToSlug — resolves from the consumer's git remote", () =>
     fs.mkdirSync(dir, { recursive: true });
     // The last-resort value is obviously not a slug (not `GitHub/no-remote-app`).
     expect(consumerPathToSlug(dir)).toBe("no-remote-app");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A row the engine's dispatch seam wrote survives `ledgers commit` and the harvest
+// ---------------------------------------------------------------------------
+
+// The row is the seam's own output: the real CLI runs in a real worktree that holds an
+// active run, one verb fails with an undeclared exit, and the seam appends the friction
+// row to the run's own `.bkit/friction.jsonl`. Nothing here is a seeded row.
+describe("Harvest: a friction row the dispatch seam wrote", () => {
+  const FID = "902-seam";
+  const CLI = path.resolve(__dirname, "../../.bkit/core/engine/cli.ts");
+
+  const git = (cwd: string, args: string[]): string => {
+    const res = spawnSync("git", args, { cwd, encoding: "utf-8" });
+    if (res.status !== 0) throw new Error(`git ${args.join(" ")}: ${res.stderr}`);
+    return res.stdout.trim();
+  };
+
+  const bkit = (cwd: string, args: string[], journal: "on" | "off") =>
+    spawnSync(requireTsx(), [CLI, ...args], {
+      cwd,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1", BKIT_ENGINE_JOURNAL: journal },
+      timeout: 60_000,
+    });
+
+  it("keeps a seam-written tool-failure row through commit and harvest", () => {
+    fs.mkdirSync(path.join(tmpDir, "consumer-app"), { recursive: true });
+    const main = fs.realpathSync(path.join(tmpDir, "consumer-app"));
+    git(main, ["init", "-q", "-b", "dev"]);
+    git(main, ["config", "user.name", "t"]);
+    git(main, ["config", "user.email", "t@t"]);
+    git(main, ["remote", "add", "origin", "https://github.com/test-owner/consumer-app.git"]);
+    fs.writeFileSync(path.join(main, "README.md"), "x\n");
+    git(main, ["add", "."]);
+    git(main, ["commit", "-q", "-m", "init"]);
+    const worktree = path.join(main, ".worktrees", FID);
+    git(main, ["worktree", "add", "-q", "-b", `feat/${FID}`, worktree]);
+    const statusRel = path.join("docs", "plans", "202610", "logs", FID, "status.jsonl");
+    fs.mkdirSync(path.dirname(path.join(worktree, statusRel)), { recursive: true });
+    fs.writeFileSync(
+      path.join(worktree, statusRel),
+      `${JSON.stringify({ type: "workflow-started", workflow: "build", at: "2026-10-29T10:00:00Z" })}\n`,
+    );
+
+    // `ledgers check --plan=<a directory>` dies on a raw EISDIR: an exit no verb declares.
+    const failed = bkit(worktree, ["ledgers", "check", `--plan=${worktree}`], "on");
+    expect(failed.status).toBe(1);
+
+    const frictionFile = path.join(worktree, ".bkit", "friction.jsonl");
+    const written = fs.readFileSync(frictionFile, "utf-8").trim().split("\n");
+    expect(written).toHaveLength(1);
+    const seamRow = JSON.parse(written[0]!) as Record<string, unknown>;
+    expect(seamRow).toMatchObject({
+      kind: "friction",
+      category: "tool-failure",
+      key: "ledgers-check/ledgers-check",
+      by: { workflow: "build", step: "ledgers-check" },
+    });
+
+    // The real `ledgers commit` writer carries it into the run's branch.
+    const committed = bkit(
+      worktree,
+      ["ledgers", "commit", "--scope=core", "--mode=commit", "--month=202610", `--fid=${FID}`, "--message=chore: bookkeeping"],
+      "off",
+    );
+    expect(committed.status, committed.stderr).toBe(0);
+    expect(git(worktree, ["show", "HEAD:.bkit/friction.jsonl"]).trim()).toBe(written[0]);
+
+    // And the harvest banks it, then prunes it from the run's checkout.
+    const bkitRoot = makeBkitRoot(tmpDir, [worktree]);
+    runHarvest(bkitRoot);
+    const store = fs
+      .readFileSync(path.join(bkitRoot, HARVEST_DEST_DIR, "friction.jsonl"), "utf-8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(store.filter((r) => r["key"] === seamRow["key"])).toHaveLength(1);
+    expect(store.find((r) => r["key"] === seamRow["key"])).toMatchObject({
+      kind: "friction",
+      category: "tool-failure",
+    });
+    expect(fs.readFileSync(frictionFile, "utf-8")).toBe("");
   });
 });

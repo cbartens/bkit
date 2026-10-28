@@ -50,7 +50,7 @@ Each `kind` goes to one file. Its writers:
 | `counter` | `.bkit/stats.jsonl` | `bkit workflows close` of design / plan / build / debug / ship (attempt counters); utility orchestrator (a direct chat outside any workflow, the owner deciding in it) |
 | `chat` | `harvest/stats.jsonl` (bkit repo only) | bkit's harvest script: per agent chat on the maintainer's machine, any repo or host |
 | `run` | `harvest/stats.jsonl` (bkit repo only) | Same script: per workflow run in the run logs of every repo a chat ran in |
-| `friction` | `.bkit/friction.jsonl` | orchestrator workflows (design / plan / build / debug / ship / auto) on observed friction; utility orchestrator (a direct chat outside any workflow that meets friction) |
+| `friction` | `.bkit/friction.jsonl` | orchestrator workflows (design / plan / build / debug / ship / auto) on observed friction; utility orchestrator (a direct chat outside any workflow that meets friction); the engine itself, as the active workflow, on a bkit command's undeclared non-zero exit (`category: "tool-failure"`, `scope: "bkit-repo"`, in the active run's own book root; `BKIT_ENGINE_JOURNAL=off` disables it) |
 | `deferral` | `docs/deferrals.jsonl` | `@bkit-design-generate`, `@bkit-plan-generate`, `@bkit-plan-update`, `@bkit-debug-abort-handover`, `@bkit-ship-deferred-sweep` (adjudication only), `@bkit-utility-update-deferrals` (close / triage / locator), build orchestrator (`LOW` challenge finding → `low-severity`, through `bkit challenge merge`), ship orchestrator (assumed accept nobody confirmed → `needs-decision`, through `bkit decisions pending --defer`), utility orchestrator (a direct chat outside any workflow, the owner deciding in it) |
 | `failure` | `docs/failures.jsonl` | any agent on a discovered bug; `@bkit-debug-abort-handover`; `@bkit-audit-generate` (`MEDIUM`+ findings; rerun closes rows it no longer finds); `@bkit-utility-update-failures` (close / triage / locator) |
 | `knowledge` | `docs/knowledge.jsonl` | `@bkit-build-plan-execute`, `@bkit-build-plan-gaps-remediate`, `@bkit-debug-failure-remediate` (after verified fix), `@bkit-utility-update-knowledge` (supersede / correct), utility orchestrator (a direct chat outside any workflow, the owner deciding in it) |
@@ -262,7 +262,7 @@ Categories are free-form. Use the closest term, or `other` if none fits. `deferr
 | `permission-prompt` | tool / permission approval prompt |
 | `agent-rework` | agent redo / self-correction |
 | `manual-install` | manual dependency / tool install |
-| `tool-failure` | tool / command error |
+| `tool-failure` | tool / command error; the engine writes it on a bkit command's exit that is neither a shared routing code nor one of the verb's own `exitCodes`, or on a non-`CommandError` throw. `key` = `<noun>-<verb>/<step>` (`<step>` = the command's `--step=`, else `<noun>-<verb>`), kept under 60 chars because the identity-gated prune truncates a friction key at about 68; a recurrence raises `recurrenceCount` on the one row |
 | `destructive-backout` | reverted a destructive action |
 | `other` | none of the above |
 
