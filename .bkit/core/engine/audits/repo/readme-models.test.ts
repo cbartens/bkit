@@ -4,7 +4,7 @@
  *
  * Sources:
  *   - `prompts.md` § Models: the model each agent runs on, one column per provider.
- *   - `providers.md` § Agentic-coding parity board: each model's LiveBench Agentic Coding score.
+ *   - `providers.md` § LiveBench 2.0 board: each model's Long Agentic score.
  *   - `providers.md` § Per-tier lineup across providers: the Claude bar for each tier.
  *
  * The README has one row per § Models provider column and one column per Claude tier. A tier
@@ -42,8 +42,9 @@ const README_ROWS: Record<string, string> = {
  */
 const BOARD_NAME: Record<string, string> = {
   "cursor-grok-4.5-high": "grok-4.5",
-  "deepseek/deepseek-v4.1-flash-1017": "deepseek-v4.1-flash",
-  "deepseek-v4.1-flash:1017": "deepseek-v4.1-flash",
+  "deepseek/deepseek-v4.1-flash-1017": "deepseek-v4.1-flash-1017",
+  "deepseek-v4.1-flash:1017": "deepseek-v4.1-flash-1017",
+  "deepseek-v4.1-flash": "deepseek-v4.1-flash-1017",
 };
 
 /** Cells of the first markdown table after `heading`; header row first, separator row dropped. */
@@ -109,9 +110,9 @@ function pinned(column: string, tier: string): string[] {
   return [...new Set(models)].map(String).sort();
 }
 
-/** Parity board: model name → score, bold and dagger stripped. */
+/** Parity board: model name → Long Agentic score, bold and dagger stripped. */
 const boardScores = new Map(
-  tableAfter(PROVIDERS_MD, "### Agentic-coding parity board")
+  tableAfter(PROVIDERS_MD, "### LiveBench 2.0 board — 2026-10-25")
     .slice(1)
     .filter((r) => /^`[^`]+`$/.test(r[0]))
     .map((r) => [unquote(r[0]), r[1].replace(/\*\*/g, "").replace(/\s*†$/, "")]),

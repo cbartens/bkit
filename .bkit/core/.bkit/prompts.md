@@ -131,7 +131,7 @@ Canonical per-agent metadata — **single source of truth for model per agent**.
 
 > **`OpenAI` column — PROVISIONAL, not parity-proven.** Every other gateway column = live catalog probe + per-model tool-calling smoke. `OpenAI` cells mapped from documented role only (`gpt-6-astra` deep reasoning, `gpt-5.6-terra` balanced default). Haiku cells are board-picked: `gpt-6-luna` (LiveBench 51.2; `gpt-5.6-luna` measures 48.4), 2026-10-09, existence via models.dev only — no OpenAI key to probe. Re-pin from a real probe before relying on them. `gpt-5.4` / `gpt-5.4-mini` retired 2026-08-31.
 
-> **`Google` column — repin pending.** Cells pin `gemini-3.8-pro`, which LiveBench 2.0 does not measure. `gemini-4-argon` is measured at **61.2** Long Agentic and is served on the `google` provider (models.dev), so the column should move to it; `gemini-3.8-flash` 16.5 is not a candidate.
+> **`Google` column — measured pin.** Every cell runs `gemini-4-argon`, **61.2** Long Agentic on the 2.0 board and served on the `google` provider (models.dev), so Antigravity's free tier and Google subscription both reach it. The prior `gemini-3.8-pro` pin is unmeasured on 2.0 and retires; `gemini-3.8-flash` 16.5 is not a candidate.
 
 `Effort` + `Max Turns` cross-host: `Effort` = Claude `effort:` → opencode `variant:` field / Codex `model_reasoning_effort` at install; `Max Turns` = runaway cap (Claude today). `Anthropic` / `Effort` / `Max Turns` restate prompt-file frontmatter — parity enforced by `.bkit/core/engine/audits/workflows/models-table-parity.test.ts`. See § `maxTurns` calibration for workload rationale.
 
@@ -146,45 +146,45 @@ Canonical per-agent metadata — **single source of truth for model per agent**.
 <!-- prettier-ignore -->
 | Prompt | Anthropic | Cursor | OpenRouter | Ollama | OpenCode Zen | OpenCode Go | OpenAI | Google | Effort | Max Turns | Role |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `bkit-design-brainstorm-ideate-1` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-3.8-pro` | `high` | 100 | parallel slot 1 (pragmatic lens) |
-| `bkit-design-brainstorm-ideate-2` | `claude-sonnet-5-5` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-5.6-terra` | `gemini-3.8-pro` | `medium` | 100 | parallel slot 2 (optimal-tradeoff lens; Composer vs Grok siblings on Cursor; cross-tier on Claude) |
-| `bkit-design-brainstorm-ideate-3` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `moonshotai/kimi-k3` | `kimi-k3` | `kimi-k3` | `kimi-k3` | `gpt-6-astra` | `gemini-3.8-pro` | `high` | 100 | parallel slot 3 (risk-premortem lens) |
-| `bkit-design-generate` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-3.8-pro` | `high` | 100 | generate design from brainstorms (top-of-pipeline synthesizer; whole-doc rewrite) |
-| `bkit-design-review-1` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-3.8-pro` | `high` | 100 | design review slot 1 (web search + feasibility analysis) |
-| `bkit-design-review-2` | `claude-sonnet-5-5` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-5.6-terra` | `gemini-3.8-pro` | `medium` | 100 | design review slot 2 (Composer vs Grok sibling on Cursor; cross-tier on Claude) |
-| `bkit-design-spike` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-3.8-pro` | `high` | 200 | settle review-named unknowns with throwaway probe code (conditional step) |
-| `bkit-design-update` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-3.8-pro` | `high` | 200 | merge review critiques into design (whole-doc rewrite — needs depth) |
-| `bkit-design-organise` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-3.8-pro` | `high` | 100 | decompose reviewed design into dependency-annotated workstreams; coverage self-verify + DAG cycle detection |
-| `bkit-plan-generate` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-3.8-pro` | `high` | 400 | plan draft generator (top-of-pipeline synthesizer) |
-| `bkit-plan-review-1` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-3.8-pro` | `high` | 100 | review slot 1 (tightness + dependency order + design-coverage; reads the plan) |
-| `bkit-plan-review-2` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `moonshotai/kimi-k3` | `kimi-k3` | `kimi-k3` | `kimi-k3` | `gpt-6-astra` | `gemini-3.8-pro` | `high` | 100 | review slot 2 (regression-risk + design-coverage; reads the code) |
-| `bkit-plan-scope-check` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-3.8-pro` | `medium` | 100 | scope audit (template, criteria, verification; mechanical audit — medium effort, depth-sensitive — opus) |
-| `bkit-plan-update` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-3.8-pro` | `high` | 200 | merge review + scope critiques into plan (whole-doc rewrite — needs depth) |
-| `bkit-build-plan-convert` | `claude-sonnet-5-5` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-5.6-terra` | `gemini-3.8-pro` | `medium` | 50 | write an issue or a free-form plan as task blocks (single-doc writer with one check command) |
-| `bkit-build-plan-current` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-3.8-pro` | `high` | 200 | judge plan vs changes landed since its base commit |
-| `bkit-build-install-skills` | `claude-sonnet-5-5` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-5.6-terra` | `gemini-3.8-pro` | `medium` | 100 | skill identifier |
-| `bkit-build-plan-execute` | `claude-sonnet-5-5` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-5.6-terra` | `gemini-3.8-pro` | `medium` | 100 | task executor for one plan group (source modifier with test loop) |
-| `bkit-build-plan-verify` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-3.8-pro` | `high` | 100 | verify one group, or the whole plan once, vs the plan |
-| `bkit-build-plan-gaps-remediate` | `claude-sonnet-5-5` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-5.6-terra` | `gemini-3.8-pro` | `medium` | 100 | fix one group's verification gaps (source modifier with test loop) |
-| `bkit-build-challenge-1` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-3.8-pro` | `high` | 200 | parallel slot 1 (bug-hunting lens) |
-| `bkit-build-challenge-2` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `moonshotai/kimi-k3` | `kimi-k3` | `kimi-k3` | `kimi-k3` | `gpt-6-astra` | `gemini-3.8-pro` | `high` | 200 | parallel slot 2 (security lens; depth-sensitive — both opus) |
-| `bkit-debug-failure-reproduce` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-3.8-pro` | `high` | 200 | failing tests from a bug report, no fix; opus over the sonnet test-writer tier — an off-symptom test sends the fix loop after the wrong bug |
-| `bkit-debug-failure-diagnose` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `moonshotai/kimi-k3` | `kimi-k3` | `kimi-k3` | `kimi-k3` | `gpt-6-astra` | `gemini-3.8-pro` | `high` | 200 | failure diagnosis (Final-strategy attempts especially benefit from depth before human handover) |
-| `bkit-debug-failure-remediate` | `claude-sonnet-5-5` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-5.6-terra` | `gemini-3.8-pro` | `medium` | 200 | implement diagnosis fixes (source modifier with test loop) |
-| `bkit-debug-failure-soak` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `moonshotai/kimi-k3` | `kimi-k3` | `kimi-k3` | `kimi-k3` | `gpt-6-astra` | `gemini-3.8-pro` | `high` | 200 | soak fix — one accumulating-context instrument-or-fix step per iteration against the live boundary (orchestrator re-runs tests + loops) |
-| `bkit-debug-abort-handover` | `claude-sonnet-5-5` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-5.6-terra` | `gemini-3.8-pro` | `medium` | 100 | handover writer |
-| `bkit-ship-conflict-resolve` | `claude-sonnet-5-5` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-5.6-terra` | `gemini-3.8-pro` | `medium` | 200 | mechanical rebase-conflict resolver (source modifier with test loop) |
-| `bkit-ship-deferred-sweep` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-3.8-pro` | `high` | 200 | pre-merge completeness gate — intended-vs-actual + declared-deferral resurface |
-| `bkit-ship-update-docs` | `claude-sonnet-5-5` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-5.6-terra` | `gemini-3.8-pro` | `high` | 200 | sync cataloged docs (multi-doc writer) |
-| `bkit-audit-generate` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-3.8-pro` | `high` | 400 | audit report from one template (top-of-pipeline synthesizer) |
-| `bkit-utility-update-deferrals` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-3.8-pro` | `medium` | 400 | deferrals update |
-| `bkit-utility-update-failures` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-3.8-pro` | `medium` | 400 | failures update |
-| `bkit-utility-update-decisions` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-3.8-pro` | `medium` | 400 | decisions update |
-| `bkit-utility-update-knowledge` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-3.8-pro` | `medium` | 400 | knowledge update |
-| `bkit-utility-update-roadmap` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-3.8-pro` | `medium` | 400 | roadmap analysis |
-| `bkit-utility-update-tracker` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-3.8-pro` | `medium` | 400 | tracker update |
-| `bkit-utility-compress-markdown` | `claude-sonnet-5-5` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-5.6-terra` | `gemini-3.8-pro` | `medium` | 100 | token-optimize markdown |
-| `bkit-utility-update-documentation` | `claude-sonnet-5-5` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-5.6-terra` | `gemini-3.8-pro` | `high` | 400 | doc sync (multi-doc writer) |
+| `bkit-design-brainstorm-ideate-1` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-4-argon` | `high` | 100 | parallel slot 1 (pragmatic lens) |
+| `bkit-design-brainstorm-ideate-2` | `claude-sonnet-5-5` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-5.6-terra` | `gemini-4-argon` | `medium` | 100 | parallel slot 2 (optimal-tradeoff lens; Composer vs Grok siblings on Cursor; cross-tier on Claude) |
+| `bkit-design-brainstorm-ideate-3` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `moonshotai/kimi-k3` | `kimi-k3` | `kimi-k3` | `kimi-k3` | `gpt-6-astra` | `gemini-4-argon` | `high` | 100 | parallel slot 3 (risk-premortem lens) |
+| `bkit-design-generate` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-4-argon` | `high` | 100 | generate design from brainstorms (top-of-pipeline synthesizer; whole-doc rewrite) |
+| `bkit-design-review-1` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-4-argon` | `high` | 100 | design review slot 1 (web search + feasibility analysis) |
+| `bkit-design-review-2` | `claude-sonnet-5-5` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-5.6-terra` | `gemini-4-argon` | `medium` | 100 | design review slot 2 (Composer vs Grok sibling on Cursor; cross-tier on Claude) |
+| `bkit-design-spike` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-4-argon` | `high` | 200 | settle review-named unknowns with throwaway probe code (conditional step) |
+| `bkit-design-update` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-4-argon` | `high` | 200 | merge review critiques into design (whole-doc rewrite — needs depth) |
+| `bkit-design-organise` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-4-argon` | `high` | 100 | decompose reviewed design into dependency-annotated workstreams; coverage self-verify + DAG cycle detection |
+| `bkit-plan-generate` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-4-argon` | `high` | 400 | plan draft generator (top-of-pipeline synthesizer) |
+| `bkit-plan-review-1` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-4-argon` | `high` | 100 | review slot 1 (tightness + dependency order + design-coverage; reads the plan) |
+| `bkit-plan-review-2` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `moonshotai/kimi-k3` | `kimi-k3` | `kimi-k3` | `kimi-k3` | `gpt-6-astra` | `gemini-4-argon` | `high` | 100 | review slot 2 (regression-risk + design-coverage; reads the code) |
+| `bkit-plan-scope-check` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-4-argon` | `medium` | 100 | scope audit (template, criteria, verification; mechanical audit — medium effort, depth-sensitive — opus) |
+| `bkit-plan-update` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-4-argon` | `high` | 200 | merge review + scope critiques into plan (whole-doc rewrite — needs depth) |
+| `bkit-build-plan-convert` | `claude-sonnet-5-5` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-5.6-terra` | `gemini-4-argon` | `medium` | 50 | write an issue or a free-form plan as task blocks (single-doc writer with one check command) |
+| `bkit-build-plan-current` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-4-argon` | `high` | 200 | judge plan vs changes landed since its base commit |
+| `bkit-build-install-skills` | `claude-sonnet-5-5` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-5.6-terra` | `gemini-4-argon` | `medium` | 100 | skill identifier |
+| `bkit-build-plan-execute` | `claude-sonnet-5-5` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-5.6-terra` | `gemini-4-argon` | `medium` | 100 | task executor for one plan group (source modifier with test loop) |
+| `bkit-build-plan-verify` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-4-argon` | `high` | 100 | verify one group, or the whole plan once, vs the plan |
+| `bkit-build-plan-gaps-remediate` | `claude-sonnet-5-5` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-5.6-terra` | `gemini-4-argon` | `medium` | 100 | fix one group's verification gaps (source modifier with test loop) |
+| `bkit-build-challenge-1` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-4-argon` | `high` | 200 | parallel slot 1 (bug-hunting lens) |
+| `bkit-build-challenge-2` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `moonshotai/kimi-k3` | `kimi-k3` | `kimi-k3` | `kimi-k3` | `gpt-6-astra` | `gemini-4-argon` | `high` | 200 | parallel slot 2 (security lens; depth-sensitive — both opus) |
+| `bkit-debug-failure-reproduce` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-4-argon` | `high` | 200 | failing tests from a bug report, no fix; opus over the sonnet test-writer tier — an off-symptom test sends the fix loop after the wrong bug |
+| `bkit-debug-failure-diagnose` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `moonshotai/kimi-k3` | `kimi-k3` | `kimi-k3` | `kimi-k3` | `gpt-6-astra` | `gemini-4-argon` | `high` | 200 | failure diagnosis (Final-strategy attempts especially benefit from depth before human handover) |
+| `bkit-debug-failure-remediate` | `claude-sonnet-5-5` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-5.6-terra` | `gemini-4-argon` | `medium` | 200 | implement diagnosis fixes (source modifier with test loop) |
+| `bkit-debug-failure-soak` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `moonshotai/kimi-k3` | `kimi-k3` | `kimi-k3` | `kimi-k3` | `gpt-6-astra` | `gemini-4-argon` | `high` | 200 | soak fix — one accumulating-context instrument-or-fix step per iteration against the live boundary (orchestrator re-runs tests + loops) |
+| `bkit-debug-abort-handover` | `claude-sonnet-5-5` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-5.6-terra` | `gemini-4-argon` | `medium` | 100 | handover writer |
+| `bkit-ship-conflict-resolve` | `claude-sonnet-5-5` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-5.6-terra` | `gemini-4-argon` | `medium` | 200 | mechanical rebase-conflict resolver (source modifier with test loop) |
+| `bkit-ship-deferred-sweep` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-4-argon` | `high` | 200 | pre-merge completeness gate — intended-vs-actual + declared-deferral resurface |
+| `bkit-ship-update-docs` | `claude-sonnet-5-5` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-5.6-terra` | `gemini-4-argon` | `high` | 200 | sync cataloged docs (multi-doc writer) |
+| `bkit-audit-generate` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-4-argon` | `high` | 400 | audit report from one template (top-of-pipeline synthesizer) |
+| `bkit-utility-update-deferrals` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-4-argon` | `medium` | 400 | deferrals update |
+| `bkit-utility-update-failures` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-4-argon` | `medium` | 400 | failures update |
+| `bkit-utility-update-decisions` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-4-argon` | `medium` | 400 | decisions update |
+| `bkit-utility-update-knowledge` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-4-argon` | `medium` | 400 | knowledge update |
+| `bkit-utility-update-roadmap` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-4-argon` | `medium` | 400 | roadmap analysis |
+| `bkit-utility-update-tracker` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-4-argon` | `medium` | 400 | tracker update |
+| `bkit-utility-compress-markdown` | `claude-sonnet-5-5` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-5.6-terra` | `gemini-4-argon` | `medium` | 100 | token-optimize markdown |
+| `bkit-utility-update-documentation` | `claude-sonnet-5-5` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-5.6-terra` | `gemini-4-argon` | `high` | 400 | doc sync (multi-doc writer) |
 
 **Effort vs maxTurns vs model — three independent knobs:**
 
@@ -201,7 +201,7 @@ Canonical per-agent metadata — **single source of truth for model per agent**.
 >
 > - **Claude** (`/v1/models`) — pins `claude-opus-5-5` / `claude-sonnet-5-5` / `claude-haiku-5-5`. Opus 5, Sonnet 5 and Haiku 4.5 remain listed; not pinned.
 > - **Cursor** (`/v0/models`) — **defaults = first-party pool only:** `cursor-grok-4.5-high` (depth / synthesizers / parallel diversity) + `composer-2.5` (volume / build+ship orchestrators). Catalog has **no** `cursor-grok-4.7` and **no** Opus 5.5 / Sonnet 5.5 IDs. API-pool IDs present and **not pinned**: `claude-opus-5-thinking-high`, `claude-sonnet-5-thinking-high`/`-xhigh`, `gpt-5.6-*`, `claude-fable-5-thinking-high`/`-xhigh`. Opt in via § Model Overrides.
-> - **Google** — Antigravity pins `gemini-3.8-pro` for reasoning/synthesis, `gemini-3.8-flash` for the haiku tier.
+> - **Google** — Antigravity pins `gemini-4-argon` for reasoning/synthesis, `gemini-3.8-flash` for the haiku tier.
 >
 > **OpenAI-compatible providers curated + tool-call-smoked** (`tools:` chat / completions round-trip per pin, confirming `tool_calls` — `/models` existence != tool-calls):
 >
@@ -220,11 +220,11 @@ Canonical per-agent metadata — **single source of truth for model per agent**.
 <!-- prettier-ignore -->
 | Orchestrator | Anthropic | Cursor | OpenRouter | Ollama | OpenCode Zen | OpenCode Go | OpenAI | Google | Role |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `/design` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-3.8-pro` | Synthesizes conflicting brainstorms; resolves design ambiguity. |
-| `/plan` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-3.8-pro` | Merges review (pair) + scope-check critiques in one pass; fixes what `tests plan-check` refuses after each plan write. |
-| `/build` | `claude-sonnet-5-5` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-5.6-terra` | `gemini-3.8-pro` | Fixed pipeline: dispatch → verify → challenge → tests → summary. Subagents own the heavy reasoning (`bkit-build-challenge-1`/`-2`, `bkit-build-plan-verify` are `high` effort). |
-| `/debug` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-3.8-pro` | Picks remediation path under uncertainty; Standard / Pivot / Final escalation. |
-| `/ship` | `claude-sonnet-5-5` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-5.6-terra` | `gemini-3.8-pro` | Mostly mechanical: merge + archive + parallel docs / summary. |
+| `/design` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-4-argon` | Synthesizes conflicting brainstorms; resolves design ambiguity. |
+| `/plan` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-4-argon` | Merges review (pair) + scope-check critiques in one pass; fixes what `tests plan-check` refuses after each plan write. |
+| `/build` | `claude-sonnet-5-5` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-5.6-terra` | `gemini-4-argon` | Fixed pipeline: dispatch → verify → challenge → tests → summary. Subagents own the heavy reasoning (`bkit-build-challenge-1`/`-2`, `bkit-build-plan-verify` are `high` effort). |
+| `/debug` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-4-argon` | Picks remediation path under uncertainty; Standard / Pivot / Final escalation. |
+| `/ship` | `claude-sonnet-5-5` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-5.6-terra` | `gemini-4-argon` | Mostly mechanical: merge + archive + parallel docs / summary. |
 
 **Rule:** Opus where orchestrator resolves ambiguity; Sonnet for defined sequence. **If** Sonnet orchestrator skips Failure Path branches or mis-routes verify gaps → escalate Opus.
 
@@ -403,13 +403,13 @@ Text hooks add to an agent's context mid-run — every agent and subagent, no fr
 
 Three settings for the opencode columns between subscription resets, priced against measured cache-read volume (`.bkit/providers.md` § Budget band) per **2-day gap** — the days after the week's Claude and OpenAI credits run out. **Option 1 is what ships**; Options 2 and 3 are opt-in blocks to copy into § Model Overrides, and rows you leave out fall back to the default.
 
-| Preset                                          | Who runs what                                                                                              | 2-day gap (normal / push) |
-| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------- |
-| **Option 1 — cheapest (default)**               | `deepseek-v4.1-flash-1017` on the 34 working agents; the five convergent lenses on `google/gemini-4-argon` | **$47 / $98**             |
-| **Option 2 — balanced**                         | the ten spine agents plus the five lenses on `gemini-4-argon`; the rest on DeepSeek                        | **$112 / $233**           |
-| **Option 3 — highest outside Anthropic/OpenAI** | every agent on `gemini-4-argon`                                                                            | **$268 / $558**           |
+| Preset                                          | Who runs what                                                                                                                                                | 2-day gap (normal / push) |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------- |
+| **Option 1 — cheapest (default)**               | `deepseek-v4.1-flash-1017` on the 26 builder agents; the five convergent lenses and the eight reviewers, verifiers and escalators on `google/gemini-4-argon` | **$99 / $206**            |
+| **Option 2 — balanced**                         | the ten spine agents plus every reviewer and lens on `gemini-4-argon` — 19 agents; the rest on DeepSeek                                                      | **$138 / $287**           |
+| **Option 3 — highest outside Anthropic/OpenAI** | every agent on `gemini-4-argon`                                                                                                                              | **$268 / $558**           |
 
-**The lens must out-score the workhorse.** A convergent lens exists to catch what the main model misses; a weaker lens buys token variance but cannot see past the workhorse's own ceiling. Every cheaper candidate loses on the 2026-10-25 board — `mimo-v2.6-pro` 35.2 against DeepSeek's 40.9, `kimi-k3.1-pro` 39.1 — while `gemini-4-argon` 61.2 is both stronger and cheaper per cached token ($0.10) than `muse-wonder` 52.6 ($0.20) or `grok-4.7` 46.1 ($0.50).
+**Reviewers and escalators out-rank the workhorse.** Any agent whose job is to judge, challenge, verify or escalate another agent's output runs the workhorse's model at minimum, and the column's ceiling when that ceiling sits below it. A reviewer on the same cheap model as the executor adds a second pass but no second opinion — it cannot see what the executor's ceiling hid. The set: `bkit-design-review-1`/`-2`, `bkit-plan-review-1`/`-2`, `bkit-plan-scope-check`, `bkit-build-challenge-1`/`-2`, `bkit-build-plan-verify`, `bkit-build-plan-current`, `bkit-ship-deferred-sweep`, plus the five convergent lenses. Against DeepSeek's 40.9 every cheap lens fails — `mimo-v2.6-pro` 35.2, `kimi-k3.1-pro` 39.1 — while `gemini-4-argon` 61.2 is both stronger and cheaper per cached token ($0.10) than `muse-wonder` 52.6 ($0.20) or `grok-4.7` 46.1 ($0.50). Dropping the rule and keeping only the five lenses strong lands Option 1 at **$47 / $98**, with reviewers sharing the executor's blind spots.
 
 OpenRouter IDs: `deepseek-v4.1-flash-1017` = `openrouter/deepseek/deepseek-v4.1-flash-1017`, `gemini-4-argon` = `openrouter/google/gemini-4-argon`. **Bold** marks a cell that differs from the default.
 
@@ -420,23 +420,23 @@ OpenRouter IDs: `deepseek-v4.1-flash-1017` = `openrouter/deepseek/deepseek-v4.1-
 | `bkit-design-brainstorm-ideate-2` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
 | `bkit-design-brainstorm-ideate-3` | gemini-4-argon | gemini-4-argon | gemini-4-argon |
 | `bkit-design-generate` | deepseek-v4.1-flash-1017 | **gemini-4-argon** | **gemini-4-argon** |
-| `bkit-design-review-1` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
-| `bkit-design-review-2` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
+| `bkit-design-review-1` | gemini-4-argon | gemini-4-argon | gemini-4-argon |
+| `bkit-design-review-2` | gemini-4-argon | gemini-4-argon | gemini-4-argon |
 | `bkit-design-spike` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
 | `bkit-design-update` | deepseek-v4.1-flash-1017 | **gemini-4-argon** | **gemini-4-argon** |
 | `bkit-design-organise` | deepseek-v4.1-flash-1017 | **gemini-4-argon** | **gemini-4-argon** |
 | `bkit-plan-generate` | deepseek-v4.1-flash-1017 | **gemini-4-argon** | **gemini-4-argon** |
-| `bkit-plan-review-1` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
+| `bkit-plan-review-1` | gemini-4-argon | gemini-4-argon | gemini-4-argon |
 | `bkit-plan-review-2` | gemini-4-argon | gemini-4-argon | gemini-4-argon |
-| `bkit-plan-scope-check` | deepseek-v4.1-flash-1017 | **gemini-4-argon** | **gemini-4-argon** |
+| `bkit-plan-scope-check` | gemini-4-argon | gemini-4-argon | gemini-4-argon |
 | `bkit-plan-update` | deepseek-v4.1-flash-1017 | **gemini-4-argon** | **gemini-4-argon** |
 | `bkit-build-plan-convert` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
-| `bkit-build-plan-current` | deepseek-v4.1-flash-1017 | **gemini-4-argon** | **gemini-4-argon** |
+| `bkit-build-plan-current` | gemini-4-argon | gemini-4-argon | gemini-4-argon |
 | `bkit-build-install-skills` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
 | `bkit-build-plan-execute` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
-| `bkit-build-plan-verify` | deepseek-v4.1-flash-1017 | **gemini-4-argon** | **gemini-4-argon** |
+| `bkit-build-plan-verify` | gemini-4-argon | gemini-4-argon | gemini-4-argon |
 | `bkit-build-plan-gaps-remediate` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
-| `bkit-build-challenge-1` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
+| `bkit-build-challenge-1` | gemini-4-argon | gemini-4-argon | gemini-4-argon |
 | `bkit-build-challenge-2` | gemini-4-argon | gemini-4-argon | gemini-4-argon |
 | `bkit-debug-failure-reproduce` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
 | `bkit-debug-failure-diagnose` | gemini-4-argon | gemini-4-argon | gemini-4-argon |
@@ -444,7 +444,7 @@ OpenRouter IDs: `deepseek-v4.1-flash-1017` = `openrouter/deepseek/deepseek-v4.1-
 | `bkit-debug-failure-soak` | gemini-4-argon | gemini-4-argon | gemini-4-argon |
 | `bkit-debug-abort-handover` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
 | `bkit-ship-conflict-resolve` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
-| `bkit-ship-deferred-sweep` | deepseek-v4.1-flash-1017 | **gemini-4-argon** | **gemini-4-argon** |
+| `bkit-ship-deferred-sweep` | gemini-4-argon | gemini-4-argon | gemini-4-argon |
 | `bkit-ship-update-docs` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
 | `bkit-audit-generate` | deepseek-v4.1-flash-1017 | **gemini-4-argon** | **gemini-4-argon** |
 | `bkit-utility-update-deferrals` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
@@ -456,7 +456,7 @@ OpenRouter IDs: `deepseek-v4.1-flash-1017` = `openrouter/deepseek/deepseek-v4.1-
 | `bkit-utility-compress-markdown` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
 | `bkit-utility-update-documentation` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
 
-**Option 2 — balanced.** Ten spine agents move to `google/gemini-4-argon` (61.2 Long Agentic, 11.6 under the 72.8 opus bar): the synthesizers that author a design, plan or audit, and the gates that verify one. The lenses already run it by default, so no lens rows are needed. Copy into § Model Overrides:
+**Option 2 — balanced.** The remaining six spine agents move to `google/gemini-4-argon` (61.2 Long Agentic, 11.6 under the 72.8 opus bar): the synthesizers that author a design, plan or audit. Reviewers and lenses already run it by default. Copy into § Model Overrides:
 
 <!-- prettier-ignore -->
 | Prompt | Provider | Model |
@@ -465,14 +465,10 @@ OpenRouter IDs: `deepseek-v4.1-flash-1017` = `openrouter/deepseek/deepseek-v4.1-
 | bkit-design-update | openrouter | openrouter/google/gemini-4-argon |
 | bkit-design-organise | openrouter | openrouter/google/gemini-4-argon |
 | bkit-plan-generate | openrouter | openrouter/google/gemini-4-argon |
-| bkit-plan-scope-check | openrouter | openrouter/google/gemini-4-argon |
 | bkit-plan-update | openrouter | openrouter/google/gemini-4-argon |
-| bkit-build-plan-current | openrouter | openrouter/google/gemini-4-argon |
-| bkit-build-plan-verify | openrouter | openrouter/google/gemini-4-argon |
-| bkit-ship-deferred-sweep | openrouter | openrouter/google/gemini-4-argon |
 | bkit-audit-generate | openrouter | openrouter/google/gemini-4-argon |
 
-**Option 3 — highest quality outside Anthropic and OpenAI.** Every agent runs `google/gemini-4-argon`, the closest any allowed vendor gets to the opus bar; the block below covers the 34 non-lens agents, since the lenses already run it. More than a month of subscription for one gap, against roughly a quarter of the same work at Claude list price. **Gemini-led by construction:** Claude Fable 5.1 is the only model above it on the board and the vendor rule bars it, so this preset carries a single-vendor exposure. The lenses are the one place a second family fits, at a depth cost — `muse-wonder` 52.6 for ~$100 per gap, `kimi-k3.1-pro` 39.1 for ~$85. Copy into § Model Overrides:
+**Option 3 — highest quality outside Anthropic and OpenAI.** Every agent runs `google/gemini-4-argon`, the closest any allowed vendor gets to the opus bar; the block below covers the 26 builder agents, since reviewers, verifiers and lenses already run it. More than a month of subscription for one gap, against roughly a quarter of the same work at Claude list price. **Gemini-led by construction:** Claude Fable 5.1 is the only model above it on the board and the vendor rule bars it, so this preset carries a single-vendor exposure. Copy into § Model Overrides:
 
 <!-- prettier-ignore -->
 | Prompt | Provider | Model |
@@ -480,27 +476,19 @@ OpenRouter IDs: `deepseek-v4.1-flash-1017` = `openrouter/deepseek/deepseek-v4.1-
 | bkit-design-brainstorm-ideate-1 | openrouter | openrouter/google/gemini-4-argon |
 | bkit-design-brainstorm-ideate-2 | openrouter | openrouter/google/gemini-4-argon |
 | bkit-design-generate | openrouter | openrouter/google/gemini-4-argon |
-| bkit-design-review-1 | openrouter | openrouter/google/gemini-4-argon |
-| bkit-design-review-2 | openrouter | openrouter/google/gemini-4-argon |
 | bkit-design-spike | openrouter | openrouter/google/gemini-4-argon |
 | bkit-design-update | openrouter | openrouter/google/gemini-4-argon |
 | bkit-design-organise | openrouter | openrouter/google/gemini-4-argon |
 | bkit-plan-generate | openrouter | openrouter/google/gemini-4-argon |
-| bkit-plan-review-1 | openrouter | openrouter/google/gemini-4-argon |
-| bkit-plan-scope-check | openrouter | openrouter/google/gemini-4-argon |
 | bkit-plan-update | openrouter | openrouter/google/gemini-4-argon |
 | bkit-build-plan-convert | openrouter | openrouter/google/gemini-4-argon |
-| bkit-build-plan-current | openrouter | openrouter/google/gemini-4-argon |
 | bkit-build-install-skills | openrouter | openrouter/google/gemini-4-argon |
 | bkit-build-plan-execute | openrouter | openrouter/google/gemini-4-argon |
-| bkit-build-plan-verify | openrouter | openrouter/google/gemini-4-argon |
 | bkit-build-plan-gaps-remediate | openrouter | openrouter/google/gemini-4-argon |
-| bkit-build-challenge-1 | openrouter | openrouter/google/gemini-4-argon |
 | bkit-debug-failure-reproduce | openrouter | openrouter/google/gemini-4-argon |
 | bkit-debug-failure-remediate | openrouter | openrouter/google/gemini-4-argon |
 | bkit-debug-abort-handover | openrouter | openrouter/google/gemini-4-argon |
 | bkit-ship-conflict-resolve | openrouter | openrouter/google/gemini-4-argon |
-| bkit-ship-deferred-sweep | openrouter | openrouter/google/gemini-4-argon |
 | bkit-ship-update-docs | openrouter | openrouter/google/gemini-4-argon |
 | bkit-audit-generate | openrouter | openrouter/google/gemini-4-argon |
 | bkit-utility-update-deferrals | openrouter | openrouter/google/gemini-4-argon |

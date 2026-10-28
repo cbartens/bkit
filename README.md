@@ -113,26 +113,26 @@ Every agent in each phase, in the order it runs and what it checks: [pipeline re
   </picture>
 </p>
 
-**How the picks are made.** Each kind of job has a bar: Claude's score on [LiveBench](https://livebench.ai/) Agentic Coding (v1, last release `2026-06-25`), a public test where models fix real code in JavaScript, TypeScript and Python. LiveBench has moved to 2.0, which measures long multi-turn work on its own scale and does not convert; the 2.0 re-probe, and what it would move, is on [the 2.0 board](.bkit/providers.md#livebench-20-board--2026-10-25). For each tool, bkit takes the **cheapest model that reaches the bar**. Where nothing reaches it, the tool's best model gets the job. One model can fill two columns: on opencode, DeepSeek V4.1 Flash clears the bar for the hardest jobs, so it does the everyday jobs too, for a fraction of Claude's cost. Claude is never used on opencode, because opencode is where work goes when your Claude allowance runs out. OpenAI models are out of those columns for the same reason at the other end: a subscription is the cost-effective way to use them, so paying their token rates through a gateway buys nothing. Those columns also exist for the days between subscription resets, so every pick stays inside a small price band — no more than about **$2 in / $10 out per million tokens** — even when a dearer model scores higher. Cheap enough to bridge a week, not a second subscription.
+**How the picks are made.** Each kind of job has a bar: Claude's score on [LiveBench 2.0](https://livebench.ai/) **Long Agentic**, a public test where models do long multi-turn work on real apps. Every score in this table is that board's 2026-10-25 release; v1's Agentic Coding category is retired and its numbers do not convert. Full board and method: [the 2.0 board](.bkit/providers.md#livebench-20-board--2026-10-25). For each tool, bkit takes the **cheapest model that reaches the bar**. Where nothing reaches it, the tool's best model gets the job. One model can fill two columns: on opencode, DeepSeek V4.1 Flash clears the bar for the hardest jobs, so it does the everyday jobs too, for a fraction of Claude's cost. Claude is never used on opencode, because opencode is where work goes when your Claude allowance runs out. OpenAI models are out of those columns for the same reason at the other end: a subscription is the cost-effective way to use them, so paying their token rates through a gateway buys nothing. Those columns also exist for the days between subscription resets, so every pick stays inside a small price band — no more than about **$2 in / $10 out per million tokens** — even when a dearer model scores higher. Cheap enough to bridge a week, not a second subscription.
 
 <!-- prettier-ignore -->
 | Tool | Hardest jobs: design, plans, reviews, security, audits | Everyday jobs: writing code and docs, the second model in each review pair |
 | --- | --- | --- |
-| Claude Code | `claude-opus-5-5` · bar **65.2** | `claude-sonnet-5-5` · bar **59.4** |
-| Cursor | `cursor-grok-4.5-high` · 56.5 | `composer-2.5` · not measured |
-| opencode + OpenRouter | `deepseek/deepseek-v4.1-flash-1017` · 77.3; `moonshotai/kimi-k3` · 62.2 for risk, security and root-cause agents | `deepseek/deepseek-v4.1-flash-1017` · 77.3 |
-| opencode + Ollama | `deepseek-v4.1-flash:1017` · 77.3; `kimi-k3` · 62.2 for risk, security and root-cause agents | `deepseek-v4.1-flash:1017` · 77.3 |
-| opencode + OpenCode Zen | `deepseek-v4.1-flash` · 77.3; `kimi-k3` · 62.2 for risk, security and root-cause agents | `deepseek-v4.1-flash` · 77.3 |
-| opencode + OpenCode Go | `deepseek-v4.1-flash` · 77.3; `kimi-k3` · 62.2 for risk, security and root-cause agents | `deepseek-v4.1-flash` · 77.3 |
-| Codex | `gpt-6-astra` · not measured | `gpt-5.6-terra` · not measured |
-| Google Antigravity | `gemini-3.8-pro` · not measured | `gemini-3.8-pro` · not measured |
+| Claude Code | `claude-opus-5-5` · bar **72.8** | `claude-sonnet-5-5` · bar **63.4** |
+| Cursor | `cursor-grok-4.5-high` · not measured | `composer-2.5` · not measured |
+| opencode + OpenRouter | `deepseek/deepseek-v4.1-flash-1017` · 40.9; `moonshotai/kimi-k3` · 26.4 for risk, security and root-cause agents | `deepseek/deepseek-v4.1-flash-1017` · 40.9 |
+| opencode + Ollama | `deepseek-v4.1-flash:1017` · 40.9; `kimi-k3` · 26.4 for risk, security and root-cause agents | `deepseek-v4.1-flash:1017` · 40.9 |
+| opencode + OpenCode Zen | `deepseek-v4.1-flash` · 40.9; `kimi-k3` · 26.4 for risk, security and root-cause agents | `deepseek-v4.1-flash` · 40.9 |
+| opencode + OpenCode Go | `deepseek-v4.1-flash` · 40.9; `kimi-k3` · 26.4 for risk, security and root-cause agents | `deepseek-v4.1-flash` · 40.9 |
+| Codex | `gpt-6-astra` · 77.5 | `gpt-5.6-terra` · 33.1 |
+| Google Antigravity | `gemini-4-argon` · 61.2 | `gemini-4-argon` · 61.2 |
 
 **Reading the table:**
 
-- **The bars are Claude Opus 5 and Sonnet 5 scores.** bkit runs the 5.5 versions. Opus 5.5 scores level with Opus 5. Sonnet 5.5 scores below Sonnet 5 on LiveBench, but one of its runs stopped early and other benchmarks put it above, so the bar stays at Sonnet 5. Every score and why: [the score board](.bkit/providers.md#agentic-coding-parity-board).
+- **The bars are the 5.5 scores.** `claude-opus-5.5` scores **72.8** and `claude-sonnet-5.5` **63.4** on Long Agentic; bkit runs both. A model under a bar does not get that tier's job.
 - **Risk, security and root-cause agents get a second model** that reasons differently from the main one, so they don't share its blind spots. On every opencode provider that second model is Kimi K3, which scores a little under the bar for the hardest jobs.
 - **Cursor's own models don't reach the bar.** Claude models in Cursor spend paid API credits, so they're opt-in: paste the ready-made Opus block from [Model Overrides](.bkit/prompts.md#model-overrides).
-- **"Not measured" means LiveBench hasn't scored that model.** Those Codex, Antigravity and Cursor picks follow each vendor's own description of the model. Check them before you rely on them.
+- **"Not measured" means LiveBench 2.0 hasn't scored that model.** Those Cursor picks follow each vendor's own description of the model. Check them before you rely on them.
 - **Ollama needs a paid plan for every column.** The free models are far below the bar or not scored.
 - **Want a different model for one agent?** On Cursor and opencode, add a row to [Model Overrides](.bkit/prompts.md#model-overrides) and run `bkit install` again. Every agent with its model and thinking depth: [`.bkit/prompts.md` § Models](.bkit/prompts.md#models).
 
