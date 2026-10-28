@@ -5,6 +5,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import {
+  applyAntigravityPrompt,
   applyCodexAgent,
   clampOpencodeVariant,
   escapeTomlMultiline,
@@ -919,5 +920,24 @@ describe("clampOpencodeVariant — the variant a model actually exposes", () => 
 
   it("raises a rung the model cannot express to its lowest", () => {
     expect(clampOpencodeVariant("minimax/minimax-m3.1-flash", "none")).toBe("low");
+  });
+});
+
+describe("applyAntigravityPrompt — effort beyond the model's ceiling", () => {
+  it("clamps max to high on gemini-4-argon and leaves other models alone", () => {
+    const map = new Map([
+      ["medium", "medium"],
+      ["high", "high"],
+      ["max", "max"],
+    ]);
+    const effortMap = new Map([["Antigravity", map]]);
+    const lookup = new Map([
+      ["a", "gemini-4-argon"],
+      ["b", "some-other-model"],
+    ]);
+    const prompt = (name: string) =>
+      `---\nname: ${name}\ndescription: x\neffort: max\ntools: Read\n---\n\nBody.\n`;
+    expect(applyAntigravityPrompt(prompt("a"), lookup, effortMap)).toContain("effort: high\n");
+    expect(applyAntigravityPrompt(prompt("b"), lookup, effortMap)).toContain("effort: max\n");
   });
 });

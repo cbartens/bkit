@@ -475,7 +475,10 @@ export function applyAntigravityPrompt(content, modelLookup, effortMap) {
     }
     newFm += `model: ${formatModelPin("antigravity", "google", model)}\n`;
     if (effort && effortMap) {
-        newFm += `effort: ${lookupEffort(effortMap, "antigravity", effort)}\n`;
+        // Same per-model ceiling as opencode's variant: gemini-4-argon stops at `high`, so an
+        // xhigh/max agent must not ask Antigravity for a rung the model does not expose.
+        const mapped = lookupEffort(effortMap, "antigravity", effort);
+        newFm += `effort: ${mapped === "max" && model.includes("gemini-4-argon") ? "high" : mapped}\n`;
     }
     newFm += antigravityToolsBlock(toolsBlock);
     newFm += "---\n";
