@@ -6,6 +6,7 @@ import * as path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { callWords, stepSections } from "../../checks/status-holes";
 import { COMMANDS } from "../../commands/registry";
 import { WORKFLOW_STEPS } from "../../commands/workflow/step-table";
 import { substituteWorkflow } from "../../render/trackers";
@@ -59,28 +60,6 @@ function unclosedTrackerMarker(text: string): string | undefined {
   const tail = text.slice(lastOpen);
   const closes = /^<!-- bkit:tracker \S+ end -->/.test(tail);
   return lastOpen === -1 || closes ? undefined : tail.split("\n")[0];
-}
-
-/** The words of one `"{BKIT}" ...` call: shell-split, quotes kept, stopped at the first unquoted operator. */
-function callWords(rest: string): string[] {
-  const words: string[] = [];
-  let word = "";
-  let quote = "";
-  for (const ch of rest) {
-    if (quote) {
-      word += ch;
-      if (ch === quote) quote = "";
-    } else if (ch === '"' || ch === "'") {
-      word += ch;
-      quote = ch;
-    } else if ("|;&><)`".includes(ch)) break;
-    else if (/\s/.test(ch)) {
-      if (word) words.push(word);
-      word = "";
-    } else word += ch;
-  }
-  if (word) words.push(word);
-  return words;
 }
 
 /** Each `"{BKIT}" noun verb --flag` call in `text` whose verb or flag the CLI lacks. */
@@ -609,12 +588,12 @@ describe("build", () => {
   it("Plan Convert leaves a valid plan with no newer comments alone", () => {
     const step4 = section(build, /Step 4 — Plan Convert/);
     const skip =
-      "**If** exit 0 **and** (`NEWER_COMMENTS` = 0 **or** `CONVERTED` is held) → Step 5.";
+      "**If** exit 0, `CONVERTED` is not held **and** `NEWER_COMMENTS` = 0 → sub-step 4.";
     expect(step4).toContain(skip);
-    // That route leaves the step at once: no dispatch, no row and no comment.
+    // That route skips the dispatch and writes the no-agent skip row (sub-step 4).
     expect(step4.indexOf(skip)).toBeLessThan(step4.indexOf("Invoke `@bkit-build-plan-convert`"));
-    expect(commandLines(step4, "steps finish")).toHaveLength(1);
-    expect(step4.indexOf("--step=build-plan-convert")).toBeGreaterThan(
+    expect(commandLines(step4, "steps finish")).toHaveLength(2);
+    expect(step4.indexOf("--attempt-of=build-plan-convert:next")).toBeGreaterThan(
       step4.indexOf("Invoke `@bkit-build-plan-convert`"),
     );
   });
@@ -634,9 +613,11 @@ describe("build", () => {
     const finish = commandLines(section(build, /Step 4 — Plan Convert/), "steps finish").filter(
       (l) => l.includes("--step=build-plan-convert"),
     );
-    expect(finish).toHaveLength(1);
-    expect(finish[0]).toContain("--number=4");
-    expect(finish[0]).toContain('--post --title="Plan Convert"');
+    expect(finish).toHaveLength(2);
+    for (const line of finish) {
+      expect(line).toContain("--number=4");
+      expect(line).toContain('--post --title="Plan Convert"');
+    }
     expect(section(build, /Step 3 — Branch Sync/)).not.toContain("--step=build-plan-convert");
   });
 
@@ -644,9 +625,9 @@ describe("build", () => {
     // A plan-less run routes to the convert before the check writes its log, so the log
     // can be absent when the finish runs; a required artifact would exit 7 there and the
     // Plan Convert comment would never post. Optional records it whenever it exists.
-    const finish = commandLines(section(build, /Step 4 — Plan Convert/), "steps finish").filter(
-      (l) => l.includes("--step=build-plan-convert"),
-    );
+    const finish = commandLines(section(build, /Step 4 — Plan Convert/), "steps finish")
+      .filter((l) => l.includes("--step=build-plan-convert"))
+      .filter((l) => l.includes("--attempt-of="));
     expect(finish).toHaveLength(1);
     expect(finish[0]).toContain(
       "--optional-artifact=docs/plans/{YYYYMM}/logs/{FID}/build-plan-check.md",
@@ -687,8 +668,9 @@ describe("build", () => {
     );
     const step4 = section(build, /Step 4 — Plan Convert/);
     expect(step4).toContain(
-      "**If** exit 0 **and** (`NEWER_COMMENTS` = 0 **or** `CONVERTED` is held) → Step 5.",
+      "**If** exit 0, `CONVERTED` is not held **and** `NEWER_COMMENTS` = 0 → sub-step 4.",
     );
+    expect(step4).toContain("**If** exit 0 **and** `CONVERTED` is held → Step 5.");
     expect(step4).toMatch(
       /`CONVERTED` is not held \*\*and\*\* \(exit 0 with `NEWER_COMMENTS` > 0,/,
     );
@@ -819,24 +801,6 @@ describe("live docs", () => {
 });
 
 describe("resume", () => {
-  /** Each `Step N — Title` heading, with the text up to the next step or section heading. */
-  function stepSections(text: string): Array<{ number: number; title: string; body: string }> {
-    const lines = text.split("\n");
-    const heading = /^#{2,3} \S+ Step (\d+) — (.+)$/;
-    const out: Array<{ number: number; title: string; body: string }> = [];
-    lines.forEach((l, i) => {
-      const m = heading.exec(l);
-      if (!m) return;
-      const end = lines.findIndex((x, j) => j > i && /^#{2,3} /.test(x) && !x.startsWith("### 🔒"));
-      out.push({
-        number: Number(m[1]),
-        title: m[2]!,
-        body: lines.slice(i, end === -1 ? undefined : end).join("\n"),
-      });
-    });
-    return out;
-  }
-
   it.each(PHASES)("%s: the Resume line calls `status resume`", (name) => {
     const line = workflow(name)
       .split("\n")
@@ -859,6 +823,38 @@ describe("resume", () => {
       }
     },
   );
+});
+
+describe("plan convert skip row", () => {
+  it("writes a build-plan-convert row on the no-conversion route", () => {
+    const step4 = stepSections(workflow("build")).find((s) => s.number === 4)!;
+    const skip = commandLines(step4.body, "steps finish").filter((l) =>
+      l.includes("--step=build-plan-convert"),
+    );
+    expect(skip).toHaveLength(2);
+    const skipRow = skip.find((l) => l.includes("--attempt=1"))!;
+    expect(skipRow).toContain("--number=4");
+    expect(skipRow).toContain("skipped");
+    expect(skipRow).not.toContain("--attempt-of=");
+    expect(skip.filter((l) => l.includes("--attempt-of=build-plan-convert:next"))).toHaveLength(1);
+    // The pass route with nothing to convert reaches the skip row, not Step 5.
+    expect(step4.body).toMatch(
+      /exit 0, `CONVERTED` is not held \*\*and\*\* `NEWER_COMMENTS` = 0 → sub-step 4/,
+    );
+    expect(step4.body).toMatch(/exit 0 \*\*and\*\* `CONVERTED` is held → Step 5/);
+  });
+});
+
+describe("promoted parsers", () => {
+  it("holds the workflows to the step table", () => {
+    const own = fs.readFileSync(__filename, "utf-8");
+    expect(own).not.toMatch(/^\s*function (stepSections|callWords)\(/m);
+    for (const name of PHASES)
+      expect(
+        stepSections(workflow(name)).map((s) => s.number),
+        name,
+      ).toEqual([...new Set(WORKFLOW_STEPS[name].map((s) => s.number))]);
+  });
 });
 
 describe("debug", () => {
