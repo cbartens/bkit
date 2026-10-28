@@ -578,7 +578,7 @@ Filters (not above score): endpoint count; automatic prompt caching (bkit sends 
 | First-party plan | `Anthropic` (Claude Code), `OpenAI` (Codex), `Google` (Antigravity) | The best model for each subagent **from that vendor's own ladder**, spending the plan's included usage where it buys the most. A Codex pin is the best OpenAI model for the job, never an imitation of Claude; no cross-vendor parity target. |
 | Metered gateway | `Ollama`, `OpenCode Zen`, `OpenCode Go` | The same question against that gateway's own catalog — the best model for the job the plan serves. |
 | Overflow default | `OpenRouter` Option 1 | OpenRouter exists for the days the OpenAI, Anthropic and Google credits are spent, so its default uses **none of those three vendors**: the best model for each job from everything else, at the lowest cost that holds the quality. |
-| Overflow opt-in | `OpenRouter` Options 2 and 3 | Option 2 mixes the big three in where they add the most; Option 3 drops every restriction and takes the best model for each job, any vendor. |
+| Overflow opt-in | `OpenRouter` Option 2 | Doubles the weekly cap to A$140 and spends it on the big three where they add the most — every judge on `gemini-4-argon`. |
 
 **The question is per subagent, not per column.** Every pin answers "what is the best model for _this_ agent's job", judged on the board's Long Agentic score with the agent's role in mind: judges, reviewers, verifiers and escalators need the strongest model the class allows (see the reviewer rule below), while mechanical writers and summarisers should not pay flagship prices. Matching cells across columns are a catalog coincidence, never an objective.
 
