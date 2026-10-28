@@ -1,7 +1,7 @@
 ---
 name: bkit-debug-failure-reproduce
 description: Senior QE engineer turning bug reports into failing tests that reproduce them, before any fix.
-model: gemini-3.8-pro
+model: gemini-4-argon
 effort: high
 tools:
   - view_file

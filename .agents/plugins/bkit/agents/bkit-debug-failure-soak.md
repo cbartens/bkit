@@ -1,7 +1,7 @@
 ---
 name: bkit-debug-failure-soak
 description: Senior debug engineer soaking unknown-cause runtime failures — one accumulating-context instrument-and-fix step per iteration.
-model: gemini-3.8-pro
+model: gemini-4-argon
 effort: high
 tools:
   - view_file

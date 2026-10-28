@@ -1,7 +1,7 @@
 ---
 name: bkit-build-plan-current
 description: Senior reviewer judging whether changes landed since the plan was written leave it executable.
-model: gemini-3.8-pro
+model: gemini-4-argon
 effort: high
 tools:
   - view_file

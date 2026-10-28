@@ -1,7 +1,7 @@
 ---
 name: bkit-design-generate
 description: Senior architect generating unified design doc from parallel exploration brainstorms.
-model: gemini-3.8-pro
+model: gemini-4-argon
 effort: high
 tools:
   - view_file

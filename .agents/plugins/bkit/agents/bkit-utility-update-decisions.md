@@ -1,7 +1,7 @@
 ---
 name: bkit-utility-update-decisions
 description: Senior editor correcting decisions the docs or codebase have since contradicted.
-model: gemini-3.8-pro
+model: gemini-4-argon
 effort: medium
 tools:
   - view_file

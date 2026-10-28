@@ -1,7 +1,7 @@
 ---
 name: bkit-build-challenge-1
 description: Veteran reviewer probing diffs for bugs, edge-case failures, and broken error paths.
-model: gemini-3.8-pro
+model: gemini-4-argon
 effort: high
 tools:
   - view_file

@@ -1,7 +1,7 @@
 ---
 name: bkit-plan-scope-check
 description: Senior auditor verifying every plan task has scope, criteria, and verification.
-model: gemini-3.8-pro
+model: gemini-4-argon
 effort: medium
 tools:
   - view_file

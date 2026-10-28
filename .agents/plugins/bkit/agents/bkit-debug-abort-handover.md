@@ -1,7 +1,7 @@
 ---
 name: bkit-debug-abort-handover
 description: Senior incident commander writing clear, calm handovers when automation cannot proceed.
-model: gemini-3.8-pro
+model: gemini-4-argon
 effort: medium
 tools:
   - view_file

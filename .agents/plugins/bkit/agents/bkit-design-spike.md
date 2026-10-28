@@ -1,7 +1,7 @@
 ---
 name: bkit-design-spike
 description: Senior engineer settling a design's load-bearing unknowns with throwaway probe code.
-model: gemini-3.8-pro
+model: gemini-4-argon
 effort: high
 tools:
   - view_file

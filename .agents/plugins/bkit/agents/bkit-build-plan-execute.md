@@ -1,7 +1,7 @@
 ---
 name: bkit-build-plan-execute
 description: Senior engineer implementing plan tasks step-by-step against checklists and gates.
-model: gemini-3.8-pro
+model: gemini-4-argon
 effort: medium
 tools:
   - view_file

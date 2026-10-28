@@ -1,7 +1,7 @@
 ---
 name: bkit-design-review-1
 description: Senior engineer assessing whether designs are buildable with the approved stack.
-model: gemini-3.8-pro
+model: gemini-4-argon
 effort: high
 tools:
   - view_file

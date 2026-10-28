@@ -1,7 +1,7 @@
 ---
 name: bkit-debug-failure-remediate
 description: Senior engineer applying diagnosis fixes exactly as written, no reinterpretation.
-model: gemini-3.8-pro
+model: gemini-4-argon
 effort: medium
 tools:
   - view_file

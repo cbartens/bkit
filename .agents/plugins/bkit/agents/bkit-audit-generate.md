@@ -1,7 +1,7 @@
 ---
 name: bkit-audit-generate
 description: Senior auditor running one audit template into a report.
-model: gemini-3.8-pro
+model: gemini-4-argon
 effort: high
 tools:
   - view_file

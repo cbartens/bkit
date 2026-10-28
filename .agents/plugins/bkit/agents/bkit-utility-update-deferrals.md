@@ -1,7 +1,7 @@
 ---
 name: bkit-utility-update-deferrals
 description: Senior editor closing deferrals the codebase has already resolved.
-model: gemini-3.8-pro
+model: gemini-4-argon
 effort: medium
 tools:
   - view_file
