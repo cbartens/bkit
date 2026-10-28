@@ -546,8 +546,8 @@ The retired surface is removed from every current doc, prompt and rule; the publ
 
 #### [MODIFY] `README.md`
 
-- **Existence Check:** file exists; the command table (line 97), "three sign-offs" (354), "run fewer steps" (413), the sign-off FAQ (443) and the documentation table (482) name lite workflows.
-- Replace the lite row with `/bkit-build #N publish=false` (hold) beside the default `/bkit-build #N` row; rewrite the sign-off and FAQ sentences; remove the `.bkit/lite.md` documentation row; document the held handoff.
+- **Existence Check:** file exists; commit `7c9b909ea` (issue comment of 2026-10-28T11:19:47Z) already removed the lite command row, sign-off and FAQ sentences, the "run fewer steps" paragraph and the `.bkit/lite.md` documentation row; `grep -ni lite README.md` now matches only "literature".
+- Add `/bkit-build #N publish=false` (hold) beside the default `/bkit-build #N` row; document the held handoff. Do not reintroduce any lite reference.
 - Add the manual batch recipe the issue asks for (`#715` § No batch command): combine held builds, then land them yourself with `git` — with both known limitations stated (one head commit means post-merge auto-debug sees only the last FID; never batch migrations) and the user's ownership of the push, PR, CI gate, sweep and docs sync named.
 
 #### [MODIFY] `.bkit/core/engine/commands/workflow/issues.test.ts`
@@ -1024,14 +1024,14 @@ Build order: config → runtime resolution → install → close row → build w
 <!-- bkit:task 15 start -->
 
 - [ ] **TASK 15:** Rewrite the root README and roadmap guidance; document the held handoff and the manual batch recipe
-  - **UPDATE:** `README.md`: add the `/bkit-build #N publish=false` hold row beside the default `/bkit-build #N` row; rewrite the sign-off, "run fewer steps" and FAQ sentences; remove the `.bkit/lite.md` doc row; document the held handoff
+  - **UPDATE:** `README.md`: add the `/bkit-build #N publish=false` hold row beside the default `/bkit-build #N` row; document the held handoff (the lite row, sign-off, FAQ, "run fewer steps" and `.bkit/lite.md` doc-row text were already removed from `README.md` by commit `7c9b909ea`, so only keep them absent)
   - **UPDATE:** `README.md`: add the manual batch recipe — build held, then land the batches yourself with `git` — stating both limitations (one head commit means post-merge auto-debug sees only the last FID; never batch migrations) and that the user owns the push, PR, CI gate, sweep and docs sync
   - **UPDATE:** `docs/roadmap.md`: rewrite item 20's `lite:build` to `/bkit-build`
   - **READ:** `§ Documentation` in `README.md`: the table that links `.bkit/lite.md`
   - **DEPENDS ON:** 14
   - **DONE WHEN:** `grep -niE '(:lite|lite\.md|[Ll]ite workflows?)' README.md docs/roadmap.md` returns nothing; `pnpm vitest run .bkit/core/engine/audits/templates/templates.test.ts` passes; the README carries a batch recipe section naming both limitations
   - **TEST FIRST:**
-    - `.bkit/core/engine/audits/templates/templates.test.ts` `the root README points small changes at /bkit-build` fails while a lite link or command remains
+    - `.bkit/core/engine/audits/templates/templates.test.ts` `the root README points small changes at /bkit-build` fails while the `/bkit-build #N publish=false` hold row is absent or a lite link or command is present
     - `.bkit/core/engine/audits/templates/templates.test.ts` `the root README carries the held handoff` fails while `Publish: held` / `Docs: not synced` are absent
     - `.bkit/core/engine/audits/templates/templates.test.ts` `the root README carries the manual batch recipe with both limitations` fails while the recipe, the last-FID limitation or the no-batched-migrations rule is missing
 
