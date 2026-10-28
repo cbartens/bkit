@@ -400,7 +400,7 @@ Each repo gets **own** Claude environment, named after repo. Reason: **secrets, 
 Shared across repos (copy, don't re-derive) — non-secret only:
 
 - **Setup script** — generic binaries only (Node, vale, gh, jq, pnpm via corepack); repo-specific install deferred to committed `bkit-cloud-bootstrap.sh` (lockfile → `pnpm install`, `.vale.ini` → `vale sync`). One body fits every repo.
-- **bkit baseline token _name_** (`BKIT_GH_TOKEN`) + **network policy** (`Trusted`) — same everywhere, values differ. Repo _other_ env vars **not** shared: copy from own env files per `.envrc` — drop `unset`s, skip `BKIT_ANTHROPIC_API_KEY` (§ Environment variables).
+- **bkit baseline token _name_** (`BKIT_GH_TOKEN`) + **network policy** (`Custom`) — same everywhere, values differ. Repo _other_ env vars **not** shared: copy from own env files per `.envrc` — drop `unset`s, skip `BKIT_ANTHROPIC_API_KEY` (§ Environment variables).
 - **Non-secret selectors** (`VERCEL_SCOPE`, `SUPABASE_PROJECT_ID`) stay committed in-repo (§ Environment variables), never in dashboard.
 
 ## Codex — one environment per repo
