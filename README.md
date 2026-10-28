@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-hero-dark.svg">
-    <img alt="bkit — from vibe coding to production code. A senior engineering team's process, ready-made, run by AI agents and battle-tested over more than 1,000 commits." src=".github/assets/bkit-hero-light.svg" width="100%">
+    <img alt="bkit: from vibe coding to production code. A senior engineering team’s process, ready-made, run by AI agents." src=".github/assets/bkit-hero-light.svg" width="100%">
   </picture>
 </p>
 
@@ -14,14 +14,16 @@
 </p>
 
 <p align="center">
+  <a href="#quick-start">Quick start</a> ·
   <a href="#how-it-works">How it works</a> ·
+  <a href="#models">Models</a> ·
   <a href="#why-its-different">Why it's different</a> ·
+  <a href="#engine">Engine</a> ·
   <a href="#knowledge">Knowledge store</a> ·
   <a href="#audits">Audits</a> ·
   <a href="#templates">Templates</a> ·
   <a href="#token-costs">Token costs</a> ·
-  <a href="#faq">FAQ</a> ·
-  <a href="#quick-start">Quick start</a>
+  <a href="#faq">FAQ</a>
 </p>
 
 <p align="center">
@@ -45,12 +47,12 @@ AI agents design it, plan it, build it, have it reviewed by agents that didn't w
 
 **It ships what other frameworks leave to you:** a full CI pipeline for your project (none of the frameworks in [our comparison](.bkit/comparison.md#frameworks) has one), and 35 [audits](#audits) that find the bugs passing tests miss.
 
-**Researched and battle-tested, not a weekend prompt pack.** bkit is built with bkit: months of research into how agentic engineering works best, refined over **1,700+ commits, 300+ issues and 100+ merged pull requests** run through its own pipeline. Along the way it recorded **300+ lessons and 600+ decisions**. They shaped the rules and prompts you install, and your own repo starts its own record from the first feature.
+**Researched and battle-tested, not a weekend prompt pack.** bkit is built with bkit: months of research into how agentic engineering works best, refined over **2,000+ commits, 300+ issues and 100+ merged pull requests** run through its own pipeline. Along the way it recorded **300+ lessons and 600+ decisions**. They shaped the rules and prompts you install, and your own repo starts its own record from the first feature.
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-features-dark.svg">
-    <img alt="What ships with bkit, one coloured row per phase. Design: three rival designs, probe code for the risky unknowns, reads your history, reviewed for failure modes. Plan: one review round, self-contained tasks, learns from past bugs and postponed work, more than 30 audits. Build: test first and verified, hunts bugs and security holes, checks the plan is still current, skills on demand. Debug: outside evidence from CI and your platforms, root cause first, hard-bug mode, knows when to stop. Ship: honest CI, nothing quietly dropped, docs and memory, never touches main. Every phase: any AI tool, best model per job, independent review, laptop to cloud." src=".github/assets/bkit-features-light.svg" width="100%">
+    <img alt="What ships with bkit: four features for each phase (design, plan, build, debug, ship) and four that apply to every phase." src=".github/assets/bkit-features-light.svg" width="100%">
   </picture>
 </p>
 
@@ -63,7 +65,7 @@ Everything a senior team would otherwise write down over years, in files you can
 <!-- prettier-ignore -->
 | What | How many | What it does for you |
 | --- | --- | --- |
-| [Agents](.bkit/prompts.md) | 40+ | Single-job specialists, each with its own model, thinking depth and tool list. A reviewer can read code but can't change it. |
+| [Agents](.bkit/prompts.md) | 39 | Single-job specialists, each with its own model, thinking depth and tool list. A reviewer can read code but can't change it. |
 | [Workflows](.bkit/workflows.md) | 6 | The five phases plus a cloud router. Every step ends in a checklist and a mechanical check before the next one starts. |
 | [Agent rules](.agents/rules.md) | 70+ | One rulebook every agent follows: read before editing, never defer silently, report honestly, never rewrite history. |
 | [Guardrails](.bkit/providers.md#guardrails) | 10+ hook files | Block dangerous commands and secret reads, and make agents investigate before they edit, on all five AI tools. |
@@ -80,7 +82,7 @@ Everything a senior team would otherwise write down over years, in files you can
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-pipeline-dark.svg">
-    <img alt="The bkit pipeline: design, plan, build and ship, with debug fixing failed tests. Each dot is one of 30 AI agents: 9 in design, 5 in plan, 8 in build, 5 in debug and 3 in ship. It waits for your sign-off after design, after plan and before merge, merges into dev, and leaves production to you. Runs on Claude Code, Cursor, Codex, Antigravity and opencode." src=".github/assets/bkit-pipeline-light.svg" width="100%">
+    <img alt="The bkit pipeline: design, plan, build and ship, with debug fixing failed tests. 30 agents across the five phases, and your sign-off after design, after plan and before merge." src=".github/assets/bkit-pipeline-light.svg" width="100%">
   </picture>
 </p>
 
@@ -94,9 +96,8 @@ Everything a senior team would otherwise write down over years, in files you can
 | Build it | [`/bkit-build`](.bkit/pipeline.md#bkit-build) | Checks the plan still matches the code, then builds it one group of tasks at a time, each with a fresh agent: tests first, then code, then an independent check. Hunts for bugs and security holes (only security holes on a small change), fixes what it finds as more tasks, and opens a pull request. |
 | Fix what broke | [`/bkit-debug`](.bkit/pipeline.md#bkit-debug) | Pulls evidence from CI and your platforms, fixes the root cause, re-tests and records the lesson. Hard runtime bugs get their own mode; if it can't fix something, it stops and writes you a clear handover. |
 | Ship it | [`/bkit-ship`](.bkit/pipeline.md#bkit-ship) | Checks nothing planned was quietly dropped, waits for every test lane to pass, merges into `dev` and updates the docs. |
-| Small, clearly safe change | [`*:lite`](.bkit/lite.md) | One prompt to paste per phase (`design:lite` to `ship:lite`). The agent keeps only the steps and reviewers the change needs and works on the current branch: no separate repo copy, pull request, CI or sign-off stops. Never for schema changes, public APIs, dependencies, secrets, auth or large refactors. |
 | Health check | [35 audits](#audits) | One specialist checklist per area. Findings feed straight into `/bkit-plan`. |
-| Housekeeping | 7 utility agents | Keep docs, decisions, lessons and known bugs current, and rank what to work on next. |
+| Housekeeping | 8 utility agents | Keep docs, decisions, lessons and known bugs current, and rank what to work on next. |
 
 Every agent in each phase, in the order it runs and what it checks: [pipeline reference](.bkit/pipeline.md#pipeline-map). Every step, verdict and contract: [`.bkit/workflows.md`](.bkit/workflows.md).
 
@@ -109,11 +110,11 @@ Every agent in each phase, in the order it runs and what it checks: [pipeline re
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-models-dark.svg">
-    <img alt="Change the model, not the effort. The Claude model and effort behind each of bkit's 39 agents and 5 orchestrators. Opus 5.5 at Medium: /bkit-design, /bkit-plan, /bkit-debug, 1 agents; Opus 5.5 at High: 19 agents; Opus 5.5 at Extra: 7 agents; Sonnet 5.5 at Medium: /bkit-build, /bkit-ship, 6 agents; Sonnet 5.5 at High: 6 agents. Fable 5.1 is never pinned: use it by hand to refine an idea before /bkit-design, and at Extra for a bug /bkit-debug is stuck on. Pick the model at launch: claude-opus-5-5 for /bkit-design, /bkit-plan, /bkit-debug; claude-sonnet-5-5 for /bkit-build, /bkit-ship. Leave the effort alone: medium is the default on the 5.5 models, every agent sets its own, and never set CLAUDE_CODE_EFFORT_LEVEL. Past High, move up a model: Extra costs more than the next model up at High. Max is for one hard problem, never routine; ultracode is a setting, not a level." src=".github/assets/bkit-models-light.svg" width="100%">
+    <img alt="The Claude model and effort behind each bkit agent: Opus 5.5 for /bkit-design, /bkit-plan, /bkit-debug and 27 agents; Sonnet 5.5 for /bkit-build, /bkit-ship and 12 agents. Pick the model at launch and leave the effort alone." src=".github/assets/bkit-models-light.svg" width="100%">
   </picture>
 </p>
 
-**How the picks are made.** Two different questions, one table. **Subscription tools** — Claude Code, Codex, Antigravity — are paid for up front, so each agent gets the best model that vendor sells for its job: depth where the reasoning is, cheaper rungs where the work is volume, spending the included usage where it buys most. They are never imitations of another vendor. **opencode gateways** — OpenRouter, Ollama, OpenCode Zen, OpenCode Go — are metered, so Claude is the yardstick there: each agent gets the cheapest model that comes closest to the Claude model it would run on, within budget. OpenRouter is the overflow for when the subscription's credits are spent: its default runs almost everything on DeepSeek, puts `gpt-6.1-sol` on the four checks where a miss would ship unnoticed, and keeps a two-day overrun at about **A$74** against an A$70 weekly cap — Option 2 in [Model Presets](.bkit/prompts.md#model-presets) doubles that to A$140 for work that matters more than the week. Every score is LiveBench 2.0 **Long Agentic**, release 2026-10-25, so rows stay comparable; v1's Agentic Coding category is retired and does not convert.
+**How the picks are made.** Two different questions, one table. **Subscription tools** — Claude Code, Codex, Antigravity, Cursor — are paid for up front, so each agent gets the best model that vendor's plan includes for its job: depth where the reasoning is, cheaper rungs where the work is volume, spending the included usage where it buys most. They are never imitations of another vendor. **opencode gateways** — OpenRouter, Ollama, OpenCode Zen, OpenCode Go — bill per token, so Claude is the yardstick there: each agent gets the cheapest model that comes closest to the Claude model it would run on, within budget. OpenRouter is the overflow for when the subscription's weekly usage is spent. Its default runs almost everything on DeepSeek and puts `gpt-6.1-sol` on the four checks where a miss would ship unnoticed. Covering a two-day gap that way costs about **US$52**, roughly a quarter of a US$200-a-month Claude Max plan, or about one week's share of it. Option 2 in [Model Presets](.bkit/prompts.md#model-presets) doubles the weekly budget to about US$100 for work that matters more than the cost. Every score is from the public LiveBench 2.0 benchmark, **Long Agentic** category, release 2026-10-25, so rows stay comparable; v1's Agentic Coding category is retired and does not convert.
 
 <!-- prettier-ignore -->
 | Tool | Hardest jobs: design, plans, reviews, security, audits | Everyday jobs: writing code and docs, the second model in each review pair |
@@ -129,10 +130,10 @@ Every agent in each phase, in the order it runs and what it checks: [pipeline re
 
 **Reading the table:**
 
-- **Scores are the same board for every column.** `claude-opus-5.5` scores **72.8** and `claude-sonnet-5.5` **63.4** on Long Agentic — the bars every opencode pick is measured against. A subscription tool's pick is never an imitation of Claude; on a metered gateway, the pick is the cheapest model that gets closest to the bar.
+- **Every score comes from the same benchmark.** `claude-opus-5-5` scores **72.8** and `claude-sonnet-5-5` **63.4** on Long Agentic: the bars every opencode pick is measured against.
 - **Four key gates get the strongest model the budget carries.** These are the checks where a miss reaches the merge unnoticed: `bkit-build-plan-verify` (decides a build is done), `bkit-ship-deferred-sweep` (last check before merge), `bkit-debug-failure-diagnose` (picks the root cause the fix chases) and `bkit-build-challenge-2` (the security review). On opencode that is `gpt-6.1-sol` on OpenRouter and Zen, `gemini-4-argon` on Go, which has no Sol, and DeepSeek on Ollama, which has nothing stronger.
 - **DeepSeek thinks at its maximum on every opencode agent**, because it sits under the Claude bar. `gpt-6.1-sol` already sits near the bar, so it keeps the agent's own Claude effort: effort only goes as high as it takes to get close to Claude, never past it.
-- **Cursor is a separate pool.** Its first-party models (`cursor-grok-4.5-high`, `composer-2.5`) are unmeasured on LiveBench 2.0 — the catalogue offers no Grok 4.6/4.7 and no Opus 5.5 / Sonnet 5.5, re-probed 2026-10-28. Claude and GPT models in Cursor spend paid API credits, so they're opt-in through [Model Overrides](.bkit/prompts.md#model-overrides).
+- **On Cursor, bkit pins Cursor's own models**, the ones its plan includes: `cursor-grok-4.5-high` and `composer-2.5`. Neither is measured on LiveBench 2.0 — the catalogue offers no Grok 4.6/4.7 and no Opus 5.5 / Sonnet 5.5, re-probed 2026-10-28. Claude and GPT models in Cursor spend paid API credits, so they're opt-in through [Model Overrides](.bkit/prompts.md#model-overrides).
 - **"Not measured" means LiveBench 2.0 hasn't scored that model.** Those Cursor picks follow each vendor's own description of the model. Check them before you rely on them.
 - **Ollama needs a paid plan for every column.** The free models are not scored.
 - **Want a different model for one agent?** On Cursor and opencode, add a row to [Model Overrides](.bkit/prompts.md#model-overrides) and run `bkit install` again. Every agent with its model and thinking depth: [`.bkit/prompts.md` § Models](.bkit/prompts.md#models).
@@ -146,7 +147,7 @@ Every agent in each phase, in the order it runs and what it checks: [pipeline re
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-fences-dark.svg">
-    <img alt="You don't steer AI, you build fences. AI agents start out scattered at design and are funnelled through plan, build, debug and ship into production-grade code. At design and plan, reviewer agents fence the work in; from build onwards, automated checks from the CI template (typecheck, lint, formatting, prose, tests) join them. Work that goes off target is sent back and retried, a failed test goes to debug, which finds the root cause, fixes it and re-runs the tests until they pass, and bkit waits for your sign-off after design, after plan and before merge." src=".github/assets/bkit-fences-light.svg" width="100%">
+    <img alt="AI agents start out scattered and are funnelled phase by phase into production-grade code, fenced in first by reviewer agents and then by automated checks, with your sign-off at three points." src=".github/assets/bkit-fences-light.svg" width="100%">
   </picture>
 </p>
 
@@ -159,7 +160,7 @@ Every agent in each phase, in the order it runs and what it checks: [pipeline re
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-fences-details-dark.svg">
-    <img alt="Every change hits the same fences. They never argue, and they grow. On the left, the agents. Every agent in every workflow looks up every definition and caller with code search before a change, is nudged by the agent hooks on every edit, has every workflow step checked by the step gates, and has its code formatted by the pre-commit hook on every commit. /bkit-plan decides the tests each feature adds to the fences (unit, integration or end-to-end). /bkit-build writes each test first, sees it fail, then hits every fence; the pre-push hook sends problems back before they leave your laptop. When a CI lane goes red, its logs give /bkit-debug the context to fix it. When CI is green, the change passes through and /bkit-ship merges it, re-checked on the merge commit. On the right, the fences, nearest and lightest first: code search on every lookup, agent hooks on every edit, step gates on every step, the pre-commit hook on every commit, the pre-push hook on every push, and CI, the strongest, on every push and pull request. The step gates are scripts, not prompts: a step missing its verdict or files can't finish, whatever the agent says. The pre-commit hook formats only the files being committed, so it takes seconds, and your own quick checks can go there too. CI runs integration, end-to-end and live-site tests, and one check fails if any lane failed, was skipped or ran no tests. Hooks, agents and CI run the same commands, and in cloud mode CI's answer starts debug or ship by itself." src=".github/assets/bkit-fences-details-light.svg" width="100%">
+    <img alt="The six checks every change passes, nearest first: code search, agent hooks, step gates, the pre-commit hook, the pre-push hook and CI, and where each workflow meets them." src=".github/assets/bkit-fences-details-light.svg" width="100%">
   </picture>
 </p>
 
@@ -185,12 +186,12 @@ The agent hooks come with install. Serena, graphify and the git hooks are [templ
 
 ### The CI pipeline
 
-**None of the AI development frameworks in our [comparison](.bkit/comparison.md#frameworks) ships a full test pipeline for your project.** bkit ships one ready to adopt:
+**bkit ships a full test pipeline for your project, ready to adopt:**
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-ci-dark.svg">
-    <img alt="bkit's CI pipeline, flowing left to right: plan the run (work out what to test); check and build (quick checks, unit tests, integration tests, web, iOS and Android builds, database migrations); set the stage (preview deploy, reset test data); test like a user (web, iOS and Android end-to-end tests, and a live-site check); tidy up. Every lane feeds one final check, the only one merging needs, which fails if any lane failed, was skipped or ran zero tests. /bkit-build starts CI by opening the pull request, /bkit-debug reads the logs of any lane that fails and fixes it, and /bkit-ship merges only when the final check is green." src=".github/assets/bkit-ci-light.svg" width="100%">
+    <img alt="bkit’s CI pipeline, from planning the run to tidying up. Every lane feeds one final check, which fails if any lane failed, was skipped or ran no tests." src=".github/assets/bkit-ci-light.svg" width="100%">
   </picture>
 </p>
 
@@ -209,7 +210,7 @@ How the lanes join into the one final check, and what happens on green or red: [
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-engine-dark.svg">
-    <img alt="Code keeps the run on track; agents make the calls. One /bkit-build run in three rows. Agents: models, each one fresh, making the judgement calls. Three each build one group of tasks and one reviews the diff for bugs and security; each starts on a brief of a few KB and hands over before 160 thousand tokens, takes its brief from the engine and hands back a log and a verdict. Engine: bkit commands, plain code with the same answer every time, covered by 5,800+ tests. context brief: cuts each group's part out of the plan; tests red: proves each new test fails before its code exists; steps gate: stops a step missing its verdict or files; counters route: counts fix rounds, stops at the limit; status resume: where a stopped run picks up, on any tool; ledgers append: writes lessons and decisions as checked rows; workflows summary: writes the run's verdict, reasons and next command. Your repo: the plain files the engine reads and writes: the whole plan, run state, step logs, 4 ledgers and run stats. Build agents never get the whole plan: the engine reads it and hands each one only its part. What the split gets you: steps that can't be faked, because a step missing its verdict or files can't finish, whatever the agent says; the same answer every time, on every tool; and, as a bonus, fewer tokens, because no model turn is spent on bookkeeping and no agent carries a long history." src=".github/assets/bkit-engine-light.svg" width="100%">
+    <img alt="One /bkit-build run in three layers: agents make the judgement calls, bkit commands do the bookkeeping, and your repo holds the plain files both read and write." src=".github/assets/bkit-engine-light.svg" width="100%">
   </picture>
 </p>
 
@@ -228,7 +229,7 @@ How the lanes join into the one final check, and what happens on green or red: [
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-context-dark.svg">
-    <img alt="Knowledge store: each kind of fact has one home, in a file in your repo or on your tracker. In your repo, bkit reads project docs at every step and updates them at ship; reads and writes lessons, decisions, postponed work and known bugs; writes designs and plans that later steps read; reads audit reports at plan and a code map at every step; keeps run state and stats at every step; adds skills at build and removes them at ship. Outside your repo, it reads and updates the GitHub, Linear or Jira issue at every step, searches related issues at design, plan and debug, searches the web at design and debug, reads CI runs and test reports at debug and ship, reads runtime platforms such as Sentry, Vercel, Supabase and Stripe at debug, and opens, fixes and merges the pull request." src=".github/assets/bkit-context-light.svg" width="100%">
+    <img alt="Where bkit keeps each kind of fact, in your repo or on your tracker, CI and runtime platforms, and which step reads or writes it." src=".github/assets/bkit-context-light.svg" width="100%">
   </picture>
 </p>
 
@@ -255,7 +256,7 @@ How the lanes join into the one final check, and what happens on green or red: [
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-knowledge-flow-dark.svg">
-    <img alt="Example run of the five bkit phases on issue #123, 'Add password reset'. Design reads docs/architecture.md (current auth boundaries) and docs/decisions.jsonl ('session cookies, not JWTs'), and writes docs/plans/{feature}/design.md plus a new decisions.jsonl row ('recovery link TTL = 1 h'). Plan reads design.md and docs/failures.jsonl (a known 'email verify race' bug) and writes docs/plans/{feature}/plan.md plus a tracker comment on #123. Build reads a ~2 KB brief of plan.md for its task group and writes a tracker comment per closed task. Debug reads docs/knowledge.jsonl (a past 'timezone-aware token' lesson) and writes a new knowledge.jsonl row ('tests in UTC, token in local'). Ship reads docs/deferrals.jsonl ('rate limit, later' — open) and writes an updated docs/security.md with a new rate-limit section, closing the deferral. Underneath: no index to rebuild, no retrieval service to run, no embeddings — just files you can grep, blame and revert." src=".github/assets/bkit-knowledge-flow-light.svg" width="100%">
+    <img alt="One run on issue #123, “Add password reset”: the file each phase reads and the row or doc it writes back." src=".github/assets/bkit-knowledge-flow-light.svg" width="100%">
   </picture>
 </p>
 
@@ -274,7 +275,7 @@ How the lanes join into the one final check, and what happens on green or red: [
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-audits-dark.svg">
-    <img alt="The tests were green. The bugs were still there. A map of an app that adopted bkit, in four columns: screens (web and phone), API, services and outside services, with thin lines for the calls between them. Red circles mark what bkit's audit templates found, bigger for bigger problems. Testing audit: tests that could never fail, about 100 of which read the code as text instead of running it; a security hole, where a sign-in link could send people to another website; no test made a request fail, so a failed save could still show “Saved”; a fix in dead code, while the live screen next to it stayed broken; phone tests that weren't, with 23 of 33 actually running as web pages. Duplication audit: one rule written 8 times, whose copies drifted so some billed accounts users had left; one database read in 4 copies, word for word, one inside the API itself. This map used 2 of the more than 30 audit templates bkit ships." src=".github/assets/bkit-audits-light.svg" width="100%">
+    <img alt="A map of an app whose tests were all passing, marking the bugs that two of bkit’s 35 audit templates found anyway." src=".github/assets/bkit-audits-light.svg" width="100%">
   </picture>
 </p>
 
@@ -352,7 +353,7 @@ All templates, what each is for, and how to install them: [`.bkit/templates.md`]
 ### You stay in control
 
 - **Decide in plain English, not code.** Before any code is written you approve two short documents: a design ("three ways to build this; we recommend this one, because…") and a plan ("these twelve steps, and how we'll know each is done").
-- **Three sign-offs, and production stays yours.** The full workflows stop after the design, after the plan and before merging. bkit merges into your `dev` branch and never touches `main`: promoting to production is always your call. Cloud mode ships on green without you only for issues you've labelled `bkit:auto`; removing the label stops it. Lite workflows skip the stops, and only run when you choose them for a small change.
+- **Three sign-offs, and production stays yours.** The workflows stop after the design, after the plan and before merging. bkit merges into your `dev` branch and never touches `main`: promoting to production is always your call. Cloud mode ships on green without you only for issues you've labelled `bkit:auto`; removing the label stops it.
 - **A fix that doesn't work comes back to you.** After one automatic fix round, build asks before trying again, with a report: problems per round, code changed, and whether it's closing in, stuck or getting worse. Each place a run can ask has its own setting under `bkit.workflows` in `package.json`: whether to ask, and a hard limit (2 attempts by default) that no answer can raise.
 - **Questions don't stall the build.** When build needs your decision, it keeps working on the tasks the question doesn't touch. With nobody at the keyboard, it goes ahead on its own recommendation, marks it as assumed, and won't merge until you confirm it.
 - **Guardrails on the AI itself.** Dangerous commands like force-pushing or rewriting history are blocked, private keys can't be read, and each agent only gets the tools its job needs. [What each guard does](.bkit/providers.md#guardrails) and [what it tells agents](.bkit/prompts.md#hook-injected-text).
@@ -364,7 +365,7 @@ All templates, what each is for, and how to install them: [`.bkit/templates.md`]
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-reread-dark.svg">
-    <img alt="Compression shrinks the output; bkit stops the re-reading. What a coding agent reads on each request, across 13.5 million GitHub Copilot sessions: 72 percent is re-reading on every request, the conversation so far at 48 percent, the system prompt at 14 percent and instructions and other context at 10 percent, which is what bkit cuts; 28 percent is tool output, all a compressor can touch. The best published compression result on Claude Code took 2.7 percent off the whole bill, and another tool added 48 percent. The model's own writing is about 1 token for every 100 to 275 it reads. Sources: Liu et al., GitHub Copilot at production scale, 2026; Weinberger and Hozez, 2,848 Claude Code runs, 2026; Manus, 2025. An agent's cost is the area under its context line: each request re-sends the whole conversation, and a token costs the same at 900 thousand as at 9 thousand, but a turn at 900 thousand sends 100 times as many. In an illustration of the same work drawn both ways, today one agent runs until about 967 thousand tokens, where Claude Code summarises it and drops detail; bkit hands over to a fresh agent with a short brief in the 80 to 170 thousand band, where practitioners say to start fresh. What published work finds: 11 of 13 models score under half their short-context result by 32 thousand tokens (NoLiMa, ICML 2025); a context should get no more than 40 to 60 percent full before you start a fresh one (HumanLayer, 2025); a sub-agent hands back 1 to 2 thousand tokens from tens of thousands it read (Anthropic, 2025); all 18 models Chroma tested got worse as their context grew. Measure your own runs: bkit records the tokens each agent read in .bkit/stats.jsonl, and bkit stats writes a report of your runs to .bkit/stats.md." src=".github/assets/bkit-reread-light.svg" width="100%">
+    <img alt="Most of what a coding agent reads is the conversation re-sent on every request, not tool output. bkit hands over to a fresh agent with a short brief instead of letting one agent’s context grow." src=".github/assets/bkit-reread-light.svg" width="100%">
   </picture>
 </p>
 
@@ -381,7 +382,7 @@ All templates, what each is for, and how to install them: [`.bkit/templates.md`]
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-tokens-dark.svg">
-    <img alt="Compression saves 1 to 3 percent; the risks cost more. Where Claude Code's cost goes across 456 real bkit transcripts: 69 percent is the model re-reading the system prompt, rules, tool list and conversation on every request; 4 percent is the model's own writing; 27 percent is big tool output, the only part a compressor can touch; the tools remove 1 to 3 percent of the bill. What you gain: 1 to 3 percent of the bill saved, big cuts on huge logs, prompt cache intact. What it costs you: wrong answers from compressed logs, broken code when lines are rewritten or cut, hidden content that costs tokens to fetch back, silent failures that turn compression off, a proxy that sees all your model traffic, and clashes with bkit's own setup." src=".github/assets/bkit-tokens-light.svg" width="100%">
+    <img alt="Across more than 400 bkit transcripts, compression tools could touch only the tool-output share of the bill and saved 1 to 3 percent, at the risk of wrong answers and broken code." src=".github/assets/bkit-tokens-light.svg" width="100%">
   </picture>
 </p>
 
@@ -392,7 +393,7 @@ All templates, what each is for, and how to install them: [`.bkit/templates.md`]
 | [Headroom](https://pypi.org/project/headroom-ai/) | Same idea, plus an optional text model that rewrites output | 2.8% with the text model, 0.8% without | The text model rewrote code: `(preset) => void` came back as `(preset) void` |
 | [RTK](https://github.com/rtk-ai/rtk) | A hook that swaps shell commands for versions that print less | 0.7–2.1% | Its `grep` strips indentation and cuts lines at 80 characters |
 
-**How we measured.** The cost split above comes from all 456 transcripts. The table compares the three tools on the 314 of them still on disk when RTK was tested, so all three are measured on the same data. We ran each tool over the large tool results, with no model calls. Each result counts by how often the model re-read it later, because that's what it cost. RTK acts before a command runs, so we re-ran the read-only commands with and without it. Full method, every result with its 95% range, and the scripts: [the comparison](tests/compression/bkit-caveman-headroom-compression-proxy-comparison.md). Your sessions may differ: run the scripts on your own transcripts before you choose.
+**How we measured.** The cost split above comes from more than 400 transcripts. The table compares the three tools on the 314 of them still on disk when RTK was tested, so all three are measured on the same data. We ran each tool over the large tool results, with no model calls. Each result counts by how often the model re-read it later, because that's what it cost. RTK acts before a command runs, so we re-ran the read-only commands with and without it. Full method, every result with its 95% range, and the scripts: [the comparison](tests/compression/bkit-caveman-headroom-compression-proxy-comparison.md). Your sessions may differ: run the scripts on your own transcripts before you choose.
 
 **Why the risks outweigh the saving, for now.** The saving is real but small, and the tools that save most get there by changing what the agent reads. An agent reading a shortened log can answer wrongly. An edit quoting a rewritten or cut-off line won't match the file. Either way the agent goes round again, and every extra round re-reads the whole conversation, so it doesn't take many to wipe out a 1–3% saving. On top of that, a proxy sees all your model traffic, and when one of these tools breaks, it tends to switch itself off without telling you. That could change if a tool learns to leave code alone and fail loudly.
 
@@ -411,8 +412,6 @@ All templates, what each is for, and how to install them: [`.bkit/templates.md`]
 - **Each step reads only the project docs it needs.** Whatever a step reads at the start is re-read on every request in that step.
 - **A utility agent shortens markdown files without changing what they say.** Rules and prompts go out with every request of every agent, so a line cut there is saved many thousands of times.
 
-**Or run fewer steps.** For a change that's clearly small, the [lite workflows](.bkit/lite.md) keep only the steps and reviewers it needs, so fewer requests re-read the conversation. You give up the safety checks, so the full workflow stays the default.
-
 **What [`bkit tips`](.bkit/README.md#ongoing-cli) suggests for your repo:**
 
 - **Set up Serena,** so agents ask where code is defined and what uses it, like your editor does. That's cheaper than reading whole files, and it doesn't miss callers that text search would.
@@ -429,7 +428,7 @@ No, but you need to read a design and a plan and decide whether they're right. S
 bkit is heavier than a single prompt. For a one-off script or a quick experiment, just ask your AI. bkit pays off on a project you'll keep changing and want to trust.
 
 **Does it work on an existing project?**
-Yes. Install needs a git repo with a `package.json`, because bkit installs as an npm package. It adds its own files and writes into shared ones such as `CLAUDE.md`, `.gitignore` and `docs/*.md` only between `bkit:start` and `bkit:end` markers, leaving the rest alone. The project docs fill in as agents work on your code.
+Yes, in any language. bkit installs as an npm package, so the repo gets a `package.json` if it hasn't one ([not a JavaScript project?](#quick-start)). It adds its own files and writes into shared ones such as `CLAUDE.md`, `.gitignore` and `docs/*.md` only between `bkit:start` and `bkit:end` markers, leaving the rest alone. The project docs fill in as agents work on your code.
 
 **What does install change, and can I remove it?**
 Every file it writes is listed in [what install writes](.bkit/README.md#what-install-writes). `bkit uninstall` removes bkit's files and blocks, and keeps your own edits and every template you copied ([uninstall](.bkit/install.md#uninstall)).
@@ -441,7 +440,7 @@ Every file it writes is listed in [what install writes](.bkit/README.md#what-ins
 No full run, from design to merge, has taken longer than a day. Each run posts its own time to the issue, next to the median of your last five runs, so you can see how yours compare.
 
 **Can it break my live site?**
-**Not without your sign-off.** In the full workflows, work happens in a separate copy of the repo, goes through a pull request, must pass every test, and merges into `dev`, never `main`. Lite workflows skip the pull request and CI, which is why they're only for small, clearly safe changes.
+**Not without your sign-off.** Work happens in a separate copy of the repo, goes through a pull request, must pass every test, and merges into `dev`, never `main`.
 
 **Which issue tracker, and which code host?**
 GitHub Issues, Linear or Jira for the tracker. The code has to live on GitHub: pull requests, CI and cloud mode run there.
@@ -480,7 +479,6 @@ On real bkit sessions they saved 1–3% of the bill, and each changes what the a
 | [`.bkit/providers.md`](.bkit/providers.md) | Tool and provider differences, guardrails, model pins |
 | [`.bkit/cloud.md`](.bkit/cloud.md) | Cloud agents: Claude Code on the web, Cursor, opencode |
 | [`.bkit/templates.md`](.bkit/templates.md) | Templates ready to adopt |
-| [`.bkit/lite.md`](.bkit/lite.md) | Lite workflows: shorter prompts for small changes |
 | [`.bkit/pipeline.md`](.bkit/pipeline.md) | Every agent in the order it runs, the CI scaffold, every audit template |
 | [`.bkit/authoring.md`](.bkit/authoring.md) | Rules for writing docs, prompts and workflows |
 | [`.bkit/comparison.md`](.bkit/comparison.md) | Comparison with other AI development frameworks and with _Agentic Design Patterns_ |
@@ -490,7 +488,9 @@ On real bkit sessions they saved 1–3% of the bill, and each changes what the a
 
 ## Quick start
 
-**You need** a GitHub repo with a `package.json`, Node 24+, pnpm, and at least one of Claude Code, Cursor, Codex, Google Antigravity or opencode.
+**You need** a GitHub repo, Node 24+, pnpm, and at least one of Claude Code, Cursor, Codex, Google Antigravity or opencode.
+
+**Not a JavaScript project?** bkit works with any stack. It installs as an npm package, so your repo gets a `package.json` (`pnpm add` creates one if there isn't one), but nothing else has to be JavaScript: point the `bkit:gate:*` scripts install adds at your own commands, such as `ruff check && pytest` or `go test ./...` ([required tools](.bkit/README.md#required-tools)).
 
 **Easiest:** copy the [install prompt](.bkit/install.md#install--first-time) into your AI coding tool and let it do the setup.
 

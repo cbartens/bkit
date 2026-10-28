@@ -189,7 +189,7 @@ function hero(t) {
     size: 21,
     fill: t.muted,
   });
-  b += text(66, 306, "Run by AI agents. Battle-tested over >1,000 commits.", {
+  b += text(66, 306, "Run by AI agents. Battle-tested over >2,000 commits.", {
     size: 21,
     fill: t.muted,
   });
@@ -228,7 +228,7 @@ function hero(t) {
     W,
     H,
     b,
-    "bkit — from vibe coding to production code. A senior engineering team's process, ready-made, run by AI agents and battle-tested over more than 1,000 commits.",
+    "bkit — from vibe coding to production code. A senior engineering team's process, ready-made, run by AI agents and battle-tested over more than 2,000 commits.",
   );
 }
 
@@ -342,7 +342,7 @@ function fences(t) {
         : t.build;
 
   let b = `<defs><linearGradient id="fz" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="${t.gate}" stop-opacity="0.1"/><stop offset="1" stop-color="${t.ok}" stop-opacity="0.14"/></linearGradient>`;
-  b += `<marker id="fa" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${t.debug}"/></marker></defs>`;
+  b += `<marker id="fa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${t.debug}"/></marker></defs>`;
   b += `<rect x="0.5" y="0.5" width="${W - 1}" height="${footH(1031) - 1}" rx="18" fill="${t.bg}" stroke="${t.border}"/>`;
 
   b += text(X0, 64, "WHY IT WORKS", { size: 14, weight: 700, fill: t.plan, ls: 2.4 });
@@ -1315,7 +1315,7 @@ function context(t) {
       rows: [
         [
           "Project docs",
-          "architecture, tech stack, data schema, security, testing, deployments, monitoring",
+          "architecture, technology, data schema, security, design, testing, deployments, observability",
           ["r", "r", "r", "r", "rw"],
         ],
         [
@@ -1545,7 +1545,7 @@ function tokens(t) {
   b += text(
     X0,
     234,
-    "Where Claude Code's cost goes across 456 real bkit transcripts. The whole bar is the bill.",
+    "Where Claude Code's cost goes across more than 400 real bkit transcripts. The whole bar is the bill.",
     { size: 19, fill: t.muted },
   );
   b += text(X0, 292, "69%  Re-reading everything else", { size: 20, weight: 700, fill: t.text });
@@ -1624,7 +1624,7 @@ function tokens(t) {
     W,
     footH(H),
     b + footer(t, W, H),
-    "Compression saves 1 to 3 percent; the risks cost more. Where Claude Code's cost goes across 456 real bkit transcripts: 69 percent is the model re-reading the system prompt, rules, tool list and conversation on every request; 4 percent is the model's own writing; 27 percent is big tool output, the only part a compressor can touch; the tools remove 1 to 3 percent of the bill. What you gain: 1 to 3 percent of the bill saved, big cuts on huge logs, prompt cache intact. What it costs you: wrong answers from compressed logs, broken code when lines are rewritten or cut, hidden content that costs tokens to fetch back, silent failures that turn compression off, a proxy that sees all your model traffic, and clashes with bkit's own setup.",
+    "Compression saves 1 to 3 percent; the risks cost more. Where Claude Code's cost goes across more than 400 real bkit transcripts: 69 percent is the model re-reading the system prompt, rules, tool list and conversation on every request; 4 percent is the model's own writing; 27 percent is big tool output, the only part a compressor can touch; the tools remove 1 to 3 percent of the bill. What you gain: 1 to 3 percent of the bill saved, big cuts on huge logs, prompt cache intact. What it costs you: wrong answers from compressed logs, broken code when lines are rewritten or cut, hidden content that costs tokens to fetch back, silent failures that turn compression off, a proxy that sees all your model traffic, and clashes with bkit's own setup.",
   );
 }
 
