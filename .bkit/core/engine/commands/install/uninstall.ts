@@ -64,6 +64,7 @@ import { readBkitConfig } from "../../shared/settings.js";
 import { SEEDED_BKIT_DEFAULTS } from "../../install/modules/core.js";
 import {
   CLAUDE_CLOUD_RELPATH,
+  CODEX_CLOUD_RELPATH,
   CURSOR_CLOUD_RELPATH,
   resolveClaudeDerivedAllows,
 } from "../../install/cloud-env.js";
@@ -910,32 +911,23 @@ export async function runUninstall(
     }
   }
 
-  // Remove the generated `.claude/bkit-cloud.md` (untracked, gitignored — holds resolved
-  // secrets). It is not in the manifest, so the table-driven pass never sees it;
-  // delete it explicitly when the claude host is uninstalled so a live-secrets file
-  // is never left behind. Pushed to result.deleted so a dry-run reports it too.
-  if (moduleList.includes("claude")) {
-    const cloudAbs = path.join(ctx.cwd, CLAUDE_CLOUD_RELPATH);
-    if (fs.existsSync(cloudAbs)) {
-      result.deleted.push(CLAUDE_CLOUD_RELPATH);
-      if (!ctx.dryRun) {
-        fs.rmSync(cloudAbs, { force: true });
-        console.log(`${ctx.logPrefix} delete: ${CLAUDE_CLOUD_RELPATH} (generated cloud setup doc)`);
-      }
-    }
-  }
-
-  // Same for the Cursor twin `.cursor/bkit-cloud.md` (writeCursorCloudDoc) — untracked,
-  // gitignored, holds resolved secrets; delete it explicitly when the cursor host is
-  // uninstalled so a live-secrets file is never left behind.
-  if (moduleList.includes("cursor")) {
-    const cloudAbs = path.join(ctx.cwd, CURSOR_CLOUD_RELPATH);
-    if (fs.existsSync(cloudAbs)) {
-      result.deleted.push(CURSOR_CLOUD_RELPATH);
-      if (!ctx.dryRun) {
-        fs.rmSync(cloudAbs, { force: true });
-        console.log(`${ctx.logPrefix} delete: ${CURSOR_CLOUD_RELPATH} (generated cloud setup doc)`);
-      }
+  // Remove each uninstalled host's generated `<host>/bkit-cloud.md` (untracked,
+  // gitignored — holds resolved secrets). Not in the manifest, so the table-driven pass
+  // never sees them; delete explicitly so a live-secrets file is never left behind.
+  // Pushed to result.deleted so a dry-run reports them too.
+  const cloudDocs: ReadonlyArray<readonly [ModuleFlag, string]> = [
+    ["claude", CLAUDE_CLOUD_RELPATH],
+    ["cursor", CURSOR_CLOUD_RELPATH],
+    ["codex", CODEX_CLOUD_RELPATH],
+  ];
+  for (const [host, relPath] of cloudDocs) {
+    if (!moduleList.includes(host)) continue;
+    const cloudAbs = path.join(ctx.cwd, relPath);
+    if (!fs.existsSync(cloudAbs)) continue;
+    result.deleted.push(relPath);
+    if (!ctx.dryRun) {
+      fs.rmSync(cloudAbs, { force: true });
+      console.log(`${ctx.logPrefix} delete: ${relPath} (generated cloud setup doc)`);
     }
   }
 

@@ -399,7 +399,7 @@ Advisory repeat-read hook, on all five hosts. A read of a line range the same ag
 
 **`.bkit/allowlist.json`** — core-owned, written on every install / upgrade whatever the host set, removed by full uninstall. **Do not hand-edit** — install / upgrade rewrites it whole; change `allowed-domains` instead. `bkit check` fails when it is missing or stale. The hook finds it from the payload's repo dirs (`workspace_roots`, `cwd`, Antigravity `workspacePaths`) then its own cwd, walking up to the `.git` root — Antigravity runs plugin hooks from the plugin dir. Missing file => every host reads as unknown; the hook embeds no list, because a second copy drifts from the registry silently.
 
-**Cloud egress (separate):** the derived registry union the same `allowed-domains` feed `.claude/bkit-cloud.md` / `.cursor/bkit-cloud.md` paste instructions for dashboard network Custom allowlists — that is proxy egress, not local agent permission files. See `.agents/context.md` § Allowed domains and `.bkit/cloud.md`.
+**Cloud egress (separate):** the derived registry union the same `allowed-domains` feed `.claude/bkit-cloud.md` / `.cursor/bkit-cloud.md` / `.codex/bkit-cloud.md` paste instructions for dashboard network Custom allowlists — that is proxy egress, not local agent permission files. See `.agents/context.md` § Allowed domains and `.bkit/cloud.md`.
 
 ### MCP servers — one source, three encodings
 
@@ -484,22 +484,22 @@ bkit ships no default: the setting also hides each person's own connectors (mail
 > Setup recipe + alignment: `.bkit/cloud.md`. This section = host-diff matrix only.
 
 <!-- prettier-ignore -->
-| Concern | Claude Code on the web | Cursor Background Agents |
-| --- | --- | --- |
-| Where env config lives | Claude app (per-environment), not in repo | In repo (`.cursor/`) |
-| Custom base image | Not supported — setup script layers on top of Anthropic-managed Ubuntu 24.04 | Supported — `.cursor/Dockerfile` |
-| Cold-start cache | Snapshot keyed by setup-script body hash (~7d TTL) | Docker image layers |
-| Per-snapshot install | `.claude/hooks/bkit-cloud-bootstrap.sh` (SessionStart, fires when `CLAUDE_CODE_REMOTE=true`) | `.cursor/environment.json` → `install` |
-| Build env | Setup script (paste-in via Claude app UI) | `.cursor/Dockerfile` (Cursor Cloud builds custom image) |
-| Install/start | n/a (handled by bootstrap hook) | `.cursor/environment.json` → `install`, `start`, `terminals[]`, `env`, `ports` |
-| Port forwarding | n/a | `.cursor/environment.json` → `terminals[].ports` |
-| Cloud-session detection | `CLAUDE_CODE_REMOTE=true` (env var) | `is_background_agent === true` (stdin JSON) |
-| Default network | `Trusted` allowlist (npm, GitHub, PyPI, Docker Hub, vale tarball) | Outbound open in the sandbox |
-| Reusable across repos | Setup script yes (generic snapshot); environment no — one per repo (secrets / PAT scope are per-repo) | No — Dockerfile per repo (copied from the bkit template and owned by the repo) |
-| Secrets | Env vars in Claude app (plaintext; rotate PATs) | Cursor Cloud env vars (Settings → Background Agents → Environment Variables) |
-| Linear preflight + rules advisory | `.claude/hooks/bkit-preflight.sh` (SessionStart, non-blocking — one document carrying the rules-read advisory always, plus the guard's `additionalContext` HARD STOP when a tracker issue id is set) | `.cursor/hooks/bkit-preflight.sh` (`sessionStart`, `failClosed: true`, blocks on non-zero; the same advisory + guard document) |
+| Concern | Claude Code on the web | Cursor Background Agents | Codex Cloud |
+| --- | --- | --- | --- |
+| Where env config lives | Claude app (per-environment), not in repo | In repo (`.cursor/`) | ChatGPT **Settings > Codex Cloud > Environments** (per-environment), not in repo |
+| Custom base image | Not supported — setup script layers on top of Anthropic-managed Ubuntu 24.04 | Supported — `.cursor/Dockerfile` | Not used — install script layers on Codex's image |
+| Cold-start cache | Snapshot keyed by setup-script body hash (~7d TTL) | Docker image layers | Not documented |
+| Per-snapshot install | `.claude/hooks/bkit-cloud-bootstrap.sh` (SessionStart, fires when `CLAUDE_CODE_REMOTE=true`) | `.cursor/environment.json` → `install` | Install script tail (`pnpm install`, `vale sync`, `gh auth login`) |
+| Build env | Setup script (paste-in via Claude app UI) | `.cursor/Dockerfile` (Cursor Cloud builds custom image) | **Install script** (paste-in from `.codex/bkit-cloud.md`) |
+| Install/start | n/a (handled by bootstrap hook) | `.cursor/environment.json` → `install`, `start`, `terminals[]`, `env`, `ports` | Install script |
+| Port forwarding | n/a | `.cursor/environment.json` → `terminals[].ports` | n/a |
+| Cloud-session detection | `CLAUDE_CODE_REMOTE=true` (env var) | `is_background_agent === true` (stdin JSON) | None — bkit ships no Codex cloud hook |
+| Default network | `Trusted` allowlist (npm, GitHub, PyPI, Docker Hub, vale tarball) | Outbound open in the sandbox | **Internet access**: package-manager domains + **Additional allowed domains** (exact hosts), or all public internet |
+| Reusable across repos | Setup script yes (generic snapshot); environment no — one per repo (secrets / PAT scope are per-repo) | No — Dockerfile per repo (copied from the bkit template and owned by the repo) | Install script yes; environment one per repo; **Personal vault** shares chosen secrets |
+| Secrets | Env vars in Claude app (plaintext; rotate PATs) | Cursor Cloud env vars (Settings → Background Agents → Environment Variables) | **Environment variables**; **Network secrets** = proxy-substituted, HTTP-only |
+| Linear preflight + rules advisory | `.claude/hooks/bkit-preflight.sh` (SessionStart, non-blocking — one document carrying the rules-read advisory always, plus the guard's `additionalContext` HARD STOP when a tracker issue id is set) | `.cursor/hooks/bkit-preflight.sh` (`sessionStart`, `failClosed: true`, blocks on non-zero; the same advisory + guard document) | `.codex/hooks/bkit-rules.cjs` advisory — unproven in cloud tasks |
 
-**Install behaviour:** template drops; project tokens at install. Both clouds aligned via bkit: vale 3.9.1, pnpm (corepack-pinned `package.json#packageManager`), gh CLI. See `.bkit/cloud.md` for paste-in recipe + sharing pattern.
+**Install behaviour:** template drops; project tokens at install. All clouds aligned via bkit: vale 3.9.1, pnpm (corepack-pinned `package.json#packageManager`), gh CLI. See `.bkit/cloud.md` for paste-in recipe + sharing pattern.
 
 ---
 

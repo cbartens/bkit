@@ -774,6 +774,48 @@ describe("#489 — managed-version marker on every file bkit writes", () => {
 // cursor/lint files on upgrade.
 // ---------------------------------------------------------------------------
 
+describe("#717 — .codex/bkit-cloud.md through install, upgrade and check", () => {
+  const bkitInstallPath = path.resolve(
+    path.dirname(new URL(import.meta.url).pathname),
+    "../../cli.ts",
+  );
+  function runCli(args: string[]) {
+    return spawnSync(requireTsx(), [bkitInstallPath, ...args], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 90_000,
+    });
+  }
+
+  it("codex install writes it gitignored at 0600; upgrade regenerates it; check stays clean", () => {
+    expect(spawnSync("git", ["init", "-q"], { cwd: tmpDir }).status).toBe(0);
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
+      "utf-8",
+    );
+    const doc = path.join(tmpDir, ".codex", "bkit-cloud.md");
+
+    expect(runCli(["install", "--codex", "--tracker=linear"]).status).toBe(0);
+    expect(fs.statSync(doc).mode & 0o777).toBe(0o600);
+    const ignored = spawnSync("git", ["check-ignore", "-q", ".codex/bkit-cloud.md"], {
+      cwd: tmpDir,
+    });
+    expect(ignored.status).toBe(0);
+
+    fs.rmSync(doc);
+    const upgrade = runCli(["upgrade", "--auto-apply"]);
+    expect(upgrade.status, combinedOutput(upgrade)).toBe(0);
+    expect(fs.statSync(doc).mode & 0o777).toBe(0o600);
+    expect(fs.readFileSync(doc, "utf-8")).toContain("Settings > Codex Cloud > Environments");
+
+    const check = runCli(["check"]);
+    expect(check.status, combinedOutput(check)).toBe(0);
+    expect(check.stdout).toContain("0 write(s) would occur");
+  });
+});
+
 describe("#255 — upgrade does not force-create uninstalled host/tooling modules", () => {
   const bkitInstallPath = path.resolve(
     path.dirname(new URL(import.meta.url).pathname),

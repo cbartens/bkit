@@ -31,10 +31,12 @@ import {
   proposeEgressBase,
   isIpLiteral,
   writeClaudeCloudDoc,
-  cursorCloudPolicy,
+  extractCloudToolchainScript,
   renderCursorContextFetchProvision,
   renderCursorNetworkAllowlist,
   writeCursorCloudDoc,
+  renderCodexNetworkAllowlist,
+  writeCodexCloudDoc,
   SESSION_HIJACK_KEYS,
 } from "./cloud-env";
 import {
@@ -612,34 +614,48 @@ describe("cloudAutoModeEnvironment / renderCloudUserSettings", () => {
   });
 });
 
-describe("cursorCloudPolicy", () => {
-  // Jira is local-only (no cloud dispatch), so it gets the GH baseline and no tracker secret.
-  it.each([
-    ["linear", ["BKIT_LINEAR_API_KEY", "BKIT_GH_TOKEN"]],
-    ["github", ["BKIT_GH_TOKEN"]],
-    ["jira", ["BKIT_GH_TOKEN"]],
-    ["none", ["BKIT_GH_TOKEN"]],
-  ] as const)("%s tracker: baseline is %j", (tracker, names) => {
-    const p = cursorCloudPolicy(tracker);
-    expect(p.baseline.map(([n]) => n)).toEqual(names);
+describe("cloud docs — the env block never depends on the tracker", () => {
+  const TOKENS: TokenMap = {
+    DEFAULT_BRANCH: "main",
+    PROJECT_NAME: "test-repo",
+    REPO_SLUG: "acme/test-repo",
+  };
+  const docs = [
+    [".claude", (cwd: string) => writeClaudeCloudDoc(cwd, TOKENS)],
+    [".cursor", (cwd: string) => writeCursorCloudDoc(cwd, TOKENS)],
+    [".codex", (cwd: string) => writeCodexCloudDoc(cwd, TOKENS)],
+  ] as const;
+
+  /** The first ```dotenv fence of a rendered doc — the paste block. */
+  function envBlock(dir: string): string {
+    const out = fs.readFileSync(path.join(tmpDir, dir, "bkit-cloud.md"), "utf-8");
+    return /```dotenv\n([\s\S]*?)\n```/.exec(out)?.[1] ?? "";
+  }
+
+  it.each(docs)("%s: every tracker renders the same block for the same .envrc", (dir, render) => {
+    write(".envrc", "dotenv_if_exists .bkit/.env");
+    write(".bkit/.env", "BKIT_GH_TOKEN=real\nBKIT_LINEAR_API_KEY=lin\nBKIT_JIRA_API_KEY=jira\n");
+    const blocks = ISSUE_TRACKERS.map((tracker) => {
+      write("package.json", JSON.stringify({ name: "c", bkit: { tracker: { default: tracker } } }));
+      expect(render(tmpDir)).toBe(true);
+      return envBlock(dir);
+    });
+    expect(new Set(blocks).size).toBe(1);
+    expect(blocks[0]!.split("\n")).toEqual([
+      "BKIT_GH_TOKEN=real",
+      "BKIT_LINEAR_API_KEY=lin",
+      "BKIT_JIRA_API_KEY=jira",
+    ]);
   });
 
-  it("renders a BKIT_LINEAR_API_KEY placeholder for linear but not for github or jira", () => {
-    write(".envrc", "dotenv_if_exists .bkit/.env");
-    write(".bkit/.env", "BKIT_GH_TOKEN=real");
-
-    const linear = cursorCloudPolicy("linear");
-    const linearBlock = renderCloudEnvBlock(resolveCloudEnvVars(tmpDir, linear), linear);
-    expect(linearBlock).toContain("BKIT_GH_TOKEN=real");
-    expect(linearBlock).toMatch(/^BKIT_LINEAR_API_KEY=/m);
-
-    for (const tracker of ["github", "jira"] as const) {
-      const policy = cursorCloudPolicy(tracker);
-      const block = renderCloudEnvBlock(resolveCloudEnvVars(tmpDir, policy), policy);
-      expect(block, tracker).toContain("BKIT_GH_TOKEN=real");
-      expect(block, tracker).not.toContain("BKIT_LINEAR_API_KEY");
-      expect(block, tracker).not.toContain("BKIT_JIRA_API_KEY");
-    }
+  it.each(docs)("%s: no tracker key gets a placeholder; only BKIT_GH_TOKEN does", (dir, render) => {
+    write("package.json", JSON.stringify({ name: "c", bkit: { tracker: { default: "linear" } } }));
+    render(tmpDir);
+    expect(
+      envBlock(dir)
+        .split("\n")
+        .map((l) => l.split("=")[0]),
+    ).toEqual(["BKIT_GH_TOKEN"]);
   });
 });
 
@@ -732,7 +748,7 @@ describe("writeCursorCloudDoc — end-to-end render (real template)", () => {
   it("writes a sentinel-free, chmod-600 doc naming the repo", () => {
     write(".envrc", "dotenv_if_exists .bkit/.env");
     write(".bkit/.env", "BKIT_GH_TOKEN=real");
-    expect(writeCursorCloudDoc(tmpDir, TOKENS, "linear")).toBe(true);
+    expect(writeCursorCloudDoc(tmpDir, TOKENS)).toBe(true);
     const dst = path.join(tmpDir, ".cursor", "bkit-cloud.md");
     const out = fs.readFileSync(dst, "utf-8");
     expect(out).not.toMatch(/@@[A-Z_]+@@/);
@@ -740,29 +756,123 @@ describe("writeCursorCloudDoc — end-to-end render (real template)", () => {
     expect(out).toContain("BKIT_GH_TOKEN=real");
     expect(fs.statSync(dst).mode & 0o777).toBe(0o600);
   });
+});
 
-  it("linear tracker emits BKIT_LINEAR_API_KEY; github and jira trackers do not", () => {
-    write(".envrc", "dotenv_if_exists .bkit/.env");
-    write(".bkit/.env", "BKIT_GH_TOKEN=real");
-
-    writeCursorCloudDoc(tmpDir, TOKENS, "linear");
-    const linearOut = fs.readFileSync(path.join(tmpDir, ".cursor", "bkit-cloud.md"), "utf-8");
-    expect(linearOut).toContain("BKIT_LINEAR_API_KEY=");
-
-    // The env-var paste block must not carry a tracker secret on the GitHub or Jira tracker.
-    // (The prose still mentions LINEAR_ISSUE_ID as an injected var — assert on the block line.)
-    for (const tracker of ["github", "jira"] as const) {
-      writeCursorCloudDoc(tmpDir, TOKENS, tracker);
-      const out = fs.readFileSync(path.join(tmpDir, ".cursor", "bkit-cloud.md"), "utf-8");
-      expect(out, tracker).not.toMatch(/^BKIT_LINEAR_API_KEY=/m);
-      expect(out, tracker).not.toMatch(/^BKIT_JIRA_API_KEY=/m);
+describe("extractCloudToolchainScript", () => {
+  it("returns the pinned Node/vale/gh/jq installs from the Claude template, markers stripped", () => {
+    const script = extractCloudToolchainScript();
+    for (const key of ["NODE_SHA256", "VALE_SHA256", "GH_SHA256", "JQ_SHA256"]) {
+      expect(script, key).toMatch(new RegExp(`^${key}="[0-9a-f]{64}"$`, "m"));
     }
+    expect(script).toContain('export PATH="/usr/local/bin:$PATH"');
+    expect(script).not.toContain("bkit-toolchain:");
+    // Claude-only setup (workspace trust, user settings, cache bust) stays out.
+    expect(script).not.toContain("hasTrustDialogAccepted");
+    expect(script).not.toContain("cache-bust");
+    expect(script).not.toContain("@@");
+  });
+});
+
+describe("renderCodexNetworkAllowlist", () => {
+  it("lists exact hosts (no *. wildcard) under the Codex internet-access toggles", () => {
+    write(
+      ".agents/context.md",
+      "<!-- bkit:end -->\n## Cloud\n\n" +
+        "<!-- allowed-domains:start -->\nsentry.io\n<!-- allowed-domains:end -->\n",
+    );
+    const out = renderCodexNetworkAllowlist(tmpDir);
+    expect(out).toContain("Enable package manager domains");
+    expect(out).toContain("Additional allowed domains");
+    expect(out).toContain("Enable all public internet access");
+    expect(out).toContain("sentry.io");
+    expect(out).toContain("api.githubcopilot.com");
+    expect(out).not.toContain("*.");
+  });
+});
+
+describe("codex template generation sentinels", () => {
+  const pkgRoot = path.resolve(
+    path.dirname(new URL(import.meta.url).pathname),
+    "..",
+    "..",
+    "..",
+    "..",
+  );
+  const template = fs.readFileSync(
+    path.join(pkgRoot, ".bkit", "shared", ".codex", "bkit-cloud.md"),
+    "utf-8",
+  );
+
+  it("carries the sentinels writeCodexCloudDoc substitutes, and no Claude-only ones", () => {
+    for (const s of [
+      "@@CLOUD_ENV_VARS@@",
+      "@@CLOUD_ENV_NOTES@@",
+      "@@CODEX_NETWORK@@",
+      "@@CODEX_TOOLCHAIN@@",
+      "@@CLOUD_COREPACK@@",
+      "@@CLOUD_CONTEXT_FETCH_PROVISION@@",
+      "{{PROJECT_NAME}}",
+    ]) {
+      expect(template, s).toContain(s);
+    }
+    expect(template).not.toContain("@@CLOUD_CACHE_BUST@@");
+    expect(template).not.toContain("@@CLOUD_WORKSPACE_TRUST@@");
+    expect(template).not.toContain("@@CLOUD_USER_SETTINGS@@");
+    // The toolchain pins live once, in the Claude template — never a third copy here.
+    expect(template).not.toMatch(/_SHA256=/);
   });
 
-  it("returns false when the template is absent (no getTemplatesRoot match)", () => {
-    // Sanity: the real template exists, so a normal call returns true. (Absence is
-    // covered structurally — writeCursorCloudDoc short-circuits on a missing src.)
-    expect(writeCursorCloudDoc(tmpDir, TOKENS, "none")).toBe(true);
+  it("states the Codex mechanics: env vars vs network secrets, Personal vault, unproven hooks", () => {
+    expect(template).toContain("Settings > Codex Cloud > Environments");
+    expect(template).toContain("Install script");
+    expect(template).toContain("Network secrets");
+    expect(template).toContain("Allowed domains");
+    expect(template).toContain("Personal vault");
+    expect(template).toMatch(/hooks/i);
+    expect(template).toContain("GateGuard");
+  });
+});
+
+describe("writeCodexCloudDoc — end-to-end render (real template)", () => {
+  const TOKENS: TokenMap = {
+    DEFAULT_BRANCH: "main",
+    PROJECT_NAME: "test-repo",
+    REPO_SLUG: "acme/test-repo",
+  };
+
+  it("writes a sentinel-free, chmod-600 doc with the resolved env block", () => {
+    write(".envrc", "dotenv_if_exists .bkit/.env");
+    write(".bkit/.env", "BKIT_GH_TOKEN=real\nANTHROPIC_API_KEY=sk-drop");
+    expect(writeCodexCloudDoc(tmpDir, TOKENS)).toBe(true);
+    const dst = path.join(tmpDir, ".codex", "bkit-cloud.md");
+    const out = fs.readFileSync(dst, "utf-8");
+    expect(out).not.toMatch(/@@[A-Z_]+@@/);
+    expect(out).toContain("test-repo");
+    expect(out).toContain("BKIT_GH_TOKEN=real");
+    expect(out).not.toContain("sk-drop");
+    expect(fs.statSync(dst).mode & 0o777).toBe(0o600);
+  });
+
+  it("inlines the Claude template's toolchain pins and the consumer's corepack pnpm", () => {
+    write("package.json", JSON.stringify({ name: "c", packageManager: "pnpm@10.34.3" }));
+    writeCodexCloudDoc(tmpDir, TOKENS);
+    const out = fs.readFileSync(path.join(tmpDir, ".codex", "bkit-cloud.md"), "utf-8");
+    const claudePins = pins(extractCloudToolchainScript());
+    expect(claudePins.size).toBeGreaterThanOrEqual(8);
+    for (const [k, v] of claudePins) expect(pins(out).get(k), k).toBe(v);
+    expect(out).toContain("pnpm@10.34.3");
+    expect(out).toContain("pnpm install --frozen-lockfile");
+  });
+
+  it("bakes the consumer's context-fetch provision recipes into the install script", () => {
+    write(
+      ".agents/context.md",
+      "<!-- bkit:end -->\n## Enabled\n\n" +
+        "<!-- context-fetch:provision vercel -->\n```bash\ncommand -v vercel || pnpm add -g vercel\n```\n<!-- context-fetch:end -->\n",
+    );
+    writeCodexCloudDoc(tmpDir, TOKENS);
+    const out = fs.readFileSync(path.join(tmpDir, ".codex", "bkit-cloud.md"), "utf-8");
+    expect(out).toContain("command -v vercel || pnpm add -g vercel");
   });
 });
 

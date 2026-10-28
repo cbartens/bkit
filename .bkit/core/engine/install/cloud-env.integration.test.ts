@@ -55,6 +55,7 @@ describe("T4 — the derived egress set reaches all five surfaces", () => {
           "install",
           "--claude",
           "--cursor",
+          "--codex",
           "--opencode=openrouter",
           `--tracker=${tracker}`,
         ],
@@ -74,6 +75,9 @@ describe("T4 — the derived egress set reaches all five surfaces", () => {
 
       const claudeCloud = read(path.join(".claude", "bkit-cloud.md"));
       const cursorCloud = read(path.join(".cursor", "bkit-cloud.md"));
+      const codexCloudAbs = path.join(tmpDir, ".codex", "bkit-cloud.md");
+      expect(fs.statSync(codexCloudAbs).mode & 0o777).toBe(0o600);
+      const codexCloud = read(path.join(".codex", "bkit-cloud.md"));
       const allowlist = JSON.parse(read(path.join(".bkit", "allowlist.json"))) as {
         domains: string[];
       };
@@ -89,6 +93,10 @@ describe("T4 — the derived egress set reaches all five surfaces", () => {
         // 2 — Cursor cloud paste fence (exact hosts, no wildcard)
         expect(cursorCloud).toContain(probe);
         expect(cursorCloud).not.toContain(`*.${probe}`);
+
+        // 2b — Codex cloud paste fence (exact hosts, no wildcard)
+        expect(codexCloud).toContain(probe);
+        expect(codexCloud).not.toContain(`*.${probe}`);
 
         // 3 — .bkit/allowlist.json domains (every host's guardrails hook)
         expect(allowlist.domains).toContain(probe);
@@ -115,6 +123,7 @@ describe("T4 — the derived egress set reaches all five surfaces", () => {
       // Every shipped HOST reaches the Cursor surfaces, not just the probes.
       for (const host of BKIT_SHIPPED_NETWORK_HOSTS) {
         expect(cursorCloud, `${host} missing from .cursor/bkit-cloud.md`).toContain(host);
+        expect(codexCloud, `${host} missing from .codex/bkit-cloud.md`).toContain(host);
       }
     },
     180_000,

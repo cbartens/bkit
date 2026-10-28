@@ -63,8 +63,10 @@ import { detectInstalledModules } from "./check.js";
 import { remapTemplateDest } from "../../install/template-copies.js";
 import {
   CLAUDE_CLOUD_RELPATH,
+  CODEX_CLOUD_RELPATH,
   CURSOR_CLOUD_RELPATH,
   writeClaudeCloudDoc,
+  writeCodexCloudDoc,
   writeCursorCloudDoc,
   writeCursorCliPermissionsArtifact,
 } from "../../install/cloud-env.js";
@@ -736,13 +738,19 @@ export async function runUpgradeCommand(upgradeFlags: UpgradeFlags): Promise<voi
       } else if (ent.isFile()) {
         // Single shared dotfile remap (gitignore → .gitignore, npmignore → .npmignore).
         const relPath = remapTemplateDest(entRel);
-        // `.claude/bkit-cloud.md` + `.cursor/bkit-cloud.md` are GENERATED output files
-        // (writeClaudeCloudDoc / writeCursorCloudDoc), not payload files to reconcile:
-        // install/upgrade regenerate them with resolved secret values, so the raw
-        // source is never a byte-match and the walk must never drift-flag or
+        // `.claude/` + `.cursor/` + `.codex/bkit-cloud.md` are GENERATED output files
+        // (writeClaudeCloudDoc / writeCursorCloudDoc / writeCodexCloudDoc), not payload
+        // files to reconcile: install/upgrade regenerate them with resolved secret values,
+        // so the raw source is never a byte-match and the walk must never drift-flag or
         // overwrite them. Regenerated explicitly in the runUpgrade block below
         // (host-gated, non-dry-run).
-        if (relPath === CLAUDE_CLOUD_RELPATH || relPath === CURSOR_CLOUD_RELPATH) continue;
+        if (
+          relPath === CLAUDE_CLOUD_RELPATH ||
+          relPath === CURSOR_CLOUD_RELPATH ||
+          relPath === CODEX_CLOUD_RELPATH
+        ) {
+          continue;
+        }
         if (relPath === MCP_ROOT_RELPATH || relPath === CURSOR_MCP_RELPATH) continue;
         const entry = entryByPath.get(relPath);
         const ownerModule = entry?.module;
@@ -961,13 +969,20 @@ export async function runUpgradeCommand(upgradeFlags: UpgradeFlags): Promise<voi
     }
   }
 
-  // Same for `.cursor/bkit-cloud.md` — cursor-host-gated twin (see writeCursorCloudDoc).
-  // Uses upgradeTracker so the Linear/GitHub env-var policy matches the installed
-  // tracker; excluded from the payload walk above for the same reason as the Claude doc.
+  // Same for `.cursor/bkit-cloud.md` and `.codex/bkit-cloud.md` — host-gated twins (see
+  // writeCursorCloudDoc / writeCodexCloudDoc); excluded from the payload walk above for
+  // the same reason as the Claude doc.
   if (!upgradeFlags.dryRun && renderModules.has("cursor") && tokens) {
-    if (writeCursorCloudDoc(process.cwd(), tokens, upgradeTracker)) {
+    if (writeCursorCloudDoc(process.cwd(), tokens)) {
       console.log(
         `${LOG_PREFIX} upgrade: .cursor/bkit-cloud.md (regenerated — gitignored, holds resolved secrets)`,
+      );
+    }
+  }
+  if (!upgradeFlags.dryRun && renderModules.has("codex") && tokens) {
+    if (writeCodexCloudDoc(process.cwd(), tokens)) {
+      console.log(
+        `${LOG_PREFIX} upgrade: .codex/bkit-cloud.md (regenerated — gitignored, holds resolved secrets)`,
       );
     }
   }

@@ -1,8 +1,10 @@
-// install/cloud-env.ts — resolve a copy-paste-ready Claude Code on the web env-var block
-// by *following the consumer's `.envrc`*.
+// install/cloud-env.ts — resolve a copy-paste-ready cloud env-var block by *following
+// the consumer's `.envrc`*.
 //
-// The generated `.claude/bkit-cloud.md` (see runClaudeModule) inlines REAL SECRET
-// VALUES so it is gitignored + chmod 600 and never committed. This module owns the
+// The generated `.claude/bkit-cloud.md`, `.cursor/bkit-cloud.md` and
+// `.codex/bkit-cloud.md` (see the claude / cursor / codex host modules) inline REAL
+// SECRET VALUES so they are gitignored + chmod 600 and never committed. All three carry
+// the same env block whatever the issue tracker. This module owns the
 // stack-agnostic resolution: it reads whatever dotenv files the repo's `.envrc`
 // sources, honours the `.envrc` `unset` lines, and drops session-hijack keys.
 // bkit hardcodes NO stack-specific key lists — the stack knowledge lives in the
@@ -20,9 +22,10 @@ import { sha256 } from "./version-file.js";
 // Consumer-relative paths of the generated docs. Shared so the upgrade template walk
 // (commands/install/install.ts) can exclude them — they are generated OUTPUT files, never
 // templates to reconcile. One per cloud host (Claude Code on the web / Cursor
-// Background Agents); both inline resolved secrets, both gitignored + chmod 600.
+// Background Agents / Codex Cloud); all inline resolved secrets, all gitignored + chmod 600.
 export const CLAUDE_CLOUD_RELPATH = path.join(".claude", "bkit-cloud.md");
 export const CURSOR_CLOUD_RELPATH = path.join(".cursor", "bkit-cloud.md");
+export const CODEX_CLOUD_RELPATH = path.join(".codex", "bkit-cloud.md");
 // Session-hijack keys: exporting these into a cloud env redirects Claude Code's
 // OWN model calls onto API-key billing instead of the user's subscription
 // (`.bkit/cloud.md` § Environment variables). Always dropped from the paste block.
@@ -31,33 +34,19 @@ export const SESSION_HIJACK_KEYS = [
     "BKIT_ANTHROPIC_API_KEY",
     "ANTHROPIC_AUTH_TOKEN",
 ];
-// bkit baseline env-var NAMES every Claude-on-web environment needs. Emitted as a
-// placeholder ONLY when absent from the resolved `.envrc` set — a present value
-// (e.g. BKIT_GH_TOKEN already in `.bkit/.env`) keeps its real resolved value.
+// bkit baseline env-var NAMES every cloud environment needs, whatever the tracker:
+// `gh` and the GitHub MCP server read BKIT_GH_TOKEN on every host. Emitted as a
+// placeholder ONLY when absent from the resolved `.envrc` set — a present value keeps
+// its real resolved value. Tracker keys (BKIT_LINEAR_API_KEY, BKIT_JIRA_API_KEY) are
+// never baseline: a consumer on that tracker already sets them in `.envrc`, so they
+// arrive with the resolved set. One baseline for every host keeps the generated docs
+// describing the SAME cloud environment — just different mechanics.
 const BASELINE_TOKEN_PLACEHOLDERS = [
     [
         "BKIT_GH_TOKEN",
         "<PAT — fine-grained one owner / classic across owners; see .bkit/cloud.md § BKIT_GH_TOKEN token permissions>",
     ],
 ];
-// Claude Code on the web: GitHub tracker.
-export const CLAUDE_CLOUD_POLICY = {
-    baseline: BASELINE_TOKEN_PLACEHOLDERS,
-};
-// Cursor Background Agents: `BKIT_LINEAR_API_KEY` prepended for the Linear tracker
-// (bkit-preflight.sh calls the Linear GraphQL API and hard-fails without it); GitHub
-// tracker uses the same GH baseline as Claude.
-const CURSOR_LINEAR_PLACEHOLDER = [
-    "BKIT_LINEAR_API_KEY",
-    "<Linear personal API key — https://linear.app/settings/api>",
-];
-export function cursorCloudPolicy(tracker) {
-    return {
-        baseline: tracker === "linear"
-            ? [CURSOR_LINEAR_PLACEHOLDER, ...BASELINE_TOKEN_PLACEHOLDERS]
-            : BASELINE_TOKEN_PLACEHOLDERS,
-    };
-}
 /** Strip one layer of matching surrounding single/double quotes. */
 function stripQuotes(v) {
     const t = v.trim();
@@ -117,7 +106,7 @@ export function parseDotenv(content) {
  * Applies `.envrc` unsets, then drops session-hijack keys. Returns empty when no
  * `.envrc` exists — the caller still emits a usable placeholder doc.
  */
-export function resolveCloudEnvVars(cwd, policy = CLAUDE_CLOUD_POLICY) {
+export function resolveCloudEnvVars(cwd) {
     const res = {
         included: [],
         unset: [],
@@ -171,7 +160,7 @@ export function resolveCloudEnvVars(cwd, policy = CLAUDE_CLOUD_POLICY) {
     }
     // Baseline names absent from the resolved set → emitted as placeholders.
     const present = new Set(res.included.map(([k]) => k));
-    for (const [name] of policy.baseline) {
+    for (const [name] of BASELINE_TOKEN_PLACEHOLDERS) {
         if (!present.has(name))
             res.placeholders.push(name);
     }
@@ -181,11 +170,11 @@ export function resolveCloudEnvVars(cwd, policy = CLAUDE_CLOUD_POLICY) {
  * Render the `.env`-format paste block: resolved KEY=value lines, then placeholder
  * lines for any absent baseline token.
  */
-export function renderCloudEnvBlock(res, policy = CLAUDE_CLOUD_POLICY) {
+export function renderCloudEnvBlock(res) {
     const lines = [];
     for (const [k, v] of res.included)
         lines.push(`${k}=${v}`);
-    for (const [name, placeholder] of policy.baseline) {
+    for (const [name, placeholder] of BASELINE_TOKEN_PLACEHOLDERS) {
         if (res.placeholders.includes(name))
             lines.push(`${name}=${placeholder}`);
     }
@@ -665,6 +654,23 @@ export function renderCloudUserSettings(cwd) {
         `jq --argjson e '${env}' '.autoMode.environment //= $e' \\\n` +
         '  "$CLAUDE_SETTINGS" > "$CLAUDE_SETTINGS.tmp" && mv "$CLAUDE_SETTINGS.tmp" "$CLAUDE_SETTINGS"');
 }
+/** `# bkit-toolchain:start|end` marker lines in the Claude template's setup script. */
+const TOOLCHAIN_MARKER_LINE = /^# bkit-toolchain:(?:start|end)\n/gm;
+/**
+ * The pinned toolchain installs (Node, vale, gh, jq + the PATH lead) from the Claude
+ * template's setup script — the region between the `# bkit-toolchain:start` / `:end`
+ * markers, markers stripped. The pins live once, in `.bkit/shared/.claude/bkit-cloud.md`
+ * (where Renovate's regex manager bumps them); every other pasted install script inlines
+ * this slice so the cloud toolchains never diverge. Throws when the markers are absent:
+ * a Codex doc without its toolchain is a broken paste, not an empty one.
+ */
+export function extractCloudToolchainScript() {
+    const src = fs.readFileSync(path.join(getSharedRoot(), ".claude", "bkit-cloud.md"), "utf-8");
+    const m = /^# bkit-toolchain:start\n([\s\S]*?)^# bkit-toolchain:end$/m.exec(src);
+    if (!m)
+        throw new Error(".claude/bkit-cloud.md template lacks the bkit-toolchain markers");
+    return m[1].trim();
+}
 /**
  * Generate `.claude/bkit-cloud.md` — a copy-paste-ready Claude Code on the web setup doc
  * with the env-var block resolved to REAL VALUES from the consumer's `.envrc`.
@@ -689,6 +695,7 @@ export function writeClaudeCloudDoc(cwd, tokens) {
     // Function-form replacers: resolved secret values may contain `$`, which a string
     // replacement would interpret ($&, $1, …).
     const content = applyTokens(fs.readFileSync(src, "utf-8"), tokens)
+        .replace(TOOLCHAIN_MARKER_LINE, "")
         .replace(/@@CLOUD_CACHE_BUST@@/g, () => renderCloudCacheBust(cwd, today))
         .replace(/@@CLOUD_NETWORK_ALLOWLIST@@/g, () => renderCloudNetworkAllowlist(cwd))
         .replace(/@@CLOUD_WORKSPACE_TRUST@@/g, () => renderCloudWorkspaceTrust(cwd))
@@ -729,6 +736,17 @@ export function renderCursorContextFetchProvision(cwd) {
         "\n```\n");
 }
 /**
+ * Exact-host egress list for the Cursor and Codex allowlists: the shipped HOSTS plus
+ * the declared `allowed-domains`, sorted and deduped — never apex + `*.`. Both hosts'
+ * allowlists match exact hostnames, and a broad wildcard opens egress far wider than
+ * intended; the Claude side takes the wildcard-expanded bases instead.
+ */
+function exactNetworkHosts(cwd) {
+    const declared = extractAllowedDomains(cwd);
+    const entries = [...new Set([...BKIT_SHIPPED_NETWORK_HOSTS, ...declared])].sort();
+    return { declared, entries };
+}
+/**
  * Render the `@@CURSOR_NETWORK@@` region — Cursor Cloud Agents DO have an egress
  * allowlist (dashboard → Security: "Allow all" / "Default + allowlist" / "Allowlist
  * only"), unlike the earlier assumption. Reuses the SAME declared `allowed-domains`
@@ -738,11 +756,7 @@ export function renderCursorContextFetchProvision(cwd) {
  * verbatim with a note to add only the specific subdomains you need.
  */
 export function renderCursorNetworkAllowlist(cwd) {
-    const declared = extractAllowedDomains(cwd);
-    // Exact hosts, never apex + `*.`: Cursor's own docs warn a broad wildcard opens
-    // egress far wider than intended, so the shipped set contributes its HOSTS here
-    // while the Claude side takes the wildcard-expanded bases.
-    const entries = [...new Set([...BKIT_SHIPPED_NETWORK_HOSTS, ...declared])].sort();
+    const { declared, entries } = exactNetworkHosts(cwd);
     return ("If your org runs Cloud Agents in **Allowlist only** / **Default + allowlist** mode\n" +
         "(dashboard → **Security**), add these hosts so cloud `/bkit-debug` + e2e can reach\n" +
         "bkit's own tooling and your app and log backends:\n\n" +
@@ -765,8 +779,8 @@ export function renderCursorNetworkAllowlist(cwd) {
  * selector; on Cursor the toolchain lives in `.cursor/Dockerfile` + the per-snapshot
  * `.cursor/environment.json` `install` (both committed, nothing to paste), so this doc
  * is narrower: it resolves the **dashboard environment variables** to real values from
- * the consumer's `.envrc` (Cursor policy — Linear tracker adds `BKIT_LINEAR_API_KEY`, no
- * autocompact knob) and surfaces any context-fetch CLIs for parity.
+ * the consumer's `.envrc` (the same tracker-independent set as the Claude doc) and
+ * surfaces any context-fetch CLIs for parity.
  *
  * Like `.claude/bkit-cloud.md` it is gitignored + chmod 600 and UNTRACKED (never pushed to
  * any WriteSet / manifest / canonicalHashes) — its values are machine-local and
@@ -776,20 +790,74 @@ export function renderCursorNetworkAllowlist(cwd) {
  * host being installed. Returns true when a file was written (false when the template
  * is absent). Never logs the resolved values.
  */
-export function writeCursorCloudDoc(cwd, tokens, tracker) {
+export function writeCursorCloudDoc(cwd, tokens) {
     const src = path.join(getSharedRoot(), ".cursor", "bkit-cloud.md");
     if (!fs.existsSync(src))
         return false;
-    const policy = cursorCloudPolicy(tracker);
-    const res = resolveCloudEnvVars(cwd, policy);
+    const res = resolveCloudEnvVars(cwd);
     // Function-form replacers: resolved secret values may contain `$`, which a string
     // replacement would interpret ($&, $1, …).
     const content = applyTokens(fs.readFileSync(src, "utf-8"), tokens)
-        .replace(/@@CLOUD_ENV_VARS@@/g, () => renderCloudEnvBlock(res, policy))
+        .replace(/@@CLOUD_ENV_VARS@@/g, () => renderCloudEnvBlock(res))
         .replace(/@@CLOUD_ENV_NOTES@@/g, () => renderCloudEnvNotes(res))
         .replace(/@@CURSOR_NETWORK@@/g, () => renderCursorNetworkAllowlist(cwd))
         .replace(/@@CURSOR_CONTEXT_FETCH@@/g, () => renderCursorContextFetchProvision(cwd));
     const dst = path.join(cwd, CURSOR_CLOUD_RELPATH);
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    fs.writeFileSync(dst, content, "utf-8");
+    fs.chmodSync(dst, 0o600);
+    return true;
+}
+/**
+ * Render the `@@CODEX_NETWORK@@` region — Codex Cloud's **Internet access** settings
+ * for the environment. Its **Additional allowed domains** field takes exact hosts (a
+ * root domain also allows `www.`), so this emits the same exact-host list as the Cursor
+ * doc, never apex + `*.`.
+ */
+export function renderCodexNetworkAllowlist(cwd) {
+    const { declared, entries } = exactNetworkHosts(cwd);
+    return ("Under **Internet access**, keep **Enable package manager domains** on and paste these\n" +
+        "into **Additional allowed domains** (one per line) so cloud `/bkit-debug` + e2e can\n" +
+        "reach bkit's own tooling and your app and log backends:\n\n" +
+        "```text\n" +
+        entries.join("\n") +
+        "\n```\n\n" +
+        `_${entries.length} host(s) — ${BKIT_SHIPPED_NETWORK_HOSTS.length} derived from bkit's shipped ` +
+        `egress registry and ${declared.length} declared in \`allowed-domains\` in ` +
+        "`.agents/context.md`. Derived set fingerprint `" +
+        egressFingerprint() +
+        "`._ Exact hosts only — add the specific subdomains you need (e.g. `api.example.com`).\n" +
+        "**Enable all public internet access** works too but opens all egress.");
+}
+/**
+ * Generate `.codex/bkit-cloud.md` — the Codex Cloud analogue of `.claude/bkit-cloud.md`:
+ * the SAME bkit cloud environment, built by Codex's mechanics. Codex runs a pasted
+ * **Install script** (like Claude's setup script) plus the environment's variables, so
+ * this doc carries the Claude template's pinned toolchain slice
+ * ({@link extractCloudToolchainScript}), the consumer's corepack pnpm and context-fetch
+ * provision recipes, the per-snapshot `pnpm install`, the exact-host network list, and
+ * the resolved env block.
+ *
+ * Gitignored + chmod 600 and UNTRACKED like its siblings. Shared by install
+ * (runCodexModule) and upgrade. Callers MUST guard on `!dryRun` and on the codex host
+ * being installed. Returns true when a file was written (false when the template is
+ * absent). Never logs the resolved values.
+ */
+export function writeCodexCloudDoc(cwd, tokens) {
+    const src = path.join(getSharedRoot(), ".codex", "bkit-cloud.md");
+    if (!fs.existsSync(src))
+        return false;
+    const res = resolveCloudEnvVars(cwd);
+    // Function-form replacers: resolved secret values may contain `$`, which a string
+    // replacement would interpret ($&, $1, …).
+    const content = applyTokens(fs.readFileSync(src, "utf-8"), tokens)
+        .replace(/@@CODEX_TOOLCHAIN@@/g, () => extractCloudToolchainScript())
+        .replace(/@@CODEX_NETWORK@@/g, () => renderCodexNetworkAllowlist(cwd))
+        .replace(/@@CLOUD_COREPACK@@/g, () => renderCorepackLine(cwd))
+        .replace(/@@CLOUD_CONTEXT_FETCH_PROVISION@@/g, () => renderCloudContextFetchProvision(cwd))
+        .replace(/@@CLOUD_ENV_VARS@@/g, () => renderCloudEnvBlock(res))
+        .replace(/@@CLOUD_ENV_NOTES@@/g, () => renderCloudEnvNotes(res));
+    const dst = path.join(cwd, CODEX_CLOUD_RELPATH);
     fs.mkdirSync(path.dirname(dst), { recursive: true });
     fs.writeFileSync(dst, content, "utf-8");
     fs.chmodSync(dst, 0o600);
