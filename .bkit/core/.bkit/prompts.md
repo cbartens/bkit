@@ -401,59 +401,59 @@ Text hooks add to an agent's context mid-run — every agent and subagent, no fr
 
 ## Model Presets
 
-Two settings for OpenRouter, the overflow column — the days after the week's OpenAI, Anthropic and Google credits run out. Costs are measured per **2-day gap**, which is the binding case against the weekly cap (`.bkit/providers.md` § Budget band); 13 judges and 26 builders.
+Two settings for OpenRouter, the overflow column — the days after the week's OpenAI, Anthropic and Google credits run out. Costs are measured per **2-day gap**, which is the binding case against the weekly cap (`.bkit/providers.md` § Budget band) — 13 judges and 26 builders.
 
 | Preset                    | Judges, reviewers, escalators (13)        | Builders (26)                            | 2-day gap         | Cap        |
 | ------------------------- | ----------------------------------------- | ---------------------------------------- | ----------------- | ---------- |
-| **Option 1 — default**    | `mimo-v2.6-pro` 35.2 · $0.0036 cache read | `deepseek-v4.1-flash-1017` 40.9 · $0.003 | **A$28 (US$20)**  | A$70/week  |
-| **Option 2 — spend more** | `gemini-4-argon` 61.2 · $0.10             | `deepseek-v4.1-flash-1017`               | **A$141 (US$99)** | A$140/week |
+| **Option 1 — default**    | `mimo-v2.6-pro` 35.2 · $0.0036 cache read | `deepseek-v4.1-flash-1017` 40.9 · $0.003 | **A$33 (US$23)**  | A$70/week  |
+| **Option 2 — spend more** | `gemini-4-argon` 61.2 · $0.10 — 9 of 13   | `deepseek-v4.1-flash-1017`               | **A$137 (US$96)** | A$140/week |
 
-**The cap and the vendor rule leave no strong judge in Option 1.** OpenRouter's default may not use OpenAI, Anthropic or Google, and the strongest model outside those is `muse-wonder` 52.6 — A$337 on thirteen judges, A$143 on the five lenses alone, both past the A$70 line. What fits is family variance, not capability: `mimo-v2.6-pro` (Xiaomi, 35.2) on the judges, which sits _below_ the DeepSeek workhorse at A$28. The second opinion becomes real only in Option 2, where Gemini's $0.10 cache read buys 61.2 on **nine** judges for A$137 at the measured opencode profile — thirteen of them land at A$187 and breach the cap.
+**The cap and the vendor rule leave no strong judge in Option 1.** OpenRouter's default may not use OpenAI, Anthropic or Google, and the strongest model outside those is `muse-wonder` 52.6 — A$337 on thirteen judges, A$143 on the five lenses alone, both past the A$70 line. What fits is family variance, not capability: `mimo-v2.6-pro` (Xiaomi, 35.2) on the judges, which sits _below_ the DeepSeek workhorse at A$33. The second opinion becomes real only in Option 2, where Gemini's $0.10 cache read buys 61.2 on **nine** judges for A$137 at the measured opencode profile — thirteen of them land at A$187 and breach the cap.
 
 OpenRouter IDs: `mimo-v2.6-pro` = `openrouter/xiaomi/mimo-v2.6-pro`, `gemini-4-argon` = `openrouter/google/gemini-4-argon`, `deepseek-v4.1-flash-1017` = `openrouter/deepseek/deepseek-v4.1-flash-1017`. **Bold** marks a cell that differs from the default.
 
 <!-- prettier-ignore -->
-| Agent | Option 1 — default | Option 2 — spend more |
-| --- | --- | --- |
-| `bkit-design-brainstorm-ideate-1` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
-| `bkit-design-brainstorm-ideate-2` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
-| `bkit-design-brainstorm-ideate-3` | mimo-v2.6-pro | **gemini-4-argon** |
-| `bkit-design-generate` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
-| `bkit-design-review-1` | mimo-v2.6-pro | **gemini-4-argon** |
-| `bkit-design-review-2` | mimo-v2.6-pro | **gemini-4-argon** |
-| `bkit-design-spike` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
-| `bkit-design-update` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
-| `bkit-design-organise` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
-| `bkit-plan-generate` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
-| `bkit-plan-review-1` | mimo-v2.6-pro | **gemini-4-argon** |
-| `bkit-plan-review-2` | mimo-v2.6-pro | **gemini-4-argon** |
-| `bkit-plan-scope-check` | mimo-v2.6-pro | **gemini-4-argon** |
-| `bkit-plan-update` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
-| `bkit-build-plan-convert` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
-| `bkit-build-plan-current` | mimo-v2.6-pro | **gemini-4-argon** |
-| `bkit-build-install-skills` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
-| `bkit-build-plan-execute` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
-| `bkit-build-plan-verify` | mimo-v2.6-pro | **gemini-4-argon** |
-| `bkit-build-plan-gaps-remediate` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
-| `bkit-build-challenge-1` | mimo-v2.6-pro | **gemini-4-argon** |
-| `bkit-build-challenge-2` | mimo-v2.6-pro | **gemini-4-argon** |
-| `bkit-debug-failure-reproduce` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
-| `bkit-debug-failure-diagnose` | mimo-v2.6-pro | **gemini-4-argon** |
-| `bkit-debug-failure-remediate` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
-| `bkit-debug-failure-soak` | mimo-v2.6-pro | **gemini-4-argon** |
-| `bkit-debug-abort-handover` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
-| `bkit-ship-conflict-resolve` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
-| `bkit-ship-deferred-sweep` | mimo-v2.6-pro | **gemini-4-argon** |
-| `bkit-ship-update-docs` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
-| `bkit-audit-generate` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
-| `bkit-utility-update-deferrals` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
-| `bkit-utility-update-failures` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
-| `bkit-utility-update-decisions` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
-| `bkit-utility-update-knowledge` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
-| `bkit-utility-update-roadmap` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
-| `bkit-utility-update-tracker` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
-| `bkit-utility-compress-markdown` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
-| `bkit-utility-update-documentation` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
+| Agent | Shipped today | Option 1 — default | Option 2 — spend more |
+| --- | --- | --- | --- |
+| `bkit-design-brainstorm-ideate-1` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
+| `bkit-design-brainstorm-ideate-2` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
+| `bkit-design-brainstorm-ideate-3` | kimi-k3 | mimo-v2.6-pro | **gemini-4-argon** |
+| `bkit-design-generate` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
+| `bkit-design-review-1` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
+| `bkit-design-review-2` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
+| `bkit-design-spike` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
+| `bkit-design-update` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
+| `bkit-design-organise` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
+| `bkit-plan-generate` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
+| `bkit-plan-review-1` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
+| `bkit-plan-review-2` | kimi-k3 | mimo-v2.6-pro | **gemini-4-argon** |
+| `bkit-plan-scope-check` | kimi-k3 | mimo-v2.6-pro | **gemini-4-argon** |
+| `bkit-plan-update` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
+| `bkit-build-plan-convert` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
+| `bkit-build-plan-current` | kimi-k3 | mimo-v2.6-pro | **gemini-4-argon** |
+| `bkit-build-install-skills` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
+| `bkit-build-plan-execute` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
+| `bkit-build-plan-verify` | kimi-k3 | mimo-v2.6-pro | **gemini-4-argon** |
+| `bkit-build-plan-gaps-remediate` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
+| `bkit-build-challenge-1` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
+| `bkit-build-challenge-2` | kimi-k3 | mimo-v2.6-pro | **gemini-4-argon** |
+| `bkit-debug-failure-reproduce` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
+| `bkit-debug-failure-diagnose` | kimi-k3 | mimo-v2.6-pro | **gemini-4-argon** |
+| `bkit-debug-failure-remediate` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
+| `bkit-debug-failure-soak` | kimi-k3 | mimo-v2.6-pro | **gemini-4-argon** |
+| `bkit-debug-abort-handover` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
+| `bkit-ship-conflict-resolve` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
+| `bkit-ship-deferred-sweep` | kimi-k3 | mimo-v2.6-pro | **gemini-4-argon** |
+| `bkit-ship-update-docs` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
+| `bkit-audit-generate` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
+| `bkit-utility-update-deferrals` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
+| `bkit-utility-update-failures` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
+| `bkit-utility-update-decisions` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
+| `bkit-utility-update-knowledge` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
+| `bkit-utility-update-roadmap` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
+| `bkit-utility-update-tracker` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
+| `bkit-utility-compress-markdown` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
+| `bkit-utility-update-documentation` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
 
 **Option 2 — spend more.** Thirteen judges move to `google/gemini-4-argon` (61.2, nine points above the DeepSeek workhorse) while builders stay cheap. This is where a real second opinion is affordable; Option 1 trades it for the A$70 cap. Copy into § Model Overrides:
 
@@ -461,17 +461,13 @@ OpenRouter IDs: `mimo-v2.6-pro` = `openrouter/xiaomi/mimo-v2.6-pro`, `gemini-4-a
 | Prompt | Provider | Model |
 | --- | --- | --- |
 | bkit-design-brainstorm-ideate-3 | openrouter | openrouter/google/gemini-4-argon |
-| bkit-design-review-1 | openrouter | openrouter/google/gemini-4-argon |
-| bkit-design-review-2 | openrouter | openrouter/google/gemini-4-argon |
-| bkit-plan-review-1 | openrouter | openrouter/google/gemini-4-argon |
 | bkit-plan-review-2 | openrouter | openrouter/google/gemini-4-argon |
-| bkit-plan-scope-check | openrouter | openrouter/google/gemini-4-argon |
-| bkit-build-plan-current | openrouter | openrouter/google/gemini-4-argon |
-| bkit-build-plan-verify | openrouter | openrouter/google/gemini-4-argon |
-| bkit-build-challenge-1 | openrouter | openrouter/google/gemini-4-argon |
 | bkit-build-challenge-2 | openrouter | openrouter/google/gemini-4-argon |
 | bkit-debug-failure-diagnose | openrouter | openrouter/google/gemini-4-argon |
 | bkit-debug-failure-soak | openrouter | openrouter/google/gemini-4-argon |
+| bkit-plan-scope-check | openrouter | openrouter/google/gemini-4-argon |
+| bkit-build-plan-verify | openrouter | openrouter/google/gemini-4-argon |
+| bkit-build-plan-current | openrouter | openrouter/google/gemini-4-argon |
 | bkit-ship-deferred-sweep | openrouter | openrouter/google/gemini-4-argon |
 
 **Cursor — first-party pins only.** `cursor-grok-4.5-high` carries depth, synthesizers and the parallel slots; `composer-2.5` carries volume, the build and ship pipelines. `/v0/models` has no Opus 5.5 ID: `claude-opus-5-thinking-high` is the API-pool equivalent for `claude-opus-5-5` rows and `claude-sonnet-5-thinking-high` for `claude-sonnet-5-5`, both opt-in through § Model Overrides. Orchestrators take the session model, not a table row.
