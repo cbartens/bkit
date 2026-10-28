@@ -909,8 +909,6 @@ Clause section lines:
   - applies: `bkit-audit-generate`, `bkit-utility-update-roadmap`, `bkit-utility-update-tracker`
 - audit:
   - specialised: `bkit-audit-issues`
-- entry:
-  - applies: all
 
 ```text
 **Tracker MCPs:** Tracker reads / writes via `bkit` verbs; configured tracker MCP ONLY when a verb prints `tracker.done: false` or exits 80.
@@ -934,11 +932,11 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-adoption`, `bkit-audit-dependencies`, `bkit-audit-usability`
 - drift:
-  - `bkit-build:311`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; R53 says ONLY commit files you touched, named explicitly
+  - `bkit-build:310`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; R53 says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
-  - `bkit-design:183`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; R53 says ONLY commit files you touched, named explicitly
+  - `bkit-design:182`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; R53 says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
-  - `bkit-plan:198`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; R53 says ONLY commit files you touched, named explicitly
+  - `bkit-plan:197`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; R53 says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `bkit-ship-conflict-resolve:32`: "`git add`, `git checkout --theirs|--ours <conflicted>`" Permits `git add` (R53 says subagents do not commit; staging is allowed here only for rebase resolution, matching R59's in-progress-rebase carve-out)
     - kept: staging and `git rebase --continue` are the in-progress rebase resolution R59 carves out; the caller commits and pushes
@@ -970,7 +968,7 @@ Clause section lines:
   - specialised: `bkit-ship`
   - applies: `bkit-plan`, `bkit-ship`
 - drift:
-  - `bkit-ship:370`: "chore({FID}): conflict-resolve bkit [skip ci]" Stages via ledgers commit then runs a bare git commit with no -- paths, committing whatever is staged; R53 says NEVER commit whatever is staged already
+  - `bkit-ship:369`: "chore({FID}): conflict-resolve bkit [skip ci]" Stages via ledgers commit then runs a bare git commit with no -- paths, committing whatever is staged; R53 says NEVER commit whatever is staged already
     - kept: `bkit ledgers commit --mode=stage` stages exactly the bookkeeping allow-list on this run's own branch, so the commit holds only those paths; Re-validate runs CI on the code head even though this commit carries `[skip ci]`
 
 ```text
@@ -1015,11 +1013,11 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-adoption`, `bkit-audit-dependencies`, `bkit-audit-repo`, `bkit-audit-usability`
 - drift:
-  - `bkit-build:311`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; R53 says ONLY commit files you touched, named explicitly
+  - `bkit-build:310`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; R53 says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
-  - `bkit-design:183`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; R53 says ONLY commit files you touched, named explicitly
+  - `bkit-design:182`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; R53 says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
-  - `bkit-plan:198`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; R53 says ONLY commit files you touched, named explicitly
+  - `bkit-plan:197`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; R53 says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `utility-new-release:30`: "are pre-approved by human release request" Declares commit / push / PR / merge into main / tag pre-approved by 'human release request'; R58 says one approval covers one push, but this run does up to three pushes (dev backmerge, release branch, tag); R66 requires explicit human confirmation for any merge into main
     - kept: release flow as designed: the human release request approves its commit, pushes, PR into `main`, merge and tag
@@ -1129,7 +1127,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-annotations`, `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:516`: "probe for a run at it first, dispatch only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per .bkit/workflows.md:1007) when no run is found; R63 says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:515`: "probe for a run at it first, dispatch only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per .bkit/workflows.md:1007) when no run is found; R63 says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -1359,7 +1357,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:516`: "probe for a run at it first, dispatch only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per .bkit/workflows.md:1007) when no run is found; R63 says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:515`: "probe for a run at it first, dispatch only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per .bkit/workflows.md:1007) when no run is found; R63 says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -4053,25 +4051,16 @@ Write the session prompt verbatim to `{SESSION_DIR}/prompt.md` → read the issu
 Hold `fidNamed` as `{FID_NAMED}`.
 ```
 
-### workflow-issue-id-preset
-
-- workflow: where-used
-- carriers: workflow all except `bkit-auto`
-
-```text
-**If** `ISSUE_ID` already set by AGENTS.md → keep it.
-```
-
-```retired
-**If** `ISSUE_ID` already set by AGENTS.md → skip. **Else**:
-```
-
 ### workflow-issue-id-parsed
 
 - workflow: where-used
 - carriers: workflow all except `bkit-auto`
 
 ```text
+Hold `issue` as `{ISSUE_ID}`, `ref` as `{REF}`.
+```
+
+```retired
 **Else** → hold `issue` as `{ISSUE_ID}`, `ref` as `{REF}`.
 ```
 
@@ -4149,19 +4138,6 @@ Log `Tracker not wired — proceeding without issue ID.`
 ```retired
 Scan session prompt for `<id>{ID}</id>` or `ISSUE-{ID}` → first match → `ISSUE_ID`. **If** no `ID` found → set `ISSUE_ID=""`, log `Tracker not wired — proceeding without issue ID.`, continue with FID derived from branch name.
 Scan session prompt for `<id>{ID}</id>` or `ISSUE-{ID}` → first match → `ISSUE_ID`. **If** no `ID` found → set `ISSUE_ID=""` and log `Tracker not wired — proceeding without issue ID.` Workflow continues with FID derived from branch name.
-```
-
-### workflow-issue-preset
-
-- workflow: where-used
-- carriers: workflow all except `bkit-auto`
-
-```text
-**If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → write `DESCRIPTION` to `{SESSION_DIR}/issue-description.md` and `COMMENTS` oldest to newest as JSON to `{SESSION_DIR}/issue-comments.json` → skip. **Else**:
-```
-
-```retired
-**If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → sort `COMMENTS` oldest to newest → skip. **Else**:
 ```
 
 ### workflow-issue-fetch
@@ -10354,12 +10330,6 @@ User [does X] → System [responds with Y]
 - source: `.bkit/core/AGENTS.md`
 
 ```text
-**If** prompt contains `<LINEAR_ISSUE>` XML block (Linear integration) → `ISSUE_ID` ← `<id>` tag value (e.g. `LIN-123` or team-specific prefix).
-**If** no `ISSUE_ID` → keep `ISSUE_ID` empty → Step 2.
-In the bottom-most `USER:` entry in `# Message history` scan for commands (case-insensitive: Ship, Debug, Build, Plan, Design) → first match → `COMMAND`. **If** matched → skip Step 3.
-[R52] Only if `ISSUE_ID` non-empty: read current issue labels and description via the configured tracker MCP (GitHub: `mcp__github__issue_read({ method: "get", ... })`; Linear: `mcp__linear__get_issue({ id: "{ISSUE_ID}" })`; Jira: `mcp__jira__getJiraIssue({ cloudId: "<package.json bkit.tracker.jira.site>", issueIdOrKey: "{ISSUE_ID}", view: "evidence" })` → `fields.labels`) → `LABELS`, `DESCRIPTION`. **If** the MCP read fails and the prompt holds a `<LINEAR_ISSUE>` block → fallback: `LABELS` ← all `<label name="...">` values in its `<labels>` block, `DESCRIPTION` ← its `<description>` tag content.
-Scan `LABELS` for commands (Ship, Debug, Build, Plan, Design) → first match → `COMMAND`.
-Emit: `Workflow not found for issue {ISSUE_ID}. Valid commands: Design / Plan / Build / Debug / Ship.` (drop `for issue {ISSUE_ID}` when `ISSUE_ID` empty) → **STOP**; do not post a tracker comment.
-`#\d+`, `owner/repo#\d+` or a GitHub issue URL (`…/{owner}/{repo}/issues/\d+`) into this repo (`owner/repo` of the `origin` remote) → GitHub issue number (e.g. `#123`); strip `#`, set `ISSUE_ID` = `123`
-`[A-Z][A-Z0-9]*-\d+` carrying the `package.json` `bkit.tracker.linear.team` / `bkit.tracker.jira.project` prefix, a Linear issue URL (`linear.app/…/issue/ID`) with that prefix, or a Jira browse URL (`…/browse/ID`) on the `bkit.tracker.jira.site` host with that prefix → prefixed issue ID (e.g. Linear `LIN-123`, Jira `PROJ-123`)
+**Workflows:** **If** the prompt contains `bkit-{command}` (`bkit-design`, `bkit-plan`, `bkit-build`, `bkit-debug`, `bkit-ship`, `bkit-auto`) → read `.bkit/router.md` → follow it. **Else** → no workflow routing; handle the request as asked.
+**Memory hygiene:** agent memories (notes a host keeps across sessions) are pointers, never copies. Facts in `docs/*.md` or `.agents/rules.md` → save only path, section and one-line hook. Issue states → query the tracker or `docs/roadmap.md`; NEVER snapshot them into memory.
 ```

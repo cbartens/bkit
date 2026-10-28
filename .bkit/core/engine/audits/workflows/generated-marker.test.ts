@@ -139,7 +139,6 @@ describe("comments are read by the engine, oldest first", () => {
   const CALL_SITE_RE = /method: "get_comments"|mcp__linear__list_comments|listJiraIssueComments/;
 
   const FALLBACK = "the comments oldest first as JSON to `{SESSION_DIR}/issue-comments.json`";
-  const PRESET = "`COMMENTS` oldest to newest as JSON to `{SESSION_DIR}/issue-comments.json`";
   const PHASES = WORKFLOW_FILES.filter((rel) => !rel.endsWith("bkit-auto.md"));
 
   /** Step lines (the header blocks, up to the `---` after front matter, excluded) that call a tracker's comment read. */
@@ -159,8 +158,7 @@ describe("comments are read by the engine, oldest first", () => {
     it(`${rel}: every write of the comments file is oldest first`, () => {
       const content = read(rel);
       expect(content.split(FALLBACK).length - 1, "exit-80 fallback").toBe(1);
-      expect(content.split(PRESET).length - 1, "AGENTS.md preset").toBe(1);
-      expect(content.split("issue-comments.json").length - 1).toBe(3);
+      expect(content.split("issue-comments.json").length - 1).toBe(2);
     });
   }
 

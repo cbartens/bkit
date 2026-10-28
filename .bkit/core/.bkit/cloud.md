@@ -309,7 +309,7 @@ GitHub dispatch uses Cursor Automations "Pull request label changed" trigger —
 
 1. `bkit-build` writes `bkit:auto` as static PR label (opt-in marker). Corresponding GitHub issue must also carry `bkit:auto` (runtime kill switch — remove to stop dispatch).
 2. Phase label (`bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`) added to PR by workflow. Cursor reads label for workflow dispatch.
-3. Cursor Automations fires on "Pull request label changed" → spawns Background Agent session against repo.
+3. Cursor Automations fires on "Pull request label changed" → spawns Background Agent session against repo. The Automation's prompt must contain `bkit-auto`: `AGENTS.md` routes only a `bkit-{command}` prompt, and `.bkit/router.md` reads the phase from the issue's labels.
 4. `sessionStart` fires `bkit-preflight.sh`. With `failClosed: true`, non-zero exit hard-stops agent.
 5. `GITHUB_ISSUE_ID` injected from PR body metadata marker `<!-- bkit:issue=#NNN -->` — router extracts at dispatch time.
 
@@ -325,9 +325,9 @@ BKIT_GH_TOKEN=<PAT — fine-grained for one owner, classic across owners; same p
 
 ## How Linear dispatch works
 
-`@cursor` is **Cursor's native Linear integration**, not bkit — bkit does not intercept mention or run own Linear webhook. Spawned agent picks up bkit because every Cursor cloud agent reads root `AGENTS.md`, routing `/bkit-*` slash command to matching workflow in `.bkit/core/workflows/`.
+`@cursor` is **Cursor's native Linear integration**, not bkit — bkit does not intercept mention or run own Linear webhook. Spawned agent picks up bkit because every Cursor cloud agent reads root `AGENTS.md`, which sends a `bkit-{command}` prompt to `.bkit/router.md` → matching workflow.
 
-1. Assign Linear issue to **Cursor** (integration user) or comment `@cursor /bkit-design ISSUE-NNN` — Cursor's standard Linear integration.
+1. Comment `@cursor bkit-auto ISSUE-NNN` (phase from the issue's labels) or `@cursor /bkit-design ISSUE-NNN` — Cursor's standard Linear integration. Assigning the issue to **Cursor** alone starts no workflow: its prompt names no `bkit-{command}`.
 2. Cursor webhook → background agent against repo with `is_background_agent: true` and `LINEAR_ISSUE_ID` set.
 3. `sessionStart` fires `bkit-preflight.sh`. With `failClosed: true`, non-zero exit hard-stops agent before work.
 4. Preflight skips on IDE sessions (`is_background_agent !== true`) — local Cursor IDE unaffected.

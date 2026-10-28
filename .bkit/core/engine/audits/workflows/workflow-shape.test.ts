@@ -1632,13 +1632,52 @@ describe("issue-less runs", () => {
 });
 
 const AGENTS_MD = fs.readFileSync(path.join(REPO_ROOT, ".bkit", "core", "AGENTS.md"), "utf-8");
+const ROUTER_MD = fs.readFileSync(
+  path.join(REPO_ROOT, ".bkit", "core", ".bkit", "router.md"),
+  "utf-8",
+);
+const ROUTED = ["design", "plan", "build", "debug", "ship", "auto"];
 
-it("AGENTS.md router does not STOP on a missing issue", () => {
-  expect(AGENTS_MD).not.toContain("No issue ID provided");
-  const router = AGENTS_MD.split("\n").find((l) => l.startsWith("**If** no `ISSUE_ID`"));
-  expect(router, "no router line for a missing ISSUE_ID").toBeDefined();
-  expect(router).not.toContain("STOP");
-  expect(router).toContain("keep `ISSUE_ID` empty → Step 2");
+describe("workflow routing", () => {
+  it("AGENTS.md sends only a bkit-{command} prompt to router.md", () => {
+    const gate = AGENTS_MD.split("\n").find((l) => l.startsWith("- **Workflows:**"));
+    expect(gate, "no workflow gate in AGENTS.md").toBeDefined();
+    expect(gate).toContain("**If** the prompt contains `bkit-{command}`");
+    expect(gate).toContain("read `.bkit/router.md`");
+    expect(gate).toContain("**Else** → no workflow routing; handle the request as asked.");
+    for (const name of ROUTED) expect(gate).toContain(`\`bkit-${name}\``);
+    expect(AGENTS_MD).not.toContain("STOP");
+    expect(AGENTS_MD).not.toContain("Workflow not found");
+  });
+
+  it("router.md hands back a prompt that only mentions a workflow", () => {
+    expect(ROUTER_MD).toContain(
+      "no workflow requested; routing ends → handle the request as asked under `.agents/rules.md`",
+    );
+  });
+
+  it("router.md reads the issue through bkit verbs, never a tracker MCP tool", () => {
+    expect(ROUTER_MD).toContain('fids parse --prompt-file="{SESSION_DIR}/prompt.md"');
+    expect(ROUTER_MD).toContain('issues fetch --issue="{ISSUE_ID}"');
+    expect(ROUTER_MD).not.toContain("mcp__");
+  });
+
+  it("router.md names an existing command file for every host and command", () => {
+    const rows = ROUTER_MD.split("\n")
+      .map((l) => /^\| [^|]+ \| `([^`]*bkit-\{command\}[^`]*)` \|$/.exec(l)?.[1])
+      .filter((p): p is string => p !== undefined);
+    expect(rows).toHaveLength(5);
+    for (const row of rows)
+      for (const name of ROUTED) {
+        const file = row.replace("{command}", name);
+        expect(fs.existsSync(path.join(REPO_ROOT, file)), `${file} missing`).toBe(true);
+      }
+  });
+
+  it("phase workflows read the issue themselves, never from AGENTS.md", () => {
+    for (const name of ["design", "plan", "build", "debug", "ship"])
+      expect(workflow(name), `bkit-${name}`).not.toContain("AGENTS.md");
+  });
 });
 
 // ---------------------------------------------------------------------------

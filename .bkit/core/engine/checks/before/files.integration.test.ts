@@ -119,7 +119,7 @@ describe("tier2-json-drift advisory on managed JSON, never on a template", () =>
 
 describe("Task 23 — detectTier2TextDrift block logic (AGENTS.md)", () => {
   const relPath = "AGENTS.md";
-  const ROUTER_LINE = "> This file is a **workflow router only**. It does not execute workflows.";
+  const RULES_LINE = "- **Rules file:** Read `.agents/rules.md` → follow all rules.";
   const readRendered = (): string =>
     applyTokens(fs.readFileSync(findTemplateSource(relPath)!, "utf-8"), makeCtx().tokens);
   const writeConsumer = (content: string): void => {
@@ -142,30 +142,30 @@ describe("Task 23 — detectTier2TextDrift block logic (AGENTS.md)", () => {
   });
 
   it("flags DRIFT when a bkit-owned line in the block is edited", () => {
-    writeConsumer(readRendered().replace(ROUTER_LINE, "> consumer-hacked"));
+    writeConsumer(readRendered().replace(RULES_LINE, "> consumer-hacked"));
     const drift = detectTier2TextDrift(tmpDir, relPath);
     expect(drift?.id).toBe("tier2-text-drift");
   });
 
   it("no drift when a consumer adds a comment annotation inside the block", () => {
     writeConsumer(
-      readRendered().replace(ROUTER_LINE, `${ROUTER_LINE}\n<!-- consumer note: PROJ-42 -->`),
+      readRendered().replace(RULES_LINE, `${RULES_LINE}\n<!-- consumer note: PROJ-42 -->`),
     );
     expect(detectTier2TextDrift(tmpDir, relPath)).toBeNull();
   });
 
   it("still flags DRIFT when a consumer comments OUT a required line", () => {
-    writeConsumer(readRendered().replace(ROUTER_LINE, `<!-- ${ROUTER_LINE} -->`));
+    writeConsumer(readRendered().replace(RULES_LINE, `<!-- ${RULES_LINE} -->`));
     expect(detectTier2TextDrift(tmpDir, relPath)?.id).toBe("tier2-text-drift");
   });
 
   it("no drift when a consumer adds an EXTRA line inside the block (subset — extras OK)", () => {
-    writeConsumer(readRendered().replace(ROUTER_LINE, `${ROUTER_LINE}\n> Our extra rule.`));
+    writeConsumer(readRendered().replace(RULES_LINE, `${RULES_LINE}\n> Our extra rule.`));
     expect(detectTier2TextDrift(tmpDir, relPath)).toBeNull();
   });
 
   it("flags DRIFT when a consumer DROPS a required line from the block", () => {
-    writeConsumer(readRendered().replace(`${ROUTER_LINE}\n`, ""));
+    writeConsumer(readRendered().replace(`${RULES_LINE}\n`, ""));
     expect(detectTier2TextDrift(tmpDir, relPath)?.id).toBe("tier2-text-drift");
   });
 });
