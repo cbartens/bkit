@@ -235,3 +235,11 @@
 {"type":"step-done","workflow":"ship","step":"ship-prune-skills","status":"DONE","at":"2026-10-28T12:42:28Z","parentSha":"d157dd7366d13b37309a2b6e9f7797788ca6755a","artifacts":[]}
 {"type":"engine-action","action":"comment","key":"ship/2/ship-bookkeeping-push/-/-/comment","hash":"81db95600a43a28403fb2743edc7bd83e81517c232f9d02b625e4e656a9cee75","ref":"https://github.com/cbartens/bkit/issues/701#issuecomment-6469269342","at":"2026-10-28T12:42:35Z"}
 {"type":"step-done","workflow":"ship","step":"ship-bookkeeping-push","status":"DONE","at":"2026-10-28T12:42:35Z","parentSha":"d157dd7366d13b37309a2b6e9f7797788ca6755a","artifacts":[]}
+{"type":"engine-action","action":"comment","key":"ship/2/ship-merge-pr/-/1/comment","hash":"1ab67ff4b2a74bd5bb6ea586d5489fe2c2c96159788e3b33501af2caa416743f","ref":"https://github.com/cbartens/bkit/issues/701#issuecomment-6469377964","at":"2026-10-28T12:47:57Z"}
+{"type":"step-done","workflow":"ship","step":"ship-merge-pr","status":"DONE","at":"2026-10-28T12:47:57Z","parentSha":"e2818bfe39fe2abd27cfa1ec72b66fe7b70b565a","artifacts":[],"verdict":"PASS","attempt":1,"failures":0}
+{"type":"engine-action","action":"comment","key":"ship/2/ship-switch-to-dev/-/-/comment","hash":"e9bf0a44ee9985ebba7db11a8a131511ae4dc508a65647d929a1cfa8e3461535","ref":"https://github.com/cbartens/bkit/issues/701#issuecomment-6469379602","at":"2026-10-28T12:48:02Z"}
+{"type":"step-done","workflow":"ship","step":"ship-switch-to-dev","status":"DONE","at":"2026-10-28T12:48:02Z","parentSha":"e2818bfe39fe2abd27cfa1ec72b66fe7b70b565a","artifacts":[]}
+{"type":"ship-merge-ci","workflow":"ship","at":"2026-10-28T12:48:07Z","sha":"49bb597f63fa3f4d969a48f01aad17272e74079f","run":"40690787843","verdict":"FAIL","reason":"run 40690787843 at head 49bb597f63fa3f4d969a48f01aad17272e74079f is in_progress and has no capstone job yet — caller may poll"}
+{"type":"ship-merge-ci","workflow":"ship","at":"2026-10-28T12:51:28Z","sha":"49bb597f63fa3f4d969a48f01aad17272e74079f","run":"40690787843","verdict":"PASS","reason":""}
+{"type":"step-done","workflow":"ship","step":"ship-close-workflow","status":"DONE","at":"2026-10-28T12:51:36Z","parentSha":"e2818bfe39fe2abd27cfa1ec72b66fe7b70b565a","artifacts":[]}
+{"type":"workflow-done","workflow":"ship","at":"2026-10-28T12:51:36Z","parentSha":"e2818bfe39fe2abd27cfa1ec72b66fe7b70b565a"}
