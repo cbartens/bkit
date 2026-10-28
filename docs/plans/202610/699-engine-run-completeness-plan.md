@@ -619,7 +619,7 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Audit the remaining readers and document both row types
+- [x] **TASK 2:** Audit the remaining readers and document both row types
   - **UPDATE:** `.bkit/core/engine/commands/workflow/status.test.ts`: one case asserting an unknown `status.jsonl` row type is inert in `readStatusRows`, `fold` and `runStatusRows` — no run split, no throw
   - **UPDATE:** `.bkit/core/.bkit/workflows.md`: § `status.jsonl` — Row type table gains `engine-call` (noun, verb, flag names) and `completeness` (verdict, `preJournal`, `journalSuspect`, `observed`, hole lists, `sourceSha`); this is the canonical source of the `.bkit/workflows.md` mirror
   - **UPDATE:** `.bkit/core/.bkit/jsonl.md`: the `run` row's `scan` block records the accepted `afterEnd` / `scan.rows` shift when journal rows land after a run's terminator; this is the canonical source of the `.bkit/jsonl.md` mirror
