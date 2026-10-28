@@ -2,8 +2,8 @@
 mode: subagent
 name: bkit-debug-failure-diagnose
 description: Senior debug engineer specialising in CI / runtime failure root-cause analysis.
-model: openrouter/google/gemini-4-argon
-variant: high
+model: openrouter/openai/gpt-6.1-sol
+variant: max
 tools:
   read: true
   grep: true

@@ -578,7 +578,7 @@ Filters (not above score): endpoint count; automatic prompt caching (bkit sends 
 | First-party plan | `Anthropic` (Claude Code), `OpenAI` (Codex), `Google` (Antigravity) | The best model for each subagent **from that vendor's own ladder**, spending the plan's included usage where it buys the most. A Codex pin is the best OpenAI model for the job, never an imitation of Claude; no cross-vendor parity target. |
 | Metered gateway | `Ollama`, `OpenCode Zen`, `OpenCode Go` | The same question against that gateway's own catalog — the best model for the job the plan serves. |
 | Overflow default | `OpenRouter` Option 1 | OpenRouter exists for the days the OpenAI, Anthropic and Google credits are spent, so its default uses **none of those three vendors**: the best model for each job from everything else, at the lowest cost that holds the quality. |
-| Overflow opt-in | `OpenRouter` Option 2 | Doubles the weekly cap to A$140 and spends it on the big three where they add the most — every judge on `gemini-4-argon`. |
+| Overflow opt-in | `OpenRouter` Option 2 | Doubles the weekly cap to A$140 and spends it on the big three where they add the most — nine judges on `gpt-6.1-sol`. |
 
 **The question is per subagent, not per column.** Every pin answers "what is the best model for _this_ agent's job", judged on the board's Long Agentic score with the agent's role in mind: judges, reviewers, verifiers and escalators need the strongest model the class allows (see the reviewer rule below), while mechanical writers and summarisers should not pay flagship prices. Matching cells across columns are a catalog coincidence, never an objective.
 
@@ -651,11 +651,11 @@ Re-probed `https://livebench.ai/data/20261025/table.csv` + `cost.csv` (§ Select
 | Preset | Judges | Builders | 2-day gap | Cap |
 | --- | --- | --- | --- | --- |
 | **Option 1 — default** | `mimo-v2.6-pro` 35.2 | `deepseek-v4.1-flash-1017` 40.9 | **A$28** | A$70 |
-| **Option 2 — spend more** | `gemini-4-argon` 61.2 on nine judges | `deepseek-v4.1-flash-1017` 40.9 | **A$137** | A$140 |
+| **Option 2 — spend more** | `gpt-6.1-sol` 68.7 on nine judges | `deepseek-v4.1-flash-1017` 40.9 | **A$137** | A$140 |
 
 **Option 3 is retired.** Two templates only: the default that fits the cap, and one that doubles it for work that matters more than the week.
 
-**The cap plus the vendor rule leaves no strong judge in Option 1.** Outside OpenAI, Anthropic and Google the best model is `muse-wonder` 52.6 — A$337 on thirteen judges, A$143 on the five lenses alone, both over A$70. Option 1 therefore buys family variance (`mimo-v2.6-pro`, 35.2 — below the workhorse) not capability; Option 2 is where Gemini's 61.2 becomes affordable. Reviewers must still out-rank builders wherever the budget allows — that rule binds Option 2 and any consumer who raises the cap.
+**The cap plus the vendor rule leaves no strong judge in Option 1.** Outside OpenAI, Anthropic and Google the best model is `muse-wonder` 52.6 — A$337 on thirteen judges, A$143 on the five lenses alone, both over A$70. Option 1 therefore buys family variance (`mimo-v2.6-pro`, 35.2 — below the workhorse) not capability; Option 2 is where `gpt-6.1-sol`'s 68.7 becomes affordable. Reviewers must still out-rank builders wherever the budget allows — that rule binds Option 2 and any consumer who raises the cap.
 
 **FX:** A$0.703/USD on 2026-10-27. The caps are weekly; a 2-day gap is the binding case at the measured profile.
 

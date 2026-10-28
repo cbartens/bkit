@@ -2,8 +2,8 @@
 mode: subagent
 name: bkit-ship-deferred-sweep
 description: Senior reviewer gating ships on intended-vs-actual completeness and resurfacing declared deferred work.
-model: openrouter/google/gemini-4-argon
-variant: high
+model: openrouter/openai/gpt-6.1-sol
+variant: max
 tools:
   read: true
   grep: true

@@ -415,7 +415,7 @@ Two settings for OpenRouter, the overflow column — the days after the week's O
 | **Option 1 — default** | `mimo-v2.6-pro` 35.2 · $0.0036 — the five lenses and four gates | `deepseek-v4.1-flash-1017` 40.9 · $0.003 | **A$30 (US$21)** | A$70/week |
 | **Option 2 — spend more** | `gemini-4-argon` 61.2 · $0.10 — 9 of 13 | `deepseek-v4.1-flash-1017` | **A$137 (US$96)** | A$140/week |
 
-**The cap and the vendor rule leave no strong judge in Option 1.** OpenRouter's default may not use OpenAI, Anthropic or Google, and the strongest model outside those is `muse-wonder` 52.6 — A$337 on thirteen judges, A$143 on the five lenses alone, both past the A$70 line. What fits is family variance, not capability: `mimo-v2.6-pro` (Xiaomi, 35.2) on the judges, which sits _below_ the DeepSeek workhorse at A$30. The second opinion becomes real only in Option 2, where Gemini's $0.10 cache read buys 61.2 on **nine** judges for A$137 at the measured opencode profile — thirteen of them land at A$187 and breach the cap.
+**The cap and the vendor rule leave no strong judge in Option 1.** OpenRouter's default may not use OpenAI, Anthropic or Google, and the strongest model outside those is `muse-wonder` 52.6 — A$337 on thirteen judges, A$143 on the five lenses alone, both past the A$70 line. What fits is family variance, not capability: `mimo-v2.6-pro` (Xiaomi, 35.2) on the judges, which sits _below_ the DeepSeek workhorse at A$30. The second opinion becomes real only in Option 2, where `gpt-6.1-sol` buys **68.7** on nine judges for A$137 at the measured opencode profile — thirteen of them land at A$187 and breach the cap. Sol beats `gemini-4-argon` on both axes at the same token price: +7.5 Long Agentic and $116.78 per LiveBench task against $249.15, because Gemini burns more tokens to finish the same work. Two caveats keep it off unlimited use: sol doubles its rates past a 272k-token context ($4/$15, $0.20 cache read) where Gemini is flat, and its cache writes cost $2.50/Mtok against Gemini's $0.19.
 
 OpenRouter IDs: `mimo-v2.6-pro` = `openrouter/xiaomi/mimo-v2.6-pro`, `gemini-4-argon` = `google/gemini-4-argon`, `deepseek-v4.1-flash-1017` = `deepseek/deepseek-v4.1-flash-1017`. **Bold** marks a cell that differs from the default.
 
@@ -462,20 +462,20 @@ OpenRouter IDs: `mimo-v2.6-pro` = `openrouter/xiaomi/mimo-v2.6-pro`, `gemini-4-a
 | `bkit-utility-compress-markdown` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
 | `bkit-utility-update-documentation` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
 
-**Option 2 — spend more.** Thirteen judges move to `google/gemini-4-argon` (61.2, nine points above the DeepSeek workhorse) while builders stay cheap. This is where a real second opinion is affordable; Option 1 trades it for the A$70 cap. Copy into § Model Overrides:
+**Option 2 — spend more.** Nine judges move to `openai/gpt-6.1-sol` (68.7, 27.8 points above the DeepSeek workhorse) while builders stay cheap. This is where a real second opinion is affordable; Option 1 trades it for the A$70 cap. Copy into § Model Overrides:
 
 <!-- prettier-ignore -->
 | Prompt | Provider | Model |
 | --- | --- | --- |
-| bkit-design-brainstorm-ideate-3 | openrouter | google/gemini-4-argon |
-| bkit-plan-review-2 | openrouter | google/gemini-4-argon |
-| bkit-build-challenge-2 | openrouter | google/gemini-4-argon |
-| bkit-debug-failure-diagnose | openrouter | google/gemini-4-argon |
-| bkit-debug-failure-soak | openrouter | google/gemini-4-argon |
-| bkit-plan-scope-check | openrouter | google/gemini-4-argon |
-| bkit-build-plan-verify | openrouter | google/gemini-4-argon |
-| bkit-build-plan-current | openrouter | google/gemini-4-argon |
-| bkit-ship-deferred-sweep | openrouter | google/gemini-4-argon |
+| bkit-design-brainstorm-ideate-3 | openrouter | openai/gpt-6.1-sol |
+| bkit-plan-review-2 | openrouter | openai/gpt-6.1-sol |
+| bkit-build-challenge-2 | openrouter | openai/gpt-6.1-sol |
+| bkit-debug-failure-diagnose | openrouter | openai/gpt-6.1-sol |
+| bkit-debug-failure-soak | openrouter | openai/gpt-6.1-sol |
+| bkit-plan-scope-check | openrouter | openai/gpt-6.1-sol |
+| bkit-build-plan-verify | openrouter | openai/gpt-6.1-sol |
+| bkit-build-plan-current | openrouter | openai/gpt-6.1-sol |
+| bkit-ship-deferred-sweep | openrouter | openai/gpt-6.1-sol |
 
 **Cursor — first-party pins only.** `cursor-grok-4.5-high` carries depth, synthesizers and the parallel slots; `composer-2.5` carries volume, the build and ship pipelines. `/v0/models` has no Opus 5.5 ID: `claude-opus-5-thinking-high` is the API-pool equivalent for `claude-opus-5-5` rows and `claude-sonnet-5-thinking-high` for `claude-sonnet-5-5`, both opt-in through § Model Overrides. Orchestrators take the session model, not a table row.
 
