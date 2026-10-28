@@ -210,6 +210,15 @@ describe("bkit tasks tick", () => {
     expect(r.err).toContain("no-such-plan.md");
   });
 
+  it("tick treats the header's none as nothing to tick", async () => {
+    const text = planText(group(1, task(1), task(2)));
+    const plan = write("none.md", text);
+    const r = await run(["tick", `--plan=${plan}`, "--group=1", "--tasks=none"]);
+    expect(r.code).toBe(0);
+    expect(r.json.ticked).toEqual([]);
+    expect(read(plan)).toBe(text);
+  });
+
   it("tick leaves every other plan line byte-identical", async () => {
     const text = planText(group(1, task(1), task(2)), group(2, task(3)));
     const plan = write("bytes.md", text);

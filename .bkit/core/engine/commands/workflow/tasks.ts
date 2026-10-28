@@ -66,11 +66,20 @@ function groupTasks(plan: Plan, arg: string, group: number): PlanTaskBlock[] {
   return plan.tasks.filter((t) => t.group === group);
 }
 
-/** The task numbers a repeated value names: comma- or space-separated, each a positive integer. */
+/**
+ * The task numbers a repeated value names: comma- or space-separated, each a positive
+ * integer. The token `none` names nothing to tick, so the verify header's empty form
+ * (`Tasks: none`) passes straight through as `ticked: []`.
+ */
 function taskNumbers(values: readonly string[], flag: string): number[] {
   const numbers: number[] = [];
+  let none = false;
   for (const value of values)
     for (const token of value.split(/[\s,]+/).filter((t) => t !== "")) {
+      if (token.toLowerCase() === "none") {
+        none = true;
+        continue;
+      }
       if (!/^[1-9][0-9]*$/.test(token))
         throw new CommandError(
           EXIT.USAGE,
@@ -79,7 +88,7 @@ function taskNumbers(values: readonly string[], flag: string): number[] {
       const n = Number(token);
       if (!numbers.includes(n)) numbers.push(n);
     }
-  if (numbers.length === 0) throw new CommandError(EXIT.USAGE, `--${flag} names no task`);
+  if (numbers.length === 0 && !none) throw new CommandError(EXIT.USAGE, `--${flag} names no task`);
   return numbers;
 }
 
@@ -157,7 +166,7 @@ export const tasksCommand: CommandSpec = {
           name: "tasks",
           type: "string",
           repeatable: true,
-          help: "the task numbers to tick, comma-separated or once per number (one of --tasks / --green)",
+          help: "the task numbers to tick, comma-separated or once per number; `none` ticks nothing (one of --tasks / --green)",
         },
         {
           name: "green",

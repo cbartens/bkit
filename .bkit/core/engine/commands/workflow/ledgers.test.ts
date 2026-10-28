@@ -1441,6 +1441,32 @@ describe("bkit ledgers triage", () => {
     expect((after["by"] as Record<string, unknown>)["workflow"]).toBe("ship");
   });
 
+  it("triage writes no row for a closed deferral", async () => {
+    const r = triageRepo([deferral({ status: "CLOSED" })]);
+    const res = await triage(r);
+    expect(res.code).toBe(0);
+    expect(res.json.rows.map((x: { key: string; bucket: string }) => [x.key, x.bucket])).toEqual([
+      ["701-deferred-guard", "Exempt"],
+    ]);
+    expect(res.json.rows[0].tests).toEqual([]);
+    expect(res.json.written).toBe(0);
+    expect(lines(r)).toHaveLength(1);
+  });
+
+  it("triage reports an adjudicated unjustified row outside exempt", async () => {
+    const r = triageRepo([deferral({ reason: "unjustified", status: "TRIAGED" })]);
+    const once = lines(r);
+    const first = await triage(r);
+    const second = await triage(r);
+    expect([first.code, second.code]).toEqual([0, 0]);
+    expect(first.json.rows.map((x: { key: string; bucket: string }) => [x.key, x.bucket])).toEqual([
+      ["701-deferred-guard", "Lazy"],
+    ]);
+    expect(second.json.rows).toEqual(first.json.rows);
+    expect(second.json.written).toBe(0);
+    expect(lines(r)).toEqual(once);
+  });
+
   it("triage ignores another feature's deferral rows", async () => {
     const r = triageRepo([
       deferral(),

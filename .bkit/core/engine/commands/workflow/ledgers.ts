@@ -806,7 +806,7 @@ export const ledgersCommand: CommandSpec = {
       output: {
         fid: "the feature id triaged",
         plan: "the plan the tests were read from",
-        rows: "each matched deferral's key, bucket (Exempt | Lazy), test results and whether a row was written",
+        rows: "each matched deferral's key, bucket (Exempt | Lazy), test results (none for a settled row: closed, LOW, or already adjudicated) and whether a row was written",
         total: "deferral rows the FID matched",
         written: "unjustified rows appended",
       },
@@ -1517,7 +1517,10 @@ export interface DeferralTestResult {
 /** One matched deferral row's bucket and the tests behind it. */
 export interface TriageRow {
   key: string | null;
-  /** `Lazy` when every test holds: in-scope work that should have been finished. */
+  /**
+   * `Lazy` when every test holds, and for a row already adjudicated `unjustified`:
+   * in-scope work that should have been finished.
+   */
   bucket: "Exempt" | "Lazy";
   /** Empty when the row is settled before the tests are applied. */
   tests: DeferralTestResult[];
@@ -1713,11 +1716,19 @@ export function triageDeferrals(root: string, fid: string, planPath: string): Tr
   const write: Array<Record<string, unknown>> = [];
   for (const row of rows) {
     const key = typeof row["key"] === "string" ? row["key"] : null;
-    // A LOW challenge finding holds without the tests, and an adjudicated row is never re-adjudicated.
-    if (
-      (row["reason"] === "low-severity" && row["severity"] === "LOW") ||
-      row["reason"] === UNJUSTIFIED_REASON
-    ) {
+    // Closed work is done: nothing to test, nothing to write.
+    if (row["status"] === "CLOSED") {
+      out.push({ key, bucket: "Exempt", tests: [], written: false });
+      continue;
+    }
+    // A LOW challenge finding holds without the tests, and an adjudicated row is never
+    // re-adjudicated: it keeps the `Lazy` bucket its adjudication earned, so an
+    // outstanding unjustified deferral never reads as `Exempt Deferrals`.
+    if (row["reason"] === UNJUSTIFIED_REASON) {
+      out.push({ key, bucket: "Lazy", tests: [], written: false });
+      continue;
+    }
+    if (row["reason"] === "low-severity" && row["severity"] === "LOW") {
       out.push({ key, bucket: "Exempt", tests: [], written: false });
       continue;
     }
