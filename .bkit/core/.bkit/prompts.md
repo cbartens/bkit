@@ -399,7 +399,7 @@ Text hooks add to an agent's context mid-run — every agent and subagent, no fr
 
 ## Model Presets
 
-Three settings for the opencode columns between subscription resets, priced against measured cache-read volume (`.bkit/providers.md` § Budget band) per **2-day gap** — the days after the week's Claude and OpenAI credits run out. **Copy one block into § Model Overrides below**; rows you leave out fall back to the shipped default.
+Three settings for the opencode columns between subscription resets, priced against measured cache-read volume (`.bkit/providers.md` § Budget band) per **2-day gap** — the days after the week's Claude and OpenAI credits run out. **Option 1 is what ships**; Options 2 and 3 are opt-in blocks to copy into § Model Overrides, and rows you leave out fall back to the default.
 
 | Preset                                          | Who runs what                                                                                                           | 2-day gap (normal / push) |
 | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------- |
@@ -407,18 +407,52 @@ Three settings for the opencode columns between subscription resets, priced agai
 | **Option 2 — balanced**                         | the ten spine agents (synthesizers + gates) on `google/gemini-4-argon`; the rest on DeepSeek; lenses on `mimo-v2.6-pro` | **$82 / $169**            |
 | **Option 3 — highest outside Anthropic/OpenAI** | every agent on `google/gemini-4-argon`; lenses on `moonshotai/kimi-k3.1-pro`                                            | **$305 / $637**           |
 
-**Option 1 — cheapest.** The five convergent lenses — the distinct-CoT second opinion on risk, security and root cause — run `xiaomi/mimo-v2.6-pro`, a Xiaomi family at DeepSeek's cache-read price, so the variance survives at no measurable cost. OpenRouter only; Zen, Go and Ollama follow the same ceiling by their own catalogs.
+OpenRouter IDs: `deepseek-v4.1-flash-1017` = `openrouter/deepseek/deepseek-v4.1-flash-1017`, `mimo-v2.6-pro` = `openrouter/xiaomi/mimo-v2.6-pro`, `gemini-4-argon` = `openrouter/google/gemini-4-argon`, `kimi-k3.1-pro` = `openrouter/moonshotai/kimi-k3.1-pro`. **Bold** marks a cell that differs from the default.
 
 <!-- prettier-ignore -->
-| Prompt | Provider | Model |
-| --- | --- | --- |
-| bkit-design-brainstorm-ideate-3 | openrouter | openrouter/xiaomi/mimo-v2.6-pro |
-| bkit-plan-review-2 | openrouter | openrouter/xiaomi/mimo-v2.6-pro |
-| bkit-build-challenge-2 | openrouter | openrouter/xiaomi/mimo-v2.6-pro |
-| bkit-debug-failure-diagnose | openrouter | openrouter/xiaomi/mimo-v2.6-pro |
-| bkit-debug-failure-soak | openrouter | openrouter/xiaomi/mimo-v2.6-pro |
+| Agent | Option 1 — default | Option 2 — balanced | Option 3 — maximum |
+| --- | --- | --- | --- |
+| `bkit-design-brainstorm-ideate-1` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
+| `bkit-design-brainstorm-ideate-2` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
+| `bkit-design-brainstorm-ideate-3` | mimo-v2.6-pro | mimo-v2.6-pro | **kimi-k3.1-pro** |
+| `bkit-design-generate` | deepseek-v4.1-flash-1017 | **gemini-4-argon** | **gemini-4-argon** |
+| `bkit-design-review-1` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
+| `bkit-design-review-2` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
+| `bkit-design-spike` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
+| `bkit-design-update` | deepseek-v4.1-flash-1017 | **gemini-4-argon** | **gemini-4-argon** |
+| `bkit-design-organise` | deepseek-v4.1-flash-1017 | **gemini-4-argon** | **gemini-4-argon** |
+| `bkit-plan-generate` | deepseek-v4.1-flash-1017 | **gemini-4-argon** | **gemini-4-argon** |
+| `bkit-plan-review-1` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
+| `bkit-plan-review-2` | mimo-v2.6-pro | mimo-v2.6-pro | **kimi-k3.1-pro** |
+| `bkit-plan-scope-check` | deepseek-v4.1-flash-1017 | **gemini-4-argon** | **gemini-4-argon** |
+| `bkit-plan-update` | deepseek-v4.1-flash-1017 | **gemini-4-argon** | **gemini-4-argon** |
+| `bkit-build-plan-convert` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
+| `bkit-build-plan-current` | deepseek-v4.1-flash-1017 | **gemini-4-argon** | **gemini-4-argon** |
+| `bkit-build-install-skills` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
+| `bkit-build-plan-execute` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
+| `bkit-build-plan-verify` | deepseek-v4.1-flash-1017 | **gemini-4-argon** | **gemini-4-argon** |
+| `bkit-build-plan-gaps-remediate` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
+| `bkit-build-challenge-1` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
+| `bkit-build-challenge-2` | mimo-v2.6-pro | mimo-v2.6-pro | **kimi-k3.1-pro** |
+| `bkit-debug-failure-reproduce` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
+| `bkit-debug-failure-diagnose` | mimo-v2.6-pro | mimo-v2.6-pro | **kimi-k3.1-pro** |
+| `bkit-debug-failure-remediate` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
+| `bkit-debug-failure-soak` | mimo-v2.6-pro | mimo-v2.6-pro | **kimi-k3.1-pro** |
+| `bkit-debug-abort-handover` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
+| `bkit-ship-conflict-resolve` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
+| `bkit-ship-deferred-sweep` | deepseek-v4.1-flash-1017 | **gemini-4-argon** | **gemini-4-argon** |
+| `bkit-ship-update-docs` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
+| `bkit-audit-generate` | deepseek-v4.1-flash-1017 | **gemini-4-argon** | **gemini-4-argon** |
+| `bkit-utility-update-deferrals` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
+| `bkit-utility-update-failures` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
+| `bkit-utility-update-decisions` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
+| `bkit-utility-update-knowledge` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
+| `bkit-utility-update-roadmap` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
+| `bkit-utility-update-tracker` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
+| `bkit-utility-compress-markdown` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
+| `bkit-utility-update-documentation` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
 
-**Option 2 — balanced.** The ten spine agents run `google/gemini-4-argon` (61.2 Long Agentic, 11.6 under the 72.8 opus bar): the synthesizers that author a design, plan or audit, and the gates that verify one. Everything else stays on DeepSeek; the lenses keep the Xiaomi family. +20.3 Long Agentic wherever the artifact is written or judged.
+**Option 2 — balanced.** The ten spine agents run `google/gemini-4-argon` (61.2 Long Agentic, 11.6 under the 72.8 opus bar): the synthesizers that author a design, plan or audit, and the gates that verify one. Everything else stays on DeepSeek; the lenses keep the Xiaomi family. Copy into § Model Overrides:
 
 <!-- prettier-ignore -->
 | Prompt | Provider | Model |
@@ -433,13 +467,8 @@ Three settings for the opencode columns between subscription resets, priced agai
 | bkit-build-plan-current | openrouter | openrouter/google/gemini-4-argon |
 | bkit-audit-generate | openrouter | openrouter/google/gemini-4-argon |
 | bkit-ship-deferred-sweep | openrouter | openrouter/google/gemini-4-argon |
-| bkit-design-brainstorm-ideate-3 | openrouter | openrouter/xiaomi/mimo-v2.6-pro |
-| bkit-plan-review-2 | openrouter | openrouter/xiaomi/mimo-v2.6-pro |
-| bkit-build-challenge-2 | openrouter | openrouter/xiaomi/mimo-v2.6-pro |
-| bkit-debug-failure-diagnose | openrouter | openrouter/xiaomi/mimo-v2.6-pro |
-| bkit-debug-failure-soak | openrouter | openrouter/xiaomi/mimo-v2.6-pro |
 
-**Option 3 — highest quality outside Anthropic and OpenAI.** Every agent runs `google/gemini-4-argon`, the closest any allowed vendor gets to the opus bar; the lenses run `moonshotai/kimi-k3.1-pro` (39.1, distinct family, $0.20 cache read). More than a month of subscription for one gap, against roughly a quarter of the same work at Claude list price — opt in when the work matters more than the week.
+**Option 3 — highest quality outside Anthropic and OpenAI.** Every agent runs `google/gemini-4-argon`, the closest any allowed vendor gets to the opus bar; the lenses run `moonshotai/kimi-k3.1-pro` (39.1, distinct family, $0.20 cache read). More than a month of subscription for one gap, against roughly a quarter of the same work at Claude list price. Copy into § Model Overrides:
 
 <!-- prettier-ignore -->
 | Prompt | Provider | Model |
@@ -484,39 +513,14 @@ Three settings for the opencode columns between subscription resets, priced agai
 | bkit-debug-failure-diagnose | openrouter | openrouter/moonshotai/kimi-k3.1-pro |
 | bkit-debug-failure-soak | openrouter | openrouter/moonshotai/kimi-k3.1-pro |
 
+**Cursor — first-party pins only.** `cursor-grok-4.5-high` carries depth, synthesizers and the parallel slots; `composer-2.5` carries volume, the build and ship pipelines. That keeps workflows running when API credits are spent. `/v0/models` has no Opus 5.5 ID: `claude-opus-5-thinking-high` is the API-pool equivalent for `claude-opus-5-5` rows and `claude-sonnet-5-thinking-high` for `claude-sonnet-5-5`, both opt-in through § Model Overrides. Orchestrators (`/design` `/plan` `/debug`) take the session model, not a table row. Probe `/v0/models` before pinning — the catalog churns.
+
 <!-- bkit:end -->
 
 ## Model Overrides
 
-> [!CAUTION]
-> Add rows below to override bkit default model settings above.
-> Providers: `cursor`, `openrouter`, `ollama`, …
-> Example (non-Cursor): `| bkit-build-plan-verify | openrouter | openrouter/deepseek/deepseek-v4-pro |`
-> Install merges overrides over defaults (override wins). Re-run `bkit install --cursor` after editing. Claude Code reads frontmatter — not overridable via this table yet.
-> A row naming an agent bkit no longer ships is not applied; `bkit install` / `check` / `upgrade` list it as the `model-override-unknown-agent` advisory.
+> Add rows below to override bkit's default models, one per agent — `| bkit-plan-review-2 | openrouter | openrouter/xiaomi/mimo-v2.6-pro |`. Override wins; re-run `bkit install --opencode=<provider>` after editing. Preset blocks to copy live in § Model Presets above. Claude Code pins are prompt frontmatter and are not overridable here.
 
 <!-- prettier-ignore -->
 | Prompt | Provider | Model |
 | --- | --- | --- |
-
-> [!NOTE]
-> **Cursor — API credits / third-party models.** Shipped Cursor defaults are **first-party only** (`cursor-grok-4.5-high`, `composer-2.5`) so workflows keep running when API credits are exhausted. **If** you have third-party / additional API credits and want Claude Opus (or other API-pool models) on Cursor workflows, add rows to the table above — do **not** edit the managed `## Models` table (upgrade overwrites it).
->
-> **Mapping (align Cursor to Claude-tier settings):**
-
-<!-- prettier-ignore -->
-| Claude column | Cursor override | Notes |
-| --- | --- | --- |
-| `claude-opus-5-5` | `claude-opus-5-thinking-high` | `/v0/models` has no Opus 5.5 ID. Depth / synthesizers — paste block below |
-| `claude-sonnet-5-5` | `claude-sonnet-5-thinking-high` | `/v0/models` has Sonnet 5, not 5.5. Shipped default stays `composer-2.5` / `cursor-grok-4.5-high` |
-| `claude-haiku-5-5` | leave `composer-2.5` | Haiku tier — no change |
-
-> **Orchestrators** (`/design` `/plan` `/debug`) are session model, not the override table — set the Cursor session / Cloud Agent model to `claude-opus-5-thinking-high` when invoking. `/build` `/ship` stay `composer-2.5` unless you override the session.
->
-> **Ready-to-paste — restore Opus on every Claude-opus-tier Cursor agent** (copy rows into the empty table above):
-
-<!-- prettier-ignore -->
-| Prompt | Provider | Model |
-| --- | --- | --- |
-
-> Optional API cross-family (sonnet-tier diversity slots): `| bkit-design-brainstorm-ideate-2 | cursor | claude-sonnet-5-thinking-high |` (+ same for `bkit-design-review-2`). `gpt-5.6-sol-high` is the non-Claude alternative. Probe live `/v0/models` before pinning — catalog churns. See `.bkit/providers.md` § Cursor model catalog.

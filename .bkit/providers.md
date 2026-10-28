@@ -642,7 +642,7 @@ Re-probed `https://livebench.ai/data/20261025/table.csv` + `cost.csv` (§ Select
 
 **Ceiling for the default: ≤ `$0.005` cache read per Mtok** — Option 1's dearest cell is `mimo-v2.6-pro` at `$0.0036`. Options 2 and 3 breach the ceiling deliberately; they are opt-in through § Model Overrides and each states its own gap cost, so no default pin ever drifts above the ceiling. The current `kimi-k3` lenses are the one live violation at `$0.19`.
 
-**Ready-to-paste tables:** `prompts.md` § Model Presets — the three blocks, 5 / 15 / 39 rows, ship in the managed region and are copied into § Model Overrides to apply. They live above `bkit:end` because a consumer's override section below it is preserved by install and upgrade, so preset text placed there would never reach an existing install.
+**Where the presets live:** `prompts.md` § Model Presets, in the managed region above `bkit:end` — the full 39-agent matrix with each option's model per agent, plus copy-paste blocks for Options 2 and 3. **Option 1 needs no block: it is the shipped default.** Presets live above `bkit:end` because a consumer's § Model Overrides below it is preserved by install and upgrade — text placed there would never reach an existing install. That consumer region stays deliberately thin: a usage line and the empty table.
 
 ### Agentic-coding parity board
 
