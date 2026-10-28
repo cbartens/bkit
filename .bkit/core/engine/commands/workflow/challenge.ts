@@ -28,7 +28,7 @@ import { CommandError, DEV, EXIT, git, runGit, type CommandSpec } from "../lib.j
 import { DIFF_BASE, EXIT_BASE, diffNumstat, type DiffStat } from "./context.js";
 import { parseDecisionItems } from "./decisions.js";
 import { EXIT_ROW_REFUSED, EXIT_STAGE, appendLedgerRows } from "./ledgers.js";
-import { parsePlanBlocks, type PlanTaskBlock } from "./plan-blocks.js";
+import { derivedTestMatrix, parsePlanBlocks, type PlanTaskBlock } from "./plan-blocks.js";
 import { readBkitConfig, type TaskCaps } from "../../shared/settings.js";
 import { checkPlanText, planCaps, readTestFirst } from "./tests.js";
 import { ledgerRows } from "./workflows.js";
@@ -253,6 +253,29 @@ const taskBlock = (n: number, f: Finding, round: number) => [
   `<!-- bkit:task ${n} end -->`,
 ];
 
+/** The test tier `docs/testing.md` records for a test file's name. */
+const testTier = (file: string) =>
+  /\.integration\.test\./.test(file)
+    ? "Integration"
+    : /\.live\.test\./.test(file)
+      ? "@live (golden)"
+      : "Unit";
+
+/**
+ * One `Derived Test Matrix` row per test a finding task appends: the test's own name and
+ * file from its `TEST FIRST` entry, its tier from the file's name, and the task number.
+ */
+function matrixRows(findings: Finding[], firstTask: number): string[] {
+  return findings.flatMap((f, i) =>
+    f.tests.map((entry) => {
+      const spans = [...entry.matchAll(/`([^`]+)`/g)].map((m) => m[1]!.trim());
+      const file = spans[0] ?? "";
+      const name = spans[1] ?? entry.replace(/[`|]/g, "").trim();
+      return `| ${name} | ${testTier(file)} | \`${file}\` | ${firstTask + i} |`;
+    }),
+  );
+}
+
 /**
  * The findings as groups of task blocks, numbered from `firstTask` and `firstGroup`: a
  * group closes at `caps.maxPerGroup` tasks, or before a task that would take it past
@@ -302,7 +325,9 @@ interface Written {
 
 /**
  * `plan` with the findings written as new groups after its last group (at the end when
- * it has none), tasks numbered from `firstTask`, grouped within `caps`.
+ * it has none), tasks numbered from `firstTask`, grouped within `caps`. A plan that
+ * carries a `Derived Test Matrix` gains a row per finding test, so the matrix check holds
+ * over the appended tasks too.
  */
 export function appendTasks(
   plan: string,
@@ -314,9 +339,15 @@ export function appendTasks(
   const blocks = parsePlanBlocks(plan);
   const firstGroup = Math.max(0, ...blocks.groups.map((g) => g.group)) + 1;
   const { lines: block, tasks } = findingGroups(findings, firstTask, firstGroup, round, caps);
+  const matrix = derivedTestMatrix(plan);
+  const rows = matrix === null ? [] : matrixRows(findings, firstTask);
+  // The matrix table's last row, or its separator line when it holds none: 0-based index.
+  const matrixAt = matrix === null ? -1 : (matrix.rows.at(-1)?.number ?? matrix.line + 1);
+  const lines = plan.split("\n");
+  if (matrixAt >= 0) lines.splice(matrixAt, 0, ...rows);
   const last = blocks.groups.at(-1);
   if (last === undefined) {
-    const body = plan.replace(/\n*$/, "");
+    const body = lines.join("\n").replace(/\n*$/, "");
     const from = body.split("\n").length + 2;
     return {
       text: `${body}\n\n${block.join("\n")}\n`,
@@ -324,9 +355,9 @@ export function appendTasks(
       written: { from, to: from + block.length - 1 },
     };
   }
-  const lines = plan.split("\n");
-  lines.splice(last.end, 0, "", ...block);
-  const from = last.end + 2;
+  const shift = matrixAt >= 0 && matrixAt <= last.end ? rows.length : 0;
+  lines.splice(last.end + shift, 0, "", ...block);
+  const from = last.end + shift + 2;
   return { text: lines.join("\n"), tasks, written: { from, to: from + block.length - 1 } };
 }
 

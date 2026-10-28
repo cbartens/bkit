@@ -132,7 +132,7 @@ description: "Build Feature — Autonomous implementation"
      - Test-order gap or `exception-refused` gap → a `- **TEST EXCEPTION:**` field as the last field of the task's block in `docs/plans/{YYYYMM}/{FID}-plan.md`, one sub-bullet per test in `TEST FIRST` form, each ending `— {human's reason} (owner, {YYYY-MM-DD})`; a task with no `TEST FIRST` → the field holds `{human's reason} (owner, {YYYY-MM-DD})` alone. The field replaces the task's existing `TEST EXCEPTION` field; NEVER add a second.
      - Other → append one `docs/decisions.jsonl` row with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); `by.step` = `build-decision`; `summary` names `{FID}`, step `{PAUSE_STEP}` and the gap or finding; `rationale` = `accepted by owner: {human's reason}`. An item that is a challenge task → also tick it `[x]` in the plan and end its title with ` — accepted by owner`.
    - **Accept (assumed)** (written by `decisions apply`) → write nothing else: no `docs/decisions.jsonl` row, no `TEST EXCEPTION`. An item that is a challenge task → tick it `[x]` and end its title with ` — accepted (assumed)`. Ship asks the owner to confirm it.
-   - **Fix now** → an item that is a challenge task → keep that task open; it runs as it is. **Else** → write a task block (`docs/templates/bkit-plan.md` § Agent Execution Runbook) numbered one above the plan's highest task, with `**DONE WHEN:**` and `**TEST FIRST:**` (one sub-bullet per test, `` `{test file}` `{test name}` fails on {what goes wrong} ``); the human's direction, when given, shapes the task:
+   - **Fix now** → an item that is a challenge task → keep that task open; it runs as it is. **Else** → write a task block (`docs/templates/bkit-plan.md` § Agent Execution Runbook) numbered one above the plan's highest task, with `**DONE WHEN:**` and `**TEST FIRST:**` (one sub-bullet per test, `` `{test file}` `{test name}` fails on {what goes wrong} ``), and one `Derived Test Matrix` row per test in that `TEST FIRST` (``| {test name} | {tier} | `{test file}` | {task} |``, the tier its file's name gives); the human's direction, when given, shapes the task:
      - `From: verify` and group `{GROUP}` stays within `{MAX_TASKS_PER_GROUP}` tasks and `{MAX_TESTS_PER_GROUP}` `TEST FIRST` tests with it → inside group `{GROUP}`.
      - `From: verify`, over either cap → a new group right after `{GROUP}`; add 1 to every later group's number, in its markers and `### GROUP` heading.
      - `From: tests` or `From: challenge` → a new last group, each new group within the caps.
@@ -338,7 +338,7 @@ description: "Build Feature — Autonomous implementation"
    ```
    Route:
    - **If** exit 0 **and** (`NEWER_COMMENTS` = 0 **or** `CONVERTED` is held) → Step 5.
-   - **If** `CONVERTED` is not held **and** (exit 0 with `NEWER_COMMENTS` > 0, **or** exit 2 with no `docs/plans/{YYYYMM}/{FID}-plan.md`, **or** exit 1 with a `markers` problem) → sub-step 2.
+   - **If** `CONVERTED` is not held **and** (exit 0 with `NEWER_COMMENTS` > 0, **or** exit 2 with no `docs/plans/{YYYYMM}/{FID}-plan.md`, **or** exit 1 with a `markers`, `matrix` or `supersession` problem) → sub-step 2.
    - **If** exit 1, `CONVERTED` is held **and** `CONVERT_RETRY` is not held → `CONVERT_RETRY` = the printed `problems` → sub-step 2.
    - **Else** → **Failure Path** naming each problem in the report.
 2. **Subagent:** Invoke `@bkit-build-plan-convert` using `Agent` tool:
@@ -446,8 +446,12 @@ One pass of Steps 7-9 per plan group, in group order: Step 7 briefs the first gr
    "{BKIT}" steps finish --workflow=build --step=build-plan-execute --file="{STATUS}" --attempt-of=build-plan-execute:next --group={GROUP} --agent=bkit-build-plan-execute --artifact=docs/plans/{YYYYMM}/logs/{FID}/build-plan-execute-{GROUP}-log.md --number=7 --post --title="Plan Execute" --message="chore({FID}): plan-execute group {GROUP} attempt <attempt>"
    ```
    Hold `verdict` as `EXECUTE_VERDICT`.
-5. Route — the log's `DONE` and `BLOCKED` lines are the handover; only Step 8 ticks tasks:
-   - **If** (`EXECUTE_VERDICT` = HANDOVER **or** a task of `GROUP_TASKS` has neither a `DONE — TASK {N}` nor a `BLOCKED — TASK {N}` line in the log) **and** `EXECUTE_RESUMED` is not held for `GROUP` → the agent stopped at its turn cap: a handover, not a failed attempt → `EXECUTE_RESUMED` = `GROUP` → re-run Step 7; its brief leaves out the `DONE` tasks.
+5. Route — the engine reads the group's open tasks:
+   ```bash
+   "{BKIT}" tasks open --plan="docs/plans/{YYYYMM}/{FID}-plan.md" --group={GROUP} --log="docs/plans/{YYYYMM}/logs/{FID}/build-plan-execute-{GROUP}-log.md"
+   ```
+   Hold `handover` as `EXECUTE_HANDOVER`.
+   - **If** (`EXECUTE_VERDICT` = HANDOVER **or** `EXECUTE_HANDOVER` = true) **and** `EXECUTE_RESUMED` is not held for `GROUP` → the agent stopped at its turn cap: a handover, not a failed attempt → `EXECUTE_RESUMED` = `GROUP` → re-run Step 7; its brief leaves out the `DONE` tasks.
    - **Else** → Step 8.
 
 ### 🔒 Gate 7 — Plan Execute
@@ -482,33 +486,40 @@ One pass of Steps 7-9 per plan group, in group order: Step 7 briefs the first gr
 4. **Subagent:** Invoke `@bkit-build-plan-verify` using `Agent` tool:
    Context: You are a subagent in the Build phase. Group verification. Group `{GROUP}`, attempt `{VERIFY_ATTEMPT}`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
    Read: glob `docs/plans/{YYYYMM}/logs/{FID}/build-brief-{GROUP}-*.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-diff-{GROUP}-{VERIFY_ATTEMPT}.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-execute-{GROUP}-log.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-tests-green-{GROUP}-{VERIFY_ATTEMPT}.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-current.md` (if present), glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{GROUP}-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{GROUP}-*-log.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-decision-*.md`.
-   Update: `docs/plans/{YYYYMM}/{FID}-plan.md` (tick only group `{GROUP}`'s tasks).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}.md`.
 5. Finish:
    ```bash
    "{BKIT}" steps finish --workflow=build --step=build-plan-verify --file="{STATUS}" --attempt-of=build-plan-verify:next --group={GROUP} --agent=bkit-build-plan-verify --artifact="docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{GROUP}-<attempt>.md" --number=8 --post --title="Plan Verify" --message="chore({FID}): plan-verify group {GROUP} attempt <attempt>"
    ```
-   Hold `verdict` as `VERIFY_VERDICT`, `failures` as `VERIFY_FAILURES`, `fields.Fixable` as `VERIFY_FIXABLE`.
-6. Route:
+   Hold `verdict` as `VERIFY_VERDICT`, `failures` as `VERIFY_FAILURES`, `fields.Fixable` as `VERIFY_FIXABLE`, `fields.Tasks` as `{VERIFIED_TASKS}`.
+6. Tick the plan with the satisfied task numbers; a task the test-first report gaps stays open:
+   ```bash
+   "{BKIT}" tasks tick --plan="docs/plans/{YYYYMM}/{FID}-plan.md" --group={GROUP} --tasks="{VERIFIED_TASKS}" --green="docs/plans/{YYYYMM}/logs/{FID}/build-tests-green-{GROUP}-{VERIFY_ATTEMPT}.md"
+   ```
+7. Route:
    - **If** `VERIFY_VERDICT` = PASS → list the plan's groups:
      ```bash
      "{BKIT}" tests plan-check --plan="docs/plans/{YYYYMM}/{FID}-plan.md" --existence=report --log="{OUTBOX}/build-plan-check-{GROUP}.md"
      ```
-     **If** exit non-zero → **Failure Path**. **If** the printed `groups` hold a group numbered above `GROUP` → sub-step 7. **Else** → `GATE_VERDICT` = SKIPPED → sub-step 9.
-   - **Else** → `GATE_VERDICT` = SKIPPED → sub-step 9.
-7. Run the group gate; it writes the trimmed log to the artifact:
+     Route:
+     - **If** exit 1 with a `matrix` or `supersession` problem, **and** `CONVERT_RETRY` is not held → `CONVERT_RETRY` = the printed `problems` → Step 4 sub-step 2.
+     - **If** exit non-zero → **Failure Path**.
+     - **If** the printed `groups` hold a group numbered above `GROUP` → sub-step 8.
+     - **Else** → `GATE_VERDICT` = SKIPPED → sub-step 10.
+   - **Else** → `GATE_VERDICT` = SKIPPED → sub-step 10.
+8. Run the group gate; it writes the trimmed log to the artifact:
    ```bash
    "{BKIT}" tests run --gate=bkit:gate:static-unit-integration --gate=bkit:gate:static-unit --log="{OUTBOX}/build-group-gate-{GROUP}-{VERIFY_ATTEMPT}.log" --artifact="docs/plans/{YYYYMM}/logs/{FID}/build-group-gate-{GROUP}-{VERIFY_ATTEMPT}.md" --fid={FID} --step=build-group-gate-{GROUP} --attempt={VERIFY_ATTEMPT}
    ```
    Route:
-   - **If** exit 0 **or** 1 → hold `verdict` as `{GATE_VERDICT}`, `scope` as `{TEST_SCOPE}` → sub-step 8.
+   - **If** exit 0 **or** 1 → hold `verdict` as `{GATE_VERDICT}`, `scope` as `{TEST_SCOPE}` → sub-step 9.
    - **Else** → **Failure Path**.
-8. Finish:
+9. Finish:
    ```bash
    "{BKIT}" steps finish --workflow=build --step=build-group-gate --file="{STATUS}" --verdict={GATE_VERDICT} --scope="{TEST_SCOPE}" --attempt-of=build-plan-verify:current --group={GROUP} --artifact="docs/plans/{YYYYMM}/logs/{FID}/build-group-gate-{GROUP}-<attempt>.md" --clamp-log="build-group-gate-{GROUP}:<attempt>" --number=8 --post --title="Group Gate" --message="chore({FID}): group-gate group {GROUP} attempt <attempt>"
    ```
-9. **If** `VERIFY_VERDICT` = PASS **and** `GATE_VERDICT` != FAIL → Step 7 (the next group, or Step 10 when none is open).
-10. **If** `VERIFY_VERDICT` = CONCERNS or FAIL, **or** `GATE_VERDICT` = FAIL → route on the group's verify rounds:
+10. **If** `VERIFY_VERDICT` = PASS **and** `GATE_VERDICT` != FAIL → Step 7 (the next group, or Step 10 when none is open).
+11. **If** `VERIFY_VERDICT` = CONCERNS or FAIL, **or** `GATE_VERDICT` = FAIL → route on the group's verify rounds:
     ```bash
     "{BKIT}" counters route --name=VERIFY_ATTEMPT --of=build-plan-verify:current --file="{STATUS}" --workflow=build --group={GROUP} --point=build.verify --continue=within-limit --exceeded=failure-path
     ```
@@ -521,7 +532,7 @@ One pass of Steps 7-9 per plan group, in group order: Step 7 briefs the first gr
     - **If** exit 0 **and** `VERIFY_ROUNDS` < `PAUSE_MAX` → `PAUSE_QUESTION` = `VERIFY_LOOP` → **Decision Pause**.
     - **If** exit 0 → `PAUSE_QUESTION` = `VERIFY_GAPS` → **Decision Pause** (no round left: decide the open gaps).
     - **Else** → **Failure Path**.
-11. **Else** → **Failure Path**.
+12. **Else** → **Failure Path**.
 
 ### 🔒 Gate 8 — Plan Verify
 
@@ -537,7 +548,7 @@ One pass of Steps 7-9 per plan group, in group order: Step 7 briefs the first gr
 
 ### 🧠 Step 9 — Plan Gaps Remediate
 
-**Run only if** Step 8 sub-step 10 or the **Decision Pause** routed here.
+**Run only if** Step 8 sub-step 11 or the **Decision Pause** routed here.
 
 1. Read status.jsonl and derive next `STRATEGY`:
    ```bash
@@ -606,7 +617,12 @@ Runs once, after the last group; challenge fix groups pass through here on the w
    ```bash
    "{BKIT}" steps finish --workflow=build --step=build-plan-verify-holistic --file="{STATUS}" --attempt=1 --agent=bkit-build-plan-verify --artifact=docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-holistic.md --number=10 --post --title="Plan Verify Holistic" --message="chore({FID}): plan-verify-holistic"
    ```
-4. Route:
+   Hold `fields.Tasks` as `{VERIFIED_TASKS}`.
+4. Tick each group's satisfied tasks — one call per plan group, `{GROUP}` that group and `{VERIFIED_TASKS}` the numbers `Tasks:` names for it:
+   ```bash
+   "{BKIT}" tasks tick --plan="docs/plans/{YYYYMM}/{FID}-plan.md" --group={GROUP} --tasks="{VERIFIED_TASKS}"
+   ```
+5. Route:
    - **If** `verdict` = PASS or CONCERNS → Step 11.
    - **Else** → **Failure Path**.
 

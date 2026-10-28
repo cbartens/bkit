@@ -3,7 +3,7 @@ import * as path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { parsePlanBlocks, reuseInventory } from "./plan-blocks";
+import { derivedTestMatrix, outOfScope, parsePlanBlocks, reuseInventory } from "./plan-blocks";
 
 const task = (n: number, body: string[] = [], tick = " ") => [
   `<!-- bkit:task ${n} start -->`,
@@ -370,4 +370,92 @@ describe("reuseInventory", () => {
     const text = ["## Reuse Inventory", "None.", "## Other", "| File |", "| --- |", "| `x` |"];
     expect(reuseInventory(text.join("\n"))).toBeNull();
   });
+});
+
+it("outOfScope returns the plan's Out of Scope rows", () => {
+  const text = [
+    "# Plan",
+    "",
+    "## Out of Scope",
+    "",
+    "| Excluded item | Why `Exempt` | Where it belongs |",
+    "| --- | --- | --- |",
+    "| Design reviewers | no measurements | `docs/deferrals.jsonl` key `701-design-reviewer-audit` |",
+    "| A second item | declared | stays in a prompt |",
+    "",
+    "## Next section",
+    "",
+    "| Not | A | Table |",
+    "| --- | --- | --- |",
+    "| x | y | z |",
+  ].join("\n");
+  expect(outOfScope(text)).toEqual([
+    {
+      line: "| Design reviewers | no measurements | `docs/deferrals.jsonl` key `701-design-reviewer-audit` |",
+      number: 7,
+      cells: [
+        "Design reviewers",
+        "no measurements",
+        "`docs/deferrals.jsonl` key `701-design-reviewer-audit`",
+      ],
+    },
+    {
+      line: "| A second item | declared | stays in a prompt |",
+      number: 8,
+      cells: ["A second item", "declared", "stays in a prompt"],
+    },
+  ]);
+});
+
+it("plan-blocks readers stop at the next heading of the same or a higher level", () => {
+  const later = [
+    "# Plan",
+    "",
+    "## Out of Scope",
+    "",
+    "None.",
+    "",
+    "## Another section",
+    "",
+    "| Excluded item | Why `Exempt` | Where it belongs |",
+    "| --- | --- | --- |",
+    "| a table under a later heading of the same level | x | y |",
+  ].join("\n");
+  expect(outOfScope(later)).toBeNull();
+  const lower = [
+    "# Plan",
+    "",
+    "## Out of Scope",
+    "",
+    "### Declared early",
+    "",
+    "| Excluded item | Why `Exempt` | Where it belongs |",
+    "| --- | --- | --- |",
+    "| a table under a lower heading of the section | x | y |",
+  ].join("\n");
+  expect(outOfScope(lower)?.map((r) => r.cells[0])).toEqual([
+    "a table under a lower heading of the section",
+  ]);
+});
+
+it("derivedTestMatrix returns a null column index when the header has no Task column", () => {
+  const text = [
+    "# Plan",
+    "",
+    "## Derived Test Matrix",
+    "",
+    "| Test description | Type | Target file |",
+    "| --- | --- | --- |",
+    "| case a | Unit | `t.test.ts` |",
+    "",
+    "## Next",
+    "",
+    "| Not | A | Matrix |",
+    "| --- | --- | --- |",
+    "| x | y | z |",
+  ].join("\n");
+  const matrix = derivedTestMatrix(text);
+  expect(matrix?.taskColumn).toBeNull();
+  expect(matrix?.line).toBe(5);
+  expect(matrix?.rows.map((r) => r.cells)).toEqual([["case a", "Unit", "`t.test.ts`"]]);
 });

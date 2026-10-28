@@ -124,7 +124,7 @@ A bkit maintainer wants the build and ship subagents to stop re-deriving facts t
 
 ### Derived Test Matrix
 
-`Type` = a tier from `docs/testing.md`: Static, Unit, Integration, @live (golden), E2E, fresh-DB replay, Smoke. Rows 1-18 are `#701` `### Derived Test Matrix` verbatim (their `unit` label is the issue's own word; the tier `docs/testing.md` records for these files is `Unit` — `.bkit/core/engine/commands/**/*.test.ts` is the unit lane, `branches.test.ts` / `ledgers.test.ts` run real temp git repos as that tier's boundary form). Rows 19+ are plan-added, all `Unit`, each from an `Edge Cases` row or from a seam the review round named (the `verdict: null` roll-up, the added-lines-only gap, the `matrix` semantics and the producers it touches, `currency`'s range, the group-required tick, the `triage` edge cases). `Task` maps each row to exactly one runbook task. `challenge.test.ts` / `plan-blocks.test.ts` are the two files the `matrix` work and the plan-block readers add to the lane.
+`Type` = a tier from `docs/testing.md`: Static, Unit, Integration, @live (golden), E2E, fresh-DB replay, Smoke. Rows 1-18 are `#701` `### Derived Test Matrix` verbatim (their `unit` label is the issue's own word; the tier `docs/testing.md` records for these files is `Unit` — `.bkit/core/engine/commands/**/*.test.ts` is the unit lane, `branches.test.ts` / `ledgers.test.ts` run real temp git repos as that tier's boundary form). Rows 19+ are plan-added, all `Unit`: rows 19-46 from an `Edge Cases` row or a seam the review round named (the `verdict: null` roll-up, the added-lines-only gap, the `matrix` semantics and the producers it touches, `currency`'s range, the group-required tick, the `triage` edge cases), rows 47-54 one per `TEST FIRST` test of the challenge round 1 findings tasks 12-18, rows 55-60 one per `TEST FIRST` test of the challenge round 2 findings tasks 20-23. `Task` maps each row to exactly one runbook task. `challenge.test.ts` / `plan-blocks.test.ts` are the two files the `matrix` work and the plan-block readers add to the lane.
 
 <!-- prettier-ignore -->
 | Test description | Type | Target file | Task |
@@ -175,6 +175,20 @@ A bkit maintainer wants the build and ship subagents to stop re-deriving facts t
 | `triage` marks a `scope-declared` row whose only declaration is itself `Lazy` | Unit | `.bkit/core/engine/commands/workflow/ledgers.test.ts` | 7 |
 | `outOfScope` returns the plan's `Out of Scope` rows | Unit | `.bkit/core/engine/commands/workflow/plan-blocks.test.ts` | 7 |
 | the `plan-blocks.ts` readers stop at the next heading of the same or a higher level | Unit | `.bkit/core/engine/commands/workflow/plan-blocks.test.ts` | 7 |
+| triage keeps an own-cycle deferral exempt | Unit | `.bkit/core/engine/commands/workflow/ledgers.test.ts` | 12 |
+| scan-diff ignores a removed comment in a test file | Unit | `.bkit/core/engine/commands/workflow/branches.test.ts` | 13 |
+| scan-diff ignores an assertion moved within the file | Unit | `.bkit/core/engine/commands/workflow/branches.test.ts` | 13 |
+| scan-diff finds an added pytest mark skip | Unit | `.bkit/core/engine/commands/workflow/branches.test.ts` | 14 |
+| tick treats the header's none as nothing to tick | Unit | `.bkit/core/engine/commands/workflow/tasks.test.ts` | 15 |
+| triage writes no row for a closed deferral | Unit | `.bkit/core/engine/commands/workflow/ledgers.test.ts` | 16 |
+| triage reports an adjudicated unjustified row outside exempt | Unit | `.bkit/core/engine/commands/workflow/ledgers.test.ts` | 17 |
+| triage refuses a plan with no task blocks | Unit | `.bkit/core/engine/commands/workflow/ledgers.test.ts` | 18 |
+| scan-diff ignores a quoted skip in a documentation file | Unit | `.bkit/core/engine/commands/workflow/branches.test.ts` | 20 |
+| scan-diff ignores a marker literal in a non-test source file | Unit | `.bkit/core/engine/commands/workflow/branches.test.ts` | 20 |
+| scan-diff ignores an assertion whose expectation changed | Unit | `.bkit/core/engine/commands/workflow/branches.test.ts` | 21 |
+| scan-diff ignores an assertion replaced by another in the same test | Unit | `.bkit/core/engine/commands/workflow/branches.test.ts` | 21 |
+| scan-diff reports a deleted test file | Unit | `.bkit/core/engine/commands/workflow/branches.test.ts` | 22 |
+| scan-diff reports an assertion re-added only outside the test file | Unit | `.bkit/core/engine/commands/workflow/branches.test.ts` | 23 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -601,7 +615,7 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** `tests green` emits `verdict`, a `fixable` per gap and the gap log lines
+- [x] **TASK 1:** `tests green` emits `verdict`, a `fixable` per gap and the gap log lines
   - **UPDATE:** `green` in `.bkit/core/engine/commands/workflow/tests.ts`: emit `verdict` (`PASS` no gaps · `FAIL` any gap unfixable · `CONCERNS` otherwise · `null` when any gap needs a diff read) plus `fixable` and `logLine` on each gap, carried into `writeAuditReport` too; `fixable: null` for `delete-still-referenced`, `test-changed`, `red-mismatch` and the row state `Changed since red = added lines only`; emit the `test-changed` gap the added-lines-only row does not produce today
   - **UPDATE:** `.bkit/core/prompts/bkit-build-plan-verify.md`: drop the kind→`Fixable` table and the verdict mapping from Process 8 and 10; keep the four diff reads, the `no-red` "work already landed" override, the `Enforced: false` and `Late-red check` bullets, and the `— Fixable: false` log contract; Process 4 substitutes the verifier's decided `Fixable` where the engine printed `null`; the header `Verdict:` is the post-judgement roll-up and the header gains the `Tasks:` line with the empty form `Tasks: none`
   - **READ:** `.bkit/core/engine/commands/workflow/plan-blocks.ts`: the parsed task / gap shapes the audit reads
@@ -625,7 +639,7 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Create the `tasks` noun with `tick`, and wire the verifier, the tick and the holistic pass to it
+- [x] **TASK 2:** Create the `tasks` noun with `tick`, and wire the verifier, the tick and the holistic pass to it
   - **CREATE:** `.bkit/core/engine/commands/workflow/tasks.ts`: the `tasks` command over a plan's task blocks — the noun and `tick --plan= --group= (--tasks= | --green=)`; Tasks 3 and 4 `UPDATE` this same file with `open` and `currency`, so no verb is declared without a handler. `--green` matches Task 1's report gap lines
   - **UPDATE:** `COMMANDS` in `.bkit/core/engine/commands/registry.ts`: register `tasksCommand`
   - **UPDATE:** `.bkit/core/prompts/bkit-build-plan-verify.md`: the verifier no longer edits the plan; its header carries the satisfied task numbers (`Tasks: 1, 2`, or `Tasks: none`) and the mandate drops the plan-write clause
@@ -652,7 +666,7 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** `tasks open` — the group's tasks with no `DONE` / `BLOCKED` line
+- [x] **TASK 3:** `tasks open` — the group's tasks with no `DONE` / `BLOCKED` line
   - **UPDATE:** `open` in `.bkit/core/engine/commands/workflow/tasks.ts`: print the group's tasks with neither line and `handover: true` when any exist; read the log's lines through the shared `doneTasks` reader `context.ts` already imports, never a second parser
   - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: Step 6 sub-step 5 reads the verb instead of the prose set difference
   - **UPDATE:** `.bkit/core/prompts/bkit-build-plan-verify.md`: Process 6-7 drop the `DONE` log cross-reference
@@ -675,7 +689,7 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** `tasks currency` — plan-current's path and symbol match
+- [x] **TASK 4:** `tasks currency` — plan-current's path and symbol match
   - **UPDATE:** `currency` in `.bkit/core/engine/commands/workflow/tasks.ts`: per task print the matched paths and needles and the diff hunks for its `CREATE` / `READ` / `UPDATE` / `DELETE` fields over `{base}...{against}` (`--against` defaulting to `origin/dev`), not `{base}...HEAD`
   - **UPDATE:** `.bkit/core/prompts/bkit-build-plan-current.md`: drop Process 5-7's search and call `bkit tasks currency --base={BASE_SHA} --against=origin/dev` (its `{BASE_SHA}...origin/dev` three-dot range); keep the `Executable` / `Reword` / `Broken` call
   - **DEPENDS ON:** 2
@@ -698,7 +712,7 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
 
 <!-- bkit:task 5 start -->
 
-- [ ] **TASK 5:** `tests plan-check` refuses an unmapped matrix row and a `DELETE` with no Supersession row
+- [x] **TASK 5:** `tests plan-check` refuses an unmapped matrix row and a `DELETE` with no Supersession row
   - **UPDATE:** `plan-check` in `.bkit/core/engine/commands/workflow/tests.ts`: add problem kinds `matrix` and `supersession`, and update the verb's `summary`, `output.problems` and help text. **`matrix` semantics:** no `Derived Test Matrix` section → no problem (the refusal is on a row); with the table present, a header with no `Task` column → one problem naming the column, a row whose `Task` cell names no task / an undefined task / two or more tasks → one problem at the row, and a test-bearing task no row names → one problem at its task line (an `n/a`-only task needs no row). `supersession`: a `DELETE` whose file is in no `Supersession Inventory` row
   - **UPDATE:** `.bkit/core/engine/commands/workflow/plan-blocks.ts`: add `derivedTestMatrix` and `supersessionInventory` beside `reuseInventory`, over the same `tableCells` helper
   - **UPDATE:** `.bkit/core/engine/commands/workflow/challenge.ts`: `appendTasks` writes a `Derived Test Matrix` row per finding task it appends, so the bidirectional check holds inside its own written range
@@ -727,7 +741,7 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
 
 <!-- bkit:task 6 start -->
 
-- [ ] **TASK 6:** `branches scan-diff --disabled-tests`
+- [x] **TASK 6:** `branches scan-diff --disabled-tests`
   - **UPDATE:** `scan-diff` in `.bkit/core/engine/commands/workflow/branches.ts`: gain `--disabled-tests` — added lines only from `{base}...HEAD`, `docs/plans/**` excluded, matching `.skip` / `.todo` / `.fixme` / `xfail`, `t.Skip()`, `#[ignore]`, `@Disabled` and a removed assertion line inside a test file; exit 1 on any hit, printing `file:line` and the test name; the marker set is the one `.bkit/templates/scripts/slop/bkit-slop-type-suppression.mjs` carries, and the `--help` states that this flag inverts `--paths` / `--marker` / `--code`'s polarity and composes with `--expect-none`, so the two are never passed together
   - **UPDATE:** `.bkit/core/prompts/bkit-ship-deferred-sweep.md`: Process 8 reads the verb instead of scanning the diff
   - **UPDATE:** `.bkit/core/workflows/bkit-ship.md`: Step 5 passes the diff base (`origin/dev`) the scan runs against, so the sweep never guesses it
@@ -750,7 +764,7 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
 
 <!-- bkit:task 7 start -->
 
-- [ ] **TASK 7:** `ledgers triage`
+- [x] **TASK 7:** `ledgers triage`
   - **UPDATE:** `.bkit/core/engine/commands/workflow/ledgers.ts`: add the `triage` verb — read the FID's `docs/deferrals.jsonl` rows, apply the closed-enum reason tests from `.bkit/jsonl.md`, print each row's bucket (`Exempt` / `Lazy`) and result, and write the `unjustified` / `TRIAGED` rows with a minted `ts` through the existing append path
   - **UPDATE:** `.bkit/core/engine/commands/workflow/plan-blocks.ts`: add `outOfScope` beside `reuseInventory`, so the fourth reason test reads the plan's own `Out of Scope` rows rather than a second parser
   - **UPDATE:** `.bkit/core/prompts/bkit-ship-deferred-sweep.md`: Process 9-11 read the verb; Process 7 (deliverable verification, and the `unjustified` / `TRIAGED` row it writes for an unmet deliverable) stays
@@ -772,7 +786,7 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
 
 <!-- bkit:task 8 start -->
 
-- [ ] **TASK 8:** `ship-update-docs` `Pending Items` from the engine
+- [x] **TASK 8:** `ship-update-docs` `Pending Items` from the engine
   - **UPDATE:** `.bkit/core/prompts/bkit-ship-update-docs.md`: drop Process 7 (the `docs/deferrals.jsonl` grep); `Pending Items` is filled from the passed scan artifact
   - **UPDATE:** `.bkit/core/workflows/bkit-ship.md`: Step 6 runs `context ledger-scan --terms='{FID}' --source=docs/deferrals.jsonl --artifact="{OUTBOX}/ship-pending-items.md" --fid={FID} --step=ship-update-docs --reset-log` and lists that artifact in the subagent's `Read:`
   - **READ:** `.bkit/core/engine/commands/workflow/context.ts`: `ledger-scan`'s required flags (`--terms`, `--source`, `--artifact`), its clamp and its keep-cap, so the step's call is complete and the FID term's over-match is accepted (the scan's truncation notice is what `Pending Items` tolerates)
@@ -789,7 +803,7 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
 
 <!-- bkit:task 9 start -->
 
-- [ ] **TASK 9:** The plan format teaches the producers: the clause and its carriers
+- [x] **TASK 9:** The plan format teaches the producers: the clause and its carriers
   - **UPDATE:** `.bkit/instructions.md`: the `plan-scenario-detail` clause gains the `Task` column as the mapping carrier, the retired wording moves to a `retired` block, then `pnpm instructions:sync` rewrites the carriers
   - **UPDATE:** `.bkit/core/prompts/bkit-build-plan-convert.md`: the Contract's plan shape gains the `Task` column, so a converted plan passes `plan-check` on its re-run
   - **READ:** `.bkit/instructions.md`: § Clauses `plan-scenario-detail` and the `carriers:` rule (`pnpm instructions:show --file bkit-plan-generate.md` first)
@@ -802,7 +816,7 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
 
 <!-- bkit:task 10 start -->
 
-- [ ] **TASK 10:** Sync the docs the change touches
+- [x] **TASK 10:** Sync the docs the change touches
   - **UPDATE:** `.bkit/core/.bkit/prompts.md`: the changed scope of `bkit-build-plan-verify`, `bkit-build-plan-current`, `bkit-ship-deferred-sweep`, `bkit-ship-update-docs` and `bkit-plan-scope-check`; no name, effort, model or `maxTurns` moves
   - **UPDATE:** `.bkit/core/.bkit/workflows.md`: § `/bkit-build` — 15 steps (Steps 3 and 5's matrix route and Fix-now row, Step 6's handover check, Steps 7 and 9's tick), § `/bkit-ship` — 14 steps (Step 5's two verbs, Step 6's scan artifact)
   - **UPDATE:** `docs/testing.md`: § Key test files — rows for `tasks.test.ts`, `plan-blocks.test.ts` and `challenge.test.ts`, and the extended rows for `tests.test.ts`, `branches.test.ts` and `ledgers.test.ts`
@@ -816,7 +830,7 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
 
 <!-- bkit:task 11 start -->
 
-- [ ] **TASK 11:** Refresh the capability register, the mirrors and `dist/`, then dogfood
+- [x] **TASK 11:** Refresh the capability register, the mirrors and `dist/`, then dogfood
   - **UPDATE:** `.bkit/prompts.md`: regenerated by `bkit install` from `.bkit/core/.bkit/prompts.md` — never hand-edited
   - **UPDATE:** `.bkit/workflows.md`: regenerated by `bkit install` from `.bkit/core/.bkit/workflows.md`
   - **UPDATE:** `docs/templates/bkit-plan.md`: regenerated by `bkit install` from `.bkit/core/docs/templates/bkit-plan.md`
@@ -829,6 +843,157 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
 <!-- bkit:task 11 end -->
 
 <!-- bkit:group 6 end -->
+
+<!-- bkit:group 7 start -->
+
+### GROUP 7: Challenge round 1 findings
+
+<!-- bkit:task 12 start -->
+
+- [x] **TASK 12:** `ledgers triage` adjudicates a genuine `own-cycle` ("new architecture") deferral as `unjustified` and appends a permanent wrong verdict — `.bkit/jsonl.md` test 1 requires "not a new architecture", and no predicate implements it nor excludes `own-cycle`
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/ledgers.ts:1724` · **Round:** 1
+  - **DONE WHEN:** a `reason: "own-cycle"` deferral is bucketed `Exempt` (or fails `bounded-remediation`) whatever its `remediation` names, and no `unjustified` row is written for it; a test pins it
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/ledgers.test.ts` `triage keeps an own-cycle deferral exempt` fails on today's code: the row buckets `Lazy`, `written` = 1, and a second row appears in `docs/deferrals.jsonl`
+
+<!-- bkit:task 12 end -->
+<!-- bkit:task 13 start -->
+
+- [x] **TASK 13:** `scan-diff --disabled-tests` reports every removed line of a test file that matches `ASSERTION` (`expect|assert\w*|should|should_\w+`), so deleting a comment, an import line or an assertion moved elsewhere sets exit 1 and the sweep records a `Blocking Deferral` + `Verdict: FAIL`
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/branches.ts:1084` · **Round:** 1
+  - **DONE WHEN:** a removed line that is a comment, a non-assertion statement or an assertion re-added elsewhere in the same diff is not reported; a removed assertion call (a net drop in the file) still is; the sweep's `disabled` list and exit code follow
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/branches.test.ts` `scan-diff ignores a removed comment in a test file` fails today: exit 1 with `disabled: [{file: "a.test.ts", line: 4, test: "adds"}]` for a deleted `// should not be reached` line
+    - `.bkit/core/engine/commands/workflow/branches.test.ts` `scan-diff ignores an assertion moved within the file` fails today: the removed half of a move is reported
+
+<!-- bkit:task 13 end -->
+<!-- bkit:task 14 start -->
+
+- [x] **TASK 14:** `scan-diff --disabled-tests` misses Python's skipped tests — `@pytest.mark.skip` and `@unittest.skip` match no marker, so a run that disables Python tests exits 0 with `disabled: []` and the ship gate passes
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/branches.ts:1074` · **Round:** 1
+  - **DONE WHEN:** an added `@pytest.mark.skip` / `@unittest.skip` / bare `.skip(` line in a `test_*.py` or `*.test.*` file is reported with its line and test name and exits 1, while `TEST_FILE`'s existing Python class still applies
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/branches.test.ts` `scan-diff finds an added pytest mark skip` fails today: a diff adding `@pytest.mark.skip(reason="flaky")` above `def test_a` exits 0 with an empty `disabled`
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/commands/workflow/branches.test.ts` `scan-diff finds an added pytest mark skip` fails on a diff that adds `@pytest.mark.skip(reason="flaky")` above `def test_a`, which exits 0 with an empty `disabled` — accepted by owner: "accept" (owner, 2026-10-28)
+
+<!-- bkit:task 14 end -->
+<!-- bkit:group 7 end -->
+
+<!-- bkit:group 8 start -->
+
+### GROUP 8: Plan matrix repair
+
+<!-- bkit:task 19 start -->
+
+- [x] **TASK 19:** Add the `Derived Test Matrix` rows tasks 12-18 are missing, so the plan passes its own `matrix` check
+  - **UPDATE:** `docs/plans/202610/701-engine-work-build-plan.md`: one `Derived Test Matrix` row per `TEST FIRST` test of tasks 12-18, each `Task` cell naming its task
+  - **DONE WHEN:** `node dist/cli.js tests plan-check --plan=docs/plans/202610/701-engine-work-build-plan.md` (this worktree's build) exits 0 with no `matrix` problem, and each new row's `Test description` / `Type` / `Target file` / `Task` cells match the test it names
+  - **TEST FIRST:** n/a — plan table text repair; `tests plan-check` is the check
+
+<!-- bkit:task 19 end -->
+
+<!-- bkit:group 8 end -->
+
+<!-- bkit:group 9 start -->
+
+### GROUP 9: Challenge round 1 findings
+
+<!-- bkit:task 15 start -->
+
+- [x] **TASK 15:** Build Steps 7 and 9 pass the verify header's documented empty form `Tasks: none` straight into `--tasks=`, which `tick` refuses with exit 2 — every verify round that satisfies no task logs a usage error and ticks nothing
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/tasks.ts:74` · **Round:** 1
+  - **DONE WHEN:** `--tasks=none` is accepted as "no task" (exit 0, `ticked: []`, file untouched), or both calls in `.bkit/core/workflows/bkit-build.md:522` and `:648` drop the flag when `{VERIFIED_TASKS}` is `none`; the verb's `--help` states which
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/tasks.test.ts` `tick treats the header's none as nothing to tick` fails today: `--tasks=none` exits 2 with `--tasks must name positive task numbers, got "none"`
+
+<!-- bkit:task 15 end -->
+<!-- bkit:task 16 start -->
+
+- [x] **TASK 16:** `ledgers triage` re-adjudicates a `status: "CLOSED"` deferral (work already finished) and appends `reason: "unjustified"` / `status: "TRIAGED"`, moving finished work back onto the triage ladder and adding an unjustified count to `computeDeferralDiscipline`
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/ledgers.ts:1715` · **Round:** 1
+  - **DONE WHEN:** a folded row whose `status` is `CLOSED` buckets `Exempt`, prints no test result and writes nothing; the concurrent-`OPEN` case keeps today's behaviour
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/ledgers.test.ts` `triage writes no row for a closed deferral` fails today: the `CLOSED` fixture gets a second row and `written` = 1
+
+<!-- bkit:task 16 end -->
+<!-- bkit:task 17 start -->
+
+- [x] **TASK 17:** A deferral already adjudicated `unjustified` is bucketed `Exempt` on every later run, so the ship sweep records an outstanding unjustified deferral under `Exempt Deferrals` and the summary reports it as settled
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/ledgers.ts:1718` · **Round:** 1
+  - **DONE WHEN:** a folded row whose `reason` is `unjustified` reports a bucket that keeps it out of the sweep's `Exempt Deferrals` (its own label or `Lazy`) and still writes no new row; re-running triage twice leaves the report stable
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/ledgers.test.ts` `triage reports an adjudicated unjustified row outside exempt` fails today: the second run prints `Exempt` for a row `reason: "unjustified"`
+
+<!-- bkit:task 17 end -->
+<!-- bkit:group 9 end -->
+
+<!-- bkit:group 10 start -->
+
+### GROUP 10: Challenge round 1 findings
+
+<!-- bkit:task 18 start -->
+
+- [x] **TASK 18:** `ledgers triage` reads the plan's task surfaces without checking `parsePlanBlocks`' errors, so a plan with no task blocks silently buckets every deferral `Exempt` (exit 0, no warning) — the one plan reader that neither refuses nor warns
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/ledgers.ts:1701` · **Round:** 1
+  - **DONE WHEN:** a plan with no task blocks exits 1 naming `NO_MARKERS_REASON`, and a plan whose blocks do not parse exits 2 naming the line — as `tasks tick|open|currency` already do — with no rows written
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/ledgers.test.ts` `triage refuses a plan with no task blocks` fails today: exit 0 with `rows: [{bucket: "Exempt"}]` and no message
+
+<!-- bkit:task 18 end -->
+<!-- bkit:group 10 end -->
+
+<!-- bkit:group 11 start -->
+
+### GROUP 11: Challenge round 2 findings
+
+<!-- bkit:task 20 start -->
+
+- [x] **TASK 20:** `scan-diff --disabled-tests` matches its disable markers on every added line of every file, so any prose that quotes `test.skip` / `describe.skip` / `@Disabled` / `t.Skip(` / `xfail` — a skill doc, `docs/knowledge.jsonl`, `docs/testing.md`, the marker's own regex literal in `branches.ts` — is reported as a disabled test, and the ship sweep turns that `disabled` list into Blocking Deferrals + `Verdict: FAIL`; this branch's own diff already exits 1 with 18 hits (`.agents/skills/vitest/references/core-describe.md:60`, `docs/knowledge.jsonl:321`, `.bkit/core/engine/commands/workflow/branches.ts:1080`, its `dist/` copy, …)
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/branches.ts:1090` · **Round:** 2
+  - **DONE WHEN:** `node dist/cli.js branches scan-diff --disabled-tests --base=origin/dev` on this branch exits 0 with `disabled: []` — its only marker-shaped added lines are quoted prose under `.agents/skills/**` and `docs/*`, the engine's own marker literals in `branches.ts` / `dist/`, and `branches.test.ts`'s `'@pytest.mark.skip(…)'` fixture strings; an added `test.skip(` / `@pytest.mark.skip` / `@Disabled` **call** in a `*.test.*` / `*.spec.*` / `test_*.py` file still exits 1 naming `file:line` and the test — `markersFor` scopes the marker set to test files and the added-line check skips a marker inside a comment or a quoted span, instead of handing `DISABLED_MARKERS` to every path
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/branches.test.ts` `scan-diff ignores a quoted skip in a documentation file` fails on today's code: a branch that adds `docs/guide.md` holding "never call \`test.skip\` in a spec; a \`describe.skip\` hides regressions" exits 1 with `disabled: [{file: "docs/guide.md", line: 3, test: "Never call \`test.skip\` …"}]`
+    - `.bkit/core/engine/commands/workflow/branches.test.ts` `scan-diff ignores a marker literal in a non-test source file` fails on today's code: adding the line `/@Disabled\b/,` to a `.ts` source file exits 1 with that line's text as the test name
+
+<!-- bkit:task 20 end -->
+<!-- bkit:task 21 start -->
+
+- [x] **TASK 21:** `scan-diff --disabled-tests` reports a test file whose assertion **changed** as a disabled test — the re-add check compares each removed line's exact trimmed text against the added lines, not the file's assertion count — so the round-1 comment/import/move fix still fires on any edited expectation or matcher, and the sweep records a Blocking Deferral for a test that is intact; this branch's own diff carries two such hits (`.bkit/core/engine/commands/workflow/tests.test.ts:1769` from `{ enforced: true, gaps: [] }` → `{ …, verdict: "PASS" }`, and `:2065` from `toEqual([])` → `toEqual([objectContaining(…)])`)
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/branches.ts:1194` · **Round:** 2
+  - **DONE WHEN:** a diff that rewrites one assertion's expected value or matcher inside a test body exits 0 with `disabled: []`; a diff that drops one assertion and adds a different one to the same test still exits 0; a diff whose removed assertion count exceeds its added assertion count in that file exits 1 naming the file, line and test (a net drop, as `Task 13`'s `DONE WHEN` words it); the repo's own `tests.test.ts` diff yields no hit
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/branches.test.ts` `scan-diff ignores an assertion whose expectation changed` fails on today's code: `expect(1).toBe(1)` → `expect(1).toBe(2)` exits 1 with `disabled: [{file: "src/a.test.ts", line: 2, test: "a"}]`
+    - `.bkit/core/engine/commands/workflow/branches.test.ts` `scan-diff ignores an assertion replaced by another in the same test` fails on today's code: `expect(a).toEqual([])` → `expect(a).toEqual([expect.objectContaining({})])` exits 1
+
+<!-- bkit:task 21 end -->
+<!-- bkit:task 22 start -->
+
+- [x] **TASK 22:** `scan-diff --disabled-tests` cannot see a **deleted** test file — git writes `+++ /dev/null` for a deletion, the loop overwrites `file` with that path, `TEST_FILE` no longer matches and no removed assertion is recorded — so a diff that removes an entire `*.test.*` file (every test and assertion in it) exits 0 with `disabled: []` and the ship gate passes the strongest form of test removal
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/branches.ts:1170` · **Round:** 2
+  - **DONE WHEN:** the diff walk keeps the `--- a/{path}` token and uses it when `+++` is `/dev/null`, so a deleted test file reports its removed assertions (naming the file, its line and the nearest declaration) and exits 1, while an added file still resolves its `+++` path and an ordinary edit is unchanged
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/branches.test.ts` `scan-diff reports a deleted test file` fails on today's code: `git rm src/a.test.ts` (3 lines, one `it` with one `expect`) on a feature branch exits 0 with `disabled: []`, `found: false`
+
+<!-- bkit:task 22 end -->
+<!-- bkit:group 11 end -->
+
+<!-- bkit:group 12 start -->
+
+### GROUP 12: Challenge round 2 findings
+
+<!-- bkit:task 23 start -->
+
+- [x] **TASK 23:** `scan-diff --disabled-tests` tallies re-added assertion lines across the whole diff, not per file, so deleting `expect(2).toBe(2);` from `src/a.test.ts` and adding the identical trimmed line in any other file (verified with `src/notes.md`) exits 0 with `disabled: []` — the ship gate passes with a dropped assertion, against task 13's own `DONE WHEN` ("a net drop in the file" still reported)
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/branches.ts:1185` · **Round:** 2
+  - **DONE WHEN:** the `readded` tally is scoped so a line added in a different file (test or not) never cancels a removal in the test file — per-file keying, or counting re-adds from test files only; the cross-file fixture exits 1 naming the dropped assertion, and `scan-diff ignores an assertion moved within the file` plus `scan-diff still reports a removed assertion` stay green
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/branches.test.ts` `scan-diff reports an assertion re-added only outside the test file` fails on the masking: a diff removing `expect(2).toBe(2);` from `src/a.test.ts` while adding the identical trimmed line in `src/notes.md` exits 0 with `disabled: []`
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/commands/workflow/branches.test.ts` `scan-diff reports an assertion re-added only outside the test file` — landed as `scan-diff still reports a removed assertion cancelled in another file` — fails on a diff that removes `expect(2).toBe(2);` from `src/a.test.ts` while adding the identical trimmed line in `src/notes.md`: the fix landed with TASK 21 (`65ca9732c`), so no failing run could be recorded — accepted by owner: "accept" (owner, 2026-10-28)
+
+<!-- bkit:task 23 end -->
+<!-- bkit:group 12 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
 
@@ -856,7 +1021,7 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
 - [ ] **Full Local Gate Suite:** `pnpm bkit:gate:static-unit-integration` (which includes `slop:delta`) and `bkit check` pass.
 - [ ] **Test Synchronization:** `conventions.test.ts` (the new source is registered and tested), `catalog-parity.test.ts` + `workflow-shape.test.ts` (the build / ship step bodies moved, including Step 3 / 5 / 7 / 9), `instructions.test.ts` (a synced clause), `dogfood-templates.test.ts` + `template-shape.test.ts` (the template's new column), `verdict-vocabulary.test.ts` and `models-table-parity.test.ts` (no prompt name, verdict line or step key moved), `ledger-integrity.test.ts` (the rows this plan writes), `challenge.test.ts` and `plan-blocks.test.ts` (the merge writes a matrix row; the new readers), and the existing `tests.test.ts` fixtures the new `matrix` kind touches (the check is a no-op on a plan with no `Derived Test Matrix`, so a matrix-less fixture stays green).
 - [ ] **Build Configuration:** no new test-only config; `tasks.test.ts` sits beside its source under `.bkit/core/engine/commands/workflow/` and stays out of the production build as today.
-- [ ] **Unit (`.bkit/core/engine/commands/workflow/tests.test.ts`, `tasks.test.ts`, `branches.test.ts`, `ledgers.test.ts`, `challenge.test.ts`, `plan-blocks.test.ts`, `conventions.test.ts`):** the 46 `Derived Test Matrix` rows — `green`'s `verdict` / `fixable` / `logLine` and its added-lines-only gap, `tick` / `open` / `currency` on real temp plan files and temp git repos (including the group-required tick and `currency`'s `--against`), `plan-check`'s `matrix` / `supersession` problems with an accepting control and the no-matrix no-op, `scan-diff --disabled-tests` on real temp git repos, `ledgers triage` writing a real row through `append`, the `challenge` merge append, and the three `plan-blocks.ts` readers.
+- [ ] **Unit (`.bkit/core/engine/commands/workflow/tests.test.ts`, `tasks.test.ts`, `branches.test.ts`, `ledgers.test.ts`, `challenge.test.ts`, `plan-blocks.test.ts`, `conventions.test.ts`):** the 60 `Derived Test Matrix` rows — `green`'s `verdict` / `fixable` / `logLine` and its added-lines-only gap, `tick` / `open` / `currency` on real temp plan files and temp git repos (including the group-required tick, the header's `none` and `currency`'s `--against`), `plan-check`'s `matrix` / `supersession` problems with an accepting control and the no-matrix no-op, `scan-diff --disabled-tests` on real temp git repos (an added `.skip` / `@pytest.mark.skip`, a removed comment or an assertion moved within the file), `ledgers triage` writing a real row through `append` (its `own-cycle`, `CLOSED` and adjudicated `unjustified` buckets, and its refusal of a plan with no task blocks), the `challenge` merge append, and the three `plan-blocks.ts` readers.
 - [ ] **Apply local migrations:** N/A — no database.
 - [ ] **Run all tests:** `pnpm vitest run` (full, never scoped) passes.
 

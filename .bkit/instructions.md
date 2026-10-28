@@ -1128,7 +1128,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-annotations`, `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:521`: "probe for a run at it first, dispatch only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per .bkit/workflows.md:1007) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:525`: "probe for a run at it first, dispatch only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per .bkit/workflows.md:1007) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -1369,7 +1369,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:521`: "probe for a run at it first, dispatch only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per .bkit/workflows.md:1007) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:525`: "probe for a run at it first, dispatch only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per .bkit/workflows.md:1007) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -2597,7 +2597,7 @@ Produce **Create** output.
 
 - prompt: where-used
 - except: bkit-design-review-1
-- carriers: prompt `bkit-build-challenge-*`, `bkit-design-review-*`, `bkit-plan-review-*`, `bkit-build-plan-current`, `bkit-build-plan-execute`, `bkit-build-plan-gaps-remediate`, `bkit-build-plan-verify`, `bkit-debug-failure-diagnose`, `bkit-debug-failure-remediate`, `bkit-debug-failure-soak`, `bkit-design-organise`, `bkit-design-spike`, `bkit-design-update`, `bkit-plan-scope-check`, `bkit-plan-update`, `bkit-ship-conflict-resolve`, `bkit-ship-deferred-sweep`
+- carriers: prompt `bkit-build-challenge-*`, `bkit-design-review-*`, `bkit-plan-review-*`, `bkit-build-plan-current`, `bkit-build-plan-execute`, `bkit-build-plan-gaps-remediate`, `bkit-debug-failure-diagnose`, `bkit-debug-failure-remediate`, `bkit-debug-failure-soak`, `bkit-design-organise`, `bkit-design-spike`, `bkit-design-update`, `bkit-plan-scope-check`, `bkit-plan-update`, `bkit-ship-conflict-resolve`, `bkit-ship-deferred-sweep`
 
 ```text
 Update **Create** — set `Verdict` via `Edit`; mapping:
@@ -2833,7 +2833,11 @@ Read supplied diff fully. **If** its first line says `partial diff coverage` →
 - carriers: prompt `bkit-plan-generate`, `bkit-plan-review-1`, `bkit-plan-scope-check`, `bkit-plan-update`
 
 ```text
-**Scenario detail:** `Process Sketch` restates the `Concrete Example` and `Edge Cases` as 3-7 `WHEN X → THEN Y` outcome lines, with no new examples. `Concrete Example` is one scenario: role, starting state, numbered steps, observable outcome. `Edge Cases` keep the design's Key Edge Cases, else the issue's rows, word for word, and add validation, error and boundary cases. `Derived Test Matrix` has one row per testable behaviour, each with a target file and mapped to exactly one runbook task; issue rows stay word for word, and each in-scope audit behaviour has a row.
+**Scenario detail:** `Process Sketch` restates the `Concrete Example` and `Edge Cases` as 3-7 `WHEN X → THEN Y` outcome lines, with no new examples. `Concrete Example` is one scenario: role, starting state, numbered steps, observable outcome. `Edge Cases` keep the design's Key Edge Cases, else the issue's rows, word for word, and add validation, error and boundary cases. `Derived Test Matrix` has one row per testable behaviour, each with a target file and a `Task` cell naming the one runbook task that lands its test; issue rows stay word for word, and each in-scope audit behaviour has a row.
+```
+
+```retired
+**Scenario detail:** `Process Sketch` restates the `Concrete Example` and `Edge Cases` as 3-7 `WHEN X → THEN Y` outcome lines, with no new examples. `Concrete Example` is one scenario: role, starting state, numbered steps, observable outcome. `Edge Cases` keep the design's Key Edge Cases, else the issue's rows, word for word, and add validation, error and boundary cases. `Derived Test Matrix` has one row per testable behaviour, each with a target file; issue rows stay word for word, and each in-scope audit behaviour has a row.
 ```
 
 ### plan-test-tiers
@@ -7065,7 +7069,7 @@ Apply each decision:
 Test-order gap or `exception-refused` gap → a `- **TEST EXCEPTION:**` field as the last field of the task's block in `docs/plans/{YYYYMM}/{FID}-plan.md`, one sub-bullet per test in `TEST FIRST` form, each ending `— {human's reason} (owner, {YYYY-MM-DD})`; a task with no `TEST FIRST` → the field holds `{human's reason} (owner, {YYYY-MM-DD})` alone. The field replaces the task's existing `TEST EXCEPTION` field; NEVER add a second.
 Other → append one `docs/decisions.jsonl` row with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); `by.step` = `build-decision`; `summary` names `{FID}`, step `{PAUSE_STEP}` and the gap or finding; `rationale` = `accepted by owner: {human's reason}`. An item that is a challenge task → also tick it `[x]` in the plan and end its title with ` — accepted by owner`.
 **Accept (assumed)** (written by `decisions apply`) → write nothing else: no `docs/decisions.jsonl` row, no `TEST EXCEPTION`. An item that is a challenge task → tick it `[x]` and end its title with ` — accepted (assumed)`. Ship asks the owner to confirm it.
-**Fix now** → an item that is a challenge task → keep that task open; it runs as it is. **Else** → write a task block (`docs/templates/bkit-plan.md` § Agent Execution Runbook) numbered one above the plan's highest task, with `**DONE WHEN:**` and `**TEST FIRST:**` (one sub-bullet per test, `` `{test file}` `{test name}` fails on {what goes wrong} ``); the human's direction, when given, shapes the task:
+**Fix now** → an item that is a challenge task → keep that task open; it runs as it is. **Else** → write a task block (`docs/templates/bkit-plan.md` § Agent Execution Runbook) numbered one above the plan's highest task, with `**DONE WHEN:**` and `**TEST FIRST:**` (one sub-bullet per test, `` `{test file}` `{test name}` fails on {what goes wrong} ``), and one `Derived Test Matrix` row per test in that `TEST FIRST` (``| {test name} | {tier} | `{test file}` | {task} |``, the tier its file's name gives); the human's direction, when given, shapes the task:
 `From: verify` and group `{GROUP}` stays within `{MAX_TASKS_PER_GROUP}` tasks and `{MAX_TESTS_PER_GROUP}` `TEST FIRST` tests with it → inside group `{GROUP}`.
 `From: verify`, over either cap → a new group right after `{GROUP}`; add 1 to every later group's number, in its markers and `### GROUP` heading.
 `From: tests` or `From: challenge` → a new last group, each new group within the caps.
@@ -7098,7 +7102,7 @@ Input file written (`workflows input`)
 Merge `origin/dev` when feature branch `docs/` is behind (conflicts: ledgers union, other `docs/` prefer `dev`):
 Check the plan is in task-block form, within the group caps:
 **If** exit 0 **and** (`NEWER_COMMENTS` = 0 **or** `CONVERTED` is held) → Step 5.
-**If** `CONVERTED` is not held **and** (exit 0 with `NEWER_COMMENTS` > 0, **or** exit 2 with no `docs/plans/{YYYYMM}/{FID}-plan.md`, **or** exit 1 with a `markers` problem) → sub-step 2.
+**If** `CONVERTED` is not held **and** (exit 0 with `NEWER_COMMENTS` > 0, **or** exit 2 with no `docs/plans/{YYYYMM}/{FID}-plan.md`, **or** exit 1 with a `markers`, `matrix` or `supersession` problem) → sub-step 2.
 **If** exit 1, `CONVERTED` is held **and** `CONVERT_RETRY` is not held → `CONVERT_RETRY` = the printed `problems` → sub-step 2.
 **Else** → **Failure Path** naming each problem in the report.
 Finish, then re-run sub-step 1 with `CONVERTED` = true:
@@ -7120,8 +7124,8 @@ Once per run: **If** the session prompt (`{SESSION_DIR}/prompt.md`) carries run 
 Hold `artifact` as `{BRIEF}`, `group` as `{GROUP}`, `tasks` as `{GROUP_TASKS}`. **If** `group` = null → Step 10.
 Record the group's start commit, once per group:
 **If** `parentSha` = null →
-Route — the log's `DONE` and `BLOCKED` lines are the handover; only Step 8 ticks tasks:
-**If** (`EXECUTE_VERDICT` = HANDOVER **or** a task of `GROUP_TASKS` has neither a `DONE — TASK {N}` nor a `BLOCKED — TASK {N}` line in the log) **and** `EXECUTE_RESUMED` is not held for `GROUP` → the agent stopped at its turn cap: a handover, not a failed attempt → `EXECUTE_RESUMED` = `GROUP` → re-run Step 7; its brief leaves out the `DONE` tasks.
+Route — the engine reads the group's open tasks:
+**If** (`EXECUTE_VERDICT` = HANDOVER **or** `EXECUTE_HANDOVER` = true) **and** `EXECUTE_RESUMED` is not held for `GROUP` → the agent stopped at its turn cap: a handover, not a failed attempt → `EXECUTE_RESUMED` = `GROUP` → re-run Step 7; its brief leaves out the `DONE` tasks.
 Group briefed (`context brief`), start commit recorded
 Source files implemented
 Derive the attempt the verify artifact is named for:
@@ -7129,11 +7133,14 @@ Derive the attempt the verify artifact is named for:
 **If** exit >= 2 → **Failure Path**.
 Cut the group's own diff, from the commit it started at:
 Hold `parentSha` as `{GROUP_BASE}`; null → **Failure Path**.
+Tick the plan with the satisfied task numbers; a task the test-first report gaps stays open:
 **If** `VERIFY_VERDICT` = PASS → list the plan's groups:
-**If** exit non-zero → **Failure Path**. **If** the printed `groups` hold a group numbered above `GROUP` → sub-step 7. **Else** → `GATE_VERDICT` = SKIPPED → sub-step 9.
-**Else** → `GATE_VERDICT` = SKIPPED → sub-step 9.
+**If** exit 1 with a `matrix` or `supersession` problem, **and** `CONVERT_RETRY` is not held → `CONVERT_RETRY` = the printed `problems` → Step 4 sub-step 2.
+**If** exit non-zero → **Failure Path**.
+**If** the printed `groups` hold a group numbered above `GROUP` → sub-step 8.
+**Else** → `GATE_VERDICT` = SKIPPED → sub-step 10.
 Run the group gate; it writes the trimmed log to the artifact:
-**If** exit 0 **or** 1 → hold `verdict` as `{GATE_VERDICT}`, `scope` as `{TEST_SCOPE}` → sub-step 8.
+**If** exit 0 **or** 1 → hold `verdict` as `{GATE_VERDICT}`, `scope` as `{TEST_SCOPE}` → sub-step 9.
 **If** `VERIFY_VERDICT` = PASS **and** `GATE_VERDICT` != FAIL → Step 7 (the next group, or Step 10 when none is open).
 **If** `VERIFY_VERDICT` = CONCERNS or FAIL, **or** `GATE_VERDICT` = FAIL → route on the group's verify rounds:
 **If** exit 1 → **Failure Path** (`build.verify.maxAttempts` used up).
@@ -7155,6 +7162,7 @@ Strategy computed before invocation
 No-progress attempt routed
 Check whether it already ran in this run:
 **If** `verdict` non-null → Step 11.
+Tick each group's satisfied tasks — one call per plan group, `{GROUP}` that group and `{VERIFIED_TASKS}` the numbers `Tasks:` names for it:
 [fit `workflow-summary-route` 0.80; keep: routes on the printed `verdict`, not `SUMMARY_VERDICT`] **If** `verdict` = PASS or CONCERNS → Step 11.
 Subagent invoked (`@bkit-build-plan-verify`, holistic, no inline work)
 Set the challenge round. **If** `CHALLENGE_DONE` = true → Step 12. **If** `CHALLENGE_ROUND` is held → keep it. **Else** → read it from status.jsonl:
@@ -7475,6 +7483,7 @@ Fast-forward to the PR head — never onto a diverged branch:
 Plan check:
 [fit `workflow-summary-route` 0.62; keep: routes on PASS alone, not PASS or CONCERNS] **If** `verdict` = PASS → Step 6.
 Worktree fast-forwarded
+Write the FID's deferral lines to the artifact the docs agent reads `Pending Items` from:
 Wait for the subagent to complete, then append the `SHIPPED` row to the worktree ledger and re-render the mechanical `roadmap-status` board from it (exit 1 when the row did not land), and finish the step (bookkeeping to `$BOOK_ROOT`):
 Write `ship-summary.md` from this run's status rows and the PR's size:
 Ledger row appended and roadmap board re-rendered
@@ -7640,6 +7649,7 @@ Per selected skill, run `npx skills add <owner/repo>@<skill> -y` — one named s
 ```text
 **Role:** Senior engineer turning an issue or a free-form plan into a plan in task-block form.
 **Same scope:** Every task traces to the input file or the existing plan; add no work they do not ask for, drop none they do.
+**Matrix shape:** The plan's `Derived Test Matrix` has a `Task` column beside `Test description`, `Type` and `Target file`; each cell names the one runbook task that lands that row's test.
 Read `docs/templates/bkit-plan.md` § `Agent Execution Runbook` → the group and task-block shape; the rules are **Runbook tasks**, **TEST FIRST** and **TEST EXCEPTION** above.
 **If** the plan file exists → keep every section except `Agent Execution Runbook` as written and rewrite the runbook. **Else** → create the plan with `# {title} Implementation Plan`, `## Context & Goals` (the goal in 1-3 lines), `## Reuse Inventory` and `## Agent Execution Runbook`. Either way, carry over every end state and test the inputs name, tightened and never weakened, in their order.
 Split the work into tasks, each one testable change. Group them in build order: each group within the per-group plan caps your Context names (`bkit.workflows.tasks`: tasks, and `TEST FIRST` tests in all); a group's `DEPENDS ON` names only tasks in earlier groups or its own. Number tasks from 1 across the plan.
@@ -7654,10 +7664,11 @@ Run the supplied check command. **If** it exits non-zero → fix each problem it
 ```text
 **Role:** Senior reviewer judging whether changes landed since the plan was written leave it executable.
 **Evidence not distance:** Commit count and elapsed time never carry verdict; tasks are affected only where named paths, symbols, signatures, or contracts they depend on moved.
-[narrow-text-search-first] Run `git diff --name-only {BASE_SHA}..origin/dev` → changed-path list. Task matches on any in-scope path in that list. For each task with no path match run `git diff {BASE_SHA}..origin/dev -S{needle} --name-only` per in-scope symbol and command; non-empty output → matched on that needle:
-[command-output] **If** no tasks match → no affected tasks; do not read any diff.
-**Else** → continue with matched tasks only.
-[command-output] Per matched task, run `git diff {BASE_SHA}..origin/dev -- {path}` for its matched paths and read it; needle match → paths named by that needle `-S` output; never diff whole range; never read paths outside match set.
+Per plan task block, record the paths, symbols, and commands its `CREATE` / `READ` / `UPDATE` / `DELETE` and `DONE WHEN` fields depend on → in-scope set.
+[narrow-text-search-first] Run `bkit tasks currency --plan={plan file} --base={BASE_SHA} --against=origin/dev` → each task whose in-scope path or symbol moved in `{BASE_SHA}...origin/dev`, with its matched paths, needles and diff hunks:
+**If** no task is printed → no affected tasks; do not read any diff.
+**Else** → continue with the printed tasks only.
+[command-output] Read the diff hunks `currency` printed for each matched task; never read a path outside its matched set.
 Per matched task, decide against diff — `Executable` tasks are not findings and are not logged:
 `Executable` = landed changes leave task approach intact.
 `Reword` = task approach holds; paths, symbols, or commands task names have moved and wording no longer matches.
@@ -7667,7 +7678,6 @@ Per finding, all four required: task name, `class` (`Reword|Broken`), landed cha
 `PASS` = no affected tasks.
 `CONCERNS` = any `Reword` tasks, none `Broken`.
 `FAIL` = any `Broken` tasks.
-Per plan task block, record paths, symbols, and commands its `CREATE` / `READ` / `UPDATE` / `DELETE` and `DONE WHEN` fields depend on → in-scope set.
 ```
 
 #### bkit-build-plan-execute
@@ -7711,24 +7721,19 @@ Read the group's briefs (its task blocks), plan gaps, the group gate log (if sup
 
 ```text
 **Role:** Senior verifier checking that plan deliverables actually exist in the codebase.
-**If** test-first audit report supplied (`Enforced` / `Gaps` header) → map its gaps per task:
-`not-green` → `Fixable: true`.
+**If** test-first audit report supplied (`Enforced` / `Verdict` / `Gaps` header) → decide each gap: its `fixable` stands unless `null`, and a `null` one you decide from the diff it names:
 [fix-code-not-gates] `test-changed` → read its diff; only formatting → no gap; weakened, removed or rewritten assertions → `Fixable: false`.
-[fix-code-not-gates] Row `Changed since red` = `added lines only` → read its diff; any line added inside a planned test or in setup it runs (`beforeEach`, fixture, mock) → `test-changed` gap, `Fixable: false`; added lines only outside every planned test → no gap.
+[fix-code-not-gates] `test-changed` on a row whose `Changed since red` = `added lines only` → read its diff; any line added inside a planned test or in setup it runs (`beforeEach`, fixture, mock) → `Fixable: false`; added lines only outside every planned test → no gap.
 `red-mismatch` → recorded test is the planned one renamed or moved **and** passes now → no gap, nor for that test's `not-green`; else `Fixable: false`.
+A gap you leave `Fixable: false` is a `FAIL`.
 `Enforced: false` → reason in `Notes`; no gap.
 `Late-red check` section → each task not checked in `Notes`; no gap.
-Update **Create** — set `Failures` via `Edit` = count of unresolved gaps; set `Fixable` via `Edit` = `true` when any of those is `Fixable: true`, else `false`; set `Verdict` via `Edit`; mapping:
-`PASS` = no gaps.
-`FAIL` = any gap `Fixable: false`.
-`CONCERNS` = every gap `Fixable: true`.
+Update **Create** — set `Failures` via `Edit` = count of unresolved gaps; set `Fixable` via `Edit` = `true` when any of those is `Fixable: true`, else `false`; set `Verdict` via `Edit` = the roll-up over the `Fixable` you decided: any `false` → `FAIL`, **Else** any `true` → `CONCERNS`, **Else** → `PASS`; never the report's `null`.
 Determine `Mode` from input Context (`Group` or `Holistic`).
-**If** `Group` → the supplied briefs' task blocks are the work; judge them against the supplied group diff (the changes since the group started), not the whole branch; a brief's `Deviations` section holds the owner's run instructions → judge the tasks it names as it directs. Every task field and gate maps to real codebase changes. Find missing components, skipped steps, unimplemented edge cases. Cross-reference the tasks vs the execute log's `DONE — TASK {N}` lines; a `DONE` line is a claim to check, never proof.
-[local-pre-push] **If** `Holistic` → same task / gate / `DONE` log cross-reference across every group of the plan, plus integration: groups' components work together? API contracts match? Shared state consistent? Cross-domain boundaries respected? Run `pnpm bkit:gate:static-unit`.
+**If** `Group` → the supplied briefs' task blocks are the work; judge them against the supplied group diff (the changes since the group started), not the whole branch; a brief's `Deviations` section holds the owner's run instructions → judge the tasks it names as it directs. Every task field and gate maps to real codebase changes. Find missing components, skipped steps, unimplemented edge cases.
+[local-pre-push] **If** `Holistic` → the same task and gate check across every group of the plan, plus integration: groups' components work together? API contracts match? Shared state consistent? Cross-domain boundaries respected? Run `pnpm bkit:gate:static-unit`.
 `delete-still-referenced` → read each hit; a different thing with the same name → no gap; else `Fixable: true`.
-`no-red` on a task the plan-currency report classifies `Broken` with work already landed **and** the execute log records `DONE — TASK {N}: already landed` → no gap.
-`no-red`, `late-red`, `no-test-first`, `test-first-malformed`, `test-first-unread`, `red-evidence-missing`, `exception-refused` → `Fixable: false`.
-Test-order gap (`no-red`, `late-red`, `red-mismatch`, `red-evidence-missing`, `test-changed`) → log as ``TASK {N}: `{test file}` `{test name}` — {kind} — Fixable: false``.
+`no-red` on a task the plan-currency report classifies `Broken` with work already landed **and** the execute log records `DONE — TASK {N}: already landed` → no gap, overriding the gap's `Fixable: false`.
 ```
 
 #### bkit-debug-abort-handover
@@ -8052,13 +8057,12 @@ Unpassable checks: `TEST FIRST` / `DONE WHEN` checks current code cannot pass (v
 **If** `Acceptance Scenario` or `Derived Test Matrix` sections missing / vague → `CRITICAL`. Any `Open Questions & Assumptions` question breaking **Open questions** above → `OPTIONAL` findings naming missing parts.
 Verify every `Agent Execution Runbook` task has scope and verification step.
 Verify every scope item has both build task and verification task.
-Verify `Derived Test Matrix` ↔ `Agent Execution Runbook`: rows map 1:1 (bidirectional) to verification tasks. Gaps → `CRITICAL` finding naming the task or row to add.
 Identify gaps, edge cases, untested assumptions, missing error handling.
-Replaced / superseded code → `Supersession Inventory` with DELETE / RETAIN-with-REASON. Missing → `CRITICAL`.
 [improve-over-duplicate] Introduced capability → `Reuse Inventory` row per **Reuse Inventory** above. Missing row, empty `Search performed`, rejected `NEW` reason, or untraced `[NEW]` / `EXTEND` row → `CRITICAL`.
 [finish-over-deferrals] `Out of Scope` entries `Exempt` per **Out of Scope** above. Required work parked out of scope = `Blocking` → `CRITICAL`.
 No task scopes edits inside `bkit:start` / `bkit:end` blocks; always edit below `bkit:end`.
 `PASS` = scope complete.
+`FAIL` = a `Blocking` out-of-scope deferral no plan edit recovers; every other gap → `CRITICAL`.
 `CONCERNS` = `CRITICAL` gaps (apply via plan-update).
 ```
 
@@ -8115,12 +8119,13 @@ Per intended deliverable item under `Planned vs Delivered` → assert codebase s
 [honest-reporting] **If** deliverable itself absent, stub only, or produces wrong observable result, shown by named files, symbols, or failing tests and never inferred from plan sentences → mark item `Blocked`.
 [fix-code-not-gates] **If** guards removed / weakened (auth, validation, data-loss, secret handling), or paths known to be broken → mark item `Blocked`.
 **If** shipped surfaces instruct consumers to run something that fails at runtime → mark item `Blocked`.
-[finish-over-deferrals; deferred-work] Scan `docs/deferrals.jsonl` for any plan related entries including recently appended rows → verify each `reason` holds at ship time as per `.bkit/jsonl.md` deferral reason tests; `reason` = `low-severity` with `severity` = `LOW` holds without the tests:
-**If** holds → record under / move to `Exempt Deferrals` → continue; append no row, `reason` is set once and carried verbatim.
-[deferred-work] **Else** → record under / keep under `Lazy Deferrals` → append row to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), same `key` and prior fields verbatim, set `reason` to `unjustified`, set `status` to `TRIAGED`, `description` naming failed deferral tests.
+[finish-over-deferrals; deferred-work] Bucket the plan-related deferral rows of the FID in your Context with `bkit ledgers triage --fid=` the FID in your Context `--plan=` the plan file. The verb applies the deferral tests and writes every `unjustified` / `TRIAGED` row itself; each of its `rows` carries the row's `key`, its `bucket` and the test result:
+**If** `bucket` = `Exempt` → record under / move to `Exempt Deferrals`; the row stands as written.
+[deferred-work] **Else** → record under / keep under `Lazy Deferrals`, naming the tests the verb reports for it.
+**If** the plan file is absent → nothing to test against; record each plan-related row under `Exempt Deferrals` naming the missing plan.
 Update **Create** — set `Failures` via `Edit` = `Blocking Deferrals` entry count; set `Lazy` via `Edit` = `Lazy Deferrals` entry count.
 `PASS` = no remaining `Planned` items; every intended deliverable `Delivered`, `Exempt`, or `Lazy`; no `Blocking Deferrals`.
-`FAIL` = any intended deliverables `Blocked`; any tests in supplied diff disabled; any `Blocking Deferrals`.
+`FAIL` = any intended deliverables `Blocked`; any test the run's diff disabled; any `Blocking Deferrals`.
 Scan plan `Acceptance Scenario` sections and `DONE WHEN` lines for intended deliverables → record each under `Planned vs Delivered` with where, when, and why and mark item `Planned`; unmet preconditions, build process steps, or merge conditions in plan (even as part of `DONE WHEN`) are advisory only → record under `Exempt Deferrals`. **If** no plan file exists → outcome as worded is the bar.
 ```
 
@@ -8132,7 +8137,7 @@ Scan plan `Acceptance Scenario` sections and `DONE WHEN` lines for intended deli
 **Role:** Senior tech writer syncing project docs with state shipped this cycle.
 **Exceptions:** Do not update `docs/knowledge.jsonl`, `docs/decisions.jsonl`.
 [shallow-history] Run `git rev-parse --is-shallow-repository`; **If** `true` → name the boundary commit in output, older history unread. Run `git log --oneline --stat origin/dev..HEAD` for shipped files this cycle.
-[deferred-work] Grep `docs/deferrals.jsonl` for `{FID}` matches → surface in output `Pending Items` for human review (do not write `docs/deferrals.jsonl`).
+[deferred-work] Fill `Pending Items` from the `ship-pending-items.md` deferral scan supplied in your Read paths, one entry per line (do not write `docs/deferrals.jsonl`).
 ```
 
 #### bkit-utility-compress-markdown

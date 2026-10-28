@@ -17,6 +17,7 @@ import { readBkitVersion } from "../../install/version-file.js";
 import {
   APPEND_LEDGERS,
   SCHEMA,
+  UNJUSTIFIED_REASON,
   gitEnv,
   parse,
   mintTs,
@@ -36,6 +37,13 @@ import {
   type RunContext,
 } from "../lib.js";
 import { str } from "./status.js";
+import {
+  NO_MARKERS_REASON,
+  outOfScope,
+  parsePlanBlocks,
+  reuseInventory,
+  type OutOfScopeRow,
+} from "./plan-blocks.js";
 
 /** Root is not a directory or repo, git is too old, or a ref does not resolve. */
 export const EXIT_ROOT = 3;
@@ -788,6 +796,32 @@ export const ledgersCommand: CommandSpec = {
       },
       run: (ctx) => append(ctx),
     },
+    triage: {
+      summary:
+        "Bucket each deferral row the FID declared by the four Deferral Reason tests, and write the unjustified ones.",
+      flags: [
+        { name: "root", type: "string", help: "checkout whose deferrals to read (default: cwd)" },
+        FID_FLAG,
+        {
+          name: "plan",
+          type: "string",
+          required: true,
+          help: "plan file whose task surfaces and Out of Scope rows the four tests read",
+        },
+      ],
+      output: {
+        fid: "the feature id triaged",
+        plan: "the plan the tests were read from",
+        rows: "each matched deferral's key, bucket (Exempt | Lazy), test results (none for a settled row: closed, LOW, or already adjudicated) and whether a row was written",
+        total: "deferral rows the FID matched",
+        written: "unjustified rows appended",
+      },
+      exitCodes: {
+        [EXIT_ROW_REFUSED]:
+          "a computed unjustified row fails validation or its writer check — nothing written",
+      },
+      run: (ctx) => triage(ctx),
+    },
     check: {
       summary:
         "Check that every decision / deferral key on a plan's `**Ledger rows:**` line is on disk.",
@@ -1459,4 +1493,296 @@ function onlyBookkeeping(ctx: RunContext): number {
       ctx.emit({ onlyBookkeeping: true, ancestor: true, outside: [] });
       return EXIT.OK;
   }
+}
+
+// ---------------------------------------------------------------------------
+// triage — the sweep's deferral tests, computed
+// ---------------------------------------------------------------------------
+//
+// `.bkit/jsonl.md` § Deferral Reason states the four tests: each names a way a
+// deferral reads as in-scope work that should have been finished, and all four
+// holding marks the row `unjustified`. The engine decides them from the row, its
+// own `references`, the plan's task surfaces, its Reuse Inventory and its
+// Out of Scope table. The sweep keeps the judgement the four cannot reach.
+
+/** The four tests, in `.bkit/jsonl.md` order; each holds when the row reads as in-scope work. */
+export const DEFERRAL_TESTS = [
+  "bounded-remediation",
+  "in-scope-surface",
+  "no-external-blocker",
+  "own-declaration",
+] as const;
+export type DeferralTest = (typeof DEFERRAL_TESTS)[number];
+
+/** One test's verdict on a row. */
+export interface DeferralTestResult {
+  test: DeferralTest;
+  held: boolean;
+}
+
+/** One matched deferral row's bucket and the tests behind it. */
+export interface TriageRow {
+  key: string | null;
+  /**
+   * `Lazy` when every test holds, and for a row already adjudicated `unjustified`:
+   * in-scope work that should have been finished.
+   */
+  bucket: "Exempt" | "Lazy";
+  /** Empty when the row is settled before the tests are applied. */
+  tests: DeferralTestResult[];
+  /** A same-`key` `unjustified` / `TRIAGED` row was appended for it. */
+  written: boolean;
+}
+
+export interface TriageResult {
+  fid: string;
+  plan: string;
+  rows: TriageRow[];
+  total: number;
+  written: number;
+}
+
+/** The issue number a FID leads with (`701-engine-work` → `701`), else "". */
+const fidIssue = (fid: string) => /^(\d+)(?=$|[-_])/.exec(fid)?.[1] ?? "";
+
+/** A row's `references` entries, as written. */
+const rowRefs = (row: Record<string, unknown>): string[] =>
+  Array.isArray(row["references"])
+    ? row["references"].filter((x): x is string => typeof x === "string")
+    : [];
+
+/** True when `ref` names the feature: the FID, or its leading issue number as `N` / `#N`. */
+const namesFeature = (ref: string, fid: string, issue: string): boolean =>
+  ref.includes(fid) || (issue !== "" && new RegExp(`^#?${issue}(?![0-9])`).test(ref));
+
+/** Every well-formed row of a JSONL ledger, as written. */
+function readLedgerRows(file: string): Array<Record<string, unknown>> {
+  if (!fs.existsSync(file)) return [];
+  return fs
+    .readFileSync(file, "utf-8")
+    .split("\n")
+    .flatMap((line): Array<Record<string, unknown>> => {
+      if (line.trim() === "") return [];
+      const parsed = parseJson(line);
+      const v = parsed.ok ? parsed.value : null;
+      return typeof v === "object" && v !== null && !Array.isArray(v)
+        ? [v as Record<string, unknown>]
+        : [];
+    });
+}
+
+/** The deferral rows `fid` declared, same-`key` folded last-wins, in first-seen order. */
+export function featureDeferrals(
+  rows: Array<Record<string, unknown>>,
+  fid: string,
+): Array<Record<string, unknown>> {
+  const issue = fidIssue(fid);
+  const kept: Array<Record<string, unknown>> = [];
+  const at = new Map<string, number>();
+  for (const row of rows) {
+    if (row["kind"] !== "deferral") continue;
+    const key = typeof row["key"] === "string" ? row["key"] : "";
+    const named = key !== "" && namesFeature(key, fid, issue);
+    if (!named && !rowRefs(row).some((r) => namesFeature(r, fid, issue))) continue;
+    const seen = key === "" ? undefined : at.get(key);
+    if (seen !== undefined) {
+      kept[seen] = row;
+      continue;
+    }
+    if (key !== "") at.set(key, kept.length);
+    kept.push(row);
+  }
+  return kept;
+}
+
+/** A repo path a token names, with any `:line` suffix cut; null when the token is no path. */
+function pathToken(token: string): string | null {
+  const t = token
+    .trim()
+    .replace(/:\d+(?:-\d+)?$/, "")
+    .replace(/[.,;:]+$/, "")
+    .replace(/^\.\//, "");
+  if (t === "" || /\s/.test(t) || t.startsWith("#") || /^[a-z][a-z0-9+.-]*:\/\//i.test(t))
+    return null;
+  if (!t.includes("/") && !/\.[A-Za-z][A-Za-z0-9]{0,5}$/.test(t)) return null;
+  return path.posix.normalize(t);
+}
+
+/** The repo paths a row names: backticked spans and bare words of its `remediation`, plus its `references`. */
+function namedPaths(row: Record<string, unknown>): string[] {
+  const texts = [
+    ...(typeof row["remediation"] === "string" ? [row["remediation"]] : []),
+    ...rowRefs(row),
+  ];
+  const tokens = texts.flatMap((t) => [
+    ...[...t.matchAll(/`([^`]+)`/g)].map((m) => m[1]!),
+    ...t.replace(/`[^`]*`/g, " ").split(/[\s,()[\]]+/),
+  ]);
+  return [
+    ...new Set(
+      tokens.map(pathToken).filter((p): p is string => p !== null && p !== "." && p !== ".."),
+    ),
+  ];
+}
+
+/** True when one of `paths` is a file in `root`. */
+function existsIn(root: string, paths: string[]): boolean {
+  return paths.some((p) => {
+    const abs = path.resolve(root, p);
+    const rel = path.relative(root, abs);
+    return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel) && fs.existsSync(abs);
+  });
+}
+
+/** True when `a` and `b` name the same path, or one sits inside the other. */
+const within = (a: string, b: string) => a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
+
+const NORMAL = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+
+/** The items the plan's `Out of Scope` rows declare: their excluded item and every backticked token. */
+function declaredItems(rows: OutOfScopeRow[] | null): Set<string> {
+  const out = new Set<string>();
+  for (const row of rows ?? []) {
+    const item = row.cells[0] ?? "";
+    if (item !== "") out.add(NORMAL(item));
+    for (const cell of row.cells)
+      for (const m of cell.matchAll(/`([^`]+)`/g)) if (m[1]!.trim() !== "") out.add(NORMAL(m[1]!));
+  }
+  return out;
+}
+
+/**
+ * True when a reference other than the row's own key or the bare FID names a
+ * pre-existing declaration: a plan `Out of Scope` item, or a doc section declared
+ * out of scope. A row that is its own only declaration names none.
+ */
+function declares(
+  row: Record<string, unknown>,
+  fid: string,
+  issue: string,
+  declared: Set<string>,
+): boolean {
+  const own = typeof row["key"] === "string" ? NORMAL(row["key"]) : "";
+  const self = NORMAL(fid);
+  for (const ref of rowRefs(row)) {
+    const t = ref.trim();
+    if (t === "" || NORMAL(t) === own || NORMAL(t) === self || t === `#${issue}`) continue;
+    if (t.includes("§") && /out[- ]of[- ]scope|non-?goals?/i.test(t)) return true;
+    const n = NORMAL(t);
+    if (declared.has(n)) return true;
+    for (const d of declared) if (d.length >= 8 && n.includes(d)) return true;
+  }
+  return false;
+}
+
+/** The same-`key` row triage appends: every prior field verbatim, the verdict fields replaced. */
+export function unjustifiedRow(
+  row: Record<string, unknown>,
+  fid: string,
+  held: DeferralTest[],
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(row)) {
+    if (k === "schema" || k === "ts" || k === "bkit" || k === "by" || k === "description") continue;
+    out[k] = v;
+  }
+  out["kind"] = "deferral";
+  out["reason"] = UNJUSTIFIED_REASON;
+  out["status"] = "TRIAGED";
+  out["description"] =
+    `Adjudicated unjustified by bkit ledgers triage for ${fid}: every deferral test holds (${held.join(", ")}).`;
+  // The ship orchestrator's sweep step is the writer, so the row clears the kind's writer check.
+  out["by"] = { workflow: "ship", step: "ship-deferred-sweep" };
+  return out;
+}
+
+/**
+ * Bucket the FID's deferral rows by the four tests and append a same-`key`
+ * `unjustified` / `TRIAGED` row for each that holds all four. Throws
+ * CommandError(USAGE) on a missing `--plan` or a plan whose task blocks do not
+ * parse, CommandError(NO) on a plan with no task blocks — nothing written either
+ * way — and EXIT_ROW_REFUSED when a computed row fails validation.
+ */
+export function triageDeferrals(root: string, fid: string, planPath: string): TriageResult {
+  const abs = path.resolve(root, planPath);
+  if (!fs.existsSync(abs)) throw new CommandError(EXIT.USAGE, `--plan not found: ${planPath}`);
+  const text = fs.readFileSync(abs, "utf-8");
+  const blocks = parsePlanBlocks(text);
+  const error = blocks.errors[0];
+  if (error !== undefined)
+    throw new CommandError(
+      EXIT.USAGE,
+      `${planPath}:${error.line}: ${error.message} — run \`bkit tests plan-check\``,
+    );
+  // No task block means no task surface: every row would bucket `Exempt` unread.
+  if (blocks.tasks.length === 0)
+    throw new CommandError(EXIT.NO, `${planPath}: ${NO_MARKERS_REASON}`);
+  const surfaces = new Set<string>();
+  for (const task of blocks.tasks)
+    for (const ref of [...task.create, ...task.read, ...task.update, ...task.delete])
+      surfaces.add(path.posix.normalize(ref.file));
+  for (const row of reuseInventory(text)?.rows ?? []) for (const f of row.files) surfaces.add(f);
+  const scope = [...surfaces];
+  const declared = declaredItems(outOfScope(text));
+  const issue = fidIssue(fid);
+  const rows = featureDeferrals(
+    readLedgerRows(path.join(root, APPEND_LEDGERS.deferrals.file)),
+    fid,
+  );
+  const out: TriageRow[] = [];
+  const write: Array<Record<string, unknown>> = [];
+  for (const row of rows) {
+    const key = typeof row["key"] === "string" ? row["key"] : null;
+    // Closed work is done: nothing to test, nothing to write.
+    if (row["status"] === "CLOSED") {
+      out.push({ key, bucket: "Exempt", tests: [], written: false });
+      continue;
+    }
+    // A LOW challenge finding holds without the tests, and an adjudicated row is never
+    // re-adjudicated: it keeps the `Lazy` bucket its adjudication earned, so an
+    // outstanding unjustified deferral never reads as `Exempt Deferrals`.
+    if (row["reason"] === UNJUSTIFIED_REASON) {
+      out.push({ key, bucket: "Lazy", tests: [], written: false });
+      continue;
+    }
+    if (row["reason"] === "low-severity" && row["severity"] === "LOW") {
+      out.push({ key, bucket: "Exempt", tests: [], written: false });
+      continue;
+    }
+    const paths = namedPaths(row);
+    const verdicts: Record<DeferralTest, boolean> = {
+      // Test 1 reads "not a new architecture": an `own-cycle` row declares itself plan-sized.
+      "bounded-remediation": row["reason"] !== "own-cycle" && existsIn(root, paths),
+      "in-scope-surface": paths.some((p) => scope.some((s) => within(p, s))),
+      "no-external-blocker": row["reason"] !== "hard-blocked" && row["reason"] !== "needs-decision",
+      "own-declaration": !declares(row, fid, issue, declared),
+    };
+    const tests = DEFERRAL_TESTS.map((test) => ({ test, held: verdicts[test] }));
+    const lazy = tests.every((t) => t.held);
+    if (lazy)
+      write.push(
+        unjustifiedRow(
+          row,
+          fid,
+          tests.map((t) => t.test),
+        ),
+      );
+    out.push({ key, bucket: lazy ? "Lazy" : "Exempt", tests, written: lazy });
+  }
+  if (write.length > 0) appendLedgerRows(root, "deferrals", write);
+  return { fid, plan: planPath, rows: out, total: out.length, written: write.length };
+}
+
+function triage(ctx: RunContext): number {
+  const r = triageDeferrals(rootOf(ctx), required(ctx, "fid"), required(ctx, "plan"));
+  for (const row of r.rows) {
+    const verdict =
+      row.tests.length === 0
+        ? "not tested"
+        : row.tests.map((t) => `${t.test} ${t.held ? "holds" : "fails"}`).join(", ");
+    ctx.log(`${row.key ?? "(no key)"} — ${row.bucket}: ${verdict}`);
+  }
+  ctx.log(`${r.total} deferral row(s) for ${r.fid}, ${r.written} written unjustified`);
+  ctx.emit({ ...r });
+  return EXIT.OK;
 }

@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { runCommand } from "../lib";
 import { acceptedLocations, CHALLENGE_SMALL, challengeCommand, challengeGate } from "./challenge";
-import { parsePlanBlocks } from "./plan-blocks";
+import { derivedTestMatrix, parsePlanBlocks } from "./plan-blocks";
 import { checkPlanText, readTestFirst } from "./tests";
 
 const MONTH = "202610";
@@ -245,6 +245,31 @@ describe("bkit challenge merge", () => {
     ]);
     expect(blocks.groups[1]!.title).toBe("Challenge round 1 findings");
     expect(checkPlanText(read(PLAN)).problems).toEqual([]);
+  });
+
+  it("challenge merge writes a matrix row for each appended finding task", async () => {
+    write(
+      PLAN,
+      [
+        plan(2),
+        "",
+        "## Derived Test Matrix",
+        "",
+        "<!-- prettier-ignore -->",
+        "| Test description | Type | Target file | Task |",
+        "| --- | --- | --- | --- |",
+        "| case 1 | Unit | `src/a.test.ts` | 1 |",
+        "| case 2 | Unit | `src/b.test.ts` | 2 |",
+        "",
+      ].join("\n"),
+    );
+    write(R1, report({ sev: "HIGH", loc: "src/a.ts:10" }, { sev: "MEDIUM", loc: "src/b.ts:4" }));
+    const r = await merge(...args([R1]));
+    expect(r.code).toBe(0);
+    expect(r.json.fixTasks).toBe("3,4");
+    const merged = read(PLAN);
+    expect(derivedTestMatrix(merged)?.rows.map((row) => row.tasks)).toEqual([[1], [2], [3], [4]]);
+    expect(checkPlanText(merged).problems).toEqual([]);
   });
 
   it("leaves the plan unchanged when plan-check fails", async () => {

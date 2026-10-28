@@ -1058,14 +1058,223 @@ function fastForwardVerb(ctx: RunContext): number {
 /** Paths a source-change check leaves out: plan logs and the append-only ledgers. */
 const NOT_CODE = [":(exclude)docs/plans", ":(exclude)docs/*.jsonl", ":(exclude).bkit/*.jsonl"];
 
+/** One added line that disables a test, or removes one of its assertions. */
+export interface DisabledTest {
+  file: string;
+  /** 1-based line in the new file, or in the old one when the diff deletes the file. */
+  line: number;
+  /** The test it sits in, else the marker line's own text. */
+  test: string;
+}
+
+/** A test file's name at any tier: unit, integration, E2E. */
+const TEST_FILE = /\.(?:test|spec)\.|_test\.|(^|\/)test_[^/]*\.py$/;
+
+/** Added-line markers that disable a test: `bkit-slop-type-suppression.mjs`'s set, widened. */
+const MARKERS = [
+  /\b(?:describe|context|it|test|suite|bench)\.(?:skip|todo|fixme)\b/,
+  /(?<!\.)\bx(?:it|describe|test|context)\s*\(/,
+  /\bxfail\b/,
+  /\bt\.Skip\(/,
+  /#\[ignore\b/,
+  /@Disabled\b/,
+  /@pytest\.mark\.skip\b/,
+  /@unittest\.skip\b/,
+  /\.skip\s*\(/,
+];
+
+/** The markers that apply to an added line of `file`: only a test file carries them. */
+const markersFor = (file: string) => (TEST_FILE.test(file) ? MARKERS : []);
+
+/** A quoted span: a marker inside it is prose or a fixture string, not a call. */
+const QUOTED = /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`/g;
+
+/** A line's trailing comment (`#` is one unless it opens a Rust or C attribute). */
+const COMMENT_TAIL = /(?:^|\s)(?:\/\/|#(?!\[))/;
+
+/** A line that opens or continues a block comment. */
+const BLOCK_COMMENT = /^\s*(?:\/\*|\*)/;
+
+/** `line` with its quoted spans and comment removed — the part a marker can be a call in. */
+function stripProse(line: string): string {
+  if (BLOCK_COMMENT.test(line)) return "";
+  const code = line.replace(QUOTED, '""');
+  const cut = code.search(COMMENT_TAIL);
+  return cut === -1 ? code : code.slice(0, cut);
+}
+
+/** An assertion call a change deletes from a test file: `expect(…)`, `assert.equal(…)`, `should(…)`. */
+const ASSERTION = /(?<![\w$])(?:expect|assert\w*|should_\w+|should)\s*[(.]/;
+
+/** Python's bare `assert x` statement, which calls nothing but asserts. */
+const BARE_ASSERT = /^\s*assert\s+\S/;
+
+/** A commented-out line: its words are prose, not a call. */
+const COMMENT = /^\s*(?:\/\/|\/\*|\*|#|--)/;
+
+/** True when a removed `line` takes an assertion, rather than being a comment or an import. */
+const isAssertion = (line: string) =>
+  !COMMENT.test(line) && (ASSERTION.test(line) || BARE_ASSERT.test(line));
+
+/** A test declaration's name on `line`, or null when the line declares no test. */
+function declaredName(line: string): string | null {
+  const call = /\b(?:it|test|suite|describe|context|bench)(?:\.[a-z]+)*\s*\(\s*(["'`])(.+?)\1/.exec(
+    line,
+  );
+  if (call !== null) return call[2]!;
+  const go = /\bfunc\s+(Test\w+)\s*\(/.exec(line);
+  if (go !== null) return go[1]!;
+  const py = /\bdef\s+(test_\w+)\s*\(/.exec(line);
+  if (py !== null) return py[1]!;
+  if (/@Test\b/.test(line)) {
+    const java = /\b(?:void|fun)\s+(\w+)\s*\(/.exec(line);
+    return java?.[1] ?? line.trim();
+  }
+  return null;
+}
+
+/** The test at 1-based `at` in `body`: the nearest declaration above it, else `line` itself. */
+function testAt(body: string | null, line: string, at: number): string {
+  if (body !== null) {
+    const lines = body.split(/\r?\n/);
+    const from = Math.min(at, lines.length) - 1;
+    // A decorator (`@pytest.mark.skip`) names the test it sits on, which is below it.
+    if (line.trimStart().startsWith("@")) {
+      for (let i = from + 1; i < lines.length; i++) {
+        const name = declaredName(lines[i]!);
+        if (name !== null) return name;
+      }
+    }
+    for (let i = from; i >= 0; i--) {
+      const name = declaredName(lines[i]!);
+      if (name !== null) return name;
+    }
+  }
+  return line.trim();
+}
+
+/** The test a removed line sits in when its file is gone: the nearest removed declaration above it. */
+function goneTestAt(lines: Array<{ at: number; text: string }>, at: number, line: string): string {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (lines[i]!.at > at) continue;
+    const name = declaredName(lines[i]!.text);
+    if (name !== null) return name;
+  }
+  return line.trim();
+}
+
+const HUNK = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
+
+/**
+ * The added lines of a `--no-renames` unified diff that disable a test, and the removed
+ * assertion lines of a test file whose added assertion lines no longer outnumber them: each
+ * with its line and the test it sits in. A deleted test file reports its removed assertions
+ * by their old line, since it has no new file left.
+ */
+export function disabledTestsIn(diff: string, root: string): DisabledTest[] {
+  const out: DisabledTest[] = [];
+  const bodies = new Map<string, string | null>();
+  const body = (rel: string) => {
+    if (!bodies.has(rel)) {
+      const abs = path.resolve(root, rel);
+      bodies.set(
+        rel,
+        fs.statSync(abs, { throwIfNoEntry: false })?.isFile()
+          ? fs.readFileSync(abs, "utf-8")
+          : null,
+      );
+    }
+    return bodies.get(rel)!;
+  };
+  /** Added assertion lines per test file, so a rewritten or moved assertion is not a drop. */
+  const added = new Map<string, number>();
+  const removed: Array<{ file: string; line: number; text: string }> = [];
+  /** Removed lines per file, by their old line — the only body a deleted file has left. */
+  const erased = new Map<string, Array<{ at: number; text: string }>>();
+  /** Files the diff deletes: their `+++` is `/dev/null`, so the `---` path names them. */
+  const deleted = new Set<string>();
+  let file = "";
+  let from = "";
+  let next = 0;
+  let old = 0;
+  for (const raw of diff.split("\n")) {
+    if (raw.startsWith("--- ")) {
+      from = raw.replace(/^--- (a\/)?/, "");
+      continue;
+    }
+    if (raw.startsWith("+++ ")) {
+      const plus = raw.replace(/^\+\+\+ (b\/)?/, "");
+      file = plus === "/dev/null" ? from : plus;
+      if (plus === "/dev/null") deleted.add(file);
+      continue;
+    }
+    const hunk = HUNK.exec(raw);
+    if (hunk !== null) {
+      old = Number(hunk[1]);
+      next = Number(hunk[2]);
+      continue;
+    }
+    if (raw.startsWith("+")) {
+      const text = raw.slice(1);
+      if (TEST_FILE.test(file)) {
+        if (markersFor(file).some((m) => m.test(stripProse(text))))
+          out.push({ file, line: next, test: testAt(body(file), text, next) });
+        if (isAssertion(text)) added.set(file, (added.get(file) ?? 0) + 1);
+      }
+      next++;
+    } else if (raw.startsWith("-")) {
+      const text = raw.slice(1);
+      if (TEST_FILE.test(file)) {
+        const lines = erased.get(file) ?? [];
+        lines.push({ at: old, text });
+        erased.set(file, lines);
+        if (isAssertion(text)) removed.push({ file, line: deleted.has(file) ? old : next, text });
+      }
+      old++;
+    } else if (raw.startsWith(" ")) {
+      next++;
+      old++;
+    }
+  }
+  /** Removed assertions per file, in diff order: a file reports only its net drop. */
+  const drops = new Map<string, Array<{ file: string; line: number; text: string }>>();
+  for (const r of removed) {
+    const list = drops.get(r.file) ?? [];
+    list.push(r);
+    drops.set(r.file, list);
+  }
+  for (const [rel, list] of drops) {
+    const excess = list.length - (added.get(rel) ?? 0);
+    if (excess <= 0) continue;
+    for (const r of list.slice(list.length - excess))
+      out.push({
+        file: r.file,
+        line: r.line,
+        test: deleted.has(rel)
+          ? goneTestAt(erased.get(rel) ?? [], r.line, r.text)
+          : testAt(body(rel), r.text, r.line),
+      });
+  }
+  return out;
+}
+
 function scanDiffVerb(ctx: RunContext): number {
   const base = String(ctx.flags.base);
   const pattern = str(ctx.flags.paths);
   const marker = str(ctx.flags.marker);
   const code = ctx.flags.code === true;
-  if ([pattern !== undefined, marker !== undefined, code].filter(Boolean).length !== 1) {
-    throw new CommandError(EXIT.USAGE, "give exactly one of --paths, --marker, --code");
+  const disabled = ctx.flags.disabledTests === true;
+  if ([pattern !== undefined, marker !== undefined, code, disabled].filter(Boolean).length !== 1) {
+    throw new CommandError(
+      EXIT.USAGE,
+      "give exactly one of --paths, --marker, --code, --disabled-tests",
+    );
   }
+  if (disabled && ctx.flags.expectNone === true)
+    throw new CommandError(
+      EXIT.USAGE,
+      "--disabled-tests inverts the exit already; drop --expect-none",
+    );
   let re: RegExp | undefined;
   if (pattern !== undefined) {
     try {
@@ -1085,6 +1294,21 @@ function scanDiffVerb(ctx: RunContext): number {
     return EXIT_DIFF_FAILED;
   }
   const range = `${base}...HEAD`;
+  if (disabled) {
+    const diff = quietGit(top, ["diff", "--no-renames", range, "--", ".", ":(exclude)docs/plans"]);
+    if (!diff.ok) {
+      ctx.log(`git diff ${range} failed: ${diff.stderr}`);
+      return EXIT_DIFF_FAILED;
+    }
+    const hits = disabledTestsIn(diff.stdout, top);
+    const files = [...new Set(hits.map((h) => h.file))];
+    ctx.emit({ found: hits.length > 0, paths: files, disabled: hits });
+    if (hits.length > 0)
+      ctx.log(
+        `added lines disable tests:\n${hits.map((h) => `${h.file}:${h.line} — ${h.test}`).join("\n")}`,
+      );
+    return hits.length > 0 ? EXIT.NO : EXIT.OK;
+  }
   let paths: string[];
   if (marker !== undefined) {
     const diff = quietGit(top, ["diff", "--no-renames", range, "--", ".", ":(exclude)docs/plans"]);
@@ -2134,7 +2358,7 @@ export const branchesCommand: CommandSpec = {
     },
     "scan-diff": {
       summary:
-        "Exit 0 when the branch's diff from --base matches (paths, an added marker line, or a source change); 1 when not.",
+        "Exit 0 when the branch's diff from --base matches (paths, an added marker line, a source change, or a disabled test); 1 when not — --disabled-tests turns that round: 1 when a test was disabled or lost an assertion, 0 when none was.",
       flags: [
         {
           name: "base",
@@ -2158,12 +2382,22 @@ export const branchesCommand: CommandSpec = {
           help: "a path changed outside docs/plans, docs/*.jsonl and .bkit/*.jsonl",
         },
         {
+          name: "disabled-tests",
+          type: "boolean",
+          help: "an added line of a test file disables a test (`.skip` / `.todo` / `.fixme` / `xfail`, `t.Skip()`, `#[ignore]`, `@Disabled`, `@pytest.mark.skip`, `@unittest.skip`), outside a comment or a quoted span, or a test file's removed assertions outweigh the ones that same file adds — a deleted test file included; inverts --paths / --marker / --code's polarity, so never pass it with --expect-none",
+        },
+        {
           name: "expect-none",
           type: "boolean",
           help: "invert the exit: 0 when nothing matched, 1 (naming the paths on stderr) when something did",
         },
       ],
-      output: { found: "something matched", paths: "the matching paths" },
+      output: {
+        found: "something matched",
+        paths: "the matching paths",
+        disabled:
+          "[{file, line, test}]: added lines that disable a test, and removed assertion lines of a test file that no added line re-adds (only with --disabled-tests)",
+      },
       exitCodes: {
         [EXIT_DIFF_FAILED]: "--base does not resolve, or git diff failed",
       },

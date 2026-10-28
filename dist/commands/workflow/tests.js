@@ -26,7 +26,7 @@ import { readPackageJson } from "../../shared/package-json.js";
 import { COULD_NOT_RUN_EXIT_CODES, scriptCommand } from "../../shared/package-manager.js";
 import { CONFIG_DEFAULTS, readBkitConfig } from "../../shared/settings.js";
 import { FILE_FLAG, GROUP_FLAG, WORKFLOW_FLAG, positiveInt, readStatusRows, statusFile, str, } from "./status.js";
-import { fenceNeverClosed, parsePlanBlocks, reuseInventory, } from "./plan-blocks.js";
+import { NO_MARKERS_REASON, derivedTestMatrix, fenceNeverClosed, parsePlanBlocks, reuseInventory, supersessionInventory, } from "./plan-blocks.js";
 import { writeStepRow } from "./steps.js";
 import { appendRecord, clampFile } from "./context.js";
 /** Exit code: no candidate gate is declared in package.json. */
@@ -195,8 +195,6 @@ export function judgeGreen(cases, want) {
 /** The task field naming a task's tests, and the one recording an accepted test-order gap. */
 export const TEST_FIRST = "**TEST FIRST:**";
 export const TEST_EXCEPTION = "**TEST EXCEPTION:**";
-/** Why `tests green` refuses a plan with no group and task blocks. */
-export const NO_MARKERS_REASON = "this plan has no task markers; run /bkit-build again to convert it";
 /** The plan caps `package.json` `bkit.workflows.tasks` sets for the checkout `cwd` sits in. */
 export const planCaps = (cwd) => readBkitConfig(toplevel(cwd)).tasks;
 /** The caps as the plan-check report and help state them. */
@@ -246,7 +244,8 @@ const kb1 = (bytes) => Math.round((bytes / 1024) * 10) / 10;
  * task-like text outside every block, a task without DONE WHEN or without TEST FIRST and
  * TEST EXCEPTION, a malformed TEST FIRST, a DEPENDS ON naming a missing task or one in a
  * later group, a group or task over a cap in `caps`, a CREATE file with no NEW Reuse
- * Inventory row.
+ * Inventory row, a `Derived Test Matrix` row naming no task / an undefined task / two
+ * tasks or a test-bearing task no row names, and a DELETE file with no Supersession row.
  */
 export function checkPlanText(text, caps = CONFIG_DEFAULTS.tasks) {
     const blocks = parsePlanBlocks(text);
@@ -320,6 +319,61 @@ export function checkPlanText(text, caps = CONFIG_DEFAULTS.tasks) {
                     message: `TASK ${t.task}: CREATE in \`${c.file}\` has no NEW row naming it in the Reuse Inventory's File column`,
                 });
     }
+    // The matrix maps each row to one task and each test-bearing task to a row. A plan with no
+    // matrix section yields no problem: the refusal is on a row, and issue-form plans carry none.
+    const matrix = derivedTestMatrix(text);
+    if (matrix !== null) {
+        if (matrix.taskColumn === null)
+            problems.push({
+                line: matrix.line,
+                kind: "matrix",
+                message: "the Derived Test Matrix header has no `Task` column; add one naming the task each row's test belongs to",
+            });
+        else {
+            const mapped = new Set();
+            for (const row of matrix.rows) {
+                const named = row.tasks.map((n) => `TASK ${n}`);
+                if (row.tasks.length === 0)
+                    problems.push({
+                        line: row.number,
+                        kind: "matrix",
+                        message: `Derived Test Matrix row maps to no task: name one in its \`Task\` cell`,
+                    });
+                else if (row.tasks.length > 1)
+                    problems.push({
+                        line: row.number,
+                        kind: "matrix",
+                        message: `Derived Test Matrix row maps to ${named.join(" and ")}; name exactly one task`,
+                    });
+                else {
+                    const n = row.tasks[0];
+                    if (!byTask.has(n))
+                        problems.push({
+                            line: row.number,
+                            kind: "matrix",
+                            message: `Derived Test Matrix row maps to TASK ${n}, which the plan does not define`,
+                        });
+                    mapped.add(n);
+                }
+            }
+            for (const t of blocks.tasks)
+                if (specs.get(t.task).kind === "test" && !mapped.has(t.task))
+                    problems.push({
+                        line: t.line,
+                        kind: "matrix",
+                        message: `TASK ${t.task} names TEST FIRST tests but no Derived Test Matrix row maps to it`,
+                    });
+        }
+    }
+    const superseded = new Set((supersessionInventory(text) ?? []).flatMap((r) => r.files));
+    for (const t of blocks.tasks)
+        for (const d of t.delete)
+            if (!superseded.has(path.posix.normalize(d.file)))
+                problems.push({
+                    line: d.line,
+                    kind: "supersession",
+                    message: `TASK ${t.task}: DELETE in \`${d.file}\` has no row naming it in the Supersession Inventory`,
+                });
     const groups = blocks.groups.map((g) => {
         const tests = sizes.filter((s) => s.group === g.group).reduce((n, s) => n + s.tests, 0);
         const bytes = Buffer.byteLength(lines.slice(g.line - 1, g.end).join("\n"));
@@ -514,6 +568,43 @@ export const snapshotPath = (log) => `${log.replace(/\.md$/, "")}.snapshot`;
 const toplevel = (cwd) => git(cwd, ["rev-parse", "--show-toplevel"]) ?? cwd;
 /** A fence longer than any backtick run in `text`. */
 const fenceFor = (text) => "`".repeat(Math.max(3, ...[...text.matchAll(/`+/g)].map((m) => m[0].length + 1)));
+/**
+ * Every gap the audit emits, and the verifier's `Fixable` for it: `null` = the
+ * answer needs a diff read, which only the verifier can make.
+ */
+const GAP_FIXABLE = {
+    "not-green": true,
+    "delete-still-referenced": null,
+    "test-changed": null,
+    "red-mismatch": null,
+    "no-red": false,
+    "late-red": false,
+    "no-test-first": false,
+    "test-first-malformed": false,
+    "test-first-unread": false,
+    "red-evidence-missing": false,
+    "exception-refused": false,
+};
+/** One gap, with the `fixable` its kind settles and the ready-to-append log line. */
+function gapOf(task, kind, detail, test) {
+    const fixable = GAP_FIXABLE[kind];
+    const subject = test === undefined ? "" : `\`${test.file}\` \`${test.name}\` — `;
+    return {
+        task,
+        kind,
+        detail,
+        fixable,
+        logLine: `${task === null ? "Plan" : `TASK ${task}`}: ${subject}${kind} — Fixable: ${fixable}`,
+    };
+}
+/** The report's verdict from its gaps: a decision one gap still needs (`null`) outranks one it refuses. */
+const verdictOf = (gaps) => gaps.length === 0
+    ? "PASS"
+    : gaps.some((g) => g.fixable === null)
+        ? null
+        : gaps.some((g) => g.fixable === false)
+            ? "FAIL"
+            : "CONCERNS";
 /** Gaps about when a test was seen failing; no edit made after the task's code can close one. */
 export const TEST_ORDER_GAPS = new Set([
     "no-red",
@@ -554,9 +645,14 @@ function taskCodeCommits(top, cwd, file, workflow) {
     }
     return commits;
 }
-/** The task numbers a plan-execute log records `DONE — TASK N` for, in log order. */
-export function doneTasks(log) {
-    return [...log.matchAll(/^DONE\s*[—–-]+\s*TASK\s+(\d+)\b/gim)].map((m) => Number(m[1]));
+/**
+ * The task numbers a plan-execute log records `DONE — TASK N` for, in log order. `verbs`
+ * widens the reader to the log's other closing lines (`BLOCKED`), so one parser serves
+ * every caller; the default reads `DONE` only, which is what "the task is done" means.
+ */
+export function doneTasks(log, verbs = ["DONE"]) {
+    const closing = verbs.map((v) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+    return [...log.matchAll(new RegExp(`^(?:${closing})\\s*[—–-]+\\s*TASK\\s+(\\d+)\\b`, "gim"))].map((m) => Number(m[1]));
 }
 /**
  * Why a task's `TEST EXCEPTION` lines do not count, or null when they do: every
@@ -665,7 +761,7 @@ function deleteGaps(top, planRel, tasks, planTasks) {
                     path.posix.basename(path.posix.normalize(c.file)) === path.posix.basename(file))
                     .map((c) => path.posix.normalize(c.file))
                 : [];
-            const gap = (detail) => gaps.push({ task: t.task, kind: DELETE_STILL_REFERENCED, detail });
+            const gap = (detail) => gaps.push(gapOf(t.task, DELETE_STILL_REFERENCED, detail));
             const abs = path.join(top, file);
             const exists = fs.statSync(abs, { throwIfNoEntry: false })?.isFile() === true;
             let what;
@@ -711,6 +807,7 @@ export function redRows(file, workflow) {
 function writeAuditReport(log, o) {
     const out = [
         `Enforced: ${o.enforced}`,
+        `Verdict: ${o.verdict}`,
         `Gaps: ${o.gaps.length}`,
         `Test order only: ${o.testOrderOnly}`,
         "",
@@ -732,7 +829,7 @@ function writeAuditReport(log, o) {
     if (o.gaps.length === 0)
         out.push("None.");
     for (const g of o.gaps)
-        out.push(`- ${g.task === null ? "Plan" : `Task ${g.task}`} \`${g.kind}\` — ${g.detail}`);
+        out.push(`- ${g.task === null ? "Plan" : `Task ${g.task}`} \`${g.kind}\` — ${g.detail} — Fixable: ${g.fixable} — log: ${g.logLine}`);
     if (o.exceptions.length > 0)
         out.push("", "## Test exceptions", "");
     for (const e of o.exceptions)
@@ -1035,7 +1132,8 @@ export const testsCommand = {
                 enforced: "false when the audit could not run: no plan file, a plan with no task markers (exit 1), or the test-file script undeclared (exit 0)",
                 reason: "why test-first is not enforced",
                 plan: "the plan file audited",
-                gaps: "[{task, kind, detail}]: no-test-first | test-first-malformed | test-first-unread (task null: a plan-level format problem) | no-red | late-red | red-mismatch | red-evidence-missing | test-changed | not-green | exception-refused (a task whose only test field is a TEST EXCEPTION not honoured) | delete-still-referenced (a DELETE line's file still exists, or its name is still found in the tree)",
+                verdict: "PASS no gaps | FAIL a gap's fixable is false | CONCERNS every gap's fixable is true | null when a gap needs a diff read, or the audit could not run",
+                gaps: "[{task, kind, detail, fixable, logLine}]: no-test-first | test-first-malformed | test-first-unread (task null: a plan-level format problem) | no-red | late-red | red-mismatch | red-evidence-missing | test-changed | not-green | exception-refused (a task whose only test field is a TEST EXCEPTION not honoured) | delete-still-referenced (a DELETE line's file still exists, or its name is still found in the tree); fixable is null when the gap needs a diff read; logLine is the line the verifier appends",
                 testOrderOnly: "true when there are gaps and every one is a test-order gap (no-red | late-red | red-mismatch | red-evidence-missing | test-changed)",
                 lateRedUnchecked: "tasks with a red but no plan-execute step commit whose log records `DONE — TASK N`: the late-red check could not run for them",
                 log: "where the report was written (as given)",
@@ -1077,6 +1175,7 @@ export const testsCommand = {
                         ? `\`${BKIT_TEST_FILE_SCRIPT}\` is not declared in package.json`
                         : undefined);
                 const empty = {
+                    verdict: null,
                     rows: [],
                     gaps: [],
                     testOrderOnly: false,
@@ -1091,6 +1190,7 @@ export const testsCommand = {
                         enforced: false,
                         reason,
                         plan: plan ?? null,
+                        verdict: null,
                         gaps: [],
                         testOrderOnly: false,
                         lateRedUnchecked: [],
@@ -1139,21 +1239,13 @@ export const testsCommand = {
                             cleared: refused === null ? ["the task's `TEST FIRST` check"] : [],
                         });
                         if (refused !== null)
-                            gaps.push({
-                                task: s.task,
-                                kind: EXCEPTION_REFUSED,
-                                detail: `the task's only test field is a \`**TEST EXCEPTION:**\`, not honoured: ${refused}`,
-                            });
+                            gaps.push(gapOf(s.task, EXCEPTION_REFUSED, `the task's only test field is a \`**TEST EXCEPTION:**\`, not honoured: ${refused}`));
                         continue;
                     }
                     if (s.kind !== "test") {
-                        gaps.push({
-                            task: s.task,
-                            kind: s.kind === "missing" ? "no-test-first" : "test-first-malformed",
-                            detail: s.kind === "missing"
-                                ? "the task has neither a `**TEST FIRST:**` nor a `**TEST EXCEPTION:**` field"
-                                : "`**TEST FIRST:**` is neither `n/a — {reason}` nor one sub-bullet per test naming a backticked test file and test name",
-                        });
+                        gaps.push(gapOf(s.task, s.kind === "missing" ? "no-test-first" : "test-first-malformed", s.kind === "missing"
+                            ? "the task has neither a `**TEST FIRST:**` nor a `**TEST EXCEPTION:**` field"
+                            : "`**TEST FIRST:**` is neither `n/a — {reason}` nor one sub-bullet per test naming a backticked test file and test name"));
                         continue;
                     }
                     const excepted = s.exception;
@@ -1185,7 +1277,7 @@ export const testsCommand = {
                             if (clearing !== undefined && TEST_ORDER_GAPS.has(kind))
                                 clearing.cleared.push(`\`${kind}\` for \`${t.test}\` "${t.name}"`);
                             else
-                                gaps.push({ task: s.task, kind, detail });
+                                gaps.push(gapOf(s.task, kind, detail, { file: t.test, name: t.name }));
                         };
                         const red = [...taskReds]
                             .reverse()
@@ -1237,8 +1329,9 @@ export const testsCommand = {
                             else if (!fs.readFileSync(snapAbs).equals(fs.readFileSync(testAbs))) {
                                 const added = onlyAddsLines(fs.readFileSync(snapAbs, "utf-8"), fs.readFileSync(testAbs, "utf-8"));
                                 row.changed = added ? "added lines only" : "yes";
-                                if (!added)
-                                    gap("test-changed", `\`${t.test}\` differs from its red snapshot for "${t.name}" (diff below)`);
+                                gap("test-changed", added
+                                    ? `\`${t.test}\` gained lines since its red snapshot for "${t.name}" (diff below)`
+                                    : `\`${t.test}\` differs from its red snapshot for "${t.name}" (diff below)`);
                                 const diff = runGit(top, [
                                     "diff",
                                     "--no-index",
@@ -1271,15 +1364,13 @@ export const testsCommand = {
                 }
                 gaps.push(...deleteGaps(top, repoRel(top, ctx.cwd, plan), parsed.tasks.filter((t) => group === undefined || t.group === group), parsed.tasks));
                 for (const e of parsed.errors)
-                    gaps.push({
-                        task: null,
-                        kind: "test-first-unread",
-                        detail: `\`${plan}:${e.line}\` ${e.message} — tests there were not audited; the plan's blocks need fixing`,
-                    });
+                    gaps.push(gapOf(null, "test-first-unread", `\`${plan}:${e.line}\` ${e.message} — tests there were not audited; the plan's blocks need fixing`));
                 const testOrderOnly = gaps.length > 0 && gaps.every((g) => TEST_ORDER_GAPS.has(g.kind));
+                const verdict = verdictOf(gaps);
                 writeAuditReport(log, {
                     enforced: true,
                     plan,
+                    verdict,
                     rows,
                     gaps,
                     testOrderOnly,
@@ -1291,6 +1382,7 @@ export const testsCommand = {
                 ctx.emit({
                     enforced: true,
                     plan,
+                    verdict,
                     gaps,
                     testOrderOnly,
                     lateRedUnchecked: [...lateUnchecked].sort((a, b) => a - b),
@@ -1301,7 +1393,7 @@ export const testsCommand = {
             },
         },
         "plan-check": {
-            summary: `Check a plan's group and task blocks: the block format, DONE WHEN and TEST FIRST on every task, DEPENDS ON order, the caps from package.json \`bkit.workflows.tasks\` (defaults: ${capsText(CONFIG_DEFAULTS.tasks)}), a Reuse Inventory NEW row per CREATE file, and that each READ / UPDATE / DELETE file and symbol exists; exit 0 no problems, 1 refused.`,
+            summary: `Check a plan's group and task blocks: the block format, DONE WHEN and TEST FIRST on every task, DEPENDS ON order, the caps from package.json \`bkit.workflows.tasks\` (defaults: ${capsText(CONFIG_DEFAULTS.tasks)}), a Reuse Inventory NEW row per CREATE file, a Supersession Inventory row per DELETE, a \`Task\` on every Derived Test Matrix row and a row per test-bearing task, and that each READ / UPDATE / DELETE file and symbol exists; exit 0 no problems, 1 refused.`,
             flags: [
                 {
                     name: "plan",
@@ -1325,7 +1417,7 @@ export const testsCommand = {
                 plan: "the plan file checked (as given)",
                 groups: "[{group, title, tasks, tests, kb}]: each group's tasks, planned TEST FIRST tests and size",
                 tasks: "[{task, group, tests, files}]: each task's planned tests and distinct test files",
-                problems: "[{line, kind, message}]: format | stray | field | depends | cap | inventory | markers — each refuses the plan",
+                problems: "[{line, kind, message}]: format | stray | field | depends | cap | inventory | matrix | supersession | markers — each refuses the plan",
                 existence: "[{line, task, message}]: READ / UPDATE / DELETE files or symbols not found; refuses only with --existence=refuse",
                 log: "where the report was written (as given)",
             },

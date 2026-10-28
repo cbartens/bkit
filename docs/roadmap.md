@@ -13,7 +13,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-10-27T11:30:57Z)_
+_(refreshed 2026-10-28T12:42:18Z)_
 
 ### Design
 
@@ -30,7 +30,6 @@ _(refreshed 2026-10-27T11:30:57Z)_
 | 504-example-project | 504-example-project | 1791870640742 |
 | 651-sops-env-backup | 651-sops-env-backup | 1792633642892 |
 | 699-engine-run-completeness | 699-engine-run-completeness | 1793002326175 |
-| 701-engine-work-build | 701-engine-work-build | 1793002272742 |
 
 ### Build
 
@@ -48,6 +47,7 @@ _(none)_
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 701-engine-work-build | 701-engine-work-build | 1793191338658 |
 | 705-build-plan-convert | 705-build-plan-convert | 1793100657723 |
 | 703-standardise-question-option | 703-standardise-question-option | 1793090828870 |
 | 700-session-start-nudge | 700-session-start-nudge | 1793054973314 |
@@ -57,7 +57,6 @@ _(none)_
 | 384-ship-bookkeeping | Ship bookkeeping mutated the validated PR head | 1785303519000 |
 | completed-ship-bookkeeping-path-a-b-with-tiered-quality-carriers-38-b1b1268 | Ship bookkeeping Path A/B with tiered quality carriers — #384 | 1785283200000 |
 | 341-three-runtimes | Workflows run in all runtimes — local, GH Actions, claude.ai | 1785220571000 |
-| completed-three-runtimes-workflow-execution-341 | Three-runtimes workflow execution — #341 | 1785196800000 |
 <!-- bkit:roadmap-status end -->
 
 <!-- bkit:roadmap-analysis start -->

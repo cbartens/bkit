@@ -27,18 +27,18 @@ export const PLAN_FIELDS = [
     "TEST FIRST",
     "TEST EXCEPTION",
 ];
+/** Why every plan reader (`tests`, `tasks`, `ledgers triage`) refuses a plan with no task blocks. */
+export const NO_MARKERS_REASON = "this plan has no task markers; run /bkit-build again to convert it";
 const tableCells = (row) => row
     .split("|")
     .slice(1, -1)
     .map((c) => c.trim());
 /**
- * The plan's Reuse Inventory: the first table under the first heading naming Reuse
- * Inventory, before the next heading of the same or a higher level. Each row's `File`
- * cell gives its backticked paths, normalised. No heading, table or `File` column → null.
+ * The first table under the first heading matching `heading`, before the next heading of
+ * the same or a higher level: the header line's index and its cells. No heading or table → null.
  */
-export function reuseInventory(text) {
-    const lines = text.split(/\r?\n/);
-    const start = lines.findIndex((l) => /^#{2,4} .*Reuse Inventory/i.test(l));
+function firstTable(lines, heading) {
+    const start = lines.findIndex((l) => heading.test(l));
     if (start < 0)
         return null;
     const level = /^#+/.exec(lines[start])[0].length;
@@ -51,13 +51,24 @@ export function reuseInventory(text) {
         }
     if (head < 0)
         return null;
-    const cols = tableCells(lines[head]);
-    const file = cols.findIndex((c) => /^file\b/i.test(c));
-    const decision = cols.findIndex((c) => /^decision\b/i.test(c));
+    return { head, cols: tableCells(lines[head]) };
+}
+/**
+ * The plan's Reuse Inventory: the first table under the first heading naming Reuse
+ * Inventory, before the next heading of the same or a higher level. Each row's `File`
+ * cell gives its backticked paths, normalised. No heading, table or `File` column → null.
+ */
+export function reuseInventory(text) {
+    const lines = text.split(/\r?\n/);
+    const table = firstTable(lines, /^#{2,4} .*Reuse Inventory/i);
+    if (table === null)
+        return null;
+    const file = table.cols.findIndex((c) => /^file\b/i.test(c));
+    const decision = table.cols.findIndex((c) => /^decision\b/i.test(c));
     if (file < 0)
         return null;
     const rows = [];
-    for (let i = head + 2; i < lines.length && /^\s*\|/.test(lines[i]); i++) {
+    for (let i = table.head + 2; i < lines.length && /^\s*\|/.test(lines[i]); i++) {
         const cells = tableCells(lines[i]);
         rows.push({
             line: lines[i],
@@ -65,7 +76,60 @@ export function reuseInventory(text) {
             decision: decision < 0 ? "" : (cells[decision] ?? ""),
         });
     }
-    return { head: lines.slice(head, head + 2), rows };
+    return { head: lines.slice(table.head, table.head + 2), rows };
+}
+/** The plan's `Derived Test Matrix` over `tableCells`; null when the plan has no such table. */
+export function derivedTestMatrix(text) {
+    const lines = text.split(/\r?\n/);
+    const table = firstTable(lines, /^#{2,4} .*Derived Test Matrix/i);
+    if (table === null)
+        return null;
+    const column = table.cols.findIndex((c) => /^task\b/i.test(c));
+    const rows = [];
+    for (let i = table.head + 2; i < lines.length && /^\s*\|/.test(lines[i]); i++) {
+        const cells = tableCells(lines[i]);
+        rows.push({
+            line: lines[i],
+            number: i + 1,
+            cells,
+            tasks: column < 0 ? [] : [...(cells[column] ?? "").matchAll(/\d+/g)].map((m) => Number(m[0])),
+        });
+    }
+    return {
+        head: lines.slice(table.head, table.head + 2),
+        line: table.head + 1,
+        taskColumn: column < 0 ? null : column,
+        rows,
+    };
+}
+/** The plan's `Supersession Inventory` rows over `tableCells`; null when the plan has no such table. */
+export function supersessionInventory(text) {
+    const lines = text.split(/\r?\n/);
+    const table = firstTable(lines, /^#{2,4} .*Supersession Inventory/i);
+    if (table === null)
+        return null;
+    const column = table.cols.findIndex((c) => /^existing\b/i.test(c));
+    const rows = [];
+    for (let i = table.head + 2; i < lines.length && /^\s*\|/.test(lines[i]); i++) {
+        const cells = tableCells(lines[i]);
+        rows.push({
+            line: lines[i],
+            number: i + 1,
+            files: spansOf(cells[column < 0 ? 0 : column] ?? "").map((f) => path.posix.normalize(f)),
+        });
+    }
+    return rows;
+}
+/** The plan's `Out of Scope` rows over `tableCells`; null when the plan has no such table. */
+export function outOfScope(text) {
+    const lines = text.split(/\r?\n/);
+    const table = firstTable(lines, /^#{2,4} .*Out of Scope/i);
+    if (table === null)
+        return null;
+    const rows = [];
+    for (let i = table.head + 2; i < lines.length && /^\s*\|/.test(lines[i]); i++)
+        rows.push({ line: lines[i], number: i + 1, cells: tableCells(lines[i]) });
+    return rows;
 }
 /** The error for a code fence opened at `line` and never closed. */
 export const fenceNeverClosed = (line) => `the code fence at line ${line} is never closed; nothing after it is read`;

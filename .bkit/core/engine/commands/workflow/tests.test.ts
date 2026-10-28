@@ -672,9 +672,14 @@ function fencedText(md: string): string {
     .join("\n");
 }
 
-/** Issue task blocks wrapped as a plan: a Reuse Inventory NEW row per CREATE file, then the blocks. */
+/**
+ * Issue task blocks wrapped as a plan: a Reuse Inventory NEW row per CREATE file and a
+ * Supersession Inventory row per DELETE file, then the blocks.
+ */
 function asPlan(blocks: string): string {
-  const files = parsePlanBlocks(blocks).tasks.flatMap((t) => t.create.map((c) => c.file));
+  const parsed = parsePlanBlocks(blocks).tasks;
+  const files = parsed.flatMap((t) => t.create.map((c) => c.file));
+  const removed = parsed.flatMap((t) => t.delete.map((d) => d.file));
   return [
     "# Plan",
     "",
@@ -683,6 +688,16 @@ function asPlan(blocks: string): string {
     "| Capability | File | Search performed | Existing candidates | Decision (EXTEND/NEW) | Justification |",
     "| --- | --- | --- | --- | --- | --- |",
     ...files.map((f) => `| x | \`${f}\` | rg x | none | NEW | nothing to extend |`),
+    ...(removed.length === 0
+      ? []
+      : [
+          "",
+          "## Supersession Inventory",
+          "",
+          "| Existing artifact | Replaced by | Decision | Justification |",
+          "| --- | --- | --- | --- |",
+          ...removed.map((f) => `| \`${f}\` | - | DELETE | replaced |`),
+        ]),
     "",
     blocks,
   ].join("\n");
@@ -816,6 +831,26 @@ describe("bkit tests plan-check", () => {
       "| Capability | File | Search performed | Existing candidates | Decision (EXTEND/NEW) | Justification |",
       "| --- | --- | --- | --- | --- | --- |",
       ...files.map((f) => `| x | \`${f}\` | rg x | none | NEW | nothing to extend |`),
+    ].join("\n");
+  /** A Derived Test Matrix table: its `cols`, then one row per `row` cell list. */
+  const matrix = (cols: string[], ...rows: string[][]) =>
+    [
+      "## Derived Test Matrix",
+      "",
+      `| ${cols.join(" | ")} |`,
+      `| ${cols.map(() => "---").join(" | ")} |`,
+      ...rows.map((r) => `| ${r.join(" | ")} |`),
+    ].join("\n");
+  /** The matrix header the reader maps rows to tasks by. */
+  const MATRIX = ["Test description", "Type", "Target file", "Task"];
+  /** A Supersession Inventory table with one DELETE row per file. */
+  const supersession = (...files: string[]) =>
+    [
+      "## Supersession Inventory",
+      "",
+      "| Existing artifact | Replaced by | Decision | Justification |",
+      "| --- | --- | --- | --- |",
+      ...files.map((f) => `| \`${f}\` | \`src/new.ts\` | DELETE | replaced |`),
     ].join("\n");
 
   it("states the caps the template and workflows doc name", () => {
@@ -1083,6 +1118,163 @@ describe("bkit tests plan-check", () => {
     write("plan.md", inventory("src/threads.ts"), groupBlock(1, okTask(1, 1, 1, create)));
     r = await check();
     expect(r.code).toBe(0);
+  });
+
+  it("plan-check refuses an unmapped matrix row", async () => {
+    write(
+      "plan.md",
+      matrix(
+        MATRIX,
+        ["case a", "Unit", "`t0.test.ts`", ""],
+        ["case b", "Unit", "`t0.test.ts`", "1"],
+      ),
+      groupBlock(1, okTask(1)),
+    );
+    const r = await check();
+    expect(r.code).toBe(1);
+    expect(r.json.problems).toEqual([
+      expect.objectContaining({ kind: "matrix", line: lineOf("plan.md", "| case a") }),
+    ]);
+    expect(report()).toContain("row maps to no task");
+  });
+
+  it("plan-check refuses a delete with no supersession row", async () => {
+    fs.mkdirSync(path.join(cwd, "src"));
+    fs.writeFileSync(path.join(cwd, "src/old.ts"), "export const oldThing = 1;\n");
+    const del = ["  - **DELETE:** `oldThing` in `src/old.ts`: gone"];
+    write("plan.md", groupBlock(1, okTask(1, 1, 1, del)));
+    let r = await check();
+    expect(r.code).toBe(1);
+    expect(r.json.problems).toEqual([
+      expect.objectContaining({ kind: "supersession", line: lineOf("plan.md", "**DELETE:**") }),
+    ]);
+    expect(r.json.problems[0].message).toContain("src/old.ts");
+    write("plan.md", supersession("src/old.ts"), groupBlock(1, okTask(1, 1, 1, del)));
+    r = await check();
+    expect(r.code).toBe(0);
+  });
+
+  it("plan-check refuses a matrix row mapped to two tasks", async () => {
+    write(
+      "plan.md",
+      matrix(
+        MATRIX,
+        ["case a", "Unit", "`t0.test.ts`", "1"],
+        ["case b", "Unit", "`t0.test.ts`", "2"],
+        ["case c", "Unit", "`t0.test.ts`", "1, 2"],
+      ),
+      groupBlock(1, okTask(1), okTask(2)),
+    );
+    const r = await check();
+    expect(r.code).toBe(1);
+    expect(r.json.problems).toEqual([
+      expect.objectContaining({ kind: "matrix", line: lineOf("plan.md", "| case c") }),
+    ]);
+    expect(r.json.problems[0].message).toContain("TASK 1");
+    expect(r.json.problems[0].message).toContain("TASK 2");
+  });
+
+  it("plan-check refuses a task no matrix row maps to", async () => {
+    write(
+      "plan.md",
+      matrix(MATRIX, ["case a", "Unit", "`t0.test.ts`", "1"]),
+      groupBlock(1, okTask(1), okTask(2)),
+    );
+    const r = await check();
+    expect(r.code).toBe(1);
+    expect(r.json.problems).toEqual([
+      expect.objectContaining({
+        kind: "matrix",
+        line: lineOf("plan.md", "<!-- bkit:task 2 start -->"),
+      }),
+    ]);
+    expect(r.json.problems[0].message).toContain("TASK 2");
+  });
+
+  it("plan-check accepts a matrix that maps every test-bearing task", async () => {
+    write(
+      "plan.md",
+      matrix(
+        MATRIX,
+        ["case a", "Unit", "`t0.test.ts`", "1"],
+        ["case b", "Unit", "`t1.test.ts`", "2"],
+      ),
+      groupBlock(1, okTask(1), okTask(2)),
+    );
+    const r = await check();
+    expect(r.code).toBe(0);
+    expect(r.json.problems).toEqual([]);
+    // The same plan minus one row is refused: the acceptance is the mapping, not the section.
+    write(
+      "plan.md",
+      matrix(MATRIX, ["case a", "Unit", "`t0.test.ts`", "1"]),
+      groupBlock(1, okTask(1), okTask(2)),
+    );
+    const missing = await check();
+    expect(missing.code).toBe(1);
+  });
+
+  it("plan-check refuses a matrix header with no Task column, naming the column to add", async () => {
+    write(
+      "plan.md",
+      matrix(
+        ["Test description", "Type", "Target file"],
+        ["case a", "Unit", "`t0.test.ts`"],
+        ["case b", "Unit", "`t1.test.ts`"],
+      ),
+      groupBlock(1, okTask(1), okTask(2)),
+    );
+    const r = await check();
+    expect(r.code).toBe(1);
+    expect(r.json.problems).toEqual([
+      expect.objectContaining({ kind: "matrix", line: lineOf("plan.md", "| Test description") }),
+    ]);
+    expect(r.json.problems[0].message).toContain("Task");
+    expect(report().match(/`matrix`/g)).toHaveLength(1);
+  });
+
+  it("plan-check refuses a Task cell naming an undefined task", async () => {
+    write(
+      "plan.md",
+      matrix(
+        MATRIX,
+        ["case a", "Unit", "`t0.test.ts`", "1"],
+        ["case b", "Unit", "`t1.test.ts`", "9"],
+      ),
+      groupBlock(1, okTask(1)),
+    );
+    const r = await check();
+    expect(r.code).toBe(1);
+    expect(r.json.problems).toEqual([
+      expect.objectContaining({ kind: "matrix", line: lineOf("plan.md", "| case b") }),
+    ]);
+    expect(r.json.problems[0].message).toContain("TASK 9");
+  });
+
+  it("plan-check accepts a task whose only TEST FIRST is n/a", async () => {
+    write(
+      "plan.md",
+      matrix(MATRIX, ["case a", "Unit", "`t0.test.ts`", "1"]),
+      groupBlock(
+        1,
+        okTask(1),
+        taskBlock(2, [
+          "  - **DONE WHEN:** the docs are updated",
+          "  - **TEST FIRST:** n/a — docs only",
+        ]),
+      ),
+    );
+    const r = await check();
+    expect(r.code).toBe(0);
+    expect(r.json.problems).toEqual([]);
+    // A task naming a test and no row is refused: only `n/a` is exempt from a row.
+    write(
+      "plan.md",
+      matrix(MATRIX, ["case a", "Unit", "`t0.test.ts`", "1"]),
+      groupBlock(1, okTask(1), okTask(2)),
+    );
+    const missing = await check();
+    expect(missing.code).toBe(1);
   });
 
   it("plan-check refuses a group with 4 tasks", async () => {
@@ -1498,23 +1690,32 @@ describe("bkit tests red / green", () => {
         task: 1,
         kind: "delete-still-referenced",
         detail: "DELETE `oldGate` in `src/gate.ts` is still referenced: `src/use.ts:3`",
+        fixable: null,
+        logLine: "TASK 1: delete-still-referenced — Fixable: null",
       },
       {
         task: 1,
         kind: "delete-still-referenced",
         detail: "DELETE `src/legacyShim.ts` is still referenced as `legacyShim`: `src/use.ts:2`",
+        fixable: null,
+        logLine: "TASK 1: delete-still-referenced — Fixable: null",
       },
       {
         task: 1,
         kind: "delete-still-referenced",
         detail: "DELETE `src/still.ts`: the file still exists",
+        fixable: null,
+        logLine: "TASK 1: delete-still-referenced — Fixable: null",
       },
       {
         task: 1,
         kind: "delete-still-referenced",
         detail: "DELETE § Old section in `docs/d.md` is still referenced: `docs/d.md:3`",
+        fixable: null,
+        logLine: "TASK 1: delete-still-referenced — Fixable: null",
       },
     ]);
+    expect(r.json.verdict).toBe(null);
     expect(report()).toContain("- Task 1 `delete-still-referenced` — DELETE `oldGate`");
   });
 
@@ -1547,11 +1748,13 @@ describe("bkit tests red / green", () => {
         task: 1,
         kind: "delete-still-referenced",
         detail: "DELETE `src/moved.ts` is still referenced as `moved`: `src/stale.ts:1`",
+        fixable: null,
+        logLine: "TASK 1: delete-still-referenced — Fixable: null",
       },
     ]);
   });
 
-  it("green: red recorded, test unchanged, named test passing -> no gaps", async () => {
+  it("green with no gaps prints verdict PASS and an empty gaps", async () => {
     writePlan([
       TASK_1,
       taskBlock(2, ["  - **DONE WHEN:** done", "  - **TEST FIRST:** n/a — docs."]),
@@ -1563,9 +1766,94 @@ describe("bkit tests red / green", () => {
     vi.stubEnv("FAKE_JUNIT", junit(passed(`clamp > ${NAME}`)));
     const r = await green();
     expect(r.code).toBe(0);
-    expect(r.json).toMatchObject({ enforced: true, gaps: [] });
+    expect(r.json).toMatchObject({ enforced: true, gaps: [], verdict: "PASS" });
     expect(report()).toContain("Gaps: 0");
+    expect(report()).toContain("Verdict: PASS");
     expect(report()).toContain("| 1 |");
+  });
+
+  it("green prints a verdict and a fixable per gap", async () => {
+    const OTHER = "src/range.test.ts";
+    writePlan([TASK_1, testTask(2, [[TEST, "second"]]), testTask(3, [[OTHER, "third"]])]);
+    fs.writeFileSync(path.join(cwd, OTHER), "expect(clamp(0, 1, 10)).toBe(1);\n");
+    vi.stubEnv("FAKE_EXIT", "1");
+    vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
+    expect((await red()).code).toBe(0);
+    vi.stubEnv("FAKE_JUNIT", junit(failed(NAME), failed("third")));
+    const thirdRed = await run(
+      [
+        `--file=${STATUS}`,
+        "--workflow=build",
+        "--group=1",
+        "--task=3",
+        `--test=${OTHER}`,
+        "--name=third",
+        "--log=logs/build-task-red-1-3.md",
+      ],
+      cwd,
+      "red",
+    );
+    expect(thirdRed.code).toBe(0);
+    fs.writeFileSync(path.join(cwd, OTHER), "expect(clamp(9, 1, 10)).toBe(9);\n");
+    vi.stubEnv("FAKE_JUNIT", junit(failed(NAME), passed("second"), passed("third")));
+    const r = await green();
+    expect(r.code).toBe(1);
+    expect(r.json.verdict).toBe(null);
+    expect(
+      (r.json.gaps as Array<{ kind: string; fixable: boolean | null }>).map(
+        (g) => `${g.kind}:${g.fixable}`,
+      ),
+    ).toEqual(["not-green:true", "no-red:false", "test-changed:null"]);
+    expect(report()).toContain("Verdict: null");
+    expect(report()).toContain(`TASK 1: \`${TEST}\` \`${NAME}\` — not-green — Fixable: true`);
+    expect(report()).toContain("Fixable: false");
+    expect(report()).toContain("Fixable: null");
+  });
+
+  it("green verdict is FAIL when a gap is unfixable", async () => {
+    writePlan([testTask(1, [[TEST, NAME]])]);
+    fs.mkdirSync(path.join(cwd, "logs"), { recursive: true });
+    fs.writeFileSync(
+      path.join(cwd, STATUS),
+      `${JSON.stringify({ type: "step-done", workflow: "build", step: "build-worktree-setup", status: "DONE", artifacts: [] })}\n`,
+    );
+    vi.stubEnv("FAKE_EXIT", "0");
+    vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
+    const r = await green();
+    expect(r.code).toBe(1);
+    expect(r.json.verdict).toBe("FAIL");
+    expect((r.json.gaps as Array<{ kind: string; fixable: boolean }>)[0]).toMatchObject({
+      kind: "no-red",
+      fixable: false,
+    });
+    expect(report()).toContain("Verdict: FAIL");
+  });
+
+  it("green leaves a diff-reading kind fixable null", async () => {
+    writePlan([testTask(1, [[TEST, "planned name"]])]);
+    vi.stubEnv("FAKE_EXIT", "1");
+    vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
+    expect((await red()).code).toBe(0);
+    vi.stubEnv("FAKE_JUNIT", junit(passed("planned name")));
+    const r = await green();
+    const gaps = r.json.gaps as Array<{ kind: string; fixable: boolean | null }>;
+    expect(gaps.map((g) => g.kind)).toEqual(["red-mismatch"]);
+    expect(gaps[0]!.fixable).toBe(null);
+    expect(r.json.verdict).toBe(null);
+  });
+
+  it("green prints verdict null when a gap needs a diff read", async () => {
+    writePlan([TASK_1]);
+    vi.stubEnv("FAKE_EXIT", "1");
+    vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
+    expect((await red()).code).toBe(0);
+    fs.writeFileSync(path.join(cwd, TEST), "expect(true).toBe(true);\n");
+    vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
+    const r = await green();
+    expect(r.code).toBe(1);
+    expect((r.json.gaps as Array<{ kind: string }>).map((g) => g.kind)).toEqual(["test-changed"]);
+    expect(r.json.verdict).toBe(null);
+    expect(report()).toContain("Verdict: null");
   });
 
   it("green: lists each gap kind, with the diff for a test changed since its red", async () => {
@@ -1765,7 +2053,7 @@ describe("bkit tests red / green", () => {
       );
     });
 
-    it("a test file that only gained lines since its red is no gap; the diff stays in the report", async () => {
+    it("green emits a test-changed gap for a red whose test gained added lines only", async () => {
       writePlan([TASK_1]);
       vi.stubEnv("FAKE_EXIT", "1");
       vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
@@ -1774,8 +2062,11 @@ describe("bkit tests red / green", () => {
       vi.stubEnv("FAKE_EXIT", "0");
       vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
       const r = await green();
-      expect(r.code).toBe(0);
-      expect(r.json.gaps).toEqual([]);
+      expect(r.code).toBe(1);
+      expect(r.json.gaps).toEqual([
+        expect.objectContaining({ task: 1, kind: "test-changed", fixable: null }),
+      ]);
+      expect(r.json.verdict).toBe(null);
       expect(report()).toContain("| added lines only |");
       expect(report()).toContain("+expect(clamp(0, 1, 10)).toBe(1);");
     });

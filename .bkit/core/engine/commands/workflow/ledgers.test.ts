@@ -16,6 +16,7 @@ import {
   readRecord,
   writeRecord,
 } from "./ledgers";
+import { NO_MARKERS_REASON } from "./plan-blocks";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -1301,5 +1302,274 @@ describe("bkit ledgers check", () => {
   it("refuses a plan with no Ledger rows line or an unfilled one", async () => {
     expect((await check(tmp(), "No line here.")).code).toBe(EXIT_ROWS_MISSING);
     expect((await check(tmp(), "**Ledger rows:** PENDING")).code).toBe(EXIT_ROWS_MISSING);
+  });
+});
+
+describe("bkit ledgers triage", () => {
+  const PLAN = [
+    "# Plan",
+    "",
+    "## Out of Scope",
+    "",
+    "| Excluded item | Why `Exempt` | Where it belongs |",
+    "| --- | --- | --- |",
+    "| Something else entirely | declared before work | `docs/elsewhere.md` |",
+    "",
+    "## Reuse Inventory",
+    "",
+    "| Capability | File | Decision |",
+    "| --- | --- | --- |",
+    "| The other guard | `src/b.ts` | EXTEND |",
+    "",
+    "<!-- bkit:group 1 start -->",
+    "### GROUP 1: The group",
+    "",
+    "<!-- bkit:task 1 start -->",
+    "- [ ] **TASK 1:** Guard the call.",
+    "  - **UPDATE:** `guard` in `src/a.ts`: add the check",
+    "  - **DONE WHEN:** the guard runs",
+    "  - **TEST FIRST:** n/a — text only",
+    "<!-- bkit:task 1 end -->",
+    "<!-- bkit:group 1 end -->",
+  ].join("\n");
+  const PLAN_FILE = "docs/plans/202610/701-engine-work-build-plan.md";
+
+  const deferral = (over: Record<string, unknown> = {}) => ({
+    schema: 3,
+    ts: 1793000000001,
+    kind: "deferral",
+    key: "701-deferred-guard",
+    repo: "o/r",
+    bkit: { version: "6.0.0" },
+    by: { workflow: "plan", step: "plan-generate" },
+    references: ["701", "src/a.ts"],
+    type: "issue",
+    category: "correctness",
+    severity: "MEDIUM",
+    reason: "scope-declared",
+    summary: "guard a call",
+    description: "the call is unguarded",
+    remediation: "Add the check in src/a.ts beside the guard, then a test in src/a.test.ts.",
+    status: "OPEN",
+    ...over,
+  });
+
+  /** A repo holding the plan, the tree paths the readers name, and the deferral rows. */
+  function triageRepo(rows: Array<Record<string, unknown>>) {
+    const r = repo();
+    put(r, PLAN_FILE, PLAN);
+    put(r, "src/a.ts", "export const guard = 1;\n");
+    put(r, "src/b.ts", "export const other = 1;\n");
+    put(r, "docs/deferrals.jsonl", rows.map((x) => `${JSON.stringify(x)}\n`).join(""));
+    commitAll(r);
+    return r;
+  }
+
+  const triage = (cwd: string) =>
+    run(cwd, ["triage", "--fid=701-engine-work-build", `--plan=${PLAN_FILE}`]);
+
+  const lines = (root: string) =>
+    fs
+      .readFileSync(path.join(root, "docs/deferrals.jsonl"), "utf-8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+
+  const held = (row: { tests: Array<{ test: string; held: boolean }> }) =>
+    row.tests.filter((t) => t.held).map((t) => t.test);
+
+  it("triage keeps a low-severity deferral exempt", async () => {
+    const r = triageRepo([
+      deferral({ key: "701-low-finding", reason: "low-severity", severity: "LOW" }),
+    ]);
+    const res = await triage(r);
+    expect(res.code).toBe(0);
+    expect(res.json.rows.map((x: { key: string; bucket: string }) => [x.key, x.bucket])).toEqual([
+      ["701-low-finding", "Exempt"],
+    ]);
+    expect(lines(r)).toHaveLength(1);
+  });
+
+  it("triage keeps an own-cycle deferral exempt", async () => {
+    const r = triageRepo([
+      deferral({ key: "701-new-architecture", reason: "own-cycle", status: "OPEN" }),
+    ]);
+    const res = await triage(r);
+    expect(res.code).toBe(0);
+    expect(res.json.rows.map((x: { key: string; bucket: string }) => [x.key, x.bucket])).toEqual([
+      ["701-new-architecture", "Exempt"],
+    ]);
+    expect(held(res.json.rows[0])).toEqual([
+      "in-scope-surface",
+      "no-external-blocker",
+      "own-declaration",
+    ]);
+    expect(res.json.written).toBe(0);
+    expect(lines(r)).toHaveLength(1);
+  });
+
+  it("triage marks an unjustified deferral lazy", async () => {
+    const r = triageRepo([deferral()]);
+    const res = await triage(r);
+    expect(res.code).toBe(0);
+    expect(res.json).toMatchObject({ total: 1, written: 1 });
+    expect(res.json.rows).toHaveLength(1);
+    expect(res.json.rows[0]).toMatchObject({ key: "701-deferred-guard", bucket: "Lazy" });
+    expect(held(res.json.rows[0])).toEqual([
+      "bounded-remediation",
+      "in-scope-surface",
+      "no-external-blocker",
+      "own-declaration",
+    ]);
+  });
+
+  it("triage writes an unjustified row with a minted ts", async () => {
+    const r = triageRepo([deferral()]);
+    const res = await triage(r);
+    expect(res.json.written).toBe(1);
+    const wrote = lines(r);
+    expect(wrote).toHaveLength(2);
+    const [before, after] = wrote as [Record<string, unknown>, Record<string, unknown>];
+    expect(after["key"]).toBe(before["key"]);
+    expect(after["reason"]).toBe("unjustified");
+    expect(after["status"]).toBe("TRIAGED");
+    expect(after["severity"]).toBe("MEDIUM");
+    expect(after["type"]).toBe("issue");
+    expect(after["schema"]).toBe(3);
+    expect(after["ts"] as number).toBeGreaterThan(before["ts"] as number);
+    expect((after["ts"] as number) % 1000).not.toBe(0);
+    expect(String(after["description"])).toContain("bounded-remediation");
+    expect((after["by"] as Record<string, unknown>)["workflow"]).toBe("ship");
+  });
+
+  it("triage writes no row for a closed deferral", async () => {
+    const r = triageRepo([deferral({ status: "CLOSED" })]);
+    const res = await triage(r);
+    expect(res.code).toBe(0);
+    expect(res.json.rows.map((x: { key: string; bucket: string }) => [x.key, x.bucket])).toEqual([
+      ["701-deferred-guard", "Exempt"],
+    ]);
+    expect(res.json.rows[0].tests).toEqual([]);
+    expect(res.json.written).toBe(0);
+    expect(lines(r)).toHaveLength(1);
+  });
+
+  it("triage reports an adjudicated unjustified row outside exempt", async () => {
+    const r = triageRepo([deferral({ reason: "unjustified", status: "TRIAGED" })]);
+    const once = lines(r);
+    const first = await triage(r);
+    const second = await triage(r);
+    expect([first.code, second.code]).toEqual([0, 0]);
+    expect(first.json.rows.map((x: { key: string; bucket: string }) => [x.key, x.bucket])).toEqual([
+      ["701-deferred-guard", "Lazy"],
+    ]);
+    expect(second.json.rows).toEqual(first.json.rows);
+    expect(second.json.written).toBe(0);
+    expect(lines(r)).toEqual(once);
+  });
+
+  it("triage ignores another feature's deferral rows", async () => {
+    const r = triageRepo([
+      deferral(),
+      deferral({ key: "702-other-guard", references: ["#702", "src/a.ts"] }),
+    ]);
+    const res = await triage(r);
+    expect(res.json.rows.map((x: { key: string }) => x.key)).toEqual(["701-deferred-guard"]);
+    expect(lines(r).map((x) => x["key"])).toEqual([
+      "701-deferred-guard",
+      "702-other-guard",
+      "701-deferred-guard",
+    ]);
+  });
+
+  it("triage writes nothing when the FID has no deferral row", async () => {
+    const r = triageRepo([deferral({ key: "702-other-guard", references: ["#702", "src/a.ts"] })]);
+    const res = await triage(r);
+    expect(res.code).toBe(0);
+    expect(res.json).toMatchObject({ rows: [], total: 0, written: 0 });
+    expect(lines(r)).toHaveLength(1);
+  });
+
+  it("triage refuses a plan with no task blocks", async () => {
+    const r = triageRepo([deferral()]);
+    put(
+      r,
+      PLAN_FILE,
+      [
+        "# Plan",
+        "",
+        "## Out of Scope",
+        "",
+        "| Excluded item | Why `Exempt` | Where it belongs |",
+        "| --- | --- | --- |",
+        "| Something else entirely | declared before work | `docs/elsewhere.md` |",
+        "",
+      ].join("\n"),
+    );
+    commitAll(r, "no markers");
+    const before = lines(r);
+    const res = await triage(r);
+    expect(res.code).toBe(1);
+    expect(res.err).toContain(NO_MARKERS_REASON);
+    expect(lines(r)).toEqual(before);
+  });
+
+  it("triage refuses a plan whose task blocks do not parse", async () => {
+    const r = triageRepo([deferral()]);
+    put(
+      r,
+      PLAN_FILE,
+      [
+        "# Plan",
+        "",
+        "<!-- bkit:group 1 start -->",
+        "### GROUP 1: The group",
+        "",
+        "<!-- bkit:task 2 start -->",
+        "- [ ] **TASK 2:** Guard the second call.",
+        "  - **UPDATE:** `guard` in `src/a.ts`: add the check",
+        "  - **DONE WHEN:** the guard runs",
+        "  - **TEST FIRST:** n/a — text only",
+        "<!-- bkit:task 2 end -->",
+        "",
+        "<!-- bkit:task 1 start -->",
+        "- [ ] **TASK 1:** Guard the call.",
+        "  - **UPDATE:** `guard` in `src/a.ts`: add the check",
+        "  - **DONE WHEN:** the guard runs",
+        "  - **TEST FIRST:** n/a — text only",
+        "<!-- bkit:task 1 end -->",
+        "<!-- bkit:group 1 end -->",
+      ].join("\n"),
+    );
+    commitAll(r, "unordered tasks");
+    const before = lines(r);
+    const res = await triage(r);
+    expect(res.code).toBe(2);
+    expect(res.err).toContain(`${PLAN_FILE}:13:`);
+    expect(res.err).toContain("TASK 1 comes after TASK 2");
+    expect(lines(r)).toEqual(before);
+  });
+
+  it("triage marks a scope-declared row whose only declaration is itself lazy", async () => {
+    const r = triageRepo([
+      deferral({ key: "701-own-declaration", references: ["701-own-declaration", "src/a.ts"] }),
+      deferral({ key: "701-declared", references: ["701", "#701 § Out of Scope", "src/a.ts"] }),
+    ]);
+    const res = await triage(r);
+    expect(res.json.rows.map((x: { key: string; bucket: string }) => [x.key, x.bucket])).toEqual([
+      ["701-own-declaration", "Lazy"],
+      ["701-declared", "Exempt"],
+    ]);
+    expect(held(res.json.rows[0])).toEqual([
+      "bounded-remediation",
+      "in-scope-surface",
+      "no-external-blocker",
+      "own-declaration",
+    ]);
+    expect(lines(r).map((x) => x["key"])).toEqual([
+      "701-own-declaration",
+      "701-declared",
+      "701-own-declaration",
+    ]);
   });
 });

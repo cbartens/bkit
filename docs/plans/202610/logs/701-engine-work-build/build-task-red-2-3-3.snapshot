@@ -1,0 +1,231 @@
+/**
+ * commands/workflow/tasks.test.ts — `bkit tasks`: the plan tick and the group's open set.
+ *
+ * Each test writes a plan and (for `open`) an execute log in a temp folder and reads
+ * the command's one output object; the plan file's other lines are compared byte for
+ * byte, because the tick rewrites one heading line and nothing else.
+ */
+
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+
+import { afterEach, describe, expect, it } from "vitest";
+
+import { runCommand } from "../lib";
+import { tasksCommand } from "./tasks";
+
+const dirs: string[] = [];
+const tmp = () => {
+  const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-tasks-")));
+  dirs.push(d);
+  return d;
+};
+afterEach(() => {
+  for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+  cwd = "";
+});
+
+const task = (n: number, tick = " ") => [
+  `<!-- bkit:task ${n} start -->`,
+  `- [${tick}] **TASK ${n}:** Task ${n} title.`,
+  "  - **DONE WHEN:** done",
+  "  - **TEST FIRST:** n/a — docs only",
+  `<!-- bkit:task ${n} end -->`,
+];
+const group = (n: number, ...tasks: string[][]) => [
+  `<!-- bkit:group ${n} start -->`,
+  `### GROUP ${n}: Group ${n} title`,
+  "",
+  ...tasks.flatMap((t) => [...t, ""]),
+  `<!-- bkit:group ${n} end -->`,
+];
+/** A plan with the given groups and prose after them, so an untouched trailing line is real. */
+const planText = (...groups: string[][]) =>
+  [
+    "# Plan",
+    "",
+    "## The work",
+    "",
+    ...groups.flatMap((g) => [...g, ""]),
+    "## Tail",
+    "",
+    "| left | right |",
+    "| --- | --- |",
+    "| a | b |",
+    "",
+  ].join("\n");
+
+let cwd = "";
+const write = (name: string, text: string) => {
+  if (cwd === "") cwd = tmp();
+  const file = path.join(cwd, name);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, text);
+  return file;
+};
+const read = (file: string) => fs.readFileSync(file, "utf-8");
+
+async function run(argv: string[]) {
+  const out: string[] = [];
+  const err: string[] = [];
+  const code = await runCommand(["tasks", ...argv, "--json"], [tasksCommand], {
+    classicVerbs: new Set(),
+    cwd,
+    io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
+  });
+  return { code, json: out.length ? JSON.parse(out.join("")) : undefined, err: err.join("") };
+}
+
+/** The heading line of task `n` in `text`: the line a tick rewrites. */
+const headOf = (text: string, n: number) =>
+  text.split("\n").find((l) => l.includes(`**TASK ${n}:**`))!;
+const tickOf = (text: string, n: number) => /^- \[([ x])\]/.exec(headOf(text, n))![1];
+
+describe("bkit tasks tick", () => {
+  it("tick marks only the named tasks", async () => {
+    const plan = write("plan.md", planText(group(1, task(1), task(2), task(3))));
+    const r = await run(["tick", `--plan=${plan}`, "--group=1", "--tasks=2"]);
+    expect(r.code).toBe(0);
+    expect(r.json.ticked).toEqual([2]);
+    expect([tickOf(read(plan), 1), tickOf(read(plan), 2), tickOf(read(plan), 3)]).toEqual([
+      " ",
+      "x",
+      " ",
+    ]);
+  });
+
+  it("tick refuses a task in another group", async () => {
+    const text = planText(group(1, task(1)), group(2, task(2)));
+    const plan = write("other-group.md", text);
+    const r = await run(["tick", `--plan=${plan}`, "--group=1", "--tasks=2"]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("TASK 2");
+    expect(r.err).toContain("group 2");
+    expect(read(plan)).toBe(text);
+  });
+
+  it("tick refuses a plan with no task blocks", async () => {
+    const plan = write("no-blocks.md", "# Plan\n\nNo task blocks here.\n");
+    const r = await run(["tick", `--plan=${plan}`, "--group=1", "--tasks=1"]);
+    expect(r.code).toBe(1);
+    expect(r.err).toMatch(/no task markers/);
+  });
+
+  it("tick narrows the group's gap-free tasks by --tasks", async () => {
+    const plan = write("gapped.md", planText(group(1, task(1), task(2))));
+    const green = write(
+      "green.md",
+      [
+        "Enforced: true",
+        "Verdict: CONCERNS",
+        "Gaps: 1",
+        "",
+        "<!-- verdict:end -->",
+        "",
+        "## Gaps",
+        "",
+        "- Task 2 `not-green` — `.bkit/x.test.ts` `b` does not exist — Fixable: true — log: TASK 2: not-green",
+        "",
+      ].join("\n"),
+    );
+    const r = await run(["tick", `--plan=${plan}`, "--group=1", "--tasks=1,2", `--green=${green}`]);
+    expect(r.code).toBe(0);
+    expect(r.json.ticked).toEqual([1]);
+    expect(tickOf(read(plan), 2)).toBe(" ");
+  });
+
+  it("tick is idempotent on an already-ticked task", async () => {
+    const plan = write("idempotent.md", planText(group(1, task(1), task(2))));
+    const first = await run(["tick", `--plan=${plan}`, "--group=1", "--tasks=1,2"]);
+    expect(first.code).toBe(0);
+    const once = read(plan);
+    const second = await run(["tick", `--plan=${plan}`, "--group=1", "--tasks=1,2"]);
+    expect(second.code).toBe(0);
+    expect(second.json.ticked).toEqual([]);
+    expect(read(plan)).toBe(once);
+  });
+
+  it("tick refuses a --tasks value that is not a task number", async () => {
+    const text = planText(group(1, task(1)));
+    const plan = write("bad-number.md", text);
+    const r = await run(["tick", `--plan=${plan}`, "--group=1", "--tasks=one"]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("--tasks");
+    expect(read(plan)).toBe(text);
+  });
+
+  it("tick refuses a --plan that is no file", async () => {
+    if (cwd === "") cwd = tmp();
+    const r = await run(["tick", "--plan=no-such-plan.md", "--group=1", "--tasks=1"]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("no-such-plan.md");
+  });
+
+  it("tick leaves every other plan line byte-identical", async () => {
+    const text = planText(group(1, task(1), task(2)), group(2, task(3)));
+    const plan = write("bytes.md", text);
+    const r = await run(["tick", `--plan=${plan}`, "--group=1", "--tasks=2"]);
+    expect(r.code).toBe(0);
+    const after = read(plan).split("\n");
+    const before = text.split("\n");
+    expect(after).toHaveLength(before.length);
+    expect(after.filter((l, i) => l !== before[i])).toEqual([
+      "- [x] **TASK 2:** Task 2 title.",
+    ]);
+  });
+
+  it("tick refuses a call with no --group or with neither selector", async () => {
+    const text = planText(group(1, task(1)));
+    const plan = write("no-group.md", text);
+    const noGroup = await run(["tick", `--plan=${plan}`, "--tasks=1"]);
+    expect(noGroup.code).toBe(2);
+    expect(noGroup.err).toContain("--group");
+    const noSelector = await run(["tick", `--plan=${plan}`, "--group=1"]);
+    expect(noSelector.code).toBe(2);
+    expect(noSelector.err).toMatch(/--tasks|--green/);
+    expect(read(plan)).toBe(text);
+  });
+});
+
+describe("bkit tasks open", () => {
+  it("open lists tasks with no done line", async () => {
+    const plan = write("open.md", planText(group(1, task(1), task(2), task(3))));
+    const log = write(
+      "open-log.md",
+      [
+        "DONE — TASK 1: First — implemented (a.ts)",
+        "BLOCKED — TASK 2: Second — the migration is missing",
+        "",
+      ].join("\n"),
+    );
+    const r = await run(["open", `--plan=${plan}`, "--group=1", `--log=${log}`]);
+    expect(r.code).toBe(0);
+    expect(r.json.tasks).toEqual([3]);
+    expect(r.json.handover).toBe(true);
+  });
+
+  it("open sets handover only when a task is open", async () => {
+    const plan = write("open-all.md", planText(group(1, task(1), task(2))));
+    const log = write(
+      "open-all-log.md",
+      [
+        "DONE — TASK 1: First — implemented (a.ts)",
+        "BLOCKED — TASK 2: Second — the migration is missing",
+        "",
+      ].join("\n"),
+    );
+    const r = await run(["open", `--plan=${plan}`, "--group=1", `--log=${log}`]);
+    expect(r.code).toBe(0);
+    expect(r.json.tasks).toEqual([]);
+    expect(r.json.handover).toBe(false);
+  });
+
+  it("open refuses a plan with no task blocks", async () => {
+    const plan = write("open-plain.md", "# Plan\n\nNo task blocks here.\n");
+    const log = write("open-plain-log.md", "");
+    const r = await run(["open", `--plan=${plan}`, "--group=1", `--log=${log}`]);
+    expect(r.code).toBe(1);
+    expect(r.err).toMatch(/no task markers/);
+  });
+});
