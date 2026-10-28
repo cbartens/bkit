@@ -283,7 +283,13 @@ export function hostChat(env) {
  */
 export const chatFingerprint = (platform, id) => `fp:${createHash("sha256").update(`${platform}:${id}`).digest("hex").slice(0, 12)}`;
 /** Status rows that mark a moment rather than the end of a piece of work: step minutes skip them. */
-export const MARK_ROWS = new Set(["session", "owner-pause", "owner-answer"]);
+export const MARK_ROWS = new Set([
+    "session",
+    "owner-pause",
+    "owner-answer",
+    "engine-call",
+    "completeness",
+]);
 /** The `session` fingerprints on the run's status rows, in row order, each once. */
 export function runChats(rows) {
     const out = [];
