@@ -697,7 +697,7 @@ Build order: config → runtime resolution → install → close row → build w
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** Parse and validate `bkit.workflows.build.publish` in settings
+- [x] **TASK 1:** Parse and validate `bkit.workflows.build.publish` in settings
   - **UPDATE:** `BkitConfig` in `.bkit/core/engine/shared/settings.ts`: add the `BuildPublish` type and a flat `buildPublish` field
   - **UPDATE:** `CONFIG_DEFAULTS` in `.bkit/core/engine/shared/settings.ts`: `buildPublish` = `{ remote: true, local: true }`
   - **UPDATE:** `readBkitConfig` in `.bkit/core/engine/shared/settings.ts`: parse `workflows.build.publish`; `remote` resolves `true`; `local` accepts only a boolean; a non-object block resolves both defaults
@@ -716,7 +716,7 @@ Build order: config → runtime resolution → install → close row → build w
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Print the resolved publish values from `repo info`
+- [x] **TASK 2:** Print the resolved publish values from `repo info`
   - **UPDATE:** `.bkit/core/engine/commands/workflow/repo.ts`: the `repo info` verb emits `buildPublishRemote` and `buildPublishLocal`
   - **UPDATE:** `.bkit/core/engine/commands/workflow/repo.ts`: document both keys in the command's `output` block
   - **UPDATE:** `dist/cli.js`: rebuilt by `pnpm build` and staged in the same commit
