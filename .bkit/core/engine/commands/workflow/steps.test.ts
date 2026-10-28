@@ -226,6 +226,76 @@ describe("bkit steps done", () => {
     expect(staged).not.toContain("status.jsonl");
     expect(staged).toBe("");
   });
+
+  /** `repo()` with a failing pre-commit `hook`; `rows` seeds a committed `logs/status.jsonl`. */
+  function hookedRepo(hook: string, rows = '{"type":"x","n":1}\n') {
+    const cwd = repo();
+    if (rows !== "") {
+      write(cwd, "logs/status.jsonl", rows);
+      git(cwd, "add", "-A");
+      git(cwd, "commit", "-q", "-m", "base");
+    }
+    fs.mkdirSync(path.join(cwd, ".git/hooks"), { recursive: true });
+    write(cwd, ".git/hooks/pre-commit", `#!/bin/sh\n${hook}\n`);
+    fs.chmodSync(path.join(cwd, ".git/hooks/pre-commit"), 0o755);
+    return cwd;
+  }
+  /** A pre-commit body standing in for a writer that appends during the commit window. */
+  const OTHER_WRITER = `printf '{"type":"other-writer"}\\n' >> logs/status.jsonl\necho blocked >&2\nexit 1`;
+  const statusText = (cwd: string) => fs.readFileSync(path.join(cwd, "logs/status.jsonl"), "utf-8");
+
+  it("a failed commit restores an already-staged status.jsonl to its pre-attempt index entry", async () => {
+    const cwd = hookedRepo("echo blocked >&2\nexit 1");
+    fs.appendFileSync(path.join(cwd, "logs/status.jsonl"), '{"type":"x","n":2}\n');
+    git(cwd, "add", "logs/status.jsonl");
+    // A partially staged file: one change staged, a later one left in the working tree.
+    write(cwd, "logs/verify-1.md", "staged\n");
+    git(cwd, "add", "logs/verify-1.md");
+    write(cwd, "logs/verify-1.md", "Verdict: FAIL\nFailures: 2\n\n<!-- verdict:end -->\n");
+    const indexBefore = git(cwd, "ls-files", "-s");
+    const r = await run(cwd, doneArgs());
+    expect(r.code).toBe(8);
+    expect(git(cwd, "show", ":logs/status.jsonl")).toBe('{"type":"x","n":1}\n{"type":"x","n":2}');
+    expect(git(cwd, "ls-files", "-s")).toBe(indexBefore);
+    expect(git(cwd, "show", ":logs/verify-1.md")).toBe("staged");
+  });
+
+  it("a failed commit keeps a caller-staged path that a bracketed new path glob-matches", async () => {
+    const cwd = hookedRepo("echo blocked >&2\nexit 1");
+    fs.mkdirSync(path.join(cwd, "src"));
+    write(cwd, "src/i.tsx", "caller staged\n");
+    git(cwd, "add", "src/i.tsx");
+    write(cwd, "src/[id].tsx", "run made\n");
+    const r = await run(cwd, doneArgs());
+    expect(r.code).toBe(8);
+    expect(git(cwd, "diff", "--cached", "--name-only")).toBe("src/i.tsx");
+  });
+
+  it("a failed commit whose status.jsonl gained another writer's row does not report nothing written", async () => {
+    const cwd = hookedRepo(OTHER_WRITER);
+    const r = await run(cwd, doneArgs());
+    expect(r.code).toBe(82);
+    expect(r.err).toContain("blocked");
+    expect(r.err).not.toContain("no row written");
+    expect(r.err).toContain(`stays in ${path.join(cwd, "logs/status.jsonl")}`);
+    expect(statusText(cwd).match(/"step-done"/g)).toHaveLength(1);
+    expect(statusText(cwd)).toContain("other-writer");
+  });
+
+  it("a failed first-row commit keeps a row another writer appended during the commit", async () => {
+    const cwd = hookedRepo(OTHER_WRITER, "");
+    const r = await run(cwd, doneArgs());
+    expect(r.code).toBe(82);
+    expect(statusText(cwd)).toContain("other-writer");
+  });
+
+  it("a failed commit that removed status.jsonl still exits 8 with the commit error and an unstaged index", async () => {
+    const cwd = hookedRepo("rm -f logs/status.jsonl\necho blocked-by-hook >&2\nexit 1");
+    const r = await run(cwd, doneArgs());
+    expect(r.code).toBe(8);
+    expect(r.err).toContain("blocked-by-hook");
+    expect(git(cwd, "diff", "--cached", "--name-only")).toBe("");
+  });
 });
 
 describe("bkit steps verdict", () => {
