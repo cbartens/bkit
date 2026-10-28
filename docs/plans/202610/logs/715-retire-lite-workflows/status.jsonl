@@ -87,3 +87,11 @@
 {"type":"step-done","workflow":"build","step":"build-plan-gaps-remediate","status":"DONE","at":"2026-10-28T21:28:50Z","parentSha":"a2ba6a78bb1a80953b61def5c532b8420161411c","artifacts":["docs/plans/202610/logs/715-retire-lite-workflows/build-plan-gaps-remediate-3-1-log.md"],"verdict":"FAIL","attempt":1,"group":3,"strategy":"STANDARD"}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-verify/3/2/comment","hash":"0179c1cf1c6f8935e09b73a1a097b557d7018e5d1718a8a20bc1e8920bc11fe5","ref":"https://github.com/cbartens/bkit/issues/715#issuecomment-6481223449","at":"2026-10-28T21:33:54Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-10-28T21:33:54Z","parentSha":"87d97235ce97db5b5e5b570fdf04a3ef7fb5adf6","artifacts":["docs/plans/202610/logs/715-retire-lite-workflows/build-plan-verify-3-2.md"],"verdict":"FAIL","attempt":2,"group":3,"failures":9}
+{"type":"owner-pause","workflow":"build","at":"2026-10-28T21:34:29Z","reason":"decision"}
+{"type":"owner-answer","workflow":"build","at":"2026-10-28T21:40:08Z"}
+{"type":"owner-pause","workflow":"build","at":"2026-10-28T21:40:08Z","reason":"decision"}
+{"type":"owner-answer","workflow":"build","at":"2026-10-28T21:44:16Z"}
+{"type":"owner-pause","workflow":"build","at":"2026-10-28T21:44:16Z","reason":"decision"}
+{"type":"owner-answer","workflow":"build","at":"2026-10-28T21:51:29Z"}
+{"type":"engine-action","action":"comment","key":"build/1/build-decision/-/1/comment","hash":"ea3f012bf7231d31a4add516bcafa31b82d5ac1189a4b713616ee62df1453653","ref":"https://github.com/cbartens/bkit/issues/715#issuecomment-6481582828","at":"2026-10-28T21:52:08Z"}
+{"type":"step-done","workflow":"build","step":"build-decision","status":"DONE","at":"2026-10-28T21:52:08Z","parentSha":"fab305a9e9ee357eb3cea903a21fb71bd39fd706","artifacts":["docs/plans/202610/logs/715-retire-lite-workflows/build-decision-1-1.md"],"attempt":1,"route":"fix"}
