@@ -11,3 +11,9 @@
 {"type":"step-done","workflow":"plan","step":"plan-review","status":"DONE","at":"2026-10-28T02:13:49Z","parentSha":"515ce14cdc5807d203e10b68a572ea0b326ce551","artifacts":["docs/plans/202610/logs/715-retire-lite-workflows/plan-review-1.md","docs/plans/202610/logs/715-retire-lite-workflows/plan-review-2.md","docs/plans/202610/logs/715-retire-lite-workflows/plan-scope-check.md"],"verdict":"FAIL","attempt":1,"failures":17}
 {"type":"workflow-failed","workflow":"plan","at":"2026-10-28T02:14:14Z"}
 {"type":"engine-action","action":"comment","key":"plan/1/failure/5/2/comment","hash":"01c6729006ec3a5e0d3c15d95fe5627584e6cf1d50e466421ca5594e6bd82b60","ref":"https://github.com/cbartens/bkit/issues/715#issuecomment-6458813189","at":"2026-10-28T02:14:16Z"}
+{"type":"workflow-started","workflow":"build","at":"2026-10-28T20:45:28Z","parentSha":"173c87e9a8324b9fa4f0daaf9c2738da73d97be7"}
+{"type":"session","workflow":"build","at":"2026-10-28T20:45:28Z","platform":"claude-code","session":"fp:b852927b54fe"}
+{"type":"runtime-resolved","workflow":"build","at":"2026-10-28T20:45:28Z","runtime":"LOCAL","runtimeWorktrees":true,"runtimeDevPushes":true,"runtimeGithubCli":true,"runtimeGithubCliExit":0,"runtimeGithubCliErr":"","baseSha":""}
+{"type":"step-done","workflow":"build","step":"build-start-workflow","status":"DONE","at":"2026-10-28T20:45:37Z","parentSha":"173c87e9a8324b9fa4f0daaf9c2738da73d97be7","artifacts":[]}
+{"type":"engine-action","action":"comment","key":"build/1/build-worktree-setup/-/-/comment","hash":"8f10e0a0e476bf9e8f893b878713bda8c3d54713924a93a31cc4fc2e20f8e984","ref":"https://github.com/cbartens/bkit/issues/715#issuecomment-6480277265","at":"2026-10-28T20:45:38Z"}
+{"type":"step-done","workflow":"build","step":"build-worktree-setup","status":"DONE","at":"2026-10-28T20:45:38Z","parentSha":"173c87e9a8324b9fa4f0daaf9c2738da73d97be7","artifacts":["docs/plans/202610/logs/715-retire-lite-workflows/build-input-1.md"]}
