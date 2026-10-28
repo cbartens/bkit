@@ -575,7 +575,7 @@ describe("the store parser", () => {
       "### code-reads",
       "",
       "- prompt: required",
-      "- rule: R21 Code reads (0.90)",
+      "- rule: code-reads (0.90)",
       "- carriers: prompt all",
       "",
       "```text",
@@ -584,7 +584,7 @@ describe("the store parser", () => {
       "",
     ].join("\n");
     const [c] = parseInstructions(md).clauses;
-    expect(c!.rule).toBe("R21");
+    expect(c!.rule).toBe("code-reads");
     expect(c!.modes).toEqual({ prompt: "required" });
   });
 });

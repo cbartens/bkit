@@ -47,9 +47,8 @@ export interface DriftItem {
 }
 
 export interface RuleEntry {
+  /** The `### {name}` heading: the rule's ID, unique across `## Rules` and `## Project Rules`. */
   name: string;
-  /** `R{nn}` (bkit block) or `P{nn}` (Project Rules). */
-  id: string;
   text: string;
   retired: string[];
   refs: RuleRef[];
@@ -73,6 +72,9 @@ export const CARRIER_SURFACES = [
   "hook",
   "permission",
 ];
+
+/** A rule's `### {name}`, which tags, clause `- rule:` / `- tags:` lines and prose cite it by. */
+export const RULE_NAME = /^[a-z0-9][a-z0-9-]*/;
 
 const CITES = /^((?:`[^`:]+:\d+`(?:, )?)+): ?(.*)$/;
 
@@ -114,8 +116,8 @@ export interface RuleMasters {
 }
 
 const RULE_SECTIONS = [
-  { heading: "Rules", prefix: "R", region: "bkit" },
-  { heading: "Project Rules", prefix: "P", region: "project" },
+  { heading: "Rules", region: "bkit" },
+  { heading: "Project Rules", region: "project" },
 ] as const;
 
 /** Top-level `- ` bullets of the bkit block, or of `## Project Rules` below `bkit:end`, in file order. */
@@ -143,7 +145,6 @@ export function parseRuleEntries(md: string, heading: "Rules" | "Project Rules")
     .slice(1)
     .map((section) => {
       const name = section.slice(0, section.indexOf("\n")).trim();
-      const id = /^- rule: ([RP]\d+)/m.exec(section)?.[1] ?? "";
       const block = (kind: string) =>
         [...section.matchAll(new RegExp(`^\`\`\`${kind}\\n([\\s\\S]*?)^\`\`\`$`, "gm"))].flatMap(
           (m) => m[1]!.split("\n").filter((l) => l.trim() !== ""),
@@ -185,7 +186,6 @@ export function parseRuleEntries(md: string, heading: "Rules" | "Project Rules")
       }
       return {
         name,
-        id,
         text: block("text").join("\n"),
         retired: block("retired"),
         refs,
@@ -230,20 +230,22 @@ export function checkRules(
   exists: (ref: string, section?: string) => boolean,
 ): string[] {
   const out: string[] = [];
+  const seen = new Set<string>();
   for (const s of RULE_SECTIONS) {
     const entries = parseRuleEntries(store, s.heading);
     const bullets = ruleBullets(masters[s.region], s.region);
     const n = Math.max(entries.length, bullets.length);
     for (let i = 0; i < n; i++) {
-      const want = `${s.prefix}${String(i + 1).padStart(2, "0")}`;
       const e = entries[i];
       const bullet = bullets[i];
       if (!e) {
-        out.push(`${want}: rules.md bullet has no \`## ${s.heading}\` entry — ${bullet}`);
+        out.push(`${s.heading} bullet ${i + 1} of rules.md has no entry — ${bullet}`);
         continue;
       }
-      const tag = `${e.id || want} \`${e.name}\``;
-      if (e.id !== want) out.push(`${tag}: id should be ${want} (file order of rules.md)`);
+      const tag = `\`${e.name}\``;
+      if (RULE_NAME.exec(e.name)?.[0] !== e.name) out.push(`${tag}: name must be kebab-case`);
+      if (seen.has(e.name)) out.push(`${tag}: name used by another rule; names are rule IDs`);
+      seen.add(e.name);
       if (bullet === undefined) {
         out.push(`${tag}: no rules.md bullet at position ${i + 1}`);
         continue;
