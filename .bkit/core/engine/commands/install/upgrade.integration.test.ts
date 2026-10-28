@@ -1567,7 +1567,9 @@ describe("upgrade-render", () => {
       const promptsPath = path.join(tmpDir, ".bkit", "prompts.md");
       const dead = `bkit-retired-${"agent"}`;
       const prompts = fs.readFileSync(promptsPath, "utf-8");
-      const end = prompts.indexOf("<!-- bkit:end -->");
+      // Line-anchored, as the engine reads it: the managed block quotes the marker inside a
+      // table cell, and indexOf would land there and insert into a preset table instead.
+      const end = prompts.search(/^<!-- bkit:end -->$/m);
       const sep = prompts.indexOf("| --- | --- | --- |\n", end);
       expect(sep, "installed prompts.md carries an empty Model Overrides table").toBeGreaterThan(
         end,

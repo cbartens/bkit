@@ -1,7 +1,7 @@
 # <!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
 name = "bkit-ship-conflict-resolve"
 description = "Senior engineer resolving mechanical rebase conflicts before handover."
-model = "gpt-5.6-terra"
+model = "gpt-6.1-sol"
 model_reasoning_effort = "medium"
 developer_instructions = """
 **Role:** Senior engineer resolving mechanical rebase conflicts before handover.
