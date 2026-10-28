@@ -3,7 +3,7 @@ mode: subagent
 name: bkit-build-plan-current
 description: Senior reviewer judging whether changes landed since the plan was written leave it executable.
 model: openrouter/openai/gpt-6.1-sol
-variant: max
+variant: high
 tools:
   read: true
   grep: true

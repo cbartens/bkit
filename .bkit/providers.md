@@ -28,7 +28,12 @@
 
 **Two axes — host != provider.** **Host** = program reading what bkit writes, identified by its dir (`.claude/`, `.cursor/`, `.opencode/`, `.codex/`). **Provider** = gateway tokens are bought through. Model IDs are per-provider → `prompts.md` § Models = one column per PROVIDER (shared provider = one column, never two). Thinking depth is per-host (field name + ladder set by host config format: `effort:` claude/cursor, a `variant:` field opencode, `model_reasoning_effort` codex) → § Effort = one column per HOST. Neither table grows as hosts x providers.
 
-**One provider per host = POLICY, not capability.** Nothing technical forces it — Cursor reaches Claude models, so does anything behind OpenRouter. Pin follows cost: each host runs on the gateway whose subscription is already paid. Subscription spent → switch **host**, not provider (the cheap gateway hangs off a different host).
+**Spend order: subscriptions first, metered overflow second.**
+
+1. **Subscriptions** — Claude Code, Codex, Antigravity, Cursor are paid up front → spend their included usage first; each agent gets the vendor model that buys the most work per included token (§ Selecting pins, First-party plan).
+2. **Overflow** — a subscription's weekly usage runs out → switch to opencode on a metered gateway (default `openrouter`) until it resets. Claude is the yardstick there: cheapest model closest to the agent's Claude bar, inside a weekly cap (§ Budget band).
+
+**One provider per host = POLICY, not capability.** Nothing technical forces it — Cursor reaches Claude models, so does anything behind OpenRouter. Pin follows cost: each host runs on the gateway whose subscription is already paid. Subscription spent → switch **host**, not provider (the overflow gateway hangs off opencode).
 
 <!-- prettier-ignore -->
 | Host | Provider | Why |
@@ -37,7 +42,7 @@
 | Cursor | `cursor` | Cursor subscription covers its whole catalog |
 | Codex CLI | `openai` | ChatGPT subscription |
 | Google Antigravity | `google` | Antigravity free tier / Google subscription — cheapest path to Gemini |
-| opencode | **pick one**: `openrouter`, `ollama`, `opencode-zen`, `opencode-go` | no subscription — BYO key, so the choice is yours |
+| opencode | **pick one**: `openrouter`, `ollama`, `opencode-zen`, `opencode-go` | overflow host — metered BYO key, runs when subscription usage is spent |
 
 Subscription-bearing host → pinned, nullary flag (`--claude`, `--codex`). BYO-key host → pluggable, flag names the provider (`--opencode=<provider>`). Per-model deviation → consumer `## Model Overrides` below `bkit:end`; no provider override.
 
@@ -535,12 +540,12 @@ Re-pin **one provider column at a time**. Cells: `prompts.md` § Models. Board b
 
 **Priority — do not invert.**
 
-0. **Budget band** — hard ceiling on what an opencode column may bill over a subscription gap: **cache-read price per Mtok** (ceiling pending, § Budget band). A model outside the band is disqualified at any score.
+0. **Budget band** — hard ceiling on what an opencode column may bill over a 2-day subscription gap: **A$70/week** default, **A$140/week** opt-in (§ Budget band). A pin that pushes its column past the cap is disqualified at any score.
 1. **Claude parity** — LiveBench Long Agentic (pin score) + AA Intelligence Index. Inside the band, closest to the bar wins; a column whose best in-band model misses the bar records the gap.
 2. **Cost** — inside the band, cheapest that reaches the bar; ties fall through to price. AA $/task + LiveBench $/task, rescaled to the billed provider.
 3. **Speed** — remaining ties: AA tok/s, TTFT, think→answer, E2E 500-token.
 
-Filters (not above score): endpoint count; automatic prompt caching (bkit sends no `cache_control`); **no Anthropic and no OpenAI model on an opencode column** (§ Vendor rule). Convergent = distinct CoT family, not a fourth rung.
+Filters (not above score): endpoint count; automatic prompt caching (bkit sends no `cache_control`). **Any vendor may pin on an opencode column** — the budget band, not a vendor list, is what keeps the costliest models off.
 
 **Steps.**
 
@@ -576,9 +581,9 @@ Filters (not above score): endpoint count; automatic prompt caching (bkit sends 
 | Class | Columns | What the pin answers |
 | --- | --- | --- |
 | First-party plan | `Anthropic` (Claude Code), `OpenAI` (Codex), `Google` (Antigravity) | The best model for each subagent **from that vendor's own ladder**, spending the plan's included usage where it buys the most. A Codex pin is the best OpenAI model for the job, never an imitation of Claude; no cross-vendor parity target. |
-| Metered gateway | `Ollama`, `OpenCode Zen`, `OpenCode Go` | The same question against that gateway's own catalog — the best model for the job the plan serves. |
-| Overflow default | `OpenRouter` Option 1 | OpenRouter exists for the days the OpenAI, Anthropic and Google credits are spent, so its default uses **none of those three vendors**: the best model for each job from everything else, at the lowest cost that holds the quality. |
-| Overflow opt-in | `OpenRouter` Option 2 | Doubles the weekly cap to A$140 and spends it on the big three where they add the most — nine judges on `gpt-6.1-sol`. |
+| Metered gateway | `Ollama`, `OpenCode Zen`, `OpenCode Go` | **Claude is the yardstick:** the cheapest model in that gateway's catalog closest to the agent's Claude tier bar, inside the budget band. Any vendor qualifies. |
+| Overflow default | `OpenRouter` Option 1 | OpenRouter runs on the days the OpenAI, Anthropic and Google credits are spent. Same yardstick; the default spends the A$70 cap on `gpt-6.1-sol` for the four key gates and runs every other agent on `deepseek-v4.1-flash-1017`. |
+| Overflow opt-in | `OpenRouter` Option 2 | Doubles the weekly cap to A$140 — nine judges on `gpt-6.1-sol`. |
 
 **The question is per subagent, not per column.** Every pin answers "what is the best model for _this_ agent's job", judged on the board's Long Agentic score with the agent's role in mind: judges, reviewers, verifiers and escalators need the strongest model the class allows (see the reviewer rule below), while mechanical writers and summarisers should not pay flagship prices. Matching cells across columns are a catalog coincidence, never an objective.
 
@@ -590,7 +595,7 @@ Filters (not above score): endpoint count; automatic prompt caching (bkit sends 
 
 **Measured again on opencode itself** (`bkit harvest scan`, 2026-10-25 → 10-28, 166 chats on `deepseek-v4.1-flash`): a heavy day carries **27.8M fresh input, 1.04B cache read and 2.08M output**, and the fresh input is what the Claude profile misses — Claude Code caches almost all of it away, opencode does not. Per heavy day at list prices: **DeepSeek $8.6**, Gemini 4 Argon or GPT-6.1 Sol **$180.8**, Claude Opus 5.5 **$361.5**. Input price therefore matters on this profile: the Gemini/GPT tier spends $56 of its $181 on fresh input alone.
 
-**What the A$70 cap buys on that day** (A$0.703/USD, 2-day gap): about **three** Gemini-class agents out of 39, or thirteen on `mimo-v2.6-pro` for A$33. A$140 buys **nine** Gemini-class agents (A$137); thirteen of them land at A$187 and breach it.
+**What the A$70 cap buys on that day** (A$0.703/USD, 2-day gap, day cost split evenly over 39 agents): `gpt-6.1-sol` costs about **A$13.16** per agent per gap, `deepseek-v4.1-flash-1017` **A$0.62**. All 39 on DeepSeek: A$24. Four on sol, the rest DeepSeek: **A$74**, A$4 over, accepted. A$140 buys **nine** on sol (A$137); all twelve judges land at A$175 and breach it.
 
 <!-- prettier-ignore -->
 | Cache-read ceiling (per Mtok) | Normal day | 2-day gap | Models that survive |
@@ -598,12 +603,12 @@ Filters (not above score): endpoint count; automatic prompt caching (bkit sends 
 | ≤ `$0.005` | ~$8 | ~$30 | `deepseek-v4.1-flash-1017` ($0.003) |
 | ≤ `$0.015` | ~$17 | ~$60 | + `minimax-m3.1-flash` ($0.015) |
 | ≤ `$0.04` | ~$47 | ~$150 | + `glm-5.3-flash` ($0.03) |
-| ≤ `$0.10` | ~$105 | ~$240 | + `gemini-4-argon` ($0.10) |
+| ≤ `$0.10` | ~$105 | ~$240 | + `gemini-4-argon` ($0.10), `gpt-6.1-sol` ($0.10) |
 | ≤ `$0.20` | ~$200 | ~$500 | + `kimi-k3.1-pro` ($0.20), `kimi-k3` ($0.19) |
 
-`grok-4.7` ($0.50 cache read) fails every row. **Ceiling not yet chosen** — pick the gap budget, then read the rack down from there: the ceiling is the only place the number lives.
+`grok-4.7` ($0.50 cache read) fails every row. **No single ceiling binds the column:** the cap is spent as a mix — the `$0.005` row on most agents, the `$0.10` row on as many judges as the remaining cap carries (§ LiveBench 2.0 board, Two presets).
 
-Cache-read prices on the current pins, every one inside the cheapest rows: `deepseek-v4.1-flash` $0.003, `mimo-v2.6-pro` $0.0036, `minimax-m3.1-flash` $0.015, `glm-5.3-flash` $0.03. `kimi-k3`'s $0.19 left the matrix with the Option 1 ship.
+Cache-read prices on the current pins: `deepseek-v4.1-flash` $0.003, `glm-5.3-flash` $0.03 (haiku), `gpt-6.1-sol` and `gemini-4-argon` $0.10 (key gates).
 
 ### LiveBench 2.0 board — 2026-10-25
 
@@ -639,27 +644,27 @@ Re-probed `https://livebench.ai/data/20261025/table.csv` + `cost.csv` (§ Select
 | `glm-5.3-flash` | **19.0** | 80.6 | 62.1 | $29.32 | 38 | or · zen · go · ollama |
 | `gemini-3.8-flash` | **16.5** | 82.2 | 59.2 | $126.70 | 7 | or · zen |
 
-**`gpt-*` rows are catalog facts, not candidates.** `gpt-6-astra`, `gpt-6.1-sol`, `gpt-6.1-terra`, `gpt-5.6-terra` and `gpt-6-luna` sit on the board because LiveBench measured them and the `OpenAI`/Codex column pins them; § Vendor rule bars all five from every opencode column.
+**`gpt-6.1-sol` is the only model over the sonnet bar the cap carries.** It pins the four key gates on `openrouter` and `opencode-zen`. `gpt-6-astra` (77.5) bills ~6x sol per task ($690.82) and stays on the `OpenAI`/Codex judges; the Claude rows bill more still.
 
 **One release is a weak signal.** `kimi-k3` read 42.8 on `20261014` and 26.4 on `20261025` for the same category, so a re-pin takes a second release as corroboration unless the gap exceeds the bar's margin. `$` is LiveBench's own direct-vendor basis; a gateway pin is billed at the gateway's price (Zen `deepseek-v4.1-flash` $0.30/$1.20, Go $0.15/$0.60, `gemini-4-argon` $2/$10 on both gateways).
 
 **Unmeasured on 2.0 — keep their v1 basis, do not re-derive:** `composer-2.5` and `cursor-grok-4.5-high` (Cursor), `gemini-3.8-pro` (Google/Antigravity).
 
-**Two presets, one budget.** Tables and the per-agent matrix live in `prompts.md` § Model Presets. _Judges_ = the 13 reviewers, verifiers, escalators and convergent lenses; _builders_ = the other 26. The overflow column is capped against a Max subscription, A$300/month ≈ A$70/week, using the 2-day gap as the binding case.
+**Two presets, one budget.** Tables and the per-agent matrix live in `prompts.md` § Model Presets. _Judges_ = the 12 reviewers, verifiers and escalators (`prompts.md` § Models, Judges note); _builders_ = the other 27. _Key gates_ = the 4 judges where a miss passes downstream unchecked. The overflow column is capped against a Max subscription, A$300/month ≈ A$70/week, using the 2-day gap as the binding case.
 
 <!-- prettier-ignore -->
 | Preset | Judges | Builders | 2-day gap | Cap |
 | --- | --- | --- | --- | --- |
-| **Option 1 — default** | `mimo-v2.6-pro` 35.2 | `deepseek-v4.1-flash-1017` 40.9 | **A$28** | A$70 |
-| **Option 2 — spend more** | `gpt-6.1-sol` 68.7 on nine judges | `deepseek-v4.1-flash-1017` 40.9 | **A$137** | A$140 |
+| **Option 1 — default** | `gpt-6.1-sol` 68.7 on the four key gates; `deepseek-v4.1-flash-1017` 40.9 on eight | `deepseek-v4.1-flash-1017` 40.9 | **A$74** | A$70 |
+| **Option 2 — spend more** | `gpt-6.1-sol` 68.7 on nine; `deepseek-v4.1-flash-1017` on three | `deepseek-v4.1-flash-1017` 40.9 | **A$137** | A$140 |
 
 **Option 3 is retired.** Two templates only: the default that fits the cap, and one that doubles it for work that matters more than the week.
 
-**The cap plus the vendor rule leaves no strong judge in Option 1.** Outside OpenAI, Anthropic and Google the best model is `muse-wonder` 52.6 — A$337 on thirteen judges, A$143 on the five lenses alone, both over A$70. Option 1 therefore buys family variance (`mimo-v2.6-pro`, 35.2 — below the workhorse) not capability; Option 2 is where `gpt-6.1-sol`'s 68.7 becomes affordable. Reviewers must still out-rank builders wherever the budget allows — that rule binds Option 2 and any consumer who raises the cap.
+**Option 1 puts its strong judges where a miss passes downstream unchecked.** The cap holds four `gpt-6.1-sol` agents, so they go to the key gates; the other eight judges run DeepSeek because the budget stops there. Reviewers must out-rank builders wherever the budget allows — that rule binds Option 2 and any consumer who raises the cap. Sol beats `gemini-4-argon` at the same token price: +7.5 Long Agentic, $116.78 per task against $249.15. Both totals are floors — `prompts.md` § Model Presets lists the unpriced costs (sol cache writes and long-prompt doubling, DeepSeek peak hours).
 
 **FX:** A$0.703/USD on 2026-10-27. The caps are weekly; a 2-day gap is the binding case at the measured profile.
 
-**Where the presets live:** `prompts.md` § Model Presets, in the managed region above `bkit:end` — the full 39-agent matrix with each option's model per agent, plus copy-paste blocks for Options 2 and 3. **Option 1 needs no block: it is the shipped default.** Presets live above `bkit:end` because a consumer's § Model Overrides below it is preserved by install and upgrade — text placed there would never reach an existing install. That consumer region stays deliberately thin: a usage line and the empty table.
+**Where the presets live:** `prompts.md` § Model Presets, in the managed region above `bkit:end` — the full 39-agent matrix with each option's model per agent, plus the copy-paste block for Option 2. **Option 1 needs no block: it is the shipped default.** Presets live above `bkit:end` because a consumer's § Model Overrides below it is preserved by install and upgrade — text placed there would never reach an existing install. That consumer region stays deliberately thin: a usage line and the empty table.
 
 ### Agentic-coding parity board
 
@@ -717,17 +722,17 @@ Source: [LiveBench](https://livebench.ai/#/?cats=Agentic+Coding), release **2026
 
 ### Per-tier lineup across providers
 
-Cells show pin · score · $/task. Deltas are against that column's target. Convergent (CoT lens for risk/diagnosis agents) rides the same board.
+Cells show pin · score · $/task. Deltas are against that column's target. Key gates (the 4 judges named in `prompts.md` § Models) ride the same board.
 
 <!-- prettier-ignore -->
-| Provider | opus — target 72.8 | sonnet — target 63.4 | haiku — target 40.0 | convergent | Notes |
+| Provider | opus — target 72.8 | sonnet — target 63.4 | haiku — target 40.0 | key gates | Notes |
 | --- | --- | --- | --- | --- | --- |
 | `claude` | `claude-opus-5-5` 72.8 — the bar | `claude-sonnet-5-5` 63.4 — the bar | `claude-haiku-5-5` 40.0 — the bar | (opus) | Pins are 5.5 ($4/$20 opus, $2/$10 sonnet, $0.10/$0.50 haiku, 1M context). Targets are the 5.5 scores on the 2.0 board: `claude-opus-5-5` **72.8**, `claude-sonnet-5-5` **63.4**, `claude-haiku-5-5` **40.0**. |
-| `openrouter` | `deepseek/deepseek-v4.1-flash-1017` 40.9 · $25.96 (−31.9) | same (−22.5) | `z-ai/glm-5.3-flash` 19.0 · $29.32 (−21.0) | `xiaomi/mimo-v2.6-pro` 35.2 · $21.86 | Aggregator; broad catalog to re-pin from. Opus+sonnet collapse on V4.1 Flash (the 40.9 workhorse sits 31.9 under the 72.8 opus bar). **Dated `1017` snapshot pinned** — the undated alias is frozen on the 2026-09-10 snapshot and does not float. Haiku = GLM-5.3 Flash — 21.0 under the bar and dearer per task than V4.1 Flash ($29.32 vs $25.96); no agent runs the haiku tier. Convergent = Mimo V2.6 Pro (Xiaomi family for variance). V4.1 Flash and GLM-5.3 Flash auto-cache. Never pin `anthropic/*` — column carries Claude-quota overflow. |
+| `openrouter` | `deepseek/deepseek-v4.1-flash-1017` 40.9 · $25.96 (−31.9) | same (−22.5) | `z-ai/glm-5.3-flash` 19.0 · $29.32 (−21.0) | `openai/gpt-6.1-sol` 68.7 · $116.78 (−4.1) | Aggregator; broad catalog to re-pin from. Opus+sonnet collapse on V4.1 Flash (the 40.9 workhorse sits 31.9 under the 72.8 opus bar). **Dated `1017` snapshot pinned** — the undated alias is frozen on the 2026-09-10 snapshot and does not float. Haiku = GLM-5.3 Flash — 21.0 under the bar and dearer per task than V4.1 Flash ($29.32 vs $25.96); no agent runs the haiku tier. Key gates = GPT-6.1 Sol, the only model over the sonnet bar the cap carries (§ Budget band). V4.1 Flash and GLM-5.3 Flash auto-cache. |
 | `cursor` | `cursor-grok-4.5-high` **n/m** | `composer-2.5` **n/m** | `composer-2.5` **n/m** | (opus) | Ceiling is grok-4.5 — no Cursor model reaches the opus target, which is the correct outcome, not a gap. `composer-2.5` is the one unresolved cell in the matrix: vendor-claimed ~ Opus 4.7 (v1 50.7, unmeasured on 2.0), never on LiveBench. Probe or override before relying on it for sonnet-tier work. Haiku stays `composer-2.5` too: the only first-party model measured over the v1 haiku bar is `cursor-grok-4.5-high` (v1 56.5, unmeasured on 2.0), at about 8x the cost. |
-| `ollama` (cloud) | `deepseek-v4.1-flash:1017` 40.9 · $25.96 (−31.9) | same (−22.5) | `deepseek-v4.1-flash:1017` 40.9 · $25.96 (+0.9) | `minimax-m3.1-flash` 28.8 · $19.50 | **Whole column needs a paid Ollama plan.** **No model variants** — the ollama provider builds catalog entries with none, so bkit omits `variant:` on this column (2.0 would reject it); agents run at opencode's default reasoning. Opus+sonnet+haiku collapse on V4.1 Flash (the 40.9 workhorse sits 31.9 under the 72.8 opus bar); convergent = MiniMax M3.1 Flash (MiniMax family for variance). The free `qwen3.5:397b` / `gpt-oss:20b` are unmeasured — free-tier users re-pin in `prompts.md` § Model Overrides and accept unverified quality. |
-| `opencode-zen` | `opencode/deepseek-v4.1-flash` **n/m** | same | `opencode/glm-5.3-flash` 19.0 · $29.32 (−21.0) | `opencode/glm-5.3-flash` 19.0 · $29.32 | Opus+sonnet skip `kimi-k2.7-code` (unmeasured on 2.0): OpenCode 2.0 hard-errors on a `variant:` the model does not expose, and `kimi-k2.7-code` exposes none. The undated V4.1 Flash slug is the 2026-09-10 snapshot (models.dev `release_date`), not the `1017` refresh the 40.9 board row measures. It carries variants (`low/high/max`); **Zen bills it at $0.30/$1.20**. Haiku = GLM-5.3 Flash. Convergent = GLM-5.3 Flash (Z.AI family — Zen serves no Mimo or MiniMax 3.1). Existence-validated via models.dev. |
-| `opencode-go` | `opencode-go/deepseek-v4.1-flash` **n/m** | same | `opencode-go/deepseek-v4.1-flash` **n/m** | `opencode-go/mimo-v2.6-pro` 35.2 · $21.86 | Budget open-weight plan. V4.1 Flash is the undated 2026-09-10 snapshot, as on Zen. Convergent = Mimo V2.6 Pro (Xiaomi family, same as the `openrouter` default). `minimax-m3`/`qwen3.7-plus` not pinned (see the board). Prefer pins inside the Go 5h window. DeepSeek models need the workspace privacy setting on "Global regions". |
+| `ollama` (cloud) | `deepseek-v4.1-flash:1017` 40.9 · $25.96 (−31.9) | same (−22.5) | `deepseek-v4.1-flash:1017` 40.9 · $25.96 (+0.9) | `deepseek-v4.1-flash:1017` 40.9 · $25.96 (−31.9) | **Whole column needs a paid Ollama plan.** **No model variants** — the ollama provider builds catalog entries with none, so bkit omits `variant:` on this column (2.0 would reject it); agents run at opencode's default reasoning. Every tier and the key gates collapse on V4.1 Flash (the 40.9 workhorse sits 31.9 under the 72.8 opus bar) — nothing stronger in the catalog. The free `qwen3.5:397b` / `gpt-oss:20b` are unmeasured — free-tier users re-pin in `prompts.md` § Model Overrides and accept unverified quality. |
+| `opencode-zen` | `opencode/deepseek-v4.1-flash` **n/m** | same | `opencode/glm-5.3-flash` 19.0 · $29.32 (−21.0) | `opencode/gpt-6.1-sol` 68.7 · $116.78 (−4.1) | Opus+sonnet skip `kimi-k2.7-code` (unmeasured on 2.0): OpenCode 2.0 hard-errors on a `variant:` the model does not expose, and `kimi-k2.7-code` exposes none. The undated V4.1 Flash slug is the 2026-09-10 snapshot (models.dev `release_date`), not the `1017` refresh the 40.9 board row measures. It carries variants (`low/high/max`); **Zen bills it at $0.30/$1.20**. Haiku = GLM-5.3 Flash. Key gates = GPT-6.1 Sol. Existence-validated via models.dev. |
+| `opencode-go` | `opencode-go/deepseek-v4.1-flash` **n/m** | same | `opencode-go/deepseek-v4.1-flash` **n/m** | `opencode-go/gemini-4-argon` 61.2 · $249.15 (−11.6) | Budget open-weight plan. V4.1 Flash is the undated 2026-09-10 snapshot, as on Zen. Key gates = Gemini 4 Argon — Go serves no GPT-6.1 Sol; Argon is its strongest model under the cap. `minimax-m3`/`qwen3.7-plus` not pinned (see the board). Prefer pins inside the Go 5h window. DeepSeek models need the workspace privacy setting on "Global regions". |
 
 **n/m** = not measured on LiveBench (see the unmeasured list above) — the cell is a catalog/constraint choice, not a scored one.
 
@@ -740,7 +745,7 @@ Cloud OpenAI-compatible cells tool-call-smoked (`tools:` round-trip `tool_calls`
 ```
 | Prompt | Provider | Model |
 | --- | --- | --- |
-| bkit-build-plan-verify | openrouter | openrouter/deepseek/deepseek-v4-pro |
+| bkit-plan-review-2 | openrouter | openai/gpt-6.1-sol |
 ```
 
 `Provider` = host/install key (`cursor`, `openrouter`, `ollama`, …). Install merges overrides over defaults (override wins). Claude reads frontmatter; not overridable via table yet.

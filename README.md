@@ -104,7 +104,7 @@ Every agent in each phase, in the order it runs and what it checks: [pipeline re
 
 ## Which model does each job
 
-**Claude sets the bar, and every other tool gets the model that comes closest to it.** On every other tool, each agent runs on the model that does the same job about as well as Claude, for the least money. You don't pick: install sets each agent's model.
+**Spend the subscriptions you already pay for first; when their weekly usage runs out, opencode on OpenRouter carries the work.** Inside a subscription — Claude Code, Codex, Antigravity, Cursor — each agent gets the model from that vendor that gets the most work out of the usage you have paid for. On opencode, which bills per token, Claude sets the bar: each agent gets the cheapest model that comes closest to it, under a weekly cap. You don't pick: install sets each agent's model.
 
 <p align="center">
   <picture>
@@ -113,24 +113,25 @@ Every agent in each phase, in the order it runs and what it checks: [pipeline re
   </picture>
 </p>
 
-**How the picks are made.** Two different questions, one table. **Subscription tools** — Claude Code, Codex, Antigravity — are paid for up front, so each agent gets the best model that vendor sells for its job: depth where the reasoning is, cheaper rungs where the work is volume, spending the included usage where it buys most. They are never imitations of another vendor. **opencode gateways** — OpenRouter, Ollama, OpenCode Zen, OpenCode Go — are metered, so the same question runs against what each one serves. OpenRouter is the overflow for when the subscription's credits are spent: its default uses none of OpenAI, Anthropic or Google, puts the nine judges on a second family for a real second opinion, and keeps a two-day overrun under **A$70** — Option 2 in [Model Presets](.bkit/prompts.md#model-presets) doubles that to A$140 for work that matters more than the week. Every score is LiveBench 2.0 **Long Agentic**, release 2026-10-25, so rows stay comparable; v1's Agentic Coding category is retired and does not convert.
+**How the picks are made.** Two different questions, one table. **Subscription tools** — Claude Code, Codex, Antigravity — are paid for up front, so each agent gets the best model that vendor sells for its job: depth where the reasoning is, cheaper rungs where the work is volume, spending the included usage where it buys most. They are never imitations of another vendor. **opencode gateways** — OpenRouter, Ollama, OpenCode Zen, OpenCode Go — are metered, so Claude is the yardstick there: each agent gets the cheapest model that comes closest to the Claude model it would run on, within budget. OpenRouter is the overflow for when the subscription's credits are spent: its default runs almost everything on DeepSeek, puts `gpt-6.1-sol` on the four checks where a miss would ship unnoticed, and keeps a two-day overrun at about **A$74** against an A$70 weekly cap — Option 2 in [Model Presets](.bkit/prompts.md#model-presets) doubles that to A$140 for work that matters more than the week. Every score is LiveBench 2.0 **Long Agentic**, release 2026-10-25, so rows stay comparable; v1's Agentic Coding category is retired and does not convert.
 
 <!-- prettier-ignore -->
 | Tool | Hardest jobs: design, plans, reviews, security, audits | Everyday jobs: writing code and docs, the second model in each review pair |
 | --- | --- | --- |
 | Claude Code | `claude-opus-5-5` · bar **72.8** | `claude-sonnet-5-5` · bar **63.4** |
 | Cursor | `cursor-grok-4.5-high` · not measured | `composer-2.5` · not measured |
-| opencode + OpenRouter | `deepseek/deepseek-v4.1-flash-1017` · 40.9; `xiaomi/mimo-v2.6-pro` · 35.2 for risk, security and root-cause agents | `deepseek/deepseek-v4.1-flash-1017` · 40.9 |
-| opencode + Ollama | `deepseek-v4.1-flash:1017` · 40.9; `minimax-m3.1-flash` · 28.8 for risk, security and root-cause agents | `deepseek-v4.1-flash:1017` · 40.9 |
-| opencode + OpenCode Zen | `deepseek-v4.1-flash` · not measured; `glm-5.3-flash` · 19.0 for risk, security and root-cause agents | `deepseek-v4.1-flash` · not measured |
-| opencode + OpenCode Go | `deepseek-v4.1-flash` · not measured; `mimo-v2.6-pro` · 35.2 for risk, security and root-cause agents | `deepseek-v4.1-flash` · not measured |
+| opencode + OpenRouter | `deepseek/deepseek-v4.1-flash-1017` · 40.9; `openai/gpt-6.1-sol` · 68.7 for the four key gates | `deepseek/deepseek-v4.1-flash-1017` · 40.9 |
+| opencode + Ollama | `deepseek-v4.1-flash:1017` · 40.9 | `deepseek-v4.1-flash:1017` · 40.9 |
+| opencode + OpenCode Zen | `deepseek-v4.1-flash` · not measured; `gpt-6.1-sol` · 68.7 for the four key gates | `deepseek-v4.1-flash` · not measured |
+| opencode + OpenCode Go | `deepseek-v4.1-flash` · not measured; `gemini-4-argon` · 61.2 for the four key gates | `deepseek-v4.1-flash` · not measured |
 | Codex | `gpt-6-astra` · 77.5; `gpt-6.1-sol` · 68.7 for the builders | `gpt-6.1-sol` · 68.7 |
 | Google Antigravity | `gemini-4-argon` · 61.2 | `gemini-4-argon` · 61.2 |
 
 **Reading the table:**
 
-- **Scores are the same board for every column.** `claude-opus-5.5` scores **72.8** and `claude-sonnet-5.5` **63.4** on Long Agentic — reference points, not targets another vendor has to hit. A gateway model is chosen for its job and its budget, not for how close it lands to Claude.
-- **Risk, security and root-cause agents get a second model** that reasons differently from the main one, so they don't share its blind spots. On opencode that second model is picked per provider — `mimo-v2.6-pro` on OpenRouter and Go, `minimax-m3.1-flash` on Ollama, `glm-5.3-flash` on Zen — always a different family from the DeepSeek workhorse.
+- **Scores are the same board for every column.** `claude-opus-5.5` scores **72.8** and `claude-sonnet-5.5` **63.4** on Long Agentic — the bars every opencode pick is measured against. A subscription tool's pick is never an imitation of Claude; on a metered gateway, the pick is the cheapest model that gets closest to the bar.
+- **Four key gates get the strongest model the budget carries.** These are the checks where a miss reaches the merge unnoticed: `bkit-build-plan-verify` (decides a build is done), `bkit-ship-deferred-sweep` (last check before merge), `bkit-debug-failure-diagnose` (picks the root cause the fix chases) and `bkit-build-challenge-2` (the security review). On opencode that is `gpt-6.1-sol` on OpenRouter and Zen, `gemini-4-argon` on Go, which has no Sol, and DeepSeek on Ollama, which has nothing stronger.
+- **DeepSeek thinks at its maximum on every opencode agent**, because it sits under the Claude bar. `gpt-6.1-sol` already sits near the bar, so it keeps the agent's own Claude effort: effort only goes as high as it takes to get close to Claude, never past it.
 - **Cursor is a separate pool.** Its first-party models (`cursor-grok-4.5-high`, `composer-2.5`) are unmeasured on LiveBench 2.0 — the catalogue offers no Grok 4.6/4.7 and no Opus 5.5 / Sonnet 5.5, re-probed 2026-10-28. Claude and GPT models in Cursor spend paid API credits, so they're opt-in through [Model Overrides](.bkit/prompts.md#model-overrides).
 - **"Not measured" means LiveBench 2.0 hasn't scored that model.** Those Cursor picks follow each vendor's own description of the model. Check them before you rely on them.
 - **Ollama needs a paid plan for every column.** The free models are not scored.

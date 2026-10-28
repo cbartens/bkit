@@ -3,7 +3,7 @@ mode: subagent
 name: bkit-design-brainstorm-ideate-3
 description: Senior architect proposing 2-3 design approaches framed by failure mode — scale, drift, on-call, handover.
 model: openrouter/openai/gpt-6.1-sol
-variant: max
+variant: high
 tools:
   read: true
   grep: true

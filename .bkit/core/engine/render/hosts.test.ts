@@ -958,6 +958,31 @@ describe("applyOpencodeAgent — the clamp follows the gateway", () => {
       "variant: none\n",
     );
   });
+
+  const agentAt = (effort: string) =>
+    `---\nname: judge\ndescription: desc\neffort: ${effort}\nmodel: claude-opus-5-5\n---\nBody.\n`;
+
+  it("keeps the agent's own effort on a model at or above the sonnet bar", () => {
+    for (const [provider, model] of [
+      ["openrouter", "openai/gpt-6.1-sol"],
+      ["opencode-zen", "gpt-6.1-sol"],
+    ]) {
+      const lookup = new Map([["judge", model]]);
+      expect(applyOpencodeAgent(agentAt("high"), lookup, effortMap, provider)).toContain(
+        "variant: high\n",
+      );
+      expect(applyOpencodeAgent(agentAt("medium"), lookup, effortMap, provider)).toContain(
+        "variant: medium\n",
+      );
+    }
+  });
+
+  it("raises a model under the sonnet bar to its top rung", () => {
+    const lookup = new Map([["judge", "deepseek/deepseek-v4.1-flash-1017"]]);
+    expect(applyOpencodeAgent(agentAt("medium"), lookup, effortMap, "openrouter")).toContain(
+      "variant: max\n",
+    );
+  });
 });
 
 describe("applyAntigravityPrompt — effort beyond the model's ceiling", () => {

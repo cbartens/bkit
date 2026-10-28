@@ -130,6 +130,25 @@ const OPENCODE_VARIANT_LEVELS: Record<
 const VARIANT_RANK = ["none", "low", "medium", "high", "xhigh", "max"];
 
 /**
+ * Models at or above the sonnet bar on the LiveBench 2.0 board (`providers.md` § LiveBench 2.0
+ * board). They keep the agent's own Claude effort on opencode; every other model takes the
+ * "OpenCode" ladder, which raises it to the top rung to close the gap to the bar.
+ */
+const OPENCODE_AT_BAR_MODELS = [
+  "claude-fable-5.1",
+  "gpt-6-astra",
+  "claude-opus-5.5",
+  "gpt-6.1-sol",
+  "claude-sonnet-5.5",
+];
+
+/** The effort ladder for `model` on opencode: the agent's own for an at-bar model, else "opencode". */
+function opencodeEffortProgram(model: string): string {
+  const slug = model.split("/").pop() ?? model;
+  return OPENCODE_AT_BAR_MODELS.includes(slug) ? "claude" : "opencode";
+}
+
+/**
  * The variant to emit for `model` on gateway `provider` at mapped `variant`: the value itself
  * when the model exposes it there, else the highest level it does expose at or under it, else
  * its lowest. A model with no effort control gets null, so no `variant:` line is written.
@@ -161,8 +180,9 @@ export function clampOpencodeVariant(
 /**
  * OC1: opencode agent frontmatter rewrite.
  * Emits: mode, name, description, model, tools (Claude array → opencode object map),
- * variant (the effort table's value for this agent from the one shared "OpenCode" ladder,
- * clamped by clampOpencodeVariant to what the pinned model exposes on this gateway). The
+ * variant (the effort table's value for this agent from the one shared "OpenCode" ladder, or
+ * the agent's own Claude effort on an at-bar model, clamped by clampOpencodeVariant to what
+ * the pinned model exposes on this gateway). The
  * variant is a SEPARATE field, not a `#`-suffix on the model: 1.x reads `variant:` natively,
  * 2.0 joins `model` + `variant` internally, and a variant joined to the model string with `#`
  * breaks 1.x (its model id lookup keeps the suffix). The ollama gateway is exempt from
@@ -196,8 +216,9 @@ export function applyOpencodeAgent(
     newFm += `description: ${description}\n`;
   }
   // Thinking effort is a model variant in its own `variant:` field. Every opencode gateway
-  // shares the one "OpenCode" ladder; the gateway decides only which rungs the pinned model
-  // exposes, and ollama carries no variant at all (see the function docstring).
+  // shares the one "OpenCode" ladder, except that an at-bar model keeps the agent's own
+  // effort; the gateway decides only which rungs the pinned model exposes, and ollama
+  // carries no variant at all (see the function docstring).
   const modelPin = formatModelPin("opencode", provider ?? "", opencodeModel);
   newFm += `model: ${modelPin}\n`;
   const variant =
@@ -205,7 +226,7 @@ export function applyOpencodeAgent(
       ? clampOpencodeVariant(
           provider ?? "",
           opencodeModel,
-          lookupEffort(effortMap, "opencode", effort),
+          lookupEffort(effortMap, opencodeEffortProgram(opencodeModel), effort),
         )
       : null;
   if (variant) newFm += `variant: ${variant}\n`;
