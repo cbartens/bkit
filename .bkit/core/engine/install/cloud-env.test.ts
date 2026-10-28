@@ -790,6 +790,61 @@ describe("renderCodexNetworkAllowlist", () => {
   });
 });
 
+/** The pasted list's line count and the numbers its count note gives. */
+function readCountNote(out: string): {
+  listed: number;
+  total: number;
+  shipped: number;
+  added: number;
+} {
+  const fence = /```text\n([\s\S]*?)\n```/.exec(out);
+  const note =
+    /(\d+) (?:host\(s\)|domains)[^:]*: (\d+) from bkit's shipped egress registry and (\d+) more from/.exec(
+      out,
+    );
+  return {
+    listed: fence === null ? 0 : fence[1].split("\n").length,
+    total: Number(note?.[1]),
+    shipped: Number(note?.[2]),
+    added: Number(note?.[3]),
+  };
+}
+
+describe("network allowlist count note", () => {
+  it.each([
+    ["claude", renderCloudNetworkAllowlist, BKIT_SHIPPED_NETWORK_DOMAINS[0], 2],
+    ["cursor", renderCursorNetworkAllowlist, BKIT_SHIPPED_NETWORK_HOSTS[0], 1],
+    ["codex", renderCodexNetworkAllowlist, BKIT_SHIPPED_NETWORK_HOSTS[0], 1],
+  ] as const)(
+    "%s: a declared entry bkit already ships is counted once, and the numbers add up",
+    (_host, render, alreadyShipped, linesPerEntry) => {
+      write(
+        ".agents/context.md",
+        "<!-- bkit:end -->\n<!-- allowed-domains:start -->\n" +
+          `${alreadyShipped}\nnew-app.example\n<!-- allowed-domains:end -->\n`,
+      );
+      const out = render(tmpDir);
+      const { listed, total, shipped, added } = readCountNote(out);
+      expect(added).toBe(1);
+      expect(total).toBe(shipped + added);
+      expect(listed).toBe(total * linesPerEntry);
+      expect(out).toContain("(1 of its 2 entries already shipped)");
+    },
+  );
+
+  it.each([
+    ["claude", renderCloudNetworkAllowlist],
+    ["cursor", renderCursorNetworkAllowlist],
+    ["codex", renderCodexNetworkAllowlist],
+  ] as const)("%s: no overlap note when every declared entry is new", (_host, render) => {
+    write(
+      ".agents/context.md",
+      "<!-- bkit:end -->\n<!-- allowed-domains:start -->\nnew-app.example\n<!-- allowed-domains:end -->\n",
+    );
+    expect(render(tmpDir)).not.toContain("already shipped");
+  });
+});
+
 describe("codex template generation sentinels", () => {
   const pkgRoot = path.resolve(
     path.dirname(new URL(import.meta.url).pathname),

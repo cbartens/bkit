@@ -527,6 +527,21 @@ export function egressFingerprint() {
     return sha256(derived.join("\n")).slice(0, 8);
 }
 /**
+ * The "where these came from" clause of a network list's count note. A declared entry
+ * bkit already ships adds nothing to the list, so it counts once, as shipped, and the
+ * clause names how many declared entries that was. `declared` and `shipped` are in the
+ * list's own unit: apex bases for the Claude list, exact hosts for Cursor and Codex.
+ */
+function networkSourceCounts(declared, shipped) {
+    const shippedSet = new Set(shipped);
+    const declaredSet = new Set(declared);
+    const added = [...declaredSet].filter((d) => !shippedSet.has(d)).length;
+    const overlap = declaredSet.size - added;
+    return (`${shippedSet.size} from bkit's shipped egress registry and ${added} more from ` +
+        "`allowed-domains` in `.agents/context.md`" +
+        (overlap > 0 ? ` (${overlap} of its ${declaredSet.size} entries already shipped)` : ""));
+}
+/**
  * Render the `@@CLOUD_NETWORK_ALLOWLIST@@` region — the whole `## Network access`
  * body. Always emits a **Custom** paste block: the list is the derived shipped bases
  * union whatever the consumer declared, so it is never empty and there is no
@@ -536,7 +551,6 @@ export function egressFingerprint() {
 export function renderCloudNetworkAllowlist(cwd) {
     const declared = extractAllowedDomains(cwd);
     const domains = resolveNetworkAllowlist(cwd);
-    const derivedCount = BKIT_SHIPPED_NETWORK_DOMAINS.length;
     const declaredNote = declared.length === 0
         ? "\n\n_No `allowed-domains` block is declared in `.agents/context.md`. The list above is\n" +
             "bkit's own shipped hosts. If you run cloud `/bkit-debug` or e2e against a deployment,\n" +
@@ -549,9 +563,9 @@ export function renderCloudNetworkAllowlist(cwd) {
         "```text\n" +
         domains.join("\n") +
         "\n```\n\n" +
-        `_${domains.length} entries — ${derivedCount} derived from bkit's shipped egress registry ` +
-        `and ${declared.length} declared in \`allowed-domains\` in \`.agents/context.md\`, ` +
-        "each as apex + `*.` wildcard. Derived set fingerprint `" +
+        `_${domains.length} entries (${domains.length / 2} domains, each as apex + \`*.\` wildcard): ` +
+        networkSourceCounts(networkAllowlistBases(declared), BKIT_SHIPPED_NETWORK_DOMAINS) +
+        ". Derived set fingerprint `" +
         egressFingerprint() +
         "`._" +
         declaredNote +
@@ -763,9 +777,9 @@ export function renderCursorNetworkAllowlist(cwd) {
         "```text\n" +
         entries.join("\n") +
         "\n```\n\n" +
-        `_${entries.length} host(s) — ${BKIT_SHIPPED_NETWORK_HOSTS.length} derived from bkit's shipped ` +
-        `egress registry and ${declared.length} declared in \`allowed-domains\` in ` +
-        "`.agents/context.md`. Derived set fingerprint `" +
+        `_${entries.length} host(s): ` +
+        networkSourceCounts(declared, BKIT_SHIPPED_NETWORK_HOSTS) +
+        ". Derived set fingerprint `" +
         egressFingerprint() +
         "`._ Add only the\n" +
         "specific subdomains you need (e.g. `api.example.com`) — Cursor warns that a broad `*.`\n" +
@@ -822,9 +836,9 @@ export function renderCodexNetworkAllowlist(cwd) {
         "```text\n" +
         entries.join("\n") +
         "\n```\n\n" +
-        `_${entries.length} host(s) — ${BKIT_SHIPPED_NETWORK_HOSTS.length} derived from bkit's shipped ` +
-        `egress registry and ${declared.length} declared in \`allowed-domains\` in ` +
-        "`.agents/context.md`. Derived set fingerprint `" +
+        `_${entries.length} host(s): ` +
+        networkSourceCounts(declared, BKIT_SHIPPED_NETWORK_HOSTS) +
+        ". Derived set fingerprint `" +
         egressFingerprint() +
         "`._ Exact hosts only — add the specific subdomains you need (e.g. `api.example.com`).\n" +
         "**Enable all public internet access** works too but opens all egress.");
