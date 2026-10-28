@@ -984,7 +984,7 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
 
 <!-- bkit:task 23 start -->
 
-- [ ] **TASK 23:** `scan-diff --disabled-tests` tallies re-added assertion lines across the whole diff, not per file, so deleting `expect(2).toBe(2);` from `src/a.test.ts` and adding the identical trimmed line in any other file (verified with `src/notes.md`) exits 0 with `disabled: []` — the ship gate passes with a dropped assertion, against task 13's own `DONE WHEN` ("a net drop in the file" still reported)
+- [x] **TASK 23:** `scan-diff --disabled-tests` tallies re-added assertion lines across the whole diff, not per file, so deleting `expect(2).toBe(2);` from `src/a.test.ts` and adding the identical trimmed line in any other file (verified with `src/notes.md`) exits 0 with `disabled: []` — the ship gate passes with a dropped assertion, against task 13's own `DONE WHEN` ("a net drop in the file" still reported)
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/branches.ts:1185` · **Round:** 2
   - **DONE WHEN:** the `readded` tally is scoped so a line added in a different file (test or not) never cancels a removal in the test file — per-file keying, or counting re-adds from test files only; the cross-file fixture exits 1 naming the dropped assertion, and `scan-diff ignores an assertion moved within the file` plus `scan-diff still reports a removed assertion` stay green
   - **TEST FIRST:**
