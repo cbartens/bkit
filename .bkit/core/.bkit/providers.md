@@ -639,17 +639,18 @@ Re-probed `https://livebench.ai/data/20261025/table.csv` + `cost.csv` (§ Select
 
 **Unmeasured on 2.0 — keep their v1 basis, do not re-derive:** `composer-2.5` and `cursor-grok-4.5-high` (Cursor), `gemini-3.8-pro` (Google/Antigravity).
 
-**Three presets, priced.** Tables and the per-agent matrix live in `prompts.md` § Model Presets. _Judges_ = the 13 reviewers, verifiers, escalators and convergent lenses; _builders_ = the other 26.
+**Two presets, one budget.** Tables and the per-agent matrix live in `prompts.md` § Model Presets. _Judges_ = the 13 reviewers, verifiers, escalators and convergent lenses; _builders_ = the other 26. The overflow column is capped against a Max subscription, A$300/month ≈ A$70/week, using the 2-day gap as the binding case.
 
-| Preset                                             | Judges                 | Builders                        | 2-day gap (normal / push) |
-| -------------------------------------------------- | ---------------------- | ------------------------------- | ------------------------- |
-| **Option 1 — default, no OpenAI/Anthropic/Google** | `muse-wonder` 52.6     | `deepseek-v4.1-flash-1017` 40.9 | **$237 / $489**           |
-| **Option 2 — mix**                                 | `gpt-6.1-sol` 68.7     | `deepseek-v4.1-flash-1017` 40.9 | **$130 / $268**           |
-| **Option 3 — maximum, any vendor**                 | `claude-opus-5.5` 72.8 | `gpt-6.1-sol` 68.7              | **$480 / $991**           |
+| Preset                    | Judges                | Builders                        | 2-day gap | Cap   |
+| ------------------------- | --------------------- | ------------------------------- | --------- | ----- |
+| **Option 1 — default**    | `mimo-v2.6-pro` 35.2  | `deepseek-v4.1-flash-1017` 40.9 | **A$28**  | A$70  |
+| **Option 2 — spend more** | `gemini-4-argon` 61.2 | `deepseek-v4.1-flash-1017` 40.9 | **A$141** | A$140 |
 
-**Judges out-rank builders.** Any agent that judges, challenges, verifies or escalates runs the strongest model its column class allows, and always above the builder it checks — a judge on the executor's own model adds a second pass but no second opinion. The set: `design-review-1`/`-2`, `plan-review-1`/`-2`, `plan-scope-check`, `build-challenge-1`/`-2`, `build-plan-verify`, `build-plan-current`, `ship-deferred-sweep`, plus the five convergent lenses.
+**Option 3 is retired.** Two templates only: the default that fits the cap, and one that doubles it for work that matters more than the week.
 
-**Option 1's vendor rule is policy, not thrift.** The strongest model OpenRouter may serve without the big three is `muse-wonder` 52.6 at $20/Mtok of output — double `gpt-6.1-sol`'s $10 for 16 points less, while `claude-opus-5.5` matches muse's cache read with 20 more points. Option 1 therefore costs more than Option 2 at equal volume; it exists to keep the overflow column off vendors you already subscribe to. A judges-on-DeepSeek variant costs $17 per gap and drops the second opinion.
+**The cap plus the vendor rule leaves no strong judge in Option 1.** Outside OpenAI, Anthropic and Google the best model is `muse-wonder` 52.6 — A$337 on thirteen judges, A$143 on the five lenses alone, both over A$70. Option 1 therefore buys family variance (`mimo-v2.6-pro`, 35.2 — below the workhorse) not capability; Option 2 is where Gemini's 61.2 becomes affordable. Reviewers must still out-rank builders wherever the budget allows — that rule binds Option 2 and any consumer who raises the cap.
+
+**FX:** A$0.703/USD on 2026-10-27. The caps are weekly; a 2-day gap is the binding case at the measured profile.
 
 **Where the presets live:** `prompts.md` § Model Presets, in the managed region above `bkit:end` — the full 39-agent matrix with each option's model per agent, plus copy-paste blocks for Options 2 and 3. **Option 1 needs no block: it is the shipped default.** Presets live above `bkit:end` because a consumer's § Model Overrides below it is preserved by install and upgrade — text placed there would never reach an existing install. That consumer region stays deliberately thin: a usage line and the empty table.
 
