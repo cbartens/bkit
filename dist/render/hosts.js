@@ -102,6 +102,45 @@ export function antigravityToolsBlock(toolsBlock) {
  * readonly) and the original effort field. Hard-fails with non-zero exit if model
  * lookup missing for name.
  */
+/**
+ * Thinking-effort values each opencode-served model actually exposes (`reasoning_options` in
+ * models.dev, read 2026-10-28). The host ladder assumes `max` is always available; it is not —
+ * OpenCode hard-errors on a `variant:` the model does not expose, and `toggle`-only models carry
+ * no effort variant at all. Unlisted models pass the mapped value through unchanged.
+ */
+const OPENCODE_VARIANT_LEVELS = {
+    "deepseek-v4.1-flash": ["none", "low", "high", "max"],
+    "minimax-m3.1-flash": ["low", "medium", "high", "xhigh", "max"],
+    "glm-5.3-flash": ["low", "high", "max"],
+    "gemini-4-argon": ["low", "medium", "high"],
+    "mimo-v2.6-pro": [],
+    "kimi-k3": [],
+};
+const VARIANT_RANK = ["none", "low", "medium", "high", "xhigh", "max"];
+/**
+ * The variant to emit for `model` at mapped `variant`: the value itself when the model exposes
+ * it, else the highest level the model does expose at or under it, else its lowest. A model
+ * with no effort control (`toggle`-only) gets null, so no `variant:` line is written.
+ */
+export function clampOpencodeVariant(model, variant) {
+    if (!variant)
+        return null;
+    const slug = Object.keys(OPENCODE_VARIANT_LEVELS)
+        .sort((a, b) => b.length - a.length)
+        .find((key) => model.split("/").pop()?.includes(key) || model.includes(key));
+    if (!slug)
+        return variant;
+    const levels = OPENCODE_VARIANT_LEVELS[slug];
+    if (levels.length === 0)
+        return null;
+    if (levels.includes(variant))
+        return variant;
+    const wanted = VARIANT_RANK.indexOf(variant);
+    const atOrUnder = levels
+        .filter((l) => VARIANT_RANK.indexOf(l) <= wanted)
+        .sort((a, b) => VARIANT_RANK.indexOf(b) - VARIANT_RANK.indexOf(a));
+    return atOrUnder[0] ?? levels[0];
+}
 export function applyOpencodeAgent(content, opencodeModelLookup, effortMap, provider) {
     const subagent = requireSubagentModel(content, opencodeModelLookup, "opencode");
     if (!subagent)
@@ -127,7 +166,7 @@ export function applyOpencodeAgent(content, opencodeModelLookup, effortMap, prov
     const modelPin = formatModelPin("opencode", provider ?? "", opencodeModel);
     newFm += `model: ${modelPin}\n`;
     const variant = provider !== "ollama" && effort && effortMap
-        ? lookupEffort(effortMap, "opencode", effort)
+        ? clampOpencodeVariant(opencodeModel, lookupEffort(effortMap, "opencode", effort))
         : null;
     if (variant)
         newFm += `variant: ${variant}\n`;

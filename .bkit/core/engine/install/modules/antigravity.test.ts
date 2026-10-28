@@ -73,7 +73,7 @@ describe("renderAntigravityAgentsSkills", () => {
     expect(fs.existsSync(prompt)).toBe(true);
     const promptBody = fs.readFileSync(prompt, "utf-8");
     expect(promptBody).toContain("name: bkit-build-plan-execute");
-    expect(promptBody).toMatch(/^model: gemini-3\.8-/m);
+    expect(promptBody).toMatch(/^model: gemini-4-argon$/m);
     expect(promptBody).toContain("- view_file");
     expect(promptBody).toContain("bkit:managed v9.9.9");
 

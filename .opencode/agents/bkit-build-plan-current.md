@@ -3,7 +3,7 @@ mode: subagent
 name: bkit-build-plan-current
 description: Senior reviewer judging whether changes landed since the plan was written leave it executable.
 model: openrouter/google/gemini-4-argon
-variant: max
+variant: high
 tools:
   read: true
   grep: true

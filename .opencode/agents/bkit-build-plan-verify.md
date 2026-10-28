@@ -3,7 +3,7 @@ mode: subagent
 name: bkit-build-plan-verify
 description: Senior verifier checking that plan deliverables actually exist in the codebase.
 model: openrouter/google/gemini-4-argon
-variant: max
+variant: high
 tools:
   read: true
   grep: true

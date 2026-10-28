@@ -6,6 +6,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   applyCodexAgent,
+  clampOpencodeVariant,
   escapeTomlMultiline,
   applyT1,
   applyT2,
@@ -900,5 +901,23 @@ describe("autoCompactWindow — Claude-only per-agent compaction window", () => 
       fs.readFileSync(path.join(src, f), "utf-8").split("\n---\n")[0];
     const wrong = files.filter((f) => !/^autoCompactWindow: 300000$/m.test(frontmatter(f)));
     expect(wrong).toEqual([]);
+  });
+});
+
+describe("clampOpencodeVariant — the variant a model actually exposes", () => {
+  it("clamps max down to the model's top rung", () => {
+    expect(clampOpencodeVariant("google/gemini-4-argon", "max")).toBe("high");
+    expect(clampOpencodeVariant("z-ai/glm-5.3-flash", "max")).toBe("max");
+    expect(clampOpencodeVariant("xiaomi/mimo-v2.6-pro-ultraspeed", "max")).toBeNull();
+  });
+
+  it("keeps a supported value and passes unknown models through", () => {
+    expect(clampOpencodeVariant("deepseek/deepseek-v4.1-flash-1017", "max")).toBe("max");
+    expect(clampOpencodeVariant("vendor/unlisted-model", "max")).toBe("max");
+    expect(clampOpencodeVariant("x/anything", null)).toBeNull();
+  });
+
+  it("raises a rung the model cannot express to its lowest", () => {
+    expect(clampOpencodeVariant("minimax/minimax-m3.1-flash", "none")).toBe("low");
   });
 });

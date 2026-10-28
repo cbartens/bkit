@@ -59,6 +59,8 @@ Pinning `model:` locks agent model regardless of orchestrator session. Without p
 | `xhigh` | `xhigh` | `xhigh` | `max` | `xhigh` | `max` |
 | `max` | `max` | `max` | `max` | `xhigh` | `max` |
 
+**OpenCode `variant:` is per model, not per host.** The ladder above is what bkit _asks_ for; the renderer clamps it to what the pinned model exposes (`reasoning_options` in models.dev), because OpenCode 2.0 hard-errors on a variant the model does not carry. On the current pins: `deepseek-v4.1-flash` `none/low/high/max` takes `max`; `minimax-m3.1-flash` `low…max` takes `max`; `glm-5.3-flash` `low/high/max` takes `max`; `gemini-4-argon` `low/medium/high` clamps to `high`; `mimo-v2.6-pro` is `toggle`-only and gets no `variant:` line. Subscription hosts keep the eager mapping — on a plan you already paid for, spending the reasoning budget is the point.
+
 ### Field rationale
 
 <!-- prettier-ignore -->
