@@ -14,8 +14,9 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 
 import { readTemplate } from "../../render/parts";
 
@@ -454,6 +455,110 @@ describe("gateguard behaviour parity — no-op and fail-open", () => {
       expect(r.advisory).toContain("[bkit GateGuard]");
     });
   }
+});
+
+// ---------------------------------------------------------------------------
+// State folders — per user, and fail-open when they cannot be written
+// ---------------------------------------------------------------------------
+
+const UID = process.getuid!();
+
+/** A private temp root (the hook's TMPDIR) whose folders `unwritable` exist read-only. */
+function stateRoot(...unwritable: string[]): string {
+  const root = fs.mkdtempSync(path.join(GENERATED, "tmp-"));
+  for (const name of unwritable) fs.mkdirSync(path.join(root, name), { mode: 0o555 });
+  return root;
+}
+
+describe("gateguard behaviour parity — state folders", () => {
+  for (const host of HOSTS) {
+    it(`${host}: dedup state lives in a per-user folder`, async () => {
+      const tmp = stateRoot();
+      await run(host, { file: "package.json", session: newSession(), env: { TMPDIR: tmp } });
+      expect(fs.readdirSync(tmp)).toContain(`bkit-gateguard-${UID}`);
+    });
+
+    it(`${host}: another user's shared folder does not cost the session its dedup`, async () => {
+      // On a shared Linux /tmp the first user to create the plain-named folder owns it.
+      const env = { TMPDIR: stateRoot("bkit-gateguard", "bkit-antigravity-retry") };
+      const session = newSession();
+      expect((await run(host, { file: "package.json", session, env })).advisory).toContain(
+        "[bkit GateGuard]",
+      );
+      expect((await run(host, { file: "package.json", session, env })).advisory).toBe("");
+    });
+
+    it(`${host}: an unwritable state folder still delivers the checklist`, async () => {
+      const env = { TMPDIR: stateRoot("bkit-gateguard", `bkit-gateguard-${UID}`) };
+      const r = await run(host, { file: "package.json", session: newSession(), env });
+      expect(r.advisory).toContain("[bkit GateGuard]");
+    });
+
+    it(`${host}: deny mode with an unwritable state folder never blocks the retry`, async () => {
+      const env = {
+        TMPDIR: stateRoot("bkit-gateguard", `bkit-gateguard-${UID}`),
+        BKIT_GATEGUARD: "deny",
+      };
+      const session = newSession();
+      await run(host, { file: "package.json", session, env });
+      expect((await run(host, { file: "package.json", session, env })).blocked).toBe(false);
+    });
+  }
+
+  it("opencode: an unwritable state folder warns once per session, not on every edit", async () => {
+    // opencode is one long-lived process, so it remembers the warning in-process.
+    const env = { TMPDIR: stateRoot("bkit-gateguard", `bkit-gateguard-${UID}`) };
+    const session = newSession();
+    const first = await run("opencode", { file: "package.json", session, env });
+    const second = await run("opencode", { file: "package.json", session, env });
+    expect([first.advisory.includes("[bkit GateGuard]"), second.advisory]).toEqual([true, ""]);
+  });
+});
+
+describe("antigravity deny-once delivery — retry folder", () => {
+  it("another user's shared retry folder does not cost the checklist", () => {
+    const env = { TMPDIR: stateRoot("bkit-antigravity-retry") };
+    const session = newSession();
+    const first = runAntigravity({ file: "package.json", session, env });
+    const retry = runAntigravity({ file: "package.json", session, env });
+    expect(first.advisory).toContain("[bkit GateGuard]");
+    expect([first.blocked, retry.blocked]).toEqual([true, false]);
+  });
+
+  it("an unwritable retry folder allows the call instead of denying it with no way through", () => {
+    const env = {
+      TMPDIR: stateRoot(
+        "bkit-gateguard",
+        `bkit-gateguard-${UID}`,
+        "bkit-antigravity-retry",
+        `bkit-antigravity-retry-${UID}`,
+      ),
+    };
+    const session = newSession();
+    const runs = [1, 2].map(() => runAntigravity({ file: "package.json", session, env }));
+    expect(runs.map((r) => r.blocked)).toEqual([false, false]);
+  });
+
+  it("adviseOnce returns allow, never throws, when the retry folder cannot be written", () => {
+    // Loaded alone, without the hook driver's fail-open catch around it.
+    const part = path.join(GENERATED, "antigravity-hook-part.cjs");
+    fs.writeFileSync(
+      part,
+      'const fs = require("node:fs");\nconst os = require("node:os");\n' +
+        'const path = require("node:path");\nconst crypto = require("node:crypto");\n' +
+        fs.readFileSync(path.resolve(".bkit/core/hooks/antigravity-hook.js"), "utf-8") +
+        "\nmodule.exports = { adviseOnce };\n",
+    );
+    const { adviseOnce } = createRequire(import.meta.url)(part) as {
+      adviseOnce: (hook: string, session: string, signature: string, advisory: string) => unknown;
+    };
+    vi.stubEnv("TMPDIR", stateRoot("bkit-antigravity-retry", `bkit-antigravity-retry-${UID}`));
+    try {
+      expect(adviseOnce("gateguard", newSession(), "sig", "advice")).toEqual({ decision: "allow" });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
 });
 
 describe("gateguard structural parity", () => {

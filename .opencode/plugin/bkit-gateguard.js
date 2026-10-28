@@ -175,8 +175,20 @@ function configAdvisory(filePath) {
   );
 }
 
+// Per user: on a temp dir users share (Linux `/tmp`) another user's copy cannot be written.
 function stateDir() {
-  return path.join(os.tmpdir(), "bkit-gateguard");
+  return path.join(
+    os.tmpdir(),
+    typeof process.getuid === "function" ? `bkit-gateguard-${process.getuid()}` : "bkit-gateguard",
+  );
+}
+
+// (session, file) warnings this process could not write to its state file, standing in
+// for it for the process's life.
+const warnedInProcess = new Set();
+
+function inProcessKey(sessionId, filePath) {
+  return JSON.stringify([sessionId, filePath]);
 }
 
 // Dedup scope: the session, narrowed to one agent when the host names it. A Claude Code
@@ -205,6 +217,7 @@ function readState(sessionId) {
 }
 
 function alreadyWarned(sessionId, filePath) {
+  if (warnedInProcess.has(inProcessKey(sessionId, filePath))) return true;
   return Boolean(readState(sessionId).files[filePath]);
 }
 
@@ -233,6 +246,9 @@ function gcOldState() {
 // The advisory for the first touch of `filePath` this session, or null when GateGuard
 // is off, the path is unusable, or this session was already warned about it. Records
 // the touch. `isNewFile` picks the reuse checklist over the read-this-file checklist.
+// Fail-open: a state-file write error still returns the checklist and the process
+// remembers it, as advisory only — a deny no later call can see was given would block
+// every retry of the edit.
 function firstTouchAdvice(filePath, sessionId, isNewFile) {
   const mode = process.env.BKIT_GATEGUARD;
   if (mode === "off") return null;
@@ -253,8 +269,13 @@ function firstTouchAdvice(filePath, sessionId, isNewFile) {
     ? `${baseContext}\n\n${docAuthoringAdvisory()}`
     : baseContext;
 
-  markWarned(sid, filePath);
-  gcOldState();
+  try {
+    markWarned(sid, filePath);
+    gcOldState();
+  } catch {
+    warnedInProcess.add(inProcessKey(sid, filePath));
+    return { mode: "advisory", context };
+  }
 
   return { mode: mode === "deny" ? "deny" : "advisory", context };
 }

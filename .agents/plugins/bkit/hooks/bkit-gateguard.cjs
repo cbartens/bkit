@@ -175,8 +175,20 @@ function configAdvisory(filePath) {
   );
 }
 
+// Per user: on a temp dir users share (Linux `/tmp`) another user's copy cannot be written.
 function stateDir() {
-  return path.join(os.tmpdir(), "bkit-gateguard");
+  return path.join(
+    os.tmpdir(),
+    typeof process.getuid === "function" ? `bkit-gateguard-${process.getuid()}` : "bkit-gateguard",
+  );
+}
+
+// (session, file) warnings this process could not write to its state file, standing in
+// for it for the process's life.
+const warnedInProcess = new Set();
+
+function inProcessKey(sessionId, filePath) {
+  return JSON.stringify([sessionId, filePath]);
 }
 
 // Dedup scope: the session, narrowed to one agent when the host names it. A Claude Code
@@ -205,6 +217,7 @@ function readState(sessionId) {
 }
 
 function alreadyWarned(sessionId, filePath) {
+  if (warnedInProcess.has(inProcessKey(sessionId, filePath))) return true;
   return Boolean(readState(sessionId).files[filePath]);
 }
 
@@ -233,6 +246,9 @@ function gcOldState() {
 // The advisory for the first touch of `filePath` this session, or null when GateGuard
 // is off, the path is unusable, or this session was already warned about it. Records
 // the touch. `isNewFile` picks the reuse checklist over the read-this-file checklist.
+// Fail-open: a state-file write error still returns the checklist and the process
+// remembers it, as advisory only — a deny no later call can see was given would block
+// every retry of the edit.
 function firstTouchAdvice(filePath, sessionId, isNewFile) {
   const mode = process.env.BKIT_GATEGUARD;
   if (mode === "off") return null;
@@ -253,8 +269,13 @@ function firstTouchAdvice(filePath, sessionId, isNewFile) {
     ? `${baseContext}\n\n${docAuthoringAdvisory()}`
     : baseContext;
 
-  markWarned(sid, filePath);
-  gcOldState();
+  try {
+    markWarned(sid, filePath);
+    gcOldState();
+  } catch {
+    warnedInProcess.add(inProcessKey(sid, filePath));
+    return { mode: "advisory", context };
+  }
 
   return { mode: mode === "deny" ? "deny" : "advisory", context };
 }
@@ -302,16 +323,23 @@ function agCallSignature(toolName, input) {
 }
 
 // One record per (hook, conversation): two hooks on the same call each let its retry through.
+// Per user: on a temp dir users share (Linux `/tmp`) another user's copy cannot be written.
 function agRetryFile(hook, sessionId) {
   const safe =
     typeof sessionId === "string" ? sessionId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 128) : "";
-  return path.join(os.tmpdir(), "bkit-antigravity-retry", `${hook}.${safe || "no-session"}.json`);
+  const user = typeof process.getuid === "function" ? `-${process.getuid()}` : "";
+  return path.join(
+    os.tmpdir(),
+    `bkit-antigravity-retry${user}`,
+    `${hook}.${safe || "no-session"}.json`,
+  );
 }
 
 /**
  * Delivers an advisory the only way Antigravity shows one to the model: deny the call
  * with the advisory as the reason, once. The identical call right after is the agent's
- * retry and is allowed.
+ * retry and is allowed. Fail-open: a retry-store error allows the call — each call is
+ * its own process, so a deny it cannot record would block every retry.
  */
 function adviseOnce(hook, sessionId, signature, advisory) {
   const file = agRetryFile(hook, sessionId);
@@ -319,13 +347,17 @@ function adviseOnce(hook, sessionId, signature, advisory) {
   // TTL, so no tool argument (a shell command line with an inline secret, a file path)
   // may rest on disk in cleartext.
   const digest = crypto.createHash("sha256").update(signature).digest("hex");
-  const last = fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
-  if (last === digest) {
-    fs.rmSync(file, { force: true });
+  try {
+    const last = fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
+    if (last === digest) {
+      fs.rmSync(file, { force: true });
+      return { decision: "allow" };
+    }
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, digest, "utf-8");
+  } catch {
     return { decision: "allow" };
   }
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, digest, "utf-8");
   return {
     decision: "deny",
     reason: `${advisory}\nBlocked once so you see this; repeat the same call to proceed.`,

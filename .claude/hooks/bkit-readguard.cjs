@@ -189,9 +189,16 @@ function isCovered(ranges, [start, end]) {
   return mergeRanges(ranges).some(([s, e]) => s <= start && end <= e);
 }
 
+// Per user: on a temp dir users share (Linux `/tmp`) another user's copy cannot be written.
 function readStateDir() {
-  return path.join(os.tmpdir(), "bkit-readguard");
+  return path.join(
+    os.tmpdir(),
+    typeof process.getuid === "function" ? `bkit-readguard-${process.getuid()}` : "bkit-readguard",
+  );
 }
+
+// Read logs this process could not write, standing in for them for the process's life.
+const readLogsInProcess = new Map();
 
 function safeKey(value, fallback) {
   const s = typeof value === "string" ? value.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 128) : "";
@@ -210,6 +217,7 @@ function readLogFile(sessionId, agentId) {
 // Absent log is the normal first-read case (guarded, no throw); a corrupt one throws
 // to the host's top-level fail-open boundary and that one call no-ops.
 function loadReadLog(file) {
+  if (readLogsInProcess.has(file)) return readLogsInProcess.get(file);
   if (!fs.existsSync(file)) return { files: {} };
   const parsed = JSON.parse(fs.readFileSync(file, "utf-8"));
   return parsed && typeof parsed.files === "object" && parsed.files ? parsed : { files: {} };
@@ -232,9 +240,12 @@ function gcOldReadLogs() {
  * conversation is summarised: earlier read output is no longer in context.
  */
 function resetReadLog(sessionId) {
+  const prefix = `${safeKey(sessionId, "no-session")}.`;
+  for (const file of readLogsInProcess.keys()) {
+    if (path.basename(file).startsWith(prefix)) readLogsInProcess.delete(file);
+  }
   const dir = readStateDir();
   if (!fs.existsSync(dir)) return;
-  const prefix = `${safeKey(sessionId, "no-session")}.`;
   for (const name of fs.readdirSync(dir)) {
     if (name.startsWith(prefix)) fs.rmSync(path.join(dir, name), { force: true });
   }
@@ -261,7 +272,9 @@ function repeatReadMessage(repeats, cwd) {
 /**
  * The advisory for reading `targets` again, or null when ReadGuard is off, nothing is
  * trackable, or no target repeats an earlier read of the same unchanged file by the
- * same (session, agent). Records every trackable target.
+ * same (session, agent). Records every trackable target. Fail-open: a log write error
+ * still returns the note and the process keeps the log, so a long-lived host (opencode)
+ * still sees its repeats.
  */
 function repeatReadAdvice(targets, sessionId, agentId, cwd) {
   if (process.env.BKIT_READGUARD === "off") return null;
@@ -290,11 +303,16 @@ function repeatReadAdvice(targets, sessionId, agentId, cwd) {
     changed = true;
   }
 
-  if (changed) {
-    fs.mkdirSync(readStateDir(), { recursive: true });
-    fs.writeFileSync(logFile, JSON.stringify(log), "utf-8");
+  try {
+    if (changed) {
+      fs.mkdirSync(readStateDir(), { recursive: true });
+      fs.writeFileSync(logFile, JSON.stringify(log), "utf-8");
+      readLogsInProcess.delete(logFile);
+    }
+    gcOldReadLogs();
+  } catch {
+    readLogsInProcess.set(logFile, log);
   }
-  gcOldReadLogs();
 
   return repeats.length > 0 ? repeatReadMessage(repeats, cwd) : null;
 }

@@ -235,7 +235,7 @@ async function invokeHookV1(
 // ---------------------------------------------------------------------------
 
 function stateDir() {
-  return path.join(os.tmpdir(), "bkit-gateguard");
+  return path.join(os.tmpdir(), `bkit-gateguard-${process.getuid!()}`);
 }
 
 function stateFile(sessionId: string) {

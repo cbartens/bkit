@@ -376,7 +376,7 @@ describe("antigravity hook — the rules-read advisory", () => {
     });
     const retryFile = path.join(
       os.tmpdir(),
-      "bkit-antigravity-retry",
+      `bkit-antigravity-retry-${process.getuid!()}`,
       `rules.${safeKey(session)}.json`,
     );
     try {
