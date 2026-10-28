@@ -686,7 +686,7 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
 
 <!-- bkit:task 5 start -->
 
-- [ ] **TASK 5:** Prove a seam-written friction row survives commit and harvest, end to end
+- [x] **TASK 5:** Prove a seam-written friction row survives commit and harvest, end to end
   - **UPDATE:** `scripts/harvest/ledgers.integration.test.ts`: a case whose row the **seam itself wrote** — spawn the real CLI as a child process (`tsx .bkit/core/engine/cli.ts`) in a real temp repo whose `.worktrees/{fid}` holds an active run and a `status.jsonl`, force an undeclared non-zero exit, assert the `friction` row's bytes in that run's own `.bkit/friction.jsonl` (never a seeded row), then run the real `ledgers commit` writer and `runHarvest`, and assert the row in the harvested ledger
   - **READ:** `harvestConsumer` in `scripts/harvest/ledgers.ts`: the copy/move contract the new writer must not break, with `runHarvest` beside it
   - **READ:** `.bkit/core/engine/commands/install/install.integration.test.ts`: the spawn-a-real-CLI-process-per-scenario pattern this case copies
