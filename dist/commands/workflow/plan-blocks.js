@@ -27,6 +27,8 @@ export const PLAN_FIELDS = [
     "TEST FIRST",
     "TEST EXCEPTION",
 ];
+/** Why every plan reader (`tests`, `tasks`, `ledgers triage`) refuses a plan with no task blocks. */
+export const NO_MARKERS_REASON = "this plan has no task markers; run /bkit-build again to convert it";
 const tableCells = (row) => row
     .split("|")
     .slice(1, -1)

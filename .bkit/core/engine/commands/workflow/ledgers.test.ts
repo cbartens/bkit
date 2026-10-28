@@ -16,6 +16,7 @@ import {
   readRecord,
   writeRecord,
 } from "./ledgers";
+import { NO_MARKERS_REASON } from "./plan-blocks";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -1487,6 +1488,66 @@ describe("bkit ledgers triage", () => {
     expect(res.code).toBe(0);
     expect(res.json).toMatchObject({ rows: [], total: 0, written: 0 });
     expect(lines(r)).toHaveLength(1);
+  });
+
+  it("triage refuses a plan with no task blocks", async () => {
+    const r = triageRepo([deferral()]);
+    put(
+      r,
+      PLAN_FILE,
+      [
+        "# Plan",
+        "",
+        "## Out of Scope",
+        "",
+        "| Excluded item | Why `Exempt` | Where it belongs |",
+        "| --- | --- | --- |",
+        "| Something else entirely | declared before work | `docs/elsewhere.md` |",
+        "",
+      ].join("\n"),
+    );
+    commitAll(r, "no markers");
+    const before = lines(r);
+    const res = await triage(r);
+    expect(res.code).toBe(1);
+    expect(res.err).toContain(NO_MARKERS_REASON);
+    expect(lines(r)).toEqual(before);
+  });
+
+  it("triage refuses a plan whose task blocks do not parse", async () => {
+    const r = triageRepo([deferral()]);
+    put(
+      r,
+      PLAN_FILE,
+      [
+        "# Plan",
+        "",
+        "<!-- bkit:group 1 start -->",
+        "### GROUP 1: The group",
+        "",
+        "<!-- bkit:task 2 start -->",
+        "- [ ] **TASK 2:** Guard the second call.",
+        "  - **UPDATE:** `guard` in `src/a.ts`: add the check",
+        "  - **DONE WHEN:** the guard runs",
+        "  - **TEST FIRST:** n/a — text only",
+        "<!-- bkit:task 2 end -->",
+        "",
+        "<!-- bkit:task 1 start -->",
+        "- [ ] **TASK 1:** Guard the call.",
+        "  - **UPDATE:** `guard` in `src/a.ts`: add the check",
+        "  - **DONE WHEN:** the guard runs",
+        "  - **TEST FIRST:** n/a — text only",
+        "<!-- bkit:task 1 end -->",
+        "<!-- bkit:group 1 end -->",
+      ].join("\n"),
+    );
+    commitAll(r, "unordered tasks");
+    const before = lines(r);
+    const res = await triage(r);
+    expect(res.code).toBe(2);
+    expect(res.err).toContain(`${PLAN_FILE}:13:`);
+    expect(res.err).toContain("TASK 1 comes after TASK 2");
+    expect(lines(r)).toEqual(before);
   });
 
   it("triage marks a scope-declared row whose only declaration is itself lazy", async () => {

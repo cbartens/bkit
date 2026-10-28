@@ -15,7 +15,7 @@ import { readBkitVersion } from "../../install/version-file.js";
 import { APPEND_LEDGERS, SCHEMA, UNJUSTIFIED_REASON, gitEnv, parse, mintTs, resolveRepoSlug, validate, writerProblem, } from "../../ledgers/telemetry.js";
 import { CommandError, EXIT, isIgnoredPath, isSharedBranch, parseJson, } from "../lib.js";
 import { str } from "./status.js";
-import { outOfScope, parsePlanBlocks, reuseInventory } from "./plan-blocks.js";
+import { NO_MARKERS_REASON, outOfScope, parsePlanBlocks, reuseInventory, } from "./plan-blocks.js";
 /** Root is not a directory or repo, git is too old, or a ref does not resolve. */
 export const EXIT_ROOT = 3;
 /** `git add` / `git add -u` / mkdir / copy failed. */
@@ -1416,16 +1416,24 @@ export function unjustifiedRow(row, fid, held) {
 /**
  * Bucket the FID's deferral rows by the four tests and append a same-`key`
  * `unjustified` / `TRIAGED` row for each that holds all four. Throws
- * CommandError(USAGE) on a missing `--plan`, EXIT_ROW_REFUSED when a computed row
- * fails validation — nothing written.
+ * CommandError(USAGE) on a missing `--plan` or a plan whose task blocks do not
+ * parse, CommandError(NO) on a plan with no task blocks — nothing written either
+ * way — and EXIT_ROW_REFUSED when a computed row fails validation.
  */
 export function triageDeferrals(root, fid, planPath) {
     const abs = path.resolve(root, planPath);
     if (!fs.existsSync(abs))
         throw new CommandError(EXIT.USAGE, `--plan not found: ${planPath}`);
     const text = fs.readFileSync(abs, "utf-8");
+    const blocks = parsePlanBlocks(text);
+    const error = blocks.errors[0];
+    if (error !== undefined)
+        throw new CommandError(EXIT.USAGE, `${planPath}:${error.line}: ${error.message} — run \`bkit tests plan-check\``);
+    // No task block means no task surface: every row would bucket `Exempt` unread.
+    if (blocks.tasks.length === 0)
+        throw new CommandError(EXIT.NO, `${planPath}: ${NO_MARKERS_REASON}`);
     const surfaces = new Set();
-    for (const task of parsePlanBlocks(text).tasks)
+    for (const task of blocks.tasks)
         for (const ref of [...task.create, ...task.read, ...task.update, ...task.delete])
             surfaces.add(path.posix.normalize(ref.file));
     for (const row of reuseInventory(text)?.rows ?? [])

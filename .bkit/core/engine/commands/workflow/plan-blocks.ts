@@ -31,6 +31,10 @@ export const PLAN_FIELDS = [
 ] as const;
 export type PlanField = (typeof PLAN_FIELDS)[number];
 
+/** Why every plan reader (`tests`, `tasks`, `ledgers triage`) refuses a plan with no task blocks. */
+export const NO_MARKERS_REASON =
+  "this plan has no task markers; run /bkit-build again to convert it";
+
 /** A CREATE / READ / UPDATE / DELETE line: `` `symbol` in `file`: what ``, or `` `file`: what ``. */
 export interface PlanRef {
   /** Absent on the file-only form. A Markdown section is `§ heading text`. */

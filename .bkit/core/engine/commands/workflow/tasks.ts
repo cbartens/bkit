@@ -20,13 +20,14 @@ import { CommandError, EXIT, type CommandSpec, git, runGit } from "../lib.js";
 import { EXIT_DIFF_FAILED, fetchRemoteRef } from "./branches.js";
 import { DIFF_BASE } from "./context.js";
 import {
+  NO_MARKERS_REASON,
   parsePlanBlocks,
   type PlanGroup,
   type PlanRef,
   type PlanTaskBlock,
 } from "./plan-blocks.js";
 import { positiveInt, str } from "./status.js";
-import { NO_MARKERS_REASON, doneTasks } from "./tests.js";
+import { doneTasks } from "./tests.js";
 
 /** A task's heading line: the box and the number the tick addresses. */
 const TASK_BOX = /^(\s*)- \[([ xX])\] \*\*TASK (\d+):\*\*/;
