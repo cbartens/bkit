@@ -128,13 +128,25 @@ function parseContextFetchBlocks(consumer) {
  * quotes begins one too (the shell rule), including straight after a control operator
  * (`;`, `|`, `&`, `(`, `)`). A `#` inside quotes (a `jq` regex, a banner) is data and
  * stays, or `printf "===== # ====="` would read as a comment and truncate the line. Quote
- * state persists across lines because a quoted `jq` program may span several.
+ * state persists across lines because a quoted `jq` program may span several. A heredoc
+ * body (`<<WORD`, `<<'WORD'`, `<<-WORD` up to the line holding only `WORD`) is data: it is
+ * kept whole and its quotes and `#` change nothing, so an apostrophe in it never leaves
+ * the lines after its terminator read as quoted. A `<<<` here-string opens no body.
  */
 function stripShellComments(text) {
     const out = [];
     let quote = null;
     let escaped = false;
+    // Terminators of the heredocs opened so far, in the order their bodies follow.
+    const heredocs = [];
     for (const line of text.split("\n")) {
+        const open = heredocs[0];
+        if (open) {
+            out.push(line);
+            if ((open.tabs ? line.replace(/^\t+/, "") : line) === open.word)
+                heredocs.shift();
+            continue;
+        }
         let end = line.length;
         for (let i = 0; i < line.length; i++) {
             const ch = line[i];
@@ -160,6 +172,17 @@ function stripShellComments(text) {
                 quote = ch;
                 continue;
             }
+            if (ch === "<" && line[i + 1] === "<") {
+                if (line[i + 2] === "<") {
+                    i += 2; // `<<<` here-string
+                    continue;
+                }
+                const heredoc = /^<<(-?)[ \t]*\\?(["']?)([A-Za-z_]\w*)\2/.exec(line.slice(i));
+                if (heredoc)
+                    heredocs.push({ word: heredoc[3], tabs: heredoc[1] === "-" });
+                i += heredoc ? heredoc[0].length - 1 : 1;
+                continue;
+            }
             if (ch === "#" && (i === 0 || /[\s;|&()]/.test(line[i - 1]))) {
                 end = i;
                 break;
@@ -174,13 +197,16 @@ function stripShellComments(text) {
  * against the block body with its shell comments removed. One entry maps to a real bound in
  * a shipped block: a row / line cap (`--limit`, an API or SQL `limit`, `per_page`, `head` /
  * `tail` / `--tail`, `--stat-count`, any `--max-*` such as `--max-rows` / `--max-pages` /
- * `--max-items` / `--max-results`, `max_results`, `grep -m` / `--max-count`, `--page-size` /
- * `--per-page` / `--first`, a jq / Python slice `[0:N]`, a `sed -n 'A,Bp'` range, an
- * `awk 'NR<=N'` guard, a `size` field), a page / count cap (`*_MAX_*`, `*_MAX_PAGES`, a `*_N`
- * knob, a shell loop `-lt` guard), or a window / severity filter (`--since` / `--until` /
- * `--freshness` / `SINCE` / `UNTIL` / `statsPeriod` / a lowercase `since=` / `until=`, a
- * `severity` filter). The tavily block counts as bounded on its `max_results:5` and `head -c`
- * alone. A body is unbounded only when it matches none.
+ * `--max-items` / `--max-results`, `max_results`, `grep -m` / `rg -m` / `--max-count`,
+ * `--page-size` / `--per-page` / `--first`, a jq / Python slice `[0:N]`, a `sed -n 'A,Bp'`
+ * range, an `awk 'NR<=N'` guard, a `size` field), a page / count cap (`*_MAX_*`,
+ * `*_MAX_PAGES`, a `*_N` knob, a shell loop `-lt` guard), or a window / severity filter
+ * (`--since` / `--until` / `--freshness` / `SINCE` / `UNTIL` / `statsPeriod` / a lowercase
+ * `since=` / `until=`, a `severity` / `level` filter). A timeout, retry, redirect or
+ * connection setting (`--max-time`, `curl -m`, `--max-redirs`), a tool's own verbosity
+ * (`--log-level=`) and a hyphenated `*-size=` flag (`--buffer-size=`) cap nothing the block
+ * prints and never count. The tavily block counts as bounded on its `max_results:5` and
+ * `head -c` alone. A body is unbounded only when it matches none.
  */
 const CONTEXT_FETCH_BOUND_RES = [
     // Row / line caps.
@@ -190,18 +216,19 @@ const CONTEXT_FETCH_BOUND_RES = [
     /(^|[\s|;(])tail[ \t]+-/,
     /--tail[= ]/,
     /--stat-count/,
-    /--max-[\w-]+/, // --max-pages / --max-items / --max-results / --max-rows / --max-count
+    // --max-pages / --max-items / --max-results / --max-rows / --max-count; not --max-time.
+    /--max-(?!(?:time|redirs|retries|wait|duration|age|connections)(?![\w-]))[\w-]+/,
     /max_results/,
     /\bper_page\b["']?[ \t]*[=:][ \t]*["'$]?\d/i,
     /--page-size\b/,
     /--per-page\b/,
     /--first\b/,
-    /(^|[\s|;(])-m[ \t]+["'$]?\d/,
+    /\b(?:[ef]?grep|rg)\b[^\n|;&]*[ \t]-m[ \t]*["'$]?\d/, // grep -m 20, not curl -m 30
     /--max-count\b/,
     /[\[(][ \t]*\d*[ \t]*:[ \t]*\d+/, // jq / Python slice: .[0:10], [:10], [0:10]
     /\bsed\b[^\n]*[ \t]-n[ \t]*['"]?[0-9]+[ \t]*,[ \t]*[0-9]+p/, // sed -n '1,200p'
     /\bNR[ \t]*<=?[ \t]*[0-9$]/, // awk 'NR<=500'
-    /\bsize["']?[ \t]*[=:][ \t]*["']?\d/i, // request / option body field
+    /(?<!\w)(?<!\w-)size["']?[ \t]*[=:][ \t]*["']?\d/i, // request / option body field, not --buffer-size=
     // Page / count caps.
     /_MAX_/,
     /[A-Z][A-Z0-9]*_N\b/,
@@ -218,7 +245,7 @@ const CONTEXT_FETCH_BOUND_RES = [
     /--severity\b/,
     /\bseverity[ \t]*([=:]|[<>]=?)/i,
     /--level\b/,
-    /\blevel[ \t]*([=:]|[<>]=?)/i,
+    /(?<!\w)(?<!log-)level[ \t]*([=:]|[<>]=?)/i, // not --log-level=
 ];
 /** True when a `context-fetch` block body carries at least one output bound (see the list). */
 export function blockBoundsOutput(body) {
@@ -559,6 +586,6 @@ export function detectContextFetchUnbounded(cwd) {
         id: "context-fetch-unbounded",
         severity: "advisory",
         detect: `\`.agents/context.md\` enables context-fetch block${plural ? "s" : ""} below \`<!-- bkit:end -->\` that bound no output: ${list}. \`/bkit-debug\` runs every enabled block and writes its stdout straight into that context's artifact, so ${plural ? "these blocks" : "this block"} download${plural ? "" : "s"} a whole-run dump — only the post-hoc 3000-line / 400 KB clamp catches it, and the failure lines a diagnosis needs can fall outside the kept head 500 + tail 1000.`,
-        action: `Bound each flagged block at the source: add a row / line cap (\`--limit N\`, \`head -n N\`, \`tail -n N\` / \`--tail N\`, \`--stat-count N\`, \`grep -m N\` / \`--max-count N\`, any \`--max-*\` (\`--max-rows N\`, \`--max-pages N\`, \`--max-items N\`, \`--max-results N\`), \`--page-size N\` / \`--per-page N\` / \`--first N\`, a jq / SQL slice (\`.[0:N]\`, \`limit N\`), a \`sed -n 'A,Bp'\` / \`awk 'NR<=N'\` range, the API's \`max_results\` / \`per_page\` / \`limit\` param, or a request-body \`size\` field), a page cap (\`<NAME>_MAX_PAGES\`, a \`*_N\` count variable, or a shell loop guard \`[ "$N" -lt M ]\`), or a window / severity filter (\`--since\` / \`--until\` / \`--freshness\` / \`SINCE\` / \`UNTIL\`, \`statsPeriod\`, or a \`severity\` / \`level\` filter) in the block body — not only in its \`# Customise:\` comment. Raise the cap only when the cause sits outside the kept window: \`/bkit-debug\` clamps the artifact post hoc at 3000 lines / 400 KB (head 500 + tail 1000 + every error-matching line), so an unbounded dump can drop the very failure lines a diagnosis needs.`,
+        action: `Bound each flagged block at the source: add a row / line cap (\`--limit N\`, \`head -n N\`, \`tail -n N\` / \`--tail N\`, \`--stat-count N\`, \`grep -m N\` / \`--max-count N\`, a \`--max-*\` row or page cap (\`--max-rows N\`, \`--max-pages N\`, \`--max-items N\`, \`--max-results N\`),\`--page-size N\` / \`--per-page N\` / \`--first N\`, a jq / SQL slice (\`.[0:N]\`, \`limit N\`), a \`sed -n 'A,Bp'\` / \`awk 'NR<=N'\` range, the API's \`max_results\` / \`per_page\` / \`limit\` param, or a request-body \`size\` field), a page cap (\`<NAME>_MAX_PAGES\`, a \`*_N\` count variable, or a shell loop guard \`[ "$N" -lt M ]\`), or a window / severity filter (\`--since\` / \`--until\` / \`--freshness\` / \`SINCE\` / \`UNTIL\`, \`statsPeriod\`, or a \`severity\` / \`level\` filter) in the block body — not only in its \`# Customise:\` comment. A timeout (\`--max-time\`, \`curl -m\`) or the tool's own \`--log-level\` caps nothing the block prints. Raise the cap only when the cause sits outside the kept window: \`/bkit-debug\` clamps the artifact post hoc at 3000 lines / 400 KB (head 500 + tail 1000 + every error-matching line), so an unbounded dump can drop the very failure lines a diagnosis needs.`,
     };
 }
