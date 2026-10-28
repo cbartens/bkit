@@ -295,6 +295,20 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     expect(advisory!.action).toMatch(/BKIT_OLLAMA_API_KEY/);
   });
 
+  it("next-steps NOTE names every distinct ollama and opencode-go pin from § Models", () => {
+    const ctx = makeOpencodeCtx({ opencodeProvider: "openrouter" });
+    runOpencodeModule(ctx);
+
+    const action = ctx.advisories.find((a) => a.id === "opencode-setup")!.action;
+    const note = action.slice(action.indexOf("NOTE:"));
+    for (const provider of ["ollama", "opencode-go"] as const) {
+      const pins = [...new Set(buildOpencodeModelLookup(PROMPTS_MD, provider).values())];
+      expect(pins.length).toBeGreaterThan(0);
+      for (const pin of pins) expect(note).toContain(pin);
+    }
+    expect(note).not.toContain("kimi-k3");
+  });
+
   it("dry-run: no agent/command .md files written to disk, advisory still emitted", () => {
     const ws = makeWriteSet();
     const ctx = makeOpencodeCtx({ ws, dryRun: true });
