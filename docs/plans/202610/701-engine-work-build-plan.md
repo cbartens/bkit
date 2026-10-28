@@ -895,7 +895,7 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
 
 <!-- bkit:task 15 start -->
 
-- [ ] **TASK 15:** Build Steps 7 and 9 pass the verify header's documented empty form `Tasks: none` straight into `--tasks=`, which `tick` refuses with exit 2 — every verify round that satisfies no task logs a usage error and ticks nothing
+- [x] **TASK 15:** Build Steps 7 and 9 pass the verify header's documented empty form `Tasks: none` straight into `--tasks=`, which `tick` refuses with exit 2 — every verify round that satisfies no task logs a usage error and ticks nothing
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/tasks.ts:74` · **Round:** 1
   - **DONE WHEN:** `--tasks=none` is accepted as "no task" (exit 0, `ticked: []`, file untouched), or both calls in `.bkit/core/workflows/bkit-build.md:522` and `:648` drop the flag when `{VERIFIED_TASKS}` is `none`; the verb's `--help` states which
   - **TEST FIRST:**
@@ -904,7 +904,7 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
 <!-- bkit:task 15 end -->
 <!-- bkit:task 16 start -->
 
-- [ ] **TASK 16:** `ledgers triage` re-adjudicates a `status: "CLOSED"` deferral (work already finished) and appends `reason: "unjustified"` / `status: "TRIAGED"`, moving finished work back onto the triage ladder and adding an unjustified count to `computeDeferralDiscipline`
+- [x] **TASK 16:** `ledgers triage` re-adjudicates a `status: "CLOSED"` deferral (work already finished) and appends `reason: "unjustified"` / `status: "TRIAGED"`, moving finished work back onto the triage ladder and adding an unjustified count to `computeDeferralDiscipline`
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/ledgers.ts:1715` · **Round:** 1
   - **DONE WHEN:** a folded row whose `status` is `CLOSED` buckets `Exempt`, prints no test result and writes nothing; the concurrent-`OPEN` case keeps today's behaviour
   - **TEST FIRST:**
@@ -913,7 +913,7 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
 <!-- bkit:task 16 end -->
 <!-- bkit:task 17 start -->
 
-- [ ] **TASK 17:** A deferral already adjudicated `unjustified` is bucketed `Exempt` on every later run, so the ship sweep records an outstanding unjustified deferral under `Exempt Deferrals` and the summary reports it as settled
+- [x] **TASK 17:** A deferral already adjudicated `unjustified` is bucketed `Exempt` on every later run, so the ship sweep records an outstanding unjustified deferral under `Exempt Deferrals` and the summary reports it as settled
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/ledgers.ts:1718` · **Round:** 1
   - **DONE WHEN:** a folded row whose `reason` is `unjustified` reports a bucket that keeps it out of the sweep's `Exempt Deferrals` (its own label or `Lazy`) and still writes no new row; re-running triage twice leaves the report stable
   - **TEST FIRST:**
