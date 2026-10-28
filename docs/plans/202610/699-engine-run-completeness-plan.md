@@ -612,6 +612,8 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
   - **TEST FIRST:**
     - `.bkit/core/engine/commands/workflow/run-facts.test.ts` `leaves a run's step minutes unchanged when journal rows land between step rows` fails on a journal row's timestamp being charged into the preceding step's minutes
     - `scripts/harvest/bkit-harvest.test.mjs` `MARK_ROWS is the engine's` fails while the harvest copy lists only `session`, `owner-pause` and `owner-answer`
+  - **TEST EXCEPTION:**
+    - `scripts/harvest/bkit-harvest.test.mjs` `MARK_ROWS is the engine's` fails while the harvest copy lists only `session`, `owner-pause` and `owner-answer` — the harvest test is a plain-node `.mjs` file that the red tool (vitest) cannot run; the execute agent saw it fail by hand with `node scripts/harvest/bkit-harvest.test.mjs` before the fix, and it runs green under `pnpm test:harvest` (owner, 2026-10-29)
 
 <!-- bkit:task 1 end -->
 
@@ -630,6 +632,8 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
   - **DONE WHEN:** the row-type table lists both rows; the inert-row case passes for every reader named in the task; the `afterEnd` shift is written down in `.bkit/core/.bkit/jsonl.md`; `bkit install` leaves `.bkit/{workflows,jsonl}.md` byte-equal to their sources but for the managed marker; and `pnpm bkit check` exits 0.
   - **TEST FIRST:**
     - `.bkit/core/engine/commands/workflow/status.test.ts` `ignores a row type it does not know` fails while a journal row throws in `fold` or splits a run in `runStatusRows`
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/commands/workflow/status.test.ts` `ignores a row type it does not know` fails while a journal row throws in `fold` or splits a run in `runStatusRows` — the readers already skip unknown row types, so the test only pins that behaviour and cannot fail first (owner, 2026-10-29)
 
 <!-- bkit:task 2 end -->
 
