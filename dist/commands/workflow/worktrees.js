@@ -13,13 +13,14 @@
 // a human, so local dev is routinely ahead, and a worktree without those commits
 // builds against superseded work.
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { lastRun } from "../../ledgers/status.js";
 import { gitEnv } from "../../ledgers/telemetry.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { COULD_NOT_RUN_EXIT_CODES, installCommand } from "../../shared/package-manager.js";
-import { CommandError, DEV, EXIT, git, isIgnoredPath, isSharedBranch, MAIN, repoRoot, runGit, } from "../lib.js";
+import { CommandError, DEV, EXIT, git, isIgnoredPath, isSharedBranch, MAIN, mainCheckoutRoot, repoRoot, runGit, } from "../lib.js";
 import { ensureDiskSpace } from "./disk.js";
 import { listRecords, newRecord, readRecord, removeRecord, withSetupGuard, writeRecord, } from "./ledgers.js";
 import { workflowLockFresh, workflowLockLive } from "./locks.js";
@@ -238,49 +239,79 @@ function rebaseInProgress(wt) {
  * `.gitignore` lost bkit's `.bkit/.env` line would otherwise commit a link to them.
  */
 export const BKIT_OWN_COPY = [".bkit/.env"];
+/** A normalized copy entry inside the checkout: neither absolute nor climbing out with `..`. */
+const insideCheckout = (rel) => !path.isAbsolute(rel) && rel !== ".." && !rel.startsWith(`..${path.sep}`);
 /**
- * `git add -A` in `tree`, leaving out the `bkit.workflows.worktree.copy` entries setup
- * copies in from the main checkout (`.env` and the like) and `BKIT_OWN_COPY`: no bkit
- * commit may carry them, gitignored or not. A copied entry git already ignores is left
- * out of the exclude list: naming it in a `:(exclude)` pathspec trips git's
- * ignored-paths guard and fails the whole `add`, and `git add -A` skips an
- * ignored file anyway, so it needs no exclusion.
+ * Every `bkit.workflows.worktree.copy` entry setup may have copied into `tree`: the
+ * tree's own `package.json` list and the main checkout's, which setup copies by and
+ * which an uncommitted edit or the feature branch can make differ.
  */
-export function addAllButCopied(tree, copied = readBkitConfig(tree).worktreeCopy) {
-    const keep = [...copied, ...BKIT_OWN_COPY]
-        .map((e) => path.normalize(e))
-        .filter((e) => !isIgnoredPath(tree, e))
-        .map((e) => `:(exclude)${e}`);
-    return runGit(tree, ["add", "-A", "--", ".", ...keep]);
+function worktreeCopyLists(tree) {
+    const main = mainCheckoutRoot(tree) ?? tree;
+    return [...new Set([...readBkitConfig(tree).worktreeCopy, ...readBkitConfig(main).worktreeCopy])];
 }
+/**
+ * `:(exclude)` pathspecs for the entries setup copies into `tree` (`copied`, default
+ * every list that may name one) and `BKIT_OWN_COPY`. An entry outside the tree is left
+ * out: git refuses it as a pathspec (exit 128) and setup never copies it. So is one git
+ * already ignores: naming it in a `:(exclude)` pathspec trips git's ignored-paths guard
+ * and fails the whole `add`, and `git add -A` skips an ignored file anyway.
+ */
+export function copyExcludes(tree, copied = worktreeCopyLists(tree)) {
+    return [...copied, ...BKIT_OWN_COPY]
+        .map((e) => path.normalize(e))
+        .filter((e) => insideCheckout(e) && !isIgnoredPath(tree, e))
+        .map((e) => `:(exclude)${e}`);
+}
+/**
+ * `git add -A` in `tree`, leaving out the entries setup copies in from the main
+ * checkout (`.env` and the like) and `BKIT_OWN_COPY` (`copyExcludes`): no bkit commit
+ * may carry them, gitignored or not.
+ */
+export function addAllButCopied(tree, copied) {
+    return runGit(tree, ["add", "-A", "--", ".", ...copyExcludes(tree, copied)]);
+}
+/** Whether `wt` holds changes beyond the entries setup copies in (`copyExcludes`). */
+const hasLeftovers = (wt) => (git(wt, ["status", "--porcelain", "--untracked-files=all", "--", ".", ...copyExcludes(wt)]) ??
+    "") !== "";
 /**
  * Commit what an earlier run left uncommitted in a resumed worktree, so the
  * resume rebase can start: a failed ship's flush lands its record on dev and
  * leaves the worktree as it was, for whatever runs next. An untracked file in a
  * log folder of this feature that `onto` already holds is dropped first: dev's
- * copy, landed by that flush, wins, and a second copy would stop the rebase.
- * The `worktreeCopy` entries setup copies in are never committed. Clean tree →
- * null; a failed commit is narrated and leaves the tree for the rebase to refuse.
+ * copy, landed by that flush, wins, and a second copy would stop the rebase. One
+ * whose content differs from `onto`'s is moved to the feature's outbox folder
+ * (`dropped-logs/{time}/`), never deleted. The entries setup copies in are never
+ * committed and alone do not count as leftovers. No leftovers → null; a failed
+ * commit is narrated and leaves the tree for the rebase to refuse.
  */
 function carryLeftovers(wt, o, log) {
-    const dirty = () => (git(wt, ["status", "--porcelain", "--untracked-files=all"]) ?? "") !== "";
-    if (!dirty())
+    if (!hasLeftovers(wt))
         return null;
     const logs = new RegExp(`^docs/plans/[^/]+/logs/${o.fid.replace(/\./g, "\\.")}/`);
     const dropped = (git(wt, ["ls-files", "--others", "--exclude-standard"]) ?? "")
         .split("\n")
         .filter((f) => logs.test(f) && runGit(wt, ["cat-file", "-e", `${o.onto}:${f}`]).ok);
-    for (const f of dropped)
-        fs.rmSync(path.join(wt, f));
+    const keepDir = path.join(path.dirname(ownershipMarker(wt, o.fid)), "dropped-logs", new Date().toISOString().replace(/[:.]/g, "-"));
+    for (const f of dropped) {
+        const file = path.join(wt, f);
+        if (git(wt, ["hash-object", "--", f]) !== git(wt, ["rev-parse", `${o.onto}:${f}`])) {
+            const kept = path.join(keepDir, f);
+            fs.mkdirSync(path.dirname(kept), { recursive: true });
+            fs.cpSync(file, kept);
+            log(`moved ${f} to ${kept}: it differs from ${o.onto}'s copy, which wins in the worktree`);
+        }
+        fs.rmSync(file);
+    }
     if (dropped.length > 0)
         log(`dropped ${dropped.length} untracked log(s) ${o.onto} already holds: ${dropped.join(", ")}`);
-    if (!dirty())
+    if (!hasLeftovers(wt))
         return { sha: null, dropped };
     const prior = fs.existsSync(o.statusFile) ? readRuns(o.statusFile).at(-1) : undefined;
     const what = prior === undefined
         ? "uncommitted work left in the worktree"
         : `the ${prior.status === "FAILED" ? "failed " : ""}${prior.workflow} record left uncommitted`;
-    addAllButCopied(wt, o.copied);
+    addAllButCopied(wt);
     const made = runGit(wt, ["commit", "-m", `chore(${o.fid}): carry ${what} bkit`]);
     if (!made.ok) {
         log(`could not commit what an earlier run left in ${wt}: ${made.stderr || made.stdout}`);
@@ -298,7 +329,7 @@ function copyListed(root, wt, entries, log) {
     const copyMissing = [];
     for (const entry of entries) {
         const rel = path.normalize(entry);
-        if (rel.startsWith("..") || path.isAbsolute(rel)) {
+        if (!insideCheckout(rel)) {
             log(`worktree copy: ${entry} is outside the main checkout — skipped`);
             continue;
         }
@@ -315,6 +346,7 @@ function copyListed(root, wt, entries, log) {
     }
     return { copied, copyMissing };
 }
+const sha256 = (content) => createHash("sha256").update(content).digest("hex");
 /**
  * bkit's own token file, `.bkit/.env`, in a worktree. `copyListed` covers the app env
  * files a repo configures; this one is bkit's, and it is gitignored — so a fresh
@@ -323,31 +355,48 @@ function copyListed(root, wt, entries, log) {
  *
  * Link to the main checkout's copy: one source of truth, so rotating a token needs no
  * second edit and no copy goes stale. Fall back to a copy where the filesystem refuses
- * a symlink. A regular file that already differs from the main checkout's is left for a
- * human to read, like a differing `.envrc`; `none` means the main checkout holds no
- * `.bkit/.env` to bring in, which the tip and the advisory then report.
+ * a symlink, recording its hash in the feature's outbox folder (`.bkit-env-copy`): a
+ * copy bkit made is replaced on the next setup, so a rotated token reaches it too. Any
+ * other regular file that differs from the main checkout's is left for a human to read,
+ * like a differing `.envrc`; `none` means the main checkout holds no `.bkit/.env` to
+ * bring in, which the tip and the advisory then report; `failed` means neither the link
+ * nor the copy could be written, narrated.
  */
-function linkBkitEnv(root, wt, log) {
+function linkBkitEnv(root, wt, fid, log) {
     const main = path.join(root, ".bkit", ".env");
     if (!fs.existsSync(main))
         return "none";
     const dest = path.join(wt, ".bkit", ".env");
+    const record = path.join(path.dirname(ownershipMarker(root, fid)), ".bkit-env-copy");
     // lstat, so a dangling link is seen (and replaced) rather than followed and missed.
     const stat = fs.lstatSync(dest, { throwIfNoEntry: false });
     if (stat?.isSymbolicLink() && fs.existsSync(dest))
         return "unchanged";
-    if (stat?.isFile() && !fs.readFileSync(dest).equals(fs.readFileSync(main))) {
-        log(`bkit-env: ${dest} differs from the main checkout's — left as it is; delete it to link the main checkout's copy`);
-        return "differs";
+    if (stat?.isFile()) {
+        const here = fs.readFileSync(dest);
+        const bkitMade = fs.existsSync(record) && fs.readFileSync(record, "utf-8") === sha256(here);
+        if (!bkitMade && !here.equals(fs.readFileSync(main))) {
+            log(`bkit-env: ${dest} differs from the main checkout's — left as it is; delete it to link the main checkout's copy`);
+            return "differs";
+        }
     }
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     fs.rmSync(dest, { recursive: true, force: true });
     try {
         fs.symlinkSync(main, dest);
+        fs.rmSync(record, { force: true });
         return "linked";
     }
     catch (err) {
-        fs.cpSync(main, dest);
+        try {
+            fs.cpSync(main, dest);
+        }
+        catch (copyErr) {
+            log(`bkit-env: could not link or copy the main checkout's .bkit/.env to ${dest} (${err.message}; ${copyErr.message}) — sign-ins in this worktree fail until it is there`);
+            return "failed";
+        }
+        fs.mkdirSync(path.dirname(record), { recursive: true });
+        fs.writeFileSync(record, sha256(fs.readFileSync(dest)));
         log(`bkit-env: symlink failed (${err.message}) — copied the main checkout's .bkit/.env`);
         return "copied";
     }
@@ -531,10 +580,10 @@ export const worktreesCommand = {
                 baseRef: "dev when local dev is a fast-forward of origin/dev (unpushed commits), else origin/dev",
                 baseSha: "git merge-base baseRef HEAD at worktreePath, or null",
                 carriedSha: "resume: the commit holding what an earlier run left uncommitted (a failed ship's record), made before the rebase; else null",
-                carriedDropped: "resume: untracked logs of this feature dropped because baseRef already holds them (dev's copy wins)",
+                carriedDropped: "resume: untracked logs of this feature dropped because baseRef already holds them (dev's copy wins); one whose content differs is first moved to the feature's outbox folder (dropped-logs/), named in the log",
                 copied: "worktree copy entries copied from the main checkout",
                 copyMissing: "worktree copy entries absent from the main checkout",
-                bkitEnv: "bkit's own .bkit/.env: linked to the main checkout's copy, or copied where a symlink is refused; unchanged when already linked, differs when a differing file was left to read, none when the main checkout holds none, null in adopt mode",
+                bkitEnv: "bkit's own .bkit/.env: linked to the main checkout's copy, or copied where a symlink is refused (a copy bkit made is refreshed on the next setup); unchanged when already linked, differs when a differing file was left to read, none when the main checkout holds none, failed when neither the link nor the copy could be written, null in adopt mode",
                 direnvAllowed: "direnv allow ran on the worktree's .envrc (present and identical to the main checkout's)",
                 installed: "dependencies were installed",
                 startSha: "in place on dev (debug): HEAD when the run started, recorded in the shared-checkout record; absent otherwise",
@@ -672,13 +721,12 @@ export const worktreesCommand = {
                     else {
                         fetchBranch(wt, DEV);
                         const onto = worktreeBase(wt, workflow, ctx.log);
-                        carried = carryLeftovers(wt, {
-                            fid,
-                            onto,
-                            statusFile: path.join(logDir, "status.jsonl"),
-                            copied: [...config.worktreeCopy, ...BKIT_OWN_COPY],
-                        }, ctx.log);
-                        const rb = runGit(wt, ["rebase", "--rebase-merges", onto]);
+                        carried = carryLeftovers(wt, { fid, onto, statusFile: path.join(logDir, "status.jsonl") }, ctx.log);
+                        // A tracked copy entry setup copied over (a committed placeholder `.env`) is
+                        // never committed, so the rebase sets it aside and puts it back. Only when
+                        // nothing else is left: a refused carry commit still stops the rebase.
+                        const aside = hasLeftovers(wt) ? [] : ["--autostash"];
+                        const rb = runGit(wt, ["rebase", "--rebase-merges", ...aside, onto]);
                         // The rebase replays the carry commit on top: report the replayed one.
                         if (rb.ok && carried?.sha)
                             carried.sha = git(wt, ["rev-parse", "HEAD"]);
@@ -708,7 +756,7 @@ export const worktreesCommand = {
                 const { copied, copyMissing } = done
                     ? copyListed(root, wt, config.worktreeCopy, ctx.log)
                     : { copied: [], copyMissing: [] };
-                const bkitEnv = done ? linkBkitEnv(root, wt, ctx.log) : null;
+                const bkitEnv = done ? linkBkitEnv(root, wt, fid, ctx.log) : null;
                 const direnvAllowed = done && allowDirenv(root, wt, ctx.log);
                 const wantInstall = done && config.worktreeInstall;
                 const installStatus = wantInstall ? install(wt, ctx.log) : 0;

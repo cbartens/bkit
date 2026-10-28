@@ -16,6 +16,22 @@ import { workflowsCommand } from "./workflows";
 // Real git repos and worktrees per test; a busy machine needs more than the default 5s.
 vi.setConfig({ testTimeout: 30_000 });
 
+/** A hook run as `removeWorktree` is entered, before it removes anything. */
+const removing = vi.hoisted(() => ({ onEnter: null as null | (() => void) }));
+vi.mock("./worktrees", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./worktrees")>();
+  return {
+    ...actual,
+    removeWorktree: (...args: Parameters<typeof actual.removeWorktree>) => {
+      removing.onEnter?.();
+      return actual.removeWorktree(...args);
+    },
+  };
+});
+afterEach(() => {
+  removing.onEnter = null;
+});
+
 const dirs: string[] = [];
 afterEach(() => {
   for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
@@ -64,6 +80,8 @@ const rebaseInProgress = (gitDir: string) =>
   fs.existsSync(path.join(gitDir, "rebase-merge")) ||
   fs.existsSync(path.join(gitDir, "rebase-apply"));
 const statusOf = (cwd: string) => path.join(cwd, REL, "status.jsonl");
+/** A `package.json` whose worktree copy list also names a file outside the checkout. */
+const outsideCopy = { bkit: { workflows: { worktree: { copy: [".env", "../shared/.env"] } } } };
 
 async function run(cwd: string, argv: string[]) {
   const out: string[] = [];
@@ -1092,6 +1110,20 @@ describe("bkit workflows close — commit, outbox, comment", () => {
     expect(git(cwd, "status", "--porcelain")).toBe("?? .env");
   });
 
+  it("--message commits when bkit.workflows.worktree.copy names a path outside the checkout", async () => {
+    const cwd = started();
+    write(cwd, "package.json", JSON.stringify(outsideCopy));
+    git(cwd, "add", "package.json");
+    git(cwd, "commit", "-qm", "outside copy entry");
+    write(cwd, ".env", "SECRET=1\n");
+    write(cwd, "a.txt", "changed\n");
+    const r = await run(cwd, wf("close", "build", "--message=m"));
+    expect(r.code).toBe(0);
+    expect(git(cwd, "log", "-1", "--format=%s")).toBe("m");
+    expect(git(cwd, "show", "--name-only", "--format=", "HEAD")).toContain("a.txt");
+    expect(git(cwd, "status", "--porcelain")).toBe("?? .env");
+  });
+
   it("an exact bkit:auto match only — a near-miss label leaves the subject alone", async () => {
     const cwd = started();
     await run(cwd, wf("close", "build", "--message=m", "--label=bkit:auto-paused"));
@@ -1194,6 +1226,22 @@ describe("bkit workflows handover", () => {
       `${REL}/status.jsonl`,
     );
     expect(git(cwd, "status", "--porcelain")).toBe("?? .env");
+  });
+
+  it("handover --push commits the record when a copy entry points outside the checkout", async () => {
+    const { cwd, remote } = withRemote();
+    write(cwd, "package.json", JSON.stringify(outsideCopy));
+    git(cwd, "add", "package.json");
+    git(cwd, "commit", "-qm", "outside copy entry");
+    write(cwd, `${REL}/status.jsonl`, jsonl([{ type: "workflow-failed", workflow: "build" }]));
+    write(cwd, ".env", "SECRET=1\n");
+    const r = await run(cwd, wf("handover", "build", `--month=${M}`, "--push", "--open-pr=none"));
+    expect(r.code).toBe(0);
+    expect(r.err).not.toContain("git add failed");
+    expect(git(remote, "show", "--name-only", "--format=", `feat/${FID}`)).toBe(
+      `${REL}/status.jsonl`,
+    );
+    expect(git(remote, "show", `feat/${FID}:${REL}/status.jsonl`)).toContain("workflow-failed");
   });
 
   it("--push commits the aborted subject, pushes, and links the handover in the comment", async () => {
@@ -1659,6 +1707,25 @@ describe("bkit workflows close --flush (ship)", () => {
     ]);
     const r = await run(wt, [...close, `--token=${lock.json.token}`]);
     expect(r.code).toBe(0);
+    expect(fs.existsSync(path.join(cwd, REL, ".lock"))).toBe(false);
+  });
+
+  it("removes the worktree before it releases the lock", async () => {
+    const { cwd, wt, close } = shipping(true);
+    const lock = await run(cwd, [
+      "locks",
+      "acquire",
+      "--kind=workflow",
+      "--workflow=ship",
+      `--fid=${FID}`,
+    ]);
+    const seen: { lock: boolean; worktree: boolean }[] = [];
+    removing.onEnter = () =>
+      seen.push({ lock: fs.existsSync(path.join(cwd, REL, ".lock")), worktree: fs.existsSync(wt) });
+    const r = await run(wt, [...close, `--token=${lock.json.token}`]);
+    expect(r.code).toBe(0);
+    expect(seen).toEqual([{ lock: true, worktree: true }]);
+    expect(fs.existsSync(wt)).toBe(false);
     expect(fs.existsSync(path.join(cwd, REL, ".lock"))).toBe(false);
   });
 

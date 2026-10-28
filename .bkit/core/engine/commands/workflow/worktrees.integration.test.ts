@@ -7,11 +7,31 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { runCommand } from "../lib";
 import { PACKAGE_RUNNER } from "../../shared/package-manager";
 import { ownershipMarker, worktreesCommand } from "./worktrees";
+
+/**
+ * Filesystem refusals on demand: `symlink` refuses every symlink (Windows without
+ * Developer Mode), `bkitEnvCopy` fails a copy onto `.bkit/.env`. Off, both pass through.
+ */
+const fsFaults = vi.hoisted(() => ({ symlink: false, bkitEnvCopy: false }));
+vi.mock("node:fs", async (importOriginal) => {
+  const real = await importOriginal<typeof import("node:fs")>();
+  const refused = (what: string) =>
+    Object.assign(new Error(`EPERM: operation not permitted, ${what}`), { code: "EPERM" });
+  const symlinkSync = (...args: Parameters<typeof real.symlinkSync>) => {
+    if (fsFaults.symlink) throw refused("symlink");
+    return real.symlinkSync(...args);
+  };
+  const cpSync = (...args: Parameters<typeof real.cpSync>) => {
+    if (fsFaults.bkitEnvCopy && String(args[1]).endsWith("/.bkit/.env")) throw refused("copyfile");
+    return real.cpSync(...args);
+  };
+  return { ...real, default: { ...real, symlinkSync, cpSync }, symlinkSync, cpSync };
+});
 
 const FID = "42-thing";
 const MONTH = "202610";
@@ -43,6 +63,8 @@ beforeEach(() => {
   delete process.env.DIRENV_EXIT;
 });
 afterEach(() => {
+  fsFaults.symlink = false;
+  fsFaults.bkitEnvCopy = false;
   process.env.PATH = savedPath;
   delete process.env.STUB_EXIT;
   delete process.env.DIRENV_EXIT;
@@ -482,6 +504,65 @@ describe("bkit worktrees setup — mint (resume)", () => {
     },
   );
 
+  it("keeps a dropped log that differs from dev's copy outside the tree, and removes an identical one", async () => {
+    const f = await minted();
+    const rel = `docs/plans/${MONTH}/logs/${FID}`;
+    const logDir = path.join(wtOf(f), rel);
+    fs.writeFileSync(path.join(logDir, "ship-summary.md"), "worktree copy\n");
+    fs.writeFileSync(path.join(logDir, "same.md"), "same\n");
+    fs.mkdirSync(path.join(f.seed, rel), { recursive: true });
+    fs.writeFileSync(path.join(f.seed, rel, "same.md"), "same\n");
+    git(f.seed, "add", `${rel}/same.md`);
+    advanceDev(f, `${rel}/ship-summary.md`, "landed copy\n");
+
+    const r = await setup(f.repo, "build", "--worktrees");
+    expect(r.code).toBe(0);
+    expect(r.json.carriedDropped).toEqual([`${rel}/same.md`, `${rel}/ship-summary.md`]);
+    expect(fs.readFileSync(path.join(logDir, "ship-summary.md"), "utf-8")).toBe("landed copy\n");
+    const kept = /moved .*ship-summary\.md.* to (\S+ship-summary\.md)/.exec(r.err)?.[1];
+    expect(kept).toBeDefined();
+    expect(kept!.startsWith(path.join(f.repo, ".git", "bkit-outbox", FID))).toBe(true);
+    expect(fs.readFileSync(kept!, "utf-8")).toBe("worktree copy\n");
+    expect(r.err).not.toMatch(/moved .*same\.md/);
+  });
+
+  it("resumes when a tracked .env in the copy list differs from the main checkout's, and never commits it", async () => {
+    const f = fixture();
+    fs.writeFileSync(path.join(f.seed, ".env"), "SECRET=placeholder\n");
+    git(f.seed, "add", ".env");
+    git(f.seed, "commit", "-q", "-m", "env placeholder");
+    git(f.seed, "push", "-q", "origin", "HEAD:dev");
+    fs.rmSync(path.join(f.repo, ".env"));
+    git(f.repo, "pull", "-q", "origin", "dev");
+    fs.writeFileSync(path.join(f.repo, ".env"), "SECRET=1\n");
+    expect((await setup(f.repo, "build", "--worktrees")).code).toBe(0);
+    expect(git(wtOf(f), "status", "--porcelain")).toBe("M .env");
+    fs.writeFileSync(path.join(wtOf(f), "a.txt"), "left behind\n");
+    const tip = advanceDev(f, "b.txt", "new\n");
+
+    const r = await setup(f.repo, "build", "--worktrees");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ mode: "resumed", sentinel: null });
+    expect(git(wtOf(f), "rev-parse", "HEAD~1")).toBe(tip);
+    expect(git(wtOf(f), "log", "--format=", "--name-only", `${tip}..HEAD`)).toBe("a.txt");
+    expect(fs.readFileSync(path.join(wtOf(f), ".env"), "utf-8")).toBe("SECRET=1\n");
+  });
+
+  it("commits leftovers when a copy entry points outside the checkout", async () => {
+    const f = await minted();
+    fs.writeFileSync(
+      path.join(f.repo, "package.json"),
+      JSON.stringify({ bkit: { workflows: { worktree: { copy: ["../shared/.env", ".env"] } } } }),
+    );
+    fs.writeFileSync(path.join(wtOf(f), "a.txt"), "left behind\n");
+    advanceDev(f, "b.txt", "new\n");
+
+    const r = await setup(f.repo, "build", "--worktrees");
+    expect(r.code).toBe(0);
+    expect(r.json.carriedSha).not.toBeNull();
+    expect(git(wtOf(f), "show", "--name-only", "--format=", "HEAD")).toBe("a.txt");
+  });
+
   it("never commits the entries setup copies in from the main checkout", async () => {
     const f = await minted();
     expect(fs.readFileSync(path.join(wtOf(f), ".env"), "utf-8")).toBe("SECRET=1\n");
@@ -541,6 +622,42 @@ describe("bkit worktrees setup — mint (resume)", () => {
     expect(fs.readFileSync(path.join(wtOf(f), ".bkit/.env"), "utf-8")).toBe("BKIT_GH_TOKEN=hand\n");
   });
 
+  it("refreshes a bkit-made .bkit/.env copy after the main checkout's token changes", async () => {
+    const f = fixture();
+    fs.mkdirSync(path.join(f.repo, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(f.repo, ".bkit/.env"), "BKIT_GH_TOKEN=old\n");
+    fsFaults.symlink = true;
+    const first = await setup(f.repo, "build", "--worktrees");
+    expect(first.json).toMatchObject({ bkitEnv: "copied" });
+    expect(fs.lstatSync(path.join(wtOf(f), ".bkit/.env")).isFile()).toBe(true);
+    fs.writeFileSync(path.join(f.repo, ".bkit/.env"), "BKIT_GH_TOKEN=new\n");
+
+    const again = await setup(f.repo, "build", "--worktrees");
+    expect(again.code).toBe(0);
+    expect(again.json).toMatchObject({ mode: "resumed", bkitEnv: "copied" });
+    expect(fs.readFileSync(path.join(wtOf(f), ".bkit/.env"), "utf-8")).toBe("BKIT_GH_TOKEN=new\n");
+
+    // A hand edit to the copy is still left for a human to read.
+    fs.writeFileSync(path.join(wtOf(f), ".bkit/.env"), "BKIT_GH_TOKEN=hand\n");
+    const edited = await setup(f.repo, "build", "--worktrees");
+    expect(edited.json).toMatchObject({ bkitEnv: "differs" });
+    expect(fs.readFileSync(path.join(wtOf(f), ".bkit/.env"), "utf-8")).toBe("BKIT_GH_TOKEN=hand\n");
+  });
+
+  it("reports a .bkit/.env it could neither link nor copy, instead of throwing", async () => {
+    const f = fixture();
+    fs.mkdirSync(path.join(f.repo, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(f.repo, ".bkit/.env"), "BKIT_GH_TOKEN=tok\n");
+    fsFaults.symlink = true;
+    fsFaults.bkitEnvCopy = true;
+
+    const r = await setup(f.repo, "build", "--worktrees");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ mode: "created", bkitEnv: "failed" });
+    expect(r.err).toContain("could not link or copy");
+    expect(fs.existsSync(path.join(wtOf(f), ".bkit/.env"))).toBe(false);
+  });
+
   it("leaves a clean worktree's history alone", async () => {
     const f = await minted();
     git(wtOf(f), "commit", "-q", "--allow-empty", "-m", "feature");
@@ -549,6 +666,8 @@ describe("bkit worktrees setup — mint (resume)", () => {
     expect(r.code).toBe(0);
     expect(r.json).toMatchObject({ carriedSha: null, carriedDropped: [] });
     expect(git(wtOf(f), "log", "-1", "--format=%s")).toBe("feature");
+    // The untracked .env setup copied in is not left-over work.
+    expect(r.err).not.toContain("could not commit");
   });
 
   it("a rebase that cannot start (the leftovers' commit refused) writes the sentinel with its own exit code", async () => {

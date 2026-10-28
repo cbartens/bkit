@@ -79,6 +79,21 @@ describe("tipsBase", () => {
       fs.rmSync(wt, { recursive: true, force: true });
     }
   });
+
+  it("returns the worktree's top level when the main repo is bare, never the bare repo's parent", () => {
+    // `cwd` (the bare repo's parent folder) holds an unrelated package.json.
+    const g = (dir: string, ...args: string[]) =>
+      spawnSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], { cwd: dir });
+    const seed = path.join(cwd, "seed");
+    expect(g(cwd, "init", "-q", seed).status).toBe(0);
+    expect(g(seed, "commit", "-q", "--allow-empty", "-m", "init").status).toBe(0);
+    expect(g(cwd, "clone", "-q", "--bare", seed, "repo.git").status).toBe(0);
+    const wt = path.join(cwd, "wt");
+    expect(g(path.join(cwd, "repo.git"), "worktree", "add", "-q", wt).status).toBe(0);
+    const nested = path.join(wt, "docs");
+    fs.mkdirSync(nested);
+    expect(tipsBase(nested)).toBe(fs.realpathSync(wt));
+  });
 });
 
 describe("matchesAdvisory / isTipSilenced", () => {
