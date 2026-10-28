@@ -1,10 +1,10 @@
 // checks/status-holes.ts — Tier-3 advisory status-hole detector.
 //
-// A fail-open advisory that compares the set of ship steps RECORDED in a
-// status.jsonl against the set of steps the workflow PROSE says should be
-// there. It derives its expected set from .bkit/core/workflows/bkit-ship.md at
-// runtime (headings + step:"ship-*" literals) — NEVER a hand-maintained table
-// (decision 384-tier3-promotion).
+// A fail-open advisory that compares the steps RECORDED in each run of a
+// status.jsonl against the steps the workflow PROSE says should be there. It
+// derives the expected set from .bkit/core/workflows/bkit-{workflow}.md at
+// runtime (headings + --step= literals) — NEVER a hand-maintained table
+// (decision 384-tier3-promotion). Each run's workflow is inferred from its rows.
 //
 // ADVISORY / FAIL-OPEN: the CLI exits 0 unconditionally — even when holes are
 // found (decision 384-tier3-promotion).
@@ -20,13 +20,14 @@
 //     appear only in the merge-retry loop.
 //
 // Usage (advisory CI step or manual):
-//   npx tsx .bkit/core/engine/checks/status-holes.ts <status.jsonl> [--ship-md <path>]
+//   npx tsx .bkit/core/engine/checks/status-holes.ts <status.jsonl>...
 //   # exits 0 always; prints advisory report to stdout
 
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { WORKFLOW_STEPS } from "../commands/workflow/step-table.js";
 import { parseJson } from "../shared/json.js";
 import { getWorkflowsRoot } from "../shared/package-roots.js";
 
@@ -86,7 +87,8 @@ const MERGED_ON_ENTRY_SKIP = new Set<string>([
 // Types
 // ---------------------------------------------------------------------------
 
-export type RunPath = "PATH_A" | "PATH_B" | "MERGED_ON_ENTRY" | "ABORTED" | "IN_PROGRESS";
+export type RunPath =
+  "PATH_A" | "PATH_B" | "MERGED_ON_ENTRY" | "COMPLETED" | "ABORTED" | "IN_PROGRESS";
 
 export interface StatusRow {
   type: string;
@@ -98,6 +100,8 @@ export interface StatusRow {
 }
 
 export interface HoleReport {
+  /** The workflow the run belongs to. */
+  workflow?: string;
   /** Steps the prose says should be present but were not recorded. */
   missing: string[];
   /** Steps recorded but NOT in the source-derived universe (invented names). */
@@ -115,88 +119,151 @@ export interface HoleReport {
 }
 
 // ---------------------------------------------------------------------------
-// Source derivation — parse bkit-ship.md to find the expected step universe.
+// Contract derivation — parse the workflow markdown into steps + required calls.
 // ---------------------------------------------------------------------------
 
-/**
- * Derive the universe of ship step keys from the workflow markdown.
- *
- * Strategy:
- * 1. Extract every `step:"ship-..."` literal from fenced code blocks.
- * 2. Extract every `## … Step N — Name` heading and map the heading's section
- *    to the step key(s) found within it.
- * 3. Return the union of all unique step keys.
- *
- * The two passes scan the SAME `step:"ship-*"` regex and the heading pass only
- * narrows the line range, so `headingSteps` is always a subset of `literalSteps`.
- * The detector reports `orphanSteps`: a status write that appears in the file but NOT
- * inside any `## … Step N` section.
- */
-export function deriveExpectedStepSetFromSource(shipMd: string): {
-  steps: string[];
-  headingSteps: string[];
-  literalSteps: string[];
+/** One `"{BKIT}" noun verb --flag` call the markdown names, reduced to words (flag values dropped). */
+export interface RequiredCall {
+  noun: string;
+  verb: string;
+  flags: string[];
+}
+
+export interface ContractStep {
+  number: number;
+  title: string;
+  /** The `--step=` / `step:"` row keys the section writes. */
+  keys: string[];
+  /** Every `"{BKIT}"` call in the section, in order. */
+  calls: RequiredCall[];
+  /** True under a column-0 `**Run only if**` / `**Skip if**` line, or a `(Path X only)` heading. */
+  conditional: boolean;
+}
+
+export interface Contract {
+  workflow: string;
+  steps: ContractStep[];
+  /** Deduped row keys across the step sections, sorted. */
+  universe: string[];
+  /** Calls in sections no step owns (opening lines, Failure Path, Decision Pause ...). */
+  workflowCalls: RequiredCall[];
+  /** Row keys written outside every numbered step section. */
   orphanSteps: string[];
-} {
-  const lines = shipMd.split("\n");
+  /** Disagreements with the deduped `WORKFLOW_STEPS[workflow]` keys; reported, never fatal. */
+  drift: string[];
+}
 
-  // 1. Collect every `step:"ship-..."` / `--step=ship-...` literal (anywhere — fenced or prose).
-  const literalSet = new Set<string>();
-  const literalRe = /(?:step:"|--step=)(ship-[a-z-]+)/g;
-  for (const line of lines) {
-    let m: RegExpExecArray | null;
-    while ((m = literalRe.exec(line)) !== null) {
-      literalSet.add(m[1]);
-    }
-    literalRe.lastIndex = 0; // reset per-line
+// A key followed by `{` is a templated log label (`build-group-gate-{GROUP}`), not a row key.
+const STEP_KEY_RE = /(?:step:"|--step=)([a-z][a-z0-9-]*)(\{)?/g;
+
+/** The words of one `"{BKIT}" ...` call: shell-split, quotes kept, stopped at the first unquoted operator. */
+export function callWords(rest: string): string[] {
+  const words: string[] = [];
+  let word = "";
+  let quote = "";
+  for (const ch of rest) {
+    if (quote) {
+      word += ch;
+      if (ch === quote) quote = "";
+    } else if (ch === '"' || ch === "'") {
+      word += ch;
+      quote = ch;
+    } else if ("|;&><)`".includes(ch)) break;
+    else if (/\s/.test(ch)) {
+      if (word) words.push(word);
+      word = "";
+    } else word += ch;
   }
+  if (word) words.push(word);
+  return words;
+}
 
-  // 2. Collect heading-derived steps. A `## … Step N` heading opens a section;
-  //    the step key(s) within that section's body (until the next `## ` heading)
-  //    belong to that step.
-  const headingSet = new Set<string>();
-  let inStep = false;
-  for (const line of lines) {
-    if (/^##\s+.*Step\s+\d+/i.test(line)) {
-      inStep = true;
-      continue;
-    }
-    if (/^##\s+/m.test(line) && !/Step\s+\d+/i.test(line)) {
-      inStep = false;
-      continue;
-    }
-    if (inStep) {
-      let m: RegExpExecArray | null;
-      const re = /(?:step:"|--step=)(ship-[a-z-]+)/g;
-      while ((m = re.exec(line)) !== null) {
-        headingSet.add(m[1]);
-      }
-      re.lastIndex = 0;
-    }
-  }
+/** Each `Step N — Title` heading, with the text up to the next step or section heading. */
+export function stepSections(text: string): Array<{ number: number; title: string; body: string }> {
+  const lines = text.split("\n");
+  const heading = /^#{2,3} \S+ Step (\d+) — (.+)$/;
+  const out: Array<{ number: number; title: string; body: string }> = [];
+  lines.forEach((l, i) => {
+    const m = heading.exec(l);
+    if (!m) return;
+    const end = lines.findIndex((x, j) => j > i && /^#{2,3} /.test(x) && !x.startsWith("### 🔒"));
+    out.push({
+      number: Number(m[1]),
+      title: m[2]!,
+      body: lines.slice(i, end === -1 ? undefined : end).join("\n"),
+    });
+  });
+  return out;
+}
 
-  // 3. Union + the one asymmetry that carries signal (see the docstring).
-  const all = new Set<string>([...literalSet, ...headingSet]);
-  const orphanSteps = [...literalSet].filter((s) => !headingSet.has(s)).sort();
-  return {
-    steps: [...all].sort(),
-    headingSteps: [...headingSet].sort(),
-    literalSteps: [...literalSet].sort(),
-    orphanSteps,
-  };
+/** Each `"{BKIT}"` call in `text` as noun / verb / flag names. */
+function requiredCalls(text: string): RequiredCall[] {
+  const joined = text.replace(/\\\n\s*/g, " ");
+  return joined
+    .split('"{BKIT}"')
+    .slice(1)
+    .map((call) => {
+      const [noun = "", verb = "", ...rest] = callWords(call.replace(/^ /, ""));
+      const flags = rest.flatMap((w) => {
+        const f = /^--([a-z][a-z0-9-]*)/.exec(w)?.[1];
+        return f ? [f] : [];
+      });
+      return { noun, verb: verb.startsWith("--") ? "" : verb, flags };
+    });
+}
+
+const stepKeys = (text: string): string[] => [
+  ...new Set([...text.matchAll(STEP_KEY_RE)].filter((m) => !m[2]).map((m) => m[1]!)),
+];
+
+/** A step is conditional under a column-0 marker line anywhere in its section, or a `(Path X only)` heading. */
+export function isConditionalSection(body: string): boolean {
+  const lines = body.split("\n");
+  return (
+    /\(Path [A-Z] only\)/.test(lines[0] ?? "") ||
+    lines.some((l) => /^\*\*(Run only if|Skip if)\*\*/.test(l))
+  );
 }
 
 /**
- * Cross-check the source-derived set against the frozen canonical set.
- * Returns the keys that disagree (present in one but not the other).
+ * Derive the contract of one workflow from its markdown: the step sections, the
+ * row keys and `"{BKIT}"` calls each holds, and the calls no step owns. The
+ * universe is cross-checked against the deduped `WORKFLOW_STEPS[workflow]`; a
+ * disagreement is reported as drift, never thrown.
  */
-export function checkSourceCanonicalDrift(sourceSteps: string[]): string[] {
-  const sourceSet = new Set(sourceSteps);
-  const canonicalSet = new Set<string>(SHIP_STEP_ORDER);
+export function deriveContract(workflowMd: string, workflow: string): Contract {
+  const sections = stepSections(workflowMd);
+  const steps: ContractStep[] = sections.map((s) => ({
+    number: s.number,
+    title: s.title,
+    keys: stepKeys(s.body),
+    calls: requiredCalls(s.body),
+    conditional: isConditionalSection(s.body),
+  }));
+  const universe = [...new Set(steps.flatMap((s) => s.keys))].sort();
+
+  // Text outside every step section: the md minus each section body.
+  let outside = workflowMd;
+  for (const s of sections) outside = outside.replace(s.body, "");
+  const table = (WORKFLOW_STEPS as Record<string, readonly { step?: string }[] | undefined>)[
+    workflow
+  ];
+  const tableKeys = new Set((table ?? []).flatMap((s) => (s.step ? [s.step] : [])));
   const drift: string[] = [];
-  for (const k of canonicalSet) if (!sourceSet.has(k)) drift.push(`canonical-but-not-source:${k}`);
-  for (const k of sourceSet) if (!canonicalSet.has(k)) drift.push(`source-but-not-canonical:${k}`);
-  return drift;
+  if (table) {
+    for (const k of tableKeys) if (!universe.includes(k)) drift.push(`table-but-not-source:${k}`);
+    for (const k of universe) if (!tableKeys.has(k)) drift.push(`source-but-not-table:${k}`);
+  }
+  return {
+    workflow,
+    steps,
+    universe,
+    workflowCalls: requiredCalls(outside),
+    orphanSteps: stepKeys(outside)
+      .filter((k) => k.startsWith(`${workflow}-`) && !universe.includes(k))
+      .sort(),
+    drift,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -265,6 +332,10 @@ export function computeMandatoryForPath(path: RunPath, sourceUniverse: string[])
         [...universe].filter((s) => !MERGED_ON_ENTRY_SKIP.has(s) && !RETRY_LOOP_STEPS.has(s)),
       );
 
+    case "COMPLETED":
+      // Non-ship runs derive their mandatory set from the contract (auditRun)
+      return new Set(universe);
+
     case "ABORTED":
       // No mandatory steps — the run terminated; post-abort absences are expected
       return new Set();
@@ -331,15 +402,10 @@ export function detectHoles(
 }
 
 // ---------------------------------------------------------------------------
-// Full audit — parse status.jsonl + ship md, classify, detect, report
+// Full audit — parse status.jsonl + workflow md, classify, detect, report
 // ---------------------------------------------------------------------------
 
-export function auditStatusJsonl(statusJsonl: string, shipMd: string): HoleReport {
-  // Derive expected set from source
-  const { steps: sourceUniverse, orphanSteps } = deriveExpectedStepSetFromSource(shipMd);
-  const sourceCanonicalDrift = checkSourceCanonicalDrift(sourceUniverse);
-
-  // Parse status rows
+function parseRows(statusJsonl: string): StatusRow[] {
   const rows: StatusRow[] = [];
   for (const line of statusJsonl.split("\n")) {
     const trimmed = line.trim();
@@ -348,35 +414,80 @@ export function auditStatusJsonl(statusJsonl: string, shipMd: string): HoleRepor
     const row = parseJson(trimmed);
     if (row.ok) rows.push(row.value as StatusRow);
   }
+  return rows;
+}
 
-  // Filter to ship step-done rows + workflow-failed rows
-  const shipStepRows = rows.filter(
-    (r) => r.type === "step-done" && r.workflow === "ship" && typeof r.step === "string",
+/** Audit one run's rows against the contract derived from its workflow markdown. */
+export function auditRun(rows: StatusRow[], workflow: string, workflowMd: string): HoleReport {
+  const contract = deriveContract(workflowMd, workflow);
+  const stepRows = rows.filter(
+    (r) => r.type === "step-done" && r.workflow === workflow && typeof r.step === "string",
   );
-  const hasWorkflowFailed = rows.some((r) => r.type === "workflow-failed" && r.workflow === "ship");
-  const hasMergedOnEntryMarker = rows.some(
-    (r) => r.type === "ship-merged-on-entry" && r.workflow === "ship",
+  const hasWorkflowFailed = rows.some(
+    (r) => r.type === "workflow-failed" && r.workflow === workflow,
   );
-
-  // Collect observed steps
   const observed = new Set<string>();
-  for (const r of shipStepRows) {
-    if (r.step) observed.add(r.step);
+  for (const r of stepRows) if (r.step) observed.add(r.step);
+  const sorted = [...observed].sort();
+
+  if (workflow === "ship") {
+    const hasMergedOnEntryMarker = rows.some(
+      (r) => r.type === "ship-merged-on-entry" && r.workflow === "ship",
+    );
+    const runPath = classifyRun(observed, hasWorkflowFailed, hasMergedOnEntryMarker);
+    const { missing, unexpected } = detectHoles(observed, contract.universe, runPath);
+    return {
+      workflow,
+      missing,
+      unexpected,
+      path: runPath,
+      observed: sorted,
+      sourceUniverse: contract.universe,
+      sourceCanonicalDrift: contract.drift,
+      orphanSteps: contract.orphanSteps,
+    };
   }
 
-  // Classify + detect
-  const runPath = classifyRun(observed, hasWorkflowFailed, hasMergedOnEntryMarker);
-  const { missing, unexpected } = detectHoles(observed, sourceUniverse, runPath);
-
+  const closeKey = `${workflow}-close-workflow`;
+  const runPath: RunPath = observed.has(closeKey)
+    ? "COMPLETED"
+    : hasWorkflowFailed
+      ? "ABORTED"
+      : "IN_PROGRESS";
+  const missing =
+    runPath === "COMPLETED"
+      ? contract.steps
+          .filter(
+            (s) => s.keys.length > 0 && !s.conditional && !s.keys.some((k) => observed.has(k)),
+          )
+          .map((s) => s.keys[0]!)
+          .sort()
+      : [];
   return {
+    workflow,
     missing,
-    unexpected,
+    unexpected: sorted.filter((k) => !contract.universe.includes(k)),
     path: runPath,
-    observed: [...observed].sort(),
-    sourceUniverse: [...sourceUniverse].sort(),
-    sourceCanonicalDrift,
-    orphanSteps,
+    observed: sorted,
+    sourceUniverse: contract.universe,
+    sourceCanonicalDrift: contract.drift,
+    // Decision Pause / abort rows sit outside the numbered steps by design
+    orphanSteps: [],
   };
+}
+
+/** Audit a status.jsonl as a ship run against `shipMd`. */
+export function auditStatusJsonl(statusJsonl: string, shipMd: string): HoleReport {
+  return auditRun(parseRows(statusJsonl), "ship", shipMd);
+}
+
+/** The workflows a status.jsonl holds runs of, inferred from its own rows. */
+export function inferWorkflows(rows: StatusRow[]): string[] {
+  const known = new Set<string>(Object.keys(WORKFLOW_STEPS));
+  const found = new Set<string>();
+  for (const r of rows)
+    if (typeof r.workflow === "string" && known.has(r.workflow)) found.add(r.workflow);
+  return [...found].sort();
 }
 
 // ---------------------------------------------------------------------------
@@ -386,6 +497,7 @@ export function auditStatusJsonl(statusJsonl: string, shipMd: string): HoleRepor
 export function formatAdvisoryReport(report: HoleReport): string {
   const lines: string[] = [];
   lines.push("[bkit-status-holes] ADVISORY — fail-open (exit 0 regardless)");
+  if (report.workflow) lines.push(`  workflow: ${report.workflow}`);
   lines.push(`  path: ${report.path}`);
   lines.push(`  observed: ${report.observed.length} step(s)`);
 
@@ -417,37 +529,30 @@ export function formatAdvisoryReport(report: HoleReport): string {
 // ---------------------------------------------------------------------------
 
 export function main(argv: string[]): void {
-  const args = argv.slice(2);
-
-  // Resolve the ship-md override FIRST so its VALUE is never mistaken for a
-  // positional. `args.find(a => !a.startsWith("--"))` alone picks up the value
-  // of `--ship-md` when the flag is passed before the status path.
-  const mdFlagIdx = args.indexOf("--ship-md");
-  const shipMdOverride = mdFlagIdx >= 0 ? args[mdFlagIdx + 1] : undefined;
-  const consumed = new Set<number>();
-  if (mdFlagIdx >= 0) {
-    consumed.add(mdFlagIdx);
-    if (shipMdOverride) consumed.add(mdFlagIdx + 1);
-  }
-
-  // Every remaining positional is a status.jsonl to audit — one report each, so
-  // a whole corpus can be swept in one advisory CI step.
-  const statusPaths = args.filter((a, i) => !consumed.has(i) && !a.startsWith("--"));
+  // Every positional is a status.jsonl to audit — one report per file, so a
+  // whole corpus can be swept in one advisory CI step.
+  const statusPaths = argv.slice(2).filter((a) => !a.startsWith("--"));
   if (statusPaths.length === 0) {
     process.stdout.write("[bkit-status-holes] no status.jsonl path given — skipping (advisory)\n");
     return; // exit 0
   }
 
-  const shipMdPath = shipMdOverride || path.join(getWorkflowsRoot(), "bkit-ship.md");
+  const mdCache = new Map<string, string | null>();
+  const loadMd = (workflow: string): string | null => {
+    if (!mdCache.has(workflow)) {
+      try {
+        mdCache.set(
+          workflow,
+          fs.readFileSync(path.join(getWorkflowsRoot(), `bkit-${workflow}.md`), "utf-8"),
+        );
+      } catch {
+        mdCache.set(workflow, null);
+      }
+    }
+    return mdCache.get(workflow) ?? null;
+  };
 
-  let shipMd = "";
-  try {
-    shipMd = fs.readFileSync(shipMdPath, "utf-8");
-  } catch {
-    process.stdout.write(`[bkit-status-holes] ${shipMdPath} not found — skipping (advisory)\n`);
-    return; // exit 0
-  }
-
+  let holeyRuns = 0;
   for (const statusPath of statusPaths) {
     // Read inputs (advisory — missing files = skip, never fail)
     let statusJsonl = "";
@@ -458,10 +563,31 @@ export function main(argv: string[]): void {
       continue; // exit 0
     }
 
-    const report = auditStatusJsonl(statusJsonl, shipMd);
+    const rows = parseRows(statusJsonl);
+    const workflows = inferWorkflows(rows);
     process.stdout.write(`\n${statusPath}\n`);
-    process.stdout.write(formatAdvisoryReport(report) + "\n");
+    if (workflows.length === 0) {
+      process.stdout.write(
+        `[bkit-status-holes] ${statusPath}: no workflow rows — skipping (advisory)\n`,
+      );
+      continue;
+    }
+    for (const workflow of workflows) {
+      const md = loadMd(workflow);
+      if (md === null) {
+        process.stdout.write(
+          `[bkit-status-holes] bkit-${workflow}.md not found — skipping ${workflow} run (advisory)\n`,
+        );
+        continue;
+      }
+      const report = auditRun(rows, workflow, md);
+      if (report.missing.length > 0) holeyRuns += 1;
+      process.stdout.write(formatAdvisoryReport(report) + "\n");
+    }
   }
+  process.stdout.write(
+    `[bkit-status-holes] sweep: ${statusPaths.length} file(s), ${holeyRuns} holey\n`,
+  );
   // ALWAYS exit 0 — this is advisory / fail-open
 }
 
