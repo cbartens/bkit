@@ -1061,7 +1061,7 @@ const NOT_CODE = [":(exclude)docs/plans", ":(exclude)docs/*.jsonl", ":(exclude).
 /** One added line that disables a test, or removes one of its assertions. */
 export interface DisabledTest {
   file: string;
-  /** 1-based line in the new file. */
+  /** 1-based line in the new file, or in the old one when the diff deletes the file. */
   line: number;
   /** The test it sits in, else the marker line's own text. */
   test: string;
@@ -1071,23 +1071,37 @@ export interface DisabledTest {
 const TEST_FILE = /\.(?:test|spec)\.|_test\.|(^|\/)test_[^/]*\.py$/;
 
 /** Added-line markers that disable a test: `bkit-slop-type-suppression.mjs`'s set, widened. */
-const DISABLED_MARKERS = [
+const MARKERS = [
   /\b(?:describe|context|it|test|suite|bench)\.(?:skip|todo|fixme)\b/,
   /(?<!\.)\bx(?:it|describe|test|context)\s*\(/,
   /\bxfail\b/,
   /\bt\.Skip\(/,
   /#\[ignore\b/,
   /@Disabled\b/,
+  /@pytest\.mark\.skip\b/,
+  /@unittest\.skip\b/,
+  /\.skip\s*\(/,
 ];
 
-/** Added-line markers only a test file carries: Python's decorators and a bare `skip` call. */
-const TEST_FILE_MARKERS = [/@pytest\.mark\.skip\b/, /@unittest\.skip\b/, /\.skip\s*\(/];
+/** The markers that apply to an added line of `file`: only a test file carries them. */
+const markersFor = (file: string) => (TEST_FILE.test(file) ? MARKERS : []);
 
-/** Every added-line marker, test file or not. */
-const ALL_MARKERS = [...DISABLED_MARKERS, ...TEST_FILE_MARKERS];
+/** A quoted span: a marker inside it is prose or a fixture string, not a call. */
+const QUOTED = /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`/g;
 
-/** The markers that apply to an added line of `file`. */
-const markersFor = (file: string) => (TEST_FILE.test(file) ? ALL_MARKERS : DISABLED_MARKERS);
+/** A line's trailing comment (`#` is one unless it opens a Rust or C attribute). */
+const COMMENT_TAIL = /(?:^|\s)(?:\/\/|#(?!\[))/;
+
+/** A line that opens or continues a block comment. */
+const BLOCK_COMMENT = /^\s*(?:\/\*|\*)/;
+
+/** `line` with its quoted spans and comment removed — the part a marker can be a call in. */
+function stripProse(line: string): string {
+  if (BLOCK_COMMENT.test(line)) return "";
+  const code = line.replace(QUOTED, '""');
+  const cut = code.search(COMMENT_TAIL);
+  return cut === -1 ? code : code.slice(0, cut);
+}
 
 /** An assertion call a change deletes from a test file: `expect(…)`, `assert.equal(…)`, `should(…)`. */
 const ASSERTION = /(?<![\w$])(?:expect|assert\w*|should_\w+|should)\s*[(.]/;
@@ -1139,12 +1153,23 @@ function testAt(body: string | null, line: string, at: number): string {
   return line.trim();
 }
 
-const HUNK = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
+/** The test a removed line sits in when its file is gone: the nearest removed declaration above it. */
+function goneTestAt(lines: Array<{ at: number; text: string }>, at: number, line: string): string {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (lines[i]!.at > at) continue;
+    const name = declaredName(lines[i]!.text);
+    if (name !== null) return name;
+  }
+  return line.trim();
+}
+
+const HUNK = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
 
 /**
  * The added lines of a `--no-renames` unified diff that disable a test, and the removed
- * assertion lines of a test file the same diff does not add back: each with its new-file
- * line and the test it sits in.
+ * assertion lines of a test file whose added assertion lines no longer outnumber them: each
+ * with its line and the test it sits in. A deleted test file reports its removed assertions
+ * by their old line, since it has no new file left.
  */
 export function disabledTestsIn(diff: string, root: string): DisabledTest[] {
   const out: DisabledTest[] = [];
@@ -1161,42 +1186,74 @@ export function disabledTestsIn(diff: string, root: string): DisabledTest[] {
     }
     return bodies.get(rel)!;
   };
-  /** Trimmed texts of the added lines, so a removed assertion re-added elsewhere is not a drop. */
-  const readded = new Map<string, number>();
+  /** Added assertion lines per test file, so a rewritten or moved assertion is not a drop. */
+  const added = new Map<string, number>();
   const removed: Array<{ file: string; line: number; text: string }> = [];
+  /** Removed lines per file, by their old line — the only body a deleted file has left. */
+  const erased = new Map<string, Array<{ at: number; text: string }>>();
+  /** Files the diff deletes: their `+++` is `/dev/null`, so the `---` path names them. */
+  const deleted = new Set<string>();
   let file = "";
+  let from = "";
   let next = 0;
+  let old = 0;
   for (const raw of diff.split("\n")) {
-    if (raw.startsWith("+++ ")) {
-      file = raw.replace(/^\+\+\+ (b\/)?/, "");
+    if (raw.startsWith("--- ")) {
+      from = raw.replace(/^--- (a\/)?/, "");
       continue;
     }
-    if (raw.startsWith("--- ")) continue;
+    if (raw.startsWith("+++ ")) {
+      const plus = raw.replace(/^\+\+\+ (b\/)?/, "");
+      file = plus === "/dev/null" ? from : plus;
+      if (plus === "/dev/null") deleted.add(file);
+      continue;
+    }
     const hunk = HUNK.exec(raw);
     if (hunk !== null) {
-      next = Number(hunk[1]);
+      old = Number(hunk[1]);
+      next = Number(hunk[2]);
       continue;
     }
     if (raw.startsWith("+")) {
       const text = raw.slice(1);
-      if (markersFor(file).some((m) => m.test(text)))
-        out.push({ file, line: next, test: testAt(body(file), text, next) });
-      const key = text.trim();
-      readded.set(key, (readded.get(key) ?? 0) + 1);
+      if (TEST_FILE.test(file)) {
+        if (markersFor(file).some((m) => m.test(stripProse(text))))
+          out.push({ file, line: next, test: testAt(body(file), text, next) });
+        if (isAssertion(text)) added.set(file, (added.get(file) ?? 0) + 1);
+      }
       next++;
     } else if (raw.startsWith("-")) {
       const text = raw.slice(1);
-      if (TEST_FILE.test(file) && isAssertion(text)) removed.push({ file, line: next, text });
-    } else if (raw.startsWith(" ")) next++;
-  }
-  for (const r of removed) {
-    const key = r.text.trim();
-    const left = readded.get(key) ?? 0;
-    if (left > 0) {
-      readded.set(key, left - 1);
-      continue;
+      if (TEST_FILE.test(file)) {
+        const lines = erased.get(file) ?? [];
+        lines.push({ at: old, text });
+        erased.set(file, lines);
+        if (isAssertion(text)) removed.push({ file, line: deleted.has(file) ? old : next, text });
+      }
+      old++;
+    } else if (raw.startsWith(" ")) {
+      next++;
+      old++;
     }
-    out.push({ file: r.file, line: r.line, test: testAt(body(r.file), r.text, r.line) });
+  }
+  /** Removed assertions per file, in diff order: a file reports only its net drop. */
+  const drops = new Map<string, Array<{ file: string; line: number; text: string }>>();
+  for (const r of removed) {
+    const list = drops.get(r.file) ?? [];
+    list.push(r);
+    drops.set(r.file, list);
+  }
+  for (const [rel, list] of drops) {
+    const excess = list.length - (added.get(rel) ?? 0);
+    if (excess <= 0) continue;
+    for (const r of list.slice(list.length - excess))
+      out.push({
+        file: r.file,
+        line: r.line,
+        test: deleted.has(rel)
+          ? goneTestAt(erased.get(rel) ?? [], r.line, r.text)
+          : testAt(body(rel), r.text, r.line),
+      });
   }
   return out;
 }
@@ -2314,7 +2371,7 @@ export const branchesCommand: CommandSpec = {
         {
           name: "disabled-tests",
           type: "boolean",
-          help: "an added line disables a test (`.skip` / `.todo` / `.fixme` / `xfail`, `t.Skip()`, `#[ignore]`, `@Disabled`, a test file's `@pytest.mark.skip` / `@unittest.skip`) or a test file drops an assertion no line adds back; inverts --paths / --marker / --code's polarity, so never pass it with --expect-none",
+          help: "an added line of a test file disables a test (`.skip` / `.todo` / `.fixme` / `xfail`, `t.Skip()`, `#[ignore]`, `@Disabled`, `@pytest.mark.skip`, `@unittest.skip`), outside a comment or a quoted span, or a test file's removed assertions outweigh the ones the diff adds back — a deleted test file included; inverts --paths / --marker / --code's polarity, so never pass it with --expect-none",
         },
         {
           name: "expect-none",
