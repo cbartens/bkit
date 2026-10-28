@@ -247,6 +247,16 @@ describe("bkit challenge merge", () => {
     expect(checkPlanText(read(PLAN)).problems).toEqual([]);
   });
 
+  it("appends findings as TASK GROUP headings", async () => {
+    write(PLAN, plan(2));
+    write(R1, report({ sev: "HIGH", loc: "src/a.ts:1" }));
+    expect((await merge(...args([R1]))).code).toBe(0);
+    const headings = read(PLAN)
+      .split("\n")
+      .filter((l) => /^### .*GROUP/.test(l));
+    expect(headings.at(-1)).toBe("### TASK GROUP 2: Challenge round 1 findings");
+  });
+
   it("challenge merge writes a matrix row for each appended finding task", async () => {
     write(
       PLAN,

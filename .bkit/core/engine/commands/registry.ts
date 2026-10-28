@@ -18,6 +18,7 @@ import { fidsCommand } from "./workflow/fids.js";
 import { issuesCommand } from "./workflow/issues.js";
 import { ledgersCommand } from "./workflow/ledgers.js";
 import { locksCommand } from "./workflow/locks.js";
+import { plansCommand } from "./workflow/plans.js";
 import { prsCommand } from "./workflow/prs.js";
 import { repoCommand } from "./workflow/repo.js";
 import { roadmapCommand } from "./workflow/roadmap.js";
@@ -29,7 +30,6 @@ import { stepsCommand } from "./workflow/steps.js";
 import { tasksCommand } from "./workflow/tasks.js";
 import { testsCommand } from "./workflow/tests.js";
 import { workflowsCommand } from "./workflow/workflows.js";
-import { workstreamsCommand } from "./workflow/workstreams.js";
 import { worktreesCommand } from "./workflow/worktrees.js";
 
 export const COMMANDS: readonly CommandSpec[] = [
@@ -55,7 +55,7 @@ export const COMMANDS: readonly CommandSpec[] = [
   ledgersCommand,
   contextCommand,
   roadmapCommand,
-  workstreamsCommand,
+  plansCommand,
   ciCommand,
   setupCommand,
 ];

@@ -149,7 +149,7 @@ export const tasksCommand: CommandSpec = {
   verbs: {
     tick: {
       summary:
-        "Tick the named tasks of one plan group, less those a `tests green` report gaps; exit 0 ticked (including none), 1 a plan with no task blocks, 2 a bad flag value or plan.",
+        "Tick the named tasks of one task group, less those a `tests green` report gaps; exit 0 ticked (including none), 1 a plan with no task blocks, 2 a bad flag value or plan.",
       flags: [
         {
           name: "plan",
@@ -161,7 +161,7 @@ export const tasksCommand: CommandSpec = {
           name: "group",
           type: "string",
           required: true,
-          help: "the plan group whose tasks are candidates (positive integer)",
+          help: "the task group whose tasks are candidates (positive integer)",
         },
         {
           name: "tasks",
@@ -246,7 +246,7 @@ export const tasksCommand: CommandSpec = {
           name: "group",
           type: "string",
           required: true,
-          help: "the plan group whose tasks are read (positive integer)",
+          help: "the task group whose tasks are read (positive integer)",
         },
         {
           name: "log",

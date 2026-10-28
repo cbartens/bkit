@@ -305,7 +305,7 @@ export const countersCommand: CommandSpec = {
         },
         { ...FILE_FLAG, required: false, help: "status.jsonl, with --of or --rows" },
         { ...WORKFLOW_FLAG, required: false, help: "workflow, with --of or --rows" },
-        { ...GROUP_FLAG, help: "with --of: only rows for this plan group" },
+        { ...GROUP_FLAG, help: "with --of: only rows for this task group" },
         { ...ALL_RUNS_FLAG, help: "with --of: count every run of the workflow in --file" },
         { name: "max", type: "string", help: "max as a number (or use --point)" },
         {

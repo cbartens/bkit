@@ -349,7 +349,7 @@ _No tracker connected, skip step._
    "{BKIT}" workflows promote --workflow=design --fid={FID} --month={YYYYMM} --resolve
    ```
    Hold `final` as `{DESIGN_FINAL}`.
-2. Write `design-summary.md` from this run's status rows and the organised workstreams:
+2. Write `design-summary.md` from this run's status rows and the organised plans:
    ```bash
    "{BKIT}" workflows summary --workflow=design --file="{STATUS}"
    ```
@@ -376,7 +376,7 @@ _No tracker connected, skip step._
 
 ---
 
-## 🤖 Step 11 — Suggest Workstreams
+## 🤖 Step 11 — Suggest Plans
 
 
 1. No tracker connected → Step 12.

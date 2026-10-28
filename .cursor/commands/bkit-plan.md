@@ -108,12 +108,12 @@ Plan Feature — Autonomous plan generation
    "{BKIT}" locks acquire --kind=workflow --workflow=plan --fid={FID}
    ```
    Hold `token` as `{LOCK_TOKEN}`, `month` as `{YYYYMM}`.
-6. Find the parent design and audit reports — a `**Parent design:**` link, else this feature's own design doc; every `docs/audits/{YYYYMM}/*.md` path named.
+6. Find the parent design, the workstreams this plan covers and the audit reports — a `**Parent design:**` link, else this feature's own design doc; the `**Workstreams:**` line; every `docs/audits/{YYYYMM}/*.md` path named.
    Pass `--description-file` only when `ISSUE_ID` is non-empty.
    ```bash
    "{BKIT}" fids design --fid={FID} --month={YYYYMM} --prompt-file="{SESSION_DIR}/prompt.md" --description-file="{SESSION_DIR}/issue-description.md"
    ```
-   Hold `auditPaths` as `{AUDIT_PATHS}`. Route:
+   Hold `auditPaths` as `{AUDIT_PATHS}`, `workstreams` as `{WORKSTREAMS}`. Route:
    - **If** exit 0 → hold `parentFid` as `{PARENT_FID}`, `parentMonth` as `{PARENT_YYYYMM}`.
    - **If** exit 1 → `PARENT_FID` empty.
    - **Else** → **Failure Path**.
@@ -196,10 +196,10 @@ Plan Feature — Autonomous plan generation
 ## 🧠 Step 3 — Generate Plan
 
 1. **Subagent:** Invoke `/bkit-plan-generate` using `Task` tool:
-   Context: You are a subagent in the Plan phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
+   Context: You are a subagent in the Plan phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task. Workstreams this plan covers: {WORKSTREAMS}.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md`, `docs/plans/{YYYYMM}/{FID}-plan.md` (if present — superseded plan, context only, not a constraint).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`.
-   **If** the draft still holds `PENDING` → invoke `@bkit-plan-generate` once more with Context `"Fill only the sections still marked PENDING and the empty groups; leave every finished section as it is."` and the plan caps above, Read: the same inputs, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`.
+   **If** the draft still holds `PENDING` → invoke `@bkit-plan-generate` once more with Context `"Fill only the sections still marked PENDING and the empty groups; leave every finished section as it is."` and the plan caps and workstreams above, Read: the same inputs, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`.
 2. Check the draft's groups and task blocks, and that every symbol it names exists:
    ```bash
    "{BKIT}" tests plan-check --plan=docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md --existence=refuse --log=docs/plans/{YYYYMM}/logs/{FID}/plan-generate-check.md

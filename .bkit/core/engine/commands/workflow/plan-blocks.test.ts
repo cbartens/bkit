@@ -218,6 +218,29 @@ describe("parsePlanBlocks", () => {
     expect(parsePlanBlocks(lines.join("\n")).errors).toEqual([]);
   });
 
+  it("accepts a TASK GROUP heading", () => {
+    const md = group(1, task(1))
+      .join("\n")
+      .replace("### GROUP 1: Group 1 title", "### TASK GROUP 1: Saving items");
+    expect(md).toContain("### TASK GROUP 1: Saving items");
+    const r = parsePlanBlocks(md);
+    expect(r.errors).toEqual([]);
+    expect(r.groups.map((g) => [g.group, g.title])).toEqual([[1, "Saving items"]]);
+  });
+
+  it("accepts a legacy GROUP heading", () => {
+    const r = parsePlanBlocks(group(1, task(1)).join("\n"));
+    expect(r.errors).toEqual([]);
+    expect(r.groups.map((g) => [g.group, g.title])).toEqual([[1, "Group 1 title"]]);
+  });
+
+  it("a group marker with no heading names the TASK GROUP heading", () => {
+    const lines = group(1, task(1)).filter((l) => !l.startsWith("### GROUP"));
+    expect(parsePlanBlocks(lines.join("\n")).errors.map((e) => e.message)).toContain(
+      "GROUP 1 (line 1) is not followed by `### TASK GROUP 1: {title}`",
+    );
+  });
+
   it("rejects TASK 0 and GROUP 0", () => {
     const lines = group(0, task(0));
     const r = parsePlanBlocks(lines.join("\n"));

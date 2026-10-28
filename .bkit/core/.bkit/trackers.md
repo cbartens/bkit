@@ -106,11 +106,11 @@ Workflows read issue body + comments (`bkit issues text`), never title (title �
 - Success Criteria: <=5 observable outcome bullets.
 - Edge Cases: `| Scenario | Expected Behavior |`.
 - Derived Test Matrix: `| Test description | Type | Target file |`; Type = lowest tier that exercises it, named per `docs/testing.md`; every row covered by exactly one task.
-- Tasks, build order, as plan group and task blocks (`docs/templates/bkit-plan.md` § Agent Execution Runbook), sized by `package.json` `bkit.workflows.tasks`: <= `bkit.workflows.tasks.maxPerGroup` tasks (default 3) and `bkit.workflows.tasks.maxTestsPerGroup` `TEST FIRST` tests (default 15) per group, 1 to `bkit.workflows.tasks.maxTestsPerTask` tests (default 10) across <= `bkit.workflows.tasks.maxTestFilesPerTask` test files (default 3) per task; `n/a — {reason}` for docs, config, pure refactor, or E2E / @live only. Fields as in a plan: `CREATE` / `READ` / `UPDATE` / `DELETE` (`` `{symbol}` in `{file}`: {what} `` or `` `{file}`: {what} ``, one line per reference), `DEPENDS ON` (task numbers, same or earlier group), `DONE WHEN`, `TEST FIRST`, `TEST EXCEPTION` (owner only; counts once committed alone in the plan). An issue's `TEST EXCEPTION` = a request: convert copies it word for word, `bkit tests green` refuses it (`exception-refused` or its test-order gaps), the owner confirms it at the build's Decision Pause, where Accept rewrites it with the owner's reason and date. With a plan file, the build reads both: where the issue and the plan disagree, the newer text wins, and comments posted after the plan's last commit send the build through convert before any code. Form `.github/ISSUE_TEMPLATE/bkit-change.yml` shows the same fields:
+- Tasks, build order, as task group and task blocks (`docs/templates/bkit-plan.md` § Agent Execution Runbook), sized by `package.json` `bkit.workflows.tasks`: <= `bkit.workflows.tasks.maxPerGroup` tasks (default 3) and `bkit.workflows.tasks.maxTestsPerGroup` `TEST FIRST` tests (default 15) per group, 1 to `bkit.workflows.tasks.maxTestsPerTask` tests (default 10) across <= `bkit.workflows.tasks.maxTestFilesPerTask` test files (default 3) per task; `n/a — {reason}` for docs, config, pure refactor, or E2E / @live only. Fields as in a plan: `CREATE` / `READ` / `UPDATE` / `DELETE` (`` `{symbol}` in `{file}`: {what} `` or `` `{file}`: {what} ``, one line per reference), `DEPENDS ON` (task numbers, same or earlier group), `DONE WHEN`, `TEST FIRST`, `TEST EXCEPTION` (owner only; counts once committed alone in the plan). An issue's `TEST EXCEPTION` = a request: convert copies it word for word, `bkit tests green` refuses it (`exception-refused` or its test-order gaps), the owner confirms it at the build's Decision Pause, where Accept rewrites it with the owner's reason and date. With a plan file, the build reads both: where the issue and the plan disagree, the newer text wins, and comments posted after the plan's last commit send the build through convert before any code. Form `.github/ISSUE_TEMPLATE/bkit-change.yml` shows the same fields:
 
   ```text
   <!-- bkit:group 1 start -->
-  ### GROUP 1: {title}
+  ### TASK GROUP 1: {title}
   <!-- bkit:task 1 start -->
   - [ ] **TASK 1:** {change}
     - **UPDATE:** `{symbol}` in `{file}`: {what}
@@ -141,6 +141,7 @@ Workflows read issue body + comments (`bkit issues text`), never title (title �
 | Line | Read by | Effect |
 | --- | --- | --- |
 | `**Parent design:** [{FID}-design.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/{FID}-design.md)` | plan Step 1 | sets `PARENT_FID` → design = spec source; absent → the design made on the same issue (`bkit fids design`) |
+| `**Workstreams:** WS-1, WS-2` | plan Step 1 (`bkit fids design`) | the `WS-N` ids the plan covers → plan-generate Context; plan scoped to those workstreams of the parent design; absent → the whole design |
 | `**Audit reports:** docs/audits/{YYYYMM}/{slug}.md (findings {ids})` | plan Step 1 | each path → `AUDIT_PATHS`; path not a file → Failure Path |
 | `###### bkit:blocked-by start` · `- #{N}` per line · `###### bkit:blocked-by end` | build `issue-blockers-check` (github; linear / jira → native relations) | any listed issue open → build stops |
 | `###### bkit:ignore-earlier` | `bkit issues text` | drops all earlier content; human-placed only |
@@ -155,7 +156,7 @@ Workflows read issue body + comments (`bkit issues text`), never title (title �
 | --- | --- | --- |
 | audit run, tracker wired, no open audit parent for its template (`Parent: missing`) | audit parent (below) | template path line |
 | audit `Suggested Issues` row | by `Next Step`: `/bkit-design` → idea; `/bkit-plan`, `/bkit-build`, `build:lite` → change; `/bkit-debug`, `debug:lite` → bug; `manual` → plain task | `**Audit reports:**` line with row's finding IDs; sub-issue of the template's audit parent (linear → `parentId`; jira → `parent`) |
-| design `Suggested Workstreams` (2+; design summary asks) | title = workstream name; body = its scope, spec left to design; filed in `Requires` order | `**Parent design:**` line; blocked-by block = issues filed for its `Requires` (linear → `blockedBy` relation; jira → `Blocks` link, `inwardIssue` = blocker) |
+| design `Suggested Plans` (`P-N`; 2+ → design summary next step; 1 → planned on the design's own issue) | one issue per plan, never per workstream; title = plan name; body = its deliverable and covered workstream scopes, spec left to design; filed in `Requires` order | `**Parent design:**` line; `**Workstreams:**` line = its `Covers` ids; blocked-by block = plan issues filed for its `Requires` (linear → `blockedBy` relation; jira → `Blocks` link, `inwardIssue` = blocker) |
 | roadmap item with no issue (ledger row, audit candidate) | by recommended command, as audit row | ledger `key` / report path in References |
 
 **Audit parent** — one standing issue per audit template, shared by every run of that template; never one per run, never one across templates.

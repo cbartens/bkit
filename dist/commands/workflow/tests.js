@@ -1113,7 +1113,7 @@ export const testsCommand = {
             flags: [
                 FILE_FLAG,
                 WORKFLOW_FLAG,
-                { ...GROUP_FLAG, help: "audit only this plan group's tasks (positive integer)" },
+                { ...GROUP_FLAG, help: "audit only this task group's tasks (positive integer)" },
                 {
                     name: "plan",
                     type: "string",

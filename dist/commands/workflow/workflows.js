@@ -34,7 +34,7 @@ import { EXIT_EMPTY, activeRecord, commitBookkeeping, ownPathCommit, ownSet, rem
 import { readIssueTracker } from "./fids.js";
 import { agentContextBlock, buildBlock, chatFingerprint, ciList, claudeTranscripts, hostChat, planBlock, planFiles, runChats, runLines, runStatusRows, stepsBlock, timeBlock, } from "./run-facts.js";
 import { buildSummary, refOf, SUMMARY_WORKFLOWS } from "./summary.js";
-import { parseWorkstreams } from "./workstreams.js";
+import { parsePlans, parseWorkstreams } from "./plans.js";
 import { EXIT_REMOVE_FAILED, EXIT_SPLIT_BUCKET, acquireWorkflowLock, owns, readHolder, releaseLock, resolveMonth, workflowLockPath, } from "./locks.js";
 import { highestVersion } from "./plan-versions.js";
 import { mergePr, probePr } from "./prs.js";
@@ -1280,6 +1280,7 @@ function summaryVerb(ctx) {
             : [],
         read,
         workstreams: organised === undefined ? undefined : parseWorkstreams(organised),
+        suggestedPlans: organised === undefined ? undefined : parsePlans(organised),
         organised,
         pr: workflow === "ship" && prNumber !== undefined
             ? prSize(ctx.cwd, prNumber, ctx.log)

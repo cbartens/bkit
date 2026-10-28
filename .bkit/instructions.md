@@ -2744,7 +2744,7 @@ to `docs/{{ledger}}.jsonl` in `.bkit/jsonl.md` format; check existing entries fi
 - carriers: prompt `bkit-plan-*`, `bkit-build-plan-convert`, `bkit-build-plan-execute`, `bkit-build-plan-verify`
 
 ```text
-**Runbook tasks:** The runbook is groups of task blocks in build order (schema, then API, then UI). A group is `<!-- bkit:group N start -->`, `### GROUP N: {title}`, its task blocks and `<!-- bkit:group N end -->`, holding tasks and `TEST FIRST` tests within the per-group plan caps your Context names (`bkit.workflows.tasks`: tasks, and `TEST FIRST` tests in all); bigger → split the group. A task is `<!-- bkit:task N start -->`, `- [ ] **TASK N:** {title}`, one sub-bullet per field and `<!-- bkit:task N end -->`, its number unique across the plan. Fields, uppercase: `**CREATE:**` / `**READ:**` / `**UPDATE:**` / `**DELETE:**` (`` `{symbol}` in `{file}`: {what} `` or `` `{file}`: {what} ``, one line per reference), `**DEPENDS ON:**` (task numbers, same or earlier group), `**DONE WHEN:**`, `**TEST FIRST:**`, `**TEST EXCEPTION:**`; `bkit tests plan-check` refuses task-like text outside every block. `DONE WHEN` is short, testable and checkable in the codebase (a file exists, a signature matches, a test passes, a behaviour shows). A task that adds or changes logic names its own tests and fixes the tests it breaks; no task leaves its tests to a later one. Behaviour tests come only from `Derived Test Matrix` rows, and a task crossing a boundary (DB, API, model, network, migration) pairs them with non-mock tests. An audit plan has one task per in-scope finding id; tasks group findings only on one shared root cause and still name every id.
+**Runbook tasks:** The runbook is groups of task blocks in build order (schema, then API, then UI). A group is `<!-- bkit:group N start -->`, `### TASK GROUP N: {title}`, its task blocks and `<!-- bkit:group N end -->`, holding tasks and `TEST FIRST` tests within the per-group plan caps your Context names (`bkit.workflows.tasks`: tasks, and `TEST FIRST` tests in all); bigger → split the group. A task is `<!-- bkit:task N start -->`, `- [ ] **TASK N:** {title}`, one sub-bullet per field and `<!-- bkit:task N end -->`, its number unique across the plan. Fields, uppercase: `**CREATE:**` / `**READ:**` / `**UPDATE:**` / `**DELETE:**` (`` `{symbol}` in `{file}`: {what} `` or `` `{file}`: {what} ``, one line per reference), `**DEPENDS ON:**` (task numbers, same or earlier group), `**DONE WHEN:**`, `**TEST FIRST:**`, `**TEST EXCEPTION:**`; `bkit tests plan-check` refuses task-like text outside every block. `DONE WHEN` is short, testable and checkable in the codebase (a file exists, a signature matches, a test passes, a behaviour shows). A task that adds or changes logic names its own tests and fixes the tests it breaks; no task leaves its tests to a later one. Behaviour tests come only from `Derived Test Matrix` rows, and a task crossing a boundary (DB, API, model, network, migration) pairs them with non-mock tests. An audit plan has one task per in-scope finding id; tasks group findings only on one shared root cause and still name every id.
 ```
 
 ```retired
@@ -7135,7 +7135,7 @@ Other → append one `docs/decisions.jsonl` row with `bkit ledgers append` (`.bk
 **Accept (assumed)** (written by `decisions apply`) → write nothing else: no `docs/decisions.jsonl` row, no `TEST EXCEPTION`. An item that is a challenge task → tick it `[x]` and end its title with ` — accepted (assumed)`. Ship asks the owner to confirm it.
 **Fix now** → an item that is a challenge task → keep that task open; it runs as it is. **Else** → write a task block (`docs/templates/bkit-plan.md` § Agent Execution Runbook) numbered one above the plan's highest task, with `**DONE WHEN:**` and `**TEST FIRST:**` (one sub-bullet per test, `` `{test file}` `{test name}` fails on {what goes wrong} ``), and one `Derived Test Matrix` row per test in that `TEST FIRST` (``| {test name} | {tier} | `{test file}` | {task} |``, the tier its file's name gives); the human's direction, when given, shapes the task:
 `From: verify` and group `{GROUP}` stays within `{MAX_TASKS_PER_GROUP}` tasks and `{MAX_TESTS_PER_GROUP}` `TEST FIRST` tests with it → inside group `{GROUP}`.
-`From: verify`, over either cap → a new group right after `{GROUP}`; add 1 to every later group's number, in its markers and `### GROUP` heading.
+`From: verify`, over either cap → a new group right after `{GROUP}`; add 1 to every later group's number, in its markers and `### TASK GROUP` heading.
 `From: tests` or `From: challenge` → a new last group, each new group within the caps.
 Then check the plan:
 **If** exit non-zero → **Failure Path** naming each problem in the report.
@@ -7183,7 +7183,7 @@ Base commit resolved, or the missing anchor named as the skip
 Plan not revised
 Advisory emitted when the base commit resolved
 New skills installed
-One pass of Steps 7-9 per plan group, in group order: Step 7 briefs the first group with an open task, Step 8 verifies that group's own diff, Step 9 closes its gaps. Attempt budgets count per group (`--group`). Per-group file naming: `{step}-{GROUP}-{ATTEMPT}.md`. No group left open → Step 10.
+One pass of Steps 7-9 per task group, in group order: Step 7 briefs the first group with an open task, Step 8 verifies that group's own diff, Step 9 closes its gaps. Attempt budgets count per group (`--group`). Per-group file naming: `{step}-{GROUP}-{ATTEMPT}.md`. No group left open → Step 10.
 Once per run: **If** the session prompt (`{SESSION_DIR}/prompt.md`) carries run instructions beyond naming the issue (a redo, a resume, a constraint) → write them word for word to `{SESSION_DIR}/brief-note.md`. Brief the first group with an open task — a task neither ticked `[x]` nor logged `DONE` in a `build-plan-execute-*-log.md`; drop `--note-file` when `{SESSION_DIR}/brief-note.md` does not exist:
 Hold `artifact` as `{BRIEF}`, `group` as `{GROUP}`, `tasks` as `{GROUP_TASKS}`. **If** `group` = null → Step 10.
 Record the group's start commit, once per group:
@@ -7226,7 +7226,7 @@ Strategy computed before invocation
 No-progress attempt routed
 Check whether it already ran in this run:
 **If** `verdict` non-null → Step 11.
-Tick each group's satisfied tasks — one call per plan group, `{GROUP}` that group and `{VERIFIED_TASKS}` the numbers `Tasks:` names for it:
+Tick each group's satisfied tasks — one call per task group, `{GROUP}` that group and `{VERIFIED_TASKS}` the numbers `Tasks:` names for it:
 [fit `workflow-summary-route` 0.80; keep: routes on the printed `verdict`, not `SUMMARY_VERDICT`] **If** `verdict` = PASS or CONCERNS → Step 11.
 Subagent invoked (`@bkit-build-plan-verify`, holistic, no inline work)
 Set the challenge round. **If** `CHALLENGE_DONE` = true → Step 12. **If** `CHALLENGE_ROUND` is held → keep it. **Else** → read it from status.jsonl:
@@ -7437,12 +7437,12 @@ Wait for all subagents to complete, then finish — `verdict` = worst of the two
 Subagents invoked (`@bkit-design-review-1`, `@bkit-design-review-2`, no inline work)
 Routed correctly
 Finish — refuses (exit 9) probe files outside the artifact tree:
-Write `design-summary.md` from this run's status rows and the organised workstreams:
+Write `design-summary.md` from this run's status rows and the organised plans:
 [workflow-pushes] Finish, then push with exactly one command:
 Final design resolved
-Parse workstreams:
-[tracker-issue-creation] Post the list on `{ISSUE_ID}` only. never create a tracker issue. never comment on any other issue. never set blockers. Comment:
-Workstreams parsed
+Parse plans:
+[tracker-issue-creation] Post the plan list on `{ISSUE_ID}` only. never create a tracker issue. never comment on any other issue. never set blockers. Comment:
+Plans parsed
 No tracker connected → Step 12.
 ```
 
@@ -7466,10 +7466,10 @@ Wait for all subagents to complete, then finish — `verdict` = worst of the thr
 [workflow-pushes] Finish, then push the summary commit:
 Final plan resolved
 Ledger rows checked (`ledgers check`)
-Find the parent design and audit reports — a `**Parent design:**` link, else this feature's own design doc; every `docs/audits/{YYYYMM}/*.md` path named.
+Find the parent design, the workstreams this plan covers and the audit reports — a `**Parent design:**` link, else this feature's own design doc; the `**Workstreams:**` line; every `docs/audits/{YYYYMM}/*.md` path named.
 Write the input file — session prompt, issue text, parent design, audit reports:
 **If** `PARENT_FID` empty → drop `--design`. **If** `AUDIT_PATHS` empty → drop `--audit`; **Else** → one `--audit` per path, in order.
-**If** the draft still holds `PENDING` → invoke `@bkit-plan-generate` once more with Context `"Fill only the sections still marked PENDING and the empty groups; leave every finished section as it is."` and the plan caps above, Read: the same inputs, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`.
+**If** the draft still holds `PENDING` → invoke `@bkit-plan-generate` once more with Context `"Fill only the sections still marked PENDING and the empty groups; leave every finished section as it is."` and the plan caps and workstreams above, Read: the same inputs, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`.
 Check the draft's groups and task blocks, and that every symbol it names exists:
 [local-tests-first; existing-evidence-first] **If** exit 1 → invoke `@bkit-plan-generate` again with Context `"Fix only what 'docs/plans/{YYYYMM}/logs/{FID}/plan-generate-check.md' names; edit only those lines."` and the plan caps above, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md` → re-run this sub-step; a second exit 1 → **Failure Path**.
 Draft checked (`tests plan-check`)
@@ -7937,20 +7937,24 @@ Preserve strongest approaches. Consolidate Decisions.
 - source: `.bkit/core/prompts/bkit-design-organise.md`
 
 ```text
-**Role:** Senior architect decomposing reviewed designs into dependency-annotated workstreams.
+**Role:** Senior architect decomposing reviewed designs into dependency-annotated workstreams and plans.
 Seed **Create** from the prior versioned design, its verdict header stripped, under a `Verdict: PENDING` header:
 Identify decomposition boundaries: domain boundaries, organisational structure, chronological dependencies. Do not use token / context-window size as factor.
-Group design work into workstreams at identified boundaries. No workstream target count; granularity follows logical seams.
+Group design work into workstreams at identified boundaries.
 Per workstream: assign stable ID `WS-{N}`; identify `Requires` (other workstream IDs). `Requires` mandatory; empty `[]` only for root workstream without upstream prerequisites.
-Append workstream sections to **Create** output via `Edit` at end of file.
+Group workstreams into plans; a plan is one filed issue. Workstreams share a plan unless the deliverable test splits them: split only where a group of workstreams forms an independent deliverable, carries its own rollout / rollback, its own risk or owner, or is independently releasable. Workstreams that cannot ship alone (same-change mandate) → one plan.
+Per plan: assign stable ID `P-{N}`; state `Deliverable` (what the plan ships); identify `Covers` (its workstream IDs) and `Requires` (other plan IDs). Workstream `Requires` across plans → covering plan `Requires` the other plan; workstream `Requires` inside one plan → dropped. `Requires` mandatory; empty `[]` only for root plan without upstream prerequisites.
+Append workstream sections, then plan sections, to **Create** output via `Edit` at end of file.
 [honest-reporting; check-gates-first] Self-verify before verdict (max 2 fix iterations); **If** still failing → `FAIL`:
 Extract all major design elements: Architecture components, data model entities, component / flow items, decisions, open questions.
 Confirm every element addressed in at least one workstream scope. **If** gap → assign to appropriate workstream and recheck.
-Confirm every `Requires` ID refers to existing workstream. **If** dangling reference → fix and recheck.
-Confirm no cycles: per workstream → `Requires` chain does not loop back to itself. **If** loop detected → `FAIL`.
-`PASS` = all elements covered, all references valid, clean DAG.
-`CONCERNS` = workable decomposition but structural ambiguities (tightly coupled workstreams, fuzzy scope boundaries).
-`FAIL` = cycle detected (any workstream `Requires` chain loops back to itself) or failed self-verify.
+Confirm every workstream in exactly one plan `Covers`. **If** uncovered or covered twice → fix and recheck.
+Confirm every plan states its `Deliverable`. **If** missing → fix and recheck.
+Confirm every workstream `Requires` ID refers to existing workstream, every plan `Requires` ID to existing plan. **If** dangling reference → fix and recheck.
+Confirm no cycles: per workstream and per plan → `Requires` chain does not loop back to itself. **If** loop detected → `FAIL`.
+`PASS` = all elements covered, every workstream in one plan, all references valid, clean workstream and plan DAGs.
+`CONCERNS` = workable decomposition but structural ambiguities (tightly coupled workstreams, fuzzy scope or plan boundaries).
+`FAIL` = cycle detected (any workstream or plan `Requires` chain loops back to itself) or failed self-verify.
 ```
 
 #### bkit-design-review-1
@@ -8044,7 +8048,7 @@ Classify each claim:
 
 ```text
 **Role:** Senior architect translating design docs into chronological implementation plans.
-[scope-discipline] **Workstreams:** **If** input includes workstream directives → plan must cover only specified workstream scopes. Treat any provided parent design as context only, not backlog. Surface required workstream dependencies at top of plan.
+[scope-discipline] **Workstreams:** **If** Context or input names workstreams (`WS-{N}` ids from the issue's `**Workstreams:**` line, or other workstream directives) → plan must cover only those workstream scopes of the parent design's `Suggested Workstreams`; `[]` = the whole design. Treat any provided parent design as context only, not backlog. Surface required workstream dependencies at top of plan.
 [scope-discipline] **Audits:** **If** input includes audit findings → plan must cover only specified findings. Treat rest of audit report as context only, not backlog.
 Initialise **Create** output stub with `PENDING` placeholders per `docs/templates/bkit-plan.md` sections.
 Foundation — testable contract:

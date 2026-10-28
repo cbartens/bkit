@@ -30,7 +30,7 @@ export const STEP_FLAG = {
 export const GROUP_FLAG = {
     name: "group",
     type: "string",
-    help: "only rows for this plan group (positive integer)",
+    help: "only rows for this task group (positive integer)",
 };
 /** Exit code: status.jsonl missing, unreadable, or not valid NDJSON. */
 export const EXIT_NO_STATUS = 3;
@@ -395,7 +395,7 @@ export const statusCommand = {
                 number: "the step number to continue at (1 when no run is active)",
                 title: "the step heading's title",
                 after: "the DONE row that placed it, or null",
-                group: "that row's plan group, or null",
+                group: "that row's task group, or null",
                 active: "whether the latest run is this workflow, still IN_PROGRESS",
                 challengeRound: "build: the round Step 10's challenge runs as (1 up to bkit.workflows.build.challenge.maxAttempts), from the build-challenge rows' round field; null for other workflows",
                 challengeDone: "build: true once the last allowed challenge round has merged, so Step 10 goes on to Step 11; null for other workflows",

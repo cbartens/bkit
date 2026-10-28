@@ -29,7 +29,7 @@ export type Step = {
   artifacts: string[];
   verdict?: "PASS" | "FAIL" | "CONCERNS" | "SINGLE" | "SPLIT";
   attempt?: number;
-  /** The plan group the step ran for. */
+  /** The task group the step ran for. */
   group?: number;
   /** A row written before groups replaced sub-plans; read as its group. */
   subPlan?: number;
@@ -228,7 +228,7 @@ export type EngineActionRow = {
   type: typeof ENGINE_ACTION;
   /** What was done: `comment`, `commit`, `dispatch`, `pr-open`, … */
   action: string;
-  /** The moment: workflow, run, step, plan group, attempt and kind, joined by `/`. */
+  /** The moment: workflow, run, step, task group, attempt and kind, joined by `/`. */
   key: string;
   /** sha256 of the body or payload acted on. */
   hash: string;

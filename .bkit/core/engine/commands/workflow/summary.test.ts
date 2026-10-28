@@ -183,20 +183,72 @@ describe("buildSummary", () => {
     expect(failed.nextStep).toBe("/bkit-ship #682");
   });
 
-  it("design with two workstreams files them before /bkit-plan", () => {
+  const ws = (n: number, name: string) => ({
+    id: `WS-${n}`,
+    n,
+    name,
+    requires: [],
+    requiresText: "[]",
+  });
+  const plan = (n: number, name: string, covers: string[], requires: string[] = []) => ({
+    id: `P-${n}`,
+    n,
+    name,
+    covers,
+    requires,
+    requiresText: `[${requires.join(", ")}]`,
+  });
+
+  it("prints plans with covered workstreams", () => {
     const s = buildSummary(
       input({
         workflow: "design",
-        workstreams: [
-          { id: "WS-1", n: 1, name: "Engine", requires: [], requiresText: "None" },
-          { id: "WS-2", n: 2, name: "Docs", requires: ["WS-1"], requiresText: "WS-1" },
+        workstreams: [ws(1, "Engine"), ws(2, "Help"), ws(3, "Docs")],
+        suggestedPlans: [plan(1, "Command", ["WS-1", "WS-2", "WS-3"])],
+      }),
+    );
+    expect(s.nextStep).toBe("/bkit-plan #682");
+    const section = s.markdown.split("## Suggested Plans\n")[1]!.split("\n## ")[0]!;
+    expect(section.trim()).toBe(
+      [
+        "### P-1: Command",
+        "",
+        "Covers: WS-1 (Engine), WS-2 (Help), WS-3 (Docs)",
+        "Requires: []",
+      ].join("\n"),
+    );
+    expect(s.markdown).not.toContain("### WS-");
+    expect(s.markdown).not.toContain("one issue each");
+  });
+
+  it("a one-workstream design shows one plan and /bkit-plan on its own ref", () => {
+    const s = buildSummary(
+      input({
+        workflow: "design",
+        workstreams: [ws(1, "Engine")],
+        suggestedPlans: [plan(1, "Engine", ["WS-1"])],
+      }),
+    );
+    expect(s.nextStep).toBe("/bkit-plan #682");
+    expect(s.markdown).toContain("### P-1: Engine\n\nCovers: WS-1 (Engine)\n");
+  });
+
+  it("two plans ask to file plan issues first", () => {
+    const s = buildSummary(
+      input({
+        workflow: "design",
+        workstreams: [ws(1, "Engine"), ws(2, "Help"), ws(3, "Docs")],
+        suggestedPlans: [
+          plan(1, "Command", ["WS-1", "WS-2"]),
+          plan(2, "Docs", ["WS-3"], ["P-1"]),
         ],
       }),
     );
     expect(s.nextStep).toBe(
-      "File the Suggested Workstreams issues, then /bkit-plan <first root workstream's new issue>",
+      "File the Suggested Plans issues, then /bkit-plan <first root plan's new issue>",
     );
-    expect(s.markdown).toContain("### WS-2: Docs");
+    expect(s.markdown).toContain("### P-1: Command");
+    expect(s.markdown).toContain("### P-2: Docs\n\nCovers: WS-3 (Docs)\nRequires: [P-1]\n");
   });
 
   it("copies the organised design's Risks & Open Questions under ## Open Questions", () => {

@@ -1281,7 +1281,7 @@ const ISSUE_TIED = [
   /mcp__github__projects_write\(\{BOARD\}/,
   /"\{BKIT\}" issues (?:labels|comment)\b/,
   /"\{BKIT\}" issues text --description-file="\{OUTBOX\}\/issue-description\.md"/,
-  /"\{BKIT\}" workstreams comment\b/,
+  /"\{BKIT\}" plans comment\b/,
   /\*\*Tracker\*\* status change/,
 ];
 
@@ -1612,13 +1612,22 @@ describe("issue-less runs", () => {
   });
 
   it("design Step 11 requires an issue", () => {
-    const step11 = section(workflow("design"), /Step 11 — Suggest Workstreams/);
+    const step11 = section(workflow("design"), /Step 11 — Suggest Plans/);
     const trueBlock = step11.slice(step11.indexOf("bkit:tracker true start"));
     expect(trueBlock.indexOf(SKIP_NO_ISSUE), "no Skip if line in the true block").toBeGreaterThan(
       -1,
     );
-    expect(trueBlock.indexOf(SKIP_NO_ISSUE)).toBeLessThan(trueBlock.indexOf("workstreams parse"));
+    expect(trueBlock.indexOf(SKIP_NO_ISSUE)).toBeLessThan(trueBlock.indexOf("plans parse"));
     expect(trueBlock).toMatch(/Skip if\*\* `ISSUE_ID` empty → Step 12/);
+  });
+
+  it("design Step 11 posts plans", () => {
+    const step11 = section(workflow("design"), /Step 11 — Suggest Plans/);
+    expect(step11).toContain('"{BKIT}" plans comment --artifact=');
+    expect(step11).not.toMatch(/workstreams (?:parse|comment)/);
+    expect(step11).not.toMatch(/issue per workstream/i);
+    expect(step11).toContain("never create a tracker issue");
+    expect(step11).toContain("never set blockers");
   });
 
   it("debug Step 1 never probes for a PR on dev or main", () => {

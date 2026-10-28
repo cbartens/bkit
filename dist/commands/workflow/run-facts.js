@@ -132,7 +132,7 @@ export function ciEntry(d) {
 }
 const kbOf = (file) => Math.round(fs.statSync(file).size / 1024);
 /**
- * Per plan group, per task: its TEST FIRST tests and distinct test files; null when the
+ * Per task group, per task: its TEST FIRST tests and distinct test files; null when the
  * task has no such field.
  */
 export function planTasks(text) {

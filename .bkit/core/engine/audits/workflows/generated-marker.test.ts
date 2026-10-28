@@ -4,9 +4,9 @@
  * `###### bkit:ignore-earlier` cut mean the same thing on both trackers.
  *
  * Stamping and filtering both live in the engine: every comment body comes from
- * `bkit issues comment` / `bkit workstreams comment`, which open it with
+ * `bkit issues comment` / `bkit plans comment`, which open it with
  * `###### bkit:generated` (pinned in commands/workflow/issues.test.ts and
- * workstreams.test.ts), and the issue text joined by `bkit workflows input` and
+ * plans.test.ts), and the issue text joined by `bkit workflows input` and
  * `bkit issues related` drops marker-carrying comments and applies the cut (pinned in
  * issues.test.ts and workflows.test.ts). What stays here is the wiring that keeps
  * those commands the ONLY place either happens:

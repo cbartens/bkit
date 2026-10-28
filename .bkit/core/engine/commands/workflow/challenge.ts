@@ -141,7 +141,7 @@ function findingsLog(text: string): { body: string; line: number } {
 }
 
 /** The group wrapper a Findings Log gets when the reviewer wrote task blocks only. */
-const WRAP = ["<!-- bkit:group 1 start -->", "### GROUP 1: Findings"];
+const WRAP = ["<!-- bkit:group 1 start -->", "### TASK GROUP 1: Findings"];
 
 /**
  * One report's findings: each task block under `## Findings Log` (read through
@@ -317,7 +317,7 @@ function findingGroups(
   const lines = chunks.flatMap((chunk, g) => [
     ...(g === 0 ? [] : [""]),
     `<!-- bkit:group ${firstGroup + g} start -->`,
-    `### GROUP ${firstGroup + g}: Challenge round ${round} findings`,
+    `### TASK GROUP ${firstGroup + g}: Challenge round ${round} findings`,
     ...chunk.flatMap((f) => taskBlock(next++, f, round)),
     `<!-- bkit:group ${firstGroup + g} end -->`,
   ]);

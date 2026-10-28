@@ -2,7 +2,7 @@
 // task blocks between lowercase HTML-comment markers, each task's uppercase fields.
 //
 //   <!-- bkit:group N start -->
-//   ### GROUP N: {title}
+//   ### TASK GROUP N: {title}      (`### GROUP N: {title}` is read too)
 //   <!-- bkit:task M start -->
 //   - [ ] **TASK M:** {title}
 //     - **UPDATE:** `symbol` in `file`: what changes
@@ -285,7 +285,7 @@ const SINGLE_FIELDS: ReadonlySet<PlanField> = new Set([
 ]);
 
 const MARKER = /^\s*<!--\s*bkit:(group|task)\s+(\d+)\s+(start|end)\s*-->\s*$/;
-const GROUP_HEAD = /^###\s+GROUP\s+(\d+):\s*(.*)$/;
+const GROUP_HEAD = /^###\s+(?:TASK\s+)?GROUP\s+(\d+):\s*(.*)$/;
 const TASK_HEAD = /^\s*- \[([ xX])\] \*\*TASK (\d+):\*\*\s*(.*)$/;
 const LABEL_LINE = /^(\s*)(?:- )?\*\*([A-Za-z][A-Za-z -]*?):\*\*\s*(.*)$/;
 const SUB_BULLET = /^(\s*)- (.*)$/;
@@ -498,7 +498,7 @@ export function parsePlanBlocks(text: string): PlanBlocks {
         if (h === null)
           err(
             n,
-            `GROUP ${want.n} (line ${want.line}) is not followed by \`### GROUP ${want.n}: {title}\``,
+            `GROUP ${want.n} (line ${want.line}) is not followed by \`### TASK GROUP ${want.n}: {title}\``,
           );
         else if (Number(h[1]) !== want.n)
           err(

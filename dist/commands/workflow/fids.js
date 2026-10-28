@@ -393,6 +393,15 @@ export function parentDesignLink(text) {
     const m = /\*\*Parent design:\*\*[^\n]*?docs\/plans\/([0-9]{6})\/([a-z0-9][a-z0-9-]*)-design\.md/.exec(text);
     return m ? { month: m[1], fid: m[2] } : null;
 }
+/** The `WS-{N}` ids on the first `**Workstreams:**` line in the texts; [] when none. */
+export function workstreamIds(...texts) {
+    for (const text of texts) {
+        const line = /\*\*Workstreams:\*\*([^\n]*)/.exec(text)?.[1];
+        if (line !== undefined)
+            return [...new Set(line.match(/WS-\d+/g) ?? [])];
+    }
+    return [];
+}
 /** Every `docs/audits/{YYYYMM}/*.md` path in the texts, first mention order, unique. */
 export function auditPaths(...texts) {
     const seen = new Set();
@@ -824,7 +833,7 @@ export const fidsCommand = {
             },
         },
         design: {
-            summary: "The plan's parent design: the **Parent design:** link in the description or prompt, else the feature's own docs/plans/{YYYYMM}/{FID}-design.md; plus the audit reports they name (exit 0 a parent, exit 1 none).",
+            summary: "The plan's parent design: the **Parent design:** link in the description or prompt, else the feature's own docs/plans/{YYYYMM}/{FID}-design.md; plus the audit reports and the **Workstreams:** ids they name (exit 0 a parent, exit 1 none).",
             flags: [
                 { name: "fid", type: "string", required: true, help: "feature id" },
                 {
@@ -852,6 +861,7 @@ export const fidsCommand = {
                 parentPath: "its repo-relative path, else null",
                 parentSource: "link | fid | null",
                 auditPaths: "every docs/audits/{YYYYMM}/*.md path the description, then the prompt, names, first mention order",
+                workstreams: "the WS-{N} ids the first **Workstreams:** line (description, then prompt) names: the plan covers only those; [] = the whole design",
             },
             exitCodes: {
                 [EXIT_NO_FILE]: "a --description-file / --prompt-file is missing, or a linked design or named audit path is not a file",
@@ -893,6 +903,7 @@ export const fidsCommand = {
                     parentPath: parent?.path ?? null,
                     parentSource: parent?.source ?? null,
                     auditPaths: audits,
+                    workstreams: workstreamIds(...texts),
                 });
                 return parent ? EXIT.OK : EXIT.NO;
             },

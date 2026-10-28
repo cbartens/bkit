@@ -58,11 +58,11 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
   6. spike               (only if review flags load-bearing unknowns:
                          throwaway probe code, confined to the run's log folder)
   7. update design       (fold reviews + spike back in)
-  8. organise            (decompose into workstreams + DAG)
+  8. organise            (workstreams + DAG, grouped into plans: the filed unit)
   9. summary             (engine-written from status rows, tracker-facing)
 
 /bkit-plan ───── output: detailed plan ───────────────────────────────────────
-  1. generate plan       (groups within bkit.workflows.tasks caps, in build order;
+  1. generate plan       (task groups within bkit.workflows.tasks caps, in build order;
                          engine plan-check right after, one fix retry)
   2. fetch context       (tracker: related issues; ledgers: prior deferrals,
                          prior failures, strongest term-overlap first, top 40
@@ -80,7 +80,7 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
       (from the prompt, issue and any plan; where they disagree, the newer text wins)
   2. plan-current        (plan still executable against code landed since it was written?)
   3. install-skills
-  ┌ per plan group, in order ─────────────────────────────────────────────
+  ┌ per task group, in order ─────────────────────────────────────────────
   │ 4. brief             (engine: the group's open tasks + plan context)
   │ 5. execute group     (producer — implement the group's tasks, reds first;
   │                       turn cap near → HANDOVER, re-run once)
@@ -209,7 +209,7 @@ Output: PR to `dev`. Heaviest phase — most steps verify rather than produce. C
 | `bkit-build-plan-convert` | Plan writer | Only when the plan is missing, has no task markers, or is older than an issue comment: writes `{FID}-plan.md` as groups of task blocks within the `bkit.workflows.tasks` caps — from the build-input file (prompt and issue) and any existing plan, whose other sections it keeps; where they disagree, the newer text wins. |
 | `bkit-build-plan-current` | Plan freshness | Judges whether changes landed since the plan was written leave it executable; findings feed execute. |
 | `bkit-build-install-skills` | Setup | Installs the skills the plan needs for this build. |
-| `bkit-build-plan-execute` | Producer | Implements one plan group's tasks from its brief, each task's tests seen failing first; iterates edit → lint/typecheck/test → edit. Near its turn cap it hands over (`HANDOVER`) and the group re-runs once. |
+| `bkit-build-plan-execute` | Producer | Implements one task group's tasks from its brief, each task's tests seen failing first; iterates edit → lint/typecheck/test → edit. Near its turn cap it hands over (`HANDOVER`) and the group re-runs once. |
 | `bkit-build-plan-verify` | Critic | Verifies each task of one group against the group's own diff; passes the satisfied task numbers, and `bkit tasks tick` sets the boxes. Producer-critic loop, capped at 3 attempts per group. |
 | `bkit-build-plan-gaps-remediate` | Gap-fixer | Fills gaps the verifier found, then re-verifies. |
 | `bkit-build-plan-verify` | Holistic critic | Second, whole-of-plan verification pass across everything built. |

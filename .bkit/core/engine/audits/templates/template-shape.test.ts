@@ -90,7 +90,7 @@ const PLAN_HEADINGS = [
   "## Documentation Updates",
   "## Rollback Strategy",
   "## Agent Execution Runbook",
-  "### GROUP 1: [e.g., Item status in the API]",
+  "### TASK GROUP 1: [e.g., Item status in the API]",
   "### 🔒 Gate 2: Code Implementation Check",
   "### 🔒 Gate 3: Testing & Documentation Check",
   "## Verification Plan",

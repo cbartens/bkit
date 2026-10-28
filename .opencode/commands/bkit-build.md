@@ -136,7 +136,7 @@ $ARGUMENTS
    - **Accept (assumed)** (written by `decisions apply`) → write nothing else: no `docs/decisions.jsonl` row, no `TEST EXCEPTION`. An item that is a challenge task → tick it `[x]` and end its title with ` — accepted (assumed)`. Ship asks the owner to confirm it.
    - **Fix now** → an item that is a challenge task → keep that task open; it runs as it is. **Else** → write a task block (`docs/templates/bkit-plan.md` § Agent Execution Runbook) numbered one above the plan's highest task, with `**DONE WHEN:**` and `**TEST FIRST:**` (one sub-bullet per test, `` `{test file}` `{test name}` fails on {what goes wrong} ``), and one `Derived Test Matrix` row per test in that `TEST FIRST` (``| {test name} | {tier} | `{test file}` | {task} |``, the tier its file's name gives); the human's direction, when given, shapes the task:
      - `From: verify` and group `{GROUP}` stays within `{MAX_TASKS_PER_GROUP}` tasks and `{MAX_TESTS_PER_GROUP}` `TEST FIRST` tests with it → inside group `{GROUP}`.
-     - `From: verify`, over either cap → a new group right after `{GROUP}`; add 1 to every later group's number, in its markers and `### GROUP` heading.
+     - `From: verify`, over either cap → a new group right after `{GROUP}`; add 1 to every later group's number, in its markers and `### TASK GROUP` heading.
      - `From: tests` or `From: challenge` → a new last group, each new group within the caps.
      - Then check the plan:
        ```bash
@@ -419,7 +419,7 @@ $ARGUMENTS
 
 ## Group Loop — Steps 7-9
 
-One pass of Steps 7-9 per plan group, in group order: Step 7 briefs the first group with an open task, Step 8 verifies that group's own diff, Step 9 closes its gaps. Attempt budgets count per group (`--group`). Per-group file naming: `{step}-{GROUP}-{ATTEMPT}.md`. No group left open → Step 10.
+One pass of Steps 7-9 per task group, in group order: Step 7 briefs the first group with an open task, Step 8 verifies that group's own diff, Step 9 closes its gaps. Attempt budgets count per group (`--group`). Per-group file naming: `{step}-{GROUP}-{ATTEMPT}.md`. No group left open → Step 10.
 
 ---
 
@@ -620,7 +620,7 @@ Runs once, after the last group; challenge fix groups pass through here on the w
    "{BKIT}" steps finish --workflow=build --step=build-plan-verify-holistic --file="{STATUS}" --attempt=1 --agent=bkit-build-plan-verify --artifact=docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-holistic.md --number=10 --post --title="Plan Verify Holistic" --message="chore({FID}): plan-verify-holistic"
    ```
    Hold `fields.Tasks` as `{VERIFIED_TASKS}`.
-4. Tick each group's satisfied tasks — one call per plan group, `{GROUP}` that group and `{VERIFIED_TASKS}` the numbers `Tasks:` names for it:
+4. Tick each group's satisfied tasks — one call per task group, `{GROUP}` that group and `{VERIFIED_TASKS}` the numbers `Tasks:` names for it:
    ```bash
    "{BKIT}" tasks tick --plan="docs/plans/{YYYYMM}/{FID}-plan.md" --group={GROUP} --tasks="{VERIFIED_TASKS}"
    ```

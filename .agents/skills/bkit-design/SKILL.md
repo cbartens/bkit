@@ -391,7 +391,7 @@ description: "Design Feature — Autonomous design phase"
    "{BKIT}" workflows promote --workflow=design --fid={FID} --month={YYYYMM} --resolve
    ```
    Hold `final` as `{DESIGN_FINAL}`.
-2. Write `design-summary.md` from this run's status rows and the organised workstreams:
+2. Write `design-summary.md` from this run's status rows and the organised plans:
    ```bash
    "{BKIT}" workflows summary --workflow=design --file="{STATUS}"
    ```
@@ -418,20 +418,20 @@ description: "Design Feature — Autonomous design phase"
 
 ---
 
-## 🤖 Step 11 — Suggest Workstreams
+## 🤖 Step 11 — Suggest Plans
 
 
 **Skip if** `ISSUE_ID` empty → Step 12.
 **Run only if** `SUMMARY_VERDICT` = PASS or CONCERNS.
 
-1. Parse workstreams:
+1. Parse plans:
    ```bash
-   "{BKIT}" workstreams parse --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-v3-organised.md
+   "{BKIT}" plans parse --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-v3-organised.md
    ```
-   Hold `workstreams` as `WORKSTREAMS`.
-2. Post the list on `{ISSUE_ID}` only. never create a tracker issue. never comment on any other issue. never set blockers. Comment:
+   Hold `plans` as `PLANS`.
+2. Post the plan list on `{ISSUE_ID}` only. never create a tracker issue. never comment on any other issue. never set blockers. Comment:
    ```bash
-   "{BKIT}" workstreams comment --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-v3-organised.md --fid={FID} --month={YYYYMM} --owner-repo={OWNER_REPO}
+   "{BKIT}" plans comment --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-v3-organised.md --fid={FID} --month={YYYYMM} --owner-repo={OWNER_REPO}
    ```
    Post the content of the printed `commentFile` byte-for-byte as a new comment via the tracker MCP (**Comments**).
 3. Finish:
@@ -439,9 +439,9 @@ description: "Design Feature — Autonomous design phase"
    "{BKIT}" steps finish --file="{STATUS}" --workflow=design --step=design-workstream-suggest --message="chore({FID}): design-workstream-suggest"
    ```
 
-### 🔒 Gate 11 — Suggest Workstreams
+### 🔒 Gate 11 — Suggest Plans
 
-- [ ] Workstreams parsed
+- [ ] Plans parsed
 - [ ] Mechanical checks passed (`steps finish`)
 
 

@@ -51,7 +51,7 @@ export const WORKFLOW_STEPS: Readonly<Record<ResumableWorkflow, readonly Workflo
     { step: "design-apply-review", number: 8, title: "Apply Review" },
     { step: "design-organise", number: 9, title: "Design Organise" },
     { step: "design-summary", number: 10, title: "Summary" },
-    { step: "design-workstream-suggest", number: 11, title: "Suggest Workstreams" },
+    { step: "design-workstream-suggest", number: 11, title: "Suggest Plans" },
     { step: "design-close-workflow", number: 12, title: "Close Workflow" },
   ],
   build: [
@@ -233,7 +233,7 @@ export interface ResumePoint {
   title: string;
   /** The DONE row that placed the point, or null when none did (resume at Step 1). */
   after: string | null;
-  /** That row's plan group, or null. */
+  /** That row's task group, or null. */
   group: number | null;
   /** Whether the latest run is this workflow, still IN_PROGRESS. */
   active: boolean;

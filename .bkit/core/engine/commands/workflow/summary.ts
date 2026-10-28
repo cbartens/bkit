@@ -3,7 +3,7 @@
 // its log files, the plan and the ledger rows it added. Pure: the caller reads the
 // disk and passes `read` for the log files.
 
-import type { Workstream } from "./workstreams.js";
+import { coversList, type Plan, type Workstream } from "./plans.js";
 import { issueIdOf, type FidTracker } from "./fids.js";
 import { parseDecisionItems } from "./decisions.js";
 import { parsePlanBlocks } from "./plan-blocks.js";
@@ -96,8 +96,10 @@ export interface SummaryInput {
   decisionFiles: string[];
   /** A repo-relative file's text, or null when it is missing. */
   read: (rel: string) => string | null;
-  /** design: the workstreams `workstreams parse` reads from the organised design. */
+  /** design: the workstreams `plans parse` reads from the organised design. */
   workstreams?: Workstream[];
+  /** design: the plans `plans parse` reads from the organised design. */
+  suggestedPlans?: Plan[];
   /** design: the organised design's text; its `## Risks & Open Questions` becomes `## Open Questions`. */
   organised?: string;
   /** ship: the PR's size; absent when `gh` could not read it. */
@@ -122,19 +124,19 @@ interface StepGroup {
 const str = (v: unknown) => (typeof v === "string" ? v : undefined);
 const artifactsOf = (r: Row) =>
   Array.isArray(r.artifacts) ? r.artifacts.filter((a): a is string => typeof a === "string") : [];
-/** A step row's plan group (`group`, or debug's `subPlan`); undefined when it has none. */
-const planGroupOf = (r: Row) => {
-  const planGroup = r.group ?? r.subPlan;
-  return typeof planGroup === "number" ? planGroup : undefined;
+/** A step row's task group (`group`, or debug's `subPlan`); undefined when it has none. */
+const taskGroupOf = (r: Row) => {
+  const taskGroup = r.group ?? r.subPlan;
+  return typeof taskGroup === "number" ? taskGroup : undefined;
 };
 
-/** The run's step rows grouped per step (and plan group), in first-seen order. */
+/** The run's step rows grouped per step (and task group), in first-seen order. */
 function stepGroups(rows: Row[]): StepGroup[] {
   const groups = new Map<string, StepGroup>();
   rows.forEach((row, index) => {
     const step = str(row.step);
     if (row.type !== "step-done" || step === undefined) return;
-    const sub = planGroupOf(row);
+    const sub = taskGroupOf(row);
     const key = sub === undefined ? step : `${step}#${sub}`;
     const g = groups.get(key) ?? {
       label: sub === undefined ? step : `${step} (group ${sub})`,
@@ -201,14 +203,14 @@ export function buildSummary(input: SummaryInput): Summary {
     if (row.verdict !== "FAIL") continue;
     if (g.step === "debug-failure-reproduce" && notReproduced) continue;
     const answers = ANSWERED_BY[`${workflow}/${g.step}`] ?? [];
-    const sub = planGroupOf(row);
+    const sub = taskGroupOf(row);
     const answeredBy = input.rows.find(
       (r, i) =>
         i > index &&
         r.type === "step-done" &&
         answers.includes(String(r.step)) &&
         r.verdict !== "FAIL" &&
-        (sub === undefined || planGroupOf(r) === sub),
+        (sub === undefined || taskGroupOf(r) === sub),
     )?.step;
     if (answeredBy !== undefined)
       concerns.push(`${g.label} FAIL, answered by ${String(answeredBy)}`);
@@ -256,10 +258,9 @@ export function buildSummary(input: SummaryInput): Summary {
   const withRef = (cmd: string) => (input.ref === undefined ? cmd : `${cmd} ${input.ref}`);
   let nextStep = step.command === undefined ? (step.line ?? "") : withRef(step.command);
   if (workflow === "debug" && notReproduced) nextStep = `${withRef("/bkit-debug")} [repro]`;
-  const streams = input.workstreams ?? [];
-  if (workflow === "design" && step.command === "/bkit-plan" && streams.length > 1)
-    nextStep =
-      "File the Suggested Workstreams issues, then /bkit-plan <first root workstream's new issue>";
+  const suggested = input.suggestedPlans ?? [];
+  if (workflow === "design" && step.command === "/bkit-plan" && suggested.length > 1)
+    nextStep = "File the Suggested Plans issues, then /bkit-plan <first root plan's new issue>";
 
   // Sections.
   const out: string[] = [
@@ -348,13 +349,15 @@ export function buildSummary(input: SummaryInput): Summary {
   }
 
   if (workflow === "design") {
-    out.push("", "## Suggested Workstreams", "");
-    if (streams.length === 0) out.push("None");
-    for (const w of streams)
-      out.push(`### ${w.id}: ${w.name}`, "", `Requires: ${w.requiresText || "None"}`, "");
-    if (streams.length > 1)
+    out.push("", "## Suggested Plans", "");
+    if (suggested.length === 0) out.push("None");
+    for (const p of suggested)
       out.push(
-        "File these as one issue each? Body per .bkit/trackers.md § Issue shapes; file in Requires order.",
+        `### ${p.id}: ${p.name}`,
+        "",
+        `Covers: ${coversList(p, input.workstreams ?? []) || "None"}`,
+        `Requires: ${p.requiresText || "None"}`,
+        "",
       );
     out.push(
       "",

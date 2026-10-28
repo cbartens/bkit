@@ -102,7 +102,7 @@ import {
   timeBlock,
 } from "./run-facts.js";
 import { buildSummary, refOf, SUMMARY_WORKFLOWS, type SummaryWorkflow } from "./summary.js";
-import { parseWorkstreams } from "./workstreams.js";
+import { parsePlans, parseWorkstreams } from "./plans.js";
 import {
   EXIT_REMOVE_FAILED,
   EXIT_SPLIT_BUCKET,
@@ -1613,6 +1613,7 @@ function summaryVerb(ctx: RunContext): number {
         : [],
     read,
     workstreams: organised === undefined ? undefined : parseWorkstreams(organised),
+    suggestedPlans: organised === undefined ? undefined : parsePlans(organised),
     organised,
     pr:
       workflow === "ship" && prNumber !== undefined

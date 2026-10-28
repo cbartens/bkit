@@ -31,7 +31,7 @@ export const WORKFLOW_STEPS = {
         { step: "design-apply-review", number: 8, title: "Apply Review" },
         { step: "design-organise", number: 9, title: "Design Organise" },
         { step: "design-summary", number: 10, title: "Summary" },
-        { step: "design-workstream-suggest", number: 11, title: "Suggest Workstreams" },
+        { step: "design-workstream-suggest", number: 11, title: "Suggest Plans" },
         { step: "design-close-workflow", number: 12, title: "Close Workflow" },
     ],
     build: [

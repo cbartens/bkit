@@ -271,7 +271,7 @@ export const decisionsCommand = {
                     help: "verify | tests: add the progress block and the loop question as Q1",
                 },
                 { name: "file", type: "string", help: "status.jsonl, with --loop" },
-                { name: "group", type: "string", help: "with --loop=verify: the plan group" },
+                { name: "group", type: "string", help: "with --loop=verify: the task group" },
                 { name: "attempt", type: "string", help: "with --loop: the attempt just failed" },
                 { name: "max", type: "string", help: "with --loop: the point's maxAttempts" },
             ],

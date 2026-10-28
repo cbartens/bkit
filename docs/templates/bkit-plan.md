@@ -282,7 +282,7 @@ _No DB changes: "Code-only — `git revert` sufficient."_
 
 <!-- bkit:group 1 start -->
 
-### GROUP 1: [e.g., Item status in the API]
+### TASK GROUP 1: [e.g., Item status in the API]
 
 <!-- bkit:task 1 start -->
 
