@@ -1,6 +1,6 @@
 Verdict: CONCERNS
 Failures: 0
-Coverage: partial diff coverage — I read the supplied diff, then `git diff origin/dev...HEAD` and the tree for the engine files the file omits
+Coverage: partial diff coverage — the supplied diff shows 20 files whole; the rest (engine commands, prompts, workflows, mirrors, snapshots) were read from the tree and `git diff origin/dev...HEAD -- <path>`. Round 1's deferred LOW findings (tasks 8, and challenge-2's two) are not re-reported; tasks 12, 15, 16, 17, 18 check out, tasks 13 and 14 are partial.
 
 <!-- verdict:end -->
 
@@ -12,81 +12,38 @@ Lens: Bugs and edge cases — null safety, off-by-one, error paths, data integri
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** `ledgers triage` adjudicates a genuine `own-cycle` ("new architecture") deferral as `unjustified` and appends a permanent wrong verdict — `.bkit/jsonl.md` test 1 requires "not a new architecture", and no predicate implements it nor excludes `own-cycle`
-      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/ledgers.ts:1724`
-  - **DONE WHEN:** a `reason: "own-cycle"` deferral is bucketed `Exempt` (or fails `bounded-remediation`) whatever its `remediation` names, and no `unjustified` row is written for it; a test pins it
+- [ ] **TASK 1:** `scan-diff --disabled-tests` matches its disable markers on every added line of every file, so any prose that quotes `test.skip` / `describe.skip` / `@Disabled` / `t.Skip(` / `xfail` — a skill doc, `docs/knowledge.jsonl`, `docs/testing.md`, the marker's own regex literal in `branches.ts` — is reported as a disabled test, and the ship sweep turns that `disabled` list into Blocking Deferrals + `Verdict: FAIL`; this branch's own diff already exits 1 with 18 hits (`.agents/skills/vitest/references/core-describe.md:60`, `docs/knowledge.jsonl:321`, `.bkit/core/engine/commands/workflow/branches.ts:1080`, its `dist/` copy, …)
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/branches.ts:1090`
+  - **DONE WHEN:** `node dist/cli.js branches scan-diff --disabled-tests --base=origin/dev` on this branch exits 0 with `disabled: []` — its only marker-shaped added lines are quoted prose under `.agents/skills/**` and `docs/*`, the engine's own marker literals in `branches.ts` / `dist/`, and `branches.test.ts`'s `'@pytest.mark.skip(…)'` fixture strings; an added `test.skip(` / `@pytest.mark.skip` / `@Disabled` **call** in a `*.test.*` / `*.spec.*` / `test_*.py` file still exits 1 naming `file:line` and the test — `markersFor` scopes the marker set to test files and the added-line check skips a marker inside a comment or a quoted span, instead of handing `DISABLED_MARKERS` to every path
   - **TEST FIRST:**
-    - `.bkit/core/engine/commands/workflow/ledgers.test.ts` `triage keeps an own-cycle deferral exempt` fails on today's code: the row buckets `Lazy`, `written` = 1, and a second row appears in `docs/deferrals.jsonl`
+    - `.bkit/core/engine/commands/workflow/branches.test.ts` `scan-diff ignores a quoted skip in a documentation file` fails on today's code: a branch that adds `docs/guide.md` holding "never call \`test.skip\` in a spec; a \`describe.skip\` hides regressions" exits 1 with `disabled: [{file: "docs/guide.md", line: 3, test: "Never call \`test.skip\` …"}]`
+    - `.bkit/core/engine/commands/workflow/branches.test.ts` `scan-diff ignores a marker literal in a non-test source file` fails on today's code: adding the line `/@Disabled\b/,` to a `.ts` source file exits 1 with that line's text as the test name
 
 <!-- bkit:task 1 end -->
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** `scan-diff --disabled-tests` reports every removed line of a test file that matches `ASSERTION` (`expect|assert\w*|should|should_\w+`), so deleting a comment, an import line or an assertion moved elsewhere sets exit 1 and the sweep records a `Blocking Deferral` + `Verdict: FAIL`
-      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/branches.ts:1084`
-  - **DONE WHEN:** a removed line that is a comment, a non-assertion statement or an assertion re-added elsewhere in the same diff is not reported; a removed assertion call (a net drop in the file) still is; the sweep's `disabled` list and exit code follow
+- [ ] **TASK 2:** `scan-diff --disabled-tests` reports a test file whose assertion **changed** as a disabled test — the re-add check compares each removed line's exact trimmed text against the added lines, not the file's assertion count — so the round-1 comment/import/move fix still fires on any edited expectation or matcher, and the sweep records a Blocking Deferral for a test that is intact; this branch's own diff carries two such hits (`.bkit/core/engine/commands/workflow/tests.test.ts:1769` from `{ enforced: true, gaps: [] }` → `{ …, verdict: "PASS" }`, and `:2065` from `toEqual([])` → `toEqual([objectContaining(…)])`)
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/branches.ts:1194`
+  - **DONE WHEN:** a diff that rewrites one assertion's expected value or matcher inside a test body exits 0 with `disabled: []`; a diff that drops one assertion and adds a different one to the same test still exits 0; a diff whose removed assertion count exceeds its added assertion count in that file exits 1 naming the file, line and test (a net drop, as `Task 13`'s `DONE WHEN` words it); the repo's own `tests.test.ts` diff yields no hit
   - **TEST FIRST:**
-    - `.bkit/core/engine/commands/workflow/branches.test.ts` `scan-diff ignores a removed comment in a test file` fails today: exit 1 with `disabled: [{file: "a.test.ts", line: 4, test: "adds"}]` for a deleted `// should not be reached` line
-    - `.bkit/core/engine/commands/workflow/branches.test.ts` `scan-diff ignores an assertion moved within the file` fails today: the removed half of a move is reported
+    - `.bkit/core/engine/commands/workflow/branches.test.ts` `scan-diff ignores an assertion whose expectation changed` fails on today's code: `expect(1).toBe(1)` → `expect(1).toBe(2)` exits 1 with `disabled: [{file: "src/a.test.ts", line: 2, test: "a"}]`
+    - `.bkit/core/engine/commands/workflow/branches.test.ts` `scan-diff ignores an assertion replaced by another in the same test` fails on today's code: `expect(a).toEqual([])` → `expect(a).toEqual([expect.objectContaining({})])` exits 1
 
 <!-- bkit:task 2 end -->
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** `scan-diff --disabled-tests` misses Python's skipped tests — `@pytest.mark.skip` and `@unittest.skip` match no marker, so a run that disables Python tests exits 0 with `disabled: []` and the ship gate passes
-      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/branches.ts:1074`
-  - **DONE WHEN:** an added `@pytest.mark.skip` / `@unittest.skip` / bare `.skip(` line in a `test_*.py` or `*.test.*` file is reported with its line and test name and exits 1, while `TEST_FILE`'s existing Python class still applies
+- [ ] **TASK 3:** `scan-diff --disabled-tests` cannot see a **deleted** test file — git writes `+++ /dev/null` for a deletion, the loop overwrites `file` with that path, `TEST_FILE` no longer matches and no removed assertion is recorded — so a diff that removes an entire `*.test.*` file (every test and assertion in it) exits 0 with `disabled: []` and the ship gate passes the strongest form of test removal
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/branches.ts:1170`
+  - **DONE WHEN:** the diff walk keeps the `--- a/{path}` token and uses it when `+++` is `/dev/null`, so a deleted test file reports its removed assertions (naming the file, its line and the nearest declaration) and exits 1, while an added file still resolves its `+++` path and an ordinary edit is unchanged
   - **TEST FIRST:**
-    - `.bkit/core/engine/commands/workflow/branches.test.ts` `scan-diff finds an added pytest mark skip` fails today: a diff adding `@pytest.mark.skip(reason="flaky")` above `def test_a` exits 0 with an empty `disabled`
+    - `.bkit/core/engine/commands/workflow/branches.test.ts` `scan-diff reports a deleted test file` fails on today's code: `git rm src/a.test.ts` (3 lines, one `it` with one `expect`) on a feature branch exits 0 with `disabled: []`, `found: false`
 
 <!-- bkit:task 3 end -->
 
-<!-- bkit:task 4 start -->
+## Round 1 Fixes — Checked, Not Re-reported
 
-- [ ] **TASK 4:** Build Steps 7 and 9 pass the verify header's documented empty form `Tasks: none` straight into `--tasks=`, which `tick` refuses with exit 2 — every verify round that satisfies no task logs a usage error and ticks nothing
-      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/tasks.ts:74`
-  - **DONE WHEN:** `--tasks=none` is accepted as "no task" (exit 0, `ticked: []`, file untouched), or both calls in `.bkit/core/workflows/bkit-build.md:522` and `:648` drop the flag when `{VERIFIED_TASKS}` is `none`; the verb's `--help` states which
-  - **TEST FIRST:**
-    - `.bkit/core/engine/commands/workflow/tasks.test.ts` `tick treats the header's none as nothing to tick` fails today: `--tasks=none` exits 2 with `--tasks must name positive task numbers, got "none"`
-
-<!-- bkit:task 4 end -->
-
-<!-- bkit:task 5 start -->
-
-- [ ] **TASK 5:** `ledgers triage` re-adjudicates a `status: "CLOSED"` deferral (work already finished) and appends `reason: "unjustified"` / `status: "TRIAGED"`, moving finished work back onto the triage ladder and adding an unjustified count to `computeDeferralDiscipline`
-      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/ledgers.ts:1715`
-  - **DONE WHEN:** a folded row whose `status` is `CLOSED` buckets `Exempt`, prints no test result and writes nothing; the concurrent-`OPEN` case keeps today's behaviour
-  - **TEST FIRST:**
-    - `.bkit/core/engine/commands/workflow/ledgers.test.ts` `triage writes no row for a closed deferral` fails today: the `CLOSED` fixture gets a second row and `written` = 1
-
-<!-- bkit:task 5 end -->
-
-<!-- bkit:task 6 start -->
-
-- [ ] **TASK 6:** A deferral already adjudicated `unjustified` is bucketed `Exempt` on every later run, so the ship sweep records an outstanding unjustified deferral under `Exempt Deferrals` and the summary reports it as settled
-      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/ledgers.ts:1718`
-  - **DONE WHEN:** a folded row whose `reason` is `unjustified` reports a bucket that keeps it out of the sweep's `Exempt Deferrals` (its own label or `Lazy`) and still writes no new row; re-running triage twice leaves the report stable
-  - **TEST FIRST:**
-    - `.bkit/core/engine/commands/workflow/ledgers.test.ts` `triage reports an adjudicated unjustified row outside exempt` fails today: the second run prints `Exempt` for a row `reason: "unjustified"`
-
-<!-- bkit:task 6 end -->
-
-<!-- bkit:task 7 start -->
-
-- [ ] **TASK 7:** `ledgers triage` reads the plan's task surfaces without checking `parsePlanBlocks`' errors, so a plan with no task blocks silently buckets every deferral `Exempt` (exit 0, no warning) — the one plan reader that neither refuses nor warns
-      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/ledgers.ts:1701`
-  - **DONE WHEN:** a plan with no task blocks exits 1 naming `NO_MARKERS_REASON`, and a plan whose blocks do not parse exits 2 naming the line — as `tasks tick|open|currency` already do — with no rows written
-  - **TEST FIRST:**
-    - `.bkit/core/engine/commands/workflow/ledgers.test.ts` `triage refuses a plan with no task blocks` fails today: exit 0 with `rows: [{bucket: "Exempt"}]` and no message
-
-<!-- bkit:task 7 end -->
-
-<!-- bkit:task 8 start -->
-
-- [ ] **TASK 8:** `tasks open` drops ticked tasks before matching the log, so a ticked task holding neither a `DONE` nor a `BLOCKED` line is never listed and `handover` stays false — the contract says the verb lists exactly the tasks holding neither line
-      **Severity:** LOW · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/tasks.ts:266`
-  - **DONE WHEN:** the group's open set is the tasks with neither line, whatever their box, and the output names the ticked-but-unlogged task; the handover route in `.bkit/core/workflows/bkit-build.md` Step 6 reads the same list
-  - **TEST FIRST:**
-    - `.bkit/core/engine/commands/workflow/tasks.test.ts` `open lists a ticked task holding no done line` fails today: a ticked task 1 with only `DONE — TASK 2` in the log prints `tasks: []`, `handover: false`
-
-<!-- bkit:task 8 end -->
+- Tasks 12 (`own-cycle` → `bounded-remediation` fails), 15 (`--tasks=none`), 16 (`status: CLOSED` → `Exempt`), 17 (adjudicated `unjustified` → `Lazy`, no second write), 18 (`parsePlanBlocks` errors and `NO_MARKERS_REASON`) hold; `npx vitest run ledgers.test.ts tasks.test.ts` = 102 passed.
+- Task 13 is partial: exact-text re-add only — see TASK 2. Task 14's widened Python set works (`@pytest.mark.skip` fixture passes) but the same widening matched its own fixture strings — see TASK 1.
+- Real dogfood, not fixtures: `node dist/cli.js tests plan-check --plan=docs/plans/202610/701-engine-work-build-plan.md --log=/tmp/pc701.md` exits 0, 0 problems; `node dist/cli.js ledgers triage --fid=701-engine-work-build --plan=…` on a copy of the ledger buckets all 7 of this FID's rows `Exempt`, writes 0 (no wrong verdict for this run); `node dist/cli.js branches scan-diff --disabled-tests --base=origin/dev` exits 1 with 18 hits — none of them a disabled test.
