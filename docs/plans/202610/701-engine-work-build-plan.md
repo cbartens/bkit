@@ -989,6 +989,8 @@ Build order: the engine commands first (Groups 1-4), then the ship-side deferral
   - **DONE WHEN:** the `readded` tally is scoped so a line added in a different file (test or not) never cancels a removal in the test file — per-file keying, or counting re-adds from test files only; the cross-file fixture exits 1 naming the dropped assertion, and `scan-diff ignores an assertion moved within the file` plus `scan-diff still reports a removed assertion` stay green
   - **TEST FIRST:**
     - `.bkit/core/engine/commands/workflow/branches.test.ts` `scan-diff reports an assertion re-added only outside the test file` fails on the masking: a diff removing `expect(2).toBe(2);` from `src/a.test.ts` while adding the identical trimmed line in `src/notes.md` exits 0 with `disabled: []`
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/commands/workflow/branches.test.ts` `scan-diff reports an assertion re-added only outside the test file` — landed as `scan-diff still reports a removed assertion cancelled in another file` — fails on a diff that removes `expect(2).toBe(2);` from `src/a.test.ts` while adding the identical trimmed line in `src/notes.md`: the fix landed with TASK 21 (`65ca9732c`), so no failing run could be recorded — accepted by owner: "accept" (owner, 2026-10-28)
 
 <!-- bkit:task 23 end -->
 <!-- bkit:group 12 end -->
