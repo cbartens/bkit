@@ -45,21 +45,29 @@ export function refOf(fid, tracker = "any") {
     return /^[0-9]+$/.test(id) ? `#${id}` : id;
 }
 /**
- * A critique step whose FAIL a later step of the same workflow answers; the run
- * carried on past it. A build challenge is answered by its fix tasks running
- * (`build-plan-execute`) or by a Decision Pause (`build-decision`).
+ * A step whose FAIL a later, non-FAIL step of the same workflow (and the same plan
+ * group, when the failed row has one) answers; the run carried on past it. A build
+ * challenge is answered by its fix tasks running (`build-plan-execute`) or by a
+ * Decision Pause (`build-decision`); a group's execute by that group's verify, which
+ * judges the group's work after the executor and after any Decision Pause on it.
  */
 const ANSWERED_BY = {
     "plan/plan-review": ["plan-apply-review"],
     "design/design-review": ["design-apply-review"],
     "design/design-spike": ["design-apply-review"],
     "build/build-challenge": ["build-plan-execute", "build-decision"],
+    "build/build-plan-execute": ["build-plan-verify"],
 };
 const RUN_TESTS = new Set(["build-run-tests", "debug-run-tests"]);
 const SEVERITY = /\*\*Severity:\*\*\s*(CRITICAL|HIGH|MEDIUM|LOW)\b/;
 const TEST_EXCEPTION = "**TEST EXCEPTION:**";
 const str = (v) => (typeof v === "string" ? v : undefined);
 const artifactsOf = (r) => Array.isArray(r.artifacts) ? r.artifacts.filter((a) => typeof a === "string") : [];
+/** A step row's plan group (`group`, or debug's `subPlan`); undefined when it has none. */
+const planGroupOf = (r) => {
+    const planGroup = r.group ?? r.subPlan;
+    return typeof planGroup === "number" ? planGroup : undefined;
+};
 /** The run's step rows grouped per step (and plan group), in first-seen order. */
 function stepGroups(rows) {
     const groups = new Map();
@@ -67,8 +75,7 @@ function stepGroups(rows) {
         const step = str(row.step);
         if (row.type !== "step-done" || step === undefined)
             return;
-        const planGroup = row.group ?? row.subPlan;
-        const sub = typeof planGroup === "number" ? planGroup : undefined;
+        const sub = planGroupOf(row);
         const key = sub === undefined ? step : `${step}#${sub}`;
         const g = groups.get(key) ?? {
             label: sub === undefined ? step : `${step} (group ${sub})`,
@@ -135,7 +142,12 @@ export function buildSummary(input) {
         if (g.step === "debug-failure-reproduce" && notReproduced)
             continue;
         const answers = ANSWERED_BY[`${workflow}/${g.step}`] ?? [];
-        const answeredBy = input.rows.find((r, i) => i > index && r.type === "step-done" && answers.includes(String(r.step)))?.step;
+        const sub = planGroupOf(row);
+        const answeredBy = input.rows.find((r, i) => i > index &&
+            r.type === "step-done" &&
+            answers.includes(String(r.step)) &&
+            r.verdict !== "FAIL" &&
+            (sub === undefined || planGroupOf(r) === sub))?.step;
         if (answeredBy !== undefined)
             concerns.push(`${g.label} FAIL, answered by ${String(answeredBy)}`);
         else
@@ -145,13 +157,12 @@ export function buildSummary(input) {
     const decided = groups
         .filter((g) => g.step === "build-decision")
         .flatMap((g) => g.rows.flatMap(({ row }) => artifactsOf(row)));
-    const acceptLines = decided.flatMap((rel) => (read(rel) ?? "")
-        .split("\n")
-        .filter((l) => /^Decision:\s*Accept\b/.test(l.trim()))
-        .map((l) => `${rel}: ${l.trim()}`));
+    const acceptItems = decided.flatMap((rel) => parseDecisionItems(read(rel) ?? "")
+        .filter((i) => /^Accept\b/.test(i.decision ?? ""))
+        .map((i) => ({ assumed: i.assumed, line: `${rel}: Decision: ${i.decision}` })));
     // `Accept (assumed)`: taken without the owner (`ask: false` or headless); ship asks to confirm.
-    const assumed = acceptLines.filter((a) => /Decision:\s*Accept \(assumed\)/.test(a));
-    const accepted = acceptLines.filter((a) => !assumed.includes(a));
+    const assumed = acceptItems.filter((a) => a.assumed).map((a) => a.line);
+    const accepted = acceptItems.filter((a) => !a.assumed).map((a) => a.line);
     if (accepted.length > 0)
         concerns.push(`${accepted.length} item(s) accepted at the Decision Pause`);
     if (assumed.length > 0)

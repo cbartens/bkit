@@ -102,6 +102,7 @@ const CORE_MANIFEST = [
     { path: ".bkit/pipeline.md", format: "byte-equal-text", module: "core" },
     { path: ".bkit/providers.md", format: "byte-equal-text", module: "core" },
     { path: ".bkit/prompts.md", format: "markered-text", module: "core" },
+    { path: ".bkit/router.md", format: "byte-equal-text", module: "core" },
     { path: ".bkit/templates.md", format: "byte-equal-text", module: "core" },
     { path: ".bkit/trackers.md", format: "byte-equal-text", module: "core" },
     { path: ".bkit/workflows.md", format: "byte-equal-text", module: "core" },

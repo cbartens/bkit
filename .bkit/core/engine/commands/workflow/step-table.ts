@@ -57,49 +57,54 @@ export const WORKFLOW_STEPS: Readonly<Record<ResumableWorkflow, readonly Workflo
   build: [
     { step: "build-start-workflow", number: 1, title: "Start Workflow", setup: true },
     { step: "build-worktree-setup", number: 2, title: "Worktree Setup", setup: true },
-    // A converted plan is checked again: Step 3 runs its plan check once more.
-    { step: "build-plan-convert", number: 3, title: "Branch Sync", resumeAt: "build-branch-sync" },
     { step: "build-branch-sync", number: 3, title: "Branch Sync" },
-    { step: "build-plan-current", number: 4, title: "Plan Current" },
-    { step: "build-install-skills", number: 5, title: "Install Skills" },
-    // A group's start commit is recorded before its execute runs: Step 6 again.
+    // A converted plan is checked again: Step 4 runs its plan check once more.
+    {
+      step: "build-plan-convert",
+      number: 4,
+      title: "Plan Convert",
+      resumeAt: "build-plan-convert",
+    },
+    { step: "build-plan-current", number: 5, title: "Plan Current" },
+    { step: "build-install-skills", number: 6, title: "Install Skills" },
+    // A group's start commit is recorded before its execute runs: Step 7 again.
     {
       step: "build-group-start",
-      number: 6,
+      number: 7,
       title: "Plan Execute",
       resumeAt: "build-plan-execute",
     },
-    // A handover stops a group part-done: Step 6 runs again with a fresh brief.
+    // A handover stops a group part-done: Step 7 runs again with a fresh brief.
     {
       step: "build-plan-execute",
-      number: 6,
+      number: 7,
       title: "Plan Execute",
       resumeOnVerdict: { HANDOVER: "build-plan-execute" },
     },
-    // Verify, its group gate and the gaps fix route on the verify verdict: Step 7 again.
-    { step: "build-plan-verify", number: 7, title: "Plan Verify", resumeAt: "build-plan-verify" },
-    { step: "build-group-gate", number: 7, title: "Plan Verify", resumeAt: "build-plan-verify" },
+    // Verify, its group gate and the gaps fix route on the verify verdict: Step 8 again.
+    { step: "build-plan-verify", number: 8, title: "Plan Verify", resumeAt: "build-plan-verify" },
+    { step: "build-group-gate", number: 8, title: "Plan Verify", resumeAt: "build-plan-verify" },
     {
       step: "build-plan-gaps-remediate",
-      number: 8,
+      number: 9,
       title: "Plan Gaps Remediate",
       resumeAt: "build-plan-verify",
     },
-    { step: "build-plan-verify-holistic", number: 9, title: "Plan Verify Holistic" },
-    // The reports are written: Step 10 continues at `bkit challenge merge`.
-    { step: "build-challenge", number: 10, title: "Build Challenge", resumeAt: "build-challenge" },
+    { step: "build-plan-verify-holistic", number: 10, title: "Plan Verify Holistic" },
+    // The reports are written: Step 11 continues at `bkit challenge merge`.
+    { step: "build-challenge", number: 11, title: "Build Challenge", resumeAt: "build-challenge" },
     // Run Tests routes on its own verdict, and a fix loops back to it.
-    { step: "build-run-tests", number: 11, title: "Run Tests", resumeAt: "build-run-tests" },
-    { step: "build-failure-diagnose", number: 12, title: "Failure Diagnose" },
+    { step: "build-run-tests", number: 12, title: "Run Tests", resumeAt: "build-run-tests" },
+    { step: "build-failure-diagnose", number: 13, title: "Failure Diagnose" },
     {
       step: "build-failure-remediate",
-      number: 13,
+      number: 14,
       title: "Failure Remediate",
       resumeAt: "build-run-tests",
     },
-    { step: "build-summary", number: 14, title: "Summary" },
-    { step: "build-create-pr", number: 15, title: "Close Workflow & Create PR" },
-    { step: "build-close-workflow", number: 15, title: "Close Workflow & Create PR" },
+    { step: "build-summary", number: 15, title: "Summary" },
+    { step: "build-create-pr", number: 16, title: "Close Workflow & Create PR" },
+    { step: "build-close-workflow", number: 16, title: "Close Workflow & Create PR" },
   ],
   debug: [
     { step: "debug-start-workflow", number: 1, title: "Start Workflow", setup: true },
@@ -209,7 +214,7 @@ export const DECISION_ROUTES: Readonly<
       fix: "build-plan-execute",
       verify: "build-plan-verify",
       tests: "build-run-tests",
-      // Try again: a verify loop goes on to its gaps fix (Step 8), a tests loop to Step 12.
+      // Try again: a verify loop goes on to its gaps fix (Step 9), a tests loop to Step 13.
       retry: {
         "build-plan-verify": "build-plan-gaps-remediate",
         "build-group-gate": "build-plan-gaps-remediate",
@@ -232,9 +237,9 @@ export interface ResumePoint {
   group: number | null;
   /** Whether the latest run is this workflow, still IN_PROGRESS. */
   active: boolean;
-  /** Build only (null otherwise): the round Step 10's challenge runs as — see `challengeRound`. */
+  /** Build only (null otherwise): the round Step 11's challenge runs as — see `challengeRound`. */
   challengeRound: number | null;
-  /** Build only (null otherwise): the last allowed round has merged, so Step 10 goes on to Step 11. */
+  /** Build only (null otherwise): the last allowed round has merged, so Step 11 goes on to Step 12. */
   challengeDone: boolean | null;
 }
 

@@ -118,6 +118,7 @@
 - **Check gotchas first:** Search before touching code → fold `docs/knowledge.jsonl` ledger by `key`, highest `ts` wins → read only winning rows where `status` is `ACTIVE` or absent; never read any other rows.
 - **External context first:** ALWAYS read `.agents/context.md` before concluding anything about runtime behaviours, CI, or external / upstream causes.
 - **Provider data:** Logs, errors, database → prefer enabled `.agents/context.md` context-fetch blocks or provider's CLI over MCP.
+- **Cloud setup gaps:** Cloud session → read `.bkit/.unavailable` first when present; each line = provision recipe that failed setup + reason → treat what it provides as absent, NEVER retry its install; name it wherever it leaves a check not run.
 - **Local tests first:** ALWAYS exhaust local test suite and targeted repro before remote CI. Deployed-boundary / `@live` that cannot reproduce locally → review existing evidence first.
 - **Existing evidence first:** ALWAYS search / read existing reports / logs / artifacts before requesting new remote CI runs; request new runs ONLY when existing evidence insufficient, stale, or absent.
 - **Local pre-push:** `pnpm bkit:gate:static-unit-integration` when declared, else `pnpm bkit:gate:static-unit`, then `bkit check`. Gate scripts MUST not run tests needing a deployed boundary or remote service; local services (a database in Docker) are fine.

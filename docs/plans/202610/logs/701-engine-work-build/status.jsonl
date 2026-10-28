@@ -209,3 +209,12 @@
 {"type":"step-done","workflow":"build","step":"build-summary","status":"DONE","at":"2026-10-28T05:03:23Z","parentSha":"ab9c0df09102419581fd5b1b4d5d5dc682bacf82","artifacts":["docs/plans/202610/logs/701-engine-work-build/build-summary.md"],"verdict":"FAIL","attempt":1,"failures":1}
 {"type":"workflow-failed","workflow":"build","at":"2026-10-28T05:07:23Z"}
 {"type":"engine-action","action":"comment","key":"build/1/failure/15/4/comment","hash":"b95fa46129501d31606d9fe541cf51cbda7efffa0f44f4a2064128439a886533","ref":"https://github.com/cbartens/bkit/issues/701#issuecomment-6461164524","at":"2026-10-28T05:07:25Z"}
+{"type":"workflow-started","workflow":"ship","at":"2026-10-28T11:14:35Z","parentSha":"04f75734beec2812ab932510f25fc6b7d9677f23"}
+{"type":"session","workflow":"ship","at":"2026-10-28T11:14:35Z","platform":"claude-code","session":"fp:27df5e9ff1c4"}
+{"type":"step-done","workflow":"ship","step":"ship-start-workflow","status":"DONE","at":"2026-10-28T11:14:35Z","parentSha":"04f75734beec2812ab932510f25fc6b7d9677f23","artifacts":[]}
+{"type":"runtime-resolved","workflow":"ship","at":"2026-10-28T11:14:35Z","runtime":"LOCAL","runtimeWorktrees":true,"runtimeDevPushes":true,"runtimeGithubCli":true,"runtimeGithubCliExit":0,"runtimeGithubCliErr":"","baseSha":""}
+{"type":"engine-action","action":"comment","key":"ship/1/step/1/-/-/comment","hash":"41eb1de0de057ad0f8607e1b969a2ff52cad1ddf17794d167f0db886b0becef0","ref":"https://github.com/cbartens/bkit/issues/701#issuecomment-6467535609","at":"2026-10-28T11:14:49Z"}
+{"type":"engine-action","action":"pr-open","key":"ship/1/pr-open","hash":"6fe6419095d53756da507421b9ff909d381b138f1e3d5ab25a9e6ccc74935ffb","ref":"https://github.com/cbartens/bkit/pull/722","at":"2026-10-28T11:20:11Z"}
+{"type":"workflow-meta","workflow":"ship","at":"2026-10-28T11:20:11Z","openedPr":true}
+{"type":"workflow-failed","workflow":"ship","at":"2026-10-28T11:22:30Z"}
+{"type":"engine-action","action":"comment","key":"ship/1/failure/2/5/comment","hash":"0791bb73fb67ca79e1f12b66248dadbe72aca95da22edfb2f1c682ecb1a14344","ref":"https://github.com/cbartens/bkit/issues/701#issuecomment-6467687613","at":"2026-10-28T11:22:31Z"}

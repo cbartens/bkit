@@ -4,7 +4,7 @@
  *
  * Sources:
  *   - `prompts.md` § Models: the model each agent runs on, one column per provider.
- *   - `providers.md` § Agentic-coding parity board: each model's LiveBench Agentic Coding score.
+ *   - `providers.md` § LiveBench 2.0 board: each model's Long Agentic score.
  *   - `providers.md` § Per-tier lineup across providers: the Claude bar for each tier.
  *
  * The README has one row per § Models provider column and one column per Claude tier. A tier
@@ -37,13 +37,14 @@ const README_ROWS: Record<string, string> = {
 };
 
 /**
- * Catalog id → the name the parity board lists the model under. A dated snapshot
- * (`…-1017`, `…:1017`) inherits its family's row — the board scores the family, not each snapshot.
+ * Catalog id → the name the parity board lists the model under, where a catalog spells the
+ * same model differently (Ollama's `…:1017` for the board's `…-1017`). The board scores one
+ * snapshot per row: an undated slug that serves a different snapshot (Zen and Go's
+ * `deepseek-v4.1-flash` is the 2026-09-10 one) maps to no dated row and reads `not measured`.
  */
 const BOARD_NAME: Record<string, string> = {
   "cursor-grok-4.5-high": "grok-4.5",
-  "deepseek/deepseek-v4.1-flash-1017": "deepseek-v4.1-flash",
-  "deepseek-v4.1-flash:1017": "deepseek-v4.1-flash",
+  "deepseek-v4.1-flash:1017": "deepseek-v4.1-flash-1017",
 };
 
 /** Cells of the first markdown table after `heading`; header row first, separator row dropped. */
@@ -109,9 +110,9 @@ function pinned(column: string, tier: string): string[] {
   return [...new Set(models)].map(String).sort();
 }
 
-/** Parity board: model name → score, bold and dagger stripped. */
+/** Parity board: model name → Long Agentic score, bold and dagger stripped. */
 const boardScores = new Map(
-  tableAfter(PROVIDERS_MD, "### Agentic-coding parity board")
+  tableAfter(PROVIDERS_MD, "### LiveBench 2.0 board — 2026-10-25")
     .slice(1)
     .filter((r) => /^`[^`]+`$/.test(r[0]))
     .map((r) => [unquote(r[0]), r[1].replace(/\*\*/g, "").replace(/\s*†$/, "")]),
@@ -188,6 +189,12 @@ describe("README § Which model does each job", () => {
   it("gives the Claude Code row the lineup's bar for each tier", () => {
     expect(tierBars.size).toBeGreaterThan(0);
     expect(claudeBars(false)).toEqual(claudeBars(true));
+  });
+
+  it("an undated slug documented as a different snapshot does not inherit a dated board row", () => {
+    expect(boardName("deepseek-v4.1-flash")).toBe("deepseek-v4.1-flash");
+    expect(boardScores.has("deepseek-v4.1-flash")).toBe(false);
+    expect(boardName("deepseek-v4.1-flash:1017")).toBe("deepseek-v4.1-flash-1017");
   });
 
   it("gives every other model its parity-board score, or `not measured` when the board has none", () => {

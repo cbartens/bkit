@@ -1,7 +1,7 @@
 ---
 name: bkit-utility-update-tracker
 description: Senior PM bringing open tracker issues in line with tracker rules.
-model: gemini-3.8-pro
+model: gemini-4-argon
 effort: medium
 tools:
   - view_file

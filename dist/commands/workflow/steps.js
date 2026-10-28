@@ -291,28 +291,47 @@ export function requireRecordOnShared(cwd, workflow, rec) {
         return;
     throw new CommandError(EXIT_NO_RECORD, `no shared-checkout record for this run on ${branch} — nothing written or committed (the record is gone or belongs to another run); a plain commit here would carry work the run does not own`);
 }
-/** The paths staged in `cwd`, NUL-delimited so a path holding a newline stays one entry. */
-function stagedPaths(cwd) {
-    return new Set(runGit(cwd, ["diff", "--cached", "--name-only", "-z"])
-        .stdout.split("\0")
-        .filter((p) => p !== ""));
+/** Throws EXIT_COMMIT when git cannot name the index, before anything is written. */
+function indexSnapshot(cwd) {
+    const res = runGit(cwd, ["rev-parse", "--path-format=absolute", "--git-path", "index"]);
+    if (!res.ok || res.stdout === "")
+        throw new CommandError(EXIT_COMMIT, `nothing written: git cannot name the index: ${res.stderr}`);
+    return {
+        file: res.stdout,
+        bytes: fs.existsSync(res.stdout) ? fs.readFileSync(res.stdout) : null,
+    };
 }
 /**
- * Take this attempt's staging back off the index: every path staged now that was not
- * staged before it ran. A refused commit wrote nothing, so the index must match the
- * rolled-back working tree — a row left staged rides the next pathspec-less commit. A
- * path the caller had already staged is never touched.
+ * Put the index back byte-for-byte as `snap` holds it, through git's own `index.lock`, so
+ * a git command holding the lock is never overwritten. A refused commit wrote nothing, so
+ * every path — staged before the attempt or by it, fully or partly — must read as it did:
+ * a row left staged rides the next pathspec-less commit. Returns why it could not, or null.
  */
-function unstageStaged(cwd, stagedBefore) {
-    const staged = [...stagedPaths(cwd)].filter((p) => !stagedBefore.has(p));
-    if (staged.length > 0)
-        runGit(cwd, ["reset", "-q", "--", ...staged]);
+function restoreIndex(snap) {
+    const lock = `${snap.file}.lock`;
+    try {
+        fs.writeFileSync(lock, snap.bytes ?? "", { flag: "wx" });
+    }
+    catch (err) {
+        if (err.code !== "EEXIST")
+            fs.rmSync(lock, { force: true });
+        return `${lock} could not be taken: ${err.message}`;
+    }
+    if (snap.bytes !== null) {
+        fs.renameSync(lock, snap.file);
+        return null;
+    }
+    fs.rmSync(snap.file, { force: true });
+    fs.rmSync(lock, { force: true });
+    return null;
 }
 /**
  * Append one `step-done` row, then commit (parentSha first, the row, then the
  * commit — the order the fold's de-dup relies on). Returns the row and the new
  * commit; `code` is EXIT_COMMIT when the commit failed, and the appended row is
  * rolled back, so a re-run after the human's fix writes the same attempt once.
+ * `code` is EXIT.NEEDS_HUMAN when the commit failed and the row stays in `r.file`
+ * (another writer appended after it) or the index could not be put back.
  */
 export function writeStepRow(cwd, r, log) {
     const clash = Object.keys(r.extras ?? {}).filter((k) => CORE_ROW_KEYS.has(k));
@@ -355,19 +374,50 @@ export function writeStepRow(cwd, r, log) {
             return { row, commit: null, code: EXIT_FOREIGN_PATH };
         }
     }
+    // A plain commit stages the whole tree, so the index is kept to be put back on failure.
+    const snap = r.commit === "auto" && rec === null ? indexSnapshot(cwd) : null;
     fs.mkdirSync(path.dirname(r.file), { recursive: true });
-    const before = fs.existsSync(r.file) ? fs.statSync(r.file).size : -1;
+    const existed = fs.existsSync(r.file);
     const line = appendLine(row);
     fs.appendFileSync(r.file, line);
-    // A refused commit takes the row back off `r.file`: the exit code means nothing was
-    // written, and the step's attempt is unchanged, so a re-run after the human's fix
-    // lands the same attempt once instead of opening the next. A concurrent append leaves
-    // the file alone rather than truncating another writer's row.
+    // A refused commit takes exactly this attempt's bytes back off `r.file`, so the step's
+    // attempt is unchanged and a re-run after the human's fix lands the same attempt once.
+    // Returns null once the row is off disk (or the file is gone), else why it stays.
     const rollback = () => {
-        if (before < 0)
+        if (!fs.existsSync(r.file))
+            return null;
+        let body;
+        try {
+            body = fs.readFileSync(r.file);
+        }
+        catch (err) {
+            return `it could not be read back: ${err.message}`;
+        }
+        const mine = Buffer.from(line);
+        const tail = body.subarray(Math.max(0, body.length - mine.length));
+        if (!tail.equals(mine))
+            return "another writer appended to it after this attempt's row";
+        if (!existed && body.length === mine.length)
             fs.rmSync(r.file, { force: true });
-        else if (fs.readFileSync(r.file, "utf-8").endsWith(line))
-            fs.truncateSync(r.file, before);
+        else
+            fs.truncateSync(r.file, body.length - mine.length);
+        return null;
+    };
+    // The failure reason first, then the index and the file are put back: exit `code` means
+    // nothing written, nothing committed; a row that cannot come off disk needs a human, as a
+    // re-run would write it twice.
+    const failed = (code, reason) => {
+        log(reason);
+        const index = snap === null ? null : restoreIndex(snap);
+        if (index !== null)
+            log(`the index could not be put back as it was: ${index}`);
+        const kept = rollback();
+        if (kept !== null) {
+            log(`the step-done row stays in ${r.file}: ${kept}; nothing committed — remove that row before re-running`);
+            return { row, commit: null, code: EXIT.NEEDS_HUMAN };
+        }
+        log(`no row written to ${r.file}: the row was rolled back`);
+        return { row, commit: null, code: index === null ? code : EXIT.NEEDS_HUMAN };
     };
     if (r.commit === "none")
         return { row, commit: null, code: EXIT.OK };
@@ -379,29 +429,16 @@ export function writeStepRow(cwd, r, log) {
         catch (err) {
             if (!(err instanceof CommandError) || err.code !== EXIT_FOREIGN_PATH)
                 throw err;
-            rollback();
-            log(`no row written to ${r.file}: the commit was refused: ${err.message}`);
-            return { row, commit: null, code: EXIT_FOREIGN_PATH };
+            return failed(EXIT_FOREIGN_PATH, `the commit was refused: ${err.message}`);
         }
-        if (!own.ok) {
-            rollback();
-            log(`no row written to ${r.file}: the commit failed: ${own.error}`);
-            return { row, commit: null, code: EXIT_COMMIT };
-        }
+        if (!own.ok)
+            return failed(EXIT_COMMIT, `the commit failed: ${own.error}`);
         return { row, commit: runGit(cwd, ["rev-parse", "HEAD"]).stdout, code: EXIT.OK };
     }
-    const stagedBefore = stagedPaths(cwd);
     const add = addAllButCopied(cwd);
     const made = add.ok ? runGit(cwd, ["commit", "--allow-empty", "-m", r.message]) : add;
-    if (!made.ok) {
-        rollback();
-        // `addAllButCopied` put the row — and the rest of the tree — in the index, so the
-        // rollback has to take the index back with the working tree: exit 8 means nothing was
-        // written or committed, and a row left staged rides the next pathspec-less commit.
-        unstageStaged(cwd, stagedBefore);
-        log(`no row written to ${r.file}: the commit failed: ${made.stderr || made.stdout}`);
-        return { row, commit: null, code: EXIT_COMMIT };
-    }
+    if (!made.ok)
+        return failed(EXIT_COMMIT, `the commit failed: ${made.stderr || made.stdout}`);
     return { row, commit: runGit(cwd, ["rev-parse", "HEAD"]).stdout, code: EXIT.OK };
 }
 /** Every mechanical gate check for one step; `ok` false names the first problem per check. */

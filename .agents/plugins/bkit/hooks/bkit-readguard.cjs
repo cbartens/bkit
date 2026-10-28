@@ -187,9 +187,16 @@ function isCovered(ranges, [start, end]) {
   return mergeRanges(ranges).some(([s, e]) => s <= start && end <= e);
 }
 
+// Per user: on a temp dir users share (Linux `/tmp`) another user's copy cannot be written.
 function readStateDir() {
-  return path.join(os.tmpdir(), "bkit-readguard");
+  return path.join(
+    os.tmpdir(),
+    typeof process.getuid === "function" ? `bkit-readguard-${process.getuid()}` : "bkit-readguard",
+  );
 }
+
+// Read logs this process could not write, standing in for them for the process's life.
+const readLogsInProcess = new Map();
 
 function safeKey(value, fallback) {
   const s = typeof value === "string" ? value.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 128) : "";
@@ -208,6 +215,7 @@ function readLogFile(sessionId, agentId) {
 // Absent log is the normal first-read case (guarded, no throw); a corrupt one throws
 // to the host's top-level fail-open boundary and that one call no-ops.
 function loadReadLog(file) {
+  if (readLogsInProcess.has(file)) return readLogsInProcess.get(file);
   if (!fs.existsSync(file)) return { files: {} };
   const parsed = JSON.parse(fs.readFileSync(file, "utf-8"));
   return parsed && typeof parsed.files === "object" && parsed.files ? parsed : { files: {} };
@@ -230,9 +238,12 @@ function gcOldReadLogs() {
  * conversation is summarised: earlier read output is no longer in context.
  */
 function resetReadLog(sessionId) {
+  const prefix = `${safeKey(sessionId, "no-session")}.`;
+  for (const file of readLogsInProcess.keys()) {
+    if (path.basename(file).startsWith(prefix)) readLogsInProcess.delete(file);
+  }
   const dir = readStateDir();
   if (!fs.existsSync(dir)) return;
-  const prefix = `${safeKey(sessionId, "no-session")}.`;
   for (const name of fs.readdirSync(dir)) {
     if (name.startsWith(prefix)) fs.rmSync(path.join(dir, name), { force: true });
   }
@@ -259,7 +270,9 @@ function repeatReadMessage(repeats, cwd) {
 /**
  * The advisory for reading `targets` again, or null when ReadGuard is off, nothing is
  * trackable, or no target repeats an earlier read of the same unchanged file by the
- * same (session, agent). Records every trackable target.
+ * same (session, agent). Records every trackable target. Fail-open: a log write error
+ * still returns the note and the process keeps the log, so a long-lived host (opencode)
+ * still sees its repeats.
  */
 function repeatReadAdvice(targets, sessionId, agentId, cwd) {
   if (process.env.BKIT_READGUARD === "off") return null;
@@ -288,11 +301,16 @@ function repeatReadAdvice(targets, sessionId, agentId, cwd) {
     changed = true;
   }
 
-  if (changed) {
-    fs.mkdirSync(readStateDir(), { recursive: true });
-    fs.writeFileSync(logFile, JSON.stringify(log), "utf-8");
+  try {
+    if (changed) {
+      fs.mkdirSync(readStateDir(), { recursive: true });
+      fs.writeFileSync(logFile, JSON.stringify(log), "utf-8");
+      readLogsInProcess.delete(logFile);
+    }
+    gcOldReadLogs();
+  } catch {
+    readLogsInProcess.set(logFile, log);
   }
-  gcOldReadLogs();
 
   return repeats.length > 0 ? repeatReadMessage(repeats, cwd) : null;
 }
@@ -408,16 +426,23 @@ function agCallSignature(toolName, input) {
 }
 
 // One record per (hook, conversation): two hooks on the same call each let its retry through.
+// Per user: on a temp dir users share (Linux `/tmp`) another user's copy cannot be written.
 function agRetryFile(hook, sessionId) {
   const safe =
     typeof sessionId === "string" ? sessionId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 128) : "";
-  return path.join(os.tmpdir(), "bkit-antigravity-retry", `${hook}.${safe || "no-session"}.json`);
+  const user = typeof process.getuid === "function" ? `-${process.getuid()}` : "";
+  return path.join(
+    os.tmpdir(),
+    `bkit-antigravity-retry${user}`,
+    `${hook}.${safe || "no-session"}.json`,
+  );
 }
 
 /**
  * Delivers an advisory the only way Antigravity shows one to the model: deny the call
  * with the advisory as the reason, once. The identical call right after is the agent's
- * retry and is allowed.
+ * retry and is allowed. Fail-open: a retry-store error allows the call — each call is
+ * its own process, so a deny it cannot record would block every retry.
  */
 function adviseOnce(hook, sessionId, signature, advisory) {
   const file = agRetryFile(hook, sessionId);
@@ -425,13 +450,17 @@ function adviseOnce(hook, sessionId, signature, advisory) {
   // TTL, so no tool argument (a shell command line with an inline secret, a file path)
   // may rest on disk in cleartext.
   const digest = crypto.createHash("sha256").update(signature).digest("hex");
-  const last = fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
-  if (last === digest) {
-    fs.rmSync(file, { force: true });
+  try {
+    const last = fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
+    if (last === digest) {
+      fs.rmSync(file, { force: true });
+      return { decision: "allow" };
+    }
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, digest, "utf-8");
+  } catch {
     return { decision: "allow" };
   }
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, digest, "utf-8");
   return {
     decision: "deny",
     reason: `${advisory}\nBlocked once so you see this; repeat the same call to proceed.`,

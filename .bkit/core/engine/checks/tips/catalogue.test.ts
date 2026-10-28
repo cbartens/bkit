@@ -8,7 +8,8 @@ import { buildTrackerSetupAdvisory } from "../after/github";
 import { buildDepUpdaterSetupAdvisory } from "../after/tools";
 import { COMPLY_PHASES, TIPS_CONTEXTS } from "../../cli";
 import { ALL_WORKFLOWS, EVERY_CONTEXT, SETUP_TIPS, type SetupTip } from "./catalogue";
-import { STAR_TIP_ID, orderForWorkflow } from "./index";
+import { STAR_TIP_ID, dropTipSilencedAdvisories, isTipSilenced, orderForWorkflow } from "./index";
+import type { PreflightFinding } from "../before/index";
 
 const tip = (id: string): SetupTip => SETUP_TIPS.find((t) => t.id === id)!;
 
@@ -248,6 +249,26 @@ describe("SETUP_TIPS — detection", () => {
     write(".agents/context.md", "<!-- bkit:end -->\n<!-- context-fetch:none -->\n");
     expect(detectContextFetchMissing(cwd)).toBeNull();
     expect(tip("context-fetch").fires(cwd)).toBe(false);
+  });
+
+  it("ignoring context-fetch-missing does not drop a context-fetch-unbounded finding", () => {
+    const finding = (id: string): PreflightFinding => ({
+      id,
+      severity: "advisory",
+      detect: "d",
+      action: "a",
+    });
+    pkg({ advisories: { ignore: ["context-fetch-missing"] } });
+    const kept = dropTipSilencedAdvisories(
+      [finding("context-fetch-missing"), finding("context-fetch-unbounded")],
+      cwd,
+    );
+    expect(kept.map((f) => f.id)).toEqual(["context-fetch-unbounded"]);
+    expect(isTipSilenced(tip("context-fetch"), new Set(["context-fetch-unbounded"]))).toBe(false);
+  });
+
+  it("bkit-env ask names no worktree remedy, since fires reads the main checkout", () => {
+    expect(tip("bkit-env").ask).not.toMatch(/worktree/i);
   });
 
   it("dependabot-renovate fires exactly when dep-updater-absent does", () => {

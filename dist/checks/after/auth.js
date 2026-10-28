@@ -4,7 +4,6 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { readJsonFile } from "../../shared/json.js";
-import { readBkitConfig } from "../../shared/settings.js";
 /**
  * Detect whether BKIT_GH_TOKEN is set in the shell environment. Distinguishes
  * empty from unset so action text can guide the user precisely. Never reads the
@@ -55,7 +54,7 @@ export function detectGhMcpToken(cwd) {
             id: "gh-mcp-token-unset-shell",
             severity: "advisory",
             detect: "BKIT_GH_TOKEN is not set in the shell environment (undefined). The GitHub MCP server authenticates with `Authorization: Bearer ${BKIT_GH_TOKEN}` — without it, every tracker, PR, and board MCP call fails to connect.",
-            action: "Set BKIT_GH_TOKEN in .bkit/.env (canonical local-secrets file, gitignored), then `direnv allow` and restart your editor so MCP servers pick it up:\n\n    cp .bkit/.env.example .bkit/.env       # if not already done\n    # edit .bkit/.env — set BKIT_GH_TOKEN=<PAT>\n    direnv allow\n\nUse a fine-grained PAT when every target repo sits under one owner (Contents, Pull requests, Issues, and Actions read & write, plus organization-scoped Projects read & write if you use board sync); use a classic PAT when one token must span owners (scopes repo / workflow / read:org / project / security_events). Generate at: https://github.com/settings/personal-access-tokens (fine-grained) or https://github.com/settings/tokens (classic). In cloud sessions (Claude Code web / Cursor Background Agents) set BKIT_GH_TOKEN in the dashboard env vars instead — repo files are not read for secrets there.",
+            action: "Set BKIT_GH_TOKEN in .bkit/.env (canonical local-secrets file, gitignored), then `direnv allow` and restart your editor so MCP servers pick it up:\n\n    cp .bkit/.env.example .bkit/.env       # if not already done\n    # edit .bkit/.env — set BKIT_GH_TOKEN=<PAT>\n    direnv allow\n\nUse a fine-grained PAT when every target repo sits under one owner (Contents, Pull requests, Issues, and Actions read & write, plus organization-scoped Projects read & write if you use board sync); use a classic PAT when one token must span owners (scopes repo / workflow / read:org / project / security_events). Generate at: https://github.com/settings/personal-access-tokens (fine-grained) or https://github.com/settings/tokens (classic). In cloud sessions (Claude Code web / Cursor Cloud Agents / Codex Cloud) set BKIT_GH_TOKEN in the dashboard env vars instead — repo files are not read for secrets there.",
         };
     }
     if (status === "empty") {
@@ -97,48 +96,52 @@ export function detectGhSecret(secretName) {
     return names.includes(secretName) ? "present" : "missing";
 }
 /**
- * Build the consolidated "three locations to sync secrets" advisory. Fires when
- * the consumer's repo has bkit-cloud.yml installed OR a
- * .claude/ or .cursor/ install present — both indicate cloud-side agent use,
- * which means the same three secrets need to be set in three places (GitHub
- * Actions, Cursor Settings online, Claude app web).
+ * Build the consolidated cloud-secrets checklist advisory. Fires when the consumer's
+ * repo has bkit-cloud.yml installed OR a `.claude/`, `.cursor/` or `.codex/` install
+ * present — each indicates cloud-side agent use. Lists one location per trigger present:
+ * GitHub Actions for the router, plus each installed host's cloud dashboard with its
+ * generated paste doc. Never depends on the issue tracker: every host's env block is the
+ * same tracker-independent set (install/cloud-env.ts).
  *
- * Returns null when none of the three trigger paths exist.
+ * Returns null when none of the trigger paths exist.
  */
 export function buildCloudDashboardsAdvisory(cwd) {
     const hasRouter = fs.existsSync(path.join(cwd, ".github", "workflows", "bkit-cloud.yml"));
-    const hasClaude = fs.existsSync(path.join(cwd, ".claude"));
-    const hasCursor = fs.existsSync(path.join(cwd, ".cursor"));
-    if (!hasRouter && !hasClaude && !hasCursor)
+    const hosts = [
+        [
+            ".cursor",
+            "**Cursor Cloud Agents**: open `https://cursor.com/dashboard/cloud-agents` → your environment → **Secrets** tab. Add each secret as a **Runtime Secret** (loaded as an env var, redacted from the agent's transcript). Cursor reads `.cursor/Dockerfile` + `.cursor/environment.json` from the repo but secrets come from this dashboard only; the resolved paste-ready values are in `.cursor/bkit-cloud.md` (gitignored).",
+        ],
+        [
+            ".claude",
+            "**Claude Code (web)**: open `https://claude.ai/code` → environment selector → your environment → **Environment variables**. Paste the block from `.claude/bkit-cloud.md` (gitignored), which also carries the setup script and network list. Claude reads both from the dashboard, NOT from the repo, so changes here do not require a commit.",
+        ],
+        [
+            ".codex",
+            "**Codex Cloud**: open ChatGPT → **Settings > Codex Cloud > Environments** → your environment → **Environment variables**. Paste the block from `.codex/bkit-cloud.md` (gitignored), which also carries the install script and allowed domains.",
+        ],
+    ];
+    const present = hosts.filter(([dir]) => fs.existsSync(path.join(cwd, dir)));
+    if (!hasRouter && present.length === 0)
         return null;
-    // cloud=claude path (bkit-cloud.yml): GitHub-tracker only, ANTHROPIC_API_KEY or federation.
-    // cloud=cursor path (.cursor/): BKIT_LINEAR_API_KEY for Cursor dashboard; Linear-tracker only.
-    // Distinguish by recorded variant; fall back to presence-based detection under linear.
-    const config = readBkitConfig(cwd);
-    const isCursorCloud = config.cloudAgents === "cursor" ||
-        (!hasRouter && hasCursor && config.issueTracker === "linear");
-    const secretList = isCursorCloud ? "`BKIT_LINEAR_API_KEY`" : "`ANTHROPIC_API_KEY`";
-    const ghSetLines = isCursorCloud
-        ? "       gh secret set BKIT_LINEAR_API_KEY    --body='<value>'\n\n" +
-            "       Verify: `gh secret list | grep -E 'BKIT_LINEAR_API_KEY'`\n\n"
-        : "       gh secret set ANTHROPIC_API_KEY --body='<value>'\n\n" +
+    const sections = [];
+    if (hasRouter) {
+        sections.push("**GitHub Actions** (used by bkit-cloud.yml and your own workflows):\n" +
+            "       gh secret set ANTHROPIC_API_KEY --body='<value>'\n\n" +
             "       Verify: `gh secret list | grep -E 'ANTHROPIC_API_KEY'`\n\n" +
-            "       Keyless alternative for bkit-cloud.yml (workload identity federation): leave the secret unset and set the `ANTHROPIC_FEDERATION_RULE_ID` + `ANTHROPIC_ORGANIZATION_ID` repo variables (`gh variable set`) from a Claude Console federation rule.\n\n";
-    const vendorNote = isCursorCloud
-        ? "BKIT_LINEAR_API_KEY is read from the Linear dashboard (https://linear.app/settings/api)."
-        : "ANTHROPIC_API_KEY is read from the Anthropic dashboard (https://console.anthropic.com/settings/keys); `.bkit/.env` holds the same value as BKIT_ANTHROPIC_API_KEY. The Claude GitHub App (`/install-github-app`) is also required for `cloud=claude`.";
+            "       Keyless alternative for bkit-cloud.yml (workload identity federation): leave the secret unset and set the `ANTHROPIC_FEDERATION_RULE_ID` + `ANTHROPIC_ORGANIZATION_ID` repo variables (`gh variable set`) from a Claude Console federation rule.\n\n" +
+            "       ANTHROPIC_API_KEY is read from the Anthropic dashboard (https://console.anthropic.com/settings/keys); `.bkit/.env` holds the same value as BKIT_ANTHROPIC_API_KEY. The Claude GitHub App (`/install-github-app`) is also required for `cloud=claude`.");
+    }
+    for (const [, text] of present)
+        sections.push(text);
     return {
         id: "cloud-secrets-three-locations",
         severity: "advisory",
-        detect: `The secrets used by bkit's cloud integration (${secretList}) must also be set in the relevant cloud dashboards. Bkit cannot verify dashboard state — surface the checklist so you don't ship a half-configured cloud setup.`,
+        detect: "The secrets bkit's cloud integration uses must also be set in each cloud location you use. Bkit cannot verify dashboard state — surface the checklist so you don't ship a half-configured cloud setup.",
         action: "Set each secret in the required locations:\n\n" +
-            "1. **GitHub Actions** (used by bkit-cloud.yml and your own workflows):\n" +
-            ghSetLines +
-            "2. **Cursor Cloud Agents** (used by Cursor's cloud agent runner): open `https://cursor.com/dashboard/cloud-agents` → your environment → **Secrets** tab. Add each secret as a **Runtime Secret** (loaded as an env var, redacted from the agent's transcript). Cursor reads `.cursor/Dockerfile` + `.cursor/environment.json` from the repo but secrets come from this dashboard only; the resolved paste-ready values are in `.cursor/bkit-cloud.md` (gitignored).\n\n" +
-            "3. **Claude Code (web)** (used by Claude.ai's cloud agent runner): open `https://claude.ai/code` → Settings → Setup → Environment Variables. Add each secret. Claude reads its setup script from the dashboard, NOT from the repo, so changes here do not require a commit.\n\n" +
+            sections.map((s, i) => `${i + 1}. ${s}\n\n`).join("") +
             "**Context-fetch (`/bkit-debug` in the cloud):** if you run the debug workflow in these cloud agents, the observability creds your `.agents/context.md` context-fetch blocks use (e.g. `VERCEL_TOKEN`, `SUPABASE_ACCESS_TOKEN`) must ALSO be set in the same dashboards above — non-interactively, since headless agents cannot `vercel login`. These are operator/observability READ creds, not app-runtime secrets. Commit the non-secret selectors (team scope / project ref / `--environment`) in your copied block so they need no dashboard entry. The CLIs those blocks call install automatically in the cloud from each block's `context-fetch:provision` sibling — no manual setup.\n\n" +
-            "Same VALUE in all places. " +
-            vendorNote,
+            "Same VALUE in all places.",
     };
 }
 /** Repo variables that, both set, switch bkit-cloud.yml's claude job to workload identity federation. */

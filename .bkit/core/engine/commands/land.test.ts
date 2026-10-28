@@ -6,7 +6,15 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { replayBuild } from "./workflow/branches";
-import { devMoved, devRefused, landBackoffMs, landDir, pushToDev, withoutHooks } from "./land";
+import {
+  devMoved,
+  devRefRace,
+  devRefused,
+  landBackoffMs,
+  landDir,
+  pushToDev,
+  withoutHooks,
+} from "./land";
 
 vi.mock("../shared/timeouts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../shared/timeouts")>();
@@ -59,6 +67,12 @@ const race = (remote: string) => {
   git(c, "clone", "-q", remote, ".");
   git(c, "commit", "-q", "--allow-empty", "-m", "foreign");
   git(c, "push", "-q", "origin", "HEAD:dev");
+};
+
+/** A landing log that records every line and removes `lock` once the fetch race is retried. */
+const releaseOnRetry = (log: string[], lock: string) => (line: string) => {
+  log.push(line);
+  if (line.includes("origin/dev during the fetch")) fs.rmSync(lock, { force: true });
 };
 
 /** `fn` on the first call only. */
@@ -115,6 +129,21 @@ describe("devMoved / devRefused", () => {
   it("no server answer: neither", () => {
     expect(devMoved(network)).toBe(false);
     expect(devRefused(network)).toBe(false);
+  });
+});
+
+describe("devRefRace", () => {
+  it("another fetch moved or holds origin/dev: retry", () => {
+    const moved =
+      "error: cannot lock ref 'refs/remotes/origin/dev': is at d849eac but expected 49576d1";
+    const held =
+      "error: cannot lock ref 'refs/remotes/origin/dev': Unable to create '/r/.git/refs/remotes/origin/dev.lock': File exists.";
+    for (const e of [moved, held]) expect(devRefRace(e), e).toBe(true);
+  });
+  it("any other fetch failure, or another ref: not a race", () => {
+    const network = "fatal: unable to access 'https://github.com/o/r.git/': Could not resolve host";
+    const other = "error: cannot lock ref 'refs/remotes/origin/main': is at 1 but expected 2";
+    for (const e of [network, other]) expect(devRefRace(e), e).toBe(false);
   });
 });
 
@@ -359,6 +388,58 @@ describe("pushToDev", () => {
       log: () => {},
     });
     expect(res.kind).toBe("fetch-failed");
+  });
+
+  it("a fetch that loses the origin/dev ref race retries and lands", async () => {
+    const { root, remote, dir } = fixture();
+    race(remote);
+    // Another landing's fetch holds refs/remotes/origin/dev while this one's runs.
+    const lock = path.join(root, ".git", "refs", "remotes", "origin", "dev.lock");
+    fs.writeFileSync(lock, "");
+    const log: string[] = [];
+    const res = await pushToDev({
+      root,
+      dir,
+      build: (d) => commitIn(d, "row.txt", "row\n"),
+      log: releaseOnRetry(log, lock),
+    });
+    expect(res).toMatchObject({ kind: "landed", attempts: 2 });
+    expect(git(remote, "log", "-2", "--format=%s", "dev")).toBe("land row.txt\nforeign");
+    expect(log.join("\n")).toContain("another git process updated origin/dev during the fetch");
+  });
+
+  it("a fetch that loses the origin/dev ref race on every attempt is returned as fetch-failed", async () => {
+    const { root, remote, dir } = fixture();
+    race(remote);
+    fs.writeFileSync(path.join(root, ".git", "refs", "remotes", "origin", "dev.lock"), "");
+    let builds = 0;
+    const res = await pushToDev({
+      root,
+      dir,
+      build: () => {
+        builds++;
+      },
+      log: () => {},
+    });
+    expect(res).toMatchObject({
+      kind: "fetch-failed",
+      stderr: expect.stringContaining("cannot lock ref"),
+    });
+    expect(builds).toBe(0);
+  });
+
+  it("lands from a clone whose fetch refspec omits dev", async () => {
+    const { root, remote, dir } = fixture();
+    git(root, "config", "remote.origin.fetch", "+refs/heads/main:refs/remotes/origin/main");
+    race(remote);
+    const res = await pushToDev({
+      root,
+      dir,
+      build: (d) => commitIn(d, "row.txt", "row\n"),
+      log: () => {},
+    });
+    expect(res).toMatchObject({ kind: "landed", attempts: 1 });
+    expect(git(remote, "log", "-2", "--format=%s", "dev")).toBe("land row.txt\nforeign");
   });
 
   it("build throwing stops the landing and removes the throwaway checkout", async () => {

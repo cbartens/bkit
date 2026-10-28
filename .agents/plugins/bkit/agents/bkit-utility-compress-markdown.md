@@ -1,7 +1,7 @@
 ---
 name: bkit-utility-compress-markdown
 description: Senior technical editor compressing markdown without changing meaning, cadence, or load-bearing tokens.
-model: gemini-3.8-pro
+model: gemini-4-argon
 effort: medium
 tools:
   - view_file

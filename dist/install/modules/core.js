@@ -199,6 +199,7 @@ export const BKIT_CANONICAL_DOCS = [
     "pipeline.md",
     "providers.md",
     "prompts.md",
+    "router.md",
     "templates.md",
     "trackers.md",
     "workflows.md",

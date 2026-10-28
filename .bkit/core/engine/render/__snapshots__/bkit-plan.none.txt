@@ -69,9 +69,9 @@ _No tracker connected, skip step._
    ```bash
    "{BKIT}" fids parse --prompt-file="{SESSION_DIR}/prompt.md"
    ```
-   Hold `fidNamed` as `{FID_NAMED}`. **If** `ISSUE_ID` already set by AGENTS.md → keep it. **Else** → hold `issue` as `{ISSUE_ID}`, `ref` as `{REF}`.
+   Hold `fidNamed` as `{FID_NAMED}`. Hold `issue` as `{ISSUE_ID}`, `ref` as `{REF}`.
    Log `Tracker not wired — proceeding without issue ID.`
-3. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → write `DESCRIPTION` to `{SESSION_DIR}/issue-description.md` and `COMMENTS` oldest to newest as JSON to `{SESSION_DIR}/issue-comments.json` → skip. **Else**:
+3.
    No tracker wired → `STATE`, `LABELS`, `DESCRIPTION`, `COMMENTS` all empty; input artifact built from session prompt alone.
 4. Resolve `FID` — never borrow another feature's `FID` from a leftover lock or the newest bucket.
    ```bash

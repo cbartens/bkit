@@ -80,7 +80,7 @@ description: "Design Feature — Autonomous design phase"
    "{BKIT}" fids parse --prompt-file="{SESSION_DIR}/prompt.md"
    ```
    **If** exit 8 → **STOP**; tell the user the prompt names more than one issue (`ambiguous`) and to name the issue as `#N`, its key or its URL; never the **Failure Path**.
-   Hold `fidNamed` as `{FID_NAMED}`. **If** `ISSUE_ID` already set by AGENTS.md → keep it. **Else** → hold `issue` as `{ISSUE_ID}`, `ref` as `{REF}`.
+   Hold `fidNamed` as `{FID_NAMED}`. Hold `issue` as `{ISSUE_ID}`, `ref` as `{REF}`.
    **If** `ISSUE_ID` empty → recover `ISSUE_ID` from the branch, `{FID}` = `FID_NAMED`, else the `BRANCH` suffix; `FID_NAMED` null and `BRANCH` != `feat/{FID}` → as exit 0 with `issueId` null:
    ```bash
    "{BKIT}" fids parse --branch="feat/{FID}"
@@ -90,8 +90,7 @@ description: "Design Feature — Autonomous design phase"
    - **If** exit 0 and `issueId` null → set `ISSUE_ID=""` → emit the no-issue warning once `FID` is held → continue; never create a tracker issue.
    - **If** exit 3 → **STOP**; tell the user to rename `BRANCH` to `feat/{lowercase-slug}` or name an issue; never the **Failure Path**.
    - **Else** → **Failure Path**.
-3. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → write `DESCRIPTION` to `{SESSION_DIR}/issue-description.md` and `COMMENTS` oldest to newest as JSON to `{SESSION_DIR}/issue-comments.json` → skip. **Else**:
-   **Skip if** `ISSUE_ID` empty (`STATE`, `LABELS` empty; input artifact built from session prompt alone). Read the issue into `{SESSION_DIR}`:
+3. **Skip if** `ISSUE_ID` empty (`STATE`, `LABELS` empty; input artifact built from session prompt alone). Read the issue into `{SESSION_DIR}`:
    ```bash
    "{BKIT}" issues fetch --issue="{ISSUE_ID}" --session-dir="{SESSION_DIR}"
    ```
@@ -198,7 +197,7 @@ description: "Design Feature — Autonomous design phase"
    - Read `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`. **If** an earlier run left a `docs/plans/{YYYYMM}/logs/{FID}/design-grill-*.md` → the newest one's `Settled` entries stay settled and its `Draft Acceptance Scenario` is the starting draft for step 4; ask only what they leave open or what the issue text changed since.
    - Map open decisions as a tree: each decision branches into the decisions that depend on it. Frontier = every unsettled decision whose prerequisites are settled.
    - One turn = the whole frontier in one message; a question depending on another in the same turn waits for a later turn.
-   - Per question: `**Q{n} — {title}:** {question}` and its options lettered `A)`, `B)`, `C)`, then `Recommended: A) {answer}` on its own line; number from `Q1` across turns; word each so "yes" accepts the recommendation; plain text, no host question tool.
+   - Per question: `**Q{n} — {title}:** {question}` and its options lettered `A)`, `B)`, `C)`, then `Recommended: A) {answer}` on its own line; number from `Q1` across turns; word each so "yes" accepts the recommendation; plain text, no host question tool. State what the owner must decide and what each option does, in plain English, before naming any file, test or identifier.
    - Look up facts in repo, docs and tools; never ask the human. Pending lookups hold back only the questions that depend on them.
    - Decide nothing on the human's behalf. Narrate `design grill: turn {k} of {GRILL_TURNS}` → record the wait → end turn → wait for answers:
      ```bash

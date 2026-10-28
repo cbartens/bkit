@@ -1,7 +1,7 @@
 ---
 name: bkit-utility-update-failures
 description: Senior editor closing failures the codebase has already resolved.
-model: gemini-3.8-pro
+model: gemini-4-argon
 effort: medium
 tools:
   - view_file

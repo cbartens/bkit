@@ -1,14 +1,16 @@
 // vitest.setup.ts — runs in every test worker before its test files load.
 //
-// Three jobs: strip inherited git environment variables (below), point the bkit config
-// and cache folders at an empty temp folder, and re-read the load-scaled test budget as
-// each test file starts (bottom, via vitest.timeout-budget.ts).
+// Four jobs: strip inherited git environment variables (below), fail any test that
+// changes the git identity or core.bare of the repo the suite runs from, point the bkit
+// config and cache folders at an empty temp folder, and re-read the load-scaled test
+// budget as each test file starts (bottom, via vitest.timeout-budget.ts).
 //
 // `globals` is not enabled in vitest.config.ts, so these are imported, not free.
 import * as os from "node:os";
 import * as path from "node:path";
-import { expect, vi } from "vitest";
+import { afterAll, afterEach, expect, vi } from "vitest";
 
+import { guardRepoConfig, repoConfigFile } from "./vitest.repo-config-guard.ts";
 import { tierTimeouts } from "./vitest.timeout-budget.ts";
 
 // Strip inherited git environment variables so no test can accidentally operate
@@ -35,6 +37,22 @@ for (const key of Object.keys(process.env)) {
     delete process.env[key];
   }
 }
+
+// The strip above covers inherited variables only. A test whose git command still reaches
+// the real repo — a cwd or `-C` path outside its temp dir — writes its fixture identity or
+// core.bare=true into the checkout's shared `.git/config`. The guard reads user.name /
+// user.email / core.bare / core.worktree there before the file runs and after each test
+// (and after the file's own hooks), fails the test that changed one, and puts the old
+// values back (vitest.repo-config-guard.ts).
+const testPath = expect.getState().testPath ?? "";
+const testFile = path.relative(process.cwd(), testPath);
+const repoConfig = guardRepoConfig(repoConfigFile(process.cwd()));
+afterEach(() => {
+  repoConfig.check(`${testFile} > ${expect.getState().currentTestName ?? "(unnamed test)"}`);
+});
+afterAll(() => {
+  repoConfig.check(`${testFile} (beforeAll / afterAll hooks)`);
+});
 
 // No test asks the npm registry for the newest bkit (`shared/bkit-latest.ts`): a temp
 // repo pinned to an old release would otherwise hit the network on every stamp.
@@ -72,7 +90,6 @@ process.env.XDG_CACHE_HOME = path.join(xdg, "cache");
 // re-read lands as each file starts. The config's own `...unitTimeouts()` sampled
 // the same budget once at load; this overrides it per file. CI pins the factor to 1
 // (in `loadFactor`), so the gate stays strict there.
-const testPath = expect.getState().testPath ?? "";
 vi.setConfig(tierTimeouts(testPath.endsWith(".integration.test.ts")));
 
 // Every test runs as on a laptop: GitHub Actions sets `GITHUB_ACTIONS` and `CI`, and the

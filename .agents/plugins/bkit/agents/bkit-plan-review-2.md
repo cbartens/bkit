@@ -1,7 +1,7 @@
 ---
 name: bkit-plan-review-2
 description: Senior reviewer surfacing regression risk and design-coverage for plan task surfaces.
-model: gemini-3.8-pro
+model: gemini-4-argon
 effort: high
 tools:
   - view_file

@@ -86,7 +86,7 @@ $ARGUMENTS
 ## 🤖 Loop Question
 
 1. **If** `LOOP_ASK` = false → narrate `debug {LOOP_POINT}: attempt {LOOP_ATTEMPT} of {LOOP_MAX}, taken without asking` → return to the calling step.
-2. Ask the human in this session; plain text, no host question tool. One message:
+2. Ask the human in this session; plain text, no host question tool. State what the owner must decide and what each option does, in plain English, before naming any file, test or identifier. One message:
    - `debug {LOOP_POINT}: attempt {LOOP_ATTEMPT} of {LOOP_MAX}`, then the newest diagnosis (`debug-failure-diagnose-*.md`) or soak log (`debug-failure-soak-*-log.md`) in one line each.
    - `LOOP_POINT` = `fix` → `**Q1 — Fix:** another fix attempt?`. `LOOP_POINT` = `soak` and `{LOOP_ATTEMPT}` = 1 → `**Q1 — Soak:** fix attempts used up. Start soak (a slower, step-by-step investigation)?`. **Else** → `**Q1 — Soak:** another soak attempt?`.
    - `Options: A) Try again / B) Stop`, then `Recommended: {A) Try again|B) Stop} — {the trend: failures falling → A, else B}`.
@@ -99,6 +99,7 @@ $ARGUMENTS
    ```bash
    "{BKIT}" status row --file="{STATUS}" --workflow=debug --type=owner-answer >/dev/null || exit 1
    ```
+   A reply that names a letter (`B`, `B)` or `B) {option}`) means the option that letter labels.
    - **If** the answer is `Try again` → return to the calling step.
    - **If** the answer is `Stop` → step 4.
    - **Else** → discuss → record the wait (step 2) → end turn.
@@ -130,7 +131,7 @@ $ARGUMENTS
    "{BKIT}" fids parse --prompt-file="{SESSION_DIR}/prompt.md"
    ```
    **If** exit 8 → **STOP**; tell the user the prompt names more than one issue (`ambiguous`) and to name the issue as `#N`, its key or its URL; never the **Failure Path**.
-   Hold `fidNamed` as `{FID_NAMED}`. **If** `ISSUE_ID` already set by AGENTS.md → keep it. **Else** → hold `issue` as `{ISSUE_ID}`, `ref` as `{REF}`.
+   Hold `fidNamed` as `{FID_NAMED}`. Hold `issue` as `{ISSUE_ID}`, `ref` as `{REF}`.
    **If** `ISSUE_ID` empty → recover `ISSUE_ID` from the branch, `{FID}` = `FID_NAMED`, else the `BRANCH` suffix; `FID_NAMED` null and `BRANCH` != `feat/{FID}` → as exit 0 with `issueId` null:
    ```bash
    "{BKIT}" fids parse --branch="feat/{FID}"
@@ -140,8 +141,7 @@ $ARGUMENTS
    - **If** exit 0 and `issueId` null → set `ISSUE_ID=""` → emit the no-issue warning once `FID` is held → continue; never create a tracker issue.
    - **If** exit 3 → **STOP**; tell the user to rename `BRANCH` to `feat/{lowercase-slug}` or name an issue; never the **Failure Path**.
    - **Else** → **Failure Path**.
-3. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → write `DESCRIPTION` to `{SESSION_DIR}/issue-description.md` and `COMMENTS` oldest to newest as JSON to `{SESSION_DIR}/issue-comments.json` → skip. **Else**:
-   **Skip if** `ISSUE_ID` empty (`STATE`, `LABELS` empty; input artifact built from session prompt alone). Read the issue into `{SESSION_DIR}`:
+3. **Skip if** `ISSUE_ID` empty (`STATE`, `LABELS` empty; input artifact built from session prompt alone). Read the issue into `{SESSION_DIR}`:
    ```bash
    "{BKIT}" issues fetch --issue="{ISSUE_ID}" --session-dir="{SESSION_DIR}"
    ```

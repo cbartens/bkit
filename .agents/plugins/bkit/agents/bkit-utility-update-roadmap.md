@@ -1,7 +1,7 @@
 ---
 name: bkit-utility-update-roadmap
 description: Senior PM ranking next best items to work on from board and ledgers.
-model: gemini-3.8-pro
+model: gemini-4-argon
 effort: medium
 tools:
   - view_file

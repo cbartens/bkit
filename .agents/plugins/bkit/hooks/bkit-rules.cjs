@@ -47,10 +47,17 @@ const crypto = require("node:crypto");
 const RULES_READ_ADVISORY =
   "[bkit] Required reading before any other action: read `.agents/rules.md` and follow every rule in it.";
 
-/** The OS-temp dir holding one state file per session the advisory already reached. */
+/**
+ * The OS-temp dir holding one state file per session the advisory already reached. Per
+ * user: on a temp dir users share (Linux `/tmp`) another user's copy cannot be written.
+ */
 function rulesAdvisoryStateDir() {
-  return path.join(os.tmpdir(), "bkit-rules-advisory");
+  const user = typeof process.getuid === "function" ? `-${process.getuid()}` : "";
+  return path.join(os.tmpdir(), `bkit-rules-advisory${user}`);
 }
+
+/** State files this process could not write, standing in for them for the process's life. */
+const rulesAdvisedInProcess = new Set();
 
 /** One state file per session id; a payload with no id falls back to one shared bucket. */
 function rulesAdvisoryFile(sessionId) {
@@ -74,17 +81,20 @@ function rulesAdvisoryGc() {
 /**
  * The advisory the first time `sessionId` is seen, null after. State lives in the OS temp
  * dir — never in the consumer repo — and is GC'd after 24h. Fail-open: a state-file error
- * returns the advisory instead of throwing, so the nudge is never lost to a bad state.
+ * returns the advisory instead of throwing, so the nudge is never lost to a bad state, and
+ * the process remembers it, so a long-lived host (opencode) does not repeat it every call.
  */
 function rulesReadAdviceOnce(sessionId) {
+  const file = rulesAdvisoryFile(sessionId);
   try {
-    const file = rulesAdvisoryFile(sessionId);
     if (fs.existsSync(file)) return null;
     fs.mkdirSync(rulesAdvisoryStateDir(), { recursive: true });
     fs.writeFileSync(file, JSON.stringify({ at: Date.now() }), "utf-8");
     rulesAdvisoryGc();
     return RULES_READ_ADVISORY;
   } catch {
+    if (rulesAdvisedInProcess.has(file)) return null;
+    rulesAdvisedInProcess.add(file);
     return RULES_READ_ADVISORY;
   }
 }
@@ -132,16 +142,23 @@ function agCallSignature(toolName, input) {
 }
 
 // One record per (hook, conversation): two hooks on the same call each let its retry through.
+// Per user: on a temp dir users share (Linux `/tmp`) another user's copy cannot be written.
 function agRetryFile(hook, sessionId) {
   const safe =
     typeof sessionId === "string" ? sessionId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 128) : "";
-  return path.join(os.tmpdir(), "bkit-antigravity-retry", `${hook}.${safe || "no-session"}.json`);
+  const user = typeof process.getuid === "function" ? `-${process.getuid()}` : "";
+  return path.join(
+    os.tmpdir(),
+    `bkit-antigravity-retry${user}`,
+    `${hook}.${safe || "no-session"}.json`,
+  );
 }
 
 /**
  * Delivers an advisory the only way Antigravity shows one to the model: deny the call
  * with the advisory as the reason, once. The identical call right after is the agent's
- * retry and is allowed.
+ * retry and is allowed. Fail-open: a retry-store error allows the call — each call is
+ * its own process, so a deny it cannot record would block every retry.
  */
 function adviseOnce(hook, sessionId, signature, advisory) {
   const file = agRetryFile(hook, sessionId);
@@ -149,13 +166,17 @@ function adviseOnce(hook, sessionId, signature, advisory) {
   // TTL, so no tool argument (a shell command line with an inline secret, a file path)
   // may rest on disk in cleartext.
   const digest = crypto.createHash("sha256").update(signature).digest("hex");
-  const last = fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
-  if (last === digest) {
-    fs.rmSync(file, { force: true });
+  try {
+    const last = fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
+    if (last === digest) {
+      fs.rmSync(file, { force: true });
+      return { decision: "allow" };
+    }
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, digest, "utf-8");
+  } catch {
     return { decision: "allow" };
   }
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, digest, "utf-8");
   return {
     decision: "deny",
     reason: `${advisory}\nBlocked once so you see this; repeat the same call to proceed.`,

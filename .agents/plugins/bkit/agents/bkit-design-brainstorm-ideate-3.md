@@ -1,7 +1,7 @@
 ---
 name: bkit-design-brainstorm-ideate-3
 description: Senior architect proposing 2-3 design approaches framed by failure mode — scale, drift, on-call, handover.
-model: gemini-3.8-pro
+model: gemini-4-argon
 effort: high
 tools:
   - view_file

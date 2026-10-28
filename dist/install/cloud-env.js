@@ -1,8 +1,10 @@
-// install/cloud-env.ts — resolve a copy-paste-ready Claude Code on the web env-var block
-// by *following the consumer's `.envrc`*.
+// install/cloud-env.ts — resolve a copy-paste-ready cloud env-var block by *following
+// the consumer's `.envrc`*.
 //
-// The generated `.claude/bkit-cloud.md` (see runClaudeModule) inlines REAL SECRET
-// VALUES so it is gitignored + chmod 600 and never committed. This module owns the
+// The generated `.claude/bkit-cloud.md`, `.cursor/bkit-cloud.md` and
+// `.codex/bkit-cloud.md` (see the claude / cursor / codex host modules) inline REAL
+// SECRET VALUES so they are gitignored + chmod 600 and never committed. All three carry
+// the same env block whatever the issue tracker. This module owns the
 // stack-agnostic resolution: it reads whatever dotenv files the repo's `.envrc`
 // sources, honours the `.envrc` `unset` lines, and drops session-hijack keys.
 // bkit hardcodes NO stack-specific key lists — the stack knowledge lives in the
@@ -15,14 +17,15 @@ import * as path from "node:path";
 import { readJsonFile } from "../shared/json.js";
 import { getSharedRoot } from "../shared/package-roots.js";
 import { applyTokens } from "./placeholders.js";
-import { BKIT_EGRESS_SOURCES } from "../shared/egress.js";
+import { BKIT_EGRESS_SOURCES, MULTI_TENANT_APEXES } from "../shared/egress.js";
 import { sha256 } from "./version-file.js";
 // Consumer-relative paths of the generated docs. Shared so the upgrade template walk
 // (commands/install/install.ts) can exclude them — they are generated OUTPUT files, never
 // templates to reconcile. One per cloud host (Claude Code on the web / Cursor
-// Background Agents); both inline resolved secrets, both gitignored + chmod 600.
+// Background Agents / Codex Cloud); all inline resolved secrets, all gitignored + chmod 600.
 export const CLAUDE_CLOUD_RELPATH = path.join(".claude", "bkit-cloud.md");
 export const CURSOR_CLOUD_RELPATH = path.join(".cursor", "bkit-cloud.md");
+export const CODEX_CLOUD_RELPATH = path.join(".codex", "bkit-cloud.md");
 // Session-hijack keys: exporting these into a cloud env redirects Claude Code's
 // OWN model calls onto API-key billing instead of the user's subscription
 // (`.bkit/cloud.md` § Environment variables). Always dropped from the paste block.
@@ -31,33 +34,19 @@ export const SESSION_HIJACK_KEYS = [
     "BKIT_ANTHROPIC_API_KEY",
     "ANTHROPIC_AUTH_TOKEN",
 ];
-// bkit baseline env-var NAMES every Claude-on-web environment needs. Emitted as a
-// placeholder ONLY when absent from the resolved `.envrc` set — a present value
-// (e.g. BKIT_GH_TOKEN already in `.bkit/.env`) keeps its real resolved value.
+// bkit baseline env-var NAMES every cloud environment needs, whatever the tracker:
+// `gh` and the GitHub MCP server read BKIT_GH_TOKEN on every host. Emitted as a
+// placeholder ONLY when absent from the resolved `.envrc` set — a present value keeps
+// its real resolved value. Tracker keys (BKIT_LINEAR_API_KEY, BKIT_JIRA_API_KEY) are
+// never baseline: a consumer on that tracker already sets them in `.envrc`, so they
+// arrive with the resolved set. One baseline for every host keeps the generated docs
+// describing the SAME cloud environment — just different mechanics.
 const BASELINE_TOKEN_PLACEHOLDERS = [
     [
         "BKIT_GH_TOKEN",
         "<PAT — fine-grained one owner / classic across owners; see .bkit/cloud.md § BKIT_GH_TOKEN token permissions>",
     ],
 ];
-// Claude Code on the web: GitHub tracker.
-export const CLAUDE_CLOUD_POLICY = {
-    baseline: BASELINE_TOKEN_PLACEHOLDERS,
-};
-// Cursor Background Agents: `BKIT_LINEAR_API_KEY` prepended for the Linear tracker
-// (bkit-preflight.sh calls the Linear GraphQL API and hard-fails without it); GitHub
-// tracker uses the same GH baseline as Claude.
-const CURSOR_LINEAR_PLACEHOLDER = [
-    "BKIT_LINEAR_API_KEY",
-    "<Linear personal API key — https://linear.app/settings/api>",
-];
-export function cursorCloudPolicy(tracker) {
-    return {
-        baseline: tracker === "linear"
-            ? [CURSOR_LINEAR_PLACEHOLDER, ...BASELINE_TOKEN_PLACEHOLDERS]
-            : BASELINE_TOKEN_PLACEHOLDERS,
-    };
-}
 /** Strip one layer of matching surrounding single/double quotes. */
 function stripQuotes(v) {
     const t = v.trim();
@@ -117,7 +106,7 @@ export function parseDotenv(content) {
  * Applies `.envrc` unsets, then drops session-hijack keys. Returns empty when no
  * `.envrc` exists — the caller still emits a usable placeholder doc.
  */
-export function resolveCloudEnvVars(cwd, policy = CLAUDE_CLOUD_POLICY) {
+export function resolveCloudEnvVars(cwd) {
     const res = {
         included: [],
         unset: [],
@@ -171,7 +160,7 @@ export function resolveCloudEnvVars(cwd, policy = CLAUDE_CLOUD_POLICY) {
     }
     // Baseline names absent from the resolved set → emitted as placeholders.
     const present = new Set(res.included.map(([k]) => k));
-    for (const [name] of policy.baseline) {
+    for (const [name] of BASELINE_TOKEN_PLACEHOLDERS) {
         if (!present.has(name))
             res.placeholders.push(name);
     }
@@ -181,11 +170,11 @@ export function resolveCloudEnvVars(cwd, policy = CLAUDE_CLOUD_POLICY) {
  * Render the `.env`-format paste block: resolved KEY=value lines, then placeholder
  * lines for any absent baseline token.
  */
-export function renderCloudEnvBlock(res, policy = CLAUDE_CLOUD_POLICY) {
+export function renderCloudEnvBlock(res) {
     const lines = [];
     for (const [k, v] of res.included)
         lines.push(`${k}=${v}`);
-    for (const [name, placeholder] of policy.baseline) {
+    for (const [name, placeholder] of BASELINE_TOKEN_PLACEHOLDERS) {
         if (res.placeholders.includes(name))
             lines.push(`${name}=${placeholder}`);
     }
@@ -244,11 +233,19 @@ export function renderCorepackLine(cwd) {
  * enabled below `<!-- bkit:end -->` in `.agents/context.md`. Stack-agnostic: bkit
  * hardcodes no CLI names — the install recipe lives in the consumer's context.md,
  * co-located with the fetch block that needs the CLI. `bkit context list-blocks` returns
- * the same list as `provision`, which `.claude/hooks/bkit-cloud-bootstrap.sh` runs, so the web
- * setup-script snapshot and the per-session hook provision the same CLIs. Returns one
- * string per block (bash body).
+ * the same list as `provision`, so the web setup-script snapshot and the per-session
+ * hook provision the same CLIs. Returns one string per block (bash body).
  */
 export function extractContextFetchProvisionRecipes(cwd) {
+    return extractContextFetchProvisionBlocks(cwd).map((b) => b.body);
+}
+/**
+ * {@link extractContextFetchProvisionRecipes} with each block's name — the word after
+ * `context-fetch:provision` in its opening marker, limited to `[A-Za-z0-9._-]` so it is
+ * safe inside a quoted shell string; "" when the marker names none.
+ * {@link renderCloudContextFetchProvision} reports a failing recipe by this name.
+ */
+export function extractContextFetchProvisionBlocks(cwd) {
     const filePath = path.join(cwd, ".agents", "context.md");
     if (!fs.existsSync(filePath))
         return [];
@@ -258,11 +255,14 @@ export function extractContextFetchProvisionRecipes(cwd) {
         return [];
     const consumer = content.slice(endIdx);
     const recipes = [];
+    let name = "";
     let cur = null;
     let inProv = false;
     let inFence = false;
     for (const line of consumer.split("\n")) {
-        if (/^<!-- context-fetch:provision/.test(line)) {
+        const opening = /^<!-- context-fetch:provision\b\s*([A-Za-z0-9][A-Za-z0-9._-]*)?/.exec(line);
+        if (opening) {
+            name = opening[1] ?? "";
             inProv = true;
             inFence = false;
             cur = [];
@@ -270,7 +270,7 @@ export function extractContextFetchProvisionRecipes(cwd) {
         }
         if (/^<!-- context-fetch:(start|end|none)/.test(line)) {
             if (inProv && cur && cur.length > 0)
-                recipes.push(cur.join("\n"));
+                recipes.push({ name, body: cur.join("\n") });
             inProv = false;
             inFence = false;
             cur = null;
@@ -319,30 +319,70 @@ export function renderCloudCacheBust(cwd, today) {
 const CLOUD_PNPM_GLOBAL_PATH_SETUP = "# pnpm refuses `add -g` unless its global-bin dir is on PATH (corepack pnpm skips `pnpm setup`).\n" +
     'export PNPM_HOME="${PNPM_HOME:-$HOME/.local/share/pnpm}"\n' +
     'export PATH="$PNPM_HOME:$PNPM_HOME/bin:$PATH"';
+/** Where a cloud environment lists the provision recipes that failed in it, from the repo root. */
+export const UNAVAILABLE_RELPATH = ".bkit/.unavailable";
+/**
+ * Runs one provision recipe (a function named in `$2`) in its own `set -e` subshell. Its
+ * stdout goes to stderr, so a caller's stdout carries only its own report. A failure is
+ * named on stderr with the recipe's last error line, added to `$BKIT_UNAVAILABLE`, and
+ * appended to `$BKIT_UNAVAILABLE_FILE` as `<name>: <reason>` when that is set. The
+ * subshell is never the left side of `||`: bash ignores `set -e` there, so only the
+ * recipe's last command would count.
+ */
+const CLOUD_PROVISION_RUNNER = "bkit_provision() {\n" +
+    "  bkit_err=$(mktemp)\n" +
+    '  ( set -e; "$2" ) >&2 2>"$bkit_err"\n' +
+    "  bkit_rc=$?\n" +
+    '  cat "$bkit_err" >&2\n' +
+    '  if [ "$bkit_rc" -ne 0 ]; then\n' +
+    "    bkit_why=$(grep -v '^[[:space:]]*$' \"$bkit_err\" | tail -n 1 | cut -c 1-300)\n" +
+    '    [ -n "$bkit_why" ] || bkit_why="exit $bkit_rc"\n' +
+    "    echo \"[cloud-setup] provision '$1' failed (non-blocking): $bkit_why\" >&2\n" +
+    '    BKIT_UNAVAILABLE="${BKIT_UNAVAILABLE:+$BKIT_UNAVAILABLE, }$1"\n' +
+    '    [ -z "$BKIT_UNAVAILABLE_FILE" ] || printf \'%s: %s\\n\' "$1" "$bkit_why" >> "$BKIT_UNAVAILABLE_FILE"\n' +
+    "  fi\n" +
+    '  rm -f "$bkit_err"\n' +
+    "}";
 /**
  * Render the `@@CLOUD_CONTEXT_FETCH_PROVISION@@` setup-script region: the consumer's
  * `context-fetch:provision` recipes, or "" when none are enabled. Placed AFTER the
- * corepack line in the template so `pnpm add -g …` recipes have pnpm available.
+ * corepack line in the template so `pnpm add -g …` recipes have pnpm available. `bkit
+ * context provision` runs the same region, so every cloud platform runs the recipes one way.
  *
- * Recipes run in a best-effort `( set +e … ) || …` subshell: the setup script is
- * `set -euo pipefail`, so without this a single failing recipe (e.g. a heavy `curl |
- * bash` CLI installer that trips over a missing base-image dep) aborts the whole
- * snapshot build and discards every CLI provisioned before it. `set +e` also lets a
- * later recipe run after an earlier one fails. Mirrors the non-blocking per-session
- * hook (`… | bash || log`), keeping the two cloud provision paths behaviourally equal.
+ * The setup script is `set -euo pipefail`, so a bare failing recipe (e.g. a heavy
+ * `curl | bash` CLI installer that trips over a missing base-image dep) would abort the
+ * whole snapshot build and discard every CLI provisioned before it. So errexit is off
+ * around the region and back on after it, and each recipe runs on its own through
+ * {@link CLOUD_PROVISION_RUNNER}: a failing command stops only its own recipe.
+ *
+ * With `$REPO_ROOT` set, the region rewrites {@link UNAVAILABLE_RELPATH} under it
+ * (removed when nothing failed) for the cloud agent to read. The Claude setup script runs
+ * before the clone, with no `$REPO_ROOT`; there the session hook writes the file. The
+ * region leaves `$BKIT_UNAVAILABLE` set for the script's closing line.
  */
 export function renderCloudContextFetchProvision(cwd) {
-    const recipes = extractContextFetchProvisionRecipes(cwd);
+    const recipes = extractContextFetchProvisionBlocks(cwd)
+        .map(({ name, body }, i) => ({ label: name === "" ? `#${i + 1}` : name, body }))
+        .filter(({ body }) => body.trim() !== "");
     if (recipes.length === 0)
         return "";
-    return ("# context-fetch CLIs (from .agents/context.md provision blocks) — self-guarded, best-effort.\n" +
+    const runs = recipes.map(({ label, body }, i) => `bkit_provision_${i + 1}() {\n${body}\n}\nbkit_provision '${label}' bkit_provision_${i + 1}`);
+    return ("# context-fetch provision recipes (from .agents/context.md) — each runs on its own. A\n" +
+        "# failing one is named with its last error line and never stops this script.\n" +
         CLOUD_PNPM_GLOBAL_PATH_SETUP +
+        "\nset +e\n" +
+        'BKIT_UNAVAILABLE=""\n' +
+        `BKIT_UNAVAILABLE_FILE="\${REPO_ROOT:+$REPO_ROOT/${UNAVAILABLE_RELPATH}}"\n` +
+        '[ -z "$BKIT_UNAVAILABLE_FILE" ] || { mkdir -p "${BKIT_UNAVAILABLE_FILE%/*}"; : > "$BKIT_UNAVAILABLE_FILE"; }\n' +
+        CLOUD_PROVISION_RUNNER +
         "\n" +
-        "(\n" +
-        "  set +e\n" +
-        recipes.join("\n") +
-        "\n" +
-        ') || echo "[cloud-setup] a context-fetch provision recipe failed (non-blocking); its CLI will be absent" >&2');
+        runs.join("\n") +
+        '\nif [ -n "$BKIT_UNAVAILABLE" ]; then\n' +
+        '  echo "[cloud-setup] UNAVAILABLE in this environment: $BKIT_UNAVAILABLE. Their setup failed: treat them as absent and do not retry the install." >&2\n' +
+        "else\n" +
+        '  [ -z "$BKIT_UNAVAILABLE_FILE" ] || rm -f "$BKIT_UNAVAILABLE_FILE"\n' +
+        "fi\n" +
+        "set -e");
 }
 /**
  * Entries of every `<!-- {tag}:start --> … <!-- {tag}:end -->` list block BELOW
@@ -538,6 +578,21 @@ export function egressFingerprint() {
     return sha256(derived.join("\n")).slice(0, 8);
 }
 /**
+ * The "where these came from" clause of a network list's count note. A declared entry
+ * bkit already ships adds nothing to the list, so it counts once, as shipped, and the
+ * clause names how many declared entries that was. `declared` and `shipped` are in the
+ * list's own unit: apex bases for the Claude list, exact hosts for Cursor and Codex.
+ */
+function networkSourceCounts(declared, shipped) {
+    const shippedSet = new Set(shipped);
+    const declaredSet = new Set(declared);
+    const added = [...declaredSet].filter((d) => !shippedSet.has(d)).length;
+    const overlap = declaredSet.size - added;
+    return (`${shippedSet.size} from bkit's shipped egress registry and ${added} more from ` +
+        "`allowed-domains` in `.agents/context.md`" +
+        (overlap > 0 ? ` (${overlap} of its ${declaredSet.size} entries already shipped)` : ""));
+}
+/**
  * Render the `@@CLOUD_NETWORK_ALLOWLIST@@` region — the whole `## Network access`
  * body. Always emits a **Custom** paste block: the list is the derived shipped bases
  * union whatever the consumer declared, so it is never empty and there is no
@@ -547,7 +602,6 @@ export function egressFingerprint() {
 export function renderCloudNetworkAllowlist(cwd) {
     const declared = extractAllowedDomains(cwd);
     const domains = resolveNetworkAllowlist(cwd);
-    const derivedCount = BKIT_SHIPPED_NETWORK_DOMAINS.length;
     const declaredNote = declared.length === 0
         ? "\n\n_No `allowed-domains` block is declared in `.agents/context.md`. The list above is\n" +
             "bkit's own shipped hosts. If you run cloud `/bkit-debug` or e2e against a deployment,\n" +
@@ -560,9 +614,9 @@ export function renderCloudNetworkAllowlist(cwd) {
         "```text\n" +
         domains.join("\n") +
         "\n```\n\n" +
-        `_${domains.length} entries — ${derivedCount} derived from bkit's shipped egress registry ` +
-        `and ${declared.length} declared in \`allowed-domains\` in \`.agents/context.md\`, ` +
-        "each as apex + `*.` wildcard. Derived set fingerprint `" +
+        `_${domains.length} entries (${domains.length / 2} domains, each as apex + \`*.\` wildcard): ` +
+        networkSourceCounts(networkAllowlistBases(declared), BKIT_SHIPPED_NETWORK_DOMAINS) +
+        ". Derived set fingerprint `" +
         egressFingerprint() +
         "`._" +
         declaredNote +
@@ -665,6 +719,23 @@ export function renderCloudUserSettings(cwd) {
         `jq --argjson e '${env}' '.autoMode.environment //= $e' \\\n` +
         '  "$CLAUDE_SETTINGS" > "$CLAUDE_SETTINGS.tmp" && mv "$CLAUDE_SETTINGS.tmp" "$CLAUDE_SETTINGS"');
 }
+/** `# bkit-toolchain:start|end` marker lines in the Claude template's setup script. */
+const TOOLCHAIN_MARKER_LINE = /^# bkit-toolchain:(?:start|end)\n/gm;
+/**
+ * The pinned toolchain installs (Node, vale, gh, jq + the PATH lead) from the Claude
+ * template's setup script — the region between the `# bkit-toolchain:start` / `:end`
+ * markers, markers stripped. The pins live once, in `.bkit/shared/.claude/bkit-cloud.md`
+ * (where Renovate's regex manager bumps them); every other pasted install script inlines
+ * this slice so the cloud toolchains never diverge. Throws when the markers are absent:
+ * a Codex doc without its toolchain is a broken paste, not an empty one.
+ */
+export function extractCloudToolchainScript() {
+    const src = fs.readFileSync(path.join(getSharedRoot(), ".claude", "bkit-cloud.md"), "utf-8");
+    const m = /^# bkit-toolchain:start\n([\s\S]*?)^# bkit-toolchain:end$/m.exec(src);
+    if (!m)
+        throw new Error(".claude/bkit-cloud.md template lacks the bkit-toolchain markers");
+    return m[1].trim();
+}
 /**
  * Generate `.claude/bkit-cloud.md` — a copy-paste-ready Claude Code on the web setup doc
  * with the env-var block resolved to REAL VALUES from the consumer's `.envrc`.
@@ -689,6 +760,7 @@ export function writeClaudeCloudDoc(cwd, tokens) {
     // Function-form replacers: resolved secret values may contain `$`, which a string
     // replacement would interpret ($&, $1, …).
     const content = applyTokens(fs.readFileSync(src, "utf-8"), tokens)
+        .replace(TOOLCHAIN_MARKER_LINE, "")
         .replace(/@@CLOUD_CACHE_BUST@@/g, () => renderCloudCacheBust(cwd, today))
         .replace(/@@CLOUD_NETWORK_ALLOWLIST@@/g, () => renderCloudNetworkAllowlist(cwd))
         .replace(/@@CLOUD_WORKSPACE_TRUST@@/g, () => renderCloudWorkspaceTrust(cwd))
@@ -705,58 +777,71 @@ export function writeClaudeCloudDoc(cwd, tokens) {
 }
 /**
  * Render the `@@CURSOR_CONTEXT_FETCH@@` region of `.cursor/bkit-cloud.md`: the consumer's
- * `context-fetch:provision` recipes formatted for the Cursor mechanic, or "" when none
- * are enabled. On Claude these CLIs are baked into the pasted setup script (see
- * renderCloudContextFetchProvision); Cursor has no setup script, so — to keep the two
- * cloud environments aligned — the same recipes are surfaced as a copy-paste block for
- * the per-snapshot `install` command in `.cursor/environment.json`. The recipes are
- * already idempotent (`command -v X || pnpm add -g X`), so they are safe to re-run on
- * every snapshot build. Reuses the SAME extractor as the Claude path so the two clouds
- * never diverge on which CLIs they provision.
+ * `context-fetch:provision` recipes by name, or "" when none are enabled. On Claude and
+ * Codex they are inlined into the pasted script ({@link renderCloudContextFetchProvision});
+ * Cursor has no pasted script, so the `install` command in `.cursor/environment.json` runs
+ * `bkit context provision`, which runs that same region. The section names the recipes and
+ * the line a copy of `environment.json` without it needs.
  */
 export function renderCursorContextFetchProvision(cwd) {
-    const recipes = extractContextFetchProvisionRecipes(cwd);
+    const blocks = extractContextFetchProvisionBlocks(cwd);
     // Empty → "" and the template's sentinel line collapses to a single blank between
     // sections; non-empty → a self-contained section with its own leading/trailing blank.
-    if (recipes.length === 0)
+    if (blocks.length === 0)
         return "";
+    const names = blocks.map(({ name }, i) => `\`${name === "" ? `#${i + 1}` : name}\``);
     return ("\n## Context-fetch CLIs (parity with the Claude setup script)\n\n" +
-        "Your `.agents/context.md` declares these context-fetch CLIs. The Claude setup script\n" +
-        "bakes them into its snapshot; for the SAME tools on Cursor, chain them into the\n" +
-        "`install` command in `.cursor/environment.json` (idempotent — safe every rebuild):\n\n" +
+        `Your \`.agents/context.md\` declares these provision recipes: ${names.join(", ")}. The\n` +
+        "`install` command in `.cursor/environment.json` runs them each snapshot build, after\n" +
+        "`pnpm install`, by ending with:\n\n" +
         "```bash\n" +
-        recipes.join("\n") +
-        "\n```\n");
+        "&& pnpm exec bkit context provision\n" +
+        "```\n\n" +
+        "A recipe that fails is named in the install log and listed in `.bkit/.unavailable`\n" +
+        "for the agent; the install still succeeds.\n");
 }
 /**
- * Render the `@@CURSOR_NETWORK@@` region — Cursor Cloud Agents DO have an egress
- * allowlist (dashboard → Security: "Allow all" / "Default + allowlist" / "Allowlist
- * only"), unlike the earlier assumption. Reuses the SAME declared `allowed-domains`
- * as the Claude side, but — critically — does NOT apply Claude's apex+`*.`
- * expansion: Cursor's own docs warn that a broad wildcard (`*.s3….amazonaws.com`)
- * opens egress far wider than intended, so the declared apex entries are emitted
- * verbatim with a note to add only the specific subdomains you need.
+ * The Cursor and Codex allowlist: the fenced paste block and the notes under it. bkit's
+ * shipped HOSTS are listed exactly; each declared `allowed-domains` entry bkit does not
+ * already ship is listed as the domain and its `*.` wildcard, like the Claude side, since
+ * the CLIs and APIs a consumer declares call subdomains (`api.vercel.com` under
+ * `vercel.com`). A declared {@link MULTI_TENANT_APEXES} entry is widened the same way,
+ * with a note that its wildcard reaches every tenant on the platform, the exfiltration
+ * path Cursor's docs warn about.
+ */
+function renderWidenedNetworkList(cwd) {
+    const declared = extractAllowedDomains(cwd);
+    const names = [...new Set([...BKIT_SHIPPED_NETWORK_HOSTS, ...declared])].sort();
+    const shipped = new Set(BKIT_SHIPPED_NETWORK_HOSTS);
+    const widened = (n) => declared.includes(n) && !shipped.has(n);
+    const entries = names.flatMap((n) => (widened(n) ? [n, `*.${n}`] : [n]));
+    const shared = [...new Set(declared)].filter((d) => MULTI_TENANT_APEXES.includes(d));
+    const sharedNote = shared.length === 0
+        ? ""
+        : `\n\n${shared.map((d) => `\`${d}\``).join(", ")}: shared by many tenants, so the ` +
+            "`*.` wildcard reaches every tenant on it. To narrow it, declare the exact hosts you " +
+            `call there instead (e.g. \`<name>.${shared[0]}\`).`;
+    return ("```text\n" +
+        entries.join("\n") +
+        "\n```\n\n" +
+        `_${entries.length} entries (${names.length} hosts and domains, each declared domain ` +
+        "also as a `*.` wildcard): " +
+        networkSourceCounts(declared, BKIT_SHIPPED_NETWORK_HOSTS) +
+        ". Derived set fingerprint `" +
+        egressFingerprint() +
+        "`._" +
+        sharedNote);
+}
+/**
+ * Render the `@@CURSOR_NETWORK@@` region — Cursor Cloud Agents' egress allowlist
+ * (dashboard → Security: "Allow all" / "Default + allowlist" / "Allowlist only"), which
+ * takes `*.` patterns (Cursor's own default list is written that way).
  */
 export function renderCursorNetworkAllowlist(cwd) {
-    const declared = extractAllowedDomains(cwd);
-    // Exact hosts, never apex + `*.`: Cursor's own docs warn a broad wildcard opens
-    // egress far wider than intended, so the shipped set contributes its HOSTS here
-    // while the Claude side takes the wildcard-expanded bases.
-    const entries = [...new Set([...BKIT_SHIPPED_NETWORK_HOSTS, ...declared])].sort();
     return ("If your org runs Cloud Agents in **Allowlist only** / **Default + allowlist** mode\n" +
         "(dashboard → **Security**), add these hosts so cloud `/bkit-debug` + e2e can reach\n" +
         "bkit's own tooling and your app and log backends:\n\n" +
-        "```text\n" +
-        entries.join("\n") +
-        "\n```\n\n" +
-        `_${entries.length} host(s) — ${BKIT_SHIPPED_NETWORK_HOSTS.length} derived from bkit's shipped ` +
-        `egress registry and ${declared.length} declared in \`allowed-domains\` in ` +
-        "`.agents/context.md`. Derived set fingerprint `" +
-        egressFingerprint() +
-        "`._ Add only the\n" +
-        "specific subdomains you need (e.g. `api.example.com`) — Cursor warns that a broad `*.`\n" +
-        "wildcard opens egress far wider than intended. (The Claude side auto-expands to apex + `*.`;\n" +
-        "Cursor's allowlist is deliberately narrower.)");
+        renderWidenedNetworkList(cwd));
 }
 /**
  * Generate `.cursor/bkit-cloud.md` — the Cursor Cloud Agents analogue of
@@ -765,8 +850,8 @@ export function renderCursorNetworkAllowlist(cwd) {
  * selector; on Cursor the toolchain lives in `.cursor/Dockerfile` + the per-snapshot
  * `.cursor/environment.json` `install` (both committed, nothing to paste), so this doc
  * is narrower: it resolves the **dashboard environment variables** to real values from
- * the consumer's `.envrc` (Cursor policy — Linear tracker adds `BKIT_LINEAR_API_KEY`, no
- * autocompact knob) and surfaces any context-fetch CLIs for parity.
+ * the consumer's `.envrc` (the same tracker-independent set as the Claude doc) and
+ * surfaces any context-fetch CLIs for parity.
  *
  * Like `.claude/bkit-cloud.md` it is gitignored + chmod 600 and UNTRACKED (never pushed to
  * any WriteSet / manifest / canonicalHashes) — its values are machine-local and
@@ -776,20 +861,69 @@ export function renderCursorNetworkAllowlist(cwd) {
  * host being installed. Returns true when a file was written (false when the template
  * is absent). Never logs the resolved values.
  */
-export function writeCursorCloudDoc(cwd, tokens, tracker) {
+export function writeCursorCloudDoc(cwd, tokens) {
     const src = path.join(getSharedRoot(), ".cursor", "bkit-cloud.md");
     if (!fs.existsSync(src))
         return false;
-    const policy = cursorCloudPolicy(tracker);
-    const res = resolveCloudEnvVars(cwd, policy);
+    const res = resolveCloudEnvVars(cwd);
     // Function-form replacers: resolved secret values may contain `$`, which a string
     // replacement would interpret ($&, $1, …).
     const content = applyTokens(fs.readFileSync(src, "utf-8"), tokens)
-        .replace(/@@CLOUD_ENV_VARS@@/g, () => renderCloudEnvBlock(res, policy))
+        .replace(/@@CLOUD_ENV_VARS@@/g, () => renderCloudEnvBlock(res))
         .replace(/@@CLOUD_ENV_NOTES@@/g, () => renderCloudEnvNotes(res))
         .replace(/@@CURSOR_NETWORK@@/g, () => renderCursorNetworkAllowlist(cwd))
         .replace(/@@CURSOR_CONTEXT_FETCH@@/g, () => renderCursorContextFetchProvision(cwd));
     const dst = path.join(cwd, CURSOR_CLOUD_RELPATH);
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    fs.writeFileSync(dst, content, "utf-8");
+    fs.chmodSync(dst, 0o600);
+    return true;
+}
+/**
+ * Render the `@@CODEX_NETWORK@@` region — Codex Cloud's **Internet access** settings
+ * for the environment: the same list as the Cursor doc. Codex's docs describe
+ * **Additional allowed domains** as exact hosts (a root domain also allows `www.`) and
+ * say nothing of `*.`, so the note marks the wildcard entries untested and names the
+ * setting that gets past a host they miss.
+ */
+export function renderCodexNetworkAllowlist(cwd) {
+    return ("Under **Internet access**, keep **Enable package manager domains** on and paste these\n" +
+        "into **Additional allowed domains** (one per line) so cloud `/bkit-debug` + e2e can\n" +
+        "reach bkit's own tooling and your app and log backends:\n\n" +
+        renderWidenedNetworkList(cwd) +
+        "\n\nThe `*.` entries are untested on Codex: its docs list exact hosts only. If a task\n" +
+        "still cannot reach a subdomain, switch to **Enable all public internet access** (opens\n" +
+        "all egress) or add that exact host.");
+}
+/**
+ * Generate `.codex/bkit-cloud.md` — the Codex Cloud analogue of `.claude/bkit-cloud.md`:
+ * the SAME bkit cloud environment, built by Codex's mechanics. Codex runs a pasted
+ * **Install script** (like Claude's setup script) plus the environment's variables, so
+ * this doc carries the Claude template's pinned toolchain slice
+ * ({@link extractCloudToolchainScript}), the consumer's corepack pnpm and context-fetch
+ * provision recipes, the per-snapshot `pnpm install`, the exact-host network list, and
+ * the resolved env block.
+ *
+ * Gitignored + chmod 600 and UNTRACKED like its siblings. Shared by install
+ * (runCodexModule) and upgrade. Callers MUST guard on `!dryRun` and on the codex host
+ * being installed. Returns true when a file was written (false when the template is
+ * absent). Never logs the resolved values.
+ */
+export function writeCodexCloudDoc(cwd, tokens) {
+    const src = path.join(getSharedRoot(), ".codex", "bkit-cloud.md");
+    if (!fs.existsSync(src))
+        return false;
+    const res = resolveCloudEnvVars(cwd);
+    // Function-form replacers: resolved secret values may contain `$`, which a string
+    // replacement would interpret ($&, $1, …).
+    const content = applyTokens(fs.readFileSync(src, "utf-8"), tokens)
+        .replace(/@@CODEX_TOOLCHAIN@@/g, () => extractCloudToolchainScript())
+        .replace(/@@CODEX_NETWORK@@/g, () => renderCodexNetworkAllowlist(cwd))
+        .replace(/@@CLOUD_COREPACK@@/g, () => renderCorepackLine(cwd))
+        .replace(/@@CLOUD_CONTEXT_FETCH_PROVISION@@/g, () => renderCloudContextFetchProvision(cwd))
+        .replace(/@@CLOUD_ENV_VARS@@/g, () => renderCloudEnvBlock(res))
+        .replace(/@@CLOUD_ENV_NOTES@@/g, () => renderCloudEnvNotes(res));
+    const dst = path.join(cwd, CODEX_CLOUD_RELPATH);
     fs.mkdirSync(path.dirname(dst), { recursive: true });
     fs.writeFileSync(dst, content, "utf-8");
     fs.chmodSync(dst, 0o600);

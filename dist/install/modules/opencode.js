@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { writeTier2, deepMergeJson, ensureDir, isJsonObject, mergeTrackerEntry, } from "../write.js";
 import { stampManagedVersion } from "../version-file.js";
 import { applyOpencodeAgent, applyOpencodeCommand } from "../../render/hosts.js";
-import { getCoreRoot, getSharedRoot, getWorkflowsRoot, getPromptsRoot, } from "../../shared/package-roots.js";
+import { getBkitDocsRoot, getCoreRoot, getSharedRoot, getWorkflowsRoot, getPromptsRoot, } from "../../shared/package-roots.js";
 import { DEFAULT_ISSUE_TRACKER } from "../manifest.js";
 import { substituteWorkflow } from "../../render/trackers.js";
 import { resolveNetworkAllowlist, extractMcpServers, networkAllowlistBases } from "../cloud-env.js";
@@ -14,7 +14,12 @@ import { parseJson, readJsonFile } from "../../shared/json.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { readInstallingVersion } from "../../shared/package-json.js";
 import { BKIT_PREFIX, installFile, listMdFiles, removeOrphans, trackMirrorWrite } from "./core.js";
-import { isOpencodeProvider, opencodeProviderId } from "../../render/models.js";
+import { buildOpencodeModelLookup, isOpencodeProvider, opencodeProviderId, } from "../../render/models.js";
+/** The distinct models bkit's prompts.md § Models pins on one opencode gateway column. */
+function shippedPins(provider) {
+    const lookup = buildOpencodeModelLookup(path.join(getBkitDocsRoot(), "prompts.md"), provider);
+    return [...new Set(lookup.values())].join(", ");
+}
 export function renderOpencodeAgentsCommands(ctx) {
     const { dryRun, opencodeModelLookup, effortMap, opencodeProvider, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
@@ -494,7 +499,7 @@ export function runOpencodeModule(ctx) {
             `     env — {env:KEY} placeholders in opencode.json resolve empty without this. Quit the\n` +
             `     running app first (a running instance ignores the new env).\n` +
             `  4. Model IDs: all four providers (openrouter, ollama, opencode-zen, opencode-go) install ready-to-run curated per-agent pins. ` +
-            `Re-pin any agent via .bkit/prompts.md § Model Overrides or by probing the provider's live /v1/models — see .bkit/providers.md § Models. NOTE: every ollama pin (deepseek-v4.1-flash:1017, kimi-k3) needs a paid Ollama plan. opencode-go pins (deepseek-v4.1-flash, kimi-k3) — prefer pins that stay within the Go 5h usage window; opencode-zen pins are existence-validated via models.dev (the /zen/v1/models REST probe cannot see Go-only models — models.dev is the source of truth).\n` +
+            `Re-pin any agent via .bkit/prompts.md § Model Overrides or by probing the provider's live /v1/models — see .bkit/providers.md § Models. NOTE: every ollama pin (${shippedPins("ollama")}) needs a paid Ollama plan. opencode-go pins (${shippedPins("opencode-go")}) — prefer pins that stay within the Go 5h usage window; opencode-zen pins are existence-validated via models.dev (the /zen/v1/models REST probe cannot see Go-only models — models.dev is the source of truth).\n` +
             `  5. Verify with: \`bkit doctor\` (credentials + tools) and \`bkit status\` (installed hosts + providers).`,
     });
 }

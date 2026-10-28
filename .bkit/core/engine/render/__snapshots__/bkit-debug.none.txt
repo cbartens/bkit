@@ -75,7 +75,7 @@ _No tracker connected, skip step._
 ## 🤖 Loop Question
 
 1. **If** `LOOP_ASK` = false → narrate `debug {LOOP_POINT}: attempt {LOOP_ATTEMPT} of {LOOP_MAX}, taken without asking` → return to the calling step.
-2. Ask the human in this session; plain text, no host question tool. One message:
+2. Ask the human in this session; plain text, no host question tool. State what the owner must decide and what each option does, in plain English, before naming any file, test or identifier. One message:
    - `debug {LOOP_POINT}: attempt {LOOP_ATTEMPT} of {LOOP_MAX}`, then the newest diagnosis (`debug-failure-diagnose-*.md`) or soak log (`debug-failure-soak-*-log.md`) in one line each.
    - `LOOP_POINT` = `fix` → `**Q1 — Fix:** another fix attempt?`. `LOOP_POINT` = `soak` and `{LOOP_ATTEMPT}` = 1 → `**Q1 — Soak:** fix attempts used up. Start soak (a slower, step-by-step investigation)?`. **Else** → `**Q1 — Soak:** another soak attempt?`.
    - `Options: A) Try again / B) Stop`, then `Recommended: {A) Try again|B) Stop} — {the trend: failures falling → A, else B}`.
@@ -88,6 +88,7 @@ _No tracker connected, skip step._
    ```bash
    "{BKIT}" status row --file="{STATUS}" --workflow=debug --type=owner-answer >/dev/null || exit 1
    ```
+   A reply that names a letter (`B`, `B)` or `B) {option}`) means the option that letter labels.
    - **If** the answer is `Try again` → return to the calling step.
    - **If** the answer is `Stop` → step 4.
    - **Else** → discuss → record the wait (step 2) → end turn.
@@ -117,9 +118,9 @@ _No tracker connected, skip step._
    ```bash
    "{BKIT}" fids parse --prompt-file="{SESSION_DIR}/prompt.md"
    ```
-   Hold `fidNamed` as `{FID_NAMED}`. **If** `ISSUE_ID` already set by AGENTS.md → keep it. **Else** → hold `issue` as `{ISSUE_ID}`, `ref` as `{REF}`.
+   Hold `fidNamed` as `{FID_NAMED}`. Hold `issue` as `{ISSUE_ID}`, `ref` as `{REF}`.
    Log `Tracker not wired — proceeding without issue ID.`
-3. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → write `DESCRIPTION` to `{SESSION_DIR}/issue-description.md` and `COMMENTS` oldest to newest as JSON to `{SESSION_DIR}/issue-comments.json` → skip. **Else**:
+3.
    No tracker wired → `STATE`, `LABELS`, `DESCRIPTION`, `COMMENTS` all empty; input artifact built from session prompt alone.
 4. Resolve `FID` — never borrow another feature's `FID` from a leftover lock or the newest bucket.
    ```bash

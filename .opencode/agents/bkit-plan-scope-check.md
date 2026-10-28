@@ -2,8 +2,8 @@
 mode: subagent
 name: bkit-plan-scope-check
 description: Senior auditor verifying every plan task has scope, criteria, and verification.
-model: openrouter/deepseek/deepseek-v4.1-flash-1017
-variant: max
+model: openrouter/openai/gpt-6.1-sol
+variant: medium
 tools:
   read: true
   grep: true

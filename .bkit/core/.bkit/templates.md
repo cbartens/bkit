@@ -136,7 +136,7 @@ Adopt:
 1. Copy the file's blocks below `<!-- bkit:end -->` in `.agents/context.md`: each fetch block you want, its provision block, its `allowed-domains` and `mcp-servers` blocks (several of each merge).
 2. Replace the placeholders. Commit non-secret selectors inline so cloud agents inherit them.
 3. Set the secret env vars locally (app env via `.envrc`, not `.bkit/.env`) and in each cloud dashboard (`.bkit/cloud.md`).
-4. `bkit install` → the provision recipes reach `.claude/bkit-cloud.md`'s setup script, the domains reach the cloud allowlist and local fetch permissions, the MCP names reach every host's allow rules.
+4. `bkit install` → the provision recipes reach `.claude/bkit-cloud.md`'s setup script and `.codex/bkit-cloud.md`'s install script (`.cursor/environment.json` `install` and the Claude session hook run them through `bkit context provision`), the domains reach the cloud allowlist and local fetch permissions, the MCP names reach every host's allow rules.
 
 - No credentials, or an API / auth error → block self-skips: `exit 0` plus `[context-fetch:<name>] skipped — …` on stderr. `/bkit-debug` narrates that as not checked, never as clean. `TRUNCATED` on stdout = page cap or a failed later page stopped the read; raise the block's `*_MAX_PAGES` knob.
 - Runtime and EAS blocks' `# Customise:` suggests a positive control: run once over a window holding a known event; nothing back = reader broken, not clean.
@@ -303,7 +303,7 @@ Set `lint` to the value in § Gate tool scripts.
 
 ## direnv — `.envrc`
 
-Loads `.bkit/.env` on `cd`, so local sessions see `BKIT_GH_TOKEN`, tracker keys. bkit reads your `.envrc` (its `dotenv*` and `unset` lines, never executed) to fill the env blocks of `.claude/bkit-cloud.md` / `.cursor/bkit-cloud.md`; preflight's direnv advisories key on it. Reference: https://direnv.net/docs/installation.html.
+Loads `.bkit/.env` on `cd`, so local sessions see `BKIT_GH_TOKEN`, tracker keys. bkit reads your `.envrc` (its `dotenv*` and `unset` lines, never executed) to fill the env blocks of `.claude/bkit-cloud.md` / `.cursor/bkit-cloud.md` / `.codex/bkit-cloud.md`; preflight's direnv advisories key on it. Reference: https://direnv.net/docs/installation.html.
 
 ```bash
 brew install direnv     # then add the shell hook from the link
@@ -520,7 +520,7 @@ graphify-out/
 ```
 
 - Copy `scripts/graphify/bkit-graph-pre-push.sh`; the `.husky/pre-push` template runs it above the gates (skipped while the script is absent and on a min push), so a stale register blocks in ~30s, not after the full gate. Your hook lacks the `Capability register` block → paste it from the template, above the gates. Push to dev → `check-at` on the pushed commit in a throwaway checkout → blocked on mismatch; uncommitted edits (a concurrent session's included) cannot change the answer. graphify not installed → loud "NOT checked" warning, push goes on (CI still checks). Other branches → warn-only staleness note. Reads `PUSH_DEV_SHA` from the bkit pre-push template's stdin loop; older hook copy → re-copy that loop from `.bkit/templates/.husky/pre-push`.
-- `.github/workflows/bkit-ci.yml` ships `Check Capability Register` (every push and pull request, at the PR head): installs the `spec` release, runs the pinned `check-at` → stale register fails CI. Self-skips without `scripts/graphify/bkit-graphify.sh`.
+- `.github/workflows/bkit-ci.yml` ships `Check Capability Register` (every push and pull request, on the checked-out commit — on a PR, GitHub's test merge into the base, so a branch behind its base syncs, refreshes and commits to clear a red): installs the `spec` release, runs the pinned `check-at HEAD` → stale register fails CI. Self-skips without `scripts/graphify/bkit-graphify.sh`.
 - graphify's MCP server is opt-in: install `graphifyy[mcp]` (`mcp` + `starlette`; HTTP transport also needs `uvicorn`) and pass the graph path explicitly — `graphify-mcp` defaults to `graphify-out/graph.json`, not the pinned `docs/graphify-out/graph.json`. Snapshot-dated answers suit audit/orientation, never build or debug.
 - `.graphifyignore` merges `.gitignore`.
 - Keep `package.json` in corpus — excluding it drops workspace `name` fields graphify resolves package imports with; graph still looks complete.

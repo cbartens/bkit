@@ -1,7 +1,7 @@
 ---
 name: bkit-design-brainstorm-ideate-1
 description: Senior architect proposing 2-3 pragmatic design approaches — existing code, minimal new infra, explicit trade-offs.
-model: gemini-3.8-pro
+model: gemini-4-argon
 effort: high
 tools:
   - view_file

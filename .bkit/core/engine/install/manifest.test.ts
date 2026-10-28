@@ -195,6 +195,7 @@ describe("getInstallManifest", () => {
       "jsonl.md",
       "pipeline.md",
       "providers.md",
+      "router.md",
       "trackers.md",
       "workflows.md",
       "README.md",

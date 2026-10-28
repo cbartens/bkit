@@ -1,7 +1,7 @@
 ---
 name: bkit-design-review-2
 description: Senior engineer assessing operability of designs — failure modes, observability, on-call ergonomics.
-model: gemini-3.8-pro
+model: gemini-4-argon
 effort: medium
 tools:
   - view_file

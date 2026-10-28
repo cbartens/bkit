@@ -1,7 +1,7 @@
 ---
 name: bkit-build-plan-gaps-remediate
 description: Senior engineer closing specific verification gaps with surgical, scope-disciplined fixes.
-model: gemini-3.8-pro
+model: gemini-4-argon
 effort: medium
 tools:
   - view_file

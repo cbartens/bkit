@@ -575,7 +575,7 @@ describe("the store parser", () => {
       "### code-reads",
       "",
       "- prompt: required",
-      "- rule: R21 Code reads (0.90)",
+      "- rule: code-reads (0.90)",
       "- carriers: prompt all",
       "",
       "```text",
@@ -584,7 +584,7 @@ describe("the store parser", () => {
       "",
     ].join("\n");
     const [c] = parseInstructions(md).clauses;
-    expect(c!.rule).toBe("R21");
+    expect(c!.rule).toBe("code-reads");
     expect(c!.modes).toEqual({ prompt: "required" });
   });
 });
@@ -1120,7 +1120,9 @@ describe("issue-less workflow clauses", () => {
 
   it("Step 1 reads the issue and FID from the prompt file, and resolves FID in the engine", () => {
     expect(clause("workflow-session-prompt").texts[0]).toContain("`{SESSION_DIR}/prompt.md`");
-    expect(clause("workflow-issue-id-preset").texts[0]).toContain("→ keep it");
+    expect(clause("workflow-issue-id-parsed").texts[0]).toBe(
+      "Hold `issue` as `{ISSUE_ID}`, `ref` as `{REF}`.",
+    );
     expect(clause("workflow-issue-id-missing").texts[0]).toContain("`FID_NAMED`");
     expect(clause("workflow-fid-resolve").texts[0]).not.toContain("first match wins");
   });
@@ -1129,7 +1131,7 @@ describe("issue-less workflow clauses", () => {
     const OLD: Record<string, string> = {
       "workflow-issue-id-missing":
         "**If** no `ID` found → log `No issue ID in the session prompt.` never create a tracker issue.",
-      "workflow-issue-id-preset": "**If** `ISSUE_ID` already set by AGENTS.md → skip. **Else**:",
+      "workflow-issue-id-parsed": "**Else** → hold `issue` as `{ISSUE_ID}`, `ref` as `{REF}`.",
       "workflow-fid-resolve":
         "Resolve `FID` — first match wins; never borrow another feature's `FID` from a leftover lock or the newest bucket:",
       "workflow-gate-issue-id":

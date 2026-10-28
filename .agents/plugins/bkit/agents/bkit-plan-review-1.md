@@ -1,7 +1,7 @@
 ---
 name: bkit-plan-review-1
 description: Senior reviewer prioritising plan tightness, task dependency order, and design-coverage.
-model: gemini-3.8-pro
+model: gemini-4-argon
 effort: high
 tools:
   - view_file

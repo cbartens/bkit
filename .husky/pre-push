@@ -19,6 +19,13 @@
 # never `[skip ci]`.
 set -e
 
+# Git exports GIT_DIR to a hook and everything it starts (from a linked worktree:
+# <main>/.git/worktrees/<name>). It beats a child's cwd and -C, so a test's `git -C "$tmp" init`
+# re-initialises this repo (core.bare=true in the shared .git/config) and a fixture's
+# `git config user.email` lands here too. The hook runs from the work tree root, so git finds
+# the repo without them.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
+
 # bkit repo only: a push that carries no untested code skips the gates. Two shapes qualify,
 # alone or together: a tag on a commit a branch of the remote already holds (the release tag
 # on the merged release commit), and a push to a branch other than dev / main whose files are

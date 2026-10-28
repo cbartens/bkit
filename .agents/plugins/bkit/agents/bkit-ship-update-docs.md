@@ -1,7 +1,7 @@
 ---
 name: bkit-ship-update-docs
 description: Senior tech writer syncing project docs with state shipped this cycle.
-model: gemini-3.8-pro
+model: gemini-4-argon
 effort: high
 tools:
   - view_file

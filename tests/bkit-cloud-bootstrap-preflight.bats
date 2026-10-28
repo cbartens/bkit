@@ -39,10 +39,10 @@ exit 1
 EOF
   chmod +x "$FAKE_BIN/gh"
 
-  # The provision block lists recipes through `bkit context list-blocks` (read with jq),
-  # so the workdir is a git repo carrying bkit where `pnpm install` leaves it: here a shim
-  # to the repo's built CLI. node and jq are linked into FAKE_BIN so PATH needs no host
-  # dirs. The gh probe and login need only gh.
+  # The provision block runs recipes through `bkit context provision`, so the workdir is
+  # a git repo carrying bkit where `pnpm install` leaves it: here a shim to the repo's
+  # built CLI. node and jq (the trust check) are linked into FAKE_BIN so PATH needs no
+  # host dirs. The gh probe and login need only gh.
   git -C "$WORKDIR" init -q
   mkdir -p "$WORKDIR/node_modules/.bin"
   printf '#!/bin/sh\nexec node "%s/dist/cli.js" "$@"\n' "$REPO_ROOT" >"$WORKDIR/node_modules/.bin/bkit"
@@ -174,7 +174,7 @@ run_bootstrap() {
   [[ "$output" == *"RUNTIME_GITHUBCLI="* ]]
 }
 
-@test "runs each context-fetch:provision recipe bkit context list-blocks returns, and only those below bkit:end" {
+@test "runs each context-fetch:provision recipe below bkit:end through bkit context provision" {
   mkdir -p "$WORKDIR/.agents"
   cat >"$WORKDIR/.agents/context.md" <<'EOF'
 <!-- context-fetch:provision managed-example -->
@@ -191,7 +191,27 @@ echo "PROVISIONED-mycli" >&2
 EOF
   run run_bootstrap env FAKE_GH_AUTH_OK=1 HOME="$WORKDIR"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"provisioning context-fetch CLIs"* ]]
+  [[ "$output" == *"provisioning from .agents/context.md (bkit context provision)"* ]]
   [[ "$output" == *"PROVISIONED-mycli"* ]]
   [[ "$output" != *"PROVISIONED-managed-example"* ]]
+  [ ! -e "$WORKDIR/.bkit/.unavailable" ]
+}
+
+@test "a failing provision recipe is named on stdout for the agent and listed in .bkit/.unavailable" {
+  mkdir -p "$WORKDIR/.agents"
+  cat >"$WORKDIR/.agents/context.md" <<'EOF'
+<!-- bkit:end -->
+<!-- context-fetch:provision supabase-local -->
+```bash
+echo "local Supabase unavailable: 3 GB free, needs 10 GB" >&2
+exit 1
+```
+<!-- context-fetch:end -->
+EOF
+  printf '' | env -i PATH="$FAKE_BIN:/usr/bin:/bin" CLAUDE_CODE_REMOTE=true CLAUDE_PROJECT_DIR="$WORKDIR" \
+    FAKE_GH_AUTH_OK=1 HOME="$WORKDIR" bash "$BOOTSTRAP_SH" >"$WORKDIR/hook.stdout" 2>"$WORKDIR/hook.stderr"
+  grep -q "provision 'supabase-local' failed (non-blocking): local Supabase unavailable" "$WORKDIR/hook.stderr"
+  grep -q "^Cloud setup could not provide these in this session" "$WORKDIR/hook.stdout"
+  grep -qx "supabase-local: local Supabase unavailable: 3 GB free, needs 10 GB" "$WORKDIR/hook.stdout"
+  grep -qx "supabase-local: local Supabase unavailable: 3 GB free, needs 10 GB" "$WORKDIR/.bkit/.unavailable"
 }

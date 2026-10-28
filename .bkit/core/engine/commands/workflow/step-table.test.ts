@@ -58,7 +58,7 @@ const setUp = (workflow: ResumableWorkflow) => [
 ];
 
 describe("bkit status resume", () => {
-  it("a build stopped after build-challenge resumes at the challenge merge (Step 10)", async () => {
+  it("a build stopped after build-challenge resumes at the challenge merge (Step 11)", async () => {
     const file = log([
       ...setUp("build"),
       done("build", "build-plan-verify-holistic"),
@@ -68,10 +68,39 @@ describe("bkit status resume", () => {
     expect(r.code).toBe(0);
     expect(r.json).toMatchObject({
       step: "build-challenge",
-      number: 10,
+      number: 11,
       title: "Build Challenge",
       after: "build-challenge",
       active: true,
+    });
+  });
+
+  it("a build that stopped after Plan Convert resumes at Plan Convert (Step 4)", async () => {
+    const file = log([...setUp("build"), done("build", "build-plan-convert")]);
+    expect((await resume("build", file)).json).toMatchObject({
+      step: "build-plan-convert",
+      number: 4,
+      title: "Plan Convert",
+      after: "build-plan-convert",
+    });
+  });
+
+  it("a build that stopped after Plan Current resumes at Install Skills (Step 6)", async () => {
+    const file = log([...setUp("build"), done("build", "build-plan-current")]);
+    expect((await resume("build", file)).json).toMatchObject({
+      step: "build-install-skills",
+      number: 6,
+      title: "Install Skills",
+    });
+  });
+
+  it("a build that stopped after Plan Verify resumes at Plan Verify (Step 8)", async () => {
+    const file = log([...setUp("build"), done("build", "build-plan-verify", { group: 1 })]);
+    expect((await resume("build", file)).json).toMatchObject({
+      step: "build-plan-verify",
+      number: 8,
+      title: "Plan Verify",
+      group: 1,
     });
   });
 
@@ -82,7 +111,7 @@ describe("bkit status resume", () => {
     expect(await round([...verified, done("build", "build-challenge", { round: 2 })])).toBe(2);
     expect(await round([...verified, done("build", "build-challenge", { round: 1 })])).toBe(1);
     expect(await round(verified)).toBe(1);
-    // A round-1 challenge that sent the build back to Step 6 (route fix), or to a decision.
+    // A round-1 challenge that sent the build back to Step 7 (route fix), or to a decision.
     const fixed = [...verified, done("build", "build-challenge", { round: 1 })];
     expect(await round([...fixed, done("build", "build-plan-execute")])).toBe(2);
     expect(await round([...fixed, done("build", "build-decision")])).toBe(2);
@@ -107,13 +136,13 @@ describe("bkit status resume", () => {
         .json;
     expect(await after("fix")).toMatchObject({
       step: "build-plan-execute",
-      number: 6,
+      number: 7,
       after: "build-decision",
       challengeRound: 2,
     });
     expect(await after("tests")).toMatchObject({
       step: "build-run-tests",
-      number: 11,
+      number: 12,
       after: "build-decision",
     });
     // No route: the row places nothing, as before.
@@ -126,16 +155,16 @@ describe("bkit status resume", () => {
     ]);
     expect((await resume("build", verified)).json).toMatchObject({
       step: "build-plan-verify",
-      number: 7,
+      number: 8,
       after: "build-decision",
       group: 2,
     });
   });
 
   it.each([
-    ["build-plan-verify", { step: "build-plan-gaps-remediate", number: 8, group: 2 }],
-    ["build-group-gate", { step: "build-plan-gaps-remediate", number: 8, group: 2 }],
-    ["build-run-tests", { step: "build-failure-diagnose", number: 12 }],
+    ["build-plan-verify", { step: "build-plan-gaps-remediate", number: 9, group: 2 }],
+    ["build-group-gate", { step: "build-plan-gaps-remediate", number: 9, group: 2 }],
+    ["build-run-tests", { step: "build-failure-diagnose", number: 13 }],
   ])("a retry decision after %s resumes at that loop's fix step", async (prior, expected) => {
     const file = log([
       ...setUp("build"),
@@ -188,12 +217,12 @@ describe("bkit status resume", () => {
     expect((await resume("plan", log(setUp("plan")))).json.challengeDone).toBeNull();
   });
 
-  it("old reconcile, remediate or tests rows resume at Run Tests (Step 11)", async () => {
+  it("old reconcile, remediate or tests rows resume at Run Tests (Step 12)", async () => {
     for (const old of ["reconcile", "remediate", "tests"].map((s) => `build-challenge-${s}`)) {
       const file = log([...setUp("build"), done("build", "build-challenge"), done("build", old)]);
       expect((await resume("build", file)).json, old).toMatchObject({
         step: "build-run-tests",
-        number: 11,
+        number: 12,
         title: "Run Tests",
         after: old,
       });
@@ -236,7 +265,7 @@ describe("bkit status resume", () => {
       done("build", "build-decision"),
     ]);
     expect((await resume("build", file)).json).toMatchObject({
-      number: 7,
+      number: 8,
       after: "build-plan-execute",
       group: 2,
     });
@@ -249,7 +278,7 @@ describe("bkit status resume", () => {
     ]);
     expect((await resume("build", file)).json).toMatchObject({
       step: "build-plan-execute",
-      number: 6,
+      number: 7,
       after: "build-plan-execute",
       group: 2,
     });
@@ -259,7 +288,7 @@ describe("bkit status resume", () => {
     ]);
     expect((await resume("build", file)).json).toMatchObject({
       step: "build-plan-verify",
-      number: 7,
+      number: 8,
       group: 2,
     });
   });

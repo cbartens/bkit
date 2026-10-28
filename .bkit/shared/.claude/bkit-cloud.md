@@ -32,6 +32,7 @@ start fast.
 #!/bin/bash
 @@CLOUD_CACHE_BUST@@
 set -euo pipefail
+# bkit-toolchain:start
 
 # Every download is pinned to a version and checked against its published sha256
 # before it is unpacked or made executable. The image targets linux/amd64.
@@ -91,6 +92,7 @@ if ! command -v jq >/dev/null 2>&1; then
   install -m 0755 jq-linux-amd64 /usr/local/bin/jq
   rm -f jq-linux-amd64
 fi
+# bkit-toolchain:end
 
 @@CLOUD_WORKSPACE_TRUST@@
 
@@ -100,7 +102,7 @@ fi
 
 @@CLOUD_CONTEXT_FETCH_PROVISION@@
 
-echo "cloud env ready: node $(node --version), $(vale --version), $(gh --version | head -1), jq $(jq --version), pnpm $(pnpm -v)"
+echo "cloud setup done: node $(node --version), $(vale --version), $(gh --version | head -1), jq $(jq --version), pnpm $(pnpm -v)${BKIT_UNAVAILABLE:+ — UNAVAILABLE: $BKIT_UNAVAILABLE}"
 ```
 
 Keep total runtime under ~5 minutes or the snapshot won't build. `pnpm install`

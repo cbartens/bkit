@@ -1,7 +1,7 @@
 ---
 name: bkit-build-plan-verify
 description: Senior verifier checking that plan deliverables actually exist in the codebase.
-model: gemini-3.8-pro
+model: gemini-4-argon
 effort: high
 tools:
   - view_file

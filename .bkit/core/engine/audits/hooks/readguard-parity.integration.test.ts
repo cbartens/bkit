@@ -428,6 +428,65 @@ describe("readguard behaviour parity — compaction", () => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// State folders — per user, and fail-open when they cannot be written
+// ---------------------------------------------------------------------------
+
+const UID = process.getuid!();
+
+/** A private temp root (the hook's TMPDIR) whose folders `unwritable` exist read-only. */
+function stateRoot(...unwritable: string[]): string {
+  const root = fs.mkdtempSync(path.join(GENERATED, "tmp-"));
+  for (const name of unwritable) fs.mkdirSync(path.join(root, name), { mode: 0o555 });
+  return root;
+}
+
+describe("readguard behaviour parity — state folders", () => {
+  for (const host of HOSTS) {
+    it(`${host}: read logs live in a per-user folder`, async () => {
+      const tmp = stateRoot();
+      const file = newFile();
+      await run(host, {
+        session: newSession(),
+        read: { file, start: 1, end: 10 },
+        env: { TMPDIR: tmp },
+      });
+      expect(fs.readdirSync(tmp)).toContain(`bkit-readguard-${UID}`);
+    });
+
+    it(`${host}: another user's shared folder does not cost the repeat-read note`, async () => {
+      // On a shared Linux /tmp the first user to create the plain-named folder owns it.
+      const env = { TMPDIR: stateRoot("bkit-readguard", "bkit-antigravity-retry") };
+      const session = newSession();
+      const file = newFile();
+      await run(host, { session, read: { file, start: 1, end: 30 }, env });
+      expect(await run(host, { session, read: { file, start: 1, end: 30 }, env })).toContain(
+        "lines 1-30",
+      );
+    });
+  }
+
+  it("opencode: an unwritable state folder keeps the read log in-process", async () => {
+    // opencode is one long-lived process, so its memory stands in for the log file.
+    const env = { TMPDIR: stateRoot("bkit-readguard", `bkit-readguard-${UID}`) };
+    const session = newSession();
+    const file = newFile();
+    await run("opencode", { session, read: { file, start: 1, end: 30 }, env });
+    expect(await run("opencode", { session, read: { file, start: 1, end: 30 }, env })).toContain(
+      "lines 1-30",
+    );
+  });
+
+  it("opencode: a summary forgets the in-process read log too", async () => {
+    const env = { TMPDIR: stateRoot("bkit-readguard", `bkit-readguard-${UID}`) };
+    const session = newSession();
+    const file = newFile();
+    await run("opencode", { session, read: { file, start: 1, end: 30 }, env });
+    await compact("opencode", session);
+    expect(await run("opencode", { session, read: { file, start: 1, end: 30 }, env })).toBe("");
+  });
+});
+
 describe("readguard parity — documented deviations", () => {
   it("only Claude separates a subagent sharing its parent's session id", async () => {
     const session = newSession();

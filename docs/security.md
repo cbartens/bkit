@@ -67,15 +67,16 @@ App / stack credentials do not belong here — runtime keys and `/bkit-debug` ob
 | opencode provider keys | opencode host model access | Referenced as `{env:KEY}` in `.opencode/opencode.json` — never inlined. In CI the single `OPENCODE_PROVIDER_KEY` secret fans out to the configured provider's env-var name. |
 | `BKIT_ANTHROPIC_API_KEY` / `BKIT_CURSOR_API_KEY` / `BKIT_LINEAR_API_KEY` / `BKIT_JIRA_API_KEY` | Cloud agents and tracker | Optional; opt-in surfaces only. The engine sends the Linear key to `api.linear.app/graphql` and the Jira key as a bearer to `mcp.atlassian.com/v2/mcp`; it never prints a key, and tracker failure reasons carry no request headers. |
 
-### `.claude/bkit-cloud.md` + `.cursor/bkit-cloud.md` — generated, hold live secrets
+### `.claude/bkit-cloud.md` + `.cursor/bkit-cloud.md` + `.codex/bkit-cloud.md` — generated, hold live secrets
 
-`bkit install` / `upgrade` generate `.claude/bkit-cloud.md` (Claude Code on the web) and `.cursor/bkit-cloud.md` (Cursor Cloud Agents) with the dashboard env / secret block resolved to **REAL secret values**. Both share one resolver (`.bkit/core/engine/install/cloud-env.ts`); a per-cloud policy differs only in baseline tokens (Cursor+Linear adds `BKIT_LINEAR_API_KEY`). Rules:
+`bkit install` / `upgrade` generate `.claude/bkit-cloud.md` (Claude Code on the web), `.cursor/bkit-cloud.md` (Cursor Cloud Agents) and `.codex/bkit-cloud.md` (Codex Cloud) with the dashboard env / secret block resolved to **REAL secret values**. All three share one resolver (`.bkit/core/engine/install/cloud-env.ts`) and render the same block for every tracker. Rules:
 
 - **Gitignored + `chmod 600`. NEVER commit.** Deliberately UNTRACKED — absent from WriteSet / manifest / `canonicalHashes` — so no `bkit check` drift or upgrade template walk (machine-local values expected to differ). `bkit uninstall` deletes them when the respective host is removed.
 - **Resolution follows consumer `.envrc`** — bkit reads sourced dotenv files, honours `unset` lines. No hardcoded stack-specific key list; knowledge stays in consumer `.envrc` (stack-agnostic shipped surface).
 - **Session-hijack keys always dropped** from the block: `ANTHROPIC_API_KEY`, `BKIT_ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, because exporting them redirects the agent's own model calls to API-key billing vs subscription.
 - Empty-valued keys skipped; absent baseline tokens (`BKIT_GH_TOKEN`) → placeholder, never fabricated.
 - **Cursor secret type:** the `.cursor/bkit-cloud.md` doc directs you to add each as a **Runtime Secret** (loaded as an env var but redacted from the agent's transcript) in the Cloud Agents dashboard → Secrets tab, so tools read the value while the agent transcript never sees it.
+- **Codex secret type:** the `.codex/bkit-cloud.md` doc directs every token to **Environment variables**; **Network secrets** (placeholder in-process, real value substituted by the proxy for allowed domains) are optional hardening for HTTP-only tokens and break any token a program reads directly (`gh auth login --with-token`).
 
 ## Release & Distribution
 
@@ -124,7 +125,7 @@ Run `npm audit signatures` in a directory with the package installed (`node_modu
 
 Everything committed is public, including history. NEVER commit:
 
-- Secrets: `.bkit/.env`, `.claude/bkit-cloud.md`, `.cursor/bkit-cloud.md`, any token or key (§ Secrets Management).
+- Secrets: `.bkit/.env`, `.claude/bkit-cloud.md`, `.cursor/bkit-cloud.md`, `.codex/bkit-cloud.md`, any token or key (§ Secrets Management).
 - Consumer names or consumer data (`harvest/`).
 - Details of an exploitable, unfixed vulnerability in a published version: triage and fix inside a draft GitHub Security Advisory (private fork), not an issue, PR or commit.
 

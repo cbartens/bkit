@@ -1,7 +1,7 @@
 ---
 name: bkit-build-challenge-2
 description: Veteran security researcher probing diffs for auth holes, exploits, and data exposure.
-model: gemini-3.8-pro
+model: gemini-4-argon
 effort: high
 tools:
   - view_file

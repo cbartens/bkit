@@ -60,7 +60,7 @@ const HAIKU_PROMPTS = (() => {
   const real = fs.readFileSync(path.join(getBkitDocsRoot(), "prompts.md"), "utf-8");
   const header = real.indexOf("| Prompt | Anthropic |");
   const afterSeparator = real.indexOf("\n", real.indexOf("\n", header) + 1) + 1;
-  const row = `| \`${HAIKU_FIXTURE}\` | \`claude-haiku-5-5\` | \`composer-2.5\` | \`z-ai/glm-5.3-flash\` | \`deepseek-v4.1-flash:1017\` | \`glm-5.3-flash\` | \`deepseek-v4.1-flash\` | \`gpt-6-luna\` | \`gemini-3.8-flash\` | \`high\` | 50 | test fixture |\n`;
+  const row = `| \`${HAIKU_FIXTURE}\` | \`claude-haiku-5-5\` | \`gpt-6-luna\` | \`gemini-3.8-flash\` | \`composer-2.5\` | \`z-ai/glm-5.3-flash\` | \`deepseek-v4.1-flash:1017\` | \`glm-5.3-flash\` | \`deepseek-v4.1-flash\` | \`high\` | 50 | test fixture |\n`;
   const file = path.join(os.tmpdir(), `haiku-prompts-${process.pid}.md`);
   fs.writeFileSync(file, real.slice(0, afterSeparator) + row + real.slice(afterSeparator));
   return file;
@@ -228,35 +228,34 @@ describe("buildOpencodeModelLookup — default column reader", () => {
 describe("buildOpencodeModelLookup — per-provider model resolution", () => {
   // The four OpenAI-compatible providers ship curated columns.
   // Tier anchors: ideate-1 = opus, ideate-2 = sonnet, HAIKU_FIXTURE = haiku,
-  // build-challenge-2 / debug-failure-diagnose = convergent (CoT reasoner).
-  // OpenRouter opus+sonnet collapse onto V4.1 Flash (clears both Claude targets).
-  // Haiku stays on the cheapest sufficient pin; convergent stays a distinct family.
-  it("openrouter: v4.1-flash-1017 opus+sonnet, glm-5.3-flash haiku, kimi-k3 convergent", () => {
+  // build-challenge-2 / debug-failure-diagnose = key gates (the strongest model the cap carries).
+  // OpenRouter opus+sonnet collapse onto V4.1 Flash; haiku stays on the cheapest sufficient pin.
+  it("openrouter: v4.1-flash-1017 opus+sonnet, glm-5.3-flash haiku, gpt-6.1-sol key gates", () => {
     const lookup = buildOpencodeModelLookup(HAIKU_PROMPTS, "openrouter");
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("deepseek/deepseek-v4.1-flash-1017");
     expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("deepseek/deepseek-v4.1-flash-1017");
     expect(lookup.get(HAIKU_FIXTURE)).toBe("z-ai/glm-5.3-flash");
-    expect(lookup.get("bkit-build-challenge-2")).toBe("moonshotai/kimi-k3");
-    expect(lookup.get("bkit-debug-failure-diagnose")).toBe("moonshotai/kimi-k3");
+    expect(lookup.get("bkit-build-challenge-2")).toBe("openai/gpt-6.1-sol");
+    expect(lookup.get("bkit-debug-failure-diagnose")).toBe("openai/gpt-6.1-sol");
     // The gateway prefix belongs to the renderer, not the table.
     expect(formatModelPin("opencode", "openrouter", lookup.get(HAIKU_FIXTURE)!)).toBe(
       "openrouter/z-ai/glm-5.3-flash",
     );
   });
 
-  // Convergent is not a DeepSeek slug; haiku is not V4 Flash.
-  it("openrouter: convergent is kimi-k3; frozen/dated v4-pro slugs stay off the column", () => {
+  // Key gates run gpt-6.1-sol; kimi-k3 and the frozen slugs stay off the column.
+  it("openrouter: key gates are gpt-6.1-sol; kimi-k3 and frozen v4-pro slugs stay off the column", () => {
     const lookup = buildOpencodeModelLookup(HAIKU_PROMPTS, "openrouter");
     const pins = [...lookup.values()];
     expect(pins).not.toContain("deepseek/deepseek-v4-pro");
     expect(pins).not.toContain("deepseek/deepseek-v4-pro-0813");
-    expect(pins.some((m) => m === "moonshotai/kimi-k3")).toBe(true);
+    expect(pins).not.toContain("moonshotai/kimi-k3");
+    expect(pins.filter((m) => m === "openai/gpt-6.1-sol")).toHaveLength(4);
     expect(pins.some((m) => m === "deepseek/deepseek-v4.1-flash-1017")).toBe(true);
     expect(pins.some((m) => m === "z-ai/glm-5.3-flash")).toBe(true);
   });
 
-  // This column exists to carry work when the Claude quota is spent — a Claude pin
-  // there defeats its purpose regardless of score.
+  // Every Claude model bills past the column's weekly cap (providers.md § Budget band).
   it("openrouter: no Claude model is pinned in the column", () => {
     const lookup = buildOpencodeModelLookup(
       path.join(getBkitDocsRoot(), "prompts.md"),
@@ -267,13 +266,13 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     }
   });
 
-  it("ollama (cloud): deepseek-v4.1-flash:1017 opus+sonnet+haiku, kimi-k3 convergent", () => {
+  it("ollama (cloud): deepseek-v4.1-flash:1017 on every tier and the key gates", () => {
     const lookup = buildOpencodeModelLookup(HAIKU_PROMPTS, "ollama");
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("deepseek-v4.1-flash:1017");
     expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("deepseek-v4.1-flash:1017");
     expect(lookup.get(HAIKU_FIXTURE)).toBe("deepseek-v4.1-flash:1017");
-    expect(lookup.get("bkit-build-challenge-2")).toBe("kimi-k3");
-    expect(lookup.get("bkit-debug-failure-diagnose")).toBe("kimi-k3");
+    expect(lookup.get("bkit-build-challenge-2")).toBe("deepseek-v4.1-flash:1017");
+    expect(lookup.get("bkit-debug-failure-diagnose")).toBe("deepseek-v4.1-flash:1017");
     expect(formatModelPin("opencode", "ollama", lookup.get(HAIKU_FIXTURE)!)).toBe(
       "ollama/deepseek-v4.1-flash:1017",
     );
@@ -313,10 +312,10 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("deepseek-v4.1-flash"); // opus
     expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("deepseek-v4.1-flash"); // sonnet
     expect(lookup.get(HAIKU_FIXTURE)).toBe("glm-5.3-flash"); // haiku
-    expect(lookup.get("bkit-build-challenge-2")).toBe("kimi-k3"); // convergent
+    expect(lookup.get("bkit-build-challenge-2")).toBe("gpt-6.1-sol"); // key gates
   });
 
-  it("opencode-go: curated OpenCode Go column (deepseek-v4.1-flash / kimi-k3)", () => {
+  it("opencode-go: curated OpenCode Go column (deepseek-v4.1-flash / gemini-4-argon)", () => {
     // opencode-go = the budget open-weight-only plan (https://opencode.ai/zen/go/v1). Go catalog is
     // invisible to /zen/v1/models — sourced via models.dev.
     const lookup = buildOpencodeModelLookup(HAIKU_PROMPTS, "opencode-go");
@@ -328,7 +327,7 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("deepseek-v4.1-flash"); // opus
     expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("deepseek-v4.1-flash"); // sonnet
     expect(lookup.get(HAIKU_FIXTURE)).toBe("deepseek-v4.1-flash"); // haiku
-    expect(lookup.get("bkit-build-challenge-2")).toBe("kimi-k3"); // convergent
+    expect(lookup.get("bkit-build-challenge-2")).toBe("gemini-4-argon"); // key gates — Go serves no gpt-6.1-sol
   });
 });
 

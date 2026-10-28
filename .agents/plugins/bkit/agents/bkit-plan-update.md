@@ -1,7 +1,7 @@
 ---
 name: bkit-plan-update
 description: Senior editor merging review and scope critiques into the plan, no scope expansion.
-model: gemini-3.8-pro
+model: gemini-4-argon
 effort: high
 tools:
   - view_file

@@ -60,6 +60,9 @@ docs/plans/*/logs/**/.rebase-failed
 # Cursor background-agent runtime marker
 .bkit/.runtime-cursor
 
+# Provision recipes that failed in this cloud environment (`bkit context provision`)
+.bkit/.unavailable
+
 .bkit/.roadmap-shortlist.json
 .bkit/.roadmap-reverse-sync.json
 
@@ -67,9 +70,10 @@ docs/plans/*/logs/**/.rebase-failed
 .claude/scheduled_tasks.lock
 
 # Cloud setup docs — `bkit install` inlines resolved .envrc secrets; never commit.
-# One per host: .claude/bkit-cloud.md (Claude Code web), .cursor/bkit-cloud.md (Cursor Background Agents)
+# One per host: .claude/bkit-cloud.md (Claude Code web), .cursor/bkit-cloud.md (Cursor Cloud Agents), .codex/bkit-cloud.md (Codex Cloud)
 .claude/bkit-cloud.md
 .cursor/bkit-cloud.md
+.codex/bkit-cloud.md
 
 # Claude native worktrees (isolation:worktree / EnterWorktree) — transient full-tree
 # copies; ignore or slop:delta double-counts the checkout

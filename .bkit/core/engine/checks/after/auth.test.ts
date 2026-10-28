@@ -259,11 +259,11 @@ describe("detectCiRouterSecrets", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildCloudDashboardsAdvisory", () => {
-  it("returns null when none of router / .claude / .cursor exist", () => {
+  it("returns null when none of router / .claude / .cursor / .codex exist", () => {
     expect(buildCloudDashboardsAdvisory(tmpDir)).toBeNull();
   });
 
-  it("fires when bkit-cloud.yml exists", () => {
+  it("bkit-cloud.yml alone: only the GitHub Actions credential, no host dashboard", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
@@ -273,19 +273,34 @@ describe("buildCloudDashboardsAdvisory", () => {
     expect(result).not.toBeNull();
     expect(result!.id).toBe("cloud-secrets-three-locations");
     expect(result!.action).toContain("GitHub Actions");
-    expect(result!.action).toContain("Cursor Cloud Agents");
-    expect(result!.action).toContain("Runtime Secret");
-    expect(result!.action).toContain("Claude Code (web)");
+    expect(result!.action).toContain("ANTHROPIC_API_KEY");
+    expect(result!.action).not.toContain("Cursor Cloud Agents");
+    expect(result!.action).not.toContain("Claude Code (web)");
+    expect(result!.action).not.toContain("Codex Cloud");
   });
 
-  it("fires when .claude/ exists", () => {
-    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
-    expect(buildCloudDashboardsAdvisory(tmpDir)).not.toBeNull();
+  it.each([
+    [".claude", "Claude Code (web)", ".claude/bkit-cloud.md"],
+    [".cursor", "Cursor Cloud Agents", ".cursor/bkit-cloud.md"],
+    [".codex", "Codex Cloud", ".codex/bkit-cloud.md"],
+  ])("%s/ alone: names that host's dashboard and its generated paste doc", (dir, host, doc) => {
+    fs.mkdirSync(path.join(tmpDir, dir), { recursive: true });
+    const result = buildCloudDashboardsAdvisory(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.action).toContain(host);
+    expect(result!.action).toContain(doc);
+    expect(result!.action).not.toContain("gh secret set");
   });
 
-  it("fires when .cursor/ exists", () => {
-    fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
-    expect(buildCloudDashboardsAdvisory(tmpDir)).not.toBeNull();
+  it("names every installed host's dashboard when several are present", () => {
+    for (const dir of [".claude", ".cursor", ".codex"]) {
+      fs.mkdirSync(path.join(tmpDir, dir), { recursive: true });
+    }
+    const action = buildCloudDashboardsAdvisory(tmpDir)!.action;
+    expect(action).toContain("Claude Code (web)");
+    expect(action).toContain("Cursor Cloud Agents");
+    expect(action).toContain("Runtime Secret");
+    expect(action).toContain("Codex Cloud");
   });
 
   it("never mentions the retired BKIT_GH_TOKEN_INSTALL install token", () => {
@@ -295,36 +310,34 @@ describe("buildCloudDashboardsAdvisory", () => {
     expect(result!.action).not.toContain("BKIT_GH_TOKEN_INSTALL");
   });
 
-  it("github tracker: omits BKIT_LINEAR_API_KEY from the secrets checklist (issue #138)", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "c", version: "1.0.0", bkit: { tracker: { default: "github" } } }),
-    );
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
-      "name: bkit-auto\n",
-    );
-    const result = buildCloudDashboardsAdvisory(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.detect).not.toContain("BKIT_LINEAR_API_KEY");
-    expect(result!.action).not.toContain("BKIT_LINEAR_API_KEY");
-    expect(result!.action).toContain("BKIT_ANTHROPIC_API_KEY");
-  });
-
-  it("jira tracker: the checklist names no tracker token (Jira runs locally only)", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "c", version: "1.0.0", bkit: { tracker: { default: "jira" } } }),
-    );
-    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
-    const result = buildCloudDashboardsAdvisory(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.detect).not.toContain("BKIT_JIRA_API_KEY");
-    expect(result!.action).not.toContain("BKIT_JIRA_API_KEY");
-    expect(result!.action).not.toContain("BKIT_LINEAR_API_KEY");
-    expect(result!.action).toContain("BKIT_ANTHROPIC_API_KEY");
-  });
+  it.each(["github", "linear", "jira", "none"])(
+    "%s tracker: the checklist is identical and names no tracker token",
+    (tracker) => {
+      const render = (bkit: Record<string, unknown>) => {
+        fs.writeFileSync(
+          path.join(tmpDir, "package.json"),
+          JSON.stringify({ name: "c", version: "1.0.0", bkit }),
+        );
+        return buildCloudDashboardsAdvisory(tmpDir)!;
+      };
+      fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
+        "name: bkit-auto\n",
+      );
+      for (const dir of [".claude", ".cursor", ".codex"]) {
+        fs.mkdirSync(path.join(tmpDir, dir), { recursive: true });
+      }
+      const cloud = { agent: "cursor" };
+      const result = render({ tracker: { default: tracker }, cloud });
+      expect(result).toEqual(render({ cloud }));
+      for (const key of ["BKIT_LINEAR_API_KEY", "BKIT_JIRA_API_KEY"]) {
+        expect(result.detect).not.toContain(key);
+        expect(result.action).not.toContain(key);
+      }
+      expect(result.action).toContain("BKIT_ANTHROPIC_API_KEY");
+    },
+  );
 
   it("lists cloud context-fetch creds (VERCEL_TOKEN etc.) for /bkit-debug in the cloud", () => {
     fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
@@ -335,48 +348,5 @@ describe("buildCloudDashboardsAdvisory", () => {
     expect(result!.action).toContain("SUPABASE_ACCESS_TOKEN");
     // Non-interactive guidance is the load-bearing bit for headless cloud agents.
     expect(result!.action).toContain("vercel login");
-  });
-
-  it.each(["github", "jira"])(
-    "%s tracker, .cursor/ only: the checklist names no Linear key",
-    (tracker) => {
-      fs.writeFileSync(
-        path.join(tmpDir, "package.json"),
-        JSON.stringify({ name: "c", version: "1.0.0", bkit: { tracker: { default: tracker } } }),
-      );
-      fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
-      const result = buildCloudDashboardsAdvisory(tmpDir);
-      expect(result).not.toBeNull();
-      expect(result!.detect).not.toContain("BKIT_LINEAR_API_KEY");
-      expect(result!.action).not.toContain("BKIT_LINEAR_API_KEY");
-    },
-  );
-
-  it("linear tracker, .cursor/ only: falls back to the cursor checklist", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "c", version: "1.0.0", bkit: { tracker: { default: "linear" } } }),
-    );
-    fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
-    const result = buildCloudDashboardsAdvisory(tmpDir);
-    expect(result!.action).toContain("BKIT_LINEAR_API_KEY");
-  });
-
-  it("cloud=cursor variant: BKIT_LINEAR_API_KEY appears in the checklist (cursor path)", () => {
-    // BKIT_LINEAR_API_KEY belongs to cloud=cursor (Linear tracker), not cloud=claude.
-    // Simulate: no bkit-cloud.yml, but .cursor/ exists + cloudAgents=cursor recorded.
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({
-        name: "c",
-        version: "1.0.0",
-        bkit: { tracker: { default: "linear" }, cloud: { agent: "cursor" } },
-      }),
-    );
-    fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
-    const result = buildCloudDashboardsAdvisory(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.action).toContain("BKIT_LINEAR_API_KEY");
-    expect(result!.action).not.toContain("BKIT_ANTHROPIC_API_KEY");
   });
 });

@@ -28,7 +28,12 @@
 
 **Two axes — host != provider.** **Host** = program reading what bkit writes, identified by its dir (`.claude/`, `.cursor/`, `.opencode/`, `.codex/`). **Provider** = gateway tokens are bought through. Model IDs are per-provider → `prompts.md` § Models = one column per PROVIDER (shared provider = one column, never two). Thinking depth is per-host (field name + ladder set by host config format: `effort:` claude/cursor, a `variant:` field opencode, `model_reasoning_effort` codex) → § Effort = one column per HOST. Neither table grows as hosts x providers.
 
-**One provider per host = POLICY, not capability.** Nothing technical forces it — Cursor reaches Claude models, so does anything behind OpenRouter. Pin follows cost: each host runs on the gateway whose subscription is already paid. Subscription spent → switch **host**, not provider (the cheap gateway hangs off a different host).
+**Spend order: subscriptions first, metered overflow second.**
+
+1. **Subscriptions** — Claude Code, Codex, Antigravity, Cursor are paid up front → spend their included usage first; each agent gets the vendor model that buys the most work per included token (§ Selecting pins, First-party plan).
+2. **Overflow** — a subscription's weekly usage runs out → switch to opencode on a metered gateway (default `openrouter`) until it resets. Claude is the yardstick there: cheapest model closest to the agent's Claude bar, inside a weekly cap (§ Budget band).
+
+**One provider per host = POLICY, not capability.** Nothing technical forces it — Cursor reaches Claude models, so does anything behind OpenRouter. Pin follows cost: each host runs on the gateway whose subscription is already paid. Subscription spent → switch **host**, not provider (the overflow gateway hangs off opencode).
 
 <!-- prettier-ignore -->
 | Host | Provider | Why |
@@ -37,7 +42,7 @@
 | Cursor | `cursor` | Cursor subscription covers its whole catalog |
 | Codex CLI | `openai` | ChatGPT subscription |
 | Google Antigravity | `google` | Antigravity free tier / Google subscription — cheapest path to Gemini |
-| opencode | **pick one**: `openrouter`, `ollama`, `opencode-zen`, `opencode-go` | no subscription — BYO key, so the choice is yours |
+| opencode | **pick one**: `openrouter`, `ollama`, `opencode-zen`, `opencode-go` | overflow host — metered BYO key, runs when subscription usage is spent |
 
 Subscription-bearing host → pinned, nullary flag (`--claude`, `--codex`). BYO-key host → pluggable, flag names the provider (`--opencode=<provider>`). Per-model deviation → consumer `## Model Overrides` below `bkit:end`; no provider override.
 
@@ -141,7 +146,7 @@ Persistent variant: `RunAtLoad` LaunchAgent plist (`~/Library/LaunchAgents/`) wi
 | --- | --- | --- | --- | --- |
 | `name` | required | required | required | kebab-case, must match filename. Identical. |
 | `description` | required | required | required | Identical. |
-| `effort` | required (`low` / `medium` / `high` / `xhigh` / `max` — last two model-gated, Opus-only on current models) | not supported | emitted as a separate `variant:` field | Drop on Cursor. `applyOpencodeAgent` reads the § Effort **OpenCode** column and writes it to `variant:` (not a `#`-suffix on the model — 1.x keeps the suffix in its model id and fails lookup); the OpenCode column ceilings out, so `medium` / `high` / `xhigh` / `max`→`max`, `low`→`none`. The **ollama** gateway omits `variant:` entirely: its provider builds models with no variants, so any variant there is a hard 2.0 error. |
+| `effort` | required (`low` / `medium` / `high` / `xhigh` / `max` — last two model-gated, Opus-only on current models) | not supported | emitted as a separate `variant:` field | Drop on Cursor. `applyOpencodeAgent` reads the § Effort **OpenCode** column and writes it to `variant:` (not a `#`-suffix on the model — 1.x keeps the suffix in its model id and fails lookup); the OpenCode column ceilings out, so `medium` / `high` / `xhigh` / `max`→`max`, `low`→`none`, then `clampOpencodeVariant` clamps that to what the pinned model exposes on the gateway (`prompts.md` § Effort). The **ollama** gateway omits `variant:` entirely: its provider builds models with no variants, so any variant there is a hard 2.0 error. |
 | `tools` | required (e.g. `[Read, Grep, Glob, Write, Edit, Bash, WebFetch, WebSearch]`) | supported (allowlist) + `disallowedTools` denylist | object map `{ <tool>: true }` | Identity mapping on Cursor (verified), not enforced by Cursor CLI 2026.10.01 (measured: a `tools: [Read]` subagent keeps `Shell` / `Write` / every MCP tool). opencode: built-ins lowercased; `mcp__<server>__<tool>` respelled `<server>_<tool>` (`mcp__serena__*` → `serena_*`). |
 | `permissionMode` | required (`acceptEdits` standard) | not supported | not supported | Drop on Cursor and opencode. |
 | `maxTurns` | required | not supported | not supported | Drop on Cursor and opencode. |
@@ -183,7 +188,7 @@ Cloud Agents API: `curl https://api.cursor.com/v0/models -u "$BKIT_CURSOR_API_KE
 > [!NOTE]
 > **Native-default Cursor pins.** Defaults are first-party only (`cursor-grok-4.5-high` / `composer-2.5`) so zero API credits still runs the harness. API-pool IDs remain in the live `/v0/models` catalog for manual override. Residual: IDE **subagent-runner** != Cloud Agents API; per-subagent dispatch via `Task` not empirically smoke-tested — confirm one dispatch per model ID before full validation.
 >
-> **Claude opus tier pins `claude-opus-5-5`.** Sonnet tier pins `claude-sonnet-5-5`. Both are 1M context, $4/$20 and $2/$10 per MTok. Haiku tier pins `claude-haiku-5-5` — 1M context, $0.10/$0.50 per MTok up to 100K-token prompts, $0.50/$2.50 above. LiveBench scores the 5.5 pins too, but the opus and sonnet targets stay at `claude-opus-5` **65.2** / `claude-sonnet-5` **59.4** — § Agentic-coding parity board says why. Cursor's `/v0/models` catalog lists `claude-opus-5-thinking-high` / `-fast` and `claude-sonnet-5-thinking-high` / `-xhigh`, not the 5.5 IDs. Cursor defaults stay on native models per the native-only policy above.
+> **Claude opus tier pins `claude-opus-5-5`.** Sonnet tier pins `claude-sonnet-5-5`. Both are 1M context, $4/$20 and $2/$10 per MTok. Haiku tier pins `claude-haiku-5-5` — 1M context, $0.10/$0.50 per MTok up to 100K-token prompts, $0.50/$2.50 above. The targets are the 5.5 scores on the 2.0 board — `claude-opus-5-5` **72.8** / `claude-sonnet-5-5` **63.4** — with no 5.0 bridging. Cursor's `/v0/models` catalog lists `claude-opus-5-thinking-high` / `-fast` and `claude-sonnet-5-thinking-high` / `-xhigh`, not the 5.5 IDs. Cursor defaults stay on native models per the native-only policy above.
 
 ### Per-subagent model assignment
 
@@ -301,7 +306,7 @@ Per-action gates, all five hosts, subagents included. Overview only; per-host en
 | `guardrails-read.js` | Cursor, Google Antigravity `guardrails` | `classifyRead` over `secretFileKind`: deny `*.pem` / `*.p12` / `id_rsa`, ask `.env` / `.env.*` (not `.env.example`) |
 | `preflight-linear.sh` | Claude, Cursor `preflight` | Linear key / issue checks, GraphQL query, `bkit:auto` + terminal-state guards |
 | `preflight-rules.sh` | Claude, Cursor `preflight` | the rules-read advisory sentence and its `emit_context` call, merged into the one SessionStart JSON document |
-| `session-rules-advisory.js` | opencode, Codex, Google Antigravity `rules` | the rules-read advisory sentence plus the once-per-session helper (`rulesReadAdviceOnce`, OS-temp state, 24h GC) |
+| `session-rules-advisory.js` | opencode, Codex, Google Antigravity `rules` | the rules-read advisory sentence plus the once-per-session helper (`rulesReadAdviceOnce`, per-user OS-temp state, 24h GC) |
 
 Per host, outside the parts: Claude `gateguard` / `guardrails` — `require` + `hookSpecificOutput` driver, guardrails advisory-only; Cursor — `{ permission }` output, guardrails `Read|TabRead` path extraction, gateguard workspace-relative path resolve; Codex — `apply_patch` envelope parser, ask tier emitted as advisory; Google Antigravity — `antigravity-hook.js` envelope conversion + deny-once delivery, `{ decision, reason }` driver, `write_to_file` / `replace_file_content` edit tools (path `TargetFile`), `view_file` and `run_command` (`CommandLine`); opencode — ES module, `write` / `edit` / `patch` (`apply_patch`) vocabulary, every `*** Add|Update|Delete File:` / `*** Move to:` target of a `patchText` checked (deny mode blocks if any target is a first touch), checklist appended to the tool result in `execute.after` + throw from `execute.before` to block (2.0 exposes no pre-edit context hook, and stderr does not reach the model); `preflight` — trigger (Claude `LINEAR_ISSUE_ID`, Cursor `is_background_agent` + `.bkit/.runtime-cursor` marker), Claude-only Darwin brew check, `emit_context` shape.
 
@@ -350,7 +355,7 @@ Advisory hook, on all five hosts (Claude Code, Cursor, Codex, Google Antigravity
 
 ### ReadGuard
 
-Advisory repeat-read hook, on all five hosts. A read of a line range the same agent already read in this conversation, file unchanged since (same mtime + size), gets a note: use the earlier output; re-read only if it left context (summarised, or read by another agent). Tracks read-tool calls (`offset` / `limit`, `StartLine` / `EndLine`; no limit → first 2000 lines, opencode → whole file) and plain shell reads — `cat FILE`, `sed -n 'A,Bp' FILE`, `head` / `tail` with a line count; pipes, lists, redirects, substitutions, globs and other programs are not tracked. Ranges merge per file; a changed file starts a fresh log. **fail-open**, never blocks, log in OS temp (`bkit-readguard/`), 24h TTL. `BKIT_READGUARD=off` → disabled.
+Advisory repeat-read hook, on all five hosts. A read of a line range the same agent already read in this conversation, file unchanged since (same mtime + size), gets a note: use the earlier output; re-read only if it left context (summarised, or read by another agent). Tracks read-tool calls (`offset` / `limit`, `StartLine` / `EndLine`; no limit → first 2000 lines, opencode → whole file) and plain shell reads — `cat FILE`, `sed -n 'A,Bp' FILE`, `head` / `tail` with a line count; pipes, lists, redirects, substitutions, globs and other programs are not tracked. Ranges merge per file; a changed file starts a fresh log. **fail-open**, never blocks, log in per-user OS temp (`bkit-readguard-<uid>/`; kept in memory when that cannot be written), 24h TTL. `BKIT_READGUARD=off` → disabled.
 
 <!-- prettier-ignore -->
 | Host | File | Registration | Delivery | Log key | Reset on summary |
@@ -399,7 +404,7 @@ Advisory repeat-read hook, on all five hosts. A read of a line range the same ag
 
 **`.bkit/allowlist.json`** — core-owned, written on every install / upgrade whatever the host set, removed by full uninstall. **Do not hand-edit** — install / upgrade rewrites it whole; change `allowed-domains` instead. `bkit check` fails when it is missing or stale. The hook finds it from the payload's repo dirs (`workspace_roots`, `cwd`, Antigravity `workspacePaths`) then its own cwd, walking up to the `.git` root — Antigravity runs plugin hooks from the plugin dir. Missing file => every host reads as unknown; the hook embeds no list, because a second copy drifts from the registry silently.
 
-**Cloud egress (separate):** the derived registry union the same `allowed-domains` feed `.claude/bkit-cloud.md` / `.cursor/bkit-cloud.md` paste instructions for dashboard network Custom allowlists — that is proxy egress, not local agent permission files. See `.agents/context.md` § Allowed domains and `.bkit/cloud.md`.
+**Cloud egress (separate):** the derived registry union the same `allowed-domains` feed `.claude/bkit-cloud.md` / `.cursor/bkit-cloud.md` / `.codex/bkit-cloud.md` paste instructions for dashboard network Custom allowlists — that is proxy egress, not local agent permission files. See `.agents/context.md` § Allowed domains and `.bkit/cloud.md`.
 
 ### MCP servers — one source, three encodings
 
@@ -484,22 +489,22 @@ bkit ships no default: the setting also hides each person's own connectors (mail
 > Setup recipe + alignment: `.bkit/cloud.md`. This section = host-diff matrix only.
 
 <!-- prettier-ignore -->
-| Concern | Claude Code on the web | Cursor Background Agents |
-| --- | --- | --- |
-| Where env config lives | Claude app (per-environment), not in repo | In repo (`.cursor/`) |
-| Custom base image | Not supported — setup script layers on top of Anthropic-managed Ubuntu 24.04 | Supported — `.cursor/Dockerfile` |
-| Cold-start cache | Snapshot keyed by setup-script body hash (~7d TTL) | Docker image layers |
-| Per-snapshot install | `.claude/hooks/bkit-cloud-bootstrap.sh` (SessionStart, fires when `CLAUDE_CODE_REMOTE=true`) | `.cursor/environment.json` → `install` |
-| Build env | Setup script (paste-in via Claude app UI) | `.cursor/Dockerfile` (Cursor Cloud builds custom image) |
-| Install/start | n/a (handled by bootstrap hook) | `.cursor/environment.json` → `install`, `start`, `terminals[]`, `env`, `ports` |
-| Port forwarding | n/a | `.cursor/environment.json` → `terminals[].ports` |
-| Cloud-session detection | `CLAUDE_CODE_REMOTE=true` (env var) | `is_background_agent === true` (stdin JSON) |
-| Default network | `Trusted` allowlist (npm, GitHub, PyPI, Docker Hub, vale tarball) | Outbound open in the sandbox |
-| Reusable across repos | Setup script yes (generic snapshot); environment no — one per repo (secrets / PAT scope are per-repo) | No — Dockerfile per repo (copied from the bkit template and owned by the repo) |
-| Secrets | Env vars in Claude app (plaintext; rotate PATs) | Cursor Cloud env vars (Settings → Background Agents → Environment Variables) |
-| Linear preflight + rules advisory | `.claude/hooks/bkit-preflight.sh` (SessionStart, non-blocking — one document carrying the rules-read advisory always, plus the guard's `additionalContext` HARD STOP when a tracker issue id is set) | `.cursor/hooks/bkit-preflight.sh` (`sessionStart`, `failClosed: true`, blocks on non-zero; the same advisory + guard document) |
+| Concern | Claude Code on the web | Cursor Background Agents | Codex Cloud |
+| --- | --- | --- | --- |
+| Where env config lives | Claude app (per-environment), not in repo | In repo (`.cursor/`) | ChatGPT **Settings > Codex Cloud > Environments** (per-environment), not in repo |
+| Custom base image | Not supported — setup script layers on top of Anthropic-managed Ubuntu 24.04 | Supported — `.cursor/Dockerfile` | Not used — install script layers on Codex's image |
+| Cold-start cache | Snapshot keyed by setup-script body hash (~7d TTL) | Docker image layers | Not documented |
+| Per-snapshot install | `.claude/hooks/bkit-cloud-bootstrap.sh` (SessionStart, fires when `CLAUDE_CODE_REMOTE=true`) | `.cursor/environment.json` → `install` | Install script tail (`pnpm install`, `vale sync`, `gh auth login`) |
+| Build env | Setup script (paste-in via Claude app UI) | `.cursor/Dockerfile` (Cursor Cloud builds custom image) | **Install script** (paste-in from `.codex/bkit-cloud.md`) |
+| Install/start | n/a (handled by bootstrap hook) | `.cursor/environment.json` → `install`, `start`, `terminals[]`, `env`, `ports` | Install script |
+| Port forwarding | n/a | `.cursor/environment.json` → `terminals[].ports` | n/a |
+| Cloud-session detection | `CLAUDE_CODE_REMOTE=true` (env var) | `is_background_agent === true` (stdin JSON) | None — bkit ships no Codex cloud hook |
+| Default network | `Trusted` allowlist (npm, GitHub, PyPI, Docker Hub, vale tarball) | Outbound open in the sandbox | **Internet access**: package-manager domains + **Additional allowed domains** (`*.` entries untested), or all public internet |
+| Reusable across repos | Setup script yes (generic snapshot); environment no — one per repo (secrets / PAT scope are per-repo) | No — Dockerfile per repo (copied from the bkit template and owned by the repo) | Install script yes; environment one per repo; **Personal vault** shares chosen secrets |
+| Secrets | Env vars in Claude app (plaintext; rotate PATs) | Cursor Cloud env vars (Settings → Background Agents → Environment Variables) | **Environment variables**; **Network secrets** = proxy-substituted, HTTP-only |
+| Linear preflight + rules advisory | `.claude/hooks/bkit-preflight.sh` (SessionStart, non-blocking — one document carrying the rules-read advisory always, plus the guard's `additionalContext` HARD STOP when a tracker issue id is set) | `.cursor/hooks/bkit-preflight.sh` (`sessionStart`, `failClosed: true`, blocks on non-zero; the same advisory + guard document) | `.codex/hooks/bkit-rules.cjs` advisory — unproven in cloud tasks |
 
-**Install behaviour:** template drops; project tokens at install. Both clouds aligned via bkit: vale 3.9.1, pnpm (corepack-pinned `package.json#packageManager`), gh CLI. See `.bkit/cloud.md` for paste-in recipe + sharing pattern.
+**Install behaviour:** template drops; project tokens at install. All clouds aligned via bkit: vale 3.9.1, pnpm (corepack-pinned `package.json#packageManager`), gh CLI. See `.bkit/cloud.md` for paste-in recipe + sharing pattern.
 
 ---
 
@@ -513,7 +518,7 @@ Installed provider catalog changes. Look up model IDs before pinning in `.openco
 | Provider | Command | Notes |
 | --- | --- | --- |
 | Claude (Anthropic) | `curl https://api.anthropic.com/v1/models -H "x-api-key: $BKIT_ANTHROPIC_API_KEY" -H "anthropic-version: 2023-06-01"` | Canonical `Claude` column source. No key in-shell → cross-check via the OpenRouter `anthropic/*` mirror. |
-| Cursor | `curl https://api.cursor.com/v0/models -u "$BKIT_CURSOR_API_KEY:"` | `Cursor` column source. Catalog churns. Probed 2026-10-06: `cursor-grok-4.5-high`, `composer-2.5`, `claude-opus-5-thinking-high`, `claude-sonnet-5-thinking-high`/`-xhigh`, `gpt-5.6-*`, Fable 5. No Grok 4.7. No Opus 5.5 / Sonnet 5.5. |
+| Cursor | `curl https://api.cursor.com/v0/models -u "$BKIT_CURSOR_API_KEY:"` | `Cursor` column source. Catalog churns. Probed 2026-10-28: `composer-2.5`, `cursor-grok-4.5-high` (+`-fast`), `claude-opus-5-thinking-high` (+`-fast`), `claude-fable-5-thinking-high`/`-xhigh`, `claude-sonnet-5-thinking-high`/`-xhigh`, `gpt-5.6-sol-high`/`-xhigh` (+`-fast`), `gpt-5.6-luna-high`, `gemini-3.7-flash-high`. **Still no Grok 4.6 or 4.7; no Opus 5.5 / Sonnet 5.5.** Cursor's first-party pins are therefore unmeasured on 2.0 and stay as inherited. |
 | OpenRouter | `curl https://openrouter.ai/api/v1/models` | **Public — no key.** Aggregator; `vendor/model` slugs (`:free` variants exist). Filter for tool-calling + coding models before pinning. |
 | Ollama | `curl https://ollama.com/v1/models -H "Authorization: Bearer $BKIT_OLLAMA_API_KEY"` | Hosted Ollama; cloud-tagged models (e.g. `qwen3.5:397b`, `kimi-k3`). |
 | OpenCode Zen / Go (opencode-native gateways) | `curl https://models.dev/api.json` — read providers `.opencode` (Zen) and `.["opencode-go"]` (Go) `.models` | **models.dev is the source of truth — not `/zen/v1/models`.** The REST catalog `curl https://opencode.ai/zen/v1/models` returns only the Zen catalog and cannot see Go-only models (`minimax-m3`, `qwen3.7-plus`/`qwen3.7-max`, …), so it must not be used to curate the Go column. Two DISTINCT providers: `opencode` (name "OpenCode Zen", api `https://opencode.ai/zen/v1`) and `opencode-go` (name "OpenCode Go", api `https://opencode.ai/zen/**go**/v1` — nested under `/zen/`). Both auth via `BKIT_OPENCODE_API_KEY`. Tool-call smoke: `POST <api>/chat/completions` with a `tools:` payload (bare model id, e.g. `minimax-m3`). |
@@ -527,7 +532,7 @@ Installed provider catalog changes. Look up model IDs before pinning in `.openco
 
 **opencode-zen / opencode-go — two OpenCode built-in providers.** Both emit minimal `provider.<id>` with only `options.apiKey: "{env:BKIT_OPENCODE_API_KEY}"` (no npm driver, no baseURL). OpenCode resolves from models.dev — Go Qwen/MiniMax use Anthropic `/messages`, not openai-compatible `/chat/completions`. Zen keyed `opencode`; Go `opencode-go`. `bkit install --opencode=opencode-zen` (or `=opencode-go`) → `bkit.providers.opencode.default` in `package.json`; legacy `opencode` → `opencode-zen` via `OPENCODE_PROVIDER_ALIASES`. Reinstall **replaces** seeded block (heals hijacked npm/baseURL). Set `BKIT_OPENCODE_API_KEY` in `.bkit/.env` (<https://opencode.ai/auth>). Columns from **models.dev**.
 
-**All four opencode providers ship curated columns.** Tier design — **per-tier quality target, cheapest sufficient pin**. A tier cell is not "the same rung of this provider's ladder": it is the cheapest model that **reaches that tier's Claude score**, and reaching means _approaching_ — it does not have to beat it. Targets are the LiveBench Agentic Coding scores on the board below (opus `claude-opus-5` **65.2**, sonnet `claude-sonnet-5` **59.4**, haiku `claude-haiku-5-5` **~51**). The opus and sonnet targets stay the 5.0 scores although the 5.5 pins are on the CSV: `claude-opus-5-5` lands level at `xhigh` (65.4), and the `claude-sonnet-5-5` rows don't read cleanly (see the board). The haiku target is Haiku 5.5 at `xhigh`, the closest measured rung to the `high` effort haiku-tier agents run at. Where a provider's ceiling sits under the sonnet target, opus+sonnet **collapse onto that ceiling** — spreading them across two rungs buys nothing and costs quality on the sonnet half. Where a cheap model already clears the haiku target, the haiku cell **stays cheap** — a $5/task flagship serving a read-and-emit summariser is waste, not safety.
+**All four opencode providers ship curated columns.** Tier design — **per-tier quality target, cheapest sufficient pin**. A tier cell is not "the same rung of this provider's ladder": it is the cheapest model that **reaches that tier's Claude score**, and reaching means _approaching_ — it does not have to beat it. Targets are the LiveBench 2.0 Long Agentic scores (§ LiveBench 2.0 board): opus `claude-opus-5-5` **72.8**, sonnet `claude-sonnet-5-5` **63.4**, haiku `claude-haiku-5-5` **40.0**. Where a provider's ceiling sits under the sonnet target, opus+sonnet **collapse onto that ceiling** — spreading them across two rungs buys nothing and costs quality on the sonnet half. Where a cheap model already clears the haiku target, the haiku cell **stays cheap** — a $5/task flagship serving a read-and-emit summariser is waste, not safety.
 
 ### Selecting pins
 
@@ -535,11 +540,12 @@ Re-pin **one provider column at a time**. Cells: `prompts.md` § Models. Board b
 
 **Priority — do not invert.**
 
-1. **Claude parity** — LiveBench Agentic Coding (pin score) + AA Intelligence Index. Miss the target → not a pin.
-2. **Cost** — cheapest that clears (or the ceiling). AA $/task + LiveBench $/task, rescaled to the billed provider.
+0. **Budget band** — hard ceiling on what an opencode column may bill over a 2-day subscription gap: **A$70/week** default, **A$140/week** opt-in (§ Budget band). A pin that pushes its column past the cap is disqualified at any score.
+1. **Claude parity** — LiveBench Long Agentic (pin score) + AA Intelligence Index. Inside the band, closest to the bar wins; a column whose best in-band model misses the bar records the gap.
+2. **Cost** — inside the band, cheapest that reaches the bar; ties fall through to price. AA $/task + LiveBench $/task, rescaled to the billed provider.
 3. **Speed** — remaining ties: AA tok/s, TTFT, think→answer, E2E 500-token.
 
-Filters (not above score): endpoint count; automatic prompt caching (bkit sends no `cache_control`). **Never pin Claude** on OpenRouter / Ollama / OpenCode. Convergent = distinct CoT family, not a fourth rung.
+Filters (not above score): endpoint count; automatic prompt caching (bkit sends no `cache_control`). **Any vendor may pin on an opencode column** — the budget band, not a vendor list, is what keeps the costliest models off.
 
 **Steps.**
 
@@ -554,14 +560,14 @@ Filters (not above score): endpoint count; automatic prompt caching (bkit sends 
 <!-- prettier-ignore -->
 | Pri | Source | Decides | URL |
 | --- | --- | --- | --- |
-| 1 | LiveBench Agentic Coding | Pin score (JS / TS / PY mean) | https://livebench.ai/#/?cats=Agentic+Coding — CSV `https://raw.githubusercontent.com/LiveBench/new-livebench/main/public/table_2026_06_25.csv` |
+| 1 | LiveBench 2.0 | Pin score — **Long Agentic** | `https://livebench.ai/data/<YYYYMMDD>/table.csv`, beside it `categories.json` (category → columns + `_overall_weights`), `cost.csv`, `breakdown.json`. Releases `20261014`, `20261025` (latest `20261025`). **The v1 path is dead:** `raw.githubusercontent.com/LiveBench/new-livebench/…/public/table_<date>.csv` 404s for 2.0 and stops at `2026-06-25` |
 | 1 | AA Intelligence Index | General intelligence | https://artificialanalysis.ai/leaderboards/models |
 | 1 | DeepSWE | Long-horizon repo work — public board only | https://deepswe.datacurve.ai |
 | 1 | LMArena Code Arena — WebDev | Web-dev preference | https://lmarena.ai (Code / WebDev) |
 | 1 | Design Arena — Code | Web-app preference | https://designarena.ai/leaderboard/code |
 | 1 | CursorBench | Agentic coding at **every effort level** (`low` → `max`) with $/task — the source for choosing an agent's `effort:`; cross-checks LiveBench. Cursor's own `composer-*` rows count as vendor-only | https://cursor.com/cursorbench |
 | 2-3 | AA cost / latency | $/task, tok/s, TTFT, E2E | same AA leaderboard |
-| 2 | LiveBench cost table | Agentic $/task — rescale to billed provider | `cost_2026_06_25.csv` beside the LiveBench table |
+| 2 | LiveBench cost table | $/task per category — `out_<category>` = dollars per successful task; rescale to billed provider | `https://livebench.ai/data/<YYYYMMDD>/cost.csv` |
 | 2 | OpenRouter model page | List in/out + cache-read | https://openrouter.ai/models/{slug} |
 | filter | OpenRouter endpoints | Host count; 1 = reject | `GET /api/v1/models/{slug}/endpoints` |
 | filter | OpenRouter prompt-caching doc | Auto vs `cache_control`; ignore `supports_implicit_caching` | https://openrouter.ai/docs/features/prompt-caching |
@@ -569,7 +575,100 @@ Filters (not above score): endpoint count; automatic prompt caching (bkit sends 
 
 **Do not pin from:** OpenRouter volume; BenchGecko; vendor-only Terminal-Bench / SWE; launch blogs.
 
+**Four column classes — each answers a different question.**
+
+<!-- prettier-ignore -->
+| Class | Columns | What the pin answers |
+| --- | --- | --- |
+| First-party plan | `Anthropic` (Claude Code), `OpenAI` (Codex), `Google` (Antigravity) | The best model for each subagent **from that vendor's own ladder**, spending the plan's included usage where it buys the most. A Codex pin is the best OpenAI model for the job, never an imitation of Claude; no cross-vendor parity target. |
+| Metered gateway | `Ollama`, `OpenCode Zen`, `OpenCode Go` | **Claude is the yardstick:** the cheapest model in that gateway's catalog closest to the agent's Claude tier bar, inside the budget band. Any vendor qualifies. |
+| Overflow default | `OpenRouter` Option 1 | OpenRouter runs on the days the OpenAI, Anthropic and Google credits are spent. Same yardstick; the default spends the A$70 cap on `gpt-6.1-sol` for the four key gates and runs every other agent on `deepseek-v4.1-flash-1017`. |
+| Overflow opt-in | `OpenRouter` Option 2 | Doubles the weekly cap to A$140 — nine judges on `gpt-6.1-sol`. |
+
+**The question is per subagent, not per column.** Every pin answers "what is the best model for _this_ agent's job", judged on the board's Long Agentic score with the agent's role in mind: judges, reviewers, verifiers and escalators need the strongest model the class allows (see the reviewer rule below), while mechanical writers and summarisers should not pay flagship prices. Matching cells across columns are a catalog coincidence, never an objective.
+
+### Budget band — the gap between subscription resets
+
+**Usage intent.** An opencode column runs between subscription resets: after the week's Claude and OpenAI credits are gone, until they return. Days, not a month. A pin that would burn a month's worth of cost inside such a gap fails its purpose however well it scores, so **cost is a ceiling checked before parity, not a tie-break after it**.
+
+**The band is a cache-read ceiling, because cache reads are the bill.** Measured across 21 days of real agent work (Claude Code transcripts, deduped by message): a normal day carries **~1.0–1.2B cache-read tokens**, ~20M cache writes, ~1.6–2.4M output and ~0 fresh input — roughly **600 cache-read tokens per output token**, so cache reads exceed 95% of what a gap costs. Cache-read price spans ~170x across the board while input price spans ~13x, so an input/output band cannot predict what a gap costs.
+
+**Measured again on opencode itself** (`bkit harvest scan`, 2026-10-25 → 10-28, 166 chats on `deepseek-v4.1-flash`): a heavy day carries **27.8M fresh input, 1.04B cache read and 2.08M output**, and the fresh input is what the Claude profile misses — Claude Code caches almost all of it away, opencode does not. Per heavy day at list prices: **DeepSeek $8.6**, Gemini 4 Argon or GPT-6.1 Sol **$180.8**, Claude Opus 5.5 **$361.5**. Input price therefore matters on this profile: the Gemini/GPT tier spends $56 of its $181 on fresh input alone.
+
+**What the A$70 cap buys on that day** (A$0.703/USD, 2-day gap, day cost split evenly over 39 agents): `gpt-6.1-sol` costs about **A$13.16** per agent per gap, `deepseek-v4.1-flash-1017` **A$0.62**. All 39 on DeepSeek: A$24. Four on sol, the rest DeepSeek: **A$74**, A$4 over, accepted. A$140 buys **nine** on sol (A$137); all twelve judges land at A$175 and breach it.
+
+<!-- prettier-ignore -->
+| Cache-read ceiling (per Mtok) | Normal day | 2-day gap | Models that survive |
+| --- | --- | --- | --- |
+| ≤ `$0.005` | ~$8 | ~$30 | `deepseek-v4.1-flash-1017` ($0.003) |
+| ≤ `$0.015` | ~$17 | ~$60 | + `minimax-m3.1-flash` ($0.015) |
+| ≤ `$0.04` | ~$47 | ~$150 | + `glm-5.3-flash` ($0.03) |
+| ≤ `$0.10` | ~$105 | ~$240 | + `gemini-4-argon` ($0.10), `gpt-6.1-sol` ($0.10) |
+| ≤ `$0.20` | ~$200 | ~$500 | + `kimi-k3.1-pro` ($0.20), `kimi-k3` ($0.19) |
+
+`grok-4.7` ($0.50 cache read) fails every row. **No single ceiling binds the column:** the cap is spent as a mix — the `$0.005` row on most agents, the `$0.10` row on as many judges as the remaining cap carries (§ LiveBench 2.0 board, Two presets).
+
+Cache-read prices on the current pins: `deepseek-v4.1-flash` $0.003, `glm-5.3-flash` $0.03 (haiku), `gpt-6.1-sol` and `gemini-4-argon` $0.10 (key gates).
+
+### LiveBench 2.0 board — 2026-10-25
+
+Re-probed `https://livebench.ai/data/20261025/table.csv` + `cost.csv` (§ Selecting pins § Sources). **Pin score = Long Agentic** — 2.0's headline category, weighted 2x in the overall, and the multi-turn long-horizon work every agent runs. **Coding = sanity check**, never the criterion. 2.0 replaced v1's single Agentic Coding category with seven, each its own task set: **v1 and 2.0 scores do not convert** — never carry a v1 number forward or bridge across the gap.
+
+**Bars (Claude, 2.0):** opus `claude-opus-5.5` **72.8** · sonnet `claude-sonnet-5.5` **63.4** · haiku `claude-haiku-5.5` **40.0**. All three are measured on this release — no bridging, no held-over 5.0 rows.
+
+<!-- prettier-ignore -->
+| Model | Long Agentic (pin) | Coding | Overall | LA $/task | OR endpoints | Pinnable on |
+| --- | --- | --- | --- | --- | --- | --- |
+| `claude-fable-5.1` | **77.9** | 97.7 | 85.7 | $928.31 | — | — (Claude) |
+| `gpt-6-astra` | **77.5** | 93.7 | 85.6 | $690.82 | 7 | or · zen |
+| `claude-opus-5.5` | **72.8** | 96.3 | 85.1 | $684.16 | — | **opus bar** |
+| `gpt-6.1-sol` | **68.7** | 96.0 | 84.1 | $116.78 | 8 | or · zen |
+| `claude-sonnet-5.5` | **63.4** | 94.7 | 80.0 | $630.21 | — | **sonnet bar** |
+| `gemini-4-argon` | **61.2** | 89.7 | 79.3 | $249.15 | 6 | or · zen · go |
+| `muse-wonder-1.0` | **52.6** | 86.2 | 74.2 | $249.07 | — | or · zen |
+| `gpt-6.1-terra` | **48.6** | 94.3 | 77.8 | $116.42 | 4 | or |
+| `grok-4.7` | **46.1** | 84.5 | 70.1 | $337.79 | 5 | or · zen · go |
+| `deepseek-v4.1-flash-1017` | **40.9** | 96.0 | 74.0 | $25.96 | 36 | or · ollama |
+| `claude-haiku-5.5` | **40.0** | 91.4 | 69.8 | $188.84 | — | **haiku bar** |
+| `kimi-k3.1-pro` | **39.1** | 81.8 | 71.3 | $133.67 | 2 | or · go |
+| `mimo-v2.6-pro` | **35.2** | 81.5 | 68.5 | $21.86 | 5 | or · go |
+| `gpt-5.6-terra` | **33.1** | 86.2 | 67.8 | $211.62 | 7 | or |
+| `gpt-6-luna` | **30.9** | 84.5 | 64.6 | $17.42 | 7 | or · zen · go |
+| `qwen3.8-max` | **29.9** | 60.3 | 61.6 | $268.74 | 2 | or · zen · go |
+| `minimax-m3.1-flash` | **28.8** | 83.9 | 66.9 | $19.50 | 12 | or · go · ollama |
+| `grok-4.6` | **28.0** | 89.1 | 67.8 | $184.39 | 6 | or · zen |
+| `kimi-k3` | **26.4** | 59.3 | 64.6 | $323.83 | 30 | or · zen · go · ollama |
+| `muse-spark-1.3` | **25.5** | 90.2 | 63.0 | $160.10 | — | or · zen |
+| `qwen3.8-27b` | **20.6** | 86.8 | 58.4 | $111.08 | — | or |
+| `step-5-preview` | **19.4** | 85.6 | 58.6 | $162.98 | 3 | or · go |
+| `glm-5.3-flash` | **19.0** | 80.6 | 62.1 | $29.32 | 38 | or · zen · go · ollama |
+| `gemini-3.8-flash` | **16.5** | 82.2 | 59.2 | $126.70 | 7 | or · zen |
+
+**`gpt-6.1-sol` is the only model over the sonnet bar the cap carries.** It pins the four key gates on `openrouter` and `opencode-zen`. `gpt-6-astra` (77.5) bills ~6x sol per task ($690.82) and stays on the `OpenAI`/Codex judges; the Claude rows bill more still.
+
+**One release is a weak signal.** `kimi-k3` read 42.8 on `20261014` and 26.4 on `20261025` for the same category, so a re-pin takes a second release as corroboration unless the gap exceeds the bar's margin. `$` is LiveBench's own direct-vendor basis; a gateway pin is billed at the gateway's price (Zen `deepseek-v4.1-flash` $0.30/$1.20, Go $0.15/$0.60, `gemini-4-argon` $2/$10 on both gateways).
+
+**Unmeasured on 2.0 — keep their v1 basis, do not re-derive:** `composer-2.5` and `cursor-grok-4.5-high` (Cursor), `gemini-3.8-pro` (Google/Antigravity).
+
+**Two presets, one budget.** Tables and the per-agent matrix live in `prompts.md` § Model Presets. _Judges_ = the 12 reviewers, verifiers and escalators (`prompts.md` § Models, Judges note); _builders_ = the other 27. _Key gates_ = the 4 judges where a miss passes downstream unchecked. The overflow column is capped against a Max subscription, A$300/month ≈ A$70/week, using the 2-day gap as the binding case.
+
+<!-- prettier-ignore -->
+| Preset | Judges | Builders | 2-day gap | Cap |
+| --- | --- | --- | --- | --- |
+| **Option 1 — default** | `gpt-6.1-sol` 68.7 on the four key gates; `deepseek-v4.1-flash-1017` 40.9 on eight | `deepseek-v4.1-flash-1017` 40.9 | **A$74** | A$70 |
+| **Option 2 — spend more** | `gpt-6.1-sol` 68.7 on nine; `deepseek-v4.1-flash-1017` on three | `deepseek-v4.1-flash-1017` 40.9 | **A$137** | A$140 |
+
+**Option 3 is retired.** Two templates only: the default that fits the cap, and one that doubles it for work that matters more than the week.
+
+**Option 1 puts its strong judges where a miss passes downstream unchecked.** The cap holds four `gpt-6.1-sol` agents, so they go to the key gates; the other eight judges run DeepSeek because the budget stops there. Reviewers must out-rank builders wherever the budget allows — that rule binds Option 2 and any consumer who raises the cap. Sol beats `gemini-4-argon` at the same token price: +7.5 Long Agentic, $116.78 per task against $249.15. Both totals are floors — `prompts.md` § Model Presets lists the unpriced costs (sol cache writes and long-prompt doubling, DeepSeek peak hours).
+
+**FX:** A$0.703/USD on 2026-10-27. The caps are weekly; a 2-day gap is the binding case at the measured profile.
+
+**Where the presets live:** `prompts.md` § Model Presets, in the managed region above `bkit:end` — the full 39-agent matrix with each option's model per agent, plus the copy-paste block for Option 2. **Option 1 needs no block: it is the shipped default.** Presets live above `bkit:end` because a consumer's § Model Overrides below it is preserved by install and upgrade — text placed there would never reach an existing install. That consumer region stays deliberately thin: a usage line and the empty table.
+
 ### Agentic-coding parity board
+
+**v1 generation — superseded by the 2.0 board above; kept as the v1 basis for models 2.0 has not measured.** LiveBench closed v1 at `2026-06-25`. 2.0 restarted the categories and weights, so the scores below do not convert to 2.0 — read them only against each other.
 
 Source: [LiveBench](https://livebench.ai/#/?cats=Agentic+Coding), release **2026-06-25** (`table_2026_06_25.csv` / `cost_2026_06_25.csv`, `LiveBench/new-livebench`). **Score** = mean of the category's three tasks (`javascript`, `typescript`, `python`), per `public/categories_<date>.json`. **$/task** = category dollars ÷ 72 questions, from LiveBench's own cost table. Process + sources: § Selecting pins. Artificial Analysis stays the source for price/latency and general capability; agentic-coding score decides a **pin**, because that is the workload every bkit agent runs.
 
@@ -588,13 +687,13 @@ Source: [LiveBench](https://livebench.ai/#/?cats=Agentic+Coding), release **2026
 <!-- prettier-ignore -->
 | Model | Score | $/task | Role in bkit |
 | --- | --- | --- | --- |
-| `deepseek-v4.1-flash` | **77.3** | $0.06 | every opencode column's opus+sonnet — dated `1017` snapshot on `openrouter` (35 endpoints) + `ollama` (`deepseek-v4.1-flash:1017`); the undated 2026-09-10 slug on both gateways; auto cache; clears 65.2. Haiku on `ollama` + `opencode-go` |
+| `deepseek-v4.1-flash` | **77.3** | $0.06 | every opencode column's opus+sonnet — dated `1017` snapshot on `openrouter` (35 endpoints) + `ollama` (`deepseek-v4.1-flash:1017`); the undated 2026-09-10 slug on both gateways; auto cache; 2.0: `1017` 40.9, 31.9 under the opus bar. Haiku on `ollama` + `opencode-go` |
 | `claude-opus-5-5` (max) | 71.7 | $4.48 | Claude opus pin at `max` |
 | `claude-opus-5-5` (xhigh) | 65.4 | $1.40 | Claude opus pin at `xhigh` — level with the opus target at about a quarter of the cost |
 | `claude-opus-5` (max) | **65.2** | $5.34 | **opus target** |
 | `deepseek-v4-flash-vision-exp` | 65.1 | $0.11 | **not pinned** — experimental; its own datasheet claims text parity with `deepseek-v4-flash-0731`, which measures 46.8. Score not trusted |
 | `qwen3.8-max` | 64.6 | $1.75 | **not pinned** — single endpoint (Alibaba) and **no caching available**: Alibaba requires explicit breakpoints and this slug is absent from its supported list |
-| `kimi-k3` | 62.2 | $1.76 | every opencode column's convergent — 17 OpenRouter endpoints, auto cache (reads 0.10x, writes free); both gateways bill $3/$15 per Mtok |
+| `kimi-k3` | 62.2 | $1.76 | **not pinned** — its $0.19 cache read breached every cap (§ Budget band); 17 OpenRouter endpoints, auto cache (reads 0.10x, writes free); both gateways bill $3/$15 per Mtok |
 | `claude-fable-5` (max) | 62.2 | $8.86 | not adopted — below Opus 5 at 1.7x the cost |
 | `qwen3.8-27b` | 61.4 | $1.52 | **not pinned** — 3.57M input tokens/task; `$0.95` on LiveBench's assumed price, `$1.52` at OpenRouter's |
 | `glm-5.3` | 60.9 | $1.60 | **not pinned** — 27 endpoints, auto cache; dominated by V4.1 Flash |
@@ -602,12 +701,12 @@ Source: [LiveBench](https://livebench.ai/#/?cats=Agentic+Coding), release **2026
 | `gemini-3.7-flash` | 58.3 | $0.42 | **not pinned** — under V4.1 Flash |
 | `claude-haiku-5-5` (max) | 57.2 | $0.21 | Claude haiku pin at `max` |
 | `grok-4.6` | 57.0 | $1.79 | **not pinned** — under V4.1 Flash, higher cost |
-| `glm-5.3-flash` | 56.8 | $0.11 | `openrouter` + `opencode-zen` haiku — 27 endpoints, auto cache; cheapest sufficient |
+| `glm-5.3-flash` | 56.8 | $0.11 | `openrouter` + `opencode-zen` haiku — 27 endpoints, auto cache; 2.0: 19.0, 21.0 under the haiku bar |
 | `grok-4.5` | 56.5 | $0.54 | `cursor` opus (ceiling; −2.9 vs sonnet target at a quarter the cost) |
 | `claude-sonnet-5-5` (max) | 56.3 | $5.57 | Claude sonnet pin at `max`. Python 35.0 at both efforts (n=20) |
 | `deepseek-v4-pro-0813` | 54.9 | $0.22 | **not pinned** — dominated by V4.1 Flash |
 | `claude-haiku-5-5` (xhigh) | **51.4** | $0.07 | **haiku target** — closest measured rung to bkit's `high` (CursorBench: `high` 42.3%, `xhigh` 44.3%) |
-| `gpt-6-luna` | 51.2 | $0.03 | `OpenAI` (Codex) haiku — existence via models.dev only |
+| `gpt-6-luna` | 51.2 | $0.03 | `OpenAI` (Codex) catalog — unused until a haiku tier exists; 2.0: 30.9 |
 | `claude-opus-4-8` (max) | 50.5 | $4.96 | superseded — shows the 4.8 → 5 generational jump (+14.7) |
 | `kimi-k2.7-code` | 45.7 | $0.39 | **not pinned** — dominated by `deepseek-v4.1-flash` (77.3 · $0.06) on every column that carries both |
 | `qwen3.7-max` | 43.6 | $0.80 | not pinned (anchor for the unmeasured `qwen3.7-plus`) |
@@ -623,17 +722,17 @@ Source: [LiveBench](https://livebench.ai/#/?cats=Agentic+Coding), release **2026
 
 ### Per-tier lineup across providers
 
-Cells show pin · score · $/task. Deltas are against that column's target. Convergent (CoT lens for risk/diagnosis agents) rides the same board.
+Cells show pin · score · $/task. Deltas are against that column's target. Key gates (the 4 judges named in `prompts.md` § Models) ride the same board.
 
 <!-- prettier-ignore -->
-| Provider | opus — target 65.2 | sonnet — target 59.4 | haiku — target ~51 | convergent | Notes |
+| Provider | opus — target 72.8 | sonnet — target 63.4 | haiku — target 40.0 | key gates | Notes |
 | --- | --- | --- | --- | --- | --- |
-| `claude` | `claude-opus-5-5` 65.4 at `xhigh` | `claude-sonnet-5-5` (see board) | `claude-haiku-5-5` at `high` (51.4 at `xhigh`) | (opus) | Pins are 5.5 ($4/$20 opus, $2/$10 sonnet, $0.10/$0.50 haiku, 1M context). Opus and sonnet targets stay the 5.0 scores (`claude-opus-5` **65.2** · $5.34, `claude-sonnet-5` **59.4** · $2.14): Opus 5.5 lands level at `xhigh`, and Sonnet 5.5's LiveBench rows don't read cleanly. Haiku target = Haiku 5.5 at `xhigh`. |
-| `openrouter` | `deepseek/deepseek-v4.1-flash-1017` 77.3 · $0.06 (+12.1) | same (+17.9) | `z-ai/glm-5.3-flash` 56.8 · $0.11 (+5.4) | `moonshotai/kimi-k3` 62.2 · $1.76 | Aggregator; broad catalog to re-pin from. Opus+sonnet collapse on V4.1 Flash (clears 65.2). **Dated `1017` snapshot pinned** — the undated alias is frozen on the 2026-09-10 snapshot and does not float. Haiku = GLM-5.3 Flash (cheapest sufficient). Convergent = Kimi K3 (distinct CoT). All three auto-cache. Never pin `anthropic/*` — column carries Claude-quota overflow. |
-| `cursor` | `cursor-grok-4.5-high` 56.5 · $0.54 (−8.7) | `composer-2.5` **n/m** | `composer-2.5` **n/m** | (opus) | Ceiling is grok-4.5 — no Cursor model reaches the opus target, which is the correct outcome, not a gap. `composer-2.5` is the one unresolved cell in the matrix: vendor-claimed ~ Opus 4.7 (which measures 50.7), never on LiveBench. Probe or override before relying on it for sonnet-tier work. Haiku stays `composer-2.5` too: the only measured first-party model over ~51 is `cursor-grok-4.5-high` (56.5), at about 8x the cost. |
-| `ollama` (cloud) | `deepseek-v4.1-flash:1017` 77.3 · $0.06 (+12.1) | same (+17.9) | `deepseek-v4.1-flash:1017` 77.3 · $0.06 (+25.9) | `kimi-k3` 62.2 · $1.76 | **Whole column needs a paid Ollama plan.** **No model variants** — the ollama provider builds catalog entries with none, so bkit omits `variant:` on this column (2.0 would reject it); agents run at opencode's default reasoning. Opus+sonnet+haiku collapse on V4.1 Flash (clears 65.2); convergent = Kimi K3 (distinct CoT), matching `openrouter`. The free `qwen3.5:397b` / `gpt-oss:20b` are unmeasured or ~10 — free-tier users re-pin in `prompts.md` § Model Overrides and accept unverified quality. |
-| `opencode-zen` | `opencode/deepseek-v4.1-flash` 77.3 · $0.06 (+12.1) | same (+17.9) | `opencode/glm-5.3-flash` 56.8 · $0.11 (+5.4) | `opencode/kimi-k3` 62.2 · $1.76 | Opus+sonnet re-pinned from `kimi-k2.7-code` (45.7 · $0.39): 2.0 hard-errors on a `variant:` the model does not expose, and `kimi-k2.7-code` exposes none. V4.1 Flash clears 65.2 and carries variants; **Zen bills it at $0.30/$1.20** (higher than the LiveBench $/task shown). Haiku = GLM-5.3 Flash. Convergent = Kimi K3 (distinct CoT), billed $3/$15. Existence-validated via models.dev. |
-| `opencode-go` | `opencode-go/deepseek-v4.1-flash` 77.3 · $0.06 (+12.1) | same (+17.9) | `opencode-go/deepseek-v4.1-flash` 77.3 · $0.06 (+25.9) | `opencode-go/kimi-k3` 62.2 · $1.76 | Budget open-weight plan. Convergent = Kimi K3 (distinct CoT) at $3/$15 per Mtok — the heaviest draw on the 5h window. `minimax-m3`/`qwen3.7-plus` not pinned (see the board). Prefer pins inside the Go 5h window. DeepSeek models need the workspace privacy setting on "Global regions". |
+| `claude` | `claude-opus-5-5` 72.8 — the bar | `claude-sonnet-5-5` 63.4 — the bar | `claude-haiku-5-5` 40.0 — the bar | (opus) | Pins are 5.5 ($4/$20 opus, $2/$10 sonnet, $0.10/$0.50 haiku, 1M context). Targets are the 5.5 scores on the 2.0 board: `claude-opus-5-5` **72.8**, `claude-sonnet-5-5` **63.4**, `claude-haiku-5-5` **40.0**. |
+| `openrouter` | `deepseek/deepseek-v4.1-flash-1017` 40.9 · $25.96 (−31.9) | same (−22.5) | `z-ai/glm-5.3-flash` 19.0 · $29.32 (−21.0) | `openai/gpt-6.1-sol` 68.7 · $116.78 (−4.1) | Aggregator; broad catalog to re-pin from. Opus+sonnet collapse on V4.1 Flash (the 40.9 workhorse sits 31.9 under the 72.8 opus bar). **Dated `1017` snapshot pinned** — the undated alias is frozen on the 2026-09-10 snapshot and does not float. Haiku = GLM-5.3 Flash — 21.0 under the bar and dearer per task than V4.1 Flash ($29.32 vs $25.96); no agent runs the haiku tier. Key gates = GPT-6.1 Sol, the only model over the sonnet bar the cap carries (§ Budget band). V4.1 Flash and GLM-5.3 Flash auto-cache. |
+| `cursor` | `cursor-grok-4.5-high` **n/m** | `composer-2.5` **n/m** | `composer-2.5` **n/m** | (opus) | Ceiling is grok-4.5 — no Cursor model reaches the opus target, which is the correct outcome, not a gap. `composer-2.5` is the one unresolved cell in the matrix: vendor-claimed ~ Opus 4.7 (v1 50.7, unmeasured on 2.0), never on LiveBench. Probe or override before relying on it for sonnet-tier work. Haiku stays `composer-2.5` too: the only first-party model measured over the v1 haiku bar is `cursor-grok-4.5-high` (v1 56.5, unmeasured on 2.0), at about 8x the cost. |
+| `ollama` (cloud) | `deepseek-v4.1-flash:1017` 40.9 · $25.96 (−31.9) | same (−22.5) | `deepseek-v4.1-flash:1017` 40.9 · $25.96 (+0.9) | `deepseek-v4.1-flash:1017` 40.9 · $25.96 (−31.9) | **Whole column needs a paid Ollama plan.** **No model variants** — the ollama provider builds catalog entries with none, so bkit omits `variant:` on this column (2.0 would reject it); agents run at opencode's default reasoning. Every tier and the key gates collapse on V4.1 Flash (the 40.9 workhorse sits 31.9 under the 72.8 opus bar) — nothing stronger in the catalog. The free `qwen3.5:397b` / `gpt-oss:20b` are unmeasured — free-tier users re-pin in `prompts.md` § Model Overrides and accept unverified quality. |
+| `opencode-zen` | `opencode/deepseek-v4.1-flash` **n/m** | same | `opencode/glm-5.3-flash` 19.0 · $29.32 (−21.0) | `opencode/gpt-6.1-sol` 68.7 · $116.78 (−4.1) | Opus+sonnet skip `kimi-k2.7-code` (unmeasured on 2.0): OpenCode 2.0 hard-errors on a `variant:` the model does not expose, and `kimi-k2.7-code` exposes none. The undated V4.1 Flash slug is the 2026-09-10 snapshot (models.dev `release_date`), not the `1017` refresh the 40.9 board row measures. It carries variants (`low/high/max`); **Zen bills it at $0.30/$1.20**. Haiku = GLM-5.3 Flash. Key gates = GPT-6.1 Sol. Existence-validated via models.dev. |
+| `opencode-go` | `opencode-go/deepseek-v4.1-flash` **n/m** | same | `opencode-go/deepseek-v4.1-flash` **n/m** | `opencode-go/gemini-4-argon` 61.2 · $249.15 (−11.6) | Budget open-weight plan. V4.1 Flash is the undated 2026-09-10 snapshot, as on Zen. Key gates = Gemini 4 Argon — Go serves no GPT-6.1 Sol; Argon is its strongest model under the cap. `minimax-m3`/`qwen3.7-plus` not pinned (see the board). Prefer pins inside the Go 5h window. DeepSeek models need the workspace privacy setting on "Global regions". |
 
 **n/m** = not measured on LiveBench (see the unmeasured list above) — the cell is a catalog/constraint choice, not a scored one.
 
@@ -646,12 +745,12 @@ Cloud OpenAI-compatible cells tool-call-smoked (`tools:` round-trip `tool_calls`
 ```
 | Prompt | Provider | Model |
 | --- | --- | --- |
-| bkit-build-plan-verify | openrouter | openrouter/deepseek/deepseek-v4-pro |
+| bkit-plan-review-2 | openrouter | openai/gpt-6.1-sol |
 ```
 
 `Provider` = host/install key (`cursor`, `openrouter`, `ollama`, …). Install merges overrides over defaults (override wins). Claude reads frontmatter; not overridable via table yet.
 
-**Cursor API-credit restore:** when you have third-party / additional API credits and want Claude Opus on Cursor workflows, use the paste block in `prompts.md` § Model Overrides (Claude-opus-tier → `claude-opus-5-thinking-high`) — that is the only way to close the −8.7 opus gap on Cursor. Sonnet-tier agents stay on shipped Composer/Grok (correct under per-tier targeting, not a shortfall) unless you opt into `gpt-5.6-sol-high`. Orchestrators `/design` `/plan` `/debug` = session model (set at launch), not the override table.
+**Cursor API-credit restore:** when you have third-party / additional API credits and want Claude Opus on Cursor workflows, use the paste block in `prompts.md` § Model Overrides (Claude-opus-tier → `claude-opus-5-thinking-high`) — that is the only way to put a Claude opus-tier model on Cursor (the first-party pins are unmeasured on 2.0, so the gap is not quantified). Sonnet-tier agents stay on shipped Composer/Grok (correct under per-tier targeting, not a shortfall) unless you opt into `gpt-5.6-sol-high`. Orchestrators `/design` `/plan` `/debug` = session model (set at launch), not the override table.
 
 ---
 
@@ -664,7 +763,7 @@ Cloud OpenAI-compatible cells tool-call-smoked (`tools:` round-trip `tool_calls`
 | Cursor | `AGENTS.md` (root, AGENTS.md spec) + `.cursor/rules/*.mdc` (MDC: markdown + optional YAML frontmatter with `description`, `globs`, `alwaysApply`) | Plain markdown / MDC |
 | Both (de-facto cross-host convention) | `AGENTS.md` increasingly read by all hosts incl. Claude Code, Codex, Cursor | Plain markdown |
 
-**Current setup:** `CLAUDE.md` + `.cursor/rules/bkit-rules.mdc` redirect to `.agents/rules.md`. `AGENTS.md` = cross-host dispatch spine (workflow router: tracker issue → label command dispatch), read by every host. **Host-scoped ownership:** `CLAUDE.md` ships `--claude` (Claude analog of `.cursor/rules/bkit-rules.mdc`, `--cursor`); `AGENTS.md` core (always). Each host brings redirect — no rule all three coexist. `--cursor`-only: no `CLAUDE.md`; `--claude`-only: no `.cursor/rules/`.
+**Current setup:** `CLAUDE.md` + `.cursor/rules/bkit-rules.mdc` redirect to `.agents/rules.md`. `AGENTS.md` = cross-host entry, read by every host: rules pointer, memory hygiene (memories hold pointers to docs, never copies) + workflow gate — prompt contains `bkit-{command}` → `.bkit/router.md` (command → each host's command file; bare `bkit-auto` → phase from the issue's labels); any other prompt → normal work under `.agents/rules.md`. **Host-scoped ownership:** `CLAUDE.md` ships `--claude` (Claude analog of `.cursor/rules/bkit-rules.mdc`, `--cursor`); `AGENTS.md` core (always). Each host brings redirect — no rule all three coexist. `--cursor`-only: no `CLAUDE.md`; `--claude`-only: no `.cursor/rules/`.
 
 **Transform:** managed-block markers (`<!-- bkit:start -->` … `<!-- bkit:end -->`). Inside regenerated; outside preserved.
 

@@ -19,7 +19,7 @@ import { gitEnv } from "../../ledgers/telemetry.js";
 import { actionHash, actionKey, alreadyDone, recordAction } from "../../ledgers/status.js";
 import { bodySkipToken, CommandError, DEV, EXIT, ghUnavailable, git, isSharedBranch, OUTPUT_LIMIT, parseJson, repoRoot, runGh, runGit, SKIP_CI_TOKEN, } from "../lib.js";
 import { bkitVersionStatus } from "../../shared/bkit-latest.js";
-import { landBackoffMs, landDir, pushToDev, sleep } from "../land.js";
+import { DEV_REFSPEC, fetchDev, landBackoffMs, landDir, pushToDev, sleep } from "../land.js";
 import { TIMEOUTS } from "../../shared/timeouts.js";
 import { activeRecord, commitBookkeeping, markRecordPushed, recordOnBranch, } from "./ledgers.js";
 import { releaseLock, resolveMonth, workflowLockPath } from "./locks.js";
@@ -28,7 +28,7 @@ import { AUTO_LABEL, AUTO_ROUTE_SUFFIX } from "./issues.js";
 import { appendFeature } from "./roadmap.js";
 import { detect } from "./runtime.js";
 import { readRuns, readStatusRows, readStatusRowsAt } from "./status.js";
-import { addAllButCopied, removeWorktree, worktreeDir } from "./worktrees.js";
+import { addAllButCopied, copyExcludes, removeWorktree, worktreeDir } from "./worktrees.js";
 import { COULD_NOT_RUN_EXIT_CODES, LOCKFILE_REGENERATE, installCommand, } from "../../shared/package-manager.js";
 import { str } from "./status.js";
 const REMOTE = "origin";
@@ -662,7 +662,7 @@ async function pushOwnCommits(cwd, rec, o, log, notPushed) {
         log(`the run's commit(s) ${gone.map((c) => c.slice(0, 12)).join(", ")} are no longer on ${rec.branch} — refusing to push`);
         return notPushed(EXIT_PUSH_FAILED);
     }
-    const fetched = runGit(cwd, ["fetch", REMOTE, `+refs/heads/${DEV}:refs/remotes/${UPSTREAM}`]);
+    const fetched = fetchDev(cwd);
     if (!fetched.ok) {
         log(`git fetch ${REMOTE} ${DEV} failed: ${fetched.stderr}`);
         return notPushed(EXIT_FETCH_FAILED);
@@ -1232,7 +1232,7 @@ function syncVerb(ctx) {
         throw new CommandError(EXIT.USAGE, "--merge-docs merges into HEAD; give --head or --merge-docs, not both");
     }
     const top = topLevel(ctx.cwd);
-    const fetch = runGit(top, ["fetch", REMOTE, DEV]);
+    const fetch = fetchDev(top);
     if (!fetch.ok) {
         ctx.log(`git fetch ${REMOTE} ${DEV} failed: ${fetch.stderr}`);
         return EXIT_FETCH_FAILED;
@@ -1297,7 +1297,7 @@ function syncVerb(ctx) {
  */
 function syncDevVerb(ctx) {
     const root = repoRoot(ctx.cwd);
-    const fetch = runGit(root, ["fetch", REMOTE, DEV]);
+    const fetch = fetchDev(root);
     if (!fetch.ok) {
         ctx.log(`git fetch ${REMOTE} ${DEV} failed: ${fetch.stderr}`);
         return EXIT_FETCH_FAILED;
@@ -1482,7 +1482,12 @@ async function landPr(ctx, root, o) {
         const tree = branchTree(root, o.branch);
         if (tree === null)
             throw new Stop(EXIT_LAND_STOPPED, `no checkout has ${o.branch} checked out — the PR close commits the roadmap row on it; nothing landed`);
-        runGit(tree, ["fetch", REMOTE, DEV, o.branch]);
+        runGit(tree, [
+            "fetch",
+            REMOTE,
+            DEV_REFSPEC,
+            `+refs/heads/${o.branch}:refs/remotes/${REMOTE}/${o.branch}`,
+        ]);
         appendFeature(tree, { workflow: o.workflow, fid: o.fid }, ctx.log);
         commitBookkeeping({
             root: tree,
@@ -1550,17 +1555,18 @@ async function landPr(ctx, root, o) {
     }
     if (sha === "")
         throw new Stop(EXIT_LAND_STOPPED, `could not resolve the landed SHA for PR ${prNumber}`);
-    if (!runGit(root, ["fetch", REMOTE, DEV]).ok)
+    if (!fetchDev(root).ok)
         throw new Stop(EXIT_LAND_STOPPED, "fetch of origin/dev after the merge failed");
     return { shape: "pr", transport, sha, prNumber: Number(prNumber), pushAttempts: 0 };
 }
 /**
  * Bring local dev up to `sha` when that is a pure fast-forward — `merge
  * --ff-only` when the main checkout is on dev, else move the branch pointer
- * alone; nothing is checked out or pushed. Local commits origin/dev lacks (listed
- * with the command that publishes them), or git refusing (an uncommitted edit the
- * move would overwrite, dev checked out in another worktree), skip it with a log
- * line: what landed is on origin/dev either way.
+ * alone; nothing is checked out or pushed. Local dev already past `sha` and on
+ * origin/dev (a later landing fast-forwarded it) is current. Local commits
+ * origin/dev lacks (listed with the command that publishes them), or git refusing
+ * (an uncommitted edit the move would overwrite, dev checked out in another
+ * worktree), skip it with a log line: what landed is on origin/dev either way.
  */
 function fastForwardDev(root, sha, log) {
     const local = git(root, ["rev-parse", "-q", "--verify", `refs/heads/${DEV}`]);
@@ -1568,8 +1574,11 @@ function fastForwardDev(root, sha, log) {
         return "none";
     if (local === sha)
         return "current";
-    if (!runGit(root, ["merge-base", "--is-ancestor", local, sha]).ok) {
-        const ahead = (git(root, ["log", "--format=%h %s", `${sha}..${local}`]) ?? "")
+    const isAncestor = (a, b) => runGit(root, ["merge-base", "--is-ancestor", a, b]).ok;
+    if (!isAncestor(local, sha)) {
+        if (isAncestor(sha, local) && isAncestor(local, UPSTREAM))
+            return "current";
+        const ahead = (git(root, ["log", "--format=%h %s", `${UPSTREAM}..${local}`]) ?? "")
             .split("\n")
             .filter((l) => l !== "");
         log(`local ${DEV} has ${ahead.length} commit(s) ${UPSTREAM} does not — not fast-forwarded:`);
@@ -1637,12 +1646,16 @@ function unpushedDevCause(root, inherited, total, then) {
     const which = inherited === total ? "all of them" : `${inherited} of them`;
     return `\n${which} are local ${DEV}'s content (tip ${tip}, ${ahead} commit(s) ahead of ${UPSTREAM}): this branch carries unpushed ${DEV} work — publish ${DEV} (git push ${REMOTE} ${DEV})${then}`;
 }
-/** Uncommitted or untracked files in the feature worktree; [] when there is no worktree. */
+/**
+ * Uncommitted or untracked files in the feature worktree; [] when there is no
+ * worktree. The worktree copy entries setup copied in (`copyExcludes`) are never
+ * committed, so they are not work left behind.
+ */
 function uncommitted(root, fid) {
     const wt = worktreeDir(root, fid);
     if (!fs.existsSync(wt))
         return [];
-    const status = runGit(wt, ["status", "--porcelain", "-uall"]);
+    const status = runGit(wt, ["status", "--porcelain", "-uall", "--", ".", ...copyExcludes(wt)]);
     if (!status.ok)
         return [`git status in ${wt} failed: ${status.stderr}`];
     return status.stdout.split("\n").filter((l) => l !== "");
@@ -1673,7 +1686,7 @@ async function landVerb(ctx) {
             }));
         if (typeof landed === "number")
             return landed;
-        runGit(root, ["fetch", REMOTE, DEV]);
+        fetchDev(root);
         const localDev = devPushes ? fastForwardDev(root, landed.sha, ctx.log) : null;
         // The audit: canonical docs on origin/dev, the landed body clean, the transport recorded.
         const docs = canonicalDocs(root, landed.sha, workflow, month, fid);

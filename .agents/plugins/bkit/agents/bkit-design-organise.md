@@ -1,7 +1,7 @@
 ---
 name: bkit-design-organise
 description: Senior architect decomposing reviewed designs into dependency-annotated workstreams.
-model: gemini-3.8-pro
+model: gemini-4-argon
 effort: high
 tools:
   - view_file

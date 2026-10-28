@@ -1,6 +1,6 @@
-// bkit context clamp|clamp-log|ledger-scan|diff|brief|list-blocks|run-block|finalise —
+// bkit context clamp|clamp-log|ledger-scan|diff|brief|list-blocks|run-block|finalise|provision —
 // size-bound context artifacts, write the run's diff and a build group's brief,
-// and fetch the consumer's evidence.
+// fetch the consumer's evidence, and run its cloud provision recipes.
 //
 // clamp is a runaway backstop, NOT a routine cap: a normal run never fires it.
 // Every removal is marked in place and footered. Profiles:
@@ -33,7 +33,11 @@ import {
   CONTEXT_FETCH_CONTEXTS,
   parseContextFetchStart,
 } from "../../checks/before/context-fetch.js";
-import { extractContextFetchProvisionRecipes } from "../../install/cloud-env.js";
+import {
+  UNAVAILABLE_RELPATH,
+  extractContextFetchProvisionRecipes,
+  renderCloudContextFetchProvision,
+} from "../../install/cloud-env.js";
 import { clampLogPath, readRecords } from "../../ledgers/clamp-log.js";
 import { lastRun } from "../../ledgers/status.js";
 import {
@@ -178,9 +182,12 @@ export const CLAMP_PROFILES = ["ledger", "debug-evidence", "ci", "e2e", "runtime
 
 /**
  * Lowercase substrings matched against a lowercased line. Broad: `error` also covers
- * `##[error]`, `fail` covers `FAILED`; the ceiling bounds over-matching.
+ * `##[error]`, `fail` covers `FAILED`; the ceiling bounds over-matching. Every profile keeps
+ * `===== TRUNCATED: … =====`, the line `.agents/context.md` asks every block to print when
+ * it stops short of its window, so a partial read never looks complete.
  */
 const SIGNALS = [
+  "===== truncated: ",
   "error",
   "fail",
   "exception",
@@ -229,7 +236,6 @@ const CONTEXT_MARKERS: Record<string, readonly string[]> = {
     "===== stripe ",
     "===== webhook deliveries failed",
     "===== eas builds",
-    "===== truncated: ",
   ],
 };
 
@@ -1584,8 +1590,7 @@ export const contextCommand: CommandSpec = {
         blocks: "[{idx, context, name, known, prefix, suffix, body}] in file order",
         coverage: "blocks per context (runtime, ci, diff, e2e, web)",
         contextsConfigured: "contexts with at least one block, in narration order",
-        provision:
-          "bash body of each context-fetch:provision block below bkit:end, in file order (bkit-cloud-bootstrap.sh runs them)",
+        provision: "bash body of each context-fetch:provision block below bkit:end, in file order",
       },
       run: (ctx) => {
         const blocks = fetchBlocks(consumerSection(readContextMd(ctx) ?? ""));
@@ -1617,6 +1622,17 @@ export const contextCommand: CommandSpec = {
         });
         return EXIT.OK;
       },
+    },
+    provision: {
+      summary:
+        "Run each context-fetch:provision recipe below bkit:end on its own and list the failed ones in .bkit/.unavailable.",
+      flags: [],
+      output: {
+        recipes: "recipes run",
+        unavailable: "[{name, reason}] for each failed recipe, in file order",
+        file: "the failure list's path from the repo root; null when none failed",
+      },
+      run: (ctx) => runProvision(ctx),
     },
     "run-block": {
       summary:
@@ -1856,7 +1872,8 @@ function runBlock(ctx: RunContext, render?: Render): number {
       source: fs.readFileSync(script, "utf-8"),
       fetchedAt,
     };
-    let payload = asCaptured(stdout);
+    const printed = asCaptured(stdout);
+    let payload = printed;
     let written: Render | null = null;
     if (render !== undefined) {
       const table = render === "table" ? tableOf(stdout) : null;
@@ -1876,6 +1893,10 @@ function runBlock(ctx: RunContext, render?: Render): number {
     if (written !== null) {
       const raw = clamp.raw ?? (keep.original ? outboxRel(path.dirname(out), keep.original) : null);
       clamp = { ...clamp, raw, render: written };
+    }
+    // Fetched is what the block printed; the table is only what the artifact keeps.
+    if (written === "table") {
+      clamp = { ...clamp, origLines: records(printed).length, origBytes: printed.length };
     }
     appendRecord(clampLogPath(ctx.cwd, fid, "context-fetch", attempt), clamp);
     fs.writeFileSync(out, fenced(fs.readFileSync(out)));
@@ -1900,5 +1921,46 @@ function runBlock(ctx: RunContext, render?: Render): number {
   ctx.emit(
     shape({ outcome: "silent", artifact: null, skip: null, clamp: null, reason: null }, null),
   );
+  return EXIT.OK;
+}
+
+/**
+ * Run the consumer's provision recipes through the same region the cloud setup scripts
+ * inline, with `REPO_ROOT` set so the region rewrites the failure list there. Recipe
+ * output goes to stderr; stdout carries only this command's report. Never fails on a
+ * recipe: a failure is reported, not raised.
+ */
+function runProvision(ctx: RunContext): number {
+  const repoRoot = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
+  const file = path.join(repoRoot, UNAVAILABLE_RELPATH);
+  const region = renderCloudContextFetchProvision(ctx.cwd);
+  const recipes = region === "" ? 0 : (region.match(/^bkit_provision '/gm) ?? []).length;
+  if (region === "") {
+    fs.rmSync(file, { force: true });
+  } else {
+    const res = spawnSync("bash", ["-c", `set -uo pipefail\n${region}`], {
+      cwd: ctx.cwd,
+      env: { ...process.env, REPO_ROOT: repoRoot },
+      stdio: ["ignore", 2, 2],
+    });
+    if (res.error) throw new CommandError(EXIT.USAGE, `bash did not run: ${res.error.message}`);
+  }
+  const unavailable = fs.existsSync(file)
+    ? fs
+        .readFileSync(file, "utf-8")
+        .split("\n")
+        .filter((l) => l !== "")
+        .map((l) => {
+          const at = l.indexOf(": ");
+          return at === -1
+            ? { name: l, reason: "" }
+            : { name: l.slice(0, at), reason: l.slice(at + 2) };
+        })
+    : [];
+  ctx.emit({
+    recipes,
+    unavailable,
+    file: unavailable.length === 0 ? null : UNAVAILABLE_RELPATH,
+  });
   return EXIT.OK;
 }

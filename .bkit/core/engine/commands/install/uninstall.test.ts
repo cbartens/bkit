@@ -1201,24 +1201,29 @@ describe("runUninstall — .claude/settings.json leaves no grants behind", () =>
   });
 });
 
-describe("runUninstall — .claude/bkit-cloud.md cleanup", () => {
-  it("deletes .claude/bkit-cloud.md when the claude host is uninstalled", async () => {
-    writeFile(".claude/bkit-cloud.md", "# generated cloud doc\nBKIT_GH_TOKEN=secret\n");
-    const result = await runUninstall(["claude"], makeCtx());
-    expect(fileExists(".claude/bkit-cloud.md")).toBe(false);
-    expect(result.deleted).toContain(path.join(".claude", "bkit-cloud.md"));
-  });
+describe.each(["claude", "cursor", "codex"] as const)(
+  "runUninstall — .%s/bkit-cloud.md cleanup",
+  (host) => {
+    const doc = `.${host}/bkit-cloud.md`;
 
-  it("dry-run reports the deletion but leaves the file on disk", async () => {
-    writeFile(".claude/bkit-cloud.md", "BKIT_GH_TOKEN=secret\n");
-    const result = await runUninstall(["claude"], makeCtx({ dryRun: true }));
-    expect(fileExists(".claude/bkit-cloud.md")).toBe(true);
-    expect(result.deleted).toContain(path.join(".claude", "bkit-cloud.md"));
-  });
+    it(`deletes ${doc} when the ${host} host is uninstalled`, async () => {
+      writeFile(doc, "# generated cloud doc\nBKIT_GH_TOKEN=secret\n");
+      const result = await runUninstall([host], makeCtx());
+      expect(fileExists(doc)).toBe(false);
+      expect(result.deleted).toContain(path.join(`.${host}`, "bkit-cloud.md"));
+    });
 
-  it("leaves .claude/bkit-cloud.md untouched when claude is NOT in the uninstall set", async () => {
-    writeFile(".claude/bkit-cloud.md", "BKIT_GH_TOKEN=secret\n");
-    await runUninstall(["core"], makeCtx());
-    expect(fileExists(".claude/bkit-cloud.md")).toBe(true);
-  });
-});
+    it("dry-run reports the deletion but leaves the file on disk", async () => {
+      writeFile(doc, "BKIT_GH_TOKEN=secret\n");
+      const result = await runUninstall([host], makeCtx({ dryRun: true }));
+      expect(fileExists(doc)).toBe(true);
+      expect(result.deleted).toContain(path.join(`.${host}`, "bkit-cloud.md"));
+    });
+
+    it(`leaves ${doc} untouched when ${host} is NOT in the uninstall set`, async () => {
+      writeFile(doc, "BKIT_GH_TOKEN=secret\n");
+      await runUninstall(["core"], makeCtx());
+      expect(fileExists(doc)).toBe(true);
+    });
+  },
+);

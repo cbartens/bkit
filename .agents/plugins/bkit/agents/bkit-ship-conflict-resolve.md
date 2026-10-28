@@ -1,7 +1,7 @@
 ---
 name: bkit-ship-conflict-resolve
 description: Senior engineer resolving mechanical rebase conflicts before handover.
-model: gemini-3.8-pro
+model: gemini-4-argon
 effort: medium
 tools:
   - view_file

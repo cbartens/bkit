@@ -12,7 +12,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
-import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { readTemplate } from "../../render/parts";
 
@@ -35,7 +35,15 @@ fs.writeFileSync(
 // dir, so tests use their own ids and clear them (plus the shared no-session bucket).
 // ---------------------------------------------------------------------------
 
-const STATE_DIR = path.join(os.tmpdir(), "bkit-rules-advisory");
+const STATE_DIR_NAME = `bkit-rules-advisory-${process.getuid!()}`;
+const STATE_DIR = path.join(os.tmpdir(), STATE_DIR_NAME);
+
+/** A temp root whose state dirs `names` exist and cannot be written. */
+function unwritableStateRoot(...names: string[]): string {
+  const root = fs.mkdtempSync(path.join(GENERATED, "tmp-"));
+  for (const name of names) fs.mkdirSync(path.join(root, name), { mode: 0o555 });
+  return root;
+}
 const safeKey = (id: string) => id.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 128);
 
 let sessionCounter = 0;
@@ -233,6 +241,18 @@ describe("opencode plugin — the rules-read advisory", () => {
     expect(second.threw).toBe(false);
     expect(second.advice).toContain(".agents/rules.md");
   });
+
+  it("opencode plugin advises once per session when no state dir can be written", async () => {
+    vi.stubEnv("TMPDIR", unwritableStateRoot("bkit-rules-advisory", STATE_DIR_NAME));
+    try {
+      const call = { tool: "read", sessionID: newSession(), id: "call-1", input: {} };
+      const advice: string[] = [];
+      for (let i = 0; i < 5; i += 1) advice.push((await runV2(plugin, call)).advice);
+      expect(advice.filter((a) => a.includes(".agents/rules.md"))).toHaveLength(1);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -258,8 +278,14 @@ const ANTIGRAVITY_HOOK = renderHook(
 function runHook(
   hook: string,
   input: string,
+  env: NodeJS.ProcessEnv = process.env,
 ): { status: number | null; stdout: string; stderr: string } {
-  const result = spawnSync(process.execPath, [hook], { input, encoding: "utf-8", timeout: 10_000 });
+  const result = spawnSync(process.execPath, [hook], {
+    input,
+    env,
+    encoding: "utf-8",
+    timeout: 10_000,
+  });
   return {
     status: result.status,
     stdout: result.stdout ?? "",
@@ -311,6 +337,15 @@ describe("codex hook — the rules-read advisory", () => {
     expect(second.status).toBe(0);
     expect(second.stdout.trim()).toBe("");
   });
+
+  it("an unwritable state dir returns the advisory once per session, not on every call", () => {
+    // Another user's state dir on a shared temp dir (Linux `/tmp`) cannot be written.
+    const env = { ...process.env, TMPDIR: unwritableStateRoot("bkit-rules-advisory") };
+    const payload = JSON.stringify({ tool_name: "Bash", session_id: newSession(), cwd: "/w" });
+    const runs = Array.from({ length: 5 }, () => runHook(CODEX_HOOK, payload, env));
+    expect(runs.map((r) => r.status)).toEqual([0, 0, 0, 0, 0]);
+    expect(runs.filter((r) => r.stdout.includes(".agents/rules.md"))).toHaveLength(1);
+  });
 });
 
 describe("antigravity hook — the rules-read advisory", () => {
@@ -341,7 +376,7 @@ describe("antigravity hook — the rules-read advisory", () => {
     });
     const retryFile = path.join(
       os.tmpdir(),
-      "bkit-antigravity-retry",
+      `bkit-antigravity-retry-${process.getuid!()}`,
       `rules.${safeKey(session)}.json`,
     );
     try {

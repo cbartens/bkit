@@ -1,7 +1,7 @@
 ---
 name: bkit-build-install-skills
 description: Senior technical lead matching feature requirements to relevant installable skills.
-model: gemini-3.8-pro
+model: gemini-4-argon
 effort: medium
 tools:
   - view_file

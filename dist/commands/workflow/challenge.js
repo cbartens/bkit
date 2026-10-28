@@ -24,6 +24,7 @@ import * as path from "node:path";
 import { appendLine, statusTimestamp } from "../../ledgers/status.js";
 import { CommandError, DEV, EXIT, git, runGit } from "../lib.js";
 import { DIFF_BASE, EXIT_BASE, diffNumstat } from "./context.js";
+import { parseDecisionItems } from "./decisions.js";
 import { EXIT_ROW_REFUSED, EXIT_STAGE, appendLedgerRows } from "./ledgers.js";
 import { derivedTestMatrix, parsePlanBlocks } from "./plan-blocks.js";
 import { readBkitConfig } from "../../shared/settings.js";
@@ -173,7 +174,8 @@ export function mergeFindings(reports, accepted) {
     return { findings, dropped: all.length - findings.length };
 }
 /**
- * Locations named in a `Decision: Accept` item of any `build-decision-*.md` in `logDir`. An
+ * Locations named in a `Decision: Accept` item of any `build-decision-*.md` in `logDir`, the
+ * decision read by `parseDecisionItems` (so `Decision: A) Accept …` counts). An
  * `Accept (assumed)` counts too, so the next round does not raise it again; the build summary
  * and ship report it as assumed.
  */
@@ -183,12 +185,12 @@ export function acceptedLocations(logDir, cwd) {
         ? fs.readdirSync(logDir).filter((f) => /^build-decision-.*\.md$/.test(f))
         : [];
     for (const file of files) {
-        const items = fs.readFileSync(path.join(logDir, file), "utf-8").split(/^(?=\*\*Q\d+)/m);
-        for (const item of items.slice(1)) {
-            if (!/^Decision:\s*Accept\b/m.test(item))
+        const items = parseDecisionItems(fs.readFileSync(path.join(logDir, file), "utf-8"));
+        for (const item of items) {
+            if (!/^Accept\b/.test(item.decision ?? ""))
                 continue;
             // `path:line`, the path with or without an extension (`src/a.ts:10`, `Makefile:12`).
-            for (const m of item.matchAll(/(?<![\w@./-])[\w@./-]*[A-Za-z_][\w@./-]*:\d+/g)) {
+            for (const m of item.text.matchAll(/(?<![\w@./-])[\w@./-]*[A-Za-z_][\w@./-]*:\d+/g)) {
                 const loc = normalizeLocation(m[0], cwd);
                 if (loc !== null)
                     out.add(loc);

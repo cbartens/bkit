@@ -336,13 +336,12 @@ describe("bkit context clamp — per-context profiles (#697)", () => {
    * One section header per context, each carrying no base signal word, buried past the
    * kept head and tail. The `ci` marker is `bkit-github.md`'s `===== job … =====`; the
    * `e2e` marker is `bkit-playwright.md`'s `===== file: … =====`; the `runtime` marker is
-   * `bkit-vercel.md`'s `===== TRUNCATED: … =====`.
+   * `bkit-cloudrun.md`'s `===== cloud run … =====`.
    */
   const HEADERS: Record<string, string> = {
     ci: "===== job build =====",
     e2e: "===== file: test-results/checkout/missing.md (first 300 lines) =====",
-    runtime:
-      "===== TRUNCATED: stopped at VERCEL_MAX_PAGES=20 — lines older than 2026-01-31T22:50:00Z NOT read =====",
+    runtime: "===== cloud run my-service, freshness 4h — 3 entr(ies), newest 50 max =====",
   };
   const PROFILES = ["ci", "e2e", "runtime"];
 
@@ -411,6 +410,19 @@ describe("bkit context clamp — per-context profiles (#697)", () => {
     const r = await clamp(f, "ci");
     expect(r.json).toMatchObject({ clamped: true });
     expect(read(f)).toContain("===== job build =====");
+  });
+
+  it("every evidence profile keeps a buried ===== TRUNCATED: … ===== line", async () => {
+    // The page-cap line `.agents/context.md` § Authoring your own asks every block to print.
+    const line = "===== TRUNCATED: stopped at CI_MAX_PAGES=5 — older runs NOT read =====";
+    for (const profile of [...PROFILES, "debug-evidence"]) {
+      const body = quietLines(9000);
+      body[4500] = line;
+      const f = write(`truncated-${profile}.md`, body.join("\n") + "\n");
+      const r = await clamp(f, profile);
+      expect(r.json, profile).toMatchObject({ clamped: true });
+      expect(read(f), `${profile} must keep the TRUNCATED line`).toContain(line);
+    }
   });
 });
 
@@ -929,6 +941,62 @@ describe("bkit context list-blocks", () => {
   });
 });
 
+describe("bkit context provision", () => {
+  const recipe = (name: string, body: string) => [
+    `<!-- context-fetch:provision ${name} -->`,
+    "```bash",
+    body,
+    "```",
+    "<!-- context-fetch:end -->",
+  ];
+  const unavailable = (dir: string) => path.join(dir, ".bkit/.unavailable");
+
+  it("runs every recipe, lists each failed one with its last error line, and keeps going", async () => {
+    const dir = path.join(tmpDir, "pv");
+    write(
+      "pv/.agents/context.md",
+      [
+        "<!-- bkit:end -->",
+        ...recipe(
+          "db",
+          'echo "pulling" >&2\necho "db unavailable: 3 GB free, needs 10 GB" >&2\nexit 1',
+        ),
+        ...recipe("ok", "touch ran-ok"),
+        ...recipe("cli", "false"),
+      ].join("\n"),
+    );
+    const r = await run(["provision"], dir);
+    expect(r.code).toBe(0);
+    expect(fs.existsSync(path.join(dir, "ran-ok"))).toBe(true);
+    expect(r.json.recipes).toBe(3);
+    expect(r.json.unavailable).toEqual([
+      { name: "db", reason: "db unavailable: 3 GB free, needs 10 GB" },
+      { name: "cli", reason: "exit 1" },
+    ]);
+    expect(r.json.file).toBe(".bkit/.unavailable");
+    expect(fs.readFileSync(unavailable(dir), "utf-8")).toBe(
+      "db: db unavailable: 3 GB free, needs 10 GB\ncli: exit 1\n",
+    );
+  });
+
+  it("removes a stale failure file once every recipe succeeds", async () => {
+    const dir = path.join(tmpDir, "pv-ok");
+    write("pv-ok/.agents/context.md", ["<!-- bkit:end -->", ...recipe("ok", "true")].join("\n"));
+    write("pv-ok/.bkit/.unavailable", "ok: old failure\n");
+    const r = await run(["provision"], dir);
+    expect(r.json).toMatchObject({ recipes: 1, unavailable: [], file: null });
+    expect(fs.existsSync(unavailable(dir))).toBe(false);
+  });
+
+  it("with no recipes, runs nothing and removes a stale failure file", async () => {
+    const dir = fs.mkdtempSync(path.join(tmpDir, "pv-none-"));
+    write(`${path.basename(dir)}/.bkit/.unavailable`, "x: old\n");
+    const r = await run(["provision"], dir);
+    expect(r.json).toMatchObject({ recipes: 0, unavailable: [], file: null });
+    expect(fs.existsSync(unavailable(dir))).toBe(false);
+  });
+});
+
 describe("bkit context run-block / finalise (#427 T4)", () => {
   function workspace() {
     const dir = fs.mkdtempSync(path.join(tmpDir, "fetch-"));
@@ -1190,6 +1258,20 @@ describe("bkit context run-block / finalise (#427 T4)", () => {
     expect(r.json.clampSummary).toEqual({
       ci: expect.objectContaining({ artifacts: 1, table: 1, raw: 0 }),
     });
+  });
+
+  it("finalise totals a rendered fetch's origBytes as the bytes the block printed", async () => {
+    const dir = workspace();
+    const printed = `[${Array.from({ length: 3 }, (_, i) => `{"name":"widget-${i}","state":"open"}`).join(",")}]`;
+    const fetched = await run(["fetch", "--idx=1", script(dir, `echo '${printed}'`), ...base], dir);
+    expect(fetched.json.render).toBe("table");
+    const r = await run(["finalise", ...base], dir);
+    const ci = r.json.clampSummary.ci;
+    expect(ci.origLines).toBe(1);
+    expect(ci.origBytes).toBe(Buffer.byteLength(`${printed}\n`));
+    // The table is what the artifact holds: header, divider and one row per object.
+    expect(ci.keptLines).toBe(5);
+    expect(ci.keptBytes).not.toBe(ci.origBytes);
   });
 
   it("finalise with no artifacts is FAIL", async () => {

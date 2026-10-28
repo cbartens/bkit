@@ -1,7 +1,7 @@
 # <!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
 name = "bkit-design-brainstorm-ideate-1"
 description = "Senior architect proposing 2-3 pragmatic design approaches — existing code, minimal new infra, explicit trade-offs."
-model = "gpt-6-astra"
+model = "gpt-6.1-sol"
 model_reasoning_effort = "high"
 developer_instructions = """
 **Role:** Senior architect proposing 2-3 pragmatic design approaches — existing code, minimal new infra, explicit trade-offs.

@@ -3,6 +3,7 @@
 
 import { type EffortMap, formatModelPin, lookupEffort } from "./models.js";
 import { LOG_PREFIX } from "../shared/log-prefix.js";
+import type { OpencodeProvider } from "../shared/egress.js";
 
 /**
  * Convert a Claude `tools:` frontmatter block (a YAML array of capitalized tool names,
@@ -87,17 +88,108 @@ export function antigravityToolsBlock(toolsBlock: string | null): string {
 }
 
 /**
+ * Thinking-effort values each model exposes on each variant-carrying opencode gateway
+ * (`reasoning_options` effort values in models.dev, read 2026-10-28; models.dev provider
+ * `opencode` = bkit key `opencode-zen`). One model can differ per gateway — `deepseek-v4.1-flash`
+ * has `none` on OpenRouter only — and OpenCode hard-errors on a `variant:` the model does not
+ * expose there. An empty list = `toggle`-only or no reasoning options: no effort variant at all.
+ * ollama has no entry: it carries no variant on any model (applyOpencodeAgent skips it). An
+ * unlisted gateway or model passes the mapped value through unchanged.
+ */
+const OPENCODE_VARIANT_LEVELS: Record<
+  Exclude<OpencodeProvider, "ollama">,
+  Record<string, string[]>
+> = {
+  openrouter: {
+    "deepseek-v4.1-flash": ["none", "low", "high", "max"],
+    "minimax-m3.1-flash": ["low", "medium", "high", "xhigh", "max"],
+    "glm-5.3-flash": ["low", "high", "max"],
+    "gemini-4-argon": ["low", "medium", "high"],
+    "gpt-6.1-sol": ["low", "medium", "high", "xhigh", "max"],
+    "mimo-v2.6-pro": [],
+    "kimi-k3": ["none", "low", "high", "max"],
+  },
+  "opencode-zen": {
+    "deepseek-v4.1-flash": ["low", "high", "max"],
+    "minimax-m3.1-flash": ["low", "medium", "high", "xhigh", "max"],
+    "glm-5.3-flash": ["low", "high", "max"],
+    "gemini-4-argon": ["low", "medium", "high"],
+    "gpt-6.1-sol": ["low", "medium", "high", "xhigh", "max"],
+    "kimi-k3": ["low", "high", "max"],
+  },
+  "opencode-go": {
+    "deepseek-v4.1-flash": ["low", "high", "max"],
+    "minimax-m3.1-flash": ["low", "medium", "high", "xhigh", "max"],
+    "glm-5.3-flash": ["low", "high", "max"],
+    "gemini-4-argon": ["low", "medium", "high"],
+    "mimo-v2.6-pro": [],
+    "kimi-k3": ["max"],
+  },
+};
+
+const VARIANT_RANK = ["none", "low", "medium", "high", "xhigh", "max"];
+
+/**
+ * Models at or above the sonnet bar on the LiveBench 2.0 board (`providers.md` § LiveBench 2.0
+ * board). They keep the agent's own Claude effort on opencode; every other model takes the
+ * "OpenCode" ladder, which raises it to the top rung to close the gap to the bar.
+ */
+const OPENCODE_AT_BAR_MODELS = [
+  "claude-fable-5.1",
+  "gpt-6-astra",
+  "claude-opus-5.5",
+  "gpt-6.1-sol",
+  "claude-sonnet-5.5",
+];
+
+/** The effort ladder for `model` on opencode: the agent's own for an at-bar model, else "opencode". */
+function opencodeEffortProgram(model: string): string {
+  const slug = model.split("/").pop() ?? model;
+  return OPENCODE_AT_BAR_MODELS.includes(slug) ? "claude" : "opencode";
+}
+
+/**
+ * The variant to emit for `model` on gateway `provider` at mapped `variant`: the value itself
+ * when the model exposes it there, else the highest level it does expose at or under it, else
+ * its lowest. A model with no effort control gets null, so no `variant:` line is written.
+ */
+export function clampOpencodeVariant(
+  provider: string,
+  model: string,
+  variant: string | null,
+): string | null {
+  if (!variant) return null;
+  const gatewayLevels = Object.entries(OPENCODE_VARIANT_LEVELS).find(
+    ([gateway]) => gateway === provider,
+  )?.[1];
+  if (!gatewayLevels) return variant;
+  const slug = Object.keys(gatewayLevels)
+    .sort((a, b) => b.length - a.length)
+    .find((key) => model.split("/").pop()?.includes(key) || model.includes(key));
+  if (!slug) return variant;
+  const levels = gatewayLevels[slug];
+  if (levels.length === 0) return null;
+  if (levels.includes(variant)) return variant;
+  const wanted = VARIANT_RANK.indexOf(variant);
+  const atOrUnder = levels
+    .filter((l) => VARIANT_RANK.indexOf(l) <= wanted)
+    .sort((a, b) => VARIANT_RANK.indexOf(b) - VARIANT_RANK.indexOf(a));
+  return atOrUnder[0] ?? levels[0];
+}
+
+/**
  * OC1: opencode agent frontmatter rewrite.
  * Emits: mode, name, description, model, tools (Claude array → opencode object map),
- * variant (the effort table's value for this agent, from the one shared "OpenCode"
- * ladder). The variant is a SEPARATE field, not a `#`-suffix on the model: 1.x reads
- * `variant:` natively, 2.0 joins `model` + `variant` internally, and a variant joined
- * to the model string with `#` breaks 1.x (its model id lookup keeps the suffix). The
- * ollama gateway is exempt from `variant:` — its provider builds model entries with no
- * variants, so any variant there is a hard 2.0 error; omit it and let opencode use its
- * own default. Drops: Claude-only fields (permissionMode, maxTurns, is_background,
- * readonly) and the original effort field. Hard-fails with non-zero exit if model
- * lookup missing for name.
+ * variant (the effort table's value for this agent from the one shared "OpenCode" ladder, or
+ * the agent's own Claude effort on an at-bar model, clamped by clampOpencodeVariant to what
+ * the pinned model exposes on this gateway). The
+ * variant is a SEPARATE field, not a `#`-suffix on the model: 1.x reads `variant:` natively,
+ * 2.0 joins `model` + `variant` internally, and a variant joined to the model string with `#`
+ * breaks 1.x (its model id lookup keeps the suffix). The ollama gateway is exempt from
+ * `variant:` — its provider builds model entries with no variants, so any variant there is a
+ * hard 2.0 error; omit it and let opencode use its own default. Drops: Claude-only fields
+ * (permissionMode, maxTurns, is_background, readonly) and the original effort field.
+ * Hard-fails with non-zero exit if model lookup missing for name.
  */
 export function applyOpencodeAgent(
   content: string,
@@ -123,14 +215,19 @@ export function applyOpencodeAgent(
   } else {
     newFm += `description: ${description}\n`;
   }
-  // Thinking effort is a model variant in its own `variant:` field. Program-keyed: every
-  // opencode gateway shares the one "OpenCode" ladder; the gateway is not consulted —
-  // except ollama, which cannot carry a variant at all (see the function docstring).
+  // Thinking effort is a model variant in its own `variant:` field. Every opencode gateway
+  // shares the one "OpenCode" ladder, except that an at-bar model keeps the agent's own
+  // effort; the gateway decides only which rungs the pinned model exposes, and ollama
+  // carries no variant at all (see the function docstring).
   const modelPin = formatModelPin("opencode", provider ?? "", opencodeModel);
   newFm += `model: ${modelPin}\n`;
   const variant =
     provider !== "ollama" && effort && effortMap
-      ? lookupEffort(effortMap, "opencode", effort)
+      ? clampOpencodeVariant(
+          provider ?? "",
+          opencodeModel,
+          lookupEffort(effortMap, opencodeEffortProgram(opencodeModel), effort),
+        )
       : null;
   if (variant) newFm += `variant: ${variant}\n`;
   newFm += opencodeToolsBlock(toolsBlock);
@@ -494,7 +591,10 @@ export function applyAntigravityPrompt(
   }
   newFm += `model: ${formatModelPin("antigravity", "google", model)}\n`;
   if (effort && effortMap) {
-    newFm += `effort: ${lookupEffort(effortMap, "antigravity", effort)}\n`;
+    // Same per-model ceiling as opencode's variant: gemini-4-argon stops at `high`, so an
+    // xhigh/max agent must not ask Antigravity for a rung the model does not expose.
+    const mapped = lookupEffort(effortMap, "antigravity", effort);
+    newFm += `effort: ${mapped === "max" && model.includes("gemini-4-argon") ? "high" : mapped}\n`;
   }
   newFm += antigravityToolsBlock(toolsBlock);
   newFm += "---\n";

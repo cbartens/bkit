@@ -1,7 +1,7 @@
 ---
 name: bkit-debug-failure-diagnose
 description: Senior debug engineer specialising in CI / runtime failure root-cause analysis.
-model: gemini-3.8-pro
+model: gemini-4-argon
 effort: high
 tools:
   - view_file
