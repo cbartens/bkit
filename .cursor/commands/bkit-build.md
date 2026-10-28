@@ -119,6 +119,7 @@ Build Feature — Autonomous implementation
      ```bash
      "{BKIT}" status row --file="{STATUS}" --workflow=build --type=owner-answer >/dev/null || exit 1
      ```
+   - A reply that names a letter (`B`, `B)` or `B) {option}`) means the option that letter labels.
    - Route:
      - **If** the human says stop, **or** answers `Stop` → step 8.
      - **If** the loop question = `Try again` → step 6; the items need no decision.

@@ -904,21 +904,59 @@ describe("autoCompactWindow — Claude-only per-agent compaction window", () => 
   });
 });
 
-describe("clampOpencodeVariant — the variant a model actually exposes", () => {
+describe("clampOpencodeVariant — the variant a model actually exposes on its gateway", () => {
   it("clamps max down to the model's top rung", () => {
-    expect(clampOpencodeVariant("google/gemini-4-argon", "max")).toBe("high");
-    expect(clampOpencodeVariant("z-ai/glm-5.3-flash", "max")).toBe("max");
-    expect(clampOpencodeVariant("xiaomi/mimo-v2.6-pro-ultraspeed", "max")).toBeNull();
+    expect(clampOpencodeVariant("openrouter", "google/gemini-4-argon", "max")).toBe("high");
+    expect(clampOpencodeVariant("openrouter", "z-ai/glm-5.3-flash", "max")).toBe("max");
+    expect(clampOpencodeVariant("openrouter", "xiaomi/mimo-v2.6-pro-ultraspeed", "max")).toBeNull();
   });
 
-  it("keeps a supported value and passes unknown models through", () => {
-    expect(clampOpencodeVariant("deepseek/deepseek-v4.1-flash-1017", "max")).toBe("max");
-    expect(clampOpencodeVariant("vendor/unlisted-model", "max")).toBe("max");
-    expect(clampOpencodeVariant("x/anything", null)).toBeNull();
+  it("keeps a supported value and passes unknown models and gateways through", () => {
+    expect(clampOpencodeVariant("openrouter", "deepseek/deepseek-v4.1-flash-1017", "max")).toBe(
+      "max",
+    );
+    expect(clampOpencodeVariant("openrouter", "vendor/unlisted-model", "max")).toBe("max");
+    expect(clampOpencodeVariant("custom-gateway", "deepseek-v4.1-flash", "none")).toBe("none");
+    expect(clampOpencodeVariant("openrouter", "x/anything", null)).toBeNull();
   });
 
   it("raises a rung the model cannot express to its lowest", () => {
-    expect(clampOpencodeVariant("minimax/minimax-m3.1-flash", "none")).toBe("low");
+    expect(clampOpencodeVariant("openrouter", "minimax/minimax-m3.1-flash", "none")).toBe("low");
+  });
+
+  it("clamps none to low for deepseek-v4.1-flash on opencode-zen and opencode-go", () => {
+    expect(clampOpencodeVariant("opencode-zen", "deepseek-v4.1-flash", "none")).toBe("low");
+    expect(clampOpencodeVariant("opencode-go", "deepseek-v4.1-flash", "none")).toBe("low");
+    expect(clampOpencodeVariant("openrouter", "deepseek/deepseek-v4.1-flash-1017", "none")).toBe(
+      "none",
+    );
+  });
+
+  it("reads kimi-k3's effort levels per gateway — none of them is toggle-only", () => {
+    expect(clampOpencodeVariant("openrouter", "moonshotai/kimi-k3", "none")).toBe("none");
+    expect(clampOpencodeVariant("opencode-zen", "kimi-k3", "none")).toBe("low");
+    expect(clampOpencodeVariant("opencode-go", "kimi-k3", "none")).toBe("max");
+  });
+
+  it("writes no variant for mimo-v2.6-pro on opencode-go", () => {
+    expect(clampOpencodeVariant("opencode-go", "mimo-v2.6-pro", "max")).toBeNull();
+  });
+});
+
+describe("applyOpencodeAgent — the clamp follows the gateway", () => {
+  const lowAgent = `---\nname: build-plan\ndescription: desc\neffort: low\nmodel: claude-sonnet-5-5\n---\nBody.\n`;
+
+  it("renders low effort on deepseek-v4.1-flash as variant: low on Zen and Go, none on OpenRouter", () => {
+    const gatewayLookup = new Map([["build-plan", "deepseek-v4.1-flash"]]);
+    for (const provider of ["opencode-zen", "opencode-go"]) {
+      expect(applyOpencodeAgent(lowAgent, gatewayLookup, effortMap, provider)).toContain(
+        "variant: low\n",
+      );
+    }
+    const openrouterLookup = new Map([["build-plan", "deepseek/deepseek-v4.1-flash-1017"]]);
+    expect(applyOpencodeAgent(lowAgent, openrouterLookup, effortMap, "openrouter")).toContain(
+      "variant: none\n",
+    );
   });
 });
 

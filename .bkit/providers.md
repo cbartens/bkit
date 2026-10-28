@@ -141,7 +141,7 @@ Persistent variant: `RunAtLoad` LaunchAgent plist (`~/Library/LaunchAgents/`) wi
 | --- | --- | --- | --- | --- |
 | `name` | required | required | required | kebab-case, must match filename. Identical. |
 | `description` | required | required | required | Identical. |
-| `effort` | required (`low` / `medium` / `high` / `xhigh` / `max` — last two model-gated, Opus-only on current models) | not supported | emitted as a separate `variant:` field | Drop on Cursor. `applyOpencodeAgent` reads the § Effort **OpenCode** column and writes it to `variant:` (not a `#`-suffix on the model — 1.x keeps the suffix in its model id and fails lookup); the OpenCode column ceilings out, so `medium` / `high` / `xhigh` / `max`→`max`, `low`→`none`. The **ollama** gateway omits `variant:` entirely: its provider builds models with no variants, so any variant there is a hard 2.0 error. |
+| `effort` | required (`low` / `medium` / `high` / `xhigh` / `max` — last two model-gated, Opus-only on current models) | not supported | emitted as a separate `variant:` field | Drop on Cursor. `applyOpencodeAgent` reads the § Effort **OpenCode** column and writes it to `variant:` (not a `#`-suffix on the model — 1.x keeps the suffix in its model id and fails lookup); the OpenCode column ceilings out, so `medium` / `high` / `xhigh` / `max`→`max`, `low`→`none`, then `clampOpencodeVariant` clamps that to what the pinned model exposes on the gateway (`prompts.md` § Effort). The **ollama** gateway omits `variant:` entirely: its provider builds models with no variants, so any variant there is a hard 2.0 error. |
 | `tools` | required (e.g. `[Read, Grep, Glob, Write, Edit, Bash, WebFetch, WebSearch]`) | supported (allowlist) + `disallowedTools` denylist | object map `{ <tool>: true }` | Identity mapping on Cursor (verified), not enforced by Cursor CLI 2026.10.01 (measured: a `tools: [Read]` subagent keeps `Shell` / `Write` / every MCP tool). opencode: built-ins lowercased; `mcp__<server>__<tool>` respelled `<server>_<tool>` (`mcp__serena__*` → `serena_*`). |
 | `permissionMode` | required (`acceptEdits` standard) | not supported | not supported | Drop on Cursor and opencode. |
 | `maxTurns` | required | not supported | not supported | Drop on Cursor and opencode. |
@@ -301,7 +301,7 @@ Per-action gates, all five hosts, subagents included. Overview only; per-host en
 | `guardrails-read.js` | Cursor, Google Antigravity `guardrails` | `classifyRead` over `secretFileKind`: deny `*.pem` / `*.p12` / `id_rsa`, ask `.env` / `.env.*` (not `.env.example`) |
 | `preflight-linear.sh` | Claude, Cursor `preflight` | Linear key / issue checks, GraphQL query, `bkit:auto` + terminal-state guards |
 | `preflight-rules.sh` | Claude, Cursor `preflight` | the rules-read advisory sentence and its `emit_context` call, merged into the one SessionStart JSON document |
-| `session-rules-advisory.js` | opencode, Codex, Google Antigravity `rules` | the rules-read advisory sentence plus the once-per-session helper (`rulesReadAdviceOnce`, OS-temp state, 24h GC) |
+| `session-rules-advisory.js` | opencode, Codex, Google Antigravity `rules` | the rules-read advisory sentence plus the once-per-session helper (`rulesReadAdviceOnce`, per-user OS-temp state, 24h GC) |
 
 Per host, outside the parts: Claude `gateguard` / `guardrails` — `require` + `hookSpecificOutput` driver, guardrails advisory-only; Cursor — `{ permission }` output, guardrails `Read|TabRead` path extraction, gateguard workspace-relative path resolve; Codex — `apply_patch` envelope parser, ask tier emitted as advisory; Google Antigravity — `antigravity-hook.js` envelope conversion + deny-once delivery, `{ decision, reason }` driver, `write_to_file` / `replace_file_content` edit tools (path `TargetFile`), `view_file` and `run_command` (`CommandLine`); opencode — ES module, `write` / `edit` / `patch` (`apply_patch`) vocabulary, every `*** Add|Update|Delete File:` / `*** Move to:` target of a `patchText` checked (deny mode blocks if any target is a first touch), checklist appended to the tool result in `execute.after` + throw from `execute.before` to block (2.0 exposes no pre-edit context hook, and stderr does not reach the model); `preflight` — trigger (Claude `LINEAR_ISSUE_ID`, Cursor `is_background_agent` + `.bkit/.runtime-cursor` marker), Claude-only Darwin brew check, `emit_context` shape.
 
@@ -350,7 +350,7 @@ Advisory hook, on all five hosts (Claude Code, Cursor, Codex, Google Antigravity
 
 ### ReadGuard
 
-Advisory repeat-read hook, on all five hosts. A read of a line range the same agent already read in this conversation, file unchanged since (same mtime + size), gets a note: use the earlier output; re-read only if it left context (summarised, or read by another agent). Tracks read-tool calls (`offset` / `limit`, `StartLine` / `EndLine`; no limit → first 2000 lines, opencode → whole file) and plain shell reads — `cat FILE`, `sed -n 'A,Bp' FILE`, `head` / `tail` with a line count; pipes, lists, redirects, substitutions, globs and other programs are not tracked. Ranges merge per file; a changed file starts a fresh log. **fail-open**, never blocks, log in OS temp (`bkit-readguard/`), 24h TTL. `BKIT_READGUARD=off` → disabled.
+Advisory repeat-read hook, on all five hosts. A read of a line range the same agent already read in this conversation, file unchanged since (same mtime + size), gets a note: use the earlier output; re-read only if it left context (summarised, or read by another agent). Tracks read-tool calls (`offset` / `limit`, `StartLine` / `EndLine`; no limit → first 2000 lines, opencode → whole file) and plain shell reads — `cat FILE`, `sed -n 'A,Bp' FILE`, `head` / `tail` with a line count; pipes, lists, redirects, substitutions, globs and other programs are not tracked. Ranges merge per file; a changed file starts a fresh log. **fail-open**, never blocks, log in per-user OS temp (`bkit-readguard-<uid>/`; kept in memory when that cannot be written), 24h TTL. `BKIT_READGUARD=off` → disabled.
 
 <!-- prettier-ignore -->
 | Host | File | Registration | Delivery | Log key | Reset on summary |
@@ -623,7 +623,7 @@ Re-probed `https://livebench.ai/data/20261025/table.csv` + `cost.csv` (§ Select
 | `muse-wonder-1.0` | **52.6** | 86.2 | 74.2 | $249.07 | — | or · zen |
 | `gpt-6.1-terra` | **48.6** | 94.3 | 77.8 | $116.42 | 4 | or |
 | `grok-4.7` | **46.1** | 84.5 | 70.1 | $337.79 | 5 | or · zen · go |
-| `deepseek-v4.1-flash-1017` | **40.9** | 96.0 | 74.0 | $25.96 | 36 | or · zen · go · ollama |
+| `deepseek-v4.1-flash-1017` | **40.9** | 96.0 | 74.0 | $25.96 | 36 | or · ollama |
 | `claude-haiku-5.5` | **40.0** | 91.4 | 69.8 | $188.84 | — | **haiku bar** |
 | `kimi-k3.1-pro` | **39.1** | 81.8 | 71.3 | $133.67 | 2 | or · go |
 | `mimo-v2.6-pro` | **35.2** | 81.5 | 68.5 | $21.86 | 5 | or · go |
@@ -663,7 +663,7 @@ Re-probed `https://livebench.ai/data/20261025/table.csv` + `cost.csv` (§ Select
 
 ### Agentic-coding parity board
 
-**v1 generation — superseded by the 2.0 board above; kept because every current pin was chosen from it.** LiveBench closed v1 at `2026-06-25`. 2.0 restarted the categories and weights, so the scores below do not convert to 2.0 — read them only against each other.
+**v1 generation — superseded by the 2.0 board above; kept as the v1 basis for models 2.0 has not measured.** LiveBench closed v1 at `2026-06-25`. 2.0 restarted the categories and weights, so the scores below do not convert to 2.0 — read them only against each other.
 
 Source: [LiveBench](https://livebench.ai/#/?cats=Agentic+Coding), release **2026-06-25** (`table_2026_06_25.csv` / `cost_2026_06_25.csv`, `LiveBench/new-livebench`). **Score** = mean of the category's three tasks (`javascript`, `typescript`, `python`), per `public/categories_<date>.json`. **$/task** = category dollars ÷ 72 questions, from LiveBench's own cost table. Process + sources: § Selecting pins. Artificial Analysis stays the source for price/latency and general capability; agentic-coding score decides a **pin**, because that is the workload every bkit agent runs.
 
@@ -682,13 +682,13 @@ Source: [LiveBench](https://livebench.ai/#/?cats=Agentic+Coding), release **2026
 <!-- prettier-ignore -->
 | Model | Score | $/task | Role in bkit |
 | --- | --- | --- | --- |
-| `deepseek-v4.1-flash` | **77.3** | $0.06 | every opencode column's opus+sonnet — dated `1017` snapshot on `openrouter` (35 endpoints) + `ollama` (`deepseek-v4.1-flash:1017`); the undated 2026-09-10 slug on both gateways; auto cache; 31.9 under the opus bar. Haiku on `ollama` + `opencode-go` |
+| `deepseek-v4.1-flash` | **77.3** | $0.06 | every opencode column's opus+sonnet — dated `1017` snapshot on `openrouter` (35 endpoints) + `ollama` (`deepseek-v4.1-flash:1017`); the undated 2026-09-10 slug on both gateways; auto cache; 2.0: `1017` 40.9, 31.9 under the opus bar. Haiku on `ollama` + `opencode-go` |
 | `claude-opus-5-5` (max) | 71.7 | $4.48 | Claude opus pin at `max` |
 | `claude-opus-5-5` (xhigh) | 65.4 | $1.40 | Claude opus pin at `xhigh` — level with the opus target at about a quarter of the cost |
 | `claude-opus-5` (max) | **65.2** | $5.34 | **opus target** |
 | `deepseek-v4-flash-vision-exp` | 65.1 | $0.11 | **not pinned** — experimental; its own datasheet claims text parity with `deepseek-v4-flash-0731`, which measures 46.8. Score not trusted |
 | `qwen3.8-max` | 64.6 | $1.75 | **not pinned** — single endpoint (Alibaba) and **no caching available**: Alibaba requires explicit breakpoints and this slug is absent from its supported list |
-| `kimi-k3` | 62.2 | $1.76 | every opencode column's convergent — 17 OpenRouter endpoints, auto cache (reads 0.10x, writes free); both gateways bill $3/$15 per Mtok |
+| `kimi-k3` | 62.2 | $1.76 | **not pinned** — its $0.19 cache read breached every cap (§ Budget band); 17 OpenRouter endpoints, auto cache (reads 0.10x, writes free); both gateways bill $3/$15 per Mtok |
 | `claude-fable-5` (max) | 62.2 | $8.86 | not adopted — below Opus 5 at 1.7x the cost |
 | `qwen3.8-27b` | 61.4 | $1.52 | **not pinned** — 3.57M input tokens/task; `$0.95` on LiveBench's assumed price, `$1.52` at OpenRouter's |
 | `glm-5.3` | 60.9 | $1.60 | **not pinned** — 27 endpoints, auto cache; dominated by V4.1 Flash |
@@ -696,12 +696,12 @@ Source: [LiveBench](https://livebench.ai/#/?cats=Agentic+Coding), release **2026
 | `gemini-3.7-flash` | 58.3 | $0.42 | **not pinned** — under V4.1 Flash |
 | `claude-haiku-5-5` (max) | 57.2 | $0.21 | Claude haiku pin at `max` |
 | `grok-4.6` | 57.0 | $1.79 | **not pinned** — under V4.1 Flash, higher cost |
-| `glm-5.3-flash` | 56.8 | $0.11 | `openrouter` + `opencode-zen` haiku — 27 endpoints, auto cache; cheapest sufficient |
+| `glm-5.3-flash` | 56.8 | $0.11 | `openrouter` + `opencode-zen` haiku — 27 endpoints, auto cache; 2.0: 19.0, 21.0 under the haiku bar |
 | `grok-4.5` | 56.5 | $0.54 | `cursor` opus (ceiling; −2.9 vs sonnet target at a quarter the cost) |
 | `claude-sonnet-5-5` (max) | 56.3 | $5.57 | Claude sonnet pin at `max`. Python 35.0 at both efforts (n=20) |
 | `deepseek-v4-pro-0813` | 54.9 | $0.22 | **not pinned** — dominated by V4.1 Flash |
 | `claude-haiku-5-5` (xhigh) | **51.4** | $0.07 | **haiku target** — closest measured rung to bkit's `high` (CursorBench: `high` 42.3%, `xhigh` 44.3%) |
-| `gpt-6-luna` | 51.2 | $0.03 | `OpenAI` (Codex) haiku — existence via models.dev only |
+| `gpt-6-luna` | 51.2 | $0.03 | `OpenAI` (Codex) catalog — unused until a haiku tier exists; 2.0: 30.9 |
 | `claude-opus-4-8` (max) | 50.5 | $4.96 | superseded — shows the 4.8 → 5 generational jump (+14.7) |
 | `kimi-k2.7-code` | 45.7 | $0.39 | **not pinned** — dominated by `deepseek-v4.1-flash` (77.3 · $0.06) on every column that carries both |
 | `qwen3.7-max` | 43.6 | $0.80 | not pinned (anchor for the unmeasured `qwen3.7-plus`) |
@@ -723,11 +723,11 @@ Cells show pin · score · $/task. Deltas are against that column's target. Conv
 | Provider | opus — target 72.8 | sonnet — target 63.4 | haiku — target 40.0 | convergent | Notes |
 | --- | --- | --- | --- | --- | --- |
 | `claude` | `claude-opus-5-5` 72.8 — the bar | `claude-sonnet-5-5` 63.4 — the bar | `claude-haiku-5-5` 40.0 — the bar | (opus) | Pins are 5.5 ($4/$20 opus, $2/$10 sonnet, $0.10/$0.50 haiku, 1M context). Targets are the 5.5 scores on the 2.0 board: `claude-opus-5-5` **72.8**, `claude-sonnet-5-5` **63.4**, `claude-haiku-5-5` **40.0**. |
-| `openrouter` | `deepseek/deepseek-v4.1-flash-1017` 40.9 · $25.96 (−31.9) | same (−22.5) | `z-ai/glm-5.3-flash` 19.0 · $29.32 (−21.0) | `xiaomi/mimo-v2.6-pro` 35.2 · $1.84 | Aggregator; broad catalog to re-pin from. Opus+sonnet collapse on V4.1 Flash (the 40.9 workhorse sits 31.9 under the 72.8 opus bar). **Dated `1017` snapshot pinned** — the undated alias is frozen on the 2026-09-10 snapshot and does not float. Haiku = GLM-5.3 Flash (cheapest sufficient). Convergent = Kimi K3 (distinct CoT). All three auto-cache. Never pin `anthropic/*` — column carries Claude-quota overflow. |
-| `cursor` | `cursor-grok-4.5-high` **n/m** | `composer-2.5` **n/m** | `composer-2.5` **n/m** | (opus) | Ceiling is grok-4.5 — no Cursor model reaches the opus target, which is the correct outcome, not a gap. `composer-2.5` is the one unresolved cell in the matrix: vendor-claimed ~ Opus 4.7 (which measures 50.7), never on LiveBench. Probe or override before relying on it for sonnet-tier work. Haiku stays `composer-2.5` too: the only measured first-party model over the haiku bar is `cursor-grok-4.5-high` (v1 56.5, unmeasured on 2.0), at about 8x the cost. |
-| `ollama` (cloud) | `deepseek-v4.1-flash:1017` 40.9 · $25.96 (−31.9) | same (−22.5) | `deepseek-v4.1-flash:1017` 40.9 · $25.96 (0.0) | `minimax-m3.1-flash` 28.8 · $19.50 | **Whole column needs a paid Ollama plan.** **No model variants** — the ollama provider builds catalog entries with none, so bkit omits `variant:` on this column (2.0 would reject it); agents run at opencode's default reasoning. Opus+sonnet+haiku collapse on V4.1 Flash (the 40.9 workhorse sits 31.9 under the 72.8 opus bar); convergent = Kimi K3 (distinct CoT), matching `openrouter`. The free `qwen3.5:397b` / `gpt-oss:20b` are unmeasured or ~10 — free-tier users re-pin in `prompts.md` § Model Overrides and accept unverified quality. |
-| `opencode-zen` | `opencode/deepseek-v4.1-flash` 40.9 · $25.96 (−31.9) | same (−22.5) | `opencode/glm-5.3-flash` 19.0 · $29.32 (−21.0) | `opencode/glm-5.3-flash` 19.0 · $29.32 | Opus+sonnet re-pinned from `kimi-k2.7-code` (45.7 · $0.39): 2.0 hard-errors on a `variant:` the model does not expose, and `kimi-k2.7-code` exposes none. V4.1 Flash carries variants and sits 31.9 under the opus bar; **Zen bills it at $0.30/$1.20** (higher than the LiveBench $/task shown). Haiku = GLM-5.3 Flash. Convergent = Kimi K3 (distinct CoT), billed $3/$15. Existence-validated via models.dev. |
-| `opencode-go` | `opencode-go/deepseek-v4.1-flash` 40.9 · $25.96 (−31.9) | same (−22.5) | `opencode-go/deepseek-v4.1-flash` 40.9 · $25.96 (0.0) | `opencode-go/mimo-v2.6-pro` 35.2 · $21.86 | Budget open-weight plan. Convergent = Kimi K3 (distinct CoT) at $3/$15 per Mtok — the heaviest draw on the 5h window. `minimax-m3`/`qwen3.7-plus` not pinned (see the board). Prefer pins inside the Go 5h window. DeepSeek models need the workspace privacy setting on "Global regions". |
+| `openrouter` | `deepseek/deepseek-v4.1-flash-1017` 40.9 · $25.96 (−31.9) | same (−22.5) | `z-ai/glm-5.3-flash` 19.0 · $29.32 (−21.0) | `xiaomi/mimo-v2.6-pro` 35.2 · $21.86 | Aggregator; broad catalog to re-pin from. Opus+sonnet collapse on V4.1 Flash (the 40.9 workhorse sits 31.9 under the 72.8 opus bar). **Dated `1017` snapshot pinned** — the undated alias is frozen on the 2026-09-10 snapshot and does not float. Haiku = GLM-5.3 Flash — 21.0 under the bar and dearer per task than V4.1 Flash ($29.32 vs $25.96); no agent runs the haiku tier. Convergent = Mimo V2.6 Pro (Xiaomi family for variance). V4.1 Flash and GLM-5.3 Flash auto-cache. Never pin `anthropic/*` — column carries Claude-quota overflow. |
+| `cursor` | `cursor-grok-4.5-high` **n/m** | `composer-2.5` **n/m** | `composer-2.5` **n/m** | (opus) | Ceiling is grok-4.5 — no Cursor model reaches the opus target, which is the correct outcome, not a gap. `composer-2.5` is the one unresolved cell in the matrix: vendor-claimed ~ Opus 4.7 (v1 50.7, unmeasured on 2.0), never on LiveBench. Probe or override before relying on it for sonnet-tier work. Haiku stays `composer-2.5` too: the only first-party model measured over the v1 haiku bar is `cursor-grok-4.5-high` (v1 56.5, unmeasured on 2.0), at about 8x the cost. |
+| `ollama` (cloud) | `deepseek-v4.1-flash:1017` 40.9 · $25.96 (−31.9) | same (−22.5) | `deepseek-v4.1-flash:1017` 40.9 · $25.96 (+0.9) | `minimax-m3.1-flash` 28.8 · $19.50 | **Whole column needs a paid Ollama plan.** **No model variants** — the ollama provider builds catalog entries with none, so bkit omits `variant:` on this column (2.0 would reject it); agents run at opencode's default reasoning. Opus+sonnet+haiku collapse on V4.1 Flash (the 40.9 workhorse sits 31.9 under the 72.8 opus bar); convergent = MiniMax M3.1 Flash (MiniMax family for variance). The free `qwen3.5:397b` / `gpt-oss:20b` are unmeasured — free-tier users re-pin in `prompts.md` § Model Overrides and accept unverified quality. |
+| `opencode-zen` | `opencode/deepseek-v4.1-flash` **n/m** | same | `opencode/glm-5.3-flash` 19.0 · $29.32 (−21.0) | `opencode/glm-5.3-flash` 19.0 · $29.32 | Opus+sonnet skip `kimi-k2.7-code` (unmeasured on 2.0): OpenCode 2.0 hard-errors on a `variant:` the model does not expose, and `kimi-k2.7-code` exposes none. The undated V4.1 Flash slug is the 2026-09-10 snapshot (models.dev `release_date`), not the `1017` refresh the 40.9 board row measures. It carries variants (`low/high/max`); **Zen bills it at $0.30/$1.20**. Haiku = GLM-5.3 Flash. Convergent = GLM-5.3 Flash (Z.AI family — Zen serves no Mimo or MiniMax 3.1). Existence-validated via models.dev. |
+| `opencode-go` | `opencode-go/deepseek-v4.1-flash` **n/m** | same | `opencode-go/deepseek-v4.1-flash` **n/m** | `opencode-go/mimo-v2.6-pro` 35.2 · $21.86 | Budget open-weight plan. V4.1 Flash is the undated 2026-09-10 snapshot, as on Zen. Convergent = Mimo V2.6 Pro (Xiaomi family, same as the `openrouter` default). `minimax-m3`/`qwen3.7-plus` not pinned (see the board). Prefer pins inside the Go 5h window. DeepSeek models need the workspace privacy setting on "Global regions". |
 
 **n/m** = not measured on LiveBench (see the unmeasured list above) — the cell is a catalog/constraint choice, not a scored one.
 
@@ -745,7 +745,7 @@ Cloud OpenAI-compatible cells tool-call-smoked (`tools:` round-trip `tool_calls`
 
 `Provider` = host/install key (`cursor`, `openrouter`, `ollama`, …). Install merges overrides over defaults (override wins). Claude reads frontmatter; not overridable via table yet.
 
-**Cursor API-credit restore:** when you have third-party / additional API credits and want Claude Opus on Cursor workflows, use the paste block in `prompts.md` § Model Overrides (Claude-opus-tier → `claude-opus-5-thinking-high`) — that is the only way to close the −8.7 opus gap on Cursor. Sonnet-tier agents stay on shipped Composer/Grok (correct under per-tier targeting, not a shortfall) unless you opt into `gpt-5.6-sol-high`. Orchestrators `/design` `/plan` `/debug` = session model (set at launch), not the override table.
+**Cursor API-credit restore:** when you have third-party / additional API credits and want Claude Opus on Cursor workflows, use the paste block in `prompts.md` § Model Overrides (Claude-opus-tier → `claude-opus-5-thinking-high`) — that is the only way to put a Claude opus-tier model on Cursor (the first-party pins are unmeasured on 2.0, so the gap is not quantified). Sonnet-tier agents stay on shipped Composer/Grok (correct under per-tier targeting, not a shortfall) unless you opt into `gpt-5.6-sol-high`. Orchestrators `/design` `/plan` `/debug` = session model (set at launch), not the override table.
 
 ---
 

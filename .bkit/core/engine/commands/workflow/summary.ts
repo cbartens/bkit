@@ -206,15 +206,14 @@ export function buildSummary(input: SummaryInput): Summary {
   const decided = groups
     .filter((g) => g.step === "build-decision")
     .flatMap((g) => g.rows.flatMap(({ row }) => artifactsOf(row)));
-  const acceptLines = decided.flatMap((rel) =>
-    (read(rel) ?? "")
-      .split("\n")
-      .filter((l) => /^Decision:\s*Accept\b/.test(l.trim()))
-      .map((l) => `${rel}: ${l.trim()}`),
+  const acceptItems = decided.flatMap((rel) =>
+    parseDecisionItems(read(rel) ?? "")
+      .filter((i) => /^Accept\b/.test(i.decision ?? ""))
+      .map((i) => ({ assumed: i.assumed, line: `${rel}: Decision: ${i.decision}` })),
   );
   // `Accept (assumed)`: taken without the owner (`ask: false` or headless); ship asks to confirm.
-  const assumed = acceptLines.filter((a) => /Decision:\s*Accept \(assumed\)/.test(a));
-  const accepted = acceptLines.filter((a) => !assumed.includes(a));
+  const assumed = acceptItems.filter((a) => a.assumed).map((a) => a.line);
+  const accepted = acceptItems.filter((a) => !a.assumed).map((a) => a.line);
   if (accepted.length > 0)
     concerns.push(`${accepted.length} item(s) accepted at the Decision Pause`);
   if (assumed.length > 0)

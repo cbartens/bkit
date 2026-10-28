@@ -545,6 +545,32 @@ describe("addAllButCopied", () => {
     git(cwd, "commit", "-q", "-m", "row");
     expect(git(cwd, "show", "--name-only", "--format=", "HEAD")).toBe("a.txt");
   });
+
+  it("stages the tree when a copy entry points outside the checkout, which setup skips too", () => {
+    const cwd = repo("dev");
+    fs.writeFileSync(path.join(cwd, "a.txt"), "a\n");
+
+    const res = addAllButCopied(cwd, ["../shared/.env", "/etc/hosts", ".env"]);
+    expect(res.ok).toBe(true);
+    git(cwd, "commit", "-q", "-m", "row");
+    expect(git(cwd, "show", "--name-only", "--format=", "HEAD")).toBe("a.txt");
+  });
+
+  it("never commits an entry only the main checkout's copy list names", () => {
+    const cwd = repo("dev");
+    const wt = linked(cwd);
+    // An uncommitted edit to the main checkout's list: the worktree's package.json lacks it.
+    fs.writeFileSync(
+      path.join(cwd, "package.json"),
+      JSON.stringify({ bkit: { workflows: { worktree: { copy: ["secrets.json"] } } } }),
+    );
+    fs.writeFileSync(path.join(wt, "secrets.json"), "{}\n");
+    fs.writeFileSync(path.join(wt, "a.txt"), "a\n");
+
+    expect(addAllButCopied(wt).ok).toBe(true);
+    git(wt, "commit", "-q", "-m", "step");
+    expect(git(wt, "show", "--name-only", "--format=", "HEAD")).toBe("a.txt");
+  });
 });
 
 describe("paths", () => {

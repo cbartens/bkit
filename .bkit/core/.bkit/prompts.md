@@ -59,7 +59,7 @@ Pinning `model:` locks agent model regardless of orchestrator session. Without p
 | `xhigh` | `xhigh` | `xhigh` | `max` | `xhigh` | `max` |
 | `max` | `max` | `max` | `max` | `xhigh` | `max` |
 
-**OpenCode `variant:` is per model, not per host.** The ladder above is what bkit _asks_ for; the renderer clamps it to what the pinned model exposes (`reasoning_options` in models.dev), because OpenCode 2.0 hard-errors on a variant the model does not carry. On the current pins: `deepseek-v4.1-flash` `none/low/high/max` takes `max`; `minimax-m3.1-flash` `low…max` takes `max`; `glm-5.3-flash` `low/high/max` takes `max`; `gemini-4-argon` `low/medium/high` clamps to `high`; `mimo-v2.6-pro` is `toggle`-only and gets no `variant:` line. Subscription hosts keep the eager mapping — on a plan you already paid for, spending the reasoning budget is the point.
+**OpenCode `variant:` is per model per gateway, not per host.** The ladder above is what bkit _asks_ for; the renderer (`clampOpencodeVariant`) clamps it to what the pinned model exposes on that gateway (`reasoning_options` in models.dev), because OpenCode 2.0 hard-errors on a variant the model does not carry there. On the current pins: `deepseek-v4.1-flash` takes `max` (`none/low/high/max` on `openrouter`, `low/high/max` on Zen and Go, so a `low` agent clamps `none` → `low` there); `minimax-m3.1-flash` `low…max` takes `max`; `glm-5.3-flash` `low/high/max` takes `max`; `gemini-4-argon` `low/medium/high` clamps to `high`; `mimo-v2.6-pro` exposes no effort levels on `openrouter` or Go and gets no `variant:` line; `ollama` gets none on any model. Subscription hosts keep the eager mapping — on a plan you already paid for, spending the reasoning budget is the point.
 
 **`Google` is one model, many effort levels.** Antigravity pins `gemini-4-argon` on all 39 agents; the per-agent `effort` is the only dial, because Google's catalogue offers no rung between argon (61.2) and `gemini-3.8-flash` (16.5). Argon exposes `low/medium/high`, so an `xhigh`/`max` agent clamps to `high` — no agent uses those tiers today.
 
@@ -147,7 +147,7 @@ Canonical per-agent metadata — **single source of truth for model per agent**.
 >
 > **Columns target scores, not tiers.** opencode columns do **not** mirror the Claude ladder: each cell is the cheapest model reaching that tier's target on the parity board (`providers.md` § Selecting pins); chain-of-thought reasoner for convergent agents (risk / diagnosis lens). Per-row columns; any cell re-pinnable.
 >
-> **Per-tier quality targets; cheapest sufficient pin.** Tier cells are not the same rung of each provider's ladder — each is the **cheapest model that reaches that tier's Claude score** on LiveBench Agentic Coding (opus target **65.2**, sonnet target **59.4**, haiku target **~51** — `claude-haiku-5-5` 51.4 at `xhigh`, run at `high`; opus and sonnet targets stay the `claude-opus-5` / `claude-sonnet-5` scores because LiveBench's 5.5 rows land level (opus) or don't read cleanly (sonnet) — `providers.md` § Agentic-coding parity board; process in § Selecting pins). Two consequences pull opposite ways: a provider whose ceiling sits under the sonnet target **collapses opus+sonnet onto that ceiling** (spreading them buys nothing and costs quality on the sonnet half), while **haiku cells stay cheap** because a low-cost model already clears the haiku bar. **Claude is never a pin on an opencode column** — those columns exist to carry work when the Claude quota is spent, so a Claude model there defeats the purpose regardless of score. **opus** → `openrouter` `deepseek-v4.1-flash-1017` (77.3); `ollama` `deepseek-v4.1-flash:1017` (77.3); `opencode-zen` `deepseek-v4.1-flash` (77.3 — re-pinned from `kimi-k2.7-code` because 2.0 rejects a `variant:` the model does not expose, and `kimi-k2.7-code` exposes none; Zen bills V4.1 Flash at $0.30/$1.20, so this cell costs more than the old one); `opencode-go` `deepseek-v4.1-flash` (77.3). **sonnet** → the same per-column V4.1 Flash pin as opus on every opencode column (clears 59.4). **haiku** → `openrouter` + `opencode-zen` `glm-5.3-flash` (56.8); `ollama` `deepseek-v4.1-flash:1017` + `opencode-go` `deepseek-v4.1-flash` (77.3 — cheaper than GLM on those two); `OpenAI` `gpt-6-luna` (51.2). **judges** → the nine reviewers, verifiers, escalators and lenses take a different family per column: `openrouter` `xiaomi/mimo-v2.6-pro` (35.2), `opencode-go` `mimo-v2.6-pro`, `ollama` `minimax-m3.1-flash` (28.8), `opencode-zen` `glm-5.3-flash` (19.0) — Zen serves no Mimo or MiniMax 3.1. `kimi-k3` left the matrix: its $0.19 cache read breached every cap.**gpt-oss pinned nowhere** — `gpt-oss-120b` measures **~10 est**, below every tier target including haiku. **`ollama` subscription:** every tier needs a **paid plan** (`deepseek-v4.1-flash:1017` / `kimi-k3`); the free `qwen3.5:397b` / `gpt-oss:20b` are unmeasured or far below target — free-tier users re-pin in § Model Overrides and accept unverified quality. **`opencode-go`** carries no `gemini-*` (it lists `gpt-6-luna`, `gpt-5.6-luna` and `claude-haiku-5-5`; Claude is still never pinned); its DeepSeek models need the workspace privacy setting on "Global regions"; prefer Go 5h window pins. Re-pin via § Model Overrides or models.dev / provider `/v1/models` (`providers.md`).
+> **Per-tier quality targets; cheapest sufficient pin.** Tier cells are not the same rung of each provider's ladder — each is the **cheapest in-band model closest to that tier's Claude bar** on LiveBench 2.0 Long Agentic (opus **72.8**, sonnet **63.4**, haiku **40.0** — the `claude-opus-5.5` / `claude-sonnet-5.5` / `claude-haiku-5.5` scores, all measured on the 2026-10-25 release; `providers.md` § LiveBench 2.0 board; process in § Selecting pins); a cell under its bar records the gap. **No opencode pin reaches the opus or sonnet bar:** every model the vendor rule allows scores under 63.4 (the best of them, `gemini-4-argon`, reads 61.2), so each column **collapses opus+sonnet onto one pin** (spreading them buys nothing and costs quality on the sonnet half). Of the shipped opencode pins, only `deepseek-v4.1-flash-1017` clears the haiku bar (40.9). **Claude is never a pin on an opencode column** — those columns exist to carry work when the Claude quota is spent, so a Claude model there defeats the purpose regardless of score. **opus + sonnet** → `openrouter` `deepseek-v4.1-flash-1017` + `ollama` `deepseek-v4.1-flash:1017` (40.9 — 31.9 under opus, 22.5 under sonnet); `opencode-zen` + `opencode-go` `deepseek-v4.1-flash` (not measured — the undated slug serves the 2026-09-10 snapshot, not the `1017` row; Zen bills it $0.30/$1.20). **haiku** → no agent runs the tier (Haiku note above); `providers.md` § Per-tier lineup across providers holds its cells: `ollama` `deepseek-v4.1-flash:1017` (40.9, +0.9), `opencode-go` `deepseek-v4.1-flash` (not measured), `openrouter` + `opencode-zen` `glm-5.3-flash` (19.0, 21.0 under the bar); `OpenAI` `gpt-6-luna` (30.9) waits for the tier. **judges** → the nine reviewers, verifiers, escalators and lenses take a different family per column: `openrouter` `xiaomi/mimo-v2.6-pro` (35.2), `opencode-go` `mimo-v2.6-pro` (35.2), `ollama` `minimax-m3.1-flash` (28.8), `opencode-zen` `glm-5.3-flash` (19.0) — Zen serves no Mimo or MiniMax 3.1. **`kimi-k3` pinned nowhere** — its $0.19 cache read breaches every cap. **gpt-oss pinned nowhere** — `gpt-oss-120b` is not on the 2.0 board (v1 estimate ~10, under every v1 target), and the vendor rule bars OpenAI models from opencode columns. **`ollama` subscription:** every tier needs a **paid plan** (`deepseek-v4.1-flash:1017` / `minimax-m3.1-flash`); the free `qwen3.5:397b` / `gpt-oss:20b` are unmeasured — free-tier users re-pin in § Model Overrides and accept unverified quality. **`opencode-go`** lists `gpt-6-luna`, `gpt-5.6-luna` and `claude-haiku-5-5`, which the vendor rule keeps unpinned; its DeepSeek models need the workspace privacy setting on "Global regions"; prefer Go 5h window pins. Re-pin via § Model Overrides or models.dev / provider `/v1/models` (`providers.md`).
 
 <!-- prettier-ignore -->
 | Prompt | Anthropic | OpenAI | Google | Cursor | OpenRouter | Ollama | OpenCode Zen | OpenCode Go | Effort | Max Turns | Role |
@@ -207,17 +207,17 @@ Canonical per-agent metadata — **single source of truth for model per agent**.
 >
 > - **Claude** (`/v1/models`) — pins `claude-opus-5-5` / `claude-sonnet-5-5` / `claude-haiku-5-5`. Opus 5, Sonnet 5 and Haiku 4.5 remain listed; not pinned.
 > - **Cursor** (`/v0/models`) — **defaults = first-party pool only:** `cursor-grok-4.5-high` (depth / synthesizers / parallel diversity) + `composer-2.5` (volume / build+ship orchestrators). Catalog has **no** `cursor-grok-4.7` and **no** Opus 5.5 / Sonnet 5.5 IDs. API-pool IDs present and **not pinned**: `claude-opus-5-thinking-high`, `claude-sonnet-5-thinking-high`/`-xhigh`, `gpt-5.6-*`, `claude-fable-5-thinking-high`/`-xhigh`. Opt in via § Model Overrides.
-> - **Google** — Antigravity pins `gemini-4-argon` for reasoning/synthesis, `gemini-3.8-flash` for the haiku tier.
+> - **Google** — Antigravity pins `gemini-4-argon` on every agent (§ Models `Google` column).
 >
 > **OpenAI-compatible providers curated + tool-call-smoked** (`tools:` chat / completions round-trip per pin, confirming `tool_calls` — `/models` existence != tool-calls):
 >
-> - **OpenRouter** (`/api/v1/models`, public) — the overflow default in `providers.md` § Model Presets: `deepseek/deepseek-v4.1-flash-1017` (builders, 40.9, 36 endpoints) and `xiaomi/mimo-v2.6-pro` (the nine judges — five lenses plus four gates — 35.2, Xiaomi family for variance). Option 2 swaps those nine to `google/gemini-4-argon` (61.2) inside the A$140 cap. Both DeepSeek rows auto-cache. (Existence via `/api/v1/models` 2026-10-28.)
+> - **OpenRouter** (`/api/v1/models`, public) — the overflow default in `providers.md` § Model Presets: `deepseek/deepseek-v4.1-flash-1017` (builders, 40.9, 36 endpoints) and `xiaomi/mimo-v2.6-pro` (the nine judges — five lenses plus four gates — 35.2, Xiaomi family for variance). Option 2 swaps those nine to `openai/gpt-6.1-sol` (68.7) inside the A$140 cap. Both DeepSeek rows auto-cache. (Existence via `/api/v1/models` 2026-10-28.)
 > - **Ollama** (`/v1/models`) — `deepseek-v4.1-flash:1017` (builders, 40.9), `minimax-m3.1-flash` (the nine judges, 28.8, MiniMax family). Every tier needs a paid plan; the A$ caps do not apply to a plan-billed gateway.
 >
 > **opencode gateways — TWO providers; catalogs from models.dev (not `/zen/v1/models`).** `/zen/v1/models` = Zen only; CANNOT see Go-only models — models.dev source of truth (`opencode` = Zen, `opencode-go` = Go).
 >
-> - **`opencode-zen`** (`https://opencode.ai/zen/v1`) — `deepseek-v4.1-flash` (builders, 40.9), `glm-5.3-flash` (the nine judges, 19.0, Z.AI family — Zen serves no Mimo or MiniMax 3.1). models.dev validated.
-> - **`opencode-go`** (`https://opencode.ai/zen/**go**/v1`) — `deepseek-v4.1-flash` (builders, 40.9), `mimo-v2.6-pro` (the nine judges, 35.2 — same as the OpenRouter default). Prefer pins inside the Go 5h window; DeepSeek models need the workspace privacy setting on "Global regions".
+> - **`opencode-zen`** (`https://opencode.ai/zen/v1`) — `deepseek-v4.1-flash` (builders; the 2026-09-10 snapshot, not measured on 2.0 — the 40.9 row is the `1017` refresh), `glm-5.3-flash` (the nine judges, 19.0, Z.AI family — Zen serves no Mimo or MiniMax 3.1). models.dev validated.
+> - **`opencode-go`** (`https://opencode.ai/zen/**go**/v1`) — `deepseek-v4.1-flash` (builders; same 2026-09-10 snapshot, not measured), `mimo-v2.6-pro` (the nine judges, 35.2 — same as the OpenRouter default). Prefer pins inside the Go 5h window; DeepSeek models need the workspace privacy setting on "Global regions".
 
 ### Orchestrators (slash commands)
 
@@ -228,9 +228,9 @@ Canonical per-agent metadata — **single source of truth for model per agent**.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `/design` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-4-argon` | Synthesizes conflicting brainstorms; resolves design ambiguity. |
 | `/plan` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-4-argon` | Merges review (pair) + scope-check critiques in one pass; fixes what `tests plan-check` refuses after each plan write. |
-| `/build` | `claude-sonnet-5-5` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-5.6-terra` | `gemini-4-argon` | Fixed pipeline: dispatch → verify → challenge → tests → summary. Subagents own the heavy reasoning (`bkit-build-challenge-1`/`-2`, `bkit-build-plan-verify` are `high` effort). |
+| `/build` | `claude-sonnet-5-5` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6.1-sol` | `gemini-4-argon` | Fixed pipeline: dispatch → verify → challenge → tests → summary. Subagents own the heavy reasoning (`bkit-build-challenge-1`/`-2`, `bkit-build-plan-verify` are `high` effort). |
 | `/debug` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-4-argon` | Picks remediation path under uncertainty; Standard / Pivot / Final escalation. |
-| `/ship` | `claude-sonnet-5-5` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-5.6-terra` | `gemini-4-argon` | Mostly mechanical: merge + archive + parallel docs / summary. |
+| `/ship` | `claude-sonnet-5-5` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6.1-sol` | `gemini-4-argon` | Mostly mechanical: merge + archive + parallel docs / summary. |
 
 **Rule:** Opus where orchestrator resolves ambiguity; Sonnet for defined sequence. **If** Sonnet orchestrator skips Failure Path branches or mis-routes verify gaps → escalate Opus.
 
@@ -413,18 +413,18 @@ Two settings for OpenRouter, the overflow column — the days after the week's O
 | Preset | Judges, reviewers, escalators (13) | Builders (26) | 2-day gap | Cap |
 | --- | --- | --- | --- | --- |
 | **Option 1 — default** | `mimo-v2.6-pro` 35.2 · $0.0036 — the five lenses and four gates | `deepseek-v4.1-flash-1017` 40.9 · $0.003 | **A$30 (US$21)** | A$70/week |
-| **Option 2 — spend more** | `gemini-4-argon` 61.2 · $0.10 — 9 of 13 | `deepseek-v4.1-flash-1017` | **A$137 (US$96)** | A$140/week |
+| **Option 2 — spend more** | `gpt-6.1-sol` 68.7 · $0.10 — 9 of 13 | `deepseek-v4.1-flash-1017` | **A$137 (US$96)** | A$140/week |
 
 **The cap and the vendor rule leave no strong judge in Option 1.** OpenRouter's default may not use OpenAI, Anthropic or Google, and the strongest model outside those is `muse-wonder` 52.6 — A$337 on thirteen judges, A$143 on the five lenses alone, both past the A$70 line. What fits is family variance, not capability: `mimo-v2.6-pro` (Xiaomi, 35.2) on the judges, which sits _below_ the DeepSeek workhorse at A$30. The second opinion becomes real only in Option 2, where `gpt-6.1-sol` buys **68.7** on nine judges for A$137 at the measured opencode profile — thirteen of them land at A$187 and breach the cap. Sol beats `gemini-4-argon` on both axes at the same token price: +7.5 Long Agentic and $116.78 per LiveBench task against $249.15, because Gemini burns more tokens to finish the same work. Two caveats keep it off unlimited use: sol doubles its rates past a 272k-token context ($4/$15, $0.20 cache read) where Gemini is flat, and its cache writes cost $2.50/Mtok against Gemini's $0.19.
 
-OpenRouter IDs: `mimo-v2.6-pro` = `openrouter/xiaomi/mimo-v2.6-pro`, `gemini-4-argon` = `google/gemini-4-argon`, `deepseek-v4.1-flash-1017` = `deepseek/deepseek-v4.1-flash-1017`. **Bold** marks a cell that differs from the default.
+OpenRouter IDs: `mimo-v2.6-pro` = `xiaomi/mimo-v2.6-pro`, `gpt-6.1-sol` = `openai/gpt-6.1-sol`, `deepseek-v4.1-flash-1017` = `deepseek/deepseek-v4.1-flash-1017`. **Bold** marks a cell that differs from the default.
 
 <!-- prettier-ignore -->
 | Agent | Shipped today | Option 1 — default | Option 2 — spend more |
 | --- | --- | --- | --- |
 | `bkit-design-brainstorm-ideate-1` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
 | `bkit-design-brainstorm-ideate-2` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
-| `bkit-design-brainstorm-ideate-3` | kimi-k3 | mimo-v2.6-pro | **gemini-4-argon** |
+| `bkit-design-brainstorm-ideate-3` | mimo-v2.6-pro | mimo-v2.6-pro | **gpt-6.1-sol** |
 | `bkit-design-generate` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
 | `bkit-design-review-1` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
 | `bkit-design-review-2` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
@@ -433,24 +433,24 @@ OpenRouter IDs: `mimo-v2.6-pro` = `openrouter/xiaomi/mimo-v2.6-pro`, `gemini-4-a
 | `bkit-design-organise` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
 | `bkit-plan-generate` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
 | `bkit-plan-review-1` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
-| `bkit-plan-review-2` | kimi-k3 | mimo-v2.6-pro | **gemini-4-argon** |
-| `bkit-plan-scope-check` | kimi-k3 | mimo-v2.6-pro | **gemini-4-argon** |
+| `bkit-plan-review-2` | mimo-v2.6-pro | mimo-v2.6-pro | **gpt-6.1-sol** |
+| `bkit-plan-scope-check` | mimo-v2.6-pro | mimo-v2.6-pro | **gpt-6.1-sol** |
 | `bkit-plan-update` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
 | `bkit-build-plan-convert` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
-| `bkit-build-plan-current` | kimi-k3 | mimo-v2.6-pro | **gemini-4-argon** |
+| `bkit-build-plan-current` | mimo-v2.6-pro | mimo-v2.6-pro | **gpt-6.1-sol** |
 | `bkit-build-install-skills` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
 | `bkit-build-plan-execute` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
-| `bkit-build-plan-verify` | kimi-k3 | mimo-v2.6-pro | **gemini-4-argon** |
+| `bkit-build-plan-verify` | mimo-v2.6-pro | mimo-v2.6-pro | **gpt-6.1-sol** |
 | `bkit-build-plan-gaps-remediate` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
 | `bkit-build-challenge-1` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
-| `bkit-build-challenge-2` | kimi-k3 | mimo-v2.6-pro | **gemini-4-argon** |
+| `bkit-build-challenge-2` | mimo-v2.6-pro | mimo-v2.6-pro | **gpt-6.1-sol** |
 | `bkit-debug-failure-reproduce` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
-| `bkit-debug-failure-diagnose` | kimi-k3 | mimo-v2.6-pro | **gemini-4-argon** |
+| `bkit-debug-failure-diagnose` | mimo-v2.6-pro | mimo-v2.6-pro | **gpt-6.1-sol** |
 | `bkit-debug-failure-remediate` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
-| `bkit-debug-failure-soak` | kimi-k3 | mimo-v2.6-pro | **gemini-4-argon** |
+| `bkit-debug-failure-soak` | mimo-v2.6-pro | mimo-v2.6-pro | **gpt-6.1-sol** |
 | `bkit-debug-abort-handover` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
 | `bkit-ship-conflict-resolve` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
-| `bkit-ship-deferred-sweep` | kimi-k3 | mimo-v2.6-pro | **gemini-4-argon** |
+| `bkit-ship-deferred-sweep` | mimo-v2.6-pro | mimo-v2.6-pro | **gpt-6.1-sol** |
 | `bkit-ship-update-docs` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
 | `bkit-audit-generate` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |
 | `bkit-utility-update-deferrals` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 |

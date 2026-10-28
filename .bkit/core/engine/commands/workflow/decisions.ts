@@ -35,6 +35,7 @@ export interface DecisionItem {
   /** The recommended option; null for a hard blocker. */
   recommended: string | null;
   reason: string;
+  /** The `Decision:` line's text, a lettered answer read as its option (`optionAnswer`). */
   decision: string | null;
   assumed: boolean;
   rejected: boolean;
@@ -52,6 +53,25 @@ const lineOf = (text: string, key: string): string | null =>
 const letterAt = (i: number): string => String.fromCharCode(65 + i);
 /** An option entry's leading letter (`A) `) dropped, so a parsed name stays bare. */
 const bareName = (s: string): string => s.replace(/^[A-Z]\)[ \t]*/, "");
+/** A reply opening on an option letter: `B`, `B)`, `B — …`, `B) {option} …`, `B {option} …`. */
+const LETTER_REPLY = /^([A-Za-z])(?:\)|(?=[ \t—:,.-]|$))[ \t]*(?:[—:,.-][ \t]*)?/;
+
+/**
+ * An answer read as the option it names. A leading letter of `options` (either case, with or
+ * without `)`) becomes the option it labels: `B`, `B) Reject` and `B — too risky` read as
+ * `Reject`, `Reject` and `Reject — too risky`. Any other answer is returned unchanged; with
+ * no options known, only a leading `A) ` is dropped.
+ */
+export function optionAnswer(answer: string, options: string[]): string {
+  if (options.length === 0) return bareName(answer);
+  const m = LETTER_REPLY.exec(answer);
+  const name = m === null ? undefined : options[m[1]!.toUpperCase().charCodeAt(0) - 65];
+  if (m === null || name === undefined) return answer;
+  const rest = answer.slice(m[0].length);
+  if (rest.toLowerCase().startsWith(name.toLowerCase())) return name + rest.slice(name.length);
+  if (rest === "") return name;
+  return /[)—:,.-]/.test(m[0]) ? `${name} — ${rest}` : answer;
+}
 /** The option list as it is written: `A) {A} / B) {B}`. */
 const letteredOptions = (options: string[]): string =>
   options.map((o, i) => `${letterAt(i)}) ${o}`).join(" / ");
@@ -69,15 +89,17 @@ export function parseDecisionItems(text: string): DecisionItem[] {
       const rec = lineOf(part, "Recommended");
       const none = /^No recommendation\b/m.test(part);
       const [option, ...why] = (rec ?? "").split(" — ");
-      const decision = lineOf(part, "Decision");
+      const options = (lineOf(part, "Options") ?? "")
+        .split(" / ")
+        .map((o) => bareName(o.trim()))
+        .filter(Boolean);
+      const answer = lineOf(part, "Decision");
+      const decision = answer === null ? null : optionAnswer(answer, options);
       return {
         n: Number(head?.[1] ?? 0),
         title: head?.[2] ?? "",
         text: part.trimEnd(),
-        options: (lineOf(part, "Options") ?? "")
-          .split(" / ")
-          .map((o) => bareName(o.trim()))
-          .filter(Boolean),
+        options,
         recommended: none || rec === null ? null : bareName((option ?? "").trim()),
         reason: why.join(" — ").trim(),
         decision,

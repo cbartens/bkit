@@ -291,6 +291,50 @@ describe("parseDecisionItems", () => {
     expect(lettered[0]!.options).toEqual(items[0]!.options);
     expect(lettered[0]!.recommended).toEqual(items[0]!.recommended);
   });
+
+  it("parseDecisionItems reads a lettered decision as the option its letter labels", () => {
+    const decided = (decision: string) =>
+      parseDecisionItems(
+        [
+          "Status: OPEN",
+          "",
+          "**Q1 — Task 3 [src/a.ts:10]:** accept it?",
+          "Options: A) Accept / B) Fix now",
+          "Recommended: A) Accept — minor",
+          `Decision: ${decision}`,
+          "",
+        ].join("\n"),
+      )[0]!.decision;
+    expect(decided("B")).toBe("Fix now");
+    expect(decided("b")).toBe("Fix now");
+    expect(decided("B)")).toBe("Fix now");
+    expect(decided("B) Fix now")).toBe("Fix now");
+    expect(decided("B) Fix now — a secret reaches the log")).toBe(
+      "Fix now — a secret reaches the log",
+    );
+    expect(decided("B — a secret reaches the log")).toBe("Fix now — a secret reaches the log");
+    expect(decided("B fix now, please")).toBe("Fix now, please");
+    expect(decided("A) Accept — fine by me")).toBe("Accept — fine by me");
+    expect(decided("Accept — fine by me")).toBe("Accept — fine by me");
+    expect(decided("A fine call")).toBe("A fine call");
+    expect(decided("C — no such option")).toBe("C — no such option");
+  });
+
+  it("a lettered assumed Accept decision still reads as assumed", () => {
+    const items = parseDecisionItems(
+      [
+        "Status: ASSUMED",
+        "",
+        "**Q1 — Gap:** accept it?",
+        "Options: A) Accept / B) Fix now",
+        "Recommended: A) Accept — minor",
+        "Decision: A) Accept (assumed) — minor (ask:false, LOCAL, 2026-10-28)",
+        "",
+      ].join("\n"),
+    );
+    expect(items[0]!.decision).toBe("Accept (assumed) — minor (ask:false, LOCAL, 2026-10-28)");
+    expect(items[0]!.assumed).toBe(true);
+  });
 });
 
 describe("applyRecommendations", () => {
@@ -324,6 +368,25 @@ describe("applyRecommendations", () => {
     const r = applyRecommendations(text, "LOCAL", "ask:false");
     expect(r).toMatchObject({ applied: [1], hardBlockers: [], loop: null });
     expect(parseDecisionItems(r.text)[0]!.decision).toMatch(/^Accept \(assumed\) — minor \(/);
+  });
+
+  it("applyRecommendations reads a lettered Try again decision as the loop answer", () => {
+    const text = [
+      "Status: OPEN",
+      "",
+      "**Q1 — Verify:** another fix round?",
+      "Options: A) Try again / B) Decide",
+      "Recommended: B) Decide — stuck",
+      "Decision: A) Try again — one more",
+      "",
+      "**Q2 — Gap:** accept it?",
+      "Options: A) Accept / B) Fix now",
+      "Recommended: A) Accept — minor",
+      "",
+    ].join("\n");
+    const r = applyRecommendations(text, "LOCAL", "ask:false");
+    expect(r).toMatchObject({ applied: [], hardBlockers: [], loop: "Try again" });
+    expect(parseDecisionItems(r.text)[1]!.decision).toBeNull();
   });
 });
 

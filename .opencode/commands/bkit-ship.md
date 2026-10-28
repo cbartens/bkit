@@ -267,9 +267,15 @@ $ARGUMENTS
 3. Record each reply before anything else, then write each answer — `{FILE}` and `{Q}` = the entry's `file` and `q`; "yes" answers no question here:
    ```bash
    "{BKIT}" status row --file="{STATUS}" --workflow=ship --type=owner-answer >/dev/null || exit 1
-   "{BKIT}" decisions apply --by=owner --file="{WORKTREE_PATH}/{FILE}" --q={Q} --confirm --reason="{human's words}" --root="{WORKTREE_PATH}"
    ```
-   `--reject` in place of `--confirm` for a `Reject`. **If** `decisions apply` exits non-zero → **Failure Path**. **If** an entry has no answer → ask again → record the wait (step 2) → end turn.
+   A reply that names a letter (`B`, `B)` or `B) {option}`) means the option that letter labels. Route per entry:
+   - **If** the answer is `Confirm` → write it:
+     ```bash
+     "{BKIT}" decisions apply --by=owner --file="{WORKTREE_PATH}/{FILE}" --q={Q} --confirm --reason="{human's words}" --root="{WORKTREE_PATH}"
+     ```
+     **If** `decisions apply` exits non-zero → **Failure Path**.
+   - **If** the answer is `Reject` → the same command and exit check with `--reject` in place of `--confirm`.
+   - **Else** → ask again once the other entries are written → record the wait (step 2) → end turn.
 4. Write a `needs-decision` deferral for every item still not confirmed:
    ```bash
    "{BKIT}" decisions pending --fid="{FID}" --month="{YYYYMM}" --root="{WORKTREE_PATH}" --defer
@@ -563,6 +569,7 @@ $ARGUMENTS
    ```bash
    "{BKIT}" status row --file="{STATUS}" --workflow=ship --type=owner-answer >/dev/null || exit 1
    ```
+   A reply that names a letter (`B`, `B)` or `B) {option}`) means the option that letter labels.
    - **If** the answer is `Try again` → Step 12.
    - **If** the answer is `Stop` → create `docs/plans/{YYYYMM}/logs/{FID}/ship-handover.md` = the question, the answer and the line `Stopped by the owner; run stays IN_PROGRESS. /bkit-ship {FID} resumes at Step 10.` → push it and release the lock; never `workflows fail`:
      ```bash

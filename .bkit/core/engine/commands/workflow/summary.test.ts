@@ -317,4 +317,40 @@ describe("buildSummary", () => {
     expect(s.markdown).toContain("**TEST EXCEPTION:**");
     expect(s.verdict).toBe("CONCERNS");
   });
+
+  it("counts a lettered Accept decision as accepted at the Decision Pause", () => {
+    const decision = [
+      "Status: ASSUMED",
+      "**Q1 — Gap:** accept it?",
+      "Options: A) Accept / B) Fix now",
+      "Recommended: A) Accept — minor",
+      "Decision: A) Accept — fine by me",
+      "",
+      "**Q2 — Other gap:** accept it?",
+      "Options: A) Accept / B) Fix now",
+      "Recommended: A) Accept — minor",
+      "Decision: A) Accept (assumed) — minor (ask:false, LOCAL, 2026-10-28)",
+      "",
+    ].join("\n");
+    const s = buildSummary(
+      input({
+        rows: [
+          {
+            type: "step-done",
+            step: "build-decision",
+            attempt: 1,
+            artifacts: ["log/build-decision-1-1.md"],
+          },
+        ],
+        decisionFiles: ["log/build-decision-1-1.md"],
+        read: reader({ "log/build-decision-1-1.md": decision }),
+      }),
+    );
+    expect(s.verdict).toBe("CONCERNS");
+    expect(s.markdown).toContain("1 item(s) accepted at the Decision Pause");
+    expect(s.markdown).toContain("1 item(s) accepted without the owner");
+    expect(s.markdown).toContain(
+      "- Accepted: log/build-decision-1-1.md: Decision: Accept — fine by me",
+    );
+  });
 });

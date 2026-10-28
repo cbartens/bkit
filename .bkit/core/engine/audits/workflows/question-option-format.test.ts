@@ -63,7 +63,8 @@ const OPEN_QUESTION_PARTS = ["A)", "Recommended", "Default if unanswered"];
  * (`X-Content-Type-Options: nosniff`) out of the scan.
  */
 const OPTIONS_LABEL = /(?<![-\w])Options:/g;
-const RECOMMENDED_LABEL = /(?<![-\w])Recommended:/;
+/** The label opening a recommendation. Global, like `OPTIONS_LABEL`. */
+const RECOMMENDED_LABEL = /(?<![-\w])Recommended:/g;
 /** Separators between the entries of one list: `A) … / B) …` and `A) … · B) …`. */
 const ENTRY_SEPARATOR = /\s*(?:\/|·)\s*/;
 /** A prompt line naming open questions and the options they carry. */
@@ -71,6 +72,20 @@ const OPEN_QUESTION = /open questions?/i;
 const OPTIONS_WORD = /\boptions\b/i;
 /** An option entry that carries its letter. */
 const LETTER = /[A-Z]\)/;
+/** A recommendation tail that opens on its letter, after an optional `{` or bold marker. */
+const RECOMMENDED_LETTER = /^[*{\s]*[A-Z]\)/;
+/**
+ * The sentence every step routing on the owner's answer carries, so a reply by
+ * letter reaches the option it labels instead of the `**Else**` branch.
+ */
+const LETTER_REPLY_CLAUSE =
+  "A reply that names a letter (`B`, `B)` or `B) {option}`) means the option that letter labels.";
+/** A branch routing on the owner's answer by option name. */
+const ANSWER_BRANCH = /\*\*If\*\*[^→]*?(?:the answer is|answers|loop question =) `[^`]+`/;
+/** The first line of a numbered step. */
+const STEP_START = /^\s*\d+\. /;
+/** The command writing the owner's confirm or reject of an assumed Accept. */
+const OWNER_APPLY = "decisions apply --by=owner";
 
 interface OptionList {
   /** 1-based line. */
@@ -136,17 +151,21 @@ function optionLists(text: string): OptionList[] {
   return out;
 }
 
-/** The `Recommended:` tails, empty where the line only names the label. */
+/**
+ * The `Recommended:` tails, empty where the line only names the label. Every
+ * label on the line is read; a tail runs to the next backtick or the next label.
+ */
 function recommendationTails(text: string): Hit[] {
   const out: Hit[] = [];
   text.split("\n").forEach((line, i) => {
-    const m = RECOMMENDED_LABEL.exec(line);
-    if (m === null) return;
-    const tail = line
-      .slice(m.index + m[0].length)
-      .split("`")[0]!
-      .trim();
-    if (tail !== "") out.push({ no: i + 1, tail });
+    const matches = [...line.matchAll(RECOMMENDED_LABEL)];
+    matches.forEach((m, at) => {
+      const tail = line
+        .slice(m.index + m[0].length, matches[at + 1]?.index ?? line.length)
+        .split("`")[0]!
+        .trim();
+      if (tail !== "") out.push({ no: i + 1, tail });
+    });
   });
   return out;
 }
@@ -166,8 +185,55 @@ function optionViolations(file: string, text: string, offset = 0): string[] {
 /** Why one file's `Recommended:` lines do not name the letter they recommend. */
 function recommendationViolations(file: string, text: string): string[] {
   return recommendationTails(text)
-    .filter(({ tail }) => !LETTER.test(tail))
+    .filter(({ tail }) => !RECOMMENDED_LETTER.test(tail))
     .map(({ no, tail }) => `${file}:${no}: \`Recommended: ${tail}\` — name the recommended letter`);
+}
+
+/** Each numbered step of one text, up to the next step or heading: first line and lines. */
+function steps(text: string): Array<{ no: number; lines: string[] }> {
+  const out: Array<{ no: number; lines: string[] }> = [];
+  let open = false;
+  text.split("\n").forEach((line, i) => {
+    if (/^#{2,6} /.test(line)) open = false;
+    if (STEP_START.test(line)) {
+      out.push({ no: i + 1, lines: [] });
+      open = true;
+    }
+    if (open) out.at(-1)!.lines.push(line);
+  });
+  return out;
+}
+
+/** Why one file's answer branches can miss a reply given by letter, in line order. */
+function answerRoutingViolations(file: string, text: string): string[] {
+  return steps(text).flatMap(({ no, lines }) =>
+    lines.flatMap((line, i) =>
+      ANSWER_BRANCH.test(line) && !lines.slice(0, i).join("\n").includes(LETTER_REPLY_CLAUSE)
+        ? [`${file}:${no + i}: routes on an option name; state \`${LETTER_REPLY_CLAUSE}\` first`]
+        : [],
+    ),
+  );
+}
+
+/**
+ * Why one file's owner-confirm steps can write an answer the owner did not give:
+ * each runs `--confirm` only on `Confirm`, `--reject` only on `Reject`, and asks
+ * again on any other reply.
+ */
+function ownerConfirmViolations(file: string, text: string): string[] {
+  const want = [
+    LETTER_REPLY_CLAUSE,
+    "**If** the answer is `Confirm`",
+    "**If** the answer is `Reject`",
+    "**Else** → ask again",
+  ];
+  return steps(text)
+    .filter(({ lines }) => lines.some((l) => l.includes(OWNER_APPLY)))
+    .flatMap(({ no, lines }) =>
+      want
+        .filter((part) => !lines.join("\n").includes(part))
+        .map((part) => `${file}:${no}: the owner-confirm step lacks \`${part}\``),
+    );
 }
 
 /** Every option-list violation of the given directories. */
@@ -284,6 +350,22 @@ describe("question option format: one layout across the corpus", () => {
     expect(recommendationViolationsIn([PROMPTS, TEMPLATES, AUTHORING])).toEqual([]);
   });
 
+  it("every answer branch after a lettered question accepts the option letter", () => {
+    const files = mdFiles(WORKFLOWS);
+    const branches = files.flatMap((f) => f.text.split("\n").filter((l) => ANSWER_BRANCH.test(l)));
+    expect(branches.length, "the workflows route on no answer").toBeGreaterThanOrEqual(6);
+    expect(files.flatMap((f) => answerRoutingViolations(f.file, f.text))).toEqual([]);
+  });
+
+  it("every answer-routing step maps a lettered reply to its option name", () => {
+    const files = mdFiles(WORKFLOWS);
+    expect(
+      files.filter((f) => f.text.includes(OWNER_APPLY)).length,
+      `no workflow runs \`${OWNER_APPLY}\``,
+    ).toBeGreaterThan(0);
+    expect(files.flatMap((f) => ownerConfirmViolations(f.file, f.text))).toEqual([]);
+  });
+
   it("every open-question rule in the prompts names the lettered option form", () => {
     expect(
       openQuestionRules().length,
@@ -364,6 +446,42 @@ describe("question option format: the rules fire on a synthetic list", () => {
     const line =
       "`Options: A) Try again / B) Stop`, then `Recommended: {Try again|Stop} — {reason}`.";
     expect(recommendationViolations("synthetic.md", line).length).toBeGreaterThan(0);
+  });
+
+  it("RED-PROOF: a letter only inside a trailing parenthesis does not satisfy the recommendation rule", () => {
+    expect(
+      recommendationViolations("synthetic.md", "`Recommended: Fix now (see TASK B)`").length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("RED-PROOF: a second letterless Recommended: on one line fires", () => {
+    const line = "`Recommended: A) Accept — {reason}` or `Recommended: Fix now — {reason}`.";
+    expect(recommendationViolations("synthetic.md", line)).toEqual([
+      "synthetic.md:1: `Recommended: Fix now — {reason}` — name the recommended letter",
+    ]);
+  });
+
+  it("RED-PROOF: an answer branch with no lettered-reply clause in its step fires", () => {
+    const step = [
+      "3. Record the reply before anything else.",
+      "   - **If** the answer is `Try again` → return to the calling step.",
+      "   - **If** the answer is `Stop` → step 4.",
+      "   - **Else** → discuss → record the wait (step 2) → end turn.",
+    ].join("\n");
+    expect(answerRoutingViolations("synthetic.md", step).length).toBe(2);
+    const fixed = step.replace("anything else.", `anything else. ${LETTER_REPLY_CLAUSE}`);
+    expect(answerRoutingViolations("synthetic.md", fixed)).toEqual([]);
+  });
+
+  it("RED-PROOF: an owner-confirm step defaulting to --confirm fires", () => {
+    const step = [
+      "3. Record each reply before anything else, then write each answer:",
+      "   ```bash",
+      `   "{BKIT}" ${OWNER_APPLY} --file="{FILE}" --q={Q} --confirm --reason="{human's words}"`,
+      "   ```",
+      "   `--reject` in place of `--confirm` for a `Reject`. **If** an entry has no answer → ask again.",
+    ].join("\n");
+    expect(ownerConfirmViolations("synthetic.md", step).length).toBeGreaterThan(0);
   });
 
   it("RED-PROOF: a second Options: list on one line still fires the option rule", () => {

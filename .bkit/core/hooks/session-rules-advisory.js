@@ -8,10 +8,17 @@
 const RULES_READ_ADVISORY =
   "[bkit] Required reading before any other action: read `.agents/rules.md` and follow every rule in it.";
 
-/** The OS-temp dir holding one state file per session the advisory already reached. */
+/**
+ * The OS-temp dir holding one state file per session the advisory already reached. Per
+ * user: on a temp dir users share (Linux `/tmp`) another user's copy cannot be written.
+ */
 function rulesAdvisoryStateDir() {
-  return path.join(os.tmpdir(), "bkit-rules-advisory");
+  const user = typeof process.getuid === "function" ? `-${process.getuid()}` : "";
+  return path.join(os.tmpdir(), `bkit-rules-advisory${user}`);
 }
+
+/** State files this process could not write, standing in for them for the process's life. */
+const rulesAdvisedInProcess = new Set();
 
 /** One state file per session id; a payload with no id falls back to one shared bucket. */
 function rulesAdvisoryFile(sessionId) {
@@ -35,17 +42,20 @@ function rulesAdvisoryGc() {
 /**
  * The advisory the first time `sessionId` is seen, null after. State lives in the OS temp
  * dir — never in the consumer repo — and is GC'd after 24h. Fail-open: a state-file error
- * returns the advisory instead of throwing, so the nudge is never lost to a bad state.
+ * returns the advisory instead of throwing, so the nudge is never lost to a bad state, and
+ * the process remembers it, so a long-lived host (opencode) does not repeat it every call.
  */
 function rulesReadAdviceOnce(sessionId) {
+  const file = rulesAdvisoryFile(sessionId);
   try {
-    const file = rulesAdvisoryFile(sessionId);
     if (fs.existsSync(file)) return null;
     fs.mkdirSync(rulesAdvisoryStateDir(), { recursive: true });
     fs.writeFileSync(file, JSON.stringify({ at: Date.now() }), "utf-8");
     rulesAdvisoryGc();
     return RULES_READ_ADVISORY;
   } catch {
+    if (rulesAdvisedInProcess.has(file)) return null;
+    rulesAdvisedInProcess.add(file);
     return RULES_READ_ADVISORY;
   }
 }

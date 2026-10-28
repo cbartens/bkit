@@ -4,6 +4,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { getTemplatesRoot } from "../../shared/package-roots";
 import {
   blockBoundsOutput,
   detectContextFetchMissing,
@@ -32,6 +33,26 @@ afterEach(() => {
   process.chdir(originalCwd);
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
+
+/** Every `context-fetch:start` block in `.bkit/templates/context/`, with its fenced body. */
+function shippedFetchBlocks(): { label: string; body: string[] }[] {
+  const dir = path.join(getTemplatesRoot(), "context");
+  const blocks: { label: string; body: string[] }[] = [];
+  for (const file of fs.readdirSync(dir).filter((f) => f.endsWith(".md"))) {
+    let cur: { label: string; body: string[] } | null = null;
+    let inFence = false;
+    for (const line of fs.readFileSync(path.join(dir, file), "utf-8").split("\n")) {
+      if (/^<!-- context-fetch:start /.test(line)) {
+        cur = { label: `${file}: ${line}`, body: [] };
+        blocks.push(cur);
+        inFence = false;
+      } else if (/^<!-- context-fetch:/.test(line)) cur = null;
+      else if (cur && /^```/.test(line)) inFence = !inFence;
+      else if (cur && inFence) cur.body.push(line);
+    }
+  }
+  return blocks;
+}
 
 describe("detectContextFetchMissing", () => {
   function writeConfig(content: string): void {
@@ -511,6 +532,70 @@ describe("blockBoundsOutput", () => {
     expect(blockBoundsOutput(['printf "%s" "# not a comment"; grep -m 3 -E err app.log'])).toBe(
       true,
     );
+  });
+
+  it("rejects a curl whose only bound-like flag is --max-time / -m", () => {
+    // A timeout stops a slow request; it caps nothing a fast one prints.
+    expect(blockBoundsOutput(['curl -sS --max-time 30 "$API/events"'])).toBe(false);
+    expect(blockBoundsOutput(['curl -sS --max-time=30 "$API/events"'])).toBe(false);
+    expect(blockBoundsOutput(['curl -sS -m 30 "$API/events"'])).toBe(false);
+    expect(blockBoundsOutput(['curl -sS --max-redirs 5 "$API/events"'])).toBe(false);
+    expect(blockBoundsOutput(['curl -sS -m 30 "$API/events" | grep -E "error"'])).toBe(false);
+  });
+
+  it("rejects --log-level= and --buffer-size= as bounds", () => {
+    // A tool's own verbosity or buffer size filters none of the rows it fetches.
+    expect(blockBoundsOutput(["mytool logs --log-level=debug"])).toBe(false);
+    expect(blockBoundsOutput(["mytool dump --buffer-size=1048576"])).toBe(false);
+  });
+
+  it("still accepts grep -m after a grep command word", () => {
+    expect(blockBoundsOutput(['curl -sS "$API/events" | grep -E err -m 20'])).toBe(true);
+    expect(blockBoundsOutput(["grep -m20 err app.log"])).toBe(true);
+    expect(blockBoundsOutput(["rg -m 20 err app.log"])).toBe(true);
+  });
+
+  it("ignores a bound in a comment that follows a heredoc holding an apostrophe", () => {
+    expect(
+      blockBoundsOutput([
+        "cat <<'EOF'",
+        "it's a note",
+        "EOF",
+        "# Customise: raise --limit",
+        'gh run view "$RUN_ID" --log',
+      ]),
+    ).toBe(false);
+    expect(
+      blockBoundsOutput([
+        "cat <<-NOTE",
+        '\tsay "hi',
+        "\tNOTE",
+        "# Customise: raise --limit",
+        'gh run view "$RUN_ID" --log',
+      ]),
+    ).toBe(false);
+  });
+
+  it("reads a bound inside a heredoc body, which is data the command consumes", () => {
+    expect(
+      blockBoundsOutput(['psql "$DB_URL" <<SQL', "select * from logs limit 100;", "SQL"]),
+    ).toBe(true);
+  });
+
+  it("does not take a here-string for a heredoc", () => {
+    expect(
+      blockBoundsOutput([
+        'jq -r .x <<<"$RESP"',
+        "# Customise: raise --limit",
+        'gh run view "$RUN_ID" --log',
+      ]),
+    ).toBe(false);
+  });
+
+  it("reads every block the shipped context templates carry as bounded", () => {
+    const blocks = shippedFetchBlocks();
+    expect(blocks.length).toBeGreaterThan(10);
+    for (const { label, body } of blocks) expect(blockBoundsOutput(body), label).toBe(true);
   });
 });
 

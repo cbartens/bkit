@@ -6,7 +6,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { runCommand } from "../lib";
-import { CHALLENGE_SMALL, challengeCommand, challengeGate } from "./challenge";
+import { acceptedLocations, CHALLENGE_SMALL, challengeCommand, challengeGate } from "./challenge";
 import { parsePlanBlocks } from "./plan-blocks";
 import { checkPlanText, readTestFirst } from "./tests";
 
@@ -421,6 +421,36 @@ describe("bkit challenge merge", () => {
     write(R1, report({ sev: "HIGH", loc: "Makefile:12" }));
     const r = await merge(...args([R1]));
     expect(r.json).toMatchObject({ appended: 0, dropped: 1, route: "none" });
+  });
+
+  it("acceptedLocations counts a lettered Decision: A) Accept line", () => {
+    write(
+      `${LOG}/build-decision-1-1.md`,
+      [
+        "Status: DECIDED",
+        "Question: CHALLENGE",
+        "",
+        "**Q1 — Null deref in `src/a.ts:10`:** the handler reads a missing field.",
+        "Options: A) Accept / B) Fix now",
+        "Recommended: A) Accept — guarded upstream",
+        "Decision: A) Accept — fine by me",
+        "",
+        "**Q2 — Retry loop in `src/b.ts:4`:** spins forever.",
+        "Options: A) Accept / B) Fix now",
+        "Recommended: B) Fix now — real bug",
+        "Decision: B",
+        "",
+        "**Q3 — Stale cache in `src/c.ts:7`:** serves old data.",
+        "Options: A) Accept / B) Fix now",
+        "Recommended: B) Fix now — real bug",
+        "Decision: A",
+        "",
+      ].join("\n"),
+    );
+    expect([...acceptedLocations(path.join(cwd, LOG), cwd)].sort()).toEqual([
+      "src/a.ts:10",
+      "src/c.ts:7",
+    ]);
   });
 
   it("deferred counts the rows written", async () => {

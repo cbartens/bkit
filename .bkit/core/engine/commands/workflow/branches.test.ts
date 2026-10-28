@@ -1748,6 +1748,14 @@ describe("branches sync", { timeout: GIT_TIMEOUT }, () => {
     expect(r.json).toMatchObject({ head: entry, basePath: "B", behind: 1, docsBehind: 0 });
   });
 
+  it("Path B once dev moved, from a clone whose fetch refspec omits dev", async () => {
+    const { origin, clone } = feature("sync-narrow");
+    git(clone, "config", "remote.origin.fetch", "+refs/heads/main:refs/remotes/origin/main");
+    landOnDev(origin, { "src.txt": "moved\n" });
+    const r = await run(clone, ["sync"]);
+    expect(r.json).toMatchObject({ basePath: "B", behind: 1 });
+  });
+
   it("--merge-docs merges dev when docs/ is behind", async () => {
     const { origin, clone } = feature("sync-merge");
     landOnDev(origin, { "docs/testing.md": "dev docs\n" });
@@ -1890,6 +1898,14 @@ describe("branches sync-dev", { timeout: GIT_TIMEOUT }, () => {
     expect(r.err).toContain("git pull --rebase origin dev && git push origin dev");
     expect(git(origin, "rev-parse", "dev").out).toBe(remoteBefore);
     expect(sha(clone, "dev")).toBe(local);
+  });
+
+  it("fast-forwards local dev from a clone whose fetch refspec omits dev", async () => {
+    const { origin, clone } = shipped("sync-narrow");
+    git(clone, "config", "remote.origin.fetch", "+refs/heads/main:refs/remotes/origin/main");
+    const r = await run(clone, ["sync-dev"]);
+    expect(r.json).toMatchObject({ devLocal: "fast-forwarded" });
+    expect(sha(clone, "dev")).toBe(git(origin, "rev-parse", "dev").out);
   });
 
   it("exits 10 when the fetch fails", async () => {
@@ -2295,6 +2311,76 @@ describe("branches land", { timeout: GIT_TIMEOUT }, () => {
       '{"id":"dev"}',
       '{"id":"branch"}',
     ]);
+  });
+
+  it("land removes the worktree when only the copied .env is untracked", async () => {
+    const { repo } = fixture();
+    git(repo, "checkout", "-q", "dev");
+    const wt = ownedWorktree(repo);
+    write(wt, ".env", "TOKEN=x\n");
+    write(wt, ".bkit/.env", "BKIT_TOKEN=x\n");
+    const r = await land(repo, { BKIT_RUNTIME: "LOCAL" });
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ worktree: { removed: true } });
+    expect(fs.existsSync(wt)).toBe(false);
+    expect(git(repo, "rev-parse", "-q", "--verify", `refs/heads/feat/${FID}`).ok).toBe(false);
+  });
+
+  it("land keeps the worktree for real leftovers and names only them, not the copied .env", async () => {
+    const { repo } = fixture();
+    git(repo, "checkout", "-q", "dev");
+    const wt = ownedWorktree(repo);
+    write(wt, ".env", "TOKEN=x\n");
+    write(wt, `docs/plans/${M}/logs/${FID}/notes.md`, "never committed\n");
+    const r = await land(repo, { BKIT_RUNTIME: "LOCAL" });
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      worktree: {
+        removed: false,
+        reason: "uncommitted",
+        files: [`?? docs/plans/${M}/logs/${FID}/notes.md`],
+      },
+    });
+  });
+
+  it("local: lands and audits from a clone whose fetch refspec omits dev", async () => {
+    const { repo, remote } = fixture();
+    git(repo, "checkout", "-q", "dev");
+    git(repo, "config", "remote.origin.fetch", "+refs/heads/main:refs/remotes/origin/main");
+    const r = await land(repo, { BKIT_RUNTIME: "LOCAL" });
+    expect(r.code).toBe(0);
+    expect(git(remote, "log", "-1", "--format=%s", "dev").out).toBe(DONE);
+    expect(sha(repo, "origin/dev")).toBe(sha(remote, "dev"));
+    expect(r.json).toMatchObject({ localDev: "fast-forwarded" });
+  });
+
+  it("a concurrent landing already moved local dev past this close: localDev is current, no publish advice", async () => {
+    const { repo, remote } = fixture();
+    git(repo, "checkout", "-q", "dev");
+    // Right after this close's push lands, a second close lands on top of it and
+    // fast-forwards the main checkout's dev, before this close's own fast-forward.
+    const base = tmp("race-after");
+    const bin = stubBin({
+      git: [
+        `case "$*" in *"push origin HEAD:dev"*)`,
+        `  "${REAL_GIT}" "$@"; rc=$?`,
+        `  if [ $rc -eq 0 ] && [ ! -f "${base}/raced" ]; then`,
+        `    : > "${base}/raced"; d="${base}/c$$"`,
+        `    "${REAL_GIT}" clone -q "${remote}" "$d" && (cd "$d" && "${REAL_GIT}" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "second close" && "${REAL_GIT}" push -q origin HEAD:dev)`,
+        `    "${REAL_GIT}" -C "${repo}" fetch -q origin +refs/heads/dev:refs/remotes/origin/dev`,
+        `    "${REAL_GIT}" -C "${repo}" merge -q --ff-only origin/dev`,
+        `  fi`,
+        `  exit $rc ;;`,
+        `esac`,
+        `exec "${REAL_GIT}" "$@"`,
+      ].join("\n"),
+    });
+    const r = await land(repo, { BKIT_RUNTIME: "LOCAL", PATH: withBin(bin) });
+    expect(r.code).toBe(0);
+    expect(git(remote, "log", "-2", "--format=%s", "dev").out).toBe(`second close\n${DONE}`);
+    expect(r.json).toMatchObject({ localDev: "current" });
+    expect(r.err).not.toContain("git pull --rebase origin dev && git push origin dev");
+    expect(sha(repo, "dev")).toBe(sha(remote, "dev"));
   });
 
   it("local: a locked throwaway checkout left by a killed close is removed, then the close lands", async () => {

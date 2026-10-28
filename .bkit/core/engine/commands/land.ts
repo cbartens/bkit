@@ -25,6 +25,23 @@ const MOVED_DURING =
 /** The server turned the push away: branch protection, a ruleset, an HTTP 403. */
 const REFUSED = /\[remote rejected\]|returned error: 403|\bGH0\d\d\b/;
 
+/**
+ * The refspec every dev fetch uses. A bare `git fetch origin dev` writes only
+ * FETCH_HEAD when the clone's fetch refspec does not cover `dev` (a single-branch
+ * clone), leaving `origin/dev` stale; a landing built on it is rejected on every push.
+ */
+export const DEV_REFSPEC = `+refs/heads/${DEV}:refs/remotes/${UPSTREAM}`;
+
+/** Fetch origin's dev into `origin/dev`, whatever the clone's fetch refspec covers. */
+export const fetchDev = (cwd: string) => runGit(cwd, ["fetch", REMOTE, DEV_REFSPEC]);
+
+/**
+ * A dev fetch that failed only because another git process in this clone (a
+ * second landing's fetch or push) updated or held `origin/dev` while it ran.
+ */
+const DEV_REF_RACE = new RegExp(`cannot lock ref 'refs/remotes/${UPSTREAM}'`);
+export const devRefRace = (stderr: string) => DEV_REF_RACE.test(stderr);
+
 /** A dev push rejected only because dev moved: rebuild on the new dev, push again. */
 export const devMoved = (stderr: string) => MOVED_BEFORE.test(stderr) || MOVED_DURING.test(stderr);
 
@@ -111,7 +128,9 @@ export type DevPush =
  * origin/dev, let `build` make one or more commits there (a bookkeeping commit,
  * or a replay of a run's commits), push `HEAD:dev` — git hooks off. `build`
  * throwing stops the landing with that throw. A server refusal runs `refused` on
- * the built commits first, when given. `dir` is removed on every path.
+ * the built commits first, when given. dev moving, or another landing in this
+ * clone updating `origin/dev` during the fetch, retries with backoff within
+ * LAND_ATTEMPTS. `dir` is removed on every path.
  */
 export async function pushToDev(o: {
   root: string;
@@ -127,9 +146,12 @@ export async function pushToDev(o: {
     let wait = 0;
     dropLandTree(o.root, o.dir);
     try {
-      const outcome = await withoutHooks(async (): Promise<DevPush | null> => {
-        const fetched = runGit(o.root, ["fetch", REMOTE, DEV]);
-        if (!fetched.ok) return { kind: "fetch-failed", stderr: fetched.stderr };
+      const outcome = await withoutHooks(async (): Promise<DevPush | "moved" | "raced"> => {
+        const fetched = fetchDev(o.root);
+        if (!fetched.ok) {
+          if (devRefRace(fetched.stderr) && attempt < TIMEOUTS.LAND_ATTEMPTS) return "raced";
+          return { kind: "fetch-failed", stderr: fetched.stderr };
+        }
         const added = runGit(o.root, ["worktree", "add", "--detach", o.dir, UPSTREAM]);
         if (!added.ok) return { kind: "setup-failed", stderr: added.stderr };
         o.build(o.dir, attempt);
@@ -146,13 +168,16 @@ export async function pushToDev(o: {
           return { kind: "refused", stderr: pushed.stderr };
         }
         if (!devMoved(pushed.stderr)) return { kind: "push-failed", stderr: pushed.stderr };
-        return null;
+        return "moved";
       });
-      if (outcome !== null) return outcome;
+      if (typeof outcome !== "string") return outcome;
       if (attempt >= TIMEOUTS.LAND_ATTEMPTS) return { kind: "exhausted", attempts: attempt };
       wait = landBackoffMs(attempt);
+      const s = (wait / 1000).toFixed(1);
       o.log(
-        `dev moved before push ${attempt} of ${TIMEOUTS.LAND_ATTEMPTS} — rebuilding on the new dev in ${(wait / 1000).toFixed(1)}s`,
+        outcome === "moved"
+          ? `dev moved before push ${attempt} of ${TIMEOUTS.LAND_ATTEMPTS} — rebuilding on the new dev in ${s}s`
+          : `another git process updated ${UPSTREAM} during the fetch of try ${attempt} of ${TIMEOUTS.LAND_ATTEMPTS} — fetching again in ${s}s`,
       );
     } finally {
       dropLandTree(o.root, o.dir);

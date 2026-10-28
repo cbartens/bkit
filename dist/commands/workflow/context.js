@@ -115,9 +115,12 @@ const EVIDENCE = {
 export const CLAMP_PROFILES = ["ledger", "debug-evidence", "ci", "e2e", "runtime"];
 /**
  * Lowercase substrings matched against a lowercased line. Broad: `error` also covers
- * `##[error]`, `fail` covers `FAILED`; the ceiling bounds over-matching.
+ * `##[error]`, `fail` covers `FAILED`; the ceiling bounds over-matching. Every profile keeps
+ * `===== TRUNCATED: … =====`, the line `.agents/context.md` asks every block to print when
+ * it stops short of its window, so a partial read never looks complete.
  */
 const SIGNALS = [
+    "===== truncated: ",
     "error",
     "fail",
     "exception",
@@ -165,7 +168,6 @@ const CONTEXT_MARKERS = {
         "===== stripe ",
         "===== webhook deliveries failed",
         "===== eas builds",
-        "===== truncated: ",
     ],
 };
 /** Each context profile's signal set: {@link SIGNALS} plus that context's markers. */
@@ -1584,7 +1586,8 @@ function runBlock(ctx, render) {
             source: fs.readFileSync(script, "utf-8"),
             fetchedAt,
         };
-        let payload = asCaptured(stdout);
+        const printed = asCaptured(stdout);
+        let payload = printed;
         let written = null;
         if (render !== undefined) {
             const table = render === "table" ? tableOf(stdout) : null;
@@ -1607,6 +1610,10 @@ function runBlock(ctx, render) {
         if (written !== null) {
             const raw = clamp.raw ?? (keep.original ? outboxRel(path.dirname(out), keep.original) : null);
             clamp = { ...clamp, raw, render: written };
+        }
+        // Fetched is what the block printed; the table is only what the artifact keeps.
+        if (written === "table") {
+            clamp = { ...clamp, origLines: records(printed).length, origBytes: printed.length };
         }
         appendRecord(clampLogPath(ctx.cwd, fid, "context-fetch", attempt), clamp);
         fs.writeFileSync(out, fenced(fs.readFileSync(out)));

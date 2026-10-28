@@ -99,6 +99,7 @@ $ARGUMENTS
    ```bash
    "{BKIT}" status row --file="{STATUS}" --workflow=debug --type=owner-answer >/dev/null || exit 1
    ```
+   A reply that names a letter (`B`, `B)` or `B) {option}`) means the option that letter labels.
    - **If** the answer is `Try again` → return to the calling step.
    - **If** the answer is `Stop` → step 4.
    - **Else** → discuss → record the wait (step 2) → end turn.

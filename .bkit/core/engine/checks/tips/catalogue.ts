@@ -119,7 +119,7 @@ export const SETUP_TIPS: readonly SetupTip[] = [
     title: "Create bkit's private settings file",
     line: "bkit's private settings file (.bkit/.env) is missing or has blank entries, so nothing that needs to sign in can. Create it and fill it in.",
     why: "This one file holds the sign-in tokens every bkit tool reads. It's never shared or committed. Most other tips depend on it, so do this one early.",
-    ask: "Copy .bkit/.env.example to .bkit/.env and tell me which values I need to fill in — in a git worktree, copy the main checkout's .bkit/.env instead, whose tokens are already filled in.",
+    ask: "Copy .bkit/.env.example to .bkit/.env and tell me which values I need to fill in.",
     steps: "`.bkit/install.md` § Local env setup.",
     advisories: ["mcp-env-missing-dotenv", "mcp-env-blank-key-*"],
     fires: (cwd) => {
@@ -259,7 +259,7 @@ export const SETUP_TIPS: readonly SetupTip[] = [
     why: "This lets /bkit-debug read the actual errors from your error tracker, hosting and database. Without it the agent works from guesses, and real problems stay hidden because nothing brings in the evidence.",
     ask: "Copy the blocks for the services this project uses from .bkit/templates/context/ into .agents/context.md, below the `<!-- bkit:end -->` line, then tell me which tokens to add to .bkit/.env.",
     steps: "`.bkit/templates.md` § Context-fetch blocks.",
-    advisories: ["context-fetch-missing", "context-fetch-unbounded"],
+    advisories: ["context-fetch-missing"],
     fires: (cwd) => detectContextFetchMissing(cwd) !== null,
   },
   {

@@ -43,7 +43,7 @@ import {
 } from "../../ledgers/telemetry.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { gradeCompliance } from "../comply.js";
-import { landDir, pushToDev, type DevPush } from "../land.js";
+import { fetchDev, landDir, pushToDev, type DevPush } from "../land.js";
 import {
   CommandError,
   DEV,
@@ -871,7 +871,8 @@ async function handoverVerb(ctx: RunContext): Promise<number> {
     ref = r.ref;
     skipped = r.skipped;
   } else if (push) {
-    addAllButCopied(tree);
+    const added = addAllButCopied(tree);
+    if (!added.ok) ctx.log(`abort commit: git add failed: ${added.stderr}`);
     const made = runGit(tree, ["commit", "-m", `docs(${fid}): ${workflow} aborted bkit [skip ci]`]);
     if (!made.ok) ctx.log(`abort commit: ${made.stderr || made.stdout}`);
     const r = await pushBranch(tree, { mode: "abort", openPr: str(ctx.flags.openPr) }, ctx.log);
@@ -1343,8 +1344,8 @@ function closePr(
  * checkout): the close rows there, then ONE `docs({fid}): ship DONE bkit [skip ci]`
  * commit built in a throwaway origin/dev checkout carrying the run's book and
  * landed on dev — a refused push publishes it through a `ship-close/{fid}` PR.
- * Only a close that landed (or opened its PR) releases the workflow lock; once
- * the close is on dev, the feature worktree and `branch` are removed. A close
+ * Once the close is on dev, the feature worktree and `branch` are removed; then
+ * a close that landed (or opened its PR) releases the workflow lock. A close
  * that did not land keeps the lock for the Failure Path.
  */
 async function shipClose(
@@ -1420,22 +1421,13 @@ async function shipClose(
       return { code: EXIT_FLUSH_FAILED, out: null };
   }
 
-  const released = releaseLock(workflowLockPath(root, month, o.fid), {
-    workflow: "ship",
-    fid: o.fid,
-    token,
-  });
-  if (released.removeFailed) {
-    ctx.log("Lock removal failed");
-    return { code: EXIT_FLUSH_FAILED, out: null };
-  }
-
-  // The book is on dev only once the close landed or its PR merged.
+  // The book is on dev only once the close landed or its PR merged. The worktree
+  // goes while the lock is still held, so no run of this FID resumes into it.
   let worktree: RemoveResult | null = null;
   if (landed.via === "close-pr-open") {
     ctx.log(`close PR not merged — ${kept} until it is`);
   } else {
-    if (landed.via === "close-pr" && !runGit(root, ["fetch", "origin", DEV]).ok)
+    if (landed.via === "close-pr" && !fetchDev(root).ok)
       ctx.log(
         `fetch of dev after the close PR failed — origin/${DEV} is stale until the next fetch`,
       );
@@ -1444,6 +1436,16 @@ async function shipClose(
     } catch (err) {
       ctx.log(`${(err as Error).message} — remove ${book} by hand`);
     }
+  }
+
+  const released = releaseLock(workflowLockPath(root, month, o.fid), {
+    workflow: "ship",
+    fid: o.fid,
+    token,
+  });
+  if (released.removeFailed) {
+    ctx.log("Lock removal failed");
+    return { code: EXIT_FLUSH_FAILED, out: null };
   }
   return { code: EXIT.OK, out: { ...out, landed, worktree } };
 }

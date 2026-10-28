@@ -7,23 +7,34 @@
 // every "file is missing" tip as a false gap. When no checkout is found at all, nothing fires.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { mainCheckoutRoot } from "../../commands/lib.js";
+import { git, mainCheckoutRoot } from "../../commands/lib.js";
 import { ignoredAdvisoryIds, } from "../after/suppression.js";
 import { ALL_WORKFLOWS, SETUP_TIPS } from "./catalogue.js";
 /**
  * The directory the tips are checked against: the main checkout's root — the tree the
  * integration branch is checked out in — resolved from any worktree by
- * `mainCheckoutRoot` (git's common dir), else `cwd` when git cannot say. `null` when that
- * root is not a checkout (holds neither `.git` nor `package.json`): a directory with
- * nothing to check fires no tip rather than every "missing" tip as a false gap.
+ * `mainCheckoutRoot` (git's common dir), else `cwd` when git cannot say. A bare main
+ * repo has no checkout: the common dir's parent then belongs to no repo or to another
+ * one, so the caller's own top level is used. `null` when the base is not a checkout
+ * (holds neither `.git` nor `package.json`): a directory with nothing to check fires no
+ * tip rather than every "missing" tip as a false gap.
  */
 export function tipsBase(cwd) {
-    const base = mainCheckoutRoot(cwd) ?? cwd;
+    const base = mainCheckoutOf(cwd) ?? git(cwd, ["rev-parse", "--show-toplevel"]) ?? cwd;
     if (!fs.existsSync(base))
         return null;
     return fs.existsSync(path.join(base, ".git")) || fs.existsSync(path.join(base, "package.json"))
         ? base
         : null;
+}
+/** `mainCheckoutRoot(cwd)` when git there resolves to the same common dir, else null. */
+function mainCheckoutOf(cwd) {
+    const commonDir = (dir) => git(dir, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+    const root = mainCheckoutRoot(cwd);
+    if (root === null || !fs.existsSync(root))
+        return null;
+    const own = commonDir(cwd);
+    return own !== null && commonDir(root) === own ? root : null;
 }
 /** Tips `bkit tips` prints without `--all` or `--workflow`. */
 export const TIPS_CAP = 3;
