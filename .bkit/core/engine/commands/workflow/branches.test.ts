@@ -1677,6 +1677,28 @@ describe("branches scan-diff", { timeout: GIT_TIMEOUT }, () => {
     expect(r.json?.disabled).toEqual([{ file: "src/a.test.ts", line: 3, test: "keeps a" }]);
   });
 
+  it("scan-diff reports an assertion re-added only outside the test file", async () => {
+    const { clone } = featureBranch("scan-disabled-cross-file");
+    write(
+      clone,
+      "src/a.test.ts",
+      ["it('keeps a', () => {", "  expect(1).toBe(1);", "  expect(2).toBe(2);", "});", ""].join(
+        "\n",
+      ),
+    );
+    commit(clone, {}, "test");
+    write(
+      clone,
+      "src/a.test.ts",
+      ["it('keeps a', () => {", "  expect(1).toBe(1);", "});", ""].join("\n"),
+    );
+    write(clone, "src/notes.md", ["# Notes", "", "  expect(2).toBe(2);", ""].join("\n"));
+    commit(clone, {}, "drop");
+    const r = await run(clone, ["scan-diff", "--base=HEAD~1", "--disabled-tests"]);
+    expect(r.code).toBe(1);
+    expect(r.json?.disabled).toEqual([{ file: "src/a.test.ts", line: 3, test: "keeps a" }]);
+  });
+
   it("scan-diff finds an added pytest mark skip", async () => {
     const { clone } = featureBranch("scan-disabled-pytest");
     write(clone, "tests/test_a.py", "def test_a():\n    assert 1 == 1\n");

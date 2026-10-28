@@ -2371,7 +2371,7 @@ export const branchesCommand: CommandSpec = {
         {
           name: "disabled-tests",
           type: "boolean",
-          help: "an added line of a test file disables a test (`.skip` / `.todo` / `.fixme` / `xfail`, `t.Skip()`, `#[ignore]`, `@Disabled`, `@pytest.mark.skip`, `@unittest.skip`), outside a comment or a quoted span, or a test file's removed assertions outweigh the ones the diff adds back — a deleted test file included; inverts --paths / --marker / --code's polarity, so never pass it with --expect-none",
+          help: "an added line of a test file disables a test (`.skip` / `.todo` / `.fixme` / `xfail`, `t.Skip()`, `#[ignore]`, `@Disabled`, `@pytest.mark.skip`, `@unittest.skip`), outside a comment or a quoted span, or a test file's removed assertions outweigh the ones that same file adds — a deleted test file included; inverts --paths / --marker / --code's polarity, so never pass it with --expect-none",
         },
         {
           name: "expect-none",
