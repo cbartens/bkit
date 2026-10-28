@@ -325,6 +325,20 @@ describe("bkit repo info — where the wired tracker's issues live", () => {
     expect((await run([])).json).toMatchObject({ trackerProgress: null, trackerReview: null });
   });
 
+  it("prints buildPublishRemote and buildPublishLocal", async () => {
+    pkg({ workflows: { build: { publish: { remote: false, local: false } } } });
+    const { json } = await run([]);
+    expect(json.buildPublishRemote).toBe(true);
+    expect(json.buildPublishLocal).toBe(false);
+  });
+
+  it("prints the publish defaults when package.json omits them", async () => {
+    pkg({});
+    const { json } = await run([]);
+    expect(json.buildPublishRemote).toBe(true);
+    expect(json.buildPublishLocal).toBe(true);
+  });
+
   it("prints the plan caps from bkit.workflows.tasks, defaults for a key left unset", async () => {
     pkg({ workflows: { tasks: { maxPerGroup: 4, maxTestsPerTask: 0 } } });
     expect((await run([])).json.tasks).toEqual({

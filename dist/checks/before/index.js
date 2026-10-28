@@ -13,7 +13,7 @@
 //   parsePlanBlocks       — from commands/workflow/plan-blocks.ts (a plan's group and task blocks)
 import { readInstallingVersion } from "../../shared/package-json.js";
 import { readBkitConfig } from "../../shared/settings.js";
-import { detectBkitNotOnPath, detectMalformedPackageJson, detectNoPackageJson, detectNotGitRepo, detectInvalidAskSettings, detectInvalidTaskCaps, detectTaskCapFormStale, detectUnmarkedPlans, } from "./repo.js";
+import { detectBkitNotOnPath, detectMalformedPackageJson, detectNoPackageJson, detectNotGitRepo, detectInvalidAskSettings, detectBuildPublish, detectInvalidTaskCaps, detectTaskCapFormStale, detectUnmarkedPlans, } from "./repo.js";
 import { MARKERED_TEXT_DRIFT_PATHS, detectGitignoreBlockDuplicates, detectPlaywrightReporterHostile, detectTier2JsonDrift, detectTier2TextDrift, } from "./files.js";
 import { detectBkitVersionMajorDowngrade, detectBkitVersionPinStale } from "./version.js";
 import { detectContextFetchContextMissing, detectContextFetchMissing, detectContextFetchProvisionMissing, detectContextFetchSourceNotEnabled, detectContextFetchUnbounded, } from "./context-fetch.js";
@@ -91,6 +91,7 @@ export function runPreflight(modules, cwd = process.cwd(), installingVersion, is
     const invalidTaskCaps = detectInvalidTaskCaps(cwd);
     if (invalidTaskCaps)
         advisories.push(invalidTaskCaps);
+    advisories.push(...detectBuildPublish(cwd));
     const taskCapFormStale = detectTaskCapFormStale(cwd);
     if (taskCapFormStale)
         advisories.push(taskCapFormStale);

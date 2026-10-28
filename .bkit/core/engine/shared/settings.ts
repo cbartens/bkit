@@ -64,6 +64,14 @@ export interface JiraConfig extends TrackerStates {
   project: string | null;
 }
 
+/** `bkit.workflows.build.publish`: whether a build ends by publishing (push, PR) or holds. */
+export interface BuildPublish {
+  /** Always `true`: a non-local runtime always publishes. */
+  remote: true;
+  /** `false` holds a local build: nothing is pushed, the worktree is kept. */
+  local: boolean;
+}
+
 /** `bkit.workflows.tasks`: the plan caps `tests plan-check` and `challenge merge` enforce. */
 export interface TaskCaps {
   /** Tasks in one task group. */
@@ -136,6 +144,8 @@ export interface BkitConfig {
   asks: Record<AskPoint, AskSetting>;
   /** Plan caps; each key that is not an integer >= 1 takes its default. */
   tasks: TaskCaps;
+  /** Build ending; `remote` is always `true`, `local` defaults `true`. */
+  buildPublish: BuildPublish;
   /** `bkit.dependencies.updater`: the updater the repo runs, or `none`; null = absent, `""` or unrecognised. */
   depUpdater: DepUpdater | "none" | null;
   /** `bkit.tracker.default` is set, so `none` is a choice; absent or `""` (what install seeds) = undecided. */
@@ -175,6 +185,7 @@ export const CONFIG_DEFAULTS: Readonly<BkitConfig> = {
   },
   // Plan caps, `.bkit/workflows.md` § Test-first.
   tasks: { maxPerGroup: 3, maxTestsPerGroup: 15, maxTestsPerTask: 10, maxTestFilesPerTask: 3 },
+  buildPublish: { remote: true, local: true },
   depUpdater: null,
   issueTrackerExplicit: false,
   cloudAgentsExplicit: false,
@@ -211,6 +222,32 @@ export function invalidTaskCaps(raw: unknown): string[] {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return ["tasks"];
   const set = raw as Record<string, unknown>;
   return TASK_CAP_KEYS.filter((k) => set[k] !== undefined && !validCap(set[k]));
+}
+
+/**
+ * The dotted keys of a `bkit.workflows.build` value that fall back to their default:
+ * `build` when set but not an object, `build.publish` when set but not an object,
+ * `build.publish.local` when set but not a boolean. `remote` is never listed: the
+ * preflight advisory `bkit-build-publish-remote` owns it.
+ */
+export function invalidBuildPublish(raw: unknown): string[] {
+  if (raw === undefined) return [];
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return ["build"];
+  const publish = (raw as Record<string, unknown>).publish;
+  if (publish === undefined) return [];
+  if (publish === null || typeof publish !== "object" || Array.isArray(publish))
+    return ["build.publish"];
+  const local = (publish as Record<string, unknown>).local;
+  return local !== undefined && typeof local !== "boolean" ? ["build.publish.local"] : [];
+}
+
+/** `bkit.workflows.build.publish`; `remote` always resolves `true`. */
+function buildPublish(raw: unknown): BuildPublish {
+  const { local } = record(raw);
+  return {
+    remote: true,
+    local: typeof local === "boolean" ? local : CONFIG_DEFAULTS.buildPublish.local,
+  };
 }
 
 /** `bkit.workflows.tasks` read key by key; a missing or invalid key takes its default. */
@@ -340,6 +377,7 @@ export function readBkitConfig(root: string): BkitConfig {
     cloudAgents: parseCloudAgents(cloud.agent) ?? CONFIG_DEFAULTS.cloudAgents,
     asks: askSettings(workflows),
     tasks: taskCaps(workflows.tasks),
+    buildPublish: buildPublish(record(workflows.build).publish),
     depUpdater: parseDepUpdater(record(bkit.dependencies).updater),
     issueTrackerExplicit: tracker.default !== undefined && tracker.default !== "",
     cloudAgentsExplicit: cloud.agent !== undefined && cloud.agent !== "",
