@@ -1263,7 +1263,11 @@ function summaryVerb(ctx) {
         ? fs.readFileSync(organisedPath, "utf-8")
         : undefined;
     const prNumber = positiveInt(ctx.flags.pr, "pr");
+    const publishFlag = str(ctx.flags.publish);
+    if (publishFlag !== undefined && publishFlag !== "true" && publishFlag !== "false")
+        throw new CommandError(EXIT.USAGE, `--publish must be true or false, got ${publishFlag}`);
     const summary = buildSummary({
+        publish: publishFlag === undefined ? undefined : publishFlag === "true",
         workflow: workflow,
         fid,
         ref: refOf(fid, readIssueTracker(tree)),
@@ -2121,6 +2125,11 @@ export const workflowsCommand = {
                     name: "pr",
                     type: "string",
                     help: "ship: the PR number; its size comes from gh pr view (left out when gh cannot answer)",
+                },
+                {
+                    name: "publish",
+                    type: "string",
+                    help: "build: true|false, the resolved ending; false writes `Publish: held` and `Docs: not synced` (default true)",
                 },
             ],
             output: {

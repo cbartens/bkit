@@ -127,7 +127,14 @@ const VERDICTS = ["PASS", "CONCERNS", "FAIL"];
 const DEBUG_MODES = ["NORMAL", "SOAK"];
 const PUSH_MODES = ["PR", "LOCAL"];
 const STRATEGIES = ["STANDARD", "PIVOT", "FINAL"];
-const ROUTE_FIELDS = ["verdict", "failures", "strategy", "debugMode", "pushMode"];
+const ROUTE_FIELDS = [
+    "verdict",
+    "failures",
+    "strategy",
+    "debugMode",
+    "pushMode",
+    "publish",
+];
 /** Exit code: a `--require`d field is missing or holds a value outside its set. */
 export const EXIT_ROUTE_MISSING = 4;
 function route(runs, workflow, step, group) {
@@ -138,6 +145,8 @@ function route(runs, workflow, step, group) {
         nextStrategy: null,
         debugMode: null,
         pushMode: null,
+        publish: null,
+        publishSource: null,
         debugAttempt: 0,
         parentSha: null,
     };
@@ -185,6 +194,7 @@ function route(runs, workflow, step, group) {
             problems[field] =
                 value === "" ? `${field} not recorded` : `${field} "${value}" is not ${allowed.join("|")}`;
     }
+    problems.publish = "publish not resolved: needs --workflow=build with --prompt-file";
     const attempt = Number(lastRun(runs, workflow)?.debugAttempt ?? 0);
     out.debugAttempt = Number.isFinite(attempt) ? attempt : 0;
     return { out, problems };
@@ -212,6 +222,26 @@ export function debugStart(runs, promptText, fixMax) {
         gates: promptText.includes("[live=off]")
             ? BKIT_DEBUG_GATES.filter((g) => !g.endsWith("-live"))
             : [...BKIT_DEBUG_GATES],
+    };
+}
+const PUBLISH_TOKEN = /(?<![\w-])publish=(true|false)(?![\w-])/;
+/**
+ * Build's ending, from the session prompt, `bkit.workflows.build.publish` and the runtime.
+ * A `publish=true|false` token wins; else LOCAL reads `publish.local` and any other runtime
+ * `publish.remote`. A non-LOCAL `false` resolves `true`. No `runtime-resolved` row throws.
+ */
+export function publishRoute(rows, promptText, config) {
+    const row = rows.filter((r) => r.type === "runtime-resolved" && r.workflow === "build").at(-1);
+    if (row === undefined)
+        throw new CommandError(EXIT_ROUTE_MISSING, "no runtime-resolved row for build: Step 2 never recorded the runtime");
+    const local = row.runtime === "LOCAL";
+    const token = PUBLISH_TOKEN.exec(promptText)?.[1];
+    const wanted = token !== undefined ? token === "true" : local ? config.local : config.remote;
+    if (!local && !wanted)
+        return { publish: true, publishSource: "coerced" };
+    return {
+        publish: wanted,
+        publishSource: token !== undefined ? "token" : local ? "local" : "remote",
     };
 }
 /** `--file`, else the debug status.jsonl `--fid` and `--month` name. */
@@ -313,7 +343,7 @@ export const statusCommand = {
                 {
                     name: "prompt-file",
                     type: "string",
-                    help: "debug only: the session prompt; decides this run's attempt, mode, repro and gates (a missing status.jsonl is a fresh run)",
+                    help: "debug or build: the session prompt; debug: this run's attempt, mode, repro and gates (a missing status.jsonl is a fresh run); build: publish and publishSource",
                 },
                 { name: "fid", type: "string", help: "with --prompt-file, in place of --file: feature id" },
                 { name: "month", type: "string", help: "with --prompt-file, in place of --file: YYYYMM" },
@@ -328,6 +358,8 @@ export const statusCommand = {
                 debugAttempt: "debugAttempt of the active run (0 when unset); with --prompt-file, this invocation's run number (a resume keeps its number)",
                 repro: "with --prompt-file: [repro] in the prompt",
                 gates: "with --prompt-file: the gates to try, deepest first; [live=off] in the prompt drops the live gate",
+                publish: "with --workflow=build and --prompt-file: whether the build publishes (a publish=true|false token, else publish.local on LOCAL or publish.remote elsewhere; a non-LOCAL false resolves true), else null",
+                publishSource: "with publish: token | local | remote | coerced (a non-LOCAL false forced to true), else null",
                 parentSha: "HEAD when the step's last DONE row in the active run was written — a build-group-start row's is the group's start commit, the base for `context diff` — or null",
             },
             exitCodes: {
@@ -357,8 +389,8 @@ export const statusCommand = {
                     }
                 }
                 const promptFile = str(ctx.flags.promptFile);
-                if (promptFile !== undefined && ctx.flags.workflow !== "debug")
-                    throw new CommandError(EXIT.USAGE, "--prompt-file is for --workflow=debug");
+                if (promptFile !== undefined && !["debug", "build"].includes(String(ctx.flags.workflow)))
+                    throw new CommandError(EXIT.USAGE, "--prompt-file is for --workflow=debug or build");
                 const file = routeFile(ctx);
                 let promptText = "";
                 if (promptFile !== undefined) {
@@ -371,9 +403,16 @@ export const statusCommand = {
                 const { out, problems } = route(runs, String(ctx.flags.workflow), step, positiveInt(ctx.flags.group, "group"));
                 if (promptFile !== undefined) {
                     const root = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
-                    const fixMax = readBkitConfig(root).asks["debug.fix"].max;
-                    Object.assign(out, debugStart(runs, promptText, fixMax));
-                    delete problems.debugMode;
+                    const config = readBkitConfig(root);
+                    if (ctx.flags.workflow === "debug") {
+                        Object.assign(out, debugStart(runs, promptText, config.asks["debug.fix"].max));
+                        delete problems.debugMode;
+                    }
+                    else {
+                        const rows = fs.existsSync(file) ? readStatusRows(file) : [];
+                        Object.assign(out, publishRoute(rows, promptText, config.buildPublish));
+                        delete problems.publish;
+                    }
                 }
                 ctx.emit(out);
                 const failed = required.filter((r) => problems[r] !== undefined);

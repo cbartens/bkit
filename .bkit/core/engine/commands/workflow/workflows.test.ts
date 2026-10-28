@@ -2644,6 +2644,28 @@ describe("bkit workflows summary", () => {
       `--file=${path.join(cwd, SREL, "status.jsonl")}`,
     ]);
 
+  it("passes publish into the summary input", async () => {
+    const cwd = tree(
+      [done("build-plan-verify", "2020-01-01T00:10:00Z", { verdict: "PASS", failures: 0 })],
+      planOf(task(1, true)),
+    );
+    const md = () => fs.readFileSync(path.join(cwd, SREL, "build-summary.md"), "utf-8");
+    const base = [
+      "workflows",
+      "summary",
+      "--workflow=build",
+      `--file=${path.join(cwd, SREL, "status.jsonl")}`,
+    ];
+    expect((await run(cwd, [...base, "--publish=false"])).code).toBe(0);
+    expect(md()).toContain("Publish: held");
+    expect(md()).toContain("Docs: not synced");
+    expect((await run(cwd, [...base, "--publish=true"])).code).toBe(0);
+    expect(md()).toContain("Publish: pr");
+    expect((await run(cwd, base)).code).toBe(0);
+    expect(md()).toContain("Publish: pr");
+    expect((await run(cwd, [...base, "--publish=maybe"])).code).toBe(2);
+  });
+
   it("summary is FAIL when a plan task is not done", async () => {
     const cwd = tree(
       [done("build-plan-verify", "2020-01-01T00:10:00Z", { verdict: "PASS", failures: 0 })],

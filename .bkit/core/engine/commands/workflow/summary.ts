@@ -104,6 +104,8 @@ export interface SummaryInput {
   suggestedPlans?: Plan[];
   /** design: the organised design's text; its `## Risks & Open Questions` becomes `## Open Questions`. */
   organised?: string;
+  /** build: `false` = the run held (no push, no PR); absent or `true` = it publishes. */
+  publish?: boolean;
   /** ship: the PR's size; absent when `gh` could not read it. */
   pr?: { number: number; additions: number; deletions: number; changedFiles: number };
 }
@@ -286,6 +288,9 @@ export function buildSummary(input: SummaryInput): Summary {
       input.plans.length === 0
         ? "Plan tasks: no plan file."
         : `Plan tasks: ${tasks.filter((t) => t.done).length} of ${tasks.length} ticked in ${input.plans.map((p) => `\`${p.path}\``).join(", ")}.`,
+      "",
+      input.publish === false ? "Publish: held" : "Publish: pr",
+      ...(input.publish === false ? ["", "Docs: not synced (ship syncs on landing)"] : []),
     );
 
   out.push(
