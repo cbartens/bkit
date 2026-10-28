@@ -645,7 +645,7 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** Build the seam's row primitives as a leaf module behind a kill switch
+- [x] **TASK 3:** Build the seam's row primitives as a leaf module behind a kill switch
   - **CREATE:** `.bkit/core/engine/ledgers/journal.ts`: `engineCallRow`, `frictionRow`, `shouldRecordFriction(code, excludedCodes)`, `frictionKey`, `appendJournalRow`, `appendFrictionRow`, `journalEnabled` — imports only `node:fs`, `node:path`, `./status.js`, `./telemetry.js`. `excludedCodes` is passed in by `commands/lib.ts` (which owns `SHARED_EXIT_CODES` and `spec.exitCodes`); the leaf never reads a `commands/**` module.
   - **CREATE:** `.bkit/core/engine/ledgers/journal.test.ts`: the exclusion set, the step sentinel and dedup key, `recurrenceCount`, flag-names-only `engine-call` rows, the swallowed-write result shape, the `parentSha`-unresolvable row, and the kill switch
   - **UPDATE:** `.bkit/core/.bkit/jsonl.md`: the engine writes `friction` as the active workflow; the friction row's `scope: "bkit-repo"`; the `tool-failure` category's use; the ~68-char key-truncation bound `frictionKey` must stay under; this is the canonical source of the `.bkit/jsonl.md` mirror
@@ -666,7 +666,7 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** Wire the seam into `runCommand` with resolve-or-skip attribution and the fail-safe guarantee
+- [x] **TASK 4:** Wire the seam into `runCommand` with resolve-or-skip attribution and the fail-safe guarantee
   - **UPDATE:** `.bkit/core/engine/commands/lib.ts`: `runCommand` journals an `engine-call` row at dispatch entry and the friction row on an unexpected non-zero exit or a non-`CommandError` throw, inside nested try/finally; compute the exclusion set here (`SHARED_EXIT_CODES` ∪ `spec.exitCodes`) and pass it to `shouldRecordFriction` as `excludedCodes`; add the optional `journal` member to `runCommand`'s `options` for injection
   - **UPDATE:** `.bkit/core/engine/commands/lib.ts`: add the exported `resolveActiveRun` resolver (the command's own `--file`, else `--fid` + `--month` through `statusLocation`, else the single `IN_PROGRESS` run under the cwd's git toplevel, scoped and capped, else nothing). It reads each discovered file with `lib.ts`'s own `node:fs` + `parseJson` and folds with `fold` / `StatusEvent` from `../ledgers/status.js` — never a `commands/**` import, which would cycle `lib.ts`
   - **CREATE:** `.bkit/core/engine/ledgers/journal.integration.test.ts`: a real temp repo whose `.worktrees/{fid}` holds a `status.jsonl`, driving the real `runCommand`
@@ -694,6 +694,8 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
   - **DONE WHEN:** the harvested ledger holds the `tool-failure` row whose `key` matches the seam-written row in the run's own `.bkit/friction.jsonl`; the row is the seam's own output, never a hand-built seed; and the harvest's existing pruning cases still pass.
   - **TEST FIRST:**
     - `scripts/harvest/ledgers.integration.test.ts` `keeps a seam-written tool-failure row through commit and harvest` fails while the row the seam wrote is dropped or pruned before the harvested ledger
+  - **TEST EXCEPTION:**
+    - `scripts/harvest/ledgers.integration.test.ts` `keeps a seam-written tool-failure row through commit and harvest` fails while the row the seam wrote is dropped or pruned before the harvested ledger — the test checks a feature task 4 had already built, so it could not fail first; it passes against the real CLI, commit and harvest (owner, 2026-10-29)
 
 <!-- bkit:task 5 end -->
 
