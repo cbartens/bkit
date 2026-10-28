@@ -721,6 +721,8 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
     - `.bkit/core/engine/checks/status-holes.test.ts` `records every {BKIT} literal in a step as a required call` fails while a call inside a section is dropped or a flag value is retained
     - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `holds the workflows to the step table` fails while the shape test still holds its own copies of the promoted parsers
     - `.bkit/core/engine/checks/status-holes.test.ts` `prints a sweep summary line and exits 0` fails when the corpus sweep prints nothing for a file it could not attribute, checks a mixed-workflow file against one workflow, counts holey files instead of holey runs, or its summary line text drifts from the literal TASK 13's lane grep pins
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/checks/status-holes.test.ts` `derives the expected step universe for every workflow` fails on the ship-only prefix leaving the other four universes empty — the original no-orphan check was wrong for build, whose Decision Pause row `build-decision` sits outside the steps by design, so the check was narrowed to ship after the red (owner, 2026-10-29)
 
 <!-- bkit:task 6 end -->
 
@@ -741,6 +743,9 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
   - **TEST FIRST:**
     - `.bkit/core/engine/checks/status-holes.test.ts` `classifies a step conditional only under the column-0 marker rule` fails on a `**Skip if**` step being reported as a step hole, and on a non-conditional step being excluded
     - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `writes a build-plan-convert row on the no-conversion route` fails while build Step 4's pass route reaches Step 5 with no `steps finish --step=build-plan-convert` call, or the step table drifts from the headings and `--step=` calls
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/checks/status-holes.test.ts` `classifies a step conditional only under the column-0 marker rule` fails on a `**Skip if**` step being reported as a step hole, and on a non-conditional step being excluded — task 6's deriver had already built the conditionality rule, so the test could not fail first (owner, 2026-10-29)
+    - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `writes a build-plan-convert row on the no-conversion route` fails while build Step 4's pass route reaches Step 5 with no `steps finish --step=build-plan-convert` call, or the step table drifts from the headings and `--step=` calls — the build Step 4 text was edited before this test was written (owner, 2026-10-29)
 
 <!-- bkit:task 7 end -->
 
