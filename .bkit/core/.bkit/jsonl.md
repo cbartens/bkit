@@ -140,13 +140,14 @@ Orchestrator: omit `by.subagent` and `by.model`.
 
 <!-- prettier-ignore -->
 ```jsonl
-"references": ["681", "ISSUE-217", "PR-412", "a1b2c3d", "docs/plans/202607/681-e2e-parallelism-design.md", "1718900000600"]
+"references": ["681", "ISSUE-217", "PR-412", "a1b2c3d", "docs/plans/202607/681-e2e-parallelism-design.md", "gh-mcp-401-after-token-rotation"]
 ```
 
-- Feature ids / `{FID}`, tracker ids (`ISSUE-217`), PRs, commit SHAs, file paths, sibling row `ts`.
+- Feature ids / `{FID}`, tracker ids (`ISSUE-217`), PRs, commit SHAs, file paths, row `key` in the same or another ledger.
 - Keep items as source wrote; trailing qualifiers (`ISSUE-142 §A2`) = meaning, not noise.
-- No separate identity field: `ts` = id; `references` = pointers only.
+- No separate identity field: `key` = identity; `references` = pointers only.
 - Omit when nothing to point at.
+- Pointers between ledgers never need rewriting: a correction is a same-`key` append. Its impact on rows in other ledgers that point at it → the ledger updater (`@bkit-utility-update-decisions`, `-knowledge`, `-deferrals`, `-failures`) reports them under `Cross-Ledger Impact`; each row's own ledger writer appends any change.
 
 ## Friction Is a Drained Queue — the non-append-only rows
 

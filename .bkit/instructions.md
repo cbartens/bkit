@@ -1294,7 +1294,7 @@ Clause section lines:
   - specialised: `bkit-utility-update-decisions`
   - applies: `bkit-plan-review-1`
 - drift:
-  - `bkit-utility-update-decisions:60`: "Fold `docs/decisions.jsonl` ledger by `key`, highest `ts` wins" Applies `check-gotchas-first`'s knowledge.jsonl fold to docs/decisions.jsonl; rules.md has no decisions-read rule
+  - `bkit-utility-update-decisions:61`: "Fold `docs/decisions.jsonl` ledger by `key`, highest `ts` wins" Applies `check-gotchas-first`'s knowledge.jsonl fold to docs/decisions.jsonl; rules.md has no decisions-read rule
     - kept: every append-only ledger is read by folding on `key` with the highest `ts` winning (`.bkit/jsonl.md`); `check-gotchas-first` names the knowledge ledger only
 
 ```text
@@ -2501,6 +2501,16 @@ do NOT just analyse
 **Tracker:** Read-only; NEVER create, close, or relabel issues; recommend and let caller act.
 ```
 
+### other-ledgers-read-only
+
+- prompt: where-used
+- tags: recommend-do-not-decide, scope-discipline
+- carriers: prompt `bkit-utility-update-decisions`, `bkit-utility-update-deferrals`, `bkit-utility-update-failures`, `bkit-utility-update-knowledge`
+
+```text
+**Other ledgers:** Read-only; never append to another ledger; report under `Cross-Ledger Impact` and let caller act.
+```
+
 ### output-header
 
 - prompt: if-verdict
@@ -3431,6 +3441,60 @@ Rank what remains by `severity`, then age.
 
 ```text
 Per `key` changed above → append one row to `docs/{{ledger}}.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), same `key` and updated values; copy unchanged field values verbatim.
+```
+
+### ledger-impact-search
+
+- prompt: where-used
+- carriers: prompt `bkit-utility-update-decisions`, `bkit-utility-update-deferrals`, `bkit-utility-update-failures`, `bkit-utility-update-knowledge`
+
+```text
+Per `key` appended above → search the other three of `docs/decisions.jsonl`, `docs/deferrals.jsonl`, `docs/failures.jsonl`, `docs/knowledge.jsonl` for rows pointing at it: `references` holding the `key`, a `hard-blocked` deferral whose `description` names that row as its blocker, or any field carrying a locator the append replaced. Fold each ledger by `key`, highest `ts` wins; skip rows whose winning `status` is `CLOSED|SUPERSEDED`.
+```
+
+### ledger-impact-classify
+
+- prompt: where-used
+- carriers: prompt `bkit-utility-update-decisions`, `bkit-utility-update-deferrals`, `bkit-utility-update-failures`, `bkit-utility-update-knowledge`
+
+```text
+Per row found → classify against the append:
+```
+
+### ledger-impact-blocker-cleared
+
+- prompt: where-used
+- carriers: prompt `bkit-utility-update-decisions`, `bkit-utility-update-deferrals`, `bkit-utility-update-failures`, `bkit-utility-update-knowledge`
+
+```text
+`blocker-cleared` = the row waits on the appended row and the append closed, corrected or superseded it → record under `Cross-Ledger Impact`.
+```
+
+### ledger-impact-evidence-superseded
+
+- prompt: where-used
+- carriers: prompt `bkit-utility-update-decisions`, `bkit-utility-update-deferrals`, `bkit-utility-update-failures`, `bkit-utility-update-knowledge`
+
+```text
+`evidence-superseded` = the row cites the appended row as evidence or rationale and the append closed, corrected or superseded it → record under `Cross-Ledger Impact`.
+```
+
+### ledger-impact-shared-locator
+
+- prompt: where-used
+- carriers: prompt `bkit-utility-update-decisions`, `bkit-utility-update-deferrals`, `bkit-utility-update-failures`, `bkit-utility-update-knowledge`
+
+```text
+`shared-locator` = the row carries the stale locator the append replaced → record under `Cross-Ledger Impact`.
+```
+
+### ledger-impact-unaffected
+
+- prompt: where-used
+- carriers: prompt `bkit-utility-update-decisions`, `bkit-utility-update-deferrals`, `bkit-utility-update-failures`, `bkit-utility-update-knowledge`
+
+```text
+`UNAFFECTED` → no record.
 ```
 
 ### repo-facts-read
