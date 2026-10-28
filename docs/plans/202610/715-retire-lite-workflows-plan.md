@@ -756,7 +756,7 @@ Build order: config → runtime resolution → install → close row → build w
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** Resolve `{PUBLISH}` in `bkit status route`
+- [x] **TASK 4:** Resolve `{PUBLISH}` in `bkit status route`
   - **UPDATE:** `ROUTE_FIELDS` in `.bkit/core/engine/commands/workflow/status.ts`: add `publish`
   - **UPDATE:** `.bkit/core/engine/commands/workflow/status.ts`: add `publishRoute(runs, promptText, config)` reading the last `runtime-resolved` row's `runtime`, the prompt tokens `publish=true` / `publish=false`, else `LOCAL` → `buildPublish.local` and any other runtime → `buildPublish.remote`; a non-LOCAL `false` resolves `true`; a token matching neither value falls through to config; no runtime row throws `CommandError(EXIT_ROUTE_MISSING, …)` naming build Step 2
   - **UPDATE:** `.bkit/core/engine/commands/workflow/status.ts`: widen the `--prompt-file` guard to accept `--workflow=build` as well as `debug`, attaching the debug fields only for `debug`; the `route` verb's `output` block documents `publish` and `publishSource` (`token` | `local` | `remote` | `coerced`); `run` emits both
