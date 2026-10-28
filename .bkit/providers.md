@@ -603,7 +603,7 @@ Filters (not above score): endpoint count; automatic prompt caching (bkit sends 
 
 `grok-4.7` ($0.50 cache read) fails every row. **Ceiling not yet chosen** — pick the gap budget, then read the rack down from there: the ceiling is the only place the number lives.
 
-Cache-read prices on the current pins: `deepseek-v4.1-flash` $0.003, `glm-5.3-flash` $0.03, `kimi-k3` **$0.19**. `kimi-k3` is the live violation at every ceiling above $0.005 — it is the current convergent pin on all four opencode columns.
+Cache-read prices on the current pins, every one inside the cheapest rows: `deepseek-v4.1-flash` $0.003, `mimo-v2.6-pro` $0.0036, `minimax-m3.1-flash` $0.015, `glm-5.3-flash` $0.03. `kimi-k3`'s $0.19 left the matrix with the Option 1 ship.
 
 ### LiveBench 2.0 board — 2026-10-25
 
