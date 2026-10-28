@@ -60,7 +60,7 @@ const HAIKU_PROMPTS = (() => {
   const real = fs.readFileSync(path.join(getBkitDocsRoot(), "prompts.md"), "utf-8");
   const header = real.indexOf("| Prompt | Anthropic |");
   const afterSeparator = real.indexOf("\n", real.indexOf("\n", header) + 1) + 1;
-  const row = `| \`${HAIKU_FIXTURE}\` | \`claude-haiku-5-5\` | \`composer-2.5\` | \`z-ai/glm-5.3-flash\` | \`deepseek-v4.1-flash:1017\` | \`glm-5.3-flash\` | \`deepseek-v4.1-flash\` | \`gpt-6-luna\` | \`gemini-3.8-flash\` | \`high\` | 50 | test fixture |\n`;
+  const row = `| \`${HAIKU_FIXTURE}\` | \`claude-haiku-5-5\` | \`gpt-6-luna\` | \`gemini-3.8-flash\` | \`composer-2.5\` | \`z-ai/glm-5.3-flash\` | \`deepseek-v4.1-flash:1017\` | \`glm-5.3-flash\` | \`deepseek-v4.1-flash\` | \`high\` | 50 | test fixture |\n`;
   const file = path.join(os.tmpdir(), `haiku-prompts-${process.pid}.md`);
   fs.writeFileSync(file, real.slice(0, afterSeparator) + row + real.slice(afterSeparator));
   return file;
