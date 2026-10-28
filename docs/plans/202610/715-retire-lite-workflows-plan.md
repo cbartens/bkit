@@ -164,9 +164,9 @@ Copied word for word from issue #715 § Success criteria.
 | A dry run records the same write set as a real install | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 7 |
 | A fresh install writes no `.bkit/lite.md` and mirrors every other canonical doc | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 7 |
 | `bkit upgrade` from a 5.2.4 `lite.md` keeps the consumer section | Integration | `.bkit/core/engine/commands/install/upgrade.integration.test.ts` | 7 |
-| The install manifest no longer lists `.bkit/lite.md` and keeps `prompts.md` as the only markered-text core doc | Unit | `.bkit/core/engine/install/manifest.test.ts` | 8 |
-| The migration still runs when the package `.bkit/core/.bkit/lite.md` is absent | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 8 |
-| The managed group-A doc list excludes `.bkit/lite.md` | Unit | `.bkit/core/engine/audits/templates/templates.test.ts` | 8 |
+| The install manifest no longer lists `.bkit/lite.md` and keeps `prompts.md` as the only markered-text core doc | Unit | `.bkit/core/engine/install/manifest.test.ts` | 17 |
+| The managed group-A doc list excludes `.bkit/lite.md` | Unit | `.bkit/core/engine/audits/templates/templates.test.ts` | 17 |
+| Every shipped payload file lands on install, and the retired `.bkit/lite.md` source is not shipped | Integration | `.bkit/core/engine/commands/install/install.integration.test.ts` | 17 |
 | `bkit uninstall` strips the managed lite block from an un-upgraded install | Unit | `.bkit/core/engine/commands/install/uninstall.test.ts` | 9 |
 | A held close writes `ending: held` and `publish: false` on the `workflow-done` row | Unit | `.bkit/core/engine/commands/workflow/workflows.test.ts` | 10 |
 | A normal close still writes no `ending` override and no `publish` field | Unit | `.bkit/core/engine/commands/workflow/workflows.test.ts` | 10 |
@@ -814,6 +814,9 @@ Build order: config → runtime resolution → install → close row → build w
     - `.bkit/core/engine/install/modules/core.integration.test.ts` `keeps an existing publish.local false on upgrade` fails when the value is overwritten
     - `.bkit/core/engine/install/modules/core.integration.test.ts` `seeds publish without dropping the ask blocks` fails when `build.verify` / `build.challenge` / `build.tests` disappear
     - `.bkit/core/engine/install/modules/core.integration.test.ts` `seeds publish when the bkit block has no build` fails on a missing `build` block staying empty
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `seeds build.publish on install` fails on the key being absent — accept all as exceptions (owner, 2026-10-29)
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `keeps an existing publish.local false on upgrade` fails when the value is overwritten — accept all as exceptions (owner, 2026-10-29)
 
 <!-- bkit:task 6 end -->
 
@@ -840,8 +843,31 @@ Build order: config → runtime resolution → install → close row → build w
     - `.bkit/core/engine/install/modules/core.integration.test.ts` `records the same write set in a dry run` fails when dry-run parity breaks
     - `.bkit/core/engine/install/modules/core.integration.test.ts` `installs no lite.md and still mirrors every other canonical doc` fails when the file is written or a doc is dropped
     - `.bkit/core/engine/commands/install/upgrade.integration.test.ts` `upgrade from a 5.2.4 lite.md keeps the consumer section` fails when the section is lost
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `strips the managed block and keeps consumer lines` fails when the consumer lines are lost — accept all as exceptions (owner, 2026-10-29)
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `deletes .bkit/lite.md when it holds only the seeded heading` fails on an empty stub remaining — accept all as exceptions (owner, 2026-10-29)
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `merges .agents/shortcuts.md consumer lines into the stub` fails when the old lines are dropped — accept all as exceptions (owner, 2026-10-29)
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `creates the stub when the shortcuts merge finds no lite.md` fails on a throw from reading a missing destination — accept all as exceptions (owner, 2026-10-29)
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `leaves a blockless or two-block lite.md untouched and logs` fails when the file is rewritten or deleted — accept all as exceptions (owner, 2026-10-29)
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `installs no lite.md and still mirrors every other canonical doc` fails when the file is written or a doc is dropped — accept all as exceptions (owner, 2026-10-29)
 
 <!-- bkit:task 7 end -->
+
+<!-- bkit:task 17 start -->
+
+- [ ] **TASK 17:** Delete the shipped `lite.md` source doc so the install payload test passes
+  - **DELETE:** `.bkit/core/.bkit/lite.md`: the retired lite payload; the install no longer writes it
+  - **UPDATE:** `.bkit/core/engine/install/manifest.ts`: remove the `.bkit/lite.md` entry and the comment naming it; keep `prompts.md` markered-text
+  - **UPDATE:** `.bkit/core/engine/install/manifest.test.ts`: replace the lite-presence assertion with absence plus `prompts.md` as the only markered-text core doc
+  - **UPDATE:** `GROUP_A_MD_FILES` in `.bkit/core/engine/audits/templates/templates.test.ts`: remove `[CORE_ROOT, ".bkit/lite.md"]`
+  - **UPDATE:** `dist/cli.js`: rebuilt by `pnpm build` and staged in the same commit
+  - **READ:** `BKIT_CANONICAL_DOCS` in `.bkit/core/engine/install/modules/core.ts`: Task 7 already removed `"lite.md"`, which leaves the shipped file unwritten
+  - **DEPENDS ON:** 7
+  - **DONE WHEN:** `pnpm vitest run .bkit/core/engine/commands/install/install.integration.test.ts .bkit/core/engine/install/manifest.test.ts .bkit/core/engine/audits/templates/templates.test.ts` passes; `ls .bkit/core/.bkit/lite.md` fails; `pnpm build` succeeds and its `dist/` diff is staged
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/install/install.integration.test.ts` `every payload file lands, no template does, and .bkit/LICENSE.md is the only LICENSE.md` fails on the shipped `.bkit/lite.md` the install no longer writes
+
+<!-- bkit:task 17 end -->
 
 <!-- bkit:group 3 end -->
 
@@ -851,21 +877,13 @@ Build order: config → runtime resolution → install → close row → build w
 
 <!-- bkit:task 8 start -->
 
-- [ ] **TASK 8:** Delete the lite payload and prove the upgrade keeps consumer content
-  - **DELETE:** `.bkit/core/.bkit/lite.md`: the retired lite payload and its five paste prompts
-  - **UPDATE:** `.bkit/core/engine/install/manifest.ts`: remove the `.bkit/lite.md` entry and the line-140 comment naming it; keep `prompts.md` markered-text
-  - **UPDATE:** `.bkit/core/engine/install/manifest.test.ts`: replace the lite-presence assertion with absence plus `prompts.md` as the only markered-text core doc
-  - **UPDATE:** `GROUP_A_MD_FILES` in `.bkit/core/engine/audits/templates/templates.test.ts`: remove `[CORE_ROOT, ".bkit/lite.md"]`
-  - **UPDATE:** `.bkit/core/engine/install/modules/core.integration.test.ts`: add the case that `migrateRetiredLite` still runs with the package `.bkit/core/.bkit/lite.md` absent
+- [ ] **TASK 8:** Drop the retired lite doc from the install docs
   - **UPDATE:** `.bkit/core/.bkit/README.md`: drop `lite.md` from the Tier-2 exception (line 244) and the install-writes list (line 279)
   - **UPDATE:** `.bkit/core/.agents/docs.md`: delete the `.bkit/lite.md` index row
-  - **READ:** `GROUP_A_MD_FILES` in `.bkit/core/engine/audits/templates/templates.test.ts`: the source-format audit that would read the deleted file
-  - **DEPENDS ON:** 7
-  - **DONE WHEN:** `pnpm vitest run .bkit/core/engine/audits/templates/templates.test.ts .bkit/core/engine/install/modules/core.integration.test.ts .bkit/core/engine/install/manifest.test.ts` passes; `ls .bkit/core/.bkit/lite.md` fails
-  - **TEST FIRST:**
-    - `.bkit/core/engine/audits/templates/templates.test.ts` `audits every managed group-A doc without lite.md` fails while `lite.md` is enumerated
-    - `.bkit/core/engine/install/modules/core.integration.test.ts` `migrates with the package lite doc absent` fails when the migration gates on the payload doc
-    - `.bkit/core/engine/install/manifest.test.ts` `no longer lists .bkit/lite.md and keeps prompts.md markered-text` fails while the entry remains or the branch breaks
+  - **READ:** `.bkit/core/engine/install/manifest.ts`: Task 17 removed the `.bkit/lite.md` entry; the docs must match it
+  - **DEPENDS ON:** 17
+  - **DONE WHEN:** `grep -n lite.md .bkit/core/.bkit/README.md .bkit/core/.agents/docs.md` prints no line naming the retired doc
+  - **TEST FIRST:** n/a — documentation edits only; the deletion and its tests moved to Task 17, and the migration running without the payload doc is covered by Task 7's inline-fixture cases
 
 <!-- bkit:task 8 end -->
 
