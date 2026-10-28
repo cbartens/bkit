@@ -2016,13 +2016,18 @@ describe("#715 — upgrade retires a 5.2.4 .bkit/lite.md", () => {
     return spawnSync(requireTsx(), [bkitInstallPath, ...args], {
       cwd: tmpDir,
       encoding: "utf-8",
-      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      env: {
+        ...process.env,
+        NODE_NO_WARNINGS: "1",
+        GIT_DIR: path.join(tmpDir, ".git"),
+        GIT_WORK_TREE: tmpDir,
+      },
       timeout: 90_000,
     });
   }
 
   it("upgrade from a 5.2.4 lite.md keeps the consumer section", () => {
-    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    expect(spawnSync("git", ["init", "-q"], { cwd: tmpDir }).status).toBe(0);
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
