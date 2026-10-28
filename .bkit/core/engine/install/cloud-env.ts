@@ -18,7 +18,7 @@ import * as path from "node:path";
 import { readJsonFile } from "../shared/json.js";
 import { getSharedRoot } from "../shared/package-roots.js";
 import { applyTokens, type TokenMap } from "./placeholders.js";
-import { BKIT_EGRESS_SOURCES, type EgressSource } from "../shared/egress.js";
+import { BKIT_EGRESS_SOURCES, MULTI_TENANT_APEXES, type EgressSource } from "../shared/egress.js";
 import { sha256 } from "./version-file.js";
 
 // Consumer-relative paths of the generated docs. Shared so the upgrade template walk
@@ -271,30 +271,43 @@ export function renderCorepackLine(cwd: string): string {
  * enabled below `<!-- bkit:end -->` in `.agents/context.md`. Stack-agnostic: bkit
  * hardcodes no CLI names — the install recipe lives in the consumer's context.md,
  * co-located with the fetch block that needs the CLI. `bkit context list-blocks` returns
- * the same list as `provision`, which `.claude/hooks/bkit-cloud-bootstrap.sh` runs, so the web
- * setup-script snapshot and the per-session hook provision the same CLIs. Returns one
- * string per block (bash body).
+ * the same list as `provision`, so the web setup-script snapshot and the per-session
+ * hook provision the same CLIs. Returns one string per block (bash body).
  */
 export function extractContextFetchProvisionRecipes(cwd: string): string[] {
+  return extractContextFetchProvisionBlocks(cwd).map((b) => b.body);
+}
+
+/**
+ * {@link extractContextFetchProvisionRecipes} with each block's name — the word after
+ * `context-fetch:provision` in its opening marker, limited to `[A-Za-z0-9._-]` so it is
+ * safe inside a quoted shell string; "" when the marker names none. `bkit context
+ * list-blocks` returns it as `provisionBlocks`, which `.claude/hooks/bkit-cloud-bootstrap.sh`
+ * runs one recipe at a time.
+ */
+export function extractContextFetchProvisionBlocks(cwd: string): { name: string; body: string }[] {
   const filePath = path.join(cwd, ".agents", "context.md");
   if (!fs.existsSync(filePath)) return [];
   const content = fs.readFileSync(filePath, "utf-8");
   const endIdx = content.search(/^<!-- bkit:end -->$/m);
   if (endIdx === -1) return [];
   const consumer = content.slice(endIdx);
-  const recipes: string[] = [];
+  const recipes: { name: string; body: string }[] = [];
+  let name = "";
   let cur: string[] | null = null;
   let inProv = false;
   let inFence = false;
   for (const line of consumer.split("\n")) {
-    if (/^<!-- context-fetch:provision/.test(line)) {
+    const opening = /^<!-- context-fetch:provision\b\s*([A-Za-z0-9][A-Za-z0-9._-]*)?/.exec(line);
+    if (opening) {
+      name = opening[1] ?? "";
       inProv = true;
       inFence = false;
       cur = [];
       continue;
     }
     if (/^<!-- context-fetch:(start|end|none)/.test(line)) {
-      if (inProv && cur && cur.length > 0) recipes.push(cur.join("\n"));
+      if (inProv && cur && cur.length > 0) recipes.push({ name, body: cur.join("\n") });
       inProv = false;
       inFence = false;
       cur = null;
@@ -350,25 +363,33 @@ const CLOUD_PNPM_GLOBAL_PATH_SETUP =
  * `context-fetch:provision` recipes, or "" when none are enabled. Placed AFTER the
  * corepack line in the template so `pnpm add -g …` recipes have pnpm available.
  *
- * Recipes run in a best-effort `( set +e … ) || …` subshell: the setup script is
- * `set -euo pipefail`, so without this a single failing recipe (e.g. a heavy `curl |
- * bash` CLI installer that trips over a missing base-image dep) aborts the whole
- * snapshot build and discards every CLI provisioned before it. `set +e` also lets a
- * later recipe run after an earlier one fails. Mirrors the non-blocking per-session
- * hook (`… | bash || log`), keeping the two cloud provision paths behaviourally equal.
+ * The setup script is `set -euo pipefail`, so a bare failing recipe (e.g. a heavy
+ * `curl | bash` CLI installer that trips over a missing base-image dep) would abort the
+ * whole snapshot build and discard every CLI provisioned before it. So errexit is off
+ * around the region and back on after it, and each recipe runs in its own `set -e`
+ * subshell: a failing command stops only its own recipe, and that recipe is named on
+ * stderr. The subshell is never the left side of `||` — bash ignores `set -e` there, so
+ * only the recipe's last command would count. Non-blocking like the per-session hook.
  */
 export function renderCloudContextFetchProvision(cwd: string): string {
-  const recipes = extractContextFetchProvisionRecipes(cwd);
-  if (recipes.length === 0) return "";
+  const blocks = extractContextFetchProvisionBlocks(cwd);
+  if (blocks.length === 0) return "";
+  const runs = blocks.map(({ name, body }, i) => {
+    const label = name === "" ? `#${i + 1}` : name;
+    return (
+      "(\n  set -e\n" +
+      body +
+      '\n)\n[ "$?" -eq 0 ] || echo "[cloud-setup] context-fetch provision ' +
+      `'${label}' failed (non-blocking); its CLI will be absent" >&2`
+    );
+  });
   return (
-    "# context-fetch CLIs (from .agents/context.md provision blocks) — self-guarded, best-effort.\n" +
+    "# context-fetch CLIs (from .agents/context.md provision blocks) — each runs on its own;\n" +
+    "# a failing one is named on stderr and never stops the install.\n" +
     CLOUD_PNPM_GLOBAL_PATH_SETUP +
-    "\n" +
-    "(\n" +
-    "  set +e\n" +
-    recipes.join("\n") +
-    "\n" +
-    ') || echo "[cloud-setup] a context-fetch provision recipe failed (non-blocking); its CLI will be absent" >&2'
+    "\nset +e\n" +
+    runs.join("\n") +
+    "\nset -e"
   );
 }
 
@@ -825,43 +846,52 @@ export function renderCursorContextFetchProvision(cwd: string): string {
 }
 
 /**
- * Exact-host egress list for the Cursor and Codex allowlists: the shipped HOSTS plus
- * the declared `allowed-domains`, sorted and deduped — never apex + `*.`. Both hosts'
- * allowlists match exact hostnames, and a broad wildcard opens egress far wider than
- * intended; the Claude side takes the wildcard-expanded bases instead.
+ * The Cursor and Codex allowlist: the fenced paste block and the notes under it. bkit's
+ * shipped HOSTS are listed exactly; each declared `allowed-domains` entry bkit does not
+ * already ship is listed as the domain and its `*.` wildcard, like the Claude side, since
+ * the CLIs and APIs a consumer declares call subdomains (`api.vercel.com` under
+ * `vercel.com`). A declared {@link MULTI_TENANT_APEXES} entry is widened the same way,
+ * with a note that its wildcard reaches every tenant on the platform, the exfiltration
+ * path Cursor's docs warn about.
  */
-function exactNetworkHosts(cwd: string): { declared: string[]; entries: string[] } {
+function renderWidenedNetworkList(cwd: string): string {
   const declared = extractAllowedDomains(cwd);
-  const entries = [...new Set([...BKIT_SHIPPED_NETWORK_HOSTS, ...declared])].sort();
-  return { declared, entries };
+  const names = [...new Set([...BKIT_SHIPPED_NETWORK_HOSTS, ...declared])].sort();
+  const shipped = new Set(BKIT_SHIPPED_NETWORK_HOSTS);
+  const widened = (n: string): boolean => declared.includes(n) && !shipped.has(n);
+  const entries = names.flatMap((n) => (widened(n) ? [n, `*.${n}`] : [n]));
+  const shared = [...new Set(declared)].filter((d) => MULTI_TENANT_APEXES.includes(d));
+  const sharedNote =
+    shared.length === 0
+      ? ""
+      : `\n\n${shared.map((d) => `\`${d}\``).join(", ")}: shared by many tenants, so the ` +
+        "`*.` wildcard reaches every tenant on it. To narrow it, declare the exact hosts you " +
+        `call there instead (e.g. \`<name>.${shared[0]}\`).`;
+  return (
+    "```text\n" +
+    entries.join("\n") +
+    "\n```\n\n" +
+    `_${entries.length} entries (${names.length} hosts and domains, each declared domain ` +
+    "also as a `*.` wildcard): " +
+    networkSourceCounts(declared, BKIT_SHIPPED_NETWORK_HOSTS) +
+    ". Derived set fingerprint `" +
+    egressFingerprint() +
+    "`._" +
+    sharedNote
+  );
 }
 
 /**
- * Render the `@@CURSOR_NETWORK@@` region — Cursor Cloud Agents DO have an egress
- * allowlist (dashboard → Security: "Allow all" / "Default + allowlist" / "Allowlist
- * only"), unlike the earlier assumption. Reuses the SAME declared `allowed-domains`
- * as the Claude side, but — critically — does NOT apply Claude's apex+`*.`
- * expansion: Cursor's own docs warn that a broad wildcard (`*.s3….amazonaws.com`)
- * opens egress far wider than intended, so the declared apex entries are emitted
- * verbatim with a note to add only the specific subdomains you need.
+ * Render the `@@CURSOR_NETWORK@@` region — Cursor Cloud Agents' egress allowlist
+ * (dashboard → Security: "Allow all" / "Default + allowlist" / "Allowlist only"), which
+ * takes `*.` patterns (Cursor's own default list is written that way).
  */
 export function renderCursorNetworkAllowlist(cwd: string): string {
-  const { declared, entries } = exactNetworkHosts(cwd);
   return (
     "If your org runs Cloud Agents in **Allowlist only** / **Default + allowlist** mode\n" +
     "(dashboard → **Security**), add these hosts so cloud `/bkit-debug` + e2e can reach\n" +
     "bkit's own tooling and your app and log backends:\n\n" +
-    "```text\n" +
-    entries.join("\n") +
-    "\n```\n\n" +
-    `_${entries.length} host(s): ` +
-    networkSourceCounts(declared, BKIT_SHIPPED_NETWORK_HOSTS) +
-    ". Derived set fingerprint `" +
-    egressFingerprint() +
-    "`._ Add only the\n" +
-    "specific subdomains you need (e.g. `api.example.com`) — Cursor warns that a broad `*.`\n" +
-    "wildcard opens egress far wider than intended. (The Claude side auto-expands to apex + `*.`;\n" +
-    "Cursor's allowlist is deliberately narrower.)"
+    renderWidenedNetworkList(cwd)
   );
 }
 
@@ -903,25 +933,20 @@ export function writeCursorCloudDoc(cwd: string, tokens: TokenMap): boolean {
 
 /**
  * Render the `@@CODEX_NETWORK@@` region — Codex Cloud's **Internet access** settings
- * for the environment. Its **Additional allowed domains** field takes exact hosts (a
- * root domain also allows `www.`), so this emits the same exact-host list as the Cursor
- * doc, never apex + `*.`.
+ * for the environment: the same list as the Cursor doc. Codex's docs describe
+ * **Additional allowed domains** as exact hosts (a root domain also allows `www.`) and
+ * say nothing of `*.`, so the note marks the wildcard entries untested and names the
+ * setting that gets past a host they miss.
  */
 export function renderCodexNetworkAllowlist(cwd: string): string {
-  const { declared, entries } = exactNetworkHosts(cwd);
   return (
     "Under **Internet access**, keep **Enable package manager domains** on and paste these\n" +
     "into **Additional allowed domains** (one per line) so cloud `/bkit-debug` + e2e can\n" +
     "reach bkit's own tooling and your app and log backends:\n\n" +
-    "```text\n" +
-    entries.join("\n") +
-    "\n```\n\n" +
-    `_${entries.length} host(s): ` +
-    networkSourceCounts(declared, BKIT_SHIPPED_NETWORK_HOSTS) +
-    ". Derived set fingerprint `" +
-    egressFingerprint() +
-    "`._ Exact hosts only — add the specific subdomains you need (e.g. `api.example.com`).\n" +
-    "**Enable all public internet access** works too but opens all egress."
+    renderWidenedNetworkList(cwd) +
+    "\n\nThe `*.` entries are untested on Codex: its docs list exact hosts only. If a task\n" +
+    "still cannot reach a subdomain, switch to **Enable all public internet access** (opens\n" +
+    "all egress) or add that exact host."
   );
 }
 

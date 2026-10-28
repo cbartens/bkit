@@ -129,23 +129,35 @@ fi
 # `command -v <cli> || <install>`), so no stack name is baked into bkit. Runs every session
 # (a no-op once the CLI is present); the web setup script bakes the same recipes into its
 # snapshot, so this is the gh-runner + resumed-session path. `bkit context list-blocks`
-# returns each block's bash body below `bkit:end` as `provision`; bkit (installed by the
-# `pnpm install` above) lists them and jq (installed by the cloud setup script) reads the
-# JSON. See .agents/context.md.
+# returns each block below `bkit:end` as `provisionBlocks` ({name, body}); a bkit without
+# that field gives the bodies alone as `provision`. bkit (installed by the `pnpm install`
+# above) lists them and jq (installed by the cloud setup script) reads the JSON. See
+# .agents/context.md.
 if [ -f .agents/context.md ]; then
   BKIT="$REPO_ROOT/node_modules/.bin/bkit"
   if [ ! -x "$BKIT" ] || ! command -v jq >/dev/null 2>&1; then
     log "context-fetch provisioning: SKIPPED — bkit (node_modules/.bin/bkit) or jq is missing. Fix: a working 'pnpm install' and the cloud setup script from .claude/bkit-cloud.md."
   else
-    PROVISION=$("$BKIT" context list-blocks --json 2>/dev/null | jq -r '.provision[]' 2>/dev/null || true)
-    if [ -n "$PROVISION" ]; then
+    PROVISION=$("$BKIT" context list-blocks --json 2>/dev/null \
+      | jq -c '.provisionBlocks // ((.provision // []) | map({name: "", body: .}))' 2>/dev/null || true)
+    COUNT=$(printf '%s' "$PROVISION" | jq 'length' 2>/dev/null || true)
+    if [ "${COUNT:-0}" -gt 0 ]; then
       log "provisioning context-fetch CLIs from .agents/context.md"
       # pnpm refuses `add -g` unless its global-bin dir is on PATH (corepack pnpm skips
       # `pnpm setup`); export it so `pnpm add -g` provision recipes don't self-skip. Mirrors
       # the web setup script's provision region, which bkit's install engine renders.
       export PNPM_HOME="${PNPM_HOME:-$HOME/.local/share/pnpm}"
       export PATH="$PNPM_HOME:$PNPM_HOME/bin:$PATH"
-      printf '%s\n' "$PROVISION" | bash || log "context-fetch CLI provisioning failed (non-blocking)"
+      # Each recipe runs in its own bash with stop-on-error on: a failing command stops
+      # that recipe, the log names it, and the next recipe still runs.
+      i=0
+      while [ "$i" -lt "$COUNT" ]; do
+        NAME=$(printf '%s' "$PROVISION" | jq -r ".[$i].name")
+        [ -n "$NAME" ] || NAME="#$((i + 1))"
+        printf '%s\n' "$PROVISION" | jq -r ".[$i].body" | bash -e \
+          || log "context-fetch provision '$NAME' failed (non-blocking); its CLI will be absent"
+        i=$((i + 1))
+      done
     fi
   fi
 fi

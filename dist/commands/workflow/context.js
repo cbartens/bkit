@@ -28,7 +28,7 @@ import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { CONTEXT_FETCH_CONTEXTS, parseContextFetchStart, } from "../../checks/before/context-fetch.js";
-import { extractContextFetchProvisionRecipes } from "../../install/cloud-env.js";
+import { extractContextFetchProvisionBlocks, extractContextFetchProvisionRecipes, } from "../../install/cloud-env.js";
 import { clampLogPath, readRecords } from "../../ledgers/clamp-log.js";
 import { lastRun } from "../../ledgers/status.js";
 import { CommandError, EXIT, git, outboxRel, outboxRoot, } from "../lib.js";
@@ -1335,7 +1335,8 @@ export const contextCommand = {
                 blocks: "[{idx, context, name, known, prefix, suffix, body}] in file order",
                 coverage: "blocks per context (runtime, ci, diff, e2e, web)",
                 contextsConfigured: "contexts with at least one block, in narration order",
-                provision: "bash body of each context-fetch:provision block below bkit:end, in file order (bkit-cloud-bootstrap.sh runs them)",
+                provision: "bash body of each context-fetch:provision block below bkit:end, in file order",
+                provisionBlocks: "[{name, body}] for the same blocks, name '' when the marker has none (bkit-cloud-bootstrap.sh runs them)",
             },
             run: (ctx) => {
                 const blocks = fetchBlocks(consumerSection(readContextMd(ctx) ?? ""));
@@ -1356,6 +1357,7 @@ export const contextCommand = {
                     coverage,
                     contextsConfigured: CONTEXT_FETCH_CONTEXTS.filter((c) => coverage[c] > 0),
                     provision: extractContextFetchProvisionRecipes(ctx.cwd),
+                    provisionBlocks: extractContextFetchProvisionBlocks(ctx.cwd),
                 });
                 return EXIT.OK;
             },

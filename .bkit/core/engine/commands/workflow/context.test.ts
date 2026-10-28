@@ -893,6 +893,7 @@ describe("bkit context list-blocks", () => {
     const r = await run(["list-blocks"], fs.mkdtempSync(path.join(tmpDir, "empty-")));
     expect(r.json.blocks).toEqual([]);
     expect(r.json.provision).toEqual([]);
+    expect(r.json.provisionBlocks).toEqual([]);
     expect(r.err).toContain("NO BLOCKS CONFIGURED");
   });
 
@@ -925,6 +926,10 @@ describe("bkit context list-blocks", () => {
     );
     const r = await run(["list-blocks"], path.join(tmpDir, "prov"));
     expect(r.json.provision).toEqual(["command -v a || install-a", "command -v b || install-b"]);
+    expect(r.json.provisionBlocks).toEqual([
+      { name: "a", body: "command -v a || install-a" },
+      { name: "b", body: "command -v b || install-b" },
+    ]);
     expect(r.json.blocks).toHaveLength(1);
   });
 });

@@ -32,6 +32,8 @@ Claude setup script, plus the repo install Claude runs from its bootstrap hook:
 ```bash
 #!/bin/bash
 set -euo pipefail
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+# Recorded first: the toolchain's download steps `cd /tmp`, where no repo is found.
 
 @@CODEX_TOOLCHAIN@@
 
@@ -39,7 +41,7 @@ set -euo pipefail
 
 @@CLOUD_CONTEXT_FETCH_PROVISION@@
 
-cd "$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
 if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; fi
 if [ -f .vale.ini ]; then vale sync; fi
 if [ -n "${BKIT_GH_TOKEN:-}" ]; then

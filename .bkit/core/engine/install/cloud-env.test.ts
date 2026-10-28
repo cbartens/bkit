@@ -374,14 +374,24 @@ describe("extractContextFetchProvisionRecipes / renderCloudContextFetchProvision
     expect(rendered).toContain('export PATH="$PNPM_HOME:$PNPM_HOME/bin:$PATH"');
     // The PATH export must come BEFORE the first pnpm-add recipe.
     expect(rendered.indexOf("PNPM_HOME")).toBeLessThan(rendered.indexOf("pnpm add -g"));
-    // Recipes run best-effort so one failing recipe can't abort the `set -e` snapshot
-    // build: a `set +e` subshell wraps them and its non-zero exit is swallowed.
-    expect(rendered).toContain("(\n  set +e\n");
-    expect(rendered).toMatch(
-      /\) \|\| echo "\[cloud-setup\] a context-fetch provision recipe failed/,
-    );
-    // Both the PATH export and set +e must precede the recipes.
+    // Each recipe runs in its own `set -e` subshell with the script's errexit off around
+    // them, so a failing recipe neither aborts the snapshot build nor hides behind a
+    // later command that succeeds; its own block name is reported.
     expect(rendered.indexOf("set +e")).toBeLessThan(rendered.indexOf("pnpm add -g"));
+    expect(rendered.match(/^\(\n {2}set -e$/gm)).toHaveLength(2);
+    expect(rendered).toContain("[cloud-setup] context-fetch provision 'vercel' failed");
+    expect(rendered).toContain("[cloud-setup] context-fetch provision 'supabase' failed");
+    expect(rendered.trimEnd().endsWith("\nset -e")).toBe(true);
+  });
+
+  it("names an unnamed provision block by its position", () => {
+    write(
+      ".agents/context.md",
+      "<!-- bkit:end -->\n<!-- context-fetch:provision -->\n```bash\necho hi\n```\n<!-- context-fetch:end -->\n",
+    );
+    expect(renderCloudContextFetchProvision(tmpDir)).toContain(
+      "[cloud-setup] context-fetch provision '#1' failed",
+    );
   });
 
   it("does not treat a fetch (context-fetch:start) block as a provision recipe", () => {
@@ -684,24 +694,35 @@ describe("renderCursorNetworkAllowlist", () => {
     expect(out).toContain("Security");
     expect(out).toMatch(/Allow all|Default \+ allowlist|Allowlist only/);
     expect(out).toContain("```text");
-    // exact hosts, never the wildcard form — Cursor's no-wildcard policy
+    // bkit's shipped entries are the exact hosts it calls, so they get no wildcard.
     expect(out).toContain("api.githubcopilot.com");
     expect(out).toContain("registry.npmjs.org");
     expect(out).not.toContain("*.githubcopilot.com");
   });
 
-  it("declared domains → lists them apex-only (no *. expansion) with the wildcard caution", () => {
+  it("declared domains → each as the domain and a *. wildcard, so its subdomains are reachable", () => {
     write(
       ".agents/context.md",
       "<!-- bkit:end -->\n## Cloud\n\n" +
         "<!-- allowed-domains:start -->\nsentry.io\nexample.com\n<!-- allowed-domains:end -->\n",
     );
+    const fence = /```text\n([\s\S]*?)\n```/.exec(renderCursorNetworkAllowlist(tmpDir))![1];
+    const lines = fence.split("\n");
+    expect(lines).toEqual(expect.arrayContaining(["sentry.io", "*.sentry.io"]));
+    expect(lines.indexOf("*.example.com")).toBe(lines.indexOf("example.com") + 1);
+  });
+
+  it("a declared shared hosting platform is widened too, with a note that it reaches every tenant", () => {
+    write(
+      ".agents/context.md",
+      "<!-- bkit:end -->\n## Cloud\n\n" +
+        "<!-- allowed-domains:start -->\nsupabase.co\nexample.com\n<!-- allowed-domains:end -->\n",
+    );
     const out = renderCursorNetworkAllowlist(tmpDir);
-    expect(out).toContain("sentry.io");
-    expect(out).toContain("example.com");
-    // Cursor list is narrower than Claude's — no auto `*.` wildcard rows.
-    expect(out).not.toContain("*.sentry.io");
-    expect(out).toMatch(/wildcard/i);
+    const lines = /```text\n([\s\S]*?)\n```/.exec(out)![1].split("\n");
+    expect(lines).toEqual(expect.arrayContaining(["supabase.co", "*.supabase.co"]));
+    expect(out).toContain("`supabase.co`: shared by many tenants");
+    expect(out).not.toContain("`example.com`: shared");
   });
 });
 
@@ -774,19 +795,27 @@ describe("extractCloudToolchainScript", () => {
 });
 
 describe("renderCodexNetworkAllowlist", () => {
-  it("lists exact hosts (no *. wildcard) under the Codex internet-access toggles", () => {
+  it("lists the same entries as the Cursor doc under the Codex internet-access toggles", () => {
     write(
       ".agents/context.md",
       "<!-- bkit:end -->\n## Cloud\n\n" +
-        "<!-- allowed-domains:start -->\nsentry.io\n<!-- allowed-domains:end -->\n",
+        "<!-- allowed-domains:start -->\nsentry.io\nvercel.app\n<!-- allowed-domains:end -->\n",
     );
     const out = renderCodexNetworkAllowlist(tmpDir);
+    const fence = (s: string) => /```text\n([\s\S]*?)\n```/.exec(s)![1];
     expect(out).toContain("Enable package manager domains");
     expect(out).toContain("Additional allowed domains");
-    expect(out).toContain("Enable all public internet access");
-    expect(out).toContain("sentry.io");
-    expect(out).toContain("api.githubcopilot.com");
-    expect(out).not.toContain("*.");
+    expect(fence(out)).toBe(fence(renderCursorNetworkAllowlist(tmpDir)));
+    expect(fence(out).split("\n")).toEqual(
+      expect.arrayContaining(["sentry.io", "*.sentry.io", "vercel.app", "*.vercel.app"]),
+    );
+    expect(out).toContain("`vercel.app`: shared by many tenants");
+  });
+
+  it("marks the *. entries untested on Codex and names the way around a blocked host", () => {
+    const out = renderCodexNetworkAllowlist(tmpDir);
+    expect(out).toContain("untested on Codex");
+    expect(out).toContain("**Enable all public internet access**");
   });
 });
 
@@ -799,7 +828,7 @@ function readCountNote(out: string): {
 } {
   const fence = /```text\n([\s\S]*?)\n```/.exec(out);
   const note =
-    /(\d+) (?:host\(s\)|domains)[^:]*: (\d+) from bkit's shipped egress registry and (\d+) more from/.exec(
+    /(\d+) (?:host\(s\)|domains|hosts and domains)[^:]*: (\d+) from bkit's shipped egress registry and (\d+) more from/.exec(
       out,
     );
   return {
@@ -811,13 +840,15 @@ function readCountNote(out: string): {
 }
 
 describe("network allowlist count note", () => {
+  // Pasted lines per counted entry: Claude widens every entry, Cursor and Codex only the
+  // one declared entry they add.
   it.each([
-    ["claude", renderCloudNetworkAllowlist, BKIT_SHIPPED_NETWORK_DOMAINS[0], 2],
-    ["cursor", renderCursorNetworkAllowlist, BKIT_SHIPPED_NETWORK_HOSTS[0], 1],
-    ["codex", renderCodexNetworkAllowlist, BKIT_SHIPPED_NETWORK_HOSTS[0], 1],
+    ["claude", renderCloudNetworkAllowlist, BKIT_SHIPPED_NETWORK_DOMAINS[0], (n: number) => n * 2],
+    ["cursor", renderCursorNetworkAllowlist, BKIT_SHIPPED_NETWORK_HOSTS[0], (n: number) => n + 1],
+    ["codex", renderCodexNetworkAllowlist, BKIT_SHIPPED_NETWORK_HOSTS[0], (n: number) => n + 1],
   ] as const)(
     "%s: a declared entry bkit already ships is counted once, and the numbers add up",
-    (_host, render, alreadyShipped, linesPerEntry) => {
+    (_host, render, alreadyShipped, linesFor) => {
       write(
         ".agents/context.md",
         "<!-- bkit:end -->\n<!-- allowed-domains:start -->\n" +
@@ -827,7 +858,7 @@ describe("network allowlist count note", () => {
       const { listed, total, shipped, added } = readCountNote(out);
       expect(added).toBe(1);
       expect(total).toBe(shipped + added);
-      expect(listed).toBe(total * linesPerEntry);
+      expect(listed).toBe(linesFor(total));
       expect(out).toContain("(1 of its 2 entries already shipped)");
     },
   );
@@ -928,6 +959,21 @@ describe("writeCodexCloudDoc — end-to-end render (real template)", () => {
     writeCodexCloudDoc(tmpDir, TOKENS);
     const out = fs.readFileSync(path.join(tmpDir, ".codex", "bkit-cloud.md"), "utf-8");
     expect(out).toContain("command -v vercel || pnpm add -g vercel");
+  });
+
+  it("records the repo root before any toolchain step can leave it, and returns there", () => {
+    writeCodexCloudDoc(tmpDir, TOKENS);
+    const out = fs.readFileSync(path.join(tmpDir, ".codex", "bkit-cloud.md"), "utf-8");
+    const script = String(/```bash\n(#!\/bin\/bash\n[\s\S]*?)```/.exec(out)?.[1]);
+    expect(script.split("\n").slice(0, 3)).toEqual([
+      "#!/bin/bash",
+      "set -euo pipefail",
+      'REPO_ROOT="$(git rev-parse --show-toplevel)"',
+    ]);
+    expect(script).not.toContain('cd "$(git rev-parse');
+    // The toolchain's download steps `cd /tmp`; the repo install must come back first.
+    expect(script.lastIndexOf("cd /tmp")).toBeLessThan(script.indexOf('cd "$REPO_ROOT"'));
+    expect(script.indexOf('cd "$REPO_ROOT"')).toBeLessThan(script.indexOf("pnpm install"));
   });
 });
 

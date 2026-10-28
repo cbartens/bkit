@@ -351,7 +351,7 @@ SUPABASE_ACCESS_TOKEN=<Supabase Management API token — https://supabase.com/da
 
 ## Network access (Cursor side)
 
-Cloud Agents get network access by default; egress is configurable in the dashboard → **Security**: **Allow all** / **Default + allowlist** / **Allowlist only**, at user / environment / team scope. Analogue of Claude's `Trusted` / `Custom`, but the allowlist is **deliberately narrower** — Cursor warns a broad `*.` wildcard opens egress far wider than intended, so add the **specific** subdomains you need rather than a wildcard. `.cursor/bkit-cloud.md` § Network access lists the derived hosts union any declared `allowed-domains`, as exact hosts (no auto-`*.` expansion, unlike the Claude side).
+Cloud Agents get network access by default; egress is configurable in the dashboard → **Security**: **Allow all** / **Default + allowlist** / **Allowlist only**, at user / environment / team scope. Analogue of Claude's `Trusted` / `Custom`. `.cursor/bkit-cloud.md` § Network access lists bkit's derived hosts exactly, and each declared `allowed-domains` entry as the domain plus its `*.` wildcard, like the Claude side, so the subdomains a declared CLI or API calls (`api.vercel.com` under `vercel.com`) are reachable. A declared shared hosting platform (`vercel.app`, `supabase.co`, the rest of `MULTI_TENANT_APEXES` in `.bkit/core/engine/shared/egress.ts`) is widened too, with a note: its wildcard reaches every tenant on the platform, the exfiltration path Cursor's docs warn about. To narrow it, declare the exact hosts you call there instead (`myapp.vercel.app`, `logging.googleapis.com`).
 
 ## After modifying `.cursor/*`
 
@@ -377,7 +377,7 @@ ChatGPT → **Settings > Codex Cloud > Environments** → **Create environment**
 | --- | --- |
 | **Install script** | § Install script — Claude setup script's pinned toolchain (Node, vale, gh, jq; sliced from the Claude template at install, never a second copy of the pins), corepack pnpm, context-fetch provision recipes, then `pnpm install --frozen-lockfile`, `vale sync` (if `.vale.ini`), non-blocking `gh auth login --with-token` from `BKIT_GH_TOKEN` |
 | **Environment variables** | § Environment variables — `.env` block (**Paste your .env or type a key**) |
-| **Internet access** | § Network access — keep **Enable package manager domains**, paste exact hosts into **Additional allowed domains** (no `*.`; a root domain also allows `www`). **Enable all public internet access** = open egress |
+| **Internet access** | § Network access — keep **Enable package manager domains**, paste the list into **Additional allowed domains** (`*.` entries untested on Codex: its docs list exact hosts, and a root domain also allows `www`). **Enable all public internet access** = open egress |
 
 ## Env vars vs network secrets
 

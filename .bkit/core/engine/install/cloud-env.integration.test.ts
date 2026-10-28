@@ -12,7 +12,12 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { BKIT_SHIPPED_NETWORK_DOMAINS, BKIT_SHIPPED_NETWORK_HOSTS } from "./cloud-env";
+import {
+  BKIT_SHIPPED_NETWORK_DOMAINS,
+  BKIT_SHIPPED_NETWORK_HOSTS,
+  renderCloudContextFetchProvision,
+  writeCodexCloudDoc,
+} from "./cloud-env";
 import { BKIT_EGRESS_SOURCES } from "../shared/egress";
 import { requireTsx } from "../../../../vitest.tsx-bin";
 
@@ -165,4 +170,122 @@ describe("T14 — the provenance field contributes no bkit check drift", () => {
 
     expect(writeCount(run(["check"]).stdout)).toBe(withField);
   }, 180_000);
+});
+
+// The generated install-script pieces, executed by a real bash — string checks alone
+// passed while a fresh Codex install silently skipped `pnpm install`.
+describe("cloud install script pieces, run by bash", () => {
+  const writeFile = (rel: string, content: string, mode = 0o644) => {
+    const abs = path.join(tmpDir, rel);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, content, { encoding: "utf-8", mode });
+  };
+  const bash = (script: string, env: NodeJS.ProcessEnv = process.env) =>
+    spawnSync("bash", ["-c", script], { cwd: tmpDir, encoding: "utf-8", env, timeout: 30_000 });
+  const block = (name: string, body: string) =>
+    `<!-- context-fetch:provision ${name} -->\n\`\`\`bash\n${body}\n\`\`\`\n<!-- context-fetch:end -->\n`;
+
+  it("Codex: the dependency install runs in the repo after a download step leaves it", () => {
+    const { GIT_DIR: _dir, GIT_WORK_TREE: _tree, GIT_INDEX_FILE: _index, ...env } = process.env;
+    expect(spawnSync("git", ["init", "-q"], { cwd: tmpDir, env }).status).toBe(0);
+    writeFile("pnpm-lock.yaml", "");
+    writeFile("bin/pnpm", '#!/bin/bash\necho "pnpm $* in $(pwd -P)"\n', 0o755);
+    writeCodexCloudDoc(tmpDir, { DEFAULT_BRANCH: "main", PROJECT_NAME: "p", REPO_SLUG: "o/p" });
+    const doc = read(".codex/bkit-cloud.md");
+    const lines = String(/```bash\n(#!\/bin\/bash\n[\s\S]*?)```/.exec(doc)?.[1]).split("\n");
+    const from = lines.indexOf('cd "$REPO_ROOT"');
+    const to = lines.findIndex((l) => l.includes("pnpm install --frozen-lockfile"));
+    expect(from).toBeGreaterThan(0);
+    // The script's own opening lines, a download step's `cd /tmp`, then its repo step.
+    const script = [...lines.slice(0, 3), "cd /tmp", ...lines.slice(from, to + 1)].join("\n");
+    const res = bash(script, { ...env, PATH: `${path.join(tmpDir, "bin")}:${env.PATH}` });
+    expect(res.status).toBe(0);
+    expect(res.stdout).toContain(`pnpm install --frozen-lockfile in ${fs.realpathSync(tmpDir)}`);
+  });
+
+  it("names each failing provision block, keeps going, and never fails the install", () => {
+    writeFile(
+      ".agents/context.md",
+      "<!-- bkit:end -->\n" +
+        block("fails-first", "false\necho fails-first-kept-going") +
+        block("good", "echo good-ran") +
+        block("fails-last", "exit 3"),
+    );
+    const region = renderCloudContextFetchProvision(tmpDir);
+    const res = bash(`set -euo pipefail\n${region}\necho after-region`, {
+      ...process.env,
+      HOME: tmpDir,
+    });
+    expect(res.status).toBe(0);
+    expect(res.stdout).toContain("good-ran");
+    expect(res.stdout).toContain("after-region");
+    // `false` stops its own block, even though the block's last command would succeed.
+    expect(res.stdout).not.toContain("fails-first-kept-going");
+    expect(res.stderr).toContain("context-fetch provision 'fails-first' failed");
+    expect(res.stderr).toContain("context-fetch provision 'fails-last' failed");
+    expect(res.stderr).not.toContain("'good' failed");
+  });
+
+  it("switches stop-on-error back on after the provision block", () => {
+    writeFile(".agents/context.md", "<!-- bkit:end -->\n" + block("good", "echo good-ran"));
+    const region = renderCloudContextFetchProvision(tmpDir);
+    const res = bash(`set -euo pipefail\n${region}\nfalse\necho not-reached`, {
+      ...process.env,
+      HOME: tmpDir,
+    });
+    expect(res.status).not.toBe(0);
+    expect(res.stdout).not.toContain("not-reached");
+  });
+
+  describe("Claude session hook: context-fetch provisioning", () => {
+    const hook = path.resolve(
+      path.dirname(new URL(import.meta.url).pathname),
+      "../../../templates/.claude/hooks/bkit-cloud-bootstrap.sh",
+    );
+    const runHook = (listBlocks: object) => {
+      writeFile(".agents/context.md", "<!-- bkit:end -->\n");
+      writeFile("list-blocks.json", JSON.stringify(listBlocks));
+      writeFile("node_modules/.bin/bkit", `#!/bin/bash\ncat "${tmpDir}/list-blocks.json"\n`, 0o755);
+      const {
+        GH_TOKEN: _gh,
+        GITHUB_TOKEN: _github,
+        BKIT_GH_TOKEN: _bkit,
+        GIT_DIR: _dir,
+        GIT_WORK_TREE: _tree,
+        GIT_INDEX_FILE: _index,
+        ...env
+      } = process.env;
+      return spawnSync("bash", [hook], {
+        cwd: tmpDir,
+        encoding: "utf-8",
+        input: "{}",
+        timeout: 30_000,
+        env: { ...env, HOME: tmpDir, CLAUDE_CODE_REMOTE: "true", CLAUDE_PROJECT_DIR: tmpDir },
+      });
+    };
+
+    it("names each failing recipe and still runs the rest", () => {
+      const res = runHook({
+        provisionBlocks: [
+          { name: "fails-first", body: "false\necho fails-first-kept-going" },
+          { name: "good", body: "echo good-ran" },
+          { name: "", body: "exit 3" },
+        ],
+      });
+      expect(res.status).toBe(0);
+      expect(res.stdout).toContain("good-ran");
+      // `false` stops its own recipe, even though the recipe's last command would succeed.
+      expect(res.stdout).not.toContain("fails-first-kept-going");
+      expect(res.stderr).toContain("context-fetch provision 'fails-first' failed");
+      expect(res.stderr).toContain("context-fetch provision '#3' failed");
+      expect(res.stderr).not.toContain("'good' failed");
+    });
+
+    it("runs the unnamed recipes of a bkit whose list-blocks has no provisionBlocks", () => {
+      const res = runHook({ provision: ["echo old-shape-ran", "exit 4"] });
+      expect(res.status).toBe(0);
+      expect(res.stdout).toContain("old-shape-ran");
+      expect(res.stderr).toContain("context-fetch provision '#2' failed");
+    });
+  });
 });
