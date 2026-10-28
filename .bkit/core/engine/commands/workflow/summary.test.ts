@@ -97,6 +97,39 @@ describe("buildSummary", () => {
     expect(buildSummary(input({ rows: [challenge] })).verdict).toBe("FAIL");
   });
 
+  it("a group's execute FAIL answered by that group's later non-FAIL verify is CONCERNS; else FAIL", () => {
+    const row = (step: string, group: number, verdict: string, attempt = 1) => ({
+      type: "step-done",
+      step,
+      group,
+      verdict,
+      attempt,
+    });
+    const execute = row("build-plan-execute", 7, "FAIL");
+    // Verify FAIL → Decision Pause accepts the gap → verify re-runs with CONCERNS.
+    const s = buildSummary(
+      input({
+        rows: [
+          execute,
+          row("build-plan-verify", 7, "FAIL"),
+          { type: "step-done", step: "build-decision", attempt: 1, route: "verify" },
+          row("build-plan-verify", 7, "CONCERNS", 2),
+        ],
+      }),
+    );
+    expect(s.verdict).toBe("CONCERNS");
+    expect(s.reasons).toContain("build-plan-execute (group 7) FAIL, answered by build-plan-verify");
+    expect(s.reasons).toContain("build-plan-verify (group 7) CONCERNS");
+
+    for (const rows of [
+      [execute],
+      [execute, row("build-plan-verify", 8, "PASS")],
+      [row("build-plan-verify", 7, "PASS"), execute],
+      [execute, { type: "step-done", step: "build-decision", attempt: 1 }],
+    ])
+      expect(buildSummary(input({ rows })).reasons).toContain("build-plan-execute (group 7) FAIL");
+  });
+
   it("the Challenge section says when challenge-1 was skipped for a small change", () => {
     const gate = (linesChanged: number, filesChanged: number, size: string, skipped: boolean) => ({
       type: "challenge-gate",

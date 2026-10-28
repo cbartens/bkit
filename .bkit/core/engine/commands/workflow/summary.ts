@@ -59,15 +59,18 @@ export function refOf(fid: string, tracker: FidTracker = "any"): string | undefi
 }
 
 /**
- * A critique step whose FAIL a later step of the same workflow answers; the run
- * carried on past it. A build challenge is answered by its fix tasks running
- * (`build-plan-execute`) or by a Decision Pause (`build-decision`).
+ * A step whose FAIL a later, non-FAIL step of the same workflow (and the same plan
+ * group, when the failed row has one) answers; the run carried on past it. A build
+ * challenge is answered by its fix tasks running (`build-plan-execute`) or by a
+ * Decision Pause (`build-decision`); a group's execute by that group's verify, which
+ * judges the group's work after the executor and after any Decision Pause on it.
  */
 const ANSWERED_BY: Readonly<Record<string, readonly string[]>> = {
   "plan/plan-review": ["plan-apply-review"],
   "design/design-review": ["design-apply-review"],
   "design/design-spike": ["design-apply-review"],
   "build/build-challenge": ["build-plan-execute", "build-decision"],
+  "build/build-plan-execute": ["build-plan-verify"],
 };
 
 const RUN_TESTS = new Set(["build-run-tests", "debug-run-tests"]);
@@ -119,6 +122,11 @@ interface StepGroup {
 const str = (v: unknown) => (typeof v === "string" ? v : undefined);
 const artifactsOf = (r: Row) =>
   Array.isArray(r.artifacts) ? r.artifacts.filter((a): a is string => typeof a === "string") : [];
+/** A step row's plan group (`group`, or debug's `subPlan`); undefined when it has none. */
+const planGroupOf = (r: Row) => {
+  const planGroup = r.group ?? r.subPlan;
+  return typeof planGroup === "number" ? planGroup : undefined;
+};
 
 /** The run's step rows grouped per step (and plan group), in first-seen order. */
 function stepGroups(rows: Row[]): StepGroup[] {
@@ -126,8 +134,7 @@ function stepGroups(rows: Row[]): StepGroup[] {
   rows.forEach((row, index) => {
     const step = str(row.step);
     if (row.type !== "step-done" || step === undefined) return;
-    const planGroup = row.group ?? row.subPlan;
-    const sub = typeof planGroup === "number" ? planGroup : undefined;
+    const sub = planGroupOf(row);
     const key = sub === undefined ? step : `${step}#${sub}`;
     const g = groups.get(key) ?? {
       label: sub === undefined ? step : `${step} (group ${sub})`,
@@ -194,8 +201,14 @@ export function buildSummary(input: SummaryInput): Summary {
     if (row.verdict !== "FAIL") continue;
     if (g.step === "debug-failure-reproduce" && notReproduced) continue;
     const answers = ANSWERED_BY[`${workflow}/${g.step}`] ?? [];
+    const sub = planGroupOf(row);
     const answeredBy = input.rows.find(
-      (r, i) => i > index && r.type === "step-done" && answers.includes(String(r.step)),
+      (r, i) =>
+        i > index &&
+        r.type === "step-done" &&
+        answers.includes(String(r.step)) &&
+        r.verdict !== "FAIL" &&
+        (sub === undefined || planGroupOf(r) === sub),
     )?.step;
     if (answeredBy !== undefined)
       concerns.push(`${g.label} FAIL, answered by ${String(answeredBy)}`);
