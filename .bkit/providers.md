@@ -588,6 +588,10 @@ Filters (not above score): endpoint count; automatic prompt caching (bkit sends 
 
 **The band is a cache-read ceiling, because cache reads are the bill.** Measured across 21 days of real agent work (Claude Code transcripts, deduped by message): a normal day carries **~1.0–1.2B cache-read tokens**, ~20M cache writes, ~1.6–2.4M output and ~0 fresh input — roughly **600 cache-read tokens per output token**, so cache reads exceed 95% of what a gap costs. Cache-read price spans ~170x across the board while input price spans ~13x, so an input/output band cannot predict what a gap costs.
 
+**Measured again on opencode itself** (`bkit harvest scan`, 2026-10-25 → 10-28, 166 chats on `deepseek-v4.1-flash`): a heavy day carries **27.8M fresh input, 1.04B cache read and 2.08M output**, and the fresh input is what the Claude profile misses — Claude Code caches almost all of it away, opencode does not. Per heavy day at list prices: **DeepSeek $8.6**, Gemini 4 Argon or GPT-6.1 Sol **$180.8**, Claude Opus 5.5 **$361.5**. Input price therefore matters on this profile: the Gemini/GPT tier spends $56 of its $181 on fresh input alone.
+
+**What the A$70 cap buys on that day** (A$0.703/USD, 2-day gap): about **three** Gemini-class agents out of 39, or thirteen on `mimo-v2.6-pro` for A$33. A$140 buys **nine** Gemini-class agents (A$137); thirteen of them land at A$187 and breach it.
+
 | Cache-read ceiling (per Mtok) | Normal day | 2-day gap | Models that survive                          |
 | ----------------------------- | ---------- | --------- | -------------------------------------------- |
 | ≤ `$0.005`                    | ~$8        | ~$30      | `deepseek-v4.1-flash-1017` ($0.003)          |
@@ -641,10 +645,10 @@ Re-probed `https://livebench.ai/data/20261025/table.csv` + `cost.csv` (§ Select
 
 **Two presets, one budget.** Tables and the per-agent matrix live in `prompts.md` § Model Presets. _Judges_ = the 13 reviewers, verifiers, escalators and convergent lenses; _builders_ = the other 26. The overflow column is capped against a Max subscription, A$300/month ≈ A$70/week, using the 2-day gap as the binding case.
 
-| Preset                    | Judges                | Builders                        | 2-day gap | Cap   |
-| ------------------------- | --------------------- | ------------------------------- | --------- | ----- |
-| **Option 1 — default**    | `mimo-v2.6-pro` 35.2  | `deepseek-v4.1-flash-1017` 40.9 | **A$28**  | A$70  |
-| **Option 2 — spend more** | `gemini-4-argon` 61.2 | `deepseek-v4.1-flash-1017` 40.9 | **A$141** | A$140 |
+| Preset                    | Judges                               | Builders                        | 2-day gap | Cap   |
+| ------------------------- | ------------------------------------ | ------------------------------- | --------- | ----- |
+| **Option 1 — default**    | `mimo-v2.6-pro` 35.2                 | `deepseek-v4.1-flash-1017` 40.9 | **A$28**  | A$70  |
+| **Option 2 — spend more** | `gemini-4-argon` 61.2 on nine judges | `deepseek-v4.1-flash-1017` 40.9 | **A$137** | A$140 |
 
 **Option 3 is retired.** Two templates only: the default that fits the cap, and one that doubles it for work that matters more than the week.
 
