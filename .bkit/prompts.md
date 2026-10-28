@@ -131,6 +131,8 @@ Canonical per-agent metadata — **single source of truth for model per agent**.
 
 > **`OpenAI` column — PROVISIONAL, not parity-proven.** Every other gateway column = live catalog probe + per-model tool-calling smoke. `OpenAI` cells mapped from documented role only (`gpt-6-astra` deep reasoning, `gpt-5.6-terra` balanced default). Haiku cells are board-picked: `gpt-6-luna` (LiveBench 51.2; `gpt-5.6-luna` measures 48.4), 2026-10-09, existence via models.dev only — no OpenAI key to probe. Re-pin from a real probe before relying on them. `gpt-5.4` / `gpt-5.4-mini` retired 2026-08-31.
 
+> **`Google` column — repin pending.** Cells pin `gemini-3.8-pro`, which LiveBench 2.0 does not measure. `gemini-4-argon` is measured at **61.2** Long Agentic and is served on the `google` provider (models.dev), so the column should move to it; `gemini-3.8-flash` 16.5 is not a candidate.
+
 `Effort` + `Max Turns` cross-host: `Effort` = Claude `effort:` → opencode `variant:` field / Codex `model_reasoning_effort` at install; `Max Turns` = runaway cap (Claude today). `Anthropic` / `Effort` / `Max Turns` restate prompt-file frontmatter — parity enforced by `.bkit/core/engine/audits/workflows/models-table-parity.test.ts`. See § `maxTurns` calibration for workload rationale.
 
 > **Context-window note:** Claude Code `model:` is the API ID. `claude-opus-5-5` and `claude-sonnet-5-5` are 1M context. Haiku pins `claude-haiku-5-5` (1M context).
@@ -401,20 +403,22 @@ Text hooks add to an agent's context mid-run — every agent and subagent, no fr
 
 Three settings for the opencode columns between subscription resets, priced against measured cache-read volume (`.bkit/providers.md` § Budget band) per **2-day gap** — the days after the week's Claude and OpenAI credits run out. **Option 1 is what ships**; Options 2 and 3 are opt-in blocks to copy into § Model Overrides, and rows you leave out fall back to the default.
 
-| Preset                                          | Who runs what                                                                                                           | 2-day gap (normal / push) |
-| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------- |
-| **Option 1 — cheapest (default)**               | `deepseek-v4.1-flash-1017` on every agent; the five convergent lenses on `xiaomi/mimo-v2.6-pro`                         | **$17 / $34**             |
-| **Option 2 — balanced**                         | the ten spine agents (synthesizers + gates) on `google/gemini-4-argon`; the rest on DeepSeek; lenses on `mimo-v2.6-pro` | **$82 / $169**            |
-| **Option 3 — highest outside Anthropic/OpenAI** | every agent on `google/gemini-4-argon`; lenses on `moonshotai/kimi-k3.1-pro`                                            | **$305 / $637**           |
+| Preset                                          | Who runs what                                                                                              | 2-day gap (normal / push) |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------- |
+| **Option 1 — cheapest (default)**               | `deepseek-v4.1-flash-1017` on the 34 working agents; the five convergent lenses on `google/gemini-4-argon` | **$47 / $98**             |
+| **Option 2 — balanced**                         | the ten spine agents plus the five lenses on `gemini-4-argon`; the rest on DeepSeek                        | **$112 / $233**           |
+| **Option 3 — highest outside Anthropic/OpenAI** | every agent on `gemini-4-argon`                                                                            | **$268 / $558**           |
 
-OpenRouter IDs: `deepseek-v4.1-flash-1017` = `openrouter/deepseek/deepseek-v4.1-flash-1017`, `mimo-v2.6-pro` = `openrouter/xiaomi/mimo-v2.6-pro`, `gemini-4-argon` = `openrouter/google/gemini-4-argon`, `kimi-k3.1-pro` = `openrouter/moonshotai/kimi-k3.1-pro`. **Bold** marks a cell that differs from the default.
+**The lens must out-score the workhorse.** A convergent lens exists to catch what the main model misses; a weaker lens buys token variance but cannot see past the workhorse's own ceiling. Every cheaper candidate loses on the 2026-10-25 board — `mimo-v2.6-pro` 35.2 against DeepSeek's 40.9, `kimi-k3.1-pro` 39.1 — while `gemini-4-argon` 61.2 is both stronger and cheaper per cached token ($0.10) than `muse-wonder` 52.6 ($0.20) or `grok-4.7` 46.1 ($0.50).
+
+OpenRouter IDs: `deepseek-v4.1-flash-1017` = `openrouter/deepseek/deepseek-v4.1-flash-1017`, `gemini-4-argon` = `openrouter/google/gemini-4-argon`. **Bold** marks a cell that differs from the default.
 
 <!-- prettier-ignore -->
 | Agent | Option 1 — default | Option 2 — balanced | Option 3 — maximum |
 | --- | --- | --- | --- |
 | `bkit-design-brainstorm-ideate-1` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
 | `bkit-design-brainstorm-ideate-2` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
-| `bkit-design-brainstorm-ideate-3` | mimo-v2.6-pro | mimo-v2.6-pro | **kimi-k3.1-pro** |
+| `bkit-design-brainstorm-ideate-3` | gemini-4-argon | gemini-4-argon | gemini-4-argon |
 | `bkit-design-generate` | deepseek-v4.1-flash-1017 | **gemini-4-argon** | **gemini-4-argon** |
 | `bkit-design-review-1` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
 | `bkit-design-review-2` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
@@ -423,7 +427,7 @@ OpenRouter IDs: `deepseek-v4.1-flash-1017` = `openrouter/deepseek/deepseek-v4.1-
 | `bkit-design-organise` | deepseek-v4.1-flash-1017 | **gemini-4-argon** | **gemini-4-argon** |
 | `bkit-plan-generate` | deepseek-v4.1-flash-1017 | **gemini-4-argon** | **gemini-4-argon** |
 | `bkit-plan-review-1` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
-| `bkit-plan-review-2` | mimo-v2.6-pro | mimo-v2.6-pro | **kimi-k3.1-pro** |
+| `bkit-plan-review-2` | gemini-4-argon | gemini-4-argon | gemini-4-argon |
 | `bkit-plan-scope-check` | deepseek-v4.1-flash-1017 | **gemini-4-argon** | **gemini-4-argon** |
 | `bkit-plan-update` | deepseek-v4.1-flash-1017 | **gemini-4-argon** | **gemini-4-argon** |
 | `bkit-build-plan-convert` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
@@ -433,11 +437,11 @@ OpenRouter IDs: `deepseek-v4.1-flash-1017` = `openrouter/deepseek/deepseek-v4.1-
 | `bkit-build-plan-verify` | deepseek-v4.1-flash-1017 | **gemini-4-argon** | **gemini-4-argon** |
 | `bkit-build-plan-gaps-remediate` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
 | `bkit-build-challenge-1` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
-| `bkit-build-challenge-2` | mimo-v2.6-pro | mimo-v2.6-pro | **kimi-k3.1-pro** |
+| `bkit-build-challenge-2` | gemini-4-argon | gemini-4-argon | gemini-4-argon |
 | `bkit-debug-failure-reproduce` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
-| `bkit-debug-failure-diagnose` | mimo-v2.6-pro | mimo-v2.6-pro | **kimi-k3.1-pro** |
+| `bkit-debug-failure-diagnose` | gemini-4-argon | gemini-4-argon | gemini-4-argon |
 | `bkit-debug-failure-remediate` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
-| `bkit-debug-failure-soak` | mimo-v2.6-pro | mimo-v2.6-pro | **kimi-k3.1-pro** |
+| `bkit-debug-failure-soak` | gemini-4-argon | gemini-4-argon | gemini-4-argon |
 | `bkit-debug-abort-handover` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
 | `bkit-ship-conflict-resolve` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
 | `bkit-ship-deferred-sweep` | deepseek-v4.1-flash-1017 | **gemini-4-argon** | **gemini-4-argon** |
@@ -452,7 +456,7 @@ OpenRouter IDs: `deepseek-v4.1-flash-1017` = `openrouter/deepseek/deepseek-v4.1-
 | `bkit-utility-compress-markdown` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
 | `bkit-utility-update-documentation` | deepseek-v4.1-flash-1017 | deepseek-v4.1-flash-1017 | **gemini-4-argon** |
 
-**Option 2 — balanced.** The ten spine agents run `google/gemini-4-argon` (61.2 Long Agentic, 11.6 under the 72.8 opus bar): the synthesizers that author a design, plan or audit, and the gates that verify one. Everything else stays on DeepSeek; the lenses keep the Xiaomi family. Copy into § Model Overrides:
+**Option 2 — balanced.** Ten spine agents move to `google/gemini-4-argon` (61.2 Long Agentic, 11.6 under the 72.8 opus bar): the synthesizers that author a design, plan or audit, and the gates that verify one. The lenses already run it by default, so no lens rows are needed. Copy into § Model Overrides:
 
 <!-- prettier-ignore -->
 | Prompt | Provider | Model |
@@ -461,14 +465,14 @@ OpenRouter IDs: `deepseek-v4.1-flash-1017` = `openrouter/deepseek/deepseek-v4.1-
 | bkit-design-update | openrouter | openrouter/google/gemini-4-argon |
 | bkit-design-organise | openrouter | openrouter/google/gemini-4-argon |
 | bkit-plan-generate | openrouter | openrouter/google/gemini-4-argon |
-| bkit-plan-update | openrouter | openrouter/google/gemini-4-argon |
 | bkit-plan-scope-check | openrouter | openrouter/google/gemini-4-argon |
-| bkit-build-plan-verify | openrouter | openrouter/google/gemini-4-argon |
+| bkit-plan-update | openrouter | openrouter/google/gemini-4-argon |
 | bkit-build-plan-current | openrouter | openrouter/google/gemini-4-argon |
-| bkit-audit-generate | openrouter | openrouter/google/gemini-4-argon |
+| bkit-build-plan-verify | openrouter | openrouter/google/gemini-4-argon |
 | bkit-ship-deferred-sweep | openrouter | openrouter/google/gemini-4-argon |
+| bkit-audit-generate | openrouter | openrouter/google/gemini-4-argon |
 
-**Option 3 — highest quality outside Anthropic and OpenAI.** Every agent runs `google/gemini-4-argon`, the closest any allowed vendor gets to the opus bar; the lenses run `moonshotai/kimi-k3.1-pro` (39.1, distinct family, $0.20 cache read). More than a month of subscription for one gap, against roughly a quarter of the same work at Claude list price. Copy into § Model Overrides:
+**Option 3 — highest quality outside Anthropic and OpenAI.** Every agent runs `google/gemini-4-argon`, the closest any allowed vendor gets to the opus bar; the block below covers the 34 non-lens agents, since the lenses already run it. More than a month of subscription for one gap, against roughly a quarter of the same work at Claude list price. **Gemini-led by construction:** Claude Fable 5.1 is the only model above it on the board and the vendor rule bars it, so this preset carries a single-vendor exposure. The lenses are the one place a second family fits, at a depth cost — `muse-wonder` 52.6 for ~$100 per gap, `kimi-k3.1-pro` 39.1 for ~$85. Copy into § Model Overrides:
 
 <!-- prettier-ignore -->
 | Prompt | Provider | Model |
@@ -507,11 +511,6 @@ OpenRouter IDs: `deepseek-v4.1-flash-1017` = `openrouter/deepseek/deepseek-v4.1-
 | bkit-utility-update-tracker | openrouter | openrouter/google/gemini-4-argon |
 | bkit-utility-compress-markdown | openrouter | openrouter/google/gemini-4-argon |
 | bkit-utility-update-documentation | openrouter | openrouter/google/gemini-4-argon |
-| bkit-design-brainstorm-ideate-3 | openrouter | openrouter/moonshotai/kimi-k3.1-pro |
-| bkit-plan-review-2 | openrouter | openrouter/moonshotai/kimi-k3.1-pro |
-| bkit-build-challenge-2 | openrouter | openrouter/moonshotai/kimi-k3.1-pro |
-| bkit-debug-failure-diagnose | openrouter | openrouter/moonshotai/kimi-k3.1-pro |
-| bkit-debug-failure-soak | openrouter | openrouter/moonshotai/kimi-k3.1-pro |
 
 **Cursor — first-party pins only.** `cursor-grok-4.5-high` carries depth, synthesizers and the parallel slots; `composer-2.5` carries volume, the build and ship pipelines. That keeps workflows running when API credits are spent. `/v0/models` has no Opus 5.5 ID: `claude-opus-5-thinking-high` is the API-pool equivalent for `claude-opus-5-5` rows and `claude-sonnet-5-thinking-high` for `claude-sonnet-5-5`, both opt-in through § Model Overrides. Orchestrators (`/design` `/plan` `/debug`) take the session model, not a table row. Probe `/v0/models` before pinning — the catalog churns.
 

@@ -633,14 +633,16 @@ Re-probed `https://livebench.ai/data/20261025/table.csv` + `cost.csv` (§ Select
 
 **Three presets, one default.** Ready to paste in `prompts.md` § Model Overrides; the gap cost is measured (§ Budget band), not modelled.
 
-| Preset                                          | Who runs what                                                                                                            | 2-day gap (normal / push) | Long Agentic              |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------- | ------------------------- |
-| **Option 1 — cheapest (default)**               | `deepseek-v4.1-flash-1017` on every agent; the five convergent lenses on `xiaomi/mimo-v2.6-pro`                          | **$17 / $34**             | 40.9 workhorse, 35.2 lens |
-| **Option 2 — balanced**                         | the ten spine agents — synthesizers and gates — on `gemini-4-argon`; the rest on DeepSeek; the lenses on `mimo-v2.6-pro` | **$82 / $169**            | 61.2 spine, 40.9 rest     |
-| **Option 3 — highest outside Anthropic/OpenAI** | every agent on `gemini-4-argon`; the lenses on `moonshotai/kimi-k3.1-pro`                                                | **$305 / $637**           | 61.2 everywhere           |
-| _(shipped until Option 1 lands)_                | DeepSeek everywhere; the lenses on `kimi-k3`                                                                             | $78 / $162                | 40.9 / 26.4               |
+| Preset                                          | Who runs what                                                                                       | 2-day gap (normal / push) | Long Agentic              |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------- | ------------------------- | ------------------------- |
+| **Option 1 — cheapest (default)**               | `deepseek-v4.1-flash-1017` on the 34 working agents; the five convergent lenses on `gemini-4-argon` | **$47 / $98**             | 40.9 workhorse, 61.2 lens |
+| **Option 2 — balanced**                         | the ten spine agents plus the five lenses on `gemini-4-argon`; the rest on DeepSeek                 | **$112 / $233**           | 61.2 spine, 40.9 rest     |
+| **Option 3 — highest outside Anthropic/OpenAI** | every agent on `gemini-4-argon`                                                                     | **$268 / $558**           | 61.2 everywhere           |
+| _(shipped until Option 1 lands)_                | DeepSeek everywhere; the lenses on `kimi-k3`                                                        | $78 / $162                | 40.9 / 26.4               |
 
-**Ceiling for the default: ≤ `$0.005` cache read per Mtok** — Option 1's dearest cell is `mimo-v2.6-pro` at `$0.0036`. Options 2 and 3 breach the ceiling deliberately; they are opt-in through § Model Overrides and each states its own gap cost, so no default pin ever drifts above the ceiling. The current `kimi-k3` lenses are the one live violation at `$0.19`.
+**The lens must out-score the workhorse.** A convergent lens exists to catch what the main model misses; a weaker lens buys token variance but cannot see past the workhorse's own ceiling. Against DeepSeek's 40.9, every cheap candidate loses — `mimo-v2.6-pro` 35.2 at $17 per gap, `kimi-k3.1-pro` 39.1 at $85 — and `gemini-4-argon` 61.2 is stronger _and_ cheaper per cached token ($0.10) than `muse-wonder` 52.6 ($0.20, ~$100) or `grok-4.7` 46.1 ($0.50, ~$167).
+
+**Default budget: ≤ `$50` per 2-day gap at the measured profile.** Option 1 lands at $47, so the ceiling is a gap budget rather than a flat per-token cap: the workhorse carries `$0.003` cache read, the five lens cells carry `$0.10`, and no other default cell exceeds `$0.003`. Options 2 and 3 are opt-in through § Model Overrides and each states its own cost. The current `kimi-k3` lenses are the live violation at `$0.19`.
 
 **Where the presets live:** `prompts.md` § Model Presets, in the managed region above `bkit:end` — the full 39-agent matrix with each option's model per agent, plus copy-paste blocks for Options 2 and 3. **Option 1 needs no block: it is the shipped default.** Presets live above `bkit:end` because a consumer's § Model Overrides below it is preserved by install and upgrade — text placed there would never reach an existing install. That consumer region stays deliberately thin: a usage line and the empty table.
 
