@@ -159,7 +159,6 @@ const GROUP_A_MD_FILES: Array<[root: string, rel: string]> = [
   [CORE_ROOT, ".agents/rules.md"],
   [CORE_ROOT, ".agents/docs.md"],
   [CORE_ROOT, ".agents/skills.md"],
-  [CORE_ROOT, ".bkit/lite.md"],
   [CORE_ROOT, "docs/templates/bkit-plan.md"],
   ...listAuditTemplates().map((rel): [string, string] => [CORE_ROOT, rel]),
 ];
