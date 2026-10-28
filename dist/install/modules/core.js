@@ -198,7 +198,6 @@ export const BKIT_CANONICAL_DOCS = [
     "install.md",
     "jsonl.md",
     "LICENSE.md",
-    "lite.md",
     "pipeline.md",
     "providers.md",
     "prompts.md",
@@ -249,7 +248,7 @@ export function runBkitDocs(dryRun, tokens, ws, logPrefix) {
             console.log(`${logPrefix} ${tag}core: ${dstPath}`);
         }
     }
-    migrateShortcutsToLite(dryRun, ws, logPrefix);
+    migrateRetiredLite(dryRun, ws, logPrefix);
     migrateRetiredDevLock(dryRun, ws, logPrefix);
     migrateLedgerSchema(dryRun, ws, logPrefix);
     migrateJiraKeyName(dryRun, logPrefix);
@@ -274,41 +273,84 @@ export function migrateJiraKeyName(dryRun, logPrefix) {
         fs.writeFileSync(ENV_FILE, text.split(OLD_JIRA_KEY).join(NEW_JIRA_KEY), "utf-8");
     console.log(`${logPrefix} ${dryRun ? "[dry-run] " : ""}core: ${ENV_FILE} — ${OLD_JIRA_KEY} renamed to ${NEW_JIRA_KEY}`);
 }
-// Migration (5.1.0 – 5.2.4 installs, `docs/migrations.md`): the lite workflows lived at
-// `.agents/shortcuts.md`. The consumer's own lines below `bkit:end` (minus the seeded
-// heading) move under `.bkit/lite.md`'s consumer section; the old file is deleted. Runs
-// after the docs loop, so `.bkit/lite.md` is already written. The delete is recorded in
-// ws (as orphan-mirror deletes are) so `bkit check` fails until upgrade runs.
+// Migration (5.1.0 – 6.0.x installs, `docs/migrations.md`): the lite workflows are retired.
+// The managed block of `.bkit/lite.md` (and of its 5.1.0 – 5.2.4 predecessor
+// `.agents/shortcuts.md`) is stripped; the consumer's own lines (minus the seeded headings)
+// land in `.bkit/lite.md` under a sentinel first line, or the file is deleted when none
+// remain. A file holding the sentinel and no managed block is the already-retired stub:
+// silent, no write. A blockless or multi-block `.bkit/lite.md` is left byte-for-byte with
+// a logged fix. Writes are recorded in ws (dry-run parity; `bkit check` fails until upgrade).
+export const RETIRED_LITE_STUB_SENTINEL = "<!-- bkit:retired-lite-stub -->";
 const RETIRED_SHORTCUTS = path.join(".agents", "shortcuts.md");
 const RETIRED_SHORTCUTS_HEADING = "## Project Shortcuts";
-export function migrateShortcutsToLite(dryRun, ws, logPrefix) {
-    if (!fs.existsSync(RETIRED_SHORTCUTS))
-        return;
-    if (!fs.existsSync(path.join(getBkitDocsRoot(), "lite.md")))
-        return;
-    const tag = dryRun ? "[dry-run] " : "";
-    const dst = path.join(".bkit", "lite.md");
-    const old = fs.readFileSync(RETIRED_SHORTCUTS, "utf-8");
-    if (extractManagedBlock(old, "html-comment") === null) {
-        console.warn(`${logPrefix} ${RETIRED_SHORTCUTS} has no single bkit managed block — left in place. Move your own lines into ${dst} below \`<!-- bkit:end -->\`, then delete it.`);
-        return;
-    }
-    const own = stripManagedBlock(old, "html-comment")
-        .split("\n")
-        .filter((line) => line.trim() !== RETIRED_SHORTCUTS_HEADING)
+const RETIRED_LITE = path.join(".bkit", "lite.md");
+const RETIRED_LITE_HEADING = "## Project Lite Workflows";
+/** The consumer lines left once the managed block and the given seeded heading are removed. */
+function consumerLines(text, heading) {
+    const lines = stripManagedBlock(text, "html-comment").split("\n");
+    return lines
+        .filter((line) => line.trim() !== heading)
         .join("\n")
         .trim();
-    if (own.length > 0) {
-        if (!dryRun) {
-            const current = fs.readFileSync(dst, "utf-8");
-            fs.writeFileSync(dst, `${current.replace(/\n*$/, "\n\n")}${own}\n`, "utf-8");
+}
+export function migrateRetiredLite(dryRun, ws, logPrefix) {
+    const hasShortcuts = fs.existsSync(RETIRED_SHORTCUTS);
+    const hasLite = fs.existsSync(RETIRED_LITE);
+    if (!hasShortcuts && !hasLite)
+        return;
+    const tag = dryRun ? "[dry-run] " : "";
+    let liteOwn = "";
+    let liteIsManaged = false;
+    if (hasLite) {
+        const lite = fs.readFileSync(RETIRED_LITE, "utf-8");
+        if (extractManagedBlock(lite, "html-comment") !== null) {
+            liteIsManaged = true;
+            liteOwn = consumerLines(lite, RETIRED_LITE_HEADING);
         }
-        ws.writes.push({ path: dst, action: "update" });
+        else if (lite.split("\n")[0]?.trim() === RETIRED_LITE_STUB_SENTINEL) {
+            liteOwn = lite.slice(lite.indexOf("\n") + 1).trim();
+        }
+        else {
+            console.warn(`${logPrefix} ${RETIRED_LITE} has no single bkit managed block — left in place. The lite workflows are retired: keep your own lines in it (or in your own docs) and delete any leftover bkit-managed text.`);
+            return;
+        }
     }
-    if (!dryRun)
-        fs.rmSync(RETIRED_SHORTCUTS);
-    ws.writes.push({ path: RETIRED_SHORTCUTS, action: "write" });
-    console.log(`${logPrefix} ${tag}core: moved ${RETIRED_SHORTCUTS} → ${dst}`);
+    let shortcutsOwn = "";
+    let shortcutsMovable = false;
+    if (hasShortcuts) {
+        const old = fs.readFileSync(RETIRED_SHORTCUTS, "utf-8");
+        if (extractManagedBlock(old, "html-comment") === null) {
+            console.warn(`${logPrefix} ${RETIRED_SHORTCUTS} has no single bkit managed block — left in place. Move your own lines into ${RETIRED_LITE}, then delete it.`);
+        }
+        else {
+            shortcutsMovable = true;
+            shortcutsOwn = consumerLines(old, RETIRED_SHORTCUTS_HEADING);
+        }
+    }
+    const own = [liteOwn, shortcutsOwn].filter((part) => part.length > 0).join("\n\n");
+    const stubText = `${RETIRED_LITE_STUB_SENTINEL}\n\n${own}\n`;
+    const liteChanges = liteIsManaged || (own.length > 0 && shortcutsOwn.length > 0);
+    if (liteChanges) {
+        if (own.length > 0) {
+            if (!dryRun) {
+                fs.mkdirSync(path.dirname(RETIRED_LITE), { recursive: true });
+                fs.writeFileSync(RETIRED_LITE, stubText, "utf-8");
+            }
+            ws.writes.push({ path: RETIRED_LITE, action: hasLite ? "update" : "write" });
+        }
+        else if (hasLite) {
+            if (!dryRun)
+                fs.rmSync(RETIRED_LITE);
+            ws.writes.push({ path: RETIRED_LITE, action: "write" });
+        }
+        console.log(`${logPrefix} ${tag}core: retired ${RETIRED_LITE}`);
+    }
+    if (shortcutsMovable) {
+        if (!dryRun)
+            fs.rmSync(RETIRED_SHORTCUTS);
+        ws.writes.push({ path: RETIRED_SHORTCUTS, action: "write" });
+        console.log(`${logPrefix} ${tag}core: retired ${RETIRED_SHORTCUTS}`);
+    }
 }
 // Migration (installs up to 5.3.x, `docs/migrations.md`): `.bkit/.dev.lock` was the
 // repo-wide dev lock. Nothing reads it now, so one a crashed run left behind is deleted.
@@ -420,7 +462,7 @@ export const SEEDED_BKIT_DEFAULTS = {
         minFreeGb: CONFIG_DEFAULTS.diskMinFreeGb,
         worktree: { copy: [...CONFIG_DEFAULTS.worktreeCopy], install: CONFIG_DEFAULTS.worktreeInstall },
         tasks: { ...CONFIG_DEFAULTS.tasks },
-        ...askBlocks(),
+        ...withBuildPublish(askBlocks()),
     },
     // bkit-utility-update-roadmap list length; the prompt falls back to 25 too.
     prompts: { roadmapNext: 25 },
@@ -436,6 +478,10 @@ function askBlocks() {
         (out[workflow] ??= {})[name] = { ask: d.ask, [limitKey(point)]: d.max };
     }
     return out;
+}
+/** Merge the `build.publish` choice beside the build ask blocks. */
+function withBuildPublish(blocks) {
+    return { ...blocks, build: { ...blocks.build, publish: { remote: true, local: true } } };
 }
 const plainObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 // Copy each `defaults` key missing from `target`, descending into blocks both sides hold.
