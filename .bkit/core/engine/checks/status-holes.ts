@@ -814,7 +814,7 @@ export function detectHoles(
 // Full audit — parse status.jsonl + workflow md, classify, detect, report
 // ---------------------------------------------------------------------------
 
-function parseRows(statusJsonl: string): StatusRow[] {
+export function parseRows(statusJsonl: string): StatusRow[] {
   const rows: StatusRow[] = [];
   for (const line of statusJsonl.split("\n")) {
     const trimmed = line.trim();
