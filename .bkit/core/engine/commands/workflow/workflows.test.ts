@@ -28,8 +28,26 @@ vi.mock("./worktrees", async (importOriginal) => {
     },
   };
 });
+/** Makes the completeness checker throw when a test sets a flag; otherwise the real one. */
+const holes = vi.hoisted(() => ({ throwCheck: false, throwRead: false }));
+vi.mock("../../checks/status-holes", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../checks/status-holes")>();
+  return {
+    ...actual,
+    check: (...args: Parameters<typeof actual.check>) => {
+      if (holes.throwCheck) throw new Error("forced checker failure");
+      return actual.check(...args);
+    },
+    readCompleteness: (...args: Parameters<typeof actual.readCompleteness>) => {
+      if (holes.throwRead) throw new Error("forced checker failure");
+      return actual.readCompleteness(...args);
+    },
+  };
+});
 afterEach(() => {
   removing.onEnter = null;
+  holes.throwCheck = false;
+  holes.throwRead = false;
 });
 
 const dirs: string[] = [];
@@ -145,6 +163,74 @@ function linearCommentServer(): string[] {
 // ---------------------------------------------------------------------------
 
 describe("bkit workflows start", () => {
+  /** A closed build run that recorded only its close step: a step hole on every other required step. */
+  const holeyBuild = [
+    { type: "workflow-started", workflow: "build", at: "2020-01-01T00:00:00Z" },
+    {
+      type: "step-done",
+      workflow: "build",
+      step: "build-close-workflow",
+      status: "DONE",
+      at: "2020-01-01T00:59:00Z",
+      parentSha: "x",
+      artifacts: [],
+    },
+    { type: "workflow-done", workflow: "build", at: "2020-01-01T01:00:00Z" },
+  ];
+  const warnings = (err: string) =>
+    err.split("\n").filter((l) => l.includes("[bkit-workflows]") && l.includes("previous run"));
+
+  it("warns when the previous run for this fid was holey", async () => {
+    const cwd = repo();
+    write(cwd, `${REL}/status.jsonl`, jsonl(holeyBuild));
+    const r = await run(cwd, wf("start", "design"));
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ resumed: false, run: 1 });
+    const lines = warnings(r.err);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("build");
+    expect(lines[0]).toContain("run 1");
+    expect(lines[0]).toContain("2020-01-01T01:00:00Z");
+    expect(lines[0]).toContain("bkit completeness check");
+  });
+
+  it("prints nothing when the previous run is clean, absent, or unreadable", async () => {
+    // Positive control: the same fixture warns while the checker works.
+    const control = repo();
+    write(control, `${REL}/status.jsonl`, jsonl(holeyBuild));
+    expect(warnings((await run(control, wf("start", "design"))).err)).toHaveLength(1);
+
+    // Absent: the first run of a feature has no previous run.
+    const first = await run(repo(), wf("start", "design"));
+    expect(first.code).toBe(0);
+    expect(warnings(first.err)).toHaveLength(0);
+
+    // Clean: a stored CLEAN verdict.
+    const clean = repo();
+    write(
+      clean,
+      `${REL}/status.jsonl`,
+      jsonl([
+        ...holeyBuild.slice(0, 2),
+        { type: "completeness", workflow: "build", at: "2020-01-01T01:00:00Z", verdict: "CLEAN" },
+        holeyBuild[2]!,
+      ]),
+    );
+    const c = await run(clean, wf("start", "design"));
+    expect(c.code).toBe(0);
+    expect(warnings(c.err)).toHaveLength(0);
+
+    // Unreadable: the checker throws at start.
+    holes.throwRead = true;
+    const broken = repo();
+    write(broken, `${REL}/status.jsonl`, jsonl(holeyBuild));
+    const b = await run(broken, wf("start", "design"));
+    expect(b.code).toBe(0);
+    expect(b.err).not.toMatch(/forced checker failure|error/i);
+    expect(warnings(b.err)).toHaveLength(0);
+    expect(b.json).toMatchObject({ resumed: false, run: 1 });
+  });
+
   it("takes the lock and opens run 1 with a workflow-started row carrying HEAD", async () => {
     const cwd = repo();
     const r = await run(cwd, wf("start", "build"));
@@ -964,6 +1050,47 @@ describe("bkit workflows close", () => {
     expect(r.json.counterRow).toBeNull();
   });
 
+  it("appends the completeness row before the workflow-done row", async () => {
+    const cwd = closable("build");
+    const r = await run(cwd, wf("close", "build", "--record-step"));
+    expect(r.code).toBe(0);
+    const all = rows(statusOf(cwd));
+    const at = all.findIndex((x) => x.type === "completeness");
+    expect(at).toBeGreaterThan(-1);
+    expect(all[at]).toMatchObject({ workflow: "build", journalSuspect: true });
+    expect(["CLEAN", "HOLEY"]).toContain(all[at]!.verdict);
+    expect(all[at - 1]).toMatchObject({ type: "step-done", step: "build-close-workflow" });
+    expect(all[at + 1]).toMatchObject({ type: "workflow-done", workflow: "build" });
+  });
+
+  it("writes one completeness row per close", async () => {
+    const cwd = closable("build");
+    expect((await run(cwd, wf("close", "build"))).code).toBe(0);
+    expect((await run(cwd, wf("close", "build"))).code).toBe(0);
+    const all = rows(statusOf(cwd));
+    expect(all.filter((x) => x.type === "completeness")).toHaveLength(2);
+    expect(all.filter((x) => x.type === "workflow-done")).toHaveLength(2);
+    expect(all.map((x) => x.type).slice(-4)).toEqual([
+      "completeness",
+      "workflow-done",
+      "completeness",
+      "workflow-done",
+    ]);
+  });
+
+  it("still closes when the completeness check throws", async () => {
+    const cwd = closable("build");
+    holes.throwCheck = true;
+    const r = await run(cwd, wf("close", "build"));
+    expect(r.code).toBe(0);
+    const all = rows(statusOf(cwd));
+    expect(all.at(-1)).toMatchObject({ type: "workflow-done", workflow: "build" });
+    expect(all.some((x) => x.type === "completeness")).toBe(false);
+    const lines = r.err.split("\n").filter((l) => l.includes("completeness row not written"));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("forced checker failure");
+  });
+
   it("refuses without status.jsonl and writes nothing", async () => {
     const cwd = repo();
     const r = await run(cwd, wf("close", "build"));
@@ -1146,7 +1273,11 @@ describe("bkit workflows close — commit, outbox, comment", () => {
     const cwd = started("design");
     await run(cwd, wf("close", "design", "--record-step"));
     const kinds = rows(statusOf(cwd)).map((x) => [x.type, x.step].join(":"));
-    expect(kinds.slice(-2)).toEqual(["step-done:design-close-workflow", "workflow-done:"]);
+    expect(kinds.slice(-3)).toEqual([
+      "step-done:design-close-workflow",
+      "completeness:",
+      "workflow-done:",
+    ]);
   });
 
   it("--outbox writes the artifact links and telemetry, and --number prints the close comment", async () => {
