@@ -177,8 +177,8 @@ pnpm add -D prettier@^3.5.3 slop-scan@^0.3.0 lint-staged@^17.0.0 husky@^9.1.7
 - `slop:delta` runs `bkit ci slop` (bkit devDep on `PATH` through the package script). CI passes the base sha as its one bare argument.
 - `lint:prose` runs `bkit ci prose`: Vale over every `*.md` outside `node_modules/`. Narrow it with repeatable `--glob=<pattern>` (`*`, `**`, `?`, relative to the repo root), e.g. `bkit ci prose --glob='docs/*.md' --glob='.agents/*.md'`.
 - Non-Node stack → point each gate at your own commands; keep the gate names.
-- `bkit:test:file` (not seeded; `test-file-script-missing` until declared) runs ONE test file — bkit appends its repo-relative path — and writes a JUnit report to `$BKIT_TEST_REPORT`; `/bkit-build` reads it for test-first. Vitest: `"bkit:test:file": "vitest run --reporter=default --reporter=junit --outputFile.junit=\"$BKIT_TEST_REPORT\""`. Call the runner directly, not through a caching task runner.
-- `bkit:lint:file` (not seeded; `lint-file-script-missing` once `bkit:test:file` is declared without it) lints ONE test file — path appended — with the static gate's rules, exit 0 when clean; `bkit tests red` runs it before the test and records no red while it fails. ESLint: `"bkit:lint:file": "eslint --max-warnings=0"`; Ruff: `"bkit:lint:file": "ruff check"`.
+- `bkit:test:file` (not seeded; `test-file-script-missing` until declared) runs one test file — bkit appends its repo-relative path — and writes a JUnit report to `$BKIT_TEST_REPORT`; `/bkit-build` reads it for test-first. Vitest: `"bkit:test:file": "vitest run --reporter=default --reporter=junit --outputFile.junit=\"$BKIT_TEST_REPORT\""`. Call the runner directly, not through a caching task runner.
+- `bkit:lint:file` (not seeded; `lint-file-script-missing` once `bkit:test:file` is declared without it) lints one test file — path appended — with the static gate's rules, exit 0 when clean; `bkit tests red` runs it before the test and records no red while it fails. ESLint: `"bkit:lint:file": "eslint --max-warnings=0"`; Ruff: `"bkit:lint:file": "ruff check"`.
 
 ## CI workflow — `bkit-ci.yml`
 
@@ -316,7 +316,7 @@ direnv allow
 
 ## Launchd GUI environment — tokens for Dock-launched apps
 
-Dock/Spotlight launches start under `launchd`, which never runs the login shell or direnv → GUI apps (opencode desktop, Cursor) start without `BKIT_*` and provider calls fail on authentication. The template set pairs a loader script with a machine-local env file; the LaunchAgent runs the loader at login and again on every write to that file.
+Dock / Spotlight launches start under `launchd`, which never runs the login shell or direnv → GUI apps (opencode desktop, Cursor) start without `BKIT_*` and provider calls fail on authentication. The template set pairs a loader script with a machine-local env file; the LaunchAgent runs the loader at login and again on every write to that file.
 
 <!-- prettier-ignore -->
 | File | Copy from | To | Commit |
@@ -467,7 +467,7 @@ PyPI name `serena-agent`, CLI `serena`. PyPI `serena` is an unrelated package.
 
 ## Issue forms — `.github/ISSUE_TEMPLATE/`
 
-Issues are the first input every workflow reads. One form per way work starts; each form's intro names its next command. Section names, syntax and machine-read lines: `.bkit/trackers.md` § Issue shapes. GitHub tracker ONLY (Linear and Jira have their own templates). Reference: https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/syntax-for-issue-forms.
+Issues are the first input every workflow reads. One form per way work starts; each form's intro names its next command. Section names, syntax and machine-read lines: `.bkit/trackers.md` § Issue shapes. GitHub tracker only (Linear and Jira have their own templates). Reference: https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/syntax-for-issue-forms.
 
 <!-- prettier-ignore -->
 | Form | Use when | Next step | Asks for |
@@ -485,7 +485,7 @@ Issues are the first input every workflow reads. One form per way work starts; e
 
 ## graphify — map
 
-On-demand only — not an installed skill or git hook. graphify ships an MCP server (`graphify-mcp`, stdio default); it stays unwired because its answers come from the `graph.json` snapshot and build/debug agents invalidate the graph faster than it rebuilds — Serena (no index to go stale) owns the agent surface. Two gates keep `docs/capabilities.md` current on dev: pre-push block below (blocks a stale push to dev) + self-skipping CI step (every push). Agents read `docs/capabilities.md`; audit templates that need the graph build it via `scripts/graphify/bkit-graphify.sh`. Only tracked output: `docs/capabilities.md`. Mermaid views: `docs/graphify-out/reports/graph-packages.mmd`, `graph-modules.mmd`. Reference: https://github.com/Graphify-Labs/graphify.
+On-demand only — not an installed skill or git hook. graphify ships an MCP server (`graphify-mcp`, stdio default); it stays unwired because its answers come from the `graph.json` snapshot and build / debug agents invalidate the graph faster than it rebuilds — Serena (no index to go stale) owns the agent surface. Two gates keep `docs/capabilities.md` current on dev: pre-push block below (blocks a stale push to dev) + self-skipping CI step (every push). Agents read `docs/capabilities.md`; audit templates that need the graph build it via `scripts/graphify/bkit-graphify.sh`. Only tracked output: `docs/capabilities.md`. Mermaid views: `docs/graphify-out/reports/graph-packages.mmd`, `graph-modules.mmd`. Reference: https://github.com/Graphify-Labs/graphify.
 
 ```bash
 uv tool install "$(bash scripts/graphify/bkit-graphify.sh spec)"
@@ -523,7 +523,7 @@ graphify-out/
 
 - Copy `scripts/graphify/bkit-graph-pre-push.sh`; the `.husky/pre-push` template runs it above the gates (skipped while the script is absent and on a min push), so a stale register blocks in ~30s, not after the full gate. Your hook lacks the `Capability register` block → paste it from the template, above the gates. Push to dev → `check-at` on the pushed commit in a throwaway checkout → blocked on mismatch; uncommitted edits (a concurrent session's included) cannot change the answer. graphify not installed → loud "NOT checked" warning, push goes on (CI still checks). Other branches → warn-only staleness note. Reads `PUSH_DEV_SHA` from the bkit pre-push template's stdin loop; older hook copy → re-copy that loop from `.bkit/templates/.husky/pre-push`.
 - `.github/workflows/bkit-ci.yml` ships `Check Capability Register` (every push and pull request, on the checked-out commit — on a PR, GitHub's test merge into the base, so a branch behind its base syncs, refreshes and commits to clear a red): installs the `spec` release, runs the pinned `check-at HEAD` → stale register fails CI. Self-skips without `scripts/graphify/bkit-graphify.sh`.
-- graphify's MCP server is opt-in: install `graphifyy[mcp]` (`mcp` + `starlette`; HTTP transport also needs `uvicorn`) and pass the graph path explicitly — `graphify-mcp` defaults to `graphify-out/graph.json`, not the pinned `docs/graphify-out/graph.json`. Snapshot-dated answers suit audit/orientation, never build or debug.
+- graphify's MCP server is opt-in: install `graphifyy[mcp]` (`mcp` + `starlette`; HTTP transport also needs `uvicorn`) and pass the graph path explicitly — `graphify-mcp` defaults to `graphify-out/graph.json`, not the pinned `docs/graphify-out/graph.json`. Snapshot-dated answers suit audit / orientation, never build or debug.
 - `.graphifyignore` merges `.gitignore`.
 - Keep `package.json` in corpus — excluding it drops workspace `name` fields graphify resolves package imports with; graph still looks complete.
 - Keep `tsconfig.json` out; graphify reads `paths` regardless.
@@ -536,7 +536,7 @@ graphify-out/
 | `pnpm graph:clean` | Same, after deleting `docs/graphify-out/`. Required after any tsconfig `paths` change. `--force` does not invalidate the module-resolution cache. |
 | `pnpm graph:update` | Re-extract changed files, then recluster. |
 | `pnpm graph:rollup` | Package and module views, plus `docs/capabilities.md`. |
-| `pnpm graph:check` | Rebuild and fail if `docs/capabilities.md` is not what this tree produces. Reads uncommitted edits. Shipped as a self-skipping CI step (every push and pull request, at the PR head); enabled in bkit's own CI. |
+| `pnpm graph:check` | Rebuild and fail if `docs/capabilities.md` is not what this tree produces. Reads uncommitted edits. Shipped as a self-skipping CI step (every push and pull request; on a PR, GitHub's test merge into the base); enabled in bkit's own CI. |
 | `bash scripts/graphify/bkit-graphify.sh check-at <rev>` | `check` in a throwaway checkout of `<rev>` (default HEAD); pre-push gate runs it on the commit pushed to dev. |
 | `pnpm graph:refresh` | Rebuild register in a throwaway checkout of HEAD → copy over `docs/capabilities.md`. Fixes a red gate; commit result. |
 | `pnpm graph:scoped [path]` | One subtree. Default `apps/web/src`. |

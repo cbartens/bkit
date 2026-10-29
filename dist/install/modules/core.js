@@ -207,6 +207,17 @@ export const BKIT_CANONICAL_DOCS = [
     "workflows.md",
     "README.md",
 ];
+// The token map for `.bkit/*.md` docs: only `{{BKIT_MANAGED_MARKER}}` resolves. The other
+// tokens map to themselves, so a doc that tells the consumer which token to replace in a
+// template (`templates.md`) still names the token.
+export function bkitDocTokens(tokens) {
+    return {
+        ...tokens,
+        DEFAULT_BRANCH: "{{DEFAULT_BRANCH}}",
+        PROJECT_NAME: "{{PROJECT_NAME}}",
+        REPO_SLUG: "{{REPO_SLUG}}",
+    };
+}
 // Mirror the package's canonical `.bkit/*.md` docs into the consumer's `.bkit/`.
 // Tier 1 (force-overwrite + ws-tracked for dry-run/install parity). Each source carries
 // the `{{BKIT_MANAGED_MARKER}}` token. Skipped in dogfood: the consumer destination
@@ -214,6 +225,7 @@ export const BKIT_CANONICAL_DOCS = [
 export function runBkitDocs(dryRun, tokens, ws, logPrefix) {
     const tag = dryRun ? "[dry-run] " : "";
     const docsRoot = getBkitDocsRoot();
+    const docTokens = bkitDocTokens(tokens);
     // Per-doc write strategy from the manifest: markered-text docs (e.g. prompts.md,
     // which carries the consumer-owned `## Model Overrides` section below `bkit:end`)
     // are block-merged so consumer content survives; the rest are force-overwritten.
@@ -227,10 +239,10 @@ export function runBkitDocs(dryRun, tokens, ws, logPrefix) {
         const dstPath = path.join(".bkit", name);
         const prevLen = ws.writes.length;
         if (formatByPath.get(path.join(".bkit", name)) === "markered-text") {
-            writeTier2(srcPath, dstPath, tokens, "html-comment", dryRun, ws);
+            writeTier2(srcPath, dstPath, docTokens, "html-comment", dryRun, ws);
         }
         else {
-            writeTier1(srcPath, dstPath, tokens, dryRun, ws);
+            writeTier1(srcPath, dstPath, docTokens, dryRun, ws);
         }
         if (ws.writes.length > prevLen) {
             console.log(`${logPrefix} ${tag}core: ${dstPath}`);

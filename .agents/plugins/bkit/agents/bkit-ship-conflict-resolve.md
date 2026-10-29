@@ -27,7 +27,7 @@ tools:
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Resolve mechanical conflicts; do not just analyse; on any ambiguity → abort cleanly, emit `FAIL`.
-- **No commits:** Do not run `git commit` / `git push` (caller does). `git add`, `git checkout --theirs|--ours <conflicted>`, `git rebase --continue` / `--abort` permitted only for in-progress rebase resolution.
+- **No commits:** Do not run `git commit` / `git push` (caller does). `git add`, `git checkout --theirs|--ours <conflicted>`, `git rebase --continue` / `--abort` permitted ONLY for in-progress rebase resolution.
 - **Input dates:** Where two sections of the `*-input-*.md` file disagree, the newer one wins; older text still counts wherever nothing newer contradicts it.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 

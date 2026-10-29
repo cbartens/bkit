@@ -6,7 +6,7 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { runCommand } from "../lib";
-import { MARKERS, project, RELATED_UTILITIES, roadmapCommand } from "./roadmap";
+import { MARKERS, project, RELATED_UTILITIES, roadmapCommand, SEEDED_HEAD } from "./roadmap";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -82,6 +82,7 @@ describe("bkit roadmap fold (tests/roadmap-fold.bats)", () => {
     ]) {
       expect(b).toContain(m);
     }
+    expect(b.startsWith(`${SEEDED_HEAD}\n`)).toBe(true);
     expect(b).not.toContain("## Backlog / Ideas");
     expect(lineOf(b, MARKERS.analysisEnd, true)).toBeLessThan(lineOf(b, MARKERS.notesPostStart));
     expect(res.err).toContain("[bkit-roadmap] bootstrapping docs/roadmap.md");

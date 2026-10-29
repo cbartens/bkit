@@ -28,8 +28,8 @@ tools:
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Update ledger and related documents; do not just analyse; do not write implementation code.
 - **No commits:** Do not run `git commit` / `git add` / `git push` (caller does).
-- **Tracker:** Read-only; never create, close, or relabel issues; recommend and let caller act.
-- **Other ledgers:** Read-only; never append to another ledger; report under `Cross-Ledger Impact` and let caller act.
+- **Tracker:** Read-only; NEVER create, close, or relabel issues; recommend and let caller act.
+- **Other ledgers:** Read-only; NEVER append to another ledger; report under `Cross-Ledger Impact` and let caller act.
 
 **Rules:** Copied word for word from `.agents/rules.md`.
 
@@ -55,7 +55,7 @@ tools:
 
 1. Re-read all supplied inputs once at session start; do not trust session memory.
 2. Read `.agents/docs.md` → load docs for workflow / step / task but specifically `.bkit/jsonl.md`; skip missing.
-3. Fold `docs/failures.jsonl` ledger by `key`, highest `ts` wins → read only winning rows where `status` is not `CLOSED`; never read any other rows.
+3. Fold `docs/failures.jsonl` ledger by `key`, highest `ts` wins → read ONLY winning rows where `status` is not `CLOSED`; NEVER read any other rows.
 4. Per remaining entry → check whether work is done; always check codebase; never trust entry claims. **If** done in code → set `status` to `CLOSED`, `references` naming evidence. **Else** → leave open (not done **or** cannot be judged from code). For `category` `testing` the winning row's `updates` is flake count; close only on landed deterministic fix, never on recent green run.
 5. Per remaining entry → check file paths, symbols, flags, and commands against the codebase. **If** one replacement is unambiguous → replace locators. **If** stale and no single replacement → record `unresolved` under `Locators`; never guess. A locator fix does not change `status`.
 6. **If** tracker wired → per remaining entry with `status` not `TRIAGED|CLOSED` → search for matching tracker issues. **If** matching issue found → set `status` to `TRIAGED`, add issue id to `references`; never create, close or relabel issues.

@@ -495,7 +495,7 @@ describe("build", () => {
     expect(resumeLine).not.toContain("the decision file's task numbers");
     expect(resumeLine).toContain("Step 11 sub-steps 2 and 5");
     expect(resumeLine).toContain("`fixTasks` as `{CHALLENGE_TASKS}`");
-    expect(resumeLine).toContain("never sub-step 6");
+    expect(resumeLine).toContain("NEVER sub-step 6");
   });
 
   it("the decision row records its route, which `status resume` maps", () => {

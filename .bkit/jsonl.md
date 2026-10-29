@@ -10,7 +10,7 @@
 > - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
 > - Describe current state / rules, not reasons / history; state what to do, not why.
 > - Ships to consumers: describe the current setup only. NEVER an internal identifier (tracker issue number, ledger key, review-finding id) and NEVER project history — decisions belong in `docs/decisions.jsonl`, incidents in `docs/knowledge.jsonl`.
-> - One row per line. never edit or reorder a prior line — row STATE changes via same-`key` append (§ Updating a Row); sole exceptions: the install / upgrade schema migration (§ Versioning), `bkit ledgers compact` (§ Compaction).
+> - One row per line. never edit or reorder a prior line — row state changes via same-`key` append (§ Updating a Row); sole exceptions: the install / upgrade schema migration (§ Versioning), `bkit ledgers compact` (§ Compaction).
 > - Before append: read file. Skip only if identity-matching row exists and nothing changed — changed field = update, not duplicate.
 > - Rows removed only by bkit's harvest: every `.bkit/friction.jsonl` row, `chat` / `run` rows in `.bkit/stats.jsonl` (§ Friction Is a Drained Queue); and by `bkit ledgers compact`: superseded rows of the five keyed ledgers (§ Compaction).
 > - Best-effort append — always exit 0; never gate workflows on telemetry success.
@@ -33,8 +33,8 @@ jq -c -n '{ schema: 3, ts: null, kind: "deferral", repo: $REPO, bkit: { version:
   >> "$FILE" || echo "[bkit-telemetry] append failed: $FILE"
 ```
 
-- **`ts`:** Unix ms, always minted by `jq`'s `now` AT append TIME — `jq '… | .ts = (now*1000|floor)'`. The `ts: null` placeholder holds field order only; the pipe overwrites it. Drop the pipe and the row fails validation instead of landing a fake value — never seed the placeholder with a number.
-- **`ts` is never a literal.** Not hand-typed, not copied off an example row or the line above, not `date +%s%3N` (BSD/macOS incompatible). A fabricated past `ts` is indistinguishable from a real one and silently reorders the last-wins fold that every reader, the harvest, and every age report depend on. Whole-second values (`ts % 1000 == 0`) fail the live-ledger gate — a real mint is never round: `bkit ledgers append` moves one 1 ms on; a `jq` append that lands on one is re-run.
+- **`ts`:** Unix ms, always minted by `jq`'s `now` at append time — `jq '… | .ts = (now*1000|floor)'`. The `ts: null` placeholder holds field order only; the pipe overwrites it. Drop the pipe and the row fails validation instead of landing a fake value — never seed the placeholder with a number.
+- **`ts` is never a literal.** Not hand-typed, not copied off an example row or the line above, not `date +%s%3N` (BSD / macOS incompatible). A fabricated past `ts` is indistinguishable from a real one and silently reorders the last-wins fold that every reader, the harvest, and every age report depend on. Whole-second values (`ts % 1000 == 0`) fail the live-ledger gate — a real mint is never round: `bkit ledgers append` moves one 1 ms on; a `jq` append that lands on one is re-run.
 - **`firstTs` / `updates`:** omit; the next compaction stamps them (§ Compaction).
 - **Log prefix:** every telemetry log line starts `[bkit-telemetry]` — load-bearing for log-drain grep.
 
@@ -108,7 +108,7 @@ Same name, same shape on `outcome` and `run`:
 | `compliance` | `run:{parentSha}`, `rule:{id, verdict:"pass"\|"fail"\|"n/a", evidence?}` (`evidence` on fail rows). |
 | `friction` | `key`, `category` (§ Categories), `scope:"bkit-repo"\|"consumer"\|"universal"`, `severity`, `summary?`, `description`, `remediation?`, `source?`, `status:"OPEN"\|"TRIAGED"\|"CLOSED"\|string?` (see § Updating a Row), `confidence?:number`, `lastConfirmed?:number`, `recurrenceCount?:number`. |
 | `deferral` | `key`, `type:"issue"\|"feature"`, `category` (§ Categories), `severity`, `reason` (§ Deferral Reason), `summary?`, `description`, `remediation?`, `source?`, `status:"OPEN"\|"TRIAGED"\|"CLOSED"?`. |
-| `failure` | `key`, `category?` (§ Categories; `"testing"` = flaky/intermittent test), `summary?`, `severity`, `description`, `rootCause?`, `remediation?`, `status:"OPEN"\|"TRIAGED"\|"CLOSED"\|string?`. |
+| `failure` | `key`, `category?` (§ Categories; `"testing"` = flaky / intermittent test), `summary?`, `severity`, `description`, `rootCause?`, `remediation?`, `status:"OPEN"\|"TRIAGED"\|"CLOSED"\|string?`. |
 | `knowledge` | `key`, `summary`, `description?`, `rootCause?`, `remediation?`, `status:"ACTIVE"\|"SUPERSEDED"?`. |
 | `decision` | `key`, `summary`, `description?`, `rationale?`, `alternatives?`, `status:"ACTIVE"\|"SUPERSEDED"?`. |
 | `chat` | `key` (`<platform>:<session id>`); `bkit` adds `versionSource:"repo-history"\|"prompt"\|"none"` (`prompt` = an expanded workflow command's managed marker), `via` (`command` / `subagent`; empty = no bkit; `command` only when the chat ran a `/bkit-*` command itself), `workflows`, `prompts` (bkit prompt families, audit and utility included), `cli:{total, byVerb}`; `session:{platform, id, hostVersion?, entrypoint?, prompts}` (`platform` `claude-code` / `codex` / `opencode` / `cursor` / `antigravity`; `prompts` = messages the human typed); `time:{start, end, totalMinutes, activeMinutes, spans, lastActivity}` (`ts` = `end`; `spans` = `[[startMs,endMs]]`, chat + subagents, split at gaps over 5 min; `activeMinutes` = their sum; `lastActivity` = last write to the chat's files); `issue:{id, all, mentioned, source:"command"\|"summary"\|"mention"\|"none"}` (fingerprints; named only in the host's summary of an earlier chat → `summary`); `run:{parentShas}` (printed by `bkit workflows close` — exact join to `run.parentSha`); `effort` (turns per level); `usage:{total:{turns, tokens, context:{start,peak}, compactions}, main:{turns, tokens, context:{peak}, compactions, mix}, byModel:{<model>:{turns, tokens}}, byRun:{<run key>:{main:{turns, tokens}, agents:{turns, tokens}}}\|null}` (`tokens` = `{input, cacheWrite, cacheRead, output, outputEst, read}`, `read` = the three sent types; `mix` = calls by kind `{read, edit, grep, shellRead, shellList, tests, serena}`; `byRun` = the chat's model calls per run it worked on — a run's `session` rows name the chat, or same repo, the run's issue in `issue.all` and overlapping time — each call to the run whose first-to-last status row window holds its time, the later-started run when two do; `{}` = no run, `null` = a call has no time, e.g. Cursor, Antigravity); `agents:{total:{n, errors}, byAgent:{<agent type>:{n, errors, instances:[{turns, contextPeak, contextAt10}], usage, mix, planReads:{full, partial}}}}` (`contextAt10` = context read by the instance's 10th model call, `null` under 10; `planReads` = reads of a `docs/plans/<YYYYMM>/<FID>-plan(-N).md` file, `partial` = a line range or `sed` / `head` / `tail`); `tools:{total:{calls, errors}, byTool:{<tool>:{calls, errors, byCategory?}}, filesRead}`; `scan:{files, bytes, settled, tokensRecorded}` (`settled` = unchanged for the settle window, `false` = open: counted and marked, not in medians; `tokensRecorded` false = host records none, e.g. Cursor). New same-`key` row when `scan.bytes` or `scan.settled` changes, or the stored row has no `usage.byRun`. `schema: 2` chat rows hold `ctx` / `ctxPeak`; readers rename them to `context` / `contextPeak`. `repo` and issues are fingerprints: `fp:` + 12 hex of sha256(`owner/repo` / `owner/repo#N`); no paths, branch names or prompt text. Field reference: the script's header. |
@@ -120,9 +120,9 @@ Same name, same shape on `outcome` and `run`:
 <!-- prettier-ignore -->
 | Row written by | `by.workflow` | `by.step` | `by.subagent` | `by.model` |
 | --- | --- | --- | --- | --- |
-| **The orchestrator** (a workflow itself) | `ship` | `ship-close-workflow` | *(absent)* | *(absent)* |
+| **The orchestrator** (a workflow itself) | `ship` | `ship-close-workflow` | (absent) | (absent) |
 | **A subagent** it invoked | `build` | the step that invoked it, e.g. `build-plan-gaps-remediate` | `bkit-build-plan-gaps-remediate` | that prompt's own `model:` |
-| **A direct chat** outside any workflow | `utility` | `manual` | *(absent)* | *(absent)* |
+| **A direct chat** outside any workflow | `utility` | `manual` | (absent) | (absent) |
 
 Subagent: on every appended row, from your prompt file:
 
@@ -137,7 +137,7 @@ Orchestrator: omit `by.subagent` and `by.model`.
 
 `key` = written-once stable slug; recurrence = same-`key` append.
 
-- **Mint it from the CONTENT, never from a counter.** Descriptive slug (`gh-mcp-401-after-token-rotation`), optionally issue-prefixed (`681-e2e-parallelism-via-runner-matrix`). Counter-derived ids collide under concurrency — two workflows read same max off their base commit, mint same id, silent collision.
+- **Mint it from the content, never from a counter.** Descriptive slug (`gh-mcp-401-after-token-rotation`), optionally issue-prefixed (`681-e2e-parallelism-via-runner-matrix`). Counter-derived ids collide under concurrency — two workflows read same max off their base commit, mint same id, silent collision.
 - **Cite the `key`.** Identity for other rows, docs, memory; `ts` = tiebreaker. Content slugs avoid counter collisions.
 
 `references` = pointers placing this row:
@@ -161,7 +161,7 @@ Orchestrator: omit `by.subagent` and `by.model`.
 | Actor | May do |
 | --- | --- |
 | **A consumer repo** | append only. |
-| **bkit's harvest** (`pnpm harvest`, bkit repo only, unshipped) | MOVES rows out: copies each into bkit's `harvest/` store, then prunes it from the repo. |
+| **bkit's harvest** (`pnpm harvest`, bkit repo only, unshipped) | moves rows out: copies each into bkit's `harvest/` store, then prunes it from the repo. |
 
 Row vanishing from `.bkit/friction.jsonl` = the harvest banked it centrally.
 
@@ -170,9 +170,9 @@ Prune gates (in order):
 - **Durability first** — prune only after exact row fsync'd to store and read back.
 - **Content, never identity** — gate byte-for-byte on the row's `normalize()` shape (old-shape row matches its migrated copy); `fold` collapses same-identity rows — identity gate deletes rows store does not hold.
 - **Malformed lines** — never pruned.
-- **Store accumulates** — every distinct row, deduped by content only; never cleared, never rewritten from `fold` (winners shift between runs). Readers fold it. `harvest` NEVER commits, either repo.
+- **Store accumulates** — every distinct row, deduped by content only; never cleared, never rewritten from `fold` (winners shift between runs). Readers fold it. `harvest` never commits, either repo.
 
-`stats.jsonl` = COPIED whole; only its `chat` / `run` rows pruned. `deferrals` / `failures` = COUNT-only (top-section metadata; prose never leaves the repo).
+`stats.jsonl` = copied whole; only its `chat` / `run` rows pruned. `deferrals` / `failures` = count-only (top-section metadata; prose never leaves the repo).
 
 ## Summary vs Description
 
@@ -190,9 +190,9 @@ Kinds with both (`friction` / `deferral` / `failure` / `knowledge` / `decision` 
 | `MEDIUM` | Degraded behaviour or a repeated cost; safe to schedule. |
 | `LOW` | Cosmetic, nit, or a speculative future idea. |
 
-- Same enum the challenge prompts assign. Finding → row (e.g. `bkit challenge merge` `LOW` → `docs/deferrals.jsonl`): carry ITS severity unchanged.
+- Same enum the challenge prompts assign. Finding → row (e.g. `bkit challenge merge` `LOW` → `docs/deferrals.jsonl`): carry its severity unchanged.
 - not `bkit install` preflight `blocker` / `advisory` — different axis.
-- Pick level the ROW earns. All-`LOW` ledger = useless as no severity.
+- Pick level the row earns. All-`LOW` ledger = useless as no severity.
 
 ## Deferral Reason
 
@@ -201,14 +201,14 @@ Kinds with both (`friction` / `deferral` / `failure` / `knowledge` / `decision` 
 <!-- prettier-ignore -->
 | Value | Means | Also required |
 | --- | --- | --- |
-| `scope-declared` | design/plan called it out of scope before work started. | `references` to that doc §. |
+| `scope-declared` | design / plan called it out of scope before work started. | `references` to that doc §. |
 | `hard-blocked` | external blocker (credential, upstream fix, feature) blocks it now. | Name blocker in `description`. |
 | `needs-decision` | human decision missing; guessing worse than waiting. | State decision + options. |
 | `own-cycle` | plan-sized — new architecture, not a mechanical fix. | Say what makes it plan-sized. |
 | `low-severity` | `LOW` challenge finding, written by `bkit challenge merge`. | Name the finding. |
-| `unjustified` | ADJUDICATOR-only — in-scope work that should have been finished. | Which test it failed. |
+| `unjustified` | adjudicator-only — in-scope work that should have been finished. | Which test it failed. |
 
-- First four, or `low-severity` where it applies → deferral. None fit → unfinished work, do IT (`.agents/rules.md` § "Finish over deferrals").
+- First four, or `low-severity` where it applies → deferral. None fit → unfinished work, do it (`.agents/rules.md` § "Finish over deferrals").
 - `unjustified` never self-assigned — writer picks first four; reviewer adjudicating another's deferral sets it via same-`key` append.
 - Set once, carried verbatim by every later row — the rate it feeds counts the deferral that should not have been written.
 - No free prose — an unadjudicable reason reads as justification while being none; the enum closes that.
@@ -226,7 +226,7 @@ Test 4 carries the weight: genuine deferral declared out of scope before work st
 
 `shippedAt` OPTIONAL on `feature`, absent elsewhere. Unix ms the feature shipped. `docs/roadmap.md` § Shipped ranks on `shippedAt // ts`.
 
-- Set only on `status:"SHIPPED"` rows, and only when the ship predates the append — a backfill. Live phase close: OMIT, `ts` already is the ship time.
+- Set only on `status:"SHIPPED"` rows, and only when the ship predates the append — a backfill. Live phase close: omit, `ts` already is the ship time.
 - may be a literal (unlike `ts`, § Write Idiom) — it is not row identity. Source it: issue `closed_at`, merge-commit date.
 - never a guess. No defensible source = omit and accept `ts` ordering.
 
@@ -272,17 +272,17 @@ Fields that change after first write:
 <!-- prettier-ignore -->
 | Field | Changes when |
 | --- | --- |
-| `status` | work closes (`OPEN` -> `CLOSED`), or a decision or knowledge row is `SUPERSEDED`. |
-| `reason` | (`deferral` only) reviewer adjudicates -> `unjustified`, naming the failed test in `description` and setting `status` -> `TRIAGED`. One-way: never rewritten, carried verbatim by every later row — fold is last-wins, so omitting it erases the verdict and its rate. Gated on the live ledger. |
+| `status` | work closes (`OPEN` → `CLOSED`), or a decision or knowledge row is `SUPERSEDED`. |
+| `reason` | (`deferral` only) reviewer adjudicates → `unjustified`, naming the failed test in `description` and setting `status` → `TRIAGED`. One-way: never rewritten, carried verbatim by every later row — fold is last-wins, so omitting it erases the verdict and its rate. Gated on the live ledger. |
 | `remediation` | the fix is known — usually after the row was logged mid-workflow. |
 | `severity` | re-triage says it was worse or milder than first thought. |
 | `confidence` | (`friction` only) the same thing recurs (raise) or is contradicted (lower). |
 | `lastConfirmed` | (`friction` only) re-observed. |
 | `recurrenceCount` | (`friction` only) it happens again. |
 
-**Update by APPENDING a new row with the same `key`, never by editing the old line.** `fold()` last-wins by `ts`; older rows = history. Recurrence = update.
+**Update by appending a new row with the same `key`, never by editing the old line.** `fold()` last-wins by `ts`; older rows = history. Recurrence = update.
 
-**Hard, not stylistic:** `.gitattributes` sets `merge=union` on every append-only ledger — merges concatenate, never conflict. Union keeps both sides of a conflicting hunk: edit a line and the stale copy survives beside its replacement; `fold` last-wins by `ts` -> stale wins whenever its `ts` is later.
+**Hard, not stylistic:** `.gitattributes` sets `merge=union` on every append-only ledger — merges concatenate, never conflict. Union keeps both sides of a conflicting hunk: edit a line and the stale copy survives beside its replacement; `fold` last-wins by `ts` → stale wins whenever its `ts` is later.
 
 - **NEVER edit or delete a line.** Correct via same-`key` append. Sole exceptions: the `bkit install` / `bkit upgrade` schema migration (§ Versioning); `bkit ledgers compact` (§ Compaction).
 - **never hand-write `ts`, in either direction** — mint at write time (§ Write Idiom). Future: outranks every later correction, permanently; row can never be superseded. Backdated: loses to rows it actually followed, so the correction it was meant to be silently never applies.
@@ -293,15 +293,15 @@ Copy prior row, change deltas, append. Through `bkit ledgers append`: drop `sche
 
 **Triage** = sweep `docs/deferrals.jsonl` / `docs/failures.jsonl` for moved-on work → append same-`key` row with `status: "CLOSED"`, current `references` (PR, commit, closing issue), re-triaged `severity` if earned.
 
-**`TRIAGED`** = middle state on triaged trio (`friction` / `deferral` / `failure` — kinds with `severity`). Ladder: `OPEN` (raised, cause unknown) -> `TRIAGED` (analysed, disposition known, not fixed) -> `CLOSED` (fixed, refuted, not ours). Append like close; disposition in `references`: issue, mapped `Fix N`, or why not ours.
+**`TRIAGED`** = middle state on triaged trio (`friction` / `deferral` / `failure` — kinds with `severity`). Ladder: `OPEN` (raised, cause unknown) → `TRIAGED` (analysed, disposition known, not fixed) → `CLOSED` (fixed, refuted, not ours). Append like close; disposition in `references`: issue, mapped `Fix N`, or why not ours.
 
-**`TRIAGED` is STILL open WORK.** Open-entry counts — audit debt lens, age report — test `status != "CLOSED"`. Only `CLOSED` is done.
+**`TRIAGED` is still open work.** Open-entry counts — audit debt lens, age report — test `status != "CLOSED"`. Only `CLOSED` is done.
 
 Not on `knowledge` or `decision` — both use `ACTIVE` / `SUPERSEDED`. Absent `status` = `ACTIVE`.
 
 **Readers** of either ledger: fold by `key`, highest `ts` wins → read only winning rows where `status` is `ACTIVE` or absent; never read any other rows.
 
-Readers count ENTITIES, never lines — `fold` first.
+Readers count entities, never lines — `fold` first.
 
 ## Compaction
 
@@ -318,7 +318,7 @@ Readers count ENTITIES, never lines — `fold` first.
 
 ## These Ledgers Are Inputs, Not a Diary
 
-`docs/deferrals.jsonl` + `docs/failures.jsonl` = backlog — deferred scope + known bugs; `severity` ranks, `firstTs` ages (`ts` when absent). READ:
+`docs/deferrals.jsonl` + `docs/failures.jsonl` = backlog — deferred scope + known bugs; `severity` ranks, `firstTs` ages (`ts` when absent). Read:
 
 - **Before designing or planning** — grep for existing entry or past deferral reason.
 - **On a triage sweep** — walk open entries vs tracker + codebase; close, `TRIAGED`, or re-`severity` via append (§ Updating a Row).
@@ -340,8 +340,8 @@ Identity tuple, not bare `ts`:
 
 Identity match = same thing — not automatically skip:
 
-- **Nothing changed** -> skip.
-- **Something changed** -> **append** (§ Updating a Row).
+- **Nothing changed** → skip.
+- **Something changed** → **append** (§ Updating a Row).
 
 ## `engine-action` rows
 

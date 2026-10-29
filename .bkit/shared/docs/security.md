@@ -31,7 +31,7 @@ Action SHA-pinning + dependency-update pipeline (Renovate / Dependabot, Trivy sc
 
 **Three layers, nearest the payload first:**
 
-- **Fenced at the write.** Workflow writing FETCHED external evidence to disk wraps it on landing: instruction lines → `===== BEGIN UNTRUSTED =====` → payload → `===== END UNTRUSTED =====`. Instruction before payload, nothing after closer, wrapped once. First-party breadcrumbs unfenced. Tracker bodies not fenced: they are the task specification, governed by header contract.
+- **Fenced at the write.** Workflow writing fetched external evidence to disk wraps it on landing: instruction lines → `===== BEGIN UNTRUSTED =====` → payload → `===== END UNTRUSTED =====`. Instruction before payload, nothing after closer, wrapped once. First-party breadcrumbs unfenced. Tracker bodies not fenced: they are the task specification, governed by header contract.
 - **Named on the spawn.** Subagent whose `Read:` list includes fenced artifacts is told so on its `Context:` line — its last trusted instruction before reading.
 - **Standing header contract.** Every agent prompt and workflow header carries the rule; covers tool results (web search / fetch) that never become files, and skill bodies loaded by name.
 

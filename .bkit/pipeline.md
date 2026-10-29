@@ -24,7 +24,7 @@
 
 ## What this is
 
-bkit turns a single coding-agent request into gated, peer-reviewed engineering. Five commands — `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship` — each fans out to specialised single-purpose subagents (39 in total, phases + audit + utilities). Many run parallel under different _lenses_ (bug review vs security review) → independent review before human sees output. Same pipeline on five hosts: Claude Code, Cursor, Codex, Google Antigravity, opencode.
+bkit turns a single coding-agent request into gated, peer-reviewed engineering. Five commands — `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship` — each fans out to specialised single-purpose subagents (39 in total, phases + audit + utilities). Many run parallel under different lenses (bug review vs security review) → independent review before human sees output. Same pipeline on five hosts: Claude Code, Cursor, Codex, Google Antigravity, opencode.
 
 Beside those commands, 35 read-only audit templates live at `docs/templates/bkit-audit-*.md`. `@bkit-audit-generate` runs one and writes `docs/audits/{YYYYMM}/{slug}.md`. `/bkit-plan` takes a design, one or more of those reports, or both.
 
@@ -37,7 +37,7 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
 ```
 ┌────────────────────── bkit-auto (opt-in cloud router) ─────────────────┐
 │ workflow_run on feat/**  → ship (CI green) / debug (CI red)            │
-│ workflow_dispatch        → ship|debug|plan|build (design: local only)  │
+│ workflow_dispatch        → ship|debug|design|plan|build                │
 │ Dispatches the matching /bkit-* skill — runs unattended in cloud       │
 │ (Claude Code on the web / Cursor cloud agents / opencode).               │
 │ Opt-in: `bkit install --auto=claude|cursor|opencode`. See `.bkit/cloud.md`. │
@@ -50,10 +50,10 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
                          last round confirms a DRAFT acceptance scenario;
                          skipped headless: recommended answers recorded as assumed)
   2. fetch related       (semantic tracker search, rank order → related-issues.md)
-  3. brainstorm × 3 (parallel, distinct lenses, no sibling reads)
+  3. brainstorm x 3 (parallel, distinct lenses, no sibling reads)
      • pragmatic  • optimal-tradeoff  • risk / pre-mortem
   4. generate design     (synthesise across lenses + related issues)
-  5. review × 2 (parallel, cross-tier models)
+  5. review x 2 (parallel, distinct lenses)
      • feasibility (web)  • operability (failure modes, observability, on-call)
   6. spike               (only if review flags load-bearing unknowns:
                          throwaway probe code, confined to the run's log folder)
@@ -67,7 +67,7 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
   2. fetch context       (tracker: related issues; ledgers: prior deferrals,
                          prior failures, strongest term-overlap first, top 40
                          → feeds all three reviewers below)
-  3. review × 2 + scope-check (parallel, one round, distinct lenses)
+  3. review x 2 + scope-check (parallel, one round, distinct lenses)
      • plan text: tightness, dependency order  • code: regression risk
      • scope check: template, criteria, verification
   4. update plan         (merge all three in one pass, max-wins on CRITICAL;
@@ -95,8 +95,8 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
     • bug-hunting (large changes)  • security (always)
   10. challenge merge    (engine: findings become plan tasks, each with a test first;
                          a repeated finding reopens its open task; LOW → deferred;
-                         fixable → back to the group loop, once; unfixable or a
-                         second round's findings → Decision Pause; two rounds at most)
+                         fixable → back to the group loop, a last-round fix not
+                         challenged again; unfixable → Decision Pause; two rounds at most)
   11. run tests          (local tier: lint + typecheck + unit + slop:delta + bkit check;
                          no integration / e2e / @live — those run in CI)
     ↳ on test failure → /bkit-debug (debug-failure-diagnose + remediate)
@@ -173,14 +173,14 @@ Output: reviewed design (`docs/plans/{YYYYMM}/{FID}-design.md`). Hard stop for h
 | Subagent | Lens / focus | What it does |
 | --- | --- | --- |
 | `bkit-design-brainstorm-ideate-1` | Pragmatic | Independent design exploration. Forbidden from reading siblings (circular-reasoning guard). |
-| `bkit-design-brainstorm-ideate-2` | Optimal-tradeoff | Same task, different lens, on a different model from its siblings. |
+| `bkit-design-brainstorm-ideate-2` | Optimal-tradeoff | Same task, different lens. |
 | `bkit-design-brainstorm-ideate-3` | Risk / pre-mortem | Same task, failure-mode lens. |
 | `bkit-design-generate` | Synthesiser | Merges three brainstorms into one design. Merges across lenses rather than collapsing to consensus. |
 | `bkit-design-review-1` | Feasibility (web) | Adversarial review with live web search; checks ecosystem feasibility per capability. |
-| `bkit-design-review-2` | Operability (cross-tier) | Parallel review on a different model from review-1: failure modes, observability, on-call ergonomics. |
+| `bkit-design-review-2` | Operability | Parallel review alongside review-1: failure modes, observability, on-call ergonomics. |
 | `bkit-design-spike` | Probe unknowns | Only when a review flags load-bearing unknowns: settles them with throwaway probe code, confined to the run's log folder. |
 | `bkit-design-update` | Apply review | Folds both reviews (and the spike, if run) back into the design. |
-| `bkit-design-organise` | Structure | Cleans and organises the final design doc. |
+| `bkit-design-organise` | Structure | Splits the reviewed design into dependency-annotated workstreams and plans. |
 
 <a id="bkit-plan"></a>
 
@@ -194,7 +194,7 @@ Output: executable plan (`{FID}-plan.md`, its tasks in groups the build runs one
 | `bkit-plan-generate` | Generate | Turns the design into groups of task blocks, in build order. |
 | `bkit-plan-review-1` | Tightness + dependency order + design-coverage | Read-only critique of the plan text; flags drift, out-of-order tasks and missing prerequisites as CRITICAL. Parallel. |
 | `bkit-plan-review-2` | Regression-risk | Same scope, reads the code: traces each task's surfaces to their consumers. Parallel. |
-| `bkit-plan-scope-check` | Internal-completeness | Mechanical scope audit — verifies template structure, scope and verification per task; per-task `DONE WHEN` / `TEST FIRST` belong to `bkit tests plan-check`. Depth-sensitive: stays on the top model tier. Parallel. |
+| `bkit-plan-scope-check` | Internal-completeness | Mechanical scope audit — verifies template structure, scope and verification per task; per-task `DONE WHEN` / `TEST FIRST` belong to `bkit tests plan-check`. Parallel. |
 | `bkit-plan-update` | Apply review (merge) | Merges all three critiques in one pass, max-wins on CRITICAL findings. |
 
 <a id="bkit-build"></a>
@@ -214,7 +214,7 @@ Output: PR to `dev`. Heaviest phase — most steps verify rather than produce. C
 | `bkit-build-plan-gaps-remediate` | Gap-fixer | Fills gaps the verifier found, then re-verifies. |
 | `bkit-build-plan-verify` | Holistic critic | Second, whole-of-plan verification pass across everything built. |
 | `bkit-build-challenge-1` | Bug-hunting | Adversarial review of the full diff; writes each finding as a plan task with a test first. Forbidden from reading its sibling. Parallel. Runs only on a large change (300+ lines or 10+ files, `docs/plans/**` excluded, measured by `bkit challenge gate`); a small one runs `-2` alone. `bkit challenge merge` then appends the findings to the plan, and execute + verify fix them. |
-| `bkit-build-challenge-2` | Security | Same diff, security lens. Depth-sensitive: stays on the top model tier. Runs on every change, alone on a small one. |
+| `bkit-build-challenge-2` | Security | Same diff, security lens. Runs on every change, alone on a small one. |
 | `bkit-debug-failure-diagnose` | Diagnostician | (If tests fail) diagnoses with Standard / Pivot / Final strategy escalation. Shared with debug. |
 | `bkit-debug-failure-remediate` | Fixer | (If tests fail) applies the diagnosed fix. |
 
@@ -240,7 +240,7 @@ Output: remediated commit on feature branch. Two modes — normal (diagnose → 
 <!-- prettier-ignore -->
 | Subagent | Lens / focus | What it does |
 | --- | --- | --- |
-| `bkit-debug-failure-soak` | Instrument-or-fix loop | One accumulating context against the failing boundary; each iteration either adds `[DEBUG-OBSERVE]` instrumentation or applies the smallest evidence-backed fix, stripping all scaffolding before declaring a fix. Bounded by `SOAK_ATTEMPT` (reset per soak entry). |
+| `bkit-debug-failure-soak` | Instrument-or-fix loop | One accumulating context against the failing boundary; each iteration either adds `[DEBUG-OBSERVE]` instrumentation or applies the smallest evidence-backed fix, stripping all scaffolding before declaring a fix. Bounded by `SOAK_ATTEMPT` (counted across every debug run of the feature). |
 
 **Escape hatch**
 

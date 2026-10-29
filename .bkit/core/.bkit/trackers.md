@@ -3,7 +3,7 @@
 {{BKIT_MANAGED_MARKER}}
 
 > [!CAUTION]
-> **Purpose:** Reference for inline tracker-block model in `.bkit/core/workflows/bkit-*.md` and `.bkit/core/prompts/bkit-*.md`. **Not consumed by installer** — no `trackers.md` substitution. Per-tracker call bodies (`github` / `linear` / `jira`, plus `false` for no tracker) live INLINE at each workflow call site; this file documents marker contract, cross-cutting per-tracker conventions, and the issue shapes workflows read (§ Issue shapes).
+> **Purpose:** Reference for inline tracker-block model in `.bkit/core/workflows/bkit-*.md` and `.bkit/core/prompts/bkit-*.md`. **Not consumed by installer** — no `trackers.md` substitution. Per-tracker call bodies (`github` / `linear` / `jira`, plus `false` for no tracker) live inline at each workflow call site; this file documents marker contract, cross-cutting per-tracker conventions, and the issue shapes workflows read (§ Issue shapes).
 >
 > **Rules:**
 >
@@ -55,7 +55,7 @@ Conditionals resolved after group pass — group nested inside kept `true` resol
 
 **Inline form:** a `true` block may sit inside a line to add wired-only words to text `none` shares, e.g. `before<!-- bkit:tracker true start --> wired-only words<!-- bkit:tracker true end --> after`. A removed block also consumes the whitespace right before its marker, so keep exactly one separating space on each side of the inserted words: inside the block, with the `start` marker glued to the text before it, or before the marker, with a space after the `end` marker (`N. <start>words<end> rest` keeps its list number). A `false` block placed right after the `true` block carries the `none` wording when it differs. The `none` render then stays equal to the text outside the blocks (`render/trackers.test.ts` § none render baselines).
 
-**Numbered-step rule:** never wrap numbered list item's NUMBER inside `true` block — under `none` whole item vanishes → numbering gap (`1, 6, 7`). Numbered step with tracker-only body: keep `N.` outside markers; pair `true` body with trailing `false` stub. Put `false` on same line as `true end`, single leading space before stub → inline (`N. _stub_`) not dangling continuation:
+**Numbered-step rule:** never wrap numbered list item's number inside `true` block — under `none` whole item vanishes → numbering gap (`1, 6, 7`). Numbered step with tracker-only body: keep `N.` outside markers; pair `true` body with trailing `false` stub. Put `false` on same line as `true end`, single leading space before stub → inline (`N. _stub_`) not dangling continuation:
 
 ```text
 N. <!-- bkit:tracker true start -->
@@ -81,11 +81,11 @@ Per-tracker call sites referenced across `.bkit/workflows.md` by these names. Ea
 | `issue-update-review` | phase Close hand-off (non-terminal) | no-op (label carries) | `save_issue` state `bkit.tracker.linear.review` | transition to `bkit.tracker.jira.review` | skip |
 | `issue-update-failed` | Failure Path additive `bkit:failed` | `issue_write` labels | `save_issue_label` per new label, then `save_issue` labels, then `save_issue` state `bkit.tracker.linear.review` | `editJiraIssue` full label set, then transition to `bkit.tracker.jira.review` | skip |
 | `issue-update-merged` | Ship terminal — `bkit:merged` + In Review (issue left open; human closes) | `issue_write` `bkit:merged` (no close) | `save_issue_label` per new label, then `save_issue` labels, then `save_issue` state `bkit.tracker.linear.review` | `editJiraIssue` full label set, then transition to `bkit.tracker.jira.review` | skip |
-| `issue-update-status` | Projects v2 board status (best-effort) | `projects_write` add/update item | no-op (state carries) | no-op (status carries) | skip |
+| `issue-update-status` | Projects v2 board status (best-effort) | `projects_write` add / update item | no-op (state carries) | no-op (status carries) | skip |
 | `comment-post-step` | new comment per workflow step | `add_issue_comment` | `save_comment` | `addOrEditJiraIssueComment` | skip |
 | `issue-blockers-check` | Gate on open blockers | parse body marker → read states | `get_issue` relations | JQL `linkedIssues(KEY, "is blocked by") AND statusCategory != Done` | skip |
 | `kill-switch-check` | Terminate if `bkit:auto` absent; skipped when `ISSUE_ID` empty | label check | label check | label check | inactive |
-| `pr-body-metadata` | Parse PR-body issue/FID marker; FID-only marker (no issue) → `issueId: null`, `/bkit-auto` fails closed | `pull_request_read` + parse | same (GitHub PR) | same (GitHub PR) | FID-only, no fail-closed |
+| `pr-body-metadata` | Parse PR-body issue / FID marker; FID-only marker (no issue) → `issueId: null`, `/bkit-auto` fails closed | `pull_request_read` + parse | same (GitHub PR) | same (GitHub PR) | FID-only, no fail-closed |
 | `pr-body-marker` | Literal PR-body marker line; no issue → `<!-- bkit:fid={FID} -->` alone | `<!-- bkit:issue=#{ISSUE_ID} bkit:fid={FID} -->` | `<!-- bkit:issue={ISSUE_ID} bkit:fid={FID} -->` | `<!-- bkit:issue={ISSUE_ID} bkit:fid={FID} -->` | `<!-- bkit:fid={FID} -->` |
 
 Phase-label set + additive-label semantics: `.bkit/workflows.md` § Tracker Integration.

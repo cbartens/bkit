@@ -15,6 +15,7 @@ import {
   detectNoopGates,
   GATE_CONTENTS_NOTE,
   isNoopScript,
+  bkitDocTokens,
   runBkitDocs,
   migrateLinearTeamKey,
   migrateGithubProjectKey,
@@ -113,7 +114,10 @@ describe("bkit canonical docs pass (runBkitDocs, #218)", () => {
   ];
 
   const rendered = (name: string): string =>
-    applyTokens(fs.readFileSync(path.join(PKG_DOCS_ROOT, name), "utf-8"), makeCtx().tokens);
+    applyTokens(
+      fs.readFileSync(path.join(PKG_DOCS_ROOT, name), "utf-8"),
+      bkitDocTokens(makeCtx().tokens),
+    );
 
   it("force-overwrites the package .bkit/*.md docs into the consumer's .bkit/, rendered", () => {
     const ctx = makeCtx();
@@ -129,6 +133,16 @@ describe("bkit canonical docs pass (runBkitDocs, #218)", () => {
       ).toBe(rendered(name));
       expect(readManagedVersion(fs.readFileSync(dst, "utf-8")), name).toBe(readInstallingVersion());
     }
+  });
+
+  it("keeps install tokens literal in the docs, resolving only the managed marker", () => {
+    const ctx = makeCtx();
+    runCoreModule(ctx);
+    flushPostDispatch(ctx);
+
+    const templates = fs.readFileSync(path.join(tmpDir, ".bkit", "templates.md"), "utf-8");
+    expect(templates).toContain("`{{DEFAULT_BRANCH}}`");
+    expect(templates).not.toContain("{{BKIT_MANAGED_MARKER}}");
   });
 
   it("writes .bkit/LICENSE.md with the full MIT text and copyright notice", () => {

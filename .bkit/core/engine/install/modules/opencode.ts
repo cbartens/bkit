@@ -583,7 +583,7 @@ export function runOpencodeModule(ctx: ModuleContext): void {
       `     env — {env:KEY} placeholders in opencode.json resolve empty without this. Quit the\n` +
       `     running app first (a running instance ignores the new env).\n` +
       `  4. Model IDs: all four providers (openrouter, ollama, opencode-zen, opencode-go) install ready-to-run curated per-agent pins. ` +
-      `Re-pin any agent via .bkit/prompts.md § Model Overrides or by probing the provider's live /v1/models — see .bkit/providers.md § Models. NOTE: every ollama pin (${shippedPins("ollama")}) needs a paid Ollama plan. opencode-go pins (${shippedPins("opencode-go")}) — prefer pins that stay within the Go 5h usage window; opencode-zen pins are existence-validated via models.dev (the /zen/v1/models REST probe cannot see Go-only models — models.dev is the source of truth).\n` +
+      `Re-pin any agent via .bkit/prompts.md § Model Overrides or by probing the provider's live /v1/models — see .bkit/providers.md § Provider models. NOTE: every ollama pin (${shippedPins("ollama")}) needs a paid Ollama plan. opencode-go pins (${shippedPins("opencode-go")}) — prefer pins that stay within the Go 5h usage window; opencode-zen pins are existence-validated via models.dev (the /zen/v1/models REST probe cannot see Go-only models — models.dev is the source of truth).\n` +
       `  5. Verify with: \`bkit doctor\` (credentials + tools) and \`bkit status\` (installed hosts + providers).`,
   });
 }

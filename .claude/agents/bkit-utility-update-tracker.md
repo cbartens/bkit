@@ -36,8 +36,8 @@ autoCompactWindow: 300000
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Update open tracker issues to `.agents/rules.md` tracker rules; do not just analyse; do not write implementation code; NEVER write files or append ledger rows; list bugs found in output for the caller to record.
 - **No commits:** Do not run `git commit` / `git add` / `git push` (caller does).
-- **Tracker:** Write title, labels, board status, priority, size, milestone, parent, and blocked-by only; NEVER create, close, or reopen issues; NEVER comment on issues; NEVER create labels, milestones, or board fields; NEVER add or remove `bkit:*` labels; NEVER set a done state; NEVER remove a parent or blocked-by link.
-- **Input scope:** **If** input names issues → those issues only. **Else** → every open issue.
+- **Tracker:** Write title, labels, board status, priority, size, milestone, parent, and blocked-by ONLY; NEVER create, close, or reopen issues; NEVER comment on issues; NEVER create labels, milestones, or board fields; NEVER add or remove `bkit:*` labels; NEVER set a done state; NEVER remove a parent or blocked-by link.
+- **Input scope:** **If** input names issues → those issues ONLY. **Else** → every open issue.
 
 **Rules:** Copied word for word from `.agents/rules.md`.
 
@@ -49,7 +49,7 @@ autoCompactWindow: 300000
 - **Command output:** ALWAYS request structured, bounded CLI / API / SQL output (`--json` plus limit flags, SQL `LIMIT`, `jq` field selection), and filter at the source (time window, environment, issue ID); NEVER re-run a fetch whose output is already in context.
 - **Verify tools:** Verify every return; do not assume success.
 - **Tracker issue creation:** NEVER create issues yourself; ONLY suggest them, and create one ONLY after explicit human confirmation; write the body per `.bkit/trackers.md` § Issue shapes.
-- **Tracker issue settings:** Keep the title to at most 70 characters or two lines on mobile; ALWAYS set labels, project, project status, priority, size, milestone, parent, and every open blocking issue as blocked-by; set priority and size per `docs/templates/bkit-audit-issues.md` § Ranking Rules and § Size Scale, NEVER by label alone; write blocked-by in machine-read form per `.bkit/trackers.md` § Issue shapes, NEVER as prose only; check similar issues if unclear.
+- **Tracker issue settings:** Keep the title to at most 70 characters or two lines on mobile; ALWAYS set labels, project, project status, priority, size, milestone, parent, and every open blocking issue as blocked-by; set priority and size per `docs/templates/bkit-audit-issues.md` § Ranking Rules and § Size Scale, NEVER by label alone; write blocked-by in machine-read form per `.bkit/trackers.md` § Issue shapes, NEVER as prose ONLY; check similar issues if unclear.
 - **Tracker next labels:** An issue without a workflow label → ALWAYS exactly one of the `next:design|next:plan|next:build|next:debug|next:ship` labels; append `:lite` for the lite workflow (`next:build:lite`) per `.bkit/lite.md` § When to use. NEVER alongside a workflow label. Standing audit parents are excepted.
 - **Tracker workflow labels:** Add one of the `bkit:design|bkit:plan|bkit:build|bkit:debug|bkit:ship` labels ONLY when the issue starts that workflow (full or lite); they are mutually exclusive — the next workflow start drops the previous one; the `/bkit-ship` close swaps `bkit:ship` → `bkit:merged`. NEVER add one by hand to signal intent; use `next:*`.
 - **Tracker work comments:** Any issue worked on outside `/bkit-*` workflows → ALWAYS post one comment per related issue at the end of every major turn (files changed / commit / PR / finding / blocked stop) with the work done, the outcome and links; skip turns with no work (Q&A, clarifying questions). NEVER paste diffs or restate code. NEVER mention @claude or @cursor in the comment body.

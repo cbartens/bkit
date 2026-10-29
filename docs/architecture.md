@@ -23,7 +23,7 @@
 bkit = **CLI tool + agent-stack payload** as npm package (`@cbartens/bkit` on npmjs):
 
 1. **Producer repo (this repo):** canonical `.bkit/` payload — engine (`.bkit/core/engine`), mirrors (`.bkit/workflows`, `.bkit/prompts`), authoring docs (`.bkit/docs`), consumer templates (`.bkit/templates`).
-2. **Consumer repos:** devDependency; `pnpm bkit install` regenerates IDE mirrors + bkit-managed blocks. Mirror sources + authoring docs read package-relative from installed `.bkit/` — NOT copied into consumer `.agents/`.
+2. **Consumer repos:** devDependency; `pnpm bkit install` regenerates IDE mirrors + bkit-managed blocks. Mirror sources + authoring docs read package-relative from installed `.bkit/` — not copied into consumer `.agents/`.
 
 No server, database, or network service. Build-time / DX tool only.
 
@@ -44,7 +44,7 @@ cbartens/bkit (this repo)
 │   │   ├── launch.ts            # `bkit cursor` / `bkit opencode` launcher verbs — merges .bkit/.env over process.env and exec's the app binary directly (`open -a` routes via launchd, which DROPS the env — #279/#280)
 │   │   ├── comply.ts            # Compliance grader (#234 WS-2) — no-mirror-edit + skip-ci-not-head rules; emits kind:"compliance" rows; `bkit comply --phase <p>` (fail-open)
 │   │   ├── stats.ts             # `bkit stats` — this repo's .bkit/stats.jsonl + friction + deferrals → .bkit/stats.md (committed, no timestamp); never reads harvest/ or chats; chat/run rows not counted; fail-open
-│   │   ├── analysis.ts          # Computations behind `bkit stats` and the harvest report — counts/rates/elapsed, #183 size↔outcome regression, dispatch-size threshold, counter.source trust labelling, per-rule compliance rate over kind:"compliance" rows
+│   │   ├── analysis.ts          # Computations behind `bkit stats` and the harvest report — counts/rates/elapsed, #183 size-vs-outcome regression, dispatch-size threshold, counter.source trust labelling, per-rule compliance rate over kind:"compliance" rows
 │   │   └── workflow/ ci/ setup/ # `bkit <noun> <verb>` workflow commands
 │   ├── install/                 # what gets written into a consumer repo, and how
 │   │   ├── modules/index.ts     # Phase 2 — module dispatcher (MODULE_REGISTRY)
@@ -139,7 +139,7 @@ CLI verbs:
 - `pnpm bkit uninstall` — surgical format-aware removal: fully-managed delete / markered-text strip / byte-equal-text hash-guarded delete; `--dry-run`, `--force`, `--nuke`, `--yes`. package.json scripts and devDeps are never removed (the `bkit` install-state block goes on a full uninstall).
 - `pnpm bkit upgrade` — diff engine vs `canonicalHashes`; non-conflicts auto-apply, conflicts stderr (`--auto-apply` non-zero on conflict). Conflicts come only from the payload walk's whole files; `renderManagedOutputs` outputs (agents, commands, skills, `.bkit/*.md`) always re-render, and `bkit check` flags an edit to one. Module-scoped. Re-renders at **installed** version (offline). `--to=<version>` / `--latest` (#296) bump `@cbartens/bkit` (`pnpm add`) → re-exec fresh binary → re-render + re-pin atomically, so version bump cannot drift mirrors; bare `pnpm add` does not re-render.
 - `pnpm bkit comply --phase <p>` (#234 WS-2) — grader over `git diff parentSha..HEAD`; advisory-only, fail-open.
-- `pnpm bkit stats` (#683) — this repo's ledgers only → `.bkit/stats.md` (committed); size↔outcome regression, per-rule compliance; exit 0.
+- `pnpm bkit stats` (#683) — this repo's ledgers only → `.bkit/stats.md` (committed); size-vs-outcome regression, per-rule compliance; exit 0.
 - `pnpm harvest` (#683, bkit repo only, unshipped: `scripts/harvest/`) — copies every repo's `stats.jsonl` + `friction.jsonl` into `harvest/` and prunes friction + `chat`/`run` rows from them; count-only `docs/{deferrals,failures}.jsonl`; scans chats + run logs → `harvest/stats.jsonl`; run check; `harvest/stats.md`. Never commits. `docs/observability.md` § Harvest.
 - `pnpm bkit telemetry summary [--phase=<workflow>]` (#234 WS-5) — per-workflow telemetry report against the median of the previous 5 runs; read-only.
 - `pnpm bkit cursor` / `pnpm bkit opencode` — launch host with `.bkit/.env` merged (macOS GUI apps skip login-shell / direnv env).
@@ -149,7 +149,7 @@ CLI verbs:
 ```
 Consumer repo
 ├── package.json            # devDependencies: { "@cbartens/bkit": "^5.1.0" }
-├── .claude/settings.json   # json format — deep-containment (template scope ⊆ consumer)
+├── .claude/settings.json   # json format — deep-containment (template scope within consumer)
 ├── .cursor/hooks.json      # json format — Cursor v1 keyed-object; deep-containment
 ├── .agents/                # Cross-IDE agent runtime, populated by `pnpm bkit install`
 │   ├── rules.md            # markered-text — bkit block + consumer Project section
@@ -166,12 +166,12 @@ Consumer repo
     └── .env                # consumer secrets (gitignored), auto-loaded via .envrc/direnv
 ```
 
-Workflow / prompt SOURCES not shipped into consumer `.agents/`; live in installed package `.bkit/core/workflows/` + `.bkit/core/prompts/`, read package-relative. IDE mirrors from those sources:
+Workflow / prompt sources not shipped into consumer `.agents/`; live in installed package `.bkit/core/workflows/` + `.bkit/core/prompts/`, read package-relative. IDE mirrors from those sources:
 
 - `.claude/commands/` + `.claude/agents/` — byte-identical copies of `.bkit/core/workflows/` + `.bkit/core/prompts/`
 - `.cursor/commands/` + `.cursor/agents/` — T1 / T2 / T3-transformed for Cursor
 - `.opencode/commands/` + `.opencode/agents/` + `.opencode/opencode.json` + `.opencode/plugin/bkit-gateguard.js` — additive opencode host; opt-in `bkit install --opencode=<provider>`; four providers: `openrouter`, `ollama`, `opencode-zen`, `opencode-go`. See `docs/technology.md` § Execution Hosts.
-- `.codex/agents/` + `.codex/hooks.json` + `.codex/hooks/` — additive Codex CLI host; opt-in `bkit install --codex`. Also generates gitignored `.codex/bkit-cloud.md` (Codex Cloud paste doc, live secrets). No `.codex/config.toml`: `openai` is a reserved built-in provider id, so bkit has nothing to declare. Project-local hooks load only once the `.codex/` layer is TRUSTED.
+- `.codex/agents/` + `.codex/hooks.json` + `.codex/hooks/` — additive Codex CLI host; opt-in `bkit install --codex`. Also generates gitignored `.codex/bkit-cloud.md` (Codex Cloud paste doc, live secrets). No `.codex/config.toml`: `openai` is a reserved built-in provider id, so bkit has nothing to declare. Project-local hooks load only once the `.codex/` layer is trusted.
 - `.agents/plugins/bkit/` (`plugin.json` + `skills/bkit-*/SKILL.md` + `agents/bkit-*.md` + `hooks.json` + `hooks/`) + `GEMINI.md` — additive Google Antigravity host installed as a workspace **plugin**; opt-in `bkit install --antigravity`; `.agents/` root stays the dedicated Codex install; workflows ship as plugin skills, subagents as in-session prompts loaded with `view_file`. See `docs/technology.md` § Execution Hosts.
 
 `.claude/hooks/bkit-gateguard.cjs`, `.cursor/hooks/bkit-gateguard.cjs`, `.codex/hooks/bkit-gateguard.cjs`, `.agents/plugins/bkit/hooks/bkit-gateguard.cjs` and `.opencode/plugin/bkit-gateguard.js` (the GateGuard advisory hooks — pre-edit on Claude / Cursor / Codex / Antigravity, appended to the tool result on opencode), the same five paths with `bkit-readguard` (the ReadGuard repeat-read advisory hooks, `.bkit/providers.md` § ReadGuard), `.codex/hooks/bkit-rules.cjs`, `.agents/plugins/bkit/hooks/bkit-rules.cjs` and `.opencode/plugin/bkit-rules.js` (the rules-read advisory hooks — the advisory at the first tool call on Codex, Antigravity and opencode; `.bkit/providers.md` § Rules-read advisory), plus `.claude/hooks/bkit-guardrails.cjs`, `.cursor/hooks/bkit-guardrails.cjs`, `.codex/hooks/bkit-guardrails.cjs` and `.agents/plugins/bkit/hooks/bkit-guardrails.cjs` (shell gates: destructive ops, secret exposure, URL-host checks and shell-as-edit-channel) — like the two `bkit-preflight.sh` hooks, both now also carrying the rules-read advisory in the one session-start document, generated at install from a per-host template plus the shared `.bkit/core/hooks/` (`render/parts.ts`, which also holds the advisory parts `preflight-rules.sh` and `session-rules-advisory.js`) — are markered-text (slash-comment: `// bkit:start` / `// bkit:end`) — bkit owns only the pure advisory engine between the markers; the stdin / stdout driver (Claude) or exported plugin (opencode) around it is consumer-owned from first install onward, so a consumer can add their own advisories without losing them on upgrade. A pre-markers install (no markers, hash matches a prior canonical hash) is replaced wholesale on the next install / upgrade; a genuinely consumer-authored file (no markers, unknown hash) gets the block appended plus printed wiring instructions.

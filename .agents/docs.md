@@ -65,7 +65,7 @@
 | Doc | Design | Plan | Build | Debug | Ship | Scope |
 | --- | --- | --- | --- | --- | --- | --- |
 | `.bkit/README.md` | ○ | ○ | ○ | ○ | ○ | Operator guide — workflow run, prerequisites, env, tracker setup, CLI. |
-| `.bkit/install.md` | — | — | — | — | ○ | First-time install / upgrade paste, token + CI + Vercel auth, install lifecycle, uninstall. |
+| `.bkit/install.md` | — | — | — | — | ○ | First-time install / upgrade paste, local env setup, install lifecycle, uninstall. |
 | `.bkit/providers.md` | ○ | ○ | ○ | ○ | ○ | IDE host differences — install transforms, hosts, providers, model pins. |
 | `.bkit/trackers.md` | ○ | ○ | ○ | ○ | ○ | Tracker marker contract — `github` / `linear` / `jira` / `none` blocks in workflow sources; issue shapes (idea / change / bug) + machine-read body lines. |
 | `.bkit/cloud.md` | ○ | ○ | ○ | ○ | ○ | Cloud agents — Claude on the web, Cursor Cloud, opencode. Setup and support matrix. |

@@ -41,7 +41,7 @@ console.error("[bkit-telemetry] {Message}", {payload})
 
 `[{Context}]` brackets are load-bearing, because consumer CI log-drain / grep alerting depends on this pattern. NEVER drop the brackets.
 
-One prefix per verb / subsystem, named for module NOT phase: `[bkit-install]` · `[bkit-check]` · `[bkit-doctor]` · `[bkit-status]` · `[bkit-upgrade]` · `[bkit-uninstall]` · `[bkit-modules]` · `[bkit-placeholders]` · `[bkit-status-holes]` · `[bkit-instructions]` · `[bkit-grammar]` · `[bkit-comply]` · `[bkit-harvest]` · `[bkit-analysis]` · `[bkit-telemetry]` · `[bkit-roadmap]`. Workflow commands log as `[bkit-<noun>]` on stderr (`[bkit-locks]`, `[bkit-worktrees]`, `[bkit-runs]`, `[bkit-ledgers]`, …); their stdout is one output object (text by default, one JSON line under `--json`), never a log line. New prefix only alongside new module or command noun; else reuse owning module's prefix.
+One prefix per verb / subsystem, named for module, not phase: `[bkit-install]` · `[bkit-check]` · `[bkit-doctor]` · `[bkit-status]` · `[bkit-upgrade]` · `[bkit-uninstall]` · `[bkit-modules]` · `[bkit-placeholders]` · `[bkit-status-holes]` · `[bkit-instructions]` · `[bkit-grammar]` · `[bkit-comply]` · `[bkit-harvest]` · `[bkit-analysis]` · `[bkit-telemetry]` · `[bkit-roadmap]`. Workflow commands log as `[bkit-<noun>]` on stderr (`[bkit-locks]`, `[bkit-worktrees]`, `[bkit-runs]`, `[bkit-ledgers]`, …); their stdout is one output object (text by default, one JSON line under `--json`), never a log line. New prefix only alongside new module or command noun; else reuse owning module's prefix.
 
 ### `[bkit-comply]` prefix
 
@@ -132,7 +132,7 @@ The refusal itself is signalled by the process exit code; every refusal ends wit
 - `[bkit-runs] rate limit exhausted (...)` / `[bkit-runs] API error (...)` — code 20 (rate-limit-shaped message distinguishes the dispatch path).
 - `[bkit-runs] override honoured for head %s (BKIT_SHIP_GATE_OVERRIDE matches refused head)` — sanctioned escape hatch; also writes a `ship-gate-override` `status.jsonl` row (`--file=`) for audit, or emits it to stderr when the file is absent or unwritable.
 
-The override is honoured ONLY when `BKIT_SHIP_GATE_OVERRIDE=<sha>` equals the EXACT head being refused, so a SHA mismatch is ignored and the refusal stands. Audit the override rows (`status.jsonl` `type:"ship-gate-override"`) as part of consumer rollback (see `docs/deployments.md` § Ship gate + bookkeeping).
+The override is honoured ONLY when `BKIT_SHIP_GATE_OVERRIDE=<sha>` equals the exact head being refused, so a SHA mismatch is ignored and the refusal stands. Audit the override rows (`status.jsonl` `type:"ship-gate-override"`) as part of consumer rollback (see `docs/deployments.md` § Ship gate + bookkeeping).
 
 The same prefix carries the CI waits (`bkit runs wait`: one `attempt N: …` line per poll) and the CI-Dispatch Gate (`bkit runs dispatch`: `re-trigger commit or push failed — no verdict; route to the Failure Path`, `landed commit … inherited a CI-suppression token in its body`).
 
@@ -215,7 +215,7 @@ pnpm harvest report      # rewrite harvest/stats.md only
 - Append-only, open rows included: `time.lastActivity` = last write; `scan.settled` = unchanged for `--settle-hours` (24). Same size and `settled` → skipped (a stored chat row without `usage.byRun` is read again); else new row, same `key`, last wins. Report: open rows in totals and lists, marked `open`, not in medians.
 - Numbers, not limits: no bkit limit applied. Per-task test / test-file counts and each agent's largest turn stored as lists; the report's 120k / 200k columns are presentation. Measurement settings: `IDLE_GAP_MS` (5 min), `LINES_FLOOR` (100), `DEFAULT_SETTLE_HOURS` (24).
 - Fingerprints: `repo` / issues = `fp:` + 12 hex of sha256(`owner/repo` / `owner/repo#N`). No paths, branch names or prompt text; `harvest/stats.md` reverses them from local repos.
-- Links (report only): exact = `run.parentShas` ↔ `run.parentSha` of `outcome` / `counter` / `compliance` rows (printed by `bkit workflows close`); outcome rows count once, the newest per (repo, `by.workflow`, `run.parentSha`); time = same repo and workflow, `ts` inside the chat; issue = shared issue fingerprint.
+- Links (report only): exact = `run.parentShas` matched to `run.parentSha` of `outcome` / `counter` / `compliance` rows (printed by `bkit workflows close`); outcome rows count once, the newest per (repo, `by.workflow`, `run.parentSha`); time = same repo and workflow, `ts` inside the chat; issue = shared issue fingerprint.
 - bkit version: the repo's `.bkit/version` history at chat start → an expanded command's managed marker → a link.
 - Workflow named only in the host's summary → `issue.source: "summary"`: issue kept, not a workflow run.
 - Tokens by type, never dollars: `input` (fresh), `cacheWrite`, `cacheRead`; `read` = sum. `usage` per model, main chat and total; per agent type under `agents.byAgent`. Claude Code logs subagent `output` ~12x low → `outputEst` (chars / 4). Per agent: peak context and context at the 10th call per instance, compactions, tool mix (`read`, `edit`, `grep`, `shellRead`, `shellList`, `tests`, `serena`), plan-file reads (whole file vs a line range). Fields say `context`; `schema: 2` rows' `ctx` / `ctxPeak` are renamed on read.

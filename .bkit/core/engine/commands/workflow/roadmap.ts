@@ -62,6 +62,19 @@ export const MARKERS = {
   analysisEnd: "<!-- bkit:roadmap-analysis end -->",
 } as const;
 
+/** Title and rules box a new board opens with; the consumer owns both once the file exists. */
+export const SEEDED_HEAD = [
+  "# Roadmap",
+  "",
+  "> [!CAUTION]",
+  "> **Purpose:** Phase board of every bkit feature, projected from `.bkit/issues.jsonl`, plus the best-next-step analysis and your notes.",
+  ">",
+  "> **Rules:**",
+  ">",
+  "> - The `bkit` tables between the `bkit:roadmap-status` markers are generated: do not hand-edit them; append to `.bkit/issues.jsonl` instead.",
+  "> - Text above the first marker and the `## Notes` blocks are yours; bkit never overwrites them.",
+].join("\n");
+
 const ANALYSIS_PLACEHOLDER = "_(no analysis yet; run @bkit-utility-update-roadmap to populate)_";
 const NOTES_PRE_PLACEHOLDER = "## Notes\n\n_(above the bkit list — yours, never overwritten)_";
 const NOTES_POST_PLACEHOLDER = "## Notes\n\n_(end of the board — yours, never overwritten)_";
@@ -260,7 +273,7 @@ export function foldBoard(p: Projection, current: string | undefined, now: strin
   // The head is the consumer's once the file exists: bkit seeds a title and
   // never rewrites it. The generated-tables warning lives in the status block,
   // so its wording stays true as the region's rules change.
-  if (blank(head)) head = "# Roadmap";
+  if (blank(head)) head = SEEDED_HEAD;
 
   let merge = adopted;
   if (!blank(tail)) merge = appendNotes(merge, tail);

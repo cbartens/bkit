@@ -30,7 +30,7 @@ autoCompactWindow: 300000
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Judge plan currency; do not build, install, fix, revise plan, or write code.
 - **No commits:** Do not run `git commit` / `git add` / `git push` (caller does).
-- **Evidence not distance:** Commit count and elapsed time never carry verdict; tasks are affected only where named paths, symbols, signatures, or contracts they depend on moved.
+- **Evidence not distance:** Commit count and elapsed time NEVER carry verdict; tasks are affected ONLY where named paths, symbols, signatures, or contracts they depend on moved.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 
 **Rules:** Copied word for word from `.agents/rules.md`.

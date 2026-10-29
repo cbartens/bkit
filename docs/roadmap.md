@@ -1,5 +1,13 @@
 # Roadmap
 
+> [!CAUTION]
+> **Purpose:** Phase board of every bkit feature, projected from `.bkit/issues.jsonl`, plus the best-next-step analysis and your notes.
+>
+> **Rules:**
+>
+> - The `bkit` tables between the `bkit:roadmap-status` markers are generated: do not hand-edit them; append to `.bkit/issues.jsonl` instead.
+> - Text above the first marker and the `## Notes` blocks are yours; bkit never overwrites them.
+
 <!-- bkit:roadmap-notes-pre start -->
 ## Notes
 

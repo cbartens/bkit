@@ -515,6 +515,10 @@ def chain_block(surface, overlay, reach):
     provs = sorted(p for p in ext if p not in hidden
                    and any(not is_test_code(c) for c in ext[p]["callers"]))
 
+    dead_any = (reach or {}).get("unreachable") or (reach or {}).get("strandedHonoRoutes")
+    if not (used_eps or mods or provs or dead_any):
+        return None, 0
+
     L = ["---", "config:", "  layout: elk", "  flowchart:", "    useMaxWidth: false", "---",
          "flowchart LR"]
     NODES, ELIST = [], []
@@ -640,8 +644,8 @@ def eager_block(eager):
     L = [
         f"{sites} module-scope side effects in {len(eager['files'])} of {eager['scanned']} "
         f"source files. A call here runs on **import**, not on first use, so every file "
-        f"downstream pays for it, because under Jest that is a mandatory stub in tests that never "
-        f"touch the thing. Sorted by reach.",
+        f"downstream pays for it, and a test that never touches the thing still has to stub it. "
+        f"Sorted by reach.",
         "",
         "<!-- prettier-ignore -->",
         "| File | Evaluates at import | Downstream files | of which tests |",
@@ -733,7 +737,8 @@ def as_capabilities_doc(out, min_weight, overlay, rows, rules_path, surface, ov_
         "symbol, followed through `v1.ts` to the router file and its service imports. Attribution "
         "is per symbol, not per file, so a domain named only in a shared helper's comment is not "
         "credited to every page that imports the helper."
-    ) if ROUTES_MMD else "No route layer; run with `--surface`."
+    ) if ROUTES_MMD else ("No route layer: the surface scan found nothing to draw." if surface
+                          else "No route layer; run with `--surface`.")
     order = {"split": 0, "gap": 1, "bypassed": 2, "budgeted": 3, "one": 4, "unchecked": 5}
     rows = sorted(rows, key=lambda r: (order.get(r["status"], 9), r["lane"], r["capability"]))
     counts = collections.Counter(r["status"] for r in rows)
@@ -766,12 +771,12 @@ def as_capabilities_doc(out, min_weight, overlay, rows, rules_path, surface, ov_
         "> - Generated — do not edit. `pnpm graph:refresh` rewrites this file.",
         f"> - Source of truth: `{rules_path}`. Every status derived from live source, never typed.",
         "> - Add a capability = add a rule there: capability · lane · owner module · one literal marker.",
-        "> - Markers literal, never regex, because `new Ratelimit(` as a regex is an unclosed group matching nothing.",
+        "> - Markers literal, never regex, because `new Client(` as a regex is an unclosed group matching nothing.",
         "> - Match the mechanism, not the name, because `createClient(` misses an owner that aliases its import.",
         "> - Optional `scope` narrows the tree scanned when a marker means different things per package.",
         "> - Optional `surface`: `product` (default) · `tests` (any `e2e/` dir + every `.test.` / `.spec.` file) · `all`. The two surfaces partition the tree.",
         "> - Optional `budgets`: the exact non-owner site count allowed per scope prefix. Measured == declared everywhere ⇒ `budgeted`, which is not a warning.",
-        "> - A budget is not a shrug, because `owned-query-shape-guard.test.ts` reds CI when the count moves either way, and a site landing outside every declared prefix reads as over budget.",
+        "> - A budget is not a shrug, because the row leaves `budgeted` and its Budget cell reads `over` or `stale` when the count moves either way, and a site landing outside every declared prefix reads as over budget.",
         "> - Test code is in `graph.json` on purpose (`.graphifyignore`) and out of every diagram here by rule (`is_test_code` in `bkit-graphify-rollup.py`): test folders, `.test.` / `.spec.` files, test-runner config. `hide_nodes` below is diagram-only too, for whatever else a picture should not draw.",
         "> - Status computed: no owner → `split`; owner absent → `gap`; owner present, others use marker → `bypassed`; else `one`. A `split|bypassed` at budget → `budgeted`.",
         "> - Externals: `scripts/graphify/bkit-graph-external-rules.json` — `sdk` · `hosts` · `env`. SDK and url = `split`.",
@@ -783,7 +788,7 @@ def as_capabilities_doc(out, min_weight, overlay, rows, rules_path, surface, ov_
         "> - Drift = dashed border + one amber box for all four. No ranking: each scan proves a shape, never an intent.",
         "> - `budgeted` = solid border + blue box. Still drawn, because a declared bypass is still a bypass, but it is settled, not an open question.",
         "> - Which status is which: `split` fine dash · `bypassed` long dash · `dead` even dash · `gap` dotted · `budgeted` no dash.",
-        "> - A fetched URL is a STRING, never an edge, because `assert-routes-reachable.mjs` is the only check that sees it.",
+        "> - A fetched URL is a STRING, never an edge, because the reachability scan (§ Unreachable API calls) is the only check that sees it.",
         f"> - Table rescanned every run, never stale. Diagrams from `graph.json` @ `{GRAPH_COMMIT[:9]}`; when that differs from HEAD ⇒ run `pnpm graph:update` first.",
         "> - Detail-level module graph → `pnpm graph`. This doc is the altitude above that: capabilities, not files.",
         "",
@@ -793,12 +798,11 @@ def as_capabilities_doc(out, min_weight, overlay, rows, rules_path, surface, ov_
         "of them can turn out to be deliberate, because the scans prove a shape, never an intent.",
         "",
         "`budgeted` is what one of those four becomes once somebody has decided. The rule declares",
-        "the exact number of non-owner sites allowed per scope prefix, its `note` says why that",
-        "number is not zero, and `tooling/eslint/tests/owned-query-shape-guard.test.ts` reds CI the",
-        "moment the count moves in either direction — too many (a copy appeared) or too few (the",
-        "budget is stale). That guard is why the status can be quieter without being a place to",
-        "hide work, and it is the half the register itself cannot do: `graphify` is a per-developer",
-        "install, absent in CI, so nothing here can turn a build red.",
+        "the exact number of non-owner sites allowed per scope prefix, and its `note` says why that",
+        "number is not zero. The moment the count moves in either direction — too many (a copy",
+        "appeared) or too few (the budget is stale) — the row leaves `budgeted`, its Budget cell",
+        "reads `over` or `stale`, and `pnpm graph:check` fails until the register is refreshed.",
+        "That is why the status can be quieter without being a place to hide work.",
         "",
         "It still gets a box in the diagrams, drawn solid and blue rather than dashed and amber. A",
         "budgeted bypass is still a bypass; the different drawing stops the picture asking the",
@@ -842,7 +846,7 @@ def as_capabilities_doc(out, min_weight, overlay, rows, rules_path, surface, ov_
         "this block is read back first and re-emitted verbatim. Rename a node, hide a node or an",
         "edge, pin a note, or force nodes into a named group. A malformed block aborts the run",
         "rather than being silently dropped. Every `hide_nodes` entry needs a one-line reason in",
-        "`hide_nodes_why`; `tooling/eslint/tests/hide-nodes-registry.test.ts` fails CI otherwise.",
+        "`hide_nodes_why`.",
         "",
         OV_START,
         "",
@@ -856,12 +860,7 @@ def as_capabilities_doc(out, min_weight, overlay, rows, rules_path, surface, ov_
         "",
         ROUTES_PROSE,
         "",
-        VIEW_ONLINE,
-        "",
-        "```mermaid",
-        ROUTES_MMD,
-        "```",
-        "",
+    ] + ([VIEW_ONLINE, "", "```mermaid", ROUTES_MMD, "```", ""] if ROUTES_MMD else []) + [
         "## Architecture — packages",
         "",
         "Grouped by the folder tree, not by a clustering algorithm. Edge labels are the number of",
@@ -875,7 +874,7 @@ def as_capabilities_doc(out, min_weight, overlay, rows, rules_path, surface, ov_
         "",
         "## Architecture — modules",
         "",
-        f"The same graph one level down: `apps/web` is a box, its subfolders are the nodes inside it.",
+        "The same graph one level down: each package is a box, its subfolders are the nodes inside it.",
         f"Cross-group edges lighter than {min_weight} are dropped — see `MMD_MIN_WEIGHT` in",
         "`scripts/graphify/bkit-graphify.sh`.",
         "",

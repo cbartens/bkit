@@ -24,14 +24,14 @@ Dispatch pairs each agent with one tracker; environments (`<host>/bkit-cloud.md`
 <!-- prettier-ignore -->
 | Agent (the agent, not the editor) | Ways to launch a cloud agent | Tracker | not supported |
 | --- | --- | --- | --- |
-| **Claude Code** (terminal — any IDE host) | **A)** Claude iOS / desktop app → Claude-on-web env (`.claude/hooks/bkit-cloud-bootstrap.sh` + the env defined in `claude.ai/code`) · **B)** manual `workflow_dispatch` on `bkit-cloud.yml` (pick phase + issue) · **C)** GitHub CI pass/fail → `bkit-cloud.yml` claude job · **D)** `@claude` mention on a GitHub issue / PR (`/install-github-app` required — **base requirement** for `cloud=claude`) | **GitHub** | **Linear** |
-| **opencode** (GitHub runner) | **A)** manual `workflow_dispatch` on `bkit-cloud.yml` (pick phase + issue) · **B)** GitHub CI pass/fail → `bkit-cloud.yml` opencode job (requires `OPENCODE_PROVIDER_KEY` secret) · **C)** reactive `/oc` comment handler (self-installed, not bkit — see § Reactive comment handlers) | **GitHub** | **Linear** |
-| **Cursor** (native agent) | **A)** Cursor's built-in cloud-agent launch · **B)** Cursor's GitHub integration on PR events (CI pass/fail) · **C)** Linear → Cursor integration | **Linear** (+ GitHub PR events) | **GitHub Projects / Issues** |
+| **Claude Code** (terminal — any IDE host) | **A)** Claude iOS / desktop app → Claude-on-web env (`.claude/hooks/bkit-cloud-bootstrap.sh` + the env defined in `claude.ai/code`) · **B)** manual `workflow_dispatch` on `bkit-cloud.yml` (pick phase + issue) · **C)** GitHub CI pass / fail → `bkit-cloud.yml` claude job · **D)** `@claude` mention on a GitHub issue / PR (`/install-github-app` required — **base requirement** for `cloud=claude`) | **GitHub** | **Linear** |
+| **opencode** (GitHub runner) | **A)** manual `workflow_dispatch` on `bkit-cloud.yml` (pick phase + issue) · **B)** GitHub CI pass / fail → `bkit-cloud.yml` opencode job (requires `OPENCODE_PROVIDER_KEY` secret) · **C)** reactive `/oc` comment handler (self-installed, not bkit — see § Reactive comment handlers) | **GitHub** | **Linear** |
+| **Cursor** (native agent) | **A)** Cursor's built-in cloud-agent launch · **B)** Cursor's GitHub integration on PR events (CI pass / fail) · **C)** Linear → Cursor integration | **Linear** (+ GitHub PR events) | **GitHub Projects / Issues** |
 | **Codex** (Codex Cloud) | **A)** ChatGPT Codex → task on the env from `.codex/bkit-cloud.md` (manual; no bkit dispatch) | any (tracker MCP + env block) | bkit-triggered runs |
 
-**Unified file — additive coexistence:** Claude + opencode share one `bkit-cloud.yml`: a `context` job resolves the phase once, then two runner jobs, each runtime-gated on its credential (claude: `ANTHROPIC_API_KEY` secret or federation variables; opencode: `OPENCODE_PROVIDER_KEY`). Both jobs can fire on same CI event — both credentials → both agents; one → one agent. Cursor separate (no GH Action; native triggers). **Cursor cloud ↔ Linear.**
+**Unified file — additive coexistence:** Claude + opencode share one `bkit-cloud.yml`: a `context` job resolves the phase once, then two runner jobs, each runtime-gated on its credential (claude: `ANTHROPIC_API_KEY` secret or federation variables; opencode: `OPENCODE_PROVIDER_KEY`). Both jobs can fire on same CI event — both credentials → both agents; one → one agent. Cursor separate (no GH Action; native triggers). **Cursor cloud pairs with Linear.**
 
-**Manual dispatch (Claude or opencode, path A):** GitHub → **Actions** → **bkit-cloud** → **Run workflow** → `phase` (`ship` / `debug` / `design` / `plan` / `build`) + `issue`. On-demand/smoke-test for `design` / `plan` / `build`; `ship` / `debug` normally CI-fired. Dispatched `design` runs headless (`runtimeHeadless` = true on a GitHub runner): Grill asks nothing, records each recommended answer as `Assumed, not confirmed`, and records the draft acceptance scenario as not reviewed by a human. Dispatched `/bkit-auto` orchestrator → matching phase skill → brief from GitHub issue (MCP).
+**Manual dispatch (Claude or opencode, path A):** GitHub → **Actions** → **bkit-cloud** → **Run workflow** → `phase` (`ship` / `debug` / `design` / `plan` / `build`) + `issue`. On-demand / smoke-test for `design` / `plan` / `build`; `ship` / `debug` normally CI-fired. Dispatched `design` runs headless (`runtimeHeadless` = true on a GitHub runner): Grill asks nothing, records each recommended answer as `Assumed, not confirmed`, and records the draft acceptance scenario as not reviewed by a human. Dispatched `/bkit-auto` orchestrator → matching phase skill → brief from GitHub issue (MCP).
 
 ### Reactive comment handlers (`claude.yml` + `opencode.yml`) — separately managed, not bkit
 
@@ -111,11 +111,11 @@ Ships with repo — don't paste into app.
 
 Name environment **after the repo** — one env per repo, secrets isolated (§ Sharing across repos). Setup script identical across repos.
 
-Identical across repos: **setup-script body**, **network policy**, bkit **baseline token name** (`BKIT_GH_TOKEN`) — only values change. Rest of env-vars box is **this repo's own**, copied from env-var files per `.envrc` (§ Environment variables).
+Identical across repos: **setup-script body**, **network policy**, bkit **baseline token name** (`BKIT_GH_TOKEN`) — only values change. Rest of env-vars box is **this repo's own**, copied from env-var files per `.envrc` (§ Tokens by session type).
 
 ### Network access
 
-Always `Custom` — the rendered list carries bkit's own shipped hosts (trackers, registries, agent + provider APIs, the search host a `context=web` block calls) whether or not the repo declares anything. Select **Custom**, tick **Also include default list of common package managers** (EXTENDS trusted defaults — package registries, GitHub, cloud SDKs — never replaces them), paste domains bkit renders into `.claude/bkit-cloud.md` § Network access into **Allowed domains**. Declare only what bkit cannot see: log-backend/API hosts the implicit CLI blocks reach (`vercel` / `gcloud`) plus app production + preview/dev domains — apex-only, expanded by `bkit install` to `<domain>` + `*.<domain>` and unioned with the derived set. Under `Trusted` those hosts unreachable → cloud `/bkit-debug` gets no runtime logs; e2e can't hit deployment.
+Always `Custom` — the rendered list carries bkit's own shipped hosts (trackers, registries, agent + provider APIs, the search host a `context=web` block calls) whether or not the repo declares anything. Select **Custom**, tick **Also include default list of common package managers** (extends trusted defaults — package registries, GitHub, cloud SDKs — never replaces them), paste domains bkit renders into `.claude/bkit-cloud.md` § Network access into **Allowed domains**. Declare only what bkit cannot see: log-backend / API hosts the implicit CLI blocks reach (`vercel` / `gcloud`) plus app production + preview / dev domains — apex-only, expanded by `bkit install` to `<domain>` + `*.<domain>` and unioned with the derived set. Under `Trusted` those hosts unreachable → cloud `/bkit-debug` gets no runtime logs; e2e can't hit deployment.
 
 No `allowed-domains` block still needs `Custom`: `Trusted` does not reach bkit's own tracker MCP, provider catalog or search hosts. Ticking **Also include default list of common package managers** keeps npm, the vale tarball on `objects.githubusercontent.com`, Docker Hub and PyPI. Raise to `Full` only for open-internet tasks.
 
@@ -128,7 +128,7 @@ What it does and why split from in-repo hook:
 - **`# cache-bust <date>-<n>`** first line generator writes (`bkit install` / `bkit upgrade` re-stamp). Snapshot keyed on setup script exact text — only job is to change: new date (or bumped same-day counter) forces fresh snapshot on next paste, re-pulling any unpinned tool a `context-fetch:provision` recipe installs, plus base-image drift even when rest byte-identical. Leave in place — do not hand-edit.
 - **Base tools (Node, vale, gh, jq)** install once into snapshot from upstream releases, each pinned to a version and checked with `sha256sum -c` before it is unpacked or made executable (the `# renovate:` comment above each `*_VERSION` lets Renovate bump the pin) — Node 24 from the nodejs.org `linux-x64` tarball into `/usr/local`, then `/usr/local/bin` prepended to `PATH` so corepack and every later step run on it (bkit needs Node >=24; image ships 20 + 22); `gh` from the `cli/cli` release tarball (not `apt`), `jq` because `curl`-based context-fetch blocks pipe through it. Node, gh and vale pins match `.cursor/Dockerfile`. Binaries cloud lacks but laptop has — not repo-level hook.
 - **pnpm corepack pre-warm** seeds one pnpm into snapshot via `corepack enable` (no hard-pinned version). In-repo, corepack resolves repo's `packageManager` (fetching if differs) — one setup script serves any pnpm pin; pre-warm is warm cache.
-- `pnpm install` and `vale sync` **not** here — belong in `.claude/hooks/bkit-cloud-bootstrap.sh` for resumed sessions when lockfile/styles drifted; each repo installs own deps.
+- `pnpm install` and `vale sync` **not** here — belong in `.claude/hooks/bkit-cloud-bootstrap.sh` for resumed sessions when lockfile / styles drifted; each repo installs own deps.
 
 Keep total runtime under ~5 minutes or snapshot won't build.
 
@@ -162,7 +162,7 @@ BKIT_GH_TOKEN=<PAT — fine-grained for one owner, classic across owners; see pe
 
 Tracker keys (`BKIT_LINEAR_API_KEY`, `BKIT_JIRA_API_KEY`) join the block whenever `.envrc` resolves them — same block for every tracker. Set `BKIT_GH_TOKEN` for GitHub MCP; authenticate `gh` via `gh auth login --with-token` in bootstrap hook (env vars not visible during setup script — see § Notes).
 
-Optional (context-fetch — only if you use `.agents/context.md` blocks, e.g. copied from `.bkit/templates/context/`; tokens below are **examples**, set whatever operator creds your enabled blocks need. Cloud-dashboard entries, not `.bkit/.env` — that file is bkit/agent tooling only. Non-secret selectors (`VERCEL_SCOPE` / `SUPABASE_PROJECT_ID`) commit in copied block so cloud agents inherit without dashboard entry. CLIs install from each block's `context-fetch:provision` sibling):
+Optional (context-fetch — only if you use `.agents/context.md` blocks, e.g. copied from `.bkit/templates/context/`; tokens below are **examples**, set whatever operator creds your enabled blocks need. Cloud-dashboard entries, not `.bkit/.env` — that file is bkit / agent tooling only. Non-secret selectors (`VERCEL_SCOPE` / `SUPABASE_PROJECT_ID`) commit in copied block so cloud agents inherit without dashboard entry. CLIs install from each block's `context-fetch:provision` sibling):
 
 ```
 VERCEL_TOKEN=<Vercel access token — https://vercel.com/account/settings/tokens>
@@ -186,13 +186,13 @@ SUPABASE_ACCESS_TOKEN=<Supabase Management API token — https://supabase.com/da
 
 `gh` does **not** read `BKIT_GH_TOKEN` — pipe once after session start: `printf '%s' "$BKIT_GH_TOKEN" | gh auth login --with-token` (e.g. in `.claude/hooks/bkit-cloud-bootstrap.sh`). Locally, `gh auth login` and leave `GH_TOKEN` unset so keyring not overridden.
 
-> **Projects v2 board sync (`bkit.tracker.github.project`):** **Projects** permission is **Organization** permission (table row above) — appears only when token **resource owner is the org**, _not_ personal account; org may require token **approved**. Under token UI **Organizations** tab, not Repository permissions; governs `…/orgs/{org}/projectsV2/…`. User-owned (personal-account) boards unreachable by fine-grained PATs — see below.
+> **Projects v2 board sync (`bkit.tracker.github.project`):** **Projects** permission is **Organization** permission (table row above) — appears only when token **resource owner is the org**, not personal account; org may require token **approved**. Under token UI **Organizations** tab, not Repository permissions; governs `…/orgs/{org}/projectsV2/…`. User-owned (personal-account) boards unreachable by fine-grained PATs — see below.
 
 #### When classic is still required
 
 - **More than one repo across owners.** A fine-grained PAT is limited to a single resource owner (one user or one org), so it cannot cover two or more orgs, or a user plus an org. Classic reaches every repo your user can.
 - **Cross-repo work in single cloud session.** Fine-grained PATs only see allowlist; classic sees everything your user can.
-- **User-owned (personal-account) Projects v2 boards.** Fine-grained PATs expose Projects only as _organization_ permission — personal boards unreachable. Classic PAT with `project` scope, or move board under org.
+- **User-owned (personal-account) Projects v2 boards.** Fine-grained PATs expose Projects only as organization permission — personal boards unreachable. Classic PAT with `project` scope, or move board under org.
 
 #### Notes
 
@@ -200,7 +200,7 @@ SUPABASE_ACCESS_TOKEN=<Supabase Management API token — https://supabase.com/da
 - Earlier auto-compaction: set `autoCompactWindow` in committed `.claude/settings.json` (`.bkit/providers.md` § Context compaction) — applies to cloud sessions as-is; no env var.
 - **Env vars set in Claude app are not visible inside setup script.** Injected only after Claude Code starts → `SessionStart` hooks + interactive shell, not snapshot build. Tool needing token to bootstrap must inline it — leak you want to avoid. Avoided today: vale / gh / corepack don't need auth.
 
-## Environment variables
+## Tokens by session type
 
 Token management by session type:
 
@@ -214,7 +214,7 @@ Token management by session type:
 
 - **Cloud sessions** (Claude Code on the web, Cursor Cloud Agents, Codex Cloud) — `.bkit/.env` absent in cloud containers. Set same names (`BKIT_GH_TOKEN`, `BKIT_LINEAR_API_KEY`) in respective dashboards: Claude app → environment selector → Environment variables; Cursor Cloud Agents dashboard (`cursor.com/dashboard/cloud-agents`) → your environment → **Secrets** tab (as **Runtime Secret**s); ChatGPT → **Settings > Codex Cloud > Environments** → **Environment variables**. Each host's generated `<host>/bkit-cloud.md` = paste-ready block.
 
-**Beyond bkit tokens** — populate rest from _that repo's_ env-var files `.envrc` sources (e.g. `.bkit/.env`, then app `.env.local`). Don't hand-pick from memory; **copy from those files, following `.envrc`**:
+**Beyond bkit tokens** — populate rest from that repo's env-var files `.envrc` sources (e.g. `.bkit/.env`, then app `.env.local`). Don't hand-pick from memory; **copy from those files, following `.envrc`**:
 
 - **Drop every var `.envrc` `unset`s** — deliberately kept out of repo shell (e.g. prod cache creds flipping unit tests off mock branch, or project ref mis-naming local stack); no place in cloud env.
 - **Skip session-hijacking keys — notably `BKIT_ANTHROPIC_API_KEY`** — redirects Claude Code model calls onto API-key billing, not subscription. Same for any var re-pointing agent's own auth.
@@ -244,7 +244,7 @@ bkit wires the chosen tracker's MCP server (`bkit.tracker.default`) into `.mcp.j
 
 `"type": "http"` required — without it Claude Code defaults to stdio transport and rejects entry for missing `command`.
 
-- **GitHub** — official GitHub MCP at `api.githubcopilot.com` (not gated by Copilot subscription). Surface: `issue_write`, `add_issue_comment`, `label_write`, `projects_write`, etc. Used under GitHub provider. Endpoint does **not** support OAuth DCR → auth via `Authorization: Bearer ${BKIT_GH_TOKEN}` (MCP-only env var — see § Environment variables and KN-CORE-8).
+- **GitHub** — official GitHub MCP at `api.githubcopilot.com` (not gated by Copilot subscription). Surface: `issue_write`, `add_issue_comment`, `label_write`, `projects_write`, etc. Used under GitHub provider. Endpoint does **not** support OAuth DCR → auth via `Authorization: Bearer ${BKIT_GH_TOKEN}` (MCP-only env var — see § Environment variables).
 - **Linear** — full Linear workspace surface (`get_issue`, `save_issue`, `save_comment`, `list_*`). Used when `bkit.tracker.default` = `linear`. OAuth (Dynamic Client Registration) — browser flow on first use, no env var.
 - **Jira** — Atlassian Rovo MCP at `mcp.atlassian.com/v2/mcp`. Surface: `getJiraIssue`, `editJiraIssue`, `transitionJiraIssue`, `addOrEditJiraIssueComment`, `searchJiraIssuesUsingJql`, `executeRead` / `executeWrite`. Used when `bkit.tracker.default` = `jira`. Auth via `Authorization: Bearer ${BKIT_JIRA_API_KEY}` — a scoped **Atlassian MCP V2** token; org admin must allow API-token sign-in (`.bkit/trackers.md` § jira — setup and notes).
 
@@ -254,7 +254,7 @@ bkit wires the chosen tracker's MCP server (`bkit.tracker.default`) into `.mcp.j
 - **Linear:** Claude Code prompts browser authorize on first use; token in Claude's secret store. No further action.
 - **Jira:** Claude Code substitutes `${BKIT_JIRA_API_KEY}` from environment at session start. Unset or classic token → every Jira call fails.
 
-**`gh auth login` required for gh CLI surface** (PR creation, branch ops, git push). Locally, keyring — do not export `GH_TOKEN` from `.bkit/.env`. Cloud/headless: `bkit-cloud-bootstrap.sh` runs `printf '%s' "$BKIT_GH_TOKEN" | gh auth login --with-token` at SessionStart (guarded by the `bkit runtime detect` gh probe, no-ops on Actions runner where `GITHUB_TOKEN` auths) — no manual step. Same PAT value fine; different env-var name keeps local `gh` on keyring.
+**`gh auth login` required for gh CLI surface** (PR creation, branch ops, git push). Locally, keyring — do not export `GH_TOKEN` from `.bkit/.env`. Cloud / headless: `bkit-cloud-bootstrap.sh` runs `printf '%s' "$BKIT_GH_TOKEN" | gh auth login --with-token` at SessionStart (guarded by the `bkit runtime detect` gh probe, no-ops on Actions runner where `GITHUB_TOKEN` auths) — no manual step. Same PAT value fine; different env-var name keeps local `gh` on keyring.
 
 **Cloud sessions** (Claude on the web, Cursor Cloud Agents, Codex Cloud): GitHub MCP reads `BKIT_GH_TOKEN`, Jira MCP `BKIT_JIRA_API_KEY` from dashboard env vars. Linear MCP OAuth on first touch, same as local. Jira: no cloud dispatch — a manually launched session reaches Jira once `BKIT_JIRA_API_KEY` is set.
 
@@ -299,7 +299,7 @@ Everything in repo under `.cursor/`. bkit ships canonical content for all four f
 | `.cursor/Dockerfile` | Cloud image — vale + gh + Node 24 (template default) + pnpm (corepack-pinned); Node, gh and vale are version-pinned and sha256-checked; browsers etc. added by the consumer | Template: copy from `.bkit/templates/.cursor/Dockerfile`; yours after |
 | `.cursor/environment.json` | Build pointer + per-snapshot `install` hook (`pnpm install --frozen-lockfile` + `vale sync` if `.vale.ini` + `pnpm exec bkit context provision`) | Template: copy from `.bkit/templates/.cursor/environment.json`; yours after |
 | `.cursor/hooks.json` | Wires `sessionStart` → `bkit-preflight.sh` (`failClosed: true`) | Tier 2 contained JSON |
-| `.cursor/hooks/bkit-preflight.sh` | Tracker opt-in guard — `bkit:auto` label + non-terminal status — plus the rules-read advisory (`.bkit/providers.md` § Rules-read advisory). IDE session → the advisory alone, exit 0 | Tier 2 contained (bkit:start/end markers) |
+| `.cursor/hooks/bkit-preflight.sh` | Tracker opt-in guard — `bkit:auto` label + non-terminal status — plus the rules-read advisory (`.bkit/providers.md` § Rules-read advisory). IDE session → the advisory alone, exit 0 | Tier 2 contained (bkit:start / end markers) |
 
 ## How GitHub dispatch works
 
@@ -344,7 +344,7 @@ BKIT_GH_TOKEN=<PAT — fine-grained for one owner, classic across owners; same p
 
 Plus every tracker key `.envrc` resolves — under Linear, `BKIT_LINEAR_API_KEY` (Linear personal API key; `bkit-preflight.sh` calls the GraphQL API). `LINEAR_ISSUE_ID` injected per-session by Cursor / Linear integration — do not hardcode.
 
-Optional (context-fetch — only if you use `.agents/context.md` blocks, e.g. copied from `.bkit/templates/context/`; tokens below are **examples**, set whatever operator creds your enabled blocks need. Cloud-dashboard entries, not `.bkit/.env` — bkit/agent tooling only. Non-secret selectors (`VERCEL_SCOPE` / `SUPABASE_PROJECT_ID`) commit in copied block so cloud agents inherit without dashboard entry. CLIs install from each block's `context-fetch:provision` sibling):
+Optional (context-fetch — only if you use `.agents/context.md` blocks, e.g. copied from `.bkit/templates/context/`; tokens below are **examples**, set whatever operator creds your enabled blocks need. Cloud-dashboard entries, not `.bkit/.env` — bkit / agent tooling only. Non-secret selectors (`VERCEL_SCOPE` / `SUPABASE_PROJECT_ID`) commit in copied block so cloud agents inherit without dashboard entry. CLIs install from each block's `context-fetch:provision` sibling):
 
 ```
 VERCEL_TOKEN=<Vercel access token — https://vercel.com/account/settings/tokens>
@@ -368,7 +368,7 @@ Cloud Agents get network access by default; egress is configurable in the dashbo
 > **Nothing to hand-assemble.** `bkit install --codex` writes `.codex/bkit-cloud.md` — the
 > twin of `.claude/bkit-cloud.md`: install script, env block **resolved from `.envrc`** (same
 > block as the other hosts, any tracker), network list. Gitignored + chmod 600 (holds real
-> secrets); regenerates on every install/upgrade; deleted by `bkit uninstall --codex`.
+> secrets); regenerates on every install / upgrade; deleted by `bkit uninstall --codex`.
 
 ## What to paste
 
@@ -397,13 +397,13 @@ Repo skills (`.agents/skills/bkit-*`, `$bkit-design`) load in cloud tasks. Codex
 
 Each repo gets **own** Claude environment, named after repo. Reason: **secrets, not mechanics**.
 
-**Secrets are per-repo.** App tokens (Supabase, Stripe, Vercel, …) differ per repo; even bkit tokens differ in _scope_ (a fine-grained `BKIT_GH_TOKEN` is scoped to one resource owner / repo; covering different owners needs one classic PAT, which cannot be per-repo). One Claude environment = one value per name — shared env forces mega-scoped PAT across repos (wide blast radius) or one repo's secrets leaking into rest. Per-repo envs isolate secrets.
+**Secrets are per-repo.** App tokens (Supabase, Stripe, Vercel, …) differ per repo; even bkit tokens differ in scope (a fine-grained `BKIT_GH_TOKEN` is scoped to one resource owner / repo; covering different owners needs one classic PAT, which cannot be per-repo). One Claude environment = one value per name — shared env forces mega-scoped PAT across repos (wide blast radius) or one repo's secrets leaking into rest. Per-repo envs isolate secrets.
 
 Shared across repos (copy, don't re-derive) — non-secret only:
 
 - **Setup script** — generic binaries only (Node, vale, gh, jq, pnpm via corepack); repo-specific install deferred to committed `bkit-cloud-bootstrap.sh` (lockfile → `pnpm install`, `.vale.ini` → `vale sync`). One body fits every repo.
-- **bkit baseline token _name_** (`BKIT_GH_TOKEN`) + **network policy** (`Custom`) — same everywhere, values differ. Repo _other_ env vars **not** shared: copy from own env files per `.envrc` — drop `unset`s, skip `BKIT_ANTHROPIC_API_KEY` (§ Environment variables).
-- **Non-secret selectors** (`VERCEL_SCOPE`, `SUPABASE_PROJECT_ID`) stay committed in-repo (§ Environment variables), never in dashboard.
+- **bkit baseline token name** (`BKIT_GH_TOKEN`) + **network policy** (`Custom`) — same everywhere, values differ. Repo other env vars **not** shared: copy from own env files per `.envrc` — drop `unset`s, skip `BKIT_ANTHROPIC_API_KEY` (§ Tokens by session type).
+- **Non-secret selectors** (`VERCEL_SCOPE`, `SUPABASE_PROJECT_ID`) stay committed in-repo (§ Tokens by session type), never in dashboard.
 
 ## Codex — one environment per repo
 
@@ -456,7 +456,7 @@ Routing **logic** in single bkit-managed slash-command orchestrator (`.bkit/core
 
 ## Claude — required GitHub Actions permissions
 
-Flip **both** org and repo before first router run — else `actions/checkout` 403s with `Write access to repository not granted`. Workflow declares `permissions: contents: write` at workflow scope, but org/repo "Workflow permissions" ceiling overrides — repo cannot exceed org.
+Flip **both** org and repo before first router run — else `actions/checkout` 403s with `Write access to repository not granted`. Workflow declares `permissions: contents: write` at workflow scope, but org / repo "Workflow permissions" ceiling overrides — repo cannot exceed org.
 
 - **Org**: `https://github.com/organizations/{ORG}/settings/actions` → Workflow permissions → **Read and write permissions** + tick **Allow GitHub Actions to create and approve pull requests**.
 - **Repo**: `https://github.com/{ORG}/{REPO}/settings/actions` → same section, same two settings. Apply at repo too — inheriting from org not automatic.
@@ -497,17 +497,17 @@ Keyless claude job: no long-lived `ANTHROPIC_API_KEY` stored in GitHub. `claude-
 
 **401 from token exchange:** Anthropic returns `401 Authentication failed` whichever check failed. Console → Workload identity → authentication history shows the deny reason per attempt; `match_subject_prefix` = the run's `sub` doesn't match the rule's `subject_prefix` — fix or widen the rule. A job on a non-default branch or an `environment:` has a different subject (`...:ref:refs/heads/<branch>` / `...:environment:<name>`).
 
-Slash command body already in checked-out repo (mirrored to `.claude/commands/bkit-auto.md` and `.opencode/commands/bkit-auto.md` at dev time via `bkit install`). Repo git/gh ops use auto-provided `github.token` scoped by workflow `permissions:` block.
+Slash command body already in checked-out repo (mirrored to `.claude/commands/bkit-auto.md` and `.opencode/commands/bkit-auto.md` at dev time via `bkit install`). Repo git / gh ops use auto-provided `github.token` scoped by workflow `permissions:` block.
 
 ## Branch-aware routing
 
-`bkit-cloud.yml`'s `workflow_run` trigger covers `feat/**` and `dev`. `main` is never auto-routed — `dev` -> `main` promotion stays manual.
+`bkit-cloud.yml`'s `workflow_run` trigger covers `feat/**` and `dev`. `main` is never auto-routed — `dev` → `main` promotion stays manual.
 
 <!-- prettier-ignore -->
 | CI trigger | success | failure |
 | --- | --- | --- |
-| `feat/**` (pre-merge) | -> `/bkit-ship` | -> `/bkit-debug` |
-| `dev` (post-merge) | no-op — the merge already happened | -> `/bkit-debug {FID}` (capped) |
+| `feat/**` (pre-merge) | → `/bkit-ship` | → `/bkit-debug` |
+| `dev` (post-merge) | no-op — the merge already happened | → `/bkit-debug {FID}` (capped) |
 | `main` | manual only | manual only |
 
 **Build still running (`feat/**`):** before dispatch, read the branch's `docs/plans/*/logs/{FID}/status.jsonl` from `origin`:
@@ -520,7 +520,7 @@ The post-merge `dev` surface reuses the same free-tier gate: `/bkit-ship` thread
 
 ## Routing decision (router orchestrator)
 
-Slash command takes two args: `$CI_STATUS` ∈ `{success, failure, pass, fail}` (normalised) and `$ARG` — a PR number (pre-merge) or a `{FID}` slug (post-merge `dev`, no open PR). Then:
+Slash command takes two args: `$CI_STATUS` in `success|failure|pass|fail` (normalised) and `$ARG` — a PR number (pre-merge) or a `{FID}` slug (post-merge `dev`, no open PR). Then:
 
 1. PR-number arg: reads `gh pr view $ARG` for `headRefName`, `headRefOid`, `state`. Refuses non-open PRs. Slug arg: skips the PR lookup entirely.
 2. Extracts `{FID}` from the head branch (`feat/{FID}` convention). Slug arg: `{ARG}` is the `{FID}`, allowlist-asserted before use. On the `dev` surface the workflow recovers it from the squash-merge commit scope (`feat({FID}): …`, tracker-agnostic), falling back to the linked PR body's `bkit:fid=` marker; either path failing → no-op, no dispatch.
@@ -558,5 +558,5 @@ Skip conditions emit single GitHub-comment no-op line and exit 0 — only real f
 - Anthropic docs: <https://code.claude.com/docs/en/claude-code-on-the-web>
 - Cursor Cloud Agents: <https://cursor.com/docs/cloud-agent/setup>
 - Codex Cloud environments: <https://learn.chatgpt.com/docs/environments/cloud-environments>
-- Zenn article on Claude env-var/setup-script gotcha: <https://zenn.dev/harieshokunin/articles/b1064354319ce2?locale=en>
+- Zenn article on Claude env-var / setup-script gotcha: <https://zenn.dev/harieshokunin/articles/b1064354319ce2?locale=en>
 - Managed Agents environments (separate product, similar shape): <https://platform.claude.com/docs/en/managed-agents/environments>

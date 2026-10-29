@@ -79,7 +79,7 @@ Where bkit stands apart, per the table:
 - **Merge discipline:** merges into `dev` only after the capstone check, never `main`. OpenHands merges with no human; most stop at a PR.
 - **Debug with outside evidence:** connectors pull CI logs, runtime errors and web results into diagnosis; soak mode for runtime-only bugs; handover when unfixable.
 - **Test first, checked by code:** each plan task's tests are run by bkit and must fail before the task's code exists, then pass; the agent's report of a failure never counts. Superpowers enforces TDD by instruction; Task Master's TDD mode takes pass / fail counts from the agent.
-- **Gaps vs the field:** no IDE or hosted service; no Jira; no formal requirements notation (EARS); no embedding memory; far smaller community.
+- **Gaps vs the field:** no IDE or hosted service; no formal requirements notation (EARS); no embedding memory; far smaller community.
 
 Also reviewed, left out of the table: Claude Task Master, ccpm, wshobson/agents, mattpocock/skills, SuperClaude, Ruflo, oh-my-openagent, Cline, Aider.
 
@@ -156,8 +156,8 @@ Benchmark: Antonio Gulli's _Agentic Design Patterns: A Hands-On Guide to Buildin
 - **Human-in-the-loop as non-negotiable.** Hard stops after design / plan / ship; book treats HITL as one option.
 - **Fail-soft external context in debug.** Provider-agnostic `context-fetch` blocks (CI logs, diff, e2e, runtime, web) feed `/bkit-debug`; each self-skips to a narrated `CHECKED` / `SELF-SKIPPED` / `NOT CONFIGURED` state, so a context with no block is never read as a clean result.
 - **Explicit per-agent model pins.** Immune to session-default drift.
-- **Provider- and host-portable execution.** Per-agent pins → `bkit install --codex` / `--antigravity` / `--opencode=<provider>` add Codex, Google Antigravity and opencode hosts alongside Claude/Cursor — harness unchanged; inference backend moves. Same five-phase gated parallel pipeline on four BYO-key providers (OpenRouter, Ollama, opencode Zen + Go gateways) plus Google via Antigravity. Curated per-agent pins; models mirror Claude tier by default, CoT reasoners swapped for convergent-reasoning agents (debug/risk). See `.bkit/providers.md` § Hosts + Providers.
-- **Cross-host/provider continuity.** State in `status.jsonl`, plan/design docs under `docs/plans/`, tracker issue — not vendor session. Every host renders from same `.bkit/` source → phase or resumed run moves across IDE/provider mid-feature with identical gates, hooks, per-agent pins: exhaust Claude weekly limit or free-tier quota → continue on another host, no re-setup. Single-vendor frameworks tie run to starting session.
+- **Provider- and host-portable execution.** Per-agent pins → `bkit install --codex` / `--antigravity` / `--opencode=<provider>` add Codex, Google Antigravity and opencode hosts alongside Claude / Cursor — harness unchanged; inference backend moves. Same five-phase gated parallel pipeline on four BYO-key providers (OpenRouter, Ollama, opencode Zen + Go gateways) plus Google via Antigravity. Curated per-agent pins; models mirror Claude tier by default, CoT reasoners swapped for convergent-reasoning agents (debug / risk). See `.bkit/providers.md` § Supported hosts.
+- **Cross-host / provider continuity.** State in `status.jsonl`, plan / design docs under `docs/plans/`, tracker issue — not vendor session. Every host renders from same `.bkit/` source → phase or resumed run moves across IDE / provider mid-feature with identical gates, hooks, per-agent pins: exhaust Claude weekly limit or free-tier quota → continue on another host, no re-setup. Single-vendor frameworks tie run to starting session.
 
 <a id="known-gaps"></a>
 

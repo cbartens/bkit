@@ -47,7 +47,7 @@ CI check names come from `package.json` `bkit.testing.ciCapstone` (default `bkit
 
 No workflow file calls a script outside a `bkit` command; the slop plugin `bkit-slop-type-suppression.mjs` is a copy-and-own template (`scripts/slop/`). `bkit-cloud.yml` reads the debug limits from `package.json` with `jq` because its guards run before bkit is installed.
 
-First install, upgrade and uninstall: `.bkit/install.md`. Upgrade prompt to paste into your AI: `.bkit/README.md` § Upgrade — paste into your AI.
+First install, upgrade and uninstall: `.bkit/install.md`. Upgrade prompt to paste into your AI: `.bkit/install.md` § Upgrade — already installed.
 
 <!-- cli:start -->
 

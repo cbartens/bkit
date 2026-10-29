@@ -28,7 +28,7 @@ export const CURSOR_CLOUD_RELPATH = path.join(".cursor", "bkit-cloud.md");
 export const CODEX_CLOUD_RELPATH = path.join(".codex", "bkit-cloud.md");
 // Session-hijack keys: exporting these into a cloud env redirects Claude Code's
 // OWN model calls onto API-key billing instead of the user's subscription
-// (`.bkit/cloud.md` § Environment variables). Always dropped from the paste block.
+// (`.bkit/cloud.md` § Tokens by session type). Always dropped from the paste block.
 export const SESSION_HIJACK_KEYS = [
     "ANTHROPIC_API_KEY",
     "BKIT_ANTHROPIC_API_KEY",

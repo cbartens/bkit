@@ -91,7 +91,7 @@ See `docs/testing.md` for tier boundaries, CI execution order, and spawning patt
 | Technology | Config | Usage |
 | --- | --- | --- |
 | husky | `9.x`, `.husky/` | Pre-commit and pre-push hooks |
-| Pre-push hook | `.husky/pre-push` | Runs `pnpm bkit:gate:static-unit-integration` (or `bkit:gate:static` on `revert-*`) + `pnpm bkit check` before push — the SAME gate scripts the agent workflows dispatch through, so a human push and an agent run enforce one set. Both copies call `bkit:gate:static-unit-integration` when package.json declares it, else `bkit:gate:static-unit`. Source-repo copy additionally runs `pnpm bkit:check:dist` and `pnpm bkit:lint:workflows`; consumer template does not. Neither copy runs `pnpm build`. |
+| Pre-push hook | `.husky/pre-push` | Runs `pnpm bkit:gate:static-unit-integration` (or `bkit:gate:static` on `revert-*`) + `pnpm bkit check` before push — the same gate scripts the agent workflows dispatch through, so a human push and an agent run enforce one set. Both copies call `bkit:gate:static-unit-integration` when package.json declares it, else `bkit:gate:static-unit`. Source-repo copy additionally runs `pnpm bkit:check:dist` and `pnpm bkit:lint:workflows`; consumer template does not. Neither copy runs `pnpm build`. |
 
 ## CI/CD
 
@@ -104,7 +104,7 @@ See `docs/testing.md` for tier boundaries, CI execution order, and spawning patt
 | Security scan (Trivy) | `.github/workflows/bkit-trivy.yml` | Push to `dev` / `main`, PRs into them, daily cron, `workflow_dispatch`; acceptances in `.trivyignore.yaml` |
 | Dependency updates (Renovate) | `.github/workflows/bkit-renovate.yml` | Daily cron, `workflow_dispatch`; rules in `.github/renovate.json5` |
 
-Single package — no turbo, no affected-graph. CI flat DAG: `bkit-tests-scope` planner → every `bkit-tests-*` lane → `bkit-tests-check` (SOLE required check). See `docs/testing.md` § CI execution; `docs/deployments.md` for pipeline rules, branch protection, secrets.
+Single package — no turbo, no affected-graph. CI flat DAG: `bkit-tests-scope` planner → every `bkit-tests-*` lane → `bkit-tests-check` (sole required check). See `docs/testing.md` § CI execution; `docs/deployments.md` for pipeline rules, branch protection, secrets.
 
 ## Naming Conventions
 

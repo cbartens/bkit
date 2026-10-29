@@ -10,7 +10,7 @@ export const OPENCODE_PROVIDERS = [
     "ollama",
     // opencode-native gateways — two DISTINCT models.dev providers with separate catalogs.
     // CLI: opencode-zen / opencode-go. Agent model pins: opencode/<id> (Zen built-in id) and
-    // opencode-go/<id>. Both auth via BKIT_OPENCODE_API_KEY. See providers.md § Models.
+    // opencode-go/<id>. Both auth via BKIT_OPENCODE_API_KEY. See providers.md § Provider models.
     "opencode-zen",
     "opencode-go",
 ];

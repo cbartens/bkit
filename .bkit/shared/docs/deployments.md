@@ -175,19 +175,19 @@ Composition guidance:
 - `steps.detect.outputs.should_force_build` / `should_run_full` = escalation into `full`.
 - No merged PR on `dev` push (auto cache bust, e.g. `TURBO_FORCE=1`) = recovery signal — partial CI with cache busted.
 - Health (or smoke, when the probe is a script rather than a health URL): separate workflow, `workflow_run` after CI success — not a required check. One of the two, unless the probes differ (§ Smoke trigger plumbing).
-- Capstone `bkit-tests-check` = SOLE branch-protection required check (`bkit setup protect-main` applies it, reading the check name from `bkit.testing.ciCapstone` and the workflow from `bkit.testing.ciWorkflow`). Green = expected tiers ran and passed (`green == validated`), not merely "tests job didn't fail". A `partial` or cache-skipped green is not a `full` validation.
+- Capstone `bkit-tests-check` = sole branch-protection required check (`bkit setup protect-main` applies it, reading the check name from `bkit.testing.ciCapstone` and the workflow from `bkit.testing.ciWorkflow`). Green = expected tiers ran and passed (`green == validated`), not merely "tests job didn't fail". A `partial` or cache-skipped green is not a `full` validation.
 
 ### Parallel test lanes (one lane per tier)
 
 Each tier = **own parallel lane** (job) — `bkit-tests-static` / `-unit` / `-integration` / `-e2e-web` (+ `-migration` / `-live-web`, and optional `-build-ios` / `-e2e-ios` / `-build-android` / `-e2e-android`) — **not** monolithic `bkit-tests` steps. Proven shape: bkit CI + consumer repos run separate lanes. Wall-clock = `max(lane)` not **sum** of serial steps; each tier gets honest coverage + executed-count + job-level permissions; slow tier can't serialise fast ones. Cost: per-lane setup duplicate (checkout / install, shared infra e.g. local DB) — mitigate with a remote task-runner cache (e.g. turbo) + DB service container. Capstone `needs:` **all** lanes; each emits executed-count for non-hollow assertion (`testing.md` § Validated means executed). Starter: `-static` + `-unit`; add lane per tier. Tiny repo: collapse tiers into one lane steps — capstone must assert each tier count via step outputs. E2E full-suite parity + local-vs-preview DB routing → `testing.md` § "E2E on PRs".
 
-**Shared resource: reset first, clean up last** (optional). WHEN: 2+ lanes use one long-lived resource. `bkit-tests-reset` runs after scope + migration, takes a lease, and puts the resource in its known state before any of those lanes start. `bkit-tests-cleanup` runs last, `if: always()`, and releases the lease. The lease is what serialises an overlapping PR and `dev` push. The planner names at most one target; an empty target skips both jobs. Capstone reds if a planned reset skipped or either job failed. Drop both when the resource is provisioned fresh per run (`testing.md` § Provision backing services fresh — the preferred answer).
+**Shared resource: reset first, clean up last** (optional). When: 2+ lanes use one long-lived resource. `bkit-tests-reset` runs after scope + migration, takes a lease, and puts the resource in its known state before any of those lanes start. `bkit-tests-cleanup` runs last, `if: always()`, and releases the lease. The lease is what serialises an overlapping PR and `dev` push. The planner names at most one target; an empty target skips both jobs. Capstone reds if a planned reset skipped or either job failed. Drop both when the resource is provisioned fresh per run (`testing.md` § Provision backing services fresh — the preferred answer).
 
 **Runner size = per-lane lever, only for pole.** Flat graph → one lane defines wall-clock (commonly E2E). Larger runner (more vCPU / RAM) raises internal parallelism (more workers, concurrent E2E projects) → can cut long lane substantially; scope via `runs-on: <your-larger-runner-label>` to **one** lane, default runner elsewhere. Two caveats: (1) **higher per-minute rate** — confirm before adopting (may not appear until first invoice). [Depot](https://depot.dev/docs/github-actions/runner-types) labels (e.g. `depot-ubuntu-24.04-8`) ~30% cheaper than GitHub-hosted; `bkit-ci.yml`, `bkit-cloud.yml` and `bkit-renovate.yml` are templates you own, so set `runs-on` in your copy. (2) **Zero wall-clock** when aimed at non-pole lane: consumer measured bigger E2E runner **+0.0 min** while `@live` stayed pole — worth ~7 min only after `@live` gate removed and E2E became pole. Measure first, re-measure after: pole moves. (3) **A label that does not exist does not fail, so the job queues.** Typo'd / retired label → no error anywhere, job queued indefinitely, run neither reds nor completes. Label set in exactly one place, every `runs-on:` derived from it, planner fails closed on no label.
 
 **Cut per-request cost before peak concurrency.** Fan-out multiplies every per-request call to a shared external service: a per-navigation auth call became 3,500 `GET /auth/v1/user` in 4 minutes under a 12-lane fan-out, stalling the provider and reddening the `@live` lane on a **separate machine**. Audit those calls before widening — verify locally first (JWKS) and hit the service only when the local check cannot decide. Cheaper than either lever below.
 
-**Phase-split before a bigger runner.** Fanned-out lanes failing together → find the contended resource before spending. Consumer's 12 concurrent E2E lanes: 0 unexpected / 6 flaky → 5 unexpected / 25 flaky when 2 more joined, **and** a lane on a separate machine reddened. That second fact is the diagnosis: a lane on its own runner cannot be starved by this runner's CPU / memory, so contention was the shared remote DB and a bigger runner buys zero. Lower **peak** concurrency, not total: order the groups into phases (wait on group 1's PIDs, then launch group 2), concurrency inside each group untouched, both groups' exit codes into one failure counter so a red in either still reds the step.
+**Phase-split before a bigger runner.** Fanned-out lanes failing together → find the contended resource before spending. Tell-tale: adding lanes raises the failure count **and** a lane on a separate machine reddens too. That second fact is the diagnosis: a lane on its own runner cannot be starved by this runner's CPU / memory, so the contention is a shared remote resource (e.g. the DB) and a bigger runner buys zero. Lower **peak** concurrency, not total: order the groups into phases (wait on group 1's PIDs, then launch group 2), concurrency inside each group untouched, both groups' exit codes into one failure counter so a red in either still reds the step.
 
 ### turbo `//` over-triggers `web_affected` on docs-only diffs (turbo monorepos)
 
@@ -199,7 +199,7 @@ Fix at source: gate global-dep force on **real** global-dep change. Intersect ch
 
 ### Promotion-lag warning (`Check Default Branch Lags Dev`)
 
-CI on `dev` proves code good; nothing checks good code reached default branch. Gap bites, because surfaces read LIVE from default branch, not `dev` / validated tip:
+CI on `dev` proves code good; nothing checks good code reached default branch. Gap bites, because surfaces read live from default branch, not `dev` / validated tip:
 
 - **Renovate** resolves its config only from the default branch (see § Dependency updaters). A `renovate.json5` edit on `dev` is inert until promoted, though `useBaseBranchConfig: "merge"` softens this for the config file but is itself read from the default branch.
 - **Scheduled / default-branch-triggered Actions** run the default-branch copy of each workflow, so a `.github/workflows/` fix on `dev` does not take effect on those runs until promoted.
@@ -240,7 +240,7 @@ Optional. A same-repo promotion PR into the default branch — head `dev`, or a 
 - A red push run re-run to green does not update the PR; re-run the PR's `bkit-tests-check` afterwards.
 - A new `dev` push moves the PR head; `pull_request` concurrency cancels the old mirror and starts one for the new SHA.
 - Release PR gives up PR-only output (coverage comments, PR-only coverage measurement). None blocks a merge.
-- Feature → `dev` PRs are unaffected: `pull_request ⇒ run_level=full` (§ Consumer CI contract) still holds there, which is what `/bkit-ship`'s gate relies on.
+- Feature → `dev` PRs are unaffected: `pull_request => run_level=full` (§ Consumer CI contract) still holds there, which is what `/bkit-ship`'s gate relies on.
 
 ## Workflow-file limits GitHub does not enforce visibly
 
@@ -276,7 +276,7 @@ Undocumented, and invisible to the toolchain, because the file stays valid YAML,
 
 ### Consumer CI contract — `pull_request` resolves to `run_level=full`
 
-The merge gate (`bkit runs gate`) asserts the capstone job's `conclusion=success` at the head being merged. That assertion is only load-bearing while `pull_request ⇒ run_level=full` holds — i.e. the capstone is green **because every expected tier ran and passed**, not because the lanes were skipped (see `## Run-level decision matrix` above). A consumer that narrows CI on `pull_request` has opted out of the merge-gate guarantee by construction:
+The merge gate (`bkit runs gate`) asserts the capstone job's `conclusion=success` at the head being merged. That assertion is only load-bearing while `pull_request => run_level=full` holds — i.e. the capstone is green **because every expected tier ran and passed**, not because the lanes were skipped (see `## Run-level decision matrix` above). A consumer that narrows CI on `pull_request` has opted out of the merge-gate guarantee by construction:
 
 - **`paths-ignore` / `paths` filters** that skip `pull_request` on some changes → the capstone may not run at all (no workflow run at head → gate code 10, refuse).
 - **A docs-only short-circuit** in the host's build-cancel (Vercel `ignoreCommand` / Netlify) that cancels the run mid-flight → capstone may land `cancelled` (gate code 15) or never complete (code 11).
@@ -288,7 +288,7 @@ The merge gate (`bkit runs gate`) asserts the capstone job's `conclusion=success
 
 **No duplicate dispatch on an already-triggered head (ship Step 9):** a branch push / `gh pr update-branch` fires `pull_request` at the new SHA on its own. The scaffold keys a pull request on `pr-{number}` and a `workflow_dispatch` on `github.ref`. The two are separate groups, so a redundant dispatch is never cancelled and burns a full duplicate run. Ship probes the head whose CI the gate will check (`VALIDATED_HEAD`) with `bkit runs wait --head=<VALIDATED_HEAD> --branch=<branch> --until=present --dispatch-if-absent`, which dispatches only when no run appears; the probe is not a pass condition. The completion wait (`bkit runs wait --head=<VALIDATED_HEAD> --until=completed`) reads only runs at that exact head, so a completed run from a superseded head never answers it. Gate codes 10 / 11 / 14 / 17 re-enter that probe-and-poll only, never the deferred sweep, bounded by `bkit.workflows.ship.merge.maxAttempts`, which counts gate refusals and failed merges together.
 
-**No CI run for ship's own docs commit (validated-head carry-forward):** ship's pre-merge `[skip ci]` bookkeeping commit (docs, summaries, ledgers, skill removals) runs no CI. Every path between the last CI-tested commit and the PR head on the bookkeeping allow-list (`bkit ledgers only-bookkeeping`) → `bkit runs gate --validated=<sha>` checks CI at the tested commit; else code 17. Merge still pins the exact head (`--match-head-commit`). Green PR → zero extra runs. Bookkeeping commit merges untested; post-merge `dev` CI (`ship-merge-ci` row) is the backstop. `dev` REQUIRES status checks (classic branch protection or ruleset) → GitHub refuses a head with no run → ship runs CI at the PR head.
+**No CI run for ship's own docs commit (validated-head carry-forward):** ship's pre-merge `[skip ci]` bookkeeping commit (docs, summaries, ledgers, skill removals) runs no CI. Every path between the last CI-tested commit and the PR head on the bookkeeping allow-list (`bkit ledgers only-bookkeeping`) → `bkit runs gate --validated=<sha>` checks CI at the tested commit; else code 17. Merge still pins the exact head (`--match-head-commit`). Green PR → zero extra runs. Bookkeeping commit merges untested; post-merge `dev` CI (`ship-merge-ci` row) is the backstop. `dev` requires status checks (classic branch protection or ruleset) → GitHub refuses a head with no run → ship runs CI at the PR head.
 
 ### Consumer rollback path
 
@@ -349,7 +349,7 @@ The capstone `needs:` `bkit-tests-deploy`: on a default-branch push a skipped or
 
 ## Disable GitHub Code Quality billing
 
-GitHub **Code Quality** (coverage-on-PR + the _Code Quality: CodeQL_ runs) bills **per active committer + Actions minutes + AI credits**, and it is **opt-out**: repos with default setup enabled are billed silently unless it is turned off.
+GitHub **Code Quality** (coverage-on-PR + the `Code Quality: CodeQL` runs) bills **per active committer + Actions minutes + AI credits**, and it is **opt-out**: repos with default setup enabled are billed silently unless it is turned off.
 
 - **If your repo has Code Quality default setup enabled, disable it**; repo → **Settings → Code security → Code Quality** (turn off default setup), or accept the per-committer charge.
 - **The bkit coverage stub replaces the coverage-on-PR value only.** `bkit-stub:coverage` gives a free, in-Actions coverage comment (shipped stub targets Vitest; `testing.md` § Coverage on PRs) with no third-party service. It does **not** replace **CodeQL security scanning** — keep or re-enable that separately if you rely on it (a distinct product / decision).
