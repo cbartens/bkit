@@ -207,6 +207,7 @@ const ODD: CommandSpec = {
   verbs: {
     odd: {
       summary: "exits 9, which it does not declare",
+      use: "by-hand",
       flags: [],
       output: { odd: "n" },
       run: (ctx) => {
@@ -216,15 +217,23 @@ const ODD: CommandSpec = {
     },
     declared: {
       summary: "exits 4, which it declares",
+      use: "by-hand",
       flags: [],
       output: {},
       exitCodes: { 4: "declared" },
       run: () => 4,
     },
-    fine: { summary: "exits 0", flags: [], output: {}, run: () => EXIT.OK },
-    "needs-human": { summary: "exits 82", flags: [], output: {}, run: () => EXIT.NEEDS_HUMAN },
+    fine: { summary: "exits 0", use: "by-hand", flags: [], output: {}, run: () => EXIT.OK },
+    "needs-human": {
+      summary: "exits 82",
+      use: "by-hand",
+      flags: [],
+      output: {},
+      run: () => EXIT.NEEDS_HUMAN,
+    },
     boom: {
       summary: "throws",
+      use: "by-hand",
       flags: [],
       output: {},
       run: () => {

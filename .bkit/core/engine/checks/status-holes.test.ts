@@ -216,10 +216,11 @@ describe("source derivation", () => {
       const md = flowMd(name);
       const contract = deriveContract(md, name);
       const inSteps = stepSections(md).reduce((n, s) => n + s.body.split('"{BKIT}"').length - 1, 0);
+      // Every literal is a step call or a workflow-level call (calls outside the journal window move there).
       expect(
-        contract.steps.reduce((n, s) => n + s.calls.length, 0),
+        contract.steps.reduce((n, s) => n + s.calls.length, 0) + contract.workflowCalls.length,
         name,
-      ).toBe(inSteps);
+      ).toBe(md.split('"{BKIT}"').length - 1);
       expect(inSteps, name).toBeGreaterThan(0);
     }
     expect(callWords('steps finish --a="x y" | tee')).toEqual(["steps", "finish", '--a="x y"']);
@@ -1026,6 +1027,46 @@ describe("check — hole classes", () => {
       expect(verdict.stepHoles, name).toEqual([]);
       expect(verdict.verdict, name).toBe("CLEAN");
     }
+  });
+
+  it("calls outside the journal window are matched but never required", () => {
+    const md = [
+      "## 🧠 Step 1 — Preflight",
+      ...fence("branches check", FINISH("build-a", 1)),
+      "## 🧠 Step 2 — Start",
+      ...fence("workflows start --workflow=build", FINISH("build-b", 2)),
+      "## 🧠 Step 3 — Close",
+      ...fence("tests run --gate=a", "workflows close --workflow=build", "prs probe"),
+      ...fence(FINISH("build-c", 3)),
+    ].join("\n");
+    const contract = deriveContract(md, "build");
+    const required = contractUnits(contract).flatMap((u) =>
+      u.calls.map((c) => `${c.noun} ${c.verb}`),
+    );
+    expect(required).not.toContain("branches check");
+    expect(required).not.toContain("prs probe");
+    expect(required).toContain("tests run");
+    const inWindow = [
+      callRow("build", "steps", "finish"),
+      stepRow("build", "build-a"),
+      callRow("build", "workflows", "start"),
+      callRow("build", "steps", "finish"),
+      stepRow("build", "build-b"),
+      callRow("build", "tests", "run"),
+      callRow("build", "workflows", "close"),
+      callRow("build", "steps", "finish"),
+      stepRow("build", "build-c"),
+    ] as StatusRow[];
+    const clean = check(inWindow, contract);
+    expect(clean.evidenceHoles).toEqual([]);
+    expect(clean.verdict).toBe("CLEAN");
+    // An outside call the journal does hold is matched, never unexpected.
+    expect(
+      check([callRow("build", "prs", "probe") as StatusRow, ...inWindow], contract).unexpected,
+    ).toEqual([]);
+    // An in-window call that is missing still reads HOLEY.
+    const missing = inWindow.filter((r) => r["noun"] !== "tests");
+    expect(check(missing, contract).verdict).toBe("HOLEY");
   });
 
   it("reports an untaken route arm as unexercised", () => {

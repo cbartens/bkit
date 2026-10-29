@@ -57,6 +57,7 @@ Compliance grader stderr. Canonical grep patterns:
 - `[bkit-telemetry] outcome not restated: {reason}` / `no {workflow} workflow-done row with parentSha — outcome not restated` / `no {workflow} outcome row for {sha} — outcome not restated` — dispatch re-append skipped.
 - `[bkit-telemetry] {kind} row {key} not written: {reason}` — harvest scan row failing its totals check, on stderr; not appended.
 - `[bkit-telemetry] {kind} row not written: {reason}` — a `completeness` row the close could not append (`{kind}` is `completeness`); the close continues.
+- `[bkit-telemetry] journal looks dead at close: no engine-call rows for this run; the completeness verdict cannot be trusted` — `bkit workflows close` found no `engine-call` row for the run; one line per close on stderr, stdout and the exit code unchanged.
 - `[bkit-telemetry] journal write failed: {message}` — the engine-call / friction journal at command dispatch could not write a row; logged once per command run, the command's exit code is unchanged.
 
 The journal seam writes `engine-call` and `friction` rows to the active run's `status.jsonl` / `.bkit/friction.jsonl`. `BKIT_ENGINE_JOURNAL=off` is its kill switch: any other value (or unset) leaves it on. Rows are evidence for `bkit completeness check`; the seam never changes an exit code.
