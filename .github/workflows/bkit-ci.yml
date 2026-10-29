@@ -525,9 +525,9 @@ jobs:
       # and the register judged all come from that one tree.
       - name: Setup uv
         if: hashFiles('scripts/graphify/bkit-graphify.sh') != ''
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@18d369b23da25a81e9458561248e1aafff6a70fa # v10.3.1
         with:
-          version: "0.13.0"
+          version: "0.13.4"
 
       - name: Check Capability Register
         if: hashFiles('scripts/graphify/bkit-graphify.sh') != ''
@@ -625,7 +625,7 @@ jobs:
       # same-repo PRs only. vite-config-path is the file the floor lives in.
       - name: Report Unit Coverage
         if: ${{ !cancelled() && hashFiles('coverage/unit/coverage-summary.json') != '' }}
-        uses: davelosert/vitest-coverage-report-action@c4bbc33a89b7ace0e63d35f1f7d4bcee31155a73 # v2.13.0
+        uses: davelosert/vitest-coverage-report-action@8f86cfb56ed6d5613ea8cdc5259f207fbfd51ece # v2.13.1
         with:
           name: unit
           json-summary-path: coverage/unit/coverage-summary.json
@@ -693,7 +693,7 @@ jobs:
       - name: Report Integration Coverage on PR
         # hashFiles guard: skip cleanly when the repo has no integration tier (no coverage/integration report produced).
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && hashFiles('coverage/integration/coverage-summary.json') != ''
-        uses: davelosert/vitest-coverage-report-action@c4bbc33a89b7ace0e63d35f1f7d4bcee31155a73 # v2.13.0
+        uses: davelosert/vitest-coverage-report-action@8f86cfb56ed6d5613ea8cdc5259f207fbfd51ece # v2.13.1
         with:
           name: integration
           json-summary-path: coverage/integration/coverage-summary.json
