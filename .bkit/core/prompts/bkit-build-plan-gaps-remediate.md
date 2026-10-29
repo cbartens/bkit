@@ -89,10 +89,14 @@ autoCompactWindow: 300000
    - All strategies: NEVER record a red by undoing or swapping out code (restoring old source, stubbing over landed code). Test-order gap (`no-red`, `late-red`, `red-mismatch`, `red-evidence-missing`, `test-changed`) → `BLOCKED`; never touch a `TEST EXCEPTION` field.
    - **If** a decision record is supplied → follow the owner's words on its `Decision:` lines in this round; they override the strategy's default angle. `Decision: Accept (assumed)` and `Decision: Fix now — recommended; applied without asking` are not the owner's words: an assumed accept is settled for this build (leave it), an unasked `Fix now` takes the recommendation.
 7. Implement in `priority` order — targeted remediation per gap (edit / create source); implement missing tests if suggested → verify acceptance criteria → append log → proceed.
-8. Run `pnpm bkit:gate:static-unit` — all local tests MUST pass. **If** Context names a group gate → run it too; MUST pass.
+8. Run `pnpm bkit:gate:static-unit` — all local tests MUST pass. **If** Context names a group gate → run that command after the fixes, and again after each further fix, until it exits 0:
+   - The gate stops at its first failing stage → each new failure a later run shows is another gap of this round.
+   - Before fixing a failure → search for every other test and source file built on the same failing assumption; fix them in the same pass.
+   - Exit 0 → append `DONE — Group gate: exit 0 ({log path})`. Cannot reach exit 0 → append `BLOCKED — Group gate: {reason}`.
+   - NEVER end `PASS` on targeted test runs alone.
 9. Once remediations verified (tests pass) → append gotcha rows (if any) to `docs/knowledge.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
-10. Update **Create** — set `Fixed` via `Edit` = count of `DONE` lines in **Create**; set `Verdict` via `Edit`; mapping:
-    - `PASS` = every in-scope gap has `DONE` across logs and local tests pass.
+10. Update **Create** — set `Fixed` via `Edit` = count of `DONE — Gap` lines in **Create**; set `Verdict` via `Edit`; mapping:
+    - `PASS` = every in-scope gap has `DONE` across logs, local tests pass, and a named group gate has `DONE — Group gate: exit 0`.
     - `FAIL` = unable to remediate; any in-scope gap ends `BLOCKED` with no later `DONE` or some local tests still fail.
     - `CONCERNS` = remediation applied, all local tests pass, but non-blocking flake / warning needs follow-up.
 
@@ -109,7 +113,7 @@ Fixed: <integer >= 0>
 
 ## Remediation Log
 
-[Append-only flat log. Each entry one line: `DONE — Gap {N}: {name / description} — {outcome} ({path or commit ref})` or `BLOCKED — Gap {N}: {name / description} — {reason}`. Order = event order (mixed `DONE` and `BLOCKED` lines expected). Empty in stub; populated via Bash `echo >>` as work progresses.]
+[Append-only flat log. Each entry one line: `DONE — Gap {N}: {name / description} — {outcome} ({path or commit ref})` or `BLOCKED — Gap {N}: {name / description} — {reason}`; the group gate: `DONE — Group gate: exit 0 ({log path})` or `BLOCKED — Group gate: {reason}`. Order = event order (mixed `DONE` and `BLOCKED` lines expected). Empty in stub; populated via Bash `echo >>` as work progresses.]
 ```
 
 > ⛔ **STOP** after applying gap fixes and producing output. Do not push or expand scope.

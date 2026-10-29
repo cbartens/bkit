@@ -81,6 +81,8 @@ cbartens/bkit (this repo)
 │   ├── tools/instructions-sources.ts # `.bkit/instructions.md` copy sections (Rules, Project Rules, Hook Text, Permissions, Special Behaviors, Authoring Rules) checked and synced against their masters
 │   ├── tools/grammar-density.ts # repo-only `pnpm grammar:density`, not a bkit command
 │   └── audits/                  # tests only: read shipped text (workflows/ templates/ hooks/ repo/)
+├── scripts/ci/             # Adopted copy of `.bkit/templates/scripts/ci/`, plus bkit-repo-only
+│                           #   bkit-test-file.mjs (`bkit:test:file`: runner picked by test file type)
 ├── dist/                   # Compiled output (committed; published in tarball)
 ├── .bkit/core/             # Payload bkit writes and keeps current: engine/, workflows/,
 │                           #   prompts/, docs/templates/, the hooks, AGENTS.md and .agents/*.md,

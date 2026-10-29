@@ -7137,7 +7137,6 @@ Orchestrator exits and the dispatched skill owns the session
 **Scope:** Build feature and raise PR for default integration branch.
 **Plan:** `docs/plans/{YYYYMM}/{FID}-plan.md`, in task-block form (`docs/templates/bkit-plan.md` § Agent Execution Runbook): groups of <= `{MAX_TASKS_PER_GROUP}` tasks and <= `{MAX_TESTS_PER_GROUP}` `TEST FIRST` tests (`bkit.workflows.tasks`, held at Step 1). One group runs per pass of Steps 7-9; tasks tick `[x]` only in verify.
 Derive the decision number:
-`PAUSE_QUESTION` = `VERIFY_GAPS` **or** `VERIFY_LOOP` → each `## Identified Gaps Log` line of `build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}.md` with its last `BLOCKED` reason in `build-plan-gaps-remediate-{GROUP}-*-log.md` (if any). Fixable gap → options `["Accept", "Fix now"]`, recommended per item. Test-order gap (`no-red`, `late-red`, `red-mismatch`, `red-evidence-missing`, `test-changed`) → hard blocker, options `["Accept", "Stop"]`, question ends `Accept it? You write the reason, and it is recorded as your TEST EXCEPTION.` Other unfixable gap (`no-test-first`, `test-first-malformed`, `test-first-unread`, `exception-refused`) → hard blocker, options `["Accept", "Fix now", "Stop"]`. Group-gate failures are never items: they are always fixed.
 `PAUSE_QUESTION` = `CHALLENGE` → each task of `CHALLENGE_TASKS` in the plan that says `**Fixable:** false` (any severity), or every one of them on the last round (`CHALLENGE_ROUND` = `CHALLENGE_MAX`). **If** `CHALLENGE_OVERFLOW` is set → the merge wrote nothing: items = each `CRITICAL|HIGH|MEDIUM` finding of the merged reports (`build-challenge-2.md`, plus `build-challenge-1.md` when large), one per `Location`. Title = the task number (when it has one) and its `Location` in brackets. `**Fixable:** false` → hard blocker, options `["Accept", "Fix now", "Stop"]`; else options `["Accept", "Fix now"]`, recommended per finding.
 `PAUSE_QUESTION` = `TESTS_LOOP` → no items (failing suites are always fixed).
 **If** `decisions compose` exits non-zero → **Failure Path**.
@@ -7228,9 +7227,7 @@ Run the group gate; it writes the trimmed log to the artifact:
 **If** exit 1 → **Failure Path** (`build.verify.maxAttempts` used up).
 **If** exit 0 **and** `VERIFY_VERDICT` = FAIL **and** (`VERIFY_FIXABLE` = false **or** `VERIFY_ROUNDS` = `PAUSE_MAX`) → `PAUSE_QUESTION` = `VERIFY_GAPS` → **Decision Pause**.
 **If** exit 0 **and** `VERIFY_VERDICT` = FAIL → Step 9 (a fixable-only round first).
-**If** exit 0 **and** `VERIFY_VERDICT` = PASS (group gate FAIL alone) **and** `VERIFY_ROUNDS` < `PAUSE_MAX` → Step 9; group-gate failures are always fixed, never asked.
 **If** exit 0 **and** `VERIFY_VERDICT` = PASS → **Failure Path** (no round left to fix the group gate).
-**If** exit 0 **and** `VERIFY_ROUNDS` < `PAUSE_MAX` → `PAUSE_QUESTION` = `VERIFY_LOOP` → **Decision Pause**.
 Test-first reds audited (`tests green`)
 Group diff cut from its start commit (`context diff`)
 Group gate verdict decided
@@ -7299,6 +7296,8 @@ Verify round read back on resume
 Round limit read (`counters max --point=build.challenge`) before sizing
 Hold `strategy` as `{STRATEGY}`. **If** `{TEST_ATTEMPT}` is not held (resumed into this step) → read the test round back:
 Strategy read before invocation
+`PAUSE_QUESTION` = `VERIFY_GAPS` → each `## Identified Gaps Log` line of `build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}.md` with its last `BLOCKED` reason in `build-plan-gaps-remediate-{GROUP}-*-log.md` (if any). Fixable gap → options `["Accept", "Fix now"]`, recommended per item. Test-order gap (`no-red`, `late-red`, `red-mismatch`, `red-evidence-missing`, `test-changed`) → hard blocker, options `["Accept", "Stop"]`, question ends `Accept it? You write the reason, and it is recorded as your TEST EXCEPTION.` Other unfixable gap (`no-test-first`, `test-first-malformed`, `test-first-unread`, `exception-refused`) → hard blocker, options `["Accept", "Fix now", "Stop"]`. Group-gate failures are never items: they are always fixed.
+**If** exit 0 **and** `VERIFY_ROUNDS` < `PAUSE_MAX` → Step 9; fixable gaps and group-gate failures are always fixed, never asked.
 ```
 
 #### bkit-debug
@@ -7792,9 +7791,12 @@ Implement sequentially, per task:
 **Role:** Senior engineer closing specific verification gaps with surgical, scope-disciplined fixes.
 `STANDARD` → Targeted remediation from current gaps.
 Implement in `priority` order — targeted remediation per gap (edit / create source); implement missing tests if suggested → verify acceptance criteria → append log → proceed.
-Update **Create** — set `Fixed` via `Edit` = count of `DONE` lines in **Create**; set `Verdict` via `Edit`; mapping:
-`PASS` = every in-scope gap has `DONE` across logs and local tests pass.
 Read the group's briefs (its task blocks), plan gaps, the group gate log (if supplied; each failure = one gap), and all logs (`DONE` = done, `BLOCKED` = blocked) → find first gap not `DONE` → resume. **If** Context `Scope` = `fixable only` → skip gaps logged `— Fixable: false`; no log line.
+The gate stops at its first failing stage → each new failure a later run shows is another gap of this round.
+Before fixing a failure → search for every other test and source file built on the same failing assumption; fix them in the same pass.
+Exit 0 → append `DONE — Group gate: exit 0 ({log path})`. Cannot reach exit 0 → append `BLOCKED — Group gate: {reason}`.
+NEVER end `PASS` on targeted test runs alone.
+`PASS` = every in-scope gap has `DONE` across logs, local tests pass, and a named group gate has `DONE — Group gate: exit 0`.
 ```
 
 #### bkit-build-plan-verify

@@ -4,13 +4,15 @@
  * bkit-harvest.test.mjs — tests for bkit-harvest.mjs against made-up chats of every host
  * under a temp home folder, with a temp git repo as the repo the chats ran in.
  *
- * Pure Node, no runner: `node scripts/harvest/bkit-harvest.test.mjs`. The opencode, Cursor and
- * Antigravity tests need Node 22.5+ (`node:sqlite`) and are skipped on an older Node.
+ * `node:test`: `node scripts/harvest/bkit-harvest.test.mjs`, or `pnpm bkit:test:file` on this file
+ * for a JUnit report. The opencode, Cursor and Antigravity tests need Node 22.5+ (`node:sqlite`)
+ * and are skipped on an older Node.
  * Exit: 0 = all tests passed, 1 = at least one test failed.
  */
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { test as nodeTest } from "node:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -75,25 +77,8 @@ try {
   // Node older than 22.5: the SQLite hosts' tests are skipped
 }
 
-let passed = 0;
-let failed = 0;
-let skipped = 0;
-
-async function test(name, fn, { needsSqlite = false } = {}) {
-  if (needsSqlite && !sqlite) {
-    skipped++;
-    console.log(`  skip ${name} — no node:sqlite`);
-    return;
-  }
-  try {
-    await fn();
-    passed++;
-    console.log(`  ok   ${name}`);
-  } catch (err) {
-    failed++;
-    console.log(`  FAIL ${name} — ${err.message}`);
-  }
-}
+const test = (name, fn, { needsSqlite = false } = {}) =>
+  nodeTest(name, { skip: needsSqlite && !sqlite ? "no node:sqlite" : false }, fn);
 
 const SHA = "d3187b9daa21f7652a4d85f3c89aae040280b72b";
 const SHA2 = "0123456789abcdef0123456789abcdef01234567";
@@ -2988,5 +2973,3 @@ function fingerprintNone(n) {
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });
-console.log(`\n${passed} passed, ${failed} failed${skipped ? `, ${skipped} skipped` : ""}`);
-process.exitCode = failed ? 1 : 0;
