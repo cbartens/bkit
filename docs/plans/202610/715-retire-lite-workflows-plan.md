@@ -877,7 +877,7 @@ Build order: config → runtime resolution → install → close row → build w
 
 <!-- bkit:task 8 start -->
 
-- [ ] **TASK 8:** Drop the retired lite doc from the install docs
+- [x] **TASK 8:** Drop the retired lite doc from the install docs
   - **UPDATE:** `.bkit/core/.bkit/README.md`: drop `lite.md` from the Tier-2 exception (line 244) and the install-writes list (line 279)
   - **UPDATE:** `.bkit/core/.agents/docs.md`: delete the `.bkit/lite.md` index row
   - **READ:** `.bkit/core/engine/install/manifest.ts`: Task 17 removed the `.bkit/lite.md` entry; the docs must match it
