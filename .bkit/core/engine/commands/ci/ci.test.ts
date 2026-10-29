@@ -10,8 +10,10 @@ import { runCommand } from "../lib";
 import {
   ciCommand,
   EXIT_VALE_FAILED,
+  formatFindings,
   gateFails,
   globToRegExp,
+  netNewFindings,
   proseFiles,
   readSummary,
   resolveBaseRef,
@@ -138,6 +140,18 @@ const summary = (over: Record<string, number> = {}) => ({
   ...over,
 });
 
+/** A `slop-scan delta --json` change; `added` / `worsened` carry a head snapshot, `resolved` a base one. */
+const change = (status: string, file: string | null, ruleId: string, message: string, line = 1) => {
+  const snapshot = { message, primaryLocation: { path: file, line }, locations: [] };
+  return {
+    status,
+    path: file,
+    ruleId,
+    base: status === "added" ? null : snapshot,
+    head: status === "resolved" ? null : snapshot,
+  };
+};
+
 async function run(cwd: string, argv: string[], verb = "slop") {
   const out: string[] = [];
   const err: string[] = [];
@@ -171,14 +185,60 @@ describe("bkit ci slop — gate decision", () => {
       worsened: 0,
       netFindingCount: 1,
       netScore: 3.5,
+      findings: [],
     });
     expect(r.err).toContain(
       "[bkit-ci] added 1, resolved 0, worsened 0; net findings 1, net score 3.50",
     );
+    expect(r.err).toContain("names no single net-new finding");
     expect(r.err).toContain("FAIL — change adds/worsens slop on net.");
     expect(r.err).toContain("ONLY fix net-new, NEVER the baseline");
     expect(r.err).toContain("Inspect: slop-scan delta --base <base-worktree> --head .");
     expect(fake.calls()).toMatch(/argv=delta --base \S+ --head \. --json/);
+    expectCleaned(cwd);
+  });
+
+  it("names each net-new and worsened finding in the log and the JSON", async () => {
+    const { cwd, base } = repo();
+    fakeSlop(
+      JSON.stringify({
+        summary: summary({ addedCount: 1, worsenedCount: 1, netFindingCount: 1, netRepoScore: 2 }),
+        paths: [
+          {
+            path: "src/a.ts",
+            changes: [
+              change("added", "src/a.ts", "defensive.empty-catch", "Empty catch block", 12),
+            ],
+          },
+          {
+            path: "src/b.ts",
+            changes: [change("worsened", "src/b.ts", "structure.x", "Too many params", 40)],
+          },
+        ],
+        repoChanges: [],
+      }),
+    );
+    const r = await run(cwd, [`--base=${base}`]);
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("Net-new / worsened findings:");
+    expect(r.err).toContain("added     src/a.ts:12  defensive.empty-catch  Empty catch block");
+    expect(r.err).toContain("worsened  src/b.ts:40  structure.x  Too many params");
+    expect(r.json.findings).toEqual([
+      {
+        status: "worsened",
+        path: "src/b.ts",
+        line: 40,
+        ruleId: "structure.x",
+        message: "Too many params",
+      },
+      {
+        status: "added",
+        path: "src/a.ts",
+        line: 12,
+        ruleId: "defensive.empty-catch",
+        message: "Empty catch block",
+      },
+    ]);
     expectCleaned(cwd);
   });
 
@@ -384,6 +444,50 @@ describe("slop-scan resolution and summary reading", () => {
   });
 });
 
+describe("netNewFindings", () => {
+  const report = (changes: ReturnType<typeof change>[]) =>
+    JSON.stringify({ summary: summary(), paths: [{ path: "a.ts", changes }], repoChanges: [] });
+
+  it("drops a line shift: one added and one resolved for the same file and rule", () => {
+    expect(
+      netNewFindings(
+        report([change("resolved", "a.ts", "r", "m", 3), change("added", "a.ts", "r", "m", 5)]),
+      ),
+    ).toEqual([]);
+  });
+
+  it("cancels the shifted finding by message and keeps the new one", () => {
+    expect(
+      netNewFindings(
+        report([
+          change("resolved", "a.ts", "r", "old", 3),
+          change("added", "a.ts", "r", "new", 4),
+          change("added", "a.ts", "r", "old", 9),
+        ]),
+      ),
+    ).toEqual([{ status: "added", path: "a.ts", line: 4, ruleId: "r", message: "new" }]);
+  });
+
+  it("reads repo-scoped changes, which have no path", () => {
+    const raw = JSON.stringify({
+      summary: summary(),
+      paths: [],
+      repoChanges: [change("added", null, "dup", "Duplicated function")],
+    });
+    expect(netNewFindings(raw)).toEqual([
+      { status: "added", path: null, line: 1, ruleId: "dup", message: "Duplicated function" },
+    ]);
+    expect(formatFindings(netNewFindings(raw))[1]).toBe(
+      "  added     (repo):1  dup  Duplicated function",
+    );
+  });
+
+  it("is empty for a report with no change lists, or not JSON", () => {
+    expect(netNewFindings(JSON.stringify({ summary: summary() }))).toEqual([]);
+    expect(netNewFindings("not json")).toEqual([]);
+  });
+});
+
 // Behaviour cases against the real slop-scan this repo installs, end to end
 // through the command.
 describe("bkit ci slop — real slop-scan", () => {
@@ -406,7 +510,23 @@ describe("bkit ci slop — real slop-scan", () => {
     const r = await run(cwd, [`--base=${base}`]);
     expect(r.code).toBe(1);
     expect(r.json.netFindingCount).toBeGreaterThan(0);
+    expect(r.json.findings).toContainEqual(
+      expect.objectContaining({ status: "added", path: "y.ts", line: expect.any(Number) }),
+    );
+    expect(r.err).toMatch(/added {5}y\.ts:\d+ {2}\S+/);
     expectCleaned(cwd);
+  }, 30_000);
+
+  it("names the file and rule when a per-file finding's count grows (score rise, flat count)", async () => {
+    const { cwd, base } = realRepo({ "y.ts": EMPTY_CATCH });
+    write(cwd, "y.ts", "// shifted\n" + EMPTY_CATCH + EMPTY_CATCH.replace("risky", "risky2"));
+    const r = await run(cwd, [`--base=${base}`]);
+    expect(r.code).toBe(1);
+    expect(r.json.netFindingCount).toBe(0);
+    expect(
+      r.json.findings.map((f: { path: string; line: number }) => `${f.path}:${f.line}`),
+    ).toEqual(["y.ts:3", "y.ts:8"]);
+    expect(r.err).toContain("y.ts:8  defensive.empty-catch  Found 2 empty catch blocks");
   }, 30_000);
 
   it("an unchanged tree nets to zero and passes — and every gated summary field is present", async () => {

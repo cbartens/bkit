@@ -260,7 +260,7 @@ vale sync
 
 ## slop-scan — `slop-scan.config.json`
 
-`lint:slop` reports; `slop:delta` (`bkit ci slop`, in `bkit:gate:static`) fails on net-new findings against the base: `--base` / bare argument, else `$SLOP_BASE_REF`, else the merge-base with `origin/dev` (else `origin/main`). CI passes its planner base; pre-push on a `dev` push exports the same base as `SLOP_BASE_REF` (§ Git hooks), so both compare against the last green CI push run. Reference: https://github.com/benvinegar/slop-scan.
+`lint:slop` reports; `slop:delta` (`bkit ci slop`, in `bkit:gate:static`) fails on net-new findings against the base: `--base` / bare argument, else `$SLOP_BASE_REF`, else the merge-base with `origin/dev` (else `origin/main`). CI passes its planner base; pre-push on a `dev` push exports the same base as `SLOP_BASE_REF` (§ Git hooks), so both compare against the last green CI push run. On failure it logs each net-new / worsened finding (`path:line`, rule, message; line shifts dropped) and emits them as `findings`. Reference: https://github.com/benvinegar/slop-scan.
 
 ```bash
 pnpm add -D slop-scan@^0.3.0

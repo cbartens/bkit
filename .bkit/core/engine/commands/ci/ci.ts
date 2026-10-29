@@ -6,7 +6,8 @@
 // worse on NET: more findings, or a higher score. It gates on the net figures, not on
 // "added": slop-scan's delta is keyed by position, so editing above a pre-existing
 // finding reports it as resolved at the old line and added at the new one, netting to
-// zero. The pre-existing baseline is never the change's to fix.
+// zero. The pre-existing baseline is never the change's to fix. On failure it names each
+// net-new or worsened finding (`path:line`, rule, message), with line shifts dropped.
 //
 // `prose` — the prose gate (`lint:prose`): Vale over the markdown files the globs
 // select. Skips with a log line when vale is not installed; restores the gitignored
@@ -124,6 +125,93 @@ export function readSummary(raw: string): Summary | { missing: string } {
 export const gateFails = (s: Summary): boolean =>
   s.netFindingCount > 0 || s.netRepoScore > SCORE_EPSILON;
 
+/** A net-new or worsened finding, named for the log and the JSON output. */
+export interface SlopFinding {
+  status: "added" | "worsened";
+  path: string | null;
+  line: number | null;
+  ruleId: string;
+  message: string;
+}
+
+/** The fields of a `slop-scan delta --json` change the gate reads; any may be absent. */
+interface DeltaChange {
+  status?: unknown;
+  path?: unknown;
+  ruleId?: unknown;
+  base?: DeltaSnapshot | null;
+  head?: DeltaSnapshot | null;
+}
+interface DeltaSnapshot {
+  message?: unknown;
+  primaryLocation?: { line?: unknown } | null;
+  locations?: { line?: unknown }[];
+}
+
+const asArray = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+
+function toFinding(status: SlopFinding["status"], c: DeltaChange): SlopFinding {
+  const loc = c.head?.primaryLocation ?? c.head?.locations?.[0];
+  return {
+    status,
+    path: typeof c.path === "string" ? c.path : null,
+    line: typeof loc?.line === "number" ? loc.line : null,
+    ruleId: String(c.ruleId),
+    message: typeof c.head?.message === "string" ? c.head.message : "",
+  };
+}
+
+/**
+ * The net-new and worsened findings in a `slop-scan delta --json` report. Grouped by file
+ * and rule: a group that resolves as many as it adds is a line shift and is dropped; in a
+ * group that adds more, each resolved finding cancels one added finding with the same
+ * message, and the rest are listed. Empty when the report carries no change lists.
+ */
+export function netNewFindings(raw: string): SlopFinding[] {
+  const parsed = parseJson(raw);
+  if (!parsed.ok) return [];
+  const report = parsed.value as { paths?: unknown; repoChanges?: unknown } | null;
+  const changes = [
+    ...asArray(report?.paths).flatMap((p) => asArray((p as { changes?: unknown })?.changes)),
+    ...asArray(report?.repoChanges),
+  ] as DeltaChange[];
+
+  const groups = new Map<string, { added: DeltaChange[]; resolved: DeltaChange[] }>();
+  const findings: SlopFinding[] = [];
+  for (const c of changes) {
+    if (c.status === "worsened") findings.push(toFinding("worsened", c));
+    if (c.status !== "added" && c.status !== "resolved") continue;
+    const key = `${String(c.path)}\0${String(c.ruleId)}`;
+    const group = groups.get(key) ?? { added: [], resolved: [] };
+    groups.set(key, group);
+    group[c.status].push(c);
+  }
+  for (const { added, resolved } of groups.values()) {
+    if (added.length <= resolved.length) continue;
+    const left = [...added];
+    for (const r of resolved) {
+      const i = left.findIndex((a) => a.head?.message === r.base?.message);
+      if (i >= 0) left.splice(i, 1);
+    }
+    findings.push(...left.map((c) => toFinding("added", c)));
+  }
+  return findings;
+}
+
+/** One log line per finding: status, `path:line`, rule, message. */
+export function formatFindings(findings: SlopFinding[]): string[] {
+  if (findings.length === 0) {
+    return ["slop-scan's report names no single net-new finding; the rise is spread across files."];
+  }
+  return [
+    "Net-new / worsened findings:",
+    ...findings.map((f) => {
+      const where = `${f.path ?? "(repo)"}${f.line === null ? "" : `:${f.line}`}`;
+      return `  ${f.status.padEnd(8)}  ${where}  ${f.ruleId}  ${f.message}`.trimEnd();
+    }),
+  ];
+}
+
 /** Whether a failed slop-scan run means it never started, rather than that it failed. */
 function couldNotRun(res: ReturnType<typeof spawnSync>, viaNpx: boolean): boolean {
   if ((res.error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") return true;
@@ -171,7 +259,14 @@ function slop(ctx: RunContext): Promise<number> | number {
   if (!top.ok) throw new CommandError(EXIT.USAGE, `not inside a git repository: ${ctx.cwd}`);
   const given = typeof ctx.flags.base === "string" ? ctx.flags.base : undefined;
   const baseRef = resolveBaseRef(ctx.cwd, given || process.env.SLOP_BASE_REF || undefined);
-  const empty = { added: 0, resolved: 0, worsened: 0, netFindingCount: 0, netScore: 0 };
+  const empty = {
+    added: 0,
+    resolved: 0,
+    worsened: 0,
+    netFindingCount: 0,
+    netScore: 0,
+    findings: [],
+  };
 
   const sha = runGit(ctx.cwd, ["rev-parse", "--verify", "--quiet", `${baseRef}^{commit}`]);
   if (!sha.ok) {
@@ -252,8 +347,9 @@ function slop(ctx: RunContext): Promise<number> | number {
         `net findings ${s.netFindingCount}, net score ${s.netRepoScore.toFixed(2)}`,
     );
     const failed = gateFails(s);
+    const findings = netNewFindings(stdout);
     for (const line of failed
-      ? FAIL_GUIDANCE
+      ? [...formatFindings(findings), ...FAIL_GUIDANCE]
       : ["OK — no net-new or worsened findings (baseline line-shifts ignored)."]) {
       ctx.log(line);
     }
@@ -267,6 +363,7 @@ function slop(ctx: RunContext): Promise<number> | number {
       worsened: s.worsenedCount,
       netFindingCount: s.netFindingCount,
       netScore: s.netRepoScore,
+      findings,
     });
     return failed ? EXIT.NO : EXIT.OK;
   }, removeWorktree);
@@ -523,6 +620,8 @@ export const ciCommand: CommandSpec = {
         worsened: "findings worsened",
         netFindingCount: "net change in finding count — gated on",
         netScore: "net change in slop score — gated on",
+        findings:
+          "net-new and worsened findings ({status, path, line, ruleId, message}); line shifts dropped",
       },
       exitCodes: {
         [EXIT_SLOP_UNAVAILABLE]: "slop-scan could not run (not installed or not executable)",
