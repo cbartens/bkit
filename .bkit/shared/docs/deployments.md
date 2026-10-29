@@ -406,17 +406,19 @@ Use one. Both open PRs for the same packages. Record it in `bkit.dependencies.up
 | Setting | Effect |
 | --- | --- |
 | `rebaseWhen: "conflicted"` | A PR is rebased only when it conflicts; the default re-runs CI on every auto-merge PR each time the base branch moves. |
-| `lockFileMaintenance.schedule` | First day of the month. |
+| `schedule` | Every hour of Monday (UTC). A scheduled GitHub run can start hours after its cron time, so a window of a few hours misses the daily wake. |
+| `lockFileMaintenance.schedule` | Every hour of the first day of the month (UTC), for the same reason. |
 | Majors rule `dependencyDashboardApproval: true` | No branch, PR or CI run until you tick the update on the Dependency Dashboard issue. |
 | `ignorePaths` | Replaces the `:ignoreModulesAndTests` default, so the example repeats its entries (`node_modules`, `bower_components`, `vendor`, `examples`, `__tests__`, `test`, `tests`, `__fixtures__`) and adds `docs/plans/**` plus the bkit-owned trees. |
 | Non-major group `matchDepTypes` | `devDependencies` and `packageManager`: a pnpm bump joins the group instead of opening alone. |
 | `customManagers` | One regex manager for pins that sit in no package file (below). |
+| `custom.regex` group rules | Every pin that manager finds opens in one reviewed `pinned tools` PR; the Dockerfile `PNPM_VERSION` joins the non-major group with `packageManager`. |
 
 **Pins outside package files.** The `customManagers` entry scans `Dockerfile`, `.claude/bkit-cloud.md` and `.github/workflows/*.yml` for a comment line directly above the pin: `# renovate: datasource=<datasource> depName=<name>` (optional `packageName=`, `versioning=`, `extractVersion=`). The next line is read as `[ARG|export] <NAME>_VERSION=<v>` or `<NAME>_VERSION: "<v>"`, `<NAME>_SPEC: "<pkg>==<v>"`, `npm install -g <pkg>@<v>`, or `bash "<installer>" <v>`. Renovate bumps the version only. A pin paired with a checksum (Vale, gh, jq, Node, actionlint) needs its sha256 updated by hand in the same PR, or the install fails closed.
 
 **One source per tool.** A version that already lives in a file — an exact pin in a package manifest, or a build service's CLI pin such as `eas.json` `cli.version` — is read from that file by CI, never typed into the workflow: `npm i -g "turbo@$(node -p "require('./package.json').devDependencies.turbo")"`. A typed copy drifts, and Renovate bumps only one of the two. A tool with no such file gets one `<NAME>_VERSION` per workflow with the comment above, used by every call. A bare `npx <tool>` downloads the newest release on every run and skips the release-age wait, so pin it the same way.
 
-**Land config on the default branch before the bot runs.** GitHub Apps and Dependabot read config from the default branch. The example sets `baseBranchPatterns: ["dev"]` (PRs land on `dev`) and `useBaseBranchConfig: "merge"` (edits on `dev` apply to dev-targeted runs). `useBaseBranchConfig` itself is read from the default branch, so it needs one merge there before dev-side edits take effect.
+**Land config on the default branch before the bot runs.** GitHub Apps and Dependabot read config from the default branch. The example sets `baseBranchPatterns: ["dev"]` (PRs land on `dev`) and `useBaseBranchConfig: "merge"` (edits on `dev` apply to dev-targeted runs). `useBaseBranchConfig` itself is read from the default branch, so it needs one merge there before dev-side edits take effect. The merge appends list options (`customManagers`, `packageRules`) to the default branch's instead of replacing them: each custom manager runs twice (the dashboard lists its files twice, the run logs "Cannot find replaceString" on the second pass), PRs still open once, and a rule deleted on `dev` keeps applying until the default branch drops it.
 
 **Renovate, Mend.** Install the App at https://github.com/apps/renovate only after `renovate.json5` is on the default branch. No `gh api` equivalent. Within a few minutes the App opens an onboarding PR; merge it.
 
