@@ -296,3 +296,8 @@
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-verify/8/3/comment","hash":"4c98846f347af4583da398830a8e956844d1078fa6242af0002ac674130f2d08","ref":"https://github.com/cbartens/bkit/issues/699#issuecomment-6489988380","at":"2026-10-29T06:49:05Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-10-29T06:49:05Z","parentSha":"4c6829ec32a6c457a928317bba982d6eb6c840f9","artifacts":["docs/plans/202610/logs/699-engine-run-completeness/build-plan-verify-8-3.md"],"verdict":"PASS","attempt":3,"group":8,"failures":0}
 {"type":"engine-call","workflow":"build","at":"2026-10-29T06:49:06Z","noun":"disk","verb":"prune","flags":["mode","auto"]}
+{"type":"engine-call","workflow":"build","at":"2026-10-29T06:49:13Z","noun":"disk","verb":"prune","flags":["mode","auto"]}
+{"type":"engine-call","workflow":"build","at":"2026-10-29T06:51:40Z","noun":"ci","verb":"prose","flags":["glob"]}
+{"type":"engine-call","workflow":"build","at":"2026-10-29T06:51:45Z","noun":"ci","verb":"slop","flags":[]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-verify-holistic/-/1/comment","hash":"2e1965b2c2968a4ac18ddc369835522d4672a3b69b230a1dc28bccf854f0bcff","ref":"https://github.com/cbartens/bkit/issues/699#issuecomment-6490299274","at":"2026-10-29T07:06:24Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-verify-holistic","status":"DONE","at":"2026-10-29T07:06:24Z","parentSha":"60b68c8513b4bdcb8bdac9093dc9ef6896d1d057","artifacts":["docs/plans/202610/logs/699-engine-run-completeness/build-plan-verify-holistic.md"],"verdict":"CONCERNS","attempt":1,"failures":4}
