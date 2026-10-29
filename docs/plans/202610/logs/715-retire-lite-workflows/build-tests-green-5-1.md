@@ -33,11 +33,6 @@ Plan: `docs/plans/202610/715-retire-lite-workflows-plan.md`
 - Task 11 `no-red` — no red recorded for "keeps a normal done run as done" — the test was never seen failing before the code — Fixable: false — log: TASK 11: `scripts/harvest/bkit-harvest.test.mjs` `keeps a normal done run as done` — no-red — Fixable: false
 - Task 11 `not-green` — the named test "keeps a normal done run as done" did not run; the report holds no tests — Fixable: true — log: TASK 11: `scripts/harvest/bkit-harvest.test.mjs` `keeps a normal done run as done` — not-green — Fixable: true
 
-## Late-red check
-
-- Task 10 — not checked: no plan-execute step commit's log records `DONE — TASK 10`, so when its code landed is unknown
-- Task 11 — not checked: no plan-execute step commit's log records `DONE — TASK 11`, so when its code landed is unknown
-
 ## Already landed
 
 - Task 10 `.bkit/core/engine/commands/workflow/workflows.test.ts` "refuses an unknown ending" — passed at its red, standing on TASK 9's code (0139455), which shares its CREATE / UPDATE files; no red is due
@@ -59,6 +54,6 @@ filter: scripts/harvest/bkit-harvest.test.mjs
 include: .bkit/core/engine/**/*.test.ts, .bkit/core/engine/**/*.integration.test.ts, scripts/harvest/**/*.test.ts
 exclude:  **/node_modules/**, **/.git/**
 
-JUNIT report written to /var/folders/td/lj74ml2d0jz3thjqszy13trh0000gn/T/bkit-test-report-mOj7uV/junit.xml
+JUNIT report written to /var/folders/td/lj74ml2d0jz3thjqszy13trh0000gn/T/bkit-test-report-3gHw8b/junit.xml
  ELIFECYCLE  Command failed with exit code 1.
 ```
