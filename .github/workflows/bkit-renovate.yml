@@ -30,7 +30,7 @@ on:
         type: string
   schedule:
     # Wake the bot once a day, at an off-hour minute. Renovate's OWN schedule in
-    # renovate.json5 ("before 6am on Monday") gates when normal update PRs open;
+    # renovate.json5 (all of Monday, UTC) gates when normal update PRs open;
     # osvVulnerabilityAlerts CVE PRs bypass it and open on the next daily wake.
     # Do NOT narrow this cron to Monday-only.
     - cron: "17 6 * * *"

@@ -306,12 +306,8 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
     expect(content).toMatch(/osvVulnerabilityAlerts:\s*true/);
   });
 
-  it("enables lockFileMaintenance on a monthly schedule", () => {
-    expect(content).toMatch(/lockFileMaintenance:/);
-    expect(content).toMatch(/enabled:\s*true/);
-    expect(content).toMatch(
-      /lockFileMaintenance:\s*\{[\s\S]*?schedule:\s*\["before 6am on the first day of the month"\]/,
-    );
+  it("enables lockFileMaintenance", () => {
+    expect(content).toMatch(/lockFileMaintenance:\s*\{\s*enabled:\s*true/);
   });
 
   it("ships the pnpm-11 OOM mitigation: worker-cap env + Renovate minimumReleaseAge (#308)", () => {
@@ -404,8 +400,25 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
     expect(content).not.toMatch(/groupName:\s*"playwright"\s*,/);
   });
 
-  it("declares weekly schedule (before 6am on Monday)", () => {
-    expect(content).toMatch(/schedule:\s*\[\s*"before 6am on Monday"\s*\]/);
+  // The daily bkit-renovate.yml cron starts hours late, so the windows cover whole days.
+  it("renovate schedule covers the whole Monday", () => {
+    expect(content).toMatch(/\n {2}schedule:\s*\[\s*"\* \* \* \* 1"\s*\]/);
+    expect(content).not.toMatch(/before 6am/);
+  });
+
+  it("renovate lockfile maintenance covers the whole first day of the month", () => {
+    expect(content).toMatch(/lockFileMaintenance:\s*\{[\s\S]*?schedule:\s*\["\* \* 1 \* \*"\]/);
+  });
+
+  it("renovate groups custom.regex updates into one pinned-tools PR, pnpm into the non-major group", () => {
+    const pinned = content.indexOf('groupName: "pinned tools"');
+    const pnpm = content.search(
+      /matchManagers:\s*\["custom\.regex"\],\s*matchDepNames:\s*\["pnpm"\],\s*matchUpdateTypes:\s*\["minor", "patch"\],\s*groupName:\s*"non-major dependencies",\s*automerge:\s*true/,
+    );
+    expect(content).toMatch(
+      /matchManagers:\s*\["custom\.regex"\],\s*groupName:\s*"pinned tools",\s*automerge:\s*false/,
+    );
+    expect(pnpm).toBeGreaterThan(pinned);
   });
 
   it("references the JSON schema for editor validation", () => {

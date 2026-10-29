@@ -406,11 +406,13 @@ Use one. Both open PRs for the same packages. Record it in `bkit.dependencies.up
 | Setting | Effect |
 | --- | --- |
 | `rebaseWhen: "conflicted"` | A PR is rebased only when it conflicts; the default re-runs CI on every auto-merge PR each time the base branch moves. |
-| `lockFileMaintenance.schedule` | First day of the month. |
+| `schedule` | Every hour of Monday (UTC). A scheduled GitHub run can start hours after its cron time, so a window of a few hours misses the daily wake. |
+| `lockFileMaintenance.schedule` | Every hour of the first day of the month (UTC), for the same reason. |
 | Majors rule `dependencyDashboardApproval: true` | No branch, PR or CI run until you tick the update on the Dependency Dashboard issue. |
 | `ignorePaths` | Replaces the `:ignoreModulesAndTests` default, so the example repeats its entries (`node_modules`, `bower_components`, `vendor`, `examples`, `__tests__`, `test`, `tests`, `__fixtures__`) and adds `docs/plans/**` plus the bkit-owned trees. |
 | Non-major group `matchDepTypes` | `devDependencies` and `packageManager`: a pnpm bump joins the group instead of opening alone. |
 | `customManagers` | One regex manager for pins that sit in no package file (below). |
+| `custom.regex` group rules | Every pin that manager finds opens in one reviewed `pinned tools` PR; the Dockerfile `PNPM_VERSION` joins the non-major group with `packageManager`. |
 
 **Pins outside package files.** The `customManagers` entry scans `Dockerfile`, `.claude/bkit-cloud.md` and `.github/workflows/*.yml` for a comment line directly above the pin: `# renovate: datasource=<datasource> depName=<name>` (optional `packageName=`, `versioning=`, `extractVersion=`). The next line is read as `[ARG|export] <NAME>_VERSION=<v>` or `<NAME>_VERSION: "<v>"`, `<NAME>_SPEC: "<pkg>==<v>"`, `npm install -g <pkg>@<v>`, or `bash "<installer>" <v>`. Renovate bumps the version only. A pin paired with a checksum (Vale, gh, jq, Node, actionlint) needs its sha256 updated by hand in the same PR, or the install fails closed.
 

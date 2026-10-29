@@ -38,9 +38,10 @@
   // See docs/deployments.md § Dependency updaters.
   useBaseBranchConfig: "merge",
 
-  // Weekly batched runs. CVE-driven updates are not held to this schedule
-  // (`osvVulnerabilityAlerts` below).
-  schedule: ["before 6am on Monday"],
+  // Weekly batched runs: every hour of Monday (UTC). The daily bkit-renovate.yml cron
+  // can start hours after its set time, so a window of a few hours would miss it.
+  // CVE-driven updates are not held to this schedule (`osvVulnerabilityAlerts` below).
+  schedule: ["* * * * 1"],
   timezone: "UTC",
 
   // CVE alerts → Renovate opens a PR immediately, outside the weekly schedule.
@@ -71,10 +72,11 @@
 
   // Lockfile maintenance — picks up indirect-dependency updates that a
   // direct-dependency bump alone wouldn't catch. Monthly: it rewrites the whole
-  // lockfile, so a weekly PR is mostly churn.
+  // lockfile, so a weekly PR is mostly churn. Every hour of the 1st (UTC), for the
+  // same late-start reason as `schedule` above.
   lockFileMaintenance: {
     enabled: true,
-    schedule: ["before 6am on the first day of the month"],
+    schedule: ["* * 1 * *"],
   },
 
   // Rebase a Renovate PR only when it conflicts. The default re-bases every open PR
@@ -293,6 +295,27 @@
       matchManagers: ["dockerfile"],
       groupName: "docker images",
       automerge: false,
+    },
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Pins the `customManagers` entry finds (Dockerfile, bkit-cloud.md, workflows,
+    // scripts) land in ONE reviewed PR, so their hand-edited checksums are fixed
+    // once. The Dockerfile pnpm pin instead joins the non-major group, so it moves
+    // in the same PR as `packageManager` in package.json.
+    // ─────────────────────────────────────────────────────────────────────
+    {
+      matchManagers: ["custom.regex"],
+      groupName: "pinned tools",
+      automerge: false,
+    },
+    {
+      matchManagers: ["custom.regex"],
+      matchDepNames: ["pnpm"],
+      matchUpdateTypes: ["minor", "patch"],
+      groupName: "non-major dependencies",
+      automerge: true,
+      automergeType: "pr",
+      platformAutomerge: true,
     },
   ],
 
