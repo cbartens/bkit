@@ -23,19 +23,16 @@ No recommendation — Only the owner can vouch for a test-first order the record
 
 **Q4 — TASK 11 `derives held from a workflow-done row ending held`: green tool cannot run it:** The tool that checks planned tests are green only runs vitest, so it reports this node-run test as 'did not run' even though `node scripts/harvest/bkit-harvest.test.mjs` passes 60/60. Accept it with `pnpm test:harvest` as the proof (recorded as your TEST EXCEPTION), or leave it open? Fixing it properly means teaching the test tool to run `.mjs` files, which is outside this issue.
 Options: A) Accept / B) Fix now
-Decision: Accept — Accept all
 Recommended: A) Accept — The test passes and Task 16 already runs `pnpm test:harvest`; the only alternative is changing the shared test tool, which belongs to its own issue.
 Decision: Accept — Accept all
 
 **Q5 — TASK 11 `counts held runs in the workflow report`: green tool cannot run it:** The tool that checks planned tests are green only runs vitest, so it reports this node-run test as 'did not run' even though `node scripts/harvest/bkit-harvest.test.mjs` passes 60/60. Accept it with `pnpm test:harvest` as the proof (recorded as your TEST EXCEPTION), or leave it open? Fixing it properly means teaching the test tool to run `.mjs` files, which is outside this issue.
 Options: A) Accept / B) Fix now
-Decision: Accept — Accept all
 Recommended: A) Accept — The test passes and Task 16 already runs `pnpm test:harvest`; the only alternative is changing the shared test tool, which belongs to its own issue.
 Decision: Accept — Accept all
 
 **Q6 — TASK 11 `keeps a normal done run as done`: green tool cannot run it:** The tool that checks planned tests are green only runs vitest, so it reports this node-run test as 'did not run' even though `node scripts/harvest/bkit-harvest.test.mjs` passes 60/60. Accept it with `pnpm test:harvest` as the proof (recorded as your TEST EXCEPTION), or leave it open? Fixing it properly means teaching the test tool to run `.mjs` files, which is outside this issue.
 Options: A) Accept / B) Fix now
-Decision: Accept — Accept all
 Recommended: A) Accept — The test passes and Task 16 already runs `pnpm test:harvest`; the only alternative is changing the shared test tool, which belongs to its own issue.
 Decision: Accept — Accept all
 
