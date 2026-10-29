@@ -964,7 +964,7 @@ Build order: config → runtime resolution → install → close row → build w
 
 <!-- bkit:task 12 start -->
 
-- [ ] **TASK 12:** Branch `bkit-build.md` on the resolved publish ending
+- [x] **TASK 12:** Branch `bkit-build.md` on the resolved publish ending
   - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: § Step 2 — Worktree Setup: after `runtime row`, run `status route --workflow=build --file="{STATUS}" --prompt-file="{SESSION_DIR}/prompt.md"` and hold `publish` as `{PUBLISH}` and `publishSource` as `{PUBLISH_SOURCE}`; drop the `>/dev/null` on `runtime assert`; narrate the visible coercion warning when `{PUBLISH_SOURCE}` = `coerced`
   - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: § Step 15 — Summary: pass `--publish={PUBLISH}`; skip the PR probe and branch push when false; mark Gate 15's probe and push lines `(publish=true only)`
   - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: § Step 16 — Close Workflow & Create PR: add the held close fence (skip the probe / scan-diff / push / PR / dispatch; close with `--ending=held --publish=false --record-step`, append the roadmap row with `roadmap feature --root="{WORKTREE_PATH}" --workflow=build --fid={FID}` and never `roadmap mirror`, release the lock, set the issue `In review`, post the "built locally, not published" comment, `build-close-workflow` gate only, held final message) and state in the Gate 16 block which checklist lines apply on each path
@@ -994,7 +994,7 @@ Build order: config → runtime resolution → install → close row → build w
 
 <!-- bkit:task 13 start -->
 
-- [ ] **TASK 13:** Verify the held ending and its deferred landing against real boundaries
+- [x] **TASK 13:** Verify the held ending and its deferred landing against real boundaries
   - **UPDATE:** `.bkit/core/engine/audits/workflows/close-squash.integration.test.ts`: add a `pushFeature?: boolean` option to `initFixture` (default `true`; the held case passes `false` so `feat/{FID}` is local-only before the close) and a `build` held-close describe that runs the shipped Step 15 summary line then the shipped Step 16 held-close fence as written
   - **UPDATE:** `.bkit/core/engine/audits/workflows/ship-verdict.integration.test.ts`: add `extractStepLine(stepHeading, prefix)` beside `extractStep6Line` and a `writeGhShim()` that records every `gh` argv to `tmpDir/gh-calls.jsonl`, answers `pr list` / `pr create` / `pr view` / `pr merge` (a `pr create` prints the PR URL as its last stdout line; `pr view` returns `PR_FIELDS` with `baseRefName: "dev"`), and execs `tests/fixtures/gh/bin/gh` for `gh api …/actions/…`; prepend `tmpDir/bin` to `PATH`
   - **UPDATE:** `.bkit/core/engine/audits/workflows/ship-verdict.integration.test.ts`: add the deferred-landing describe — Step 2's no-PR route, then Step 10's `runs gate` and `prs merge --match-head` lines, against a real bare origin
