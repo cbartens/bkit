@@ -32,6 +32,7 @@ autoCompactWindow: 300000
 - **Mandate:** Update ledger and related documents; do not just analyse; do not write implementation code.
 - **No commits:** Do not run `git commit` / `git add` / `git push` (caller does).
 - **Tracker:** Read-only; never create, close, or relabel issues; recommend and let caller act.
+- **Other ledgers:** Read-only; never append to another ledger; report under `Cross-Ledger Impact` and let caller act.
 
 **Rules:** Copied word for word from `.agents/rules.md`.
 
@@ -60,14 +61,25 @@ autoCompactWindow: 300000
 5. Per remaining entry → check file paths, symbols, flags, and commands against the codebase. **If** one replacement is unambiguous → replace locators. **If** stale and no single replacement → record `unresolved` under `Locators`; never guess. A locator fix does not change `status`.
 6. **If** tracker wired → per remaining entry with `status` not `TRIAGED|CLOSED` → search for matching tracker issues. **If** matching issue found → set `status` to `TRIAGED`, add issue id to `references`; never create, close or relabel issues.
 7. Per `key` changed above → append one row to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), same `key` and updated values; copy unchanged field values verbatim.
-8. Rank what remains by `severity`, then age.
-9. Ensure agent memories (`MEMORY.md` / `memory/*.md`) do not duplicate content and only contain pointers (path, section, one-line hook) to relevant `docs/*.md` sections / `docs/*.jsonl` entries. **If** memory contains duplicate / stale content → update memory.
-10. Collect setup tips:
+8. Per `key` appended above → search the other three of `docs/decisions.jsonl`, `docs/deferrals.jsonl`, `docs/failures.jsonl`, `docs/knowledge.jsonl` for rows pointing at it: `references` holding the `key`, a `hard-blocked` deferral whose `description` names that row as its blocker, or any field carrying a locator the append replaced. Fold each ledger by `key`, highest `ts` wins; skip rows whose winning `status` is `CLOSED|SUPERSEDED`.
+9. Per row found → classify against the append:
+   - `blocker-cleared` = the row waits on the appended row and the append closed, corrected or superseded it → record under `Cross-Ledger Impact`.
+   - `evidence-superseded` = the row cites the appended row as evidence or rationale and the append closed, corrected or superseded it → record under `Cross-Ledger Impact`.
+   - `shared-locator` = the row carries the stale locator the append replaced → record under `Cross-Ledger Impact`.
+   - `UNAFFECTED` → no record.
+10. Rank what remains by `severity`, then age.
+11. Ensure agent memories (`MEMORY.md` / `memory/*.md`) do not duplicate content and only contain pointers (path, section, one-line hook) to relevant `docs/*.md` sections / `docs/*.jsonl` entries. **If** memory contains duplicate / stale content → update memory.
+12. Drop the ledger's superseded rows:
+    ```bash
+    "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" ledgers compact --ledger=deferrals
+    ```
+    **If** it exits non-zero → continue; never remove ledger lines by hand.
+13. Collect setup tips:
     ```bash
     "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" tips --workflow=utility
     ```
     Plain text, not JSON. Hold stdout as `{BKIT_TIPS}`; prints nothing or exits non-zero → `{BKIT_TIPS}` empty.
-11. Final return: Display output format verbatim as final message to user; do not summarise or trim.
+14. Final return: Display output format verbatim as final message to user; do not summarise or trim.
     Append a `## Suggested Replies` heading.
     Append `Would you like me to explain any of this in plain English? Then write 'yes, explain in plain english'.`
     Append a `## bkit Tips` heading, unless `{BKIT_TIPS}` is empty.
@@ -93,6 +105,10 @@ autoCompactWindow: 300000
 ## Open
 
 [Severity-sorted; per entry: `key`, `severity`, what remains, why it could not be closed. **If** none → `None`.]
+
+## Cross-Ledger Impact
+
+[Per row recorded: its `key`, its ledger, the appended `key` it points at, `blocker-cleared|evidence-superseded|shared-locator`, evidence (`file:line`); the caller hands it to that ledger's updater. **If** none → `None`.]
 
 ## Memories
 

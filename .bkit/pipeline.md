@@ -332,9 +332,9 @@ No command and no phase label. Run on demand, one subagent per run.
 | `bkit-utility-update-roadmap` | Roadmap | Ranks the next items to work on from the board, the ledgers and due audits. Rewrites only the `roadmap-analysis` block. |
 | `bkit-utility-update-tracker` | Tracker hygiene | Brings open issues in line with the tracker rules: short titles, labels, board status, priority, size, milestone, parent and blocked-by, from the latest issues audit and the roadmap. Suggests new milestones and parent issues; never creates or closes issues. |
 | `bkit-utility-update-documentation` | Docs drift | Syncs every doc listed in `.agents/docs.md` with the current system — drift cleanup across several plans. |
-| `bkit-utility-update-decisions` | Decisions ledger | Checks each active `docs/decisions.jsonl` entry against the docs and the code; appends a corrected or superseded row where it no longer holds. |
+| `bkit-utility-update-decisions` | Decisions ledger | Checks each active `docs/decisions.jsonl` entry against the docs and the code; appends a corrected or superseded row where it no longer holds. Lists rows in the other three ledgers that point at a corrected entry, for the caller to hand on; never writes another ledger. |
 | `bkit-utility-update-knowledge` | Gotchas ledger | Same over `docs/knowledge.jsonl`. Never retracts an entry about upstream behaviour for lack of local evidence. |
-| `bkit-utility-update-deferrals` | Deferrals ledger | Closes `docs/deferrals.jsonl` entries the code already resolves, with evidence. An entry an open tracker issue covers is marked triaged, not closed. |
+| `bkit-utility-update-deferrals` | Deferrals ledger | Closes `docs/deferrals.jsonl` entries the code already resolves, with evidence. An entry an open tracker issue covers is marked triaged, not closed. Same cross-ledger listing. |
 | `bkit-utility-update-failures` | Failures ledger | Same over `docs/failures.jsonl`, judged on whether the bug still reproduces from the code. A flaky entry closes only on a landed determinism fix. |
 | `bkit-utility-compress-markdown` | Compressor | Rewrites one markdown file in fewer tokens without changing its meaning. Overwrites the file. |
 

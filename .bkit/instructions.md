@@ -3497,6 +3497,24 @@ Per row found → classify against the append:
 `UNAFFECTED` → no record.
 ```
 
+### ledger-compact-run
+
+- prompt: where-used
+- carriers: prompt `bkit-utility-update-decisions`, `bkit-utility-update-deferrals`, `bkit-utility-update-failures`, `bkit-utility-update-knowledge`, `bkit-utility-update-roadmap`
+
+```text
+Drop the ledger's superseded rows:
+```
+
+### ledger-compact-best-effort
+
+- prompt: where-used
+- carriers: prompt `bkit-utility-update-decisions`, `bkit-utility-update-deferrals`, `bkit-utility-update-failures`, `bkit-utility-update-knowledge`, `bkit-utility-update-roadmap`
+
+```text
+**If** it exits non-zero → continue; never remove ledger lines by hand.
+```
+
 ### repo-facts-read
 
 - prompt: where-used
@@ -9475,7 +9493,7 @@ Untracked — reachable, no issue carries it
 Problem management and the known-error database (e.g. ITIL 4; record the edition). The deferred and known-error review it describes (e.g. ITIL-aligned known-error monitoring).
 Postmortem action items (e.g. Google SRE Workbook, Postmortem Culture).
 Bug triage and resolution states, including an incomplete state for an unanswered reproduction request (e.g. Mozilla defect severity guide, Bugzilla triage).
-Age targets, set by this procedure: 7 days for `CRITICAL`, 30 days for `HIGH`, from the row's first `ts`. No published standard.
+Age targets, set by this procedure: 7 days for `CRITICAL`, 30 days for `HIGH`, from the winning row's `firstTs` (`ts` when absent). No published standard.
 Fold `docs/failures.jsonl` last-row-wins. Open = winning `status != "CLOSED"`.
 Age against target. Whether CI gate on open `CRITICAL` failures is installed, and whether it reads this ledger.
 Verify every open row against source, including hypotheses, mis-framing, and understatement.
@@ -9499,7 +9517,7 @@ Security rows routed without exploit detail.
 **Step 4 — Source:** No verdict before this step. Under-reporting biases toward closing live bug.
 [empty-is-inconclusive] Pace reference queries. Re-run empty or surprisingly low result before close verdict. Partial answer indistinguishable from real one. Empty inconclusive, not absence. Packages/files outside project graph, mock-factory keys invisible → text search.
 [honest-reporting] Incident rows (seen on production or preview, not in review) need follow-ups checked. Remediation usually names more than code fix: regression test, monitor, alert, doc change. Check each landed. Fix landed, test or monitor did not → not FIXED. `Expected` names each missing follow-up and issue to open.
-**Step 5 — Recurrences:** Same-`key` append recording defect seen again = recurrence (`.bkit/jsonl.md` § Updating a Row). Omit appends that only change `status`. For `category: "testing"`, flake count = `key`'s row count under that rule. Rank open rows by count. Then regressions: each row `CLOSED` since previous report → look for later row same `key`, new row same defect under another `key`, or error-tracker events on matching issue after close. Each → `Expected` = `OPEN` row to append. **Done when:** `Recurrences` ranks open rows and lists regressions, or `none`.
+**Step 5 — Recurrences:** Same-`key` append recording defect seen again = recurrence (`.bkit/jsonl.md` § Updating a Row). Omit appends that only change `status`. For `category: "testing"`, flake count = winning row's `updates`, status-only appends included. Rank open rows by count. Then regressions: each row `CLOSED` since previous report → look for later row same `key`, new row same defect under another `key`, or error-tracker events on matching issue after close. Each → `Expected` = `OPEN` row to append. **Done when:** `Recurrences` ranks open rows and lists regressions, or `none`.
 **Step 6 — Classes:** (a) Known errors carry workaround. For every `TRIAGED` or CONFIRMED row agents keep hitting (>=2 recurrences in Step 5, or parked row whose blocker not in winning row), check `docs/knowledge.jsonl` has `ACTIVE` row with workaround. Missing → finding. `Expected` = knowledge row to append. (b) Count open and recently closed rows by `category`, package, root-cause class. Top recurring class this run = gate candidate → name for `bkit-audit-gates`. **Done when:** `Classes` holds workaround gaps, counts, gate candidate, or `none`.
 [tracker-issue-creation] **Step 7 — Classify:** Every row, as Step 4 left it, gets one verdict. This run does not append or open issues. Security row → `bkit-audit-security`: key, verdict, severity only in this report. Flaky test diagnosis → `bkit-audit-flakes`. Older flake diagnoses may sit on tracker issues predating that audit. Search those too.
 **Done when:** every verified row has one verdict. Security rows in Findings carry no `file:line` and no exploit detail.

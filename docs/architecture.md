@@ -65,6 +65,7 @@ cbartens/bkit (this repo)
 │   │   └── after/               # Phase 3 — index.ts runs one file per group of findings (auth, github,
 │   │                            #   vercel, ci-yml, tools, managed); checklist formatter
 │   ├── ledgers/                 # JSONL ledger codecs
+│   │   ├── compact.ts           # `bkit ledgers compact`: keyed ledgers rewritten to their fold winners, each stamped `firstTs` / `updates`
 │   │   ├── migrate.ts           # Install / upgrade rewrite of ledger rows without `schema` into the current shape via `normalize`; `isSchemaLedger` keeps ledgers out of canonicalHashes
 │   │   ├── status.ts            # status.jsonl workflow-log contract + fold reducer + invariant validator (the `bkit status` verb lives in commands/install/doctor.ts)
 │   │   └── telemetry.ts         # Unified JSONL telemetry codec — TelemetryEvent union, normalize/parse/fold/foldFrom/validate/totalsProblem/appendLine (#234 WS-1)

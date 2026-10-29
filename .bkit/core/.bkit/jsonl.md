@@ -10,21 +10,21 @@
 > - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
 > - Describe current state / rules, not reasons / history; state what to do, not why.
 > - Ships to consumers: describe the current setup only. NEVER an internal identifier (tracker issue number, ledger key, review-finding id) and NEVER project history — decisions belong in `docs/decisions.jsonl`, incidents in `docs/knowledge.jsonl`.
-> - One row per line. never edit or reorder a prior line — row STATE changes via same-`key` append (§ Updating a Row); sole exception: the install / upgrade schema migration (§ Versioning).
+> - One row per line. never edit or reorder a prior line — row STATE changes via same-`key` append (§ Updating a Row); sole exceptions: the install / upgrade schema migration (§ Versioning), `bkit ledgers compact` (§ Compaction).
 > - Before append: read file. Skip only if identity-matching row exists and nothing changed — changed field = update, not duplicate.
-> - Rows removed only by bkit's harvest: every `.bkit/friction.jsonl` row, `chat` / `run` rows in `.bkit/stats.jsonl` (§ Friction Is a Drained Queue).
+> - Rows removed only by bkit's harvest: every `.bkit/friction.jsonl` row, `chat` / `run` rows in `.bkit/stats.jsonl` (§ Friction Is a Drained Queue); and by `bkit ledgers compact`: superseded rows of the five keyed ledgers (§ Compaction).
 > - Best-effort append — always exit 0; never gate workflows on telemetry success.
 
 ## Write Idiom
 
 **Engine and workflow writers:** `bkit ledgers append --ledger=<decisions|deferrals|failures|knowledge|friction|stats> --rows=<file|->`; rows = JSON array without `schema` / `ts` / `bkit`.
 
-- **Fills:** `schema: 3`, a minted `ts` per row, `repo` when absent, `bkit.version` from `.bkit/version`.
+- **Fills:** `schema: 3`, a minted `ts` per row, `repo` when absent, `bkit.version` from `.bkit/version`; `firstTs` + `updates` on `deferral` / `failure` / `knowledge` / `decision` rows from the entry's earlier rows (§ Compaction), replacing supplied values.
 - **Checks** every row (validation, author vs § Ledgers & Writers) before writing any; one refused row → exit 8, nothing written.
 - **Refused:** supplied `schema` / `ts` / `bkit`; flat `bkitVersion` / `workflow` / `step` / `subagent` / `model` (they live in `bkit` / `by`); a kind the ledger does not take; a total not matching its parts.
 - `--ledger=stats` takes `compliance` / `counter` / `outcome` (`bkit workflows close` writes through it).
 - Subagent with no shell → hands its rows to the orchestrator as that JSON, `by.subagent` and `by.model` already set.
-- `feature` rows: `bkit roadmap feature`. `chat` / `run` rows: bkit's harvest script, into `harvest/stats.jsonl` only.
+- `feature` rows: `bkit roadmap feature` (fills `firstTs` + `updates` the same way). `chat` / `run` rows: bkit's harvest script, into `harvest/stats.jsonl` only.
 
 **Humans and scripts:** the `jq` idiom:
 
@@ -35,6 +35,7 @@ jq -c -n '{ schema: 3, ts: null, kind: "deferral", repo: $REPO, bkit: { version:
 
 - **`ts`:** Unix ms, always minted by `jq`'s `now` AT append TIME — `jq '… | .ts = (now*1000|floor)'`. The `ts: null` placeholder holds field order only; the pipe overwrites it. Drop the pipe and the row fails validation instead of landing a fake value — never seed the placeholder with a number.
 - **`ts` is never a literal.** Not hand-typed, not copied off an example row or the line above, not `date +%s%3N` (BSD/macOS incompatible). A fabricated past `ts` is indistinguishable from a real one and silently reorders the last-wins fold that every reader, the harvest, and every age report depend on. Whole-second values (`ts % 1000 == 0`) fail the live-ledger gate — a real mint is never round: `bkit ledgers append` moves one 1 ms on; a `jq` append that lands on one is re-run.
+- **`firstTs` / `updates`:** omit; the next compaction stamps them (§ Compaction).
 - **Log prefix:** every telemetry log line starts `[bkit-telemetry]` — load-bearing for log-drain grep.
 
 ## Ledgers & Writers
@@ -67,6 +68,8 @@ Every row opens with the same top section, in this order:
 | --- | --- | --- |
 | `schema` | `3` | Row format. `2` = older `plan` block (§ Shared Blocks); row without it = older shape, read through `normalize()` (§ Versioning). |
 | `ts` | `number` | Unix milliseconds — primary id. Minted at append, never a literal (§ Write Idiom). |
+| `firstTs` | `number?` | `deferral` / `failure` / `knowledge` / `decision` / `feature` only: `ts` of the entry's first row, never later than `ts`. Filled by the writer and by compaction (§ Compaction). |
+| `updates` | `number?` | Same kinds: rows the entry has had, this one included (integer >= 1). Same-`ts` rows count once. |
 | `kind` | `string` | Closed enum: `compliance`, `outcome`, `counter`, `friction`, `deferral`, `failure`, `knowledge`, `decision`, `feature`, `chat`, `run`. |
 | `key` | `string?` | Keyed kinds only (`friction` / `deferral` / `failure` / `knowledge` / `decision` / `feature` / `chat` / `run`). See § Key & References. |
 | `repo` | `string` | Origin repo slug, e.g. `cbartens/bkit`; its fingerprint on `chat` / `run` rows (§ Per-Kind Fields). |
@@ -151,7 +154,7 @@ Orchestrator: omit `by.subagent` and `by.model`.
 
 ## Friction Is a Drained Queue — the non-append-only rows
 
-`.bkit/friction.jsonl` = drained work queue. `chat` / `run` rows in `.bkit/stats.jsonl` = drained too (they belong in `harvest/`). No other row is ever removed:
+`.bkit/friction.jsonl` = drained work queue. `chat` / `run` rows in `.bkit/stats.jsonl` = drained too (they belong in `harvest/`). No other row is ever removed, bar superseded keyed-ledger rows `bkit ledgers compact` drops (§ Compaction):
 
 <!-- prettier-ignore -->
 | Actor | May do |
@@ -246,7 +249,7 @@ Free-form; closest term, `other` if none. `deferral` + `failure` → domain set;
 | `docs` | documentation |
 | `other` | none of the above |
 
-**Flaky / intermittent tests** = `failure` with `category:"testing"`: `key` = spec path + test title, minted once; re-observation = same-`key` append (§ Updating a Row) → flake-count = same-`key` row count; first/last `ts` = first-/last-seen. Do not add pass-rate or counter field.
+**Flaky / intermittent tests** = `failure` with `category:"testing"`: `key` = spec path + test title, minted once; re-observation = same-`key` append (§ Updating a Row) → flake-count = winner's `updates`; `firstTs` / `ts` = first-/last-seen. Do not add pass-rate or counter field.
 
 **Friction — `friction`:**
 
@@ -280,12 +283,12 @@ Fields that change after first write:
 
 **Hard, not stylistic:** `.gitattributes` sets `merge=union` on every append-only ledger — merges concatenate, never conflict. Union keeps both sides of a conflicting hunk: edit a line and the stale copy survives beside its replacement; `fold` last-wins by `ts` -> stale wins whenever its `ts` is later.
 
-- **NEVER edit or delete a line.** Correct via same-`key` append. Sole exception: the `bkit install` / `bkit upgrade` schema migration (§ Versioning).
+- **NEVER edit or delete a line.** Correct via same-`key` append. Sole exceptions: the `bkit install` / `bkit upgrade` schema migration (§ Versioning); `bkit ledgers compact` (§ Compaction).
 - **never hand-write `ts`, in either direction** — mint at write time (§ Write Idiom). Future: outranks every later correction, permanently; row can never be superseded. Backdated: loses to rows it actually followed, so the correction it was meant to be silently never applies.
 
 `.bkit/friction.jsonl` excluded — rows are removed from it (§ Friction Is a Drained Queue); union would resurrect a drain.
 
-Copy prior row, change deltas, append. Through `bkit ledgers append`: drop `schema` / `ts` / `bkit`, set `by` to the writer of the new row. Carry `key` verbatim — reworded `key` forks entry. Same `key` = one entry; `fold` returns last → "how long open" / "time to fix" from dated `ts`.
+Copy prior row, change deltas, append. Through `bkit ledgers append`: drop `schema` / `ts` / `bkit` (`firstTs` / `updates` are recomputed), set `by` to the writer of the new row. Carry `key` verbatim — reworded `key` forks entry. Same `key` = one entry; `fold` returns last → "how long open" / "time to fix" = its `ts` - `firstTs`.
 
 **Triage** = sweep `docs/deferrals.jsonl` / `docs/failures.jsonl` for moved-on work → append same-`key` row with `status: "CLOSED"`, current `references` (PR, commit, closing issue), re-triaged `severity` if earned.
 
@@ -299,15 +302,28 @@ Not on `knowledge` or `decision` — both use `ACTIVE` / `SUPERSEDED`. Absent `s
 
 Readers count ENTITIES, never lines — `fold` first.
 
+## Compaction
+
+`bkit ledgers compact [--ledger=<knowledge|decisions|deferrals|failures|issues|all>] [--dry-run]` rewrites `docs/knowledge.jsonl`, `docs/decisions.jsonl`, `docs/deferrals.jsonl`, `docs/failures.jsonl`, `.bkit/issues.jsonl` to their fold winners:
+
+- **Drops** each row a same-identity row with higher `ts` supersedes; equal `ts` → later line wins, as in `fold`. Winner stays on its line.
+- **Stamps** each winner `firstTs` (earliest `firstTs` / `ts` across the entry) + `updates` (a stamped row counts as its `updates`, each later row adds 1, same-`ts` rows count once); stale values corrected.
+- **Keeps byte-for-byte:** malformed, non-object, blank and keyless lines; rows of other kinds; a winner already carrying the right values.
+- **Reader-invisible:** `fold` returns the same winners, apart from `firstTs` / `updates`.
+- **Idempotent:** second run changes nothing; `merge=union` bringing dropped rows back → next run drops them again, counts unchanged.
+- **Writes** via temp file + rename, only when something changes; `--dry-run` counts only.
+- **Runs** at the end of each ledger's updater, best-effort, on its own ledger: `@bkit-utility-update-knowledge` / `-decisions` / `-deferrals` / `-failures`, `@bkit-utility-update-roadmap` → `issues`. Never at append, never at install / upgrade.
+- No schema change: `firstTs` / `updates` optional; row without them = one-row entry.
+
 ## These Ledgers Are Inputs, Not a Diary
 
-`docs/deferrals.jsonl` + `docs/failures.jsonl` = backlog — deferred scope + known bugs; `severity` ranks, `ts` ages. READ:
+`docs/deferrals.jsonl` + `docs/failures.jsonl` = backlog — deferred scope + known bugs; `severity` ranks, `firstTs` ages (`ts` when absent). READ:
 
 - **Before designing or planning** — grep for existing entry or past deferral reason.
 - **On a triage sweep** — walk open entries vs tracker + codebase; close, `TRIAGED`, or re-`severity` via append (§ Updating a Row).
 - **When a bug looks familiar** — same-`key` `failure` = recurrence.
 
-Rank existing: `severity: CRITICAL` first, then oldest `ts`.
+Rank existing: `severity: CRITICAL` first, then oldest `firstTs` (`ts` when absent).
 
 ## Identity / Dedup
 
@@ -350,7 +366,7 @@ Not a ledger: a row in a run's `status.jsonl` (`.bkit/workflows.md` § `status.j
 
 - **Readers normalize every row:** `normalize()` in `.bkit/core/engine/ledgers/telemetry.ts` returns a `schema` row as is; a row without one → `schema: 2` shape: `bkitVersion` → `bkit.version`, `workflow` / `step` / `subagent` / `model` → `by.*` (`null` / empty dropped), any kind's `parentSha` → `run.parentSha`, flat run fields → their blocks, `chat` total tokens summed from its models, fields with no place dropped. `merge=union` can bring an old-shape line back from a branch → no reader assumes a migrated file; one comparing rows across ledgers compares them normalized.
 - **No version gating:** readers ingest all well-formed rows, report counts per `bkit.version`; unexpected version surfaces for triage.
-- **Migration:** `bkit install` / `bkit upgrade` rewrite each ledger line without `schema` through `normalize()`, in place. Idempotent — a `schema` line, a malformed line or a non-object line stays byte-for-byte. An old line whose rewrite the file already holds (`merge=union` of a branch from before the rewrite doubles every row) is dropped. The one sanctioned edit of a prior line (§ Updating a Row). `bkit check` counts each ledger still holding such a line as a pending write → drift, exit 1 until `bkit upgrade` runs. Ledgers carry no canonical hash: appended rows are never drift.
+- **Migration:** `bkit install` / `bkit upgrade` rewrite each ledger line without `schema` through `normalize()`, in place. Idempotent — a `schema` line, a malformed line or a non-object line stays byte-for-byte. An old line whose rewrite the file already holds (`merge=union` of a branch from before the rewrite doubles every row) is dropped. A sanctioned edit of a prior line (§ Updating a Row), beside § Compaction. `bkit check` counts each ledger still holding such a line as a pending write → drift, exit 1 until `bkit upgrade` runs. Ledgers carry no canonical hash: appended rows are never drift.
 
 ## Examples
 

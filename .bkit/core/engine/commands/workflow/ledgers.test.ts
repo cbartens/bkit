@@ -1058,9 +1058,11 @@ describe("bkit ledgers append", () => {
     const [a, b] = lines(r, "docs/failures.jsonl");
     expect(a.ts).toBeGreaterThanOrEqual(before);
     expect(b.ts).toBeGreaterThan(a.ts as number);
-    expect(Object.keys(a).slice(0, 7)).toEqual([
+    expect(Object.keys(a).slice(0, 9)).toEqual([
       "schema",
       "ts",
+      "firstTs",
+      "updates",
       "kind",
       "key",
       "repo",
@@ -1258,6 +1260,138 @@ describe("bkit ledgers append", () => {
     ]);
     expect(res.code).toBe(0);
     expect(lines(r, ".bkit/friction.jsonl")).toHaveLength(1);
+  });
+
+  it("append stamps a keyed row's first write firstTs = ts, updates = 1", async () => {
+    const r = repo();
+    expect((await append(r, "failures", [failure()])).code).toBe(0);
+    const [a] = lines(r, "docs/failures.jsonl");
+    expect(a).toMatchObject({ firstTs: a?.ts, updates: 1 });
+  });
+
+  it("append carries firstTs forward and counts updates, across calls and within one batch", async () => {
+    const r = repo();
+    await append(r, "failures", [failure()]);
+    await append(r, "failures", [failure({ status: "TRIAGED" }), failure({ status: "CLOSED" })]);
+    const [a, b, c] = lines(r, "docs/failures.jsonl");
+    expect(b).toMatchObject({ firstTs: a?.ts, updates: 2 });
+    expect(c).toMatchObject({ firstTs: a?.ts, updates: 3, status: "CLOSED" });
+  });
+
+  it("append replaces a supplied firstTs / updates with the computed values", async () => {
+    const r = repo();
+    expect((await append(r, "failures", [failure({ firstTs: 1, updates: 40 })])).code).toBe(0);
+    const [a] = lines(r, "docs/failures.jsonl");
+    expect(a).toMatchObject({ firstTs: a?.ts, updates: 1 });
+  });
+
+  it("append continues the count from a compacted winner", async () => {
+    const r = repo();
+    put(
+      r,
+      "docs/failures.jsonl",
+      `${JSON.stringify({ ...failure(), schema: 3, ts: 1_000, firstTs: 500, updates: 7, repo: "unknown/repo", bkit: { version: "x" } })}\n`,
+    );
+    await append(r, "failures", [failure({ status: "CLOSED" })]);
+    expect(lines(r, "docs/failures.jsonl")[1]).toMatchObject({ firstTs: 500, updates: 8 });
+  });
+
+  it("append leaves rows outside the five keyed-ledger kinds without firstTs / updates", async () => {
+    const r = repo();
+    const friction = {
+      kind: "friction",
+      by: { workflow: "ship", step: "ship-close-gate" },
+      key: "f",
+      summary: "s",
+      severity: "LOW",
+    };
+    expect((await append(r, "friction", [friction, friction])).code).toBe(0);
+    for (const row of lines(r, ".bkit/friction.jsonl")) {
+      expect(row).not.toHaveProperty("firstTs");
+      expect(row).not.toHaveProperty("updates");
+    }
+  });
+});
+
+describe("bkit ledgers compact", () => {
+  const row = (key: string, ts: number, o: Record<string, unknown> = {}) =>
+    JSON.stringify({
+      schema: 3,
+      ts,
+      kind: "knowledge",
+      key,
+      repo: "o/r",
+      bkit: { version: "6.0.0" },
+      by: { step: "manual" },
+      summary: `${key} at ${ts}`,
+      ...o,
+    });
+  const ledger = (...rows: string[]) => rows.map((l) => `${l}\n`).join("");
+  const read = (r: string, rel: string) => fs.readFileSync(path.join(r, rel), "utf-8");
+
+  it("compacts every keyed ledger by default and reports per-ledger counts", async () => {
+    const r = tmp();
+    put(r, "docs/knowledge.jsonl", ledger(row("k", 1001), row("k", 1002)));
+    put(r, ".bkit/issues.jsonl", ledger(row("f", 1001, { kind: "feature", status: "DESIGNED" })));
+    const res = await run(r, ["compact", `--root=${r}`]);
+    expect(res.code).toBe(0);
+    expect(res.json).toMatchObject({ dryRun: false, dropped: 1 });
+    expect(res.json.ledgers.map((l: { ledger: string }) => l.ledger)).toEqual([
+      "knowledge",
+      "decisions",
+      "deferrals",
+      "failures",
+      "issues",
+    ]);
+    expect(read(r, "docs/knowledge.jsonl")).toBe(
+      `${row("k", 1002).replace('"ts":1002,', '"ts":1002,"firstTs":1001,"updates":2,')}\n`,
+    );
+    expect(read(r, ".bkit/issues.jsonl")).toContain('"firstTs":1001,"updates":1,');
+  });
+
+  it("--ledger narrows the run to one ledger", async () => {
+    const r = tmp();
+    const decisions = ledger(
+      row("d", 1001, { kind: "decision" }),
+      row("d", 1002, { kind: "decision" }),
+    );
+    put(r, "docs/knowledge.jsonl", ledger(row("k", 1001), row("k", 1002)));
+    put(r, "docs/decisions.jsonl", decisions);
+    const res = await run(r, ["compact", `--root=${r}`, "--ledger=knowledge"]);
+    expect(res.code).toBe(0);
+    expect(res.json.ledgers).toHaveLength(1);
+    expect(read(r, "docs/decisions.jsonl")).toBe(decisions);
+  });
+
+  it("--dry-run counts without writing", async () => {
+    const r = tmp();
+    const before = ledger(row("k", 1001), row("k", 1002));
+    put(r, "docs/knowledge.jsonl", before);
+    const res = await run(r, ["compact", `--root=${r}`, "--ledger=knowledge", "--dry-run"]);
+    expect(res.code).toBe(0);
+    expect(res.json).toMatchObject({ dryRun: true, dropped: 1 });
+    expect(res.json.ledgers[0]).toMatchObject({ written: false });
+    expect(read(r, "docs/knowledge.jsonl")).toBe(before);
+  });
+
+  it("a second run changes nothing", async () => {
+    const r = tmp();
+    put(r, "docs/knowledge.jsonl", ledger(row("k", 1001), row("k", 1002)));
+    await run(r, ["compact", `--root=${r}`, "--ledger=knowledge"]);
+    const once = read(r, "docs/knowledge.jsonl");
+    const res = await run(r, ["compact", `--root=${r}`, "--ledger=knowledge"]);
+    expect(res.json).toMatchObject({ dropped: 0 });
+    expect(res.json.ledgers[0]).toMatchObject({ stamped: 0, written: false });
+    expect(read(r, "docs/knowledge.jsonl")).toBe(once);
+  });
+
+  it("refuses an unknown --ledger with a usage error", async () => {
+    const r = tmp();
+    const res = await run(r, ["compact", `--root=${r}`, "--ledger=friction"]);
+    expect(res.code).toBe(2);
+    expect(res.err).toContain(
+      "--ledger must be one of knowledge, decisions, deferrals, failures, issues, all",
+    );
   });
 });
 

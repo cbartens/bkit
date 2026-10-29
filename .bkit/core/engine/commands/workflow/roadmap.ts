@@ -25,6 +25,7 @@ import {
   parse,
   resolveRepoSlug,
   validate,
+  withLineage,
 } from "../../ledgers/telemetry.js";
 import { readBkitVersion } from "../../install/version-file.js";
 import {
@@ -375,7 +376,8 @@ export interface FeatureResult {
 
 /**
  * Append the feature's roadmap row (built from `workflow` / `fid`, or `row` as
- * given) under `root`, then re-render the board. Fail-open: a failed append or
+ * given, with `firstTs` + `updates` carried forward from the FID's rows already in
+ * the ledger) under `root`, then re-render the board. Fail-open: a failed append or
  * render is logged and reported, never thrown.
  */
 export function appendFeature(
@@ -403,10 +405,16 @@ export function appendFeature(
       step: o.step ?? `${o.workflow}-close-workflow`,
     });
   }
+  const ledger = path.join(root, ".bkit", "issues.jsonl");
+  const prior =
+    fs.existsSync(ledger) && fs.statSync(ledger).isFile()
+      ? parse(fs.readFileSync(ledger, "utf-8")).events
+      : [];
+  row = withLineage(prior, row);
   const check = validate(row);
   if (!check.ok) throw new CommandError(EXIT.USAGE, `not a valid feature row: ${check.reason}`);
   const problem = appendLedgerRow(root, row);
-  if (problem) log(`append failed: ${path.join(root, ".bkit", "issues.jsonl")} — ${problem}`);
+  if (problem) log(`append failed: ${ledger} — ${problem}`);
   const board = foldRoadmap(root, log);
   return { row, appended: problem === undefined, written: board.written, path: board.path };
 }

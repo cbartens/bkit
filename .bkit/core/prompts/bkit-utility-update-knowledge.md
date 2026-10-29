@@ -75,12 +75,17 @@ autoCompactWindow: 300000
    - `UNAFFECTED` → no record.
 9. Per doc passage that states facts you just corrected → follow doc `Rules` header and edit only the passages to match appended row; do not run full doc sync.
 10. Ensure agent memories (`MEMORY.md` / `memory/*.md`) do not duplicate content and only contain pointers (path, section, one-line hook) to relevant `docs/*.md` sections / `docs/*.jsonl` entries. **If** memory contains duplicate / stale content → update memory.
-11. Collect setup tips:
+11. Drop the ledger's superseded rows:
+    ```bash
+    "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" ledgers compact --ledger=knowledge
+    ```
+    **If** it exits non-zero → continue; never remove ledger lines by hand.
+12. Collect setup tips:
     ```bash
     "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" tips --workflow=utility
     ```
     Plain text, not JSON. Hold stdout as `{BKIT_TIPS}`; prints nothing or exits non-zero → `{BKIT_TIPS}` empty.
-12. Final return: Display output format verbatim as final message to user; do not summarise or trim.
+13. Final return: Display output format verbatim as final message to user; do not summarise or trim.
     Append a `## Suggested Replies` heading.
     Append `Would you like me to explain any of this in plain English? Then write 'yes, explain in plain english'.`
     Append a `## bkit Tips` heading, unless `{BKIT_TIPS}` is empty.

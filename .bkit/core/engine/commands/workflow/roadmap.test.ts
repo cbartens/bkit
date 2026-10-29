@@ -563,9 +563,11 @@ describe("bkit roadmap feature", () => {
     expect(res.code).toBe(0);
     expect(res.json).toMatchObject({ appended: true, written: true });
     expect(rows(r)).toEqual([res.json.row]);
-    expect(Object.keys(res.json.row).slice(0, 7)).toEqual([
+    expect(Object.keys(res.json.row).slice(0, 9)).toEqual([
       "schema",
       "ts",
+      "firstTs",
+      "updates",
       "kind",
       "key",
       "repo",
@@ -596,6 +598,16 @@ describe("bkit roadmap feature", () => {
     const copy = await feat(b, `--row=${JSON.stringify(first.json.row)}`);
     expect(copy.code).toBe(0);
     expect(rows(b)).toEqual([first.json.row]);
+  });
+
+  it("carries firstTs forward and counts updates from the feature's earlier rows", async () => {
+    const r = root();
+    const repo = { repo: "unknown/repo" };
+    ledger(r, feature(1001, "9-z", "DESIGNED", repo), feature(1002, "9-z", "DESIGNED"));
+    const res = await feat(r, "--workflow=build", "--fid=9-z");
+    expect(res.code).toBe(0);
+    expect(res.json.row).toMatchObject({ firstTs: 1001, updates: 2, status: "BUILT" });
+    expect(rows(r).at(-1)).toEqual(res.json.row);
   });
 
   it("refuses a missing fid, an unknown workflow without --status, and an invalid row", async () => {

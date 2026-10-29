@@ -28,7 +28,7 @@ tools:
 **Contract:** The terms between this agent and whoever runs it.
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Update roadmap; do not just analyse; do not write implementation code; NEVER append ledger rows; list bugs and deferrals found in output for the caller to record.
+- **Mandate:** Update roadmap; do not just analyse; do not write implementation code; NEVER append ledger rows; the only ledger write is compacting `.bkit/issues.jsonl`; list bugs and deferrals found in output for the caller to record.
 - **No commits:** Do not run `git commit` / `git add` / `git push` (caller does).
 - **Completeness:** every `bkit:` marker pair intact; content outside `roadmap-analysis` unchanged.
 - **Tracker:** Read-only; never create, close, or relabel issues; recommend and let caller act.
@@ -67,12 +67,17 @@ tools:
 10. Group items sharing scope or blocking each other; group by domain boundaries, never token count; treat items done together as one list item.
 11. Per item → recommend the `/bkit-<phase>` command; recommend the `.bkit/lite.md` lite workflow `<phase>:lite` instead only where it is clearly enough; recommend model tier; recommend `@bkit-audit-generate` for audit reports. **If** tracker wired and item has no issue → recommend filing one first, shape per `.bkit/trackers.md` § Issue shapes.
 12. Update content in `docs/roadmap.md` between markers `<!-- bkit:roadmap-analysis start -->` and `<!-- bkit:roadmap-analysis end -->` only via `Edit`.
-13. Collect setup tips:
+13. Drop the ledger's superseded rows:
+    ```bash
+    "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" ledgers compact --ledger=issues
+    ```
+    **If** it exits non-zero → continue; never remove ledger lines by hand.
+14. Collect setup tips:
     ```bash
     "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" tips --workflow=utility
     ```
     Plain text, not JSON. Hold stdout as `{BKIT_TIPS}`; prints nothing or exits non-zero → `{BKIT_TIPS}` empty.
-14. Final return: Display output format verbatim as final message to user; do not summarise or trim.
+15. Final return: Display output format verbatim as final message to user; do not summarise or trim.
     Append a `## Suggested Replies` heading.
     Append `Would you like me to explain any of this in plain English? Then write 'yes, explain in plain english'.`
     Append a `## bkit Tips` heading, unless `{BKIT_TIPS}` is empty.

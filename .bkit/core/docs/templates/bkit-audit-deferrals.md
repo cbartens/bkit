@@ -186,7 +186,7 @@ Blocker lifted = highest-yield finding. Flag on verdict. Apply KEEP trigger rule
 | `MEDIUM` | Data defect (`ts`, `status`, `reason`). KEEP whose trigger has fired. Real work with no issue. Reason no longer holds |
 | `LOW` | KEEP with no trigger. Missing `severity`. Locator drift. Superseded surface that changes no result |
 
-Within a severity: oldest `ts` first. Finding keeps severity when it becomes a ledger row or an issue. Row bucket = ledger severity, or verdict-assigned.
+Within a severity: oldest `firstTs` (`ts` when absent) first. Finding keeps severity when it becomes a ledger row or an issue. Row bucket = ledger severity, or verdict-assigned.
 
 <!-- prettier-ignore -->
 | ID | Severity | Verdict | Location | Evidence | Expected |

@@ -1,6 +1,7 @@
-// bkit ledgers commit|union|only-bookkeeping|append|check — stage and commit bookkeeping
-// by an allow-list, never `git add -A`; append validated rows with a minted `ts`;
-// check that the ledger rows a plan names are on disk.
+// bkit ledgers commit|union|only-bookkeeping|append|check|triage|compact — stage and
+// commit bookkeeping by an allow-list, never `git add -A`; append validated rows with
+// a minted `ts`; check that the ledger rows a plan names are on disk; drop superseded
+// rows from the keyed ledgers.
 //
 // The pathspec is built by `git ls-files` against quoted globs, so git does the
 // matching and an unmatched glob is empty output, never a shell abort. Staging
@@ -23,9 +24,11 @@ import {
   mintTs,
   resolveRepoSlug,
   validate,
+  withLineage,
   writerProblem,
   type AppendLedger,
 } from "../../ledgers/telemetry.js";
+import { COMPACT_LEDGERS, compactLedgers, type CompactLedger } from "../../ledgers/compact.js";
 import {
   CommandError,
   EXIT,
@@ -669,7 +672,7 @@ export function retriggerCommit(
 export const ledgersCommand: CommandSpec = {
   noun: "ledgers",
   summary:
-    "Stage and commit bookkeeping by allow-list; union ledgers; check a range is bookkeeping only.",
+    "Stage and commit bookkeeping by allow-list; union ledgers; check a range is bookkeeping only; compact keyed ledgers.",
   verbs: {
     commit: {
       summary: "Stage (and commit) the bookkeeping allow-list for one feature.",
@@ -839,6 +842,27 @@ export const ledgersCommand: CommandSpec = {
           "no `**Ledger rows:**` line, the line is unfilled, or a key it names has no row",
       },
       run: (ctx) => check(ctx),
+    },
+    compact: {
+      summary:
+        "Rewrite keyed ledgers to their fold winners, stamping each winner's firstTs + updates.",
+      flags: [
+        { name: "root", type: "string", help: "checkout whose ledgers to compact (default: cwd)" },
+        {
+          name: "ledger",
+          type: "string",
+          help: `${Object.keys(COMPACT_LEDGERS).join(" | ")} | all (default: all)`,
+        },
+        { name: "dry-run", type: "boolean", help: "count only; write nothing" },
+      ],
+      output: {
+        dryRun: "true when nothing was written by design",
+        ledgers:
+          "per ledger: ledger, file, rows (keyed rows folded), dropped (superseded rows removed), stamped (winners given firstTs / updates), written",
+        dropped: "superseded rows removed across all ledgers",
+      },
+      exitCodes: { [EXIT_STAGE]: "writing a compacted ledger failed" },
+      run: (ctx) => compact(ctx),
     },
   },
 };
@@ -1207,14 +1231,27 @@ export interface AppendResult {
 }
 
 /** The top section in its written order, then the row's own fields. */
-const TOP_ORDER = ["schema", "ts", "kind", "key", "repo", "bkit", "by", "references"];
+const TOP_ORDER = [
+  "schema",
+  "ts",
+  "firstTs",
+  "updates",
+  "kind",
+  "key",
+  "repo",
+  "bkit",
+  "by",
+  "references",
+];
 
 /**
  * Append `rows` to one ledger. Every row is checked before any is written, so a
  * refused row leaves the file byte-identical. Each row gets `schema` and a `ts`
  * minted now (never supplied), `repo` when it lacks one and `bkit.version` from
- * `.bkit/version`. Never reads back or rewrites existing rows. Throws a
- * CommandError (USAGE / EXIT_ROW_REFUSED / EXIT_STAGE).
+ * `.bkit/version`; an `AGED_KINDS` row also gets `firstTs` + `updates` carried
+ * forward from its entry's rows already in the ledger (supplied values replaced).
+ * Never rewrites existing rows. Throws a CommandError (USAGE / EXIT_ROW_REFUSED /
+ * EXIT_STAGE).
  */
 export function appendLedgerRows(root: string, ledger: string, rows: unknown): AppendResult {
   if (!Object.hasOwn(APPEND_LEDGERS, ledger)) {
@@ -1231,6 +1268,8 @@ export function appendLedgerRows(root: string, ledger: string, rows: unknown): A
   let repo: string | undefined;
   let version: string | undefined;
   let last: number | undefined;
+  const abs = path.join(root, file);
+  const prior: unknown[] = fs.existsSync(abs) ? parse(fs.readFileSync(abs, "utf-8")).events : [];
   const out: Array<Record<string, unknown>> = rows.map((raw, i) => {
     const refuse = (why: string) => new CommandError(EXIT_ROW_REFUSED, `row ${i + 1}: ${why}`);
     if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
@@ -1248,13 +1287,13 @@ export function appendLedgerRows(root: string, ledger: string, rows: unknown): A
     repo ??= resolveRepoSlug(root) || "unknown/repo";
     version ??= readBkitVersion(path.join(root, ".bkit", "version"))?.pinnedVersion || "unknown";
     last = mintTs(last);
-    const filled: Record<string, unknown> = {
+    const filled = withLineage(prior, {
       repo,
       ...r,
       schema: SCHEMA,
       ts: last,
       bkit: { version },
-    };
+    });
     const row: Record<string, unknown> = {};
     for (const k of TOP_ORDER) if (filled[k] !== undefined) row[k] = filled[k];
     for (const [k, v] of Object.entries(filled)) if (!(k in row)) row[k] = v;
@@ -1262,10 +1301,10 @@ export function appendLedgerRows(root: string, ledger: string, rows: unknown): A
     if (!v.ok) throw refuse(v.reason ?? "invalid");
     const who = writerProblem(row);
     if (who !== undefined) throw refuse(who);
+    prior.push(row);
     return row;
   });
 
-  const abs = path.join(root, file);
   const made = mkdirp(path.dirname(abs));
   if (made) throw new CommandError(EXIT_STAGE, `mkdir failed for ${path.dirname(file)}: ${made}`);
   const block = out.map((r) => `${JSON.stringify(r)}\n`).join("");
@@ -1364,11 +1403,46 @@ function check(ctx: RunContext): number {
   return EXIT.OK;
 }
 
+function compact(ctx: RunContext): number {
+  const root = rootOf(ctx);
+  const named = str(ctx.flags.ledger) ?? "all";
+  if (named !== "all" && !Object.hasOwn(COMPACT_LEDGERS, named)) {
+    throw new CommandError(
+      EXIT.USAGE,
+      `--ledger must be one of ${Object.keys(COMPACT_LEDGERS).join(", ")}, all (got '${named}')`,
+    );
+  }
+  const ledgers = (named === "all" ? Object.keys(COMPACT_LEDGERS) : [named]) as CompactLedger[];
+  const dryRun = ctx.flags.dryRun === true;
+  const results = compactOrError(root, ledgers, dryRun);
+  if (typeof results === "string") throw new CommandError(EXIT_STAGE, `compact failed: ${results}`);
+  const dropped = results.reduce((n, r) => n + r.dropped, 0);
+  for (const r of results) {
+    ctx.log(`${r.file}: ${r.dropped} superseded row(s) dropped, ${r.stamped} winner(s) stamped`);
+  }
+  ctx.emit({ dryRun, ledgers: results, dropped });
+  return EXIT.OK;
+}
+
 /** mkdir -p; the error text, or undefined on success. */
 function mkdirp(dir: string): string | undefined {
   try {
     fs.mkdirSync(dir, { recursive: true });
     return undefined;
+  } catch (err) {
+    // Reported as the command's staging exit code, with the reason.
+    return (err as Error).message;
+  }
+}
+
+/** {@link compactLedgers}; its results, or the error text. A failed temp write or rename leaves the ledger untouched. */
+function compactOrError(
+  root: string,
+  ledgers: readonly CompactLedger[],
+  dryRun: boolean,
+): ReturnType<typeof compactLedgers> | string {
+  try {
+    return compactLedgers(root, ledgers, dryRun);
   } catch (err) {
     // Reported as the command's staging exit code, with the reason.
     return (err as Error).message;

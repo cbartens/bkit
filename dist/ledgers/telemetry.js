@@ -133,6 +133,17 @@ export const SEVERITY_KINDS = new Set(["friction", "deferral", "failure"]);
 export const TRIAGE_STATUSES = new Set(["OPEN", "TRIAGED", "CLOSED"]);
 /** The `ACTIVE` / `SUPERSEDED` lifecycle shared by `decision` and `knowledge`. */
 export const DECISION_STATUSES = new Set(["ACTIVE", "SUPERSEDED"]);
+/**
+ * The kinds whose rows carry `firstTs` + `updates` (`.bkit/jsonl.md` § Compaction):
+ * the keyed kinds of the ledgers `bkit ledgers compact` rewrites to their fold winners.
+ */
+export const AGED_KINDS = new Set([
+    "deferral",
+    "failure",
+    "knowledge",
+    "decision",
+    "feature",
+]);
 export const FEATURE_STATUSES = new Set([
     "DESIGNED",
     "PLANNED",
@@ -985,6 +996,23 @@ export function validate(event) {
     else if (e["reason"] !== undefined) {
         return { ok: false, reason: `${kind} rows do not carry reason` };
     }
+    // firstTs / updates — the entry's age and row count, set by the writer (withLineage).
+    if (AGED_KINDS.has(kind)) {
+        const first = e["firstTs"];
+        if (first !== undefined && (typeof first !== "number" || !(first <= e["ts"]))) {
+            return { ok: false, reason: "firstTs must be a number no later than ts" };
+        }
+        const updates = e["updates"];
+        if (updates !== undefined && (!Number.isInteger(updates) || updates < 1)) {
+            return { ok: false, reason: "updates must be a positive integer" };
+        }
+    }
+    else {
+        for (const f of ["firstTs", "updates"]) {
+            if (e[f] !== undefined)
+                return { ok: false, reason: `${kind} rows do not carry ${f}` };
+        }
+    }
     const run = isObj(e["run"]) ? e["run"] : undefined;
     if (kind === "compliance" || kind === "counter") {
         if (typeof run?.["parentSha"] !== "string" || run["parentSha"] === "") {
@@ -1218,6 +1246,64 @@ export function fold(events) {
         state.set(key, event);
     }
     return state;
+}
+const positiveInt = (v) => Number.isInteger(v) && v > 0 ? v : undefined;
+/**
+ * `firstTs` + `updates` of one entry from all of its rows, in any order. A row
+ * carrying `updates` stands for that many rows, so the count survives compaction;
+ * each later row adds one. Rows sharing a numeric `ts` are one write: a compacted
+ * winner beside the pre-compaction copy a union merge brought back.
+ */
+export function lineage(rows) {
+    let firstTs;
+    let updates = 0;
+    let prev;
+    for (const r of [...rows].sort((a, b) => compareTs({ ts: a.ts }, { ts: b.ts }))) {
+        for (const t of [r.firstTs, r.ts]) {
+            if (typeof t === "number" && Number.isFinite(t) && (firstTs === undefined || t < firstTs)) {
+                firstTs = t;
+            }
+        }
+        const own = positiveInt(r.updates);
+        const at = tsOrder(r.ts);
+        updates =
+            at === prev && Number.isFinite(at)
+                ? Math.max(updates, own ?? updates)
+                : Math.max(own ?? 0, updates + 1);
+        prev = at;
+    }
+    return firstTs === undefined ? { updates } : { firstTs, updates };
+}
+/** `row` with `firstTs` + `updates` set to `l`, placed right after `ts` (at the end when it has none). */
+export function placeLineage(row, l) {
+    const fields = l.firstTs === undefined ? {} : { firstTs: l.firstTs };
+    fields["updates"] = l.updates;
+    const out = {};
+    for (const [k, v] of Object.entries(row)) {
+        if (k === "firstTs" || k === "updates")
+            continue;
+        out[k] = v;
+        if (k === "ts")
+            Object.assign(out, fields);
+    }
+    return "ts" in row ? out : { ...out, ...fields };
+}
+/** True for a row `bkit ledgers compact` folds: an {@link AGED_KINDS} kind with a non-empty string `key`. */
+export const isAgedRow = (row) => AGED_KINDS.has(String(row["kind"])) && typeof row["key"] === "string" && row["key"] !== "";
+/**
+ * `row` about to be appended, with `firstTs` + `updates` carried forward from
+ * `prior` (rows already in its ledger) and any supplied values replaced. A row
+ * {@link isAgedRow} rejects is returned unchanged.
+ */
+export function withLineage(prior, row) {
+    if (!isAgedRow(row))
+        return row;
+    const id = identity(normalizeEvent(row));
+    const same = prior
+        .map(normalizeEvent)
+        .filter((p) => isAgedRow(p) && identity(p) === id);
+    const { firstTs: _first, updates: _updates, ...fresh } = row;
+    return placeLineage(row, lineage([...same, fresh]));
 }
 /** Reads every existing file in `paths` and folds all events together. */
 export function foldFrom(paths) {

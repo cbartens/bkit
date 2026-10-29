@@ -5,6 +5,7 @@ import * as path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  AGED_KINDS,
   ANY_WRITER,
   APPEND_LEDGERS,
   DEFERRAL_REASONS,
@@ -27,12 +28,15 @@ import {
   foldFrom,
   gitEnv,
   identity,
+  lineage,
   mintTs,
   normalize,
   normalizeEvent,
   parse,
+  placeLineage,
   totalsProblem,
   validate,
+  withLineage,
   writerProblem,
   type KindWriters,
   type TelemetryEvent,
@@ -1205,6 +1209,125 @@ describe("fold — composite-identity dedup", () => {
 
   it("empty events → empty state", () => {
     expect(fold([]).size).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Lineage — firstTs / updates on keyed rows (#710)
+// ---------------------------------------------------------------------------
+
+describe("lineage — firstTs / updates on keyed rows", () => {
+  it("AGED_KINDS names the five keyed ledger kinds", () => {
+    expect([...AGED_KINDS].sort()).toEqual([
+      "decision",
+      "deferral",
+      "failure",
+      "feature",
+      "knowledge",
+    ]);
+  });
+
+  it("validate accepts firstTs <= ts and a positive-integer updates on every aged kind", () => {
+    const lineageFields = { firstTs: 1_600_000_000_000, updates: 3 };
+    for (const e of [
+      deferralEvent("d", lineageFields),
+      failureEvent("f", lineageFields),
+      decisionEvent("c", lineageFields),
+      knowledgeEvent("k", lineageFields),
+      featureEvent("x", lineageFields),
+    ]) {
+      expect(validate(e)).toEqual({ ok: true });
+    }
+  });
+
+  it("validate rejects a firstTs later than ts, or not a number", () => {
+    expect(validate(failureEvent("f", { firstTs: 1_800_000_000_000 })).reason).toMatch(/firstTs/);
+    expect(validate(failureEvent("f", { firstTs: "yesterday" })).reason).toMatch(/firstTs/);
+  });
+
+  it("validate rejects updates that is zero, negative or fractional", () => {
+    for (const updates of [0, -1, 1.5, "2"]) {
+      expect(validate(failureEvent("f", { updates })).reason).toMatch(/updates/);
+    }
+  });
+
+  it("validate rejects firstTs / updates on kinds outside AGED_KINDS", () => {
+    expect(validate(frictionEvent("k", { updates: 1 } as Partial<TelemetryEvent>)).reason).toMatch(
+      /do not carry updates/,
+    );
+    expect(validate(complianceEvent({ firstTs: 1 })).reason).toMatch(/do not carry firstTs/);
+  });
+
+  it("lineage counts rows and takes the earliest ts", () => {
+    expect(lineage([{ ts: 30 }, { ts: 10 }, { ts: 20 }])).toEqual({ firstTs: 10, updates: 3 });
+  });
+
+  it("lineage continues a stamped row's count and keeps its firstTs", () => {
+    expect(lineage([{ ts: 20, firstTs: 5, updates: 4 }, { ts: 30 }])).toEqual({
+      firstTs: 5,
+      updates: 5,
+    });
+  });
+
+  it("lineage counts same-ts rows once, keeping the larger stamped count", () => {
+    expect(lineage([{ ts: 10 }, { ts: 20 }, { ts: 20 }])).toEqual({ firstTs: 10, updates: 2 });
+    expect(
+      lineage([
+        { ts: 20, updates: 4 },
+        { ts: 20, updates: 2 },
+      ]),
+    ).toEqual({ firstTs: 20, updates: 4 });
+  });
+
+  it("lineage leaves firstTs out when no row carries a numeric ts", () => {
+    expect(lineage([{ ts: "never" }])).toEqual({ updates: 1 });
+  });
+
+  it("placeLineage puts firstTs + updates right after ts, replacing stale values", () => {
+    const row = { schema: 3, ts: 9, updates: 1, kind: "failure", firstTs: 9 };
+    expect(Object.entries(placeLineage(row, { firstTs: 2, updates: 4 }))).toEqual([
+      ["schema", 3],
+      ["ts", 9],
+      ["firstTs", 2],
+      ["updates", 4],
+      ["kind", "failure"],
+    ]);
+    expect(placeLineage({ kind: "failure" }, { updates: 1 })).toEqual({
+      kind: "failure",
+      updates: 1,
+    });
+  });
+
+  it("withLineage stamps a first row firstTs = ts, updates = 1", () => {
+    const row = withLineage([], { ...failureEvent("f") });
+    expect(row).toMatchObject({ ts: 1_700_000_000_000, firstTs: 1_700_000_000_000, updates: 1 });
+  });
+
+  it("withLineage carries forward from same-identity prior rows only", () => {
+    const prior = [
+      failureEvent("f", { ts: 1_000 }),
+      failureEvent("f", { ts: 2_000, firstTs: 500, updates: 2 }),
+      failureEvent("other", { ts: 100 }),
+      deferralEvent("f", { ts: 50 }),
+    ];
+    expect(withLineage(prior, { ...failureEvent("f", { ts: 3_000 }) })).toMatchObject({
+      firstTs: 500,
+      updates: 3,
+    });
+  });
+
+  it("withLineage replaces caller-supplied firstTs / updates", () => {
+    const row = withLineage([failureEvent("f", { ts: 1_000 })], {
+      ...failureEvent("f", { ts: 2_000, firstTs: 1, updates: 99 }),
+    });
+    expect(row).toMatchObject({ firstTs: 1_000, updates: 2 });
+  });
+
+  it("withLineage passes keyless and non-aged rows through untouched", () => {
+    const friction = { ...frictionEvent("k") } as Record<string, unknown>;
+    expect(withLineage([friction], friction)).toBe(friction);
+    const keyless = { ...failureEvent("") } as Record<string, unknown>;
+    expect(withLineage([], keyless)).toBe(keyless);
   });
 });
 

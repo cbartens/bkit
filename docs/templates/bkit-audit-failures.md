@@ -36,7 +36,7 @@ Row text that says found by reading and must be confirmed later = hypothesis, no
 - Problem management and the known-error database (e.g. ITIL 4; record the edition). The deferred and known-error review it describes (e.g. ITIL-aligned known-error monitoring).
 - Postmortem action items (e.g. Google SRE Workbook, Postmortem Culture).
 - Bug triage and resolution states, including an incomplete state for an unanswered reproduction request (e.g. Mozilla defect severity guide, Bugzilla triage).
-- Age targets, set by this procedure: 7 days for `CRITICAL`, 30 days for `HIGH`, from the row's first `ts`. No published standard.
+- Age targets, set by this procedure: 7 days for `CRITICAL`, 30 days for `HIGH`, from the winning row's `firstTs` (`ts` when absent). No published standard.
 
 ### Scope
 
@@ -120,7 +120,7 @@ Incident rows (seen on production or preview, not in review) need follow-ups che
 
 Each incident: written postmortem; >=1 action preventing or detecting repeat, with owner and tracking issue at top priority. User-affecting outage needs >=1 top-priority bug. Missing postmortem, or postmortem with only mitigation items = finding. `Expected` = issue to open. **Done when:** every row verified this pass has evidence and tool on finding. `Incidents` lists follow-ups and postmortem gaps, or `none`. Unverified rows stay counted in `Trend`; not passed.
 
-- [ ] **Step 5 — Recurrences:** Same-`key` append recording defect seen again = recurrence (`.bkit/jsonl.md` § Updating a Row). Omit appends that only change `status`. For `category: "testing"`, flake count = `key`'s row count under that rule. Rank open rows by count. Then regressions: each row `CLOSED` since previous report → look for later row same `key`, new row same defect under another `key`, or error-tracker events on matching issue after close. Each → `Expected` = `OPEN` row to append. **Done when:** `Recurrences` ranks open rows and lists regressions, or `none`.
+- [ ] **Step 5 — Recurrences:** Same-`key` append recording defect seen again = recurrence (`.bkit/jsonl.md` § Updating a Row). Omit appends that only change `status`. For `category: "testing"`, flake count = winning row's `updates`, status-only appends included. Rank open rows by count. Then regressions: each row `CLOSED` since previous report → look for later row same `key`, new row same defect under another `key`, or error-tracker events on matching issue after close. Each → `Expected` = `OPEN` row to append. **Done when:** `Recurrences` ranks open rows and lists regressions, or `none`.
 - [ ] **Step 6 — Classes:** (a) Known errors carry workaround. For every `TRIAGED` or CONFIRMED row agents keep hitting (>=2 recurrences in Step 5, or parked row whose blocker not in winning row), check `docs/knowledge.jsonl` has `ACTIVE` row with workaround. Missing → finding. `Expected` = knowledge row to append. (b) Count open and recently closed rows by `category`, package, root-cause class. Top recurring class this run = gate candidate → name for `bkit-audit-gates`. **Done when:** `Classes` holds workaround gaps, counts, gate candidate, or `none`.
 - [ ] **Step 7 — Classify:** Every row, as Step 4 left it, gets one verdict. This run does not append or open issues. Security row → `bkit-audit-security`: key, verdict, severity only in this report. Flaky test diagnosis → `bkit-audit-flakes`. Older flake diagnoses may sit on tracker issues predating that audit. Search those too.
 
@@ -165,7 +165,7 @@ Each incident: written postmortem; >=1 action preventing or detecting repeat, wi
 | `MEDIUM` | Mis-framed or understated. Recurrence or regression. Known error with no workaround on record. Age target breached. Hypothesis still open |
 | `LOW` | Duplicate key. Path drift that does not change reach. Missing `severity` |
 
-Within a severity: oldest `ts` first. Finding keeps severity when it becomes ledger row or issue. Row's bucket = ledger severity, or verdict assigns.
+Within a severity: oldest `firstTs` (`ts` when absent) first. Finding keeps severity when it becomes ledger row or issue. Row's bucket = ledger severity, or verdict assigns.
 
 <!-- prettier-ignore -->
 | ID | Severity | Verdict | Location | Evidence | Expected |

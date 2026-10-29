@@ -8,6 +8,10 @@ Format: `## [version] — YYYY-MM-DD`
 
 ## [Unreleased]
 
+### Added
+
+- **`bkit ledgers compact` shrinks the five keyed ledgers to one row per entry, without losing an entry's age or how often it changed.** `docs/knowledge.jsonl`, `docs/decisions.jsonl`, `docs/deferrals.jsonl`, `docs/failures.jsonl` and `.bkit/issues.jsonl` keep growing because every update is a new row. The verb drops each row a newer row of the same entry replaces, and leaves the surviving row where it was. That row gains `firstTs` (when the entry was first written) and `updates` (how many rows it has had), so age reports and flake counts still work. Every reader sees the same entries as before. Lines it cannot read, and rows of other kinds, are left exactly as they are. Running it twice changes nothing, and if a merge brings dropped rows back, the next run drops them again. `--ledger=<name>` limits it to one ledger, and `--dry-run` only counts. `bkit ledgers append` and `bkit roadmap feature` now fill `firstTs` / `updates` on every new row of those ledgers. Each of the five ledger updaters (`@bkit-utility-update-knowledge`, `-decisions`, `-deferrals`, `-failures`, `-roadmap`) ends by compacting its own ledger. No upgrade step is needed: rows without the two fields read as entries with one row.
+
 ### Changed
 
 - **BREAKING — `bkit.dependencies.updater` records the updater you run, and `bkit check` holds it to the repo.** The value is `"renovate"`, `"dependabot"` or `"none"`. `bkit install` / `bkit upgrade` fill an empty value from the one updater config present. `bkit check` now blocks on `dep-updater-unset` (a config is present but the value does not name it) and `dep-updater-mismatch` (the value names the other updater, or `none`, while a config is present; or names an updater with no config). Renovate config is found at every location Renovate reads, not only `.github/renovate.json5` / `.json`: root `renovate.json*`, `.gitlab/renovate.json*`, `.renovaterc*` and a `package.json` `renovate` block. Run `bkit upgrade` to have the value set; a repo running both updaters, or a value set by hand that disagrees with its config, needs a hand fix.

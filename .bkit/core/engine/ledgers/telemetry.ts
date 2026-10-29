@@ -155,6 +155,13 @@ export interface TelemetryEnvelope {
   schema: typeof SCHEMA | typeof NORMALIZED_SCHEMA;
   /** Primary id = unix milliseconds (portable: jq `now*1000|floor`). */
   ts: number;
+  /**
+   * {@link AGED_KINDS} only: `ts` of the entry's first row, so `ts - firstTs` is its age
+   * after compaction drops the rows before it. Set by the writer ({@link withLineage}), never authored.
+   */
+  firstTs?: number;
+  /** {@link AGED_KINDS} only: rows the entry has had, this one included — its recurrence count. Set like `firstTs`. */
+  updates?: number;
   /** Closed enum — validated on append; unknown kind rejected. */
   kind: TelemetryKind;
   /**
@@ -258,6 +265,18 @@ export const TRIAGE_STATUSES: Set<string> = new Set(["OPEN", "TRIAGED", "CLOSED"
 
 /** The `ACTIVE` / `SUPERSEDED` lifecycle shared by `decision` and `knowledge`. */
 export const DECISION_STATUSES: Set<string> = new Set(["ACTIVE", "SUPERSEDED"]);
+
+/**
+ * The kinds whose rows carry `firstTs` + `updates` (`.bkit/jsonl.md` § Compaction):
+ * the keyed kinds of the ledgers `bkit ledgers compact` rewrites to their fold winners.
+ */
+export const AGED_KINDS: Set<string> = new Set([
+  "deferral",
+  "failure",
+  "knowledge",
+  "decision",
+  "feature",
+]);
 
 /**
  * The `feature` kind's six-state phase ladder — the canonical status for
@@ -684,7 +703,7 @@ export interface FailurePayload {
   /**
    * Free-form domain tag (mirrors DeferralPayload.category; see § Categories in
    * .bkit/jsonl.md). `"testing"` marks a flaky / intermittent test — recurrence
-   * via same-`key` append is the flake signal; no extra fields. See § Categories.
+   * via same-`key` append is the flake signal, counted by `updates`. See § Categories.
    */
   category?: string;
   summary?: string;
@@ -1614,6 +1633,22 @@ export function validate(event: unknown): ValidationResult {
     return { ok: false, reason: `${kind} rows do not carry reason` };
   }
 
+  // firstTs / updates — the entry's age and row count, set by the writer (withLineage).
+  if (AGED_KINDS.has(kind)) {
+    const first = e["firstTs"];
+    if (first !== undefined && (typeof first !== "number" || !(first <= (e["ts"] as number)))) {
+      return { ok: false, reason: "firstTs must be a number no later than ts" };
+    }
+    const updates = e["updates"];
+    if (updates !== undefined && (!Number.isInteger(updates) || (updates as number) < 1)) {
+      return { ok: false, reason: "updates must be a positive integer" };
+    }
+  } else {
+    for (const f of ["firstTs", "updates"]) {
+      if (e[f] !== undefined) return { ok: false, reason: `${kind} rows do not carry ${f}` };
+    }
+  }
+
   const run = isObj(e["run"]) ? e["run"] : undefined;
   if (kind === "compliance" || kind === "counter") {
     if (typeof run?.["parentSha"] !== "string" || run["parentSha"] === "") {
@@ -1870,6 +1905,84 @@ export function fold(events: TelemetryEvent[]): FoldedState {
     state.set(key, event);
   }
   return state;
+}
+
+// ---------------------------------------------------------------------------
+// Lineage — the entry age + row count a fold winner carries (AGED_KINDS)
+// ---------------------------------------------------------------------------
+
+export interface Lineage {
+  /** Earliest `ts` / `firstTs` among the entry's rows; absent when none is a number. */
+  firstTs?: number;
+  /** Rows the entry has had. */
+  updates: number;
+}
+
+const positiveInt = (v: unknown): number | undefined =>
+  Number.isInteger(v) && (v as number) > 0 ? (v as number) : undefined;
+
+/**
+ * `firstTs` + `updates` of one entry from all of its rows, in any order. A row
+ * carrying `updates` stands for that many rows, so the count survives compaction;
+ * each later row adds one. Rows sharing a numeric `ts` are one write: a compacted
+ * winner beside the pre-compaction copy a union merge brought back.
+ */
+export function lineage(
+  rows: ReadonlyArray<{ ts?: unknown; firstTs?: unknown; updates?: unknown }>,
+): Lineage {
+  let firstTs: number | undefined;
+  let updates = 0;
+  let prev: number | undefined;
+  for (const r of [...rows].sort((a, b) => compareTs({ ts: a.ts }, { ts: b.ts }))) {
+    for (const t of [r.firstTs, r.ts]) {
+      if (typeof t === "number" && Number.isFinite(t) && (firstTs === undefined || t < firstTs)) {
+        firstTs = t;
+      }
+    }
+    const own = positiveInt(r.updates);
+    const at = tsOrder(r.ts);
+    updates =
+      at === prev && Number.isFinite(at)
+        ? Math.max(updates, own ?? updates)
+        : Math.max(own ?? 0, updates + 1);
+    prev = at;
+  }
+  return firstTs === undefined ? { updates } : { firstTs, updates };
+}
+
+/** `row` with `firstTs` + `updates` set to `l`, placed right after `ts` (at the end when it has none). */
+export function placeLineage(row: Record<string, unknown>, l: Lineage): Record<string, unknown> {
+  const fields: Record<string, unknown> = l.firstTs === undefined ? {} : { firstTs: l.firstTs };
+  fields["updates"] = l.updates;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(row)) {
+    if (k === "firstTs" || k === "updates") continue;
+    out[k] = v;
+    if (k === "ts") Object.assign(out, fields);
+  }
+  return "ts" in row ? out : { ...out, ...fields };
+}
+
+/** True for a row `bkit ledgers compact` folds: an {@link AGED_KINDS} kind with a non-empty string `key`. */
+export const isAgedRow = (row: Record<string, unknown>): boolean =>
+  AGED_KINDS.has(String(row["kind"])) && typeof row["key"] === "string" && row["key"] !== "";
+
+/**
+ * `row` about to be appended, with `firstTs` + `updates` carried forward from
+ * `prior` (rows already in its ledger) and any supplied values replaced. A row
+ * {@link isAgedRow} rejects is returned unchanged.
+ */
+export function withLineage(
+  prior: readonly unknown[],
+  row: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!isAgedRow(row)) return row;
+  const id = identity(normalizeEvent(row));
+  const same = prior
+    .map(normalizeEvent)
+    .filter((p) => isAgedRow(p as Record<string, unknown>) && identity(p) === id);
+  const { firstTs: _first, updates: _updates, ...fresh } = row;
+  return placeLineage(row, lineage([...same, fresh]));
 }
 
 // ---------------------------------------------------------------------------
