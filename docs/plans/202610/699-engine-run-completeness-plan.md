@@ -976,6 +976,8 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
   - **DONE WHEN:** a close with a suspect journal prints exactly one `[bkit-telemetry]` line on stderr and the stdout object is unchanged; `docs/knowledge.jsonl` holds the three entries; and `docs/observability.md` names the line.
   - **TEST FIRST:**
     - `.bkit/core/engine/commands/workflow/workflows.test.ts` `prints one telemetry line on stderr when the journal looks dead at close` fails while no line is printed or the stdout object changes
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/commands/workflow/workflows.test.ts` `prints one telemetry line on stderr when the journal looks dead at close` fails while no line is printed or the stdout object changes — excused, approved: the line check changed from starting with `[bkit-telemetry]` to containing it, because the command logger puts `[bkit-workflows]` in front of every line and the original check could never pass through it (owner, 2026-10-29)
 
 <!-- bkit:task 19 end -->
 
