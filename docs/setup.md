@@ -52,7 +52,7 @@ Mostly relevant to the `opencode` host — `claude` / `cursor` / `codex` ship th
 | `git` | `>=2.5` | Worktree operations. |
 | `gh` | latest, authenticated (`gh auth login`) | PR create / view / merge, CI run log fetch. |
 | `jq` | latest | Reads the JSON that `bkit` commands print, inside workflows. |
-| `vale` | `3.9.1` | Prose lint (`pnpm lint:prose`). Tarball from `errata-ai/vale` releases; cloud agents install via setup script / Dockerfile. |
+| `vale` | `3.24.0` | Prose lint (`pnpm lint:prose`). Tarball from `errata-ai/vale` releases; cloud agents install via setup script / Dockerfile. |
 
 ## Local environment variables
 

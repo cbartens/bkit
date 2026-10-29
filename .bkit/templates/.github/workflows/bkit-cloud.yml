@@ -500,8 +500,8 @@ jobs:
       - name: Install vale
         env:
           # renovate: datasource=github-releases depName=errata-ai/vale
-          VALE_VERSION: "3.9.1"
-          VALE_SHA256: "fbc2eb47d0b8c50220ed1a2c5c611fbe0904ed567d638143d482016a18fd2db0"
+          VALE_VERSION: "3.24.0"
+          VALE_SHA256: "867534ddb678abca7f214bc4706ead0922bd5252ffe8035fc227013f66c8b214"
         run: |
           curl -fsSL --retry 3 --retry-all-errors "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_Linux_64-bit.tar.gz" -o "$RUNNER_TEMP/vale.tar.gz"
           echo "${VALE_SHA256}  $RUNNER_TEMP/vale.tar.gz" | sha256sum -c -
@@ -514,7 +514,7 @@ jobs:
           git config user.email 'bkit-auto@users.noreply.github.com'
 
       - name: Dispatch /bkit-auto on Claude Code runner
-        uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
+        uses: anthropics/claude-code-action@aa8a7738e48bf30a40ee499ce818bef081c5ab5e # v1.0.257
         with:
           # Orchestrator contract: `/bkit-auto <phase> <arg>` where <arg> is the open
           # PR number (ship/debug) or the tracker issue number/id (design/plan/build).
@@ -574,7 +574,7 @@ jobs:
           # release binaries) cannot fetch 2.0.26. npm's postinstall selects the runner's
           # platform binary.
           # renovate: datasource=npm depName=@opencode/cli
-          npm install -g @opencode/cli@2.0.26
+          npm install -g @opencode/cli@2.1.2
           echo "$(npm prefix -g)/bin" >> "$GITHUB_PATH"
 
       - name: Dispatch /bkit-auto on opencode runner

@@ -196,10 +196,10 @@ jobs:
       - name: Install Vale
         env:
           # renovate: datasource=github-releases depName=errata-ai/vale
-          VALE_VERSION: "3.9.1"
+          VALE_VERSION: "3.24.0"
           # sha256 of vale_${VALE_VERSION}_Linux_64-bit.tar.gz (from the release's checksums.txt).
           # Bump alongside VALE_VERSION; verified before extract so a tampered/CDN-swapped tarball fails closed.
-          VALE_SHA256: "fbc2eb47d0b8c50220ed1a2c5c611fbe0904ed567d638143d482016a18fd2db0"
+          VALE_SHA256: "867534ddb678abca7f214bc4706ead0922bd5252ffe8035fc227013f66c8b214"
         run: |
           curl -fsSL --retry 3 --retry-all-errors "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_Linux_64-bit.tar.gz" -o "$RUNNER_TEMP/vale.tar.gz"
           echo "${VALE_SHA256}  $RUNNER_TEMP/vale.tar.gz" | sha256sum -c -
@@ -270,9 +270,9 @@ jobs:
       # and the register judged all come from that one tree.
       - name: Setup uv
         if: hashFiles('scripts/graphify/bkit-graphify.sh') != ''
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@18d369b23da25a81e9458561248e1aafff6a70fa # v10.3.1
         with:
-          version: "0.13.0"
+          version: "0.13.4"
 
       - name: Check Capability Register
         if: hashFiles('scripts/graphify/bkit-graphify.sh') != ''
@@ -483,7 +483,7 @@ jobs:
       #   # the floor as its target, to the job summary; comments on same-repo PRs only. No floor yet → drop
       #   # vite-config-path (a missing file only warns, on every run).
       #   if: ${{ !cancelled() && hashFiles('coverage/unit/coverage-summary.json') != '' }}
-      #   uses: davelosert/vitest-coverage-report-action@c4bbc33a89b7ace0e63d35f1f7d4bcee31155a73 # v2.13.0
+      #   uses: davelosert/vitest-coverage-report-action@8f86cfb56ed6d5613ea8cdc5259f207fbfd51ece # v2.13.1
       #   with:
       #     name: unit
       #     json-summary-path: coverage/unit/coverage-summary.json
@@ -495,7 +495,7 @@ jobs:
       # - name: Report Integration Coverage on PR
       #   # hashFiles guard: skip cleanly when the repo has no integration tier (no coverage/integration report produced).
       #   if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && hashFiles('coverage/integration/coverage-summary.json') != ''
-      #   uses: davelosert/vitest-coverage-report-action@c4bbc33a89b7ace0e63d35f1f7d4bcee31155a73 # v2.13.0
+      #   uses: davelosert/vitest-coverage-report-action@8f86cfb56ed6d5613ea8cdc5259f207fbfd51ece # v2.13.1
       #   with:
       #     name: integration
       #     json-summary-path: coverage/integration/coverage-summary.json
@@ -587,7 +587,7 @@ jobs:
       # - name: Report E2E Coverage on PR
       #   # Same gate as Run E2E Tests (coverage exists only if E2E ran); hashFiles skips repos that produced no E2E report.
       #   if: (steps.detect.outputs.should_run_full == 'true' || steps.e2e-paths.outputs.needs_e2e == 'true') && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && hashFiles('coverage/e2e/coverage-summary.json') != ''
-      #   uses: davelosert/vitest-coverage-report-action@c4bbc33a89b7ace0e63d35f1f7d4bcee31155a73 # v2.13.0
+      #   uses: davelosert/vitest-coverage-report-action@8f86cfb56ed6d5613ea8cdc5259f207fbfd51ece # v2.13.1
       #   with:
       #     name: e2e
       #     json-summary-path: coverage/e2e/coverage-summary.json

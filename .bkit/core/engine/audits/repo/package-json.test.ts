@@ -51,11 +51,16 @@ describe("package.json manifest invariants (BAR-138)", () => {
   // An override wins over the direct pin, so a Renovate bump of the pin would
   // change the manifest but not what installs. `$name` makes the override follow it.
   it("pnpm.overrides never shadows a direct pin", () => {
-    const direct = { ...pkg.dependencies, ...pkg.devDependencies };
-    const overrides: Record<string, string> = pkg.pnpm?.overrides ?? {};
-    const shadowing = Object.entries(overrides)
-      .filter(([name, spec]) => name in direct && spec !== `$${name}`)
-      .map(([name, spec]) => `${name}: ${spec}`);
-    expect(shadowing).toEqual([]);
+    expect(shadowingOverrides(pkg)).toEqual([]);
   });
 });
+
+/** `name: spec` for each pnpm override of a direct dependency that is not `$name`. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function shadowingOverrides(pkg: Record<string, any>): string[] {
+  const direct = { ...pkg.dependencies, ...pkg.devDependencies };
+  const overrides: Record<string, string> = pkg.pnpm?.overrides ?? {};
+  return Object.entries(overrides)
+    .filter(([name, spec]) => name in direct && spec !== `$${name}`)
+    .map(([name, spec]) => `${name}: ${spec}`);
+}
