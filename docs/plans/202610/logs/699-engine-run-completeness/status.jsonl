@@ -268,3 +268,5 @@
 {"type":"engine-call","workflow":"build","at":"2026-10-29T06:13:38Z","noun":"disk","verb":"prune","flags":["mode","auto"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-verify/8/1/comment","hash":"455daea49c8815825cf3db0bc25ddae83124378ee965216274d28a4c84c3ba6f","ref":"https://github.com/cbartens/bkit/issues/699#issuecomment-6489495715","at":"2026-10-29T06:18:13Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-10-29T06:18:13Z","parentSha":"54e7b83e842c53d37143c527488221cc025e304f","artifacts":["docs/plans/202610/logs/699-engine-run-completeness/build-plan-verify-8-1.md"],"verdict":"CONCERNS","attempt":1,"group":8,"failures":1}
+{"type":"engine-call","workflow":"build","at":"2026-10-29T06:18:16Z","noun":"disk","verb":"prune","flags":["mode","auto"]}
+{"type":"owner-pause","workflow":"build","at":"2026-10-29T06:18:17Z","reason":"decision"}
