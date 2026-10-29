@@ -18,6 +18,10 @@ FROM ubuntu:26.04@sha256:2260313b31c8c011cd2eebe728008efac1b3982be73eb71348ea264
 # --- Consumer-owned: base system + Node ------------------------------------
 # bkit's toolchain assumes curl, ca-certificates, and Node >=24 are on PATH
 # before the bkit toolchain section runs. Pin Node to match your repo's `engines.node`.
+# apt packages here and below carry no version: they track the pinned base release,
+# security updates included. `pkg=<version>` pins break rebuilds once Ubuntu drops
+# the superseded version from its mirrors; tools whose version matters are pinned
+# and checksum-checked outside apt.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       curl ca-certificates xz-utils \
     && rm -rf /var/lib/apt/lists/*
