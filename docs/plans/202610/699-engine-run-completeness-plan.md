@@ -849,7 +849,7 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
 
 <!-- bkit:task 12 start -->
 
-- [ ] **TASK 12:** Warn at start and resume when the previous run was holey
+- [x] **TASK 12:** Warn at start and resume when the previous run was holey
   - **UPDATE:** `start` in `.bkit/core/engine/commands/workflow/workflows.ts`: resolve the run immediately preceding the one being started or resumed in the same `status.jsonl` (whatever its workflow), read its last stored `completeness` row or compute the verdict on the fly, and print one `[bkit-workflows]` warning through `ctx.log` naming the workflow, run number, close time and the reading command; never interrupt, never prompt; degrade silently on any error
   - **UPDATE:** `.bkit/core/engine/commands/workflow/workflows.test.ts`: the holey-previous-run case and the clean-previous-run case
   - **DEPENDS ON:** 10, 11
