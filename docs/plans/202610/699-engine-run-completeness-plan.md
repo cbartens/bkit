@@ -871,7 +871,7 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
 
 <!-- bkit:task 13 start -->
 
-- [ ] **TASK 13:** Repoint the CI advisory step and add the sweep liveness assertion
+- [x] **TASK 13:** Repoint the CI advisory step and add the sweep liveness assertion
   - **UPDATE:** `.github/workflows/bkit-ci.yml`: keep `pnpm bkit:audit:status || true` on the `Check Status Holes` step (the sweep stays advisory and exits 0 on holes), capture its combined output to `"$RUNNER_TEMP/status-holes.txt"`, then `grep -qF '[bkit-status-holes] sweep:' "$RUNNER_TEMP/status-holes.txt" || { echo '[bkit] status-holes sweep printed no summary line'; exit 1; }` — the grep is on the summary line only, so a hole never reds the lane and a silent no-op does; the owner's sign-off on this plan (Open Questions, answer A) covers this edit to a CI workflow file
   - **CREATE:** `tests/status-holes-sweep-liveness.bats`: a case running the sweep over a fixtures corpus and asserting its output carries the exact literal TASK 6 pins, plus a case asserting the lane's `grep -qF` pattern rejects output without it
   - **READ:** `bkit:audit:status` in `package.json`: the corpus-sweep invocation whose path is unchanged because the check module keeps its name
