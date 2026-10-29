@@ -35,6 +35,10 @@
   // `dev`'s config over `main`'s for dev-targeted runs, so config edits on `dev`
   // apply to them. This option is itself read from `main`, so it needs one merge
   // to `main` before dev-side config edits apply.
+  // The merge appends list options (`customManagers`, `packageRules`) instead of
+  // replacing them: each custom manager runs twice, so the dashboard lists its
+  // files twice and the run logs "Cannot find replaceString" for the second pass.
+  // PRs still open once. A rule deleted on `dev` keeps applying until `main` drops it.
   // See docs/deployments.md § Dependency updaters.
   useBaseBranchConfig: "merge",
 
