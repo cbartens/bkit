@@ -728,7 +728,7 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
 
 <!-- bkit:task 7 start -->
 
-- [ ] **TASK 7:** Derive step conditionality from the column-0 marker rule and make it an authoring rule
+- [x] **TASK 7:** Derive step conditionality from the column-0 marker rule and make it an authoring rule
   - **UPDATE:** `.bkit/core/engine/checks/status-holes.ts`: a step is conditional when a column-0 `**Run only if**` / `**Skip if**` line sits anywhere inside its section, or its heading carries a `(Path X only)` marker
   - **UPDATE:** `.bkit/core/engine/checks/status-holes.test.ts`: the per-workflow conditionality fixture — every step-level site across the five workflows classifies as conditional, and no non-conditional step is over-classified
   - **UPDATE:** `.bkit/core/.bkit/authoring.md`: § Workflows Only — the step-conditionality authoring rule the deriver depends on, plus the row rule: every step writes its own `steps finish` / `steps done` row on every route toward the next step, or carries a column-0 `**Run only if**` / `**Skip if**` marker; this is the canonical source of the `.bkit/authoring.md` mirror
