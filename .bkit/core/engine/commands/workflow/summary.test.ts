@@ -238,10 +238,7 @@ describe("buildSummary", () => {
       input({
         workflow: "design",
         workstreams: [ws(1, "Engine"), ws(2, "Help"), ws(3, "Docs")],
-        suggestedPlans: [
-          plan(1, "Command", ["WS-1", "WS-2"]),
-          plan(2, "Docs", ["WS-3"], ["P-1"]),
-        ],
+        suggestedPlans: [plan(1, "Command", ["WS-1", "WS-2"]), plan(2, "Docs", ["WS-3"], ["P-1"])],
       }),
     );
     expect(s.nextStep).toBe(

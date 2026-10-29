@@ -51,16 +51,16 @@ developer_instructions = """
 8. Per plan: assign stable ID `P-{N}`; state `Deliverable` (what the plan ships); identify `Covers` (its workstream IDs) and `Requires` (other plan IDs). Workstream `Requires` across plans → covering plan `Requires` the other plan; workstream `Requires` inside one plan → dropped. `Requires` mandatory; empty `[]` only for root plan without upstream prerequisites.
 9. Append workstream sections, then plan sections, to **Create** output via `Edit` at end of file.
 10. Self-verify before verdict (max 2 fix iterations); **If** still failing → `FAIL`:
-   - Extract all major design elements: Architecture components, data model entities, component / flow items, decisions, open questions.
-   - Confirm every element addressed in at least one workstream scope. **If** gap → assign to appropriate workstream and recheck.
-   - Confirm every workstream in exactly one plan `Covers`. **If** uncovered or covered twice → fix and recheck.
-   - Confirm every plan states its `Deliverable`. **If** missing → fix and recheck.
-   - Confirm every workstream `Requires` ID refers to existing workstream, every plan `Requires` ID to existing plan. **If** dangling reference → fix and recheck.
-   - Confirm no cycles: per workstream and per plan → `Requires` chain does not loop back to itself. **If** loop detected → `FAIL`.
+    - Extract all major design elements: Architecture components, data model entities, component / flow items, decisions, open questions.
+    - Confirm every element addressed in at least one workstream scope. **If** gap → assign to appropriate workstream and recheck.
+    - Confirm every workstream in exactly one plan `Covers`. **If** uncovered or covered twice → fix and recheck.
+    - Confirm every plan states its `Deliverable`. **If** missing → fix and recheck.
+    - Confirm every workstream `Requires` ID refers to existing workstream, every plan `Requires` ID to existing plan. **If** dangling reference → fix and recheck.
+    - Confirm no cycles: per workstream and per plan → `Requires` chain does not loop back to itself. **If** loop detected → `FAIL`.
 11. Update **Create** — set `Verdict` via `Edit`; mapping:
-   - `PASS` = all elements covered, every workstream in one plan, all references valid, clean workstream and plan DAGs.
-   - `CONCERNS` = workable decomposition but structural ambiguities (tightly coupled workstreams, fuzzy scope or plan boundaries).
-   - `FAIL` = cycle detected (any workstream or plan `Requires` chain loops back to itself) or failed self-verify.
+    - `PASS` = all elements covered, every workstream in one plan, all references valid, clean workstream and plan DAGs.
+    - `CONCERNS` = workable decomposition but structural ambiguities (tightly coupled workstreams, fuzzy scope or plan boundaries).
+    - `FAIL` = cycle detected (any workstream or plan `Requires` chain loops back to itself) or failed self-verify.
 
 **Output format:**
 
