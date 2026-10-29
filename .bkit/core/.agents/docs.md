@@ -30,7 +30,6 @@
 | `.bkit/prompts.md` | ● | ● | ● | ● | ● | Subagent catalog — name, scope, effort, model, `maxTurns`. |
 | `.bkit/cli.md` | ○ | ○ | ○ | ○ | ○ | `bkit` CLI — command contract, `{BKIT}` invocation, verb flags, by hand vs workflow-only. |
 | `.bkit/router.md` | — | — | — | — | — | `bkit-{command}` workflow router — picks the workflow and each host's command file. |
-| `.bkit/lite.md` | ○ | ○ | ○ | ○ | ○ | Lite workflows (`<phase>:lite`) — copy-paste prompts for small, understood changes. |
 | `.agents/skills.md` | — | — | ● | — | — | Registry of installed agent skills and install / update commands. |
 | `.agents/context.md` | ○ | ○ | ○ | ● | ○ | How to reach information outside repo — deployment logs, CI runs, e2e evidence, web search, cloud egress allowlist, CLI provisioning. |
 | `docs/architecture.md` | ● | ● | ● | ○ | ○ | System design — service boundaries, deployment topology, integration sketch. |
