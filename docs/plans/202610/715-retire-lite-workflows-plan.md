@@ -986,6 +986,9 @@ Build order: config → runtime resolution → install → close row → build w
     - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `runs only the close gate on the held path` fails while Gate 16 names both gates
     - `.bkit/core/engine/render/trackers.test.ts` `bkit-build: the none render matches its baseline byte for byte` fails on a stale baseline
     - `.bkit/core/engine/tools/instructions-coverage.test.ts` `the repo > has no coverage findings` fails while a retired Step 15/16 line keeps its entry
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/render/trackers.test.ts` `bkit-build: the none render matches its baseline byte for byte` fails on a stale baseline — accept all as exceptions: the snapshot and instructions entries were regenerated after the workflow edit; the test passes (owner, 2026-10-29)
+    - `.bkit/core/engine/tools/instructions-coverage.test.ts` `the repo > has no coverage findings` fails while a retired Step 15/16 line keeps its entry — accept all as exceptions: the snapshot and instructions entries were regenerated after the workflow edit; the test passes (owner, 2026-10-29)
 
 <!-- bkit:task 12 end -->
 
@@ -1005,6 +1008,11 @@ Build order: config → runtime resolution → install → close row → build w
     - `.bkit/core/engine/audits/workflows/close-squash.integration.test.ts` `held close records the rows, summary and worktree-only roadmap row` fails when a row, the `Docs: not synced` line or the local-only roadmap row is missing
     - `.bkit/core/engine/audits/workflows/ship-verdict.integration.test.ts` `ship pushes the held branch and opens a dev PR` fails when the bare origin lacks the head or the recorded create names another base
     - `.bkit/core/engine/audits/workflows/ship-verdict.integration.test.ts` `ship gates on CI and merges the pinned head` fails when the recorded merge drops `--match-head-commit` or names another head
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/audits/workflows/close-squash.integration.test.ts` `held close leaves origin refs unchanged, keeps the branch and worktree, releases the lock` — accept all as exceptions: Task 13 only adds tests for behaviour Tasks 4, 5, 10 and 12 already landed, so they pass on first run (owner, 2026-10-29)
+    - `.bkit/core/engine/audits/workflows/close-squash.integration.test.ts` `held close records the rows, summary and worktree-only roadmap row` — accept all as exceptions: Task 13 only adds tests for behaviour Tasks 4, 5, 10 and 12 already landed, so they pass on first run (owner, 2026-10-29)
+    - `.bkit/core/engine/audits/workflows/ship-verdict.integration.test.ts` `ship pushes the held branch and opens a dev PR` — accept all as exceptions: Task 13 only adds tests for behaviour Tasks 4, 5, 10 and 12 already landed, so they pass on first run (owner, 2026-10-29)
+    - `.bkit/core/engine/audits/workflows/ship-verdict.integration.test.ts` `ship gates on CI and merges the pinned head` — accept all as exceptions: Task 13 only adds tests for behaviour Tasks 4, 5, 10 and 12 already landed, so they pass on first run (owner, 2026-10-29)
 
 <!-- bkit:task 13 end -->
 
