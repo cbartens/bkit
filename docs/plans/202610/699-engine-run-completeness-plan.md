@@ -906,7 +906,7 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
 
 <!-- bkit:task 15 start -->
 
-- [ ] **TASK 15:** Regenerate the capability register, the doc mirrors and the committed payload
+- [x] **TASK 15:** Regenerate the capability register, the doc mirrors and the committed payload
   - **UPDATE:** `docs/capabilities.md`: regenerate with `pnpm graph:rollup` after the new modules land
   - **UPDATE:** `dist/cli.js`: the whole committed `dist/` payload rebuilt with `pnpm build` and committed in the same change, since `bkit:check:dist` rebuilds and diffs it
   - **UPDATE:** `.bkit/workflows.md`: re-run `bkit install` as the closing sweep, so any mirror edit a task missed is regenerated from its source and committed here
