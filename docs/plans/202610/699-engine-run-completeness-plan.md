@@ -772,6 +772,9 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
     - `.bkit/core/engine/checks/status-holes.test.ts` `reports an untaken route arm as unexercised` fails while build Step 12's FAIL-arm `counters route` makes a PASS run holey, or Step 5's two `steps finish` lines count as two required calls
     - `.bkit/core/engine/checks/status-holes.test.ts` `gives each group-loop repeat its own gaps` fails while a second `build-plan-execute` row leaves calls `unattributable`, or a group missing a required call is not named
     - `.bkit/core/engine/checks/status-holes.test.ts` `matches workflow-level calls outside any step` fails while a `Decision Pause` or `Failure Path` call is reported `unexpected` or charged to a step
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/checks/status-holes.test.ts` `charges calls below a step's finish line to that step` fails while a replay of every step section of the five workflow files in markdown order shows an evidence hole or an `unexpected` call (build Step 15's `prs probe` / `branches push` charged to Step 16) — the shared `replay` helper was rewritten after the red to write one row per key of each unit, because a section that writes no row of its own folds into the next section that does; the test's own lines only changed in wrapping (owner, 2026-10-29)
+    - `.bkit/core/engine/checks/status-holes.test.ts` `reports an untaken route arm as unexercised` fails while build Step 12's FAIL-arm `counters route` makes a PASS run holey, or Step 5's two `steps finish` lines count as two required calls — the assertion was narrowed after the red to the one `counters route` call leaving the list, because build still lists `branches push` in `build-create-pr` as unexercised with every arm taken; that case stays unpinned by this test (owner, 2026-10-29)
 
 <!-- bkit:task 8 end -->
 
@@ -788,6 +791,11 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
     - `.bkit/core/engine/checks/status-holes.test.ts` `excludes its own journaled call` fails while the check reports itself as unexpected
     - `.bkit/core/engine/checks/status-holes.test.ts` `takes the last completeness row and recomputes when rows follow it` fails while the first row wins or a later row is ignored
     - `.bkit/core/engine/checks/status-holes.test.ts` `reports a hole in a long-closed run with no baseline` fails while a watermark or a baseline delta filters out an old hole
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/checks/status-holes.test.ts` `gives a pre-journal run a steps-only verdict` fails on every required call being reported missing — task 8's single `check()` already held the pre-journal handling, so the test could not fail first (owner, 2026-10-29)
+    - `.bkit/core/engine/checks/status-holes.test.ts` `names a call no contract step owns` fails on a post-terminator call, or a call between two rows outside the contract, being charged to the last step — task 8's `check()` already reported unattributable calls, so the test could not fail first (owner, 2026-10-29)
+    - `.bkit/core/engine/checks/status-holes.test.ts` `excludes its own journaled call` fails while the check reports itself as unexpected — task 8's `check()` already left out the checker's own journaled call, so the test could not fail first (owner, 2026-10-29)
+    - `.bkit/core/engine/checks/status-holes.test.ts` `reports a hole in a long-closed run with no baseline` fails while a watermark or a baseline delta filters out an old hole — task 8's `check()` already handled a run with no baseline, so the test could not fail first (owner, 2026-10-29)
 
 <!-- bkit:task 9 end -->
 
