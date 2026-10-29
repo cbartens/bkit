@@ -985,7 +985,7 @@ Build order: config → runtime resolution → install → close row → build w
     - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `makes Gate 15 conditional on the held path` fails while the probe/push lines stay unconditional
     - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `runs only the close gate on the held path` fails while Gate 16 names both gates
     - `.bkit/core/engine/render/trackers.test.ts` `bkit-build: the none render matches its baseline byte for byte` fails on a stale baseline
-    - `.bkit/core/engine/tools/instructions-coverage.test.ts` `every standing line has an entry` fails while a retired Step 15/16 line keeps its entry
+    - `.bkit/core/engine/tools/instructions-coverage.test.ts` `the repo > has no coverage findings` fails while a retired Step 15/16 line keeps its entry
 
 <!-- bkit:task 12 end -->
 
