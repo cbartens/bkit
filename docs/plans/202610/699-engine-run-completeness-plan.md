@@ -1045,7 +1045,7 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
 <!-- bkit:task 23 end -->
 <!-- bkit:task 24 start -->
 
-- [ ] **TASK 24:** The `verdicts` output of `bkit completeness check` is still described as "one completeness verdict per checked workflow", but the verb now prints one verdict per run
+- [x] **TASK 24:** The `verdicts` output of `bkit completeness check` is still described as "one completeness verdict per checked workflow", but the verb now prints one verdict per run
       **Severity:** LOW · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/completeness.ts:79` · **Round:** verify
   - **DONE WHEN:** the output description in `completeness.ts` says one completeness verdict per checked run, and `dist/commands/workflow/completeness.js` is rebuilt to match.
   - **TEST FIRST:**
