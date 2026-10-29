@@ -954,7 +954,7 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
 
 <!-- bkit:task 18 start -->
 
-- [ ] **TASK 18:** Stop requiring bkit commands that run outside the journal's window
+- [x] **TASK 18:** Stop requiring bkit commands that run outside the journal's window
   - **UPDATE:** `.bkit/core/engine/checks/status-holes.ts`: a command that sits above the first `workflows start` call, or below the `workflows close` call, in its workflow's markdown is matched when the journal holds it but is never listed as required for a step, the way workflow-level calls already are
   - **UPDATE:** `.bkit/core/engine/checks/status-holes.test.ts`: the simulated run journals only the calls the journal can see (no pre-start calls, no post-close calls) and must come out not holey for build, design, plan and ship
   - **READ:** `.bkit/core/workflows/bkit-build.md`: Steps 1-2 and the Step 16 tail, the pre-start and post-close calls the journal cannot record
