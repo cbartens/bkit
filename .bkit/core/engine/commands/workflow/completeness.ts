@@ -47,6 +47,7 @@ export const completenessCommand: CommandSpec = {
     check: {
       summary:
         "Report the steps and bkit commands a run is missing, from its status.jsonl and the workflow markdown; advisory, always exits 0.",
+      use: "by-hand",
       flags: [
         FILE_FLAG,
         {
