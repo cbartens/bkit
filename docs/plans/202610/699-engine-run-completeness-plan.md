@@ -919,6 +919,19 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
 
 <!-- bkit:task 15 end -->
 
+<!-- bkit:task 16 start -->
+
+- [ ] **TASK 16:** Refresh the capability register and the command list after the rebase
+  - **UPDATE:** `docs/capabilities.md`: rebuild with `pnpm graph:refresh` so the register matches a clean rebuild of the rebased tree, and commit it
+  - **UPDATE:** `.bkit/core/.bkit/cli.md`: regenerate the generated region with `pnpm cli:sync` so it lists the `completeness` verb, then run `bkit upgrade` so the `.bkit/cli.md` mirror follows, and commit both
+  - **READ:** `scripts/graphify/bkit-graphify.sh`: the `check-at` drift gate the register must pass
+  - **READ:** `.bkit/core/engine/tools/cli-doc.test.ts`: the test that pins the generated region
+  - **DEPENDS ON:** 15
+  - **DONE WHEN:** `bash scripts/graphify/bkit-graphify.sh check-at HEAD` exits 0 after the commit; `.bkit/core/engine/tools/cli-doc.test.ts` passes; and `pnpm bkit check` exits 0.
+  - **TEST FIRST:** n/a — generated artifacts; the graphify drift gate, `cli-doc.test.ts` and `pnpm bkit check` are the assertions
+
+<!-- bkit:task 16 end -->
+
 <!-- bkit:group 8 end -->
 
 ### 🔒 Gate 2: Code Implementation Check

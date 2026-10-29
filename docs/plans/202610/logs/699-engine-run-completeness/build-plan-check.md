@@ -18,8 +18,8 @@ Plan: `docs/plans/202610/699-engine-run-completeness-plan.md`. Caps: 3 tasks and
 | 4 | Completeness checker — rows + contract → verdict (WS-2) | 2 | 12 | 7.7 |
 | 5 | `completeness` command surface (WS-5) | 1 | 4 | 2.9 |
 | 6 | Close and start integration (WS-6) | 2 | 5 | 4.0 |
-| 7 | CI advisory wiring + observability and testing docs (WS-7) | 2 | 1 | 3.6 |
-| 8 | Generated artifacts (WS-8) | 1 | 0 | 1.7 |
+| 7 | CI advisory wiring + observability and testing docs (WS-7) | 2 | 1 | 4.2 |
+| 8 | Generated artifacts (WS-8) | 2 | 0 | 2.7 |
 
 ## Tasks
 
@@ -41,6 +41,7 @@ Plan: `docs/plans/202610/699-engine-run-completeness-plan.md`. Caps: 3 tasks and
 | 13 | 7 | 1 | 1 |
 | 14 | 7 | 0 | 0 |
 | 15 | 8 | 0 | 0 |
+| 16 | 8 | 0 | 0 |
 
 ## Problems
 
