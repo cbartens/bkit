@@ -942,7 +942,7 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
 
 <!-- bkit:task 17 start -->
 
-- [ ] **TASK 17:** Give the journal test fixtures the required `use` field
+- [x] **TASK 17:** Give the journal test fixtures the required `use` field
   - **UPDATE:** `.bkit/core/engine/commands/lib.test.ts`: add `use: "by-hand"` to each fixture verb that lacks it (the five at lines 208-226)
   - **UPDATE:** `.bkit/core/engine/ledgers/journal.integration.test.ts`: add `use: "by-hand"` to each fixture verb that lacks it (lines 25 and 31)
   - **READ:** `VerbSpec` in `.bkit/core/engine/commands/lib.ts`: the interface that made `use` required

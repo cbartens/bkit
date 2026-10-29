@@ -329,7 +329,9 @@ export function deriveContract(workflowMd: string, workflow: string): Contract {
     const inside: RequiredCall[] = [];
     for (const { line, ...c } of sectionCalls(s.body)) {
       const at = absLine(s, line);
-      if (at < windowStart || at > windowEnd) outsideWindow.push(c);
+      // `workflows start` itself is outside: a fresh run has no active run to journal it under.
+      const isStart = c.noun === "workflows" && c.verb === "start";
+      if (isStart || at < windowStart || at > windowEnd) outsideWindow.push(c);
       else inside.push(c);
     }
     return {
