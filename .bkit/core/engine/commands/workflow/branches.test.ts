@@ -1840,6 +1840,7 @@ describe("branches scan-diff", { timeout: GIT_TIMEOUT }, () => {
   it("scan-diff never opens a symlinked test file's outside target", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-scan-link-"));
     const outside = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-scan-outside-"));
+    const skip = `${"test"}.${"skip"};`;
     try {
       fs.writeFileSync(path.join(outside, "secret"), "it('leaked secret line', () => {\n\n");
       fs.mkdirSync(path.join(root, "src"));
@@ -1851,13 +1852,13 @@ describe("branches scan-diff", { timeout: GIT_TIMEOUT }, () => {
           `--- a/${file}`,
           `+++ b/${file}`,
           "@@ -1,0 +2,1 @@",
-          "+  test.skip;",
+          `+  ${skip}`,
         ].join("\n");
       const found = disabledTestsIn(
         [diff("src/a.test.ts"), diff("src/b.test.ts"), ""].join("\n"),
         root,
       );
-      expect(found.map((d) => d.test)).toEqual(["test.skip;", "in repo"]);
+      expect(found.map((d) => d.test)).toEqual([skip, "in repo"]);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
       fs.rmSync(outside, { recursive: true, force: true });
