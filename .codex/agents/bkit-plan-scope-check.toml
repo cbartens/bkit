@@ -34,14 +34,14 @@ developer_instructions = """
 
 **Rules:** Copied word for word from `.agents/rules.md`.
 
-- **Improve over duplicate:** ALWAYS search for existing solutions and extend/modify them if feasible. NEVER add new parallel solutions where existing ones can be evolved.
-- **Finish over deferrals:** NEVER defer in-scope work you can finish. ONLY defer genuinely out-of-scope or hard-blocked work; Declaring something out of scope does not make it so; reviewers will refute unfinished work. If in doubt, treat as in-scope and finish work. Exception: `LOW` challenge findings, deferred with `reason` `low-severity` per `.bkit/jsonl.md` § Deferral Reason.
-- **Scope discipline:** ONLY do what requests ask; NEVER apply opportunistic refactors, renames, or 'while I'm here' edits. Out-of-scope finds → propose separately, do not bundle.
-- **Review docs first:** ALWAYS read index `.agents/docs.md` and lazy-load docs by phase matrix before edits; pull extra docs from catalog as warranted.
-- **Read files first:** ALWAYS read files before edits. NEVER edit on assumed contents.
-- **Narrow text search first:** ALWAYS run `grep -l` / `rg -l` with path / file-type filters before `grep -n -m {N}` on matched files. NEVER run broad recursive greps returning full match lists.
-- **Code reads:** ALWAYS locate first (language server, else text search) before reading ONLY the needed line range (file-read tool offset / limit, or `sed -n 'A,Bp'`). Whole-file reads ONLY for short files or files you will rewrite. NEVER re-read files unchanged since your last read, unless context was summarised since.
-- **File edits:** Fastest tool wins — edit for surgical changes, write for new files, append where possible.
+- **Improve over duplicate:** ALWAYS search for existing solutions and extend / modify them where feasible. NEVER add a new parallel solution where an existing one can be evolved.
+- **Finish over deferrals:** NEVER defer in-scope work you can finish. ONLY defer genuinely out-of-scope or hard-blocked work; declaring something out of scope does not make it so. When in doubt, treat the work as in-scope and finish it. Exception: `LOW` challenge findings, deferred with `reason` `low-severity` per `.bkit/jsonl.md` § Deferral Reason.
+- **Scope discipline:** ONLY do what the request asks; NEVER apply opportunistic refactors, renames or 'while I'm here' edits. Propose out-of-scope finds separately; do not bundle them.
+- **Review docs first:** ALWAYS read the `.agents/docs.md` index and lazy-load docs by its phase matrix before edits; pull extra docs from the catalog as warranted.
+- **Read files first:** ALWAYS read a file before editing it. NEVER edit on assumed contents.
+- **Narrow text search first:** ALWAYS run `grep -l` / `rg -l` with path / file-type filters before `grep -n -m {N}` on the matched files. NEVER run a broad recursive grep that returns full match lists.
+- **Code reads:** ALWAYS locate first (language server, else text search), then read ONLY the needed line range (file-read tool offset / limit, or `sed -n 'A,Bp'`). Whole-file reads are ONLY for short files or files you will rewrite. NEVER re-read a file unchanged since your last read, unless the context was summarised since.
+- **File edits:** The fastest tool wins — edit for surgical changes, write for new files, append where possible.
 - **Edit tools ONLY:** ALWAYS change file contents with edit / write tools; NEVER use shell commands to hand-edit source files or to bypass pre-edit gates. Exceptions: generating files from scripts, bulk mechanical file rewrites, appending a log line to your own step output file with `>>`.
 - **Verify tools:** Verify every return; do not assume success.
 - **Plans:** Follow `docs/templates/bkit-plan.md` when writing plans.
