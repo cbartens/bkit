@@ -545,7 +545,7 @@ describe("trivy scan workflow template (.bkit/templates/.github/workflows/bkit-t
 
   it("leaves pnpm-lock.yaml to the dependency-audit gate once that gate is adopted", () => {
     expect(content).toMatch(
-      /if \[ -f scripts\/ci\/check-dependency-audit\.mjs \]; then\n\s+args="\$args --skip-files pnpm-lock\.yaml"/,
+      /if \[ -f scripts\/ci\/bkit-check-dependency-audit\.mjs \]; then\n\s+args="\$args --skip-files pnpm-lock\.yaml"/,
     );
   });
 

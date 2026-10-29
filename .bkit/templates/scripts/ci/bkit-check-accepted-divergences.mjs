@@ -2,7 +2,7 @@
 // Example. Copy into scripts/ci/ and own it. bkit install does not write this file
 // and does not overwrite a copy.
 /**
- * check-accepted-divergences.mjs — the accepted-divergence guard.
+ * bkit-check-accepted-divergences.mjs — the accepted-divergence guard.
  *
  * CI branches on the event in deliberate places (a PR plans against its base; a push against
  * the last green run; `@live` is push-only). Each is an ACCEPTED divergence from "one script
@@ -17,7 +17,7 @@
  * `file#(workflow)#concurrency#field`. Only `.github/workflows/*.yml` is scanned; scripts,
  * hooks and tests are not.
  *
- * Usage:  node scripts/ci/check-accepted-divergences.mjs [--workflows=<dir>] [--registry=<file>]
+ * Usage:  node scripts/ci/bkit-check-accepted-divergences.mjs [--workflows=<dir>] [--registry=<file>]
  * Exit:   0 = every site registered and every row live, 1 = drift.
  */
 
@@ -156,7 +156,10 @@ function main(argv) {
     return hit ? hit.slice(name.length + 3) : fallback;
   };
   const workflowsDir = arg("workflows", path.join(".github", "workflows"));
-  const registryPath = arg("registry", path.join("scripts", "ci", "accepted-divergences.json"));
+  const registryPath = arg(
+    "registry",
+    path.join("scripts", "ci", "bkit-accepted-divergences.json"),
+  );
 
   if (!fs.existsSync(registryPath)) {
     console.error(`[accepted-divergences] no registry at ${registryPath} — nothing to check`);

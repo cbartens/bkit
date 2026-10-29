@@ -5,6 +5,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  detectCiScriptsOldNames,
   detectTurboIntegrationInputs,
   detectTestIntegrationEnv,
   detectGhaFloatingTags,
@@ -342,6 +343,51 @@ describe("detectRunLevelsNotComposed", () => {
 // ---------------------------------------------------------------------------
 // detectBkitCloudYmlAlwaysTrueGate
 // ---------------------------------------------------------------------------
+
+describe("detectCiScriptsOldNames", () => {
+  function write(rel: string) {
+    fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, rel), "// copy\n");
+  }
+
+  it("returns null when no CI script copy exists", () => {
+    expect(detectCiScriptsOldNames(tmpDir)).toBeNull();
+  });
+  it("returns null when every copy carries the bkit- prefix", () => {
+    write("scripts/ci/bkit-check-capstone.mjs");
+    write("scripts/ci/lanes/bkit-resolve-push-base.mjs");
+    expect(detectCiScriptsOldNames(tmpDir)).toBeNull();
+  });
+  it("lists each unprefixed copy with its git mv and the old-to-new path pairs", () => {
+    write("scripts/ci/check-capstone.mjs");
+    write("scripts/ci/lanes/resolve-push-base.mjs");
+    write("scripts/ci/accepted-advisories.json");
+    const f = detectCiScriptsOldNames(tmpDir);
+    expect(f).toMatchObject({ id: "ci-scripts-old-names", severity: "advisory" });
+    expect(f?.detect).toContain("3 CI template copies");
+    expect(f?.action).toContain(
+      "git mv scripts/ci/check-capstone.mjs scripts/ci/bkit-check-capstone.mjs",
+    );
+    expect(f?.action).toContain(
+      "git mv scripts/ci/lanes/resolve-push-base.mjs scripts/ci/lanes/bkit-resolve-push-base.mjs",
+    );
+    expect(f?.action).toContain(
+      "scripts/ci/accepted-advisories.json → scripts/ci/bkit-accepted-advisories.json",
+    );
+    expect(f?.action).toContain(".github/workflows/*.yml");
+    expect(f?.action).not.toContain("Both names present");
+  });
+  it("asks to merge and remove the old file when both names exist, with no git mv for it", () => {
+    write("scripts/ci/accepted-advisories.json");
+    write("scripts/ci/bkit-accepted-advisories.json");
+    const f = detectCiScriptsOldNames(tmpDir);
+    expect(f?.action).toContain("Both names present");
+    expect(f?.action).toContain(
+      "scripts/ci/accepted-advisories.json (also present: scripts/ci/bkit-accepted-advisories.json)",
+    );
+    expect(f?.action).not.toContain("git mv");
+  });
+});
 
 describe("detectBkitCloudYmlAlwaysTrueGate", () => {
   function writeCloud(content: string) {

@@ -12,7 +12,7 @@ import { detectManagedDuplicate, detectManagedStale } from "./managed.js";
 import { buildCloudDashboardsAdvisory, detectCiRouterSecrets, detectGhMcpToken } from "./auth.js";
 import { buildCloudSetupAdvisory, buildGithubProjectAdvisory, buildGithubProjectTokenScopeAdvisory, buildTrackerSetupAdvisory, detectActionsWritePermissions, detectMainBranchProtection, } from "./github.js";
 import { buildDepUpdaterSetupAdvisory, detectBkitStubs, detectValePackageNotSynced, detectWorkflowLintToolsMissing, } from "./tools.js";
-import { detectBkitCloudYmlAlwaysTrueGate, detectCiYmlCapstoneContractDrift, detectCiYmlMissingActionlint, detectCiYmlRunInjection, detectGhaFloatingTags, detectRunLevelsNotComposed, detectTaggedTestsWithoutCiHome, detectTestIntegrationEnv, detectTurboIntegrationInputs, } from "./ci-yml.js";
+import { detectBkitCloudYmlAlwaysTrueGate, detectCiScriptsOldNames, detectCiYmlCapstoneContractDrift, detectCiYmlMissingActionlint, detectCiYmlRunInjection, detectGhaFloatingTags, detectRunLevelsNotComposed, detectTaggedTestsWithoutCiHome, detectTestIntegrationEnv, detectTurboIntegrationInputs, } from "./ci-yml.js";
 import { dropTipSilencedAdvisories, setupTipsChecklistLines, setupTipsMarkdownLines, } from "../tips/index.js";
 // ---------------------------------------------------------------------------
 // formatChecklist — pure renderer
@@ -337,6 +337,10 @@ export function runPostInstallCheck(preflightAdvisories, cwd = process.cwd(), su
     const cloudGate = detectBkitCloudYmlAlwaysTrueGate(cwd);
     if (cloudGate)
         phase3.push(cloudGate);
+    // CI template copies named without the `bkit-` prefix.
+    const ciScriptNames = detectCiScriptsOldNames(cwd);
+    if (ciScriptNames)
+        phase3.push(ciScriptNames);
     // Self-installed opencode.yml (/oc handler) drifted from the installed opencode provider —
     // it hardcodes a model + secret that `bkit install --opencode=` does not rewrite. Not for
     // claude.yml (its @claude handler is provider-fixed). bkit-cloud.yml self-syncs, so exempt.

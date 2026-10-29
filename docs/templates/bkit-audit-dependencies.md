@@ -264,7 +264,7 @@ Doctrine: `docs/deployments.md` § Dependency updaters, § Renovate — fencing 
 ### Pre-Flight / Dependencies
 
 - Git host: `gh` against `cbartens/bkit`. Package manager: pnpm through Corepack from `package.json` `packageManager`.
-- Vulnerability sources: `node scripts/ci/check-dependency-audit.mjs` (baseline `scripts/ci/accepted-advisories.json`); `pnpm audit --json`; `gh api repos/cbartens/bkit/dependabot/alerts --paginate`; Trivy `fs` via docker with dev deps included, image + digest from `.github/workflows/bkit-trivy.yml`, on a dir holding only a `pnpm-lock.yaml` copy. CI Trivy skips `pnpm-lock.yaml` while `scripts/ci/check-dependency-audit.mjs` exists, so the local Trivy run is the second lockfile source.
+- Vulnerability sources: `node scripts/ci/bkit-check-dependency-audit.mjs` (baseline `scripts/ci/bkit-accepted-advisories.json`); `pnpm audit --json`; `gh api repos/cbartens/bkit/dependabot/alerts --paginate`; Trivy `fs` via docker with dev deps included, image + digest from `.github/workflows/bkit-trivy.yml`, on a dir holding only a `pnpm-lock.yaml` copy. CI Trivy skips `pnpm-lock.yaml` while `scripts/ci/bkit-check-dependency-audit.mjs` exists, so the local Trivy run is the second lockfile source.
 - Not installed: OSV-Scanner, lockfile-lint → `Batch` greps stand in.
 
 ### Permissions

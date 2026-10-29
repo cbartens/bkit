@@ -2,9 +2,9 @@
 // Example. Copy into scripts/ci/ and own it. bkit install does not write this file
 // and does not overwrite a copy.
 /**
- * check-dependency-audit.test.mjs — unit tests for the dependency-audit gate.
+ * bkit-check-dependency-audit.test.mjs — unit tests for the dependency-audit gate.
  *
- * Pure Node, no runner: `node scripts/ci/check-dependency-audit.test.mjs`.
+ * Pure Node, no runner: `node scripts/ci/bkit-check-dependency-audit.test.mjs`.
  * Exit: 0 = all tests passed, 1 = at least one test failed.
  */
 
@@ -12,7 +12,7 @@ import {
   blockingFindings,
   checkAcceptances,
   classifyAuditOutput,
-} from "./check-dependency-audit.mjs";
+} from "./bkit-check-dependency-audit.mjs";
 
 let passed = 0;
 let failed = 0;

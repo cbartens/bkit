@@ -40,14 +40,14 @@ jobs:
         with:
           persist-credentials: false
 
-      # `scripts/ci/check-dependency-audit.mjs` (bkit-ci.yml `Check Dependency Audit`)
-      # already gates pnpm-lock.yaml against `accepted-advisories.json`; scanning it here
+      # `scripts/ci/bkit-check-dependency-audit.mjs` (bkit-ci.yml `Check Dependency Audit`)
+      # already gates pnpm-lock.yaml against `bkit-accepted-advisories.json`; scanning it here
       # too would need every acceptance twice. Without that gate, Trivy owns the lockfile.
       - name: Plan Scan
         id: plan
         run: |
           args=""
-          if [ -f scripts/ci/check-dependency-audit.mjs ]; then
+          if [ -f scripts/ci/bkit-check-dependency-audit.mjs ]; then
             args="$args --skip-files pnpm-lock.yaml"
           fi
           if [ -f .trivyignore.yaml ]; then

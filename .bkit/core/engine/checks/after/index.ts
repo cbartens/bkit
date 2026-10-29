@@ -32,6 +32,7 @@ import {
 } from "./tools.js";
 import {
   detectBkitCloudYmlAlwaysTrueGate,
+  detectCiScriptsOldNames,
   detectCiYmlCapstoneContractDrift,
   detectCiYmlMissingActionlint,
   detectCiYmlRunInjection,
@@ -435,6 +436,10 @@ export function runPostInstallCheck(
   // bkit-cloud.yml always-true auto-route gate (block scalar wrapping ${{ }}).
   const cloudGate = detectBkitCloudYmlAlwaysTrueGate(cwd);
   if (cloudGate) phase3.push(cloudGate);
+
+  // CI template copies named without the `bkit-` prefix.
+  const ciScriptNames = detectCiScriptsOldNames(cwd);
+  if (ciScriptNames) phase3.push(ciScriptNames);
 
   // Self-installed opencode.yml (/oc handler) drifted from the installed opencode provider —
   // it hardcodes a model + secret that `bkit install --opencode=` does not rewrite. Not for

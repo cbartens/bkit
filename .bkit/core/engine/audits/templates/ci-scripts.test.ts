@@ -12,7 +12,7 @@ import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { parse as parseYamlText } from "yaml";
 
-const GUARD = path.resolve(".bkit/templates/scripts/ci/check-accepted-divergences.mjs");
+const GUARD = path.resolve(".bkit/templates/scripts/ci/bkit-check-accepted-divergences.mjs");
 
 interface Site {
   file: string;
@@ -56,7 +56,7 @@ const WORKFLOW = [
   "",
 ].join("\n");
 
-describe("check-accepted-divergences", () => {
+describe("bkit-check-accepted-divergences", () => {
   it("collects event-keyed sites with their job and step", () => {
     const dir = workflowDir(WORKFLOW);
     const keys = collectSites(dir).map((s) => `${s.job}#${s.step}#${s.field}`);
@@ -147,7 +147,7 @@ describe("check-accepted-divergences", () => {
   });
 });
 
-const AUDIT = path.resolve(".bkit/templates/scripts/ci/check-dependency-audit.mjs");
+const AUDIT = path.resolve(".bkit/templates/scripts/ci/bkit-check-dependency-audit.mjs");
 
 interface Finding {
   advisory: string;
@@ -197,7 +197,7 @@ function runAuditGuard(report: unknown, registry: unknown): number | null {
   ).status;
 }
 
-describe("check-dependency-audit", () => {
+describe("bkit-check-dependency-audit", () => {
   it("blocks high and critical by default, not moderate", () => {
     expect(blockingFindings(AUDIT_REPORT).map((f) => f.advisory)).toEqual(["GHSA-crit"]);
   });
@@ -265,7 +265,7 @@ describe("shipped copy-and-own test files", () => {
   });
 });
 
-const CAPSTONE_SCRIPT = path.resolve(".bkit/templates/scripts/ci/check-capstone.mjs");
+const CAPSTONE_SCRIPT = path.resolve(".bkit/templates/scripts/ci/bkit-check-capstone.mjs");
 const WORKFLOWS = {
   template: path.resolve(".bkit/templates/.github/workflows/bkit-ci.yml"),
   repo: path.resolve(".github/workflows/bkit-ci.yml"),
@@ -294,7 +294,7 @@ function capstoneOf(workflow: string): CapstoneJob {
 }
 
 const callsScript = (step: Step) =>
-  /\bnode scripts\/ci\/check-capstone\.mjs\b/.test(step.run ?? "");
+  /\bnode scripts\/ci\/bkit-check-capstone\.mjs\b/.test(step.run ?? "");
 
 const envOf = (step: Step): Record<string, string> => step.env ?? {};
 
@@ -356,11 +356,15 @@ describe("capstone env wiring checks", () => {
   });
 });
 
-describe("check-capstone", () => {
+describe("bkit-check-capstone", () => {
   it("passes its own copy-and-own test file (bkit's own copy)", () => {
-    const res = spawnSync(process.execPath, [path.resolve("scripts/ci/check-capstone.test.mjs")], {
-      encoding: "utf-8",
-    });
+    const res = spawnSync(
+      process.execPath,
+      [path.resolve("scripts/ci/bkit-check-capstone.test.mjs")],
+      {
+        encoding: "utf-8",
+      },
+    );
     expect(res.status, res.stdout + res.stderr).toBe(0);
   });
 
@@ -371,7 +375,7 @@ describe("check-capstone", () => {
       const assertStep = steps.find(callsScript);
       expect(
         assertStep,
-        `${workflow}: no capstone step runs scripts/ci/check-capstone.mjs`,
+        `${workflow}: no capstone step runs scripts/ci/bkit-check-capstone.mjs`,
       ).toBeDefined();
       const env = envOf(assertStep!);
       const lanes = needs
@@ -413,7 +417,10 @@ describe("check-capstone", () => {
       tmpDirs.push(dir);
       if (withScript) {
         fs.mkdirSync(path.join(dir, "scripts", "ci"), { recursive: true });
-        fs.copyFileSync(CAPSTONE_SCRIPT, path.join(dir, "scripts", "ci", "check-capstone.mjs"));
+        fs.copyFileSync(
+          CAPSTONE_SCRIPT,
+          path.join(dir, "scripts", "ci", "bkit-check-capstone.mjs"),
+        );
       }
       const res = spawnSync("sh", ["-c", step().run!], {
         cwd: dir,
@@ -430,10 +437,10 @@ describe("check-capstone", () => {
       expect(Object.keys(envOf(step())).sort()).toEqual(Object.keys(lanesEnv).sort());
     });
 
-    it("reds with a copy-the-script message when scripts/ci/check-capstone.mjs is missing", () => {
+    it("reds with a copy-the-script message when scripts/ci/bkit-check-capstone.mjs is missing", () => {
       const r = run(false, lanesEnv);
       expect(r.status).toBe(1);
-      expect(r.out).toContain("::error::scripts/ci/check-capstone.mjs is missing");
+      expect(r.out).toContain("::error::scripts/ci/bkit-check-capstone.mjs is missing");
       expect(r.out).toContain(".bkit/templates/scripts/ci/");
     });
 

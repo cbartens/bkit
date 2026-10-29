@@ -2,7 +2,7 @@
 // Example. Copy into scripts/ci/ and own it. bkit install does not write this file
 // and does not overwrite a copy.
 /**
- * check-dependency-audit.mjs — the dependency-audit gate.
+ * bkit-check-dependency-audit.mjs — the dependency-audit gate.
  *
  * Runs `pnpm audit --json` and reds when a blocking advisory (by default high or critical)
  * reaches the lockfile without an acceptance in the registry. An acceptance is a row naming
@@ -19,7 +19,7 @@
  * Reads pnpm's report shape (`advisories`: id → { github_advisory_id, severity, module_name,
  * patched_versions, findings }). Another package manager → adapt `blockingFindings()`.
  *
- * Usage:  node scripts/ci/check-dependency-audit.mjs [--registry=<file>] [--report=<file>]
+ * Usage:  node scripts/ci/bkit-check-dependency-audit.mjs [--registry=<file>] [--report=<file>]
  *                                                  [--unreachable=fail|warn]
  *         --report reads a saved `pnpm audit --json` instead of running the audit.
  *         --unreachable (default fail) is what the LIVE audit does when the registry cannot
@@ -198,7 +198,8 @@ function main(argv) {
     },
     strict: false,
   });
-  const registryPath = values.registry ?? path.join("scripts", "ci", "accepted-advisories.json");
+  const registryPath =
+    values.registry ?? path.join("scripts", "ci", "bkit-accepted-advisories.json");
   const reportPath = values.report ?? null;
   const unreachable = values.unreachable ?? "fail";
   if (unreachable !== "fail" && unreachable !== "warn") {

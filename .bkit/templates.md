@@ -48,7 +48,7 @@ Adoption order = `bkit tips` order. Local stack lock has no tip (nothing in a re
 | Tool | Copy from | To | Output you commit |
 | --- | --- | --- | --- |
 | CI workflow | `.bkit/templates/.github/workflows/bkit-ci.yml` | `.github/workflows/bkit-ci.yml` | that file |
-| CI scripts | `.bkit/templates/scripts/ci/` | `scripts/ci/` | the scripts you adopt (`lanes/resolve-push-base.mjs` + `.test.mjs`, CI's push base, also run by pre-push; `check-accepted-divergences.mjs` + `accepted-divergences.json`; `check-dependency-audit.mjs` + `accepted-advisories.json`, also run by pre-push). `check-capstone.mjs` + `check-capstone.test.mjs` are required with `bkit-ci.yml`, not optional |
+| CI scripts | `.bkit/templates/scripts/ci/` | `scripts/ci/` | the scripts you adopt (`lanes/bkit-resolve-push-base.mjs` + `.test.mjs`, CI's push base, also run by pre-push; `bkit-check-accepted-divergences.mjs` + `bkit-accepted-divergences.json`; `bkit-check-dependency-audit.mjs` + `bkit-accepted-advisories.json`, also run by pre-push). `bkit-check-capstone.mjs` + `bkit-check-capstone.test.mjs` are required with `bkit-ci.yml`, not optional |
 | Cloud-agent workflow | `.bkit/templates/.github/workflows/bkit-cloud.yml` | `.github/workflows/bkit-cloud.yml` | that file |
 | Git hooks (Husky) | `.bkit/templates/.husky/pre-commit`, `.bkit/templates/.husky/pre-push` | `.husky/pre-commit`, `.husky/pre-push` | both files |
 | Prettier ignore list | `.bkit/templates/.prettierignore` | `.prettierignore` | that file |
@@ -186,10 +186,11 @@ Parallel lanes `bkit-tests-static` (typecheck, lint, prettier, Vale, slop, actio
 
 - Install: nothing beyond the gate tool scripts above, a `test` script, and `packageManager` in `package.json` (`pnpm/action-setup` reads it; do not add `with: version:`).
 - Adapt: `main`, `{{NODE_VERSION}}`. Non-Node repo → replace the Node / pnpm setup, install and check steps with your stack's.
-- Capstone: `bkit-tests-check` `needs:` every lane and runs on `!cancelled()`, never `always()`. Each lane you adopt from the reference goes into its `needs:` and its assert, or that lane's failure cannot red the merge. Its assert is `scripts/ci/check-capstone.mjs` (copy it and `check-capstone.test.mjs` from `.bkit/templates/scripts/ci/` with the workflow; REQUIRED — the step reds with a copy-the-script message when the file is missing, and never skips). The script reds on a lane that did not succeed, a lane that ran when the plan said skip, a lane that succeeded with 0 tests or a non-numeric count, and a plan that does not parse. It reads each lane's executed-test count once the lane writes one (the `Run Unit Tests` step comment shows the vitest form); `EMPTY_COUNT: warn` makes an unreported count a warning, a count of 0 a failure. Each lane you adopt goes into `LANES` and its `<LANE>_RESULT` / `<LANE>_RAN` variables. Renaming the job → set `bkit.testing.ciCapstone`.
+- Capstone: `bkit-tests-check` `needs:` every lane and runs on `!cancelled()`, never `always()`. Each lane you adopt from the reference goes into its `needs:` and its assert, or that lane's failure cannot red the merge. Its assert is `scripts/ci/bkit-check-capstone.mjs` (copy it and `bkit-check-capstone.test.mjs` from `.bkit/templates/scripts/ci/` with the workflow; REQUIRED — the step reds with a copy-the-script message when the file is missing, and never skips). The script reds on a lane that did not succeed, a lane that ran when the plan said skip, a lane that succeeded with 0 tests or a non-numeric count, and a plan that does not parse. It reads each lane's executed-test count once the lane writes one (the `Run Unit Tests` step comment shows the vitest form); `EMPTY_COUNT: warn` makes an unreported count a warning, a count of 0 a failure. Each lane you adopt goes into `LANES` and its `<LANE>_RESULT` / `<LANE>_RAN` variables. Renaming the job → set `bkit.testing.ciCapstone`.
 - Adopt a scaffold lane only when its tier exists (`docs/testing.md`). Each `# bkit-stub:<id> —` header raises an install advisory until you enable or delete that stub.
 - Keep the `name: bkit-ci` line, or rename `workflows: [bkit-ci]` in `bkit-cloud.yml` and set `bkit.testing.ciWorkflow` to the new file name.
 - Keep `fetch-depth: 0` on the static lane: `slop:delta` checks the PR base out as a worktree.
+- CI script copies named without the `bkit-` prefix (`check-capstone.mjs`, `accepted-advisories.json`, …) → `bkit check` advisory `ci-scripts-old-names` lists each rename. Rename a file and its paths in `.github/workflows/*.yml`, `.husky/pre-push` and `scripts/ci/` in one commit: the `Check Dependency Audit` step is guarded by `hashFiles` and skips silently when only the file moved.
 
 ## Cloud-agent workflow — `bkit-cloud.yml`
 
@@ -214,7 +215,7 @@ chmod +x .husky/pre-commit .husky/pre-push
 - Min push: every file changed since each pushed commit left `origin/dev` (else `origin/main`) matches `bkit.testing.minPushPaths` (`package.json` globs: `*` one folder, `**` any depth; default `docs/plans/**`, `docs/*.jsonl`, `.bkit/*.jsonl`; `[]` = off) → `bkit:gate:min` replaces the full gate; `MIN_PUSH=1`. `bkit ci min-push` decides from files, never `[skip ci]` (a typed label; GitHub reads the last commit only). No files / unreadable range / no ref list → full gate.
 - Min-push paths: files no code, build or test reads. Never `docs/**` (a doc can be test input). A test reading a ledger → into `bkit:gate:min`.
 - `[skip ci]` guards: feature branch → blocked only while a PR is open (workflows push `[skip ci]` code heads mid-run). `dev` / `main` → blocked unless a min push: GitHub skips CI for the whole push.
-- Slop base: `dev` push + `scripts/ci/lanes/resolve-push-base.mjs` copied → the hook runs it with `--local --branch=dev --head=<pushed sha>` and exports `SLOP_BASE_REF` = CI's push base (head of the last green CI push run on `dev`, else `origin/dev`), printing the base and its source. Pre-push and CI slop then share a base, so a finding an earlier red push landed fails locally too. Run lookup fails (`gh` missing, logged out) → loud `WARNING`, base `origin/dev`, push goes on. Other branches, or no copy → `bkit ci slop` merge-base default. A repo-owned pre-push check that diffs against CI's base (migration immutability) reads `SLOP_BASE_REF` when set.
+- Slop base: `dev` push + `scripts/ci/lanes/bkit-resolve-push-base.mjs` copied → the hook runs it with `--local --branch=dev --head=<pushed sha>` and exports `SLOP_BASE_REF` = CI's push base (head of the last green CI push run on `dev`, else `origin/dev`), printing the base and its source. Pre-push and CI slop then share a base, so a finding an earlier red push landed fails locally too. Run lookup fails (`gh` missing, logged out) → loud `WARNING`, base `origin/dev`, push goes on. Other branches, or no copy → `bkit ci slop` merge-base default. A repo-owned pre-push check that diffs against CI's base (migration immutability) reads `SLOP_BASE_REF` when set.
 - Slow repo extras (Docker, database, build) → wrap in `if [ "$MIN_PUSH" != "1" ]; then … fi`.
 - Traps: hooks run on every workflow commit; keep them to seconds (pre-commit) and deterministic checks that reach no deployed service (pre-push). Integration runs at pre-push once `bkit:gate:static-unit-integration` is declared (a local database in Docker is fine); E2E and `@live` belong in CI.
 - Run each check once: nothing in `bkit:gate:format` that the push gate runs again (`gate-commit-repeats-push` advisory), and `pnpm test` (the unit tier) matches no `*.integration.test.*` file — a unit config with no integration exclude runs those tests in the unit gate and again in the integration gate.
@@ -389,14 +390,14 @@ A library with a published security advisory can sit in the lockfile for months:
 
 ```bash
 mkdir -p scripts/ci
-cp .bkit/templates/scripts/ci/check-dependency-audit.mjs \
-   .bkit/templates/scripts/ci/check-dependency-audit.test.mjs \
-   .bkit/templates/scripts/ci/accepted-advisories.json scripts/ci/
+cp .bkit/templates/scripts/ci/bkit-check-dependency-audit.mjs \
+   .bkit/templates/scripts/ci/bkit-check-dependency-audit.test.mjs \
+   .bkit/templates/scripts/ci/bkit-accepted-advisories.json scripts/ci/
 ```
 
-- Wiring: the `Dependency audit` block in the `.husky/pre-push` template runs it above the gates; skipped while `scripts/ci/check-dependency-audit.mjs` is absent. Your hook lacks the block → paste it above the gates. The `Check Dependency Audit` step (`bkit-tests-static`) self-skips until the script is copied.
+- Wiring: the `Dependency audit` block in the `.husky/pre-push` template runs it above the gates; skipped while `scripts/ci/bkit-check-dependency-audit.mjs` is absent. Your hook lacks the block → paste it above the gates. The `Check Dependency Audit` step (`bkit-tests-static`) self-skips until the script is copied.
 - Recommendation: adopt it and an advisory is seen at the first push, not at the first remote run. It reads the advisory registry the push already needs, so the network is no extra requirement.
-- Acceptances: a row in `scripts/ci/accepted-advisories.json` needs `advisory`, `reason` and a `YYYY-MM-DD` `expires`. The expiry may not run past the severity's `blocking` days (default critical 7, high 30), and a row the audit no longer reports fails. Upgrade before accepting: `pnpm update -r <pkg>`.
+- Acceptances: a row in `scripts/ci/bkit-accepted-advisories.json` needs `advisory`, `reason` and a `YYYY-MM-DD` `expires`. The expiry may not run past the severity's `blocking` days (default critical 7, high 30), and a row the audit no longer reports fails. Upgrade before accepting: `pnpm update -r <pkg>`.
 - Fails closed: a blocking advisory, an unusable answer or an unreachable registry stops the push, never a pass on no answer. `--unreachable=warn` relaxes only the unreachable case — one warning, the push goes on — for a caller that leaves the check to CI; the shipped hook and the CI step both use the default `fail`. A registry that answered badly (401, 500, a missing endpoint) is a failure, not "unreachable".
 - The audit runs with pnpm's fetch retries off, so a refused or unresolved registry fails in under a second instead of hanging the push. A slow, working registry is never cut off.
 - Once adopted, the Trivy scan skips `pnpm-lock.yaml`: accept pnpm advisories here only (§ Trivy).
@@ -423,7 +424,7 @@ misconfigurations:
 ```
 
 - Past `expired_at` the finding fails again. Keep it within the fix-time policy (`docs/deployments.md` § Dependency updaters).
-- `scripts/ci/check-dependency-audit.mjs` adopted → the scan skips `pnpm-lock.yaml`; accept pnpm advisories in `accepted-advisories.json` only.
+- `scripts/ci/bkit-check-dependency-audit.mjs` adopted → the scan skips `pnpm-lock.yaml`; accept pnpm advisories in `bkit-accepted-advisories.json` only.
 - Keep `--include-dev-deps`: without it Trivy drops npm / yarn / pnpm dev dependencies, and a dev-tooling lockfile scans zero packages and passes.
 - Pin = image tag + `sha256:` digest; Renovate bumps both. Never `aquasecurity/trivy-action` or `setup-trivy` by tag (tags re-pointed at a credential stealer, March 2026); never releases 0.69.4-0.69.6.
 - The `.cursor/Dockerfile` template runs as root → `DS-0002`. Add a non-root `USER` or accept it.

@@ -399,6 +399,12 @@ describe("SETUP_TIPS — detection", () => {
     expect(tip("dependency-audit").fires(cwd)).toBe(false);
     write(".husky/pre-push");
     expect(tip("dependency-audit").fires(cwd)).toBe(true);
+    write("scripts/ci/bkit-check-dependency-audit.mjs");
+    expect(tip("dependency-audit").fires(cwd)).toBe(false);
+  });
+
+  it("dependency-audit stays quiet for a copy under the unprefixed name", () => {
+    write(".husky/pre-push");
     write("scripts/ci/check-dependency-audit.mjs");
     expect(tip("dependency-audit").fires(cwd)).toBe(false);
   });

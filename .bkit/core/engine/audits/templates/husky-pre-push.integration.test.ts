@@ -500,7 +500,7 @@ describe(".husky/pre-push template fast checks", () => {
   it("the dependency audit runs before any gate, when its script is present", () => {
     fs.mkdirSync(path.join(tmp, "scripts", "ci"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmp, "scripts", "ci", "check-dependency-audit.mjs"),
+      path.join(tmp, "scripts", "ci", "bkit-check-dependency-audit.mjs"),
       `import { appendFileSync } from "node:fs";\nappendFileSync(${JSON.stringify(path.join(tmp, "calls.log"))}, "audit\\n");\n`,
     );
     const r = runHook(0);
@@ -526,7 +526,7 @@ describe(".husky/pre-push template fast checks", () => {
 
 // ---------------------------------------------------------------------------
 // .husky/pre-push slop base — on a dev push the hook asks scripts/ci/lanes/
-// resolve-push-base.mjs (local mode) for CI's base and hands it to the gates as
+// bkit-resolve-push-base.mjs (local mode) for CI's base and hands it to the gates as
 // SLOP_BASE_REF. Stub resolver logs its argv and answers a fixed base + source; stub `pnpm`
 // logs each gate with the SLOP_BASE_REF it sees.
 // ---------------------------------------------------------------------------
@@ -561,7 +561,7 @@ describe(".husky/pre-push slop base", () => {
   const adoptResolver = (base: string, source: string) => {
     fs.mkdirSync(path.join(tmp, "scripts", "ci", "lanes"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmp, "scripts", "ci", "lanes", "resolve-push-base.mjs"),
+      path.join(tmp, "scripts", "ci", "lanes", "bkit-resolve-push-base.mjs"),
       [
         'import fs from "node:fs";',
         `fs.appendFileSync(${JSON.stringify(`${tmp}/calls.log`)}, \`resolver \${process.argv.slice(2).join(" ")}\\n\`);`,

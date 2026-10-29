@@ -1,5 +1,5 @@
 // audits/repo/resolve-push-base.test.ts — unit tests for bkit's own push-run diff base
-// (scripts/ci/lanes/resolve-push-base.mjs), the dogfood of the shipped template. The same
+// (scripts/ci/lanes/bkit-resolve-push-base.mjs), the dogfood of the shipped template. The same
 // decisions ship to consumers with the template and its standalone test.
 //
 // The script is ESM `.mjs`; imported dynamically so this Vitest ts file can exercise it.
@@ -13,7 +13,7 @@ import { describe, expect, it } from "vitest";
 
 import { tierTimeouts } from "../../../../../vitest.timeout-budget";
 
-const SCRIPT = path.resolve("scripts/ci/lanes/resolve-push-base.mjs");
+const SCRIPT = path.resolve("scripts/ci/lanes/bkit-resolve-push-base.mjs");
 
 /**
  * The `exit 0 always` cases below spawn the real script — node, plus the fake `gh` / `git`

@@ -368,11 +368,13 @@ export const SETUP_TIPS: readonly SetupTip[] = [
     title: "Fail on a known-vulnerable dependency",
     line: "A library with a published security advisory can sit in the lockfile for months: the updater only offers a fix, and nothing fails the check when one is missing. Add the gate that stops a known problem before it reaches CI.",
     why: "An updater never blocks anything, so a risk with no fix yet, or one nobody merged, stays invisible. The gate names each exception with a reason and an expiry, fails on a new one, and fails even when it cannot get an answer — so a known problem is never a silent pass.",
-    ask: "Copy .bkit/templates/scripts/ci/check-dependency-audit.mjs and .bkit/templates/scripts/ci/accepted-advisories.json to scripts/ci/, then paste the `Dependency audit` block from .bkit/templates/.husky/pre-push into .husky/pre-push above the gates.",
+    ask: "Copy .bkit/templates/scripts/ci/bkit-check-dependency-audit.mjs and .bkit/templates/scripts/ci/bkit-accepted-advisories.json to scripts/ci/, then paste the `Dependency audit` block from .bkit/templates/.husky/pre-push into .husky/pre-push above the gates.",
     steps:
       "`.bkit/templates.md` § Dependency audit. Each acceptance needs a `reason` and a `YYYY-MM-DD` `expires`.",
     fires: (cwd) =>
-      exists(cwd, ".husky/pre-push") && !exists(cwd, "scripts/ci/check-dependency-audit.mjs"),
+      exists(cwd, ".husky/pre-push") &&
+      !exists(cwd, "scripts/ci/bkit-check-dependency-audit.mjs") &&
+      !exists(cwd, "scripts/ci/check-dependency-audit.mjs"),
   },
   {
     id: "prettier-tables",

@@ -2,9 +2,9 @@
 // Example. Copy into scripts/ci/lanes/ and own it. bkit install does not write this file
 // and does not overwrite a copy.
 /**
- * resolve-push-base.test.mjs — unit tests for the push-run diff base.
+ * bkit-resolve-push-base.test.mjs — unit tests for the push-run diff base.
  *
- * Pure Node, no runner: `node scripts/ci/lanes/resolve-push-base.test.mjs`.
+ * Pure Node, no runner: `node scripts/ci/lanes/bkit-resolve-push-base.test.mjs`.
  * Exit: 0 = all tests passed, 1 = at least one test failed.
  */
 
@@ -18,9 +18,9 @@ import {
   newestRunSha,
   parseArgs,
   repoFromRemoteUrl,
-} from "./resolve-push-base.mjs";
+} from "./bkit-resolve-push-base.mjs";
 
-const SCRIPT = fileURLToPath(new URL("./resolve-push-base.mjs", import.meta.url));
+const SCRIPT = fileURLToPath(new URL("./bkit-resolve-push-base.mjs", import.meta.url));
 
 /** Run the script with fake `gh` / `git` binaries first on PATH; `gh` calls land in gh.log. */
 function runWithFakes({ gh, git, args = [], env = {} }) {

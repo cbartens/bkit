@@ -325,17 +325,17 @@ const ADOPTED: Record<string, Entry> = {
       },
     ],
   },
-  "scripts/ci/lanes/resolve-push-base.mjs": identical,
-  "scripts/ci/lanes/resolve-push-base.test.mjs": identical,
-  "scripts/ci/check-accepted-divergences.mjs": {
+  "scripts/ci/lanes/bkit-resolve-push-base.mjs": identical,
+  "scripts/ci/lanes/bkit-resolve-push-base.test.mjs": identical,
+  "scripts/ci/bkit-check-accepted-divergences.mjs": {
     status: "not-adopted",
     what: "the accepted-divergence guard is a consumer opt-in; bkit does not wire it into its own CI",
   },
-  "scripts/ci/check-accepted-divergences.test.mjs": {
+  "scripts/ci/bkit-check-accepted-divergences.test.mjs": {
     status: "not-adopted",
     what: "ships with the opt-in guard",
   },
-  "scripts/ci/accepted-divergences.json": {
+  "scripts/ci/bkit-accepted-divergences.json": {
     status: "not-adopted",
     what: "ships with the opt-in guard",
   },
@@ -343,11 +343,11 @@ const ADOPTED: Record<string, Entry> = {
     status: "not-adopted",
     what: "this repo starts no local service that its worktrees share",
   },
-  "scripts/ci/check-capstone.mjs": identical,
-  "scripts/ci/check-capstone.test.mjs": identical,
-  "scripts/ci/check-dependency-audit.mjs": identical,
-  "scripts/ci/check-dependency-audit.test.mjs": identical,
-  "scripts/ci/accepted-advisories.json": {
+  "scripts/ci/bkit-check-capstone.mjs": identical,
+  "scripts/ci/bkit-check-capstone.test.mjs": identical,
+  "scripts/ci/bkit-check-dependency-audit.mjs": identical,
+  "scripts/ci/bkit-check-dependency-audit.test.mjs": identical,
+  "scripts/ci/bkit-accepted-advisories.json": {
     status: "adopted",
     edits: [
       {

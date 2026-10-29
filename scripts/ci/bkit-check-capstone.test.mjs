@@ -2,18 +2,18 @@
 // Example. Copy into scripts/ci/ and own it. bkit install does not write this file
 // and does not overwrite a copy.
 /**
- * check-capstone.test.mjs — unit tests for the capstone gate.
+ * bkit-check-capstone.test.mjs — unit tests for the capstone gate.
  *
- * Pure Node, no runner: `node scripts/ci/check-capstone.test.mjs`.
+ * Pure Node, no runner: `node scripts/ci/bkit-check-capstone.test.mjs`.
  * Exit: 0 = all tests passed, 1 = at least one test failed.
  */
 
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { checkCapstone } from "./check-capstone.mjs";
+import { checkCapstone } from "./bkit-check-capstone.mjs";
 
-const SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), "check-capstone.mjs");
+const SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), "bkit-check-capstone.mjs");
 
 let passed = 0;
 let failed = 0;

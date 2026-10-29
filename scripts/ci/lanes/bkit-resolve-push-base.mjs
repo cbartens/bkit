@@ -2,7 +2,7 @@
 // Example. Copy into scripts/ci/lanes/ and own it. bkit install does not write this file
 // and does not overwrite a copy.
 /**
- * resolve-push-base.mjs — the diff base for a push run's test plan.
+ * bkit-resolve-push-base.mjs — the diff base for a push run's test plan.
  *
  * A newer run on a branch cancels the older one, so the previous push's run may never have
  * finished — and `github.event.before` is that previous push. Diffing against it would leave
@@ -17,9 +17,9 @@
  * in for `event.before`, and ancestry is tested against the pushed commit (`--head`), which is
  * not always the checked-out one. gh uses its own login.
  *
- * Usage:  node scripts/ci/lanes/resolve-push-base.mjs
+ * Usage:  node scripts/ci/lanes/bkit-resolve-push-base.mjs
  *         (env: GH_TOKEN, REPO, BRANCH, BEFORE_SHA, WORKFLOW_FILE; optional SOURCE_FILE)
- *         node scripts/ci/lanes/resolve-push-base.mjs --local --branch=dev --head=<pushed sha>
+ *         node scripts/ci/lanes/bkit-resolve-push-base.mjs --local --branch=dev --head=<pushed sha>
  *         (env: optional WORKFLOW_FILE, SOURCE_FILE)
  * Output: the base SHA on stdout; the chosen source (`last-green-run`, `event-before`, ...;
  *         `origin/<branch>` in place of `event-before` in local mode) on stderr, and in

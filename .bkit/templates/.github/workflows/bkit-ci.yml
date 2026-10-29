@@ -256,12 +256,12 @@ jobs:
         run: pnpm bkit ci pins --file=.cursor/Dockerfile
 
       # Dependency-audit gate: fails on a high or critical advisory in the lockfile that
-      # scripts/ci/accepted-advisories.json does not accept with a reason and an in-date expiry.
+      # scripts/ci/bkit-accepted-advisories.json does not accept with a reason and an in-date expiry.
       # Self-skips when the guard is absent — a repo that did not adopt
-      # scripts/ci/check-dependency-audit.mjs is a no-op. deployments.md § Dependency updaters.
+      # scripts/ci/bkit-check-dependency-audit.mjs is a no-op. deployments.md § Dependency updaters.
       - name: Check Dependency Audit
-        if: hashFiles('scripts/ci/check-dependency-audit.mjs') != ''
-        run: node scripts/ci/check-dependency-audit.mjs
+        if: hashFiles('scripts/ci/bkit-check-dependency-audit.mjs') != ''
+        run: node scripts/ci/bkit-check-dependency-audit.mjs
 
       # Capability-register freshness gate: rebuild the graph with graphify and fail when
       # docs/capabilities.md is not what this tree produces, so the register cannot drift
@@ -629,7 +629,7 @@ jobs:
   # always(): a concurrency cancel must not stamp a failure. Each lane must succeed; a failed,
   # skipped or cancelled lane reds it. A lane that writes an executed-test count must have run
   # more than 0 tests. Each lane you adopt from the reference below joins needs: and the assert.
-  # The assert is scripts/ci/check-capstone.mjs, required with this file (copy it from
+  # The assert is scripts/ci/bkit-check-capstone.mjs, required with this file (copy it from
   # .bkit/templates/scripts/ci/); the step reds when the script is missing.
   bkit-tests-check:
     needs: [bkit-tests-static, bkit-tests-unit]
@@ -643,8 +643,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Assert Lanes Passed
-        # The verdict is scripts/ci/check-capstone.mjs (copy it with this file from
-        # .bkit/templates/scripts/ci/; check-capstone.test.mjs tests it). Every lane in LANES
+        # The verdict is scripts/ci/bkit-check-capstone.mjs (copy it with this file from
+        # .bkit/templates/scripts/ci/; bkit-check-capstone.test.mjs tests it). Every lane in LANES
         # must succeed; a lane with a *_RAN variable must have run more than 0 tests.
         # EMPTY_COUNT=warn: a lane that writes no count yet warns instead of failing; delete it
         # once every counted lane writes one. Add each lane you adopt to LANES and to its
@@ -656,11 +656,11 @@ jobs:
           UNIT_RESULT: ${{ needs.bkit-tests-unit.result }}
           UNIT_RAN: ${{ needs.bkit-tests-unit.outputs.tests_ran }}
         run: |
-          if [ ! -f scripts/ci/check-capstone.mjs ]; then
-            echo "::error::scripts/ci/check-capstone.mjs is missing. Copy it from .bkit/templates/scripts/ci/ into scripts/ci/; without it bkit-tests-check cannot tell a green lane from a lane that ran no tests."
+          if [ ! -f scripts/ci/bkit-check-capstone.mjs ]; then
+            echo "::error::scripts/ci/bkit-check-capstone.mjs is missing. Copy it from .bkit/templates/scripts/ci/ into scripts/ci/; without it bkit-tests-check cannot tell a green lane from a lane that ran no tests."
             exit 1
           fi
-          node scripts/ci/check-capstone.mjs
+          node scripts/ci/bkit-check-capstone.mjs
 
 # bkit-stub:smoke — Post-CI smoke triggered by workflow_run on {{DEFAULT_BRANCH}}. To enable: copy the YAML below into .github/workflows/smoke.yml (separate file — workflow_run cannot share a file with push/pull_request) and delete this stub header.
 # name: Smoke
@@ -756,7 +756,7 @@ jobs:
 #       #     package.json, which pins turbo EXACTLY — never typed here, or this lane drifts from every
 #       #     install-bearing lane: npm i -g "turbo@$(node -p "require('./package.json').devDependencies.turbo")"
 #       - name: Resolve Base Ref             # [M] push base = the branch's last green run; shipped:
-#       #     scripts/ci/lanes/resolve-push-base.mjs (falls back to github.event.before). deployments.md
+#       #     scripts/ci/lanes/bkit-resolve-push-base.mjs (falls back to github.event.before). deployments.md
 #       #     § One run per branch or pull request.
 # bkit-stub:affected-graph — [M] turbo changed-packages. Stdout ≠ stderr. deployments.md § turbo `//`.
 #       - name: Detect Affected Packages     # [M] sets web_affected / global_dep_changed
@@ -815,8 +815,8 @@ jobs:
 #       - name: Run Slop Scan (delta)         # every event, against the planner base. deployments.md § One run.
 #       - name: Tear Down Base Worktree       # if: always()
 #       - name: Run bkit Check                # [U] drift gate (same as pre-push); catches --no-verify/web-edit/cloud drift
-#       - name: Check Accepted Divergences    # [U] node scripts/ci/check-accepted-divergences.mjs — every event-keyed step is registered; stale rows fail too. testing.md § Accepted divergences.
-#       - name: Check Dependency Audit        # [U] node scripts/ci/check-dependency-audit.mjs — high/critical advisories fail unless accepted with a reason + expiry. deployments.md § Dependency updaters.
+#       - name: Check Accepted Divergences    # [U] node scripts/ci/bkit-check-accepted-divergences.mjs — every event-keyed step is registered; stale rows fail too. testing.md § Accepted divergences.
+#       - name: Check Dependency Audit        # [U] node scripts/ci/bkit-check-dependency-audit.mjs — high/critical advisories fail unless accepted with a reason + expiry. deployments.md § Dependency updaters.
 #       - name: Pull Vercel Env Vars          # [D] preview vs prod env by branch; set CI_ENV_FILE; FAIL-FAST if critical secrets empty
 #       - name: Assert Environment Shape          # [D] env-shape checker (e.g. env-check.sh)
 #       # Resolve URL and remote db push are NOT steps in this catalogue.

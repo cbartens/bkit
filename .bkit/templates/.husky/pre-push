@@ -143,18 +143,18 @@ pnpm bkit check < /dev/null
 # the push, never a pass on no answer. `--unreachable=warn` relaxes only the last of those.
 # A recommendation: adopt it, and CI stops being the first place an advisory is seen.
 # Skipped until scripts/ci/ holds the script (bkit install never writes it).
-if [ -f scripts/ci/check-dependency-audit.mjs ]; then
-  node scripts/ci/check-dependency-audit.mjs < /dev/null
+if [ -f scripts/ci/bkit-check-dependency-audit.mjs ]; then
+  node scripts/ci/bkit-check-dependency-audit.mjs < /dev/null
 fi
 
 # Slop base on a dev push — the commit CI's slop scan compares against: the head of the last
-# green CI push run on dev, else origin/dev (scripts/ci/lanes/resolve-push-base.mjs, the
+# green CI push run on dev, else origin/dev (scripts/ci/lanes/bkit-resolve-push-base.mjs, the
 # script CI's planner runs, in local mode). Exported as SLOP_BASE_REF, which `bkit ci slop`
 # reads, so a finding a red push already landed on dev fails here as it does in CI. Other
 # branches keep the merge-base default. Skipped until scripts/ci/lanes/ holds the script.
-if [ -n "$PUSH_DEV_SHA" ] && [ -f scripts/ci/lanes/resolve-push-base.mjs ]; then
+if [ -n "$PUSH_DEV_SHA" ] && [ -f scripts/ci/lanes/bkit-resolve-push-base.mjs ]; then
   PUSH_BASE_SOURCE_FILE=$(mktemp)
-  CI_PUSH_BASE=$(SOURCE_FILE="$PUSH_BASE_SOURCE_FILE" node scripts/ci/lanes/resolve-push-base.mjs \
+  CI_PUSH_BASE=$(SOURCE_FILE="$PUSH_BASE_SOURCE_FILE" node scripts/ci/lanes/bkit-resolve-push-base.mjs \
     --local --branch=dev --head="$PUSH_DEV_SHA" < /dev/null || echo "")
   CI_PUSH_BASE_SOURCE=$(cat "$PUSH_BASE_SOURCE_FILE" 2>/dev/null || echo "unknown")
   rm -f "$PUSH_BASE_SOURCE_FILE"

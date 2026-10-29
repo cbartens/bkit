@@ -2,16 +2,16 @@
 // Example. Copy into scripts/ci/ and own it. bkit install does not write this file
 // and does not overwrite a copy.
 /**
- * check-accepted-divergences.test.mjs — unit tests for the accepted-divergence guard.
+ * bkit-check-accepted-divergences.test.mjs — unit tests for the accepted-divergence guard.
  *
- * Pure Node, no runner: `node scripts/ci/check-accepted-divergences.test.mjs`.
+ * Pure Node, no runner: `node scripts/ci/bkit-check-accepted-divergences.test.mjs`.
  * Exit: 0 = all tests passed, 1 = at least one test failed.
  */
 
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { collectSites, checkRegistry } from "./check-accepted-divergences.mjs";
+import { collectSites, checkRegistry } from "./bkit-check-accepted-divergences.mjs";
 
 let passed = 0;
 let failed = 0;

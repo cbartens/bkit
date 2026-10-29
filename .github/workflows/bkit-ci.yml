@@ -82,7 +82,7 @@ jobs:
           echo "Markers detected: $MARKERS_JSON"
 
       # The diff base every delta step uses: a PR against its base branch, a push against the
-      # branch's last green run (scripts/ci/lanes/resolve-push-base.mjs — a cancelled push's
+      # branch's last green run (scripts/ci/lanes/bkit-resolve-push-base.mjs — a cancelled push's
       # changes stay in scope), a dispatch against HEAD~1. deployments.md § One run per branch
       # or pull request.
       - name: Resolve Base Ref
@@ -99,7 +99,7 @@ jobs:
             BASE="$PR_BASE_SHA"; SOURCE="pr-base"
           elif [ "$EVENT_NAME" = "push" ]; then
             SOURCE_FILE="$RUNNER_TEMP/push-base-source"
-            BASE=$(SOURCE_FILE="$SOURCE_FILE" node scripts/ci/lanes/resolve-push-base.mjs)
+            BASE=$(SOURCE_FILE="$SOURCE_FILE" node scripts/ci/lanes/bkit-resolve-push-base.mjs)
             SOURCE=$(cat "$SOURCE_FILE" 2>/dev/null || echo "unknown")
           else
             BASE=$(git rev-parse HEAD~1 2>/dev/null || echo ""); SOURCE="dispatch-head~1"
@@ -504,12 +504,12 @@ jobs:
           --file=.bkit/shared/.claude/bkit-cloud.md
 
       # Dependency-audit gate: fails on a high or critical advisory in the lockfile that
-      # scripts/ci/accepted-advisories.json does not accept with a reason and an in-date expiry.
+      # scripts/ci/bkit-accepted-advisories.json does not accept with a reason and an in-date expiry.
       # Self-skips when the guard is absent — a repo that did not adopt
-      # scripts/ci/check-dependency-audit.mjs is a no-op. deployments.md § Dependency updaters.
+      # scripts/ci/bkit-check-dependency-audit.mjs is a no-op. deployments.md § Dependency updaters.
       - name: Check Dependency Audit
-        if: hashFiles('scripts/ci/check-dependency-audit.mjs') != ''
-        run: node scripts/ci/check-dependency-audit.mjs
+        if: hashFiles('scripts/ci/bkit-check-dependency-audit.mjs') != ''
+        run: node scripts/ci/bkit-check-dependency-audit.mjs
 
       # bkit repo only: dist/ is committed; rebuild it and fail when it differs.
       - name: Assert Dist Freshness
@@ -756,7 +756,7 @@ jobs:
         run: pnpm bkit runs mirror --head="$PR_HEAD_SHA" --branch=dev --max-minutes=170
 
       - name: Assert Test Plan Followed
-        # The verdict is scripts/ci/check-capstone.mjs, tested by check-capstone.test.mjs.
+        # The verdict is scripts/ci/bkit-check-capstone.mjs, tested by bkit-check-capstone.test.mjs.
         # scope must succeed; with run_level != none every lane must succeed, and unit and
         # integration (the lanes with a *_RAN variable) must have run more than 0 tests; with
         # run_level=none every lane must be skipped; a plan that does not parse reds.
@@ -770,4 +770,4 @@ jobs:
           UNIT_RAN: ${{ needs.bkit-tests-unit.outputs.tests_ran }}
           INTEGRATION_RESULT: ${{ needs.bkit-tests-integration.result }}
           INTEGRATION_RAN: ${{ needs.bkit-tests-integration.outputs.tests_ran }}
-        run: node scripts/ci/check-capstone.mjs
+        run: node scripts/ci/bkit-check-capstone.mjs

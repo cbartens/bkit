@@ -2,7 +2,7 @@
 // Example. Copy into scripts/ci/ and own it. bkit install does not write this file
 // and does not overwrite a copy.
 /**
- * check-capstone.mjs — the decision behind the `bkit-tests-check` capstone.
+ * bkit-check-capstone.mjs — the decision behind the `bkit-tests-check` capstone.
  *
  * Reads the capstone's `needs` context from the environment and reds when green would prove
  * nothing. It fails when:
@@ -29,7 +29,7 @@
  *   EMPTY_COUNT           `warn` turns a lane that reports no count yet into a warning. Any
  *                         other value fails it. A count of 0 or a non-number always fails.
  *
- * Usage:  node scripts/ci/check-capstone.mjs
+ * Usage:  node scripts/ci/bkit-check-capstone.mjs
  * Exit:   0 = every expectation met, 1 = at least one failure.
  */
 

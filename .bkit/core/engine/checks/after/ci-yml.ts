@@ -648,6 +648,58 @@ export function detectGhaFloatingTags(cwd: string): PreflightFinding | null {
 }
 
 /**
+ * CI template copies named without the `bkit-` prefix: unprefixed path → template name, both
+ * relative to the repo root.
+ */
+const CI_SCRIPT_RENAMES: ReadonlyArray<readonly [string, string]> = [
+  ["scripts/ci/check-capstone.mjs", "scripts/ci/bkit-check-capstone.mjs"],
+  ["scripts/ci/check-capstone.test.mjs", "scripts/ci/bkit-check-capstone.test.mjs"],
+  ["scripts/ci/check-dependency-audit.mjs", "scripts/ci/bkit-check-dependency-audit.mjs"],
+  ["scripts/ci/check-dependency-audit.test.mjs", "scripts/ci/bkit-check-dependency-audit.test.mjs"],
+  ["scripts/ci/accepted-advisories.json", "scripts/ci/bkit-accepted-advisories.json"],
+  ["scripts/ci/check-accepted-divergences.mjs", "scripts/ci/bkit-check-accepted-divergences.mjs"],
+  [
+    "scripts/ci/check-accepted-divergences.test.mjs",
+    "scripts/ci/bkit-check-accepted-divergences.test.mjs",
+  ],
+  ["scripts/ci/accepted-divergences.json", "scripts/ci/bkit-accepted-divergences.json"],
+  ["scripts/ci/lanes/resolve-push-base.mjs", "scripts/ci/lanes/bkit-resolve-push-base.mjs"],
+  [
+    "scripts/ci/lanes/resolve-push-base.test.mjs",
+    "scripts/ci/lanes/bkit-resolve-push-base.test.mjs",
+  ],
+];
+
+/**
+ * Detect CI template copies named without the `bkit-` prefix. They keep working while every
+ * reference uses the same old name; the risk is renaming a file without its references — the
+ * CI dependency-audit step is guarded by `hashFiles(...)` and silently skips. The copies are the
+ * consumer's, so bkit never renames them; the action inlines the rename and the reference edit.
+ */
+export function detectCiScriptsOldNames(cwd: string): PreflightFinding | null {
+  const found = CI_SCRIPT_RENAMES.filter(([oldPath]) => fs.existsSync(path.join(cwd, oldPath)));
+  if (found.length === 0) return null;
+  const moves = found
+    .filter(([, newPath]) => !fs.existsSync(path.join(cwd, newPath)))
+    .map(([oldPath, newPath]) => `    git mv ${oldPath} ${newPath}`);
+  const both = found
+    .filter(([, newPath]) => fs.existsSync(path.join(cwd, newPath)))
+    .map(([oldPath, newPath]) => `    ${oldPath} (also present: ${newPath})`);
+  const pairs = found.map(([oldPath, newPath]) => `${oldPath} → ${newPath}`).join(", ");
+  return {
+    id: "ci-scripts-old-names",
+    severity: "advisory",
+    detect: `${found.length} CI template ${found.length === 1 ? "copy uses its" : "copies use their"} old name without the \`bkit-\` prefix: ${found.map(([oldPath]) => `\`${oldPath}\``).join(", ")}. They work while every reference uses the old name too; renaming a file without its references makes the CI dependency-audit step skip silently.`,
+    action:
+      (moves.length > 0 ? `Rename:\n\n${moves.join("\n")}\n\n` : "") +
+      (both.length > 0
+        ? `Both names present — move any edits (accepted advisories, registry rows) into the new file, then \`git rm\` the old one:\n\n${both.join("\n")}\n\n`
+        : "") +
+      `In the same commit, replace each old path with its new one in \`.github/workflows/*.yml\`, \`.husky/pre-push\`, \`package.json\` and the files under \`scripts/ci/\` (the scripts name their JSON files): ${pairs}. Then \`grep -rn -E "(^|[^a-z-])(check-capstone|check-dependency-audit|check-accepted-divergences|accepted-advisories|accepted-divergences|resolve-push-base)(\\.test)?\\.(mjs|json)" .github .husky package.json scripts/ci\` prints nothing.`,
+  };
+}
+
+/**
  * Detect whether the consumer composed a gate on bkit's `Detect Direct Push` step
  * outputs (`should_force_build` / `should_run_full`). The bkit-ci.yml template ships these
  * primitives only — without a consumer-side gate reading the outputs, the force-tag
