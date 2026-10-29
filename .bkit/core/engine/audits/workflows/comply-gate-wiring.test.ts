@@ -29,6 +29,15 @@ const EXPECTED_CLOSE_CALLS: Record<(typeof PHASES)[number], number> = {
   ship: 1,
 };
 
+/** Held-ending close calls per phase: only build has a held close. */
+const EXPECTED_HELD_CLOSE_CALLS: Record<(typeof PHASES)[number], number> = {
+  design: 0,
+  plan: 0,
+  build: 1,
+  debug: 0,
+  ship: 0,
+};
+
 function readWorkflow(name: string): string {
   const p = path.resolve(__dirname, "../../../../../.bkit/core/workflows", name);
   return fs.readFileSync(p, "utf8");
@@ -56,9 +65,9 @@ describe("every phase workflow grades itself at close through bkit workflows clo
 
     it(`bkit-${phase}.md closes through exactly ${EXPECTED_CLOSE_CALLS[phase]} workflows close call(s)`, () => {
       expect(closeLines).toHaveLength(EXPECTED_CLOSE_CALLS[phase]);
-      if (phase === "build") {
-        expect(closeLines.filter((l) => l.includes("--ending=held"))).toHaveLength(1);
-      }
+      expect(closeLines.filter((l) => l.includes("--ending=held"))).toHaveLength(
+        EXPECTED_HELD_CLOSE_CALLS[phase],
+      );
     });
 
     it(`bkit-${phase}.md never runs the grader itself`, () => {
@@ -66,16 +75,18 @@ describe("every phase workflow grades itself at close through bkit workflows clo
       expect(content).not.toContain("pnpm bkit comply");
     });
 
-    it(`bkit-${phase}.md: the close call commits what it graded`, () => {
-      for (const line of closeLines) expect(line).toMatch(/--message="[^"]+"|--flush\b/);
-    });
+    for (const [i, line] of closeLines.entries()) {
+      it(`bkit-${phase}.md: close call ${i + 1} commits what it graded`, () => {
+        expect(line).toMatch(/--message="[^"]+"|--flush\b/);
+      });
 
-    it(`bkit-${phase}.md writes close telemetry once and embeds it in the close comment`, () => {
-      for (const line of closeLines) {
+      it(`bkit-${phase}.md: close call ${i + 1} writes close telemetry once and embeds it in the close comment`, () => {
         expect(line).toContain('--outbox="{OUTBOX}"');
-        const embedded = embedsTelemetry(line, content);
-        expect(embedded, "the close comment carries the telemetry report").toBe(true);
-      }
-    });
+        expect(
+          embedsTelemetry(line, content),
+          "the close comment carries the telemetry report",
+        ).toBe(true);
+      });
+    }
   }
 });
