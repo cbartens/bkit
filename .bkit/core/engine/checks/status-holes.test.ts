@@ -996,6 +996,40 @@ describe("check — hole classes", () => {
     expect(none.preJournal).toBe(true);
   });
 
+  it("a run whose journal saw only ambient calls reports no evidence hole for steps whose finish call was not journaled", () => {
+    const md = [
+      "## 🧠 Step 1 — Setup",
+      ...fence("tests run --gate=a", FINISH("build-worktree-setup", 1)),
+      "## 🧠 Step 2 — Verify",
+      ...fence("tests run --gate=b", FINISH("build-b", 2)),
+      "## 🧠 Step 3 — Close",
+      ...fence(FINISH("build-close-workflow", 3)),
+    ].join("\n");
+    const contract = deriveContract(md, "build");
+    const ambient = check(
+      [
+        callRow("build", "disk", "prune"),
+        stepRow("build", "build-worktree-setup"),
+        callRow("build", "disk", "prune"),
+        stepRow("build", "build-b"),
+        stepRow("build", "build-close-workflow"),
+      ] as StatusRow[],
+      contract,
+    );
+    expect(ambient.evidenceHoles).toEqual([]);
+    expect(ambient.verdict).toBe("CLEAN");
+    const journaledWriter = check(
+      [
+        callRow("build", "disk", "prune"),
+        callRow("build", "steps", "finish"),
+        stepRow("build", "build-b"),
+        stepRow("build", "build-close-workflow"),
+      ] as StatusRow[],
+      contract,
+    );
+    expect(journaledWriter.evidenceHoles.map((h) => h.step)).toEqual(["build-b"]);
+  });
+
   it("reports a missing required step as a step hole", () => {
     const md = [
       "## 🧠 Step 1 — Start",

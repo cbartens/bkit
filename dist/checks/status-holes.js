@@ -427,6 +427,12 @@ export function check(rows, contract, options = {}) {
         if (beforeJournal)
             continue;
         const got = owned.get(v) ?? new Set();
+        // A visit whose own row-writing call (`steps finish` / `steps done`) left no journaled
+        // call is judged on its step row alone: the journal did not see this visit's commands.
+        const isWriter = (k) => k === "steps finish" || k === "steps done";
+        if (v.unit.calls.some((c) => !c.branch && isWriter(callKey(c))) && ![...got].some(isWriter)) {
+            continue;
+        }
         const pool = exercised.get(v.unit) ?? new Set();
         for (const k of got)
             pool.add(k);
