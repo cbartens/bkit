@@ -79,7 +79,7 @@ if ! command -v gh >/dev/null 2>&1; then
 fi
 
 # renovate: datasource=github-releases depName=jqlang/jq extractVersion=^jq-(?<version>.+)$
-JQ_VERSION="1.7.1"
+JQ_VERSION="1.8.2"
 JQ_SHA256="5942c9b0934e510ee61eb3e30273f1b3fe2590df93933a93d7c58b81d19c8ff5"
 if ! command -v jq >/dev/null 2>&1; then
   # jq is a single static binary — fetched from the jqlang release (same github.com
