@@ -12,10 +12,10 @@ Plan: `docs/plans/202610/699-engine-run-completeness-plan.md`. Caps: 3 tasks and
 <!-- prettier-ignore -->
 | Group | Title | Tasks | TEST FIRST tests | KB |
 | --- | --- | --- | --- | --- |
-| 1 | Row-type reader coverage (WS-4) | 2 | 3 | 3.8 |
-| 2 | Journal seam — `engine-call` + friction at dispatch (WS-3) | 3 | 11 | 7.7 |
-| 3 | Contract deriver — workflow markdown → expected set (WS-1) | 2 | 6 | 7.1 |
-| 4 | Completeness checker — rows + contract → verdict (WS-2) | 2 | 12 | 5.5 |
+| 1 | Row-type reader coverage (WS-4) | 2 | 3 | 4.6 |
+| 2 | Journal seam — `engine-call` + friction at dispatch (WS-3) | 3 | 11 | 8.1 |
+| 3 | Contract deriver — workflow markdown → expected set (WS-1) | 2 | 6 | 8.2 |
+| 4 | Completeness checker — rows + contract → verdict (WS-2) | 2 | 12 | 7.7 |
 | 5 | `completeness` command surface (WS-5) | 1 | 4 | 2.5 |
 | 6 | Close and start integration (WS-6) | 2 | 5 | 3.1 |
 | 7 | CI advisory wiring + observability and testing docs (WS-7) | 2 | 1 | 3.6 |
