@@ -64,7 +64,7 @@ RUN cd /tmp \
 
 # pnpm — corepack-pinned to match `packageManager` in package.json.
 # renovate: datasource=npm depName=pnpm
-ARG PNPM_VERSION=10.34.6
+ARG PNPM_VERSION=10.34.7
 RUN corepack enable && corepack prepare "pnpm@${PNPM_VERSION}" --activate
 
 # --- Consumer extensions ---------------------------------------------------
