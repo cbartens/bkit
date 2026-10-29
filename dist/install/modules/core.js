@@ -351,7 +351,7 @@ export function seedCorePackageJsonScripts(ctx) {
     const gates = ensurePackageJsonScripts({ ...BKIT_GATE_SCRIPTS }, dryRun, ws);
     if (gates.added.length > 0) {
         written.push("package.json");
-        console.log(`${logPrefix} ${tag}core: package.json scripts added [${gates.added.join(", ")}]`);
+        console.log(`${logPrefix} ${tag}core: package.json scripts added [${gates.added.join(", ")}] — what a gate may run: .bkit/workflows.md § Local gate scripts`);
     }
     if (migrateLinearTeamKey(dryRun, ws, logPrefix) && !written.includes("package.json")) {
         written.push("package.json");
@@ -733,6 +733,12 @@ export function gateLeafScripts(gate, declared, seen = new Set()) {
     return leaves;
 }
 /**
+ * What a gate may run. bkit never reads a gate's value beyond its seeded default, so it
+ * cannot check this; every gate advisory restates it (`.bkit/workflows.md` § Local gate
+ * scripts).
+ */
+export const GATE_CONTENTS_NOTE = "Gate contents (`.bkit/workflows.md` § Local gate scripts): every gate but `bkit:gate:static-unit-integration-e2e` and `bkit:gate:static-unit-integration-e2e-live` runs on a push or inside `/bkit-build`, so it MUST NOT run tests that need a deployed boundary or remote service; local services (a database in Docker) are fine.";
+/**
  * Advisories for the `bkit:gate:*` scripts: the scripts a still-default gate
  * chains that package.json does not declare, the deeper test tiers the repo has
  * but no gate runs, a commit gate that repeats the push gate, and a missing
@@ -770,7 +776,7 @@ export function detectGateAdvisories(cwd) {
             id: "gate-missing-called-scripts",
             severity: "advisory",
             detect: `The bkit:gate scripts call scripts package.json does not declare: ${names.join(", ")}.`,
-            action: `Every bkit workflow runs a \`bkit:gate*\` script, so a missing link fails the whole gate. Add ${names.join(", ")} to package.json (\`.bkit/templates.md\` lists the tool scripts and the devDeps they need), or edit the \`bkit:gate*\` scripts to drop what this repo does not have.`,
+            action: `Every bkit workflow runs a \`bkit:gate*\` script, so a missing link fails the whole gate. Add ${names.join(", ")} to package.json (\`.bkit/templates.md\` lists the tool scripts and the devDeps they need), or edit the \`bkit:gate*\` scripts to drop what this repo does not have.\n\n${GATE_CONTENTS_NOTE}`,
         });
     }
     // A repo that HAS a deeper tier but declares no gate for it is gated at
@@ -790,7 +796,8 @@ export function detectGateAdvisories(cwd) {
             detect: "package.json declares deeper test tiers than any `bkit:gate*` script runs, so `/bkit-build`, `/bkit-debug` and the pre-push hook gate at `bkit:gate:static-unit` and never execute them.",
             action: "Each workflow runs the DEEPEST gate you declare, and `.husky/pre-push` runs `bkit:gate:static-unit-integration` when it is declared; an undeclared one is skipped, never guessed. Add the gates you want the agent loop to run:\n\n" +
                 unwired.join("\n") +
-                "\n\nOrder matters — each chains the one above it. Omit a level deliberately to keep it CI-only (E2E in the build loop costs a production build on every remediation attempt). `.bkit/templates.md` lists the tool scripts the gates chain.",
+                "\n\nOrder matters — each chains the one above it. Omit a level deliberately to keep it CI-only (E2E in the build loop costs a production build on every remediation attempt). `.bkit/templates.md` lists the tool scripts the gates chain.\n\n" +
+                GATE_CONTENTS_NOTE,
         });
     }
     // The commit gate is the fast one: a script it shares with the push gate runs on every
@@ -805,7 +812,7 @@ export function detectGateAdvisories(cwd) {
             id: "gate-commit-repeats-push",
             severity: "advisory",
             detect: `\`bkit:gate:format\` (pre-commit) runs ${names}, which \`${pushGate}\` (pre-push) runs again.`,
-            action: `Drop ${names} from \`bkit:gate:format\`. The commit gate formats staged files and nothing else; every whole-repo check runs once, at pre-push.`,
+            action: `Drop ${names} from \`bkit:gate:format\`. The commit gate formats staged files and nothing else; every whole-repo check runs once, at pre-push.\n\n${GATE_CONTENTS_NOTE}`,
         });
     }
     // /bkit-build records each task's red through this script; without it test-first is
@@ -863,7 +870,8 @@ export function detectNoopGates(cwd) {
             id: "gate-noop",
             severity: "advisory",
             detect: `These bkit:gate scripts are empty or cannot fail, so they check nothing: ${noop.join(", ")}.`,
-            action: 'Every bkit workflow and the pre-push hook trust a green `bkit:gate*` script, so a no-op gate passes every agent run and push. Point each at the checks it should run (e.g. `"bkit:gate:static": "pnpm typecheck && pnpm lint"`), or delete it from package.json and run `bkit upgrade` to get bkit\'s default back.',
+            action: 'Every bkit workflow and the pre-push hook trust a green `bkit:gate*` script, so a no-op gate passes every agent run and push. Point each at the checks it should run (e.g. `"bkit:gate:static": "pnpm typecheck && pnpm lint"`), or delete it from package.json and run `bkit upgrade` to get bkit\'s default back.\n\n' +
+                GATE_CONTENTS_NOTE,
         },
     ];
 }

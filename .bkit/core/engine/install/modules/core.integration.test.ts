@@ -13,6 +13,7 @@ import {
   runCoreModule,
   detectGateAdvisories,
   detectNoopGates,
+  GATE_CONTENTS_NOTE,
   isNoopScript,
   runBkitDocs,
   migrateLinearTeamKey,
@@ -339,6 +340,26 @@ describe("detectGateAdvisories — gate advisories point at .bkit/templates.md",
     );
     expect(finding?.detect).toContain("`lint`");
     expect(finding?.detect).not.toContain("`typecheck`");
+  });
+
+  it("every gate advisory restates what a gate may run, which bkit cannot check", () => {
+    writeScripts({
+      ...BKIT_GATE_SCRIPTS,
+      "bkit:gate:format": "pnpm lint-staged && pnpm lint:prose",
+      "bkit:gate:min": "true",
+      "test:integration": "vitest run -c int",
+    });
+    const findings = [...detectGateAdvisories(tmpDir), ...detectNoopGates(tmpDir)].filter((f) =>
+      f.id.startsWith("gate-"),
+    );
+    expect(findings.map((f) => f.id).sort()).toEqual([
+      "gate-commit-repeats-push",
+      "gate-missing-called-scripts",
+      "gate-noop",
+      "gate-tier-not-wired",
+    ]);
+    for (const f of findings) expect(f.action, f.id).toContain(GATE_CONTENTS_NOTE);
+    expect(GATE_CONTENTS_NOTE).toContain(".bkit/workflows.md` § Local gate scripts");
   });
 
   it("runs in check (dry run) as well as install, with the same findings", () => {

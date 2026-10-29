@@ -292,8 +292,8 @@ Clause section lines:
   - specialised: all except `bkit-audit-adoption`, `bkit-audit-analytics`, `bkit-audit-config`, `bkit-audit-security`, `bkit-audit-slop`
   - applies: `bkit-audit-agents`, `bkit-audit-dead-code`, `bkit-audit-deferrals`, `bkit-audit-models`
 - drift:
-  - `bkit-ship-conflict-resolve:79`: "run `pnpm bkit:gate:install-static-unit-build`. MUST exit 0" Runs `pnpm bkit:gate:install-static-unit-build`, not the `local-pre-push` local pre-push sequence (`bkit:gate:static-unit-integration` / `static-unit`, then `bkit check`)
-    - kept: subagents never push; they run a lighter gate for their own check and the orchestrator runs the full pre-push gate, so `local-pre-push` is not carried
+  - `bkit-ship-conflict-resolve:79`: "run `pnpm bkit:gate:install-static-unit-build`. MUST exit 0" Runs `pnpm bkit:gate:install-static-unit-build`, not the push gate the pre-push hook runs
+    - kept: subagents never push; they run their own lighter gate (`local-pre-commit`: `/bkit-*` steps run their own gates) and the pre-push hook runs the push gate
 
 ```text
 **Honest reporting:** NEVER assume or report done / passing / fixed without running actual checks; state failures, skips, and uncertainty verbatim.
@@ -1349,8 +1349,8 @@ Clause section lines:
   - verbatim: `bkit-build-plan-execute`, `bkit-build-plan-verify`
   - applies: `bkit-build-plan-gaps-remediate`, `bkit-debug-failure-reproduce`
 - drift:
-  - `bkit-build-plan-gaps-remediate:92`: "Run `pnpm bkit:gate:static-unit` — all local tests MUST pass" Runs only `pnpm bkit:gate:static-unit`; `local-pre-push` says `bkit:gate:static-unit-integration` when declared, then `bkit check`
-    - kept: subagents never push; they run a lighter gate for their own check and the orchestrator runs the full pre-push gate, so `local-pre-push` is not carried
+  - `bkit-build-plan-gaps-remediate:92`: "Run `pnpm bkit:gate:static-unit` — all local tests MUST pass" Runs only `pnpm bkit:gate:static-unit`, not the integration tier the pre-push hook adds when `bkit:gate:static-unit-integration` is declared
+    - kept: subagents never push; they run their own lighter gate (`local-pre-commit`: `/bkit-*` steps run their own gates) and the pre-push hook runs the push gate
 
 ```text
 **Local tests first:** ALWAYS exhaust local test suite and targeted repro before remote CI. Deployed-boundary / `@live` that cannot reproduce locally → review existing evidence first.
@@ -1376,24 +1376,25 @@ Clause section lines:
 **Existing evidence first:** ALWAYS search / read existing reports / logs / artifacts before requesting new remote CI runs; request new runs ONLY when existing evidence insufficient, stale, or absent.
 ```
 
-### local-pre-push
+### local-pre-commit
 
 - rule: Universal Rules › Testing & Debugging
 - prompt:
   - applies: `bkit-build-plan-execute`, `bkit-build-plan-gaps-remediate`, `bkit-build-plan-verify`, `bkit-debug-failure-remediate`
-- drift:
-  - `bkit-build-plan-gaps-remediate:92`: "Run `pnpm bkit:gate:static-unit` — all local tests MUST pass" Runs only `pnpm bkit:gate:static-unit`; `local-pre-push` says `bkit:gate:static-unit-integration` when declared, then `bkit check`
-    - kept: subagents never push; they run a lighter gate for their own check and the orchestrator runs the full pre-push gate, so `local-pre-push` is not carried
-  - `bkit-build-plan-verify:66`: "Cross-domain boundaries respected? Run `pnpm bkit:gate:static-unit`." Runs only `pnpm bkit:gate:static-unit`; `local-pre-push` says `bkit:gate:static-unit-integration` when declared, then `bkit check`
-    - kept: subagents never push; they run a lighter gate for their own check and the orchestrator runs the full pre-push gate, so `local-pre-push` is not carried
-  - `bkit-debug-failure-remediate:72`: "Run `pnpm bkit:gate:static-unit` — all local tests MUST pass" Runs only `pnpm bkit:gate:static-unit`; `local-pre-push` says `bkit:gate:static-unit-integration` when declared, then `bkit check`
-    - kept: subagents never push; they run a lighter gate for their own check and the orchestrator runs the full pre-push gate, so `local-pre-push` is not carried
-  - `bkit-build-plan-execute:100`: "Run `pnpm bkit:gate:static` — all local lint / typecheck MUST pass." Runs only `pnpm bkit:gate:static` (lint / typecheck); verdict ignores tests, and `tests-move-with-code` / `local-pre-push` test runs are left to later steps
-    - kept: subagents never push; they run a lighter gate for their own check and the orchestrator runs the full pre-push gate, so `local-pre-push` is not carried; the execute `**Rules:**` block carries `Check gotchas first` (`check-gotchas-first`) and leaves `local-pre-push` out on purpose
-  - `bkit-ship-conflict-resolve:79`: "run `pnpm bkit:gate:install-static-unit-build`. MUST exit 0" Runs `pnpm bkit:gate:install-static-unit-build`, not the `local-pre-push` local pre-push sequence (`bkit:gate:static-unit-integration` / `static-unit`, then `bkit check`)
-    - kept: subagents never push; they run a lighter gate for their own check and the orchestrator runs the full pre-push gate, so `local-pre-push` is not carried
 
 ```text
+**Local pre-commit:** Before a commit → ONLY the tests the change affects (tests importing changed code or naming a changed file's path) and static checks on changed files; NEVER a full suite or `bkit:gate:*` script. `/bkit-*` steps run their own gates.
+```
+
+### local-pre-push
+
+- rule: Universal Rules › Testing & Debugging
+
+```text
+**Local pre-push:** Run nothing by hand before a push; the pre-push hook runs the gates. Hook not installed → run them by hand.
+```
+
+```retired
 **Local pre-push:** `pnpm bkit:gate:static-unit-integration` when declared, else `pnpm bkit:gate:static-unit`, then `bkit check`. Gate scripts MUST not run tests needing a deployed boundary or remote service; local services (a database in Docker) are fine.
 ```
 
@@ -1471,8 +1472,8 @@ Clause section lines:
   - specialised: `bkit-debug-failure-soak`
   - applies: `bkit-debug-failure-remediate`
 - drift:
-  - `bkit-debug-failure-remediate:72`: "Run `pnpm bkit:gate:static-unit` — all local tests MUST pass" Runs only `pnpm bkit:gate:static-unit`; `local-pre-push` says `bkit:gate:static-unit-integration` when declared, then `bkit check`
-    - kept: subagents never push; they run a lighter gate for their own check and the orchestrator runs the full pre-push gate, so `local-pre-push` is not carried
+  - `bkit-debug-failure-remediate:72`: "Run `pnpm bkit:gate:static-unit` — all local tests MUST pass" Runs only `pnpm bkit:gate:static-unit`, not the integration tier the pre-push hook adds when `bkit:gate:static-unit-integration` is declared
+    - kept: subagents never push; they run their own lighter gate (`local-pre-commit`: `/bkit-*` steps run their own gates) and the pre-push hook runs the push gate
 
 ```text
 **Debug on demand:** Re-runs failing E2E / `@live` tier tests against deployed boundary. NEVER purely local runs.
@@ -1981,6 +1982,10 @@ Rules below `bkit:end` in `.agents/rules.md`: bkit's own, never shipped; no ship
 - rule: Project Rules › Universal Rules › Repo Authoring
 
 ```text
+**Verify before complete:** Done = real dogfood (`pnpm build` → `node dist/cli.js <verb> <flags>` on a fresh scratch consumer; inspect on-disk footprint). Green tests != proof.
+```
+
+```retired
 **Verify before complete:** Done = both full suite (`pnpm vitest run`, NEVER scoped) and real dogfood (`pnpm build` → `node dist/cli.js <verb> <flags>` on a fresh scratch consumer; inspect on-disk footprint). Green tests != proof.
 ```
 
@@ -3124,7 +3129,7 @@ Determine `Strategy` from input Context; **If** missing → `Verdict` = `FAIL`. 
 ### remediate-gate-static-unit
 
 - prompt: where-used
-- tags: local-tests-first, local-pre-push, debug-on-demand
+- tags: local-tests-first, local-pre-commit, debug-on-demand
 - carriers: prompt `bkit-build-plan-gaps-remediate`, `bkit-debug-failure-remediate`
 
 ```text
@@ -7777,7 +7782,7 @@ Satisfy each task `DONE WHEN` before next task. Task without `DONE WHEN` → set
 Implement sequentially, per task:
 [reproduce-first] Edit / create source → task tests pass → refactor with tests green → at every plan gate tick its boxes per **Plan gates** above → append log → proceed.
 [improve-over-duplicate] Honour the brief's `Reuse Inventory rows` and `Architecture entries`: `EXTEND` row → modify named artifact, never parallel file. Brief says rows or entries were left out → read the plan section it names. Reusable artifact found mid-build → fold in and log, never fork.
-[local-pre-push] Run `pnpm bkit:gate:static` — all local lint / typecheck MUST pass.
+[local-pre-commit] Run `pnpm bkit:gate:static` — all local lint / typecheck MUST pass.
 `PASS` = every pending task has `DONE` log entry and local lint / typecheck pass.
 `HANDOVER` = turn cap near with pending tasks neither `DONE` nor `BLOCKED` → stop after the current task's log line; the caller re-runs with a fresh brief.
 `FAIL` = any pending task ends `BLOCKED` with no later `DONE` or local lint / typecheck fail.
@@ -7817,7 +7822,7 @@ A gap you leave `Fixable: false` is a `FAIL`.
 Update **Create** — set `Failures` via `Edit` = count of unresolved gaps; set `Fixable` via `Edit` = `true` when any of those is `Fixable: true`, else `false`; set `Verdict` via `Edit` = the roll-up over the `Fixable` you decided: any `false` → `FAIL`, **Else** any `true` → `CONCERNS`, **Else** → `PASS`; never the report's `null`.
 Determine `Mode` from input Context (`Group` or `Holistic`).
 **If** `Group` → the supplied briefs' task blocks are the work; judge them against the supplied group diff (the changes since the group started), not the whole branch; a brief's `Deviations` section holds the owner's run instructions → judge the tasks it names as it directs. Every task field and gate maps to real codebase changes. Find missing components, skipped steps, unimplemented edge cases.
-[local-pre-push] **If** `Holistic` → the same task and gate check across every group of the plan, plus integration: groups' components work together? API contracts match? Shared state consistent? Cross-domain boundaries respected? Run `pnpm bkit:gate:static-unit`.
+[local-pre-commit] **If** `Holistic` → the same task and gate check across every group of the plan, plus integration: groups' components work together? API contracts match? Shared state consistent? Cross-domain boundaries respected? Run `pnpm bkit:gate:static-unit`.
 `delete-still-referenced` → read each hit; a different thing with the same name → no gap; else `Fixable: true`.
 `no-red` on a task the plan-currency report classifies `Broken` with work already landed **and** the execute log records `DONE — TASK {N}: already landed` → no gap, overriding the gap's `Fixable: false`.
 ```

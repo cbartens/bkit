@@ -121,7 +121,8 @@
 - **Cloud setup gaps:** Cloud session → read `.bkit/.unavailable` first when present; each line = provision recipe that failed setup + reason → treat what it provides as absent, NEVER retry its install; name it wherever it leaves a check not run.
 - **Local tests first:** ALWAYS exhaust local test suite and targeted repro before remote CI. Deployed-boundary / `@live` that cannot reproduce locally → review existing evidence first.
 - **Existing evidence first:** ALWAYS search / read existing reports / logs / artifacts before requesting new remote CI runs; request new runs ONLY when existing evidence insufficient, stale, or absent.
-- **Local pre-push:** `pnpm bkit:gate:static-unit-integration` when declared, else `pnpm bkit:gate:static-unit`, then `bkit check`. Gate scripts MUST not run tests needing a deployed boundary or remote service; local services (a database in Docker) are fine.
+- **Local pre-commit:** Before a commit → ONLY the tests the change affects (tests importing changed code or naming a changed file's path) and static checks on changed files; NEVER a full suite or `bkit:gate:*` script. `/bkit-*` steps run their own gates.
+- **Local pre-push:** Run nothing by hand before a push; the pre-push hook runs the gates. Hook not installed → run them by hand.
 - **CI on PR to `dev` / `main`:** Static, unit, integration (incl. service / DB-backed), E2E, always-on migration lane in repos with migrations (replay when planned) — parallel lanes + `bkit-tests-check` capstone. E2E `needs:` migration when that lane owns remote migration apply. no `@live` tests.
 - **CI on push to `dev` / `main`:** PR lanes plus remote migration apply inside migration lane + `@live` canary (both wait on migration != failure).
 - **Name the suites you ran:** NEVER report "all tests green" or a bare task count as evidence. State the tiers — `unit`, `integration`, `e2e`, `@live`.
@@ -200,7 +201,7 @@
 - **Stack-agnostic:** Engine / workflows / prompts NEVER assume an app stack; stack-specific need → `package.json` script name + I/O contract ONLY (`.bkit/workflows.md` § Local gate scripts); consumer owns implementation.
 - **Advisories self-contained:** `PreflightFinding.action` text in `.bkit/core/engine/checks/before/index.ts` MUST inline the load-bearing fix (command, key params, and decisive context); NEVER link out to `docs/*.md`.
 - **Consumer names:** NEVER name bkit consumers (repo, org, product, domain, checkout path, abbreviation) in tracked files, commit / tag messages, release notes, or tracker text; write `a consumer`.
-- **Verify before complete:** Done = both full suite (`pnpm vitest run`, NEVER scoped) and real dogfood (`pnpm build` → `node dist/cli.js <verb> <flags>` on a fresh scratch consumer; inspect on-disk footprint). Green tests != proof.
+- **Verify before complete:** Done = real dogfood (`pnpm build` → `node dist/cli.js <verb> <flags>` on a fresh scratch consumer; inspect on-disk footprint). Green tests != proof.
 - **Engine builds:** Editing `.bkit/core/engine/**/*.ts` → ALWAYS `pnpm build && git add dist/` in the same commit.
 
 ## Project Settings
