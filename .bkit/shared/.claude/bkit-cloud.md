@@ -65,7 +65,7 @@ if ! command -v vale >/dev/null 2>&1; then
 fi
 
 # renovate: datasource=github-releases depName=cli/cli
-GH_VERSION="2.102.0"
+GH_VERSION="2.103.0"
 GH_SHA256="bb766f710eef8ede859c18578c72c327597cd4c8a85b06001b1f3843c6019386"
 if ! command -v gh >/dev/null 2>&1; then
   cd /tmp
