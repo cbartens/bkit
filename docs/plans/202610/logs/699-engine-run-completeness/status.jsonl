@@ -301,3 +301,4 @@
 {"type":"engine-call","workflow":"build","at":"2026-10-29T06:51:45Z","noun":"ci","verb":"slop","flags":[]}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-verify-holistic/-/1/comment","hash":"2e1965b2c2968a4ac18ddc369835522d4672a3b69b230a1dc28bccf854f0bcff","ref":"https://github.com/cbartens/bkit/issues/699#issuecomment-6490299274","at":"2026-10-29T07:06:24Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-verify-holistic","status":"DONE","at":"2026-10-29T07:06:24Z","parentSha":"60b68c8513b4bdcb8bdac9093dc9ef6896d1d057","artifacts":["docs/plans/202610/logs/699-engine-run-completeness/build-plan-verify-holistic.md"],"verdict":"CONCERNS","attempt":1,"failures":4}
+{"type":"engine-call","workflow":"build","at":"2026-10-29T07:06:25Z","noun":"disk","verb":"prune","flags":["mode","auto"]}

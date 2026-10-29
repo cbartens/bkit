@@ -20,6 +20,7 @@ Plan: `docs/plans/202610/699-engine-run-completeness-plan.md`. Caps: 3 tasks and
 | 6 | Close and start integration (WS-6) | 2 | 5 | 4.0 |
 | 7 | CI advisory wiring + observability and testing docs (WS-7) | 2 | 1 | 4.2 |
 | 8 | Generated artifacts (WS-8) | 2 | 0 | 2.7 |
+| 9 | Holistic verify fixes (WS-9) | 3 | 2 | 3.4 |
 
 ## Tasks
 
@@ -42,6 +43,9 @@ Plan: `docs/plans/202610/699-engine-run-completeness-plan.md`. Caps: 3 tasks and
 | 14 | 7 | 0 | 0 |
 | 15 | 8 | 0 | 0 |
 | 16 | 8 | 0 | 0 |
+| 17 | 9 | 0 | 0 |
+| 18 | 9 | 1 | 1 |
+| 19 | 9 | 1 | 1 |
 
 ## Problems
 

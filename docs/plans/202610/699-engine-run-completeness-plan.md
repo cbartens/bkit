@@ -178,6 +178,8 @@ As the bkit maintainer I want a workflow run to tell me, in its own artifacts, w
 | No run active in the cwd: the seam journals nothing, writes no friction row and logs nothing | Integration | `.bkit/core/engine/ledgers/journal.integration.test.ts` | 4 |
 | A hole in a long-closed run is still reported — no baseline or watermark filters it | Unit | `.bkit/core/engine/checks/status-holes.test.ts` | 9 |
 | The sweep prints the summary line the CI lane's liveness grep pins, and the grep rejects output without it | Unit | `tests/status-holes-sweep-liveness.bats` | 13 |
+| Calls that run before `workflows start` or after `workflows close` are matched when journaled but never required, so a run that journals every call the journal can see is not holey | Unit | `.bkit/core/engine/checks/status-holes.test.ts` | 18 |
+| A close that sees a dead journal prints exactly one `[bkit-telemetry]` line on stderr and still closes with the stdout object unchanged | Unit | `.bkit/core/engine/commands/workflow/workflows.test.ts` | 19 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -602,7 +604,7 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** Make both `MARK_ROWS` copies skip the two new row types, pinned by the harvest parity test
+- [x] **TASK 1:** Make both `MARK_ROWS` copies skip the two new row types, pinned by the harvest parity test
   - **UPDATE:** `MARK_ROWS` in `.bkit/core/engine/commands/workflow/run-facts.ts`: add `engine-call` and `completeness`
   - **UPDATE:** `MARK_ROWS` in `scripts/harvest/bkit-harvest.mjs`: the same two types, in the same commit, so the parity assertion holds
   - **UPDATE:** `.bkit/core/engine/commands/workflow/run-facts.test.ts`: a case proving two journal rows between `step-done` rows leave the run's total step minutes byte-identical
@@ -707,7 +709,7 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
 
 <!-- bkit:task 6 start -->
 
-- [ ] **TASK 6:** Generalise the deriver to all five workflows and promote the pure text helpers
+- [x] **TASK 6:** Generalise the deriver to all five workflows and promote the pure text helpers
   - **UPDATE:** `.bkit/core/engine/checks/status-holes.ts`: add `deriveContract(workflowMd, workflow)` (step sections from `## … Step N — Title` headings including `###` group-loop headings; required calls from every `"{BKIT}"` literal in the section, reduced to noun / verb / flag names; the deduped `WORKFLOW_STEPS[workflow]` cross-check reported as drift, not fatal); add `stepSections` and `callWords`
   - **DELETE:** `.bkit/core/engine/checks/status-holes.ts`: `deriveExpectedStepSetFromSource` and `checkSourceCanonicalDrift` — replaced by `deriveContract` and its `WORKFLOW_STEPS` cross-check (see `Supersession Inventory`); their only importer is `checks/status-holes.test.ts`, retargeted in this task
   - **UPDATE:** `.bkit/core/engine/checks/status-holes.ts`: generalise `main()` so each run in each `status.jsonl` positional infers its workflow from that run's own rows (one file holds runs of several workflows), print one report per file plus one sweep-summary line in the exact form `[bkit-status-holes] sweep: {N} file(s), {M} holey` where `{M}` counts holey runs, not files, and drop `--ship-md`
@@ -757,7 +759,7 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
 
 <!-- bkit:task 8 start -->
 
-- [ ] **TASK 8:** Classify holes: evidence, step, unexercised, unexpected
+- [x] **TASK 8:** Classify holes: evidence, step, unexercised, unexpected
   - **UPDATE:** `.bkit/core/engine/checks/status-holes.ts`: extend `deriveContract` so each required call carries `position` (`pre` / `post` its section's own `steps finish` / `steps done` line) and `branch` (R1), and the contract carries `workflowCalls` from every `"{BKIT}"` literal outside any step section (R4)
   - **UPDATE:** `.bkit/core/engine/checks/status-holes.ts`: add `check(rows, contract) → CompletenessVerdict` with R3 attribution (each contract-step row, repeats included, owns the gap before it and, for its `post` calls, the gap after it), R2 matching on noun + verb only, absent `branch` calls reported `unexercised`, `workflowCalls` matched before step attribution and never `unexpected`, `holey` keying on `evidenceHoles` + `stepHoles` only, and the full report carrying every class
   - **UPDATE:** `.bkit/core/engine/checks/status-holes.test.ts`: cases for the four classes and R1-R4 over row fixtures, including a clean run whose `unexercised` list is non-empty but whose verdict is `CLEAN`
@@ -780,7 +782,7 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
 
 <!-- bkit:task 9 start -->
 
-- [ ] **TASK 9:** Verdict metadata, unattributable calls, self-exclusion and the read path
+- [x] **TASK 9:** Verdict metadata, unattributable calls, self-exclusion and the read path
   - **UPDATE:** `.bkit/core/engine/checks/status-holes.ts`: add `preJournal` (zero `engine-call` rows → steps-only), `journalSuspect` (set only when the caller says the closing engine journals), `unattributable` (a call after the terminator, or in a gap whose neighbouring rows are both outside the contract), `sourceSha`, the self-exclusion of the `completeness` verb from expectations **and** `unexpected`, and the read path (last stored `completeness` row, recomputed when rows follow it)
   - **UPDATE:** `.bkit/core/engine/checks/status-holes.test.ts`: cases for each of the above, including a run that closes twice and one with calls in a gap between two rows outside the contract
   - **DEPENDS ON:** 8
@@ -833,7 +835,7 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
 
 <!-- bkit:task 11 start -->
 
-- [ ] **TASK 11:** Append the `completeness` row at close, fail-open
+- [x] **TASK 11:** Append the `completeness` row at close, fail-open
   - **UPDATE:** `closeWorkflow` in `.bkit/core/engine/commands/workflow/workflows.ts`: call the checker in-process and append one `completeness` row per close, before the `workflow-done` row, inside the `appendStats` fail-open idiom; pass `journalSuspect` from this path only
   - **UPDATE:** `.bkit/core/engine/commands/workflow/workflows.test.ts`: the close-ordering case and the forced-throw case
   - **READ:** `appendStats` in `.bkit/core/engine/commands/workflow/workflows.ts`: the try/catch-plus-one-stderr-line idiom the call site copies
@@ -933,6 +935,51 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
 <!-- bkit:task 16 end -->
 
 <!-- bkit:group 8 end -->
+
+<!-- bkit:group 9 start -->
+
+### GROUP 9: Holistic verify fixes (WS-9)
+
+<!-- bkit:task 17 start -->
+
+- [ ] **TASK 17:** Give the journal test fixtures the required `use` field
+  - **UPDATE:** `.bkit/core/engine/commands/lib.test.ts`: add `use: "by-hand"` to each fixture verb that lacks it (the five at lines 208-226)
+  - **UPDATE:** `.bkit/core/engine/ledgers/journal.integration.test.ts`: add `use: "by-hand"` to each fixture verb that lacks it (lines 25 and 31)
+  - **READ:** `VerbSpec` in `.bkit/core/engine/commands/lib.ts`: the interface that made `use` required
+  - **DEPENDS ON:** 4
+  - **DONE WHEN:** `pnpm bkit:typecheck:tests` exits 0 and `pnpm bkit:gate:static-unit` no longer fails at the test typecheck.
+  - **TEST FIRST:** n/a — type-only fixture edit; `pnpm bkit:typecheck:tests` is the assertion
+
+<!-- bkit:task 17 end -->
+
+<!-- bkit:task 18 start -->
+
+- [ ] **TASK 18:** Stop requiring bkit commands that run outside the journal's window
+  - **UPDATE:** `.bkit/core/engine/checks/status-holes.ts`: a command that sits above the first `workflows start` call, or below the `workflows close` call, in its workflow's markdown is matched when the journal holds it but is never listed as required for a step, the way workflow-level calls already are
+  - **UPDATE:** `.bkit/core/engine/checks/status-holes.test.ts`: the simulated run journals only the calls the journal can see (no pre-start calls, no post-close calls) and must come out not holey for build, design, plan and ship
+  - **READ:** `.bkit/core/workflows/bkit-build.md`: Steps 1-2 and the Step 16 tail, the pre-start and post-close calls the journal cannot record
+  - **DEPENDS ON:** 8, 9
+  - **DONE WHEN:** a run that journals every call the journal can actually record reads CLEAN for all five workflows; a step whose in-window call is genuinely missing still reads HOLEY; and `pnpm bkit:audit:status` still exits 0.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/checks/status-holes.test.ts` `calls outside the journal window are matched but never required` fails while a pre-start or post-close call is listed as a step's required call
+
+<!-- bkit:task 18 end -->
+
+<!-- bkit:task 19 start -->
+
+- [ ] **TASK 19:** Warn when the journal looks dead at close, and record the three knowledge entries
+  - **UPDATE:** `.bkit/core/engine/commands/workflow/workflows.ts`: when `closeWorkflow` sets `journalSuspect`, print exactly one `[bkit-telemetry]` line on stderr through `ctx.log`, never changing stdout or the exit code
+  - **UPDATE:** `.bkit/core/engine/commands/workflow/workflows.test.ts`: the dead-journal close case
+  - **UPDATE:** `docs/knowledge.jsonl`: three entries appended with `bkit ledgers append` — the run's own book root is the journal's write root; the `<noun>-<verb>` step fallback is mandatory; the `MARK_ROWS` copies must stay in parity
+  - **UPDATE:** `docs/observability.md`: the new stderr line under the `[bkit-telemetry]` section
+  - **DEPENDS ON:** 11, 14
+  - **DONE WHEN:** a close with a suspect journal prints exactly one `[bkit-telemetry]` line on stderr and the stdout object is unchanged; `docs/knowledge.jsonl` holds the three entries; and `docs/observability.md` names the line.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/workflows.test.ts` `prints one telemetry line on stderr when the journal looks dead at close` fails while no line is printed or the stdout object changes
+
+<!-- bkit:task 19 end -->
+
+<!-- bkit:group 9 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
 
