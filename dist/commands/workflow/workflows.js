@@ -24,7 +24,9 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { appendLine, fold, lastRun, runNumber, runOrStepField, statusTimestamp, } from "../../ledgers/status.js";
 import { foldFrom, normalize, resolveRepoSlug, workflowTelemetry, } from "../../ledgers/telemetry.js";
-import { ASK_POINTS, readBkitConfig } from "../../shared/settings.js";
+import { check as checkCompleteness, deriveContract, parseRows, readCompleteness, } from "../../checks/status-holes.js";
+import { getWorkflowsRoot } from "../../shared/package-roots.js";
+import { readBkitConfig } from "../../shared/settings.js";
 import { gradeCompliance } from "../comply.js";
 import { fetchDev, landDir, pushToDev } from "../land.js";
 import { CommandError, DEV, EXIT, git, isSharedBranch, parseJson, repoRoot, runGh, runGit, statusLocation, statusRelPath, } from "../lib.js";
@@ -818,6 +820,63 @@ function appendStats(tree, rows, log) {
         return false;
     }
 }
+/** `workflow`'s rows of `file` from `startAt` (run start) on, in time order; unreadable lines skipped. */
+function runRowsOf(file, workflow, startAt, before) {
+    const at = (r) => (typeof r["at"] === "string" ? r["at"] : "");
+    return parseRows(fs.readFileSync(file, "utf-8"))
+        .filter((r) => r.workflow === workflow &&
+        (startAt === undefined || at(r) >= startAt) &&
+        (before === undefined || at(r) < before))
+        .sort((a, b) => (at(a) < at(b) ? -1 : at(a) > at(b) ? 1 : 0));
+}
+/** The contract of `workflow`, derived from its shipped markdown. */
+const contractOf = (workflow) => deriveContract(fs.readFileSync(path.join(getWorkflowsRoot(), `bkit-${workflow}.md`), "utf-8"), workflow);
+/**
+ * The close's `completeness` row for the run that started at `startAt`; `null` when the
+ * check fails. Advisory: a failure is logged in one line and never fails the close.
+ * `journalSuspect` is set here only: the closing engine journals itself.
+ */
+function completenessRow(file, workflow, startAt, parentSha, log) {
+    try {
+        const verdict = checkCompleteness(runRowsOf(file, workflow, startAt), contractOf(workflow), {
+            journalSuspect: true,
+        });
+        return { type: "completeness", ...verdict, at: statusTimestamp(), parentSha };
+    }
+    catch (err) {
+        // The check is advisory: report the failure and close without the row.
+        log(`[bkit-telemetry] completeness row not written: ${err.message}`);
+        return null;
+    }
+}
+/**
+ * The warning line for the run before the one being started (or resumed) when that run
+ * was holey; `null` when it is clean, absent or unreadable. Never throws.
+ */
+function previousRunWarning(file, resumed) {
+    try {
+        const events = readStatusEvents(file);
+        const runs = fold(events);
+        const at = runs.length - (resumed ? 2 : 1);
+        const prev = runs[at];
+        if (prev === undefined)
+            return null;
+        const next = runs.slice(at + 1).find((r) => r.workflow === prev.workflow);
+        const own = runRowsOf(file, prev.workflow, prev.startedAt, next?.startedAt);
+        const { verdict } = readCompleteness(own, contractOf(prev.workflow));
+        if (!verdict.holey)
+            return null;
+        const number = runs.slice(0, at + 1).filter((r) => r.workflow === prev.workflow).length;
+        const closed = own.filter((e) => e.type === "workflow-done").at(-1)?.["at"] ?? "never";
+        return (`[bkit-workflows] previous run (${prev.workflow} run ${number}, closed ${closed}) was incomplete: ` +
+            `${verdict.evidenceHoles.length} evidence hole(s), ${verdict.stepHoles.length} step hole(s); ` +
+            `see: bkit completeness check --workflow=${prev.workflow} --file=${path.relative(process.cwd(), file) || file}`);
+    }
+    catch {
+        // Advisory: an unreadable run or checker failure degrades to no warning.
+        return null;
+    }
+}
 /** Markdown link per feature doc and per log of this workflow, as on `ref`. */
 export function artifactLinks(root, ref, month, fid, workflow, ownerRepo) {
     const list = (dir) => (git(root, ["ls-tree", "-r", "--name-only", ref, "--", dir]) ?? "").split("\n").filter(Boolean);
@@ -876,6 +935,9 @@ export function closeWorkflow(cwd, o, log) {
     if (o.recordStep === true) {
         writeStepRow(where.tree, { file: where.status, workflow, step, artifacts: [], commit: "none" }, log);
     }
+    const completeness = completenessRow(where.status, workflow, lastOfType(readStatusEvents(where.status), "workflow-started", workflow)?.at, parentSha, log);
+    if (completeness !== null)
+        fs.appendFileSync(where.status, appendLine(completeness));
     const endAt = statusTimestamp();
     const row = { type: "workflow-done", workflow, at: endAt, parentSha };
     fs.appendFileSync(where.status, appendLine(row));
@@ -1567,7 +1629,7 @@ export const workflowsCommand = {
                 lock: "{path, month, token, reclaimed} of the lock taken, or {path} with --lock-held",
                 file: "absolute path to status.jsonl",
                 resumed: "the latest run was this workflow, IN_PROGRESS: no new row",
-                row: "the appended workflow-started row, with `limits` (the workflow's ask points from bkit.workflows, frozen for the run), or null when resuming",
+                row: "the appended workflow-started row, or null when resuming",
                 run: "which run of the workflow this is (1-based)",
                 lastDoneStep: "the current run's last DONE step: resume after it (null on a new run)",
                 openDecision: "{file, decision, question, from, pauseStep, group, verifyAttempt, testAttempt, plan} of the current run's highest {workflow}-decision-{run}-{N}.md holding Status: OPEN, else null",
@@ -1632,17 +1694,16 @@ export const workflowsCommand = {
                 }
                 const latest = fold(readStatusEvents(file)).at(-1);
                 const resumed = latest?.workflow === workflow && latest.status === "IN_PROGRESS";
+                const holeyWarning = previousRunWarning(file, resumed);
+                if (holeyWarning !== null)
+                    ctx.log(holeyWarning);
                 let row = null;
                 if (!resumed) {
-                    // The run's limits, frozen here: `counters route` reads them for the whole run.
-                    const asks = readBkitConfig(where.tree).asks;
-                    const limits = Object.fromEntries(ASK_POINTS.filter((p) => p.startsWith(`${workflow}.`)).map((p) => [p, asks[p]]));
                     row = {
                         type: "workflow-started",
                         workflow,
                         at: statusTimestamp(),
                         parentSha: headSha(path.dirname(file)),
-                        ...(Object.keys(limits).length === 0 ? {} : { limits }),
                     };
                     fs.appendFileSync(file, appendLine(row));
                 }
