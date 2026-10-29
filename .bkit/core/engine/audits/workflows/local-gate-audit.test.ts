@@ -13,7 +13,12 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { debugStart } from "../../commands/workflow/status.js";
-import { BKIT_BUILD_GATES, BKIT_DEBUG_GATES, BKIT_GATE_SCRIPTS } from "../../install/manifest.js";
+import {
+  BKIT_BUILD_GATES,
+  BKIT_DEBUG_GATES,
+  BKIT_GATE_SCRIPTS,
+  BKIT_GROUP_GATES,
+} from "../../install/manifest.js";
 import { getPromptsRoot, getWorkflowsRoot } from "../../shared/package-roots";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
@@ -151,11 +156,25 @@ describe("bkit-local-gate-audit (#437)", () => {
     }
   });
 
-  // Both call sites share one contract: pass the candidates in descending depth,
+  // Every call site shares one contract: pass the candidates in descending depth,
   // and `bkit tests run` runs the first the consumer declares. Order IS the contract.
+  // `step` picks the call site by its `--step=` flag.
   const PROBES = [
-    { workflow: "bkit-build.md", gates: BKIT_BUILD_GATES, stopsAt: "integration", sites: 2 },
-    { workflow: "bkit-debug.md", gates: BKIT_DEBUG_GATES, stopsAt: "live", sites: 1 },
+    {
+      workflow: "bkit-build.md",
+      step: "build-run-tests",
+      gates: BKIT_BUILD_GATES,
+      stopsAt: "integration",
+      sites: 1,
+    },
+    {
+      workflow: "bkit-build.md",
+      step: "build-group-gate-",
+      gates: BKIT_GROUP_GATES,
+      stopsAt: "unit",
+      sites: 1,
+    },
+    { workflow: "bkit-debug.md", step: "", gates: BKIT_DEBUG_GATES, stopsAt: "live", sites: 1 },
   ] as const;
 
   /** The ```bash blocks of a workflow that call `bkit tests run`. */
@@ -176,10 +195,18 @@ describe("bkit-local-gate-audit (#437)", () => {
     return { lines, at: lines.findIndex((l) => /\btests run\b/.test(l)) };
   };
 
-  for (const { workflow, gates, stopsAt, sites } of PROBES) {
-    describe(`${workflow} runs the deepest declared gate (through ${stopsAt})`, () => {
+  it("every `tests run` call site of a workflow is probed", () => {
+    for (const workflow of new Set(PROBES.map((p) => p.workflow))) {
       const body = fs.readFileSync(path.join(REPO_ROOT, ".bkit/core/workflows", workflow), "utf-8");
-      const blocks = testBlocks(body);
+      const probed = PROBES.filter((p) => p.workflow === workflow).reduce((n, p) => n + p.sites, 0);
+      expect(testBlocks(body), workflow).toHaveLength(probed);
+    }
+  });
+
+  for (const { workflow, step, gates, stopsAt, sites } of PROBES) {
+    describe(`${workflow} ${step || "tests run"} runs the deepest declared gate (through ${stopsAt})`, () => {
+      const body = fs.readFileSync(path.join(REPO_ROOT, ".bkit/core/workflows", workflow), "utf-8");
+      const blocks = testBlocks(body).filter((b) => b.includes(`--step=${step}`));
 
       it(`passes every candidate, in descending depth, at each of its ${sites} call site(s)`, () => {
         expect(blocks).toHaveLength(sites);
@@ -230,7 +257,8 @@ describe("bkit-local-gate-audit (#437)", () => {
     const [deepest, ...rest] = BKIT_DEBUG_GATES;
     expect(/\blive\b/.test(deepest)).toBe(true);
     for (const g of rest) expect(/\blive\b/.test(g)).toBe(false);
-    for (const g of BKIT_BUILD_GATES) expect(/\blive\b/.test(g)).toBe(false);
+    for (const g of [...BKIT_BUILD_GATES, ...BKIT_GROUP_GATES])
+      expect(/\blive\b/.test(g)).toBe(false);
   });
 
   it("the seeded gates chain only scripts that exist here or are themselves gates", () => {

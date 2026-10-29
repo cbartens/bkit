@@ -865,7 +865,7 @@ Each subsection documents command behaviour — steps, subagents, artifacts, ver
 
 **Build never reads the CI conclusion (by design):** Step 16 CI-Dispatch Gate proves only that a run started (`bkit runs dispatch`). `/bkit-ship` owns the result (`bkit runs gate` refuses to merge on red); red PR → `/bkit-debug` (manual, or auto-routed by `bkit-cloud.yml`). Waiting in build → full CI duration on every run + race with the cloud auto-router on the same branch. Final message states it.
 
-**Group loop (Steps 7-9):** build works from one file, `docs/plans/{YYYYMM}/{FID}-plan.md`, in task-block form (`docs/templates/bkit-plan.md` § Agent Execution Runbook): groups within the `bkit.workflows.tasks` caps (§ Test-first). One pass of Steps 7-9 per group, in group order; `bkit context brief --next` picks the first group with a task neither ticked nor logged `DONE`, so a resumed run starts where the last one stopped. `VERIFY_ATTEMPT` is derived per group (`bkit counters derive --group={GROUP}`), so each group starts at 1. Between groups the build gate runs (§ Group gate). Only verify ticks tasks; the execute log's `DONE` lines are the handover between Steps 7 and 8.
+**Group loop (Steps 7-9):** build works from one file, `docs/plans/{YYYYMM}/{FID}-plan.md`, in task-block form (`docs/templates/bkit-plan.md` § Agent Execution Runbook): groups within the `bkit.workflows.tasks` caps (§ Test-first). One pass of Steps 7-9 per group, in group order; `bkit context brief --next` picks the first group with a task neither ticked nor logged `DONE`, so a resumed run starts where the last one stopped. `VERIFY_ATTEMPT` is derived per group (`bkit counters derive --group={GROUP}`), so each group starts at 1. Between groups the unit gate runs (§ Group gate). Only verify ticks tasks; the execute log's `DONE` lines are the handover between Steps 7 and 8.
 
 <!-- prettier-ignore -->
 | Step | Subagent(s) | Notes |
@@ -1404,8 +1404,8 @@ Each gate is the previous gate plus its own tier, so the name and the value desc
 | `bkit:gate:format` | `pnpm lint-staged` | `.husky/pre-commit` |
 | `bkit:gate:min` | `pnpm format:check && pnpm lint:prose && pnpm slop:delta` | `.husky/pre-push` on a min push |
 | `bkit:gate:static` | `pnpm typecheck && pnpm lint && pnpm format:check && pnpm lint:prose && pnpm slop:delta` | `@bkit-build-plan-execute`, `.husky/pre-push` revert path |
-| `bkit:gate:static-unit` | `pnpm bkit:gate:static && pnpm test` | build Steps 8 + 12, `.husky/pre-push` (no integration gate declared), `@bkit-build-plan-gaps-remediate`, `@bkit-build-plan-verify`, `@bkit-debug-failure-remediate` |
-| `bkit:gate:static-unit-integration` | not seeded — `pnpm bkit:gate:static-unit && pnpm test:integration` | build Steps 8 + 12, debug Step 3, `.husky/pre-push` |
+| `bkit:gate:static-unit` | `pnpm bkit:gate:static && pnpm test` | build Step 8 (group gate), build Step 12 and `.husky/pre-push` (no integration gate declared), `@bkit-build-plan-gaps-remediate`, `@bkit-build-plan-verify`, `@bkit-debug-failure-remediate` |
+| `bkit:gate:static-unit-integration` | not seeded — `pnpm bkit:gate:static-unit && pnpm test:integration` | build Step 12, debug Step 3, `.husky/pre-push` |
 | `bkit:gate:static-unit-integration-e2e` | not seeded — chains the gate above | debug Step 3 |
 | `bkit:gate:static-unit-integration-e2e-live` | not seeded — chains the gate above | debug Step 3 |
 | `bkit:gate:install-static-unit-build` | `pnpm install --frozen-lockfile && pnpm bkit:gate:static-unit && pnpm build` | `@bkit-ship-conflict-resolve` |
@@ -1422,17 +1422,17 @@ Agents and humans run the same scripts, so a green agent gate and a green `git p
 
 The three deep gates are not seeded: a seeded `pnpm test:integration` hard-fails every repo without that tier, and a gate named `…-integration-e2e` that skipped them silently is the false-green this design exists to kill. Declaring one — a single line chaining its parent — is how a consumer opts a workflow into a deeper tier.
 
-Build and debug each run the deepest gate the consumer declares, and record its name:
+Build Step 12 and debug each run the deepest gate the consumer declares, and record its name; the build group gate runs `bkit:gate:static-unit` alone (§ Group gate):
 
 <!-- prettier-ignore -->
 | Workflow | Candidates, descending | Stops at |
 | --- | --- | --- |
-| build Step 8 (group gate), Step 12 | `static-unit-integration`, `static-unit` | integration |
+| build Step 12 | `static-unit-integration`, `static-unit` | integration |
 | debug Step 3 | `…-integration-e2e-live`, `…-integration-e2e`, `static-unit-integration`, `static-unit` | live |
 
 Build stops at integration because its diagnose → remediate loop can only repair what its own gate runs — a tier left to CI is a defect the agent cannot fix in-session (build closes green, the PR reds, recovery is a separate `/bkit-debug`). Integration catches contract breaks the unit tier structurally cannot, at a cost the loop absorbs; E2E does not pay for itself there — a production build plus a browser, re-run on every remediation attempt, minutes before CI runs the same thing on the resulting PR. Debug reaches every tier because reproducing the failure is the job.
 
-All three resolve via `bkit tests run --gate=<deepest> --gate=<next> … --log=`: the deepest DECLARED candidate runs (an empty script is not declared) and its full output is saved to `--log`; `scope` names it. None declared → exit 3, nothing run; a gate that could not run (126 / 127) → exit 4 — never a FAIL verdict, so a missing tool is never diagnosed as a failing test.
+Both resolve via `bkit tests run --gate=<deepest> --gate=<next> … --log=`: the deepest DECLARED candidate runs (an empty script is not declared) and its full output is saved to `--log`; `scope` names it. None declared → exit 3, nothing run; a gate that could not run (126 / 127) → exit 4 — never a FAIL verdict, so a missing tool is never diagnosed as a failing test.
 
 **Failure count from JUnit reports.** `tests run` empties `{log}.reports/` (next to the log, in the outbox, never committed) and passes its absolute path to the gate as `$BKIT_TEST_REPORT_DIR`. `failures` = failing plus erroring test cases summed over every `*.xml` there; skipped cases do not count. PASS prints 0. FAIL with no report, or with reports naming no failing case, prints `null` (count unknown) and a hint — never a guessed number; the step then drops `--failures`. Each test runner in a gate writes its own JUnit file into that folder (`docs/testing.md` § JUnit reports for bkit).
 
@@ -1442,11 +1442,11 @@ Build does not run the live tier (post-merge `bkit-tests-live` canary). Every `b
 
 ### Group gate
 
-Build Step 8 runs the Step 12 gate after every group but the last, once `@bkit-build-plan-verify` passes. Red → Step 9 under `build.verify.maxAttempts`, like a verify gap; the next group never starts on a broken tree. The last group skips it — Steps 10 + 12 follow.
+Build Step 8 runs `bkit:gate:static-unit` (static checks and the unit tier) after every group but the last, once `@bkit-build-plan-verify` passes. Red → Step 9 under `build.verify.maxAttempts`, like a verify gap; the next group never starts on a broken tree. The last group skips it — Steps 10 + 12 follow.
 
 - **Orchestrator-owned:** agent gate runs (execute, gaps-remediate, verify) are self-reported in their logs; the group gate writes a `build-group-gate` row (`verdict`, `scope`), so a skipped gate is visible.
-- **Same gate as Step 12:** includes integration, plus the coverage floor where the consumer chains one into `bkit:gate:static-unit`. Without it, a group breaking what a later one assumes surfaces only at Step 12 — one large unattributed diff, budget partly spent.
-- **Strict, no exceptions:** the end of a group is where a build can stop (verify budget exhausted, session lost, `/bkit-ship` resume) → it must hold a validated tree. No expected-red declaration. A red gate is an ordering defect (signature change split from callers, deletion before replacement, tests deferred to a later task): `@bkit-plan-generate` orders its groups to keep every group gate green, putting the tasks in one group when it cannot. Add an exception mechanism only once a real case shows a legitimate red group gate.
+- **Unit tier only:** includes the coverage floor where the consumer chains one into `bkit:gate:static-unit`, never integration. Integration runs once, at Step 12, then again at pre-push and in CI before anything merges. Each group gate re-runs the whole suite, so integration there multiplies its cost by the group count, while unit tests import the same code and catch most breaks a later group would hit. Cost: an integration-only break surfaces at Step 12 against the whole diff, fixed by the Steps 13-14 diagnose and fix rounds; the failing test names the area.
+- **Strict, no exceptions:** the end of a group is where a build can stop (verify budget exhausted, session lost, `/bkit-ship` resume) → it must hold a tree that passes the unit gate. No expected-red declaration. A red gate is an ordering defect (signature change split from callers, deletion before replacement, tests deferred to a later task): `@bkit-plan-generate` orders its groups to keep every group gate green, putting the tasks in one group when it cannot. Add an exception mechanism only once a real case shows a legitimate red group gate.
 
 ### Test-first
 

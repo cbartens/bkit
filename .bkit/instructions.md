@@ -7220,7 +7220,7 @@ Tick the plan with the satisfied task numbers; a task the test-first report gaps
 **If** exit non-zero → **Failure Path**.
 **If** the printed `groups` hold a group numbered above `GROUP` → sub-step 8.
 **Else** → `GATE_VERDICT` = SKIPPED → sub-step 10.
-Run the group gate; it writes the trimmed log to the artifact:
+Run the group gate (static checks and the unit tier; integration runs once, at Step 12); it writes the trimmed log to the artifact:
 **If** exit 0 **or** 1 → hold `verdict` as `{GATE_VERDICT}`, `scope` as `{TEST_SCOPE}` → sub-step 9.
 **If** `VERIFY_VERDICT` = PASS **and** `GATE_VERDICT` != FAIL → Step 7 (the next group, or Step 10 when none is open).
 **If** `VERIFY_VERDICT` = CONCERNS or FAIL, **or** `GATE_VERDICT` = FAIL → route on the group's verify rounds:

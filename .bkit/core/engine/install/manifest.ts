@@ -285,17 +285,24 @@ export const BKIT_DEBUG_GATES: readonly string[] = [
 ];
 
 /**
- * What `/bkit-build` Step 11 will run, in DESCENDING order — first one declared wins.
+ * What `/bkit-build` Step 12 will run, in DESCENDING order — first one declared wins.
+ * The Step 8 group gate runs `BKIT_GROUP_GATES` instead.
  *
  * Build stops at integration; E2E and live are not in this list.
  *
- * Neither entry is seeded: declaring `bkit:gate:static-unit-integration` opts the build
- * loop and the pre-push hook into the integration tier.
+ * Declaring `bkit:gate:static-unit-integration` (never seeded) opts Step 12 and the
+ * pre-push hook into the integration tier.
  */
 export const BKIT_BUILD_GATES: readonly string[] = [
   "bkit:gate:static-unit-integration",
   "bkit:gate:static-unit",
 ];
+
+/**
+ * What `/bkit-build` Step 8 runs after every group but the last, and hands the Step 9 fix
+ * round: static checks and the unit tier. Integration runs once, at Step 12.
+ */
+export const BKIT_GROUP_GATES: readonly string[] = ["bkit:gate:static-unit"];
 
 /**
  * What `.husky/pre-push` runs on a full push, in DESCENDING order — first one declared wins.

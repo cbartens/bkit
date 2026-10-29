@@ -88,7 +88,7 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
   │                       ↶ producer-critic loop, capped 3 attempts;
   │                         unfixable gaps / no progress → Decision Pause (human, in session)
   │ 7. gaps-remediate    (fix verifier gaps, re-verify)
-  └ group gate between groups ─────────────────────────────────────────────
+  └ group gate between groups (static + unit) ─────────────────────────────
   8. verify build        (holistic second pass across whole plan, once)
   9. challenge           (size gate first: under 300 lines and 10 files → security only;
                          else both in parallel, distinct lenses, no sibling reads)
