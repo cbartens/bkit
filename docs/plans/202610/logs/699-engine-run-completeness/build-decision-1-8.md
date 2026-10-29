@@ -1,4 +1,4 @@
-Status: OPEN
+Status: DECIDED
 Question: VERIFY_LOOP
 From: verify
 Pause step: 8
@@ -19,5 +19,6 @@ Trend: first-round
 **Q1 — Verify:** another fix round? This was the first round, so there is no trend yet.
 Options: A) Try again / B) Stop
 Recommended: A) Try again — the last round made progress
+Decision: Try again — Commit, resume
 
 Reply per question. "yes" takes every recommendation. "stop" writes a handover; the run can be resumed.

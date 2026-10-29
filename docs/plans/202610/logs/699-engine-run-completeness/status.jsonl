@@ -272,3 +272,7 @@
 {"type":"owner-pause","workflow":"build","at":"2026-10-29T06:18:17Z","reason":"decision"}
 {"type":"engine-call","workflow":"build","at":"2026-10-29T06:19:26Z","noun":"disk","verb":"prune","flags":["mode","auto"]}
 {"type":"engine-call","workflow":"build","at":"2026-10-29T06:19:31Z","noun":"disk","verb":"prune","flags":["mode","auto"]}
+{"type":"engine-call","workflow":"build","at":"2026-10-29T06:32:32Z","noun":"disk","verb":"prune","flags":["mode","auto"]}
+{"type":"owner-answer","workflow":"build","at":"2026-10-29T06:32:36Z"}
+{"type":"engine-action","action":"comment","key":"build/1/build-decision/-/8/comment","hash":"0e6afe8323aaab6a43c03c094d0a1ed8ac0c88d865bd53d98fbc63637d57a82c","ref":"https://github.com/cbartens/bkit/issues/699#issuecomment-6489716385","at":"2026-10-29T06:32:38Z"}
+{"type":"step-done","workflow":"build","step":"build-decision","status":"DONE","at":"2026-10-29T06:32:38Z","parentSha":"2d99a1c6407723e26f61f2498d3e6b1789c1018f","artifacts":["docs/plans/202610/logs/699-engine-run-completeness/build-decision-1-8.md"],"attempt":8,"route":"retry"}
