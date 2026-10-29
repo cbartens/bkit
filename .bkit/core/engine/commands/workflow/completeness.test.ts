@@ -86,4 +86,39 @@ describe("bkit completeness check", () => {
     expect(noMd.code).toBe(0);
     expect(noMd.json.verdicts).toEqual([]);
   });
+
+  it("a file holding two runs of one workflow is checked per run", async () => {
+    const step = (step: string) => ({
+      type: "step-done",
+      workflow: "build",
+      step,
+      status: "DONE",
+      at: AT,
+      parentSha: SHA,
+      artifacts: [],
+    });
+    const rows = [
+      { type: "workflow-started", workflow: "build", at: "2026-10-29T00:00:00.000Z" },
+      { ...step("build-worktree-setup"), at: "2026-10-29T00:00:01.000Z" },
+      { type: "workflow-started", workflow: "build", at: "2026-10-29T01:00:00.000Z" },
+      {
+        type: "engine-call",
+        workflow: "build",
+        noun: "status",
+        verb: "path",
+        at: "2026-10-29T01:00:01.000Z",
+      },
+      { ...step("build-close-workflow"), at: "2026-10-29T01:00:02.000Z" },
+    ];
+    const file = path.join(tmp(), "status.jsonl");
+    fs.writeFileSync(file, rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
+    const r = await run(["completeness", "check", `--file=${file}`, "--workflow=build"]);
+    expect(r.json.verdicts).toHaveLength(2);
+    expect(r.json.verdicts[0].preJournal).toBe(true);
+    expect(r.json.verdicts[0].evidenceHoles).toEqual([]);
+    expect(r.json.verdicts[1].preJournal).toBe(false);
+    expect(r.json.verdicts[1].evidenceHoles.map((h: { step: string }) => h.step)).not.toContain(
+      "build-worktree-setup",
+    );
+  });
 });

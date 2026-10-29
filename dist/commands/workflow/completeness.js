@@ -16,6 +16,22 @@ const readText = (file, log) => {
         return null;
     }
 };
+/** `workflow`'s rows split into runs: each `workflow-started` opens a run that ends at the next one; rows before the first start form their own run. */
+function runsOf(rows, workflow) {
+    const at = (r) => (typeof r["at"] === "string" ? r["at"] : "");
+    const own = rows
+        .filter((r) => r.workflow === workflow)
+        .sort((a, b) => (at(a) < at(b) ? -1 : at(a) > at(b) ? 1 : 0));
+    const runs = [];
+    for (const row of own) {
+        const current = runs.at(-1);
+        if (current === undefined || row.type === "workflow-started")
+            runs.push([row]);
+        else
+            current.push(row);
+    }
+    return runs;
+}
 function reportLines(v) {
     const calls = (list) => list.map((c) => `${c.noun} ${c.verb}`).join(", ");
     const lines = [
@@ -71,9 +87,12 @@ export const completenessCommand = {
                         continue;
                     }
                     try {
-                        const { verdict } = readCompleteness(rows, deriveContract(md, workflow, tracker));
-                        verdicts.push(verdict);
-                        lines.push(...reportLines(verdict));
+                        const contract = deriveContract(md, workflow, tracker);
+                        for (const run of runsOf(rows, workflow)) {
+                            const { verdict } = readCompleteness(run, contract);
+                            verdicts.push(verdict);
+                            lines.push(...reportLines(verdict));
+                        }
                     }
                     catch (err) {
                         ctx.log(`${TAG} ${workflow}: ${err instanceof Error ? err.message : String(err)} — no verdict (advisory)`);
