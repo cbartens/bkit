@@ -114,6 +114,15 @@ Gates CI and the git hooks run.
 | `min-push` | by hand | `--ref` `--base` | Exit 0 when every file a push changes matches bkit.testing.minPushPaths (the pre-push light gate). |
 | `pins` | by hand | `--file` | Download each *_VERSION + *_SHA256 pinned tool in the files and fail when a hash differs. |
 
+### `completeness`
+
+Check a run for missing steps and missing bkit commands.
+
+<!-- prettier-ignore -->
+| Verb | Use | Flags | What it does |
+| --- | --- | --- | --- |
+| `check` | by hand | **`--file`** `--workflow` | Report the steps and bkit commands a run is missing, from its status.jsonl and the workflow markdown; advisory, always exits 0. |
+
 ### `context`
 
 Clamp context artifacts; scan ledgers; write the run's diff and a build group's brief; list, run and record consumer context-fetch blocks.
