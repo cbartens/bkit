@@ -129,7 +129,8 @@
   //   bash "$RUNNER_TEMP/download-actionlint.bash" 1.7.12 (installer-script version argument)
   // Pins paired with a checksum (Vale, gh, jq, Node, actionlint) get the new VERSION
   // from Renovate, but the sha256 beside it stays old: update it by hand in the same
-  // PR, or the install fails closed. See the NOTE in the docker images rule below.
+  // PR, or the install fails closed. CI's Check Pinned Checksums step (`bkit ci pins`)
+  // fails the PR until it matches. See the NOTE in the docker images rule below.
   // ─────────────────────────────────────────────────────────────────────
   customManagers: [
     {

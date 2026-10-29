@@ -219,7 +219,7 @@
     ".cursor/agents/bkit-utility-update-roadmap.md": "adc6b924904619472f33255a4dcdf40d0c1b830d277900127a4b2e57858fdb5c",
     "docs/templates/bkit-audit-agents.md": "d4f13395455fd5d2fe8ae5c969390de9f7066a827d40c93d8da0eeb7b8747356",
     "docs/templates/bkit-audit-prompts.md": "9bfb172adfdec75794728171b04367596acc429a175fa211ed067e21ed529c36",
-    ".bkit/templates.md": "4104bf91c78b9e2b9eaa361694a7ad3f4dc3ce4ceca28a2b9542f73a7c202f75",
+    ".bkit/templates.md": "c1be40a871ce7a2c89a18898cbcb63613dea06c353550b2cf5c08d705f9585bb",
     "docs/templates/bkit-audit-adoption.md": "99740f6fbf79ac8ceaa7ced8caae3ebfea44042ef3e5b1028f566e3595a014b8",
     ".bkit/cloud.md": "c06cf16e2553d0e1ecfac5ae16c1ca4439c488b6eb68300cbb38b0524f72ed47",
     ".bkit/comparison.md": "0f1ed20e3cc957544e3de7ad2b89b68accc70cb5a10e43dcda444b0a76f9eb42",
@@ -269,7 +269,7 @@
     ".codex/hooks/bkit-rules.cjs": "37b3c590ada277b78a246908dadddbb31c64798ca5d300e57b193e314620da67",
     ".opencode/plugin/bkit-rules.js": "6769eacc40fc2856faa9265c5665d5e4426b23c21e3df1e4f177ed6422221824",
     ".bkit/router.md": "a29b576543c024b483c01683fe1b81397005a85ba95367ab18326737b9c0980e",
-    ".bkit/cli.md": "3685fbef864b2af1171a9567a905d94d9dc3abd8c1aa21388c44661b7b27db5f"
+    ".bkit/cli.md": "013b8a974609aa13df8fd138893fab5e2d5f244defddc157c0e7ffdf817b1608"
   },
   "claudeAllowDerived": [
     "WebFetch(domain:12factor.net)",

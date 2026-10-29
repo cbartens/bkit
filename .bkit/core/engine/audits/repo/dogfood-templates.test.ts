@@ -201,6 +201,21 @@ const ADOPTED: Record<string, Entry> = {
           copy: ["      # Workflow-fence syntax tests run", "      # Unit coverage:"],
         },
       },
+      {
+        kind: "bkit-only",
+        what: "pinned checksums also cover the shipped cloud setup script and Dockerfile template",
+        fill:
+          "      # Self-skips when the repo has no .cursor/Dockerfile.\n" +
+          "      - name: Check Pinned Checksums\n" +
+          "        if: hashFiles('.cursor/Dockerfile') != ''\n" +
+          "        run: pnpm bkit ci pins --file=.cursor/Dockerfile\n",
+        with:
+          "      # The bkit repo also checks the shipped cloud setup script and Dockerfile template.\n" +
+          "      - name: Check Pinned Checksums\n" +
+          "        run: >-\n" +
+          "          pnpm bkit ci pins --file=.cursor/Dockerfile --file=.bkit/templates/.cursor/Dockerfile\n" +
+          "          --file=.bkit/shared/.claude/bkit-cloud.md\n",
+      },
     ],
   },
   ".github/workflows/bkit-cloud.yml": {

@@ -48,6 +48,7 @@ import {
   type OpencodeProvider,
 } from "../shared/egress";
 import { isOpencodeProvider } from "../render/models";
+import { parsePins } from "../commands/ci/pins";
 import { ISSUE_TRACKERS } from "./manifest";
 import type { TokenMap } from "./placeholders";
 
@@ -298,6 +299,26 @@ describe("template generation sentinels", () => {
     expect(Number(nodeVersion?.split(".")[0])).toBeGreaterThanOrEqual(minMajor);
   });
 
+  it("pairs every download *_VERSION with a *_SHA256", () => {
+    const dockerfile = fs.readFileSync(
+      path.join(pkgRoot, ".bkit", "templates", ".cursor", "Dockerfile"),
+      "utf-8",
+    );
+    for (const [name, text] of [
+      ["bkit-cloud.md", template],
+      ["Dockerfile", dockerfile],
+    ]) {
+      const downloads = parsePins(text).filter((p) => p.url !== null);
+      expect(downloads.length, name).toBeGreaterThanOrEqual(3);
+      expect(
+        parsePins(text).filter((p) => p.problem !== null),
+        name,
+      ).toEqual([]);
+    }
+    const versionOnly = 'JQ_VERSION="1.8.2"\ncurl -fsSLO "https://e.test/jq-${JQ_VERSION}/jq"';
+    expect(parsePins(versionOnly).map((p) => p.problem)).toEqual(["missing-sha256"]);
+  });
+
   it("shares every version + sha256 pin with the Cursor Dockerfile template", () => {
     const dockerfile = fs.readFileSync(
       path.join(pkgRoot, ".bkit", "templates", ".cursor", "Dockerfile"),
@@ -305,12 +326,9 @@ describe("template generation sentinels", () => {
     );
     const script = pins(template);
     const docker = pins(dockerfile);
-    for (const tool of ["NODE", "GH", "VALE"]) {
-      for (const key of [`${tool}_VERSION`, `${tool}_SHA256`]) {
-        expect(script.get(key), key).toBeDefined();
-        expect(script.get(key), key).toBe(docker.get(key));
-      }
-    }
+    const shared = [...script.keys()].filter((key) => docker.has(key));
+    expect(shared).toEqual(expect.arrayContaining(["NODE_SHA256", "GH_SHA256", "VALE_SHA256"]));
+    for (const key of shared) expect(script.get(key), key).toBe(docker.get(key));
   });
 
   it("puts a renovate comment directly above every *_VERSION pin", () => {
@@ -325,11 +343,12 @@ describe("template generation sentinels", () => {
   });
 });
 
-/** `NAME_VERSION` / `NAME_SHA256` assignments (shell `X="v"` or Dockerfile `ARG X=v`). */
+/** `NAME_VERSION` / `NAME_SHA256` assignments, keyed by variable name. */
 function pins(text: string): Map<string, string> {
   const out = new Map<string, string>();
-  for (const m of text.matchAll(/^(?:ARG )?([A-Z]+_(?:VERSION|SHA256))="?([^"\s]+)"?$/gm)) {
-    out.set(m[1], m[2]);
+  for (const p of parsePins(text)) {
+    if (p.version !== null) out.set(`${p.tool}_VERSION`, p.version);
+    if (p.sha256 !== null) out.set(`${p.tool}_SHA256`, p.sha256);
   }
   return out;
 }

@@ -247,6 +247,14 @@ jobs:
       - name: Run bkit Check
         run: pnpm bkit check
 
+      # Version + sha256 pins: Renovate bumps a *_VERSION and leaves its *_SHA256, so the
+      # break shows only when the image is rebuilt. This downloads each pinned tool and fails
+      # the PR naming the tool whose hash differs. deployments.md § Dependency updaters.
+      # Self-skips when the repo has no .cursor/Dockerfile.
+      - name: Check Pinned Checksums
+        if: hashFiles('.cursor/Dockerfile') != ''
+        run: pnpm bkit ci pins --file=.cursor/Dockerfile
+
       # Dependency-audit gate: fails on a high or critical advisory in the lockfile that
       # scripts/ci/accepted-advisories.json does not accept with a reason and an in-date expiry.
       # Self-skips when the guard is absent — a repo that did not adopt

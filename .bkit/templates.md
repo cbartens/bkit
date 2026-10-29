@@ -182,7 +182,7 @@ pnpm add -D prettier@^3.5.3 slop-scan@^0.3.0 lint-staged@^17.0.0 husky@^9.1.7
 
 ## CI workflow — `bkit-ci.yml`
 
-Parallel lanes `bkit-tests-static` (typecheck, lint, prettier, Vale, slop, actionlint, `bkit check`) and `bkit-tests-unit`, joined by the `bkit-tests-check` capstone, plus the commented full CI scaffold reference for the other tiers. Workflows care: `/bkit-ship` waits on its runs and merges only when the `bkit.testing.ciCapstone` job (default `bkit-tests-check`) is present and green at the head; `bkit setup protect-main` makes that job the required check; `bkit-cloud.yml` triggers on a workflow named `bkit-ci`. `bkit install` reads your copy for advisories (`bkit-stub-*`, `ci-yml-missing-actionlint`, `ci-yml-capstone-contract-drift`). Reference: https://docs.github.com/en/actions.
+Parallel lanes `bkit-tests-static` (typecheck, lint, prettier, Vale, slop, actionlint, `bkit check`, pinned checksums) and `bkit-tests-unit`, joined by the `bkit-tests-check` capstone, plus the commented full CI scaffold reference for the other tiers. Workflows care: `/bkit-ship` waits on its runs and merges only when the `bkit.testing.ciCapstone` job (default `bkit-tests-check`) is present and green at the head; `bkit setup protect-main` makes that job the required check; `bkit-cloud.yml` triggers on a workflow named `bkit-ci`. `bkit install` reads your copy for advisories (`bkit-stub-*`, `ci-yml-missing-actionlint`, `ci-yml-capstone-contract-drift`). Reference: https://docs.github.com/en/actions.
 
 - Install: nothing beyond the gate tool scripts above, a `test` script, and `packageManager` in `package.json` (`pnpm/action-setup` reads it; do not add `with: version:`).
 - Adapt: `main`, `{{NODE_VERSION}}`. Non-Node repo → replace the Node / pnpm setup, install and check steps with your stack's.
@@ -377,7 +377,7 @@ gh secret set BKIT_GH_TOKEN
 
 - Examples ignore `.bkit/templates/**`, `.agents/skills/**` (bkit rewrites them), `docs/plans/**` and the `tests` / `__fixtures__` trees. Your copied workflows (`bkit-ci.yml`, `bkit-cloud.yml`) stay in scope so their pins refresh.
 - Examples extend `config:best-practices`; major bumps wait for a tick on the Dependency Dashboard (`dependencyDashboardApproval`); `lockFileMaintenance` runs monthly; PRs rebase only on conflict.
-- A `# renovate: datasource=<ds> depName=<name>` comment above a pinned CLI version (Dockerfile, `bkit-cloud.md`, workflows) lets the example `customManagers` entry bump it. Checksum-paired pins (Vale, gh, jq, Node, actionlint): update the sha256 by hand in the same PR.
+- A `# renovate: datasource=<ds> depName=<name>` comment above a pinned CLI version (Dockerfile, `bkit-cloud.md`, workflows) lets the example `customManagers` entry bump it. Checksum-paired pins (Vale, gh, jq, Node, actionlint): update the sha256 by hand in the same PR. `Check Pinned Checksums` in `bkit-ci.yml` (`bkit ci pins`) fails the PR until the Dockerfile's hashes match.
 - `bkit-renovate.yml` pins `renovate-version` to an exact release; the same kind of `# renovate:` comment keeps it current.
 - `enabled: false` on a Renovate package rule does not stop digest pinning; use `ignorePaths` to keep Renovate off a file.
 - Land config on default branch before bot runs. Examples set `baseBranchPatterns: ["dev"]`.

@@ -19,6 +19,9 @@
 // `min-push` — whether every file a push changes matches `bkit.testing.minPushPaths`, so
 // `.husky/pre-push` runs `bkit:gate:min`. Files decide, never `[skip ci]` (a typed label
 // GitHub reads off the last commit only).
+//
+// `pins` — downloads each `*_VERSION` + `*_SHA256` pinned tool the files name and checks
+// the hash, so a version-only Renovate bump goes red in its own PR (`pins.ts`).
 
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import * as fs from "node:fs";
@@ -38,6 +41,7 @@ import {
   type RunContext,
 } from "../lib.js";
 import { changedOutside } from "../workflow/ledgers.js";
+import { pins } from "./pins.js";
 
 /** Exit code: slop-scan could not be started (not installed, not executable). */
 export const EXIT_SLOP_UNAVAILABLE = 3;
@@ -688,6 +692,24 @@ export const ciCommand: CommandSpec = {
         [EXIT_RANGE_UNKNOWN]: "a pushed commit, its base, or its git diff could not be read",
       },
       run: minPush,
+    },
+    pins: {
+      summary:
+        "Download each *_VERSION + *_SHA256 pinned tool in the files and fail when a hash differs.",
+      use: "by-hand",
+      flags: [
+        {
+          name: "file",
+          type: "string",
+          repeatable: true,
+          help: "a file holding pins (shell `X=v`, `export X=v`, Dockerfile `ARG X=v`)",
+        },
+      ],
+      output: {
+        passed: "false when any pin failed",
+        pins: "one row per pin ({file, tool, version, url, status, expected, actual, error}); status ok | skipped (no download) | mismatch | unreachable | missing-sha256 | missing-version | unresolved-url | ambiguous-url",
+      },
+      run: (ctx) => pins(ctx),
     },
   },
 };
