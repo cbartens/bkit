@@ -962,12 +962,14 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
   - **DONE WHEN:** a run that journals every call the journal can actually record reads CLEAN for all five workflows; a step whose in-window call is genuinely missing still reads HOLEY; and `pnpm bkit:audit:status` still exits 0.
   - **TEST FIRST:**
     - `.bkit/core/engine/checks/status-holes.test.ts` `calls outside the journal window are matched but never required` fails while a pre-start or post-close call is listed as a step's required call
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/checks/status-holes.test.ts` `calls outside the journal window are matched but never required` fails while a pre-start or post-close call is listed as a step's required call — excused, approved: one row (the `workflows start` call, which a fresh run can never journal) was deleted from the test's fake journal after the red, and no check changed (owner, 2026-10-29)
 
 <!-- bkit:task 18 end -->
 
 <!-- bkit:task 19 start -->
 
-- [ ] **TASK 19:** Warn when the journal looks dead at close, and record the three knowledge entries
+- [x] **TASK 19:** Warn when the journal looks dead at close, and record the three knowledge entries
   - **UPDATE:** `.bkit/core/engine/commands/workflow/workflows.ts`: when `closeWorkflow` sets `journalSuspect`, print exactly one `[bkit-telemetry]` line on stderr through `ctx.log`, never changing stdout or the exit code
   - **UPDATE:** `.bkit/core/engine/commands/workflow/workflows.test.ts`: the dead-journal close case
   - **UPDATE:** `docs/knowledge.jsonl`: three entries appended with `bkit ledgers append` — the run's own book root is the journal's write root; the `<noun>-<verb>` step fallback is mandatory; the `MARK_ROWS` copies must stay in parity
