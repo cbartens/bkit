@@ -5,7 +5,9 @@ import * as path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { contractUnits, deriveContract } from "../../checks/status-holes";
 import { validate } from "../../ledgers/telemetry";
+import { substituteWorkflow } from "../../render/trackers";
 import { runCommand } from "../lib";
 import { tipsText } from "../tips";
 import { newRecord, writeRecord } from "./ledgers";
@@ -52,6 +54,8 @@ afterEach(() => {
   holes.throwRead = false;
   holes.unserialisable = false;
 });
+
+const WORKFLOWS_DIR = path.resolve(__dirname, "../../../workflows");
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -1064,6 +1068,40 @@ describe("bkit workflows close", () => {
     expect(["CLEAN", "HOLEY"]).toContain(all[at]!.verdict);
     expect(all[at - 1]).toMatchObject({ type: "step-done", step: "build-close-workflow" });
     expect(all[at + 1]).toMatchObject({ type: "workflow-done", workflow: "build" });
+  });
+
+  it("close on a tracker-none consumer writes a CLEAN completeness row for a fully journaled run", async () => {
+    const cwd = closable("ship");
+    const workflow = "ship";
+    const AT = "2020-01-02T00:00:00Z";
+    const rendered = substituteWorkflow(
+      fs.readFileSync(path.join(WORKFLOWS_DIR, "bkit-ship.md"), "utf-8"),
+      "none",
+    ).output;
+    const replay = contractUnits(deriveContract(rendered, workflow)).flatMap((u) => {
+      const take = (position: "pre" | "post") =>
+        u.calls
+          .filter((c) => c.position === position)
+          .filter((c) => !c.branch)
+          .filter((c) => `${c.noun} ${c.verb}` !== "workflows start")
+          .map((c) => ({
+            type: "engine-call",
+            workflow,
+            at: AT,
+            noun: c.noun,
+            verb: c.verb,
+            flags: [],
+          }));
+      return [
+        ...take("pre"),
+        ...u.keys.map((k) => ({ type: "step-done", workflow, step: k, status: "DONE", at: AT })),
+        ...take("post"),
+      ];
+    });
+    fs.appendFileSync(statusOf(cwd), jsonl(replay));
+    expect((await run(cwd, wf("close", workflow))).code).toBe(0);
+    const stored = rows(statusOf(cwd)).find((x) => x.type === "completeness");
+    expect(stored).toMatchObject({ workflow, holey: false, verdict: "CLEAN" });
   });
 
   it("prints one telemetry line on stderr when the journal looks dead at close", async () => {

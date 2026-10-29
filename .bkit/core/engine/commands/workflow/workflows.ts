@@ -1056,11 +1056,12 @@ function runRowsOf(file: string, workflow: string, startAt?: string, before?: st
     .sort((a, b) => (at(a) < at(b) ? -1 : at(a) > at(b) ? 1 : 0));
 }
 
-/** The contract of `workflow`, derived from its shipped markdown. */
-const contractOf = (workflow: string) =>
+/** The contract of `workflow`, derived from its shipped markdown rendered for the tracker `cwd` is configured with. */
+const contractOf = (workflow: string, cwd: string) =>
   deriveContract(
     fs.readFileSync(path.join(getWorkflowsRoot(), `bkit-${workflow}.md`), "utf-8"),
     workflow,
+    readIssueTracker(cwd),
   );
 
 /**
@@ -1076,9 +1077,13 @@ function writeCompletenessRow(
   log: (m: string) => void,
 ): void {
   try {
-    const verdict = checkCompleteness(runRowsOf(file, workflow, startAt), contractOf(workflow), {
-      journalSuspect: true,
-    });
+    const verdict = checkCompleteness(
+      runRowsOf(file, workflow, startAt),
+      contractOf(workflow, path.dirname(file)),
+      {
+        journalSuspect: true,
+      },
+    );
     const row: StatusRow = { type: "completeness", ...verdict, at: statusTimestamp(), parentSha };
     fs.appendFileSync(file, appendLine(row));
     if (verdict.journalSuspect) {
@@ -1105,7 +1110,7 @@ function previousRunWarning(file: string, resumed: boolean): string | null {
     if (prev === undefined) return null;
     const next = runs.slice(at + 1).find((r) => r.workflow === prev.workflow);
     const own = runRowsOf(file, prev.workflow, prev.startedAt, next?.startedAt);
-    const { verdict } = readCompleteness(own, contractOf(prev.workflow));
+    const { verdict } = readCompleteness(own, contractOf(prev.workflow, path.dirname(file)));
     if (!verdict.holey) return null;
     const number = runs.slice(0, at + 1).filter((r) => r.workflow === prev.workflow).length;
     const closed = own.filter((e) => e.type === "workflow-done").at(-1)?.["at"] ?? "never";

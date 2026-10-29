@@ -20,6 +20,7 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { WORKFLOW_STEPS } from "../commands/workflow/step-table";
+import { substituteWorkflow } from "../render/trackers";
 import {
   SHIP_STEP_ORDER,
   auditRun,
@@ -907,6 +908,28 @@ describe("check — hole classes", () => {
     });
   };
 
+  /** Rows of a run that journals every unconditional call of the workflow rendered for `none`. */
+  const noneRows = (name: (typeof FLOWS)[number]): StatusRow[] => {
+    const rendered = substituteWorkflow(flowMd(name), "none").output;
+    return contractUnits(deriveContract(rendered, name)).flatMap((u) => {
+      const take = (position: "pre" | "post") =>
+        u.calls
+          .filter((c) => c.position === position)
+          .filter((c) => !c.branch)
+          .filter((c) => `${c.noun} ${c.verb}` !== "workflows start")
+          .map((c) => callRow(name, c.noun, c.verb) as StatusRow);
+      return [...take("pre"), ...u.keys.map((k) => stepRow(name, k) as StatusRow), ...take("post")];
+    });
+  };
+
+  it("a tracker-none run that journals every rendered call is CLEAN", () => {
+    for (const name of ["design", "plan", "debug", "ship"] as const) {
+      const verdict = check(noneRows(name), deriveContract(flowMd(name), name, "none"));
+      expect(verdict.evidenceHoles, name).toEqual([]);
+      expect(verdict.verdict, name).toBe("CLEAN");
+    }
+  });
+
   it("names an evidence hole with its missing calls", () => {
     const md = [
       "## 🧠 Step 1 — Verify",
@@ -942,6 +965,35 @@ describe("check — hole classes", () => {
     );
     expect(whole.evidenceHoles).toEqual([]);
     expect(whole.verdict).toBe("CLEAN");
+  });
+
+  it("a run whose journal starts mid-run reports no evidence hole for steps finished before its first engine-call row", () => {
+    const md = [
+      "## 🧠 Step 1 — Setup",
+      ...fence("tests run --gate=a", FINISH("build-worktree-setup", 1)),
+      "## 🧠 Step 2 — Verify",
+      ...fence("tests run --gate=b", FINISH("build-b", 2)),
+      "## 🧠 Step 3 — Close",
+      ...fence(FINISH("build-close-workflow", 3)),
+    ].join("\n");
+    const contract = deriveContract(md, "build");
+    const midRun = check(
+      [
+        stepRow("build", "build-worktree-setup"),
+        callRow("build", "steps", "finish"),
+        stepRow("build", "build-b"),
+        callRow("build", "steps", "finish"),
+        stepRow("build", "build-close-workflow"),
+      ] as StatusRow[],
+      contract,
+    );
+    expect(midRun.preJournal).toBe(false);
+    expect(midRun.evidenceHoles.map((h) => h.step)).toEqual(["build-b"]);
+    const none = check(
+      [stepRow("build", "build-worktree-setup"), stepRow("build", "build-b")] as StatusRow[],
+      contract,
+    );
+    expect(none.preJournal).toBe(true);
   });
 
   it("reports a missing required step as a step hole", () => {

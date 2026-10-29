@@ -829,8 +829,8 @@ function runRowsOf(file, workflow, startAt, before) {
         (before === undefined || at(r) < before))
         .sort((a, b) => (at(a) < at(b) ? -1 : at(a) > at(b) ? 1 : 0));
 }
-/** The contract of `workflow`, derived from its shipped markdown. */
-const contractOf = (workflow) => deriveContract(fs.readFileSync(path.join(getWorkflowsRoot(), `bkit-${workflow}.md`), "utf-8"), workflow);
+/** The contract of `workflow`, derived from its shipped markdown rendered for the tracker `cwd` is configured with. */
+const contractOf = (workflow, cwd) => deriveContract(fs.readFileSync(path.join(getWorkflowsRoot(), `bkit-${workflow}.md`), "utf-8"), workflow, readIssueTracker(cwd));
 /**
  * Appends the close's `completeness` row for the run that started at `startAt`. Advisory:
  * a failure of the check or of the write is logged in one line and never fails the close.
@@ -838,7 +838,7 @@ const contractOf = (workflow) => deriveContract(fs.readFileSync(path.join(getWor
  */
 function writeCompletenessRow(file, workflow, startAt, parentSha, log) {
     try {
-        const verdict = checkCompleteness(runRowsOf(file, workflow, startAt), contractOf(workflow), {
+        const verdict = checkCompleteness(runRowsOf(file, workflow, startAt), contractOf(workflow, path.dirname(file)), {
             journalSuspect: true,
         });
         const row = { type: "completeness", ...verdict, at: statusTimestamp(), parentSha };
@@ -866,7 +866,7 @@ function previousRunWarning(file, resumed) {
             return null;
         const next = runs.slice(at + 1).find((r) => r.workflow === prev.workflow);
         const own = runRowsOf(file, prev.workflow, prev.startedAt, next?.startedAt);
-        const { verdict } = readCompleteness(own, contractOf(prev.workflow));
+        const { verdict } = readCompleteness(own, contractOf(prev.workflow, path.dirname(file)));
         if (!verdict.holey)
             return null;
         const number = runs.slice(0, at + 1).filter((r) => r.workflow === prev.workflow).length;

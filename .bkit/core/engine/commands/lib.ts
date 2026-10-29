@@ -404,13 +404,14 @@ export function resolveActiveRun(opts: {
   month?: string;
   workflow?: string;
 }): ActiveRun | undefined {
-  if (opts.file !== undefined) {
+  // A `--file` that is a run's `status.jsonl` names that run; any other file (a plan or
+  // design doc) says nothing about the run and falls through to `--fid` and the scan.
+  if (opts.file !== undefined && path.basename(opts.file) === "status.jsonl") {
     const file = path.resolve(opts.cwd, opts.file);
     const workflow = inProgressWorkflow(file);
     const logs = path.dirname(path.dirname(file));
     if (
       workflow === undefined ||
-      path.basename(file) !== "status.jsonl" ||
       path.basename(logs) !== "logs" ||
       path.basename(path.dirname(path.dirname(logs))) !== "plans"
     ) {
