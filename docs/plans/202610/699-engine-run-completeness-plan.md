@@ -807,7 +807,7 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
 
 <!-- bkit:task 10 start -->
 
-- [ ] **TASK 10:** Ship `bkit completeness check` and register it
+- [x] **TASK 10:** Ship `bkit completeness check` and register it
   - **CREATE:** `.bkit/core/engine/commands/workflow/completeness.ts`: a thin `CommandSpec` — noun `completeness`, verb `check`, flags `--workflow=` (optional) and `--file=`; reads `status.jsonl` and the workflow markdown, calls the checker, prints the report through `ctx.emit`, logs under `[bkit-status-holes]`, always returns `EXIT.OK`; with `--workflow` absent, infers each run's workflow from its own rows
   - **CREATE:** `.bkit/core/engine/commands/workflow/completeness.test.ts`: the exit-0 case on a known-holey run, the workflow-inference case, and the conventions the sibling commands satisfy
   - **UPDATE:** `.bkit/core/engine/commands/registry.ts`: import `completenessCommand` and add it to `COMMANDS`
