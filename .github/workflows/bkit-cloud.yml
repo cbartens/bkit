@@ -574,7 +574,7 @@ jobs:
           # release binaries) cannot fetch 2.0.26. npm's postinstall selects the runner's
           # platform binary.
           # renovate: datasource=npm depName=@opencode/cli
-          npm install -g @opencode/cli@2.0.26
+          npm install -g @opencode/cli@2.1.2
           echo "$(npm prefix -g)/bin" >> "$GITHUB_PATH"
 
       - name: Dispatch /bkit-auto on opencode runner
