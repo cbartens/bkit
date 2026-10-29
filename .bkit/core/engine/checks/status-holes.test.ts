@@ -899,6 +899,8 @@ describe("check — hole classes", () => {
         u.calls
           .filter((c) => c.position === position)
           .filter((c) => withBranches || !c.branch)
+          // A fresh run finds no active run at `workflows start`, so the journal never holds it.
+          .filter((c) => !(c.noun === "workflows" && c.verb === "start"))
           .map((c) => callRow(name, c.noun, c.verb) as StatusRow);
       const own = u.keys.map((k) => stepRow(name, k) as StatusRow);
       return [...take("pre"), ...own, ...take("post")];
@@ -1049,7 +1051,6 @@ describe("check — hole classes", () => {
     const inWindow = [
       callRow("build", "steps", "finish"),
       stepRow("build", "build-a"),
-      callRow("build", "workflows", "start"),
       callRow("build", "steps", "finish"),
       stepRow("build", "build-b"),
       callRow("build", "tests", "run"),
@@ -1067,6 +1068,19 @@ describe("check — hole classes", () => {
     // An in-window call that is missing still reads HOLEY.
     const missing = inWindow.filter((r) => r["noun"] !== "tests");
     expect(check(missing, contract).verdict).toBe("HOLEY");
+  });
+
+  it("never requires the workflows start call, which a fresh run cannot journal", () => {
+    for (const name of FLOWS) {
+      const contract = deriveContract(flowMd(name), name);
+      const required = contractUnits(contract).flatMap((u) =>
+        u.calls.map((c) => `${c.noun} ${c.verb}`),
+      );
+      expect(required, name).not.toContain("workflows start");
+      const verdict = check(replay(name, false), contract);
+      expect(verdict.evidenceHoles, name).toEqual([]);
+      expect(verdict.verdict, name).toBe("CLEAN");
+    }
   });
 
   it("reports an untaken route arm as unexercised", () => {
