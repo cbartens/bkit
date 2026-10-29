@@ -276,3 +276,6 @@
 {"type":"owner-answer","workflow":"build","at":"2026-10-29T06:32:36Z"}
 {"type":"engine-action","action":"comment","key":"build/1/build-decision/-/8/comment","hash":"0e6afe8323aaab6a43c03c094d0a1ed8ac0c88d865bd53d98fbc63637d57a82c","ref":"https://github.com/cbartens/bkit/issues/699#issuecomment-6489716385","at":"2026-10-29T06:32:38Z"}
 {"type":"step-done","workflow":"build","step":"build-decision","status":"DONE","at":"2026-10-29T06:32:38Z","parentSha":"2d99a1c6407723e26f61f2498d3e6b1789c1018f","artifacts":["docs/plans/202610/logs/699-engine-run-completeness/build-decision-1-8.md"],"attempt":8,"route":"retry"}
+{"type":"engine-call","workflow":"build","at":"2026-10-29T06:32:38Z","noun":"disk","verb":"prune","flags":["mode","auto"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-gaps-remediate/8/1/comment","hash":"53209ce63da51b605f5b75ffd245ccbb91072b2d0d0ef91fab6cf60127da0438","ref":"https://github.com/cbartens/bkit/issues/699#issuecomment-6489725104","at":"2026-10-29T06:33:11Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-gaps-remediate","status":"DONE","at":"2026-10-29T06:33:11Z","parentSha":"49c14ea864f0fa273802cc0d6b2e699d774d87db","artifacts":["docs/plans/202610/logs/699-engine-run-completeness/build-plan-gaps-remediate-8-1-log.md"],"verdict":"PASS","attempt":1,"group":8,"strategy":"STANDARD"}
