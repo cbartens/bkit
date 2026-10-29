@@ -17,7 +17,3 @@ Plan: `docs/plans/202610/699-engine-run-completeness-plan.md`
 ## Gaps
 
 None.
-
-## Late-red check
-
-- Task 23 — not checked: no plan-execute step commit's log records `DONE — TASK 23`, so when its code landed is unknown
