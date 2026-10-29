@@ -40,7 +40,7 @@ set -euo pipefail
 # `.bkit/templates/.cursor/Dockerfile`. bkit needs Node >=24 and the base image ships
 # older majors, so this one goes into /usr/local and leads PATH for every step below.
 # renovate: datasource=node-version depName=node
-NODE_VERSION="24.21.0"
+NODE_VERSION="24.22.1"
 NODE_SHA256="fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6"
 if [ "$(/usr/local/bin/node --version 2>/dev/null || true)" != "v${NODE_VERSION}" ]; then
   command -v xz >/dev/null 2>&1 || { apt-get update && apt-get install -y --no-install-recommends xz-utils; }
