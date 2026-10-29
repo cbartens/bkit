@@ -997,7 +997,7 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
 
 <!-- bkit:task 20 start -->
 
-- [ ] **TASK 20:** A consumer on tracker `none` gets an evidence hole on every design / plan / debug / ship run, because the contract is derived from the unrendered workflow source whose `<!-- bkit:tracker true start -->` blocks hold calls that consumer never runs (`issues related`, `plans parse`, `plans comment`, `issues labels`, `issues comment`, `issues fetch`)
+- [x] **TASK 20:** A consumer on tracker `none` gets an evidence hole on every design / plan / debug / ship run, because the contract is derived from the unrendered workflow source whose `<!-- bkit:tracker true start -->` blocks hold calls that consumer never runs (`issues related`, `plans parse`, `plans comment`, `issues labels`, `issues comment`, `issues fetch`)
       **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/workflows.ts:1060` · **Round:** 1
   - **DONE WHEN:** `contractOf` (close and start paths) and `bkit completeness check` derive the contract from the workflow markdown rendered for the consumer's configured tracker (`substituteWorkflow(md, tracker)` from `.bkit/core/engine/render/trackers.ts`), so a tracker-`none` run that journals every call its rendered workflow names is `CLEAN`.
   - **TEST FIRST:**
