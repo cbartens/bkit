@@ -56,8 +56,11 @@ describe("package.json manifest invariants (BAR-138)", () => {
 });
 
 /** `name: spec` for each pnpm override of a direct dependency that is not `$name`. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function shadowingOverrides(pkg: Record<string, any>): string[] {
+function shadowingOverrides(pkg: {
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+  pnpm?: { overrides?: Record<string, string> };
+}): string[] {
   const direct = { ...pkg.dependencies, ...pkg.devDependencies };
   const overrides: Record<string, string> = pkg.pnpm?.overrides ?? {};
   return Object.entries(overrides)
