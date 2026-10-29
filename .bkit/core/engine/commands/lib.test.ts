@@ -150,6 +150,7 @@ const CMD: CommandSpec = {
   verbs: {
     count: {
       summary: "Count them.",
+      use: "workflow",
       flags: FLAGS,
       output: { count: "how many" },
       exitCodes: { 3: "no widgets at all" },
@@ -161,6 +162,7 @@ const CMD: CommandSpec = {
     },
     twice: {
       summary: "Emits twice.",
+      use: "workflow",
       flags: [],
       output: {},
       run: (ctx) => {
@@ -171,6 +173,7 @@ const CMD: CommandSpec = {
     },
     fails: {
       summary: "Refuses.",
+      use: "workflow",
       flags: [],
       output: {},
       run: () => {
@@ -460,6 +463,7 @@ describe("help", () => {
       verbs: {
         save: {
           summary: "s",
+          use: "workflow",
           flags: [],
           output: { row: "the row", checks: "the checks", ok: "done" },
           textOmit: ["row", { key: "checks", when: () => true }],

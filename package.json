@@ -69,8 +69,8 @@
     "lint": "oxlint -c .oxlintrc.json --type-aware --tsconfig tsconfig.test.json --deny-warnings .bkit/core/engine",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "format:tables": "node scripts/prettier/bkit-insert-ignore.mjs .agents docs README.md .bkit/instructions.md .bkit/shared .bkit/core/.agents .bkit/core/docs",
-    "format:tables:check": "node scripts/prettier/bkit-insert-ignore.mjs --check .agents docs README.md .bkit/instructions.md .bkit/shared .bkit/core/.agents .bkit/core/docs",
+    "format:tables": "node scripts/prettier/bkit-insert-ignore.mjs .agents docs README.md .bkit/instructions.md .bkit/shared .bkit/core/.agents .bkit/core/docs .bkit/core/.bkit",
+    "format:tables:check": "node scripts/prettier/bkit-insert-ignore.mjs --check .agents docs README.md .bkit/instructions.md .bkit/shared .bkit/core/.agents .bkit/core/docs .bkit/core/.bkit",
     "lint:prose": "bkit ci prose --glob='.agents/*.md' --glob='.bkit/core/.bkit/*.md' --glob='.bkit/core/workflows/**/*.md' --glob='.bkit/core/prompts/**/*.md' --glob='.bkit/core/.agents/*.md' --glob='.bkit/shared/docs/**/*.md' --glob='.bkit/core/docs/**/*.md' --glob='.bkit/templates/**/*.md' --glob='docs/*.md' --glob='*.md'",
     "lint:slop": "slop-scan scan .",
     "slop:delta": "bkit ci slop",
@@ -79,7 +79,7 @@
     "harvest": "tsx scripts/harvest/bkit-harvest.mjs",
     "test:harvest": "node scripts/harvest/bkit-harvest.test.mjs",
     "test:integration": "vitest run integration.test",
-    "test:coverage:unit": "vitest run -c vitest.unit.config.ts --coverage --coverage.reportsDirectory=coverage/unit --exclude '**/*.integration.test.ts' --coverage.include='.bkit/core/engine/{cli,commands/analysis,install/cloud-env,commands/comply,commands/install/install,commands/launch,install/manifest,install/managed-block,shared/package-roots,shared/protected-paths,checks/after/index,checks/after/auth,checks/after/ci-yml,checks/after/github,checks/after/managed,checks/after/tools,checks/after/suppression,checks/before/index,checks/before/context-fetch,checks/before/env,checks/before/files,checks/before/mcp,checks/before/repo,checks/before/version,ledgers/status,ledgers/telemetry,install/write,install/placeholders,install/template-copies,render/trackers,render/hosts,render/models,commands/install/uninstall,commands/install/upgrade,install/version-file,tools/instructions}.ts' --coverage.include='.bkit/core/engine/commands/**/*.ts' --coverage.include='.bkit/core/engine/shared/{settings,package-json,package-manager,timeouts}.ts'",
+    "test:coverage:unit": "vitest run -c vitest.unit.config.ts --coverage --coverage.reportsDirectory=coverage/unit --exclude '**/*.integration.test.ts' --coverage.include='.bkit/core/engine/{cli,commands/analysis,install/cloud-env,commands/comply,commands/install/install,commands/launch,install/manifest,install/managed-block,shared/package-roots,shared/protected-paths,checks/after/index,checks/after/auth,checks/after/ci-yml,checks/after/github,checks/after/managed,checks/after/tools,checks/after/suppression,checks/before/index,checks/before/context-fetch,checks/before/env,checks/before/files,checks/before/mcp,checks/before/repo,checks/before/version,ledgers/status,ledgers/telemetry,install/write,install/placeholders,install/template-copies,render/trackers,render/hosts,render/models,commands/install/uninstall,commands/install/upgrade,install/version-file,tools/instructions,tools/cli-doc}.ts' --coverage.include='.bkit/core/engine/commands/**/*.ts' --coverage.include='.bkit/core/engine/shared/{settings,package-json,package-manager,timeouts}.ts'",
     "bkit:test:bats": "pnpm exec bats ${BKIT_TEST_REPORT_DIR:+--report-formatter junit --output \"$BKIT_TEST_REPORT_DIR\"} tests/*.bats",
     "build": "tsc && chmod +x dist/cli.js",
     "bkit:check:dist": "rm -rf dist && tsc && chmod +x dist/cli.js && git diff --exit-code dist/ || (echo '[bkit] dist/ is stale — run pnpm build and commit the result' && exit 1)",
@@ -96,6 +96,7 @@
     "grammar:density": "tsx .bkit/core/engine/tools/grammar-density.ts",
     "instructions:show": "tsx .bkit/core/engine/tools/instructions.ts --show",
     "instructions:sync": "tsx .bkit/core/engine/tools/instructions.ts --write",
+    "cli:sync": "tsx .bkit/core/engine/tools/cli-doc.ts --write",
     "prepare": "husky"
   },
   "devDependencies": {

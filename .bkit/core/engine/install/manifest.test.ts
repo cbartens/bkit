@@ -190,6 +190,7 @@ describe("getInstallManifest", () => {
     const byteEqualDocs = [
       "authoring.md",
       "cloud.md",
+      "cli.md",
       "comparison.md",
       "install.md",
       "jsonl.md",

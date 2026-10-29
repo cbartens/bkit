@@ -283,40 +283,40 @@ All 35 templates, by area. Template file = `docs/templates/bkit-audit-{template}
 | Area | Audit | Template | What it finds |
 | --- | --- | --- | --- |
 | **Security and privacy** | Security | `security` | Holes in sign-in, permissions, secrets and input checks, plus documented protections that never run. |
-| | Red team | `red-team` | Attacks a test copy of the app, never production, one hostile request at a time. Keeps each request and response, then cleans up. |
-| | Privacy | `privacy` | Where personal data goes and how long it stays, whether deleting an account removes the person, whether the privacy policy matches the code. |
+|  | Red team | `red-team` | Attacks a test copy of the app, never production, one hostile request at a time. Keeps each request and response, then cleans up. |
+|  | Privacy | `privacy` | Where personal data goes and how long it stays, whether deleting an account removes the person, whether the privacy policy matches the code. |
 | **Code quality** | Architecture | `architecture` | Code that breaks the intended layers: server code reaching the client, modules tied together with no visible import. |
-| | Duplication | `duplication` | One behaviour built more than once: copied rules, competing mechanisms, restated types, merges that should not have happened. |
-| | Dead code | `dead-code` | Code, settings, routes, events, tables and assets that look live and never run. |
-| | Slop | `slop` | Every switched-off check: disabled lint rules, casts that hide type errors, skipped tests, config opt-outs. |
-| | Documentation | `documentation` | Docs that disagree with the code, links that land nowhere, facts agents rely on that nobody wrote down. |
-| | Dependencies | `dependencies` | Pending dependency updates merged as one verified batch; security advisories, licences, end-of-life packages, supply-chain settings. |
+|  | Duplication | `duplication` | One behaviour built more than once: copied rules, competing mechanisms, restated types, merges that should not have happened. |
+|  | Dead code | `dead-code` | Code, settings, routes, events, tables and assets that look live and never run. |
+|  | Slop | `slop` | Every switched-off check: disabled lint rules, casts that hide type errors, skipped tests, config opt-outs. |
+|  | Documentation | `documentation` | Docs that disagree with the code, links that land nowhere, facts agents rely on that nobody wrote down. |
+|  | Dependencies | `dependencies` | Pending dependency updates merged as one verified batch; security advisories, licences, end-of-life packages, supply-chain settings. |
 | **Tests and CI** | Testing | `testing` | Tests that can't fail, don't run, or skip what the product must and must never do. |
-| | Coverage | `coverage` | How much code the tests reach, against the minimum CI enforces, and the next minimum to set. |
-| | Flaky tests | `flakes` | Tests that pass only on retry or fail on one platform, and the change that makes each one reliable. |
-| | Gates | `gates` | Problems audits keep finding by hand that an automatic check could block, and the order to add those checks. |
-| | Annotations | `annotations` | Warnings buried in green CI runs: silent failures, deprecations with a deadline, ignored lint warnings. |
-| | CI performance | `ci-performance` | The lane that makes CI slow or expensive, and what each change would save. |
+|  | Coverage | `coverage` | How much code the tests reach, against the minimum CI enforces, and the next minimum to set. |
+|  | Flaky tests | `flakes` | Tests that pass only on retry or fail on one platform, and the change that makes each one reliable. |
+|  | Gates | `gates` | Problems audits keep finding by hand that an automatic check could block, and the order to add those checks. |
+|  | Annotations | `annotations` | Warnings buried in green CI runs: silent failures, deprecations with a deadline, ignored lint warnings. |
+|  | CI performance | `ci-performance` | The lane that makes CI slow or expensive, and what each change would save. |
 | **Running in production** | Reliability | `reliability` | What breaks when a service is slow, down or answers twice: missing timeouts, unsafe retries, races, failures no alert reports. |
-| | Database | `database` | Who can read and write what, migrations, data integrity, capacity, and whether a restore works. |
-| | Logs | `logs` | Error-tracker issues and logs sorted into real bugs, noise at the wrong level, and failures that never got reported. |
-| | App performance | `app-performance` | Web, phone and server speed, measured against published targets and your own budgets. |
-| | Config | `config` | Settings outside the code that disagree across environments, dashboards, repo and docs; anything with an expiry date. |
-| | Cost | `cost` | Vendor plans that don't fit your usage, what drives each bill, whether a spike shows up before the invoice. |
+|  | Database | `database` | Who can read and write what, migrations, data integrity, capacity, and whether a restore works. |
+|  | Logs | `logs` | Error-tracker issues and logs sorted into real bugs, noise at the wrong level, and failures that never got reported. |
+|  | App performance | `app-performance` | Web, phone and server speed, measured against published targets and your own budgets. |
+|  | Config | `config` | Settings outside the code that disagree across environments, dashboards, repo and docs; anything with an expiry date. |
+|  | Cost | `cost` | Vendor plans that don't fit your usage, what drives each bill, whether a spike shows up before the invoice. |
 | **Users and reach** | Accessibility | `accessibility` | What automated accessibility checks miss against WCAG 2.2 AA, plus the manual checks nothing automates. |
-| | Usability | `usability` | Screens that don't match their design or the other platforms, and main flows a person can't finish. |
-| | Analytics | `analytics` | Product events that don't fire, differ between web and phone, fire before consent, or carry personal data. |
-| | AI search & SEO | `aio-seo` | Whether search engines and AI answer engines can find, read and describe your public pages. |
-| | App Store | `app-store` | What keeps an iOS or Android app listed: deadlines, privacy declarations, permissions, signing, review readiness, crashes, ratings. |
+|  | Usability | `usability` | Screens that don't match their design or the other platforms, and main flows a person can't finish. |
+|  | Analytics | `analytics` | Product events that don't fire, differ between web and phone, fire before consent, or carry personal data. |
+|  | AI search & SEO | `aio-seo` | Whether search engines and AI answer engines can find, read and describe your public pages. |
+|  | App Store | `app-store` | What keeps an iOS or Android app listed: deadlines, privacy declarations, permissions, signing, review readiness, crashes, ratings. |
 | **AI features** | LLM | `llm` | What each AI model call can make happen, and what stops it when the input is hostile: prompts, tool limits, output checks, evals. |
-| | Models | `models` | Whether each AI call uses the best current model for the job, whether models and fallbacks still exist, whether one list holds them all. |
-| | Prompts | `prompts` | Product prompts that are unclear, badly structured, or off the model maker's current guide. |
+|  | Models | `models` | Whether each AI call uses the best current model for the job, whether models and fallbacks still exist, whether one list holds them all. |
+|  | Prompts | `prompts` | Product prompts that are unclear, badly structured, or off the model maker's current guide. |
 | **Project upkeep** | Issues | `issues` | Size and priority for every open issue, by rules a later run applies the same way; board, parent, milestone and blocking links. |
-| | Deferrals | `deferrals` | Postponed work sorted into done, replaced, tracked, parked, or in scope and never finished. |
-| | Failures | `failures` | Known bugs sorted into still reachable, already fixed, misdescribed, unconfirmed, or a repeat of an earlier one. |
-| | Repo | `repo` | Leftovers and layout: stale worktrees, branches and stashes, ignored files, files in the wrong place. |
-| | Agents | `agents` | Each AI tool's setup: which instructions load, permissions, hooks, tool servers, model choices, untrusted input each agent reads. |
-| | Adoption | `adoption` | Whether every file bkit installed is used and used correctly: install current, docs filled in, audits run on schedule, each template adopted or declined with a reason. |
+|  | Deferrals | `deferrals` | Postponed work sorted into done, replaced, tracked, parked, or in scope and never finished. |
+|  | Failures | `failures` | Known bugs sorted into still reachable, already fixed, misdescribed, unconfirmed, or a repeat of an earlier one. |
+|  | Repo | `repo` | Leftovers and layout: stale worktrees, branches and stashes, ignored files, files in the wrong place. |
+|  | Agents | `agents` | Each AI tool's setup: which instructions load, permissions, hooks, tool servers, model choices, untrusted input each agent reads. |
+|  | Adoption | `adoption` | Whether every file bkit installed is used and used correctly: install current, docs filled in, audits run on schedule, each template adopted or declined with a reason. |
 
 Agent-facing scope per template: `.bkit/prompts.md` § Audit (Ad-hoc).
 

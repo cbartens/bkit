@@ -119,6 +119,7 @@ export const repoCommand = {
     verbs: {
         info: {
             summary: "owner/repo (gh, else the origin remote), the current branch, and commits behind origin/dev.",
+            use: "by-hand",
             flags: [
                 {
                     name: "fetch",
@@ -217,6 +218,7 @@ export const repoCommand = {
         },
         preflight: {
             summary: "Advisory: whether gh can read the repo's Actions permissions (dispatch may 403 without them).",
+            use: "by-hand",
             flags: [
                 {
                     name: "owner-repo",

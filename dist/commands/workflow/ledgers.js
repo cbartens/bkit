@@ -531,6 +531,7 @@ export const ledgersCommand = {
     verbs: {
         commit: {
             summary: "Stage (and commit) the bookkeeping allow-list for one feature.",
+            use: "workflow",
             flags: [
                 ROOT_FLAG,
                 MONTH_FLAG,
@@ -587,6 +588,7 @@ export const ledgersCommand = {
         },
         union: {
             summary: "Append a worktree's new ledger rows into another checkout (never .bkit/issues.jsonl).",
+            use: "workflow",
             flags: [
                 { name: "src", type: "string", required: true, help: "worktree to read ledgers from" },
                 { name: "dst", type: "string", required: true, help: "checkout to append them to" },
@@ -600,6 +602,7 @@ export const ledgersCommand = {
         },
         "only-bookkeeping": {
             summary: "Exit 0 when every path changed in from..to is on the --scope=pr allow-list.",
+            use: "by-hand",
             flags: [
                 ROOT_FLAG,
                 MONTH_FLAG,
@@ -620,6 +623,7 @@ export const ledgersCommand = {
         },
         append: {
             summary: "Append validated rows to one ledger, minting each row's ts at append time.",
+            use: "by-hand",
             flags: [
                 { name: "root", type: "string", help: "checkout whose ledger to append to (default: cwd)" },
                 {
@@ -649,6 +653,7 @@ export const ledgersCommand = {
         },
         triage: {
             summary: "Bucket each deferral row the FID declared by the four Deferral Reason tests, and write the unjustified ones.",
+            use: "workflow",
             flags: [
                 { name: "root", type: "string", help: "checkout whose deferrals to read (default: cwd)" },
                 FID_FLAG,
@@ -673,6 +678,7 @@ export const ledgersCommand = {
         },
         check: {
             summary: "Check that every decision / deferral key on a plan's `**Ledger rows:**` line is on disk.",
+            use: "by-hand",
             flags: [
                 { name: "root", type: "string", help: "checkout whose ledgers to read (default: cwd)" },
                 { name: "plan", type: "string", required: true, help: "plan file, relative to --root" },
@@ -689,6 +695,7 @@ export const ledgersCommand = {
         },
         compact: {
             summary: "Rewrite keyed ledgers to their fold winners, stamping each winner's firstTs + updates.",
+            use: "by-hand",
             flags: [
                 { name: "root", type: "string", help: "checkout whose ledgers to compact (default: cwd)" },
                 {

@@ -56,6 +56,7 @@ export const skillsCommand: CommandSpec = {
   verbs: {
     prune: {
       summary: "Uninstall every non-bkit skill .agents/skills.md does not list (ship Step 7).",
+      use: "workflow",
       flags: [],
       output: {
         removed: "skills uninstalled",

@@ -140,6 +140,7 @@ const CORE_MANIFEST: ManifestEntry[] = [
   // prompts.md and lite.md are markered-text, keeping the consumer section below `bkit:end`.
   { path: ".bkit/authoring.md", format: "byte-equal-text", module: "core" },
   { path: ".bkit/cloud.md", format: "byte-equal-text", module: "core" },
+  { path: ".bkit/cli.md", format: "byte-equal-text", module: "core" },
   { path: ".bkit/comparison.md", format: "byte-equal-text", module: "core" },
   { path: ".bkit/install.md", format: "byte-equal-text", module: "core" },
   { path: ".bkit/jsonl.md", format: "byte-equal-text", module: "core" },

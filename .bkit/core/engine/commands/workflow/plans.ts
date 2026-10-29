@@ -208,6 +208,7 @@ export const plansCommand: CommandSpec = {
     parse: {
       summary:
         "List each P-{N} with its name, Covers and Requires; one plan per workstream when the design has no Suggested Plans.",
+      use: "by-hand",
       flags: [ARTIFACT_FLAG],
       output: {
         plans: "[{id, n, name, covers, requires, requiresText}] in file order",
@@ -223,6 +224,7 @@ export const plansCommand: CommandSpec = {
     comment: {
       summary:
         "The Step 11 comment body for the feature's own issue (posted via MCP by the workflow).",
+      use: "workflow",
       flags: [
         ARTIFACT_FLAG,
         { name: "fid", type: "string", required: true, help: "feature id" },

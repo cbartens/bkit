@@ -287,7 +287,7 @@ Set `lint` to the value in § Gate tool scripts.
 | Rule | Fails on |
 | --- | --- |
 | `vitest/expect-expect` | A test with no assertion. |
-| `vitest/no-conditional-in-test` | `if`, `?:`, `&&`, `??` or `||` inside a test: the branch under test may never run. |
+| `vitest/no-conditional-in-test` | `if`, `?:`, `&&`, `??` or `\|\|` inside a test: the branch under test may never run. |
 | `vitest/no-conditional-expect` | An `expect` inside a branch or `catch`: it may never run. |
 | `vitest/valid-expect` (`maxArgs: 2`) | `expect(x)` with no matcher; more than a value and a message. |
 | `typescript/no-floating-promises` | A promise nobody awaits: the test ends before its assertion runs. |

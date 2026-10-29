@@ -77,6 +77,7 @@ cbartens/bkit (this repo)
 │   │   ├── protected-paths.ts   # IDE mirror prefix table (`isMirrorPath`); used by the compliance grader
 │   │   └── settings.ts          # The consumer's `package.json` `bkit` key: `readBkitConfig` is its only reader
 │   ├── tools/instructions.ts    # repo-only `pnpm instructions:sync` / `instructions:show`, not a bkit command
+│   ├── tools/cli-doc.ts         # repo-only `pnpm cli:sync`: `.bkit/core/.bkit/cli.md` generated region from the command specs
 │   ├── tools/instructions-sources.ts # `.bkit/instructions.md` copy sections (Rules, Project Rules, Hook Text, Permissions, Special Behaviors, Authoring Rules) checked and synced against their masters
 │   ├── tools/grammar-density.ts # repo-only `pnpm grammar:density`, not a bkit command
 │   └── audits/                  # tests only: read shipped text (workflows/ templates/ hooks/ repo/)

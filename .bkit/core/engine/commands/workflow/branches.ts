@@ -2228,6 +2228,7 @@ export const branchesCommand: CommandSpec = {
   verbs: {
     sync: {
       summary: `Fetch ${UPSTREAM}; report whether it is an ancestor of HEAD (Path A/B) and how far docs/ is behind; optionally merge it in.`,
+      use: "workflow",
       flags: [
         {
           name: "head",
@@ -2260,6 +2261,7 @@ export const branchesCommand: CommandSpec = {
     push: {
       summary:
         "Push the current branch with exactly one git push: plain for dev/main, --force-with-lease otherwise.",
+      use: "workflow",
       flags: [
         {
           name: "mode",
@@ -2335,6 +2337,7 @@ export const branchesCommand: CommandSpec = {
     },
     "fast-forward": {
       summary: "Fetch a remote branch and fast-forward the checkout onto it; refuse when diverged.",
+      use: "workflow",
       flags: [
         {
           name: "onto",
@@ -2353,6 +2356,7 @@ export const branchesCommand: CommandSpec = {
     "scan-diff": {
       summary:
         "Exit 0 when the branch's diff from --base matches (paths, an added marker line, a source change, or a disabled test); 1 when not — --disabled-tests turns that round: 1 when a test was disabled or lost an assertion, 0 when none was.",
+      use: "by-hand",
       flags: [
         {
           name: "base",
@@ -2399,6 +2403,7 @@ export const branchesCommand: CommandSpec = {
     },
     "force-build": {
       summary: `Force a full CI build: put ${FORCE_BUILD} on the open PR's title, then push an empty marker commit (once per run).`,
+      use: "workflow",
       flags: [
         { name: "fid", type: "string", required: true, help: "feature id, for the commit subject" },
         {
@@ -2449,6 +2454,7 @@ export const branchesCommand: CommandSpec = {
     rebase: {
       summary:
         "Drive a rebase to completion, auto-resolving ledger (union) and lockfile (regenerate) conflicts; refuse and abort on anything else.",
+      use: "workflow",
       flags: [
         {
           name: "log-file",
@@ -2480,6 +2486,7 @@ export const branchesCommand: CommandSpec = {
     "sync-dev": {
       summary:
         "After a merge, fast-forward local dev to origin/dev without checking it out or pushing; frozen install when the main checkout is on dev and moved.",
+      use: "workflow",
       flags: [],
       output: {
         devLocal:
@@ -2497,6 +2504,7 @@ export const branchesCommand: CommandSpec = {
     land: {
       summary:
         "Design / plan close: squash the branch onto origin/dev in a throwaway worktree and push it as dev (retrying with backoff when dev moved), else the PR squash-merge; then audit it, fast-forward local dev on a laptop and release the lock.",
+      use: "workflow",
       flags: [
         { name: "workflow", type: "string", required: true, help: "design | plan" },
         { name: "fid", type: "string", required: true, help: "feature id" },
@@ -2552,6 +2560,7 @@ export const branchesCommand: CommandSpec = {
     "anchor-stamp": {
       summary:
         "Put a <!-- bkit:anchor --> block recording the base commit and bkit release on top of a design/plan doc or audit report (idempotent).",
+      use: "workflow",
       flags: [
         { name: "file", type: "string", required: true, help: "doc to stamp (must exist)" },
         {
@@ -2592,6 +2601,7 @@ export const branchesCommand: CommandSpec = {
     "anchor-read": {
       summary:
         "Read a doc's anchor fields; with --against, decide whether anything landed since its baseSha.",
+      use: "by-hand",
       flags: [
         { name: "file", type: "string", required: true, help: "design/plan doc or audit report" },
         {

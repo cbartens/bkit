@@ -308,6 +308,7 @@ export const statusCommand: CommandSpec = {
   verbs: {
     path: {
       summary: "Where this workflow's status.jsonl lives.",
+      use: "by-hand",
       flags: [
         WORKFLOW_FLAG,
         { name: "fid", type: "string", required: true, help: "feature id" },
@@ -334,6 +335,7 @@ export const statusCommand: CommandSpec = {
     route: {
       summary:
         "Routing state: last verdict / failures / strategy of a step, debug and push mode; with --prompt-file, debug's start decisions.",
+      use: "workflow",
       flags: [
         { ...FILE_FLAG, required: false, help: `${FILE_FLAG.help}; or --fid and --month` },
         WORKFLOW_FLAG,
@@ -453,6 +455,7 @@ export const statusCommand: CommandSpec = {
     resume: {
       summary:
         "The step a stopped run continues at: after its last DONE step, setup steps and retired rows aside.",
+      use: "by-hand",
       flags: [
         { ...FILE_FLAG, help: "path to status.jsonl; a missing file is a run with no rows" },
         { ...WORKFLOW_FLAG, help: `workflow name: ${Object.keys(WORKFLOW_STEPS).join(", ")}` },
@@ -488,6 +491,7 @@ export const statusCommand: CommandSpec = {
     },
     meta: {
       summary: "Append a workflow-meta row (run-level routing state).",
+      use: "workflow",
       flags: [
         FILE_FLAG,
         WORKFLOW_FLAG,
@@ -540,6 +544,7 @@ export const statusCommand: CommandSpec = {
     row: {
       summary:
         "Append a typed audit row the fold does not model (ship's gate refusals, CI probes, merge CI).",
+      use: "workflow",
       flags: [
         FILE_FLAG,
         WORKFLOW_FLAG,

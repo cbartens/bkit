@@ -256,6 +256,7 @@ describe("the convention checker rejects what it should", () => {
     verbs: {
       count: {
         summary: "Count them.",
+        use: "workflow",
         flags: [{ name: "verify-attempt", type: "string", help: "which verify attempt" }],
         output: { verifyAttempt: "echoed" },
         exitCodes: { 3: "none found" },

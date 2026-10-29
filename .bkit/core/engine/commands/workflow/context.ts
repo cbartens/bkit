@@ -1279,6 +1279,7 @@ export const contextCommand: CommandSpec = {
   verbs: {
     clamp: {
       summary: "Clamp an artifact to a size profile in place (a backstop, not a routine cap).",
+      use: "workflow",
       flags: [
         { name: "artifact", type: "string", required: true, help: "file to clamp" },
         { name: "profile", type: "string", required: true, help: CLAMP_PROFILES.join(" | ") },
@@ -1317,6 +1318,7 @@ export const contextCommand: CommandSpec = {
     },
     "clamp-log": {
       summary: "Read a step's clamp records (the status row's clamped array), or reset the log.",
+      use: "workflow",
       flags: [
         ...LOG_FLAGS,
         { name: "reset", type: "boolean", help: "empty the log first (the step's first writer)" },
@@ -1340,6 +1342,7 @@ export const contextCommand: CommandSpec = {
     "ledger-scan": {
       summary:
         "Write a ledger's lines matching query terms, strongest first, then clamp (ledger profile).",
+      use: "workflow",
       flags: [
         { name: "terms", type: "string", required: true, help: "space-separated query terms" },
         {
@@ -1394,6 +1397,7 @@ export const contextCommand: CommandSpec = {
     diff: {
       summary:
         "Write the run's diff ({base}...HEAD, docs/plans/** excluded) as one artifact — whole, or a per-file budget past the guard — and print its numbers.",
+      use: "workflow",
       flags: [
         { name: "artifact", type: "string", required: true, help: "file to write" },
         {
@@ -1476,6 +1480,7 @@ export const contextCommand: CommandSpec = {
     brief: {
       summary:
         "Write one group's brief (why and what, where it fits, its open task blocks, the earlier tasks they depend on, the Reuse Inventory rows and Architecture entries for their files, deviations) as build-brief-{group}-{n}.md, and print only its path and sizes.",
+      use: "workflow",
       flags: [
         { name: "plan", type: "string", required: true, help: "the plan file" },
         { name: "group", type: "string", help: "the group to brief" },
@@ -1585,6 +1590,7 @@ export const contextCommand: CommandSpec = {
     },
     "list-blocks": {
       summary: "Enumerate the consumer's context-fetch blocks and narrate coverage per context.",
+      use: "by-hand",
       flags: [],
       output: {
         blocks: "[{idx, context, name, known, prefix, suffix, body}] in file order",
@@ -1626,6 +1632,7 @@ export const contextCommand: CommandSpec = {
     provision: {
       summary:
         "Run each context-fetch:provision recipe below bkit:end on its own and list the failed ones in .bkit/.unavailable.",
+      use: "by-hand",
       flags: [],
       output: {
         recipes: "recipes run",
@@ -1637,6 +1644,7 @@ export const contextCommand: CommandSpec = {
     "run-block": {
       summary:
         "Run one customised block; write its output fenced (clamped first), its skip line, or nothing.",
+      use: "workflow",
       flags: RUN_BLOCK_FLAGS,
       output: RUN_BLOCK_OUTPUT,
       textOmit: ["clamp"],
@@ -1649,6 +1657,7 @@ export const contextCommand: CommandSpec = {
     fetch: {
       summary:
         "run-block, with a JSON array of flat objects written as a markdown table; the raw output stays in the outbox.",
+      use: "workflow",
       flags: [
         ...RUN_BLOCK_FLAGS,
         {
@@ -1676,6 +1685,7 @@ export const contextCommand: CommandSpec = {
     finalise: {
       summary:
         "The context-fetch status row's fields: verdict, artifacts, contexts configured, clamped; --record writes and commits the row and prints the step comment.",
+      use: "workflow",
       flags: [
         FID_FLAG,
         MONTH_FLAG,

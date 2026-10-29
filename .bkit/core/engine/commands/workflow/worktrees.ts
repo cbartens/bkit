@@ -655,6 +655,7 @@ export const worktreesCommand: CommandSpec = {
   verbs: {
     setup: {
       summary: "Create, resume or adopt the feature's worktree (Step 2 — Worktree Setup).",
+      use: "workflow",
       flags: [
         WORKFLOW_FLAG,
         FID_FLAG,
@@ -969,6 +970,7 @@ export const worktreesCommand: CommandSpec = {
     remove: {
       summary:
         "Remove .worktrees/{fid} when a workflow created it, prune stale entries, and delete the feature branch.",
+      use: "workflow",
       flags: [
         FID_FLAG,
         {

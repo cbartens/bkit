@@ -1078,6 +1078,7 @@ export const stepsCommand: CommandSpec = {
   verbs: {
     done: {
       summary: "Append a step-done row and commit it (parentSha captured first).",
+      use: "workflow",
       flags: [
         { ...FILE_FLAG, help: "path to status.jsonl (created if absent)" },
         WORKFLOW_FLAG,
@@ -1191,6 +1192,7 @@ export const stepsCommand: CommandSpec = {
     finish: {
       summary:
         "End a step: read the verdict header(s), derive the attempt, check the gate, write the row, commit, print the tracker comment.",
+      use: "workflow",
       flags: [
         { ...FILE_FLAG, help: "path to status.jsonl (created if absent)" },
         WORKFLOW_FLAG,
@@ -1346,6 +1348,7 @@ export const stepsCommand: CommandSpec = {
     },
     verdict: {
       summary: "Read an artifact's header down to <!-- verdict:end -->.",
+      use: "by-hand",
       flags: [
         { name: "file", type: "string", required: true, help: "the subagent's artifact" },
         ...ALLOWED_FLAGS,
@@ -1380,6 +1383,7 @@ export const stepsCommand: CommandSpec = {
     gate: {
       summary:
         "Mechanical gate checks for one step: placeholders, FID, lock, artifacts, verdict, status row (with its attempt / strategy / scope where the step writes them).",
+      use: "workflow",
       flags: [
         {
           ...FILE_FLAG,
@@ -1486,6 +1490,7 @@ export const stepsCommand: CommandSpec = {
     stub: {
       summary:
         "Seed a versioned artifact: copy the prior version, then put a PENDING verdict header on top.",
+      use: "workflow",
       flags: [
         { name: "from", type: "string", required: true, help: "the prior versioned artifact" },
         { name: "to", type: "string", required: true, help: "the artifact to create" },

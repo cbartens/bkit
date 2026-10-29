@@ -209,15 +209,7 @@ Upgrade `@cbartens/bkit` to the latest version in this repo and finish the resyn
 
 ### Ongoing CLI
 
-```bash
-bkit upgrade              # re-render at CURRENT installed version (offline)
-bkit upgrade --latest     # bump @cbartens/bkit + resync in one step (or --to=<version>)
-bkit check                # drift gate — exits non-zero on drift
-bkit doctor               # advisories only; exits 0; no managed-file writes
-bkit tips [--all]         # what is not set up yet, most useful first; exits 0
-bkit stats                # this repo's stats report, agent context peaks included → .bkit/stats.md (commit it); exits 0
-bkit install --claude --cursor               # (re)seed hosts; name ≥1 module
-```
+Every `bkit` command with its flags (`bkit install`, `bkit upgrade`, `bkit check`, `bkit doctor`, `bkit tips`, `bkit stats`, and the `bkit <noun> <verb>` commands): `.bkit/cli.md`.
 
 **Outdated-version warning:** Step 1 of every phase workflow (`bkit repo info`) and every design / plan / audit doc stamp compare `.bkit/version` `pinnedVersion` with the newest published `@cbartens/bkit`; older → a warning naming the upgrade command, and stamped docs carry a visible `Outdated bkit` line under their `bkit:anchor` block. Never a stop. Registry asked at most once a day (cache: `<git common dir>/bkit-latest-version.json`); offline → no warning. `BKIT_NO_UPDATE_CHECK=1` skips the lookup (air-gapped machines, CI).
 

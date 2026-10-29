@@ -95,6 +95,7 @@ describe("bkit canonical docs pass (runBkitDocs, #218)", () => {
   const DOCS = [
     "authoring.md",
     "cloud.md",
+    "cli.md",
     "comparison.md",
     "install.md",
     "jsonl.md",

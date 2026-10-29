@@ -529,6 +529,7 @@ export const ciCommand = {
     verbs: {
         slop: {
             summary: "Fail when the working tree adds or worsens slop on net against a base ref.",
+            use: "by-hand",
             flags: [
                 {
                     name: "base",
@@ -558,6 +559,7 @@ export const ciCommand = {
         },
         prose: {
             summary: "Run Vale over the markdown files the globs select; skip when vale is not installed.",
+            use: "by-hand",
             flags: [
                 {
                     name: "glob",
@@ -578,6 +580,7 @@ export const ciCommand = {
         },
         "skip-token": {
             summary: "Whether a commit message carries a GitHub skip-CI token ([skip ci] and kin).",
+            use: "by-hand",
             flags: [{ name: "ref", type: "string", help: "commit to read (default HEAD)" }],
             output: {
                 ref: "the ref read",
@@ -588,6 +591,7 @@ export const ciCommand = {
         },
         "min-push": {
             summary: "Exit 0 when every file a push changes matches bkit.testing.minPushPaths (the pre-push light gate).",
+            use: "by-hand",
             flags: [
                 {
                     name: "ref",

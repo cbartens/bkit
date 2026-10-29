@@ -170,6 +170,7 @@ export const runtimeCommand = {
     verbs: {
         detect: {
             summary: "Classify the runtime, its default capabilities, gh auth, and the worktree path.",
+            use: "by-hand",
             flags: [FID_FLAG],
             output: {
                 ...TABLE_OUTPUT,
@@ -187,6 +188,7 @@ export const runtimeCommand = {
         },
         row: {
             summary: "Detect, then build the runtime-resolved row (and append it with --file).",
+            use: "workflow",
             flags: [
                 WORKFLOW_FLAG,
                 {
@@ -225,6 +227,7 @@ export const runtimeCommand = {
         },
         assert: {
             summary: "Read back the latest runtime-resolved row and fail unless every field is resolved.",
+            use: "workflow",
             flags: [
                 FILE_FLAG,
                 { ...WORKFLOW_FLAG, required: false, help: "only rows written by this workflow" },

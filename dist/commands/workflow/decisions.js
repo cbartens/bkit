@@ -252,6 +252,7 @@ export const decisionsCommand = {
     verbs: {
         compose: {
             summary: "Write a decision file in the one question layout, with loop progress when asked.",
+            use: "workflow",
             flags: [
                 { name: "out", type: "string", required: true, help: "the decision file to write" },
                 {
@@ -344,6 +345,7 @@ export const decisionsCommand = {
         },
         apply: {
             summary: "Settle a decision file's items: --by=headless takes each recommendation; --by=owner confirms or rejects one assumed item.",
+            use: "workflow",
             flags: [
                 { name: "file", type: "string", required: true, help: "the decision file" },
                 { name: "by", type: "string", required: true, help: "headless | owner" },
@@ -418,6 +420,7 @@ export const decisionsCommand = {
         },
         pending: {
             summary: "List the feature's assumed Accepts nobody confirmed; --defer writes one needs-decision deferral per item.",
+            use: "workflow",
             flags: [
                 { name: "fid", type: "string", required: true, help: "feature id" },
                 { name: "month", type: "string", required: true, help: "YYYYMM of the feature's logs" },

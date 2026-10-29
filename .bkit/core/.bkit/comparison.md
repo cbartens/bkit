@@ -41,7 +41,7 @@ As of October 2026. A cross-section of 10: the closest process frameworks, the t
 Kind: **Framework** runs a fixed multi-phase process · **Spec toolkit** writes specs / plans, agent does the rest · **Skills pack** library of skills / agents / commands, no fixed process · **Agent** product that writes code itself · **Editor** IDE or single-agent pair programmer. ECC is everything-claude-code.
 
 <!-- prettier-ignore -->
-| | **bkit** | [Superpowers](https://github.com/obra/superpowers) | [gstack](https://github.com/garrytan/gstack) | [Compound Engineering](https://github.com/EveryInc/compound-engineering-plugin) | [GSD Core](https://github.com/open-gsd/gsd-core) | [BMAD](https://github.com/bmad-code-org/BMAD-METHOD) + bmad-loop | [Spec Kit](https://github.com/github/spec-kit) | [OpenSpec](https://github.com/Fission-AI/OpenSpec) | [Kiro](https://kiro.dev) (AWS) | [ECC](https://github.com/affaan-m/ECC) | [OpenHands](https://github.com/OpenHands/OpenHands) |
+|  | **bkit** | [Superpowers](https://github.com/obra/superpowers) | [gstack](https://github.com/garrytan/gstack) | [Compound Engineering](https://github.com/EveryInc/compound-engineering-plugin) | [GSD Core](https://github.com/open-gsd/gsd-core) | [BMAD](https://github.com/bmad-code-org/BMAD-METHOD) + bmad-loop | [Spec Kit](https://github.com/github/spec-kit) | [OpenSpec](https://github.com/Fission-AI/OpenSpec) | [Kiro](https://kiro.dev) (AWS) | [ECC](https://github.com/affaan-m/ECC) | [OpenHands](https://github.com/OpenHands/OpenHands) |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | **Kind** | Framework | Framework | Skills pack (sprint) | Framework | Framework | Framework | Spec toolkit | Spec toolkit | Editor + cloud agent | Skills pack + pipeline | Agent |
 | **Licence** | MIT | MIT | MIT | MIT | MIT | MIT + trademark | MIT | MIT | Closed source, paid tiers | MIT | MIT (paid cloud) |
@@ -88,7 +88,7 @@ Also reviewed, left out of the table: Claude Task Master, ccpm, wshobson/agents,
 bkit's biggest difference from the field is how tightly its agents and its checks work together. Each row asks one question: does the framework itself do this, or is it left to you? Optional add-ons don't count. Rows run in the order of the wall in the README picture, nearest layer first. ✅ yes · ◐ partly · — no · ? not documented.
 
 <!-- prettier-ignore -->
-| | **bkit** | Superpowers | gstack | Compound Engineering | GSD Core | BMAD | Spec Kit | OpenSpec | Kiro | ECC | OpenHands |
+|  | **bkit** | Superpowers | gstack | Compound Engineering | GSD Core | BMAD | Spec Kit | OpenSpec | Kiro | ECC | OpenHands |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | **Code search**<br>definitions and callers, not text matches | ✅ Serena template | — | ✅ opt-in; definitions, callers | — | ◐ opt-in graph, planners only | — | — | — | ✅ built in, 18 languages | — | — |
 | **Agent hooks**<br>steer the agent around each edit | ✅ read before editing, don't loosen checks; 4 hosts | — | ✅ opt-in verify gate, Claude Code only | — | ✅ read before editing | ◐ add-on test-quality hook | — | — | ◐ engine; you write the hooks | ✅ GateGuard, config lock, post-edit type check | — engine only |

@@ -388,6 +388,7 @@ export const diskCommand = {
     verbs: {
         prune: {
             summary: `Run the min or max steps from ${REPO_STEPS} and ~/.config/bkit/disk-prune.mjs.`,
+            use: "by-hand",
             flags: [
                 {
                     name: "mode",

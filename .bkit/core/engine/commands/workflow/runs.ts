@@ -1987,6 +1987,7 @@ export const runsCommand: CommandSpec = {
     wait: {
       summary:
         "Bounded poll for a CI check on a PR (--pr) or a CI run at a head (--head --branch), present or completed.",
+      use: "by-hand",
       flags: [
         { name: "pr", type: "string", help: "PR number: read its check rollup" },
         { ...HEAD_FLAG, help: "commit SHA: read the CI workflow's runs at it (with --branch)" },
@@ -2026,6 +2027,7 @@ export const runsCommand: CommandSpec = {
     dispatch: {
       summary:
         "CI-Dispatch Gate after the last push: poll, one clean re-trigger, the ciDispatch verdict, and the body scan. A run in place on dev has no PR: it polls the push-event run at the pushed sha, and its re-trigger commits and pushes only the run's own work.",
+      use: "workflow",
       flags: [
         {
           name: "pr",
@@ -2111,6 +2113,7 @@ export const runsCommand: CommandSpec = {
     gate: {
       summary:
         "Ship merge gate: the capstone job present and green at the head (exit 0), or why not.",
+      use: "workflow",
       flags: [
         { ...HEAD_FLAG, help: "the PR head to merge (or --pr / --squash-of)" },
         {
@@ -2204,6 +2207,7 @@ export const runsCommand: CommandSpec = {
     revalidate: {
       summary:
         "Ship: pick the head CI must pass at, probe for a run there, dispatch only when none, wait for it to complete.",
+      use: "workflow",
       flags: [
         { name: "pr", type: "string", required: true, help: "the PR number" },
         { name: "entry-head", type: "string", required: true, help: "the PR head read at Step 2" },
@@ -2253,6 +2257,7 @@ export const runsCommand: CommandSpec = {
     mirror: {
       summary:
         "Release PR: wait for the branch's push run at the head and copy its capstone verdict.",
+      use: "workflow",
       flags: [
         { ...HEAD_FLAG, required: true, help: "the PR head (same SHA the push run tests)" },
         { name: "branch", type: "string", help: "branch whose push run to mirror (default dev)" },
@@ -2288,6 +2293,7 @@ export const runsCommand: CommandSpec = {
     context: {
       summary:
         "/bkit-auto Step 1: the phase and mode, the repo, and the issue / FID / PR / run the dispatch carries.",
+      use: "workflow",
       flags: [
         {
           name: "phase",
@@ -2337,6 +2343,7 @@ export const runsCommand: CommandSpec = {
     declared: {
       summary:
         "Whether the repo declares a CI workflow: .github/workflows/<bkit.testing.ciWorkflow> exists (exit 0) or not (exit 1).",
+      use: "by-hand",
       flags: [],
       output: {
         declared: "the workflow file exists",

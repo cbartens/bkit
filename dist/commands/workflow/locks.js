@@ -213,6 +213,7 @@ export const locksCommand = {
     verbs: {
         acquire: {
             summary: "Take the workflow lock, reclaiming a dead holder's.",
+            use: "workflow",
             flags: [KIND_FLAG, LOCK_WORKFLOW_FLAG, FID_FLAG, MONTH_FLAG],
             output: {
                 kind: "workflow",
@@ -239,6 +240,7 @@ export const locksCommand = {
         },
         release: {
             summary: "Remove a lock this caller owns (and the feature's shared-checkout record); another owner's lock is left in place.",
+            use: "workflow",
             flags: [
                 KIND_FLAG,
                 LOCK_WORKFLOW_FLAG,

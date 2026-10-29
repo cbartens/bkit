@@ -1209,6 +1209,7 @@ export const testsCommand: CommandSpec = {
   verbs: {
     run: {
       summary: "Run the first declared --gate; exit 0 PASS, 1 FAIL, 4 could not run.",
+      use: "by-hand",
       flags: [
         {
           name: "gate",
@@ -1353,6 +1354,7 @@ export const testsCommand: CommandSpec = {
     red: {
       summary:
         "Lint a task's new test with bkit:lint:file when declared, then run it before its code exists; exit 0 red recorded, 1 not a red (the test failed lint, or the named test did not run, passed, or was skipped).",
+      use: "workflow",
       flags: [
         FILE_FLAG,
         WORKFLOW_FLAG,
@@ -1517,6 +1519,7 @@ export const testsCommand: CommandSpec = {
     green: {
       summary:
         "Audit a plan's test-first evidence (a red per TEST FIRST test recorded before the task's code commit, or its red run already passing on another task's overlapping code; the test's own lines and the code it runs unchanged since; the named test passing now); exit 0 no gaps, 1 gaps or a plan with no task markers.",
+      use: "workflow",
       flags: [
         FILE_FLAG,
         WORKFLOW_FLAG,
@@ -1895,6 +1898,7 @@ export const testsCommand: CommandSpec = {
     },
     "plan-check": {
       summary: `Check a plan's group and task blocks: the block format, DONE WHEN and TEST FIRST on every task, DEPENDS ON order, the caps from package.json \`bkit.workflows.tasks\` (defaults: ${capsText(CONFIG_DEFAULTS.tasks)}), a Reuse Inventory NEW row per CREATE file, a Supersession Inventory row per DELETE, a \`Task\` on every Derived Test Matrix row and a row per test-bearing task, and that each READ / UPDATE / DELETE file and symbol exists; exit 0 no problems, 1 refused.`,
+      use: "by-hand",
       flags: [
         {
           name: "plan",

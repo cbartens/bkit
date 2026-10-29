@@ -898,6 +898,7 @@ export const prsCommand: CommandSpec = {
   verbs: {
     open: {
       summary: "Open a PR whose body carries the bkit:issue / bkit:fid marker (exit 80: use MCP).",
+      use: "workflow",
       flags: [
         { name: "fid", type: "string", required: true, help: "feature id" },
         { name: "title", type: "string", required: true, help: "PR title (no skip-CI token)" },
@@ -957,6 +958,7 @@ export const prsCommand: CommandSpec = {
     },
     probe: {
       summary: "The open (or open-then-merged) PR for a branch, or one PR by number.",
+      use: "by-hand",
       flags: [
         HEAD_FLAG,
         { name: "base", type: "string", help: "only PRs into this base (default: any base)" },
@@ -996,6 +998,7 @@ export const prsCommand: CommandSpec = {
     merge: {
       summary:
         "Squash-merge a PR with an empty body (skipped when already MERGED) and read its state back.",
+      use: "workflow",
       flags: [
         { name: "number", type: "string", required: true, help: "the PR number" },
         {
@@ -1072,6 +1075,7 @@ export const prsCommand: CommandSpec = {
     "update-branch": {
       summary:
         "Refresh a PR's head from its base server-side (exit 80: use update_pull_request_branch).",
+      use: "workflow",
       flags: [
         { name: "number", type: "string", required: true, help: "the PR number" },
         {
@@ -1102,6 +1106,7 @@ export const prsCommand: CommandSpec = {
     checks: {
       summary:
         "A PR's check rollup, classified: green when present and none failed or pending (exit 80: use MCP).",
+      use: "by-hand",
       flags: [{ name: "number", type: "string", required: true, help: "the PR number" }],
       output: {
         number: "the PR number",
@@ -1127,6 +1132,7 @@ export const prsCommand: CommandSpec = {
     "verbose-ci": {
       summary:
         "Add ` bkit [verbose ci]` to a PR title, or strip it (with an optional `bkit ` prefix); a no-op when already so.",
+      use: "workflow",
       flags: [
         { name: "number", type: "string", required: true, help: "the PR number" },
         { name: "state", type: "string", required: true, help: "on | off" },
@@ -1179,6 +1185,7 @@ export const prsCommand: CommandSpec = {
     },
     "scan-body": {
       summary: "Check a landed commit's body (not its subject) for a CI-suppressing token.",
+      use: "by-hand",
       flags: [
         { name: "sha", type: "string", required: true, help: "the landed commit" },
         {
@@ -1197,6 +1204,7 @@ export const prsCommand: CommandSpec = {
     },
     "cross-check": {
       summary: "An mcp close with gh recorded unavailable must have a transport-fallback row.",
+      use: "workflow",
       flags: [
         FILE_FLAG,
         {
@@ -1217,6 +1225,7 @@ export const prsCommand: CommandSpec = {
     },
     "transport-row": {
       summary: "Append a transport-fallback or close-transport audit row to status.jsonl.",
+      use: "workflow",
       flags: [
         FILE_FLAG,
         { name: "kind", type: "string", required: true, help: "fallback | close" },

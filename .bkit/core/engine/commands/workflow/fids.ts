@@ -683,6 +683,7 @@ export const fidsCommand: CommandSpec = {
   verbs: {
     check: {
       summary: "Validate a FID for the tracker: exit 0 valid, exit 1 not.",
+      use: "by-hand",
       flags: [
         { name: "fid", type: "string", required: true, help: "feature id to check" },
         { ...TRACKER_FLAG, help: `${TRACKER_FLAG.help}; any = any tracker's shape (CI_DEV)` },
@@ -720,6 +721,7 @@ export const fidsCommand: CommandSpec = {
     parse: {
       summary:
         "--prompt-file: the issue and the FID a session prompt names. --marker / --branch: recover FID and issue id, the PR-body marker first, then a feat/{FID} branch (any slug; its issue id counts only when .bkit/issues.jsonl has a feature row for it, else the run is issue-less).",
+      use: "by-hand",
       flags: [
         {
           name: "prompt-file",
@@ -829,6 +831,7 @@ export const fidsCommand: CommandSpec = {
     resolve: {
       summary:
         "The run's FID, first hit wins: a FID the prompt names, the feat/{FID} branch, a FID logged for the issue on dev, a mint from the title (or prompt), a free -b, -c, ... suffix when a finished run used the mint; then the format check (exit 0 resolved, exit 1 fails the check).",
+      use: "workflow",
       flags: [
         {
           name: "prompt-file",
@@ -943,6 +946,7 @@ export const fidsCommand: CommandSpec = {
     },
     plans: {
       summary: "A feature's plan in a month bucket: docs/plans/{YYYYMM}/{FID}-plan.md, or none.",
+      use: "by-hand",
       flags: [
         { name: "fid", type: "string", required: true, help: "feature id" },
         { name: "month", type: "string", required: true, help: "YYYYMM bucket" },
@@ -960,6 +964,7 @@ export const fidsCommand: CommandSpec = {
     design: {
       summary:
         "The plan's parent design: the **Parent design:** link in the description or prompt, else the feature's own docs/plans/{YYYYMM}/{FID}-design.md; plus the audit reports and the **Workstreams:** ids they name (exit 0 a parent, exit 1 none).",
+      use: "by-hand",
       flags: [
         { name: "fid", type: "string", required: true, help: "feature id" },
         {
@@ -1042,6 +1047,7 @@ export const fidsCommand: CommandSpec = {
     },
     find: {
       summary: "The feature already logged for an issue: exit 0 one, exit 1 none, exit 4 several.",
+      use: "by-hand",
       flags: [
         {
           name: "issue",

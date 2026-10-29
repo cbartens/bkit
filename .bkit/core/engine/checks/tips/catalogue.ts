@@ -428,7 +428,7 @@ export const SETUP_TIPS: readonly SetupTip[] = [
     why: "bkit answers in short text lines by default because agents read them. A script expecting JSON gets nothing it can parse, so its step quietly does nothing.",
     ask: "Add --json to every bkit call whose output a hook, script or CI workflow parses (piped to jq, or read with JSON.parse), then rerun `bkit tips` until this tip is gone.",
     steps:
-      "`.bkit/workflows.md` § Workflow commands. Files: `.claude/hooks/`, `.husky/`, `.github/workflows/`, `scripts/`.",
+      "`.bkit/cli.md` § Contract. Files: `.claude/hooks/`, `.husky/`, `.github/workflows/`, `scripts/`.",
     fires: (cwd) => readsBkitText(cwd).length > 0,
   },
   {

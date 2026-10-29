@@ -1904,6 +1904,7 @@ export const workflowsCommand: CommandSpec = {
   verbs: {
     start: {
       summary: "Take the feature lock and open a run (workflow-started unless resuming).",
+      use: "workflow",
       flags: [
         WORKFLOW_FLAG,
         FID_FLAG,
@@ -2022,6 +2023,7 @@ export const workflowsCommand: CommandSpec = {
     fail: {
       summary:
         "Failure Path: workflow-failed row, abort rebase, release lock, clear sentinels (with --token); the bkit:failed labels and the failure comment.",
+      use: "workflow",
       flags: [
         WORKFLOW_FLAG,
         { ...FID_FLAG, required: false, help: "feature id (needed with --token)" },
@@ -2106,6 +2108,7 @@ export const workflowsCommand: CommandSpec = {
     handover: {
       summary:
         "Keep a failed run's record: commit and push it on the feature branch, or land its logs and ledgers on dev (--push from dev / main, ship's --flush); print the handover comment.",
+      use: "workflow",
       flags: [
         WORKFLOW_FLAG,
         FID_FLAG,
@@ -2166,6 +2169,7 @@ export const workflowsCommand: CommandSpec = {
     close: {
       summary:
         "Grade compliance, workflow-done row, counter + outcome telemetry, report, artifact links; --flush lands ship's close on dev.",
+      use: "workflow",
       flags: [
         WORKFLOW_FLAG,
         FID_FLAG,
@@ -2344,6 +2348,7 @@ export const workflowsCommand: CommandSpec = {
     input: {
       summary:
         "Write logs/{FID}/{workflow}-input-{run}.md: the session prompt, the issue description and each human comment, then the plan, design and audit reports, each section dated.",
+      use: "workflow",
       flags: [
         WORKFLOW_FLAG,
         FID_FLAG,
@@ -2394,6 +2399,7 @@ export const workflowsCommand: CommandSpec = {
     promote: {
       summary:
         "Design / plan close: the highest versioned draft becomes the canonical doc (anchor stamped, a changed canonical archived).",
+      use: "workflow",
       flags: [
         { ...WORKFLOW_FLAG, help: "design | plan" },
         FID_FLAG,
@@ -2425,6 +2431,7 @@ export const workflowsCommand: CommandSpec = {
     links: {
       summary:
         "The feature's docs and this workflow's logs on a ref as markdown links; optionally the close comment.",
+      use: "workflow",
       flags: [
         WORKFLOW_FLAG,
         FID_FLAG,
@@ -2490,6 +2497,7 @@ export const workflowsCommand: CommandSpec = {
     summary: {
       summary:
         "The Summary step: write {workflow}-summary.md next to --file with the run's verdict, reasons and next command.",
+      use: "workflow",
       flags: [
         { ...WORKFLOW_FLAG, help: "plan | design | build | debug | ship" },
         {

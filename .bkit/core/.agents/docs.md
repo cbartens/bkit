@@ -27,6 +27,7 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | `.bkit/workflows.md` | ● | ● | ● | ● | ● | Workflow catalog — when to run and when not to run each command (§ When to Run). |
 | `.bkit/prompts.md` | ● | ● | ● | ● | ● | Subagent catalog — name, scope, effort, model, `maxTurns`. |
+| `.bkit/cli.md` | ○ | ○ | ○ | ○ | ○ | `bkit` CLI — command contract, `{BKIT}` invocation, verb flags, by hand vs workflow-only. |
 | `.bkit/router.md` | — | — | — | — | — | `bkit-{command}` workflow router — picks the workflow and each host's command file. |
 | `.bkit/lite.md` | ○ | ○ | ○ | ○ | ○ | Lite workflows (`<phase>:lite`) — copy-paste prompts for small, understood changes. |
 | `.agents/skills.md` | — | — | ● | — | — | Registry of installed agent skills and install / update commands. |

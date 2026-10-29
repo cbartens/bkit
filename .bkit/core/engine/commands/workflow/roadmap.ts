@@ -518,6 +518,7 @@ export const roadmapCommand: CommandSpec = {
   verbs: {
     fold: {
       summary: "Rewrite the status tables; carry notes, analysis and the consumer's head through.",
+      use: "by-hand",
       flags: [
         {
           name: "root",
@@ -536,6 +537,7 @@ export const roadmapCommand: CommandSpec = {
     feature: {
       summary:
         "Append the feature's roadmap row to .bkit/issues.jsonl, then re-render the board (fail-open).",
+      use: "workflow",
       flags: [
         {
           name: "root",
@@ -576,6 +578,7 @@ export const roadmapCommand: CommandSpec = {
     mirror: {
       summary:
         "Build / debug close: append the feature row in the worktree, then land the same row on dev through a throwaway origin/dev checkout (fail-open).",
+      use: "workflow",
       flags: [
         { name: "workflow", type: "string", required: true, help: "build | debug" },
         { name: "fid", type: "string", required: true, help: "feature id (the row's key)" },

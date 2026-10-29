@@ -235,6 +235,7 @@ export const countersCommand: CommandSpec = {
   verbs: {
     derive: {
       summary: "Count a step's DONE rows in the active run, at one of three positions.",
+      use: "workflow",
       flags: [
         FILE_FLAG,
         WORKFLOW_FLAG,
@@ -275,6 +276,7 @@ export const countersCommand: CommandSpec = {
     },
     run: {
       summary: "Which run of the workflow this invocation is (1-based; a resume keeps its number).",
+      use: "workflow",
       flags: [FILE_FLAG, WORKFLOW_FLAG],
       output: { run: "run number" },
       exitCodes: { [EXIT_NO_STATUS]: "status.jsonl missing, unreadable, or not valid NDJSON" },
@@ -286,6 +288,7 @@ export const countersCommand: CommandSpec = {
     route: {
       summary:
         "Compare a counter to its max: exit 0 continue, exit 1 exceeded; with --point, also whether to ask.",
+      use: "workflow",
       flags: [
         { name: "name", type: "string", required: true, help: "counter name, for the log line" },
         {
@@ -356,6 +359,7 @@ export const countersCommand: CommandSpec = {
     },
     max: {
       summary: "The ask points' limits and ask settings: one by --point, or all.",
+      use: "workflow",
       flags: [{ name: "point", type: "string", help: "ask point, e.g. debug.fix" }],
       output: {
         value: "the point's limit (with --point)",
@@ -379,6 +383,7 @@ export const countersCommand: CommandSpec = {
     progress: {
       summary:
         "Progress report for a fix loop in the active run: counts per round, code change, strategy, trend.",
+      use: "workflow",
       flags: [
         FILE_FLAG,
         WORKFLOW_FLAG,
@@ -425,6 +430,7 @@ export const countersCommand: CommandSpec = {
     },
     rows: {
       summary: "Count rows of one audit type in the active run (since its workflow-started row).",
+      use: "workflow",
       flags: [
         FILE_FLAG,
         WORKFLOW_FLAG,

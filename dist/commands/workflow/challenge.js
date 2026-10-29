@@ -390,6 +390,7 @@ export const challengeCommand = {
     verbs: {
         gate: {
             summary: "Size the run's diff ({base}...HEAD, docs/plans/** excluded) and name the reviewers: small runs challenge-2 alone, large runs both. Writes a challenge-gate status row.",
+            use: "workflow",
             flags: [
                 {
                     name: "file",
@@ -451,6 +452,7 @@ export const challengeCommand = {
         },
         merge: {
             summary: "Merge the challenge reports' findings into the plan as tasks (LOW → deferral rows); prints the route: fix | pause | none.",
+            use: "workflow",
             flags: [
                 {
                     name: "report",

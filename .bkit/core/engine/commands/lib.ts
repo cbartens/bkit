@@ -102,8 +102,16 @@ export interface RunContext {
 export type TextOmit =
   string | { key: string; when: (value: unknown, output: Record<string, unknown>) => boolean };
 
+/**
+ * Who runs a verb. `by-hand`: safe and useful outside a workflow run (reads, or a job of
+ * its own). `workflow`: a workflow step only (writes run state, takes locks, commits,
+ * pushes or posts). `.bkit/cli.md` shows it per verb.
+ */
+export type VerbUse = "by-hand" | "workflow";
+
 export interface VerbSpec {
   summary: string;
+  use: VerbUse;
   flags: FlagSpec[];
   /** Output key -> meaning. Keys are camelCase, matching `status.jsonl`. */
   output: Record<string, string>;

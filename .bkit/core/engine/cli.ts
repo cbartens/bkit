@@ -565,93 +565,245 @@ export function parseArgs(argv: string[]): ParsedArgs {
   };
 }
 
+/** One `bkit <verb>` entry of the usage text; `.bkit/cli.md` renders the same list. */
+export interface ClassicVerbHelp {
+  verb: Verb;
+  /** What follows the verb on its usage line. */
+  args: string;
+  /** One line for the `.bkit/cli.md` table. */
+  summary: string;
+  /** Every flag the verb takes. */
+  flags: readonly string[];
+  /** The usage text's description, one printed line each. */
+  detail: readonly string[];
+}
+
+export const CLASSIC_VERB_HELP: readonly ClassicVerbHelp[] = [
+  {
+    verb: "install",
+    args: "<module-flags>",
+    summary: "Install or re-sync the named modules plus the core files.",
+    flags: [
+      "--claude",
+      "--cursor",
+      "--codex",
+      "--antigravity",
+      "--opencode=<provider>",
+      "--auto=<claude|cursor|opencode>",
+      "--tracker=<name>",
+      "--auto-revert",
+    ],
+    detail: [
+      "Install (or re-sync) the named modules + the implicit",
+      "core foundation. At least one module flag is REQUIRED —",
+      "a bare `bkit install` errors (name the modules below).",
+      "Hosts compose: --claude --cursor --codex --antigravity",
+      "--opencode=<provider>.",
+    ],
+  },
+  {
+    verb: "check",
+    args: "",
+    summary: "Drift gate: exit 1 when a managed file needs re-rendering. The CI gate.",
+    flags: [],
+    detail: [
+      "Dry-run — drift-check everything already installed (no",
+      "module flags). Exits 1 when a managed file needs",
+      "re-rendering. Copies under .bkit/templates/ are refreshed by",
+      "install/upgrade and checked for staleness — adopt one by",
+      "copying it elsewhere; that copy is yours. The CI gate.",
+      "Changes no managed file; rewrites .bkit/advisories.md.",
+    ],
+  },
+  {
+    verb: "upgrade",
+    args: "[--to=<version>|--latest] [--auto-apply] [--dry-run]",
+    summary: "Re-render everything installed; --to / --latest bump @cbartens/bkit first.",
+    flags: ["--to=<version>", "--latest", "--auto-apply", "--dry-run"],
+    detail: [
+      "Upgrade everything installed (no module flags). Diffs old",
+      "vs new templates; conflict list emitted to stderr. Use",
+      "--auto-apply for CI (apply non-conflicting; exit non-zero",
+      "on any conflict). Only a whole file you edited since bkit",
+      "wrote it conflicts; rendered files (agents, commands,",
+      "skills, .bkit/*.md) are always re-rendered — bkit check",
+      "flags an edit to one.",
+      "--to=<version> / --latest atomically BUMP @cbartens/bkit",
+      "(pnpm add), then re-render + re-pin in one step — so a",
+      "version bump can never drift from its rendered mirrors.",
+      "This is the supported way to move bkit versions; a bare",
+      "`pnpm add @cbartens/bkit` alone leaves mirrors stale.",
+    ],
+  },
+  {
+    verb: "uninstall",
+    args: "[module-flags]",
+    summary: "Remove bkit-managed files and strip managed blocks; no flags = everything.",
+    flags: [
+      "--claude",
+      "--cursor",
+      "--codex",
+      "--antigravity",
+      "--opencode=<provider>",
+      "--auto=<claude|cursor|opencode>",
+      "--dry-run",
+      "--force",
+      "--nuke",
+      "--yes",
+    ],
+    detail: [
+      "Remove bkit-managed files + strip managed blocks.",
+      "No flags = full removal — ALL modules incl. opt-in add-ons",
+      "(cloud/opencode) + core. Consumer-owned updater configs",
+      "(renovate.json5, dependabot.yml, bkit-renovate.yml) are left in place. Consumer-modified",
+      "files, your own files under docs/, and generated artefacts",
+      "(.bkit/advisories.md, .bkit/friction.jsonl) are preserved (use",
+      "--nuke to force-remove manifest-listed files). Target with the",
+      "same module flags as install (e.g. uninstall --claude); a",
+      "targeted uninstall leaves core untouched.",
+    ],
+  },
+  {
+    verb: "doctor",
+    args: "",
+    summary: "Preflight and advisory replay; rewrites .bkit/advisories.md only. Exits 0.",
+    flags: [],
+    detail: [
+      "Preflight + post-install advisory replay (changes no",
+      "managed file; rewrites .bkit/advisories.md). Diagnose",
+      "token surfaces and config drift. Exits 0.",
+    ],
+  },
+  {
+    verb: "tips",
+    args: "[--workflow=<name>] [--all]",
+    summary: "What this repo has not set up yet, most useful first. Exits 0.",
+    flags: ["--workflow=<name>", "--all"],
+    detail: [
+      "Setup tips: what this repo has not set up yet, most useful",
+      "first, each with a sentence to ask your agent. Top three",
+      "by default; --workflow=design|plan|build|debug|ship puts",
+      "the tips that matter there first and prints one (each",
+      "workflow runs this at its close; audit and utility do the",
+      "same for audits and the ledger / roadmap updaters);",
+      '--all lists every one. Ends with a star line ("bkit-star"',
+      "in bkit.advisories.ignore silences it), except under",
+      "--workflow=audit|utility. Local checks only. Exits 0.",
+    ],
+  },
+  {
+    verb: "status",
+    args: "",
+    summary: "Current host and provider. Writes nothing. Exits 0.",
+    flags: [],
+    detail: [
+      "Read-only host/provider status. Reports current host+provider",
+      "(sampled from .claude/, .cursor/, package.json, and the",
+      "opencode agent model pins in .opencode/agents/).",
+      "Writes nothing. Exits 0.",
+    ],
+  },
+  {
+    verb: "cursor",
+    args: "",
+    summary: "Launch Cursor with .bkit/.env loaded into its environment.",
+    flags: [],
+    detail: [
+      "Launch Cursor with .bkit/.env loaded into its environment.",
+      "macOS GUI apps launched from the Dock/Finder do not inherit",
+      "the login shell env (direnv stays shell-only), so MCP token",
+      "placeholders resolve empty. This verb execs the app binary",
+      "directly with the per-repo .bkit/.env merged in. Quit Cursor",
+      "before running — a running instance ignores the new env.",
+      "Override binary path via BKIT_CURSOR_BIN=<path>.",
+    ],
+  },
+  {
+    verb: "opencode",
+    args: "",
+    summary: "Launch the opencode desktop app with .bkit/.env loaded.",
+    flags: [],
+    detail: [
+      "Same as `bkit cursor` but for the opencode desktop app.",
+      "Override binary path via BKIT_OPENCODE_BIN=<path>.",
+    ],
+  },
+  {
+    verb: "comply",
+    args: "--phase=<phase>",
+    summary: "Compliance grader for one workflow phase; appends stats rows. Exits 0.",
+    flags: ["--phase=<phase>"],
+    detail: [
+      "Run the compliance grader advisory step.",
+      "Checks the diff since parentSha for violations",
+      "(no-mirror-edit, skip-ci-not-head). Advisory only —",
+      'never gates a workflow. Appends kind:"compliance"',
+      "rows to .bkit/stats.jsonl. Fail-open: always exits 0.",
+      "Valid phases: design, plan, build, debug, ship.",
+    ],
+  },
+  {
+    verb: "telemetry",
+    args: "summary [--phase=<workflow>]",
+    summary: "One workflow run's metrics against the median of the previous five. Exits 0.",
+    flags: ["--phase=<workflow>"],
+    detail: [
+      "Per-workflow telemetry report: THIS run's metrics",
+      "(duration, size, friction/deferrals/failures added,",
+      "compliance) against med·5 — the median of the previous 5",
+      "same-workflow runs. The close step of every /bkit-*",
+      "workflow calls this and posts it to the tracker comment.",
+      "--phase=<workflow>: the workflow to report",
+      "(design|plan|build|debug|ship). Without it, prints the",
+      "ledger-health line only. Read-only: exits 0.",
+    ],
+  },
+  {
+    verb: "stats",
+    args: "",
+    summary: "This repo's stats report, written to .bkit/stats.md. Exits 0.",
+    flags: [],
+    detail: [
+      "This repo's stats report: counts, durations, change-size vs",
+      "outcome, counterSource trust, per-rule and per-version",
+      "compliance, and the unjustified-deferral rate per",
+      "(subagent, model). Reads .bkit/stats.jsonl,",
+      ".bkit/friction.jsonl and docs/deferrals.jsonl of THIS repo",
+      "only; writes .bkit/stats.md and prints it.",
+      "Advisory + inform-only: exits 0.",
+    ],
+  },
+  {
+    verb: "help",
+    args: "",
+    summary: "Print the usage text.",
+    flags: [],
+    detail: ["Print this message."],
+  },
+];
+
+/** Usage line width: a synopsis up to this long shares its line with the first detail line. */
+const SYNOPSIS_WIDTH = 29;
+
+/** The usage text's `bkit <verb>` list, rendered from `CLASSIC_VERB_HELP`. */
+function classicUsage(): string {
+  const indent = " ".repeat(SYNOPSIS_WIDTH + 4);
+  return CLASSIC_VERB_HELP.flatMap(({ verb, args, detail }) => {
+    const synopsis = `bkit ${verb}${args ? ` ${args}` : ""}`;
+    if (synopsis.length > SYNOPSIS_WIDTH) {
+      return [`  ${synopsis}`, ...detail.map((d) => indent + d)];
+    }
+    const [first = "", ...rest] = detail;
+    return [`  ${synopsis.padEnd(SYNOPSIS_WIDTH)} ${first}`, ...rest.map((d) => indent + d)];
+  }).join("\n");
+}
+
 export function printUsage(): void {
   console.log(
     `bkit — agent-stack consolidation CLI
 
 Usage:
-  bkit install <module-flags>   Install (or re-sync) the named modules + the implicit
-                                 core foundation. At least one module flag is REQUIRED —
-                                 a bare \`bkit install\` errors (name the modules below).
-                                 Hosts compose: --claude --cursor --codex --antigravity
-                                 --opencode=<provider>.
-  bkit check                     Dry-run — drift-check everything already installed (no
-                                 module flags). Exits 1 when a managed file needs
-                                 re-rendering. Copies under .bkit/templates/ are refreshed by
-                                 install/upgrade and checked for staleness — adopt one by
-                                 copying it elsewhere; that copy is yours. The CI gate.
-                                 Changes no managed file; rewrites .bkit/advisories.md.
-  bkit upgrade [--to=<version>|--latest] [--auto-apply] [--dry-run]
-                                 Upgrade everything installed (no module flags). Diffs old
-                                 vs new templates; conflict list emitted to stderr. Use
-                                 --auto-apply for CI (apply non-conflicting; exit non-zero
-                                 on any conflict). Only a whole file you edited since bkit
-                                 wrote it conflicts; rendered files (agents, commands,
-                                 skills, .bkit/*.md) are always re-rendered — bkit check
-                                 flags an edit to one.
-                                 --to=<version> / --latest atomically BUMP @cbartens/bkit
-                                 (pnpm add), then re-render + re-pin in one step — so a
-                                 version bump can never drift from its rendered mirrors.
-                                 This is the supported way to move bkit versions; a bare
-                                 \`pnpm add @cbartens/bkit\` alone leaves mirrors stale.
-  bkit uninstall [module-flags] Remove bkit-managed files + strip managed blocks.
-                                 No flags = full removal — ALL modules incl. opt-in add-ons
-                                 (cloud/opencode) + core. Consumer-owned updater configs
-                                 (renovate.json5, dependabot.yml, bkit-renovate.yml) are left in place. Consumer-modified
-                                 files, your own files under docs/, and generated artefacts
-                                 (.bkit/advisories.md, .bkit/friction.jsonl) are preserved (use
-                                 --nuke to force-remove manifest-listed files). Target with the
-                                 same module flags as install (e.g. uninstall --claude); a
-                                 targeted uninstall leaves core untouched.
-  bkit doctor                   Preflight + post-install advisory replay (changes no
-                                 managed file; rewrites .bkit/advisories.md). Diagnose
-                                 token surfaces and config drift. Exits 0.
-  bkit tips [--workflow=<name>] [--all]
-                                 Setup tips: what this repo has not set up yet, most useful
-                                 first, each with a sentence to ask your agent. Top three
-                                 by default; --workflow=design|plan|build|debug|ship puts
-                                 the tips that matter there first and prints one (each
-                                 workflow runs this at its close; audit and utility do the
-                                 same for audits and the ledger / roadmap updaters);
-                                 --all lists every one. Ends with a star line ("bkit-star"
-                                 in bkit.advisories.ignore silences it), except under
-                                 --workflow=audit|utility. Local checks only. Exits 0.
-  bkit status                   Read-only host/provider status. Reports current host+provider
-                                 (sampled from .claude/, .cursor/, package.json, and the
-                                 opencode agent model pins in .opencode/agents/).
-                                 Writes nothing. Exits 0.
-  bkit cursor                   Launch Cursor with .bkit/.env loaded into its environment.
-                                 macOS GUI apps launched from the Dock/Finder do not inherit
-                                 the login shell env (direnv stays shell-only), so MCP token
-                                 placeholders resolve empty. This verb execs the app binary
-                                 directly with the per-repo .bkit/.env merged in. Quit Cursor
-                                 before running — a running instance ignores the new env.
-                                 Override binary path via BKIT_CURSOR_BIN=<path>.
-  bkit opencode                 Same as \`bkit cursor\` but for the opencode desktop app.
-                                 Override binary path via BKIT_OPENCODE_BIN=<path>.
-  bkit comply --phase=<phase>   Run the compliance grader advisory step.
-                                 Checks the diff since parentSha for violations
-                                 (no-mirror-edit, skip-ci-not-head). Advisory only —
-                                 never gates a workflow. Appends kind:"compliance"
-                                 rows to .bkit/stats.jsonl. Fail-open: always exits 0.
-                                 Valid phases: design, plan, build, debug, ship.
-  bkit telemetry summary [--phase=<workflow>]
-                                 Per-workflow telemetry report: THIS run's metrics
-                                 (duration, size, friction/deferrals/failures added,
-                                 compliance) against med·5 — the median of the previous 5
-                                 same-workflow runs. The close step of every /bkit-*
-                                 workflow calls this and posts it to the tracker comment.
-                                 --phase=<workflow>: the workflow to report
-                                 (design|plan|build|debug|ship). Without it, prints the
-                                 ledger-health line only. Read-only: exits 0.
-  bkit stats                    This repo's stats report: counts, durations, change-size vs
-                                 outcome, counterSource trust, per-rule and per-version
-                                 compliance, and the unjustified-deferral rate per
-                                 (subagent, model). Reads .bkit/stats.jsonl,
-                                 .bkit/friction.jsonl and docs/deferrals.jsonl of THIS repo
-                                 only; writes .bkit/stats.md and prints it.
-                                 Advisory + inform-only: exits 0.
-  bkit help                     Print this message.
+${classicUsage()}
 
 Core (implicit — no flag; installed/upgraded on every install):
   AGENTS.md (cross-host dispatch router), .agents/rules.md + .agents/context.md +

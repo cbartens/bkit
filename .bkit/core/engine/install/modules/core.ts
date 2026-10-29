@@ -258,6 +258,7 @@ function runCoreTemplates(
 export const BKIT_CANONICAL_DOCS = [
   "authoring.md",
   "cloud.md",
+  "cli.md",
   "comparison.md",
   "install.md",
   "jsonl.md",

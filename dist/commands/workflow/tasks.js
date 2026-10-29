@@ -123,6 +123,7 @@ export const tasksCommand = {
     verbs: {
         tick: {
             summary: "Tick the named tasks of one task group, less those a `tests green` report gaps; exit 0 ticked (including none), 1 a plan with no task blocks, 2 a bad flag value or plan.",
+            use: "workflow",
             flags: [
                 {
                     name: "plan",
@@ -212,6 +213,7 @@ export const tasksCommand = {
         },
         open: {
             summary: "Print the group's tasks holding neither a `DONE` nor a `BLOCKED` line in the plan-execute log, and whether any is open; exit 0 (including none), 1 a plan with no task blocks, 2 a missing file or group.",
+            use: "by-hand",
             flags: [
                 {
                     name: "plan",
@@ -260,6 +262,7 @@ export const tasksCommand = {
         },
         currency: {
             summary: "Print each task whose CREATE / READ / UPDATE / DELETE paths or symbols moved between --base and --against, with its matched paths, needles and diff hunks; exit 0 (including no match), 1 a plan with no task blocks, 2 a bad plan.",
+            use: "by-hand",
             flags: [
                 {
                     name: "plan",
