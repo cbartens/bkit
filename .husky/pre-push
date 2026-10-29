@@ -19,6 +19,29 @@
 # never `[skip ci]`.
 set -e
 
+# Log: the hook runs itself once more with everything it prints copied to tmp/pre-push.log,
+# rewritten each push, so a reader whose output was cut short, or who pushed in the
+# background, still has the whole run. The path is printed first (tail -f it while the push
+# runs) and last, with the exit code. Git's ref list on stdin reaches the inner run unchanged,
+# and the hook exits with the inner run's code. Output goes to stderr, where git sends a
+# hook's output anyway. `git push --no-verify`, and a checkout without husky installed (a
+# linked worktree), run no hook and write no log.
+if [ -z "${BKIT_PRE_PUSH_LOGGED:-}" ]; then
+  PRE_PUSH_LOG=tmp/pre-push.log
+  PRE_PUSH_RC_FILE=$(mktemp)
+  mkdir -p tmp
+  {
+    echo "[pre-push] log: $PRE_PUSH_LOG"
+    pre_push_rc=0
+    BKIT_PRE_PUSH_LOGGED=1 FORCE_COLOR=1 sh "$0" "$@" 2>&1 || pre_push_rc=$?
+    echo "[pre-push] log: $PRE_PUSH_LOG (exit $pre_push_rc)"
+    echo "$pre_push_rc" > "$PRE_PUSH_RC_FILE"
+  } | tee "$PRE_PUSH_LOG" >&2
+  pre_push_rc=$(cat "$PRE_PUSH_RC_FILE")
+  rm -f "$PRE_PUSH_RC_FILE"
+  exit "$pre_push_rc"
+fi
+
 # Git exports GIT_DIR to a hook and everything it starts (from a linked worktree:
 # <main>/.git/worktrees/<name>). It beats a child's cwd and -C, so a test's `git -C "$tmp" init`
 # re-initialises this repo (core.bare=true in the shared .git/config) and a fixture's

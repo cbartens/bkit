@@ -62,6 +62,76 @@ describe(".husky/pre-push delete-only push", () => {
 });
 
 // ---------------------------------------------------------------------------
+// .husky/pre-push log — the hook re-runs itself once with everything it prints copied to
+// `tmp/pre-push.log`. Stub `pnpm` reports no skip-CI token and no min push, prints a line
+// for every other call and fails it with exit 3.
+// ---------------------------------------------------------------------------
+
+describe(".husky/pre-push log", () => {
+  const ZERO = "0".repeat(40);
+  const SHA = "a".repeat(40);
+  const REPO = process.cwd();
+  const LOG_LINE = "[pre-push] log: tmp/pre-push.log";
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-prepush-log-")));
+    fs.mkdirSync(path.join(tmp, "bin"));
+    fs.writeFileSync(
+      path.join(tmp, "bin", "pnpm"),
+      `#!/bin/sh\ncase "$*" in *skip-token*|*"ci min-push"*) exit 1 ;; esac\necho "gate: $*"\nexit 3\n`,
+      { mode: 0o755 },
+    );
+  });
+  afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+  const runHook = (hook: string, stdin: string) => {
+    const result = spawnSync("sh", [path.join(REPO, hook)], {
+      cwd: tmp,
+      input: stdin,
+      encoding: "utf-8",
+      timeout: 10_000,
+      env: { ...process.env, PATH: `${path.join(tmp, "bin")}:${process.env.PATH}` },
+    });
+    const log = path.join(tmp, "tmp", "pre-push.log");
+    return {
+      status: result.status,
+      stderr: result.stderr,
+      log: fs.existsSync(log) ? fs.readFileSync(log, "utf-8") : null,
+    };
+  };
+
+  for (const hook of [".bkit/templates/.husky/pre-push", ".husky/pre-push"]) {
+    it(`${hook}: failing gate → tmp/pre-push.log holds its output, exit code kept`, () => {
+      const r = runHook(hook, `refs/heads/dev ${SHA} refs/heads/dev ${ZERO}\n`);
+      expect(r.status).toBe(3);
+      expect(r.log).toContain("gate: bkit check");
+      expect(r.log).toContain("exit 3");
+    });
+
+    it(`${hook}: delete-only push → the early exit is logged, exit 0`, () => {
+      const r = runHook(hook, `(delete) ${ZERO} refs/heads/a ${SHA}\n`);
+      expect(r.status).toBe(0);
+      expect(r.log).toContain("delete-only push");
+    });
+
+    it(`${hook}: first and last lines name the log`, () => {
+      const lines = runHook(hook, `refs/heads/dev ${SHA} refs/heads/dev ${ZERO}\n`)
+        .stderr.trim()
+        .split("\n");
+      expect(lines[0]).toBe(LOG_LINE);
+      expect(lines.at(-1)).toContain(LOG_LINE);
+    });
+
+    it(`${hook}: the hook body runs once`, () => {
+      const r = runHook(hook, `refs/heads/dev ${SHA} refs/heads/dev ${ZERO}\n`);
+      expect(r.stderr.split("gate: bkit check").length - 1).toBe(1);
+      expect(r.stderr.split(LOG_LINE).length - 1).toBe(2);
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // .husky/pre-push already-tested skip — bkit's own hook only. A real repo holds commit A on
 // `refs/remotes/origin/main` and `origin/dev`, commit B (same files as A) on no remote branch,
 // and commit C (one more file) on no remote branch; stub `pnpm` records each gate.
