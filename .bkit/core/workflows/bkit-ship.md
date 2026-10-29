@@ -607,7 +607,8 @@ description: "Ship Feature — Autonomous merge and archive"
    ```bash
    "{BKIT}" steps finish --workflow=ship --step=ship-failure-diagnose --file="{STATUS}" --attempt-of=ship-merge-pr:current --agent=bkit-debug-failure-diagnose --artifact="docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-<attempt>.md" --commit=none --number=11 --post --title="Failure Diagnose"
    ```
-3. Ask before the fix round. State the failure in plain English before the technical cause. **If** `MERGE_ASK` = false → narrate `ship merge: attempt {MERGE_ROUNDS} of {MERGE_MAX}, fix round taken without asking` → Step 12. **Else** → ask the human in this session, plain text, one message: `ship merge: attempt {MERGE_ROUNDS} of {MERGE_MAX}`, then `**Q1 — Merge:** failed because {the diagnosed cause}. Run a fix round?`, `Options: A) Try again / B) Stop`, `Recommended: {A) Try again when the diagnosis names a cause, else B) Stop} — {reason}`, and the line `Reply per question. "yes" takes every recommendation. "stop" writes a handover; the run can be resumed.` Record the wait → end turn → wait for the answer:
+   Hold `verdict` as `{DIAGNOSE_VERDICT}`.
+3. Ask before the fix round only when the diagnosis found no clear cause. State the failure in plain English before the technical cause. **If** `MERGE_ASK` = false **or** `DIAGNOSE_VERDICT` = PASS → narrate `ship merge: attempt {MERGE_ROUNDS} of {MERGE_MAX}, fix round taken without asking ({the diagnosed cause})` → Step 12. **Else** → ask the human in this session, plain text, one message: `ship merge: attempt {MERGE_ROUNDS} of {MERGE_MAX}`, then `**Q1 — Merge:** failed, and the diagnosis found no clear cause ({the diagnosis in one line}). Stop here instead of a fix round?`, `Options: A) Stop / B) Try again`, `Recommended: A) Stop — {reason}`, and the line `Reply per question. "yes" takes every recommendation. "stop" writes a handover; the run can be resumed.` Record the wait → end turn → wait for the answer:
    ```bash
    "{BKIT}" status row --file="{STATUS}" --workflow=ship --type=owner-pause --field=reason=merge >/dev/null || exit 1
    ```
@@ -629,7 +630,7 @@ description: "Ship Feature — Autonomous merge and archive"
 
 - [ ] Subagent invoked (`@bkit-debug-failure-diagnose`, no inline work)
 - [ ] Mechanical checks passed (`steps finish`)
-- [ ] Fix round asked only with `ask` = true and not headless
+- [ ] Fix round asked only with `ask` = true, not headless, and a diagnosis verdict other than PASS
 
 ---
 

@@ -9,10 +9,11 @@
 // unique. A finding at the location and severity of an earlier task that is still open
 // reruns that task (its Round value gains this round) rather than adding a twin; one whose
 // earlier task is done from an earlier round is a new task. It then names the route:
-// `fix` (run the tasks), `pause` (ask the owner) or `none`. More than `maxChallengeTasks`
-// new tasks in one merge writes nothing and pauses. The plan is checked in memory before
-// it is written, so a refused merge leaves every file as it was. A re-run with the same
-// reports appends nothing.
+// `fix` (run the tasks: every one is fixable, in any round), `pause` (a task is not
+// fixable: ask the owner) or `none`. More than `maxChallengeTasks` new tasks in one merge
+// writes nothing and pauses. The plan is checked in memory before it is written, so a
+// refused merge leaves every file as it was. A re-run with the same reports appends
+// nothing.
 //
 // bkit challenge gate — size the run's diff before the reviewers start. A small change
 // (under CHALLENGE_SMALL lines and files, `docs/plans/**` excluded) runs the security
@@ -583,12 +584,12 @@ export const challengeCommand: CommandSpec = {
           name: "round",
           type: "string",
           required: true,
-          help: "challenge round, 1 up to bkit.workflows.build.challenge.maxAttempts; any task from the last round routes to pause",
+          help: "challenge round, 1 up to bkit.workflows.build.challenge.maxAttempts",
         },
       ],
       output: {
         route:
-          "fix (tasks to run), pause (a task is not fixable, the last round left tasks, or more than 4 x `bkit.workflows.tasks.maxPerGroup` new tasks) or none (nothing to run)",
+          "fix (tasks to run, every one fixable), pause (a task is not fixable, or more than 4 x `bkit.workflows.tasks.maxPerGroup` new tasks) or none (nothing to run)",
         fixTasks:
           "comma-separated task numbers in `plan` this round runs: every task reopened, then every task appended; empty when none",
         appended: "how many tasks this run wrote",
@@ -713,11 +714,7 @@ export const challengeCommand: CommandSpec = {
 
         const running = [...fresh, ...open.map((x) => x.f)];
         const route =
-          fixTasks.length === 0
-            ? "none"
-            : roundN >= maxRounds || running.some((f) => !f.fixable)
-              ? "pause"
-              : "fix";
+          fixTasks.length === 0 ? "none" : running.some((f) => !f.fixable) ? "pause" : "fix";
         ctx.emit({
           route,
           fixTasks: fixTasks.join(","),

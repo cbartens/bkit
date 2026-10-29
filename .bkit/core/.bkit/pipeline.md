@@ -95,8 +95,8 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
     • bug-hunting (large changes)  • security (always)
   10. challenge merge    (engine: findings become plan tasks, each with a test first;
                          a repeated finding reopens its open task; LOW → deferred;
-                         fixable → back to the group loop, once; unfixable or a
-                         second round's findings → Decision Pause; two rounds at most)
+                         fixable → back to the group loop, a last-round fix not
+                         challenged again; unfixable → Decision Pause; two rounds at most)
   11. run tests          (local tier: lint + typecheck + unit + slop:delta + bkit check;
                          no integration / e2e / @live — those run in CI)
     ↳ on test failure → /bkit-debug (debug-failure-diagnose + remediate)

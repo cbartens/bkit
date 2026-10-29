@@ -338,11 +338,18 @@ describe("bkit challenge merge", () => {
     expect(r.json.route).toBe("pause");
   });
 
-  it("routes a second round with new tasks to pause", async () => {
+  it("routes a fixable task in the last round to fix", async () => {
     write(PLAN, plan(2));
     write(R1, report({ sev: "MEDIUM", loc: "src/a.ts:10" }));
     const r = await merge(...args([R1], 2));
     expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ route: "fix", appended: 1, fixTasks: "3", round: 2 });
+  });
+
+  it("routes an unfixable task in the last round to pause", async () => {
+    write(PLAN, plan(2));
+    write(R1, report({ sev: "MEDIUM", loc: "src/a.ts:10", fixable: false }));
+    const r = await merge(...args([R1], 2));
     expect(r.json).toMatchObject({ route: "pause", appended: 1, round: 2 });
   });
 
@@ -431,7 +438,7 @@ describe("bkit challenge merge", () => {
     // Task 3 stays open (the fix group was BLOCKED); round 2 reports the same finding.
     const second = await merge(...args([R1], 2));
     expect(second.code).toBe(0);
-    expect(second.json).toMatchObject({ route: "pause", fixTasks: "3", appended: 0, round: 2 });
+    expect(second.json).toMatchObject({ route: "fix", fixTasks: "3", appended: 0, round: 2 });
     const text = read(PLAN);
     expect(text.match(/\*\*Location:\*\* `src\/a\.ts:10`/g)).toHaveLength(1);
     expect(parsePlanBlocks(text).tasks.map((t) => t.task)).toEqual([1, 2, 3]);
@@ -452,7 +459,7 @@ describe("bkit challenge merge", () => {
     expect(rerun.json).toMatchObject({ route: "none", fixTasks: "", appended: 0 });
     // Round 2 reports it again: the fix did not hold, so it is a new task.
     const second = await merge(...args([R1], 2));
-    expect(second.json).toMatchObject({ route: "pause", fixTasks: "4", appended: 1 });
+    expect(second.json).toMatchObject({ route: "fix", fixTasks: "4", appended: 1 });
     expect(read(PLAN).match(/\*\*Location:\*\* `src\/a\.ts:10`/g)).toHaveLength(2);
     // Task 4 done, round 2 re-run: no third task.
     write(PLAN, read(PLAN).replace("- [ ] **TASK 4:**", "- [x] **TASK 4:**"));

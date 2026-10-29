@@ -58,7 +58,7 @@ description: "Build Feature — Autonomous implementation"
 
 <!-- bkit:tracker true end -->
 
-- **Limits:** `bkit.workflows.build.verify` / `.challenge` / `.tests` each hold `ask` and `maxAttempts`, read via `bkit counters route --point=` in fenced routing blocks below; `bkit counters max --point=` reads a limit alone. Verify counts rounds per group, challenge counts rounds (`CHALLENGE_ROUND`, Step 11; the last round never fixes on its own), tests counts test rounds. A limit used up → **Failure Path**; a question never resets a count. `ask` = false, or headless → the **Decision Pause** takes each recommendation (`bkit decisions apply --by=headless`); hard blockers (no recommendation) are asked in a session and go to the **Failure Path** headless.
+- **Limits:** `bkit.workflows.build.verify` / `.challenge` / `.tests` each hold `ask` and `maxAttempts`, read via `bkit counters route --point=` in fenced routing blocks below; `bkit counters max --point=` reads a limit alone. Verify counts rounds per group, challenge counts rounds (`CHALLENGE_ROUND`, Step 11; the last round's fixes get no further challenge round), tests counts test rounds. A limit used up → **Failure Path**; a question never resets a count. `ask` = false, or headless → the **Decision Pause** takes each recommendation (`bkit decisions apply --by=headless`); hard blockers (no recommendation) are asked in a session and go to the **Failure Path** headless.
 
 **Rules:** Copied word for word from `.agents/rules.md`.
 
@@ -107,7 +107,7 @@ description: "Build Feature — Autonomous implementation"
    Hold `value` as `{DECISION}`.
 2. Write `{OUTBOX}/decision-items.json` = one JSON object per item, in item order — `{"title", "question", "options", "recommended", "reason"}`, or a hard blocker `{"title", "question", "options", "noRecommendation"}` (why no agent can settle it); never a recommendation on a hard blocker. Per `question`: word each so "yes" accepts the recommendation. State what the owner must decide and what each option does, in plain English, before naming any file, test or identifier. Items:
    - `PAUSE_QUESTION` = `VERIFY_GAPS` → each `## Identified Gaps Log` line of `build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}.md` with its last `BLOCKED` reason in `build-plan-gaps-remediate-{GROUP}-*-log.md` (if any). Fixable gap → options `["Accept", "Fix now"]`, recommended per item. Test-order gap (`no-red`, `late-red`, `red-mismatch`, `red-evidence-missing`, `test-changed`) → hard blocker, options `["Accept", "Stop"]`, question ends `Accept it? You write the reason, and it is recorded as your TEST EXCEPTION.` Other unfixable gap (`no-test-first`, `test-first-malformed`, `test-first-unread`, `exception-refused`) → hard blocker, options `["Accept", "Fix now", "Stop"]`. Group-gate failures are never items: they are always fixed.
-   - `PAUSE_QUESTION` = `CHALLENGE` → each task of `CHALLENGE_TASKS` in the plan that says `**Fixable:** false` (any severity), or every one of them on the last round (`CHALLENGE_ROUND` = `CHALLENGE_MAX`). **If** `CHALLENGE_OVERFLOW` is set → the merge wrote nothing: items = each `CRITICAL|HIGH|MEDIUM` finding of the merged reports (`build-challenge-2.md`, plus `build-challenge-1.md` when large), one per `Location`. Title = the task number (when it has one) and its `Location` in brackets. `**Fixable:** false` → hard blocker, options `["Accept", "Fix now", "Stop"]`; else options `["Accept", "Fix now"]`, recommended per finding.
+   - `PAUSE_QUESTION` = `CHALLENGE` → each task of `CHALLENGE_TASKS` in the plan that says `**Fixable:** false` (any severity). **If** `CHALLENGE_OVERFLOW` is set → the merge wrote nothing: items = each `CRITICAL|HIGH|MEDIUM` finding of the merged reports (`build-challenge-2.md`, plus `build-challenge-1.md` when large), one per `Location`. Title = the task number (when it has one) and its `Location` in brackets. `**Fixable:** false` → hard blocker, options `["Accept", "Fix now", "Stop"]`; else options `["Accept", "Fix now"]`, recommended per finding.
    - `PAUSE_QUESTION` = `TESTS_LOOP` → no items (failing suites are always fixed).
      Compose the file — `{LOOP_FLAGS}` = `--loop=tests --attempt={TEST_ATTEMPT} --max={PAUSE_MAX}` for `TESTS_LOOP`, else empty; `{HEADER_FLAGS}` = `--header=Question={PAUSE_QUESTION} --header=From={verify|challenge|tests} --header="Pause step={PAUSE_STEP}" --header="Plan=docs/plans/{YYYYMM}/{FID}-plan.md"`, plus `--header=Group={GROUP} --header="Verify attempt={VERIFY_ATTEMPT}"` from verify, `--header="Test attempt={TEST_ATTEMPT}"` from tests:
    ```bash
@@ -720,7 +720,7 @@ Runs once, after the last group; challenge fix groups pass through here on the w
 6. Clear `CHALLENGE_REFORMAT`. Route:
    - **If** `route` = `none` → Step 12.
    - **If** `route` = `pause` → `PAUSE_STEP` = 11, `PAUSE_POINT` = `build.challenge`, `PAUSE_QUESTION` = `CHALLENGE` → **Decision Pause**.
-   - **If** `route` = `fix` → `CHALLENGE_ROUND` = `CHALLENGE_ROUND` + 1 → Step 7; its brief takes the first new group.
+   - **If** `route` = `fix` → `CHALLENGE_ROUND` = `CHALLENGE_MAX` already → `CHALLENGE_DONE` = true; **Else** → `CHALLENGE_ROUND` = `CHALLENGE_ROUND` + 1. Then Step 7; its brief takes the first new group.
    - **Else** → **Failure Path**.
 
 ### 🔒 Gate 11 — Build Challenge
@@ -757,11 +757,17 @@ Runs once, after the last group; challenge fix groups pass through here on the w
    - **If** `TEST_VERDICT` = PASS → Step 15.
    - **If** `TEST_VERDICT` = FAIL → route on test rounds:
      ```bash
-     "{BKIT}" counters route --name=TEST_ATTEMPT --of=build-run-tests:current --file="{STATUS}" --workflow=build --point=build.tests --continue=decision-pause --exceeded=failure-path
+     "{BKIT}" counters route --name=TEST_ATTEMPT --of=build-run-tests:current --file="{STATUS}" --workflow=build --point=build.tests --continue=progress-check --exceeded=failure-path
      ```
      Hold `value` as `{TEST_ROUNDS}`, `max` as `{PAUSE_MAX}`.
      - **If** exit 1 **or** `TEST_ROUNDS` = `PAUSE_MAX` → **Failure Path** (`build.tests.maxAttempts` used up; no round left).
-     - **If** exit 0 → `PAUSE_STEP` = 12, `PAUSE_POINT` = `build.tests`, `PAUSE_QUESTION` = `TESTS_LOOP` → **Decision Pause**.
+     - **If** exit 0 → read the loop's progress:
+       ```bash
+       "{BKIT}" counters progress --file="{STATUS}" --workflow=build --check=build-run-tests --fix=build-failure-remediate
+       ```
+       **If** exit non-zero → **Failure Path**. Hold `trend` as `{TEST_TREND}`.
+       - **If** `TEST_TREND` = `stuck` **or** `worse` → `PAUSE_STEP` = 12, `PAUSE_POINT` = `build.tests`, `PAUSE_QUESTION` = `TESTS_LOOP` → **Decision Pause**.
+       - **Else** → Step 13; a failed test round after a round that made progress is always fixed, never asked.
      - **Else** → **Failure Path**.
    - **Else** → **Failure Path**.
 

@@ -473,6 +473,9 @@ describe("build", () => {
     expect(step11).toContain(
       "`PAUSE_STEP` = 11, `PAUSE_POINT` = `build.challenge`, `PAUSE_QUESTION` = `CHALLENGE`",
     );
+    expect(step11).toContain(
+      "`route` = `fix` → `CHALLENGE_ROUND` = `CHALLENGE_MAX` already → `CHALLENGE_DONE` = true",
+    );
   });
 
   it("Step 11 records its round on the challenge row and reads it back from status.jsonl", () => {
@@ -1768,5 +1771,34 @@ describe("input files", () => {
     expect(workflow("plan")).toContain(
       "`docs/plans/{YYYYMM}/{FID}-plan.md` (if present — superseded plan, context only, not a constraint)",
     );
+  });
+});
+
+describe("fix loops ask only when the last round made no progress", () => {
+  it("build takes a further test round without asking unless the trend is stuck or worse", () => {
+    const step12 = section(workflow("build"), /Step 12 — Run Tests/);
+    expect(commandLines(step12, "counters progress").map((l) => l.trim())).toEqual([
+      '"{BKIT}" counters progress --file="{STATUS}" --workflow=build --check=build-run-tests --fix=build-failure-remediate',
+    ]);
+    expect(step12).toContain("**If** `TEST_TREND` = `stuck` **or** `worse` →");
+    expect(step12).toContain("`PAUSE_QUESTION` = `TESTS_LOOP` → **Decision Pause**");
+    expect(step12).toContain("**Else** → Step 13");
+  });
+
+  it("debug takes a further fix or soak attempt without asking unless the trend is stuck or worse", () => {
+    const loop = section(workflow("debug"), /Loop Question/);
+    expect(commandLines(loop, "counters progress").map((l) => l.trim())).toEqual([
+      '"{BKIT}" counters progress --file="{STATUS}" --workflow=debug --check=debug-run-tests --fix={LOOP_FIX}',
+    ]);
+    expect(loop).toContain("**If** `LOOP_TREND` != `stuck` **and** `LOOP_TREND` != `worse` →");
+    const step3 = section(workflow("debug"), /Step 3 — Run Tests/);
+    expect(step3).toContain("`LOOP_POINT` = `fix`, `LOOP_FIX` = `debug-failure-remediate`");
+    expect(step3).toContain("`LOOP_POINT` = `soak`, `LOOP_FIX` = `debug-failure-soak`");
+  });
+
+  it("ship takes a merge fix round without asking when the diagnosis found the cause", () => {
+    const step11 = section(workflow("ship"), /Step 11 — Failure Diagnose/);
+    expect(step11).toContain("Hold `verdict` as `{DIAGNOSE_VERDICT}`");
+    expect(step11).toContain("**If** `MERGE_ASK` = false **or** `DIAGNOSE_VERDICT` = PASS →");
   });
 });

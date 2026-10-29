@@ -213,6 +213,7 @@ describe("bkit status resume", () => {
     ];
     expect(await doneOf(r2)).toBe(false);
     expect(await doneOf([...r2, done("build", "build-decision", { route: "fix" })])).toBe(true);
+    expect(await doneOf([...r2, done("build", "build-plan-execute")])).toBe(true);
     expect(await doneOf([...r2, done("build", "build-run-tests")])).toBe(true);
     expect((await resume("plan", log(setUp("plan")))).json.challengeDone).toBeNull();
   });

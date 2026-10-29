@@ -102,24 +102,29 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 ## 🤖 Loop Question
 
 1. **If** `LOOP_ASK` = false → narrate `debug {LOOP_POINT}: attempt {LOOP_ATTEMPT} of {LOOP_MAX}, taken without asking` → return to the calling step.
-2. Ask the human in this session; plain text, no host question tool. State what the owner must decide and what each option does, in plain English, before naming any file, test or identifier. One message:
-   - `debug {LOOP_POINT}: attempt {LOOP_ATTEMPT} of {LOOP_MAX}`, then the newest diagnosis (`debug-failure-diagnose-*.md`) or soak log (`debug-failure-soak-*-log.md`) in one line each.
-   - `LOOP_POINT` = `fix` → `**Q1 — Fix:** another fix attempt?`. `LOOP_POINT` = `soak` and `{LOOP_ATTEMPT}` = 1 → `**Q1 — Soak:** fix attempts used up. Start soak (a slower, step-by-step investigation)?`. **Else** → `**Q1 — Soak:** another soak attempt?`.
-   - `Options: A) Try again / B) Stop`, then `Recommended: {A) Try again|B) Stop} — {the trend: failures falling → A, else B}`.
+2. Read the loop's progress:
+   ```bash
+   "{BKIT}" counters progress --file="{STATUS}" --workflow=debug --check=debug-run-tests --fix={LOOP_FIX}
+   ```
+   **If** exit non-zero → **Failure Path**. Hold `trend` as `{LOOP_TREND}`, `counts` as `{LOOP_COUNTS}`. **If** `LOOP_TREND` != `stuck` **and** `LOOP_TREND` != `worse` → narrate `debug {LOOP_POINT}: attempt {LOOP_ATTEMPT} of {LOOP_MAX}, taken without asking (failures {LOOP_COUNTS})` → return to the calling step.
+3. Ask the human in this session; plain text, no host question tool. State what the owner must decide and what each option does, in plain English, before naming any file, test or identifier. One message:
+   - `debug {LOOP_POINT}: attempt {LOOP_ATTEMPT} of {LOOP_MAX}`, then `Failures per test round: {LOOP_COUNTS}`, then the newest diagnosis (`debug-failure-diagnose-*.md`) or soak log (`debug-failure-soak-*-log.md`) in one line each.
+   - `LOOP_POINT` = `fix` → `**Q1 — Fix:** the last fix attempt left no fewer failures. Stop here instead of another fix attempt?`. `LOOP_POINT` = `soak` and `{LOOP_ATTEMPT}` = 1 → `**Q1 — Soak:** fix attempts are used up and the last one left no fewer failures. Stop here instead of starting soak (a slower, step-by-step investigation)?`. **Else** → `**Q1 — Soak:** the last soak attempt left no fewer failures. Stop here instead of another soak attempt?`.
+   - `Options: A) Stop / B) Try again`, then `Recommended: A) Stop — the last attempt made no progress`.
    - The line `Reply per question. "yes" takes every recommendation. "stop" writes a handover; the run can be resumed.`
      Record the wait → end turn → wait for the answer:
    ```bash
    "{BKIT}" status row --file="{STATUS}" --workflow=debug --type=owner-pause --field=reason=loop >/dev/null || exit 1
    ```
-3. Record the reply before anything else:
+4. Record the reply before anything else:
    ```bash
    "{BKIT}" status row --file="{STATUS}" --workflow=debug --type=owner-answer >/dev/null || exit 1
    ```
    A reply that names a letter (`B`, `B)` or `B) {option}`) means the option that letter labels.
    - **If** the answer is `Try again` → return to the calling step.
-   - **If** the answer is `Stop` → step 4.
-   - **Else** → discuss → record the wait (step 2) → end turn.
-4. Create `docs/plans/{YYYYMM}/logs/{FID}/debug-handover.md` = the question, the answer, and the line `Stopped by the owner; run stays IN_PROGRESS. /bkit-debug {FID} resumes at Step 3.` Then push the record and release the lock; never `workflows fail`:
+   - **If** the answer is `Stop` → step 5.
+   - **Else** → discuss → record the wait (step 3) → end turn.
+5. Create `docs/plans/{YYYYMM}/logs/{FID}/debug-handover.md` = the question, the answer, and the line `Stopped by the owner; run stays IN_PROGRESS. /bkit-debug {FID} resumes at Step 3.` Then push the record and release the lock; never `workflows fail`:
    ```bash
    "{BKIT}" workflows handover --post --workflow=debug --fid={FID} --month={YYYYMM} --push --worktree="{WORKTREE_PATH}"
    "{BKIT}" locks release --kind=workflow --workflow=debug --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} >/dev/null || exit 1
@@ -128,7 +133,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 ### 🔒 Gate — Loop Question
 
-- [ ] Asked only with `ask` = true and not headless
+- [ ] Asked only with `ask` = true, not headless, and `trend` stuck or worse (`counters progress`)
 - [ ] Wait and reply recorded (`owner-pause`, `owner-answer`)
 - [ ] Stop wrote a handover and released the lock
 
@@ -322,7 +327,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    ```
    Hold `value` as `{LOOP_ATTEMPT}`, `max` as `{LOOP_MAX}`, `ask` as `{LOOP_ASK}`. Route:
    - **If** exit 0 **and** `{LOOP_ATTEMPT}` = 1 → Step 4.
-   - **If** exit 0 → `LOOP_POINT` = `fix` → **Loop Question** → Step 4.
+   - **If** exit 0 → `LOOP_POINT` = `fix`, `LOOP_FIX` = `debug-failure-remediate` → **Loop Question** → Step 4.
    - **If** exit 1 (printed `soak-escalation`) — fix attempts used up; record the switch → `DEBUG_MODE` = SOAK → sub-step 5:
      ```bash
      "{BKIT}" status meta --file="{STATUS}" --workflow=debug --debug-mode=SOAK >/dev/null || exit 1
@@ -334,7 +339,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    "{BKIT}" counters route --name=SOAK_ATTEMPT --of=debug-failure-soak:next --all-runs --file="{STATUS}" --workflow=debug --point=debug.soak --continue=step-4 --exceeded=failure-path
    ```
    Hold `value` as `{LOOP_ATTEMPT}`, `max` as `{LOOP_MAX}`, `ask` as `{LOOP_ASK}`. Route:
-   - **If** exit 0 → `LOOP_POINT` = `soak` → **Loop Question** → Step 4.
+   - **If** exit 0 → `LOOP_POINT` = `soak`, `LOOP_FIX` = `debug-failure-soak` → **Loop Question** → Step 4.
    - **Else** → **Failure Path** (exit 1: `debug.soak.maxAttempts` used up, max-retry exhaustion).
 6. **Else** → **Failure Path**.
 
