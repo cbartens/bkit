@@ -881,12 +881,14 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
   - **DONE WHEN:** the advisory step still exits 0 on a holey corpus; its output contains the summary line in the exact literal `[bkit-status-holes] sweep: {N} file(s), {M} holey`; the lane fails when that line is absent; and `pnpm bkit:test:bats` runs `tests/status-holes-sweep-liveness.bats` green.
   - **TEST FIRST:**
     - `tests/status-holes-sweep-liveness.bats` `the sweep prints the summary line the lane greps for` fails when the sweep's summary text drifts from the literal the lane's `grep -qF` pattern names, or the lane's pattern matches output that lacks the line
+  - **TEST EXCEPTION:**
+    - `tests/status-holes-sweep-liveness.bats` `the sweep prints the summary line the lane greps for` fails when the sweep's summary text drifts from the literal the lane's `grep -qF` pattern names, or the lane's pattern matches output that lacks the line — the test was written after the CI step and its fixture and passed on its first run, and `bkit tests red` cannot record a red for a `.bats` file because the lint step finds nothing to check there; it now passes under bats (34 of 34) and its second case shows the lane's grep fails when the summary line is missing (owner, 2026-10-29)
 
 <!-- bkit:task 13 end -->
 
 <!-- bkit:task 14 start -->
 
-- [ ] **TASK 14:** Document the new log lines, the kill switch and the generalised tier contract
+- [x] **TASK 14:** Document the new log lines, the kill switch and the generalised tier contract
   - **UPDATE:** `docs/observability.md`: a new `### [bkit-status-holes]` prefix section (the advisory report line, the sweep-summary line, the `journalSuspect` heartbeat line and their grep patterns), the seam's `[bkit-telemetry] {kind} row not written: {reason}` swallow line, and the `BKIT_ENGINE_JOURNAL` kill switch
   - **UPDATE:** `docs/testing.md`: § Tier-3 fail-open advisory channel generalised from ship to all five workflows; the per-workflow fixture corpus recorded; the `sourceSha` replay procedure written down (`git show {parentSha}:{workflowMd}`, re-run against the rebuilt check) so a reader has the command, not just the field; the static lane's `bkit:audit:status` sentence (including its new liveness grep) and the `checks/status-holes.test.ts` key-test-files row updated
   - **READ:** § Log Format in `docs/observability.md`: the prefix rule and the line format the new lines follow
