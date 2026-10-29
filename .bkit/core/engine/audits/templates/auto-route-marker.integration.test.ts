@@ -33,15 +33,12 @@ const hasTools = spawnSync("bash", ["--version"]).status === 0;
 const readWorkflow = (file: string) =>
   fs.readFileSync(path.join(REPO_ROOT, ".bkit", "core", "workflows", file), "utf8");
 
-/** The one fenced line that runs `workflows close` for a phase. */
-function closeLine(file: string, workflow: string): string {
-  const lines = readWorkflow(file)
+/** Every fenced line that runs `workflows close` for a phase. */
+function closeLines(file: string, workflow: string): string[] {
+  return readWorkflow(file)
     .split("\n")
     .map((l) => l.trim())
     .filter((l) => l.startsWith(`"{BKIT}" workflows close --workflow=${workflow} `));
-  expect(lines, `${file}: one workflows close line`).toHaveLength(1);
-  expect(lines[0], `${file}: the close line takes the re-read labels`).toContain("{LABEL_FLAGS}");
-  return lines[0]!;
 }
 
 let tmp = "";
@@ -76,13 +73,14 @@ function fixture(workflow: string): string {
   return repo;
 }
 
-/** Run one close line with `{LABEL_FLAGS}` filled from `labels`; the committed subject. */
-function runClose(file: string, workflow: string, labels: string[]) {
+/** Run the given close line with `{LABEL_FLAGS}` filled from `labels`; the committed subject. */
+function runClose(line: string, workflow: string, labels: string[]) {
   const repo = fixture(workflow);
   const flags = labels.map((l) => `--label='${l}'`).join(" ");
-  const script = closeLine(file, workflow)
+  const script = line
     .replaceAll("{BKIT}", path.join(repo, "node_modules/.bin/bkit"))
     .replaceAll("{LABEL_FLAGS}", flags)
+    .replaceAll("{REF}", FID)
     .replaceAll("{FID}", FID)
     .replaceAll("{YYYYMM}", MONTH)
     .replaceAll("{OWNER_REPO}", "test/repo")
@@ -99,52 +97,91 @@ function runClose(file: string, workflow: string, labels: string[]) {
   return { status: r.status, stderr: r.stderr, subject };
 }
 
-describe.skipIf(!hasTools)("bkit [auto route] marker comes from the re-read labels", () => {
-  const CLOSES = [
-    ["bkit-build.md", "build"],
-    ["bkit-debug.md", "debug"],
-  ] as const;
+/**
+ * One case per `workflows close` line a run can take. The publish close threads
+ * `{LABEL_FLAGS}` into the commit subject; the held close (`--ending=held`)
+ * pushes nothing, takes no labels and never carries the marker.
+ */
+interface CloseCase {
+  name: string;
+  file: string;
+  workflow: string;
+  line: string;
+  threadsLabels: boolean;
+  armedSubject: string;
+  plainSubject: string;
+}
 
+const CLOSES = [
+  ["bkit-build.md", "build", 2],
+  ["bkit-debug.md", "debug", 1],
+] as const;
+
+const CASES: CloseCase[] = CLOSES.flatMap(([file, workflow]) =>
+  closeLines(file, workflow).map((line) => {
+    const held = line.includes("--ending=held");
+    const plainSubject = held
+      ? `chore(${FID}): close-workflow held`
+      : `chore(${FID}): close-workflow`;
+    return {
+      name: `${file} ${held ? "held" : "publish"} close`,
+      file,
+      workflow,
+      line,
+      threadsLabels: !held,
+      armedSubject: held ? plainSubject : `${plainSubject}${MARKER}`,
+      plainSubject,
+    };
+  }),
+);
+
+describe.skipIf(!hasTools)("bkit [auto route] marker comes from the re-read labels", () => {
   it("the built CLI is present", () => {
     expect(fs.existsSync(BKIT_BIN), "dist/cli.js missing — run the build").toBe(true);
   });
 
-  for (const [file, workflow] of CLOSES) {
-    describe(file, () => {
-      it("threads the marker onto the close subject when the issue carries bkit:auto", () => {
-        const r = runClose(file, workflow, ["bkit:build", "bkit:auto"]);
-        expect(r.status, `nonzero exit: ${r.stderr}`).toBe(0);
-        expect(r.subject).toBe(`chore(${FID}): close-workflow${MARKER}`);
-      });
+  it.each(CLOSES)("%s carries the expected number of close lines (%s)", (file, workflow, count) => {
+    expect(closeLines(file, workflow), `${file}: workflows close lines`).toHaveLength(count);
+  });
 
-      it("leaves the subject unchanged when bkit:auto is absent", () => {
-        const r = runClose(file, workflow, ["bkit:build"]);
-        expect(r.status, `nonzero exit: ${r.stderr}`).toBe(0);
-        expect(r.subject).toBe(`chore(${FID}): close-workflow`);
-      });
-
-      // The kill switch in bkit-cloud.yml is an exact label match; so is the command's.
-      it.each([["bkit:auto-paused"], ["no-bkit:auto"]])(
-        "does not arm the route on the near-miss label %s",
-        (label) => {
-          const r = runClose(file, workflow, [label]);
-          expect(r.status, `nonzero exit: ${r.stderr}`).toBe(0);
-          expect(r.subject).toBe(`chore(${FID}): close-workflow`);
-        },
-      );
-
-      // No tracker wired: `{LABEL_FLAGS}` is empty.
-      it("leaves the subject unchanged when no labels are passed", () => {
-        const r = runClose(file, workflow, []);
-        expect(r.status, `nonzero exit: ${r.stderr}`).toBe(0);
-        expect(r.subject).toBe(`chore(${FID}): close-workflow`);
-      });
-
-      it("hands the same labels to the CI-Dispatch Gate's re-trigger", () => {
-        expect(readWorkflow(file)).toMatch(/"\{BKIT\}" runs dispatch [^\n]*\{LABEL_FLAGS\}/);
-      });
+  describe.each(CASES)("$name", (c) => {
+    it("takes the re-read labels exactly when it can reach CI", () => {
+      expect(c.line.includes("{LABEL_FLAGS}"), `${c.name}: {LABEL_FLAGS}`).toBe(c.threadsLabels);
     });
-  }
+
+    it("threads the marker onto the close subject when the issue carries bkit:auto", () => {
+      const r = runClose(c.line, c.workflow, ["bkit:build", "bkit:auto"]);
+      expect(r.status, `nonzero exit: ${r.stderr}`).toBe(0);
+      expect(r.subject).toBe(c.armedSubject);
+    });
+
+    it("leaves the subject unchanged when bkit:auto is absent", () => {
+      const r = runClose(c.line, c.workflow, ["bkit:build"]);
+      expect(r.status, `nonzero exit: ${r.stderr}`).toBe(0);
+      expect(r.subject).toBe(c.plainSubject);
+    });
+
+    // The kill switch in bkit-cloud.yml is an exact label match; so is the command's.
+    it.each([["bkit:auto-paused"], ["no-bkit:auto"]])(
+      "does not arm the route on the near-miss label %s",
+      (label) => {
+        const r = runClose(c.line, c.workflow, [label]);
+        expect(r.status, `nonzero exit: ${r.stderr}`).toBe(0);
+        expect(r.subject).toBe(c.plainSubject);
+      },
+    );
+
+    // No tracker wired: `{LABEL_FLAGS}` is empty.
+    it("leaves the subject unchanged when no labels are passed", () => {
+      const r = runClose(c.line, c.workflow, []);
+      expect(r.status, `nonzero exit: ${r.stderr}`).toBe(0);
+      expect(r.subject).toBe(c.plainSubject);
+    });
+  });
+
+  it.each(CLOSES)("%s hands the same labels to the CI-Dispatch Gate's re-trigger", (file) => {
+    expect(readWorkflow(file)).toMatch(/"\{BKIT\}" runs dispatch [^\n]*\{LABEL_FLAGS\}/);
+  });
 
   it("bkit-ship.md hands the re-read labels to the squash merge", () => {
     expect(readWorkflow("bkit-ship.md")).toMatch(/"\{BKIT\}" prs merge [^\n]*\{LABEL_FLAGS\}/);
