@@ -275,8 +275,10 @@ Doctrine: `docs/deployments.md` § Dependency updaters, § Renovate — fencing 
 
 - Renovate, self-hosted: `.github/workflows/bkit-renovate.yml`. Dependency Dashboard = issue #328 (`gh issue view 328`). Logs: `gh run list --workflow bkit-renovate.yml --limit 5`, then `gh run view <id> --log`.
 - Config read: `main` + `dev` layered (`useBaseBranchConfig: "merge"`); lag check `git diff origin/main <baseSha> -- .github/renovate.json5`.
-- Validator: `git show origin/main:.github/renovate.json5 > <scratch>/repo/.github/renovate.json5`, then from `<scratch>/repo`: `RENOVATE_ALLOWED_ENV='PNPM_*' npx --yes --package renovate@<runner version> -- renovate-config-validator --strict`. A bare file path validates as global config and reports false `allowedEnv` errors.
+- Validator: `git show origin/main:.github/renovate.json5 > <scratch>/repo/.github/renovate.json5`; `npm install --no-save --ignore-scripts --prefix <scratch>/rv renovate@<runner version>` (runner version = `renovate-version` in `bkit-renovate.yml`); then from `<scratch>/repo`: `RENOVATE_ALLOWED_ENV='PNPM_*' node <scratch>/rv/node_modules/renovate/dist/config-validator.js --strict`. `npx --yes --package renovate@<v> -- renovate-config-validator` exits 127 ("command not found"). A bare file path validates as global config and reports false `allowedEnv` errors.
 - Bot PRs are authored by the PAT owner, not `app/renovate`; select by head-ref prefix only.
+- Schedule vs wake: `gh run list --workflow bkit-renovate.yml --limit 40 --json createdAt,event` → compare start times (UTC) with `schedule` and `lockFileMaintenance.schedule` in `.github/renovate.json5`.
+- Detected-file list on dashboard #328: a regex-managed file listed twice = double extraction; the run log's `"regex": {"fileCount": …}` line confirms.
 
 ### Inventory
 
@@ -285,7 +287,9 @@ Doctrine: `docs/deployments.md` § Dependency updaters, § Renovate — fencing 
 
 ### Classify
 
-- Root copies of templates (`.github/workflows/bkit-*.yml`, `.cursor/Dockerfile`) must stay byte-identical to `.bkit/templates/` twins, which sit in `ignorePaths`. A bot PR changing only the root copy fails `.bkit/core/engine/audits/repo/dogfood-templates.test.ts` and `.bkit/core/engine/audits/templates/template-action-pins.test.ts` → class C, fix = mirror into the template copy. Repro: `pnpm exec vitest run <both files>` in the worktree.
+- Root copies of templates (`.github/workflows/bkit-*.yml`, `.cursor/Dockerfile`, `scripts/graphify/bkit-graphify.sh`) must stay byte-identical to `.bkit/templates/` twins, which sit in `ignorePaths`. A bot PR changing only the root copy fails `.bkit/core/engine/audits/repo/dogfood-templates.test.ts` and `.bkit/core/engine/audits/templates/template-action-pins.test.ts` → class C, fix = mirror into the template copy. `.bkit/core/engine/install/cloud-env.test.ts` fails when a version + sha256 pin shared by `.bkit/shared/.claude/bkit-cloud.md` and the Cursor Dockerfile template differ.
+- Repro: clean worktree off `<baseSha>`, `git switch --detach origin/renovate/<branch>`, then `node_modules/.bin/vitest run <the three files>` (not `pnpm exec`: a `packageManager` bump makes Corepack fetch and dirty the tree).
+- Checksum repro for any PR bumping a `*_VERSION` paired with a `*_SHA256` (green CI is not evidence; jq is in the cloud setup only, which CI never runs): `gh release view <tag> -R <owner>/<repo> --json assets --jq '.assets[] | select(.name=="<asset>") | .digest'` vs the PR's hash; Node → `https://nodejs.org/dist/v<v>/SHASUMS256.txt` (linux-x64 tarball).
 
 ### Batch
 
@@ -296,18 +300,25 @@ Doctrine: `docs/deployments.md` § Dependency updaters, § Renovate — fencing 
 ### Verification
 
 - `git status --porcelain` → `pnpm install --frozen-lockfile` → `pnpm bkit:gate:install-static-unit-build` → `git status --porcelain` → `pnpm bkit check`.
+- Under high load average the unit tier can time out (`test-timeout-budget` line prints the load) or the gate can be killed (exit 143). Re-run the failing file alone: `node_modules/.bin/vitest run -c vitest.unit.config.ts <file>`; then `pnpm bkit:test:bats` and `pnpm build` separately; match the timeout against open `docs/failures.jsonl` rows before calling it a batch red.
+- Override check: after the batch install, every `pnpm.overrides` entry in `package.json` that shadows an exact devDependency pin → `grep -n -A3 '^  <pkg>:' pnpm-lock.yaml` under `importers` shows `specifier` and `version`; a `version` below the manifest pin = override wins.
+- The frozen install runs husky `prepare`; after removing the worktree confirm `git config core.hooksPath` in the main checkout still prints `.husky/_`.
 - No framework doctor; no single-version runtime packages (no `dependencies`).
 
 ### Unseen
 
-- Off-manifest CLI surfaces, root copy + `.bkit/templates/` twin each: `.github/workflows/bkit-ci.yml` (Vale `VALE_VERSION`, actionlint script, `setup-uv` `version:`, `GRAPHIFY_SPEC`, `npx --yes bats`), `bkit-cloud.yml` (Vale, `@opencode/cli`), `bkit-trivy.yml` (`docker://` Trivy), `bkit-renovate.yml` (Renovate image = action default unless `renovate-version`), `.cursor/Dockerfile` (base image, nodesource, gh apt, Vale, Corepack pnpm). Cloud setup source `.bkit/shared/.claude/bkit-cloud.md`, rendered to gitignored `.claude/bkit-cloud.md` (read the render for derived pins).
+- Off-manifest CLI surfaces, root copy + `.bkit/templates/` twin each: `.github/workflows/bkit-ci.yml` (Vale `VALE_VERSION`, actionlint script, `setup-uv` `version:`, apt `zsh`), `bkit-cloud.yml` (Vale, `@opencode/cli`), `bkit-trivy.yml` (`docker://` Trivy + digest), `bkit-renovate.yml` (`renovate-version`), `scripts/graphify/bkit-graphify.sh` (`GRAPHIFY_SPEC`), `.cursor/Dockerfile` (`FROM` digest, `ARG NODE_VERSION` / `GH_VERSION` / `VALE_VERSION` + `*_SHA256`, `ARG PNPM_VERSION` via Corepack, apt lines, commented supabase example). bats = devDependency. Cloud setup source `.bkit/shared/.claude/bkit-cloud.md` (Node, Vale, gh, jq + sha256), rendered to gitignored `.claude/bkit-cloud.md` (read the render for derived pins).
+- apt lines: `git grep -nE 'apt-get install' HEAD -- .cursor .github .bkit/templates .bkit/shared`.
+- Latest releases: `gh api repos/<owner>/<repo>/releases/latest --jq '.tag_name + " " + .published_at'`; npm `npm view <pkg> version time --json`; PyPI `curl -s https://pypi.org/pypi/<pkg>/json`; Node `https://nodejs.org/dist/index.json`.
+- Vendor advisories: `gh api repos/<owner>/<repo>/security-advisories` for `pnpm/pnpm`, `vitejs/vite`, `vitest-dev/vitest`, `nodejs/node`, `cli/cli`. Global lookup per id: `gh api advisories/<GHSA>` and `curl -s https://api.osv.dev/v1/vulns/<GHSA>` (404 = not carried). Known-hit check: any GHSA that resolves in both.
+- Scorecard per new package: `curl -s https://api.deps.dev/v3/projects/github.com%2F<owner>%2F<repo>` → `scorecard.overallScore` (absent = `no score`). Adoption: `curl -s https://api.npmjs.org/downloads/point/last-week/<pkg>`.
 - serena-agent in the cloud setup = tool server → `bkit-audit-agents`.
 - Deprecation: `npm view <name>@<version> deprecated` over every `packages:` key. Licences: `pnpm licenses list --json` and `--prod` inside an installed worktree.
 - No prior report → "since last pass" base = last `chore(deps)` batch commit (`git log --grep 'chore(deps)' -1`).
 
 ### End of Life
 
-- Sources: endoflife.date `nodejs`, `pnpm`, `ubuntu`; Vite → vite.dev/releases. Pins: `.nvmrc`, `package.json` `engines` + `packageManager`, `.cursor/Dockerfile` `FROM` + nodesource line. vite and pnpm majors are held by the bkit-only rules at the end of `.github/renovate.json5`, so no bot PR signals their end of life.
+- Sources: endoflife.date `nodejs`, `pnpm`, `ubuntu`; Vite → vite.dev/releases. Pins: `.nvmrc`, `package.json` `engines` + `packageManager`, `.cursor/Dockerfile` `FROM` + `ARG NODE_VERSION`, `.bkit/shared/.claude/bkit-cloud.md` `NODE_VERSION`. vite and pnpm majors are held by the bkit-only rules at the end of `.github/renovate.json5`, so no bot PR signals their end of life.
 
 ### Excluded
 
