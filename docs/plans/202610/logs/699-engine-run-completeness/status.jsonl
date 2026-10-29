@@ -212,3 +212,9 @@
 {"type":"engine-call","workflow":"build","at":"2026-10-29T03:41:09Z","noun":"disk","verb":"prune","flags":["mode","auto"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-verify/6/2/comment","hash":"3f73f632f6f0ac109988c6b56ff07e18ac23c9924ee32604984e4419ed5b9009","ref":"https://github.com/cbartens/bkit/issues/699#issuecomment-6487321354","at":"2026-10-29T03:45:15Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-10-29T03:45:15Z","parentSha":"42786ce62f03a83526694195871fe44e95847434","artifacts":["docs/plans/202610/logs/699-engine-run-completeness/build-plan-verify-6-2.md"],"verdict":"FAIL","attempt":2,"group":6,"failures":2}
+{"type":"engine-call","workflow":"build","at":"2026-10-29T03:45:17Z","noun":"disk","verb":"prune","flags":["mode","auto"]}
+{"type":"owner-pause","workflow":"build","at":"2026-10-29T03:45:18Z","reason":"decision"}
+{"type":"owner-answer","workflow":"build","at":"2026-10-29T04:03:00Z"}
+{"type":"engine-call","workflow":"build","at":"2026-10-29T04:03:04Z","noun":"disk","verb":"prune","flags":["mode","auto"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-decision/-/6/comment","hash":"bda9673e6267f96a77a4a78eaf335df9e0484b066848f8db0de26cdf7d6d2d83","ref":"https://github.com/cbartens/bkit/issues/699#issuecomment-6487567507","at":"2026-10-29T04:03:05Z"}
+{"type":"step-done","workflow":"build","step":"build-decision","status":"DONE","at":"2026-10-29T04:03:05Z","parentSha":"c12203b4c5c88da7d345d5a6adbd450acaddb42f","artifacts":["docs/plans/202610/logs/699-engine-run-completeness/build-decision-1-6.md"],"attempt":6,"route":"verify"}
