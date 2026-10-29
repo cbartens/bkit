@@ -815,6 +815,35 @@ describe("bkit workflows close", () => {
     expect(r.json.report.length).toBeGreaterThan(0);
   });
 
+  it("records ending held and publish false on the workflow-done row", async () => {
+    const cwd = closable();
+    const r = await run(cwd, wf("close", "build", "--ending=held", "--publish=false"));
+    expect(r.code).toBe(0);
+    const done = rows(statusOf(cwd)).filter((x) => x.type === "workflow-done");
+    expect(done).toHaveLength(1);
+    expect(done[0]).toMatchObject({ ending: "held", publish: false });
+    const outcome = writtenOutcome(cwd);
+    expect(outcome).toMatchObject({ ending: "held", publish: false });
+    expect(validate(outcome!)).toEqual({ ok: true });
+  });
+
+  it("defaults the close row to ending done", async () => {
+    const cwd = closable();
+    expect((await run(cwd, wf("close", "build"))).code).toBe(0);
+    const done = rows(statusOf(cwd)).filter((x) => x.type === "workflow-done");
+    expect(done[0]).toMatchObject({ ending: "done" });
+    expect(done[0]).not.toHaveProperty("publish");
+    expect(writtenOutcome(cwd)).toMatchObject({ ending: "done" });
+    expect(writtenOutcome(cwd)).not.toHaveProperty("publish");
+  });
+
+  it("refuses an unknown ending", async () => {
+    const cwd = closable();
+    expect((await run(cwd, wf("close", "build", "--ending=paused"))).code).toBe(2);
+    expect((await run(cwd, wf("close", "build", "--publish=maybe"))).code).toBe(2);
+    expect(rows(statusOf(cwd)).some((x) => x.type === "workflow-done")).toBe(false);
+  });
+
   it("stamps its compliance rows with the same run.parentSha as its counter and outcome, at the close step", async () => {
     const cwd = closable();
     expect((await run(cwd, wf("close", "build"))).code).toBe(0);

@@ -54,6 +54,25 @@ describe("bkit stats", () => {
     expect(md).toContain("### Run durations");
   });
 
+  it("counts a held outcome row in its kind total", () => {
+    fs.writeFileSync(
+      path.join(root, ".bkit", "stats.jsonl"),
+      [
+        row(1_700_000_000_001, "outcome", {
+          run: { parentSha: "a".repeat(40) },
+          ending: "held",
+          publish: false,
+        }),
+        row(1_700_000_000_002, "outcome", { run: { parentSha: "b".repeat(40) }, ending: "done" }),
+      ].join("\n") + "\n",
+    );
+
+    const md = buildRepoStats(root);
+
+    expect(md).toContain("| outcome | 2 |");
+    expect(md).not.toContain("| held |");
+  });
+
   it("prints each table unpadded under a prettier-ignore marker", () => {
     fs.writeFileSync(
       path.join(root, ".bkit", "stats.jsonl"),

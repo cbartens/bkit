@@ -614,7 +614,7 @@ export interface ContextBlock {
   byAgent: Record<string, { peak: number; runs: number }>;
 }
 
-export const OUTCOME_ENDINGS: Set<string> = new Set(["done", "close-failed"]);
+export const OUTCOME_ENDINGS: Set<string> = new Set(["done", "close-failed", "held"]);
 
 // outcome — one row per WORKFLOW RUN, keyed by (repo, by.workflow, run.parentSha), written
 // by `bkit workflows close`. Blocks that do not apply to the workflow are absent.
@@ -622,8 +622,13 @@ export interface OutcomePayload {
   run: RunRef;
   /** null when the run's start row is missing. */
   time: TimeBlock | null;
-  /** `close-failed` = the work finished and the close after it did not (its CI never started). */
-  ending: "done" | "close-failed";
+  /**
+   * `close-failed` = the work finished and the close after it did not (its CI never started);
+   * `held` = a local build that published nothing.
+   */
+  ending: "done" | "close-failed" | "held";
+  /** A build's resolved publish value; `false` with `held`. */
+  publish?: boolean;
   lines?: LinesBlock | null;
   steps?: StepsBlock;
   ci?: CiDispatch[];
@@ -804,7 +809,7 @@ export interface RunPayload {
     parentShas: string[];
   };
   time: TimeBlock;
-  ending: "done" | "close-failed" | "failed" | "decision-pause" | "stopped";
+  ending: "done" | "close-failed" | "failed" | "decision-pause" | "stopped" | "held";
   scan: { rows: number; afterEnd: number; settled: boolean };
   [field: string]: unknown;
 }
@@ -815,6 +820,7 @@ export const RUN_ENDINGS: Set<string> = new Set([
   "failed",
   "decision-pause",
   "stopped",
+  "held",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -1713,7 +1719,13 @@ export function validate(event: unknown): ValidationResult {
     if (!OUTCOME_ENDINGS.has(e["ending"] as string)) {
       return {
         ok: false,
-        reason: `outcome ending must be done|close-failed (got: ${String(e["ending"])})`,
+        reason: `outcome ending must be ${[...OUTCOME_ENDINGS].join("|")} (got: ${String(e["ending"])})`,
+      };
+    }
+    if (e["publish"] !== undefined && typeof e["publish"] !== "boolean") {
+      return {
+        ok: false,
+        reason: `outcome publish must be a boolean (got: ${String(e["publish"])})`,
       };
     }
     const ledgers = e["ledgers"];
@@ -2217,7 +2229,7 @@ export function workflowTelemetry(result: FoldFromResult, workflow?: string): Te
       show("lines.total.files", (r) => r.lines?.total?.files);
     }
     show("plan.total.tasks", (r) => r.plan?.total?.tasks);
-    if (cur.ending === "close-failed") row("ending", "close-failed", "—");
+    if (cur.ending === "close-failed" || cur.ending === "held") row("ending", cur.ending, "—");
     // Instinct-loop deltas — friction is the featured signal (shown even at 0).
     show("ledgers.friction.added", (r) => r.ledgers?.friction?.added);
     show("ledgers.deferrals.added", (r) => r.ledgers?.deferrals?.added);

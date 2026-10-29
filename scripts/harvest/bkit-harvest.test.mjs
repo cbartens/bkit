@@ -1257,6 +1257,61 @@ await test("endingOf: a failure only at close is close-failed; a later close tha
   );
 });
 
+await test("derives held from a workflow-done row ending held", () => {
+  const rows = [
+    { type: "workflow-started", workflow: "build", at: at(0) },
+    { type: "workflow-done", workflow: "build", at: at(1), ending: "held", publish: false },
+  ];
+  assert.equal(endingOf(splitRuns(rows)[0], logDir, 1), "held");
+});
+
+await test("keeps a normal done run as done", () => {
+  const rows = [
+    { type: "workflow-started", workflow: "build", at: at(0) },
+    { type: "workflow-done", workflow: "build", at: at(1), ending: "done" },
+  ];
+  assert.equal(endingOf(splitRuns(rows)[0], logDir, 1), "done");
+  const bare = [rows[0], { type: "workflow-done", workflow: "build", at: at(1) }];
+  assert.equal(endingOf(splitRuns(bare)[0], logDir, 1), "done");
+});
+
+await test("counts held runs in the workflow report", () => {
+  const run = (start, ending) => ({
+    ts: start,
+    kind: "run",
+    repo: repoFp("acme/widget"),
+    bkitVersion: "5.5.1",
+    workflow: "build",
+    step: "scan",
+    key: `k:${start}`,
+    fid: fingerprint(`acme/widget:${FID}`),
+    issue: issueFp("acme/widget", 650),
+    run: 1,
+    start,
+    end: start + 60_000,
+    lastActivityAt: start + 60_000,
+    minutes: 1,
+    activeMinutes: null,
+    activeFrom: null,
+    ending,
+    steps: {},
+    closeCi: [],
+    settled: true,
+  });
+  const md = renderReport(
+    [
+      ...readLedger(statsFile).filter((r) => r.kind === "chat"),
+      run(T0, "held"),
+      run(T0 + DAY, "held"),
+      run(T0 + 2 * DAY, "done"),
+    ],
+    new Map([[fingerprint(`acme/widget:${FID}`), FID]]),
+    T0 + 5 * DAY,
+  );
+  assert.match(md, /\| decision-pause \| stopped \| held \|/);
+  assert.match(md, /\| build \| 3 \| 0 \| 1 \| 0 \| 0 \| 0 \| 0 \| 2 \|/);
+});
+
 await test("scan appends one run row per finished run, with fingerprints and no FID text", async () => {
   const res = await scan({
     hosts: hostsFor(home, ["claude-code"]),
@@ -1914,7 +1969,7 @@ await test("the report lists open runs, marked, and leaves them out of the media
     new Map([[fingerprint(`acme/widget:${FID}`), FID]]),
     T0 + 2 * DAY,
   );
-  assert.match(md, /\| build \| 2 \| 1 \| 1 \| 0 \| 0 \| 0 \| 1 \| 100 \| 100 \|/);
+  assert.match(md, /\| build \| 2 \| 1 \| 1 \| 0 \| 0 \| 0 \| 1 \| 0 \| 100 \| 100 \|/);
   assert.match(md, /\| 650-secret-feature \(open\) \| 5\.5\.1 \| stopped \| 7 \|/);
   assert.match(
     md,
