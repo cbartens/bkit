@@ -54,7 +54,7 @@ export PATH="/usr/local/bin:$PATH"
 hash -r
 
 # renovate: datasource=github-releases depName=errata-ai/vale
-VALE_VERSION="3.9.1"
+VALE_VERSION="3.24.0"
 VALE_SHA256="fbc2eb47d0b8c50220ed1a2c5c611fbe0904ed567d638143d482016a18fd2db0"
 if ! command -v vale >/dev/null 2>&1; then
   cd /tmp
