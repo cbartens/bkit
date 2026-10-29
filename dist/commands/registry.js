@@ -8,6 +8,7 @@ import { ciCommand } from "./ci/ci.js";
 import { setupCommand } from "./setup/setup.js";
 import { branchesCommand } from "./workflow/branches.js";
 import { challengeCommand } from "./workflow/challenge.js";
+import { completenessCommand } from "./workflow/completeness.js";
 import { contextCommand } from "./workflow/context.js";
 import { countersCommand } from "./workflow/counters.js";
 import { decisionsCommand } from "./workflow/decisions.js";
@@ -53,6 +54,7 @@ export const COMMANDS = [
     contextCommand,
     roadmapCommand,
     plansCommand,
+    completenessCommand,
     ciCommand,
     setupCommand,
 ];
