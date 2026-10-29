@@ -22,6 +22,7 @@
 // Usage (advisory CI step or manual):
 //   npx tsx .bkit/core/engine/checks/status-holes.ts <status.jsonl>...
 //   # exits 0 always; prints advisory report to stdout
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -139,6 +140,70 @@ function requiredCalls(text) {
         return { noun, verb: verb.startsWith("--") ? "" : verb, flags };
     });
 }
+/** R1: per line of a step section, true when it sits on an `If` / `Else` arm. */
+function branchLines(lines) {
+    const branch = lines.map(() => false);
+    const targets = new Set();
+    let ifIndent = null;
+    lines.forEach((l, i) => {
+        if (l.trim() === "") {
+            branch[i] = ifIndent !== null;
+            return;
+        }
+        const indent = l.length - l.trimStart().length;
+        if (ifIndent !== null && indent <= ifIndent)
+            ifIndent = null;
+        if (/^\s*- \*\*(If|Else)\*\*/.test(l))
+            ifIndent = indent;
+        branch[i] = ifIndent !== null;
+        if (/\*\*(If|Else)\*\*/.test(l))
+            for (const m of l.matchAll(/sub-step (\d+)/g))
+                targets.add(Number(m[1]));
+    });
+    let sub = null;
+    lines.forEach((l, i) => {
+        const m = /^(\d+)\. /.exec(l);
+        if (m)
+            sub = Number(m[1]);
+        else if (l.startsWith("#"))
+            sub = null;
+        if (sub !== null && targets.has(sub))
+            branch[i] = true;
+    });
+    return branch;
+}
+/** The `"{BKIT}"` calls of one step section, each tagged with its position (R3) and branch flag (R1). */
+function sectionCalls(body) {
+    const lines = body.split("\n");
+    const branch = branchLines(lines);
+    const logical = [];
+    for (let i = 0; i < lines.length; i++) {
+        let text = lines[i];
+        const start = i;
+        while (text.endsWith("\\") && i + 1 < lines.length) {
+            i += 1;
+            text = `${text.slice(0, -1)} ${lines[i].trimStart()}`;
+        }
+        logical.push({ text, branch: branch[start] });
+    }
+    const perLine = logical.map((l) => requiredCalls(l.text));
+    const isFinish = (c) => c.noun === "steps" && (c.verb === "finish" || (c.verb === "done" && c.flags.includes("step")));
+    const lastFinish = perLine.reduce((last, calls, i) => (calls.some(isFinish) ? i : last), -1);
+    return perLine.flatMap((calls, i) => calls.map((c) => ({
+        ...c,
+        position: i > lastFinish && lastFinish !== -1 ? "post" : "pre",
+        branch: logical[i].branch,
+    })));
+}
+/** Row keys a section writes (not merely names in a `steps gate --step=` read). */
+function stepWrites(text) {
+    const joined = text.replace(/\\\n\s*/g, " ");
+    const found = joined.split("\n").flatMap((line) => {
+        const viaCall = /"\{BKIT\}" steps (?:finish|done)\b/.test(line) ? stepKeys(line) : [];
+        return [...viaCall, ...[...line.matchAll(/step:"([a-z][a-z0-9-]*)"/g)].map((m) => m[1])];
+    });
+    return [...new Set(found)];
+}
 const stepKeys = (text) => [
     ...new Set([...text.matchAll(STEP_KEY_RE)].filter((m) => !m[2]).map((m) => m[1])),
 ];
@@ -160,7 +225,8 @@ export function deriveContract(workflowMd, workflow) {
         number: s.number,
         title: s.title,
         keys: stepKeys(s.body),
-        calls: requiredCalls(s.body),
+        writes: stepWrites(s.body),
+        calls: sectionCalls(s.body),
         conditional: isConditionalSection(s.body),
     }));
     const universe = [...new Set(steps.flatMap((s) => s.keys))].sort();
@@ -184,10 +250,260 @@ export function deriveContract(workflowMd, workflow) {
         steps,
         universe,
         workflowCalls: requiredCalls(outside),
+        sourceSha: createHash("sha256").update(workflowMd).digest("hex"),
         orphanSteps: stepKeys(outside)
             .filter((k) => k.startsWith(`${workflow}-`) && !universe.includes(k))
             .sort(),
         drift,
+    };
+}
+/** The `completeness` verb journals itself; it is neither expected nor ever unexpected. */
+const SELF_NOUN = "completeness";
+const callKey = (c) => `${c.noun} ${c.verb}`;
+export function contractUnits(contract) {
+    const owner = new Map();
+    for (const k of contract.universe) {
+        const writers = contract.steps.filter((s) => s.writes.includes(k));
+        const namers = contract.steps.filter((s) => s.keys.includes(k));
+        const last = (writers.length > 0 ? writers : namers).at(-1);
+        if (last)
+            owner.set(k, last);
+    }
+    const owners = contract.steps.filter((s) => [...owner.values()].includes(s));
+    return owners.map((s) => {
+        const keys = s.keys.filter((k) => owner.get(k) === s);
+        const folded = contract.steps.filter((f) => !owners.includes(f) && f.keys[0] !== undefined && owner.get(f.keys[0]) === s);
+        const calls = [
+            ...folded.filter((f) => f.number < s.number).flatMap((f) => f.calls),
+            ...s.calls,
+            ...folded
+                .filter((f) => f.number > s.number)
+                .flatMap((f) => f.calls.map((c) => ({ ...c, position: "post" }))),
+        ];
+        return { number: s.number, keys, calls, conditional: s.conditional };
+    });
+}
+/**
+ * Classify one run's rows against its contract. Consecutive rows of one unit form a
+ * visit (a repeat of a key starts a new one, so each group-loop repeat owns its own
+ * gaps). A visit owns the calls before its first row and between its rows, and the
+ * calls after its last row that are one of its `post` calls (R3); the rest belong to
+ * the next visit. Matching is on noun + verb (R2). `holey` keys on `evidenceHoles` +
+ * `stepHoles` only. Never throws and never filters by age.
+ */
+export function check(rows, contract, options = {}) {
+    const workflow = contract.workflow;
+    const own = rows.filter((r) => r.workflow === workflow);
+    const units = contractUnits(contract).map((u) => ({
+        ...u,
+        calls: u.calls.filter((c) => c.noun !== SELF_NOUN),
+    }));
+    const unitOf = new Map();
+    for (const u of units)
+        for (const k of u.keys)
+            unitOf.set(k, u);
+    const workflowCalls = contract.workflowCalls.filter((c) => c.noun !== SELF_NOUN);
+    const workflowKeys = new Set(workflowCalls.map(callKey));
+    const items = own.flatMap((r) => {
+        if (r.type === "engine-call" && r["noun"] !== SELF_NOUN) {
+            return [{ kind: "call", call: { noun: String(r["noun"]), verb: String(r["verb"]) } }];
+        }
+        if (r.type === "step-done" && typeof r.step === "string") {
+            return [{ kind: "step", key: r.step, row: r, unit: unitOf.get(r.step) }];
+        }
+        return [];
+    });
+    const callCount = items.filter((i) => i.kind === "call").length;
+    const preJournal = callCount === 0;
+    // Visits over the step rows, in order; a row outside the contract closes the current visit.
+    const visits = [];
+    const visitOfRow = new Map();
+    let current;
+    const keysInCurrent = new Set();
+    items.forEach((item, i) => {
+        if (item.kind !== "step")
+            return;
+        if (!item.unit) {
+            current = undefined;
+            return;
+        }
+        const sameUnit = current?.unit === item.unit && !keysInCurrent.has(item.key);
+        if (!sameUnit) {
+            current = { unit: item.unit, rows: [] };
+            keysInCurrent.clear();
+            visits.push(current);
+        }
+        current.rows.push(i);
+        keysInCurrent.add(item.key);
+        visitOfRow.set(i, current);
+    });
+    const postSlots = new Map();
+    const freshSlots = (v) => {
+        const slots = new Map();
+        for (const c of v.unit.calls) {
+            if (c.position === "post" && !c.branch)
+                slots.set(callKey(c), (slots.get(callKey(c)) ?? 0) + 1);
+        }
+        postSlots.set(v, slots);
+        return slots;
+    };
+    const stepIdx = items.flatMap((it, i) => (it.kind === "step" ? [i] : []));
+    const owned = new Map();
+    const unexpectedCalls = new Map();
+    const unattributable = new Map();
+    items.forEach((item, i) => {
+        if (item.kind !== "call")
+            return;
+        const key = callKey(item.call);
+        const prevIdx = stepIdx.filter((x) => x < i).at(-1) ?? -1;
+        const nextIdx = stepIdx.find((x) => x > i) ?? -1;
+        const prevVisit = visitOfRow.get(prevIdx);
+        const nextVisit = visitOfRow.get(nextIdx);
+        // Each post call of a visit absorbs one journaled call: a noun + verb written both
+        // below one step's finish line and above the next step's is charged once to each.
+        const slots = prevVisit === undefined ? undefined : (postSlots.get(prevVisit) ?? freshSlots(prevVisit));
+        const claimsPost = prevVisit !== undefined &&
+            prevVisit.rows.at(-1) === prevIdx &&
+            slots !== undefined &&
+            ((slots.get(key) ?? 0) > 0 ||
+                (prevVisit.unit.calls.some((c) => c.position === "post" && c.branch && callKey(c) === key) &&
+                    !nextVisit?.unit.calls.some((c) => !c.branch && callKey(c) === key)));
+        if (claimsPost && slots)
+            slots.set(key, Math.max(0, (slots.get(key) ?? 0) - 1));
+        const insideVisit = prevVisit !== undefined && prevVisit === nextVisit ? prevVisit : undefined;
+        const owner = insideVisit ?? (claimsPost ? prevVisit : nextVisit);
+        const required = owner?.unit.calls.some((c) => callKey(c) === key) === true;
+        if (owner && required) {
+            owned.set(owner, (owned.get(owner) ?? new Set()).add(key));
+        }
+        else if (workflowKeys.has(key)) {
+            // R4: a workflow-level call is never charged to a step and never unexpected.
+        }
+        else if (owner === undefined) {
+            unattributable.set(key, item.call);
+        }
+        else {
+            unexpectedCalls.set(key, item.call);
+        }
+    });
+    const evidenceHoles = [];
+    const occurrence = new Map();
+    const exercised = new Map();
+    for (const v of visits) {
+        const index = (occurrence.get(v.unit) ?? 0) + 1;
+        occurrence.set(v.unit, index);
+        const got = owned.get(v) ?? new Set();
+        const pool = exercised.get(v.unit) ?? new Set();
+        for (const k of got)
+            pool.add(k);
+        exercised.set(v.unit, pool);
+        const rowsOf = v.rows.map((i) => items[i]).flatMap((x) => (x?.kind === "step" ? [x.row] : []));
+        const done = rowsOf.some((r) => r.status === undefined || r.status === "DONE");
+        if (preJournal || !done)
+            continue;
+        const missing = new Map();
+        for (const c of v.unit.calls) {
+            if (!c.branch && !got.has(callKey(c)) && !missing.has(callKey(c))) {
+                missing.set(callKey(c), { noun: c.noun, verb: c.verb, flags: c.flags });
+            }
+        }
+        if (missing.size === 0)
+            continue;
+        const group = rowsOf.map((r) => r["group"]).find((g) => typeof g === "number");
+        evidenceHoles.push({
+            step: rowsOf[0]?.step ?? v.unit.keys[0] ?? "",
+            number: v.unit.number,
+            index,
+            ...(typeof group === "number" ? { group } : {}),
+            missing: [...missing.values()],
+        });
+    }
+    const unexercised = [];
+    if (!preJournal) {
+        for (const u of units) {
+            const pool = exercised.get(u);
+            if (pool === undefined)
+                continue;
+            const required = new Set(u.calls.filter((c) => !c.branch).map(callKey));
+            const reported = new Set();
+            for (const c of u.calls) {
+                const k = callKey(c);
+                if (c.branch && !required.has(k) && !pool.has(k) && !reported.has(k)) {
+                    reported.add(k);
+                    unexercised.push({ step: u.keys[0] ?? "", call: { noun: c.noun, verb: c.verb } });
+                }
+            }
+        }
+    }
+    const observed = new Set(items.flatMap((i) => (i.kind === "step" ? [i.key] : [])));
+    const closed = observed.has(`${workflow}-close-workflow`);
+    const failed = own.some((r) => r.type === "workflow-failed");
+    const lastNumber = Math.max(0, ...visits.map((v) => v.unit.number));
+    const stepHoles = units
+        .filter((u) => !u.conditional && !u.keys.some((k) => observed.has(k)))
+        .filter((u) => closed || (failed && u.number < lastNumber))
+        .map((u) => u.keys[0]);
+    const unexpected = [
+        ...[...observed]
+            .filter((k) => !unitOf.has(k))
+            .sort()
+            .map((step) => ({ step })),
+        ...(preJournal ? [] : unexpectedCalls.values()),
+    ];
+    const holey = evidenceHoles.length > 0 || stepHoles.length > 0;
+    return {
+        workflow,
+        verdict: holey ? "HOLEY" : "CLEAN",
+        holey,
+        preJournal,
+        journalSuspect: preJournal && options.journalSuspect === true,
+        observed: {
+            steps: items.filter((i) => i.kind === "step").length,
+            calls: callCount,
+        },
+        evidenceHoles,
+        stepHoles,
+        unexercised,
+        unexpected,
+        unattributable: [...unattributable.values()],
+        sourceSha: contract.sourceSha,
+        workflowCalls: workflowCalls.map((c) => ({ noun: c.noun, verb: c.verb })),
+    };
+}
+/**
+ * The verdict of a run: its last stored `completeness` row, recomputed when a
+ * `step-done` or `engine-call` row follows it (the closing `workflow-done` row and
+ * the `completeness` verb's own journal row do not).
+ */
+export function readCompleteness(rows, contract, options = {}) {
+    const own = rows.filter((r) => r.workflow === contract.workflow);
+    const at = own.map((r) => r.type).lastIndexOf("completeness");
+    const stored = at === -1 ? undefined : own[at];
+    const followed = own
+        .slice(at + 1)
+        .some((r) => r.type === "step-done" || (r.type === "engine-call" && r["noun"] !== SELF_NOUN));
+    if (!stored || followed)
+        return { verdict: check(rows, contract, options), source: "computed" };
+    const list = (key) => Array.isArray(stored[key]) ? stored[key] : [];
+    const holey = stored["verdict"] === "HOLEY";
+    const observed = stored["observed"];
+    return {
+        source: "stored",
+        verdict: {
+            workflow: contract.workflow,
+            verdict: holey ? "HOLEY" : "CLEAN",
+            holey,
+            preJournal: stored["preJournal"] === true,
+            journalSuspect: stored["journalSuspect"] === true,
+            observed: observed ?? { steps: 0, calls: 0 },
+            evidenceHoles: list("evidenceHoles"),
+            stepHoles: list("stepHoles"),
+            unexercised: list("unexercised"),
+            unexpected: list("unexpected"),
+            unattributable: list("unattributable"),
+            sourceSha: typeof stored["sourceSha"] === "string" ? stored["sourceSha"] : "",
+            workflowCalls: list("workflowCalls"),
+        },
     };
 }
 // ---------------------------------------------------------------------------
