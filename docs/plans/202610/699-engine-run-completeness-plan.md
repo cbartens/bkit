@@ -820,6 +820,8 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
     - `.bkit/core/engine/commands/workflow/completeness.test.ts` `infers each run's workflow when --workflow is absent` fails on a silent no-op that prints no verdict
     - `.bkit/core/engine/commands/workflow/completeness.test.ts` `exits 0 with no verdict when the file or the workflow markdown is unreadable` fails on a throw or a non-zero code for a missing `status.jsonl` or an unreadable markdown
     - `.bkit/core/engine/commands/conventions.test.ts` `follow the conventions, and list every exit code their source can return` fails while `completenessCommand` is unreachable from `COMMANDS` or its help omits an exit code its source can return
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/commands/conventions.test.ts` `follow the conventions, and list every exit code their source can return` fails while `completenessCommand` is unreachable from `COMMANDS` or its help omits an exit code its source can return — the test checks every command at once and the new command only counts once registered; the stub was not registered, so no honest failing run was possible (owner, 2026-10-29)
 
 <!-- bkit:task 10 end -->
 
