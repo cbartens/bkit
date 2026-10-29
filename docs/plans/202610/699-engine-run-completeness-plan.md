@@ -186,6 +186,7 @@ As the bkit maintainer I want a workflow run to tell me, in its own artifacts, w
 | branches anchor-read with a plan --file journals into the active run | Integration | `.bkit/core/engine/ledgers/journal.integration.test.ts` | 21 |
 | a run whose journal starts mid-run reports no evidence hole for steps finished before its first engine-call row | Unit | `.bkit/core/engine/checks/status-holes.test.ts` | 22 |
 | a file holding two runs of one workflow is checked per run | Unit | `.bkit/core/engine/commands/workflow/completeness.test.ts` | 23 |
+| the verdicts output is described as one verdict per checked run | Unit | `.bkit/core/engine/commands/workflow/completeness.test.ts` | 24 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -1035,13 +1036,22 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
 
 <!-- bkit:task 23 start -->
 
-- [ ] **TASK 23:** `bkit completeness check` folds every run of one workflow in the file into one verdict: a failed pre-journal build run 1 followed by a journaling build run 2 reports run 1's `build-worktree-setup` as an evidence hole lacking `steps finish` (reproduced on a 6-row fixture), and a run 1 `close-workflow` row makes run 2's absent steps step holes; 5 of the 12 `status.jsonl` files in this tree hold two runs of one workflow
+- [x] **TASK 23:** `bkit completeness check` folds every run of one workflow in the file into one verdict: a failed pre-journal build run 1 followed by a journaling build run 2 reports run 1's `build-worktree-setup` as an evidence hole lacking `steps finish` (reproduced on a 6-row fixture), and a run 1 `close-workflow` row makes run 2's absent steps step holes; 5 of the 12 `status.jsonl` files in this tree hold two runs of one workflow
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/completeness.ts:83` · **Round:** 1
   - **DONE WHEN:** the verb splits the file's rows per run (each `workflow-started` to the next of that workflow, as `previousRunWarning` already does via `runRowsOf`) and reports one verdict per run, so no row of one run is attributed to, or closes, another.
   - **TEST FIRST:**
     - `.bkit/core/engine/commands/workflow/completeness.test.ts` `a file holding two runs of one workflow is checked per run` fails on a single verdict whose `evidenceHoles` names run 1's pre-journal `build-worktree-setup`
 
 <!-- bkit:task 23 end -->
+<!-- bkit:task 24 start -->
+
+- [ ] **TASK 24:** The `verdicts` output of `bkit completeness check` is still described as "one completeness verdict per checked workflow", but the verb now prints one verdict per run
+      **Severity:** LOW · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/completeness.ts:79` · **Round:** verify
+  - **DONE WHEN:** the output description in `completeness.ts` says one completeness verdict per checked run, and `dist/commands/workflow/completeness.js` is rebuilt to match.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/completeness.test.ts` `the verdicts output is described as one verdict per checked run` fails on a description that says "per checked workflow"
+
+<!-- bkit:task 24 end -->
 <!-- bkit:group 11 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
