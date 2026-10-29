@@ -567,12 +567,11 @@ jobs:
 
       - name: Install opencode
         run: |
-          # Version-pinned. No updater bumps this pin: take the new version from bkit's
-          # template when `bkit upgrade` lists this file, or bump it by hand.
-          # 2.0.x ships ONLY on npm as `@opencode/cli` — there is no 2.x GitHub release (latest
-          # is v1.19.0), so the curl installer (https://opencode.ai/install downloads GitHub
-          # release binaries) cannot fetch 2.0.26. npm's postinstall selects the runner's
-          # platform binary.
+          # Version-pinned. Renovate bumps it through the `# renovate:` line below; without
+          # Renovate, take the new version from bkit's template when `bkit upgrade` lists
+          # this file. Installed from npm (`@opencode/cli`): the curl installer
+          # (https://opencode.ai/install) installs OpenCode 1 only and refuses a 2.x version.
+          # npm's postinstall selects the runner's platform binary.
           # renovate: datasource=npm depName=@opencode/cli
           npm install -g @opencode/cli@2.1.2
           echo "$(npm prefix -g)/bin" >> "$GITHUB_PATH"
