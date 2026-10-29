@@ -1064,26 +1064,26 @@ const contractOf = (workflow: string) =>
   );
 
 /**
- * The close's `completeness` row for the run that started at `startAt`; `null` when the
- * check fails. Advisory: a failure is logged in one line and never fails the close.
+ * Appends the close's `completeness` row for the run that started at `startAt`. Advisory:
+ * a failure of the check or of the write is logged in one line and never fails the close.
  * `journalSuspect` is set here only: the closing engine journals itself.
  */
-function completenessRow(
+function writeCompletenessRow(
   file: string,
   workflow: string,
   startAt: string | undefined,
   parentSha: string,
   log: (m: string) => void,
-): StatusRow | null {
+): void {
   try {
     const verdict = checkCompleteness(runRowsOf(file, workflow, startAt), contractOf(workflow), {
       journalSuspect: true,
     });
-    return { type: "completeness", ...verdict, at: statusTimestamp(), parentSha };
+    const row: StatusRow = { type: "completeness", ...verdict, at: statusTimestamp(), parentSha };
+    fs.appendFileSync(file, appendLine(row));
   } catch (err) {
     // The check is advisory: report the failure and close without the row.
     log(`[bkit-telemetry] completeness row not written: ${(err as Error).message}`);
-    return null;
   }
 }
 
@@ -1223,14 +1223,13 @@ export function closeWorkflow(
       log,
     );
   }
-  const completeness = completenessRow(
+  writeCompletenessRow(
     where.status,
     workflow,
     lastOfType(readStatusEvents(where.status), "workflow-started", workflow)?.at,
     parentSha,
     log,
   );
-  if (completeness !== null) fs.appendFileSync(where.status, appendLine(completeness));
   const endAt = statusTimestamp();
   const row = { type: "workflow-done" as const, workflow, at: endAt, parentSha };
   fs.appendFileSync(where.status, appendLine(row));

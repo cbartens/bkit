@@ -29,13 +29,15 @@ vi.mock("./worktrees", async (importOriginal) => {
   };
 });
 /** Makes the completeness checker throw when a test sets a flag; otherwise the real one. */
-const holes = vi.hoisted(() => ({ throwCheck: false, throwRead: false }));
+const holes = vi.hoisted(() => ({ throwCheck: false, throwRead: false, unserialisable: false }));
 vi.mock("../../checks/status-holes", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../checks/status-holes")>();
   return {
     ...actual,
     check: (...args: Parameters<typeof actual.check>) => {
       if (holes.throwCheck) throw new Error("forced checker failure");
+      // A verdict the row write cannot serialise: the write throws, the check does not.
+      if (holes.unserialisable) return { ...actual.check(...args), extra: 1n };
       return actual.check(...args);
     },
     readCompleteness: (...args: Parameters<typeof actual.readCompleteness>) => {
@@ -48,6 +50,7 @@ afterEach(() => {
   removing.onEnter = null;
   holes.throwCheck = false;
   holes.throwRead = false;
+  holes.unserialisable = false;
 });
 
 const dirs: string[] = [];
@@ -1089,6 +1092,18 @@ describe("bkit workflows close", () => {
     const lines = r.err.split("\n").filter((l) => l.includes("completeness row not written"));
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain("forced checker failure");
+  });
+
+  it("still closes when the completeness row write throws", async () => {
+    const cwd = closable("build");
+    holes.unserialisable = true;
+    const r = await run(cwd, wf("close", "build"));
+    expect(r.code).toBe(0);
+    const all = rows(statusOf(cwd));
+    expect(all.at(-1)).toMatchObject({ type: "workflow-done", workflow: "build" });
+    expect(all.some((x) => x.type === "completeness")).toBe(false);
+    const lines = r.err.split("\n").filter((l) => l.includes("completeness row not written"));
+    expect(lines).toHaveLength(1);
   });
 
   it("refuses without status.jsonl and writes nothing", async () => {
