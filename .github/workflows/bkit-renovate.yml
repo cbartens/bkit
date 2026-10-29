@@ -84,7 +84,7 @@ jobs:
           # uses GitHub releases (they carry publish dates, so `minimumReleaseAge` applies);
           # the image tags on ghcr.io carry none.
           # renovate: datasource=github-releases depName=renovatebot/renovate
-          renovate-version: "44.151.0"
+          renovate-version: "44.176.2"
         env:
           # Scope to THIS repo only — never org-wide autodiscover.
           RENOVATE_REPOSITORIES: ${{ github.repository }}
