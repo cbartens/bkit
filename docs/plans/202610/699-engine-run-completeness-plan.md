@@ -921,7 +921,7 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
 
 <!-- bkit:task 16 start -->
 
-- [ ] **TASK 16:** Refresh the capability register and the command list after the rebase
+- [x] **TASK 16:** Refresh the capability register and the command list after the rebase
   - **UPDATE:** `docs/capabilities.md`: rebuild with `pnpm graph:refresh` so the register matches a clean rebuild of the rebased tree, and commit it
   - **UPDATE:** `.bkit/core/.bkit/cli.md`: regenerate the generated region with `pnpm cli:sync` so it lists the `completeness` verb, then run `bkit upgrade` so the `.bkit/cli.md` mirror follows, and commit both
   - **READ:** `scripts/graphify/bkit-graphify.sh`: the `check-at` drift gate the register must pass
