@@ -122,7 +122,7 @@ const NORMALIZED_SCHEMA = 2;
 
 /** Who wrote a row: the workflow and step it was emitted at, and the subagent when one wrote it. */
 export interface RowBy {
-  /** Emitting workflow: design | plan | build | debug | ship | auto | audit; `chat-stats` on `chat` rows; the counted run's on `run` rows. */
+  /** Emitting workflow: design | plan | build | debug | ship | auto | audit; `utility` for a direct chat outside any workflow; `chat-stats` on `chat` rows; the counted run's on `run` rows. */
   workflow?: string;
   /**
    * The WORKFLOW STEP the row was emitted at, e.g. `build-close-workflow`,
@@ -413,9 +413,10 @@ export const KIND_WRITERS: Record<AppendKind, KindWriters> = {
     ]),
     // Build: Decision Pause accept; plan: an open question answered after close; design: an
     // open question answered by the owner at close (the human decides, the orchestrator
-    // records); ship: an assumed accept the owner confirms (`bkit decisions apply --by=owner`).
+    // records); ship: an assumed accept the owner confirms (`bkit decisions apply --by=owner`);
+    // utility: a direct chat outside any workflow (`by.step` `manual`), the owner deciding in it.
     // All ONLY after explicit human approval.
-    orchestrators: new Set(["design", "build", "plan", "ship"]),
+    orchestrators: new Set(["design", "build", "plan", "ship", "utility"]),
   },
   // Build: `bkit challenge merge` writes each LOW challenge finding (`low-severity`). Ship:
   // `bkit decisions pending --defer` writes each assumed accept nobody confirmed (`needs-decision`).

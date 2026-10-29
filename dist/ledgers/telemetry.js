@@ -220,9 +220,10 @@ export const KIND_WRITERS = {
         ]),
         // Build: Decision Pause accept; plan: an open question answered after close; design: an
         // open question answered by the owner at close (the human decides, the orchestrator
-        // records); ship: an assumed accept the owner confirms (`bkit decisions apply --by=owner`).
+        // records); ship: an assumed accept the owner confirms (`bkit decisions apply --by=owner`);
+        // utility: a direct chat outside any workflow (`by.step` `manual`), the owner deciding in it.
         // All ONLY after explicit human approval.
-        orchestrators: new Set(["design", "build", "plan", "ship"]),
+        orchestrators: new Set(["design", "build", "plan", "ship", "utility"]),
     },
     // Build: `bkit challenge merge` writes each LOW challenge finding (`low-severity`). Ship:
     // `bkit decisions pending --defer` writes each assumed accept nobody confirmed (`needs-decision`).

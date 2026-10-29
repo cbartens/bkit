@@ -1998,12 +1998,19 @@ describe("writerProblem", () => {
     expect(writerProblem(row({ workflow: "design" }))).toBeUndefined();
   });
 
+  it("admits a direct chat (utility) on decision rows only", () => {
+    expect(writerProblem(row({ workflow: "utility", step: "manual" }))).toBeUndefined();
+    expect(writerProblem({ kind: "deferral", by: { workflow: "utility" } })).toContain(
+      "the utility orchestrator does not write deferral rows",
+    );
+  });
+
   it("refuses an unlisted subagent or orchestrator", () => {
     expect(writerProblem(row({ subagent: "bkit-plan-review-1", model: "m" }))).toContain(
       "does not write decision rows",
     );
     expect(writerProblem(row({ workflow: "debug" }))).toContain(
-      "the debug orchestrator does not write decision rows (orchestrators: design, build, plan, ship)",
+      "the debug orchestrator does not write decision rows (orchestrators: design, build, plan, ship, utility)",
     );
   });
 
