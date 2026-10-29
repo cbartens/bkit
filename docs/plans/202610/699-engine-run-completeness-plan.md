@@ -1003,11 +1003,14 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
   - **TEST FIRST:**
     - `.bkit/core/engine/checks/status-holes.test.ts` `a tracker-none run that journals every rendered call is CLEAN` fails on ship-start-workflow reported as an evidence hole lacking `issues labels`, `issues comment` (and plan-fetch-context lacking `issues related`) when the rows replay `substituteWorkflow(src, "none")` and the contract is built from the raw source
     - `.bkit/core/engine/commands/workflow/workflows.test.ts` `close on a tracker-none consumer writes a CLEAN completeness row for a fully journaled run` fails on the stored row carrying `holey: true`
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/checks/status-holes.test.ts` `a tracker-none run that journals every rendered call is CLEAN` fails on ship-start-workflow reported as an evidence hole lacking `issues labels`, `issues comment` (and plan-fetch-context lacking `issues related`) when the rows replay `substituteWorkflow(src, "none")` and the contract is built from the raw source — Accept both: the edit only changes which setup calls the fake journal replays, not what the test checks (owner, 2026-10-29)
+    - `.bkit/core/engine/commands/workflow/workflows.test.ts` `close on a tracker-none consumer writes a CLEAN completeness row for a fully journaled run` fails on the stored row carrying `holey: true` — Accept both: the edit only changes which setup calls the fake journal replays, not what the test checks (owner, 2026-10-29)
 
 <!-- bkit:task 20 end -->
 <!-- bkit:task 21 start -->
 
-- [ ] **TASK 21:** Every build that reaches Step 5 is marked HOLEY: `branches anchor-read --file=docs/plans/{YYYYMM}/{FID}-plan.md` is never journaled, because `resolveActiveRun` treats any `--file` as the run's `status.jsonl`, returns undefined for a non-status file and never falls back to `--fid` or the cwd scan, while the contract requires that call for `build-plan-current`
+- [x] **TASK 21:** Every build that reaches Step 5 is marked HOLEY: `branches anchor-read --file=docs/plans/{YYYYMM}/{FID}-plan.md` is never journaled, because `resolveActiveRun` treats any `--file` as the run's `status.jsonl`, returns undefined for a non-status file and never falls back to `--fid` or the cwd scan, while the contract requires that call for `build-plan-current`
       **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/lib.ts:407` · **Round:** 1
   - **DONE WHEN:** a `--file` that is not a `docs/plans/<month>/logs/<fid>/status.jsonl` path falls through to the `--fid` and cwd-scan resolution instead of returning undefined, so `branches anchor-read --file=<plan.md>` inside the run's worktree journals an `engine-call` row (verified live: `resolveActiveRun({cwd, file: "docs/plans/202610/699-engine-run-completeness-plan.md"})` returns undefined today while the scan alone resolves the run).
   - **TEST FIRST:**
@@ -1017,7 +1020,7 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
 <!-- bkit:task 21 end -->
 <!-- bkit:task 22 start -->
 
-- [ ] **TASK 22:** A run whose journal starts partway (resumed across a `bkit upgrade` to the journaling engine, or `BKIT_ENGINE_JOURNAL=off` lifted mid-run) is HOLEY with an evidence hole on every step finished before its first `engine-call` row, because `preJournal` is all-or-nothing per run (`callCount === 0`); this run itself shows it today (`bkit completeness check --workflow=build` on its own `status.jsonl` reports build-start-workflow, build-branch-sync, build-plan-convert, ... as evidence holes) and its close row will make the ship start warn
+- [x] **TASK 22:** A run whose journal starts partway (resumed across a `bkit upgrade` to the journaling engine, or `BKIT_ENGINE_JOURNAL=off` lifted mid-run) is HOLEY with an evidence hole on every step finished before its first `engine-call` row, because `preJournal` is all-or-nothing per run (`callCount === 0`); this run itself shows it today (`bkit completeness check --workflow=build` on its own `status.jsonl` reports build-start-workflow, build-branch-sync, build-plan-convert, ... as evidence holes) and its close row will make the ship start warn
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/checks/status-holes.ts:501` · **Round:** 1
   - **DONE WHEN:** visits whose rows all precede the run's first `engine-call` row are judged steps-only (no evidence hole, no `unexercised`), while visits after it are judged on calls as today; a run with zero `engine-call` rows keeps `preJournal: true`.
   - **TEST FIRST:**
