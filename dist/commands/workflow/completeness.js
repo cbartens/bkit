@@ -65,7 +65,7 @@ export const completenessCommand = {
             output: {
                 report: "the human-readable report",
                 holey: "true when any checked run has an evidence hole or a step hole",
-                verdicts: "one completeness verdict per checked workflow; empty when nothing could be read",
+                verdicts: "one completeness verdict per checked run; empty when nothing could be read",
             },
             run: (ctx) => {
                 const file = statusFile(ctx);

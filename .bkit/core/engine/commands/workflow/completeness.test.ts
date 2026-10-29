@@ -121,4 +121,10 @@ describe("bkit completeness check", () => {
       "build-worktree-setup",
     );
   });
+
+  it("the verdicts output is described as one verdict per checked run", () => {
+    const desc = completenessCommand.verbs.check.output?.verdicts;
+    expect(desc).toContain("per checked run");
+    expect(desc).not.toContain("per checked workflow");
+  });
 });
