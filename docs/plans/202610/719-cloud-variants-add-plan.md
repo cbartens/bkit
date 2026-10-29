@@ -114,7 +114,7 @@ A team picks whichever cloud agent they like (Claude, opencode, Codex or Cursor)
 | GitHub guard with `BKIT_GH_TOKEN` unset | HARD STOP naming `BKIT_GH_TOKEN`. |
 | Guard output on every branch | stdout is one JSON document (`kn-hooks-sessionstart-stdout-is-one-json-document`); the Jira `fetch` JSON never leaks to stdout. |
 | Jira session where `node_modules/.bin/bkit` is absent | HARD STOP naming the missing bin (`719-cursor-jira-guard-hard-stop-without-bkit-bin`). |
-| Tracker unset / `none` and no `LINEAR_ISSUE_ID` | advisory context only, exit 0 (today's behaviour). — Today this holds for Claude only; a Cursor background session HARD STOPs (`BKIT_LINEAR_API_KEY not set` / `LINEAR_ISSUE_ID not set`). Built as written (Cursor background relaxes to advisory, exit 0) and listed in Breaking Changes; Open Question 2 can keep the Cursor HARD STOP instead. |
+| Tracker unset / `none` and no `LINEAR_ISSUE_ID` | advisory context only, exit 0 (today's behaviour). — Today this holds for Claude only; a Cursor background session HARD STOPs (`BKIT_LINEAR_API_KEY not set` / `LINEAR_ISSUE_ID not set`). Built as written (Cursor background relaxes to advisory, exit 0; owner decision `719-cursor-guard-tracker-unset-advisory`) and listed in Breaking Changes. |
 | Tracker `linear` and no `LINEAR_ISSUE_ID` in a Cursor background session | HARD STOP naming `LINEAR_ISSUE_ID` (today's Linear behaviour, now keyed on the configured tracker). |
 | Adopted router present, `bkit.cloud.agent` absent (router adopted by hand, never `bkit install --auto=`) | `Select agent job` reads `none` → no job, `::notice::` names `bkit install --auto=<claude\|opencode\|codex>`; `bkit check` raises `cloud-router-agent-unset`; `cloud-router` no longer says "active". |
 | Dev-arm Jira FID with digits (`ab2-12-login-retry`) | passes `bkit_dev_dispatch_guard` and dispatches; a traversal value (`../x`) from the subject or the PR-body fallback is refused before any path use. |
@@ -143,7 +143,6 @@ A team picks whichever cloud agent they like (Claude, opencode, Codex or Cursor)
 | Claude session with `GITHUB_ISSUE_ID` runs the guard | Integration | `.bkit/core/engine/audits/hooks/preflight-sh.integration.test.ts` | 3 |
 | Tracker unset, Cursor background session (`is_background_agent: true`), no `LINEAR_ISSUE_ID` → advisory context, exit 0 | Integration | `.bkit/core/engine/audits/hooks/preflight-sh.integration.test.ts` | 3 |
 | Tracker `linear` (fixture `package.json`), Cursor background, no key / no `LINEAR_ISSUE_ID` → HARD STOP (existing cases `:141-156` rewritten) | Integration | `.bkit/core/engine/audits/hooks/preflight-sh.integration.test.ts` | 3 |
-| Live Cursor background `sessionStart`: env dump, `ls node_modules/.bin/bkit`, `GITHUB_ISSUE_ID` for `@cursor` | @live (golden) | `.bkit/core/.bkit/cloud.md` (recorded observation) | 15 |
 | `parseCloudAgents` accepts `codex` | Unit | `.bkit/core/engine/install/manifest.test.ts` | 4 |
 | `--auto=codex` parses; `--auto=<bad>` lists claude, cursor, opencode, codex | Unit | `.bkit/core/engine/cli.test.ts` | 4 |
 | Every variant x github / linear / jira passes the wired-tracker check | Unit | `.bkit/core/engine/commands/install/install.test.ts` | 6 |
@@ -151,6 +150,7 @@ A team picks whichever cloud agent they like (Claude, opencode, Codex or Cursor)
 | `--auto=codex` without `.codex/` exits 1 naming `--codex`, writes nothing | Integration | `.bkit/core/engine/commands/install/install.integration.test.ts` | 6 |
 | `--tracker=jira --codex --auto=codex` exits 0, records `codex` | Integration | `.bkit/core/engine/commands/install/install.integration.test.ts` | 6 |
 | `--tracker=github --auto=cursor` exits 0, records `cursor` | Integration | `.bkit/core/engine/commands/install/install.integration.test.ts` | 6 |
+| `--tracker=github --opencode --auto=opencode` in one run exits 0, records `opencode` | Integration | `.bkit/core/engine/commands/install/install.integration.test.ts` | 6 |
 | Codex variant advisory: `--codex`, `.codex/bkit-cloud.md`, `BKIT_OPENAI_API_KEY` | Integration | `.bkit/core/engine/install/modules/cloud.integration.test.ts` | 5 |
 | Tracker line names only the configured tracker's key, every variant | Integration | `.bkit/core/engine/install/modules/cloud.integration.test.ts` | 5 |
 | Claude advisory: `BKIT_ANTHROPIC_API_KEY` or federation variables | Integration | `.bkit/core/engine/install/modules/cloud.integration.test.ts` | 5 |
@@ -191,7 +191,7 @@ A team picks whichever cloud agent they like (Claude, opencode, Codex or Cursor)
 | Trust step writes `codex-home/config.toml` trusting `$GITHUB_WORKSPACE` | Integration | `.bkit/core/engine/audits/templates/workflow-templates.integration.test.ts` | 12 |
 | Filled `bkit-cloud.yml` passes actionlint | Integration | `.bkit/core/engine/audits/templates/workflow-templates.integration.test.ts` | 12 |
 | Codex `if: always()` summary step writes `action`, `commits`, `comments` (extracted bash) | Integration | `.bkit/core/engine/audits/templates/workflow-templates.integration.test.ts` | 12 |
-| Three live codex dispatches (`workflow_dispatch`, human-push `workflow_run`, bot-commit `workflow_run`): actor check, `git push`, `gh pr comment`, tracker verb, hyphenated subagent spawn, gate under `github.token` | @live (golden) | `.bkit/core/.bkit/cloud.md` (recorded run ids) | 16 |
+| Opencode job installs deps before its dispatch step | Integration | `.bkit/core/engine/audits/templates/workflow-templates.integration.test.ts` | 12 |
 | Stale adopted copy under linear / jira → `cloud-router-tracker-stale` | Unit | `.bkit/core/engine/checks/after/github.test.ts` | 13 |
 | No `openai/codex-action` under `cloud.agent` codex → `cloud-router-codex-missing` | Unit | `.bkit/core/engine/checks/after/github.test.ts` | 13 |
 | Precedence id-token → tracker-stale → codex-missing | Unit | `.bkit/core/engine/checks/after/github.test.ts` | 13 |
@@ -206,13 +206,13 @@ A team picks whichever cloud agent they like (Claude, opencode, Codex or Cursor)
 | Legacy `OPENCODE_PROVIDER_KEY` without the provider key → `cloud-router-secret-renamed` | Unit | `.bkit/core/engine/checks/after/auth.test.ts` | 14 |
 | Dashboards advisory names the recorded variant's `BKIT_` secret | Unit | `.bkit/core/engine/checks/after/auth.test.ts` | 14 |
 | Adopted copy still reading legacy names (no `secrets.BKIT_`) → secret findings name the legacy secret, no `cloud-router-secret-renamed` until the copy is re-copied | Unit | `.bkit/core/engine/checks/after/auth.test.ts` | 14 |
-| `cloud` tip: Claude App + `BKIT_ANTHROPIC_API_KEY` only for claude | Unit | `.bkit/core/engine/checks/tips/catalogue.test.ts` | 17 |
-| `cloud` tip for codex: `--codex` + `BKIT_OPENAI_API_KEY` | Unit | `.bkit/core/engine/checks/tips/catalogue.test.ts` | 17 |
+| `cloud` tip: Claude App + `BKIT_ANTHROPIC_API_KEY` only for claude | Unit | `.bkit/core/engine/checks/tips/catalogue.test.ts` | 15 |
+| `cloud` tip for codex: `--codex` + `BKIT_OPENAI_API_KEY` | Unit | `.bkit/core/engine/checks/tips/catalogue.test.ts` | 15 |
 | bkit's adopted router equals the template after its listed edits (existing test; `DONE WHEN` of TASKS 7, 8, 10, 11, 12, entry edits land in TASK 8 and TASK 12) | Unit | `.bkit/core/engine/audits/repo/dogfood-templates.test.ts` | 12 |
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Acceptance Scenario confirmed:** I have reviewed the Narrative, Success Criteria, Process Sketch, Concrete Example, Edge Cases, and Derived Test Matrix above. They correctly describe what "done" looks like.
+- [x] **Acceptance Scenario confirmed:** I have reviewed the Narrative, Success Criteria, Process Sketch, Concrete Example, Edge Cases, and Derived Test Matrix above. They correctly describe what "done" looks like.
 
 ---
 
@@ -232,7 +232,7 @@ A team picks whichever cloud agent they like (Claude, opencode, Codex or Cursor)
 | Router reads absent `bkit.cloud.agent` as `none` and starts nothing (was: adopted file + secret = active) | Consumers who adopted the router by hand, never ran `bkit install --auto=`, and re-copy the new template | `Select agent job` notice names `bkit install --auto=<variant>`; `bkit check` / `bkit upgrade` raise `cloud-router-agent-unset` (TASK 13) |
 | Context job installs the repo's dependencies (pnpm) before the gate | Non-pnpm consumers | `bkit-unavailable` warning; consumer adapts the install step |
 | `feat/**` context job checks out the PR head, not `dev` | none (same-repo gate `:100` unchanged); a same-repo PR can change its own `bkit.cloud.agent` / `bkit.tracker.default` for its routing run (collaborator-trusted, `docs/security.md` § CI Auto-Route Trust) | checkout `ref` pinned by TASK 8's `workflow-templates.integration.test.ts` case |
-| Cursor background session with tracker unset / `none` and no `LINEAR_ISSUE_ID` adds advisory context and exits 0 (was: HARD STOP `BKIT_LINEAR_API_KEY not set` / `LINEAR_ISSUE_ID not set`) | Consumers with no `bkit.tracker.default` who relied on the stop; such repos cannot record `--auto=` (tracker `none` refuses), so no router dispatches into them | advisory context line; Open Question 2 keeps the HARD STOP instead |
+| Cursor background session with tracker unset / `none` and no `LINEAR_ISSUE_ID` adds advisory context and exits 0 (was: HARD STOP `BKIT_LINEAR_API_KEY not set` / `LINEAR_ISSUE_ID not set`) | Consumers with no `bkit.tracker.default` who relied on the stop; such repos cannot record `--auto=` (tracker `none` refuses), so no router dispatches into them | advisory context line (`719-cursor-guard-tracker-unset-advisory`) |
 | Pre-change adopted copies keep no-oping off GitHub / lack the codex job | Linear / Jira / codex consumers until they re-copy | `cloud-router-tracker-stale` / `cloud-router-codex-missing` |
 
 **Non-breaking:** `bkit.cloud.agent` enum widens (all old values valid); `--auto` accepts more pairings; guard part renamed internally (hooks regenerate on `bkit install`); new `terminal` fact is additive.
@@ -253,7 +253,7 @@ A team picks whichever cloud agent they like (Claude, opencode, Codex or Cursor)
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Breaking Changes confirmed:** I have reviewed all breaking changes and naming decisions above.
+- [x] **Breaking Changes confirmed:** I have reviewed all breaking changes and naming decisions above.
 
 ---
 
@@ -265,35 +265,23 @@ A team picks whichever cloud agent they like (Claude, opencode, Codex or Cursor)
 
 Design questions 1-9 are settled by the owner rows in Context & Goals and are not reopened here.
 
-- **Open Question:** Where do the two live checks run — TASK 15 (Cursor background `sessionStart` dump) and TASK 16 (three codex dispatches)? bkit's own router is disabled (`592-cloud-lane-disabled-in-bkit-repo`) and holds no secrets. Both checks sit in group 8, after the checks tasks, so TASKS 4-14 build without the repo; one owner hand-off covers both. → owner names the repo before the build reaches TASK 15.
-  - **Options:** A) an owner sandbox repo (GitHub tracker) with this branch's packed bkit installed (`pnpm pack` → `pnpm add -D ./cbartens-bkit-*.tgz`), the new template adopted, `BKIT_OPENAI_API_KEY` set and a Cursor background environment — real signal; owner supplies repo, key and Cursor seat · B) bkit's own repo, router re-enabled for the run window — no new repo; overrides decision `592-cloud-lane-disabled-in-bkit-repo` and spends on bkit's Actions · C) one sandbox repo per tracker — also proves Linear / Jira live; contradicts `719-linear-jira-router-read-fixture-tests-only`
-  - **Recommended:** A) — only option that keeps both recorded decisions and still gives the boundary signal.
-  - **Default if unanswered:** A); the build pauses at TASK 15 until the repo, key and Cursor environment are named.
-- **Open Question:** Cursor background session, tracker unset / `none`, no `LINEAR_ISSUE_ID` — the design's edge case says "advisory context only, exit 0 (today's behaviour)", but today Cursor HARD STOPs there (`preflight-sh.integration.test.ts:141-156`). Which outcome ships?
-  - **Options:** A) advisory context, exit 0 (design outcome; matches `719-tracker-guard-no-issue-id-not-verified`: with no tracker there is no `bkit:auto` to verify, and `--auto=` refuses tracker `none`) — Cursor background agents become usable in tracker-less repos; relaxes a fail-closed path (Breaking Changes row) · B) keep today's Cursor HARD STOP under unset / `none` — fail closed, no behaviour change; every Cursor background session in a tracker-less repo stays blocked, and TASK 3's unset-tracker test becomes a regression pin with no red-first signal
-  - **Recommended:** A) — the design states the outcome, the owner's no-issue-id rule applies the same reasoning, and no router dispatches into a tracker-`none` repo.
-  - **Default if unanswered:** A); TASK 3 builds it.
-- **Open Question:** Fold the `opencode` job's dependency install (`docs/failures.jsonl` `bkit-cloud-opencode-job-never-installs-repo-deps`, HIGH) into TASK 12?
-  - **Options:** A) fold in — the same three-step install block as the codex job; one install shape across agent jobs; closes a known HIGH failure on a job this plan already edits; one more `workflow-templates.integration.test.ts` case · B) keep out — separate change; the opencode job keeps failing on a fresh runner (`/bkit-auto` Step 2 exit 127) until then
-  - **Recommended:** A) — same file, same block, closes a HIGH failure.
-  - **Default if unanswered:** B); stays a Suggested Scope Expansion candidate (no runbook task without owner approval).
-- **Open Question:** Fold the `bkit install --opencode --auto=opencode` one-shot fix (the `.opencode/` check ignores `modules.has("opencode")`) into TASK 6?
-  - **Options:** A) fold in — one condition beside the codex one in the same prerequisite branch, one `install.integration.test.ts` case; one-shot install works for every variant · B) keep out — opencode needs `--opencode` in an earlier run; Manual Verification Step 3 installs it that way
-  - **Recommended:** A) — symmetric with the codex rule this plan adds.
-  - **Default if unanswered:** B); stays a Suggested Scope Expansion candidate.
+- **Resolved (owner):** live checks — the build runs none; the planned Cursor background `sessionStart` dump and three live codex dispatches are dropped and the owner's own use after ship is the live check; a failure the owner reports goes through `/bkit-debug` (`719-live-checks-deferred-to-owner-use`).
+- **Resolved (owner):** Cursor background session, tracker unset / `none`, no `LINEAR_ISSUE_ID` → advisory context, exit 0; tracker `linear` without `LINEAR_ISSUE_ID` keeps the HARD STOP (`719-cursor-guard-tracker-unset-advisory`; Breaking Changes row). TASK 3 builds it.
+- **Resolved (owner):** the `opencode` job's dependency install (`docs/failures.jsonl` `bkit-cloud-opencode-job-never-installs-repo-deps`, HIGH) folds into TASK 12 — the codex job's install block, one `workflow-templates.integration.test.ts` case (`719-opencode-job-installs-deps-before-run`).
+- **Resolved (owner):** the `bkit install --opencode --auto=opencode` one-shot fix folds into TASK 6 — `modules.has("opencode")` beside the codex condition, one `install.integration.test.ts` case (`719-auto-opencode-one-shot-install`).
 - **Assumption:** SC2 "every router job whose credential is set" is built and tested as "the one job named by `bkit.cloud.agent`, when its `BKIT_` secret is set" (`719-cloud-router-dispatches-recorded-agent-only`, newer than the design) → if the owner wants SC2 literal, TASK 7's `Select agent job` and its tests (plus TASK 9's `jobs` field tests) invert and deferral `397-dual-agent-…` reopens.
 - **Assumption:** an adopted router with no `bkit.cloud.agent` dispatches nothing (absent reads `none`, no credential-presence fallback), per `719-cloud-router-dispatches-recorded-agent-only` → if wrong, `Select agent job` gains a fallback to today's credential-presence rule and TASK 7's absent-field test inverts; `cloud-router-agent-unset` (TASK 13) is the signal either way.
 - **Assumption:** `docs/plans/{YYYYMM}/logs/{FID}/` exists on `dev` for every shipped FID (its `status.jsonl` is what today's dev-dispatch cap already reads on `origin/dev`), so `fids parse --prompt-file` resolves the squash subject's bare FID through `namedFid` → if wrong, the dev arm finds no FID and post-merge debug never auto-dispatches (fails safe: no-op notice, no false dispatch).
 - **Assumption:** bkit-built feature branches carry their `.bkit/issues.jsonl` feature row, so `fids parse --branch` on the checked-out PR head yields `issueId` when the PR-body marker is missing → if wrong, the branch fallback resolves issue-less → `no-issue` notice; the marker path is unaffected.
 - **Assumption:** Claude workload-identity federation stays on repo **variables** `ANTHROPIC_FEDERATION_RULE_ID` / `ANTHROPIC_ORGANIZATION_ID`, unrenamed (`719-cloud-router-secrets-bkit-prefixed` renames secrets only) → if wrong, TASK 7 / TASK 14 / docs rename them too and `cloud-router-secret-renamed` covers variables.
-- **Assumption:** `openai/codex-action` v1 input names read from its `action.yml` on 2026-10-29 (`prompt`, `openai-api-key`, `sandbox`, `allow-bots`, `codex-home`, `codex-version`, `safety-strategy`) hold at the SHA pinned in TASK 12 → if renamed, the job fails at run time while actionlint passes; TASK 16 catches it before the template ships.
-- **Assumption:** Cursor's `environment.json` `install` finishes before `sessionStart` fires (`719-cursor-jira-guard-hard-stop-without-bkit-bin`, option A) → if TASK 15's dump shows the bin absent, the build stops at TASK 15 and the plan gains the 30 s poll task through a plan update (the owner row's fallback; it reworks TASK 3's Jira branch), never built speculatively; unnoticed, every Jira background session HARD STOPs.
+- **Assumption:** `openai/codex-action` v1 input names read from its `action.yml` on 2026-10-29 (`prompt`, `openai-api-key`, `sandbox`, `allow-bots`, `codex-home`, `codex-version`, `safety-strategy`) hold at the SHA pinned in TASK 12 → if renamed, the job fails at run time while actionlint passes; the owner's first codex run surfaces it (`719-live-checks-deferred-to-owner-use`) and `.bkit/cloud.md` marks the codex router job not yet verified live.
+- **Assumption:** Cursor's `environment.json` `install` finishes before `sessionStart` fires (`719-cursor-jira-guard-hard-stop-without-bkit-bin`, option A) → if wrong, every Jira background session HARD STOPs naming the missing bin; the owner reports it and the 30 s poll lands through `/bkit-debug` (the owner row's fallback; it reworks TASK 3's Jira branch), never built speculatively.
 - **Assumption:** consumers run pnpm (the template's context job assumes it, as `bkit-ci.yml` already does) → a non-pnpm consumer adapts the copied install step, else every run reports `bkit-unavailable`.
 - **Assumption:** cloud sessions that the guard reads GitHub for carry `BKIT_GH_TOKEN` (`.bkit/cloud.md` env blocks) → if absent, the GitHub branch is unreadable and HARD STOPs naming `BKIT_GH_TOKEN` (fail closed, not open; pinned by TASK 2's read-failure test).
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Open Questions & Assumptions confirmed:** I have resolved or explicitly accepted every open question and assumption above.
+- [x] **Open Questions & Assumptions confirmed:** I have resolved or explicitly accepted every open question and assumption above.
 
 ---
 
@@ -314,7 +302,7 @@ Design questions 1-9 are settled by the owner rows in Context & Goals and are no
 | Guard: python MCP JSON-RPC client for Jira | Rejected | Duplicates `JiraSession`; Jira only reachable where `pnpm install` ran. |
 | `TEMPLATE_CHANGE_CONSEQUENCES` note for stale copies | Rejected | Fires on every later template change; a content sniff self-silences (`719-router-stale-copy-detect-only`). |
 
-**Future phase:** live Linear / Jira router proof (`719-linear-jira-router-live-read`); Codex Cloud session guard once hooks are proven (`719-codex-cloud-session-start-guard`); tracker MCP fallback on runners (`719-runner-tracker-mcp-fallback`); opencode job dependency install (Suggested Scope Expansion).
+**Future phase:** live Linear / Jira router proof (`719-linear-jira-router-live-read`); Codex Cloud session guard once hooks are proven (`719-codex-cloud-session-start-guard`); tracker MCP fallback on runners (`719-runner-tracker-mcp-fallback`); live codex router job and Cursor Jira guard proof by owner use (`719-live-checks-deferred-to-owner-use`).
 
 ## Out of Scope
 
@@ -323,7 +311,8 @@ Design questions 1-9 are settled by the owner rows in Context & Goals and are no
 | --- | --- | --- |
 | Codex Cloud session-start guard | SC4 covers Cursor background + Claude sessions only; no SC, scenario or matrix row needs it; hooks in Codex Cloud tasks are unproven (hard-blocked). | Deferral `719-codex-cloud-session-start-guard` (design § Architecture Out of scope). |
 | Tracker MCP fallback on runners (`mcp__linear__*` / `mcp__jira__*` in `claude_args`) | Runner jobs use bkit verbs; exit 80 → Failure Path; Linear MCP needs browser OAuth. No SC needs it. | Deferral `719-runner-tracker-mcp-fallback` (design § Architecture Out of scope). |
-| Live Linear workspace / Jira site proof of the router read | Owner chose recorded-reply contract tests (`719-linear-jira-router-read-fixture-tests-only`); SC2 / SC3 are proven by TASK 1 + TASK 8 fixtures; `.bkit/cloud.md` marks Linear / Jira dispatch not verified live (TASK 18). | Deferral `719-linear-jira-router-live-read`. |
+| Live codex dispatches and Cursor background `sessionStart` check during build | Owner chose proof by use after ship (`719-live-checks-deferred-to-owner-use`); no sandbox repo, `BKIT_OPENAI_API_KEY` or Cursor environment for the build; `.bkit/cloud.md` marks both not yet verified live (TASK 16). | Owner use; reported failures through `/bkit-debug`. Deferral row written by build / ship (plan cannot write deferrals). |
+| Live Linear workspace / Jira site proof of the router read | Owner chose recorded-reply contract tests (`719-linear-jira-router-read-fixture-tests-only`); SC2 / SC3 are proven by TASK 1 + TASK 8 fixtures; `.bkit/cloud.md` marks Linear / Jira dispatch not verified live (TASK 16). | Deferral `719-linear-jira-router-live-read`. |
 
 Non-goals (new tracker values, marker contract, vendor-native trigger install) are named in Context & Goals, not here. Multi-agent arbitration is no longer out of scope: TASK 7 builds `719-cloud-router-dispatches-recorded-agent-only`.
 
@@ -332,15 +321,13 @@ Non-goals (new tracker values, marker contract, vendor-native trigger install) a
 <!-- prettier-ignore -->
 | Candidate | Source | Overlaps | Recommendation |
 | --- | --- | --- | --- |
-| `opencode` job has no dependency install, so `/bkit-auto` Step 2 likely exits 127 on a fresh runner | `docs/failures.jsonl` `bkit-cloud-opencode-job-never-installs-repo-deps` (HIGH); design § Risks out-of-scope find | TASK 11 / TASK 12 (same template; the codex job's install block is the fix) | Fold in — owner decides through Open Question 3; same 3-step block as TASK 12. |
-| `bkit install --opencode --auto=opencode` one-shot trap: `.opencode/` check ignores `modules.has("opencode")` | design § Risks out-of-scope find | TASK 6 (same prerequisite branch) | Fold in — owner decides through Open Question 4; one condition beside the codex one. |
 | Linear guard still HARD STOPs a Linear cloud agent with no `LINEAR_ISSUE_ID` | `docs/deferrals.jsonl` `650-preflight-linear-issue-less` (OPEN); row names `preflight-linear.sh` | TASK 2 / TASK 3 (guard part renamed) | Keep deferred — tracker `linear` keeps today's Linear HARD STOP; refresh the row's stale `preflight-linear.sh` reference through the deferrals ledger in a separate change. |
 | Least-privilege split of the agent job from the merge / write job | #555 (open) idea 2 | TASK 12 (codex job gets `contents: write` + `danger-full-access`) | Keep separate. |
 | `BKIT_OPENAI_API_KEY` reaches every generated cloud env block: `.bkit/core/engine/install/cloud-env.ts` pastes every resolved `.envrc` key except `SESSION_HIJACK_KEYS` (`:35-39`) | plan review (security lens) | TASK 5 (`.env.example` row) | Owner security decision: add it to `SESSION_HIJACK_KEYS` like the Anthropic keys, or keep it for local Codex use. |
 | `/bkit-auto` and `bkit-cloud.yml` stay issue-only | `docs/deferrals.jsonl` `650-bkit-auto-issue-less` (OPEN) | TASK 8 / TASK 10 (`no-issue` outcome) | Keep deferred. |
 | Router / executor split as a shared dispatch primitive | `docs/deferrals.jsonl` `397-router-executor-split-as-shared-dispatch-primitive` (TRIAGED) | TASKS 7-12 (router shape) | Keep deferred. |
 | Dev dispatch cap self-resettable by the dispatched session | `docs/deferrals.jsonl` `363-dev-dispatch-cap-self-resettable-by-controlled-principal` (OPEN) | TASK 10 (dev arm before `bkit_dev_dispatch_guard`) | Keep deferred; codex job gains the same `contents: write` reach. |
-| Cloud egress allowlist staleness detector | `docs/deferrals.jsonl` `381-cloud-allowlist-staleness-detector` (OPEN) | TASK 5 / TASK 18 (codex env docs) | Keep deferred. |
+| Cloud egress allowlist staleness detector | `docs/deferrals.jsonl` `381-cloud-allowlist-staleness-detector` (OPEN) | TASK 5 / TASK 16 (codex env docs) | Keep deferred. |
 | Session-start JSON escaper leaves control characters raw | `docs/deferrals.jsonl` `700-session-start-nudge-challenge-low-bkit-core-claude-hooks-bkit-preflight-sh-46` | TASK 2 / TASK 3 (same host wrappers) | Keep deferred (LOW); check whether already fixed. |
 | Pinned tool version / sha256 mismatch fails CI | #737 — Fail CI when a pinned tool's version and sha256 disagree (open) | TASK 12 (vale + `codex-version` pins) | Keep deferred. |
 | bkit-cloud concurrency: global ship lock, FID arbitration | #397 (open) | TASK 7 | Keep open; TASK 7 removes only the same-run multi-agent race. |
@@ -363,7 +350,7 @@ Per `docs/security.md` (§ Token isolation `:22`, secrets `:54-76`, § CI Auto-R
 Further surfaces:
 
 - **Supply chain on a `contents: write` job:** context-job `pnpm install --frozen-lockfile --ignore-scripts` (no lifecycle scripts); codex job installs before the action's `drop-sudo`; `openai/codex-action` SHA-pinned, `codex-version` pinned.
-- **Checkout of the PR head (`feat/**`):** same-repo gate (`workflow_run.head_repository.full_name == github.repository`, `bkit-cloud.yml:100`) unchanged, so no fork code is checked out. `Select agent job` and `fids parse` then read the PR head's `package.json` (`bkit.cloud.agent`, `bkit.tracker.default`) and `.bkit/issues.jsonl`, so a same-repo PR can steer its own routing run (collaborator-trusted; `docs/security.md` § CI Auto-Route Trust says so, TASK 19).
+- **Checkout of the PR head (`feat/**`):** same-repo gate (`workflow_run.head_repository.full_name == github.repository`, `bkit-cloud.yml:100`) unchanged, so no fork code is checked out. `Select agent job` and `fids parse` then read the PR head's `package.json` (`bkit.cloud.agent`, `bkit.tracker.default`) and `.bkit/issues.jsonl`, so a same-repo PR can steer its own routing run (collaborator-trusted; `docs/security.md` § CI Auto-Route Trust says so, TASK 17).
 - **Codex agent rights:** `sandbox: danger-full-access` + `allow-bots: true` (`719-codex-job-full-access-sandbox-allow-bots`) = same reach as the claude / opencode jobs; codex runner hooks likely inactive → `.bkit/cloud.md` says review codex runner diffs as unguarded; `drop-sudo` persists on reused self-hosted runners.
 - **Tracker keys reachable by agents reading untrusted issue / PR text:** step scope only; advisories ask for the narrowest key the tracker allows.
 
@@ -374,9 +361,9 @@ Further surfaces:
 - [x] **Package Management:** no new package; tests use the existing `yaml` devDependency and `tsx`; `package.json` / `pnpm-lock.yaml` untouched by the plan.
 - [x] **Dependency Versions:** `pnpm bkit:deps:outdated` → devDependencies only (vitest 5.0.3→5.0.5, @vitest/coverage-v8 5.0.3→5.0.5, oxlint 1.87→1.89, @types/node 24→26, vite 6.4.4→8.3.5); none blocks the build. Toolchain: node v24.16.0, pnpm 10.34.6, gh 2.102.0, actionlint 1.7.12, codex-cli 0.165.0 (= latest `rust-v0.165.0`; npm `@openai/codex` 0.165.0). `openai/codex-action` has no releases; tag `v1` → `1d82a3dba7c7988ec71ecae1ed5b8e8db96495c5` (re-resolve to the commit SHA in TASK 12).
 - [x] **Existing-Solution Search (reuse over duplicate):** recorded in `Reuse Inventory`; every capability extends an existing owner.
-- [ ] **User Context:** repo files readable; **missing from the owner:** live-check repo + `BKIT_OPENAI_API_KEY` + Cursor background environment (Open Question 1) before TASK 15 / TASK 16.
+- [x] **User Context:** repo files readable; nothing missing from the owner — live checks deferred to owner use (`719-live-checks-deferred-to-owner-use`).
 - [x] **Project Context:** read `docs/decisions.jsonl` cloud rows (`de-21-141-…`, `jira-local-runs-only`, `cloud-dispatch-unified-file-additive`, `cloud-kill-switch-exact-label-match`, `cloud-feat-fallback-keeps-full-fid-slug`, `cloud-dev-fid-regex-accepts-linear-shape`, `592-cloud-lane-disabled-in-bkit-repo`), the nine owner rows, `docs/knowledge.jsonl` `kn-37` (never expand context outputs inside `run:`), `kn-30`, `kn-31` (no `grep -oP`), `kn-39` (retry downloads), `kn-hooks-sessionstart-stdout-is-one-json-document`.
-- [x] **Testing & Quality:** tiers per `docs/testing.md` § Tiers — engine logic Unit (`*.test.ts`), template steps and hooks Integration (`*.integration.test.ts`, spawned bash + tsx bkit, stub `gh` / `curl` on `PATH`, no mocking framework beyond the existing `vi.hoisted` `node:child_process` mock in `auth.test.ts`), live vendor boundaries @live (golden) recorded in `.bkit/cloud.md`; `it.each` instead of test conditionals (oxlint test rules).
+- [x] **Testing & Quality:** tiers per `docs/testing.md` § Tiers — engine logic Unit (`*.test.ts`), template steps and hooks Integration (`*.integration.test.ts`, spawned bash + tsx bkit, stub `gh` / `curl` on `PATH`, no mocking framework beyond the existing `vi.hoisted` `node:child_process` mock in `auth.test.ts`), live vendor boundaries proven by owner use after ship (`719-live-checks-deferred-to-owner-use`); `it.each` instead of test conditionals (oxlint test rules).
 - [x] **Prerequisite Plans:** None (#717 closed).
 
 ### Conditional
@@ -389,12 +376,12 @@ Further surfaces:
 
 ### 🔒 Gate 1: Prerequisites Check
 
-- [ ] **Acceptance Scenario confirmed:** Human confirmed `👤 Acceptance Scenario` section (checkbox is `[x]`).
-- [ ] **Breaking Changes confirmed:** Human confirmed `⚠️ Breaking Changes & Naming Review` section (checkbox is `[x]`).
-- [ ] **Open Questions confirmed:** Human confirmed `👤 Open Questions & Assumptions` section (checkbox is `[x]`).
+- [x] **Acceptance Scenario confirmed:** Human confirmed `👤 Acceptance Scenario` section (checkbox is `[x]`).
+- [x] **Breaking Changes confirmed:** Human confirmed `⚠️ Breaking Changes & Naming Review` section (checkbox is `[x]`).
+- [x] **Open Questions confirmed:** Human confirmed `👤 Open Questions & Assumptions` section (checkbox is `[x]`).
 - [x] **Security & Privacy checked:** applicable rows verified, or `None` justified.
 - [x] **Reuse Inventory complete:** every capability has a row with `Search performed` and `Decision`; every `NEW` cites its reason.
-- [ ] **Gate 1 - Verified:** Core items and applicable Conditional items checked.
+- [x] **Gate 1 - Verified:** Core items and applicable Conditional items checked.
 
 ## Data Schema Integration
 
@@ -452,9 +439,9 @@ One `NEW` row: `.bkit/core/hooks/preflight-tracker.sh`, the move of the deleted 
 
 ## Architecture & Component Changes
 
-Engine owns tracker semantics (marker / FID shapes, terminal state, failure classes); the router maps verb exits to annotations; hooks stay bkit-runtime-free for GitHub / Linear. The agent workflows (`bkit-auto.md`, phase workflows) already use bkit verbs for every tracker and are untouched. Every engine edit ships with `pnpm build` + `dist/` in the same commit; repo-root mirrors regenerate with one `bkit install` (TASK 20).
+Engine owns tracker semantics (marker / FID shapes, terminal state, failure classes); the router maps verb exits to annotations; hooks stay bkit-runtime-free for GitHub / Linear. The agent workflows (`bkit-auto.md`, phase workflows) already use bkit verbs for every tracker and are untouched. Every engine edit ships with `pnpm build` + `dist/` in the same commit; repo-root mirrors regenerate with one `bkit install` (TASK 18).
 
-**Ledger rows:** `719-any-cloud-agent-any-wired-tracker`, `719-router-label-read-via-issues-fetch`, `719-router-bkit-from-consumer-lockfile`, `719-codex-job-installs-deps-before-action`, `719-router-gate-outcomes-annotated`, `719-router-tracker-secrets-step-scope`, `719-router-jira-needs-key-only`, `719-router-checks-label-not-state`, `719-auto-refuses-tracker-none`, `719-auto-codex-requires-codex-host`, `719-codex-job-action-prompt-and-pin`, `719-cloud-advisories-variant-by-tracker-table`, `719-session-guard-shared-tracker-part`, `719-issues-fetch-terminal-fact`, `719-guard-issue-id-sources`, `719-codex-cloud-no-session-guard`, `719-router-stale-copy-detect-only`, `719-router-secret-findings-per-variant`, `719-router-secret-rename-detect-only`, `719-router-dev-arm-issue-from-feature-row`, `719-router-opencode-provider-secrets-direct`, `719-router-dev-guard-slug-charset-assert`, `719-router-agent-unset-detect-only`, `de-21-141-bkit-cloud-rebuilt-on-the-claude-github-app`, `cloud-dev-fid-regex-accepts-linear-shape`, `jira-local-runs-only`, `cloud-dispatch-unified-file-additive`, `cloud-kill-switch-exact-label-match`, `cloud-feat-fallback-keeps-full-fid-slug`, `397-dual-agent-same-run-double-ship-when-both-secrets-set`, `719-runner-tracker-mcp-fallback`, `719-linear-jira-router-live-read`
+**Ledger rows:** `719-any-cloud-agent-any-wired-tracker`, `719-router-label-read-via-issues-fetch`, `719-router-bkit-from-consumer-lockfile`, `719-codex-job-installs-deps-before-action`, `719-router-gate-outcomes-annotated`, `719-router-tracker-secrets-step-scope`, `719-router-jira-needs-key-only`, `719-router-checks-label-not-state`, `719-auto-refuses-tracker-none`, `719-auto-codex-requires-codex-host`, `719-codex-job-action-prompt-and-pin`, `719-cloud-advisories-variant-by-tracker-table`, `719-session-guard-shared-tracker-part`, `719-issues-fetch-terminal-fact`, `719-guard-issue-id-sources`, `719-codex-cloud-no-session-guard`, `719-router-stale-copy-detect-only`, `719-router-secret-findings-per-variant`, `719-router-secret-rename-detect-only`, `719-router-dev-arm-issue-from-feature-row`, `719-router-opencode-provider-secrets-direct`, `719-router-dev-guard-slug-charset-assert`, `719-router-agent-unset-detect-only`, `de-21-141-bkit-cloud-rebuilt-on-the-claude-github-app`, `cloud-dev-fid-regex-accepts-linear-shape`, `jira-local-runs-only`, `cloud-dispatch-unified-file-additive`, `cloud-kill-switch-exact-label-match`, `cloud-feat-fallback-keeps-full-fid-slug`, `397-dual-agent-same-run-double-ship-when-both-secrets-set`, `719-runner-tracker-mcp-fallback`, `719-linear-jira-router-live-read`, `719-live-checks-deferred-to-owner-use`, `719-cursor-guard-tracker-unset-advisory`, `719-opencode-job-installs-deps-before-run`, `719-auto-opencode-one-shot-install`
 
 Design `Decisions` rows tagged "Acceptance change" (6) record SC / edge-case wording, not architecture → no ledger row. Design rows answered by the nine owner rows get no second row.
 
@@ -524,7 +511,7 @@ None — no database.
 
 - **Existence Check:** source `preflight-linear.sh` exists (73 lines); `preflight-tracker.sh` absent.
 - **NEW reason:** (c) — moves the Supersession Inventory `DELETE` `preflight-linear.sh`.
-- `git mv`; tracker dispatch on `bkit.tracker.default` (`python3`); tracker unset / `none` → Linear branch when `LINEAR_ISSUE_ID` set, else advisory context, exit 0 (Open Question 2 default; Cursor background included); tracker `linear` → today's Linear checks incl. the missing-`LINEAR_ISSUE_ID` HARD STOP; stdout one JSON document on every branch (Jira `fetch` output captured, never echoed); GitHub REST `curl` + `BKIT_GH_TOKEN` (owner/repo from `git remote get-url origin`), Linear GraphQL `state { name type }`, Jira `node_modules/.bin/bkit issues fetch --issue KEY --outbox "$TMPDIR" --json` (bin absent → HARD STOP); `curl --connect-timeout 5 --max-time 15`, Jira `timeout 20` when present; fail closed naming tracker + reason; no id on github / jira → `Guard pre-check: SKIPPED — no issue id; bkit:auto not verified`, exit 0.
+- `git mv`; tracker dispatch on `bkit.tracker.default` (`python3`); tracker unset / `none` → Linear branch when `LINEAR_ISSUE_ID` set, else advisory context, exit 0 (`719-cursor-guard-tracker-unset-advisory`; Cursor background included); tracker `linear` → today's Linear checks incl. the missing-`LINEAR_ISSUE_ID` HARD STOP; stdout one JSON document on every branch (Jira `fetch` output captured, never echoed); GitHub REST `curl` + `BKIT_GH_TOKEN` (owner/repo from `git remote get-url origin`), Linear GraphQL `state { name type }`, Jira `node_modules/.bin/bkit issues fetch --issue KEY --outbox "$TMPDIR" --json` (bin absent → HARD STOP); `curl --connect-timeout 5 --max-time 15`, Jira `timeout 20` when present; fail closed naming tracker + reason; no id on github / jira → `Guard pre-check: SKIPPED — no issue id; bkit:auto not verified`, exit 0.
 
 #### [MODIFY] `.bkit/core/.claude/hooks/bkit-preflight.sh`
 
@@ -568,7 +555,7 @@ None — no database.
 - **Existence Check:** exists.
 - `bkit-cloud.yml` entry: `{{NODE_VERSION}}` edit row (TASK 8); `runs-on` count 3 → 4 (TASK 12).
 
-#### [MODIFY] repo-root mirrors (regenerated, TASK 20)
+#### [MODIFY] repo-root mirrors (regenerated, TASK 18)
 
 - **Existence Check:** `.claude/hooks/bkit-preflight.sh`, `.cursor/hooks/bkit-preflight.sh`, `.bkit/*.md`, `.bkit/.env.example`, `docs/security.md` (managed block `:1-44`, source `.bkit/shared/docs/security.md`) exist; `bkit install` rewrites them; header text outside `bkit:start/end` hand-synced when the parity test reports it.
 
@@ -598,23 +585,23 @@ None — `bkit-cloud.yml` triggers (`workflow_run`, `workflow_dispatch`) unchang
 <!-- prettier-ignore -->
 | Doc | Change required |
 | --- | --- |
-| `docs/knowledge.jsonl` | Build-phase learnings only (e.g. live codex / Cursor findings from TASK 15 / TASK 16), written by the build's knowledge writer; no plan task. |
+| `docs/knowledge.jsonl` | Build-phase learnings only, written by the build's knowledge writer; no plan task. |
 | `docs/decisions.jsonl` | Rows in the `**Ledger rows:**` line (written at plan time). |
 | `docs/deferrals.jsonl` | `397-dual-agent-…` `TRIAGED` (written at plan time); the ship workflow's deferred-sweep closes it once TASK 7 is merged (owner row `719-cloud-router-dispatches-recorded-agent-only`); `719-runner-tracker-mcp-fallback`, `719-linear-jira-router-live-read` (written at plan time). |
 | `docs/architecture.md` | No change: hook parts, templates and engine modules keep their placement. |
 | `docs/technology.md` | No change: no new framework or library. |
 | `docs/data-schema.md` | No change: no database. |
 | `docs/design.md` | No change: no UI. |
-| `docs/testing.md` | Key-file rows for `cloud-ctx-step.integration.test.ts` (fixture bkit bin, recorded `fetch` replies, outcomes), `workflow-templates.integration.test.ts` (codex job, actionlint), `preflight-sh.integration.test.ts` (per-tracker guard, `curl` stub) — TASK 19. |
+| `docs/testing.md` | Key-file rows for `cloud-ctx-step.integration.test.ts` (fixture bkit bin, recorded `fetch` replies, outcomes), `workflow-templates.integration.test.ts` (codex job, actionlint), `preflight-sh.integration.test.ts` (per-tracker guard, `curl` stub) — TASK 17. |
 | `docs/observability.md` | `[bkit-cloud] gate:` annotations + summary row (TASK 8; `jobs` field contents TASK 9); § Phase 3 Credential + Migration Findings `detectCiRouterSecrets` row with the new findings (TASK 14); `buildCloudSetupAdvisory` sniffs (TASK 13). |
 | `docs/migrations.md` | § Detect-only guards rows: `cloud-router-tracker-stale` + `cloud-router-codex-missing` + `cloud-router-agent-unset` (TASK 13), `cloud-router-secret-renamed` (TASK 14). |
-| `docs/security.md` | `:22` secret names via its shipped source `.bkit/shared/docs/security.md:22` (inside the managed `bkit:start` / `bkit:end` block; TASK 20's `bkit install` regenerates the repo copy); `:67` opencode provider keys (no fan-out); § CI Auto-Route Trust: engine-owned FID parse + the dev-guard charset assert, dev subject via `fids parse --prompt-file`, kill switch on every tracker, tracker keys at step scope, PR head `package.json` steers its own routing run — TASK 19. |
-| `docs/deployments.md` | § `bkit-cloud.yml` jobs table (`:580-597`): one agent per run, `BKIT_` secrets, codex job, context install — TASK 19. |
-| `.bkit/core/.bkit/cloud.md` | Purpose + support matrix one row per agent (no tracker columns); § Post-CI auto-routing codex row; credentials table (`BKIT_` names, tracker keys); GitHub-tracker-only text gone (`:46`, `:445-475`); § Routing decision tracker-neutral; troubleshooting `verdict` / `reason` table + codex summary line; codex runner notes; session guard per tracker, no-id sessions unguarded, Codex Cloud unguarded; Linear / Jira router dispatch "not yet verified live"; TASK 15 / TASK 16 records — TASK 18 (+ TASK 15, TASK 16 records). |
-| `.bkit/core/.bkit/providers.md` | `preflight-linear.sh` row → `preflight-tracker.sh` (`:307`); Codex rows (`--auto=codex`, router job) — TASK 18. |
-| `.bkit/core/.bkit/templates.md` | `{{NODE_VERSION}}` row also lists `bkit-cloud.yml` (`:83`) — TASK 8; secrets line `:199` — TASK 18. |
-| `.bkit/core/.bkit/install.md` | `:170`, `:314`, `:321`, `:361` — variants incl. codex, any tracker, `BKIT_` secrets — TASK 18. |
-| `.bkit/core/.bkit/README.md` | `:312` `--auto=claude\|cursor\|opencode\|codex`; GitHub / Linear / Jira guard requirements (`:352-370`) — TASK 18. |
+| `docs/security.md` | `:22` secret names via its shipped source `.bkit/shared/docs/security.md:22` (inside the managed `bkit:start` / `bkit:end` block; TASK 18's `bkit install` regenerates the repo copy); `:67` opencode provider keys (no fan-out); § CI Auto-Route Trust: engine-owned FID parse + the dev-guard charset assert, dev subject via `fids parse --prompt-file`, kill switch on every tracker, tracker keys at step scope, PR head `package.json` steers its own routing run — TASK 17. |
+| `docs/deployments.md` | § `bkit-cloud.yml` jobs table (`:580-597`): one agent per run, `BKIT_` secrets, codex job, context install — TASK 17. |
+| `.bkit/core/.bkit/cloud.md` | Purpose + support matrix one row per agent (no tracker columns); § Post-CI auto-routing codex row; credentials table (`BKIT_` names, tracker keys); GitHub-tracker-only text gone (`:46`, `:445-475`); § Routing decision tracker-neutral; troubleshooting `verdict` / `reason` table + codex summary line; codex runner notes; session guard per tracker, no-id sessions unguarded, Codex Cloud unguarded; Linear / Jira router dispatch, the codex router job and the Cursor Jira guard "not yet verified live" — TASK 16. |
+| `.bkit/core/.bkit/providers.md` | `preflight-linear.sh` row → `preflight-tracker.sh` (`:307`); Codex rows (`--auto=codex`, router job) — TASK 16. |
+| `.bkit/core/.bkit/templates.md` | `{{NODE_VERSION}}` row also lists `bkit-cloud.yml` (`:83`) — TASK 8; secrets line `:199` — TASK 16. |
+| `.bkit/core/.bkit/install.md` | `:170`, `:314`, `:321`, `:361` — variants incl. codex, any tracker, `BKIT_` secrets — TASK 16. |
+| `.bkit/core/.bkit/README.md` | `:312` `--auto=claude\|cursor\|opencode\|codex`; GitHub / Linear / Jira guard requirements (`:352-370`) — TASK 16. |
 | `.agents/docs.md` | No change: no new doc. |
 
 ## Rollback Strategy
@@ -630,7 +617,7 @@ Code-only — `git revert` sufficient.
 
 ## Agent Execution Runbook
 
-Build order: guard (engine fact → hook part) → install engine → router context job → agent jobs → checks → live Cursor + codex proofs (one owner hand-off, Open Question 1) → docs → verification. Every task that edits `.bkit/templates/.github/workflows/bkit-cloud.yml` re-copies it to `.github/workflows/bkit-cloud.yml` (re-applying `runs-on` and, from TASK 8, `{{NODE_VERSION}}`) so `dogfood-templates.test.ts` stays green. Every engine task commits `pnpm build` output (`dist/`) with its sources.
+Build order: guard (engine fact → hook part) → install engine → router context job → agent jobs → checks → docs → verification. No live checks run during build (`719-live-checks-deferred-to-owner-use`). Every task that edits `.bkit/templates/.github/workflows/bkit-cloud.yml` re-copies it to `.github/workflows/bkit-cloud.yml` (re-applying `runs-on` and, from TASK 8, `{{NODE_VERSION}}`) so `dogfood-templates.test.ts` stays green. Every engine task commits `pnpm build` output (`dist/`) with its sources.
 
 **Integration shape (advice, not a gate):** one PR for all tasks is fine; natural commit seams are the group boundaries.
 
@@ -687,7 +674,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 <!-- bkit:task 3 start -->
 
 - [ ] **TASK 3:** Guard Jira branch, no-id line, Claude `GITHUB_ISSUE_ID` trigger (`719-guard-issue-id-sources`, `719-tracker-guard-no-issue-id-not-verified`, `719-cursor-jira-guard-hard-stop-without-bkit-bin`)
-  - **UPDATE:** `.bkit/core/hooks/preflight-tracker.sh`: Jira key from `feat/{FID}` uppercased, read via `node_modules/.bin/bkit issues fetch --issue KEY --outbox "$TMPDIR" --json` under `timeout 20` when present, output captured (never echoed), pass on `bkit:auto` and `terminal` false; bin absent, `fetch` exit 80 or `timeout` expiry → HARD STOP naming the cause; no id under github / jira → `Guard pre-check: SKIPPED — no issue id; bkit:auto not verified`, exit 0; tracker unset / `none` → Linear branch when `LINEAR_ISSUE_ID` set, else advisory context, exit 0 on both hosts (Open Question 2 default; Breaking Changes row)
+  - **UPDATE:** `.bkit/core/hooks/preflight-tracker.sh`: Jira key from `feat/{FID}` uppercased, read via `node_modules/.bin/bkit issues fetch --issue KEY --outbox "$TMPDIR" --json` under `timeout 20` when present, output captured (never echoed), pass on `bkit:auto` and `terminal` false; bin absent, `fetch` exit 80 or `timeout` expiry → HARD STOP naming the cause; no id under github / jira → `Guard pre-check: SKIPPED — no issue id; bkit:auto not verified`, exit 0; tracker unset / `none` → Linear branch when `LINEAR_ISSUE_ID` set, else advisory context, exit 0 on both hosts (`719-cursor-guard-tracker-unset-advisory`; Breaking Changes row)
   - **UPDATE:** `.bkit/core/.claude/hooks/bkit-preflight.sh`: trigger `LINEAR_ISSUE_ID` or `GITHUB_ISSUE_ID` (`:77-79`); header comments (`:4-17`) tracker-neutral
   - **UPDATE:** `.bkit/core/.cursor/hooks/bkit-preflight.sh`: header comments (`:4-15`) tracker-neutral
   - **UPDATE:** `.bkit/core/engine/audits/hooks/preflight-sh.integration.test.ts`: describe "Claude SessionStart preflight.sh — no Jira guard" (`:115-130`) rewritten to the Jira guard; fixture `node_modules/.bin/bkit` printing recorded `fetch` replies (incl. exit 80 and a sleep past the timeout); Cursor background cases `:141-156` rerun in a fixture repo with `bkit.tracker.default: "linear"` (TASK 2's `cwd` option)
@@ -748,22 +735,23 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 6 start -->
 
-- [ ] **TASK 6:** Wired-tracker rule and `.codex/` prerequisite (`719-auto-refuses-tracker-none`, `719-auto-codex-requires-codex-host`)
+- [ ] **TASK 6:** Wired-tracker rule, `.codex/` prerequisite and opencode one-shot install (`719-auto-refuses-tracker-none`, `719-auto-codex-requires-codex-host`, `719-auto-opencode-one-shot-install`)
   - **UPDATE:** `validateCloudTrackerMatch` in `.bkit/core/engine/commands/install/install.ts`: renamed `validateCloudTrackerWired`; refuses only tracker `none` with `[bkit] --auto=<v> needs a wired tracker: bkit install --tracker=<github|linear|jira> --auto=<v>`; same pre-write call site (`:393`)
-  - **UPDATE:** `.bkit/core/engine/commands/install/install.ts`: prerequisite branch (`:403-413`) adds `codex` → `.codex/` exists or `modules.has("codex")`, else exit 1 naming `bkit install --codex`
+  - **UPDATE:** `.bkit/core/engine/commands/install/install.ts`: prerequisite branch (`:403-413`) adds `codex` → `.codex/` exists or `modules.has("codex")`, else exit 1 naming `bkit install --codex`; the `opencode` check also passes on `modules.has("opencode")` (`719-auto-opencode-one-shot-install`)
   - **UPDATE:** `.bkit/core/engine/cli.ts`: `:817` comment names `validateCloudTrackerWired`
   - **UPDATE:** `.bkit/core/engine/commands/install/install.test.ts`: describe `validateCloudTrackerMatch` (`:91-140`) rewritten to the wired-tracker rule
   - **UPDATE:** `.bkit/core/engine/commands/install/install.integration.test.ts`: "Challenge Finding 3" pairing-refusal cases (`:841-950`) rewritten to the new rule
   - **UPDATE:** `dist/commands/install/install.js`: `pnpm build` output
   - **UPDATE:** `dist/cli.js`: `pnpm build` output
   - **DEPENDS ON:** 4, 5
-  - **DONE WHEN:** the five tests below pass; `git grep -n 'validateCloudTrackerMatch' -- .bkit/core` prints nothing.
+  - **DONE WHEN:** the six tests below pass; `git grep -n 'validateCloudTrackerMatch' -- .bkit/core` prints nothing.
   - **TEST FIRST:**
     - `.bkit/core/engine/commands/install/install.test.ts` `validateCloudTrackerWired passes %s with %s` fails on any variant x github / linear / jira pairing refused
     - `.bkit/core/engine/commands/install/install.test.ts` `validateCloudTrackerWired refuses tracker none naming --tracker=` fails on `none` passing, the message lacking `--tracker=`, `needs a wired tracker` or the `<github|linear|jira>` choice list, or still carrying the old `requires tracker=` pairing text
     - `.bkit/core/engine/commands/install/install.integration.test.ts` `--auto=codex without .codex/ exits 1 naming --codex and writes nothing` fails on a zero exit or a written `package.json`
     - `.bkit/core/engine/commands/install/install.integration.test.ts` `--tracker=jira --codex --auto=codex exits 0 and records codex` fails on the one-shot install refused or `bkit.cloud.agent` not `codex`
     - `.bkit/core/engine/commands/install/install.integration.test.ts` `--tracker=github --auto=cursor exits 0 and records cursor` fails on the old cursor -> linear pairing error
+    - `.bkit/core/engine/commands/install/install.integration.test.ts` `--tracker=github --opencode --auto=opencode in one run exits 0 and records opencode` fails on the `.opencode/` check ignoring `modules.has("opencode")`
 
 <!-- bkit:task 6 end -->
 
@@ -884,15 +872,16 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 12 start -->
 
-- [ ] **TASK 12:** Router `codex` job (`719-codex-job-action-prompt-and-pin`, `719-codex-job-installs-deps-before-action`, `719-codex-job-full-access-sandbox-allow-bots`, `719-codex-job-runtime-project-trust`)
+- [ ] **TASK 12:** Router `codex` job; `opencode` job dependency install (`719-codex-job-action-prompt-and-pin`, `719-codex-job-installs-deps-before-action`, `719-codex-job-full-access-sandbox-allow-bots`, `719-codex-job-runtime-project-trust`, `719-opencode-job-installs-deps-before-run`)
   - **UPDATE:** `.bkit/templates/.github/workflows/bkit-cloud.yml`: `codex` job — `if: needs.context.outputs.codex == 'true' && needs.context.outputs.skip != 'true'`; `opencode` permissions; FID concurrency lane suffix `-codex`; checkout `dev` + git user + vale; `setup-node {{NODE_VERSION}}` (`cache: pnpm`) + `pnpm/action-setup` + `pnpm install --frozen-lockfile`; trust step writing `$RUNNER_TEMP/codex-home/config.toml` with `[projects."$GITHUB_WORKSPACE"] trust_level = "trusted"`; `openai/codex-action@<40-char sha> # v1` (re-resolve `v1`) with `openai-api-key: ${{ secrets.BKIT_OPENAI_API_KEY }}`, `sandbox: danger-full-access`, `allow-bots: true`, `codex-home`, `codex-version: "0.165.0"` under `# renovate: datasource=npm depName=@openai/codex`, `prompt: "$bkit-auto ${{ needs.context.outputs.phase }} ${{ needs.context.outputs.arg }}"`, `GH_TOKEN` + tracker secrets in step env; `if: always()` summary step (`action`, `commits`, `comments`); job comment on irreversible `drop-sudo` on reused self-hosted `{{CLOUD_RUNNER}}` and the action's Node 24 on `PATH`
+  - **UPDATE:** `.bkit/templates/.github/workflows/bkit-cloud.yml`: `opencode` job gains the codex job's install block (`setup-node {{NODE_VERSION}}` + `pnpm/action-setup` + `pnpm install --frozen-lockfile`) before its dispatch step; closes `docs/failures.jsonl` `bkit-cloud-opencode-job-never-installs-repo-deps`
   - **READ:** `.bkit/templates/.github/renovate.json5`: `customManagers` first `matchStrings` (`[\w-]*(?:VERSION|version)[=:]`) covers `codex-version:`
   - **READ:** `.bkit/core/engine/audits/templates/template-ci-yml.test.ts`: `it.skipIf(!has("actionlint", …))` fill-and-lint pattern
   - **UPDATE:** `.github/workflows/bkit-cloud.yml`: re-copy, `runs-on` ×4 + `{{NODE_VERSION}}` re-applied
   - **UPDATE:** `.bkit/core/engine/audits/repo/dogfood-templates.test.ts`: `bkit-cloud.yml` `runs-on: {{CLOUD_RUNNER}}` count 3 → 4
   - **UPDATE:** `.bkit/core/engine/audits/templates/workflow-templates.integration.test.ts`: `needs: context` count (2 → 3) and runs-on pins
   - **DEPENDS ON:** 7, 8, 11
-  - **DONE WHEN:** the seven tests below pass; TASK 11's `tracker secrets sit in the ctx and every dispatch step env and in no job or workflow env` passes with the codex dispatch step included; `dogfood-templates.test.ts` passes.
+  - **DONE WHEN:** the eight tests below pass; TASK 11's `tracker secrets sit in the ctx and every dispatch step env and in no job or workflow env` passes with the codex dispatch step included; `dogfood-templates.test.ts` passes.
   - **TEST FIRST:**
     - `.bkit/core/engine/audits/templates/workflow-templates.integration.test.ts` `codex job runs only when the context job selects codex and skip is not true` fails on a codex job gated on the secret alone or missing
     - `.bkit/core/engine/audits/templates/workflow-templates.integration.test.ts` `codex job installs dependencies before openai/codex-action` fails on no install step or one placed after the action
@@ -901,6 +890,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
     - `.bkit/core/engine/audits/templates/workflow-templates.integration.test.ts` `trust step writes a codex-home config.toml trusting the workspace` fails on no file or a trust key other than `$GITHUB_WORKSPACE` (extracted bash run in a temp dir)
     - `.bkit/core/engine/audits/templates/workflow-templates.integration.test.ts` `filled bkit-cloud.yml passes actionlint` fails on an actionlint error in the new jobs
     - `.bkit/core/engine/audits/templates/workflow-templates.integration.test.ts` `codex summary step runs under if: always() and writes action, commits and comments` fails on a missing `if: always()` or a summary line lacking any of the three fields (extracted bash run in a temp dir)
+    - `.bkit/core/engine/audits/templates/workflow-templates.integration.test.ts` `opencode job installs dependencies before its dispatch step` fails on no install step or one placed after the dispatch
 
 <!-- bkit:task 12 end -->
 
@@ -956,39 +946,11 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:group 8 start -->
 
-### TASK GROUP 8: Live Cursor `sessionStart` and codex proofs
+### TASK GROUP 8: `cloud` tip and docs (WS-7, WS-8)
 
 <!-- bkit:task 15 start -->
 
-- [ ] **TASK 15:** Live Cursor background `sessionStart` dump (`719-cursor-jira-guard-hard-stop-without-bkit-bin`; repo per Open Question 1)
-  - **READ:** `.bkit/core/.cursor/hooks/bkit-preflight.sh`: the rendered guard the session runs
-  - **UPDATE:** `.bkit/core/.bkit/cloud.md`: § Cursor Cloud Agents — dated record of one live background session: `sessionStart` env, `ls node_modules/.bin/bkit` result, whether `GITHUB_ISSUE_ID` was injected for an `@cursor` GitHub-issue session and which branch its CI trigger checked out
-  - **DEPENDS ON:** 3
-  - **DONE WHEN:** `.bkit/core/.bkit/cloud.md` holds the dated observation; it shows `node_modules/.bin/bkit` present at `sessionStart` (absent → build stops here and the plan gains the 30 s poll through a plan update).
-  - **TEST FIRST:** n/a — @live (golden) tier; live Cursor background session, no unit / integration behaviour change
-
-<!-- bkit:task 15 end -->
-
-<!-- bkit:task 16 start -->
-
-- [ ] **TASK 16:** Three live codex dispatches before the template ships (`719-codex-job-full-access-sandbox-allow-bots`, `719-codex-job-runtime-project-trust`; repo per Open Question 1)
-  - **READ:** `.bkit/templates/.github/workflows/bkit-cloud.yml`: the template adopted in the live repo
-  - **UPDATE:** `.bkit/core/.bkit/cloud.md`: § Post-CI auto-routing codex runner — run URLs of one `workflow_dispatch`, one `workflow_run` from a human push, one from a bot-authored commit
-  - **DEPENDS ON:** 12
-  - **DONE WHEN:** `.bkit/core/.bkit/cloud.md` records three run URLs, each showing: actor check passed, `git push` landed, `gh pr comment` landed, one tracker verb succeeded, a hyphenated `.codex/agents/*.toml` subagent spawned, the gate passed under `github.token`, and the codex summary line present.
-  - **TEST FIRST:** n/a — @live (golden) tier; real `openai/codex-action` runs on GitHub Actions
-
-<!-- bkit:task 16 end -->
-
-<!-- bkit:group 8 end -->
-
-<!-- bkit:group 9 start -->
-
-### TASK GROUP 9: `cloud` tip and docs (WS-7, WS-8)
-
-<!-- bkit:task 17 start -->
-
-- [ ] **TASK 17:** `cloud` tip per variant
+- [ ] **TASK 15:** `cloud` tip per variant
   - **UPDATE:** `.bkit/core/engine/checks/tips/catalogue.ts`: `cloud` tip `ask` / `steps` (`:237-251`) from the recorded variant; Claude App, `BKIT_ANTHROPIC_API_KEY` and the bootstrap hook only for claude
   - **UPDATE:** `dist/checks/tips/catalogue.js`: `pnpm build` output
   - **DEPENDS ON:** 4
@@ -997,47 +959,47 @@ Build order: guard (engine fact → hook part) → install engine → router con
     - `.bkit/core/engine/checks/tips/catalogue.test.ts` `cloud tip names the Claude GitHub App and BKIT_ANTHROPIC_API_KEY only for cloud.agent claude` fails on Claude steps for other variants
     - `.bkit/core/engine/checks/tips/catalogue.test.ts` `cloud tip for codex names --codex and BKIT_OPENAI_API_KEY` fails on no codex text
 
-<!-- bkit:task 17 end -->
+<!-- bkit:task 15 end -->
 
-<!-- bkit:task 18 start -->
+<!-- bkit:task 16 start -->
 
-- [ ] **TASK 18:** Shipped docs under `.bkit/core/.bkit/`
-  - **UPDATE:** `.bkit/core/.bkit/cloud.md`: Purpose + support matrix one row per agent, no tracker columns (`:20-35`); § Reactive comment handlers `:46` and § Post-CI auto-routing (`:434-475`) — one agent per run, codex row, `BKIT_` credentials table incl. tracker keys, GitHub-tracker-only text removed; § Routing decision tracker-neutral; troubleshooting `verdict` / `reason` → cause → action incl. codex summary line; codex runner notes (unguarded diffs, `drop-sudo`, Node 24); session guard per tracker, no-id sessions unguarded, Codex Cloud unguarded; Linear / Jira router dispatch "not yet verified live"
+- [ ] **TASK 16:** Shipped docs under `.bkit/core/.bkit/`
+  - **UPDATE:** `.bkit/core/.bkit/cloud.md`: Purpose + support matrix one row per agent, no tracker columns (`:20-35`); § Reactive comment handlers `:46` and § Post-CI auto-routing (`:434-475`) — one agent per run, codex row, `BKIT_` credentials table incl. tracker keys, GitHub-tracker-only text removed; § Routing decision tracker-neutral; troubleshooting `verdict` / `reason` → cause → action incl. codex summary line; codex runner notes (unguarded diffs, `drop-sudo`, Node 24); session guard per tracker, no-id sessions unguarded, Codex Cloud unguarded; Linear / Jira router dispatch, the codex router job and the Cursor Jira guard (bin present at `sessionStart`) "not yet verified live" (`719-live-checks-deferred-to-owner-use`)
   - **UPDATE:** `.bkit/core/.bkit/providers.md`: `preflight-linear.sh` row (`:307`) → `preflight-tracker.sh`; Codex rows (`--auto=codex`, router job)
   - **UPDATE:** `.bkit/core/.bkit/templates.md`: secrets line (`:199`) to the `BKIT_` names + codex
   - **UPDATE:** `.bkit/core/.bkit/install.md`: `:170`, `:314`, `:321`, `:361`
   - **UPDATE:** `.bkit/core/.bkit/README.md`: `:312`; guard requirements `:352-370`
   - **READ:** `.bkit/core/engine/audits/workflows/workflow-shape.test.ts`: `:407-415` pins `` `bkit-build` Step N close-workflow `` in `.bkit/core/.bkit/cloud.md`
-  - **DEPENDS ON:** 3, 5, 11, 12, 13, 14, 15, 16
-  - **DONE WHEN:** `git grep -nE 'GitHub-tracker only|GitHub tracker only|OPENCODE_PROVIDER_KEY|preflight-linear|--auto=claude\|cursor\|opencode[^|]' -- .bkit/core/.bkit` prints nothing; the `.bkit/core/.bkit/cloud.md` support matrix header has no `Tracker` column and the matrix holds exactly one row each for claude, opencode, codex and cursor; `git grep -n 'not yet verified live' -- .bkit/core/.bkit/cloud.md` prints a line naming Linear and Jira router dispatch; `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` and `shipped-docs-refs.test.ts` pass. Doc drift between these sources and their installed `.bkit/*.md` copies is gated by TASK 20's `node dist/cli.js check` after `bkit install`.
+  - **DEPENDS ON:** 3, 5, 11, 12, 13, 14
+  - **DONE WHEN:** `git grep -nE 'GitHub-tracker only|GitHub tracker only|OPENCODE_PROVIDER_KEY|preflight-linear|--auto=claude\|cursor\|opencode[^|]' -- .bkit/core/.bkit` prints nothing; the `.bkit/core/.bkit/cloud.md` support matrix header has no `Tracker` column and the matrix holds exactly one row each for claude, opencode, codex and cursor; `git grep -n 'not yet verified live' -- .bkit/core/.bkit/cloud.md` prints lines naming Linear and Jira router dispatch, the codex router job and the Cursor Jira guard; `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` and `shipped-docs-refs.test.ts` pass. Doc drift between these sources and their installed `.bkit/*.md` copies is gated by TASK 18's `node dist/cli.js check` after `bkit install`.
   - **TEST FIRST:** n/a — docs only, no behaviour change
 
-<!-- bkit:task 18 end -->
+<!-- bkit:task 16 end -->
 
-<!-- bkit:task 19 start -->
+<!-- bkit:task 17 start -->
 
-- [ ] **TASK 19:** Repo docs and code comments
+- [ ] **TASK 17:** Repo docs and code comments
   - **UPDATE:** `docs/deployments.md`: § `bkit-cloud.yml` jobs table (`:580-597`): one agent per run, `BKIT_` secrets, codex job, context install
   - **UPDATE:** `.bkit/shared/docs/security.md`: `:22` (inside the managed `bkit:start` / `bkit:end` block) secret names → `secrets.BKIT_ANTHROPIC_API_KEY` / the provider `BKIT_` keys / `secrets.BKIT_OPENAI_API_KEY`
-  - **UPDATE:** `docs/security.md`: outside the managed block only — `:67` opencode provider keys; § CI Auto-Route Trust (`:149-158`): engine-owned FID parse plus the `bkit_dev_dispatch_guard` charset assert, dev subject via `fids parse --prompt-file`, kill switch on every tracker, tracker keys at step scope, a same-repo PR's head `package.json` (`bkit.cloud.agent`, `bkit.tracker.default`) steering its own routing run (collaborator-trusted); `:22` comes from TASK 20's `bkit install`
+  - **UPDATE:** `docs/security.md`: outside the managed block only — `:67` opencode provider keys; § CI Auto-Route Trust (`:149-158`): engine-owned FID parse plus the `bkit_dev_dispatch_guard` charset assert, dev subject via `fids parse --prompt-file`, kill switch on every tracker, tracker keys at step scope, a same-repo PR's head `package.json` (`bkit.cloud.agent`, `bkit.tracker.default`) steering its own routing run (collaborator-trusted); `:22` comes from TASK 18's `bkit install`
   - **UPDATE:** `docs/testing.md`: key-file rows for `cloud-ctx-step.integration.test.ts`, `workflow-templates.integration.test.ts`, `preflight-sh.integration.test.ts` (`:599`)
   - **UPDATE:** `.bkit/core/engine/install/modules/opencode.ts`: comments `:163`, `:225` name the provider's `BKIT_` secret
   - **UPDATE:** `dist/install/modules/opencode.js`: `pnpm build` output
   - **DEPENDS ON:** 8, 10, 12
-  - **DONE WHEN:** `git grep -n -e OPENCODE_PROVIDER_KEY -e 'secrets\.ANTHROPIC_API_KEY' -- docs/deployments.md docs/security.md docs/testing.md .bkit/shared/docs/security.md .bkit/core/engine/install/modules/opencode.ts` prints nothing outside `docs/security.md:1-44` (the managed block TASK 20 regenerates); `pnpm build` leaves `dist/` matching its sources.
+  - **DONE WHEN:** `git grep -n -e OPENCODE_PROVIDER_KEY -e 'secrets\.ANTHROPIC_API_KEY' -- docs/deployments.md docs/security.md docs/testing.md .bkit/shared/docs/security.md .bkit/core/engine/install/modules/opencode.ts` prints nothing outside `docs/security.md:1-44` (the managed block TASK 18 regenerates); `pnpm build` leaves `dist/` matching its sources.
   - **TEST FIRST:** n/a — docs and comments only, no behaviour change
 
-<!-- bkit:task 19 end -->
+<!-- bkit:task 17 end -->
 
-<!-- bkit:group 9 end -->
+<!-- bkit:group 8 end -->
 
-<!-- bkit:group 10 start -->
+<!-- bkit:group 9 start -->
 
-### TASK GROUP 10: Mirrors and full verification
+### TASK GROUP 9: Mirrors and full verification
 
-<!-- bkit:task 20 start -->
+<!-- bkit:task 18 start -->
 
-- [ ] **TASK 20:** Regenerate mirrors, full suite, dogfood
+- [ ] **TASK 18:** Regenerate mirrors, full suite, dogfood
   - **UPDATE:** `dist/cli.js`: `pnpm build` (every `dist/` file regenerated)
   - **UPDATE:** `.claude/hooks/bkit-preflight.sh`: regenerated by `bkit install`; header outside `bkit:start/end` hand-synced if the parity test reports it
   - **UPDATE:** `.cursor/hooks/bkit-preflight.sh`: same
@@ -1048,13 +1010,13 @@ Build order: guard (engine fact → hook part) → install engine → router con
   - **UPDATE:** `.bkit/install.md`: regenerated installed copy
   - **UPDATE:** `.bkit/README.md`: regenerated installed copy
   - **UPDATE:** `docs/security.md`: managed `bkit:start` / `bkit:end` block (`:1-44`) regenerated from `.bkit/shared/docs/security.md`
-  - **DEPENDS ON:** 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19
+  - **DEPENDS ON:** 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17
   - **DONE WHEN:** `pnpm vitest run` passes; `node dist/cli.js check` on the repo exits 0 with no drift finding; `git grep -n -e OPENCODE_PROVIDER_KEY -e 'secrets\.ANTHROPIC_API_KEY' -- docs/security.md` prints nothing; in a scratch consumer from `pnpm pack`, `bkit install --tracker=jira --codex --auto=codex` exits 0 and records `codex`, and `bkit install --auto=claude` with tracker `none` exits 1 naming `--tracker=`; in that consumer, with the new router adopted and a stub `gh` on `PATH` whose `secret list` prints `ANTHROPIC_API_KEY`, `node dist/cli.js check` raises `cloud-router-secret-renamed`.
   - **TEST FIRST:** n/a — verification and regenerated mirrors, no new behaviour
 
-<!-- bkit:task 20 end -->
+<!-- bkit:task 18 end -->
 
-<!-- bkit:group 10 end -->
+<!-- bkit:group 9 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
 
@@ -1087,10 +1049,10 @@ Build order: guard (engine fact → hook part) → install engine → router con
 - [ ] **Unit + Integration (`.bkit/core/engine/install/manifest.test.ts`, `.bkit/core/engine/cli.test.ts`, `.bkit/core/engine/commands/install/install.test.ts`, `.bkit/core/engine/commands/install/install.integration.test.ts`, `.bkit/core/engine/install/modules/cloud.integration.test.ts`, `.bkit/core/engine/audits/templates/templates-content.test.ts`):** `codex` variant, wired-tracker rule, variant x tracker advisories (TASKS 4-6).
 - [ ] **Integration (`.bkit/core/engine/audits/templates/cloud-ctx-step.integration.test.ts`):** credential gate, `Select agent job`, `bkit_gate` outcomes through a real or recorded `node_modules/.bin/bkit`, `fids parse` on both arms (TASKS 7-10).
 - [ ] **Integration (`.bkit/core/engine/audits/templates/workflow-templates.integration.test.ts`):** `BKIT_` secret reads, per-arm context checkout `ref`, step-scope tracker keys, codex job shape + summary step, actionlint on the filled template (TASKS 7, 8, 11, 12).
-- [ ] **Unit (`.bkit/core/engine/checks/after/github.test.ts`, `.bkit/core/engine/checks/after/auth.test.ts`, `.bkit/core/engine/checks/tips/catalogue.test.ts`):** stale-router sniffs, per-variant secret findings, renamed-secret guard, `cloud` tip (TASKS 13, 14, 17).
+- [ ] **Unit (`.bkit/core/engine/checks/after/github.test.ts`, `.bkit/core/engine/checks/after/auth.test.ts`, `.bkit/core/engine/checks/tips/catalogue.test.ts`):** stale-router sniffs, per-variant secret findings, renamed-secret guard, `cloud` tip (TASKS 13, 14, 15).
 - [ ] **Unit (`.bkit/core/engine/audits/repo/dogfood-templates.test.ts`):** bkit's adopted `.github/workflows/bkit-cloud.yml` equals the template after its listed edits (`runs-on` x4, `{{NODE_VERSION}}`).
 - [ ] **Apply local migrations:** n/a — no database.
-- [ ] **Run all tests:** `pnpm test` (`vitest run`) and `pnpm bkit:test:bats` pass after `pnpm build` and `node dist/cli.js install` regenerate the mirrors (TASK 20).
+- [ ] **Run all tests:** `pnpm test` (`vitest run`) and `pnpm bkit:test:bats` pass after `pnpm build` and `node dist/cli.js install` regenerate the mirrors (TASK 18).
 
 ### 🔒 Gate 4: Automated Verification Check
 
@@ -1101,8 +1063,6 @@ Build order: guard (engine fact → hook part) → install engine → router con
 > [!CAUTION]
 > **Owner-run acceptance checks — advisory only.** An unticked box blocks nothing: not the merge, not plan approval. This is not a Gate 1 human-confirmation section.
 
-- [ ] **Step 1:** Open the three codex run URLs recorded in `.bkit/core/.bkit/cloud.md` (TASK 16) with `gh run view <id> --log`; confirm the actor check, the pushed commit, the PR comment, the tracker verb, the hyphenated subagent spawn and the codex summary line.
-- [ ] **Step 2:** Read the dated Cursor `sessionStart` record in `.bkit/core/.bkit/cloud.md` (TASK 15); confirm `node_modules/.bin/bkit` was present and note whether `GITHUB_ISSUE_ID` was injected for `@cursor`.
-- [ ] **Step 3:** In a scratch consumer from `pnpm pack`, run `bkit install --tracker=<github|linear|jira> --auto=<claude|cursor|opencode|codex>` across the grid (codex with `--codex` in the same run; opencode after an earlier `bkit install --opencode` run, unless Open Question 4 folds in the one-shot fix); confirm each exits 0, records the variant, and its advisory names only that variant's and tracker's `BKIT_` secrets; `--auto=claude` with tracker `none` exits 1 naming `--tracker=`.
-- [ ] **Step 4:** In that consumer, adopt the pre-change router copy (`git show HEAD~:.bkit/templates/.github/workflows/bkit-cloud.yml`) under `--tracker=jira`, set a legacy `ANTHROPIC_API_KEY` secret on a sandbox repo, run `bkit check`; confirm `cloud-router-tracker-stale` and `cloud-router-secret-renamed` appear with their re-copy / `gh secret set` actions.
-- [ ] **Step 5:** On a `bkit:auto` issue in the live repo, remove the label and push to its `feat/**` branch; confirm the router run is green, dispatches nothing and its step summary row reads `label-absent`.
+- [ ] **Step 1:** In a scratch consumer from `pnpm pack`, run `bkit install --tracker=<github|linear|jira> --auto=<claude|cursor|opencode|codex>` across the grid (codex with `--codex`, opencode with `--opencode`, each in the same run); confirm each exits 0, records the variant, and its advisory names only that variant's and tracker's `BKIT_` secrets; `--auto=claude` with tracker `none` exits 1 naming `--tracker=`.
+- [ ] **Step 2:** In that consumer, adopt the pre-change router copy (`git show HEAD~:.bkit/templates/.github/workflows/bkit-cloud.yml`) under `--tracker=jira`, set a legacy `ANTHROPIC_API_KEY` secret on a sandbox repo, run `bkit check`; confirm `cloud-router-tracker-stale` and `cloud-router-secret-renamed` appear with their re-copy / `gh secret set` actions.
+- [ ] **Step 3:** On a `bkit:auto` issue in a repo where you use the router, remove the label and push to its `feat/**` branch; confirm the router run is green, dispatches nothing and its step summary row reads `label-absent`.
