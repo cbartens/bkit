@@ -193,6 +193,7 @@ function sectionCalls(body) {
         ...c,
         position: i > lastFinish && lastFinish !== -1 ? "post" : "pre",
         branch: logical[i].branch,
+        line: i,
     })));
 }
 /** Row keys a section writes (not merely names in a `steps gate --step=` read). */
@@ -221,14 +222,36 @@ export function isConditionalSection(body) {
  */
 export function deriveContract(workflowMd, workflow) {
     const sections = stepSections(workflowMd);
-    const steps = sections.map((s) => ({
-        number: s.number,
-        title: s.title,
-        keys: stepKeys(s.body),
-        writes: stepWrites(s.body),
-        calls: sectionCalls(s.body),
-        conditional: isConditionalSection(s.body),
-    }));
+    // The journal window runs from the first `workflows start` call to the `workflows close`
+    // call: a call written above or below it is matched when journaled, never required.
+    const lineOf = (offset) => workflowMd.slice(0, offset).split("\n").length - 1;
+    const absLine = (s, line) => lineOf(workflowMd.indexOf(s.body)) + line;
+    const marks = (noun, verb) => sections.flatMap((s) => sectionCalls(s.body)
+        .filter((c) => c.noun === noun && c.verb === verb)
+        .map((c) => absLine(s, c.line)));
+    const starts = marks("workflows", "start");
+    const closes = marks("workflows", "close");
+    const windowStart = starts.length > 0 ? Math.min(...starts) : -1;
+    const windowEnd = closes.length > 0 ? Math.max(...closes) : Number.POSITIVE_INFINITY;
+    const outsideWindow = [];
+    const steps = sections.map((s) => {
+        const inside = [];
+        for (const { line, ...c } of sectionCalls(s.body)) {
+            const at = absLine(s, line);
+            if (at < windowStart || at > windowEnd)
+                outsideWindow.push(c);
+            else
+                inside.push(c);
+        }
+        return {
+            number: s.number,
+            title: s.title,
+            keys: stepKeys(s.body),
+            writes: stepWrites(s.body),
+            calls: inside,
+            conditional: isConditionalSection(s.body),
+        };
+    });
     const universe = [...new Set(steps.flatMap((s) => s.keys))].sort();
     // Text outside every step section: the md minus each section body.
     let outside = workflowMd;
@@ -249,7 +272,7 @@ export function deriveContract(workflowMd, workflow) {
         workflow,
         steps,
         universe,
-        workflowCalls: requiredCalls(outside),
+        workflowCalls: [...requiredCalls(outside), ...outsideWindow],
         sourceSha: createHash("sha256").update(workflowMd).digest("hex"),
         orphanSteps: stepKeys(outside)
             .filter((k) => k.startsWith(`${workflow}-`) && !universe.includes(k))

@@ -843,6 +843,9 @@ function writeCompletenessRow(file, workflow, startAt, parentSha, log) {
         });
         const row = { type: "completeness", ...verdict, at: statusTimestamp(), parentSha };
         fs.appendFileSync(file, appendLine(row));
+        if (verdict.journalSuspect) {
+            log("[bkit-telemetry] journal looks dead at close: no engine-call rows for this run; the completeness verdict cannot be trusted");
+        }
     }
     catch (err) {
         // The check is advisory: report the failure and close without the row.

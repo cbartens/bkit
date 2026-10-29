@@ -1066,6 +1066,18 @@ describe("bkit workflows close", () => {
     expect(all[at + 1]).toMatchObject({ type: "workflow-done", workflow: "build" });
   });
 
+  it("prints one telemetry line on stderr when the journal looks dead at close", async () => {
+    const cwd = closable("build");
+    const r = await run(cwd, wf("close", "build"));
+    expect(r.code).toBe(0);
+    const lines = r.err.split("\n").filter((l) => l.includes("journal looks dead"));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("[bkit-telemetry] journal looks dead at close");
+    // stdout is still the one output object, with no journal field.
+    expect(JSON.stringify(r.json)).not.toContain("journal looks dead");
+    expect(r.json).not.toHaveProperty("journalSuspect");
+  });
+
   it("writes one completeness row per close", async () => {
     const cwd = closable("build");
     expect((await run(cwd, wf("close", "build"))).code).toBe(0);

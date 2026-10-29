@@ -24,12 +24,14 @@ const ODD: CommandSpec = {
   verbs: {
     odd: {
       summary: "exits 9, which it does not declare",
+      use: "by-hand",
       flags: [{ name: "step", type: "string", help: "step" }],
       output: {},
       run: () => 9,
     },
     "needs-human": {
       summary: "exits 82",
+      use: "by-hand",
       flags: [],
       output: {},
       run: () => 82,
