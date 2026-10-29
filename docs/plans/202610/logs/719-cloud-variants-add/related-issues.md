@@ -193,6 +193,278 @@ Cloud setup now reports what it could not provide, on every platform. Committed 
 - Dogfood from a packed tarball in a clean repo: `bkit context provision` named the failing recipe with its reason, wrote the file, still ran the next recipe, and exited 0. `bkit upgrade` puts the new gitignore line back.
 - Not run on a real cloud machine yet.
 
+## #568 — Review and adopt Cline patterns (open)
+
+https://github.com/cline/cline
+
+## What it is
+
+Cline is a single coding agent that a developer drives from VS Code, JetBrains, a CLI, a desktop app or an SDK. By default it asks for approval before every file edit and terminal command. It has a read-only Plan mode and an Act mode, plus newer extras: a Kanban board that runs tasks in parallel git worktrees (research preview), agent teams and scheduled agents. Apache-2.0 licence, except the JetBrains plugin, which is closed source. Actively maintained (`desktop-v0.0.46` on 2026-10-13).
+
+This issue is about patterns bkit could learn from Cline. Running bkit inside Cline is a separate question, tracked in #388.
+
+## How it compares with bkit
+
+- **Different kind of tool:** Cline is an editor-style assistant. Its "process" is whatever the developer does with Plan and Act. bkit is a fixed process that runs on top of an agent like this; with #388, Cline could become one of bkit's hosts.
+- **Where bkit goes further:** design, plan, build, review, debug and ship phases with fixed sign-offs; separate, blind reviewers; mechanical "done" checks; a CI pipeline; tracker integration; file ledgers. Cline's GitHub Actions files are copy-paste doc samples that post AI analysis and do not check tests.
+- **Where it goes further:** a real editor experience (diffs in the editor, approve or reject inline, roll back any step); a Kanban board for running and reviewing many agents at once; chat from Slack, Telegram or Linear; works with almost any model, including local ones.
+- **Already in bkit:** rolling back any step. Cline's checkpoints are a hidden git repo snapshot after each step, including untracked files. bkit commits after every workflow step on a throwaway `feat/{FID}` worktree branch (`bkit steps finish`), so any step can be restored from git.
+- **Least-privilege CI:** Cline's PR-review sample splits the AI job (read-only token) from the job that posts the result. That pattern is written up as an idea in #555 (OpenHands).
+- Researched for the October 2026 comparison; left out of the 10-project table in `.bkit/comparison.md` (Part 3), so these findings are recorded here only.
+
+## Ideas worth reviewing
+
+### 1. Start the next dependent task automatically when one finishes
+
+- **What it does there:** on the Kanban board you can link cards. "When a linked card completes... the next linked task automatically starts", each in its own worktree. https://docs.cline.bot/kanban/core-workflow
+- **What bkit does today:** design Step 11 posts the suggested workstreams, with their `Requires` edges, as an advisory comment and is marked `NEVER auto-trigger` (`.bkit/core/.bkit/workflows.md`, Step 11 contract). A human files each issue and starts each run. `/bkit-build` Step 1 honours blocker edges a human has set.
+- **Where it would fit:** the milestone orchestrator proposed in #260, which would drive a workstream graph to done.
+- **Recommendation:** Worth a closer look. #260 already designs this, and Cline's board is a small working example of the "start the next one when its blockers finish" rule. bkit's human sign-offs would still have to sit between the steps.
+- Related issue: #260
+
+### 2. Let a human comment on a diff line and send it to the agent
+
+- **What it does there:** in Kanban's review view, "Click on any line in the diff to leave a comment. Comments are sent back to the agent", which then revises before you commit or open a PR. https://docs.cline.bot/kanban/core-workflow
+- **What bkit does today:** human feedback reaches bkit only through tracker comments, which `/bkit-debug` reads at the start of a run (`.bkit/core/workflows/bkit-debug.md`, issue-read step). Review comments on the PR's code lines are not read by any workflow.
+- **Where it would fit:** debug's context fetch: read the PR's review threads as one more untrusted input. GitHub's PR review UI then plays the part of Cline's board. #556 (Compound Engineering) is the home for this idea.
+- **Recommendation:** Worth a closer look. The same gap shows up in oh-my-openagent's `--ship` mode (#567), which fixes "CI and review feedback". One change covers both.
+
+### 3. Review with more than one model
+
+- **What it does there:** Cline's model-orchestration sample runs the same task through several models because "Different models catch different issues, so cross-validating solutions with multiple AI perspectives helps reduce blind spots". https://docs.cline.bot/cli/samples/model-orchestration
+- **What bkit does today:** it depends on the provider column in `.bkit/core/.bkit/prompts.md` § Models. On the OpenRouter and Ollama columns the two build challenge reviewers already run on different models (for example `deepseek/deepseek-v4.1-flash` and `moonshotai/kimi-k3`). On the Anthropic, Cursor, OpenAI and Google columns both run on the same model (`claude-opus-5-5`, `cursor-grok-4.5-high`, `gpt-6-astra`, `gemini-3.8-pro`), and so do the three plan reviewers on Claude. Their roles differ, but they share one model's blind spots.
+- **Where it would fit:** the reviewer rows in `.bkit/core/.bkit/prompts.md` § Models: give `bkit-build-challenge-2` a different model from `-1` wherever the provider offers one (Cursor's pool, for example).
+- **Recommendation:** Worth a closer look. Several projects in the comparison (Kiro, gstack, Compound Engineering) use a second model for review. Claude Code can only run Claude models, so the most bkit could do there is mix Opus and Sonnet, as design review already does. The `bkit-build-challenge-2` row gives a recorded reason for keeping both on Opus ("depth-sensitive — both opus"). Kiro's cross-vendor reviewer idea is in #557.
+- Related issue: #205
+
+## Not worth adopting
+
+- **Approval for every action:** bkit asks for sign-off at phase boundaries and blocks dangerous commands with hooks. Asking for every edit does not work for unattended cloud runs.
+- **The model marking its own commands `requires_approval`:** Cline uses no fixed allowlist, so the agent decides which of its own commands need a human. bkit's fixed patterns (`.bkit/core/hooks/guardrails-tiers.js`) are predictable and testable.
+- **Memory Bank:** a set of markdown files the agent rewrites on request ("update memory bank"). bkit's ledgers (`docs/decisions.jsonl`, `docs/knowledge.jsonl`, `docs/failures.jsonl`) are structured and kept up to date by dedicated agents.
+- **YOLO mode:** it switches every approval off. bkit's guardrails stay on in cloud runs.
+
+## Sources
+
+- https://github.com/cline/cline/blob/main/README.md
+- https://github.com/cline/cline/blob/main/LICENSE
+- https://github.com/cline/kanban
+- https://docs.cline.bot/kanban/core-workflow
+- https://docs.cline.bot/usage/kanban
+- https://docs.cline.bot/cli/samples/model-orchestration
+- https://docs.cline.bot/cli/samples/github-pr-review
+- https://docs.cline.bot/core-workflows/checkpoints
+- https://docs.cline.bot/features/auto-approve
+- https://docs.cline.bot/best-practices/memory-bank
+
+## #555 — Review and adopt OpenHands patterns (open)
+
+https://github.com/OpenHands/OpenHands
+
+## What it is
+
+OpenHands is a self-hosted platform (with a paid hosted version, OpenHands Cloud) that runs coding agents in sandboxes: its own agent, or Claude Code, Codex, Gemini CLI or OpenCode. You start agents from a web UI, CLI or API, on a schedule, or when something happens in GitHub, Slack, Linear or Jira. MIT licence, actively maintained (`v1.27.1` on 2026-10-12; the README marks it "beta"). The agent itself now lives in https://github.com/OpenHands/software-agent-sdk and the reusable plugins and skills in https://github.com/OpenHands/extensions.
+
+## How it compares with bkit
+
+- **Different kind of tool:** OpenHands is somewhere to run agents, not a fixed development process. Its closest thing to bkit's pipeline is the optional "Software Factory" recipe: four automations you set up yourself (triage, developer, reviewer, watchdog) that take an issue to a merged PR.
+- **Where bkit goes further:** design and plan phases with reviews; human sign-offs after design, after plan and before merge (Software Factory has none, and its watchdog merges on green); two separate, blind reviewers for bugs and for security (OpenHands has one reviewer covering both); a multi-lane CI pipeline with a final gate (OpenHands only ships an AI PR-review workflow); and file-based ledgers.
+- **Where it goes further:** agents run in Docker, VMs, Kubernetes or a hosted cloud instead of on your machine; agents start on events from Slack, Jira, Linear and webhooks; GitLab, Bitbucket and Jira support; one control centre for several agent products.
+- **Already in bkit:** OpenHands' `github-delivery-watchdog` is plain code, not an agent. It merges only "current heads with independent review, tests, and passing CI." bkit's ship merge gate does the same: `bkit runs gate --validated=` re-checks CI against the exact PR head before `bkit prs merge --match-head` (`.bkit/core/.bkit/workflows.md` § Pre-merge CI).
+- Full table: `.bkit/comparison.md` § "Compared with other AI development frameworks".
+
+## Ideas worth reviewing
+
+### 1. A QA agent that runs the software on the PR
+
+- **What it does there:** the `qa-changes` plugin is a copy-in GitHub Actions workflow. Its agent "actually runs the software": it installs and builds the project, starts servers, opens browsers, runs CLI commands and makes HTTP requests against the changed behaviour. It then posts a QA report on the PR with the commands, output and screenshots. It deliberately does not re-run the test suite ("that's CI's job"). It gives up after two fundamentally different approaches fail, says what it could not verify, and suggests `AGENTS.md` guidance for next time. https://github.com/OpenHands/extensions/tree/main/plugins/qa-changes
+- **What bkit does today:** build checks that plan items exist in the code (Step 7) and runs the test suite (Step 14, `.bkit/core/workflows/bkit-build.md`). End-to-end checks exist only as CI lanes the consumer writes (`.bkit/templates/context/bkit-playwright.md`, `bkit-maestro.md`). Nothing tries the feature the way a user would.
+- **Where it would fit:** an optional build step or CI lane after the tests pass. The consumer supplies a `context` block saying how to start the app, and bkit ships the QA prompt. That is the same split bkit already uses for `context-fetch`.
+- **Recommendation:** Worth a closer look. It targets failures that green tests miss, and its "report what could not be verified" rule fits bkit's "unavailable is not clean" stance. oh-my-openagent's QA-executor role and gstack's real-browser QA are the same idea, so design them together; this issue is the home for it.
+- Related issue: #83 (closed; runtime evidence for audits, not for build)
+
+### 2. Give each agent role only the GitHub permissions it needs
+
+- **What it does there:** in Software Factory each automation has its own agent profile and token. The reviewer "can publish findings and statuses but cannot push code". Merging is done by the separate watchdog script, not by an agent. https://docs.openhands.dev/openhands/usage/use-cases/software-factory. Cline's PR-review sample does the same thing with two jobs, so that "the job that runs Cline can't change your repository or the pull request". https://docs.cline.bot/cli/samples/github-pr-review
+- **What bkit does today:** in `.bkit/templates/.github/workflows/bkit-cloud.yml` the `run` (Claude) and `opencode` jobs run the whole agent session with `contents: write`, `pull-requests: write` and `issues: write`. The Claude job also has `id-token: write`. The merge itself is deterministic code (`bkit runs gate` + `bkit prs merge`), but the agent that writes and reviews the code holds the same token that merges.
+- **Where it would fit:** `bkit-cloud.yml`, by moving the ship merge (and maybe the tracker writes) into a follow-up job that holds the write permissions, after the agent job finishes.
+- **Recommendation:** Worth a closer look. A prompt-injected cloud agent today has everything it needs to push or merge, and splitting jobs is a CI-only change. It may not fit build and debug, which have to push code anyway.
+
+### 3. Scheduled upkeep runs that open a PR
+
+- **What it does there:** the `github-agents-md-maintainer` skill sets up an automation that, weekly by default, checks `AGENTS.md` against the code and opens a PR when it has drifted. Automations can also start on cron, GitHub events or webhooks. https://github.com/OpenHands/extensions/tree/main/skills/github-agents-md-maintainer, https://docs.openhands.dev/openhands/usage/automations/event-automations
+- **What bkit does today:** the upkeep prompts exist (`.bkit/core/prompts/bkit-utility-update-documentation.md`, `bkit-utility-update-knowledge.md`, `bkit-utility-update-deferrals.md`) but someone has to start them by hand. `bkit-cloud.yml` starts runs from CI results or a manual dispatch, never on a schedule. The only scheduled bkit workflow is Renovate (`.bkit/templates/.github/workflows/bkit-renovate.yml`).
+- **Where it would fit:** a scheduled trigger in `bkit-cloud.yml` that runs one utility prompt and opens a PR into `dev` for a human to merge.
+- **Recommendation:** Worth a closer look. #324 already plans scheduled audit runs, and the ledger and docs upkeep prompts are the low-risk first candidates for the same scheduler.
+- Related issue: #324
+
+### 4. Jira, GitLab and Bitbucket
+
+- **What it does there:** issue-to-PR automations read from GitHub Issues, GitLab Issues, Jira or Linear and post progress and the PR link back. https://docs.openhands.dev/openhands/usage/agent-canvas/prebuilt/issue-to-pr
+- **What bkit does today:** GitHub and Linear only (`.bkit/core/.bkit/trackers.md`).
+- **Where it would fit:** the tracker provider layer.
+- **Recommendation:** Worth a closer look. Jira is the most common gap in the comparison table, and #60 already tracks it, so this adds a reference implementation, not a new decision.
+- Related issue: #60
+
+## Not worth adopting
+
+- **No human gate by default:** Software Factory merges on green with no human. This conflicts with bkit's sign-off before merge.
+- **An LLM that rates the risk of each action ("ConfirmRisky"):** this lets a model decide what needs approval. bkit's guard tiers are fixed patterns (`.bkit/core/hooks/guardrails-tiers.js`), which are predictable and testable.
+- **Headless mode that always approves everything:** bkit's cloud runs keep the same guardrail hooks as local runs.
+- **A Stop hook that refuses to let the agent finish until lint passes:** inside bkit workflows, `bkit steps finish` already refuses a step without its artifacts and test verdict. For ad-hoc chats, running the gate on every stop costs more than it catches.
+- **Per-conversation Docker sandboxes on the developer's machine:** bkit isolates features with git worktrees. Containers add a Docker dependency for no gain in bkit's local use.
+
+## Sources
+
+- https://github.com/OpenHands/OpenHands/blob/main/README.md
+- https://github.com/OpenHands/OpenHands/blob/main/LICENSE
+- https://docs.openhands.dev/openhands/usage/use-cases/software-factory
+- https://docs.openhands.dev/openhands/usage/use-cases/code-review
+- https://docs.openhands.dev/openhands/usage/agent-canvas/prebuilt/issue-to-pr
+- https://docs.openhands.dev/openhands/usage/automations/event-automations
+- https://docs.openhands.dev/openhands/usage/customization/hooks
+- https://docs.openhands.dev/sdk/guides/security
+- https://github.com/OpenHands/extensions/tree/main/plugins/qa-changes
+- https://github.com/OpenHands/extensions/tree/main/skills/github-delivery-watchdog
+- https://github.com/OpenHands/extensions/tree/main/skills/github-agents-md-maintainer
+- https://docs.cline.bot/cli/samples/github-pr-review
+
+## #567 — Review and adopt oh-my-openagent patterns (open)
+
+https://github.com/code-yeongyu/oh-my-openagent
+
+## What it is
+
+oh-my-openagent (OmO, renamed from oh-my-opencode; the old URL redirects) is an autonomous coding agent. It has its own `omo` CLI and desktop app, and also ships as a plugin for OpenCode and Codex CLI. A main agent plans, hands tasks to parallel workers on whichever model fits each task, has their work checked, and keeps going until the plan is done. Actively maintained, with daily releases (`v5.1.33` on 2026-10-13).
+
+**Licence:** "Sustainable Use License" v1.0, the same text n8n uses. It is source-available, not open source: you may use or modify it only for internal business, non-commercial or personal use, and redistribute it only free of charge for non-commercial purposes. Contributors sign a CLA. bkit can take ideas from it but should not copy its code or prompt text.
+
+## How it compares with bkit
+
+- **Overlap:** plan, build, independent review, PR and merge, per-feature git worktrees, and resume after a crash. OmO resumes from `.omo/boulder.json` plus the plan checkboxes; bkit resumes from `status.jsonl`.
+- **Where bkit goes further:** bkit stops for human sign-off after design, after plan and before merge. OmO's default `ulw` mode is "Full automatic", and `/ulw-execute` with no plan treats the command itself as approval. bkit has two reviewers (bugs, security) who cannot see each other's findings; OmO deliberately uses "ONE gate reviewer (never a panel)". bkit also has a CI template, tracker integration (OmO starts from a prompt, not an issue) and a library of audits.
+- **Where it goes further:** picking a model per task, with fallbacks when a model fails; a QA worker that actually uses the feature and records proof; memory that warns the agent before it repeats a mistake; a `--ship` mode that keeps a PR going through CI and review comments until it merges.
+- **Already in bkit:** OmO ties its proof of "done" to the exact code tested (the git tree hash) and refuses evidence files that do not exist. bkit does the equivalent: `bkit steps finish` refuses a step whose artifacts are missing, and the ship merge gate merges only the PR head that CI validated (`.bkit/core/.bkit/workflows.md` § Pre-merge CI, `bkit runs gate --validated=`).
+- Researched for the October 2026 comparison; left out of the 10-project table in `.bkit/comparison.md` (Part 3), so these findings are recorded here only.
+
+## Ideas worth reviewing
+
+### 1. A QA worker that uses the feature and records proof
+
+- **What it does there:** besides a code reviewer, OmO has a separate role, `omo-native-qa-executor`, that "runs real scenarios, records surface evidence": it drives the change through a terminal, HTTP calls, a browser or computer-use. A checkbox is ticked only when a Manual-QA artifact exists, and `ulw-loop` refuses evidence paths that do not exist (`ULW_LOOP_EVIDENCE_ARTIFACT_MISSING`). Its rule: "Tests alone never prove done." https://github.com/code-yeongyu/oh-my-openagent/blob/dev/docs/guide/orchestration.md, https://github.com/code-yeongyu/oh-my-openagent/blob/dev/packages/omo-senpi/skills/ulw-loop/SKILL.md
+- **What bkit does today:** build checks that plan items exist in the code (Step 7, `bkit-build-plan-verify`) and runs the test suite (Step 14). End-to-end checks happen only as CI lanes the consumer writes (`.bkit/templates/context/bkit-playwright.md`, `bkit-maestro.md`). No agent opens the app and tries the new feature by hand.
+- **Where it would fit:** an optional build step after Step 14, driven by a consumer `context` block that says how to start the app. This matches bkit's pattern elsewhere: the consumer owns the harness, bkit ships the reviewer.
+- **Recommendation:** Worth a closer look. It catches the "tests pass but the feature doesn't work" class of failure. OpenHands' `qa-changes` plugin does the same as a CI job; #555 is the home for this idea, so design it there.
+- Related issues: #83 (closed; covered runtime evidence for audits, not build), #555
+
+### 2. Feed PR review comments back into the fix loop
+
+- **What it does there:** `/ulw-execute --ship` "stay[s] on the job until the PR is merged, fixing CI and review feedback from the worktree". https://github.com/code-yeongyu/oh-my-openagent/blob/dev/docs/guide/orchestration.md
+- **What bkit does today:** `/bkit-debug` reads the tracker issue and its comments (`.bkit/core/workflows/bkit-debug.md`, issue-read step) plus CI and runtime logs. It does not read review comments left on the PR's code lines. A reviewer who comments on the PR has to repeat the point on the issue for bkit to see it.
+- **Where it would fit:** debug's context fetch: add the PR's review threads as one more input, fenced as untrusted like other outside content. #556 (Compound Engineering) is the home for this idea.
+- **Recommendation:** Worth a closer look. It closes a real gap for human reviewers of bkit PRs, and the fencing and "report, don't obey" rules already exist for outside text.
+
+### 3. Warn the agent before it repeats a known mistake
+
+- **What it does there:** "Kibitzer" is a small, cheap model that runs beside the main agent, reads the memory of past work (a git repo of markdown files) and nudges the main agent "before it repeats a mistake". Memory writes are screened for secrets before they are committed. https://github.com/code-yeongyu/oh-my-openagent/blob/dev/README.md, https://github.com/code-yeongyu/oh-my-openagent/blob/dev/docs/reference/configuration.md (§ Memory)
+- **What bkit does today:** `docs/failures.jsonl` and `docs/knowledge.jsonl` hold past mistakes. Plan Step 4 searches them once (`bkit context ledger-scan`, `.bkit/core/workflows/bkit-plan.md`) and hands the matches to the planner. Build and debug agents do not see them again while they work.
+- **Where it would fit:** a hook or a build-step input that matches the files being edited against `failures.jsonl` / `knowledge.jsonl` entries.
+- **Recommendation:** Worth a closer look. The mistakes bkit records are found only at plan time, and a cheap match against edited paths could bring them back when they matter. Decide alongside the ledger redesign. Compound Engineering's diff-matched learnings reviewer (#556) is a close cousin.
+- Related issues: #546, #410
+
+### 4. Block AI-style filler comments as they are written
+
+- **What it does there:** the `comment-checker` hook runs after every edit and blocks "AI-slop comment patterns". A line can opt out with `// @allow`, a file with `// comment-checker-disable-file`. https://github.com/code-yeongyu/oh-my-openagent/blob/dev/docs/reference/features.md (hooks table)
+- **What bkit does today:** the slop scan catches placeholder comments (`comments.placeholder-comments` in `.bkit/templates/slop-scan.config.json`), but only when the gate runs, and `slop:delta` fails CI on new findings. Nothing flags them at the moment of writing.
+- **Where it would fit:** a PostToolUse advisory next to GateGuard (`.bkit/core/hooks/gateguard-engine.js`).
+- **Recommendation:** Worth a closer look, but only if slop findings regularly cost a build retry. Otherwise the existing gate already catches them.
+
+## Not worth adopting
+
+- **Fully automatic default mode and "the command is the approval":** this conflicts with bkit's fixed sign-offs after design, after plan and before merge.
+- **One gate reviewer, never a panel:** bkit's separate, blind bug and security reviewers are a deliberate strength.
+- **Codex install advice `approval_policy = "never"` + `sandbox_mode = "danger-full-access"`:** this switches off the host's own safety net.
+- **Git safety rules written as skill text only** ("never plain --force"): bkit already enforces these with hooks (`.bkit/core/hooks/guardrails-tiers.js`), which is stronger.
+- **Logging in with consumer subscriptions to route between providers:** model choice per host is bkit's model registry's job (#205), and subscription-login routing depends on each provider's terms.
+
+## Sources
+
+- https://github.com/code-yeongyu/oh-my-openagent/blob/dev/README.md
+- https://github.com/code-yeongyu/oh-my-openagent/blob/dev/LICENSE.md
+- https://github.com/code-yeongyu/oh-my-openagent/blob/dev/docs/guide/orchestration.md
+- https://github.com/code-yeongyu/oh-my-openagent/blob/dev/docs/guide/installation.md
+- https://github.com/code-yeongyu/oh-my-openagent/blob/dev/docs/reference/features.md
+- https://github.com/code-yeongyu/oh-my-openagent/blob/dev/docs/reference/configuration.md
+- https://github.com/code-yeongyu/oh-my-openagent/blob/dev/packages/omo-senpi/skills/ulw-loop/SKILL.md
+- https://github.com/code-yeongyu/oh-my-openagent/blob/dev/packages/shared-skills/skills/ulw-execute/SKILL.md
+- https://github.com/code-yeongyu/oh-my-openagent/blob/dev/packages/shared-skills/skills/review-work/SKILL.md
+
+## #100 — Agentic preflight and runtime infra hardening (open)
+
+<!-- linear-import: BAR-232 -->
+
+**Linear:** [BAR-232](https://linear.app/bartens/issue/BAR-232) · **Created:** 2026-05-19 · **Linear assignee:** christian@bartens.biz
+
+---
+
+## Context
+
+Two operational gaps in the autonomous bkit workflow that allow silent failure modes when the pipeline runs unattended.
+
+Both surfaced as deferred items in `docs/pending.md` during [BAR-101](https://linear.app/bartens/issue/BAR-101/linear-depot-claude-intergration) / [BAR-110](https://linear.app/bartens/issue/BAR-110/agent-workflows-prompts-install-script) design work. Grouped together here because they share the same surface (preflight hooks + scheduled checks) and the same failure shape ("agent thinks it's making progress, in fact it's stalled").
+
+## Scope
+
+### 1\. Branch protection rule verification in pre-flight
+
+Ship phase merges PRs autonomously. If `dev` branch requires human approvals, ship will silently fail at merge step with no useful diagnostic.
+
+Currently `.agents/templates/scripts/ci/bkit-set-protection.sh` exists as a one-time **applier** but there is no pre-flight **verifier** gate before ship.
+
+**Fix:** Add a preflight check (in `.claude/hooks/preflight.sh` / `.cursor/hooks/preflight.sh` or as a `bkit-preflight.ts` subverb) that runs `gh api repos/{owner}/{repo}/branches/dev/protection` and confirms one of:
+
+- `required_approving_review_count` is 0, OR
+- Cursor Cloud Agent / GitHub Actions bot is in the bypass-actors list
+
+Fail fast with a clear message if neither condition holds.
+
+### 2\. Stuck-pipeline detection
+
+When an agent launched via API fails silently, the parent Linear issue is left `In Progress` with no further activity. No alerting; the only signal is "I haven't seen movement in a while."
+
+**Fix:** Cursor scheduled automation (or GHA cron job) that queries Linear for issues:
+
+- Status `In Progress`
+- Has `Build` / `Debug` / `Ship` label
+- No recent agent comment for > N hours (N tunable, suggest 4h initial)
+
+Action: post a warning comment on the issue. If stale for > 2N hours, add `Blocked` label.
+
+## Acceptance
+
+- Pre-flight check rejects a Ship run against a `dev` branch with `required_approving_review_count > 0` and no bypass actor, with a clear error.
+- Scheduled automation posts a `[bkit-stuck]` warning comment on any issue idle past the threshold.
+- Both gates documented in `.agents/workflows/` or equivalent.
+
+## Out of scope
+
+- Refactoring the workflow to use a different orchestration backend.
+- Per-step heartbeat tracking (much larger lift).
+
+## Related
+
+- [BAR-101](https://linear.app/bartens/issue/BAR-101/linear-depot-claude-intergration) (Linear → Depot → Claude pipeline that introduced these surfaces)
+- [BAR-110](https://linear.app/bartens/issue/BAR-110/agent-workflows-prompts-install-script) (in-repo bkit migration where the gaps surfaced)
+- `docs/pending.md` (entries removed at issue-creation time)
+
+<!-- linear-links-start -->
+
+**Links:**
+
+- **Related:** [BAR-101](https://linear.app/bartens/issue/BAR-101) _(not imported)_, [BAR-110](https://linear.app/bartens/issue/BAR-110) _(not imported)_
+
+<!-- linear-links-end -->
+
 ## #720 — AGENTS.md router stops every ordinary Codex prompt (closed)
 
 ### Failing test or CI run
@@ -353,6 +625,108 @@ The commit includes the sources, the regenerated host copies, `.bkit/version` an
 
 The fix reaches visitfrasercoast-com once a release ships and that repo runs `bkit upgrade`.
 
+## #592 — Dogfood cloud lane: set its runner secrets, or disable it here (closed)
+
+From the 2026-10 dead code audit (#476): finding `dead-code-3`, MEDIUM. Report: `docs/audits/202610/dead-code.md`, audited at `5f5a097c`.
+
+## What's wrong
+
+`.github/workflows/bkit-cloud.yml` is bkit's own copy of the cloud lane it ships to consumers (`.bkit/templates/.github/workflows/bkit-cloud.yml`, checked by `dogfood-templates.test.ts:203`). In this repo it has not actually run since 2026-06-01:
+
+- It only starts when the head commit says `bkit [auto route]` (`:101`). No commit since 2026-06-01 does (`git log --all --since=2026-06-01 --grep='bkit \[auto route\]'` returns 0).
+- Even then, it does nothing unless `ANTHROPIC_API_KEY` or `OPENCODE_PROVIDER_KEY` is set (`:123-131`). `gh secret list` shows only `BKIT_GH_TOKEN` and `BKIT_NPM_TOKEN`.
+- `gh run list --workflow bkit-cloud.yml --limit 300` returns 126 runs: 114 skipped, 11 failed, 1 succeeded. The newest that wasn't skipped was 2026-06-01T06:41Z.
+
+The file was last edited on 2026-10-15 (`04ccf600`). People keep editing it, and nothing in this repo ever runs it.
+
+## Fix (repo settings, outside the code)
+
+Either:
+
+1. Add the runner secrets so the dogfood lane actually runs, or
+2. Disable it here (`gh workflow disable bkit-cloud.yml`), and note in the cloud-lane docs that bkit doesn't dogfood it.
+
+## Done when
+
+- The lane either runs on its trigger in this repo, or is disabled and the docs say so.
+
+Logged in `docs/failures.jsonl` under key `audit-dead-code-cloud-lane-never-executes`.
+
+Next step: manual.
+
+## Plan
+
+**Decision:** disable the lane in this repo instead of adding runner secrets. Adding secrets means putting an Anthropic or opencode API key into repo settings, and that credential decision is Christian's to make. Disabling can be undone with one command.
+
+1. `gh workflow disable bkit-cloud.yml --repo cbartens/bkit`. This is a repo setting; the workflow file stays as it is.
+2. Confirm with `gh workflow list --all`: `bkit-cloud` shows `disabled_manually`.
+3. Find where the cloud lane is documented (`docs/deployments.md` most likely) and add one line saying it is disabled in bkit's own repo, so the shipped template isn't run live here. Re-enable with `gh workflow enable bkit-cloud.yml` once `ANTHROPIC_API_KEY` / `OPENCODE_PROVIDER_KEY` are set as repo secrets.
+4. Append a `docs/decisions.jsonl` row for the decision, and a CLOSED row for `audit-dead-code-cloud-lane-never-executes` in `docs/failures.jsonl`.
+
+Step 1 is done by the orchestrating session; the doc and ledger edits by the build agent. Commits go straight to `dev`, with only this issue's files named explicitly.
+
+Done. `gh workflow list --all` shows `bkit-cloud  disabled_manually`. `docs/deployments.md` says the lane is disabled in bkit's own repo and how to switch it back on (`gh workflow enable bkit-cloud.yml` once `ANTHROPIC_API_KEY` / `OPENCODE_PROVIDER_KEY` are repo secrets). Commit `89e3f8cd`; decision `592-cloud-lane-disabled-in-bkit-repo`.
+
+## #577 — Warn when a workflow or audit runs on an outdated bkit version (closed)
+
+## Problem
+
+A consumer repo can sit on an old bkit for weeks. Nothing tells the person running `/bkit-build` or an audit that the workflow and audit prompts they're running have since been fixed or improved in a newer release. They only find out by checking npm themselves.
+
+## Approach
+
+Put the check inside the two bkit commands that already run at the start of every workflow and every audit. It is **not** a new prose step in each workflow or template, and **not** a rule in `.agents/rules.md`.
+
+Why not those two:
+
+- **A rule in `rules.md`**: a rule is an instruction the agent may skip. The check is mechanical (ask npm for the newest version, compare, print a line), and agents get version comparisons wrong (`5.10.0` vs `5.9.0` compared as text). A rule also loads in every session, including ones that never run a workflow.
+- **A step in every workflow and audit template**: 5 phase workflows plus every `docs/templates/bkit-audit-*.md`, all repeating the same steps and drifting apart. Each consumer would carry those copies too.
+
+Where it goes instead:
+
+1. **Workflows.** Every phase workflow's Step 1 already runs `bkit repo info --fetch`. That command gains `bkitVersion`, `bkitLatest`, `bkitOutdated` and a ready-made `bkitAdvisory` line. Step 1 tells the agent to show that line to the user when it isn't null. The build workflow already does the same thing with its "N commits behind dev" warning.
+2. **Audits.** Every audit's step 2 already runs `bkit branches anchor-stamp` to record the audited commit at the top of the report. With a new `--bkit-version` flag it also records `bkitVersion` and `bkitLatest` in that block. The report then shows which bkit produced it, and the audit prompt adds a visible warning line to the report when the version was outdated. Someone reading the report later can see it was made with old templates.
+
+How the check behaves:
+
+- **Warns only, never stops a run.** If you're offline, the registry doesn't answer, or `pnpm` is missing, the latest version is reported as unknown and the workflow carries on with no warning.
+- **Asks the registry at most once a day.** The answer is saved in the git directory (`<git common dir>/bkit-latest-version.json`). It's shared across worktrees and never committed, so parallel workflows don't each call npm and Step 1 doesn't get slower.
+- **Compares versions as numbers.** Pre-releases count as older than the release they lead up to. It stays quiet when the installed version is the same or newer, which covers the bkit repo itself (dev is often ahead of what's published).
+- **"Installed version"** means the version the repo's bkit files were rendered from (`.bkit/version` `pinnedVersion`). That's what decides which workflow and audit text the agent is reading.
+- **Opt-out:** `BKIT_NO_UPDATE_CHECK=1` skips the registry call (air-gapped machines, CI).
+- **Network access:** `registry.npmjs.org` is already in the cloud-environment allow-list built from `.bkit/core/engine/shared/egress.ts` (`pkg-npm`), so cloud sessions can reach it.
+
+Work done is recorded in the comments below.
+
+## Work done
+
+**Scope widened from the plan in the description.** The version is now recorded in **every** generated doc, not only audit reports: design docs, plan docs and sub-plans as well. They all get their top-of-file anchor block from the same code (`stampAnchor`), so the record goes there and is always on. The opt-in `--bkit-version` flag from the original plan was dropped.
+
+### What changed
+
+- **The check itself:** `.bkit/core/engine/shared/bkit-latest.ts`. It reads `.bkit/version` `pinnedVersion`, asks npm for the newest `@cbartens/bkit` via `pnpm view` (5 s timeout) and compares the two as numbers. `5.10.0` counts as newer than `5.9.0`, and `5.3.0-rc.1` as older than `5.3.0`. The answer is cached in `<git common dir>/bkit-latest-version.json` for a day; a failed lookup is cached for an hour, so an offline machine doesn't pay the timeout on every call. Setting `BKIT_NO_UPDATE_CHECK` to anything other than `0` turns the lookup off.
+- **Workflows:** `bkit repo info` now also returns `bkitVersion`, `bkitLatest`, `bkitOutdated` and `bkitAdvisory`, and prints the advisory itself. Step 1 of `bkit-design`, `bkit-plan`, `bkit-build`, `bkit-debug` and `bkit-ship` holds `bkitAdvisory` and, when it isn't null, shows it as `[bkit-<workflow>] running bkit X; Y is out. Upgrade: pnpm bkit upgrade --latest`. It's not a gate item and never stops the run. That sentence is shared by 5 workflows, so it's registered in `.bkit/wording.md` as `workflow-bkit-advisory`. `bkit-auto` is untouched, because the phase workflow it hands off to runs its own Step 1.
+- **Generated docs:** `bkit branches anchor-stamp` (audits) and `bkit workflows promote` (design and plan close) write `bkitVersion` / `bkitLatest` into the `bkit:anchor` block. When the version is outdated, they also write a visible line under the block: `> **Outdated bkit:** generated with bkit X while Y was out …`. That line is owned by the tool like the block itself, so the next stamp drops it once you've upgraded. `bkit branches anchor-read` reads both new fields. The header parser that reads verdicts only matches `Key:` lines starting with a capital letter, so neither the new fields nor the warning line can be mistaken for header fields.
+- **Docs:** `.bkit/workflows.md` § Invocation and § Anchor Block, the `repo` row of the command table, the `.bkit/README.md` version section, the audit row in `.bkit/prompts.md`, `docs/testing.md`, and a `docs/decisions.jsonl` row (`outdated-bkit-check-in-commands`) recording why this lives in commands rather than a rule or per-template steps. Changelog entry added to `[5.2.4]`.
+
+### Verified
+
+- Full suite: 170 files, 5622 tests passing. Typecheck, format, prose lint, slop delta and `bkit check` are clean.
+- Live run of the built CLI in a scratch repo pinned at `5.0.0`, against the real registry. `repo info` printed `running bkit 5.0.0; 5.2.3 is out` in about 1.4 s and wrote the cache. `anchor-stamp` wrote the block with `bkitLatest: 5.2.3` plus the visible warning line.
+- The cloud allow-list built from `.bkit/core/engine/shared/egress.ts` already includes `registry.npmjs.org` (`pkg-npm`), so cloud sessions can reach the registry.
+
+Pre-release check follow-up (34119d38). The pre-release review said SHIP with 2 medium and 6 low findings. All of them are fixed:
+
+- **A stamped doc failed `prettier --check`.** Prettier wants a blank line between the end of the anchor block (`-->`) and the warning. The stamp now writes a blank line on both sides of the warning. A new test in `branches.test.ts` runs prettier on the stamped output, checks that stamping again gives the same bytes, and checks that dropping the warning after an upgrade still passes prettier.
+- **Wrong secret name in the docs.** `.bkit/core/.bkit/README.md` and `install.md` said the cloud workflow's Claude job needs `BKIT_ANTHROPIC_API_KEY`. `bkit-cloud.yml` actually reads the `ANTHROPIC_API_KEY` repo secret, so the docs now say that.
+- **Two registry lookups.** `bkit upgrade --latest` now calls the same `lookupLatestPublished` in `shared/bkit-latest.ts`. Upgrade passes no time limit, since the user asked for the upgrade, and it still exits with the same guidance when the lookup fails.
+- **Tests asked the real npm registry.** The temp repos in the promote tests are pinned to an old release, so each stamp went to the network. `vitest.setup.ts` now sets `BKIT_NO_UPDATE_CHECK=1`, and the tests of the lookup itself clear it. Promote has new assertions for the bkit fields and the warning.
+- Smaller doc fixes: `install.md` lists `--auto=claude|cursor|opencode` and notes that a full uninstall leaves `.git/bkit-latest-version.json`. The timeouts table in `workflows.md` lists `BKIT_LATEST_LOOKUP_TIMEOUT_S` / `BKIT_LATEST_CACHE_S` / `BKIT_LATEST_RETRY_S`. The header comment in `bkit-latest.ts` no longer mentions an `anchor-stamp --bkit-version` flag that doesn't exist.
+
+Gates: full `pnpm vitest run` passes (170 files, 5624 tests). Typecheck, format, table format, prose lint, slop delta, dist check and `bkit check` all pass.
+
+Shipped in 5.2.4. Release PR #578 was squash-merged to main as dbc96f7a. Tag `v5.2.4` is pushed and the Release workflow (run 39024234454) succeeded. npm `latest` is now 5.2.4. GitHub Release: https://github.com/cbartens/bkit/releases/tag/v5.2.4
+
 ## #495 — Pre-approve listed MCP servers on every agent host (closed)
 
 ## What changed
@@ -427,3 +801,417 @@ Caveat discovered while a consumer (gether-life/app-gether-life) wired `figma` i
 Recorded in `docs/knowledge.jsonl` here (`495-figma-remote-mcp-dcr-403-host-grant-does-not-bypass-upstream-client-allowlist`) and in the consumer's ledger. Upstream tracking: [sst/opencode#3875](https://github.com/sst/opencode/issues/3875) (OpenCode feature request) and [anomalyco/opencode#38360](https://github.com/anomalyco/opencode/pull/38360) (registered-client fix, closed unmerged pending Figma approval).
 
 Suggested doc tweak (not landed): one line in `.bkit/providers.md` § MCP servers and the context template — listing a server pre-approves it on the host; the server may impose its own upstream client gate.
+
+## #60 — Add Jira tracker support (closed)
+
+<!-- linear-import: BAR-149 -->
+
+**Linear:** [BAR-149](https://linear.app/bartens/issue/BAR-149) · **Created:** 2026-05-08 · **Linear assignee:** christian@bartens.biz
+
+---
+
+## Goal
+
+Add Jira as a fourth value for `bkit install --tracker`, next to `github`, `linear` and `none`. A consumer who picks `jira` gets the five workflows (design, plan, build, debug, ship) plus `bkit-auto` reading and writing their Jira issues, the same way they work with GitHub or Linear today.
+
+## Where things stand
+
+The tracker switch already exists. The installer reads `bkit.issueTracker` from the consumer's `package.json` and renders each workflow for that tracker. Every step that touches the tracker holds a GitHub version and a Linear version side by side, and the installer keeps the one that matches. The marker format is documented in `.bkit/trackers.md`, and `.bkit/core/engine/render/trackers.ts` resolves the markers.
+
+So Jira means adding a third tracker to a system that already supports swapping trackers. No adapter layer or workflow rewrite is needed.
+
+## What needs doing
+
+1. **Let the installer handle more than two trackers.** `.bkit/core/engine/render/trackers.ts` only accepts "a `github` block followed by a `linear` block". Make it accept any number of named tracker blocks at a call site, so a fifth tracker later costs only its blocks.
+2. **Write a Jira block at every tracker call site: 48 in total.** `bkit-build.md` 11, `bkit-debug.md` 10, `bkit-plan.md` 9, `bkit-design.md` 8, `bkit-ship.md` 7, `bkit-auto.md` 2 (all in `.bkit/core/workflows/`), plus `.bkit/core/prompts/bkit-utility-update-roadmap.md` 1. Each one covers what that step does in Jira, using the interaction names in `.bkit/trackers.md` § Interaction catalog.
+3. **Audit every two-way switch in the engine.** 29 non-test comparisons of the form `=== "linear"` / `=== "github"` sit in `.bkit/core/engine`. The biggest clusters are `checks/after/github.ts` (6), `checks/before/env.ts` (5) and `commands/workflow/fids.ts` (4). Many of them mean "if Linear, else GitHub", so once Jira exists they quietly treat Jira as GitHub, and the compiler won't flag it. Every one has to be checked and given a Jira branch where needed.
+4. **Wire Jira into the rest of the install.**
+   - Add `jira` to `ISSUE_TRACKERS` in `.bkit/core/engine/install/manifest.ts`, and to the `--tracker` help text in `.bkit/core/engine/cli.ts`.
+   - Add the Atlassian MCP server entry to `.bkit/shared/.mcp.json` and `.bkit/shared/.cursor/mcp.json`.
+   - Add an Atlassian entry to the egress list in `.bkit/core/engine/shared/egress.ts` (the list of hosts agents may reach), next to `mcp-linear`.
+   - Add token names and setup checks to `bkit doctor` (`checks/before/env.ts`, `checks/before/mcp.ts`, `checks/after/auth.ts`).
+   - Add a Jira state-change helper in `commands/workflow/issues.ts`, alongside `linearState()`.
+   - No preflight hook. `.bkit/core/hooks/preflight-linear.sh` only runs in Linear cloud sessions (it triggers on `LINEAR_ISSUE_ID`), and the GitHub tracker has no such hook either. Jira runs are local, so the `bkit:auto` check inside the workflows (`kill-switch-check`) covers it.
+5. **Tests and docs.** Add Jira cases wherever Linear has tracker-specific tests (35 test files under `.bkit/core/engine` mention Linear). Update `.bkit/trackers.md`, `.bkit/workflows.md` § Tracker Integration, `.bkit/cloud.md` and `.bkit/install.md`.
+
+## How Jira compares to the trackers bkit already supports
+
+<!-- prettier-ignore -->
+| Concern | Jira behaviour | Reuse |
+| --- | --- | --- |
+| Issue ID | `PROJ-123`, the same shape as a Linear ID | Linear's ID extraction, FID format (`proj-123-slug`) and PR-body marker work as-is |
+| Board status | The issue's status is the board column | Same as Linear: `issue-update-status` is a no-op |
+| Blockers | Built-in "is blocked by" issue links | Simpler than GitHub's parsing of markers in the issue body |
+| Phase labels (`bkit:design` …) | Flat labels, added and removed by editing the issue | Same "drop the old phase, add the new one" logic that `bkit issues labels` already computes |
+| Related-issue scan | JQL text search (`text ~ "..."`), which matches keywords rather than ranking by meaning | New query, same output file |
+| Setting a status | Status can only change through a project-specific **transition** | New: see decision 1 |
+
+## Decisions needed before building
+
+1. **How consumers map transitions.** In Linear a workflow can just say "set state to In Review". In Jira it has to make one of the transitions the project allows, and the IDs differ between projects. Suggested approach: a committed `package.json` block such as `bkit.jira = { site, projectKey, transitions: { inProgress, inReview } }`, discovered once per project, like `bkit.githubProject`.
+2. **Whether comments survive the round trip.** Workflows post markdown comments verbatim and later read them back as input. Jira stores comments in its own document format, not markdown. Before any call site is written, a spike has to show that a bkit step comment, posted and then read back through the Atlassian MCP server, keeps its markdown intact. If it doesn't, the comment steps need a different approach.
+3. **Login for runs with no browser.** Atlassian's MCP server signs in through a browser, like Linear's, which works for local sessions. The spike also needs to confirm whether it accepts an API token for headless runs, and which token names `bkit doctor` should expect.
+
+## Out of scope
+
+- Starting cloud runs from Jira. No Jira-side trigger feeds `bkit-cloud.yml` or Cursor's cloud agents, so Jira users run workflows locally. A trigger through Jira's own automation (which can call GitHub's API) can be a follow-up.
+- Jira Server / Data Center. Jira Cloud only.
+- Any tracker beyond Jira. The installer change in step 1 just keeps that cheap.
+
+## Done when
+
+- `bkit install --tracker=jira` renders all workflows with no leftover markers, and `bkit check` passes.
+- Rendering for `github`, `linear` and `none` is byte-identical to before the change. Existing consumers see no difference.
+- Every engine comparison against a tracker name handles `jira` on purpose, not by falling into another tracker's branch.
+- A real design → plan run against a Jira Cloud project sets phase labels, makes the transitions, posts step comments, and reads them back intact.
+
+Migration linear to github done in #39 ... so just have to add Jira etc here
+
+## Sizing: adding Jira (issue body rewritten)
+
+**Short answer: moderate, about a week of focused work, or one design → ship cycle split into two or three waves.** The tracker switch this issue originally asked for is already in place. Jira is a third tracker added to it, not a redesign.
+
+### Why the body was rewritten
+
+Workflows read the issue body as their brief. The old body described code that no longer exists: Linear hard-wired into every workflow, `.agents/workflows/`, `mcp__claude_ai_Linear__*` tool names, and five options for building a tracker abstraction that has since shipped. Left as it was, it would have pointed `/bkit-design` at a rewrite that is already done. The new body covers only what Jira itself needs. The original text is still in this issue's edit history.
+
+### What makes Jira cheaper than it looks
+
+- **Same ID shape as Linear.** `PROJ-123` vs `TEAM-123`, so ID extraction, FID format and the PR-body marker carry over unchanged.
+- **Status works like Linear's.** The Jira status _is_ the board column, so there's no board sync to build (unlike `bkit.githubProject` for GitHub).
+- **Blockers are built in.** Jira's "is blocked by" link is a real field, so there's no parsing of markers out of the issue body.
+
+### Where the effort goes
+
+1. **48 Jira blocks to write by hand**, one per tracker step in the workflows (counts per file are in the body). Repetitive, but each must be correct for Jira.
+2. **A small installer change.** `.bkit/core/engine/render/trackers.ts` only understands a GitHub/Linear pair. Making it accept any number of trackers is roughly half a day, and it makes the next tracker cheap.
+3. **The real bug risk: 29 two-way switches in the engine.** Code such as `tracker === "linear" ? A : B` treats every non-Linear tracker as GitHub. Once Jira exists, each of those quietly takes the GitHub branch, and TypeScript won't catch it. `.bkit/core/engine/checks/before/env.ts` is the clearest example: its token list is "Linear's keys, otherwise GitHub's", so Jira users would be told to set only `BKIT_GH_TOKEN`. Each switch needs checking.
+4. **Install wiring:** manifest enum, MCP server entries, egress list, `bkit doctor` checks, a Jira preflight hook, a transitions helper next to `linearState()`. Then tests and docs.
+
+### Two unknowns to settle first with a short spike
+
+These are unchecked. I haven't read Atlassian's MCP server code or tried it against a live Jira site.
+
+- **Comment fidelity.** bkit posts markdown comments and reads them back as workflow input. Jira stores comments in its own document format. If markdown doesn't come back out intact, the comment steps need a different design. This is the main thing that could push the estimate up.
+- **Headless login.** Atlassian's MCP server uses browser sign-in, which is fine at a desk. It isn't yet confirmed whether it also takes an API token for runs with no browser.
+
+### Not covered: starting runs from Jira
+
+Nothing on the Jira side triggers `bkit-cloud.yml` or Cursor's cloud agents today, so Jira users would run workflows locally at first. That's listed as out of scope in the body.
+
+### Spotted along the way (not part of this issue)
+
+- `.bkit/trackers.md` says `github` is the default tracker, but `DEFAULT_ISSUE_TRACKER` in `.bkit/core/engine/install/manifest.ts:67` is `"none"`. One of them is wrong.
+- The doc comment above `ISSUE_TRACKERS` in `manifest.ts` points to a section `.bkit/trackers.md` § "Adding a tracker (Jira, etc.)" that doesn't exist. The recipe is a bullet in that file's Rules block.
+
+## Spike results: Jira works for bkit; the MCP comment round trip is still untested
+
+**Short answer:** everything bkit needs from Jira itself works: phase labels, status changes, blocker links, related-issue search and comment storage. The one thing still untested is the risk this issue named first: whether a comment keeps its markdown when it goes through Atlassian's MCP server (Atlassian's hosted connector that lets an agent use Jira). The token used for this spike can't call that server's Jira tools; a token created with specific permissions is needed (see "Signing in without a browser").
+
+Everything below was tested live on a Jira Cloud test site with two team-managed projects (Jira's simpler project type, configured per team). The work used Jira's REST API (its standard web API) and Atlassian's MCP server. Test issues `MBA-7` and `MBA-8` were left on the test board as samples.
+
+### What works (Jira REST API, tested live)
+
+<!-- prettier-ignore -->
+| Question | Result |
+| --- | --- |
+| Phase labels | `bkit:auto`, `bkit:design`, `next:design` and similar work, colons included. One edit can add some labels and remove others together (the `update.labels` add/remove list), so there's no need to read the labels first and write the whole list back. Removing a label that isn't on the issue succeeds silently. Labels with spaces are rejected ("can't contain spaces"). |
+| Status changes | Each project's transitions were `11` To Do, `21` In Progress, `31` In Review, `41` Done. Each transition carries the name of the status it moves to, and any status can be reached from any other. Repeating a transition to the issue's current status succeeds. An invalid ID fails clearly: "Transition id '99999' is not valid for this issue." |
+| Status IDs differ per project | Same transition IDs, different status IDs: In Review is `10005` in one project and `10001` in the other. Matching on status IDs would break across projects. |
+| Blockers | Jira's built-in "Blocks" link works, and one JQL query (Jira's search language) returns only the open blockers: `issue in linkedIssues("KEY", "is blocked by") AND statusCategory != Done`. |
+| Blocker link direction | **The API reads backwards.** To record "B blocks A", send `inwardIssue: B, outwardIssue: A`. The spike first recorded the link the wrong way round and had to redo it. A Jira block that creates or checks links must spell this out. |
+| Related-issue scan | Keyword search finds issues within seconds of creation: `text ~ "bkit spike"`, `text ~ "trackers.ts"`, `labels = "bkit:auto"`. It matches keywords and doesn't rank by meaning, as this issue's body expected. |
+| Comment size limit | 32,767 characters. One character more is rejected with "exceeds the allowed limit of 32767 characters". Long step comments will need splitting or trimming. Neither GitHub nor Linear needs this. |
+| Rate limit | 200 requests per burst window (`X-Ratelimit-Limit: 200`). Not a concern at bkit's call volume. |
+| Board | The test board is a "simple" board (no sprints). Its four columns map one-to-one to the four statuses, so setting the status moves the card. The board needs no separate sync, unlike `bkit.githubProject`. |
+
+### Comments (decision 2): partly answered
+
+Jira has no markdown storage. Comments are stored in Atlassian Document Format (ADF, Jira's structured rich-text format). A test comment held what bkit reads back: the `###### bkit:generated` first line, an HTML-comment marker, a table, a code fence, nested lists, checkboxes, links and a `###### bkit:blocked-by` block. It was posted three ways through the REST API:
+
+<!-- prettier-ignore -->
+| How it was posted | Read back by an agent | What a person sees in Jira |
+| --- | --- | --- |
+| Raw markdown text, REST v2 | Byte-identical | Broken: v2 treats the text as Jira's older wiki markup. `#` headings become nested numbered lists, `**bold**` keeps stray asterisks, tables pick up `---` rows. |
+| One ADF paragraph per line, REST v3 | Byte-identical (read through v3) | Raw markdown, readable but unformatted. Read through v2, the same comment gains extra blank lines, so the reader must always use v3. |
+| One ADF code block, REST v3 | Byte-identical | A grey code box. |
+
+None of these gives both "people see formatting" and "agents get the exact markdown back". The MCP server's comment tool (`addOrEditJiraIssueComment`) converts markdown into ADF when posting. Whether reading back through the MCP server returns the same markdown is **untested**, because of the sign-in problem below. That test decides between three designs: trust the MCP conversion, post plain ADF paragraphs (exact, but unformatted for people), or wrap each comment in a code block (exact, but ugly).
+
+### Signing in without a browser (decision 3)
+
+API tokens are supported, but the token type and the server address both matter:
+
+<!-- prettier-ignore -->
+| Server address | With a classic API token (`email:token`, the kind created without picking permissions) |
+| --- | --- |
+| `https://mcp.atlassian.com/v1/mcp` | Signs in, but lists only 4 tools, all for Atlassian's cross-product relationship data ("Teamwork Graph"). No Jira tools. |
+| `https://mcp.atlassian.com/v2/mcp` | Lists 21 tools including the Jira ones, but **every call fails**: "Cloud id … isn't explicitly granted by the user", or "missing the scope claim". |
+
+Atlassian's documentation says the server only serves the tools a token's chosen permissions allow, and a classic token chooses none. The fix:
+
+- Create the token with chosen permissions: pick the site and the Jira "agent-interface" permissions (`read:jira:agent-interface`, `write:jira:agent-interface`, `search:jira:agent-interface`).
+- Send it as `Authorization: Basic base64(email:token)`. Bearer is only for service-account keys.
+- An organisation admin must switch on API-token sign-in for the MCP server; it is off by default.
+
+Sources: [Configuring authentication via API token](https://developer.atlassian.com/cloud/rovo-mcp/guides/configuring-authentication-via-api-token/), [Rovo MCP Server only returns Teamwork Graph tools when using API token](https://support.atlassian.com/rovo/kb/rovo-mcp-server-only-returns-teamwork-graph-tools-when-using-api-token/).
+
+So `bkit doctor` should check for an email plus a token created with these permissions. A token simply being present isn't enough: a classic token passes the sign-in and then fails every Jira call.
+
+Side note for anyone repeating this with a script: Cloudflare blocks Python's default `User-Agent` on `mcp.atlassian.com` (error 1010). Set any other user-agent.
+
+### Corrections to this issue's body
+
+1. **Transitions (decision 1): a committed table of transition IDs may not be needed.** The proposal was `bkit.jira.transitions` in `package.json`. On both test projects, the workflow could instead list the issue's transitions at run time and pick the one whose target status is named "In Progress" or "In Review". That needs no setup and no per-project IDs. **Not verified for company-managed projects** (Jira's other project type, with admin-defined workflows), where transitions can be renamed, made conditional, or require a form; the test site has none. Suggestion: match on the status name at run time, and keep an optional `package.json` override for projects where that fails.
+2. **Tool names are different from what this issue assumes.** The v2 server lists a core set directly: `getJiraIssue`, `searchJiraIssuesUsingJql`, `createJiraIssue`, `editJiraIssue`, `transitionJiraIssue`, `addOrEditJiraIssueComment`. Reading comments (`listJiraIssueComments`), listing transitions (`listJiraIssueTransitions`) and creating links are not listed. They go through generic `discover` → `executeRead` / `executeWrite` / `executeDestructive` tools that take an operation name. Two consequences:
+   - A Jira block can't name a dedicated comment-reading tool the way the GitHub and Linear blocks do.
+   - A Claude Code permission rule can only allow "any write" (`executeWrite`), not "add a comment". GitHub and Linear can be allowed tool by tool.
+
+   Also, `editJiraIssue` replaces the whole label list rather than adding to it, so through the MCP server, label changes are read-then-write unless an add/remove operation turns up through `discover`.
+
+3. **Every MCP call needs the site's cloud ID** (Atlassian's ID for the site). API tokens aren't tied to a site, so each call must pass `cloudId`. Workflows need it from configuration, such as a `bkit.jira.site` key in `package.json`.
+
+### Still to do before building
+
+- [ ] Create a token with the agent-interface permissions (and have an admin switch on API-token sign-in if needed).
+- [ ] Rerun the comment round trip through the MCP server: post the test comment with `addOrEditJiraIssueComment`, read it back with `listJiraIssueComments`, and compare byte for byte. Then choose a comment design.
+- [ ] Check through `discover` whether the MCP server offers label add/remove and link creation, or only replace-all edits.
+- [ ] If a company-managed project can be created on the test site, check that matching transitions by status name still works there.
+
+## Spike, part 2: Jira through the MCP server works end to end, with four gotchas
+
+**Short answer:** with the right token, Atlassian's MCP server (the hosted connector agents use to read and write Jira) handles everything bkit's workflows need. That covers reading issues, comments, phase labels, status changes, blocker links and search. A headless Claude Code run read a test issue's summary, status and labels through it.
+
+Comments survive with their meaning intact but aren't byte-identical. Four behaviours would break a naive Jira block, listed under "Gotchas the Jira blocks must handle".
+
+This corrects three things in [part 1](https://github.com/cbartens/bkit/issues/60#issuecomment-6308543021):
+
+- **Send the token as Bearer, not Basic.** Basic failed on every call. Atlassian's troubleshooting article says the opposite.
+- **Create the token for the app "Atlassian MCP V2", not "Jira".**
+- **The admin switch lives under Rovo → Rovo MCP server**, not under Connectors as Atlassian's help page says.
+
+The full setup steps are at the end, written so they can go into bkit's docs once Jira support ships. They aren't in `.bkit/` docs yet, because Jira isn't a supported tracker and the docs must describe what the code does.
+
+### Results through the MCP server (all live)
+
+<!-- prettier-ignore -->
+| What bkit needs | Result | MCP tool |
+| --- | --- | --- |
+| Read an issue | Works | `getJiraIssue` |
+| Read labels | Works **only with `view: "evidence"` or `"full"`**. The default view and `fields: ["labels"]` silently leave labels out. | `getJiraIssue` |
+| Set phase labels | Works, but **replace-all only**: send the full list. Add/remove operations are rejected ("Specify the value for labels in an array of strings"), and `discover` (the server's lookup for less common operations) has no label add/remove operation for Jira. | `editJiraIssue` |
+| List available transitions | Works. Returns each transition's ID, name, target status and status category. | `executeRead` → `listJiraIssueTransitions` |
+| Change status | Works by transition **name** or ID, and the response gives the status the issue landed in. An unknown name returns an error listing the valid ones. | `transitionJiraIssue` |
+| Create a blocker link | Works. With `linkType: "Blocks"`, **`inwardIssue` is the blocker** and `outwardIssue` the blocked issue, the same backwards reading as the REST API. Creating the same link again reports success and doesn't duplicate it. | `executeWrite` → `createJiraIssueLink` |
+| Read blockers | Works with `view: "evidence"` (`fields.issuelinks`). This JQL (Jira's search language) returns only the open blockers: `issue in linkedIssues("KEY", "is blocked by") AND statusCategory != Done`. | `getJiraIssue`, `searchJiraIssuesUsingJql` |
+| Related-issue search | Works (`text ~ "trackers.ts"` found both test issues) | `searchJiraIssuesUsingJql` |
+| Post a comment | Works, markdown in | `addOrEditJiraIssueComment` |
+| Read comments | Works, markdown out, but see the HTML gotcha below | `executeRead` → `listJiraIssueComments` |
+| Comment over 32,767 characters | Rejected (`CONTENT_LIMIT_EXCEEDED`) |  |
+| Issue description | Same markdown handling as comments | `createJiraIssue`, `getJiraIssue` |
+
+### Comment round trip (decision 2)
+
+The test comment held everything bkit reads back. It was posted as markdown, read back with `listJiraIssueComments`, and compared line by line (37 lines in, 40 out).
+
+**Kept exactly:**
+
+- the `###### bkit:generated` first line and all headings
+- the HTML-comment marker `<!-- bkit:issue=… bkit:fid=… -->`
+- bold, inline code, links, `#60`
+- the table, and the fenced code block with its language
+- the `---` rule and `###### bkit:blocked-by` heading lines
+
+**Rewritten, with the same meaning:**
+
+- `*emphasis*` → `_emphasis_`
+- `-` bullets → `*`
+- nested list indent 3 → 4 spaces, with blank lines added
+
+**Lost:**
+
+- **Checkboxes:** `- [ ] task` comes back as `* \[ \] task`, literal escaped text. Jira has no task-list syntax in comments.
+- **GitHub-style alerts:** `> [!CAUTION]` comes back as `> \[!CAUTION\]` with two trailing spaces.
+
+**Verdict:** fine as input for an agent. Any code that matches exact strings in a comment must allow `*` as well as `-` bullets, escaped `\[`, and extra blank lines. The lines `bkit issues text` keys on (`###### bkit:generated`, `###### bkit:ignore-earlier`) survive. The `###### bkit:blocked-by` block isn't needed for Jira, which has real blocker links.
+
+### Gotchas the Jira blocks must handle
+
+1. **One comment can turn the whole page into HTML.** If any comment holds something markdown can't express (an @mention, image, panel or status lozenge, typically from a person typing in Jira), `listJiraIssueComments` returns _every_ comment on that page as HTML (`appliedContentFormat: "html"`), even plain ones. Asking for `responseContentFormat: "markdown"` doesn't help; the server overrides it with a warning. Reading comments one per call (`maxResults: 1`, paging with `startAt`) returned the clean ones as markdown. Workflows must check `appliedContentFormat`, then either page one comment at a time or accept HTML.
+2. **Labels are missing from the default issue view.** `kill-switch-check` (stop if `bkit:auto` is missing) has to pass `view: "evidence"`, or it will always think the label is absent.
+3. **Labels are replace-all, and label case matters for storage but not for search.** `editJiraIssue` overwrites the whole list, so a workflow must read the labels, change the list, and write it back; two runs doing this at once can overwrite each other. Jira stored `BKIT:AUTO` and `bkit:auto` as two separate labels, while JQL `labels = "BKIT:PLAN"` matched `bkit:plan`. A code check must compare exact lowercase names.
+4. **Every call needs the site passed in.** API tokens aren't tied to a site: `getAccessibleAtlassianResources` returns an empty list, so the site can't be looked up. Pass `cloudId` as the full site URL (`https://<site>.atlassian.net`). The bare prefix (`<site>`) was rejected by `getJiraIssue` ("does not look like a valid domain or URL"). The workflows need the site from configuration, such as `bkit.jira.site`.
+
+### Linear's gotchas (#646) checked against Jira
+
+#646 found that Linear writes break on a default workspace. Each of those findings, checked against Jira:
+
+<!-- prettier-ignore -->
+| #646 finding on Linear | Jira |
+| --- | --- |
+| No "In Review" state on a default team | **Likely the same problem, unverified.** Both test projects have In Review, but they were created from templates. Jira's basic team-managed board template is generally To Do / In Progress / Done. Creating a project to check needs the MCP server's Manage permission, which is off on this site. As with Linear, "In Review" has no status category of its own (Jira's are To Do / In Progress / Done), so the mapping for "waiting on a human" is a design decision. Don't hard-code the name. |
+| Phase labels must exist before use; one unknown label rejects the whole update | **Doesn't apply.** Jira creates a label the first time it's used. The site's label list was empty before the test and held `bkit:auto`, `bkit:design`, `bkit:plan`, `next:design` afterwards. No setup step is needed. |
+| Type labels: `enhancement` doesn't match Linear's `Improvement` | **Different problem, same root.** Jira won't reject `enhancement`; it silently creates it. And Jira already carries the type as the issue type (Bug / Task / Story), so a type label duplicates it. The Jira blocks should use the issue type, not `enhancement` / `bug` labels. |
+| One `save_issue` call is all-or-nothing, so a bad state also blocked the labels | **Split by design.** Status changes (`transitionJiraIssue`) and label edits (`editJiraIssue`) are separate calls, so a failed transition can't block the labels. Within one `editJiraIssue`, one bad field rejects the whole edit, so keep each call to one concern. Don't use `transitionJiraIssue`'s optional `fields` / `update` to set labels during a transition. |
+| `state` accepts a state type (`started`) as well as a name | **Equivalent available.** `listJiraIssueTransitions` gives each transition's target status category (`new` / `indeterminate` / `done`). A block can pick "the transition into an In Progress-category status" when no status matches by name. |
+| Label names ignore case | **Half true.** Search ignores case, storage doesn't (gotcha 3). |
+| Creating the same blocker relation twice doesn't duplicate it | **Same.** A repeated `createJiraIssueLink` reports success and stores one link. |
+| The MCP server can't delete issues or labels | **Jira's server has a delete toolset** (`delete_jira`, allowed on this site), but `discover` returned no delete-issue operation for this token. Untested. |
+
+### What this changes for the build
+
+- **Transitions (decision 1):** list the transitions at run time and pick by target status name, falling back to status category. No committed ID table. Make "In Review" configurable per project, because it may not exist, the same open question as #646.
+- **Comments (decision 2):** post markdown through `addOrEditJiraIssueComment`. Read with `listJiraIssueComments`, and check `appliedContentFormat` every time (gotcha 1). Don't write checkboxes or GitHub alerts into Jira comments.
+- **Sign-in (decision 3):** token type and Bearer as below. Proposed variable name `BKIT_ATLASSIAN_TOKEN`, mirroring `BKIT_GH_TOKEN`; not decided. `bkit doctor` should run the check script below, because a classic token connects and lists tools, then fails every Jira call.
+- **Configuration:** `bkit.jira = { site, projectKey }` at minimum. Optional overrides for the status names used for "working" and "waiting on a human".
+
+### Setup guide: connecting an agent to Jira Cloud through Atlassian's MCP server
+
+Draft for bkit's docs, every step done live on 2026-10-21. `<site>` is the part before `.atlassian.net`.
+
+**1. An organisation admin allows API-token sign-in (once per organisation)**
+
+1. Open https://admin.atlassian.com and pick the organisation that owns `<site>.atlassian.net` (top of the left sidebar).
+2. Left sidebar: **Rovo** → **Rovo MCP server**. The page URL is `https://admin.atlassian.com/o/<org-id>/rovo-mcp-server`. If the menu differs, type `mcp` in the admin search box at the top and open **Atlassian MCP server**.
+   - Don't go through **Connectors**: in this organisation it opens the "Choose a connector to add" wizard, which is for importing other apps into Rovo search.
+3. **Authentication** tab: turn **Allow API token authentication** on.
+4. **Permissions** tab: check that **Read**, **Write** and **Search** are allowed. bkit doesn't need **Delete** or **Manage**.
+5. Leave the **Domains** tab alone; its allowlist only applies to browser (OAuth) sign-in, not to API tokens.
+
+**2. Each person creates a token for the MCP server**
+
+1. Open https://id.atlassian.com/manage-profile/security/api-tokens.
+2. Choose **Create API token with scopes**, not the classic token. The wizard runs **Name and expiry** → **Select app** → **Select scopes** → **Create token**.
+3. **Name and expiry:** e.g. `bkit`. Expiry is 1–365 days.
+4. **Select app:** **Atlassian MCP V2** ("API token to access Atlassian MCP V2"). Not **Jira** (that is for Jira's own REST API, not the MCP server), and not **Atlassian MCP**: that one is for the older `/v1/mcp` address, which offers no Jira tools to API tokens.
+5. **Select scopes:** the Jira read, write and search scopes. Atlassian's guide names them `read:jira:agent-interface`, `write:jira:agent-interface` and `search:jira:agent-interface`. The scopes screen wasn't captured during this spike, so check the names there.
+6. **Create token**, then copy it straight away. Atlassian shows it only once.
+
+This token works **only** with the MCP server. Jira's REST API at `https://<site>.atlassian.net/rest/api/3/...` rejects it with 401.
+
+**3. Check the token from a terminal**
+
+The MCP server needs a session: an `initialize` call first, then the tool call with the returned `Mcp-Session-Id`. A single bare call fails with "Request must be an initialize request if no session ID is provided".
+
+```bash
+#!/usr/bin/env bash
+# usage: BKIT_ATLASSIAN_TOKEN=... ./check-mcp.sh https://<site>.atlassian.net <ISSUE-KEY>
+set -euo pipefail
+URL=https://mcp.atlassian.com/v2/mcp
+H=(-H "Authorization: Bearer ${BKIT_ATLASSIAN_TOKEN}" -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream')
+SID=$(curl -s -D - -o /dev/null -X POST "$URL" "${H[@]}" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"check","version":"0"}}}' \
+  | awk -F': ' 'tolower($1)=="mcp-session-id"{print $2}' | tr -d '\r')
+curl -s -o /dev/null -X POST "$URL" "${H[@]}" -H "Mcp-Session-Id: $SID" -d '{"jsonrpc":"2.0","method":"notifications/initialized"}'
+curl -s -X POST "$URL" "${H[@]}" -H "Mcp-Session-Id: $SID" \
+  -d "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"getJiraIssue\",\"arguments\":{\"cloudId\":\"$1\",\"issueIdOrKey\":\"$2\",\"fields\":[\"summary\"]}}}" \
+  | sed -n 's/^data: //p'
+```
+
+Success prints the issue's summary with `"isError":false`.
+
+**4. Point the agent at the server**
+
+Claude Code `.mcp.json`, in the same shape as bkit's GitHub entry:
+
+```json
+{
+  "mcpServers": {
+    "atlassian": {
+      "type": "http",
+      "url": "https://mcp.atlassian.com/v2/mcp",
+      "headers": { "Authorization": "Bearer ${BKIT_ATLASSIAN_TOKEN}" }
+    }
+  }
+}
+```
+
+Verified with `claude -p … --mcp-config .mcp.json --strict-mcp-config`: the run read a test issue's summary, status and labels. A project-level `.mcp.json` shows as "Pending approval" in `claude mcp list` until it's approved once in an interactive `claude` session. Cursor, Codex and opencode weren't tested.
+
+**Troubleshooting** (every row seen during this spike):
+
+<!-- prettier-ignore -->
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| `tools/list` shows only 4 tools (`getTeamworkGraphContext` …), no Jira tools | Using the older `https://mcp.atlassian.com/v1/mcp` | Use `/v2/mcp` |
+| Jira tools are listed, but every call says `Cloud id: … isn't explicitly granted by the user` | Classic (unscoped) token, **or** a scoped token sent as `Basic base64(email:token)` | Scoped "Atlassian MCP V2" token, sent as `Authorization: Bearer <token>` |
+| `atlassianUserInfo` says `missing the scope claim` | Classic (unscoped) token | Create a token with scopes (step 2) |
+| `Failed to fetch cloud ID for: <site>` | Passed the bare site prefix as `cloudId` | Pass `https://<site>.atlassian.net` |
+| `Request must be an initialize request if no session ID is provided` | Tool called without an MCP session | `initialize` first, then send `Mcp-Session-Id` (step 3) |
+| HTTP 403 Cloudflare error 1010 "browser_signature_banned" | Python's default `User-Agent` (`Python-urllib`) is blocked | Send any other `User-Agent` header |
+| 401 from `https://<site>.atlassian.net/rest/api/3/...` with the MCP token | MCP tokens don't work on the REST API | Use a classic token for REST; the MCP token for MCP |
+
+### Test data left on the test site
+
+Board 2 holds `MBA-7` (REST tests, 4 comments), `MBA-8` (blocker) and `MBA-9` (MCP tests: In Review, labels `bkit:auto` + `bkit:plan`, blocked by `MBA-8`, markdown description and comment). They are safe to delete; open MBA-9 to see how a markdown comment looks to a person in Jira.
+
+## Progress: Jira tracker, waves 1–4 committed on `dev`
+
+Jira Cloud now works as a third tracker beside GitHub and Linear. With `bkit install --tracker=jira`, every bkit workflow and prompt reads, comments on, labels and moves a Jira issue. All four waves are committed on `dev`; nothing is pushed yet.
+
+### What landed
+
+**Wave 1 (683df676): Jira joins the tracker list and its blocks render**
+
+- `jira` is a valid `bkit.issueTracker` value. Its tracker blocks are written in the order GitHub, then Linear, then Jira.
+- Jira issue keys (`PROJ-123`, including keys with digits such as `AB1-12`) become feature IDs the same way Linear keys do: lowercased key plus slug, e.g. `proj-123-short-title`.
+
+**Wave 2 (d24723ee): MCP server, token checks, configurable states**
+
+- `.mcp.json` / `.cursor/mcp.json` / opencode get a `jira` server pointing at the Atlassian Rovo MCP server (`https://mcp.atlassian.com/v2/mcp`). It authenticates with `Authorization: Bearer ${BKIT_JIRA_API_TOKEN}`.
+- `BKIT_JIRA_API_TOKEN` is added to `.bkit/.env.example`, the env checks, `bkit doctor` and the setup advisories. The token must be a scoped **Atlassian MCP V2** token, and an org admin has to allow API-token sign-in first.
+- New `package.json` keys:
+  - `bkit.jira = { site, project, progress, review }`
+  - Linear's settings move into one object, `bkit.linear = { team, project, progress, review }`, with a migration from the old `bkit.linearTeam` key (row in `docs/migrations.md`).
+- The state an issue moves to when work starts or is handed off now comes from those keys, not fixed names. Defaults: Linear `started` / `In Review`, Jira `In Progress` / `In Review`. If a project has no such state, the run logs it as Unapplied and the labels still land.
+- `bkit repo info` returns `trackerTeam` / `trackerProject` / `trackerSite`, so workflows read one set of names whichever tracker is set up.
+
+**Wave 3 (96b9ea3a): every workflow and prompt can drive a Jira issue**
+
+- All six workflows and the three tracker prompts have Jira blocks for:
+  - reading the issue with its comments
+  - posting progress comments, split at line breaks when over Jira's 32,767-character limit
+  - replacing labels; Jira replaces the whole label set, so the set is re-read and rewritten
+  - moving status: list the issue's transitions, then fire the one that lands on the configured status name
+  - finding related issues by JQL search
+  - reading blockers: issues linked as "is blocked by" that aren't done
+- Workflows never move a Jira issue into a "done" status. As with the other trackers, a person closes it after reviewing the merge.
+- The shared wording file `.bkit/wording.md` gained the Jira clauses, and the tracker wording was tightened to use fewer tokens.
+
+**Wave 4 (f57bc594): docs, decisions, settings**
+
+- Jira is added everywhere the docs listed only GitHub and Linear: READMEs, `AGENTS.md`, `cloud.md`, `install.md`, `templates.md`, `comparison.md`, `docs/security.md`, `docs/setup.md`, `docs/architecture.md`.
+- `.bkit/trackers.md` has a new "jira — setup and notes" section: admin setting, token, install flags, keys, troubleshooting.
+- Every tracker list, sample and the `.mcp.json` templates now read GitHub → Linear → Jira.
+- `bkit-utility-update-tracker` reads its state names from `bkit.linear` / `bkit.jira`.
+- `mcp__jira__*` is added to the shipped Claude permissions.
+- `mcp__claude_ai_Linear__*` is removed: no workflow uses the claude.ai Linear connector, since they all call the project's own `linear` server.
+- Six decisions are recorded in `docs/decisions.jsonl`:
+  - `jira-fid-shape-and-server-key`
+  - `tracker-states-configurable-per-tracker`
+  - `linear-config-object-with-migration`
+  - `tracker-scope-keys-in-repo-info`
+  - `jira-transition-by-target-status-name`
+  - `jira-local-runs-only`
+
+### Out of scope, as agreed in this issue
+
+Jira runs are local only: there is no Jira-side cloud trigger, and `--auto` still needs the GitHub or Linear tracker. There is also no Jira preflight hook, and Jira Server / Data Center isn't supported.
+
+### How it was checked
+
+- Each Jira tool call the workflows use was tried against a real Jira Cloud test site (three test issues): reading, labels, transitions, comments, search and issue links.
+- Each wave passed the static gate, the full unit suite (179 files, 6252 tests), the bats tests and the build.
+- Packed tarball in an empty folder:
+  - `bkit install --claude --cursor --tracker=jira` wired only the `jira` server and the `mcp__jira__*` permission.
+  - The generated workflows call Jira tools and no GitHub or Linear issue tools.
+  - `bkit upgrade` and `bkit check` came back clean.
+
+### Still open
+
+- **Done-when item:** a live `/bkit-design` → `/bkit-plan` run against a Jira issue.
+- **Upgrade bug:** `bkit upgrade` removes lines that the shipped settings template owns when they also appear on bkit's list of generated lines. On a consumer this removed two template lines and made `bkit check` report drift. It should keep template-owned lines.
+- **Optional migration:** upgrade never deletes a permission line that later leaves the template. So existing installs keep `mcp__claude_ai_Linear__*` unless we add a migration step (propose first, build on approval).
+- **Possible follow-up:** `mcp__linear__*` and `mcp__jira__*` are granted whatever tracker a repo uses. Filtering them by tracker, the way `.mcp.json` already is, would stop GitHub-only repos getting Linear and Jira permissions.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)

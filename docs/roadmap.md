@@ -13,14 +13,13 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-10-29T02:51:50Z)_
+_(refreshed 2026-10-29T04:49:57Z)_
 
 ### Design
 
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
-| 719-cloud-variants-add | 719-cloud-variants-add | 1793242310788 |
 | 80-audit-workflow | 80-audit-workflow | 1785311294164 |
 
 ### Plan
@@ -31,6 +30,7 @@ _(refreshed 2026-10-29T02:51:50Z)_
 | 504-example-project | 504-example-project | 1791870640742 |
 | 651-sops-env-backup | 651-sops-env-backup | 1792633642892 |
 | 699-engine-run-completeness | 699-engine-run-completeness | 1793002326175 |
+| 719-cloud-variants-add | 719-cloud-variants-add | 1793249397536 |
 | 724-machine-wide-test | 724-machine-wide-test | 1793239890768 |
 
 ### Build
