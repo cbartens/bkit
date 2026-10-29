@@ -8659,13 +8659,17 @@ Input file written (`workflows input`)
 Merge `origin/dev` when the feature branch's `docs/` is behind it. The command resolves conflicts itself: ledgers by union, and other `docs/` files on `dev`'s side:
 Docs synced (`branches sync`)
 Check that the plan is in task-block form and within the group caps:
-**If** exit 0 **and** (`NEWER_COMMENTS` = 0 **or** `CONVERTED` is held) → Step 5.
+**If** exit 0, `CONVERTED` is not held **and** `NEWER_COMMENTS` = 0 → sub-step 4.
+**If** exit 0 **and** `CONVERTED` is held → Step 5.
 **If** `CONVERTED` is not held **and** (exit 0 with `NEWER_COMMENTS` > 0, **or** exit 2 with no `docs/plans/{YYYYMM}/{FID}-plan.md`, **or** exit 1 with a `markers`, `matrix` or `supersession` problem) → sub-step 2.
 **If** exit 1 **and** `CONVERTED` is held **and** `CONVERT_RETRY` is not held → `CONVERT_RETRY` = the printed `problems` → sub-step 2.
 **Else** → **Failure Path** naming each problem in the report.
 Finish, then re-run sub-step 1 with `CONVERTED` = true:
+Plan already in task-block form: finish the step with no agent and no artifact, its comment naming the skip:
+Every outcome → Step 5.
 Plan checked (`tests plan-check`)
 Converted plan checked again (`tests plan-check`)
+Skip recorded (`steps finish`) when the plan needed no conversion
 Resolve the plan's base commit and collect the code landed since it:
 **If** exit 12 → sub-step 2.
 The plan has no anchor. Finish the step with no agent and no artifact, and let its comment name the skip:
