@@ -6,7 +6,8 @@
 //     carries this run's grade and the `kind:"compliance"` rows land in the close
 //     commit. That ordering is pinned in commands/workflow/workflows.test.ts.
 //   - So every phase workflow (design, plan, build, debug, ship) closes through
-//     exactly one `workflows close --workflow=<wf>` call, which commits in the
+//     exactly one `workflows close --workflow=<wf>` call (build has one per
+//     ending: the published close and the held close), which commits in the
 //     same call (`--message=` or ship's `--flush`), and never calls `bkit comply`
 //     itself — a second grader run would double the compliance rows.
 //   - Close telemetry is written once (`--outbox` writes `close-telemetry.md`),
@@ -18,6 +19,15 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const PHASES = ["design", "plan", "build", "debug", "ship"] as const;
+
+/** Close calls per phase: build closes once per ending (published, held); every other phase once. */
+const EXPECTED_CLOSE_CALLS: Record<(typeof PHASES)[number], number> = {
+  design: 1,
+  plan: 1,
+  build: 2,
+  debug: 1,
+  ship: 1,
+};
 
 function readWorkflow(name: string): string {
   const p = path.resolve(__dirname, "../../../../../.bkit/core/workflows", name);
@@ -44,8 +54,11 @@ describe("every phase workflow grades itself at close through bkit workflows clo
       .flatMap((b) => b.split("\n"))
       .filter((l) => l.includes(`"{BKIT}" workflows close --workflow=${phase}`));
 
-    it(`bkit-${phase}.md closes through exactly one workflows close call`, () => {
-      expect(closeLines).toHaveLength(1);
+    it(`bkit-${phase}.md closes through exactly ${EXPECTED_CLOSE_CALLS[phase]} workflows close call(s)`, () => {
+      expect(closeLines).toHaveLength(EXPECTED_CLOSE_CALLS[phase]);
+      if (phase === "build") {
+        expect(closeLines.filter((l) => l.includes("--ending=held"))).toHaveLength(1);
+      }
     });
 
     it(`bkit-${phase}.md never runs the grader itself`, () => {
@@ -54,13 +67,15 @@ describe("every phase workflow grades itself at close through bkit workflows clo
     });
 
     it(`bkit-${phase}.md: the close call commits what it graded`, () => {
-      expect(closeLines[0]).toMatch(/--message="[^"]+"|--flush\b/);
+      for (const line of closeLines) expect(line).toMatch(/--message="[^"]+"|--flush\b/);
     });
 
     it(`bkit-${phase}.md writes close telemetry once and embeds it in the close comment`, () => {
-      expect(closeLines[0]).toContain('--outbox="{OUTBOX}"');
-      const embedded = embedsTelemetry(closeLines[0]!, content);
-      expect(embedded, "the close comment carries the telemetry report").toBe(true);
+      for (const line of closeLines) {
+        expect(line).toContain('--outbox="{OUTBOX}"');
+        const embedded = embedsTelemetry(line, content);
+        expect(embedded, "the close comment carries the telemetry report").toBe(true);
+      }
     });
   }
 });

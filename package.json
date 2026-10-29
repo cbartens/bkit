@@ -190,7 +190,7 @@
       "build": {
         "verify": {
           "ask": true,
-          "maxAttempts": 2
+          "maxAttempts": 3
         },
         "challenge": {
           "ask": true,
