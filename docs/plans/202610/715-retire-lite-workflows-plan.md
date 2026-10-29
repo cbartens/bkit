@@ -949,6 +949,10 @@ Build order: config → runtime resolution → install → close row → build w
     - `scripts/harvest/bkit-harvest.test.mjs` `keeps a normal done run as done` fails when every run reads held
     - `.bkit/core/engine/ledgers/telemetry.test.ts` `shows an ending row for a held close` fails when the row is omitted
     - `.bkit/core/engine/commands/stats.test.ts` `counts a held outcome row in its kind total` fails when the held row is dropped or filed under a new kind
+  - **TEST EXCEPTION:**
+    - `scripts/harvest/bkit-harvest.test.mjs` `derives held from a workflow-done row ending held` fails on done or stopped — accept all as exceptions: the file runs under plain node (`pnpm test:harvest`), which the red and green tools cannot run; the test passes and `pnpm test:harvest` is the proof (owner, 2026-10-29)
+    - `scripts/harvest/bkit-harvest.test.mjs` `counts held runs in the workflow report` fails when the column is missing — accept all as exceptions: the file runs under plain node (`pnpm test:harvest`), which the red and green tools cannot run; the test passes and `pnpm test:harvest` is the proof (owner, 2026-10-29)
+    - `scripts/harvest/bkit-harvest.test.mjs` `keeps a normal done run as done` fails when every run reads held — accept all as exceptions: the file runs under plain node (`pnpm test:harvest`), which the red and green tools cannot run; the test passes and `pnpm test:harvest` is the proof (owner, 2026-10-29)
 
 <!-- bkit:task 11 end -->
 
