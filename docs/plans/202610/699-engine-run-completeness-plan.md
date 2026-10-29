@@ -857,6 +857,9 @@ Chronological task checklist. Groups run in build order; a group's tasks may dep
   - **TEST FIRST:**
     - `.bkit/core/engine/commands/workflow/workflows.test.ts` `warns when the previous run for this fid was holey` fails while the warning is missing, interrupts the run, or lands on stdout
     - `.bkit/core/engine/commands/workflow/workflows.test.ts` `prints nothing when the previous run is clean, absent, or unreadable` fails while a clean or absent previous run warns, or a checker failure at start raises or prints an error
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/commands/workflow/workflows.test.ts` `warns when the previous run for this fid was holey` fails while the warning is missing, interrupts the run, or lands on stdout — the fake previous run gained a close-workflow step row after the red, because the checker only counts a run as closed when that row exists and the test could never pass without it; its expectations did not change (owner, 2026-10-29)
+    - `.bkit/core/engine/commands/workflow/workflows.test.ts` `prints nothing when the previous run is clean, absent, or unreadable` fails while a clean or absent previous run warns, or a checker failure at start raises or prints an error — the clean case was rewritten onto the new shared fixture and the stored completeness row's time moved from 00:30 to 01:00 so no later row forces a recompute; no expectation was weakened or removed (owner, 2026-10-29)
 
 <!-- bkit:task 12 end -->
 
