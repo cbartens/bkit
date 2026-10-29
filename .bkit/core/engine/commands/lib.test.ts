@@ -13,6 +13,7 @@ import {
   ghUnavailable,
   parseFlags,
   repoRoot,
+  resolveActiveRun,
   runCommand,
   runGit,
   runTool,
@@ -744,5 +745,37 @@ describe("runGit / runTool output limit", () => {
       stdout: "",
       stderr: "bkit-no-such-binary-586 not found on PATH",
     });
+  });
+});
+
+describe("resolveActiveRun", () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+  });
+
+  function treeWithOneRun(): { cwd: string; status: string } {
+    const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-active-run-")));
+    dirs.push(cwd);
+    spawnSync("git", ["init", "-q"], { cwd });
+    const status = path.join(cwd, "docs/plans/202610/logs/901-x/status.jsonl");
+    fs.mkdirSync(path.dirname(status), { recursive: true });
+    fs.writeFileSync(
+      status,
+      `${JSON.stringify({ type: "workflow-started", workflow: "build", at: "2026-10-29T10:00:00Z" })}\n`,
+    );
+    return { cwd, status };
+  }
+
+  it("resolveActiveRun falls back to the cwd scan when --file names a non-status file", () => {
+    const { cwd, status } = treeWithOneRun();
+    const run = resolveActiveRun({ cwd, file: "docs/plans/202610/x-plan.md" });
+    expect(run).toEqual({ workflow: "build", file: status, bookRoot: cwd });
+  });
+
+  it("still takes a status.jsonl --file as the run itself", () => {
+    const { cwd, status } = treeWithOneRun();
+    const run = resolveActiveRun({ cwd, file: path.relative(cwd, status) });
+    expect(run).toEqual({ workflow: "build", file: status, bookRoot: cwd });
   });
 });

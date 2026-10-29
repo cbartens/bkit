@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { deriveContract, inferWorkflows, parseRows, readCompleteness, } from "../../checks/status-holes.js";
 import { getWorkflowsRoot } from "../../shared/package-roots.js";
 import { EXIT } from "../lib.js";
+import { readIssueTracker } from "./fids.js";
 import { FILE_FLAG, WORKFLOW_FLAG, statusFile } from "./status.js";
 const TAG = "[bkit-status-holes]";
 const readText = (file, log) => {
@@ -60,6 +61,7 @@ export const completenessCommand = {
                 const rows = parseRows(text);
                 const given = typeof ctx.flags.workflow === "string" ? ctx.flags.workflow : undefined;
                 const workflows = given === undefined ? inferWorkflows(rows) : [given];
+                const tracker = readIssueTracker(ctx.cwd);
                 const verdicts = [];
                 const lines = [];
                 for (const workflow of workflows) {
@@ -69,7 +71,7 @@ export const completenessCommand = {
                         continue;
                     }
                     try {
-                        const { verdict } = readCompleteness(rows, deriveContract(md, workflow));
+                        const { verdict } = readCompleteness(rows, deriveContract(md, workflow, tracker));
                         verdicts.push(verdict);
                         lines.push(...reportLines(verdict));
                     }

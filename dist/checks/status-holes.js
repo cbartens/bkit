@@ -27,6 +27,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WORKFLOW_STEPS } from "../commands/workflow/step-table.js";
+import { substituteWorkflow } from "../render/trackers.js";
 import { parseJson } from "../shared/json.js";
 import { getWorkflowsRoot } from "../shared/package-roots.js";
 // ---------------------------------------------------------------------------
@@ -218,9 +219,11 @@ export function isConditionalSection(body) {
  * Derive the contract of one workflow from its markdown: the step sections, the
  * row keys and `"{BKIT}"` calls each holds, and the calls no step owns. The
  * universe is cross-checked against the deduped `WORKFLOW_STEPS[workflow]`; a
- * disagreement is reported as drift, never thrown.
+ * disagreement is reported as drift, never thrown. With a `tracker`, the markdown is
+ * first rendered for it, so a consumer is held to the calls its installed workflow names.
  */
-export function deriveContract(workflowMd, workflow) {
+export function deriveContract(sourceMd, workflow, tracker) {
+    const workflowMd = tracker === undefined ? sourceMd : substituteWorkflow(sourceMd, tracker).output;
     const sections = stepSections(workflowMd);
     // The journal window runs from the first `workflows start` call to the `workflows close`
     // call: a call written above or below it is matched when journaled, never required.
@@ -340,6 +343,9 @@ export function check(rows, contract, options = {}) {
     });
     const callCount = items.filter((i) => i.kind === "call").length;
     const preJournal = callCount === 0;
+    // A journal that starts mid-run (an engine upgrade, the kill switch lifted) leaves the
+    // visits that finished before its first `engine-call` row with no evidence to judge.
+    const firstCall = items.findIndex((i) => i.kind === "call");
     // Visits over the step rows, in order; a row outside the contract closes the current visit.
     const visits = [];
     const visitOfRow = new Map();
@@ -417,6 +423,9 @@ export function check(rows, contract, options = {}) {
     for (const v of visits) {
         const index = (occurrence.get(v.unit) ?? 0) + 1;
         occurrence.set(v.unit, index);
+        const beforeJournal = firstCall !== -1 && v.rows.every((r) => r < firstCall);
+        if (beforeJournal)
+            continue;
         const got = owned.get(v) ?? new Set();
         const pool = exercised.get(v.unit) ?? new Set();
         for (const k of got)

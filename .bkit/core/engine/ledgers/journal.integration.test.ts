@@ -14,6 +14,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { runCommand, type CommandSpec } from "../commands/lib";
+import { branchesCommand } from "../commands/workflow/branches";
 
 const FID = "901-journal";
 const STATUS_REL = path.join("docs", "plans", "202610", "logs", FID, "status.jsonl");
@@ -155,5 +156,19 @@ describe("the dispatch seam on a real worktree", () => {
     fs.writeFileSync(status, saved);
     await run(worktree, ["widgets", "odd"]);
     expect(rows(status).filter((r) => r["type"] === "engine-call")).toHaveLength(1);
+  });
+
+  it("branches anchor-read with a plan --file journals into the active run", async () => {
+    const plan = path.join(worktree, "docs", "plans", "202610", `${FID}-plan.md`);
+    fs.mkdirSync(path.dirname(plan), { recursive: true });
+    fs.writeFileSync(plan, "# Plan\n");
+    await runCommand(
+      ["branches", "anchor-read", `--file=${path.relative(worktree, plan)}`],
+      [branchesCommand],
+      { classicVerbs: new Set(), cwd: worktree, io: { stdout: () => {}, stderr: () => {} } },
+    );
+    const calls = rows(path.join(worktree, STATUS_REL)).filter((r) => r["type"] === "engine-call");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ workflow: "build", noun: "branches", verb: "anchor-read" });
   });
 });
