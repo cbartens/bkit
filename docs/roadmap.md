@@ -13,13 +13,14 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-10-29T02:11:30Z)_
+_(refreshed 2026-10-29T02:51:50Z)_
 
 ### Design
 
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 719-cloud-variants-add | 719-cloud-variants-add | 1793242310788 |
 | 80-audit-workflow | 80-audit-workflow | 1785311294164 |
 
 ### Plan
