@@ -166,6 +166,8 @@ const HELPER_SOURCES = new Set([
   path.join("commands", "workflow", "plan-versions.ts"),
   // The plan's group and task blocks, read by `tests`, `challenge`, the summary and run-facts.
   path.join("commands", "workflow", "plan-blocks.ts"),
+  // Where a named test sits in its file and what it runs, read by `tests` and `branches`.
+  path.join("commands", "workflow", "test-blocks.ts"),
 ]);
 
 /** Every way a command source breaks "exports a command, and each is in COMMANDS"; empty = conforms. */

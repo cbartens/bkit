@@ -316,6 +316,14 @@ export const BKIT_PUSH_GATES: readonly string[] = [
 export const BKIT_TEST_FILE_SCRIPT = "bkit:test:file";
 
 /**
+ * Lints ONE test file — `pnpm bkit:lint:file <repo-relative path>`, exit 0 when clean.
+ * `bkit tests red` runs it before recording a red, so a lint rewrite never lands after
+ * the red. Never seeded: install, check and upgrade advise when `bkit:test:file` is
+ * declared and this is not (detectGateAdvisories).
+ */
+export const BKIT_LINT_FILE_SCRIPT = "bkit:lint:file";
+
+/**
  * The deeper gates, shallowest first, with what declaring each one costs.
  *
  * Never seeded. The probe's rule is "declared = run it". `declaredBy` is how install

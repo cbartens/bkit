@@ -310,6 +310,20 @@ describe("detectGateAdvisories — gate advisories point at .bkit/templates.md",
     expect(detectGateAdvisories(tmpDir).map((f) => f.id)).not.toContain("test-file-script-missing");
   });
 
+  it("advises declaring bkit:lint:file once bkit:test:file is declared without it", () => {
+    writeScripts({ ...BKIT_GATE_SCRIPTS });
+    expect(detectGateAdvisories(tmpDir).map((f) => f.id)).not.toContain("lint-file-script-missing");
+    writeScripts({ ...BKIT_GATE_SCRIPTS, "bkit:test:file": "vitest run" });
+    const finding = detectGateAdvisories(tmpDir).find((f) => f.id === "lint-file-script-missing");
+    expect(finding?.action).toContain('"bkit:lint:file": "eslint --max-warnings=0"');
+    writeScripts({
+      ...BKIT_GATE_SCRIPTS,
+      "bkit:test:file": "vitest run",
+      "bkit:lint:file": "ruff check",
+    });
+    expect(detectGateAdvisories(tmpDir).map((f) => f.id)).not.toContain("lint-file-script-missing");
+  });
+
   it("returns nothing for an absent or malformed package.json", () => {
     fs.rmSync(path.join(tmpDir, "package.json"));
     expect(detectGateAdvisories(tmpDir)).toEqual([]);

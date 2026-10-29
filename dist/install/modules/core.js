@@ -14,7 +14,7 @@ import { readInstallingVersion } from "../../shared/package-json.js";
 import { detectDepUpdater } from "../../shared/dep-updater.js";
 import { ASK_POINTS, CONFIG_DEFAULTS, limitKey } from "../../shared/settings.js";
 import { getCoreRoot, getSharedRoot, getBkitDocsRoot, TEMPLATE_COPIES_DIR, } from "../../shared/package-roots.js";
-import { getInstallManifest, BKIT_GATE_SCRIPTS, BKIT_OPTIONAL_GATES, BKIT_PUSH_GATES, BKIT_TEST_FILE_SCRIPT, } from "../manifest.js";
+import { getInstallManifest, BKIT_GATE_SCRIPTS, BKIT_OPTIONAL_GATES, BKIT_PUSH_GATES, BKIT_LINT_FILE_SCRIPT, BKIT_TEST_FILE_SCRIPT, } from "../manifest.js";
 import { migrateLedgers } from "../../ledgers/migrate.js";
 export function listMdFiles(dir, prefix) {
     if (!fs.existsSync(dir))
@@ -815,6 +815,16 @@ export function detectGateAdvisories(cwd) {
             severity: "advisory",
             detect: `package.json does not declare \`${BKIT_TEST_FILE_SCRIPT}\`, so \`/bkit-build\` cannot check that each task's tests fail before its code is written.`,
             action: `Add \`${BKIT_TEST_FILE_SCRIPT}\` to package.json: it runs the ONE test file bkit appends as its argument (repo-relative path) and writes a JUnit report to the path in \`$BKIT_TEST_REPORT\`. Vitest example:\n\n    "${BKIT_TEST_FILE_SCRIPT}": "vitest run --reporter=default --reporter=junit --outputFile.junit=\\"$BKIT_TEST_REPORT\\""\n\nCall the runner directly, not through a task runner that caches results or runs dependent packages first. A monorepo routes the path to the package and config that own it.`,
+        });
+    }
+    // A red recorded before the linter sees the test: a lint rewrite after it reads as an
+    // edited test, and no red can be recorded again once the task's code makes it pass.
+    if (BKIT_TEST_FILE_SCRIPT in declared && !(BKIT_LINT_FILE_SCRIPT in declared)) {
+        findings.push({
+            id: "lint-file-script-missing",
+            severity: "advisory",
+            detect: `package.json declares \`${BKIT_TEST_FILE_SCRIPT}\` but not \`${BKIT_LINT_FILE_SCRIPT}\`, so \`/bkit-build\` records a task's red before the linter sees the test; a lint fix after it pauses the build for an owner exception.`,
+            action: `Add \`${BKIT_LINT_FILE_SCRIPT}\` to package.json: it lints the ONE test file bkit appends as its argument (repo-relative path) with the rules your static gate applies, exiting 0 when clean. \`bkit tests red\` runs it before the test and records no red while it fails. Examples:\n\n    "${BKIT_LINT_FILE_SCRIPT}": "eslint --max-warnings=0"\n    "${BKIT_LINT_FILE_SCRIPT}": "ruff check"\n\nUse the same linter config as the static gate, or the gate can still demand a rewrite after the red.`,
         });
     }
     return findings;

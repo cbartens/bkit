@@ -61,6 +61,7 @@ import { AUTO_LABEL, AUTO_ROUTE_SUFFIX } from "./issues.js";
 import { appendFeature } from "./roadmap.js";
 import { detect } from "./runtime.js";
 import { readRuns, readStatusRows, readStatusRowsAt } from "./status.js";
+import { declaredName } from "./test-blocks.js";
 import { addAllButCopied, copyExcludes, removeWorktree, worktreeDir } from "./worktrees.js";
 import {
   COULD_NOT_RUN_EXIT_CODES,
@@ -1115,23 +1116,6 @@ const COMMENT = /^\s*(?:\/\/|\/\*|\*|#|--)/;
 /** True when a removed `line` takes an assertion, rather than being a comment or an import. */
 const isAssertion = (line: string) =>
   !COMMENT.test(line) && (ASSERTION.test(line) || BARE_ASSERT.test(line));
-
-/** A test declaration's name on `line`, or null when the line declares no test. */
-function declaredName(line: string): string | null {
-  const call = /\b(?:it|test|suite|describe|context|bench)(?:\.[a-z]+)*\s*\(\s*(["'`])(.+?)\1/.exec(
-    line,
-  );
-  if (call !== null) return call[2]!;
-  const go = /\bfunc\s+(Test\w+)\s*\(/.exec(line);
-  if (go !== null) return go[1]!;
-  const py = /\bdef\s+(test_\w+)\s*\(/.exec(line);
-  if (py !== null) return py[1]!;
-  if (/@Test\b/.test(line)) {
-    const java = /\b(?:void|fun)\s+(\w+)\s*\(/.exec(line);
-    return java?.[1] ?? line.trim();
-  }
-  return null;
-}
 
 /** The test at 1-based `at` in `body`: the nearest declaration above it, else `line` itself. */
 function testAt(body: string | null, line: string, at: number): string {

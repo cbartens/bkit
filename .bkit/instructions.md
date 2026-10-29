@@ -2761,7 +2761,7 @@ to `docs/{{ledger}}.jsonl` in `.bkit/jsonl.md` format; check existing entries fi
 - carriers: prompt `bkit-build-challenge-*`
 
 ```text
-Per finding, one task block under `## Findings Log` in the Output format shape, every field required: title = the failure in one line (exploit scenario), `severity` (`CRITICAL|HIGH|MEDIUM|LOW`), `class` (`mechanical|architectural`), `fixable` (`true|false`), `location` (`file:line`), `done when` = the end state the fix leaves, `test first` = a test file and a test name that fails on the finding — every finding, `LOW` included. Number tasks from 1, worst `severity` first. **If** incomplete → not counted in `Failures`.
+Per finding, one task block under `## Findings Log` in the Output format shape, every field required: title = the failure in one line (exploit scenario), `severity` (`CRITICAL|HIGH|MEDIUM|LOW`), `class` (`mechanical|architectural`), `fixable` (`true|false`), `location` (`file:line`), `done when` = the end state the fix leaves, `test first` = a test file and a test name that fails on the finding — every finding, `LOW` included. Read the test's logic against the code the diff leaves: it MUST fail there, never pass already. A finding an existing plan task or test already covers → no task block. Number tasks from 1, worst `severity` first. **If** incomplete → not counted in `Failures`.
 ```
 
 ### challenge-verdict-pass
@@ -7804,12 +7804,14 @@ Read the group's briefs (its task blocks), plan gaps, the group gate log (if sup
 ```text
 **Role:** Senior verifier checking that plan deliverables actually exist in the codebase.
 **If** test-first audit report supplied (`Enforced` / `Verdict` / `Gaps` header) → decide each gap: its `fixable` stands unless `null`, and a `null` one you decide from the diff it names:
-[fix-code-not-gates] `test-changed` → read its diff; only formatting → no gap; weakened, removed or rewritten assertions → `Fixable: false`.
+[fix-code-not-gates] `test-changed` on a row whose `Changed since red` = `test body` or `yes` → read its diff; only formatting → no gap; weakened, removed or rewritten assertions → `Fixable: false`.
+[fix-code-not-gates] `test-changed` on a row whose `Changed since red` = `code it runs` → read its diff; the named helper, hook, fixture or import refactored with the test's inputs, mocks and expected values unchanged → no gap; any of those changed → `Fixable: false`.
 [fix-code-not-gates] `test-changed` on a row whose `Changed since red` = `added lines only` → read its diff; any line added inside a planned test or in setup it runs (`beforeEach`, fixture, mock) → `Fixable: false`; added lines only outside every planned test → no gap.
 `red-mismatch` → recorded test is the planned one renamed or moved **and** passes now → no gap, nor for that test's `not-green`; else `Fixable: false`.
 A gap you leave `Fixable: false` is a `FAIL`.
 `Enforced: false` → reason in `Notes`; no gap.
 `Late-red check` section → each task not checked in `Notes`; no gap.
+`Already landed` section → each test and the task whose code it stood on in `Notes`; no gap.
 Update **Create** — set `Failures` via `Edit` = count of unresolved gaps; set `Fixable` via `Edit` = `true` when any of those is `Fixable: true`, else `false`; set `Verdict` via `Edit` = the roll-up over the `Fixable` you decided: any `false` → `FAIL`, **Else** any `true` → `CONCERNS`, **Else** → `PASS`; never the report's `null`.
 Determine `Mode` from input Context (`Group` or `Holistic`).
 **If** `Group` → the supplied briefs' task blocks are the work; judge them against the supplied group diff (the changes since the group started), not the whole branch; a brief's `Deviations` section holds the owner's run instructions → judge the tasks it names as it directs. Every task field and gate maps to real codebase changes. Find missing components, skipped steps, unimplemented edge cases.
@@ -8131,6 +8133,7 @@ Migration ordering: Multi-step migrations — intermediate states must work. Mis
 Test-coverage gaps: Surfaces touched but not exercised by `Derived Test Matrix` rows → `CRITICAL`.
 [ci-on-pr-to-dev-main; ci-on-push-to-dev-main] Mock-only coverage: Tasks crossing external boundary (DB / API / model / network / migration) whose `DONE WHEN` lack non-mock boundary tests (reach real boundaries / assert ground-truth signals); `@live` for external / deployed → `CRITICAL`.
 Unpassable checks: `TEST FIRST` / `DONE WHEN` checks current code cannot pass (value always emitted, shape never returned) and no task changes → `CRITICAL`; cite the ruling `file:line`.
+Tests that cannot fail: a `TEST FIRST` test whose logic, read against current code or the code an earlier task lands, already passes → `CRITICAL`; a task adding behaviour names a new test for it, never an existing passing one; cite the code that satisfies it `file:line`.
 ```
 
 #### bkit-plan-scope-check

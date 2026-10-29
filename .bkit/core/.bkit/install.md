@@ -242,6 +242,7 @@ After writes, bkit re-runs credential and environment checks — some only accur
 | `gate-noop` | A `bkit:gate:*` script is empty or cannot fail (`true`, `:`, `exit 0`, `echo …`), so every agent run and push passes it. Warn-only, at install, `bkit check` and `bkit upgrade`, on every branch. Point it at real checks, or delete it and run `bkit upgrade` to restore bkit's default. |
 | `gate-tier-not-wired` | `package.json` declares a deeper test tier (`test:integration`, `test:e2e`, `test:live`) that no `bkit:gate:*` script runs; the advisory prints the gate line to add. |
 | `test-file-script-missing` | `package.json` does not declare `bkit:test:file`, so `/bkit-build` reports test-first as not enforced. The advisory prints the script contract and a Vitest line. |
+| `lint-file-script-missing` | `package.json` declares `bkit:test:file` but not `bkit:lint:file`, so `bkit tests red` records a task's red before the linter sees the test, and a lint fix after it pauses the build for an owner exception. The advisory prints the script contract and ESLint / Ruff lines. |
 
 Phase 1 and Phase 3 findings merged and deduplicated by `id` (Phase 3 wins on conflict — re-detection more accurate post-write). Zero findings → no banner.
 

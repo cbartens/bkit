@@ -62,6 +62,7 @@
     "bkit:deps:outdated": "pnpm outdated",
     "bkit:deps:audit": "pnpm audit",
     "bkit:test:file": "vitest run --reporter=default --reporter=junit --outputFile.junit=\"$BKIT_TEST_REPORT\"",
+    "bkit:lint:file": "oxlint -c .oxlintrc.json --type-aware --tsconfig tsconfig.test.json --deny-warnings",
     "bkit": "node dist/cli.js",
     "typecheck": "tsc --noEmit && pnpm bkit:typecheck:tests",
     "bkit:typecheck:tests": "tsc -p tsconfig.test.json",
