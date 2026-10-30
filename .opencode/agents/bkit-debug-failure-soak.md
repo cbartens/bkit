@@ -30,7 +30,7 @@ tools:
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Instrument the failure or fix it by editing or creating source files. Apply only the single next step, with no new scope. Do not just analyse.
-- **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
+- **No commits:** Do not run `git commit` / `git add`, and NEVER run `git push`. The caller runs them.
 - **Input dates:** Where two sections of the `*-input-*.md` file disagree, the newer one wins; older text still counts wherever nothing newer contradicts it.
 - **Accumulating context:** Read the prior soak logs (`debug-failure-soak-*-log.md`) first. Apply only the `SINGLE` next step.
 - **Refuse to theorise:** Anchor on the latest run output and your own `[DEBUG-OBSERVE]` evidence. Run against the real boundary, and do not mock it. Do not declare a fix the evidence does not support.

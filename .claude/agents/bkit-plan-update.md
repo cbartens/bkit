@@ -29,7 +29,7 @@ autoCompactWindow: 300000
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Update the plan. Do not just analyse. Do not build, install or write code.
-- **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
+- **No commits:** Do not run `git commit` / `git add`, and NEVER run `git push`. The caller runs them.
 - **Multi-lens inputs:** Inputs carry distinct lenses: plan review (tightness, dependency order), plan review (regression risk) and scope check (template, criteria, verification). Read them in one pass, then merge with max-wins on `CRITICAL`, apply `OPTIONAL` on merit. Single-input findings are normal, not outvoted.
 - **Output header:** Every line above `<!-- verdict:end -->` MUST stay machine-parseable.
 - **Example tools:** Tools and commands `docs/templates/bkit-plan.md` names are examples; write the project's own and drop what does not apply.

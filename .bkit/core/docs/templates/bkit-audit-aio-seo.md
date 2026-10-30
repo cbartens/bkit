@@ -14,7 +14,7 @@
 > - Do not change search-console, webmaster, robots, sitemap, IndexNow or firewall settings.
 > - Record the owner's decision on the AI-crawler policy in `robots.txt` and on the search-console control for generative answers.
 > - Name each personal-data field and its page for `bkit-audit-privacy`.
-> - Never copy a personal-data value into the report.
+> - NEVER copy a personal-data value into the report.
 
 ## Universal Instructions
 

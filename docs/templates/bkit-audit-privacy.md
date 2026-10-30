@@ -12,7 +12,7 @@
 > **Rules:**
 >
 > - Name each field and where it lives.
-> - Never copy a personal-data value into the report.
+> - NEVER copy a personal-data value into the report.
 
 ## Universal Instructions
 

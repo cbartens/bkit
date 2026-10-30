@@ -28,7 +28,7 @@ tools:
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Sync docs. Do not just analyse. Do not write code or modify the implementation.
-- **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
+- **No commits:** Do not run `git commit` / `git add`, and NEVER run `git push`. The caller runs them.
 - **Exceptions:** Do not update `docs/knowledge.jsonl` or `docs/decisions.jsonl`.
 - **Parallel run:** **If** Context indicates parallel run → do not reference other agents' outputs.
 

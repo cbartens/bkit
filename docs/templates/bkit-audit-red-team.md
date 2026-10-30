@@ -19,7 +19,7 @@
 > - Send no load, no volume fuzzing, and no spend past a single cap.
 > - Stop at proof, and do not pivot.
 > - NEVER copy a working token into the report.
-> - Never copy a personal-data value into the report.
+> - NEVER copy a personal-data value into the report.
 > - Record the route, the input shape and the response.
 
 ## Universal Instructions

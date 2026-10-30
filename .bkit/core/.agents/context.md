@@ -12,7 +12,7 @@
 > - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
 > - The blocks below `<!-- bkit:end -->` are the project's own: `bkit install` never overwrites them, and `bkit check` reports no drift for them. Add yours there.
 > - Blocks are read-only and idempotent.
-> - Never log PII.
+> - NEVER log PII.
 
 ## Context Fetch
 
@@ -142,7 +142,7 @@ These are the MCP servers whose every tool, reads and writes alike, agents run w
 
 - Spell each name exactly as the host's tool ids do, and list every spelling in use: `.mcp.json` / `.cursor/mcp.json` / `opencode.json` keys (`sentry`) and claude.ai connector names (`Sentry`).
 - A name dropped from the block is pruned from Claude on the next install.
-- Personal connectors (mail, calendar, drive) belong in user settings, never here.
+- Personal connectors (mail, calendar, drive) belong in user settings, NEVER here.
 - **If** you declare no server → add `<!-- mcp-servers:none intentional -->` after `<!-- bkit:end -->`.
 - The full matrix is in `.bkit/providers.md` § MCP servers.
 

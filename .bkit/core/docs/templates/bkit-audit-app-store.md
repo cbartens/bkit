@@ -80,7 +80,7 @@ Stores change their rules on their own schedule. A new target API, a higher uplo
 
 - [ ] **Build Service:** **If** native builds run on a hosted service → Steps 2, 3, 6 — the version and build number from the service, not the local config, and the last built artifact for native-library alignment (e.g., `eas build:list`, `eas build:view`). Fallback: use the local config only, and treat the remote version as a hypothesis.
 - [ ] **Store Consoles:** **If** store accounts exist → Steps 2, 4, 8, 9, 11 — policy status, app content, agreements and listings (e.g., App Store Connect, Play Console). Fallback: use the repo only, and mark store state `Not Checked`.
-- [ ] **Credential Metadata:** **If** signing material exists → Step 6 — expiry and holder from the build service or console, never the material itself (e.g., `eas credentials`). Fallback: `Not Checked`.
+- [ ] **Credential Metadata:** **If** signing material exists → Step 6 — expiry and holder from the build service or console, NEVER the material itself (e.g., `eas credentials`). Fallback: `Not Checked`.
 - [ ] **Devices:** **If** the app has deep links, or a binary to open → Step 7 — a device or emulator with the app installed, and one without it. Fallback: use files and config only, and mark opening `Not Checked`.
 - [ ] **Vitals:** **If** the app is live → Step 8 — store vitals and the error tracker (e.g., Play vitals, Xcode Organizer, Sentry, Crashlytics). Fallback: `Not Checked`.
 

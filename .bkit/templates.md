@@ -746,7 +746,7 @@ The local gitignored env files are the source of truth. `bkit-secrets.mjs sync` 
   - `build_secret` names exist only in the dashboard. They are never written or deleted.
 - Cursor rows: list only the names the cloud workflow needs.
   - The minimal set is `BKIT_GH_TOKEN`, plus `BKIT_LINEAR_API_KEY` on Linear setups. `VERCEL_TOKEN` / `SUPABASE_ACCESS_TOKEN` are optional, for when the workflow reaches those stores.
-  - A first sync against a populated environment deletes every live name that is not listed, so start with `--dry-run`.
+  - A first sync against a populated environment deletes every live name that is not listed, so the `--dry-run` rule below the command table applies to it too.
   - API errors surface with their code: `feature_unavailable` (the environments API is not enabled for the key), `key_not_supported` (`grok_` keys), `secret_name_ambiguous` (one name, several repo-scoped versions; pre-checked, so remove the extra versions in the dashboard).
   - Team-scope 403s (`team_admin_required`) do not apply, because the adapter uses environment scope only.
 - **If** you need a custom store → no upstream change is needed: `type: "custom"` + `module` loads a repo-local adapter (see below).
@@ -760,7 +760,7 @@ The local gitignored env files are the source of truth. `bkit-secrets.mjs sync` 
 | `check [file]` | Local only: sources, env file vs example (exit 2 on a missing required key), every copy of every secret. |
 | `--store <name>` | Narrow `sync` / `drift` / `list` to one store. Every run covers both environments; no per-environment option. |
 
-`sync` deletes every live name that is not listed for that store, so run `--dry-run` before every sync. When no listed key resolves to a value, the deletes for that store are skipped.
+`sync` deletes every live name that is not listed for that store, so ALWAYS run `--dry-run` before every sync. When no listed key resolves to a value, the deletes for that store are skipped.
 
 How `drift` proves a value without printing it:
 

@@ -29,7 +29,7 @@ autoCompactWindow: 300000
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Update the ledger and related documents. Do not just analyse. Do not write implementation code.
-- **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
+- **No commits:** Do not run `git commit` / `git add`, and NEVER run `git push`. The caller runs them.
 - **Tracker:** Read-only. NEVER create, close, or relabel issues. Recommend, and let the caller act.
 - **Other ledgers:** Read-only. Do not append to another ledger. Report under `Cross-Ledger Impact`, and let the caller act.
 

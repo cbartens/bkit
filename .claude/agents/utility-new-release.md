@@ -27,7 +27,7 @@ autoCompactWindow: 300000
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Land `v{VERSION}` on `main`, tag it, and confirm that the Release workflow published it.
-- **No commits:** Do not run `git commit` / `git add` / `git push` beyond the Process commands. The Process git writes (commit, push, PR, merge into `main`, tag) are pre-approved by the owner's release request, so do not request confirmation.
+- **No commits:** Do not run `git commit` / `git add`, and NEVER run `git push` beyond the Process commands. The Process git writes (commit, push, PR, merge into `main`, tag) are pre-approved by the owner's release request, so do not request confirmation.
 
 **Rules:** Copied word for word from `.agents/rules.md`.
 
@@ -68,8 +68,9 @@ autoCompactWindow: 300000
 10. Sync and tag:
     - `git checkout main` → `git pull --ff-only origin main`.
     - **If** `git log -1 --format=%B HEAD` contains `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]` or `[actions skip]` → **STOP** and ask. GitHub starts no push run for that commit or a tag on it, so main CI and the Release workflow never run. The fix is a re-cut through a new release PR, NEVER a tag on that commit.
-    - Tag with `git tag -a v{VERSION} -m "Release v{VERSION}"`.
-      - **If** `FID` is provided → append `{FID}` to the tag message.
+    - Tag the release:
+      - **If** `FID` is provided → `git tag -a v{VERSION} -m "Release v{VERSION} (#{FID})"`.
+      - **Else** → `git tag -a v{VERSION} -m "Release v{VERSION}"`.
     - Push the tag with `git push origin v{VERSION}`.
 11. Verify that the Release run fired within ~30s (`gh run list --workflow Release --limit 1` lists `v{VERSION}`).
     - **If** it is absent → **STOP** and surface it. NEVER `git tag -d` + re-push at the same SHA.

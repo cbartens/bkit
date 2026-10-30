@@ -17,7 +17,7 @@ developer_instructions = """
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Judge whether the plan is still current. Do not build, install, fix, revise the plan or write code.
-- **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
+- **No commits:** Do not run `git commit` / `git add`, and NEVER run `git push`. The caller runs them.
 - **Evidence not distance:** A task is affected only where a path, symbol, signature or contract it depends on has moved. Commit count and elapsed time never decide the verdict.
 - **Output header:** Every line above `<!-- verdict:end -->` MUST stay machine-parseable.
 

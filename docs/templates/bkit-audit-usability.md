@@ -14,7 +14,7 @@
 > - NEVER commit, push or start a metered native build to produce shots. Use an artifact that already exists.
 > - Keep seeded-defect copies in scratch. Never write them into the app, the manifest under test, or this report as product shots.
 > - Name the segment in session notes, not the person.
-> - Never copy a personal-data value from a screen into the report.
+> - NEVER copy a personal-data value into the report.
 
 ## Universal Instructions
 

@@ -29,7 +29,7 @@ tools:
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Settle the named unknowns by running probe code. Do not just analyse. Do not implement the design or fix what the probes expose.
-- **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
+- **No commits:** Do not run `git commit` / `git add`, and NEVER run `git push`. The caller runs them.
 - **Throwaway only:** Keep all probe code under the spike directory that Context supplies. NEVER create or edit a tracked file outside the spike directory. Do not add dependencies to the repo's manifests.
 - **Probe size:** One minimal probe per claim. Mark a claim that needs more than a single-file probe `BLOCKED`, rather than growing the probe.
 - **Evidence over inference:** Settle a claim only with captured output. Do not infer a result from reading source code.

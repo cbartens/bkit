@@ -29,7 +29,7 @@ autoCompactWindow: 300000
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Sync docs. Do not just analyse. Do not write code or modify the implementation.
-- **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
+- **No commits:** Do not run `git commit` / `git add`, and NEVER run `git push`. The caller runs them.
 
 **Rules:** Copied word for word from `.agents/rules.md`.
 

@@ -30,7 +30,7 @@ autoCompactWindow: 300000
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Fix the identified gaps by editing and creating source files, and only those gaps, with no new scope. Do not just analyse.
-- **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
+- **No commits:** Do not run `git commit` / `git add`, and NEVER run `git push`. The caller runs them.
 - **Blockers:** Append one `BLOCKED` log line per blocked task or gate. The log is the record. NEVER append to `docs/deferrals.jsonl`, because blocked plan tasks are unfinished in-scope work, not deferrals.
 - **Output header:** Every line above `<!-- verdict:end -->` MUST stay machine-parseable.
 - **Checkboxes:** A literal `[x]` in the plan means done and `[ ]` means not done, whatever the surrounding text says.
@@ -91,7 +91,7 @@ autoCompactWindow: 300000
    - `STANDARD` → fix the current gaps, each with a targeted change.
    - `PIVOT` → identify why each earlier attempt failed. Try a different approach from the earlier attempts, and do not repeat one.
    - `FINAL` → run `pnpm bkit:deps:outdated`. Diagnose again: check that this is the right problem, whether the plan is flawed and whether the root cause lies upstream, and compare the result with each earlier attempt.
-   - All strategies: NEVER record a red by undoing or swapping out code (restoring old source, stubbing over landed code). Test-order gap (`no-red`, `late-red`, `red-mismatch`, `red-evidence-missing`, `test-changed`) → `BLOCKED`; never touch a `TEST EXCEPTION` field.
+   - All strategies: NEVER record a red by undoing or swapping out code (restoring old source, stubbing over landed code). Test-order gap (`no-red`, `late-red`, `red-mismatch`, `red-evidence-missing`, `test-changed`) → `BLOCKED`; NEVER touch a `TEST EXCEPTION` field.
    - **If** a decision record is supplied → follow the owner's words on its `Decision:` lines in this round; they override the strategy's default angle. `Decision: Accept (assumed)` and `Decision: Fix now — recommended; applied without asking` are not the owner's words: an assumed accept is settled for this build (leave it), an unasked `Fix now` takes the recommendation.
 7. Fix the gaps in `priority` order. For each gap:
    - Apply a targeted fix by editing or creating source.
@@ -127,4 +127,4 @@ Fixed: <integer >= 0>
 [An append-only flat log with one line per entry, in the order the events happened, so `DONE` and `BLOCKED` lines mix. A gap's entry is `DONE — Gap {N}: {name / description} — {outcome} ({path or commit ref})` or `BLOCKED — Gap {N}: {name / description} — {reason}`. The group gate's entry is `DONE — Group gate: exit 0 ({log path})` or `BLOCKED — Group gate: {reason}`. Empty in the stub, and filled by appending with Bash `echo >>` as the work goes.]
 ```
 
-> ⛔ **STOP** once every in-scope gap is logged `DONE` or `BLOCKED` and `Verdict` is set. Do not push or expand scope.
+> ⛔ **STOP** once every in-scope gap is logged `DONE` or `BLOCKED` and `Verdict` is set. NEVER push, and do not expand scope.

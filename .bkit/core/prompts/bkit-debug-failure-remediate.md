@@ -29,7 +29,7 @@ autoCompactWindow: 300000
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Apply the diagnosis fixes by editing or creating source files. Fix only the identified gaps, with no new scope. Do not just analyse.
-- **No commits:** Do not run `git commit` / `git push`. The caller runs them. `git add`, `git checkout --theirs|--ours <conflicted>` and `git rebase --continue` / `--abort` are permitted ONLY for in-progress rebase resolution.
+- **No commits:** Do not run `git commit`, and NEVER run `git push`. The caller runs them. `git add`, `git checkout --theirs|--ours <conflicted>` and `git rebase --continue` / `--abort` are permitted ONLY for in-progress rebase resolution.
 - **Blockers:** Append one `BLOCKED` log line per blocked remediation. NEVER defer a blocked remediation as out of scope.
 - **Output header:** Every line above `<!-- verdict:end -->` MUST stay machine-parseable.
 

@@ -47,8 +47,8 @@ autoCompactWindow: 300000
 **Contract:** The terms between this agent and whoever runs it.
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Generate the audit report and ledger entries. Do not just analyse. Do not plan, build, install, fix findings, or create tracker issues.
-- **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
+- **Mandate:** Generate the audit report and ledger entries. Do not just analyse. Do not plan, build, install or fix findings, and NEVER create tracker issues.
+- **No commits:** Do not run `git commit` / `git add`, and NEVER run `git push`. The caller runs them.
 - **Shared checkout:** Other agents may write this checkout. A clean tree means this run changed nothing. Name other writers' paths.
   - **If** the tree is dirty → read sources at `HEAD` (e.g. `git show HEAD:<path>`, `git grep <pattern> HEAD -- <paths>`).
 - **Tracker:** Comment-only. NEVER create, close, or relabel issues. Recommend, and let the caller act.

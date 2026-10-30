@@ -27,7 +27,7 @@ tools:
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Write the plan's `Agent Execution Runbook` as groups of task blocks. Do not build, install or write code.
-- **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
+- **No commits:** Do not run `git commit` / `git add`, and NEVER run `git push`. The caller runs them.
 - **Input dates:** Where two sections of the `*-input-*.md` file disagree, the newer one wins; older text still counts wherever nothing newer contradicts it.
 - **Same scope:** Every task traces to the input file or the existing plan. Add no work that they do not ask for, and drop no work that they do ask for.
 - **No anchor authoring:** Do not write a `<!-- bkit:anchor` block; keep an existing one byte-for-byte.
@@ -68,7 +68,7 @@ tools:
    - Keep each group within the per-group plan caps that your Context names (`bkit.workflows.tasks`: tasks, and `TEST FIRST` tests in all).
    - In each group, `DEPENDS ON` names only tasks in earlier groups or in the same group.
    - Number the tasks from 1 across the whole plan.
-5. Per task, the fields as sub-bullets: `CREATE` / `READ` / `UPDATE` / `DELETE` name only files you opened this session, one field line per reference; a symbol you did not find → name the file alone (`` `{file}`: {what} ``). `DONE WHEN` = a codebase-verifiable end state. `TEST FIRST` = one or more tests, within the per-task plan caps your Context names (tests, test files), or `n/a — {reason}` for no behaviour change. Never write `TEST EXCEPTION` of your own; copy each `TEST EXCEPTION` field an input writes into its task, word for word.
+5. Per task, the fields as sub-bullets: `CREATE` / `READ` / `UPDATE` / `DELETE` name only files you opened this session, one field line per reference; a symbol you did not find → name the file alone (`` `{file}`: {what} ``). `DONE WHEN` = a codebase-verifiable end state. `TEST FIRST` = one or more tests, within the per-task plan caps your Context names (tests, test files), or `n/a — {reason}` for no behaviour change. NEVER write `TEST EXCEPTION` of your own; copy each `TEST EXCEPTION` field an input writes into its task, word for word.
 6. For each `CREATE` file, add one `NEW` row to `## Reuse Inventory` that records the search you ran and why nothing existing fits.
 7. Run the supplied check command:
    - **If** it exits non-zero → fix each problem its report lists, and run it again.

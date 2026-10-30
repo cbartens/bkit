@@ -1998,12 +1998,34 @@ describe("writerProblem", () => {
     expect(writerProblem(row({ workflow: "design" }))).toBeUndefined();
   });
 
-  it("admits a direct chat (utility) on decision rows only", () => {
+  it("admits a direct chat (utility) on decision rows", () => {
     expect(writerProblem(row({ workflow: "utility", step: "manual" }))).toBeUndefined();
-    expect(writerProblem({ kind: "deferral", by: { workflow: "utility" } })).toContain(
-      "the utility orchestrator does not write deferral rows",
-    );
   });
+
+  it("admits a direct chat (utility) on deferral rows", () => {
+    expect(
+      writerProblem({ kind: "deferral", by: { workflow: "utility", step: "manual" } }),
+    ).toBeUndefined();
+  });
+
+  it("admits a direct chat (utility) on knowledge rows", () => {
+    expect(
+      writerProblem({ kind: "knowledge", by: { workflow: "utility", step: "manual" } }),
+    ).toBeUndefined();
+  });
+
+  it("admits a direct chat (utility) on friction rows", () => {
+    expect(
+      writerProblem({ kind: "friction", by: { workflow: "utility", step: "manual" } }),
+    ).toBeUndefined();
+  });
+
+  it.each(["compliance", "counter", "outcome"])(
+    "admits a direct chat (utility) on %s rows",
+    (kind) => {
+      expect(writerProblem({ kind, by: { workflow: "utility", step: "manual" } })).toBeUndefined();
+    },
+  );
 
   it("refuses an unlisted subagent or orchestrator", () => {
     expect(writerProblem(row({ subagent: "bkit-plan-review-1", model: "m" }))).toContain(
@@ -2088,8 +2110,8 @@ describe("writer sets in telemetry.ts match the jsonl.md table", () => {
   }
 
   // The stats rows are written by the CLI at each workflow's close, so their doc rows
-  // name the close, not "the X orchestrator"; the writers are the closing workflows,
-  // never a subagent.
+  // name the close, not "the X orchestrator"; the writers are the closing workflows plus
+  // a direct chat (utility), never a subagent.
   for (const { ledger, file, kind } of ledgerKinds.filter((l) => l.ledger === "stats")) {
     it(`${ledger} / ${kind}: the doc row names ${file}, a close-step writer and no subagent`, () => {
       const text = cell(kind);
@@ -2098,12 +2120,14 @@ describe("writer sets in telemetry.ts match the jsonl.md table", () => {
       expect(docSubagents(text)).toEqual([]);
       expect(listed(subagents)).toEqual([]);
       expect(text).toMatch(/close/);
+      expect(namedAsOrchestrator(text, "utility")).toBe(true);
       expect([...orchestratorNames(orchestrators)].sort()).toEqual([
         "build",
         "debug",
         "design",
         "plan",
         "ship",
+        "utility",
       ]);
     });
   }

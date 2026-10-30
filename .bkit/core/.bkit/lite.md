@@ -27,7 +27,7 @@ NEVER use a lite workflow for schema / migrations, public API, dependencies, sec
 
 - Read `.agents/rules.md`.
 - Work on the current branch, and commit as you go.
-- Push only when shipping or when asked.
+- Push ONLY when shipping or when asked.
 - **If** a tracker is wired and an issue is named:
   - At the start, move the issue to the `package.json` `bkit.tracker.<tracker>.progress` state (default github `In progress`, linear `started`, jira `In Progress`) and add the `bkit:<phase>` label. This drops the other `bkit:*` workflow labels, `next:*` and `bkit:failed`, per `.agents/rules.md` § Tracker workflow labels.
   - At the end, move the issue to the `bkit.tracker.<tracker>.review` state (default `In review` on github, `In Review` on linear and jira).

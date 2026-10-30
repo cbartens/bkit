@@ -11,9 +11,8 @@
 > - This file ships to every project that installs bkit. Describe the current setup only.
 > - Leave out internal labels, such as tracker issue numbers, ledger keys and review-finding ids, and leave out project history. Decisions go in `docs/decisions.jsonl`, and incidents go in `docs/knowledge.jsonl`.
 > - Write one row per line.
-> - NEVER edit, reorder or delete a prior line. Change a row through a same-`key` append (§ Updating a Row). The only exceptions are the `bkit install` / `bkit upgrade` schema migration (§ Versioning) and `bkit ledgers compact` (§ Compaction).
+> - NEVER edit, reorder or delete a prior line. Change a row through a same-`key` append (§ Updating a Row). The only exceptions are the `bkit install` / `bkit upgrade` schema migration (§ Versioning), `bkit ledgers compact` (§ Compaction), and bkit's harvest (`pnpm harvest`, bkit repo only), which prunes a `.bkit/friction.jsonl` row or a `chat` / `run` row of `.bkit/stats.jsonl` only after the exact row is stored in `harvest/` and read back, and never prunes a malformed line (§ Friction Is a Drained Queue).
 > - Before you append, read the file. Skip the append only if a row with the same identity exists and nothing has changed. A changed field makes the new row an update, not a duplicate.
-> - Rows are removed only by bkit's harvest and by `bkit ledgers compact`. The harvest removes every `.bkit/friction.jsonl` row and the `chat` / `run` rows in `.bkit/stats.jsonl` (§ Friction Is a Drained Queue). `bkit ledgers compact` removes superseded rows of the five keyed ledgers (§ Compaction).
 > - Appends are best-effort: always exit 0. Never gate a workflow on telemetry success.
 
 ## Write Idiom
@@ -46,15 +45,15 @@ Each `kind` goes to one file. Its writers:
 <!-- prettier-ignore -->
 | Kind | File | Written by |
 | --- | --- | --- |
-| `compliance` | `.bkit/stats.jsonl` | `bkit workflows close` of design / plan / build / debug / ship (its grader, one row per rule) |
-| `outcome` | `.bkit/stats.jsonl` | `bkit workflows close` of design / plan / build / debug / ship (one row per workflow run, keyed by `repo`+`by.workflow`+`run.parentSha`); re-appended by the close's CI dispatch (§ Per-Kind Fields) |
-| `counter` | `.bkit/stats.jsonl` | `bkit workflows close` of design / plan / build / debug / ship (attempt counters) |
+| `compliance` | `.bkit/stats.jsonl` | `bkit workflows close` of design / plan / build / debug / ship (its grader, one row per rule); utility orchestrator (a direct chat outside any workflow, the owner deciding in it) |
+| `outcome` | `.bkit/stats.jsonl` | `bkit workflows close` of design / plan / build / debug / ship (one row per workflow run, keyed by `repo`+`by.workflow`+`run.parentSha`); re-appended by the close's CI dispatch (§ Per-Kind Fields); utility orchestrator (a direct chat outside any workflow, the owner deciding in it) |
+| `counter` | `.bkit/stats.jsonl` | `bkit workflows close` of design / plan / build / debug / ship (attempt counters); utility orchestrator (a direct chat outside any workflow, the owner deciding in it) |
 | `chat` | `harvest/stats.jsonl` (bkit repo only) | bkit's harvest script: per agent chat on the maintainer's machine, any repo or host |
 | `run` | `harvest/stats.jsonl` (bkit repo only) | Same script: per workflow run in the run logs of every repo a chat ran in |
-| `friction` | `.bkit/friction.jsonl` | orchestrator workflows (design / plan / build / debug / ship / auto) on observed friction |
-| `deferral` | `docs/deferrals.jsonl` | `@bkit-design-generate`, `@bkit-plan-generate`, `@bkit-plan-update`, `@bkit-debug-abort-handover`, `@bkit-ship-deferred-sweep` (adjudication only), `@bkit-utility-update-deferrals` (close / triage / locator), build orchestrator (`LOW` challenge finding → `low-severity`, through `bkit challenge merge`), ship orchestrator (assumed accept nobody confirmed → `needs-decision`, through `bkit decisions pending --defer`) |
+| `friction` | `.bkit/friction.jsonl` | orchestrator workflows (design / plan / build / debug / ship / auto) on observed friction; utility orchestrator (a direct chat outside any workflow that meets friction) |
+| `deferral` | `docs/deferrals.jsonl` | `@bkit-design-generate`, `@bkit-plan-generate`, `@bkit-plan-update`, `@bkit-debug-abort-handover`, `@bkit-ship-deferred-sweep` (adjudication only), `@bkit-utility-update-deferrals` (close / triage / locator), build orchestrator (`LOW` challenge finding → `low-severity`, through `bkit challenge merge`), ship orchestrator (assumed accept nobody confirmed → `needs-decision`, through `bkit decisions pending --defer`), utility orchestrator (a direct chat outside any workflow, the owner deciding in it) |
 | `failure` | `docs/failures.jsonl` | any agent on a discovered bug; `@bkit-debug-abort-handover`; `@bkit-audit-generate` (`MEDIUM`+ findings; rerun closes rows it no longer finds); `@bkit-utility-update-failures` (close / triage / locator) |
-| `knowledge` | `docs/knowledge.jsonl` | `@bkit-build-plan-execute`, `@bkit-build-plan-gaps-remediate`, `@bkit-debug-failure-remediate` (after verified fix), `@bkit-utility-update-knowledge` (supersede / correct) |
+| `knowledge` | `docs/knowledge.jsonl` | `@bkit-build-plan-execute`, `@bkit-build-plan-gaps-remediate`, `@bkit-debug-failure-remediate` (after verified fix), `@bkit-utility-update-knowledge` (supersede / correct), utility orchestrator (a direct chat outside any workflow, the owner deciding in it) |
 | `decision` | `docs/decisions.jsonl` | `@bkit-debug-failure-remediate` (forced arch), `@bkit-plan-generate`, `@bkit-plan-update` (decision changed by review), `@bkit-utility-update-decisions` (supersede / correct), build orchestrator (Decision Pause accept), design orchestrator (owner's answer to an open question after close), plan orchestrator (open question answered after close), ship orchestrator (assumed accept confirmed by the owner, through `bkit decisions apply --by=owner`), utility orchestrator (a direct chat outside any workflow, the owner deciding in it); orchestrators ONLY after explicit human approval |
 | `feature` | `.bkit/issues.jsonl` | design / plan / build / debug orchestrators at their phase close; ship Step 6 into the worktree ledger (rides the PR); `ABANDONED` only by a human, or an agent on explicit human instruction |
 
@@ -181,7 +180,7 @@ On the kinds with both (`friction` / `deferral` / `failure` / `knowledge` / `dec
 
 ## Severity
 
-`severity` is required on `friction` / `deferral` / `failure`, and must not appear on any other kind. `knowledge` / `decision` / `feature` have no triage severity: `feature` tracks its phase through `status`, not how badly something is broken. `compliance` / `outcome` / `counter` are machine-generated. `severity` is a closed enum of exactly these four values, in uppercase:
+`severity` is required on `friction` / `deferral` / `failure`, and must not appear on any other kind. `knowledge` / `decision` / `feature` have no triage severity: `feature` tracks its phase through `status`, not how badly something is broken. `compliance` / `outcome` / `counter` are machine-generated by `bkit workflows close`, or written by a direct chat (`by.workflow` `utility`). `severity` is a closed enum of exactly these four values, in uppercase:
 
 <!-- prettier-ignore -->
 | Value | Means |
@@ -286,7 +285,7 @@ Fields that change after the first write:
 
 **Hard, not stylistic:** `.gitattributes` sets `merge=union` on every append-only ledger, so merges concatenate and never conflict. Union keeps both sides of a conflicting hunk. Edit a line, and the stale copy survives beside its replacement. `fold` takes the last row by `ts`, so the stale copy wins whenever its `ts` is later.
 
-- NEVER edit, reorder or delete a prior line. Change a row through a same-`key` append (§ Updating a Row). The only exceptions are the `bkit install` / `bkit upgrade` schema migration (§ Versioning) and `bkit ledgers compact` (§ Compaction).
+- NEVER edit, reorder or delete a prior line. Change a row through a same-`key` append (§ Updating a Row). The only exceptions are the `bkit install` / `bkit upgrade` schema migration (§ Versioning), `bkit ledgers compact` (§ Compaction), and bkit's harvest (`pnpm harvest`, bkit repo only), which prunes a `.bkit/friction.jsonl` row or a `chat` / `run` row of `.bkit/stats.jsonl` only after the exact row is stored in `harvest/` and read back, and never prunes a malformed line (§ Friction Is a Drained Queue).
 - **Never hand-write `ts`, in either direction:** Mint it at write time (§ Write Idiom). A future value outranks every later correction permanently, so the row can never be superseded. A backdated value loses to the rows it actually followed, so the correction it was meant to be silently never applies.
 
 `.bkit/friction.jsonl` is excluded, because rows are removed from it (§ Friction Is a Drained Queue) and union would resurrect a drained row.

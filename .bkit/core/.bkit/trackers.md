@@ -169,7 +169,7 @@ Workflows read an issue's body and comments (`bkit issues text`), never its titl
 
 **References** — exact strings agents can search: an issue as `#N — {title}` (linear / jira `KEY-N — {title}`), a doc as `{path} § {section}`, and a ledger row as `docs/{ledger}.jsonl` key `` `{key}` ``. Labels: one type label and one `next:*` label (`.agents/rules.md` § Tracker next labels). The type label is `enhancement` / `bug` on github, and the team's own on linear (default `Improvement` / `Feature` / `Bug`). Jira has none, because the issue type carries the type. Never add a phase label or a `bkit:*` label, because workflows set them (`.bkit/workflows.md` § Tracker Integration).
 
-**Drafting from bkit output** — suggest only. File an issue only after a person confirms it:
+**Drafting from bkit output** — suggest only. File an issue ONLY after a person confirms it:
 
 <!-- prettier-ignore -->
 | Source | Shape | Carry |
@@ -188,7 +188,7 @@ Workflows read an issue's body and comments (`bkit issues text`), never its titl
 | Body | names `docs/templates/bkit-audit-{slug}.md` verbatim (`@bkit-audit-generate` finds the parent by this path); run line `@bkit-audit-generate docs/templates/bkit-audit-{slug}.md #{N}` (linear / jira `KEY-N`); report path `docs/audits/{YYYYMM}/{slug}.md` |
 | Labels | project's own (e.g. `maintenance`); no workflow, `next:*` or `bkit:*` label — it runs no workflow |
 | Milestone | project's own, the way the repo already assigns milestones; none fits → empty |
-| State | stays open; runs never close it; filed issues reference it as `#N — {title}`, never `Closes #N` |
+| State | stays open; runs NEVER close it; filed issues reference it as `#N — {title}`, NEVER `Closes #N` |
 | Children | every issue filed from its runs' `Suggested Issues`, always (github sub-issues; linear `parentId`; jira `parent`) |
 | Comments | one `### Audit Summary: {slug}` comment per run — posted by the run when named or found; a newly filed parent gets the run's saved `parent-comment.md` as its first comment |
 

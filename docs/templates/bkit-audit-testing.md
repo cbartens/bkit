@@ -14,7 +14,7 @@
 > - Never weaken, skip, delete or quarantine a test to get green. A test that fails because it found a real bug is working.
 > - Mutation and clock probes restore the tree before the report finishes: revert in-place edits, remove throwaway setup, and leave `git status` clean on the touched paths.
 > - **If** a restore fails → **STOP**, restore the tree, and record a finding.
-> - Do not run suites that send mail, take payment or write to production tenants. Run unit tests and local or throwaway targets only.
+> - NEVER run suites that send mail, take payment or write to production tenants. Run unit tests and local or throwaway targets only.
 
 ## Universal Instructions
 

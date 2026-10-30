@@ -206,6 +206,11 @@ export const APPEND_LEDGERS = {
 /** The workflows whose close writes `.bkit/stats.jsonl` rows (`bkit workflows close`, `bkit comply`). */
 const CLOSING_WORKFLOWS = new Set(["design", "plan", "build", "debug", "ship"]);
 /**
+ * The stats writers: the closing workflows, plus `utility`, a direct chat outside any
+ * workflow (`by.step` `manual`), the owner deciding in it.
+ */
+const STATS_WRITERS = new Set([...CLOSING_WORKFLOWS, "utility"]);
+/**
  * `.bkit/jsonl.md` § Ledgers & Writers as code, for the kinds in
  * {@link APPEND_LEDGERS}. EXHAUSTIVE: a name absent from a set does not write the
  * kind. `telemetry.test.ts` holds this to the doc table.
@@ -227,7 +232,8 @@ export const KIND_WRITERS = {
     },
     // Build: `bkit challenge merge` writes each LOW challenge finding (`low-severity`). Ship:
     // `bkit decisions pending --defer` writes each assumed accept nobody confirmed (`needs-decision`).
-    deferral: { subagents: DEFERRAL_WRITERS, orchestrators: new Set(["build", "ship"]) },
+    // Utility: a direct chat outside any workflow (`by.step` `manual`), the owner deciding in it.
+    deferral: { subagents: DEFERRAL_WRITERS, orchestrators: new Set(["build", "ship", "utility"]) },
     failure: { subagents: ANY_WRITER, orchestrators: ANY_WRITER },
     knowledge: {
         subagents: new Set([
@@ -236,15 +242,17 @@ export const KIND_WRITERS = {
             "bkit-debug-failure-remediate",
             "bkit-utility-update-knowledge",
         ]),
-        orchestrators: new Set(),
+        // Utility: a direct chat outside any workflow (`by.step` `manual`), the owner deciding in it.
+        orchestrators: new Set(["utility"]),
     },
     friction: {
         subagents: new Set(),
-        orchestrators: new Set(["design", "plan", "build", "debug", "ship", "auto"]),
+        // Utility: a direct chat outside any workflow (`by.step` `manual`) that meets friction.
+        orchestrators: new Set(["design", "plan", "build", "debug", "ship", "auto", "utility"]),
     },
-    compliance: { subagents: new Set(), orchestrators: CLOSING_WORKFLOWS },
-    counter: { subagents: new Set(), orchestrators: CLOSING_WORKFLOWS },
-    outcome: { subagents: new Set(), orchestrators: CLOSING_WORKFLOWS },
+    compliance: { subagents: new Set(), orchestrators: STATS_WRITERS },
+    counter: { subagents: new Set(), orchestrators: STATS_WRITERS },
+    outcome: { subagents: new Set(), orchestrators: STATS_WRITERS },
 };
 const writerList = (w) => w === ANY_WRITER ? "any" : w.size === 0 ? "none" : [...w].join(", ");
 /** A row's `by` block, or an empty one when it has none. */

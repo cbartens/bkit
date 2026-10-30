@@ -73,7 +73,7 @@
 
 ### Playbook
 
-1. **Revert the bad range locally.** Never `git reset` or force-push `dev` (`.agents/rules.md` § Git, CI & Merges). Do not push yet, because CI on the push must meet the reset DB. **If** the range holds a merge commit → revert it with `-m 1`.
+1. **Revert the bad range locally.** NEVER `git reset` or force-push `dev` (`.agents/rules.md` § Git, CI & Merges). Push ONLY at step 3, after the dev DB reset in step 2, because CI on the push must meet the reset DB. **If** the range holds a merge commit → revert it with `-m 1`.
    ```bash
    git revert --no-edit <green-sha>..HEAD
    git diff --stat <green-sha> HEAD   # empty = tree matches known-good
@@ -83,7 +83,7 @@
    psql "$SUPABASE_DB_URL" -c 'DROP SCHEMA IF EXISTS public CASCADE;'
    psql "$SUPABASE_DB_URL" -c 'TRUNCATE supabase_migrations.schema_migrations;'
    ```
-3. **Push the revert.** The push run's `bkit-tests-migration` re-applies every migration on the reverted tree, because an empty ledger makes every migration new. Never apply by hand. **If** `dev` is protected → push the revert on a `revert-*` branch and merge its PR. The apply then runs on the merge push to `dev`.
+3. **Push the revert.** The push run's `bkit-tests-migration` re-applies every migration on the reverted tree, because an empty ledger makes every migration new. NEVER apply by hand. **If** `dev` is protected → push the revert on a `revert-*` branch and merge its PR. The apply then runs on the merge push to `dev`.
    ```bash
    git push origin dev
    ```
@@ -112,7 +112,7 @@ bkit's `bkit-ci.yml` recognises the tags below. They are case-sensitive and use 
 - **Direct push to `dev` or `{{DEFAULT_BRANCH}}`** (no PR): put the tag in the commit message (`github.event.head_commit.message`).
 - **Feature branch with an open PR** (open, synchronize or edit): put the tag in the PR title (`github.event.pull_request.title`). The commit message is not read, because the workflow fires on `pull_request`, not `push`.
 - **Both surfaces** are checked by `contains()` in the env block, and a marker in either one wins for its event. Pick the right one: `[verbose ci]` in a feature-branch commit message has no effect, because only the PR title is read.
-- **`workflow_dispatch`**: neither field is filled, so every marker is inert. The planner sets `MSG=""` for events other than `push` and `pull_request`, and silently drops `[force full]`, `[force build]` and `[verbose ci]`. Steer a dispatch with inputs, never a marker. Inputs are mandatory when the dispatch default is expensive: one consumer's dispatch forced both metered native build lanes past their reuse gate, 30 builds against a $45/mo limit in one month, until an input (default `false`) gated the lookup.
+- **`workflow_dispatch`**: neither field is filled, so every marker is inert. The planner sets `MSG=""` for events other than `push` and `pull_request`, and silently drops `[force full]`, `[force build]` and `[verbose ci]`. Steer a dispatch with inputs, never a marker. Inputs are mandatory when the dispatch default is expensive, for example when a dispatch forces the metered native build lanes past their reuse gate and spends build quota on every run. Gate the lookup behind an input that defaults to `false`.
 
 <!-- prettier-ignore -->
 | Tag | Effect | Scope |
@@ -130,9 +130,9 @@ bkit's `bkit-ci.yml` recognises the tags below. They are case-sensitive and use 
 - **Marker parity (deploy-forcing set).** The e2e and @live lanes resolve a per-SHA deployment, so a marker that force-runs them must also force the host build. Otherwise the lane dies at "resolve deployment URL". The host build-cancel script (for example, Vercel `ignoreCommand`) must honor every marker in the deploy-forcing set: the shipped `[force build]` and `[force full]`, plus any consumer marker that widens a deploy-backed lane. Assert this in CI (`grep -qF` over the cancel script). `[force cache]`, `[verbose ci]` and `[skip ci]` act on the test plane only, and the cancel script does not honor them.
 - **Match a signature, not a spelling.** A value-list marker (`[platform web ios]`) is invisible to a substring test for `[platform web]`. Match the opening token (`[platform `) on both sides. An assertion pinned to one spelling stays green while the cancel script kills the build the marker asked for.
 - **A widening marker is an or term, never a condition.** A marker that adds a lane the affected graph missed must only widen. Used as a condition (`contains(plan.platforms, 'web')` in a lane `if:`), it also removes: `[platform ios]` on a web-touching commit silently drops the web lane, and the run goes green. Guard the direction with a check over the workflow text, and mutation-prove it both ways. Intent alone does not hold this shape.
-- **Widen the job gate and the step gates together, or not at all.** A job-level `if:` alone starts the lane while every step inside it skips. The result is a green lane that ran nothing, which is the capstone's own failure mode, arriving where the capstone cannot see it. One consumer found 25 step-level readers of `web_affected` behind 4 job-level ones. Count them before you widen a shared plan value.
+- **Widen the job gate and the step gates together, or not at all.** A job-level `if:` alone starts the lane while every step inside it skips. The result is a green lane that ran nothing, which is the capstone's own failure mode, arriving where the capstone cannot see it. Step-level readers of a plan value can far outnumber its job-level readers, so count them before you widen a shared plan value.
 - **Forcing a subset** (builds without their tests): do not widen the shared value. Derive a new boolean beside it (`build_forced` next to `web_affected`), and gate only the lanes it owns. This is valid only for a lane with no step-level reader of that value. Assert that directly, with an error message that names what breaks when someone adds one.
-- **Invoke the marker parser unconditionally.** A substring pre-gate in front of a parser is a silent no-op. One consumer gated on the literal `[screenshots ` with a trailing space, so a bare `[screenshots]` never reached the parser: the step exited 0 with an empty plan, and the run went green having captured nothing. Run the parser every time, and let it own every failure class (unknown value, invalid combination, arguments to a bare flag), loudly, in the planner, before any lane starts.
+- **Invoke the marker parser unconditionally.** A substring pre-gate in front of a parser is a silent no-op. A pre-gate on the literal `[screenshots ` with a trailing space never matches a bare `[screenshots]`, so the step exits 0 with an empty plan, and the run goes green having captured nothing. Run the parser every time, and let it own every failure class (unknown value, invalid combination, arguments to a bare flag), loudly, in the planner, before any lane starts.
 
 A direct push to `dev` (no merged PR ancestry) auto-busts the task-runner cache (for example, turbo `TURBO_FORCE=1`) regardless of tags. See the `bkit-debug` runbook for why the cache is busted.
 
@@ -199,10 +199,10 @@ The cost is duplicated per-lane setup (checkout, install, and shared infra such 
 **Runner size is a per-lane lever, and only for the pole.** In a flat graph, one lane defines the wall-clock time (commonly E2E). A larger runner (more vCPU / RAM) raises internal parallelism (more workers, concurrent E2E projects), which can cut a long lane substantially. Scope it with `runs-on: <your-larger-runner-label>` to one lane, and keep the default runner everywhere else. Two caveats:
 
 1. **A higher per-minute rate.** Confirm the rate before you adopt a larger runner, because it may not show until the first invoice. [Depot](https://depot.dev/docs/github-actions/runner-types) labels (for example, `depot-ubuntu-24.04-8`) are ~30% cheaper than GitHub-hosted runners. `bkit-ci.yml`, `bkit-cloud.yml` and `bkit-renovate.yml` are templates you own, so set `runs-on` in your copy.
-2. **Zero wall-clock gain when it is aimed at a lane that is not the pole.** One consumer measured a bigger E2E runner at +0.0 min while `@live` stayed the pole. It was worth ~7 min only after the `@live` gate was removed and E2E became the pole. Measure first, and re-measure afterwards, because the pole moves.
+2. **Zero wall-clock gain when it is aimed at a lane that is not the pole.** The pole is the slowest lane, and it sets the run's wall-clock time. A bigger runner on any other lane saves no time, and it pays off only once its own lane is the pole. Measure first, and re-measure afterwards, because the pole moves.
 3. **A label that does not exist does not fail, so the job queues.** A typo'd or retired label raises no error anywhere: the job stays queued indefinitely, and the run neither reds nor completes. Set the label in exactly one place, derive every `runs-on:` from it, and make the planner fail closed when there is no label.
 
-**Cut per-request cost before peak concurrency.** Fan-out multiplies every per-request call to a shared external service. For example, a per-navigation auth call under a 12-lane fan-out became 3,500 `GET /auth/v1/user` in 4 minutes. That stalled the provider and reddened the `@live` lane on a separate machine. Audit those calls before you widen the fan-out. Verify locally first (JWKS), and call the service only when the local check cannot decide. This is cheaper than either lever below.
+**Cut per-request cost before peak concurrency.** Fan-out multiplies every per-request call to a shared external service. For example, a per-navigation auth call under a wide fan-out turns into thousands of `GET /auth/v1/user` requests in minutes. That stalls the provider and reddens lanes on other machines that share it. Audit those calls before you widen the fan-out. Verify locally first (JWKS), and call the service only when the local check cannot decide. This is cheaper than either lever below.
 
 **Phase-split before a bigger runner.** When fanned-out lanes fail together, find the contended resource before you spend. The tell-tale is that adding lanes raises the failure count and a lane on a separate machine reddens too. That second fact is the diagnosis. A lane on its own runner cannot be starved by this runner's CPU or memory, so the contention is a shared remote resource (for example, the DB), and a bigger runner buys nothing. Lower the peak concurrency, not the total:
 
@@ -278,10 +278,10 @@ This is optional. A same-repo promotion PR into the default branch (head `dev`, 
 failed to parse workflow: (Line: 2112, Col: 14): Exceeded max expression length 21000
 ```
 
-The cap is undocumented and invisible to the toolchain, because the file stays valid YAML, passes `actionlint`, and passes GitHub's own `@actions/workflow-parser`. GitHub refuses to compile it, almost silently. `pull_request` runs are never created, so the PR sits with no checks and no API error. A push to a branch that the `on:` filters exclude mints a zero-job run named after the file path. One consumer added ~4.6 KB of prose to one E2E step, and CI stopped running on that branch for two hours with nothing to read.
+The cap is undocumented and invisible to the toolchain, because the file stays valid YAML, passes `actionlint`, and passes GitHub's own `@actions/workflow-parser`. GitHub refuses to compile it, almost silently. `pull_request` runs are never created, so the PR sits with no checks and no API error. A push to a branch that the `on:` filters exclude mints a zero-job run named after the file path. A step already close to the 21,000 cap crosses it with a few kilobytes of added prose, and CI then stops running on that branch with nothing to read.
 
 - **A comment inside a `run: |` body is part of the expression.** A `#` comment above the step is free. Keep that comment to the rule plus a pointer at this section. The essay stays here. Pasting it into `run:` is what trips the cap.
-- **Guard below the cap, not at it.** 20,999 leaves the next edit no room, and it fails unreadably. In the static lane, scan `.github/workflows/*.{yml,yaml}`, measure every block scalar containing `${{`, and fail with a margin (one consumer uses 20,000).
+- **Guard below the cap, not at it.** 20,999 leaves the next edit no room, and it fails unreadably. In the static lane, scan `.github/workflows/*.{yml,yaml}`, measure every block scalar containing `${{`, and fail with a margin (for example, at 20,000).
 - **A long `run:` body is the symptom.** The fix is rarely compression. Move the logic into a script the step calls (`node scripts/ci/…`), which also makes it unit-testable.
 
 ## Post-merge dev CI auto-routing

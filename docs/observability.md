@@ -10,7 +10,7 @@
 > **Rules:**
 >
 > - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
-> - Never log PII. Scrub sensitive fields at the source.
+> - NEVER log PII. Scrub sensitive fields at the source.
 > - Observability never blocks business logic.
 
 ## Context Fetch

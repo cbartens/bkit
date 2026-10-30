@@ -11,10 +11,10 @@
 >
 > **Rules:**
 >
-> - Never write tracker fields, labels or comments.
+> - NEVER write tracker fields, labels or comments.
 > - NEVER close, merge or open issues.
 > - The report proposes size and priority.
-> - Never copy a personal-data value from an issue body into the report.
+> - NEVER copy a personal-data value into the report.
 
 ## Universal Instructions
 

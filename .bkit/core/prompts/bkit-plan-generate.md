@@ -29,7 +29,7 @@ autoCompactWindow: 300000
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Generate the plan. Do not just analyse. Do not build, install or write code.
-- **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
+- **No commits:** Do not run `git commit` / `git add`, and NEVER run `git push`. The caller runs them.
 - **Input dates:** Where two sections of the `*-input-*.md` file disagree, the newer one wins; older text still counts wherever nothing newer contradicts it.
 - **Completeness:** The plan carries every `docs/templates/bkit-plan.md` section, with no `PENDING` left.
 - **Workstreams:** **If** Context or input names workstreams (`WS-{N}` ids from the issue's `**Workstreams:**` line, or other workstream directives):
@@ -138,7 +138,7 @@ autoCompactWindow: 300000
       - Keep each group and task within the plan caps your Context names (`bkit.workflows.tasks`: tasks and `TEST FIRST` tests per group, tests and test files per task).
       - Put the groups in build order: a group's `DEPENDS ON` names only tasks in earlier groups or in its own group.
       - `READ` / `UPDATE` / `DELETE` name only symbols and files you opened this session. Open an unopened one first, or leave it out.
-      - Never write `TEST EXCEPTION` of your own; copy each `TEST EXCEPTION` field an input writes into its task, word for word.
+      - NEVER write `TEST EXCEPTION` of your own; copy each `TEST EXCEPTION` field an input writes into its task, word for word.
     - `Verification Plan` from Test Matrix and Execution Runbook.
 
 **Output format:**

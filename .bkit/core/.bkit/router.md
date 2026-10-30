@@ -53,7 +53,7 @@ Hold the `{command}` of the first `bkit-{command}` in the prompt, with or withou
 
 **If** `ISSUE_ID` is empty → drop `for issue {ISSUE_ID}` from the message below.
 
-Emit this message, and do not post a tracker comment: `Workflow not found for issue {ISSUE_ID}. Valid commands: bkit-design / bkit-plan / bkit-build / bkit-debug / bkit-ship / bkit-auto {phase}.` Then **STOP**.
+Emit this message, and NEVER post a tracker comment: `Workflow not found for issue {ISSUE_ID}. Valid commands: bkit-design / bkit-plan / bkit-build / bkit-debug / bkit-ship / bkit-auto {phase}.` Then **STOP**.
 
 ### Step 4 — Execute command
 

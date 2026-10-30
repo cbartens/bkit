@@ -94,7 +94,7 @@ This section applies to `.bkit/core/prompts/*.md`, `.bkit/core/workflows/*.md`, 
   - Example (`bkit-audit-issues.md` § Size Scale): "Size the work, not the issue body. A long evidence write-up can describe a one-file fix." Without the second sentence, a model would reasonably size a long issue as large.
   - Example (`bkit-utility-update-tracker.md` § Process, step 9): "Change labels with `addLabels` and `removeLabels`, NEVER `labels`. `labels` replaces the issue's whole label set." Without the second sentence, `labels` looks like the simpler call. The reason also explains the capitals: one wrong call deletes every other label on the issue.
 
-- **Capitals only for invariants:** Write `NEVER`, `ALWAYS`, `MUST`, `ONLY` or `PROHIBITED` in capitals only where breaking the rule once would destroy data, leak a secret, publish or push something, skip the owner's approval, or break a field a program parses.
+- **Capitals only for invariants:** Write `NEVER`, `ALWAYS`, `MUST`, `ONLY` or `PROHIBITED` in capitals only where breaking the rule once would destroy data, leak a secret or personal data, publish or push something (a tracker write, a tag and a merge count as publishing), skip the owner's approval, or break a field a program parses.
   - Why: Current models act on capitals more strongly than older ones did, so capitals on an ordinary instruction override the judgement the task needs, and a strongly worded boundary can stop work the owner wanted done. Rare capitals also keep their force.
   - To decide, ask what breaks if the model ignores the rule once:
     - **If** the answer is one of the five harms above → capitals.

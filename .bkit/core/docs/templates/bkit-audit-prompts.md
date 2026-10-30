@@ -12,7 +12,7 @@
 > **Rules:**
 >
 > - Quote at most one line of prompt text per finding.
-> - Never copy personal data or a model completion into the report.
+> - NEVER copy personal data or a model completion into the report.
 > - Never call a model to generate.
 > - Count tokens with a local tokenizer or a provider count endpoint only.
 

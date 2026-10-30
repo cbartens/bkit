@@ -1109,7 +1109,7 @@ describe("issue-less workflow clauses", () => {
     );
     const none = clause("workflow-issue-id-parse-none").texts[0];
     expect(none).toContain('`ISSUE_ID=""`');
-    expect(none).toContain("never create a tracker issue");
+    expect(none).toContain("NEVER create a tracker issue");
     expect(none).not.toContain("STOP");
     const slug = clause("workflow-issue-id-parse-slug").texts[0];
     expect(slug).toContain("**STOP**");

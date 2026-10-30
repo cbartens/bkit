@@ -35,7 +35,7 @@ Copy the blocks below into `.agents/context.md`, below `<!-- bkit:end -->`.
 # = clean.
 # A non-200 status or a non-array body → `skipped`, never `[]`.
 # Detector configs (`organizations/<org>/detectors/`) carry uptime-check request headers,
-# secrets included. Strip the headers with jq `del(.[].dataSources[]?.queryObj.headers)` before printing.
+# secrets included. ALWAYS strip the headers with jq `del(.[].dataSources[]?.queryObj.headers)` before printing.
 # Customise: SENTRY_SINCE window (1h / 24h / 7d); SENTRY_ENV (environment name, e.g. production; unset = all); SENTRY_N (<= 100); jq keys. Positive control (suggested): run once over a window holding an issue the UI shows unresolved and seen in it; nothing back = reader broken, not clean.
 SENTRY_HOST="${SENTRY_HOST:-sentry.io}"
 [ -n "${SENTRY_AUTH_TOKEN:-}" ] && [ -n "${SENTRY_ORG:-}" ] && [ -n "${SENTRY_PROJECT:-}" ] \

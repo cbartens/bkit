@@ -11,7 +11,6 @@
 > - This file ships to every project that installs bkit. Describe the current setup and the trade-offs behind it.
 > - Leave out internal labels, such as tracker issue numbers, ledger keys and review-finding ids, and leave out project history. Decisions go in `docs/decisions.jsonl`, and incidents go in `docs/knowledge.jsonl`.
 > - Subagents are leaves. A subagent never invokes another subagent.
-> - Subagents never touch the tracker. Only the orchestrator, in the workflow layer, uses the tracker MCP tools (GitHub Issues, Linear, Jira).
 > - When you change a workflow file (`.bkit/core/workflows/bkit-*.md`), make the matching change here.
 > - The authoring rules for `.bkit/core/workflows/*.md` are in `.bkit/authoring.md`. The explanations behind them stay here.
 
@@ -1180,7 +1179,7 @@ Issue state semantics (GitHub `open`/`closed` + Projects v2; Linear / Jira `prog
 
 ### Comment lifecycle
 
-Each workflow step posts a new comment through the step's `bkit` verb (`--post`; the tracker MCP when `tracker.done` = false). Step 1 posts the first comment, and each later step posts its own. Never edit or paraphrase a comment, and never carry comment IDs forward. The templates are in § Comment Lifecycle.
+Each workflow step posts a new comment through the step's `bkit` verb (`--post`; the tracker MCP when `tracker.done` = false). Step 1 posts the first comment, and each later step posts its own. NEVER edit or paraphrase a comment, and never carry comment IDs forward. The templates are in § Comment Lifecycle.
 
 ### Issue blockers (`/bkit-build` Step 1)
 
@@ -1194,7 +1193,7 @@ Each workflow step posts a new comment through the step's `bkit` verb (`--post`;
 - **Feature branch:** `feat/{FID}` for design / plan / build / ship.
 - **Debug creates no branch:** it adopts `feat/{FID}` when that branch still exists, else the session's current branch in place. A per-run remediation branch strands the fix off the surface whose CI failed and multiplies branches across debug attempts.
 - **Branch eligibility** (`/bkit-ship` Step 1): ships `SHIP_BRANCH` (see Workflow Primitives § Branch eligibility); `dev` / `main` refused (the engine's exit 7 prints "refusing to ship ... releases stay manual"; Step 1 releases the lock and STOPs); a branch not named for `{FID}` — or for `{ISSUE_ID}` when one exists — gets a warning, not a stop (`worktrees setup --issue=` prints it as `branchWarning` and on stderr). `/bkit-debug` deliberately does not gate this way. It accepts any branch but `main`, because the branch carrying the failure is the branch the fix belongs on.
-- **Never push to `main`** (release branch).
+- NEVER push to `main` (the release branch).
 
 ### GitHub calls used by the pipeline
 

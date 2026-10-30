@@ -11,9 +11,9 @@
 >
 > **Rules:**
 >
-> - Do not widen, narrow or edit the CI accessibility gate or its allowlists.
+> - NEVER widen, narrow or edit the CI accessibility gate or its allowlists.
 > - Run the full-rule and platform audits as report-only.
-> - Never record an assistive-technology participant's name, contact or health detail.
+> - NEVER record an assistive-technology participant's name, contact or health detail.
 
 ## Universal Instructions
 

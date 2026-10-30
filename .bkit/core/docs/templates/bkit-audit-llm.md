@@ -11,9 +11,9 @@
 >
 > **Rules:**
 >
-> - Never copy raw mail, prompt text that contains personal data, or a model completion into the report.
+> - NEVER copy raw mail, prompt text that contains personal data, or a model completion into the report.
 > - Cite `file:line` and name the field instead.
-> - Never call a model, send mail, or invoke a write tool.
+> - NEVER call a model, send mail, or invoke a write tool.
 > - Test hostile cases with fixtures and code reads.
 > - Never change a provider account setting.
 > - Record the logging, retention and spend-cap settings only.

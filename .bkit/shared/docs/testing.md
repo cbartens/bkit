@@ -150,7 +150,7 @@ Read the table as a rule. `bkit-tests-live-web` and the device E2E lanes are the
 
 > [!IMPORTANT]
 > **"Real external API" and "real remote backing service" are two independent axes — never one flag.**
-> This is the most expensive mistake in this doc. A single overloaded gate (`LIVE_API`, `TEST_REAL`, …) that means both "hit real third-party APIs" and "hit the real remote database" collapses unrelated needs. In one real consumer, 10 suites that needed only the real DB (no external API) sat in the serial, push-only `@live` lane. They were invisible on PRs, and they inflated the gating lane. Moving them to `-integration` (ephemeral local DB) took `@live` from 86→44 tests and gave them PR coverage for the first time. Gate each axis on what it needs: an external-boundary test on an API credential, and a DB test on a DB URL. Prefer an ephemeral DB, which needs no gate.
+> This is the most expensive mistake in this doc. A single overloaded gate (`LIVE_API`, `TEST_REAL`, …) that means both "hit real third-party APIs" and "hit the real remote database" collapses unrelated needs. Suites that need only the real DB (no external API) then sit in the serial, push-only `@live` lane, where they are invisible on PRs and inflate the gating lane. Moving them to `-integration` (ephemeral local DB) shrinks `@live` and gives them PR coverage. Gate each axis on what it needs: an external-boundary test on an API credential, and a DB test on a DB URL. Prefer an ephemeral DB, which needs no gate.
 
 **Moving a suite between lanes takes three edits, and the third is the one that bites.** Retag the file, move it to the new lane, and delete the old gate. A suite with `skipIf(!LIVE_API)` in a lane that does not set `LIVE_API` silently skips forever: the lane is green, the count looks plausible, and the coverage is gone (a hollow green through the back door, § Validated means executed). After a lane move, assert that the destination's executed count went up by the moved test count.
 
@@ -221,7 +221,7 @@ Two smaller rules that follow from the same idea:
 
 A shape guard over a config file reads that file as text, so it is easy to anchor it on whatever string happens to be nearby. Anchor it on the rule. A guard pinned to the prose around the rule fails the moment someone improves the comment, and passes for years after the rule itself is deleted.
 
-The failure mode is specific, and it is not hypothetical. A guard asserting `expect(content).toMatch(/bootstrap paradox/)` was protecting a real invariant: that a lane checks the repo out before calling a local composite. Tidying the phrase "bootstrap paradox" out of the comment reddened the guard while the invariant was untouched. Assert the thing that must hold (`must already be checked out`, a step id, a flag, an `if:` shape), not the words chosen to describe it.
+For example, a guard asserting `expect(content).toMatch(/bootstrap paradox/)` to protect a real invariant (a lane checks the repo out before it calls a local composite) goes red when someone tidies the phrase out of the comment, while the invariant still holds. Assert the thing that must hold (`must already be checked out`, a step id, a flag, an `if:` shape), not the words chosen to describe it.
 
 Three practical rules:
 
@@ -255,7 +255,7 @@ There are two PR-time E2E concerns. Both are gated on real preconditions (event,
 
 Per-shard data isolation (§ Optional hardening) is necessary, but not sufficient. When one job launches several runner processes at once, anything keyed on the runner's own worker index collides, because that index restarts at 0 in every process.
 
-One consumer fanned one E2E step over 12 concurrent Playwright invocations. Each wrote its minted session into one shared auth dir as `user-w<N>.json`, where `<N>` is `workerInfo.parallelIndex`. Two lanes both wrote `user-w0.json`, the later write won, and browsers loaded sessions their own worker never built: 486 `Cannot read properties of undefined` and 102 sign-in redirects. DB rows never collided, because the owners were random, so the tenant tag was a label, not a key. The collision was purely on disk. The suite's cross-tenant bleed tripwire could not see it, because a clobbered file still holds a valid identity.
+For example, when one E2E step fans out over several concurrent Playwright invocations and each writes its minted session into one shared auth dir as `user-w<N>.json` (`<N>` = `workerInfo.parallelIndex`), every invocation has a worker 0, so several of them write `user-w0.json`. The later write wins, and browsers load sessions their own worker never built, which surfaces as `Cannot read properties of undefined` errors and sign-in redirects. DB rows with random owners do not collide, so the collision is purely on disk. A cross-tenant bleed tripwire cannot see it, because a clobbered file still holds a valid identity.
 
 - **Make the index global.** Give each invocation a distinct lane index, and use `laneIndex * workersPerLane + parallelIndex`. When the lane index is unset, the offset is 0, so local runs stay byte-identical.
 - **Throw on a bad value, never clamp.** An index that silently reads as 0 is the defect being prevented.
@@ -267,8 +267,8 @@ The same rule applies to every per-worker artefact keyed that way: transform cac
 
 Two further axes share the same root cause:
 
-- **Shared identity vs per-principal rate limits.** Four lanes driving one fixture owner created more records in a minute than the product allows one user, so three of the four got a 429. The limiter was working, and the fixture was pretending four lanes are one person. Give each lane its own fixture identity under a suffix, make teardown delete by id, and guard the fixture build separately from the lanes.
-- **Shared service load.** A per-navigation auth call became 3,500 `GET /auth/v1/user` in 4 minutes under a 12-lane fan-out, stalling the provider and reddening the `@live` lane on a separate machine. Before fanning out, audit per-request calls to shared external services. Do the local check first (JWKS). Call the service only for the cases that check cannot decide. This is a different lever from the phase-split one (`deployments.md` § Parallel test lanes): it cuts per-request cost, not peak concurrency.
+- **Shared identity vs per-principal rate limits.** Several lanes driving one fixture owner create more records in a minute than the product allows one user, so the lanes past the per-user limit get a 429. The limiter is working, and the fixture is pretending several lanes are one person. Give each lane its own fixture identity under a suffix, make teardown delete by id, and guard the fixture build separately from the lanes.
+- **Shared service load.** A per-navigation auth call under a wide fan-out turns into thousands of `GET /auth/v1/user` requests in minutes, which stalls the provider and reddens lanes on other machines that share it. Before fanning out, audit per-request calls to shared external services. Do the local check first (JWKS). Call the service only for the cases that check cannot decide. This is a different lever from the phase-split one (`deployments.md` § Parallel test lanes): it cuts per-request cost, not peak concurrency.
 
 ## Which tier does a behaviour need?
 
@@ -443,8 +443,8 @@ bkit's `bkit-tests-migration` lane (`bkit-stub:bkit-tests-migration`) is the rea
 
 - Target the local stack by exporting its values before the config loads. Loaders (Next, dotenv `override: false`) never override a key that is already set.
 - Blank a hosted key with `export KEY=""`, never with `unset`, because the loader refills unset keys from the file.
-- Never delete, move or hide-and-restore the file, because a killed run loses it.
-- Never `vercel env pull` onto it, because that replaces it with the host's keys only. Pull to a scratch file, then copy the keys across.
+- NEVER delete, move or hide-and-restore the file, because a killed run loses it.
+- NEVER `vercel env pull` onto it, because that replaces it with the host's keys only. Pull to a scratch file, then copy the keys across.
 - A guard test fails any tracked script that deletes, moves or overwrites an env file.
 
 **"Fresh" means replay-from-empty, not a reused volume.** A bare "start the local stack" command often reuses an existing data volume and applies only what is missing, so a "fresh" start can silently run a months-old schema while reporting success. Only a reset or replay from an empty store is a freshness proof. A green replay is also not a green seed. Assert that the seed actually loaded (a known row exists), because the reset can exit 0 while a conditional insert does nothing or the seed aborts mid-file. § Migration-replay + seed carries the full seed-determinism rules.

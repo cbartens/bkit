@@ -26,7 +26,7 @@ tools:
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Update the design. Do not just analyse. Do not build, install or write code.
-- **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
+- **No commits:** Do not run `git commit` / `git add`, and NEVER run `git push`. The caller runs them.
 - **Multi-lens inputs:** Inputs carry distinct lenses. merge with max-wins on `CRITICAL`, apply `OPTIONAL` on merit. Single-input findings are normal, not outvoted.
 - **Evidence outranks opinion:** Spike inputs carry measured results, not lenses. Their `DISPROVEN` claims override any finding that assumes otherwise.
 - **Output header:** Every line above `<!-- verdict:end -->` MUST stay machine-parseable.

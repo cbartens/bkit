@@ -32,7 +32,7 @@ autoCompactWindow: 300000
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Update the roadmap. Do not just analyse. Do not write implementation code. Do not append ledger rows: the only ledger write is compacting `.bkit/issues.jsonl`. In the output, list the bugs and deferrals you find, for the caller to record.
-- **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
+- **No commits:** Do not run `git commit` / `git add`, and NEVER run `git push`. The caller runs them.
 - **Completeness:** ALWAYS keep every `bkit:` marker pair intact. Leave content outside `roadmap-analysis` unchanged.
 - **Tracker:** Read-only. NEVER create, close, or relabel issues. Recommend, and let the caller act.
 

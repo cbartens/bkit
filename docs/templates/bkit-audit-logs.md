@@ -11,12 +11,12 @@
 >
 > **Rules:**
 >
-> - Never resolve, archive, mute or edit tracker issues, dashboards, alert rules or sample rates.
-> - Never copy log free text, an event payload or a personal-data value into the report.
+> - NEVER resolve, archive, mute or edit tracker issues, dashboards, alert rules or sample rates.
+> - NEVER copy log free text, an event payload or a personal-data value into the report.
 > - Cite ids, status codes, error codes and timestamps instead.
 > - Before the first read of vendor config or error text, name the fields that can carry credentials (e.g., request headers in monitor config, URLs with query tokens, error messages that echo a request).
 > - The field decides, not the shape of the value: a value with no secret prefix still counts.
-> - Report the field and its class only (e.g., `auth header present`), never the value.
+> - Report the field and its class only (e.g., `auth header present`), NEVER the value.
 
 ## Universal Instructions
 
@@ -119,7 +119,7 @@ A test-origin tag narrows the lane. It does not make something noise, and it doe
 - [ ] **Step 5 — Stored Data:** The tracker holds copies of what the app handles.
   - Server-side scrubbing: the data-scrubber rules, IP storage, the send-default-PII flag in each init, session-replay masking, and the user context the app sets (id only). The client scrubber is the other half; this step checks the server half. The wider lifecycle belongs to `bkit-audit-privacy`.
   - Model inputs and outputs. The tracker's AI integration can record prompts and responses, and current SDKs may default this on (e.g., `recordInputs`, `recordOutputs` follow the gen-AI collection flag, which defaults on). The default depends on the SDK version, so read the integration page for the installed one. Read the options in each init, and open one recent gen-AI span. Message and mail content can land in gen-AI span attributes.
-  - Sample five recent events end to end (message, breadcrumbs, request, extra, tags) for names, emails, addresses and message text. Report by field. Never copy a value.
+  - Sample five recent events end to end (message, breadcrumbs, request, extra, tags) for names, emails, addresses and message text. Report by field. NEVER copy a value.
 
   **Done when:** `Stored Data` says what the sample found, by field.
 
@@ -138,7 +138,7 @@ A test-origin tag narrows the lane. It does not make something noise, and it doe
   - Match it to the tracker first (timestamps; trace id joins). **If** it is covered → note the platform evidence on the issue. It is the same incident, not a second finding.
   - Group errors by time across sources. A cluster within a few minutes is one outage; write it once.
   - **If** the tracker is empty for it → the gap is a finding. Record whether it is noise (and why), or a failure that should have been reported. **If** it should have been reported → `Expected` names the signal: a log at the call site, an upstream-outage classifier pattern, or a health-endpoint check. A monitor or capacity alert is the next step, not this run.
-  - Never copy log-line free text. Use the PII-safe fields the reader already selects.
+  - NEVER copy log-line free text. Use the PII-safe fields the reader already selects.
 
   Check correlation without the clock. On every inbound-request → background-work path, one trace (e.g., W3C `traceparent`, a tracker trace header) spans the host, job runner and DB calls, in both the tracker and the job-runner traces. A broken hop is a finding, because without the trace, time grouping is the only join. **If** platform failures are re-reported to the tracker → the counts must match, and a platform failure with no tracker event means a broken reporter. **Done when:** `Runtime Logs` has a row per source: read or not (why) · window covered · retention · error count · matched tracker issues. It has a row per shared vendor resource: reputation per sender, `not shared`, or `Not Checked` (why). Correlation is recorded, and `Board` holds the reported-vs-platform ratio per reporting platform.
 

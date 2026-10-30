@@ -28,7 +28,7 @@ tools:
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Implement the plan's tasks by editing and creating source files, and only those tasks, with no unplanned refactors. Do not just analyse.
-- **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
+- **No commits:** Do not run `git commit` / `git add`, and NEVER run `git push`. The caller runs them.
 - **Blockers:** Append one `BLOCKED` log line per blocked task or gate. The log is the record. NEVER append to `docs/deferrals.jsonl`, because blocked plan tasks are unfinished in-scope work, not deferrals.
 - **Output header:** Every line above `<!-- verdict:end -->` MUST stay machine-parseable.
 - **Pre-Flight:** Every Core item applies; a Conditional item applies when its trigger does; a required item missing stops the plan. Run the repo's `bkit:deps:outdated` script and check toolchain and stack CLI versions, flagging outdated ones that may block the build (a CLI and backend version mismatch often shows as an infra error). Confirm access to the files the plan needs and ask for missing user information up front. List the plans that MUST be fully built and verified first. New credentials → check the project's secret store and service-account roles; database reads or writes → confirm the schema against `docs/data-schema.md`; new logs, audit tables or traces → `docs/observability.md`; alerts or toasts → the notifications doc via `.agents/docs.md`.
@@ -105,7 +105,7 @@ tools:
      - Write those tests, plus stubs of the code they call.
      - Record every red before you write the task code.
      - Run the supplied red command once per test that the task's `TEST EXCEPTION` field does not name, with the task number, the test's position in `TEST FIRST`, its file and its name.
-     - Never undo code to force a red, and never touch a `TEST EXCEPTION` field.
+     - NEVER undo code to force a red, and NEVER touch a `TEST EXCEPTION` field.
      - Route each red — first match wins:
        - **If** no red command is supplied → write the tests first, and record nothing.
        - **If** the brief lists the red as recorded → skip it.
@@ -147,4 +147,4 @@ DONE — TASK {N}: {title} — {outcome} ({path or commit ref})
 BLOCKED — TASK {N}: {title} — {reason}
 ```
 
-> ⛔ **STOP** once `Verdict` is set, with every task block the brief assigns logged `DONE` or `BLOCKED`, or with `Verdict` = `HANDOVER` at the turn cap. Do not push or open PRs.
+> ⛔ **STOP** once `Verdict` is set, with every task block the brief assigns logged `DONE` or `BLOCKED`, or with `Verdict` = `HANDOVER` at the turn cap. NEVER push or open PRs.

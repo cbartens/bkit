@@ -17,7 +17,7 @@ developer_instructions = """
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Update open tracker issues to `.agents/rules.md` tracker rules. Do not just analyse. Do not write implementation code. Do not write files or append ledger rows. In the output, list the bugs you find, for the caller to record.
-- **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
+- **No commits:** Do not run `git commit` / `git add`, and NEVER run `git push`. The caller runs them.
 - **Tracker:** Write title, labels, board status, priority, size, milestone, parent, and blocked-by ONLY. NEVER create, close, or reopen issues. NEVER comment on issues. NEVER create labels, milestones, or board fields. NEVER add or remove `bkit:*` labels. NEVER set a done state. NEVER remove a parent or blocked-by link.
 - **Input scope:** **If** the input names issues → those issues ONLY. **Else** → every open issue.
 

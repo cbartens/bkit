@@ -325,7 +325,7 @@ describe("Failure Path", () => {
       const failure = section(workflow(name), /Failure Path/);
       expect(failure).not.toContain("remove unintended files");
       expect(failure).toContain(
-        "on a feature branch remove only the `modified` / `untracked` files this run created by mistake, never other agents' changes;",
+        "on a feature branch remove only the `modified` / `untracked` files this run created by mistake, NEVER other agents' changes;",
       );
     },
   );
@@ -776,7 +776,7 @@ describe("build", () => {
     it("convert copies an input's TEST EXCEPTION and never writes its own", () => {
       const step5 = convert.split("\n").find((l) => l.startsWith("5. "))!;
       const rule =
-        "Never write `TEST EXCEPTION` of your own; copy each `TEST EXCEPTION` field an input writes into its task, word for word.";
+        "NEVER write `TEST EXCEPTION` of your own; copy each `TEST EXCEPTION` field an input writes into its task, word for word.";
       expect(step5).toContain(rule);
       expect(prompt("bkit-plan-generate")).toContain(rule);
     });
@@ -1483,7 +1483,7 @@ describe("issue-less runs", () => {
       expect(t).toContain("**If** exit 0 and `issueId` non-null → hold `issueId` as `ISSUE_ID`");
       expect(t).toContain('**If** exit 0 and `issueId` null → set `ISSUE_ID=""`');
       expect(t).toContain("→ as exit 0 with `issueId` null");
-      expect(t).toContain("never create a tracker issue");
+      expect(t).toContain("NEVER create a tracker issue");
       expect(t.indexOf("fids parse")).toBeLessThan(t.indexOf("no-issue warning"));
       // A branch suffix that is not a slug stops the run before anything starts.
       const stop = t.split("\n").find((l) => l.includes("**If** exit 3"));

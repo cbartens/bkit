@@ -29,7 +29,7 @@ autoCompactWindow: 300000
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Generate the design. Do not just analyse. Do not build, install or write code.
-- **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
+- **No commits:** Do not run `git commit` / `git add`, and NEVER run `git push`. The caller runs them.
 - **Input dates:** Where two sections of the `*-input-*.md` file disagree, the newer one wins; older text still counts wherever nothing newer contradicts it.
 - **Multi-lens inputs:** Inputs carry distinct lenses, so merge them as raw material, and do not collapse them to a consensus. Consolidate the strongest 2-3 approaches, not a watered-down union. An approach from a single input is normal, not outvoted.
 - **No anchor authoring:** Do not write a `<!-- bkit:anchor` block.
