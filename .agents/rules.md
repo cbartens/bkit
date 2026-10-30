@@ -178,7 +178,7 @@
 
 #### Communication
 
-- **Plain English answers:** Reply to users in plain English: name each term and say what it means on first use. Keep identifiers verbatim; plainness lives in the sentences, not the nouns.
+- **Plain English answers:** Reply to users in plain English, and name each term and say what it means the first time it appears. Keep identifiers exactly as written: make the sentences plain, not the nouns.
 
 #### Naming Conventions
 
@@ -193,7 +193,6 @@
 - **Prompt edits:** Before editing `.bkit/core/prompts/*.md`, read `.bkit/authoring.md` § Prompts and Workflows and § Prompts Only, and follow them. Update `.bkit/prompts.md` in the same change; index drift is a regression.
 - **Shared instructions:** Before editing sentences in `.bkit/core/workflows/*.md`, `.bkit/core/prompts/*.md`, the `bkit:start` / `bkit:end` block of `.agents/rules.md` or a `bkit-audit-*` template, run `pnpm instructions:show --file {basename}` (or `grep` `.bkit/instructions.md`).
 - **Contract changes:** Before changing fields, artifacts or verdicts that workflows or prompts pass between steps, run `grep -l` across `.bkit/core/workflows/`, `.bkit/core/prompts/` and `.bkit/core/docs/templates/`, read every hit in full whatever `Code reads` says about ranges, and trace the change through the resume, no-plan convert, per-group loop and remediation paths.
-- **Prose edits:** When writing or editing prose in any agent-read file (`.agents/**`, `.bkit/**`, `docs/**`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`), follow `.bkit/authoring.md` § All Agent-Read Files, plus § Docs for a doc. Text humans read is excluded: chat replies, tracker comments, commit messages.
 - **Provider parity:** Make every agent-facing change (workflows, prompts, permissions, hooks, shell) work across all providers: verify it on each provider, and keep shell POSIX-portable.
 - **Workflow bash blocks:** In fenced bash inside `.bkit/core/workflows/*.md`, quote variables instead of relying on shell word-splitting, and do not use an `ls` or glob that aborts when nothing matches. Put anything that needs bash-only features (arrays, `--pathspec-from-file`, process substitution) or argument parsing in a `bkit <noun> <verb>` command (`.bkit/core/engine/commands/`).
 - **Migrations:** Add a migration only when asked. **If** a change breaks old installs → propose a migration, and build it ONLY after the owner confirms. Each migration is idempotent, sits in the install / upgrade path, is tested on the old shape and has a row in `docs/migrations.md`.

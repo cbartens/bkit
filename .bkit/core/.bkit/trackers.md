@@ -8,7 +8,7 @@
 > **Rules:**
 >
 > - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
-> - Check `.agents/docs.md` index first and confirm topic belongs in this doc, not another. Label semantics live in `.bkit/workflows.md` § Tracker Integration; this file is the marker contract + operational per-tracker reference.
+> - Label semantics live in `.bkit/workflows.md` § Tracker Integration; this file is the marker contract + operational per-tracker reference.
 > - Ships to consumers: describe the current setup only. NEVER an internal identifier (tracker issue number, ledger key, review-finding id) and NEVER project history — decisions belong in `docs/decisions.jsonl`, incidents in `docs/knowledge.jsonl`.
 > - Four values: `github`, `linear`, `jira`, `none` (no tracker wired, the default).
 > - New tracker: add enum to `.bkit/core/engine/install/manifest.ts`; document MCP under `mcpServers.<name>` in `.bkit/shared/.mcp.json` and `.bkit/shared/.cursor/mcp.json`; add `<!-- bkit:tracker <name> -->` block after the last tracker block at every call site (extend `GROUP_RE` in `.bkit/core/engine/render/trackers.ts`). No `none` marker — no-tracker content is `false`.

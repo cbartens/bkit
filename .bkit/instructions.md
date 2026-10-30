@@ -2227,10 +2227,11 @@ Rules below `bkit:end` in `.agents/rules.md`: bkit's own, never shipped; no ship
 - rule: Project Rules › Universal Rules › Communication
 
 ```text
-**Plain English answers:** Reply to users in plain English: name each term and say what it means on first use. Keep identifiers verbatim; plainness lives in the sentences, not the nouns.
+**Plain English answers:** Reply to users in plain English, and name each term and say what it means the first time it appears. Keep identifiers exactly as written: make the sentences plain, not the nouns.
 ```
 
 ```retired
+**Plain English answers:** Reply to users in plain English: name each term and say what it means on first use. Keep identifiers verbatim; plainness lives in the sentences, not the nouns.
 **Plain English answers:** ALWAYS use plain English when replying to users: name each term and say what it means on first use; identifiers stay verbatim; plainness lives in the sentences, not the nouns.
 **Plain English answers:** ALWAYS use plain English when replying to users; name terms and say what they mean on first use; identifiers stay verbatim; plainness lives in sentences, not nouns.
 **Plain English answers:** ALWAYS use plain English when replying to users; name terms and say what they mean on first use; identifiers stay verbatim; plainness lives in sentences, NOT nouns.
@@ -2356,28 +2357,6 @@ Rules below `bkit:end` in `.agents/rules.md`: bkit's own, never shipped; no ship
 **Contract changes:** Changing fields / artifacts / verdicts that workflows or prompts pass between steps → `grep -l` across `.bkit/core/workflows/`, `.bkit/core/prompts/`, `.bkit/core/docs/templates/` → read every hit in full (overrides `Code reads` ranges); trace it through resume, no-plan convert, per-group loop and remediation paths before editing.
 **Contract changes:** Changing fields / artifacts / verdicts that workflows or prompts pass between steps → `grep -l` across `.bkit/core/workflows/`, `.bkit/core/prompts/`, `.bkit/core/docs/templates/` → read every hit IN FULL (overrides `Code reads` ranges); trace it through resume, no-plan convert, per-group loop and remediation paths before editing.
 **Contract changes:** Changing fields / artifacts / verdicts that workflows or prompts pass between steps → `grep -l` across `.bkit/core/workflows/`, `.bkit/core/prompts/`, `.bkit/core/docs/templates/` → read every hit IN FULL (overrides `Code reads` ranges); trace it through resume, no-plan, sub-plan split and remediation paths before editing.
-```
-
-### prose-edits
-
-- rule: Project Rules › Universal Rules › Repo Authoring
-- refs:
-  - `AGENTS.md`
-  - `CLAUDE.md`
-  - `.bkit/authoring.md` § All Agent-Read Files
-  - `.bkit/authoring.md` § Docs
-  - `.bkit/core/prompts/bkit-utility-compress-markdown.md`
-
-```text
-**Prose edits:** When writing or editing prose in any agent-read file (`.agents/**`, `.bkit/**`, `docs/**`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`), follow `.bkit/authoring.md` § All Agent-Read Files, plus § Docs for a doc. Text humans read is excluded: chat replies, tracker comments, commit messages.
-```
-
-```retired
-**Prose edits:** Writing / editing prose in any agent-read file (`.agents/**`, `.bkit/**`, `docs/**`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`) → ALWAYS follow `.bkit/authoring.md` § All Agent-Read Files, plus § Docs for docs. This excludes text humans read: chat replies, tracker comments, commit messages.
-**Prose edits:** Writing / editing prose in any agent-read file (`.agents/**`, `.bkit/**`, `docs/**`, `AGENTS.md`, `CLAUDE.md`) → ALWAYS follow `.bkit/authoring.md` § All Agent-Read Files, plus § Docs for docs. This excludes text humans read: chat replies, tracker comments, commit messages.
-**Prose edits:** Writing / editing prose in any agent-read file (`.agents/**`, `.bkit/**`, `docs/**`, `AGENTS.md`, `CLAUDE.md`) → ALWAYS follow `.bkit/authoring.md` § All Agent-Read Files, plus § Docs for docs, and apply the Process rules of `.bkit/core/prompts/bkit-utility-compress-markdown.md`. This excludes text humans read: chat replies, tracker comments, commit messages.
-**Prose edits:** Writing / editing prose in any agent-read file (`.agents/**`, `.bkit/**`, `docs/**`, `AGENTS.md`, `CLAUDE.md`) → ALWAYS follow `.bkit/authoring.md` § All Agent-Read Files (docs: § Docs too) and apply `.bkit/core/prompts/bkit-utility-compress-markdown.md` Process rules; excludes text humans read: chat replies, tracker comments, commit messages.
-**Prose edits:** Writing / editing prose in any agent-read file (`.agents/**`, `.bkit/**`, `docs/**`, `AGENTS.md`, `CLAUDE.md`) → ALWAYS apply `.bkit/core/prompts/bkit-utility-compress-markdown.md` Process rules; excludes text humans read: chat replies, tracker comments, commit messages.
 ```
 
 ### provider-parity
@@ -6366,25 +6345,6 @@ Write this file to `.bkit/authoring.md` § All Agent-Read Files and § Docs.
 Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
 ```
 
-### doc-header-index-first
-
-- doc: where-used
-- tags: review-docs-first
-- carriers: doc `architecture`, `data-schema`, `deployments`, `design`, `noise`, `observability`, `prompts`, `security`, `setup`, `skills`, `technology`, `testing`
-
-```text
-Check `.agents/docs.md` index first and confirm topic belongs in this doc, not another.
-```
-
-### doc-header-notation
-
-- doc: where-used
-- carriers: doc `architecture`, `data-schema`, `deployments`, `design`, `noise`, `observability`, `security`, `setup`, `technology`, `testing`
-
-```text
-Notation: one job per mark — `.bkit/authoring.md` § `Notation`.
-```
-
 ### doc-local-section
 
 - doc: where-used
@@ -10135,7 +10095,7 @@ Finding `CRITICAL`-`LOW` in another audit does not set priority. Two rules do. S
 **Link API:** Tracker exposes structured blocked-by or parent links → Step 4 — e.g. GitHub MCP `issue_read` sub-issues / parent, Linear `relations` / `parent`, Jira issue links / `parent`. Fallback: body text only; say so.
 [empty-is-inconclusive] **Step 2 — Board:** Read every item. Assert read not truncated (count below limit; at limit → raise and re-read). Record lane names, size and priority field ids and option ids from live field list. Unused numeric estimate stays unused; size = estimate. Membership: diff open-issue list vs board. Open issue not on board = off-board; closed issue outside done lane = stale card; list each by number. Off-board stays in scope: Steps 3-10 treat as item with no lane, size, priority. **Done when:** item count, lanes, field ids, off-board, stale cards in `Board`, or `N/A` and STOP.
 **Step 3 — Triage:** Read every open issue, not titles only. Short body prefix OK when summary front-loaded; open umbrella/milestone issues in full. While reading: stale = no activity 90 days and body no longer true of code/plan (standing issue never stale for age); duplicate = same change twice or one wholly inside another; `Low` on 3+ passes and still true = won't-do candidate (standing excluded); ready-lane item missing acceptance criteria, defect reproduction, or test to write = not ready (still gets size/priority). Note each Rule 1 override for Step 6 with label correction. List stale/duplicate with merge target or stale reason. Closing = owner; this run does not close. Monthly clock → stale only. **Done when:** `Triage` lists stale, duplicates, won't-do, not-ready, overrides to rank.
-**Step 4 — Links:** Per open issue record parent, milestone, blocked-by. Blocked-by: read all three — structured links (`Link API`), body block build gates on (e.g. GitHub `###### bkit:blocked-by start` / `end`), body prose ("blocked by #N", "after #N"). Flag: (1) Parent — child listed in parent body, no link (or reverse); open child, closed parent; open non-standing parent, all children closed → `Judgement Calls`. (2) Milestone — closed / past-due milestone with open issues; child with no or later milestone than parent; body / title names milestone, field empty; open milestone, no open issues. (3) Blocked-by — prose only; structured link vs body block disagree; closed blocker still listed; blocked issue in ready or later lane, blocker open; blocker off-board; cycle. Edges → Step 5 blocker rule, Step 6 parent / child moves. **Done when:** `Links` holds per-kind counts (with / without parent, milestone, blocker) and every flag, or `none`.
+**Step 4 — Links:** Per open issue record parent, milestone, blocked-by. Blocked-by: read all three — structured links (`Link API`), body block build gates on (e.g. GitHub `###### bkit:blocked-by start` / `end`), body prose ("blocked by #N", "after #N"). Flag: (1) Parent — child listed in parent body, no link (or reverse); open child, closed parent; open non-standing parent, all children closed → `Judgement Calls`. (2) Milestone — closed / past-due milestone with open issues; body / title names milestone, field empty; milestone that breaks how the repo assigns them, read from open and recently closed issues (no clear pattern → no flag). (3) Blocked-by — prose only; structured link vs body block disagree; closed blocker still listed; blocked issue in ready or later lane, blocker open; blocker off-board; cycle. Edges → Step 5 blocker rule, Step 6 parent / child moves. **Done when:** `Links` holds per-kind counts (with / without parent, milestone, blocker) and every flag, or `none`.
 **Step 5 — In Flight:** Three sources: lanes in progress/review; open PRs; issues closed recently (shipped cluster still warm — next issue in cluster cheap). Record launch/milestone target and where written. None → say so; launch-gating keeps Rule 1 band. Count in-progress/in-review; age and last activity (commit, PR, comment). Flag older than service level expectation: 85th-percentile cycle time of issues closed last 90 days, start of work to close. Record how start taken. <20 closed → two weeks, say so. Stuck item lifts parent/children/siblings; list each lift as judgement call. Apply blocker rule to every Step 4 edge. **Done when:** `In Flight` holds counts, ages, target, blocker moves, stuck lifts.
 **Step 6 — Rank:** Apply `Ranking Rules` to every in-scope issue. Record every Rule 1 override (label vs body) and label correction. Record every Rule 2 move with signal and launch target read. Band change since previous report without body/labels/in-flight change → one pass misapplied rule — say which. Maintenance check belonging as gate → `bkit-audit-gates`, not band here. Mini-pass → this step on unsized/unprioritised subset only. Monthly clock → eight-week launch moves and stuck lifts only. **Done when:** `Ranking` lists every override, move, band change.
 **Step 7 — Size:** Apply `Size Scale` to every in-scope issue. **Done when:** `Sizes` row per in-scope issue.

@@ -10,8 +10,6 @@
 > **Rules:**
 >
 > - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
-> - Notation: one job per mark — `.bkit/authoring.md` § `Notation`.
-> - Check `.agents/docs.md` index first and confirm topic belongs in this doc, not another.
 > - Pre-push runs project gate set locally (see "Pre-push checklist" below); never `--no-verify`.
 
 ## Production rollback runbook

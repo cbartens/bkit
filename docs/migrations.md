@@ -10,7 +10,6 @@
 > - A migration is idempotent, runs inside the normal install / upgrade write path (dry-run computes the same writeset), and has a test seeding the old shape.
 > - Name the release range it covers, so a later sweep can retire it once no supported install predates it.
 > - Detect-only checks that tell the human to fix something by hand are not migrations — they live under § Detect-only guards.
-> - Check `.agents/docs.md` index first and confirm topic belongs in this doc, not another.
 
 ## Migrations
 

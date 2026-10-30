@@ -10,8 +10,6 @@
 > **Rules:**
 >
 > - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
-> - Notation: one job per mark — `.bkit/authoring.md` § `Notation`.
-> - Check `.agents/docs.md` index first and confirm topic belongs in this doc, not another.
 > - Auth standards live only here. Other docs link, do not restate.
 
 ## Supply-Chain (GitHub Actions)

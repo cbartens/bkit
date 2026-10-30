@@ -332,7 +332,7 @@ export function resumePoint(
     return at(byStep.get(routed)!, last.step, prior?.group ?? prior?.subPlan ?? null);
   }
   const group = last.group ?? last.subPlan ?? null;
-  const verdict = String((last as { verdict?: unknown }).verdict);
+  const verdict = String(last.verdict);
   const target =
     retired[last.step] ??
     byStep.get(last.step)!.resumeOnVerdict?.[verdict] ??

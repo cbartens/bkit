@@ -709,9 +709,9 @@ describe("checkboxes and sibling clauses", () => {
 
   it("a line carrying one clause verbatim is not a near-copy of its sibling", () => {
     const gate2 =
-      "**Gate 2 - Verified:** Every checkbox above independently verified and checked off.";
+      "**Gate 2 — Verified:** Every checkbox above independently verified and checked off.";
     const gate3 =
-      "**Gate 3 - Verified:** Every checkbox above independently verified and checked off.";
+      "**Gate 3 — Verified:** Every checkbox above independently verified and checked off.";
     expect(similarity(gate2, gate3)).toBeGreaterThanOrEqual(NEAR_COPY);
     const clauses = [
       synthetic({ name: "g2", texts: [gate2] }),

@@ -27,7 +27,7 @@ export type Step = {
   at: string;
   parentSha: string;
   artifacts: string[];
-  verdict?: "PASS" | "FAIL" | "CONCERNS" | "SINGLE" | "SPLIT";
+  verdict?: "PASS" | "FAIL" | "CONCERNS" | "HANDOVER" | "SINGLE" | "SPLIT";
   attempt?: number;
   /** The task group the step ran for. */
   group?: number;

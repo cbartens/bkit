@@ -10,7 +10,6 @@
 > **Rules:**
 >
 > - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
-> - Check `.agents/docs.md` index first and confirm topic belongs in this doc, not another.
 > - Only invoke skills relevant to current workflow / task / step.
 > - Discover via `npx skills find [query]` — do not hand-curate.
 > - Accept only an official publisher, or install count >= 1000 with repo stars >= 100; never an unverified personal repo.

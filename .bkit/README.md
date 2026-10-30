@@ -8,7 +8,6 @@
 > **Rules:**
 >
 > - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
-> - Check `.agents/docs.md` index first and confirm topic belongs in this doc, not another.
 > - Ships to consumers: describe the current setup only. NEVER an internal identifier (tracker issue number, ledger key, review-finding id) and NEVER project history — decisions belong in `docs/decisions.jsonl`, incidents in `docs/knowledge.jsonl`.
 > - A topic another `.bkit/*.md` doc owns gets a short summary here plus a pointer to that doc; the detail lives there only.
 

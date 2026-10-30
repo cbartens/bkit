@@ -10,8 +10,6 @@
 > **Rules:**
 >
 > - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
-> - Notation: one job per mark — `.bkit/authoring.md` § `Notation`.
-> - Check `.agents/docs.md` index first and confirm topic belongs in this doc, not another.
 > - One section / table: `Field | Type | Unique | Notes`, `Indices`, `Pending`.
 > - Fields whose existence is a decision: link `decisions.jsonl` ADR; do not restate rationale.
 
