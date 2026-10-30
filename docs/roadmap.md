@@ -13,7 +13,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-10-29T04:49:57Z)_
+_(refreshed 2026-10-30T01:41:32Z)_
 
 ### Design
 
@@ -32,6 +32,7 @@ _(refreshed 2026-10-29T04:49:57Z)_
 | 699-engine-run-completeness | 699-engine-run-completeness | 1793002326175 |
 | 719-cloud-variants-add | 719-cloud-variants-add | 1793249397536 |
 | 724-machine-wide-test | 724-machine-wide-test | 1793239890768 |
+| 748-brand-every-consumer | 748-brand-every-consumer | 1793324492581 |
 
 ### Build
 
