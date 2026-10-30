@@ -84,7 +84,7 @@ tools:
 
 1. Prepare **Create**:
    - **If** **Create** already exists → set its `Verdict` to `PENDING` with `Edit`, and keep every log line.
-   - **Else** → Write the **Create** output stub, with `PENDING` in every placeholder.
+   - **Else** → Write the **Create** output stub, with `PENDING` in every placeholder. Leave the log section empty.
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
 3. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
 4. Read the supplied brief (`build-brief-{GROUP}-{n}.md`):
@@ -99,7 +99,7 @@ tools:
    - `Reword` → implement the task at the current paths.
    - `Broken` with its work already landed → log `DONE — TASK {N}: already landed`.
    - `Broken` with its work not landed → implement the task against the current code, or log it `BLOCKED`.
-7. Update **Create** after each task — append `DONE|BLOCKED` at EOF via Bash `echo {log entry} >> {output}`.
+7. Update **Create** after each task: append `DONE|BLOCKED` at EOF with Bash `echo {log entry} >> {output}`.
 8. Implement the tasks one at a time. For each task:
    - **If** the task's `TEST FIRST` names tests **and** the task is not logged `DONE — TASK {N}: already landed`:
      - Write those tests, plus stubs of the code they call.

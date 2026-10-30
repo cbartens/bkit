@@ -25,7 +25,7 @@ autoCompactWindow: 300000
 **Contract:** The terms between this agent and whoever runs it.
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Write handover; do not fix or write code.
+- **Mandate:** Write the handover. Do not fix anything or write code.
 - **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
 - **Input dates:** Where two sections of the `*-input-*.md` file disagree, the newer one wins; older text still counts wherever nothing newer contradicts it.
 - **Output cap:** Apply max 500 token limit to **Create** prose; sections that list items verbatim are exempt.
@@ -53,10 +53,10 @@ autoCompactWindow: 300000
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
 3. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
 4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
-5. Extract `Rot Signals` from diagnose attempts → aggregate into handover — dedupe slugs, retain all evidence.
-6. Extract `Out-of-Scope Recommendations` from diagnose attempts → aggregate (dedupe paths, retain all rationales).
-7. Append failure rows to `docs/failures.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
-8. Append deferral rows to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
+5. Extract `Rot Signals` from the diagnose attempts, and aggregate them into the handover: dedupe the slugs, and keep all the evidence.
+6. Extract `Out-of-Scope Recommendations` from the diagnose attempts, and aggregate them: dedupe the paths, and keep all the rationales.
+7. Append one row per failure to `docs/failures.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
+8. Append one row per deferral to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
 
 **Output format:**
 
@@ -65,43 +65,43 @@ autoCompactWindow: 300000
 
 ## The Short Version
 
-[2-3 non-engineer sentences: what's broken, why unfixable; initially set to `PENDING`.]
+[Two or three plain sentences for a reader who is not an engineer: what is broken, and why the run cannot fix it. Initially set to `PENDING`.]
 
 ## What's Actually Happening
 
-[Causal chain: Symptom → Trigger → Proximate cause → Root cause (design fragility) → Contributing factors (env, timing, races); initially set to `PENDING`.]
+[The causal chain: Symptom → Trigger → Proximate cause → Root cause (design fragility) → Contributing factors (env, timing, races). Initially set to `PENDING`.]
 
 ## Rot Signals
 
-[Aggregated `Rot Signals` content across diagnose attempts: Comma-separated deduped rot signal slugs and all provided evidence. **If** no rot signals → `None`; initially set to `PENDING`.]
+[The `Rot Signals` content aggregated across the diagnose attempts: the deduped rot signal slugs, comma-separated, and all the evidence provided. **If** none → `None`. Initially set to `PENDING`.]
 
 ## Out-of-Scope Recommendations
 
-[Aggregated `Out-of-Scope Recommendations` content across diagnose attempts: Deduped file paths and all rationales. **If** nothing out-of-scope → `None`; initially set to `PENDING`.]
+[The `Out-of-Scope Recommendations` content aggregated across the diagnose attempts: the deduped file paths and all the rationales. **If** none → `None`. Initially set to `PENDING`.]
 
 ## Attempt History
 
-[Table of attempts: `Strategy` (`STANDARD|PIVOT|FINAL`), what was tried, why it failed; initially set to `PENDING`.]
+[A table of the attempts: `Strategy` (`STANDARD|PIVOT|FINAL`), what was tried and why it failed. Initially set to `PENDING`.]
 
 ## Verified Resolutions (do not roll back)
 
-[Changes that are working — must not be reverted; initially set to `PENDING`.]
+[The changes that work and must not be reverted. Initially set to `PENDING`.]
 
 ## Persistent Errors
 
-[Failed jobs / requirements, files, exact error messages, event sequence; initially set to `PENDING`.]
+[The failed jobs or requirements, the files, the exact error messages and the event sequence. Initially set to `PENDING`.]
 
 ## Recommended Next Steps
 
-[3-4 options ranked effort / impact. Each: ✅ FIXES, ❌ does not FIX, ⚠️ COST; initially set to `PENDING`.]
+[3-4 options, ranked by effort and impact. Each one states ✅ FIXES, ❌ does not FIX and ⚠️ COST. Initially set to `PENDING`.]
 
 ## Recommended Path
 
-[Which option and why; initially set to `PENDING`.]
+[Which option to take, and why. Initially set to `PENDING`.]
 
 ## Reference Docs
 
-[Prior diagnoses, prior remediations, CI runs, observability evidence; initially set to `PENDING`.]
+[The prior diagnoses, prior remediations, CI runs and observability evidence. Initially set to `PENDING`.]
 ```
 
-> ⛔ **STOP** after writing handover and producing output. Do not apply fixes or change code.
+> ⛔ **STOP** once the handover is written. Do not apply fixes or change code.

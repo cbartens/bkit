@@ -19,7 +19,7 @@ $ARGUMENTS
 - **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does not mean silent.
 - **Failures:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
 - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, etc non-empty if required before making tool calls (`{ISSUE_ID}` may be empty). **Else** → **Failure Path**.
-- **Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is `key: value` lines, nested keys indented under their parent (`a.b` = `b` under `a:`), lists of rows as tables: hold named keys as `{VAR}`, a `"quoted"` value without its quotes. Exit non-zero with no `Route:` for it → **Failure Path**; exit 80 → mapped MCP tool (**gh MCP fallback**); exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
+- **Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is `key: value` lines, nested keys indented under their parent (`a.b` = `b` under `a:`), lists of rows as tables: hold named keys under bare `UPPER_SNAKE` names, a `"quoted"` value without its quotes, and write a held name as `{VAR}` where it goes into a command or a `Context:` / `Read:` / `Create:` line. Exit non-zero with no `Route:` for it → **Failure Path**; exit 80 → mapped MCP tool (**gh MCP fallback**); exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
 - **Timeouts:** **If** workflow or subagent run > 3600 seconds → **Failure Path**.
 
 **Contract:** The terms between this agent and whoever runs it.
@@ -576,7 +576,7 @@ $ARGUMENTS
    ```
    A reply that names a letter (`B`, `B)` or `B) {option}`) means the option that letter labels.
    - **If** the answer is `Try again` → Step 12.
-   - **If** the answer is `Stop` → create `docs/plans/{YYYYMM}/logs/{FID}/ship-handover.md` = the question, the answer and the line `Stopped by the owner; run stays IN_PROGRESS. /bkit-ship {FID} resumes at Step 10.` → push it and release the lock; never `workflows fail`:
+   - **If** the answer is `Stop` → create `docs/plans/{YYYYMM}/logs/{FID}/ship-handover.md` = the question, the answer and the line `Stopped by the owner; run stays IN_PROGRESS. /bkit-ship {FID} resumes at Step 10.` → push it and release the lock. NEVER run `workflows fail`:
      ```bash
      "{BKIT}" workflows handover --post --workflow=ship --fid={FID} --month={YYYYMM} --push --worktree="{WORKTREE_PATH}"
      "{BKIT}" locks release --kind=workflow --workflow=ship --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} >/dev/null || exit 1

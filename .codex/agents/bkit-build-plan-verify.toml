@@ -49,10 +49,11 @@ developer_instructions = """
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
 3. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
 4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
-   - For each gap, append log at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line.
+   - For each gap, append the entry at EOF with Bash `echo {log entry} >> {output}`.
+     - **If** the entry spans several lines → append it with a heredoc instead.
    - Each `{log entry}` is the gap's report `logLine`, with your decided `Fixable: true` or `Fixable: false` in place of the engine's `Fixable: null`.
    - Each entry ends `— Fixable: true` or `— Fixable: false`, because the gap remediation reads that ending.
-   - **If** any gap is `Fixable: false` → set `Verdict` = `FAIL` via `Edit` immediately; do not defer to final pass.
+   - **If** any gap is `Fixable: false` → set `Verdict` = `FAIL` with `Edit` immediately, without waiting for the final pass.
 5. Determine `Mode` from input Context (`Group` or `Holistic`).
 6. **If** `Mode` = `Group`:
    - The supplied briefs' task blocks are the work.
@@ -96,7 +97,7 @@ developer_instructions = """
    - **If** the task is satisfied → name its number on the header's `Tasks` line. The workflow ticks the plan.
    - **If** the task is not satisfied, or its work is missing:
      - Leave it off that line, and append its log entry.
-     - **If** the gap is `Fixable: false` → set `Verdict` = `FAIL` via `Edit` immediately; do not defer to final pass.
+     - **If** the gap is `Fixable: false` → set `Verdict` = `FAIL` with `Edit` immediately, without waiting for the final pass.
 10. Update **Create** via `Edit`:
     - Set `Failures` = the count of unresolved gaps.
     - Set `Fixable`:

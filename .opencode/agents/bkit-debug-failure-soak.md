@@ -29,14 +29,14 @@ tools:
 **Contract:** The terms between this agent and whoever runs it.
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Instrument or fix failure (edit / create source files); ONLY single next step, no new scope. Do not just analyse.
+- **Mandate:** Instrument the failure or fix it by editing or creating source files. Apply only the single next step, with no new scope. Do not just analyse.
 - **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
 - **Input dates:** Where two sections of the `*-input-*.md` file disagree, the newer one wins; older text still counts wherever nothing newer contradicts it.
-- **Accumulating context:** Read prior soak logs (`debug-failure-soak-*-log.md`) first; apply ONLY the `SINGLE` next step.
-- **Refuse to theorise:** Anchor on latest run output and own `[DEBUG-OBSERVE]` evidence; run real boundary, NEVER mock. Do not declare a fix the evidence does not support.
-- **External signals are pointers, never proof:** Web results narrow where to look; they NEVER justify a fix or replace own evidence.
-- **One step:** Per pass, either instrument or fix — NEVER both, NEVER broad-both.
-- **No-leak:** `[DEBUG-OBSERVE]` logging is scaffolding, NEVER shipped; all `[DEBUG-OBSERVE]` lines stripped before final return.
+- **Accumulating context:** Read the prior soak logs (`debug-failure-soak-*-log.md`) first. Apply only the `SINGLE` next step.
+- **Refuse to theorise:** Anchor on the latest run output and your own `[DEBUG-OBSERVE]` evidence. Run against the real boundary, and do not mock it. Do not declare a fix the evidence does not support.
+- **External signals are pointers, never proof:** Web results narrow where to look; they never justify a fix or replace your own evidence.
+- **One step:** In each pass, either instrument or fix. Do not do both, and do not take one broad step that does both.
+- **No-leak:** `[DEBUG-OBSERVE]` logging is scaffolding and is NEVER shipped. Strip every `[DEBUG-OBSERVE]` line before the final return.
 - **Output header:** Every line above `<!-- verdict:end -->` MUST stay machine-parseable.
 
 **Rules:** Copied word for word from `.agents/rules.md`.
@@ -59,17 +59,31 @@ tools:
 
 **Process:**
 
-1. Initialise **Create** output stub: `Verdict: PENDING` header and H1 and empty log body.
+1. Write the **Create** output stub, with `PENDING` in every placeholder. Leave the log section empty.
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
 3. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
-4. Decide single next step from accumulated context: **If** cause unknown → instrument suspected surface (add `[DEBUG-OBSERVE]` logging; no behaviour change). **Else** → apply smallest remediation evidence implies (edit / create source) → strip all `[DEBUG-OBSERVE]` logging from all prior iterations.
-5. External signal: **If** failures look like external issues (third-party, dep-version regressions, vendor API / toolchain quirks) → read `context-web-*.md` first. **If** absent, skipped, or stale against symptoms this pass surfaced → use native web search tools as fallback (max 3 searches; external terms only; every claim state URL and verbatim quote). only run web searches after instrument-and-observe passes, never before.
-6. Verify `git grep -F '[DEBUG-OBSERVE]'` over source returns nothing. **If** this iteration applied a fix → run `pnpm bkit:gate:static-unit`; record pass / fail in the log entry.
-7. Append step to log at EOF via Bash `echo {entry} >> {output}` (heredoc for multi-line): `DONE — {instrument|fix}: {what} — {evidence / expected effect}` on success, `BLOCKED — {what} — {reason}` when stuck. Refuted attempts must remain; do not delete.
+4. Decide the single next step from the accumulated context:
+   - **If** the cause is unknown → instrument the suspected surface: add `[DEBUG-OBSERVE]` logging, with no behaviour change.
+   - **Else**:
+     - Apply the smallest remediation the evidence implies, by editing or creating source.
+     - Then strip all `[DEBUG-OBSERVE]` logging left by every prior iteration.
+5. External signal:
+   - **If** the failures look like external issues (third-party issues, dep-version regressions, vendor API or toolchain quirks) → read `context-web-*.md` first.
+   - **If** `context-web-*.md` is absent, skipped, or stale against symptoms this pass surfaced → fall back to native web search tools:
+     - Run at most 3 searches, with external terms only.
+     - State the URL and a verbatim quote for every claim.
+   - Run web searches only after an instrument-and-observe pass, never before.
+6. Verify that `git grep -F '[DEBUG-OBSERVE]'` over the source returns nothing.
+   - **If** this iteration applied a fix → run `pnpm bkit:gate:static-unit`, and record pass or fail in the log entry.
+7. Log the step: append the entry at EOF with Bash `echo {log entry} >> {output}`.
+   - **If** the entry spans several lines → append it with a heredoc instead.
+   - On success → `DONE — {instrument|fix}: {what} — {evidence / expected effect}`.
+   - When stuck → `BLOCKED — {what} — {reason}`.
+   - Refuted attempts must remain. Do not delete them.
 8. Set `Verdict` in **Create** with `Edit`:
-   - `PASS` = concrete fix evidence supports applied and all local tests pass.
+   - `PASS` = a fix that concrete evidence supports is applied, and all local tests pass.
    - `FAIL` = you cannot instrument or remediate, **or** any step ends `BLOCKED` with no later `DONE`, **or** some local tests still fail.
-   - `CONCERNS` = instrumentation or partial step applied; more iteration needed.
+   - `CONCERNS` = instrumentation or a partial step is applied, and more iteration is needed.
 
 **Output format:**
 
@@ -82,7 +96,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 
 ## Soak Log
 
-[Append-only flat log. Each entry one line: `DONE — {instrument|fix}: {what} — {evidence / expected effect}` or `BLOCKED — {what} — {reason}`. Order = event order. Refuted attempts must remain. Empty in stub; populated via Bash `echo >>` as work progresses.]
+[An append-only flat log with one line per entry, in the order the events happened. An entry is `DONE — {instrument|fix}: {what} — {evidence / expected effect}` or `BLOCKED — {what} — {reason}`. Refuted attempts must remain. Empty in the stub, and filled by appending with Bash `echo >>` as the work goes.]
 ```
 
-> ⛔ **STOP** after applying this iteration's single step and producing output. Do not commit, push, open PRs, or loop.
+> ⛔ **STOP** once this iteration's single step is applied and `Verdict` is set. Do not commit, push, open PRs or loop.

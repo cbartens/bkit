@@ -27,7 +27,7 @@ tools:
 **Contract:** The terms between this agent and whoever runs it.
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Write tests failing on the reported symptoms; no implementation changes. Do not just analyse.
+- **Mandate:** Write tests that fail on the reported symptoms. Make no implementation changes. Do not just analyse.
 - **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
 - **Input dates:** Where two sections of the `*-input-*.md` file disagree, the newer one wins; older text still counts wherever nothing newer contradicts it.
 - **Output header:** Every line above `<!-- verdict:end -->` MUST stay machine-parseable.
@@ -50,18 +50,26 @@ tools:
 
 **Process:**
 
-1. Write the **Create** output stub, with `PENDING` in every placeholder.
-2. Read every supplied input once at the start, and work from what it says, not from session memory. Bug report in `debug-input-*.md` = primary signal.
-3. Read `.agents/docs.md`, and load the docs it lists for this task but specifically `docs/testing.md`. Skip any listed doc that does not exist.
-4. Pick the lowest tier reaching the reported behaviours (unit before integration before e2e). Co-locate with tests covering the affected areas; match their imports, helpers, naming.
-5. Write tests named for the reported behaviours, built from the reported steps, affected areas and `context-*` evidence, asserting the reported expected outcomes; never assert the broken behaviours. **If** `Mode` in input Context = `SOAK` → tests repeat the reported scenarios (loop, concurrency, timing) until they fail reliably, within the suite's normal time budget.
-6. Run only those tests via Bash (repo's test runner, file / name filter) → append `DONE — run {N}: {command} — {outcome}` at EOF via Bash `echo {log entry} >> {output}`.
-7. **If** they fail on the reported symptoms → reproduced. **If** any fails for another reason (missing fixture, typo, wrong import, unreachable boundary) → fix the tests only, re-run; max 3 rewrites. **If** they pass → next most likely path from report and evidence; max 3 paths.
-8. **If** not reproduced → delete test files created, revert test edits → append `BLOCKED — {paths tried} — {why each missed}`.
-9. Update **Create** — set header and body via `Edit`; mapping:
-   - `PASS` = `Reproduced: YES`; tests fail on the reported symptoms; other tests unaffected.
-   - `CONCERNS` = `Reproduced: YES`; partial (part of the report only, or intermittent tests failing in some runs only).
-   - `FAIL` = `Reproduced: NO`; test changes removed.
+1. Write the **Create** output stub, with `PENDING` in every placeholder. Leave the log section empty.
+2. Read every supplied input once at the start, and work from what it says, not from session memory. The bug report in `debug-input-*.md` is the primary signal.
+3. Read `.agents/docs.md`, and load the docs it lists for this task, always including `docs/testing.md`. Skip any listed doc that does not exist.
+4. Choose where the tests go:
+   - Pick the lowest tier that reaches the reported behaviours: unit before integration before e2e.
+   - Co-locate them with the tests that cover the affected areas, and match those tests' imports, helpers and naming.
+5. Write one test per reported behaviour, named for it and built from the reported steps, the affected areas and the `context-*` evidence. Assert the outcome the report expects, not the broken behaviour it describes.
+   - **If** `Mode` in the input Context = `SOAK` → make the tests repeat the reported scenarios (loop, concurrency, timing) until they fail reliably, within the suite's normal time budget.
+6. Run only those tests via Bash, with the repo's test runner and a file or name filter. Then append `DONE — run {N}: {command} — {outcome}` at EOF with Bash `echo {log entry} >> {output}`.
+7. Check the result:
+   - **If** they fail on the reported symptoms → the bug is reproduced.
+   - **If** any test fails for another reason (missing fixture, typo, wrong import, unreachable boundary) → fix only the tests, and run them again. Allow at most 3 rewrites.
+   - **If** they pass → try the next most likely path from the report and the evidence. Allow at most 3 paths.
+8. **If** the bug is not reproduced:
+   - Delete the test files you created, and revert your test edits.
+   - Append `BLOCKED — {paths tried} — {why each missed}`.
+9. Set the header and body of **Create** with `Edit`, using this mapping:
+   - `PASS` = `Reproduced: YES`, the tests fail on the reported symptoms, and other tests are unaffected.
+   - `CONCERNS` = `Reproduced: YES`, but only partly: the tests cover only part of the report, or they are intermittent and fail in some runs only.
+   - `FAIL` = `Reproduced: NO`, and the test changes are removed.
 
 **Output format:**
 
@@ -76,15 +84,15 @@ Tests: [`path :: test name`, comma-separated. **If** not reproduced → `none`.]
 
 ## Reported Symptoms
 
-[One sentence per symptom: reported wrong behaviour and expected behaviour; initially set to `PENDING`.]
+[One sentence per symptom: the reported wrong behaviour and the expected behaviour. Initially set to `PENDING`.]
 
 ## Reproduction
 
-[Test files and names, tier, failing assertions verbatim. **If** not reproduced → each path tried, why it missed, evidence a rerun needs (exact steps, inputs, environment, logs); initially set to `PENDING`.]
+[The test files and names, the tier, and the failing assertions word for word. **If** not reproduced → each path tried, why it missed, and the evidence a rerun needs (exact steps, inputs, environment, logs). Initially set to `PENDING`.]
 
 ## Run Log
 
-[Append-only flat log. Each entry one line: `DONE — run {N}: {command} — {outcome}` or `BLOCKED — {what} — {reason}`. Order = event order. Empty in stub; populated via Bash `echo >>` as work progresses.]
+[An append-only flat log with one line per entry, in the order the events happened. An entry is `DONE — run {N}: {command} — {outcome}` or `BLOCKED — {what} — {reason}`. Empty in the stub, and filled by appending with Bash `echo >>` as the work goes.]
 ```
 
-> ⛔ **STOP** after reproducing the bug or removing test changes and producing output. Do not fix the bug.
+> ⛔ **STOP** once the bug is reproduced or the test changes are removed, and `Verdict` is set. Do not fix the bug.

@@ -30,7 +30,7 @@ autoCompactWindow: 300000
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Resolve mechanical conflicts. Do not just analyse; on any ambiguity → abort cleanly, emit `FAIL`.
-- **No commits:** Do not run `git commit` / `git push` (caller does). `git add`, `git checkout --theirs|--ours <conflicted>`, `git rebase --continue` / `--abort` permitted ONLY for in-progress rebase resolution.
+- **No commits:** Do not run `git commit` / `git push`. The caller runs them. `git add`, `git checkout --theirs|--ours <conflicted>` and `git rebase --continue` / `--abort` are permitted ONLY for in-progress rebase resolution.
 - **Input dates:** Where two sections of the `*-input-*.md` file disagree, the newer one wins; older text still counts wherever nothing newer contradicts it.
 - **Output header:** Every line above `<!-- verdict:end -->` MUST stay machine-parseable.
 
@@ -51,11 +51,11 @@ autoCompactWindow: 300000
 
 **Process:**
 
-1. Write the **Create** output stub, with `PENDING` in every placeholder.
+1. Write the **Create** output stub, with `PENDING` in every placeholder. Leave the log section empty.
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
 3. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
-4. Update **Create** after each substep — append log at EOF via Bash `echo {log entry} >> {output}`.
-5. `git fetch origin dev` → `git rebase origin/dev` to recreate conflict state. **If** rebase succeeds with no conflicts → set `Verdict` = `FAIL` via `Edit` immediately; do not defer to final pass; append log entry.
+4. Update **Create** after each substep: append log at EOF with Bash `echo {log entry} >> {output}`.
+5. `git fetch origin dev` → `git rebase origin/dev` to recreate conflict state. **If** rebase succeeds with no conflicts → set `Verdict` = `FAIL` with `Edit` immediately, without waiting for the final pass; append log entry.
 6. Run the Tier-2 auto-resolver before any hand-classification — it clears every append-only ledger and the dependency lockfile deterministically, leaving only conflicts that need judgement:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
@@ -63,7 +63,7 @@ autoCompactWindow: 300000
    "$BKIT" branches rebase && echo "TIER2_COMPLETE" || echo "TIER2_REFUSED"
    ```
    **If** `TIER2_COMPLETE` → the rebase already ran to completion; skip to the verify gate → append log entry. **Else** → the rebase is still in progress with the unresolvable paths conflicted; continue to classification. Do not `git rebase --abort` here — the `FAIL` branch owns that.
-7. `git diff --name-only --diff-filter=U` → conflicted files; `git log -5 --oneline HEAD` and `git log -5 --oneline origin/dev` → recent commits per side → append log entry. Classify each conflicted file against `Allowed resolutions` / `Refused resolutions` → append log entry. **If** any file matches `Refused resolutions` → set `Verdict` = `FAIL` via `Edit` immediately; do not defer to final pass.
+7. `git diff --name-only --diff-filter=U` → conflicted files; `git log -5 --oneline HEAD` and `git log -5 --oneline origin/dev` → recent commits per side → append log entry. Classify each conflicted file against `Allowed resolutions` / `Refused resolutions` → append log entry. **If** any file matches `Refused resolutions` → set `Verdict` = `FAIL` with `Edit` immediately, without waiting for the final pass.
    - `Allowed resolutions`:
      - Append-only ledgers (`docs/knowledge.jsonl`, `docs/decisions.jsonl`, `docs/deferrals.jsonl`, `docs/failures.jsonl`, `.bkit/issues.jsonl`, `.bkit/stats.jsonl`, `.bkit/friction.jsonl`, `docs/plans/**/status.jsonl`) → `bkit branches rebase` unions both sides; do not hand-merge these. Interleaved / duplicated rows are resolved by last-`ts`-wins fold; never reason to emit `FAIL`.
      - `docs/roadmap.md` → union both sides; leave duplicated marker blocks in place. Board regenerated from `.bkit/issues.jsonl` later this cycle; never reason to emit `FAIL`.
@@ -76,8 +76,8 @@ autoCompactWindow: 300000
      - Same JSON key with different values (excluding one-sided bumps above).
      - Same line edited both sides with different content.
      - Any conflict where merged intent is not unambiguously mechanical.
-8. Resolve each `Allowed resolutions` file via `Edit` → replace conflict-marker hunk with merged result → `git add <file>` after each → append log entry → `git rebase --continue`. **If** `git rebase --continue` errors → set `Verdict` = `FAIL` via `Edit` immediately; do not defer to final pass.
-9. **If** `Verdict` != `FAIL` → run `pnpm bkit:gate:install-static-unit-build`. MUST exit 0 → append log entry with exit code. **If** non-zero → set `Verdict` = `FAIL` via `Edit` immediately; do not defer to final pass.
+8. Resolve each `Allowed resolutions` file via `Edit` → replace conflict-marker hunk with merged result → `git add <file>` after each → append log entry → `git rebase --continue`. **If** `git rebase --continue` errors → set `Verdict` = `FAIL` with `Edit` immediately, without waiting for the final pass.
+9. **If** `Verdict` != `FAIL` → run `pnpm bkit:gate:install-static-unit-build`. MUST exit 0 → append log entry with exit code. **If** non-zero → set `Verdict` = `FAIL` with `Edit` immediately, without waiting for the final pass.
 10. Set `Verdict` in **Create** with `Edit`:
     - `PASS` = rebase reproduced conflicts; every conflicted file classified `Allowed resolutions` and resolved; rebase completed; `pnpm bkit:gate:install-static-unit-build` exited 0.
     - `FAIL` = rebase did not reproduce conflicts (anomaly); or any conflicted file classified `Refused resolutions`; or `git rebase --continue` errored for non-mechanical reasons; or any verify command exited non-zero.

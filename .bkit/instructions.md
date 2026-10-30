@@ -1806,7 +1806,7 @@ Clause section lines:
   - specialised: `bkit-debug-failure-soak`
   - applies: `bkit-debug-failure-remediate`
 - drift:
-  - `bkit-debug-failure-remediate:72`: "Run `pnpm bkit:gate:static-unit`. Every local test must pass." Runs only `pnpm bkit:gate:static-unit`, not the integration tier the pre-push hook adds when `bkit:gate:static-unit-integration` is declared
+  - `bkit-debug-failure-remediate:76`: "Run `pnpm bkit:gate:static-unit`. Every local test must pass." Runs only `pnpm bkit:gate:static-unit`, not the integration tier the pre-push hook adds when `bkit:gate:static-unit-integration` is declared
     - kept: subagents never push; they run their own lighter gate (`local-pre-commit`: `/bkit-*` steps run their own gates) and the pre-push hook runs the push gate
 
 ```text
@@ -2634,11 +2634,13 @@ One `### {name}` per clause, in the lines of § Format, Clause section lines. He
 - carriers: workflow all
 
 ```text
-**Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is `key: value` lines, nested keys indented under their parent (`a.b` = `b` under `a:`), lists of rows as tables: hold named keys as `{VAR}`, a `"quoted"` value without its quotes. Exit non-zero with no `Route:` for it → **Failure Path**; exit 80 → mapped MCP tool (**gh MCP fallback**); exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
-**Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is `key: value` lines, nested keys indented under their parent (`a.b` = `b` under `a:`), lists of rows as tables: hold named keys as `{VAR}`, a `"quoted"` value without its quotes. Exit non-zero with no `Route:` for it → **Failure Path**; exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
+**Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is `key: value` lines, nested keys indented under their parent (`a.b` = `b` under `a:`), lists of rows as tables: hold named keys under bare `UPPER_SNAKE` names, a `"quoted"` value without its quotes, and write a held name as `{VAR}` where it goes into a command or a `Context:` / `Read:` / `Create:` line. Exit non-zero with no `Route:` for it → **Failure Path**; exit 80 → mapped MCP tool (**gh MCP fallback**); exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
+**Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is `key: value` lines, nested keys indented under their parent (`a.b` = `b` under `a:`), lists of rows as tables: hold named keys under bare `UPPER_SNAKE` names, a `"quoted"` value without its quotes, and write a held name as `{VAR}` where it goes into a command or a `Context:` / `Read:` / `Create:` line. Exit non-zero with no `Route:` for it → **Failure Path**; exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
 ```
 
 ```retired
+**Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is `key: value` lines, nested keys indented under their parent (`a.b` = `b` under `a:`), lists of rows as tables: hold named keys as `{VAR}`, a `"quoted"` value without its quotes. Exit non-zero with no `Route:` for it → **Failure Path**; exit 80 → mapped MCP tool (**gh MCP fallback**); exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
+**Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is `key: value` lines, nested keys indented under their parent (`a.b` = `b` under `a:`), lists of rows as tables: hold named keys as `{VAR}`, a `"quoted"` value without its quotes. Exit non-zero with no `Route:` for it → **Failure Path**; exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
 **Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is one JSON object: hold named keys as `{VAR}`. Exit non-zero with no `Route:` for it → **Failure Path**; exit 80 → mapped MCP tool (**gh MCP fallback**); exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
 **Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is one JSON object: hold named keys as `{VAR}`. Exit non-zero with no `Route:` for it → **Failure Path**; exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
 ```
@@ -3030,7 +3032,7 @@ do NOT just analyse
 ### init-stub
 
 - prompt: where-used
-- carriers: prompt `bkit-build-challenge-*`, `bkit-design-review-*`, `bkit-plan-review-*`, `bkit-audit-generate`, `bkit-build-plan-current`, `bkit-build-plan-execute`, `bkit-build-plan-gaps-remediate`, `bkit-build-plan-verify`, `bkit-debug-abort-handover`, `bkit-debug-failure-diagnose`, `bkit-debug-failure-remediate`, `bkit-debug-failure-reproduce`, `bkit-design-generate`, `bkit-design-spike`, `bkit-plan-generate`, `bkit-plan-scope-check`, `bkit-ship-conflict-resolve`, `bkit-ship-deferred-sweep`
+- carriers: prompt `bkit-build-challenge-*`, `bkit-debug-*`, `bkit-design-review-*`, `bkit-plan-review-*`, `bkit-audit-generate`, `bkit-build-plan-current`, `bkit-build-plan-execute`, `bkit-build-plan-gaps-remediate`, `bkit-build-plan-verify`, `bkit-design-generate`, `bkit-design-spike`, `bkit-plan-generate`, `bkit-plan-scope-check`, `bkit-ship-conflict-resolve`, `bkit-ship-deferred-sweep`
 
 ```text
 Write the **Create** output stub, with `PENDING` in every placeholder.
@@ -3038,6 +3040,15 @@ Write the **Create** output stub, with `PENDING` in every placeholder.
 
 ```retired
 Initialise **Create** output stub with `PENDING` placeholders.
+```
+
+### stub-log-empty
+
+- prompt: where-used
+- carriers: prompt `bkit-build-plan-execute`, `bkit-build-plan-gaps-remediate`, `bkit-debug-failure-remediate`, `bkit-debug-failure-reproduce`, `bkit-debug-failure-soak`, `bkit-ship-conflict-resolve`
+
+```text
+Leave the log section empty.
 ```
 
 ### re-read
@@ -3197,10 +3208,11 @@ Display output format verbatim as final message to user; do NOT summarise or tri
 - carriers: prompt `bkit-build-challenge-*`, `bkit-build-plan-current`, `bkit-build-plan-verify`, `bkit-debug-failure-diagnose`, `bkit-ship-conflict-resolve`, `bkit-ship-deferred-sweep`
 
 ```text
-set `Verdict` = `FAIL` via `Edit` immediately; do not defer to final pass.
+set `Verdict` = `FAIL` with `Edit` immediately, without waiting for the final pass.
 ```
 
 ```retired
+set `Verdict` = `FAIL` via `Edit` immediately; do not defer to final pass.
 set `Verdict` = `FAIL` via `Edit` immediately; do NOT defer to final pass.
 ```
 
@@ -3208,10 +3220,24 @@ set `Verdict` = `FAIL` via `Edit` immediately; do NOT defer to final pass.
 
 - prompt: where-used
 - tags: file-edits
-- carriers: prompt `bkit-build-challenge-*`, `bkit-build-plan-current`, `bkit-build-plan-verify`, `bkit-debug-failure-diagnose`
+- carriers: prompt `bkit-build-challenge-*`, `bkit-debug-failure-*`, `bkit-build-plan-current`, `bkit-build-plan-execute`, `bkit-build-plan-gaps-remediate`, `bkit-build-plan-verify`, `bkit-ship-conflict-resolve`
 
 ```text
+append {{entry}} at EOF with Bash `echo {log entry} >> {output}`.
+```
+
+```retired
 append log at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line.
+```
+
+### log-append-heredoc
+
+- prompt: where-used
+- tags: file-edits
+- carriers: prompt `bkit-build-challenge-*`, `bkit-build-plan-current`, `bkit-build-plan-verify`, `bkit-debug-failure-diagnose`, `bkit-debug-failure-soak`
+
+```text
+**If** the entry spans several lines → append it with a heredoc instead.
 ```
 
 ### log-each
@@ -3222,6 +3248,10 @@ append log at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-lin
 - carriers: prompt `bkit-build-challenge-*`, `bkit-build-plan-current`, `bkit-build-plan-execute`, `bkit-build-plan-gaps-remediate`, `bkit-debug-failure-remediate`, `bkit-ship-conflict-resolve`
 
 ```text
+Update **Create** after each {{unit}}: append {{entry}} at EOF with Bash `echo {log entry} >> {output}`
+```
+
+```retired
 Update **Create** after each {{unit}} — append {{entry}} at EOF via Bash `echo {log entry} >> {output}`
 ```
 
@@ -3875,10 +3905,11 @@ Run `pnpm bkit:gate:static-unit` — all local tests MUST pass.
 - carriers: prompt `bkit-debug-failure-diagnose`, `bkit-debug-failure-soak`
 
 ```text
-**External signals are pointers, never proof:** Web results narrow where to look; they NEVER justify a fix or replace own evidence.
+**External signals are pointers, never proof:** Web results narrow where to look; they never justify a fix or replace your own evidence.
 ```
 
 ```retired
+**External signals are pointers, never proof:** Web results narrow where to look; they NEVER justify a fix or replace own evidence.
 **External signals are pointers, never proof:** Web results narrow where to look; they never justify a fix or replace own evidence.
 **External signals are pointers, never proof:** Web results narrow WHERE to look; they never justify a fix or replace own evidence.
 ```
@@ -3890,7 +3921,41 @@ Run `pnpm bkit:gate:static-unit` — all local tests MUST pass.
 - carriers: prompt `bkit-debug-failure-diagnose`, `bkit-debug-failure-soak`
 
 ```text
+**If** the failures look like external issues (third-party issues, dep-version regressions, vendor API or toolchain quirks) → read `context-web-*.md` first.
+```
+
+```retired
 External signal: **If** failures look like external issues (third-party, dep-version regressions, vendor API / toolchain quirks) → read `context-web-*.md` first. **If** absent, skipped, or stale against symptoms this pass surfaced → use native web search tools as fallback (max 3 searches; external terms only; every claim state URL and verbatim quote).
+```
+
+### debug-external-signal-fallback
+
+- prompt: where-used
+- tags: fetched-text, empty-is-inconclusive
+- carriers: prompt `bkit-debug-failure-diagnose`, `bkit-debug-failure-soak`
+
+```text
+**If** `context-web-*.md` is absent, skipped, or stale against symptoms this pass surfaced → fall back to native web search tools:
+```
+
+### debug-web-search-cap
+
+- prompt: where-used
+- tags: fetched-text
+- carriers: prompt `bkit-debug-failure-diagnose`, `bkit-debug-failure-soak`
+
+```text
+Run at most 3 searches, with external terms only.
+```
+
+### debug-web-search-cite
+
+- prompt: where-used
+- tags: honest-reporting
+- carriers: prompt `bkit-debug-failure-diagnose`, `bkit-debug-failure-soak`
+
+```text
+State the URL and a verbatim quote for every claim.
 ```
 
 ### debug-refuted-remain
@@ -3900,6 +3965,10 @@ External signal: **If** failures look like external issues (third-party, dep-ver
 - carriers: prompt `bkit-debug-failure-diagnose`, `bkit-debug-failure-soak`
 
 ```text
+Refuted {{entries}} must remain. Do not delete them.
+```
+
+```retired
 Refuted {{entries}} must remain; do not delete.
 ```
 
@@ -3910,10 +3979,11 @@ Refuted {{entries}} must remain; do not delete.
 - carriers: prompt `bkit-debug-failure-remediate`, `bkit-ship-conflict-resolve`
 
 ```text
-**No commits:** Do not run `git commit` / `git push` (caller does). `git add`, `git checkout --theirs|--ours <conflicted>`, `git rebase --continue` / `--abort` permitted ONLY for in-progress rebase resolution.
+**No commits:** Do not run `git commit` / `git push`. The caller runs them. `git add`, `git checkout --theirs|--ours <conflicted>` and `git rebase --continue` / `--abort` are permitted ONLY for in-progress rebase resolution.
 ```
 
 ```retired
+**No commits:** Do not run `git commit` / `git push` (caller does). `git add`, `git checkout --theirs|--ours <conflicted>`, `git rebase --continue` / `--abort` permitted ONLY for in-progress rebase resolution.
 **No commits:** Do not run `git commit` / `git push` (caller does). `git add`, `git checkout --theirs|--ours <conflicted>`, `git rebase --continue` / `--abort` permitted only for in-progress rebase resolution.
 ```
 
@@ -4765,7 +4835,7 @@ Write the error message / tool response to `{OUTBOX_ROOT}/error.md` (`--error-fi
 ### workflow-route-first-match
 
 - workflow: repeatable
-- carriers: workflow `bkit-build`, `bkit-design`, `bkit-plan`; prompt `bkit-build-plan-execute`
+- carriers: workflow all except `bkit-auto`, `bkit-ship`; prompt `bkit-build-plan-execute`
 
 ```text
 {{route}} — first match wins:
@@ -4899,6 +4969,10 @@ a question NEVER resets a count.
 - carriers: workflow `bkit-build`, `bkit-debug`, `bkit-ship`
 
 ```text
+NEVER run `workflows fail`:
+```
+
+```retired
 never `workflows fail`:
 ```
 
@@ -5890,10 +5964,11 @@ Update: Source files.
 - carriers: workflow `bkit-build`, `bkit-debug`
 
 ```text
-Decide — hold `scope` as `TEST_SCOPE`, `failures` as `TEST_FAILURES`:
+Hold `scope` as `TEST_SCOPE` and `failures` as `TEST_FAILURES`.
 ```
 
 ```retired
+Decide — hold `scope` as `TEST_SCOPE`, `failures` as `TEST_FAILURES`:
 Decide — hold `scope` as `{TEST_SCOPE}`, `failures` as `{TEST_FAILURES}`:
 ```
 
@@ -5931,7 +6006,7 @@ Read the runtime:
 ### workflow-labels-held
 
 - workflow: repeatable
-- carriers: workflow all except `bkit-auto`, `bkit-debug`
+- carriers: workflow all except `bkit-auto`
 
 ```text
 `labels` as `LABELS`, `trackerState` as `TRACKER_STATE`, `board` as `BOARD`
@@ -7978,7 +8053,7 @@ Route — first match wins:
 **If** `DECISION_ROUTE` = `retry` → Step 13.
 **If** `DECISION_ROUTE` = `verify` → re-run Step 8.
 [workflow-pushes] Record the wait (step 4 `owner-pause` block). Create `docs/plans/{YYYYMM}/logs/{FID}/build-handover.md` = the decision file plus the line `Stopped by the owner ({RUNTIME}); run stays IN_PROGRESS. /bkit-build {REF} resumes at this pause.`; `REF` empty → `{FID}`. Then push the record — NEVER onto a branch with an open PR:
-Release the lock; never `workflows fail`:
+Release the lock. NEVER run `workflows fail`:
 Decision file written (`decisions compose`)
 Questions asked in the session, or recommendations taken (`decisions apply --by=headless`)
 Hard blockers asked in a session, or sent to the Failure Path when headless
@@ -8135,96 +8210,112 @@ PR created
 - source: `.bkit/core/workflows/bkit-debug.md`
 
 ```text
-**Scope:** Remediate feature failures and push to branch.
-**Modes:** `PUSH_MODE` (`PR|LOCAL`) decided at Step 1; `DEBUG_MODE` (`NORMAL|SOAK`) at Step 1. `DEBUG_MODE` selects fix step: `NORMAL` → Diagnose (6) and Remediate (7); `SOAK` → Failure Remediate Soak (8). `REPRO` (`[repro]`) adds Failure Reproduce (5) after a first-attempt PASS, either mode. Entry: `[soak]` / an open run already soaking / `debug.fix.maxAttempts` Remediate rows across the feature's runs → `SOAK`. `NORMAL` switches to `SOAK` mid-run when the diagnose agent sets `Mode: SOAK`, or when fix attempts are used up. `SOAK` is terminal.
+**Scope:** Fix the feature's failures, and push the fixes to its branch.
+**Modes:** Step 1 decides `PUSH_MODE` (`PR|LOCAL`) and `DEBUG_MODE` (`NORMAL|SOAK`). `DEBUG_MODE` selects the fix step: `NORMAL` → Diagnose (6) and Remediate (7); `SOAK` → Failure Remediate Soak (8). `REPRO` (`[repro]`) adds Failure Reproduce (5) after a first-attempt PASS, in either mode. A run starts in `SOAK` on `[soak]`, on an open run already soaking, or once the feature's runs hold `debug.fix.maxAttempts` Remediate rows. `NORMAL` switches to `SOAK` mid-run when the diagnose agent sets `Mode: SOAK`, or when the fix attempts are used up. `SOAK` is terminal.
 **If** `LOOP_ASK` = false → narrate `debug {LOOP_POINT}: attempt {LOOP_ATTEMPT} of {LOOP_MAX}, taken without asking` → return to the calling step.
 Read the loop's progress:
+**If** `LOOP_TREND` != `stuck` **and** `LOOP_TREND` != `worse` → narrate `debug {LOOP_POINT}: attempt {LOOP_ATTEMPT} of {LOOP_MAX}, taken without asking (failures {LOOP_COUNTS})` → return to the calling step.
 `debug {LOOP_POINT}: attempt {LOOP_ATTEMPT} of {LOOP_MAX}`, then `Failures per test round: {LOOP_COUNTS}`, then the newest diagnosis (`debug-failure-diagnose-*.md`) or soak log (`debug-failure-soak-*-log.md`) in one line each.
-`LOOP_POINT` = `fix` → `**Q1 — Fix:** the last fix attempt left no fewer failures. Stop here instead of another fix attempt?`. `LOOP_POINT` = `soak` and `{LOOP_ATTEMPT}` = 1 → `**Q1 — Soak:** fix attempts are used up and the last one left no fewer failures. Stop here instead of starting soak (a slower, step-by-step investigation)?`. **Else** → `**Q1 — Soak:** the last soak attempt left no fewer failures. Stop here instead of another soak attempt?`.
-`Options: A) Stop / B) Try again`, then `Recommended: A) Stop — the last attempt made no progress`.
+The question:
+**If** `LOOP_POINT` = `fix` → `**Q1 — Fix:** The last fix attempt left no fewer failures. Stop here instead of trying again?`.
+**If** `LOOP_POINT` = `soak` **and** `{LOOP_ATTEMPT}` = 1 → `**Q1 — Soak:** The fix attempts are used up, and the last one left no fewer failures. Stop here instead of starting soak (a slower, step-by-step investigation)?`.
+**Else** → `**Q1 — Soak:** The last soak attempt left no fewer failures. Stop here instead of trying again?`.
+`Options: A) Stop / B) Try again`, then `Recommended: A) Stop`.
 The line `Reply per question. "yes" takes every recommendation. "stop" writes a handover; the run can be resumed.`
 Record the wait → end turn → wait for the answer:
 Record the reply before anything else:
 **If** the answer is `Try again` → return to the calling step.
 **If** the answer is `Stop` → step 5.
-Create `docs/plans/{YYYYMM}/logs/{FID}/debug-handover.md` = the question, the answer, and the line `Stopped by the owner; run stays IN_PROGRESS. /bkit-debug {FID} resumes at Step 3.` Then push the record and release the lock; never `workflows fail`:
+Create `docs/plans/{YYYYMM}/logs/{FID}/debug-handover.md` with the question, the answer, and the line `Stopped by the owner; run stays IN_PROGRESS. /bkit-debug {FID} resumes at Step 3.`
 Asked only with `ask` = true, not headless, and `trend` stuck or worse (`counters progress`)
 Wait and reply recorded (`owner-pause`, `owner-answer`)
 Stop wrote a handover and released the lock
 Read repo facts (fetches `origin/dev` first):
 **If** `BRANCH` = `dev` **or** `main` → `PUSH_MODE` = LOCAL → step 7. **Else** → find the open PR from `{BRANCH}` into any base:
 **If** exit 1 → `PUSH_MODE` = LOCAL.
-**If** exit 80 → `list_pull_requests` (head `{BRANCH}`, state open) → PR found → its number as `{PR_NUMBER}`, `PUSH_MODE` = PR; none → `PUSH_MODE` = LOCAL.
+**If** exit 80 → `list_pull_requests` (head `{BRANCH}`, state open):
+**If** it finds a PR → hold its number as `PR_NUMBER` → `PUSH_MODE` = PR.
+**Else** → `PUSH_MODE` = LOCAL.
 Decide this run's attempt, mode, repro and gates from the session prompt and the current run (a resume keeps its attempt; a finished run's soak never carries over):
 Push mode decided
 Debug attempt derived
 Debug mode decided
 Repro decided
-[branches] Resume worktree, adopt existing `feat/{FID}` branch, or adopt current session branch in place; never creates new branch:
-→ hold `worktreePath` as `{WORKTREE_PATH}`, `{OUTBOX_ROOT}/{FID}` as `{OUTBOX}`, `branch` as `{BRANCH}`, `sentinel` as `{SENTINEL}`, `logDir` as `{LOG_DIR}`, `startSha` as `{DIFF_BASE}` (`origin/dev` when null).
-**If** exit 3 → resolve the rebase below → exit 0 → re-run this sub-step; any other exit → **Failure Path**:
+[branches] Resume the worktree, adopt the existing `feat/{FID}` branch, or adopt the current session branch in place. This never creates a new branch:
+**If** exit 3 → resolve the rebase:
 Open the run inside the worktree:
-[fit `workflow-status-held` 0.77; keep: holds one value; the clause holds two] → hold `file` as `{STATUS}`.
 Record the runtime and the run's modes, then finish:
 Runtime row written and asserted
-Run the deepest declared gate; it writes the trimmed log to the artifact (`{GATE_FLAGS}` = one `--gate=<name>` per `GATES` entry, in order):
-→ hold `attempt` as `{NORMAL_ATTEMPT}`.
+Run the deepest declared gate. It writes the trimmed log to the artifact. `{GATE_FLAGS}` = one `--gate=<name>` per `GATES` entry, in order:
 **If** `TEST_VERDICT` = PASS → route on the fix and reproduce rows in the active run:
-**If** exit 1 **and** printed `step-9` (a fix step ran) → Step 9.
-**If** exit 1 **and** printed `step-10` (reproduce tests committed, passed with no fix) → Step 10.
-**If** exit 0 (printed `first-pass`) **and** `REPRO` = true → Step 4.
-**If** exit 0 (printed `first-pass`) → Step 10.
+**If** exit 1 **and** it printed `step-9` → Step 9.
+**If** exit 1 **and** it printed `step-10` → Step 10.
+**If** exit 0 **and** `REPRO` = true → Step 4.
 **If** `TEST_VERDICT` = FAIL **and** `DEBUG_MODE` = NORMAL → route on fix attempts across the feature's debug runs:
 **If** exit 0 **and** `{LOOP_ATTEMPT}` = 1 → Step 4.
-**If** exit 1 (printed `soak-escalation`) — fix attempts used up; record the switch → `DEBUG_MODE` = SOAK → sub-step 5:
+**If** exit 1 (it printed `soak-escalation`: the fix attempts are used up) → record the switch → `DEBUG_MODE` = SOAK → sub-step 5:
 **If** `TEST_VERDICT` = FAIL **and** `DEBUG_MODE` = SOAK → route on soak attempts across the feature's debug runs:
 Tests executed (`tests run`)
 [debug-on-demand] Live fail-then-pass observed
 [external-context-first] Reset the clamp log, then enumerate every `context-fetch` block after `<!-- bkit:end -->` in `.agents/context.md` and narrate coverage per context before fetching:
-→ hold `blocks` as `{FETCH_BLOCKS}`, `coverage` as `{COVERAGE}`.
-[provider-data] **For each** entry in `{FETCH_BLOCKS}` (`{IDX}` = its `idx`) → its `body` is the starting template → customise per failure (severity, freshness, limit, query, filters) → run it through the block below; it writes stdout fenced as the context artifact (a JSON list of flat rows as a table), else the `[context-fetch:<name>]` skip breadcrumb. **If** `{DEBUG_ATTEMPT}` > 1 → vary customisations from prior attempts. Distinctly narrate each block outcome (`outcome`); always note blocks with fetch issues:
-[honest-reporting; command-output; empty-is-inconclusive] Confirm the local-test artifact Step 3 captured. Do not re-run tests here: `docs/plans/{YYYYMM}/logs/{FID}/context-tests-local-{DEBUG_ATTEMPT}.md` non-empty → narrate `[bkit-debug] local test output CHECKED — captured by Step 3`; **Else** → narrate `[bkit-debug] local test output MISSING — Step 3 captured nothing; treat local-test evidence as unavailable, never as clean`.
+[provider-data] **For each** entry in `FETCH_BLOCKS` (`{IDX}` = its `idx`):
+Take its `body` as the starting template, and customise it for the failure (severity, freshness, limit, query, filters).
+**If** `{DEBUG_ATTEMPT}` > 1 → vary the customisations from prior attempts.
+Run it through the block below. The block writes stdout fenced as the context artifact (a JSON list of flat rows as a table), or else the `[context-fetch:<name>]` skip breadcrumb:
+[honest-reporting; command-output] Confirm the local-test artifact Step 3 captured. Do not re-run the tests here:
+**If** `docs/plans/{YYYYMM}/logs/{FID}/context-tests-local-{DEBUG_ATTEMPT}.md` is non-empty → narrate `[bkit-debug] local test output CHECKED — captured by Step 3`.
+[empty-is-inconclusive] **Else** → narrate `[bkit-debug] local test output MISSING — Step 3 captured nothing; treat local-test evidence as unavailable, never as clean`.
 [commits] Record the step — verdict, the non-empty `context-*-{DEBUG_ATTEMPT}.md` artifacts, the contexts configured, the clamp records — commit, and print the comment:
-[fit `workflow-summary-verdict` 0.67; keep: holds the fetch verdict, not the summary verdict] → hold `verdict` as `{FETCH_VERDICT}`.
 **If** `DEBUG_MODE` = SOAK → Step 8.
 Context-fetch blocks enumerated and coverage narrated
 Context-fetch blocks run and outcomes narrated
 [commits] Finish — commits the test:
-[fit `workflow-fid-held` 0.60; keep: holds a different value than the `fid` clause] → hold `fields.Reproduced` as `{REPRODUCED}`.
 [reproduce-first] **If** `REPRODUCED` = YES → Step 3.
 **If** `REPRODUCED` = NO → Step 10.
 Read the strategy ladder from status.jsonl:
-→ hold `fields.Mode` as `{DIAGNOSE_MODE}`.
 **If** `DEBUG_MODE` = NORMAL **and** `DIAGNOSE_MODE` = SOAK → record the switch → `DEBUG_MODE` = SOAK → Step 8:
 Strategy computed
-[commit-format] Finish — the fix commit subject is the log's first `DONE` line, ` bkit [verbose ci]` added in `PUSH_MODE` = LOCAL → Step 3:
-Finish — the row carries the soak attempt (across the feature's debug runs) → Step 3:
-Finish (no commit):
-**Run only if** `PUSH_MODE` = PR — add `bkit [verbose ci]` to the PR title (no-op when present):
+[commit-format] Finish. The fix commit subject is the log's first `DONE` line, with ` bkit [verbose ci]` added in `PUSH_MODE` = LOCAL:
+→ Step 3.
+Finish. The row carries the soak attempt, counted across the feature's debug runs:
+→ Step 3.
+Finish, with no commit:
+**Run only if** `PUSH_MODE` = PR. Add `bkit [verbose ci]` to the PR title (a no-op when it is already there):
 **Skip if** `BRANCH` = `dev` (the Step 11 close pushes). Push:
 Fix commit pushed
 PR title tagged `[verbose ci]`
 Write `debug-summary.md` from this run's status rows:
-Probe live PR state from `{BRANCH}` into any base (`{PR_OPEN}` = 0, `PUSH_MODE` = LOCAL with no probe when `BRANCH` = `dev` **or** `main`):
+**If** `BRANCH` = `dev` **or** `main` → `{PR_OPEN}` = 0, `PUSH_MODE` = LOCAL, with no probe → sub-step 2. **Else** → probe the live PR state from `{BRANCH}` into any base:
 **If** exit 1 → `{PR_OPEN}` = 0, `PUSH_MODE` = LOCAL.
-[mcp-fallback] **If** exit 80 → `list_pull_requests` (head `{BRANCH}`, state open) → found → `{PR_OPEN}` = 1, `PUSH_MODE` = PR with its `number` / `url`; none → `{PR_OPEN}` = 0, `PUSH_MODE` = LOCAL; record via `"{BKIT}" prs transport-row --file="{STATUS}" --kind=fallback --asserted-by=<re-read>`.
-Re-read labels, then record `PUSH_MODE`, strip `[verbose ci]` (with an optional `bkit ` prefix) from the PR title when `{PR_OPEN}` = 1, run the No-leak Assertion, mirror the roadmap row to `dev`, close the run (telemetry, report, artifact links) and commit it; a feature branch releases the lock and pushes with the HEAD-Subject Assertion, on `dev` it pushes its own commits and keeps the lock until sub-step 7 gates its CI run; `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry when `{PR_OPEN}` = 1 (the subject carries ` bkit [auto route]` on `bkit:auto`), else empty; `{PR_OPEN}` = 0 adds ` bkit [verbose ci]`:
+[mcp-fallback] **If** exit 80 → `list_pull_requests` (head `{BRANCH}`, state open):
+**If** it finds a PR → `{PR_OPEN}` = 1 and `PUSH_MODE` = PR, with its `number` / `url`.
+**Else** → `{PR_OPEN}` = 0 and `PUSH_MODE` = LOCAL.
+In both cases, record the fallback via `"{BKIT}" prs transport-row --file="{STATUS}" --kind=fallback --asserted-by=<re-read>`.
+Re-read the labels, then run the close block below. It:
+Records `PUSH_MODE`.
+Strips `[verbose ci]` (with an optional `bkit ` prefix) from the PR title when `{PR_OPEN}` = 1.
+Runs the No-leak Assertion.
+Mirrors the roadmap row to `dev`.
+Closes the run (telemetry, report, artifact links) and commits it.
 [fit `workflow-exit-0` 0.60; keep: routes on exit 10, not exit 0] **If** exit 10 → **Foreign path**.
 **If** `BRANCH` != `dev`:
-[workflow-pushes] **If** `BRANCH` = `dev` → push only the run's own commits; keep the lock:
-**If** exit 0 and `skipped` null → hold `sha` as `{DEV_SHA}` (never the local HEAD); `BRANCH` = `dev` → `{CLOSE_PARENT}` = `{DEV_SHA}`; `DEV_PUSHED` = true.
+**If** `BRANCH` = `dev`:
+[workflow-pushes] Push ONLY the run's own commits, and keep the lock:
+**If** exit 0 **and** `skipped` null → hold `sha` as `{DEV_SHA}` (never the local HEAD); `BRANCH` = `dev` → `{CLOSE_PARENT}` = `{DEV_SHA}`; `DEV_PUSHED` = true.
 **If** exit 8 (push failed or refused), exit 10 (fetch failed), exit 11 (replay conflict, the conflicting paths printed) or exit 20 (the run's record is gone, nothing pushed) → **Failure Path**.
-[name-the-suites-you-ran] **If** `{PR_OPEN}` = 0 → record the close row and audit the landed commit; `{LIVE_SKIPPED}` = `--field="testsLiveSkipped=No live tests ran, runtime-only defects not gated (not declared or opted out)."` when `TEST_SCOPE` lacks `live`, else empty:
+[name-the-suites-you-ran] **If** `{PR_OPEN}` = 0 → record the close row and audit the landed commit. `{LIVE_SKIPPED}` = `--field="testsLiveSkipped=No live tests ran, runtime-only defects not gated (not declared or opted out)."` when `TEST_SCOPE` lacks `live`, else empty:
 Set `TRIGGER_PR`:
 [ci] **If** `BRANCH` = `dev` **or** `main` → push to trigger branch (CI fires) → `TRIGGER_PR` = 0.
 **If** `{PR_OPEN}` = 1 → the close push fires `pull_request` → `TRIGGER_PR` = 0.
 **Else** → `TRIGGER_PR` = 1.
-**If** `TRIGGER_PR` = 1 → create or adopt the PR (body names `docs/plans/{YYYYMM}/{FID}-plan.md` if present); `--existing=reuse` adopts a PR that appeared since sub-step 1:
-**If** exit 80 → `create_pull_request` with the printed `title` / `body` / `base` / `head` → its number as `{PR_NUMBER}`, URL as `{PR_URL}`.
-[code-commits] **If** `TRIGGER_PR` = 1 → commit and push the CI-triggering head; `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry<!-- bkit:tracker true start -->, empty when `ISSUE_ID` is empty<!-- bkit:tracker true end -->:
-**If** exit 81 or 80 → **CI wait turn-loop** → re-run this block with `{CI_REENTRY}`.
-**If** `BRANCH` = `dev` **and** `DEV_PUSHED` = false → release the lock (last block below) only. **If** `BRANCH` = `dev` **and** `DEV_PUSHED` = true → gate the push-event CI run at `{DEV_SHA}`, then release the lock; `{LIVE_SKIPPED}` and `{LABEL_FLAGS}` as above:
-**If** exit 81 or 80 → hold the printed `head` as `{DEV_SHA}` → **CI wait turn-loop**, polling `runs wait --head="{DEV_SHA}" --branch=dev --once` in place of `--pr` → re-run this block with `{CI_REENTRY}`, `--sha="{DEV_SHA}"` re-held from each printed `head` (after a `repoll` phase too).
+**If** `TRIGGER_PR` = 1 → create or adopt the PR (its body names `docs/plans/{YYYYMM}/{FID}-plan.md` if present). `--existing=reuse` adopts a PR that appeared since sub-step 1:
+**If** exit 80 → `create_pull_request` with the printed `title` / `body` / `base` / `head` → hold its number as `PR_NUMBER` and its URL as `PR_URL`.
+[code-commits] **If** `TRIGGER_PR` = 1 → commit and push the CI-triggering head. `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry<!-- bkit:tracker true start -->, empty when `ISSUE_ID` is empty<!-- bkit:tracker true end -->:
+**Run only if** `{PR_OPEN}` = 1 **or** `TRIGGER_PR` = 1 **or** `BRANCH` = `dev`.
+**If** exit 81 **or** 80 → **CI wait turn-loop** → re-run this block with `{CI_REENTRY}`.
+**If** `BRANCH` = `dev` **and** `DEV_PUSHED` = false → only release the lock (the last block below).
+**If** `BRANCH` = `dev` **and** `DEV_PUSHED` = true → gate the push-event CI run at `{DEV_SHA}`, then release the lock. `{LIVE_SKIPPED}` and `{LABEL_FLAGS}` as above:
+**If** exit 81 **or** 80 → hold the printed `head` as `{DEV_SHA}` → **CI wait turn-loop**, polling `runs wait --head="{DEV_SHA}" --branch=dev --once` in place of `--pr` → re-run this block with `{CI_REENTRY}`, `--sha="{DEV_SHA}"` re-held from each printed `head` (after a `repoll` phase too).
 [fit `workflow-verdict-fail` 0.67; keep: fails on a missing CI run, not on a FAIL verdict] **If** `result` != `found` → **Failure Path**.
 **If** `conclusion` != `success` → **Failure Path** naming the run at `{DEV_SHA}`.
 [fit `workflow-else-failure` 0.67; keep: names what the failure report carries] **Else** → **Failure Path** naming the run (`runUrl`).
@@ -8234,9 +8325,8 @@ Auto-label presence re-read
 No-leak Assertion passed
 Live PR probe ran
 PR created or adopted
-→ hold `strategy` as `{STRATEGY}`.
 Strategy read
-**If** exit 0 and `skipped` = `no-run-commits` → narrate `[bkit-debug] dev push: every run commit is already on origin/dev; nothing pushed, no CI run to gate` → `DEV_PUSHED` = false.
+**If** exit 0 **and** `skipped` = `no-run-commits` → narrate `[bkit-debug] dev push: every run commit is already on origin/dev; nothing pushed, no CI run to gate` → `DEV_PUSHED` = false.
 ```
 
 #### bkit-design
@@ -8788,10 +8878,10 @@ Set `Verdict` from the `Fixable` values you decided, never from the report's `nu
 
 ```text
 **Role:** Senior incident commander writing clear, calm handovers when automation cannot proceed.
-[scope-discipline; fit `mandate` 0.71; keep: forbids fixing; building and installing never arise] **Mandate:** Write handover; do not fix or write code.
+[scope-discipline; fit `mandate` 0.71; keep: forbids fixing; building and installing never arise] **Mandate:** Write the handover. Do not fix anything or write code.
 **Output cap:** Apply max 500 token limit to **Create** prose; sections that list items verbatim are exempt.
-Extract `Rot Signals` from diagnose attempts → aggregate into handover — dedupe slugs, retain all evidence.
-[scope-discipline] Extract `Out-of-Scope Recommendations` from diagnose attempts → aggregate (dedupe paths, retain all rationales).
+Extract `Rot Signals` from the diagnose attempts, and aggregate them into the handover: dedupe the slugs, and keep all the evidence.
+[scope-discipline] Extract `Out-of-Scope Recommendations` from the diagnose attempts, and aggregate them: dedupe the paths, and keep all the rationales.
 ```
 
 #### bkit-debug-failure-diagnose
@@ -8800,17 +8890,43 @@ Extract `Rot Signals` from diagnose attempts → aggregate into handover — ded
 
 ```text
 **Role:** Senior debug engineer specialising in CI / runtime failure root-cause analysis.
-`STANDARD` → Targeted diagnosis.
-Read scar-tissue: search reverted commits with candidate files. **If** matches capture what was tried and why reverted → add to `Prior Knowledge`.
-[command-output; empty-is-inconclusive; existing-evidence-first] Investigate inputs: CI logs, diff vs last-passing CI, local / E2E test results, runtime logs, related issues. **If** live tests failed on functional assertion → anchor diagnosis on that real-boundary ground truth; do not theorise past it. **If** live tests could not reach boundaries (auth / credential / connection / missing env) → environment problem, NEVER features broken. only re-run narrower filters via Bash if hypothesis needs probing. Absent evidence is not proof; cap confidence on unchecked classes.
-Check dep versions: **If** investigation surfaces version-shaped hypothesis (dep mismatch, recent bump, runtime drift) → the tool's own `{TOOL} --version`, the OS package manager for system tools (e.g. `brew info`, `apt show`), and `pnpm bkit:deps:outdated`.
-[scope-discipline] Rot-signal check: **If** stack trace / root-cause analysis shows any rot pattern on-path (`architecture, hotpath, config, reliability, observability, debt, dead-code, deps, security, tests, docs-drift`) → list applicable slugs under `Rot Signals` with one-line evidence per match. Do not investigate beyond what stack trace / root-cause analysis require.
-[scope-discipline] Scope-split: **If** files named in inputs as work targets → in-scope; add to `Recommended Remediation`. **Else** → out-of-scope, for files only in failure logs / error traces; add to `Out-of-Scope Recommendations` with one-line rationale.
-Anti-recurrence check: **If** any `Recommended Remediation` resembles reverted attempt → pivot or justify retry in `Hypotheses` with new evidence.
-`PASS` = root cause identified, concrete fix, blast radius handled.
-`CONCERNS` = ambiguous root cause but plausible fix, or any rot-signals detected.
-`FAIL` = cannot diagnose, or blast radius shows unhandled break in any affected surface.
-Escalation check: Default `Mode` = `NORMAL`. **If** `Verdict` != `PASS` **and** root cause cannot be localised from evidence (no stack-trace / failing-assertion pinpoint) and only iterative instrument-fix-reverify against real boundary will crack it → set `Mode` = `SOAK` via `Edit`, record one-line reason in `Mode Reasoning`.
+`STANDARD` → run a targeted diagnosis.
+Answer explicitly: does this re-apply a prior commit SHA or debug log?
+**If** yes → state what new evidence makes it work this time.
+Take a different angle, and do not repeat an earlier attempt word for word.
+Read the historical gotchas:
+Search those rows by symptom, error class or workflow step.
+**If** any rows match → add them to `Prior Knowledge`.
+Read the scar tissue: search the reverted commits that touch the candidate files.
+**If** a match shows what was tried and why it was reverted → add it to `Prior Knowledge`.
+[existing-evidence-first] Investigate the inputs: CI logs, the diff against the last passing CI run, local and E2E test results, runtime logs and related issues.
+**If** live tests failed on a functional assertion → anchor the diagnosis on that real-boundary ground truth, and do not theorise past it.
+**If** live tests could not reach their boundaries (auth, credential, connection, missing env) → treat it as an environment problem, never as broken features.
+[command-output] Re-run narrower filters via Bash only when a hypothesis needs probing.
+[empty-is-inconclusive] Absent evidence is not proof. Cap your confidence on the classes you did not check.
+Check dependency versions: **If** the investigation surfaces a version-shaped hypothesis (dep mismatch, recent bump, runtime drift) → check the tool's own `{TOOL} --version`, the OS package manager for system tools (e.g. `brew info`, `apt show`), and `pnpm bkit:deps:outdated`.
+External signal:
+**If** neither is reachable → `Prior Knowledge` is not checked, so never write `None` there.
+Record every hypothesis in **Create**, dismissed ones included:
+**If** `Result` is unknown when you append → write `PENDING`, and set it later via `Edit`.
+Rot-signal check:
+**If** the stack trace or root-cause analysis shows any rot pattern on the path (`architecture, hotpath, config, reliability, observability, debt, dead-code, deps, security, tests, docs-drift`) → list the applicable slugs under `Rot Signals`, with one line of evidence per match.
+[scope-discipline] Do not investigate beyond what the stack trace or root-cause analysis requires.
+Scope-split:
+**If** the inputs name a file as a work target → it is in scope, so add it to `Recommended Remediation`.
+[scope-discipline] **Else** → it is out of scope, for a file that appears only in failure logs or error traces, so add it to `Out-of-Scope Recommendations` with a one-line rationale.
+Anti-recurrence check: **If** any `Recommended Remediation` resembles a reverted attempt → pivot, or justify the retry in `Hypotheses` with new evidence.
+Blast-radius check:
+**If** the effects of `Recommended Remediation` reach beyond the modified files (loaders, schemas, public contracts, shared utilities, config globals, middleware, routing — anything other code depends on):
+Enumerate the affected surfaces under `Blast Radius`.
+Verify that each one is compatible, and never skip one silently.
+`PASS` = the root cause is identified, the fix is concrete, and the blast radius is handled.
+`CONCERNS` = the root cause is ambiguous but the fix is plausible, **or** any rot signals are detected.
+`FAIL` = you cannot diagnose, **or** the blast radius shows an unhandled break in any affected surface.
+Escalation check: `Mode` defaults to `NORMAL`.
+**If** `Verdict` != `PASS` **and** the root cause cannot be localised from the evidence (no stack-trace or failing-assertion pinpoint) **and** only iterative instrument-fix-reverify against the real boundary will crack it:
+Set `Mode` = `SOAK` via `Edit`.
+Record a one-line reason in `Mode Reasoning`.
 ```
 
 #### bkit-debug-failure-remediate
@@ -8819,17 +8935,22 @@ Escalation check: Default `Mode` = `NORMAL`. **If** `Verdict` != `PASS` **and** 
 
 ```text
 **Role:** Senior engineer applying diagnosis fixes exactly as written, no reinterpretation.
-[finish-over-deferrals] **Blockers:** Append `BLOCKED` log line per blocked remediation; no out-of-scope deferral.
-`STANDARD` → Apply diagnosis as written.
-`PIVOT` → Apply alternative-angle diagnosis as written.
-`FINAL` → Apply re-diagnosed fix as written.
-[scope-discipline] Implement in `priority` order — apply remediation steps per diagnosis (edit / create source); no reinterpretation — apply as written (diagnosis encodes strategy framing); implement missing tests if suggested → append log → proceed.
-[destructive-git-prohibited] **If** merge conflicts → resolve per type, then `git add <conflicted> && git rebase --continue`:
-Dependency lockfile → take the rebase target's copy, regenerate from the manifest with the repo's package manager.
+[finish-over-deferrals] **Blockers:** Append one `BLOCKED` log line per blocked remediation. NEVER defer a blocked remediation as out of scope.
+`STANDARD` → apply the diagnosis as written.
+`PIVOT` → apply the alternative-angle diagnosis as written.
+`FINAL` → apply the re-diagnosed fix as written.
+Implement the remediations in `priority` order. For each remediation:
+Apply the remediation steps from the diagnosis by editing or creating source.
+[scope-discipline] Apply them as written, without reinterpreting them, because the diagnosis already encodes the strategy's framing.
+Implement any missing tests that the diagnosis suggests.
+Append the log line, then take the next remediation.
+[destructive-git-prohibited] **If** there are merge conflicts → resolve each one by its type, then run `git add <conflicted> && git rebase --continue`:
+Dependency lockfile → take the rebase target's copy, and regenerate it from the manifest with the repo's package manager.
 Task-runner / build config → merge both sides' task definitions.
-Ordered database migrations → resequence so each new file sorts after every migration already applied upstream.
-**If** any failures → document errors in output, set `Verdict` = `FAIL`.
-`PASS` = every remediation step has `DONE` across logs and all local tests pass.
+Ordered database migrations → resequence them so each new file sorts after every migration already applied upstream.
+**If** any declared live tests were failing → the remediation is done only when those same live tests pass.
+**If** there are any failures → document the errors in the output, and set `Verdict` = `FAIL`.
+`PASS` = every remediation step has a `DONE` line across the logs, and all local tests pass.
 ```
 
 #### bkit-debug-failure-reproduce
@@ -8838,15 +8959,23 @@ Ordered database migrations → resequence so each new file sorts after every mi
 
 ```text
 **Role:** Senior QE engineer turning bug reports into failing tests that reproduce them, before any fix.
-Pick the lowest tier reaching the reported behaviours (unit before integration before e2e). Co-locate with tests covering the affected areas; match their imports, helpers, naming.
-Write tests named for the reported behaviours, built from the reported steps, affected areas and `context-*` evidence, asserting the reported expected outcomes; never assert the broken behaviours. **If** `Mode` in input Context = `SOAK` → tests repeat the reported scenarios (loop, concurrency, timing) until they fail reliably, within the suite's normal time budget.
-[local-tests-first] Run only those tests via Bash (repo's test runner, file / name filter) → append `DONE — run {N}: {command} — {outcome}` at EOF via Bash `echo {log entry} >> {output}`.
-[reproduce-first] **If** they fail on the reported symptoms → reproduced. **If** any fails for another reason (missing fixture, typo, wrong import, unreachable boundary) → fix the tests only, re-run; max 3 rewrites. **If** they pass → next most likely path from report and evidence; max 3 paths.
-**If** not reproduced → delete test files created, revert test edits → append `BLOCKED — {paths tried} — {why each missed}`.
-Update **Create** — set header and body via `Edit`; mapping:
-`PASS` = `Reproduced: YES`; tests fail on the reported symptoms; other tests unaffected.
-`CONCERNS` = `Reproduced: YES`; partial (part of the report only, or intermittent tests failing in some runs only).
-`FAIL` = `Reproduced: NO`; test changes removed.
+Choose where the tests go:
+Pick the lowest tier that reaches the reported behaviours: unit before integration before e2e.
+Co-locate them with the tests that cover the affected areas, and match those tests' imports, helpers and naming.
+Write one test per reported behaviour, named for it and built from the reported steps, the affected areas and the `context-*` evidence. Assert the outcome the report expects, not the broken behaviour it describes.
+**If** `Mode` in the input Context = `SOAK` → make the tests repeat the reported scenarios (loop, concurrency, timing) until they fail reliably, within the suite's normal time budget.
+[local-tests-first] Run only those tests via Bash, with the repo's test runner and a file or name filter. Then append `DONE — run {N}: {command} — {outcome}` at EOF with Bash `echo {log entry} >> {output}`.
+Check the result:
+[reproduce-first] **If** they fail on the reported symptoms → the bug is reproduced.
+**If** any test fails for another reason (missing fixture, typo, wrong import, unreachable boundary) → fix only the tests, and run them again. Allow at most 3 rewrites.
+**If** they pass → try the next most likely path from the report and the evidence. Allow at most 3 paths.
+**If** the bug is not reproduced:
+Delete the test files you created, and revert your test edits.
+Append `BLOCKED — {paths tried} — {why each missed}`.
+Set the header and body of **Create** with `Edit`, using this mapping:
+`PASS` = `Reproduced: YES`, the tests fail on the reported symptoms, and other tests are unaffected.
+`CONCERNS` = `Reproduced: YES`, but only partly: the tests cover only part of the report, or they are intermittent and fail in some runs only.
+`FAIL` = `Reproduced: NO`, and the test changes are removed.
 ```
 
 #### bkit-debug-failure-soak
@@ -8855,15 +8984,24 @@ Update **Create** — set header and body via `Edit`; mapping:
 
 ```text
 **Role:** Senior debug engineer soaking unknown-cause runtime failures — one accumulating-context instrument-and-fix step per iteration.
-**Accumulating context:** Read prior soak logs (`debug-failure-soak-*-log.md`) first; apply ONLY the `SINGLE` next step.
-[honest-reporting; fix-code-not-gates; debug-on-demand] **Refuse to theorise:** Anchor on latest run output and own `[DEBUG-OBSERVE]` evidence; run real boundary, NEVER mock. Do not declare a fix the evidence does not support.
-**One step:** Per pass, either instrument or fix — NEVER both, NEVER broad-both.
-[dead-code] **No-leak:** `[DEBUG-OBSERVE]` logging is scaffolding, NEVER shipped; all `[DEBUG-OBSERVE]` lines stripped before final return.
-Initialise **Create** output stub: `Verdict: PENDING` header and H1 and empty log body.
-Decide single next step from accumulated context: **If** cause unknown → instrument suspected surface (add `[DEBUG-OBSERVE]` logging; no behaviour change). **Else** → apply smallest remediation evidence implies (edit / create source) → strip all `[DEBUG-OBSERVE]` logging from all prior iterations.
-[honest-reporting] Verify `git grep -F '[DEBUG-OBSERVE]'` over source returns nothing. **If** this iteration applied a fix → run `pnpm bkit:gate:static-unit`; record pass / fail in the log entry.
-`PASS` = concrete fix evidence supports applied and all local tests pass.
-`CONCERNS` = instrumentation or partial step applied; more iteration needed.
+**Accumulating context:** Read the prior soak logs (`debug-failure-soak-*-log.md`) first. Apply only the `SINGLE` next step.
+[honest-reporting; fix-code-not-gates; debug-on-demand] **Refuse to theorise:** Anchor on the latest run output and your own `[DEBUG-OBSERVE]` evidence. Run against the real boundary, and do not mock it. Do not declare a fix the evidence does not support.
+**One step:** In each pass, either instrument or fix. Do not do both, and do not take one broad step that does both.
+[dead-code] **No-leak:** `[DEBUG-OBSERVE]` logging is scaffolding and is NEVER shipped. Strip every `[DEBUG-OBSERVE]` line before the final return.
+Decide the single next step from the accumulated context:
+**If** the cause is unknown → instrument the suspected surface: add `[DEBUG-OBSERVE]` logging, with no behaviour change.
+**Else**:
+Apply the smallest remediation the evidence implies, by editing or creating source.
+Then strip all `[DEBUG-OBSERVE]` logging left by every prior iteration.
+External signal:
+Run web searches only after an instrument-and-observe pass, never before.
+[honest-reporting] Verify that `git grep -F '[DEBUG-OBSERVE]'` over the source returns nothing.
+**If** this iteration applied a fix → run `pnpm bkit:gate:static-unit`, and record pass or fail in the log entry.
+Log the step: append the entry at EOF with Bash `echo {log entry} >> {output}`.
+On success → `DONE — {instrument|fix}: {what} — {evidence / expected effect}`.
+When stuck → `BLOCKED — {what} — {reason}`.
+`PASS` = a fix that concrete evidence supports is applied, and all local tests pass.
+`CONCERNS` = instrumentation or a partial step is applied, and more iteration is needed.
 ```
 
 #### bkit-design-brainstorm-ideate-1

@@ -17,7 +17,7 @@ description: "Build Feature — Autonomous implementation"
 - **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does not mean silent.
 - **Failures:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
 - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, etc non-empty if required before making tool calls (`{ISSUE_ID}` may be empty). **Else** → **Failure Path**.
-- **Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is `key: value` lines, nested keys indented under their parent (`a.b` = `b` under `a:`), lists of rows as tables: hold named keys as `{VAR}`, a `"quoted"` value without its quotes. Exit non-zero with no `Route:` for it → **Failure Path**; exit 80 → mapped MCP tool (**gh MCP fallback**); exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
+- **Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is `key: value` lines, nested keys indented under their parent (`a.b` = `b` under `a:`), lists of rows as tables: hold named keys under bare `UPPER_SNAKE` names, a `"quoted"` value without its quotes, and write a held name as `{VAR}` where it goes into a command or a `Context:` / `Read:` / `Create:` line. Exit non-zero with no `Route:` for it → **Failure Path**; exit 80 → mapped MCP tool (**gh MCP fallback**); exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
 - **Timeouts:** **If** workflow or subagent run > 3600 seconds → **Failure Path**.
 - **CI wait turn-loop:** **If** a `bkit runs dispatch` block exits 81 (runtime cannot wait) or 80 (`gh` unavailable) → resolve the poll in the agent turn loop: each orchestrator turn run once `bkit runs wait --pr={PR_NUMBER} --once` (on exit 80 read the PR's checks via `pull_request_read` instead) — check present → `found`; 6th unresolved turn → `none`, or `err` when every turn errored; **Else** → end turn and repeat. Re-run the block with `{CI_REENTRY}` = `--poll-result=<found|none|err> --attempts=<total>`, plus `--all-errored` when every turn errored and `--retriggered` when the printed `phase` = repoll. `{CI_REENTRY}` is empty on a block's first run.
 
@@ -212,7 +212,7 @@ description: "Build Feature — Autonomous implementation"
    "{BKIT}" workflows handover --post --workflow=build --fid={FID} --month={YYYYMM} --push --worktree="{WORKTREE_PATH}"
    ```
    Route as **Failure Path** step 5 does, but go on to step 9 where it goes to its step 6.
-9. Release the lock; never `workflows fail`:
+9. Release the lock. NEVER run `workflows fail`:
    ```bash
    "{BKIT}" locks release --kind=workflow --workflow=build --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} >/dev/null || exit 1
    ```
@@ -774,7 +774,8 @@ This step runs once, after the last group. Challenge fix groups pass through it 
    ```bash
    "{BKIT}" tests run --gate=bkit:gate:static-unit-integration --gate=bkit:gate:static-unit --log="{OUTBOX}/run-tests-{TEST_ATTEMPT}.log" --artifact="docs/plans/{YYYYMM}/logs/{FID}/run-tests-{TEST_ATTEMPT}.md" --fid={FID} --step=build-run-tests --attempt={TEST_ATTEMPT}
    ```
-   Decide — hold `scope` as `TEST_SCOPE`, `failures` as `TEST_FAILURES`:
+   Hold `scope` as `TEST_SCOPE` and `failures` as `TEST_FAILURES`.
+   Decide `TEST_VERDICT`:
    - **If** exit 0 → `TEST_VERDICT` = PASS.
    - **If** exit 1 → `TEST_VERDICT` = FAIL.
    - **Else** → **Failure Path**.

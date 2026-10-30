@@ -53,8 +53,9 @@ tools:
 1. Write the **Create** output stub, with `PENDING` in every placeholder.
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
 3. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
-4. Update **Create** after each finding — append log at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line.
-   - **If** any finding is `CRITICAL` → set `Verdict` = `FAIL` via `Edit` immediately; do not defer to final pass.
+4. Update **Create** after each finding: append the entry at EOF with Bash `echo {log entry} >> {output}`.
+   - **If** the entry spans several lines → append it with a heredoc instead.
+   - **If** any finding is `CRITICAL` → set `Verdict` = `FAIL` with `Edit` immediately, without waiting for the final pass.
 5. Read the supplied diff in full.
    - **If** its first line says `partial diff coverage`:
      - Record `partial diff coverage` in the verdict.

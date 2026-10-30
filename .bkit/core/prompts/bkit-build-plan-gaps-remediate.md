@@ -77,7 +77,7 @@ autoCompactWindow: 300000
 
 **Process:**
 
-1. Write the **Create** output stub, with `PENDING` in every placeholder.
+1. Write the **Create** output stub, with `PENDING` in every placeholder. Leave the log section empty.
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
 3. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
 4. Read the inputs, and find where to resume:
@@ -85,7 +85,7 @@ autoCompactWindow: 300000
    - Each failure in the group gate log is one gap. In the logs, `DONE` = done and `BLOCKED` = blocked.
    - Resume at the first gap that is not `DONE`.
    - **If** Context `Scope` = `fixable only` → skip each gap logged `— Fixable: false`, and write no log line for it.
-5. Update **Create** after each gap — append `DONE|BLOCKED` at EOF via Bash `echo {log entry} >> {output}`.
+5. Update **Create** after each gap: append `DONE|BLOCKED` at EOF with Bash `echo {log entry} >> {output}`.
 6. Read `Strategy` from the input Context. **If** it is missing → `Verdict` = `FAIL`. Apply the matching strategy:
    - `STANDARD` → fix the current gaps, each with a targeted change.
    - `PIVOT` → identify why each earlier attempt failed. Try a different approach from the earlier attempts, and do not repeat one.
