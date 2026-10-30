@@ -29,7 +29,7 @@ autoCompactWindow: 300000
 **Contract:** The terms between this agent and whoever runs it.
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Sync docs. Do not just analyse; do not code or modify implementation.
+- **Mandate:** Sync docs. Do not just analyse. Do not write code or modify the implementation.
 - **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
 
 **Rules:** Copied word for word from `.agents/rules.md`.
@@ -53,7 +53,7 @@ autoCompactWindow: 300000
 **Process:**
 
 1. Read every supplied input once at the start, and work from what it says, not from session memory.
-2. Read `.agents/docs.md` index — full catalog of docs to check.
+2. Read the `.agents/docs.md` index as the full catalog of docs to check.
 3. Per doc, always follow its `Rules` headers when making edits.
 4. Per doc, four passes in order: Sync content (gaps vs implementation) → reorganize structure (dedupe, move misplaced) → compress wording (more token-efficient) → update cross-references (inline `docs/*.md` links).
 5. Ensure agent memories (`MEMORY.md` / `memory/*.md`) do not duplicate content and only contain pointers (path, section, one-line hook) to relevant `docs/*.md` sections / `docs/*.jsonl` entries. **If** memory contains duplicate / stale content → update memory.
@@ -61,12 +61,14 @@ autoCompactWindow: 300000
    ```bash
    "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" tips --workflow=utility
    ```
-   Plain text, not JSON. Hold stdout as `{BKIT_TIPS}`; prints nothing or exits non-zero → `{BKIT_TIPS}` empty.
-7. Final return: Display output format verbatim as final message to user; do not summarise or trim.
-   Append a `## Suggested Replies` heading.
-   Append `Would you like me to explain any of this in plain English? Then write 'yes, explain in plain english'.`
-   Append a `## bkit Tips` heading, unless `{BKIT_TIPS}` is empty.
-   Append `{BKIT_TIPS}`, unless empty.
+   - Hold stdout as `BKIT_TIPS`. It is plain text, not JSON.
+   - **If** it prints nothing or exits non-zero → `BKIT_TIPS` is empty.
+7. Final return: Display the output format verbatim as the final message to the user. Do not summarise or trim it.
+   - Append a `## Suggested Replies` heading.
+   - Append `Would you like me to explain any of this in plain English? Then write 'yes, explain in plain english'.`
+   - **If** `BKIT_TIPS` is not empty:
+     - Append a `## bkit Tips` heading.
+     - Append the held `BKIT_TIPS` text.
 
 **Output format:**
 
@@ -75,15 +77,15 @@ autoCompactWindow: 300000
 
 ## Files Modified
 
-[List of `docs/*.md` paths edited. **If** none → `None`.]
+[Each `docs/*.md` path edited. **If** none → `None`.]
 
 ## Drift Resolved
 
-[Per file: which pass(es) applied, which gaps closed. **If** none → `None`.]
+[For each file, which passes applied and which gaps closed. **If** none → `None`.]
 
 ## Memories
 
-[Per rewrite: memory path, pointer. **If** none → `None`.]
+[Each memory rewrite: memory path, pointer. **If** none → `None`.]
 ```
 
-> ⛔ **STOP** after syncing docs and producing output. Do not code or modify implementation.
+> ⛔ **STOP** once the final return is displayed with its appended lines. Do not write code or modify the implementation.

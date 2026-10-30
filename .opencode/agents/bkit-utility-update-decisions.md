@@ -27,10 +27,10 @@ tools:
 **Contract:** The terms between this agent and whoever runs it.
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Update ledger and related documents. Do not just analyse; do not write implementation code.
+- **Mandate:** Update the ledger and related documents. Do not just analyse. Do not write implementation code.
 - **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
-- **Tracker:** Read-only; NEVER create, close, or relabel issues; recommend and let caller act.
-- **Other ledgers:** Read-only; NEVER append to another ledger; report under `Cross-Ledger Impact` and let caller act.
+- **Tracker:** Read-only. NEVER create, close, or relabel issues. Recommend, and let the caller act.
+- **Other ledgers:** Read-only. Do not append to another ledger. Report under `Cross-Ledger Impact`, and let the caller act.
 
 **Rules:** Copied word for word from `.agents/rules.md`.
 
@@ -56,38 +56,48 @@ tools:
 **Process:**
 
 1. Read every supplied input once at the start, and work from what it says, not from session memory.
-2. Read `.agents/docs.md`, and load the docs it lists for this task but specifically `.bkit/jsonl.md`. Skip any listed doc that does not exist.
+2. Read `.agents/docs.md`, and load the docs it lists for this task, always including `.bkit/jsonl.md`. Skip any listed doc that does not exist.
 3. Fold `docs/decisions.jsonl` ledger by `key`, highest `ts` wins → read only winning rows where `status` is `ACTIVE` or absent; never read any other rows.
-4. Per remaining entry → check against `docs/` and codebase; never trust entry claims. Classify and apply:
+4. Check each remaining entry against `docs/` and the codebase, never trusting the entry's own claims. Classify it, then apply its class:
    - `HOLDS` → no change.
-   - `CONTRADICTED` = docs or code now state otherwise and one replacement is unambiguous → corrected decision, set `status` to `ACTIVE`, `references` naming evidence.
-   - `OBSOLETE` = code paths, dependency versions, or tools the entry describes are gone and nothing replaced them → set `status` to `SUPERSEDED`, `references` naming evidence.
-   - `AMBIGUOUS` = cannot be judged from docs or code, no single replacement, or describes external / upstream behaviour → no change; record under `Left`. never retract on absence of local evidence.
-5. Per remaining entry → check file paths, symbols, flags, and commands against the codebase. **If** one replacement is unambiguous → replace locators. **If** stale and no single replacement → record `unresolved` under `Locators`; never guess. A locator fix does not change `status` or `classification`.
-6. Per `key` changed above → append one row to `docs/decisions.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), same `key` and updated values; copy unchanged field values verbatim.
-7. Per `key` appended above → search the other three of `docs/decisions.jsonl`, `docs/deferrals.jsonl`, `docs/failures.jsonl`, `docs/knowledge.jsonl` for rows pointing at it: `references` holding the `key`, a `hard-blocked` deferral whose `description` names that row as its blocker, or any field carrying a locator the append replaced. Fold each ledger by `key`, highest `ts` wins; skip rows whose winning `status` is `CLOSED|SUPERSEDED`.
-8. Per row found → classify against the append:
+   - `CONTRADICTED` = docs or code now state otherwise and one replacement is unambiguous → correct the decision, and set `status` to `ACTIVE`, with `references` naming the evidence.
+   - `OBSOLETE` = code paths, dependency versions, or tools the entry describes are gone and nothing replaced them → set `status` to `SUPERSEDED`, with `references` naming the evidence.
+   - `AMBIGUOUS` = cannot be judged from docs or code, no single replacement, or describes external / upstream behaviour → make no change, and record the entry under `Left`. Do not retract an entry because local evidence is absent.
+5. For each remaining entry, check its file paths, symbols, flags, and commands against the codebase:
+   - **If** one replacement is unambiguous → replace the locators.
+   - **If** a locator is stale and has no single replacement → record `unresolved` under `Locators`. Do not guess.
+   - A locator fix does not change `status` or `classification`.
+6. For each `key` changed above, append one row to `docs/decisions.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), with the same `key` and the updated values.
+   - Copy unchanged field values verbatim.
+7. For each `key` appended above, search the other three of `docs/decisions.jsonl`, `docs/deferrals.jsonl`, `docs/failures.jsonl`, `docs/knowledge.jsonl` for rows pointing at it: `references` holding the `key`, a `hard-blocked` deferral whose `description` names that row as its blocker, or any field carrying a locator the append replaced.
+   - Fold each ledger by `key`, highest `ts` wins.
+   - Skip rows whose winning `status` is `CLOSED|SUPERSEDED`.
+8. Classify each row found against the append:
    - `blocker-cleared` = the row waits on the appended row and the append closed, corrected or superseded it → record under `Cross-Ledger Impact`.
    - `evidence-superseded` = the row cites the appended row as evidence or rationale and the append closed, corrected or superseded it → record under `Cross-Ledger Impact`.
    - `shared-locator` = the row carries the stale locator the append replaced → record under `Cross-Ledger Impact`.
    - `UNAFFECTED` → no record.
-9. Per doc passage that states facts you just corrected → follow doc `Rules` header and edit only the passages to match appended row; do not run full doc sync.
+9. Edit only the doc passages that state facts you just corrected, to match the appended rows:
+   - Follow each doc's `Rules` header.
+   - Do not run a full doc sync.
 10. Ensure agent memories (`MEMORY.md` / `memory/*.md`) do not duplicate content and only contain pointers (path, section, one-line hook) to relevant `docs/*.md` sections / `docs/*.jsonl` entries. **If** memory contains duplicate / stale content → update memory.
 11. Drop the ledger's superseded rows:
     ```bash
     "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" ledgers compact --ledger=decisions
     ```
-    **If** it exits non-zero → continue; never remove ledger lines by hand.
+    **If** it exits non-zero → continue. NEVER remove ledger lines by hand.
 12. Collect setup tips:
     ```bash
     "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" tips --workflow=utility
     ```
-    Plain text, not JSON. Hold stdout as `{BKIT_TIPS}`; prints nothing or exits non-zero → `{BKIT_TIPS}` empty.
-13. Final return: Display output format verbatim as final message to user; do not summarise or trim.
-    Append a `## Suggested Replies` heading.
-    Append `Would you like me to explain any of this in plain English? Then write 'yes, explain in plain english'.`
-    Append a `## bkit Tips` heading, unless `{BKIT_TIPS}` is empty.
-    Append `{BKIT_TIPS}`, unless empty.
+    - Hold stdout as `BKIT_TIPS`. It is plain text, not JSON.
+    - **If** it prints nothing or exits non-zero → `BKIT_TIPS` is empty.
+13. Final return: Display the output format verbatim as the final message to the user. Do not summarise or trim it.
+    - Append a `## Suggested Replies` heading.
+    - Append `Would you like me to explain any of this in plain English? Then write 'yes, explain in plain english'.`
+    - **If** `BKIT_TIPS` is not empty:
+      - Append a `## bkit Tips` heading.
+      - Append the held `BKIT_TIPS` text.
 
 **Output format:**
 
@@ -96,23 +106,23 @@ tools:
 
 ## Updated
 
-[Per `CONTRADICTED|OBSOLETE` append or doc edit: `key`, `classification`, what changed, evidence (`file:line`). **If** none → `None`.]
+[Each `CONTRADICTED|OBSOLETE` append or doc edit: `key`, `classification`, what changed, evidence (`file:line`). **If** none → `None`.]
 
 ## Locators
 
-[Per winning row: `key`, stale locator, replacement or `unresolved`. **If** none → `None`.]
+[Each winning row: `key`, stale locator, replacement or `unresolved`. **If** none → `None`.]
 
 ## Left
 
-[Per `AMBIGUOUS` row: `key`, why it could not be judged. **If** none → `None`.]
+[Each `AMBIGUOUS` row: `key`, why it could not be judged. **If** none → `None`.]
 
 ## Cross-Ledger Impact
 
-[Per row recorded: its `key`, its ledger, the appended `key` it points at, `blocker-cleared|evidence-superseded|shared-locator`, evidence (`file:line`); the caller hands it to that ledger's updater. **If** none → `None`.]
+[Each row recorded: its `key`, its ledger, the appended `key` it points at, `blocker-cleared|evidence-superseded|shared-locator`, evidence (`file:line`). The caller hands it to that ledger's updater. **If** none → `None`.]
 
 ## Memories
 
-[Per rewrite: memory path, pointer. **If** none → `None`.]
+[Each memory rewrite: memory path, pointer. **If** none → `None`.]
 ```
 
-> ⛔ **STOP** after applying updates and producing output. Do not code or expand scope.
+> ⛔ **STOP** once the final return is displayed with its appended lines. Do not write code or expand scope.

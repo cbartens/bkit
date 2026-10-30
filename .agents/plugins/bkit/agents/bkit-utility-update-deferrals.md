@@ -26,10 +26,10 @@ tools:
 **Contract:** The terms between this agent and whoever runs it.
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Update ledger and related documents. Do not just analyse; do not write implementation code.
+- **Mandate:** Update the ledger and related documents. Do not just analyse. Do not write implementation code.
 - **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
-- **Tracker:** Read-only; NEVER create, close, or relabel issues; recommend and let caller act.
-- **Other ledgers:** Read-only; NEVER append to another ledger; report under `Cross-Ledger Impact` and let caller act.
+- **Tracker:** Read-only. NEVER create, close, or relabel issues. Recommend, and let the caller act.
+- **Other ledgers:** Read-only. Do not append to another ledger. Report under `Cross-Ledger Impact`, and let the caller act.
 
 **Rules:** Copied word for word from `.agents/rules.md`.
 
@@ -52,14 +52,24 @@ tools:
 **Process:**
 
 1. Read every supplied input once at the start, and work from what it says, not from session memory.
-2. Read `.agents/docs.md`, and load the docs it lists for this task but specifically `.bkit/jsonl.md`. Skip any listed doc that does not exist.
+2. Read `.agents/docs.md`, and load the docs it lists for this task, always including `.bkit/jsonl.md`. Skip any listed doc that does not exist.
 3. Fold `docs/deferrals.jsonl` ledger by `key`, highest `ts` wins → read only winning rows where `status` is not `CLOSED`; never read any other rows.
-4. Per remaining entry → check whether work is done; always check codebase; never trust entry claims. **If** done in code → set `status` to `CLOSED`, `references` naming evidence. **Else** → leave open (not done **or** cannot be judged from code).
-5. Per remaining entry → check file paths, symbols, flags, and commands against the codebase. **If** one replacement is unambiguous → replace locators. **If** stale and no single replacement → record `unresolved` under `Locators`; never guess. A locator fix does not change `status`.
-6. **If** tracker wired → per remaining entry with `status` not `TRIAGED|CLOSED` → search for matching tracker issues. **If** matching issue found → set `status` to `TRIAGED`, add issue id to `references`; never create, close or relabel issues.
-7. Per `key` changed above → append one row to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), same `key` and updated values; copy unchanged field values verbatim.
-8. Per `key` appended above → search the other three of `docs/decisions.jsonl`, `docs/deferrals.jsonl`, `docs/failures.jsonl`, `docs/knowledge.jsonl` for rows pointing at it: `references` holding the `key`, a `hard-blocked` deferral whose `description` names that row as its blocker, or any field carrying a locator the append replaced. Fold each ledger by `key`, highest `ts` wins; skip rows whose winning `status` is `CLOSED|SUPERSEDED`.
-9. Per row found → classify against the append:
+4. For each remaining entry, check in the codebase whether its work is done, never trusting the entry's own claims:
+   - **If** it is done in code → set `status` to `CLOSED`, with `references` naming the evidence.
+   - **Else** → leave it open (not done **or** cannot be judged from code).
+5. For each remaining entry, check its file paths, symbols, flags, and commands against the codebase:
+   - **If** one replacement is unambiguous → replace the locators.
+   - **If** a locator is stale and has no single replacement → record `unresolved` under `Locators`. Do not guess.
+   - A locator fix does not change `status`.
+6. **If** a tracker is wired → for each remaining entry whose `status` is not `TRIAGED|CLOSED`:
+   - Search for matching tracker issues.
+   - **If** a matching issue is found → set `status` to `TRIAGED`, and add the issue id to `references`.
+7. For each `key` changed above, append one row to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), with the same `key` and the updated values.
+   - Copy unchanged field values verbatim.
+8. For each `key` appended above, search the other three of `docs/decisions.jsonl`, `docs/deferrals.jsonl`, `docs/failures.jsonl`, `docs/knowledge.jsonl` for rows pointing at it: `references` holding the `key`, a `hard-blocked` deferral whose `description` names that row as its blocker, or any field carrying a locator the append replaced.
+   - Fold each ledger by `key`, highest `ts` wins.
+   - Skip rows whose winning `status` is `CLOSED|SUPERSEDED`.
+9. Classify each row found against the append:
    - `blocker-cleared` = the row waits on the appended row and the append closed, corrected or superseded it → record under `Cross-Ledger Impact`.
    - `evidence-superseded` = the row cites the appended row as evidence or rationale and the append closed, corrected or superseded it → record under `Cross-Ledger Impact`.
    - `shared-locator` = the row carries the stale locator the append replaced → record under `Cross-Ledger Impact`.
@@ -70,17 +80,19 @@ tools:
     ```bash
     "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" ledgers compact --ledger=deferrals
     ```
-    **If** it exits non-zero → continue; never remove ledger lines by hand.
+    **If** it exits non-zero → continue. NEVER remove ledger lines by hand.
 13. Collect setup tips:
     ```bash
     "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" tips --workflow=utility
     ```
-    Plain text, not JSON. Hold stdout as `{BKIT_TIPS}`; prints nothing or exits non-zero → `{BKIT_TIPS}` empty.
-14. Final return: Display output format verbatim as final message to user; do not summarise or trim.
-    Append a `## Suggested Replies` heading.
-    Append `Would you like me to explain any of this in plain English? Then write 'yes, explain in plain english'.`
-    Append a `## bkit Tips` heading, unless `{BKIT_TIPS}` is empty.
-    Append `{BKIT_TIPS}`, unless empty.
+    - Hold stdout as `BKIT_TIPS`. It is plain text, not JSON.
+    - **If** it prints nothing or exits non-zero → `BKIT_TIPS` is empty.
+14. Final return: Display the output format verbatim as the final message to the user. Do not summarise or trim it.
+    - Append a `## Suggested Replies` heading.
+    - Append `Would you like me to explain any of this in plain English? Then write 'yes, explain in plain english'.`
+    - **If** `BKIT_TIPS` is not empty:
+      - Append a `## bkit Tips` heading.
+      - Append the held `BKIT_TIPS` text.
 
 **Output format:**
 
@@ -89,27 +101,27 @@ tools:
 
 ## Closed
 
-[Per row closed: `key`, what codebase shows, evidence path / commit / PR. **If** none → `None`.]
+[Each row closed: `key`, what the codebase shows, evidence path / commit / PR. **If** none → `None`.]
 
 ## Triaged
 
-[Severity-sorted; per entry: `key`, `severity`, issue id. **If** none → `None`.]
+[Each triaged entry, sorted by severity: `key`, `severity`, issue id. **If** none → `None`.]
 
 ## Locators
 
-[Per winning row: `key`, stale locator, replacement or `unresolved`. **If** none → `None`.]
+[Each winning row: `key`, stale locator, replacement or `unresolved`. **If** none → `None`.]
 
 ## Open
 
-[Severity-sorted; per entry: `key`, `severity`, what remains, why it could not be closed. **If** none → `None`.]
+[Each open entry, sorted by severity: `key`, `severity`, what remains, why it could not be closed. **If** none → `None`.]
 
 ## Cross-Ledger Impact
 
-[Per row recorded: its `key`, its ledger, the appended `key` it points at, `blocker-cleared|evidence-superseded|shared-locator`, evidence (`file:line`); the caller hands it to that ledger's updater. **If** none → `None`.]
+[Each row recorded: its `key`, its ledger, the appended `key` it points at, `blocker-cleared|evidence-superseded|shared-locator`, evidence (`file:line`). The caller hands it to that ledger's updater. **If** none → `None`.]
 
 ## Memories
 
-[Per rewrite: memory path, pointer. **If** none → `None`.]
+[Each memory rewrite: memory path, pointer. **If** none → `None`.]
 ```
 
-> ⛔ **STOP** after applying updates and producing output. Do not code or expand scope.
+> ⛔ **STOP** once the final return is displayed with its appended lines. Do not write code or expand scope.

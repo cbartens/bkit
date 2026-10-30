@@ -23,7 +23,7 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
 **Contract:** The terms between this agent and whoever runs it.
 
 - **Friction:** Watch own context and subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → append rows to `.bkit/friction.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom) → continue or escalate; logging does not replace **Failure Path**.
-- **External tools:** `gh` reads the PR and its CI run; **If** `gh` is missing or unauthenticated (exit 80) → **Failure Path**. Tracker reads and writes go through `bkit` verbs; the tracker MCP ONLY when a verb prints `tracker.done` = false or exits 80.
+- **External tools:** `gh` reads the PR and its CI run. **If** `gh` is missing or unauthenticated (exit 80) → **Failure Path**. Tracker reads and writes go through `bkit` verbs. Use the tracker MCP only when a verb prints `tracker.done` = false or exits 80.
 
 
 - **Tracker:** GitHub Issues — `bkit` verbs read and write it; MCP server `github` (`.mcp.json` `mcpServers.github`) ONLY when a verb exits 80 or prints `done` = false. Tools: `mcp__github__issue_read` (method `get` / `get_comments` / `get_labels`), `mcp__github__issue_write` (method `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`. Assert `{ISSUE_ID}` non-empty before tool calls; writes best-effort, NEVER gate; **If** failure → retry once after 5s → continue.
@@ -60,21 +60,24 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
    ```bash
    "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" repo info --allow-detached
    ```
-   → hold `bkit` as `{BKIT}`, `outboxRoot` as `{OUTBOX_ROOT}`.
+   Hold `bkit` as `{BKIT}`, `outboxRoot` as `OUTBOX_ROOT`.
    Hold `trackerTeam` as `TRACKER_TEAM`, `trackerProject` as `TRACKER_PROJECT`, `trackerSite` as `TRACKER_SITE`.
-3. Resolve the phase, its mode, and everything the dispatch needs — `BRIEF` (design / plan / build): `ARG` is the issue; `CI` (ship / debug, numeric `ARG`): the open PR, the CI run at its head, and `FID` / `ISSUE_ID` from the PR-body `<!-- bkit:` marker, else the `feat/{FID}` branch; `CI_DEV` (ship / debug, slug `ARG`): `ARG` is the `FID`, checked against the slug allowlist before any path uses it, on `dev` at `origin/dev`:
+3. Resolve the phase, its mode, and everything the dispatch needs:
+   - `BRIEF` (design / plan / build): `ARG` is the issue.
+   - `CI` (ship / debug, numeric `ARG`): the open PR, the CI run at its head, and `FID` / `ISSUE_ID` from the PR-body `<!-- bkit:` marker, else from the `feat/{FID}` branch.
+   - `CI_DEV` (ship / debug, slug `ARG`): `ARG` is the `FID`, checked against the slug allowlist before any path uses it, on `dev` at `origin/dev`.
    ```bash
    "{BKIT}" runs context --phase="{PHASE}" --arg="{ARG}"
    ```
-   → hold `phase` as `{PHASE}`, `mode` as `{MODE}`, `ownerRepo` as `{OWNER_REPO}`, `owner` as `{OWNER}`, `repo` as `{REPO}`, `issueId` as `{ISSUE_ID}`, `fid` as `{FID}`, `prNumber` as `{PR_NUMBER}`, `branch` as `{BRANCH}`, `headSha` as `{HEAD_SHA}`, `prUrl` as `{PR_URL}`, `runId` as `{RUN_ID}`, `ref` as `{REF}` (`null` → empty).
-4. Comment — `MODE` = BRIEF drops `--tree`, `--pr-number`, `--pr-url`, `--run-id`; `MODE` = CI_DEV drops `--pr-number`, `--pr-url`, `--run-id`:
+   Hold `phase` as `PHASE`, `mode` as `MODE`, `ownerRepo` as `OWNER_REPO`, `owner` as `OWNER`, `repo` as `REPO`, `issueId` as `ISSUE_ID`, `fid` as `{FID}`, `prNumber` as `PR_NUMBER`, `branch` as `BRANCH`, `headSha` as `HEAD_SHA`, `prUrl` as `PR_URL`, `runId` as `{RUN_ID}`, `ref` as `REF` (`null` → empty).
+4. Comment. `MODE` = BRIEF drops `--tree`, `--pr-number`, `--pr-url`, `--run-id`. `MODE` = CI_DEV drops `--pr-number`, `--pr-url`, `--run-id`:
    ```bash
    "{BKIT}" issues comment --post --issue="{ISSUE_ID}" --workflow=auto --workflow-heading --step-number=1 --step-title="Start Workflow" --field=Phase={PHASE} --owner-repo={OWNER_REPO} --tree={BRANCH} --pr-number={PR_NUMBER} --pr-url={PR_URL} --run-id={RUN_ID}
    ```
 
 ### 🔒 Gate 1 — Start Workflow
 
-`{MODE_PLACEHOLDERS}` = `--placeholder=ISSUE_ID={ISSUE_ID}` when the tracker is wired; plus, when `MODE` = CI, `--placeholder=` for each of `PR_NUMBER`, `PR_URL`, `BRANCH`, `HEAD_SHA`, `RUN_ID`, `FID`; when `MODE` = CI_DEV, for each of `FID`, `BRANCH`, `HEAD_SHA`:
+`{MODE_PLACEHOLDERS}` = `--placeholder=ISSUE_ID={ISSUE_ID}` when the tracker is wired. Add `--placeholder=` for each of `PR_NUMBER`, `PR_URL`, `BRANCH`, `HEAD_SHA`, `RUN_ID`, `FID` when `MODE` = CI, and for each of `FID`, `BRANCH`, `HEAD_SHA` when `MODE` = CI_DEV:
 
 ```bash
 "{BKIT}" steps gate --workflow=auto --step=auto-start-workflow --placeholder=PHASE={PHASE} --placeholder=MODE={MODE} --placeholder=OWNER_REPO={OWNER_REPO} --placeholder=OWNER={OWNER} --placeholder=REPO={REPO} {MODE_PLACEHOLDERS}
@@ -91,14 +94,16 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
    ```bash
    "{BKIT}" issues comment --post --issue="{ISSUE_ID}" --step-number=2 --step-title=Dispatch --field=Phase={PHASE}
    ```
-2. `{REF}` is the issue as `runs context` printed it (`#N` on GitHub, the key uppercased on Linear / Jira, empty with no tracker); never pass a bare `{FID}` or bare number — the dispatched workflow's Step 1 stops when no issue reference matches. It never creates an issue.
-3. Invoke matching phase skill via `view_file` tool → exit. Route by `{PHASE}`:
-   - `ship` → `/bkit-ship {FID} {REF}`
-   - `debug` → `/bkit-debug {FID} {REF}`
-   - `design` → `/bkit-design {REF}`
-   - `plan` → `/bkit-plan {REF}`
-   - `build` → `/bkit-build {REF}`
-     **If** `{PHASE}` matches none of above → **Failure Path**.
+2. `REF` is the issue as `runs context` printed it (`#N` on GitHub, the key uppercased on Linear / Jira, empty with no tracker).
+   - Never pass a bare `FID` or bare number: the dispatched workflow's Step 1 stops when no issue reference matches. It never creates an issue.
+3. Invoke the matching phase skill with the `view_file` tool, then exit.
+   Route:
+   - `PHASE` = `ship` → `/bkit-ship {FID} {REF}`
+   - `PHASE` = `debug` → `/bkit-debug {FID} {REF}`
+   - `PHASE` = `design` → `/bkit-design {REF}`
+   - `PHASE` = `plan` → `/bkit-plan {REF}`
+   - `PHASE` = `build` → `/bkit-build {REF}`
+   - **Else** → **Failure Path**.
 
 ### 🔒 Gate 2 — Dispatch
 
