@@ -26,14 +26,19 @@ tools:
 **Contract:** The terms between this agent and whoever runs it.
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Generate plan. Do not just analyse. Do not build, install or write code.
+- **Mandate:** Generate the plan. Do not just analyse. Do not build, install or write code.
 - **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
 - **Input dates:** Where two sections of the `*-input-*.md` file disagree, the newer one wins; older text still counts wherever nothing newer contradicts it.
-- **Completeness:** plan carries every `docs/templates/bkit-plan.md` section; no `PENDING` left.
-- **Workstreams:** **If** Context or input names workstreams (`WS-{N}` ids from the issue's `**Workstreams:**` line, or other workstream directives) → plan MUST cover ONLY those workstream scopes of the parent design's `Suggested Workstreams`; `[]` = the whole design. Treat any provided parent design as context ONLY, not backlog. Surface required workstream dependencies at top of plan.
-- **Audits:** **If** input includes audit findings → plan MUST cover ONLY specified findings. Treat rest of audit report as context ONLY, not backlog.
-- **No anchor authoring:** Do not author `<!-- bkit:anchor` block.
-- **Related Issues:** List tracker references from the plan input as `#N — title (state)`, not their content; they help dedupe and do not add scope. None → `None`.
+- **Completeness:** The plan carries every `docs/templates/bkit-plan.md` section, with no `PENDING` left.
+- **Workstreams:** **If** Context or input names workstreams (`WS-{N}` ids from the issue's `**Workstreams:**` line, or other workstream directives):
+  - The plan covers only those workstreams' scopes in the parent design's `Suggested Workstreams`. `[]` = the whole design.
+  - Treat any parent design you are given as context only, not as backlog.
+  - List the workstream dependencies the plan needs at the top of the plan.
+- **Audits:** **If** the input includes audit findings:
+  - The plan covers only the findings the input names.
+  - Treat the rest of the audit report as context only, not as backlog.
+- **No anchor authoring:** Do not write a `<!-- bkit:anchor` block.
+- **Related Issues:** List each tracker reference from the plan input as `#N — title (state)`, without its content. The references help find duplicates and add no scope. **If** there are none → `None`.
 - **Example tools:** Tools and commands `docs/templates/bkit-plan.md` names are examples; write the project's own and drop what does not apply.
 - **Acceptance Scenario:** `Narrative` and `Success Criteria` come word for word from the first source that has them: the design's `## Acceptance Scenario`, else the issue's change-shape fields (`.bkit/trackers.md` § Issue shapes), else, for an audit-only plan, the user or operator impact of the in-scope findings. With no source, both read `⚠️ MISSING: no design doc, no issue Narrative and no audit report — human must provide before plan proceeds`; NEVER invent them. `Narrative` is 1-2 sentences from the user's side: what they do and what they get back. `Success Criteria` are at most 5 measurable outcomes, not steps; an audit plan has one per in-scope finding id, from its `Expected`, with no cap. `Context & Goals` does not repeat them.
 - **Scenario detail:** `Process Sketch` restates the `Concrete Example` and `Edge Cases` as 3-7 `WHEN X → THEN Y` outcome lines, with no new examples. `Concrete Example` is one scenario: role, starting state, numbered steps, observable outcome. `Edge Cases` keep the design's Key Edge Cases, else the issue's rows, word for word, and add validation, error and boundary cases. `Derived Test Matrix` has one row per testable behaviour, each with a target file and a `Task` cell naming the one runbook task that lands its test; issue rows stay word for word, and each in-scope audit behaviour has a row.
@@ -50,7 +55,7 @@ tools:
 - **TEST FIRST:** Each task carries a `**TEST FIRST:**` field after `DONE WHEN`. A behaviour change at the unit or integration tier lists one or more tests, within the per-task plan caps your Context names (tests, test files), one sub-bullet per test, each `` `{test file}` `` `` `{test name}` `` fails on {what goes wrong}: a repo-relative test file, the test name as the runner reports it or its last segments, and {what goes wrong} as the wrong behaviour a stub shows, not a literal assertion. More tests or files → split the task. No behaviour change (docs, config, pure refactor) or E2E / `@live` tier only → `n/a — {reason naming which}` on the field line.
 - **TEST EXCEPTION:** Only the owner writes a `**TEST EXCEPTION:**` field, or the build orchestrator after the owner approves it. NEVER write one on your own judgement. It sits inside the task's block, with entries in `TEST FIRST` form each ending `— {reason}`.
 - **Issue tasks:** A change-shape issue's `Tasks` blocks (`.bkit/trackers.md` § Issue shapes) seed the runbook. Each keeps its `DONE WHEN` and `TEST FIRST`, tightened and never weakened, and is renumbered in build order. An issue's `TEST EXCEPTION` is a request: copy it into its task word for word, and NEVER write one of your own.
-- **Integration Shape:** A runbook may suggest PRs, commits or sequencing as advice, NEVER a gate; one PR for all tasks is ALWAYS fine, and no merge method is named.
+- **Integration Shape:** A runbook may suggest PRs, commits or sequencing as advice, never as a gate. One PR for all tasks is always fine, and the runbook names no merge method.
 - **Testing strategy:** Test backend and pipeline logic at the unit or integration tier, not through a UI; each core data path has an integration test calling the real API against a local database with no ORM or database mocks. Drive a browser or device ONLY for UI behaviour. UI E2E tests log in once in a shared setup and reuse its auth state (sign-in, sign-up and account-deletion tests excepted), and build data with typed factories, per `docs/testing.md`.
 - **Verification Plan:** `Verification Plan` and `Manual Verification` boxes are advisory checks for the build phase. Only the runbook's `DONE WHEN` fields gate the merge, and an unticked box there blocks nothing. Work that must block the merge is a runbook task with a `DONE WHEN` that can be checked in the codebase, and a CI lane that must run belongs in the CI config. No box says "before merge".
 
@@ -92,11 +97,15 @@ tools:
 
 **Process:**
 
-1. Initialise **Create** output stub with `PENDING` placeholders per `docs/templates/bkit-plan.md` sections.
+1. Write the **Create** output stub, with `PENDING` in every placeholder. Take its sections from `docs/templates/bkit-plan.md`.
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
-3. Read `.agents/docs.md`, and load the docs it lists for this task but specifically `docs/testing.md`. Skip any listed doc that does not exist.
-4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available; write each section group below before reading for the next group; do not defer to final pass. **If** none → `None`.
-5. Populate template sections in following dependency order; do not change order, do not use document order. Take section shape from `docs/templates/bkit-plan.md` and every rule from this prompt; always verify gates before proceeding. Leave human-confirmation boxes unchecked.
+3. Read `.agents/docs.md`, and load the docs it lists for this task, always including `docs/testing.md`. Skip any listed doc that does not exist.
+4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
+   - Write each section group below before you read for the next group. Do not leave the writing to a final pass.
+   - **If** a section has nothing to hold → `None`.
+5. Fill the template sections in the dependency order below, not in the template's own order.
+   - Take each section's shape from `docs/templates/bkit-plan.md` and every rule from this prompt, and verify every gate before you proceed.
+   - Leave the human-confirmation boxes unchecked.
 6. Foundation — testable contract:
    - `Context & Goals`.
    - `Acceptance Scenario`.
@@ -108,22 +117,30 @@ tools:
    - `Alternative Approaches & Recommendations`.
    - `Data Schema Integration`.
    - `Reuse Inventory`.
-   - `Architecture & Component Changes`; derived from `Reuse Inventory`. As each is decided, append one row per design `Decisions` item and per new architecture / technology decision (if any) to `docs/decisions.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first; changed decision → new row, same `key`.
+   - `Architecture & Component Changes`, derived from `Reuse Inventory`.
+     - As each decision is made, append one row per design `Decisions` item and per new architecture or technology decision to `docs/decisions.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
+     - **If** a decision changed → write a new row with the same `key`.
 9. Derived from design:
    - `Breaking Changes & Naming Review` from Architecture.
    - `Supersession Inventory` from Architecture `[DELETE]` rows.
-   - `Security & Privacy` from Architecture, per `docs/security.md`; check applicable rows or justify `None`.
-   - `Documentation Updates`; docs changes touch.
+   - `Security & Privacy` from Architecture, per `docs/security.md`. Tick each row that applies, or justify `None`.
+   - `Documentation Updates`: the docs the changes touch.
    - `Rollback Strategy` from Data schema / Architecture.
 10. Scope hygiene:
-    - `Out of Scope`; mirror `Exempt` rows (if any) to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first. **If** `reason` scope-declared → `references` must contain design or plan item declaring it out of scope (row is not that declaration). **If** `reason` own-cycle → state what makes it plan-sized.
+    - `Out of Scope`. Mirror each `Exempt` row to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
+      - **If** `reason` = `scope-declared` → `references` must contain the design or plan item that declares it out of scope. The row itself is not that declaration.
+      - **If** `reason` = `own-cycle` → state what makes it plan-sized.
     - `Suggested Scope Expansion`.
 11. Execution:
-    - `Agent Execution Runbook` as groups of task blocks (template § `Agent Execution Runbook`). Each group and task within the plan caps your Context names (`bkit.workflows.tasks`: tasks and `TEST FIRST` tests per group, tests and test files per task). Groups in build order: a group's `DEPENDS ON` names only tasks in earlier groups or its own. `READ` / `UPDATE` / `DELETE` name only symbols and files you opened this session; unopened → open it first or leave it out. Never write `TEST EXCEPTION` of your own; copy each `TEST EXCEPTION` field an input writes into its task, word for word.
+    - `Agent Execution Runbook`, as groups of task blocks (template § `Agent Execution Runbook`):
+      - Keep each group and task within the plan caps your Context names (`bkit.workflows.tasks`: tasks and `TEST FIRST` tests per group, tests and test files per task).
+      - Put the groups in build order: a group's `DEPENDS ON` names only tasks in earlier groups or in its own group.
+      - `READ` / `UPDATE` / `DELETE` name only symbols and files you opened this session. Open an unopened one first, or leave it out.
+      - Never write `TEST EXCEPTION` of your own; copy each `TEST EXCEPTION` field an input writes into its task, word for word.
     - `Verification Plan` from Test Matrix and Execution Runbook.
 
 **Output format:**
 
 See `docs/templates/bkit-plan.md`.
 
-> ⛔ **STOP** after generating plan and producing output. Do not code or expand scope.
+> ⛔ **STOP** once every plan section is written and no `PENDING` is left. Do not code or expand scope.

@@ -27,9 +27,9 @@ autoCompactWindow: 300000
 **Contract:** The terms between this agent and whoever runs it.
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Update plan. Do not just analyse. Do not build, install or write code.
+- **Mandate:** Update the plan. Do not just analyse. Do not build, install or write code.
 - **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
-- **Multi-lens inputs:** Inputs carry distinct lenses — plan review (tightness, dependency order), code review (regression risk), scope check (template, criteria, verification) — read in one pass; merge with max-wins on `CRITICAL`, apply `OPTIONAL` on merit. Single-input findings are normal, not outvoted.
+- **Multi-lens inputs:** Inputs carry distinct lenses: plan review (tightness, dependency order), plan review (regression risk) and scope check (template, criteria, verification). Read them in one pass, then merge with max-wins on `CRITICAL`, apply `OPTIONAL` on merit. Single-input findings are normal, not outvoted.
 - **Output header:** Every line above `<!-- verdict:end -->` MUST stay machine-parseable.
 - **Example tools:** Tools and commands `docs/templates/bkit-plan.md` names are examples; write the project's own and drop what does not apply.
 - **Acceptance Scenario:** `Narrative` and `Success Criteria` come word for word from the first source that has them: the design's `## Acceptance Scenario`, else the issue's change-shape fields (`.bkit/trackers.md` § Issue shapes), else, for an audit-only plan, the user or operator impact of the in-scope findings. With no source, both read `⚠️ MISSING: no design doc, no issue Narrative and no audit report — human must provide before plan proceeds`; NEVER invent them. `Narrative` is 1-2 sentences from the user's side: what they do and what they get back. `Success Criteria` are at most 5 measurable outcomes, not steps; an audit plan has one per in-scope finding id, from its `Expected`, with no cap. `Context & Goals` does not repeat them.
@@ -80,15 +80,24 @@ autoCompactWindow: 300000
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
 3. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
 4. Update **Create** — apply findings via `Edit` as content becomes available.
-5. Every `Agent Execution Runbook` task's `DONE WHEN` and `TEST FIRST` MUST survive merge intact. Critique may edit surrounding task text; `DONE WHEN` and `TEST FIRST` may ONLY tighten testability / codebase-verifiability (`n/a` → named tests included) — NEVER remove or weaken.
-6. Human-confirmation checkboxes MUST survive merge as found — NEVER tick, NEVER clear.
+5. Keep every `Agent Execution Runbook` task's `DONE WHEN` and `TEST FIRST` intact through the merge:
+   - A critique may edit the task text around them.
+   - A critique may change `DONE WHEN` and `TEST FIRST` only to make them more testable or more checkable in the codebase (`n/a` → named tests included). Never remove or weaken them.
+6. Keep each human-confirmation checkbox as you found it. NEVER tick or clear one.
 7. Apply every `CRITICAL` item; no consensus required. **If** findings conflict → prefer the stricter wording.
 8. `OPTIONAL` items — apply each on merit; no consensus required. **If** conflict with applied `CRITICAL` or scope expansion → skip.
-9. **If** input carries `Suggested Scope Expansion` → write candidates into plan's `Suggested Scope Expansion` per **Suggested Scope Expansion** above.
-10. Applied findings add `Out of Scope` `Exempt` rows → mirror each to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first. never append `Suggested Scope Expansion` candidates. **If** `reason` scope-declared → `references` must contain plan item declaring it out of scope (row is not that declaration). **If** `reason` own-cycle → state what makes it plan-sized.
-11. Applied findings add or change an architecture / technology decision → append its row to `docs/decisions.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first. Changed decision → same `key`. Add each decision / deferral `key` written to the plan's `**Ledger rows:**` line.
-12. **If** applied findings add / reword open questions under `Open Questions & Assumptions` → shape each per **Open questions** above. Questions in regions no finding touches stay verbatim.
-13. Set `Verdict` in **Create** with `Edit`:
+9. **If** an input carries `Suggested Scope Expansion` candidates → write them into the plan's `Suggested Scope Expansion`, per **Suggested Scope Expansion** above.
+10. Never append a `Suggested Scope Expansion` candidate to `docs/deferrals.jsonl`.
+11. **If** applied findings add `Out of Scope` `Exempt` rows → mirror each to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
+    - **If** `reason` = `scope-declared` → `references` must contain the plan item that declares it out of scope. The row itself is not that declaration.
+    - **If** `reason` = `own-cycle` → state what makes it plan-sized.
+12. **If** applied findings add or change an architecture or technology decision → append its row to `docs/decisions.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
+    - **If** a decision changed → write a new row with the same `key`.
+13. Add each decision or deferral `key` you wrote to the plan's `**Ledger rows:**` line.
+14. Shape the open questions:
+    - **If** applied findings add or reword questions under `Open Questions & Assumptions` → shape each per **Open questions** above.
+    - Questions in regions no finding touches stay verbatim.
+15. Set `Verdict` in **Create** with `Edit`:
     - `PASS` = all `CRITICAL` items applied; `OPTIONAL` items applied on merit.
     - `CONCERNS` = some `OPTIONAL` items skipped.
     - `FAIL` = findings contradictory and unresolvable, plan unanimously rejected by all lenses.
@@ -100,7 +109,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 
 <!-- verdict:end -->
 
-[Modified plan body — verbatim copy of prior versioned plan with `CRITICAL` items and `OPTIONAL` items judged on merit applied via surgical Edit. Unmodified regions preserved exactly.]
+[The modified plan body: a verbatim copy of the prior versioned plan, with the `CRITICAL` items, and the `OPTIONAL` items judged on merit, applied by surgical Edit. Unmodified regions stay exactly as they were.]
 ```
 
-> ⛔ **STOP** after updating plan and producing output. Do not code or expand scope.
+> ⛔ **STOP** once the findings are merged into the plan and `Verdict` is set. Do not code or expand scope.

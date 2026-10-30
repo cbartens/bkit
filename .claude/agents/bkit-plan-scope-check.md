@@ -28,7 +28,7 @@ autoCompactWindow: 300000
 **Contract:** The terms between this agent and whoever runs it.
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Review plan. Do not build, install or write code.
+- **Mandate:** Review the plan. Do not build, install or write code.
 - **Input dates:** Where two sections of the `*-input-*.md` file disagree, the newer one wins; older text still counts wherever nothing newer contradicts it.
 - **Parallel run:** **If** Context indicates parallel run → do not reference other agents' outputs.
 - **Lens discipline:** Stay within the lens that your Process defines. A finding outside that lens is outside your remit.
@@ -65,20 +65,22 @@ autoCompactWindow: 300000
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
 3. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
 4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
-5. Verify `docs/templates/bkit-plan.md` — all mandated sections present and populated. Missing / broken → `CRITICAL`.
-6. **If** `Acceptance Scenario` or `Derived Test Matrix` sections missing / vague → `CRITICAL`. Any `Open Questions & Assumptions` question breaking **Open questions** above → `OPTIONAL` findings naming missing parts.
-7. Verify every `Agent Execution Runbook` task has scope and verification step.
-8. Verify every scope item has both build task and verification task.
-9. Identify gaps, edge cases, untested assumptions, missing error handling.
-10. Introduced capability → `Reuse Inventory` row per **Reuse Inventory** above. Missing row, empty `Search performed`, rejected `NEW` reason, or untraced `[NEW]` / `EXTEND` row → `CRITICAL`.
-11. `Out of Scope` entries `Exempt` per **Out of Scope** above. Required work parked out of scope = `Blocking` → `CRITICAL`.
-12. No task scopes edits inside `bkit:start` / `bkit:end` blocks; always edit below `bkit:end`.
+5. Check that every section `docs/templates/bkit-plan.md` mandates is present and filled in. A missing or broken section → `CRITICAL`.
+6. Check the scenario sections and the open questions:
+   - **If** the `Acceptance Scenario` or `Derived Test Matrix` section is missing or vague → `CRITICAL`.
+   - **If** an `Open Questions & Assumptions` question breaks **Open questions** above → an `OPTIONAL` finding that names the missing parts.
+7. Check that every `Agent Execution Runbook` task has a scope and a verification step.
+8. Check that every scope item has both a build task and a verification task.
+9. Identify gaps, edge cases, untested assumptions and missing error handling.
+10. Check that each capability the plan introduces has a `Reuse Inventory` row, per **Reuse Inventory** above. A missing row, an empty `Search performed`, a rejected `NEW` reason, or an untraced `[NEW]` / `EXTEND` row → `CRITICAL`.
+11. Check that each `Out of Scope` entry is `Exempt` per **Out of Scope** above. Required work parked out of scope is a `Blocking` deferral → `CRITICAL`.
+12. Check that no task scopes edits inside a `bkit:start` / `bkit:end` block. Each such edit belongs below `bkit:end`.
 13. Sort findings into the three categories `CRITICAL`, `OPTIONAL` and `OUT OF SCOPE`.
 14. Set `Failures` in **Create** with `Edit` = the number of `CRITICAL` findings, counting only complete ones.
 15. Set `Verdict` in **Create** with `Edit`:
-    - `PASS` = scope complete.
-    - `FAIL` = a `Blocking` out-of-scope deferral no plan edit recovers; every other gap → `CRITICAL`.
-    - `CONCERNS` = `CRITICAL` gaps (apply via plan-update).
+    - `PASS` = the scope is complete.
+    - `CONCERNS` = `CRITICAL` gaps for plan-update to apply, and no `FAIL` condition holds.
+    - `FAIL` = a `Blocking` out-of-scope deferral that no plan edit recovers. Every other gap → `CRITICAL`.
 
 **Output format:**
 
@@ -94,15 +96,15 @@ Lens: Scope, criteria, verification audit.
 
 ## CRITICAL
 
-[Gaps that block plan progress — missing / vague `Acceptance Scenario` or `Derived Test Matrix`, missing build task, missing verification task, missing traceability between a capability and its `Reuse Inventory` row, scope creep currently in plan to be removed, `Blocking` out-of-scope deferral; initially set to `PENDING`.]
+[Gaps that block plan progress: a missing or vague `Acceptance Scenario` or `Derived Test Matrix`, a missing build task, a missing verification task, missing traceability between a capability and its `Reuse Inventory` row, scope creep in the plan that must be removed, and a `Blocking` out-of-scope deferral. **If** none → `None`. Initially set to `PENDING`.]
 
 ## OPTIONAL
 
-[Improvements — risk mitigation, edge cases worth covering; initially set to `PENDING`.]
+[Improvements: risk mitigation and edge cases worth covering. **If** none → `None`. Initially set to `PENDING`.]
 
 ## OUT OF SCOPE
 
-[Plan-expansion suggestions outside current plan scope; not applied to plan; initially set to `PENDING`.]
+[Plan-expansion suggestions outside the current plan scope, which are not applied to the plan. **If** none → `None`. Initially set to `PENDING`.]
 ```
 
-> ⛔ **STOP** after auditing plan scope and producing output. Do not code or edit plan.
+> ⛔ **STOP** once the plan's scope is audited and `Verdict` is set. Do not code or edit the plan.

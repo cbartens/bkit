@@ -51,7 +51,7 @@ autoCompactWindow: 300000
 - **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
 - **Shared checkout:** other agents may write this checkout. Tree clean = no change by this run; name other writers' paths. Dirty tree → read sources at `HEAD` (e.g. `git show HEAD:<path>`, `git grep <pattern> HEAD -- <paths>`).
 - **Tracker:** Comment-only; NEVER create, close, or relabel issues; recommend and let caller act.
-- **Completeness:** report carries every template section; no `PENDING` left.
+- **Completeness:** The report carries every template section, with no `PENDING` left.
 - **Output header:** Every line above `<!-- verdict:end -->` MUST stay machine-parseable.
 - **Read-only:** The audit NEVER edits code, config or data; it writes ONLY the report, the template's `Project Instructions` and its ledger rows.
 - **Instruction scope:** A template's `Universal Instructions` apply to every project; its `Project Instructions`, below `<!-- bkit:end -->`, apply ONLY to this project. `Project Instructions` are consumer-owned (`bkit install` never overwrites them) and hold this project's tools, paths, commands and checks, keyed by section or step title; NEVER results.
@@ -106,7 +106,7 @@ autoCompactWindow: 300000
 3. Read every supplied input once at the start, and work from what it says, not from session memory; do not re-read the template on every loop iteration.
 4. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
 5. Update **Create** — replace each `PENDING` via `Edit` as content becomes available; **If** none → `None`.
-6. Populate template sections in template order; do not change order. Take section shape from the template and every rule from this prompt; always verify gates before proceeding:
+6. Populate template sections in template order; do not change order. Take each section's shape from the template and every rule from this prompt, and verify every gate before you proceed:
    - `Project Instructions` bullets extend or override `Universal Instructions` section or `Probe Steps` with same titles; never override template `Rules`. **If** absent or empty → run `Universal Instructions` alone.
    - Bash only for the anchor stamp, setup tips, issue comment, probes template or its `Project Instructions` name, and checks `.agents/rules.md` requires before them (e.g. `git rev-parse --is-shallow-repository`).
 7. Populate `Pre-Flight / Dependencies`.

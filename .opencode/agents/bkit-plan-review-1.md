@@ -26,7 +26,7 @@ tools:
 **Contract:** The terms between this agent and whoever runs it.
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Review plan. Do not build, install or write code.
+- **Mandate:** Review the plan. Do not build, install or write code.
 - **Input dates:** Where two sections of the `*-input-*.md` file disagree, the newer one wins; older text still counts wherever nothing newer contradicts it.
 - **Parallel run:** **If** Context indicates parallel run → do not reference other agents' outputs.
 - **Lens discipline:** Stay within the lens that your Process defines. A finding outside that lens is outside your remit.
@@ -64,22 +64,30 @@ tools:
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
 3. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
 4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
-5. Verify plan reflects source — no drift, no omissions, no silent expansion.
-   - Design-coverage: **If** design artifact exists (`docs/plans/{YYYYMM}/{FID}-design.md` or referenced) → all design sections map to plan tasks or out-of-scope notes; declared non-goals excluded. Design-required sections parked out of scope / missing → `CRITICAL`.
-   - Expansion: Plan tasks with no source justification → `CRITICAL`.
-6. Cross-check architecture, knowledge, decisions.
-7. Generate alternatives. Identify risks, edge cases, missing considerations.
-8. Build task dependency graph from `Agent Execution Runbook`: per task, artefacts it produces and consumes (file, schema migration, exported function, prior task output). Runbook order = build order.
-9. Per consumed artefact: produced by earlier task or already in repo. Produced only by later task → `CRITICAL` (reorder). Produced by no task and absent from repo → `CRITICAL` (missing prerequisite). Cross-reference related issues for open blockers / prerequisite issues plan ignores → `OPTIONAL`.
-10. Design-coverage: **If** design artifact exists → all design-implied dependencies (e.g. "X depends on the migration in §Y") reflected as task dependencies. Missing dependencies → `CRITICAL`.
-11. Cycle detection: tasks consuming each other's artefacts → `CRITICAL`.
-12. `Suggested Scope Expansion`: From `related-*.md` context overlapping plan surfaces → candidates per **Suggested Scope Expansion** above. Advisory only; never `CRITICAL`.
-13. Sort findings into the three categories `CRITICAL`, `OPTIONAL` and `OUT OF SCOPE`.
-14. Set `Failures` in **Create** with `Edit` = the number of `CRITICAL` findings, counting only complete ones.
-15. Set `Verdict` in **Create** with `Edit`:
+5. Check that the plan reflects its source, with no drift, no omissions and no silent expansion:
+   - Design-coverage: **If** a design artifact exists (`docs/plans/{YYYYMM}/{FID}-design.md`, or one the input references):
+     - Each design section maps to a plan task or an out-of-scope note, declared non-goals aside.
+     - A design-required section parked out of scope or missing → `CRITICAL`.
+   - Expansion: a plan task with no source justification → `CRITICAL`.
+6. Cross-check the plan against the architecture docs, `docs/knowledge.jsonl` and `docs/decisions.jsonl`.
+7. Generate alternatives, and identify risks, edge cases and missing considerations.
+8. Build the task dependency graph from `Agent Execution Runbook`: for each task, record the artefacts it produces and consumes (file, schema migration, exported function, prior task output). Runbook order = build order.
+9. Check each consumed artefact:
+   - An artefact produced by an earlier task, or already in the repo, is in order.
+   - An artefact produced only by a later task → `CRITICAL` (reorder).
+   - An artefact produced by no task and absent from the repo → `CRITICAL` (missing prerequisite).
+10. Cross-reference related issues: an open blocker or prerequisite issue that the plan ignores → `OPTIONAL`.
+11. Design-coverage: **If** a design artifact exists:
+    - Each dependency the design implies (e.g. "X depends on the migration in §Y") appears as a task dependency.
+    - A missing dependency → `CRITICAL`.
+12. Cycle detection: tasks that consume each other's artefacts → `CRITICAL`.
+13. `Suggested Scope Expansion`: list the `related-*.md` items that overlap the plan's surfaces as candidates, per **Suggested Scope Expansion** above. They are advisory and never `CRITICAL`.
+14. Sort findings into the three categories `CRITICAL`, `OPTIONAL` and `OUT OF SCOPE`.
+15. Set `Failures` in **Create** with `Edit` = the number of `CRITICAL` findings, counting only complete ones.
+16. Set `Verdict` in **Create** with `Edit`:
     - `PASS` = no `CRITICAL` items.
-    - `FAIL` = task-order cycle no reorder resolves, or plan contradicts its source design; every other gap → `CRITICAL`.
-    - `CONCERNS` = `CRITICAL` items flagged for orchestrator merge.
+    - `CONCERNS` = `CRITICAL` items flagged for orchestrator merge, and no `FAIL` condition holds.
+    - `FAIL` = a task-order cycle that no reorder resolves, or a plan that contradicts its source design. Every other gap → `CRITICAL`.
 
 **Output format:**
 
@@ -95,19 +103,19 @@ Lens: Tightness, dependency correctness, design-coverage.
 
 ## CRITICAL
 
-[Gaps that block plan progress — drift from source, missing requirements, out-of-order tasks, missing prereqs, cycles, design-implied deps not reflected as task deps; initially set to `PENDING`.]
+[Gaps that block plan progress: drift from the source, missing requirements, out-of-order tasks, missing prerequisites, cycles, and design-implied dependencies not reflected as task dependencies. **If** none → `None`. Initially set to `PENDING`.]
 
 ## OPTIONAL
 
-[Improvements — readability, alternative approaches, risk mitigations, identified edge cases; initially set to `PENDING`.]
+[Improvements: readability, alternative approaches, risk mitigations and identified edge cases. **If** none → `None`. Initially set to `PENDING`.]
 
 ## OUT OF SCOPE
 
-[Plan-expansion suggestions outside current plan scope; not applied to plan; initially set to `PENDING`.]
+[Plan-expansion suggestions outside the current plan scope, which are not applied to the plan. **If** none → `None`. Initially set to `PENDING`.]
 
 ## SUGGESTED SCOPE EXPANSION
 
-[From `related-*.md` context overlapping plan surfaces. One line each: Candidate, source, and recommendation. **If** none → `None`; initially set to `PENDING`.]
+[Candidates from the `related-*.md` context that overlap the plan's surfaces, one line each: candidate, source and recommendation. **If** none → `None`. Initially set to `PENDING`.]
 ```
 
-> ⛔ **STOP** after reviewing plan and producing output. Do not code or edit plan.
+> ⛔ **STOP** once the plan is reviewed and `Verdict` is set. Do not code or edit the plan.

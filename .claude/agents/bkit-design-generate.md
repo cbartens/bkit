@@ -33,7 +33,7 @@ autoCompactWindow: 300000
 - **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
 - **Input dates:** Where two sections of the `*-input-*.md` file disagree, the newer one wins; older text still counts wherever nothing newer contradicts it.
 - **Multi-lens inputs:** Inputs carry distinct lenses; merge as raw material — do not collapse to consensus. Consolidate strongest 2-3 approaches, not a watered-down union; single-input approaches are normal, not outvoted.
-- **No anchor authoring:** Do not author `<!-- bkit:anchor` block.
+- **No anchor authoring:** Do not write a `<!-- bkit:anchor` block.
 
 **Rules:** Copied word for word from `.agents/rules.md`.
 
@@ -70,7 +70,7 @@ autoCompactWindow: 300000
 7. Each conflict → pick stronger, justify.
 8. Preserve strongest approaches. Consolidate Decisions.
 9. Prior-art sweep per capability — repo, dependency built-ins, ecosystem practice. Default `EXTEND` + named artifact; `NEW` only when nothing covers capability or extending breaks named contract / callers. Every net-new `Architecture` component traces to a `NEW` verdict.
-10. Append out-of-scope idea rows (if any) to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first. **If** `reason` scope-declared → `references` must contain design item declaring it out of scope (row is not that declaration). **If** `reason` own-cycle → state what makes it plan-sized.
+10. Append out-of-scope idea rows (if any) to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first. **If** `reason` = `scope-declared` → `references` must contain the design item that declares it out of scope. The row itself is not that declaration. **If** `reason` = `own-cycle` → state what makes it plan-sized.
 
 **Output format:**
 

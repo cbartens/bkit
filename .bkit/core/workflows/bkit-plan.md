@@ -5,7 +5,7 @@ description: "Plan Feature — Autonomous plan generation"
 # Plan Feature (Workflow 2/5)
 
 **Role:** Orchestrator managing workflow with subagents.
-**Scope:** Create plan in `docs/plans/{YYYYMM}/` (canonical month bucket, discovered or set at start) — no code, no execution.
+**Scope:** Create the plan in `docs/plans/{YYYYMM}/`, the canonical month bucket found or set at the start. Write no code, and do not carry out the plan.
 
 **Protocol:** Work through this file exactly as written.
 
@@ -69,7 +69,7 @@ description: "Plan Feature — Autonomous plan generation"
    "{BKIT}" workflows fail --post --issue="{ISSUE_ID}" --workflow=plan --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} {LABEL_FLAGS} --step-number={N} --step-title="{Step Name}" --sub-step={M} --error-file="{OUTBOX_ROOT}/error.md" --stderr-file="{STDERR_FILE}" --session-dir="{SESSION_DIR}"
    ```
    Route:
-   - **If** exit 0 **or** 5 → hold `labels` as `{LABELS}`, `trackerState` as `{TRACKER_STATE}` → step 2.
+   - **If** exit 0 **or** 5 → hold `labels` as `LABELS`, `trackerState` as `TRACKER_STATE` → step 2.
    - **Else** → step 4.
 2. <!-- bkit:tracker true start -->
    **Skip if** `ISSUE_ID` empty. **If** `tracker.done` = false → post `comment` via the tracker MCP per the header's fallback section. **If** `labelsWrite.done` = false → apply the printed `labels` / `trackerState` via the tracker MCP (**Labels** fallback).
@@ -91,7 +91,7 @@ description: "Plan Feature — Autonomous plan generation"
    ```bash
    "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" repo info --fetch
    ```
-   Hold `bkit` as `{BKIT}`, `ownerRepo` as `OWNER_REPO`, `owner` as `OWNER`, `repo` as `REPO`, `branch` as `{BRANCH}`, `repoRoot` as `REPO_ROOT`, `outboxRoot` as `OUTBOX_ROOT`, `sessionDir` as `{SESSION_DIR}`, `bkitAdvisory` as `{BKIT_ADVISORY}`, `tasks.maxPerGroup` as `{MAX_TASKS_PER_GROUP}`, `tasks.maxTestsPerGroup` as `{MAX_TESTS_PER_GROUP}`, `tasks.maxTestsPerTask` as `{MAX_TESTS_PER_TASK}`, `tasks.maxTestFilesPerTask` as `{MAX_TEST_FILES_PER_TASK}`. **If** `BKIT_ADVISORY` != null → emit advisory `[bkit-plan] {BKIT_ADVISORY}`.
+   Hold `bkit` as `{BKIT}`, `ownerRepo` as `OWNER_REPO`, `owner` as `OWNER`, `repo` as `REPO`, `branch` as `BRANCH`, `repoRoot` as `REPO_ROOT`, `outboxRoot` as `OUTBOX_ROOT`, `sessionDir` as `{SESSION_DIR}`, `bkitAdvisory` as `BKIT_ADVISORY`, `tasks.maxPerGroup` as `MAX_TASKS_PER_GROUP`, `tasks.maxTestsPerGroup` as `MAX_TESTS_PER_GROUP`, `tasks.maxTestsPerTask` as `MAX_TESTS_PER_TASK`, `tasks.maxTestFilesPerTask` as `MAX_TEST_FILES_PER_TASK`. **If** `BKIT_ADVISORY` != null → emit advisory `[bkit-plan] {BKIT_ADVISORY}`.
    <!-- bkit:tracker true start -->
    Hold `trackerTeam` as `TRACKER_TEAM`, `trackerProject` as `TRACKER_PROJECT`, `trackerSite` as `TRACKER_SITE`.
    <!-- bkit:tracker true end -->
@@ -144,7 +144,7 @@ description: "Plan Feature — Autonomous plan generation"
    "{BKIT}" locks acquire --kind=workflow --workflow=plan --fid={FID}
    ```
    Hold `token` as `LOCK_TOKEN`, `month` as `YYYYMM`.
-6. Find the parent design, the workstreams this plan covers and the audit reports — a `**Parent design:**` link, else this feature's own design doc; the `**Workstreams:**` line; every `docs/audits/{YYYYMM}/*.md` path named.
+6. Find the parent design, the workstreams this plan covers and the audit reports: a `**Parent design:**` link, else this feature's own design doc; the `**Workstreams:**` line; and every `docs/audits/{YYYYMM}/*.md` path the prompt or the issue description names.
    <!-- bkit:tracker true start -->
    Pass `--description-file` only when `ISSUE_ID` is non-empty.
    <!-- bkit:tracker true end -->
@@ -153,7 +153,7 @@ description: "Plan Feature — Autonomous plan generation"
    ```
    Hold `auditPaths` as `{AUDIT_PATHS}`, `workstreams` as `{WORKSTREAMS}`. Route:
    - **If** exit 0 → hold `parentFid` as `{PARENT_FID}`, `parentMonth` as `{PARENT_YYYYMM}`.
-   - **If** exit 1 → `PARENT_FID` empty.
+   - **If** exit 1 → leave `PARENT_FID` empty.
    - **Else** → **Failure Path**.
 7. <!-- bkit:tracker true start -->
    **Skip if** `ISSUE_ID` empty. Compute the phase transition — `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry:
@@ -201,7 +201,7 @@ description: "Plan Feature — Autonomous plan generation"
    ```bash
    "{BKIT}" worktrees setup --workflow=plan --fid={FID} --month={YYYYMM} --detect
    ```
-   Hold `worktreePath` as `WORKTREE_PATH`, `{OUTBOX_ROOT}/{FID}` as `OUTBOX`, `branch` as `BRANCH`, `logDir` as `LOG_DIR`, `sentinel` as `SENTINEL`, `baseSha` as `{BASE_SHA}` (empty when null).
+   Hold `worktreePath` as `WORKTREE_PATH`, `{OUTBOX_ROOT}/{FID}` as `OUTBOX`, `branch` as `BRANCH`, `logDir` as `LOG_DIR`, `sentinel` as `SENTINEL`, `baseSha` as `BASE_SHA` (empty when null).
    Route:
    - **If** exit 0 → sub-step 3.
    - **If** exit 3 → run the rebase block below; **If** it exits 0 → re-run sub-step 2, **Else** → **Failure Path**.
@@ -218,7 +218,8 @@ description: "Plan Feature — Autonomous plan generation"
    ```
    Hold `file` as `STATUS`, `run` as `RUN`.
 4. Write the input file — session prompt, issue text, parent design, audit reports:
-   **If** `PARENT_FID` empty → drop `--design`. **If** `AUDIT_PATHS` empty → drop `--audit`; **Else** → one `--audit` per path, in order.
+   - **If** `PARENT_FID` empty → drop `--design`.
+   - **If** `AUDIT_PATHS` empty → drop `--audit`. **Else** → pass one `--audit` per path, in order.
    <!-- bkit:tracker true start -->
    **If** `ISSUE_ID` empty → drop `--description-file` and `--comments-file`.
    <!-- bkit:tracker true end -->
@@ -250,9 +251,10 @@ description: "Plan Feature — Autonomous plan generation"
    ```bash
    "{BKIT}" tests plan-check --plan=docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md --existence=refuse --log=docs/plans/{YYYYMM}/logs/{FID}/plan-generate-check.md
    ```
-   Route:
+   Route — first match wins:
    - **If** exit 0 → sub-step 3.
-   - **If** exit 1 → invoke `@bkit-plan-generate` again with Context `"Fix only what 'docs/plans/{YYYYMM}/logs/{FID}/plan-generate-check.md' names; edit only those lines."` and the plan caps above, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md` → re-run this sub-step; a second exit 1 → **Failure Path**.
+   - **If** this is the second exit 1 → **Failure Path**.
+   - **If** exit 1 → invoke `@bkit-plan-generate` again with Context `"Fix only what 'docs/plans/{YYYYMM}/logs/{FID}/plan-generate-check.md' names; edit only those lines."` and the plan caps above, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md` → re-run this sub-step.
    - **Else** → **Failure Path**.
 3. Finish:
    ```bash
@@ -269,7 +271,7 @@ description: "Plan Feature — Autonomous plan generation"
 
 ## 🤖 Step 4 — Fetch Context
 
-1. `{QUERY}` = 3-6 keywords from `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md` (touched surfaces, feature nouns, no stopwords), space-separated.
+1. `QUERY` = 3-6 keywords from `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md` (touched surfaces and feature nouns, no stopwords), separated by spaces.
 2. <!-- bkit:tracker github start -->
    `{QUERY_NL}` = one natural-language sentence describing change, from `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`; never a keyword list → `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY_NL}", perPage: 15, fields: ["number", "title", "state"] })`; pass no sort parameter, never re-sort, drop any whose `number` == `{ISSUE_ID}`, keep first 10 in rank order → write the kept hits' `number` values in rank order as a JSON list to `{OUTBOX}/related-hits.json`; on call error / timeout → write `Search unavailable.` to `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` → skip the fetch below.
    <!-- bkit:tracker github end -->
@@ -286,7 +288,7 @@ description: "Plan Feature — Autonomous plan generation"
    ```
    **If** exit 80 → per hit read the issue via the tracker MCP (**Tracker**) → append `## {ref} — {title} ({state})` plus its description and human comments to `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md`.
    <!-- bkit:tracker true end -->
-3. Scan `docs/deferrals.jsonl` and `docs/failures.jsonl` for `{QUERY}` overlaps → write `related-deferrals.md` and `related-failures.md`; first writer resets clamp log:
+3. Scan `docs/deferrals.jsonl` and `docs/failures.jsonl` for `QUERY` overlaps → write `related-deferrals.md` and `related-failures.md`. The first writer resets the clamp log:
    ```bash
    "{BKIT}" context ledger-scan --terms='{QUERY}' --source=docs/deferrals.jsonl --artifact=docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md --fid={FID} --step=plan-fetch-context --reset-log || exit $?
    "{BKIT}" context ledger-scan --terms='{QUERY}' --source=docs/failures.jsonl --artifact=docs/plans/{YYYYMM}/logs/{FID}/related-failures.md --fid={FID} --step=plan-fetch-context
@@ -347,9 +349,10 @@ description: "Plan Feature — Autonomous plan generation"
    ```bash
    "{BKIT}" tests plan-check --plan=docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md --existence=refuse --log=docs/plans/{YYYYMM}/logs/{FID}/plan-update-check.md
    ```
-   Route:
+   Route — first match wins:
    - **If** exit 0 → sub-step 4.
-   - **If** exit 1 → invoke `@bkit-plan-update` again with Context `"Fix only what 'docs/plans/{YYYYMM}/logs/{FID}/plan-update-check.md' names; edit only those lines, do not seed the file again."` and the plan caps above, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md` → re-run this sub-step; a second exit 1 → **Failure Path**.
+   - **If** this is the second exit 1 → **Failure Path**.
+   - **If** exit 1 → invoke `@bkit-plan-update` again with Context `"Fix only what 'docs/plans/{YYYYMM}/logs/{FID}/plan-update-check.md' names; edit only those lines, do not seed the file again."` and the plan caps above, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md` → re-run this sub-step.
    - **Else** → **Failure Path**.
 4. Finish:
    ```bash
@@ -371,7 +374,7 @@ description: "Plan Feature — Autonomous plan generation"
    ```bash
    "{BKIT}" workflows promote --workflow=plan --fid={FID} --month={YYYYMM} --resolve
    ```
-   Hold `final` as `{PLAN_FINAL}`. Check every `key` on its `**Ledger rows:**` line is on disk:
+   Hold `final` as `PLAN_FINAL`. Check that every `key` on its `**Ledger rows:**` line is on disk:
    ```bash
    "{BKIT}" ledgers check --plan={PLAN_FINAL}
    ```
@@ -423,7 +426,7 @@ description: "Plan Feature — Autonomous plan generation"
    cd "{REPO_ROOT}" && "{BKIT}" branches land --workflow=plan --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --issue="{ISSUE_ID}" --branch="{BRANCH}"
    ```
    Route:
-   - **If** exit 0 → hold `canonicalRef` as `{CANONICAL_REF}`.
+   - **If** exit 0 → hold `canonicalRef` as `CANONICAL_REF`.
    - **If** exit 80 at `stage` = open → `create_pull_request` with the printed `title` / `body` / `base` / `head` → re-run with `--pr=<number>`.
    - **If** exit 80 at `stage` = merge → `pull_request_read` (`get`) and assert `base.ref` = `dev`; mismatch → **Failure Path** with nothing merged; then `merge_pull_request` with the printed `subject`, empty body → re-run with `--pr={prNumber} --merged-sha=<merge commit>`.
    - **Else** → **Failure Path**.
@@ -432,7 +435,7 @@ description: "Plan Feature — Autonomous plan generation"
    ```bash
    "{BKIT}" issues labels --write --board=review --issue={ISSUE_ID} --owner-repo={OWNER_REPO}
    ```
-   Hold `trackerState` as `{TRACKER_STATE}`, `board` as `{BOARD}`.
+   Hold `trackerState` as `TRACKER_STATE`, `board` as `BOARD`.
    **If** `tracker.done` = false **or** `boardWrite.done` = false → apply the printed `labels` / `trackerState` / `board` via the tracker MCP (**Labels** fallback).
    <!-- bkit:tracker true end -->
 4. <!-- bkit:tracker true start -->

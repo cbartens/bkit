@@ -3030,7 +3030,7 @@ do NOT just analyse
 ### init-stub
 
 - prompt: where-used
-- carriers: prompt `bkit-build-challenge-*`, `bkit-design-review-*`, `bkit-plan-review-*`, `bkit-audit-generate`, `bkit-build-plan-current`, `bkit-build-plan-execute`, `bkit-build-plan-gaps-remediate`, `bkit-build-plan-verify`, `bkit-debug-abort-handover`, `bkit-debug-failure-diagnose`, `bkit-debug-failure-remediate`, `bkit-debug-failure-reproduce`, `bkit-design-generate`, `bkit-design-spike`, `bkit-plan-scope-check`, `bkit-ship-conflict-resolve`, `bkit-ship-deferred-sweep`
+- carriers: prompt `bkit-build-challenge-*`, `bkit-design-review-*`, `bkit-plan-review-*`, `bkit-audit-generate`, `bkit-build-plan-current`, `bkit-build-plan-execute`, `bkit-build-plan-gaps-remediate`, `bkit-build-plan-verify`, `bkit-debug-abort-handover`, `bkit-debug-failure-diagnose`, `bkit-debug-failure-remediate`, `bkit-debug-failure-reproduce`, `bkit-design-generate`, `bkit-design-spike`, `bkit-plan-generate`, `bkit-plan-scope-check`, `bkit-ship-conflict-resolve`, `bkit-ship-deferred-sweep`
 
 ```text
 Write the **Create** output stub, with `PENDING` in every placeholder.
@@ -3698,7 +3698,7 @@ Sort findings: `CRITICAL` / OPTIONAL / OUT OF SCOPE.
 - carriers: prompt `bkit-plan-review-*`
 
 ```text
-`PASS` = no `CRITICAL` items.
+`PASS` = no `CRITICAL` items{{also?}}.
 ```
 
 ### plan-review-concerns
@@ -3707,6 +3707,10 @@ Sort findings: `CRITICAL` / OPTIONAL / OUT OF SCOPE.
 - carriers: prompt `bkit-plan-review-*`
 
 ```text
+`CONCERNS` = `CRITICAL` items flagged for orchestrator merge, and no `FAIL` condition holds.
+```
+
+```retired
 `CONCERNS` = `CRITICAL` items flagged for orchestrator merge.
 ```
 
@@ -3716,6 +3720,10 @@ Sort findings: `CRITICAL` / OPTIONAL / OUT OF SCOPE.
 - carriers: prompt `bkit-plan-review-*`, `bkit-plan-scope-check`
 
 ```text
+Every other gap → `CRITICAL`.
+```
+
+```retired
 every other gap → `CRITICAL`.
 ```
 
@@ -3725,6 +3733,10 @@ every other gap → `CRITICAL`.
 - carriers: prompt `bkit-design-generate`, `bkit-plan-generate`, `bkit-plan-update`
 
 ```text
+**If** `reason` = `scope-declared` → `references` must contain the {{item}} that declares it out of scope. The row itself is not that declaration.
+```
+
+```retired
 **If** `reason` scope-declared → `references` must contain {{item}} declaring it out of scope (row is not that declaration).
 ```
 
@@ -3734,7 +3746,20 @@ every other gap → `CRITICAL`.
 - carriers: prompt `bkit-design-generate`, `bkit-plan-generate`, `bkit-plan-update`
 
 ```text
+**If** `reason` = `own-cycle` → state what makes it plan-sized.
+```
+
+```retired
 **If** `reason` own-cycle → state what makes it plan-sized.
+```
+
+### decision-changed-same-key
+
+- prompt: where-used
+- carriers: prompt `bkit-plan-generate`, `bkit-plan-update`
+
+```text
+**If** a decision changed → write a new row with the same `key`.
 ```
 
 ### completeness-no-pending
@@ -3744,6 +3769,10 @@ every other gap → `CRITICAL`.
 - carriers: prompt `bkit-audit-generate`, `bkit-plan-generate`
 
 ```text
+**Completeness:** {{artifact}} carries every {{template}} section, with no `PENDING` left.
+```
+
+```retired
 **Completeness:** {{artifact}} carries every {{template}} section; no `PENDING` left.
 ```
 
@@ -3753,6 +3782,10 @@ every other gap → `CRITICAL`.
 - carriers: prompt `bkit-build-plan-convert`, `bkit-design-generate`, `bkit-plan-generate`
 
 ```text
+**No anchor authoring:** Do not write a `<!-- bkit:anchor` block.
+```
+
+```retired
 **No anchor authoring:** Do not author `<!-- bkit:anchor` block.
 ```
 
@@ -4248,6 +4281,10 @@ NEVER create, close, or {{change}} issues.
 - carriers: prompt `bkit-audit-generate`, `bkit-plan-generate`
 
 ```text
+Take each section's shape from {{template}} and every rule from this prompt, and verify every gate before you proceed
+```
+
+```retired
 Take section shape from {{template}} and every rule from this prompt; always verify gates before proceeding
 ```
 
@@ -4358,6 +4395,15 @@ Seed **Create** from the prior versioned {{artifact}}, verbatim under a `Verdict
 `FAIL` = findings contradictory and unresolvable, {{artifact}} unanimously rejected by all lenses.
 ```
 
+### plan-review-design-coverage
+
+- prompt: where-used
+- carriers: prompt `bkit-plan-review-*`
+
+```text
+Design-coverage: **If** a design artifact exists (`docs/plans/{YYYYMM}/{FID}-design.md`, or one the input references):
+```
+
 ### plan-review-parked-critical
 
 - prompt: where-used
@@ -4365,6 +4411,10 @@ Seed **Create** from the prior versioned {{artifact}}, verbatim under a `Verdict
 - carriers: prompt `bkit-plan-review-*`
 
 ```text
+parked out of scope or missing → `CRITICAL`.
+```
+
+```retired
 parked out of scope / missing → `CRITICAL`.
 ```
 
@@ -4658,6 +4708,15 @@ Write the error message / tool response to `{OUTBOX_ROOT}/error.md` (`--error-fi
 
 ```text
 `--max-exceeded` only when a `counters route` exit 1 (a `MAX_*` limit) sent the run here
+```
+
+### workflow-route-first-match
+
+- workflow: repeatable
+- carriers: workflow `bkit-build`, `bkit-plan`; prompt `bkit-build-plan-execute`
+
+```text
+{{route}} — first match wins:
 ```
 
 ### workflow-label-flags
@@ -7734,6 +7793,12 @@ Same text in 2+ files. `- carriers:` names them per surface; `pnpm instructions:
   Finish:
   ```
 
+- carriers: workflow `bkit-build`
+
+  ```text
+  Route — first match wins:
+  ```
+
 - carriers: audit `bkit-audit-agents`, `bkit-audit-llm`
 
   ```text
@@ -8177,36 +8242,38 @@ No tracker connected → Step 12.
 - source: `.bkit/core/workflows/bkit-plan.md`
 
 ```text
-[scope-discipline] **Scope:** Create plan in `docs/plans/{YYYYMM}/` (canonical month bucket, discovered or set at start) — no code, no execution.
+[scope-discipline] **Scope:** Create the plan in `docs/plans/{YYYYMM}/`, the canonical month bucket found or set at the start. Write no code, and do not carry out the plan.
 Read repo facts, fetching `origin/dev` first:
-**If** exit 1 → `PARENT_FID` empty.
+Find the parent design, the workstreams this plan covers and the audit reports: a `**Parent design:**` link, else this feature's own design doc; the `**Workstreams:**` line; and every `docs/audits/{YYYYMM}/*.md` path the prompt or the issue description names.
+**If** exit 1 → leave `PARENT_FID` empty.
 Parent FID extraction attempted
 Audit report paths extracted
-Parent design and audit reports appended
-`{QUERY}` = 3-6 keywords from `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md` (touched surfaces, feature nouns, no stopwords), space-separated.
-[deferred-work; discovered-bugs] Scan `docs/deferrals.jsonl` and `docs/failures.jsonl` for `{QUERY}` overlaps → write `related-deferrals.md` and `related-failures.md`; first writer resets clamp log:
-**Subagent:** Invoke `@bkit-plan-review-1`
-**Subagent:** Invoke `@bkit-plan-review-2`
-Wait for all subagents to complete, then finish — `verdict` = worst of the three (`FAIL > CONCERNS > PASS`), `failures` = their sum:
-**If** exit non-zero → **Failure Path**, naming each `missing` key.
-[workflow-pushes] Finish, then push the summary commit:
-Final plan resolved
-Ledger rows checked (`ledgers check`)
-Find the parent design, the workstreams this plan covers and the audit reports — a `**Parent design:**` link, else this feature's own design doc; the `**Workstreams:**` line; every `docs/audits/{YYYYMM}/*.md` path named.
 Write the input file — session prompt, issue text, parent design, audit reports:
-**If** `PARENT_FID` empty → drop `--design`. **If** `AUDIT_PATHS` empty → drop `--audit`; **Else** → one `--audit` per path, in order.
+**If** `PARENT_FID` empty → drop `--design`.
+**If** `AUDIT_PATHS` empty → drop `--audit`. **Else** → pass one `--audit` per path, in order.
+Parent design and audit reports appended
 **If** the draft still holds `PENDING` → invoke `@bkit-plan-generate` once more with Context `"Fill only the sections still marked PENDING and the empty groups; leave every finished section as it is."` and the plan caps and workstreams above, Read: the same inputs, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`.
 Check the draft's groups and task blocks, and that every symbol it names exists:
-[local-tests-first; existing-evidence-first] **If** exit 1 → invoke `@bkit-plan-generate` again with Context `"Fix only what 'docs/plans/{YYYYMM}/logs/{FID}/plan-generate-check.md' names; edit only those lines."` and the plan caps above, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md` → re-run this sub-step; a second exit 1 → **Failure Path**.
+**If** this is the second exit 1 → **Failure Path**.
+[local-tests-first; existing-evidence-first] **If** exit 1 → invoke `@bkit-plan-generate` again with Context `"Fix only what 'docs/plans/{YYYYMM}/logs/{FID}/plan-generate-check.md' names; edit only those lines."` and the plan caps above, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md` → re-run this sub-step.
 Draft checked (`tests plan-check`)
+`QUERY` = 3-6 keywords from `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md` (touched surfaces and feature nouns, no stopwords), separated by spaces.
+[deferred-work; discovered-bugs] Scan `docs/deferrals.jsonl` and `docs/failures.jsonl` for `QUERY` overlaps → write `related-deferrals.md` and `related-failures.md`. The first writer resets the clamp log:
+**Subagent:** Invoke `@bkit-plan-review-1`
+**Subagent:** Invoke `@bkit-plan-review-2`
 **Subagent:** Invoke `@bkit-plan-scope-check`
+Wait for all subagents to complete, then finish — `verdict` = worst of the three (`FAIL > CONCERNS > PASS`), `failures` = their sum:
 Subagents invoked (`@bkit-plan-review-1`, `@bkit-plan-review-2`, `@bkit-plan-scope-check`, no inline work)
 **If** any of `plan-review-1.md`, `plan-review-2.md`, `plan-scope-check.md` is missing from `docs/plans/{YYYYMM}/logs/{FID}/` → Step 5.
 Check the reviewed plan's groups and task blocks, and that every symbol it names exists:
-[local-tests-first; existing-evidence-first] **If** exit 1 → invoke `@bkit-plan-update` again with Context `"Fix only what 'docs/plans/{YYYYMM}/logs/{FID}/plan-update-check.md' names; edit only those lines, do not seed the file again."` and the plan caps above, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md` → re-run this sub-step; a second exit 1 → **Failure Path**.
-Reviewed plan checked (`tests plan-check`)
-Write `plan-summary.md` from this run's status rows and the final plan:
+[local-tests-first; existing-evidence-first] **If** exit 1 → invoke `@bkit-plan-update` again with Context `"Fix only what 'docs/plans/{YYYYMM}/logs/{FID}/plan-update-check.md' names; edit only those lines, do not seed the file again."` and the plan caps above, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md` → re-run this sub-step.
 Review critiques present
+Reviewed plan checked (`tests plan-check`)
+**If** exit non-zero → **Failure Path**, naming each `missing` key.
+Write `plan-summary.md` from this run's status rows and the final plan:
+[workflow-pushes] Finish, then push the summary commit:
+Final plan resolved
+Ledger rows checked (`ledgers check`)
 ```
 
 #### bkit-ship
@@ -8887,9 +8954,20 @@ Classify each claim:
 
 ```text
 **Role:** Senior architect translating design docs into chronological implementation plans.
-[scope-discipline] **Workstreams:** **If** Context or input names workstreams (`WS-{N}` ids from the issue's `**Workstreams:**` line, or other workstream directives) → plan MUST cover ONLY those workstream scopes of the parent design's `Suggested Workstreams`; `[]` = the whole design. Treat any provided parent design as context ONLY, not backlog. Surface required workstream dependencies at top of plan.
-[scope-discipline] **Audits:** **If** input includes audit findings → plan MUST cover ONLY specified findings. Treat rest of audit report as context ONLY, not backlog.
-Initialise **Create** output stub with `PENDING` placeholders per `docs/templates/bkit-plan.md` sections.
+[scope-discipline] **Workstreams:** **If** Context or input names workstreams (`WS-{N}` ids from the issue's `**Workstreams:**` line, or other workstream directives):
+The plan covers only those workstreams' scopes in the parent design's `Suggested Workstreams`. `[]` = the whole design.
+Treat any parent design you are given as context only, not as backlog.
+List the workstream dependencies the plan needs at the top of the plan.
+[scope-discipline] **Audits:** **If** the input includes audit findings:
+The plan covers only the findings the input names.
+Treat the rest of the audit report as context only, not as backlog.
+**Related Issues:** List each tracker reference from the plan input as `#N — title (state)`, without its content. The references help find duplicates and add no scope. **If** there are none → `None`.
+**Cron Jobs:** Each scheduled task in `Cron Jobs & Scheduled Tasks` has a `Documentation Updates` row recording it in the project's cron / scheduled-jobs doc when it has one (resolve via `.agents/docs.md`).
+**Integration Shape:** A runbook may suggest PRs, commits or sequencing as advice, never as a gate. One PR for all tasks is always fine, and the runbook names no merge method.
+Write each section group below before you read for the next group. Do not leave the writing to a final pass.
+**If** a section has nothing to hold → `None`.
+Fill the template sections in the dependency order below, not in the template's own order.
+Leave the human-confirmation boxes unchecked.
 Foundation — testable contract:
 `Context & Goals`.
 `Acceptance Scenario`.
@@ -8901,19 +8979,22 @@ Design:
 `Alternative Approaches & Recommendations`.
 `Data Schema Integration`.
 `Reuse Inventory`.
+`Architecture & Component Changes`, derived from `Reuse Inventory`.
+**If** a decision changed → write a new row with the same `key`.
 Derived from design:
 `Breaking Changes & Naming Review` from Architecture.
 `Supersession Inventory` from Architecture `[DELETE]` rows.
-`Security & Privacy` from Architecture, per `docs/security.md`; check applicable rows or justify `None`.
-`Documentation Updates`; docs changes touch.
+`Security & Privacy` from Architecture, per `docs/security.md`. Tick each row that applies, or justify `None`.
+`Documentation Updates`: the docs the changes touch.
 `Rollback Strategy` from Data schema / Architecture.
 Scope hygiene:
-Execution:
-`Verification Plan` from Test Matrix and Execution Runbook.
-**Related Issues:** List tracker references from the plan input as `#N — title (state)`, not their content; they help dedupe and do not add scope. None → `None`.
-**Integration Shape:** A runbook may suggest PRs, commits or sequencing as advice, NEVER a gate; one PR for all tasks is ALWAYS fine, and no merge method is named.
 `Suggested Scope Expansion`.
-**Cron Jobs:** Each scheduled task in `Cron Jobs & Scheduled Tasks` has a `Documentation Updates` row recording it in the project's cron / scheduled-jobs doc when it has one (resolve via `.agents/docs.md`).
+Execution:
+`Agent Execution Runbook`, as groups of task blocks (template § `Agent Execution Runbook`):
+Keep each group and task within the plan caps your Context names (`bkit.workflows.tasks`: tasks and `TEST FIRST` tests per group, tests and test files per task).
+Put the groups in build order: a group's `DEPENDS ON` names only tasks in earlier groups or in its own group.
+`READ` / `UPDATE` / `DELETE` name only symbols and files you opened this session. Open an unopened one first, or leave it out.
+`Verification Plan` from Test Matrix and Execution Runbook.
 ```
 
 #### bkit-plan-review-1
@@ -8921,17 +9002,23 @@ Execution:
 - source: `.bkit/core/prompts/bkit-plan-review-1.md`
 
 ```text
-Verify plan reflects source — no drift, no omissions, no silent expansion.
-[scope-discipline; no-speculative-scope] Expansion: Plan tasks with no source justification → `CRITICAL`.
-[check-gotchas-first] Cross-check architecture, knowledge, decisions.
-Generate alternatives. Identify risks, edge cases, missing considerations.
-[recommend-do-not-decide] `Suggested Scope Expansion`: From `related-*.md` context overlapping plan surfaces → candidates per **Suggested Scope Expansion** above. Advisory only; never `CRITICAL`.
-Build task dependency graph from `Agent Execution Runbook`: per task, artefacts it produces and consumes (file, schema migration, exported function, prior task output). Runbook order = build order.
-Per consumed artefact: produced by earlier task or already in repo. Produced only by later task → `CRITICAL` (reorder). Produced by no task and absent from repo → `CRITICAL` (missing prerequisite). Cross-reference related issues for open blockers / prerequisite issues plan ignores → `OPTIONAL`.
-Cycle detection: tasks consuming each other's artefacts → `CRITICAL`.
 **Role:** Senior reviewer prioritising plan tightness, task dependency order, and design-coverage.
-Design-coverage: **If** design artifact exists → all design-implied dependencies (e.g. "X depends on the migration in §Y") reflected as task dependencies. Missing dependencies → `CRITICAL`.
-`FAIL` = task-order cycle no reorder resolves, or plan contradicts its source design; every other gap → `CRITICAL`.
+Check that the plan reflects its source, with no drift, no omissions and no silent expansion:
+Each design section maps to a plan task or an out-of-scope note, declared non-goals aside.
+[scope-discipline; no-speculative-scope] Expansion: a plan task with no source justification → `CRITICAL`.
+[check-gotchas-first] Cross-check the plan against the architecture docs, `docs/knowledge.jsonl` and `docs/decisions.jsonl`.
+Generate alternatives, and identify risks, edge cases and missing considerations.
+Build the task dependency graph from `Agent Execution Runbook`: for each task, record the artefacts it produces and consumes (file, schema migration, exported function, prior task output). Runbook order = build order.
+Check each consumed artefact:
+An artefact produced by an earlier task, or already in the repo, is in order.
+An artefact produced only by a later task → `CRITICAL` (reorder).
+An artefact produced by no task and absent from the repo → `CRITICAL` (missing prerequisite).
+Cross-reference related issues: an open blocker or prerequisite issue that the plan ignores → `OPTIONAL`.
+Design-coverage: **If** a design artifact exists:
+Each dependency the design implies (e.g. "X depends on the migration in §Y") appears as a task dependency.
+A missing dependency → `CRITICAL`.
+Cycle detection: tasks that consume each other's artefacts → `CRITICAL`.
+[recommend-do-not-decide] `Suggested Scope Expansion`: list the `related-*.md` items that overlap the plan's surfaces as candidates, per **Suggested Scope Expansion** above. They are advisory and never `CRITICAL`.
 ```
 
 #### bkit-plan-review-2
@@ -8940,19 +9027,23 @@ Design-coverage: **If** design artifact exists → all design-implied dependenci
 
 ```text
 **Role:** Senior reviewer surfacing regression risk and design-coverage for plan task surfaces.
-Per task surface-area trace — for each `Agent Execution Runbook` task:
-Files / modules edited (direct).
-[language-server-first] Symbols exported / changed and their consumers (language-server references when configured + text search for callers).
-Schemas / tables touched and downstream readers (access policies e.g. RLS, indexes, foreign keys).
-Public endpoints / event names / queue topics modified and their producers / consumers.
-Risk classification per surface:
-High-risk surfaces: Base classes, shared utilities, schema migrations, auth middleware, billing logic, data-access policies (e.g. RLS), multi-subscriber event payloads, public type exports. Flag explicitly.
-[verify-changes-first] Backwards-compat boundary: Change to public signature, schema column, or event shape. Missing migration / shim / dual-write → `CRITICAL`.
-Migration ordering: Multi-step migrations — intermediate states must work. Missing intermediate-state guard → `CRITICAL`.
-Test-coverage gaps: Surfaces touched but not exercised by `Derived Test Matrix` rows → `CRITICAL`.
-[ci-on-pr-to-dev-main; ci-on-push-to-dev-main] Mock-only coverage: Tasks crossing external boundary (DB / API / model / network / migration) whose `DONE WHEN` lack non-mock boundary tests (reach real boundaries / assert ground-truth signals); `@live` for external / deployed → `CRITICAL`.
-Unpassable checks: `TEST FIRST` / `DONE WHEN` checks current code cannot pass (value always emitted, shape never returned) and no task changes → `CRITICAL`; cite the ruling `file:line`.
-Tests that cannot fail: a `TEST FIRST` test whose logic, read against current code or the code an earlier task lands, already passes → `CRITICAL`; a task adding behaviour names a new test for it, never an existing passing one; cite the code that satisfies it `file:line`.
+Trace the surface area of each `Agent Execution Runbook` task:
+The files and modules it edits directly.
+[language-server-first] The symbols it exports or changes, and their consumers (language-server references when one is configured, plus text search for callers).
+The schemas and tables it touches, and their downstream readers (access policies such as RLS, indexes, foreign keys).
+The public endpoints, event names and queue topics it modifies, and their producers and consumers.
+Classify the risk of each surface:
+High-risk surfaces: base classes, shared utilities, schema migrations, auth middleware, billing logic, data-access policies (e.g. RLS), multi-subscriber event payloads and public type exports. Flag each one explicitly.
+[verify-changes-first] Backwards-compat boundary: a change to a public signature, schema column or event shape. A missing migration, shim or dual-write → `CRITICAL`.
+Migration ordering: every intermediate state of a multi-step migration must work. A missing intermediate-state guard → `CRITICAL`.
+Test-coverage gaps: a touched surface that no `Derived Test Matrix` row exercises → `CRITICAL`.
+[ci-on-pr-to-dev-main; ci-on-push-to-dev-main] Mock-only coverage: a task crossing an external boundary (DB, API, model, network, migration) whose `DONE WHEN` lacks non-mock boundary tests → `CRITICAL`. A non-mock test reaches the real boundary and asserts a ground-truth signal, with `@live` for an external or deployed boundary.
+Unpassable checks: a `TEST FIRST` or `DONE WHEN` check that the current code cannot pass (a value always emitted, a shape never returned) and that no task changes → `CRITICAL`. Cite the ruling `file:line`.
+Tests that cannot fail: a `TEST FIRST` test that already passes, read against the current code or the code an earlier task lands → `CRITICAL`. A task that adds behaviour names a new test for it, never an existing passing one. Cite the code that satisfies the test as `file:line`.
+Each design section that names a touched surface needs a plan task with regression-test coverage, or an out-of-scope note, declared non-goals aside.
+Cross-reference knowledge:
+Search those rows and `related-failures.md` for past regressions and known failures in the touched surfaces.
+A plan task that re-enters a known-broken pattern, or touches a surface with an unacknowledged known failure or without acknowledging its prior fixes → `CRITICAL`.
 ```
 
 #### bkit-plan-scope-check
@@ -8961,17 +9052,18 @@ Tests that cannot fail: a `TEST FIRST` test whose logic, read against current co
 
 ```text
 **Role:** Senior auditor verifying every plan task has scope, criteria, and verification.
-[plans] Verify `docs/templates/bkit-plan.md` — all mandated sections present and populated. Missing / broken → `CRITICAL`.
-**If** `Acceptance Scenario` or `Derived Test Matrix` sections missing / vague → `CRITICAL`. Any `Open Questions & Assumptions` question breaking **Open questions** above → `OPTIONAL` findings naming missing parts.
-Verify every `Agent Execution Runbook` task has scope and verification step.
-Verify every scope item has both build task and verification task.
-Identify gaps, edge cases, untested assumptions, missing error handling.
-[improve-over-duplicate] Introduced capability → `Reuse Inventory` row per **Reuse Inventory** above. Missing row, empty `Search performed`, rejected `NEW` reason, or untraced `[NEW]` / `EXTEND` row → `CRITICAL`.
-[finish-over-deferrals] `Out of Scope` entries `Exempt` per **Out of Scope** above. Required work parked out of scope = `Blocking` → `CRITICAL`.
-No task scopes edits inside `bkit:start` / `bkit:end` blocks; always edit below `bkit:end`.
-`PASS` = scope complete.
-`FAIL` = a `Blocking` out-of-scope deferral no plan edit recovers; every other gap → `CRITICAL`.
-`CONCERNS` = `CRITICAL` gaps (apply via plan-update).
+[plans] Check that every section `docs/templates/bkit-plan.md` mandates is present and filled in. A missing or broken section → `CRITICAL`.
+Check the scenario sections and the open questions:
+**If** the `Acceptance Scenario` or `Derived Test Matrix` section is missing or vague → `CRITICAL`.
+**If** an `Open Questions & Assumptions` question breaks **Open questions** above → an `OPTIONAL` finding that names the missing parts.
+Check that every `Agent Execution Runbook` task has a scope and a verification step.
+Check that every scope item has both a build task and a verification task.
+Identify gaps, edge cases, untested assumptions and missing error handling.
+[improve-over-duplicate] Check that each capability the plan introduces has a `Reuse Inventory` row, per **Reuse Inventory** above. A missing row, an empty `Search performed`, a rejected `NEW` reason, or an untraced `[NEW]` / `EXTEND` row → `CRITICAL`.
+[finish-over-deferrals] Check that each `Out of Scope` entry is `Exempt` per **Out of Scope** above. Required work parked out of scope is a `Blocking` deferral → `CRITICAL`.
+Check that no task scopes edits inside a `bkit:start` / `bkit:end` block. Each such edit belongs below `bkit:end`.
+`PASS` = the scope is complete.
+`CONCERNS` = `CRITICAL` gaps for plan-update to apply, and no `FAIL` condition holds.
 ```
 
 #### bkit-plan-update
@@ -8980,9 +9072,15 @@ No task scopes edits inside `bkit:start` / `bkit:end` blocks; always edit below 
 
 ```text
 **Role:** Senior editor merging review and scope critiques into the plan, no scope expansion.
-[major-changes] Human-confirmation checkboxes MUST survive merge as found — NEVER tick, NEVER clear.
-**If** input carries `Suggested Scope Expansion` → write candidates into plan's `Suggested Scope Expansion` per **Suggested Scope Expansion** above.
-[completeness-over-shortcuts] Every `Agent Execution Runbook` task's `DONE WHEN` and `TEST FIRST` MUST survive merge intact. Critique may edit surrounding task text; `DONE WHEN` and `TEST FIRST` may ONLY tighten testability / codebase-verifiability (`n/a` → named tests included) — NEVER remove or weaken.
+[completeness-over-shortcuts] Keep every `Agent Execution Runbook` task's `DONE WHEN` and `TEST FIRST` intact through the merge:
+A critique may edit the task text around them.
+A critique may change `DONE WHEN` and `TEST FIRST` only to make them more testable or more checkable in the codebase (`n/a` → named tests included). Never remove or weaken them.
+[major-changes] Keep each human-confirmation checkbox as you found it. NEVER tick or clear one.
+**If** an input carries `Suggested Scope Expansion` candidates → write them into the plan's `Suggested Scope Expansion`, per **Suggested Scope Expansion** above.
+Never append a `Suggested Scope Expansion` candidate to `docs/deferrals.jsonl`.
+Add each decision or deferral `key` you wrote to the plan's `**Ledger rows:**` line.
+Shape the open questions:
+**If** applied findings add or reword questions under `Open Questions & Assumptions` → shape each per **Open questions** above.
 ```
 
 #### bkit-ship-conflict-resolve
