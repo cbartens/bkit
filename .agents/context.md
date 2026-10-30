@@ -161,8 +161,8 @@ These are the MCP servers whose every tool, reads and writes alike, agents run w
 <!-- context-fetch:start github context=ci -->
 
 ```bash
-# GitHub Actions: failing-run job/step failures + error annotations + failed-step logs.
-# Discovers its own run. `gh` is base tooling — no context-fetch:provision sibling.
+# GitHub Actions: the failing run's job and step failures, error annotations and failed-step logs.
+# The block discovers its own run. `gh` is base tooling, so there is no context-fetch:provision sibling.
 # Customise: run (`--branch`, `--limit`, pin RUN_ID); log slice (`--log-failed` vs `--log`); CI_LOG_TAIL (lines kept per failed job, and of the whole-run fallback); job/step name filter; annotation grep.
 command -v gh >/dev/null 2>&1 \
   || { echo "[context-fetch:github] skipped — gh CLI not installed" >&2; exit 0; }
@@ -195,7 +195,7 @@ ${JOB_LOG}
 done <<EOF_JOBS
 $FAILED_JOBS
 EOF_JOBS
-# Whole-run fallback is tens of MB — bound it the same way.
+# The whole-run fallback is tens of MB, so bound it the same way.
 [ -z "$CI_LOGS" ] && CI_LOGS=$(gh run view "$RUN_ID" --log 2>/dev/null | tail -n "$CI_LOG_TAIL")
 [ -n "$CI_LOGS" ] \
   || { echo "[context-fetch:github] skipped — no logs returned for run $RUN_ID" >&2; exit 0; }
@@ -211,8 +211,8 @@ printf '===== failed-step logs =====\n%s\n' "$CI_LOGS"
 <!-- context-fetch:start github context=diff -->
 
 ```bash
-# GitHub Actions: diff HEAD vs last-passing CI on trunk.
-# Set BASELINE_BRANCH / BASELINE_WORKFLOW to YOUR trunk and workflow file; commit them here.
+# GitHub Actions: the diff from the last commit that passed CI on trunk to HEAD.
+# Set BASELINE_BRANCH / BASELINE_WORKFLOW to your own trunk and workflow file, and commit them here.
 # Customise: BASELINE_BRANCH / BASELINE_WORKFLOW; last-passing `--limit`; `git diff` pathspec / `--stat` vs full patch; DIFF_STAT_N (files listed).
 BASELINE_BRANCH="${BASELINE_BRANCH:-dev}"
 BASELINE_WORKFLOW="${BASELINE_WORKFLOW:-bkit-ci.yml}"
@@ -237,9 +237,9 @@ printf '===== diff vs last-passing CI on %s (last-passing-sha: %s) =====\n\n%s\n
 
 ```bash
 # External signal (read-only): known upstream causes for third-party library error
-# strings, dependency-version regressions, vendor API changes, toolchain quirks.
-# Operator cred, same place as other context-fetch tokens (direnv / app env locally;
-# cloud dashboard for headless).
+# strings, dependency-version regressions, vendor API changes and toolchain quirks.
+# The key is an operator credential. It lives in the same place as the other context-fetch
+# tokens: direnv or the app env locally, and the cloud dashboard for headless runs.
 # Customise: QUERY= 3-6 external terms from the error signature (class, exception, third-party symbol, dependency + version) — never own module/function names, never raw logs; search_depth; max_results; include_raw_content if snippets are too short.
 QUERY="${QUERY:-}"
 [ -n "$QUERY" ] \
@@ -247,9 +247,9 @@ QUERY="${QUERY:-}"
 [ -n "${BKIT_TAVILY_API_KEY:-}" ] \
   || { echo "[context-fetch:tavily] skipped — BKIT_TAVILY_API_KEY unset. FALLBACK: run this same query with your host's own web tools (Claude WebSearch + WebFetch; Cursor / OpenCode equivalent) and record url + verbatim quote per claim. No such tool available => external signal is UNCHECKED this attempt, NEVER 'no known upstream issue'." >&2; exit 0; }
 RESP=$(mktemp)
-# include_answer stays false: a generated summary has no quotable source and cannot
-# satisfy the url + verbatim-quote rule. include_raw_content:true adds full page text
-# (~15k chars/result) when the extracted snippet is not enough.
+# include_answer stays false, because a generated summary has no quotable source and cannot
+# satisfy the url + verbatim-quote rule. include_raw_content:true adds the full page text
+# (about 15k chars per result) when the extracted snippet is not enough.
 CODE=$(curl -s -o "$RESP" -w '%{http_code}' --max-time 40 https://api.tavily.com/search \
   -H "Authorization: Bearer ${BKIT_TAVILY_API_KEY}" -H "Content-Type: application/json" \
   -d "$(jq -nc --arg q "$QUERY" '{query:$q, search_depth:"advanced", max_results:5, include_raw_content:false, include_answer:false}')")
@@ -271,9 +271,10 @@ rm -f "$RESP"
 <!-- context-fetch:provision serena -->
 
 ```bash
-# Install the Serena MCP server in cloud if absent (self-guarded; no-op when present).
-# The setup script runs as ROOT: uv's default $HOME-relative paths land in /root (mode 0700),
-# unreadable to the session user — pin the tool venv and its bin dir to world-readable paths.
+# Install the Serena MCP server in cloud if it is absent. The block guards itself and does nothing
+# when serena is present.
+# The setup script runs as root, so uv's default $HOME-relative paths land in /root (mode 0700),
+# which the session user cannot read. Pin the tool venv and its bin dir to world-readable paths.
 command -v serena >/dev/null 2>&1 || {
   UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin \
     uv tool install serena-agent==1.7.0 && chmod -R a+rX /opt/uv-tools

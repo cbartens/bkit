@@ -3,30 +3,39 @@
 
 # Sentry — unresolved issues
 
-Fits: apps reporting errors to Sentry (web, server or native). `context=runtime`: one project's unresolved issues seen in a window (default last 24 h; optional environment), newest first (id, title, culprit, count, first / last seen, permalink). Commented recipes in the block pull one issue's `trace_id` (to stitch to the `vercel` block's `traceId`) and every event of one issue with timestamps (to count events inside a run's time window).
+Fits: apps reporting errors to Sentry (web, server or native). The `context=runtime` block returns one project's unresolved issues seen in a window (default the last 24 h), optionally for one environment, newest first. Each issue shows its id, title, culprit, count, first and last seen, and permalink. Two commented recipes in the block pull more:
 
-- Secret: `SENTRY_AUTH_TOKEN` (an internal-integration or user token with `project:read`, `event:read`).
-- Non-secret: `SENTRY_ORG`, `SENTRY_PROJECT` (slugs) and `SENTRY_HOST` — uncomment the lines in the block so cloud agents inherit them. An EU-region org uses `de.sentry.io`: the global host 404s on its issue ids. Optional: `SENTRY_SINCE` (window, default `24h`), `SENTRY_ENV`, `SENTRY_N`.
-- CLI: none (`curl` + `jq`), no provision block.
-- An empty list is not "no errors": a spent quota drops events silently. Check the org's quota usage before reading silence as clean.
+- One issue's `trace_id`, to stitch to the `vercel` block's `traceId`.
+- Every event of one issue with its timestamp, to count the events inside a run's time window.
+
+The settings:
+
+- Secret: `SENTRY_AUTH_TOKEN`, an internal-integration or user token with `project:read` and `event:read`.
+- Non-secret: `SENTRY_ORG` and `SENTRY_PROJECT` (slugs), and `SENTRY_HOST`. Uncomment their lines in the block so cloud agents inherit them.
+- An EU-region org uses `de.sentry.io`, because the global host 404s on its issue ids.
+- Optional non-secret: `SENTRY_SINCE` (the window, default `24h`), `SENTRY_ENV` and `SENTRY_N`.
+- CLI: none (`curl` and `jq`), so there is no provision block.
+- An empty list does not mean "no errors", because a spent quota drops events silently. Check the org's quota usage before you read silence as clean.
 
 Copy the blocks below into `.agents/context.md`, below `<!-- bkit:end -->`.
 
 <!-- context-fetch:start sentry context=runtime -->
 
 ```bash
-# Sentry organization issues API — unresolved issues of one project seen in the window (default
-# 24h), sorted by last seen (read-only). statsPeriod is the query window on this endpoint.
-# Headless: SENTRY_AUTH_TOKEN (secret, from env). SENTRY_ORG / SENTRY_PROJECT / SENTRY_HOST are
-# non-secret — uncomment + set the lines below so local AND cloud agents inherit them:
+# Sentry organization issues API: the unresolved issues of one project seen in the window
+# (default 24h), sorted by last seen (read-only). statsPeriod is the query window on this endpoint.
+# Headless: SENTRY_AUTH_TOKEN is a secret, read from env. SENTRY_ORG / SENTRY_PROJECT /
+# SENTRY_HOST are non-secret. Uncomment and set the lines below so both local and cloud agents
+# inherit them:
 # SENTRY_ORG="your-org-slug"
 # SENTRY_PROJECT="your-project-slug"
 # SENTRY_HOST="de.sentry.io"   # EU-region org; the global host 404s on its issue ids
-# An empty array is NOT "no errors": a spent quota drops events silently — check the org's
-# quota usage (or /api/0/organizations/{org}/stats_v2/) before concluding silence = clean.
-# Non-200, or a non-array body → `skipped`, never `[]`.
-# Detector configs (`organizations/<org>/detectors/`) carry uptime-check request headers, secrets
-# included: strip with jq `del(.[].dataSources[]?.queryObj.headers)` before printing.
+# An empty array does not mean "no errors", because a spent quota drops events silently. Check
+# the org's quota usage (or /api/0/organizations/{org}/stats_v2/) before you conclude that silence
+# = clean.
+# A non-200 status or a non-array body → `skipped`, never `[]`.
+# Detector configs (`organizations/<org>/detectors/`) carry uptime-check request headers,
+# secrets included. Strip the headers with jq `del(.[].dataSources[]?.queryObj.headers)` before printing.
 # Customise: SENTRY_SINCE window (1h / 24h / 7d); SENTRY_ENV (environment name, e.g. production; unset = all); SENTRY_N (<= 100); jq keys. Positive control (suggested): run once over a window holding an issue the UI shows unresolved and seen in it; nothing back = reader broken, not clean.
 SENTRY_HOST="${SENTRY_HOST:-sentry.io}"
 [ -n "${SENTRY_AUTH_TOKEN:-}" ] && [ -n "${SENTRY_ORG:-}" ] && [ -n "${SENTRY_PROJECT:-}" ] \
@@ -40,17 +49,18 @@ SENTRY_CODE=$(curl -s -o "$SENTRY_RESP" -w '%{http_code}' \
   || { echo "[context-fetch:sentry] skipped — ${SENTRY_HOST} HTTP ${SENTRY_CODE:-000} (000 = unreachable, 401/403 = bad token or scope, 404 = wrong org / project / region host)" >&2; exit 0; }
 jq '[.[] | {id, title, culprit, count: .count, firstSeen, lastSeen, permalink}]' "$SENTRY_RESP"
 
-# Trace correlation — one issue's latest event → its trace_id. The same id appears in the
-# vercel block's `traceId` (the sentry-trace propagation header), linking the browser stack to
-# the server handler.
+# Trace correlation: one issue's latest event → its trace_id. The same id appears in the
+# vercel block's `traceId` (the sentry-trace propagation header), which links the browser stack
+# to the server handler.
 #   ISSUE_ID="<issue-id-from-the-list-above>"
 #   curl -s -H "Authorization: Bearer ${SENTRY_AUTH_TOKEN}" \
 #     "https://${SENTRY_HOST}/api/0/issues/${ISSUE_ID}/events/latest/" \
 #     | jq '{id, eventId: .eventID, trace_id: .contexts.trace.trace_id, title, culprit}'
 #
-# Window correlation — every event of one issue with its timestamp. An issue's firstSeen /
-# lastSeen cannot say how many events landed INSIDE a run's time window; this can. Compare the
-# timestamps against the run's own start / end (CI job times, or an EAS run's per-flow durations).
+# Window correlation: every event of one issue with its timestamp. An issue's firstSeen /
+# lastSeen cannot say how many events landed inside a run's time window, and this recipe can.
+# Compare the timestamps against the run's own start and end (CI job times, or an EAS run's
+# per-flow durations).
 #   ISSUE_ID="<issue-id-from-the-list-above>"
 #   curl -s -H "Authorization: Bearer ${SENTRY_AUTH_TOKEN}" \
 #     "https://${SENTRY_HOST}/api/0/issues/${ISSUE_ID}/events/?full=false" \

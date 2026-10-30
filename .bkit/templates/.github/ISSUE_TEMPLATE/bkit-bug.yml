@@ -9,10 +9,10 @@ body:
     attributes:
       value: |
         Next step:
-        - A test or CI run already fails → `/bkit-debug #<issue number>`, on the branch the fix should land on (debug commits to the branch it runs on).
-        - Nothing fails yet → `/bkit-debug #<issue number> [repro]`: writes a test that fails the way this report describes, then fixes the code until it passes; no test fails → stops and says so.
+        - **If** a test or CI run already fails → run `/bkit-debug #<issue number>` on the branch the fix should land on. Debug commits to the branch it runs on.
+        - **If** nothing fails yet → run `/bkit-debug #<issue number> [repro]`. It writes a test that fails the way this report describes, then fixes the code until the test passes. **If** no test fails → it stops and says so.
 
-        Intermittent? Add `[soak]`; with `[repro]`, the test repeats the scenario until it fails.
+        **If** the bug is intermittent → add `[soak]`. With `[repro]`, the test then repeats the scenario until it fails.
   - type: textarea
     id: failing
     attributes:
@@ -37,7 +37,7 @@ body:
     id: steps
     attributes:
       label: Steps to reproduce
-      description: Numbered, from a clean start.
+      description: Numbered steps from a clean start.
       placeholder: |
         1.
         2.
@@ -56,22 +56,22 @@ body:
     id: area
     attributes:
       label: Affected area
-      description: The route, command, file or module that misbehaves. Files named here are treated as what to fix; files only seen in a stack trace are not.
+      description: The route, command, file or module that misbehaves. Files named here are treated as what to fix. Files seen only in a stack trace are not.
   - type: textarea
     id: where
     attributes:
       label: Where and when
-      description: Environment (for example production or preview), version or commit, first and last seen in UTC, and the last version that worked.
+      description: The environment (for example production or preview), the version or commit, when it was first and last seen in UTC, and the last version that worked.
   - type: textarea
     id: evidence
     attributes:
       label: Evidence
-      description: Logs, error-tracker IDs or links, screenshots.
+      description: Logs, error-tracker IDs or links, and screenshots.
   - type: textarea
     id: references
     attributes:
       label: References
-      description: Related issues with their title, the feature that introduced it, ledger rows by `key`. Nothing fetches these, so write exact keys and numbers agents can search for.
+      description: Related issues with their titles, the feature that introduced the bug, and ledger rows by `key`. Nothing fetches these, so write exact keys and numbers that agents can search for.
       placeholder: |
         Related: #<number> — <its title>
         Introduced by: 41-csv-import

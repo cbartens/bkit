@@ -8,24 +8,24 @@ body:
   - type: markdown
     attributes:
       value: |
-        Write this as the plan: a build with no plan converts this issue into one.
-        - `/bkit-plan #<issue number>` turns it into a checked plan; the build then proves each **TEST FIRST** test fails before its code exists.
-        - `/bkit-build #<issue number>` converts this issue into a plan, then builds it and proves each **TEST FIRST** test fails before its code exists.
-        - `build:lite` builds from this issue too but checks nothing: no failing-test proof, gates, PR or CI.
+        Write this issue as the plan. A build with no plan converts this issue into one.
+        - `/bkit-plan #<issue number>` turns this issue into a checked plan. The build then proves each **TEST FIRST** test fails before its code exists.
+        - `/bkit-build #<issue number>` converts this issue into a plan, then builds it. It proves each **TEST FIRST** test fails before its code exists.
+        - `build:lite` also builds from this issue, but it checks nothing: no failing-test proof, no gates, no PR and no CI.
 
-        Keep the title short: it names the feature folder. Nothing ticks boxes in an issue.
+        Keep the title short, because it names the feature folder. Nothing ticks boxes in an issue.
   - type: textarea
     id: narrative
     attributes:
       label: Narrative
-      description: One or two sentences from the user's side. What they do and what they get back.
+      description: One or two sentences from the user's side, saying what they do and what they get back.
     validations:
       required: true
   - type: textarea
     id: success-criteria
     attributes:
       label: Success Criteria
-      description: Up to five outcomes you can observe that prove it works. Outcomes, not steps.
+      description: Up to five outcomes you can observe that prove it works. List outcomes, not steps.
       placeholder: |
         - A user who saves an item sees it in the list within 2s
     validations:
@@ -44,7 +44,7 @@ body:
     attributes:
       label: Derived Test Matrix
       description: |
-        One row per behaviour above, each covered by exactly one task. Type = the lowest tier that really exercises it, named as in `docs/testing.md`: Unit, Integration, E2E, @live (golden) or fresh-DB replay. The test must fail when the behaviour breaks.
+        One row per behaviour above, each covered by exactly one task. The type is the lowest tier that really exercises the behaviour, named as in `docs/testing.md`: Unit, Integration, E2E, @live (golden) or fresh-DB replay. The test must fail when the behaviour breaks.
       placeholder: |
         | Test description | Type | Target file |
         | --- | --- | --- |
@@ -56,7 +56,20 @@ body:
     attributes:
       label: Tasks
       description: |
-        In build order, preferably in this shape, the same group and task blocks a plan uses: groups of up to `bkit.workflows.tasks.maxPerGroup` tasks (default 3) and `bkit.workflows.tasks.maxTestsPerGroup` **TEST FIRST** tests (default 15), each task a block, task numbers unique across the issue. **CREATE** / **READ** / **UPDATE** / **DELETE** = one line per file the task touches, as `` `symbol` in `file`: what to do `` or `` `file`: what to do ``. **DEPENDS ON** = the numbers of tasks it builds on, in the same or an earlier group. **DONE WHEN** = a check you can verify in the code (file exists, test passes, behaviour observable). **TEST FIRST** = the matrix tests that fail before the code exists, 1 to `bkit.workflows.tasks.maxTestsPerTask` per task (default 10) across up to `bkit.workflows.tasks.maxTestFilesPerTask` test files (default 3), one line each as `` `test file` `test name` fails on what goes wrong ``; or `n/a — reason` for docs, config, a pure refactor, or E2E / @live only. **TEST EXCEPTION** = written only by the owner: tests whose test-order gap you accept, each as in **TEST FIRST** ending `— reason`; it counts once committed alone in the plan. A **TEST EXCEPTION** written here is a request: the build copies it word for word, stops on it, and the owner confirms it at the build's Decision Pause, where Accept rewrites it with the owner's reason and date. Free text works too: the build converts it. A plan file for this issue wins: once one exists, the build reads its tasks only from the plan, never from here.
+        List the tasks in build order. The preferred shape is the same group and task blocks a plan uses:
+        - Each group holds up to `bkit.workflows.tasks.maxPerGroup` tasks (default 3) and `bkit.workflows.tasks.maxTestsPerGroup` **TEST FIRST** tests (default 15).
+        - Each task is a block. Task numbers are unique across the issue.
+        - **CREATE** / **READ** / **UPDATE** / **DELETE**: one line per file the task touches, as `` `symbol` in `file`: what to do `` or `` `file`: what to do ``.
+        - **DEPENDS ON**: the numbers of the tasks it builds on, in the same group or an earlier one.
+        - **DONE WHEN**: a check you can verify in the code. For example, a file exists, a test passes, or a behaviour is observable.
+        - **TEST FIRST**: the matrix tests that fail before the code exists. A task has 1 to `bkit.workflows.tasks.maxTestsPerTask` tests (default 10), across up to `bkit.workflows.tasks.maxTestFilesPerTask` test files (default 3). Write one line each, as `` `test file` `test name` fails on what goes wrong ``.
+        - **If** the task is docs, config, a pure refactor, or covered by E2E / @live only → write `n/a — reason` under **TEST FIRST**.
+        - **TEST EXCEPTION**: written only by the owner. It lists the tests whose test-order gap you accept, each written as in **TEST FIRST** and ending `— reason`. It counts once it is committed alone in the plan.
+        - A **TEST EXCEPTION** written here is a request. The build copies it word for word and stops on it. The owner confirms it at the build's Decision Pause, where Accept rewrites it with the owner's reason and date.
+
+        Free text works too. The build converts it.
+
+        A plan file for this issue wins. Once one exists, the build reads its tasks only from the plan, never from here.
       placeholder: |
         <!-- bkit:group 1 start -->
         ### TASK GROUP 1: Saving items
@@ -86,7 +99,7 @@ body:
     id: open-questions
     attributes:
       label: Open Questions & Assumptions
-      description: Each with its options, your recommendation, and the default if nobody answers.
+      description: List each one with its options, your recommendation, and the default if nobody answers.
   - type: textarea
     id: breaking-changes
     attributes:
@@ -102,7 +115,7 @@ body:
     attributes:
       label: References
       description: |
-        The plan reads `**Parent design:**` and `**Audit reports:**` lines; the build refuses to start while an issue in the blocked-by block is open. Write them exactly as shown. Other references are not fetched, so use exact paths, ledger `key`s and issue numbers with titles.
+        The plan reads the `**Parent design:**` and `**Audit reports:**` lines. The build refuses to start while an issue in the blocked-by block is open. Write these lines and the blocked-by block exactly as shown. Nothing fetches the other references, so use exact paths, ledger `key`s, and issue numbers with their titles.
       placeholder: |
         **Parent design:** [42-offline-sync-design.md](https://github.com/<owner>/<repo>/blob/dev/docs/plans/202610/42-offline-sync-design.md)
         **Audit reports:** docs/audits/202610/security.md (findings security-3, security-5)

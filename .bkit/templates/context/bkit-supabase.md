@@ -3,26 +3,29 @@
 
 # Supabase — Postgres errors
 
-Fits: apps on a hosted Supabase project. `context=runtime`: Postgres `ERROR` / `FATAL` / `PANIC` counts per hour, severity, SQLSTATE and role from the Management API logs endpoint (default last 4 h; any longer window is read one day per call, the API's limit). No message text is read. Swap the SQL to `source = 'edge_logs'` for API 5xx.
+Fits: apps on a hosted Supabase project. The `context=runtime` block returns Postgres `ERROR` / `FATAL` / `PANIC` counts per hour, severity, SQLSTATE and role from the Management API logs endpoint. The default window is the last 4 h. The block reads any longer window one day per call, which is the API's limit. It reads no message text. For API 5xx, swap the SQL to `source = 'edge_logs'`.
 
-- Secret: `SUPABASE_ACCESS_TOKEN` (personal access token; one token covers preview and production).
-- Non-secret: `SUPABASE_PROJECT_ID` (project ref) — uncomment the line in the block so cloud agents inherit it. Preview and production are separate projects: use the ref whose logs you want. `SINCE_ISO` / `UNTIL_ISO` set the window.
-- CLI: none (`curl` + `jq`), no provision block.
+- Secret: `SUPABASE_ACCESS_TOKEN`, a personal access token. One token covers preview and production.
+- Non-secret: `SUPABASE_PROJECT_ID`, the project ref. Uncomment its line in the block so cloud agents inherit it.
+- Preview and production are separate projects, so use the ref whose logs you want.
+- Non-secret: `SINCE_ISO` / `UNTIL_ISO` set the window.
+- CLI: none (`curl` and `jq`), so there is no provision block.
 
 Copy the block below into `.agents/context.md`, below `<!-- bkit:end -->`.
 
 <!-- context-fetch:start supabase context=runtime -->
 
 ```bash
-# Supabase Postgres errors — Management API `GET /v1/projects/{ref}/analytics/endpoints/logs`
-# (`logs.all` removed). ClickHouse SQL over one `logs` table; fields via log_attributes['…']
-# (strings). One call covers at most 24 h, silently drops the rest → loop walks the window a day at
-# a time. Counts per hour + severity + SQLSTATE + role; message text never read. Rejected query =
-# HTTP 200 with `.error`; both checked, either → `skipped`.
-# API 5xx instead: source = 'edge_logs' and toInt32OrZero(log_attributes['response.status_code']) >= 500.
-# SUPABASE_PROJECT_ID is non-secret — uncomment + set the line below so local AND
-# cloud agents inherit it (headless cloud agents never read .bkit/.env). Preview and
-# production are SEPARATE projects — use the ref for the env whose logs you want:
+# Supabase Postgres errors: Management API `GET /v1/projects/{ref}/analytics/endpoints/logs`
+# (there is no `logs.all`). The endpoint takes ClickHouse SQL over one `logs` table, with fields read
+# through log_attributes['…'] as strings. One call covers at most 24 h and silently drops the
+# rest, so the loop walks the window a day at a time. The block counts per hour, severity,
+# SQLSTATE and role, and never reads message text. A rejected query = HTTP 200 with `.error`. The
+# block checks both, and either one → `skipped`.
+# For API 5xx instead: source = 'edge_logs' and toInt32OrZero(log_attributes['response.status_code']) >= 500.
+# SUPABASE_PROJECT_ID is non-secret. Uncomment and set the line below so both local and cloud
+# agents inherit it, because headless cloud agents never read .bkit/.env. Preview and production
+# are separate projects, so use the ref for the env whose logs you want:
 # SUPABASE_PROJECT_ID="your-project-ref"
 # Customise: SUPABASE_PROJECT_ID (preview vs prod); SINCE_ISO / UNTIL_ISO (window, default last 4 h); the SQL (source, severities, grouping). Positive control (suggested): run once over a window holding a known error (e.g. a test triggering permission-denied 42501); nothing back = reader broken, not clean.
 [ -n "${SUPABASE_PROJECT_ID:-}" ] && [ -n "${SUPABASE_ACCESS_TOKEN:-}" ] \

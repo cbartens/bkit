@@ -3,13 +3,19 @@
 
 # GitHub Actions — failing CI run and diff since the last green run
 
-Fits: any repo whose CI runs on GitHub Actions. `context=ci`: the failing run on the current branch — failed jobs and steps, `::error` annotations, failed-step logs per failed job, each tail-bounded (bounded whole-run tail when `--log-failed` returns nothing). `context=diff`: `git diff --stat` (capped at `DIFF_STAT_N` files) from the last commit where your CI workflow passed on trunk to `HEAD`.
+Fits: any repo whose CI runs on GitHub Actions.
 
-- Secret: `GH_TOKEN` in cloud (local `gh auth login` works too).
-- Non-secret: `context=ci` none, the block discovers its own run. `context=diff`: `BASELINE_BRANCH` (your trunk, default `dev`) and `BASELINE_WORKFLOW` (your CI workflow file, default `bkit-ci.yml`); edit the defaults in the block so cloud agents inherit them.
-- CLI: `gh` — base tooling, no provision block.
+- The `context=ci` block reads the failing run on the current branch. It returns the failed jobs and steps, the `::error` annotations and the failed-step logs of each failed job, each log cut to its tail. When `--log-failed` returns nothing, it returns a bounded tail of the whole run's log instead.
+- The `context=diff` block returns `git diff --stat` (capped at `DIFF_STAT_N` files) from the last commit where your CI workflow passed on trunk to `HEAD`.
+
+The settings:
+
+- Secret: `GH_TOKEN` in cloud. A local `gh auth login` works too.
+- Non-secret, `context=ci`: none. The block discovers its own run.
+- Non-secret, `context=diff`: `BASELINE_BRANCH` (your trunk, default `dev`) and `BASELINE_WORKFLOW` (your CI workflow file, default `bkit-ci.yml`). Edit the defaults in the block so cloud agents inherit them.
+- CLI: `gh`. It is base tooling, so there is no provision block.
 - Domains: none beyond bkit's derived set (`github.com`).
-- `context=diff` needs the last-passing commit locally: a shallow clone self-skips, naming the SHA.
+- `context=diff` needs the last-passing commit locally. In a shallow clone the block skips itself and names the SHA.
 
 Copy the blocks below into `.agents/context.md`, below `<!-- bkit:end -->`. The blocks are independent: copy one or both.
 
@@ -18,8 +24,8 @@ Copy the blocks below into `.agents/context.md`, below `<!-- bkit:end -->`. The 
 <!-- context-fetch:start github context=ci -->
 
 ```bash
-# GitHub Actions: failing-run job/step failures + error annotations + failed-step logs.
-# Discovers its own run. `gh` is base tooling — no context-fetch:provision sibling.
+# GitHub Actions: the failing run's job and step failures, error annotations and failed-step logs.
+# The block discovers its own run. `gh` is base tooling, so there is no context-fetch:provision sibling.
 # Customise: run (`--branch`, `--limit`, pin RUN_ID); log slice (`--log-failed` vs `--log`); CI_LOG_TAIL (lines kept per failed job, and of the whole-run fallback); job/step name filter; annotation grep.
 command -v gh >/dev/null 2>&1 \
   || { echo "[context-fetch:github] skipped — gh CLI not installed" >&2; exit 0; }
@@ -52,7 +58,7 @@ ${JOB_LOG}
 done <<EOF_JOBS
 $FAILED_JOBS
 EOF_JOBS
-# Whole-run fallback is tens of MB — bound it the same way.
+# The whole-run fallback is tens of MB, so bound it the same way.
 [ -z "$CI_LOGS" ] && CI_LOGS=$(gh run view "$RUN_ID" --log 2>/dev/null | tail -n "$CI_LOG_TAIL")
 [ -n "$CI_LOGS" ] \
   || { echo "[context-fetch:github] skipped — no logs returned for run $RUN_ID" >&2; exit 0; }
@@ -70,8 +76,8 @@ printf '===== failed-step logs =====\n%s\n' "$CI_LOGS"
 <!-- context-fetch:start github context=diff -->
 
 ```bash
-# GitHub Actions: diff HEAD vs last-passing CI on trunk.
-# Set BASELINE_BRANCH / BASELINE_WORKFLOW to YOUR trunk and workflow file; commit them here.
+# GitHub Actions: the diff from the last commit that passed CI on trunk to HEAD.
+# Set BASELINE_BRANCH / BASELINE_WORKFLOW to your own trunk and workflow file, and commit them here.
 # Customise: BASELINE_BRANCH / BASELINE_WORKFLOW; last-passing `--limit`; `git diff` pathspec / `--stat` vs full patch; DIFF_STAT_N (files listed).
 BASELINE_BRANCH="${BASELINE_BRANCH:-dev}"
 BASELINE_WORKFLOW="${BASELINE_WORKFLOW:-bkit-ci.yml}"

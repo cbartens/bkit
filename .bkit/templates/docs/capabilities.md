@@ -1,20 +1,21 @@
-> Example output. Copy to `docs/capabilities.md`, own it. `bkit install` does not write this file and does not overwrite a copy.
+> Example output. Copy it to `docs/capabilities.md` and own it. `bkit install` does not write this file and does not overwrite a copy.
 >
-> `pnpm graph:rollup` rewrites everything outside Overrides block; do not edit generated body. Add capability in `scripts/graphify/bkit-graph-drift-rules.json`. Running the tools: `.bkit/templates.md`.
+> `pnpm graph:rollup` rewrites everything outside the Overrides block, so do not edit the generated body. To add a capability, add it in `scripts/graphify/bkit-graph-drift-rules.json`. How to run the tools is in `.bkit/templates.md`.
 
 # Capabilities
 
 > [!CAUTION]
-> **Purpose:** One row per capability — owner module, literal marker finding every use, whether anything bypasses owner.
+> **Purpose:** One row per capability, with its owner module, the literal marker that finds every use of it, and whether anything bypasses the owner.
 >
 > **Rules:**
 >
-> - GENERATED. `pnpm graph:refresh` rewrites this file.
-> - Source of truth: `scripts/graphify/bkit-graph-drift-rules.json`. Status is derived from the tree, never typed.
-> - Markers literal, never regex. Regex metacharacter in a marker matches nothing → reads as clean result.
-> - Optional `scope`: path prefixes. Optional `surface`: `product` (default), `tests`, or `all`.
-> - Optional `budgets`: exact non-owner site count allowed per scope prefix. Measured = declared → `budgeted`.
-> - Only Overrides block is hand-maintained; malformed block aborts run.
+> - This file is generated. `pnpm graph:refresh` rewrites it.
+> - The source of truth is `scripts/graphify/bkit-graph-drift-rules.json`. Each status is derived from the tree, never typed in.
+> - Markers are literal, never regex. A regex metacharacter in a marker matches nothing, and the row then reads as a clean result.
+> - Optional `scope`: path prefixes.
+> - Optional `surface`: `product` (default), `tests` or `all`.
+> - Optional `budgets`: the exact non-owner site count allowed per scope prefix. Measured = declared → `budgeted`.
+> - Only the Overrides block is hand-maintained. A malformed block aborts the run.
 
 ## Status Vocabulary
 
@@ -42,7 +43,7 @@ Not scanned.
 
 ## Overrides
 
-Only hand-maintained region. Rename node, hide node / edge, pin note, force nodes into a named group. Each `hide_nodes` entry needs a one-line reason in `hide_nodes_why`.
+This is the only hand-maintained region. Use it to rename a node, hide a node or an edge, pin a note, or force nodes into a named group. Each `hide_nodes` entry needs a one-line reason in `hide_nodes_why`.
 
 <!-- overrides:start -->
 
