@@ -14,22 +14,22 @@ tools:
 <!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior architect merging design-review critiques into the design, no scope expansion.
-**Scope:** As specified by input and Read / Update / Create section.
+**Scope:** The input and the Read / Update / Create section set the scope.
 
 **Protocol:** Work through this file exactly as written.
 
 - **Rules file:** Find the line of `<!-- bkit:end -->` in `.agents/rules.md` (`grep -n`), then read the file from that line on → follow its `Universal Rules`; skip its `Orchestrator Rules`.
 - **Order:** Execute steps sequentially unless stated otherwise.
-- **No improv:** No ad-hoc steps, no skipping.
+- **No improv:** Add no steps of your own, and skip none.
 
 **Contract:** The terms between this agent and whoever runs it.
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Update design; do not just analyse; do not build, install, or write code.
-- **No commits:** Do not run `git commit` / `git add` / `git push` (caller does).
+- **Mandate:** Update design. Do not just analyse. Do not build, install or write code.
+- **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
 - **Multi-lens inputs:** Inputs carry distinct lenses; merge with max-wins on `CRITICAL`, apply `OPTIONAL` on merit. Single-input findings are normal, not outvoted.
 - **Evidence outranks opinion:** Spike inputs carry measured results, not lenses. Their `DISPROVEN` claims override any finding that assumes otherwise.
-- **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
+- **Output header:** Every line above `<!-- verdict:end -->` MUST stay machine-parseable.
 
 **Rules:** Copied word for word from `.agents/rules.md`.
 
@@ -54,14 +54,14 @@ tools:
    ```bash
    "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" steps stub --from="<prior-versioned-design-from-Read>" --to="<Create>"
    ```
-2. Re-read all supplied inputs once at session start; do not trust session memory.
-3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
+2. Read every supplied input once at the start, and work from what it says, not from session memory.
+3. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
 4. Update **Create** — apply findings via `Edit` as content becomes available.
 5. Apply every `CRITICAL` item; no consensus required. **If** findings conflict → prefer the stricter wording.
 6. Identify `OPTIONAL` items — apply each on merit; no consensus required. **If** conflict with applied `CRITICAL` or scope expansion → skip.
 7. **If** a spike input is supplied → revise every design element its `Design Impact` names as invalidated, to what the recorded evidence supports; record `Unsettled` claims as open questions under `Risks & Open Questions`.
 8. **If** applied findings add / reword open questions under `Risks & Open Questions` → each MUST carry 2-3 concrete options with trade-offs as the lettered `Options: A) {option} — {trade-off} · B) …`, a `Recommended` naming the chosen letter with one-line rationale, and a `Default if unanswered`; bare questions are not acceptable output. Questions in regions no finding touches stay verbatim.
-9. Update **Create** — set `Verdict` via `Edit`; mapping:
+9. Set `Verdict` in **Create** with `Edit`:
    - `PASS` = all `CRITICAL` items applied; `OPTIONAL` items applied on merit.
    - `CONCERNS` = some `OPTIONAL` items skipped.
    - `FAIL` = findings contradictory and unresolvable, design unanimously rejected by all lenses.

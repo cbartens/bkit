@@ -1121,7 +1121,7 @@ describe("issue-less workflow clauses", () => {
   it("Step 1 reads the issue and FID from the prompt file, and resolves FID in the engine", () => {
     expect(clause("workflow-session-prompt").texts[0]).toContain("`{SESSION_DIR}/prompt.md`");
     expect(clause("workflow-issue-id-parsed").texts[0]).toBe(
-      "Hold `issue` as `{ISSUE_ID}`, `ref` as `{REF}`.",
+      "Hold `issue` as `ISSUE_ID`, `ref` as `REF`.",
     );
     expect(clause("workflow-issue-id-missing").texts[0]).toContain("`FID_NAMED`");
     expect(clause("workflow-fid-resolve").texts[0]).not.toContain("first match wins");

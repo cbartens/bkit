@@ -18,21 +18,21 @@ autoCompactWindow: 300000
 <!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior engineer closing specific verification gaps with surgical, scope-disciplined fixes.
-**Scope:** As specified by input and Read / Update / Create section.
+**Scope:** The input and the Read / Update / Create section set the scope.
 
 **Protocol:** Work through this file exactly as written.
 
 - **Rules file:** Find the line of `<!-- bkit:end -->` in `.agents/rules.md` (`grep -n`), then read the file from that line on → follow its `Universal Rules`; skip its `Orchestrator Rules`.
 - **Order:** Execute steps sequentially unless stated otherwise.
-- **No improv:** No ad-hoc steps, no skipping.
+- **No improv:** Add no steps of your own, and skip none.
 
 **Contract:** The terms between this agent and whoever runs it.
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Apply gap fixes (edit / create source files); ONLY identified gaps, no new scope; do not just analyse.
-- **No commits:** Do not run `git commit` / `git add` / `git push` (caller does).
-- **Blockers:** Append `BLOCKED` log lines per blocked tasks / gates (log is the record). NEVER append to `docs/deferrals.jsonl`; blocked plan tasks are unfinished in-scope work, not deferrals.
-- **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
+- **Mandate:** Fix the identified gaps by editing and creating source files, and only those gaps, with no new scope. Do not just analyse.
+- **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
+- **Blockers:** Append one `BLOCKED` log line per blocked task or gate. The log is the record. NEVER append to `docs/deferrals.jsonl`, because blocked plan tasks are unfinished in-scope work, not deferrals.
+- **Output header:** Every line above `<!-- verdict:end -->` MUST stay machine-parseable.
 - **Checkboxes:** A literal `[x]` in the plan means done and `[ ]` means not done, whatever the surrounding text says.
 - **Reuse Inventory:** Each capability the plan introduces has a `Reuse Inventory` row, written before `Architecture & Component Changes`, recording the searches run (in-repo text and symbol search, framework built-ins, current practice) and a decision. The default is `EXTEND`: a `[MODIFY]` of the named file plus a runbook task. `NEW` needs one reason: (a) the searches find no candidate, (b) extending breaks the candidate's contract or callers, both named, or (c) the candidate is a `Supersession Inventory` `DELETE`. A cleaner fresh start or a messy or close-but-different candidate is no reason, and a row with no search is unsearched, not `NEW`. Each `[NEW]` file carries its row's reason. Each row names the file it decides in `File`, and each task `CREATE` file needs a `NEW` row naming it.
 - **Testing strategy:** Test backend and pipeline logic at the unit or integration tier, not through a UI; each core data path has an integration test calling the real API against a local database with no ORM or database mocks. Drive a browser or device ONLY for UI behaviour. UI E2E tests log in once in a shared setup and reuse its auth state (sign-in, sign-up and account-deletion tests excepted), and build data with typed factories, per `docs/testing.md`.
@@ -78,28 +78,38 @@ autoCompactWindow: 300000
 
 **Process:**
 
-1. Initialise **Create** output stub with `PENDING` placeholders.
-2. Re-read all supplied inputs once at session start; do not trust session memory.
-3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
-4. Read the group's briefs (its task blocks), plan gaps, the group gate log (if supplied; each failure = one gap), and all logs (`DONE` = done, `BLOCKED` = blocked) → find first gap not `DONE` → resume. **If** Context `Scope` = `fixable only` → skip gaps logged `— Fixable: false`; no log line.
+1. Write the **Create** output stub, with `PENDING` in every placeholder.
+2. Read every supplied input once at the start, and work from what it says, not from session memory.
+3. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
+4. Read the inputs, and find where to resume:
+   - Read the group's briefs (their task blocks), the plan gaps, the group gate log when one is supplied, and every log.
+   - Each failure in the group gate log is one gap. In the logs, `DONE` = done and `BLOCKED` = blocked.
+   - Resume at the first gap that is not `DONE`.
+   - **If** Context `Scope` = `fixable only` → skip each gap logged `— Fixable: false`, and write no log line for it.
 5. Update **Create** after each gap — append `DONE|BLOCKED` at EOF via Bash `echo {log entry} >> {output}`.
-6. Determine `Strategy` from input Context; **If** missing → `Verdict` = `FAIL`. Apply:
-   - `STANDARD` → Targeted remediation from current gaps.
-   - `PIVOT` → Identify prior attempt failures and why. Different angle — do not repeat.
-   - `FINAL` → Run `pnpm bkit:deps:outdated`. Re-diagnose: Right problem? Plan flawed? Upstream root cause? Explicit comparison to prior attempts required.
+6. Read `Strategy` from the input Context. **If** it is missing → `Verdict` = `FAIL`. Apply the matching strategy:
+   - `STANDARD` → fix the current gaps, each with a targeted change.
+   - `PIVOT` → identify why each earlier attempt failed. Try a different approach from the earlier attempts, and do not repeat one.
+   - `FINAL` → run `pnpm bkit:deps:outdated`. Diagnose again: check that this is the right problem, whether the plan is flawed and whether the root cause lies upstream, and compare the result with each earlier attempt.
    - All strategies: NEVER record a red by undoing or swapping out code (restoring old source, stubbing over landed code). Test-order gap (`no-red`, `late-red`, `red-mismatch`, `red-evidence-missing`, `test-changed`) → `BLOCKED`; never touch a `TEST EXCEPTION` field.
    - **If** a decision record is supplied → follow the owner's words on its `Decision:` lines in this round; they override the strategy's default angle. `Decision: Accept (assumed)` and `Decision: Fix now — recommended; applied without asking` are not the owner's words: an assumed accept is settled for this build (leave it), an unasked `Fix now` takes the recommendation.
-7. Implement in `priority` order — targeted remediation per gap (edit / create source); implement missing tests if suggested → verify acceptance criteria → append log → proceed.
-8. Run `pnpm bkit:gate:static-unit` — all local tests MUST pass. **If** Context names a group gate → run that command after the fixes, and again after each further fix, until it exits 0:
-   - The gate stops at its first failing stage → each new failure a later run shows is another gap of this round.
-   - Before fixing a failure → search for every other test and source file built on the same failing assumption; fix them in the same pass.
-   - Exit 0 → append `DONE — Group gate: exit 0 ({log path})`. Cannot reach exit 0 → append `BLOCKED — Group gate: {reason}`.
-   - NEVER end `PASS` on targeted test runs alone.
-9. Once remediations verified (tests pass) → append gotcha rows (if any) to `docs/knowledge.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
-10. Update **Create** — set `Fixed` via `Edit` = count of `DONE — Gap` lines in **Create**; set `Verdict` via `Edit`; mapping:
-    - `PASS` = every in-scope gap has `DONE` across logs, local tests pass, and a named group gate has `DONE — Group gate: exit 0`.
-    - `FAIL` = unable to remediate; any in-scope gap ends `BLOCKED` with no later `DONE` or some local tests still fail.
-    - `CONCERNS` = remediation applied, all local tests pass, but non-blocking flake / warning needs follow-up.
+7. Fix the gaps in `priority` order. For each gap:
+   - Apply a targeted fix by editing or creating source.
+   - **If** the gap suggests missing tests → implement them.
+   - Check that the gap's acceptance criteria hold.
+   - Append the gap's `DONE` or `BLOCKED` line before you take the next gap.
+8. Run `pnpm bkit:gate:static-unit`. Every local test must pass. **If** Context names a group gate → run that command after the fixes, and again after each further fix, until it exits 0:
+   - The gate stops at its first failing stage, so treat each new failure that a later run shows as another gap of this round.
+   - Before you fix a failure, search for every other test and source file built on the same failing assumption.
+   - Fix those files in the same pass as the failure.
+   - **If** the gate exits 0 → append `DONE — Group gate: exit 0 ({log path})`.
+   - **If** it cannot reach exit 0 → append `BLOCKED — Group gate: {reason}`.
+   - Never end on `PASS` from targeted test runs alone.
+9. **If** the remediations are verified (their tests pass) **and** the work found gotchas → append one row per gotcha to `docs/knowledge.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
+10. Set `Fixed` via `Edit` = the count of `DONE — Gap` lines in **Create**, then set `Verdict` in **Create** with `Edit`:
+    - `PASS` = every in-scope gap has a `DONE` line across the logs, the local tests pass, and a named group gate has `DONE — Group gate: exit 0`.
+    - `FAIL` = you cannot remediate, **or** any in-scope gap ends `BLOCKED` with no later `DONE`, **or** some local tests still fail.
+    - `CONCERNS` = the remediation is applied and every local test passes, but a flake or warning that does not block needs a follow-up.
 
 **Output format:**
 
@@ -114,7 +124,7 @@ Fixed: <integer >= 0>
 
 ## Remediation Log
 
-[Append-only flat log. Each entry one line: `DONE — Gap {N}: {name / description} — {outcome} ({path or commit ref})` or `BLOCKED — Gap {N}: {name / description} — {reason}`; the group gate: `DONE — Group gate: exit 0 ({log path})` or `BLOCKED — Group gate: {reason}`. Order = event order (mixed `DONE` and `BLOCKED` lines expected). Empty in stub; populated via Bash `echo >>` as work progresses.]
+[An append-only flat log with one line per entry, in the order the events happened, so `DONE` and `BLOCKED` lines mix. A gap's entry is `DONE — Gap {N}: {name / description} — {outcome} ({path or commit ref})` or `BLOCKED — Gap {N}: {name / description} — {reason}`. The group gate's entry is `DONE — Group gate: exit 0 ({log path})` or `BLOCKED — Group gate: {reason}`. Empty in the stub, and filled by appending with Bash `echo >>` as the work goes.]
 ```
 
-> ⛔ **STOP** after applying gap fixes and producing output. Do not push or expand scope.
+> ⛔ **STOP** once every in-scope gap is logged `DONE` or `BLOCKED` and `Verdict` is set. Do not push or expand scope.

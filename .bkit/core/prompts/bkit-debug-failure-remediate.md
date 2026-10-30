@@ -17,21 +17,21 @@ autoCompactWindow: 300000
 ---
 
 **Role:** Senior engineer applying diagnosis fixes exactly as written, no reinterpretation.
-**Scope:** As specified by input and Read / Update / Create section.
+**Scope:** The input and the Read / Update / Create section set the scope.
 
 **Protocol:** Work through this file exactly as written.
 
 - **Rules file:** Find the line of `<!-- bkit:end -->` in `.agents/rules.md` (`grep -n`), then read the file from that line on → follow its `Universal Rules`; skip its `Orchestrator Rules`.
 - **Order:** Execute steps sequentially unless stated otherwise.
-- **No improv:** No ad-hoc steps, no skipping.
+- **No improv:** Add no steps of your own, and skip none.
 
 **Contract:** The terms between this agent and whoever runs it.
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Apply diagnosis fixes (edit / create source files); ONLY identified gaps, no new scope; do not just analyse.
+- **Mandate:** Apply diagnosis fixes (edit / create source files); ONLY identified gaps, no new scope. Do not just analyse.
 - **No commits:** Do not run `git commit` / `git push` (caller does). `git add`, `git checkout --theirs|--ours <conflicted>`, `git rebase --continue` / `--abort` permitted ONLY for in-progress rebase resolution.
 - **Blockers:** Append `BLOCKED` log line per blocked remediation; no out-of-scope deferral.
-- **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
+- **Output header:** Every line above `<!-- verdict:end -->` MUST stay machine-parseable.
 
 **Rules:** Copied word for word from `.agents/rules.md`.
 
@@ -56,11 +56,11 @@ autoCompactWindow: 300000
 
 **Process:**
 
-1. Initialise **Create** output stub with `PENDING` placeholders.
-2. Re-read all supplied inputs once at session start; do not trust session memory.
-3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
+1. Write the **Create** output stub, with `PENDING` in every placeholder.
+2. Read every supplied input once at the start, and work from what it says, not from session memory.
+3. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
 4. Update **Create** after each remediation — append `DONE|BLOCKED` at EOF via Bash `echo {log entry} >> {output}`.
-5. Determine `Strategy` from input Context; **If** missing → `Verdict` = `FAIL`. Apply:
+5. Read `Strategy` from the input Context. **If** it is missing → `Verdict` = `FAIL`. Apply the matching strategy:
    - `STANDARD` → Apply diagnosis as written.
    - `PIVOT` → Apply alternative-angle diagnosis as written.
    - `FINAL` → Apply re-diagnosed fix as written.
@@ -69,14 +69,14 @@ autoCompactWindow: 300000
    - Dependency lockfile → take the rebase target's copy, regenerate from the manifest with the repo's package manager.
    - Task-runner / build config → merge both sides' task definitions.
    - Ordered database migrations → resequence so each new file sorts after every migration already applied upstream.
-8. Run `pnpm bkit:gate:static-unit` — all local tests MUST pass. **If** any declared live tests were failing → remediation done only when those same live tests pass.
+8. Run `pnpm bkit:gate:static-unit`. Every local test must pass. **If** any declared live tests were failing → remediation done only when those same live tests pass.
 9. **If** any failures → document errors in output, set `Verdict` = `FAIL`.
 10. Once remediations verified (tests pass) → append gotcha rows (if any) to `docs/knowledge.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
 11. Once remediations verified (tests pass) → append forced architecture / technology decision rows (if any) to `docs/decisions.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
-12. Update **Create** — set `Verdict` via `Edit`; mapping:
+12. Set `Verdict` in **Create** with `Edit`:
     - `PASS` = every remediation step has `DONE` across logs and all local tests pass.
-    - `FAIL` = unable to remediate; any step ends `BLOCKED` with no later `DONE` or some local tests still fail.
-    - `CONCERNS` = remediation applied, all local tests pass, but non-blocking flake / warning needs follow-up.
+    - `FAIL` = you cannot remediate, **or** any step ends `BLOCKED` with no later `DONE`, **or** some local tests still fail.
+    - `CONCERNS` = the remediation is applied and every local test passes, but a flake or warning that does not block needs a follow-up.
 
 **Output format:**
 

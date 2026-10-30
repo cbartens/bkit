@@ -185,7 +185,7 @@ describe("gate logs", () => {
     "%s routes the test failures on the engine's count, never a count from the log",
     (name) => {
       const text = workflow(name);
-      expect(text).toContain("`failures` as `{TEST_FAILURES}`");
+      expect(text).toContain("`failures` as `TEST_FAILURES`");
       expect(text).toContain(
         "`{FAILURES_FLAG}` = `--failures={TEST_FAILURES}`, empty when `TEST_FAILURES` = null",
       );
@@ -238,7 +238,7 @@ describe("Step 1 FID check", () => {
       ).toBeUndefined();
       const [line] = commandLines(step1, "fids resolve");
       expect(line).toContain(`--workflow=${name}`);
-      expect(step1).toContain("**If** exit 0 → hold `fid` as `{FID}`");
+      expect(step1).toContain("**If** exit 0 → hold `fid` as `FID`");
       expect(step1).toContain("**If** exit 4 → **Failure Path** listing `fids`");
       // The chain, the suffixing and the format check all live in the engine.
       for (const gone of ["fids find", "fids free", '"{BKIT}" fids check']) {
@@ -259,7 +259,7 @@ describe("Step 1 FID check", () => {
       expect(step1).toContain("`sessionDir` as `{SESSION_DIR}`");
       expect(step1).toContain("Write the session prompt verbatim to `{SESSION_DIR}/prompt.md`");
       expect(step1).toContain('"{BKIT}" fids parse --prompt-file="{SESSION_DIR}/prompt.md"');
-      expect(step1).toContain("Hold `fidNamed` as `{FID_NAMED}`");
+      expect(step1).toContain("Hold `fidNamed` as `FID_NAMED`");
       expect(step1).not.toContain("Extract from session prompt");
       expect(step1).not.toContain("tr '[:upper:]' '[:lower:]'");
     },
@@ -792,7 +792,7 @@ describe("build", () => {
     it("convert reads the whole input file; the newer text wins where it and the plan disagree", () => {
       expect(convert).not.toContain("NEVER read or use issue text");
       expect(convert).toContain(
-        "**Same scope:** Every task traces to the input file or the existing plan; add no work they do not ask for, drop none they do.\n",
+        "**Same scope:** Every task traces to the input file or the existing plan. Add no work that they do not ask for, and drop no work that they do ask for.\n",
       );
       expect(convert).not.toContain("the plan wins");
     });

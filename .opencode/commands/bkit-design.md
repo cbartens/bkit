@@ -15,7 +15,7 @@ $ARGUMENTS
 
 - **Rules file:** Read `.agents/rules.md` → follow all rules.
 - **Order:** Execute steps sequentially unless stated otherwise.
-- **No improv:** No ad-hoc steps, no skipping.
+- **No improv:** Add no steps of your own, and skip none.
 - **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does not mean silent.
 - **Failures:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
 - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, etc non-empty if required before making tool calls (`{ISSUE_ID}` may be empty). **Else** → **Failure Path**.
@@ -75,14 +75,14 @@ $ARGUMENTS
    ```bash
    "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" repo info --fetch
    ```
-   Hold `bkit` as `{BKIT}`, `ownerRepo` as `{OWNER_REPO}`, `owner` as `{OWNER}`, `repo` as `{REPO}`, `branch` as `{BRANCH}`, `repoRoot` as `{REPO_ROOT}`, `outboxRoot` as `{OUTBOX_ROOT}`, `sessionDir` as `{SESSION_DIR}`, `bkitAdvisory` as `{BKIT_ADVISORY}`. **If** `BKIT_ADVISORY` != null → emit advisory `[bkit-design] {BKIT_ADVISORY}`.
-   Hold `trackerTeam` as `{TRACKER_TEAM}`, `trackerProject` as `{TRACKER_PROJECT}`, `trackerSite` as `{TRACKER_SITE}`.
+   Hold `bkit` as `{BKIT}`, `ownerRepo` as `OWNER_REPO`, `owner` as `OWNER`, `repo` as `REPO`, `branch` as `{BRANCH}`, `repoRoot` as `REPO_ROOT`, `outboxRoot` as `OUTBOX_ROOT`, `sessionDir` as `{SESSION_DIR}`, `bkitAdvisory` as `{BKIT_ADVISORY}`. **If** `BKIT_ADVISORY` != null → emit advisory `[bkit-design] {BKIT_ADVISORY}`.
+   Hold `trackerTeam` as `TRACKER_TEAM`, `trackerProject` as `TRACKER_PROJECT`, `trackerSite` as `TRACKER_SITE`.
 2. Write the session prompt verbatim to `{SESSION_DIR}/prompt.md` → read the issue and the `FID` it names:
    ```bash
    "{BKIT}" fids parse --prompt-file="{SESSION_DIR}/prompt.md"
    ```
    **If** exit 8 → **STOP**; tell the user the prompt names more than one issue (`ambiguous`) and to name the issue as `#N`, its key or its URL; never the **Failure Path**.
-   Hold `fidNamed` as `{FID_NAMED}`. Hold `issue` as `{ISSUE_ID}`, `ref` as `{REF}`.
+   Hold `fidNamed` as `FID_NAMED`. Hold `issue` as `ISSUE_ID`, `ref` as `REF`.
    **If** `ISSUE_ID` empty → recover `ISSUE_ID` from the branch, `{FID}` = `FID_NAMED`, else the `BRANCH` suffix; `FID_NAMED` null and `BRANCH` != `feat/{FID}` → as exit 0 with `issueId` null:
    ```bash
    "{BKIT}" fids parse --branch="feat/{FID}"
@@ -96,14 +96,14 @@ $ARGUMENTS
    ```bash
    "{BKIT}" issues fetch --issue="{ISSUE_ID}" --session-dir="{SESSION_DIR}"
    ```
-   Hold `state` as `{STATE}`, `labels` as `{LABELS}`, `title` as `{TITLE}`, `url` as `{URL}`. **If** exit 80 → read the issue via the tracker MCP (**Tracker**) → write the description raw to `{SESSION_DIR}/issue-description.md`, the comments oldest first as JSON to `{SESSION_DIR}/issue-comments.json` and `{ title, url, state, labels }` as JSON to `{SESSION_DIR}/issue-facts.json`.
+   Hold `state` as `STATE`, `labels` as `LABELS`, `title` as `TITLE`, `url` as `URL`. **If** exit 80 → read the issue via the tracker MCP (**Tracker**) → write the description raw to `{SESSION_DIR}/issue-description.md`, the comments oldest first as JSON to `{SESSION_DIR}/issue-comments.json` and `{ title, url, state, labels }` as JSON to `{SESSION_DIR}/issue-facts.json`.
 4. Resolve `FID` — never borrow another feature's `FID` from a leftover lock or the newest bucket.
    **If** `ISSUE_ID` empty → drop `--title-file`.
    ```bash
    "{BKIT}" fids resolve --prompt-file="{SESSION_DIR}/prompt.md" --issue="{ISSUE_ID}" --title-file="{SESSION_DIR}/issue-facts.json" --workflow=design
    ```
    Route:
-   - **If** exit 0 → hold `fid` as `{FID}`; one `FID` for all artifacts.
+   - **If** exit 0 → hold `fid` as `FID`; one `FID` for all artifacts.
    - **If** exit 4 → **Failure Path** listing `fids` (name the `FID` in the session prompt to pick one).
    - **If** exit 9 → **STOP**; tell the user the prompt holds only a bare number and to name the issue as `#N`, its key or its URL; never the **Failure Path**.
    - **Else** → **Failure Path**.
@@ -111,7 +111,7 @@ $ARGUMENTS
    ```bash
    "{BKIT}" locks acquire --kind=workflow --workflow=design --fid={FID}
    ```
-   Hold `token` as `{LOCK_TOKEN}`, `month` as `{YYYYMM}`.
+   Hold `token` as `LOCK_TOKEN`, `month` as `YYYYMM`.
 6. **Skip if** `ISSUE_ID` empty. `{LABELS}` = `labels`, `{TRACKER_STATE}` = `trackerState`, `{BOARD}` = `board`, `boardSkipped` of the block below; `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry:
    ```bash
    "{BKIT}" issues labels --write --phase=design --board=progress --issue={ISSUE_ID} --owner-repo={OWNER_REPO} {LABEL_FLAGS}
@@ -148,7 +148,7 @@ $ARGUMENTS
    ```bash
    "{BKIT}" worktrees setup --workflow=design --fid={FID} --month={YYYYMM} --detect
    ```
-   Hold `worktreePath` as `{WORKTREE_PATH}`, `{OUTBOX_ROOT}/{FID}` as `{OUTBOX}`, `branch` as `{BRANCH}`, `logDir` as `{LOG_DIR}`, `sentinel` as `{SENTINEL}`, `baseSha` as `{BASE_SHA}` (empty when null).
+   Hold `worktreePath` as `WORKTREE_PATH`, `{OUTBOX_ROOT}/{FID}` as `OUTBOX`, `branch` as `BRANCH`, `logDir` as `LOG_DIR`, `sentinel` as `SENTINEL`, `baseSha` as `{BASE_SHA}` (empty when null).
    Route:
    - **If** exit 0 → step 3.
    - **If** exit 3 → run the rebase block below; **If** it exits 0 → re-run step 2, **Else** → **Failure Path**.
@@ -156,14 +156,14 @@ $ARGUMENTS
    ```bash
    cd "{WORKTREE_PATH}" && "{BKIT}" branches rebase --sentinel="{SENTINEL}" --log-file="{LOG_DIR}/rebase-resolve-log.md"
    ```
-3. Enter the worktree, open the run, record the runtime:
+3. Enter the worktree, open the run and record the runtime:
    ```bash
    cd "{WORKTREE_PATH}" && mkdir -p "{OUTBOX}" || exit 1
    "{BKIT}" workflows start --workflow=design --fid={FID} --month={YYYYMM} --lock-held --token={LOCK_TOKEN} || exit 1
    "{BKIT}" runtime row --workflow=design --base-sha="{BASE_SHA}" --file="{LOG_DIR}/status.jsonl" >/dev/null || exit 2
    "{BKIT}" runtime assert --file="{LOG_DIR}/status.jsonl" --workflow=design >/dev/null
    ```
-   Hold `file` as `{STATUS}`, `run` as `{RUN}`.
+   Hold `file` as `STATUS`, `run` as `RUN`.
 4. Write the input file — session prompt, then the issue text:
    **If** `ISSUE_ID` empty → drop `--description-file` and `--comments-file`.
    ```bash
@@ -189,23 +189,23 @@ $ARGUMENTS
    "{BKIT}" runtime assert --file="{STATUS}" --workflow=design
    "{BKIT}" counters max --point=design.grill
    ```
-   Hold `value` as `{GRILL_TURNS}` (`maxTurns`: interview turns including the draft turn), `ask` as `{GRILL_ASK}` (false when headless), `runtimeHeadless` as `{RUNTIME_HEADLESS}`, `runtime` as `{RUNTIME}`.
+   Hold `value` as `{GRILL_TURNS}` (`maxTurns`: interview turns including the draft turn), `ask` as `{GRILL_ASK}` (false when headless), `runtimeHeadless` as `RUNTIME_HEADLESS`, `runtime` as `RUNTIME`.
    Route:
    - **If** session prompt contains `grill=false` → create `docs/plans/{YYYYMM}/logs/{FID}/design-grill-{RUN}.md` = `## Grill decisions — the owner's answers in this run, the newest text` heading plus `Skipped (grill=false).` → step 6.
    - **If** session prompt contains `grill=true` **and** `RUNTIME_HEADLESS` = false → step 2, whatever `GRILL_ASK` says.
    - **If** `GRILL_ASK` = false → nobody is asked: map the tree and frontier per step 2 without asking or ending the turn, taking each recommended answer as given to open the next frontier, until it is empty or `GRILL_TURNS` - 1 turns; then write the draft scenario per step 4 without asking → step 5; every question counts as unanswered at stop.
    - **Else** → step 2.
-2. Ask the human in this session; NEVER hand questions to subagents:
+2. Ask the owner in this session; NEVER hand questions to subagents:
    - Read `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`. **If** an earlier run left a `docs/plans/{YYYYMM}/logs/{FID}/design-grill-*.md` → the newest one's `Settled` entries stay settled and its `Draft Acceptance Scenario` is the starting draft for step 4; ask only what they leave open or what the issue text changed since.
    - Map open decisions as a tree: each decision branches into the decisions that depend on it. Frontier = every unsettled decision whose prerequisites are settled.
    - One turn = the whole frontier in one message; a question depending on another in the same turn waits for a later turn.
    - Per question: `**Q{n} — {title}:** {question}` and its options lettered `A)`, `B)`, `C)`, then `Recommended: A) {answer}` on its own line; number from `Q1` across turns; word each so "yes" accepts the recommendation; plain text, no host question tool. State what the owner must decide and what each option does, in plain English, before naming any file, test or identifier.
-   - Look up facts in repo, docs and tools; never ask the human. Pending lookups hold back only the questions that depend on them.
-   - Decide nothing on the human's behalf. Narrate `design grill: turn {k} of {GRILL_TURNS}` → record the wait → end turn → wait for answers:
+   - Look up facts in the repo, docs and tools, and never ask the owner for them. Pending lookups hold back only the questions that depend on them.
+   - Decide nothing on the owner's behalf. Narrate `design grill: turn {k} of {GRILL_TURNS}` → record the wait → end turn → wait for answers:
      ```bash
      "{BKIT}" status row --file="{STATUS}" --workflow=design --type=owner-pause --field=reason=grill >/dev/null || exit 1
      ```
-   - Each human reply → record it before anything else:
+   - Record each owner reply before anything else:
      ```bash
      "{BKIT}" status row --file="{STATUS}" --workflow=design --type=owner-answer >/dev/null || exit 1
      ```
@@ -255,15 +255,15 @@ $ARGUMENTS
    **If** exit 80 → per hit read the issue via the tracker MCP (**Tracker**) → append `## {ref} — {title} ({state})` plus its description and human comments to `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md`.
 2. Launch these subagents in parallel using `subagent` tool:
    - **Subagent:** Invoke `/bkit-design-brainstorm-ideate-1`
-     Context: You are a subagent in the Design phase running in parallel with two other agents. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
+     Context: You are a subagent in the Design phase running in parallel with two other agents. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-1.md`.
    - **Subagent:** Invoke `/bkit-design-brainstorm-ideate-2`
-     Context: You are a subagent in the Design phase running in parallel with two other agents. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
+     Context: You are a subagent in the Design phase running in parallel with two other agents. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-2.md`.
    - **Subagent:** Invoke `/bkit-design-brainstorm-ideate-3`
-     Context: You are a subagent in the Design phase running in parallel with two other agents. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
+     Context: You are a subagent in the Design phase running in parallel with two other agents. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-3.md`.
 3. Wait for all subagents to complete, then finish:
@@ -285,7 +285,7 @@ $ARGUMENTS
 ## 🧠 Step 5 — Generate Design
 
 1. **Subagent:** Invoke `/bkit-design-generate` using `subagent` tool:
-   Context: You are a subagent in the Design phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations. Inputs carry distinct lenses — merge across them, do not collapse to a consensus.
+   Context: You are a subagent in the Design phase. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Inputs carry distinct lenses — merge across them, do not collapse to a consensus.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-2.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-3.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/{FID}-design.md` (if present — superseded design, context only, not a constraint).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`.
 2. Finish:
@@ -304,11 +304,11 @@ $ARGUMENTS
 
 1. Launch these subagents in parallel using `subagent` tool:
    - **Subagent:** Invoke `/bkit-design-review-1`
-     Context: You are a subagent in the Design phase running in parallel with another agent. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
+     Context: You are a subagent in the Design phase running in parallel with another agent. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/design-review-1.md`.
    - **Subagent:** Invoke `/bkit-design-review-2`
-     Context: You are a subagent in the Design phase running in parallel with another agent. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
+     Context: You are a subagent in the Design phase running in parallel with another agent. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/design-review-2.md`.
 2. Wait for all subagents to complete, then finish — `verdict` = worst of the two (`FAIL > CONCERNS > PASS`):
@@ -334,7 +334,7 @@ $ARGUMENTS
 **Run only if** Step 6 `REVIEW_SPIKE` = true.
 
 1. **Subagent:** Invoke `/bkit-design-spike` using `subagent` tool:
-   Context: You are a subagent in the Design phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations. Write throwaway probe code under `docs/plans/{YYYYMM}/logs/{FID}/spike/` only; never modify tracked source outside that directory.
+   Context: You are a subagent in the Design phase. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Write throwaway probe code under `docs/plans/{YYYYMM}/logs/{FID}/spike/` only; never modify tracked source outside that directory.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-review-1.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/design-spike.md`.
 2. Finish — refuses (exit 9) probe files outside the artifact tree:
@@ -352,7 +352,7 @@ $ARGUMENTS
 ## 🧠 Step 8 — Apply Review
 
 1. **Subagent:** Invoke `/bkit-design-update` using `subagent` tool:
-   Context: You are a subagent in the Design phase applying review critiques. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
+   Context: You are a subagent in the Design phase applying review critiques. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-review-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-review-2.md`; append `docs/plans/{YYYYMM}/logs/{FID}/design-spike.md` **If** Step 6 `REVIEW_SPIKE` = true.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/design-v2-reviewed.md`.
 2. Finish:
@@ -370,7 +370,7 @@ $ARGUMENTS
 ## 🧠 Step 9 — Design Organise
 
 1. **Subagent:** Invoke `/bkit-design-organise` using `subagent` tool:
-   Context: You are a subagent in the Design phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
+   Context: You are a subagent in the Design phase. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v2-reviewed.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/design-v3-organised.md`.
 2. Finish:
@@ -406,7 +406,7 @@ $ARGUMENTS
    "{BKIT}" branches push --mode=feature
    ```
 4. Route:
-   - **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 11.
+   - **If** `SUMMARY_VERDICT` = PASS **or** CONCERNS → Step 11.
    - **If** `SUMMARY_VERDICT` = FAIL → display `design-summary.md` content verbatim as final message to user. Line 1 of the final message = the no-issue warning, when one was emitted. → **Failure Path**.
    - **Else** → **Failure Path**.
 
@@ -424,7 +424,7 @@ $ARGUMENTS
 
 
 **Skip if** `ISSUE_ID` empty → Step 12.
-**Run only if** `SUMMARY_VERDICT` = PASS or CONCERNS.
+**Run only if** `SUMMARY_VERDICT` = PASS **or** CONCERNS.
 
 1. Parse plans:
    ```bash
@@ -451,7 +451,7 @@ $ARGUMENTS
 
 ## 🤖 Step 12 — Close Workflow
 
-**Run only if** `SUMMARY_VERDICT` = PASS or CONCERNS.
+**Run only if** `SUMMARY_VERDICT` = PASS **or** CONCERNS.
 
 1. Promote the final design to the canonical bucket (anchor stamped, a superseded design archived), then close the run and commit:
    **If** the no-issue warning was emitted → add `--warning="<that warning>"`.
@@ -460,7 +460,7 @@ $ARGUMENTS
    "{BKIT}" workflows promote --workflow=design --fid={FID} --month={YYYYMM} --file="{STATUS}" || exit 1
    "{BKIT}" workflows close --workflow=design --fid={FID} --month={YYYYMM} --record-step --outbox="{OUTBOX}" --message="chore({FID}): close-workflow" --final-return --summary-file="docs/plans/{YYYYMM}/logs/{FID}/design-summary.md" --session-dir="{SESSION_DIR}"
    ```
-   Hold `finalReturn` as `{FINAL_RETURN}`.
+   Hold `finalReturn` as `FINAL_RETURN`.
 2. Land on `dev` — squash `{BRANCH}` onto `origin/dev` in a throwaway worktree and push it as `dev` (`dev` moved → rebuild and push again, with backoff); push refused → the PR squash-merge — audit it, fast-forward local `dev` when that is a pure fast-forward, release the lock:
    ```bash
    cd "{REPO_ROOT}" && "{BKIT}" branches land --workflow=design --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --issue="{ISSUE_ID}" --branch="{BRANCH}"

@@ -15,21 +15,21 @@ tools:
 <!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer gating ships on intended-vs-actual completeness and resurfacing declared deferred work.
-**Scope:** As specified by input and Read / Update / Create section.
+**Scope:** The input and the Read / Update / Create section set the scope.
 
 **Protocol:** Work through this file exactly as written.
 
 - **Rules file:** Find the line of `<!-- bkit:end -->` in `.agents/rules.md` (`grep -n`), then read the file from that line on → follow its `Universal Rules`; skip its `Orchestrator Rules`.
 - **Order:** Execute steps sequentially unless stated otherwise.
-- **No improv:** No ad-hoc steps, no skipping.
+- **No improv:** Add no steps of your own, and skip none.
 
 **Contract:** The terms between this agent and whoever runs it.
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Sweep, verify, adjudicate; do not build, install, fix, or write code.
-- **No commits:** Do not run `git commit` / `git add` / `git push` (caller does).
+- **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
 - **Input dates:** Where two sections of the `*-input-*.md` file disagree, the newer one wins; older text still counts wherever nothing newer contradicts it.
-- **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
+- **Output header:** Every line above `<!-- verdict:end -->` MUST stay machine-parseable.
 
 **Rules:** Copied word for word from `.agents/rules.md`.
 
@@ -50,9 +50,9 @@ tools:
 
 **Process:**
 
-1. Initialise **Create** output stub with `PENDING` placeholders.
-2. Re-read all supplied inputs once at session start; do not trust session memory.
-3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
+1. Write the **Create** output stub, with `PENDING` in every placeholder.
+2. Read every supplied input once at the start, and work from what it says, not from session memory.
+3. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
 4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
 5. Scan plan for declared out-of-scope / future-work / non-goals → record each under `Exempt Deferrals` with where, when, and why and mark item `Exempt`. **If** no plan file exists → `ship-input-*.md` is the plan; intended deliverables = its requested outcomes; never create plan file.
 6. Scan plan `Acceptance Scenario` sections and `DONE WHEN` lines for intended deliverables → record each under `Planned vs Delivered` with where, when, and why and mark item `Planned`; unmet preconditions, build process steps, or merge conditions in plan (even as part of `DONE WHEN`) are advisory only → record under `Exempt Deferrals`. **If** no plan file exists → outcome as worded is the bar.
@@ -70,7 +70,7 @@ tools:
    - **Else** → record under / keep under `Lazy Deferrals`, naming the tests the verb reports for it.
    - **If** the plan file is absent → nothing to test against; record each plan-related row under `Exempt Deferrals` naming the missing plan.
 10. Update **Create** — set `Failures` via `Edit` = `Blocking Deferrals` entry count; set `Lazy` via `Edit` = `Lazy Deferrals` entry count.
-11. Update **Create** — set `Verdict` via `Edit`; mapping:
+11. Set `Verdict` in **Create** with `Edit`:
     - `PASS` = no remaining `Planned` items; every intended deliverable `Delivered`, `Exempt`, or `Lazy`; no `Blocking Deferrals`.
     - `FAIL` = any intended deliverables `Blocked`; any test the run's diff disabled; any `Blocking Deferrals`.
 

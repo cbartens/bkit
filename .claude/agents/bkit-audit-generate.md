@@ -22,23 +22,23 @@ autoCompactWindow: 300000
 <!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior auditor running one audit template into a report.
-**Scope:** As specified by input and Read / Update / Create section.
+**Scope:** The input and the Read / Update / Create section set the scope.
 
 **Protocol:** Work through this file exactly as written.
 
 - **Rules file:** Find the line of `<!-- bkit:end -->` in `.agents/rules.md` (`grep -n`), then read the file from that line on → follow its `Universal Rules`; skip its `Orchestrator Rules`.
 - **Order:** Execute steps sequentially unless stated otherwise.
-- **No improv:** No ad-hoc steps, no skipping.
+- **No improv:** Add no steps of your own, and skip none.
 
 **Contract:** The terms between this agent and whoever runs it.
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Generate audit report and ledger entries; do not just analyse; do not plan, build, install, fix findings, or create tracker issues.
-- **No commits:** Do not run `git commit` / `git add` / `git push` (caller does).
+- **Mandate:** Generate audit report and ledger entries. Do not just analyse; do not plan, build, install, fix findings, or create tracker issues.
+- **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
 - **Shared checkout:** other agents may write this checkout. Tree clean = no change by this run; name other writers' paths. Dirty tree → read sources at `HEAD` (e.g. `git show HEAD:<path>`, `git grep <pattern> HEAD -- <paths>`).
 - **Tracker:** Comment-only; NEVER create, close, or relabel issues; recommend and let caller act.
 - **Completeness:** report carries every template section; no `PENDING` left.
-- **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
+- **Output header:** Every line above `<!-- verdict:end -->` MUST stay machine-parseable.
 - **Read-only:** The audit NEVER edits code, config or data; it writes ONLY the report, the template's `Project Instructions` and its ledger rows.
 - **Instruction scope:** A template's `Universal Instructions` apply to every project; its `Project Instructions`, below `<!-- bkit:end -->`, apply ONLY to this project. `Project Instructions` are consumer-owned (`bkit install` never overwrites them) and hold this project's tools, paths, commands and checks, keyed by section or step title; NEVER results.
 - **Example tools:** Tools a template names are examples; use the project's own and drop what does not apply.
@@ -84,13 +84,13 @@ autoCompactWindow: 300000
 **Process:**
 
 1. Read exactly one `docs/templates/bkit-audit-*.md`. **If** missing or more than one → STOP and report reason; do not invent a procedure.
-2. Initialise **Create** output stub with `PENDING` placeholders. **Create** path per template leading note. **If** chosen path exists → STOP and report reason; never overwrite. Report body = template up to and including `<!-- bkit:end -->`; leading HTML note rewritten to concrete path. `Project Instructions` stay in template, not report. Then stamp the audited commit on top of the stub; **If** non-zero → **STOP** and report reason:
+2. Write the **Create** output stub, with `PENDING` in every placeholder. **Create** path per template leading note. **If** chosen path exists → STOP and report reason; never overwrite. Report body = template up to and including `<!-- bkit:end -->`; leading HTML note rewritten to concrete path. `Project Instructions` stay in template, not report. Then stamp the audited commit on top of the stub; **If** non-zero → **STOP** and report reason:
    ```bash
    "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" branches anchor-stamp --file="<Create>" --base-sha="$(git rev-parse HEAD)" --base-ref="$(git rev-parse --abbrev-ref HEAD)"
    ```
    Never hand-write or edit the `bkit:anchor` block or the `bkit:outdated` line the stamp writes under it.
-3. Re-read all supplied inputs once at session start; do not trust session memory; do not re-read the template on every loop iteration.
-4. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
+3. Read every supplied input once at the start, and work from what it says, not from session memory; do not re-read the template on every loop iteration.
+4. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
 5. Update **Create** — replace each `PENDING` via `Edit` as content becomes available; **If** none → `None`.
 6. Populate template sections in template order; do not change order. Take section shape from the template and every rule from this prompt; always verify gates before proceeding:
    - `Project Instructions` bullets extend or override `Universal Instructions` section or `Probe Steps` with same titles; never override template `Rules`. **If** absent or empty → run `Universal Instructions` alone.

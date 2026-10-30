@@ -11,7 +11,7 @@ Ship Feature — Autonomous merge and archive
 
 - **Rules file:** Read `.agents/rules.md` → follow all rules.
 - **Order:** Execute steps sequentially unless stated otherwise.
-- **No improv:** No ad-hoc steps, no skipping.
+- **No improv:** Add no steps of your own, and skip none.
 - **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does not mean silent.
 - **Failures:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
 - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, etc non-empty if required before making tool calls (`{ISSUE_ID}` may be empty). **Else** → **Failure Path**.
@@ -62,7 +62,7 @@ Ship Feature — Autonomous merge and archive
    cd "{WORKTREE_PATH}" && "{BKIT}" context diff --reset-log --artifact="tmp/bkit-diff-{FID}.md" --fid={FID} --step=abort-handover >/dev/null
    ```
    **Subagent:** Invoke `/bkit-debug-abort-handover` using `Task` tool:
-   Context: You are a subagent in the Ship Debug phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
+   Context: You are a subagent in the Ship Debug phase. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
    Read: `{STATUS}`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input-{RUN}.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/ship-deferred-sweep.md` (if present), glob `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-remediate-*-log.md`, `tmp/bkit-diff-{FID}.md` (the run's diff, if present).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-handover.md`.
 5. Flush the run's book to `dev` as one commit and one push — **Skip if** `{FID}` or `{YYYYMM}` empty; drop `--worktree` when `{WORKTREE_PATH}` is not set:
@@ -80,14 +80,14 @@ Ship Feature — Autonomous merge and archive
    ```bash
    "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" repo info --fetch
    ```
-   → hold `bkit` as `{BKIT}`, `ownerRepo` as `{OWNER_REPO}`, `owner` as `{OWNER}`, `repo` as `{REPO}`, `branch` as initial `{BRANCH}`, `repoRoot` as `{REPO_ROOT}`, `outboxRoot` as `{OUTBOX_ROOT}`, `sessionDir` as `{SESSION_DIR}`, `bkitAdvisory` as `{BKIT_ADVISORY}`. **If** `BKIT_ADVISORY` != null → emit advisory `[bkit-ship] {BKIT_ADVISORY}`.
-   Hold `trackerTeam` as `{TRACKER_TEAM}`, `trackerProject` as `{TRACKER_PROJECT}`, `trackerSite` as `{TRACKER_SITE}`.
+   → hold `bkit` as `{BKIT}`, `ownerRepo` as `OWNER_REPO`, `owner` as `OWNER`, `repo` as `REPO`, `branch` as initial `{BRANCH}`, `repoRoot` as `REPO_ROOT`, `outboxRoot` as `OUTBOX_ROOT`, `sessionDir` as `{SESSION_DIR}`, `bkitAdvisory` as `{BKIT_ADVISORY}`. **If** `BKIT_ADVISORY` != null → emit advisory `[bkit-ship] {BKIT_ADVISORY}`.
+   Hold `trackerTeam` as `TRACKER_TEAM`, `trackerProject` as `TRACKER_PROJECT`, `trackerSite` as `TRACKER_SITE`.
 2. Write the session prompt verbatim to `{SESSION_DIR}/prompt.md` → read the issue and the `FID` it names:
    ```bash
    "{BKIT}" fids parse --prompt-file="{SESSION_DIR}/prompt.md"
    ```
    **If** exit 8 → **STOP**; tell the user the prompt names more than one issue (`ambiguous`) and to name the issue as `#N`, its key or its URL; never the **Failure Path**.
-   Hold `fidNamed` as `{FID_NAMED}`. Hold `issue` as `{ISSUE_ID}`, `ref` as `{REF}`.
+   Hold `fidNamed` as `FID_NAMED`. Hold `issue` as `ISSUE_ID`, `ref` as `REF`.
    **If** `ISSUE_ID` empty → recover `ISSUE_ID` from the branch, `{FID}` = `FID_NAMED`, else the `BRANCH` suffix; `FID_NAMED` null and `BRANCH` != `feat/{FID}` → as exit 0 with `issueId` null:
    ```bash
    "{BKIT}" fids parse --branch="feat/{FID}"
@@ -101,14 +101,14 @@ Ship Feature — Autonomous merge and archive
    ```bash
    "{BKIT}" issues fetch --issue="{ISSUE_ID}" --session-dir="{SESSION_DIR}"
    ```
-   Hold `state` as `{STATE}`, `labels` as `{LABELS}`, `title` as `{TITLE}`, `url` as `{URL}`. **If** exit 80 → read the issue via the tracker MCP (**Tracker**) → write the description raw to `{SESSION_DIR}/issue-description.md`, the comments oldest first as JSON to `{SESSION_DIR}/issue-comments.json` and `{ title, url, state, labels }` as JSON to `{SESSION_DIR}/issue-facts.json`.
+   Hold `state` as `STATE`, `labels` as `LABELS`, `title` as `TITLE`, `url` as `URL`. **If** exit 80 → read the issue via the tracker MCP (**Tracker**) → write the description raw to `{SESSION_DIR}/issue-description.md`, the comments oldest first as JSON to `{SESSION_DIR}/issue-comments.json` and `{ title, url, state, labels }` as JSON to `{SESSION_DIR}/issue-facts.json`.
 4. Resolve `FID` — never borrow another feature's `FID` from a leftover lock or the newest bucket.
    **If** `ISSUE_ID` empty → drop `--title-file`.
    ```bash
    "{BKIT}" fids resolve --prompt-file="{SESSION_DIR}/prompt.md" --issue="{ISSUE_ID}" --title-file="{SESSION_DIR}/issue-facts.json" --workflow=ship
    ```
    Route:
-   - **If** exit 0 → hold `fid` as `{FID}`; one `FID` for all artifacts.
+   - **If** exit 0 → hold `fid` as `FID`; one `FID` for all artifacts.
    - **If** exit 4 → **Failure Path** listing `fids` (name the `FID` in the session prompt to pick one).
    - **If** exit 9 → **STOP**; tell the user the prompt holds only a bare number and to name the issue as `#N`, its key or its URL; never the **Failure Path**.
    - **Else** → **Failure Path**.
@@ -121,7 +121,7 @@ Ship Feature — Autonomous merge and archive
    ```bash
    "{BKIT}" locks acquire --kind=workflow --workflow=ship --fid="{FID}"
    ```
-   → hold `token` as `{LOCK_TOKEN}`, `month` as `{YYYYMM}`.
+   → hold `token` as `LOCK_TOKEN`, `month` as `YYYYMM`.
 7. Resolve `SHIP_BRANCH`, then create / resume worktree, or adopt it in place (no rebase — Path A) — straight after the lock, so every later failure has a book to keep its record in; `--branch` = the branch the session prompt names, dropped when it names none; **If** `ISSUE_ID` empty → drop `--issue`:
    ```bash
    "{BKIT}" worktrees setup --workflow=ship --fid="{FID}" --month="{YYYYMM}" --detect --branch="{PROMPT_BRANCH}" --issue="{ISSUE_ID}"
@@ -151,7 +151,7 @@ Ship Feature — Autonomous merge and archive
    ```bash
    "{BKIT}" issues labels --write --phase=ship --board=progress --issue="{ISSUE_ID}" --owner-repo="{OWNER_REPO}" {LABEL_FLAGS}
    ```
-   → hold `labels` as `{LABELS}`, `trackerState` as `{TRACKER_STATE}`, `board` as `{BOARD}`, `boardSkipped`.
+   → hold `labels` as `LABELS`, `trackerState` as `TRACKER_STATE`, `board` as `BOARD`, `boardSkipped`.
    **If** `tracker.done` = false **or** `boardWrite.done` = false → apply the printed `labels` / `trackerState` / `board` via the tracker MCP (**Labels** fallback).
 10. Create the outbox (`{OUTBOX}` = `{OUTBOX_ROOT}/{FID}`) and run the repo preflight:
     ```bash
@@ -256,7 +256,7 @@ Ship Feature — Autonomous merge and archive
    - **If** `ASSUMED_COUNT` = 0 → return to Step 2.
    - **If** `RUNTIME_HEADLESS` = true → step 4, no one to ask.
    - **Else** → step 2.
-2. Ask the human in this session; plain text, no host question tool; NEVER hand the questions to subagents. State what the owner must decide and what each option does, in plain English, before naming any file, test or identifier. One message — per entry of `ASSUMED_ITEMS`, in order, numbered from 1: `**Q{n} — {title}:** accepted without you during build ({reason}). Confirm it?`, then `Options: A) Confirm / B) Reject`, then `No recommendation — only you can accept it`; then the line `Reply per question. Ship merges either way; anything not confirmed is written as a needs-decision deferral.` Record the wait → end turn → wait for answers:
+2. Ask the owner in this session; plain text, no host question tool; NEVER hand the questions to subagents. State what the owner must decide and what each option does, in plain English, before naming any file, test or identifier. One message — per entry of `ASSUMED_ITEMS`, in order, numbered from 1: `**Q{n} — {title}:** accepted without you during build ({reason}). Confirm it?`, then `Options: A) Confirm / B) Reject`, then `No recommendation — only you can accept it`; then the line `Reply per question. Ship merges either way; anything not confirmed is written as a needs-decision deferral.` Record the wait → end turn → wait for answers:
    ```bash
    "{BKIT}" status row --file="{STATUS}" --workflow=ship --type=owner-pause --field=reason=assumed >/dev/null || exit 1
    ```
@@ -318,7 +318,7 @@ Ship Feature — Autonomous merge and archive
    ```
 2. **If** `MERGEABLE` = CONFLICTING (B2 — textual conflict): resolve locally + push:
    1. **Subagent:** Invoke `/bkit-ship-conflict-resolve` using `Task` tool:
-      Context: You are a subagent in the Ship phase. Textual conflict against `origin/dev`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
+      Context: You are a subagent in the Ship phase. Textual conflict against `origin/dev`. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
       Read: `docs/plans/{YYYYMM}/logs/{FID}/ship-input-{RUN}.md`, `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), `{STATUS}`.
       Update: Conflicted source files.
       Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-conflict-resolve.md`.
@@ -372,7 +372,7 @@ Ship Feature — Autonomous merge and archive
    cd "{WORKTREE_PATH}" && "{BKIT}" context diff --reset-log --artifact="tmp/bkit-diff-{FID}.md" --fid={FID} --step=ship-deferred-sweep >/dev/null || exit 2
    ```
    **Subagent:** Invoke `/bkit-ship-deferred-sweep` using `Task` tool:
-   Context: You are a subagent in the Ship phase. Pre-merge completeness gate. Diff base: `origin/dev` — run `bkit branches scan-diff --disabled-tests --base=origin/dev`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
+   Context: You are a subagent in the Ship phase. Pre-merge completeness gate. Diff base: `origin/dev` — run `bkit branches scan-diff --disabled-tests --base=origin/dev`. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/ship-input-{RUN}.md`, `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), `docs/plans/{YYYYMM}/{FID}-design.md` (if present), `{STATUS}`, `docs/deferrals.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/*-plan-verify*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/*-challenge*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/*-summary.md`, `tmp/bkit-diff-{FID}.md` (the run's diff).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-deferred-sweep.md`.
 3. Finish (bookkeeping to `$BOOK_ROOT`):
@@ -402,7 +402,7 @@ Ship Feature — Autonomous merge and archive
    cd "{WORKTREE_PATH}" && "{BKIT}" context ledger-scan --terms="{FID}" --source=docs/deferrals.jsonl --artifact="{OUTBOX}/ship-pending-items.md" --fid={FID} --step=ship-update-docs --reset-log >/dev/null || exit 1
    ```
 2. **Subagent:** Invoke `/bkit-ship-update-docs` using `Task` tool:
-   Context: You are a subagent in the Ship phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
+   Context: You are a subagent in the Ship phase. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), glob `docs/plans/{YYYYMM}/logs/{FID}/*.md` (excluding `*-summary.md` / `*-handover.md`), `{OUTBOX}/ship-pending-items.md`.
    Update: Doc files.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-update-docs.md`.
@@ -421,7 +421,7 @@ Ship Feature — Autonomous merge and archive
    "{BKIT}" steps finish --workflow=ship --step=ship-summary --file="{STATUS}" --attempt=1 --verdict={SUMMARY_VERDICT} --failures={SUMMARY_FAILURES} --artifact="docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md" --commit=none --number=6 --post --title="Update Docs & Summary" --link-ref=dev --comment-body
    ```
 6. Route:
-   - **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 7.
+   - **If** `SUMMARY_VERDICT` = PASS **or** CONCERNS → Step 7.
    - **If** `SUMMARY_VERDICT` = FAIL → display `ship-summary.md` content verbatim as final message to user. Line 1 of the final message = the no-issue warning, when one was emitted. → **Failure Path**.
    - **Else** → **Failure Path**.
 
@@ -516,7 +516,7 @@ Ship Feature — Autonomous merge and archive
    ```bash
    "{BKIT}" issues fetch --issue="{ISSUE_ID}" --outbox="{OUTBOX}"
    ```
-   Hold `state` as `{STATE}`, `labels` as `{LABELS}`. **If** exit 80 → read them via the tracker MCP (**Tracker**).
+   Hold `state` as `STATE`, `labels` as `LABELS`. **If** exit 80 → read them via the tracker MCP (**Tracker**).
    ```bash
    "{BKIT}" prs merge --number="{PR_NUMBER}" --match-head="{GATE_HEAD}" --delete-branch {LABEL_FLAGS} --expect-merged
    ```
@@ -554,7 +554,7 @@ Ship Feature — Autonomous merge and archive
 **Run only if** `state` != MERGED.
 
 1. **Subagent:** Invoke `/bkit-debug-failure-diagnose` using `Task` tool:
-   Context: You are a subagent in the Ship Debug phase. Merge failure during Ship workflow. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
+   Context: You are a subagent in the Ship Debug phase. Merge failure during Ship workflow. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/ship-input-{RUN}.md`, `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), `{STATUS}`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-{MERGE_ATTEMPT}.md`.
 2. Finish (bookkeeping to `$BOOK_ROOT`):
@@ -596,9 +596,9 @@ Ship Feature — Autonomous merge and archive
    ```bash
    "{BKIT}" status route --file="{STATUS}" --workflow=ship --step=ship-failure-remediate --require=strategy
    ```
-   → hold `nextStrategy` as `{STRATEGY}`.
+   → hold `nextStrategy` as `STRATEGY`.
 2. **Subagent:** Invoke `/bkit-debug-failure-remediate` using `Task` tool:
-   Context: You are a subagent in the Ship Debug phase. Merge failure during Ship workflow. `Strategy`: `{STRATEGY}`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
+   Context: You are a subagent in the Ship Debug phase. Merge failure during Ship workflow. `Strategy`: `{STRATEGY}`. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
    Read: `{STATUS}`, `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-{MERGE_ATTEMPT}.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-remediate-{MERGE_ATTEMPT}-log.md`.
 3. Finish (bookkeeping to `$BOOK_ROOT`) — the header's `Strategy` is recorded:
@@ -655,12 +655,12 @@ Ship Feature — Autonomous merge and archive
    "{BKIT}" workflows close --workflow=ship --fid="{FID}" --month="{YYYYMM}" --file="{STATUS}" --pr-number="{PR_NUMBER}" --squash-sha="{SQUASH_SHA}" --owner-repo="{OWNER_REPO}" --outbox="{OUTBOX}" --flush --token="{LOCK_TOKEN}" --branch="{SHIP_BRANCH}" --number=14 --post --title="Close Workflow" --final-return --summary="docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md" --summary-missing="PR was already merged — no ship summary this run." --session-dir="{SESSION_DIR}"; rc=$?
    cd "{REPO_ROOT}"; exit $rc
    ```
-   → hold `landed.via` as `{CLOSE_VIA}`, `finalReturn` as `{FINAL_RETURN}`.
+   → hold `landed.via` as `{CLOSE_VIA}`, `finalReturn` as `FINAL_RETURN`.
 3. **Skip if** `ISSUE_ID` empty. Compute the label transition and board move:
    ```bash
    "{BKIT}" issues labels --write --phase=merged --board=review --issue="{ISSUE_ID}" --owner-repo="{OWNER_REPO}" {LABEL_FLAGS}
    ```
-   → hold `labels` as `{LABELS}`, `trackerState` as `{TRACKER_STATE}`, `board` as `{BOARD}`, `boardSkipped`.
+   → hold `labels` as `LABELS`, `trackerState` as `TRACKER_STATE`, `board` as `BOARD`, `boardSkipped`.
    **If** `tracker.done` = false **or** `boardWrite.done` = false → apply the printed `labels` / `trackerState` / `board` via the tracker MCP (**Labels** fallback).
 4. Final return: display `{FINAL_RETURN}` verbatim as the final message to the user; do not summarise or trim; do not auto-invoke. **HARD STOP**.
 5. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, not nouns; do not re-run any step.

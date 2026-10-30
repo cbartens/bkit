@@ -17,19 +17,19 @@ autoCompactWindow: 300000
 ---
 
 **Role:** Senior pre-release reviewer auditing a bkit candidate against what it advertises.
-**Scope:** As specified by input or session prompt — candidate on `dev` and surface it ships to consumers. Runs BEFORE `utility-new-release`.
+**Scope:** The input or the session prompt sets the scope: the candidate on `dev` and the surface it ships to consumers. Runs BEFORE `utility-new-release`.
 
 **Protocol:** Work through this file exactly as written.
 
 - **Rules file:** Read `.agents/rules.md` → follow all rules.
 - **Order:** Execute steps sequentially unless stated otherwise.
-- **No improv:** No ad-hoc steps, no skipping.
+- **No improv:** Add no steps of your own, and skip none.
 
 **Contract:** The terms between this agent and whoever runs it.
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Report every gap between what bkit advertises and what it does; do not tag, merge, or fix.
-- **No commits:** Do not run `git commit` / `git add` / `git push` (caller does).
+- **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
 
 **Rules:** Copied word for word from `.agents/rules.md`.
 
@@ -39,10 +39,17 @@ autoCompactWindow: 300000
 
 **Process:**
 
-1. Re-read all supplied inputs once at session start; do not trust session memory.
-2. Read `.agents/docs.md` → load docs for workflow / step / task but specifically `docs/testing.md`; skip missing.
-3. Throughout: Read file behind every search hit before recording a finding. Track turn budget. **If** ~80% spent → STOP investigating, write report from what you have; mark unfinished threads `UNVERIFIED`, NEVER infer outcome.
-4. Confirm inputs — `{BASE}` (baseline ref to diff; default released branch); `{OPEN_ISSUE}` (file as tracker issue after explicit human confirmation, else inline — default inline).
+1. Read every supplied input once at the start, and work from what it says, not from session memory.
+2. Read `.agents/docs.md`, and load the docs it lists for this task, always including `docs/testing.md`. Skip any listed doc that does not exist.
+3. Throughout the audit:
+   - Read the file behind every search hit before you record a finding.
+   - Track your turn budget.
+   - **If** ~80% of it is spent:
+     - STOP investigating, and write the report from what you have.
+     - Mark each unfinished thread `UNVERIFIED`. Never infer its outcome.
+4. Confirm the inputs:
+   - `{BASE}`: the baseline ref to diff. It defaults to the released branch.
+   - `{OPEN_ISSUE}`: whether to file the report as a tracker issue. File it only after the owner explicitly confirms, and report inline otherwise. It defaults to inline.
 5. Read `{BASE}..HEAD` diff and top changelog entry. **If** major bump omits breaking change, removed option, or migration note → finding.
 6. Baseline gates — local first: `pnpm bkit:gate:static-unit-integration` exits 0, else `CRITICAL`. Then the `bkit-ci` push run on `dev` at the candidate (`HEAD`, already pushed to `origin/dev`): `gh run list --workflow bkit-ci --branch dev --event push --commit $(git rev-parse HEAD) --json databaseId,status,conclusion`. `completed` AND `success` → pass; record run id. **If** `in_progress` / `queued` → `timeout 1800 gh run watch {id} --exit-status`, then re-check. It runs build, full test suite, type-check, format-check, committed-build and lockfile freshness. **If** no run, timed out, or not `success` → `CRITICAL`.
 7. Clean room — pack package with `npm pack` (the packer `npm publish` uses), install tarball into fresh temp repo (NEVER source tree). Payload scope: `.bkit/templates/` holds ONLY copy-and-own templates; any bkit-written or core file there → `CRITICAL`. The only `LICENSE.md` in the temp repo is `.bkit/LICENSE.md` (full MIT text with its copyright notice).

@@ -11,7 +11,7 @@ Auto — Phase-routed dispatch of any bkit phase
 
 - **Rules file:** Read `.agents/rules.md` → follow all rules.
 - **Order:** Execute steps sequentially unless stated otherwise.
-- **No improv:** No ad-hoc steps, no skipping.
+- **No improv:** Add no steps of your own, and skip none.
 - **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does not mean silent.
 - **Failures:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
 - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{PHASE}`, `{ARG}`, `{FID}`, `{ISSUE_ID}`, `{OWNER_REPO}`, `{OWNER}`, `{REPO}`, `{BRANCH}`, `{PR_NUMBER}`, etc non-empty if required before making tool calls (`{ISSUE_ID}` only when tracker wired — empty under `none`). **Else** → **Failure Path**.
@@ -59,7 +59,7 @@ Auto — Phase-routed dispatch of any bkit phase
    "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" repo info --allow-detached
    ```
    → hold `bkit` as `{BKIT}`, `outboxRoot` as `{OUTBOX_ROOT}`.
-   Hold `trackerTeam` as `{TRACKER_TEAM}`, `trackerProject` as `{TRACKER_PROJECT}`, `trackerSite` as `{TRACKER_SITE}`.
+   Hold `trackerTeam` as `TRACKER_TEAM`, `trackerProject` as `TRACKER_PROJECT`, `trackerSite` as `TRACKER_SITE`.
 3. Resolve the phase, its mode, and everything the dispatch needs — `BRIEF` (design / plan / build): `ARG` is the issue; `CI` (ship / debug, numeric `ARG`): the open PR, the CI run at its head, and `FID` / `ISSUE_ID` from the PR-body `<!-- bkit:` marker, else the `feat/{FID}` branch; `CI_DEV` (ship / debug, slug `ARG`): `ARG` is the `FID`, checked against the slug allowlist before any path uses it, on `dev` at `origin/dev`:
    ```bash
    "{BKIT}" runs context --phase="{PHASE}" --arg="{ARG}"

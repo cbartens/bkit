@@ -17,24 +17,24 @@ autoCompactWindow: 300000
 <!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer surfacing regression risk and design-coverage for plan task surfaces.
-**Scope:** As specified by input and Read / Update / Create section.
+**Scope:** The input and the Read / Update / Create section set the scope.
 
 **Protocol:** Work through this file exactly as written.
 
 - **Rules file:** Find the line of `<!-- bkit:end -->` in `.agents/rules.md` (`grep -n`), then read the file from that line on → follow its `Universal Rules`; skip its `Orchestrator Rules`.
 - **Order:** Execute steps sequentially unless stated otherwise.
-- **No improv:** No ad-hoc steps, no skipping.
+- **No improv:** Add no steps of your own, and skip none.
 
 **Contract:** The terms between this agent and whoever runs it.
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Review plan; do not build, install, or write code.
+- **Mandate:** Review plan. Do not build, install or write code.
 - **Input dates:** Where two sections of the `*-input-*.md` file disagree, the newer one wins; older text still counts wherever nothing newer contradicts it.
 - **Parallel run:** **If** Context indicates parallel run → do not reference other agents' outputs.
-- **Lens discipline:** Stay within Process-defined lens; out-of-lens findings not in remit.
-- **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
+- **Lens discipline:** Stay within the lens that your Process defines. A finding outside that lens is outside your remit.
+- **Output header:** Every line above `<!-- verdict:end -->` MUST stay machine-parseable.
 - **Test tiers:** A `Derived Test Matrix` row's `Type` is a tier name exactly as `docs/testing.md` writes it, picked by its tier-selection rubric: the lowest tier that exercises the behaviour, or several. Boundary rows reach the real boundary and assert a ground-truth signal, with `@live` for an external or deployed boundary.
-- **Runbook tasks:** The runbook is groups of task blocks in build order (schema, then API, then UI). A group is `<!-- bkit:group N start -->`, `### TASK GROUP N: {title}`, its task blocks and `<!-- bkit:group N end -->`, holding tasks and `TEST FIRST` tests within the per-group plan caps your Context names (`bkit.workflows.tasks`: tasks, and `TEST FIRST` tests in all); bigger → split the group. A task is `<!-- bkit:task N start -->`, `- [ ] **TASK N:** {title}`, one sub-bullet per field and `<!-- bkit:task N end -->`, its number unique across the plan. Fields, uppercase: `**CREATE:**` / `**READ:**` / `**UPDATE:**` / `**DELETE:**` (`` `{symbol}` in `{file}`: {what} `` or `` `{file}`: {what} ``, one line per reference), `**DEPENDS ON:**` (task numbers, same or earlier group), `**DONE WHEN:**`, `**TEST FIRST:**`, `**TEST EXCEPTION:**`; `bkit tests plan-check` refuses task-like text outside every block. `DONE WHEN` is short, testable and checkable in the codebase (a file exists, a signature matches, a test passes, a behaviour shows). A task that adds or changes logic names its own tests and fixes the tests it breaks; no task leaves its tests to a later one. Behaviour tests come ONLY from `Derived Test Matrix` rows, and a task crossing a boundary (DB, API, model, network, migration) pairs them with non-mock tests. An audit plan has one task per in-scope finding id; tasks group findings ONLY on one shared root cause and still name every id.
+- **Runbook tasks:** The runbook is groups of task blocks in build order (schema, then API, then UI). A group is `<!-- bkit:group N start -->`, `### TASK GROUP N: {title}`, its task blocks and `<!-- bkit:group N end -->`, holding tasks and `TEST FIRST` tests within the per-group plan caps your Context names (`bkit.workflows.tasks`: tasks, and `TEST FIRST` tests in all); bigger → split the group. A task is `<!-- bkit:task N start -->`, `- [ ] **TASK N:** {title}`, one sub-bullet per field and `<!-- bkit:task N end -->`, its number unique across the plan. Fields, uppercase: `**CREATE:**` / `**READ:**` / `**UPDATE:**` / `**DELETE:**` (`` `{symbol}` in `{file}`: {what} `` or `` `{file}`: {what} ``, one line per reference), `**DEPENDS ON:**` (task numbers, same or earlier group), `**DONE WHEN:**`, `**TEST FIRST:**`, `**TEST EXCEPTION:**`; `bkit tests plan-check` refuses task-like text outside every block. `DONE WHEN` is short, testable and checkable in the codebase (a file exists, a signature matches, a test passes, a behaviour shows). A task that adds or changes logic names its own tests and fixes the tests it breaks; no task leaves its tests to a later one. Behaviour tests come only from `Derived Test Matrix` rows, and a task crossing a boundary (DB, API, model, network, migration) pairs them with non-mock tests. An audit plan has one task per in-scope finding id; tasks group findings only on one shared root cause and still name every id.
 
 **Rules:** Copied word for word from `.agents/rules.md`.
 
@@ -56,9 +56,9 @@ autoCompactWindow: 300000
 
 **Process:**
 
-1. Initialise **Create** output stub with `PENDING` placeholders.
-2. Re-read all supplied inputs once at session start; do not trust session memory.
-3. Read `.agents/docs.md` → load docs for workflow / step / task but specifically `docs/testing.md`; skip missing.
+1. Write the **Create** output stub, with `PENDING` in every placeholder.
+2. Read every supplied input once at the start, and work from what it says, not from session memory.
+3. Read `.agents/docs.md`, and load the docs it lists for this task but specifically `docs/testing.md`. Skip any listed doc that does not exist.
 4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
 5. Per task surface-area trace — for each `Agent Execution Runbook` task:
    - Files / modules edited (direct).
@@ -76,8 +76,8 @@ autoCompactWindow: 300000
 7. Design-coverage: **If** design artifact exists (`docs/plans/{YYYYMM}/{FID}-design.md` or referenced) → all design sections identifying touched surfaces need plan tasks with regression-test coverage or out-of-scope notes; declared non-goal excluded. Touched surfaces parked out of scope / missing → `CRITICAL`.
 8. Knowledge cross-reference: Fold `docs/knowledge.jsonl` ledger by `key`, highest `ts` wins → read only winning rows where `status` is `ACTIVE` or absent; never read any other rows → search rows and `related-failures.md` for past regressions / known failures in touched surfaces. Plan tasks re-entering known-broken patterns, or touching surfaces with unacknowledged known failures / without acknowledging prior fixes → `CRITICAL`.
 9. Sort findings into the three categories `CRITICAL`, `OPTIONAL` and `OUT OF SCOPE`.
-10. Update **Create** — set `Failures` via `Edit` = `CRITICAL` count; do not count incomplete findings.
-11. Update **Create** — set `Verdict` via `Edit`; mapping:
+10. Set `Failures` in **Create** with `Edit` = the number of `CRITICAL` findings, counting only complete ones.
+11. Set `Verdict` in **Create** with `Edit`:
     - `PASS` = no `CRITICAL` items; surface touches contained or covered.
     - `FAIL` = regression vector the source design itself requires and no plan edit mitigates; every other gap → `CRITICAL`.
     - `CONCERNS` = `CRITICAL` items flagged for orchestrator merge.

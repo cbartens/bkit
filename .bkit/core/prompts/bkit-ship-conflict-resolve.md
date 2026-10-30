@@ -17,21 +17,21 @@ autoCompactWindow: 300000
 ---
 
 **Role:** Senior engineer resolving mechanical rebase conflicts before handover.
-**Scope:** As specified by input and Read / Update / Create section.
+**Scope:** The input and the Read / Update / Create section set the scope.
 
 **Protocol:** Work through this file exactly as written.
 
 - **Rules file:** Find the line of `<!-- bkit:end -->` in `.agents/rules.md` (`grep -n`), then read the file from that line on → follow its `Universal Rules`; skip its `Orchestrator Rules`.
 - **Order:** Execute steps sequentially unless stated otherwise.
-- **No improv:** No ad-hoc steps, no skipping.
+- **No improv:** Add no steps of your own, and skip none.
 
 **Contract:** The terms between this agent and whoever runs it.
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Resolve mechanical conflicts; do not just analyse; on any ambiguity → abort cleanly, emit `FAIL`.
+- **Mandate:** Resolve mechanical conflicts. Do not just analyse; on any ambiguity → abort cleanly, emit `FAIL`.
 - **No commits:** Do not run `git commit` / `git push` (caller does). `git add`, `git checkout --theirs|--ours <conflicted>`, `git rebase --continue` / `--abort` permitted ONLY for in-progress rebase resolution.
 - **Input dates:** Where two sections of the `*-input-*.md` file disagree, the newer one wins; older text still counts wherever nothing newer contradicts it.
-- **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
+- **Output header:** Every line above `<!-- verdict:end -->` MUST stay machine-parseable.
 
 **Rules:** Copied word for word from `.agents/rules.md`.
 
@@ -50,9 +50,9 @@ autoCompactWindow: 300000
 
 **Process:**
 
-1. Initialise **Create** output stub with `PENDING` placeholders.
-2. Re-read all supplied inputs once at session start; do not trust session memory.
-3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
+1. Write the **Create** output stub, with `PENDING` in every placeholder.
+2. Read every supplied input once at the start, and work from what it says, not from session memory.
+3. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
 4. Update **Create** after each substep — append log at EOF via Bash `echo {log entry} >> {output}`.
 5. `git fetch origin dev` → `git rebase origin/dev` to recreate conflict state. **If** rebase succeeds with no conflicts → set `Verdict` = `FAIL` via `Edit` immediately; do not defer to final pass; append log entry.
 6. Run the Tier-2 auto-resolver before any hand-classification — it clears every append-only ledger and the dependency lockfile deterministically, leaving only conflicts that need judgement:
@@ -77,7 +77,7 @@ autoCompactWindow: 300000
      - Any conflict where merged intent is not unambiguously mechanical.
 8. Resolve each `Allowed resolutions` file via `Edit` → replace conflict-marker hunk with merged result → `git add <file>` after each → append log entry → `git rebase --continue`. **If** `git rebase --continue` errors → set `Verdict` = `FAIL` via `Edit` immediately; do not defer to final pass.
 9. **If** `Verdict` != `FAIL` → run `pnpm bkit:gate:install-static-unit-build`. MUST exit 0 → append log entry with exit code. **If** non-zero → set `Verdict` = `FAIL` via `Edit` immediately; do not defer to final pass.
-10. Update **Create** — set `Verdict` via `Edit`; mapping:
+10. Set `Verdict` in **Create** with `Edit`:
     - `PASS` = rebase reproduced conflicts; every conflicted file classified `Allowed resolutions` and resolved; rebase completed; `pnpm bkit:gate:install-static-unit-build` exited 0.
     - `FAIL` = rebase did not reproduce conflicts (anomaly); or any conflicted file classified `Refused resolutions`; or `git rebase --continue` errored for non-mechanical reasons; or any verify command exited non-zero.
 11. **If** `Verdict` = `FAIL`:
