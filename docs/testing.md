@@ -66,7 +66,7 @@ Adopt in this order. Stop at the first tier this repo does not have. You write t
 9. Add `bkit-tests-live-web` for a push to `dev` or the default branch when `web_affected`. Not a PR. Not a dispatch. Do not `needs:` static, unit, integration, or e2e.
 10. `bkit-tests-check` `needs:` every lane you kept. Sole required check. The assert is a script (§ Validated means executed).
 11. `bkit-tests-deploy` on a default-branch push, **before** the E2E / `@live` lanes. Promotes that exact `deployment_id`; each tenant lane `needs:` it and refuses unless production serves this run's build. Not a required check (`deployments.md` § Promote before the lanes).
-12. Health is `health.yml`, `workflow_run` after that CI success. A logging probe is a step inside each runtime lane, not a job.
+12. Health is `bkit-health.yml`, `workflow_run` after every finished CI run on the default branch. A logging probe is a step inside each runtime lane, not a job.
 
 Scripts these files do not ship, so the plan names them and you write them: marker parser, lease acquire and release. The last-green push base and the capstone assert ship as templates (`.bkit/templates/scripts/ci/lanes/bkit-resolve-push-base.mjs`, copied to `scripts/ci/lanes/`; `.bkit/templates/scripts/ci/bkit-check-capstone.mjs`, copied to `scripts/ci/`).
 
@@ -79,7 +79,7 @@ Scripts these files do not ship, so the plan names them and you write them: mark
 - **`bkit-tests-reset` / `bkit-tests-cleanup`** (optional; one shared long-lived resource) — reset takes the lease and puts the resource in its known state **before** any lane uses it; cleanup runs last, `if: always()`, and releases the lease. Planner names at most one target. Empty target skips both. Capstone reds if a planned reset skipped or either job failed. Drop both when the resource is provisioned fresh per run (§ Provision backing services fresh — the preferred answer).
 - **Logging probe** (optional step, not a lane) — inside each runtime lane, emit one marked event and ask the error tracker whether it arrived. e.g. Sentry. Skip when that lane did not run the probe.
 - **`bkit-tests-deploy`** (optional) — on a push to the default branch only, **before** the E2E / `@live` lanes. Promotes the exact `deployment_id` `bkit-tests-build-web` published; each tenant lane `needs:` it and starts by proving production serves this run's build (by deployment id). Carries its own `concurrency:` group (`cancel-in-progress: false`) and is not a required check. A red job means the previous deployment stays live.
-- **Health** (optional, separate workflow) — `workflow_run` after CI succeeds on the default branch; smoke the deployment this SHA promoted. Not a required check. Copy the stub to `.github/workflows/health.yml`.
+- **Health** (optional, separate workflow) — `workflow_run` after every finished CI run on the default branch, green or red, because the deploy promotes before the tenant lanes; probes only when production serves that run's commit. Not a required check. Copy `.bkit/templates/.github/workflows/bkit-health.yml` to `.github/workflows/bkit-health.yml` (`.bkit/templates.md` § Health check).
 - **`bkit-tests-check`** capstone — `needs:` **all** lanes; fails if any expected tier skipped or executed zero → green required check = **validated**, not merely "nothing failed". Sole branch-protection required check.
 
 ### Accepted divergences

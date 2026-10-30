@@ -230,6 +230,10 @@ const ADOPTED: Record<string, Entry> = {
       },
     ],
   },
+  ".github/workflows/bkit-health.yml": {
+    status: "not-adopted",
+    what: "bkit deploys nothing, so it has no health URL to probe",
+  },
   ".github/workflows/bkit-renovate.yml": identical,
   ".github/workflows/bkit-trivy.yml": {
     status: "adopted",

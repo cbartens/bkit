@@ -566,6 +566,60 @@ describe("trivy scan workflow template (.bkit/templates/.github/workflows/bkit-t
   });
 });
 
+describe("health check workflow template (.bkit/templates/.github/workflows/bkit-health.yml)", () => {
+  const content = fs.readFileSync(
+    path.resolve(".bkit/templates/.github/workflows/bkit-health.yml"),
+    "utf-8",
+  );
+  const filled = content
+    .replaceAll("{{DEFAULT_BRANCH}}", "main")
+    .replaceAll("{{PRODUCTION_URL}}", "https://example.com");
+  const wf = parseYamlText(filled) as {
+    on: { workflow_run: { workflows: string[]; types: string[]; branches: string[] } };
+    jobs: Record<string, { name?: string; needs?: string; if?: string; steps: { run?: string }[] }>;
+  };
+
+  it("runs after every finished bkit-ci run on the default branch, whatever its conclusion", () => {
+    expect(wf.on.workflow_run).toEqual({
+      workflows: ["bkit-ci"],
+      types: ["completed"],
+      branches: ["main"],
+    });
+    expect(content).not.toMatch(/workflow_run\.conclusion/);
+  });
+
+  it("probes only when production serves the CI run's commit", () => {
+    expect(wf.jobs.health.needs).toBe("promoted");
+    expect(wf.jobs.health.if).toBe("needs.promoted.outputs.live == 'true'");
+    const gate = wf.jobs.promoted.steps[0].run ?? "";
+    expect(gate).toMatch(/if \[ "\$live_sha" = "\$HEAD_SHA" \]; then\n\s+echo "live=true"/);
+  });
+
+  it("fails, rather than skips, when it cannot read what production serves", () => {
+    const gate = wf.jobs.promoted.steps[0].run ?? "";
+    expect(gate).toMatch(/if \[ "\$code" != "200" \]; then\n\s+echo "::error::[^\n]*"\n\s+exit 1/);
+  });
+
+  it("passes the CI run's commit through env:, never inlined into a run: body", () => {
+    expect(content).toContain("HEAD_SHA: ${{ github.event.workflow_run.head_sha }}");
+    for (const job of Object.values(wf.jobs)) {
+      for (const step of job.steps) expect(step.run ?? "").not.toMatch(/\$\{\{/);
+    }
+  });
+
+  it("names every job with the bkit- prefix", () => {
+    for (const job of Object.values(wf.jobs)) expect(job.name).toMatch(/^bkit-/);
+  });
+
+  it("is the one health workflow the CI template points at", () => {
+    const ci = fs.readFileSync(CONSUMER_CI_TEMPLATE, "utf-8");
+    expect(ci).toMatch(
+      /# bkit-stub:health — copy \.bkit\/templates\/\.github\/workflows\/bkit-health\.yml to\n# \.github\/workflows\/bkit-health\.yml\./,
+    );
+    expect(ci).not.toMatch(/bkit-stub:smoke|smoke\.yml|[^-]health\.yml/);
+  });
+});
+
 describe("example dependabot template (.bkit/templates/.github/dependabot.yml)", () => {
   const content = fs.readFileSync(path.resolve(".bkit/templates/.github/dependabot.yml"), "utf-8");
 

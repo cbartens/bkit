@@ -13,7 +13,7 @@
 
 ## What each template is for
 
-Adoption order = `bkit tips` order. Local stack lock has no tip (nothing in a repo shows a stack every worktree shares) → adopt it once a second worktree touches that stack. Sections below: install steps and traps.
+Adoption order = `bkit tips` order. Local stack lock has no tip (nothing in a repo shows a stack every worktree shares) → adopt it once a second worktree touches that stack. Health check has no tip either: the `bkit-stub-health` advisory raises it while your CI copy keeps that stub. Sections below: install steps and traps.
 
 <!-- prettier-ignore -->
 | Template | What it's for | Skip it and |
@@ -21,6 +21,7 @@ Adoption order = `bkit tips` order. Local stack lock has no tip (nothing in a re
 | direnv | Loads `.bkit/.env` tokens whenever the project opens. | Saved tokens never load; every sign-in fails while the file looks right. |
 | Serena | Agents look code up like an editor ("where is this defined, what uses it?"). Read-only. | Agents grep and read whole files: more accidental changes, more correction rounds, higher token cost. |
 | CI workflow + CI scripts | Runs every check on GitHub on every change; one capstone check gates merge; `/bkit-ship` waits for it. | "Shipped" means merged, not checked. |
+| Health check | After CI promotes a release, probes production's health URL. | A release that went live broken stays unnoticed until a user reports it. |
 | Git hooks (Husky) | Same checks locally on commit and push, in seconds. | Failures surface minutes later in CI, after the agent moved on. |
 | Prettier ignore list | One formatting baseline; stops Prettier reformatting bkit's managed files. | Reviews fill with spacing noise; every bkit upgrade shows false changes. |
 | slop-scan | Flags net-new junk code AI tends to write (filler, dead code, type escapes). | Junk passes skim review and piles up. |
@@ -48,6 +49,7 @@ Adoption order = `bkit tips` order. Local stack lock has no tip (nothing in a re
 | --- | --- | --- | --- |
 | CI workflow | `.bkit/templates/.github/workflows/bkit-ci.yml` | `.github/workflows/bkit-ci.yml` | that file |
 | CI scripts | `.bkit/templates/scripts/ci/` | `scripts/ci/` | the scripts you adopt (`lanes/bkit-resolve-push-base.mjs` + `.test.mjs`, CI's push base, also run by pre-push; `bkit-check-accepted-divergences.mjs` + `bkit-accepted-divergences.json`; `bkit-check-dependency-audit.mjs` + `bkit-accepted-advisories.json`, also run by pre-push). `bkit-check-capstone.mjs` + `bkit-check-capstone.test.mjs` are required with `bkit-ci.yml`, not optional |
+| Health check | `.bkit/templates/.github/workflows/bkit-health.yml` | `.github/workflows/bkit-health.yml` | that file |
 | Cloud-agent workflow | `.bkit/templates/.github/workflows/bkit-cloud.yml` | `.github/workflows/bkit-cloud.yml` | that file |
 | Git hooks (Husky) | `.bkit/templates/.husky/pre-commit`, `.bkit/templates/.husky/pre-push` | `.husky/pre-commit`, `.husky/pre-push` | both files |
 | Prettier ignore list | `.bkit/templates/.prettierignore` | `.prettierignore` | that file |
@@ -78,7 +80,8 @@ Placeholders. Copies keep them raw; replace each in your copy:
 <!-- prettier-ignore -->
 | Placeholder | In | Put | Typical value |
 | --- | --- | --- | --- |
-| `{{DEFAULT_BRANCH}}` | `bkit-ci.yml` (`on.push` / `on.pull_request` branches; stub comments), `bkit-trivy.yml` (`on.push` / `on.pull_request` branches) | your production branch | `origin/HEAD` unless it is `dev`, else `main` |
+| `{{DEFAULT_BRANCH}}` | `bkit-ci.yml` (`on.push` / `on.pull_request` branches; stub comments), `bkit-trivy.yml` (`on.push` / `on.pull_request` branches), `bkit-health.yml` (`on.workflow_run` branches) | your production branch | `origin/HEAD` unless it is `dev`, else `main` |
+| `{{PRODUCTION_URL}}` | `bkit-health.yml` (`env.PRODUCTION_URL`) | the origin production serves | `https://example.com` |
 | `{{NODE_VERSION}}` | `bkit-ci.yml` (`actions/setup-node` `node-version`, both lanes) | your Node major, or swap the line for `node-version-file: .nvmrc` | `.nvmrc`, then `engines.node`, then `22` |
 | `{{CLOUD_RUNNER}}` | `bkit-cloud.yml` (`runs-on`, all three jobs) | a runner label | `ubuntu-latest` |
 | `{{SCRIPT_PATH}}` | `ai.bkit.launchd.plist` (`ProgramArguments`) | absolute path to the loader script, outside a TCC-protected folder (see § Launchd GUI environment) | `/Users/<you>/.config/bkit/bkit-launchd-env.sh` |
@@ -187,9 +190,20 @@ Parallel lanes `bkit-tests-static` (typecheck, lint, prettier, Vale, slop, actio
 - Adapt: `{{DEFAULT_BRANCH}}`, `{{NODE_VERSION}}`. Non-Node repo → replace the Node / pnpm setup, install and check steps with your stack's.
 - Capstone: `bkit-tests-check` `needs:` every lane and runs on `!cancelled()`, never `always()`. Each lane you adopt from the reference goes into its `needs:` and its assert, or that lane's failure cannot red the merge. Its assert is `scripts/ci/bkit-check-capstone.mjs` (copy it and `bkit-check-capstone.test.mjs` from `.bkit/templates/scripts/ci/` with the workflow; REQUIRED — the step reds with a copy-the-script message when the file is missing, and never skips). The script reds on a lane that did not succeed, a lane that ran when the plan said skip, a lane that succeeded with 0 tests or a non-numeric count, and a plan that does not parse. It reads each lane's executed-test count once the lane writes one (the `Run Unit Tests` step comment shows the vitest form); `EMPTY_COUNT: warn` makes an unreported count a warning, a count of 0 a failure. Each lane you adopt goes into `LANES` and its `<LANE>_RESULT` / `<LANE>_RAN` variables. Renaming the job → set `bkit.testing.ciCapstone`.
 - Adopt a scaffold lane only when its tier exists (`docs/testing.md`). Each `# bkit-stub:<id> —` header raises an install advisory until you enable or delete that stub.
-- Keep the `name: bkit-ci` line, or rename `workflows: [bkit-ci]` in `bkit-cloud.yml` and set `bkit.testing.ciWorkflow` to the new file name.
+- Keep the `name: bkit-ci` line, or rename `workflows: [bkit-ci]` in `bkit-cloud.yml` and `bkit-health.yml` and set `bkit.testing.ciWorkflow` to the new file name.
 - Keep `fetch-depth: 0` on the static lane: `slop:delta` checks the PR base out as a worktree.
 - CI script copies named without the `bkit-` prefix (`check-capstone.mjs`, `accepted-advisories.json`, …) → `bkit check` advisory `ci-scripts-old-names` lists each rename. Rename a file and its paths in `.github/workflows/*.yml`, `.husky/pre-push` and `scripts/ci/` in one commit: the `Check Dependency Audit` step is guarded by `hashFiles` and skips silently when only the file moved.
+
+## Health check — `bkit-health.yml`
+
+Probes production after every finished `bkit-ci` run on the default branch, green or red: `bkit-tests-deploy` promotes before the E2E and `@live` lanes run, so a red run can still have put a release live. The `bkit-health-promoted` job asks the host which commit production serves. The `bkit-health` job probes the health URL only when that commit is the run's own, and shows as skipped otherwise. Not a required check. Fits a deploy that `bkit-ci` promotes; when the host deploys on its own after merge, trigger on `deployment_status` instead (`docs/deployments.md` § Smoke trigger plumbing).
+
+- Install: secrets `VERCEL_TOKEN` and `VERCEL_TEAM_ID`, the same ones the CI scaffold's Vercel lanes read. Another host → replace `Did This Run Promote?` with a call to its API that prints the commit production serves.
+- Adapt: `{{DEFAULT_BRANCH}}`, `{{PRODUCTION_URL}}`, and `HEALTH_PATH` (default `/api/health`).
+- The promote check fails when the host's answer cannot be read, because a skipped probe would look green.
+- The probe retries for up to 240 seconds, because a release the host reports as live can still be warming up. It checks only for a 200; check the body your endpoint returns too, so an error page that answers 200 fails.
+- More probes (a curl script over key routes, a small tagged browser suite) go in as further steps of the `bkit-health` job. A step that runs a repo script needs `actions/checkout` with `ref: ${{ github.event.workflow_run.head_sha }}` first.
+- One health workflow per repo: keep any other post-deploy probe as a step here, not as a second workflow.
 
 ## Cloud-agent workflow — `bkit-cloud.yml`
 

@@ -300,9 +300,9 @@ Ship's docs sync, summaries, `SHIPPED` roadmap row and skill removals ride the P
 
 ## Smoke trigger plumbing
 
-Smoke runs **after** deploy, in its own workflow, off the merge gate (what it actually probes → `testing.md` § Smoke). When `bkit-tests-deploy` promotes inside CI, that probe is `health.yml` (`workflow_run` after CI success on the default branch) — one workflow, not a second smoke file, unless the two probes differ. Pick the trigger by **where the deploy happens**, not by habit:
+Smoke runs **after** deploy, in its own workflow, off the merge gate (what it actually probes → `testing.md` § Smoke). When `bkit-tests-deploy` promotes inside CI, that probe is `bkit-health.yml` (`.bkit/templates.md` § Health check) — one workflow, not a second smoke file. Pick the trigger by **where the deploy happens**, not by habit:
 
-- **Deploy happens inside CI** → key smoke to **`workflow_run`** (the CI workflow `completed` + `conclusion == 'success'`). Mind the 3-level `workflow_run` chain cap, because a fourth chained workflow will not fire.
+- **Deploy happens inside CI** → key smoke to **`workflow_run`** (the CI workflow `completed`, any conclusion) and probe only when production serves that run's commit. The deploy promotes before the tenant lanes, so a red run can still have put a release live. Fail, rather than skip, when production's commit cannot be read. Mind the 3-level `workflow_run` chain cap, because a fourth chained workflow will not fire.
 - **An external platform deploys after merge** (Vercel / Netlify-style Git integration) → key to a **post-deploy** signal — `deployment_status` (`state == 'success'`) or the platform's `repository_dispatch` event — so smoke fires when the deploy is actually **live**, not merely when CI finished. `workflow_run` here smokes a not-yet-serving (or about-to-be-replaced) deployment.
 - Either way: separate workflow, **non-blocking** (never a required check), and wait for the target to be **serving** before probing, because ready != serving (`testing.md` § Deploy-reachability).
 - **Not:** smoke wired into branch protection (it gates observability, not merges), or a `workflow_run`-keyed smoke against an externally-deployed app that probes the old build.
@@ -342,7 +342,7 @@ Two guards keep a release honest: the deploy job carries its own `concurrency:` 
 
 Do not add a host-side "hold promotion until a named check passes" setting (e.g. Vercel Deployment Checks). That list stays empty. This job is the promotion. e.g. Vercel: `git.deploymentEnabled` for the default branch is false; auto-assign of production domains is off.
 
-The capstone `needs:` `bkit-tests-deploy`: on a default-branch push a skipped or failed deploy reds it. Health (optional, `.github/workflows/health.yml`) runs on `workflow_run` after that CI run succeeds, and smokes the deployment this SHA promoted. Not a required check.
+The capstone `needs:` `bkit-tests-deploy`: on a default-branch push a skipped or failed deploy reds it. Health (optional, `.github/workflows/bkit-health.yml`) runs on `workflow_run` after every finished CI run on the default branch, and probes production when it serves that run's commit. Not a required check.
 
 ## Disable GitHub Code Quality billing
 

@@ -78,6 +78,7 @@ describe("the templates root is the copy-and-own set", () => {
     for (const p of [
       ".github/workflows/bkit-ci.yml",
       ".github/workflows/bkit-cloud.yml",
+      ".github/workflows/bkit-health.yml",
       ".github/workflows/bkit-renovate.yml",
       ".github/workflows/bkit-trivy.yml",
       ".husky/pre-push",

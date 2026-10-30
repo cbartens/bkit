@@ -757,8 +757,7 @@ export function detectRunLevelsNotComposed(cwd: string): PreflightFinding | null
     action:
       "`docs/deployments.md` documents bkit's none / partial / full run-level shape — the matrix is documentation-only until you compose at least one consumer-side gate. Examples:\n\n" +
       "  - A deploy job: `if: steps.detect.outputs.should_force_build == 'true' || github.ref == 'refs/heads/main'`\n" +
-      "  - An E2E job: enable the `bkit-stub:e2e` block (which already gates on `should_run_full`).\n" +
-      "  - A smoke workflow: copy the `bkit-stub:smoke` block to `.github/workflows/smoke.yml`.\n\n" +
+      "  - An E2E job: enable the `bkit-stub:e2e` block (which already gates on `should_run_full`).\n\n" +
       `If your consumer doesn't need run-level tiers (single-track CI, no preview deploys), dismiss by removing the \`Detect Direct Push\` step from ${ciRel}. Note this also disables \`[force cache]\` / \`[force build]\` / \`[force full]\` tag detection.`,
   };
 }

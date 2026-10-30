@@ -662,21 +662,6 @@ jobs:
           fi
           node scripts/ci/bkit-check-capstone.mjs
 
-# bkit-stub:smoke — Post-CI smoke triggered by workflow_run on {{DEFAULT_BRANCH}}. To enable: copy the YAML below into .github/workflows/smoke.yml (separate file — workflow_run cannot share a file with push/pull_request) and delete this stub header.
-# name: Smoke
-# on:
-#   workflow_run:
-#     workflows: ["CI"]
-#     types: [completed]
-#     branches: [{{DEFAULT_BRANCH}}]
-# jobs:
-#   smoke:
-#     if: github.event.workflow_run.conclusion == 'success'
-#     runs-on: ubuntu-latest
-#     steps:
-#       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-#       - run: ./scripts/ci/smoke-test.sh
-
 # =============================================================================
 # FULL CI SCAFFOLD REFERENCE — job graph, needs, if, step names. This is the target.
 # The jobs above are the any-repo starter. A starter stub still inside bkit-tests-unit
@@ -1027,11 +1012,10 @@ jobs:
 # setting (e.g. Vercel Deployment Checks) stays empty — this job is the promotion.
 #
 # === JOB 6 — health (separate workflow) ===
-# bkit-stub:health — copy into .github/workflows/health.yml. workflow_run cannot share a file with
-# push / pull_request. WHEN: you have a live URL to smoke after CI. Trigger on CI completed, default
-# branch only, if the CI run succeeded. Then hit the health URL of the deployment this SHA promoted.
-# e.g. poll the host until that deployment is ready, then GET /health. Not a required check.
-# DROP if you have no deployed health URL.
+# bkit-stub:health — copy .bkit/templates/.github/workflows/bkit-health.yml to
+# .github/workflows/bkit-health.yml. WHEN: bkit-tests-deploy promotes and you have a live health URL.
+# Runs after every finished CI run on {{DEFAULT_BRANCH}}, green or red, and probes only when production
+# serves that run's commit. Not a required check. DROP if you have no deployed health URL.
 #
 # COMPOSES WITH bkit-cloud.yml: it routes on workflow_run.conclusion (success->ship, failure->debug);
 # a red bkit-tests-check turns the whole run red, so the router reads the capstone for free. See .bkit/cloud.md.
