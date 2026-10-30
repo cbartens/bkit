@@ -1,4 +1,4 @@
-<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. The report is stamped with a `bkit:anchor` block recording the audited commit (`baseSha`) and branch (`baseRef`); never hand-author or edit it. `@bkit-audit-generate` fills this template. -->
+<!-- Note: @bkit-audit-generate fills this template. The report lives at `docs/audits/{YYYYMM}/{slug}.md`, where `{YYYYMM}` is the UTC month of the run and `{slug}` is this file's name without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md`, where `{TIMESTAMP}` is the output of `date -u +%Y%m%dT%H%M%SZ`. NEVER overwrite an earlier report. The report is stamped with a `bkit:anchor` block that records the audited commit (`baseSha`) and branch (`baseRef`). NEVER write or edit that block by hand. -->
 
 <!-- bkit:start -->
 
@@ -7,24 +7,26 @@
 # Prompt Audit
 
 > [!CAUTION]
-> **Purpose:** Each prompt the product sends to a model — clear, well structured, and written for the model that runs it, per that model maker's current prompting guide.
+> **Purpose:** Each prompt the product sends to a model is clear, well structured, and written for the model that runs it, per that model maker's current prompting guide.
 >
 > **Rules:**
 >
-> - Quote at most one line of prompt text per finding; never copy personal data or a model completion into the report.
-> - never call a model to generate. Token counts use a local tokenizer or a provider count endpoint only.
+> - Quote at most one line of prompt text per finding.
+> - Never copy personal data or a model completion into the report.
+> - Never call a model to generate.
+> - Count tokens with a local tokenizer or a provider count endpoint only.
 
 ## Universal Instructions
 
 ### Context & Goals
 
-A prompt is written against one model maker's advice at one point in time. The model behind it changes, the advice changes, and the prompt does not. Rules pile up without reasons, emphasis written for an older model makes a newer one over-apply a rule, the output format drifts from the parser that reads it. Nothing fails a test: the model still answers, a little worse. Target failure: **a prompt that the current guide for the model running it says will degrade results, and nobody re-read it after the model or the guide changed.**
+A prompt is written against one model maker's advice at one point in time. The model behind it changes, the advice changes, and the prompt does not. Examples: rules pile up without reasons, emphasis written for an older model makes a newer one over-apply a rule, and the output format drifts from the parser that reads it. Nothing fails a test: the model still answers, a little worse. The failure this audit targets is a prompt that the current guide for its model says will degrade results, which nobody re-read after the model or the guide changed.
 
-**Applies when:** the product sends a prompt to a language model at runtime (system prompt, message template, few-shot examples, tool or output-schema descriptions). Coding-agent instruction files and bkit-managed files are not product prompts. None → one `N/A` row with evidence, never "clean".
+**Applies when:** the product sends a prompt to a language model at runtime (system prompt, message template, few-shot examples, tool or output-schema descriptions). Coding-agent instruction files and bkit-managed files are not product prompts. **If** the product sends none → write one `N/A` row with its evidence, and never report the surface as "clean".
 
-**Cadence:** quarterly. Extra pass after a model change at any call site (`bkit-audit-models`), a new prompt set, or a maker guide update.
+**Cadence:** Run once a quarter. Run an extra pass after a model change at any call site (`bkit-audit-models`), a new prompt set, or a maker guide update.
 
-**Anchor Standards:** record URL, last-updated date or date read, and the model generation each targets.
+**Anchor Standards:** For each guide, record the URL, the last-updated date or the date it was read, and the model generation it targets.
 
 - Anthropic prompt engineering docs and the prompting best-practices page for current Claude models.
 - OpenAI prompt engineering guide and the model-specific prompting guide for each model in use (e.g. the cookbook guide per model generation).
@@ -36,14 +38,14 @@ Guides disagree. The guide for the model that runs the prompt wins. A prompt tha
 
 ### Scope
 
-- Every runtime prompt: system prompt, message template, few-shot set, prefill, tool descriptions, output-schema descriptions.
-- Model and guide per prompt.
-- Clarity: task, success, context and reason behind each rule, definitions, contradictions, dead instructions.
-- Structure: sections, delimiters, ordering, examples, output format against its parser.
-- Model fit: emphasis, reasoning and verbosity controls, sampling parameters, prefill, workarounds from an older model.
-- Tool and output-schema descriptions.
-- Token cost, duplication, cache-friendly ordering.
-- Deliberate departures from a guide: recorded once, not re-raised.
+- Read every runtime prompt: system prompt, message template, few-shot set, prefill, tool descriptions and output-schema descriptions.
+- Name the model and the guide for each prompt.
+- Check clarity: the task, success, the context and reason behind each rule, definitions, contradictions and dead instructions.
+- Check structure: sections, delimiters, ordering, examples, and the output format against its parser.
+- Check model fit: emphasis, reasoning and verbosity controls, sampling parameters, prefill, and workarounds from an older model.
+- Check tool and output-schema descriptions.
+- Measure token cost, duplication and cache-friendly ordering.
+- Deliberate departures from a guide are recorded once, and are not re-raised.
 
 ### Out of Scope
 
@@ -63,41 +65,43 @@ Guides disagree. The guide for the model that runs the prompt wins. A prompt tha
 
 #### Core
 
-- [ ] **Permissions:** blocked calls recorded
-- [ ] **Code Search:** Steps 2, 4-9 — text search and language server for call sites (e.g. ripgrep, Serena, `tsserver`). Prompts often markdown or string literals; tool descriptions often strings in schema files. Language-server hits under-report; empty inconclusive → corroborate with text search and name the tool. Fallback: text search only; name it per claim.
-- [ ] **Web:** Steps 3, 10 — each maker's prompting guide (e.g. WebFetch, WebSearch). Fallback: guide practice recorded as unread; Steps 4-7 cite the previous report's guide version and say so.
+- [ ] **Permissions:** every blocked call is recorded.
+- [ ] **Code Search:** Steps 2, 4-9 — text search, and the language server for call sites (e.g., ripgrep, Serena, `tsserver`). Prompts are often markdown or string literals, and tool descriptions are often strings in schema files. Language-server hits under-report. **If** a result is empty → treat it as inconclusive, corroborate it with text search, and name the tool. Fallback: text search only, and name the tool for each claim.
+- [ ] **Web:** Steps 3, 10 — each maker's prompting guide (e.g., WebFetch, WebSearch). Fallback: record guide practice as unread; Steps 4-7 cite the previous report's guide version and say so.
 
 #### Conditional
 
-- [ ] **LLM Report:** A `bkit-audit-llm` report exists → Steps 2, 9 — its `Inventory` and `Evals`. Fallback: inventory from code; eval coverage `Not Checked`.
-- [ ] **Token Counter:** Step 8 — local tokenizer or provider count endpoint (no generation). Fallback: character count ÷ 4, labelled estimate.
+- [ ] **LLM Report:** **If** a `bkit-audit-llm` report exists → Steps 2, 9 — its `Inventory` and `Evals`. Fallback: build the inventory from code, and mark eval coverage `Not Checked`.
+- [ ] **Token Counter:** Step 8 — a local tokenizer or a provider count endpoint (no generation). Fallback: use character count ÷ 4, labelled as an estimate.
 
 ### 🔒 Gate 1: Prerequisites Check
 
-- [ ] **Gaps named:** every missing item names its fallback and `Not Checked` entry.
-- [ ] **Gate 1 — Verified:** All Core items checked. All applicable Conditional items checked.
+- [ ] **Gaps named:** every missing item names its fallback and its `Not Checked` entry.
+- [ ] **Gate 1 — Verified:** every Core item and every applicable Conditional item is checked.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** **Done when:** closure rate in `Previous Run`, or run marked baseline.
-- [ ] **Step 2 — Inventory:** Start from code: every model call site outside tests (newest `bkit-audit-llm` `Inventory` as cross-check, not source). Per prompt: file, call sites, model(s) that run it — every model in the fallback chain, resolved at the call site (choice and lifecycle → `bkit-audit-models`, not scored here) · maker guide that applies · task (extract, classify, write, converse, tool-calling) · output consumer (parser, schema, human) · eval set covering it (`bkit-audit-llm` `Evals`) · last-changed commit · model or guide changed since. Exclude bkit-managed files and coding-agent instruction files. Diff vs previous run; new prompt or new model read first. **Done when:** `Inventory` row per prompt, or `N/A` and STOP.
-- [ ] **Step 3 — Guides:** Per maker in `Inventory`: read current prompting guide and model-specific page for each model generation in use. Record URL, last-updated date or date read, generation targeted. Build `Guidance`: practice · source · makers it applies to · which conflict. Conflict between makers → note which prompts run on both. No guide, or URL dead → still read maker's model parameter docs per generation (e.g. reasoning-effort values, rejected sampling parameters) so Step 6 parameter checks run; parameter docs missing → that generation's parameter checks `Not Checked`. Guide unread → `Not Checked`; Steps 4-7 for that maker = previous report's reading, labelled. **Done when:** `Guidance` row per practice used in Steps 4-7, every row sourced.
-- [ ] **Step 4 — Clarity:** Per prompt: task and what a good answer looks like stated up front; audience and context given; each constraint carries its reason where the guide asks for one; says what to do, not only what to avoid; terms the output depends on defined (e.g. date format, "recent", allowed labels, "out-of-scope" in a redirect rule); conversational prompt states its job and the reply to off-topic asks (wording only — enforcement → `bkit-audit-llm` `Job Scope`); no contradiction within the prompt or between system prompt and template; no dead instruction naming a removed field, tool, or format. **Done when:** `Clarity` row per prompt: verdict per check, each failure cited.
-- [ ] **Step 5 — Structure:** Per prompt: sections and inputs delimited the way the guide recommends (e.g. XML tags, markdown headings); instructions apart from inserted data (layout only — injection → `bkit-audit-llm`); long inputs placed where the guide says (e.g. documents first, question last); output format stated and matching its consumer — read the parser or schema and compare field names, types, enums (human consumer → `N/A`); every parsed field has an instruction (or schema description) that sets it and says what it counts; every field the instructions ask for appears in the output format; structured-output or tool schema used where the provider supports it and the guide prefers it; examples present where format or judgment matters, varied, consistent with instructions, not copied verbatim into output. **Done when:** `Structure` row per prompt: verdict per check, format-vs-parser and field-to-instruction diffs recorded.
-- [ ] **Step 6 — Model Fit:** Per prompt x model running it, against that maker's current guide: emphasis level (all-caps, "CRITICAL", "must", alarm emoji) — some current guides say forceful wording now makes the model over-apply a rule; first sort each capitalised absolute (or bold / emoji emphasis), by the rule it governs, into invariant (safety, permission, required field, irreversible action) or judgement call → judge only judgement calls; reasoning controls (effort or thinking setting at call site vs hand-written "think step by step" on a model with built-in reasoning); verbosity and length controls; sampling parameters the model ignores or rejects (e.g. temperature on a reasoning model); prefill used where the model or API no longer supports it; workaround written for an older model still present after a model change. Prompt on models from several makers → practice every guide supports, or finding. **Done when:** `Model Fit` row per prompt x model: check · guide line · verdict.
-- [ ] **Step 7 — Tools and Schemas:** Per tool or output schema a prompt offers: description says what it does, when to use it, when not to; each parameter's meaning, unit, format, allowed values; names unambiguous; no two tools a model could confuse; error text returned to the model says how to recover. Capability and bounds → `bkit-audit-llm`. No tools or schemas → skip with evidence. **Done when:** `Tools and Schemas` row per tool / schema, or skip.
-- [ ] **Step 8 — Efficiency:** Per prompt: token count of fixed part (tool named); text duplicated across prompts that one shared fragment could hold; fixed content before variable content where the provider caches prompt prefixes; text no instruction or example needs. Spend beyond per-call count → `bkit-audit-cost`. **Done when:** `Efficiency` row per prompt: tokens · duplication · cache order · dead text.
-- [ ] **Step 9 — Deliberate Choices:** Every departure from a guide found in Steps 4-8: check `docs/decisions.jsonl`, prompt comments, and previous reports' `Deliberate Choices`. Recorded with a reason → listed once, not a finding; re-raise only when the guide changed since that reason was written. Unrecorded → adopt (finding) / reject (why; propose `docs/decisions.jsonl` row under `Process Improvements`) / not applicable. Each finding names the eval that would confirm the rewrite (`bkit-audit-llm` `Evals`); none → `unverified`, and propose the golden case to `bkit-audit-llm`. **Done when:** `Deliberate Choices` row per departure: practice · decision source or verdict.
-- [ ] **Step 10 — Standards:** Confirm current version per anchor guide; read what changed since previous report's version. `Standards Coverage`: one row per guide recommendation that applies to a prompt in `Inventory` → checked (name step) / not applicable (why) / finding. Unapplied recommended practice → adopt (propose step) / reject (why) / not applicable. **Done when:** no empty row.
-- [ ] **Step 11 — Anything Else:** (a) Changes since previous report's commit touching prompts, call-site model settings, tool or schema descriptions, or parsers of model output → one-line verdict each. (b) Bounded ~30 min pass: what a senior prompt engineer flags that no step asks; read maker changelogs and model release notes since previous run — what would no step catch? **Done when:** `Beyond the Steps` holds both passes, or `none`. Class seen on 2 runs → propose step in `Process Improvements`.
+- [ ] **Step 1 — Previous Run:** **Done when:** `Previous Run` holds the closure rate, or the run is marked baseline.
+- [ ] **Step 2 — Inventory:** Start from the code: every model call site outside tests, with the newest `bkit-audit-llm` `Inventory` as a cross-check, not as the source. For each prompt, record: the file and call sites · the model(s) that run it — every model in the fallback chain, resolved at the call site (choice and lifecycle belong to `bkit-audit-models`, and are not scored here) · the maker guide that applies · the task (extract, classify, write, converse, tool-calling) · the output consumer (parser, schema, human) · the eval set covering it (`bkit-audit-llm` `Evals`) · the last-changed commit · whether the model or guide changed since. Exclude bkit-managed files and coding-agent instruction files. Diff against the previous run, and read each new prompt or new model first. **Done when:** `Inventory` has a row per prompt, or `N/A` is recorded → **STOP**.
+- [ ] **Step 3 — Guides:** For each maker in `Inventory`, read the current prompting guide and the model-specific page for each model generation in use. Record the URL, the last-updated date or the date read, and the generation targeted. Build `Guidance`: practice · source · makers it applies to · which conflict. **If** makers conflict → note which prompts run on both. **If** there is no guide, **or** its URL is dead → still read the maker's model parameter docs per generation (e.g., reasoning-effort values, rejected sampling parameters), so the Step 6 parameter checks run. **If** the parameter docs are missing → mark that generation's parameter checks `Not Checked`. **If** a guide is unread → mark it `Not Checked`, and use the previous report's reading, labelled, for that maker in Steps 4-7. **Done when:** `Guidance` has a row per practice used in Steps 4-7, and every row is sourced.
+- [ ] **Step 4 — Clarity:** For each prompt, check that: the task and what a good answer looks like are stated up front; the audience and context are given; each constraint carries its reason where the guide asks for one; it says what to do, not only what to avoid; the terms the output depends on are defined (e.g., date format, "recent", allowed labels, "out-of-scope" in a redirect rule); a conversational prompt states its job and the reply to off-topic asks (wording only — enforcement belongs to `bkit-audit-llm` `Job Scope`); there is no contradiction within the prompt, or between the system prompt and the template; and no dead instruction names a removed field, tool or format. **Done when:** `Clarity` has a row per prompt: a verdict per check, with each failure cited.
+- [ ] **Step 5 — Structure:** For each prompt, check that: sections and inputs are delimited the way the guide recommends (e.g., XML tags, markdown headings); instructions are kept apart from inserted data (layout only — injection belongs to `bkit-audit-llm`); long inputs sit where the guide says (e.g., documents first, question last); the output format is stated and matches its consumer, so read the parser or schema and compare field names, types and enums, and mark a human consumer `N/A`; every parsed field has an instruction (or schema description) that sets it and says what it counts; every field the instructions ask for appears in the output format; a structured-output or tool schema is used where the provider supports it and the guide prefers it; and examples are present where format or judgment matters, varied, consistent with the instructions, and not copied verbatim into output. **Done when:** `Structure` has a row per prompt: a verdict per check, with the format-vs-parser and field-to-instruction diffs recorded.
+- [ ] **Step 6 — Model Fit:** For each prompt x model running it, check against that maker's current guide. Check the emphasis level (all-caps, "CRITICAL", "must", alarm emoji), because some current guides say forceful wording now makes the model over-apply a rule. First sort each capitalised absolute (or bold / emoji emphasis), by the rule it governs, into invariant (safety, permission, required field, irreversible action) or judgement call, and judge only the judgement calls. Then check: reasoning controls (the effort or thinking setting at the call site, against a hand-written "think step by step" on a model with built-in reasoning); verbosity and length controls; sampling parameters the model ignores or rejects (e.g., temperature on a reasoning model); prefill used where the model or API no longer supports it; and a workaround written for an older model that is still present after a model change. **If** a prompt runs on models from several makers → it uses a practice every guide supports, or it is a finding. **Done when:** `Model Fit` has a row per prompt x model: check · guide line · verdict.
+- [ ] **Step 7 — Tools and Schemas:** For each tool or output schema a prompt offers, check that: the description says what it does, when to use it and when not to; each parameter's meaning, unit, format and allowed values are given; the names are unambiguous; no two tools are ones a model could confuse; and error text returned to the model says how to recover. Capability and bounds belong to `bkit-audit-llm`. **If** there are no tools or schemas → skip with evidence. **Done when:** `Tools and Schemas` has a row per tool / schema, or the skip.
+- [ ] **Step 8 — Efficiency:** For each prompt, record: the token count of the fixed part (naming the tool); text duplicated across prompts that one shared fragment could hold; whether fixed content comes before variable content where the provider caches prompt prefixes; and text that no instruction or example needs. Spend beyond the per-call count belongs to `bkit-audit-cost`. **Done when:** `Efficiency` has a row per prompt: tokens · duplication · cache order · dead text.
+- [ ] **Step 9 — Deliberate Choices:** For every departure from a guide found in Steps 4-8, check `docs/decisions.jsonl`, prompt comments, and the previous reports' `Deliberate Choices`. **If** it is recorded with a reason → list it once, not as a finding. Re-raise it only when the guide changed after that reason was written. **If** it is unrecorded → mark it adopt (a finding), reject (saying why, and proposing a `docs/decisions.jsonl` row under `Process Improvements`) or not applicable. Each finding names the eval that would confirm the rewrite (`bkit-audit-llm` `Evals`). **If** there is none → write `unverified`, and propose the golden case to `bkit-audit-llm`. **Done when:** `Deliberate Choices` has a row per departure: practice · decision source or verdict.
+- [ ] **Step 10 — Standards:** Confirm the current version of each anchor guide, and read what changed since the previous report's version. Give `Standards Coverage` one row per guide recommendation that applies to a prompt in `Inventory`, each marked checked (naming the step), not applicable (saying why) or finding. Mark each recommended practice the project does not apply as adopt (with a proposed step), reject (saying why) or not applicable. **Done when:** no row is empty.
+- [ ] **Step 11 — Anything Else:** (a) Give a one-line verdict on each change since the previous report's commit that touches prompts, call-site model settings, tool or schema descriptions, or parsers of model output. (b) In a bounded pass of about 30 minutes, note what a senior prompt engineer would flag that no step asks about. Read the maker changelogs and model release notes since the previous run, and ask what no step would catch. **Done when:** `Beyond the Steps` holds both passes, or says `none`. **If** one class of issue is seen on 2 runs → propose a step for it in `Process Improvements`.
 
 ### 🔒 Gate 2: Probes Check
 
-- [ ] **Steps complete:** every step `[x]`, or explicit skip with evidence the surface is absent.
-- [ ] **Evidence:** every finding cites `file:line`, the guide line it departs from (URL + date read), and the tool behind it.
-- [ ] **No payloads:** at most one line of prompt text per finding; no personal data or model completion.
-- [ ] **Read-only:** no model generation call, no prompt or config changed.
-- [ ] **Gate 2 — Verified:** Every checkbox above independently verified and checked off.
+- [ ] **Steps complete:** every step is `[x]`, or skipped with evidence that its surface is absent.
+- [ ] **Evidence:** every finding cites `file:line`, the guide line it departs from (URL and date read), and the tool behind it.
+- [ ] **No payloads:** each finding quotes at most one line of prompt text.
+- [ ] **No personal data:** no personal data or model completion is in the report.
+- [ ] **Read-only:** no model generation call was made.
+- [ ] **Prompts unchanged:** no prompt or config changed.
+- [ ] **Gate 2 — Verified:** every item above holds.
 
 ## Findings
 
@@ -109,14 +113,14 @@ Guides disagree. The guide for the model that runs the prompt wins. A prompt tha
 | `MEDIUM` | Rule with no reason where the guide asks for one; examples missing where format matters, or contradicting instructions; prompt on several makers' models relying on one maker's behaviour; fixed content after variable content where the provider caches; text duplicated across prompts; dead instruction; departure from a guide not recorded |
 | `LOW` | Wording; token waste with no behaviour change; non-write tool description gaps |
 
-Within a severity: write paths first, then prompts whose model changed. A departure recorded in `docs/decisions.jsonl` with a reason is not a finding.
+Within a severity, list write paths first, then prompts whose model changed. A departure recorded in `docs/decisions.jsonl` with a reason is not a finding.
 
 <!-- prettier-ignore -->
 | ID | Severity | Prompt | Location | Evidence | Expected | Verify |
 | --- | --- | --- | --- | --- | --- | --- |
 | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 
-Empty and clean → one row `None`. `Verify` = eval that confirms the fix, or `unverified`.
+**If** the run finds nothing → write one row: `None`. `Verify` = the eval that confirms the fix, or `unverified`.
 
 ## Report
 
@@ -189,14 +193,14 @@ PENDING
 
 ### 🔒 Gate 3: Report Check
 
-- [ ] **No placeholders:** no `PENDING` left
-- [ ] **Summary:** names count per severity, prompts read, and guide versions read.
-- [ ] **Series:** `Inventory` and `Deliberate Choices` diffed against previous report's, or marked baseline.
-- [ ] **Guides:** every `Model Fit` verdict names the guide and date it was judged against.
-- [ ] **Writes:** only this report, template `Project Instructions`, and ledger rows changed.
-- [ ] **Process Improvements:** `Universal` and `Project` filled
-- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID in exactly one row; every row has a `Next Step`.
-- [ ] **Gate 3 — Verified:** Every checkbox above independently verified and checked off.
+- [ ] **No placeholders:** no `PENDING` is left.
+- [ ] **Summary:** `Summary` gives the count per severity, the prompts read and the guide versions read.
+- [ ] **Series:** `Inventory` and `Deliberate Choices` are diffed against the previous report's, or the run is marked baseline.
+- [ ] **Guides:** every `Model Fit` verdict names the guide and the date it was judged against.
+- [ ] **Writes:** only this report, the template's `Project Instructions` and ledger rows changed.
+- [ ] **Process Improvements:** `Universal` and `Project` are both filled.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one row, and every row has a `Next Step`.
+- [ ] **Gate 3 — Verified:** every item above holds.
 
 <!-- bkit:end -->
 

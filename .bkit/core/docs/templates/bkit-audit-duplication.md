@@ -1,4 +1,4 @@
-<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. The report is stamped with a `bkit:anchor` block recording the audited commit (`baseSha`) and branch (`baseRef`); never hand-author or edit it. `@bkit-audit-generate` fills this template. -->
+<!-- Note: @bkit-audit-generate fills this template. The report lives at `docs/audits/{YYYYMM}/{slug}.md`, where `{YYYYMM}` is the UTC month of the run and `{slug}` is this file's name without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md`, where `{TIMESTAMP}` is the output of `date -u +%Y%m%dT%H%M%SZ`. NEVER overwrite an earlier report. The report is stamped with a `bkit:anchor` block that records the audited commit (`baseSha`) and branch (`baseRef`). NEVER write or edit that block by hand. -->
 
 <!-- bkit:start -->
 
@@ -7,21 +7,22 @@
 # Duplication Audit
 
 > [!CAUTION]
-> **Purpose:** Verdict on every behaviour with more than one implementation — inline rules, competing capability mechanisms, restated types, paired decisions, and merges that should not have happened.
+> **Purpose:** A verdict on every behaviour with more than one implementation: inline rules, competing capability mechanisms, restated types, paired decisions, and merges that should not have happened.
 >
 > **Rules:**
 >
-> - Generated registers / graphs → verify-only mode or throwaway copy; never regenerate a tracked file.
+> - Run generated registers and graphs in verify-only mode, or on a throwaway copy.
+> - Never regenerate a tracked file.
 
 ## Universal Instructions
 
 ### Context & Goals
 
-Identical-signature gates catch identical copies; divergent duplication hurts — one behaviour, N implementations drifted apart, each locally correct, review and tests pass. Three shapes, invisible to others' detectors: **rule** (one expression inlined at N sites then edited — expression is not a symbol → text / structural search, not language server), **capability** (one operation, N modules or mechanisms — register, reference search, literal-mechanism search), **paired decision** (two files must change together, each owning its half, nothing tying them — co-change history). Shared home existing != every site calls it; documented convention does not stop drift. Until guard covers both altitudes, this sweep = prevention. Target failure: **copies of one piece of knowledge that silently disagree** — e.g. security control left `null` at call site remediation missed.
+Identical-signature gates catch identical copies. The duplication that hurts is divergent: one behaviour with N implementations that have drifted apart, each locally correct, so review and tests pass. It comes in three shapes that other detectors cannot see. A rule is one expression inlined at N sites and then edited. The expression is not a symbol, so it needs text or structural search, not the language server. A capability is one operation done by N modules or mechanisms. It needs the register, reference search and literal-mechanism search. A paired decision is two files that must change together, each owning its half, with nothing tying them. It needs co-change history. A shared home that exists does not mean every site calls it, and a documented convention does not stop drift. Until a guard covers both altitudes, this sweep is the prevention. The failure this audit targets is copies of one piece of knowledge that silently disagree, e.g., a security control left `null` at a call site the remediation missed.
 
-**Applies when:** source code spanning more than one module, package, or platform. None → one `N/A` row with evidence, never "clean".
+**Applies when:** the source code spans more than one module, package or platform. **If** it does not → write one `N/A` row with its evidence, and never report the surface as "clean".
 
-**Cadence:** monthly. Extra pass when consolidation lands (re-check register row and call sites), new owner module or shared package lands, or production failure traces to divergent copies.
+**Cadence:** Run once a month. Run an extra pass when a consolidation lands (re-check its register row and call sites), when a new owner module or shared package lands, or when a production failure traces to divergent copies.
 
 **Anchor Standards:**
 
@@ -35,118 +36,119 @@ Identical-signature gates catch identical copies; divergent duplication hurts �
 
 ### Scope
 
-- Rule altitude: one business rule inlined at N sites — fallback chains, null vs falsy, formatting, predicates, defaults.
-- Capability altitude: one operation with N implementations or mechanisms; capability register.
-- Paired decisions: files that must change together with nothing tying them.
-- Token and syntax-tree clones (Type-1 to Type-3), incl. cross-platform counterparts.
-- Types and schemas restated by hand vs generated / source schema.
-- Two libraries for one job; one package resolved at several versions.
-- Non-code copies: SQL, shared config, i18n strings.
-- Wrong abstractions: landed merges serving different knowledge.
-- Prevention: next step = guard or sweep.
+- Check the rule altitude: one business rule inlined at N sites, such as fallback chains, null against falsy, formatting, predicates and defaults.
+- Check the capability altitude: one operation with N implementations or mechanisms, and the capability register.
+- Find paired decisions: files that must change together with nothing tying them.
+- Find token and syntax-tree clones (Type-1 to Type-3), including cross-platform counterparts.
+- Find types and schemas restated by hand instead of derived from the generated or source schema.
+- Find two libraries for one job, and one package resolved at several versions.
+- Find copies outside code: SQL, shared config and i18n strings.
+- Find wrong abstractions: merges that landed and serve different knowledge.
+- Decide whether the next step for prevention is a guard or a sweep.
 
 ### Out of Scope
 
 <!-- prettier-ignore -->
 | Excluded item | Why | Where it belongs |
 | --- | --- | --- |
-| Single-call-site helpers | Not duplication | — |
-| Capability with one implementation that is wrong | Gap, not duplication | Plan / `docs/failures.jsonl` |
-| Unreachable modules beyond reference check | Dead-code sweep | `bkit-audit-dead-code` |
-| One-off structural problems; module-graph shape | Architecture sweep | `bkit-audit-architecture` |
-| Upgrading / removing dependencies | Dependency sweep | `bkit-audit-dependencies` |
-| Mobile OS divergence (e.g. iOS vs Android) | Test-lane blind spot | `bkit-audit-testing` |
-| Building the guard; CI wiring | Gate change | `bkit-audit-gates` |
-| Consolidating copies | Audit reports only | Plan from this report |
+| Single-call-site helpers | They are not duplication | — |
+| Capability with one implementation that is wrong | It is a gap, not duplication | Plan / `docs/failures.jsonl` |
+| Unreachable modules beyond reference check | The dead-code sweep covers it | `bkit-audit-dead-code` |
+| One-off structural problems; module-graph shape | The architecture sweep covers it | `bkit-audit-architecture` |
+| Upgrading / removing dependencies | The dependency sweep covers it | `bkit-audit-dependencies` |
+| Mobile OS divergence (e.g. iOS vs Android) | It is a test-lane blind spot | `bkit-audit-testing` |
+| Building the guard; CI wiring | It is a gate change | `bkit-audit-gates` |
+| Consolidating copies | The audit only reports | A plan made from this report |
 
 ### Verdicts
 
-- **DUPLICATE:** one piece of knowledge; copies change for the same reason. Name the consolidation and its home.
-- **COINCIDENTAL:** looks alike; changes for different reasons. Leave; record why.
-- **RULE-OF-THREE-PENDING:** two copies of one piece of knowledge. Record and watch; consolidate at the third.
-- **OTHER:** fits none; say why. Same `OTHER` on 2 runs → propose new verdict in `Process Improvements`.
+- **DUPLICATE:** the copies are one piece of knowledge, and change for the same reason. Name the consolidation and its home.
+- **COINCIDENTAL:** the copies look alike, but change for different reasons. Leave them, and record why.
+- **RULE-OF-THREE-PENDING:** there are two copies of one piece of knowledge. Record them and watch; consolidate at the third.
+- **OTHER:** it fits no other verdict. Say why. **If** the same `OTHER` shows up on 2 runs → propose a new verdict in `Process Improvements`.
 
-**Test:** same knowledge, same reason to change. A paired decision = one decision in two places → `DUPLICATE`; home = paired-owner check or gate.
+**Test:** the copies hold the same knowledge, with the same reason to change. A paired decision is one decision in two places, so it is `DUPLICATE`, and its home is a paired-owner check or a gate.
 
 **Confirm before `DUPLICATE`:**
 
-- Duplicated name != deliberate platform split (e.g. `.native.tsx` / `.web.tsx`) or local UI handler.
-- Bypass is gratuitous, not a surface the owner cannot serve (e.g. framework-specific request context).
-- Similar defaults are one decision — a least-privilege read default and a signup write default are not; forcing one value breaks a flow.
-- "Dead" / "unwired" copy has no config-only or deployed consumer (explicit worker registries, deployed functions).
-- Co-change history (`Coupling`) says one decision, or already diverged.
+- A duplicated name is not a deliberate platform split (e.g., `.native.tsx` / `.web.tsx`) or a local UI handler.
+- The bypass is gratuitous, not a surface the owner cannot serve (e.g., a framework-specific request context).
+- Similar defaults are one decision. A least-privilege read default and a signup write default are not, and forcing one value breaks a flow.
+- A "dead" or "unwired" copy has no config-only or deployed consumer: an explicit worker registry or a deployed function.
+- Co-change history (`Coupling`) says it is one decision, or that the copies have already diverged.
 
-Carry `COINCIDENTAL` and `RULE-OF-THREE-PENDING` forward in `Carried Forward` — a two-site finding is neither consolidated early nor rediscovered every run.
+Carry `COINCIDENTAL` and `RULE-OF-THREE-PENDING` forward in `Carried Forward`, so a two-site finding is neither consolidated early nor rediscovered on every run.
 
 ### Pre-Flight / Dependencies
 
 #### Core
 
-- [ ] **Permissions:** blocked calls recorded
-- [ ] **Clean Tree:** Steps 2-13 — clean `git status` at recorded commit; findings only mean something against a known tree. Fallback: detached worktree off default branch.
-- [ ] **Text Search:** Steps 3, 5, 7-10 — inline expressions, literals, env names, non-code files, e.g. ripgrep, `git grep`. Fallback: `grep -rn`.
-- [ ] **Structural Search:** Steps 3, 12 — syntax patterns that skip comments / strings and catch reordered copies, e.g. ast-grep, Semgrep; ad hoc run, record resolved version. Fallback: text search; reformatted copies `Not Checked`.
-- [ ] **Clone Detector:** Steps 4, 8 — Type-1 to Type-3 clones, e.g. jscpd, PMD CPD; ad hoc run, record resolved version. Fallback: `Clones` `Not Checked`.
-- [ ] **Git History:** Steps 4, 10 — full history for clone baseline, blame, and co-change. Fallback: growth and coupling `Not Checked`.
-- [ ] **Web:** Step 14 — fetch anchor standards. Fallback: versions recorded as unread.
+- [ ] **Permissions:** every blocked call is recorded.
+- [ ] **Clean Tree:** Steps 2-13 — a clean `git status` at the recorded commit, because findings only mean something against a known tree. Fallback: use a detached worktree off the default branch.
+- [ ] **Text Search:** Steps 3, 5, 7-10 — inline expressions, literals, env names and non-code files (e.g., ripgrep, `git grep`). Fallback: `grep -rn`.
+- [ ] **Structural Search:** Steps 3, 12 — syntax patterns that skip comments and strings and catch reordered copies (e.g., ast-grep, Semgrep). Run it ad hoc, and record the resolved version. Fallback: text search, and mark reformatted copies `Not Checked`.
+- [ ] **Clone Detector:** Steps 4, 8 — Type-1 to Type-3 clones (e.g., jscpd, PMD CPD). Run it ad hoc, and record the resolved version. Fallback: mark `Clones` `Not Checked`.
+- [ ] **Git History:** Steps 4, 10 — the full history, for the clone baseline, blame and co-change. Fallback: mark growth and coupling `Not Checked`.
+- [ ] **Web:** Step 14 — fetch the anchor standards. Fallback: record the versions as unread.
 
 #### Conditional
 
-- [ ] **Language Server:** Typed language → Steps 3, 5, 13 — references on helpers and owners, e.g. Serena, `tsserver`, pyright. Fallback: text search only; caller sets = hypotheses; `one` vs `bypassed` unproven.
-- [ ] **Module Graph:** Steps 5, 10 — duplicate symbol names, god nodes, import edges, e.g. graphify, dependency-cruiser, madge. Fallback: module-graph cross-check `Not Checked`.
-- [ ] **Capability Register:** Register exists → Step 5 — capability → owner → status, verify-only mode. Fallback: rows derived in `Capabilities` only; no register = finding.
-- [ ] **Cross-Platform Compare:** 2+ platforms / apps sharing behaviour → Step 4 — counterpart listing, e.g. jscpd `--compare`. Fallback: text search for counterparts.
-- [ ] **Package Manager:** Lockfile → Step 7 — dedupe check and resolution reason, e.g. `pnpm dedupe --check` / `pnpm why`, `npm ls --all`. Fallback: read lockfile.
+- [ ] **Language Server:** **If** the language is typed → Steps 3, 5, 13 — references on helpers and owners (e.g., Serena, `tsserver`, pyright). Fallback: text search only. Treat caller sets as hypotheses, and `one` against `bypassed` as unproven.
+- [ ] **Module Graph:** Steps 5, 10 — duplicate symbol names, god nodes and import edges (e.g., graphify, dependency-cruiser, madge). Fallback: mark the module-graph cross-check `Not Checked`.
+- [ ] **Capability Register:** **If** a register exists → Step 5 — capability, owner and status, in verify-only mode. Fallback: derive the rows in `Capabilities` only. No register is a finding.
+- [ ] **Cross-Platform Compare:** **If** 2 or more platforms or apps share behaviour → Step 4 — a counterpart listing (e.g., jscpd `--compare`). Fallback: text search for counterparts.
+- [ ] **Package Manager:** **If** the project has a lockfile → Step 7 — the dedupe check and the resolution reason (e.g., `pnpm dedupe --check` / `pnpm why`, `npm ls --all`). Fallback: read the lockfile.
 
 ### 🔒 Gate 1: Prerequisites Check
 
-- [ ] **Gaps named:** every missing item names its fallback and `Not Checked` entry.
-- [ ] **Gate 1 — Verified:** All Core items checked. All applicable Conditional items checked.
+- [ ] **Gaps named:** every missing item names its fallback and its `Not Checked` entry.
+- [ ] **Gate 1 — Verified:** every Core item and every applicable Conditional item is checked.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** **Done when:** closure rate in `Previous Run`, or run marked baseline.
-- [ ] **Step 2 — Detect:** List apps, packages, platforms; shared homes (utility / owner modules); capability register; duplication gates enforced and what each catches (e.g. identical-signature gate → identical copies only). **Done when:** surface map and existing gates in `Checked`, or `N/A` and **STOP**.
-- [ ] **Step 3 — Rule Altitude:** Hunt one conceptual operation inlined at N sites instead of called from one function, copies differing on load-bearing details: fallback chains (e.g. JS `a ?? b ?? c`, divergent terminal fallback or order); null vs falsy (e.g. JS `??` vs `||`, with / without trim, optional-chain guards); formatting (date / time / timezone, currency, name / initials, address); predicates ("is active / deleted / owner?" filters); defaults (same enum / config default hardcoded in several readers). Structural rules where possible, text search where not; keep rules under `tmp/`, paste each into report for next run. Subtraction per shared helper: references on helper (routed set) minus sites matching inline pattern (inline set) → inline-not-routed = unmigrated site. Counts before reference-graph change (e.g. project references added) = stale → re-take, never carry forward. **Done when:** `Inline Rules` row per rule: helper · routed · inline · unmigrated · verdict, with its search rule.
-- [ ] **Step 4 — Clones:** Clone detector over source roots, machine-readable output, three passes: Type-1 exact; Type-2 renamed (ignore identifiers / literals); Type-3 near-miss (e.g. similarity 0.85, syntax-tree mode). Duplication % per package as series vs previous report. Every hit = candidate for `Verify`, not finding. Multiple platforms → counterpart listing (functions with / without counterpart per side). Growth: exact pass baselined at previous report's commit → clones new since vs consolidated since, blame naming introducer; arrival faster than consolidation = finding. **Done when:** per-package %, growth, counterpart list in `Clones`.
-- [ ] **Step 5 — Capability Altitude:** Above file graph: capabilities, not files. Per capability: owner, callers, status, note. Status: `one` = one implementation, every caller routes through it; `bypassed` = owner exists, some callers skip it; `split` = 2+ competing implementations, no owner; `gap` = designed, not built. Three detectors — different findings: (a) literal-mechanism search for second mechanism (e.g. second SDK client constructor, rate limiter, email-send call, duplicated validation regex) — primary; symbol graph cannot see duplicated regex; (b) language-server references on each owner → caller set, `one` vs `bypassed`; (c) module-graph duplicate-symbol-name check — group callable nodes by name across distinct non-test source files, 3+ definitions = candidate; god-node list flags owner gone load-bearing. Register status != measured status = finding; register is not edited. **Done when:** `Capabilities` row per capability: owner · callers · measured status · register status · verdict.
-- [ ] **Step 6 — Restated Types:** Typed language with schema source (generated DB types, migrations, IDL) → per core table: hand-written types, validation schemas, route validators restating columns, enums, constraints. Not derived from source = finding. Diff vs source: column added, renamed, or nullable on one side only = live defect. **Done when:** `Types` row per restated type: source · derived? · drift · verdict, or skip with evidence.
-- [ ] **Step 7 — Libraries:** Literal search finds second client, not second library. List dependencies across every manifest doing one job: two date libraries, two validation libraries or two majors side by side, two HTTP clients, two markdown parsers. Dedupe check and resolution reason for every package at more than one version. Each = capability row with library as mechanism. **Done when:** `Libraries` lists every same-job pair and multi-version package with reason.
-- [ ] **Step 8 — Outside Code:** SQL: access-policy bodies and helper functions redefined across migrations vs one function. Shared config: type-checker, linter, styling presets copied between apps vs extending shared package. i18n: same string under several keys. List formats clone detector supports; run over migrations and config; text search the rest. **Done when:** every hit = candidate for `Verify`; absent surface in `Checked`.
-- [ ] **Step 9 — Wrong Abstractions:** Opposite failure: merge that landed and should not have. Shared helpers with boolean / mode parameters or per-caller branches (e.g. `if (caller === …)`, >2 option flags) and <3 callers. Callers serve different knowledge → recommend inlining back. `Verify` guards new merges; this reviews old ones. **Done when:** `Wrong Abstractions` row per helper: params · callers · knowledge · verdict.
-- [ ] **Step 10 — Coupling:** Per candidate set: co-change history (e.g. `git log --name-only`, code-maat). Always changed together → true duplicate, consolidate; changed separately → already diverged, decide which behaviour is right first. Reverse detector: file pairs in different packages, or one per platform, co-changing in >50% of commits with no import edge → paired-decision candidate. Comments tying two files by prose (e.g. `keep in sync`, `must match`, `mirrors`). Pair → straight to `Prevention`. **Done when:** `Coupling` row per candidate and pair: co-change share · import edge · verdict.
-- [ ] **Step 11 — Confidence:** Name tool behind every count. Grade claim types: second implementation exists = high (every site read, not matched); exact call-site counts = medium; "no production consumer" = medium, needs in-code corroboration; "does not exist" = high only when absent from schema and all source. Language server under-reports → false `one`: pace queries; re-run surprising low / empty count before recording; empty = inconclusive, corroborate with text search; mocked-module factory keys and packages outside project graph invisible. Module graph: confirms presence, never absence; misses callers in anonymous callbacks and module-level initialisers; manifest-driven or type-only edges can fake cross-package edges and cycles; stale resolution cache after path-alias change. Language server and text search agreeing on count = strongest evidence; disagreement names file to open. Count corrected mid-run → record which, from what, by what tool. **Done when:** `Method` grades every claim type and names tool per count, incl. corrections.
-- [ ] **Step 12 — Prevention:** Does a guard fail on re-implementation at both altitudes — inline rule expression outside its helper, and mechanism (constructor, send call, env name) outside its owner? Per-rule bespoke guard = one guard per consolidated field, forever; structural rule per pattern (owner-file ignores, rules checked in, seeded from Step 3 rules) plus literal search with owner allowlist (env names) covers both altitudes without language server. Record whether recorded decisions favour guard or sweep, and whether evidence since contradicts them. Do not build. **Done when:** `Prevention` states next step = guard or sweep, with evidence and the rules it would start from.
-- [ ] **Step 13 — Verify:** Open every candidate file; cite `file:line` for every survivor. Apply `Verdicts` checks; re-check previous `Carried Forward` rows (third copy → `DUPLICATE`). Rank survivors by blast radius x divergence x user-visibility. Per survivor name consolidation and home: rule → one function in correct shared package, inline copies removed; capability → one owner module with call contract, register row updated; wrong abstraction → inlined back; paired decision → paired-owner check or gate; drifted type or live defect → `docs/failures.jsonl` row, fix ahead of refactor; second library / version → `bkit-audit-dependencies`; deliberate bypass blocked on other work → register row naming blocker (unrecorded bypass reads `one` next run = false clean); one-off structural problem or missing module-graph evidence → `bkit-audit-architecture`. Consolidation changing shared signature → `Expected` names reference check first. **Done when:** every candidate has verdict, evidence, rank, and home.
-- [ ] **Step 14 — Standards:** Confirm current version per anchor standard; read changes since previous report's version. `Standards Coverage`: one row per standard, per clone type (Type-1 to Type-4), and per shape (rule, capability, paired decision) → checked (name step) / not applicable (why) / finding. Unapplied recommended practice → adopt (propose step) / reject (why) / not applicable. **Done when:** no empty row.
-- [ ] **Step 15 — Anything Else:** (a) Everything changed since previous report's commit touching duplication (new shared helpers / owner modules, shared packages, cross-platform counterparts of screen or hook, validation schemas and route validators, migrations adding tables / enums / policies, new dependencies, config presets, i18n keys) → one-line verdict each. (b) Bounded ~30 min pass: what senior engineer owning shared packages flags that no step asks; read since previous run (incidents, new `docs/failures.jsonl` rows) — what would no step catch? **Done when:** `Beyond the Steps` holds both passes, or `none`. Class seen on 2 runs → propose step in `Process Improvements`.
+- [ ] **Step 1 — Previous Run:** **Done when:** `Previous Run` holds the closure rate, or the run is marked baseline.
+- [ ] **Step 2 — Detect:** List the apps, packages and platforms; the shared homes (utility and owner modules); the capability register; and the duplication gates enforced, with what each one catches (e.g., an identical-signature gate catches identical copies only). **Done when:** `Checked` holds surface map and existing gates, or `N/A` is recorded → **STOP**.
+- [ ] **Step 3 — Rule Altitude:** Hunt for one conceptual operation inlined at N sites instead of called from one function, where the copies differ on load-bearing details. Look at fallback chains (e.g., JS `a ?? b ?? c`, with a different terminal fallback or order); null against falsy (e.g., JS `??` against `||`, with or without trim, optional-chain guards); formatting (date, time and timezone, currency, name and initials, address); predicates ("is active / deleted / owner?" filters); and defaults (the same enum or config default hardcoded in several readers). Use structural rules where possible, and text search where not. Keep the rules under `tmp/`, and paste each one into the report for the next run. For each shared helper, subtract: the references on the helper are the routed set, the sites matching the inline pattern are the inline set, and inline-but-not-routed sites are unmigrated. Counts taken before a reference-graph change (e.g., project references added) are stale, so take them again; never carry them forward. **Done when:** `Inline Rules` has a row per rule: helper · routed · inline · unmigrated · verdict, with its search rule.
+- [ ] **Step 4 — Clones:** Run the clone detector over the source roots, with machine-readable output, in three passes: Type-1 exact; Type-2 renamed (ignoring identifiers and literals); and Type-3 near-miss (e.g., similarity 0.85, syntax-tree mode). Record the duplication % per package as a series against the previous report. Every hit is a candidate for `Verify`, not a finding. **If** there are multiple platforms → list the counterparts: the functions with and without a counterpart on each side. Growth: baseline the exact pass at the previous report's commit, then count the clones new since then against the ones consolidated since then, with blame naming who introduced each. Clones arriving faster than they are consolidated is a finding. **Done when:** `Clones` holds the per-package %, the growth and the counterpart list.
+- [ ] **Step 5 — Capability Altitude:** Work above the file graph, on capabilities rather than files. For each capability, record the owner, the callers, the status and a note. The status is `one` when there is one implementation and every caller routes through it; `bypassed` when an owner exists and some callers skip it; `split` when 2 or more implementations compete with no owner; and `gap` when it is designed but not built. Three detectors give different findings. (a) Literal-mechanism search for a second mechanism (e.g., a second SDK client constructor, rate limiter, email-send call or duplicated validation regex) is the primary detector, because the symbol graph cannot see a duplicated regex. (b) Language-server references on each owner give the caller set, and decide `one` against `bypassed`. (c) The module graph's duplicate-symbol-name check groups callable nodes by name across distinct non-test source files; 3 or more definitions make a candidate. Its god-node list flags an owner that has become load-bearing. A register status that differs from the measured status is a finding. The register is not edited. **Done when:** `Capabilities` has a row per capability: owner · callers · measured status · register status · verdict.
+- [ ] **Step 6 — Restated Types:** **If** the language is typed **and** there is a schema source (generated DB types, migrations, IDL) → for each core table, find the hand-written types, validation schemas and route validators that restate its columns, enums and constraints. A restatement not derived from the source is a finding. Diff it against the source: a column added, renamed or made nullable on one side only is a live defect. **Done when:** `Types` has a row per restated type: source · derived? · drift · verdict, or the skip is recorded with evidence.
+- [ ] **Step 7 — Libraries:** Literal search finds a second client, not a second library. List the dependencies across every manifest that do one job: two date libraries, two validation libraries or two majors side by side, two HTTP clients, or two markdown parsers. Run the dedupe check, and give the resolution reason for every package at more than one version. Each one is a capability row, with the library as the mechanism. **Done when:** `Libraries` lists every same-job pair, and every multi-version package with its reason.
+- [ ] **Step 8 — Outside Code:** SQL: access-policy bodies and helper functions redefined across migrations instead of one function. Shared config: type-checker, linter and styling presets copied between apps instead of extending a shared package. i18n: the same string under several keys. List the formats the clone detector supports, run it over migrations and config, and text search the rest. **Done when:** every hit is a candidate for `Verify`, and an absent surface is in `Checked`.
+- [ ] **Step 9 — Wrong Abstractions:** This is the opposite failure: a merge that landed and should not have. Find shared helpers with boolean or mode parameters, or per-caller branches (e.g., `if (caller === …)`, more than 2 option flags), and fewer than 3 callers. **If** the callers serve different knowledge → recommend inlining it back. `Verify` guards new merges, and this step reviews old ones. **Done when:** `Wrong Abstractions` has a row per helper: params · callers · knowledge · verdict.
+- [ ] **Step 10 — Coupling:** For each candidate set, read the co-change history (e.g., `git log --name-only`, code-maat). **If** the files always changed together → it is a true duplicate; consolidate it. **If** they changed separately → they have already diverged, so decide which behaviour is right first. Run the reverse detector: file pairs in different packages, or one per platform, that co-change in more than 50% of commits with no import edge are paired-decision candidates. Also find comments that tie two files together in prose (e.g., `keep in sync`, `must match`, `mirrors`). A pair goes straight to `Prevention`. **Done when:** `Coupling` has a row per candidate and pair: co-change share · import edge · verdict.
+- [ ] **Step 11 — Confidence:** Name the tool behind every count. Grade each claim type. "A second implementation exists" is high, because every site was read rather than matched. Exact call-site counts are medium. "No production consumer" is medium and needs corroboration in the code. "Does not exist" is high only when it is absent from the schema and from all source. The language server under-reports, which gives a false `one`. Pace the queries, and re-run a surprisingly low or empty count before recording it. An empty result is inconclusive, so corroborate it with text search. Mocked-module factory keys and packages outside the project graph are invisible to the language server, so use text search for them. The module graph confirms presence, never absence. It misses callers in anonymous callbacks and module-level initialisers. Manifest-driven or type-only edges can fake cross-package edges and cycles, and the resolution cache goes stale after a path-alias change. The language server and text search agreeing on a count is the strongest evidence; when they disagree, name the file to open. **If** a count is corrected mid-run → record which count, from what, and by what tool. **Done when:** `Method` grades every claim type and names the tool for each count, including the corrections.
+- [ ] **Step 12 — Prevention:** Check whether a guard fails on re-implementation at both altitudes: an inline rule expression outside its helper, and a mechanism (a constructor, a send call, an env name) outside its owner. A bespoke guard per rule means one guard per consolidated field, forever. A structural rule per pattern (with owner-file ignores, the rules checked in, seeded from the Step 3 rules), plus a literal search with an owner allowlist for env names, covers both altitudes without the language server. Record whether the recorded decisions favour a guard or a sweep, and whether evidence since then contradicts them. Do not build anything. **Done when:** `Prevention` states whether the next step is a guard or a sweep, with the evidence and the rules it would start from.
+- [ ] **Step 13 — Verify:** Open every candidate file, and cite `file:line` for every survivor. Apply the `Verdicts` checks. Re-check the previous `Carried Forward` rows; a third copy makes one `DUPLICATE`. Rank the survivors by blast radius x divergence x user visibility. For each survivor, name the consolidation and its home. A rule gets one function in the correct shared package, with the inline copies removed. A capability gets one owner module with a call contract, and the register row updated. A wrong abstraction is inlined back. A paired decision gets a paired-owner check or a gate. A drifted type or a live defect gets a `docs/failures.jsonl` row, fixed ahead of any refactor. A second library or version goes to `bkit-audit-dependencies`. A deliberate bypass blocked on other work gets a register row that names the blocker, because an unrecorded bypass reads as `one` on the next run, which is a false clean. A one-off structural problem, or missing module-graph evidence, goes to `bkit-audit-architecture`. **If** a consolidation changes a shared signature → `Expected` names the reference check to run first. **Done when:** every candidate has a verdict, evidence, a rank and a home.
+- [ ] **Step 14 — Standards:** Confirm the current version of each anchor standard, and read what changed since the previous report's version. In `Standards Coverage`, give one row per standard, per clone type (Type-1 to Type-4), and per shape (rule, capability, paired decision), marked checked (with the step), not applicable (saying why) or finding. Mark each recommended practice the project does not apply as adopt (with a proposed step), reject (saying why) or not applicable. **Done when:** no row is empty.
+- [ ] **Step 15 — Anything Else:** (a) List everything changed since the previous report's commit that touches duplication (new shared helpers and owner modules, shared packages, cross-platform counterparts of a screen or hook, validation schemas and route validators, migrations adding tables, enums or policies, new dependencies, config presets and i18n keys), with a one-line verdict each. (b) In a bounded pass of about 30 minutes, note what a senior engineer owning shared packages would flag that no step asks about. Read what happened since the previous run (incidents, new `docs/failures.jsonl` rows), and note what no step would catch. **Done when:** `Beyond the Steps` holds both passes, or says `none`. **If** one class of issue is seen on 2 runs → propose a step for it in `Process Improvements`.
 
 ### 🔒 Gate 2: Probes Check
 
-- [ ] **Steps complete:** every step `[x]`, or explicit skip with evidence the surface is absent.
-- [ ] **Evidence:** every finding cites re-checkable evidence and the tool behind it.
+- [ ] **Steps complete:** every step is `[x]`, or skipped with evidence that its surface is absent.
+- [ ] **Evidence:** every finding cites evidence someone can check again, and the tool that produced it.
 - [ ] **Sites read:** every `DUPLICATE` cites `file:line` from an opened file, not a match.
-- [ ] **Tree clean:** no tracked file changed by this run (other writers' paths named); tracked registers / graphs unchanged.
-- [ ] **Gate 2 — Verified:** Every checkbox above independently verified and checked off.
+- [ ] **Tree clean:** this run changed no tracked file, and the report names the paths other writers changed.
+- [ ] **Registers unchanged:** the tracked registers and graphs are unchanged.
+- [ ] **Gate 2 — Verified:** every item above holds.
 
 ## Findings
 
 <!-- prettier-ignore -->
 | Severity | Use |
 | --- | --- |
-| `CRITICAL` | Divergent copy disables a security / access control (e.g. rate limiter, auth, or tenancy check) or loses data; broken workflow with no workaround |
-| `HIGH` | User-visible divergence between copies of one rule; hand-written type drifted from schema; paired decision out of step; `split` capability on a request path |
-| `MEDIUM` | Copies consistent today (drift risk, no live bug); `bypassed` owner; register status != measured; wrong abstraction; two libraries / versions for one job; SQL / config / i18n copies; clone growth outpacing consolidation |
-| `LOW` | Cosmetic copies; test-only clones; stale register note changing no status |
+| `CRITICAL` | A divergent copy disables a security or access control (e.g., a rate limiter, auth or a tenancy check), or loses data. A workflow is broken with no workaround. |
+| `HIGH` | Copies of one rule diverge in a way users can see. A hand-written type has drifted from the schema. A paired decision is out of step. A `split` capability sits on a request path. |
+| `MEDIUM` | Copies are consistent today, with drift risk and no live bug. An owner is `bypassed`. The register status differs from the measured one. An abstraction is wrong. Two libraries or versions do one job. SQL, config or i18n is copied. Clone growth outpaces consolidation. |
+| `LOW` | Copies are cosmetic. Clones are test-only. A stale register note changes no status. |
 
-Within a severity: higher blast radius x divergence x user-visibility first.
+Within a severity, list higher blast radius x divergence x user visibility first.
 
 <!-- prettier-ignore -->
 | ID | Severity | Verdict | Location | Evidence | Expected |
 | --- | --- | --- | --- | --- | --- |
 | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 
-Empty and clean → one row `None`.
+**If** the run finds nothing → write one row: `None`.
 
 ## Report
 
@@ -227,13 +229,13 @@ PENDING
 
 ### 🔒 Gate 3: Report Check
 
-- [ ] **No placeholders:** no `PENDING` left
-- [ ] **Summary:** names count per severity, count per verdict, and the guard-or-sweep call.
-- [ ] **Series:** per-package duplication % and clone growth beside previous report's numbers, or marked baseline.
-- [ ] **Writes:** only this report, template `Project Instructions`, and ledger rows changed; throwaway worktrees / remote targets removed.
-- [ ] **Process Improvements:** `Universal` and `Project` filled
-- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID in exactly one row; every row has a `Next Step`.
-- [ ] **Gate 3 — Verified:** Every checkbox above independently verified and checked off.
+- [ ] **No placeholders:** no `PENDING` is left.
+- [ ] **Summary:** `Summary` gives the count per severity, the count per verdict, and the guard-or-sweep call.
+- [ ] **Series:** the report shows per-package duplication % and clone growth beside the previous report's numbers, or marks the run as baseline.
+- [ ] **Writes:** only this report, the template's `Project Instructions` and ledger rows have changed, and every throwaway worktree or remote target is removed.
+- [ ] **Process Improvements:** `Universal` and `Project` are both filled.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one row, and every row has a `Next Step`.
+- [ ] **Gate 3 — Verified:** every item above holds.
 
 <!-- bkit:end -->
 

@@ -1,4 +1,4 @@
-<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. The report is stamped with a `bkit:anchor` block recording the audited commit (`baseSha`) and branch (`baseRef`); never hand-author or edit it. `@bkit-audit-generate` fills this template. -->
+<!-- Note: @bkit-audit-generate fills this template. The report lives at `docs/audits/{YYYYMM}/{slug}.md`, where `{YYYYMM}` is the UTC month of the run and `{slug}` is this file's name without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md`, where `{TIMESTAMP}` is the output of `date -u +%Y%m%dT%H%M%SZ`. NEVER overwrite an earlier report. The report is stamped with a `bkit:anchor` block that records the audited commit (`baseSha`) and branch (`baseRef`). NEVER write or edit that block by hand. -->
 
 <!-- bkit:start -->
 
@@ -7,23 +7,24 @@
 # App Store Audit
 
 > [!CAUTION]
-> **Purpose:** Whether iOS and Android apps can ship and stay listed — deadlines, privacy declarations, permissions, signing credentials, review readiness, and once live: crashes, ratings, listing.
+> **Purpose:** Whether the iOS and Android apps can ship and stay listed: deadlines, privacy declarations, permissions, signing credentials and review readiness, and, once live, crashes, ratings and the listing.
 >
 > **Rules:**
 >
-> - NEVER submit a build, change a listing, accept an agreement, submit a declaration, or create, rotate, or download a credential.
-> - never copy certificate, key, token, or password material into the report; expiry, holder, and recovery path only.
-> - Every store, deadline, and credential claim names the platform and the account it was read from.
+> - NEVER submit a build, change a listing, accept an agreement, submit a declaration, or create, rotate or download a credential.
+> - NEVER copy certificate, key, token or password material into the report.
+> - Record a credential's expiry, holder and recovery path only.
+> - Name the platform, and the account it was read from, in every store, deadline and credential claim.
 
 ## Universal Instructions
 
 ### Context & Goals
 
-Stores change rules on their own schedule. New target API, higher upload SDK, privacy manifest, or in-app account deletion arrives with a deadline. Miss one → next release blocked when needed, or listing hidden from new users. Nothing else watches this plane. Native builds on hosted builder (if used) may fail with no error-tracker issue. Review, policy notices, certificate expiry → email to account holder. Target failure: **a release blocked, or a listing hidden, by a deadline, declaration, or credential nobody tracked.**
+Stores change their rules on their own schedule. A new target API, a higher upload SDK, a privacy manifest or in-app account deletion arrives with a deadline. A missed deadline blocks the next release when it is needed, or hides the listing from new users. Nothing else watches the store side of the app. Native builds on a hosted builder, where one is used, can fail without raising an error-tracker issue. Review notices, policy notices and certificate expiry notices go by email to the account holder. The failure this audit targets is a release blocked, or a listing hidden, by a deadline, declaration or credential that nobody tracked.
 
-**Applies when:** native app prepared for store or already listed. None → one `N/A` row with evidence, never "clean". Before first submission, readiness steps still run; live-only steps → one `N/A` row with evidence, never "clean". Steps name Apple App Store and Google Play; other stores (e.g. Amazon Appstore, Microsoft Store, Huawei AppGallery) → equivalent policy pages, or `N/A` per step with evidence.
+**Applies when:** a native app is being prepared for a store, or is already listed. **If** neither holds → write one `N/A` row with its evidence, and never report the surface as "clean". Before the first submission, the readiness steps still run. **If** the app is not yet listed → for each live-only step, write one `N/A` row with its evidence, and never report the surface as "clean". The steps name the Apple App Store and Google Play. **If** the app ships to another store (e.g., Amazon Appstore, Microsoft Store, Huawei AppGallery) → use that store's equivalent policy pages, or write `N/A` per step with its evidence.
 
-**Cadence:** monthly. Extra pass after yearly conference that sets upload minimums (e.g. Apple's June developer conference) and after yearly target-API announcement (e.g. Google Play).
+**Cadence:** Run once a month. Run an extra pass after the yearly conference that sets upload minimums (e.g., Apple's June developer conference), and after the yearly target-API announcement (e.g., Google Play).
 
 **Anchor Standards:**
 
@@ -39,89 +40,90 @@ Stores change rules on their own schedule. New target API, higher upload SDK, pr
 
 ### Scope
 
-- Store state, accepted agreements, pending declarations, per platform.
-- Deadlines, and guideline and policy diff since previous run.
-- Store privacy declarations in depth — privacy manifest, store privacy labels, data-safety form — each matched to `bkit-audit-privacy`'s inventory and privacy policy. This audit does not rebuild that inventory.
-- Permissions, including restricted-permission declarations.
-- Store and push signing credentials: expiry, holder, recovery path.
-- Universal links and App Links against store build.
-- Once live: stability, store vitals, ratings, review prompts, releases, whether listing is true.
-- Listing fields, localisation, screenshots, conversion.
-- Review readiness: demo account, sign-in rules, how digital goods are sold, update-without-review limits, tablet, export compliance, trader status, pre-launch report, accessibility nutrition labels.
-- Age rating and age assurance.
+- Read the store state, the accepted agreements and the pending declarations for each platform.
+- Check the deadlines, and the guideline and policy changes since the previous run.
+- Check the store privacy declarations in depth (the privacy manifest, the store privacy labels and the data-safety form), and match each one to `bkit-audit-privacy`'s inventory and privacy policy.
+- Do not rebuild that inventory.
+- Check the permissions, including restricted-permission declarations.
+- Check the store and push signing credentials: expiry, holder and recovery path.
+- Check universal links and App Links against the store build.
+- **If** the app is live → check stability, store vitals, ratings, review prompts, releases, and whether the listing is true.
+- Check the listing fields, localisation, screenshots and conversion.
+- Check review readiness: the demo account, sign-in rules, how digital goods are sold, update-without-review limits, tablet, export compliance, trader status, the pre-launch report and accessibility nutrition labels.
+- Check the age rating and age assurance.
 
 ### Out of Scope
 
 <!-- prettier-ignore -->
 | Excluded item | Why | Where it belongs |
 | --- | --- | --- |
-| What the app collects; privacy-policy wording; how a child is known | Privacy sweep owns the inventory; declarations here match it | `bkit-audit-privacy` |
-| SDK or library upgrade a deadline forces | Dependency sweep | `bkit-audit-dependencies` |
-| Crash and ANR clusters as log triage | Logs sweep; the rates stay here | `bkit-audit-logs` |
-| Native accessibility beyond the nutrition-label comparison | Accessibility sweep | `bkit-audit-accessibility` |
-| Expiry of credentials that are not store or push credentials | Config sweep | `bkit-audit-config` |
-| Who should hold store access | Security sweep; the recovery path stays here | `bkit-audit-security` |
-| Slow starts, hangs, wake locks, or battery drain as performance work | Performance sweep; the vital stays here | `bkit-audit-app-performance` |
-| How the app works, from review themes | Usability sweep; the theme list stays here | `bkit-audit-usability` |
-| Association-file hosting and DNS where the store build still matches | Config sweep | `bkit-audit-config` |
-| Submitting a build, changing a listing, or touching a credential | Audit reports only | Plan from this report |
+| What the app collects; privacy-policy wording; how a child is known | The privacy audit owns the inventory. Declarations here are matched to it | `bkit-audit-privacy` |
+| SDK or library upgrade a deadline forces | The dependency audit owns it | `bkit-audit-dependencies` |
+| Crash and ANR clusters as log triage | The logs audit owns it. The rates stay here | `bkit-audit-logs` |
+| Native accessibility beyond the nutrition-label comparison | The accessibility audit owns it | `bkit-audit-accessibility` |
+| Expiry of credentials that are not store or push credentials | The config audit owns it | `bkit-audit-config` |
+| Who should hold store access | The security audit owns it. The recovery path stays here | `bkit-audit-security` |
+| Slow starts, hangs, wake locks, or battery drain as performance work | The performance audit owns it. The vital stays here | `bkit-audit-app-performance` |
+| How the app works, from review themes | The usability audit owns it. The theme list stays here | `bkit-audit-usability` |
+| Association-file hosting and DNS where the store build still matches | The config audit owns it | `bkit-audit-config` |
+| Submitting a build, changing a listing, or touching a credential | The audit only reports | A plan made from this report |
 
 ### Pre-Flight / Dependencies
 
 #### Core
 
-- [ ] **Permissions:** blocked calls recorded
-- [ ] **Build Config:** Steps 2-6, 10 — app config and build profiles in repo, e.g. `app.json`, `eas.json`, `project.pbxproj`. Fallback: none; missing config = finding.
-- [ ] **Web:** Step 12 — fetch anchor standards and deadline pages. Fallback: versions and dates recorded as unread.
+- [ ] **Permissions:** every blocked call is recorded.
+- [ ] **Build Config:** Steps 2-6, 10 — the app config and build profiles in the repo (e.g., `app.json`, `eas.json`, `project.pbxproj`). Fallback: none. Missing config is a finding.
+- [ ] **Web:** Step 12 — fetch the anchor standards and the deadline pages. Fallback: record the versions and dates as unread.
 
 #### Conditional
 
-- [ ] **Build Service:** Hosted native builds → Steps 2, 3, 6 — version and build number from service, not local config; last built artifact for native-library alignment, e.g. `eas build:list`, `eas build:view`. Fallback: local config only; remote version = hypothesis.
-- [ ] **Store Consoles:** Store accounts exist → Steps 2, 4, 8, 9, 11 — policy status, app content, agreements, listings, e.g. App Store Connect, Play Console. Fallback: repo only; store state `Not Checked`.
-- [ ] **Credential Metadata:** Signing material exists → Step 6 — expiry and holder from build service or console, never the material, e.g. `eas credentials`. Fallback: `Not Checked`.
-- [ ] **Devices:** Deep links or binary to open → Step 7 — device or emulator with app installed and one without. Fallback: file and config only; opening `Not Checked`.
-- [ ] **Vitals:** App is live → Step 8 — store vitals and error tracker, e.g. Play vitals, Xcode Organizer, Sentry, Crashlytics. Fallback: `Not Checked`.
+- [ ] **Build Service:** **If** native builds run on a hosted service → Steps 2, 3, 6 — the version and build number from the service, not the local config, and the last built artifact for native-library alignment (e.g., `eas build:list`, `eas build:view`). Fallback: use the local config only, and treat the remote version as a hypothesis.
+- [ ] **Store Consoles:** **If** store accounts exist → Steps 2, 4, 8, 9, 11 — policy status, app content, agreements and listings (e.g., App Store Connect, Play Console). Fallback: use the repo only, and mark store state `Not Checked`.
+- [ ] **Credential Metadata:** **If** signing material exists → Step 6 — expiry and holder from the build service or console, never the material itself (e.g., `eas credentials`). Fallback: `Not Checked`.
+- [ ] **Devices:** **If** the app has deep links, or a binary to open → Step 7 — a device or emulator with the app installed, and one without it. Fallback: use files and config only, and mark opening `Not Checked`.
+- [ ] **Vitals:** **If** the app is live → Step 8 — store vitals and the error tracker (e.g., Play vitals, Xcode Organizer, Sentry, Crashlytics). Fallback: `Not Checked`.
 
 ### 🔒 Gate 1: Prerequisites Check
 
-- [ ] **Gaps named:** every missing item names its fallback and `Not Checked` entry.
-- [ ] **Gate 1 — Verified:** All Core items checked. All applicable Conditional items checked.
+- [ ] **Gaps named:** every missing item names its fallback and its `Not Checked` entry.
+- [ ] **Gate 1 — Verified:** every Core item and every applicable Conditional item is checked.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** **Done when:** closure rate in `Previous Run`, or run marked baseline.
-- [ ] **Step 2 — Store State:** Per platform: version · build from build service when config keeps version remotely, not local app config; store state (not submitted, in review, live); readable accounts. Read Android policy-status and app-content pages, iOS agreements page. Unaccepted updated agreement or pending declaration blocks uploads = finding → account holder, with page. **Done when:** `Store State` table per platform: version · build · target SDK · store state · accounts read · nearest deadline (filled in `Deadlines`).
-- [ ] **Step 3 — Deadlines:** Confirm each date on current store page; page wins if it differs. (a) Target API level and date vs app target SDK from last built Android bundle, not config only. (b) Memory page size: date and target API the requirement names (e.g. updates targeting that API cannot ship unless native libraries support 16 KB pages). Check `.so` alignment in last built bundle, not config. Any app shipping native code in scope. (c) Upload minimum SDK and toolchain vs build image. (d) Native framework SDK support window. (e) Store policy announced since previous run. (f) Guideline and policy diff since previous report's date, tested against app, not deadline-only. Due within 90 days = finding. Due within 30 days = at least `HIGH`. Upgrade fix → `bkit-audit-dependencies`. **Done when:** `Deadlines` row per item: requirement · date · app value · verdict.
-- [ ] **Step 4 — Declarations:** Match each declaration to `bkit-audit-privacy`'s inventory and privacy policy. Do not rebuild the inventory. (a) iOS privacy manifest — required-reason APIs for app and every third-party SDK — and store privacy labels. (b) Each SDK on vendor's commonly-used list ships own privacy manifest and signature; tracking-domain list names any tracking domain the app contacts. (c) Android data-safety form. (d) Third-party AI: review guideline requiring disclosure where personal data is shared with third parties, including third-party AI, and explicit permission before sharing (e.g. App Review Guideline 5.1.2(i)). In-app consent screen, stored consent flag gating each call, withdraw path, and privacy label describe same flow. Gap → `bkit-audit-privacy`, and plan item for consent screen. (e) Both stores require account deletion started inside the app, not only on the web. The Android form also requires a working web link, entered on the data-safety form, that names the app or developer and lets someone request deletion without reinstalling. Deleting an account revokes Sign in with Apple tokens through the revoke endpoint, and the server handles the server-to-server notifications for revoked consent and deleted accounts (e.g. Apple technote TN3194), when that provider exists. (f) Advertising-id and tracking answers match what `bkit-audit-analytics` found the app collects. Declaration mismatch = at least `HIGH` → `bkit-audit-privacy`. **Done when:** `Declarations` row per label, manifest entry, and form answer: declared · inventory · verdict.
-- [ ] **Step 5 — Permissions:** Each requested permission (e.g. camera, photos, location, contacts, notifications) has true purpose string and feature using it. Leftover permission from removed feature = finding — reviewers reject for it. Android: restricted permissions vs store policy. Photos/videos via system photo picker unless broad media access is core; broad media needs approved console declaration. Exact-alarm only for alarms/timers/calendar core apps; others → schedule-exact with user consent. Full-screen intent default only alarm/calling apps; others need user consent and console declaration. Post-notifications at runtime when notification makes sense, not first launch. Unused permission → plan from this report. **Done when:** `Permissions` row per permission: purpose string · feature · verdict.
-- [ ] **Step 6 — Credentials:** iOS distribution certificate and provisioning profiles, push key, Android upload key and store app signing, build-service credentials, developer-program membership: each expiry, holder, recovery if holder leaves. Lost upload key with no store app signing → app never updatable = `CRITICAL` until shown otherwise. Include push-messaging service-account credential for current HTTP API; legacy server keys must be unused. Record expiry, holder, recovery path only. Who should hold access → `bkit-audit-security`. Other expiry → `bkit-audit-config`. No owner or no recovery path = at least `HIGH`. **Done when:** `Credentials` row per item: expiry · holder · recovery · verdict.
-- [ ] **Step 7 — Links:** Native app with invite/deep links → association files on web domain over HTTPS, no redirect, cover invite/join/email deep-link paths, match shipped apps: iOS team and bundle id; Android SHA-256 fingerprints including store signing key's, not upload key only. Open invite link on device with app and without. Hosting/DNS drift where store build still matches → `bkit-audit-config`. File mismatch vs store build = finding → plan from this report. **Done when:** `Links` row per file and per device case.
-- [ ] **Step 8 — Live:** Not listed → `N/A` in `Live`, never "clean"; skip rest. (a) Crash-free sessions; Android ANR rate — store vitals, Xcode Organizer, error tracker. Compare crash/ANR vs overall and per-device bad-behaviour thresholds, not overall only. Cluster → `bkit-audit-logs`. (b) Android vitals beyond crashes: excessive partial wake locks (core vital; record vitals-page date) and slow cold/warm starts. (c) Xcode Organizer beyond crashes: hang rate, launch time, memory, disk writes, battery, per version. Slow starts, hangs, wake locks, battery → `bkit-audit-app-performance`. (d) Rating and change since previous run; recent review themes. How-app-works themes → `bkit-audit-usability`. (e) Review prompts via store review API only — never incentivised or gated. Replies vs owner response-rate target. (f) Rejections since previous run and reasons. (g) Production: phased release and staged rollout, halt rule tied to crash-free sessions; external test tracks active. (h) Screenshots current, description true, support and privacy URLs work. Out-of-date listing → owner, with screen or text. **Done when:** `Live` holds rates, rating, each verdict, or `N/A`.
-- [ ] **Step 9 — Listing:** Pre-submission → draft listing; live → published. Title, subtitle, keyword field, short/full description: within store field limits, search-oriented words. Localised listings for shipped locales. Screenshot sets per required device size; tablet if supported. Live: conversion funnel (impressions, product-page views, installs) from both stores' acquisition reports, change since previous run. Record listing experiments; propose one quarterly test (screenshots or icon) to owner. **Done when:** `Listing` row per field and locale: within limits · true · verdict.
-- [ ] **Step 10 — Readiness:** (a) Working demo account for reviewers, not seeded owner. (b) Sign in with Apple if any other third-party sign-in on iOS. (c) How digital subscriptions sold in-app. External processor vs in-app purchase limited by store/country rules — owner decision in `docs/decisions.jsonl`; match record to app behaviour. (d) Out-of-app purchase links vs same rules. (e) Subscription disclosures: terms, price, renewal before purchase; manage/cancel path; restore purchases if IAP used. External-processor-only subscriptions → account deletion explains cancellation. (f) App ships over-the-air updates (e.g. Expo Updates, CodePush) → script and assets only — never change primary purpose or skip-review feature. Runtime-version policy prevents incompatible binary landing. Breach → plan from this report. None → `N/A`. (g) Tablet supported → layouts work on tablet for review; else flag false on purpose. (h) Export-compliance flag set so uploads not held. (i) Trader status on both stores — undeclared apps removed from EU storefronts. (j) Current closed-test rule for personal developer account (e.g. account created after 2023-11-13 needs closed test with >=12 testers opted in 14 consecutive days before production). Identity verification and package-name registration; record store-page date for unregistered package removal (e.g. 2026-09-30). (k) Pre-launch report for latest build: crashes, accessibility, security warnings; failed devices/OS versions. (l) Accessibility nutrition labels: store declaration vs vendor criteria per feature (every common task completable). Voluntary until store requires. Evidence → `bkit-audit-accessibility`. Unused permission, missing deletion path, review-rule gap → plan from this report. **Done when:** `Readiness` row per item: met / finding / not applicable.
-- [ ] **Step 11 — Age:** Both stores' age-rating questionnaires answered; re-answer when features change (messaging, UGC, AI chat, unrestricted web). Record store due date for new questions (e.g. Apple added bands due 2026-01-31 to keep submitting updates); unanswered past date = finding. Age assurance: owner decision in `docs/decisions.jsonl` when product holds children's data. Read both stores' jurisdiction lists (e.g. Texas SB 2420 for new Texas accounts from 2026-06-04 via declared-age-range API, significant-change API, server notification for revoked parental consent; Play age-signals API for eligible accounts). How child is known and consent given → `bkit-audit-privacy`. Target-audience declaration accurate; Play Families applicability recorded. Age-rating or age-assurance gap → owner; child safety → `bkit-audit-privacy`. **Done when:** `Age` row per questionnaire and jurisdiction: answered · matches the app · verdict.
-- [ ] **Step 12 — Standards:** Confirm current version per anchor standard; read changes since previous report's version. `Standards Coverage`: one row per App Review Guidelines section and per Play policy area (User Data, Permissions, Families, Data safety, and the rest) → checked (name step) / not applicable (why) / finding. Unapplied recommended practice → adopt (propose step) / reject (why) / not applicable. **Done when:** no empty row.
-- [ ] **Step 13 — Anything Else:** (a) All changes since previous report's commit touching native apps and listings (app config, build profiles, native permissions and config plugins, privacy manifest, entitlements, native SDK versions, store listing text, subscription and purchase flows, account deletion, over-the-air channels) → one-line verdict each. (b) Bounded ~30 min pass: senior mobile release manager flags no step asks; read since previous run (incidents, `bkit-audit-logs` reports, new `docs/failures.jsonl` rows, vendor status incidents) — what would no step catch? **Done when:** `Beyond the Steps` holds both passes, or `none`. Class seen on 2 runs → propose step in `Process Improvements`.
+- [ ] **Step 1 — Previous Run:** **Done when:** `Previous Run` holds the closure rate, or the run is marked baseline.
+- [ ] **Step 2 — Store State:** For each platform, record the version and build, the store state (not submitted, in review, live) and the accounts that can be read. **If** the config keeps the version remotely → read the version and build from the build service, not the local app config. Read the Android policy-status and app-content pages, and the iOS agreements page. An unaccepted updated agreement or a pending declaration blocks uploads, so each one is a finding for the account holder, with the page. **Done when:** `Store State` holds a table per platform with the version, build, target SDK, store state, accounts read and nearest deadline (filled in `Deadlines`).
+- [ ] **Step 3 — Deadlines:** Confirm each date on the current store page. **If** the page differs → the page wins. (a) Compare the target API level and its date with the app's target SDK from the last built Android bundle, not from config only. (b) Memory page size: record the date and the target API the requirement names (e.g., updates targeting that API cannot ship unless native libraries support 16 KB pages). Check `.so` alignment in the last built bundle, not in config. Any app that ships native code is in scope. (c) Compare the upload minimum SDK and toolchain with the build image. (d) Check the native framework's SDK support window. (e) List the store policies announced since the previous run. (f) Diff the guidelines and policies since the previous report's date, and test the changes against the app, not only the deadlines. A requirement due within 90 days is a finding. One due within 30 days is at least `HIGH`. An upgrade fix goes to `bkit-audit-dependencies`. **Done when:** `Deadlines` holds one row per item, with the requirement, date, app value and verdict.
+- [ ] **Step 4 — Declarations:** Match each declaration to `bkit-audit-privacy`'s inventory and privacy policy. Do not rebuild the inventory. (a) Check the iOS privacy manifest (required-reason APIs for the app and every third-party SDK) and the store privacy labels. (b) Check that each SDK on the vendor's commonly-used list ships its own privacy manifest and signature, and that the tracking-domain list names any tracking domain the app contacts. (c) Check the Android data-safety form. (d) Third-party AI: a review guideline requires disclosure where personal data is shared with third parties, including third-party AI, and explicit permission before sharing (e.g., App Review Guideline 5.1.2(i)). Check that the in-app consent screen, the stored consent flag that gates each call, the withdraw path and the privacy label describe the same flow. **If** there is a gap → it goes to `bkit-audit-privacy`, with a plan item for the consent screen. (e) Both stores require account deletion started inside the app, not only on the web. The Android form also requires a working web link, entered on the data-safety form, that names the app or developer and lets someone request deletion without reinstalling. **If** the app offers Sign in with Apple → deleting an account revokes its tokens through the revoke endpoint, and the server handles the server-to-server notifications for revoked consent and deleted accounts (e.g., Apple technote TN3194). (f) Check that the advertising-id and tracking answers match what `bkit-audit-analytics` found the app collects. A declaration mismatch is at least `HIGH`, and goes to `bkit-audit-privacy`. **Done when:** `Declarations` holds one row per label, manifest entry and form answer, with what is declared, the inventory and the verdict.
+- [ ] **Step 5 — Permissions:** Check that each requested permission (e.g., camera, photos, location, contacts, notifications) has a true purpose string and a feature that uses it. A permission left over from a removed feature is a finding, because reviewers reject apps for it. On Android, compare the restricted permissions with store policy. Photos and videos go through the system photo picker. **If** broad media access is core to the app → the picker is not required, and broad media access needs an approved console declaration. Exact alarms are only for apps whose core is alarms, timers or calendars. Other apps use schedule-exact with user consent. The full-screen intent is allowed by default only for alarm and calling apps. Other apps need user consent and a console declaration. Request post-notifications at runtime when a notification makes sense, not at first launch. An unused permission goes to a plan made from this report. **Done when:** `Permissions` holds one row per permission, with its purpose string, feature and verdict.
+- [ ] **Step 6 — Credentials:** Check the iOS distribution certificate and provisioning profiles, the push key, the Android upload key and store app signing, the build-service credentials and the developer-program membership. For each, record the expiry, the holder, and the recovery path if the holder leaves. **If** the upload key is lost **and** there is no store app signing → the app can never be updated, and the finding is `CRITICAL` until shown otherwise. Include the push-messaging service-account credential for the current HTTP API. Legacy server keys must be unused. Record the expiry, holder and recovery path only. Who should hold access goes to `bkit-audit-security`. Other expiries go to `bkit-audit-config`. A credential with no owner or no recovery path is at least `HIGH`. **Done when:** `Credentials` holds one row per item, with its expiry, holder, recovery and verdict.
+- [ ] **Step 7 — Links:** **If** the native app has invite or deep links → check that the association files sit on the web domain over HTTPS with no redirect, cover the invite, join and email deep-link paths, and match the shipped apps: the iOS team and bundle id, and the Android SHA-256 fingerprints, including the store signing key's, not the upload key's only. Open an invite link on a device with the app and on one without it. Hosting or DNS drift where the store build still matches goes to `bkit-audit-config`. A file that does not match the store build is a finding, and goes to a plan made from this report. **Done when:** `Links` holds one row per file and per device case.
+- [ ] **Step 8 — Live:** **If** the app is not listed → write `N/A` in `Live`, never "clean", and skip the rest of this step. (a) Read the crash-free sessions and the Android ANR rate from store vitals, Xcode Organizer and the error tracker. Compare the crash and ANR rates with both the overall and the per-device bad-behaviour thresholds, not the overall only. A cluster goes to `bkit-audit-logs`. (b) Check Android vitals beyond crashes: excessive partial wake locks (a core vital; record the vitals-page date) and slow cold and warm starts. (c) Check Xcode Organizer beyond crashes: hang rate, launch time, memory, disk writes and battery, per version. Slow starts, hangs, wake locks and battery go to `bkit-audit-app-performance`. (d) Record the rating, its change since the previous run, and recent review themes. Themes about how the app works go to `bkit-audit-usability`. (e) Check that review prompts use the store review API only, and are never incentivised or gated. Compare replies with the owner's response-rate target. (f) List the rejections since the previous run, and their reasons. (g) Check production: phased release and staged rollout, with a halt rule tied to crash-free sessions, and the active external test tracks. (h) Check that the screenshots are current, the description is true, and the support and privacy URLs work. An out-of-date listing goes to the owner, with the screen or text. **Done when:** `Live` holds the rates, the rating and each verdict, or `N/A`.
+- [ ] **Step 9 — Listing:** **If** the app is not yet submitted → check the draft listing. **If** it is live → check the published listing. Check that the title, subtitle, keyword field, and short and full descriptions are within the store field limits and use search-oriented words. Check for localised listings in the shipped locales. Check for a screenshot set per required device size, and a tablet set if tablet is supported. **If** the app is live → read the conversion funnel (impressions, product-page views, installs) from both stores' acquisition reports, with its change since the previous run. Record listing experiments, and propose one quarterly test (screenshots or icon) to the owner. **Done when:** `Listing` holds one row per field and locale, with within limits, true and verdict.
+- [ ] **Step 10 — Readiness:** (a) Check for a working demo account for reviewers, not the seeded owner. (b) **If** the iOS app offers any other third-party sign-in → it needs Sign in with Apple. (c) Check how digital subscriptions are sold in the app. Using an external processor instead of in-app purchase is limited by store and country rules. It is an owner decision in `docs/decisions.jsonl`, so match that record to the app's behaviour. (d) Check out-of-app purchase links against the same rules. (e) Check the subscription disclosures: terms, price and renewal shown before purchase, a manage and cancel path, and restore purchases if in-app purchase is used. **If** subscriptions run on an external processor only → account deletion explains cancellation. (f) **If** the app ships over-the-air updates (e.g., Expo Updates, CodePush) → they carry script and assets only, and never change the primary purpose or add a feature that skips review. The runtime-version policy prevents an incompatible binary from landing. A breach goes to a plan made from this report. **If** the app ships none → `N/A`. (g) **If** tablet is supported → check that layouts work on tablet for review. **Else** → check that tablet support is flagged false on purpose. (h) Check that the export-compliance flag is set, so uploads are not held. (i) Check trader status on both stores. Undeclared apps are removed from EU storefronts. (j) Check the current closed-test rule for a personal developer account (e.g., an account created after 2023-11-13 needs a closed test with >=12 testers opted in for 14 consecutive days before production). Check identity verification and package-name registration, and record the store-page date for removing unregistered packages (e.g., 2026-09-30). (k) Read the pre-launch report for the latest build: crashes, accessibility and security warnings, and the failed devices and OS versions. (l) Compare the accessibility nutrition labels in the store declaration with the vendor criteria per feature (every common task can be completed). They are voluntary until the store requires them. Evidence goes to `bkit-audit-accessibility`. An unused permission, a missing deletion path or a review-rule gap goes to a plan made from this report. **Done when:** `Readiness` holds one row per item: met / finding / not applicable.
+- [ ] **Step 11 — Age:** Check that both stores' age-rating questionnaires are answered. **If** features changed (messaging, UGC, AI chat, unrestricted web) since they were answered → record a finding that the questionnaires need re-answering. Record the store's due date for new questions (e.g., Apple added bands due 2026-01-31 to keep submitting updates). A questionnaire left unanswered past that date is a finding. **If** the product holds children's data → age assurance is an owner decision in `docs/decisions.jsonl`. Read both stores' jurisdiction lists (e.g., Texas SB 2420 for new Texas accounts from 2026-06-04, through the declared-age-range API, the significant-change API and the server notification for revoked parental consent; the Play age-signals API for eligible accounts). How a child is known and consent is given goes to `bkit-audit-privacy`. Check that the target-audience declaration is accurate, and record whether Play Families applies. An age-rating or age-assurance gap goes to the owner. Child safety goes to `bkit-audit-privacy`. **Done when:** `Age` holds one row per questionnaire and jurisdiction, with answered, matches the app, and verdict.
+- [ ] **Step 12 — Standards:** Confirm the current version of each anchor standard, and read what changed since the previous report's version. Give `Standards Coverage` one row per App Review Guidelines section and one per Play policy area (User Data, Permissions, Families, Data safety, and the rest), each marked checked (naming the step), not applicable (saying why) or finding. Mark each recommended practice the project does not apply as adopt (with a proposed step), reject (saying why) or not applicable. **Done when:** no row is empty.
+- [ ] **Step 13 — Anything Else:** (a) Give a one-line verdict on each change since the previous report's commit that touches native apps and listings: app config, build profiles, native permissions and config plugins, the privacy manifest, entitlements, native SDK versions, store listing text, subscription and purchase flows, account deletion, and over-the-air channels. (b) Spend a bounded pass of about 30 minutes on what a senior mobile release manager would flag that no step asks about. Read what happened since the previous run (incidents, `bkit-audit-logs` reports, new `docs/failures.jsonl` rows, vendor status incidents), and ask what no step would catch. **Done when:** `Beyond the Steps` holds both passes, or says `none`. **If** one class of issue is seen on 2 runs → propose a step for it in `Process Improvements`.
 
 ### 🔒 Gate 2: Probes Check
 
-- [ ] **Steps complete:** every step `[x]`, or explicit skip with evidence the surface is absent.
-- [ ] **Evidence:** every finding cites re-checkable evidence and the tool behind it.
-- [ ] **Consoles untouched:** no build submitted, no listing or declaration edited, no agreement accepted, no credential created, rotated, or downloaded.
-- [ ] **No secrets:** report contains no certificate, key, token, or password material.
-- [ ] **Gate 2 — Verified:** Every checkbox above independently verified and checked off.
+- [ ] **Steps complete:** every step is `[x]`, or skipped with evidence that its surface is absent.
+- [ ] **Evidence:** every finding cites evidence someone can check again, and the tool that produced it.
+- [ ] **Consoles untouched:** no build was submitted, no listing or declaration edited, no agreement accepted, and no credential created, rotated or downloaded.
+- [ ] **No secrets:** the report contains no certificate, key, token or password material.
+- [ ] **Gate 2 — Verified:** every item above holds.
 
 ## Findings
 
 <!-- prettier-ignore -->
 | Severity | Use |
 | --- | --- |
-| `CRITICAL` | Upload key lost and no store app signing, so the app can never be updated; a deadline already passed so no update can ship |
-| `HIGH` | Deadline within 30 days; privacy declaration does not match the app or the privacy inventory; credential with no recovery path; personal data sent to a third-party AI without explicit in-app permission |
-| `MEDIUM` | Unused permission; association file does not match the store build; over-the-air update can change reviewed behaviour; age questionnaire stale; listing out of date; agreement unaccepted |
-| `LOW` | Listing wording within limits that does not use search words; nutrition-label gap while the labels are still voluntary; no listing experiment proposed |
+| `CRITICAL` | The upload key is lost and there is no store app signing, so the app can never be updated. A deadline has already passed, so no update can ship |
+| `HIGH` | A deadline within 30 days. A privacy declaration that does not match the app or the privacy inventory. A credential with no recovery path. Personal data sent to a third-party AI without explicit in-app permission |
+| `MEDIUM` | An unused permission. An association file that does not match the store build. An over-the-air update that can change reviewed behaviour. A stale age questionnaire. An out-of-date listing. An unaccepted agreement |
+| `LOW` | Listing wording within limits that does not use search words. A nutrition-label gap while the labels are still voluntary. No listing experiment proposed |
 
-Within a severity: blocked release and credentials first, then declarations. A deadline within 30 days, a privacy declaration that does not match the app, a credential with no recovery path, and personal data sent to a third-party AI without explicit in-app permission are each at least `HIGH`. `Expected` names where it goes.
+Within a severity, list blocked releases and credentials first, then declarations. A deadline within 30 days, a privacy declaration that does not match the app, a credential with no recovery path, and personal data sent to a third-party AI without explicit in-app permission are each at least `HIGH`. `Expected` names where the finding goes.
 
 <!-- prettier-ignore -->
 | Finding | Goes to |
@@ -134,11 +136,11 @@ Within a severity: blocked release and credentials first, then declarations. A d
 | Slow starts, hangs, wake locks, or battery drain | `bkit-audit-app-performance` |
 | Review themes about how the app works | `bkit-audit-usability` |
 | Native accessibility | `bkit-audit-accessibility` |
-| An unused permission, a missing deletion path, or a review-rule gap | Plan from this report |
-| A universal link or App Link that does not match a store build | Plan from this report |
-| An over-the-air update that changes reviewed behaviour, or a runtime-version gap | Plan from this report |
+| An unused permission, a missing deletion path, or a review-rule gap | A plan made from this report |
+| A universal link or App Link that does not match a store build | A plan made from this report |
+| An over-the-air update that changes reviewed behaviour, or a runtime-version gap | A plan made from this report |
 | The in-app subscription decision | The owner, recorded in `docs/decisions.jsonl` |
-| An age-rating answer or age-assurance gap | The owner, recorded in `docs/decisions.jsonl`; child safety → `bkit-audit-privacy` |
+| An age-rating answer or age-assurance gap | The owner, recorded in `docs/decisions.jsonl`. Child safety goes to `bkit-audit-privacy` |
 | An unaccepted agreement or a pending store declaration | The account holder, with the page |
 | A listing that is out of date | The owner, with the screen or text to change |
 
@@ -147,7 +149,7 @@ Within a severity: blocked release and credentials first, then declarations. A d
 | --- | --- | --- | --- | --- |
 | PENDING | PENDING | PENDING | PENDING | PENDING |
 
-Empty and clean → one row `None`.
+**If** the run finds nothing → write one row: `None`.
 
 ## Report
 
@@ -228,13 +230,13 @@ PENDING
 
 ### 🔒 Gate 3: Report Check
 
-- [ ] **No placeholders:** no `PENDING` left
-- [ ] **Summary:** names count per severity, and per platform the store state and nearest deadline.
-- [ ] **Series:** ratings and the listing conversion funnel beside previous report's, or marked baseline / not live.
-- [ ] **Writes:** only this report, template `Project Instructions`, and ledger rows changed; throwaway worktrees / remote targets removed.
-- [ ] **Process Improvements:** `Universal` and `Project` filled
-- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID in exactly one row; every row has a `Next Step`.
-- [ ] **Gate 3 — Verified:** Every checkbox above independently verified and checked off.
+- [ ] **No placeholders:** no `PENDING` is left.
+- [ ] **Summary:** `Summary` gives the count per severity, and for each platform the store state and nearest deadline.
+- [ ] **Series:** the report shows ratings and the listing conversion funnel beside the previous report's, or marks the run as baseline or not live.
+- [ ] **Writes:** only this report, the template's `Project Instructions` and ledger rows have changed, and every throwaway worktree or remote target is removed.
+- [ ] **Process Improvements:** `Universal` and `Project` are both filled.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one row, and every row has a `Next Step`.
+- [ ] **Gate 3 — Verified:** every item above holds.
 
 <!-- bkit:end -->
 

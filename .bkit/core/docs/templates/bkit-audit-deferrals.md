@@ -1,4 +1,4 @@
-<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. The report is stamped with a `bkit:anchor` block recording the audited commit (`baseSha`) and branch (`baseRef`); never hand-author or edit it. `@bkit-audit-generate` fills this template. -->
+<!-- Note: @bkit-audit-generate fills this template. The report lives at `docs/audits/{YYYYMM}/{slug}.md`, where `{YYYYMM}` is the UTC month of the run and `{slug}` is this file's name without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md`, where `{TIMESTAMP}` is the output of `date -u +%Y%m%dT%H%M%SZ`. NEVER overwrite an earlier report. The report is stamped with a `bkit:anchor` block that records the audited commit (`baseSha`) and branch (`baseRef`). NEVER write or edit that block by hand. -->
 
 <!-- bkit:start -->
 
@@ -7,22 +7,23 @@
 # Deferrals Triage
 
 > [!CAUTION]
-> **Purpose:** Verdict on every open deferral — already done, superseded, tracked, parked, or in-scope work that should have been finished.
+> **Purpose:** A verdict on every open deferral: already done, superseded, tracked, parked, or in-scope work that should have been finished.
 >
 > **Rules:**
 >
-> - NEVER append or edit a ledger line. Correction and close rows live in `Expected` only. `ts` is minted at append (`.bkit/jsonl.md` § Write Idiom), never written in this report.
-> - A winning row whose `ts` is in the future outranks every correction. Name its `key`. Do not invent a later `ts`.
+> - NEVER append or edit a ledger line. Write each correction and close row in `Expected` only.
+> - Leave `ts` out of every row in this report. The writer mints it when it appends the row (`.bkit/jsonl.md` § Write Idiom).
+> - A winning row whose `ts` is in the future outranks every correction. Name its `key` rather than inventing a later `ts`.
 
 ## Universal Instructions
 
 ### Context & Goals
 
-Deferred work appends rows; nothing re-reads them. Three drifts: silently done (landed, row still not `CLOSED`); superseded (surface rewritten or removed); genuinely deferred and untracked (real work, no tracker issue). Target failure: **an open row the code has already finished, or a real deferral with nothing carrying it** — e.g. `RESOLVED` or `SUPERSEDED` left open because only `CLOSED` is done, or a deferral whose only record is a comment on a closed issue. Deliberate debt only (prudent and deliberate quadrant).
+Deferred work adds rows to `docs/deferrals.jsonl`, and nothing reads them again. Rows drift in three ways: the work is silently done (it landed, but the row is still not `CLOSED`), superseded (its surface was rewritten or removed), or genuinely deferred and untracked (real work with no tracker issue). The failure this audit targets is an open row whose work the code has already finished, or a real deferral that nothing carries. Examples: a row left at `RESOLVED` or `SUPERSEDED` because only `CLOSED` counts as done, or a deferral whose only record is a comment on a closed issue. The register holds deliberate debt only (the prudent and deliberate quadrant).
 
-**Applies when:** `docs/deferrals.jsonl` exists, or a workflow writes `kind: "deferral"`. None → one `N/A` row with evidence, never "clean".
+**Applies when:** `docs/deferrals.jsonl` exists, or a workflow writes `kind: "deferral"`. **If** neither holds → write one `N/A` row with its evidence, and never report the surface as "clean".
 
-**Cadence:** once per ship cycle; at least monthly when no cycle ships. Extra pass after release, or after another audit records deferred items (e.g. `bkit-audit-app-performance`).
+**Cadence:** Run once per ship cycle, and at least once a month when no cycle ships. Run an extra pass after a release, or after another audit records deferred items (e.g., `bkit-audit-app-performance`).
 
 **Anchor Standards:**
 
@@ -33,103 +34,109 @@ Deferred work appends rows; nothing re-reads them. Three drifts: silently done (
 
 ### Scope
 
-- Fold `docs/deferrals.jsonl` last-row-wins. Open = winning `status != "CLOSED"`.
-- Data defects on the winning row: `ts`, `status`, `reason`. The row to append goes in `Expected`.
+- Fold `docs/deferrals.jsonl` last-row-wins. A row is open when its winning row has `status != "CLOSED"`.
+- Check the winning row for data defects in `ts`, `status` and `reason`, and put the row to append in `Expected`.
 - Verify every open row against source before any verdict.
 - Re-test each `reason`, and each `KEEP` trigger.
-- Carrying cost: 90-day churn, related `docs/failures.jsonl` and `.bkit/friction.jsonl` rows.
-- Tracker issues rows point at. Deferrals that exist only as comments on closed issues.
-- `unjustified` adjudication (four tests). Report the row. Do not append.
-- Trend: open count, inflow, outflow, age, missing `severity` or `reason`, rows verified / rows open.
+- Measure the carrying cost: 90-day churn, and the related rows in `docs/failures.jsonl` and `.bkit/friction.jsonl`.
+- Check the tracker issues that rows point at.
+- Find the deferrals that exist only as comments on closed issues.
+- Adjudicate `unjustified` with the four tests, and report the row without appending it.
+- Track the trend: open count, inflow, outflow, age, rows missing `severity` or `reason`, and rows verified / rows open.
 
 ### Out of Scope
 
 <!-- prettier-ignore -->
 | Excluded item | Why | Where it belongs |
 | --- | --- | --- |
-| Reckless and inadvertent debt | Not in this register | `bkit-audit-slop`, `bkit-audit-architecture`, `bkit-audit-dead-code` |
-| Known bugs | Failure ledger | `bkit-audit-failures` |
-| Closing rows the code already finished; locator fixes; `TRIAGED` when an issue already exists | Ledger writes. Utility reads every winning row not `CLOSED` | `@bkit-utility-update-deferrals` |
-| Doing the deferred work; opening tracker issues | Audit reports only | Plan from this report |
+| Reckless and inadvertent debt | It is not in this register | `bkit-audit-slop`, `bkit-audit-architecture`, `bkit-audit-dead-code` |
+| Known bugs | They belong in the failure ledger | `bkit-audit-failures` |
+| Closing rows the code already finished; locator fixes; `TRIAGED` when an issue already exists | These are ledger writes. The utility reads every winning row that is not `CLOSED` | `@bkit-utility-update-deferrals` |
+| Doing the deferred work; opening tracker issues | The audit only reports | A plan made from this report |
 
 ### Verdicts
 
-One per verified row.
+Give each verified row one verdict.
 
-- **DONE:** already landed. `Expected` = `CLOSED` same-`key` row. Cite `file:line`.
-- **SUPERSEDED:** no longer applies (moved, rewritten, removed, or N/A). `Expected` = `CLOSED` row and the reason.
-- **TRACKED:** genuinely deferred, an open issue already covers it. `Expected` = the issue to point the row at, or the acceptance criteria to extend.
-- **NEEDS ISSUE:** genuinely deferred, real work, untracked. `Expected` = the issue to open.
-- **KEEP:** genuinely deferred, correctly parked, not worth an issue yet (tripwire or contingent). `Expected` = no action, and the trigger.
-- **SMALL:** small enough for the next cycle. This run does not do it.
-- **ACCEPTED:** still true, and deliberately never to be done. `Expected` = who decides, and the `CLOSED` row to append once signed off. Record it. Do not wait.
-- **UNJUSTIFIED:** all four tests hold. `Expected` = same-`key` row, `reason: "unjustified"`, the failed test named in `description`, `status: "TRIAGED"`. Later rows carry `reason` verbatim. Work goes back in scope via a plan.
-- **OTHER:** fits none. Say what it is, why, and where it goes. Same `OTHER` on 2 runs → propose new verdict in `Process Improvements`.
+- **DONE:** the work already landed. `Expected` = the `CLOSED` row with the same `key`. Cite `file:line`.
+- **SUPERSEDED:** the row no longer applies (its surface moved, was rewritten or removed, or is N/A). `Expected` = the `CLOSED` row and the reason.
+- **TRACKED:** the work is genuinely deferred, and an open issue already covers it. `Expected` = the issue to point the row at, or the acceptance criteria to extend.
+- **NEEDS ISSUE:** the work is genuinely deferred, real and untracked. `Expected` = the issue to open.
+- **KEEP:** the work is genuinely deferred, correctly parked, and not yet worth an issue (a tripwire or a contingent item). `Expected` = no action, and the trigger.
+- **SMALL:** the work is small enough for the next cycle. This run does not do it.
+- **ACCEPTED:** the row is still true, and the work is deliberately never to be done. `Expected` = who decides, and the `CLOSED` row to append once they sign off. Record the verdict without waiting for the sign-off.
+- **UNJUSTIFIED:** all four tests hold. `Expected` = a row with the same `key`, `reason: "unjustified"`, the failed test named in `description`, and `status: "TRIAGED"`. Later rows carry `reason` word for word. The work goes back in scope through a plan.
+- **OTHER:** it fits no other verdict. Say what it is, why, and where it goes. **If** the same `OTHER` shows up on 2 runs → propose a new verdict in `Process Improvements`.
 
-**DONE is the verdict most likely to be wrong.** Plausible commit message != evidence. DONE or SUPERSEDED needs positive reason — commit, deleted file, or new owner module. Empty query is not absence.
+**Close evidence:** DONE is the verdict most likely to be wrong, and a plausible commit message is not evidence. Give each DONE or SUPERSEDED a positive reason: a commit, a deleted file or a new owner module. An empty query does not prove absence.
 
-**UNJUSTIFIED** when all four hold (`.bkit/jsonl.md` § Deferral Reason):
+Set UNJUSTIFIED when all four tests hold (`.bkit/jsonl.md` § Deferral Reason):
 
 1. `remediation` names specific files and a bounded edit, not a new architecture.
 2. The surface is inside files the cycle already touched.
-3. No external blocker: no missing decision, credential, upstream fix, or confirmation.
-4. `reason` is `scope-declared`, and the row is the only place it was called out of scope. Test 4 carries the weight.
+3. No external blocker exists: no missing decision, credential, upstream fix or confirmation.
+4. `reason` is `scope-declared`, and the row is the only place the work was called out of scope. Test 4 carries the most weight.
 
-Never set `unjustified` while repairing a missing or illegal `reason`. That repair uses one of the first four enum values. This step is the only place `unjustified` is set.
+When you repair a missing or illegal `reason`, use one of the first four enum values, never `unjustified`. Set `unjustified` in Step 9 only.
 
-**KEEP needs a trigger** ("before launch", "when N users", a dependency version). No trigger, or trigger fired → another verdict. Row on third consecutive KEEP → NEEDS ISSUE or ACCEPTED.
+**KEEP needs a trigger:** Each KEEP row names its trigger, such as "before launch", "when N users" or a dependency version.
 
-**Cluster** open rows by package and `category`. 3+ in one group → one `own-cycle` issue in `Expected`, not one per row.
+- **If** the row has no trigger, **or** its trigger has fired → give it another verdict.
+- **If** the row is on its third KEEP in a row → give it NEEDS ISSUE or ACCEPTED.
+
+**Cluster:** Group the open rows by package and `category`.
+
+- **If** a group holds 3 or more rows → propose one `own-cycle` issue for the group in `Expected`, not one per row.
 
 ### Pre-Flight / Dependencies
 
 #### Core
 
-- [ ] **Permissions:** blocked calls recorded
-- [ ] **Ledger:** Steps 3-9 — `docs/deferrals.jsonl` and `.bkit/jsonl.md`. Fallback: file absent → one `N/A` row after Step 3 and STOP.
-- [ ] **Git History:** Steps 2, 7 — commits since the previous report, 90-day churn. Fallback: closures and churn `Not Checked`.
-- [ ] **Web:** Step 10 — fetch anchor standards. Fallback: versions recorded as unread.
+- [ ] **Permissions:** every blocked call is recorded.
+- [ ] **Ledger:** Steps 3-9 — `docs/deferrals.jsonl` and `.bkit/jsonl.md`. Fallback: **If** the file is absent → write one `N/A` row after Step 3, then **STOP**.
+- [ ] **Git History:** Steps 2, 7 — the commits since the previous report, and 90-day churn. Fallback: mark closures and churn `Not Checked`.
+- [ ] **Web:** Step 10 — fetch the anchor standards. Fallback: record the versions as unread.
 
 #### Conditional
 
-- [ ] **Language Server:** Typed language → Steps 5, 6 — symbol location and callers, e.g. Serena, `tsserver`. Fallback: text search. A close that needs a caller set stays a hypothesis until corroborated.
-- [ ] **Tracker:** Issues wired → Steps 6, 8 — open issue, acceptance criteria, comments on issues closed since the previous report. Fallback: tracker pointers `Not Checked`.
-- [ ] **Run Stats:** `.bkit/stats.jsonl` has `outcome` rows → Step 3 — sum `deferralsAdded`. Fallback: inflow `Not Checked`.
+- [ ] **Language Server:** **If** the language is typed → Steps 5, 6 — symbol location and callers (e.g., Serena, `tsserver`). Fallback: text search. A close that needs a caller set stays a hypothesis until something corroborates it.
+- [ ] **Tracker:** **If** issues are wired → Steps 6, 8 — open issues, acceptance criteria, and comments on the issues closed since the previous report. Fallback: mark tracker pointers `Not Checked`.
+- [ ] **Run Stats:** **If** `.bkit/stats.jsonl` has `outcome` rows → Step 3 — sum `deferralsAdded`. Fallback: mark inflow `Not Checked`.
 
 ### 🔒 Gate 1: Prerequisites Check
 
-- [ ] **Gaps named:** every missing item names its fallback and `Not Checked` entry.
-- [ ] **Gate 1 — Verified:** All Core items checked. All applicable Conditional items checked.
+- [ ] **Gaps named:** every missing item names its fallback and its `Not Checked` entry.
+- [ ] **Gate 1 — Verified:** every Core item and every applicable Conditional item is checked.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** **Done when:** closure rate in `Previous Run`, or run marked baseline.
-- [ ] **Step 2 — Closures:** Re-verify every DONE and SUPERSEDED row from the previous report at `HEAD`. Each that no longer holds = finding, with what changed. **Done when:** `Closures` holds every row, each failure, and the failure rate, or run marked baseline.
-- [ ] **Step 3 — Fold:** Last-row-wins per `key`, not per line. Append-only (`.gitattributes` `merge=union`); editing a line keeps stale copy beside replacement. Highest numeric `ts` wins (`.bkit/jsonl.md` § Updating a Row). Non-numeric `ts` on a `key` → last line in file is latest. Open = every winning row with `status != "CLOSED"`, including `TRIAGED`, `RESOLVED`, `BLOCKED`, `SUPERSEDED`, `CANCELLED`, free text after the word, missing `status`, and any value outside the enum. Finished-looking words != done. Order: `CRITICAL`, then `HIGH`, then oldest `ts`. Compare `severity` case-insensitively. No `severity` → assign with verdict. Trend vs previous report: open count; inflow = sum `deferralsAdded` on `outcome` rows in `.bkit/stats.jsonl` since previous run where field exists; outflow = rows that became `CLOSED` since; age histogram by `ts`; share of open rows missing `severity` or `reason`. Large open set may be partial pass → record rows verified / rows open. Invisible to fold: deferral with no `key`, or recorded only in a PR description. **Done when:** `Trend` holds counts, histogram, inflow, outflow, missing-field share, verified / open, and those limits, or `N/A` and STOP.
-- [ ] **Step 4 — Defects:** Winning row of each `key`. Do not append. `Expected` = row writer appends: copy latest row, change only defective field, same `key`, `ts` minted at append, never literal and never in the future.
+- [ ] **Step 1 — Previous Run:** **Done when:** `Previous Run` holds the closure rate, or the run is marked baseline.
+- [ ] **Step 2 — Closures:** Re-verify at `HEAD` every DONE and SUPERSEDED row from the previous report. Record each one that no longer holds as a finding, with what changed. **Done when:** `Closures` holds every row, each failure and the failure rate, or the run is marked baseline.
+- [ ] **Step 3 — Fold:** Fold the ledger last-row-wins per `key`, not per line. The ledger is append-only (`.gitattributes` `merge=union`), so editing a line leaves the stale copy beside its replacement. The row with the highest numeric `ts` wins (`.bkit/jsonl.md` § Updating a Row). **If** a `key` has a non-numeric `ts` → the last line in the file is the latest. A row is open when its winning row has `status != "CLOSED"`. That includes `TRIAGED`, `RESOLVED`, `BLOCKED`, `SUPERSEDED`, `CANCELLED`, free text after the word, a missing `status` and any value outside the enum, because a word that looks finished does not mean done. Order the open rows `CRITICAL` first, then `HIGH`, then oldest `ts`. Compare `severity` case-insensitively. **If** a row has no `severity` → assign one with its verdict. Compare the trend with the previous report: the open count; inflow, the sum of `deferralsAdded` on `outcome` rows in `.bkit/stats.jsonl` since the previous run, where the field exists; outflow, the rows that became `CLOSED` since; an age histogram by `ts`; and the share of open rows missing `severity` or `reason`. Always record rows verified / rows open, because a large open set may get only a partial pass. The fold cannot see a deferral with no `key`, or one recorded only in a PR description. **Done when:** `Trend` holds the counts, the histogram, inflow, outflow, the missing-field share, verified / open and those limits, or `N/A` is recorded → **STOP**.
+- [ ] **Step 4 — Defects:** Check the winning row of each `key`, without appending. `Expected` = the row the writer appends: a copy of the latest row with only the defective field changed, the same `key`, and a `ts` minted at append, never a literal and never in the future.
 
 <!-- prettier-ignore -->
 | Field | Defect | Expected row |
 | --- | --- | --- |
-| `ts` | Not numeric Unix milliseconds: a string, seconds, or missing. Fold order is then undefined | The same row with a fresh `ts` |
-| `status` | Outside `OPEN` / `TRIAGED` / `CLOSED` (`RESOLVED`, `BLOCKED`, `SUPERSEDED`, free text) | `TRIAGED` where the row records analysis, otherwise `OPEN`, old word kept in `description`. `CLOSED` comes only from a verdict |
-| `reason` | Missing, or outside `scope-declared` / `hard-blocked` / `needs-decision` / `own-cycle` / `low-severity` / `unjustified` | One of the first four the row's text supports, old text kept in `description`. Never `unjustified`; `low-severity` only on a `LOW` row |
+| `ts` | Not numeric Unix milliseconds: a string, seconds, or missing. The fold order is then undefined | The same row with a fresh `ts` |
+| `status` | Outside `OPEN` / `TRIAGED` / `CLOSED` (`RESOLVED`, `BLOCKED`, `SUPERSEDED`, free text) | `TRIAGED` where the row records analysis, otherwise `OPEN`, with the old word kept in `description`. `CLOSED` comes only from a verdict |
+| `reason` | Missing, or outside `scope-declared` / `hard-blocked` / `needs-decision` / `own-cycle` / `low-severity` / `unjustified` | One of the first four values that the row's text supports, with the old text kept in `description`. Never `unjustified`, and `low-severity` only on a `LOW` row |
 
-Winning row with future `ts` → finding names `key` for owner. No correction row. **Done when:** count of each defect, and each `Expected` row, in `Defects`, or `none`.
+**If** a winning row has a future `ts` → name its `key` in a finding for the owner, and propose no correction row. **Done when:** `Defects` holds the count of each defect and each `Expected` row, or `none`.
 
-- [ ] **Step 5 — Source:** No verdict before this step. Outstanding-work claims as unreliable as done claims.
+- [ ] **Step 5 — Source:** Give no verdict before this step. Claims of outstanding work are as unreliable as claims of done work.
 
 <!-- prettier-ignore -->
 | Row claims | Check with |
 | --- | --- |
-| "`X` should be extracted, renamed, or consolidated" | Language server, symbol lookup. Exists, and at what path now? A symbol that moved is SUPERSEDED |
-| "Every caller of `Y` still does Z" | Language server, references, then read the callers. This is DONE evidence |
+| "`X` should be extracted, renamed, or consolidated" | Language server symbol lookup: does it exist, and at what path now? A symbol that moved is SUPERSEDED |
+| "Every caller of `Y` still does Z" | Language server references, then read the callers. This is DONE evidence |
 | "The guard is missing at N sites" | Text search for the literal signature. Counting sites is a pattern question |
 | Migrations, workflows, SQL, docs, or other ledgers | Text search. A language server reads one language |
 
-Pace reference queries. Re-run empty or surprisingly low results before close verdict. Partial answer indistinguishable from real. Empty is inconclusive, not absence. **Done when:** every row verified this pass has evidence and the tool on its finding. Unverified rows stay counted in `Trend` and are not passed.
+Pace the reference queries. Re-run an empty or surprisingly low result before giving a close verdict, because a partial answer looks the same as a real one. An empty result is inconclusive, not proof of absence. **Done when:** every row verified this pass has its evidence and the tool on its finding. Unverified rows stay counted in `Trend`, and are not passed.
 
-- [ ] **Step 6 — Reasons:** `reason` = why deferred. Each value implies a check. Re-test enum value Step 4 assigned the same way. UNJUSTIFIED replaces it only when Step 9's four tests hold.
+- [ ] **Step 6 — Reasons:** `reason` records why the row was deferred, and each value implies a check. Re-test the enum value that Step 4 assigned in the same way. UNJUSTIFIED replaces a value only when Step 9's four tests hold.
 
 <!-- prettier-ignore -->
 | `reason` | Check |
@@ -137,14 +144,14 @@ Pace reference queries. Re-run empty or surprisingly low results before close ve
 | `hard-blocked` | Is the blocker the row names still there? |
 | `needs-decision` | Was the decision made since? Search `docs/decisions.jsonl` |
 | `own-cycle` | Does a plan or an issue for it exist? |
-| `low-severity` | Still `LOW`? Never `unjustified` by the four tests |
+| `low-severity` | Is it still `LOW`? The four tests never make it `unjustified` |
 | `scope-declared` | Does the cited doc section exist, and does it predate the row? |
 
-Blocker lifted = highest-yield finding. Flag on verdict. Apply KEEP trigger rule. **Done when:** every verified row's reason, and every KEEP trigger, has a result on the finding.
+A lifted blocker is the highest-yield finding, so flag it on the verdict. Apply the KEEP trigger rule. **Done when:** every verified row's reason and every KEEP trigger has a result on its finding.
 
-- [ ] **Step 7 — Cost:** Severity = gap badness, not carry cost. Each row still open after Step 6: churn = commits touching surface in last 90 days (e.g. `git log --since=90.days --oneline -- <path>`); related rows in `docs/failures.jsonl` and `.bkit/friction.jsonl` on same symbol or path. High churn + related failures → raise severity. Risk already a failure row = live bug: pair failure `key`, raise severity, name `bkit-audit-failures` for bug triage. **Done when:** `Cost` row per surviving open row: churn, related keys, severity change.
-- [ ] **Step 8 — Pointers:** (a) TRACKED: open issue acceptance criteria include deferred scope; issue not stale and not `Low` across 3+ `bkit-audit-issues` passes. Either fails → say which: extend criteria, or verdict NEEDS ISSUE. (b) Row pointing at closed issue: read what closed it. DONE if scope landed, NEEDS ISSUE if dropped. (c) Deferrals with no row: each issue closed since previous report → read closing comments for deferred items. No row keyed → `Expected` = row to append. **Done when:** `Pointers` lists issue checks and comment-only deferrals, or `none`.
-- [ ] **Step 9 — Classify:** Every row as Step 5 left it gets one verdict. Adjudicate `unjustified` here, and only here. Cluster before naming issues. `needs-decision` and every ACCEPTED row → `Decisions` with who decides. This run does not append, open issues, or do the work.
+- [ ] **Step 7 — Cost:** Severity measures how bad the gap is, not what it costs to carry. For each row still open after Step 6, measure churn: the commits touching its surface in the last 90 days (e.g., `git log --since=90.days --oneline -- <path>`). Find the related rows in `docs/failures.jsonl` and `.bkit/friction.jsonl` on the same symbol or path. **If** churn is high **and** related failures exist → raise the severity. **If** the risk is already a failure row → treat it as a live bug: pair the failure `key`, raise the severity, and name `bkit-audit-failures` for the bug triage. **Done when:** `Cost` holds one row per surviving open row, with its churn, related keys and severity change.
+- [ ] **Step 8 — Pointers:** (a) For each TRACKED row, check that the open issue's acceptance criteria include the deferred scope, and that the issue is not stale and has not been `Low` across 3 or more `bkit-audit-issues` passes. **If** either check fails → say which fix applies: extend the criteria, or give the verdict NEEDS ISSUE. (b) For each row that points at a closed issue, read what closed it. **If** the scope landed → DONE. **If** the scope was dropped → NEEDS ISSUE. (c) For each issue closed since the previous report, read its closing comments for deferred items. **If** a deferred item has no row keyed to it → `Expected` = the row to append. **Done when:** `Pointers` lists the issue checks and the comment-only deferrals, or `none`.
+- [ ] **Step 9 — Classify:** Give every row, as Step 5 left it, one verdict. Adjudicate `unjustified` here, and only here. Cluster the rows before naming issues. Put every `needs-decision` row and every ACCEPTED row in `Decisions`, with who decides. This run does not append rows, open issues or do the work.
 
 <!-- prettier-ignore -->
 | Finding | Expected |
@@ -163,37 +170,38 @@ Blocker lifted = highest-yield finding. Flag on verdict. Apply KEEP trigger rule
 | Data defect | The correction row, or the future-`ts` key for the owner |
 | OTHER | Where it goes |
 
-**Done when:** every verified row has one verdict. `Decisions` lists each `needs-decision` and ACCEPTED row with who decides, or `none`.
+**Done when:** every verified row has one verdict, and `Decisions` lists each `needs-decision` and ACCEPTED row with who decides, or `none`.
 
-- [ ] **Step 10 — Standards:** Confirm current version per anchor standard; read changes since previous report's version. `Standards Coverage`: one row per practice (principal and interest, debt quadrant, hotspots, review triggers for deferred records) and per `reason` value → checked (name step) / not applicable (why) / finding. Unapplied recommended practice → adopt (propose step) / reject (why) / not applicable. **Done when:** no empty row.
-- [ ] **Step 11 — Anything Else:** (a) Everything changed since previous report's commit touching deferrals (schema and writers in `.bkit/jsonl.md`, design, plan, build, and ship steps that write rows, ship deferral check `@bkit-ship-deferred-sweep`, issues rows point at) → one-line verdict each. (b) Bounded ~30 min pass: what a senior EM owning a technical-debt register flags that no step asks; read since previous run (incidents, `bkit-audit-logs` sweeps, new `docs/failures.jsonl` rows, vendor status incidents) — what would no step catch? **Done when:** `Beyond the Steps` holds both passes, or `none`. Class seen on 2 runs → propose step in `Process Improvements`.
+- [ ] **Step 10 — Standards:** Confirm the current version of each anchor standard, and read what changed since the previous report's version. Give `Standards Coverage` one row per practice (principal and interest, the debt quadrant, hotspots, review triggers for deferred records) and one per `reason` value, each marked checked (naming the step), not applicable (saying why) or finding. Mark each recommended practice the project does not apply as adopt (with a proposed step), reject (saying why) or not applicable. **Done when:** no row is empty.
+- [ ] **Step 11 — Anything Else:** (a) Give a one-line verdict on each change since the previous report's commit that touches deferrals: the schema and writers in `.bkit/jsonl.md`, the design, plan, build and ship steps that write rows, the ship deferral check `@bkit-ship-deferred-sweep`, and the issues that rows point at. (b) In a bounded pass of about 30 minutes, note what a senior EM owning a technical-debt register would flag that no step asks about. Read what happened since the previous run (incidents, `bkit-audit-logs` sweeps, new `docs/failures.jsonl` rows, vendor status incidents), and ask what no step would catch. **Done when:** `Beyond the Steps` holds both passes, or says `none`. **If** one class of issue is seen on 2 runs → propose a step for it in `Process Improvements`.
 
 ### 🔒 Gate 2: Probes Check
 
-- [ ] **Steps complete:** every step `[x]`, or explicit skip with evidence the surface is absent.
-- [ ] **Evidence:** every finding cites re-checkable evidence and the tool behind it.
-- [ ] **Read-only:** no ledger line, code, or config changed. Every correction and close row is `Expected` only.
-- [ ] **Positive close:** every DONE and SUPERSEDED cites a positive reason, never an empty query.
-- [ ] **Gate 2 — Verified:** Every checkbox above independently verified and checked off.
+- [ ] **Steps complete:** every step is `[x]`, or skipped with evidence that its surface is absent.
+- [ ] **Evidence:** every finding cites evidence someone can check again, and the tool that produced it.
+- [ ] **Read-only:** no ledger line, code or config changed.
+- [ ] **Rows proposed only:** every correction and close row is marked `Expected`.
+- [ ] **Positive close:** every `DONE` and `SUPERSEDED` cites a positive reason, never an empty query.
+- [ ] **Gate 2 — Verified:** every item above holds.
 
 ## Findings
 
 <!-- prettier-ignore -->
 | Severity | Use |
 | --- | --- |
-| `CRITICAL` | Deferred gap is data loss, a security hole, or a broken workflow with no workaround. Risk already showing as a `CRITICAL` failure |
-| `HIGH` | Blocker has lifted on work that still does real damage. Deferral paired with a failure row. Unjustified in-scope work that has a workaround |
-| `MEDIUM` | Data defect (`ts`, `status`, `reason`). KEEP whose trigger has fired. Real work with no issue. Reason no longer holds |
-| `LOW` | KEEP with no trigger. Missing `severity`. Locator drift. Superseded surface that changes no result |
+| `CRITICAL` | The deferred gap is data loss, a security hole, or a broken workflow with no workaround. The risk already shows as a `CRITICAL` failure |
+| `HIGH` | A blocker has lifted on work that still does real damage. A deferral is paired with a failure row. Unjustified in-scope work has a workaround |
+| `MEDIUM` | A data defect (`ts`, `status`, `reason`). A KEEP whose trigger has fired. Real work with no issue. A reason that no longer holds |
+| `LOW` | A KEEP with no trigger. A missing `severity`. Locator drift. A superseded surface that changes no result |
 
-Within a severity: oldest `firstTs` (`ts` when absent) first. Finding keeps severity when it becomes a ledger row or an issue. Row bucket = ledger severity, or verdict-assigned.
+Within a severity, list the oldest `firstTs` first, using `ts` where `firstTs` is absent. A finding keeps its severity when it becomes a ledger row or an issue. A row's severity is its ledger `severity`, or the one its verdict assigned.
 
 <!-- prettier-ignore -->
 | ID | Severity | Verdict | Location | Evidence | Expected |
 | --- | --- | --- | --- | --- | --- |
 | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 
-Empty and clean → one row `None`.
+**If** the run finds nothing → write one row: `None`.
 
 ## Report
 
@@ -258,13 +266,13 @@ PENDING
 
 ### 🔒 Gate 3: Report Check
 
-- [ ] **No placeholders:** no `PENDING` left
-- [ ] **Summary:** names count per severity, count per verdict, and rows verified / rows open.
-- [ ] **Series:** `Trend` open count, inflow, and outflow beside previous report's numbers, or marked baseline.
-- [ ] **Writes:** only this report, template `Project Instructions`, and ledger rows changed; throwaway worktrees / remote targets removed.
-- [ ] **Process Improvements:** `Universal` and `Project` filled
-- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID in exactly one row; every row has a `Next Step`.
-- [ ] **Gate 3 — Verified:** Every checkbox above independently verified and checked off.
+- [ ] **No placeholders:** no `PENDING` is left.
+- [ ] **Summary:** `Summary` gives the count per severity, the count per verdict, and rows verified / rows open.
+- [ ] **Series:** the report shows `Trend` open count, inflow, and outflow beside the previous report's numbers, or marks the run as baseline.
+- [ ] **Writes:** only this report, the template's `Project Instructions` and ledger rows have changed, and every throwaway worktree or remote target is removed.
+- [ ] **Process Improvements:** `Universal` and `Project` are both filled.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one row, and every row has a `Next Step`.
+- [ ] **Gate 3 — Verified:** every item above holds.
 
 <!-- bkit:end -->
 

@@ -1,4 +1,4 @@
-<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. The report is stamped with a `bkit:anchor` block recording the audited commit (`baseSha`) and branch (`baseRef`); never hand-author or edit it. `@bkit-audit-generate` fills this template. -->
+<!-- Note: @bkit-audit-generate fills this template. The report lives at `docs/audits/{YYYYMM}/{slug}.md`, where `{YYYYMM}` is the UTC month of the run and `{slug}` is this file's name without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md`, where `{TIMESTAMP}` is the output of `date -u +%Y%m%dT%H%M%SZ`. NEVER overwrite an earlier report. The report is stamped with a `bkit:anchor` block that records the audited commit (`baseSha`) and branch (`baseRef`). NEVER write or edit that block by hand. -->
 
 <!-- bkit:start -->
 
@@ -7,23 +7,25 @@
 # Coverage Floor
 
 > [!CAUTION]
-> **Purpose:** Ratchet of a CI coverage-floor gate — whether each committed floor still sits under measured branch coverage, and the next floor a gated surface should move to.
+> **Purpose:** The ratchet of a CI coverage-floor gate: whether each committed floor still sits under the measured branch coverage, and the next floor each gated surface should move to.
 >
 > **Rules:**
 >
-> - never edit workflows, floor files, coverage config, or the gate script; the report states the edit.
-> - never lower a floor, add an exclusion, or add an ignore hint.
-> - NEVER run a tool that rewrites source to measure mutants or coverage. Read artifacts already produced.
+> - Never edit workflows, floor files, coverage config or the gate script.
+> - State each edit in the report instead.
+> - Never lower a floor, add an exclusion or add an ignore hint.
+> - NEVER run a tool that rewrites source to measure mutants or coverage.
+> - Read the artifacts already produced.
 
 ## Universal Instructions
 
 ### Context & Goals
 
-Static floor: coverage climbs, gate far below, large drop passes green. One-run tighten flakes — identical-code branch coverage moves between runs — flaky gate gets disabled. Target failure: **a floor left far under measured coverage, or ratcheted onto noise**.
+A static floor fails one way: coverage climbs, the gate stays far below it, and a large drop still passes green. Tightening off one run fails another way: branch coverage on identical code moves between runs, so the gate flakes, and a flaky gate gets disabled. The failure this audit targets is a floor left far under measured coverage, or a floor ratcheted onto noise.
 
-**Applies when:** coverage floor gate exists. None → one `N/A` row with evidence, never "clean".
+**Applies when:** a coverage floor gate exists. **If** none exists → write one `N/A` row with its evidence, and never report the surface as "clean".
 
-**Cadence:** monthly; extra pass after coverage lift, runner/provider version change, include/exclude/measured-glob change, or new package/app under gated glob.
+**Cadence:** Run once a month. Run an extra pass after a coverage lift, a runner or provider version change, an include, exclude or measured-glob change, or a new package or app under a gated glob.
 
 **Anchor Standards:**
 
@@ -35,90 +37,92 @@ Static floor: coverage climbs, gate far below, large drop passes green. One-run 
 
 ### Scope
 
-- Floor history: no floor dropped, no new exclusion, no new ignore hint.
-- Sample >=10 full runs per gated surface; ratchet from lowest, never one run.
-- Denominator: glob-should-cover files vs summary files.
-- Identical-code variance across two runs; cause (tests vs tooling).
-- Recommended floor per gated surface; surfaces move independently.
-- Report-only surfaces, including named surface emitting no coverage.
-- High-risk modules, report-only.
-- Patch coverage of changes merged since previous report.
+- Check the floor history: no floor dropped, no new exclusion and no new ignore hint.
+- Sample >=10 full runs per gated surface.
+- Ratchet from the lowest observation, never from one run.
+- Compare the denominator: the files the glob should cover against the files in the summary.
+- Measure the variance on identical code across two runs, and its cause (tests or tooling).
+- Recommend a floor for each gated surface, each surface's floor on its own.
+- List the report-only surfaces, including a named surface that emits no coverage.
+- Report the high-risk modules, as report-only.
+- Check the patch coverage of the changes merged since the previous report.
 
 ### Out of Scope
 
 <!-- prettier-ignore -->
 | Excluded item | Why | Where it belongs |
 | --- | --- | --- |
-| Whether tests check the right behaviour, can fail, or run | Test quality | `bkit-audit-testing` |
-| Conditional or timing-dependent tests behind a spread | Flake sweep | `bkit-audit-flakes` |
-| Patch coverage as a new required check | Gate ranking | `bkit-audit-gates` |
-| Changing floors, exclusions, ignore hints, or workflows | Audit reports only | Plan from this report |
+| Whether tests check the right behaviour, can fail, or run | The testing audit owns test quality | `bkit-audit-testing` |
+| Conditional or timing-dependent tests behind a spread | The flakes audit owns them | `bkit-audit-flakes` |
+| Patch coverage as a new required check | The gates audit owns gate ranking | `bkit-audit-gates` |
+| Changing floors, exclusions, ignore hints, or workflows | The audit only reports | A plan made from this report |
 
 ### Pre-Flight / Dependencies
 
 #### Core
 
-- [ ] **Permissions:** blocked calls recorded
-- [ ] **CI History:** Steps 4, 5, 7, 10 — branch coverage from full CI runs, e.g. `gh run list` / `gh run download`, GitLab pipelines, Codecov. Fallback: local re-runs fill gap; mark every local observation.
-- [ ] **Coverage Artifacts:** Steps 6, 7, 11, 12 — summary and per-file coverage, e.g. `coverage-summary.json`, `coverage-final.json`, lcov. Fallback: percentages only; file-level claims `Not Checked`.
-- [ ] **Git History:** Steps 3, 9, 15 — `git log -L` / `git log -p` on floor values and coverage config. Fallback: current tree only; history `Not Checked`.
-- [ ] **Web:** Step 14 — fetch anchor standards. Fallback: versions recorded as unread.
+- [ ] **Permissions:** every blocked call is recorded.
+- [ ] **CI History:** Steps 4, 5, 7, 10 — branch coverage from full CI runs (e.g., `gh run list` / `gh run download`, GitLab pipelines, Codecov). Fallback: fill the gap with local re-runs, and mark every local observation.
+- [ ] **Coverage Artifacts:** Steps 6, 7, 11, 12 — summary and per-file coverage (e.g., `coverage-summary.json`, `coverage-final.json`, lcov). Fallback: use percentages only, and mark file-level claims `Not Checked`.
+- [ ] **Git History:** Steps 3, 9, 15 — `git log -L` / `git log -p` on the floor values and coverage config. Fallback: use the current tree only, and mark history `Not Checked`.
+- [ ] **Web:** Step 14 — fetch the anchor standards. Fallback: record the versions as unread.
 
 #### Conditional
 
-- [ ] **Local Runner:** Fewer than ten CI observations for a gated surface → Steps 4, 7 — re-run that surface's coverage command in detached worktree, removed before report finishes. Fallback: do not tighten that surface; shortfall in `Not Checked`.
-- [ ] **Mutation Score:** Mutation report or `bkit-audit-testing` report exists → Step 9 — latest score beside each gated surface. Fallback: movement without mutation comparison; record in `Not Checked`. Do not start a run that rewrites source.
-- [ ] **Patch Source:** Changed-file coverage reported → Step 12 — e.g. PR coverage comment changed-file table, Codecov patch status. Fallback: diff plus per-file coverage; if neither, `Not Checked`.
+- [ ] **Local Runner:** **If** a gated surface has fewer than ten CI observations → Steps 4, 7 — re-run that surface's coverage command in a detached worktree, removed before the report finishes. Fallback: do not tighten that surface, and record the shortfall in `Not Checked`.
+- [ ] **Mutation Score:** **If** a mutation report or a `bkit-audit-testing` report exists → Step 9 — the latest score beside each gated surface. Fallback: report movement without a mutation comparison, and record that in `Not Checked`. Do not start a run that rewrites source.
+- [ ] **Patch Source:** **If** changed-file coverage is reported → Step 12 — the changed-file coverage (e.g., the PR coverage comment's changed-file table, Codecov patch status). Fallback: use the diff plus per-file coverage. **If** neither exists → mark it `Not Checked`.
 
 ### 🔒 Gate 1: Prerequisites Check
 
-- [ ] **Gaps named:** every missing item names its fallback and `Not Checked` entry.
-- [ ] **Gate 1 — Verified:** All Core items checked. All applicable Conditional items checked.
+- [ ] **Gaps named:** every missing item names its fallback and its `Not Checked` entry.
+- [ ] **Gate 1 — Verified:** every Core item and every applicable Conditional item is checked.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** **Done when:** closure rate in `Previous Run`, or run marked baseline.
-- [ ] **Step 2 — Detect:** Find coverage floor gate (CI job, script, or threshold failing below committed number) and where number is stored. List hard-gated vs report-only surfaces. Metric = branch coverage unless recorded decision names another; line, statement, function percentages are not floors. None → `N/A` and STOP. **Done when:** gate path, metric, surface list in `Checked`, or `N/A` and **STOP**.
-- [ ] **Step 3 — History:** Since previous report's commit: no floor dropped (`git log -L` on each floor value and coverage include / exclude). Floor never moves down; drop is fixed, not accommodated. Diff exclusions. Count ignore hints under each gated glob, then and now (e.g. `v8 ignore`, `istanbul ignore`, `c8 ignore`, `# pragma: no cover`). Each new exclusion and ignore hint, with commit = finding. **Done when:** `History` lists every floor change, new exclusion, and new ignore hint, or `none`.
-- [ ] **Step 4 — Sample:** Per gated surface, >=10 full runs: same commit, or most recent full CI runs on default branch. CI history first; local re-run only to fill gap; mark local observations. Record every run id. No partial lane. Never ratchet off single run. **Done when:** `Sample` holds >=10 observations per gated surface, or named shortfall and that floor not tightened.
-- [ ] **Step 5 — Lowest:** Per gated surface, record every observation; ratchet from lowest, not latest. Write covered/total beside percentage. Spread = max − min. Spread above two points = finding (non-deterministic coverage); `Variance` finds cause; `Floor` does not tighten until spread fixed. **Done when:** `Sample` row per surface: observations · covered/total · lowest · spread.
-- [ ] **Step 6 — Denominator:** Runner omits file no test imports unless include list names it (e.g. Vitest >=4) → compare summary file count with `git ls-files` for glob surface should cover; list source files missing from report. Missing file inflates percentage = finding. Other runner → equivalent omission, or skip with evidence. **Done when:** missing files in `Denominator`, or skip recorded.
-- [ ] **Step 7 — Variance:** Identical-code coverage should match. Two runs on same commit → diff per-file coverage (e.g. `coverage-final.json`); list files whose covered branches differ. Conditional or timing-dependent tests → `bkit-audit-flakes`. **Done when:** file list in `Variance`, or identical and recorded.
-- [ ] **Step 8 — Floor:** Recommended floor = lowest observation, rounded down, minus one point. Spread above two points keeps current floor. Recommended below current floor → leave floor; drop = finding. Surfaces ratchet separately; do not nudge surface whose tests did not change. **Done when:** `Recommendation` holds current · lowest · recommended · move? per gated surface.
-- [ ] **Step 9 — Movement:** Name tests that caused lift; durable (every tier invocation) vs conditional lane. Ratchet with no named cause = finding. Before crediting tests, record runner, coverage-provider package, and provider per run in `Sample`; diff lockfile between oldest and newest. Provider change (e.g. AST-aware remapping) moves branch counts with no test change → do not credit tests. Latest mutation score beside each gated surface. Coverage up, mutation flat = finding (covers code, checks nothing → `bkit-audit-testing`). **Done when:** `Movement` names cause per surface, or tooling change explaining it.
-- [ ] **Step 10 — Report-Only:** List report-only surfaces and numbers. Not gating is part of record: stay report-only (why) or date to decide. Reported across runs with no decision = finding. Project-named surface with no coverage = finding, not omission. Record E2E-collected coverage, or server/route code no unit test reaches (e.g. V8/Istanbul via browser runner and merger). If none, say so. **Done when:** `Report-Only` row per surface: number · decision · coverage collected?
-- [ ] **Step 11 — Modules:** Per project-named high-risk area: branch coverage and absolute uncovered branches. Name files so next run measures same set. Report-only; does not move floor. **Done when:** `Modules` row per area: files · branch % · uncovered branches.
-- [ ] **Step 12 — Patch:** Every change merged since the previous report whose changed lines had branch coverage below a stated bar, and state the bar (default 90% per commit unless the project states another). Patch coverage names the change that dropped coverage, which the aggregate gate does not. Below the bar = finding, and a gate candidate for `bkit-audit-gates`. **Done when:** `Patch` lists every below-bar change, or `none`, and states the bar.
-- [ ] **Step 13 — Recommend:** State old floor → new floor per surface and edit (file and value). Do not apply. Workflow change in edit needs explicit human confirmation. Note whether previous report's recommended floor matches tree. Per surface, one line on red: often untested file under glob, not removed coverage. If CI does not print recommended next floor (lowest of sample, rounded down, minus one point) beside current, propose in `Process Improvements`. **Done when:** `Recommendation` holds edit text and red-means line; tree unchanged.
-- [ ] **Step 14 — Standards:** Confirm current version per anchor standard; read changes since previous report's version. `Standards Coverage`: one row per anchor practice for coverage gate (e.g. per-commit bar, include-list guidance, patch coverage, ratchet tooling) → checked (name step) / not applicable (why) / finding. Unapplied recommended practice → adopt (propose step) / reject (why) / not applicable. **Done when:** no empty row.
-- [ ] **Step 15 — Anything Else:** (a) Everything since previous report's commit touching coverage measurement (runner/provider versions, include/exclude, ignore hints, measured globs, floor files, gate script, merge script, floor step, new packages/apps) → one-line verdict each. (b) Bounded ~30 min pass: what senior test engineer owning CI quality gates flags that no step asks; read since previous run (incidents, `bkit-audit-logs` reports, new `docs/failures.jsonl` rows, vendor status) — what would no step catch? **Done when:** `Beyond the Steps` holds both passes, or `none`. Class seen on 2 runs → propose step in `Process Improvements`.
+- [ ] **Step 1 — Previous Run:** **Done when:** `Previous Run` holds the closure rate, or the run is marked baseline.
+- [ ] **Step 2 — Detect:** Find the coverage floor gate (a CI job, script or threshold that fails below a committed number) and where the number is stored. List the hard-gated and the report-only surfaces. The metric is branch coverage, unless a recorded decision names another. Line, statement and function percentages are not floors. **If** there is no gate → write `N/A` and **STOP**. **Done when:** `Checked` holds gate path, metric, surface list, or `N/A` is recorded → **STOP**.
+- [ ] **Step 3 — History:** Since the previous report's commit, check that no floor dropped (`git log -L` on each floor value and on the coverage include and exclude). A floor never moves down: a drop is fixed, not accommodated. Diff the exclusions. Count the ignore hints under each gated glob, then and now (e.g., `v8 ignore`, `istanbul ignore`, `c8 ignore`, `# pragma: no cover`). Each new exclusion and each new ignore hint is a finding, with its commit. **Done when:** `History` lists every floor change, new exclusion and new ignore hint, or `none`.
+- [ ] **Step 4 — Sample:** For each gated surface, take >=10 full runs: on the same commit, or the most recent full CI runs on the default branch. Use CI history first, and re-run locally only to fill a gap. Mark the local observations. Record every run id. Include no partial lane. Never ratchet off a single run. **Done when:** `Sample` holds >=10 observations per gated surface, or names the shortfall and leaves that floor untightened.
+- [ ] **Step 5 — Lowest:** For each gated surface, record every observation, and ratchet from the lowest, not the latest. Write covered/total beside each percentage. Spread = max − min. A spread above two points is a finding (non-deterministic coverage). `Variance` finds the cause, and `Floor` does not tighten until the spread is fixed. **Done when:** `Sample` holds one row per surface, with the observations, covered/total, the lowest and the spread.
+- [ ] **Step 6 — Denominator:** **If** the runner omits a file that no test imports unless the include list names it (e.g., Vitest >=4) → compare the summary's file count with `git ls-files` for the glob the surface should cover, and list the source files missing from the report. A missing file inflates the percentage, which is a finding. **If** the project uses another runner → check its equivalent omission, or skip with evidence. **Done when:** `Denominator` holds the missing files, or the skip is recorded.
+- [ ] **Step 7 — Variance:** Coverage on identical code should match. Take two runs on the same commit, diff the per-file coverage (e.g., `coverage-final.json`), and list the files whose covered branches differ. Conditional or timing-dependent tests go to `bkit-audit-flakes`. **Done when:** `Variance` holds the file list, or records that the runs are identical.
+- [ ] **Step 8 — Floor:** The recommended floor = the lowest observation, rounded down, minus one point. **If** the spread is above two points → keep the current floor. **If** the recommended floor is below the current floor → leave the floor as it is, and record the drop as a finding. Surfaces ratchet separately, so do not nudge a surface whose tests did not change. **Done when:** `Recommendation` holds the current, lowest and recommended floor, and whether to move, for each gated surface.
+- [ ] **Step 9 — Movement:** Name the tests that caused a lift, and whether they are durable (run on every tier invocation) or in a conditional lane. A ratchet with no named cause is a finding. Before crediting tests, record the runner, the coverage-provider package and the provider for each run in `Sample`, and diff the lockfile between the oldest and newest runs. **If** the provider changed (e.g., AST-aware remapping) → branch counts move with no test change, so do not credit the tests with that movement. Put the latest mutation score beside each gated surface. Coverage up with mutation flat is a finding, because the tests cover code but check nothing, and it goes to `bkit-audit-testing`. **Done when:** `Movement` names the cause for each surface, or the tooling change that explains it.
+- [ ] **Step 10 — Report-Only:** List the report-only surfaces and their numbers. Not gating is part of the record: each surface stays report-only (saying why) or has a date to decide. A surface reported across runs with no decision is a finding. A project-named surface with no coverage is a finding, not an omission. Record any E2E-collected coverage, or server and route code that no unit test reaches (e.g., V8/Istanbul through a browser runner and merger). **If** there is none → say so. **Done when:** `Report-Only` holds one row per surface, with the number, the decision and whether coverage is collected.
+- [ ] **Step 11 — Modules:** For each project-named high-risk area, record the branch coverage and the absolute number of uncovered branches. Name the files, so the next run measures the same set. This is report-only and does not move the floor. **Done when:** `Modules` holds one row per area, with its files, branch % and uncovered branches.
+- [ ] **Step 12 — Patch:** List every change merged since the previous report whose changed lines had branch coverage below a stated bar, and state the bar (default 90% per commit, unless the project states another). Patch coverage names the change that dropped coverage, which the aggregate gate does not. A change below the bar is a finding, and a gate candidate for `bkit-audit-gates`. **Done when:** `Patch` lists every below-bar change, or `none`, and states the bar.
+- [ ] **Step 13 — Recommend:** For each surface, state old floor → new floor and the edit (file and value). Do not apply it. A workflow change in the edit needs explicit human confirmation. Note whether the previous report's recommended floor matches the tree. For each surface, write one line on what red means: often an untested file under the glob, not removed coverage. **If** CI does not print the recommended next floor (the lowest of the sample, rounded down, minus one point) beside the current one → propose that in `Process Improvements`. **Done when:** `Recommendation` holds the edit text and the red-means line, and the tree is unchanged.
+- [ ] **Step 14 — Standards:** Confirm the current version of each anchor standard, and read what changed since the previous report's version. Give `Standards Coverage` one row per anchor practice for a coverage gate (e.g., the per-commit bar, include-list guidance, patch coverage, ratchet tooling), each marked checked (naming the step), not applicable (saying why) or finding. Mark each recommended practice the project does not apply as adopt (with a proposed step), reject (saying why) or not applicable. **Done when:** no row is empty.
+- [ ] **Step 15 — Anything Else:** (a) Give a one-line verdict on each change since the previous report's commit that touches coverage measurement: runner and provider versions, include and exclude, ignore hints, measured globs, floor files, the gate script, the merge script, the floor step, and new packages and apps. (b) In a bounded pass of about 30 minutes, note what a senior test engineer owning CI quality gates would flag that no step asks about. Read what happened since the previous run (incidents, `bkit-audit-logs` reports, new `docs/failures.jsonl` rows, vendor status), and ask what no step would catch. **Done when:** `Beyond the Steps` holds both passes, or says `none`. **If** one class of issue is seen on 2 runs → propose a step for it in `Process Improvements`.
 
 ### 🔒 Gate 2: Probes Check
 
-- [ ] **Steps complete:** every step `[x]`, or explicit skip with evidence the surface is absent.
-- [ ] **Evidence:** every finding cites re-checkable evidence and the tool behind it.
-- [ ] **Floors untouched:** no workflow, floor file, coverage config, or gate script changed.
-- [ ] **Sample:** every gated surface has >=10 full-run observations, or named shortfall and its floor not tightened; no partial lane in the sample.
-- [ ] **Gate 2 — Verified:** Every checkbox above independently verified and checked off.
+- [ ] **Steps complete:** every step is `[x]`, or skipped with evidence that its surface is absent.
+- [ ] **Evidence:** every finding cites evidence someone can check again, and the tool that produced it.
+- [ ] **Floors untouched:** no workflow, floor file, coverage config or gate script changed.
+- [ ] **Sample:** every gated surface has >=10 full-run observations, or a named shortfall with its floor not tightened.
+- [ ] **Full runs only:** the sample holds no partial lane.
+- [ ] **Gate 2 — Verified:** every item above holds.
 
 ## Findings
 
 <!-- prettier-ignore -->
 | Severity | Use |
 | --- | --- |
-| `CRITICAL` | Floor gate removed, or a gated surface dropped from it with no replacement; gate passes when the coverage summary is missing |
-| `HIGH` | Floor lowered; new exclusion or ignore hint under a gated glob; spread above two points; source files in the glob missing from the summary |
-| `MEDIUM` | Recommended floor below current and the drop left in place; coverage up while the mutation score stays flat; report-only surface with no stay-or-gate decision; high-risk module with uncovered branches; change merged below the patch bar; movement with no named cause |
-| `LOW` | Comment or prose in a floor file that does not change the number; report-only drift inside a recorded stay-report-only decision |
+| `CRITICAL` | The floor gate was removed, or a gated surface was dropped from it with no replacement. The gate passes when the coverage summary is missing |
+| `HIGH` | A floor was lowered. A new exclusion or ignore hint under a gated glob. A spread above two points. Source files in the glob missing from the summary |
+| `MEDIUM` | The recommended floor is below the current one and the drop is left in place. Coverage up while the mutation score stays flat. A report-only surface with no stay-or-gate decision. A high-risk module with uncovered branches. A change merged below the patch bar. Movement with no named cause |
+| `LOW` | A comment or prose in a floor file that does not change the number. Report-only drift inside a recorded stay-report-only decision |
 
-Within a severity: gated surfaces, then exclusions.
+Within a severity, list gated surfaces first, then exclusions.
 
 <!-- prettier-ignore -->
 | ID | Severity | Location | Evidence | Expected |
 | --- | --- | --- | --- | --- |
 | PENDING | PENDING | PENDING | PENDING | PENDING |
 
-Empty and clean → one row `None`.
+**If** the run finds nothing → write one row: `None`.
 
 ## Report
 
@@ -195,13 +199,13 @@ PENDING
 
 ### 🔒 Gate 3: Report Check
 
-- [ ] **No placeholders:** no `PENDING` left
-- [ ] **Summary:** names count per severity, and old floor → recommended floor per gated surface.
-- [ ] **Series:** `Sample` spreads and the floor series beside previous report's numbers, or marked baseline.
-- [ ] **Writes:** only this report, template `Project Instructions`, and ledger rows changed; throwaway worktrees / remote targets removed.
-- [ ] **Process Improvements:** `Universal` and `Project` filled
-- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID in exactly one row; every row has a `Next Step`.
-- [ ] **Gate 3 — Verified:** Every checkbox above independently verified and checked off.
+- [ ] **No placeholders:** no `PENDING` is left.
+- [ ] **Summary:** `Summary` gives the count per severity, and old floor → recommended floor for each gated surface.
+- [ ] **Series:** the report shows `Sample` spreads and the floor series beside the previous report's numbers, or marks the run as baseline.
+- [ ] **Writes:** only this report, the template's `Project Instructions` and ledger rows have changed, and every throwaway worktree or remote target is removed.
+- [ ] **Process Improvements:** `Universal` and `Project` are both filled.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one row, and every row has a `Next Step`.
+- [ ] **Gate 3 — Verified:** every item above holds.
 
 <!-- bkit:end -->
 

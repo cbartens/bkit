@@ -1,4 +1,4 @@
-<!-- Note: Plans live at `docs/plans/{YYYYMM}/{FID}-plan.md` (canonical month bucket). `{YYYYMM}` = creation month, set once by the first workflow run for `{FID}`. Logs sit at `docs/plans/{YYYYMM}/logs/{FID}/` and are delete-eligible. The canonical copy is stamped with a `bkit:anchor` block recording the base commit (`baseSha`), its ref (`baseRef`), and the design it targets (`designPath`, `designBaseSha`); never hand-author or edit it. `@bkit-plan-generate` fills this template. -->
+<!-- Note: @bkit-plan-generate fills this template. The plan lives at `docs/plans/{YYYYMM}/{FID}-plan.md`, the canonical month bucket, where `{YYYYMM}` is the month the first workflow run for `{FID}` created it, set once. Logs sit at `docs/plans/{YYYYMM}/logs/{FID}/`, and may be deleted. The canonical copy is stamped with a `bkit:anchor` block that records the base commit (`baseSha`), its ref (`baseRef`) and the design it targets (`designPath`, `designBaseSha`). NEVER write or edit that block by hand. -->
 
 <!-- bkit:start -->
 
@@ -7,45 +7,45 @@
 # [Plan Title] Implementation Plan
 
 > [!CAUTION]
-> **Purpose:** Implementation plan — pre-flight, gates, runbook, verification, rollback.
+> **Purpose:** The implementation plan: pre-flight checks, gates, the runbook, verification and rollback.
 
 ## Context & Goals
 
-[Problem or feature, and why it is needed; initially set to `PENDING`.]
+[The problem or feature, and why it is needed. Initially set to `PENDING`.]
 
 **Related Issues:**
 
-- [`#N — title (state)` per related issue. None → `None`; initially set to `PENDING`.]
+- [One `#N — title (state)` line per related issue. **If** none → `None`. Initially set to `PENDING`.]
 
 ---
 
 ## 👤 ⚠️ Acceptance Scenario
 
 > [!CAUTION]
-> **🛑 HUMAN must READ and CONFIRM this SECTION.**
-> Testable feature contract — implementation, tests, verification derive from what you confirm here. Wrong here → wrong downstream.
+> 🛑 The owner reads and confirms this section.
+> This is the feature's testable contract. The implementation, the tests and the verification all follow from what you confirm here, so a mistake here carries into every later step.
 >
-> **You only need 👤-marked sections** (Acceptance Scenario, Breaking Changes, Open Questions & Assumptions). Agent handles rest.
+> **You only need 👤-marked sections** (Acceptance Scenario, Breaking Changes, Open Questions & Assumptions). The agent handles the rest.
 
 ### Narrative
 
-[1-2 sentences from the user's side: what they do, what they get back; initially set to `PENDING`.]
+[One or two sentences from the user's side: what they do, and what they get back. Initially set to `PENDING`.]
 
 ### Success Criteria
 
-[Up to 5 measurable outcomes; initially set to `PENDING`.]
+[Up to 5 measurable outcomes. Initially set to `PENDING`.]
 
 ### Process Sketch
 
-- **WHEN** [trigger / user action] **→ THEN** [observable outcome]
-- **WHEN** [next step] **→ THEN** [outcome]
-- **IF** [edge case / failure — mirrors an Edge Cases row] **→ THEN** [handling]
+- **WHEN** [the trigger or user action] **→ THEN** [the observable outcome]
+- **WHEN** [the next step] **→ THEN** [its outcome]
+- **IF** [an edge case or failure, mirroring an Edge Cases row] **→ THEN** [how it is handled]
 
-_notation, e.g._ **WHEN** a user submits the form with a valid file **→ THEN** it is queued and a receipt shown; **IF** the file is malformed **→ THEN** it is rejected inline and nothing is queued.
+_e.g.,_ **WHEN** a user submits the form with a valid file **→ THEN** it is queued and a receipt is shown; **IF** the file is malformed **→ THEN** it is rejected inline and nothing is queued.
 
 ### Concrete Example
 
-**Setup:** [User role, existing state, context]
+**Setup:** [The user's role, the existing state and the context]
 
 **Steps:**
 
@@ -53,28 +53,28 @@ _notation, e.g._ **WHEN** a user submits the form with a valid file **→ THEN**
 2. User [does X] → System [responds with Y]
 3. …
 
-**Outcome:** [End state the user sees that proves success]
+**Outcome:** [The end state the user sees that proves success]
 
 ### Edge Cases
 
 <!-- prettier-ignore -->
 | Scenario | Expected Behavior |
 | --- | --- |
-| [Design Key Edge Case or plan-added case] | [Specific behavior] |
-| [e.g., concurrent edit from another device] | [e.g., last-write-wins, no crash] |
+| [a design Key Edge Case, or a case the plan adds] | [the specific behavior] |
+| [e.g., a concurrent edit from another device] | [e.g., the last write wins, with no crash] |
 
 ### Derived Test Matrix
 
-`Type` = a tier from `docs/testing.md`: Static, Unit, Integration, @live (golden), E2E, fresh-DB replay, Smoke. `Task` = the one runbook task that lands the row's test.
+`Type` is a tier from `docs/testing.md`: Static, Unit, Integration, @live (golden), E2E, fresh-DB replay or Smoke. `Task` is the one runbook task that lands the row's test.
 
 <!-- prettier-ignore -->
 | Test description | Type | Target file | Task |
 | --- | --- | --- | --- |
-| [e.g., Happy path: user creates event, sees it in list] | E2E | [e.g. `apps/web/e2e/[feature].spec.ts`] | 2 |
-| [e.g., Service correctly parses payload] | Unit | [e.g. `packages/[pkg]/[module].test.ts`] | 2 |
-| [e.g., API endpoint enforces tenant isolation] | Integration | [e.g. `packages/api/[feature].integration.test.ts`] | 2 |
-| [e.g., Real 3rd-party API returns expected shape and a boundary-only identity — not "did not throw"] | @live (golden) | [e.g. `packages/[pkg]/[feature].live.test.ts`] | 2 |
-| [e.g., New migration replays from empty and seed loads] | fresh-DB replay | [e.g. `supabase/migrations/*`] (replayed by `bkit-tests-migration`) | 1 |
+| [e.g., happy path: a user creates an event and sees it in the list] | E2E | [e.g., `apps/web/e2e/[feature].spec.ts`] | 2 |
+| [e.g., the service parses the payload correctly] | Unit | [e.g., `packages/[pkg]/[module].test.ts`] | 2 |
+| [e.g., the API endpoint enforces tenant isolation] | Integration | [e.g., `packages/api/[feature].integration.test.ts`] | 2 |
+| [e.g., the real third-party API returns the expected shape and a boundary-only identity, not just "did not throw"] | @live (golden) | [e.g., `packages/[pkg]/[feature].live.test.ts`] | 2 |
+| [e.g., the new migration replays from empty and the seed loads] | fresh-DB replay | [e.g., `packages/db/migrations/*`] (replayed by `bkit-tests-migration`) | 1 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -85,27 +85,26 @@ _notation, e.g._ **WHEN** a user submits the form with a valid file **→ THEN**
 ## 👤 ⚠️ Breaking Changes & Naming Review
 
 > [!CAUTION]
-> **🛑 HUMAN must READ and CONFIRM this SECTION.**
-> Review proposed names and breaking changes below.
+> 🛑 The owner reads and confirms this section.
 
-[Proposed names (pages, files, DB tables, routes, API contracts) and breaking changes (DB structure, global layout). None → `None`; initially set to `PENDING`.]
+[Each proposed name (page, file, database table, route, API contract) and each breaking change (database structure, global layout). **If** none → `None`. Initially set to `PENDING`.]
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Breaking Changes confirmed:** I have reviewed all breaking changes and naming decisions above.
+- [ ] **Breaking Changes confirmed:** I have reviewed every breaking change and naming decision above.
 
 ---
 
 ## 👤 ⚠️ Open Questions & Assumptions
 
 > [!CAUTION]
-> **🛑 HUMAN must READ and CONFIRM this SECTION.**
-> Unknowns + assumptions this plan relies on. Unresolved question = risk; wrong assumption breaks downstream. If none, write "None".
+> 🛑 The owner reads and confirms this section.
+> These are the unknowns and assumptions this plan relies on. An unresolved question is a risk, and a wrong assumption breaks what follows. **If** there are none → write `None`.
 
-- **Assumption:** [what the plan takes as given] → [what breaks if it's wrong]
-- **Open Question:** [decision needed] → [who / how to resolve]
+- **Assumption:** [what the plan takes as given] → [what breaks if it is wrong]
+- **Open Question:** [the decision needed] → [who resolves it, and how]
   - **Options:** A) [option] — [trade-off] · B) [option] — [trade-off] · C) [option] — [trade-off, optional]
-  - **Recommended:** A) [option] — [why, 1 line]
+  - **Recommended:** A) [option] — [why, in one line]
   - **Default if unanswered:** [what the agent proceeds with]
 
 ### 👤 ✅ Human Confirmation
@@ -116,167 +115,169 @@ _notation, e.g._ **WHEN** a user submits the form with a valid file **→ THEN**
 
 ## Alternative Approaches & Recommendations
 
-[Rejected paths and why; future phase recommendations; initially set to `PENDING`.]
+[The paths rejected and why, and recommendations for a future phase. Initially set to `PENDING`.]
 
 ## Out of Scope
 
-[Excluded items, each `Exempt`. None → `None`; initially set to `PENDING`.]
+[Each excluded item, marked `Exempt`. **If** none → `None`. Initially set to `PENDING`.]
 
 <!-- prettier-ignore -->
 | Excluded item | Why `Exempt` | Where it belongs |
 | --- | --- | --- |
-| [feature/fix] | [why genuinely-additive] | [design non-goal / follow-up #N / future phase] |
+| [the excluded feature or fix] | [why it only adds to the plan's goal] | [a design non-goal, a follow-up issue or a future phase] |
+| [e.g., bulk status change] | [e.g., single changes meet the goal, and bulk changes add to it] | [e.g., follow-up #N] |
 
 ## Suggested Scope Expansion
 
-[Candidates overlapping this plan's surfaces. None → `None`; initially set to `PENDING`.]
+[The candidates that overlap this plan's surfaces. **If** none → `None`. Initially set to `PENDING`.]
 
 <!-- prettier-ignore -->
 | Candidate | Source | Overlaps | Recommendation |
 | --- | --- | --- | --- |
-| [what it is] | [`#N` / `docs/deferrals.jsonl` / `docs/failures.jsonl` / audit finding id] | [surface / task it touches] | [fold in / keep deferred / needs design decision] |
+| [what it is] | [`#N`, `docs/deferrals.jsonl`, `docs/failures.jsonl` or an audit finding id] | [the surface or task it touches] | [fold in, keep deferred, or needs a design decision] |
 
 ## Security & Privacy
 
-- [ ] **New API Route** — auth guard (e.g. a `requireMember`-style check); rate limit if auth-adjacent.
-- [ ] **New DB Table/Column** — deny-by-default row / tenant access policy (e.g. RLS); tenant-scoped.
-- [ ] **Role-Gated Mutation** — role checked at the API layer.
-- [ ] **User Input** — schema-validated in the handler (e.g. Zod `parse()`).
-- [ ] **PII** — absent from logs; audit / CDC trigger updated for new monitored columns.
-- [ ] **Redirect URL** — allow-list validated.
-- [ ] **Webhook** — signature verified; secret in the env schema.
-- [ ] **New Secret/Env Var** — in the env schema and the project's secret manager.
+- [ ] **New API Route** — an auth guard (e.g., a `requireMember`-style check). **If** the route is auth-adjacent → a rate limit as well.
+- [ ] **New DB Table/Column** — a deny-by-default row or tenant access policy (e.g., RLS), scoped to the tenant.
+- [ ] **Role-Gated Mutation** — the role is checked at the API layer.
+- [ ] **User Input** — validated against a schema in the handler (e.g., Zod `parse()`).
+- [ ] **PII** — kept out of logs, and the audit or CDC trigger is updated for new monitored columns.
+- [ ] **Redirect URL** — validated against an allow-list.
+- [ ] **Webhook** — the signature is verified, and the secret is in the env schema.
+- [ ] **New Secret/Env Var** — in the env schema and in the project's secret manager.
 
-_If none apply: "None — no new routes, DB writes, secrets, or user input."_
+[**If** no row applies → write "None — no new routes, DB writes, secrets, or user input."]
 
 ## Pre-Flight / Dependencies
 
 ### Core
 
-- [ ] **Package Management:** packages declared; manifest and lockfile in sync.
-- [ ] **Dependency Versions:** outdated deps and toolchain / stack CLI versions checked.
-- [ ] **Existing-Solution Search (reuse over duplicate):** in-repo, dependency and ecosystem sweeps recorded in `Reuse Inventory`.
-- [ ] **User Context:** file access confirmed; missing user information requested.
-- [ ] **Project Context:** relevant `docs/knowledge.jsonl` and `docs/decisions.jsonl` rows read.
-- [ ] **Testing & Quality:** testing strategy matches `docs/testing.md`.
-- [ ] **Prerequisite Plans:** [plans to finish first, or `None`]
+- [ ] **Package Management:** the packages are declared, and the manifest and lockfile are in sync.
+- [ ] **Dependency Versions:** outdated dependencies and the toolchain and stack CLI versions are checked.
+- [ ] **Existing-Solution Search (reuse over duplicate):** the in-repo, dependency and ecosystem searches are recorded in `Reuse Inventory`.
+- [ ] **User Context:** access to the files is confirmed, and missing user information is requested.
+- [ ] **Project Context:** the relevant `docs/knowledge.jsonl` and `docs/decisions.jsonl` rows are read.
+- [ ] **Testing & Quality:** the testing strategy matches `docs/testing.md`.
+- [ ] **Prerequisite Plans:** [the plans to finish first. **If** none → `None`.]
 
 ### Conditional
 
-- [ ] **Secrets & Env Vars:** secret store and service-account roles checked.
-- [ ] **Schema State:** database state confirmed against `docs/data-schema.md`.
-- [ ] **Architecture & UI:** `docs/architecture.md` topology; `docs/design.md` for UI.
-- [ ] **Observability:** logs, audit tables and traces per `docs/observability.md`.
-- [ ] **Notifications:** alert / toast tier per the notifications doc.
+- [ ] **Secrets & Env Vars:** the secret store and the service-account roles are checked.
+- [ ] **Schema State:** the database state is confirmed against `docs/data-schema.md`.
+- [ ] **Architecture & UI:** the topology is checked against `docs/architecture.md`, and any UI against `docs/design.md`.
+- [ ] **Observability:** logs, audit tables and traces follow `docs/observability.md`.
+- [ ] **Notifications:** the alert or toast tier follows the notifications doc.
 
 ### 🔒 Gate 1: Prerequisites Check
 
-- [ ] **Acceptance Scenario confirmed:** Human confirmed `👤 Acceptance Scenario` section (checkbox is `[x]`).
-- [ ] **Breaking Changes confirmed:** Human confirmed `⚠️ Breaking Changes & Naming Review` section (checkbox is `[x]`).
-- [ ] **Open Questions confirmed:** Human confirmed `👤 Open Questions & Assumptions` section (checkbox is `[x]`).
-- [ ] **Security & Privacy checked:** applicable rows verified, or `None` justified.
-- [ ] **Reuse Inventory complete:** every capability has a row with `Search performed` and `Decision`; every `NEW` cites its reason.
-- [ ] **Gate 1 - Verified:** Core items and applicable Conditional items checked.
+- [ ] **Acceptance Scenario confirmed:** the `👤 Acceptance Scenario` checkbox is `[x]`, ticked by a human.
+- [ ] **Breaking Changes confirmed:** the `⚠️ Breaking Changes & Naming Review` checkbox is `[x]`, ticked by a human.
+- [ ] **Open Questions confirmed:** the `👤 Open Questions & Assumptions` checkbox is `[x]`, ticked by a human.
+- [ ] **Security & Privacy checked:** every applicable row is verified, or `None` is justified.
+- [ ] **Reuse Inventory complete:** every capability has a row with `Search performed` and `Decision` filled in.
+- [ ] **Reuse reasons:** every `NEW` row cites its reason.
+- [ ] **Gate 1 — Verified:** every Core item and every applicable Conditional item is checked.
 
 ## Data Schema Integration
 
-[How this feature uses the existing schema and what changes; initially set to `PENDING`.]
+[How this feature uses the existing schema, and what changes. Initially set to `PENDING`.]
 
 ### Data Schema Usage
 
-[Existing `docs/data-schema.md` tables and fields read (Input) or written (Output). None → `None`; initially set to `PENDING`. e.g.,
+[The existing `docs/data-schema.md` tables and fields the feature reads (Input) or writes (Output). **If** none → `None`. Initially set to `PENDING`.]
 
-- **Input (Read):** `users.id`, `items.title`
-- **Output (Write):** `items.status`, `job_audits.log`]
+- [e.g., **Input (Read):** `users.id`, `items.title`]
+- [e.g., **Output (Write):** `items.status`, `job_audits.log`]
 
 ### Data Schema Changes
 
-[New tables, new fields, or changed fields to record in `docs/data-schema.md`. None → `None`; initially set to `PENDING`. e.g.,
+[The new tables, new fields and changed fields to record in `docs/data-schema.md`. **If** none → `None`. Initially set to `PENDING`.]
 
-- **ADD:** `items.new_field` (type: text)
-- **MODIFY:** `users.role` (added enum value)]
+- [e.g., **ADD:** `items.new_field` (type: text)]
+- [e.g., **MODIFY:** `users.role` (added enum value)]
 
 ## Reuse Inventory
 
-[One row per capability the plan introduces; initially set to `PENDING`.]
+[One row per capability the plan introduces. Initially set to `PENDING`.]
 
 <!-- prettier-ignore -->
 | Capability | File | Search performed | Existing candidates | Decision | Justification |
 | --- | --- | --- | --- | --- | --- |
-| [what the plan must do] | `path/to/existing` | `grep -rn "..."`; references to `{symbol}`; `docs/capabilities.md`; `{framework} {capability} built-in` | `path/to/existing` — covers [X], missing [Y] | EXTEND | [what changes in it to close the gap] |
-| [e.g., item status column] | `supabase/migrations/{timestamp}_add_items_status.sql` | [exact commands / queries run] | None — [what was searched] | NEW | [reason (a)/(b)/(c)] |
-| [e.g., status change action] | `packages/api/src/items/setStatus.ts` | [exact commands / queries run] | None — [what was searched] | NEW | [reason (a)/(b)/(c)] |
+| [what the plan must do] | `path/to/existing` | `grep -rn "..."`, references to `{symbol}`, `docs/capabilities.md`, `{framework} {capability} built-in` | `path/to/existing` — covers [X], missing [Y] | EXTEND | [what changes in it to close the gap] |
+| [e.g., item status column] | `packages/db/migrations/{timestamp}_add_items_status.sql` | [the exact commands and queries run] | None — [what was searched] | NEW | [reason (a), (b) or (c)] |
+| [e.g., status change action] | `packages/api/src/items/setStatus.ts` | [the exact commands and queries run] | None — [what was searched] | NEW | [reason (a), (b) or (c)] |
 
 ## Architecture & Component Changes
 
-[Files grouped by area (DB, API, Backend, Frontend, Cron, Observability), one header each; initially set to `PENDING`.]
-**Ledger rows:** [Backticked `key` of every `docs/decisions.jsonl` / `docs/deferrals.jsonl` row written for this plan, comma-separated. If none, write "None"; initially set to `PENDING`.]
+[The files, grouped by area (DB, API, Backend, Frontend, Cron, Observability), with one heading per area. Initially set to `PENDING`.]
+**Ledger rows:** [The backticked `key` of every `docs/decisions.jsonl` and `docs/deferrals.jsonl` row written for this plan, comma-separated. **If** none → write "None". Initially set to `PENDING`.]
 
 ### Database Migrations
 
-[New tables / columns / access policies (e.g. RLS) and the migration that adds them; initially set to `PENDING`.]
+[The new tables, columns and access policies (e.g., RLS), and the migration that adds them. Initially set to `PENDING`.]
 
 ### [Component Area 1]
 
-[Summary of component changes; initially set to `PENDING`.]
+[A summary of the component changes. Initially set to `PENDING`.]
 
 #### [MODIFY] `path/to/file.ext`
 
-- **Existence Check:** [file exists]
-- [Logic, schema, or API contract changes.]
+- **Existence Check:** [the file exists]
+- [The logic, schema or API contract changes.]
 
 #### [new] `path/to/file.ext`
 
-- **Reuse Check:** [`Reuse Inventory` row + reason (a)/(b)/(c)]
-- [Purpose, access policies (e.g. RLS), input validation (e.g. Zod), naming.]
+- **Reuse Check:** [the `Reuse Inventory` row, and reason (a), (b) or (c)]
+- [The purpose, access policies (e.g., RLS), input validation (e.g., Zod) and naming.]
 
 #### [DELETE] `path/to/file.ext`
 
-- [Reason]
+- [The reason]
 
 ### Cron Jobs & Scheduled Tasks
 
-[Scheduled tasks (e.g. Vercel cron, pg_cron, Inngest). None → `None`; initially set to `PENDING`.]
+[The scheduled tasks (e.g., Vercel cron, pg_cron, Inngest). **If** none → `None`. Initially set to `PENDING`.]
 
 ## Supersession Inventory
 
-[Existing artifacts the new code replaces. None → `None`; initially set to `PENDING`.]
+[The existing artifacts the new code replaces. **If** none → `None`. Initially set to `PENDING`.]
 
 <!-- prettier-ignore -->
 | Existing artifact | Replaced by | Decision | Justification |
 | --- | --- | --- | --- |
-| `path/to/old-thing` | `path/to/new-thing` | DELETE | [reason] |
+| `path/to/old-thing` | `path/to/new-thing` | DELETE | [the reason] |
 
 ## Documentation Updates
 
-[One row per doc this change touches; others via `.agents/docs.md`.]
+[One row per doc this change touches. Find any doc not listed here through `.agents/docs.md`.]
 
 <!-- prettier-ignore -->
 | Doc | Change required |
 | --- | --- |
-| `docs/knowledge.jsonl` | [learnings, gotchas] |
+| `docs/knowledge.jsonl` | [learnings and gotchas] |
 | `docs/decisions.jsonl` | [architecture decisions] |
-| `docs/architecture.md` | [topology / component changes] |
-| `docs/technology.md` | [frameworks, libraries, conventions] |
-| `docs/data-schema.md` | [new tables / columns] |
-| `docs/design.md` | [palette, typography, components] |
-| `docs/testing.md` | [new test files / patterns] |
-| `docs/observability.md` | [new log names / spans] |
+| `docs/architecture.md` | [topology or component changes] |
+| `docs/technology.md` | [frameworks, libraries and conventions] |
+| `docs/data-schema.md` | [new tables or columns] |
+| `docs/design.md` | [palette, typography and components] |
+| `docs/testing.md` | [new test files or patterns] |
+| `docs/observability.md` | [new log names or spans] |
 
 ## Rollback Strategy
 
 <!-- prettier-ignore -->
 | Axis | Action | Notes |
 | --- | --- | --- |
-| **DB** | [Corrective migration that undoes the change; safe if additive-only] | merged migrations are immutable — ship the corrective migration through CI's migration lane; dev full reset → `docs/deployments.md` § Dev rollback runbook |
-| **Code** | [Git revert SHA or feature flag to disable] | `git revert {COMMIT}` |
-| **Risk window** | [Gap between DB migration merge and code deploy] | [e.g., "~2 min Vercel build — migration must be additive"] |
+| **DB** | [A corrective migration that undoes the change. It is safe when the change only adds.] | Merged migrations are immutable, so ship the corrective migration through CI's migration lane. For a full dev reset, see `docs/deployments.md` § Dev rollback runbook. |
+| **Code** | [The git revert SHA, or the feature flag that disables the change] | `git revert {COMMIT}` |
+| **Risk window** | [The gap between the DB migration merge and the code deploy] | [e.g., "~2 min Vercel build, so the migration must be additive"] |
 
-_No DB changes: "Code-only — `git revert` sufficient."_
+[**If** there are no DB changes → write "Code-only — `git revert` sufficient."]
 
 ## Agent Execution Runbook
 
-[Chronological task checklist; initially set to `PENDING`.]
+[A chronological task checklist. Initially set to `PENDING`.]
 
 **Implementation Tasks (Examples):**
 
@@ -286,20 +287,20 @@ _No DB changes: "Code-only — `git revert` sufficient."_
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** [e.g., Create DB migration with the repo's migration script (`pnpm db:diff`)]
-  - **CREATE:** `supabase/migrations/{timestamp}_add_items_status.sql`: [e.g., `items.status` column]
-  - **DONE WHEN:** [e.g., the migration exists; `pnpm db:reset` replays it cleanly]
-  - **TEST FIRST:** n/a — [e.g., migration; fresh-DB replay tier]
+- [ ] **TASK 1:** [e.g., Create the database migration with the repo's migration script (`pnpm db:diff`)]
+  - **CREATE:** `packages/db/migrations/{timestamp}_add_items_status.sql`: [e.g., the `items.status` column]
+  - **DONE WHEN:** [e.g., the migration exists, and `pnpm db:reset` replays it cleanly]
+  - **TEST FIRST:** n/a — [e.g., a migration, covered by the fresh-DB replay tier]
 
 <!-- bkit:task 1 end -->
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** [e.g., Implement backend API action `setStatus`]
-  - **CREATE:** `setStatus` in `packages/api/src/items/setStatus.ts`: [e.g., Zod-validated status change]
+- [ ] **TASK 2:** [e.g., Implement the backend API action `setStatus`]
+  - **CREATE:** `setStatus` in `packages/api/src/items/setStatus.ts`: [e.g., a validated status change]
   - **READ:** `ItemStatus` in `packages/api/src/items/schema.ts`: [e.g., the allowed statuses]
   - **DEPENDS ON:** 1
-  - **DONE WHEN:** [e.g., unit test covers each status transition; integration test passes]
+  - **DONE WHEN:** [e.g., a unit test covers each status transition, and the integration test passes]
   - **TEST FIRST:**
     - `packages/api/src/items/setStatus.test.ts` `rejects an unknown status` fails on [e.g., an unknown status being accepted]
     - `packages/api/items.integration.test.ts` `persists the new status` fails on [e.g., no row being stored]
@@ -310,43 +311,47 @@ _No DB changes: "Code-only — `git revert` sufficient."_
 
 ### 🔒 Gate 2: Code Implementation Check
 
-- [ ] **No bolt-on / no gate-weakening:** every `[NEW]` traces to a `Reuse Inventory` `NEW` row; every `EXTEND` landed in its named artifact; no gate weakened.
-- [ ] **Every task has a test or a TEST EXCEPTION:** every planned test recorded a red before its code and is unchanged since; test-order gaps cleared only by a human-committed `TEST EXCEPTION` field.
-- [ ] **Gate 2 - Verified:** every box above checked.
+- [ ] **No bolt-on:** every `[NEW]` file traces to a `Reuse Inventory` `NEW` row.
+- [ ] **Extensions landed:** every `EXTEND` landed in the artifact its row names.
+- [ ] **No gate weakened:** no gate was weakened.
+- [ ] **Red before code:** every planned test recorded a red run before its code, and is unchanged since.
+- [ ] **Test-order gaps:** each test-order gap is cleared only by a human-committed `TEST EXCEPTION` field.
+- [ ] **Gate 2 — Verified:** every box above is checked.
 
 **Mandatory Tasks (Testing & Documentation):**
 
-- [ ] **Verify test coverage against Derived Test Matrix:** each row's test sits in one task's `DONE WHEN`.
-- [ ] **Sweep existing tests:** broken tests fixed; full suite green.
-- [ ] **Sweep new tests:** every task's `DONE WHEN` tests exist and pass.
-- [ ] **Verify observability:** errors logged and traced per `docs/observability.md`.
-- [ ] **Update documentation:** affected docs rewritten to match.
+- [ ] **Verify test coverage against Derived Test Matrix:** each row's test is in one task's `DONE WHEN`.
+- [ ] **Sweep existing tests:** broken tests are fixed, and the full suite passes.
+- [ ] **Sweep new tests:** every test a task's `DONE WHEN` names exists and passes.
+- [ ] **Verify observability:** errors are logged and traced as `docs/observability.md` describes.
+- [ ] **Update documentation:** the affected docs are rewritten to match.
 
 ### 🔒 Gate 3: Testing & Documentation Check
 
-- [ ] **Docs updated:** every `Documentation Updates` row done; `.agents/docs.md` accurate.
-- [ ] **Gate 3 - Verified:** every box above checked.
+- [ ] **Docs updated:** every `Documentation Updates` row is done.
+- [ ] **Docs index accurate:** `.agents/docs.md` is accurate.
+- [ ] **Gate 3 — Verified:** every box above is checked.
 
 ## Verification Plan
 
 ### Automated Tests
 
-- [ ] **Full Local Gate Suite:** deepest declared `bkit:gate:*` script and `bkit check` pass.
-- [ ] **Test Synchronization:** [Existing E2E tests (e.g. Playwright) to update alongside.]
-- [ ] **Build Configuration:** [Test-only files kept out of the production build (e.g. `tsconfig.json` `exclude`).]
-- [ ] **[Test Type] (`path/to/test.spec.ts`):** [Flows / unit / E2E additions and data hygiene needs.]
-- [ ] **Apply local migrations:** [New migrations applied locally (e.g. `pnpm db:reset`).]
-- [ ] **Run all tests:** [Local unit and integration suites (e.g. `pnpm test`, `pnpm test:integration`) pass.]
+- [ ] **Full Local Gate Suite:** the deepest declared `bkit:gate:*` script and `bkit check` pass.
+- [ ] **Test Synchronization:** [The existing E2E tests (e.g., Playwright) to update alongside.]
+- [ ] **Build Configuration:** [How test-only files are kept out of the production build (e.g., `tsconfig.json` `exclude`).]
+- [ ] **[Test Type] (`path/to/test.spec.ts`):** [The flow, unit or E2E additions, and their data hygiene needs.]
+- [ ] **Apply local migrations:** [The new migrations applied locally (e.g., `pnpm db:reset`).]
+- [ ] **Run all tests:** [The local unit and integration suites (e.g., `pnpm test`, `pnpm test:integration`) pass.]
 
 ### 🔒 Gate 4: Automated Verification Check
 
-- [ ] **Gate 4 - Verified:** every Automated Tests box checked, with proof (test output, CLI result, API response).
+- [ ] **Gate 4 — Verified:** every Automated Tests box is checked, with proof (test output, a CLI result or an API response).
 
 ### 👤 Manual Verification
 
 > [!CAUTION]
-> **Owner-run acceptance checks — advisory only.** An unticked box blocks nothing: not the merge, not plan approval. This is not a Gate 1 human-confirmation section.
+> **Owner-run acceptance checks, advisory only.** An unticked box blocks nothing: not the merge, and not plan approval. This is not a Gate 1 human-confirmation section.
 
-- [ ] **Step 1:** [How to verify the feature end-to-end via CLI / DB.]
+- [ ] **Step 1:** [How to verify the feature end to end through the CLI or the database.]
 
 <!-- bkit:end -->

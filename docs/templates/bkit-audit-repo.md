@@ -1,4 +1,4 @@
-<!-- Note: Reports live at `docs/audits/{YYYYMM}/{slug}.md`. `{YYYYMM}` = UTC month of this run. `{slug}` = template basename without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Never overwrite. The report is stamped with a `bkit:anchor` block recording the audited commit (`baseSha`) and branch (`baseRef`); never hand-author or edit it. `@bkit-audit-generate` fills this template. -->
+<!-- Note: @bkit-audit-generate fills this template. The report lives at `docs/audits/{YYYYMM}/{slug}.md`, where `{YYYYMM}` is the UTC month of the run and `{slug}` is this file's name without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md`, where `{TIMESTAMP}` is the output of `date -u +%Y%m%dT%H%M%SZ`. NEVER overwrite an earlier report. The report is stamped with a `bkit:anchor` block that records the audited commit (`baseSha`) and branch (`baseRef`). NEVER write or edit that block by hand. -->
 
 <!-- bkit:start -->
 
@@ -11,19 +11,20 @@
 >
 > **Rules:**
 >
-> - NEVER delete, prune, push, drop a stash, or rewrite history; name the command, do not run it.
-> - NEVER copy a secret or personal-data value into the report; name the file and line.
-> - Name the machine. Local leftovers absent on a fresh checkout stay `Not Checked`.
+> - NEVER delete, prune, push, drop a stash or rewrite history. Name the command in the finding, and leave it unrun.
+> - NEVER copy a secret or personal-data value into the report. Name the file and line instead.
+> - Name the machine.
+> - Local leftovers that a fresh checkout does not have stay `Not Checked`.
 
 ## Universal Instructions
 
 ### Context & Goals
 
-Every task leaves a worktree, branch, stash, or scratch directory; nothing's job is to remove them. Stale copies look like live work — search and agents read them; a leftover something keeps producing is a bug in that producer. Worse: cleanup by age deletes the only copy of unpushed work. Target: **every leftover judged before anything is called removable**, and a producer that keeps writing leftovers named as the bug.
+Every task leaves a worktree, branch, stash or scratch directory behind, and removing them is nothing's job. Stale copies look like live work, and search and agents read them. A leftover that something keeps producing is a bug in that producer. Worse, cleanup by age deletes the only copy of unpushed work. The goal is that every leftover is judged before anything is called removable, and that a producer which keeps writing leftovers is named as the bug.
 
-**Applies when:** a git checkout. None → one `N/A` row with evidence, never "clean".
+**Applies when:** the project is a git checkout. **If** it is not → write one `N/A` row with its evidence, and never report the surface as "clean".
 
-**Cadence:** monthly. Extra pass after a burst of parallel agent work (worktrees and branches pile up fastest).
+**Cadence:** Run once a month. Run an extra pass after a burst of parallel agent work, because that is when worktrees and branches pile up fastest.
 
 **Anchor Standards:**
 
@@ -38,98 +39,99 @@ Every task leaves a worktree, branch, stash, or scratch directory; nothing's job
 
 ### Scope
 
-- Worktrees, local, and remote branches, stashes, tags, stale pull requests.
-- Ignored and untracked leftovers, including scratch directories and files stranded at the root.
-- Secret and personal-data scan of leftovers and of history (names only).
-- Tracked layout: size, history size, toolchain agreement, accidental publish, attributes, placement, naming, contribution scaffolding.
-- Repository posture: scorecard subset, branch protection, security settings, disclosure route, accumulating installations.
+- List worktrees, local and remote branches, stashes, tags and stale pull requests.
+- List ignored and untracked leftovers, including scratch directories and files stranded at the root.
+- Scan leftovers and history for secrets and personal data, and record names only.
+- Check the tracked layout: size, history size, toolchain agreement, accidental publish, attributes, placement, naming and contribution scaffolding.
+- Check the repository posture: a scorecard subset, branch protection, security settings, the disclosure route and accumulating installations.
 
 ### Out of Scope
 
 <!-- prettier-ignore -->
 | Excluded item | Why | Where it belongs |
 | --- | --- | --- |
-| Code or config nothing reaches | Dead-code sweep | `bkit-audit-dead-code` |
-| Whether a doc is true | Documentation sweep | `bkit-audit-documentation` |
-| Dependency-update bot branches | Dependency sweep | `bkit-audit-dependencies` |
-| Workflow token permissions, pinned actions, dangerous workflow | Security sweep | `bkit-audit-security` |
-| People, 2FA, deploy keys, long-lived tokens | Security sweep | `bkit-audit-security` |
-| Actions secrets and variables; settings versus docs | Config sweep | `bkit-audit-config` |
-| Personal-data lifecycle | Privacy sweep | `bkit-audit-privacy` |
-| Deleting, moving, pruning, or pushing | Audit reports only | Plan from this report |
+| Code or config nothing reaches | The dead-code sweep owns it | `bkit-audit-dead-code` |
+| Whether a doc is true | The documentation sweep owns it | `bkit-audit-documentation` |
+| Dependency-update bot branches | The dependency sweep owns them | `bkit-audit-dependencies` |
+| Workflow token permissions, pinned actions, dangerous workflow | The security sweep owns them | `bkit-audit-security` |
+| People, 2FA, deploy keys, long-lived tokens | The security sweep owns them | `bkit-audit-security` |
+| Actions secrets and variables; settings versus docs | The config sweep owns them | `bkit-audit-config` |
+| Personal-data lifecycle | The privacy sweep owns it | `bkit-audit-privacy` |
+| Deleting, moving, pruning, or pushing | The audit only reports | A plan made from this report |
 
 ### Verdicts
 
-- **REMOVE:** provably safe. Merged by ancestry, patch-equivalent on the integration branch (`git cherry` shows only `-`), its pull request merged, or a regenerable artefact (build output, cache, coverage, test results).
-- **RESCUE:** holds work that exists nowhere else (unpushed commits, uncommitted worktree edits, a stash whose changes are on no branch). Name what it holds and who would know. Pushing it, or dropping it on purpose, is the next step. At least `HIGH`.
-- **MOVE:** kept, but in the wrong place or under a misleading name.
-- **KEEP:** in use. Say what uses it.
-- **ASK:** cannot tell from the evidence. Name who would know.
-- **OTHER:** fits none. Say why. Same `OTHER` on 2 runs → propose new verdict in `Process Improvements`.
+- **REMOVE:** it is provably safe to remove: merged by ancestry, patch-equivalent on the integration branch (`git cherry` shows only `-`), its pull request merged, or a regenerable artefact (build output, cache, coverage, test results).
+- **RESCUE:** it holds work that exists nowhere else (unpushed commits, uncommitted worktree edits, a stash whose changes are on no branch). Name what it holds and who would know. The next step is to push it, or to drop it on purpose. It is at least `HIGH`.
+- **MOVE:** it is kept, but it sits in the wrong place or has a misleading name.
+- **KEEP:** it is in use. Say what uses it.
+- **ASK:** the evidence cannot tell. Name who would know.
+- **OTHER:** it fits no other verdict. Say why. **If** the same `OTHER` shows up on 2 runs → propose a new verdict in `Process Improvements`.
 
-**Two traps.** Squash merge stays ahead of the integration branch by ancestry: check the pull request and `git cherry`, never `git branch --merged` alone. A worktree whose branch is fully merged can still hold uncommitted edits: `git status --porcelain` before REMOVE.
+**Two traps:** A squash merge stays ahead of the integration branch by ancestry, so check the pull request and `git cherry`, never `git branch --merged` alone. A worktree whose branch is fully merged can still hold uncommitted edits, so run `git status --porcelain` before REMOVE.
 
 ### Pre-Flight / Dependencies
 
 #### Core
 
-- [ ] **Permissions:** blocked calls recorded
-- [ ] **Git:** Steps 2-7, 9 — local checkout, worktrees, branches, stashes. Fallback: none; no checkout → `N/A` and STOP.
-- [ ] **Host API:** Steps 4, 8 — read-only, e.g. `gh api`. Fallback: local git only; remote branches, pull requests, and settings `Not Checked`.
-- [ ] **Web:** Step 10 — fetch anchor standards. Fallback: versions recorded as unread.
+- [ ] **Permissions:** every blocked call is recorded.
+- [ ] **Git:** Steps 2-7, 9 — the local checkout, worktrees, branches and stashes. Fallback: there is none. **If** there is no checkout → write `N/A`, then **STOP**.
+- [ ] **Host API:** Steps 4, 8 — read-only host reads (e.g., `gh api`). Fallback: use local git only, and mark remote branches, pull requests and settings `Not Checked`.
+- [ ] **Web:** Step 10 — fetch the anchor standards. Fallback: record the versions as unread.
 
 #### Conditional
 
-- [ ] **Secret Scanners:** Leftovers or history → Steps 6-7 — e.g. gitleaks, TruffleHog. Fallback: pattern search; verified-credential check `Not Checked`. Reports outside the repo.
-- [ ] **Repo Sizer:** History size → Step 7 — e.g. git-sizer. Fallback: `git rev-list` blob sizes.
-- [ ] **Dependency Version Linter:** Workspaces → Step 7 — e.g. sherif, syncpack. Fallback: diff manifests by reading.
-- [ ] **Scorecard:** Host exposes one → Step 8 — e.g. OpenSSF Scorecard, read-only token. Fallback: settings API only; scores `Not Checked`.
+- [ ] **Secret Scanners:** **If** there are leftovers or history → Steps 6-7 — secret scans (e.g., gitleaks, TruffleHog). Fallback: pattern search, and mark the verified-credential check `Not Checked`. Write the reports outside the repo.
+- [ ] **Repo Sizer:** **If** history size is measured → Step 7 — history size (e.g., git-sizer). Fallback: read blob sizes with `git rev-list`.
+- [ ] **Dependency Version Linter:** **If** the repo has workspaces → Step 7 — version drift across workspaces (e.g., sherif, syncpack). Fallback: diff the manifests by reading them.
+- [ ] **Scorecard:** **If** the host exposes one → Step 8 — check scores (e.g., OpenSSF Scorecard, with a read-only token). Fallback: use the settings API only, and mark the scores `Not Checked`.
 
 ### 🔒 Gate 1: Prerequisites Check
 
-- [ ] **Gaps named:** every missing item names its fallback and `Not Checked` entry.
-- [ ] **Gate 1 — Verified:** All Core items checked. All applicable Conditional items checked.
+- [ ] **Gaps named:** every missing item names its fallback and its `Not Checked` entry.
+- [ ] **Gate 1 — Verified:** every Core item and every applicable Conditional item is checked.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** **Done when:** closure rate in `Previous Run`, or run marked baseline.
-- [ ] **Step 2 — Checkout:** Name machine and checkout. Worktrees, stashes, scratch directories are local — fresh cloud checkout sees none; say so, not clean. Remote branches and pull requests are shared; every run checks those. **Done when:** machine, checkout, and which surfaces are local-only in `Checked`.
-- [ ] **Step 3 — Worktrees:** `git worktree list --porcelain`. Per worktree: branch, ahead/behind integration branch, `git cherry`, pull-request state, uncommitted changes (`git status --porcelain`), last commit date, size (`du -sh`). Locked or files modified in the last day → KEEP or ASK, never REMOVE (agent may still be running). Also `git worktree prune --dry-run` for entries whose directory is gone. Never prune for real. **Done when:** `Worktrees` row per entry with verdict; totals in `Totals`.
-- [ ] **Step 4 — Branches:** Local: merged by ancestry, merged by squash (pull request merged, or `git cherry` all `-`), upstream gone, agent-prefix branches with no worktree. Remote: branches other than integration, production, dependency-update bot's, with pull-request state. Record delete-on-merge; when off, merged pull request leaves its branch. Unmerged with no pull request: every commit is RESCUE until shown otherwise. Open pull requests with no activity for 30 days, and old drafts. Tags no release or deploy uses. **Done when:** `Branches` row per item with verdict; counts in `Totals`.
-- [ ] **Step 5 — Stashes:** `git stash list` with dates, then `git stash show --stat` for each. Check whether changes already landed on integration branch. Stashes a commit hook creates when it fails: usually commit was retried — verify before REMOVE. **Done when:** `Stashes` row per stash with verdict.
-- [ ] **Step 6 — Leftovers:** Untracked (`git status --porcelain`) and ignored (`git ls-files --others --ignored --exclude-standard --directory`), each sized. Sort: regenerable (dependencies, task cache, coverage, test results, native build folders, tool caches) — REMOVE is safe, report the size; hand-made (notes, plans, backups, logs, scripts in the scratch directory) — group by age and type; open issue or plan references → KEEP; produced and not cleaned up — leftover REMOVE, producer is finding; stranded at root — find writer; tool defaulting to root → point elsewhere. Ignore file: rules matching nothing; leftovers untracked because no rule covers them. Scan secrets and personal data before any MOVE or REMOVE on scratch, root, or plan logs; scanner reports outside repo. Personal-data hits are candidates: test fixtures carry fake addresses. A real hit in a tracked file is not fixed by removing the file — it stays in history. Name the file and line, never the value. Hooks: hooks path resolves at the hook directory, each hook executable, and the install script installs them. A checkout where hooks silently do not run looks clean here while skipping every pre-commit control. **Done when:** `Leftovers` grouped with verdicts; scan result named; sizes in `Totals`.
-- [ ] **Step 7 — Layout:** Read where tracked files belong; find misfits. Size: largest blobs at `HEAD`. Committed generated output/logs → MOVE or REMOVE candidates. Record pack size as series. History size: deleted file still grows clones — repository sizer or blob sizes across all refs. Images/logs → recommend large-file storage or ignore; history rewrite owner's call (ASK). Secrets in history: scan all refs; list every sensitive file ever added (example env files expected). Verified live credential → `CRITICAL`: rotation first (rewrite does not reach existing clones). Name file and commit, never value. Toolchain agreement: runtime pin, engine field, package-manager field, CI setup, host build image, native build config; workspace dependency-version linter for cross-workspace drift or catalog bypass. Docs-versus-files → documentation audit; this step files versus each other. Accidental publish: every workspace package not meant for a registry is marked unpublishable (e.g. npm `private: true`, Cargo `publish = false`), and the root states the licence position. Attributes: end-of-line, generated-file linguist marks so review diffs collapse them, binary marks on images, and an editor config that agrees with the formatter. Placement: root files belonging to app/package, finished one-off scripts, drafts beside final doc, unlinked archive folders, near-empty packages. Naming: folders/files breaking neighbour conventions. Contribution scaffolding: owners file, pull-request and issue templates, contributing note — present and true; whether team needs them → owner (ASK). Template describing unfollowed process → MOVE or REMOVE. Owners file: propose paths that weaken a gate when edited → required human review; once exists, host owners-errors API must return none. Unimported file → dead-code audit; misplaced-but-wrong doc → documentation audit. **Done when:** `Layout` rows; pack size and largest history blobs in `Totals`.
-- [ ] **Step 8 — Posture:** Config audit asks settings vs docs; this step asks vs anchor standards. Read that audit's latest report first; do not duplicate findings. Shared settings: every run checks (local or cloud). Scorecard: each check's score as series. Keep binary artifacts, branch protection, code review, dependency-update tool, security policy here; token permissions, pinned dependencies, dangerous workflow → `bkit-audit-security`. Branch protection (integration, production): pull request required, required check required, force-push and deletion blocked, squash-only or linear history, bypass list — compare with production-merge-requires-PR rule. Security settings: secret scanning and push protection on; who may bypass push protection. Private repo: push protection may need paid secret-protection plan — say so if plan excludes it. Push protection blocks at server (hook bypass does not reach). Also dependency alerts, private vulnerability reporting, default automation token read-only, automation creating/approving pull requests off. Disclosure: security policy or private vulnerability reporting, and `/.well-known/security.txt` on production web origin with RFC contact/expiry fields and expiry ahead. People, 2FA, deploy keys, long-lived tokens → security audit; automation secrets/variables → config audit. Read their latest reports; confirm 2FA enforcement recorded. List accumulators like branches: installed apps and permissions, webhooks, environments. App over-scoped or webhook to unused service → REMOVE or ASK. **Done when:** `Posture` holds each setting met / finding / not applicable; scores in `Totals`.
-- [ ] **Step 9 — Verify:** Git state changes hourly. Record when each check ran; re-check every RESCUE and REMOVE at end. No finding without re-checkable evidence: command and output, or `file:line`. Destinations (name; do not act; the audit agent writes `docs/failures.jsonl` rows): REMOVE → exact command next step would run, batched for one review; RESCUE → what it holds, who would know, decision (push and open pull request, or drop on purpose); MOVE → move and every reference to update; ASK → who would know and question; OTHER → why no verdict fits; leftover something keeps producing → `docs/failures.jsonl` row against producer; missing/stale ignore rule → line to add or remove; code or config nothing reaches → `bkit-audit-dead-code`; a doc that is wrong, not misplaced → `bkit-audit-documentation`; dependency-bot branch → `bkit-audit-dependencies`; secret in history, log, or leftover → `bkit-audit-security`, rotation first, file and commit only; personal data in log or leftover → `bkit-audit-privacy`; repository setting below standard → setting to change for owner, doc drift → `bkit-audit-config`; workflow-level scorecard failure → `bkit-audit-security`; toolchain versions disagree → file to change; host setting → `bkit-audit-config`; dependency versions → `bkit-audit-dependencies`. **Done when:** every RESCUE and REMOVE re-checked, with time, verdict, and destination.
-- [ ] **Step 10 — Standards:** Confirm current version per anchor standard; read changes since previous report's version. `Standards Coverage`: one row per Scorecard check and per baseline control in sets this audit touches (e.g. OSPS-AC, OSPS-BR-07, OSPS-GV, OSPS-LE, OSPS-VM) → checked (name step) / not applicable (why) / finding. Unapplied recommended practice → adopt (propose step) / reject (why) / not applicable. **Done when:** no empty row.
-- [ ] **Step 11 — Anything Else:** (a) Everything changed since previous report's commit touching the repository itself (new top-level files and folders, workspaces, ignore, and attribute files, hooks, branch, and ruleset settings, host apps, webhooks, environments, anything new that writes to the scratch directory or the root) → one-line verdict each. (b) Bounded ~30 min pass: what a senior platform engineer flags that no step asks; read what happened since previous run (incidents, `bkit-audit-logs` reports, new `docs/failures.jsonl` rows, vendor status incidents) — what would no step catch? **Done when:** `Beyond the Steps` holds both passes, or `none`. Class seen on 2 runs → propose step in `Process Improvements`.
+- [ ] **Step 1 — Previous Run:** **Done when:** `Previous Run` holds the closure rate, or the run is marked baseline.
+- [ ] **Step 2 — Checkout:** Name the machine and the checkout. Worktrees, stashes and scratch directories are local, so a fresh cloud checkout sees none of them. Say so, rather than calling them clean. Remote branches and pull requests are shared, and every run checks them. **Done when:** `Checked` holds the machine, the checkout, and which surfaces are local-only.
+- [ ] **Step 3 — Worktrees:** Run `git worktree list --porcelain`. For each worktree, record its branch, ahead/behind the integration branch, `git cherry`, pull-request state, uncommitted changes (`git status --porcelain`), last commit date and size (`du -sh`). **If** a worktree is locked, **or** has files modified in the last day → give it KEEP or ASK, never REMOVE, because an agent may still be running. Also run `git worktree prune --dry-run` for entries whose directory is gone. Never prune for real. **Done when:** `Worktrees` has one row per entry with its verdict, and the totals are in `Totals`.
+- [ ] **Step 4 — Branches:** For local branches, list those merged by ancestry, those merged by squash (pull request merged, or `git cherry` all `-`), those whose upstream is gone, and agent-prefix branches with no worktree. For remote branches, list every branch other than integration, production and the dependency-update bot's, with its pull-request state. Record whether delete-on-merge is on. When it is off, a merged pull request leaves its branch behind. For an unmerged branch with no pull request, every commit is RESCUE until shown otherwise. List open pull requests with no activity for 30 days, and old drafts. List tags that no release or deploy uses. **Done when:** `Branches` has one row per item with its verdict, and the counts are in `Totals`.
+- [ ] **Step 5 — Stashes:** Run `git stash list` with dates, then `git stash show --stat` for each stash. Check whether the changes already landed on the integration branch. For a stash that a commit hook created when it failed, the commit was usually retried, so verify before REMOVE. **Done when:** `Stashes` has one row per stash with its verdict.
+- [ ] **Step 6 — Leftovers:** List untracked files (`git status --porcelain`) and ignored files (`git ls-files --others --ignored --exclude-standard --directory`), each with its size. **If** an open issue or plan references a leftover → KEEP, whatever its group. Sort the rest into groups. Regenerable files (dependencies, task cache, coverage, test results, native build folders, tool caches) are safe to REMOVE, so report their size. Group hand-made files (notes, plans, backups, logs, scripts in the scratch directory) by age and type. For a file something produced and did not clean up, the leftover is REMOVE, and the producer is the finding. For a file stranded at the root, find the writer. **If** a tool defaults to the root → point it elsewhere. In the ignore file, find rules that match nothing, and leftovers that are untracked because no rule covers them. Scan for secrets and personal data before any MOVE or REMOVE on the scratch directory, the root or plan logs, and write the scanner reports outside the repo. Personal-data hits are only candidates, because test fixtures carry fake addresses. A real hit in a tracked file is not fixed by removing the file, because it stays in history. Name the file and line, never the value. For hooks, check that the hooks path resolves to the hook directory, that each hook is executable, and that the install script installs them. A checkout where hooks silently do not run looks clean here while it skips every pre-commit control. **Done when:** `Leftovers` is grouped with verdicts, the scan result is named, and the sizes are in `Totals`.
+- [ ] **Step 7 — Layout:** Read where tracked files belong, and find the misfits. Size: find the largest blobs at `HEAD`. Committed generated output and logs are MOVE or REMOVE candidates. Record the pack size as a series. History size: a deleted file still grows clones, so measure it with the repository sizer, or with blob sizes across all refs. **If** images or logs are the cause → recommend large-file storage or an ignore rule. A history rewrite is the owner's call (ASK). Secrets in history: scan all refs, and list every sensitive file ever added (example env files are expected). A verified live credential is `CRITICAL`, and rotation comes first, because a rewrite does not reach existing clones. Name the file and commit, never the value. Toolchain agreement: compare the runtime pin, engine field, package-manager field, CI setup, host build image and native build config. Run the workspace dependency-version linter for drift across workspaces or a catalog bypass. Docs against files goes to the documentation audit, and this step compares files with each other. Accidental publish: check that every workspace package not meant for a registry is marked unpublishable (e.g., npm `private: true`, Cargo `publish = false`), and that the root states the licence position. Attributes: check end-of-line settings, linguist marks on generated files so review diffs collapse them, binary marks on images, and an editor config that agrees with the formatter. Placement: find root files that belong to an app or package, finished one-off scripts, drafts beside the final doc, unlinked archive folders and near-empty packages. Naming: find folders and files that break their neighbours' conventions. Contribution scaffolding: check that the owners file, the pull-request and issue templates and the contributing note are present and true. Whether the team needs them is the owner's call (ASK). A template that describes a process nobody follows is MOVE or REMOVE. Owners file: propose that paths which weaken a gate when edited require human review. Once the file exists, the host's owners-errors API must return none. An unimported file goes to the dead-code audit, and a doc that is wrong rather than misplaced goes to the documentation audit. **Done when:** `Layout` has its rows, and the pack size and largest history blobs are in `Totals`.
+- [ ] **Step 8 — Posture:** The config audit compares settings with the docs, and this step compares them with the anchor standards. Read that audit's latest report first, and do not duplicate its findings. Every run checks shared settings, local or cloud. Scorecard: record each check's score as a series. Keep binary artifacts, branch protection, code review, dependency-update tool and security policy here. Token permissions, pinned dependencies and dangerous workflow go to `bkit-audit-security`. Branch protection (integration, production): check that a pull request is required, that a required check is required, that force-push and deletion are blocked, and that merges are squash-only or history is linear, and read the bypass list. Compare it with the production-merge-requires-PR rule. Security settings: check that secret scanning and push protection are on, and who may bypass push protection. On a private repo, push protection may need a paid secret-protection plan. **If** the plan excludes it → say so. Push protection blocks at the server, where a hook bypass does not reach. Also check dependency alerts, private vulnerability reporting, a read-only default automation token, and that automation creating or approving pull requests is off. Disclosure: check for a security policy or private vulnerability reporting, and for `/.well-known/security.txt` on the production web origin, with the RFC contact and expiry fields and the expiry still ahead. People, 2FA, deploy keys and long-lived tokens go to the security audit, and automation secrets and variables go to the config audit. Read their latest reports, and confirm that 2FA enforcement is recorded. List accumulators the way branches are listed: installed apps and their permissions, webhooks and environments. An over-scoped app, or a webhook to an unused service, is REMOVE or ASK. **Done when:** `Posture` marks each setting met, finding or not applicable, and the scores are in `Totals`.
+- [ ] **Step 9 — Verify:** Git state changes hourly. Record when each check ran, and re-check every RESCUE and REMOVE at the end. Give no finding without evidence someone can check again: the command and its output, or `file:line`. Name each destination, and do not act on it (the audit agent writes the `docs/failures.jsonl` rows). REMOVE → the exact command the next step would run, batched for one review. RESCUE → what it holds, who would know, and the decision (push and open a pull request, or drop it on purpose). MOVE → the move, and every reference to update. ASK → who would know, and the question. OTHER → why no verdict fits. A leftover something keeps producing → a `docs/failures.jsonl` row against the producer. A missing or stale ignore rule → the line to add or remove. Code or config nothing reaches → `bkit-audit-dead-code`. A doc that is wrong, not misplaced → `bkit-audit-documentation`. A dependency-bot branch → `bkit-audit-dependencies`. A secret in history, a log or a leftover → `bkit-audit-security`, with rotation first and the file and commit only. Personal data in a log or leftover → `bkit-audit-privacy`. A repository setting below the standard → the setting to change, for the owner, and doc drift → `bkit-audit-config`. A workflow-level scorecard failure → `bkit-audit-security`. Toolchain versions that disagree → the file to change, a host setting → `bkit-audit-config`, and dependency versions → `bkit-audit-dependencies`. **Done when:** every RESCUE and REMOVE is re-checked, with its time, verdict and destination.
+- [ ] **Step 10 — Standards:** Confirm the current version of each anchor standard, and read what changed since the previous report's version. Give `Standards Coverage` one row per Scorecard check, and one per baseline control in the sets this audit touches (e.g., OSPS-AC, OSPS-BR-07, OSPS-GV, OSPS-LE, OSPS-VM), each marked checked (naming the step), not applicable (saying why) or finding. Mark each recommended practice the project does not apply as adopt (with a proposed step), reject (saying why) or not applicable. **Done when:** no row is empty.
+- [ ] **Step 11 — Anything Else:** (a) Give a one-line verdict on each change since the previous report's commit that touches the repository itself: new top-level files and folders, workspaces, ignore and attribute files, hooks, branch and ruleset settings, host apps, webhooks, environments, and anything new that writes to the scratch directory or the root. (b) In a bounded pass of about 30 minutes, note what a senior platform engineer would flag that no step asks about. Read what happened since the previous run (incidents, `bkit-audit-logs` reports, new `docs/failures.jsonl` rows, vendor status incidents), and ask what no step would catch. **Done when:** `Beyond the Steps` holds both passes, or says `none`. **If** one class of issue is seen on 2 runs → propose a step for it in `Process Improvements`.
 
 ### 🔒 Gate 2: Probes Check
 
-- [ ] **Steps complete:** every step `[x]`, or explicit skip with evidence the surface is absent.
-- [ ] **Evidence:** every finding cites re-checkable evidence and the tool behind it.
-- [ ] **No values:** no secret or personal-data value anywhere in the report.
-- [ ] **Nothing removed:** no worktree, branch, stash, file, or remote ref deleted or pushed.
-- [ ] **Gate 2 — Verified:** Every checkbox above independently verified and checked off.
+- [ ] **Steps complete:** every step is `[x]`, or skipped with evidence that its surface is absent.
+- [ ] **Evidence:** every finding cites evidence someone can check again, and the tool that produced it.
+- [ ] **No values:** no secret or personal-data value appears anywhere in the report.
+- [ ] **Nothing removed:** no worktree, branch, stash, file or remote ref was deleted.
+- [ ] **Nothing pushed:** nothing was pushed.
+- [ ] **Gate 2 — Verified:** every item above holds.
 
 ## Findings
 
 <!-- prettier-ignore -->
 | Severity | Use |
 | --- | --- |
-| `CRITICAL` | Verified live credential in history, a log, or a leftover. Rotation first; a history rewrite does not reach existing clones |
-| `HIGH` | RESCUE — work one cleanup command would lose; unverified secret material in history |
-| `MEDIUM` | Leftover a test or script keeps producing; toolchain versions disagree; repository setting below the standard |
-| `LOW` | Regenerable cache, reported by size; naming drift; contribution scaffolding the owner must decide |
+| `CRITICAL` | A verified live credential in history, a log or a leftover. Rotation comes first, because a history rewrite does not reach existing clones |
+| `HIGH` | RESCUE: work that one cleanup command would lose. Unverified secret material in history |
+| `MEDIUM` | A leftover that a test or script keeps producing. Toolchain versions that disagree. A repository setting below the standard |
+| `LOW` | A regenerable cache, reported by size. Naming drift. Contribution scaffolding the owner must decide on |
 
-Within a severity: live credentials, then RESCUE, before REMOVE.
+Within a severity, list live credentials first, then RESCUE, before REMOVE.
 
 <!-- prettier-ignore -->
 | ID | Severity | Verdict | Location | Evidence | Expected |
 | --- | --- | --- | --- | --- | --- |
 | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 
-Empty and clean → one row `None`.
+**If** the run finds nothing → write one row: `None`.
 
 ## Report
 
@@ -198,13 +200,13 @@ PENDING
 
 ### 🔒 Gate 3: Report Check
 
-- [ ] **No placeholders:** no `PENDING` left
-- [ ] **Summary:** names count per severity, the machine, and the checkout.
-- [ ] **Series:** `Totals` beside previous report's numbers, or marked baseline.
-- [ ] **Writes:** only this report, template `Project Instructions`, and ledger rows changed; throwaway worktrees / remote targets removed.
-- [ ] **Process Improvements:** `Universal` and `Project` filled
-- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID in exactly one row; every row has a `Next Step`.
-- [ ] **Gate 3 — Verified:** Every checkbox above independently verified and checked off.
+- [ ] **No placeholders:** no `PENDING` is left.
+- [ ] **Summary:** `Summary` gives the count per severity, the machine and the checkout.
+- [ ] **Series:** the report shows `Totals` beside the previous report's numbers, or marks the run as baseline.
+- [ ] **Writes:** only this report, the template's `Project Instructions` and ledger rows have changed, and every throwaway worktree or remote target is removed.
+- [ ] **Process Improvements:** `Universal` and `Project` are both filled.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one row, and every row has a `Next Step`.
+- [ ] **Gate 3 — Verified:** every item above holds.
 
 <!-- bkit:end -->
 
