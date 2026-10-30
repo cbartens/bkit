@@ -6350,24 +6350,18 @@ record the date read
 **Done when:** {{what}} in `Checked`, or `N/A` and STOP.
 ```
 
-### doc-header-density
+### doc-header-authoring
 
 - doc: where-used
-- tags: format
-- carriers: doc `architecture`, `context`, `data-schema`, `deployments`, `design`, `docs`, `noise`, `observability`, `prompts`, `security`, `setup`, `skills`, `technology`, `testing`
+- tags: authoring, format
+- carriers: doc `architecture`, `context`, `data-schema`, `deployments`, `design`, `docs`, `noise`, `observability`, `prompts`, `security`, `setup`, `skills`, `technology`, `testing`; rules
 
 ```text
-Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
+Write this file to `.bkit/authoring.md` § All Agent-Read Files and § Docs.
 ```
 
-### doc-header-current-state
-
-- doc: where-used
-- tags: authoring
-- carriers: doc `architecture`, `context`, `data-schema`, `deployments`, `design`, `docs`, `observability`, `prompts`, `security`, `setup`, `skills`, `technology`, `testing`
-
-```text
-Describe current state / rules, not reasons / history; state what to do, not why.
+```retired
+Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
 ```
 
 ### doc-header-index-first

@@ -7,8 +7,7 @@
 >
 > **Rules:**
 >
-> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
-> - Describe current state / rules, not reasons / history; state what to do, not why.
+> - Write this file to `.bkit/authoring.md` § All Agent-Read Files and § Docs.
 > - Ships to consumers: describe the current setup only. NEVER an internal identifier (tracker issue number, ledger key, review-finding id) and NEVER project history — decisions belong in `docs/decisions.jsonl`, incidents in `docs/knowledge.jsonl`.
 > - One row per line. never edit or reorder a prior line — row state changes via same-`key` append (§ Updating a Row); sole exceptions: the install / upgrade schema migration (§ Versioning), `bkit ledgers compact` (§ Compaction).
 > - Before append: read file. Skip only if identity-matching row exists and nothing changed — changed field = update, not duplicate.

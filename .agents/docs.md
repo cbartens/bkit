@@ -9,8 +9,7 @@
 >
 > **Rules:**
 >
-> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
-> - Describe current state / rules, not reasons / history; state what to do, not why. only exceptions: Docs where purpose is the record.
+> - Write this file to `.bkit/authoring.md` § All Agent-Read Files and § Docs.
 > - Read only docs relevant to current workflow / step / task.
 > - Follow workflow based reading suggestions first, then read more docs as step / task warrants.
 > - Phase columns cover workflows only; audits and utilities pick docs as step / task warrants.

@@ -9,9 +9,8 @@
 >
 > **Rules:**
 >
-> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Write this file to `.bkit/authoring.md` § All Agent-Read Files and § Docs.
 > - Notation: one job per mark — `.bkit/authoring.md` § `Notation`.
-> - Describe current state / rules, not reasons / history; state what to do, not why.
 > - Check `.agents/docs.md` index first and confirm topic belongs in this doc, not another.
 > - No ad-hoc hex — theme tokens only; all colours must support Dark Mode.
 > - Touch targets >=44x44px; WCAG 2.1 AA contrast.

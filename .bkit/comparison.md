@@ -7,8 +7,7 @@
 >
 > **Rules:**
 >
-> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
-> - Describe current state / rules, not reasons / history; state what to do, not why.
+> - Write this file to `.bkit/authoring.md` § All Agent-Read Files and § Docs.
 > - Keep prose factual; house / write-good linters apply to `*.md`; no hype adjectives.
 > - Framework table cells: each project's own repo / docs only, never roundups or AI summaries; no star counts; refresh the as-of month with the table.
 > - Headings linked from outside carry a fixed `<a id>` above them; keep the id when rewording the heading.

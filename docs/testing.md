@@ -9,9 +9,8 @@
 >
 > **Rules:**
 >
-> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Write this file to `.bkit/authoring.md` § All Agent-Read Files and § Docs.
 > - Notation: one job per mark — `.bkit/authoring.md` § `Notation`.
-> - Describe current state / rules, not reasons / history; state what to do, not why.
 > - Check `.agents/docs.md` index first and confirm topic belongs in this doc, not another.
 > - Tiers strictly separated — Static · Unit · Integration · E2E · @live · Smoke.
 > - Pre-push: `pnpm bkit:gate:static-unit-integration` when declared, else `pnpm bkit:gate:static-unit`, then `bkit check`; the `.husky/pre-push` template runs `bkit:gate:static` (no tests) on revert branches / commits. Gate scripts are consumer-owned; bkit's default = typecheck + lint + format:check + prose + slop:delta + `pnpm test` (unit tier only). Integration runs at pre-push once its gate is declared (local services such as a Docker database are fine). E2E, @live and tests against a deployed service excluded (CI — see below). never `--no-verify`.

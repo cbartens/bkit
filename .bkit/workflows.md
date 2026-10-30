@@ -7,8 +7,7 @@
 >
 > **Rules:**
 >
-> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
-> - Describe current state / rules, not reasons / history; state what to do, not why.
+> - Write this file to `.bkit/authoring.md` § All Agent-Read Files and § Docs.
 > - Check `.agents/docs.md` index first and confirm topic belongs in this doc, not another.
 > - Ships to consumers: describe the current setup only. NEVER an internal identifier (tracker issue number, ledger key, review-finding id) and NEVER project history — decisions belong in `docs/decisions.jsonl`, incidents in `docs/knowledge.jsonl`.
 > - Subagents are leaves, never invoke other subagents.
