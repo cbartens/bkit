@@ -138,7 +138,7 @@ describe("installed Antigravity hook commands", () => {
         expect(first.json).toEqual({ decision: "allow" });
         const repeat = runCommand(commands.readguard, cwd(), viewCall(file), conversation);
         expect(repeat.json?.decision).toBe("deny");
-        expect(repeat.json?.reason).toContain("repeat the same call to proceed");
+        expect(repeat.json?.reason).toContain("Repeat the same call to proceed.");
       });
     });
   }

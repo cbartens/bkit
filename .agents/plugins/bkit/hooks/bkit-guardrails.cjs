@@ -233,10 +233,10 @@ function shellEditTargets(cmd) {
 /** Shared advisory string, identical on every host. */
 function shellEditAdvisory(hits) {
   return (
-    `bkit guardrails: this command edits files through the shell (${hits.join("; ")}). ` +
-    "Pre-edit gates only see edit/write tools, so a shell rewrite bypasses every one of them. " +
-    "Use the edit/write tool instead unless this is one of the sanctioned exceptions in .agents/rules.md (generating files from a script, a bulk mechanical rewrite, or appending a log line to your own step output file). " +
-    "Not blocked — proceed if it is."
+    `bkit guardrails: this command edits files through the shell (${hits.join("; ")}). The command is allowed. ` +
+    "Pre-edit gates see only the edit and write tools, so a shell edit gets past every one of them.\n" +
+    "Use the edit or write tool instead.\n" +
+    "If this is one of the exceptions in .agents/rules.md (generating files from a script, a bulk mechanical rewrite, or appending a log line to your own step output file with `>>`), proceed."
   );
 }
 
@@ -442,7 +442,7 @@ function gitDenyRule(g) {
   if (g.long.has("--force") || g.short.has("f") || g.args.some((a) => a.startsWith("+"))) {
     return {
       what: "git force-push",
-      fix: "Do not force-push (--force, -f or a +refspec). Use a normal push, or --force-with-lease only when the user explicitly asks for it on a personal branch.",
+      fix: "NEVER force-push (--force, -f or a +refspec). Use a normal push, or --force-with-lease only when the user explicitly asks for it on a personal branch.",
     };
   }
   return null;
@@ -497,13 +497,13 @@ function denyRule(c) {
   ) {
     return {
       what: "recursive delete of a filesystem root",
-      fix: "Do not run rm -rf against /, ~, or $HOME. Narrow the path to the target directory.",
+      fix: "NEVER run rm -rf against /, ~, or $HOME. Narrow the path to the target directory.",
     };
   }
   if (/\bchmod\s+-R\s+777\s+\//.test(c)) {
     return {
       what: "chmod -R 777 on the filesystem root",
-      fix: "Do not world-writable-chmod the filesystem root.",
+      fix: "NEVER make the filesystem root world-writable.",
     };
   }
   return null;
@@ -727,7 +727,7 @@ function adviseOnce(hook, sessionId, signature, advisory) {
   }
   return {
     decision: "deny",
-    reason: `${advisory}\nBlocked once so you see this; repeat the same call to proceed.`,
+    reason: `${advisory}\nThis call was held once so you see this advisory. Repeat the same call to proceed.`,
   };
 }
 
@@ -750,12 +750,12 @@ function decideRead(filePath) {
   if (v.tier === "deny") {
     return {
       decision: "deny",
-      reason: `Blocked by bkit Antigravity guardrails: reading private-key material is denied. Do not read ${v.path}. Ask the user to supply needed material out-of-band.`,
+      reason: `Blocked by bkit Antigravity guardrails: reading private-key material is denied.\nNEVER read ${v.path}.\nAsk the user to supply what you need without putting the key in this conversation.`,
     };
   }
   return {
     decision: "ask",
-    reason: `bkit Antigravity guardrails: reading ${v.path} may expose secrets. Prefer direnv / documented non-secret examples.`,
+    reason: `bkit Antigravity guardrails: reading ${v.path} may expose secrets. Prefer direnv or documented non-secret examples.`,
   };
 }
 
@@ -788,18 +788,18 @@ function bkitGuardrails(payload) {
   if (tier.tier === "ask") {
     return {
       decision: "ask",
-      reason: `bkit Antigravity guardrails: this is a destructive or privileged command (${tier.what}). It is on the PROHIBITED list in every bkit workflow. Do not run it unless the user asked for this exact command. Note that git clean and git checkout -- . destroy untracked files and uncommitted work, which no reflog can recover. Command: ${cmd}`,
+      reason: `bkit Antigravity guardrails: this is a destructive or privileged command (${tier.what}). It is on the PROHIBITED list in every bkit workflow. If the user did not ask for this exact command, NEVER run it. The commands git clean and git checkout -- . destroy untracked files and uncommitted work, which no reflog can recover. Command: ${cmd}`,
     };
   }
   if (tier.tier === "secret") {
     return {
       decision: "ask",
-      reason: `bkit Antigravity guardrails: this command reads ${tier.path}, an env/secrets or private-key file, which may expose secrets. Prefer direnv / documented non-secret examples. Command: ${cmd}`,
+      reason: `bkit Antigravity guardrails: this command reads ${tier.path}, an env, secrets or private-key file, which may expose secrets. Prefer direnv or documented non-secret examples. Command: ${cmd}`,
     };
   }
   const advisory =
     tier.tier === "fetch"
-      ? `bkit Antigravity guardrails: outbound fetch to a host that is not on the network allowlist. Confirm the destination is intended before relying on the result. Command: ${cmd}`
+      ? `bkit Antigravity guardrails: outbound fetch to a host that is not on the network allowlist.\nConfirm the destination is intended before you rely on the result.\nCommand: ${cmd}`
       : shellEditAdvisory(tier.edits);
   return adviseOnce("guardrails", p.session_id, agCallSignature(tool, input), advisory);
 }

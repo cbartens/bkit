@@ -221,10 +221,10 @@ function shellEditTargets(cmd) {
 /** Shared advisory string, identical on every host. */
 function shellEditAdvisory(hits) {
   return (
-    `bkit guardrails: this command edits files through the shell (${hits.join("; ")}). ` +
-    "Pre-edit gates only see edit/write tools, so a shell rewrite bypasses every one of them. " +
-    "Use the edit/write tool instead unless this is one of the sanctioned exceptions in .agents/rules.md (generating files from a script, a bulk mechanical rewrite, or appending a log line to your own step output file). " +
-    "Not blocked — proceed if it is."
+    `bkit guardrails: this command edits files through the shell (${hits.join("; ")}). The command is allowed. ` +
+    "Pre-edit gates see only the edit and write tools, so a shell edit gets past every one of them.\n" +
+    "Use the edit or write tool instead.\n" +
+    "If this is one of the exceptions in .agents/rules.md (generating files from a script, a bulk mechanical rewrite, or appending a log line to your own step output file with `>>`), proceed."
   );
 }
 
@@ -430,7 +430,7 @@ function gitDenyRule(g) {
   if (g.long.has("--force") || g.short.has("f") || g.args.some((a) => a.startsWith("+"))) {
     return {
       what: "git force-push",
-      fix: "Do not force-push (--force, -f or a +refspec). Use a normal push, or --force-with-lease only when the user explicitly asks for it on a personal branch.",
+      fix: "NEVER force-push (--force, -f or a +refspec). Use a normal push, or --force-with-lease only when the user explicitly asks for it on a personal branch.",
     };
   }
   return null;
@@ -485,13 +485,13 @@ function denyRule(c) {
   ) {
     return {
       what: "recursive delete of a filesystem root",
-      fix: "Do not run rm -rf against /, ~, or $HOME. Narrow the path to the target directory.",
+      fix: "NEVER run rm -rf against /, ~, or $HOME. Narrow the path to the target directory.",
     };
   }
   if (/\bchmod\s+-R\s+777\s+\//.test(c)) {
     return {
       what: "chmod -R 777 on the filesystem root",
-      fix: "Do not world-writable-chmod the filesystem root.",
+      fix: "NEVER make the filesystem root world-writable.",
     };
   }
   return null;
@@ -668,17 +668,17 @@ function decideShell(cmd, dirs) {
       return deny(`Blocked: ${v.what} is denied by bkit Cursor guardrails.`, v.fix);
     case "ask":
       return ask(
-        `bkit Cursor guardrails: confirm this destructive / privileged shell command (${v.what}).`,
+        `bkit Cursor guardrails: confirm this destructive or privileged shell command (${v.what}).`,
         `Command requires confirmation: ${c}`,
       );
     case "secret":
       return ask(
-        "bkit Cursor guardrails: confirm a shell read of an env/secrets or private-key file.",
-        `Reading ${v.path} through the shell may expose secrets. Prefer direnv / documented non-secret examples. Command: ${c}`,
+        "bkit Cursor guardrails: confirm a shell read of an env, secrets or private-key file.",
+        `Reading ${v.path} through the shell may expose secrets.\nPrefer direnv or documented non-secret examples.\nCommand: ${c}`,
       );
     case "fetch":
       return ask(
-        "bkit Cursor guardrails: confirm outbound curl/wget (host not on network allowlist).",
+        "bkit Cursor guardrails: confirm an outbound curl or wget to a host that is not on the network allowlist.",
         `Command requires confirmation: ${c}`,
       );
     default:
@@ -695,12 +695,12 @@ function decideRead(filePath) {
   if (v.tier === "deny") {
     return deny(
       "Blocked: reading private-key material is denied by bkit Cursor guardrails.",
-      `Do not read ${v.path}. Ask the user to supply needed material out-of-band.`,
+      `NEVER read ${v.path}.\nAsk the user to supply what you need without putting the key in this conversation.`,
     );
   }
   return ask(
-    "bkit Cursor guardrails: confirm reading an env/secrets file.",
-    `Reading ${v.path} may expose secrets. Prefer direnv / documented non-secret examples.`,
+    "bkit Cursor guardrails: confirm reading an env or secrets file.",
+    `Reading ${v.path} may expose secrets.\nPrefer direnv or documented non-secret examples.`,
   );
 }
 

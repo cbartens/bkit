@@ -69,12 +69,12 @@ function decideRead(filePath) {
   if (v.tier === "deny") {
     return {
       decision: "deny",
-      reason: `Blocked by bkit Antigravity guardrails: reading private-key material is denied. Do not read ${v.path}. Ask the user to supply needed material out-of-band.`,
+      reason: `Blocked by bkit Antigravity guardrails: reading private-key material is denied.\nNEVER read ${v.path}.\nAsk the user to supply what you need without putting the key in this conversation.`,
     };
   }
   return {
     decision: "ask",
-    reason: `bkit Antigravity guardrails: reading ${v.path} may expose secrets. Prefer direnv / documented non-secret examples.`,
+    reason: `bkit Antigravity guardrails: reading ${v.path} may expose secrets. Prefer direnv or documented non-secret examples.`,
   };
 }
 
@@ -107,18 +107,18 @@ function bkitGuardrails(payload) {
   if (tier.tier === "ask") {
     return {
       decision: "ask",
-      reason: `bkit Antigravity guardrails: this is a destructive or privileged command (${tier.what}). It is on the PROHIBITED list in every bkit workflow. Do not run it unless the user asked for this exact command. Note that git clean and git checkout -- . destroy untracked files and uncommitted work, which no reflog can recover. Command: ${cmd}`,
+      reason: `bkit Antigravity guardrails: this is a destructive or privileged command (${tier.what}). It is on the PROHIBITED list in every bkit workflow. If the user did not ask for this exact command, NEVER run it. The commands git clean and git checkout -- . destroy untracked files and uncommitted work, which no reflog can recover. Command: ${cmd}`,
     };
   }
   if (tier.tier === "secret") {
     return {
       decision: "ask",
-      reason: `bkit Antigravity guardrails: this command reads ${tier.path}, an env/secrets or private-key file, which may expose secrets. Prefer direnv / documented non-secret examples. Command: ${cmd}`,
+      reason: `bkit Antigravity guardrails: this command reads ${tier.path}, an env, secrets or private-key file, which may expose secrets. Prefer direnv or documented non-secret examples. Command: ${cmd}`,
     };
   }
   const advisory =
     tier.tier === "fetch"
-      ? `bkit Antigravity guardrails: outbound fetch to a host that is not on the network allowlist. Confirm the destination is intended before relying on the result. Command: ${cmd}`
+      ? `bkit Antigravity guardrails: outbound fetch to a host that is not on the network allowlist.\nConfirm the destination is intended before you rely on the result.\nCommand: ${cmd}`
       : shellEditAdvisory(tier.edits);
   return adviseOnce("guardrails", p.session_id, agCallSignature(tool, input), advisory);
 }

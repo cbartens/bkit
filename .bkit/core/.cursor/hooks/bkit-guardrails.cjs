@@ -69,17 +69,17 @@ function decideShell(cmd, dirs) {
       return deny(`Blocked: ${v.what} is denied by bkit Cursor guardrails.`, v.fix);
     case "ask":
       return ask(
-        `bkit Cursor guardrails: confirm this destructive / privileged shell command (${v.what}).`,
+        `bkit Cursor guardrails: confirm this destructive or privileged shell command (${v.what}).`,
         `Command requires confirmation: ${c}`,
       );
     case "secret":
       return ask(
-        "bkit Cursor guardrails: confirm a shell read of an env/secrets or private-key file.",
-        `Reading ${v.path} through the shell may expose secrets. Prefer direnv / documented non-secret examples. Command: ${c}`,
+        "bkit Cursor guardrails: confirm a shell read of an env, secrets or private-key file.",
+        `Reading ${v.path} through the shell may expose secrets.\nPrefer direnv or documented non-secret examples.\nCommand: ${c}`,
       );
     case "fetch":
       return ask(
-        "bkit Cursor guardrails: confirm outbound curl/wget (host not on network allowlist).",
+        "bkit Cursor guardrails: confirm an outbound curl or wget to a host that is not on the network allowlist.",
         `Command requires confirmation: ${c}`,
       );
     default:
@@ -96,12 +96,12 @@ function decideRead(filePath) {
   if (v.tier === "deny") {
     return deny(
       "Blocked: reading private-key material is denied by bkit Cursor guardrails.",
-      `Do not read ${v.path}. Ask the user to supply needed material out-of-band.`,
+      `NEVER read ${v.path}.\nAsk the user to supply what you need without putting the key in this conversation.`,
     );
   }
   return ask(
-    "bkit Cursor guardrails: confirm reading an env/secrets file.",
-    `Reading ${v.path} may expose secrets. Prefer direnv / documented non-secret examples.`,
+    "bkit Cursor guardrails: confirm reading an env or secrets file.",
+    `Reading ${v.path} may expose secrets.\nPrefer direnv or documented non-secret examples.`,
   );
 }
 

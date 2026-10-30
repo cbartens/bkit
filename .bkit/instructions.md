@@ -7298,15 +7298,15 @@ One `### {name}` section per message: `- hook:`, `- fires:`, `- hosts:`, `- sour
 - rule: verify-symbols-first (text line 5)
 
 ```text
-[bkit GateGuard] First edit to `${base}` this session — confirm the following, and investigate anything you cannot answer before editing:
-- Confirm you read this file and the exact symbols / lines you are about to change.
-- Confirm the precise field names, types and signatures being changed.
-- Confirm the callers / importers the change affects: search code / read source, do not assume.
-- Confirm the symbols / flags / configs the change requires exist: search code / read source, do not assume.
-- Confirm the external data contracts (DB schemas, APIs / SDKs) the change affects: verify the actual shape, do not assume.
-- Confirm the change follows the patterns / conventions already in this file / its neighbours where feasible: read source, do not assume.
-- Confirm the user instructions or plan tasks the change serves: quote them, do not trust memory.
-Advisory — proceed once satisfied.
+[bkit GateGuard] First edit to `${base}` this session. Before you edit, confirm each point below, and investigate any you cannot answer:
+- Confirm you read this file and the exact symbols and lines you are about to change.
+- Confirm the exact field names, types and signatures you are changing.
+- Confirm the callers and importers the change affects, by searching or reading the code.
+- Confirm the symbols, flags and configs the change needs exist, by searching or reading the code.
+- Confirm the external data contracts (database schemas, APIs and SDKs) the change affects, by checking their actual shape.
+- Confirm the change follows the patterns and conventions already in this file or its neighbours where feasible, by reading the code.
+- Confirm the user instructions or plan tasks the change serves, by quoting them, not from memory.
+Advisory: proceed once satisfied.
 ```
 
 ### gateguard-new-file
@@ -7318,13 +7318,14 @@ Advisory — proceed once satisfied.
 - rule: improve-over-duplicate (text lines 2, 3, 4)
 
 ```text
-[bkit GateGuard] New file `${base}` this session — confirm the following, and investigate anything you cannot answer before adding:
-- Confirm existing code does not already provide the capability: search code / read source, do not assume.
-- Confirm existing code cannot be reused / extended to provide the capability: search code / read source, do not assume.
-- Confirm anything the new code supersedes is deleted, not left as duplicate work: verify the removal, do not assume.
-- Confirm the location / naming fits the project architecture / topology / standards: search code / read source, do not assume.
-- Confirm the structures / patterns / conventions follow the closest equivalent files where feasible: read source, do not assume.
-Evolve existing code first. Advisory — proceed once satisfied.
+[bkit GateGuard] New file `${base}` this session. Before you add it, confirm each point below, and investigate any you cannot answer:
+- Confirm existing code does not already provide the capability, by searching or reading the code.
+- Confirm existing code cannot be reused or extended to provide the capability, by searching or reading the code.
+- Confirm anything the new code supersedes is deleted rather than left as duplicate work, by checking the removal.
+- Confirm the location and naming fit the project's architecture, topology and standards, by searching or reading the code.
+- Confirm the structures, patterns and conventions follow the closest equivalent files where feasible, by reading the code.
+Evolve existing code first.
+Advisory: proceed once satisfied.
 ```
 
 ### gateguard-docs
@@ -7341,7 +7342,7 @@ Evolve existing code first. Advisory — proceed once satisfied.
 - Read this file's `> [!CAUTION]` header and follow its `Purpose` and `Rules`.
 - Find the topic's home in the `.agents/docs.md` index first, and confirm that it is this doc.
 - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs.
-Advisory — proceed once satisfied.
+Advisory: proceed once satisfied.
 ```
 
 ### gateguard-gate-config
@@ -7350,15 +7351,18 @@ Advisory — proceed once satisfied.
 - fires: First edit of a quality-gate config path
 - hosts: All five
 - source: `.bkit/core/hooks/gateguard-engine.js` `configAdvisory`
-- rule: fix-code-not-gates (text lines 2, 3, 4, 5)
+- rule: fix-code-not-gates (text lines 2, 3, 4, 5, 6, 7)
 
 ```text
-[bkit GateGuard] `${base}` quality-gate config (lint / format / types / test / slop):
-- Prefer fixing code over weakening any gate.
-- If a change is genuinely warranted, use targeted per-file / per-rule opt-outs over a blanket disable.
+[bkit GateGuard] `${base}` quality-gate config (lint, format, types, tests or slop):
+- Prefer fixing the code over weakening any gate.
+- If a change is genuinely warranted, use targeted opt-outs per file or per rule rather than a blanket disable.
 - ALWAYS get explicit human sign-off for any quality-gate config change.
-- Inside `/bkit-*` workflows no sign-off is available: record the block and continue; NEVER self-approve the opt-out.
-Set BKIT_ALLOW_CONFIG_EDIT=1 to silence this. Advisory — proceed once satisfied.
+- If you are inside a `/bkit-*` workflow, where no sign-off is available:
+  - Record the block and continue.
+  - NEVER self-approve the opt-out.
+With BKIT_ALLOW_CONFIG_EDIT=1 set, this file gets the normal first-edit or new-file checklist instead.
+Advisory: proceed once satisfied.
 ```
 
 ### readguard-repeat-read
@@ -7367,13 +7371,14 @@ Set BKIT_ALLOW_CONFIG_EDIT=1 to silence this. Advisory — proceed once satisfie
 - fires: Repeat read of an unchanged line range, same agent
 - hosts: All five
 - source: `.bkit/core/hooks/readguard-engine.js` `repeatReadMessage`
-- rule: code-reads (text line 4)
+- rule: code-reads (text lines 3, 4)
 
 ```text
-[bkit ReadGuard] Repeat read this conversation — unchanged since your last read:
+[bkit ReadGuard] Repeat read in this conversation. These lines are unchanged since your last read:
 ${lines.join("\n")}
-Use the earlier output; do not read these lines again. Re-read ONLY if that output is no longer in your context (summarised, or read by another agent).
-Advisory — proceed once satisfied.
+Use the earlier output instead of reading these lines again.
+If that output is no longer in your context (summarised, or read by another agent), re-read the lines.
+Advisory: proceed once satisfied.
 ```
 
 ### guardrails-shell-edit
@@ -7382,10 +7387,12 @@ Advisory — proceed once satisfied.
 - fires: Shell edit (`sed -i`, redirect into a source file)
 - hosts: Claude, Cursor, Codex, Antigravity
 - source: `.bkit/core/hooks/guardrails-shell.js` `shellEditAdvisory`
-- rule: edit-tools-only (text line 1)
+- rule: edit-tools-only (text lines 2, 3)
 
 ```text
-bkit guardrails: this command edits files through the shell (${hits.join("; ")}). Pre-edit gates only see edit/write tools, so a shell rewrite bypasses every one of them. Use the edit/write tool instead unless this is one of the sanctioned exceptions in .agents/rules.md (generating files from a script, a bulk mechanical rewrite, or appending a log line to your own step output file). Not blocked — proceed if it is.
+bkit guardrails: this command edits files through the shell (${hits.join("; ")}). The command is allowed. Pre-edit gates see only the edit and write tools, so a shell edit gets past every one of them.
+Use the edit or write tool instead.
+If this is one of the exceptions in .agents/rules.md (generating files from a script, a bulk mechanical rewrite, or appending a log line to your own step output file with `>>`), proceed.
 ```
 
 ### guardrails-force-push
@@ -7397,7 +7404,7 @@ bkit guardrails: this command edits files through the shell (${hits.join("; ")})
 - rule: force-push (text line 1)
 
 ```text
-Do not force-push (--force, -f or a +refspec). Use a normal push, or --force-with-lease only when the user explicitly asks for it on a personal branch.
+NEVER force-push (--force, -f or a +refspec). Use a normal push, or --force-with-lease only when the user explicitly asks for it on a personal branch.
 ```
 
 ### guardrails-root-delete
@@ -7408,7 +7415,7 @@ Do not force-push (--force, -f or a +refspec). Use a normal push, or --force-wit
 - source: `.bkit/core/hooks/guardrails-tiers.js` `denyRule`
 
 ```text
-Do not run rm -rf against /, ~, or $HOME. Narrow the path to the target directory.
+NEVER run rm -rf against /, ~, or $HOME. Narrow the path to the target directory.
 ```
 
 ### guardrails-root-chmod
@@ -7419,7 +7426,7 @@ Do not run rm -rf against /, ~, or $HOME. Narrow the path to the target director
 - source: `.bkit/core/hooks/guardrails-tiers.js` `denyRule`
 
 ```text
-Do not world-writable-chmod the filesystem root.
+NEVER make the filesystem root world-writable.
 ```
 
 ### guardrails-fetch
@@ -7430,7 +7437,9 @@ Do not world-writable-chmod the filesystem root.
 - source: `.bkit/core/.claude/hooks/bkit-guardrails.cjs` `bkitGuardrails`
 
 ```text
-bkit guardrails: outbound fetch to a host that is not on this repo's network allowlist (.agents/context.md § allowed-domains, plus bkit's shipped tooling hosts). Not blocked — confirm the destination is intended before relying on the result, and add the host to allowed-domains if it is a standing dependency.
+bkit guardrails: outbound fetch to a host that is not on this repo's network allowlist (.agents/context.md § allowed-domains, plus bkit's shipped tooling hosts). The command is allowed.
+Confirm the destination is intended before you rely on the result.
+If the host is a standing dependency, add it to allowed-domains.
 ```
 
 ### guardrails-cursor-secret-shell
@@ -7441,9 +7450,11 @@ bkit guardrails: outbound fetch to a host that is not on this repo's network all
 - source: `.bkit/core/.cursor/hooks/bkit-guardrails.cjs` `decideShell`
 
 ```text
-bkit Cursor guardrails: confirm a shell read of an env/secrets or private-key file.
+bkit Cursor guardrails: confirm a shell read of an env, secrets or private-key file.
 
-Reading ${v.path} through the shell may expose secrets. Prefer direnv / documented non-secret examples. Command: ${c}
+Reading ${v.path} through the shell may expose secrets.
+Prefer direnv or documented non-secret examples.
+Command: ${c}
 ```
 
 ### guardrails-cursor-fetch
@@ -7454,7 +7465,7 @@ Reading ${v.path} through the shell may expose secrets. Prefer direnv / document
 - source: `.bkit/core/.cursor/hooks/bkit-guardrails.cjs` `decideShell`
 
 ```text
-bkit Cursor guardrails: confirm outbound curl/wget (host not on network allowlist).
+bkit Cursor guardrails: confirm an outbound curl or wget to a host that is not on the network allowlist.
 
 Command requires confirmation: ${c}
 ```
@@ -7467,9 +7478,10 @@ Command requires confirmation: ${c}
 - source: `.bkit/core/.cursor/hooks/bkit-guardrails.cjs` `decideRead`
 
 ```text
-bkit Cursor guardrails: confirm reading an env/secrets file.
+bkit Cursor guardrails: confirm reading an env or secrets file.
 
-Reading ${v.path} may expose secrets. Prefer direnv / documented non-secret examples.
+Reading ${v.path} may expose secrets.
+Prefer direnv or documented non-secret examples.
 ```
 
 ### guardrails-cursor-deny
@@ -7491,7 +7503,7 @@ Blocked: ${v.what} is denied by bkit Cursor guardrails.
 - source: `.bkit/core/.cursor/hooks/bkit-guardrails.cjs` `decideShell`
 
 ```text
-bkit Cursor guardrails: confirm this destructive / privileged shell command (${v.what}).
+bkit Cursor guardrails: confirm this destructive or privileged shell command (${v.what}).
 
 Command requires confirmation: ${c}
 ```
@@ -7506,7 +7518,8 @@ Command requires confirmation: ${c}
 ```text
 Blocked: reading private-key material is denied by bkit Cursor guardrails.
 
-Do not read ${v.path}. Ask the user to supply needed material out-of-band.
+NEVER read ${v.path}.
+Ask the user to supply what you need without putting the key in this conversation.
 ```
 
 ### guardrails-codex-deny
@@ -7528,7 +7541,11 @@ Blocked by bkit Codex guardrails: ${v.what}. ${v.fix}
 - source: `.bkit/core/.codex/hooks/bkit-guardrails.cjs` `decideShell`
 
 ```text
-bkit Codex guardrails: this is a destructive or privileged command (${v.what}) and Codex cannot prompt for confirmation. It is on the PROHIBITED list in every bkit workflow. Do not run it unless the user asked for this exact command. Note that git clean and git checkout -- . destroy untracked files and uncommitted work, which no reflog can recover. Command: ${c}
+bkit Codex guardrails: this destructive or privileged command (${v.what}) ran without confirmation, because Codex cannot prompt for one. It is on the PROHIBITED list in every bkit workflow.
+Tell the user that you ran it.
+If the user did not ask for this exact command, NEVER run it again.
+`git clean` and `git checkout -- .` destroy untracked files and uncommitted work, which no reflog can recover.
+Command: ${c}
 ```
 
 ### guardrails-codex-secret-shell
@@ -7539,7 +7556,10 @@ bkit Codex guardrails: this is a destructive or privileged command (${v.what}) a
 - source: `.bkit/core/.codex/hooks/bkit-guardrails.cjs` `decideShell`
 
 ```text
-bkit Codex guardrails: this command reads ${v.path}, an env/secrets or private-key file, and Codex cannot prompt for confirmation. Do not print secret values; prefer direnv / documented non-secret examples. Command: ${c}
+bkit Codex guardrails: this command read ${v.path}, an env, secrets or private-key file, without confirmation, because Codex cannot prompt for one.
+NEVER print secret values.
+Prefer direnv or documented non-secret examples.
+Command: ${c}
 ```
 
 ### guardrails-codex-fetch
@@ -7550,7 +7570,9 @@ bkit Codex guardrails: this command reads ${v.path}, an env/secrets or private-k
 - source: `.bkit/core/.codex/hooks/bkit-guardrails.cjs` `decideShell`
 
 ```text
-bkit Codex guardrails: outbound fetch to a host that is not on the network allowlist. Confirm the destination is intended before relying on the result. Command: ${c}
+bkit Codex guardrails: outbound fetch to a host that is not on the network allowlist.
+Confirm the destination is intended before you rely on the result.
+Command: ${c}
 ```
 
 ### guardrails-antigravity-key-read
@@ -7561,7 +7583,9 @@ bkit Codex guardrails: outbound fetch to a host that is not on the network allow
 - source: `.bkit/core/.agents/plugins/bkit/hooks/bkit-guardrails.cjs` `decideRead`
 
 ```text
-Blocked by bkit Antigravity guardrails: reading private-key material is denied. Do not read ${v.path}. Ask the user to supply needed material out-of-band.
+Blocked by bkit Antigravity guardrails: reading private-key material is denied.
+NEVER read ${v.path}.
+Ask the user to supply what you need without putting the key in this conversation.
 ```
 
 ### guardrails-antigravity-env-read
@@ -7572,7 +7596,7 @@ Blocked by bkit Antigravity guardrails: reading private-key material is denied. 
 - source: `.bkit/core/.agents/plugins/bkit/hooks/bkit-guardrails.cjs` `decideRead`
 
 ```text
-bkit Antigravity guardrails: reading ${v.path} may expose secrets. Prefer direnv / documented non-secret examples.
+bkit Antigravity guardrails: reading ${v.path} may expose secrets. Prefer direnv or documented non-secret examples.
 ```
 
 ### guardrails-antigravity-deny
@@ -7594,7 +7618,7 @@ Blocked by bkit Antigravity guardrails: ${tier.what}. ${tier.fix}
 - source: `.bkit/core/.agents/plugins/bkit/hooks/bkit-guardrails.cjs` `bkitGuardrails`
 
 ```text
-bkit Antigravity guardrails: this is a destructive or privileged command (${tier.what}). It is on the PROHIBITED list in every bkit workflow. Do not run it unless the user asked for this exact command. Note that git clean and git checkout -- . destroy untracked files and uncommitted work, which no reflog can recover. Command: ${cmd}
+bkit Antigravity guardrails: this is a destructive or privileged command (${tier.what}). It is on the PROHIBITED list in every bkit workflow. If the user did not ask for this exact command, NEVER run it. The commands git clean and git checkout -- . destroy untracked files and uncommitted work, which no reflog can recover. Command: ${cmd}
 ```
 
 ### guardrails-antigravity-secret-shell
@@ -7605,7 +7629,7 @@ bkit Antigravity guardrails: this is a destructive or privileged command (${tier
 - source: `.bkit/core/.agents/plugins/bkit/hooks/bkit-guardrails.cjs` `bkitGuardrails`
 
 ```text
-bkit Antigravity guardrails: this command reads ${tier.path}, an env/secrets or private-key file, which may expose secrets. Prefer direnv / documented non-secret examples. Command: ${cmd}
+bkit Antigravity guardrails: this command reads ${tier.path}, an env, secrets or private-key file, which may expose secrets. Prefer direnv or documented non-secret examples. Command: ${cmd}
 ```
 
 ### guardrails-antigravity-fetch
@@ -7616,7 +7640,9 @@ bkit Antigravity guardrails: this command reads ${tier.path}, an env/secrets or 
 - source: `.bkit/core/.agents/plugins/bkit/hooks/bkit-guardrails.cjs` `bkitGuardrails`
 
 ```text
-bkit Antigravity guardrails: outbound fetch to a host that is not on the network allowlist. Confirm the destination is intended before relying on the result. Command: ${cmd}
+bkit Antigravity guardrails: outbound fetch to a host that is not on the network allowlist.
+Confirm the destination is intended before you rely on the result.
+Command: ${cmd}
 ```
 
 ## Permissions

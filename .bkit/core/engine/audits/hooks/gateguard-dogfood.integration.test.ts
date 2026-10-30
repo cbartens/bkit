@@ -107,7 +107,7 @@ const RUNNERS: Record<string, (f: string) => string> = {
 const AUTHORING_SOURCE = ".bkit/core/.bkit/authoring.md";
 const REPO_AUTHORING =
   "- `.agents/rules.md` § Repo Authoring applies: authoring rules, index update in the same change.";
-const FOOTER = "Advisory — proceed once satisfied.";
+const FOOTER = "Advisory: proceed once satisfied.";
 
 interface Rule {
   /** The advisory bullet: `- Lead: text`. */

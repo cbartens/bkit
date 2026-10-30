@@ -721,7 +721,7 @@ describe("gateguard parity — documented deviations", () => {
     const first = runAntigravity({ file: "package.json", session });
     expect(first.blocked).toBe(true);
     expect(first.advisory).toContain("[bkit GateGuard]");
-    expect(first.advisory).toContain("repeat the same call to proceed");
+    expect(first.advisory).toContain("Repeat the same call to proceed.");
     expect(runAntigravity({ file: "package.json", session }).blocked).toBe(false);
   });
 

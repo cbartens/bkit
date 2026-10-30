@@ -78,6 +78,6 @@ function adviseOnce(hook, sessionId, signature, advisory) {
   }
   return {
     decision: "deny",
-    reason: `${advisory}\nBlocked once so you see this; repeat the same call to proceed.`,
+    reason: `${advisory}\nThis call was held once so you see this advisory. Repeat the same call to proceed.`,
   };
 }

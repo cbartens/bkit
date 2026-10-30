@@ -161,7 +161,9 @@ describe("gateguard hook — config protection (item D)", () => {
   it("tells agents inside /bkit-* workflows to record the block, never self-approve", () => {
     const r = run(editPayload("tsconfig.json", newSession()));
     expect(hookOutput(r)["additionalContext"]).toContain(
-      "Inside `/bkit-*` workflows no sign-off is available: record the block and continue; NEVER self-approve the opt-out.",
+      "- If you are inside a `/bkit-*` workflow, where no sign-off is available:\n" +
+        "  - Record the block and continue.\n" +
+        "  - NEVER self-approve the opt-out.",
     );
   });
 

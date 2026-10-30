@@ -227,10 +227,10 @@ function shellEditTargets(cmd) {
 /** Shared advisory string, identical on every host. */
 function shellEditAdvisory(hits) {
   return (
-    `bkit guardrails: this command edits files through the shell (${hits.join("; ")}). ` +
-    "Pre-edit gates only see edit/write tools, so a shell rewrite bypasses every one of them. " +
-    "Use the edit/write tool instead unless this is one of the sanctioned exceptions in .agents/rules.md (generating files from a script, a bulk mechanical rewrite, or appending a log line to your own step output file). " +
-    "Not blocked — proceed if it is."
+    `bkit guardrails: this command edits files through the shell (${hits.join("; ")}). The command is allowed. ` +
+    "Pre-edit gates see only the edit and write tools, so a shell edit gets past every one of them.\n" +
+    "Use the edit or write tool instead.\n" +
+    "If this is one of the exceptions in .agents/rules.md (generating files from a script, a bulk mechanical rewrite, or appending a log line to your own step output file with `>>`), proceed."
   );
 }
 
@@ -355,9 +355,9 @@ function bkitGuardrails(payload) {
   if (usesFetch(c) && !curlWgetHostAllowed(c, hookDirs(payload))) {
     notes.push(
       "bkit guardrails: outbound fetch to a host that is not on this repo's network allowlist " +
-        "(.agents/context.md § allowed-domains, plus bkit's shipped tooling hosts). Not blocked — " +
-        "confirm the destination is intended before relying on the result, and add the host to " +
-        "allowed-domains if it is a standing dependency.",
+        "(.agents/context.md § allowed-domains, plus bkit's shipped tooling hosts). The command is allowed.\n" +
+        "Confirm the destination is intended before you rely on the result.\n" +
+        "If the host is a standing dependency, add it to allowed-domains.",
     );
   }
   const edits = shellEditTargets(c);

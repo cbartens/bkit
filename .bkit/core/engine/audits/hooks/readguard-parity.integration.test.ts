@@ -291,7 +291,9 @@ describe("readguard behaviour parity — repeat reads", () => {
         const note = await run(host, { session, read: { file, start: 10, end: 40 } });
         expect(note).toContain("[bkit ReadGuard]");
         expect(note).toContain(`${path.basename(file)}\` lines 10-40`);
-        expect(note).toContain("Re-read ONLY if that output is no longer in your context");
+        expect(note).toContain(
+          "If that output is no longer in your context (summarised, or read by another agent), re-read the lines.",
+        );
       });
 
       it("a range inside earlier reads gets the note", async () => {
@@ -526,7 +528,7 @@ describe("readguard parity — documented deviations", () => {
     const repeat = spawnHook(ANTIGRAVITY_HOOK, antigravityPayload(read));
     expect(repeat.decision).toBe("deny");
     expect(repeat.reason).toContain("lines 1-10");
-    expect(repeat.reason).toContain("repeat the same call to proceed");
+    expect(repeat.reason).toContain("Repeat the same call to proceed.");
     expect(spawnHook(ANTIGRAVITY_HOOK, antigravityPayload(read))).toEqual({ decision: "allow" });
   });
 
