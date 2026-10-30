@@ -47,7 +47,9 @@ AI agents design it, plan it, build it, have it reviewed by agents that didn't w
 
 **It ships what other frameworks leave to you:** a full CI pipeline for your project (none of the frameworks in [our comparison](.bkit/comparison.md#frameworks) has one), and 35 [audits](#audits) that find the bugs passing tests miss.
 
-**Researched and battle-tested, not a weekend prompt pack.** bkit is built with bkit: months of research into how agentic engineering works best, refined over **2,000+ commits, 300+ issues and 100+ merged pull requests** run through its own pipeline. Along the way it recorded **300+ lessons and 600+ decisions**. They shaped the rules and prompts you install, and your own repo starts its own record from the first feature. **Every prompt follows the makers' own advice:** one [rulebook](.bkit/authoring.md) sets how agents' instructions are written, matched against the current prompting guides from Anthropic, OpenAI and Google, so the same text works on Claude, GPT and Gemini. The [prompt audit](.bkit/pipeline.md#audits) checks every prompt against it, and every prompt passes.
+**Researched and battle-tested, not a weekend prompt pack.** bkit is built with bkit: months of research into how agentic engineering works best, refined over **2,000+ commits, 300+ issues and 100+ merged pull requests** run through its own pipeline. Along the way it recorded **300+ lessons and 600+ decisions**. They shaped the rules and prompts you install, and your own repo starts its own record from the first feature.
+
+**Every file bkit gives your agents to read follows Anthropic's, OpenAI's and Google's own prompting advice:** prompts, workflows, rules and project docs are all written to one [rulebook](.bkit/authoring.md), matched practice by practice against each maker's current guide, so the same text works on Claude, GPT and Gemini. The [prompt audit](.bkit/pipeline.md#audits) checks every one of those files against it, and every one passes.
 
 <p align="center">
   <picture>
