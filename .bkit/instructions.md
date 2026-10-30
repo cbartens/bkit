@@ -6523,15 +6523,13 @@ Evolve existing code first. Advisory — proceed once satisfied.
 - hosts: All five
 - source: `.bkit/core/hooks/gateguard-engine.js` `docAuthoringAdvisory`
 - rule: review-docs-first (text line 3)
-- rule: authoring (text lines 2, 5)
-- rule: format (text line 4)
+- rule: authoring (text lines 2, 4)
 
 ```text
 [bkit GateGuard] docs/*.md authoring:
-- Read this file's header block and follow its purpose and rules if present.
-- Check the .agents/docs.md index first and confirm the topic belongs in this doc, not another.
-- Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
-- Describe current state / rules, not reasons / history; state what to do, not why. only exceptions: docs where purpose is the record.
+- Read this file's `> [!CAUTION]` header and follow its `Purpose` and `Rules`.
+- Find the topic's home in the `.agents/docs.md` index first, and confirm that it is this doc.
+- Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs.
 Advisory — proceed once satisfied.
 ```
 

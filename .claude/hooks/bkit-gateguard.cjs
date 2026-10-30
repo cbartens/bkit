@@ -151,10 +151,9 @@ function isDocsPath(filePath) {
 function docAuthoringAdvisory() {
   return (
     `[bkit GateGuard] docs/*.md authoring:\n` +
-    `- Read this file's header block and follow its purpose and rules if present.\n` +
-    `- Check the .agents/docs.md index first and confirm the topic belongs in this doc, not another.\n` +
-    `- Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.\n` +
-    `- Describe current state / rules, not reasons / history; state what to do, not why. only exceptions: docs where purpose is the record.\n` +
+    `- Read this file's \`> [!CAUTION]\` header and follow its \`Purpose\` and \`Rules\`.\n` +
+    `- Find the topic's home in the \`.agents/docs.md\` index first, and confirm that it is this doc.\n` +
+    `- Follow \`.bkit/authoring.md\` § All Agent-Read Files and § Docs.\n` +
     `Advisory — proceed once satisfied.`
   );
 }
