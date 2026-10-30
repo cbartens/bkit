@@ -3,12 +3,13 @@
 {{BKIT_MANAGED_MARKER}}
 
 > [!CAUTION]
-> **Purpose:** Workflow router `AGENTS.md` sends a prompt to when it names a `bkit-{command}` workflow: picks the workflow, then runs its command file for the current host. never executes a workflow itself.
+> **Purpose:** The workflow router. `AGENTS.md` sends a prompt here when the prompt names a `bkit-{command}` workflow. The router picks the workflow, then runs its command file for the current host. It never executes a workflow itself.
 >
 > **Rules:**
 >
 > - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
-> - Ships to consumers: describe the current setup only. NEVER an internal identifier (tracker issue number, ledger key, review-finding id) and NEVER project history.
+> - This file ships to every project that installs bkit. Describe the current setup only.
+> - Leave out internal labels, such as tracker issue numbers, ledger keys and review-finding ids, and leave out project history.
 
 ---
 
@@ -18,7 +19,7 @@ Commands: `design`, `plan`, `build`, `debug`, `ship`, `auto`.
 
 ### Step 1 — Find command
 
-First `bkit-{command}` in the prompt, with or without a leading `/` or `$` → `COMMAND`.
+Hold the `{command}` of the first `bkit-{command}` in the prompt, with or without a leading `/` or `$`, as `COMMAND`.
 
 **If** the prompt only mentions it without asking to run it (e.g. `what does bkit-build do?`) → no workflow requested; routing ends → handle the request as asked under `.agents/rules.md`.
 
@@ -30,24 +31,29 @@ First `bkit-{command}` in the prompt, with or without a leading `/` or `$` → `
    ```bash
    "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" repo info --allow-detached
    ```
-   → hold `bkit` as `{BKIT}`, `sessionDir` as `{SESSION_DIR}`.
-2. Write the session prompt verbatim to `{SESSION_DIR}/prompt.md` → read the issue it names:
+   Hold `bkit` as `{BKIT}` and `sessionDir` as `{SESSION_DIR}`.
+2. Write the session prompt verbatim to `{SESSION_DIR}/prompt.md`, then read the issue it names:
    ```bash
    "{BKIT}" fids parse --prompt-file="{SESSION_DIR}/prompt.md"
    ```
-   Hold `issue` as `{ISSUE_ID}`. **If** exit 8 → **STOP**; tell the user the prompt names more than one issue and to name one as `#N`, its key or its URL. **If** `ISSUE_ID` empty → Step 3.
+   Hold `issue` as `{ISSUE_ID}`.
+   - **If** exit 8 → tell the user that the prompt names more than one issue, and that they should name one as `#N`, its key or its URL. Then **STOP**.
+   - **If** `ISSUE_ID` is empty → Step 3.
 3. Read the issue's labels:
    ```bash
    "{BKIT}" issues fetch --issue="{ISSUE_ID}" --session-dir="{SESSION_DIR}"
    ```
-   Hold `labels` as `{LABELS}`. **If** exit 80 → read the labels via the configured tracker MCP.
-4. First label naming a phase (e.g. `bkit:build`, `next:plan`) → that phase → `COMMAND` → Step 4. **Else** → Step 3.
+   Hold `labels` as `{LABELS}`.
+   - **If** exit 80 → read the labels via the configured tracker MCP.
+4. Find the first label that names a phase (e.g. `bkit:build`, `next:plan`):
+   - **If** there is one → hold that phase as `COMMAND` → Step 4.
+   - **Else** → Step 3.
 
 ### Step 3 — No match
 
-**If** `ISSUE_ID` empty → drop `for issue {ISSUE_ID}` from the message below.
+**If** `ISSUE_ID` is empty → drop `for issue {ISSUE_ID}` from the message below.
 
-Emit: `Workflow not found for issue {ISSUE_ID}. Valid commands: bkit-design / bkit-plan / bkit-build / bkit-debug / bkit-ship / bkit-auto {phase}.` → **STOP**; do not post a tracker comment.
+Emit this message, and do not post a tracker comment: `Workflow not found for issue {ISSUE_ID}. Valid commands: bkit-design / bkit-plan / bkit-build / bkit-debug / bkit-ship / bkit-auto {phase}.` Then **STOP**.
 
 ### Step 4 — Execute command
 

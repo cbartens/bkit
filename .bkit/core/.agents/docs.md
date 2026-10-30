@@ -5,19 +5,21 @@
 # Document Index
 
 > [!CAUTION]
-> **Purpose:** Index of repo docs (`docs/`, `.agents/`, and `.bkit/` catalogs) for agents. Phase columns tell agents what to read per workflow.
+> **Purpose:** The index agents use to find the repo's docs (`docs/`, `.agents/` and the `.bkit/` catalogs). The phase columns tell an agent what to read in each workflow.
 >
 > **Rules:**
 >
 > - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
-> - Read only docs relevant to current workflow / step / task.
-> - Follow workflow based reading suggestions first, then read more docs as step / task warrants.
-> - Phase columns cover workflows only; audits and utilities pick docs as step / task warrants.
-> - One row per doc — phase columns and one-line scope. Pointers only — do not duplicate text from indexed docs.
-> - Local project docs → `Project Documents` below the bkit-managed block; universal docs stay in-block.
-> - When two docs cover the same topic, that's a bug — pick a canonical home, link from the other.
+> - Read only the docs relevant to the current workflow, step or task.
+> - Follow the workflow's reading suggestions first. Then read more docs as the step or task warrants.
+> - The phase columns cover workflows only. Audits and utilities pick docs as the step or task warrants.
+> - Give each doc one row, with its phase columns and a one-line scope.
+> - Write pointers only, and do not duplicate text from the indexed docs.
+> - Local project docs → `Project Documents` below the bkit-managed block.
+> - Universal docs stay in the block.
+> - Two docs that cover the same topic are a bug. Pick a canonical home, and link to it from the other doc.
 >
-> **Symbols:** `●` always read · `○` read if step / task touches this domain · `—` irrelevant.
+> **Symbols:** `●` means always read. `○` means read when the step or task touches this domain. `—` means irrelevant.
 
 ## Universal Documents
 
@@ -32,7 +34,7 @@
 | `.agents/skills.md` | — | — | ● | — | — | Registry of installed agent skills and install / update commands. |
 | `.agents/context.md` | ○ | ○ | ○ | ● | ○ | How to reach information outside repo — deployment logs, CI runs, e2e evidence, web search, cloud egress allowlist, CLI provisioning. |
 | `docs/architecture.md` | ● | ● | ● | ○ | ○ | System design — service boundaries, deployment topology, integration sketch. |
-| `docs/technology.md` | ● | ● | ○ | ○ | ○ | Chosen frameworks, libraries, styling systems, coding conventions. WHY a choice was made → `decisions.jsonl`. |
+| `docs/technology.md` | ● | ● | ○ | ○ | ○ | Chosen frameworks, libraries, styling systems, coding conventions. Why a choice was made goes in `decisions.jsonl`. |
 | `docs/data-schema.md` | ○ | ○ | ● | ○ | ○ | Active production database schema — entities / tables, fields, access policies (e.g. RLS), indices, functions, triggers. |
 | `docs/security.md` | ● | ● | ● | ○ | ○ | Authentication, authorization, input validation, rate limiting, secrets management, PII handling, untrusted-content threat model. |
 | `docs/design.md` | ○ | ○ | ○ | — | — | Design system — palette, typography, components, spacing, a11y, layout tokens. |
@@ -54,7 +56,7 @@
 | `.bkit/authoring.md` | ○ | ○ | ○ | ○ | ○ | Authoring rules for agent-read markdown — docs, prompts, workflows; punctuation and capitals. |
 | `docs/setup.md` | — | — | — | — | — | Local dev — CLIs, configuration, secrets, troubleshooting. Humans only. |
 
-> `Project Documents` below `bkit:end` is consumer-owned — `bkit install` never overwrites it, `bkit check` drift stays clean. Add project-specific docs there.
+> `Project Documents` below `bkit:end` belongs to the project, so `bkit install` never overwrites it and `bkit check` reports no drift for it. Add project-specific docs there.
 
 <!-- bkit:end -->
 

@@ -6,6 +6,9 @@
 
 - **Rules file:** Read `.agents/rules.md` → follow all rules.
 - **Workflows:** **If** the prompt contains `bkit-{command}` (`bkit-design`, `bkit-plan`, `bkit-build`, `bkit-debug`, `bkit-ship`, `bkit-auto`) → read `.bkit/router.md` → follow it. **Else** → no workflow routing; handle the request as asked.
-- **Memory hygiene:** agent memories (notes a host keeps across sessions) are pointers, never copies. Facts in `docs/*.md` or `.agents/rules.md` → save only path, section and one-line hook. Issue states → query the tracker or `docs/roadmap.md`; NEVER snapshot them into memory.
+- **Memory hygiene:** Agent memories (notes a host keeps across sessions) are pointers, never copies.
+  - For a fact in `docs/*.md` or `.agents/rules.md`, save only its path, its section and a one-line hook.
+  - Query the tracker or `docs/roadmap.md` for an issue's state.
+  - Never save a snapshot of an issue's state in memory.
 
 <!-- bkit:end -->

@@ -3,15 +3,17 @@
 <!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
-> **Purpose:** Human-facing reference. bkit vs other AI development frameworks, bkit vs Antonio Gulli's _Agentic Design Patterns_. Evaluation, outreach — not agent workflow doc-matrix. Five-phase pipeline + every subagent + every audit template: `.bkit/pipeline.md`.
+> **Purpose:** A reference for human readers: bkit compared with other AI development frameworks, and with Antonio Gulli's _Agentic Design Patterns_. It serves evaluation and outreach, and is not part of the agent workflow doc-matrix. The five-phase pipeline, every subagent and every audit template are in `.bkit/pipeline.md`.
 >
 > **Rules:**
 >
 > - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
-> - Keep prose factual; house / write-good linters apply to `*.md`; no hype adjectives.
-> - Framework table cells: each project's own repo / docs only, never roundups or AI summaries; no star counts; refresh the as-of month with the table.
-> - Headings linked from outside carry a fixed `<a id>` above them; keep the id when rewording the heading.
-> - Table cells about bkit (subagent counts, audit count, model pairings) → match `.bkit/pipeline.md` and `.bkit/core/.bkit/prompts.md` § Models.
+> - Keep the prose factual, with no hype adjectives. The house / write-good linters apply to `*.md`.
+> - Fill each framework table cell from that project's own repo / docs only, never from roundups or AI summaries.
+> - Leave out star counts.
+> - When you refresh the table, refresh its as-of month too.
+> - A heading linked from outside carries a fixed `<a id>` above it. Keep the id when you reword the heading.
+> - Make the table cells about bkit (subagent counts, audit count, model pairings) match `.bkit/pipeline.md` and `.bkit/core/.bkit/prompts.md` § Models.
 
 **Contents**
 
@@ -23,11 +25,11 @@
 
 ## What this is
 
-bkit turns a single coding-agent request into gated, peer-reviewed engineering: five commands (`/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`), 39 single-purpose subagents, 35 audit templates, same pipeline on Claude Code, Cursor, Codex, Google Antigravity and opencode. Every subagent in execution order and every audit template: [`.bkit/pipeline.md`](pipeline.md).
+bkit turns a single coding-agent request into gated, peer-reviewed engineering: five commands (`/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`), 39 single-purpose subagents and 35 audit templates, with the same pipeline on Claude Code, Cursor, Codex, Google Antigravity and opencode. Every subagent in execution order, and every audit template, is listed in [`.bkit/pipeline.md`](pipeline.md).
 
-This doc: bkit vs 10 other AI development frameworks (one table, then agents and CI in detail), then bkit vs Gulli's agentic patterns.
+This doc compares bkit with 10 other AI development frameworks (one table, then agents and CI in detail), and then with Gulli's agentic patterns.
 
-Not related to [bkit Vibecoding Kit](https://github.com/popup-studio-ai/bkit-claude-code), a separate project with the same name. This bkit = `@cbartens/bkit`, [github.com/cbartens/bkit](https://github.com/cbartens/bkit).
+This bkit is not related to [bkit Vibecoding Kit](https://github.com/popup-studio-ai/bkit-claude-code), a separate project with the same name. This bkit is `@cbartens/bkit`, at [github.com/cbartens/bkit](https://github.com/cbartens/bkit).
 
 ---
 
@@ -35,9 +37,9 @@ Not related to [bkit Vibecoding Kit](https://github.com/popup-studio-ai/bkit-cla
 
 ## Compared with other AI development frameworks
 
-As of October 2026. A cross-section of 10: the closest process frameworks, the two main spec toolkits, the largest skills pack, an autonomous agent platform and an agentic IDE. Each column read from the project's own repo and docs. ✅ yes · ◐ partly · — no · ? not documented.
+As of October 2026. The table is a cross-section of 10: the closest process frameworks, the two main spec toolkits, the largest skills pack, an autonomous agent platform and an agentic IDE. Each column is read from the project's own repo and docs. ✅ yes · ◐ partly · — no · ? not documented.
 
-Kind: **Framework** runs a fixed multi-phase process · **Spec toolkit** writes specs / plans, agent does the rest · **Skills pack** library of skills / agents / commands, no fixed process · **Agent** product that writes code itself · **Editor** IDE or single-agent pair programmer. ECC is everything-claude-code.
+Kind: a **Framework** runs a fixed multi-phase process · a **Spec toolkit** writes specs / plans, and the agent does the rest · a **Skills pack** is a library of skills / agents / commands, with no fixed process · an **Agent** is a product that writes code itself · an **Editor** is an IDE or single-agent pair programmer. ECC is everything-claude-code.
 
 <!-- prettier-ignore -->
 |  | **bkit** | [Superpowers](https://github.com/obra/superpowers) | [gstack](https://github.com/garrytan/gstack) | [Compound Engineering](https://github.com/EveryInc/compound-engineering-plugin) | [GSD Core](https://github.com/open-gsd/gsd-core) | [BMAD](https://github.com/bmad-code-org/BMAD-METHOD) + bmad-loop | [Spec Kit](https://github.com/github/spec-kit) | [OpenSpec](https://github.com/Fission-AI/OpenSpec) | [Kiro](https://kiro.dev) (AWS) | [ECC](https://github.com/affaan-m/ECC) | [OpenHands](https://github.com/OpenHands/OpenHands) |
@@ -74,11 +76,11 @@ Where others are ahead of bkit:
 Where bkit stands apart, per the table:
 
 - **Only one with all of:** blind bug + security reviewers, sign-off after design / plan / before merge, mechanical "done" checks, a CI pipeline for your project, GitHub / Linear / Jira tracker, and file-based memory.
-- **CI pipeline for your project:** none of the 10 ships a multi-lane test pipeline with a final gate. Closest: gstack's basic `test.yml`, OpenHands' AI PR-review workflow, Kiro's example. How agents use CI: [Agents and CI](#agents-and-ci).
-- **Merge discipline:** merges into `dev` only after the capstone check, never `main`. OpenHands merges with no human; most stop at a PR.
-- **Debug with outside evidence:** connectors pull CI logs, runtime errors and web results into diagnosis; soak mode for runtime-only bugs; handover when unfixable.
-- **Test first, checked by code:** each plan task's tests are run by bkit and must fail before the task's code exists, then pass; the agent's report of a failure never counts. Superpowers enforces TDD by instruction; Task Master's TDD mode takes pass / fail counts from the agent.
-- **Gaps vs the field:** no IDE or hosted service; no formal requirements notation (EARS); no embedding memory; far smaller community.
+- **CI pipeline for your project:** none of the 10 ships a multi-lane test pipeline with a final gate. The closest are gstack's basic `test.yml`, OpenHands' AI PR-review workflow and Kiro's example. How agents use CI is in [Agents and CI](#agents-and-ci).
+- **Merge discipline:** bkit merges into `dev` only after the capstone check, and never into `main`. OpenHands merges with no human, and most stop at a PR.
+- **Debug with outside evidence:** connectors pull CI logs, runtime errors and web results into the diagnosis. Soak mode handles runtime-only bugs, and a handover follows when a bug is unfixable.
+- **Test first, checked by code:** bkit runs each plan task's tests, which must fail before the task's code exists, then pass. The agent's report of a failure never counts. Superpowers enforces TDD by instruction, and Task Master's TDD mode takes pass / fail counts from the agent.
+- **Gaps vs the field:** bkit has no IDE or hosted service, no formal requirements notation (EARS) and no embedding memory, and its community is far smaller.
 
 Also reviewed, left out of the table: Claude Task Master, ccpm, wshobson/agents, mattpocock/skills, SuperClaude, Ruflo, oh-my-openagent, Cline, Aider.
 
@@ -115,9 +117,9 @@ bkit's biggest difference from the field is how tightly its agents and its check
 
 ## Compared with agentic design patterns
 
-Benchmark: Antonio Gulli's _Agentic Design Patterns: A Hands-On Guide to Building Intelligent Systems_. Practitioner catalogue of agentic-AI patterns. Table maps all 21 named patterns + Context Engineering against bkit.
+The benchmark is Antonio Gulli's _Agentic Design Patterns: A Hands-On Guide to Building Intelligent Systems_, a practitioner's catalogue of agentic-AI patterns. The table maps all 21 named patterns, plus Context Engineering, against bkit.
 
-22 patterns assessed: 13 fully implemented, 7 partial (scoped to code-shipping), 2 intentionally N/A. No foundational patterns missing.
+Of the 22 patterns assessed, 13 are fully implemented, 7 are partial (scoped to code-shipping) and 2 are intentionally N/A. No foundational pattern is missing.
 
 <!-- prettier-ignore -->
 | Pattern (Gulli) | bkit status | Where / note |
@@ -149,20 +151,20 @@ Benchmark: Antonio Gulli's _Agentic Design Patterns: A Hands-On Guide to Buildin
 
 ### Where bkit goes beyond the catalogue
 
-- **Producer-critic with circular-reasoning guard.** Sibling reviewers cannot read each other's output. Book permits self-reflection.
-- **Cross-model diversity where breadth beats depth.** Design brainstorm and design review groups pair Opus + Sonnet (Grok + Composer on Cursor) → two reasoners review same work. Depth-sensitive lenses (plan review, plan scope check, build challenge) stay on top tier.
-- **Resume-from-state as single source of truth.** `status.jsonl` makes every run inspectable and restartable; book treats this only obliquely under memory.
-- **Human-in-the-loop as non-negotiable.** Hard stops after design / plan / ship; book treats HITL as one option.
-- **Fail-soft external context in debug.** Provider-agnostic `context-fetch` blocks (CI logs, diff, e2e, runtime, web) feed `/bkit-debug`; each self-skips to a narrated `CHECKED` / `SELF-SKIPPED` / `NOT CONFIGURED` state, so a context with no block is never read as a clean result.
-- **Explicit per-agent model pins.** Immune to session-default drift.
-- **Provider- and host-portable execution.** Per-agent pins → `bkit install --codex` / `--antigravity` / `--opencode=<provider>` add Codex, Google Antigravity and opencode hosts alongside Claude / Cursor — harness unchanged; inference backend moves. Same five-phase gated parallel pipeline on four BYO-key providers (OpenRouter, Ollama, opencode Zen + Go gateways) plus Google via Antigravity. Curated per-agent pins; models mirror Claude tier by default, CoT reasoners swapped for convergent-reasoning agents (debug / risk). See `.bkit/providers.md` § Supported hosts.
-- **Cross-host / provider continuity.** State in `status.jsonl`, plan / design docs under `docs/plans/`, tracker issue — not vendor session. Every host renders from same `.bkit/` source → phase or resumed run moves across IDE / provider mid-feature with identical gates, hooks, per-agent pins: exhaust Claude weekly limit or free-tier quota → continue on another host, no re-setup. Single-vendor frameworks tie run to starting session.
+- **Producer-critic with circular-reasoning guard.** Sibling reviewers cannot read each other's output. The book permits self-reflection.
+- **Cross-model diversity where breadth beats depth.** The design brainstorm and design review groups pair Opus + Sonnet (Grok + Composer on Cursor), so two reasoners review the same work. Depth-sensitive lenses (plan review, plan scope check, build challenge) stay on the top tier.
+- **Resume-from-state as single source of truth.** `status.jsonl` makes every run inspectable and restartable. The book treats this only obliquely, under memory.
+- **Human-in-the-loop as non-negotiable.** bkit has hard stops after design / plan / ship. The book treats HITL as one option.
+- **Fail-soft external context in debug.** Provider-agnostic `context-fetch` blocks (CI logs, diff, e2e, runtime, web) feed `/bkit-debug`. Each one self-skips to a narrated `CHECKED` / `SELF-SKIPPED` / `NOT CONFIGURED` state, so a context with no block is never read as a clean result.
+- **Explicit per-agent model pins.** They are immune to session-default drift.
+- **Provider- and host-portable execution.** With per-agent pins, `bkit install --codex` / `--antigravity` / `--opencode=<provider>` add the Codex, Google Antigravity and opencode hosts alongside Claude / Cursor. The harness is unchanged, and the inference backend moves. The same five-phase gated parallel pipeline runs on four BYO-key providers (OpenRouter, Ollama, opencode Zen + Go gateways), plus Google through Antigravity. The per-agent pins are curated. By default the models mirror the Claude tier, with CoT reasoners swapped for convergent-reasoning agents (debug / risk). See `.bkit/providers.md` § Supported hosts.
+- **Cross-host / provider continuity.** State lives in `status.jsonl`, the plan / design docs under `docs/plans/` and the tracker issue, not in a vendor's session. Every host renders from the same `.bkit/` source, so a phase or a resumed run moves across IDE / provider mid-feature with identical gates, hooks and per-agent pins. When you exhaust the Claude weekly limit or a free-tier quota, you continue on another host, with no re-setup. Single-vendor frameworks tie a run to the session that started it.
 
 <a id="known-gaps"></a>
 
 ### Known gaps, scoped as opportunities
 
-Most partials = deliberate scope. Two remain: automated eval harness with regression fixtures for closed friction items; optional self-consistency vote (quorum-of-N) for high-stakes reviews. Neither requires leaf-agent architecture change.
+Most partials are deliberate scope. Two gaps remain: an automated eval harness with regression fixtures for closed friction items, and an optional self-consistency vote (quorum-of-N) for high-stakes reviews. Neither requires a change to the leaf-agent architecture.
 
 ---
 

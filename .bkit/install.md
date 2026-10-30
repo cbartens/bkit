@@ -3,23 +3,24 @@
 <!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
-> **Purpose:** First-time install and upgrade, install lifecycle, uninstall and recovery. Ships in the package at `node_modules/@cbartens/bkit/.bkit/core/.bkit/install.md` and is mirrored into the consumer repo at `.bkit/install.md`. Ongoing ops and triggering workflows: `.bkit/README.md`.
+> **Purpose:** This file covers first-time install and upgrade, the install lifecycle, uninstall and recovery. It ships in the package at `node_modules/@cbartens/bkit/.bkit/core/.bkit/install.md` and is mirrored into the consumer repo at `.bkit/install.md`. Ongoing ops and triggering workflows are in `.bkit/README.md`.
 >
 > **Rules:**
 >
 > - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
-> - Ships to consumers: describe the current setup only. NEVER an internal identifier (tracker issue number, ledger key, review-finding id) and NEVER project history — decisions belong in `docs/decisions.jsonl`, incidents in `docs/knowledge.jsonl`.
+> - This file ships to every project that installs bkit. Describe the current setup only.
+> - Leave out internal labels, such as tracker issue numbers, ledger keys and review-finding ids, and leave out project history. Decisions go in `docs/decisions.jsonl`, and incidents go in `docs/knowledge.jsonl`.
 
 > [!IMPORTANT]
-> **bkit installs from npmjs.** `@cbartens/bkit` is public on `https://registry.npmjs.org`; `pnpm add -D @cbartens/bkit` resolves with no registry mapping, PAT, or CI / Vercel env.
+> **bkit installs from npmjs.** `@cbartens/bkit` is public on `https://registry.npmjs.org`, so `pnpm add -D @cbartens/bkit` resolves with no registry mapping, PAT, or CI / Vercel env.
 
 ## Quick install / upgrade — paste into your AI
 
-Two paste blocks below — **install** (first time) and **upgrade** (already on bkit). Both end the same way: apply advisories, reconcile templates, verify with `bkit check`.
+There are two paste blocks below: install (first time) and upgrade (already on bkit). Both end the same way: apply advisories, reconcile templates, and verify with `bkit check`.
 
 ### Install — first time
 
-No token or registry setup is needed — `@cbartens/bkit` is public on npmjs. Copy the block below into Claude Code / Cursor / Codex / Antigravity / opencode.
+No token or registry setup is needed, because `@cbartens/bkit` is public on npmjs. Copy the block below into Claude Code / Cursor / Codex / Antigravity / opencode.
 
 ````text
 Install the latest `@cbartens/bkit` in this repo and finish setup.
@@ -37,7 +38,7 @@ Install the latest `@cbartens/bkit` in this repo and finish setup.
 
 ### Upgrade — already installed
 
-Copy when the repo already has `@cbartens/bkit`. Prefer `bkit upgrade --latest` (bumps the package **and** resyncs managed files) — do **not** only `pnpm add`.
+Copy this block when the repo already has `@cbartens/bkit`. Prefer `bkit upgrade --latest`, which bumps the package and resyncs the managed files. Do not run only `pnpm add`.
 
 ````text
 Upgrade `@cbartens/bkit` to the latest version in this repo and finish the resync.
@@ -53,7 +54,7 @@ Upgrade `@cbartens/bkit` to the latest version in this repo and finish the resyn
 
 ## Install
 
-bkit is published publicly on **npmjs** (`https://registry.npmjs.org`). Add to a consumer repo:
+bkit is published publicly on npmjs (`https://registry.npmjs.org`). Add it to a consumer repo:
 
 ```bash
 pnpm add -D @cbartens/bkit
@@ -71,11 +72,11 @@ Run these in order on a brand-new consumer repo.
 | 3 | Set up direnv + `.bkit/.env` for `BKIT_GH_TOKEN` (GitHub MCP), `BKIT_LINEAR_API_KEY` or `BKIT_JIRA_API_KEY` — no registry token | [§ Local env setup](#local-env-setup) |
 | 4 | Push to a feature branch and verify CI runs green | — |
 
-No CI step, secret, `.npmrc` mapping or Vercel env is needed — CI reaches npmjs anonymously.
+No CI step, secret, `.npmrc` mapping or Vercel env is needed, because CI reaches npmjs anonymously.
 
 ### Then in the consumer repo
 
-`bkit install` requires you to name modules (at least one) — bare `bkit install` errors. Core (stack-agnostic foundation) always implicit. Re-run / `bkit upgrade` after package updates. Use `bkit check` as CI drift gate.
+`bkit install` requires you to name at least one module, and a bare `bkit install` errors. Core (the stack-agnostic foundation) is always implicit. Re-run it, or run `bkit upgrade`, after package updates. Use `bkit check` as the CI drift gate.
 
 > **Shell alias (add once to `~/.zshrc` or `~/.bashrc`, then `source ~/.zshrc`)**
 >
@@ -83,7 +84,7 @@ No CI step, secret, `.npmrc` mapping or Vercel env is needed — CI reaches npmj
 > alias bkit='pnpm bkit'
 > ```
 >
-> Type `bkit <verb>` from anywhere in repo. Without alias, prefix with `pnpm`: `pnpm bkit install --claude`. `bkit doctor` emits advisory if alias not detected.
+> Type `bkit <verb>` from anywhere in the repo. Without the alias, prefix with `pnpm`: `pnpm bkit install --claude`. `bkit doctor` emits an advisory if it does not detect the alias.
 
 ```bash
 # Name the host(s) + stack you want — core is implicit. Hosts compose.
@@ -108,24 +109,27 @@ bkit upgrade --latest                    # newest published; or --to=<version> t
 bkit check
 ```
 
-**Module flags** (composable; install and uninstall are symmetric): `--claude` `--cursor` `--codex` `--antigravity` `--opencode=<provider>`. The CI workflow, the Vale config, the tool configs, the git hooks, the slop-scan type-suppression plugin (`scripts/slop/bkit-slop-type-suppression.mjs`), and the tool `package.json` scripts and devDeps are templates you copy from `.bkit/templates/` (`.bkit/templates.md`). Core, implicit on every install, seeds the `bkit:gate:*` / `bkit:deps:*` scripts every workflow runs (add-if-missing; a name already present is never touched); point their values at your stack, see `.bkit/README.md` § Required tools. Any other module flag is an unknown-flag error.
+**Module flags** (composable; install and uninstall are symmetric): `--claude` `--cursor` `--codex` `--antigravity` `--opencode=<provider>`. Any other module flag is an unknown-flag error.
 
-**Opt-in flags:** `--tracker=github|linear|jira`, `--auto=claude|cursor|opencode` (cloud agents), `--opencode=<provider>` (additive opencode execution host — `openrouter`, `ollama`, `opencode-zen`, `opencode-go`). Dependency updaters: copy an example and own it. See [§ Optional post-install decisions](#optional-post-install-decisions).
+- The CI workflow, the Vale config, the tool configs, the git hooks, the slop-scan type-suppression plugin (`scripts/slop/bkit-slop-type-suppression.mjs`), and the tool `package.json` scripts and devDeps are templates you copy from `.bkit/templates/` (`.bkit/templates.md`).
+- Core, implicit on every install, seeds the `bkit:gate:*` / `bkit:deps:*` scripts every workflow runs. It adds them only if missing, and never touches a name that is already present. Point their values at your stack (see `.bkit/README.md` § Required tools).
+
+**Opt-in flags:** `--tracker=github|linear|jira`, `--auto=claude|cursor|opencode` (cloud agents), `--opencode=<provider>` (additive opencode execution host: `openrouter`, `ollama`, `opencode-zen`, `opencode-go`). For dependency updaters, copy an example and own it. See [§ Optional post-install decisions](#optional-post-install-decisions).
 
 ### Payload view links — `.bkit/core` + `.bkit/shared`
 
-Install and upgrade create two **relative symlinks** into the installed package, so the payload sources (workflows, prompts, hooks) are browsable in-repo: `.bkit/core` → `../node_modules/@cbartens/bkit/.bkit/core`, same shape for `shared`. Views, not copies — always the installed version, zero drift. Rules:
+Install and upgrade create two relative symlinks into the installed package, so the payload sources (workflows, prompts, hooks) can be browsed in the repo: `.bkit/core` → `../node_modules/@cbartens/bkit/.bkit/core`, and the same shape for `shared`. They are views, not copies, so they always show the installed version with zero drift. Rules:
 
-- Both paths sit in the `.gitignore` managed block — they dangle on a fresh clone or in CI (no `node_modules`); `bkit install` / `upgrade` recreates them. A missing or mis-pointed link is never `bkit check` drift (links join no WriteSet).
-- The `bkit` binary reads its payload from the package regardless; the links are browse-only. Editors resolve them to the `node_modules/…` paths.
-- A real directory at either path is never clobbered (advisory `payload-link-real-dir`) — remove it yourself and re-run install to get the link. A platform that refuses symlinks (Windows without Developer Mode) falls back to a junction, then to advisory `payload-link-failed` — never a failure.
-- `bkit uninstall` removes the links (symlinks only — consumer content stays).
+- Both paths sit in the `.gitignore` managed block. They dangle on a fresh clone or in CI (no `node_modules`), and `bkit install` / `upgrade` recreates them. A missing or mis-pointed link is never `bkit check` drift, because links join no WriteSet.
+- The `bkit` binary reads its payload from the package regardless, so the links are browse-only. Editors resolve them to the `node_modules/…` paths.
+- A real directory at either path is never clobbered (advisory `payload-link-real-dir`). Remove it yourself and re-run install to get the link. A platform that refuses symlinks (Windows without Developer Mode) falls back to a junction, then to advisory `payload-link-failed`, and never fails.
+- `bkit uninstall` removes the links. It removes symlinks only, and consumer content stays.
 
-> **Moving bkit versions: use `bkit upgrade --latest` (or `--to=<version>`).** Bumps `@cbartens/bkit` **and** resyncs `.agents/` payload + `.bkit/version` pin in one atomic step — two can never drift apart. Bare `pnpm add @cbartens/bkit` (or Renovate / Dependabot bump) only refreshes `package.json` + lockfile — does **not** resync; skipping resync reds CI on `bkit check` drift gate. If you bump package separately, run `bkit upgrade` afterward and commit resync alongside version bump in same PR. A target equal to the installed version re-renders in place, unless `package.json` declares `@cbartens/bkit` by a non-registry spec (`file:` tarball, `link:`, `workspace:`, `npm:` alias, git, URL, path) — then it still runs `pnpm add` to swap in the published package.
+> **Moving bkit versions: use `bkit upgrade --latest` (or `--to=<version>`).** It bumps `@cbartens/bkit` and resyncs the `.agents/` payload + `.bkit/version` pin in one atomic step, so the two can never drift apart. A bare `pnpm add @cbartens/bkit` (or a Renovate / Dependabot bump) only refreshes `package.json` + the lockfile and does not resync. Skipping the resync reds CI on the `bkit check` drift gate. If you bump the package separately, run `bkit upgrade` afterward and commit the resync alongside the version bump in the same PR. A target equal to the installed version re-renders in place. The exception is when `package.json` declares `@cbartens/bkit` by a non-registry spec (`file:` tarball, `link:`, `workspace:`, `npm:` alias, git, URL, path): then it still runs `pnpm add` to swap in the published package.
 
 ### Local env setup
 
-Two flows — pick one. Both put `BKIT_GH_TOKEN` in shell for the GitHub MCP server; Linear repos also need `BKIT_LINEAR_API_KEY`, Jira repos `BKIT_JIRA_API_KEY` (`.bkit/trackers.md` § jira — setup and notes). Use `gh auth login` for CLI.
+There are two flows. Pick one. Both put `BKIT_GH_TOKEN` in the shell for the GitHub MCP server. Linear repos also need `BKIT_LINEAR_API_KEY`, and Jira repos need `BKIT_JIRA_API_KEY` (`.bkit/trackers.md` § jira — setup and notes). Use `gh auth login` for the CLI.
 
 #### Flow A — Shell export (quickest, no extra deps)
 
@@ -139,11 +143,11 @@ export BKIT_JIRA_API_KEY=<Atlassian MCP V2 scoped token>   # Jira MCP
 source ~/.zshrc                                        # or: source ~/.bashrc
 ```
 
-Pros: one step, no install. Cons: tokens in every shell on machine; no per-repo scoping.
+Pros: one step, no install. Cons: the tokens are in every shell on the machine, with no per-repo scoping.
 
 #### Flow B — direnv + `.bkit/.env` (recommended for daily use)
 
-`bkit install` writes `.bkit/.env.example` (placeholders + permission notes; bkit owns it and overwrites edits — real values go in `.bkit/.env`). `.envrc` (`dotenv_if_exists .bkit/.env`) is a template: copy it from `.bkit/templates/.envrc`. direnv loads `.bkit/.env` on `cd`, unloads on leave — tokens scoped to repo.
+`bkit install` writes `.bkit/.env.example` (placeholders + permission notes). bkit owns that file and overwrites edits, so real values go in `.bkit/.env`. `.envrc` (`dotenv_if_exists .bkit/.env`) is a template: copy it from `.bkit/templates/.envrc`. direnv loads `.bkit/.env` on `cd` and unloads it when you leave, so the tokens are scoped to the repo.
 
 ```bash
 # 1. One-time per machine — install direnv
@@ -165,21 +169,34 @@ echo "len=${#BKIT_GH_TOKEN}"                                            # non-ze
 gh auth status                                                       # gh CLI uses keyring, not BKIT_GH_TOKEN
 ```
 
-After step 4, restart open Claude Code / Cursor sessions in this repo so new env reaches MCP servers.
+After step 4, restart any open Claude Code / Cursor sessions in this repo, so the new env reaches the MCP servers.
 
-`.bkit/.env` gitignored — NEVER commit. Cloud sessions (Claude Code on the web, Cursor Background Agents): set same names in respective online dashboards; see `.bkit/cloud.md` § Tokens by session type. `bkit install` / `bkit check` advisories detect missing direnv, blank required keys, un-allowed `.envrc` — follow whichever fires.
+`.bkit/.env` is gitignored. NEVER commit it. For cloud sessions (Claude Code on the web, Cursor Background Agents), set the same names in each host's online dashboard (see `.bkit/cloud.md` § Tokens by session type). `bkit install` / `bkit check` advisories detect a missing direnv, blank required keys and an un-allowed `.envrc`. Follow whichever fires.
 
 ## Cloud agent environments (Claude Code on the web + Cursor Background Agents)
 
-bkit ships repo-side scaffolding for both cloud agents. Opt-in `bkit install --auto=claude` writes no file; the per-session install hook (`.claude/hooks/bkit-cloud-bootstrap.sh`), the phase-routed `.github/workflows/bkit-cloud.yml` and the Cursor cloud image files (`.cursor/Dockerfile`, `.cursor/environment.json`) are templates in `.bkit/templates/` that you copy and own. (`.cursor/hooks.json` — Linear preflight wiring — ships with `--cursor`, not `--auto`.) Install without `--auto` ships zero cloud footprint. **Online-dashboard** half (Claude env in `claude.ai/code`, Cursor env vars in `Cursor → Settings → Background Agents`) configured once per machine / account.
+bkit ships repo-side scaffolding for both cloud agents:
 
-For **post-CI auto-routing** (ship-vs-debug after CI), bkit ships a single `.github/workflows/bkit-cloud.yml` template with two runtime-gated dispatch jobs — **claude** job (`claude-code-action`, runs when the `ANTHROPIC_API_KEY` repo secret is set, or keyless via the `ANTHROPIC_FEDERATION_RULE_ID` + `ANTHROPIC_ORGANIZATION_ID` repo variables) and **opencode** job (`opencode run` CLI, runs when `OPENCODE_PROVIDER_KEY` set) — plus `/bkit-auto` slash command both clouds invoke from single source (Cursor wires via dashboard trigger; no GHA on Cursor side). `bkit install --auto=opencode` requires `tracker=github`.
+- The opt-in `bkit install --auto=claude` writes no file.
+- The per-session install hook (`.claude/hooks/bkit-cloud-bootstrap.sh`), the phase-routed `.github/workflows/bkit-cloud.yml` and the Cursor cloud image files (`.cursor/Dockerfile`, `.cursor/environment.json`) are templates in `.bkit/templates/` that you copy and own.
+- `.cursor/hooks.json` (the Linear preflight wiring) ships with `--cursor`, not `--auto`.
+- An install without `--auto` ships zero cloud footprint.
 
-Full recipe + paste-in setup script + env-var inventory + Cursor dashboard config + consumer customisation patterns: `.bkit/cloud.md`. Host-delta matrix: `.bkit/providers.md` § Runtime environment.
+You configure the online-dashboard half (the Claude env in `claude.ai/code`, the Cursor env vars in `Cursor → Settings → Background Agents`) once per machine / account.
+
+For post-CI auto-routing (ship-vs-debug after CI), bkit ships a single `.github/workflows/bkit-cloud.yml` template with two runtime-gated dispatch jobs, plus a `/bkit-auto` slash command that both clouds invoke from a single source:
+
+- The **claude** job (`claude-code-action`) runs when the `ANTHROPIC_API_KEY` repo secret is set, or keyless through the `ANTHROPIC_FEDERATION_RULE_ID` + `ANTHROPIC_ORGANIZATION_ID` repo variables.
+- The **opencode** job (`opencode run` CLI) runs when `OPENCODE_PROVIDER_KEY` is set.
+- Cursor wires the slash command through a dashboard trigger, with no GHA on the Cursor side.
+
+`bkit install --auto=opencode` requires `tracker=github`.
+
+`.bkit/cloud.md` holds the full recipe, the paste-in setup script, the env-var inventory, the Cursor dashboard config and the consumer customisation patterns. The host-delta matrix is in `.bkit/providers.md` § Runtime environment.
 
 ## JSON ownership model — deep-containment
 
-`.claude/settings.json` and `.cursor/hooks.json` managed via **deep-containment**. bkit declares scope (full template JSON tree) that must be present as subset of consumer document. Consumer-added keys outside template tree survive every `bkit install` byte-identically — no special key or wrapper required.
+`.claude/settings.json` and `.cursor/hooks.json` are managed through **deep-containment**: bkit declares a scope (the full template JSON tree) that must be present as a subset of the consumer's document. Consumer-added keys outside the template tree survive every `bkit install` byte-identically, with no special key or wrapper required.
 
 ```json
 // .claude/settings.json
@@ -194,13 +211,13 @@ Full recipe + paste-in setup script + env-var inventory + Cursor dashboard confi
 }
 ```
 
-In this example, `hooks.SessionStart` is bkit-declared scope (from template). `hooks.Stop` and `failClosed` are consumer-added — bkit never touches them.
+In this example, `hooks.SessionStart` is bkit-declared scope (from the template). `hooks.Stop` and `failClosed` are consumer-added, and bkit never touches them.
 
 **Rules:**
 
-- Consumer keys outside template tree survive every `bkit install` byte-identically.
-- `bkit install` uses `deepContains(template, consumer)` — every template leaf present. On drift, deep-merges template-wins; consumer-only siblings preserved.
-- `bkit check` surfaces `tier2-json-drift` advisory when `deepContains` fails and **exits 1** (CI drift gate); writes nothing — consumer reviews and re-runs `bkit install` to reconverge.
+- Consumer keys outside the template tree survive every `bkit install` byte-identically.
+- `bkit install` uses `deepContains(template, consumer)`, which checks that every template leaf is present. On drift, it deep-merges with the template winning, and consumer-only siblings are preserved.
+- `bkit check` surfaces the `tier2-json-drift` advisory when `deepContains` fails, and exits 1 (CI drift gate). It writes nothing. The consumer reviews and re-runs `bkit install` to reconverge.
 - `.cursor/hooks.json` uses Cursor v1 keyed-object schema: `{"version": 1, "hooks": {"sessionStart": [...], "sessionStop": [...]}}`.
 
 ## Install lifecycle
@@ -209,7 +226,7 @@ In this example, `hooks.SessionStart` is bkit-declared scope (from template). `h
 
 **Phase 1 — Preflight (read-only, before any writes)**
 
-bkit checks preconditions and known advisory patterns before touching any file. Blocker fires → install exits 1 immediately with formatted `[blocker]` line and zero writes. Advisories accumulated for Phase 3.
+bkit checks preconditions and known advisory patterns before touching any file. When a blocker fires, install exits 1 immediately with a formatted `[blocker]` line and zero writes. Advisories are collected for Phase 3.
 
 <!-- prettier-ignore -->
 | Severity | When |
@@ -225,7 +242,7 @@ Module dispatch writes managed files.
 
 **Phase 3 — Post-install (re-detect + unified output)**
 
-After writes, bkit re-runs credential and environment checks — some only accurate post-install (e.g. the `bkit:gate:*` scripts core just seeded into `package.json`). The table also lists the module advisories that render in the same checklist.
+After the writes, bkit re-runs the credential and environment checks, because some are only accurate after install (for example the `bkit:gate:*` scripts core just seeded into `package.json`). The table also lists the module advisories that render in the same checklist.
 
 <!-- prettier-ignore -->
 | `id` | When |
@@ -252,13 +269,31 @@ After writes, bkit re-runs credential and environment checks — some only accur
 
 Every `gate-*` advisory ends with what a gate may run, which bkit cannot check: no test that needs a deployed boundary or remote service outside the two `…-e2e` gates (`.bkit/workflows.md` § Local gate scripts).
 
-Phase 1 and Phase 3 findings merged and deduplicated by `id` (Phase 3 wins on conflict — re-detection more accurate post-write). Zero findings → no banner.
+Phase 1 and Phase 3 findings are merged and deduplicated by `id`. Phase 3 wins on conflict, because re-detection is more accurate after the writes. Zero findings → no banner.
 
-**`bkit check` (dry-run)** runs Phase 1 and Phase 3 (read-only) — same advisory set as `bkit install` minus writes. Changes no managed file (regenerates `.bkit/advisories.md` artifact) and **exits 1 when any managed-file write would occur** in installed module — Tier-2 JSON deep-containment or markered-block drift, whole-file byte-equal mismatch, **host agent / command mirror content drift** (would-write / orphan delete), or when any file bkit writes (rendered agents / commands / skills, managed blocks, owned whole files) carries a stale managed-version marker (`bkit-managed-stale`). Gate covers the **installed** module set ({core, claude, cursor, codex, antigravity} plus **opencode**, each detected by sentinel files: a host's `agents/` dir; antigravity any of `.agents/plugins/bkit/{plugin.json,hooks.json,agents,skills,hooks}`, so a deleted plugin manifest is reported as a missing file, not an absent host; `bkit status` uses the same detection). A missing `bkit:gate:*` name counts as a write. antigravity gated: `.agents/plugins/bkit/**` (plugin manifest, hooks, agents, skills) and root `GEMINI.md`. opencode gated: `.opencode/opencode.json` (provider block + the recorded tracker's `mcp` entry + permission sandbox; another tracker's `mcp` entry the consumer edited, kept by a tracker switch, is not drift — `mcp-extra-server-linear--opencode-opencode-json` advises removing it) and the `bkit-gateguard.js` / `bkit-readguard.js` / `bkit-rules.js` plugins drift fail `check` — render inputs fall back to installed provider (`package.json` `bkit.providers.opencode.default`, authoritative for `opencode-zen` / `opencode-go`; all installed providers tracked in `bkit.providers.opencode.installed: string[]`) and recorded tracker, so clean install across providers checks green (no false drift). Remaining **opt-in** module (cloud) is not drift-gated. A missing bkit-owned hook file also fails `check`, one line per file naming it and the `bkit install` flag that restores it: the hook files of every installed host (`.claude/hooks/*`, `.cursor/hooks/*`, `.codex/hooks/*`, `.agents/plugins/bkit/hooks/*`, `.opencode/plugin/bkit-gateguard.js`, `.opencode/plugin/bkit-readguard.js`, `.opencode/plugin/bkit-rules.js`) — the hook commands skip a missing file (`test -f … || true`), so without this the guard would be off with no signal. Updater configs are not bkit files, so `bkit check` does not report them. Phase 3 stays read-only through read-only detector paths, not by being skipped.
+**`bkit check` (dry-run)** runs Phase 1 and Phase 3 (read-only): the same advisory set as `bkit install`, minus the writes. It changes no managed file (it regenerates the `.bkit/advisories.md` artifact), and it exits 1 when any managed-file write would occur in an installed module:
 
-**`bkit upgrade`** (not `--dry-run`) ends with the same read-only pass as `bkit check`: prints the checklist and rewrites `.bkit/advisories.md` (`Mode: upgrade`). Drift and blockers it finds are reported only — upgrade's exit code is unchanged.
+- Tier-2 JSON deep-containment or markered-block drift.
+- A whole-file byte-equal mismatch.
+- Host agent / command mirror content drift (would-write / orphan delete).
+- Any file bkit writes (rendered agents / commands / skills, managed blocks, owned whole files) carrying a stale managed-version marker (`bkit-managed-stale`).
+- A missing `bkit:gate:*` name, which counts as a write.
 
-**`PreflightFinding` shape** — stable contract for downstream tooling:
+The gate covers the installed module set ({core, claude, cursor, codex, antigravity} plus opencode). Each module is detected by sentinel files: for a host, its `agents/` dir, and for antigravity, any of `.agents/plugins/bkit/{plugin.json,hooks.json,agents,skills,hooks}`, so a deleted plugin manifest is reported as a missing file, not an absent host. `bkit status` uses the same detection.
+
+- **antigravity gated:** `.agents/plugins/bkit/**` (plugin manifest, hooks, agents, skills) and the root `GEMINI.md`.
+- **opencode gated:** Drift in `.opencode/opencode.json` (the provider block + the recorded tracker's `mcp` entry + the permission sandbox) and in the `bkit-gateguard.js` / `bkit-readguard.js` / `bkit-rules.js` plugins fails `check`.
+  - Another tracker's `mcp` entry that the consumer edited, kept by a tracker switch, is not drift. `mcp-extra-server-linear--opencode-opencode-json` advises removing it.
+  - Render inputs fall back to the installed provider (`package.json` `bkit.providers.opencode.default`, authoritative for `opencode-zen` / `opencode-go`; all installed providers are tracked in `bkit.providers.opencode.installed: string[]`) and the recorded tracker. So a clean install across providers checks green, with no false drift.
+- The remaining opt-in module (cloud) is not drift-gated.
+
+A missing bkit-owned hook file also fails `check`, with one line per file naming it and the `bkit install` flag that restores it. This covers the hook files of every installed host (`.claude/hooks/*`, `.cursor/hooks/*`, `.codex/hooks/*`, `.agents/plugins/bkit/hooks/*`, `.opencode/plugin/bkit-gateguard.js`, `.opencode/plugin/bkit-readguard.js`, `.opencode/plugin/bkit-rules.js`). The hook commands skip a missing file (`test -f … || true`), so without this check the guard would be off with no signal.
+
+Updater configs are not bkit files, so `bkit check` does not report them. Phase 3 stays read-only through read-only detector paths, not by being skipped.
+
+**`bkit upgrade`** (not `--dry-run`) ends with the same read-only pass as `bkit check`: it prints the checklist and rewrites `.bkit/advisories.md` (`Mode: upgrade`). It only reports the drift and blockers it finds, and upgrade's exit code is unchanged.
+
+**`PreflightFinding` shape** — a stable contract for downstream tooling:
 
 ```typescript
 interface PreflightFinding {
@@ -269,9 +304,9 @@ interface PreflightFinding {
 }
 ```
 
-Findings render as `--- i/N [severity] id ---` with `Detect:` and `Action:` lines. The console banner and the `.bkit/advisories.md` artifact render the same text — copy either into a coding assistant to apply fixes in sequence. After the findings, both list every firing setup tip (§ Setup tips).
+Findings render as `--- i/N [severity] id ---` with `Detect:` and `Action:` lines. The console banner and the `.bkit/advisories.md` artifact render the same text, so copy either into a coding assistant to apply the fixes in sequence. After the findings, both list every firing setup tip (§ Setup tips).
 
-**Dismissing an advisory (per package).** A detector can be right in general and still fire where the condition is deliberately not applicable — a rule-linter whose test titles mention `@live`, an integration lane mocked by design. Opt the owning package out in its `package.json`:
+**Dismissing an advisory (per package).** A detector can be right in general and still fire where the condition is deliberately not applicable, such as a rule-linter whose test titles mention `@live`, or an integration lane mocked by design. Opt the owning package out in its `package.json`:
 
 ```json
 {
@@ -284,14 +319,14 @@ Findings render as `--- i/N [severity] id ---` with `Detect:` and `Action:` line
 <!-- prettier-ignore -->
 | Rule | Behaviour |
 | --- | --- |
-| Scope | Per package, read from the **owning** package's `package.json` — the package holding the test file for `tagged-tests-no-ci-home`, the repo root for `test-integration-env-not-asserted` (the only manifest it reads). A sibling package with a real finding stays flagged. |
+| Scope | Per package, read from the owning package's `package.json` — the package holding the test file for `tagged-tests-no-ci-home`, the repo root for `test-integration-env-not-asserted` (the only manifest it reads). A sibling package with a real finding stays flagged. |
 | Severity | Advisory only. A `blocker` is never suppressible, whatever the manifest says. |
 | Visibility | The console banner and `.bkit/advisories.md` carry one suppressed-advisory line per dismissal (`N advisory` / `N advisories`), so a stale opt-out cannot hide a finding silently. |
 | Coverage | Per package: `tagged-tests-no-ci-home` and `test-integration-env-not-asserted`. Repo root: every setup tip id and every advisory a tip reuses (§ Setup tips). No other advisory is suppressible; an id matching no advisory or tip is ignored. |
 
 ## Optional post-install decisions
 
-Two capabilities **opt-in** — never wired by plain host / tooling install. Default install never enables them; post-install advisory banner nudges you to choose, once. Each recorded in `package.json` (`bkit.tracker.default`, `bkit.cloud.agent`) so the nudge knows whether you've decided or deliberately opted out.
+Two capabilities are opt-in, and a plain host / tooling install never wires them. The default install never enables them, and the post-install advisory banner nudges you to choose, once. Each choice is recorded in `package.json` (`bkit.tracker.default`, `bkit.cloud.agent`), so the nudge knows whether you've decided or deliberately opted out.
 
 <!-- prettier-ignore -->
 | Decision | Default | Opt-in command | Advisory when unset |
@@ -308,28 +343,38 @@ Two capabilities **opt-in** — never wired by plain host / tooling install. Def
 | Renovate self-hosted runner | `.bkit/templates/.github/workflows/bkit-renovate.yml` |
 | Dependabot | `.bkit/templates/.github/dependabot.yml` |
 
-Use one, and record it in `bkit.dependencies.updater` (`"renovate"` / `"dependabot"`); install and upgrade fill an empty value from the config present. `"none"` skips the install-time absence advisory. `bkit check` emits `dep-updater-absent` and `dep-updater-both`, and blocks on `dep-updater-unset` / `dep-updater-mismatch` when the value and the configs disagree. Setup: `docs/deployments.md` § Dependency updaters.
+Use one, and record it in `bkit.dependencies.updater` (`"renovate"` / `"dependabot"`). Install and upgrade fill an empty value from the config present. `"none"` skips the install-time absence advisory. `bkit check` emits `dep-updater-absent` and `dep-updater-both`, and blocks on `dep-updater-unset` / `dep-updater-mismatch` when the value and the configs disagree. Setup: `docs/deployments.md` § Dependency updaters.
 
-**Security scan.** Updater only offers fixes once a fixed release exists. To fail CI on known-vulnerable packages, risky config or committed secrets, copy `.bkit/templates/.github/workflows/bkit-trivy.yml` and own it; it also runs daily, and you accept findings in `.trivyignore.yaml`. No advisory; `bkit tips` suggests it. Setup: `.bkit/templates.md` § Trivy.
+**Security scan.** An updater only offers fixes once a fixed release exists. To fail CI on known-vulnerable packages, risky config or committed secrets, copy `.bkit/templates/.github/workflows/bkit-trivy.yml` and own it. It also runs daily, and you accept findings in `.trivyignore.yaml`. There is no advisory, and `bkit tips` suggests it. Setup: `.bkit/templates.md` § Trivy.
 
-**Test lint.** JS / TS repos, to fail `lint` on a test that cannot fail (no assertion, branch inside a test, unawaited promise): copy and own `.bkit/templates/.oxlintrc.json`, add `oxlint` + `oxlint-tsgolint`, set `lint` to `oxlint -c .oxlintrc.json --type-aware --deny-warnings`. No advisory; `bkit tips` suggests it. Setup: `.bkit/templates.md` § Oxlint.
+**Test lint.** In JS / TS repos, to fail `lint` on a test that cannot fail (no assertion, a branch inside a test, an unawaited promise):
 
-**All templates.** Copy and own, never installed. Catalog and install steps: `.bkit/templates.md`.
+1. Copy and own `.bkit/templates/.oxlintrc.json`.
+2. Add `oxlint` + `oxlint-tsgolint`.
+3. Set `lint` to `oxlint -c .oxlintrc.json --type-aware --deny-warnings`.
+
+There is no advisory, and `bkit tips` suggests it. Setup: `.bkit/templates.md` § Oxlint.
+
+**All templates.** You copy and own them, and they are never installed. Catalog and install steps: `.bkit/templates.md`.
 
 **Why opt-in, not part of a default install:**
 
-- **Tracker** wires real credentials and MCP servers into workflows — consumer must choose provider; bkit can't guess.
-- **Cloud agents** run through the phase-routed `bkit-cloud.yml` template (auto-dispatches bkit-ship on CI pass, bkit-debug on CI fail; plan / build via `workflow_dispatch`; design is local-only) plus cloud env scaffolding (`.claude/hooks/bkit-cloud-bootstrap.sh`, and the `.cursor/Dockerfile` + `.cursor/environment.json` templates). Workflow carries claude job and opencode job, each runtime-gated on provider secret — inert without key: claude needs the `ANTHROPIC_API_KEY` repo secret or the federation repo variables (+ Claude GitHub App), opencode needs `OPENCODE_PROVIDER_KEY`. Both need GitHub Actions write permissions, GitHub tracker, and (Cursor half) dashboard trigger — tracker itself opt-in. Env scaffolding inert until Claude / Cursor cloud env wired in dashboard. Autonomous routing by default, wired to unconfigured tracker, is wrong default — install without `--auto` ships zero cloud footprint.
+- **Tracker** wires real credentials and MCP servers into workflows, so the consumer must choose the provider. bkit can't guess.
+- **Cloud agents** run through the phase-routed `bkit-cloud.yml` template plus the cloud env scaffolding (`.claude/hooks/bkit-cloud-bootstrap.sh`, and the `.cursor/Dockerfile` + `.cursor/environment.json` templates). The template auto-dispatches bkit-ship on CI pass and bkit-debug on CI fail, runs plan / build through `workflow_dispatch`, and leaves design local-only.
+  - The workflow carries a claude job and an opencode job, each runtime-gated on its provider secret, so each is inert without its key. claude needs the `ANTHROPIC_API_KEY` repo secret or the federation repo variables (+ the Claude GitHub App). opencode needs `OPENCODE_PROVIDER_KEY`.
+  - Both need GitHub Actions write permissions, the GitHub tracker, and (for the Cursor half) a dashboard trigger, and the tracker itself is opt-in.
+  - The env scaffolding is inert until the Claude / Cursor cloud env is wired in the dashboard.
+  - Autonomous routing by default, wired to an unconfigured tracker, is the wrong default. So an install without `--auto` ships zero cloud footprint.
 
 **How to decide:**
 
-1. Run `bkit install --claude --cursor` (or whichever modules you want). Post-install banner lists `tracker-setup-none`, `dep-updater-absent`, `cloud-router-none` if undecided.
-2. Pick tracker: `bkit install --tracker=github` (or `linear` / `jira`). Needs no host flag; re-renders every installed host. Persisted to `bkit.tracker.default`; future installs preserve (switching free).
-3. Copy one updater example (table above). Land Renovate config on the default branch before installing the App. The next `bkit install` / `bkit upgrade` sets `bkit.dependencies.updater` to it.
-4. Enable cloud agents: `bkit install --auto=claude|cursor|opencode`. Persisted to `bkit.cloud.agent`; install prints secrets + permissions + dashboard checklist (`bkit-auto-setup`). Shipped `bkit-cloud.yml` carries claude job (`ANTHROPIC_API_KEY` repo secret or federation repo variables — `.bkit/cloud.md` § Claude — workload identity federation) and opencode job (`OPENCODE_PROVIDER_KEY`), each runtime-gated.
-5. **To opt out and silence the nudge**, set the field to `"none"` in `package.json` (`bkit.tracker.default` / `bkit.dependencies.updater` / `bkit.cloud.agent`). Advisory stays quiet. The `""` install seeds means undecided and keeps the nudge.
+1. Run `bkit install --claude --cursor` (or whichever modules you want). If you have not decided yet, the post-install banner lists `tracker-setup-none`, `dep-updater-absent` and `cloud-router-none`.
+2. Pick a tracker: `bkit install --tracker=github` (or `linear` / `jira`). It needs no host flag, and it re-renders every installed host. The choice is persisted to `bkit.tracker.default`, and future installs preserve it (switching is free).
+3. Copy one updater example (table above). Land the Renovate config on the default branch before installing the App. The next `bkit install` / `bkit upgrade` sets `bkit.dependencies.updater` to it.
+4. Enable cloud agents: `bkit install --auto=claude|cursor|opencode`. The choice is persisted to `bkit.cloud.agent`, and install prints the secrets + permissions + dashboard checklist (`bkit-auto-setup`). The shipped `bkit-cloud.yml` carries a claude job (`ANTHROPIC_API_KEY` repo secret or federation repo variables, see `.bkit/cloud.md` § Claude — workload identity federation) and an opencode job (`OPENCODE_PROVIDER_KEY`), each runtime-gated.
+5. **To opt out and silence the nudge**, set the field to `"none"` in `package.json` (`bkit.tracker.default` / `bkit.dependencies.updater` / `bkit.cloud.agent`). The advisory then stays quiet. The `""` that install seeds means undecided, and keeps the nudge.
 
-Tracker and cloud agents reverse by re-running install with the other flag. Updater files stay until you delete them.
+To reverse the tracker or cloud-agent choice, re-run install with the other flag. Updater files stay until you delete them.
 
 **GitHub notifications.** bkit's agents comment as you, so every workflow those comments trigger notifies you, even ones that skip. To see only failures: GitHub → Settings → Notifications → System → Actions → "Only notify for failed workflows".
 
@@ -357,7 +402,7 @@ bkit tips --all              # every firing tip
 
 ## Doctor
 
-`bkit doctor` is **diagnostic verb** — runs Phase 1 preflight + Phase 3 credential detectors, exits 0. Changes no managed file; like `bkit check` regenerates `.bkit/advisories.md` artifact (creates `.bkit/` if absent — repo that never installed bkit gains that one file).
+`bkit doctor` is the **diagnostic verb**: it runs the Phase 1 preflight + Phase 3 credential detectors, and exits 0. It changes no managed file. Like `bkit check`, it regenerates the `.bkit/advisories.md` artifact, and it creates `.bkit/` if absent, so a repo that never installed bkit gains that one file.
 
 ```bash
 # Diagnose drift without running install
@@ -366,16 +411,17 @@ bkit doctor
 
 Use `bkit doctor` to:
 
-- Check `BKIT_GH_TOKEN` presence in shell (GitHub MCP auth) and the cloud-router claude credential (`ANTHROPIC_API_KEY` repo secret or federation repo variables; flags a key shadowing federation and an adopted `bkit-cloud.yml` too old for federation).
-- Surface `bkit-version-pin-stale` advisory (installed version ahead of `.bkit/version`).
-- Preview all advisories `bkit install` would show post-install, without triggering writes.
-- Verify environment ready before `bkit install` on new machine.
+- Check that `BKIT_GH_TOKEN` is present in the shell (GitHub MCP auth), and check the cloud-router claude credential (`ANTHROPIC_API_KEY` repo secret or federation repo variables). It also flags a key shadowing federation, and an adopted `bkit-cloud.yml` too old for federation.
+- Surface the `bkit-version-pin-stale` advisory (installed version ahead of `.bkit/version`).
+- Preview all the advisories `bkit install` would show after install, without triggering writes.
+- Verify the environment is ready before `bkit install` on a new machine.
 - Detect macOS GUI-isolation (`bkit cursor` / `bkit opencode`): see `.bkit/providers.md` § macOS GUI-isolation.
-  `bkit doctor` always exits 0. Advisories found → printed in same checklist banner format as `bkit install`. None found → prints `[bkit-doctor] No advisories found.`
+
+`bkit doctor` always exits 0. When it finds advisories, it prints them in the same checklist banner format as `bkit install`. When it finds none, it prints `[bkit-doctor] No advisories found.`
 
 ## Uninstall
 
-`bkit uninstall` surgically removes bkit-managed content while preserving consumer customisations. The `.bkit/core` / `.bkit/shared` payload view links go with a full / core uninstall (symlinks only — a real directory at either path is consumer content and stays).
+`bkit uninstall` surgically removes bkit-managed content while preserving consumer customisations. The `.bkit/core` / `.bkit/shared` payload view links go with a full / core uninstall. It removes symlinks only, because a real directory at either path is consumer content and stays.
 
 ```bash
 # Uninstall EVERYTHING — all modules, including the cloud add-on if present.
@@ -413,37 +459,45 @@ bkit uninstall --nuke --yes
 
 ### Idempotency
 
-Running `bkit uninstall` twice is safe — subsequent runs skip absent files and produce zero writes.
+Running `bkit uninstall` twice is safe, because later runs skip absent files and produce zero writes.
 
 ### What a full uninstall preserves
 
-Bare uninstall removes bkit-managed files and strips bkit-managed blocks, but **not** guaranteed zero-footprint wipe. `docs/`: bkit's block (managed marker included) is stripped from every installed `docs/*.md` — a file holding nothing else is deleted — and the owned `docs/templates/bkit-*.md` are deleted. Deliberately leaves: everything outside `bkit:start` / `bkit:end` in `docs/*.md`, `.agents/context.md`, `.agents/skills.md` and the other managed-block files; your own files in `docs/` and `docs/templates/`; every file you copied from `.bkit/templates/`; any owned whole-file the consumer modified (hash mismatch → preserved); generated artefacts not manifest-tracked (`.bkit/advisories.md`, `.bkit/friction.jsonl`, the newest-release cache `.git/bkit-latest-version.json`). Use `--nuke` to force-remove every manifest-listed bkit file regardless of consumer modifications; generated artefacts still yours to delete by hand.
+A bare uninstall removes bkit-managed files and strips bkit-managed blocks, but it is not a guaranteed zero-footprint wipe. In `docs/`, bkit's block (managed marker included) is stripped from every installed `docs/*.md`, a file holding nothing else is deleted, and the owned `docs/templates/bkit-*.md` are deleted. It deliberately leaves:
+
+- everything outside `bkit:start` / `bkit:end` in `docs/*.md`, `.agents/context.md`, `.agents/skills.md` and the other managed-block files;
+- your own files in `docs/` and `docs/templates/`;
+- every file you copied from `.bkit/templates/`;
+- any owned whole-file the consumer modified (hash mismatch → preserved);
+- generated artefacts that are not manifest-tracked (`.bkit/advisories.md`, `.bkit/friction.jsonl`, the newest-release cache `.git/bkit-latest-version.json`).
+
+Use `--nuke` to force-remove every manifest-listed bkit file regardless of consumer modifications. The generated artefacts are still yours to delete by hand.
 
 ## Phase 3 exit-1 and recovery
 
-When `bkit install` detects **blocker-severity** finding in Phase 3 (e.g. `owned-hook-missing` — a bkit-owned hook file is gone, so the guard or setup step it holds does not run), exits 1 and prints single-line recovery command:
+When `bkit install` detects a blocker-severity finding in Phase 3 (for example `owned-hook-missing`: a bkit-owned hook file is gone, so the guard or setup step it holds does not run), it exits 1 and prints a single-line recovery command:
 
 ```
 [bkit-install] 1 Phase 3 blocker(s) detected. Recovery:
   bkit uninstall <flags> && <fix the issue> && bkit install <flags>
 ```
 
-Advisories (non-blockers) informational only — do not trigger exit-1.
+Advisories (non-blockers) are informational only, and do not trigger exit-1.
 
 ### --auto-revert
 
-Add `--auto-revert` to `bkit install` to automatically run `bkit uninstall` in-process when Phase 3 blocker fires:
+Add `--auto-revert` to `bkit install` to automatically run `bkit uninstall` in-process when a Phase 3 blocker fires:
 
 ```bash
 bkit install --auto-revert
 ```
 
-Useful in CI scripts to guarantee clean state on failure.
+This is useful in CI scripts to guarantee a clean state on failure.
 
 ## Install staging directory
 
-`bkit install` renders derived files (e.g. `.opencode/opencode.json`) into `.bkit-staging/` scratch directory before merging into consumer destinations. Scratch directory cleaned up after every run — success and failure alike — never persists in committed consumer repo state.
+`bkit install` renders derived files (for example `.opencode/opencode.json`) into the `.bkit-staging/` scratch directory before merging them into the consumer destinations. The scratch directory is cleaned up after every run, on success and failure alike, and never persists in committed consumer repo state.
 
-**Not a cross-module transaction.** Modules write directly to destinations — `bkit install` not atomic across modules: failure partway (e.g. hand-broken `.claude/settings.json` makes JSON merge throw) leaves earlier-module files written and `.bkit/version` unpinned. Error surfaced, not swallowed.
+**Not a cross-module transaction.** Modules write directly to their destinations, so `bkit install` is not atomic across modules. A failure partway (for example a hand-broken `.claude/settings.json` that makes the JSON merge throw) leaves the earlier modules' files written and `.bkit/version` unpinned. The error is surfaced, not swallowed.
 
-**Recovery is re-run.** `bkit install` idempotent — fix offending file and re-run to complete. `bkit uninstall` removes whatever was written.
+**Recovery is re-run.** `bkit install` is idempotent: fix the offending file and re-run to complete. `bkit uninstall` removes whatever was written.

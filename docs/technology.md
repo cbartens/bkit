@@ -5,12 +5,12 @@
 # Technology
 
 > [!CAUTION]
-> **Purpose:** Chosen frameworks, libraries, styling systems, coding conventions. WHY a choice was made → `decisions.jsonl`.
+> **Purpose:** The project's chosen frameworks, libraries, styling systems and coding conventions. Why a choice was made goes in `decisions.jsonl`.
 >
 > **Rules:**
 >
 > - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
-> - List technology and usage; **Why** → `decisions.jsonl`.
+> - List each technology and how it is used. Put the reason for a choice in `decisions.jsonl`.
 
 <!-- bkit:end -->
 

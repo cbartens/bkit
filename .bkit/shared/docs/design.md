@@ -5,24 +5,26 @@
 # Design
 
 > [!CAUTION]
-> **Purpose:** Design system — palette, typography, components, spacing, a11y, layout tokens.
+> **Purpose:** The design system: palette, typography, components, spacing, a11y and layout tokens.
 >
 > **Rules:**
 >
 > - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
-> - No ad-hoc hex — theme tokens only; all colours must support Dark Mode.
-> - Touch targets >=44x44px; WCAG 2.1 AA contrast.
+> - Use theme tokens only, with no ad-hoc hex.
+> - All colours must support Dark Mode.
+> - Touch targets must be >=44x44px.
+> - Contrast must meet WCAG 2.1 AA.
 
 ## Machine-checked reference
 
-Sole hand-maintained source for token values: nothing generates it, so changing an expected value forces a human to restate intent in the same PR diff. Keeping the gate honest:
+This table is the sole hand-maintained source for token values. Nothing generates it, so changing an expected value forces a human to restate the intent in the same PR diff. To keep the gate honest:
 
-- **Select the table by its header row**, never "any row containing a hex", because this doc may hold >1 hex table. Renaming the header renames the contract; update the parser in the same change.
+- **Select the table by its header row**, never by "any row containing a hex", because this doc may hold >1 hex table. Renaming the header renames the contract, so update the parser in the same change.
 - **Assert each implementation separately** (stylesheet variables, theme object, rendered style guide), so a red names its own culprit.
-- **No silent gap.** Every implementation token maps to a row here or to an explicit "intentionally undocumented" entry with a reason. A dropped token must red, not vanish.
-- **Transcribed != ratified.** A row read out of the implementation is tautological on day one — mark it so until a human confirms the value is intended.
+- **No silent gap.** Every implementation token maps to a row here, or to an explicit "intentionally undocumented" entry with a reason. A dropped token must red, not vanish.
+- **Transcribed != ratified.** A row read out of the implementation is tautological on day one, so mark it as transcribed until a human confirms the value is intended.
 
-Example shape — choose your own columns, then pin them; the header row is the contract:
+An example shape follows. Choose your own columns, then pin them, because the header row is the contract:
 
 <!-- prettier-ignore -->
 | Token | Light | Dark | Use |

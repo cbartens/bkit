@@ -5,13 +5,16 @@
 # Noise
 
 > [!CAUTION]
-> **Purpose:** Registry of intentional signal downgrades — log-level reductions, error-tracker issue archives / mutes, alert-threshold raises — with trigger and rationale.
+> **Purpose:** The registry of intentional signal downgrades (log-level reductions, error-tracker issue archives / mutes, alert-threshold raises), each with its trigger and rationale.
 >
 > **Rules:**
 >
 > - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
-> - Append-only; one entry per downgraded file / line, archived issue, or raised threshold.
-> - Downgrade only when trigger known / expected; record trigger, not just verdict.
-> - Never silence at source; log at lower level; archive / mute only if captured here.
+> - This file is append-only.
+> - Add one entry per downgraded file / line, archived issue or raised threshold.
+> - Downgrade a signal only when its trigger is known / expected.
+> - Record the trigger, not just the verdict.
+> - Never silence a signal at its source. Log it at a lower level instead.
+> - Archive or mute an issue only when it is captured here.
 
 <!-- bkit:end -->

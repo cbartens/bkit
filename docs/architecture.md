@@ -5,13 +5,13 @@
 # Architecture
 
 > [!CAUTION]
-> **Purpose:** System design — service boundaries, deployment topology, integration sketch.
+> **Purpose:** The system design: service boundaries, deployment topology and an integration sketch.
 >
 > **Rules:**
 >
 > - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
-> - Topology / boundaries only; operational rules and library lists → domain docs.
-> - Update on package add / remove or boundary shift.
+> - Hold topology and boundaries only. Operational rules and library lists go in the domain docs.
+> - Update this file when a package is added or removed, or a boundary shifts.
 
 <!-- bkit:end -->
 

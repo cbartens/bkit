@@ -7170,16 +7170,53 @@ Local project {{what}} → `Project {{section}}` below the bkit-managed block.
 - carriers: doc `docs`, `skills`
 
 ```text
+`Project {{section}}` below `bkit:end` belongs to the project, so `bkit install` never overwrites it and `bkit check` reports no drift for it.
+```
+
+```retired
 `Project {{section}}` below `bkit:end` is consumer-owned — `bkit install` never overwrites it, `bkit check` drift stays clean.
 ```
 
 ### doc-issue-states
 
 - doc: where-used
-- carriers: doc `CLAUDE`, `GEMINI`
+- carriers: entry all; doc `CLAUDE`, `GEMINI`
 
 ```text
+Query the tracker or `docs/roadmap.md` for an issue's state.
+```
+
+```retired
 Issue states → query tracker or `docs/roadmap.md`.
+Issue states → query the tracker or `docs/roadmap.md`.
+```
+
+### doc-no-issue-snapshot
+
+- doc: where-used
+- carriers: entry all; doc `CLAUDE`, `GEMINI`
+
+```text
+Never save a snapshot of an issue's state {{where}}.
+```
+
+```retired
+NEVER snapshot them {{where}}.
+NEVER snapshot {{where}}.
+```
+
+### doc-memory-fact-pointer
+
+- doc: where-used
+- carriers: entry all; doc `CLAUDE`
+
+```text
+For a fact in {{files}}, save only its path, its section and a one-line hook.
+```
+
+```retired
+Facts in {{files}} → save only path, section and one-line hook.
+Facts in {{files}} → ONLY save path, section, and one-line hook.
 ```
 
 ### doc-never-log-pii
@@ -7188,6 +7225,10 @@ Issue states → query tracker or `docs/roadmap.md`.
 - carriers: doc `context`, `observability`
 
 ```text
+Never log PII.
+```
+
+```retired
 **Never log PII.**
 ```
 
@@ -7910,7 +7951,7 @@ Each agent's prompt explicitly forbids reading any sibling output. The triplet c
 - source: `.bkit/core/.bkit/prompts.md` § Special Behaviors (frontmatter-adjacent contracts)
 
 ```text
-Per-attempt log files (`*-{N}-*.md`) — agent globs its own prior logs and adjusts strategy (Standard / Pivot / Final). Each loop stops at its ask point's limit (`bkit.workflows.<workflow>.<point>`) → Failure Path; with `ask` on, the orchestrator asks before each further round (`.bkit/workflows.md` § Ask points). `bkit-debug-failure-remediate` is strategy-blind — applies whatever the strategy-aware diagnosis generates. See `workflows.md` § Loop Context Accumulation.
+Per-attempt log files (`*-{N}-*.md`): the agent globs its own prior logs and adjusts its strategy (Standard / Pivot / Final). Each loop stops at its ask point's limit (`bkit.workflows.<workflow>.<point>`) → Failure Path. With `ask` on, the orchestrator asks before each further round (`.bkit/workflows.md` § Ask points). `bkit-debug-failure-remediate` is strategy-blind: it applies whatever the strategy-aware diagnosis generates. See `workflows.md` § Loop Context Accumulation.
 ```
 
 ### tracker-bound-output-output-cap-500-token-prose
@@ -7920,7 +7961,7 @@ Per-attempt log files (`*-{N}-*.md`) — agent globs its own prior logs and adju
 - source: `.bkit/core/.bkit/prompts.md` § Special Behaviors (frontmatter-adjacent contracts)
 
 ```text
-Output is pasted verbatim into the tracker comment thread (workflow `comment-post-step` block). Cap applies to prose only — sections that list items verbatim are exempt, since a reworded acceptance item or option loses the trade-off the human decides on. Self-contained — don't add references to other files the human reviewer can't open. **Cap belongs only here** — critique / review / diagnosis agents (`bkit-*-review-*`, `bkit-*-scope-check-*`, `bkit-build-plan-verify`, `bkit-build-challenge-*`, `bkit-debug-failure-diagnose`, `bkit-ship-deferred-sweep`) are uncapped because their output drives downstream apply steps (`*-update`, `*-remediate`) and detail compression there pushes interpretation cost onto the apply agent.
+Output is pasted verbatim into the tracker comment thread (workflow `comment-post-step` block). The cap applies to prose only. Sections that list items verbatim are exempt, because a reworded acceptance item or option loses the trade-off the human decides on. The output is self-contained: don't add references to other files the human reviewer can't open. **Cap belongs only here:** critique / review / diagnosis agents (`bkit-*-review-*`, `bkit-*-scope-check-*`, `bkit-build-plan-verify`, `bkit-build-challenge-*`, `bkit-debug-failure-diagnose`, `bkit-ship-deferred-sweep`) are uncapped because their output drives downstream apply steps (`*-update`, `*-remediate`) and detail compression there pushes interpretation cost onto the apply agent.
 ```
 
 ### stubbed-output-verdict-section-placeholders
@@ -7930,7 +7971,7 @@ Output is pasted verbatim into the tracker comment thread (workflow `comment-pos
 - source: `.bkit/core/.bkit/prompts.md` § Special Behaviors (frontmatter-adjacent contracts)
 
 ```text
-Process shape: (1) Write the **Create** output stub, with `PENDING` in every placeholder (matches Output format); (2-3) re-read inputs + load docs; (4) Update **Create** output — replace each PENDING via `Edit` as content becomes available (standing directive for the analysis below); (5+) analysis steps fill PENDING incrementally as findings emerge. Output format ends each section's bracketed placeholder with "; initially set to `PENDING`." Truncation recovery is **section-granular** — orchestrator greps for PENDING markers and re-issues specific gaps. Per-step gate `No PENDING placeholders remain` paired with `Verdict valid` enforces completeness. Plan-update / design-update / design-organise follow the same shape but bootstrap from the prior v(N) with `bkit steps stub --from= --to=` (Bash; `--strip-header` drops the prior header) instead of fresh stub (Write), so steps 2-4 above are steps 1-3 there.
+Process shape: (1) Write the **Create** output stub, with `PENDING` in every placeholder (matches Output format); (2-3) re-read inputs + load docs; (4) Update **Create** output — replace each PENDING via `Edit` as content becomes available (standing directive for the analysis below); (5+) analysis steps fill PENDING incrementally as findings emerge. Output format ends each section's bracketed placeholder with "; initially set to `PENDING`." Truncation recovery is section-granular: the orchestrator greps for PENDING markers and re-issues the specific gaps. Per-step gate `No PENDING placeholders remain` paired with `Verdict valid` enforces completeness. Plan-update / design-update / design-organise follow the same shape but bootstrap from the prior v(N) with `bkit steps stub --from= --to=` (Bash; `--strip-header` drops the prior header) instead of fresh stub (Write), so steps 2-4 above are steps 1-3 there.
 ```
 
 ### untrusted-input-prompt-defense
@@ -7940,7 +7981,7 @@ Process shape: (1) Write the **Create** output stub, with `PENDING` in every pla
 - source: `.bkit/core/.bkit/prompts.md` § Special Behaviors (frontmatter-adjacent contracts)
 
 ```text
-A single dense bullet in the `**Rules:**` block, identical in every file — the `external-input` clause in `.bkit/instructions.md`, a copy of the `.agents/rules.md` rule. `.bkit/core/engine/tools/instructions.test.ts` enumerates both directories at run time and fails on a file missing the clause, carrying a near-copy, or retaining the retired pre-universal variant, and asserts the clause keeps all three legs (data-not-instructions / report-directives / token-scope), so a newly added prompt is covered-or-failing by construction and no list is maintained anywhere. **Coverage is universal by decision:** classification is itself the defect (the judgement is re-made on every new prompt, silently, by whoever adds it), and per-file edit cost is unavoidable either way. Threat model, the write-time fence and the spawn-line notice: `docs/security.md` § Untrusted Content & Prompt Injection.
+A single dense bullet in the `**Rules:**` block, identical in every file — the `external-input` clause in `.bkit/instructions.md`, a copy of the `.agents/rules.md` rule. `.bkit/core/engine/tools/instructions.test.ts` enumerates both directories at run time and fails on a file missing the clause, carrying a near-copy, or retaining the retired pre-universal variant, and asserts the clause keeps all three legs (data-not-instructions / report-directives / token-scope), so a newly added prompt is covered-or-failing by construction and no list is maintained anywhere. **Coverage is universal by decision:** classification is itself the defect, because the judgement is re-made on every new prompt, silently, by whoever adds it. The per-file edit cost is unavoidable either way. Threat model, the write-time fence and the spawn-line notice: `docs/security.md` § Untrusted Content & Prompt Injection.
 ```
 
 ### central-agent-rules-rules-bullet
@@ -7950,7 +7991,7 @@ A single dense bullet in the `**Rules:**` block, identical in every file — the
 - source: `.bkit/core/.bkit/prompts.md` § Special Behaviors (frontmatter-adjacent contracts)
 
 ```text
-`.agents/rules.md` is a 2x2: `bkit Rules` and `Project Rules` each split into `Universal Rules` (binds every agent) and `Orchestrator Rules` (workflows / commands only — git, CI, merge, tracker, and human-gate rules a leaf must not act on). **bkit rules are copied:** the `**Rules:**` block after `**Contract:**` holds, word for word and in `rules.md` order, every bkit `Universal Rules` bullet whose `- carry:` line in `.bkit/instructions.md` names the prompt (the agent acts on it: its carriers plus its tool set — `Bash` → `Destructive git`, `Other parallel agents`; `Edit` / `Write` → `File edits`, `Edit tools`). A rule never appears in `**Protocol:**` or `**Contract:**` as well. A leaf sees only the bkit rules its carry lines name. **Project rules are read:** a prompt with `Grep` or `Bash` says ``Find the line of `<!-- bkit:end -->` in `.agents/rules.md` (`grep -n`), then read the file from that line on → follow its `Universal Rules`; skip its `Orchestrator Rules`.``, so its agent never loads the bkit block it already carries; a prompt with neither says ``Read `.agents/rules.md` below `<!-- bkit:end -->` → …``. Either way a consumer's universal rules and `## Project Settings` reach leaves while their orchestrator-only rules do not — the split is the consumer's declaration of which is which. Subsection names are shared across the two groups (`Agent Management`, `Git, CI & Merges`); a subsection is omitted only where it has no entry. **Position is contract:** `**Rules file:**` is always the first bullet of the `**Protocol:**` block, in every prompt and every workflow. Workflows and the repo-only `utility-*` agents (they push and merge) take the unscoped `**Rules file:**` line, and the entry files (`CLAUDE.md`, `AGENTS.md`, `.cursor/rules/bkit-rules.mdc`, un-quoted `- **Rules:**`) the same text under `**Rules:**`: ``Read `.agents/rules.md` → follow all rules.``. `.bkit/core/engine/tools/instructions.test.ts` asserts the three header blocks, the `**Rules file:**` anchor, the block and order of every placed header clause, `rules-leaf` forbidden on workflows and `utility-*` agents, both groups under `bkit Rules`, and a universal counterpart for every orchestrator subsection; `.bkit/core/engine/tools/instructions-coverage.test.ts` asserts every prompt holds each rule its carry line names, no prompt holds a bkit rule no carry line names, and every prompt carries at least one. **Assertions stop at `bkit:end`:** `Project Rules` is consumer-owned; `bkit install` never writes it and `bkit check` ignores it. Header clauses (`**Order:**`, `**No improv:**`, `**No commits:**` (prompts with `Bash`)) stay inline in every prompt they apply to. `**Auto-apply:**` is `Orchestrator Rules` only and inlined in no prompt.
+`.agents/rules.md` is a 2x2: `bkit Rules` and `Project Rules` each split into `Universal Rules` (binds every agent) and `Orchestrator Rules` (workflows / commands only — git, CI, merge, tracker, and human-gate rules a leaf must not act on). **bkit rules are copied:** the `**Rules:**` block after `**Contract:**` holds, word for word and in `rules.md` order, every bkit `Universal Rules` bullet whose `- carry:` line in `.bkit/instructions.md` names the prompt (the agent acts on it: its carriers plus its tool set — `Bash` → `Destructive git`, `Other parallel agents`; `Edit` / `Write` → `File edits`, `Edit tools`). A rule never appears in `**Protocol:**` or `**Contract:**` as well. A leaf sees only the bkit rules its carry lines name. **Project rules are read:** a prompt with `Grep` or `Bash` says ``Find the line of `<!-- bkit:end -->` in `.agents/rules.md` (`grep -n`), then read the file from that line on → follow its `Universal Rules`; skip its `Orchestrator Rules`.``, so its agent never loads the bkit block it already carries; a prompt with neither says ``Read `.agents/rules.md` below `<!-- bkit:end -->` → …``. Either way a consumer's universal rules and `## Project Settings` reach leaves while their orchestrator-only rules do not. The split is the consumer's declaration of which is which. Subsection names are shared across the two groups (`Agent Management`, `Git, CI & Merges`); a subsection is omitted only where it has no entry. **Position is contract:** `**Rules file:**` is always the first bullet of the `**Protocol:**` block, in every prompt and every workflow. Workflows and the repo-only `utility-*` agents (they push and merge) take the unscoped `**Rules file:**` line, and the entry files (`CLAUDE.md`, `AGENTS.md`, `.cursor/rules/bkit-rules.mdc`, un-quoted `- **Rules:**`) the same text under `**Rules:**`: ``Read `.agents/rules.md` → follow all rules.``. `.bkit/core/engine/tools/instructions.test.ts` asserts the three header blocks, the `**Rules file:**` anchor, the block and order of every placed header clause, `rules-leaf` forbidden on workflows and `utility-*` agents, both groups under `bkit Rules`, and a universal counterpart for every orchestrator subsection; `.bkit/core/engine/tools/instructions-coverage.test.ts` asserts every prompt holds each rule its carry line names, no prompt holds a bkit rule no carry line names, and every prompt carries at least one. **Assertions stop at `bkit:end`:** `Project Rules` is consumer-owned; `bkit install` never writes it and `bkit check` ignores it. Header clauses (`**Order:**`, `**No improv:**`, `**No commits:**` (prompts with `Bash`)) stay inline in every prompt they apply to. `**Auto-apply:**` is `Orchestrator Rules` only and inlined in no prompt.
 ```
 
 ### agents-docs-md-read-exemption
@@ -7960,7 +8001,7 @@ A single dense bullet in the `**Rules:**` block, identical in every file — the
 - source: `.bkit/core/.bkit/prompts.md` § Special Behaviors (frontmatter-adjacent contracts)
 
 ```text
-Single-file mechanical utility — compress prose in one supplied target. No domain reasoning, so the doc catalog earns nothing against its token cost. Every other prompt loads it.
+A single-file mechanical utility that compresses prose in one supplied target. It does no domain reasoning, so the doc catalog earns nothing against its token cost. Every other prompt loads it.
 ```
 
 ### acceptedits-hard-requirement
@@ -7990,7 +8031,7 @@ Task checkboxes are verify's derived view of the codebase. The executor's durabl
 - source: `.bkit/core/.bkit/prompts.md` § Special Behaviors (frontmatter-adjacent contracts)
 
 ```text
-Output format collapses to a single H1 + flat log body (no separate `Brief` / `Strategy` body sections — `Strategy` lives in machine-parseable header alongside `Verdict`; reasoning is implicit in `DONE —` / `BLOCKED —` lines). Stub state: `Verdict: PENDING` header + H1 + empty body. After every discrete unit of work (task / gap / finding / fix step): `Bash echo "DONE — {Unit} {N}: {name} — {outcome} ({path or commit ref})" >> {artifact}`. On failure: `BLOCKED — {Unit} {N}: {name} — {reason}`. Step 4 standing directive: `Update **Create** output — append DONE/BLOCKED log entries at EOF as content becomes available.` (vs canonical `replace each PENDING via Edit` for multi-section verdict-bearing agents). `Verdict` flips PENDING → PASS / CONCERNS / FAIL at the end via `Edit` on the header line. **Two wins:** (1) timeout resilience — partial progress is on disk after every appended line, so a budget-exhausted agent leaves a usable record (vs the prior antipattern: ~30 ticks clustered at end → all lost on timeout); (2) `Bash echo >>` is cheaper than `Edit` (no file-read for `old_string` match). **Skip-done logic** (read prior attempts via Read glob, skip units already in `DONE —`) added only where workflow already attempt-numbers and globs the artifact: `bkit-build-plan-gaps-remediate` (via `VERIFY_ATTEMPT`, glob already in its Read) and `bkit-build-plan-execute` (one `build-plan-execute-{GROUP}-log.md` per group; every attempt — a turn-cap re-run or a Decision Pause `Fix now` re-run — appends to it, and `bkit context brief --next` leaves out tasks it logs `DONE — TASK {N}:`). On PENDING (subagent timeout) the verify→remediate loop bounded by `build.verify.maxAttempts` absorbs recovery via `bkit-build-plan-gaps-remediate`. `bkit-debug-failure-remediate` is diagnosis-driven (each attempt fresh-strategy via `bkit-debug-failure-diagnose`) — skip-done would be wrong shape; gets stub+log only, but flat log still feeds `bkit-debug-failure-diagnose`'s loop-context glob with finer evidence.
+Output format collapses to a single H1 + flat log body (no separate `Brief` / `Strategy` body sections: `Strategy` lives in the machine-parseable header alongside `Verdict`, and the reasoning is implicit in the `DONE —` / `BLOCKED —` lines). Stub state: `Verdict: PENDING` header + H1 + empty body. After every discrete unit of work (task / gap / finding / fix step): `Bash echo "DONE — {Unit} {N}: {name} — {outcome} ({path or commit ref})" >> {artifact}`. On failure: `BLOCKED — {Unit} {N}: {name} — {reason}`. Step 4 standing directive: `Update **Create** output — append DONE/BLOCKED log entries at EOF as content becomes available.` (vs canonical `replace each PENDING via Edit` for multi-section verdict-bearing agents). `Verdict` flips PENDING → PASS / CONCERNS / FAIL at the end via `Edit` on the header line. **Two wins:** (1) timeout resilience: partial progress is on disk after every appended line, so a budget-exhausted agent leaves a usable record, where ~30 ticks clustered at the end would all be lost on a timeout; (2) `Bash echo >>` is cheaper than `Edit`, because it needs no file read for an `old_string` match. **Skip-done logic** (read prior attempts via Read glob, skip units already in `DONE —`) is added only where the workflow already attempt-numbers and globs the artifact: `bkit-build-plan-gaps-remediate` (via `VERIFY_ATTEMPT`, glob already in its Read) and `bkit-build-plan-execute` (one `build-plan-execute-{GROUP}-log.md` per group; every attempt — a turn-cap re-run or a Decision Pause `Fix now` re-run — appends to it, and `bkit context brief --next` leaves out tasks it logs `DONE — TASK {N}:`). On PENDING (subagent timeout) the verify→remediate loop bounded by `build.verify.maxAttempts` absorbs recovery via `bkit-build-plan-gaps-remediate`. `bkit-debug-failure-remediate` is diagnosis-driven (each attempt takes a fresh strategy via `bkit-debug-failure-diagnose`), so skip-done would be the wrong shape. It gets stub+log only, but the flat log still feeds `bkit-debug-failure-diagnose`'s loop-context glob with finer evidence.
 ```
 
 ## Authoring Rules
@@ -8002,7 +8043,10 @@ Rules for writing workflows, copied whole from their catalog sections (installed
 - source: `.bkit/core/.bkit/workflows.md` § Two-Layer Separation Rules
 
 ```text
-> **Agents never call tracker MCP tools.** Tracker MCP tools (`mcp__github__issue_*`, `mcp__linear__*_issue`, `mcp__jira__*`, `*_comment`, `list_issues`, etc.) are exclusive to the workflow layer. Agent that calls a tracker is a protocol violation. Exceptions, both human-invoked utilities: `bkit-utility-update-roadmap` holds read-only grants (`list_issues`, `issue_read` / `get_issue`, `searchJiraIssuesUsingJql` / `getJiraIssue`) and never writes; `bkit-utility-update-tracker` reads and writes issue fields (title, labels, board status, priority, size, milestone, parent, blocked-by) and never creates, closes or comments, never touches `bkit:*` labels.
+> **Agents never call tracker MCP tools.** Only the workflow layer uses the tracker MCP tools (`mcp__github__issue_*`, `mcp__linear__*_issue`, `mcp__jira__*`, `*_comment`, `list_issues`, etc.). An agent that calls a tracker breaks the protocol. There are two exceptions, both utilities a human invokes:
+>
+> - `bkit-utility-update-roadmap` holds read-only grants (`list_issues`, `issue_read` / `get_issue`, `searchJiraIssuesUsingJql` / `getJiraIssue`) and never writes.
+> - `bkit-utility-update-tracker` reads and writes issue fields (title, labels, board status, priority, size, milestone, parent, blocked-by). It never creates, closes or comments on an issue, and never touches `bkit:*` labels.
 
 <!-- prettier-ignore -->
 | Capability | Workflow (`.bkit/core/workflows/`) | Agent (`.bkit/core/prompts/`) |
@@ -8014,7 +8058,7 @@ Rules for writing workflows, copied whole from their catalog sections (installed
 | Invoke subagents | ✅ via `@agent-name` (Agent tool) | ❌ leaves only |
 | Write `status.jsonl` / hold `.lock` | ✅ | ❌ |
 
-**Why:** agent runnable standalone (`@bkit-build-challenge-1 .worktrees/xxx-123` without live tracker issue). Inputs via filesystem paths from orchestrator. Outputs on disk: `docs/plans/{YYYYMM}/logs/{FID}/`, design / plan doc, source, or `docs/{knowledge,decisions,deferrals,failures}.jsonl`, `.bkit/issues.jsonl`. Workflow reads agent outputs → decides tracker mirror.
+**Why:** an agent can then run on its own (`@bkit-build-challenge-1 .worktrees/xxx-123`, with no live tracker issue). The orchestrator passes its inputs as filesystem paths. The agent writes its outputs to disk: `docs/plans/{YYYYMM}/logs/{FID}/`, the design / plan doc, source, or `docs/{knowledge,decisions,deferrals,failures}.jsonl` and `.bkit/issues.jsonl`. The workflow reads the agent's outputs and decides what to mirror to the tracker.
 ```
 
 ### header-bullets
@@ -8022,7 +8066,7 @@ Rules for writing workflows, copied whole from their catalog sections (installed
 - source: `.bkit/core/.bkit/workflows.md` § Header bullets
 
 ```text
-Header bullets of the 6 workflow files, block by block, in file order; `.bkit/authoring.md` § Prompts and Workflows, `Header blocks` defines the blocks. Every bullet carried by 2+ workflows has one canonical wording in `.bkit/instructions.md` § Clauses — a `{{slot}}` template where each workflow carries its own detail (placeholders, lock release, counters); ship's `Status branch` is its own. `Modes` and `External tools` sit in one workflow each and stay local. Change a bullet in `.bkit/instructions.md` § Clauses, then run `pnpm instructions:sync`. What `.agents/rules.md` already says (auto-apply, deferred work, discovered bugs, flaky tests, gates, subagents, verify every tool return, git safety) is not repeated in a header: the `Rules file` line loads it.
+The table lists the header bullets of the 6 workflow files, block by block, in file order. `.bkit/authoring.md` § Prompts and Workflows, `Header blocks` defines the blocks. Every bullet carried by 2+ workflows has one canonical wording in `.bkit/instructions.md` § Clauses. Where each workflow carries its own detail (placeholders, lock release, counters), that wording is a `{{slot}}` template. Ship's `Status branch` is its own. `Modes` and `External tools` sit in one workflow each and stay local. To change a bullet, change it in `.bkit/instructions.md` § Clauses, then run `pnpm instructions:sync`. A header does not repeat what `.agents/rules.md` already says (auto-apply, deferred work, discovered bugs, flaky tests, gates, subagents, verify every tool return, git safety), because the `Rules file` line loads it.
 
 <!-- prettier-ignore -->
 | Bullet | Block | Carried by | Says |
@@ -8063,10 +8107,10 @@ Header bullets of the 6 workflow files, block by block, in file order; `.bkit/au
 | Invariant | Rule |
 | --- | --- |
 | **Diff per reader** | build, debug, ship: Every agent that reads the run's diff gets `tmp/bkit-diff-{FID}.md`, written by `bkit context diff --reset-log` in the same sub-step, just before it: build Steps 10, 11 and the Failure Path; debug Step 10 and the Failure Path; ship Step 5 and the Failure Path. Build's group verify (Step 8) reads `build-diff-{GROUP}-{VERIFY_ATTEMPT}.md` instead: `bkit context diff --base=` the group's start commit (`status route --step=build-group-start --group=N` `parentSha`), so a group's review reads only that group's commits. Past 10000 lines the file is a per-file budget: line 1 says `partial diff coverage`, line 2 lists the files not shown whole, and the whole diff stays in `{OUTBOX}` (§ Context artifact clamping). Debug passes `--base={DIFF_BASE}` (run start commit). |
-| **Locks** | Step 1 takes the per-feature `.lock` with `bkit locks acquire --kind=workflow` once `FID` is resolved; hold `token` as `{LOCK_TOKEN}`. Lock path is **absolute** (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock`, ship included — the lock file is gitignored and never rides a commit) so acquire / release resolve to the same inode regardless of cwd. Lock line `{at} {workflow} {fid} {token}`. Existing lock → its owning workflow's folded status.jsonl decides: `IN_PROGRESS` + last step <30min → refused (`workflow already running for {FID}`) → Failure Path; any other holder (`DONE` / `FAILED`, idle `IN_PROGRESS`, no run in the log) is reclaimed as soon as it is idle; the lock file's own age is not checked. Released in Close Workflow (`bkit locks release --token=`) and Failure Path (`bkit workflows fail --token=`, skipped when `{LOCK_TOKEN}` is empty — the run never took the lock). Release removes only the caller's own lock (another owner's stays, exit 4); a lock file that survives removal exits 5 → `Lock removal failed`. |
+| **Locks** | Step 1 takes the per-feature `.lock` with `bkit locks acquire --kind=workflow` once `FID` is resolved; hold `token` as `{LOCK_TOKEN}`. The lock path is absolute (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock`, ship included, because the lock file is gitignored and never rides a commit), so acquire / release resolve to the same inode whatever the cwd. Lock line `{at} {workflow} {fid} {token}`. Existing lock → its owning workflow's folded status.jsonl decides: `IN_PROGRESS` + last step <30min → refused (`workflow already running for {FID}`) → Failure Path; any other holder (`DONE` / `FAILED`, idle `IN_PROGRESS`, no run in the log) is reclaimed as soon as it is idle; the lock file's own age is not checked. Released in Close Workflow (`bkit locks release --token=`) and Failure Path (`bkit workflows fail --token=`, skipped when `{LOCK_TOKEN}` is empty — the run never took the lock). Release removes only the caller's own lock (another owner's stays, exit 4); a lock file that survives removal exits 5 → `Lock removal failed`. |
 | **Pre-merge CI** | Ship re-resolves CI against the PR head it is about to merge (`bkit runs gate` at Step 10), not the read taken at Step 2: when `dev` requires status checks, `bkit prs update-branch` moves the head before `gh pr merge`, so the earlier read describes a SHA that is no longer being merged. A failed query is not a pass — an API error (403 on PAT scope, for one) is gate code 20, never green. Anything short of a `completed` run whose capstone concluded `success` refuses the merge. |
-| **Artifact tree** | A subagent's artifact is asserted **under the working directory its dispatch supplied** — `{WORKTREE_PATH}` for every worktree-phase agent, ship's included. The subagent's reported path is not evidence: the `cd` and `pwd` line in the dispatch Context is prose, and agents have written to the main checkout despite it. design / plan additionally assert no `{FID}` artifact is left untracked in the main checkout before the close squash — an untracked file at the same path makes `git merge --squash` fail with `untracked working tree files would be overwritten`. |
-| **Main-checkout staging** | Every `git add` **and** `git commit` that targets the main checkout carries an explicit pathspec. `add` alone is not enough: a pathspec-less `git commit` commits the **whole index**, sweeping work a user staged themselves. Worktree-phase `git add -A` is unrestricted — that tree holds only this feature's work. |
+| **Artifact tree** | A subagent's artifact is asserted under the working directory its dispatch supplied: `{WORKTREE_PATH}` for every worktree-phase agent, ship's included. The subagent's reported path is not evidence: the `cd` and `pwd` line in the dispatch Context is prose, and agents have written to the main checkout despite it. design / plan additionally assert no `{FID}` artifact is left untracked in the main checkout before the close squash — an untracked file at the same path makes `git merge --squash` fail with `untracked working tree files would be overwritten`. |
+| **Main-checkout staging** | Every `git add` and every `git commit` that targets the main checkout carries an explicit pathspec. `add` alone is not enough: a pathspec-less `git commit` commits the whole index, sweeping in work a user staged themselves. Worktree-phase `git add -A` is unrestricted, because that tree holds only this feature's work. |
 | **Close squash** | design / plan close, every runtime: `bkit branches land` fetches `origin/dev`, adds a detached `.worktrees/_land-{FID}` there, squashes `{BRANCH}` into it with `-X ours`, then appends back any `.jsonl` row the branch added that the squash dropped (a ledger without `merge=union`, e.g. a consumer's `.bkit/friction.jsonl`). Non-zero squash, staged non-doc files (`CLOSE_DOCS`; a staged path that is local `dev`'s own content — a branch carrying unpushed `dev` commits — is named as such, with the unpushed count and `git push origin dev`), or a staged `{FID}-design.md` / `{FID}-plan.md` blob that differs from the branch's → stop; nothing pushed, branch and worktree kept — presence on `dev` proves nothing on a re-run, and `-X ours` keeps `dev`'s side of a conflicting hunk. Roadmap row, then commit via `bkit ledgers commit --squash-of={BRANCH}` and `git push origin HEAD:dev`. Push rejected because `dev` moved → drop the throwaway worktree, refetch, rebuild, push again: `LAND_ATTEMPTS` pushes, waits doubling from `LAND_BACKOFF_START_S` to `LAND_BACKOFF_CAP_S` with jitter; all used → exit 8, nothing landed. A push with no server answer → exit 8, nothing landed, no PR. A server refusal → PR close (roadmap commit on the branch in the checkout holding it, push, open or reuse the PR, squash-merge; a refused merge on an OPEN PR → `bkit prs update-branch` and retry on the same schedule, then exit 17 with the PR left open). The throwaway worktree is removed on every path. `RUNTIME_DEVPUSHES=true` only, after landing: local `dev` fast-forwards to the landed commit when that is a pure fast-forward (`merge --ff-only` when the main checkout is on `dev`, else the pointer alone); local `dev` already past the landed commit and on `origin/dev` (a later close fast-forwarded it) → `current`; local-only commits on `dev` (listed as `origin/dev..dev`) or git refusing (an uncommitted edit the move would overwrite) skip it with a log line, never failing the close; then the workflow-created worktree and `feat/{FID}` go. Nothing is deleted until `origin/dev` holds the branch's work: any file the branch changed that differs on `origin/dev` (`.jsonl`: any line the branch added that `origin/dev` lacks; `docs/roadmap.md` excepted) → exit 18, branch and worktree kept; uncommitted or untracked files in `.worktrees/{FID}` (the `bkit.workflows.worktree.copy` entries and `.bkit/.env` excepted) → close succeeds, worktree and branch kept (`worktree.reason: uncommitted`) with the file list logged. The main checkout is never written to: the `close-transport` row is written only when the run's own checkout is the branch (`RUNTIME_DEVPUSHES=false`); otherwise its `shape` / `sha` / `scan` go to a log line and the cross-check reads the landed commit's copy. Gate 12 reads `status.jsonl` from `origin/dev` (`bkit steps gate --ref=origin/dev`), so it passes whether or not local `dev` moved. |
 ```
 
@@ -8075,11 +8119,14 @@ Header bullets of the 6 workflow files, block by block, in file order; `.bkit/au
 - source: `.bkit/core/.bkit/workflows.md` § Tracker Writes Are Best-Effort
 
 ```text
-Tracker write calls (issue update, comment post) = observability, not gates. never block, hang, or fail workflow on tracker write failure. Tracker reads (issue read, list comments) remain authoritative.
+Tracker write calls (issue update, comment post) are observability, not gates. Never block, hang, or fail the workflow because a tracker write failed. Tracker reads (issue read, list comments) remain authoritative.
 
-**Every tracker write:** the `bkit` verb makes it and prints `tracker`; a failed write keeps the verb's exit code. `tracker.done` = false → the workflow makes the same write once through the tracker MCP; that failing too → retry once after 5s, then proceed.
+**Every tracker write:** the `bkit` verb makes the write and prints `tracker`. A failed write keeps the verb's exit code.
 
-**Gate phrasing:** `Issue update attempted` / `Issue comment attempted` — not `Issue state X set` or `Issue comment created` (imply success).
+- **If** `tracker.done` = false → the workflow makes the same write once through the tracker MCP.
+- **If** that fails too → retry once after 5s, then proceed.
+
+**Gate phrasing:** write `Issue update attempted` / `Issue comment attempted`, not `Issue state X set` or `Issue comment created`, because those imply success.
 ```
 
 ### gates
@@ -8087,11 +8134,11 @@ Tracker write calls (issue update, comment post) = observability, not gates. nev
 - source: `.bkit/core/.bkit/workflows.md` § Gates
 
 ```text
-Every step ends `### 🔒 Gate N — {Step Name}` + checklist.
+Every step ends with `### 🔒 Gate N — {Step Name}` and a checklist.
 
-**Remind, never restate.** A gate is a short reminder, read as the orchestrator leaves the step, of the actions and checks the step ran. Every detail — conditions, routes, paths, flags, variables, value sets, field lists, exit codes, skip rules — lives in the step body and is still in orchestrator context. A gate item that restates one makes the orchestrator re-check it and drifts when the step changes; `bkit steps finish` / `bkit steps gate` already enforce the mechanical ones.
+**Remind, never restate.** A gate is a short reminder of the actions and checks the step ran, read as the orchestrator leaves the step. Every detail (conditions, routes, paths, flags, variables, value sets, field lists, exit codes, skip rules) lives in the step body and is still in the orchestrator's context. A gate item that restates a detail makes the orchestrator re-check it, and it drifts when the step changes. `bkit steps finish` / `bkit steps gate` already enforce the mechanical details.
 
-**Format:** `[ ] {What was done}` — verb-led, general words. A parenthetical only names which of several like things (`(@{name}, no inline work)`, `(steps gate)`), never a condition, path, value or list. An action that runs on some routes only stays one plain item — the route is in context.
+**Format:** `[ ] {What was done}`, led by a verb, in general words. A parenthetical only says which of several like things is meant (`(@{name}, no inline work)`, `(steps gate)`). It never holds a condition, path, value or list. An action that runs on some routes only stays one plain item, because the route is in context.
 
 Canonical patterns:
 
@@ -8103,7 +8150,7 @@ Canonical patterns:
 - `[ ] Issue update attempted` — tracker `issue-update-*` snippet
 - `[ ] Issue comment attempted` — tracker `comment-post-step` snippet
 
-Skipped gate = invalid work. Workflow must verify every checkbox before advancing.
+A skipped gate makes the work invalid. The workflow must verify every checkbox before it advances.
 ```
 
 ### subagent-invocation
@@ -8111,7 +8158,7 @@ Skipped gate = invalid work. Workflow must verify every checkbox before advancin
 - source: `.bkit/core/.bkit/workflows.md` § Subagent Invocation
 
 ````text
-All subagents via `@agent-name` + Agent tool. Per-step convention:
+Invoke every subagent with `@agent-name` and the Agent tool. The per-step convention:
 
 ```
 Context: You are a subagent in the {Phase} phase {modifier — e.g. "running in parallel with other agents"}
@@ -8120,13 +8167,13 @@ Update:  {existing paths the agent modifies in-place}        (omit if no in-plac
 Create:  {paths the agent writes fresh, with annotations e.g. (MAX 500 token summary)}
 ```
 
-Then assert each Update / Create artifact exists, non-empty. Empty → **Failure Path**.
+Then assert that each Update / Create artifact exists and is non-empty. An empty one → **Failure Path**.
 
-**Untrusted `Read:` paths:** when the list includes a fenced artifact (`context-*`), the `Context:` line says so, reusing the header bullet's wording verbatim after an `Untrusted: fenced {artifact} content` lead. It goes on `Context:` — the last trusted instruction the leaf gets before it reads — never inside the path list. Omit for leaves reading only first-party plans, code and logs; `.bkit/core/engine/commands/workflow/context.test.ts` checks the `Context:` line above every untrusted `Read:`. A leaf reading a first-party artifact that quotes external evidence (remediate reading a diagnosis) carries it too — the quote laundering is the point.
+**Untrusted `Read:` paths:** when the list includes a fenced artifact (`context-*`), the `Context:` line says so. It reuses the header bullet's wording verbatim after an `Untrusted: fenced {artifact} content` lead. The note goes on `Context:`, the last trusted instruction the leaf gets before it reads, never inside the path list. Omit it for leaves that read only first-party plans, code and logs. `.bkit/core/engine/commands/workflow/context.test.ts` checks the `Context:` line above every untrusted `Read:`. A leaf reading a first-party artifact that quotes external evidence (remediate reading a diagnosis) carries the note too, because the quoted evidence is laundered through the first-party file.
 
-**Per-agent description, scope, effort tier, tool surface, `maxTurns` → `.bkit/prompts.md`** (indexes `.bkit/core/prompts/*.md`; single source for agent metadata). This file = how workflow layer composes them.
+**Per-agent description, scope, effort tier, tool surface, `maxTurns` → `.bkit/prompts.md`** (which indexes `.bkit/core/prompts/*.md` and is the single source for agent metadata). This file covers how the workflow layer composes the agents.
 
-**Cross-platform tool surface:** subagent `tools:` allowlist enforced Claude (native) + Cursor (passthrough, 2.4+). Removing `Edit`/`Bash` = provably non-mutating both hosts. `bkit install` T3 passes `tools:` verbatim; never emits `readonly:` (Cursor honours `tools:` directly).
+**Cross-platform tool surface:** the subagent `tools:` allowlist is enforced on Claude (native) and Cursor (passthrough, 2.4+). Removing `Edit`/`Bash` makes an agent provably non-mutating on both hosts. `bkit install` T3 passes `tools:` verbatim and never emits `readonly:`, because Cursor honours `tools:` directly.
 
 **Parallel fan-outs** (effort / model diversity, sibling-blind):
 
@@ -8143,15 +8190,15 @@ Then assert each Update / Create artifact exists, non-empty. Empty → **Failure
 - source: `.bkit/core/.bkit/workflows.md` § Verdict Validation
 
 ````text
-Verdict-bearing subagents must emit verdict header as first non-blank line, before other content. Orchestrator validates; re-issues on invalid.
+A verdict-bearing subagent must emit its verdict header as the first non-blank line, before any other content. The orchestrator validates the header and re-issues the subagent when it is invalid.
 
 **Subagent contract:**
 
 1. `Verdict` line first: `Verdict: PASS | CONCERNS | FAIL`, or a word the agent's own verdict table adds (§ Verdict vocabulary: execute's `HANDOVER`); never PENDING, never blank.
 2. Then `<!-- verdict:end -->`.
-3. Then rest (record, body, etc.).
+3. Then the rest (record, body, etc.).
 
-Mid-stream termination after verdict line → usable verdict + truncated body (detectable separately); verdict signal not lost.
+If the output stops mid-stream after the verdict line, the verdict is still usable and only the body is truncated, which can be detected separately. The verdict signal is not lost.
 
 **Orchestrator contract:**
 
@@ -8163,7 +8210,7 @@ Mid-stream termination after verdict line → usable verdict + truncated body (d
    - `VERDICT_RETRY` = 1.
 5. **If retry fails** (`VERDICT_RETRY` > 1) → **Failure Path**.
    - `bkit steps finish` exit 5 (a field still PENDING) and exit 6 (invalid verdict or a field the prompt declares missing) both re-ask the agent `reask` names for its header only (the workflows' **Finish** header line); exit 8 → nothing written, nothing committed, fix what the hook's message names and re-run the block; exit 82 → the row stays in `status.jsonl`, never re-run; any other non-zero → **Failure Path**. Every workflow routes every finish this way; a multi-agent finish names the offending artifact in `reask`.
-6. Orchestrator never synthesizes verdict — masks truncation / budget signals.
+6. The orchestrator never synthesizes a verdict, because that would mask truncation and budget signals.
 
 **Per-step gate item (verdict-bearing steps):**
 
@@ -8177,27 +8224,27 @@ Mid-stream termination after verdict line → usable verdict + truncated body (d
 - source: `.bkit/core/.bkit/workflows.md` § Failure Path
 
 ```text
-Every command has `## 🤖 Failure Path` before Step 1. Any step / tool / gate failure triggers it.
+Every command has a `## 🤖 Failure Path` section before Step 1. Any step, tool or gate failure triggers it.
 
 **Standard failure (always):**
 
-1. Write the error text to `{OUTBOX_ROOT}/error.md`, then one call: `bkit workflows fail --workflow= --fid= --month= --token={LOCK_TOKEN} [--max-exceeded] {LABEL_FLAGS} --step-number= --step-title= --sub-step= --error-file="{OUTBOX_ROOT}/error.md" [--stderr-file=]` (ship adds `--pr=`). State is changed only with a `--token` (an empty one counts as absent: the failure came before Step 1 took the lock): appends `workflow-failed` (nothing when `status.jsonl` does not exist yet), aborts a rebase in progress in the run's worktree, releases the caller's own lock (another owner's stays, reported as `lock.heldBy`), clears the sentinels (`.rebase-failed`; ship `.deferred-blocked`). Exit 5 = the lock file survived; the printed comment already says `Lock removal failed`. It always prints `labels` (the current labels plus `bkit:failed`; a ship whose `--pr` already MERGED also moves to `bkit:merged`), `trackerState`, `handoverNeeded` (`--max-exceeded`, a sentinel existed, or a debug run in `SOAK`), and the `### Workflow Failure` `comment`. No dev push.
-2. `--post` posts `comment` and writes the labels and state (`tracker`, `labelsWrite`); either `done` = false → the tracker MCP does it.
+1. Write the error text to `{OUTBOX_ROOT}/error.md`, then one call: `bkit workflows fail --workflow= --fid= --month= --token={LOCK_TOKEN} [--max-exceeded] {LABEL_FLAGS} --step-number= --step-title= --sub-step= --error-file="{OUTBOX_ROOT}/error.md" [--stderr-file=]` (ship adds `--pr=`). State is changed only with a `--token`. An empty one counts as absent, because the failure came before Step 1 took the lock. With a token, the call appends `workflow-failed` (nothing when `status.jsonl` does not exist yet), aborts a rebase in progress in the run's worktree, releases the caller's own lock (another owner's stays, reported as `lock.heldBy`), clears the sentinels (`.rebase-failed`; ship `.deferred-blocked`). Exit 5 = the lock file survived; the printed comment already says `Lock removal failed`. It always prints `labels` (the current labels plus `bkit:failed`; a ship whose `--pr` already MERGED also moves to `bkit:merged`), `trackerState`, `handoverNeeded` (`--max-exceeded`, a sentinel existed, or a debug run in `SOAK`), and the `### Workflow Failure` `comment`. No dev push.
+2. `--post` posts `comment` and writes the labels and state (`tracker`, `labelsWrite`). If either prints `done` = false, the tracker MCP does that write.
 
-**Conditional handover** — only when `handoverNeeded` **and** a worktree exists (handover agent `cd`s `{WORKTREE_PATH}`; `/bkit-debug` decides `DEBUG_MODE` at Step 1 before the worktree — a pre-worktree failure goes straight to STOP):
+**Conditional handover** — only when `handoverNeeded` **and** a worktree exists. The handover agent `cd`s to `{WORKTREE_PATH}`. `/bkit-debug` decides `DEBUG_MODE` at Step 1, before the worktree exists, so a failure before the worktree goes straight to STOP:
 
 3. `@bkit-debug-abort-handover` with prior logs as Read; Write `docs/plans/{YYYYMM}/logs/{FID}/{phase}-handover.md`.
 
-**Keep the record (always; design / plan / build / debug)** — skipped only when `{WORKTREE_PATH}` is not set (failure before the run had a tree; no row written):
+**Keep the record (always; design / plan / build / debug)** — skipped only when `{WORKTREE_PATH}` is not set, because the failure came before the run had a tree and no row was written:
 
 4. `bkit workflows handover --list-stray` (same flags, no push) prints `shared` (on `dev` / `main` / detached), `modified` and `untracked` paths outside the run's log folder; on a feature branch the orchestrator removes the unintended ones. Then `bkit workflows handover --workflow= --fid= --month= --push --worktree="{WORKTREE_PATH}"`, run in the run's tree:
-   - **Feature branch:** `git add -A` minus the `bkit.workflows.worktree.copy` entries (`.env` never lands) → commit `docs({FID}): {phase} aborted bkit [skip ci]` (handover or not) → push `--mode=abort`. Open PR → exit 9, **no push** (a `[skip ci]` head empties the PR's check rollup); record stays committed locally. `gh` cannot answer → exit 80, no push → probe via `list_pull_requests`, re-run with `--open-pr=<n>|none`.
-   - **`dev` / `main` / detached** (debug adopting `dev` / `main`): nothing staged, committed or pushed from the checkout; half-done code never reaches a shared branch. Only the run's own record is carried into a throwaway `origin/dev` checkout: the `.md` logs it wrote in its log folder, that folder's `.jsonl` lines `HEAD` lacks, and the uncommitted rows of that workflow at or after the run's `workflow-started` in `docs/*.jsonl` / `.bkit/*.jsonl` (not `.bkit/issues.jsonl` or the stats script's `chat` / `run` rows; no start row → none) → **one** `chore({FID}): {phase} FAILED bkit [skip ci]` commit, as ship's flush. Refused / out of retries → exit 10; fetch / checkout failure → exit 11; record stays in the checkout. A run in place on `dev` also keeps its own commits on local `dev` unpushed (the Failure Path never pushes them), and the hand-back never resets or removes a path its shared-checkout record lists, nor carries the record's foreign ledger rows; the record is removed once the hand-back has run. Landed → hand-back removes from the checkout only what was carried, so a later `dev` fast-forward does not stop on it: a carried log identical to the landed copy → removed (untracked) or restored to `HEAD` (tracked); a carried ledger loses exactly the carried lines (equal to `HEAD` → restored; untracked and empty → removed). Staged paths, or a log changed since it landed, stay, logged.
+   - **Feature branch:** `git add -A` minus the `bkit.workflows.worktree.copy` entries (`.env` never lands) → commit `docs({FID}): {phase} aborted bkit [skip ci]` (handover or not) → push `--mode=abort`. With an open PR it exits 9 and does not push, because a `[skip ci]` head empties the PR's check rollup. The record stays committed locally. `gh` cannot answer → exit 80, no push → probe via `list_pull_requests`, re-run with `--open-pr=<n>|none`.
+   - **`dev` / `main` / detached** (debug adopting `dev` / `main`): nothing staged, committed or pushed from the checkout; half-done code never reaches a shared branch. Only the run's own record is carried into a throwaway `origin/dev` checkout: the `.md` logs it wrote in its log folder, that folder's `.jsonl` lines `HEAD` lacks, and the uncommitted rows of that workflow at or after the run's `workflow-started` in `docs/*.jsonl` / `.bkit/*.jsonl` (not `.bkit/issues.jsonl` or the stats script's `chat` / `run` rows; no start row → none) → one `chore({FID}): {phase} FAILED bkit [skip ci]` commit, as ship's flush. Refused / out of retries → exit 10; fetch / checkout failure → exit 11; record stays in the checkout. A run in place on `dev` also keeps its own commits on local `dev` unpushed (the Failure Path never pushes them), and the hand-back never resets or removes a path its shared-checkout record lists, nor carries the record's foreign ledger rows; the record is removed once the hand-back has run. Landed → hand-back removes from the checkout only what was carried, so a later `dev` fast-forward does not stop on it: a carried log identical to the landed copy → removed (untracked) or restored to `HEAD` (tracked); a carried ledger loses exactly the carried lines (equal to `HEAD` → restored; untracked and empty → removed). Staged paths, or a log changed since it landed, stay, logged.
    - Prints the `### Workflow Handover` `comment` (null without a handover): blob link at the pushed ref (none if nothing pushed) + verbatim body; the orchestrator posts it.
 
 5. **STOP** — no downstream steps.
 
-**Ship exception:** no separate abort commit, no second push. After the optional handover subagent, `bkit workflows handover --workflow=ship --flush --worktree=` carries the book (handover, deferred-sweep, ledger rows) into a throwaway `origin/dev` checkout → **one** `chore({FID}): ship FAILED bkit [skip ci]` commit, **one** push to `dev` (`dev` moved → rebuilt, pushed again; refused → record stays in `BOOK_ROOT` for the next ship of `{FID}`). It never touches the open PR's validated head, so the open-PR guard does not apply, and the handover survives the branch prune. Comment posted only when `handoverNeeded`, linked only where the flush pushed.
+**Ship exception:** no separate abort commit, no second push. After the optional handover subagent, `bkit workflows handover --workflow=ship --flush --worktree=` carries the book (handover, deferred-sweep, ledger rows) into a throwaway `origin/dev` checkout → one `chore({FID}): ship FAILED bkit [skip ci]` commit and one push to `dev` (`dev` moved → rebuilt and pushed again; refused → the record stays in `BOOK_ROOT` for the next ship of `{FID}`). It never touches the open PR's validated head, so the open-PR guard does not apply, and the handover survives the branch prune. The comment is posted only when `handoverNeeded`, and linked only where the flush pushed.
 
 `/bkit-design` and `/bkit-plan` run no handover subagent (no max-retry loop); they still keep the record.
 ```
@@ -12359,5 +12406,5 @@ These are the unknowns and assumptions this plan relies on. An unresolved questi
 
 ```text
 **Workflows:** **If** the prompt contains `bkit-{command}` (`bkit-design`, `bkit-plan`, `bkit-build`, `bkit-debug`, `bkit-ship`, `bkit-auto`) → read `.bkit/router.md` → follow it. **Else** → no workflow routing; handle the request as asked.
-**Memory hygiene:** agent memories (notes a host keeps across sessions) are pointers, never copies. Facts in `docs/*.md` or `.agents/rules.md` → save only path, section and one-line hook. Issue states → query the tracker or `docs/roadmap.md`; NEVER snapshot them into memory.
+**Memory hygiene:** Agent memories (notes a host keeps across sessions) are pointers, never copies.
 ```

@@ -3,25 +3,30 @@
 <!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
-> **Purpose:** Reference for inline tracker-block model in `.bkit/core/workflows/bkit-*.md` and `.bkit/core/prompts/bkit-*.md`. **Not consumed by installer** — no `trackers.md` substitution. Per-tracker call bodies (`github` / `linear` / `jira`, plus `false` for no tracker) live inline at each workflow call site; this file documents marker contract, cross-cutting per-tracker conventions, and the issue shapes workflows read (§ Issue shapes).
+> **Purpose:** Reference for the inline tracker blocks in `.bkit/core/workflows/bkit-*.md` and `.bkit/core/prompts/bkit-*.md`. The installer does not consume this file: there is no `trackers.md` substitution. The per-tracker call bodies (`github` / `linear` / `jira`, plus `false` for no tracker) live inline at each workflow call site. This file documents the marker contract, the per-tracker conventions shared across call sites, and the issue shapes workflows read (§ Issue shapes).
 >
 > **Rules:**
 >
 > - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
-> - Label semantics live in `.bkit/workflows.md` § Tracker Integration; this file is the marker contract + operational per-tracker reference.
-> - Ships to consumers: describe the current setup only. NEVER an internal identifier (tracker issue number, ledger key, review-finding id) and NEVER project history — decisions belong in `docs/decisions.jsonl`, incidents in `docs/knowledge.jsonl`.
-> - Four values: `github`, `linear`, `jira`, `none` (no tracker wired, the default).
-> - New tracker: add enum to `.bkit/core/engine/install/manifest.ts`; document MCP under `mcpServers.<name>` in `.bkit/shared/.mcp.json` and `.bkit/shared/.cursor/mcp.json`; add `<!-- bkit:tracker <name> -->` block after the last tracker block at every call site (extend `GROUP_RE` in `.bkit/core/engine/render/trackers.ts`). No `none` marker — no-tracker content is `false`.
+> - What each label means lives in `.bkit/workflows.md` § Tracker Integration. This file holds the marker contract and the operational reference for each tracker.
+> - This file ships to every project that installs bkit. Describe the current setup only.
+> - Leave out internal labels, such as tracker issue numbers, ledger keys and review-finding ids, and leave out project history. Decisions go in `docs/decisions.jsonl`, and incidents go in `docs/knowledge.jsonl`.
+> - The tracker takes one of four values: `github`, `linear`, `jira` or `none` (no tracker wired, the default).
+> - To add a tracker:
+>   - Add its value to the enum in `.bkit/core/engine/install/manifest.ts`.
+>   - Document its MCP server under `mcpServers.<name>` in `.bkit/shared/.mcp.json` and `.bkit/shared/.cursor/mcp.json`.
+>   - Add a `<!-- bkit:tracker <name> -->` block after the last tracker block at every call site, and extend `GROUP_RE` in `.bkit/core/engine/render/trackers.ts`.
+> - There is no `none` marker. No-tracker content goes in a `false` block.
 
 ## Marker contract
 
-Workflow and prompt sources carry wired tracker variants inline. Installer reads `bkit.tracker.default` from consumer manifest, resolves markers when mirroring `.bkit/core/workflows/bkit-*.md` to every host's commands / skills and `.bkit/core/prompts/bkit-*.md` to every host's agents (`.bkit/core/engine/render/trackers.ts`). Mirrors clean — no markers survive.
+Workflow and prompt sources carry the variant for each wired tracker inline. The installer reads `bkit.tracker.default` from the consumer's manifest, and resolves the markers when it mirrors `.bkit/core/workflows/bkit-*.md` to every host's commands / skills and `.bkit/core/prompts/bkit-*.md` to every host's agents (`.bkit/core/engine/render/trackers.ts`). The mirrors are clean: no marker survives.
 
-Prompt frontmatter `tools:` lists: every marker must be a YAML comment (`  # <!-- bkit:tracker github start -->`) — a bare `<!--` line is invalid YAML; installer strips the `# ` with the marker. A group inside the YAML list must end with a `false` block, and every block (incl. `false`) must hold at least one list item — the `none` stub and an empty block both break the YAML. `bkit-utility-update-roadmap` and `bkit-utility-update-tracker` carry `- Bash`, `bkit-audit-generate` `- WebSearch`, in every block for this.
+In a prompt's frontmatter `tools:` list, every marker must be a YAML comment (`  # <!-- bkit:tracker github start -->`), because a bare `<!--` line is invalid YAML. The installer strips the `# ` along with the marker. A group inside the YAML list must end with a `false` block, and every block, `false` included, must hold at least one list item, because the `none` stub and an empty block both break the YAML. This is why `bkit-utility-update-roadmap` and `bkit-utility-update-tracker` carry `- Bash` in every block, and `bkit-audit-generate` carries `- WebSearch` in every block.
 
 ### Per-tracker group (`github` / `linear` / `jira`)
 
-Every call site = consecutive `github` → `linear` → `jira` group, optionally trailing `false` block (substantive no-tracker rendering). Without `false`, no-tracker rendering = generic message at resolution time.
+Every call site is one group of consecutive `github` → `linear` → `jira` blocks, optionally followed by a `false` block that holds a substantive no-tracker rendering. Without a `false` block, the no-tracker rendering is a generic message, written at resolution time.
 
 ```text
 <!-- bkit:tracker github start -->
@@ -35,14 +40,19 @@ mcp__jira__… call
 <!-- bkit:tracker jira end -->
 ```
 
-Resolution: each tracker → its own block; `none` → group's trailing `false` block if present, else **`_No tracker connected, skip step._`**. List-number prefix (`3. `) before group preserved on kept block / stub. A block outside a full group = orphan; under `jira`, a group with no `jira` block stays whole, so its markers surface as orphans.
+Resolution:
+
+- Each tracker → its own block.
+- `none` → the group's trailing `false` block, or `_No tracker connected, skip step._` when the group has none.
+- A list-number prefix (`3. `) before the group is kept on the kept block or stub.
+- A block outside a full group is an orphan. Under `jira`, a group with no `jira` block stays whole, so its markers surface as orphans.
 
 ### Conditional blocks (`bkit:tracker true` / `bkit:tracker false`)
 
-Boolean tracker-presence gates for tracker-agnostic content. only no-tracker markers — no `none` marker.
+These blocks gate content that is the same for every tracker on whether a tracker is wired at all. They are the only markers for the no-tracker case, and there is no `none` marker.
 
-- `<!-- bkit:tracker true start/end -->` — kept when tracker connected (`github`, `linear` or `jira`); **removed entirely under `none`** (no stub). Shared content e.g. comment `{BODY}` fence identical for every tracker.
-- `<!-- bkit:tracker false start/end -->` — kept only under `none`; removed when wired. Substantive no-tracker behaviour (`issue-id-extraction`, `fid-format`, `pr-body-marker`, `pr-body-metadata`). `false` directly after a tracker group = group's `none` rendering; standalone `false` resolved on its own.
+- `<!-- bkit:tracker true start/end -->` — kept when a tracker is connected (`github`, `linear` or `jira`), and removed entirely under `none`, with no stub. It holds shared content, such as a comment's `{BODY}` fence, that is identical for every tracker.
+- `<!-- bkit:tracker false start/end -->` — kept only under `none`, and removed when a tracker is wired. It holds substantive no-tracker behaviour (`issue-id-extraction`, `fid-format`, `pr-body-marker`, `pr-body-metadata`). A `false` block directly after a tracker group is that group's `none` rendering. A standalone `false` block is resolved on its own.
 
 ```text
 <!-- bkit:tracker true start -->
@@ -50,11 +60,15 @@ Boolean tracker-presence gates for tracker-agnostic content. only no-tracker mar
 <!-- bkit:tracker true end -->
 ```
 
-Conditionals resolved after group pass — group nested inside kept `true` resolves first. Removed block consumes leading newline + indentation (no blank gap). Unbalanced `start`/`end` = orphan.
+Conditionals are resolved after the group pass, so a group nested inside a kept `true` block resolves first. A removed block consumes its leading newline and indentation, so it leaves no blank gap. An unbalanced `start`/`end` is an orphan.
 
 **Inline form:** a `true` block may sit inside a line to add wired-only words to text `none` shares, e.g. `before<!-- bkit:tracker true start --> wired-only words<!-- bkit:tracker true end --> after`. A removed block also consumes the whitespace right before its marker, so keep exactly one separating space on each side of the inserted words: inside the block, with the `start` marker glued to the text before it, or before the marker, with a space after the `end` marker (`N. <start>words<end> rest` keeps its list number). A `false` block placed right after the `true` block carries the `none` wording when it differs. The `none` render then stays equal to the text outside the blocks (`render/trackers.test.ts` § none render baselines).
 
-**Numbered-step rule:** never wrap numbered list item's number inside `true` block — under `none` whole item vanishes → numbering gap (`1, 6, 7`). Numbered step with tracker-only body: keep `N.` outside markers; pair `true` body with trailing `false` stub. Put `false` on same line as `true end`, single leading space before stub → inline (`N. _stub_`) not dangling continuation:
+**Numbered-step rule:** Never wrap a numbered list item's number inside a `true` block, because under `none` the whole item vanishes and leaves a numbering gap (`1, 6, 7`). For a numbered step whose body is tracker-only:
+
+- Keep `N.` outside the markers.
+- Pair the `true` body with a trailing `false` stub.
+- Put the `false` block on the same line as `true end`, with a single leading space before the stub, so the stub renders inline (`N. _stub_`) rather than as a dangling continuation:
 
 ```text
 N. <!-- bkit:tracker true start -->
@@ -62,11 +76,11 @@ N. <!-- bkit:tracker true start -->
    <!-- bkit:tracker true end --><!-- bkit:tracker false start --> _No tracker connected, skip step._<!-- bkit:tracker false end -->
 ```
 
-Renders `N. <body>` when wired, `N. _No tracker connected, skip step._` under `none` — number survives, one line. Bare-`true` "removed, no stub" form = **checklist `- [ ]` gate items** (vanishing correct — stub bullet = noise).
+This renders `N. <body>` when a tracker is wired, and `N. _No tracker connected, skip step._` under `none`, so the number survives on one line. The bare-`true` "removed, no stub" form is for checklist `- [ ]` gate items, where vanishing is correct because a stub bullet would be noise.
 
 ## Interaction catalog
 
-Per-tracker call sites referenced across `.bkit/workflows.md` by these names. Each = inline `github` / `linear` / `jira` group; authoritative bodies inline in workflows. `none` column: most sites collapse to generic `_No tracker connected, skip step._`; few carry substantive trailing `false` block (shown) for no-tracker function.
+`.bkit/workflows.md` refers to the per-tracker call sites by these names. Each one is an inline `github` / `linear` / `jira` group, and the authoritative bodies are inline in the workflows. In the `none` column, most sites collapse to the generic `_No tracker connected, skip step._`. A few carry a substantive trailing `false` block, shown in the table, for their no-tracker function.
 
 <!-- prettier-ignore -->
 | Interaction | Purpose | github | linear | jira | none |
@@ -87,11 +101,11 @@ Per-tracker call sites referenced across `.bkit/workflows.md` by these names. Ea
 | `pr-body-metadata` | Parse PR-body issue / FID marker; FID-only marker (no issue) → `issueId: null`, `/bkit-auto` fails closed | `pull_request_read` + parse | same (GitHub PR) | same (GitHub PR) | FID-only, no fail-closed |
 | `pr-body-marker` | Literal PR-body marker line; no issue → `<!-- bkit:fid={FID} -->` alone | `<!-- bkit:issue=#{ISSUE_ID} bkit:fid={FID} -->` | `<!-- bkit:issue={ISSUE_ID} bkit:fid={FID} -->` | `<!-- bkit:issue={ISSUE_ID} bkit:fid={FID} -->` | `<!-- bkit:fid={FID} -->` |
 
-Phase-label set + additive-label semantics: `.bkit/workflows.md` § Tracker Integration.
+The set of phase labels, and how additive labels work, are in `.bkit/workflows.md` § Tracker Integration.
 
 ## Issue shapes
 
-Workflows read issue body + comments (`bkit issues text`), never title (title → FID slug only). Three shapes; human-filed via example forms (`.bkit/templates.md` § Issue forms); agent-drafted issues (human-confirmed only, `.agents/rules.md` § Tracker issue creation) use same section names as `###` headings.
+Workflows read an issue's body and comments (`bkit issues text`), never its title. The title feeds only the FID slug. An issue takes one of three shapes. People file them through the example forms (`.bkit/templates.md` § Issue forms). An issue an agent drafts is filed only once a person confirms it (`.agents/rules.md` § Tracker issue creation), and uses the same section names as `###` headings.
 
 <!-- prettier-ignore -->
 | Shape | When | Next command | Sections (**required**) |
@@ -100,12 +114,19 @@ Workflows read issue body + comments (`bkit issues text`), never title (title �
 | change | what to build + how to tell done both known | `/bkit-plan #N`; or `/bkit-build #N` / `build:lite` straight from issue | **Narrative**, **Success Criteria**, Edge Cases, **Derived Test Matrix**, **Tasks**, Open Questions & Assumptions, Breaking Changes & Naming, Out of Scope, References |
 | bug | worked / should work, does not | test or CI run already fails → `/bkit-debug #N` on branch fix lands on (`[soak]` if intermittent); nothing fails → `/bkit-debug #N [repro]` (failing test first; `[soak]` too if intermittent) | **Failing test or CI run** (`none yet` allowed), **What happened**, **What should happen**, **Steps to reproduce**, How often, Affected area, Where and when, Evidence, References |
 
-**Change shape syntax** (plan keeps it word for word):
+**Change shape syntax** (the plan keeps it word for word):
 
-- Success Criteria: <=5 observable outcome bullets.
+- Success Criteria: <=5 bullets, each an observable outcome.
 - Edge Cases: `| Scenario | Expected Behavior |`.
-- Derived Test Matrix: `| Test description | Type | Target file |`; Type = lowest tier that exercises it, named per `docs/testing.md`; every row covered by exactly one task.
-- Tasks, build order, as task group and task blocks (`docs/templates/bkit-plan.md` § Agent Execution Runbook), sized by `package.json` `bkit.workflows.tasks`: <= `bkit.workflows.tasks.maxPerGroup` tasks (default 3) and `bkit.workflows.tasks.maxTestsPerGroup` `TEST FIRST` tests (default 15) per group, 1 to `bkit.workflows.tasks.maxTestsPerTask` tests (default 10) across <= `bkit.workflows.tasks.maxTestFilesPerTask` test files (default 3) per task; `n/a — {reason}` for docs, config, pure refactor, or E2E / @live only. Fields as in a plan: `CREATE` / `READ` / `UPDATE` / `DELETE` (`` `{symbol}` in `{file}`: {what} `` or `` `{file}`: {what} ``, one line per reference), `DEPENDS ON` (task numbers, same or earlier group), `DONE WHEN`, `TEST FIRST`, `TEST EXCEPTION` (owner only; counts once committed alone in the plan). An issue's `TEST EXCEPTION` = a request: convert copies it word for word, `bkit tests green` refuses it (`exception-refused` or its test-order gaps), the owner confirms it at the build's Decision Pause, where Accept rewrites it with the owner's reason and date. With a plan file, the build reads both: where the issue and the plan disagree, the newer text wins, and comments posted after the plan's last commit send the build through convert before any code. Form `.github/ISSUE_TEMPLATE/bkit-change.yml` shows the same fields:
+- Derived Test Matrix: `| Test description | Type | Target file |`. Type = the lowest tier that exercises the test, named as in `docs/testing.md`. Exactly one task covers each row.
+- Tasks, in build order, as task group and task blocks (`docs/templates/bkit-plan.md` § Agent Execution Runbook), sized by `package.json` `bkit.workflows.tasks`:
+  - Each group holds <= `bkit.workflows.tasks.maxPerGroup` tasks (default 3) and <= `bkit.workflows.tasks.maxTestsPerGroup` `TEST FIRST` tests (default 15).
+  - Each task has 1 to `bkit.workflows.tasks.maxTestsPerTask` tests (default 10) across <= `bkit.workflows.tasks.maxTestFilesPerTask` test files (default 3), or `n/a — {reason}` for docs, config, a pure refactor, or E2E / @live only.
+  - The fields are the plan's: `CREATE` / `READ` / `UPDATE` / `DELETE` (`` `{symbol}` in `{file}`: {what} `` or `` `{file}`: {what} ``, one line per reference), `DEPENDS ON` (task numbers, in the same or an earlier group), `DONE WHEN`, `TEST FIRST`, and `TEST EXCEPTION` (owner only), which counts once it is committed alone in the plan.
+  - An issue's `TEST EXCEPTION` is a request. Convert copies it word for word, `bkit tests green` refuses it (`exception-refused`, or its test-order gaps), and the owner confirms it at the build's Decision Pause, where Accept rewrites it with the owner's reason and date.
+  - With a plan file, the build reads both. Where the issue and the plan disagree, the newer text wins, and comments posted after the plan's last commit send the build through convert before any code.
+
+  The form `.github/ISSUE_TEMPLATE/bkit-change.yml` shows the same fields:
 
   ```text
   <!-- bkit:group 1 start -->
@@ -134,7 +155,7 @@ Workflows read issue body + comments (`bkit issues text`), never title (title �
 
 - `/bkit-build` with no plan converts the issue into a plan first. `build:lite` checks neither `DONE WHEN` nor `TEST FIRST`. Nothing ticks issue boxes.
 
-**Machine-read lines** — exact syntax, anywhere in body; nothing else in References is fetched:
+**Machine-read lines** — exact syntax, anywhere in the body. Nothing else in References is fetched:
 
 <!-- prettier-ignore -->
 | Line | Read by | Effect |
@@ -146,9 +167,9 @@ Workflows read issue body + comments (`bkit issues text`), never title (title �
 | `###### bkit:ignore-earlier` | `bkit issues text` | drops all earlier content; human-placed only |
 | `###### bkit:generated {hash}` (comment first line; Jira HTML `<h6>bkit:generated {hash}</h6>`) | `bkit issues text`; `--post` dedup | comment dropped from input; same hash on the issue → not posted again |
 
-**References** — exact strings agents can search: issue `#N — {title}` (linear / jira `KEY-N — {title}`); doc `{path} § {section}`; ledger row `docs/{ledger}.jsonl` key `` `{key}` ``. Labels: type label (github `enhancement` / `bug`; linear the team's own, default `Improvement` / `Feature` / `Bug`; jira none — issue type carries type) + one `next:*` (`.agents/rules.md` § Tracker next labels); never phase or `bkit:*` labels — workflows set them (`.bkit/workflows.md` § Tracker Integration).
+**References** — exact strings agents can search: an issue as `#N — {title}` (linear / jira `KEY-N — {title}`), a doc as `{path} § {section}`, and a ledger row as `docs/{ledger}.jsonl` key `` `{key}` ``. Labels: one type label and one `next:*` label (`.agents/rules.md` § Tracker next labels). The type label is `enhancement` / `bug` on github, and the team's own on linear (default `Improvement` / `Feature` / `Bug`). Jira has none, because the issue type carries the type. Never add a phase label or a `bkit:*` label, because workflows set them (`.bkit/workflows.md` § Tracker Integration).
 
-**Drafting from bkit output** (suggest only; file after human confirmation):
+**Drafting from bkit output** — suggest only. File an issue only after a person confirms it:
 
 <!-- prettier-ignore -->
 | Source | Shape | Carry |
@@ -158,7 +179,7 @@ Workflows read issue body + comments (`bkit issues text`), never title (title �
 | design `Suggested Plans` (`P-N`; 2+ → design summary next step; 1 → planned on the design's own issue) | one issue per plan, never per workstream; title = plan name; body = its deliverable and covered workstream scopes, spec left to design; filed in `Requires` order | `**Parent design:**` line; `**Workstreams:**` line = its `Covers` ids; blocked-by block = plan issues filed for its `Requires` (linear → `blockedBy` relation; jira → `Blocks` link, `inwardIssue` = blocker) |
 | roadmap item with no issue (ledger row, audit candidate) | by recommended command, as audit row | ledger `key` / report path in References |
 
-**Audit parent** — one standing issue per audit template, shared by every run of that template; never one per run, never one across templates.
+**Audit parent** — one standing issue per audit template, shared by every run of that template. There is never one per run, and never one across templates.
 
 <!-- prettier-ignore -->
 | Field | Value |
@@ -173,26 +194,33 @@ Workflows read issue body + comments (`bkit issues text`), never title (title �
 
 ## github — Projects v2 board (optional)
 
-`issue-update-status` reads `package.json` `bkit.tracker.github` = `{ project, progress, review }` (non-secret, committed), same shape as `bkit.tracker.linear` / `bkit.tracker.jira`:
+`issue-update-status` reads `package.json` `bkit.tracker.github` = `{ project, progress, review }`, which is non-secret and committed, and has the same shape as `bkit.tracker.linear` / `bkit.tracker.jira`:
 
 <!-- prettier-ignore -->
 | Key | Value | Default |
 | --- | --- | --- |
 | `project` | Board URL as the browser shows it: `https://github.com/orgs/<org>/projects/<n>` or `https://github.com/users/<login>/projects/<n>`; a trailing `/views/<n>` is fine. `false` = board sync off (silences `github-project-board-sync-unconfigured`). | absent → board sync skipped |
-| `progress` | Status option **name** set when a phase starts | `In progress` |
-| `review` | Status option **name** set on hand-off | `In review` |
+| `progress` | Status option name set when a phase starts | `In progress` |
+| `review` | Status option name set on hand-off | `In review` |
 
-Defaults match GitHub's Kanban and Team planning board templates. `/orgs/` → MCP `owner_type: "org"`, `/users/` → `"user"`. Requires `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) + `BKIT_GH_TOKEN` that reaches the board: fine-grained PAT with org Projects R/W for an org board; classic PAT with `project` for a personal board or a token spanning owners. `update_project_item` finds the item by `item_owner` / `item_repo` / `issue_number` and sets Status by option name. Best-effort, never gates; failure → retry once after 5s, then continue. `Done` is **never written** — ship terminal sets `review`, and a human moves the item to Done on acceptance (§ `issue-update-merged` in `.bkit/workflows.md`).
+The defaults match GitHub's Kanban and Team planning board templates. A `/orgs/` URL → MCP `owner_type: "org"`, and a `/users/` URL → `"user"`.
+
+Board sync needs the `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and a `BKIT_GH_TOKEN` that reaches the board:
+
+- An org board needs a fine-grained PAT with org Projects R/W.
+- A personal board, or a token spanning owners, needs a classic PAT with `project`.
+
+`update_project_item` finds the item by `item_owner` / `item_repo` / `issue_number`, and sets Status by option name. The sync is best-effort and never gates: a failure is retried once after 5s, and then the workflow continues. `Done` is never written: the ship terminal sets `review`, and a human moves the item to Done on acceptance (§ `issue-update-merged` in `.bkit/workflows.md`).
 
 ## linear — notes
 
-Linear `ISSUE_ID`s carry team prefix (e.g. `TEAM-123`) — FID inherits (`team-123-slug`). GitHub FIDs numeric-only (`123-slug`). No issue → lowercase-slug FID (minted: no all-digit word), FID-only PR marker. Cross-provider scripts must tolerate all three shapes. `bkit repo info` prints `trackerTeam` / `trackerProject` from `package.json` `bkit.tracker.linear.team` / `bkit.tracker.linear.project` (null → related search unscoped). No separate project board — issue state carries status → `issue-update-status` no-op.
+Linear `ISSUE_ID`s carry the team prefix (e.g. `TEAM-123`), and the FID inherits it (`team-123-slug`). GitHub FIDs are numeric-only (`123-slug`). With no issue, the FID is a lowercase slug (a minted one has no all-digit word), and the PR marker is FID-only. Cross-provider scripts must tolerate all three shapes. `bkit repo info` prints `trackerTeam` / `trackerProject` from `package.json` `bkit.tracker.linear.team` / `bkit.tracker.linear.project`. When they are null, the related search is unscoped. Linear has no separate project board: the issue state carries the status, so `issue-update-status` is a no-op.
 
-Linear `save_issue` is all-or-nothing: one state or label name the team lacks rejects the whole call, valid fields included, and Linear never creates the missing name. A default team has states Backlog / Todo / In Progress / Done / Canceled / Duplicate and labels Improvement / Feature / Bug. Workflows therefore write labels and state in separate calls, labels first. Each label the transition adds (`add` from `bkit issues labels` / `bkit workflows fail`) is created first with `save_issue_label({ name })`, a workspace label; `already exists` = done. Phase start sets state `bkit.tracker.linear.progress` (default `started`, a state type every team has). Hand-off, Failure Path and ship terminal set state `bkit.tracker.linear.review` (default `In Review`); on a team without it the state call fails alone, is logged `Unapplied`, and the issue keeps its started state while `bkit:merged` / `bkit:failed` carry the hand-off. Label names resolve case-insensitively.
+Linear `save_issue` is all-or-nothing: one state or label name the team lacks rejects the whole call, valid fields included, and Linear never creates the missing name. A default team has states Backlog / Todo / In Progress / Done / Canceled / Duplicate and labels Improvement / Feature / Bug. Workflows therefore write labels and state in separate calls, labels first. Each label the transition adds (`add` from `bkit issues labels` / `bkit workflows fail`) is created first with `save_issue_label({ name })`, as a workspace label. An `already exists` answer counts as done. Phase start sets state `bkit.tracker.linear.progress` (default `started`, a state type every team has). Hand-off, Failure Path and ship terminal set state `bkit.tracker.linear.review` (default `In Review`); on a team without it the state call fails alone, is logged `Unapplied`, and the issue keeps its started state while `bkit:merged` / `bkit:failed` carry the hand-off. Label names resolve case-insensitively.
 
 ## jira — setup and notes
 
-Jira Cloud only. `ISSUE_ID` = issue key (`PROJ-123`) → FID `proj-123-slug`; no issue → lowercase-slug FID (minted: no all-digit word), FID-only PR marker. MCP server `jira` = Atlassian Rovo MCP `https://mcp.atlassian.com/v2/mcp`, header `Authorization: Bearer ${BKIT_JIRA_API_KEY}`. The engine speaks the same server over HTTP with the same key (`initialize` → `Mcp-Session-Id` → `tools/call`): `getJiraIssue`, `executeRead`, `addOrEditJiraIssueComment`, `editJiraIssue`, `transitionJiraIssue`, `searchJiraIssuesUsingJql`; the `jira` MCP server is the fallback when a verb prints `tracker.done: false`. Workflows run locally; no Jira-side trigger starts cloud runs.
+bkit supports Jira Cloud only. `ISSUE_ID` is the issue key (`PROJ-123`), which gives the FID `proj-123-slug`. With no issue, the FID is a lowercase slug (a minted one has no all-digit word), and the PR marker is FID-only. The MCP server `jira` is the Atlassian Rovo MCP at `https://mcp.atlassian.com/v2/mcp`, with the header `Authorization: Bearer ${BKIT_JIRA_API_KEY}`. The engine speaks to the same server over HTTP with the same key (`initialize` → `Mcp-Session-Id` → `tools/call`), through `getJiraIssue`, `executeRead`, `addOrEditJiraIssueComment`, `editJiraIssue`, `transitionJiraIssue` and `searchJiraIssuesUsingJql`. The `jira` MCP server is the fallback when a verb prints `tracker.done: false`. Workflows run locally, and no Jira-side trigger starts cloud runs.
 
 <!-- prettier-ignore -->
 | `package.json` `bkit.tracker.jira` key | Value |
@@ -204,17 +232,17 @@ Jira Cloud only. `ISSUE_ID` = issue key (`PROJ-123`) → FID `proj-123-slug`; no
 
 **Setup** (once):
 
-1. Org admin: https://admin.atlassian.com → org owning `<site>.atlassian.net` → **Rovo** → **Rovo MCP server** (or admin search `mcp`) → **Authentication** → **Allow API token authentication** on; **Permissions**: **Read**, **Write**, **Search** allowed (no **Delete** / **Manage** needed). **Connectors** is the wrong page; **Domains** applies to OAuth only.
-2. Each person: https://id.atlassian.com/manage-profile/security/api-tokens → **Create API token with scopes** (not classic) → app **Atlassian MCP V2** (not **Jira**, not **Atlassian MCP**) → Jira read / write / search scopes (`read:jira:agent-interface`, `write:jira:agent-interface`, `search:jira:agent-interface`) → copy token (shown once) → `BKIT_JIRA_API_KEY` in `.bkit/.env` → `direnv allow`. Token works on MCP only; Jira REST API answers 401.
-3. `bkit install --tracker=jira`; set `bkit.tracker.jira.site` + `bkit.tracker.jira.project`. Claude Code: approve project `.mcp.json` once in an interactive `claude` session (`claude mcp list` shows "Pending approval" until then).
+1. An org admin opens https://admin.atlassian.com → the org that owns `<site>.atlassian.net` → **Rovo** → **Rovo MCP server** (or searches the admin for `mcp`) → **Authentication**, and turns **Allow API token authentication** on. Under **Permissions**, allow **Read**, **Write** and **Search**. **Delete** and **Manage** are not needed. **Connectors** is the wrong page, and **Domains** applies to OAuth only.
+2. Each person opens https://id.atlassian.com/manage-profile/security/api-tokens → **Create API token with scopes** (not classic) → app **Atlassian MCP V2** (not **Jira**, not **Atlassian MCP**) → the Jira read / write / search scopes (`read:jira:agent-interface`, `write:jira:agent-interface`, `search:jira:agent-interface`). Copy the token, which is shown once, into `BKIT_JIRA_API_KEY` in `.bkit/.env`, then run `direnv allow`. The token works on MCP only, and the Jira REST API answers 401.
+3. Run `bkit install --tracker=jira`, then set `bkit.tracker.jira.site` and `bkit.tracker.jira.project`. In Claude Code, approve the project `.mcp.json` once in an interactive `claude` session. Until then, `claude mcp list` shows "Pending approval".
 
 **Behaviour workflows rely on:**
 
-- Status changes only by transition: workflows list the issue's transitions (`executeRead` `listJiraIssueTransitions`) and fire the one whose `to.name` = target status; none → `Unapplied`, labels still land. Basic team-managed boards may lack `In Review` → set `bkit.tracker.jira.review` to a status the board has.
-- Labels: `getJiraIssue` returns them only with `view: "evidence"` (or `"full"`); `editJiraIssue` replaces the whole set; Jira creates a label on first use; storage case-sensitive, JQL search not.
-- Comments: posted as markdown, stored as Atlassian Document Format, read back as markdown with same meaning, not same bytes (`-` bullets → `*`, `*em*` → `_em_`, extra blank lines; checkboxes and `> [!NOTE]` alerts come back escaped). One comment Jira cannot express in markdown (mention, image, panel) turns its whole page HTML (`appliedContentFormat: "html"`) → the engine and MCP fallback reads re-read that page one comment per call. Max 32,767 characters → the engine splits at line breaks into consecutive comments, each opening `###### bkit:generated` then `_(part i/n)_`.
-- Blockers: native `Blocks` link; `createJiraIssueLink` reads backwards — `inwardIssue` = blocker, `outwardIssue` = blocked.
-- No type labels: the issue type (Bug / Task / Story) carries type.
+- Status changes only by transition. Workflows list the issue's transitions (`executeRead` `listJiraIssueTransitions`) and fire the one whose `to.name` = the target status. When none matches, the status change is `Unapplied`, and the labels still land. Basic team-managed boards may lack `In Review`, so set `bkit.tracker.jira.review` to a status the board has.
+- Labels: `getJiraIssue` returns them only with `view: "evidence"` (or `"full"`). `editJiraIssue` replaces the whole set. Jira creates a label on first use. Stored labels are case-sensitive, and JQL search is not.
+- Comments are posted as markdown, stored as Atlassian Document Format, and read back as markdown with the same meaning but not the same bytes (`-` bullets → `*`, `*em*` → `_em_`, extra blank lines; checkboxes and `> [!NOTE]` alerts come back escaped). One comment that Jira cannot express in markdown (a mention, an image, a panel) turns its whole page to HTML (`appliedContentFormat: "html"`), so reads by the engine and by the MCP fallback re-read that page one comment per call. A comment holds at most 32,767 characters, so the engine splits a longer one at line breaks into consecutive comments, each opening with `###### bkit:generated` and then `_(part i/n)_`.
+- Blockers use the native `Blocks` link. `createJiraIssueLink` reads backwards: `inwardIssue` = the blocker, and `outwardIssue` = the blocked issue.
+- There are no type labels: the issue type (Bug / Task / Story) carries the type.
 
 <!-- prettier-ignore -->
 | Symptom | Fix |
