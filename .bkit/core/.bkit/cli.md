@@ -109,7 +109,7 @@ Gates CI and the git hooks run.
 | Verb | Use | Flags | What it does |
 | --- | --- | --- | --- |
 | `slop` | by hand | `--base` | Fail when the working tree adds or worsens slop on net against a base ref. |
-| `prose` | by hand | `--glob` | Run Vale over the markdown files the globs select; skip when vale is not installed. |
+| `prose` | by hand | `--glob` | Run Vale over the markdown files the globs select; fail when Vale or required styles are unavailable. |
 | `skip-token` | by hand | `--ref` | Whether a commit message carries a GitHub skip-CI token ([skip ci] and kin). |
 | `min-push` | by hand | `--ref` `--base` | Exit 0 when every file a push changes matches bkit.testing.minPushPaths (the pre-push light gate). |
 | `pins` | by hand | `--file` | Download each *_VERSION + *_SHA256 pinned tool in the files and fail when a hash differs. |
