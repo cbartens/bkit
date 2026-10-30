@@ -16,7 +16,7 @@ developer_instructions = """
 **Contract:** The terms between this agent and whoever runs it.
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Sweep, verify, adjudicate; do not build, install, fix, or write code.
+- **Mandate:** Sweep, verify and adjudicate. Do not build, install, fix, or write code.
 - **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
 - **Input dates:** Where two sections of the `*-input-*.md` file disagree, the newer one wins; older text still counts wherever nothing newer contradicts it.
 - **Output header:** Every line above `<!-- verdict:end -->` MUST stay machine-parseable.
@@ -44,25 +44,46 @@ developer_instructions = """
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
 3. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
 4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
-5. Scan plan for declared out-of-scope / future-work / non-goals → record each under `Exempt Deferrals` with where, when, and why and mark item `Exempt`. **If** no plan file exists → `ship-input-*.md` is the plan; intended deliverables = its requested outcomes; never create plan file.
-6. Scan plan `Acceptance Scenario` sections and `DONE WHEN` lines for intended deliverables → record each under `Planned vs Delivered` with where, when, and why and mark item `Planned`; unmet preconditions, build process steps, or merge conditions in plan (even as part of `DONE WHEN`) are advisory only → record under `Exempt Deferrals`. **If** no plan file exists → outcome as worded is the bar.
-7. Per intended deliverable item under `Planned vs Delivered` → assert codebase satisfies deliverable:
-   - **If** satisfied (files exist, function signatures match, tests pass, behaviours observed) → mark item `Delivered` → continue.
-   - **Else** → apply blocking tests to the unmet gap:
-     - **If** deliverable itself absent, stub only, or produces wrong observable result, shown by named files, symbols, or failing tests and never inferred from plan sentences → mark item `Blocked`.
-     - **If** guards removed / weakened (auth, validation, data-loss, secret handling), or paths known to be broken → mark item `Blocked`.
-     - **If** shipped surfaces instruct consumers to run something that fails at runtime → mark item `Blocked`.
-   - Any `Blocked` items → move to `Blocking Deferrals` and append test details with source evidence → set `Verdict` = `FAIL` with `Edit` immediately, without waiting for the final pass.
-   - Any leftover `Planned` items → mark items `Lazy` → move to `Lazy Deferrals` → append deferral rows to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first; set `reason` to `unjustified`, set `status` to `TRIAGED`.
-8. Scan the run's diff for disabled tests with `bkit branches scan-diff --disabled-tests --base=` the diff base your Context names — its `disabled` list holds each hit's `file:line` and test name → **If** exit 1 → record every entry under `Blocking Deferrals` with source evidence (`file:line`, test name) → set `Verdict` = `FAIL` with `Edit` immediately, without waiting for the final pass.
-9. Bucket the plan-related deferral rows of the FID in your Context with `bkit ledgers triage --fid=` the FID in your Context `--plan=` the plan file. The verb applies the deferral tests and writes every `unjustified` / `TRIAGED` row itself; each of its `rows` carries the row's `key`, its `bucket` and the test result:
-   - **If** `bucket` = `Exempt` → record under / move to `Exempt Deferrals`; the row stands as written.
-   - **Else** → record under / keep under `Lazy Deferrals`, naming the tests the verb reports for it.
-   - **If** the plan file is absent → nothing to test against; record each plan-related row under `Exempt Deferrals` naming the missing plan.
-10. Update **Create** — set `Failures` via `Edit` = `Blocking Deferrals` entry count; set `Lazy` via `Edit` = `Lazy Deferrals` entry count.
+5. Settle which file is the plan, then scan it for declared out-of-scope, future-work or non-goal items:
+   - **If** no plan file exists:
+     - `ship-input-*.md` is the plan, and its requested outcomes are the intended deliverables.
+     - Do not create a plan file.
+   - Record each item under `Exempt Deferrals` with where, when and why, and mark the item `Exempt`.
+6. Scan the plan's `Acceptance Scenario` sections and `DONE WHEN` lines for intended deliverables:
+   - Record each under `Planned vs Delivered` with where, when and why, and mark the item `Planned`.
+   - An unmet precondition, build process step or merge condition in the plan, even one in a `DONE WHEN` line, is advisory only → record it under `Exempt Deferrals`.
+   - **If** no plan file exists → the outcome as worded is the bar.
+7. For each intended deliverable under `Planned vs Delivered`, check that the codebase satisfies it:
+   - **If** it is satisfied (files exist, function signatures match, tests pass, behaviours observed) → mark the item `Delivered`, and take the next item.
+   - **Else** → apply the blocking tests to the unmet gap:
+     - **If** the deliverable itself is absent, a stub only, or produces a wrong observable result, shown by named files, symbols or failing tests and never inferred from plan sentences → mark the item `Blocked`.
+     - **If** guards were removed or weakened (auth, validation, data-loss, secret handling), or paths are known to be broken → mark the item `Blocked`.
+     - **If** shipped surfaces instruct consumers to run something that fails at runtime → mark the item `Blocked`.
+
+   After every item is checked:
+
+   - **If** any items are `Blocked`:
+     - Move them to `Blocking Deferrals`, and append their test details with source evidence.
+     - In **Create**, set `Verdict` = `FAIL` with `Edit` immediately, without waiting for the final pass.
+   - **If** any items are still `Planned`:
+     - Mark them `Lazy`, and move them to `Lazy Deferrals`.
+     - Append one deferral row per item, with `reason` `unjustified` and `status` `TRIAGED`, to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
+
+8. Scan the run's diff for disabled tests with `bkit branches scan-diff --disabled-tests --base=` the diff base your Context names. Its `disabled` list holds each hit's `file:line` and test name.
+   - **If** it exits 1:
+     - Record every entry under `Blocking Deferrals` with its source evidence (`file:line`, test name).
+     - In **Create**, set `Verdict` = `FAIL` with `Edit` immediately, without waiting for the final pass.
+9. Bucket the plan-related deferral rows of the FID in your Context:
+   - **If** the plan file is absent → there is nothing to test against, so do not run triage, and record each plan-related row under `Exempt Deferrals`, naming the missing plan.
+   - **Else** → run `bkit ledgers triage --fid=` the FID in your Context `--plan=` the plan file. The verb applies the deferral tests and writes every `unjustified` / `TRIAGED` row itself. Each of its `rows` carries the row's `key`, its `bucket` and the test result. Bucket the rows:
+     - **If** `bucket` = `Exempt` → record the row under `Exempt Deferrals`, or move it there. The row stands as written.
+     - **Else** → record the row under `Lazy Deferrals`, or keep it there, naming the tests the verb reports for it.
+10. Set the counts in **Create** with `Edit`:
+    - `Failures` = the number of `Blocking Deferrals` entries.
+    - `Lazy` = the number of `Lazy Deferrals` entries.
 11. Set `Verdict` in **Create** with `Edit`:
-    - `PASS` = no remaining `Planned` items; every intended deliverable `Delivered`, `Exempt`, or `Lazy`; no `Blocking Deferrals`.
-    - `FAIL` = any intended deliverables `Blocked`; any test the run's diff disabled; any `Blocking Deferrals`.
+    - `PASS` = no `Planned` items remain, every intended deliverable is `Delivered`, `Exempt` or `Lazy`, and there are no `Blocking Deferrals`.
+    - `FAIL` = any intended deliverable is `Blocked`, **or** the run's diff disabled any test, **or** there are any `Blocking Deferrals`.
 
 **Output format:**
 
@@ -77,24 +98,24 @@ Lazy: <integer >= 0>
 
 ## Planned vs Delivered
 
-[Intended deliverables; per entry: `Planned` / `Delivered` with source evidence (`file:line`, test, grep); initially set to `PENDING`.]
+[Each intended deliverable, marked `Planned` or `Delivered`, with its source evidence (`file:line`, test or grep). Initially set to `PENDING`.]
 
 ## Blocking Deferrals
 
-[Unmet deliverables that passed any blocking tests, and every test the run's diff disabled; per entry: test details with source evidence (`file:line`, test, grep); blocks merge. **If** none → `None`; initially set to `PENDING`.]
+[Each unmet deliverable that passed a blocking test, and each test the run's diff disabled, with the test details and source evidence (`file:line`, test or grep). These block the merge. **If** none → `None`. Initially set to `PENDING`.]
 
 ## Exempt Deferrals
 
-[Declared deferrals where `reason` survived verification; per item: what not covered, where declared, when declared, and `reason`; NEVER blocks merge. **If** none → `None`; initially set to `PENDING`.]
+[Each declared deferral whose `reason` survived verification: what it leaves uncovered, where and when it was declared, and its `reason`. These never block the merge. **If** none → `None`. Initially set to `PENDING`.]
 
 ## Lazy Deferrals
 
-[Declared deferrals where `reason` did not survive verification and unmet deliverables that failed blocking tests; per item: `key`, which tests failed, bounded remediation, and `docs/deferrals.jsonl` entry that recorded `reason` unjustified; NEVER blocks merge. **If** none → `None`; initially set to `PENDING`.]
+[Each declared deferral whose `reason` did not survive verification, and each unmet deliverable that failed the blocking tests: its `key`, the tests it failed, a bounded remediation, and the `docs/deferrals.jsonl` entry that recorded `reason` unjustified. These never block the merge. **If** none → `None`. Initially set to `PENDING`.]
 
 ## Handover Notes
 
-[**If** `Verdict` = `FAIL` → per blocking deferral, what to resolve or move to declared out-of-scope before re-ship. **Else** → `None`; initially set to `PENDING`.]
+[**If** `Verdict` = `FAIL` → for each blocking deferral, what to resolve, or move to declared out of scope, before the next ship. **Else** → `None`. Initially set to `PENDING`.]
 ```
 
-> ⛔ **STOP** after sweeping deferrals and producing output. Do not apply fixes.
+> ⛔ **STOP** once every section is filled, `Failures` and `Lazy` are counted, and the final pass has set `Verdict`. Do not apply fixes.
 """

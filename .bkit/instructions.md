@@ -347,7 +347,7 @@ Clause section lines:
   - specialised: all except `bkit-audit-adoption`, `bkit-audit-analytics`, `bkit-audit-config`, `bkit-audit-security`, `bkit-audit-slop`
   - applies: `bkit-audit-agents`, `bkit-audit-dead-code`, `bkit-audit-deferrals`, `bkit-audit-models`
 - drift:
-  - `bkit-ship-conflict-resolve:79`: "run `pnpm bkit:gate:install-static-unit-build`. MUST exit 0" Runs `pnpm bkit:gate:install-static-unit-build`, not the push gate the pre-push hook runs
+  - `bkit-ship-conflict-resolve:97`: "Run `pnpm bkit:gate:install-static-unit-build`." Runs `pnpm bkit:gate:install-static-unit-build`, not the push gate the pre-push hook runs
     - kept: subagents never push; they run their own lighter gate (`local-pre-commit`: `/bkit-*` steps run their own gates) and the pre-push hook runs the push gate
 
 ```text
@@ -894,7 +894,7 @@ Clause section lines:
     - kept: a blocked in-scope plan task is not a deferral; it is reported to the orchestrator, which routes it
   - `bkit-build-plan-gaps-remediate:33`: "NEVER append to `docs/deferrals.jsonl`" Says never append to docs/deferrals.jsonl; consistent with `finish-over-deferrals` (blocked in-scope work is not a deferral) but reads as the inverse of `deferred-work`'s ALWAYS-append
     - kept: a blocked in-scope plan task is not a deferral; it is reported to the orchestrator, which routes it
-  - `bkit-ship-update-docs:62`: "(do not write `docs/deferrals.jsonl`)" Forbids writing `docs/deferrals.jsonl`; deferrals are surfaced for human review only
+  - `bkit-ship-update-docs:67`: "Do not write `docs/deferrals.jsonl`." Forbids writing `docs/deferrals.jsonl`; deferrals are surfaced for human review only
     - kept: the rows it surfaces already sit in `docs/deferrals.jsonl`; it reads them for human review and adds no deferral of its own
 
 ```text
@@ -1188,7 +1188,7 @@ Clause section lines:
   - specialised: `bkit-ship`
   - applies: `bkit-plan`, `bkit-ship`
 - drift:
-  - `bkit-ship:375`: "chore({FID}): conflict-resolve bkit [skip ci]" Stages via ledgers commit then runs a bare git commit with no -- paths, committing whatever is staged; `commits` says NEVER commit whatever is staged already
+  - `bkit-ship:400`: "chore({FID}): conflict-resolve bkit [skip ci]" Stages via ledgers commit then runs a bare git commit with no -- paths, committing whatever is staged; `commits` says NEVER commit whatever is staged already
     - kept: `bkit ledgers commit --mode=stage` stages exactly the bookkeeping allow-list on this run's own branch, so the commit holds only those paths; Re-validate runs CI on the code head even though this commit carries `[skip ci]`
 
 ```text
@@ -1380,7 +1380,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-annotations`, `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:525`: "probe for a run at it first, dispatch only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per .bkit/workflows.md:1007) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:552`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per .bkit/workflows.md:1007) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -1680,7 +1680,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:525`: "probe for a run at it first, dispatch only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per .bkit/workflows.md:1007) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:552`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per .bkit/workflows.md:1007) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -4835,7 +4835,7 @@ Write the error message / tool response to `{OUTBOX_ROOT}/error.md` (`--error-fi
 ### workflow-route-first-match
 
 - workflow: repeatable
-- carriers: workflow all except `bkit-auto`, `bkit-ship`; prompt `bkit-build-plan-execute`
+- carriers: workflow all except `bkit-auto`; prompt `bkit-build-plan-execute`
 
 ```text
 {{route}} — first match wins:
@@ -5001,6 +5001,15 @@ never `workflows fail`:
 
 ```text
 Record the reply before anything else:
+```
+
+### workflow-record-wait
+
+- workflow: where-used
+- carriers: workflow `bkit-debug`, `bkit-ship`
+
+```text
+Record the wait → end turn → wait for the answer:
 ```
 
 ### workflow-letter-reply
@@ -5260,11 +5269,11 @@ Resolve `FID` — first match wins; NEVER borrow another feature's `FID` from a 
 
 ### workflow-fid-title-file
 
-- workflow: where-used
+- workflow: repeatable
 - carriers: workflow all except `bkit-auto`
 
 ```text
-**If** `ISSUE_ID` empty → drop `--title-file`.
+**If** `ISSUE_ID` empty → drop `{{flag}}`.
 ```
 
 ```retired
@@ -8448,106 +8457,113 @@ Ledger rows checked (`ledgers check`)
 - source: `.bkit/core/workflows/bkit-ship.md`
 
 ```text
-[prs] **Scope:** Merge feature PR to default integration branch.
-[commits; docs-commits; workflow-pushes] **Status branch:** From Step 2 all steps write `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` (`{STATUS}`); `BOOK_ROOT` = `{WORKTREE_PATH}`. Stage path-scoped via `bkit ledgers commit`; NEVER stage all files (`-A`) or blanket `docs/`. one commit per flush block: Commit + Push Bookkeeping → `docs({FID}): ship bookkeeping bkit [skip ci]` → push `{SHIP_BRANCH}` (pre-merge: docs, logs, ledgers, skill removals); Close Workflow → `docs({FID}): ship DONE bkit [skip ci]`, **Failure Path** → `chore({FID}): ship FAILED bkit [skip ci]` → push `dev` from a throwaway `origin/dev` checkout; a refused close push → close PR.
-**Single-write contract:** every step before the flush creates no git object. never route back to the **Failure Path** — log and continue to the flush.
-→ hold `handoverNeeded` as `{HANDOVER_NEEDED}`, `labels` as `{LABELS}`, `trackerState` as `{TRACKER_STATE}`. **If** exit non-zero → log `Lock removal failed` with the printed `lock` to stderr, continue.
-Flush the run's book to `dev` as one commit and one push — **Skip if** `{FID}` or `{YYYYMM}` empty; drop `--worktree` when `{WORKTREE_PATH}` is not set:
+[prs] **Scope:** Merge the feature's PR into the default integration branch.
+[commits; docs-commits; workflow-pushes] **Status branch:** From Step 2 all steps write `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` (`{STATUS}`); `BOOK_ROOT` = `{WORKTREE_PATH}`. Stage path-scoped via `bkit ledgers commit`; NEVER stage all files (`-A`) or blanket `docs/`. One commit per flush block: Commit + Push Bookkeeping → `docs({FID}): ship bookkeeping bkit [skip ci]` → push `{SHIP_BRANCH}` (pre-merge: docs, logs, ledgers, skill removals); Close Workflow → `docs({FID}): ship DONE bkit [skip ci]`, **Failure Path** → `chore({FID}): ship FAILED bkit [skip ci]` → push `dev` from a throwaway `origin/dev` checkout; a refused close push → close PR.
+**Single-write contract:** Every step before the flush creates no git object. Never route back to the **Failure Path**: log the error and continue to the flush.
+**If** exit non-zero → log `Lock removal failed` with the printed `lock` to stderr, then continue.
+Flush the run's book to `dev` as one commit and one push. **Skip if** `FID` **or** `YYYYMM` is empty. Drop `--worktree` when `WORKTREE_PATH` is not set:
+**If** the push failed → do not claim success on the tracker.
 Detect the runtime:
-→ hold `runtimeWorktrees` as `{RUNTIME_WORKTREES}`.
-[branches] Resolve `SHIP_BRANCH`, then create / resume worktree, or adopt it in place (no rebase — Path A) — straight after the lock, so every later failure has a book to keep its record in; `--branch` = the branch the session prompt names, dropped when it names none<!-- bkit:tracker true start -->; **If** `ISSUE_ID` empty → drop `--issue`<!-- bkit:tracker true end -->:
+[branches] Resolve `SHIP_BRANCH`, then create or resume the worktree, or adopt it in place (no rebase — Path A). This runs straight after the lock, so every later failure has a book to keep its record in. `--branch` = the branch the session prompt names, dropped when it names none:
+**If** `branchWarning` non-null → emit it → continue.
 Enter the worktree and find where the run books:
-→ hold `path` as `{STATUS}`, `bookRoot` as `{BOOK_ROOT}`. Open the run — refuse a checkout not on `SHIP_BRANCH` (15), clear stale sentinels, write `workflow-started` and `ship-start-workflow` rows — and record the runtime:
-[fit `workflow-status-held` 0.77; keep: holds one value; the clause holds two] → hold `run` as `{RUN}`.
 Create the outbox (`{OUTBOX}` = `{OUTBOX_ROOT}/{FID}`) and run the repo preflight:
 Outbox created
 Find the branch's PR — open first, then merged:
-→ hold `number` as `PR_NUMBER`, `baseRefName` as `PR_BASE`, `state`.
-**Route:**
 [prs] **If** exit 0 **and** `PR_BASE` != dev → **Failure Path**.
-**If** exit 1 → open PR, `SHIP_OPENED_PR` = true, `docs/plans/{YYYYMM}/{FID}-plan.md` (if present):
+**If** exit 1 → open a PR and set `SHIP_OPENED_PR` = true. **If** `docs/plans/{YYYYMM}/{FID}-plan.md` exists → the block names it in the PR body:
+**If** exit 80 → `create_pull_request` with the printed `title`, `body`, `base` and `head`.
+**If** any other non-zero exit → **Failure Path**.
+Assert `PR_NUMBER` non-empty and `PR_BASE` = dev. **If** the assertion fails → **Failure Path**.
 **If** `state` = MERGED → record the resume marker → Step 13:
 **Else** → next sub-step.
-Read PR head SHA (`ENTRY_HEAD`) and mergeable state:
-→ hold `headRefOid` as `ENTRY_HEAD`, `mergeable` as `MERGEABLE`. Assert `ENTRY_HEAD` non-empty.
+Read the PR's head SHA and mergeable state:
 [honest-reporting] **If** `SHIP_OPENED_PR` = true → wait for CI on the new PR first, then assert its check rollup green:
-**If** exit 80 → `pull_request_read` (`get_status`) → **If** no check, or any check failed or pending → **Failure Path**.
+**If** exit 80 → read the checks with `pull_request_read` (`get_status`):
+**If** there is no check, **or** any check failed or is pending → **Failure Path**.
 Finish (bookkeeping to `$BOOK_ROOT`, no branch commit):
-→ **Confirm Assumed Items** → Step 3.
+Run **Confirm Assumed Items** → Step 3.
 Mechanical checks passed (`steps gate`, `steps finish`)
 PR found or opened
 Entry head and mergeable read, PR CI checked
 List the build's assumed Accepts nobody has confirmed, and read the runtime:
 **If** `ASSUMED_COUNT` = 0 → return to Step 2.
-**If** `RUNTIME_HEADLESS` = true → step 4, no one to ask.
-Record each reply before anything else, then write each answer — `{FILE}` and `{Q}` = the entry's `file` and `q`; "yes" answers no question here:
+**If** `RUNTIME_HEADLESS` = true → step 4, since there is no one to ask.
+For each entry of `ASSUMED_ITEMS`, in order, numbered from 1: `**Q{n} — {title}:** accepted without you during build ({reason}). Confirm it?`, then `Options: A) Confirm / B) Reject`, then `No recommendation — only you can accept it`.
+End the message with the line `Reply per question. Ship merges either way; anything not confirmed is written as a needs-decision deferral.`
+Then record the wait → end turn → wait for answers:
+Record each reply before anything else, then write each answer. `{FILE}` and `{Q}` = the entry's `file` and `q`. "yes" answers no question here:
 **If** the answer is `Confirm` → write it:
 **If** the answer is `Reject` → the same command and exit check with `--reject` in place of `--confirm`.
 **Else** → ask again once the other entries are written → record the wait (step 2) → end turn.
 Write a `needs-decision` deferral for every item still not confirmed:
-**If** `decisions pending` exits non-zero → **Failure Path**. **If** `count` > 0 → narrate `Ship continues with {count} assumed item(s) not confirmed; each is a needs-decision deferral.` Return to Step 2.
+**If** `count` > 0 → narrate `Ship continues with {count} assumed item(s) not confirmed; each is a needs-decision deferral.`
 Assumed items listed (`decisions pending`)
-Asked in a session only; never headless
+Asked in the session, never headless
 Confirmations and rejections written (`decisions apply --by=owner`)
-Each item not confirmed deferred (`decisions pending --defer`)
+Each unconfirmed item deferred (`decisions pending --defer`)
 Determine whether `origin/dev` is an ancestor of the PR head:
-→ hold `basePath` as `BASE_PATH`.
 **If** `BASE_PATH` = A → Step 5 (skip integration — dev has not moved).
 **If** `BASE_PATH` = B → Step 4 (integration required).
 Ancestor verdict determined
-**If** `MERGEABLE` = MERGEABLE (B1 — no textual conflict): refresh the PR head server-side only when `dev` requires status checks → Step 5:
-**If** `MERGEABLE` = CONFLICTING (B2 — textual conflict): resolve locally + push:
+**If** `MERGEABLE` = MERGEABLE (B1: no textual conflict) → refresh the PR head on the server, which the block does only when `dev` requires status checks → Step 5:
+**If** `MERGEABLE` = CONFLICTING (B2: textual conflict) → resolve the conflict locally and push:
 Finish (bookkeeping to `$BOOK_ROOT`):
-[force-push; workflow-pushes] **If** `verdict` = PASS → commit and push (B2 is the ONLY step that force-pushes `{SHIP_BRANCH}`; `branches push --mode=feature` pushes it with `--force-with-lease`):
+[force-push; workflow-pushes] **If** `verdict` = PASS → commit and push. B2 is the ONLY step that force-pushes `SHIP_BRANCH`: `branches push --mode=feature` pushes it with `--force-with-lease`:
 [fit `workflow-else-failure` 0.73; keep: names what the failure report carries] **Else** → **Failure Path** (non-mechanical conflict → handover).
 Path classified
 Branch update attempted (`prs update-branch`)
 Resolved branch pushed
-Fast-forward to the PR head — never onto a diverged branch:
-Plan check:
+Fast-forward to the PR head, never onto a diverged branch:
+Check for the plan:
 [fit `workflow-summary-route` 0.62; keep: routes on PASS alone, not PASS or CONCERNS] **If** `verdict` = PASS → Step 6.
 Worktree fast-forwarded
 Write the FID's deferral lines to the artifact the docs agent reads `Pending Items` from:
-Wait for the subagent to complete, then append the `SHIPPED` row to the worktree ledger and re-render the mechanical `roadmap-status` board from it (exit 1 when the row did not land), and finish the step (bookkeeping to `$BOOK_ROOT`):
+Wait for the subagent to complete. Then append the `SHIPPED` row to the worktree ledger, re-render the mechanical `roadmap-status` board from it, and finish the step (bookkeeping to `$BOOK_ROOT`). The block exits 1 when the row did not land:
 Write `ship-summary.md` from this run's status rows and the PR's size:
 Ledger row appended and roadmap board re-rendered
-Prune feature-specific skills — uninstall any skill not listed in `.agents/skills.md`; a missing registry skips the prune, a failed uninstall is warned and listed in `failed`:
+Prune the feature-specific skills: uninstall any skill not listed in `.agents/skills.md`. A missing registry skips the prune, and a failed uninstall is warned and listed in `failed`:
 **If** `skipped` non-null **or** `failed` non-empty → narrate the warning → continue.
 Feature-specific skills pruned, warnings narrated
 Logs retained
 Record the step on the code head, then commit the bookkeeping (`--scope=pr`: docs, logs, ledgers, skill removals):
-[destructive-git-prohibited; force-push; workflow-pushes] **If** printed `outcome` = committed → push — NEVER force:
+[destructive-git-prohibited; force-push; workflow-pushes] **If** the printed `outcome` = committed → push, and NEVER force:
 Bookkeeping committed (`ledgers commit`)
 Branch pushed
-[existing-evidence-first] Resolve the head CI must pass at, then re-validate on code movement **or** on `{REVALIDATE_REASON}` = `gate-refusal`: probe for a run at it first, dispatch only when none, wait for it to complete — `--reason` dropped when `{REVALIDATE_REASON}` is empty:
-→ hold `validatedHead` as `{VALIDATED_HEAD}`.
+[existing-evidence-first] Resolve the head CI must pass at. The block re-validates when the code moved **or** `REVALIDATE_REASON` = `gate-refusal`: it probes for a run at it first, dispatches only when none, and waits for it to complete. Drop `--reason` when `REVALIDATE_REASON` is empty:
 Validated head resolved
 CI re-validated (`runs revalidate`)
-[merge-bodies] Assert the gate at the PR's current head, CI checked at `VALIDATED_HEAD` (the ONLY merge precondition) — the pre-merge snapshot goes to the outbox before the gate decides; a title carrying a skip token refuses (18); a refusal is recorded on `{STATUS}`:
-[polls-loops] **If** exit 11 (in progress — poll), 14 (stale green), 10 (no run), or 17 (non-bookkeeping change past `VALIDATED_HEAD`) → route on failed arrivals at Step 10 (never asked):
-[integration-merge] Merge with an empty body and `--match-head` (GitHub refuses when the head moved). Re-read labels from the tracker so ` bkit [auto route]` rides the squash subject on `bkit:auto` — never carried forward from Step 1's `{LABELS}`; `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry, empty when no tracker is wired<!-- bkit:tracker true start --> or `ISSUE_ID` is empty<!-- bkit:tracker true end -->:
-**If** exit 0 **or** 7 → hold `verdict` as `{MERGE_VERDICT}`, `failures` as `{MERGE_FAILURES}`, `state`.
+[merge-bodies] Assert the gate at the PR's current head, with CI checked at `VALIDATED_HEAD`. This gate is the ONLY merge precondition. The block writes the pre-merge snapshot to the outbox before the gate decides, refuses a title that carries a skip token (18), and records a refusal in `{STATUS}`:
+[polls-loops] **If** exit 11 (in progress — poll), 14 (stale green), 10 (no run) **or** 17 (non-bookkeeping change past `VALIDATED_HEAD`) → route on the failed arrivals at Step 10, without asking:
+[integration-merge] Merge with an empty body and `--match-head`, so GitHub refuses when the head moved. Re-read the labels from the tracker, so that ` bkit [auto route]` rides the squash subject on `bkit:auto`. The labels are never carried forward from Step 1's `{LABELS}`. `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry, empty when no tracker is wired<!-- bkit:tracker true start --> or `ISSUE_ID` is empty<!-- bkit:tracker true end -->:
+**If** exit 0 **or** 7 → hold `verdict` as `MERGE_VERDICT`, `failures` as `MERGE_FAILURES`, and hold `state`.
 **If** `state` = MERGED → Step 13.
 **If** `state` != MERGED → run counter routing:
 Merge gate asserted (`runs gate`)
 Failed arrivals counted against `ship.merge.maxAttempts` (`counters route`)
 PR merge attempted (`prs merge`)
+Ask before the fix round only when the diagnosis found no clear cause. State the failure in plain English before the technical cause.
+**If** `MERGE_ASK` = false **or** `DIAGNOSE_VERDICT` = PASS → narrate `ship merge: attempt {MERGE_ROUNDS} of {MERGE_MAX}, fix round taken without asking ({the diagnosed cause})` → Step 12.
+`ship merge: attempt {MERGE_ROUNDS} of {MERGE_MAX}`, then `**Q1 — Merge:** failed, and the diagnosis found no clear cause ({the diagnosis in one line}). Stop here instead of a fix round?`
+`Options: A) Stop / B) Try again`, then `Recommended: A) Stop — {reason}`.
 **If** the answer is `Try again` → Step 12.
 **Else** → discuss → record the wait → end turn.
 Fix round asked only with `ask` = true, not headless, and a diagnosis verdict other than PASS
 Derive the next strategy rung from `{STATUS}`:
-Finish (bookkeeping to `$BOOK_ROOT`) — the header's `Strategy` is recorded:
+Finish (bookkeeping to `$BOOK_ROOT`), which records the header's `Strategy`:
 Fast-forward local `dev` to `origin/dev`, then finish:
 Local `dev` synced (`branches sync-dev`)
-Assert the capstone passed at the squash commit, recording the squash-merge CI verdict (`ship-merge-ci`) before routing:
-→ hold `head` as `{SQUASH_SHA}`.
-Close — keep the summary in the outbox (the close removes the worktree it lives in), land `docs({FID}): ship DONE bkit [skip ci]` on `dev` (refused → `ship-close/{FID}` PR), release the lock, remove the worktree and `{SHIP_BRANCH}`, return to `{REPO_ROOT}`:
-**If** `CLOSE_VIA` = close-pr-open → drop `--ref`, gate `--file="{STATUS}"`.
+Assert that the capstone passed at the squash commit. The block records the squash-merge CI verdict (`ship-merge-ci`) before routing:
+Close the run. The block keeps the summary in the outbox (the close removes the worktree it lives in), lands `docs({FID}): ship DONE bkit [skip ci]` on `dev` (a refused push opens a `ship-close/{FID}` PR), releases the lock, removes the worktree and `SHIP_BRANCH`, and returns to `REPO_ROOT`:
+**If** `CLOSE_VIA` = close-pr-open → drop `--ref`, and gate with `--file="{STATUS}"`.
 Squash-merge CI capstone green (`runs gate`)
 Close landed (`workflows close`)
-**Else** (`MERGEABLE` = UNKNOWN, not computed yet) → end turn, then read it once more:
+**Else** → `MERGEABLE` = UNKNOWN, because GitHub has not computed it yet. End the turn, then read it once more:
 **If** `MERGEABLE` = MERGEABLE **or** CONFLICTING → sub-step 1.
-**If** `verdict` = PASS → commit and push the fix — NEVER force — then set `{REVALIDATE_REASON}` empty → Step 9 (re-validate, then re-run merge). **If** `{MERGE_ATTEMPT}` is not held (resumed into this step) → read the merge round back:
+Route on `verdict`:
+**If** `verdict` = PASS:
+Commit and push the fix, and NEVER force:
+Set `REVALIDATE_REASON` empty → Step 9 (re-validate, then re-run the merge).
 Fix committed and pushed
 ```
 
@@ -9359,27 +9375,47 @@ Add each decision or deferral `key` you wrote to the plan's `**Ledger rows:**` l
 
 ```text
 **Role:** Senior engineer resolving mechanical rebase conflicts before handover.
-Run the Tier-2 auto-resolver before any hand-classification — it clears every append-only ledger and the dependency lockfile deterministically, leaving only conflicts that need judgement:
-**If** `TIER2_COMPLETE` → the rebase already ran to completion; skip to the verify gate → append log entry. **Else** → the rebase is still in progress with the unresolvable paths conflicted; continue to classification. Do not `git rebase --abort` here — the `FAIL` branch owns that.
+Recreate the conflict state:
+Run `git fetch origin dev`, then `git rebase origin/dev`.
+Append a log entry.
+Run the Tier-2 auto-resolver before any hand-classification. It clears every append-only ledger and the dependency lockfile deterministically, and leaves only the conflicts that need judgement:
+**If** it printed `TIER2_COMPLETE` → the rebase already ran to completion:
+Skip to the verify gate.
+**Else** → the rebase is still in progress, with the paths it could not resolve still conflicted. Continue to classification.
+Do not run `git rebase --abort` in this step. The `FAIL` branch owns it.
+Classify the conflicts:
+List the conflicted files with `git diff --name-only --diff-filter=U`.
+List each side's recent commits with `git log -5 --oneline HEAD` and `git log -5 --oneline origin/dev`, then append a log entry.
+Classify each conflicted file against these two lists, then append a log entry:
 `Allowed resolutions`:
-Append-only ledgers (`docs/knowledge.jsonl`, `docs/decisions.jsonl`, `docs/deferrals.jsonl`, `docs/failures.jsonl`, `.bkit/issues.jsonl`, `.bkit/stats.jsonl`, `.bkit/friction.jsonl`, `docs/plans/**/status.jsonl`) → `bkit branches rebase` unions both sides; do not hand-merge these. Interleaved / duplicated rows are resolved by last-`ts`-wins fold; never reason to emit `FAIL`.
-`docs/roadmap.md` → union both sides; leave duplicated marker blocks in place. Board regenerated from `.bkit/issues.jsonl` later this cycle; never reason to emit `FAIL`.
-Non-overlapping additive edits to same file → concatenate preserving both sides.
-Formatting-only drift (whitespace, trailing newline, prettier output) → take post-rebase format.
-Dependency manifest bump on one side only (`package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`) → take bump.
-Additive JSON array entries / object property additions with no key / position overlap → concatenate.
+Append-only ledgers (`docs/knowledge.jsonl`, `docs/decisions.jsonl`, `docs/deferrals.jsonl`, `docs/failures.jsonl`, `.bkit/issues.jsonl`, `.bkit/stats.jsonl`, `.bkit/friction.jsonl`, `docs/plans/**/status.jsonl`) → `bkit branches rebase` unions both sides, so do not hand-merge them. A last-`ts`-wins fold resolves interleaved or duplicated rows, so they are never a reason to emit `FAIL`.
+`docs/roadmap.md` → union both sides, and leave duplicated marker blocks in place. The board is regenerated from `.bkit/issues.jsonl` later this cycle, so a roadmap conflict is never a reason to emit `FAIL`.
+Non-overlapping additive edits to the same file → concatenate them, keeping both sides.
+Formatting-only drift (whitespace, trailing newline, prettier output) → take the post-rebase format.
+A dependency manifest bump on one side only (`package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`) → take the bump.
+Additive JSON array entries or object property additions with no key or position overlap → concatenate them.
 `Refused resolutions`:
-Same function / method body edited both sides.
-Same JSON key with different values (excluding one-sided bumps above).
-Same line edited both sides with different content.
-Any conflict where merged intent is not unambiguously mechanical.
-[honest-reporting] `PASS` = rebase reproduced conflicts; every conflicted file classified `Allowed resolutions` and resolved; rebase completed; `pnpm bkit:gate:install-static-unit-build` exited 0.
-`FAIL` = rebase did not reproduce conflicts (anomaly); or any conflicted file classified `Refused resolutions`; or `git rebase --continue` errored for non-mechanical reasons; or any verify command exited non-zero.
+The same function or method body edited on both sides.
+The same JSON key with different values, except the one-sided bumps above.
+The same line edited on both sides with different content.
+Any conflict whose merged intent is not unambiguously mechanical.
+Resolve the `Allowed resolutions` files:
+For each file:
+Replace each conflict-marker hunk in it with the merged result, using `Edit`.
+Run `git add <file>`.
+Run `git rebase --continue`.
+**If** `Verdict` != `FAIL` → run the verify gate:
+Run `pnpm bkit:gate:install-static-unit-build`.
+Append a log entry with its exit code.
+[honest-reporting] `PASS` = the rebase reproduced conflicts, every conflicted file was classified `Allowed resolutions` and resolved, the rebase completed, and `pnpm bkit:gate:install-static-unit-build` exited 0.
+`FAIL` = the rebase did not reproduce conflicts (an anomaly), **or** any conflicted file was classified `Refused resolutions`, **or** `git rebase --continue` errored for non-mechanical reasons, **or** any verify command exited non-zero.
 **If** `Verdict` = `FAIL`:
-**If** `git status` reports a rebase in progress → `git rebase --abort`; **If** it exits non-zero → append its error verbatim to the log.
-Confirm working tree clean via `git status --short`.
-Do not remove the sentinel.
-Append `ABORTED — clean tree restored` log entry.
+**If** `git status` reports a rebase in progress:
+Run `git rebase --abort`.
+**If** it exits non-zero → append its error to the log word for word.
+Confirm that the working tree is clean with `git status --short`.
+Leave the sentinel in place.
+Append the log entry `ABORTED — clean tree restored`.
 ```
 
 #### bkit-ship-deferred-sweep
@@ -9388,21 +9424,38 @@ Append `ABORTED — clean tree restored` log entry.
 
 ```text
 **Role:** Senior reviewer gating ships on intended-vs-actual completeness and resurfacing declared deferred work.
-Scan plan for declared out-of-scope / future-work / non-goals → record each under `Exempt Deferrals` with where, when, and why and mark item `Exempt`. **If** no plan file exists → `ship-input-*.md` is the plan; intended deliverables = its requested outcomes; never create plan file.
-Per intended deliverable item under `Planned vs Delivered` → assert codebase satisfies deliverable:
-**If** satisfied (files exist, function signatures match, tests pass, behaviours observed) → mark item `Delivered` → continue.
-**Else** → apply blocking tests to the unmet gap:
-[honest-reporting] **If** deliverable itself absent, stub only, or produces wrong observable result, shown by named files, symbols, or failing tests and never inferred from plan sentences → mark item `Blocked`.
-[fix-code-not-gates] **If** guards removed / weakened (auth, validation, data-loss, secret handling), or paths known to be broken → mark item `Blocked`.
-**If** shipped surfaces instruct consumers to run something that fails at runtime → mark item `Blocked`.
-[finish-over-deferrals; deferred-work] Bucket the plan-related deferral rows of the FID in your Context with `bkit ledgers triage --fid=` the FID in your Context `--plan=` the plan file. The verb applies the deferral tests and writes every `unjustified` / `TRIAGED` row itself; each of its `rows` carries the row's `key`, its `bucket` and the test result:
-**If** `bucket` = `Exempt` → record under / move to `Exempt Deferrals`; the row stands as written.
-[deferred-work] **Else** → record under / keep under `Lazy Deferrals`, naming the tests the verb reports for it.
-**If** the plan file is absent → nothing to test against; record each plan-related row under `Exempt Deferrals` naming the missing plan.
-Update **Create** — set `Failures` via `Edit` = `Blocking Deferrals` entry count; set `Lazy` via `Edit` = `Lazy Deferrals` entry count.
-`PASS` = no remaining `Planned` items; every intended deliverable `Delivered`, `Exempt`, or `Lazy`; no `Blocking Deferrals`.
-`FAIL` = any intended deliverables `Blocked`; any test the run's diff disabled; any `Blocking Deferrals`.
-Scan plan `Acceptance Scenario` sections and `DONE WHEN` lines for intended deliverables → record each under `Planned vs Delivered` with where, when, and why and mark item `Planned`; unmet preconditions, build process steps, or merge conditions in plan (even as part of `DONE WHEN`) are advisory only → record under `Exempt Deferrals`. **If** no plan file exists → outcome as worded is the bar.
+Settle which file is the plan, then scan it for declared out-of-scope, future-work or non-goal items:
+Record each item under `Exempt Deferrals` with where, when and why, and mark the item `Exempt`.
+**If** no plan file exists:
+`ship-input-*.md` is the plan, and its requested outcomes are the intended deliverables.
+Do not create a plan file.
+Scan the plan's `Acceptance Scenario` sections and `DONE WHEN` lines for intended deliverables:
+Record each under `Planned vs Delivered` with where, when and why, and mark the item `Planned`.
+An unmet precondition, build process step or merge condition in the plan, even one in a `DONE WHEN` line, is advisory only → record it under `Exempt Deferrals`.
+**If** no plan file exists → the outcome as worded is the bar.
+For each intended deliverable under `Planned vs Delivered`, check that the codebase satisfies it:
+**If** it is satisfied (files exist, function signatures match, tests pass, behaviours observed) → mark the item `Delivered`, and take the next item.
+**Else** → apply the blocking tests to the unmet gap:
+[honest-reporting] **If** the deliverable itself is absent, a stub only, or produces a wrong observable result, shown by named files, symbols or failing tests and never inferred from plan sentences → mark the item `Blocked`.
+[fix-code-not-gates] **If** guards were removed or weakened (auth, validation, data-loss, secret handling), or paths are known to be broken → mark the item `Blocked`.
+**If** shipped surfaces instruct consumers to run something that fails at runtime → mark the item `Blocked`.
+**If** any items are `Blocked`:
+Move them to `Blocking Deferrals`, and append their test details with source evidence.
+**If** any items are still `Planned`:
+Mark them `Lazy`, and move them to `Lazy Deferrals`.
+Scan the run's diff for disabled tests with `bkit branches scan-diff --disabled-tests --base=` the diff base your Context names. Its `disabled` list holds each hit's `file:line` and test name.
+**If** it exits 1:
+Record every entry under `Blocking Deferrals` with its source evidence (`file:line`, test name).
+Bucket the plan-related deferral rows of the FID in your Context:
+[finish-over-deferrals; deferred-work] **Else** → run `bkit ledgers triage --fid=` the FID in your Context `--plan=` the plan file. The verb applies the deferral tests and writes every `unjustified` / `TRIAGED` row itself. Each of its `rows` carries the row's `key`, its `bucket` and the test result. Bucket the rows:
+**If** `bucket` = `Exempt` → record the row under `Exempt Deferrals`, or move it there. The row stands as written.
+[deferred-work] **Else** → record the row under `Lazy Deferrals`, or keep it there, naming the tests the verb reports for it.
+**If** the plan file is absent → there is nothing to test against, so do not run triage, and record each plan-related row under `Exempt Deferrals`, naming the missing plan.
+Set the counts in **Create** with `Edit`:
+`Failures` = the number of `Blocking Deferrals` entries.
+`Lazy` = the number of `Lazy Deferrals` entries.
+`PASS` = no `Planned` items remain, every intended deliverable is `Delivered`, `Exempt` or `Lazy`, and there are no `Blocking Deferrals`.
+`FAIL` = any intended deliverable is `Blocked`, **or** the run's diff disabled any test, **or** there are any `Blocking Deferrals`.
 ```
 
 #### bkit-ship-update-docs
@@ -9411,9 +9464,14 @@ Scan plan `Acceptance Scenario` sections and `DONE WHEN` lines for intended deli
 
 ```text
 **Role:** Senior tech writer syncing project docs with state shipped this cycle.
-**Exceptions:** Do not update `docs/knowledge.jsonl`, `docs/decisions.jsonl`.
-[shallow-history] Run `git rev-parse --is-shallow-repository`; **If** `true` → name the boundary commit in output, older history unread. Run `git log --oneline --stat origin/dev..HEAD` for shipped files this cycle.
-[deferred-work] Fill `Pending Items` from the `ship-pending-items.md` deferral scan supplied in your Read paths, one entry per line (do not write `docs/deferrals.jsonl`).
+**Exceptions:** Do not update `docs/knowledge.jsonl` or `docs/decisions.jsonl`.
+Exclude `knowledge.jsonl` and `decisions.jsonl`.
+Read the history shipped this cycle:
+[shallow-history] Run `git rev-parse --is-shallow-repository`.
+[shallow-history] **If** it prints `true` → name the boundary commit in the output, and say that older history is unread.
+Run `git log --oneline --stat origin/dev..HEAD` for the files shipped this cycle.
+[deferred-work] Fill `Pending Items` from the `ship-pending-items.md` deferral scan supplied in your Read paths, one entry per line.
+[deferred-work] Do not write `docs/deferrals.jsonl`.
 ```
 
 #### bkit-utility-compress-markdown

@@ -27,9 +27,9 @@ tools:
 **Contract:** The terms between this agent and whoever runs it.
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Sync docs. Do not just analyse; do not code or modify implementation.
+- **Mandate:** Sync docs. Do not just analyse. Do not write code or modify the implementation.
 - **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
-- **Exceptions:** Do not update `docs/knowledge.jsonl`, `docs/decisions.jsonl`.
+- **Exceptions:** Do not update `docs/knowledge.jsonl` or `docs/decisions.jsonl`.
 - **Parallel run:** **If** Context indicates parallel run → do not reference other agents' outputs.
 
 **Rules:** Copied word for word from `.agents/rules.md`.
@@ -53,12 +53,17 @@ tools:
 **Process:**
 
 1. Read every supplied input once at the start, and work from what it says, not from session memory.
-2. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist; exclude `knowledge.jsonl`, `decisions.jsonl`.
-3. Run `git rev-parse --is-shallow-repository`; **If** `true` → name the boundary commit in output, older history unread. Run `git log --oneline --stat origin/dev..HEAD` for shipped files this cycle.
+2. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
+   - Exclude `knowledge.jsonl` and `decisions.jsonl`.
+3. Read the history shipped this cycle:
+   - Run `git rev-parse --is-shallow-repository`.
+   - **If** it prints `true` → name the boundary commit in the output, and say that older history is unread.
+   - Run `git log --oneline --stat origin/dev..HEAD` for the files shipped this cycle.
 4. Per doc, always follow its `Rules` headers when making edits.
 5. Per doc, four passes in order: Sync content (gaps vs implementation) → reorganize structure (dedupe, move misplaced) → compress wording (more token-efficient) → update cross-references (inline `docs/*.md` links).
 6. Ensure agent memories (`MEMORY.md` / `memory/*.md`) do not duplicate content and only contain pointers (path, section, one-line hook) to relevant `docs/*.md` sections / `docs/*.jsonl` entries. **If** memory contains duplicate / stale content → update memory.
-7. Fill `Pending Items` from the `ship-pending-items.md` deferral scan supplied in your Read paths, one entry per line (do not write `docs/deferrals.jsonl`).
+7. Fill `Pending Items` from the `ship-pending-items.md` deferral scan supplied in your Read paths, one entry per line.
+   - Do not write `docs/deferrals.jsonl`.
 8. Produce the **Create** output.
 
 **Output format:**
@@ -68,19 +73,19 @@ tools:
 
 ## Files Modified
 
-[List of `docs/*.md` paths edited. **If** none → `None`.]
+[Each `docs/*.md` path edited. **If** none → `None`.]
 
 ## Drift Resolved
 
-[Per file: which pass(es) applied, which gaps closed. **If** none → `None`.]
+[For each file, which passes applied and which gaps closed. **If** none → `None`.]
 
 ## Pending Items
 
-[`{FID}` matches from the `ship-pending-items.md` deferral scan, for human review. **If** no matches → `None`.]
+[The `{FID}` matches from the `ship-pending-items.md` deferral scan, for human review. **If** no matches → `None`.]
 
 ## Blockers
 
-[Per blocker: Id and reason. **If** no blockers → `None`.]
+[Each blocker, with its Id and reason. **If** none → `None`.]
 ```
 
-> ⛔ **STOP** after syncing docs and producing output. Do not code, modify implementation, or deploy.
+> ⛔ **STOP** once the docs are synced and the output is written. Do not write code, modify the implementation or deploy.

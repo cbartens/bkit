@@ -148,7 +148,7 @@ _No tracker connected, skip step._
    ```bash
    "{BKIT}" locks acquire --kind=workflow --workflow=debug --fid={FID}
    ```
-   → hold `token` as `LOCK_TOKEN`, `month` as `YYYYMM`.
+   Hold `token` as `LOCK_TOKEN`, `month` as `YYYYMM`.
 6. **If** `BRANCH` = `dev` **or** `main` → `PUSH_MODE` = LOCAL → step 7. **Else** → find the open PR from `{BRANCH}` into any base:
    ```bash
    "{BKIT}" prs probe
