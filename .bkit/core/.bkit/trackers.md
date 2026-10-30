@@ -166,7 +166,7 @@ Workflows read issue body + comments (`bkit issues text`), never title (title �
 | Title | template H1 (`Security Audit`) |
 | Body | names `docs/templates/bkit-audit-{slug}.md` verbatim (`@bkit-audit-generate` finds the parent by this path); run line `@bkit-audit-generate docs/templates/bkit-audit-{slug}.md #{N}` (linear / jira `KEY-N`); report path `docs/audits/{YYYYMM}/{slug}.md` |
 | Labels | project's own (e.g. `maintenance`); no workflow, `next:*` or `bkit:*` label — it runs no workflow |
-| Milestone | one milestone holding every audit parent, when the project keeps one |
+| Milestone | project's own, the way the repo already assigns milestones; none fits → empty |
 | State | stays open; runs never close it; filed issues reference it as `#N — {title}`, never `Closes #N` |
 | Children | every issue filed from its runs' `Suggested Issues`, always (github sub-issues; linear `parentId`; jira `parent`) |
 | Comments | one `### Audit Summary: {slug}` comment per run — posted by the run when named or found; a newly filed parent gets the run's saved `parent-comment.md` as its first comment |
