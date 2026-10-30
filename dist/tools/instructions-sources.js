@@ -518,14 +518,10 @@ export function checkPermissions(store, settings, opencode) {
     return out;
 }
 // ---------------------------------------------------------------------------
-// Special Behaviors ← `.bkit/core/.bkit/prompts.md`; Authoring Rules ← `authoring.md`, `workflows.md`
+// Special Behaviors ← `.bkit/core/.bkit/prompts.md`; Authoring Rules ← `workflows.md`
 // ---------------------------------------------------------------------------
-/** Catalog files the two sections copy. */
-export const CATALOG_SOURCES = [
-    ".bkit/core/.bkit/prompts.md",
-    ".bkit/core/.bkit/workflows.md",
-    ".bkit/core/.bkit/authoring.md",
-];
+/** Catalog files the two sections copy. `authoring.md` is read in place, never copied. */
+export const CATALOG_SOURCES = [".bkit/core/.bkit/prompts.md", ".bkit/core/.bkit/workflows.md"];
 const FENCE_OPEN = /^(`{3,})/;
 /** Per line: true when the line is a fence marker or inside a fenced block. */
 function fencedLines(lines) {

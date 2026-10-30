@@ -300,160 +300,135 @@ function bkitGateguard(payload) {
 // ---------------------------------------------------------------------------
 // DOGFOOD ONLY — bkit's own authoring rules for its own files.
 // Present in this repo's four installed GateGuard hooks (Claude Code, Cursor,
-// Codex, opencode); ships in no template and reaches no consumer install
-// (.bkit/core/workflows/ and .bkit/core/prompts/ never exist outside this repo). Lives
+// Codex, opencode); ships in no template and reaches no consumer install. Lives
 // outside the managed block so it survives every `bkit install` / `bkit upgrade`.
-// Rules the advisories share with .bkit/authoring.md are read from its package source
-// (`.bkit/core/.bkit/authoring.md`) at hook time, never copied.
+// Each agent-read file gets the `.bkit/authoring.md` sections whose scope line names
+// it, read from the package source (`.bkit/core/.bkit/authoring.md`) at hook time,
+// never copied.
 // ---------------------------------------------------------------------------
 
+/** Forward slashes, so one set of patterns serves every OS. */
+function slashed(filePath) {
+  return filePath.replace(/\\/g, "/");
+}
+
+/** True when `p` starts at `prefix` from the repo root, given as a relative or absolute path. */
+function under(p, prefix) {
+  return p.startsWith(prefix) || p.includes(`/${prefix}`);
+}
+
 function isBkitWorkflowPath(filePath) {
-  const p = filePath.replace(/\\/g, "/");
-  return p.endsWith(".md") && (p.startsWith(".bkit/core/workflows/") || p.includes("/.bkit/core/workflows/"));
+  const p = slashed(filePath);
+  return p.endsWith(".md") && under(p, ".bkit/core/workflows/");
 }
 
 function isBkitPromptPath(filePath) {
-  const p = filePath.replace(/\\/g, "/");
-  return p.endsWith(".md") && (p.startsWith(".bkit/core/prompts/") || p.includes("/.bkit/core/prompts/"));
+  const p = slashed(filePath);
+  return p.endsWith(".md") && under(p, ".bkit/core/prompts/");
+}
+
+/** § Doc Templates scope: `.bkit/core/docs/templates/*.md` and the installed `docs/templates/*.md`. */
+function isDocTemplatePath(filePath) {
+  const p = slashed(filePath);
+  return p.endsWith(".md") && under(p, "docs/templates/");
+}
+
+/**
+ * § Docs scope: `.agents/**`, `.bkit/*.md` and `docs/*.md`. The patterns match at any
+ * depth, so the sources (`.bkit/core/.agents/`, `.bkit/core/.bkit/`, `.bkit/shared/docs/`)
+ * match too.
+ */
+const DOC_PATTERNS = [/(^|\/)\.agents\//, /(^|\/)\.bkit\/[^/]+\.md$/, /(^|\/)docs\/[^/]+\.md$/];
+
+function isBkitDocPath(filePath) {
+  const p = slashed(filePath);
+  return p.endsWith(".md") && DOC_PATTERNS.some((re) => re.test(p));
+}
+
+const ENTRY_FILES = ["AGENTS.md", "CLAUDE.md", "GEMINI.md"];
+
+/** The rest of § All Agent-Read Files scope: `.bkit/**`, `docs/**`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`. */
+function isAgentReadPath(filePath) {
+  const p = slashed(filePath);
+  if (!p.endsWith(".md")) return false;
+  const base = p.slice(p.lastIndexOf("/") + 1);
+  return under(p, ".bkit/") || under(p, "docs/") || ENTRY_FILES.includes(base);
 }
 
 const REPO_AUTHORING_RULE =
-  "- `.agents/rules.md` § Repo Authoring applies: authoring rules, index update in the same change, prose per `.bkit/core/prompts/bkit-utility-compress-markdown.md`.";
-
-/**
- * One rule from a doc section as an advisory bullet: its `- **Lead:** text` line with
- * the bold unwrapped. First line only — sub-bullets are test-enforced or shown by the
- * corpus. Missing doc, section, or rule → a bullet naming where to read it instead.
- */
-function sectionRule(source, heading, lead, doc) {
-  const file = path.join(bkitRepoRoot(), source);
-  const src = fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
-  const start = src.indexOf(`\n## ${heading}\n`);
-  const rest = start >= 0 ? src.slice(start + heading.length + 5) : "";
-  const end = rest.indexOf("\n## ");
-  const body = end >= 0 ? rest.slice(0, end) : rest;
-  const prefix = `- **${lead}:** `;
-  const line = body.split("\n").find((l) => l.startsWith(prefix));
-  return line
-    ? `- ${lead}: ${line.slice(prefix.length)}`
-    : `- ${lead}: unreadable here; read \`${doc}\` § ${heading}.`;
-}
+  "- `.agents/rules.md` § Repo Authoring applies: authoring rules, index update in the same change.";
 
 const AUTHORING_SOURCE = ".bkit/core/.bkit/authoring.md";
 const AUTHORING_DOC = ".bkit/authoring.md";
 
-/** One rule of `.bkit/core/.bkit/authoring.md` § `heading` as an advisory bullet. */
-function authoringRule(heading, lead) {
-  return sectionRule(AUTHORING_SOURCE, heading, lead, AUTHORING_DOC);
-}
-
 /**
- * One `**Lead.** text` paragraph of `.bkit/core/.bkit/authoring.md` § Notation as an
- * advisory bullet. Missing doc or paragraph → a bullet naming where to read it instead.
+ * Every rule of `.bkit/core/.bkit/authoring.md` § `heading` as advisory bullets: each
+ * `- **Lead:** text` first line with the bold unwrapped. A rule with a `Checked by:`
+ * line is left out, because its test enforces it. Missing doc or section → one bullet
+ * naming where to read it instead.
  */
-function notationParagraph(lead) {
+function authoringRules(heading) {
   const file = path.join(bkitRepoRoot(), AUTHORING_SOURCE);
   const src = fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
-  const start = src.indexOf("\n### Notation\n");
-  const rest = start >= 0 ? src.slice(start + 14) : "";
-  const end = rest.search(/\n##? /);
+  const start = src.indexOf(`\n## ${heading}\n`);
+  if (start < 0) return [`- § ${heading}: unreadable here; read \`${AUTHORING_DOC}\` § ${heading}.`];
+  const rest = src.slice(start + heading.length + 5);
+  const end = rest.indexOf("\n## ");
   const body = end >= 0 ? rest.slice(0, end) : rest;
-  const prefix = `**${lead}.** `;
-  const line = body.split("\n").find((l) => l.startsWith(prefix));
-  return line
-    ? `- ${lead}: ${line.slice(prefix.length)}`
-    : `- ${lead}: unreadable here; read \`${AUTHORING_DOC}\` § Notation.`;
+  const out = [];
+  let rule = null;
+  let checked = false;
+  const close = () => {
+    if (rule && !checked) out.push(rule);
+    rule = null;
+    checked = false;
+  };
+  for (const line of body.split("\n")) {
+    const lead = /^- \*\*([^*]+):\*\* (.*)$/.exec(line);
+    if (lead) {
+      close();
+      rule = `- ${lead[1]}: ${lead[2]}`;
+    } else if (/^\s+- Checked by:/.test(line)) checked = true;
+    else if (/^\S/.test(line)) close();
+  }
+  close();
+  return out;
 }
 
-function workflowAuthoringAdvisory() {
-  const shared = (lead) => authoringRule("Prompts and Workflows", lead);
-  const all = (lead) => authoringRule("All Agent-Read Files", lead);
+/** Each kind of agent-read file, most specific first, with the sections that apply to it. */
+const AUTHORING_KINDS = [
+  {
+    test: isBkitWorkflowPath,
+    label: ".bkit/core/workflows/*.md",
+    sections: ["All Agent-Read Files", "Prompts and Workflows", "Output Formatting", "Workflows Only"],
+  },
+  {
+    test: isBkitPromptPath,
+    label: ".bkit/core/prompts/*.md",
+    sections: ["All Agent-Read Files", "Prompts and Workflows", "Output Formatting", "Prompts Only"],
+  },
+  {
+    test: isDocTemplatePath,
+    label: "doc template",
+    sections: ["All Agent-Read Files", "Output Formatting", "Doc Templates"],
+  },
+  { test: isBkitDocPath, label: "doc", sections: ["All Agent-Read Files", "Docs"] },
+  { test: isAgentReadPath, label: "agent-read file", sections: ["All Agent-Read Files"] },
+];
+
+function authoringAdvisory(kind) {
   return [
-    "[bkit GateGuard] .bkit/core/workflows/*.md authoring:",
-    shared("These files are their own template"),
-    authoringRule("Workflows Only", "Bash decides, prose routes"),
-    all("Current state"),
-    all("Notation"),
-    notationParagraph("Grammar"),
-    shared("Dense instructions only"),
-    shared("Cross-file alignment"),
-    authoringRule("Workflows Only", "Human questions"),
-    shared("Self-contained"),
-    all("Removal = delete"),
+    `[bkit GateGuard] ${kind.label} authoring:`,
+    ...kind.sections.flatMap(authoringRules),
     REPO_AUTHORING_RULE,
     "Advisory — proceed once satisfied.",
   ].join("\n");
 }
 
-function promptAuthoringAdvisory() {
-  const shared = (lead) => authoringRule("Prompts and Workflows", lead);
-  const all = (lead) => authoringRule("All Agent-Read Files", lead);
-  return [
-    "[bkit GateGuard] .bkit/core/prompts/*.md authoring:",
-    shared("These files are their own template"),
-    all("Current state"),
-    all("Notation"),
-    notationParagraph("Grammar"),
-    shared("Dense instructions only"),
-    shared("Cross-file alignment"),
-    shared("Self-contained"),
-    all("Removal = delete"),
-    REPO_AUTHORING_RULE,
-    "Advisory — proceed once satisfied.",
-  ].join("\n");
-}
-
-function bkitDocAuthoringAdvisory() {
-  return (
-    "[bkit GateGuard] bkit `.md` doc authoring:\n" +
-    "- Read this file's header block and follow its purpose and rules if present.\n" +
-    "- Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.\n" +
-    "- Describe current state / rules, not reasons / history; state what to do, not why. only exceptions: docs where purpose is the record.\n" +
-    "Advisory — proceed once satisfied."
-  );
-}
-
-function proseAuthoringAdvisory() {
-  return [
-    "[bkit GateGuard] prose authoring:",
-    REPO_AUTHORING_RULE,
-    "Advisory — proceed once satisfied.",
-  ].join("\n");
-}
-
-function isBkitDocPath(filePath) {
-  const p = filePath.replace(/\\/g, "/");
-  if (!p.endsWith(".md")) return false;
-  // Own docs/** test, independent of the managed block's isDocsPath. Matches bkit's
-  // own reference docs under `.bkit/` and `.agents/`, templates included; docs/** and
-  // the two execution surfaces are excluded.
-  if (p.startsWith("docs/") || p.includes("/docs/")) return false;
-  if (isBkitWorkflowPath(p) || isBkitPromptPath(p)) return false;
-  return (
-    p.startsWith(".bkit/") ||
-    p.includes("/.bkit/") ||
-    p.startsWith(".agents/") ||
-    p.includes("/.agents/")
-  );
-}
-
-/** Rest of the `.agents/rules.md` § Repo Authoring prose scope: `docs/**` (plans included), `AGENTS.md`, `CLAUDE.md`. */
-function isProsePath(filePath) {
-  const p = filePath.replace(/\\/g, "/");
-  if (!p.endsWith(".md")) return false;
-  const base = p.slice(p.lastIndexOf("/") + 1);
-  return (
-    p.startsWith("docs/") || p.includes("/docs/") || base === "AGENTS.md" || base === "CLAUDE.md"
-  );
-}
-
-/** Returns the bkit-repo authoring advisory for a path, else null. */
+/** Returns the bkit-repo authoring advisory for a path, else null. First match wins. */
 function dogfoodAuthoringAdvisory(filePath) {
-  if (isBkitWorkflowPath(filePath)) return workflowAuthoringAdvisory();
-  if (isBkitPromptPath(filePath)) return promptAuthoringAdvisory();
-  if (isBkitDocPath(filePath)) return `${bkitDocAuthoringAdvisory()}\n\n${proseAuthoringAdvisory()}`;
-  if (isProsePath(filePath)) return proseAuthoringAdvisory();
-  return null;
+  const kind = AUTHORING_KINDS.find((k) => k.test(filePath));
+  return kind ? authoringAdvisory(kind) : null;
 }
 
 /** Repo root: this hook lives at `<root>/.<host>/hooks/`. */

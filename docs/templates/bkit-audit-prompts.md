@@ -32,7 +32,7 @@ A prompt is written against one model maker's advice at one point in time. The m
 - Every other maker whose model runs a prompt (e.g. xAI, Mistral, Meta, DeepSeek, Qwen): its own prompting guide, or `Not Checked` when it publishes none; its model parameter docs either way.
 - Each maker's tool-use and structured-output docs, for tool and schema descriptions.
 
-Guides disagree. The guide for the model that runs the prompt wins. A prompt that runs on models from more than one maker (fallback chain, router, several hosts) relies only on practice every one of those guides supports.
+Guides disagree. The guide for the model that runs the prompt wins. A prompt that runs on models from more than one maker (fallback chain, router, several hosts) follows the current guides of the makers whose models run it day to day. A fallback model's guide counts only where it does not conflict with them.
 
 ### Scope
 
