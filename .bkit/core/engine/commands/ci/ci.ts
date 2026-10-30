@@ -483,16 +483,21 @@ function prose(ctx: RunContext): number {
     ctx.emit({ passed: true, skipped, files: 0 });
     return EXIT.OK;
   };
+  const unavailable = (skipped: string, message: string) => {
+    ctx.log(message);
+    ctx.emit({ passed: false, skipped, files: 0 });
+    return EXIT_VALE_FAILED;
+  };
   if (!onPath("vale")) {
-    return skip(
+    return unavailable(
       "vale-missing",
-      "vale not installed - skipping prose lint (install vale, then run vale sync, to enable)",
+      "vale not installed - prose lint unavailable (install vale, then run vale sync)",
     );
   }
   if (!restoreWriteGood(ctx)) {
-    return skip(
+    return unavailable(
       "write-good-missing",
-      "WARNING - PROSE LINT SKIPPED: vale is installed but .vale/styles/write-good could not be restored (main-worktree copy and vale sync both failed). The prose gate is NOT enforcing here - run: vale sync",
+      "PROSE LINT UNAVAILABLE: vale is installed but .vale/styles/write-good could not be restored (main-worktree copy and vale sync both failed). Run: vale sync",
     );
   }
   const files = proseFiles(ctx.cwd, globs);
@@ -637,7 +642,7 @@ export const ciCommand: CommandSpec = {
     },
     prose: {
       summary:
-        "Run Vale over the markdown files the globs select; skip when vale is not installed.",
+        "Run Vale over the markdown files the globs select; fail when Vale or required styles are unavailable.",
       use: "by-hand",
       flags: [
         {
@@ -648,7 +653,7 @@ export const ciCommand: CommandSpec = {
         },
       ],
       output: {
-        passed: "false when vale reported alerts",
+        passed: "false when vale reported alerts or required tooling is unavailable",
         skipped: "vale-missing | write-good-missing | no-files when nothing was linted, else null",
         files: "how many files vale linted",
       },

@@ -658,12 +658,12 @@ describe("bkit ci prose — file selection", () => {
 });
 
 describe("bkit ci prose — gate", () => {
-  it("skips with exit 0 when vale is not installed", async () => {
+  it("fails when vale is not installed", async () => {
     const cwd = proseRepo();
     process.env.PATH = `${mkdir("bkit-ci-novale-")}${path.delimiter}/usr/bin${path.delimiter}/bin`;
     const r = await run(cwd, [], "prose");
-    expect(r.code).toBe(0);
-    expect(r.json).toEqual({ passed: true, skipped: "vale-missing", files: 0 });
+    expect(r.code).toBe(EXIT_VALE_FAILED);
+    expect(r.json).toEqual({ passed: false, skipped: "vale-missing", files: 0 });
     expect(r.err).toContain("vale not installed");
   });
 
@@ -726,13 +726,13 @@ describe("bkit ci prose — write-good restore", () => {
     expect(vale.calls().split("\n")).toEqual(["sync", "README.md"]);
   });
 
-  it("skips loudly with exit 0 when vale sync cannot restore it either", async () => {
+  it("fails when vale sync cannot restore the required styles", async () => {
     const cwd = proseRepo(false);
     fakeVale(0, false);
     const r = await run(cwd, [], "prose");
-    expect(r.code).toBe(0);
-    expect(r.json).toEqual({ passed: true, skipped: "write-good-missing", files: 0 });
-    expect(r.err).toContain("PROSE LINT SKIPPED");
+    expect(r.code).toBe(EXIT_VALE_FAILED);
+    expect(r.json).toEqual({ passed: false, skipped: "write-good-missing", files: 0 });
+    expect(r.err).toContain("PROSE LINT UNAVAILABLE");
   });
 });
 
