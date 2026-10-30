@@ -169,7 +169,7 @@ gh auth status                                                       # gh CLI us
 
 After step 4, restart open Claude Code / Cursor sessions in this repo so new env reaches MCP servers.
 
-`.bkit/.env` gitignored — NEVER commit. Cloud sessions (Claude Code on the web, Cursor Background Agents): set same names in respective online dashboards; see `.bkit/cloud.md` § Environment variables. `bkit install` / `bkit check` advisories detect missing direnv, blank required keys, un-allowed `.envrc` — follow whichever fires.
+`.bkit/.env` gitignored — NEVER commit. Cloud sessions (Claude Code on the web, Cursor Background Agents): set same names in respective online dashboards; see `.bkit/cloud.md` § Tokens by session type. `bkit install` / `bkit check` advisories detect missing direnv, blank required keys, un-allowed `.envrc` — follow whichever fires.
 
 ## Cloud agent environments (Claude Code on the web + Cursor Background Agents)
 

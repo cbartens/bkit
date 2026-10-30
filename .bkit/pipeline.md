@@ -53,7 +53,7 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
   3. brainstorm x 3 (parallel, distinct lenses, no sibling reads)
      • pragmatic  • optimal-tradeoff  • risk / pre-mortem
   4. generate design     (synthesise across lenses + related issues)
-  5. review x 2 (parallel, distinct lenses)
+  5. review x 2 (parallel, distinct lenses, on different models)
      • feasibility (web)  • operability (failure modes, observability, on-call)
   6. spike               (only if review flags load-bearing unknowns:
                          throwaway probe code, confined to the run's log folder)
@@ -173,11 +173,11 @@ Output: reviewed design (`docs/plans/{YYYYMM}/{FID}-design.md`). Hard stop for h
 | Subagent | Lens / focus | What it does |
 | --- | --- | --- |
 | `bkit-design-brainstorm-ideate-1` | Pragmatic | Independent design exploration. Forbidden from reading siblings (circular-reasoning guard). |
-| `bkit-design-brainstorm-ideate-2` | Optimal-tradeoff | Same task, different lens. |
+| `bkit-design-brainstorm-ideate-2` | Optimal-tradeoff | Same task, different lens, on a different model from its siblings. |
 | `bkit-design-brainstorm-ideate-3` | Risk / pre-mortem | Same task, failure-mode lens. |
 | `bkit-design-generate` | Synthesiser | Merges three brainstorms into one design. Merges across lenses rather than collapsing to consensus. |
 | `bkit-design-review-1` | Feasibility (web) | Adversarial review with live web search; checks ecosystem feasibility per capability. |
-| `bkit-design-review-2` | Operability | Parallel review alongside review-1: failure modes, observability, on-call ergonomics. |
+| `bkit-design-review-2` | Operability | Parallel review on a different model from review-1: failure modes, observability, on-call ergonomics. |
 | `bkit-design-spike` | Probe unknowns | Only when a review flags load-bearing unknowns: settles them with throwaway probe code, confined to the run's log folder. |
 | `bkit-design-update` | Apply review | Folds both reviews (and the spike, if run) back into the design. |
 | `bkit-design-organise` | Structure | Splits the reviewed design into dependency-annotated workstreams and plans. |
@@ -194,7 +194,7 @@ Output: executable plan (`{FID}-plan.md`, its tasks in groups the build runs one
 | `bkit-plan-generate` | Generate | Turns the design into groups of task blocks, in build order. |
 | `bkit-plan-review-1` | Tightness + dependency order + design-coverage | Read-only critique of the plan text; flags drift, out-of-order tasks and missing prerequisites as CRITICAL. Parallel. |
 | `bkit-plan-review-2` | Regression-risk | Same scope, reads the code: traces each task's surfaces to their consumers. Parallel. |
-| `bkit-plan-scope-check` | Internal-completeness | Mechanical scope audit — verifies template structure, scope and verification per task; per-task `DONE WHEN` / `TEST FIRST` belong to `bkit tests plan-check`. Parallel. |
+| `bkit-plan-scope-check` | Internal-completeness | Mechanical scope audit — verifies template structure, scope and verification per task; per-task `DONE WHEN` / `TEST FIRST` belong to `bkit tests plan-check`. Depth-sensitive: stays on the top model tier. Parallel. |
 | `bkit-plan-update` | Apply review (merge) | Merges all three critiques in one pass, max-wins on CRITICAL findings. |
 
 <a id="bkit-build"></a>
@@ -214,7 +214,7 @@ Output: PR to `dev`. Heaviest phase — most steps verify rather than produce. C
 | `bkit-build-plan-gaps-remediate` | Gap-fixer | Fills gaps the verifier found, then re-verifies. |
 | `bkit-build-plan-verify` | Holistic critic | Second, whole-of-plan verification pass across everything built. |
 | `bkit-build-challenge-1` | Bug-hunting | Adversarial review of the full diff; writes each finding as a plan task with a test first. Forbidden from reading its sibling. Parallel. Runs only on a large change (300+ lines or 10+ files, `docs/plans/**` excluded, measured by `bkit challenge gate`); a small one runs `-2` alone. `bkit challenge merge` then appends the findings to the plan, and execute + verify fix them. |
-| `bkit-build-challenge-2` | Security | Same diff, security lens. Runs on every change, alone on a small one. |
+| `bkit-build-challenge-2` | Security | Same diff, security lens. Depth-sensitive: stays on the top model tier. Runs on every change, alone on a small one. |
 | `bkit-debug-failure-diagnose` | Diagnostician | (If tests fail) diagnoses with Standard / Pivot / Final strategy escalation. Shared with debug. |
 | `bkit-debug-failure-remediate` | Fixer | (If tests fail) applies the diagnosed fix. |
 
