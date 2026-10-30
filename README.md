@@ -49,7 +49,7 @@ AI agents design it, plan it, build it, have it reviewed by agents that didn't w
 
 **Researched and battle-tested, not a weekend prompt pack.** bkit is built with bkit: months of research into how agentic engineering works best, refined over **2,000+ commits, 300+ issues and 100+ merged pull requests** run through its own pipeline. Along the way it recorded **300+ lessons and 600+ decisions**. They shaped the rules and prompts you install, and your own repo starts its own record from the first feature.
 
-**Every file bkit gives your agents to read follows Anthropic's, OpenAI's and Google's own prompting advice:** prompts, workflows, rules and project docs are all written to one [rulebook](.bkit/authoring.md), matched practice by practice against each maker's current guide, so the same text works on Claude, GPT and Gemini. The [prompt audit](.bkit/pipeline.md#audits) checks every one of those files against it, and every one passes.
+**Every file bkit gives your agents to read follows Anthropic's, OpenAI's and Google's own prompting advice:** prompts, workflows, rules and project docs are all written to one set of [writing rules](.bkit/authoring.md), matched practice by practice against each maker's current guide, so the same text works on Claude, GPT and Gemini. The [prompt audit](.bkit/pipeline.md#audits) checks every one of those files against it, and every one passes.
 
 <p align="center">
   <picture>
@@ -70,12 +70,13 @@ Everything a senior team would otherwise write down over years, in files you can
 | [Agents](.bkit/prompts.md) | 39 | Single-job specialists, each with its own model, thinking depth and tool list. A reviewer can read code but can't change it. |
 | [Workflows](.bkit/workflows.md) | 6 | The five phases plus a cloud router. Every step ends in a checklist and a mechanical check before the next one starts. |
 | [Agent rules](.agents/rules.md) | 70+ | One rulebook every agent follows: read before editing, never defer silently, report honestly, never rewrite history. |
+| [Writing rules](.bkit/authoring.md) | 50+ | How every prompt, workflow, rule and doc is worded, matched practice by practice against Anthropic's, OpenAI's and Google's prompting guides, so one text works on every model. |
 | [Guardrails](.bkit/providers.md#guardrails) | 10+ hook files | Block dangerous commands and secret reads, and make agents investigate before they edit, on all five AI tools. |
 | [Audits](.bkit/pipeline.md#audits) | 35 | Security, privacy, accessibility, performance, reliability, database, LLM usage, cost and more. Findings feed straight into a plan. |
 | [Project docs](.bkit/shared/docs/) | 10 + [index](.agents/docs.md) | Architecture, data schema, deployments, testing, security, monitoring, design system, tech stack, setup, and an index telling each agent what to read at each step. |
 | [Templates](.bkit/templates.md) | 60+ | A full CI pipeline, cloud agents, git hooks, linters, dependency updates, secrets sync, code search, and 10+ ready-made connectors for your platforms. |
 
-**These are the files your agents read, so they're written for agents:** short, dense, tables over prose. For day-to-day use, start with [`.bkit/README.md`](.bkit/README.md); for every agent in the order it runs, see the [pipeline reference](.bkit/pipeline.md).
+**These are the files your agents read, so they're written for agents,** to the writing rules above: short, dense, tables over prose. For day-to-day use, start with [`.bkit/README.md`](.bkit/README.md); for every agent in the order it runs, see the [pipeline reference](.bkit/pipeline.md).
 
 <a id="how-it-works"></a>
 
