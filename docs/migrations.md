@@ -5,7 +5,7 @@
 >
 > **Rules:**
 >
-> - Write this file to `.bkit/authoring.md` § All Agent-Read Files and § Docs.
+> - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
 > - One row per migration. Add the row in the same change that adds the code; delete the row in the same change that deletes the code.
 > - A migration is idempotent, runs inside the normal install / upgrade write path (dry-run computes the same writeset), and has a test seeding the old shape.
 > - Name the release range it covers, so a later sweep can retire it once no supported install predates it.

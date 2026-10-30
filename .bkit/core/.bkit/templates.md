@@ -7,7 +7,7 @@
 >
 > **Rules:**
 >
-> - Write this file to `.bkit/authoring.md` § All Agent-Read Files and § Docs.
+> - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
 > - `bkit install` and `bkit upgrade` never write these files and never overwrite a copy.
 > - Adapt app roots, workspace package scope, rules JSON. Examples use `apps/web`, `apps/mobile`, `packages/api`, `@scope`.
 

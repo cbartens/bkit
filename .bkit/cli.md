@@ -7,7 +7,7 @@
 >
 > **Rules:**
 >
-> - Write this file to `.bkit/authoring.md` § All Agent-Read Files and § Docs.
+> - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
 > - Ships to consumers: describe the current setup only. NEVER an internal identifier (tracker issue number, ledger key, review-finding id) and NEVER project history — decisions belong in `docs/decisions.jsonl`, incidents in `docs/knowledge.jsonl`.
 > - Everything between `<!-- cli:start -->` and `<!-- cli:end -->` is generated from the command specs (`.bkit/core/engine/cli.ts` `CLASSIC_VERB_HELP`, `.bkit/core/engine/commands/registry.ts`) by `pnpm cli:sync`; edit the specs, never the region.
 > - A verb's `Use` is `by hand` only when running it outside a workflow run writes no run state, lock, commit, push or tracker post the next run reads.

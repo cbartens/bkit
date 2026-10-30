@@ -9,7 +9,7 @@
 >
 > **Rules:**
 >
-> - Write this file to `.bkit/authoring.md` § All Agent-Read Files and § Docs.
+> - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
 > - `Universal Rules` apply to all agents; `Orchestrator Rules` apply only to workflows and commands.
 > - Local project rules / overrides → `Project Rules` below the bkit-managed block; universal rules stay in the block.
 > - Where project services live (repo, boards, service org / project ids) → `Project Settings`, the last section. It holds facts only: no rules, and nothing that changes workflows, gates or permissions.
@@ -57,7 +57,7 @@
 #### Documentation
 
 - **Keep current:** Update the affected docs in the same change as the code they describe, not as a follow-up. Doc drift is a regression.
-- **Authoring:** Write every agent-read file to `.bkit/authoring.md` § All Agent-Read Files, plus § Docs for a doc, and follow each doc's `Rules` header.
+- **Authoring:** Follow `.bkit/authoring.md` § All Agent-Read Files when you write or edit an agent-read file, plus § Docs for a doc, and follow each doc's `Rules` header.
 - **Format:** Write plain, complete sentences that keep their grammar words (articles, plurals), and cut filler, hedges and repetition. Prefer tables to prose, and bullets to paragraphs.
 
 #### Agent Management

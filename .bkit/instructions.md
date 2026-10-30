@@ -5,7 +5,7 @@
 >
 > **Rules:**
 >
-> - Write this file to `.bkit/authoring.md` § All Agent-Read Files and § Docs.
+> - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
 > - `## Clauses` is the master for clause text: change a shared sentence here, never in a prompt, workflow or audit template. `## Rules`, `## Project Rules`, `## Hook Text`, `## Permissions`, `## Special Behaviors` and `## Authoring Rules` copy their masters (`.agents/rules.md`, the hook engines, the shipped settings, the catalogs); `.bkit/core/engine/tools/instructions-sources.test.ts` checks each copy, and `pnpm instructions:sync` rewrites the rule text and catalog copies.
 > - Carrier lists record where an instruction sits today, not where it should.
 > - `- drift:` lines are reading-pass findings; re-check the cited line before fixing.
@@ -732,10 +732,11 @@ Clause section lines:
   - condensed: `gateguard-docs`
 
 ```text
-**Authoring:** Write every agent-read file to `.bkit/authoring.md` § All Agent-Read Files, plus § Docs for a doc, and follow each doc's `Rules` header.
+**Authoring:** Follow `.bkit/authoring.md` § All Agent-Read Files when you write or edit an agent-read file, plus § Docs for a doc, and follow each doc's `Rules` header.
 ```
 
 ```retired
+**Authoring:** Write every agent-read file to `.bkit/authoring.md` § All Agent-Read Files, plus § Docs for a doc, and follow each doc's `Rules` header.
 **Authoring:** ALWAYS follow each doc's `Rules` header. Describe current state / rules, not reasons / history; state what to do, not why. The ONLY exceptions are docs whose purpose is the record.
 **Authoring:** ALWAYS follow docs `Rules` headers. Describe current state / rules, not reasons / history; state what to do; not why. ONLY exceptions: Docs where purpose is the record.
 ```
@@ -6357,10 +6358,11 @@ record the date read
 - carriers: doc `architecture`, `context`, `data-schema`, `deployments`, `design`, `docs`, `noise`, `observability`, `prompts`, `security`, `setup`, `skills`, `technology`, `testing`; rules
 
 ```text
-Write this file to `.bkit/authoring.md` § All Agent-Read Files and § Docs.
+Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
 ```
 
 ```retired
+Write this file to `.bkit/authoring.md` § All Agent-Read Files and § Docs.
 Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
 ```
 

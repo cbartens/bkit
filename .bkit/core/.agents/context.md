@@ -9,7 +9,7 @@
 >
 > **Rules:**
 >
-> - Write this file to `.bkit/authoring.md` § All Agent-Read Files and § Docs.
+> - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
 > - Blocks below `<!-- bkit:end -->` = consumer-owned — `bkit install` never overwrites them, `bkit check` drift stays clean. Add yours there.
 > - Read-only + idempotent. **Never log PII.**
 

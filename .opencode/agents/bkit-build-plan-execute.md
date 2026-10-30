@@ -58,7 +58,7 @@ tools:
 - **UI design:** Build every user interface to `docs/design.md`.
 - **Dependencies:** Declare every package the code uses, and keep the dependency manifest and its lockfile in sync (e.g. `package.json` and `pnpm-lock.yaml`).
 - **Keep current:** Update the affected docs in the same change as the code they describe, not as a follow-up. Doc drift is a regression.
-- **Authoring:** Write every agent-read file to `.bkit/authoring.md` § All Agent-Read Files, plus § Docs for a doc, and follow each doc's `Rules` header.
+- **Authoring:** Follow `.bkit/authoring.md` § All Agent-Read Files when you write or edit an agent-read file, plus § Docs for a doc, and follow each doc's `Rules` header.
 - **Format:** Write plain, complete sentences that keep their grammar words (articles, plurals), and cut filler, hedges and repetition. Prefer tables to prose, and bullets to paragraphs.
 - **Verify tools:** Verify every return; do not assume success.
 - **Check gates first:** Verify every gate item before proceeding; work that skipped a gate is invalid, so close the gap. Gates inside `/bkit-*` workflows are self-verification, not human gates: stop only at an explicit **STOP**.

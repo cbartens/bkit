@@ -7,7 +7,7 @@
 >
 > **Rules:**
 >
-> - Write this file to `.bkit/authoring.md` § All Agent-Read Files and § Docs.
+> - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
 > - Keep prose factual; house / write-good linters apply to `*.md`; no hype adjectives.
 > - Framework table cells: each project's own repo / docs only, never roundups or AI summaries; no star counts; refresh the as-of month with the table.
 > - Headings linked from outside carry a fixed `<a id>` above them; keep the id when rewording the heading.

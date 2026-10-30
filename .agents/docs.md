@@ -9,7 +9,7 @@
 >
 > **Rules:**
 >
-> - Write this file to `.bkit/authoring.md` § All Agent-Read Files and § Docs.
+> - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
 > - Read only docs relevant to current workflow / step / task.
 > - Follow workflow based reading suggestions first, then read more docs as step / task warrants.
 > - Phase columns cover workflows only; audits and utilities pick docs as step / task warrants.

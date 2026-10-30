@@ -7,7 +7,7 @@
 >
 > **Rules:**
 >
-> - Write this file to `.bkit/authoring.md` § All Agent-Read Files and § Docs.
+> - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
 > - Keep prose factual; house / write-good linters apply to `*.md`; no hype adjectives.
 > - Headings linked from outside carry a fixed `<a id>` above them; keep the id when rewording the heading.
 > - No model, effort or tier per subagent: those live in `.bkit/prompts.md` § Models only.
