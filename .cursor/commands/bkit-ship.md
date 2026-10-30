@@ -256,7 +256,7 @@ Ship Feature — Autonomous merge and archive
    - **If** `ASSUMED_COUNT` = 0 → return to Step 2.
    - **If** `RUNTIME_HEADLESS` = true → step 4, no one to ask.
    - **Else** → step 2.
-2. Ask the owner in this session; plain text, no host question tool; NEVER hand the questions to subagents. State what the owner must decide and what each option does, in plain English, before naming any file, test or identifier. One message — per entry of `ASSUMED_ITEMS`, in order, numbered from 1: `**Q{n} — {title}:** accepted without you during build ({reason}). Confirm it?`, then `Options: A) Confirm / B) Reject`, then `No recommendation — only you can accept it`; then the line `Reply per question. Ship merges either way; anything not confirmed is written as a needs-decision deferral.` Record the wait → end turn → wait for answers:
+2. Ask the owner in this session; plain text, not through a host question tool; NEVER hand the questions to subagents. State what the owner must decide and what each option does, in plain English, before naming any file, test or identifier. One message — per entry of `ASSUMED_ITEMS`, in order, numbered from 1: `**Q{n} — {title}:** accepted without you during build ({reason}). Confirm it?`, then `Options: A) Confirm / B) Reject`, then `No recommendation — only you can accept it`; then the line `Reply per question. Ship merges either way; anything not confirmed is written as a needs-decision deferral.` Record the wait → end turn → wait for answers:
    ```bash
    "{BKIT}" status row --file="{STATUS}" --workflow=ship --type=owner-pause --field=reason=assumed >/dev/null || exit 1
    ```

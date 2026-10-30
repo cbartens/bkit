@@ -6,7 +6,7 @@ description: "Design Feature — Autonomous design phase"
 # Design Feature (Workflow 1/5)
 
 **Role:** Orchestrator managing workflow with subagents.
-**Scope:** Create design in `docs/plans/{YYYYMM}/` (canonical month bucket, set at start) — no plans, no code, no execution.
+**Scope:** Write the design to `docs/plans/{YYYYMM}/`, which is the canonical month bucket set at the start. Write no plans or code, and do not carry out the design.
 
 **Protocol:** Work through this file exactly as written.
 
@@ -52,7 +52,7 @@ description: "Design Feature — Autonomous design phase"
    "{BKIT}" workflows fail --post --issue="{ISSUE_ID}" --workflow=design --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} {LABEL_FLAGS} --step-number={N} --step-title="{Step Name}" --sub-step={M} --error-file="{OUTBOX_ROOT}/error.md" --stderr-file="{STDERR_FILE}" --session-dir="{SESSION_DIR}"
    ```
    Route:
-   - **If** exit 0 **or** 5 → hold `labels` as `{LABELS}`, `trackerState` as `{TRACKER_STATE}` → step 2.
+   - **If** exit 0 **or** 5 → hold `labels` as `LABELS`, `trackerState` as `TRACKER_STATE` → step 2.
    - **Else** → step 4.
 2. **Skip if** `ISSUE_ID` empty. **If** `tracker.done` = false → post `comment` via the tracker MCP per the header's fallback section. **If** `labelsWrite.done` = false → apply the printed `labels` / `trackerState` via the tracker MCP (**Labels** fallback).
 3. `bkit workflows handover --list-stray` (`--workflow` / `--fid` / `--month` / `--worktree` as below) → on a feature branch remove only the `modified` / `untracked` files this run created by mistake, never other agents' changes; on `dev` / `main` (`shared` = true) remove nothing (only the run's own record lands, through a throwaway checkout). Then commit and push the run's record — NEVER onto a branch with an open PR; **Skip if** `{WORKTREE_PATH}` is not set:
@@ -72,7 +72,7 @@ description: "Design Feature — Autonomous design phase"
    ```bash
    "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" repo info --fetch
    ```
-   Hold `bkit` as `{BKIT}`, `ownerRepo` as `OWNER_REPO`, `owner` as `OWNER`, `repo` as `REPO`, `branch` as `{BRANCH}`, `repoRoot` as `REPO_ROOT`, `outboxRoot` as `OUTBOX_ROOT`, `sessionDir` as `{SESSION_DIR}`, `bkitAdvisory` as `{BKIT_ADVISORY}`. **If** `BKIT_ADVISORY` != null → emit advisory `[bkit-design] {BKIT_ADVISORY}`.
+   Hold `bkit` as `{BKIT}`, `ownerRepo` as `OWNER_REPO`, `owner` as `OWNER`, `repo` as `REPO`, `branch` as `BRANCH`, `repoRoot` as `REPO_ROOT`, `outboxRoot` as `OUTBOX_ROOT`, `sessionDir` as `{SESSION_DIR}`, `bkitAdvisory` as `BKIT_ADVISORY`. **If** `BKIT_ADVISORY` != null → emit advisory `[bkit-design] {BKIT_ADVISORY}`.
    Hold `trackerTeam` as `TRACKER_TEAM`, `trackerProject` as `TRACKER_PROJECT`, `trackerSite` as `TRACKER_SITE`.
 2. Write the session prompt verbatim to `{SESSION_DIR}/prompt.md` → read the issue and the `FID` it names:
    ```bash
@@ -109,10 +109,11 @@ description: "Design Feature — Autonomous design phase"
    "{BKIT}" locks acquire --kind=workflow --workflow=design --fid={FID}
    ```
    Hold `token` as `LOCK_TOKEN`, `month` as `YYYYMM`.
-6. **Skip if** `ISSUE_ID` empty. `{LABELS}` = `labels`, `{TRACKER_STATE}` = `trackerState`, `{BOARD}` = `board`, `boardSkipped` of the block below; `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry:
+6. **Skip if** `ISSUE_ID` empty. `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry:
    ```bash
    "{BKIT}" issues labels --write --phase=design --board=progress --issue={ISSUE_ID} --owner-repo={OWNER_REPO} {LABEL_FLAGS}
    ```
+   Hold `labels` as `LABELS`, `trackerState` as `TRACKER_STATE`, `board` as `BOARD`, and `boardSkipped`.
    **If** `tracker.done` = false **or** `boardWrite.done` = false → apply the printed `labels` / `trackerState` / `board` via the tracker MCP (**Labels** fallback).
 7. **Skip if** `ISSUE_ID` empty. Comment:
    ```bash
@@ -145,7 +146,7 @@ description: "Design Feature — Autonomous design phase"
    ```bash
    "{BKIT}" worktrees setup --workflow=design --fid={FID} --month={YYYYMM} --detect
    ```
-   Hold `worktreePath` as `WORKTREE_PATH`, `{OUTBOX_ROOT}/{FID}` as `OUTBOX`, `branch` as `BRANCH`, `logDir` as `LOG_DIR`, `sentinel` as `SENTINEL`, `baseSha` as `{BASE_SHA}` (empty when null).
+   Hold `worktreePath` as `WORKTREE_PATH`, `{OUTBOX_ROOT}/{FID}` as `OUTBOX`, `branch` as `BRANCH`, `logDir` as `LOG_DIR`, `sentinel` as `SENTINEL`, `baseSha` as `BASE_SHA` (empty when null).
    Route:
    - **If** exit 0 → step 3.
    - **If** exit 3 → run the rebase block below; **If** it exits 0 → re-run step 2, **Else** → **Failure Path**.
@@ -186,19 +187,31 @@ description: "Design Feature — Autonomous design phase"
    "{BKIT}" runtime assert --file="{STATUS}" --workflow=design
    "{BKIT}" counters max --point=design.grill
    ```
-   Hold `value` as `{GRILL_TURNS}` (`maxTurns`: interview turns including the draft turn), `ask` as `{GRILL_ASK}` (false when headless), `runtimeHeadless` as `RUNTIME_HEADLESS`, `runtime` as `RUNTIME`.
-   Route:
+   Hold `value` as `GRILL_TURNS` (`maxTurns`: interview turns including the draft turn), `ask` as `GRILL_ASK` (false when headless), `runtimeHeadless` as `RUNTIME_HEADLESS`, `runtime` as `RUNTIME`.
+   Route — first match wins:
    - **If** session prompt contains `grill=false` → create `docs/plans/{YYYYMM}/logs/{FID}/design-grill-{RUN}.md` = `## Grill decisions — the owner's answers in this run, the newest text` heading plus `Skipped (grill=false).` → step 6.
    - **If** session prompt contains `grill=true` **and** `RUNTIME_HEADLESS` = false → step 2, whatever `GRILL_ASK` says.
-   - **If** `GRILL_ASK` = false → nobody is asked: map the tree and frontier per step 2 without asking or ending the turn, taking each recommended answer as given to open the next frontier, until it is empty or `GRILL_TURNS` - 1 turns; then write the draft scenario per step 4 without asking → step 5; every question counts as unanswered at stop.
+   - **If** `GRILL_ASK` = false → nobody is asked:
+     - Map the tree and frontier per step 2 without asking or ending the turn. Take each recommended answer as given to open the next frontier, until the frontier is empty or `GRILL_TURNS` - 1 turns have been mapped.
+     - Every question counts as unanswered at stop.
+     - Then write the draft scenario per step 4 without asking → step 5.
    - **Else** → step 2.
-2. Ask the owner in this session; NEVER hand questions to subagents:
-   - Read `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`. **If** an earlier run left a `docs/plans/{YYYYMM}/logs/{FID}/design-grill-*.md` → the newest one's `Settled` entries stay settled and its `Draft Acceptance Scenario` is the starting draft for step 4; ask only what they leave open or what the issue text changed since.
-   - Map open decisions as a tree: each decision branches into the decisions that depend on it. Frontier = every unsettled decision whose prerequisites are settled.
-   - One turn = the whole frontier in one message; a question depending on another in the same turn waits for a later turn.
-   - Per question: `**Q{n} — {title}:** {question}` and its options lettered `A)`, `B)`, `C)`, then `Recommended: A) {answer}` on its own line; number from `Q1` across turns; word each so "yes" accepts the recommendation; plain text, no host question tool. State what the owner must decide and what each option does, in plain English, before naming any file, test or identifier.
+2. Ask the owner in this session. NEVER hand a question to a subagent:
+   - Read `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`.
+   - **If** an earlier run left a `docs/plans/{YYYYMM}/logs/{FID}/design-grill-*.md`:
+     - The newest one's `Settled` entries stay settled.
+     - Its `Draft Acceptance Scenario` is the starting draft for step 4.
+     - Ask only what they leave open, or what the issue text has changed since.
+   - Map the open decisions as a tree: each decision branches into the decisions that depend on it. The frontier is every unsettled decision whose prerequisites are settled.
+   - Ask the whole frontier as one turn, in one message. A question that depends on another in the same turn waits for a later turn.
+   - For each question:
+     - Write `**Q{n} — {title}:** {question}` and its options lettered `A)`, `B)`, `C)`, then `Recommended: A) {answer}` on its own line.
+     - Number the questions from `Q1` across turns, and word each so "yes" accepts the recommendation.
+     - Ask in plain text, not through a host question tool.
+     - State what the owner must decide and what each option does, in plain English, before naming any file, test or identifier.
    - Look up facts in the repo, docs and tools, and never ask the owner for them. Pending lookups hold back only the questions that depend on them.
-   - Decide nothing on the owner's behalf. Narrate `design grill: turn {k} of {GRILL_TURNS}` → record the wait → end turn → wait for answers:
+   - Decide nothing on the owner's behalf.
+   - Narrate `design grill: turn {k} of {GRILL_TURNS}` → record the wait → end turn → wait for answers:
      ```bash
      "{BKIT}" status row --file="{STATUS}" --workflow=design --type=owner-pause --field=reason=grill >/dev/null || exit 1
      ```
@@ -206,21 +219,36 @@ description: "Design Feature — Autonomous design phase"
      ```bash
      "{BKIT}" status row --file="{STATUS}" --workflow=design --type=owner-answer >/dev/null || exit 1
      ```
-3. Recompute the frontier from the answers. Route:
+3. Recompute the frontier from the answers. Route — first match wins:
    - **If** the human says stop → write the draft scenario per step 4 without asking → step 5.
    - **If** frontier empty **or** `GRILL_TURNS` - 1 turns asked → step 4.
    - **Else** → step 2, next turn.
-4. Draft scenario turn — always the last turn asked; counts toward `GRILL_TURNS`:
-   - Draft the acceptance scenario from the whole context: `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md` (session prompt, issue description and comments), every answer so far, and facts looked up. Four parts, in this order:
-     - `Narrative` — 2-3 sentences, user POV, not system POV.
-     - `Success Criteria` — <=5 measurable outcomes; no tests, no implementation steps.
-     - `Key Edge Cases` — design-shaping only (concurrency, conflicts, failure modes, cross-feature interactions).
-     - `Process Sketch` — 3-7 `WHEN X → THEN Y` lines with the same examples; outcomes, not implementation steps.
-   - Show the whole draft, then one question per item the draft inferred rather than took from the context or an answer, per step 2 format with the recommended answer = as drafted; last question: `**Q{n} — Draft acceptance scenario:** accept the draft with the answers above as the design's starting point?` with `Options: A) yes / B) no` and `Recommended: A) yes`. Narrate `design grill: turn {k} of {GRILL_TURNS} — draft acceptance scenario` → record the wait (step 2 block with `reason=draft`) → end turn → wait for answers; record each reply per step 2.
+4. Draft scenario turn. It is always the last turn asked, and it counts toward `GRILL_TURNS`:
+   - Draft the acceptance scenario from the whole context: `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md` (session prompt, issue description and comments), every answer so far and the facts looked up. Write four parts, in this order:
+     - `Narrative` — 2-3 sentences from the user's point of view, not the system's.
+     - `Success Criteria` — at most 5 measurable outcomes, with no tests and no implementation steps.
+     - `Key Edge Cases` — only the cases that shape the design (concurrency, conflicts, failure modes, cross-feature interactions).
+     - `Process Sketch` — 3-7 `WHEN X → THEN Y` lines with the same examples: outcomes, not implementation steps.
+   - Show the whole draft.
+   - Then ask one question per item the draft inferred instead of taking it from the context or an answer, in the step 2 format, with the recommended answer = as drafted.
+   - Ask last: `**Q{n} — Draft acceptance scenario:** accept the draft with the answers above as the design's starting point?` with `Options: A) yes / B) no` and `Recommended: A) yes`.
+   - Narrate `design grill: turn {k} of {GRILL_TURNS} — draft acceptance scenario` → record the wait (step 2 block with `reason=draft`) → end turn → wait for answers.
+   - Record each reply per step 2.
    - Fold the answers into the draft. Route:
-     - **If** an answer opens new decisions **and** fewer than `GRILL_TURNS` - 1 turns asked → step 2, next turn; the draft turn repeats after.
-     - **Else** → step 5; new decisions left unasked → `Open`.
-5. Create `docs/plans/{YYYYMM}/logs/{FID}/design-grill-{RUN}.md` = `## Grill decisions — the owner's answers in this run, the newest text` heading; the line `Settled = the human's answer; the design follows it and flags any departure for the human to confirm. Assumed = unconfirmed default; override only with a stated reason. Open = unknown; the design states how it resolves each.`; then `### Settled`, `### Assumed, not confirmed`, `### Open` headings, one `- Q{n} {title}: {answer}` line per question; then `### Draft Acceptance Scenario` heading with the draft's four parts as `####` sub-headings. Unanswered at stop → `Assumed, not confirmed` with the recommended answer; "don't know" → `Open`; empty section → `None.` **If** nobody was asked → add the line `No human interviewed this run ({ask:false|headless}, {RUNTIME}); every answer is assumed.` under the heading.
+     - **If** an answer opens new decisions **and** fewer than `GRILL_TURNS` - 1 turns asked → step 2, next turn. The draft turn repeats after it.
+     - **Else** → step 5. New decisions left unasked → `Open`.
+5. Create `docs/plans/{YYYYMM}/logs/{FID}/design-grill-{RUN}.md` with, in order:
+   - The `## Grill decisions — the owner's answers in this run, the newest text` heading.
+   - The line `Settled = the human's answer; the design follows it and flags any departure for the human to confirm. Assumed = unconfirmed default; override only with a stated reason. Open = unknown; the design states how it resolves each.`
+   - The `### Settled`, `### Assumed, not confirmed` and `### Open` headings, with one `- Q{n} {title}: {answer}` line per question.
+   - The `### Draft Acceptance Scenario` heading, with the draft's four parts as `####` sub-headings.
+
+   Fill the sections:
+   - Unanswered at stop → `Assumed, not confirmed`, with the recommended answer.
+   - "don't know" → `Open`.
+   - Empty section → `None.`
+   - **If** nobody was asked → add the line `No human interviewed this run ({ask:false|headless}, {RUNTIME}); every answer is assumed.` under the `## Grill decisions` heading.
+
    Decide `DRAFT_REVIEW`:
    - **If** the human accepted the draft (its last question `Settled`) → `reviewed in the design interview`.
    - **Else** → `not reviewed by a human; built from the issue and the recommended answers`.
@@ -282,7 +310,7 @@ description: "Design Feature — Autonomous design phase"
 ## 🧠 Step 5 — Generate Design
 
 1. **Subagent:** Invoke `@bkit-design-generate` using `Agent` tool:
-   Context: You are a subagent in the Design phase. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Inputs carry distinct lenses — merge across them, do not collapse to a consensus.
+   Context: You are a subagent in the Design phase. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Inputs carry distinct lenses. Merge across them, and do not collapse them to a consensus.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-2.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-3.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/{FID}-design.md` (if present — superseded design, context only, not a constraint).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`.
 2. Finish:
@@ -331,7 +359,7 @@ description: "Design Feature — Autonomous design phase"
 **Run only if** Step 6 `REVIEW_SPIKE` = true.
 
 1. **Subagent:** Invoke `@bkit-design-spike` using `Agent` tool:
-   Context: You are a subagent in the Design phase. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Write throwaway probe code under `docs/plans/{YYYYMM}/logs/{FID}/spike/` only; never modify tracked source outside that directory.
+   Context: You are a subagent in the Design phase. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Write throwaway probe code only under `docs/plans/{YYYYMM}/logs/{FID}/spike/`. Never modify tracked source outside that directory.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-review-1.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/design-spike.md`.
 2. Finish — refuses (exit 9) probe files outside the artifact tree:
@@ -389,7 +417,7 @@ description: "Design Feature — Autonomous design phase"
    ```bash
    "{BKIT}" workflows promote --workflow=design --fid={FID} --month={YYYYMM} --resolve
    ```
-   Hold `final` as `{DESIGN_FINAL}`.
+   Hold `final` as `DESIGN_FINAL`.
 2. Write `design-summary.md` from this run's status rows and the organised plans:
    ```bash
    "{BKIT}" workflows summary --workflow=design --file="{STATUS}"
@@ -428,7 +456,7 @@ description: "Design Feature — Autonomous design phase"
    "{BKIT}" plans parse --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-v3-organised.md
    ```
    Hold `plans` as `PLANS`.
-2. Post the plan list on `{ISSUE_ID}` only. never create a tracker issue. never comment on any other issue. never set blockers. Comment:
+2. Post the plan list on `{ISSUE_ID}` only. NEVER create a tracker issue, comment on any other issue or set blockers. Comment:
    ```bash
    "{BKIT}" plans comment --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-v3-organised.md --fid={FID} --month={YYYYMM} --owner-repo={OWNER_REPO}
    ```
@@ -463,14 +491,15 @@ description: "Design Feature — Autonomous design phase"
    cd "{REPO_ROOT}" && "{BKIT}" branches land --workflow=design --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --issue="{ISSUE_ID}" --branch="{BRANCH}"
    ```
    Route:
-   - **If** exit 0 → hold `canonicalRef` as `{CANONICAL_REF}`.
+   - **If** exit 0 → hold `canonicalRef` as `CANONICAL_REF`.
    - **If** exit 80 at `stage` = open → `create_pull_request` with the printed `title` / `body` / `base` / `head` → re-run with `--pr=<number>`.
    - **If** exit 80 at `stage` = merge → `pull_request_read` (`get`) and assert `base.ref` = `dev`; mismatch → **Failure Path** with nothing merged; then `merge_pull_request` with the printed `subject`, empty body → re-run with `--pr={prNumber} --merged-sha=<merge commit>`.
    - **Else** → **Failure Path**.
-3. **Skip if** `ISSUE_ID` empty. `{TRACKER_STATE}` = `trackerState`, `{BOARD}` = `board`, `boardSkipped` of the block below:
+3. **Skip if** `ISSUE_ID` empty:
    ```bash
    "{BKIT}" issues labels --write --board=review --issue={ISSUE_ID} --owner-repo={OWNER_REPO}
    ```
+   Hold `trackerState` as `TRACKER_STATE`, `board` as `BOARD`, and `boardSkipped`.
    **If** `tracker.done` = false **or** `boardWrite.done` = false → apply the printed `labels` / `trackerState` / `board` via the tracker MCP (**Labels** fallback).
 4. **Skip if** `ISSUE_ID` empty. Comment — artifact links on `dev`, close telemetry report:
    ```bash

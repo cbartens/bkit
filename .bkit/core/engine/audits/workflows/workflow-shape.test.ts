@@ -1629,8 +1629,8 @@ describe("issue-less runs", () => {
     expect(step11).toContain('"{BKIT}" plans comment --artifact=');
     expect(step11).not.toMatch(/workstreams (?:parse|comment)/);
     expect(step11).not.toMatch(/issue per workstream/i);
-    expect(step11).toContain("never create a tracker issue");
-    expect(step11).toContain("never set blockers");
+    expect(step11).toContain("NEVER create a tracker issue");
+    expect(step11).toContain("or set blockers");
   });
 
   it("debug Step 1 never probes for a PR on dev or main", () => {

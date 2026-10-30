@@ -59,27 +59,30 @@ autoCompactWindow: 300000
 
 1. Write the **Create** output stub, with `PENDING` in every placeholder.
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
-3. Read `.agents/docs.md`, and load the docs it lists for this task but specifically `docs/observability.md` and `docs/deployments.md`. Skip any listed doc that does not exist.
+3. Read `.agents/docs.md`, and load the docs it lists for this task, always including `docs/observability.md` and `docs/deployments.md`. Skip any listed doc that does not exist.
 4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
-5. Failure-mode enumeration — per major component / flow:
-   - What fails (upstream dep, internal logic, resource exhaustion, data corruption, partial state).
-   - How on-call detects it (metric, log signature, alert, or user report only?).
-   - Blast radius (one user / tenant / region / whole product).
-6. Observability coverage — per failure mode, verify design specifies or assumes:
-   - Structured logs at failure point (with `[Context]` prefix per project convention).
-   - Metric / counter for occurrence rate.
-   - Trace span / correlation id for cross-service flows.
-   - Missing observability for `CRITICAL` failure mode → `CRITICAL` finding.
-7. On-call ergonomics — per anticipated alert:
-   - Runbook obviousness from alert payload (vs context-chasing).
-   - Recovery action — automatic, idempotent, or human judgement?
-   - Alert noise — threshold tuned, or pages on transient blips?
-8. Failure-mode coverage: cross-check `Risks & Open Questions` covers enumerated failure modes. Gaps → `OPTIONAL` or `CRITICAL` by `severity`. Any open questions lacking lettered options (`A)`, `B)`, `C)`), a lettered `Recommended` or a `Default if unanswered` → `OPTIONAL` findings naming missing parts.
-9. Operational dependencies: new on-call burden (dashboard / alert / runbook)? Surface explicitly; not blocker but must be acknowledged.
+5. For each major component or flow, enumerate its failure modes:
+   - What fails: an upstream dependency, internal logic, resource exhaustion, data corruption or partial state.
+   - How on-call detects it: a metric, a log signature, an alert, or only a user report.
+   - The blast radius: one user, one tenant, one region or the whole product.
+6. For each failure mode, check that the design specifies or assumes each of these:
+   - Structured logs at the point of failure, with the project's `[Context]` prefix.
+   - A metric or counter for how often the failure happens.
+   - A trace span or correlation id for a flow that crosses services.
+   - **If** a `CRITICAL` failure mode lacks any of them → raise a `CRITICAL` finding.
+7. For each anticipated alert, check its on-call ergonomics:
+   - Whether the runbook is obvious from the alert payload, or on-call must chase context.
+   - Whether the recovery action is automatic, idempotent or a human judgement.
+   - Whether the alert threshold is tuned, or the alert pages on transient blips.
+8. Check `Risks & Open Questions`:
+   - Cross-check that it covers the enumerated failure modes.
+   - Each gap → an `OPTIONAL` or `CRITICAL` finding by `severity`.
+   - Each open question lacking lettered options (`A)`, `B)`, `C)`), a lettered `Recommended` or a `Default if unanswered` → an `OPTIONAL` finding naming the missing parts.
+9. Surface explicitly each new on-call burden the design adds: a dashboard, an alert or a runbook. It is not a blocker. List it under `Operational Dependencies`.
 10. Set `Verdict` in **Create** with `Edit`:
-    - `PASS` = operable as designed; failure modes have observability and recovery paths; proceed.
-    - `CONCERNS` = operable with caveats — observability or runbook gaps addressable.
-    - `FAIL` = not operable in current monitoring / oncall stack — design does not proceed.
+    - `PASS` = operable as designed: the failure modes have observability and recovery paths, and the design proceeds.
+    - `CONCERNS` = operable with caveats: the observability or runbook gaps are addressable.
+    - `FAIL` = not operable in the current monitoring or on-call stack, and the design does not proceed.
 
 **Output format:**
 
@@ -94,35 +97,35 @@ Lens: Operability — failure modes, observability, on-call ergonomics.
 
 ## Failure-Mode Enumeration
 
-[Per component / flow: what fails, how detected, blast radius; initially set to `PENDING`.]
+[For each component or flow: what fails, how it is detected and its blast radius. Initially set to `PENDING`.]
 
 ## Observability Coverage
 
-[Per failure mode: logs / metrics / traces present-or-missing in design; initially set to `PENDING`.]
+[For each failure mode: whether the design has its logs, metrics and traces, or lacks them. Initially set to `PENDING`.]
 
 ## On-Call Ergonomics
 
-[Per anticipated alert: runbook clarity, recovery action, noise tuning; initially set to `PENDING`.]
+[For each anticipated alert: how clear its runbook is, its recovery action and how its noise is tuned. Initially set to `PENDING`.]
 
 ## Operational Dependencies
 
-[New dashboards / alerts / runbooks the design introduces; initially set to `PENDING`.]
+[The new dashboards, alerts and runbooks the design introduces. **If** none → `None`. Initially set to `PENDING`.]
 
 ## Verdict Reasoning
 
-[Why `PASS|CONCERNS|FAIL`; initially set to `PENDING`.]
+[Why the verdict is `PASS|CONCERNS|FAIL`. Initially set to `PENDING`.]
 
 ## CRITICAL
 
-[Operability gaps the design must address before proceeding — missing observability for severe failure modes, unrecoverable failure paths, alert-storm vectors; initially set to `PENDING`.]
+[Operability gaps the design must address before it proceeds: missing observability for severe failure modes, unrecoverable failure paths and alert-storm vectors. **If** none → `None`. Initially set to `PENDING`.]
 
 ## OPTIONAL
 
-[Operability improvements worth incorporating but not blockers — tuning suggestions, additional runbook detail, extra correlation ids; initially set to `PENDING`.]
+[Operability improvements worth adding that are not blockers: tuning suggestions, more runbook detail and extra correlation ids. **If** none → `None`. Initially set to `PENDING`.]
 
 ## OUT OF SCOPE
 
-[Operability concerns outside current design scope — defer to future work; initially set to `PENDING`.]
+[Operability concerns outside the current design scope, deferred to future work. **If** none → `None`. Initially set to `PENDING`.]
 ```
 
-> ⛔ **STOP** after reviewing design and producing output. Do not code, install, or edit design.
+> ⛔ **STOP** once the design is reviewed and `Verdict` is set. Do not code, install or edit the design.

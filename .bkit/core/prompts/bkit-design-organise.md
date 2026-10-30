@@ -28,7 +28,7 @@ autoCompactWindow: 300000
 **Contract:** The terms between this agent and whoever runs it.
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Organise design. Do not just analyse. Do not build, install or write code.
+- **Mandate:** Organise the design. Do not just analyse. Do not build, install or write code.
 - **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
 - **Output header:** Every line above `<!-- verdict:end -->` MUST stay machine-parseable.
 
@@ -56,23 +56,41 @@ autoCompactWindow: 300000
    ```
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
 3. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
-4. Identify decomposition boundaries: domain boundaries, organisational structure, chronological dependencies. Do not use token / context-window size as factor.
-5. Group design work into workstreams at identified boundaries.
-6. Per workstream: assign stable ID `WS-{N}`; identify `Requires` (other workstream IDs). `Requires` mandatory; empty `[]` only for root workstream without upstream prerequisites.
-7. Group workstreams into plans; a plan is one filed issue. Workstreams share a plan unless the deliverable test splits them: split only where a group of workstreams forms an independent deliverable, carries its own rollout / rollback, its own risk or owner, or is independently releasable. Workstreams that cannot ship alone (same-change mandate) → one plan.
-8. Per plan: assign stable ID `P-{N}`; state `Deliverable` (what the plan ships); identify `Covers` (its workstream IDs) and `Requires` (other plan IDs). Workstream `Requires` across plans → covering plan `Requires` the other plan; workstream `Requires` inside one plan → dropped. `Requires` mandatory; empty `[]` only for root plan without upstream prerequisites.
-9. Append workstream sections, then plan sections, to **Create** output via `Edit` at end of file.
-10. Self-verify before verdict (max 2 fix iterations); **If** still failing → `FAIL`:
-    - Extract all major design elements: Architecture components, data model entities, component / flow items, decisions, open questions.
-    - Confirm every element addressed in at least one workstream scope. **If** gap → assign to appropriate workstream and recheck.
-    - Confirm every workstream in exactly one plan `Covers`. **If** uncovered or covered twice → fix and recheck.
-    - Confirm every plan states its `Deliverable`. **If** missing → fix and recheck.
-    - Confirm every workstream `Requires` ID refers to existing workstream, every plan `Requires` ID to existing plan. **If** dangling reference → fix and recheck.
-    - Confirm no cycles: per workstream and per plan → `Requires` chain does not loop back to itself. **If** loop detected → `FAIL`.
+4. Identify the decomposition boundaries: domain boundaries, organisational structure and chronological dependencies. Do not use token or context-window size as a factor.
+5. Group the design work into workstreams at the identified boundaries.
+6. For each workstream:
+   - Assign a stable ID `WS-{N}`.
+   - Identify its `Requires`: the IDs of the other workstreams it needs.
+   - `Requires` is mandatory. Use an empty `[]` only for a root workstream with no upstream prerequisites.
+7. Group the workstreams into plans. A plan is one filed issue.
+   - Workstreams share a plan unless the deliverable test splits them.
+   - Split only where a group of workstreams forms an independent deliverable, carries its own rollout or rollback, its own risk or owner, or is independently releasable.
+   - Workstreams that cannot ship alone (same-change mandate) → one plan.
+8. For each plan:
+   - Assign a stable ID `P-{N}`.
+   - State its `Deliverable`: what the plan ships.
+   - Identify its `Covers` (its workstream IDs) and its `Requires` (the IDs of other plans).
+   - A workstream `Requires` that crosses plans → the covering plan `Requires` the other plan.
+   - A workstream `Requires` inside one plan → drop it.
+   - `Requires` is mandatory. Use an empty `[]` only for a root plan with no upstream prerequisites.
+9. Append the workstream sections, then the plan sections, to the end of the **Create** output with `Edit`.
+10. Self-verify before you set the verdict, with at most 2 fix iterations:
+    - Extract all major design elements: Architecture components, data model entities, component and flow items, decisions and open questions.
+    - Confirm every element is addressed in at least one workstream scope.
+      - **If** there is a gap → assign the element to the appropriate workstream, and recheck.
+    - Confirm every workstream is in exactly one plan's `Covers`.
+      - **If** a workstream is uncovered or covered twice → fix it and recheck.
+    - Confirm every plan states its `Deliverable`.
+      - **If** one is missing → fix it and recheck.
+    - Confirm every workstream `Requires` ID refers to an existing workstream, and every plan `Requires` ID to an existing plan.
+      - **If** a reference dangles → fix it and recheck.
+    - Confirm there are no cycles: no workstream's or plan's `Requires` chain loops back to itself.
+      - **If** a loop is detected → `FAIL`.
+    - **If** the self-verify still fails after the fix iterations → `FAIL`.
 11. Set `Verdict` in **Create** with `Edit`:
-    - `PASS` = all elements covered, every workstream in one plan, all references valid, clean workstream and plan DAGs.
-    - `CONCERNS` = workable decomposition but structural ambiguities (tightly coupled workstreams, fuzzy scope or plan boundaries).
-    - `FAIL` = cycle detected (any workstream or plan `Requires` chain loops back to itself) or failed self-verify.
+    - `PASS` = all elements are covered, every workstream is in one plan, all references are valid, and the workstream and plan DAGs are clean.
+    - `CONCERNS` = the decomposition is workable but has structural ambiguities: tightly coupled workstreams, or fuzzy scope or plan boundaries.
+    - `FAIL` = a cycle is detected (a workstream or plan `Requires` chain loops back to itself), or the self-verify failed.
 
 **Output format:**
 
@@ -116,4 +134,4 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 [] | [P-N, ...]
 ```
 
-> ⛔ **STOP** after organising design and producing output. Do not write plans or code.
+> ⛔ **STOP** once the design is decomposed and `Verdict` is set. Do not write plans or code.

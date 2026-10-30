@@ -26,7 +26,7 @@ autoCompactWindow: 300000
 **Contract:** The terms between this agent and whoever runs it.
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Brainstorm design approaches; do not write design doc, plans, or code.
+- **Mandate:** Brainstorm design approaches. Do not write the design doc, plans or code.
 - **Input dates:** Where two sections of the `*-input-*.md` file disagree, the newer one wins; older text still counts wherever nothing newer contradicts it.
 - **Parallel run:** **If** Context indicates parallel run → do not reference other agents' outputs.
 - **Lens discipline:** Stay within the lens that your Process defines. A finding outside that lens is outside your remit.
@@ -47,14 +47,18 @@ autoCompactWindow: 300000
 
 1. Read every supplied input once at the start, and work from what it says, not from session memory.
 2. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
-3. Propose 2-3 approaches from current constraints — existing code, minimal new infra, ship fastest. Lead recommended; each in existing stack (no greenfield, no hypothetical infra). Reuse > extend > new; YAGNI ruthlessly. Per approach trade-offs:
-   - `Complexity`: `LOW|MEDIUM|HIGH`.
-   - Extensibility: Future-change handling.
-   - Risk: Main failure mode.
-   - Maintenance: Ongoing cost.
-   - Reuse vs new: Existing code / infra leveraged vs net-new.
-4. Decisions — decided, alternatives, why.
-5. Produce **Create** output.
+3. Propose 2-3 approaches from the current constraints: existing code, minimal new infrastructure and the fastest path to ship.
+   - Lead with the recommended approach.
+   - Keep each approach in the existing stack, with no greenfield build and no hypothetical infrastructure.
+   - Prefer reuse, then extending, then new code. Apply YAGNI ruthlessly.
+   - Give each approach these trade-offs:
+     - `Complexity`: `LOW|MEDIUM|HIGH`.
+     - Extensibility: how it handles future change.
+     - Risk: its main failure mode.
+     - Maintenance: its ongoing cost.
+     - Reuse vs new: the existing code and infrastructure it leverages, against what is net-new.
+4. Record the decisions: what was decided, the alternatives and why.
+5. Produce the **Create** output.
 
 **Output format:**
 
@@ -65,19 +69,19 @@ Lens: Pragmatic — existing code, minimal new infra, ship fastest.
 
 ## Approach A — [Name (e.g. "Single-table inheritance")] ⭐ Recommended
 
-[Summary (one sentence), `Complexity` (`LOW|MEDIUM|HIGH`), Extensibility (future-change handling), Risk (main failure mode), Maintenance (ongoing cost), Reuse vs new (existing code / infra leveraged vs net-new)]
+[A one-sentence summary, `Complexity` (`LOW|MEDIUM|HIGH`), Extensibility (how it handles future change), Risk (its main failure mode), Maintenance (its ongoing cost) and Reuse vs new (the existing code and infrastructure it leverages, against what is net-new).]
 
 ## Approach B — [Name]
 
-[Summary, `Complexity` (`LOW|MEDIUM|HIGH`), Extensibility, Risk, Maintenance, Reuse vs new]
+[The summary, `Complexity` (`LOW|MEDIUM|HIGH`), Extensibility, Risk, Maintenance and Reuse vs new.]
 
 ## Approach C — [Name (optional)]
 
-[Same fields. **If** no third approach → `None`]
+[The same fields. **If** there is no third approach → `None`.]
 
 ## Decisions
 
-[Table: Decided / Alternatives / Why]
+[Table: Decided / Alternatives / Why.]
 ```
 
-> ⛔ **STOP** after brainstorming design approaches and producing output. Do not write design doc, plans, or code.
+> ⛔ **STOP** once the approaches are proposed and the output is written. Do not write the design doc, plans or code.

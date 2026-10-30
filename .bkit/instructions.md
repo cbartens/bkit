@@ -137,7 +137,7 @@ Clause section lines:
 - prompt:
   - verbatim: `bkit-plan-generate`, `bkit-plan-update`, `bkit-plan-review-1`
 - drift:
-  - `bkit-design-brainstorm-ideate-1:50`: "existing code, minimal new infra, ship fastest" 'Reuse > extend > new; YAGNI ruthlessly' condense `improve-over-duplicate` / `no-speculative-scope`, but the 'ship fastest / minimal new infra' lens ranks by cost-of-change, which `end-state-over-diff-size` says NEVER to do
+  - `bkit-design-brainstorm-ideate-1:50`: "existing code, minimal new infrastructure and the fastest path to ship" the lens ranks by cost-of-change, which `end-state-over-diff-size` says NEVER to do; line 53 'Prefer reuse, then extending, then new code. Apply YAGNI ruthlessly' condenses `improve-over-duplicate` / `no-speculative-scope`
     - kept: deliberate ideation lens; each ideate agent argues one angle and `bkit-design-generate` reconciles the approaches
 
 ```text
@@ -161,9 +161,9 @@ Clause section lines:
 - hook:
   - specialised: `gateguard-new-file`
 - drift:
-  - `bkit-design-brainstorm-ideate-1:50`: "existing code, minimal new infra, ship fastest" 'Reuse > extend > new; YAGNI ruthlessly' condense `improve-over-duplicate` / `no-speculative-scope`, but the 'ship fastest / minimal new infra' lens ranks by cost-of-change, which `end-state-over-diff-size` says NEVER to do
+  - `bkit-design-brainstorm-ideate-1:53`: "Prefer reuse, then extending, then new code" condenses `improve-over-duplicate` / `no-speculative-scope`, but the line 50 lens (existing code, minimal new infrastructure, fastest path to ship) ranks by cost-of-change, which `end-state-over-diff-size` says NEVER to do
     - kept: deliberate ideation lens; each ideate agent argues one angle and `bkit-design-generate` reconciles the approaches
-  - `bkit-design-brainstorm-ideate-2:49`: "as default; per approach flag existing-codebase friction" 'Ignore "we already have X" as default' runs against `improve-over-duplicate` (ALWAYS extend existing solutions); deliberate lens, reconciled later in design-generate
+  - `bkit-design-brainstorm-ideate-2:51`: "as a default" 'Ignore "we already have X" as a default' runs against `improve-over-duplicate` (ALWAYS extend existing solutions); deliberate lens, reconciled later in design-generate
     - kept: deliberate ideation lens; each ideate agent argues one angle and `bkit-design-generate` reconciles the approaches
 
 ```text
@@ -229,7 +229,7 @@ Clause section lines:
   - condensed: `bkit-design-brainstorm-ideate-1`
   - applies: `bkit-plan-review-1`
 - drift:
-  - `bkit-design-brainstorm-ideate-1:50`: "existing code, minimal new infra, ship fastest" 'Reuse > extend > new; YAGNI ruthlessly' condense `improve-over-duplicate` / `no-speculative-scope`, but the 'ship fastest / minimal new infra' lens ranks by cost-of-change, which `end-state-over-diff-size` says NEVER to do
+  - `bkit-design-brainstorm-ideate-1:53`: "Prefer reuse, then extending, then new code" condenses `improve-over-duplicate` / `no-speculative-scope`, but the line 50 lens (existing code, minimal new infrastructure, fastest path to ship) ranks by cost-of-change, which `end-state-over-diff-size` says NEVER to do
     - kept: deliberate ideation lens; each ideate agent argues one angle and `bkit-design-generate` reconciles the approaches
 
 ```text
@@ -282,7 +282,7 @@ Clause section lines:
 - prompt:
   - specialised: `bkit-design-brainstorm-ideate-2`
 - drift:
-  - `bkit-design-brainstorm-ideate-2:49`: "as default; per approach flag existing-codebase friction" 'Ignore "we already have X" as default' runs against `improve-over-duplicate` (ALWAYS extend existing solutions); deliberate lens, reconciled later in design-generate
+  - `bkit-design-brainstorm-ideate-2:51`: "as a default" 'Ignore "we already have X" as a default' runs against `improve-over-duplicate` (ALWAYS extend existing solutions); deliberate lens, reconciled later in design-generate
     - kept: deliberate ideation lens; each ideate agent argues one angle and `bkit-design-generate` reconciles the approaches
 
 ```text
@@ -1148,7 +1148,7 @@ Clause section lines:
 - drift:
   - `bkit-build:356`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
-  - `bkit-design:182`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-design:183`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `bkit-plan:197`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
@@ -1248,7 +1248,7 @@ Clause section lines:
 - drift:
   - `bkit-build:356`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
-  - `bkit-design:182`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-design:183`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `bkit-plan:197`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
@@ -3116,6 +3116,10 @@ Base verdict ONLY on read files. NEVER assume outcomes or infer results.
 - carriers: prompt `bkit-design-brainstorm-*`, `bkit-ship-update-docs`
 
 ```text
+Produce the **Create** output.
+```
+
+```retired
 Produce **Create** output.
 ```
 
@@ -3920,6 +3924,10 @@ Refuted {{entries}} must remain; do not delete.
 - carriers: prompt `bkit-design-brainstorm-*`
 
 ```text
+**Mandate:** Brainstorm design approaches. Do not write the design doc, plans or code.
+```
+
+```retired
 **Mandate:** Brainstorm design approaches; do not write design doc, plans, or code.
 ```
 
@@ -3939,6 +3947,10 @@ Refuted {{entries}} must remain; do not delete.
 - carriers: prompt `bkit-design-brainstorm-ideate-1`, `bkit-design-brainstorm-ideate-2`
 
 ```text
+Give each approach these trade-offs:
+```
+
+```retired
 Per approach trade-offs:
 ```
 
@@ -3948,6 +3960,10 @@ Per approach trade-offs:
 - carriers: prompt `bkit-design-brainstorm-ideate-1`, `bkit-design-brainstorm-ideate-2`
 
 ```text
+Extensibility: how it handles future change.
+```
+
+```retired
 Extensibility: Future-change handling.
 ```
 
@@ -3957,6 +3973,10 @@ Extensibility: Future-change handling.
 - carriers: prompt `bkit-design-brainstorm-ideate-1`, `bkit-design-brainstorm-ideate-2`
 
 ```text
+Risk: its main failure mode.
+```
+
+```retired
 Risk: Main failure mode.
 ```
 
@@ -3966,7 +3986,20 @@ Risk: Main failure mode.
 - carriers: prompt `bkit-design-brainstorm-ideate-1`, `bkit-design-brainstorm-ideate-2`
 
 ```text
+Maintenance: its ongoing cost.
+```
+
+```retired
 Maintenance: Ongoing cost.
+```
+
+### brainstorm-lead-recommended
+
+- prompt: where-used
+- carriers: prompt `bkit-design-brainstorm-*`
+
+```text
+Lead with the recommended approach.
 ```
 
 ### brainstorm-decisions
@@ -3975,6 +4008,10 @@ Maintenance: Ongoing cost.
 - carriers: prompt `bkit-design-brainstorm-*`
 
 ```text
+Record the decisions: what was decided, the alternatives and why.
+```
+
+```retired
 Decisions — decided, alternatives, why.
 ```
 
@@ -4017,10 +4054,11 @@ Update **Create** — apply findings via `Edit` as content becomes available.
 - carriers: prompt `bkit-design-update`, `bkit-plan-update`
 
 ```text
-Apply every `CRITICAL` item; no consensus required. **If** findings conflict → prefer the stricter wording.
+Apply every `CRITICAL` item. No consensus is required. **If** findings conflict → prefer the stricter wording.
 ```
 
 ```retired
+Apply every `CRITICAL` item; no consensus required. **If** findings conflict → prefer the stricter wording.
 `CRITICAL` items — must be applied; no consensus required. **If** conflict across findings → prefer stricter wording.
 `CRITICAL` items must be applied; no consensus required. **If** conflict across findings → prefer stricter wording.
 `CRITICAL` items — must be applied; no consensus required. **If** conflict across findings → resolve by preferring stricter wording.
@@ -4033,12 +4071,22 @@ Apply every `CRITICAL` item; no consensus required. **If** findings conflict →
 - carriers: prompt `bkit-design-update`, `bkit-plan-update`
 
 ```text
-`OPTIONAL` items — apply each on merit; no consensus required. **If** conflict with applied `CRITICAL` or scope expansion → skip.
+Apply each `OPTIONAL` item on merit. No consensus is required. **If** it conflicts with an applied `CRITICAL` item or expands scope → skip it.
 ```
 
 ```retired
+`OPTIONAL` items — apply each on merit; no consensus required. **If** conflict with applied `CRITICAL` or scope expansion → skip.
 OPTIONAL items — apply each on merit; no consensus required. **If** conflict with applied `CRITICAL` or scope expansion → skip.
 OPTIONAL items — apply each on individual merit; no consensus required. **If** conflict with applied `CRITICAL` or scope expansion → skip.
+```
+
+### update-shape-questions
+
+- prompt: where-used
+- carriers: prompt `bkit-design-update`, `bkit-plan-update`
+
+```text
+Shape the open questions:
 ```
 
 ### update-untouched-questions
@@ -4346,6 +4394,10 @@ Re-diagnose: Right problem? Plan flawed? Upstream root cause? Explicit compariso
 - carriers: prompt `bkit-design-review-*`
 
 ```text
+`PASS` = {{quality}} as designed
+```
+
+```retired
 `PASS` = {{quality}} as designed;
 ```
 
@@ -4713,7 +4765,7 @@ Write the error message / tool response to `{OUTBOX_ROOT}/error.md` (`--error-fi
 ### workflow-route-first-match
 
 - workflow: repeatable
-- carriers: workflow `bkit-build`, `bkit-plan`; prompt `bkit-build-plan-execute`
+- carriers: workflow `bkit-build`, `bkit-design`, `bkit-plan`; prompt `bkit-build-plan-execute`
 
 ```text
 {{route}} — first match wins:
@@ -5879,7 +5931,7 @@ Read the runtime:
 ### workflow-labels-held
 
 - workflow: repeatable
-- carriers: workflow `bkit-build`, `bkit-plan`, `bkit-ship`
+- carriers: workflow all except `bkit-auto`, `bkit-debug`
 
 ```text
 `labels` as `LABELS`, `trackerState` as `TRACKER_STATE`, `board` as `BOARD`
@@ -6034,6 +6086,10 @@ State what the owner must decide and what each option does, in plain English, be
 - carriers: workflow all except `bkit-auto`, `bkit-plan`
 
 ```text
+plain text, not through a host question tool.
+```
+
+```retired
 plain text, no host question tool.
 ```
 
@@ -8188,27 +8244,48 @@ Strategy read
 - source: `.bkit/core/workflows/bkit-design.md`
 
 ```text
-[scope-discipline] **Scope:** Create design in `docs/plans/{YYYYMM}/` (canonical month bucket, set at start) — no plans, no code, no execution.
+[scope-discipline] **Scope:** Write the design to `docs/plans/{YYYYMM}/`, which is the canonical month bucket set at the start. Write no plans or code, and do not carry out the design.
 Write the input file — session prompt, then the issue text:
 **If** session prompt contains `grill=false` → create `docs/plans/{YYYYMM}/logs/{FID}/design-grill-{RUN}.md` = `## Grill decisions — the owner's answers in this run, the newest text` heading plus `Skipped (grill=false).` → step 6.
 **If** session prompt contains `grill=true` **and** `RUNTIME_HEADLESS` = false → step 2, whatever `GRILL_ASK` says.
-[auto-apply] **If** `GRILL_ASK` = false → nobody is asked: map the tree and frontier per step 2 without asking or ending the turn, taking each recommended answer as given to open the next frontier, until it is empty or `GRILL_TURNS` - 1 turns; then write the draft scenario per step 4 without asking → step 5; every question counts as unanswered at stop.
-Read `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`. **If** an earlier run left a `docs/plans/{YYYYMM}/logs/{FID}/design-grill-*.md` → the newest one's `Settled` entries stay settled and its `Draft Acceptance Scenario` is the starting draft for step 4; ask only what they leave open or what the issue text changed since.
-Map open decisions as a tree: each decision branches into the decisions that depend on it. Frontier = every unsettled decision whose prerequisites are settled.
-One turn = the whole frontier in one message; a question depending on another in the same turn waits for a later turn.
-Recompute the frontier from the answers. Route:
+[auto-apply] **If** `GRILL_ASK` = false → nobody is asked:
+Map the tree and frontier per step 2 without asking or ending the turn. Take each recommended answer as given to open the next frontier, until the frontier is empty or `GRILL_TURNS` - 1 turns have been mapped.
+Every question counts as unanswered at stop.
+Then write the draft scenario per step 4 without asking → step 5.
+Read `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`.
+**If** an earlier run left a `docs/plans/{YYYYMM}/logs/{FID}/design-grill-*.md`:
+The newest one's `Settled` entries stay settled.
+Its `Draft Acceptance Scenario` is the starting draft for step 4.
+Ask only what they leave open, or what the issue text has changed since.
+Map the open decisions as a tree: each decision branches into the decisions that depend on it. The frontier is every unsettled decision whose prerequisites are settled.
+Ask the whole frontier as one turn, in one message. A question that depends on another in the same turn waits for a later turn.
+For each question:
+Write `**Q{n} — {title}:** {question}` and its options lettered `A)`, `B)`, `C)`, then `Recommended: A) {answer}` on its own line.
+Narrate `design grill: turn {k} of {GRILL_TURNS}` → record the wait → end turn → wait for answers:
 **If** the human says stop → write the draft scenario per step 4 without asking → step 5.
 **If** frontier empty **or** `GRILL_TURNS` - 1 turns asked → step 4.
-Draft scenario turn — always the last turn asked; counts toward `GRILL_TURNS`:
-Draft the acceptance scenario from the whole context: `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md` (session prompt, issue description and comments), every answer so far, and facts looked up. Four parts, in this order:
-`Narrative` — 2-3 sentences, user POV, not system POV.
-`Success Criteria` — <=5 measurable outcomes; no tests, no implementation steps.
-`Key Edge Cases` — design-shaping only (concurrency, conflicts, failure modes, cross-feature interactions).
-`Process Sketch` — 3-7 `WHEN X → THEN Y` lines with the same examples; outcomes, not implementation steps.
-Show the whole draft, then one question per item the draft inferred rather than took from the context or an answer, per step 2 format with the recommended answer = as drafted; last question: `**Q{n} — Draft acceptance scenario:** accept the draft with the answers above as the design's starting point?` with `Options: A) yes / B) no` and `Recommended: A) yes`. Narrate `design grill: turn {k} of {GRILL_TURNS} — draft acceptance scenario` → record the wait (step 2 block with `reason=draft`) → end turn → wait for answers; record each reply per step 2.
+Draft scenario turn. It is always the last turn asked, and it counts toward `GRILL_TURNS`:
+Draft the acceptance scenario from the whole context: `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md` (session prompt, issue description and comments), every answer so far and the facts looked up. Write four parts, in this order:
+`Narrative` — 2-3 sentences from the user's point of view, not the system's.
+`Success Criteria` — at most 5 measurable outcomes, with no tests and no implementation steps.
+`Key Edge Cases` — only the cases that shape the design (concurrency, conflicts, failure modes, cross-feature interactions).
+`Process Sketch` — 3-7 `WHEN X → THEN Y` lines with the same examples: outcomes, not implementation steps.
+Show the whole draft.
+Then ask one question per item the draft inferred instead of taking it from the context or an answer, in the step 2 format, with the recommended answer = as drafted.
+Ask last: `**Q{n} — Draft acceptance scenario:** accept the draft with the answers above as the design's starting point?` with `Options: A) yes / B) no` and `Recommended: A) yes`.
+Narrate `design grill: turn {k} of {GRILL_TURNS} — draft acceptance scenario` → record the wait (step 2 block with `reason=draft`) → end turn → wait for answers.
+Record each reply per step 2.
 Fold the answers into the draft. Route:
-**If** an answer opens new decisions **and** fewer than `GRILL_TURNS` - 1 turns asked → step 2, next turn; the draft turn repeats after.
-Create `docs/plans/{YYYYMM}/logs/{FID}/design-grill-{RUN}.md` = `## Grill decisions — the owner's answers in this run, the newest text` heading; the line `Settled = the human's answer; the design follows it and flags any departure for the human to confirm. Assumed = unconfirmed default; override only with a stated reason. Open = unknown; the design states how it resolves each.`; then `### Settled`, `### Assumed, not confirmed`, `### Open` headings, one `- Q{n} {title}: {answer}` line per question; then `### Draft Acceptance Scenario` heading with the draft's four parts as `####` sub-headings. Unanswered at stop → `Assumed, not confirmed` with the recommended answer; "don't know" → `Open`; empty section → `None.` **If** nobody was asked → add the line `No human interviewed this run ({ask:false|headless}, {RUNTIME}); every answer is assumed.` under the heading.
+**If** an answer opens new decisions **and** fewer than `GRILL_TURNS` - 1 turns asked → step 2, next turn. The draft turn repeats after it.
+Create `docs/plans/{YYYYMM}/logs/{FID}/design-grill-{RUN}.md` with, in order:
+The `## Grill decisions — the owner's answers in this run, the newest text` heading.
+The line `Settled = the human's answer; the design follows it and flags any departure for the human to confirm. Assumed = unconfirmed default; override only with a stated reason. Open = unknown; the design states how it resolves each.`
+The `### Settled`, `### Assumed, not confirmed` and `### Open` headings, with one `- Q{n} {title}: {answer}` line per question.
+The `### Draft Acceptance Scenario` heading, with the draft's four parts as `####` sub-headings.
+Unanswered at stop → `Assumed, not confirmed`, with the recommended answer.
+"don't know" → `Open`.
+Empty section → `None.`
+**If** nobody was asked → add the line `No human interviewed this run ({ask:false|headless}, {RUNTIME}); every answer is assumed.` under the `## Grill decisions` heading.
 **If** the human accepted the draft (its last question `Settled`) → `reviewed in the design interview`.
 **Else** → `not reviewed by a human; built from the issue and the recommended answers`.
 Append `design-grill-{RUN}.md` verbatim to `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`. **If** `design-input-{RUN}.md` already holds a `Grill decisions` section → replace it.
@@ -8232,7 +8309,7 @@ Write `design-summary.md` from this run's status rows and the organised plans:
 [workflow-pushes] Finish, then push with exactly one command:
 Final design resolved
 Parse plans:
-[tracker-issue-creation] Post the plan list on `{ISSUE_ID}` only. never create a tracker issue. never comment on any other issue. never set blockers. Comment:
+[tracker-issue-creation] Post the plan list on `{ISSUE_ID}` only. NEVER create a tracker issue, comment on any other issue or set blockers. Comment:
 Plans parsed
 No tracker connected → Step 12.
 ```
@@ -8795,7 +8872,10 @@ Decide single next step from accumulated context: **If** cause unknown → instr
 
 ```text
 **Role:** Senior architect proposing 2-3 pragmatic design approaches — existing code, minimal new infra, explicit trade-offs.
-Reuse vs new: Existing code / infra leveraged vs net-new.
+Propose 2-3 approaches from the current constraints: existing code, minimal new infrastructure and the fastest path to ship.
+Keep each approach in the existing stack, with no greenfield build and no hypothetical infrastructure.
+Prefer reuse, then extending, then new code. Apply YAGNI ruthlessly.
+Reuse vs new: the existing code and infrastructure it leverages, against what is net-new.
 ```
 
 #### bkit-design-brainstorm-ideate-2
@@ -8804,7 +8884,10 @@ Reuse vs new: Existing code / infra leveraged vs net-new.
 
 ```text
 **Role:** Senior architect proposing 2-3 design approaches for best long-term shape, with explicit trade-offs.
-Friction vs ideal: Migration cost, surfaces touched, breaks.
+Propose 2-3 approaches from first principles: the best long-term shape if the existing constraints did not matter.
+Ignore "we already have X" as a default.
+Flag each approach's friction with the existing codebase.
+Friction vs ideal: the migration cost, the surfaces touched and what breaks.
 ```
 
 #### bkit-design-brainstorm-ideate-3
@@ -8813,11 +8896,13 @@ Friction vs ideal: Migration cost, surfaces touched, breaks.
 
 ```text
 **Role:** Senior architect proposing 2-3 design approaches framed by failure mode — scale, drift, on-call, handover.
-Propose 2-3 approaches framed by failure-mode — not happy-path shape. Lead recommended. Per approach include additive risk-mitigation guidance to layer onto whichever approach is picked (not separate "safer" approaches). Per approach premortems:
-10x scale: Bottlenecks, hotspots, fan-out, blast radius.
-6 months later: Drift, undocumented invariants, magic numbers, brittle integrations.
-On-call at 3am: Page shape, diagnosability, recovery path, observability.
-Author leaves: Knowledge concentration, bus factor, load-bearing tribal knowledge.
+Propose 2-3 approaches framed by failure mode, not by happy-path shape.
+For each approach, include additive risk-mitigation guidance to layer onto whichever approach is picked, not separate "safer" approaches.
+Run these premortems for each approach:
+10x scale: bottlenecks, hotspots, fan-out and blast radius.
+6 months later: drift, undocumented invariants, magic numbers and brittle integrations.
+On-call at 3am: page shape, diagnosability, recovery path and observability.
+Author leaves: knowledge concentration, bus factor and load-bearing tribal knowledge.
 ```
 
 #### bkit-design-generate
@@ -8825,16 +8910,29 @@ Author leaves: Knowledge concentration, bus factor, load-bearing tribal knowledg
 - source: `.bkit/core/prompts/bkit-design-generate.md`
 
 ```text
-**Role:** Senior architect generating unified design doc from parallel exploration brainstorms.
-Identify themes, complementary ideas, conflicts, related issues. Risk-premortem mitigations are additive — layer onto selected approach, not as separate approach.
-Weigh input's `Grill decisions` section with human answers against brainstorms — strong pointers, not hard constraints:
-[recommend-do-not-decide; truth-over-agreement; major-changes] `Settled` → follow. **If** brainstorm shows answer fails (breaks named contract, rests on disproven assumption, carries cost question did not surface) → depart; add `Decisions` row naming departed `Q{n}` and why, and `Risks & Open Questions` item asking human to confirm departure.
-[major-changes] `Assumed, not confirmed` → default; override only with reason stated in `Decisions`.
-`Open` → one `Risks & Open Questions` item each.
-`Draft Acceptance Scenario` (labelled `DRAFT only`) → starting point for `Acceptance Scenario`; keep each part the brainstorms and input support; change any part they show wrong or incomplete; each change → `Decisions` row naming the changed part and why. **If** absent → write `Acceptance Scenario` from input and brainstorms.
-Each conflict → pick stronger, justify.
-Preserve strongest approaches. Consolidate Decisions.
-[improve-over-duplicate; research-investigate-first] Prior-art sweep per capability — repo, dependency built-ins, ecosystem practice. Default `EXTEND` + named artifact; `NEW` only when nothing covers capability or extending breaks named contract / callers. Every net-new `Architecture` component traces to a `NEW` verdict.
+**Role:** Senior architect generating a unified design doc from parallel exploration brainstorms.
+Identify the themes, complementary ideas, conflicts and related issues.
+Layer the risk-premortem mitigations onto the selected approach. They are additive, not a separate approach.
+Weigh the input's `Grill decisions`, with the owner's answers, against the brainstorms. Treat them as strong pointers, not hard constraints:
+`Settled` → follow the answer.
+[recommend-do-not-decide; truth-over-agreement; major-changes] **If** a brainstorm shows the answer breaks a named contract, rests on a disproven assumption or carries a cost the question did not surface:
+Depart from the answer.
+Add a `Decisions` row naming the departed `Q{n}` and why.
+Add a `Risks & Open Questions` item asking the owner to confirm the departure.
+[major-changes] `Assumed, not confirmed` → use the answer as the default. Override it only with a reason stated in `Decisions`.
+`Open` → add one `Risks & Open Questions` item for each.
+`Draft Acceptance Scenario` (labelled `DRAFT only`) → use it as the starting point for `Acceptance Scenario`:
+Keep each part that the brainstorms and the input support.
+Change any part they show is wrong or incomplete.
+For each change, add a `Decisions` row naming the changed part and why.
+**If** the input has no `Draft Acceptance Scenario` → write `Acceptance Scenario` from the input and the brainstorms.
+Resolve each conflict by picking the stronger side, and justify the pick.
+Preserve the strongest approaches.
+Consolidate the `Decisions` table.
+[improve-over-duplicate; research-investigate-first] Sweep for prior art for each capability: the repo, dependency built-ins and ecosystem practice.
+Default to `EXTEND`, naming the artifact it extends.
+Choose `NEW` only when nothing covers the capability, or extending it would break a named contract or the existing code's callers.
+Trace every net-new `Architecture` component to a `NEW` verdict.
 ```
 
 #### bkit-design-organise
@@ -8844,22 +8942,40 @@ Preserve strongest approaches. Consolidate Decisions.
 ```text
 **Role:** Senior architect decomposing reviewed designs into dependency-annotated workstreams and plans.
 Seed **Create** from the prior versioned design, its verdict header stripped, under a `Verdict: PENDING` header:
-Identify decomposition boundaries: domain boundaries, organisational structure, chronological dependencies. Do not use token / context-window size as factor.
-Group design work into workstreams at identified boundaries.
-Per workstream: assign stable ID `WS-{N}`; identify `Requires` (other workstream IDs). `Requires` mandatory; empty `[]` only for root workstream without upstream prerequisites.
-Group workstreams into plans; a plan is one filed issue. Workstreams share a plan unless the deliverable test splits them: split only where a group of workstreams forms an independent deliverable, carries its own rollout / rollback, its own risk or owner, or is independently releasable. Workstreams that cannot ship alone (same-change mandate) → one plan.
-Per plan: assign stable ID `P-{N}`; state `Deliverable` (what the plan ships); identify `Covers` (its workstream IDs) and `Requires` (other plan IDs). Workstream `Requires` across plans → covering plan `Requires` the other plan; workstream `Requires` inside one plan → dropped. `Requires` mandatory; empty `[]` only for root plan without upstream prerequisites.
-Append workstream sections, then plan sections, to **Create** output via `Edit` at end of file.
-[honest-reporting; check-gates-first] Self-verify before verdict (max 2 fix iterations); **If** still failing → `FAIL`:
-Extract all major design elements: Architecture components, data model entities, component / flow items, decisions, open questions.
-Confirm every element addressed in at least one workstream scope. **If** gap → assign to appropriate workstream and recheck.
-Confirm every workstream in exactly one plan `Covers`. **If** uncovered or covered twice → fix and recheck.
-Confirm every plan states its `Deliverable`. **If** missing → fix and recheck.
-Confirm every workstream `Requires` ID refers to existing workstream, every plan `Requires` ID to existing plan. **If** dangling reference → fix and recheck.
-Confirm no cycles: per workstream and per plan → `Requires` chain does not loop back to itself. **If** loop detected → `FAIL`.
-`PASS` = all elements covered, every workstream in one plan, all references valid, clean workstream and plan DAGs.
-`CONCERNS` = workable decomposition but structural ambiguities (tightly coupled workstreams, fuzzy scope or plan boundaries).
-`FAIL` = cycle detected (any workstream or plan `Requires` chain loops back to itself) or failed self-verify.
+Identify the decomposition boundaries: domain boundaries, organisational structure and chronological dependencies. Do not use token or context-window size as a factor.
+Group the design work into workstreams at the identified boundaries.
+For each workstream:
+Assign a stable ID `WS-{N}`.
+Identify its `Requires`: the IDs of the other workstreams it needs.
+`Requires` is mandatory. Use an empty `[]` only for a root workstream with no upstream prerequisites.
+Group the workstreams into plans. A plan is one filed issue.
+Workstreams share a plan unless the deliverable test splits them.
+Split only where a group of workstreams forms an independent deliverable, carries its own rollout or rollback, its own risk or owner, or is independently releasable.
+Workstreams that cannot ship alone (same-change mandate) → one plan.
+For each plan:
+Assign a stable ID `P-{N}`.
+State its `Deliverable`: what the plan ships.
+Identify its `Covers` (its workstream IDs) and its `Requires` (the IDs of other plans).
+A workstream `Requires` that crosses plans → the covering plan `Requires` the other plan.
+A workstream `Requires` inside one plan → drop it.
+`Requires` is mandatory. Use an empty `[]` only for a root plan with no upstream prerequisites.
+Append the workstream sections, then the plan sections, to the end of the **Create** output with `Edit`.
+[honest-reporting; check-gates-first] Self-verify before you set the verdict, with at most 2 fix iterations:
+Extract all major design elements: Architecture components, data model entities, component and flow items, decisions and open questions.
+Confirm every element is addressed in at least one workstream scope.
+**If** there is a gap → assign the element to the appropriate workstream, and recheck.
+Confirm every workstream is in exactly one plan's `Covers`.
+**If** a workstream is uncovered or covered twice → fix it and recheck.
+Confirm every plan states its `Deliverable`.
+**If** one is missing → fix it and recheck.
+Confirm every workstream `Requires` ID refers to an existing workstream, and every plan `Requires` ID to an existing plan.
+**If** a reference dangles → fix it and recheck.
+Confirm there are no cycles: no workstream's or plan's `Requires` chain loops back to itself.
+**If** a loop is detected → `FAIL`.
+**If** the self-verify still fails after the fix iterations → `FAIL`.
+`PASS` = all elements are covered, every workstream is in one plan, all references are valid, and the workstream and plan DAGs are clean.
+`CONCERNS` = the decomposition is workable but has structural ambiguities: tightly coupled workstreams, or fuzzy scope or plan boundaries.
+`FAIL` = a cycle is detected (a workstream or plan `Requires` chain loops back to itself), or the self-verify failed.
 ```
 
 #### bkit-design-review-1
@@ -8868,25 +8984,30 @@ Confirm no cycles: per workstream and per plan → `Requires` chain does not loo
 
 ```text
 **Role:** Senior engineer assessing whether designs are buildable with the approved stack.
-Prior-art search — per major capability the design requires:
-[improve-over-duplicate; language-server-first] In-repo (text search for names / strings / near-miss helpers / sibling modules; symbol references via language server when configured; `docs/capabilities.md` when present) → in-repo candidate outranks ecosystem one. Empty language-server / capability-map result = inconclusive — absence needs text search.
-[research-investigate-first] Search `{framework/runtime} {capability} built-in` → stack already solves it?
-[research-investigate-first] Search `{problem} best practice {current year}` → standard ecosystem approach?
-Check official docs for relevant framework / library.
-Record per finding: What exists (name / path, maturity, adoption), fit (constraints, trade-offs, gaps), recommendation (`EXTEND-EXISTING|USE-AS-IS|ADAPT|BUILD-CUSTOM` — with justification).
-[improve-over-duplicate] **If** existing solution covers >80% of requirement → recommend it over custom code; note remaining 20% gap.
-[improve-over-duplicate] **If** design `Reuse & Prior Art` verdict is `NEW` where candidate covers capability, or reason is cleaner-fresh / messy-existing / close-but-different → `CONCERNS`, name candidate.
-Stack feasibility — buildable with approved stack? Constraints?
-Library / API eval — maturity, footprint (e.g. bundle / binary / image size where relevant), types where the language has them, license.
-Integration risk — systems touched, blast radius (monorepo fit where the repo is one).
-PoC approach — <=200 words. **If** can't be described that briefly → `Verdict` = `CONCERNS`.
-Unknowns / blockers needing experimentation.
-Update **Create** — set `Spike` via `Edit`; mapping:
-`true` = any `Unknowns & Blockers` items are settleable only by running code.
+For each major capability the design requires, search for prior art:
+[improve-over-duplicate; language-server-first] Search the repo: text search for names, strings, near-miss helpers and sibling modules, symbol references through the language server when one is configured, and `docs/capabilities.md` when present.
+An in-repo candidate outranks an ecosystem one.
+An empty language-server or capability-map result is inconclusive. Confirm absence with text search.
+[research-investigate-first] Search `{framework/runtime} {capability} built-in` to learn whether the stack already solves it.
+[research-investigate-first] Search `{problem} best practice {current year}` to learn the standard ecosystem approach.
+Check the official docs for the relevant framework or library.
+Record for each finding: what exists (name or path, maturity, adoption), its fit (constraints, trade-offs, gaps) and a recommendation (`EXTEND-EXISTING|USE-AS-IS|ADAPT|BUILD-CUSTOM`, with its justification).
+[improve-over-duplicate] **If** an existing solution covers more than 80% of the requirement:
+Recommend it over custom code.
+Note the remaining 20% gap.
+[improve-over-duplicate] **If** the design's `Reuse & Prior Art` verdict is `NEW` where a candidate covers the capability, or its reason is a cleaner fresh start, a messy existing candidate or a close-but-different one → `Verdict` = `CONCERNS`, and name the candidate.
+Assess stack feasibility: whether the design is buildable with the approved stack, and under which constraints.
+Evaluate each library and API: maturity, footprint (e.g. bundle, binary or image size where relevant), types where the language has them, and license.
+Assess the integration risk: the systems touched and the blast radius, plus monorepo fit where the repo is one.
+Describe the PoC approach in at most 200 words.
+**If** it cannot be described that briefly → `Verdict` = `CONCERNS`.
+List the unknowns and blockers that need experimentation.
+Update **Create** — set `Spike` via `Edit`, using this mapping:
+`true` = at least one `Unknowns & Blockers` item can be settled only by running code.
 `false` = every open item resolves by reading docs or source.
-Update **Create** — set `Verdict` via `Edit`; mapping:
-`CONCERNS` = feasible with caveats — design proceeds, findings addressable.
-`FAIL` = not feasible in current stack / scope — design does not proceed, findings not addressable.
+Update **Create** — set `Verdict` via `Edit`, using this mapping:
+`CONCERNS` = feasible with caveats: the design proceeds, and the findings are addressable.
+`FAIL` = not feasible in the current stack or scope: the design does not proceed, and the findings are not addressable.
 ```
 
 #### bkit-design-review-2
@@ -8895,23 +9016,26 @@ Update **Create** — set `Verdict` via `Edit`; mapping:
 
 ```text
 **Role:** Senior engineer assessing operability of designs — failure modes, observability, on-call ergonomics.
-Failure-mode enumeration — per major component / flow:
-What fails (upstream dep, internal logic, resource exhaustion, data corruption, partial state).
-How on-call detects it (metric, log signature, alert, or user report only?).
-Blast radius (one user / tenant / region / whole product).
-Observability coverage — per failure mode, verify design specifies or assumes:
-Structured logs at failure point (with `[Context]` prefix per project convention).
-Metric / counter for occurrence rate.
-Trace span / correlation id for cross-service flows.
-Missing observability for `CRITICAL` failure mode → `CRITICAL` finding.
-On-call ergonomics — per anticipated alert:
-Runbook obviousness from alert payload (vs context-chasing).
-Recovery action — automatic, idempotent, or human judgement?
-Alert noise — threshold tuned, or pages on transient blips?
-[recommend-do-not-decide] Failure-mode coverage: cross-check `Risks & Open Questions` covers enumerated failure modes. Gaps → `OPTIONAL` or `CRITICAL` by `severity`. Any open questions lacking lettered options (`A)`, `B)`, `C)`), a lettered `Recommended` or a `Default if unanswered` → `OPTIONAL` findings naming missing parts.
-Operational dependencies: new on-call burden (dashboard / alert / runbook)? Surface explicitly; not blocker but must be acknowledged.
-`CONCERNS` = operable with caveats — observability or runbook gaps addressable.
-`FAIL` = not operable in current monitoring / oncall stack — design does not proceed.
+For each major component or flow, enumerate its failure modes:
+What fails: an upstream dependency, internal logic, resource exhaustion, data corruption or partial state.
+How on-call detects it: a metric, a log signature, an alert, or only a user report.
+The blast radius: one user, one tenant, one region or the whole product.
+For each failure mode, check that the design specifies or assumes each of these:
+Structured logs at the point of failure, with the project's `[Context]` prefix.
+A metric or counter for how often the failure happens.
+A trace span or correlation id for a flow that crosses services.
+**If** a `CRITICAL` failure mode lacks any of them → raise a `CRITICAL` finding.
+For each anticipated alert, check its on-call ergonomics:
+Whether the runbook is obvious from the alert payload, or on-call must chase context.
+Whether the recovery action is automatic, idempotent or a human judgement.
+Whether the alert threshold is tuned, or the alert pages on transient blips.
+Check `Risks & Open Questions`:
+Cross-check that it covers the enumerated failure modes.
+Each gap → an `OPTIONAL` or `CRITICAL` finding by `severity`.
+[recommend-do-not-decide] Each open question lacking lettered options (`A)`, `B)`, `C)`), a lettered `Recommended` or a `Default if unanswered` → an `OPTIONAL` finding naming the missing parts.
+Surface explicitly each new on-call burden the design adds: a dashboard, an alert or a runbook. It is not a blocker. List it under `Operational Dependencies`.
+`CONCERNS` = operable with caveats: the observability or runbook gaps are addressable.
+`FAIL` = not operable in the current monitoring or on-call stack, and the design does not proceed.
 ```
 
 #### bkit-design-spike
@@ -8920,22 +9044,28 @@ Operational dependencies: new on-call burden (dashboard / alert / runbook)? Surf
 
 ```text
 **Role:** Senior engineer settling a design's load-bearing unknowns with throwaway probe code.
-[scope-discipline] **Throwaway only:** Probe code lives ONLY under spike directory supplied in Context; NEVER create or edit tracked files outside spike directory; NEVER add dependencies to repo manifests.
-**Probe size:** One minimal probe per claim. Mark any claims requiring more than single-file probes as `BLOCKED` rather than growing probes.
-[honest-reporting] **Evidence over inference:** Claims are settled ONLY by captured output; NEVER infer results from source reading.
-[completeness-over-shortcuts; honest-reporting] **Honest attempt before disproof:** Probe documented happy paths first (vendor docs, real API, no stub, no narrowed case); `DISPROVEN` requires captured evidence that correct attempts failed.
-[completeness-over-shortcuts; fix-code-not-gates] **No green by construction:** NEVER weaken claims, stub dependencies, simulate unavailable services, or drop conditions to make probes pass.
-Derive claims — from review's `PoC Approach` and `Unknowns & Blockers`, restate each unknown as one falsifiable claim design depends on. Order by blast radius; name design elements resting on each.
-Probe per claim — write smallest program that could disprove claim in spike directory, run it, capture output verbatim (measured values, error strings, exit codes).
-[check-secrets-first] **If** claim needs services, hosts, sessions or credentials the run lacks → mark it `BLOCKED`; state what it needs.
-**If** probes need uninstalled libraries → install in spike directory only; delete dependency trees and every build output before setting `Verdict`.
+[scope-discipline] **Throwaway only:** Keep all probe code under the spike directory that Context supplies. NEVER create or edit a tracked file outside the spike directory. Do not add dependencies to the repo's manifests.
+**Probe size:** One minimal probe per claim. Mark a claim that needs more than a single-file probe `BLOCKED`, rather than growing the probe.
+[honest-reporting] **Evidence over inference:** Settle a claim only with captured output. Do not infer a result from reading source code.
+[completeness-over-shortcuts; honest-reporting] **Honest attempt before disproof:** Probe the documented happy path first. Use the vendor docs and the real API, with no stub and no narrowed case. `DISPROVEN` needs captured evidence that correct attempts failed.
+[completeness-over-shortcuts; fix-code-not-gates] **No green by construction:** Do not weaken a claim, stub a dependency, simulate an unavailable service or drop a condition to make a probe pass.
+Restate each unknown in the review's `PoC Approach` and `Unknowns & Blockers` as one claim the design depends on and a probe could disprove:
+Order the claims by blast radius.
+Name the design elements that rest on each claim.
+Probe each claim in the spike directory:
+Write the smallest program that could disprove the claim.
+Run it, and capture its output word for word: measured values, error strings and exit codes.
+[check-secrets-first] **If** the claim needs services, hosts, sessions or credentials the run lacks → mark it `BLOCKED`, and state what it needs.
+**If** a probe needs a library that is not installed:
+Install it in the spike directory only.
+Delete the dependency trees and every build output before you set `Verdict`.
 Classify each claim:
-`SETTLED` = held under honest attempt.
-`DISPROVEN` = captured evidence contradicts it.
-`BLOCKED` = neither settled nor disproven.
-`PASS` = every claim `SETTLED`.
-`CONCERNS` = any claim `BLOCKED`, none `DISPROVEN`.
-`FAIL` = any claim `DISPROVEN`.
+`SETTLED` = it held under an honest attempt to disprove it.
+`DISPROVEN` = the captured evidence contradicts it.
+`BLOCKED` = it is neither settled nor disproven.
+`PASS` = every claim is `SETTLED`.
+`CONCERNS` = at least one claim is `BLOCKED`, and none is `DISPROVEN`.
+`FAIL` = at least one claim is `DISPROVEN`.
 ```
 
 #### bkit-design-update
@@ -8945,7 +9075,10 @@ Classify each claim:
 ```text
 **Role:** Senior architect merging design-review critiques into the design, no scope expansion.
 [honest-reporting] **Evidence outranks opinion:** Spike inputs carry measured results, not lenses. Their `DISPROVEN` claims override any finding that assumes otherwise.
-**If** a spike input is supplied → revise every design element its `Design Impact` names as invalidated, to what the recorded evidence supports; record `Unsettled` claims as open questions under `Risks & Open Questions`.
+**If** a spike input is supplied:
+Revise every design element its `Design Impact` names as invalidated, to what the recorded evidence supports.
+Record its `Unsettled` claims as open questions under `Risks & Open Questions`.
+**If** applied findings add or reword open questions under `Risks & Open Questions` → each must carry 2-3 concrete options with trade-offs as the lettered `Options: A) {option} — {trade-off} · B) …`, a `Recommended` naming the chosen letter with a one-line rationale, and a `Default if unanswered`. A bare question is not acceptable output.
 ```
 
 #### bkit-plan-generate
@@ -9079,7 +9212,6 @@ A critique may change `DONE WHEN` and `TEST FIRST` only to make them more testab
 **If** an input carries `Suggested Scope Expansion` candidates → write them into the plan's `Suggested Scope Expansion`, per **Suggested Scope Expansion** above.
 Never append a `Suggested Scope Expansion` candidate to `docs/deferrals.jsonl`.
 Add each decision or deferral `key` you wrote to the plan's `**Ledger rows:**` line.
-Shape the open questions:
 **If** applied findings add or reword questions under `Open Questions & Assumptions` → shape each per **Open questions** above.
 ```
 

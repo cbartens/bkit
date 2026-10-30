@@ -28,9 +28,9 @@ autoCompactWindow: 300000
 **Contract:** The terms between this agent and whoever runs it.
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Update design. Do not just analyse. Do not build, install or write code.
+- **Mandate:** Update the design. Do not just analyse. Do not build, install or write code.
 - **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
-- **Multi-lens inputs:** Inputs carry distinct lenses; merge with max-wins on `CRITICAL`, apply `OPTIONAL` on merit. Single-input findings are normal, not outvoted.
+- **Multi-lens inputs:** Inputs carry distinct lenses. merge with max-wins on `CRITICAL`, apply `OPTIONAL` on merit. Single-input findings are normal, not outvoted.
 - **Evidence outranks opinion:** Spike inputs carry measured results, not lenses. Their `DISPROVEN` claims override any finding that assumes otherwise.
 - **Output header:** Every line above `<!-- verdict:end -->` MUST stay machine-parseable.
 
@@ -60,10 +60,14 @@ autoCompactWindow: 300000
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
 3. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
 4. Update **Create** — apply findings via `Edit` as content becomes available.
-5. Apply every `CRITICAL` item; no consensus required. **If** findings conflict → prefer the stricter wording.
-6. Identify `OPTIONAL` items — apply each on merit; no consensus required. **If** conflict with applied `CRITICAL` or scope expansion → skip.
-7. **If** a spike input is supplied → revise every design element its `Design Impact` names as invalidated, to what the recorded evidence supports; record `Unsettled` claims as open questions under `Risks & Open Questions`.
-8. **If** applied findings add / reword open questions under `Risks & Open Questions` → each MUST carry 2-3 concrete options with trade-offs as the lettered `Options: A) {option} — {trade-off} · B) …`, a `Recommended` naming the chosen letter with one-line rationale, and a `Default if unanswered`; bare questions are not acceptable output. Questions in regions no finding touches stay verbatim.
+5. Apply every `CRITICAL` item. No consensus is required. **If** findings conflict → prefer the stricter wording.
+6. Apply each `OPTIONAL` item on merit. No consensus is required. **If** it conflicts with an applied `CRITICAL` item or expands scope → skip it.
+7. **If** a spike input is supplied:
+   - Revise every design element its `Design Impact` names as invalidated, to what the recorded evidence supports.
+   - Record its `Unsettled` claims as open questions under `Risks & Open Questions`.
+8. Shape the open questions:
+   - **If** applied findings add or reword open questions under `Risks & Open Questions` → each must carry 2-3 concrete options with trade-offs as the lettered `Options: A) {option} — {trade-off} · B) …`, a `Recommended` naming the chosen letter with a one-line rationale, and a `Default if unanswered`. A bare question is not acceptable output.
+   - Questions in regions no finding touches stay verbatim.
 9. Set `Verdict` in **Create** with `Edit`:
    - `PASS` = all `CRITICAL` items applied; `OPTIONAL` items applied on merit.
    - `CONCERNS` = some `OPTIONAL` items skipped.
@@ -76,7 +80,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 
 <!-- verdict:end -->
 
-[Modified design body — verbatim copy of prior versioned design with `CRITICAL` items and `OPTIONAL` items judged on merit applied via surgical Edit. Unmodified regions preserved exactly.]
+[The modified design body: a verbatim copy of the prior versioned design, with the `CRITICAL` items, and the `OPTIONAL` items judged on merit, applied by surgical Edit. Unmodified regions stay exactly as they were.]
 ```
 
-> ⛔ **STOP** after updating design and producing output. Do not code or expand scope.
+> ⛔ **STOP** once the findings are merged into the design and `Verdict` is set. Do not code or expand scope.

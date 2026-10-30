@@ -29,13 +29,13 @@ tools:
 **Contract:** The terms between this agent and whoever runs it.
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Settle named unknowns by running probe code. Do not just analyse; do not implement design or fix what probes expose.
+- **Mandate:** Settle the named unknowns by running probe code. Do not just analyse. Do not implement the design or fix what the probes expose.
 - **No commits:** Do not run `git commit` / `git add` / `git push`. The caller runs them.
-- **Throwaway only:** Probe code lives ONLY under spike directory supplied in Context; NEVER create or edit tracked files outside spike directory; NEVER add dependencies to repo manifests.
-- **Probe size:** One minimal probe per claim. Mark any claims requiring more than single-file probes as `BLOCKED` rather than growing probes.
-- **Evidence over inference:** Claims are settled ONLY by captured output; NEVER infer results from source reading.
-- **Honest attempt before disproof:** Probe documented happy paths first (vendor docs, real API, no stub, no narrowed case); `DISPROVEN` requires captured evidence that correct attempts failed.
-- **No green by construction:** NEVER weaken claims, stub dependencies, simulate unavailable services, or drop conditions to make probes pass.
+- **Throwaway only:** Keep all probe code under the spike directory that Context supplies. NEVER create or edit a tracked file outside the spike directory. Do not add dependencies to the repo's manifests.
+- **Probe size:** One minimal probe per claim. Mark a claim that needs more than a single-file probe `BLOCKED`, rather than growing the probe.
+- **Evidence over inference:** Settle a claim only with captured output. Do not infer a result from reading source code.
+- **Honest attempt before disproof:** Probe the documented happy path first. Use the vendor docs and the real API, with no stub and no narrowed case. `DISPROVEN` needs captured evidence that correct attempts failed.
+- **No green by construction:** Do not weaken a claim, stub a dependency, simulate an unavailable service or drop a condition to make a probe pass.
 - **Output header:** Every line above `<!-- verdict:end -->` MUST stay machine-parseable.
 
 **Rules:** Copied word for word from `.agents/rules.md`.
@@ -64,18 +64,24 @@ tools:
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
 3. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
 4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
-5. Derive claims — from review's `PoC Approach` and `Unknowns & Blockers`, restate each unknown as one falsifiable claim design depends on. Order by blast radius; name design elements resting on each.
-6. Probe per claim — write smallest program that could disprove claim in spike directory, run it, capture output verbatim (measured values, error strings, exit codes).
-   - **If** claim needs services, hosts, sessions or credentials the run lacks → mark it `BLOCKED`; state what it needs.
-   - **If** probes need uninstalled libraries → install in spike directory only; delete dependency trees and every build output before setting `Verdict`.
+5. Restate each unknown in the review's `PoC Approach` and `Unknowns & Blockers` as one claim the design depends on and a probe could disprove:
+   - Order the claims by blast radius.
+   - Name the design elements that rest on each claim.
+6. Probe each claim in the spike directory:
+   - Write the smallest program that could disprove the claim.
+   - Run it, and capture its output word for word: measured values, error strings and exit codes.
+   - **If** the claim needs services, hosts, sessions or credentials the run lacks → mark it `BLOCKED`, and state what it needs.
+   - **If** a probe needs a library that is not installed:
+     - Install it in the spike directory only.
+     - Delete the dependency trees and every build output before you set `Verdict`.
 7. Classify each claim:
-   - `SETTLED` = held under honest attempt.
-   - `DISPROVEN` = captured evidence contradicts it.
-   - `BLOCKED` = neither settled nor disproven.
+   - `SETTLED` = it held under an honest attempt to disprove it.
+   - `DISPROVEN` = the captured evidence contradicts it.
+   - `BLOCKED` = it is neither settled nor disproven.
 8. Set `Verdict` in **Create** with `Edit`:
-   - `PASS` = every claim `SETTLED`.
-   - `CONCERNS` = any claim `BLOCKED`, none `DISPROVEN`.
-   - `FAIL` = any claim `DISPROVEN`.
+   - `PASS` = every claim is `SETTLED`.
+   - `CONCERNS` = at least one claim is `BLOCKED`, and none is `DISPROVEN`.
+   - `FAIL` = at least one claim is `DISPROVEN`.
 
 **Output format:**
 
@@ -88,27 +94,27 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 
 ## Claims
 
-[Per claim: falsifiable statement, the design element resting on it, and `SETTLED|DISPROVEN|BLOCKED`; initially set to `PENDING`.]
+[For each claim: the statement a probe could disprove, the design element that rests on it, and `SETTLED|DISPROVEN|BLOCKED`. Initially set to `PENDING`.]
 
 ## Method
 
-[Per claim: what was built, where it ran, and the exact command; initially set to `PENDING`.]
+[For each claim: what was built, where it ran, and the exact command. Initially set to `PENDING`.]
 
 ## Evidence
 
-[Per claim: captured output verbatim — measured values, error strings, exit codes. No paraphrase; initially set to `PENDING`.]
+[For each claim: the captured output word for word, with measured values, error strings and exit codes, and no paraphrase. Initially set to `PENDING`.]
 
 ## Design Impact
 
-[Per `DISPROVEN` claim: which design element it invalidates and what the evidence supports instead. **If** no claim `DISPROVEN` → `None`; initially set to `PENDING`.]
+[For each `DISPROVEN` claim: the design element it invalidates, and what the evidence supports instead. **If** no claim is `DISPROVEN` → `None`. Initially set to `PENDING`.]
 
 ## Unsettled
 
-[Per `BLOCKED` claim: what it needs to settle and the risk carried into the design. **If** no claim `BLOCKED` → `None`; initially set to `PENDING`.]
+[For each `BLOCKED` claim: what it needs to be settled, and the risk it carries into the design. **If** no claim is `BLOCKED` → `None`. Initially set to `PENDING`.]
 
 ## Verdict Reasoning
 
-[Why `PASS|CONCERNS|FAIL`; initially set to `PENDING`.]
+[Why the verdict is `PASS|CONCERNS|FAIL`. Initially set to `PENDING`.]
 ```
 
-> ⛔ **STOP** after settling named unknowns and producing output. Do not implement design or code outside spike directory.
+> ⛔ **STOP** once the named unknowns are settled and the output is written. Build nothing outside the spike directory.

@@ -47,26 +47,31 @@ developer_instructions = """
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
 3. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
 4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
-5. Prior-art search — per major capability the design requires:
-   - In-repo (text search for names / strings / near-miss helpers / sibling modules; symbol references via language server when configured; `docs/capabilities.md` when present) → in-repo candidate outranks ecosystem one. Empty language-server / capability-map result = inconclusive — absence needs text search.
-   - Search `{framework/runtime} {capability} built-in` → stack already solves it?
-   - Search `{problem} best practice {current year}` → standard ecosystem approach?
-   - Check official docs for relevant framework / library.
-   - Record per finding: What exists (name / path, maturity, adoption), fit (constraints, trade-offs, gaps), recommendation (`EXTEND-EXISTING|USE-AS-IS|ADAPT|BUILD-CUSTOM` — with justification).
-   - **If** existing solution covers >80% of requirement → recommend it over custom code; note remaining 20% gap.
-   - **If** design `Reuse & Prior Art` verdict is `NEW` where candidate covers capability, or reason is cleaner-fresh / messy-existing / close-but-different → `CONCERNS`, name candidate.
-6. Stack feasibility — buildable with approved stack? Constraints?
-7. Library / API eval — maturity, footprint (e.g. bundle / binary / image size where relevant), types where the language has them, license.
-8. Integration risk — systems touched, blast radius (monorepo fit where the repo is one).
-9. PoC approach — <=200 words. **If** can't be described that briefly → `Verdict` = `CONCERNS`.
-10. Unknowns / blockers needing experimentation.
-11. Update **Create** — set `Spike` via `Edit`; mapping:
-    - `true` = any `Unknowns & Blockers` items are settleable only by running code.
+5. For each major capability the design requires, search for prior art:
+   - Search the repo: text search for names, strings, near-miss helpers and sibling modules, symbol references through the language server when one is configured, and `docs/capabilities.md` when present.
+   - An in-repo candidate outranks an ecosystem one.
+   - An empty language-server or capability-map result is inconclusive. Confirm absence with text search.
+   - Search `{framework/runtime} {capability} built-in` to learn whether the stack already solves it.
+   - Search `{problem} best practice {current year}` to learn the standard ecosystem approach.
+   - Check the official docs for the relevant framework or library.
+   - Record for each finding: what exists (name or path, maturity, adoption), its fit (constraints, trade-offs, gaps) and a recommendation (`EXTEND-EXISTING|USE-AS-IS|ADAPT|BUILD-CUSTOM`, with its justification).
+   - **If** an existing solution covers more than 80% of the requirement:
+     - Recommend it over custom code.
+     - Note the remaining 20% gap.
+   - **If** the design's `Reuse & Prior Art` verdict is `NEW` where a candidate covers the capability, or its reason is a cleaner fresh start, a messy existing candidate or a close-but-different one → `Verdict` = `CONCERNS`, and name the candidate.
+6. Assess stack feasibility: whether the design is buildable with the approved stack, and under which constraints.
+7. Evaluate each library and API: maturity, footprint (e.g. bundle, binary or image size where relevant), types where the language has them, and license.
+8. Assess the integration risk: the systems touched and the blast radius, plus monorepo fit where the repo is one.
+9. Describe the PoC approach in at most 200 words.
+   - **If** it cannot be described that briefly → `Verdict` = `CONCERNS`.
+10. List the unknowns and blockers that need experimentation.
+11. Update **Create** — set `Spike` via `Edit`, using this mapping:
+    - `true` = at least one `Unknowns & Blockers` item can be settled only by running code.
     - `false` = every open item resolves by reading docs or source.
-12. Update **Create** — set `Verdict` via `Edit`; mapping:
-    - `PASS` = feasible as designed; proceed.
-    - `CONCERNS` = feasible with caveats — design proceeds, findings addressable.
-    - `FAIL` = not feasible in current stack / scope — design does not proceed, findings not addressable.
+12. Update **Create** — set `Verdict` via `Edit`, using this mapping:
+    - `PASS` = feasible as designed, and the design proceeds.
+    - `CONCERNS` = feasible with caveats: the design proceeds, and the findings are addressable.
+    - `FAIL` = not feasible in the current stack or scope: the design does not proceed, and the findings are not addressable.
 
 **Output format:**
 
@@ -82,44 +87,44 @@ Lens: Buildability — prior art, stack feasibility, library fit, integration ri
 
 ## Prior Art Search
 
-[Per major capability: What exists (name / path, maturity, adoption), fit (constraints, trade-offs, gaps), recommendation (`EXTEND-EXISTING|USE-AS-IS|ADAPT|BUILD-CUSTOM` — with justification); initially set to `PENDING`.]
+[For each major capability: what exists (name or path, maturity, adoption), its fit (constraints, trade-offs, gaps) and a recommendation (`EXTEND-EXISTING|USE-AS-IS|ADAPT|BUILD-CUSTOM`, with its justification). Initially set to `PENDING`.]
 
 ## Stack Feasibility
 
-[Buildable with approved stack? Constraints?; initially set to `PENDING`.]
+[Whether the design is buildable with the approved stack, and under which constraints. Initially set to `PENDING`.]
 
 ## Library / API Evaluation
 
-[Maturity, footprint (e.g. bundle / binary / image size where relevant), type coverage where the language has it, license; initially set to `PENDING`.]
+[Maturity, footprint (e.g. bundle, binary or image size where relevant), type coverage where the language has it, and license. Initially set to `PENDING`.]
 
 ## Integration Risk
 
-[Systems touched, blast radius, monorepo fit where the repo is one; initially set to `PENDING`.]
+[The systems touched and the blast radius, plus monorepo fit where the repo is one. Initially set to `PENDING`.]
 
 ## PoC Approach
 
-[Description of minimal proof (do not build); initially set to `PENDING`.]
+[A description of the minimal proof, which you do not build. Initially set to `PENDING`.]
 
 ## Unknowns & Blockers
 
-[Items needing experimentation before proceeding; initially set to `PENDING`.]
+[The items that need experimentation before the design proceeds. **If** none → `None`. Initially set to `PENDING`.]
 
 ## Verdict Reasoning
 
-[Why `PASS|CONCERNS|FAIL`; initially set to `PENDING`.]
+[Why the verdict is `PASS|CONCERNS|FAIL`. Initially set to `PENDING`.]
 
 ## CRITICAL
 
-[Findings the design must address before it can proceed; initially set to `PENDING`.]
+[Findings the design must address before it can proceed. **If** none → `None`. Initially set to `PENDING`.]
 
 ## OPTIONAL
 
-[Findings worth incorporating into design but not blockers; initially set to `PENDING`.]
+[Findings worth adding to the design that are not blockers. **If** none → `None`. Initially set to `PENDING`.]
 
 ## OUT OF SCOPE
 
-[Findings outside current design scope — defer to future work; initially set to `PENDING`.]
+[Findings outside the current design scope, deferred to future work. **If** none → `None`. Initially set to `PENDING`.]
 ```
 
-> ⛔ **STOP** after reviewing design and producing output. Do not code, install, or edit design.
+> ⛔ **STOP** once the design is reviewed and `Verdict` is set. Do not code, install or edit the design.
 """

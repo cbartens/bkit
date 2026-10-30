@@ -24,7 +24,7 @@ tools:
 **Contract:** The terms between this agent and whoever runs it.
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Brainstorm design approaches; do not write design doc, plans, or code.
+- **Mandate:** Brainstorm design approaches. Do not write the design doc, plans or code.
 - **Input dates:** Where two sections of the `*-input-*.md` file disagree, the newer one wins; older text still counts wherever nothing newer contradicts it.
 - **Parallel run:** **If** Context indicates parallel run → do not reference other agents' outputs.
 - **Lens discipline:** Stay within the lens that your Process defines. A finding outside that lens is outside your remit.
@@ -44,13 +44,16 @@ tools:
 
 1. Read every supplied input once at the start, and work from what it says, not from session memory.
 2. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
-3. Propose 2-3 approaches framed by failure-mode — not happy-path shape. Lead recommended. Per approach include additive risk-mitigation guidance to layer onto whichever approach is picked (not separate "safer" approaches). Per approach premortems:
-   - 10x scale: Bottlenecks, hotspots, fan-out, blast radius.
-   - 6 months later: Drift, undocumented invariants, magic numbers, brittle integrations.
-   - On-call at 3am: Page shape, diagnosability, recovery path, observability.
-   - Author leaves: Knowledge concentration, bus factor, load-bearing tribal knowledge.
-4. Decisions — decided, alternatives, why.
-5. Produce **Create** output.
+3. Propose 2-3 approaches framed by failure mode, not by happy-path shape.
+   - Lead with the recommended approach.
+   - For each approach, include additive risk-mitigation guidance to layer onto whichever approach is picked, not separate "safer" approaches.
+   - Run these premortems for each approach:
+     - 10x scale: bottlenecks, hotspots, fan-out and blast radius.
+     - 6 months later: drift, undocumented invariants, magic numbers and brittle integrations.
+     - On-call at 3am: page shape, diagnosability, recovery path and observability.
+     - Author leaves: knowledge concentration, bus factor and load-bearing tribal knowledge.
+4. Record the decisions: what was decided, the alternatives and why.
+5. Produce the **Create** output.
 
 **Output format:**
 
@@ -61,23 +64,23 @@ Lens: Risk premortem — failure modes, scale, time, handover.
 
 ## Approach A — [Name (failure-mode oriented)] ⭐ Recommended
 
-[Summary (one sentence), Premortems (10x scale, 6 months later, on-call at 3am, author leaves — each: what breaks, observability, recovery), Risk-mitigation guidance (folded-in changes to layer onto this approach)]
+[A one-sentence summary, the Premortems and the Risk-mitigation guidance. Each premortem (10x scale, 6 months later, on-call at 3am, author leaves) gives what breaks, its observability and its recovery. The guidance holds the folded-in changes to layer onto this approach.]
 
 ## Approach B — [Name]
 
-[Summary, Premortems (10x scale, 6 months later, on-call at 3am, author leaves), Risk-mitigation guidance]
+[The summary, the Premortems (10x scale, 6 months later, on-call at 3am, author leaves) and the Risk-mitigation guidance.]
 
 ## Approach C — [Name (optional)]
 
-[Same fields. **If** no third approach → `None`]
+[The same fields. **If** there is no third approach → `None`.]
 
 ## Decisions
 
-[Table: Decided / Alternatives / Why]
+[Table: Decided / Alternatives / Why.]
 
 ## Cross-Approach Risks
 
-[Risks that apply regardless of which approach is picked — surface for the final design's `Risks & Open Questions` section.]
+[Risks that apply whichever approach is picked, surfaced for the final design's `Risks & Open Questions` section.]
 ```
 
-> ⛔ **STOP** after brainstorming design approaches and producing output. Do not write design doc, plans, or code.
+> ⛔ **STOP** once the approaches are proposed and the output is written. Do not write the design doc, plans or code.

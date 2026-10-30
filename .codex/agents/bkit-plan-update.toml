@@ -73,8 +73,8 @@ developer_instructions = """
    - A critique may edit the task text around them.
    - A critique may change `DONE WHEN` and `TEST FIRST` only to make them more testable or more checkable in the codebase (`n/a` → named tests included). Never remove or weaken them.
 6. Keep each human-confirmation checkbox as you found it. NEVER tick or clear one.
-7. Apply every `CRITICAL` item; no consensus required. **If** findings conflict → prefer the stricter wording.
-8. `OPTIONAL` items — apply each on merit; no consensus required. **If** conflict with applied `CRITICAL` or scope expansion → skip.
+7. Apply every `CRITICAL` item. No consensus is required. **If** findings conflict → prefer the stricter wording.
+8. Apply each `OPTIONAL` item on merit. No consensus is required. **If** it conflicts with an applied `CRITICAL` item or expands scope → skip it.
 9. **If** an input carries `Suggested Scope Expansion` candidates → write them into the plan's `Suggested Scope Expansion`, per **Suggested Scope Expansion** above.
 10. Never append a `Suggested Scope Expansion` candidate to `docs/deferrals.jsonl`.
 11. **If** applied findings add `Out of Scope` `Exempt` rows → mirror each to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
