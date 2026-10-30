@@ -47,7 +47,7 @@ AI agents design it, plan it, build it, have it reviewed by agents that didn't w
 
 **It ships what other frameworks leave to you:** a full CI pipeline for your project (none of the frameworks in [our comparison](.bkit/comparison.md#frameworks) has one), and 35 [audits](#audits) that find the bugs passing tests miss.
 
-**Researched and battle-tested, not a weekend prompt pack.** bkit is built with bkit: months of research into how agentic engineering works best, refined over **2,000+ commits, 300+ issues and 100+ merged pull requests** run through its own pipeline. Along the way it recorded **300+ lessons and 600+ decisions**. They shaped the rules and prompts you install, and your own repo starts its own record from the first feature.
+**Researched and battle-tested, not a weekend prompt pack.** bkit is built with bkit: months of research into how agentic engineering works best, refined over **2,000+ commits, 300+ issues and 100+ merged pull requests** run through its own pipeline. Along the way it recorded **300+ lessons and 600+ decisions**. They shaped the rules and prompts you install, and your own repo starts its own record from the first feature. **Every prompt follows the makers' own advice:** one [rulebook](.bkit/authoring.md) sets how agents' instructions are written, matched against the current prompting guides from Anthropic, OpenAI and Google, so the same text works on Claude, GPT and Gemini. The [prompt audit](.bkit/pipeline.md#audits) checks every prompt against it, and every prompt passes.
 
 <p align="center">
   <picture>
@@ -480,7 +480,7 @@ On real bkit sessions they saved 1–3% of the bill, and each changes what the a
 | [`.bkit/cloud.md`](.bkit/cloud.md) | Cloud agents: Claude Code on the web, Cursor, opencode |
 | [`.bkit/templates.md`](.bkit/templates.md) | Templates ready to adopt |
 | [`.bkit/pipeline.md`](.bkit/pipeline.md) | Every agent in the order it runs, the CI scaffold, every audit template |
-| [`.bkit/authoring.md`](.bkit/authoring.md) | Rules for writing docs, prompts and workflows |
+| [`.bkit/authoring.md`](.bkit/authoring.md) | Rules for writing docs, prompts and workflows, matched against Anthropic's, OpenAI's and Google's prompting guides |
 | [`.bkit/comparison.md`](.bkit/comparison.md) | Comparison with other AI development frameworks and with _Agentic Design Patterns_ |
 | [`CHANGELOG.md`](CHANGELOG.md) | What changed in each release |
 
