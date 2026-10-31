@@ -28,7 +28,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { WORKFLOW_STEPS } from "../commands/workflow/step-table.js";
+import { DECISION_ROUTES, WORKFLOW_STEPS } from "../commands/workflow/step-table.js";
 import type { IssueTracker } from "../install/manifest.js";
 import { substituteWorkflow } from "../render/trackers.js";
 import { parseJson } from "../shared/json.js";
@@ -159,13 +159,34 @@ export interface Contract {
   universe: string[];
   /** Calls in sections no step owns (opening lines, Failure Path, Decision Pause ...). */
   workflowCalls: WorkflowCall[];
+  /** `ANYWHERE_CALLS` the `**Contract:**` block names; matched like `workflowCalls`, never required. */
+  anywhereCalls: WorkflowCall[];
   /** sha256 of the workflow markdown the contract was derived from. */
   sourceSha: string;
-  /** Row keys written outside every numbered step section. */
+  /** Decision Pause row keys (`DECISION_ROUTES`) the markdown writes outside every numbered step. */
+  pauseRows: string[];
+  /** Row keys an engine verb a step calls writes on that step's behalf (`VERB_ROWS`). */
+  subRows: string[];
+  /** Row keys written outside every numbered step section, other than `pauseRows`. */
   orphanSteps: string[];
   /** Disagreements with the deduped `WORKFLOW_STEPS[workflow]` keys; reported, never fatal. */
   drift: string[];
 }
+
+/**
+ * Step rows an engine verb writes itself, keyed by noun + verb: `tests red` writes the
+ * `RED_STEP` / `RED_PASSED_STEP` rows of `commands/workflow/tests.ts` inside build Step 7.
+ */
+const VERB_ROWS: Readonly<Record<string, readonly string[]>> = {
+  "tests red": ["build-task-red", "build-task-red-passed"],
+};
+
+/**
+ * Calls the orchestrator may run at any point of a run, active when the workflow's
+ * `**Contract:**` block names them as `` `bkit {noun} {verb}` `` (the **Friction** bullet's
+ * `bkit ledgers append`). The Contract also names step-bound calls, so it is not read wholesale.
+ */
+const ANYWHERE_CALLS: readonly string[] = ["ledgers append"];
 
 // A key followed by `{` is a templated log label (`build-group-gate-{GROUP}`), not a row key.
 const STEP_KEY_RE = /(?:step:"|--step=)([a-z][a-z0-9-]*)(\{)?/g;
@@ -366,15 +387,33 @@ export function deriveContract(
     for (const k of tableKeys) if (!universe.includes(k)) drift.push(`table-but-not-source:${k}`);
     for (const k of universe) if (!tableKeys.has(k)) drift.push(`source-but-not-table:${k}`);
   }
+  const outsideKeys = stepKeys(outside).filter(
+    (k) => k.startsWith(`${workflow}-`) && !universe.includes(k),
+  );
+  const pause = (DECISION_ROUTES as Record<string, { step: string } | undefined>)[workflow]?.step;
+  const pauseRows = pause !== undefined && outsideKeys.includes(pause) ? [pause] : [];
+  const named = new Set(sections.flatMap((s) => sectionCalls(s.body)).map(callKey));
+  const contractBlock =
+    /^\*\*Contract:\*\*[\s\S]*?(?=^#{1,3} |(?![\s\S]))/m.exec(workflowMd)?.[0] ?? "";
+  const anywhereCalls = ANYWHERE_CALLS.filter((call) =>
+    contractBlock.includes(`\`bkit ${call}\``),
+  ).map((call) => {
+    const [noun = "", verb = ""] = call.split(" ");
+    return { noun, verb, flags: [] };
+  });
+  const subRows = Object.entries(VERB_ROWS)
+    .filter(([call]) => named.has(call))
+    .flatMap(([, keys]) => keys.filter((k) => k.startsWith(`${workflow}-`)));
   return {
     workflow,
     steps,
     universe,
     workflowCalls: [...requiredCalls(outside), ...outsideWindow],
+    anywhereCalls,
     sourceSha: createHash("sha256").update(workflowMd).digest("hex"),
-    orphanSteps: stepKeys(outside)
-      .filter((k) => k.startsWith(`${workflow}-`) && !universe.includes(k))
-      .sort(),
+    pauseRows,
+    subRows,
+    orphanSteps: outsideKeys.filter((k) => !pauseRows.includes(k)).sort(),
     drift,
   };
 }
@@ -495,17 +534,24 @@ export function check(
   const unitOf = new Map<string, Unit>();
   for (const u of units) for (const k of u.keys) unitOf.set(k, u);
   const workflowCalls = contract.workflowCalls.filter((c) => c.noun !== SELF_NOUN);
-  const workflowKeys = new Set(workflowCalls.map(callKey));
+  const workflowKeys = new Set([...workflowCalls, ...contract.anywhereCalls].map(callKey));
+  const subRows = new Set(contract.subRows);
+  const pauseRows = new Set(contract.pauseRows);
 
+  // A sub-row sits inside the visit of the step whose call wrote it, so it is no visit boundary.
+  // A pause row is a boundary owned by no step, like a row outside the contract.
   const items: Item[] = own.flatMap((r): Item[] => {
     if (r.type === "engine-call" && r["noun"] !== SELF_NOUN) {
       return [{ kind: "call", call: { noun: String(r["noun"]), verb: String(r["verb"]) } }];
     }
-    if (r.type === "step-done" && typeof r.step === "string") {
+    if (r.type === "step-done" && typeof r.step === "string" && !subRows.has(r.step)) {
       return [{ kind: "step", key: r.step, row: r, unit: unitOf.get(r.step) }];
     }
     return [];
   });
+  const stepRowCount = own.filter(
+    (r) => r.type === "step-done" && typeof r.step === "string",
+  ).length;
   const callCount = items.filter((i) => i.kind === "call").length;
   const preJournal = callCount === 0;
   // A journal that starts mid-run (an engine upgrade, the kill switch lifted) leaves the
@@ -534,15 +580,25 @@ export function check(
     visitOfRow.set(i, current!);
   });
 
-  const postSlots = new Map<Visit, Map<string, number>>();
-  const freshSlots = (v: Visit): Map<string, number> => {
-    const slots = new Map<string, number>();
+  interface Slots {
+    plain: Map<string, number>;
+    arm: Map<string, number>;
+  }
+  const postSlots = new Map<Visit, Slots>();
+  const freshSlots = (v: Visit): Slots => {
+    const slots: Slots = { plain: new Map(), arm: new Map() };
     for (const c of v.unit.calls) {
-      if (c.position === "post" && !c.branch)
-        slots.set(callKey(c), (slots.get(callKey(c)) ?? 0) + 1);
+      if (c.position !== "post") continue;
+      const m = c.branch ? slots.arm : slots.plain;
+      m.set(callKey(c), (m.get(callKey(c)) ?? 0) + 1);
     }
     postSlots.set(v, slots);
     return slots;
+  };
+  const take = (m: Map<string, number>, key: string): boolean => {
+    const n = m.get(key) ?? 0;
+    if (n > 0) m.set(key, n - 1);
+    return n > 0;
   };
   const stepIdx = items.flatMap((it, i) => (it.kind === "step" ? [i] : []));
   const owned = new Map<Visit, Set<string>>();
@@ -557,18 +613,21 @@ export function check(
     const nextVisit = visitOfRow.get(nextIdx);
     // Each post call of a visit absorbs one journaled call: a noun + verb written both
     // below one step's finish line and above the next step's is charged once to each.
+    // A route-arm post call absorbs more only while the next visit names no such call.
     const slots =
       prevVisit === undefined ? undefined : (postSlots.get(prevVisit) ?? freshSlots(prevVisit));
+    const nextNames = (armsToo: boolean): boolean =>
+      nextVisit?.unit.calls.some((c) => callKey(c) === key && (armsToo || !c.branch)) === true;
     const claimsPost =
       prevVisit !== undefined &&
       prevVisit.rows.at(-1) === prevIdx &&
       slots !== undefined &&
-      ((slots.get(key) ?? 0) > 0 ||
+      (take(slots.plain, key) ||
         (prevVisit.unit.calls.some(
           (c) => c.position === "post" && c.branch && callKey(c) === key,
         ) &&
-          !nextVisit?.unit.calls.some((c) => !c.branch && callKey(c) === key)));
-    if (claimsPost && slots) slots.set(key, Math.max(0, (slots.get(key) ?? 0) - 1));
+          !nextNames(false) &&
+          (take(slots.arm, key) || !nextNames(true))));
     const insideVisit = prevVisit !== undefined && prevVisit === nextVisit ? prevVisit : undefined;
     const owner = insideVisit ?? (claimsPost ? prevVisit : nextVisit);
     const required = owner?.unit.calls.some((c) => callKey(c) === key) === true;
@@ -649,7 +708,7 @@ export function check(
 
   const unexpected: Array<CallRef | { step: string }> = [
     ...[...observed]
-      .filter((k) => !unitOf.has(k))
+      .filter((k) => !unitOf.has(k) && !pauseRows.has(k))
       .sort()
       .map((step) => ({ step })),
     ...(preJournal ? [] : unexpectedCalls.values()),
@@ -661,10 +720,7 @@ export function check(
     holey,
     preJournal,
     journalSuspect: preJournal && options.journalSuspect === true,
-    observed: {
-      steps: items.filter((i) => i.kind === "step").length,
-      calls: callCount,
-    },
+    observed: { steps: stepRowCount, calls: callCount },
     evidenceHoles,
     stepHoles,
     unexercised,
@@ -884,6 +940,7 @@ export function auditRun(rows: StatusRow[], workflow: string, workflowMd: string
   const observed = new Set<string>();
   for (const r of stepRows) if (r.step) observed.add(r.step);
   const sorted = [...observed].sort();
+  const side = new Set([...contract.pauseRows, ...contract.subRows]);
 
   if (workflow === "ship") {
     const hasMergedOnEntryMarker = rows.some(
@@ -894,7 +951,7 @@ export function auditRun(rows: StatusRow[], workflow: string, workflowMd: string
     return {
       workflow,
       missing,
-      unexpected,
+      unexpected: unexpected.filter((k) => !side.has(k)),
       path: runPath,
       observed: sorted,
       sourceUniverse: contract.universe,
@@ -921,14 +978,28 @@ export function auditRun(rows: StatusRow[], workflow: string, workflowMd: string
   return {
     workflow,
     missing,
-    unexpected: sorted.filter((k) => !contract.universe.includes(k)),
+    unexpected: sorted.filter((k) => !contract.universe.includes(k) && !side.has(k)),
     path: runPath,
     observed: sorted,
     sourceUniverse: contract.universe,
     sourceCanonicalDrift: contract.drift,
-    // Decision Pause / abort rows sit outside the numbered steps by design
-    orphanSteps: [],
+    orphanSteps: contract.orphanSteps,
   };
+}
+
+/** `workflow`'s rows split into runs: each `workflow-started` opens a run that ends at the next one; rows before the first start form their own run. */
+export function runsOf(rows: StatusRow[], workflow: string): StatusRow[][] {
+  const at = (r: StatusRow) => (typeof r["at"] === "string" ? r["at"] : "");
+  const own = rows
+    .filter((r) => r.workflow === workflow)
+    .sort((a, b) => (at(a) < at(b) ? -1 : at(a) > at(b) ? 1 : 0));
+  const runs: StatusRow[][] = [];
+  for (const row of own) {
+    const current = runs.at(-1);
+    if (current === undefined || row.type === "workflow-started") runs.push([row]);
+    else current.push(row);
+  }
+  return runs;
 }
 
 /** Audit a status.jsonl as a ship run against `shipMd`. */
@@ -984,8 +1055,8 @@ export function formatAdvisoryReport(report: HoleReport): string {
 // ---------------------------------------------------------------------------
 
 export function main(argv: string[]): void {
-  // Every positional is a status.jsonl to audit — one report per file, so a
-  // whole corpus can be swept in one advisory CI step.
+  // Every positional is a status.jsonl to audit — one report per run of each
+  // workflow in each file, so a whole corpus can be swept in one advisory CI step.
   const statusPaths = argv.slice(2).filter((a) => !a.startsWith("--"));
   if (statusPaths.length === 0) {
     process.stdout.write("[bkit-status-holes] no status.jsonl path given — skipping (advisory)\n");
@@ -1035,9 +1106,11 @@ export function main(argv: string[]): void {
         );
         continue;
       }
-      const report = auditRun(rows, workflow, md);
-      if (report.missing.length > 0) holeyRuns += 1;
-      process.stdout.write(formatAdvisoryReport(report) + "\n");
+      for (const run of runsOf(rows, workflow)) {
+        const report = auditRun(run, workflow, md);
+        if (report.missing.length > 0) holeyRuns += 1;
+        process.stdout.write(formatAdvisoryReport(report) + "\n");
+      }
     }
   }
   process.stdout.write(

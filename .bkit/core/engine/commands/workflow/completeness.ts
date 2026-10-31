@@ -8,8 +8,8 @@ import {
   inferWorkflows,
   parseRows,
   readCompleteness,
+  runsOf,
   type CompletenessVerdict,
-  type StatusRow,
 } from "../../checks/status-holes.js";
 import { getWorkflowsRoot } from "../../shared/package-roots.js";
 import { EXIT, type CommandSpec } from "../lib.js";
@@ -26,21 +26,6 @@ const readText = (file: string, log: (message: string) => void): string | null =
     return null;
   }
 };
-
-/** `workflow`'s rows split into runs: each `workflow-started` opens a run that ends at the next one; rows before the first start form their own run. */
-function runsOf(rows: StatusRow[], workflow: string): StatusRow[][] {
-  const at = (r: StatusRow) => (typeof r["at"] === "string" ? r["at"] : "");
-  const own = rows
-    .filter((r) => r.workflow === workflow)
-    .sort((a, b) => (at(a) < at(b) ? -1 : at(a) > at(b) ? 1 : 0));
-  const runs: StatusRow[][] = [];
-  for (const row of own) {
-    const current = runs.at(-1);
-    if (current === undefined || row.type === "workflow-started") runs.push([row]);
-    else current.push(row);
-  }
-  return runs;
-}
 
 function reportLines(v: CompletenessVerdict): string[] {
   const calls = (list: Array<{ noun: string; verb: string }>) =>
@@ -88,7 +73,8 @@ export const completenessCommand: CommandSpec = {
         const rows = parseRows(text);
         const given = typeof ctx.flags.workflow === "string" ? ctx.flags.workflow : undefined;
         const workflows = given === undefined ? inferWorkflows(rows) : [given];
-        const tracker = readIssueTracker(ctx.cwd);
+        // The repo holding the file sets the tracker, as on the close and start paths.
+        const tracker = readIssueTracker(path.dirname(file));
         const verdicts: CompletenessVerdict[] = [];
         const lines: string[] = [];
         for (const workflow of workflows) {

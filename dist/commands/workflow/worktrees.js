@@ -16,8 +16,9 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { actionHash, actionKey, lastRun, recordAction } from "../../ledgers/status.js";
+import { lastRun } from "../../ledgers/status.js";
 import { gitEnv } from "../../ledgers/telemetry.js";
+import { parseJson } from "../../shared/json.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { COULD_NOT_RUN_EXIT_CODES, installCommand } from "../../shared/package-manager.js";
 import { CommandError, DEV, EXIT, git, isIgnoredPath, isSharedBranch, MAIN, mainCheckoutRoot, repoRoot, runGit, } from "../lib.js";
@@ -227,20 +228,6 @@ function addWorktree(root, wt, branch, mayCreate, workflow, log) {
         throw new CommandError(EXIT_WORKTREE_ADD, `git worktree add failed: ${res.stderr}`);
     return true;
 }
-/**
- * An engine-action row for a rebase that rewrote the branch, keyed on the tip it
- * replaced, so the run's record shows the rewrite. Nothing when HEAD did not move.
- */
-export function recordRebase(statusFile, before, after) {
-    if (before === null || after === null || before === after)
-        return;
-    recordAction(statusFile, {
-        action: "rebase",
-        key: actionKey("rebase", before),
-        hash: actionHash(`${before}..${after}`),
-        ref: after,
-    });
-}
 function rebaseInProgress(wt) {
     return ["rebase-merge", "rebase-apply"].some((p) => {
         const dir = git(wt, ["rev-parse", "--path-format=absolute", "--git-path", p]);
@@ -288,6 +275,38 @@ export function addAllButCopied(tree, copied) {
 /** Whether `wt` holds changes beyond the entries setup copies in (`copyExcludes`). */
 const hasLeftovers = (wt) => (git(wt, ["status", "--porcelain", "--untracked-files=all", "--", ".", ...copyExcludes(wt)]) ??
     "") !== "";
+/**
+ * Whether the only change in `wt` is `engine-call` rows appended to the end of the
+ * tracked `statusFile` (a journal write after the last commit): the resume rebase
+ * sets those aside with `--autostash` and puts them back.
+ */
+function onlyEngineCallsAppended(wt, statusFile) {
+    const rel = path.relative(wt, statusFile);
+    const changed = (git(wt, ["status", "--porcelain", "--untracked-files=all", "--", ".", ...copyExcludes(wt)]) ??
+        "")
+        .split("\n")
+        .filter((l) => l !== "");
+    if (changed.length !== 1 || !changed[0].endsWith(` ${rel}`))
+        return false;
+    const committed = git(wt, ["cat-file", "blob", `HEAD:${rel}`]);
+    if (committed === null || !fs.existsSync(statusFile))
+        return false;
+    const text = fs.readFileSync(statusFile, "utf-8");
+    if (!text.startsWith(committed))
+        return false;
+    const added = text
+        .slice(committed.length)
+        .split("\n")
+        .filter((l) => l.trim() !== "");
+    return (added.length > 0 &&
+        added.every((l) => {
+            const parsed = parseJson(l);
+            return (parsed.ok &&
+                parsed.value !== null &&
+                typeof parsed.value === "object" &&
+                parsed.value.type === "engine-call");
+        }));
+}
 /**
  * Commit what an earlier run left uncommitted in a resumed worktree, so the
  * resume rebase can start: a failed ship's flush lands its record on dev and
@@ -736,18 +755,17 @@ export const worktreesCommand = {
                     else {
                         fetchBranch(wt, DEV);
                         const onto = worktreeBase(wt, workflow, ctx.log);
-                        carried = carryLeftovers(wt, { fid, onto, statusFile: path.join(logDir, "status.jsonl") }, ctx.log);
+                        const statusFile = path.join(logDir, "status.jsonl");
+                        carried = carryLeftovers(wt, { fid, onto, statusFile }, ctx.log);
                         // A tracked copy entry setup copied over (a committed placeholder `.env`) is
                         // never committed, so the rebase sets it aside and puts it back. Only when
-                        // nothing else is left: a refused carry commit still stops the rebase.
-                        const aside = hasLeftovers(wt) ? [] : ["--autostash"];
-                        const before = git(wt, ["rev-parse", "HEAD"]);
+                        // nothing else is left, bar `engine-call` rows appended to the status file
+                        // after the carry commit: a refused carry commit still stops the rebase.
+                        const aside = !hasLeftovers(wt) || onlyEngineCallsAppended(wt, statusFile) ? ["--autostash"] : [];
                         const rb = runGit(wt, ["rebase", "--rebase-merges", ...aside, onto]);
                         // The rebase replays the carry commit on top: report the replayed one.
                         if (rb.ok && carried?.sha)
                             carried.sha = git(wt, ["rev-parse", "HEAD"]);
-                        if (rb.ok)
-                            recordRebase(path.join(logDir, "status.jsonl"), before, git(wt, ["rev-parse", "HEAD"]));
                         if (!rb.ok) {
                             failure = {
                                 conflict: rebaseInProgress(wt),

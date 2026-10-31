@@ -1,7 +1,7 @@
 // bkit completeness check — report whether a run recorded every step and journaled every command its workflow requires.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { deriveContract, inferWorkflows, parseRows, readCompleteness, } from "../../checks/status-holes.js";
+import { deriveContract, inferWorkflows, parseRows, readCompleteness, runsOf, } from "../../checks/status-holes.js";
 import { getWorkflowsRoot } from "../../shared/package-roots.js";
 import { EXIT } from "../lib.js";
 import { readIssueTracker } from "./fids.js";
@@ -16,22 +16,6 @@ const readText = (file, log) => {
         return null;
     }
 };
-/** `workflow`'s rows split into runs: each `workflow-started` opens a run that ends at the next one; rows before the first start form their own run. */
-function runsOf(rows, workflow) {
-    const at = (r) => (typeof r["at"] === "string" ? r["at"] : "");
-    const own = rows
-        .filter((r) => r.workflow === workflow)
-        .sort((a, b) => (at(a) < at(b) ? -1 : at(a) > at(b) ? 1 : 0));
-    const runs = [];
-    for (const row of own) {
-        const current = runs.at(-1);
-        if (current === undefined || row.type === "workflow-started")
-            runs.push([row]);
-        else
-            current.push(row);
-    }
-    return runs;
-}
 function reportLines(v) {
     const calls = (list) => list.map((c) => `${c.noun} ${c.verb}`).join(", ");
     const lines = [
@@ -77,7 +61,8 @@ export const completenessCommand = {
                 const rows = parseRows(text);
                 const given = typeof ctx.flags.workflow === "string" ? ctx.flags.workflow : undefined;
                 const workflows = given === undefined ? inferWorkflows(rows) : [given];
-                const tracker = readIssueTracker(ctx.cwd);
+                // The repo holding the file sets the tracker, as on the close and start paths.
+                const tracker = readIssueTracker(path.dirname(file));
                 const verdicts = [];
                 const lines = [];
                 for (const workflow of workflows) {

@@ -2,7 +2,26 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+/** `after` runs once, right after `readFileSync` of `file` returns: a second writer between read and write. */
+const readHook = vi.hoisted(() => ({
+  file: "",
+  after: undefined as (() => void) | undefined,
+}));
+vi.mock("node:fs", async (importOriginal) => {
+  const real = await importOriginal<typeof import("node:fs")>();
+  const readFileSync = ((...args: Parameters<typeof real.readFileSync>) => {
+    const out = real.readFileSync(...args);
+    if (String(args[0]) === readHook.file) {
+      const after = readHook.after;
+      readHook.after = undefined;
+      after?.();
+    }
+    return out;
+  }) as typeof real.readFileSync;
+  return { ...real, default: { ...real, readFileSync }, readFileSync };
+});
 
 import {
   appendFrictionRow,
@@ -11,9 +30,10 @@ import {
   frictionKey,
   frictionRow,
   journalEnabled,
+  launchedByGit,
   shouldRecordFriction,
 } from "./journal";
-import { validate, writerProblem } from "./telemetry";
+import { foldFrom, validate, writerProblem } from "./telemetry";
 
 const dirs: string[] = [];
 const tmp = () => {
@@ -22,6 +42,8 @@ const tmp = () => {
   return d;
 };
 afterEach(() => {
+  readHook.file = "";
+  readHook.after = undefined;
   for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
 });
 
@@ -83,20 +105,46 @@ describe("frictionRow", () => {
 });
 
 describe("appendFrictionRow", () => {
-  it("raises recurrenceCount on a same-key row", () => {
+  const ledger = (root: string) => path.join(root, ".bkit", "friction.jsonl");
+  const lines = (root: string) => fs.readFileSync(ledger(root), "utf-8").trim().split("\n");
+
+  it("records a recurrence as an appended same-key row, and folds to the raised count", () => {
+    const root = tmp();
+    const first = own(root);
+    expect(appendFrictionRow(root, first)).toEqual({ ok: true });
+    const written = lines(root)[0];
+    expect(appendFrictionRow(root, own(root))).toEqual({ ok: true });
+    expect(appendFrictionRow(root, own(root))).toEqual({ ok: true });
+    expect(appendFrictionRow(root, own(root, { step: "build-other" }))).toEqual({ ok: true });
+
+    const raw = lines(root);
+    expect(raw).toHaveLength(4);
+    expect(raw[0]).toBe(written);
+    const rows = raw.map((l) => JSON.parse(l) as Record<string, unknown>);
+    const same = rows.filter((r) => r["key"] === first["key"]);
+    expect(same.map((r) => r["recurrenceCount"])).toEqual([1, 2, 3]);
+    expect(same[0]).not.toHaveProperty("lastConfirmed");
+    for (const r of same.slice(1)) expect(r["lastConfirmed"]).toBe(r["ts"]);
+    for (const r of rows) expect(validate(r)).toEqual({ ok: true });
+
+    const { state } = foldFrom([ledger(root)]);
+    expect(state.size).toBe(2);
+    const winner = [...state.values()].find((e) => e.key === first["key"]);
+    expect(winner).toMatchObject({ recurrenceCount: 3, lastConfirmed: same[2]!["ts"] });
+  });
+
+  it("keeps a row another writer appends while a recurrence is recorded", () => {
     const root = tmp();
     expect(appendFrictionRow(root, own(root))).toEqual({ ok: true });
+    const foreign = JSON.stringify(own(root, { step: "build-foreign" }));
+    readHook.file = ledger(root);
+    readHook.after = () => fs.appendFileSync(ledger(root), `${foreign}\n`);
     expect(appendFrictionRow(root, own(root))).toEqual({ ok: true });
-    expect(appendFrictionRow(root, own(root))).toEqual({ ok: true });
-    appendFrictionRow(root, own(root, { step: "build-other" }));
-    const lines = fs
-      .readFileSync(path.join(root, ".bkit", "friction.jsonl"), "utf-8")
-      .trim()
-      .split("\n")
-      .map((l) => JSON.parse(l) as Record<string, unknown>);
-    expect(lines).toHaveLength(2);
-    expect(lines[0]!["recurrenceCount"]).toBe(3);
-    expect(lines[1]!["recurrenceCount"]).toBeUndefined();
+    expect(readHook.after).toBeUndefined();
+    const raw = lines(root);
+    expect(raw).toContain(foreign);
+    expect(raw).toHaveLength(3);
+    expect(JSON.parse(raw[2]!)).toMatchObject({ recurrenceCount: 2 });
   });
 
   it("returns a failed result instead of throwing when the row is refused", () => {
@@ -145,5 +193,14 @@ describe("journalEnabled", () => {
     expect(journalEnabled({ BKIT_ENGINE_JOURNAL: "off" })).toBe(false);
     expect(journalEnabled({ BKIT_ENGINE_JOURNAL: "on" })).toBe(true);
     expect(journalEnabled({})).toBe(true);
+  });
+});
+
+describe("launchedByGit", () => {
+  it("is true only when git exported GIT_EXEC_PATH", () => {
+    expect(launchedByGit({ GIT_EXEC_PATH: "/opt/homebrew/opt/git/libexec/git-core" })).toBe(true);
+    expect(launchedByGit({ GIT_EXEC_PATH: "" })).toBe(false);
+    expect(launchedByGit({ GIT_EDITOR: "vi" })).toBe(false);
+    expect(launchedByGit({})).toBe(false);
   });
 });

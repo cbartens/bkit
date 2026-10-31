@@ -60,14 +60,14 @@ Compliance grader stderr. Canonical grep patterns:
 - `[bkit-telemetry] journal looks dead at close: no engine-call rows for this run; the completeness verdict cannot be trusted` — `bkit workflows close` found no `engine-call` row for the run; one line per close on stderr, stdout and the exit code unchanged.
 - `[bkit-telemetry] journal write failed: {message}` — the engine-call / friction journal at command dispatch could not write a row; logged once per command run, the command's exit code is unchanged.
 
-The journal seam writes `engine-call` and `friction` rows to the active run's `status.jsonl` / `.bkit/friction.jsonl`. `BKIT_ENGINE_JOURNAL=off` is its kill switch: any other value (or unset) leaves it on. Rows are evidence for `bkit completeness check`; the seam never changes an exit code.
+The journal seam writes `engine-call` and `friction` rows to the active run's `status.jsonl` / `.bkit/friction.jsonl`. `BKIT_ENGINE_JOURNAL=off` is its kill switch: any other value (or unset) leaves it on. A command git launched (a hook, seen by `GIT_EXEC_PATH` in its environment) writes no `engine-call` row; its friction row is still written. Rows are evidence for `bkit completeness check`; the seam never changes an exit code.
 
 ### `[bkit-status-holes]` prefix
 
 Run-completeness check (`checks/status-holes.ts`, `bkit completeness check`). Advisory and fail-open: always exits 0. Canonical grep patterns:
 
 - `[bkit-status-holes] ADVISORY` — the report line: `ADVISORY — fail-open (exit 0 regardless)` from the corpus sweep, `ADVISORY — {workflow}: {verdict} (N step(s), M call(s) observed)` from `bkit completeness check`. Following lines list `step holes:`, `evidence hole:`, `pre-journal run:` and `unexercised arms:`; a verdict's `journalSuspect` field (a post-journal run with no journaled call) is set at close only and is read from the stored `completeness` row.
-- `[bkit-status-holes] sweep: {N} file(s), {M} holey` — corpus-sweep summary, printed once per `pnpm bkit:audit:status`. The CI `Check Status Holes` step greps `[bkit-status-holes] sweep:` and fails the lane when it is absent (a silent no-op); holes never fail it.
+- `[bkit-status-holes] sweep: {N} file(s), {M} holey` — corpus-sweep summary, printed once per `pnpm bkit:audit:status`. `{M}` counts holey runs, not files: the sweep reports each run (each `workflow-started` row to the next of that workflow) on its own, as `bkit completeness check` does. The CI `Check Status Holes` step greps `[bkit-status-holes] sweep:` and fails the lane when it is absent (a silent no-op); holes never fail it.
 - `[bkit-status-holes] {path} not found — skipping (advisory)` / `{path}: no workflow rows — skipping (advisory)` / `bkit-{workflow}.md not found — skipping {workflow} run (advisory)` / `no status.jsonl path given — skipping (advisory)` — sweep inputs skipped.
 - `[bkit-status-holes] {file} not readable: {message}` / `bkit-{workflow}.md not readable — skipping {workflow} (advisory)` / `{workflow}: {message} — no verdict (advisory)` / `no status.jsonl to check` / `no verdict` — `bkit completeness check` inputs missing; exit 0.
 

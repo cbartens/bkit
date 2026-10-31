@@ -158,6 +158,38 @@ describe("the dispatch seam on a real worktree", () => {
     expect(rows(status).filter((r) => r["type"] === "engine-call")).toHaveLength(1);
   });
 
+  it("a call launched from a git hook writes no engine-call row", async () => {
+    // The environment real git gives a pre-commit hook in the run's worktree.
+    const dump = path.join(main, "hook-env.json");
+    const hook = path.join(main, ".git", "hooks", "pre-commit");
+    fs.writeFileSync(
+      hook,
+      `#!/bin/sh\nnode -e 'require("fs").writeFileSync(process.argv[1], JSON.stringify(process.env))' "${dump}"\n`,
+    );
+    fs.chmodSync(hook, 0o755);
+    fs.writeFileSync(path.join(worktree, "change.txt"), "x\n");
+    git(worktree, ["add", "change.txt"]);
+    git(worktree, ["commit", "-q", "-m", "hooked"]);
+    const hookEnv = JSON.parse(fs.readFileSync(dump, "utf-8")) as Record<string, string>;
+    const gitVars = Object.keys(hookEnv).filter((k) => k.startsWith("GIT_"));
+    expect(gitVars.length).toBeGreaterThan(0);
+
+    const status = path.join(worktree, STATUS_REL);
+    const calls = () => rows(status).filter((r) => r["type"] === "engine-call");
+    for (const k of gitVars) vi.stubEnv(k, hookEnv[k]);
+    const { code, err } = await run(worktree, ["widgets", "odd", "--step=build-summary"]);
+    expect(code).toBe(9);
+    expect(err).toEqual([]);
+    expect(calls()).toEqual([]);
+    // Friction still records: `.bkit/friction.jsonl` is not a file the commit snapshots.
+    expect(rows(path.join(worktree, ".bkit", "friction.jsonl"))).toHaveLength(1);
+
+    // Control: the same call without the hook's environment is journaled.
+    for (const k of gitVars) vi.stubEnv(k, undefined);
+    await run(worktree, ["widgets", "odd", "--step=build-summary"]);
+    expect(calls()).toHaveLength(1);
+  });
+
   it("branches anchor-read with a plan --file journals into the active run", async () => {
     const plan = path.join(worktree, "docs", "plans", "202610", `${FID}-plan.md`);
     fs.mkdirSync(path.dirname(plan), { recursive: true });

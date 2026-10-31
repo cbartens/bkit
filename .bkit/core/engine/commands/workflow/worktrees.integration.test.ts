@@ -700,6 +700,55 @@ describe("bkit worktrees setup — mint (resume)", () => {
     expect(fs.existsSync(r.json.sentinel)).toBe(true);
   });
 
+  /**
+   * A resumed worktree whose committed `status.jsonl` a pre-commit hook appends a `type`
+   * row to (after the commit snapshotted), with a leftover for the carry commit and dev moved.
+   */
+  async function hookDirtiedResume(type: string) {
+    const f = await minted();
+    const status = path.join(wtOf(f), "docs/plans", MONTH, "logs", FID, "status.jsonl");
+    const started = { type: "workflow-started", workflow: "build", at: "2026-10-29T10:00:00Z" };
+    fs.writeFileSync(status, `${JSON.stringify(started)}\n`);
+    git(wtOf(f), "add", status);
+    git(wtOf(f), "commit", "-q", "-m", "record");
+    const row = {
+      type,
+      workflow: "build",
+      at: "2026-10-29T10:05:00Z",
+      noun: "disk",
+      verb: "prune",
+    };
+    const hooks = path.join(f.repo, "hooks");
+    fs.mkdirSync(hooks);
+    fs.writeFileSync(
+      path.join(hooks, "pre-commit"),
+      `#!/bin/sh\nprintf '%s\\n' '${JSON.stringify(row)}' >> "${status}"\n`,
+    );
+    fs.chmodSync(path.join(hooks, "pre-commit"), 0o755);
+    git(f.repo, "config", "core.hooksPath", hooks);
+    fs.writeFileSync(path.join(wtOf(f), "left.txt"), "uncommitted\n");
+    const tip = advanceDev(f, "b.txt", "new\n");
+    return { f, status, row, tip, r: await setup(f.repo, "build", "--worktrees") };
+  }
+
+  it("rebases past engine-call rows the carry commit's hook appended to the status file, and puts them back", async () => {
+    const { f, status, row, tip, r } = await hookDirtiedResume("engine-call");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ sentinel: null, rebaseConflict: false });
+    expect(r.json.carriedSha).not.toBeNull();
+    expect(g(wtOf(f), "merge-base", "--is-ancestor", tip, "HEAD").status).toBe(0);
+    const lines = fs.readFileSync(status, "utf-8").trim().split("\n");
+    expect(JSON.parse(lines.at(-1)!)).toEqual(row);
+    expect(git(wtOf(f), "status", "--porcelain", "--", status)).not.toBe("");
+  });
+
+  it("still refuses a status file the carry commit's hook dirtied with any other row: exit 9", async () => {
+    const { r } = await hookDirtiedResume("step-done");
+    expect(r.code).toBe(9);
+    expect(r.json.carriedSha).not.toBeNull();
+    expect(fs.existsSync(r.json.sentinel)).toBe(true);
+  });
+
   it("does not mark a resumed worktree it did not create", async () => {
     const f = fixture();
     git(f.repo, "worktree", "add", "-q", wtOf(f), "-b", `feat/${FID}`);

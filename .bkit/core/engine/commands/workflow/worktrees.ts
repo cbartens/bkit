@@ -20,6 +20,7 @@ import * as path from "node:path";
 
 import { actionHash, actionKey, lastRun, recordAction } from "../../ledgers/status.js";
 import { gitEnv } from "../../ledgers/telemetry.js";
+import { parseJson } from "../../shared/json.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { COULD_NOT_RUN_EXIT_CODES, installCommand } from "../../shared/package-manager.js";
 import {
@@ -357,6 +358,42 @@ export function addAllButCopied(tree: string, copied?: string[]): ReturnType<typ
 const hasLeftovers = (wt: string) =>
   (git(wt, ["status", "--porcelain", "--untracked-files=all", "--", ".", ...copyExcludes(wt)]) ??
     "") !== "";
+
+/**
+ * Whether the only change in `wt` is `engine-call` rows appended to the end of the
+ * tracked `statusFile` (a journal write after the last commit): the resume rebase
+ * sets those aside with `--autostash` and puts them back.
+ */
+function onlyEngineCallsAppended(wt: string, statusFile: string): boolean {
+  const rel = path.relative(wt, statusFile);
+  const changed = (
+    git(wt, ["status", "--porcelain", "--untracked-files=all", "--", ".", ...copyExcludes(wt)]) ??
+    ""
+  )
+    .split("\n")
+    .filter((l) => l !== "");
+  if (changed.length !== 1 || !changed[0]!.endsWith(` ${rel}`)) return false;
+  const committed = git(wt, ["cat-file", "blob", `HEAD:${rel}`]);
+  if (committed === null || !fs.existsSync(statusFile)) return false;
+  const text = fs.readFileSync(statusFile, "utf-8");
+  if (!text.startsWith(committed)) return false;
+  const added = text
+    .slice(committed.length)
+    .split("\n")
+    .filter((l) => l.trim() !== "");
+  return (
+    added.length > 0 &&
+    added.every((l) => {
+      const parsed = parseJson(l);
+      return (
+        parsed.ok &&
+        parsed.value !== null &&
+        typeof parsed.value === "object" &&
+        (parsed.value as { type?: unknown }).type === "engine-call"
+      );
+    })
+  );
+}
 
 /**
  * Commit what an earlier run left uncommitted in a resumed worktree, so the
@@ -891,15 +928,14 @@ export const worktreesCommand: CommandSpec = {
           } else {
             fetchBranch(wt, DEV);
             const onto = worktreeBase(wt, workflow, ctx.log);
-            carried = carryLeftovers(
-              wt,
-              { fid, onto, statusFile: path.join(logDir, "status.jsonl") },
-              ctx.log,
-            );
+            const statusFile = path.join(logDir, "status.jsonl");
+            carried = carryLeftovers(wt, { fid, onto, statusFile }, ctx.log);
             // A tracked copy entry setup copied over (a committed placeholder `.env`) is
             // never committed, so the rebase sets it aside and puts it back. Only when
-            // nothing else is left: a refused carry commit still stops the rebase.
-            const aside = hasLeftovers(wt) ? [] : ["--autostash"];
+            // nothing else is left, bar `engine-call` rows appended to the status file
+            // after the carry commit: a refused carry commit still stops the rebase.
+            const aside =
+              !hasLeftovers(wt) || onlyEngineCallsAppended(wt, statusFile) ? ["--autostash"] : [];
             const before = git(wt, ["rev-parse", "HEAD"]);
             const rb = runGit(wt, ["rebase", "--rebase-merges", ...aside, onto]);
             // The rebase replays the carry commit on top: report the replayed one.

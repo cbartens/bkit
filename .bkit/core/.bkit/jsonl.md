@@ -24,7 +24,7 @@
 - **Refused:** a supplied `schema` / `ts` / `bkit`; a flat `bkitVersion` / `workflow` / `step` / `subagent` / `model`, since those live in `bkit` / `by`; a kind the ledger does not take; and a total that does not match its parts.
 - `--ledger=stats` takes `compliance` / `counter` / `outcome` rows. `bkit workflows close` writes through it.
 - A subagent with no shell hands its rows to the orchestrator as that JSON, with `by.subagent` and `by.model` already set.
-- `bkit roadmap feature` writes `feature` rows, and fills `firstTs` and `updates` the same way. bkit's harvest script writes `chat` / `run` rows, into `harvest/stats.jsonl` only.
+- `bkit roadmap feature` writes `feature` rows, and fills `firstTs` and `updates` the same way. A `--row` that already carries `updates` (a row an earlier call printed) is appended byte for byte. bkit's harvest script writes `chat` / `run` rows, into `harvest/stats.jsonl` only.
 
 **Humans and scripts:** the `jq` idiom:
 
@@ -264,7 +264,7 @@ Categories are free-form. Use the closest term, or `other` if none fits. `deferr
 | `permission-prompt` | tool / permission approval prompt |
 | `agent-rework` | agent redo / self-correction |
 | `manual-install` | manual dependency / tool install |
-| `tool-failure` | tool / command error; the engine writes it on a bkit command's exit that is neither a shared routing code nor one of the verb's own `exitCodes`, or on a non-`CommandError` throw. `key` = `<noun>-<verb>/<step>` (`<step>` = the command's `--step=`, else `<noun>-<verb>`), kept under 60 chars because the identity-gated prune truncates a friction key at about 68; a recurrence raises `recurrenceCount` on the one row |
+| `tool-failure` | tool / command error; the engine writes it on a bkit command's exit that is neither a shared routing code nor one of the verb's own `exitCodes`, or on a non-`CommandError` throw. `key` = `<noun>-<verb>/<step>` (`<step>` = the command's `--step=`, else `<noun>-<verb>`), kept under 60 chars because the identity-gated prune truncates a friction key at about 68. The first row carries `recurrenceCount` 1; a recurrence appends the same-`key` winner again with a later `ts`, `recurrenceCount` raised by one and `lastConfirmed` = that `ts` (§ Updating a Row) |
 | `destructive-backout` | reverted a destructive action |
 | `other` | none of the above |
 

@@ -4,6 +4,14 @@ import * as path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import {
+  check,
+  contractUnits,
+  deriveContract,
+  type StatusRow,
+  type Unit,
+} from "../../checks/status-holes";
+import { getWorkflowsRoot } from "../../shared/package-roots";
 import { runCommand } from "../lib";
 import { completenessCommand } from "./completeness";
 
@@ -120,6 +128,52 @@ describe("bkit completeness check", () => {
     expect(r.json.verdicts[1].evidenceHoles.map((h: { step: string }) => h.step)).not.toContain(
       "build-worktree-setup",
     );
+  });
+
+  it("renders the contract for the tracker of the repo holding the file", async () => {
+    // The cwd (this repo) is on tracker github; the file's repo is on tracker none.
+    const dir = tmp();
+    fs.writeFileSync(
+      path.join(dir, "package.json"),
+      JSON.stringify({ bkit: { tracker: { default: "none" } } }),
+    );
+    const md = fs.readFileSync(path.join(getWorkflowsRoot(), "bkit-design.md"), "utf-8");
+    const calls = (u: Unit, position: "pre" | "post") =>
+      u.calls
+        .filter((c) => c.position === position)
+        .filter((c) => !c.branch)
+        .filter((c) => `${c.noun} ${c.verb}` !== "workflows start")
+        .map((c) => ({
+          type: "engine-call",
+          workflow: "design",
+          noun: c.noun,
+          verb: c.verb,
+          at: AT,
+        }));
+    // A design run that journals every call the tracker-none workflow names.
+    const rows: StatusRow[] = [
+      { type: "workflow-started", workflow: "design", at: AT },
+      ...contractUnits(deriveContract(md, "design", "none")).flatMap((u) => [
+        ...calls(u, "pre"),
+        ...u.keys.map((step) => ({
+          type: "step-done",
+          workflow: "design",
+          step,
+          status: "DONE",
+          at: AT,
+          parentSha: SHA,
+          artifacts: [],
+        })),
+        ...calls(u, "post"),
+      ]),
+    ];
+    expect(check(rows, deriveContract(md, "design", "github")).verdict).toBe("HOLEY");
+    const file = path.join(dir, "status.jsonl");
+    fs.writeFileSync(file, rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
+    const r = await run(["completeness", "check", `--file=${file}`, "--workflow=design"]);
+    expect(r.json.verdicts).toHaveLength(1);
+    expect(r.json.verdicts[0].evidenceHoles).toEqual([]);
+    expect(r.json.verdicts[0].verdict).toBe("CLEAN");
   });
 
   it("the verdicts output is described as one verdict per checked run", () => {

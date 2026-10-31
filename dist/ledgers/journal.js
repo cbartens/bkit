@@ -2,7 +2,7 @@
 //
 // `commands/lib.ts` `runCommand` writes two kinds of row while a workflow run is
 // active: an `engine-call` row in the run's `status.jsonl` (one per bkit command
-// dispatched) and a `friction` row in the run's own `.bkit/friction.jsonl` (one per
+// dispatched, except one git launched) and a `friction` row in the run's own `.bkit/friction.jsonl` (one per
 // unexpected non-zero exit). This module builds and appends them. It is a leaf:
 // it imports only `node:*`, `../shared/json.js`, `./status.js` and `./telemetry.js`, never a `commands/**`
 // module, so `lib.ts` can import it without a cycle. The caller passes in the exit
@@ -14,10 +14,19 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseJson } from "../shared/json.js";
 import { appendLine, statusTimestamp } from "./status.js";
-import { APPEND_LEDGERS, SCHEMA, mintTs, resolveRepoSlug, validate, writerProblem, } from "./telemetry.js";
+import { APPEND_LEDGERS, SCHEMA, compareTs, mintTs, resolveRepoSlug, validate, writerProblem, } from "./telemetry.js";
 /** The kill switch: `BKIT_ENGINE_JOURNAL=off` keeps the seam from writing any row. */
 export function journalEnabled(env = process.env) {
     return env["BKIT_ENGINE_JOURNAL"] !== "off";
+}
+/**
+ * True when git launched this process: git exports `GIT_EXEC_PATH` to every hook
+ * (pre-commit, commit-msg, post-commit, pre-push, post-checkout, post-merge, ...) and
+ * to the children it spawns, and a plain shell does not set it.
+ */
+export function launchedByGit(env = process.env) {
+    const value = env["GIT_EXEC_PATH"];
+    return value !== undefined && value !== "";
 }
 /** Flag names in `argv` (`--name=value` and `--name value` both give `name`); values are never kept. */
 function flagNames(argv) {
@@ -102,8 +111,10 @@ export function appendJournalRow(file, row) {
     }
 }
 /**
- * Append a friction row to `<bookRoot>/.bkit/friction.jsonl`, or raise the
- * `recurrenceCount` of the one existing same-`key` row in place.
+ * Append a friction row to `<bookRoot>/.bkit/friction.jsonl` with `recurrenceCount` 1.
+ * A recurrence appends the same-`key` fold winner again with a later `ts`, its
+ * `recurrenceCount` raised by one and `lastConfirmed` = that `ts`. No line is
+ * ever rewritten, so a row another writer appends meanwhile is kept.
  */
 export function appendFrictionRow(bookRoot, row) {
     const checked = validate(row);
@@ -116,34 +127,43 @@ export function appendFrictionRow(bookRoot, row) {
     try {
         fs.mkdirSync(path.dirname(file), { recursive: true });
         const text = fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
-        const lines = text.split("\n");
-        const at = lines.map((line) => sameKey(line, row["key"])).lastIndexOf(true);
-        if (at === -1) {
-            fs.appendFileSync(file, `${text !== "" && !text.endsWith("\n") ? "\n" : ""}${JSON.stringify(row)}\n`);
-            return { ok: true };
-        }
-        const prior = readRow(lines[at]) ?? {};
-        const count = typeof prior["recurrenceCount"] === "number" ? prior["recurrenceCount"] : 1;
-        lines[at] = JSON.stringify({
-            ...prior,
-            recurrenceCount: count + 1,
-            lastConfirmed: row["ts"],
-        });
-        const tmp = `${file}.${process.pid}.tmp`;
-        fs.writeFileSync(tmp, lines.join("\n"));
-        fs.renameSync(tmp, file);
+        const prior = latestSameKey(text, row["key"]);
+        const next = prior === undefined ? { ...row, recurrenceCount: 1 } : recurrence(prior, row);
+        fs.appendFileSync(file, `${text !== "" && !text.endsWith("\n") ? "\n" : ""}${JSON.stringify(next)}\n`);
         return { ok: true };
     }
     catch (err) {
         return { ok: false, error: err.message };
     }
 }
-/** True when `line` is a friction row with this `key`. */
-function sameKey(line, key) {
-    if (!line.includes(`"key":${JSON.stringify(key)}`))
-        return false;
-    const parsed = readRow(line);
-    return parsed?.["kind"] === "friction" && parsed["key"] === key;
+/**
+ * The row recording one more occurrence of `prior`: its fields with a `ts` later
+ * than its own, the raised count and `lastConfirmed`. Falls back to `row`'s fields
+ * when `prior`'s no longer validate.
+ */
+function recurrence(prior, row) {
+    const count = typeof prior["recurrenceCount"] === "number" ? prior["recurrenceCount"] : 1;
+    const ts = typeof prior["ts"] === "number" && row["ts"] <= prior["ts"]
+        ? mintTs(prior["ts"])
+        : row["ts"];
+    const raised = { recurrenceCount: count + 1, lastConfirmed: ts };
+    const carried = { ...prior, ts, ...raised };
+    return validate(carried).ok ? carried : { ...row, ts, ...raised };
+}
+/** The same-`key` friction row in `text` that `fold` keeps: highest `ts`, the later line on a tie. */
+function latestSameKey(text, key) {
+    let best;
+    for (const line of text.split("\n")) {
+        if (!line.includes(`"key":${JSON.stringify(key)}`))
+            continue;
+        const parsed = readRow(line);
+        if (parsed?.["kind"] !== "friction" || parsed["key"] !== key)
+            continue;
+        if (best === undefined || compareTs({ ts: parsed["ts"] }, { ts: best["ts"] }) >= 0) {
+            best = parsed;
+        }
+    }
+    return best;
 }
 function readRow(line) {
     const parsed = parseJson(line);

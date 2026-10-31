@@ -19,6 +19,7 @@ import {
   engineCallRow,
   frictionRow,
   journalEnabled,
+  launchedByGit,
   shouldRecordFriction,
 } from "../ledgers/journal.js";
 import { fold, type StatusEvent } from "../ledgers/status.js";
@@ -472,7 +473,8 @@ function engineJournal(): Journal {
   };
   return {
     call(i) {
-      if (!journalEnabled()) return;
+      // A call git launched (a hook's `bkit disk prune`) writes no row to the tracked status file.
+      if (!journalEnabled() || launchedByGit()) return;
       const r = active(i);
       if (r === undefined) return;
       const wrote = appendJournalRow(

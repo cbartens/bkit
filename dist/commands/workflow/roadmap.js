@@ -237,11 +237,15 @@ export function foldBoard(p, current, now) {
     return { board: `${board}\n`, log };
 }
 const EMPTY = { designed: [], planned: [], built: [], debugged: [], shipped: [] };
-/** Re-render `<root>/docs/roadmap.md` from `<root>/.bkit/issues.jsonl`; never throws for a bad ledger or board. */
-export function foldRoadmap(root, log) {
+/** The `_(refreshed …)_` stamp for this moment, to the second. */
+export const refreshStamp = () => new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+/**
+ * Re-render `<root>/docs/roadmap.md` from `<root>/.bkit/issues.jsonl`, stamped
+ * `now`; never throws for a bad ledger or board.
+ */
+export function foldRoadmap(root, log, now = refreshStamp()) {
     const md = path.join(root, "docs", "roadmap.md");
     const ledger = path.join(root, ".bkit", "issues.jsonl");
-    const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
     let projection = EMPTY;
     let malformed = 0;
     const raw = fs.existsSync(ledger) && fs.statSync(ledger).isFile() ? fs.readFileSync(ledger, "utf-8") : "";
@@ -306,12 +310,13 @@ function appendLedgerRow(root, row) {
     }
 }
 /**
- * Append the feature's roadmap row (built from `workflow` / `fid`, or `row` as
- * given, with `firstTs` + `updates` carried forward from the FID's rows already in
- * the ledger) under `root`, then re-render the board. Fail-open: a failed append or
- * render is logged and reported, never thrown.
+ * Append the feature's roadmap row under `root`, then re-render the board stamped
+ * `now`. A row built from `workflow` / `fid`, or a `row` without `updates`, gets
+ * `firstTs` + `updates` carried forward from the FID's rows already in the ledger;
+ * a `row` that carries `updates` (one an earlier call printed) is appended byte
+ * for byte. Fail-open: a failed append or render is logged and reported, never thrown.
  */
-export function appendFeature(root, o, log) {
+export function appendFeature(root, o, log, now = refreshStamp()) {
     let row;
     if (o.row !== undefined) {
         const parsed = parseJson(o.row);
@@ -337,14 +342,15 @@ export function appendFeature(root, o, log) {
     const prior = fs.existsSync(ledger) && fs.statSync(ledger).isFile()
         ? parse(fs.readFileSync(ledger, "utf-8")).events
         : [];
-    row = withLineage(prior, row);
+    if (o.row === undefined || !("updates" in row))
+        row = withLineage(prior, row);
     const check = validate(row);
     if (!check.ok)
         throw new CommandError(EXIT.USAGE, `not a valid feature row: ${check.reason}`);
     const problem = appendLedgerRow(root, row);
     if (problem)
         log(`append failed: ${ledger} — ${problem}`);
-    const board = foldRoadmap(root, log);
+    const board = foldRoadmap(root, log, now);
     return { row, appended: problem === undefined, written: board.written, path: board.path };
 }
 function feature(ctx) {
@@ -361,17 +367,21 @@ function feature(ctx) {
 const ROADMAP_FILES = [".bkit/issues.jsonl", "docs/roadmap.md"];
 /**
  * Build / debug close: append the feature row in the worktree, then land the
- * SAME row on `dev` through a throwaway origin/dev checkout (`pushToDev`). The
- * main checkout is never touched. Skipped when the run's own checkout is on dev
- * (the row rides that branch's commit). Fail-open throughout: the feat-side row
- * is already written and reaches dev with ship's merge.
+ * SAME row on `dev` through a throwaway origin/dev checkout (`pushToDev`). Both
+ * sides get the row's exact bytes and one shared refresh stamp, so the branch and
+ * dev make the same change to `.bkit/issues.jsonl` and `docs/roadmap.md` and the
+ * feature PR merges without a conflict on either. The main checkout is never
+ * touched. Skipped when the run's own checkout is on dev (the row rides that
+ * branch's commit). Fail-open throughout: the feat-side row is already written
+ * and reaches dev with ship's merge.
  */
 async function mirror(ctx) {
     const workflow = String(ctx.flags.workflow);
     const fid = String(ctx.flags.fid);
     const wt = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
     const root = repoRoot(ctx.cwd);
-    const feat = appendFeature(wt, { workflow, fid }, ctx.log);
+    const now = refreshStamp();
+    const feat = appendFeature(wt, { workflow, fid }, ctx.log, now);
     const done = (mirrored, skipped) => {
         if (skipped)
             ctx.log(`skipping the dev-side roadmap mirror — ${skipped} (feat-side row already written)`);
@@ -388,7 +398,7 @@ async function mirror(ctx) {
         dir: landDir(root, fid),
         build: (dir) => {
             committed = "";
-            if (!appendFeature(dir, { row: JSON.stringify(feat.row) }, ctx.log).appended) {
+            if (!appendFeature(dir, { row: JSON.stringify(feat.row) }, ctx.log, now).appended) {
                 committed = "row not appended on dev";
                 return;
             }

@@ -19,7 +19,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { WORKFLOW_STEPS } from "../commands/workflow/step-table";
+import { DECISION_ROUTES, WORKFLOW_STEPS } from "../commands/workflow/step-table";
+import { RED_PASSED_STEP, RED_STEP } from "../commands/workflow/tests";
 import { substituteWorkflow } from "../render/trackers";
 import {
   SHIP_STEP_ORDER,
@@ -156,8 +157,16 @@ describe("source derivation", () => {
       const contract = deriveContract(flowMd(name), name);
       expect([...contract.universe].sort(), name).toEqual([...tableKeys(name)].sort());
       expect(contract.drift, name).toEqual([]);
+      expect(contract.orphanSteps, name).toEqual([]);
     }
-    expect(deriveContract(flowMd("ship"), "ship").orphanSteps).toEqual([]);
+    // Build writes three row keys outside its numbered steps by design; the contract names them.
+    const build = deriveContract(flowMd("build"), "build");
+    expect(build.pauseRows).toEqual([DECISION_ROUTES.build!.step]);
+    expect(build.subRows).toEqual([RED_STEP, RED_PASSED_STEP]);
+    for (const name of ["design", "plan", "debug", "ship"] as const) {
+      const contract = deriveContract(flowMd(name), name);
+      expect([...contract.pauseRows, ...contract.subRows], name).toEqual([]);
+    }
     expect([...SHIP_STEP_ORDER]).toEqual(tableKeys("ship"));
   });
 
@@ -865,6 +874,44 @@ describe("CLI sweep summary", () => {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("checks each run of one workflow in a file on its own", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-shd-runs-"));
+    try {
+      const keys = contractUnits(deriveContract(flowMd("build"), "build")).flatMap((u) => u.keys);
+      const at = (h: number, s: number) =>
+        `2026-07-29T0${h}:${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}Z`;
+      const step = (key: string, when: string) =>
+        JSON.stringify({
+          type: "step-done",
+          workflow: "build",
+          step: key,
+          status: "DONE",
+          at: when,
+        });
+      const start = (when: string) =>
+        JSON.stringify({ type: "workflow-started", workflow: "build", at: when });
+      // A full run 1, then a run 2 that recorded only its close.
+      const file = path.join(dir, "status.jsonl");
+      fs.writeFileSync(
+        file,
+        [
+          start(at(0, 0)),
+          ...keys.map((k, i) => step(k, at(0, i + 1))),
+          start(at(1, 0)),
+          step("build-close-workflow", at(1, 1)),
+        ].join("\n"),
+        "utf-8",
+      );
+      const out = capture([file]);
+      expect(out).toContain("[bkit-status-holes] sweep: 1 file(s), 1 holey\n");
+      expect(out.match(/ {2}workflow: build/g)).toHaveLength(2);
+      expect(out).toContain("  missing: none");
+      expect(out).toMatch(/missing \(mandatory for COMPLETED\): .*build-branch-sync/);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1191,6 +1238,94 @@ describe("check — hole classes", () => {
       step: unit12.keys[0],
       call: { noun: "counters", verb: "route" },
     });
+    // With every arm taken, nothing is unexercised: not Step 16's arms, not `branches push`.
+    expect(taken.unexercised).toEqual([]);
+  });
+
+  it("credits a repeated route-arm call to the step that names it next", () => {
+    const md = [
+      "## 🧠 Step 1 — Summary",
+      ...fence(FINISH("build-summary", 1)),
+      "- **If** clean → push:",
+      "  ```bash",
+      '  "{BKIT}" branches push --mode=feature',
+      "  ```",
+      "## 🧠 Step 2 — Close",
+      "- **If** clean → push again:",
+      "  ```bash",
+      '  "{BKIT}" branches push --mode=feature',
+      "  ```",
+      ...fence(FINISH("build-close-workflow", 2)),
+    ].join("\n");
+    const contract = deriveContract(md, "build");
+    const rows = (pushes: number) =>
+      [
+        callRow("build", "steps", "finish"),
+        stepRow("build", "build-summary"),
+        ...Array.from({ length: pushes }, () => callRow("build", "branches", "push")),
+        callRow("build", "steps", "finish"),
+        stepRow("build", "build-close-workflow"),
+      ] as StatusRow[];
+    const both = check(rows(2), contract);
+    expect(both.unexercised).toEqual([]);
+    expect(both.unexpected).toEqual([]);
+    expect(both.verdict).toBe("CLEAN");
+    // One push is the first arm's: the second step's arm stays unexercised.
+    expect(check(rows(1), contract).unexercised).toEqual([
+      { step: "build-close-workflow", call: { noun: "branches", verb: "push" } },
+    ]);
+    // A repeat no later step names still belongs to the step that ran it.
+    const repeated = check(
+      [
+        callRow("build", "steps", "finish"),
+        stepRow("build", "build-summary"),
+        callRow("build", "branches", "push"),
+        callRow("build", "branches", "push"),
+      ] as StatusRow[],
+      deriveContract(md.split("## 🧠 Step 2")[0]!, "build"),
+    );
+    expect(repeated.unexpected).toEqual([]);
+    expect(repeated.unattributable).toEqual([]);
+  });
+
+  it("never reports the rows build writes outside its numbered steps as unexpected", () => {
+    const md = flowMd("build");
+    const build = deriveContract(md, "build");
+    const after: Array<[string, StatusRow[]]> = [
+      // Step 7's `tests red` writes its own rows between the group's start and finish rows.
+      [
+        "build-group-start",
+        [
+          callRow("build", "tests", "red"),
+          stepRow("build", RED_STEP),
+          callRow("build", "tests", "red"),
+          stepRow("build", RED_PASSED_STEP),
+        ] as StatusRow[],
+      ],
+      // A Decision Pause after Run Tests writes `build-decision` with no step number.
+      [
+        "build-run-tests",
+        [
+          callRow("build", "steps", "finish"),
+          stepRow("build", "build-decision", { route: "tests" }),
+        ] as StatusRow[],
+      ],
+    ];
+    const rows = replay("build", false).flatMap((r): StatusRow[] => [
+      r,
+      ...after.filter(([key]) => r.step === key).flatMap(([, x]) => x),
+    ]);
+    const verdict = check(rows, build);
+    expect(verdict.unexpected).toEqual([]);
+    expect(verdict.unattributable).toEqual([]);
+    expect(verdict.evidenceHoles).toEqual([]);
+    expect(verdict.verdict).toBe("CLEAN");
+    const report = auditRun(rows, "build", md);
+    expect(report.unexpected).toEqual([]);
+    expect(report.orphanSteps).toEqual([]);
+    // A step key the contract does not name is still unexpected.
+    const invented = check([...rows, stepRow("build", "build-invented") as StatusRow], build);
+    expect(invented.unexpected).toEqual([{ step: "build-invented" }]);
   });
 
   it("gives each group-loop repeat its own gaps", () => {
@@ -1223,6 +1358,51 @@ describe("check — hole classes", () => {
       index: 2,
       group: 2,
     });
+  });
+
+  it("matches a call the Contract allows at any point", () => {
+    for (const name of FLOWS) {
+      const append = callRow(name, "ledgers", "append");
+      const contract = deriveContract(flowMd(name), name);
+      // Every workflow's Contract lets the orchestrator append friction rows at any point.
+      expect(contract.anywhereCalls, name).toEqual([
+        { noun: "ledgers", verb: "append", flags: [] },
+      ]);
+      const replayed = replay(name, false);
+      const rows = [
+        append,
+        ...replayed.slice(0, 3),
+        append,
+        ...replayed.slice(3),
+        append,
+      ] as StatusRow[];
+      const verdict = check(rows, contract);
+      expect(verdict.unexpected, name).toEqual([]);
+      expect(verdict.unattributable, name).toEqual([]);
+      expect(verdict.verdict, name).toBe("CLEAN");
+    }
+    // A workflow whose Contract does not name the call gets no such allowance.
+    const md = [
+      "**Contract:** The terms.",
+      "",
+      "## 🧠 Step 1 — Start",
+      ...fence(FINISH("build-start-workflow", 1)),
+      "## 🧠 Step 2 — Close",
+      ...fence(FINISH("build-close-workflow", 2)),
+    ].join("\n");
+    const bare = deriveContract(md, "build");
+    expect(bare.anywhereCalls).toEqual([]);
+    const verdict = check(
+      [
+        callRow("build", "steps", "finish"),
+        stepRow("build", "build-start-workflow"),
+        callRow("build", "ledgers", "append"),
+        callRow("build", "steps", "finish"),
+        stepRow("build", "build-close-workflow"),
+      ] as StatusRow[],
+      bare,
+    );
+    expect(verdict.unexpected).toEqual([{ noun: "ledgers", verb: "append" }]);
   });
 
   it("matches workflow-level calls outside any step", () => {
