@@ -64,9 +64,17 @@ function judge(cwd, wt, fid) {
   const git = (...args) => spawnSync("git", ["-C", wt, ...args], { encoding: "utf8" });
   if (fs.globSync(path.join(cwd, "docs/plans/*/logs", fid, ".lock")).length > 0)
     return { keep: "a bkit workflow holds its lock" };
+  // git in a plain folder inside the checkout answers for the checkout itself, so a folder is
+  // a worktree only when git names it as its own top.
+  if (
+    !fs.existsSync(wt) ||
+    git("rev-parse", "--show-toplevel").stdout.trim() !== fs.realpathSync(wt)
+  )
+    return { note: "not a git worktree; delete the folder if unneeded" };
   if (idleDays(wt) < 2) return { keep: "committed to in the last 2 days" };
   const status = git("status", "--porcelain");
-  if (status.status !== 0) return { note: "not a git worktree; delete the folder if unneeded" };
+  if (status.status !== 0)
+    return { note: `git status failed (\`git -C .worktrees/${fid} status\`)` };
   if (status.stdout.trim() !== "")
     return { note: `uncommitted or untracked files (\`git -C .worktrees/${fid} status\`)` };
   if (git("rev-list", "HEAD", "--not", "--remotes").stdout.trim() !== "") {

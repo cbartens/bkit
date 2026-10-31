@@ -116,6 +116,18 @@ describe("example repo step — leftover worktrees", () => {
     expect(git(main, ["branch", "--list", "feat/clean", "feat/squashed"])).toContain("feat/clean");
   });
 
+  it("notes a plain folder under .worktrees, even while the checkout is busy", async () => {
+    const main = checkout();
+    const stray = path.join(main, ".worktrees", "stray");
+    fs.mkdirSync(path.join(stray, "tmp"), { recursive: true });
+    // A fresh commit in the checkout: git in the folder would report it as the folder's own.
+    git(main, ["commit", "-q", "--allow-empty", "-m", "now"]);
+    const { logs, notes } = await sweep(main);
+    expect(fs.existsSync(stray)).toBe(true);
+    expect(notes).toEqual([".worktrees/stray: not a git worktree; delete the folder if unneeded"]);
+    expect(logs).toEqual([]);
+  });
+
   it("keeps a worktree whose workflow holds its lock, without a note", async () => {
     const main = checkout();
     const wt = worktree(main, "locked");
