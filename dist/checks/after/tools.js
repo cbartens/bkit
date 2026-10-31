@@ -3,6 +3,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
+import { readPackageJson } from "../../shared/package-json.js";
 import { ciWorkflowPath, readBkitConfig } from "../../shared/settings.js";
 import { DEP_UPDATER_NAMES, findDepUpdaterConfigs, } from "../../shared/dep-updater.js";
 /** True when `cmd --version` runs (binary on PATH, exits 0). */
@@ -14,12 +15,35 @@ function toolVersionRuns(cmd) {
     return res.status === 0;
 }
 /**
+ * Detect a prose gate that cannot run here: package.json `lint:prose` calls `bkit ci prose`,
+ * which fails without vale, and vale is not on PATH. Null when the gate is not adopted.
+ */
+export function detectValeMissing(cwd) {
+    const read = readPackageJson(cwd);
+    if (!read.ok)
+        return null;
+    const scripts = read.pkg["scripts"];
+    const lintProse = typeof scripts === "object" && scripts !== null
+        ? scripts["lint:prose"]
+        : undefined;
+    if (typeof lintProse !== "string" || !lintProse.includes("bkit ci prose"))
+        return null;
+    if (toolVersionRuns("vale"))
+        return null;
+    return {
+        id: "vale-not-installed",
+        severity: "advisory",
+        detect: "package.json `lint:prose` runs `bkit ci prose`, but vale is not on PATH — the prose gate fails, so every pre-push gate that runs `lint:prose` fails on this machine.",
+        action: "Install vale, then download its styles:\n\n    brew install vale    # macOS; other platforms: https://vale.sh/docs/install\n    vale sync\n\nCI and the cloud templates install vale already; this is for local machines.",
+    };
+}
+/**
  * Detect whether vale is installed but write-good styles are not synced.
- * Returns null if vale is not on PATH (silent skip — not an error).
+ * Returns null if vale is not on PATH (`detectValeMissing` covers that case).
  */
 export function detectValePackageNotSynced(cwd) {
     if (!toolVersionRuns("vale"))
-        return null; // vale not on PATH — silent skip
+        return null; // vale not on PATH — detectValeMissing
     if (fs.existsSync(path.join(cwd, ".vale", "styles", "write-good")))
         return null;
     // `vale sync` reads `Packages` from .vale.ini; without one it has nothing to download.
@@ -35,7 +59,7 @@ export function detectValePackageNotSynced(cwd) {
         id: "vale-package-not-synced",
         severity: "advisory",
         detect: "vale is on PATH but .vale/styles/write-good/ is absent — vale packages not synced.",
-        action: "Run `vale sync` (one-time per repo) to download the write-good package. lint:prose tries to self-heal this (copy from the main worktree, then `vale sync`) and warns loudly on stderr if it cannot — but until the package is present, prose linting does not run.",
+        action: "Run `vale sync` (one-time per repo) to download the write-good package. lint:prose tries to self-heal this (copy from the main worktree, then `vale sync`) and fails if it cannot.",
     };
 }
 /**

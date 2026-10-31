@@ -390,7 +390,7 @@ describe("KN-19-for-opencode — writeTier2JsonContained throws on malformed .op
 // lint:prose — shipped prose-gate contract
 //
 // The value `.bkit/templates.md` § Gate tool scripts hands consumers; it runs in their
-// pre-push hooks. The behaviour (skip, write-good restore, vale exit) lives in
+// pre-push hooks. The behaviour (unavailable vale, write-good restore, vale exit) lives in
 // `bkit ci prose` and is tested in commands/ci/ci.test.ts.
 // ---------------------------------------------------------------------------
 

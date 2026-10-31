@@ -10,8 +10,8 @@
 // net-new or worsened finding (`path:line`, rule, message), with line shifts dropped.
 //
 // `prose` — the prose gate (`lint:prose`): Vale over the markdown files the globs
-// select. Skips with a log line when vale is not installed; restores the gitignored
-// write-good package from the main worktree (else `vale sync`) when it is missing.
+// select. Restores the gitignored write-good package from the main worktree (else
+// `vale sync`) when it is missing, and fails when vale or write-good is unavailable.
 //
 // `skip-token` — whether a commit message carries a GitHub skip-CI token
 // (`SKIP_CI_TOKEN`), for the `.husky/pre-push` CI-suppressor guard.

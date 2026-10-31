@@ -338,8 +338,8 @@ vale sync
 - Cursor: the `Dockerfile` template installs it.
 - Adapt: add `[glob]` scope blocks for your own docs. Turn rules off per path, not globally.
 - Traps:
-  - **If** Vale is not on `PATH` → `lint:prose` prints a skip line, and the prose gate is not enforcing.
-  - A missing `write-good` is copied from the main worktree, else `vale sync` runs. When both fail, it prints a loud skip warning.
+  - **If** Vale is not on `PATH` → `lint:prose` fails, so a push from a machine without Vale stops at pre-push. Install Vale there.
+  - A missing `write-good` is copied from the main worktree, else `vale sync` runs. When both fail, `lint:prose` fails.
   - Keep the `.bkit/templates/**` block, which turns rules off for the copies.
 
 ## slop-scan — `slop-scan.config.json`
