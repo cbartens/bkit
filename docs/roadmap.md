@@ -21,7 +21,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-10-30T01:41:32Z)_
+_(refreshed 2026-10-31T05:19:09Z)_
 
 ### Design
 
@@ -37,7 +37,6 @@ _(refreshed 2026-10-30T01:41:32Z)_
 | --- | --- | --- |
 | 504-example-project | 504-example-project | 1791870640742 |
 | 651-sops-env-backup | 651-sops-env-backup | 1792633642892 |
-| 699-engine-run-completeness | 699-engine-run-completeness | 1793002326175 |
 | 719-cloud-variants-add | 719-cloud-variants-add | 1793249397536 |
 | 724-machine-wide-test | 724-machine-wide-test | 1793239890768 |
 | 748-brand-every-consumer | 748-brand-every-consumer | 1793324492581 |
@@ -48,6 +47,7 @@ _(refreshed 2026-10-30T01:41:32Z)_
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
+| 699-engine-run-completeness | 699-engine-run-completeness | 1793423949175 |
 
 ### Debug
 
