@@ -164,7 +164,7 @@ Free disk with your own cleanup steps; bkit itself deletes nothing.
 <!-- prettier-ignore -->
 | Verb | Use | Flags | What it does |
 | --- | --- | --- | --- |
-| `prune` | by hand | **`--mode`** `--dry-run` `--auto` | Run the min or max steps from scripts/cleanup/bkit-disk-prune.mjs and ~/.config/bkit/disk-prune.mjs. |
+| `prune` | by hand | **`--mode`** `--dry-run` `--scope` `--auto` | Run the min or max steps from scripts/cleanup/bkit-disk-prune.mjs and ~/.config/bkit/disk-prune.mjs. |
 
 ### `fids`
 

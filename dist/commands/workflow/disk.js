@@ -7,9 +7,11 @@
 // folder). Each exports a list of steps; `max` also runs every `min` step. No file → nothing
 // runs, and worktree setup checks nothing.
 //
-// `--auto` is the hooks' entry: a mode runs at most once a day per machine, and `max` at
-// most once an hour while free disk is under `bkit.workflows.minFreeGb`; the sweep then runs
-// detached and logs to the bkit cache folder, so the hook does not wait. `bkit worktrees
+// `--auto` is the hooks' entry: a mode runs at most once a day, and `max` at most once an
+// hour while free disk is under `bkit.workflows.minFreeGb`. The machine file's steps keep one
+// limit for the whole machine; each checkout's repo steps keep their own, so a sweep another
+// repo started never uses up this checkout's day. The sweep then runs detached, only for the
+// files that are due, and logs to the bkit cache folder, so the hook does not wait. `bkit worktrees
 // setup` calls `ensureDiskSpace` before it mints. A lock in the cache folder keeps one sweep
 // at a time across every repo. CI and cloud sessions run nothing.
 //
@@ -17,6 +19,7 @@
 // uncommitted files, say). Each sweep replaces its checkout's notes in the cache folder;
 // `bkit tips` lists them first, so the workflow that prints its tips surfaces them.
 import { spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -40,21 +43,31 @@ const cacheDir = () => path.join(process.env.XDG_CACHE_HOME || path.join(os.home
 export const machineStepsPath = () => path.join(configDir(), "disk-prune.mjs");
 export const sweepLogPath = () => path.join(cacheDir(), "disk-prune.log");
 const lockPath = () => path.join(cacheDir(), "disk-prune.lock");
-const stampPath = (name) => path.join(cacheDir(), `disk-prune-${name}.stamp`);
+/** One stamp per limit: the machine file's under `machine`, a checkout's repo file's under its top. */
+const stampPath = (key, name) => path.join(cacheDir(), key === MACHINE
+    ? `disk-prune-${name}.stamp`
+    : `disk-prune-${name}-${createHash("sha256").update(key).digest("hex").slice(0, 12)}.stamp`);
+/** A checkout's stamps this old belong to a checkout no hook has run in since (a removed worktree). */
+const STAMP_STALE_MS = 7 * DAY_MS;
+const REPO_STAMP = /^disk-prune-[a-z]+-[0-9a-f]{12}\.stamp$/;
 const notesPath = () => path.join(cacheDir(), "disk-prune-notes.json");
 /** Notes older than this are dropped: no sweep has run there since. */
 const NOTES_STALE_MS = 7 * DAY_MS;
+const MACHINE = "machine";
 const gb = (bytes) => (bytes === null ? "?" : `${(bytes / GB).toFixed(1)} GB`);
 const errorText = (err) => (err instanceof Error ? err.message : String(err));
+const SCOPES = ["repo", "machine"];
 const checkoutTop = (cwd) => git(cwd, ["rev-parse", "--show-toplevel"]) ?? cwd;
-/** The step files that exist for `cwd`, repo first. */
-function stepFilePaths(cwd) {
+/** The step files that exist for `cwd`, repo first; only `scopes`' files when given. */
+function stepFilePaths(cwd, scopes) {
     const top = checkoutTop(cwd);
     return [
         { scope: "repo", file: path.join(top, REPO_STEPS), cwd: top },
         { scope: "machine", file: machineStepsPath(), cwd: os.homedir() },
-    ].filter((f) => fs.existsSync(f.file));
+    ].filter((f) => (scopes === undefined || scopes.includes(f.scope)) && fs.existsSync(f.file));
 }
+/** Whose limits a step file counts against: the machine's, or its checkout's. */
+const stampKey = (f) => (f.scope === "machine" ? MACHINE : f.cwd);
 const isAction = (v) => typeof v === "string" || typeof v === "function";
 function stepProblem(step) {
     if (step === null || typeof step !== "object")
@@ -121,14 +134,23 @@ function sizeOf(patterns, cwd) {
         .split("\n")
         .reduce((sum, line) => sum + Number(line.split(/\s/)[0] ?? 0) * 1024, 0);
 }
-function due(name, everyMs, now) {
-    const st = fs.statSync(stampPath(name), { throwIfNoEntry: false });
+function due(key, name, everyMs, now) {
+    const st = fs.statSync(stampPath(key, name), { throwIfNoEntry: false });
     return st === undefined || now - st.mtimeMs >= everyMs;
 }
-function touch(...names) {
+/** Stamp `names` for `key`, and drop checkout stamps no hook has renewed in 7 days. */
+function touch(key, ...names) {
     fs.mkdirSync(cacheDir(), { recursive: true });
     for (const name of names)
-        fs.writeFileSync(stampPath(name), `${new Date().toISOString()}\n`);
+        fs.writeFileSync(stampPath(key, name), `${new Date().toISOString()}\n`);
+    for (const entry of fs.readdirSync(cacheDir())) {
+        if (!REPO_STAMP.test(entry))
+            continue;
+        const file = path.join(cacheDir(), entry);
+        const st = fs.statSync(file, { throwIfNoEntry: false });
+        if (st !== undefined && Date.now() - st.mtimeMs >= STAMP_STALE_MS)
+            fs.rmSync(file, { force: true });
+    }
 }
 function pidAlive(pid) {
     try {
@@ -199,8 +221,8 @@ async function runStep(step, ctx) {
     }
 }
 /**
- * Run the `mode` steps from every step file for `cwd`, one at a time, repo file first.
- * `dryRun` runs nothing and sizes each step's paths instead.
+ * Run the `mode` steps from every step file for `cwd` (only `scopes`' files when given), one
+ * at a time, repo file first. `dryRun` runs nothing and sizes each step's paths instead.
  */
 export async function sweep(opts) {
     const result = {
@@ -213,7 +235,7 @@ export async function sweep(opts) {
     };
     if (isCloudOrCi())
         return { ...result, reason: "ci" };
-    const files = await Promise.all(stepFilePaths(opts.cwd).map(loadStepFile));
+    const files = await Promise.all(stepFilePaths(opts.cwd, opts.scopes).map(loadStepFile));
     result.files = files.map((f) => ({
         scope: f.scope,
         file: f.file,
@@ -324,52 +346,58 @@ export function formatNotes(notes) {
 // ---------------------------------------------------------------------------
 // Scheduling (hooks) and the worktree check
 // ---------------------------------------------------------------------------
-/** Start `bkit disk prune --mode=<mode>` detached, its output appended to the sweep log. */
-function spawnDetached(mode, cwd) {
+/**
+ * Start `bkit disk prune --mode=<mode>` detached for the due `scopes`, its output appended to
+ * the sweep log.
+ */
+function spawnDetached(mode, cwd, scopes) {
     fs.mkdirSync(cacheDir(), { recursive: true });
     const fd = fs.openSync(sweepLogPath(), "a");
-    const child = spawn(process.execPath, [...process.execArgv, process.argv[1], "disk", "prune", `--mode=${mode}`], { cwd, detached: true, stdio: ["ignore", fd, fd] });
+    const only = scopes.length === 1 ? [`--scope=${scopes[0]}`] : [];
+    const child = spawn(process.execPath, [...process.execArgv, process.argv[1], "disk", "prune", `--mode=${mode}`, ...only], { cwd, detached: true, stdio: ["ignore", fd, fd] });
     child.unref();
     fs.closeSync(fd);
 }
 /**
- * `--auto`: start a detached sweep when one is due. Under `minFreeGb` free → `max`, at
- * most hourly; else `mode`, at most daily. A `max` run also counts as that day's `min`.
+ * `--auto`: start a detached sweep of the step files that are due. Under `minFreeGb` free →
+ * `max`, at most hourly; else `mode`, at most daily. A `max` run also counts as that day's
+ * `min`. The machine file is due by the machine's stamps, the repo file by its checkout's.
  */
 export function schedule(opts) {
     if (isCloudOrCi())
         return { started: null, reason: "ci" };
-    if (stepFilePaths(opts.cwd).length === 0)
+    const files = stepFilePaths(opts.cwd);
+    if (files.length === 0)
         return { started: null, reason: "no-steps" };
     const now = opts.now ?? Date.now();
     const start = opts.start ?? spawnDetached;
     const free = freeBytes(opts.cwd);
-    if (free !== null && free < opts.minFreeGb * GB) {
-        if (!due("low", HOUR_MS, now))
-            return { started: null, reason: "not-due" };
-        touch("low", "max", "min");
-        start("max", opts.cwd);
-        return { started: "max", reason: "low-disk" };
-    }
-    if (!due(opts.mode, DAY_MS, now))
+    const low = free !== null && free < opts.minFreeGb * GB;
+    const mode = low ? "max" : opts.mode;
+    const dueFiles = files.filter((f) => low ? due(stampKey(f), "low", HOUR_MS, now) : due(stampKey(f), mode, DAY_MS, now));
+    if (dueFiles.length === 0)
         return { started: null, reason: "not-due" };
-    touch(...(opts.mode === "max" ? ["max", "min"] : ["min"]));
-    start(opts.mode, opts.cwd);
-    return { started: opts.mode, reason: "due" };
+    const names = low ? ["low", "max", "min"] : mode === "max" ? ["max", "min"] : ["min"];
+    for (const f of dueFiles)
+        touch(stampKey(f), ...names);
+    start(mode, opts.cwd, dueFiles.map((f) => f.scope));
+    return { started: mode, reason: low ? "low-disk" : "due" };
 }
 /**
  * Before worktree setup mints: under `minFreeGb` free with step files present, run the
  * `max` steps and check again. Null = carry on; else why the worktree must not be made.
  */
 export async function ensureDiskSpace(opts) {
-    if (isCloudOrCi() || stepFilePaths(opts.cwd).length === 0)
+    const files = isCloudOrCi() ? [] : stepFilePaths(opts.cwd);
+    if (files.length === 0)
         return null;
     const min = opts.minFreeGb * GB;
     const before = freeBytes(opts.cwd);
     if (before === null || before >= min)
         return null;
     opts.log(`${gb(before)} free, under ${SETTING} (${opts.minFreeGb} GB) — running your max cleanup steps`);
-    touch("low", "max", "min");
+    for (const f of files)
+        touch(stampKey(f), "low", "max", "min");
     const ran = await sweep({ cwd: opts.cwd, mode: "max", dryRun: false, log: opts.log });
     const after = freeBytes(opts.cwd);
     if (after === null || after >= min)
@@ -402,9 +430,14 @@ export const diskCommand = {
                     help: "run nothing; list each step with the size of its paths",
                 },
                 {
+                    name: "scope",
+                    type: "string",
+                    help: "repo or machine: run only that file's steps (default: both)",
+                },
+                {
                     name: "auto",
                     type: "boolean",
-                    help: `for hooks: run detached, at most once a day per mode; max at most hourly while free disk is under ${SETTING}`,
+                    help: `for hooks: run detached, at most once a day per mode (machine steps once per machine, repo steps once per checkout); max at most hourly while free disk is under ${SETTING}`,
                 },
             ],
             output: {
@@ -422,9 +455,15 @@ export const diskCommand = {
                 if (!MODES.includes(mode))
                     throw new CommandError(EXIT.USAGE, "--mode must be min or max");
                 const dryRun = ctx.flags.dryRun === true;
+                const scope = ctx.flags.scope === undefined ? undefined : String(ctx.flags.scope);
+                if (scope !== undefined && !SCOPES.includes(scope))
+                    throw new CommandError(EXIT.USAGE, "--scope must be repo or machine");
+                const scopes = scope === undefined ? undefined : [scope];
                 if (ctx.flags.auto === true) {
                     if (dryRun)
                         throw new CommandError(EXIT.USAGE, "give --auto or --dry-run, not both");
+                    if (scopes)
+                        throw new CommandError(EXIT.USAGE, "give --auto or --scope, not both");
                     const plan = schedule({
                         cwd: ctx.cwd,
                         mode: mode,
@@ -443,7 +482,7 @@ export const diskCommand = {
                     });
                     return EXIT.OK;
                 }
-                const r = await sweep({ cwd: ctx.cwd, mode: mode, dryRun, log: ctx.log });
+                const r = await sweep({ cwd: ctx.cwd, mode: mode, dryRun, scopes, log: ctx.log });
                 ctx.emit({ mode, started: null, ...r });
                 const failed = r.files.some((f) => f.error !== null) || r.steps.some((s) => s.outcome === "failed");
                 return failed ? EXIT.NO : EXIT.OK;

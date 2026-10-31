@@ -853,8 +853,8 @@ cp .bkit/templates/scripts/cleanup/bkit-disk-prune.machine.mjs ~/.config/bkit/di
   - `pre-push` → `--mode=max --auto`, after every gate (workflow pushes too).
   - **If** the block is missing → paste it at the end of yours.
 - `--auto`: runs detached, and always exits 0.
-  - Each mode runs at most once a day per machine.
-  - `max` runs at most hourly while free disk < `bkit.workflows.minFreeGb` (`package.json`, GB, default 40).
+  - Each mode runs at most once a day: the machine file's steps once per machine, the repo file's steps once per checkout, so another repo's sweep never uses up this checkout's day.
+  - `max` runs at most hourly while free disk < `bkit.workflows.minFreeGb` (`package.json`, GB, default 40), on the same split.
   - Log: `~/.cache/bkit/disk-prune.log` (`$XDG_CACHE_HOME/bkit/` when set).
 - Worktrees:
   - **If** `bkit worktrees setup` creates or resumes a worktree under `bkit.workflows.minFreeGb` → it runs the `max` steps and waits.
@@ -863,7 +863,7 @@ cp .bkit/templates/scripts/cleanup/bkit-disk-prune.machine.mjs ~/.config/bkit/di
 - One sweep runs per machine at a time (`disk-prune.lock` beside the log).
 - A failed step is logged, and the next one runs.
 - In CI / cloud, nothing runs.
-- Hand run: `pnpm bkit disk prune --mode=max --dry-run` prints each step and its `paths` size. Without `--dry-run`, it runs now. Exit 1 means a step failed or a step file did not load.
+- Hand run: `pnpm bkit disk prune --mode=max --dry-run` prints each step and its `paths` size. Without `--dry-run`, it runs now. `--scope=repo` or `--scope=machine` runs only that file's steps. Exit 1 means a step failed or a step file did not load.
 
 ## Local stack lock — one run at a time on a shared stack
 
