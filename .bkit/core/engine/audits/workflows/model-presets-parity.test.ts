@@ -2,9 +2,8 @@
 // agree with the § Models table the installer actually reads.
 //
 // § Models is the only table parsed at install. § Model Presets (the OpenRouter options and
-// their copy-paste override block), the § Orchestrators session-model table and the
-// providers.md parity board each restate pins by hand; these tests check they name what
-// § Models and the Option 2 override block emit.
+// their copy-paste override block) and the § Orchestrators session-model table each restate
+// pins by hand; these tests check they name what § Models and the Option 2 override block emit.
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -13,9 +12,6 @@ import { getBkitDocsRoot } from "../../shared/package-roots";
 
 const PROMPTS_MD = path.join(getBkitDocsRoot(), "prompts.md");
 const PROMPTS = fs.readFileSync(PROMPTS_MD, "utf-8");
-const PROVIDERS = fs.readFileSync(path.join(getBkitDocsRoot(), "providers.md"), "utf-8");
-
-const OPENCODE_COLUMNS = ["OpenRouter", "Ollama", "OpenCode Zen", "OpenCode Go"];
 
 /** Text from the `heading` line up to the next heading of the same or higher level. */
 function section(content: string, heading: string): string {
@@ -101,28 +97,6 @@ function strayOrchestratorOpenaiCells(): string[][] {
     .filter(([, model]) => !pinned.has(model));
 }
 
-const roleBoard = tables(PROVIDERS).find(
-  (t) => t[0][0] === "Model" && t[0].includes("Role in bkit"),
-);
-
-/** "`model` / `column`" for each board model whose role claims every opencode column but one lacks it. */
-function unpinnedEveryColumnRoles(board: string[][]): string[] {
-  const roleCol = board[0].indexOf("Role in bkit");
-  const columns = OPENCODE_COLUMNS.map((c): [string, string[]] => [
-    c,
-    [...parseModelLookupForColumn(PROMPTS_MD, c).values()],
-  ]);
-  const unpinned: string[] = [];
-  for (const row of board.slice(1)) {
-    if (!row[roleCol].startsWith("every opencode column's")) continue;
-    const model = row[0].replace(/`/g, "");
-    for (const [column, pins] of columns) {
-      if (!pins.some((p) => p.includes(model))) unpinned.push(`${model} / ${column}`);
-    }
-  }
-  return unpinned;
-}
-
 describe("§ Model Presets", () => {
   it("has the summary, per-agent and Option 2 override tables", () => {
     expect(summaryTable[0][0]).toBe("Preset");
@@ -167,12 +141,5 @@ describe("§ Orchestrators session-model table", () => {
   it("OpenAI cells only name models the § Models OpenAI column pins", () => {
     expect(orchestratorTable[0].indexOf("OpenAI")).toBeGreaterThan(0);
     expect(strayOrchestratorOpenaiCells()).toEqual([]);
-  });
-});
-
-describe("providers.md parity board — Role in bkit", () => {
-  it("a model whose role names every opencode column is pinned on every opencode column", () => {
-    expect(roleBoard).toBeDefined();
-    expect(unpinnedEveryColumnRoles(roleBoard!)).toEqual([]);
   });
 });

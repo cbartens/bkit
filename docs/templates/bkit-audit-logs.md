@@ -30,14 +30,14 @@ An error tracker does not tell a bug apart from a handled outcome logged at erro
 
 **Anchor Standards:**
 
-- Error-tracker release health (e.g. Sentry). Record SDK versions; unversioned docs record the date read.
-- Source maps and debug symbols (e.g. Sentry Debug IDs, Hermes maps, dSYM, ProGuard).
-- Event grouping, fingerprints, and stack-trace rules (e.g. Sentry).
-- Ownership rules (e.g. Sentry ownership, a CODEOWNERS import).
-- Quotas and spike protection (e.g. Sentry).
+- Error-tracker release health (e.g., Sentry). Record SDK versions; unversioned docs record the date read.
+- Source maps and debug symbols (e.g., Sentry Debug IDs, Hermes maps, dSYM, ProGuard).
+- Event grouping, fingerprints, and stack-trace rules (e.g., Sentry).
+- Ownership rules (e.g., Sentry ownership, a CODEOWNERS import).
+- Quotas and spike protection (e.g., Sentry).
 - OpenTelemetry semantic conventions, including GenAI; record the semconv version.
 - W3C Trace Context, Level 1.
-- Alerting on SLOs (e.g. Google SRE Workbook, "Alerting on SLOs").
+- Alerting on SLOs (e.g., Google SRE Workbook, "Alerting on SLOs").
 - bkit block of `docs/observability.md` (bkit version from `.bkit/version`): every rule and section
 - bkit block of `docs/noise.md` (bkit version from `.bkit/version`): every rule and section
 
@@ -92,7 +92,7 @@ A test-origin tag narrows the lane. It does not make something noise, and it doe
 ### 🔒 Gate 1: Prerequisites Check
 
 - [ ] **Gaps named:** every missing item names its fallback and its `Not Checked` entry.
-- [ ] **Gate 1 — Verified:** every Core item and every applicable Conditional item is checked.
+- [ ] **Gate 1 — Verified:** every item above, every Core item and every applicable Conditional item is checked.
 
 ### Probe Steps
 
@@ -124,7 +124,18 @@ A test-origin tag narrows the lane. It does not make something noise, and it doe
   **Done when:** `Stored Data` says what the sample found, by field.
 
 - [ ] **Step 6 — Classify:** Give each unresolved issue one verdict. Do not classify tracker performance issues (e.g., N+1, slow DB spans) or Web Vitals regressions. Record their count on `Board`, and name the defect-like ones for `bkit-audit-app-performance`. **If** an issue shows a flake mechanism → note it for `bkit-audit-flakes`. **Done when:** every unresolved issue has a verdict in `Issues`, and the performance count is on `Board`.
-- [ ] **Step 7 — Root Cause:** Root-cause each `GENUINE ERROR`, and any issue whose verdict depends on the call site. The message is the symptom. Read the call site, then the path, then the blast radius. The call-site table is the artefact: the callers that share the broken mechanism, and those that do not. Where a language server is available, go from the stack symbol to every referencing symbol, then to the diagnostics for that file. Pace the reference queries, because a partial answer looks the same as a real one. Re-run a surprisingly low count. An empty result is inconclusive: corroborate it with text search, and say which count came from where. Ask why no test caught it. Every suite that mocks the SDK is a second finding. Verify constraints against the live system, not memory: the actual predicate, a rolled-back insert, the host against the published IP ranges. Say what cannot be verified. Teardown often deletes the rows an event points at, so corroborate non-production findings by mechanism, not by row. A mechanism that fits is not a confirmed cause. **Done when:** each `GENUINE ERROR` row in `Issues` has a root cause, a call-site table, the method that produced it, what is not established, and the file a later change would touch.
+- [ ] **Step 7 — Root Cause:** Root-cause each `GENUINE ERROR`, and any issue whose verdict depends on the call site. The message is the symptom.
+  - Read the call site, then the path, then the blast radius. The call-site table is the artefact: the callers that share the broken mechanism, and those that do not.
+  - **If** a language server is available → go from the stack symbol to every referencing symbol, then to the diagnostics for that file.
+  - Pace the reference queries, because a partial answer looks the same as a real one.
+  - Re-run a surprisingly low count. An empty result is inconclusive: corroborate it with text search, and say which count came from where.
+  - Ask why no test caught it. Every suite that mocks the SDK is a second finding.
+  - Verify constraints against the live system, not memory: the actual predicate, a rolled-back insert, the host against the published IP ranges.
+  - Say what cannot be verified.
+  - Teardown often deletes the rows an event points at, so corroborate non-production findings by mechanism, not by row. A mechanism that fits is not a confirmed cause.
+
+  **Done when:** each `GENUINE ERROR` row in `Issues` has a root cause, a call-site table, the method that produced it, what is not established, and the file a later change would touch.
+
 - [ ] **Step 8 — Level:** For each `WRONG LEVEL`, recommend moving the error-level log to warning, plus a `docs/noise.md` row (call site, reason). Do not edit. Do not recommend a tracker denylist for app code. Before downgrading, check the hypothesis that would make it a real defect, and record the check. Read both symbols; do not search for the column name. Watch for fingerprint explosion: a message with a varying payload (ids, arrays) needs a stable grouping key and a pinned test before it is left in the stream. **Done when:** each `WRONG LEVEL` row names the level change, the hypothesis checked, any fingerprint gap, and the file a later change would touch.
 - [ ] **Step 9 — Disposition:** For each issue, recommend resolve, archive or leave open, and say why. This run does not resolve or archive. Recommend resolve only when the code that files the issue has changed and shipped, because resolving ahead of the fix hides the only signal on rails with no other coverage. Check archived / muted issues too: for each archive or mute row in `docs/noise.md`, compare the window's events with the row's recorded trigger. **If** the events are past the trigger → recommend un-archiving. **Done when:** `Issues` states resolve, archive or leave open for every issue, and every archive / mute row is checked against its trigger.
 - [ ] **Step 10 — Invisible:** The tracker sees only the errors that reach it. An error that is caught, then neither logged nor rethrown, is invisible to the caller and to this sweep. A quiet board is not evidence that the shape is absent. Look only in the code behind this sweep's issues (`bkit-audit-reliability` sweeps the rest):
@@ -132,7 +143,7 @@ A test-origin tag narrows the lane. It does not make something noise, and it doe
   - Client calls whose error is never read: the result is discarded, or the success value is destructured without the error.
   - Promises on a write path started without `await` or a rejection handler.
 
-  Text search finds candidates; read each one. Deliberate best-effort code (telemetry, a fire-and-forget notification) is fine when the code says so. **If** a candidate is real → it gets a `docs/failures.jsonl` row, which the audit agent writes. **If** the miss is a grant, a policy or a write role → `Expected` names `bkit-audit-database`. Users see the same shape: read the tracker user feedback, support inbox and store reviews since the previous report. A user-reported failure with no matching event belongs to this class. The next step is the runtime half: a swallowed DB error may appear in the DB log. **Done when:** `Invisible` lists each candidate read, and its verdict.
+  Text search finds candidates; read each one. Deliberate best-effort code (telemetry, a fire-and-forget notification) is fine when the code says so. **If** a candidate is real → it gets a `docs/failures.jsonl` row, which this run writes. **If** the miss is a grant, a policy or a write role → `Expected` names `bkit-audit-database`. Users see the same shape: read the tracker user feedback, support inbox and store reviews since the previous report. A user-reported failure with no matching event belongs to this class. The next step is the runtime half: a swallowed DB error may appear in the DB log. **Done when:** `Invisible` lists each candidate read, and its verdict.
 
 - [ ] **Step 11 — Runtime Logs:** Read each runtime-log source in `Project Instructions` and each `context=runtime` block in `.agents/context.md` over the whole window since the previous report, not the tool's short default window. Record the retention from the plan page, and the part of the window a source could not cover. **If** retention is < the cadence → it is a finding; propose a drain or a shorter cadence. A skipped reader (credential, tool, block) is not read, and never clean. **If** there is no reader → read the vendor console by hand, or record that it was not read and why. Note whether server logs share one structured shape (request id, trace id, hashed tenant id, error code), so that queries are filters, not text search, and whether a tracker log product or an OTel log exporter is in use. **If** test and production share a vendor resource (e.g., a sending domain, an API key) → read its reputation signal (e.g., bounce and complaint rate per sender) for the window. **If** the resources are separate → record `not shared`. **If** the vendor exposes no such metric → name the missing signal, and mark it `Not Checked`. For each log error:
   - Match it to the tracker first (timestamps; trace id joins). **If** it is covered → note the platform evidence on the issue. It is the same incident, not a second finding.
@@ -251,11 +262,17 @@ PENDING
 ### 🔒 Gate 3: Report Check
 
 - [ ] **No placeholders:** no `PENDING` is left.
-- [ ] **Summary:** `Summary` gives the count per severity, what is new, the single most important finding, the unresolved count and the production event count.
+- [ ] **Summary:** `Summary` gives the count per severity.
+- [ ] **What is new:** `Summary` says what is new.
+- [ ] **Top finding:** `Summary` names the single most important finding.
+- [ ] **Unresolved:** `Summary` gives the unresolved count.
+- [ ] **Production events:** `Summary` gives the production event count.
 - [ ] **Series:** the report shows `Board` counts beside the previous report's numbers, or marks the run as baseline.
-- [ ] **Writes:** only this report, the template's `Project Instructions` and ledger rows have changed, and every throwaway worktree or remote target is removed.
+- [ ] **Writes:** this run changed only this report, the template's `Project Instructions` and its own `docs/failures.jsonl` rows.
+- [ ] **Throwaways removed:** every throwaway worktree or remote target is removed.
 - [ ] **Process Improvements:** `Universal` and `Project` are both filled.
-- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one row, and every row has a `Next Step`.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one `Suggested Issues` row.
+- [ ] **Next Step:** every `Suggested Issues` row has a `Next Step`.
 - [ ] **Gate 3 — Verified:** every item above holds.
 
 <!-- bkit:end -->

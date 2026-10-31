@@ -28,17 +28,17 @@ A green suite means the tests passed. It does not mean they could fail, that eve
 
 **Anchor Standards:**
 
-- Risk-based testing (e.g. ISO/IEC/IEEE 29119 Part 1:2022 and Part 2:2021, ISTQB Foundation Level syllabus).
-- Test-size model (e.g. Testing Trophy, Google test sizes); unversioned → record the date read.
-- Mutation tool, incl. incremental mode and disable comments (e.g. StrykerJS, mutmut); record the version run.
-- Property-based testing (e.g. fast-check, Hypothesis); record the version read.
-- Contract testing (e.g. Pact, schema snapshots); record the version read.
-- Database tests (e.g. pgTAP, a catalog check against the deployed schema); record the date read.
+- Risk-based testing (e.g., ISO/IEC/IEEE 29119 Part 1:2022 and Part 2:2021, ISTQB Foundation Level syllabus).
+- Test-size model (e.g., Testing Trophy, Google test sizes); unversioned → record the date read.
+- Mutation tool, incl. incremental mode and disable comments (e.g., StrykerJS, mutmut); record the version run.
+- Property-based testing (e.g., fast-check, Hypothesis); record the version read.
+- Contract testing (e.g., Pact, schema snapshots); record the version read.
+- Database tests (e.g., pgTAP, a catalog check against the deployed schema); record the date read.
 - OWASP ASVS and the OWASP API Security Top 10; record the edition read.
-- Visual and accessibility snapshots (e.g. Playwright `toHaveScreenshot` / `toMatchAriaSnapshot`, device screenshots); record the runner version.
-- Test-smell catalogue (e.g. xUnit Test Patterns, Meszaros 2007).
-- Test lint (e.g. `@vitest/eslint-plugin`, `eslint-plugin-playwright`, `eslint-plugin-testing-library`, or Oxlint's `vitest` + `typescript` plugins); record each version. typescript-eslint type-aware rules need a TypeScript version it supports; newer → Oxlint `--type-aware` (oxlint-tsgolint).
-- Network mock that fails closed (e.g. MSW); record the major read.
+- Visual and accessibility snapshots (e.g., Playwright `toHaveScreenshot` / `toMatchAriaSnapshot`, device screenshots); record the runner version.
+- Test-smell catalogue (e.g., xUnit Test Patterns, Meszaros 2007).
+- Test lint (e.g., `@vitest/eslint-plugin`, `eslint-plugin-playwright`, `eslint-plugin-testing-library`, or Oxlint's `vitest` + `typescript` plugins); record each version. typescript-eslint type-aware rules need a TypeScript version it supports; newer → Oxlint `--type-aware` (oxlint-tsgolint).
+- Network mock that fails closed (e.g., MSW); record the major read.
 - bkit block of `docs/testing.md` (bkit version from `.bkit/version`): § Validated means executed, not "didn't fail"; § A guard asserts the rule, not the sentence that explains it; § Which tier does a behaviour need?; § Test first; § What each tier must do; § Design assertions are a dimension, not a lane; § Schema-invariant DB checks (e.g. RLS coverage); § Provision backing services fresh; § Optional hardening (adopt when the cost is justified); § Coverage on PRs
 
 ### Scope
@@ -87,7 +87,7 @@ A green suite means the tests passed. It does not mean they could fail, that eve
 ### 🔒 Gate 1: Prerequisites Check
 
 - [ ] **Gaps named:** every missing item names its fallback and its `Not Checked` entry.
-- [ ] **Gate 1 — Verified:** every Core item and every applicable Conditional item is checked.
+- [ ] **Gate 1 — Verified:** every item above, every Core item and every applicable Conditional item is checked.
 
 ### Probe Steps
 
@@ -138,11 +138,44 @@ A green suite means the tests passed. It does not mean they could fail, that eve
 
   **If** you find a new shape → propose it under `Process Improvements`, and do not edit this list during the run. **Done when:** `Shapes` holds every hit, or says `none`.
 
-- [ ] **Step 8 — Guards:** A shape that tools can catch belongs in a lint rule or a setup file, not in a per-run search. Confirm the rules are enabled for test files, and record the violation count for each test-stack lint rule that catches a shape (e.g., JS: `vitest/expect-expect`, `vitest/valid-expect`, `vitest/no-conditional-in-test`, `vitest/no-conditional-expect`, `playwright/missing-playwright-await`, `playwright/no-wait-for-timeout`, `playwright/prefer-web-first-assertions`, `playwright/no-networkidle`, `playwright/no-force-option`, `@typescript-eslint/no-floating-promises` (Oxlint: `typescript/no-floating-promises` with `--type-aware`); Python: `flake8-pytest-style`). **If** there is no test-stack linter → text search for the shapes, and say so. **If** a rule would catch a Step 7 shape and is off → record a finding, with `bkit-audit-gates` as its destination. Confirm that the network mock fails a test on an unhandled request (e.g., MSW `onUnhandledRequest: 'error'`). Otherwise an unmocked call reaches the real service or hangs. Check that fixtures and factories are typed to the generated DB types and schema validators, where the project has them. Grep the tests for type-check escapes (e.g., TS `as any`, `as unknown as`; Python `cast(Any, ...)`, `# type: ignore`), because they let a fixture drift to a shape production never produces. **If** the language is untyped → `N/A`. Count the snapshot assertions and their size. List the snapshot files (e.g., `.snap`) changed in the same commit as the code they cover since the previous report's commit. A large snapshot, or a wholesale `-u` update, behaves like an assertion that matches anything. **Done when:** `Guards` holds the counts and hits.
+- [ ] **Step 8 — Guards:** A shape that tools can catch belongs in a lint rule or a setup file, not in a per-run search.
+  - Confirm the rules are enabled for test files, and record the violation count for each test-stack lint rule that catches a shape (e.g., JS: `vitest/expect-expect`, `vitest/valid-expect`, `vitest/no-conditional-in-test`, `vitest/no-conditional-expect`, `playwright/missing-playwright-await`, `playwright/no-wait-for-timeout`, `playwright/prefer-web-first-assertions`, `playwright/no-networkidle`, `playwright/no-force-option`, `@typescript-eslint/no-floating-promises` (Oxlint: `typescript/no-floating-promises` with `--type-aware`); Python: `flake8-pytest-style`).
+  - **If** there is no test-stack linter → text search for the shapes, and say so.
+  - **If** a rule would catch a Step 7 shape and is off → record a finding, with `bkit-audit-gates` as its destination.
+  - Confirm that the network mock fails a test on an unhandled request (e.g., MSW `onUnhandledRequest: 'error'`). Otherwise an unmocked call reaches the real service or hangs.
+  - Check that fixtures and factories are typed to the generated DB types and schema validators, where the project has them.
+  - Grep the tests for type-check escapes (e.g., TS `as any`, `as unknown as`; Python `cast(Any, ...)`, `# type: ignore`), because they let a fixture drift to a shape production never produces.
+  - **If** the language is untyped → `N/A`.
+  - Count the snapshot assertions and their size.
+  - List the snapshot files (e.g., `.snap`) changed in the same commit as the code they cover since the previous report's commit. A large snapshot, or a wholesale `-u` update, behaves like an assertion that matches anything.
+
+  **Done when:** `Guards` holds the counts and hits.
+
 - [ ] **Step 9 — Runs:** Check that every test file has a lane. Find names that put a file outside every run (see Step 6). Find suites that skip when setup fails, instead of failing. Find skips (e.g., `test.skip`, `fixme`, `describe.skip`, `pytest.mark.skip`) and env-dependent skips. Take skip counts per file from the CI runner log too (e.g., job log `N skipped` lines), not only from local runs, because a tool missing on the runner skips only there. **If** the runner prints totals only → use a per-file reporter (e.g., verbose, JUnit). **If** there is no CI, **or** the log has expired → mark the CI half `Not Checked`. Find stale build output the runner now collects (e.g., Vitest 4 and later does not ignore `dist/` by default). List the 20 slowest tests per tier from the runner reports. A slow test is the next one someone skips. **Done when:** `Runs` has its rows.
 - [ ] **Step 10 — Time:** **If** there is date, calendar or timezone logic → run the unit tests with `TZ` set to a non-UTC zone that observes DST (e.g., `Pacific/Auckland`, `America/St_Johns`), on the process before workers spawn. Then run the date-touching suites with the clock pinned near a month end and a DST change (e.g., `vi.setSystemTime`, Playwright `page.clock`), and remove the throwaway setup afterwards. A clock pin covers in-process time only. Suites that spawn subprocesses (e.g., `git`, `node`) need the child clock set too (e.g., `GIT_AUTHOR_DATE` / `GIT_COMMITTER_DATE`, a faketime wrapper). **If** the child clock cannot be set → mark the subprocess half `Not Checked`, and still record the in-process result. Record the tests whose result changes. List the suites that never pin the clock. **Done when:** `Time` holds the results, or the step is skipped with evidence.
 - [ ] **Step 11 — Copies:** Find the same test procedure in several places (open a dialog, create a user, read credentials). List the copies that disagree first. Copies that agree need a single owner only if they are likely to drift. Once one owner is created, the next step adds a guard that fails on a new copy. A code graph finds copied functions, and copied statement sequences need a syntax-tree scan. Product-code duplication goes to `bkit-audit-duplication`. **Done when:** `Copies` holds the groups, or says `none`.
-- [ ] **Step 12 — Route:** Give no finding without evidence someone can check again: `file:line`, or a query, run id or measurement, plus the tool. An empty language-server result is inconclusive, so corroborate it with text search. The report names where each finding goes. Sending it is the next step, and the audit agent writes the `docs/failures.jsonl` rows. An app bug → a `docs/failures.jsonl` row and an issue, marked as security when it is one. A small missing test → the test to write. A large missing test → a follow-up issue. A cannot-fail test → the fix, a positive control (break the code, watch it go red, restore) and a `docs/failures.jsonl` row. A behaviour with no recorded intent → a question for the maintainer, and do not guess from the code. A tier too high → the lower-tier test to write, and the higher-tier test stays until the new one has been seen red. An equivalent mutant → the disable comment to add. A timezone or date result → an app bug if the app is wrong, otherwise a test fix and a `docs/failures.jsonl` row. A flaky test → `bkit-audit-flakes`. Moving the coverage floor → `bkit-audit-coverage`. A check as a CI gate → `bkit-audit-gates`. Dead code → `bkit-audit-dead-code`. **Done when:** every finding's Expected names its destination.
+- [ ] **Step 12 — Route:** Give no finding without evidence someone can check again: `file:line`, or a query, run id or measurement, plus the tool.
+  - An empty language-server result is inconclusive, so corroborate it with text search.
+  - The report names where each finding goes.
+  - This run writes the `docs/failures.jsonl` rows. Sending to every other destination is the next step's job.
+  - Destinations:
+    - an app bug → a `docs/failures.jsonl` row and an issue, marked as security when it is one
+    - a small missing test → the test to write
+    - a large missing test → a follow-up issue
+    - a cannot-fail test → the fix, a positive control (break the code, watch it go red, restore) and a `docs/failures.jsonl` row
+    - a behaviour with no recorded intent → a question for the maintainer, and do not guess from the code
+    - a tier too high → the lower-tier test to write, and the higher-tier test stays until the new one has been seen red
+    - an equivalent mutant → the disable comment to add
+    - a timezone or date result:
+      - **If** the app is wrong → an app bug
+      - **Else** → a test fix and a `docs/failures.jsonl` row
+    - a flaky test → `bkit-audit-flakes`
+    - moving the coverage floor → `bkit-audit-coverage`
+    - a check as a CI gate → `bkit-audit-gates`
+    - dead code → `bkit-audit-dead-code`
+
+  **Done when:** every finding's Expected names its destination.
+
 - [ ] **Step 13 — Standards:** Confirm the current version of each anchor standard, and read what changed since the previous report's version. Give `Standards Coverage` one row per OWASP API Security Top 10 item and ASVS chapter (the attack rows from Step 3), and one per test smell in the catalogue (the shapes from Step 7), each marked checked (naming the step), not applicable (saying why) or finding. Give each bkit anchor (a doc section, rule or issue shape) one row, marked followed (with the step or evidence), not applicable (saying why) or finding. A departure with no recorded reason (e.g., a `docs/decisions.jsonl` row or an accepted-divergence entry) is a finding. Mark each recommended practice the project does not apply as adopt (with a proposed step), reject (saying why) or not applicable. Do not change the steps during the run. **Done when:** no row is empty.
 - [ ] **Step 14 — Anything Else:** (a) Give a one-line verdict on each change since the previous report's commit that touches the suite: test files and helpers, fixtures and factories, unit, browser and device runner config, CI test lanes, and the routes, workers, migrations and external services the tests cover. (b) In a bounded pass of about 30 minutes, note what a senior test engineer would flag outside the steps. Read what happened since the previous run (incidents, `bkit-audit-logs`, new `docs/failures.jsonl` rows, vendor status), and ask what no step would catch. **Done when:** `Beyond the Steps` holds both passes, or says `none`. **If** one class of issue is seen on 2 runs → propose a step for it in `Process Improvements`.
 
@@ -150,7 +183,7 @@ A green suite means the tests passed. It does not mean they could fail, that eve
 
 - [ ] **Steps complete:** every step is `[x]`, or skipped with evidence that its surface is absent.
 - [ ] **Evidence:** every finding cites evidence someone can check again, and the tool that produced it.
-- [ ] **Tree clean:** every mutation is restored.
+- [ ] **Mutations restored:** every mutation is restored.
 - [ ] **Clock setup removed:** the throwaway clock setup is removed.
 - [ ] **No test weakened:** no test was weakened, skipped or deleted.
 - [ ] **Scores:** `Scores` records the total and covered scores, or mutation is explicitly skipped with evidence.
@@ -255,11 +288,15 @@ PENDING
 ### 🔒 Gate 3: Report Check
 
 - [ ] **No placeholders:** no `PENDING` is left.
-- [ ] **Summary:** `Summary` names the single most important finding, and gives the count per severity and both mutation scores per package (or the skip).
+- [ ] **Summary:** `Summary` gives the count per severity.
+- [ ] **Top finding:** `Summary` names the single most important finding.
+- [ ] **Mutation scores:** `Summary` gives both mutation scores per package, or records the skip.
 - [ ] **Series:** the report shows test count and runtime per tier, and both scores, beside the previous report's numbers, or marks the run as baseline.
-- [ ] **Writes:** only this report, the template's `Project Instructions` and ledger rows have changed, and every throwaway worktree or remote target is removed.
+- [ ] **Writes:** this run changed only this report, the template's `Project Instructions` and its own `docs/failures.jsonl` rows.
+- [ ] **Throwaways removed:** every throwaway worktree or remote target is removed.
 - [ ] **Process Improvements:** `Universal` and `Project` are both filled.
-- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one row, and every row has a `Next Step`.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one `Suggested Issues` row.
+- [ ] **Next Step:** every `Suggested Issues` row has a `Next Step`.
 - [ ] **Gate 3 — Verified:** every item above holds.
 
 <!-- bkit:end -->

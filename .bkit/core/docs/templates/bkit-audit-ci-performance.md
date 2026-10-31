@@ -29,12 +29,12 @@ CI time gets re-argued from impressions, and two mistakes recur. First, a lane's
 **Anchor Standards:**
 
 - DORA software delivery performance: change lead time, deployment frequency, failed-deployment recovery time, change fail rate, and deployment rework rate.
-- Host CI metrics (e.g. GitHub Actions usage and performance: job run time, queue time, failure rate). Living docs; record the date read.
-- Task-runner remote cache and affected selection (e.g. Turborepo remote caching and `--affected`), at the version in the lockfile.
-- Package-manager store cache in CI (e.g. pnpm via `actions/setup-node` `cache: pnpm`), at the pinned setup version.
-- Browser-test sharding and report merge (e.g. Playwright sharding and `merge-reports`), at the version in the lockfile.
-- Concurrency groups and job timeouts (e.g. GitHub Actions `concurrency` and `timeout-minutes`).
-- Runner billing (e.g. GitHub-hosted and larger runners, a remote builder such as Depot, mobile-build credits such as EAS). Record the date read.
+- Host CI metrics (e.g., GitHub Actions usage and performance: job run time, queue time, failure rate). Living docs; record the date read.
+- Task-runner remote cache and affected selection (e.g., Turborepo remote caching and `--affected`), at the version in the lockfile.
+- Package-manager store cache in CI (e.g., pnpm via `actions/setup-node` `cache: pnpm`), at the pinned setup version.
+- Browser-test sharding and report merge (e.g., Playwright sharding and `merge-reports`), at the version in the lockfile.
+- Concurrency groups and job timeouts (e.g., GitHub Actions `concurrency` and `timeout-minutes`).
+- Runner billing (e.g., GitHub-hosted and larger runners, a remote builder such as Depot, mobile-build credits such as EAS). Record the date read.
 - bkit block of `docs/deployments.md` (bkit version from `.bkit/version`): § Run-level decision matrix; § One run per branch or pull request; § Parallel test lanes (one lane per tier); § turbo `//` over-triggers `web_affected` on docs-only diffs (turbo monorepos); § One CI run per dev commit (release PR mirrors the `dev` push run)
 - bkit block of `docs/testing.md` (bkit version from `.bkit/version`): § CI verbosity (`[verbose ci]`)
 
@@ -82,7 +82,7 @@ CI time gets re-argued from impressions, and two mistakes recur. First, a lane's
 ### 🔒 Gate 1: Prerequisites Check
 
 - [ ] **Gaps named:** every missing item names its fallback and its `Not Checked` entry.
-- [ ] **Gate 1 — Verified:** every Core item and every applicable Conditional item is checked.
+- [ ] **Gate 1 — Verified:** every item above, every Core item and every applicable Conditional item is checked.
 
 ### Probe Steps
 
@@ -218,11 +218,14 @@ PENDING
 ### 🔒 Gate 3: Report Check
 
 - [ ] **No placeholders:** no `PENDING` is left.
-- [ ] **Summary:** `Summary` gives the count per severity and the segment that dominates wall clock.
+- [ ] **Summary:** `Summary` gives the count per severity.
+- [ ] **Dominant segment:** `Summary` names the segment that dominates wall clock.
 - [ ] **Series:** the report shows every series beside the previous report's numbers, or marks the run as baseline.
-- [ ] **Writes:** only this report, the template's `Project Instructions` and ledger rows have changed, and every throwaway worktree or remote target is removed.
+- [ ] **Writes:** this run changed only this report, the template's `Project Instructions` and its own `docs/failures.jsonl` rows.
+- [ ] **Throwaways removed:** every throwaway worktree or remote target is removed.
 - [ ] **Process Improvements:** `Universal` and `Project` are both filled.
-- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one row, and every row has a `Next Step`.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one `Suggested Issues` row.
+- [ ] **Next Step:** every `Suggested Issues` row has a `Next Step`.
 - [ ] **Gate 3 — Verified:** every item above holds.
 
 <!-- bkit:end -->

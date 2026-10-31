@@ -34,7 +34,7 @@ Three kinds of failure do not show up in a source read. A row-security denial lo
 
 **Anchor Standards:**
 
-- OWASP Web Security Testing Guide (e.g. WSTG v4.2; record if a newer stable release exists).
+- OWASP Web Security Testing Guide (e.g., WSTG v4.2; record if a newer stable release exists).
 - Penetration Testing Execution Standard (PTES): pre-engagement, intelligence gathering, threat modelling, vulnerability analysis, exploitation, post-exploitation, reporting.
 - When a probe drives a model: OWASP GenAI Red Teaming Guide, OWASP AI Testing Guide, MITRE ATLAS.
 - OWASP Mobile Application Security Testing Guide (MASTG), when the native build is in scope.
@@ -99,12 +99,35 @@ Each probe gets one verdict, on its `Probes` row.
 ### 🔒 Gate 1: Prerequisites Check
 
 - [ ] **Gaps named:** every missing item names its fallback and its `Not Checked` entry.
-- [ ] **Gate 1 — Verified:** every Core item and every applicable Conditional item is checked.
+- [ ] **Gate 1 — Verified:** every item above, every Core item and every applicable Conditional item is checked.
 
 ### Probe Steps
 
 - [ ] **Step 1 — Previous Run:** **Done when:** `Previous Run` holds the closure rate, or the run is marked baseline.
-- [ ] **Step 2 — Engage:** Record the commit and the non-production URL deployed for it. Use the deployment the live lane resolves for that SHA, not a branch alias, which may be stale. Confirm it is serving. Write the scope in `Scope`. The in-list covers: the non-production web URL (e.g., preview deploy, staging), the API host, the machine-client endpoint, the inbound mail domain, the data API via the client public key, the background-job serve endpoint, and the native build if it is tested. The out-list covers: production, the release branch, the persistent demo tenant, every third party's own platform, and anything not on the in-list. Read the current penetration-testing page of each platform the probes touch (app host, database, and the native vendor if in scope). Record what each allows and the plan tier. **If** a page forbids a probe → do not send it, and mark it `INCONCLUSIVE`. Create two synthetic tenants, attacker and victim, each with the roles the product distinguishes. Issue a machine-client token for each owner where the product has one, on a plan the feature allows. Seed the victim with a few records, one recurring record and an attachment. Do not touch the persistent demo tenant. Read the newest `bkit-audit-security` and `bkit-audit-llm` reports. Give each finding they could not prove a probe, and give each of the model audit's prompt-only rules a probe. Give each trust boundary the threat model names at least one probe. **If** there is no threat model → say so in `Scope`. Before a destructive probe, confirm that no other live test holds the target database, and record the window. Do not wait for a named approver. **If** a later probe degrades the target, touches non-synthetic data, or reaches a third party → stop the remaining probes, and record the stop in `Scope`. Each later probe gets a `Probes` row with: the request with tokens redacted, the response status, the relevant body and the verdict. A `BROKE` row adds the blast radius by reasoning, not by pivoting. **Done when:** `Scope` holds the URL, the commit, the in-list, the out-list, the platform rules, the plan tier, the identities (no tokens) and the suspicion list.
+- [ ] **Step 2 — Engage:** Record the commit and the non-production URL deployed for it.
+  - Use the deployment the live lane resolves for that SHA, not a branch alias, which may be stale.
+  - Confirm it is serving.
+  - Write the scope in `Scope`:
+    - The in-list covers: the non-production web URL (e.g., preview deploy, staging), the API host, the machine-client endpoint, the inbound mail domain, the data API via the client public key, the background-job serve endpoint, and the native build if it is tested.
+    - The out-list covers: production, the release branch, the persistent demo tenant, every third party's own platform, and anything not on the in-list.
+  - Read the current penetration-testing page of each platform the probes touch: the app host, the database, and the native vendor when the native build is in scope.
+  - Record what each allows and the plan tier.
+  - **If** a page forbids a probe → do not send it, and mark it `INCONCLUSIVE`.
+  - Create two synthetic tenants, attacker and victim, each with the roles the product distinguishes.
+  - Issue a machine-client token for each owner where the product has one, on a plan the feature allows.
+  - Seed the victim with a few records, one recurring record and an attachment.
+  - Do not touch the persistent demo tenant.
+  - Read the newest `bkit-audit-security` and `bkit-audit-llm` reports.
+  - Give each finding they could not prove a probe.
+  - Give each of the model audit's prompt-only rules a probe.
+  - Give each trust boundary the threat model names at least one probe.
+  - **If** there is no threat model → say so in `Scope`.
+  - Before a destructive probe, confirm that no other live test holds the target database, and record the window. Do not wait for a named approver.
+  - **If** a later probe degrades the target, touches non-synthetic data, or reaches a third party → stop the remaining probes, and record the stop in `Scope`.
+  - Each later probe gets a `Probes` row with: the request with tokens redacted, the response status, the relevant body and the verdict. A `BROKE` row adds the blast radius by reasoning, not by pivoting.
+
+  **Done when:** `Scope` holds the URL, the commit, the in-list, the out-list, the platform rules, the plan tier, the identities (no tokens) and the suspicion list.
+
 - [ ] **Step 3 — Surface:** List the attack surface at this commit: routes, server actions, machine-client tools, webhooks, and the response headers of each in-scope origin. Diff it against the previous report's list. Give everything new at least one probe. **Done when:** `Surface` holds the list and the diff.
 - [ ] **Step 4 — Retest:** Re-run every earlier `BROKE` whose fix has landed, from its recorded reproduction. Mark it `FIXED` or `STILL BROKE`, with the fix commit. Confirm that the regression test the prior run named exists. **If** it does not → route it to `bkit-audit-testing`. **Done when:** `Retests` has a row per prior break, or says `none`.
 - [ ] **Step 5 — Cross-Tenant:** As the attacker, request the victim's records by id on every route that takes one: items, attachments, download URLs, members, invitations and machine-client read tools. A mixed list of own and foreign ids must be refused, not clamped to the attacker's rows. Expected: denial or not-found, and no victim field in any part of the response, errors included. **Done when:** `Probes` has a row per route, in the Step 2 row shape.
@@ -117,7 +140,25 @@ Each probe gets one verdict, on its `Probes` row.
 - [ ] **Step 12 — Boundaries:** Put script and markup in text fields, and check how they render on the web, in the native client and in a reply. Send injection through the search query and the filters that reach the search routine. Webhook endpoints: no signature must get a denial, and a wrong signature must get the same denial plus an error log. Rate limits: the documented thresholds must fire, then stop. **Done when:** `Probes` has a row per boundary.
 - [ ] **Step 13 — Off-Topic:** For each public free-text model surface (from `bkit-audit-llm` `Job Scope`, or from `Surface` when that report lists none), act as an anonymous or synthetic visitor and send one ask per probe: general coding (e.g., "write a Python function that…"), homework, an essay, and an off-topic ask wrapped in an on-topic frame (e.g., "for my trip, write a script that…"). Then send one greeting as a control. Expected: a redirect per the surface's stated job and no off-topic answer, while the greeting gets a normal reply. **If** an off-topic ask is answered → mark it `BROKE`, and record what was meant to bound it (prompt, grounding gate, classifier). **Done when:** `Probes` has a row per surface x ask, or the step is skipped with evidence that there is no public free-text model surface.
 - [ ] **Step 14 — Standards:** Confirm the current version of each anchor standard, and read what changed since the previous report's version. Give `Standards Coverage` one row per WSTG category (INFO, CONF, IDNT, ATHN, ATHZ, SESS, INPV, ERRH, CRYP, BUSL, CLNT, APIT), and one per ATLAS tactic a model probe touched, each marked checked (naming the step), not applicable (saying why) or finding. Give each bkit anchor (a doc section, rule or issue shape) one row, marked followed (with the step or evidence), not applicable (saying why) or finding. A departure with no recorded reason (e.g., a `docs/decisions.jsonl` row or an accepted-divergence entry) is a finding. Mark each recommended practice the project does not apply as adopt (with a proposed step), reject (saying why) or not applicable. **Done when:** no row is empty.
-- [ ] **Step 15 — Anything Else:** (a) Give a one-line verdict on each change since the previous report's commit that touches the attack surface: routes, server actions, machine-client tools, webhooks, response headers, inbound handling, and what the client public key can reach. The Step 3 diff is the starting list. (b) In a bounded pass of about 30 minutes, note what a senior penetration tester would flag that no step asks about. Read what happened since the previous run (incidents, `bkit-audit-logs` reports, new `docs/failures.jsonl` rows, vendor status incidents), and ask what no step would catch. Probes these passes send follow the Rules, use identities made for this run, and go in `Probes`. Then delete every identity this run created with the guarded delete, which also reaps any tenant it would strand, and confirm that the orphan sweep finds nothing left. Record where the full request and response evidence is kept, for how long, and the redaction applied. **Done when:** `Beyond the Steps` holds both passes, or says `none`. `Cleanup` confirms that every identity this run created is gone. **If** one class of issue is seen on 2 runs → propose a step for it in `Process Improvements`. `Expected` names where the finding goes, and recommends the safer fix. This run files nothing. The audit agent writes the `docs/failures.jsonl` rows. Route each result as follows: `BROKE` → a plan from this report, a `docs/failures.jsonl` row, and a regression test (ideally at the deployed boundary) so that `bkit-audit-testing` keeps it fixed; `HELD` with no test → `bkit-audit-testing`; a model result → `bkit-audit-llm`, against the finding it tested; `STILL BROKE` → the original finding, with the retest and the fix commit; `INCONCLUSIVE` → the next run's Step 2 suspicion list, with what blocked it; `OTHER` → this report, and a second run proposes a verdict; a vulnerability in the database product itself, not in the project's use of it → the vendor, per that vendor's testing page, plus this report; a stop condition → the remaining probes stop, and the stop is recorded in `Scope`.
+- [ ] **Step 15 — Anything Else:** (a) Give a one-line verdict on each change since the previous report's commit that touches the attack surface: routes, server actions, machine-client tools, webhooks, response headers, inbound handling, and what the client public key can reach. The Step 3 diff is the starting list.
+  - (b) In a bounded pass of about 30 minutes, note what a senior penetration tester would flag that no step asks about. Read what happened since the previous run (incidents, `bkit-audit-logs` reports, new `docs/failures.jsonl` rows, vendor status incidents), and ask what no step would catch.
+  - Probes these passes send follow the Rules, use identities made for this run, and go in `Probes`.
+  - Then delete every identity this run created with the guarded delete, which also reaps any tenant it would strand.
+  - Confirm that the orphan sweep finds nothing left.
+  - Record where the full request and response evidence is kept, for how long, and the redaction applied.
+  - `Expected` names where the finding goes, and recommends the safer fix.
+  - This run files nothing. It does write the `docs/failures.jsonl` rows.
+  - Route each result as follows:
+    - `BROKE` → a plan from this report, a `docs/failures.jsonl` row, and a regression test (ideally at the deployed boundary) so that `bkit-audit-testing` keeps it fixed.
+    - `HELD` with no test → `bkit-audit-testing`.
+    - A model result → `bkit-audit-llm`, against the finding it tested.
+    - `STILL BROKE` → the original finding, with the retest and the fix commit.
+    - `INCONCLUSIVE` → the next run's Step 2 suspicion list, with what blocked it.
+    - `OTHER` → this report, and a second run proposes a verdict.
+    - A vulnerability in the database product itself, not in the project's use of it → the vendor, per that vendor's testing page, plus this report.
+    - A stop condition → the remaining probes stop, and the stop is recorded in `Scope`.
+
+  **Done when:** `Beyond the Steps` holds both passes, or says `none`. `Cleanup` confirms that every identity this run created is gone. **If** one class of issue is seen on 2 runs → propose a step for it in `Process Improvements`.
 
 ### 🔒 Gate 2: Probes Check
 
@@ -209,11 +250,15 @@ PENDING
 ### 🔒 Gate 3: Report Check
 
 - [ ] **No placeholders:** no `PENDING` is left.
-- [ ] **Summary:** `Summary` gives the count per severity and the probe counts (`HELD` / `BROKE` / `INCONCLUSIVE`).
-- [ ] **Cleanup:** states that every identity this run created is deleted, and where redacted evidence is kept.
-- [ ] **Writes:** only this report, the template's `Project Instructions` and ledger rows have changed, and every throwaway worktree or remote target is removed.
+- [ ] **Summary:** `Summary` gives the count per severity.
+- [ ] **Probe counts:** `Summary` gives the probe counts (`HELD` / `BROKE` / `INCONCLUSIVE`).
+- [ ] **Cleanup stated:** `Cleanup` states that every identity this run created is deleted.
+- [ ] **Evidence kept:** `Cleanup` states where the redacted evidence is kept.
+- [ ] **Writes:** this run changed only this report, the template's `Project Instructions` and its own `docs/failures.jsonl` rows.
+- [ ] **Throwaways removed:** every throwaway worktree or remote target is removed.
 - [ ] **Process Improvements:** `Universal` and `Project` are both filled.
-- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one row, and every row has a `Next Step`.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one `Suggested Issues` row.
+- [ ] **Next Step:** every `Suggested Issues` row has a `Next Step`.
 - [ ] **Gate 3 — Verified:** every item above holds.
 
 <!-- bkit:end -->

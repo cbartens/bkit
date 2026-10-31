@@ -13,7 +13,7 @@ Fits: native e2e lanes (iOS, Android, or both) whose GitHub Actions jobs run Mae
 - Edit the defaults of these three in the block.
 - CLI: `gh`. It is base tooling, so there is no provision block.
 - Domains: none beyond bkit's derived set (`github.com`).
-- Lanes on EAS keep their screenshots, JUnit and view-hierarchy dumps on EAS, not in this log. The `expo-workflows` block in `expo.md` fetches them.
+- Lanes on EAS keep their screenshots, JUnit and view-hierarchy dumps on EAS, not in this log. The `expo-workflows` block in `bkit-expo.md` fetches them.
 
 Copy the block below into `.agents/context.md`, below `<!-- bkit:end -->`.
 
@@ -21,8 +21,8 @@ Copy the block below into `.agents/context.md`, below `<!-- bkit:end -->`.
 
 ```bash
 # Maestro e2e (iOS and/or Android): every failed job matching MAESTRO_JOB_RE, one section per job.
-# MAESTRO_JOB_RE matches Maestro lanes only. A job from another lane that it matches is printed
-# as Maestro evidence.
+# Scope MAESTRO_JOB_RE to your Maestro lanes' job names. A job from another lane that it matches
+# is printed as Maestro evidence.
 # The placeholder matches no job, so every run skips itself until you edit it.
 # iOS: Maestro's driver is an XCUITest case that hosts the HTTP server Maestro talks to, so one
 # failure inside it ends the suite and turns every later flow into DeviceUnreachableException.

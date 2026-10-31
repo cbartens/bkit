@@ -30,9 +30,9 @@ Each agent host reads its own permissions, hooks, tool servers and model picks, 
 **Anchor Standards:**
 
 - OWASP Top 10 for Agentic Applications, 2026 (ASI01-ASI10).
-- Tool-server specification authorization and security best practices (e.g. Model Context Protocol). Record the specification date read.
+- Tool-server specification authorization and security best practices (e.g., Model Context Protocol). Record the specification date read.
 - OpenSSF Security-Focused Guide for AI Code Assistant Instructions.
-- Each host's settings, permission, sandbox and hook reference (e.g. Claude Code, Cursor, Codex, opencode). Record the date read.
+- Each host's settings, permission, sandbox and hook reference (e.g., Claude Code, Cursor, Codex, opencode). Record the date read.
 - bkit, when installed: `.bkit/README.md` § File ownership — the permissions and hooks bkit writes for each host.
 
 ### Scope
@@ -83,7 +83,7 @@ Each agent host reads its own permissions, hooks, tool servers and model picks, 
 ### 🔒 Gate 1: Prerequisites Check
 
 - [ ] **Gaps named:** every missing item names its fallback and its `Not Checked` entry.
-- [ ] **Gate 1 — Verified:** every Core item and every applicable Conditional item is checked.
+- [ ] **Gate 1 — Verified:** every item above, every Core item and every applicable Conditional item is checked.
 
 ### Probe Steps
 
@@ -95,7 +95,21 @@ Each agent host reads its own permissions, hooks, tool servers and model picks, 
 - [ ] **Step 6 — Tool Servers:** For each host, record each tool server (e.g., MCP): layer, transport (local command / remote URL), package pinned or floating (e.g., `npx -y pkg@latest`), publisher, credential source (env var name vs literal), credential scope vs need, toolsets enabled vs used, and write tools pre-approved. List its tools, and hash their names and descriptions. Record these as findings: a floating package; the same server set up differently across hosts (token, toolsets, URL); a server no workflow uses; and a hash that changed since the previous run with no version change. **Done when:** `Tool Servers` holds one row per server and host, with hashes recorded.
 - [ ] **Step 7 — Agents and Models:** For each host, list the agent definitions, commands and skills / plugins. For each agent, compare its tool allowlist with its role, and its model pin with the provider's live catalogue. Never infer a pin's validity from version digits. For each skill or plugin, record its source, its pinned version and whether it ships scripts. Record these as findings: write tools on a read-only role; a dead pin; a floating alias; the same agent on different model classes across hosts, undocumented; and a skill of unknown source that ships scripts. **Done when:** `Agents` holds one row per agent and host, and skills are listed.
 - [ ] **Step 8 — Secrets:** Read the agent config and the env files agents load (e.g., `.envrc`, tool-server env files, the agent-tooling env file). Record these as findings: a literal token in a tracked file (file and line, NEVER the value); an env file that is not ignored; and an app credential in the agent-tooling env. An agent's read of credential files goes to the Step 4 `Parity` matrix. **Done when:** `Secrets` holds one row per file.
-- [ ] **Step 9 — Untrusted Input:** For each agent, command, skill and automated agent run (CI job, scheduled or comment-triggered session) from Step 7, record: (a) the text it reads that someone outside the team can write (e.g., issue / PR body and comments, fork commit messages, PR checkout files, CI logs, fetched pages, dependency READMEs and changelogs, tool-server results, inbound mail); (b) what it can do in the same session (shell, file write, push, merge, publish, tracker or tool-server write, outbound fetch), from Steps 4, 6, 7; (c) what stops a planted instruction: deny rule / hook / sandbox / human approval / read-only agent handing a summary to a separate writer / prompt prose only / nothing; and (d) who can start the run (e.g., issue label, `@`-mention, comment command, `pull_request_target`). Read how prompts fence and label untrusted text as data. Prose is defence in depth, never the stop. Exfiltration means the same session holds a secret or private data and reaches a host or surface an outsider reads (fetch allowlist, tracker comment, PR body, public commit). Record these as findings: (a) together with write, push or shell, where the stop is prompt prose only or nothing (ASI01, LLM01); (a) together with a secret or private data and an outbound path an outsider can read; and an outsider able to start a run that holds write credentials. Product model calls go to `bkit-audit-llm`. **Done when:** `Untrusted Input` holds one row per agent: untrusted sources · capabilities · who starts it · stop · verdict.
+- [ ] **Step 9 — Untrusted Input:** For each agent, command, skill and automated agent run (CI job, scheduled or comment-triggered session) from Step 7, record:
+  - (a) the text it reads that someone outside the team can write (e.g., issue / PR body and comments, fork commit messages, PR checkout files, CI logs, fetched pages, dependency READMEs and changelogs, tool-server results, inbound mail)
+  - (b) what it can do in the same session (shell, file write, push, merge, publish, tracker or tool-server write, outbound fetch), from Steps 4, 6, 7
+  - (c) what stops a planted instruction: deny rule / hook / sandbox / human approval / read-only agent handing a summary to a separate writer / prompt prose only / nothing
+  - (d) who can start the run (e.g., issue label, `@`-mention, comment command, `pull_request_target`).
+  - Read how prompts fence and label untrusted text as data. Prose is defence in depth, never the stop.
+  - Exfiltration means the same session holds a secret or private data and reaches a host or surface an outsider reads (fetch allowlist, tracker comment, PR body, public commit).
+  - Record these as findings:
+    - (a) together with write, push or shell, where the stop is prompt prose only or nothing (ASI01, LLM01)
+    - (a) together with a secret or private data and an outbound path an outsider can read
+    - an outsider able to start a run that holds write credentials
+  - Product model calls go to `bkit-audit-llm`.
+
+  **Done when:** `Untrusted Input` holds one row per agent: untrusted sources · capabilities · who starts it · stop · verdict.
+
 - [ ] **Step 10 — bkit Gates:** **If** `.bkit/version` is absent → skip the step explicitly, with evidence. **If** it is present → for each installed bkit host, check that every permission and hook bkit writes (`.bkit/README.md` § File ownership) appears in Steps 4-5 and in `Parity`. **If** the same bkit gate is enforced in one host and open in another → the fix is upstream in bkit. Version, drift, hosts with no bkit install, managed blocks and templates go to `bkit-audit-adoption`. **Done when:** `bkit` lists the bkit gates per host with a verdict, or records the skip with evidence.
 - [ ] **Step 11 — Standards:** Confirm the current version of each anchor standard, and read what changed since the previous report's version. Give `Standards Coverage` one row per agentic risk (ASI01-ASI10), one per tool-server security best practice and one per assistant-instructions guide recommendation this audit touches, each marked checked (naming the step), not applicable (saying why) or finding. Mark each recommended practice the project does not apply as adopt (with a proposed step), reject (saying why) or not applicable. **Done when:** no row is empty.
 - [ ] **Step 12 — Anything Else:** (a) Give a one-line verdict on each change since the previous report's commit that touches agent config: settings, hooks, tool-server files, agent definitions, skills, instruction load paths or the bkit version. (b) In a bounded pass of about 30 minutes, note what a senior platform engineer would flag that no step asks about. Read what happened since the previous run (agent incidents, new `docs/failures.jsonl` rows, friction logs), and ask what no step would catch. **Done when:** `Beyond the Steps` holds both passes, or says `none`. **If** one class of issue is seen on 2 runs → propose a step for it in `Process Improvements`.
@@ -209,11 +223,15 @@ PENDING
 ### 🔒 Gate 3: Report Check
 
 - [ ] **No placeholders:** no `PENDING` is left.
-- [ ] **Summary:** `Summary` gives the count per severity, the machine and the hosts read.
+- [ ] **Summary:** `Summary` gives the count per severity.
+- [ ] **Machine:** `Summary` names the machine.
+- [ ] **Hosts read:** `Summary` names the hosts read.
 - [ ] **Series:** `Parity` and the tool-server hashes are diffed against the previous report's, or the run is marked baseline.
-- [ ] **Writes:** only this report, the template's `Project Instructions` and ledger rows have changed, and every throwaway worktree or remote target is removed.
+- [ ] **Writes:** this run changed only this report, the template's `Project Instructions` and its own `docs/failures.jsonl` rows.
+- [ ] **Throwaways removed:** every throwaway worktree or remote target is removed.
 - [ ] **Process Improvements:** `Universal` and `Project` are both filled.
-- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one row, and every row has a `Next Step`.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one `Suggested Issues` row.
+- [ ] **Next Step:** every `Suggested Issues` row has a `Next Step`.
 - [ ] **Gate 3 — Verified:** every item above holds.
 
 <!-- bkit:end -->

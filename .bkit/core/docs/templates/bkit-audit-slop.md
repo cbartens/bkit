@@ -26,12 +26,12 @@ Each suppression made sense in the PR that added it, and nothing reads them agai
 
 **Anchor Standards:**
 
-- Slop scanner at pinned version (e.g. `slop-scan`).
-- Strictest preset of type-aware linter (e.g. typescript-eslint `strict-type-checked`, mypy `--strict`; rule list changes in minors).
-- Type-coverage tool (e.g. `type-coverage --strict`).
-- Disable-comment rules (e.g. ESLint `reportUnusedDisableDirectives`, `eslint-comments/require-description`, Ruff `RUF100`).
-- Cognitive Complexity (SonarSource white paper; e.g. `eslint-plugin-sonarjs`).
-- Mutation testing (e.g. Stryker, mutmut).
+- Slop scanner at pinned version (e.g., `slop-scan`).
+- Strictest preset of type-aware linter (e.g., typescript-eslint `strict-type-checked`, mypy `--strict`; rule list changes in minors).
+- Type-coverage tool (e.g., `type-coverage --strict`).
+- Disable-comment rules (e.g., ESLint `reportUnusedDisableDirectives`, `eslint-comments/require-description`, Ruff `RUF100`).
+- Cognitive Complexity (SonarSource white paper; e.g., `eslint-plugin-sonarjs`).
+- Mutation testing (e.g., Stryker, mutmut).
 
 ### Scope
 
@@ -85,7 +85,7 @@ Each suppression made sense in the PR that added it, and nothing reads them agai
 ### 🔒 Gate 1: Prerequisites Check
 
 - [ ] **Gaps named:** every missing item names its fallback and its `Not Checked` entry.
-- [ ] **Gate 1 — Verified:** every Core item and every applicable Conditional item is checked.
+- [ ] **Gate 1 — Verified:** every item above, every Core item and every applicable Conditional item is checked.
 
 ### Probe Steps
 
@@ -111,7 +111,7 @@ Each suppression made sense in the PR that added it, and nothing reads them agai
 
 - [ ] **Steps complete:** every step is `[x]`, or skipped with evidence that its surface is absent.
 - [ ] **Evidence:** every finding cites evidence someone can check again, and the tool that produced it.
-- [ ] **Tree clean:** the scanner config is byte-identical to the committed one.
+- [ ] **Scanner config unchanged:** the scanner config is byte-identical to the committed one.
 - [ ] **Worktree clean:** the worktree's `git status` is clean.
 - [ ] **Gate 2 — Verified:** every item above holds.
 
@@ -178,11 +178,14 @@ PENDING
 ### 🔒 Gate 3: Report Check
 
 - [ ] **No placeholders:** no `PENDING` is left.
-- [ ] **Summary:** `Summary` gives the count per severity, and the baseline, stripped and suppressed counts.
+- [ ] **Summary:** `Summary` gives the count per severity.
+- [ ] **Strip counts:** `Summary` gives the baseline, stripped and suppressed counts.
 - [ ] **Series:** the report shows `Counts` beside the previous report's numbers, or marks the run as baseline.
-- [ ] **Writes:** only this report, the template's `Project Instructions` and ledger rows have changed, and every throwaway worktree or remote target is removed.
+- [ ] **Writes:** this run changed only this report, the template's `Project Instructions` and its own `docs/failures.jsonl` rows.
+- [ ] **Throwaways removed:** every throwaway worktree or remote target is removed.
 - [ ] **Process Improvements:** `Universal` and `Project` are both filled.
-- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one row, and every row has a `Next Step`.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one `Suggested Issues` row.
+- [ ] **Next Step:** every `Suggested Issues` row has a `Next Step`.
 - [ ] **Gate 3 — Verified:** every item above holds.
 
 <!-- bkit:end -->

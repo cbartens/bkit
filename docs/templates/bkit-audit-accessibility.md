@@ -33,8 +33,8 @@ The failure this audit targets is a gate that stays green while the defects sit 
 - EN 301 549. Record the version that the procurement regime cites.
 - European Accessibility Act, Directive (EU) 2019/882, where it applies.
 - WAI-ARIA Authoring Practices Guide. Record the date read.
-- Platform accessibility HIG and store nutrition-label criteria (e.g. Apple HIG and Accessibility Nutrition Labels, Android accessibility guidelines and Accessibility Scanner).
-- National disability-discrimination guidance that `Laws` finds applies (e.g. Australia's DDA and AHRC digital-access guidelines, US ADA via DOJ web guidance).
+- Platform accessibility HIG and store nutrition-label criteria (e.g., Apple HIG and Accessibility Nutrition Labels, Android accessibility guidelines and Accessibility Scanner).
+- National disability-discrimination guidance that `Laws` finds applies (e.g., Australia's DDA and AHRC digital-access guidelines, US ADA via DOJ web guidance).
 - bkit block of `docs/design.md` (bkit version from `.bkit/version`): every rule and section
 
 ### Scope
@@ -80,7 +80,7 @@ The failure this audit targets is a gate that stays green while the defects sit 
 ### 🔒 Gate 1: Prerequisites Check
 
 - [ ] **Gaps named:** every missing item names its fallback and its `Not Checked` entry.
-- [ ] **Gate 1 — Verified:** every Core item and every applicable Conditional item is checked.
+- [ ] **Gate 1 — Verified:** every item above, every Core item and every applicable Conditional item is checked.
 
 ### Probe Steps
 
@@ -132,7 +132,20 @@ The failure this audit targets is a gate that stays green while the defects sit 
 
   **Done when:** `Layout` holds one row per check: met / finding.
 
-- [ ] **Step 12 — Native:** Run this step only when the project has a native UI. Check that each shared control carries a name, role and state (e.g., `accessibilityLabel`, `accessibilityRole`, `accessibilityState`). Run the screen reader on the same primary flow. Check that platform-split files (e.g., React Native `.native` and `.web`) have not diverged in labelling. **If** a shared component fixed a web bug → confirm its native twin, following consumer references both ways with text search, because the language server under-reports them. Run the platform's automated audits, report-only, on each primary-flow screen: iOS Accessibility Inspector or `performAccessibilityAudit()` in XCUITest; Android Accessibility Scanner or the Espresso Accessibility Test Framework. Test text scaling at the largest accessibility text size and at the 200% font maximum, because large-text scaling is non-linear (e.g., Android 14+). Check that no content is clipped or overlapping. Search for text-scaling opt-outs on content text (e.g., React Native `allowFontScaling={false}` or a low `maxFontSizeMultiplier`; a capped SwiftUI `dynamicTypeSize`; Android text sized in `dp`, not `sp`). Each one is a finding unless a reason is recorded. Map the results to the platform's nutrition-label criteria (`Project Instructions`). A label may be declared only if common tasks can be completed with that feature, and larger text needs >=200%. Record which labels would be honest. Declaring them belongs to `bkit-audit-app-store`. **Done when:** `Native` holds label parity, the audit rows, scaling and the label map, or `Checked` records that there is no native UI.
+- [ ] **Step 12 — Native:** Run this step only when the project has a native UI.
+  - Check that each shared control carries a name, role and state (e.g., `accessibilityLabel`, `accessibilityRole`, `accessibilityState`).
+  - Run the screen reader on the same primary flow.
+  - Check that platform-split files (e.g., React Native `.native` and `.web`) have not diverged in labelling.
+  - **If** a shared component fixed a web bug → confirm its native twin, following consumer references both ways with text search, because the language server under-reports them.
+  - Run the platform's automated audits, report-only, on each primary-flow screen: iOS Accessibility Inspector or `performAccessibilityAudit()` in XCUITest; Android Accessibility Scanner or the Espresso Accessibility Test Framework.
+  - Test text scaling at the largest accessibility text size and at the 200% font maximum, because large-text scaling is non-linear (e.g., Android 14+).
+  - Check that no content is clipped or overlapping.
+  - Search for text-scaling opt-outs on content text (e.g., React Native `allowFontScaling={false}` or a low `maxFontSizeMultiplier`; a capped SwiftUI `dynamicTypeSize`; Android text sized in `dp`, not `sp`). Each one is a finding unless a reason is recorded.
+  - Map the results to the platform's nutrition-label criteria (`Project Instructions`). A label may be declared only if common tasks can be completed with that feature, and larger text needs >=200%.
+  - Record which labels would be honest. Declaring them belongs to `bkit-audit-app-store`.
+
+  **Done when:** `Native` holds label parity, the audit rows, scaling and the label map, or `Checked` records that there is no native UI.
+
 - [ ] **Step 13 — Gate Proof:** A gate can pass on a vacuous assertion: a checker run on an unmounted subtree passes, and an unmatched locator can pass an assertion. Confirm that the gate's self-checks fail closed: an injected failure is reported, and an injected undersize target proves the rule ran, not merely that no violation appeared because alternatives pass on an isolated node. Check that each route's settle selector resolves after the guarded content renders, including content mounted after a skeleton. A refactored route may measure the skeleton again. **Done when:** `Gate` holds the self-check results, or records that there is no gate.
 - [ ] **Step 14 — Criteria:** Automated rules cover a minority of the WCAG success criteria, and `Manual` and `Additions` cover a chosen subset. On the primary flows, web and native, mark every WCAG 2.2 Level A and AA criterion pass, fail or N/A. Reuse the earlier steps, naming the step, and check the rest by hand. Record each fail as a finding. **Done when:** `Criteria` has no empty criterion.
 - [ ] **Step 15 — Standards:** Confirm the current version of each anchor standard, and read what changed since the previous report's version. Give `Standards Coverage` one row per anchor and one per WCAG 2.2 A and AA criterion, each marked checked (naming the step, and reusing `Criteria`), not applicable (saying why) or finding. Give each bkit anchor (a doc section, rule or issue shape) one row, marked followed (with the step or evidence), not applicable (saying why) or finding. A departure with no recorded reason (e.g., a `docs/decisions.jsonl` row or an accepted-divergence entry) is a finding. Mark each recommended practice the project does not apply as adopt (with a proposed step), reject (saying why) or not applicable. **Done when:** no row is empty.
@@ -253,11 +266,15 @@ PENDING
 ### 🔒 Gate 3: Report Check
 
 - [ ] **No placeholders:** no `PENDING` is left.
-- [ ] **Summary:** `Summary` gives the count per severity and the checker version.
-- [ ] **Sessions:** `Sessions` states the date of the last assistive-technology session and when the next is due.
-- [ ] **Writes:** only this report, the template's `Project Instructions` and ledger rows have changed, and every throwaway worktree or remote target is removed.
+- [ ] **Summary:** `Summary` gives the count per severity.
+- [ ] **Checker version:** `Summary` gives the checker version.
+- [ ] **Sessions:** `Sessions` states the date of the last assistive-technology session.
+- [ ] **Next session:** `Sessions` states when the next session is due.
+- [ ] **Writes:** this run changed only this report, the template's `Project Instructions` and its own `docs/failures.jsonl` rows.
+- [ ] **Throwaways removed:** every throwaway worktree or remote target is removed.
 - [ ] **Process Improvements:** `Universal` and `Project` are both filled.
-- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one row, and every row has a `Next Step`.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one `Suggested Issues` row.
+- [ ] **Next Step:** every `Suggested Issues` row has a `Next Step`.
 - [ ] **Gate 3 — Verified:** every item above holds.
 
 <!-- bkit:end -->

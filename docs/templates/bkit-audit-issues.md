@@ -28,13 +28,13 @@ A board with no stated rule is ordered by filing order. Example: a search featur
 
 **Anchor Standards:**
 
-- Weighted Shortest Job First and cost of delay (e.g. SAFe WSJF, after Reinertsen, _The Principles of Product Development Flow_).
-- RICE and ICE scoring (e.g. Intercom RICE).
-- The Kanban Guide (WIP, work-item age, service level expectation); record the edition (e.g. May 2025).
+- Weighted Shortest Job First and cost of delay (e.g., SAFe WSJF, after Reinertsen, _The Principles of Product Development Flow_).
+- RICE and ICE scoring (e.g., Intercom RICE).
+- The Kanban Guide (WIP, work-item age, service level expectation); record the edition (e.g., May 2025).
 - Kanban classes of service (Expedite, Fixed date, Standard, Intangible).
-- Definition of Ready: the Scrum Guide's description of ready items under Product Backlog refinement; record the edition (e.g. November 2020). No separate published standard exists.
-- Severity is not priority (e.g. Mozilla defect-severity guide and Bugzilla triage policy).
-- Tracker dependency links (e.g. GitHub blocked-by / blocking).
+- Definition of Ready: the Scrum Guide's description of ready items under Product Backlog refinement; record the edition (e.g., November 2020). No separate published standard exists.
+- Severity is not priority (e.g., Mozilla defect-severity guide and Bugzilla triage policy).
+- Tracker dependency links (e.g., GitHub blocked-by / blocking).
 - bkit issue shapes (bkit version from `.bkit/version`): `.bkit/trackers.md` § Issue shapes; example forms `.bkit/templates/.github/ISSUE_TEMPLATE/` (`.bkit/templates.md` § Issue forms)
 
 ### Scope
@@ -100,7 +100,7 @@ Two guards:
 - Do not rank by label alone. It is the main source of wrong answers.
 - `Urgent` inflation kills the band. A long `Urgent` list is a category, not a queue. **If** all protective work is `Urgent` → ask which items matter in the current lifecycle (Project Instructions: are there users?).
 - Standing issues split across bands by subject. A shared process does not put them in one band.
-- An auto-generated checklist is not work (e.g. a dependency-bot dashboard).
+- An auto-generated checklist is not work (e.g., a dependency-bot dashboard).
 - Rank every open lane by the same two rules. **If** two lanes are ranked differently → the ranking did not read across the boundary.
 
 A `CRITICAL`-`LOW` finding in another audit does not set priority; the two rules do. Severity orders issues inside `High` only (Step 8).
@@ -138,14 +138,25 @@ Never size a multi-client change as one. Size a standing or umbrella issue for o
 ### 🔒 Gate 1: Prerequisites Check
 
 - [ ] **Gaps named:** every missing item names its fallback and its `Not Checked` entry.
-- [ ] **Gate 1 — Verified:** every Core item and every applicable Conditional item is checked.
+- [ ] **Gate 1 — Verified:** every item above, every Core item and every applicable Conditional item is checked.
 
 ### Probe Steps
 
 - [ ] **Step 1 — Previous Run:** **Done when:** `Previous Run` holds the closure rate, or the run is marked baseline.
 - [ ] **Step 2 — Board:** Read every item. Check that the read was not truncated: the count is below the limit. **If** the count is at the limit → raise the limit and read again. Record the lane names, and the size and priority field ids and option ids, from the live field list. An unused numeric estimate field stays unused, and the size field is the estimate. For membership, diff the open-issue list against the board. An open issue not on the board is off-board. A closed issue outside the done lane is a stale card. List each one by number. Off-board issues stay in scope: Steps 3-10 treat each one as an item with no lane, size or priority. **Done when:** the item count, lanes, field ids, off-board issues and stale cards are in `Board`, or `N/A` is recorded → **STOP**.
 - [ ] **Step 3 — Triage:** Read every open issue, not only its title. A short prefix of the body is enough when the summary comes first. Read umbrella and milestone issues in full. While reading, mark these. Stale: no activity for 90 days, and the body is no longer true of the code or plan. A standing issue is never stale for age. Duplicate: the same change filed twice, or one change wholly inside another. Won't-do candidate: `Low` on 3 or more passes and still true, standing issues excluded. Not ready: a ready-lane item missing acceptance criteria, a defect reproduction or a test to write. A not-ready item still gets a size and a priority. Note each Rule 1 override, with its label correction, for Step 6. List each stale or duplicate issue with its merge target or stale reason. Closing is the owner's decision, and this run does not close. **If** this is a monthly clock pass → check stale issues only. **Done when:** `Triage` lists the stale, duplicate, won't-do and not-ready issues, and the overrides to rank.
-- [ ] **Step 4 — Links:** For each open issue, record its parent, milestone and blocked-by links. For blocked-by, read all three sources: structured links (`Link API`), the body block the build gates on (e.g., GitHub `###### bkit:blocked-by start` / `end`), and body prose ("blocked by #N", "after #N"). Flag these. (1) Parent: a child listed in the parent body with no link, or the reverse; an open child with a closed parent. **If** an open non-standing parent has all its children closed → put it in `Judgement Calls`. (2) Milestone: a closed or past-due milestone with open issues; a body or title that names a milestone while the field is empty; a milestone that breaks how the repo assigns them, read from open and recently closed issues. **If** there is no clear pattern → do not flag it. (3) Blocked-by: a link in prose only; a structured link and a body block that disagree; a closed blocker still listed; a blocked issue in a ready or later lane while its blocker is open; an off-board blocker; a cycle. Feed the edges to the Step 5 blocker rule and the Step 6 parent and child moves. **Done when:** `Links` holds the counts per kind (with and without a parent, a milestone and a blocker) and every flag, or `none`.
+- [ ] **Step 4 — Links:** For each open issue, record its parent, milestone and blocked-by links.
+  - For blocked-by, read all three sources: structured links (`Link API`), the body block the build gates on (e.g., GitHub `###### bkit:blocked-by start` / `end`), and body prose ("blocked by #N", "after #N").
+  - Flag these:
+    - (1) Parent: a child listed in the parent body with no link, or the reverse; an open child with a closed parent.
+      - **If** an open non-standing parent has all its children closed → put it in `Judgement Calls`.
+    - (2) Milestone: a closed or past-due milestone with open issues; a body or title that names a milestone while the field is empty; a milestone that breaks how the repo assigns them, read from open and recently closed issues.
+      - **If** there is no clear pattern → do not flag it.
+    - (3) Blocked-by: a link in prose only; a structured link and a body block that disagree; a closed blocker still listed; a blocked issue in a ready or later lane while its blocker is open; an off-board blocker; a cycle.
+  - Feed the edges to the Step 5 blocker rule and the Step 6 parent and child moves.
+
+  **Done when:** `Links` holds the counts per kind (with and without a parent, a milestone and a blocker) and every flag, or `none`.
+
 - [ ] **Step 5 — In Flight:** Read three sources: the in-progress and in-review lanes, open PRs, and recently closed issues. A shipped cluster is still warm, so the next issue in it is cheap. Record the launch or milestone target, and where it is written. **If** there is none → say so; launch-gating work keeps its Rule 1 band. Count the in-progress and in-review items, with each one's age and last activity (commit, PR, comment). Flag each item older than the service level expectation: the 85th-percentile cycle time of issues closed in the last 90 days, from start of work to close. Record how the start was taken. **If** fewer than 20 issues closed → use two weeks, and say so. A stuck item lifts its parent, its children or its siblings. List each lift as a judgement call. Apply the blocker rule to every Step 4 edge. **Done when:** `In Flight` holds the counts, ages, target, blocker moves and stuck lifts.
 - [ ] **Step 6 — Rank:** Apply `Ranking Rules` to every in-scope issue. Record every Rule 1 override (label against body) and its label correction. Record every Rule 2 move with its signal and the launch target read. **If** a band changed since the previous report while none of the body, labels or in-flight neighbours changed → one of the two passes misapplied a rule; say which. **If** a maintenance check belongs as a gate → send it to `bkit-audit-gates`, and give it no band here. **If** this is a mini-pass → run this step on the unsized or unprioritised subset only. **If** this is a monthly clock pass → apply the eight-week launch moves and stuck lifts only. **Done when:** `Ranking` lists every override, move and band change.
 - [ ] **Step 7 — Size:** Apply `Size Scale` to every in-scope issue. **Done when:** `Sizes` has a row per in-scope issue.
@@ -158,14 +169,17 @@ Never size a multi-client change as one. Size a standing or umbrella issue for o
 
 ### 🔒 Gate 2: Probes Check
 
-- [ ] **Steps complete:** every step is `[x]`, or skipped with evidence that its surface is absent. **If** this is a monthly clock pass → Steps 7, 8, 9 and 10 are skipped explicitly, and Step 2 covers membership only.
+- [ ] **Steps complete:** every step is `[x]`, or skipped with evidence that its surface is absent.
+- [ ] **Clock pass skips:** a monthly clock pass skips Steps 7, 8, 9 and 10 explicitly.
+- [ ] **Clock pass membership:** in a monthly clock pass, Step 2 covers membership only.
 - [ ] **Evidence:** every finding cites evidence someone can check again, and the tool that produced it.
 - [ ] **Membership:** the open-issue list was read separately from the board.
 - [ ] **Off-board listed:** every off-board issue and every stale card is listed.
 - [ ] **Links:** each open issue has its parent, milestone and blocked-by recorded.
 - [ ] **Blocked-by sources:** blocked-by links come from all three Step 4 sources.
-- [ ] **Proposal complete:** every open item outside Done has a proposed size and priority. **If** this is a monthly clock pass → the previous proposal stands, plus the stale calls, stuck lifts and eight-week moves.
-- [ ] **Proposal set:** the proposal set equals the open-issue list. **If** this is a monthly clock pass → the previous proposal stands, plus the stale calls, stuck lifts and eight-week moves.
+- [ ] **Proposal complete:** every open item outside Done has a proposed size and priority, or this is a monthly clock pass.
+- [ ] **Proposal set:** the proposal set equals the open-issue list, or this is a monthly clock pass.
+- [ ] **Clock pass proposal:** a monthly clock pass keeps the previous proposal, plus the stale calls, stuck lifts and eight-week moves.
 - [ ] **Tracker untouched:** no tracker field, label, comment, or issue was written.
 - [ ] **Gate 2 — Verified:** every item above holds.
 
@@ -270,11 +284,16 @@ PENDING
 ### 🔒 Gate 3: Report Check
 
 - [ ] **No placeholders:** no `PENDING` is left.
-- [ ] **Summary:** `Summary` gives the count per severity, the size and priority distribution before and after the proposal, and the off-board and broken-link counts.
+- [ ] **Summary:** `Summary` gives the count per severity.
+- [ ] **Distribution:** `Summary` gives the size and priority distribution before and after the proposal.
+- [ ] **Off-board count:** `Summary` gives the off-board count.
+- [ ] **Broken-link count:** `Summary` gives the broken-link count.
 - [ ] **Series:** the report shows every series beside the previous report's numbers, or marks the run as baseline.
-- [ ] **Writes:** only this report, the template's `Project Instructions` and ledger rows have changed, and every throwaway worktree or remote target is removed.
+- [ ] **Writes:** this run changed only this report, the template's `Project Instructions` and its own `docs/failures.jsonl` rows.
+- [ ] **Throwaways removed:** every throwaway worktree or remote target is removed.
 - [ ] **Process Improvements:** `Universal` and `Project` are both filled.
-- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one row, and every row has a `Next Step`.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one `Suggested Issues` row.
+- [ ] **Next Step:** every `Suggested Issues` row has a `Next Step`.
 - [ ] **Gate 3 — Verified:** every item above holds.
 
 <!-- bkit:end -->

@@ -27,12 +27,12 @@ Maintenance sweeps find breakage, and none of them prevents the next one. Siblin
 
 **Anchor Standards:**
 
-- Fitness functions (e.g. Ford, Parsons, Kua, and Sadalage, _Building Evolutionary Architectures_, 2nd ed.).
-- Static-analysis review bar (e.g. Tricorder: under 10% effective false positives, and an actionable message; Sadowski et al., Communications of the ACM, 2018).
-- Quality gates on new code (e.g. SonarQube Clean as You Code).
-- Ratchet and baseline tools (e.g. Betterer; reviewdog `filter_mode: added`).
-- Policy as code (e.g. Conftest / OPA; JSON Schema).
-- Required status checks and a merge queue (e.g. GitHub rulesets).
+- Fitness functions (e.g., Ford, Parsons, Kua, and Sadalage, _Building Evolutionary Architectures_, 2nd ed.).
+- Static-analysis review bar (e.g., Tricorder: under 10% effective false positives, and an actionable message; Sadowski et al., Communications of the ACM, 2018).
+- Quality gates on new code (e.g., SonarQube Clean as You Code).
+- Ratchet and baseline tools (e.g., Betterer; reviewdog `filter_mode: added`).
+- Policy as code (e.g., Conftest / OPA; JSON Schema).
+- Required status checks and a merge queue (e.g., GitHub rulesets).
 - OpenSSF Scorecard checks, at the Scorecard version read.
 - DORA continuous integration capability.
 - bkit block of `docs/testing.md` (bkit version from `.bkit/version`): § CI test tiers (the bkit scaffold); § Accepted divergences; § Step names say whether a red is real; § Composite actions: two rules that fail silently; § JUnit reports for bkit
@@ -82,12 +82,18 @@ Give each candidate one verdict.
 ### 🔒 Gate 1: Prerequisites Check
 
 - [ ] **Gaps named:** every missing item names its fallback and its `Not Checked` entry.
-- [ ] **Gate 1 — Verified:** every Core item and every applicable Conditional item is checked.
+- [ ] **Gate 1 — Verified:** every item above, every Core item and every applicable Conditional item is checked.
 
 ### Probe Steps
 
 - [ ] **Step 1 — Previous Run:** **Done when:** `Previous Run` holds the closure rate, or the run is marked baseline.
-- [ ] **Step 2 — Inventory:** Collect the gate candidates from each other `bkit-audit-*` report's `Process Improvements` (or else that template's), without re-deriving them. Record the source slug. Two audits proposing one guard make one candidate with both sources, not two work items. A re-grep of a swept class and an owner-allowlist over the same literals are one guard. **Done when:** `Inventory` has a row per candidate: source slug · one-line guard.
+- [ ] **Step 2 — Inventory:** Collect the gate candidates from each other `bkit-audit-*` report's `Process Improvements`, without re-deriving them.
+  - **If** an audit has no report yet → read that template's `Process Improvements` instead.
+  - Record the source slug.
+  - Merge duplicates: two audits proposing one guard make one candidate with both sources, not two work items. A re-grep of a swept class and an owner-allowlist over the same literals are one guard.
+
+  **Done when:** `Inventory` has a row per candidate: source slug · one-line guard.
+
 - [ ] **Step 3 — Widen:** The sibling sections are one source. Also add the following, recording the source of each. (a) Every defect class on 2 or more rows in `docs/failures.jsonl`, whether or not a sibling proposed a gate. (b) Standard gates nobody proposed, each checked against the tree: secret-scanning push protection, code scanning (e.g., CodeQL), a dependency-review check, workflow linters (e.g., `actionlint`, `zizmor`), lockfile lint, the test runner's forbid-only flag (e.g., Playwright `--forbid-only`), typechecking of test files, and the OpenSSF Scorecard checks. (c) Policy as code for config with no type system (e.g., JSON Schema, Conftest): bot config, job-runner triggers and concurrency, hosting config, mobile build config, and workflow YAML. Class (c) is what `bkit-audit-testing` flags. **If** a gate is already enforced → it goes in `Health`, not in a second candidate. **Done when:** every added row is in `Inventory` with its source.
 - [ ] **Step 4 — Score:** Score each candidate on six axes. It fails an axis when that axis's fail condition holds.
   - **Determinism.** Can a machine decide pass/fail with no judgement? Fails if the verdict needs someone to read intent.
@@ -118,7 +124,23 @@ Give each candidate one verdict.
 
 - [ ] **Step 7 — Enforcement:** **If** the integration branch accepts direct pushes → a CI check on that branch goes red after the code has landed, so it is detective, not preventive. For each candidate, record whether it is a required status check on the integration and release branches, who can bypass it, and whether the only preventive point is a pre-push hook that a verify-skip flag skips. **If** the only preventive point can be bypassed → the ranking says so. **Done when:** `Enforcement` has a row per candidate: branch · required? · bypass · preventive point.
 - [ ] **Step 8 — Positive Control:** A gate that passes because it measures nothing is worse than no gate, because it stops anyone looking. The control every new gate must meet is to put the defect back and watch the gate go red. This run does not build the gate, so the report states that control. A gate with no proven-red demonstration is not finished. Related cheap checks: an unmatched browser-test locator can sit in a passing assertion, and a row-level denial can give silent zero rows that look like an empty table (`bkit-audit-database`). A skip is a hollow pass. A required job skipped by a job-level condition reports success. A workflow skipped by a path filter, a branch filter or a skip-CI marker leaves the required check pending. For each candidate, record the skip behaviour, and how a skip is kept from standing in for a pass. **If** proven-red is a convention for gate changes but not a merge requirement → propose making it one in `Process Improvements`. **Done when:** `Controls` states the positive control and the skip behaviour per candidate.
-- [ ] **Step 9 — Sequence:** Each candidate runs report-only for at least one full cycle, then enforcing. This run does not land the gate. The landing reads the current tree, fixes or allowlists the findings, then flips the gate to enforcing. Name the candidates that would go red if enforced cold. Report-only ends when the gate meets its stated bar, not just when a cycle has passed. For each candidate, the bar is: a minimum number of runs; an effective false-positive rate under 10% (findings judged not a real problem ÷ all findings); no unexplained reds; no flakes of its own; and added p90 runtime under a stated budget. Name one enforcement tier. **Clear-then-gate** is the default: fix or allowlist every existing finding, then enforce on everything. Use a **Ratchet** (new violations only) when clearing the existing findings takes more than one PR. The gate then fails only on findings not in a committed baseline: the guard's baseline file, or the tool's own (e.g., the Betterer results file, or reviewdog's added-only mode). The baseline may only shrink, and each entry names an owner. An allowlist is per offender and keyed to its identity, never a rule downgrade or a route exclusion. Every entry cites an owner, because an entry with no owner and no date is a permanent exemption. A ratchet baseline has the same contract, and never grows. **Done when:** `Sequence` names the bar and the tier per candidate.
+- [ ] **Step 9 — Sequence:** Each candidate runs report-only for at least one full cycle, then enforcing.
+  - This run does not land the gate. The landing reads the current tree, fixes or allowlists the findings, then flips the gate to enforcing.
+  - Name the candidates that would go red if enforced cold.
+  - Report-only ends when the gate meets its stated bar, not just when a cycle has passed. For each candidate, the bar is:
+    - a minimum number of runs
+    - an effective false-positive rate under 10% (findings judged not a real problem ÷ all findings)
+    - no unexplained reds
+    - no flakes of its own
+    - added p90 runtime under a stated budget
+  - Name one enforcement tier. **Clear-then-gate** is the default: fix or allowlist every existing finding, then enforce on everything.
+  - Use a **Ratchet** (new violations only) when clearing the existing findings takes more than one PR. The gate then fails only on findings not in a committed baseline: the guard's baseline file, or the tool's own (e.g., the Betterer results file, or reviewdog's added-only mode).
+  - The baseline may only shrink, and each entry names an owner.
+  - An allowlist is per offender and keyed to its identity, never a rule downgrade or a route exclusion. Every entry cites an owner, because an entry with no owner and no date is a permanent exemption.
+  - A ratchet baseline has the same contract, and never grows.
+
+  **Done when:** `Sequence` names the bar and the tier per candidate.
+
 - [ ] **Step 10 — Decision:** Any workflow change needs explicit human confirmation, so propose, and NEVER edit. The rule against weakening a gate applies to a new one too: the bar for adding a gate is that what it catches will be fixed. Record ADOPT, REJECT or OTHER, including the `docs/decisions.jsonl` row to append for ADOPT and REJECT. Appending is the next step. A rejection whose reason later stops holding must stay findable. **Done when:** every candidate in `Scores` has a verdict and row text, or OTHER with what settles it, and `Scores` holds the verdict counts (proposed, ADOPT, REJECT, OTHER, reverted).
 - [ ] **Step 11 — Re-Review:** A gate that was built and reverted is not settled. Re-read each rejection in `docs/decisions.jsonl` and in prior reports, and check whether its reasoning still holds. Two decisions on one guard with neither retired mean the criterion cannot be judged, which is a finding. **If** the reasoning no longer holds → score the candidate again in `Scores`, with the `docs/decisions.jsonl` row that would retire the old decision. **Done when:** `Rejections` has a row per reverted or rejected gate: still holds?
 - [ ] **Step 12 — Health:** For each landed gate since the previous report, record the fire rate, the true-positive rate, overrides and bypasses, its own flakes, and its runtime. A gate that never fired is either perfectly preventive or hollow, and the two look the same from outside. A fresh positive control (`Positive Control`) tells them apart. **If** a gate never fired **or** is hollow → name that control as the next step. Every `bkit:gate:*` script in `package.json` is a landed gate, and workflows, agents and pre-push run only these. Expand each one, following every nested `pnpm <script>` to its body, and list each command. A hollow gate is `CRITICAL`: the script is missing or empty, or runs nothing that can fail (e.g., `echo`, `true`, `|| exit 0`). A command that exits 0 when its tool is absent (e.g., `command -v … || echo skipping`) makes that check hollow; name the tool and its install step. **Done when:** `Health` has a row per landed gate, or says none landed, and each `bkit:gate:*` row lists every command and which ones can skip.
@@ -230,11 +252,14 @@ PENDING
 ### 🔒 Gate 3: Report Check
 
 - [ ] **No placeholders:** no `PENDING` is left.
-- [ ] **Summary:** `Summary` gives the count per severity and per verdict (ADOPT / REJECT / OTHER).
+- [ ] **Summary:** `Summary` gives the count per severity.
+- [ ] **Verdict counts:** `Summary` gives the count per verdict (ADOPT / REJECT / OTHER).
 - [ ] **Series:** the report shows verdict counts, `Health`, and allowlist sizes beside the previous report's numbers, or marks the run as baseline.
-- [ ] **Writes:** only this report, the template's `Project Instructions` and ledger rows have changed, and every throwaway worktree or remote target is removed.
+- [ ] **Writes:** this run changed only this report, the template's `Project Instructions` and its own `docs/failures.jsonl` rows.
+- [ ] **Throwaways removed:** every throwaway worktree or remote target is removed.
 - [ ] **Process Improvements:** `Universal` and `Project` are both filled.
-- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one row, and every row has a `Next Step`.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one `Suggested Issues` row.
+- [ ] **Next Step:** every `Suggested Issues` row has a `Next Step`.
 - [ ] **Gate 3 — Verified:** every item above holds.
 
 <!-- bkit:end -->

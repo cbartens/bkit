@@ -25,9 +25,9 @@ Spend spans many vendors, each on its own plan, and nobody sees the whole bill. 
 
 **Anchor Standards:**
 
-- FinOps Framework (e.g. the current edition). Capabilities this audit uses: Allocation, Anomaly Management, Budgeting, Forecasting, Unit Economics, and Rate Optimization, across Public Cloud, SaaS, and AI.
+- FinOps Framework (e.g., the current edition). Capabilities this audit uses: Allocation, Anomaly Management, Budgeting, Forecasting, Unit Economics, and Rate Optimization, across Public Cloud, SaaS, and AI.
 - FOCUS (FinOps Open Cost and Usage Specification); record the version.
-- Vendor spend-control docs (e.g. host spend management, database spend cap, model-gateway guardrails, error-tracker spike protection); record the date read.
+- Vendor spend-control docs (e.g., host spend management, database spend cap, model-gateway guardrails, error-tracker spike protection); record the date read.
 - bkit block of `docs/deployments.md` (bkit version from `.bkit/version`): § Disable GitHub Code Quality billing
 
 ### Scope
@@ -78,16 +78,27 @@ Give one verdict per vendor, and one per paid resource inside a vendor that has 
 ### 🔒 Gate 1: Prerequisites Check
 
 - [ ] **Gaps named:** every missing item names its fallback and its `Not Checked` entry.
-- [ ] **Gate 1 — Verified:** every Core item and every applicable Conditional item is checked.
+- [ ] **Gate 1 — Verified:** every item above, every Core item and every applicable Conditional item is checked.
 
 ### Probe Steps
 
 - [ ] **Step 1 — Previous Run:** **Done when:** `Previous Run` holds the closure rate, or the run is marked baseline.
 - [ ] **Step 2 — Detect:** Find paid vendors, usage-billed APIs, or payment or store fees (manifests, outbound hosts, vendor docs). **Done when:** `Checked` holds evidence, or `N/A` is recorded → **STOP**.
 - [ ] **Step 3 — Inventory:** Build the vendor list from code (SDKs, outbound hosts), docs (vendor list, secrets list) and the invoices the owner shared, and compare the sources. A vendor in code but not in docs is a finding (the doc fix goes to `bkit-audit-documentation`). A vendor on an invoice but nowhere in code is a `REMOVE` candidate. Count the fees that are not a vendor plan (card-processor fees, app-store commission): they grow with paying accounts and have no vendor dashboard. A replaced platform still billing after its replacement shipped is a `REMOVE` candidate. **Done when:** `Vendors` lists every vendor with its sources.
-- [ ] **Step 4 — Plans:** For each vendor, record the plan, the billing model (flat, per seat, per use), the spend over the last three months, the usage driver, the plan limit and how close usage is to it. Split by environment. Preview or dev billed like production is a finding. For each usage-billed vendor, record the share used by preview, E2E and CI against production, by feature where the vendor can tell. For the logging environment split, start from `bkit-audit-logs`. E2E-driven usage on a usage-billed vendor is a `RIGHT-SIZE` candidate. List every free-tier resource that production or CI depends on, and its behaviour at the limit (e.g., a free DB pauses, a free monitor stops). A free tier that fails hard is a finding, even at $0 today. Compare monthly with annual billing, prepaid credits, startup programmes and committed-use discounts. **If** usage has been stable for >=3 months → propose a commitment. **Else** → propose none. Record the billing currency, card FX fees, and whether sales tax, VAT, GST or reverse charge is applied correctly, from the invoice and the card statement, not dashboards. **Done when:** `Vendors` holds one row per vendor, with verdict, plan, billing model, three-month spend, change since the previous report, driver, limit and environment split, plus the total spend.
+- [ ] **Step 4 — Plans:** For each vendor, record the plan, the billing model (flat, per seat, per use), the spend over the last three months, the usage driver, the plan limit and how close usage is to it.
+  - Split by environment. Preview or dev billed like production is a finding.
+  - For each usage-billed vendor, record the share used by preview, E2E and CI against production, by feature where the vendor can tell. E2E-driven usage on a usage-billed vendor is a `RIGHT-SIZE` candidate.
+  - For the logging environment split, start from `bkit-audit-logs`.
+  - List every free-tier resource that production or CI depends on, and its behaviour at the limit (e.g., a free DB pauses, a free monitor stops). A free tier that fails hard is a finding, even at $0 today.
+  - Compare monthly with annual billing, prepaid credits, startup programmes and committed-use discounts.
+  - **If** usage has been stable for >=3 months → propose a commitment.
+  - **Else** → propose none.
+  - Record the billing currency, card FX fees, and whether sales tax, VAT, GST or reverse charge is applied correctly, from the invoice and the card statement, not dashboards.
+
+  **Done when:** `Vendors` holds one row per vendor, with verdict, plan, billing model, three-month spend, change since the previous report, driver, limit and environment split, plus the total spend.
+
 - [ ] **Step 5 — Unit Cost:** Divide the total monthly cost by active accounts and by active users, and split it into fixed and variable. For each metered feature, record the cost per action (e.g., per model assist, per inbound message). Compare the series with the previous report, because without unit cost the bill's health cannot be judged as usage grows. Against revenue, compare price x assumed conversion, less processor fees and store commission, with the cost per account. An account that costs more than it pays is a finding, stated with its assumptions. **Done when:** `Unit Cost` holds the figures, the trend and the assumptions.
-- [ ] **Step 6 — Drivers:** For each usage-billed service, find the code that drives the meter and its worst case (retry, tenant fan-out, cron frequency). A multiplier with no upper bound is a finding. A model-call multiplier also names `bkit-audit-llm` (in-code limits). Other unbounded multipliers get a `docs/failures.jsonl` row, which the audit agent writes. Give egress and data transfer their own line, because they grow with users and are unnamed in code (DB egress, cached egress, host data transfer, origin transfer, storage transforms, log-drain egress), and list the top routes or buckets by bytes. Check metered observability: log drains, host observability events, replay, and trace sample rates in code. From the drivers, forecast the monthly cost at 10x and 100x today's active accounts, and name the first vendor whose tier breaks and the month it breaks at current growth. CI minutes go to `bkit-audit-ci-performance`, so do not analyse them here. **Done when:** `Drivers` holds one row per meter, and `Forecast` holds 10x, 100x, the first tier break and its month.
+- [ ] **Step 6 — Drivers:** For each usage-billed service, find the code that drives the meter and its worst case (retry, tenant fan-out, cron frequency). A multiplier with no upper bound is a finding. A model-call multiplier also names `bkit-audit-llm` (in-code limits). Other unbounded multipliers get a `docs/failures.jsonl` row, which this run writes. Give egress and data transfer their own line, because they grow with users and are unnamed in code (DB egress, cached egress, host data transfer, origin transfer, storage transforms, log-drain egress), and list the top routes or buckets by bytes. Check metered observability: log drains, host observability events, replay, and trace sample rates in code. From the drivers, forecast the monthly cost at 10x and 100x today's active accounts, and name the first vendor whose tier breaks and the month it breaks at current growth. CI minutes go to `bkit-audit-ci-performance`, so do not analyse them here. **Done when:** `Drivers` holds one row per meter, and `Forecast` holds 10x, 100x, the first tier break and its month.
 - [ ] **Step 7 — Leftovers:** Find seats for people who no longer need them, and record only their cost here. Access goes to `bkit-audit-security`. Find idle resources: projects, DBs, monitors, buckets and domains left from experiments. Find duplicates: two vendors doing one job. **Done when:** `Leftovers` holds one row per hit, with its monthly amount and verdict.
 - [ ] **Step 8 — Caps:** For each usage-billed vendor, record the spend cap or budget alert, its amount and its recipients. No cap and no alert is a finding, even when spend is small. Record what happens when the cap is hit:
   - Whether it notifies, stops spend or pauses service, and whether a hit means an outage. Notify-only may leave production serving, and pause may take production down (e.g., a host spend limit notifies unless production deploys are paused). Record the check frequency, because lag leads to overshoot.
@@ -191,11 +202,14 @@ PENDING
 ### 🔒 Gate 3: Report Check
 
 - [ ] **No placeholders:** no `PENDING` is left.
-- [ ] **Summary:** `Summary` gives the count per severity and the total monthly spend.
+- [ ] **Summary:** `Summary` gives the count per severity.
+- [ ] **Monthly spend:** `Summary` gives the total monthly spend.
 - [ ] **Series:** the report shows `Vendors` spend, `Unit Cost`, and `Forecast` beside the previous report's numbers, or marks the run as baseline.
-- [ ] **Writes:** only this report, the template's `Project Instructions` and ledger rows have changed, and every throwaway worktree or remote target is removed.
+- [ ] **Writes:** this run changed only this report, the template's `Project Instructions` and its own `docs/failures.jsonl` rows.
+- [ ] **Throwaways removed:** every throwaway worktree or remote target is removed.
 - [ ] **Process Improvements:** `Universal` and `Project` are both filled.
-- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one row, and every row has a `Next Step`.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one `Suggested Issues` row.
+- [ ] **Next Step:** every `Suggested Issues` row has a `Next Step`.
 - [ ] **Gate 3 — Verified:** every item above holds.
 
 <!-- bkit:end -->

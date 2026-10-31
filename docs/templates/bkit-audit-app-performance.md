@@ -27,14 +27,14 @@ A performance number only matters beside the previous number, taken the same way
 
 **Anchor Standards:**
 
-- Core Web Vitals (LCP, INP, CLS at p75, mobile, and desktop apart) and supporting FCP, TTFB (e.g. web.dev). Check its changelog.
-- Field dataset (e.g. Chrome UX Report, PageSpeed Insights).
-- Lab method (e.g. Lighthouse, WebPageTest). Record the tool version.
+- Core Web Vitals (LCP, INP, CLS at p75, mobile, and desktop apart) and supporting FCP, TTFB (e.g., web.dev). Check its changelog.
+- Field dataset (e.g., Chrome UX Report, PageSpeed Insights).
+- Lab method (e.g., Lighthouse, WebPageTest). Record the tool version.
 - Long Animation Frames API.
 - Soft Navigations API. Record the browser version that ships it by default.
-- Framework production checklist, in the edition for the version the app runs (e.g. Next.js, Nuxt).
-- Platform native vitals (e.g. Android vitals, Xcode Organizer metrics).
-- Monitoring vendor's mobile vitals docs (e.g. Sentry Mobile Vitals, Datadog RUM mobile).
+- Framework production checklist, in the edition for the version the app runs (e.g., Next.js, Nuxt).
+- Platform native vitals (e.g., Android vitals, Xcode Organizer metrics).
+- Monitoring vendor's mobile vitals docs (e.g., Sentry Mobile Vitals, Datadog RUM mobile).
 
 ### Scope
 
@@ -90,7 +90,7 @@ A performance number only matters beside the previous number, taken the same way
 ### 🔒 Gate 1: Prerequisites Check
 
 - [ ] **Gaps named:** every missing item names its fallback and its `Not Checked` entry.
-- [ ] **Gate 1 — Verified:** every Core item and every applicable Conditional item is checked.
+- [ ] **Gate 1 — Verified:** every item above, every Core item and every applicable Conditional item is checked.
 
 ### Probe Steps
 
@@ -102,7 +102,23 @@ A performance number only matters beside the previous number, taken the same way
 - [ ] **Step 6 — Production:** **If** there are production users → their numbers are the ones that count. Check that production sampling gives about 1,000 events per route per window, and record the production `n` per route. Read the field dataset (e.g., CrUX via PageSpeed Insights) for the production origin once it qualifies, and the search console Core Web Vitals report (shared with `bkit-audit-aio-seo`). **If** there is no production traffic → write `no production traffic`, and never omit the section. **Done when:** `Production` holds `n` per route and the field-dataset rows, or `no production traffic`.
 - [ ] **Step 7 — Native Vitals:** Run this step only when the project has a native app, and read beyond the monitoring SDK. Android store vitals: slow cold and warm starts, slow and frozen frames, ANR rate and excessive partial wake locks (which affect store visibility). iOS Organizer: launch time, hang rate and energy. On a low-end device, read memory across the primary flow. **If** an over-the-air update layer ships (e.g., `expo-updates`, CodePush) → measure its cost on cold start on the same low-end device. **If** the app is not in the stores → write `not published` for the store rows. **Done when:** `Native Vitals` holds one row per metric, or `not published`.
 - [ ] **Step 8 — Budgets:** A delta against the previous run says the number moved, not that it is good enough, so report each delta against a budget: shipped client code per route (e.g., first-load JS, gzipped), LCP and INP targets per route, native bundle or binary size, and a bundle size cap. **If** a budget is not set → propose one from this run, and let the owner decide. **Done when:** `Budgets` holds one row per budget: target · actual · delta, or a proposed target.
-- [ ] **Step 9 — Waterfall:** The table says which route is slow; the trace says why. For each worst route, open its reference trace and count: round trips; sequential vs concurrent calls (concurrent code already in the codebase is the model to copy); page-load requests for data that only one interaction needs; duplicate work (e.g., two navigation components each prefetching every route); and a fixed floor under every call (a primary-key lookup costing the same as token validation is a network toll, not a slow query). Find where the DB and the functions run before rewriting any query, because a region pin beats every rewrite. **If** several findings share one toll → merge them into one finding (six sequential calls paying one toll is one fix, not six). Use language-server references on the hook or fetcher to see whether there is one call site or many, and on the shared client or helper to see what else pays the toll. Pace the queries: back-to-back queries collapse to partial results, and the under-count shrinks the blast radius, so re-run small caller sets. Use text search for config and JSON wiring. Use the code graph for structural questions (hub module, cold-start graph). Each finding carries its explanation, or links the finding that has it. **Done when:** `Waterfall` holds one row per worst route: round trips · shape · tolls · call sites · merged findings.
+- [ ] **Step 9 — Waterfall:** The table says which route is slow; the trace says why.
+  - For each worst route, open its reference trace and count:
+    - round trips
+    - sequential vs concurrent calls (concurrent code already in the codebase is the model to copy)
+    - page-load requests for data that only one interaction needs
+    - duplicate work (e.g., two navigation components each prefetching every route)
+    - a fixed floor under every call (a primary-key lookup costing the same as token validation is a network toll, not a slow query)
+  - Find where the DB and the functions run before rewriting any query, because a region pin beats every rewrite.
+  - **If** several findings share one toll → merge them into one finding (six sequential calls paying one toll is one fix, not six).
+  - Use language-server references on the hook or fetcher to see whether there is one call site or many, and on the shared client or helper to see what else pays the toll.
+  - Pace the queries: back-to-back queries collapse to partial results, and the under-count shrinks the blast radius, so re-run small caller sets.
+  - Use text search for config and JSON wiring.
+  - Use the code graph for structural questions (hub module, cold-start graph).
+  - Each finding carries its explanation, or links the finding that has it.
+
+  **Done when:** `Waterfall` holds one row per worst route: round trips · shape · tolls · call sites · merged findings.
+
 - [ ] **Step 10 — Static:** The baseline covers routes with traffic and collected metrics; the source shows causes before they run. **If** an item's surface is absent **or** the stack lacks its mechanism → write `N/A` for that item, with evidence. Check each item below where its surface (web, server, native) exists and the stack has the mechanism:
   - Client bundle: size per route from the build output; heavy dependencies in client-side code (e.g., React client components); barrel imports that drag in a whole package. Record it as a series.
   - Media: missing width and height (CLS), no lazy loading below the fold, no responsive sizes.
@@ -250,11 +266,15 @@ PENDING
 ### 🔒 Gate 3: Report Check
 
 - [ ] **No placeholders:** no `PENDING` is left.
-- [ ] **Summary:** `Summary` gives the count per severity, the environments measured and the production `n`.
+- [ ] **Summary:** `Summary` gives the count per severity.
+- [ ] **Environments measured:** `Summary` names the environments measured.
+- [ ] **Production n:** `Summary` gives the production `n`.
 - [ ] **Series:** the report shows every series beside the previous report's numbers, or marks the run as baseline.
-- [ ] **Writes:** only this report, the template's `Project Instructions` and ledger rows have changed, and every throwaway worktree or remote target is removed.
+- [ ] **Writes:** this run changed only this report, the template's `Project Instructions` and its own `docs/failures.jsonl` rows.
+- [ ] **Throwaways removed:** every throwaway worktree or remote target is removed.
 - [ ] **Process Improvements:** `Universal` and `Project` are both filled.
-- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one row, and every row has a `Next Step`.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one `Suggested Issues` row.
+- [ ] **Next Step:** every `Suggested Issues` row has a `Next Step`.
 - [ ] **Gate 3 — Verified:** every item above holds.
 
 <!-- bkit:end -->

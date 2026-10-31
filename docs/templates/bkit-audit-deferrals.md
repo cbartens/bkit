@@ -27,9 +27,9 @@ Deferred work adds rows to `docs/deferrals.jsonl`, and nothing reads them again.
 
 **Anchor Standards:**
 
-- Technical debt, principal, and interest, and the Technical Debt Quadrant (e.g. Martin Fowler).
-- Hotspot analysis, churn against code health (e.g. CodeScene).
-- Review of deferred problem records on a schedule and on release: activate, keep deferred, or close (e.g. ITIL-aligned known-error monitoring).
+- Technical debt, principal, and interest, and the Technical Debt Quadrant (e.g., Martin Fowler).
+- Hotspot analysis, churn against code health (e.g., CodeScene).
+- Review of deferred problem records on a schedule and on release: activate, keep deferred, or close (e.g., ITIL-aligned known-error monitoring).
 - `.bkit/jsonl.md` § Deferral Reason — `reason` enum and the four `unjustified` tests, at the installed bkit version.
 
 ### Scope
@@ -106,13 +106,30 @@ When you repair a missing or illegal `reason`, use one of the first four enum va
 ### 🔒 Gate 1: Prerequisites Check
 
 - [ ] **Gaps named:** every missing item names its fallback and its `Not Checked` entry.
-- [ ] **Gate 1 — Verified:** every Core item and every applicable Conditional item is checked.
+- [ ] **Gate 1 — Verified:** every item above, every Core item and every applicable Conditional item is checked.
 
 ### Probe Steps
 
 - [ ] **Step 1 — Previous Run:** **Done when:** `Previous Run` holds the closure rate, or the run is marked baseline.
 - [ ] **Step 2 — Closures:** Re-verify at `HEAD` every DONE and SUPERSEDED row from the previous report. Record each one that no longer holds as a finding, with what changed. **Done when:** `Closures` holds every row, each failure and the failure rate, or the run is marked baseline.
-- [ ] **Step 3 — Fold:** Fold the ledger last-row-wins per `key`, not per line. The ledger is append-only (`.gitattributes` `merge=union`), so editing a line leaves the stale copy beside its replacement. The row with the highest numeric `ts` wins (`.bkit/jsonl.md` § Updating a Row). **If** a `key` has a non-numeric `ts` → the last line in the file is the latest. A row is open when its winning row has `status != "CLOSED"`. That includes `TRIAGED`, `RESOLVED`, `BLOCKED`, `SUPERSEDED`, `CANCELLED`, free text after the word, a missing `status` and any value outside the enum, because a word that looks finished does not mean done. Order the open rows `CRITICAL` first, then `HIGH`, then oldest `ts`. Compare `severity` case-insensitively. **If** a row has no `severity` → assign one with its verdict. Compare the trend with the previous report: the open count; inflow, the sum of `deferralsAdded` on `outcome` rows in `.bkit/stats.jsonl` since the previous run, where the field exists; outflow, the rows that became `CLOSED` since; an age histogram by `ts`; and the share of open rows missing `severity` or `reason`. Always record rows verified / rows open, because a large open set may get only a partial pass. The fold cannot see a deferral with no `key`, or one recorded only in a PR description. **Done when:** `Trend` holds the counts, the histogram, inflow, outflow, the missing-field share, verified / open and those limits, or `N/A` is recorded → **STOP**.
+- [ ] **Step 3 — Fold:** Fold the ledger last-row-wins per `key`, not per line. The ledger is append-only (`.gitattributes` `merge=union`), so editing a line leaves the stale copy beside its replacement.
+  - The row with the highest numeric `ts` wins (`.bkit/jsonl.md` § Updating a Row).
+  - **If** a `key` has a non-numeric `ts` → the last line in the file is the latest.
+  - A row is open when its winning row has `status != "CLOSED"`. That includes `TRIAGED`, `RESOLVED`, `BLOCKED`, `SUPERSEDED`, `CANCELLED`, free text after the word, a missing `status` and any value outside the enum, because a word that looks finished does not mean done.
+  - Order the open rows `CRITICAL` first, then `HIGH`, then oldest `ts`.
+  - Compare `severity` case-insensitively.
+  - **If** a row has no `severity` → assign one with its verdict.
+  - Compare each of these figures with the previous report:
+    - The open count.
+    - Inflow: the sum of `deferralsAdded` on `outcome` rows in `.bkit/stats.jsonl` since the previous run, where the field exists.
+    - Outflow: the rows that became `CLOSED` since the previous run.
+    - An age histogram by `ts`.
+    - The share of open rows missing `severity` or `reason`.
+  - Record rows verified / rows open on every run, because a large open set may get only a partial pass.
+  - Record the fold's limits: it cannot see a deferral with no `key`, or one recorded only in a PR description.
+
+  **Done when:** `Trend` holds the counts, the histogram, inflow, outflow, the missing-field share, verified / open and those limits, or `N/A` is recorded → **STOP**.
+
 - [ ] **Step 4 — Defects:** Check the winning row of each `key`, without appending. `Expected` = the row the writer appends: a copy of the latest row with only the defective field changed, the same `key`, and a `ts` minted at append, never a literal and never in the future.
 
 <!-- prettier-ignore -->
@@ -267,11 +284,15 @@ PENDING
 ### 🔒 Gate 3: Report Check
 
 - [ ] **No placeholders:** no `PENDING` is left.
-- [ ] **Summary:** `Summary` gives the count per severity, the count per verdict, and rows verified / rows open.
+- [ ] **Summary:** `Summary` gives the count per severity.
+- [ ] **Verdict counts:** `Summary` gives the count per verdict.
+- [ ] **Coverage:** `Summary` gives rows verified / rows open.
 - [ ] **Series:** the report shows `Trend` open count, inflow, and outflow beside the previous report's numbers, or marks the run as baseline.
-- [ ] **Writes:** only this report, the template's `Project Instructions` and ledger rows have changed, and every throwaway worktree or remote target is removed.
+- [ ] **Writes:** this run changed only this report and the template's `Project Instructions`.
+- [ ] **Throwaways removed:** every throwaway worktree or remote target is removed.
 - [ ] **Process Improvements:** `Universal` and `Project` are both filled.
-- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one row, and every row has a `Next Step`.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one `Suggested Issues` row.
+- [ ] **Next Step:** every `Suggested Issues` row has a `Next Step`.
 - [ ] **Gate 3 — Verified:** every item above holds.
 
 <!-- bkit:end -->

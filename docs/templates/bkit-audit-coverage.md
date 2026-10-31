@@ -29,10 +29,10 @@ A static floor fails one way: coverage climbs, the gate stays far below it, and 
 
 **Anchor Standards:**
 
-- Coverage practice for a gate (e.g. Google, "Code Coverage Best Practices"; Ivanković et al., "Code Coverage at Google").
-- Coverage guide for pinned runner and provider (e.g. Vitest coverage, including `coverage.include` and AST-aware remapping; Jest coverage; Istanbul). Record major pinned.
-- Patch (diff) coverage (e.g. Codecov patch status; PR coverage-comment changed-file mode). Record action version.
-- Ratchet tooling (e.g. Betterer). Record version read.
+- Coverage practice for a gate (e.g., Google, "Code Coverage Best Practices"; Ivanković et al., "Code Coverage at Google").
+- Coverage guide for pinned runner and provider (e.g., Vitest coverage, including `coverage.include` and AST-aware remapping; Jest coverage; Istanbul). Record major pinned.
+- Patch (diff) coverage (e.g., Codecov patch status; PR coverage-comment changed-file mode). Record action version.
+- Ratchet tooling (e.g., Betterer). Record version read.
 - Goodhart's law: coverage is a signal, not a goal.
 
 ### Scope
@@ -76,7 +76,7 @@ A static floor fails one way: coverage climbs, the gate stays far below it, and 
 ### 🔒 Gate 1: Prerequisites Check
 
 - [ ] **Gaps named:** every missing item names its fallback and its `Not Checked` entry.
-- [ ] **Gate 1 — Verified:** every Core item and every applicable Conditional item is checked.
+- [ ] **Gate 1 — Verified:** every item above, every Core item and every applicable Conditional item is checked.
 
 ### Probe Steps
 
@@ -200,11 +200,14 @@ PENDING
 ### 🔒 Gate 3: Report Check
 
 - [ ] **No placeholders:** no `PENDING` is left.
-- [ ] **Summary:** `Summary` gives the count per severity, and old floor → recommended floor for each gated surface.
+- [ ] **Summary:** `Summary` gives the count per severity.
+- [ ] **Floors:** `Summary` gives old floor → recommended floor for each gated surface.
 - [ ] **Series:** the report shows `Sample` spreads and the floor series beside the previous report's numbers, or marks the run as baseline.
-- [ ] **Writes:** only this report, the template's `Project Instructions` and ledger rows have changed, and every throwaway worktree or remote target is removed.
+- [ ] **Writes:** this run changed only this report, the template's `Project Instructions` and its own `docs/failures.jsonl` rows.
+- [ ] **Throwaways removed:** every throwaway worktree or remote target is removed.
 - [ ] **Process Improvements:** `Universal` and `Project` are both filled.
-- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one row, and every row has a `Next Step`.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one `Suggested Issues` row.
+- [ ] **Next Step:** every `Suggested Issues` row has a `Next Step`.
 - [ ] **Gate 3 — Verified:** every item above holds.
 
 <!-- bkit:end -->

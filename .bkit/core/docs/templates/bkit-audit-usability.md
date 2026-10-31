@@ -32,9 +32,9 @@ Automated checks never look at a screen. They pass when a title is centred on on
 - NN/g severity ratings: frequency, impact, and persistence.
 - ISO 9241-11:2018 (effectiveness, efficiency, and satisfaction).
 - ISO 9241-110:2020 (interaction principles).
-- Platform interface guidelines (e.g. Apple Human Interface Guidelines, Material Design 3). Living documents; record the date read.
-- Human-AI interaction guidelines (e.g. Microsoft HAX, 18 guidelines; Google PAIR Guidebook).
-- Task metrics (e.g. task success, time on task, Single Ease Question, SUS, UMUX-Lite) and the five-participant round.
+- Platform interface guidelines (e.g., Apple Human Interface Guidelines, Material Design 3). Living documents; record the date read.
+- Human-AI interaction guidelines (e.g., Microsoft HAX, 18 guidelines; Google PAIR Guidebook).
+- Task metrics (e.g., task success, time on task, Single Ease Question, SUS, UMUX-Lite) and the five-participant round.
 
 ### Scope
 
@@ -81,7 +81,7 @@ Automated checks never look at a screen. They pass when a title is centred on on
 ### 🔒 Gate 1: Prerequisites Check
 
 - [ ] **Gaps named:** every missing item names its fallback and its `Not Checked` entry.
-- [ ] **Gate 1 — Verified:** every Core item and every applicable Conditional item is checked.
+- [ ] **Gate 1 — Verified:** every item above, every Core item and every applicable Conditional item is checked.
 
 ### Probe Steps
 
@@ -92,8 +92,44 @@ Automated checks never look at a screen. They pass when a title is centred on on
 - [ ] **Step 5 — Review:** Build a side-by-side image per row. The reviewer opens every image, and reads each row: the drawing, viewport, full page, and each platform that has a cell. Review rows, not pairs (one row per screen x state x size x theme the pipeline captures). The status bar, home indicator and keyboard are never findings. A blocked or missing native cell is the pipeline, or a surface with no phone screen, never an app defect. A cut drawing stops at the control its state is about, so the region below the cut is not missing. Compare viewport with viewport, and full page with full page, because their heights differ by construction. At the same scale, metrics may be compared. At a different scale, compare layout and presence only. Take the inventory on the full-page pair only: items in the drawing missing from the app, and items in the app missing from the drawing, by name, not by count. Do not fold the inventory into parity severity. Verdicts are not deterministic, so they go through Step 7. **Done when:** every row has a verdict or an explicit skip, and `Inventory` names both directions or says `none`.
 - [ ] **Step 6 — Canary:** A run that finds nothing looks the same as a reviewer who cannot see. Copy a few rows' screenshots to scratch, and seed known defects in them: a title off centre, a truncated button label, a blank screen where the drawing shows an empty state. Point a copy of the manifest at them, and review those rows only. Record the hit rate. A missed seed is a pipeline finding, not an app defect. **Done when:** the hit rate is in `Canary`.
 - [ ] **Step 7 — Verify:** No finding counts until the PNG and the live screen have been opened at the same width and theme; the drawing has been compared, and wins on arrangement when they disagree; the pipeline has been ruled out; and the value or control has been checked for a second implementation (a platform file split, both consumers). A second copy is still recorded here, and it belongs to `bkit-audit-duplication`. Each finding cites a PNG, live screen, drawing or source line. **Done when:** every finding has that evidence.
-- [ ] **Step 8 — Hand Checks:** Check what the shots do not cover. While phone cells are blocked, walk the primary flows on each phone platform, in light and dark, against the same drawings. For states the seed does not produce (empty, loading, failed request), each state not seen is unchecked, not clean. Check longer text in a pseudo-locale, and send the source detail to `bkit-audit-accessibility`. Translations: check every key in every locale, no source-language text on a translated screen, and no sentence built from joined strings, then read every locale for meaning. Check that dates, numbers and currency use the locale format. Plurals: use counts that reach every category the locale has (0, 1, 2, 5 and 21 cover most), and check that the right branch shows, not the raw pattern or the source-language form. **If** there is a right-to-left target locale → walk the primary flow once in it. Plain language: UI copy and email are at about grade 8, use one word per concept everywhere, and contain no internal jargon. Findability: try the five lookups `Project Instructions` names, and flag any path over 3 taps or clicks. Phone conventions: back gesture and system back, native date and time pickers, share sheet, haptics, safe areas, pull-to-refresh and tab bar. Web: links open in place, browser back works, and every screen has a URL that opens it directly. Notifications and email: each one is worth sending and opens the right screen, there are frequency and quiet-hours settings, and permission is asked in context when first needed, not at first launch. Poor network on a phone (slow or flaky, offline, backgrounding mid-flow, a low-end device): record what the user sees, whether the action queues or fails loudly, and whether every skeleton and spinner resolves. Switching devices: start a task on a phone and finish it on web, and check that state, drafts and notifications agree. Plans: the comparison is understandable, prices show tax and currency, downgrade and cancel take no more steps than upgrade, there is no confirm-shaming, and there is no hidden cancel path. Consumer-law wording goes to `bkit-audit-privacy`. Record every gap in `Gaps`. **Done when:** `Hand Checks` lists each item checked, unchecked, or not applicable.
-- [ ] **Step 9 — First Run:** The capture account is already full, so walk the new-user path by hand, as a journey, on each platform, with a fresh synthetic account that teardown can reap. Give one row per point: the screens and taps, dead ends, words that assume knowledge, and a verdict per platform. (1) Sign up on web, including the confirmation message and link, through to the first landing. Check the message, not only the screens. (2) Install on a phone first, and check whether the user can create an account there. **If** not → check whether the screen says where to go. (3) **If** the product is multi-tenant and a tenant is created for the user → check that they understand it exists, can see and change its name, and can find the address or id they were given. (4) Check that each empty primary screen says what to do next, or record that it is blank. **If** there is no drawing of the empty state → it is a finding for the drawing first: decide, draw, then build. (5) Create the first record by hand from an empty screen, and check that it appears where expected and the empty-state message goes away. (6) **If** the product ingests items from outside the app (e.g., a forwarded email, an upload) → for the first item, record what the user sees while it processes, the reply text, and what happens when nothing can be extracted. (7) **If** invitations exist → join by invitation, which is a different first run that arrives in a full tenant. (8) Come back: sign out, sign in, and use the recovery path once. Note where the drawings promise what the app lacks. (9) Record the first plan gate or paywall in the first session: what it says, and whether the next step is clear. **Done when:** `First Run` has one row per point, and each point whose condition is unmet has an `N/A` row with evidence.
+- [ ] **Step 8 — Hand Checks:** Check what the shots do not cover.
+  - **If** phone cells are blocked → walk the primary flows on each phone platform, in light and dark, against the same drawings.
+  - For states the seed does not produce (empty, loading, failed request), each state not seen is unchecked, not clean.
+  - Check longer text in a pseudo-locale, and send the source detail to `bkit-audit-accessibility`.
+  - Translations:
+    - Check every key in every locale, no source-language text on a translated screen, and no sentence built from joined strings.
+    - Read every locale for meaning.
+  - Check that dates, numbers and currency use the locale format.
+  - Plurals: use counts that reach every category the locale has (0, 1, 2, 5 and 21 cover most), and check that the right branch shows, not the raw pattern or the source-language form.
+  - **If** there is a right-to-left target locale → walk the primary flow once in it.
+  - Plain language: UI copy and email are at about grade 8, use one word per concept everywhere, and contain no internal jargon.
+  - Findability: try the five lookups `Project Instructions` names, and flag any path over 3 taps or clicks.
+  - Phone conventions: back gesture and system back, native date and time pickers, share sheet, haptics, safe areas, pull-to-refresh and tab bar.
+  - Web: links open in place, browser back works, and every screen has a URL that opens it directly.
+  - Notifications and email: each one is worth sending and opens the right screen, there are frequency and quiet-hours settings, and permission is asked in context when first needed, not at first launch.
+  - Poor network on a phone (slow or flaky, offline, backgrounding mid-flow, a low-end device): record what the user sees, whether the action queues or fails loudly, and whether every skeleton and spinner resolves.
+  - Switching devices: start a task on a phone and finish it on web, and check that state, drafts and notifications agree.
+  - Plans: the comparison is understandable, prices show tax and currency, downgrade and cancel take no more steps than upgrade, there is no confirm-shaming, and there is no hidden cancel path. Consumer-law wording goes to `bkit-audit-privacy`.
+  - Record every gap in `Gaps`.
+
+  **Done when:** `Hand Checks` lists each item checked, unchecked, or not applicable.
+
+- [ ] **Step 9 — First Run:** The capture account is already full, so walk the new-user path by hand, as a journey, on each platform, with a fresh synthetic account that teardown can reap.
+  - Give one row per point: the screens and taps, dead ends, words that assume knowledge, and a verdict per platform.
+  - (1) Sign up on web, including the confirmation message and link, through to the first landing. Check the message, not only the screens.
+  - (2) Install on a phone first, and check whether the user can create an account there.
+    - **If** not → check whether the screen says where to go.
+  - (3) **If** the product is multi-tenant **and** a tenant is created for the user → check that they understand it exists, can see and change its name, and can find the address or id they were given.
+  - (4) Check that each empty primary screen says what to do next, or record that it is blank.
+    - **If** there is no drawing of the empty state → it is a finding for the drawing first: decide, draw, then build.
+  - (5) Create the first record by hand from an empty screen, and check that it appears where expected and the empty-state message goes away.
+  - (6) **If** the product ingests items from outside the app (e.g., a forwarded email, an upload) → for the first item, record what the user sees while it processes, the reply text, and what happens when nothing can be extracted.
+  - (7) **If** invitations exist → join by invitation, which is a different first run that arrives in a full tenant.
+  - (8) Come back: sign out, sign in, and use the recovery path once. Note where the drawings promise what the app lacks.
+  - (9) Record the first plan gate or paywall in the first session: what it says, and whether the next step is clear.
+
+  **Done when:** `First Run` has one row per point, and each point whose condition is unmet has an `N/A` row with evidence.
+
 - [ ] **Step 10 — Heuristics:** The drawing says how a screen should look, but nothing above asks whether the drawn design is usable, so a screen that matches a bad drawing passes. Walk each primary flow, and check every screen against Nielsen's 10 heuristics. Each violation is a finding that names its heuristic (`H1` visibility of system status through `H10` help and documentation). **If** the same problem is in the drawing → it is a finding for the drawing first. **Done when:** each primary flow has a line in `Checked`, and the violations are findings.
 - [ ] **Step 11 — Sessions:** A screenshot review is not evidence from users. Every second run, run the same scripted tasks with real people: five participants from the segments `Project Instructions` names, thinking aloud, with one script kept in `Sessions` for the next round. For each task, record success (unaided, with help, failed), time on task, and the Single Ease Question. For each session, record SUS or UMUX-Lite: pick one, and keep it. Put each figure beside the previous session's. **If** there are no participants → record the last round's date and the next due date, and do not invent figures. **Done when:** `Sessions` holds the figures beside the previous session's, or the next due date.
 - [ ] **Step 12 — AI Features:** Check each feature that shows the user a result against the human-AI guidelines: the user sees what it did and why; each extracted field can be corrected, and each created item undone; low confidence is flagged, not silently saved; and a failure says what happened and what to do next (Step 9 point 6 covers the first one). **If** the screen already does this and the fault is the model's output → `bkit-audit-llm`. **Done when:** `AI Features` has one row per feature: guideline · what the user sees · verdict.
@@ -214,11 +250,15 @@ PENDING
 ### 🔒 Gate 3: Report Check
 
 - [ ] **No placeholders:** no `PENDING` is left.
-- [ ] **Summary:** `Summary` gives the count per severity, the cells captured against blocked per platform, and the canary hit rate.
+- [ ] **Summary:** `Summary` gives the count per severity.
+- [ ] **Cells:** `Summary` gives the cells captured against blocked per platform.
+- [ ] **Canary rate:** `Summary` gives the canary hit rate.
 - [ ] **Series:** the report shows every series beside the previous report's numbers, or marks the run as baseline.
-- [ ] **Writes:** only this report, the template's `Project Instructions` and ledger rows have changed, and every throwaway worktree or remote target is removed.
+- [ ] **Writes:** this run changed only this report, the template's `Project Instructions` and its own `docs/failures.jsonl` rows.
+- [ ] **Throwaways removed:** every throwaway worktree or remote target is removed.
 - [ ] **Process Improvements:** `Universal` and `Project` are both filled.
-- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one row, and every row has a `Next Step`.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one `Suggested Issues` row.
+- [ ] **Next Step:** every `Suggested Issues` row has a `Next Step`.
 - [ ] **Gate 3 — Verified:** every item above holds.
 
 <!-- bkit:end -->

@@ -96,7 +96,7 @@ const PLAN_HEADINGS = [
   "## Verification Plan",
   "### Automated Tests",
   "### 🔒 Gate 4: Automated Verification Check",
-  "### 👤 Manual Verification",
+  "### Manual Verification",
 ];
 
 /** Lines every audit template carried before they moved into `bkit-audit-generate`. */

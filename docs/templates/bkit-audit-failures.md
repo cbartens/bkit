@@ -12,7 +12,7 @@
 > **Rules:**
 >
 > - NEVER append or edit a ledger line.
-> - Write close, regression, triage and knowledge rows in `Expected` only.
+> - Write close, correction, regression, triage and knowledge rows in `Expected` only.
 > - Never write `ts` in this report, because it is minted at append (`.bkit/jsonl.md` § Write Idiom).
 > - Give a security row (`category: "security"`, or an auth, secrets or data-exposure hole) its key, verdict and severity only.
 > - Keep a security row's `file:line` in the ledger row.
@@ -37,9 +37,9 @@ Row text that says the bug was found by reading and must be confirmed later is a
 
 **Anchor Standards:**
 
-- Problem management and the known-error database (e.g. ITIL 4; record the edition). The deferred and known-error review it describes (e.g. ITIL-aligned known-error monitoring).
-- Postmortem action items (e.g. Google SRE Workbook, Postmortem Culture).
-- Bug triage and resolution states, including an incomplete state for an unanswered reproduction request (e.g. Mozilla defect severity guide, Bugzilla triage).
+- Problem management and the known-error database (e.g., ITIL 4; record the edition). The deferred and known-error review it describes (e.g., ITIL-aligned known-error monitoring).
+- Postmortem action items (e.g., Google SRE Workbook, Postmortem Culture).
+- Bug triage and resolution states, including an incomplete state for an unanswered reproduction request (e.g., Mozilla defect severity guide, Bugzilla triage).
 - Age targets, set by this procedure: 7 days for `CRITICAL`, 30 days for `HIGH`, from the winning row's `firstTs` (`ts` when absent). No published standard.
 
 ### Scope
@@ -101,13 +101,29 @@ Row text awaiting confirmation is UNCONFIRMED until the bug is reproduced or rea
 ### 🔒 Gate 1: Prerequisites Check
 
 - [ ] **Gaps named:** every missing item names its fallback and its `Not Checked` entry.
-- [ ] **Gate 1 — Verified:** every Core item and every applicable Conditional item is checked.
+- [ ] **Gate 1 — Verified:** every item above, every Core item and every applicable Conditional item is checked.
 
 ### Probe Steps
 
 - [ ] **Step 1 — Previous Run:** **Done when:** `Previous Run` holds the closure rate, or the run is marked baseline.
 - [ ] **Step 2 — Closures:** Re-verify at `HEAD` every FIXED and MIS-FRAMED row from the previous report. Each one that no longer holds is a finding, with what changed. **Done when:** `Closures` holds every row, each failure, and the failure rate, or the run is marked baseline.
-- [ ] **Step 3 — Fold:** Fold last-row-wins per `key`, not per line. The file is append-only (`.gitattributes` `merge=union`), so editing a line leaves the stale copy beside the replacement. The highest numeric `ts` wins (`.bkit/jsonl.md` § Updating a Row). **If** a `key`'s `ts` is not a number → the last line in the file is the latest. Open means every winning row with `status != "CLOSED"`, including `TRIAGED` (diagnosed is not fixed), `RESOLVED`, `FIXED`, `SUPERSEDED`, and rows with no `status`. A word that looks finished does not make a row done. **If** a `RESOLVED` or `FIXED` row is really done → put a `CLOSED` row in `Expected`, with the `references` that closed it. Do not skip a row because its word looks finished. Order the rows `CRITICAL`, then `HIGH`, then oldest `ts`. Compare `severity` case-insensitively. **If** a row has no `severity` → assign one with its verdict. Measure age from the row's first `ts`, and list every `CRITICAL` older than 7 days and every `HIGH` older than 30 days. Report whether a CI check is installed that goes red while any `CRITICAL` row has `status != "CLOSED"`. A green check beside such a row is a finding, because the gate is not reading the ledger. **If** the check is absent → record that in `Checked`. A large open set may get a partial pass, so record rows verified / rows open. **If** a winning row has a future `ts` that would outrank a close → name its `key`. Do not invent a later `ts`. **Done when:** `Trend` holds the open counts, the age-target breaches, the gate result, and verified / open, or holds `N/A`, then **STOP**.
+- [ ] **Step 3 — Fold:** Fold last-row-wins per `key`, not per line. The file is append-only (`.gitattributes` `merge=union`), so editing a line leaves the stale copy beside the replacement. The highest numeric `ts` wins (`.bkit/jsonl.md` § Updating a Row).
+  - **If** a `key`'s `ts` is not a number → the last line in the file is the latest.
+  - Open means every winning row with `status != "CLOSED"`, including `TRIAGED` (diagnosed is not fixed), `RESOLVED`, `FIXED`, `SUPERSEDED`, and rows with no `status`. A word that looks finished does not make a row done.
+  - **If** a `RESOLVED` or `FIXED` row is really done → put a `CLOSED` row in `Expected`, with the `references` that closed it.
+  - Do not skip a row because its word looks finished.
+  - Order the rows `CRITICAL`, then `HIGH`, then oldest `ts`.
+  - Compare `severity` case-insensitively.
+  - **If** a row has no `severity` → assign one with its verdict.
+  - Measure age from the row's first `ts`, and list every `CRITICAL` older than 7 days and every `HIGH` older than 30 days.
+  - Report whether a CI check is installed that goes red while any `CRITICAL` row has `status != "CLOSED"`. A green check beside such a row is a finding, because the gate is not reading the ledger.
+  - **If** the check is absent → record that in `Checked`.
+  - A large open set may get a partial pass, so record rows verified / rows open.
+  - **If** a winning row has a future `ts` that would outrank a close → name its `key`.
+  - Do not invent a later `ts`.
+
+  **Done when:** `Trend` holds the open counts, the age-target breaches, the gate result, and verified / open, or holds `N/A`, then **STOP**.
+
 - [ ] **Step 4 — Source:** Give no verdict before this step. Under-reporting biases the run toward closing a live bug.
 
 <!-- prettier-ignore -->
@@ -158,9 +174,10 @@ Each incident needs a written postmortem, with at least one action that prevents
 - [ ] **Steps complete:** every step is `[x]`, or skipped with evidence that its surface is absent.
 - [ ] **Evidence:** every finding cites evidence someone can check again, and the tool that produced it.
 - [ ] **Read-only:** no ledger line, code or config changed.
-- [ ] **Rows proposed only:** every close, regression and knowledge row is in `Expected` only.
+- [ ] **Rows proposed only:** every close, correction, regression, triage and knowledge row is in `Expected` only.
 - [ ] **Security:** security rows carry key, verdict and severity only.
-- [ ] **No exploit detail:** security rows carry no exploit detail and no `file:line`.
+- [ ] **No exploit detail:** no security row carries exploit detail.
+- [ ] **No location:** no security row carries a `file:line`.
 - [ ] **Gate 2 — Verified:** every item above holds.
 
 ## Findings
@@ -242,11 +259,15 @@ PENDING
 ### 🔒 Gate 3: Report Check
 
 - [ ] **No placeholders:** no `PENDING` is left.
-- [ ] **Summary:** `Summary` gives the count per severity, the age-target breach count, and rows verified / rows open.
+- [ ] **Summary:** `Summary` gives the count per severity.
+- [ ] **Age breaches:** `Summary` gives the age-target breach count.
+- [ ] **Coverage:** `Summary` gives rows verified / rows open.
 - [ ] **Series:** the report shows open count and the recurrence ranking beside the previous report's numbers, or marks the run as baseline.
-- [ ] **Writes:** only this report, the template's `Project Instructions` and ledger rows have changed, and every throwaway worktree or remote target is removed.
+- [ ] **Writes:** this run changed only this report and the template's `Project Instructions`.
+- [ ] **Throwaways removed:** every throwaway worktree or remote target is removed.
 - [ ] **Process Improvements:** `Universal` and `Project` are both filled.
-- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one row, and every row has a `Next Step`.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one `Suggested Issues` row.
+- [ ] **Next Step:** every `Suggested Issues` row has a `Next Step`.
 - [ ] **Gate 3 — Verified:** every item above holds.
 
 <!-- bkit:end -->

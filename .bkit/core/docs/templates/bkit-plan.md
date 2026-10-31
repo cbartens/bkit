@@ -139,9 +139,9 @@ _e.g.,_ **WHEN** a user submits the form with a valid file **→ THEN** it is qu
 ## Security & Privacy
 
 - [ ] **New API Route** — an auth guard (e.g., a `requireMember`-style check). **If** the route is auth-adjacent → a rate limit as well.
-- [ ] **New DB Table/Column** — a deny-by-default row or tenant access policy (e.g., RLS), scoped to the tenant.
+- [ ] **New DB Table/Column** — a deny-by-default row or tenant access policy (e.g., a row-level policy in the database), scoped to the tenant.
 - [ ] **Role-Gated Mutation** — the role is checked at the API layer.
-- [ ] **User Input** — validated against a schema in the handler (e.g., Zod `parse()`).
+- [ ] **User Input** — validated against a schema in the handler (e.g., the schema library's parse call).
 - [ ] **PII** — kept out of logs, and the audit or CDC trigger is updated for new monitored columns.
 - [ ] **Redirect URL** — validated against an allow-list.
 - [ ] **Webhook** — the signature is verified, and the secret is in the env schema.
@@ -171,13 +171,13 @@ _e.g.,_ **WHEN** a user submits the form with a valid file **→ THEN** it is qu
 
 ### 🔒 Gate 1: Prerequisites Check
 
-- [ ] **Acceptance Scenario confirmed:** the `👤 Acceptance Scenario` checkbox is `[x]`, ticked by a human.
-- [ ] **Breaking Changes confirmed:** the `⚠️ Breaking Changes & Naming Review` checkbox is `[x]`, ticked by a human.
-- [ ] **Open Questions confirmed:** the `👤 Open Questions & Assumptions` checkbox is `[x]`, ticked by a human.
+- [ ] **Acceptance Scenario confirmed:** the `👤 ⚠️ Acceptance Scenario` checkbox is `[x]`, ticked by a human.
+- [ ] **Breaking Changes confirmed:** the `👤 ⚠️ Breaking Changes & Naming Review` checkbox is `[x]`, ticked by a human.
+- [ ] **Open Questions confirmed:** the `👤 ⚠️ Open Questions & Assumptions` checkbox is `[x]`, ticked by a human.
 - [ ] **Security & Privacy checked:** every applicable row is verified, or `None` is justified.
 - [ ] **Reuse Inventory complete:** every capability has a row with `Search performed` and `Decision` filled in.
 - [ ] **Reuse reasons:** every `NEW` row cites its reason.
-- [ ] **Gate 1 — Verified:** every Core item and every applicable Conditional item is checked.
+- [ ] **Gate 1 — Verified:** every item above, every Core item and every applicable Conditional item is checked.
 
 ## Data Schema Integration
 
@@ -215,7 +215,7 @@ _e.g.,_ **WHEN** a user submits the form with a valid file **→ THEN** it is qu
 
 ### Database Migrations
 
-[The new tables, columns and access policies (e.g., RLS), and the migration that adds them. Initially set to `PENDING`.]
+[The new tables, columns and access policies (e.g., row-level policies), and the migration that adds them. Initially set to `PENDING`.]
 
 ### [Component Area 1]
 
@@ -229,7 +229,7 @@ _e.g.,_ **WHEN** a user submits the form with a valid file **→ THEN** it is qu
 #### [new] `path/to/file.ext`
 
 - **Reuse Check:** [the `Reuse Inventory` row, and reason (a), (b) or (c)]
-- [The purpose, access policies (e.g., RLS), input validation (e.g., Zod) and naming.]
+- [The purpose, access policies, input validation and naming.]
 
 #### [DELETE] `path/to/file.ext`
 
@@ -237,7 +237,7 @@ _e.g.,_ **WHEN** a user submits the form with a valid file **→ THEN** it is qu
 
 ### Cron Jobs & Scheduled Tasks
 
-[The scheduled tasks (e.g., Vercel cron, pg_cron, Inngest). **If** none → `None`. Initially set to `PENDING`.]
+[The scheduled tasks (e.g., a hosting platform's cron, a database scheduler or a background-job runner). **If** none → `None`. Initially set to `PENDING`.]
 
 ## Supersession Inventory
 
@@ -271,7 +271,7 @@ _e.g.,_ **WHEN** a user submits the form with a valid file **→ THEN** it is qu
 | --- | --- | --- |
 | **DB** | [A corrective migration that undoes the change. It is safe when the change only adds.] | Merged migrations are immutable, so ship the corrective migration through CI's migration lane. For a full dev reset, see `docs/deployments.md` § Dev rollback runbook. |
 | **Code** | [The git revert SHA, or the feature flag that disables the change] | `git revert {COMMIT}` |
-| **Risk window** | [The gap between the DB migration merge and the code deploy] | [e.g., "~2 min Vercel build, so the migration must be additive"] |
+| **Risk window** | [The gap between the DB migration merge and the code deploy] | [e.g., "~2 min deploy build, so the migration must be additive"] |
 
 [**If** there are no DB changes → write "Code-only — `git revert` sufficient."]
 
@@ -314,7 +314,8 @@ _e.g.,_ **WHEN** a user submits the form with a valid file **→ THEN** it is qu
 - [ ] **No bolt-on:** every `[NEW]` file traces to a `Reuse Inventory` `NEW` row.
 - [ ] **Extensions landed:** every `EXTEND` landed in the artifact its row names.
 - [ ] **No gate weakened:** no gate was weakened.
-- [ ] **Red before code:** every planned test recorded a red run before its code, and is unchanged since.
+- [ ] **Red before code:** every planned test recorded a red run before its code.
+- [ ] **Tests unchanged:** every planned test is unchanged since its red run.
 - [ ] **Test-order gaps:** each test-order gap is cleared only by a human-committed `TEST EXCEPTION` field.
 - [ ] **Gate 2 — Verified:** every box above is checked.
 
@@ -337,8 +338,8 @@ _e.g.,_ **WHEN** a user submits the form with a valid file **→ THEN** it is qu
 ### Automated Tests
 
 - [ ] **Full Local Gate Suite:** the deepest declared `bkit:gate:*` script and `bkit check` pass.
-- [ ] **Test Synchronization:** [The existing E2E tests (e.g., Playwright) to update alongside.]
-- [ ] **Build Configuration:** [How test-only files are kept out of the production build (e.g., `tsconfig.json` `exclude`).]
+- [ ] **Test Synchronization:** [The existing E2E tests to update alongside.]
+- [ ] **Build Configuration:** [How test-only files are kept out of the production build (e.g., the compiler config's exclude list).]
 - [ ] **[Test Type] (`path/to/test.spec.ts`):** [The flow, unit or E2E additions, and their data hygiene needs.]
 - [ ] **Apply local migrations:** [The new migrations applied locally (e.g., `pnpm db:reset`).]
 - [ ] **Run all tests:** [The local unit and integration suites (e.g., `pnpm test`, `pnpm test:integration`) pass.]
@@ -347,7 +348,7 @@ _e.g.,_ **WHEN** a user submits the form with a valid file **→ THEN** it is qu
 
 - [ ] **Gate 4 — Verified:** every Automated Tests box is checked, with proof (test output, a CLI result or an API response).
 
-### 👤 Manual Verification
+### Manual Verification
 
 > [!CAUTION]
 > **Owner-run acceptance checks, advisory only.** An unticked box blocks nothing: not the merge, and not plan approval. This is not a Gate 1 human-confirmation section.

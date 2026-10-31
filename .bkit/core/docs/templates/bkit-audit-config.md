@@ -30,11 +30,11 @@ Code is reviewed, but dashboards are not. A dashboard change (hosting, database,
 **Anchor Standards:**
 
 - The Twelve-Factor App: III. Config and X. Dev/prod parity.
-- Source-host CI security and ruleset docs (e.g. GitHub Actions secure-use reference, GitHub rulesets REST API).
-- Platform production checklist (e.g. Supabase Production Checklist).
-- TLS certificate validity schedule (e.g. CA/Browser Forum Baseline Requirements, Ballot SC-081v3).
+- Source-host CI security and ruleset docs (e.g., GitHub Actions secure-use reference, GitHub rulesets REST API).
+- Platform production checklist (e.g., Supabase Production Checklist).
+- TLS certificate validity schedule (e.g., CA/Browser Forum Baseline Requirements, Ballot SC-081v3).
 - DNS CAA (RFC 8659); MTA-STS (RFC 8461) and TLS reporting (RFC 8460).
-- Mailbox-provider sender requirements (e.g. Gmail, Yahoo) and one-click unsubscribe (RFC 8058).
+- Mailbox-provider sender requirements (e.g., Gmail, Yahoo) and one-click unsubscribe (RFC 8058).
 - bkit block of `docs/deployments.md` (bkit version from `.bkit/version`): § Autonomous phase-close prerequisites; § Post-merge dev CI auto-routing; § Promotion-lag warning (`Check Default Branch Lags Dev`)
 
 ### Scope
@@ -90,14 +90,50 @@ Code is reviewed, but dashboards are not. A dashboard change (hosting, database,
 ### 🔒 Gate 1: Prerequisites Check
 
 - [ ] **Gaps named:** every missing item names its fallback and its `Not Checked` entry.
-- [ ] **Gate 1 — Verified:** every Core item and every applicable Conditional item is checked.
+- [ ] **Gate 1 — Verified:** every item above, every Core item and every applicable Conditional item is checked.
 
 ### Probe Steps
 
 - [ ] **Step 1 — Previous Run:** **Done when:** `Previous Run` holds the closure rate, or the run is marked baseline.
 - [ ] **Step 2 — Variables:** For every variable declared (in the env schema or loader, where one exists) or read in code (e.g., `process.env.X`, `os.environ[...]`), record where it is set: example env files, each hosting environment (e.g., development / preview / production), CI secrets and variables, the secret manager, and the mobile build service, where one is used. Build one matrix, names only. A variable missing from an environment that runs code reading it is a finding, unless a doc says why. A variable set where nothing declares it goes to `bkit-audit-dead-code`. **Done when:** `Variables` holds the matrix of variable x environment, names only.
-- [ ] **Step 3 — Variable Handling:** For each matrix variable, answer (a)-(f). (a) A build-time public prefix (e.g., `NEXT_PUBLIC_*`, `EXPO_PUBLIC_*`, `VITE_*`) is inlined into the shipped bundle, so it must never hold a secret value, and changing it needs a rebuild, not an env change. Search the preview build's client bundle for server-only names and secret-key prefixes (e.g., `sk_live_`), and record presence only. (b) Check that each secret is held as the host's secret type (unreadable back from the dashboard or CLI). A preview environment holding a production secret (e.g., a DB service-role key, a live payments key) is a finding. (c) Check that a missing or malformed value is rejected at startup (e.g., by an env schema loader) in every environment, not at first use. A silent default that differs between environments is a finding. (d) Feature flags: record the owner, the date added and the value per environment. **If** preview != production **and** no doc says why → it is drift. **If** a flag is the same everywhere → it goes to `bkit-audit-dead-code`. (e) Value parity: **If** a secret is held in >=2 stores for one environment (env file, hosting, CI, secret manager, mobile build service, function secrets) → it has the same value everywhere. A name present everywhere proves nothing, because the secret may be rotated in one store and stale in the rest. Compare SHA-256 fingerprints, never values. **If** the store is readable → hash the live value in-process. **If** the store is write-only (e.g., GitHub Actions secrets) → compare the fingerprint at the last recorded push with the source, and compare `updated_at` with that push (a later date means it changed outside the sync). A store holding a name the deployed code no longer reads (renamed, stale) is a finding. **If** parity cannot be proven → mark it `Not Checked`, never pass. (f) Source: every secret has one declared source that every store is compared against (e.g., a sync config with one row per secret naming every store). **If** a copy sits where no API reaches (pasted into a provider dashboard, e.g., a webhook signing secret) → check that it is listed in a copy inventory with how to update it. A secret with no declared source, or a hand-set copy that is not listed, is a finding. **If** there is no sync tooling → `Process Improvements` proposes one (e.g., the bkit package template `.bkit/templates/scripts/secrets/`). A push path that bypasses the sync goes to `bkit-audit-security`. **Done when:** every matrix variable answers (a)-(f) in `Variables`.
-- [ ] **Step 4 — Platform Settings:** For each platform in use (e.g., hosting: Vercel, Netlify; DB and auth: Supabase, RDS, Auth0; mobile build: EAS), check only the settings that platform has. **If** there are none → `N/A`. Compare the dashboard with the repo and docs. Hosting: the build command, function regions and durations, deployment protection and deployment checks. DB and auth: the config file, where one exists, against each hosted project (e.g., auth settings, redirect URLs, email templates, rate limits, extensions, and scheduled DB jobs against docs). Background jobs: those registered per environment against the code registry. Webhooks (payments, email): endpoints, subscribed events and inbound routes against docs. Error tracker: alert rules and monitors against docs. Mobile: build profiles and environments against the build config. Auth (config file, dev, production), where offered: the site URL, the redirect allow-list (no wildcard preview URLs in production), token and OTP expiry, leaked-password protection, the SMTP sender and auth rate limits. Mobile config against builds: the runtime version, the OTA-update channel per branch where OTA updates ship (e.g., EAS Update), and bundle ids. A mismatch breaks OTA silently. Classify each setting as in code, documented, or recorded nowhere. A setting recorded nowhere is a finding even when its value is right, because the next environment will not get it. **Done when:** `Platform Settings` holds one row per setting, with platform, environment, where recorded and verdict.
+- [ ] **Step 3 — Variable Handling:** For each matrix variable, answer (a)-(f).
+  - (a) A build-time public prefix (e.g., `NEXT_PUBLIC_*`, `EXPO_PUBLIC_*`, `VITE_*`) is inlined into the shipped bundle, so it must never hold a secret value, and changing it needs a rebuild, not an env change.
+    - Search the preview build's client bundle for server-only names and secret-key prefixes (e.g., `sk_live_`), and record presence only.
+  - (b) Check that each secret is held as the host's secret type (unreadable back from the dashboard or CLI). A preview environment holding a production secret (e.g., a DB service-role key, a live payments key) is a finding.
+  - (c) Check that a missing or malformed value is rejected at startup (e.g., by an env schema loader) in every environment, not at first use. A silent default that differs between environments is a finding.
+  - (d) Feature flags: record the owner, the date added and the value per environment.
+    - **If** preview != production **and** no doc says why → it is drift.
+    - **If** a flag is the same everywhere → it goes to `bkit-audit-dead-code`.
+  - (e) Value parity:
+    - **If** a secret is held in >=2 stores for one environment (env file, hosting, CI, secret manager, mobile build service, function secrets) → it has the same value everywhere. A name present everywhere proves nothing, because the secret may be rotated in one store and stale in the rest.
+    - Compare SHA-256 fingerprints, never values.
+    - **If** the store is readable → hash the live value in-process.
+    - **If** the store is write-only (e.g., GitHub Actions secrets) → compare the fingerprint at the last recorded push with the source, and compare `updated_at` with that push (a later date means it changed outside the sync).
+    - A store holding a name the deployed code no longer reads (renamed, stale) is a finding.
+    - **If** parity cannot be proven → mark it `Not Checked`, never pass.
+  - (f) Source: every secret has one declared source that every store is compared against (e.g., a sync config with one row per secret naming every store).
+    - **If** a copy sits where no API reaches (pasted into a provider dashboard, e.g., a webhook signing secret) → check that it is listed in a copy inventory with how to update it.
+    - A secret with no declared source, or a hand-set copy that is not listed, is a finding.
+    - **If** there is no sync tooling → `Process Improvements` proposes one (e.g., the bkit package template `.bkit/templates/scripts/secrets/`).
+    - A push path that bypasses the sync goes to `bkit-audit-security`.
+
+  **Done when:** every matrix variable answers (a)-(f) in `Variables`.
+
+- [ ] **Step 4 — Platform Settings:** For each platform in use (e.g., hosting: Vercel, Netlify; DB and auth: Supabase, RDS, Auth0; mobile build: EAS), check only the settings that platform has.
+  - **If** there are none → `N/A`.
+  - Compare the dashboard with the repo and docs:
+    - Hosting: the build command, function regions and durations, deployment protection and deployment checks.
+    - DB and auth: the config file, where one exists, against each hosted project (e.g., auth settings, redirect URLs, email templates, rate limits, extensions, and scheduled DB jobs against docs).
+    - Background jobs: those registered per environment against the code registry.
+    - Webhooks (payments, email): endpoints, subscribed events and inbound routes against docs.
+    - Error tracker: alert rules and monitors against docs.
+    - Mobile: build profiles and environments against the build config.
+    - Auth (config file, dev, production), where offered: the site URL, the redirect allow-list (no wildcard preview URLs in production), token and OTP expiry, leaked-password protection, the SMTP sender and auth rate limits.
+    - Mobile config against builds: the runtime version, the OTA-update channel per branch where OTA updates ship (e.g., EAS Update), and bundle ids. A mismatch breaks OTA silently.
+  - Classify each setting as in code, documented, or recorded nowhere. A setting recorded nowhere is a finding even when its value is right, because the next environment will not get it.
+
+  **Done when:** `Platform Settings` holds one row per setting, with platform, environment, where recorded and verdict.
+
 - [ ] **Step 5 — Runtimes and Crons:** Compare the runtime version (e.g., `.nvmrc`, `engines`, `.python-version`) with the hosting, CI and mobile build images. Compare the DB major version (e.g., in the platform config file) with each hosted environment. Check that the platform CLI version is pinned. For every scheduled job, wherever it is defined (hosting crons, job-runner cron triggers, the DB scheduler, scheduled CI workflows), record the timezone it runs in. A job defined in two places runs twice, which is a finding. **Done when:** `Platform Settings` holds one row per runtime and per schedule.
 - [ ] **Step 6 — Dashboard Changes:** Today's diff misses a setting that was changed and changed back, so read each platform's audit log since the previous report. List each settings change: who made it, what it was, and whether it is recorded in the repo or a doc. Snapshot the dashboard config as secret-free JSON (e.g., the hosting project API; the DB management API: auth config, network restrictions, SSL enforcement, pooler; the source-host API: rulesets). Confirm that the snapshot holds no secret value. Diff it against the previous report's `Snapshot`, or against the committed project copy, where one exists. **If** there is no previous snapshot → the run is the baseline. **Done when:** `Dashboard Changes` lists every settings change, and `Snapshot` holds the JSON and the diff, or is marked baseline.
 - [ ] **Step 7 — Repository:** Check the rulesets or branch protection on the default and release branches. Compare the required status checks with today's CI job names. A renamed job is a trap: the branch waits on a check that never reports, or merges without it once the old name is removed. Check the merge methods, delete-branch-on-merge, the default CI token permissions, and CI secrets and variables against docs. Ruleset detail: bypass actors and mode (e.g., GitHub `pull_request` is narrower than `always`, and `exempt` skips rules and leaves no bypass entry in the audit log); stale reviews dismissed on push; code-owner review enforced; a tag ruleset for release tags; and protection rules for each deployment environment that holds secrets. Security: secret scanning and push protection, dependency alerts and security updates, code scanning, a SHA-pinned-actions policy, and approval before fork PR workflows run. Check settings only. Workflow contents go to `bkit-audit-security`. **Done when:** `Repository` holds one row per setting, with expected, actual and verdict.
@@ -212,11 +248,15 @@ PENDING
 ### 🔒 Gate 3: Report Check
 
 - [ ] **No placeholders:** no `PENDING` is left.
-- [ ] **Summary:** `Summary` gives the count per severity, the environments, and the dashboards read.
+- [ ] **Summary:** `Summary` gives the count per severity.
+- [ ] **Environments:** `Summary` names the environments.
+- [ ] **Dashboards read:** `Summary` names the dashboards read.
 - [ ] **Series:** `Snapshot` is diffed against the previous report's, or the run is marked baseline.
-- [ ] **Writes:** only this report, the template's `Project Instructions` and ledger rows have changed, and every throwaway worktree or remote target is removed.
+- [ ] **Writes:** this run changed only this report, the template's `Project Instructions` and its own `docs/failures.jsonl` rows.
+- [ ] **Throwaways removed:** every throwaway worktree or remote target is removed.
 - [ ] **Process Improvements:** `Universal` and `Project` are both filled.
-- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one row, and every row has a `Next Step`.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one `Suggested Issues` row.
+- [ ] **Next Step:** every `Suggested Issues` row has a `Next Step`.
 - [ ] **Gate 3 — Verified:** every item above holds.
 
 <!-- bkit:end -->

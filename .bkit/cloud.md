@@ -11,7 +11,7 @@
 > - This file ships to every project that installs bkit. Describe the current setup only.
 > - Leave out internal labels, such as tracker issue numbers, ledger keys and review-finding ids, and leave out project history. Decisions go in `docs/decisions.jsonl`, and incidents go in `docs/knowledge.jsonl`.
 > - Claude's environment config lives in the Claude app, and Cursor's lives in `.cursor/` in the repo. Both have an in-repo SessionStart guard.
-> - Update this file when either cloud's pre-installed toolchain or default allowlist changes. The sources are `code.claude.com/docs/en/claude-code-on-the-web`, `cursor.com/docs/cloud-agent/setup` and `learn.chatgpt.com/docs/environments/cloud-environments`.
+> - Update this file when any of the three clouds' pre-installed toolchain or default allowlist changes. The sources are `code.claude.com/docs/en/claude-code-on-the-web`, `cursor.com/docs/cloud-agent/setup` and `learn.chatgpt.com/docs/environments/cloud-environments`.
 
 ## Scope
 
@@ -60,7 +60,7 @@ You maintain these files, not bkit. `opencode.yml` hardcodes a `model:` and a pr
 
 - Both clouds run the same Node (24.21.0, sha256-checked, from nodejs.org): the web setup script and `.cursor/Dockerfile` carry the identical `NODE_VERSION` + `NODE_SHA256` pair.
 - Both clouds have the same vale version (3.9.1) pre-installed.
-- Both get pnpm through corepack. The pastes pre-warm bkit's pin (`10.34.4`), but inside the repo corepack resolves each repo's own `packageManager`. So one setup script serves any pnpm pin, and the pre-warmed version does not matter.
+- Both get pnpm through corepack. The web setup script pre-warms the pnpm version in your `package.json` `packageManager`, and `.cursor/Dockerfile` pre-warms its `PNPM_VERSION` build argument. Inside the repo, corepack resolves the repo's own `packageManager` either way, so one setup script serves any pnpm pin, and the pre-warmed version only warms the cache.
 - Both have the gh CLI. The web setup script installs a pinned, sha256-checked binary (`GH_VERSION`, downloaded from a `github.com` release the same way as vale), and the GitHub-Actions runner ships with it pre-installed. Auth is shared through `bkit-cloud-bootstrap.sh`, which runs `gh auth login --with-token` with `BKIT_GH_TOKEN` and skips it when `GITHUB_TOKEN` already authenticates on the runner.
 - Both use the same opt-in guard pattern, keyed on the opt-in label `bkit:auto` and wrapped in `<!-- bkit:start --> ... <!-- bkit:end -->` (bkit-managed in consumer repos). The label is `bkit:auto` on both trackers.
 
@@ -138,7 +138,7 @@ What the script does, and why it is split from the in-repo hook:
   - `jq` is installed because `curl`-based context-fetch blocks pipe through it.
   - The Node, gh and vale pins match `.cursor/Dockerfile`.
   - These are binaries the cloud lacks but a laptop has, so they belong here, not in a repo-level hook.
-- **pnpm corepack pre-warm** seeds one pnpm into the snapshot through `corepack enable`, with no hard-pinned version. Inside the repo, corepack resolves the repo's `packageManager` and fetches it if it differs, so one setup script serves any pnpm pin. The pre-warm only warms the cache.
+- **pnpm corepack pre-warm** seeds one pnpm into the snapshot: `corepack enable && corepack prepare pnpm@<version> --activate`, with the version read from your `package.json` `packageManager`. With no `packageManager` pin, the line is a bare `corepack enable`. Inside the repo, corepack resolves the repo's `packageManager` and fetches it if it differs, so one setup script serves any pnpm pin. The pre-warm only warms the cache.
 - `pnpm install` and `vale sync` are not here. They belong in `.claude/hooks/bkit-cloud-bootstrap.sh`, so a resumed session picks up a drifted lockfile or styles, and each repo installs its own deps.
 
 Keep the total runtime under ~5 minutes, or the snapshot won't build.
@@ -300,7 +300,7 @@ bkit wires the chosen tracker's MCP server (`bkit.tracker.default`) into `.mcp.j
    ```
 
 5. The snapshot rebuilds when the setup-script body changes, the allowed-hosts list changes, or the ~7-day TTL expires. Editing env vars or in-repo hook scripts does not invalidate the snapshot.
-6. **Force rebuild without semantic changes**: add a `# cache-bust YYYY-MM-DD-N` comment at the top of the setup script.
+6. **Force rebuild without semantic changes**: run `bkit install` or `bkit upgrade`, which re-stamps the `# cache-bust` line, then paste the new setup script.
 
 # Cursor Cloud Agents
 
@@ -392,7 +392,7 @@ Cloud Agents get network access by default. Egress is configurable in the dashbo
 
 ## After modifying `.cursor/*`
 
-1. Run `pnpm bkit install` (this repo) or `pnpm install && pnpm bkit install` (consumer) to regenerate the mirrors.
+1. Run `pnpm install && pnpm bkit install` to regenerate the mirrors.
 2. Commit the changes.
 3. **The first Cursor session after Dockerfile changes is slow**, because the image rebuilds. Later sessions reuse the cached layers.
 4. Verify in the session: `vale --version && gh --version && pnpm -v && python3 --version`.
@@ -593,7 +593,7 @@ Skip conditions emit a single GitHub-comment no-op line and exit 0. Only real fa
 
 - **No secrets store yet (Claude).** Env vars and the setup-script body are plaintext in the Claude app. Rotate PATs regularly.
 - **Env vars do not reach Claude setup script.** Auth at snapshot-build time would have to be inlined, which is the leak you want to avoid. Design around it: put public binaries in the setup script, and leave auth-bearing work to the SessionStart hook.
-- **Cache invalidation is body-based (Claude).** Editing the env-vars block or the repo-side hook scripts doesn't trigger a rebuild. Use `# cache-bust YYYY-MM-DD-N` to force one.
+- **Cache invalidation is body-based (Claude).** Editing the env-vars block or the repo-side hook scripts doesn't trigger a rebuild. To force one, run `bkit install` or `bkit upgrade`, which re-stamps the `# cache-bust` line, then paste the new setup script.
 - **Husky runs on `pnpm install`** (repos that adopted the `.husky/*` templates). `prepare` registers git hooks during install. The pre-commit hook (`bkit:gate:format` → `lint-staged`) runs when the agent commits. The `slop-scan` devDep reaches PATH through `node_modules/.bin`. The `vale` system binary comes from the setup script (Claude) or the Dockerfile (Cursor).
 - **Bun proxy issues (Claude).** Bun has known proxy issues with the cloud security proxy. bkit uses pnpm, so it is unaffected. Flag this for bun consumers.
 - **Custom base image not supported (Claude).** The escape hatch is `docker compose` sidecars. The bkit stack does not need it today.

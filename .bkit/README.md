@@ -215,17 +215,6 @@ Every `bkit` command with its flags (`bkit install`, `bkit upgrade`, `bkit check
 
 > **Version bumps:** use `bkit upgrade --latest` (or `--to=<version>`). A bare `pnpm add @cbartens/bkit` / Renovate bump refreshes only the lockfile. Run `bkit upgrade` after it, and commit the resync with the bump. Otherwise `bkit check` turns CI red.
 
-### Dogfood path (this repo only)
-
-The bkit repo runs the install script through `tsx` instead of the published bin:
-
-```bash
-pnpm tsx .bkit/core/engine/cli.ts install
-pnpm tsx .bkit/core/engine/cli.ts check
-```
-
-The CI drift gate (`.github/workflows/bkit-ci.yml`) fails a PR when the generated files diverge from the `install` output.
-
 ## File ownership
 
 bkit owns some files outright, owns one part of others, and ships the rest as templates it never applies.
@@ -303,15 +292,9 @@ The cloud workflow and the Cursor Background Agent files are templates the `--au
 
 Two capabilities are opt-in and left out of the default install: the **issue tracker** (`--tracker=github|linear|jira`) and **cloud agents** (`--auto=claude|cursor|opencode`). The default install ships zero cloud footprint. While a choice is undecided, its advisory fires (`tracker-setup-none` / `cloud-router-none`). Setting `"none"` in `bkit.tracker.default` / `bkit.cloud.agent` silences it. The dependency updater, security scan and test lint are copy-and-own templates. The choices, the defaults and how to decide are in `.bkit/install.md` § Optional post-install decisions. The template catalog is in `.bkit/templates.md`.
 
-### dogfood rule — updater PRs against workflows (only if you opt in)
+### Updater PRs against your workflows
 
-bkit dogfoods its templates: `.bkit/templates/.github/workflows/*.yml` (canonical) and `.github/workflows/*.yml` (bkit's copy) must stay byte-equal where they overlap. The updater scans `.github/workflows/` only, not the template path. This rule applies only if the bkit repo opted into the updater. When an updater PR opens against bkit's workflows:
-
-1. Before the merge, apply the same SHA bump to the matching `.bkit/templates/.github/workflows/*.yml` (one `Edit` per file).
-2. Run `pnpm test` (`.bkit/core/engine/audits/templates/template-action-pins.test.ts` fails when a template pin drifts from the repo's).
-3. Push the template-side change to the updater PR's branch. If that branch is read-only, make a follow-up commit on `dev` instead.
-
-For consumers, `.github/workflows/bkit-ci.yml` and `bkit-cloud.yml` are your own copies of templates, so updater bumps survive install and upgrade. New pins in the templates arrive in `.bkit/templates/` on `bkit upgrade`. Adopt them like any other template change.
+`.github/workflows/bkit-ci.yml` and `bkit-cloud.yml` are your own copies of templates, so updater bumps survive install and upgrade. New pins in the templates arrive in `.bkit/templates/` on `bkit upgrade`. Adopt them like any other template change.
 
 ---
 
@@ -394,6 +377,10 @@ The installed list is `.agents/skills.md`. Ship Step 7 (Prune Skills) prunes eac
 | `.bkit/authoring.md` | Authoring rules for every agent-read markdown file — docs, prompts, workflows; punctuation and capitals (§ Notation) |
 | `.agents/docs.md` | Document index and phase-matrix (what to read per phase) |
 | `.agents/skills.md` | Installed skills registry |
+| `.bkit/templates/` | Copy-and-own templates, copied whole from the package at every install. Copy one to its landing path to adopt it (`.bkit/templates.md`). |
+| `.bkit/install.md` | First-time install and upgrade, install lifecycle, uninstall |
+| `.bkit/pipeline.md` | Pipeline reference: every subagent in execution order, CI scaffold, every audit template |
+| `.bkit/comparison.md` | Comparison to peer frameworks / agentic design patterns |
 | `.bkit/providers.md` | Host differences (Claude/Cursor/opencode), transform rules, additive install, provider model IDs, pin process (§ Selecting pins), network allowlist encodings (`.bkit/allowlist.json` vs baked settings) |
 | `.bkit/friction.jsonl` | Friction ledger — orchestrator-observed recovery moments. Created on first append by a phase workflow, not by install; drained only by bkit's harvest (run from the bkit repo). Row shape: `.bkit/jsonl.md`. |
 | `.bkit/stats.jsonl` | Stats ledger — `outcome` / `compliance` / `counter` rows appended at every workflow close. Append-only. Row shape: `.bkit/jsonl.md`. |
@@ -415,13 +402,9 @@ links are symlinks into the package, so editors resolve them to the `node_module
 <!-- prettier-ignore -->
 | File | Purpose |
 | --- | --- |
-| `.bkit/install.md` | First-time install and upgrade, install lifecycle, uninstall |
-| `.bkit/pipeline.md` | Pipeline reference: every subagent in execution order, CI scaffold, every audit template |
-| `.bkit/comparison.md` | Comparison to peer frameworks / agentic design patterns |
 | `node_modules/@cbartens/bkit/.bkit/core/workflows/` | Canonical slash-command source (rendered into `.claude/commands/`, `.cursor/commands/`, `.opencode/commands/`) |
 | `node_modules/@cbartens/bkit/.bkit/core/prompts/` | Canonical subagent source (rendered into `.claude/agents/`, `.cursor/agents/`, `.opencode/agents/`) |
 | `node_modules/@cbartens/bkit/.bkit/{core,shared}/` | Sources `bkit install` writes from (see § What install writes) |
-| `node_modules/@cbartens/bkit/.bkit/templates/` | Copy-and-own templates copied raw into the consumer's `.bkit/templates/` (see `.bkit/templates.md`) |
 | `node_modules/@cbartens/bkit/dist/cli.js` | Install engine — renders host outputs and applies templates (`.bkit/core/engine/cli.ts` is the TypeScript source, not shipped as such) |
 
 ---

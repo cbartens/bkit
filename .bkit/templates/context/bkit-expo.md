@@ -20,7 +20,7 @@ The settings:
 How the blocks read their sources:
 
 - `expo`: build logs are pre-signed, brotli-encoded storage URLs, valid for about 15 min. macOS curl has no brotli, so the block decompresses the logs with Node zlib and filters the JSON lines with `jq`.
-- `expo-workflows`: when a GitHub Actions job starts the run, pair this block with the `maestro` block (`maestro.md`). That block reads the GitHub job log, and this one reads EAS.
+- `expo-workflows`: when a GitHub Actions job starts the run, pair this block with the `maestro` block (`bkit-maestro.md`). That block reads the GitHub job log, and this one reads EAS.
 - `expo-workflows`: read its output in this order:
   1. The per-flow exception (2b).
   2. The XCUITest runner errors (2e), for any `DeviceUnreachableException`. Maestro's iOS driver is an XCUITest case that hosts the HTTP server, so one failure inside it fails every later flow.
@@ -185,9 +185,9 @@ for run in $(jq -r --argjson n "${EAS_WF_ERR_N:-2}" '.[:$n][].id' "$WORK/failure
         echo "===== $(basename "$j") (first ${EAS_JUNIT_N:-300} lines) ====="
         tr -d '\r' < "$j" | head -n "${EAS_JUNIT_N:-300}"
       done
-  # 2e) Why the driver died. Read this first for any DeviceUnreachableException. An `error:` line
-  #     in xctest_runner_*.log names the cause, and neither job log does. A device-unreachable
-  #     sweep is a symptom shared by several faults, not a diagnosis.
+  # 2e) Why the driver died. For any DeviceUnreachableException, read this after the per-flow
+  #     exception (2b). An `error:` line in xctest_runner_*.log names the cause, and neither job
+  #     log does. A device-unreachable sweep is a symptom shared by several faults, not a diagnosis.
   echo "===== XCUITest runner: the driver's own failure ====="
   find "$DEST" -name 'xctest_runner_*.log' 2>/dev/null | while read -r r; do
     grep -nE 'error:|TEST EXECUTE FAILED|Test Suite .* failed|failed \(' "$r" | tail -25

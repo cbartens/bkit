@@ -164,7 +164,7 @@ A green capstone means the planned tiers ran tests and passed, not merely that n
 
 - **Absent:** no declared entrypoint (for example, a `test:integration` / `test:live` script, or an enabled E2E step). The capstone asserts nothing. A repo with no integration / E2E / `@live` tier is fully valid.
 - **Declared + planned to run:** assert that the tier ran and executed > 0 tests. This closes the green-with-zero hole, where everything exits 0 and looks green: `--passWithNoTests` matching nothing, a `@live`-tagged suite whose owning package declares no live entrypoint (for example, no `test:live` script, so `turbo run test:live` runs nothing), or every test gated off by `skipIf`.
-- **Declared + correctly skipped** (a light run, or not `web_affected`): assert that it was skipped, not vacuously passed.
+- **Declared + correctly skipped** (a `partial` run, or not `web_affected`): assert that it was skipped, not vacuously passed.
 
 A declared tier therefore emits an **executed count**, taken from the runner's machine summary (for example, vitest `numPassedTests + numFailedTests`). The capstone asserts `count > 0` for every declared-and-planned tier. At install time, the same rule reads "every tagged suite has a CI home": each `@live`-tagged test must live in a package whose declared entrypoint (for example, a `test:live` script) the tier actually invokes. Otherwise the tag is dead code.
 

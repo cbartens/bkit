@@ -40,7 +40,7 @@ bkit ships three folders. A file's path inside its folder is the path it lands a
 **Anchor Standards:** Record the bkit version and the date read.
 
 - bkit, at the installed version: `.bkit/templates.md` (Contract, placeholders, Context-fetch blocks), `.bkit/README.md` § File ownership and § Ongoing CLI, `.bkit/install.md`, and the release notes since the pinned version.
-- Config reference of each tool behind an adopted template (e.g. Husky, lint-staged, Vale, Prettier, Renovate, Dependabot, Trivy, GitHub Actions workflow syntax, direnv). Record the version read.
+- Config reference of each tool behind an adopted template (e.g., Husky, lint-staged, Vale, Prettier, Renovate, Dependabot, Trivy, GitHub Actions workflow syntax, direnv). Record the version read.
 
 ### Scope
 
@@ -89,7 +89,7 @@ bkit ships three folders. A file's path inside its folder is the path it lands a
 ### 🔒 Gate 1: Prerequisites Check
 
 - [ ] **Gaps named:** every missing item names its fallback and its `Not Checked` entry.
-- [ ] **Gate 1 — Verified:** every Core item and every applicable Conditional item is checked.
+- [ ] **Gate 1 — Verified:** every item above, every Core item and every applicable Conditional item is checked.
 
 ### Probe Steps
 
@@ -100,8 +100,29 @@ bkit ships three folders. A file's path inside its folder is the path it lands a
 - [ ] **Step 5 — Hosts:** Compare the agent hosts in use with the bkit hosts installed. Find the hosts in use from the repo's config directories and from team use. Use the `Hosts` section of the newest `bkit-audit-agents` report as a cross-check, not as the source. For each installed host, check for one agent copy per `core/prompts/` source, one command copy per `core/workflows/` source, and every `core/` hook file present, executable and wired in that host's settings. Record these as findings: a host in use with no bkit install, because agents there run without bkit gates; a missing or extra copy; and a hook file present but unwired, or wired but absent. Whether hooks fire and agree across hosts goes to `bkit-audit-agents`. **Done when:** `Hosts` holds one row per host: in use · installed · agent copies · command copies · hooks wired.
 - [ ] **Step 6 — Written Files:** (a) Check that every `bkit:start` / `bkit:end` block and owned key is untouched (the Step 4 drift). **If** one holds a hand edit → the fix moves the edit below `bkit:end` or to `Project Instructions`. **If** the defect is in what bkit shipped → the fix is upstream in bkit. (b) In each file bkit shares with you (`shared/docs/*.md`, `AGENTS.md`, `CLAUDE.md`, `.agents/*.md`, `.gitignore`, `.gitattributes`, settings, tool-server config), check that your part is present for every block that expects one. A doc that holds only bkit's block is unadopted. **If** `.bkit/.env.example` exists → check that `.bkit/.env` is present and git-ignored, and that every listed key is set (names only). **If** bkit wrote a tracker or tool-server entry → check that the credential env var it names is set. Whether your part is true goes to `bkit-audit-documentation`. **Done when:** `Written Files` holds one row per shared file: block untouched · your part present · verdict.
 - [ ] **Step 7 — Audits:** For each `docs/templates/bkit-audit-*.md`, record whether its `**Applies when:**` is met, yes or no, with evidence; its `**Cadence:**`; and its newest report under `docs/audits/` by commit date. An audit never run is due, by the same rule as `bkit-utility-update-roadmap`. An `N/A` report with evidence counts as a run. Record these as findings: an audit that applies and was never run; an audit overdue by more than one cadence; and `Process Improvements` `Project` edits that a report proposed and that are absent from that template's `Project Instructions`. **Done when:** `Audits` holds one row per template: applies · cadence · last run · overdue by · verdict.
-- [ ] **Step 8 — Adoption:** Join each file in the package's `templates/` to `.bkit/templates.md` § Contract. **If** a file is missing from the Contract → the fix is an upstream bkit doc fix. Mark each file adopted (a copy at its landing path, or at the destination the Contract names) or not adopted. Give each file not adopted one verdict: `gap` (it fits this stack, and nothing else does the job), `covered` (naming the tool that does) or `not applicable` (with evidence, e.g., no GitHub Actions or no markdown docs). **If** two templates do one job (e.g., Renovate and Dependabot) → check that one is adopted, or that `bkit.dependencies.updater` is recorded. For each context (`ci`, `diff`, `e2e`, `runtime`, `web`) that the repo has a lane or provider for, check for a context-fetch block below `bkit:end` in `.agents/context.md`, or a `<!-- context-fetch:none … -->` naming it. **If** a provider is in use (a dependency, config or CI step), a shipped `templates/context/` file exists for it, **and** there is no block → `gap`. Re-list every row on each run, and diff against the previous report: newly adopted, newly dropped, and unchanged with its age. **Done when:** `Adoption` holds one row per template file and per context: adopted · verdict · evidence · age.
-- [ ] **Step 9 — Templates:** For each adopted template, check: (a) Filled: no raw `{{…}}` placeholder is left, the default branch and runner are real, and no stub sentinel is left. (b) Reconciled: run `diff .bkit/templates/<path> <path>`, and mark each difference adopt or reject (saying why). Placeholder lines differ by design. (c) Merged: **If** the package changed the template after the copy's last change (Step 3, `git log` on `.bkit/templates/<path>`) → mark it merged, rejected (saying why) or pending. (d) Wired: the tool behind it is installed, and invoked where the template expects. For example, the hook manager is installed by a `prepare` script, the hooks are executable and `core.hooksPath` is set; `pre-commit` calls lint-staged; the prose linter's styles are synced and its config loads them; the scanner plugin path resolves; the tool-server snippet is merged into the host's server config; the secrets config names real stores; the cloud workflow waits on a workflow `name:` that exists; and the CI template's job names are the ones the repo requires. (e) Runs: one read-only invocation, where one exists (e.g., `sh -n` on a hook, `prettier --check`, `vale` on one doc, `actionlint` on a workflow). (f) Ignored: every repo-wide gate (formatter, prose linter, scanner, linter, type checker) skips `.bkit/templates/`. For each context-fetch block, check that its job regex and artifact name match exactly the lane it names (CI Host Read). A widened regex that catches another lane is a finding. **Done when:** `Templates` holds one row per adopted template, with a verdict for each of (a)-(f).
+- [ ] **Step 8 — Adoption:** Join each file in the package's `templates/` to `.bkit/templates.md` § Contract.
+  - **If** a file is missing from the Contract → the fix is an upstream bkit doc fix.
+  - Mark each file adopted (a copy at its landing path, or at the destination the Contract names) or not adopted.
+  - Give each file not adopted one verdict: `gap` (it fits this stack, and nothing else does the job), `covered` (naming the tool that does) or `not applicable` (with evidence, e.g., no GitHub Actions or no markdown docs).
+  - **If** two templates do one job (e.g., Renovate and Dependabot) → check that one is adopted, or that `bkit.dependencies.updater` is recorded.
+  - For each context (`ci`, `diff`, `e2e`, `runtime`, `web`) that the repo has a lane or provider for, check for a context-fetch block below `bkit:end` in `.agents/context.md`, or a `<!-- context-fetch:none … -->` naming it.
+  - **If** a provider is in use (a dependency, config or CI step), a shipped `templates/context/` file exists for it, **and** there is no block → `gap`.
+  - Re-list every row on each run, and diff against the previous report: newly adopted, newly dropped, and unchanged with its age.
+
+  **Done when:** `Adoption` holds one row per template file and per context: adopted · verdict · evidence · age.
+
+- [ ] **Step 9 — Templates:** For each adopted template, check:
+  - (a) Filled: no raw `{{…}}` placeholder is left, the default branch and runner are real, and no stub sentinel is left.
+  - (b) Reconciled: run `diff .bkit/templates/<path> <path>`, and mark each difference adopt or reject (saying why). Placeholder lines differ by design.
+  - (c) Merged:
+    - **If** the package changed the template after the copy's last change (Step 3, `git log` on `.bkit/templates/<path>`) → mark it merged, rejected (saying why) or pending.
+  - (d) Wired: the tool behind it is installed, and invoked where the template expects. For example, the hook manager is installed by a `prepare` script, the hooks are executable and `core.hooksPath` is set; `pre-commit` calls lint-staged; the prose linter's styles are synced and its config loads them; the scanner plugin path resolves; the tool-server snippet is merged into the host's server config; the secrets config names real stores; the cloud workflow waits on a workflow `name:` that exists; and the CI template's job names are the ones the repo requires.
+  - (e) Runs: one read-only invocation, where one exists (e.g., `sh -n` on a hook, `prettier --check`, `vale` on one doc, `actionlint` on a workflow).
+  - (f) Ignored: every repo-wide gate (formatter, prose linter, scanner, linter, type checker) skips `.bkit/templates/`.
+  - For each context-fetch block, check that its job regex and artifact name match exactly the lane it names (CI Host Read). A widened regex that catches another lane is a finding.
+
+  **Done when:** `Templates` holds one row per adopted template, with a verdict for each of (a)-(f).
+
 - [ ] **Step 10 — Standards:** Confirm the current version of each anchor standard, and read what changed since the previous report's version. Give `Standards Coverage` one row per Contract row, one per context-fetch file and one per tool reference read, each marked checked (naming the step), not applicable (saying why) or finding. A key or option in an adopted config that its tool reference deprecates is a finding. Mark each recommended practice the project does not apply as adopt (with a proposed step), reject (saying why) or not applicable. **Done when:** no row is empty.
 - [ ] **Step 11 — Anything Else:** (a) Give a one-line verdict on each change since the previous report's commit that touches bkit-written files, `.bkit/templates/`, adopted copies, `.agents/context.md` or `package.json` `bkit.*`. (b) In a bounded pass of about 30 minutes, note what a senior engineer adopting bkit would flag that no step asks about. Read what happened since the previous run (`bkit upgrade` output, new `docs/failures.jsonl` rows, `.bkit/friction.jsonl`), and ask what no step would catch. **Done when:** `Beyond the Steps` holds both passes, or says `none`. **If** one class of issue is seen on 2 runs → propose a step for it in `Process Improvements`.
 
@@ -206,11 +227,16 @@ PENDING
 ### 🔒 Gate 3: Report Check
 
 - [ ] **No placeholders:** no `PENDING` is left.
-- [ ] **Summary:** `Summary` gives the count per severity, the bkit version, the hosts, and the templates adopted / `gap` / `covered` / `not applicable`.
+- [ ] **Summary:** `Summary` gives the count per severity.
+- [ ] **bkit version:** `Summary` gives the bkit version.
+- [ ] **Hosts:** `Summary` names the hosts.
+- [ ] **Template counts:** `Summary` gives the count of templates adopted / `gap` / `covered` / `not applicable`.
 - [ ] **Series:** `Adoption` is diffed against the previous report's, or the run is marked baseline.
-- [ ] **Writes:** only this report, the template's `Project Instructions` and ledger rows have changed, and the throwaway package unpack is removed.
+- [ ] **Writes:** this run changed only this report, the template's `Project Instructions` and its own `docs/failures.jsonl` rows.
+- [ ] **Throwaways removed:** the throwaway package unpack is removed.
 - [ ] **Process Improvements:** `Universal` and `Project` are both filled.
-- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one row, and every row has a `Next Step`.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one `Suggested Issues` row.
+- [ ] **Next Step:** every `Suggested Issues` row has a `Next Step`.
 - [ ] **Gate 3 — Verified:** every item above holds.
 
 <!-- bkit:end -->

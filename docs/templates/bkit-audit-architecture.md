@@ -29,16 +29,16 @@ Reading files cannot show whether the package graph is acyclic, which modules ar
 **Anchor Standards:**
 
 - C4 model (System Context, Container, Component).
-- Architecture decision records (e.g. adr.github.io) and architectural fitness functions (e.g. _Building Evolutionary Architectures_).
-- Product quality model, nine characteristics (e.g. ISO/IEC 25010:2023).
-- Quality-attribute scenarios (e.g. ATAM utility tree).
-- Package metrics: afferent coupling (Ca), efferent coupling (Ce), instability, abstractness, Stable Dependencies Principle (e.g. Robert C. Martin).
-- Compiler-resolving dependency linter (e.g. dependency-cruiser, import-linter); record version.
-- Workspace boundary checker (e.g. `turbo boundaries`, Nx module boundaries); record version.
-- Layer-boundary linter (e.g. eslint-plugin-boundaries, ArchUnit).
-- Well-architected pillars as a lens (e.g. AWS Well-Architected, Azure Well-Architected).
-- Server and client component boundary, including a build-failing server-only guard (e.g. Next.js Server and Client Components, `server-only`).
-- Host production checklists (e.g. Vercel, Supabase, Fly).
+- Architecture decision records (e.g., adr.github.io) and architectural fitness functions (e.g., _Building Evolutionary Architectures_).
+- Product quality model, nine characteristics (e.g., ISO/IEC 25010:2023).
+- Quality-attribute scenarios (e.g., ATAM utility tree).
+- Package metrics: afferent coupling (Ca), efferent coupling (Ce), instability, abstractness, Stable Dependencies Principle (e.g., Robert C. Martin).
+- Compiler-resolving dependency linter (e.g., dependency-cruiser, import-linter); record version.
+- Workspace boundary checker (e.g., `turbo boundaries`, Nx module boundaries); record version.
+- Layer-boundary linter (e.g., eslint-plugin-boundaries, ArchUnit).
+- Well-architected pillars as a lens (e.g., AWS Well-Architected, Azure Well-Architected).
+- Server and client component boundary, including a build-failing server-only guard (e.g., Next.js Server and Client Components, `server-only`).
+- Host production checklists (e.g., Vercel, Supabase, Fly).
 
 ### Scope
 
@@ -81,15 +81,51 @@ Reading files cannot show whether the package graph is acyclic, which modules ar
 ### 🔒 Gate 1: Prerequisites Check
 
 - [ ] **Gaps named:** every missing item names its fallback and its `Not Checked` entry.
-- [ ] **Gate 1 — Verified:** every Core item and every applicable Conditional item is checked.
+- [ ] **Gate 1 — Verified:** every item above, every Core item and every applicable Conditional item is checked.
 
 ### Probe Steps
 
 - [ ] **Step 1 — Previous Run:** **Done when:** `Previous Run` holds the closure rate, or the run is marked baseline.
 - [ ] **Step 2 — Graph:** Build the graph locally, from code only, with credentials stripped, through the project wrapper (never a bare extract). Record the tool version, `built_at_commit`, the node count, the edge count and the cross-package edge count. **If** the graph commit != the reviewed `HEAD` → the findings are invalid, so rebuild. Keep the derived output untracked. A clean rebuild deletes only that output. **If** path aliases changed → do a clean rebuild, because a force flag that does not clear the module-resolution cache keeps stale unresolved edges. A syntax-only graph (e.g., tree-sitter) does not consult the language server. Path aliases and manifest names are separate inputs, and losing either one drops edges with no error. Keep the manifests in the corpus so workspace imports resolve, then drop manifest-to-manifest edges before building the matrix. Skip the whole-repo render, and use package and module rollups. **If** the tool keeps dated extractor backups → they accumulate, and a clean rebuild clears them. **Done when:** `Graph` holds the commit, the counts and the tool list, or `Not Checked` names the absent tool.
 - [ ] **Step 3 — Report:** Read the extractor's report. Check every finding-like section against source before it counts. Import cycles: a type-only edge is erased at compile time, so it is not a runtime cycle. Check every edge. Cross-package edges: once aliases resolve, do not dismiss them as impossible, but do dismiss manifest-to-manifest edges. God nodes: a high degree is a reason to look, not a defect. **If** a community dump has numbered labels and near-zero cohesion → the clustering found no structure, so skip it. **Done when:** `Graph` gives each section a disposition.
-- [ ] **Step 4 — Structure:** Query the built graph first, then the graph file. Apply the filters first: code only (source extensions; drop manifests and config), with tests separated by the repo's one test-path rule. Do not type a shorter list. Test files cross boundaries, so counting them as product hides the shape. Views with and without test code can both be correct, so record which one you use. Keep dependency-shaped edges only (import, re-export, dynamic import). Nesting is not dependency. Exclude name-matching edges (e.g., `indirect_call`), because they can invent links between unrelated files that share a function name. Blast radius under-reports: it misses callers in anonymous callbacks and calls in module-level initialisers. A blast-radius set is a starting set, never a complete one. Run these checks, each as a series. (1) Build the package dependency matrix, code only, and find the back-edges (library→app, leaf→consumer). It should be a DAG. For each workspace, compute Ca, Ce, instability I = Ce/(Ca+Ce) and abstractness (the share of exported types and interfaces). Flag a package that depends on a less stable one. (2) Find file-level cycles (SCC over import edges). A component of more than 1 file is a candidate for the type-only check. (3) Fan-in: rank the files everything imports. (4) Fan-out: rank the files with the most imports, which are barrels and god modules. (5) Duplicate symbol names: group callables by label across distinct non-test source files. A name with >=3 definitions is a prompt to look. Per-directory handlers and platform splits (e.g., `.native` / `.web`) are false positives. The signal is a type or component duplicated where a canonical one exists. Run the same grouping over test code alone. Find copies without a shared name with text search. Confirmed hits go to `bkit-audit-duplication`. **Done when:** `Structure` holds the matrix, the cycles, the rankings and the duplicates.
-- [ ] **Step 5 — Layers:** A back-edge hunt with no written model lets a legal but wrong dependency pass. Carry the allowed package-layer matrix forward from the previous report. **If** there is no matrix → draft one from the recorded architecture decisions, and mark it proposed. Diff the code-only matrix against it. Every disallowed edge is a candidate. Encode the matrix as forbidden rules for the compiler-resolving linter, with its config under the repo-root `tmp/` only and type-only edges excluded. Check the extractor's import cycles. A rule that runs clean is a fitness function to propose under `Process Improvements`. Run the workspace boundary checker, and record its version. A clean result is a candidate for a package-DAG gate, not proof. **If** there is a native or restricted app → check that no package it imports transitively has a server-only or host-only module (e.g., `fs`, a server-only import, a service-role client), and write a forbidden rule for it, so a bundle break or a client secret is caught by structure. Public entry points: every workspace package declares them where the ecosystem supports it (e.g., the Node `exports` map, Go `internal/`). Deep imports past them are candidates. Name the enforcing rule each one would need. **Done when:** `Layers` holds every disallowed edge, with the rule that would forbid it.
+- [ ] **Step 4 — Structure:** Query the built graph first, then the graph file.
+  - Apply the filters first: code only (source extensions; drop manifests and config), with tests separated by the repo's one test-path rule. Do not type a shorter list.
+  - Test files cross boundaries, so counting them as product hides the shape. Views with and without test code can both be correct, so record which one you use.
+  - Keep dependency-shaped edges only (import, re-export, dynamic import). Nesting is not dependency.
+  - Exclude name-matching edges (e.g., `indirect_call`), because they can invent links between unrelated files that share a function name.
+  - Blast radius under-reports: it misses callers in anonymous callbacks and calls in module-level initialisers. A blast-radius set is a starting set, never a complete one.
+  - Run these checks, each as a series:
+    - (1) Package dependencies:
+      - Build the package dependency matrix, code only, and find the back-edges (library→app, leaf→consumer). It should be a DAG.
+      - For each workspace, compute Ca, Ce, instability I = Ce/(Ca+Ce) and abstractness (the share of exported types and interfaces).
+      - Flag a package that depends on a less stable one.
+    - (2) Find file-level cycles (SCC over import edges). A component of more than 1 file is a candidate for the type-only check.
+    - (3) Fan-in: rank the files everything imports.
+    - (4) Fan-out: rank the files with the most imports, which are barrels and god modules.
+    - (5) Duplicate symbol names:
+      - Group callables by label across distinct non-test source files. A name with >=3 definitions is a prompt to look. Per-directory handlers and platform splits (e.g., `.native` / `.web`) are false positives. The signal is a type or component duplicated where a canonical one exists.
+      - Run the same grouping over test code alone.
+      - Find copies without a shared name with text search.
+      - Confirmed hits go to `bkit-audit-duplication`.
+
+  **Done when:** `Structure` holds the matrix, the cycles, the rankings and the duplicates.
+
+- [ ] **Step 5 — Layers:** A back-edge hunt with no written model lets a legal but wrong dependency pass.
+  - Carry the allowed package-layer matrix forward from the previous report.
+  - **If** there is no matrix → draft one from the recorded architecture decisions, and mark it proposed.
+  - Diff the code-only matrix against it. Every disallowed edge is a candidate.
+  - Encode the matrix as forbidden rules for the compiler-resolving linter, with its config under the repo-root `tmp/` only and type-only edges excluded.
+  - Check the extractor's import cycles. A rule that runs clean is a fitness function to propose under `Process Improvements`.
+  - Run the workspace boundary checker, and record its version. A clean result is a candidate for a package-DAG gate, not proof.
+  - **If** there is a native or restricted app →
+    - Check that no package it imports transitively has a server-only or host-only module (e.g., `fs`, a server-only import, a service-role client).
+    - Write a forbidden rule for it, so a bundle break or a client secret is caught by structure.
+  - Public entry points:
+    - Check that every workspace package declares them where the ecosystem supports it (e.g., the Node `exports` map, Go `internal/`). Deep imports past them are candidates.
+    - Name the enforcing rule each one would need.
+
+  **Done when:** `Layers` holds every disallowed edge, with the rule that would forbid it.
+
 - [ ] **Step 6 — Boundary:** List the modules that import a privileged data client, a service-role secret or a non-public secret. Confirm that each one imports a guard that turns a client import into a build error (e.g., `server-only`), where the stack has one. **If** the stack has none → the reach check stands alone, so say so. Confirm that no client-entry module reaches one transitively, because a client entry pulls its imports into the client bundle. Use text search for the list, the linter or blast radius for reach, and `Cross-Check` to confirm. **Done when:** `Boundary` holds every privileged module, with its guard, reach and verdict.
 - [ ] **Step 7 — Cross-Check:** The language server answers from disk, so it shows no mid-edit staleness, and it resolves what the tree-sitter graph cannot. The graph misses callers in anonymous callbacks. The language server misses what the project graph cannot reach. Confirm fan-in and blast radius with references before the write-up. Pace the reference queries, because back-to-back calls can return a partial count that looks the same as a real one. **If** a count is surprisingly low → repeat it after a pause. An empty result is inconclusive. Neither tool sees these blind spots: middleware guards, config-referenced files, runtime-registered handlers, mock-factory keys, and packages outside the language server's project graph. Use text search for non-source files, string literals and unknown names. **Done when:** every load-bearing claim in `Cross-Check` names both tools, or the blind spot.
 - [ ] **Step 8 — References:** Pick 2-3 well-regarded OSS repos on the same stack, and compare their shape: package boundaries, where shared code lives, the config and env split, and how client code is shared. Record the repo name, the commit or tag, and the comparison. A difference is a soft signal, not a finding on its own. Report it only with the problem it would solve here, mark it low-confidence, and never rank it above a graph finding. **Done when:** `References` holds the repos, revisions and comparisons, or `none`.
@@ -198,11 +234,15 @@ PENDING
 ### 🔒 Gate 3: Report Check
 
 - [ ] **No placeholders:** no `PENDING` is left.
-- [ ] **Summary:** `Summary` gives the count per severity, the tools available and the graph commit.
+- [ ] **Summary:** `Summary` gives the count per severity.
+- [ ] **Tools:** `Summary` names the tools available.
+- [ ] **Graph commit named:** `Summary` names the graph commit.
 - [ ] **Series:** the report shows node, edge, and cross-package counts, and the coupling table, beside the previous report's numbers, or marks the run as baseline.
-- [ ] **Writes:** only this report, the template's `Project Instructions` and ledger rows have changed, and every throwaway worktree or remote target is removed.
+- [ ] **Writes:** this run changed only this report, the template's `Project Instructions` and its own `docs/failures.jsonl` rows.
+- [ ] **Throwaways removed:** every throwaway worktree or remote target is removed.
 - [ ] **Process Improvements:** `Universal` and `Project` are both filled.
-- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one row, and every row has a `Next Step`.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one `Suggested Issues` row.
+- [ ] **Next Step:** every `Suggested Issues` row has a `Next Step`.
 - [ ] **Gate 3 — Verified:** every item above holds.
 
 <!-- bkit:end -->

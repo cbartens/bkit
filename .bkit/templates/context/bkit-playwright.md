@@ -11,7 +11,7 @@ Fits: a web e2e lane that runs Playwright on GitHub Actions and uploads its repo
 - Edit the defaults of both in the block.
 - CLI: `gh`. It is base tooling, so there is no provision block.
 - Domains: none beyond bkit's derived set (`github.com`).
-- Use one block per lane. A lane whose evidence does not reach GitHub, such as a native lane on Expo EAS, needs its own block: see `maestro.md` and the `expo-workflows` block in `expo.md`.
+- Use one block per lane. A lane whose evidence does not reach GitHub, such as a native lane on Expo EAS, needs its own block: see `bkit-maestro.md` and the `expo-workflows` block in `bkit-expo.md`.
 
 Copy the block below into `.agents/context.md`, below `<!-- bkit:end -->`.
 

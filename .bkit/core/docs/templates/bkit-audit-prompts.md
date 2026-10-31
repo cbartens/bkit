@@ -29,9 +29,9 @@ A prompt is written against one model maker's advice at one point in time. The m
 **Anchor Standards:** For each guide, record the URL, the last-updated date or the date it was read, and the model generation it targets.
 
 - Anthropic prompt engineering docs and the prompting best-practices page for current Claude models.
-- OpenAI prompt engineering guide and the model-specific prompting guide for each model in use (e.g. the cookbook guide per model generation).
+- OpenAI prompt engineering guide and the model-specific prompting guide for each model in use (e.g., the cookbook guide per model generation).
 - Google Gemini API prompt design strategies.
-- Every other maker whose model runs a prompt (e.g. xAI, Mistral, Meta, DeepSeek, Qwen): its own prompting guide, or `Not Checked` when it publishes none; its model parameter docs either way.
+- Every other maker whose model runs a prompt (e.g., xAI, Mistral, Meta, DeepSeek, Qwen): its own prompting guide, or `Not Checked` when it publishes none; its model parameter docs either way.
 - Each maker's tool-use and structured-output docs, for tool and schema descriptions.
 
 Guides disagree. The guide for the model that runs the prompt wins. A prompt that runs on models from more than one maker (fallback chain, router, several hosts) follows the current guides of the makers whose models run it day to day. A fallback model's guide counts only where it does not conflict with them.
@@ -54,7 +54,7 @@ Guides disagree. The guide for the model that runs the prompt wins. A prompt tha
 | --- | --- | --- |
 | Injection boundary, tool capability, output validators, call limits, job-scope bound, evals / golden sets | LLM sweep | `bkit-audit-llm` |
 | Model choice, deprecation, catalogue, fallback-chain membership | Model sweep | `bkit-audit-models` |
-| Coding-agent instruction files (e.g. `AGENTS.md`, `CLAUDE.md`, agent definitions, skills): loading, permissions, untrusted input | Agent config sweep | `bkit-audit-agents` |
+| Coding-agent instruction files (e.g., `AGENTS.md`, `CLAUDE.md`, agent definitions, skills): loading, permissions, untrusted input | Agent config sweep | `bkit-audit-agents` |
 | Contradictions between instruction files; always-loaded size | Documentation sweep | `bkit-audit-documentation` |
 | bkit-managed prompts and templates (`.bkit/`, `bkit-*` host agent mirrors, `bkit:start` / `bkit:end` blocks) | Fixed upstream in bkit | bkit's own run of this audit |
 | Live hostile probes | Red team | `bkit-audit-red-team` |
@@ -77,7 +77,7 @@ Guides disagree. The guide for the model that runs the prompt wins. A prompt tha
 ### 🔒 Gate 1: Prerequisites Check
 
 - [ ] **Gaps named:** every missing item names its fallback and its `Not Checked` entry.
-- [ ] **Gate 1 — Verified:** every Core item and every applicable Conditional item is checked.
+- [ ] **Gate 1 — Verified:** every item above, every Core item and every applicable Conditional item is checked.
 
 ### Probe Steps
 
@@ -194,12 +194,15 @@ PENDING
 ### 🔒 Gate 3: Report Check
 
 - [ ] **No placeholders:** no `PENDING` is left.
-- [ ] **Summary:** `Summary` gives the count per severity, the prompts read and the guide versions read.
+- [ ] **Summary:** `Summary` gives the count per severity.
+- [ ] **Prompts read:** `Summary` names the prompts read.
+- [ ] **Guide versions:** `Summary` gives the guide versions read.
 - [ ] **Series:** `Inventory` and `Deliberate Choices` are diffed against the previous report's, or the run is marked baseline.
 - [ ] **Guides:** every `Model Fit` verdict names the guide and the date it was judged against.
-- [ ] **Writes:** only this report, the template's `Project Instructions` and ledger rows changed.
+- [ ] **Writes:** this run changed only this report, the template's `Project Instructions` and its own `docs/failures.jsonl` rows.
 - [ ] **Process Improvements:** `Universal` and `Project` are both filled.
-- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one row, and every row has a `Next Step`.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one `Suggested Issues` row.
+- [ ] **Next Step:** every `Suggested Issues` row has a `Next Step`.
 - [ ] **Gate 3 — Verified:** every item above holds.
 
 <!-- bkit:end -->

@@ -29,12 +29,12 @@ The failure this audit targets is a claim the code has left behind. Examples: a 
 **Anchor Standards:**
 
 - Diátaxis (unversioned; record the date read).
-- Docs-as-code prose linter and link checker (e.g. Vale, lychee); record versions.
-- Architecture decision records (e.g. ADR form).
-- Runbook practice (e.g. Google SRE Workbook, "On-Call").
-- Source-host community health files (e.g. GitHub `README`, `CONTRIBUTING`, `SECURITY.md`).
-- API-doc validation for the language (e.g. TypeDoc validation, TSDoc); record version.
-- HTTP API specification when the project serves HTTP (e.g. OpenAPI); record version.
+- Docs-as-code prose linter and link checker (e.g., Vale, lychee); record versions.
+- Architecture decision records (e.g., ADR form).
+- Runbook practice (e.g., Google SRE Workbook, "On-Call").
+- Source-host community health files (e.g., GitHub `README`, `CONTRIBUTING`, `SECURITY.md`).
+- API-doc validation for the language (e.g., TypeDoc validation, TSDoc); record version.
+- HTTP API specification when the project serves HTTP (e.g., OpenAPI); record version.
 
 ### Scope
 
@@ -82,7 +82,7 @@ The failure this audit targets is a claim the code has left behind. Examples: a 
 ### 🔒 Gate 1: Prerequisites Check
 
 - [ ] **Gaps named:** every missing item names its fallback and its `Not Checked` entry.
-- [ ] **Gate 1 — Verified:** every Core item and every applicable Conditional item is checked.
+- [ ] **Gate 1 — Verified:** every item above, every Core item and every applicable Conditional item is checked.
 
 ### Probe Steps
 
@@ -110,7 +110,7 @@ The failure this audit targets is a claim the code has left behind. Examples: a 
   <!-- prettier-ignore -->
   | Claim type | Check against |
   | --- | --- |
-  | Defaults and flags | Schema default and the env files that are actually deployed. A schema default (e.g. zod `.default()`) applies only when the variable is unset |
+  | Defaults and flags | Schema default and the env files that are actually deployed. A schema default (e.g., zod `.default()`) applies only when the variable is unset |
   | What a script does | The script, end to end. Look hardest for anything that deletes |
   | Which parts exist, on which platform | The code, on every platform the doc claims |
   | `file:line` | Open the line. It must still say what the doc claims |
@@ -143,7 +143,18 @@ The failure this audit targets is a claim the code has left behind. Examples: a 
   **Done when:** `Memory` holds each hit, or the skip is recorded.
 
 - [ ] **Step 11 — Rules:** Read the instruction files the IDE loads side by side (`AGENTS.md`, `CLAUDE.md`, IDE rule files, `.agents/rules.md`, and any other). A directive that one file forbids, or two commands for the same task, is a finding. **If** it is inside `bkit:start` / `bkit:end` → it is an upstream bkit fix. The destination is proposed wording, so the owner can pick the rule that stands. Record the load size as a series: the byte size of the always-applied files, and about a quarter of that in tokens. Growth with no new rule means copying. **Done when:** `Rules` lists the contradictions and the load size.
-- [ ] **Step 12 — Topics:** Two docs on one topic is a bug (`.agents/docs.md`). Pick the home, delete the copy, and link to the home. Look in this order: the same table or list in two docs; a section in a domain doc that repeats a ledger row; and an audit report still giving advice that a doc replaced. Label each live doc with its Diátaxis quadrant (tutorial, how-to, reference, explanation). A doc that mixes quadrants is a finding for a split. A topic agents need with no doc in the right quadrant is a finding for a new one. Record the labels so the next run can diff them. `@bkit-utility-compress-markdown` overwrites one file per call, and this run does not invoke it. A long prose doc may be named as a candidate. Never name a doc that tests parse, and never a ledger. **Done when:** `Topics` holds the duplicates, the quadrant labels, and any compress candidate.
+- [ ] **Step 12 — Topics:** Two docs on one topic is a bug (`.agents/docs.md`).
+  - Look for duplicates in this order: the same table or list in two docs; a section in a domain doc that repeats a ledger row; and an audit report still giving advice that a doc replaced.
+  - For each duplicate, name the home, the copy to delete and the link to add, for the next step to apply.
+  - Label each live doc with its Diátaxis quadrant (tutorial, how-to, reference, explanation).
+  - Record the labels, so the next run can diff them.
+  - A doc that mixes quadrants is a finding for a split.
+  - A topic agents need with no doc in the right quadrant is a finding for a new one.
+  - A long prose doc may be named as a candidate for `@bkit-utility-compress-markdown`, which overwrites one file per call. This run does not invoke it.
+  - Never name a doc that tests parse, or a ledger, as a compress candidate.
+
+  **Done when:** `Topics` holds the duplicates, the quadrant labels, and any compress candidate.
+
 - [ ] **Step 13 — Handoff:** This run does not edit docs. Read the CI workflow for what a docs-only push actually runs. Record the recheck the next step owes after the edits this report names: prose lint, the format check, the managed-block check, `Mechanical` and `Ledgers` again (both should list nothing new), and every test that reads a doc the report says to touch. Find those tests with `git grep -l`; do not list them from memory. A change to a code comment, a script or a migration is a code change, and takes the normal lanes. **Done when:** `Handoff` names the recheck commands and tests.
 - [ ] **Step 14 — Standards:** Confirm the current version of each anchor standard, and read what changed since the previous report's version. In `Standards Coverage`, give one row per Diátaxis quadrant, plus one row each for link checking, anchor checking, decision records, runbooks, each community health file, and the API or package reference, marked checked (with the step), not applicable (saying why) or finding. Mark each recommended practice the project does not apply as adopt (with a proposed step), reject (saying why) or not applicable. **Done when:** no row is empty.
 - [ ] **Step 15 — Anything Else:** (a) List everything changed since the previous report's commit that touches docs (new or renamed docs, `.agents/*.md` and other rule files, package scripts, env vars, routes, background events, new ledger rows and new external services), with a one-line verdict each. (b) In a bounded pass of about 30 minutes, note what a senior technical writer would flag that no step asks about. Read what happened since the previous run (incidents, `bkit-audit-logs` reports, new `docs/failures.jsonl` rows and vendor status incidents), and note what no step would catch. **Done when:** `Beyond the Steps` holds both passes, or says `none`. **If** one class of issue is seen on 2 runs → propose a step for it in `Process Improvements`.
@@ -153,7 +164,8 @@ The failure this audit targets is a claim the code has left behind. Examples: a 
 - [ ] **Steps complete:** every step is `[x]`, or skipped with evidence that its surface is absent.
 - [ ] **Evidence:** every finding cites evidence someone can check again, and the tool that produced it.
 - [ ] **No secrets:** no secret or credential value appears anywhere in the report.
-- [ ] **Tree clean:** no doc, ledger, memory or instruction file changed.
+- [ ] **Docs untouched:** no live doc, memory file or instruction file changed, other than the template's `Project Instructions`.
+- [ ] **Ledger rows untouched:** no existing ledger row changed.
 - [ ] **Scratch in tmp:** scratch files are only under the repo-root `tmp/`.
 - [ ] **Gate 2 — Verified:** every item above holds.
 
@@ -266,9 +278,11 @@ PENDING
 - [ ] **No placeholders:** no `PENDING` is left.
 - [ ] **Summary:** `Summary` gives the count per severity.
 - [ ] **Series:** the report shows load size, and setup-walk times when the walk ran, beside the previous report's numbers, or marks the run as baseline.
-- [ ] **Writes:** only this report, the template's `Project Instructions` and ledger rows have changed, and every throwaway worktree or remote target is removed.
+- [ ] **Writes:** this run changed only this report, the template's `Project Instructions` and its own `docs/failures.jsonl` rows.
+- [ ] **Throwaways removed:** every throwaway worktree or remote target is removed.
 - [ ] **Process Improvements:** `Universal` and `Project` are both filled.
-- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one row, and every row has a `Next Step`.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one `Suggested Issues` row.
+- [ ] **Next Step:** every `Suggested Issues` row has a `Next Step`.
 - [ ] **Gate 3 — Verified:** every item above holds.
 
 <!-- bkit:end -->

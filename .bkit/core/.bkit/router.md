@@ -3,7 +3,7 @@
 {{BKIT_MANAGED_MARKER}}
 
 > [!CAUTION]
-> **Purpose:** The workflow router. `AGENTS.md` sends a prompt here when the prompt names a `bkit-{command}` workflow. The router picks the workflow, then runs its command file for the current host. It never executes a workflow itself.
+> **Purpose:** The workflow router. `AGENTS.md` sends a prompt here when the prompt names a `bkit-{command}` workflow. The router picks the workflow, then runs that workflow's command file for the current host. The workflow's steps live in that command file, not here.
 >
 > **Rules:**
 >

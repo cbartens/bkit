@@ -29,8 +29,8 @@ Privacy rules land with features, and nothing re-reads them together. The failur
 - GDPR and UK GDPR.
 - ePrivacy Art 5(3) and EDPB Guidelines 2/2023.
 - EDPB DPIA criteria (WP248 rev.01).
-- Children's rules (e.g. COPPA, ICO Age Appropriate Design Code).
-- National / state laws (e.g. Australian Privacy Act, CCPA).
+- Children's rules (e.g., COPPA, ICO Age Appropriate Design Code).
+- National / state laws (e.g., Australian Privacy Act, CCPA).
 
 ### Scope
 
@@ -71,7 +71,7 @@ Privacy rules land with features, and nothing re-reads them together. The failur
 ### 🔒 Gate 1: Prerequisites Check
 
 - [ ] **Gaps named:** every missing item names its fallback and its `Not Checked` entry.
-- [ ] **Gate 1 — Verified:** every Core item and every applicable Conditional item is checked.
+- [ ] **Gate 1 — Verified:** every item above, every Core item and every applicable Conditional item is checked.
 
 ### Probe Steps
 
@@ -190,9 +190,11 @@ PENDING
 - [ ] **Summary:** `Summary` gives the count per severity.
 - [ ] **Annual Review:** `Annual Review` states whether this run serves as the annual privacy review.
 - [ ] **Training:** `Annual Review` states whether everyone with children's-data access completed privacy training.
-- [ ] **Writes:** only this report, the template's `Project Instructions` and ledger rows have changed, and every throwaway worktree or remote target is removed.
+- [ ] **Writes:** this run changed only this report, the template's `Project Instructions` and its own `docs/failures.jsonl` rows.
+- [ ] **Throwaways removed:** every throwaway worktree or remote target is removed.
 - [ ] **Process Improvements:** `Universal` and `Project` are both filled.
-- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one row, and every row has a `Next Step`.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one `Suggested Issues` row.
+- [ ] **Next Step:** every `Suggested Issues` row has a `Next Step`.
 - [ ] **Gate 3 — Verified:** every item above holds.
 
 <!-- bkit:end -->

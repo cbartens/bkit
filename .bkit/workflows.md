@@ -694,7 +694,7 @@ Then assert that each Update / Create artifact exists and is non-empty. An empty
 
 **Per-agent description, scope, effort tier, tool surface, `maxTurns` → `.bkit/prompts.md`** (which indexes `.bkit/core/prompts/*.md` and is the single source for agent metadata). This file covers how the workflow layer composes the agents.
 
-**Cross-platform tool surface:** the subagent `tools:` allowlist is enforced on Claude (native) and Cursor (passthrough, 2.4+). Removing `Edit`/`Bash` makes an agent provably non-mutating on both hosts. `bkit install` T3 passes `tools:` verbatim and never emits `readonly:`, because Cursor honours `tools:` directly.
+**Cross-platform tool surface:** Claude enforces the subagent `tools:` allowlist natively. `bkit install` T3 passes `tools:` to Cursor verbatim and never emits `readonly:`, but Cursor CLI 2026.10.01 does not enforce it (measured, `.bkit/prompts.md` § Field rationale). Removing `Edit`/`Bash` makes an agent provably non-mutating on Claude only.
 
 **Parallel fan-outs** (effort / model diversity, sibling-blind):
 

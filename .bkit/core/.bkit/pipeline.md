@@ -193,7 +193,7 @@ Output: an executable plan (`{FID}-plan.md`), its tasks in groups the build runs
 | `bkit-plan-generate` | Generate | Turns the design into groups of task blocks, in build order. |
 | `bkit-plan-review-1` | Tightness + dependency order + design-coverage | Read-only critique of the plan text; flags drift, out-of-order tasks and missing prerequisites as CRITICAL. Parallel. |
 | `bkit-plan-review-2` | Regression-risk | Same scope, reads the code: traces each task's surfaces to their consumers. Parallel. |
-| `bkit-plan-scope-check` | Internal-completeness | Mechanical scope audit: verifies the template structure, and each task's scope and verification. Each task's `DONE WHEN` / `TEST FIRST` belong to `bkit tests plan-check`. Depth-sensitive: stays on the top model tier. Parallel. |
+| `bkit-plan-scope-check` | Internal-completeness | Mechanical scope audit: verifies the template structure, and each task's scope and verification. Each task's `DONE WHEN` / `TEST FIRST` belong to `bkit tests plan-check`. Parallel. |
 | `bkit-plan-update` | Apply review (merge) | Merges all three critiques in one pass, max-wins on CRITICAL findings. |
 
 <a id="bkit-build"></a>
@@ -213,7 +213,7 @@ Output: a PR to `dev`. This is the heaviest phase: most of its steps verify rath
 | `bkit-build-plan-gaps-remediate` | Gap-fixer | Fills gaps the verifier found, then re-verifies. |
 | `bkit-build-plan-verify` | Holistic critic | Second, whole-of-plan verification pass across everything built. |
 | `bkit-build-challenge-1` | Bug-hunting | Adversarial review of the full diff. Writes each finding as a plan task with a test first. Forbidden from reading its sibling. Parallel. Runs only on a large change (300+ lines or 10+ files, `docs/plans/**` excluded, measured by `bkit challenge gate`). A small change runs `-2` alone. `bkit challenge merge` then appends the findings to the plan, and execute and verify fix them. |
-| `bkit-build-challenge-2` | Security | Same diff, security lens. Depth-sensitive: stays on the top model tier. Runs on every change, alone on a small one. |
+| `bkit-build-challenge-2` | Security | Same diff, security lens. Runs on every change, alone on a small one. |
 | `bkit-debug-failure-diagnose` | Diagnostician | When tests fail, diagnoses with Standard / Pivot / Final strategy escalation. Shared with debug. |
 | `bkit-debug-failure-remediate` | Fixer | When tests fail, applies the diagnosed fix. |
 

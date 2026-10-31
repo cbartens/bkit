@@ -30,13 +30,13 @@ Search engines rank pages, and answer engines quote facts, so plain factual copy
 
 **Anchor Standards:**
 
-- Search essentials and the search-documentation updates log (e.g. Google Search Essentials, Bing Webmaster Guidelines). Record the date of the newest entry read.
-- The engine's AI-features and generative-AI optimisation guides (e.g. Google's AI features and your website). Record each page's last-updated date.
-- Search-console help, including the control for generative answers (e.g. Search Console Help). Record the date read.
-- Index submission protocol (e.g. IndexNow). Record the date read.
-- The structured-data vocabulary release and the engine's supported-type list (e.g. schema.org, Google's structured-data gallery). Record the release number and the date read.
-- Robots Exclusion Protocol (e.g. RFC 9309).
-- Each AI vendor's crawler documentation (e.g. OpenAI, Anthropic, Perplexity, Apple, Google's common crawlers). Record each page's date, or the date read.
+- Search essentials and the search-documentation updates log (e.g., Google Search Essentials, Bing Webmaster Guidelines). Record the date of the newest entry read.
+- The engine's AI-features and generative-AI optimisation guides (e.g., Google's AI features and your website). Record each page's last-updated date.
+- Search-console help, including the control for generative answers (e.g., Search Console Help). Record the date read.
+- Index submission protocol (e.g., IndexNow). Record the date read.
+- The structured-data vocabulary release and the engine's supported-type list (e.g., schema.org, Google's structured-data gallery). Record the release number and the date read.
+- Robots Exclusion Protocol (e.g., RFC 9309).
+- Each AI vendor's crawler documentation (e.g., OpenAI, Anthropic, Perplexity, Apple, Google's common crawlers). Record each page's date, or the date read.
 - Core Web Vitals, owned by `bkit-audit-app-performance`. This audit reads only what the search console reports.
 
 ### Scope
@@ -79,13 +79,28 @@ Search engines rank pages, and answer engines quote facts, so plain factual copy
 ### 🔒 Gate 1: Prerequisites Check
 
 - [ ] **Gaps named:** every missing item names its fallback and its `Not Checked` entry.
-- [ ] **Gate 1 — Verified:** every Core item and every applicable Conditional item is checked.
+- [ ] **Gate 1 — Verified:** every item above, every Core item and every applicable Conditional item is checked.
 
 ### Probe Steps
 
 - [ ] **Step 1 — Previous Run:** **Done when:** `Previous Run` holds the closure rate, or the run is marked baseline.
 - [ ] **Step 2 — Public URLs:** List the public URLs from the sitemap. **If** there is no sitemap → crawl from the home page. Record the production host and the tools available in `Checked`. Check first that no preview deployment is indexable (`X-Robots-Tag: noindex`, or the host's deployment protection), because a crawled preview competes with production and can expose unreleased pages. **If** the marketing site lives outside the repo → name where, and audit it from the live URL. **If** there is no web origin → write `N/A`, then **STOP**. **If** there is no indexable page → say so. `Indexing` still runs, and the steps that need an indexable page skip with evidence in `Not Checked`. **Done when:** `Public URLs` holds the host, the URL list and the preview verdict.
-- [ ] **Step 3 — Indexing:** Check that `robots.txt` and the sitemap are present and valid. Check that the sitemap lists public URLs only. Check that `lastmod` changes only when that page's content changes. Engines trust it only when it is consistently accurate. Check that the sitemap is submitted in each webmaster console. Check the robots meta tag and `X-Robots-Tag` per page type: auth pages and previews are `noindex`, and public pages are indexable. Check that no `noindex` page is also `Disallow`ed, because a blocked crawler never sees the `noindex`, so the URL can stay indexed from links. Check that each canonical is absolute, on the production host, and one per page. Check host canonicalisation: `http` → `https`, apex ↔ `www` and the trailing-slash policy each take one hop, HSTS is set, and the sitemap uses the canonical form only. Check status codes: redirect chains are <= 1 hop, there are no loops, and missing pages return 404. Check locales: each variant's `hreflang` points to existing pages; `hreflang="x-default"` is present; each set is reciprocal and includes itself; the canonical stays in the same locale, never another; and no forced `/` redirect by `Accept-Language` or IP exists, because a crawler that sends no `Accept-Language` from one country (e.g., Googlebot) must still see the other locales. Check that content is in the HTML without JavaScript. Compare the rendered HTML for one URL per page type: the no-JavaScript view vs the engine's render after JavaScript (e.g., URL Inspection). **If** the engine indexes the mobile version (e.g., Google) → check that mobile and desktop have the same content. **Done when:** `Indexing` holds one row per check: met / finding / not applicable (saying why).
+- [ ] **Step 3 — Indexing:** Check that `robots.txt` and the sitemap are present and valid.
+  - Check that the sitemap lists public URLs only.
+  - Check that `lastmod` changes only when that page's content changes. Engines trust it only when it is consistently accurate.
+  - Check that the sitemap is submitted in each webmaster console.
+  - Check the robots meta tag and `X-Robots-Tag` per page type: auth pages and previews are `noindex`, and public pages are indexable.
+  - Check that no `noindex` page is also `Disallow`ed, because a blocked crawler never sees the `noindex`, so the URL can stay indexed from links.
+  - Check that each canonical is absolute, on the production host, and one per page.
+  - Check host canonicalisation: `http` → `https`, apex ↔ `www` and the trailing-slash policy each take one hop, HSTS is set, and the sitemap uses the canonical form only.
+  - Check status codes: redirect chains are <= 1 hop, there are no loops, and missing pages return 404.
+  - Check locales: each variant's `hreflang` points to existing pages; `hreflang="x-default"` is present; each set is reciprocal and includes itself; the canonical stays in the same locale, never another; and no forced `/` redirect by `Accept-Language` or IP exists, because a crawler that sends no `Accept-Language` from one country (e.g., Googlebot) must still see the other locales.
+  - Check that content is in the HTML without JavaScript.
+  - Compare the rendered HTML for one URL per page type: the no-JavaScript view vs the engine's render after JavaScript (e.g., URL Inspection).
+  - **If** the engine indexes the mobile version (e.g., Google) → check that mobile and desktop have the same content.
+
+  **Done when:** `Indexing` holds one row per check: met / finding / not applicable (saying why).
+
 - [ ] **Step 4 — Metadata:** Run this step only when the project has an indexable public page. Check that the title and description are present, unique and the right length. Check the Open Graph and Twitter card tags, and that their images exist at the right size. Check `lang`, the favicon and the web manifest. **If** the project has store listings → check the Smart App Banner (`apple-itunes-app`), and that `apple-app-site-association` and `assetlinks.json` are reachable, so search opens the app. The screen the link opens goes to `bkit-audit-app-store`. **Done when:** `Metadata` holds one row per page: tag · verdict, or the skip is in `Not Checked`.
 - [ ] **Step 5 — Structured Data:** Run this step only when the project has an indexable public page. Check the JSON-LD for each page type: `Organization`, `WebSite`, `SoftwareApplication` or `MobileApplication` with store links, `FAQPage` only where it mirrors on-page Q&A, and `BreadcrumbList` where the site has depth. Validate each block, and check that it matches the visible page, because markup that disagrees with the page is worse than none. Use the engine's rich-results test for supported types and a schema.org validator for the vocabulary. For app types, check the engine's required software-app properties, plus `operatingSystem` and `applicationCategory`. Ratings must come from real on-page user ratings, never self-assigned ones. A missing rich-result type that is retired (listed in `Project Instructions`) is not a finding. Generative answers need no special markup: structured data earns rich results and states facts plainly. **Done when:** `Structured Data` holds one row per block: type · valid · agrees with page · verdict, or the skip is in `Not Checked`.
 - [ ] **Step 6 — Answer Engines:**
@@ -204,11 +219,15 @@ PENDING
 ### 🔒 Gate 3: Report Check
 
 - [ ] **No placeholders:** no `PENDING` is left.
-- [ ] **Summary:** `Summary` gives the count per severity, whether any indexable public page exists, and the production host.
+- [ ] **Summary:** `Summary` gives the count per severity.
+- [ ] **Indexable page:** `Summary` states whether any indexable public page exists.
+- [ ] **Production host:** `Summary` names the production host.
 - [ ] **Series:** the report shows mention and citation share, and console query deltas, beside the previous report's numbers, or marks the run as baseline.
-- [ ] **Writes:** only this report, the template's `Project Instructions` and ledger rows have changed, and every throwaway worktree or remote target is removed.
+- [ ] **Writes:** this run changed only this report, the template's `Project Instructions` and its own `docs/failures.jsonl` rows.
+- [ ] **Throwaways removed:** every throwaway worktree or remote target is removed.
 - [ ] **Process Improvements:** `Universal` and `Project` are both filled.
-- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one row, and every row has a `Next Step`.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one `Suggested Issues` row.
+- [ ] **Next Step:** every `Suggested Issues` row has a `Next Step`.
 - [ ] **Gate 3 — Verified:** every item above holds.
 
 <!-- bkit:end -->

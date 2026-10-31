@@ -276,6 +276,7 @@ OV_DEFAULT = """{
   "rename": {},
   "note": {},
   "hide_nodes": [],
+  "hide_nodes_why": {},
   "hide_edges": [],
   "group": {}
 }"""

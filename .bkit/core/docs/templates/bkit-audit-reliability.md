@@ -30,7 +30,7 @@ Failure paths are the least tested. The happy path is tested, while a vendor out
 - Google SRE Workbook (online edition): Implementing SLOs, Alerting on SLOs (multi-window, multi-burn-rate), Example error budget policy.
 - Google SRE Book (online edition): Postmortem Culture.
 - AWS Well-Architected Framework, Reliability Pillar: REL05 BP01-BP07 (graceful degradation, throttling, retries, fail fast, client timeouts, stateless, emergency levers), REL11 (static stability), REL13 (disaster recovery). Record the publication date read.
-- Background-job flow-control docs (e.g. Inngest concurrency and `createFunction`, Temporal task queues).
+- Background-job flow-control docs (e.g., Inngest concurrency and `createFunction`, Temporal task queues).
 - bkit block of `docs/deployments.md` (bkit version from `.bkit/version`): § Production rollback runbook; § Dev rollback runbook; § Consumer rollback path; § Smoke trigger plumbing; § Applying migrations at deploy time; § Build-vs-migration race; § Promote before the lanes (`bkit-tests-deploy`)
 
 ### Scope
@@ -82,7 +82,7 @@ Failure paths are the least tested. The happy path is tested, while a vendor out
 ### 🔒 Gate 1: Prerequisites Check
 
 - [ ] **Gaps named:** every missing item names its fallback and its `Not Checked` entry.
-- [ ] **Gate 1 — Verified:** every Core item and every applicable Conditional item is checked.
+- [ ] **Gate 1 — Verified:** every item above, every Core item and every applicable Conditional item is checked.
 
 ### Probe Steps
 
@@ -90,7 +90,20 @@ Failure paths are the least tested. The happy path is tested, while a vendor out
 - [ ] **Step 2 — Surfaces:** Keep one table, run to run, so runs can be diffed. List the outbound calls (every SDK client and every `fetch` host), webhook receivers, background work (job functions and scheduled database jobs) and write paths (routes and server actions that change data). Mark each dependency hard (the journey fails without it) or soft (the journey degrades), and record what it depends on in turn. Transitive dependencies count: for example, when auth mail goes through a mail vendor, a mail outage is a sign-in outage. A surface that is in the code but not in the docs is a finding. The doc rewrite goes to `bkit-audit-documentation`. **Done when:** `Surfaces` lists every surface with hard/soft and its transitive dependencies, or `N/A` is recorded → **STOP**.
 - [ ] **Step 3 — Journeys:** List every journey users rely on. For each journey, record the SLI as a good/total ratio, the SLO over a rolling 28-day window, and the current measurement with the query that produced it. Keep the table run to run. A journey with no target, or with a target nobody measures, is a finding. Read the error-budget policy: what changes when the budget is spent (e.g., a feature freeze, or a mandatory postmortem when one incident uses more than 20% of the budget). Record whether the policy triggered since the previous run, and whether it was obeyed. No policy is a finding. **Done when:** `Journeys` has one row per journey: SLI · SLO · measurement and query · budget triggered · obeyed.
 - [ ] **Step 4 — Dropped Errors:** Search the whole codebase, not only the errors that reached a log (`bkit-audit-logs` owns those). Look for a `catch` that neither rethrows, returns an error nor logs at `warn` or above; client calls whose error is never read (e.g., Supabase `{ error }`, AWS SDK, Prisma); promises without `await` or `.catch`; and broad catches that turn every failure into one generic message, so the caller cannot tell a timeout from a bug. An error that is dropped and never logged is invisible to users and operators, so list those first. Deliberate best effort (telemetry, a fire-and-forget notification) is fine when the code says so. **If** a class is linter-catchable (e.g., `@typescript-eslint/no-floating-promises`, an unread client `error`) → name the rule under `Process Improvements`, and do not add it. Adding a gate goes to `bkit-audit-gates`. **Done when:** every hit is a finding with `file:line`.
-- [ ] **Step 5 — Timeouts:** Check each outbound call in `Surfaces`. Check the timeout: `fetch` has none by default, and an SDK may or may not. A call with no timeout holds the function open until the platform kills it. Check that each timeout times the attempts, plus backoff, fits inside the calling function's duration limit, and that each inner timeout is shorter than the outer one. A function killed at its limit reports nothing. Platform timeouts go to `bkit-audit-logs`, and this step owns the budget. Check that retries are bounded, with backoff, on errors worth retrying (timeouts, 429, 5xx), and never on 4xx. Check that retries run only on safe operations: retrying a create, charge or send without an idempotency key does it twice. Check the background-job retry setting (e.g., Inngest `retries`), and how each step behaves when re-run. Check that a model call has a fallback model or provider list, or a degraded path without a model. Listing models goes to `bkit-audit-models`. Token caps and evals go to `bkit-audit-llm`. Check that credit-limit and rate-limit responses are handled apart, not by one generic retry: a credit limit does not succeed on retry unless there is a `Retry-After`, and a rate limit backs off (e.g., OpenRouter `402` / `429`). **If** a shared outbound client sets a default timeout, a default retry or both → check for calls that bypass it. **Else** → propose one under `Process Improvements`. **If** the same wrapper is copied → name it for `bkit-audit-duplication`. **Done when:** every call in `Surfaces` has a timeout, budget, retry and safety verdict.
+- [ ] **Step 5 — Timeouts:** Check each outbound call in `Surfaces`.
+  - Check the timeout: `fetch` has none by default, and an SDK may or may not. A call with no timeout holds the function open until the platform kills it.
+  - Check that each timeout times the attempts, plus backoff, fits inside the calling function's duration limit, and that each inner timeout is shorter than the outer one. A function killed at its limit reports nothing. Platform timeouts go to `bkit-audit-logs`, and this step owns the budget.
+  - Check that retries are bounded, with backoff, on errors worth retrying (timeouts, 429, 5xx), and never on 4xx.
+  - Check that retries run only on safe operations: retrying a create, charge or send without an idempotency key does it twice.
+  - Check the background-job retry setting (e.g., Inngest `retries`), and how each step behaves when re-run.
+  - Check that a model call has a fallback model or provider list, or a degraded path without a model. Listing models goes to `bkit-audit-models`. Token caps and evals go to `bkit-audit-llm`.
+  - Check that credit-limit and rate-limit responses are handled apart, not by one generic retry: a credit limit does not succeed on retry unless there is a `Retry-After`, and a rate limit backs off (e.g., OpenRouter `402` / `429`).
+  - **If** a shared outbound client sets a default timeout, a default retry or both → check for calls that bypass it.
+  - **Else** → propose one under `Process Improvements`.
+  - **If** the same wrapper is copied → name it for `bkit-audit-duplication`.
+
+  **Done when:** every call in `Surfaces` has a timeout, budget, retry and safety verdict.
+
 - [ ] **Step 6 — Idempotency:** Webhooks arrive at least once, and a job step re-runs after a failure. For each receiver and step, check that a second run is harmless: it dedupes on the provider event id, uses a conditional update, or is naturally idempotent. Side effects (email, charge, row insert) outside a step run again on every retry. An outside caller repeating a create goes to `bkit-audit-security` and `bkit-audit-red-team`. This step reads the code. A run that failed for good needs a written replay or bulk-retry procedure, tried on preview. Read it only, and do not run it. A replay creates new runs, so it repeats the side effects this step did not make safe, and it reaches back only as far as the plan's history retention. A terminal failure with no replay path is lost work. **Done when:** every receiver and step has a verdict, and the replay path, or the finding that replaces it, is recorded.
 - [ ] **Step 7 — Races:** Find read-modify-write with no lock, conditional update or unique constraint. Find partial writes: two or more mutations outside a transaction or stored procedure (e.g., client calls outside an RPC). Find concurrent jobs on the same row or tenant with no concurrency key. For each job function, record `concurrency` (key and scope), `throttle`, `rateLimit`, `idempotency`, `retries` and `onFailure`, or the platform's equivalents. An overlapping cron is a finding. A missing failure handler that leaves half-done state on a terminal failure is a finding. Find unbounded work: loops over every tenant or row, queries with no limit (database-side limits go to `bkit-audit-database`), fan-out with no cap, and payloads with no size limit. Compare the vendor ceilings (pooler client limit, job concurrency cap, mail send rate, model rate limit) with the expected peak the product is sized for. Propose a load test under `Process Improvements`, and do not run it. **Done when:** every function's flow-control settings and every unbounded site have a verdict.
 - [ ] **Step 8 — Time:** **If** the product stores or sends user-local times → check DST transitions, the cron timezone against the user-local send time, recurrence that crosses DST, and month-end (the 31st, February). Name the test that pins each case. A case with no test is a finding. **If** there are no user-local times → skip with evidence. **Done when:** each case names its test, or the skip is recorded.
@@ -203,12 +216,18 @@ PENDING
 ### 🔒 Gate 3: Report Check
 
 - [ ] **No placeholders:** no `PENDING` is left.
-- [ ] **Summary:** `Summary` gives the count per severity, the journeys measured, and a statement that every dependency was walked on paper.
+- [ ] **Summary:** `Summary` gives the count per severity.
+- [ ] **Journeys:** `Summary` names the journeys measured.
+- [ ] **Paper walk:** `Summary` states that every dependency was walked on paper.
 - [ ] **Series:** the report shows every series beside the previous report's numbers, or marks the run as baseline.
-- [ ] **Game Day:** `Game Day` states the date and outcome of the last game day, or that none is recorded, and names the next dependency.
-- [ ] **Writes:** only this report, the template's `Project Instructions` and ledger rows have changed, and every throwaway worktree or remote target is removed.
+- [ ] **Game Day:** `Game Day` states the date of the last game day, or that none is recorded.
+- [ ] **Game Day outcome:** `Game Day` states the outcome of the last recorded game day.
+- [ ] **Next dependency:** `Game Day` names the next dependency.
+- [ ] **Writes:** this run changed only this report, the template's `Project Instructions` and its own `docs/failures.jsonl` rows.
+- [ ] **Throwaways removed:** every throwaway worktree or remote target is removed.
 - [ ] **Process Improvements:** `Universal` and `Project` are both filled.
-- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one row, and every row has a `Next Step`.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one `Suggested Issues` row.
+- [ ] **Next Step:** every `Suggested Issues` row has a `Next Step`.
 - [ ] **Gate 3 — Verified:** every item above holds.
 
 <!-- bkit:end -->

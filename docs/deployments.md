@@ -196,7 +196,7 @@ The cost is duplicated per-lane setup (checkout, install, and shared infra such 
 
 **Shared resource: reset first, clean up last** (optional). Use this when 2+ lanes use one long-lived resource. `bkit-tests-reset` runs after scope + migration, takes a lease, and puts the resource in its known state before any of those lanes start. `bkit-tests-cleanup` runs last, `if: always()`, and releases the lease. The lease is what serialises an overlapping PR and `dev` push. The planner names at most one target; an empty target skips both jobs. Capstone reds if a planned reset skipped or either job failed. Drop both when the resource is provisioned fresh per run (`testing.md` § Provision backing services fresh — the preferred answer).
 
-**Runner size is a per-lane lever, and only for the pole.** In a flat graph, one lane defines the wall-clock time (commonly E2E). A larger runner (more vCPU / RAM) raises internal parallelism (more workers, concurrent E2E projects), which can cut a long lane substantially. Scope it with `runs-on: <your-larger-runner-label>` to one lane, and keep the default runner everywhere else. Two caveats:
+**Runner size is a per-lane lever, and only for the pole.** In a flat graph, one lane defines the wall-clock time (commonly E2E). A larger runner (more vCPU / RAM) raises internal parallelism (more workers, concurrent E2E projects), which can cut a long lane substantially. Scope it with `runs-on: <your-larger-runner-label>` to one lane, and keep the default runner everywhere else. Three caveats:
 
 1. **A higher per-minute rate.** Confirm the rate before you adopt a larger runner, because it may not show until the first invoice. [Depot](https://depot.dev/docs/github-actions/runner-types) labels (for example, `depot-ubuntu-24.04-8`) are ~30% cheaper than GitHub-hosted runners. `bkit-ci.yml`, `bkit-cloud.yml` and `bkit-renovate.yml` are templates you own, so set `runs-on` in your copy.
 2. **Zero wall-clock gain when it is aimed at a lane that is not the pole.** The pole is the slowest lane, and it sets the run's wall-clock time. A bigger runner on any other lane saves no time, and it pays off only once its own lane is the pole. Measure first, and re-measure afterwards, because the pole moves.
@@ -244,7 +244,6 @@ This is optional. A same-repo promotion PR into the default branch (head `dev`, 
 - **Capstone** (`Mirror Push Run`, `bkit-tests-check`, before `Assert Test Plan Followed`): `bkit runs mirror --head <PR head sha> --branch dev --max-minutes 170`. It waits for the `dev` push run at that SHA (each poll is `bkit runs gate --event push`), and passes only when that run's capstone passed. The step runs bkit, so the job needs a checkout and installed dependencies, both ungated. Neither step sets `continue-on-error`.
 - **Never skip the PR's required check instead.** A skipped required check can read as passed on the PR while the push run is red.
 - **`release/*` resolves the push run by SHA.** A `release/*` head with no green `dev` push run (extra commits past the `dev` tip) fails the mirror red (exit `3`). That failure is safe, not silent.
-- **bkit's own CI adopts this.** `Decide Release Mirror` accepts `dev` and `release/*`. `Decide Run Level` has no merged-PR → `light` arm, so every `dev` push resolves `full` (precondition 1). The capstone's `Mirror Push Run` runs `bkit runs mirror --head="$PR_HEAD_SHA" --branch=dev --max-minutes=170`.
 
 <!-- prettier-ignore -->
 | Push run at PR head | PR `bkit-tests-check` | `bkit runs mirror` exit |
@@ -593,6 +592,12 @@ This repo's `.github/renovate.json5` is its copy of the template plus one bkit-r
 
 Template workflow pins under `.bkit/templates/.github/workflows/` sit on an ignored path, so Renovate does not bump them. This repo's `.github/workflows/*.yml` stays in scope. Refresh template pins by hand when revising CI.
 
+`.bkit/templates/.github/workflows/*.yml` and this repo's `.github/workflows/*.yml` stay byte-equal where they overlap. When a Renovate PR bumps a pin in `.github/workflows/`:
+
+1. Before the merge, apply the same SHA bump to the matching `.bkit/templates/.github/workflows/*.yml`.
+2. Run `pnpm test`. `.bkit/core/engine/audits/templates/template-action-pins.test.ts` fails when a template pin drifts from this repo's.
+3. Push the template change to the Renovate PR's branch. If that branch is read-only, commit the change on `dev` instead.
+
 ### CI trigger on final workflow push
 
 GitHub Actions suppresses `pull_request` + `push` when HEAD has `[skip ci]` or `[skip actions]`. PR branch → empty `statusCheckRollup` → vacuously green PR.
@@ -685,6 +690,7 @@ The full suite runs before every push to `dev`, in CI on every `dev` push, and i
 
 - **A push to `dev` or `main` always gates**, in the hook and in CI, even when its files match a tested tree. The skips cover branch-other-than-`dev`/`main` and tag pushes only.
 - **The agents run the local gate, then read the `dev` push run.** A red local gate, or a red or missing `dev` push run, is fixed on `dev` and pushed again.
+- **This repo's CI runs mirror mode** (§ One CI run per dev commit). `Decide Release Mirror` accepts `dev` and `release/*`. `Decide Run Level` resolves every `dev` push to `full`, and only a push to another branch resolves `light`, so precondition 1 holds. The capstone's `Mirror Push Run` runs `bkit runs mirror --head="$PR_HEAD_SHA" --branch=dev --max-minutes=170`.
 
 ### GitHub Release
 

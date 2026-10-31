@@ -108,19 +108,19 @@ The block rules (markers, contexts, self-skip, output bounds) are in the managed
 <!-- prettier-ignore -->
 | File | Fits | `context=` | Fetches | Secret / non-secret env | Domains | CLI (provision) |
 | --- | --- | --- | --- | --- | --- | --- |
-| `github.md` | GitHub Actions | `ci`, `diff` | `ci`: failing run: failed jobs / steps, `::error` annotations, failed-step logs tail-bounded per failed job; `diff`: `git diff --stat` (capped) since the last green CI run on trunk | `GH_TOKEN` / `CI_LOG_TAIL`; `BASELINE_BRANCH`, `BASELINE_WORKFLOW`, `DIFF_STAT_N` (`diff`) | — | `gh` (base tool) |
-| `playwright.md` | Playwright on GitHub Actions | `e2e` | failing run's report artifact, failing specs first; inlined files, lines and binary paths capped | `GH_TOKEN` / `E2E_ARTIFACT`, `E2E_JOB_RE`, `E2E_MAX_FILES`, `E2E_MAX_LINES`, `E2E_MAX_BIN` | — | `gh` (base tool) |
-| `maestro.md` | Maestro iOS and Android lanes on GitHub Actions | `e2e` | every failed Maestro job's log, sliced to the result steps, each slice tail-bounded | `GH_TOKEN` / `MAESTRO_JOB_RE`, `MAESTRO_STEPS`, `MAESTRO_LOG_TAIL` | — | `gh` (base tool) |
-| `tavily.md` | any | `web` | web search for upstream causes (untrusted output) | `BKIT_TAVILY_API_KEY` / `QUERY` | — | — |
-| `sentry.md` | Sentry | `runtime` | unresolved issues seen in a window (organization issues endpoint), optional environment; trace / window recipes; detector-header strip | `SENTRY_AUTH_TOKEN` / `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_HOST`, `SENTRY_SINCE`, `SENTRY_ENV`, `SENTRY_N` | `sentry.io` | — |
-| `vercel.md` | Vercel | `runtime` | serverless + edge error / fatal logs in a window, paged past the CLI's 50-line cap, all branches (`--no-branch`) | `VERCEL_TOKEN` / `VERCEL_SCOPE`, `VERCEL_ENV`, `SINCE`, `UNTIL`, `VERCEL_MAX_PAGES` | `vercel.com` | `vercel` (yes) |
-| `supabase.md` | hosted Supabase | `runtime` | Postgres `ERROR` / `FATAL` / `PANIC` counts per hour, severity, SQLSTATE and role; one call per day of window | `SUPABASE_ACCESS_TOKEN` / `SUPABASE_PROJECT_ID`, `SINCE_ISO`, `UNTIL_ISO` | `supabase.com` | — |
-| `stripe.md` | Stripe | `runtime` | failure / dispute / refund events, filtered by type and window at the source, paged; events whose webhook delivery failed | `STRIPE_SECRET_KEY` / `STRIPE_SINCE_S`, `STRIPE_MAX_PAGES` | `stripe.com` | — |
-| `resend.md` | Resend | `runtime` | bounced / complained / failed / delayed sends, paged back to the window start | `RESEND_API_KEY` / `SINCE_ISO`, `RESEND_MAX_PAGES` | `resend.com` | — |
-| `inngest.md` | Inngest Cloud | `runtime` | `inngest/function.failed` events in a window, paged; error class only, never error text | `INNGEST_SIGNING_KEY` / `INNGEST_ENV` (required with a branch key), `SINCE_ISO`, `UNTIL_ISO`, `INNGEST_N`, `INNGEST_MAX_PAGES` | `inngest.com` | — |
-| `cloudrun.md` | Google Cloud Run | `runtime` | container errors + memory-limit kills; service account only when the gcloud login cannot mint a token | `GCP_CLIENT_EMAIL`, `GCP_PRIVATE_KEY` (headless) / `GCP_PROJECT_ID`, `GCP_SERVICE`, `GCP_FILTER` | `googleapis.com`, `google.com` | `gcloud` (yes) |
-| `expo.md` | Expo EAS Build + EAS Workflows (Maestro) | `runtime`, `e2e` | `runtime`: newest 50 builds' status + errored-build log lines (capped per build); `e2e`: recent and FAILURE run lists, failed jobs' per-flow exceptions, JUnit (capped), screenshots, Maestro commands, hierarchy dumps, XCUITest + JS console | `EXPO_TOKEN` / `EXPO_APP_DIR`, `EAS_PLATFORM`, `EAS_PROFILE`, `EAS_N`, `EAS_LOG_N` (`runtime`); `EAS_WF_FILE`, `EAS_WF_N`, `EAS_WF_FAIL_N`, `EAS_JUNIT_N` (`e2e`) | `expo.dev`, `googleapis.com` (`runtime`), `eascdn.net` (`e2e`) | `eas` (yes) |
-| `serena.md` | Serena MCP server | — | nothing: provision only, installs `serena` in cloud | — | — | `uv` (yes) |
+| `bkit-github.md` | GitHub Actions | `ci`, `diff` | `ci`: failing run: failed jobs / steps, `::error` annotations, failed-step logs tail-bounded per failed job; `diff`: `git diff --stat` (capped) since the last green CI run on trunk | `GH_TOKEN` / `CI_LOG_TAIL`; `BASELINE_BRANCH`, `BASELINE_WORKFLOW`, `DIFF_STAT_N` (`diff`) | — | `gh` (base tool) |
+| `bkit-playwright.md` | Playwright on GitHub Actions | `e2e` | failing run's report artifact, failing specs first; inlined files, lines and binary paths capped | `GH_TOKEN` / `E2E_ARTIFACT`, `E2E_JOB_RE`, `E2E_MAX_FILES`, `E2E_MAX_LINES`, `E2E_MAX_BIN` | — | `gh` (base tool) |
+| `bkit-maestro.md` | Maestro iOS and Android lanes on GitHub Actions | `e2e` | every failed Maestro job's log, sliced to the result steps, each slice tail-bounded | `GH_TOKEN` / `MAESTRO_JOB_RE`, `MAESTRO_STEPS`, `MAESTRO_LOG_TAIL` | — | `gh` (base tool) |
+| `bkit-tavily.md` | any | `web` | web search for upstream causes (untrusted output) | `BKIT_TAVILY_API_KEY` / `QUERY` | — | — |
+| `bkit-sentry.md` | Sentry | `runtime` | unresolved issues seen in a window (organization issues endpoint), optional environment; trace / window recipes; detector-header strip | `SENTRY_AUTH_TOKEN` / `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_HOST`, `SENTRY_SINCE`, `SENTRY_ENV`, `SENTRY_N` | `sentry.io` | — |
+| `bkit-vercel.md` | Vercel | `runtime` | serverless + edge error / fatal logs in a window, paged past the CLI's 50-line cap, all branches (`--no-branch`) | `VERCEL_TOKEN` / `VERCEL_SCOPE`, `VERCEL_ENV`, `SINCE`, `UNTIL`, `VERCEL_MAX_PAGES` | `vercel.com` | `vercel` (yes) |
+| `bkit-supabase.md` | hosted Supabase | `runtime` | Postgres `ERROR` / `FATAL` / `PANIC` counts per hour, severity, SQLSTATE and role; one call per day of window | `SUPABASE_ACCESS_TOKEN` / `SUPABASE_PROJECT_ID`, `SINCE_ISO`, `UNTIL_ISO` | `supabase.com` | — |
+| `bkit-stripe.md` | Stripe | `runtime` | failure / dispute / refund events, filtered by type and window at the source, paged; events whose webhook delivery failed | `STRIPE_SECRET_KEY` / `STRIPE_SINCE_S`, `STRIPE_MAX_PAGES` | `stripe.com` | — |
+| `bkit-resend.md` | Resend | `runtime` | bounced / complained / failed / delayed sends, paged back to the window start | `RESEND_API_KEY` / `SINCE_ISO`, `RESEND_MAX_PAGES` | `resend.com` | — |
+| `bkit-inngest.md` | Inngest Cloud | `runtime` | `inngest/function.failed` events in a window, paged; error class only, never error text | `INNGEST_SIGNING_KEY` / `INNGEST_ENV` (required with a branch key), `SINCE_ISO`, `UNTIL_ISO`, `INNGEST_N`, `INNGEST_MAX_PAGES` | `inngest.com` | — |
+| `bkit-cloudrun.md` | Google Cloud Run | `runtime` | container errors + memory-limit kills; service account only when the gcloud login cannot mint a token | `GCP_CLIENT_EMAIL`, `GCP_PRIVATE_KEY` (headless) / `GCP_PROJECT_ID`, `GCP_SERVICE`, `GCP_FILTER` | `googleapis.com`, `google.com` | `gcloud` (yes) |
+| `bkit-expo.md` | Expo EAS Build + EAS Workflows (Maestro) | `runtime`, `e2e` | `runtime`: newest 50 builds' status + errored-build log lines (capped per build); `e2e`: recent and FAILURE run lists, failed jobs' per-flow exceptions, JUnit (capped), screenshots, Maestro commands, hierarchy dumps, XCUITest + JS console | `EXPO_TOKEN` / `EXPO_APP_DIR`, `EAS_PLATFORM`, `EAS_PROFILE`, `EAS_N`, `EAS_LOG_N` (`runtime`); `EAS_WF_FILE`, `EAS_WF_N`, `EAS_WF_FAIL_N`, `EAS_JUNIT_N` (`e2e`) | `expo.dev`, `googleapis.com` (`runtime`), `eascdn.net` (`e2e`) | `eas` (yes) |
+| `bkit-serena.md` | Serena MCP server | — | nothing: provision only, installs `serena` in cloud | — | — | `uv` (yes) |
 
 The MCP names these files list are `sentry` / `Sentry`, `vercel` / `Vercel`, `supabase` / `Supabase`, `inngest` and `serena`. Every tool on a listed server runs without a prompt, writes included, so list only servers you trust with that.
 
@@ -129,16 +129,16 @@ Placeholders: each one sits on a commented assignment line or an env default in 
 <!-- prettier-ignore -->
 | Placeholder | In | Put |
 | --- | --- | --- |
-| `your-team-slug` | `vercel.md` (`VERCEL_SCOPE`) | Vercel team slug |
-| `your-project-ref` | `supabase.md` (`SUPABASE_PROJECT_ID`) | project ref of the environment whose logs you want |
-| `your-org-slug`, `your-project-slug` | `sentry.md` (`SENTRY_ORG`, `SENTRY_PROJECT`) | Sentry slugs |
-| `de.sentry.io` (commented) | `sentry.md` (`SENTRY_HOST`) | uncomment for an EU-region org; default `sentry.io` |
-| `your-gcp-project-id`, `your-service-name` | `cloudrun.md` (`GCP_PROJECT_ID`, `GCP_SERVICE`) | GCP project id; optional service name |
-| `^your-e2e-job-name$` | `playwright.md` (`E2E_JOB_RE`) | anchored job name of that lane only |
-| `^your-maestro-e2e-job-name$`, `Your per-flow results step\|Your failure classification step` | `maestro.md` (`MAESTRO_JOB_RE`, `MAESTRO_STEPS`) | anchored regex matching the Maestro lanes' job names; `\|`-separated names of the steps that print results |
-| `dev`, `bkit-ci.yml` | `github.md` `context=diff` (`BASELINE_BRANCH`, `BASELINE_WORKFLOW`) | trunk branch, CI workflow file |
-| `apps/mobile` | `expo.md`, both blocks (`EXPO_APP_DIR`) | the EAS-linked app folder |
-| `serena-agent==1.7.0` | `serena.md` | the Serena version you run locally |
+| `your-team-slug` | `bkit-vercel.md` (`VERCEL_SCOPE`) | Vercel team slug |
+| `your-project-ref` | `bkit-supabase.md` (`SUPABASE_PROJECT_ID`) | project ref of the environment whose logs you want |
+| `your-org-slug`, `your-project-slug` | `bkit-sentry.md` (`SENTRY_ORG`, `SENTRY_PROJECT`) | Sentry slugs |
+| `de.sentry.io` (commented) | `bkit-sentry.md` (`SENTRY_HOST`) | uncomment for an EU-region org; default `sentry.io` |
+| `your-gcp-project-id`, `your-service-name` | `bkit-cloudrun.md` (`GCP_PROJECT_ID`, `GCP_SERVICE`) | GCP project id; optional service name |
+| `^your-e2e-job-name$` | `bkit-playwright.md` (`E2E_JOB_RE`) | anchored job name of that lane only |
+| `^your-maestro-e2e-job-name$`, `Your per-flow results step\|Your failure classification step` | `bkit-maestro.md` (`MAESTRO_JOB_RE`, `MAESTRO_STEPS`) | anchored regex matching the Maestro lanes' job names; `\|`-separated names of the steps that print results |
+| `dev`, `bkit-ci.yml` | `bkit-github.md` `context=diff` (`BASELINE_BRANCH`, `BASELINE_WORKFLOW`) | trunk branch, CI workflow file |
+| `apps/mobile` | `bkit-expo.md`, both blocks (`EXPO_APP_DIR`) | the EAS-linked app folder |
+| `serena-agent==1.7.0` | `bkit-serena.md` | the Serena version you run locally |
 
 Adopt:
 

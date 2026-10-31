@@ -31,16 +31,16 @@ Every dependency PR rewrites the lockfile. Left unbatched, the PRs go stale agai
 
 **Anchor Standards:**
 
-- Dependency-bot best-practice and security presets (e.g. Renovate `config:best-practices`, and the presets it extends: `security:minimumReleaseAgeNpm`, `helpers:pinGitHubActionDigests`, `docker:pinDigests`, `abandonments:recommended`, `:configMigration`). Record the bot version.
-- Package-manager supply-chain settings (e.g. pnpm `minimumReleaseAge`, `trustPolicy: no-downgrade`, `blockExoticSubdeps`, `allowBuilds`, `strictDepBuilds`).
-- Registry provenance and trusted publishing (e.g. npm provenance).
+- Dependency-bot best-practice and security presets (e.g., Renovate `config:best-practices`, and the presets it extends: `security:minimumReleaseAgeNpm`, `helpers:pinGitHubActionDigests`, `docker:pinDigests`, `abandonments:recommended`, `:configMigration`). Record the bot version.
+- Package-manager supply-chain settings (e.g., pnpm `minimumReleaseAge`, `trustPolicy: no-downgrade`, `blockExoticSubdeps`, `allowBuilds`, `strictDepBuilds`).
+- Registry provenance and trusted publishing (e.g., npm provenance).
 - OpenSSF Scorecard; record version.
 - OpenSSF Concise Guide for Evaluating Open Source Software; record revision date.
-- Vulnerability scanner and advisory database (e.g. Trivy, OSV-Scanner, GitHub Advisory Database).
-- Lockfile-integrity linter (e.g. lockfile-lint). Unreadable format → apply checks by hand.
-- Runtime end-of-life catalogue (e.g. endoflife.date); record the date read.
+- Vulnerability scanner and advisory database (e.g., Trivy, OSV-Scanner, GitHub Advisory Database).
+- Lockfile-integrity linter (e.g., lockfile-lint). Unreadable format → apply checks by hand.
+- Runtime end-of-life catalogue (e.g., endoflife.date); record the date read.
 - SPDX License List; record version.
-- Install-script supply-chain attacks (e.g. Shai-Hulud, September 2025, and Shai-Hulud 2.0, November 2025).
+- Install-script supply-chain attacks (e.g., Shai-Hulud, September 2025, and Shai-Hulud 2.0, November 2025).
 - bkit block of `docs/deployments.md` (bkit version from `.bkit/version`): § Dependency updaters; § Manual CVE handling (when an alert fires)
 
 ### Scope
@@ -63,7 +63,7 @@ Every dependency PR rewrites the lockfile. Left unbatched, the PRs go stale agai
 | Store submission deadlines | The store sweep covers it | `bkit-audit-app-store` |
 | Dependencies nothing uses | The dead-code sweep covers it | `bkit-audit-dead-code` |
 | Whether a vulnerable function is reachable, beyond naming the call | The security sweep covers it | `bkit-audit-security` |
-| Tool-server packages (e.g. MCP) | The agent config sweep covers it | `bkit-audit-agents` |
+| Tool-server packages (e.g., MCP) | The agent config sweep covers it | `bkit-audit-agents` |
 | CLI outdated notices in CI logs | The annotations sweep covers it | `bkit-audit-annotations` |
 | Landing the batch, or labelling, closing, or commenting on PRs | The audit only reports | A plan made from this report |
 
@@ -101,14 +101,44 @@ The batch verdict goes in `Summary`, not on each PR. The CI result of the landin
 ### 🔒 Gate 1: Prerequisites Check
 
 - [ ] **Gaps named:** every missing item names its fallback and its `Not Checked` entry.
-- [ ] **Gate 1 — Verified:** every Core item and every applicable Conditional item is checked.
+- [ ] **Gate 1 — Verified:** every item above, every Core item and every applicable Conditional item is checked.
 
 ### Probe Steps
 
 - [ ] **Step 1 — Previous Run:** **Done when:** `Previous Run` holds the closure rate, or the run is marked baseline.
 - [ ] **Step 2 — Inventory:** From the previous report, list the deferred PRs and why each was deferred. A deferred major whose blocker has cleared is the first candidate. Select open PRs by the head-ref prefix from the updater config (`branchPrefix`, default `renovate/`; Dependabot uses `dependabot/`), never by title or author. A token-authored PR on the prefix is in scope; record the author as evidence, not as the selector. For each PR, record the number, title, head ref, head SHA, mergeable, merge state, files, labels, commits behind the integration branch, and the latest CI run. Count finished runs only, because an in-progress run is not a result. **Done when:** `Inventory` names the prefix and the config source, and lists every open PR on the prefix, or says `none`.
-- [ ] **Step 3 — Bot Health:** A missing dependency updater config is CRITICAL. Examples are Renovate (`.github/renovate.json` or `.github/renovate.json5`; rules example `.bkit/templates/.github/renovate.json5`, self-hosted runner example `.bkit/templates/.github/workflows/bkit-renovate.yml`) and Dependabot (`.github/dependabot.yml`; example `.bkit/templates/.github/dependabot.yml`). See `docs/deployments.md` § Dependency updaters. Two configs is a finding; keep one. Only read the bot dashboard, because the bot rewrites it. Record blocked entries and will-not-auto-rebase notices, because those PRs stay stale until a person acts. The bot reads presets from the default branch, not from the integration branch. A fence or group on the integration branch is inactive until a release carries it. Base-config edits on the integration branch apply only **if** the bot merges base-branch config, and it reads that option from the default branch. **If** a PR proposes what the integration config blocks → read the default-branch copy before debugging the rule. When the branches differ, that promotion lag is a signal. Validate the configs as the default branch has them, in the bot's repository mode (Pre-Flight). An error left there is a finding. Read the dashboard and logs for config errors, PRs held by concurrency or hourly limits, PRs awaiting approval, and open config-migration PRs. A broken config looks like a quiet week. **Done when:** `Bot Health` holds the blocked PRs, the branch the config is read from, the validator result, and the held and awaiting-approval items.
-- [ ] **Step 4 — Supply Chain:** Read the settings as the default branch has them. Record each one against the bot's best-practice preset and the package manager's supply-chain page. For the bot, check: a minimum release age of at least three days (e.g., Renovate `minimumReleaseAge` / `security:minimumReleaseAgeNpm` with `internalChecksFilter: "strict"`, or Dependabot `cooldown`); actions and images pinned by digest; abandonment flagging (e.g., the Renovate abandonments preset); and config-migration PRs enabled, where the bot offers them. For the package manager, where it offers them (e.g., pnpm), check: trust policy no-downgrade, exotic subdependencies blocked, an explicit install-script allowlist, and strict dependency builds. **If** it offers none → write `N/A` with evidence. A release age of 0 on the package manager is a recorded trade-off where the docs say so. Record it, and leave re-deciding it to a person (`DECISION`). The gap is that the bot's release age does not apply to lockfile-maintenance PRs, because the package manager makes those changes. With the package-manager gate off, those PRs reach the batch with no cooldown. `Cooldown` checks what stands in for one, and `Screen` takes them first. **If** a setting is missing **or** weaker than the standard → add a `Recommendations` row with the line to add. **Done when:** `Supply Chain` has a row per setting: value · standard · verdict.
+- [ ] **Step 3 — Bot Health:** A missing dependency updater config is CRITICAL.
+  - Examples are Renovate (`.github/renovate.json` or `.github/renovate.json5`; rules example `.bkit/templates/.github/renovate.json5`, self-hosted runner example `.bkit/templates/.github/workflows/bkit-renovate.yml`) and Dependabot (`.github/dependabot.yml`; example `.bkit/templates/.github/dependabot.yml`). See `docs/deployments.md` § Dependency updaters.
+  - Two configs is a finding; keep one.
+  - Only read the bot dashboard, because the bot rewrites it.
+  - Record blocked entries and will-not-auto-rebase notices, because those PRs stay stale until a person acts.
+  - The bot reads presets from the default branch, not from the integration branch. A fence or group on the integration branch is inactive until a release carries it.
+  - Base-config edits on the integration branch apply only when the bot merges base-branch config, and it reads that option from the default branch.
+  - **If** a PR proposes what the integration config blocks → read the default-branch copy before debugging the rule. When the branches differ, that promotion lag is a signal.
+  - Validate the configs as the default branch has them, in the bot's repository mode (Pre-Flight). An error left there is a finding.
+  - Read the dashboard and logs for config errors, PRs held by concurrency or hourly limits, PRs awaiting approval, and open config-migration PRs. A broken config looks like a quiet week.
+
+  **Done when:** `Bot Health` holds the blocked PRs, the branch the config is read from, the validator result, and the held and awaiting-approval items.
+
+- [ ] **Step 4 — Supply Chain:** Read the settings as the default branch has them.
+  - Record each one against the bot's best-practice preset and the package manager's supply-chain page.
+  - For the bot, check:
+    - a minimum release age of at least three days (e.g., Renovate `minimumReleaseAge` / `security:minimumReleaseAgeNpm` with `internalChecksFilter: "strict"`, or Dependabot `cooldown`)
+    - actions and images pinned by digest
+    - abandonment flagging (e.g., the Renovate abandonments preset)
+    - config-migration PRs enabled, where the bot offers them
+  - For the package manager, where it offers them (e.g., pnpm), check:
+    - trust policy no-downgrade
+    - exotic subdependencies blocked
+    - an explicit install-script allowlist
+    - strict dependency builds
+  - **If** the package manager offers none → write `N/A` with evidence.
+  - A release age of 0 on the package manager is a recorded trade-off where the docs say so. Record it, and leave re-deciding it to a person (`DECISION`).
+  - The gap is that the bot's release age does not apply to lockfile-maintenance PRs, because the package manager makes those changes. With the package-manager gate off, those PRs reach the batch with no cooldown. `Cooldown` checks what stands in for one, and `Screen` takes them first.
+  - **If** a setting is missing **or** weaker than the standard → add a `Recommendations` row with the line to add.
+
+  **Done when:** `Supply Chain` has a row per setting: value · standard · verdict.
+
 - [ ] **Step 5 — Cooldown:** **If** the package-manager cooldown is off or absent:
   - Lockfile-maintenance PRs must not automerge, and must wait the same age as other updates before they land.
   - **If** the bot opens no lockfile-maintenance PRs (e.g., Dependabot) → the two checks below are `N/A`.
@@ -119,7 +149,30 @@ The batch verdict goes in `Summary`, not on each PR. The CI result of the landin
 
   **Done when:** `Cooldown` holds the automerge setting, each merged PR's wait, and each open PR's eligible date.
 
-- [ ] **Step 6 — Volume:** Each bot PR is a lockfile rewrite, a preview and a CI run, and each rebase is another CI run. Read the settings on the default branch, and record what each one would change. The lines to add go in the project-owned bot config. Grouping: check that related packages go in one PR (`group:monorepos`, `group:allNonMajor`, or an equivalent). List the solo PRs that should be grouped, and the rule that would catch them. Schedule: check that the bot opens PRs in one window. Note the non-security PRs opened outside it, and why. Limits: concurrent, hourly and branch-concurrent. Record the PRs held back. Rebase policy: check that the bot rebases only on conflict, which avoids a CI run on every integration move. **If** it is unset → record the default, and count the rebase pushes since the previous run. The lockfile PR conflicts with most dependency merges, so check that lockfile maintenance runs on its own schedule, not on every bot run. Automerge: check that low-risk groups that pass CI use platform automerge. Check that lockfile maintenance does not automerge while `Cooldown` is off. Check that majors wait for dashboard approval. **If** that is unset → a major opens a PR and runs CI before anyone decides. Scan scope: read the bot's detected-file list (e.g., the Renovate dashboard) for archived evidence, fixtures and test trees. A repo-level ignore list replaces the preset defaults (e.g., Renovate `ignorePaths` drops `:ignoreModulesAndTests`), so list those paths and the PRs that touch only them. **If** a setting would cut PRs or CI runs → add a `Recommendations` row with the line and the PRs it saves this run. **Done when:** `Volume` has a row per setting: value · what it would change · PRs saved.
+- [ ] **Step 6 — Volume:** Each bot PR is a lockfile rewrite, a preview and a CI run, and each rebase is another CI run.
+  - Read the settings on the default branch, and record what each one would change. The lines to add go in the project-owned bot config.
+  - Grouping:
+    - Check that related packages go in one PR (`group:monorepos`, `group:allNonMajor`, or an equivalent).
+    - List the solo PRs that should be grouped, and the rule that would catch them.
+  - Schedule:
+    - Check that the bot opens PRs in one window.
+    - Note the non-security PRs opened outside it, and why.
+  - Limits: record the PRs held back by the concurrent, hourly and branch-concurrent limits.
+  - Rebase policy:
+    - Check that the bot rebases only on conflict, which avoids a CI run on every integration move.
+    - **If** it is unset → record the default, and count the rebase pushes since the previous run.
+    - The lockfile PR conflicts with most dependency merges, so check that lockfile maintenance runs on its own schedule, not on every bot run.
+  - Automerge:
+    - Check that low-risk groups that pass CI use platform automerge.
+    - Check that lockfile maintenance does not automerge while `Cooldown` is off.
+    - Check that majors wait for dashboard approval. Without it, a major opens a PR and runs CI before anyone decides.
+  - Scan scope:
+    - Read the bot's detected-file list (e.g., the Renovate dashboard) for archived evidence, fixtures and test trees.
+    - A repo-level ignore list replaces the preset defaults (e.g., Renovate `ignorePaths` drops `:ignoreModulesAndTests`), so list those paths and the PRs that touch only them.
+  - **If** a setting would cut PRs or CI runs → add a `Recommendations` row with the line and the PRs it saves this run.
+
+  **Done when:** `Volume` has a row per setting: value · what it would change · PRs saved.
+
 - [ ] **Step 7 — Classify:** Classify every PR that is not green. Quote the evidence line from the log. When nothing matches, the class is C.
   - **A — infrastructure:** preview-deploy wait timeout, registry fetch failure, a cold service refusing, a cancelled runner. Confirm: the same job passed on a neighbouring run or a retry of the same commit.
   - **B — stale:** outdated lockfile, lockfile config mismatch, a merge conflict, merge state dirty, behind the integration branch. Confirm: behind-count. Being behind says nothing about the dependency itself.
@@ -128,12 +181,106 @@ The batch verdict goes in `Summary`, not on each PR. The CI result of the landin
 
   The batch is the green, A and B PRs that are past the bot's release age. A class C PR is EXCLUDED and goes in `Excluded`. A breaking major is DECISION, even when it would be IN BATCH. A non-security PR inside the release age is EXCLUDED, even when it would be IN BATCH (Step 5). **Done when:** `Classes` has a row per non-green PR: class · behind-count · quoted evidence · verdict.
 
-- [ ] **Step 8 — Batch:** Make a detached worktree off the audited commit (`bkit:anchor` `baseSha`), not the remote integration ref. **If** the local branch is ahead → the landing push carries those commits, so the batch builds on them. Do not create a new branch. Merge each IN BATCH PR (`git merge --no-edit`), and NEVER push. On a lockfile conflict, never resolve it as text. Take the integration copy and regenerate it (`git checkout <integration> -- <lockfile>`, then `git merge --continue`, in the worktree only). On a manifest conflict between two batch PRs: **If** the higher version is not a breaking major → it wins, so drop the lower PR and record `replaced by #N`. **Else** → the major is DECISION and stays out, so keep the lower line and record that the major was not taken. On a manifest conflict with the integration branch rather than another PR, take the higher version line by line. On any other conflict, abort the merge, drop the PR, and record why. Record the merged commit, then install. For lockfile-only PRs, refresh exactly the named packages. Watch for three traps. Trap (1): an install rewrites manifests and the lockfile (e.g., the pnpm catalog or the root `package.json`), and the uncommitted edits fail frozen CI while passing locally. Trap (2): a recursive update rewrites ranges the bot never proposed, in a big diff, so refresh the named packages only. Trap (3): a partial refresh leaves split versions across the workspace. **If** typecheck or build is red → check a clean integration worktree first. The fix is one version everywhere, including the shared version catalog (e.g., the pnpm catalog). Drift check: every manifest is byte-identical to the merged commit. Quote the diff command, its exit code and its output. Do not commit to the integration branch, and never add a skip-CI marker. Lockfile sources: every entry has an integrity hash, and every tarball comes from the configured registry over HTTPS. Both searches should come back empty; quote any hits and the package that pulls them in. **Done when:** `Batch` holds the worktree commit, the PRs in and out with why, the drift check, and both source searches.
+- [ ] **Step 8 — Batch:** Make a detached worktree off the audited commit (`bkit:anchor` `baseSha`), not the remote integration ref.
+  - **If** the local branch is ahead → the landing push carries those commits, so the batch builds on them.
+  - Do not create a new branch.
+  - Merge each IN BATCH PR (`git merge --no-edit`), and NEVER push.
+  - **If** the lockfile conflicts:
+    - Never resolve it as text.
+    - Take the integration copy and regenerate it (`git checkout <integration> -- <lockfile>`, then `git merge --continue`, in the worktree only).
+  - **If** two batch PRs conflict on a manifest:
+    - **If** the higher version is not a breaking major → it wins, so drop the lower PR and record `replaced by #N`.
+    - **Else** → the major is DECISION and stays out, so keep the lower line and record that the major was not taken.
+  - **If** a manifest conflicts with the integration branch rather than another PR → take the higher version line by line.
+  - **If** any other conflict happens → abort the merge, drop the PR, and record why.
+  - Record the merged commit, then install.
+  - For lockfile-only PRs, refresh exactly the named packages.
+  - Watch for three traps:
+    - Trap (1): an install rewrites manifests and the lockfile (e.g., the pnpm catalog or the root `package.json`), and the uncommitted edits fail frozen CI while passing locally.
+    - Trap (2): a recursive update rewrites ranges the bot never proposed, in a big diff, so refresh the named packages only.
+    - Trap (3): a partial refresh leaves split versions across the workspace.
+  - **If** typecheck or build is red → check a clean integration worktree first. The fix is one version everywhere, including the shared version catalog (e.g., the pnpm catalog).
+  - Drift check: every manifest is byte-identical to the merged commit. Quote the diff command, its exit code and its output.
+  - Do not commit to the integration branch, and never add a skip-CI marker.
+  - Lockfile sources: every entry has an integrity hash, and every tarball comes from the configured registry over HTTPS. Both searches should come back empty; quote any hits and the package that pulls them in.
+
+  **Done when:** `Batch` holds the worktree commit, the PRs in and out with why, the drift check, and both source searches.
+
 - [ ] **Step 9 — Screen:** Compare the batch lockfile diff with the integration branch, and list: new packages, transitive ones included; new install scripts and allowlist prompts; versions published less than the bot's release age before the run, with lockfile-maintenance PRs first; a publisher change or weaker provenance, which the trust policy refuses when it is set; names one edit away from a popular package; and the OpenSSF Scorecard score for each new package's source repo (e.g., via deps.dev). Write `no score` when there is no linked repo or it is unscored; that is not a finding by itself. Worms spread through `postinstall`, so read every new script. A package still inside its release age is a `Cooldown` miss: drop the PR and rebuild the batch. Other hits leave the verdict unchanged, and get a `Recommendations` row with evidence for the approver. **Done when:** `Screen` lists each hit, or says `none`, and gives a Scorecard score or `no score` for each new package.
-- [ ] **Step 10 — Verify:** First confirm `git status --porcelain` is empty, because trap (1) shows up as a dirty tree. Run a frozen install, then the static, unit and integration gate, then local E2E for each app. A store build or a deployed environment tests none of the batch, so use the local-build substrate. Go beyond a green typecheck: run the framework's dependency doctor, where the framework ships one (e.g., `expo-doctor`), because packages outside the SDK's range compile and typecheck, then break the native app. Run a single-version check for the runtime packages named in `Project Instructions`. Two versions is trap (3): report it, and the fix is one version everywhere. A red can come from a stale install. Clear the installed dependencies (e.g., `node_modules`, `.venv`, `target/`), run a frozen install, and re-run before blaming the bump. Reproduce each red on the audited commit without the batch, in a clean worktree off `baseSha`. A red there is a baseline red: it goes in `Verification` as a finding, reported apart from the batch, and it is not a batch FAIL. Judge the batch on the remaining reds. **If** a red remains → drop the suspect PR, rebuild the batch, and re-run. **If** no single PR explains it → the batch is FAIL. **Done when:** `Verification` quotes every command and exit code, and each baseline red, and `Summary` has PASS, CONCERNS or FAIL.
-- [ ] **Step 11 — Plan:** The report asks and stops. It does not push, merge, close or label. **If** the integration branch takes direct pushes → the batch lands without a feature-branch PR. **If** the deployed-boundary checks run on push only → the landing push is where the batch first meets external services. Never merge bot PRs one by one. N merges in sequence cost N integration runs, plus a rebase on every open PR after each one. N PRs in one push cost one integration run. The `Plan` table has the columns `Wave`, `PRs`, `Commits`, `Why together, or why apart`, `Pushes` and `CI runs`. Follow these rules. (1) Default to one wave, with every IN BATCH PR in one push. Make a series of commits, not a squash: the non-major groups first, then one commit per major, each with an install that matches its manifests. Each commit is a point to revert or bisect to. CI runs once on the push head, so `Verify` covers the head, and the earlier commits get a frozen install and a typecheck. (2) Add a second wave only for a named reason; being able to bisect is not enough. The reason is a production watch before the next land, e.g., for an SDK, framework or native major, a store build or submission, or a DB-client major. An extra wave costs another push, another integration run and a rebase on every open PR, so put that cost in the row. (3) Order security first, then non-majors, then majors. Within the majors, put a dependency before its dependents, e.g., the language before the linter, and a UI library together with its types. (4) Put an unmerged automerge group in the batch. Letting it merge itself first costs a separate push plus rebases, so fold it in, and close it at the push. **If** it merged before the landing → rebase the batch and drop it from the plan. (5) Close the carried PRs right after the push, with an `Excluded` comment pointing at the landing commit. The bot only closes them on its next run, and until then it may rebase them and run CI. (6) Land after the bot's weekly window, with no opens or rebases mid-landing, and no integration push queued. (7) List the excluded and deferred PRs the landing will rebase, with the CI cost. A PR excluded over several cycles is rebased on every later push, so recommend closing it and using the dashboard when it is wanted. (8) Never add skip-CI on a dependency change, so the required checks test the batch. Then give the landing commands in order: the push, closing the PRs with comments, and the labels for the PRs left open. Give the cost of landing one by one against the batch, plus the CI already spent on the branch PRs. For the post-land watch, name the error-tracker release and the error-rate and crash-free thresholds for reverting commit by commit. Do not invent thresholds. **Done when:** `Plan` holds the table, the commands, both costs, and the watch.
+- [ ] **Step 10 — Verify:** First confirm `git status --porcelain` is empty, because trap (1) shows up as a dirty tree.
+  - Run a frozen install, then the static, unit and integration gate, then local E2E for each app. A store build or a deployed environment tests none of the batch, so use the local-build substrate.
+  - Go beyond a green typecheck: run the framework's dependency doctor, where the framework ships one (e.g., `expo-doctor`), because packages outside the SDK's range compile and typecheck, then break the native app.
+  - Run a single-version check for the runtime packages named in `Project Instructions`. Two versions is trap (3): report it, and the fix is one version everywhere.
+  - A red can come from a stale install. Clear the installed dependencies (e.g., `node_modules`, `.venv`, `target/`), run a frozen install, and re-run before blaming the bump.
+  - Reproduce each red on the audited commit without the batch, in a clean worktree off `baseSha`. A red there is a baseline red: it goes in `Verification` as a finding, reported apart from the batch, and it is not a batch FAIL.
+  - Judge the batch on the remaining reds.
+  - **If** a red remains → drop the suspect PR, rebuild the batch, and re-run.
+  - **If** no single PR explains it → the batch is FAIL.
+
+  **Done when:** `Verification` quotes every command and exit code, and each baseline red, and `Summary` has PASS, CONCERNS or FAIL.
+
+- [ ] **Step 11 — Plan:** The report asks and stops. It does not push, merge, close or label.
+  - **If** the integration branch takes direct pushes → the batch lands without a feature-branch PR.
+  - **If** the deployed-boundary checks run on push only → the landing push is where the batch first meets external services.
+  - Never merge bot PRs one by one. N merges in sequence cost N integration runs, plus a rebase on every open PR after each one. N PRs in one push cost one integration run.
+  - The `Plan` table has the columns `Wave`, `PRs`, `Commits`, `Why together, or why apart`, `Pushes` and `CI runs`.
+  - Follow these rules:
+    - (1) Default to one wave, with every IN BATCH PR in one push.
+      - Make a series of commits, not a squash: the non-major groups first, then one commit per major, each with an install that matches its manifests. Each commit is a point to revert or bisect to.
+      - CI runs once on the push head, so `Verify` covers the head, and the earlier commits get a frozen install and a typecheck.
+    - (2) Add a second wave only for a named reason; being able to bisect is not enough.
+      - The reason is a production watch before the next land, e.g., for an SDK, framework or native major, a store build or submission, or a DB-client major.
+      - An extra wave costs another push, another integration run and a rebase on every open PR, so put that cost in the row.
+    - (3) Order security first, then non-majors, then majors.
+      - Within the majors, put a dependency before its dependents, e.g., the language before the linter, and a UI library together with its types.
+    - (4) Put an unmerged automerge group in the batch. Letting it merge itself first costs a separate push plus rebases, so fold it in, and close it at the push.
+      - **If** it merged before the landing → rebase the batch and drop it from the plan.
+    - (5) Close the carried PRs right after the push, with an `Excluded` comment pointing at the landing commit. The bot only closes them on its next run, and until then it may rebase them and run CI.
+    - (6) Land after the bot's weekly window, with no opens or rebases mid-landing, and no integration push queued.
+    - (7) List the excluded and deferred PRs the landing will rebase, with the CI cost. A PR excluded over several cycles is rebased on every later push, so recommend closing it and using the dashboard when it is wanted.
+    - (8) Never add skip-CI on a dependency change, so the required checks test the batch.
+  - Then give the landing commands in order: the push, closing the PRs with comments, and the labels for the PRs left open.
+  - Give the cost of landing one by one against the batch, plus the CI already spent on the branch PRs.
+  - For the post-land watch, name the error-tracker release and the error-rate and crash-free thresholds for reverting commit by commit.
+  - Do not invent thresholds.
+
+  **Done when:** `Plan` holds the table, the commands, both costs, and the watch.
+
 - [ ] **Step 12 — Excluded:** The report lists only. It does not label, comment or close. Class C and blocked PRs stay open. The report supplies the comment text (what broke and the fix) and the labels (deferred, plus the major label on a major). Comments start with the marker in `Project Instructions`, so the next step finds the marker and edits the existing comment. A PR the batch carries is closed after the landing, with a pointer to the batch. A breaking major or migration is DECISION and goes in `Recommendations`. **If** it is real work → name the issue to open. DECISION evidence is more than the bare PR: the migration guide, the breaking changes checked against the codebase with hit counts, codemods, the peer-dependency matrix, and the rollback path. **Done when:** `Excluded` has a row per out-of-batch PR: verdict · labels · comment text or DECISION evidence.
-- [ ] **Step 13 — Unseen:** Check the surfaces the bot cannot see. (a) New advisories against the committed baseline. The delta script reports advisories not in the baseline, and stale baseline entries. **If** the batch fixes one → remove its baseline entry in the same commit. Security PRs bypass the release age, so confirm they are landing, not queued. `bkit-audit-security` asks the same question, so do not report it twice. (b) A second vulnerability source. Run the scanner over the lockfile, the language requirements files and the shipped images. Read the host's alerts, and the vendor repository advisories for each shipped framework (e.g., `gh api repos/<owner>/<repo>/security-advisories`). Global databases (e.g., `gh api advisories/<id>`, OSV) can lag vendor advisories by days. A vendor advisory missing from the global database is a finding, because the scanners and the CI gate are blind to it. **If** it is already there → count it once, with no lag finding. **If** there are no vendor advisories **or** no host API → use the global source only, and mark the other `Not Checked` with the reason. Some lockfile scanners read only the first document and come back empty without failing, so confirm the full file was read. Classify each advisory as shipped, server-only or dev-only, and say whether the vulnerable function is reachable. An advisory goes to `bkit-audit-security`. (c) Fix latency for shipped dependencies, from publication to landing on the integration branch: CRITICAL within 7 days, HIGH within 30 days. A breach is a finding, listed first. For each open `CRITICAL` or `HIGH`, the earliest date the bot can open a PR is the fixed version's publish date, plus the bot's release age (none for a security update, per (a)), plus the next bot run. Compare it with the deadline. A bot date past the deadline is a finding before the breach happens. **If** the bot is blind to the advisory (vendor-only) → there is no date, and the advisory itself is a finding. (d) A container that installs from a manifest the bot bumps is covered. A second install line that bypasses the manifest is a gap; report it. (e) Unused dependencies go to `bkit-audit-dead-code`. New dependencies since the last pass that are unmaintained (no release for over a year, or archived) go in `Recommendations`. (f) Deprecated and abandoned packages across the whole tree, from the dashboard's abandoned list and frozen-install warnings. (g) Licences for new dependencies since the last pass. A copyleft licence (GPL, AGPL) or a missing licence on a shipped dependency goes in `Recommendations`. Diff the production tree's licences against the previous run, including BSL, SSPL and commercial upgrades. Check that the shipped app's notices are regenerated when a dependency changes. For bundled fonts, icons and images, check the licence and the terms for shipping them. (h) Off-manifest CLIs, because the bot reads manifests only. Sources: CI `run:` lines (global installs, `npx` / `pnpm dlx`, `curl | sh`, system packages), setup-action version inputs (e.g., `supabase/setup-cli` `version:`), build-service CLI pins (e.g., `eas.json` `cli.version`), Dockerfiles, build images, version files (e.g., `.tool-versions`), repo scripts, and setup docs that install globally. For each CLI, record: location · pin, or `floating` (unpinned, `latest`, or an open range) · latest release, read live · majors behind · bot-watched (a manifest entry or a bot rule, e.g., Renovate `customManagers`) yes / no. A floating CLI in CI or a build image is a finding, because each run gets an unreviewed version that bypasses the release age. A major behind is a finding, and end of life goes to Step 14. An unwatched CLI gets a `Recommendations` row: move it into a manifest, or add a bot rule. **Done when:** `Unseen` holds the advisories, the vendor-advisory gaps, the latency and the earliest bot dates, the container install path, the deprecated packages, the licence diffs, and a row per off-manifest CLI.
+- [ ] **Step 13 — Unseen:** Check the surfaces the bot cannot see.
+  - (a) New advisories against the committed baseline. The delta script reports advisories not in the baseline, and stale baseline entries.
+    - **If** the batch fixes one → remove its baseline entry in the same commit.
+    - Security PRs bypass the release age, so confirm they are landing, not queued. `bkit-audit-security` asks the same question, so do not report it twice.
+  - (b) A second vulnerability source.
+    - Run the scanner over the lockfile, the language requirements files and the shipped images.
+    - Some lockfile scanners read only the first document and come back empty without failing, so confirm the full file was read.
+    - Read the host's alerts, and the vendor repository advisories for each shipped framework (e.g., `gh api repos/<owner>/<repo>/security-advisories`).
+    - Global databases (e.g., `gh api advisories/<id>`, OSV) can lag vendor advisories by days. A vendor advisory missing from the global database is a finding, because the scanners and the CI gate are blind to it.
+    - **If** the vendor advisory is already in the global database → count it once, with no lag finding.
+    - **If** there are no vendor advisories **or** no host API → use the global source only, and mark the other `Not Checked` with the reason.
+    - Classify each advisory as shipped, server-only or dev-only, and say whether the vulnerable function is reachable. An advisory goes to `bkit-audit-security`.
+  - (c) Fix latency for shipped dependencies, from publication to landing on the integration branch: CRITICAL within 7 days, HIGH within 30 days.
+    - A breach is a finding, listed first.
+    - For each open `CRITICAL` or `HIGH`, the earliest date the bot can open a PR is the fixed version's publish date, plus the bot's release age (none for a security update, per (a)), plus the next bot run. Compare it with the deadline.
+    - A bot date past the deadline is a finding before the breach happens.
+    - **If** the bot is blind to the advisory (vendor-only) → there is no date, and the advisory itself is a finding.
+  - (d) A container that installs from a manifest the bot bumps is covered. A second install line that bypasses the manifest is a gap; report it.
+  - (e) Unused dependencies go to `bkit-audit-dead-code`. New dependencies since the last pass that are unmaintained (no release for over a year, or archived) go in `Recommendations`.
+  - (f) Deprecated and abandoned packages across the whole tree, from the dashboard's abandoned list and frozen-install warnings.
+  - (g) Licences for new dependencies since the last pass.
+    - A copyleft licence (GPL, AGPL) or a missing licence on a shipped dependency goes in `Recommendations`.
+    - Diff the production tree's licences against the previous run, including BSL, SSPL and commercial upgrades.
+    - Check that the shipped app's notices are regenerated when a dependency changes.
+    - For bundled fonts, icons and images, check the licence and the terms for shipping them.
+  - (h) Off-manifest CLIs, because the bot reads manifests only.
+    - Sources: CI `run:` lines (global installs, `npx` / `pnpm dlx`, `curl | sh`, system packages), setup-action version inputs (e.g., `supabase/setup-cli` `version:`), build-service CLI pins (e.g., `eas.json` `cli.version`), Dockerfiles, build images, version files (e.g., `.tool-versions`), repo scripts, and setup docs that install globally.
+    - For each CLI, record: location · pin, or `floating` (unpinned, `latest`, or an open range) · latest release, read live · majors behind · bot-watched (a manifest entry or a bot rule, e.g., Renovate `customManagers`) yes / no.
+    - A floating CLI in CI or a build image is a finding, because each run gets an unreviewed version that bypasses the release age.
+    - A major behind is a finding, and end of life goes to Step 14.
+    - An unwatched CLI gets a `Recommendations` row: move it into a manifest, or add a bot rule.
+
+  **Done when:** `Unseen` holds the advisories, the vendor-advisory gaps, the latency and the earliest bot dates, the container install path, the deprecated packages, the licence diffs, and a row per off-manifest CLI.
+
 - [ ] **Step 14 — End of Life:** Compare the versions in use with the end-of-life catalogue and each vendor's support policy. Record the days left for the runtime, the framework, the native SDK, the package manager, the language, the database major, and the container base images the project ships (sources in `Project Instructions`). An end of life inside 90 days is DECISION, and the report names the issue to open. **Done when:** `End of Life` has a row per runtime: version · days left · verdict.
 - [ ] **Step 15 — Standards:** Confirm the current version of each anchor standard, and read what changed since the previous report's version. In `Standards Coverage`, give one row per bot preset, package-manager supply-chain setting, and Concise Guide rule, marked checked (with the step), not applicable (saying why) or finding. Give each bkit anchor (a doc section, rule or issue shape) one row, marked followed (with the step or evidence), not applicable (saying why) or finding. A departure with no recorded reason (e.g., a `docs/decisions.jsonl` row or an accepted-divergence entry) is a finding. Mark each recommended practice the project does not apply as adopt (with a proposed step), reject (saying why) or not applicable. **Done when:** no row is empty.
 - [ ] **Step 16 — Anything Else:** (a) List the dependency-touching changes since the previous report's commit (manifests, the workspace file, bot configs, workflow `uses:`, Dockerfiles, requirements, runtime-version files, the build image and the hosting runtime), with a one-line verdict each. (b) In a bounded pass of about 30 minutes, note what a senior supply-chain engineer would flag that no step asks about. Read what happened since the previous run: incidents, new `docs/failures.jsonl` rows, `bkit-audit-logs` reports and vendor status. Note what no step would catch. **Done when:** `Beyond the Steps` holds both passes, or says `none`. **If** one class of issue is seen on 2 runs → propose a step for it in `Process Improvements`.
@@ -264,11 +411,15 @@ PENDING
 ### 🔒 Gate 3: Report Check
 
 - [ ] **No placeholders:** no `PENDING` is left.
-- [ ] **Summary:** `Summary` gives the count per severity, the batch verdict, and the open, in-batch and excluded counts.
+- [ ] **Summary:** `Summary` gives the count per severity.
+- [ ] **Batch verdict:** `Summary` gives the batch verdict.
+- [ ] **Counts:** `Summary` gives the open, in-batch and excluded counts.
 - [ ] **Series:** the report shows security-fix latency and end-of-life days beside the previous report's numbers, or marks the run as baseline.
-- [ ] **Writes:** only this report, the template's `Project Instructions` and ledger rows have changed, and every throwaway worktree or remote target is removed.
+- [ ] **Writes:** this run changed only this report, the template's `Project Instructions` and its own `docs/failures.jsonl` rows.
+- [ ] **Throwaways removed:** every throwaway worktree or remote target is removed.
 - [ ] **Process Improvements:** `Universal` and `Project` are both filled.
-- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one row, and every row has a `Next Step`.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one `Suggested Issues` row.
+- [ ] **Next Step:** every `Suggested Issues` row has a `Next Step`.
 - [ ] **Gate 3 — Verified:** every item above holds.
 
 <!-- bkit:end -->

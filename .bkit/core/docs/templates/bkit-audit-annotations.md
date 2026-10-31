@@ -27,12 +27,12 @@ Green CI hides costly warnings. The failure this audit targets takes two forms. 
 
 **Anchor Standards:**
 
-- CI vendor changelog, deprecation, and retirement posts (e.g. GitHub Changelog deprecation label). These are living pages; record the date read.
-- Runner-image announcements (e.g. `actions/runner-images` Announcement label). These are living pages; record the date read.
-- Workflow command reference, including deprecated commands (e.g. GitHub `set-output`, `save-state`, `set-env`, `add-path`).
-- Problem matchers and annotation limits (e.g. `actions/toolkit` problem matchers; per-step and per-job caps).
-- Workflow static analysers (e.g. actionlint, zizmor). Record their versions.
-- Deprecated-API lint (e.g. typescript-eslint `no-deprecated`). Record the version in the lockfile.
+- CI vendor changelog, deprecation, and retirement posts (e.g., GitHub Changelog deprecation label). These are living pages; record the date read.
+- Runner-image announcements (e.g., `actions/runner-images` Announcement label). These are living pages; record the date read.
+- Workflow command reference, including deprecated commands (e.g., GitHub `set-output`, `save-state`, `set-env`, `add-path`).
+- Problem matchers and annotation limits (e.g., `actions/toolkit` problem matchers; per-step and per-job caps).
+- Workflow static analysers (e.g., actionlint, zizmor). Record their versions.
+- Deprecated-API lint (e.g., typescript-eslint `no-deprecated`). Record the version in the lockfile.
 
 ### Scope
 
@@ -86,7 +86,7 @@ Give each annotation one verdict. **SILENT FAILURE** outranks every other verdic
 ### 🔒 Gate 1: Prerequisites Check
 
 - [ ] **Gaps named:** every missing item names its fallback and its `Not Checked` entry.
-- [ ] **Gate 1 — Verified:** every Core item and every applicable Conditional item is checked.
+- [ ] **Gate 1 — Verified:** every item above, every Core item and every applicable Conditional item is checked.
 
 ### Probe Steps
 
@@ -96,7 +96,25 @@ Give each annotation one verdict. **SILENT FAILURE** outranks every other verdic
 - [ ] **Step 4 — Runtimes:** For every `uses:` (or the CI system's equivalent) in workflows, local composite actions and reusable workflows, record the resolved version and the declared runtime (e.g., `runs.using`). An action that declares a removed runtime (e.g., `node20` after the runners dropped it) runs on a forced runtime with no opt-out, and is a finding unless it has been seen working there. List leftover opt-out env keys that no longer change anything. **Done when:** `Runtimes` holds one row per action: version · declared runtime · verdict, plus the leftover keys.
 - [ ] **Step 5 — Log Warnings:** Some deprecations print only to the log. Grep the same runs' step logs for deprecation markers (e.g., `DeprecationWarning`, `[DEP0`, `npm warn deprecated`, `WARN  deprecated`, `will be removed`) and for outdated-CLI notices (e.g., EAS, Expo, Vercel). Give each line a verdict as if it were an annotation. Agree with `bkit-audit-logs` which sweep owns each line, so it is triaged once. **Done when:** `Log Warnings` holds one row per line: verdict or owning sweep.
 - [ ] **Step 6 — Static Analysis:** Run the workflow linters on every sweep, not only to verify a fix. Treat each new finding as an annotation: shell issues in `run:` blocks, expression typos, template injection, excessive permissions and unpinned `uses:`. Grep workflows and scripts for deprecated workflow commands (e.g., GitHub Actions `::set-output`, `::save-state`, `::set-env`, `::add-path`) and for opt-ins that re-enable them (e.g., `ACTIONS_ALLOW_UNSECURE_COMMANDS`). The runner warns about some of these only when they execute, so a conditional lane hides them. **Done when:** `Static Analysis` holds one row per finding, with its verdict.
-- [ ] **Step 7 — Classify:** Give each annotation one verdict from `Verdicts`. Some annotations are a SILENT FAILURE on sight, e.g., GitHub's `Unexpected input(s) '…', valid inputs are …` (a misspelled input key, ignored) and `No files were found with the provided path` (the artifact was never uploaded). **If** no verdict fits without forcing → use OTHER. Record each annotation's destination; sending it is the next step, not this run's job, and the audit agent writes the `docs/failures.jsonl` rows. Destinations: a real defect → a `docs/failures.jsonl` row; SILENT FAILURE → root cause, fix and guard (`Silent Failures`); DEPRECATION → date and bump, dependency bot first; LINT WARNING → the fix, or why it stands; DEAD SUPPRESSION → delete the directive, flagging a wrong node; a flake → `bkit-audit-flakes`; a runtime error or a line the log sweep owns → `bkit-audit-logs`; a standing rule → a sentence for the testing or deployments doc; a workflow change → a recommendation that needs explicit human confirmation; ACCEPTED → nothing, citing the record. **Done when:** every annotation in `Annotations` has a verdict and a destination.
+- [ ] **Step 7 — Classify:** Give each annotation one verdict from `Verdicts`.
+  - Some annotations are a SILENT FAILURE on sight, e.g., GitHub's `Unexpected input(s) '…', valid inputs are …` (a misspelled input key, ignored) and `No files were found with the provided path` (the artifact was never uploaded).
+  - **If** no verdict fits without forcing → use OTHER.
+  - Record each annotation's destination.
+  - This run writes the `docs/failures.jsonl` rows. Sending to every other destination is the next step's job.
+  - Destinations:
+    - a real defect → a `docs/failures.jsonl` row
+    - SILENT FAILURE → root cause, fix and guard (`Silent Failures`)
+    - DEPRECATION → date and bump, dependency bot first
+    - LINT WARNING → the fix, or why it stands
+    - DEAD SUPPRESSION → delete the directive, flagging a wrong node
+    - a flake → `bkit-audit-flakes`
+    - a runtime error or a line the log sweep owns → `bkit-audit-logs`
+    - a standing rule → a sentence for the testing or deployments doc
+    - a workflow change → a recommendation that needs explicit human confirmation
+    - ACCEPTED → nothing, citing the record
+
+  **Done when:** every annotation in `Annotations` has a verdict and a destination.
+
 - [ ] **Step 8 — Silent Failures:** Find the root cause of each SILENT FAILURE in the runner's rules. The annotation is the symptom, in the platform's vocabulary. Examples from GitHub Actions: `$GITHUB_ENV` blocklists some names (`NODE_OPTIONS` among them), so set them as static job-level `env:` keys; the `env` context is not available to a job-level `env:` value, so the shortened form resolves empty and fails quietly; a step-level `env:` replaces the job-level map instead of merging, so overriding one key means restating the others; and managed blocks revert edits inside their markers, so check whether a key sits inside a managed marker before recommending a move. On other CI, look for the equivalents (masked variables, env that does not merge, config the platform rewrites). The report names the guard the fix should carry, proven red by reintroducing the bug. **If** deleting the mechanism leaves the lane quiet with no knob → name a second guard that checks the replacement knob exists. Writing the fix is the next step. **Done when:** `Silent Failures` names the root cause, fix and guard for each.
 - [ ] **Step 9 — Lint Node:** For each lint annotation or in-code suppression, find the node the rule fires on, and how the count changes if the directive is removed. Reason from per-file diagnostics. Do not edit the code, and do not typecheck or lint the whole repo for one file. A language server covers one language; use text search for workflow files. **If** a disable comment sits at the annotation line, but the rule's effect is further down → it is a DEAD SUPPRESSION on the wrong node (comment only), and the live rule is a LINT WARNING. **Done when:** `Lint` holds one row per warning: node · directive · verdict.
 - [ ] **Step 10 — Matchers:** Check for problem matchers or annotation reporters on typecheck, lint and test output in CI (e.g., `tsc`, ESLint, Vitest). Without them, warnings stay in the logs, and LINT WARNING is under-counted. Confirm that the deprecated-API lint is enabled (e.g., `@typescript-eslint/no-deprecated`). Calls to deprecated framework APIs are the code-side version of the same deadline. **Done when:** `Matchers` names each reporter and the deprecated-API rule: present or absent.
@@ -208,12 +226,16 @@ PENDING
 ### 🔒 Gate 3: Report Check
 
 - [ ] **No placeholders:** no `PENDING` is left.
-- [ ] **Summary:** `Summary` gives the count per severity and the runs read.
+- [ ] **Summary:** `Summary` gives the count per severity.
+- [ ] **Runs read:** `Summary` names the runs read.
 - [ ] **Series:** the report shows new / resolved / persisting counts beside the previous report's numbers, or marks the run as baseline.
-- [ ] **Verified:** `Verified` states what was checked locally and what still needs a real run.
-- [ ] **Writes:** only this report, the template's `Project Instructions` and ledger rows have changed, and every throwaway worktree or remote target is removed.
+- [ ] **Checked locally:** `Verified` states what was checked locally.
+- [ ] **Needs a real run:** `Verified` states what still needs a real run.
+- [ ] **Writes:** this run changed only this report, the template's `Project Instructions` and its own `docs/failures.jsonl` rows.
+- [ ] **Throwaways removed:** every throwaway worktree or remote target is removed.
 - [ ] **Process Improvements:** `Universal` and `Project` are both filled.
-- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one row, and every row has a `Next Step`.
+- [ ] **Suggested Issues:** every `MEDIUM`+ finding ID is in exactly one `Suggested Issues` row.
+- [ ] **Next Step:** every `Suggested Issues` row has a `Next Step`.
 - [ ] **Gate 3 — Verified:** every item above holds.
 
 <!-- bkit:end -->

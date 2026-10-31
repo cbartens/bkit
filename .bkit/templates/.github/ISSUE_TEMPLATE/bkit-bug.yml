@@ -12,7 +12,9 @@ body:
         - **If** a test or CI run already fails → run `/bkit-debug #<issue number>` on the branch the fix should land on. Debug commits to the branch it runs on.
         - **If** nothing fails yet → run `/bkit-debug #<issue number> [repro]`. It writes a test that fails the way this report describes, then fixes the code until the test passes. **If** no test fails → it stops and says so.
 
-        **If** the bug is intermittent → add `[soak]`. With `[repro]`, the test then repeats the scenario until it fails.
+        **If** the bug is intermittent → add `[soak]`. Debug then works one step per attempt, either adding logging or trying one fix, instead of one diagnosis and one fix:
+        - With `[repro]` → the test it writes repeats the scenario until it fails.
+        - Without `[repro]` → soak starts only from a test or CI run that already fails. **If** every test passes → the run writes its summary and changes no code.
   - type: textarea
     id: failing
     attributes:
