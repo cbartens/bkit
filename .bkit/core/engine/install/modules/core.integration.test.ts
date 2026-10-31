@@ -1125,6 +1125,23 @@ describe("migrateRetiredDevLock (via runBkitDocs)", () => {
   });
 });
 
+describe("migrateTemplateNotes (via runBkitDocs)", () => {
+  // The plan-template note 5.2.3 – 6.0.0 installed above `<!-- bkit:start -->`.
+  const OLD_NOTE =
+    "<!-- Note: Plans live at `docs/plans/{YYYYMM}/{FID}-plan.md` (canonical month bucket). `{YYYYMM}` = creation month, set once by the first workflow run for `{FID}`. Logs sit at `docs/plans/{YYYYMM}/logs/{FID}/` and are delete-eligible. The canonical copy is stamped with a `bkit:anchor` block recording the base commit (`baseSha`), its ref (`baseRef`), and the design it targets (`designPath`, `designBaseSha`); never hand-author or edit it. `@bkit-plan-generate` fills this template. -->";
+  const PLAN = path.join("docs", "templates", "bkit-plan.md");
+  const BLOCK = "<!-- bkit:start -->\n\n# Plan\n\n<!-- bkit:end -->\n";
+
+  it("removes the old note above the block and records the write", () => {
+    fs.mkdirSync(path.dirname(PLAN), { recursive: true });
+    fs.writeFileSync(PLAN, `${OLD_NOTE}\n\n${BLOCK}`, "utf-8");
+    const ctx = makeCtx();
+    runBkitDocs(ctx.dryRun, ctx.tokens, ctx.ws, ctx.logPrefix);
+    expect(fs.readFileSync(PLAN, "utf-8")).toBe(BLOCK);
+    expect(ctx.ws.writes.map((w) => path.normalize(w.path))).toContain(PLAN);
+  });
+});
+
 describe("migrateJiraKeyName (via runBkitDocs)", () => {
   const ENV = path.join(".bkit", ".env");
   const run = (dryRun = false): { ctx: ModuleContext; logs: string[] } => {

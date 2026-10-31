@@ -124,11 +124,36 @@ const AUDIT_MOVED = [
 /** Step 1 keeps its title and `Done when` once its procedure moved out. */
 const STEP_1_KEPT = /\*\*Step 1 — Previous Run:\*\*.*\*\*Done when:\*\*/;
 
+/** The opening note: the HTML comment naming the output path and the agent that fills it. */
+const OPENING_NOTE = /^<!-- Note: @bkit-(?:audit|plan)-generate fills this template\. .* -->$/;
+
 describe("template shape", () => {
+  it("every template opens its block with bkit:start, the managed marker, then the note", () => {
+    // `bkit upgrade` refreshes only the block, so a note above `bkit:start` would go stale.
+    const names = fs.readdirSync(templatesDir()).filter((f) => /^bkit-.+\.md$/.test(f));
+    const wrong = names.filter((name) => {
+      const head = fs
+        .readFileSync(path.join(templatesDir(), name), "utf-8")
+        .split("\n")
+        .filter((l) => l.trim() !== "")
+        .slice(0, 3);
+      return (
+        head[0] !== "<!-- bkit:start -->" ||
+        head[1] !== "{{BKIT_MANAGED_MARKER}}" ||
+        !OPENING_NOTE.test(head[2] ?? "")
+      );
+    });
+    expect(names).toContain("bkit-plan.md");
+    expect(wrong).toEqual([]);
+  });
+
   it("plan template is shape only", () => {
     const block = planTemplate();
     const found = PLAN_INSTRUCTION_MARKERS.filter((m) => block.includes(m));
-    const standing = block.split("\n").filter((l) => STANDING_WORD.test(l));
+    // The opening note names the output path for the filling agent; it is the one comment kept.
+    const standing = block
+      .split("\n")
+      .filter((l) => STANDING_WORD.test(l) && !OPENING_NOTE.test(l));
     expect({ found, standing }).toEqual({ found: [], standing: [] });
   });
 

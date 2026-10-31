@@ -82,9 +82,9 @@ developer_instructions = """
 1. Read exactly one `docs/templates/bkit-audit-*.md`.
    - **If** it is missing or there is more than one → **STOP** and report the reason. Do not invent a procedure.
 2. Write the **Create** output stub, with `PENDING` in every placeholder.
-   - Take the **Create** path from the template's leading note.
+   - Take the **Create** path from the template's opening note.
    - **If** the chosen path exists → **STOP** and report the reason. NEVER overwrite it.
-   - The report body = the template up to and including `<!-- bkit:end -->`, with the leading HTML note rewritten to the concrete path.
+   - The report body = the template up to and including `<!-- bkit:end -->`, with the opening note rewritten to the concrete path.
    - `Project Instructions` stay in the template, not the report.
    - Then stamp the audited commit on top of the stub:
      ```bash

@@ -488,10 +488,10 @@ A doc template is the skeleton of a document an agent fills in: the plan (`docs/
     ```
     The rules for that block (how many tasks a group may hold, what makes a good `DONE WHEN`, who may write a `TEST EXCEPTION`) are in the **Runbook tasks** and **TEST EXCEPTION** bullets of `bkit-build-plan-execute.md` § Contract.
 
-- **Opening note:** Start a template with an HTML comment naming where the filled document lives and which agent fills it, then `<!-- bkit:start -->`, the managed marker, the title and a `> [!CAUTION]` box holding `**Purpose:**`.
-  - Why: The filling agent learns its output path, and that the file is its own, before it reads the body.
+- **Opening note:** Start a template with `<!-- bkit:start -->` and the managed marker, then an HTML comment naming where the filled document lives and which agent fills it, then the title and a `> [!CAUTION]` box holding `**Purpose:**`.
+  - Why: The filling agent learns its output path, and that the file is its own, before it reads the body. The note sits inside the block because `bkit upgrade` refreshes only the text between `<!-- bkit:start -->` and `<!-- bkit:end -->`, and text above the block keeps the wording of the first install.
   - Only an audit template adds `**Rules:**` to the box (**Audit templates carry their procedure**). Every other template's rules live in its prompts.
-  - Example (`bkit-audit-security.md`, opening comment, shortened): every audit template opens the same way, naming the agent first.
+  - Example (`bkit-audit-security.md`, opening comment below the managed marker, shortened): every audit template opens the same way, naming the agent first.
     ```markdown
     <!-- Note: @bkit-audit-generate fills this template. The report lives at `docs/audits/{YYYYMM}/{slug}.md`, where `{YYYYMM}` is the UTC month of the run and `{slug}` is this file's name without `bkit-audit-` and `.md`. … -->
     ```

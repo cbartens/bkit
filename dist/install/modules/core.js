@@ -9,6 +9,7 @@ import { extractManagedBlock, stripManagedBlock } from "../managed-block.js";
 import { listFilesRecursive, syncTemplateCopies } from "../template-copies.js";
 import { PAYLOAD_LINK_RELPATHS, syncPayloadLinks } from "../payload-links.js";
 import { writeNetworkAllowlist } from "../network-allowlist.js";
+import { migrateTemplateNotes } from "../template-notes.js";
 import { parseJson, readJsonFile } from "../../shared/json.js";
 import { readInstallingVersion } from "../../shared/package-json.js";
 import { detectDepUpdater } from "../../shared/dep-updater.js";
@@ -252,6 +253,7 @@ export function runBkitDocs(dryRun, tokens, ws, logPrefix) {
     migrateRetiredDevLock(dryRun, ws, logPrefix);
     migrateLedgerSchema(dryRun, ws, logPrefix);
     migrateJiraKeyName(dryRun, logPrefix);
+    migrateTemplateNotes(dryRun, ws, logPrefix);
 }
 // Migration (installs up to 5.5.x, `docs/migrations.md`): the Jira key was
 // `BKIT_JIRA_API_TOKEN`; the engine and the MCP configs now read `BKIT_JIRA_API_KEY`.

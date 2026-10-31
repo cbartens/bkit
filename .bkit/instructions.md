@@ -9065,9 +9065,9 @@ NEVER retry or reword a blocked call to get past it.
 Each is `none` if empty.
 [audits] Read exactly one `docs/templates/bkit-audit-*.md`.
 **If** it is missing or there is more than one → **STOP** and report the reason. Do not invent a procedure.
-Take the **Create** path from the template's leading note.
+Take the **Create** path from the template's opening note.
 **If** the chosen path exists → **STOP** and report the reason. NEVER overwrite it.
-The report body = the template up to and including `<!-- bkit:end -->`, with the leading HTML note rewritten to the concrete path.
+The report body = the template up to and including `<!-- bkit:end -->`, with the opening note rewritten to the concrete path.
 `Project Instructions` stay in the template, not the report.
 Then stamp the audited commit on top of the stub:
 NEVER hand-write or edit the `bkit:anchor` block or the `bkit:outdated` line the stamp writes under it.

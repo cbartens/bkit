@@ -16,6 +16,7 @@ import type { TokenMap } from "../placeholders.js";
 import { listFilesRecursive, syncTemplateCopies } from "../template-copies.js";
 import { PAYLOAD_LINK_RELPATHS, syncPayloadLinks } from "../payload-links.js";
 import { writeNetworkAllowlist } from "../network-allowlist.js";
+import { migrateTemplateNotes } from "../template-notes.js";
 import type { PreflightFinding } from "../../checks/before/index.js";
 import { parseJson, readJsonFile } from "../../shared/json.js";
 import { readInstallingVersion } from "../../shared/package-json.js";
@@ -323,6 +324,7 @@ export function runBkitDocs(
   migrateRetiredDevLock(dryRun, ws, logPrefix);
   migrateLedgerSchema(dryRun, ws, logPrefix);
   migrateJiraKeyName(dryRun, logPrefix);
+  migrateTemplateNotes(dryRun, ws, logPrefix);
 }
 
 // Migration (installs up to 5.5.x, `docs/migrations.md`): the Jira key was
