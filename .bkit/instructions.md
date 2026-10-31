@@ -1814,10 +1814,11 @@ Clause section lines:
     - kept: subagents never push; they run their own lighter gate (`local-pre-commit`: `/bkit-*` steps run their own gates) and the pre-push hook runs the push gate
 
 ```text
-**Debug on demand:** Debug on demand re-runs failing E2E / `@live` tier tests against the deployed boundary, not as purely local runs.
+**Debug on demand:** When an E2E / `@live` failure is still unexplained after **Local tests first** and **Existing evidence first**, re-run the failing tests against the deployed boundary, not only locally.
 ```
 
 ```retired
+**Debug on demand:** Debug on demand re-runs failing E2E / `@live` tier tests against the deployed boundary, not as purely local runs.
 **Debug on demand:** Re-runs failing E2E / `@live` tier tests against the deployed boundary; NEVER purely local runs.
 **Debug on demand:** Re-runs failing E2E / `@live` tier tests against deployed boundary. NEVER purely local runs.
 ```
@@ -2272,10 +2273,11 @@ Rules below `bkit:end` in `.agents/rules.md`: bkit's own, never shipped; no ship
 - rule: Project Rules › Universal Rules › Repo Authoring
 
 ```text
-**Edit source:** Edit only the sources in `.bkit/core/*`, `.bkit/shared/*`, `.bkit/templates/*` and `.agents/*`, then mirror them; do not edit the mirrors in `.claude/*`, `.cursor/*`, `.opencode/*` directly.
+**Edit source:** Edit only the sources in `.bkit/core/*`, `.bkit/shared/*` and `.bkit/templates/*`, then mirror them. Do not edit the mirrors in `.claude/*`, `.cursor/*`, `.opencode/*` and `.codex/*` directly. In `.agents/*`, edit only the text below `bkit:end` in its `.md` files; `bkit install` or a skill installer writes the rest.
 ```
 
 ```retired
+**Edit source:** Edit only the sources in `.bkit/core/*`, `.bkit/shared/*`, `.bkit/templates/*` and `.agents/*`, then mirror them; do not edit the mirrors in `.claude/*`, `.cursor/*`, `.opencode/*` directly.
 **Edit source:** ONLY edit files in `.bkit/core/*`, `.bkit/shared/*`, `.bkit/templates/*` and `.agents/*`, then mirror them; NEVER edit the mirrors in `.claude/*`, `.cursor/*`, `.opencode/*` directly.
 **Edit source:** ONLY edit files in `.bkit/core/*`, `.bkit/shared/*`, `.bkit/templates/*`, and `.agents/*` then mirror; NEVER edit mirrors directly in `.claude/*`, `.cursor/*`, `.opencode/*`.
 ```
@@ -2285,10 +2287,11 @@ Rules below `bkit:end` in `.agents/rules.md`: bkit's own, never shipped; no ship
 - rule: Project Rules › Universal Rules › Repo Authoring
 
 ```text
-**Install to mirror:** After editing `.bkit/core/workflows/*` or `.bkit/core/prompts/*`, run `bkit install` to regenerate the `.claude/`, `.cursor/` and `.opencode/` mirrors, once at the end of the session rather than after each edit.
+**Install to mirror:** After editing `.bkit/core/workflows/*`, `.bkit/core/prompts/*` or `.bkit/core/.agents/*`, run `bkit install` to regenerate the mirrors in `.claude/`, `.cursor/`, `.opencode/`, `.codex/` and `.agents/`, once at the end of the session rather than after each edit.
 ```
 
 ```retired
+**Install to mirror:** After editing `.bkit/core/workflows/*` or `.bkit/core/prompts/*`, run `bkit install` to regenerate the `.claude/`, `.cursor/` and `.opencode/` mirrors, once at the end of the session rather than after each edit.
 **Install to mirror:** After editing `.bkit/core/workflows/*` or `.bkit/core/prompts/*`, run `bkit install` to regenerate the `.claude/`, `.cursor/` and `.opencode/` mirrors. Batch it once at the end of the session; NEVER per edit.
 **Install to mirror:** After editing `.bkit/core/workflows/*` or `.bkit/core/prompts/*` run `bkit install` to regenerate `.claude/`, `.cursor/`, and `.opencode/` mirrors. Batch once at session end; NEVER per edit.
 ```
