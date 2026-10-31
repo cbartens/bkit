@@ -1,4 +1,4 @@
-Status: OPEN
+Status: DECIDED
 Question: TESTS_LOOP
 From: tests
 Pause step: 12
@@ -18,5 +18,6 @@ Trend: first-round
 **Q1 — Tests:** another fix round? This was the first round, so there is no trend yet.
 Options: A) Try again / B) Stop
 Recommended: A) Try again — the last round made progress
+Decision: Try again — yes, retry the full test gate
 
 Reply per question. "yes" takes every recommendation. "stop" writes a handover; the run can be resumed.
