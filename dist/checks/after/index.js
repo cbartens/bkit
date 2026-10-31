@@ -11,7 +11,7 @@ import { detectOpencodeYmlProviderDrift } from "../../install/modules/opencode.j
 import { detectManagedDuplicate, detectManagedStale } from "./managed.js";
 import { buildCloudDashboardsAdvisory, detectCiRouterSecrets, detectGhMcpToken } from "./auth.js";
 import { buildCloudSetupAdvisory, buildGithubProjectAdvisory, buildGithubProjectTokenScopeAdvisory, buildTrackerSetupAdvisory, detectActionsWritePermissions, detectMainBranchProtection, } from "./github.js";
-import { buildDepUpdaterSetupAdvisory, detectBkitStubs, detectValePackageNotSynced, detectWorkflowLintToolsMissing, } from "./tools.js";
+import { buildDepUpdaterSetupAdvisory, detectBkitStubs, detectValeMissing, detectValePackageNotSynced, detectWorkflowLintToolsMissing, } from "./tools.js";
 import { detectBkitCloudYmlAlwaysTrueGate, detectCiScriptsOldNames, detectCiYmlCapstoneContractDrift, detectCiYmlMissingActionlint, detectCiYmlRunInjection, detectGhaFloatingTags, detectRunLevelsNotComposed, detectTaggedTestsWithoutCiHome, detectTestIntegrationEnv, detectTurboIntegrationInputs, } from "./ci-yml.js";
 import { dropTipSilencedAdvisories, setupTipsChecklistLines, setupTipsMarkdownLines, } from "../tips/index.js";
 // ---------------------------------------------------------------------------
@@ -379,6 +379,10 @@ export function runPostInstallCheck(preflightAdvisories, cwd = process.cwd(), su
     const runLevels = detectRunLevelsNotComposed(cwd);
     if (runLevels)
         phase3.push(runLevels);
+    // vale missing while lint:prose runs the prose gate
+    const valeMissing = detectValeMissing(cwd);
+    if (valeMissing)
+        phase3.push(valeMissing);
     // vale not synced
     const vale = detectValePackageNotSynced(cwd);
     if (vale)
