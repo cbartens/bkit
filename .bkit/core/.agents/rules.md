@@ -63,8 +63,8 @@
 
 - **Subagents:** Subagents are leaves: they do not invoke other subagents.
 - **Verify tools:** Verify every return; do not assume success.
-- **Empty is inconclusive:** An empty or zero read never proves absence. Re-run it once on a known hit and corroborate it with an independent call; when the known hit is missing, the read is broken, so report it as unavailable, not as clean. False empties: `rg` skips dot-dirs and ignored files → use `--hidden` or `git grep`; `git grep -E`, BSD `sed -E` and `awk` have no `\s` → use `[[:space:]]`.
-- **Host shell:** The shell tool runs the user's login shell. In zsh, an unquoted `$VAR` does not word-split, an unmatched glob aborts the command and `=word` expands. `grep` and `rg` may be shell functions, so `xargs grep` fails; use `command grep` or `git grep`. Run loops and file lists in `bash -c '…'`.
+- **Empty is inconclusive:** An empty or zero read never proves absence. Re-run it once on a known hit and corroborate it with an independent call; when the known hit is missing, the read is broken, so report it as unavailable, not as clean. A capped or windowed read is partial: page or chunk to the tool's limit, and record the part not read. False empties: `rg` skips dot-dirs and ignored files → use `--hidden` or `git grep`; `rg` prints only "binary file matches" once it meets a NUL byte → use `-a` on history output; a wildcard `git grep` pathspec like `dir/*/src` matches that path only, not the files under it → end it with `/**`; `git grep -E`, BSD `sed -E` and `awk` have no `\s` → use `[[:space:]]`.
+- **Host shell:** The shell tool runs the user's login shell. In zsh, an unquoted `$VAR` does not word-split, an unmatched glob aborts the command, `=word` expands, `"$var:x"` applies a modifier (use `${var}`) and `PIPESTATUS` is unset (zsh names it `pipestatus`). `grep` and `rg` may be shell functions or aliases, so `xargs grep` fails and some options are rejected; use `command grep` or `git grep`. Run loops and file lists in `bash -c '…'`.
 
 #### Workflows & Process
 

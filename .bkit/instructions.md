@@ -789,10 +789,11 @@ Clause section lines:
   - applies: `bkit-audit-usability`
 
 ```text
-**Empty is inconclusive:** An empty or zero read never proves absence. Re-run it once on a known hit and corroborate it with an independent call; when the known hit is missing, the read is broken, so report it as unavailable, not as clean. False empties: `rg` skips dot-dirs and ignored files → use `--hidden` or `git grep`; `git grep -E`, BSD `sed -E` and `awk` have no `\s` → use `[[:space:]]`.
+**Empty is inconclusive:** An empty or zero read never proves absence. Re-run it once on a known hit and corroborate it with an independent call; when the known hit is missing, the read is broken, so report it as unavailable, not as clean. A capped or windowed read is partial: page or chunk to the tool's limit, and record the part not read. False empties: `rg` skips dot-dirs and ignored files → use `--hidden` or `git grep`; `rg` prints only "binary file matches" once it meets a NUL byte → use `-a` on history output; a wildcard `git grep` pathspec like `dir/*/src` matches that path only, not the files under it → end it with `/**`; `git grep -E`, BSD `sed -E` and `awk` have no `\s` → use `[[:space:]]`.
 ```
 
 ```retired
+**Empty is inconclusive:** An empty or zero read never proves absence. Re-run it once on a known hit and corroborate it with an independent call; when the known hit is missing, the read is broken, so report it as unavailable, not as clean. False empties: `rg` skips dot-dirs and ignored files → use `--hidden` or `git grep`; `git grep -E`, BSD `sed -E` and `awk` have no `\s` → use `[[:space:]]`.
 **Empty is inconclusive:** Empty / zero reads are NEVER authoritative absence. ALWAYS re-run once on a known hit and corroborate via an independent call; no hit → the read is broken → report it as unavailable, NEVER as clean. False empties: `rg` skips dot-dirs / ignored files → use `--hidden` or `git grep`; `git grep -E` / BSD `sed -E` / `awk` have no `\s` → use `[[:space:]]`.
 **Empty is inconclusive:** Empty / zero reads are NEVER authoritative absence. ALWAYS re-run once on a known hit and corroborate via independent call; no hit → read broken → report unavailable, NEVER clean. False empties: `rg` skips dot-dirs / ignored files (`--hidden`, `git grep`); no `\s` in `git grep -E` / BSD `sed -E` / `awk` (`[[:space:]]`).
 ```
@@ -800,12 +801,16 @@ Clause section lines:
 ### host-shell
 
 - rule: Universal Rules › Agent Management
+- carry: `bkit-audit-generate`
+- prompt:
+  - verbatim: `bkit-audit-generate`
 
 ```text
-**Host shell:** The shell tool runs the user's login shell. In zsh, an unquoted `$VAR` does not word-split, an unmatched glob aborts the command and `=word` expands. `grep` and `rg` may be shell functions, so `xargs grep` fails; use `command grep` or `git grep`. Run loops and file lists in `bash -c '…'`.
+**Host shell:** The shell tool runs the user's login shell. In zsh, an unquoted `$VAR` does not word-split, an unmatched glob aborts the command, `=word` expands, `"$var:x"` applies a modifier (use `${var}`) and `PIPESTATUS` is unset (zsh names it `pipestatus`). `grep` and `rg` may be shell functions or aliases, so `xargs grep` fails and some options are rejected; use `command grep` or `git grep`. Run loops and file lists in `bash -c '…'`.
 ```
 
 ```retired
+**Host shell:** The shell tool runs the user's login shell. In zsh, an unquoted `$VAR` does not word-split, an unmatched glob aborts the command and `=word` expands. `grep` and `rg` may be shell functions, so `xargs grep` fails; use `command grep` or `git grep`. Run loops and file lists in `bash -c '…'`.
 **Host shell:** The shell tool is the user's login shell. In zsh, an unquoted `$VAR` does not word-split, an unmatched glob aborts and `=word` expands; `grep` / `rg` may be functions → `xargs grep` fails; use `command grep` / `git grep`. Loops / file lists → `bash -c '…'`.
 **Host shell:** Shell tool = user's login shell. zsh: unquoted `$VAR` no word-split, unmatched glob aborts, `=word` expands; `grep` / `rg` may be functions (`xargs grep` fails → `command grep` / `git grep`). Loops / file lists → `bash -c '…'`.
 ```
@@ -1463,8 +1468,9 @@ Clause section lines:
 ### shallow-history
 
 - rule: Universal Rules › Git, CI & Merges
+- carry: `bkit-audit-generate`
 - prompt:
-  - cites: `bkit-audit-generate`
+  - verbatim: `bkit-audit-generate`
 
 ```text
 **Shallow history:** Before reading git history (log, blame, bisect, churn, history scans), run `git rev-parse --is-shallow-repository`. **If** it prints `true` → state the boundary commit and that older history is unread, and do not report partial history as complete.
@@ -1845,8 +1851,11 @@ Clause section lines:
 ### new-worktree
 
 - rule: Universal Rules › Testing & Debugging
+- carry: `bkit-audit-generate`
 - refs:
   - `package.json`
+- prompt:
+  - verbatim: `bkit-audit-generate`
 
 ```text
 **New worktree:** `bkit worktrees setup` prepares a new worktree. In a worktree made without it, before the first test, verify or build command, run `direnv allow`, because `git worktree add` does not carry direnv trust, then bring in the gitignored inputs (env files, installed dependencies, build outputs, tool assets): copy the `package.json` `bkit.workflows.worktree.copy` entries, link read-only inputs, and copy or reinstall written ones. A red result from a missing input is a setup problem, not a failure of the change under test. Remove the links before `git worktree remove`, and NEVER `--force` the removal of a worktree that holds real work.
@@ -9210,13 +9219,14 @@ The change is clear → `/bkit-build`.
 **If** the template audits `docs/failures.jsonl` or `docs/deferrals.jsonl` → skip this step.
 Complete the report first.
 Open rows = fold by `key`, highest `ts` wins, `status` != `CLOSED`, covering every `key`, whichever workflow wrote it.
-Same problem = the same `file:line`, test title, or error signature.
+Same problem = the same defect at the same `file:line`, test title, or error signature. A finding that only cites an open row's `file:line` is a different problem.
 For each `MEDIUM`+ finding:
-[discovered-bugs] **If** an open row names the same problem → reuse its `key`.
+[discovered-bugs] **If** an open row names the same problem → reuse its `key`, with the higher of the finding's and the row's `severity`.
 **Else** → a new `key` `audit-{slug}-{content-slug}`, never the finding ID.
 For each `LOW` finding:
-[discovered-bugs] **If** an open row names the same problem → the same `key`, with `severity: "LOW"`.
+[discovered-bugs] **If** an open row names the same problem → reuse its `key`, and keep the row's `severity`.
 **Else** → a new `key` `audit-{slug}-{content-slug}`, with `severity: "LOW"`.
+Never lower a row's `severity` from an audit run.
 For each open row with `key` prefix `audit-{slug}-` that no finding matches:
 **If** its surface was checked this run → `CLOSED`.
 **Else** → leave it open.
