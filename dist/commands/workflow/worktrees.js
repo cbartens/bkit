@@ -17,7 +17,7 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { lastRun } from "../../ledgers/status.js";
-import { gitEnv } from "../../ledgers/telemetry.js";
+import { APPEND_LEDGERS, gitEnv } from "../../ledgers/telemetry.js";
 import { parseJson } from "../../shared/json.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { COULD_NOT_RUN_EXIT_CODES, installCommand } from "../../shared/package-manager.js";
@@ -276,22 +276,34 @@ export function addAllButCopied(tree, copied) {
 const hasLeftovers = (wt) => (git(wt, ["status", "--porcelain", "--untracked-files=all", "--", ".", ...copyExcludes(wt)]) ??
     "") !== "";
 /**
- * Whether the only change in `wt` is `engine-call` rows appended to the end of the
- * tracked `statusFile` (a journal write after the last commit): the resume rebase
- * sets those aside with `--autostash` and puts them back.
+ * Whether the only changes in `wt` are rows the dispatch seam appends after the last
+ * commit: `engine-call` rows at the end of the tracked `statusFile`, and `friction`
+ * rows at the end of the tracked `.bkit/friction.jsonl` (a hook-launched command's
+ * unexpected exit). The resume rebase sets those aside with `--autostash` and puts
+ * them back.
  */
-function onlyEngineCallsAppended(wt, statusFile) {
-    const rel = path.relative(wt, statusFile);
+function onlyJournalRowsAppended(wt, statusFile) {
+    const allowed = new Map([
+        [path.relative(wt, statusFile), (row) => row["type"] === "engine-call"],
+        [APPEND_LEDGERS.friction.file, (row) => row["kind"] === "friction"],
+    ]);
     const changed = (git(wt, ["status", "--porcelain", "--untracked-files=all", "--", ".", ...copyExcludes(wt)]) ??
         "")
         .split("\n")
         .filter((l) => l !== "");
-    if (changed.length !== 1 || !changed[0].endsWith(` ${rel}`))
-        return false;
+    return (changed.length > 0 &&
+        changed.every((line) => {
+            const rel = [...allowed.keys()].find((r) => line.endsWith(` ${r}`));
+            return rel !== undefined && onlyRowsAppended(wt, rel, allowed.get(rel));
+        }));
+}
+/** Whether `rel` is its committed content plus one or more appended rows `accepts` takes. */
+function onlyRowsAppended(wt, rel, accepts) {
     const committed = git(wt, ["cat-file", "blob", `HEAD:${rel}`]);
-    if (committed === null || !fs.existsSync(statusFile))
+    const file = path.join(wt, rel);
+    if (committed === null || !fs.existsSync(file))
         return false;
-    const text = fs.readFileSync(statusFile, "utf-8");
+    const text = fs.readFileSync(file, "utf-8");
     if (!text.startsWith(committed))
         return false;
     const added = text
@@ -304,7 +316,8 @@ function onlyEngineCallsAppended(wt, statusFile) {
             return (parsed.ok &&
                 parsed.value !== null &&
                 typeof parsed.value === "object" &&
-                parsed.value.type === "engine-call");
+                !Array.isArray(parsed.value) &&
+                accepts(parsed.value));
         }));
 }
 /**
@@ -761,7 +774,7 @@ export const worktreesCommand = {
                         // never committed, so the rebase sets it aside and puts it back. Only when
                         // nothing else is left, bar `engine-call` rows appended to the status file
                         // after the carry commit: a refused carry commit still stops the rebase.
-                        const aside = !hasLeftovers(wt) || onlyEngineCallsAppended(wt, statusFile) ? ["--autostash"] : [];
+                        const aside = !hasLeftovers(wt) || onlyJournalRowsAppended(wt, statusFile) ? ["--autostash"] : [];
                         const rb = runGit(wt, ["rebase", "--rebase-merges", ...aside, onto]);
                         // The rebase replays the carry commit on top: report the replayed one.
                         if (rb.ok && carried?.sha)

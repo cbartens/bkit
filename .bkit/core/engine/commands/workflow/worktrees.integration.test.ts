@@ -749,6 +749,46 @@ describe("bkit worktrees setup — mint (resume)", () => {
     expect(fs.existsSync(r.json.sentinel)).toBe(true);
   });
 
+  /**
+   * A resumed worktree whose committed `.bkit/friction.jsonl` a pre-commit hook appends a
+   * `kind` row to (a hook-launched command's unexpected exit), with a leftover and dev moved.
+   */
+  async function hookDirtiedFriction(kind: string) {
+    const f = await minted();
+    const friction = path.join(wtOf(f), ".bkit", "friction.jsonl");
+    fs.mkdirSync(path.dirname(friction), { recursive: true });
+    fs.writeFileSync(friction, `${JSON.stringify({ kind: "friction", key: "earlier" })}\n`);
+    git(wtOf(f), "add", friction);
+    git(wtOf(f), "commit", "-q", "-m", "record");
+    const row = { kind, key: "disk-prune/disk-prune", category: "tool-failure" };
+    const hooks = path.join(f.repo, "hooks");
+    fs.mkdirSync(hooks);
+    fs.writeFileSync(
+      path.join(hooks, "pre-commit"),
+      `#!/bin/sh\nprintf '%s\\n' '${JSON.stringify(row)}' >> "${friction}"\n`,
+    );
+    fs.chmodSync(path.join(hooks, "pre-commit"), 0o755);
+    git(f.repo, "config", "core.hooksPath", hooks);
+    fs.writeFileSync(path.join(wtOf(f), "left.txt"), "uncommitted\n");
+    const tip = advanceDev(f, "b.txt", "new\n");
+    return { f, friction, row, tip, r: await setup(f.repo, "build", "--worktrees") };
+  }
+
+  it("rebases past friction rows the carry commit's hook appended, and puts them back", async () => {
+    const { f, friction, row, tip, r } = await hookDirtiedFriction("friction");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ sentinel: null, rebaseConflict: false });
+    expect(g(wtOf(f), "merge-base", "--is-ancestor", tip, "HEAD").status).toBe(0);
+    const lines = fs.readFileSync(friction, "utf-8").trim().split("\n");
+    expect(JSON.parse(lines.at(-1)!)).toEqual(row);
+  });
+
+  it("still refuses a friction file the carry commit's hook dirtied with another kind: exit 9", async () => {
+    const { r } = await hookDirtiedFriction("failure");
+    expect(r.code).toBe(9);
+    expect(fs.existsSync(r.json.sentinel)).toBe(true);
+  });
+
   it("does not mark a resumed worktree it did not create", async () => {
     const f = fixture();
     git(f.repo, "worktree", "add", "-q", wtOf(f), "-b", `feat/${FID}`);
