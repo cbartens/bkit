@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runCommand } from "../lib";
 import { runTipsCommand } from "../tips";
 import {
+  detachedArgs,
   diskCommand,
   ensureDiskSpace,
   formatNotes,
@@ -21,6 +22,7 @@ import {
   readNotes,
   REPO_STEPS,
   schedule,
+  sweep,
   type Mode,
   type Scope,
 } from "./disk";
@@ -245,6 +247,59 @@ describe("bkit disk prune — lock", () => {
     expect(r.json.reason).toBe("locked");
     expect(order(cwd)).toEqual([]);
     expect(fs.existsSync(lock())).toBe(true);
+  });
+
+  it("with --wait, waits for the running sweep to end, then runs", async () => {
+    holdLock(process.pid);
+    const cwd = repo(marks(["a", "min"]));
+    const logs: string[] = [];
+    const running = sweep({
+      cwd,
+      mode: "min",
+      dryRun: false,
+      wait: true,
+      pollMs: 10,
+      log: (m) => logs.push(m),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(order(cwd)).toEqual([]);
+    fs.rmSync(lock());
+    expect((await running).reason).toBeNull();
+    expect(order(cwd)).toEqual(["a"]);
+    expect(logs[0]).toContain("waiting for it to end");
+    expect(fs.existsSync(lock())).toBe(false);
+  });
+
+  it("the sweep --auto starts waits its turn, for only the due scopes", () => {
+    expect(detachedArgs("min", ["repo"])).toEqual([
+      "disk",
+      "prune",
+      "--mode=min",
+      "--scope=repo",
+      "--wait",
+    ]);
+    expect(detachedArgs("max", ["repo", "machine"])).toEqual([
+      "disk",
+      "prune",
+      "--mode=max",
+      "--wait",
+    ]);
+  });
+
+  it("worktree setup's low-disk sweep waits for a running sweep", async () => {
+    holdLock(process.pid);
+    const cwd = repo(marks(["a", "max"]));
+    const check = ensureDiskSpace({ cwd, minFreeGb: 1e9, log: () => {}, pollMs: 10 });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    fs.rmSync(lock());
+    expect(await check).toContain("still under bkit.workflows.minFreeGb");
+    expect(order(cwd)).toEqual(["a"]);
+  });
+
+  it("refuses --wait with --auto", async () => {
+    const r = await prune(repo(), "--mode=min", "--auto", "--wait");
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("not both");
   });
 
   it("replaces a lock whose process is gone, or that is an hour old, and releases it", async () => {

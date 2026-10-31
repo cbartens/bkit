@@ -861,6 +861,8 @@ cp .bkit/templates/scripts/cleanup/bkit-disk-prune.machine.mjs ~/.config/bkit/di
   - **If** free disk is still under → it exits 12, and nothing is created. stderr lists what the `max` steps still cover.
   - With no step file, there is no check.
 - One sweep runs per machine at a time (`disk-prune.lock` beside the log).
+  - The sweep `--auto` starts and the worktree check wait for a running sweep to end, so their turn is never lost.
+  - A hand run stops while another sweep runs, unless it passes `--wait`.
 - A failed step is logged, and the next one runs.
 - In CI / cloud, nothing runs.
 - Hand run: `pnpm bkit disk prune --mode=max --dry-run` prints each step and its `paths` size. Without `--dry-run`, it runs now. `--scope=repo` or `--scope=machine` runs only that file's steps. Exit 1 means a step failed or a step file did not load.
