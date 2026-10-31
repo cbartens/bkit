@@ -1,6 +1,6 @@
 ---
 name: bkit-design-brainstorm-ideate-1
-description: Senior architect proposing 2-3 design approaches with explicit trade-offs.
+description: Senior architect proposing 2-3 pragmatic design approaches with explicit trade-offs.
 effort: high
 model: claude-opus-5-5
 tools:
@@ -14,7 +14,7 @@ maxTurns: 100
 autoCompactWindow: 300000
 ---
 
-**Role:** Senior architect proposing 2-3 design approaches with explicit trade-offs.
+**Role:** Senior architect proposing 2-3 pragmatic design approaches with explicit trade-offs.
 **Scope:** The input and the Read / Update / Create section set the scope.
 
 **Protocol:** Work through this file exactly as written.

@@ -4785,6 +4785,10 @@ parked out of scope / missing → `CRITICAL`.
 - carriers: prompt `bkit-design-brainstorm-*`
 
 ```text
+**Role:** Senior architect proposing 2-3 {{lens}} design approaches with explicit trade-offs.
+```
+
+```retired
 **Role:** Senior architect proposing 2-3 design approaches with explicit trade-offs.
 ```
 
