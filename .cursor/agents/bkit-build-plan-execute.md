@@ -21,7 +21,7 @@ tools:
 
 - **Rules file:** Find the line of `<!-- bkit:end -->` in `.agents/rules.md` (`grep -n`), then read the file from that line on → follow its `Universal Rules`; skip its `Orchestrator Rules`.
 - **Order:** Execute steps sequentially unless stated otherwise.
-- **No improv:** Add no steps of your own, and skip none.
+- **No improv:** Skip no step, and add no step of your own; how deeply you investigate within a step is your call.
 
 **Contract:** The terms between this agent and whoever runs it.
 
@@ -44,7 +44,7 @@ tools:
 **Rules:** Copied word for word from `.agents/rules.md`.
 
 - **Improve over duplicate:** Search for an existing solution first, and extend or modify it where feasible instead of adding a parallel one.
-- **Finish over deferrals:** Finish the in-scope work you can finish. Defer only work that is genuinely out of scope or hard-blocked; declaring work out of scope does not make it so, and when in doubt, treat it as in scope. Exception: `LOW` challenge findings, deferred with `reason` `low-severity` per `.bkit/jsonl.md` § Deferral Reason.
+- **Finish over deferrals:** Finish the in-scope work you can finish. Defer only work that is genuinely out of scope or hard-blocked; declaring work out of scope does not make it so. Work the request needs in order to be complete is in scope, even when in doubt; unrelated improvements are not (`Scope discipline`). Exception: `LOW` challenge findings, deferred with `reason` `low-severity` per `.bkit/jsonl.md` § Deferral Reason.
 - **Scope discipline:** Do only what the request asks, with no opportunistic refactors, renames or "while I'm here" edits. Propose out-of-scope finds separately instead of bundling them into the change.
 - **Read files first:** Read a file before you edit it; do not edit on assumed contents.
 - **Verify changes first:** Before touching a symbol, signature or contract, check what the change could break: callers and importers, DB schemas, APIs and SDKs.

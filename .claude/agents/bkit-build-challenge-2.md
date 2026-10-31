@@ -24,7 +24,7 @@ autoCompactWindow: 300000
 
 - **Rules file:** Find the line of `<!-- bkit:end -->` in `.agents/rules.md` (`grep -n`), then read the file from that line on → follow its `Universal Rules`; skip its `Orchestrator Rules`.
 - **Order:** Execute steps sequentially unless stated otherwise.
-- **No improv:** Add no steps of your own, and skip none.
+- **No improv:** Skip no step, and add no step of your own; how deeply you investigate within a step is your call.
 
 **Contract:** The terms between this agent and whoever runs it.
 

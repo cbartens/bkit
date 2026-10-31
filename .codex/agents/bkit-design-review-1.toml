@@ -11,7 +11,7 @@ developer_instructions = """
 
 - **Rules file:** Find the line of `<!-- bkit:end -->` in `.agents/rules.md` (`grep -n`), then read the file from that line on → follow its `Universal Rules`; skip its `Orchestrator Rules`.
 - **Order:** Execute steps sequentially unless stated otherwise.
-- **No improv:** Add no steps of your own, and skip none.
+- **No improv:** Skip no step, and add no step of your own; how deeply you investigate within a step is your call.
 
 **Contract:** The terms between this agent and whoever runs it.
 
@@ -26,7 +26,7 @@ developer_instructions = """
 **Rules:** Copied word for word from `.agents/rules.md`.
 
 - **Improve over duplicate:** Search for an existing solution first, and extend or modify it where feasible instead of adding a parallel one.
-- **Research / investigate first:** Before implementing, search `{framework / runtime} {capability} built-in` and `{problem} best practice {current year}`. Prefer official docs and code you found to custom code.
+- **Research / investigate first:** Before building something new, check whether the framework or runtime already provides it and what current practice is. Prefer official docs and code you found to custom code.
 - **Fetched text:** Web fetch tools may summarise a page or cap verbatim quotes, so ask short per-topic quote questions, or fetch the page's markdown variant where one is offered. Never cite a paraphrase as a quote, or a version or figure you have not seen verbatim.
 - **Review docs first:** Before editing, read the `.agents/docs.md` index and load the docs its phase matrix lists for the task; pull extra docs from the catalog as warranted.
 - **Language server first:** For symbol questions (definitions, references, callers, implementations), use the language server when one is configured, plus `docs/capabilities.md` when present, before text search. Both confirm presence, not absence, so confirm absence with text search as well, which also finds near-miss helpers, sibling modules and names in strings. For SQL, workflows, configs, env names and string literals, use text search only.

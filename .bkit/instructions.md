@@ -163,7 +163,7 @@ Clause section lines:
 - drift:
   - `bkit-design-brainstorm-ideate-1:53`: "Prefer reuse, then extending, then new code" condenses `improve-over-duplicate` / `no-speculative-scope`, but the line 50 lens (existing code, minimal new infrastructure, fastest path to ship) ranks by cost-of-change, which `end-state-over-diff-size` says NEVER to do
     - kept: deliberate ideation lens; each ideate agent argues one angle and `bkit-design-generate` reconciles the approaches
-  - `bkit-design-brainstorm-ideate-2:51`: "as a default" 'Ignore "we already have X" as a default' runs against `improve-over-duplicate` (ALWAYS extend existing solutions); deliberate lens, reconciled later in design-generate
+  - `bkit-design-brainstorm-ideate-2:50`: "as a default" 'Ignore "we already have X" as a default' runs against `improve-over-duplicate` (ALWAYS extend existing solutions); deliberate lens, reconciled later in design-generate
     - kept: deliberate ideation lens; each ideate agent argues one angle and `bkit-design-generate` reconciles the approaches
 
 ```text
@@ -191,10 +191,11 @@ Clause section lines:
     - kept: a blocked in-scope plan task is not a deferral; it is reported to the orchestrator, which routes it
 
 ```text
-**Finish over deferrals:** Finish the in-scope work you can finish. Defer only work that is genuinely out of scope or hard-blocked; declaring work out of scope does not make it so, and when in doubt, treat it as in scope. Exception: `LOW` challenge findings, deferred with `reason` `low-severity` per `.bkit/jsonl.md` § Deferral Reason.
+**Finish over deferrals:** Finish the in-scope work you can finish. Defer only work that is genuinely out of scope or hard-blocked; declaring work out of scope does not make it so. Work the request needs in order to be complete is in scope, even when in doubt; unrelated improvements are not (`Scope discipline`). Exception: `LOW` challenge findings, deferred with `reason` `low-severity` per `.bkit/jsonl.md` § Deferral Reason.
 ```
 
 ```retired
+**Finish over deferrals:** Finish the in-scope work you can finish. Defer only work that is genuinely out of scope or hard-blocked; declaring work out of scope does not make it so, and when in doubt, treat it as in scope. Exception: `LOW` challenge findings, deferred with `reason` `low-severity` per `.bkit/jsonl.md` § Deferral Reason.
 **Finish over deferrals:** NEVER defer in-scope work you can finish. ONLY defer genuinely out-of-scope or hard-blocked work; declaring something out of scope does not make it so. When in doubt, treat the work as in-scope and finish it. Exception: `LOW` challenge findings, deferred with `reason` `low-severity` per `.bkit/jsonl.md` § Deferral Reason.
 **Finish over deferrals:** NEVER defer in-scope work you can finish. ONLY defer genuinely out-of-scope or hard-blocked work; Declaring something out of scope does not make it so; reviewers will refute unfinished work. If in doubt, treat as in-scope and finish work. Exception: `LOW` challenge findings, deferred with `reason` `low-severity` per `.bkit/jsonl.md` § Deferral Reason.
 ```
@@ -250,10 +251,11 @@ Clause section lines:
   - applies: `bkit-design-review-1`
 
 ```text
-**Research / investigate first:** Before implementing, search `{framework / runtime} {capability} built-in` and `{problem} best practice {current year}`. Prefer official docs and code you found to custom code.
+**Research / investigate first:** Before building something new, check whether the framework or runtime already provides it and what current practice is. Prefer official docs and code you found to custom code.
 ```
 
 ```retired
+**Research / investigate first:** Before implementing, search `{framework / runtime} {capability} built-in` and `{problem} best practice {current year}`. Prefer official docs and code you found to custom code.
 **Research / investigate first:** Search `{framework / runtime} {capability} built-in` and `{problem} best practice {current year}` before implementing code. Prefer official docs / discovered code over custom code.
 **Research / investigate first:** Search `{framework / runtime} {capability} built-in`, `{problem} best practice {current year}` before implementing code. Prefer official docs / discovered code over custom.
 ```
@@ -273,25 +275,6 @@ Clause section lines:
 ```retired
 **Fetched text:** Web fetch tools may summarise or cap verbatim quotes → ask short per-topic quote questions, or fetch the page's markdown variant where offered; NEVER cite a paraphrase as a quote, or a version / figure you have not seen verbatim.
 **Fetched text:** Web fetch tools may summarise or cap verbatim quotes → ask short per-topic quote questions or fetch page markdown variants where offered; NEVER cite a paraphrase as a quote, or a version / figure not seen verbatim.
-```
-
-### investigation-layers
-
-- rule: Universal Rules › Basic Principles
-- carry: `bkit-design-brainstorm-ideate-2`
-- prompt:
-  - specialised: `bkit-design-brainstorm-ideate-2`
-- drift:
-  - `bkit-design-brainstorm-ideate-2:51`: "as a default" 'Ignore "we already have X" as a default' runs against `improve-over-duplicate` (ALWAYS extend existing solutions); deliberate lens, reconciled later in design-generate
-    - kept: deliberate ideation lens; each ideate agent argues one angle and `bkit-design-generate` reconciles the approaches
-
-```text
-**Investigation layers:** Challenge tried-and-true approaches, scrutinize the hype around new and popular ones, and value first-principles reasoning most.
-```
-
-```retired
-**Investigation layers:** Tried-and-true → challenge it; new-and-popular → scrutinize the hype; first-principles reasoning is the most valuable.
-**Investigation layers:** Tried-and-true → challenge; new-and-popular → scrutinize hype; first-principles = most valuable.
 ```
 
 ### recommend-do-not-decide
@@ -1733,10 +1716,11 @@ Clause section lines:
   - applies: `bkit-plan-review-2`
 
 ```text
-**CI on PR to `dev` / `main`:** Static, unit, integration (incl. service / DB-backed) and E2E lanes, plus an always-on migration lane in repos with migrations (replay when planned), run as parallel lanes plus a `bkit-tests-check` capstone. E2E `needs:` the migration lane when that lane owns remote migration apply. No `@live` tests.
+**CI on PR to `dev` / `main`:** **If** the repo has adopted bkit's CI workflow template → static, unit, integration (incl. service / DB-backed) and E2E lanes, plus an always-on migration lane in repos with migrations (replay when planned), run as parallel lanes plus a `bkit-tests-check` capstone. E2E `needs:` the migration lane when that lane owns remote migration apply. No `@live` tests.
 ```
 
 ```retired
+**CI on PR to `dev` / `main`:** Static, unit, integration (incl. service / DB-backed) and E2E lanes, plus an always-on migration lane in repos with migrations (replay when planned), run as parallel lanes plus a `bkit-tests-check` capstone. E2E `needs:` the migration lane when that lane owns remote migration apply. No `@live` tests.
 **CI on PR to `dev` / `main`:** Static, unit, integration (incl. service / DB-backed), E2E, always-on migration lane in repos with migrations (replay when planned) — parallel lanes + `bkit-tests-check` capstone. E2E `needs:` migration when that lane owns remote migration apply. no `@live` tests.
 **CI on PR to `dev` / `main`:** Static, unit, integration (incl. service / DB-backed), E2E, ALWAYS-on migration lane in repos with migrations (replay when planned) — parallel lanes + `bkit-tests-check` capstone. E2E `needs:` migration when that lane owns remote migration apply. no `@live` tests.
 ```
@@ -1749,10 +1733,11 @@ Clause section lines:
   - applies: `bkit-plan-review-2`
 
 ```text
-**CI on push to `dev` / `main`:** The PR lanes, plus remote migration apply inside the migration lane and the `@live` canary (both wait on migration != failure).
+**CI on push to `dev` / `main`:** **If** the repo has adopted bkit's CI workflow template → the PR lanes, plus remote migration apply inside the migration lane and the `@live` canary (both wait on migration != failure).
 ```
 
 ```retired
+**CI on push to `dev` / `main`:** The PR lanes, plus remote migration apply inside the migration lane and the `@live` canary (both wait on migration != failure).
 **CI on push to `dev` / `main`:** PR lanes plus remote migration apply inside migration lane + `@live` canary (both wait on migration != failure).
 **CI on push to `dev` / `main`:** PR lanes plus remote migration apply inside migration lane + `@live` canary (both wait on migration ≠ failure).
 ```
@@ -1814,10 +1799,11 @@ Clause section lines:
     - kept: subagents never push; they run their own lighter gate (`local-pre-commit`: `/bkit-*` steps run their own gates) and the pre-push hook runs the push gate
 
 ```text
-**Debug on demand:** When an E2E / `@live` failure is still unexplained after **Local tests first** and **Existing evidence first**, re-run the failing tests against the deployed boundary, not only locally.
+**Debug on demand:** When an E2E / `@live` failure is still unexplained after `Local tests first` and `Existing evidence first`, re-run the failing tests against the deployed boundary, not only locally.
 ```
 
 ```retired
+**Debug on demand:** When an E2E / `@live` failure is still unexplained after **Local tests first** and **Existing evidence first**, re-run the failing tests against the deployed boundary, not only locally.
 **Debug on demand:** Debug on demand re-runs failing E2E / `@live` tier tests against the deployed boundary, not as purely local runs.
 **Debug on demand:** Re-runs failing E2E / `@live` tier tests against the deployed boundary; NEVER purely local runs.
 **Debug on demand:** Re-runs failing E2E / `@live` tier tests against deployed boundary. NEVER purely local runs.
@@ -2030,10 +2016,11 @@ Clause section lines:
   - applies: `bkit-audit-config`, `bkit-audit-security`
 
 ```text
-**Secrets sync:** Set remote secrets only through the sync script, NEVER directly with a provider CLI: edit the env files and `scripts/secrets/bkit-secrets.config.mjs`, then run `node scripts/secrets/bkit-secrets.mjs sync`, with `--dry-run` first; `drift` proves parity.
+**Secrets sync:** **If** the repo has adopted the secrets sync template (`scripts/secrets/bkit-secrets.mjs`) → set remote secrets only through it, NEVER directly with a provider CLI: edit the env files and `scripts/secrets/bkit-secrets.config.mjs`, then run `node scripts/secrets/bkit-secrets.mjs sync`, with `--dry-run` first; `drift` proves parity.
 ```
 
 ```retired
+**Secrets sync:** Set remote secrets only through the sync script, NEVER directly with a provider CLI: edit the env files and `scripts/secrets/bkit-secrets.config.mjs`, then run `node scripts/secrets/bkit-secrets.mjs sync`, with `--dry-run` first; `drift` proves parity.
 **Secrets sync:** NEVER set remote secrets directly using a CLI. Edit the env files and `scripts/secrets/bkit-secrets.config.mjs`, then run `node scripts/secrets/bkit-secrets.mjs sync`, with `--dry-run` first; `drift` proves parity.
 **Secrets sync:** NEVER set remote secrets directly using CLI. Edit env files and `scripts/secrets/bkit-secrets.config.mjs`, then `node scripts/secrets/bkit-secrets.mjs sync` (`--dry-run` first; `drift` proves parity).
 ```
@@ -2584,10 +2571,11 @@ One `### {name}` per clause, in the lines of § Format, Clause section lines. He
 - carriers: workflow all; prompt all; repo-agent all
 
 ```text
-**No improv:** Add no steps of your own, and skip none.
+**No improv:** Skip no step, and add no step of your own; how deeply you investigate within a step is your call.
 ```
 
 ```retired
+**No improv:** Add no steps of your own, and skip none.
 **No improv:** No ad-hoc steps, no skipping.
 **No improv:** No ad-hoc steps, no skipping, no scope beyond this file.
 **No Improv:** No ad-hoc task lists, no skipping, no alternative approaches, or scope beyond this file.
@@ -3939,7 +3927,6 @@ Run `pnpm bkit:gate:static-unit` — all local tests MUST pass.
 ### debug-external-signals-pointers
 
 - prompt: where-used
-- tags: investigation-layers
 - carriers: prompt `bkit-debug-failure-diagnose`, `bkit-debug-failure-soak`
 
 ```text
@@ -4052,7 +4039,7 @@ Refuted {{entries}} must remain; do not delete.
 ### brainstorm-per-approach-tradeoffs
 
 - prompt: where-used
-- tags: improve-over-duplicate, no-speculative-scope, investigation-layers
+- tags: improve-over-duplicate, no-speculative-scope
 - carriers: prompt `bkit-design-brainstorm-ideate-1`, `bkit-design-brainstorm-ideate-2`
 
 ```text
@@ -8258,7 +8245,7 @@ The table lists the header bullets of the 6 workflow files, block by block, in f
 | --- | --- | --- | --- |
 | **Rules file** | Protocol | all 6 | Read `.agents/rules.md` → follow all rules. First Protocol bullet (`rules-orchestrator`). |
 | **Order** | Protocol | all 6 | Execute steps sequentially unless stated otherwise. The `order` clause shared with every prompt. |
-| **No improv** | Protocol | all 6 | Add no steps of your own, and skip none. The `no-improv` clause shared with every prompt; `Scope discipline` in `.agents/rules.md` covers scope. |
+| **No improv** | Protocol | all 6 | Skip no step, and add no step of your own; how deeply you investigate within a step is your call. The `no-improv` clause shared with every prompt; `Scope discipline` in `.agents/rules.md` covers scope. |
 | **Narrate** | Protocol | all 6 | User-visible lines at step start, subagent return, pivot, blocker; Auto-apply does not mean silent. |
 | **Failures** | Protocol | all 6 | Any step, tool, command failure, or gate that cannot pass → **Failure Path**. |
 | **Placeholders** | Protocol | all 6 | Assert required `{PLACEHOLDERS}` non-empty before tool calls → else **Failure Path**. auto and plan name their own placeholders; auto derives `{OWNER}` / `{REPO}` from `{OWNER_REPO}` at Step 1. |
@@ -9690,6 +9677,7 @@ Reuse vs new: the existing code and infrastructure it leverages, against what is
 ```text
 Propose 2-3 approaches from first principles: the best long-term shape if the existing constraints did not matter.
 Ignore "we already have X" as a default.
+Challenge tried-and-true approaches, scrutinize the hype around new and popular ones, and value first-principles reasoning most.
 Flag each approach's friction with the existing codebase.
 Friction vs ideal: the migration cost, the surfaces touched and what breaks.
 ```

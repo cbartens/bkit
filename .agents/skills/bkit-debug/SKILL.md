@@ -13,7 +13,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 - **Rules file:** Read `.agents/rules.md` → follow all rules.
 - **Order:** Execute steps sequentially unless stated otherwise.
-- **No improv:** Add no steps of your own, and skip none.
+- **No improv:** Skip no step, and add no step of your own; how deeply you investigate within a step is your call.
 - **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does not mean silent.
 - **Failures:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
 - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, etc non-empty if required before making tool calls (`{ISSUE_ID}` may be empty). **Else** → **Failure Path**.

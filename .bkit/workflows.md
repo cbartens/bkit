@@ -213,7 +213,7 @@ The table lists the header bullets of the 6 workflow files, block by block, in f
 | --- | --- | --- | --- |
 | **Rules file** | Protocol | all 6 | Read `.agents/rules.md` → follow all rules. First Protocol bullet (`rules-orchestrator`). |
 | **Order** | Protocol | all 6 | Execute steps sequentially unless stated otherwise. The `order` clause shared with every prompt. |
-| **No improv** | Protocol | all 6 | Add no steps of your own, and skip none. The `no-improv` clause shared with every prompt; `Scope discipline` in `.agents/rules.md` covers scope. |
+| **No improv** | Protocol | all 6 | Skip no step, and add no step of your own; how deeply you investigate within a step is your call. The `no-improv` clause shared with every prompt; `Scope discipline` in `.agents/rules.md` covers scope. |
 | **Narrate** | Protocol | all 6 | User-visible lines at step start, subagent return, pivot, blocker; Auto-apply does not mean silent. |
 | **Failures** | Protocol | all 6 | Any step, tool, command failure, or gate that cannot pass → **Failure Path**. |
 | **Placeholders** | Protocol | all 6 | Assert required `{PLACEHOLDERS}` non-empty before tool calls → else **Failure Path**. auto and plan name their own placeholders; auto derives `{OWNER}` / `{REPO}` from `{OWNER_REPO}` at Step 1. |

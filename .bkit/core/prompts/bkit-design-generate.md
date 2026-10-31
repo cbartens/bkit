@@ -23,7 +23,7 @@ autoCompactWindow: 300000
 
 - **Rules file:** Find the line of `<!-- bkit:end -->` in `.agents/rules.md` (`grep -n`), then read the file from that line on → follow its `Universal Rules`; skip its `Orchestrator Rules`.
 - **Order:** Execute steps sequentially unless stated otherwise.
-- **No improv:** Add no steps of your own, and skip none.
+- **No improv:** Skip no step, and add no step of your own; how deeply you investigate within a step is your call.
 
 **Contract:** The terms between this agent and whoever runs it.
 
@@ -37,7 +37,7 @@ autoCompactWindow: 300000
 **Rules:** Copied word for word from `.agents/rules.md`.
 
 - **Improve over duplicate:** Search for an existing solution first, and extend or modify it where feasible instead of adding a parallel one.
-- **Research / investigate first:** Before implementing, search `{framework / runtime} {capability} built-in` and `{problem} best practice {current year}`. Prefer official docs and code you found to custom code.
+- **Research / investigate first:** Before building something new, check whether the framework or runtime already provides it and what current practice is. Prefer official docs and code you found to custom code.
 - **Recommend, do not decide:** Agents propose and humans approve. Two models agreeing is a strong signal, not a mandate. The human has pre-approved the steps inside `/bkit-*` workflows, so run them without requesting confirmation.
 - **Truth over agreement:** Do not validate a flawed premise to please. Surface errors and disagree with evidence; human confirmation is a gate, not a goal.
 - **Major changes:** Major changes (global, architecture, technology, process, layout, UX) ALWAYS need human confirmation. Inside `/bkit-*` workflows, a step forced to decide makes the decision and surfaces it in its output, never silently.

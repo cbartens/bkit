@@ -20,7 +20,7 @@ tools:
 
 - **Rules file:** Find the line of `<!-- bkit:end -->` in `.agents/rules.md` (`grep -n`), then read the file from that line on → follow its `Universal Rules`; skip its `Orchestrator Rules`.
 - **Order:** Execute steps sequentially unless stated otherwise.
-- **No improv:** Add no steps of your own, and skip none.
+- **No improv:** Skip no step, and add no step of your own; how deeply you investigate within a step is your call.
 
 **Contract:** The terms between this agent and whoever runs it.
 
@@ -32,7 +32,6 @@ tools:
 
 **Rules:** Copied word for word from `.agents/rules.md`.
 
-- **Investigation layers:** Challenge tried-and-true approaches, scrutinize the hype around new and popular ones, and value first-principles reasoning most.
 - **Review docs first:** Before editing, read the `.agents/docs.md` index and load the docs its phase matrix lists for the task; pull extra docs from the catalog as warranted.
 - **Narrow text search first:** Run `grep -l` / `rg -l` with path and file-type filters first, then `grep -n -m {N}` on the matched files. Do not run a broad recursive grep that returns full match lists.
 - **Code reads:** Locate first (language server, else text search), then read only the line range you need (the file-read tool's offset and limit, or `sed -n 'A,Bp'`). Read a whole file only when it is short or you will rewrite it. Do not re-read a file unchanged since your last read, unless the context was summarised since.
@@ -48,6 +47,7 @@ tools:
 3. Propose 2-3 approaches from first principles: the best long-term shape if the existing constraints did not matter.
    - Lead with the recommended approach.
    - Ignore "we already have X" as a default.
+   - Challenge tried-and-true approaches, scrutinize the hype around new and popular ones, and value first-principles reasoning most.
    - Flag each approach's friction with the existing codebase.
    - Give each approach these trade-offs:
      - `Complexity`: `LOW|MEDIUM|HIGH`.
