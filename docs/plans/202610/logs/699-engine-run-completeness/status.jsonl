@@ -415,3 +415,7 @@
 {"type":"engine-call","workflow":"build","at":"2026-10-31T04:42:31Z","noun":"disk","verb":"prune","flags":["mode","auto"]}
 {"type":"engine-call","workflow":"build","at":"2026-10-31T04:43:10Z","noun":"disk","verb":"prune","flags":["mode","auto"]}
 {"type":"engine-call","workflow":"build","at":"2026-10-31T04:44:24Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"session","workflow":"build","at":"2026-10-31T04:59:07Z","platform":"claude-code","session":"fp:caed535f402b"}
+{"type":"runtime-resolved","workflow":"build","at":"2026-10-31T04:59:07Z","runtime":"LOCAL","runtimeWorktrees":true,"runtimeDevPushes":true,"runtimeGithubCli":true,"runtimeGithubCliExit":0,"runtimeGithubCliErr":"","baseSha":""}
+{"type":"step-done","workflow":"build","step":"build-start-workflow","status":"DONE","at":"2026-10-31T04:59:18Z","parentSha":"3dc9f5135336722c332e55d7531be73304160f43","artifacts":[]}
+{"type":"step-done","workflow":"build","step":"build-worktree-setup","status":"DONE","at":"2026-10-31T04:59:19Z","parentSha":"3dc9f5135336722c332e55d7531be73304160f43","artifacts":["docs/plans/202610/logs/699-engine-run-completeness/build-input-1.md"]}
