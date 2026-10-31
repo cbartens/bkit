@@ -85,13 +85,20 @@ describe(".husky/pre-push log", () => {
   });
   afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
+  /** This process's env without the logged-run marker: run inside a real push, the outer hook sets it and the hook under test would skip its log. */
+  const outsideHookEnv = (): NodeJS.ProcessEnv => {
+    const env = { ...process.env };
+    delete env.BKIT_PRE_PUSH_LOGGED;
+    return env;
+  };
+
   const runHook = (hook: string, stdin: string) => {
     const result = spawnSync("sh", [path.join(REPO, hook)], {
       cwd: tmp,
       input: stdin,
       encoding: "utf-8",
       timeout: 10_000,
-      env: { ...process.env, PATH: `${path.join(tmp, "bin")}:${process.env.PATH}` },
+      env: { ...outsideHookEnv(), PATH: `${path.join(tmp, "bin")}:${process.env.PATH}` },
     });
     const log = path.join(tmp, "tmp", "pre-push.log");
     return {
