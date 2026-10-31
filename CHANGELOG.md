@@ -30,6 +30,7 @@ Format: `## [version] — YYYY-MM-DD`
 - **`Research / investigate first` drops its fixed search queries.** It now asks you to check whether the framework or runtime already provides what you are about to build, and what current practice is, instead of prescribing two web searches for every change.
 - **`Investigation layers` left `.agents/rules.md`.** It was coaching for one agent, loaded into every session. It now sits in `bkit-design-brainstorm-ideate-2`, the only agent that used it.
 - **`Secrets sync`, `CI on PR to dev / main` and `CI on push to dev / main` apply only where the repo adopted the template they describe.** A repo without the secrets sync or CI workflow template no longer gets rules it cannot follow.
+- **The logs, database and gates audits check that each scheduled job succeeded, not just that it ran.** A job that finishes fast with a rejected status used to pass all three. `bkit-audit-logs` Step 12 — Alarms, `bkit-audit-database` Step 12 — Derived Data and `bkit-audit-gates` Step 3 — Widen now share one sentence: read the outcome of every run (status code or exit code), and treat a job that did not write its owned rows in its window as a finding, even when it exited 0. The gates audit also lists a check on scheduled controls among the standard gates nobody proposed. #770
 
 ### Fixed
 
