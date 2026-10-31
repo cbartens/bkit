@@ -32,7 +32,7 @@ Every dependency PR rewrites the lockfile. Left unbatched, the PRs go stale agai
 **Anchor Standards:**
 
 - Dependency-bot best-practice and security presets (e.g., Renovate `config:best-practices`, and the presets it extends: `security:minimumReleaseAgeNpm`, `helpers:pinGitHubActionDigests`, `docker:pinDigests`, `abandonments:recommended`, `:configMigration`). Record the bot version.
-- Package-manager supply-chain settings (e.g., pnpm `minimumReleaseAge`, `trustPolicy: no-downgrade`, `blockExoticSubdeps`, `allowBuilds`, `strictDepBuilds`).
+- Package-manager supply-chain settings (e.g., pnpm `minimumReleaseAge`, `trustPolicy: no-downgrade`, `blockExoticSubdeps`, `allowBuilds`, `strictDepBuilds`). Read the package manager's defaults from the release notes of the pinned major, not the latest docs.
 - Registry provenance and trusted publishing (e.g., npm provenance).
 - OpenSSF Scorecard; record version.
 - OpenSSF Concise Guide for Evaluating Open Source Software; record revision date.
@@ -81,6 +81,7 @@ The batch verdict goes in `Summary`, not on each PR. The CI result of the landin
 - **PASS:** the drift check and every local verification command exited 0, apart from baseline reds (Step 10).
 - **CONCERNS:** a PR was dropped during bisection.
 - **FAIL:** the batch drifts, or it has a red that no single PR explains and the audited commit does not show.
+- **UNVERIFIED:** permissions stopped the batch from assembling (Step 8), so nothing was verified. Name the permission it needs.
 
 ### Pre-Flight / Dependencies
 
@@ -156,6 +157,8 @@ The batch verdict goes in `Summary`, not on each PR. The CI result of the landin
     - List the solo PRs that should be grouped, and the rule that would catch them.
   - Schedule:
     - Check that the bot opens PRs in one window.
+    - Compare the bot's actual run start times (e.g., workflow run history) with the configured window. A window that no run lands in means routine PRs never open.
+    - **If** no dependency bot is configured → record an explicit skip.
     - Note the non-security PRs opened outside it, and why.
   - Limits: record the PRs held back by the concurrent, hourly and branch-concurrent limits.
   - Rebase policy:
@@ -173,11 +176,12 @@ The batch verdict goes in `Summary`, not on each PR. The CI result of the landin
 
   **Done when:** `Volume` has a row per setting: value · what it would change · PRs saved.
 
-- [ ] **Step 7 — Classify:** Classify every PR that is not green. Quote the evidence line from the log. When nothing matches, the class is C.
+- [ ] **Step 7 — Classify:** Classify every PR that is not green, and every green PR that bumps a version pinned beside a checksum. Quote the evidence line from the log. When nothing matches, the class is C.
   - **A — infrastructure:** preview-deploy wait timeout, registry fetch failure, a cold service refusing, a cancelled runner. Confirm: the same job passed on a neighbouring run or a retry of the same commit.
   - **B — stale:** outdated lockfile, lockfile config mismatch, a merge conflict, merge state dirty, behind the integration branch. Confirm: behind-count. Being behind says nothing about the dependency itself.
   - **C — real:** the failure survives a clean rebase onto the integration branch. Confirm: reproduce it on the batch worktree before Step 10, calling the test binary directly (e.g., `node_modules/.bin/vitest`). **If** a PR bumps the package-manager pin (e.g., `packageManager`) → a wrapper exec (e.g., `pnpm exec`) fetches that version and installs, which dirties the worktree. Only C keeps a PR out of the batch.
     - **C, copy parity:** a test requires two copies of a file to stay identical, and the bot updates only the copy it scans, because the other copy is on an ignored path. It fails by design, and the fix is to mirror the change into the other copy. Count recurrences in Step 16.
+    - **C, checksum:** the PR bumps a version pinned beside a checksum (e.g., a download URL and its SHA-256), and the checksum does not match the new version. A green PR can be C here, because a stale checksum fails only where the download runs.
 
   The batch is the green, A and B PRs that are past the bot's release age. A class C PR is EXCLUDED and goes in `Excluded`. A breaking major is DECISION, even when it would be IN BATCH. A non-security PR inside the release age is EXCLUDED, even when it would be IN BATCH (Step 5). **Done when:** `Classes` has a row per non-green PR: class · behind-count · quoted evidence · verdict.
 
@@ -193,7 +197,10 @@ The batch verdict goes in `Summary`, not on each PR. The CI result of the landin
     - **Else** → the major is DECISION and stays out, so keep the lower line and record that the major was not taken.
   - **If** a manifest conflicts with the integration branch rather than another PR → take the higher version line by line.
   - **If** any other conflict happens → abort the merge, drop the PR, and record why.
+  - **If** permissions stop the batch from assembling (e.g., a refused merge, fetch or install) → the batch verdict is `UNVERIFIED`, not FAIL, and Step 10 does not run.
   - Record the merged commit, then install.
+  - After the install, record the resolved version of each changed package per workspace, from the lockfile.
+  - Check each package-manager override against the exact direct pin it shadows. **If** the manifest has no overrides → record `none`.
   - For lockfile-only PRs, refresh exactly the named packages.
   - Watch for three traps:
     - Trap (1): an install rewrites manifests and the lockfile (e.g., the pnpm catalog or the root `package.json`), and the uncommitted edits fail frozen CI while passing locally.
@@ -211,13 +218,14 @@ The batch verdict goes in `Summary`, not on each PR. The CI result of the landin
   - Run a frozen install, then the static, unit and integration gate, then local E2E for each app. A store build or a deployed environment tests none of the batch, so use the local-build substrate.
   - Go beyond a green typecheck: run the framework's dependency doctor, where the framework ships one (e.g., `expo-doctor`), because packages outside the SDK's range compile and typecheck, then break the native app.
   - Run a single-version check for the runtime packages named in `Project Instructions`. Two versions is trap (3): report it, and the fix is one version everywhere.
+  - **If** a red is a timeout under heavy load (e.g., exit 143) → re-run that file alone and record the load average before blaming the batch.
   - A red can come from a stale install. Clear the installed dependencies (e.g., `node_modules`, `.venv`, `target/`), run a frozen install, and re-run before blaming the bump.
   - Reproduce each red on the audited commit without the batch, in a clean worktree off `baseSha`. A red there is a baseline red: it goes in `Verification` as a finding, reported apart from the batch, and it is not a batch FAIL.
   - Judge the batch on the remaining reds.
   - **If** a red remains → drop the suspect PR, rebuild the batch, and re-run.
   - **If** no single PR explains it → the batch is FAIL.
 
-  **Done when:** `Verification` quotes every command and exit code, and each baseline red, and `Summary` has PASS, CONCERNS or FAIL.
+  **Done when:** `Verification` quotes every command and exit code, and each baseline red, and `Summary` has PASS, CONCERNS, FAIL or UNVERIFIED.
 
 - [ ] **Step 11 — Plan:** The report asks and stops. It does not push, merge, close or label.
   - **If** the integration branch takes direct pushes → the batch lands without a feature-branch PR.
@@ -268,6 +276,7 @@ The batch verdict goes in `Summary`, not on each PR. The CI result of the landin
   - (e) Unused dependencies go to `bkit-audit-dead-code`. New dependencies since the last pass that are unmaintained (no release for over a year, or archived) go in `Recommendations`.
   - (f) Deprecated and abandoned packages across the whole tree, from the dashboard's abandoned list and frozen-install warnings.
   - (g) Licences for new dependencies since the last pass.
+    - Judge each licence by shipping scope (deployed or distributed), not by membership of the dependency graph.
     - A copyleft licence (GPL, AGPL) or a missing licence on a shipped dependency goes in `Recommendations`.
     - Diff the production tree's licences against the previous run, including BSL, SSPL and commercial upgrades.
     - Check that the shipped app's notices are regenerated when a dependency changes.

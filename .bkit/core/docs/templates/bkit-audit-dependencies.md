@@ -176,12 +176,12 @@ The batch verdict goes in `Summary`, not on each PR. The CI result of the landin
 
   **Done when:** `Volume` has a row per setting: value · what it would change · PRs saved.
 
-- [ ] **Step 7 — Classify:** Classify every PR that is not green. Quote the evidence line from the log. When nothing matches, the class is C.
+- [ ] **Step 7 — Classify:** Classify every PR that is not green, and every green PR that bumps a version pinned beside a checksum. Quote the evidence line from the log. When nothing matches, the class is C.
   - **A — infrastructure:** preview-deploy wait timeout, registry fetch failure, a cold service refusing, a cancelled runner. Confirm: the same job passed on a neighbouring run or a retry of the same commit.
   - **B — stale:** outdated lockfile, lockfile config mismatch, a merge conflict, merge state dirty, behind the integration branch. Confirm: behind-count. Being behind says nothing about the dependency itself.
   - **C — real:** the failure survives a clean rebase onto the integration branch. Confirm: reproduce it on the batch worktree before Step 10, calling the test binary directly (e.g., `node_modules/.bin/vitest`). **If** a PR bumps the package-manager pin (e.g., `packageManager`) → a wrapper exec (e.g., `pnpm exec`) fetches that version and installs, which dirties the worktree. Only C keeps a PR out of the batch.
     - **C, copy parity:** a test requires two copies of a file to stay identical, and the bot updates only the copy it scans, because the other copy is on an ignored path. It fails by design, and the fix is to mirror the change into the other copy. Count recurrences in Step 16.
-    - **C, checksum:** the PR bumps a version pinned beside a checksum (e.g., a download URL and its SHA-256). Check the checksum against the new version even when the PR is green, because a stale checksum fails only where the download runs.
+    - **C, checksum:** the PR bumps a version pinned beside a checksum (e.g., a download URL and its SHA-256), and the checksum does not match the new version. A green PR can be C here, because a stale checksum fails only where the download runs.
 
   The batch is the green, A and B PRs that are past the bot's release age. A class C PR is EXCLUDED and goes in `Excluded`. A breaking major is DECISION, even when it would be IN BATCH. A non-security PR inside the release age is EXCLUDED, even when it would be IN BATCH (Step 5). **Done when:** `Classes` has a row per non-green PR: class · behind-count · quoted evidence · verdict.
 
