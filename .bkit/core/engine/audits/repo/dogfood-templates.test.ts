@@ -561,8 +561,34 @@ const ADOPTED: Record<string, Entry> = {
   },
   "scripts/graphify/bkit-graphify-graphml.py": identical,
   "scripts/cleanup/bkit-disk-prune.mjs": {
-    status: "not-adopted",
-    what: "the example steps clear app build caches and agent worktrees this repo does not keep",
+    status: "adopted",
+    edits: [
+      {
+        kind: "adapt",
+        what: "header: only the worktree step applies",
+        fill: " * paths below assume a monorepo with apps under `apps/`.",
+        with: " * this repo builds no apps and runs no Turborepo, so only the worktree step is kept.",
+      },
+      {
+        kind: "adapt",
+        what: "no build-process checks: no cache step is kept",
+        region: {
+          template: ["/** True when a process whose full command line", "/** `text` as JSON"],
+          copy: ["", null],
+        },
+      },
+      {
+        kind: "adapt",
+        what: "no Turborepo, Next.js or native build caches",
+        region: {
+          template: [
+            "  {\n    // Comes back: the next build re-runs",
+            "  {\n    // Comes back: `bkit worktrees setup`",
+          ],
+          copy: ["", null],
+        },
+      },
+    ],
   },
   "scripts/cleanup/bkit-disk-prune.machine.mjs": {
     status: "not-adopted",
