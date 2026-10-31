@@ -409,7 +409,7 @@ direnv allow
 
 ## Launchd GUI environment — tokens for Dock-launched apps
 
-Dock / Spotlight launches start under `launchd`, which never runs the login shell or direnv. So GUI apps (opencode desktop, Cursor) start without `BKIT_*`, and provider calls fail on authentication. The template set pairs a loader script with a machine-local env file. The LaunchAgent runs the loader at login, and again on every write to that file.
+Dock / Spotlight launches start under `launchd`, which never runs the login shell or direnv, so GUI apps (opencode desktop, Cursor) start without `BKIT_*`, and provider calls fail on authentication. The template set pairs a loader script with a machine-local env file. The LaunchAgent runs the loader at login, and again on every write to that file.
 
 <!-- prettier-ignore -->
 | File | Copy from | To | Commit |
@@ -817,7 +817,7 @@ cp .bkit/templates/scripts/cleanup/bkit-tmp-prune.mjs scripts/cleanup/
 - Scope: `tmp/` at the top of the checkout the cwd sits in. Each worktree prunes its own, and `tmp/` itself stays.
 - Age is the file mtime.
 - Symlinks are never followed. A symlinked `tmp/` is skipped. A symlink inside is removed by its own age, and its target is untouched.
-- A folder goes only when it is empty **and** either the sweep emptied it or its own mtime is past the cutoff. So a folder that another process just made stays.
+- A folder goes only when it is empty **and** either the sweep emptied it or its own mtime is past the cutoff, so a folder that another process just made stays.
 - Hand run: `node scripts/cleanup/bkit-tmp-prune.mjs`. Files to keep belong outside `tmp/`.
 
 ## Disk prune — cleanup steps you own

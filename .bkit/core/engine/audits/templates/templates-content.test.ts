@@ -566,6 +566,9 @@ describe("trivy scan workflow template (.bkit/templates/.github/workflows/bkit-t
   });
 });
 
+/** A step's `run:` body, empty for a `uses:` step. */
+const stepRun = (step: { run?: string }): string => step.run ?? "";
+
 describe("health check workflow template (.bkit/templates/.github/workflows/bkit-health.yml)", () => {
   const content = fs.readFileSync(
     path.resolve(".bkit/templates/.github/workflows/bkit-health.yml"),
@@ -591,19 +594,19 @@ describe("health check workflow template (.bkit/templates/.github/workflows/bkit
   it("probes only when production serves the CI run's commit", () => {
     expect(wf.jobs.health.needs).toBe("promoted");
     expect(wf.jobs.health.if).toBe("needs.promoted.outputs.live == 'true'");
-    const gate = wf.jobs.promoted.steps[0].run ?? "";
+    const gate = stepRun(wf.jobs.promoted.steps[0]);
     expect(gate).toMatch(/if \[ "\$live_sha" = "\$HEAD_SHA" \]; then\n\s+echo "live=true"/);
   });
 
   it("fails, rather than skips, when it cannot read what production serves", () => {
-    const gate = wf.jobs.promoted.steps[0].run ?? "";
+    const gate = stepRun(wf.jobs.promoted.steps[0]);
     expect(gate).toMatch(/if \[ "\$code" != "200" \]; then\n\s+echo "::error::[^\n]*"\n\s+exit 1/);
   });
 
   it("passes the CI run's commit through env:, never inlined into a run: body", () => {
     expect(content).toContain("HEAD_SHA: ${{ github.event.workflow_run.head_sha }}");
     for (const job of Object.values(wf.jobs)) {
-      for (const step of job.steps) expect(step.run ?? "").not.toMatch(/\$\{\{/);
+      for (const step of job.steps) expect(stepRun(step)).not.toMatch(/\$\{\{/);
     }
   });
 

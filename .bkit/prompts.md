@@ -49,7 +49,7 @@ Pinning `model:` locks an agent's model, whatever model the orchestrator session
 
 **Effort → host thinking (canonical):** a prompt's `effort:` is the row key in the Default column.
 
-- The table is keyed on host, not provider. The field name and its ladder come from the host's config format, not from the model: `effort:` for claude / cursor, a `variant:` field for opencode, and `model_reasoning_effort` for codex. So every opencode provider shares the one OpenCode column.
+- The table is keyed on host, not provider. The field name and its ladder come from the host's config format, not from the model: `effort:` for claude / cursor, a `variant:` field for opencode, and `model_reasoning_effort` for codex, so every opencode provider shares the one OpenCode column.
 - A provider key in this table throws an error. It is an axis confusion, and nothing falls back.
 - Codex caps `max` at `xhigh`, because it has no higher rung.
 - Install parses this table, and no ladder is hardcoded in TS.
@@ -150,7 +150,7 @@ Subscription hosts keep the eager mapping, because on a plan you already paid fo
 
 ## Models
 
-Canonical per-agent metadata, and the single source of truth for each agent's model. The table is keyed on provider, not host, because a model ID belongs to the gateway serving it. So a shared provider is one column, never two, and the table never grows as hosts x providers. The columns, subscription providers first: `Anthropic` (Claude Code's pinned provider, with a locked ID that does not depend on the session), `OpenAI` (Codex), `Google` (Antigravity), then `Cursor` (Cursor's pinned provider, for cross-family diversity), then one per opencode provider (`OpenRouter`, `Ollama`, `OpenCode Zen`, `OpenCode Go`). `bkit install --opencode=<provider>` reads the matching column, and every allowlisted provider ships one.
+Canonical per-agent metadata, and the single source of truth for each agent's model. The table is keyed on provider, not host, because a model ID belongs to the gateway serving it, so a shared provider is one column, never two, and the table never grows as hosts x providers. The columns, subscription providers first: `Anthropic` (Claude Code's pinned provider, with a locked ID that does not depend on the session), `OpenAI` (Codex), `Google` (Antigravity), then `Cursor` (Cursor's pinned provider, for cross-family diversity), then one per opencode provider (`OpenRouter`, `Ollama`, `OpenCode Zen`, `OpenCode Go`). `bkit install --opencode=<provider>` reads the matching column, and every allowlisted provider ships one.
 
 **Cells = bare provider-scoped model ID** (`deepseek-v4.1-flash`, `moonshotai/kimi-k3`), never with a provider prefix. `formatModelPin` adds the host-format prefixes at render, and also maps the key `opencode-zen` → opencode's own id `opencode`. A prefixed cell (`opencode/deepseek-v4.1-flash`) gets a double prefix.
 

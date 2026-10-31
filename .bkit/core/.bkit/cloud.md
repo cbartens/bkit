@@ -161,7 +161,7 @@ Neither file can be committed. `~/.claude/settings.json` resolves outside the re
 
 The baked path `/home/user/<repo-name>` is an observation of the current image, not a contract: no env var names the repo root. `.claude/hooks/bkit-cloud-bootstrap.sh` re-checks the discovered git root each session and warns on a mismatch. It only diagnoses, and does not repair. To fix a mismatch, re-paste the setup script.
 
-Auto mode drops a blanket `Bash(*)` on entry, while narrow rows survive. So cloud auto-mode sessions run on the classifier's verdicts and `autoMode.environment`, not on the allow list. By default the classifier trusts the working repo and its remotes, and every context-fetch host counts as external until it is named. The default `Host containment` entry assumes an open-internet dev machine.
+Auto mode drops a blanket `Bash(*)` on entry, while narrow rows survive, so cloud auto-mode sessions run on the classifier's verdicts and `autoMode.environment`, not on the allow list. By default the classifier trusts the working repo and its remotes, and every context-fetch host counts as external until it is named. The default `Host containment` entry assumes an open-internet dev machine.
 
 ### Environment variables
 
@@ -432,7 +432,7 @@ Repo skills (`.agents/skills/bkit-*`, `$bkit-design`) load in cloud tasks. Codex
 
 Each repo gets its own Claude environment, named after the repo. The reason is secrets, not mechanics.
 
-**Secrets are per-repo.** App tokens (Supabase, Stripe, Vercel, …) differ per repo. Even bkit tokens differ in scope: a fine-grained `BKIT_GH_TOKEN` is scoped to one resource owner / repo, and covering different owners needs one classic PAT, which cannot be per-repo. One Claude environment holds one value per name. So a shared environment forces either a mega-scoped PAT across repos (a wide blast radius) or one repo's secrets leaking into the rest. Per-repo environments isolate secrets.
+**Secrets are per-repo.** App tokens (Supabase, Stripe, Vercel, …) differ per repo. Even bkit tokens differ in scope: a fine-grained `BKIT_GH_TOKEN` is scoped to one resource owner / repo, and covering different owners needs one classic PAT, which cannot be per-repo. One Claude environment holds one value per name, so a shared environment forces either a mega-scoped PAT across repos (a wide blast radius) or one repo's secrets leaking into the rest. Per-repo environments isolate secrets.
 
 Shared across repos (copy, don't re-derive), non-secret only:
 
@@ -560,7 +560,7 @@ The slash command body is already in the checked-out repo (mirrored to `.claude/
 - The newest build row >= 30 min old → abandoned → dispatch.
 - No file, or an unreadable one → dispatch.
 
-The post-merge `dev` surface reuses the same free-tier gate. When the issue carries `bkit:auto`, `/bkit-ship` threads ` bkit [auto route]` onto the PR squash-merge `--subject`. So the commit that lands on `dev`, and triggers post-merge CI, already carries the marker the gate checks.
+The post-merge `dev` surface reuses the same free-tier gate. When the issue carries `bkit:auto`, `/bkit-ship` threads ` bkit [auto route]` onto the PR squash-merge `--subject`, so the commit that lands on `dev`, and triggers post-merge CI, already carries the marker the gate checks.
 
 ## Routing decision (router orchestrator)
 

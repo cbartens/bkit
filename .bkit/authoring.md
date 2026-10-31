@@ -544,7 +544,7 @@ A doc template is the skeleton of a document an agent fills in: the plan (`docs/
     ```
 
 - **Audit templates carry their procedure:** An audit template holds its own Rules box, its `Probe Steps` (each ending in a `**Done when:**` check) and its severity table.
-  - Why: Each audit is a different investigation, and one generic runner cannot know them all. So the procedure travels with the template, and the runner's prompt holds only what every audit shares: how to stamp the report, number findings, write ledger rows and pick a next step.
+  - Why: Each audit is a different investigation, and one generic runner cannot know them all, so the procedure travels with the template, and the runner's prompt holds only what every audit shares: how to stamp the report, number findings, write ledger rows and pick a next step.
   - `@bkit-audit-generate` runs exactly one template, and fills its sections in order.
   - `## Project Instructions` sits below `<!-- bkit:end -->` and holds what the next run in this project needs: commands that worked, paths, tool gaps. The runner refines it after each run. Its bullets extend or override the template sections with the same title, never the template's Rules box.
   - Example (`bkit-audit-usability.md` § Probe Steps, Step 6 — Canary): the risk, the action, then the check.

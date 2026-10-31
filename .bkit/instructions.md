@@ -191,10 +191,11 @@ Clause section lines:
     - kept: a blocked in-scope plan task is not a deferral; it is reported to the orchestrator, which routes it
 
 ```text
-**Finish over deferrals:** Finish the in-scope work you can finish. Defer only work that is genuinely out of scope or hard-blocked; declaring work out of scope does not make it so. Work the request needs in order to be complete is in scope, even when in doubt; unrelated improvements are not (`Scope discipline`). Exception: `LOW` challenge findings, deferred with `reason` `low-severity` per `.bkit/jsonl.md` § Deferral Reason.
+**Finish over deferrals:** Finish the in-scope work you can finish. Defer only work that is genuinely out of scope or hard-blocked; declaring work out of scope does not make it so. Work the request needs before it is complete is in scope, even when in doubt; unrelated improvements are not (`Scope discipline`). Exception: `LOW` challenge findings, deferred with `reason` `low-severity` per `.bkit/jsonl.md` § Deferral Reason.
 ```
 
 ```retired
+**Finish over deferrals:** Finish the in-scope work you can finish. Defer only work that is genuinely out of scope or hard-blocked; declaring work out of scope does not make it so. Work the request needs in order to be complete is in scope, even when in doubt; unrelated improvements are not (`Scope discipline`). Exception: `LOW` challenge findings, deferred with `reason` `low-severity` per `.bkit/jsonl.md` § Deferral Reason.
 **Finish over deferrals:** Finish the in-scope work you can finish. Defer only work that is genuinely out of scope or hard-blocked; declaring work out of scope does not make it so, and when in doubt, treat it as in scope. Exception: `LOW` challenge findings, deferred with `reason` `low-severity` per `.bkit/jsonl.md` § Deferral Reason.
 **Finish over deferrals:** NEVER defer in-scope work you can finish. ONLY defer genuinely out-of-scope or hard-blocked work; declaring something out of scope does not make it so. When in doubt, treat the work as in-scope and finish it. Exception: `LOW` challenge findings, deferred with `reason` `low-severity` per `.bkit/jsonl.md` § Deferral Reason.
 **Finish over deferrals:** NEVER defer in-scope work you can finish. ONLY defer genuinely out-of-scope or hard-blocked work; Declaring something out of scope does not make it so; reviewers will refute unfinished work. If in doubt, treat as in-scope and finish work. Exception: `LOW` challenge findings, deferred with `reason` `low-severity` per `.bkit/jsonl.md` § Deferral Reason.

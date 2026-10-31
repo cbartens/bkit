@@ -172,6 +172,47 @@ const footer = (t, W, top, inset = 60, rule = inset) => {
   );
 };
 
+// ---------- Fence card ----------
+// The hero and social preview share one terminal card: an agent claims a task is done, bkit
+// refuses it until the test has been seen failing, and the task only passes once it has. `s`
+// scales the card from its hero size (s = 1), `step` is the row pitch. Message text is not
+// wrapped: keep it short.
+const FENCE_ROWS = [
+  ["agent", "Task 3 done. Tests pass.", "text"],
+  ["bkit", "✗ No failing test seen first.", "debug"],
+  ["agent", "Adds the failing test, then the fix.", "text"],
+  ["bkit", "✓ Red, then green. Task passes.", "ok"],
+  ["CI", "✓ Every check green. Ready to merge.", "ok"],
+];
+function fenceCard(t, cx, cy, cw, ch, s, step, fill) {
+  let b = `<rect x="${cx}" y="${cy}" width="${cw}" height="${ch}" rx="${12 * s}" fill="${fill}" stroke="${t.border}"/>`;
+  b += ["#ff5f57", "#febc2e", "#28c840"]
+    .map(
+      (c, i) =>
+        `<circle cx="${cx + 22 * s + i * 18 * s}" cy="${cy + 22 * s}" r="${6 * s}" fill="${c}"/>`,
+    )
+    .join("");
+  b += text(cx + cw / 2, cy + 27 * s, "my-app · /bkit-build", {
+    size: 14 * s,
+    fill: t.muted,
+    anchor: "middle",
+    font: MONO,
+  });
+  b += `<line x1="${cx}" y1="${cy + 44 * s}" x2="${cx + cw}" y2="${cy + 44 * s}" stroke="${t.border}"/>`;
+  FENCE_ROWS.forEach(([who, msg, tone], i) => {
+    const y = cy + 76 * s + i * step;
+    const agent = who === "agent";
+    b += text(cx + 22 * s, y, who, {
+      size: 15 * s,
+      fill: agent ? t.muted : t.text,
+      font: MONO,
+      weight: agent ? 400 : 700,
+    });
+    b += text(cx + 88 * s, y, msg, { size: 15 * s, fill: t[tone], weight: agent ? 400 : 600 });
+  });
+  return b;
+}
+
 // ---------- Hero ----------
 function hero(t) {
   const W = 1200,
@@ -180,55 +221,15 @@ function hero(t) {
   let b = `<rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="18" fill="${t.surface}" stroke="${t.border}"/>`;
   b += phases.map((p, i) => `<circle cx="${72 + i * 22}" cy="84" r="7" fill="${t[p]}"/>`).join("");
   b += text(64, 178, "bkit", { size: 96, weight: 800, fill: t.text, ls: -3 });
-  b += text(66, 236, "From vibe coding to production code.", {
-    size: 34,
-    weight: 700,
-    fill: t.text,
-  });
-  b += text(66, 277, "A senior engineering team's process, ready-made.", {
-    size: 21,
-    fill: t.muted,
-  });
-  b += text(66, 306, "Run by AI agents. Battle-tested over >2,000 commits.", {
-    size: 21,
-    fill: t.muted,
-  });
-
-  // Terminal card
-  const cx = 780,
-    cy = 56,
-    cw = 380,
-    ch = 232;
-  b += `<rect x="${cx}" y="${cy}" width="${cw}" height="${ch}" rx="12" fill="${t.bg}" stroke="${t.border}"/>`;
-  b += ["#ff5f57", "#febc2e", "#28c840"]
-    .map((c, i) => `<circle cx="${cx + 22 + i * 18}" cy="${cy + 22}" r="6" fill="${c}"/>`)
-    .join("");
-  b += text(cx + cw / 2, cy + 27, "my-app", {
-    size: 14,
-    fill: t.muted,
-    anchor: "middle",
-    font: MONO,
-  });
-  b += `<line x1="${cx}" y1="${cy + 44}" x2="${cx + cw}" y2="${cy + 44}" stroke="${t.border}"/>`;
-  const rows = [
-    ["/bkit-design", "design", [3, 2], "approved"],
-    ["/bkit-plan", "plan", [3, 2], "approved"],
-    ["/bkit-build", "build", [2, 2], "tests pass"],
-    ["/bkit-debug", "debug", [2, 2], "fixed"],
-    ["/bkit-ship", "ship", [1, 2], "merged"],
-  ];
-  rows.forEach(([cmd, p, [a, z], status], i) => {
-    const y = cy + 76 + i * 36;
-    b += text(cx + 22, y, cmd, { size: 17, fill: t[p], font: MONO, weight: 600 });
-    b += dots(cx + 170, y - 6, a, t[p], 6, 16);
-    b += dots(cx + 170 + a * 16 + 10, y - 6, z, t[p], 6, 16);
-    b += text(cx + cw - 22, y, `✓ ${status}`, { size: 15, fill: t.ok, anchor: "end", weight: 600 });
-  });
+  b += text(66, 236, "Not another agent framework.", { size: 34, weight: 700, fill: t.text });
+  b += text(66, 277, "Prompts ask agents to do the work right.", { size: 21, fill: t.muted });
+  b += text(66, 306, "bkit's fences check that they did.", { size: 21, fill: t.muted });
+  b += fenceCard(t, 716, 56, 444, 232, 1, 36, t.bg);
   return svg(
     W,
     H,
     b,
-    "bkit — from vibe coding to production code. A senior engineering team's process, ready-made, run by AI agents and battle-tested over more than 2,000 commits.",
+    "bkit — not another agent framework. Prompts ask agents to do the work right; bkit's fences check that they did. An agent says a task is done, bkit refuses it until the test has been seen failing first, and only then does the task pass.",
   );
 }
 
@@ -245,41 +246,11 @@ function social(t) {
     .map((p, i) => `<circle cx="${L + 9 + i * 28}" cy="118" r="9" fill="${t[p]}"/>`)
     .join("");
   b += text(L - 6, 250, "bkit", { size: 140, weight: 800, fill: t.text, ls: -4 });
-  b += text(L, 330, "From vibe coding to", { size: 46, weight: 700, fill: t.text });
-  b += text(L, 386, "production code.", { size: 46, weight: 700, fill: t.text });
-  b += text(L, 446, "A senior engineering team's process,", { size: 26, fill: t.muted });
-  b += text(L, 482, "ready-made and battle-tested.", { size: 26, fill: t.muted });
-
-  // Terminal card
-  const cx = 704,
-    cy = 110,
-    cw = 480,
-    ch = 372;
-  b += `<rect x="${cx}" y="${cy}" width="${cw}" height="${ch}" rx="16" fill="${t.surface}" stroke="${t.border}"/>`;
-  b += ["#ff5f57", "#febc2e", "#28c840"]
-    .map((c, i) => `<circle cx="${cx + 28 + i * 22}" cy="${cy + 28}" r="7" fill="${c}"/>`)
-    .join("");
-  b += text(cx + cw / 2, cy + 34, "my-app", {
-    size: 17,
-    fill: t.muted,
-    anchor: "middle",
-    font: MONO,
-  });
-  b += `<line x1="${cx}" y1="${cy + 56}" x2="${cx + cw}" y2="${cy + 56}" stroke="${t.border}"/>`;
-  const rows = [
-    ["/bkit-design", "design", [3, 2], "approved"],
-    ["/bkit-plan", "plan", [3, 2], "approved"],
-    ["/bkit-build", "build", [2, 2], "tests pass"],
-    ["/bkit-debug", "debug", [2, 2], "fixed"],
-    ["/bkit-ship", "ship", [1, 2], "merged"],
-  ];
-  rows.forEach(([cmd, p, [a, z], status], i) => {
-    const y = cy + 108 + i * 62;
-    b += text(cx + 28, y, cmd, { size: 22, fill: t[p], font: MONO, weight: 600 });
-    b += dots(cx + 222, y - 7, a, t[p], 7, 20);
-    b += dots(cx + 222 + a * 20 + 12, y - 7, z, t[p], 7, 20);
-    b += text(cx + cw - 28, y, `✓ ${status}`, { size: 19, fill: t.ok, anchor: "end", weight: 600 });
-  });
+  b += text(L, 330, "Not another", { size: 46, weight: 700, fill: t.text });
+  b += text(L, 386, "agent framework.", { size: 46, weight: 700, fill: t.text });
+  b += text(L, 446, "Prompts ask agents to do it right.", { size: 26, fill: t.muted });
+  b += text(L, 482, "bkit's fences check that they did.", { size: 26, fill: t.muted });
+  b += fenceCard(t, 660, 110, 524, 372, 1.18, 62, t.surface);
 
   // Hosts band
   b += text(L, 572, "Works with", { size: 21, fill: t.muted, weight: 600 });
@@ -294,11 +265,10 @@ function social(t) {
     W,
     H,
     b,
-    "bkit — from vibe coding to production code. A senior engineering team's process, ready-made and battle-tested. Works with Claude Code, Cursor, Codex, Antigravity and opencode.",
+    "bkit — not another agent framework. Prompts ask agents to do it right; bkit's fences check that they did. Works with Claude Code, Cursor, Codex, Antigravity and opencode.",
   );
 }
 
-// ---------- Fences (why it works) ----------
 const mix = (a, b, k) => {
   const p = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
   const [x, y] = [p(a), p(b)];

@@ -1461,10 +1461,8 @@ describe("issue-less runs", () => {
     );
     expect(section(text, /Failure Path/), `${name}: Failure Path STOP`).toContain(FINAL_FIRST_LINE);
     // A failing summary is the final message at the Failure Path STOP, after the warning line.
-    const failDisplay = lines.filter(
-      (l) =>
-        l.includes("`SUMMARY_VERDICT` = FAIL → display") ||
-        l.includes("`SUMMARY_VERDICT` = FAIL → the final message is"),
+    const failDisplay = lines.filter((l) =>
+      /`SUMMARY_VERDICT` = FAIL → (?:display|the final message is)/.test(l),
     );
     expect(failDisplay.length, `${name}: summary-FAIL display`).toBe(1);
     expect(failDisplay[0], `${name}: summary-FAIL display`).toContain(FINAL_FIRST_LINE);

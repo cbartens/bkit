@@ -284,7 +284,7 @@ The gate covers the installed module set ({core, claude, cursor, codex, antigrav
 - **antigravity gated:** `.agents/plugins/bkit/**` (plugin manifest, hooks, agents, skills) and the root `GEMINI.md`.
 - **opencode gated:** Drift in `.opencode/opencode.json` (the provider block + the recorded tracker's `mcp` entry + the permission sandbox) and in the `bkit-gateguard.js` / `bkit-readguard.js` / `bkit-rules.js` plugins fails `check`.
   - Another tracker's `mcp` entry that the consumer edited, kept by a tracker switch, is not drift. `mcp-extra-server-linear--opencode-opencode-json` advises removing it.
-  - Render inputs fall back to the installed provider (`package.json` `bkit.providers.opencode.default`, authoritative for `opencode-zen` / `opencode-go`; all installed providers are tracked in `bkit.providers.opencode.installed: string[]`) and the recorded tracker. So a clean install across providers checks green, with no false drift.
+  - Render inputs fall back to the installed provider (`package.json` `bkit.providers.opencode.default`, authoritative for `opencode-zen` / `opencode-go`; all installed providers are tracked in `bkit.providers.opencode.installed: string[]`) and the recorded tracker, so a clean install across providers checks green, with no false drift.
 - The remaining opt-in module (cloud) is not drift-gated.
 
 A missing bkit-owned hook file also fails `check`, with one line per file naming it and the `bkit install` flag that restores it. This covers the hook files of every installed host (`.claude/hooks/*`, `.cursor/hooks/*`, `.codex/hooks/*`, `.agents/plugins/bkit/hooks/*`, `.opencode/plugin/bkit-gateguard.js`, `.opencode/plugin/bkit-readguard.js`, `.opencode/plugin/bkit-rules.js`). The hook commands skip a missing file (`test -f â€¦ || true`), so without this check the guard would be off with no signal.
@@ -364,7 +364,7 @@ There is no advisory, and `bkit tips` suggests it. Setup: `.bkit/templates.md` Â
   - The workflow carries a claude job and an opencode job, each runtime-gated on its provider secret, so each is inert without its key. claude needs the `ANTHROPIC_API_KEY` repo secret or the federation repo variables (+ the Claude GitHub App). opencode needs `OPENCODE_PROVIDER_KEY`.
   - Both need GitHub Actions write permissions, the GitHub tracker, and (for the Cursor half) a dashboard trigger, and the tracker itself is opt-in.
   - The env scaffolding is inert until the Claude / Cursor cloud env is wired in the dashboard.
-  - Autonomous routing by default, wired to an unconfigured tracker, is the wrong default. So an install without `--auto` ships zero cloud footprint.
+  - Autonomous routing by default, wired to an unconfigured tracker, is the wrong default, so an install without `--auto` ships zero cloud footprint.
 
 **How to decide:**
 

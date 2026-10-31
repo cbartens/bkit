@@ -45,7 +45,7 @@ autoCompactWindow: 300000
 
 - **Completeness over shortcuts:** In-scope work is either complete or skipped: do not defer its tests, ship a 90% solution or take a silent shortcut.
 - **End-state over diff-size:** Pick the solution with the best quality of end state, not the one with the lowest cost of change.
-- **Finish over deferrals:** Finish the in-scope work you can finish. Defer only work that is genuinely out of scope or hard-blocked; declaring work out of scope does not make it so. Work the request needs in order to be complete is in scope, even when in doubt; unrelated improvements are not (`Scope discipline`). Exception: `LOW` challenge findings, deferred with `reason` `low-severity` per `.bkit/jsonl.md` § Deferral Reason.
+- **Finish over deferrals:** Finish the in-scope work you can finish. Defer only work that is genuinely out of scope or hard-blocked; declaring work out of scope does not make it so. Work the request needs before it is complete is in scope, even when in doubt; unrelated improvements are not (`Scope discipline`). Exception: `LOW` challenge findings, deferred with `reason` `low-severity` per `.bkit/jsonl.md` § Deferral Reason.
 - **Scope discipline:** Do only what the request asks, with no opportunistic refactors, renames or "while I'm here" edits. Propose out-of-scope finds separately instead of bundling them into the change.
 - **No speculative scope:** Build only for the requirements at hand (YAGNI). Add no config, flags, abstraction layers or items "for the future" that nobody requested.
 - **Recommend, do not decide:** Agents propose and humans approve. Two models agreeing is a strong signal, not a mandate. The human has pre-approved the steps inside `/bkit-*` workflows, so run them without requesting confirmation.

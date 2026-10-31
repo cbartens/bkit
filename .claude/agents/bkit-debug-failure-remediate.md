@@ -36,7 +36,7 @@ autoCompactWindow: 300000
 
 **Rules:** Copied word for word from `.agents/rules.md`.
 
-- **Finish over deferrals:** Finish the in-scope work you can finish. Defer only work that is genuinely out of scope or hard-blocked; declaring work out of scope does not make it so. Work the request needs in order to be complete is in scope, even when in doubt; unrelated improvements are not (`Scope discipline`). Exception: `LOW` challenge findings, deferred with `reason` `low-severity` per `.bkit/jsonl.md` § Deferral Reason.
+- **Finish over deferrals:** Finish the in-scope work you can finish. Defer only work that is genuinely out of scope or hard-blocked; declaring work out of scope does not make it so. Work the request needs before it is complete is in scope, even when in doubt; unrelated improvements are not (`Scope discipline`). Exception: `LOW` challenge findings, deferred with `reason` `low-severity` per `.bkit/jsonl.md` § Deferral Reason.
 - **Scope discipline:** Do only what the request asks, with no opportunistic refactors, renames or "while I'm here" edits. Propose out-of-scope finds separately instead of bundling them into the change.
 - **Review docs first:** Before editing, read the `.agents/docs.md` index and load the docs its phase matrix lists for the task; pull extra docs from the catalog as warranted.
 - **Narrow text search first:** Run `grep -l` / `rg -l` with path and file-type filters first, then `grep -n -m {N}` on the matched files. Do not run a broad recursive grep that returns full match lists.

@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-hero-dark.svg">
-    <img alt="bkit: from vibe coding to production code. A senior engineering team’s process, ready-made, run by AI agents." src=".github/assets/bkit-hero-light.svg" width="100%">
+    <img alt="bkit: not another agent framework. Prompts ask agents to do the work right; bkit’s fences check that they did." src=".github/assets/bkit-hero-light.svg" width="100%">
   </picture>
 </p>
 
