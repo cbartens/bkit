@@ -27,6 +27,7 @@ import {
 import {
   buildDepUpdaterSetupAdvisory,
   detectBkitStubs,
+  detectValeMissing,
   detectValePackageNotSynced,
   detectWorkflowLintToolsMissing,
 } from "./tools.js";
@@ -478,6 +479,10 @@ export function runPostInstallCheck(
   // Consumer composed run-levels on bkit primitives (else docs/deployments.md matrix is doc-only).
   const runLevels = detectRunLevelsNotComposed(cwd);
   if (runLevels) phase3.push(runLevels);
+
+  // vale missing while lint:prose runs the prose gate
+  const valeMissing = detectValeMissing(cwd);
+  if (valeMissing) phase3.push(valeMissing);
 
   // vale not synced
   const vale = detectValePackageNotSynced(cwd);

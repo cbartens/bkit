@@ -650,6 +650,10 @@ This section applies to `.bkit/core/workflows/*.md`. § Prompts and Workflows ap
   - In prose, backtick the name and leave a literal enum value plain: ``**If** `VERIFY_VERDICT` = PASS``. Inside fenced output blocks, leave both plain.
   - Example (`bkit-build.md`): `VERIFY_FIXED` comes from `@bkit-build-plan-gaps-remediate` and `CHALLENGE_TASKS` from `bkit challenge merge`, and each prefix names the loop the value serves.
 
+- **Step conditionality and rows:** Mark a step as one a run may skip only with a column-0 `**Run only if**` or `**Skip if**` line anywhere in its section, or a `(Path X only)` marker in its heading. Every other step writes its own `steps finish` or `steps done` row on every route toward the next step, with a no-agent skip row where no work runs.
+  - Why: The completeness check (`checks/status-holes.ts`) reads only these markers to learn which steps a run may skip. A marker indented under a numbered sub-step, or in a section no step owns, marks nothing, so a step that routes onward with no row and no marker reads as a step hole on every run.
+  - Checked by: `.bkit/core/engine/checks/status-holes.test.ts`.
+
 ## Before You Save
 
 - Run `pnpm exec tsx .bkit/core/engine/tools/instructions.ts` after you change a rule, a clause or this file, and read what it reports. It writes nothing (§ All Agent-Read Files, **Shared wording**).

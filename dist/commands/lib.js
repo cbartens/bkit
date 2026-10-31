@@ -11,7 +11,10 @@ import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { gitEnv } from "../ledgers/telemetry.js";
+import { appendFrictionRow, appendJournalRow, engineCallRow, frictionRow, journalEnabled, shouldRecordFriction, } from "../ledgers/journal.js";
+import { fold } from "../ledgers/status.js";
+import { gitEnv, resolveGitSha } from "../ledgers/telemetry.js";
+import { parseJson } from "../shared/json.js";
 import { renderText } from "../shared/text.js";
 // ---------------------------------------------------------------------------
 // Exit codes
@@ -211,6 +214,155 @@ function omitNote(spec, key) {
         return "";
     return typeof o === "string" ? " (--json only)" : " (text: only when it matters)";
 }
+/** Row types `fold` reads; the other rows a `status.jsonl` carries (engine-call, ...) stay out of it. */
+const FOLD_TYPES = new Set([
+    "workflow-started",
+    "step-done",
+    "workflow-meta",
+    "workflow-done",
+    "workflow-failed",
+]);
+/** Most `status.jsonl` files `resolveActiveRun` reads when it walks a checkout. */
+const ACTIVE_RUN_SCAN_CAP = 500;
+/** The workflow of the last run in `file` when that run is IN_PROGRESS, else undefined. */
+function inProgressWorkflow(file) {
+    if (!fs.existsSync(file))
+        return undefined;
+    const events = [];
+    for (const line of fs.readFileSync(file, "utf-8").split("\n")) {
+        if (line.trim() === "")
+            continue;
+        const parsed = parseJson(line);
+        if (!parsed.ok || parsed.value === null || typeof parsed.value !== "object")
+            continue;
+        const type = parsed.value.type;
+        if (typeof type === "string" && FOLD_TYPES.has(type))
+            events.push(parsed.value);
+    }
+    const last = fold(events).at(-1);
+    return last?.status === "IN_PROGRESS" ? last.workflow : undefined;
+}
+/** The directories under `dir`, by name; none when `dir` is missing. */
+function subdirs(dir) {
+    if (!fs.existsSync(dir))
+        return [];
+    return fs
+        .readdirSync(dir, { withFileTypes: true })
+        .filter((e) => e.isDirectory())
+        .map((e) => e.name);
+}
+/**
+ * The run a command call belongs to, or undefined. In order: the command's own
+ * `--file`; `--fid` (+ `--month`, default this UTC month) through `statusLocation`;
+ * the single IN_PROGRESS run among the `docs/plans/<month>/logs/<fid>/status.jsonl`
+ * files under the cwd's git toplevel (capped). From the main checkout a feature
+ * worktree's run is not found, so an out-of-worktree call is skipped, never
+ * attributed to another run. Reads with this module's own `node:fs` and `parseJson`
+ * and folds with `ledgers/status.ts`, so it never imports a `commands/**` module.
+ */
+export function resolveActiveRun(opts) {
+    // A `--file` that is a run's `status.jsonl` names that run; any other file (a plan or
+    // design doc) says nothing about the run and falls through to `--fid` and the scan.
+    if (opts.file !== undefined && path.basename(opts.file) === "status.jsonl") {
+        const file = path.resolve(opts.cwd, opts.file);
+        const workflow = inProgressWorkflow(file);
+        const logs = path.dirname(path.dirname(file));
+        if (workflow === undefined ||
+            path.basename(logs) !== "logs" ||
+            path.basename(path.dirname(path.dirname(logs))) !== "plans") {
+            return undefined;
+        }
+        return {
+            workflow,
+            file,
+            bookRoot: path.dirname(path.dirname(path.dirname(path.dirname(logs)))),
+        };
+    }
+    if (opts.fid !== undefined) {
+        try {
+            const loc = statusLocation({
+                cwd: opts.cwd,
+                workflow: opts.workflow ?? "build",
+                fid: opts.fid,
+                month: opts.month ?? utcMonth(),
+            });
+            const workflow = inProgressWorkflow(loc.path);
+            if (workflow !== undefined)
+                return { workflow, file: loc.path, bookRoot: loc.bookRoot };
+        }
+        catch (err) {
+            if (!(err instanceof CommandError))
+                throw err;
+        }
+    }
+    const top = git(opts.cwd, ["rev-parse", "--show-toplevel"]);
+    if (top === null)
+        return undefined;
+    const found = [];
+    let read = 0;
+    for (const month of subdirs(path.join(top, "docs", "plans"))) {
+        for (const fid of subdirs(path.join(top, "docs", "plans", month, "logs"))) {
+            if (++read > ACTIVE_RUN_SCAN_CAP)
+                return undefined;
+            const file = path.join(top, statusRelPath(month, fid));
+            const workflow = inProgressWorkflow(file);
+            if (workflow !== undefined)
+                found.push({ workflow, file, bookRoot: top });
+        }
+    }
+    return found.length === 1 ? found[0] : undefined;
+}
+/** The journal `runCommand` uses unless a caller injects one: writes into the active run's own books. */
+function engineJournal() {
+    let resolved = false;
+    let run;
+    const active = (i) => {
+        if (!resolved) {
+            resolved = true;
+            const text = (v) => (typeof v === "string" ? v : undefined);
+            run = resolveActiveRun({
+                cwd: i.cwd,
+                file: text(i.flags["file"]),
+                fid: text(i.flags["fid"]),
+                month: text(i.flags["month"]),
+                workflow: text(i.flags["workflow"]),
+            });
+        }
+        return run;
+    };
+    return {
+        call(i) {
+            if (!journalEnabled())
+                return;
+            const r = active(i);
+            if (r === undefined)
+                return;
+            const wrote = appendJournalRow(r.file, engineCallRow({ workflow: r.workflow, noun: i.noun, verb: i.verb, flags: i.argv }));
+            if (!wrote.ok)
+                throw new Error(wrote.error);
+        },
+        failure(i) {
+            if (!journalEnabled())
+                return;
+            const r = active(i);
+            if (r === undefined)
+                return;
+            const step = i.flags["step"];
+            const row = frictionRow({
+                workflow: r.workflow,
+                step: typeof step === "string" ? step : undefined,
+                noun: i.noun,
+                verb: i.verb,
+                code: i.code,
+                bookRoot: r.bookRoot,
+                parentSha: resolveGitSha("HEAD", r.bookRoot),
+            });
+            const wrote = appendFrictionRow(r.bookRoot, row);
+            if (!wrote.ok)
+                throw new Error(wrote.error);
+        },
+    };
+}
 /**
  * Run `argv` (without the leading `bkit`) if it names a registered command.
  * Returns the exit code, or null when `argv` is not a command, so the caller falls
@@ -256,6 +408,25 @@ export async function runCommand(argv, commands, options) {
             io.stdout(ctx.json ? `${JSON.stringify(output)}\n` : renderText(textOutput(spec, output)));
         },
     };
+    // The journal never changes the verb's exit code, output or throw: each write is
+    // swallowed, and the first failure logs one line.
+    const journal = options.journal ?? engineJournal();
+    let journalWarned = false;
+    const guarded = (write) => {
+        try {
+            write();
+        }
+        catch (err) {
+            if (journalWarned)
+                return;
+            journalWarned = true;
+            io.stderr(`[bkit-telemetry] journal write failed: ${err.message}\n`);
+        }
+    };
+    const excluded = new Set([...Object.keys(SHARED_EXIT_CODES), ...Object.keys(spec.exitCodes ?? {})].map(Number));
+    let input;
+    /** undefined: not dispatched; null: the verb threw; a number: its exit code. */
+    let outcome;
     try {
         const own = rest.filter((arg) => arg !== JSON_FLAG);
         if (own.some((arg) => arg.startsWith(`${JSON_FLAG}=`))) {
@@ -263,13 +434,26 @@ export async function runCommand(argv, commands, options) {
         }
         ctx.json = own.length !== rest.length;
         ctx.flags = parseFlags(own, spec.flags);
-        return await spec.run(ctx);
+        input = { noun: cmd.noun, verb, argv: rest, flags: ctx.flags, cwd: ctx.cwd };
+        const entered = input;
+        guarded(() => journal.call(entered));
+        outcome = null;
+        const code = await spec.run(ctx);
+        outcome = code;
+        return code;
     }
     catch (err) {
         if (!(err instanceof CommandError))
             throw err;
         io.stderr(`${tag} ${err.message}\n`);
+        outcome = err.code;
         return err.code;
+    }
+    finally {
+        if (input !== undefined && outcome !== undefined && shouldRecordFriction(outcome, excluded)) {
+            const failed = { ...input, code: outcome };
+            guarded(() => journal.failure(failed));
+        }
     }
 }
 // ---------------------------------------------------------------------------

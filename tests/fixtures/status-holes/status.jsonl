@@ -1,0 +1,5 @@
+{"type":"workflow-started","workflow":"design","at":"2026-10-26T03:33:25Z","parentSha":"471abbc369f348a12cbc6c1a6a0907e698cca328"}
+{"type":"runtime-resolved","workflow":"design","at":"2026-10-26T03:33:27Z","runtime":"LOCAL","runtimeWorktrees":true,"runtimeDevPushes":true,"runtimeGithubCli":true,"runtimeGithubCliExit":0,"runtimeGithubCliErr":"","baseSha":"471abbc369f348a12cbc6c1a6a0907e698cca328"}
+{"type":"step-done","workflow":"design","step":"design-start-workflow","status":"DONE","at":"2026-10-26T03:33:30Z","parentSha":"471abbc369f348a12cbc6c1a6a0907e698cca328","artifacts":[]}
+{"type":"engine-action","action":"comment","key":"design/1/design-worktree-setup/-/-/comment","hash":"fa869881a101902e07b24dbd132d2c5c126e95f731cb6f394d934443c698b8ac","ref":"https://github.com/cbartens/bkit/issues/699#issuecomment-6407618124","at":"2026-10-26T03:33:31Z"}
+{"type":"step-done","workflow":"design","step":"design-close-workflow","status":"DONE","at":"2026-10-26T03:40:00Z","parentSha":"471abbc369f348a12cbc6c1a6a0907e698cca328","artifacts":[]}

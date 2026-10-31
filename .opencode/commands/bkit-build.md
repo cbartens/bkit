@@ -384,7 +384,8 @@ $ARGUMENTS
    "{BKIT}" tests plan-check --plan="docs/plans/{YYYYMM}/{FID}-plan.md" --existence=report --log="docs/plans/{YYYYMM}/logs/{FID}/build-plan-check.md"
    ```
    Route:
-   - **If** exit 0 **and** (`NEWER_COMMENTS` = 0 **or** `CONVERTED` is held) → Step 5.
+   - **If** exit 0, `CONVERTED` is not held **and** `NEWER_COMMENTS` = 0 → sub-step 4.
+   - **If** exit 0 **and** `CONVERTED` is held → Step 5.
    - **If** `CONVERTED` is not held **and** (exit 0 with `NEWER_COMMENTS` > 0, **or** exit 2 with no `docs/plans/{YYYYMM}/{FID}-plan.md`, **or** exit 1 with a `markers`, `matrix` or `supersession` problem) → sub-step 2.
    - **If** exit 1 **and** `CONVERTED` is held **and** `CONVERT_RETRY` is not held → `CONVERT_RETRY` = the printed `problems` → sub-step 2.
    - **Else** → **Failure Path** naming each problem in the report.
@@ -396,12 +397,18 @@ $ARGUMENTS
    ```bash
    "{BKIT}" steps finish --workflow=build --step=build-plan-convert --file="{STATUS}" --attempt-of=build-plan-convert:next --artifact=docs/plans/{YYYYMM}/{FID}-plan.md --optional-artifact=docs/plans/{YYYYMM}/logs/{FID}/build-plan-check.md --number=4 --post --title="Plan Convert" --message="chore({FID}): plan-convert attempt <attempt>"
    ```
+4. Plan already in task-block form: finish the step with no agent and no artifact, its comment naming the skip:
+   ```bash
+   "{BKIT}" steps finish --workflow=build --step=build-plan-convert --file="{STATUS}" --attempt=1 --number=4 --post --title="Plan Convert" --comment-field="Status=skipped (plan already in task-block form)" --message="chore({FID}): plan-convert skipped"
+   ```
+   Every outcome → Step 5.
 
 ### 🔒 Gate 4 — Plan Convert
 
 - [ ] Plan checked (`tests plan-check`)
 - [ ] Subagent invoked (`@bkit-build-plan-convert`, no inline work) when the plan needed converting
 - [ ] Converted plan checked again (`tests plan-check`)
+- [ ] Skip recorded (`steps finish`) when the plan needed no conversion
 - [ ] Mechanical checks passed (`steps finish`)
 
 ---

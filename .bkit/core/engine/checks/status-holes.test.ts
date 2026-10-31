@@ -19,22 +19,36 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { WORKFLOW_STEPS } from "../commands/workflow/step-table";
+import { substituteWorkflow } from "../render/trackers";
 import {
   SHIP_STEP_ORDER,
+  auditRun,
   auditStatusJsonl,
-  checkSourceCanonicalDrift,
+  callWords,
+  check,
   classifyRun,
   computeMandatoryForPath,
-  deriveExpectedStepSetFromSource,
+  contractUnits,
+  deriveContract,
   detectHoles,
   formatAdvisoryReport,
   main,
+  readCompleteness,
+  stepSections,
 } from "./status-holes";
+import type { StatusRow } from "./status-holes";
 
 // __dirname-anchored (G4) — resolves regardless of vitest's invocation cwd.
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const SHIP_MD_PATH = path.join(REPO_ROOT, ".bkit/core/workflows/bkit-ship.md");
 const shipMd = fs.readFileSync(SHIP_MD_PATH, "utf-8");
+const FLOWS = ["design", "plan", "build", "debug", "ship"] as const;
+const flowMd = (name: string) =>
+  fs.readFileSync(path.join(REPO_ROOT, ".bkit/core/workflows", `bkit-${name}.md`), "utf-8");
+const tableKeys = (name: (typeof FLOWS)[number]) => [
+  ...new Set(WORKFLOW_STEPS[name].flatMap((s) => (s.step ? [s.step] : []))),
+];
 
 // ---------------------------------------------------------------------------
 // Helpers — build synthetic status.jsonl fixtures
@@ -137,70 +151,102 @@ function retryLoopPathBStatus(): string {
 // ---------------------------------------------------------------------------
 
 describe("source derivation", () => {
-  it("derives the expected step set from bkit-ship.md headings + literals", () => {
-    const { steps, headingSteps, literalSteps } = deriveExpectedStepSetFromSource(shipMd);
-    expect(steps.length).toBeGreaterThan(0);
-    expect(headingSteps.length).toBeGreaterThan(0);
-    expect(literalSteps.length).toBeGreaterThan(0);
+  it("derives the expected step universe for every workflow", () => {
+    for (const name of FLOWS) {
+      const contract = deriveContract(flowMd(name), name);
+      expect([...contract.universe].sort(), name).toEqual([...tableKeys(name)].sort());
+      expect(contract.drift, name).toEqual([]);
+    }
+    expect(deriveContract(flowMd("ship"), "ship").orphanSteps).toEqual([]);
+    expect([...SHIP_STEP_ORDER]).toEqual(tableKeys("ship"));
   });
 
-  it("source-derived set AGREES with the frozen canonical set (no drift)", () => {
-    const { steps } = deriveExpectedStepSetFromSource(shipMd);
-    const drift = checkSourceCanonicalDrift(steps);
-    expect(drift).toEqual([]);
+  it("reports table drift without failing", () => {
+    const md = ["## 🧠 Step 1 — Start Workflow", '"{BKIT}" steps done --step=ship-invented'].join(
+      "\n",
+    );
+    const contract = deriveContract(md, "ship");
+    expect(contract.drift).toContain("source-but-not-table:ship-invented");
+    expect(contract.drift).toContain("table-but-not-source:ship-merge-pr");
   });
 
-  it("detects drift when a canonical key is missing from source", () => {
-    const fakeSource = ["ship-start-workflow", "ship-worktree-setup", "ship-invented-step"];
-    const drift = checkSourceCanonicalDrift(fakeSource);
-    // Should report every canonical key missing + the invented key
-    expect(drift.length).toBeGreaterThan(0);
-    expect(drift).toContain("source-but-not-canonical:ship-invented-step");
-    expect(drift.some((d) => d.startsWith("canonical-but-not-source:"))).toBe(true);
+  it("records every BKIT literal in a step as a required call", () => {
+    const md = [
+      "## Opening",
+      '"{BKIT}" runs context --workflow=x',
+      "## 🧠 Step 1 — Start",
+      "```bash",
+      '"{BKIT}" steps finish --workflow=build --step=build-start-workflow --file="{STATUS}" --number=1 | tee x',
+      '"{BKIT}" status route --step=a \\',
+      "  --require=strategy",
+      "```",
+      "### 🔒 Gate 1",
+      '"{BKIT}" prs probe',
+      "## 🧠 Step 2 — Next",
+      '"{BKIT}" branches push --remote=origin',
+    ].join("\n");
+    const contract = deriveContract(md, "build");
+    expect(contract.steps.map((s) => s.number)).toEqual([1, 2]);
+    expect(contract.steps[0]!.calls).toEqual([
+      {
+        noun: "steps",
+        verb: "finish",
+        flags: ["workflow", "step", "file", "number"],
+        position: "pre",
+        branch: false,
+      },
+      {
+        noun: "status",
+        verb: "route",
+        flags: ["step", "require"],
+        position: "post",
+        branch: false,
+      },
+      { noun: "prs", verb: "probe", flags: [], position: "post", branch: false },
+    ]);
+    expect(contract.steps[1]!.calls).toEqual([
+      { noun: "branches", verb: "push", flags: ["remote"], position: "pre", branch: false },
+    ]);
+    expect(contract.workflowCalls).toEqual([
+      { noun: "runs", verb: "context", flags: ["workflow"] },
+    ]);
+  });
+
+  it("derives a required call from each {BKIT} literal of every live step section", () => {
+    for (const name of FLOWS) {
+      const md = flowMd(name);
+      const contract = deriveContract(md, name);
+      const inSteps = stepSections(md).reduce((n, s) => n + s.body.split('"{BKIT}"').length - 1, 0);
+      // Every literal is a step call or a workflow-level call (calls outside the journal window move there).
+      expect(
+        contract.steps.reduce((n, s) => n + s.calls.length, 0) + contract.workflowCalls.length,
+        name,
+      ).toBe(md.split('"{BKIT}"').length - 1);
+      expect(inSteps, name).toBeGreaterThan(0);
+    }
+    expect(callWords('steps finish --a="x y" | tee')).toEqual(["steps", "finish", '--a="x y"']);
   });
 
   it("parses a synthetic md with headings + literals", () => {
     const fakeMd = [
-      "## Step 1 — Start",
+      "## 🧠 Step 1 — Start",
       "```bash",
       '  step:"ship-start-workflow"',
       "```",
-      "## Step 2 — Setup",
+      "## 🧠 Step 2 — Setup",
       "```bash",
       '  step:"ship-worktree-setup"',
       "```",
     ].join("\n");
-    const { steps, headingSteps, literalSteps } = deriveExpectedStepSetFromSource(fakeMd);
-    expect(steps).toContain("ship-start-workflow");
-    expect(steps).toContain("ship-worktree-setup");
-    expect(headingSteps).toEqual(["ship-start-workflow", "ship-worktree-setup"]);
-    expect(literalSteps).toEqual(["ship-start-workflow", "ship-worktree-setup"]);
-  });
-
-  it("parses `bkit steps done --step=` calls, the shape the workflows write rows with", () => {
-    const fakeMd = [
-      "## Step 1 — Start",
-      "```bash",
-      '   "$BKIT" steps done --workflow=ship --step=ship-start-workflow --file="$STATUS" --commit=none',
-      "```",
-      "## Step 2 — Setup",
-      "```bash",
-      '   "$BKIT" steps done --workflow=ship --step=ship-worktree-setup --file="$STATUS"',
-      "```",
-    ].join("\n");
-    const { headingSteps, literalSteps } = deriveExpectedStepSetFromSource(fakeMd);
-    expect(headingSteps).toEqual(["ship-start-workflow", "ship-worktree-setup"]);
-    expect(literalSteps).toEqual(["ship-start-workflow", "ship-worktree-setup"]);
+    expect(deriveContract(fakeMd, "ship").universe).toEqual([
+      "ship-start-workflow",
+      "ship-worktree-setup",
+    ]);
   });
 
   it("flags a status write that lives outside any numbered step (orphanSteps)", () => {
-    // headingSteps is a SUBSET of literalSteps by construction (both scan the
-    // same regex; the heading pass only narrows the line range), so comparing
-    // them for mutual disagreement is a tautology. The one direction that
-    // carries signal is a literal recorded outside every `## … Step N` section:
-    // a step the workflow writes but never numbers, so no gate covers it.
     const fakeMd = [
-      "## Step 1 — Start",
+      "## 🧠 Step 1 — Start",
       "```bash",
       '  step:"ship-start-workflow"',
       "```",
@@ -209,15 +255,9 @@ describe("source derivation", () => {
       '  step:"ship-orphaned-write"',
       "```",
     ].join("\n");
-    const { headingSteps, literalSteps, orphanSteps } = deriveExpectedStepSetFromSource(fakeMd);
-    expect(headingSteps).toEqual(["ship-start-workflow"]);
-    expect(literalSteps).toEqual(["ship-orphaned-write", "ship-start-workflow"]);
-    expect(orphanSteps).toEqual(["ship-orphaned-write"]);
-  });
-
-  it("the live bkit-ship.md records no step outside a numbered section", () => {
-    const { orphanSteps } = deriveExpectedStepSetFromSource(shipMd);
-    expect(orphanSteps).toEqual([]);
+    const contract = deriveContract(fakeMd, "ship");
+    expect(contract.universe).toEqual(["ship-start-workflow"]);
+    expect(contract.orphanSteps).toEqual(["ship-orphaned-write"]);
   });
 });
 
@@ -696,5 +736,681 @@ describe("CLI main() — advisory exit 0", () => {
       process.stdout.write = originalWrite;
     }
     expect(captured).toContain("skipping");
+  });
+});
+
+describe("step conditionality", () => {
+  // Step numbers whose section carries a column-0 marker (or a `(Path X only)` heading).
+  const CONDITIONAL_STEPS = {
+    design: [7, 11, 12],
+    plan: [8],
+    build: [6, 9, 13, 14, 15, 16],
+    debug: [4, 5, 6, 7, 8, 9, 10, 11],
+    ship: [4, 11, 12, 13],
+  } as const;
+
+  it("classifies a step conditional only under the column-0 marker rule", () => {
+    for (const name of FLOWS) {
+      const contract = deriveContract(flowMd(name), name);
+      expect(
+        contract.steps.filter((s) => s.conditional).map((s) => s.number),
+        name,
+      ).toEqual([...CONDITIONAL_STEPS[name]]);
+    }
+    const md = [
+      "## 🧠 Step 1 — Plain",
+      "   **Skip if** `ISSUE_ID` empty. Indented sub-step marker.",
+      "## 🧠 Step 2 — Column zero",
+      "text",
+      "**Skip if** `X` empty.",
+      "## 🧠 Step 3 — Heading marker (Path B only)",
+      "text",
+      "## 🧠 Step 4 — Run",
+      "**Run only if** `Y`.",
+      "## Failure Path",
+      "**Run only if** `Z`.",
+      "## 🧠 Step 5 — Last",
+    ].join("\n");
+    expect(deriveContract(md, "ship").steps.map((s) => [s.number, s.conditional])).toEqual([
+      [1, false],
+      [2, true],
+      [3, true],
+      [4, true],
+      [5, false],
+    ]);
+    // A marker added in a non-step section changes no verdict.
+    const base = deriveContract(md.replace("**Run only if** `Z`.", "text"), "ship");
+    expect(deriveContract(md, "ship").steps).toEqual(base.steps);
+  });
+
+  it("does not report a conditional step as a step hole", () => {
+    const md = [
+      "## 🧠 Step 1 — Start",
+      '"{BKIT}" steps done --step=build-start-workflow',
+      "## 🧠 Step 2 — Maybe",
+      "**Skip if** `X`.",
+      '"{BKIT}" steps done --step=build-maybe',
+      "## 🧠 Step 3 — Always",
+      '"{BKIT}" steps done --step=build-always',
+      "## 🧠 Step 4 — Close",
+      '"{BKIT}" steps done --step=build-close-workflow',
+    ].join("\n");
+    const rows = ["build-start-workflow", "build-close-workflow"].map((step) => ({
+      type: "step-done",
+      workflow: "build",
+      step,
+    }));
+    const report = auditRun(rows, "build", md);
+    expect(report.missing).toEqual(["build-always"]);
+  });
+});
+
+describe("CLI sweep summary", () => {
+  const capture = (args: string[]): string => {
+    const originalWrite = process.stdout.write.bind(process.stdout);
+    let captured = "";
+    process.stdout.write = ((chunk: unknown) => {
+      captured += String(chunk);
+      return true;
+    }) as typeof process.stdout.write;
+    try {
+      main(["node", "checks/status-holes.ts", ...args]);
+    } finally {
+      process.stdout.write = originalWrite;
+    }
+    return captured;
+  };
+  const flowRow = (workflow: string, step: string) =>
+    JSON.stringify({
+      type: "step-done",
+      workflow,
+      step,
+      status: "DONE",
+      at: "2026-07-29T00:00:00Z",
+    });
+
+  it("prints a sweep summary line and exits 0", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-shd-sweep-"));
+    try {
+      const write = (name: string, body: string) => {
+        const p = path.join(dir, name);
+        fs.writeFileSync(p, body, "utf-8");
+        return p;
+      };
+      const holeyShip = write(
+        "a.jsonl",
+        [row("ship-start-workflow"), row("ship-worktree-setup"), row("ship-close-workflow")].join(
+          "\n",
+        ),
+      );
+      // One file, two holey runs of two other workflows.
+      const mixed = write(
+        "b.jsonl",
+        [
+          flowRow("debug", "debug-start-workflow"),
+          flowRow("debug", "debug-close-workflow"),
+          flowRow("plan", "plan-start-workflow"),
+          flowRow("plan", "plan-close-workflow"),
+        ].join("\n"),
+      );
+      const junk = write("c.jsonl", "not json\n");
+      const clean = write("d.jsonl", pathAStatus());
+      const out = capture([holeyShip, mixed, junk, clean]);
+      expect(out).toContain("[bkit-status-holes] sweep: 4 file(s), 3 holey\n");
+      expect(out.match(/\[bkit-status-holes\] sweep:/g)).toHaveLength(1);
+      expect(out).toContain(`${junk}: no workflow rows`);
+      expect(out).toContain("debug");
+      expect(out).toContain("plan");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Completeness check — rows + contract → verdict
+// ---------------------------------------------------------------------------
+
+describe("check — hole classes", () => {
+  const AT = "2026-10-29T00:00:00Z";
+  const stepRow = (workflow: string, step: string, extra: Record<string, unknown> = {}) => ({
+    type: "step-done",
+    workflow,
+    step,
+    status: "DONE",
+    at: AT,
+    ...extra,
+  });
+  const callRow = (workflow: string, noun: string, verb: string) => ({
+    type: "engine-call",
+    workflow,
+    at: AT,
+    noun,
+    verb,
+    flags: [],
+  });
+  const fence = (...calls: string[]) => ["```bash", ...calls.map((c) => `"{BKIT}" ${c}`), "```"];
+  const FINISH = (key: string, n: number) =>
+    `steps finish --workflow=build --step=${key} --number=${n}`;
+
+  /** Calls and row of every step section of a workflow, in markdown order, each step on its first arm. */
+  const replay = (name: (typeof FLOWS)[number], withBranches: boolean): StatusRow[] => {
+    return contractUnits(deriveContract(flowMd(name), name)).flatMap((u) => {
+      const take = (position: "pre" | "post") =>
+        u.calls
+          .filter((c) => c.position === position)
+          .filter((c) => withBranches || !c.branch)
+          // A fresh run finds no active run at `workflows start`, so the journal never holds it.
+          .filter((c) => !(c.noun === "workflows" && c.verb === "start"))
+          .map((c) => callRow(name, c.noun, c.verb) as StatusRow);
+      const own = u.keys.map((k) => stepRow(name, k) as StatusRow);
+      return [...take("pre"), ...own, ...take("post")];
+    });
+  };
+
+  /** Rows of a run that journals every unconditional call of the workflow rendered for `none`. */
+  const noneRows = (name: (typeof FLOWS)[number]): StatusRow[] => {
+    const rendered = substituteWorkflow(flowMd(name), "none").output;
+    return contractUnits(deriveContract(rendered, name)).flatMap((u) => {
+      const take = (position: "pre" | "post") =>
+        u.calls
+          .filter((c) => c.position === position)
+          .filter((c) => !c.branch)
+          .filter((c) => `${c.noun} ${c.verb}` !== "workflows start")
+          .map((c) => callRow(name, c.noun, c.verb) as StatusRow);
+      return [...take("pre"), ...u.keys.map((k) => stepRow(name, k) as StatusRow), ...take("post")];
+    });
+  };
+
+  it("a tracker-none run that journals every rendered call is CLEAN", () => {
+    for (const name of ["design", "plan", "debug", "ship"] as const) {
+      const verdict = check(noneRows(name), deriveContract(flowMd(name), name, "none"));
+      expect(verdict.evidenceHoles, name).toEqual([]);
+      expect(verdict.verdict, name).toBe("CLEAN");
+    }
+  });
+
+  it("names an evidence hole with its missing calls", () => {
+    const md = [
+      "## 🧠 Step 1 — Verify",
+      ...fence("tests run --gate=a", FINISH("build-a", 1)),
+      "## 🧠 Step 2 — Close",
+      ...fence(FINISH("build-close-workflow", 2)),
+    ].join("\n");
+    const contract = deriveContract(md, "build");
+    const holey = check(
+      [
+        callRow("build", "steps", "finish"),
+        stepRow("build", "build-a"),
+        callRow("build", "steps", "finish"),
+        stepRow("build", "build-close-workflow"),
+      ] as StatusRow[],
+      contract,
+    );
+    expect(holey.verdict).toBe("HOLEY");
+    expect(holey.evidenceHoles).toHaveLength(1);
+    expect(holey.evidenceHoles[0]).toMatchObject({ step: "build-a", number: 1 });
+    expect(holey.evidenceHoles[0]!.missing.map((c) => `${c.noun} ${c.verb}`)).toEqual([
+      "tests run",
+    ]);
+    const whole = check(
+      [
+        callRow("build", "tests", "run"),
+        callRow("build", "steps", "finish"),
+        stepRow("build", "build-a"),
+        callRow("build", "steps", "finish"),
+        stepRow("build", "build-close-workflow"),
+      ] as StatusRow[],
+      contract,
+    );
+    expect(whole.evidenceHoles).toEqual([]);
+    expect(whole.verdict).toBe("CLEAN");
+  });
+
+  it("a run whose journal starts mid-run reports no evidence hole for steps finished before its first engine-call row", () => {
+    const md = [
+      "## 🧠 Step 1 — Setup",
+      ...fence("tests run --gate=a", FINISH("build-worktree-setup", 1)),
+      "## 🧠 Step 2 — Verify",
+      ...fence("tests run --gate=b", FINISH("build-b", 2)),
+      "## 🧠 Step 3 — Close",
+      ...fence(FINISH("build-close-workflow", 3)),
+    ].join("\n");
+    const contract = deriveContract(md, "build");
+    const midRun = check(
+      [
+        stepRow("build", "build-worktree-setup"),
+        callRow("build", "steps", "finish"),
+        stepRow("build", "build-b"),
+        callRow("build", "steps", "finish"),
+        stepRow("build", "build-close-workflow"),
+      ] as StatusRow[],
+      contract,
+    );
+    expect(midRun.preJournal).toBe(false);
+    expect(midRun.evidenceHoles.map((h) => h.step)).toEqual(["build-b"]);
+    const none = check(
+      [stepRow("build", "build-worktree-setup"), stepRow("build", "build-b")] as StatusRow[],
+      contract,
+    );
+    expect(none.preJournal).toBe(true);
+  });
+
+  it("a run whose journal saw only ambient calls reports no evidence hole for steps whose finish call was not journaled", () => {
+    const md = [
+      "## 🧠 Step 1 — Setup",
+      ...fence("tests run --gate=a", FINISH("build-worktree-setup", 1)),
+      "## 🧠 Step 2 — Verify",
+      ...fence("tests run --gate=b", FINISH("build-b", 2)),
+      "## 🧠 Step 3 — Close",
+      ...fence(FINISH("build-close-workflow", 3)),
+    ].join("\n");
+    const contract = deriveContract(md, "build");
+    const ambient = check(
+      [
+        callRow("build", "disk", "prune"),
+        stepRow("build", "build-worktree-setup"),
+        callRow("build", "disk", "prune"),
+        stepRow("build", "build-b"),
+        stepRow("build", "build-close-workflow"),
+      ] as StatusRow[],
+      contract,
+    );
+    expect(ambient.evidenceHoles).toEqual([]);
+    expect(ambient.verdict).toBe("CLEAN");
+    const journaledWriter = check(
+      [
+        callRow("build", "disk", "prune"),
+        callRow("build", "steps", "finish"),
+        stepRow("build", "build-b"),
+        stepRow("build", "build-close-workflow"),
+      ] as StatusRow[],
+      contract,
+    );
+    expect(journaledWriter.evidenceHoles.map((h) => h.step)).toEqual(["build-b"]);
+  });
+
+  it("reports a missing required step as a step hole", () => {
+    const md = [
+      "## 🧠 Step 1 — Start",
+      ...fence(FINISH("build-a", 1)),
+      "## 🧠 Step 2 — Required",
+      ...fence(FINISH("build-b", 2)),
+      "## 🧠 Step 3 — Conditional",
+      "**Skip if** nothing to do.",
+      ...fence(FINISH("build-c", 3)),
+      "## 🧠 Step 4 — Close",
+      ...fence(FINISH("build-close-workflow", 4)),
+    ].join("\n");
+    const contract = deriveContract(md, "build");
+    const closed = check(
+      [stepRow("build", "build-a"), stepRow("build", "build-close-workflow")] as StatusRow[],
+      contract,
+    );
+    expect(closed.stepHoles).toEqual(["build-b"]);
+    expect(closed.holey).toBe(true);
+    // Not closed and not failed: nothing is a hole yet.
+    const open = check([stepRow("build", "build-a")] as StatusRow[], contract);
+    expect(open.stepHoles).toEqual([]);
+    // Failed run: only steps before the last observed one count.
+    const failed = check(
+      [
+        stepRow("build", "build-a"),
+        { type: "workflow-failed", workflow: "build", at: AT } as StatusRow,
+      ],
+      contract,
+    );
+    expect(failed.stepHoles).toEqual([]);
+  });
+
+  it("reports unexercised calls without marking the run holey", () => {
+    const md = [
+      "## 🧠 Step 1 — Route",
+      "1. Probe:",
+      ...fence("prs probe"),
+      "   Route:",
+      "   - **If** red:",
+      "     ```bash",
+      '     "{BKIT}" counters route --a=1',
+      "     ```",
+      "   - **Else** → next.",
+      "## 🧠 Step 2 — Close",
+      ...fence(FINISH("build-close-workflow", 2)),
+    ].join("\n");
+    const contract = deriveContract(md, "build");
+    expect(contract.steps[0]!.calls.map((c) => [c.verb, c.branch])).toEqual([
+      ["probe", false],
+      ["route", true],
+    ]);
+    const verdict = check(
+      [
+        callRow("build", "prs", "probe"),
+        stepRow("build", "build-route"),
+        callRow("build", "steps", "finish"),
+        stepRow("build", "build-close-workflow"),
+      ] as StatusRow[],
+      deriveContract(
+        md.replace("## 🧠 Step 1 — Route", "## 🧠 Step 1 — Route\n`--step=build-route`"),
+        "build",
+      ),
+    );
+    expect(verdict.unexercised).toEqual([
+      { step: "build-route", call: { noun: "counters", verb: "route" } },
+    ]);
+    expect(verdict.holey).toBe(false);
+    expect(verdict.verdict).toBe("CLEAN");
+  });
+
+  it("charges calls below a step's finish line to that step", () => {
+    const build = deriveContract(flowMd("build"), "build");
+    const step15 = build.steps.find((s) => s.number === 15)!;
+    expect(
+      step15.calls.filter((c) => c.position === "post").map((c) => `${c.noun} ${c.verb}`),
+    ).toEqual(expect.arrayContaining(["prs probe", "branches push"]));
+    for (const name of FLOWS) {
+      const verdict = check(replay(name, false), deriveContract(flowMd(name), name));
+      expect(verdict.evidenceHoles, name).toEqual([]);
+      expect(verdict.unexpected, name).toEqual([]);
+      expect(verdict.unattributable, name).toEqual([]);
+      expect(verdict.stepHoles, name).toEqual([]);
+      expect(verdict.verdict, name).toBe("CLEAN");
+    }
+  });
+
+  it("calls outside the journal window are matched but never required", () => {
+    const md = [
+      "## 🧠 Step 1 — Preflight",
+      ...fence("branches check", FINISH("build-a", 1)),
+      "## 🧠 Step 2 — Start",
+      ...fence("workflows start --workflow=build", FINISH("build-b", 2)),
+      "## 🧠 Step 3 — Close",
+      ...fence("tests run --gate=a", "workflows close --workflow=build", "prs probe"),
+      ...fence(FINISH("build-c", 3)),
+    ].join("\n");
+    const contract = deriveContract(md, "build");
+    const required = contractUnits(contract).flatMap((u) =>
+      u.calls.map((c) => `${c.noun} ${c.verb}`),
+    );
+    expect(required).not.toContain("branches check");
+    expect(required).not.toContain("prs probe");
+    expect(required).toContain("tests run");
+    const inWindow = [
+      callRow("build", "steps", "finish"),
+      stepRow("build", "build-a"),
+      callRow("build", "steps", "finish"),
+      stepRow("build", "build-b"),
+      callRow("build", "tests", "run"),
+      callRow("build", "workflows", "close"),
+      callRow("build", "steps", "finish"),
+      stepRow("build", "build-c"),
+    ] as StatusRow[];
+    const clean = check(inWindow, contract);
+    expect(clean.evidenceHoles).toEqual([]);
+    expect(clean.verdict).toBe("CLEAN");
+    // An outside call the journal does hold is matched, never unexpected.
+    expect(
+      check([callRow("build", "prs", "probe") as StatusRow, ...inWindow], contract).unexpected,
+    ).toEqual([]);
+    // An in-window call that is missing still reads HOLEY.
+    const missing = inWindow.filter((r) => r["noun"] !== "tests");
+    expect(check(missing, contract).verdict).toBe("HOLEY");
+  });
+
+  it("never requires the workflows start call, which a fresh run cannot journal", () => {
+    for (const name of FLOWS) {
+      const contract = deriveContract(flowMd(name), name);
+      const required = contractUnits(contract).flatMap((u) =>
+        u.calls.map((c) => `${c.noun} ${c.verb}`),
+      );
+      expect(required, name).not.toContain("workflows start");
+      const verdict = check(replay(name, false), contract);
+      expect(verdict.evidenceHoles, name).toEqual([]);
+      expect(verdict.verdict, name).toBe("CLEAN");
+    }
+  });
+
+  it("reports an untaken route arm as unexercised", () => {
+    const build = deriveContract(flowMd("build"), "build");
+    const step12 = build.steps.find((s) => s.number === 12)!;
+    const routes = step12.calls.filter((c) => `${c.noun} ${c.verb}` === "counters route");
+    expect(routes.map((c) => c.branch)).toEqual([true]);
+    const step5 = build.steps.find((s) => s.number === 5)!;
+    const finishes = step5.calls.filter((c) => `${c.noun} ${c.verb}` === "steps finish");
+    expect(finishes.map((c) => c.branch).sort()).toEqual([false, true]);
+    const verdict = check(replay("build", false), build);
+    expect(verdict.holey).toBe(false);
+    const unit12 = contractUnits(build).find((u) => u.number === 12)!;
+    expect(verdict.unexercised).toContainEqual({
+      step: unit12.keys[0],
+      call: { noun: "counters", verb: "route" },
+    });
+    // Taking the arm as well leaves nothing unexercised for it.
+    const taken = check(replay("build", true), build);
+    expect(taken.holey).toBe(false);
+    expect(taken.unexercised).not.toContainEqual({
+      step: unit12.keys[0],
+      call: { noun: "counters", verb: "route" },
+    });
+  });
+
+  it("gives each group-loop repeat its own gaps", () => {
+    const md = [
+      "## 🧠 Step 1 — Execute",
+      ...fence("tests run --gate=a", FINISH("build-plan-execute", 1)),
+      "## 🧠 Step 2 — Close",
+      ...fence(FINISH("build-close-workflow", 2)),
+    ].join("\n");
+    const contract = deriveContract(md, "build");
+    const rows = (secondCalls: StatusRow[]) =>
+      [
+        callRow("build", "tests", "run"),
+        callRow("build", "steps", "finish"),
+        stepRow("build", "build-plan-execute", { group: 1 }),
+        ...secondCalls,
+        callRow("build", "steps", "finish"),
+        stepRow("build", "build-plan-execute", { group: 2 }),
+        callRow("build", "steps", "finish"),
+        stepRow("build", "build-close-workflow"),
+      ] as StatusRow[];
+    const whole = check(rows([callRow("build", "tests", "run") as StatusRow]), contract);
+    expect(whole.unattributable).toEqual([]);
+    expect(whole.evidenceHoles).toEqual([]);
+    const holey = check(rows([]), contract);
+    expect(holey.unattributable).toEqual([]);
+    expect(holey.evidenceHoles).toHaveLength(1);
+    expect(holey.evidenceHoles[0]).toMatchObject({
+      step: "build-plan-execute",
+      index: 2,
+      group: 2,
+    });
+  });
+
+  it("matches workflow-level calls outside any step", () => {
+    const md = [
+      '"{BKIT}" runs context --workflow=build',
+      "## 🤖 Decision Pause",
+      ...fence("status row --kind=pause"),
+      "## 🧠 Step 1 — Start",
+      ...fence(FINISH("build-start-workflow", 1)),
+      "## 🧠 Step 2 — Close",
+      ...fence(FINISH("build-close-workflow", 2)),
+    ].join("\n");
+    const contract = deriveContract(md, "build");
+    const verdict = check(
+      [
+        callRow("build", "runs", "context"),
+        callRow("build", "steps", "finish"),
+        stepRow("build", "build-start-workflow"),
+        callRow("build", "status", "row"),
+        callRow("build", "steps", "finish"),
+        stepRow("build", "build-close-workflow"),
+        callRow("build", "status", "row"),
+      ] as StatusRow[],
+      contract,
+    );
+    expect(verdict.unexpected).toEqual([]);
+    expect(verdict.unattributable).toEqual([]);
+    expect(verdict.evidenceHoles).toEqual([]);
+    expect(verdict.workflowCalls).toContainEqual({ noun: "status", verb: "row" });
+  });
+});
+
+describe("check — verdict metadata", () => {
+  const AT = "2026-10-29T00:00:00Z";
+  const stepRow = (step: string, extra: Record<string, unknown> = {}) =>
+    ({ type: "step-done", workflow: "build", step, status: "DONE", at: AT, ...extra }) as StatusRow;
+  const callRow = (noun: string, verb: string) =>
+    ({ type: "engine-call", workflow: "build", at: AT, noun, verb, flags: [] }) as StatusRow;
+  const md = [
+    "## 🧠 Step 1 — Verify",
+    "```bash",
+    '"{BKIT}" tests run --gate=a',
+    '"{BKIT}" steps finish --workflow=build --step=build-a --number=1',
+    "```",
+    "## 🧠 Step 2 — Close",
+    "```bash",
+    '"{BKIT}" steps finish --workflow=build --step=build-close-workflow --number=2',
+    "```",
+  ].join("\n");
+  const contract = deriveContract(md, "build");
+
+  it("gives a pre-journal run a steps-only verdict", () => {
+    const rows = [stepRow("build-a"), stepRow("build-close-workflow")];
+    const plain = check(rows, contract);
+    expect(plain.preJournal).toBe(true);
+    expect(plain.evidenceHoles).toEqual([]);
+    expect(plain.unexpected).toEqual([]);
+    expect(plain.verdict).toBe("CLEAN");
+    expect(plain.journalSuspect).toBe(false);
+    expect(check(rows, contract, { journalSuspect: true }).journalSuspect).toBe(true);
+    // A step hole still shows on a pre-journal run.
+    const holey = check([stepRow("build-close-workflow")], contract);
+    expect(holey.stepHoles).toEqual(["build-a"]);
+    // The heartbeat is only for a run that recorded no call.
+    const journaled = check(
+      [callRow("tests", "run"), callRow("steps", "finish"), ...rows],
+      contract,
+      { journalSuspect: true },
+    );
+    expect(journaled.preJournal).toBe(false);
+    expect(journaled.journalSuspect).toBe(false);
+  });
+
+  it("names a call no contract step owns", () => {
+    const verdict = check(
+      [
+        callRow("tests", "run"),
+        callRow("steps", "finish"),
+        stepRow("build-a"),
+        stepRow("build-outside-one"),
+        callRow("pr", "ghost"),
+        stepRow("build-outside-two"),
+        callRow("steps", "finish"),
+        stepRow("build-close-workflow"),
+        callRow("fids", "late"),
+      ],
+      contract,
+    );
+    expect(verdict.unattributable).toEqual([
+      { noun: "pr", verb: "ghost" },
+      { noun: "fids", verb: "late" },
+    ]);
+    expect(verdict.unexpected).toEqual([
+      { step: "build-outside-one" },
+      { step: "build-outside-two" },
+    ]);
+    expect(verdict.evidenceHoles).toEqual([]);
+  });
+
+  it("excludes its own journaled call", () => {
+    const selfContract = deriveContract(
+      md.replace(
+        '"{BKIT}" tests run --gate=a',
+        '"{BKIT}" tests run --gate=a\n"{BKIT}" completeness check --workflow=build',
+      ),
+      "build",
+    );
+    const verdict = check(
+      [
+        callRow("tests", "run"),
+        callRow("completeness", "check"),
+        callRow("steps", "finish"),
+        stepRow("build-a"),
+        callRow("completeness", "check"),
+        callRow("steps", "finish"),
+        stepRow("build-close-workflow"),
+      ],
+      selfContract,
+    );
+    expect(verdict.unexpected).toEqual([]);
+    expect(verdict.evidenceHoles).toEqual([]);
+    expect(verdict.observed.calls).toBe(3);
+    // Without the call journaled, the contract's own mention is not an expectation either.
+    const absent = check(
+      [
+        callRow("tests", "run"),
+        callRow("steps", "finish"),
+        stepRow("build-a"),
+        callRow("steps", "finish"),
+        stepRow("build-close-workflow"),
+      ],
+      selfContract,
+    );
+    expect(absent.evidenceHoles).toEqual([]);
+  });
+
+  it("takes the last completeness row and recomputes when rows follow it", () => {
+    const stored = (verdict: string, extra: Record<string, unknown> = {}) =>
+      ({
+        type: "completeness",
+        workflow: "build",
+        at: AT,
+        verdict,
+        preJournal: false,
+        journalSuspect: false,
+        observed: { steps: 1, calls: 1 },
+        evidenceHoles: [],
+        stepHoles: [],
+        unexercised: [],
+        unexpected: [],
+        unattributable: [],
+        sourceSha: "x",
+        ...extra,
+      }) as StatusRow;
+    const base = [stepRow("build-a"), stepRow("build-close-workflow")];
+    const first = readCompleteness([...base, stored("CLEAN"), stored("HOLEY")], contract);
+    expect(first.source).toBe("stored");
+    expect(first.verdict.verdict).toBe("HOLEY");
+    expect(first.verdict.holey).toBe(true);
+    const second = readCompleteness([...base, stored("HOLEY"), stored("CLEAN")], contract);
+    expect(second.verdict.verdict).toBe("CLEAN");
+    // A row after the stored one (not a completeness row) forces a recompute.
+    const later = readCompleteness(
+      [stepRow("build-close-workflow"), stored("CLEAN"), stepRow("build-a")],
+      contract,
+    );
+    expect(later.source).toBe("computed");
+    expect(later.verdict.observed.steps).toBe(2);
+    // The closing workflow-done row follows the stored row and does not force one.
+    const closing = readCompleteness(
+      [...base, stored("HOLEY"), { type: "workflow-done", workflow: "build", at: AT }],
+      contract,
+    );
+    expect(closing.source).toBe("stored");
+  });
+
+  it("reports a hole in a long-closed run with no baseline", () => {
+    const old = { at: "2019-01-01T00:00:00Z" };
+    const verdict = check(
+      [
+        callRow("steps", "finish"),
+        stepRow("build-a", old),
+        callRow("steps", "finish"),
+        stepRow("build-close-workflow", old),
+      ].map((r) => ({ ...r, ...old })),
+      contract,
+    );
+    expect(verdict.evidenceHoles.map((h) => h.step)).toEqual(["build-a"]);
+    expect(verdict.holey).toBe(true);
   });
 });

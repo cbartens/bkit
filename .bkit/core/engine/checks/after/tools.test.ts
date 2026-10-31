@@ -5,6 +5,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  detectValeMissing,
   detectValePackageNotSynced,
   detectWorkflowLintToolsMissing,
   detectBkitStubs,
@@ -53,6 +54,36 @@ afterEach(() => {
   execSync.mockReset();
   execFileSync.mockReset();
   spawnSync.mockReset();
+});
+
+// ---------------------------------------------------------------------------
+// detectValeMissing
+// ---------------------------------------------------------------------------
+
+describe("detectValeMissing", () => {
+  const writeScripts = (scripts: Record<string, string>) =>
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ scripts }));
+
+  it("returns a finding when lint:prose runs bkit ci prose and vale is not on PATH", () => {
+    writeScripts({ "lint:prose": "bkit ci prose --glob='docs/*.md'" });
+    spawnSync.mockReturnValue({ status: 1, stdout: "" } as ReturnType<typeof spawnSync>);
+    const result = detectValeMissing(tmpDir);
+    expect(result!.id).toBe("vale-not-installed");
+    expect(result!.action).toContain("vale sync");
+  });
+
+  it("returns null when vale is on PATH", () => {
+    writeScripts({ "lint:prose": "bkit ci prose" });
+    spawnSync.mockReturnValue({ status: 0, stdout: "" } as ReturnType<typeof spawnSync>);
+    expect(detectValeMissing(tmpDir)).toBeNull();
+  });
+
+  it("returns null when lint:prose does not run bkit ci prose, or package.json is absent", () => {
+    spawnSync.mockReturnValue({ status: 1, stdout: "" } as ReturnType<typeof spawnSync>);
+    expect(detectValeMissing(tmpDir)).toBeNull();
+    writeScripts({ "lint:prose": "echo none" });
+    expect(detectValeMissing(tmpDir)).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------
