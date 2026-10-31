@@ -172,71 +172,245 @@ const footer = (t, W, top, inset = 60, rule = inset) => {
   );
 };
 
-// ---------- Fence card ----------
-// The hero and social preview share one terminal card: an agent claims a task is done, bkit
-// refuses it until the test has been seen failing, and the task only passes once it has. `s`
-// scales the card from its hero size (s = 1), `step` is the row pitch. Message text is not
-// wrapped: keep it short.
-const FENCE_ROWS = [
-  ["agent", "Task 3 done. Tests pass.", "text"],
-  ["bkit", "✗ No failing test seen first.", "debug"],
-  ["agent", "Adds the failing test, then the fix.", "text"],
-  ["bkit", "✓ Red, then green. Task passes.", "ok"],
-  ["CI", "✓ Every check green. Ready to merge.", "ok"],
+// ---------- Hero and social preview ----------
+// One layout, four cards. Three show why bkit is not just another agent framework: `compare`
+// (the README hero and the social preview), `reviewers` and `refusals`; `process` is the earlier
+// one-command-per-phase pitch.
+// Card text is not wrapped: keep messages short and eyeball the output.
+
+// How many of the frameworks in .bkit/comparison.md § Frameworks fully have each feature (✅).
+// Read from the table so the card can't drift from it; bkit itself must be ✅ on every row shown.
+const COMPARE_ROWS = [
+  ["Reviewers", "Reviewers who didn't write it"],
+  ["Sign-offs", "Your sign-off before merge"],
+  ["Checked", "“Done” checked by code"],
+  ["Memory", "Lessons later runs read"],
+  ["Audits", "Audit checklists"],
+  ["CI", "A CI pipeline for your app"],
 ];
-function fenceCard(t, cx, cy, cw, ch, s, step, fill) {
-  let b = `<rect x="${cx}" y="${cy}" width="${cw}" height="${ch}" rx="${12 * s}" fill="${fill}" stroke="${t.border}"/>`;
-  b += ["#ff5f57", "#febc2e", "#28c840"]
+function comparison() {
+  const md = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".bkit", "comparison.md"),
+    "utf8",
+  );
+  const asOf = md.match(/^As of (\w{3})\w* (\d{4})\./m);
+  if (!asOf) throw new Error("comparison.md: no 'As of <Month> <year>.' line");
+  let total = 0;
+  const rows = COMPARE_ROWS.map(([key, label]) => {
+    const line = md.split("\n").find((l) => l.startsWith(`| **${key}**`));
+    if (!line) throw new Error(`comparison.md: no '${key}' row in the frameworks table`);
+    const [, bkit, ...others] = line
+      .split("|")
+      .slice(1, -1)
+      .map((c) => c.trim());
+    if (!bkit.startsWith("✅")) throw new Error(`comparison.md: bkit is not ✅ on '${key}'`);
+    total = others.length;
+    return [label, others.filter((c) => c.startsWith("✅")).length];
+  });
+  return { rows, total, asOf: `${asOf[1]} ${asOf[2]}` };
+}
+
+// Window chrome: grey dots, so they never compete with the five phase dots of the wordmark.
+function windowCard(t, g, title) {
+  const { x, y, w, h, s, fill } = g;
+  let b = `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${12 * s}" fill="${fill}" stroke="${t.border}"/>`;
+  b += [0, 1, 2]
     .map(
-      (c, i) =>
-        `<circle cx="${cx + 22 * s + i * 18 * s}" cy="${cy + 22 * s}" r="${6 * s}" fill="${c}"/>`,
+      (i) =>
+        `<circle cx="${x + 22 * s + i * 18 * s}" cy="${y + 22 * s}" r="${6 * s}" fill="${t.muted}" opacity="0.45"/>`,
     )
     .join("");
-  b += text(cx + cw / 2, cy + 27 * s, "my-app · /bkit-build", {
+  b += text(x + w / 2 + 20 * s, y + 27 * s, title, {
     size: 14 * s,
     fill: t.muted,
     anchor: "middle",
     font: MONO,
   });
-  b += `<line x1="${cx}" y1="${cy + 44 * s}" x2="${cx + cw}" y2="${cy + 44 * s}" stroke="${t.border}"/>`;
-  FENCE_ROWS.forEach(([who, msg, tone], i) => {
-    const y = cy + 76 * s + i * step;
-    const agent = who === "agent";
-    b += text(cx + 22 * s, y, who, {
-      size: 15 * s,
-      fill: agent ? t.muted : t.text,
+  b += `<line x1="${x}" y1="${y + 44 * s}" x2="${x + w}" y2="${y + 44 * s}" stroke="${t.border}"/>`;
+  return b;
+}
+
+// Baselines for `n` text rows of cap height `cap`, spread over the window body with the same
+// padding above the first row and below the last. `lead` rows (a column header) sit `k` of a
+// step above the first full row.
+function bodyRows(g, n, cap, lead = 0, k = 0.8) {
+  const top = g.y + 44 * g.s,
+    pad = 24 * g.s,
+    step = (g.y + g.h - top - 2 * pad - cap) / (n - 1 + lead * k);
+  const first = top + pad + cap + lead * k * step;
+  return { step, first, header: first - k * step };
+}
+
+// rows: [label, label colour, label bold, message, message colour]
+function chatCard(t, g, title, rows, labelW) {
+  let b = windowCard(t, g, title);
+  const size = 15 * g.s,
+    { step, first } = bodyRows(g, rows.length, size * 0.72);
+  rows.forEach(([lab, lc, bold, msg, tone], i) => {
+    const y = first + i * step;
+    b += text(g.x + 22 * g.s, y, lab, {
+      size,
+      fill: t[lc],
       font: MONO,
-      weight: agent ? 400 : 700,
+      weight: bold ? 700 : 400,
     });
-    b += text(cx + 88 * s, y, msg, { size: 15 * s, fill: t[tone], weight: agent ? 400 : 600 });
+    b += text(g.x + (22 + labelW) * g.s, y, msg, {
+      size,
+      fill: t[tone],
+      weight: tone === "text" ? 400 : 600,
+    });
   });
   return b;
 }
 
-// ---------- Hero ----------
-function hero(t) {
+const HEROES = {
+  compare: {
+    lines: ["Most frameworks have some of these.", "bkit is the only one with all of them."],
+    card(t, g) {
+      const { rows, total, asOf } = comparison();
+      const { s } = g;
+      let b = windowCard(t, g, `${total} AI dev frameworks, ${asOf}`);
+      const { step, first, header } = bodyRows(g, rows.length, 14.5 * s * 0.72, 1);
+      const bx = g.x + g.w - 172 * s,
+        seg = 9 * s,
+        gap = 2.4 * s,
+        right = g.x + g.w - 22 * s;
+      b += text(bx, header, "others", { size: 12 * s, fill: t.muted, font: MONO });
+      b += text(right, header, "bkit", {
+        size: 12 * s,
+        fill: t.text,
+        font: MONO,
+        weight: 700,
+        anchor: "end",
+      });
+      rows.forEach(([label, n], i) => {
+        const y = first + i * step;
+        b += text(g.x + 22 * s, y, label, { size: 14.5 * s, fill: t.text });
+        for (let k = 0; k < total; k++)
+          b += `<rect x="${bx + k * (seg + gap)}" y="${y - 11 * s}" width="${seg}" height="${12 * s}" rx="${2 * s}" fill="${k < n ? t.muted : t.border}" opacity="${k < n ? 0.9 : 0.6}"/>`;
+        b += text(bx + total * (seg + gap) + 6 * s, y, `${n}`, {
+          size: 13 * s,
+          fill: n ? t.muted : t.debug,
+          weight: 600,
+        });
+        b += text(right, y, "✓", { size: 17 * s, fill: t.ok, weight: 700, anchor: "end" });
+      });
+      return b;
+    },
+    label: () => {
+      const { rows, total, asOf } = comparison();
+      return `bkit — not just another agent framework. Most frameworks have some of these; bkit is the only one with all of them. Of ${total} AI development frameworks compared in ${asOf}: ${rows.map(([l, n]) => `${l}, ${n} of ${total}`).join("; ")}. bkit has every one.`;
+    },
+  },
+  reviewers: {
+    lines: [
+      "The agent that wrote the code never gets",
+      "to say it's done. Reviewers, tests, CI and you do.",
+    ],
+    social: ["The agent that wrote it never says", "it's done. Reviewers, tests, CI and you do."],
+    card: (t, g) =>
+      chatCard(
+        t,
+        g,
+        "who says task 3 is done?",
+        [
+          ["agent", "muted", false, "“Task 3 is done.”", "text"],
+          ["review", "text", true, "✗ 2 bugs found. Sent back to fix.", "debug"],
+          ["tests", "text", true, "✓ Failed first, pass now.", "ok"],
+          ["CI", "text", true, "✓ Every check green.", "ok"],
+          ["you", "text", true, "✓ Approved. Merged.", "ok"],
+        ],
+        70,
+      ),
+    label: () =>
+      "bkit — not just another agent framework. The agent that wrote the code never gets to say it's done: reviewers who didn't write it, tests that failed first, CI and you do.",
+  },
+  refusals: {
+    lines: [
+      "bkit doesn't ask agents to do it right.",
+      "It checks, and won't move on until they have.",
+    ],
+    social: [
+      "bkit doesn't ask agents to do it right.",
+      "It checks, and won't move on until they do.",
+    ],
+    card: (t, g) =>
+      chatCard(
+        t,
+        g,
+        "my-app · where bkit says no",
+        [
+          ["design", "design", true, "✗ No reviewer verdict. Step blocked.", "debug"],
+          ["plan", "plan", true, "✗ Task names no test. Sent back.", "debug"],
+          ["build", "build", true, "✗ Test never failed first.", "debug"],
+          ["debug", "debug", true, "✗ Fix didn't work. Stopped, handed over.", "debug"],
+          ["ship", "ship", true, "✗ A planned task went missing.", "debug"],
+        ],
+        74,
+      ),
+    label: () =>
+      "bkit — not just another agent framework. bkit doesn't ask agents to do it right; it checks, and won't move on until they have, in every phase from design to ship.",
+  },
+  // The earlier pitch: one command per phase, each run to its verdict.
+  process: {
+    headline: "From vibe coding to production code.",
+    socialHeadline: ["From vibe coding to", "production code."],
+    lines: [
+      "A senior engineering team's process, ready-made.",
+      "Run by AI agents. Battle-tested over >2,000 commits.",
+    ],
+    social: ["A senior engineering team's process,", "ready-made and battle-tested."],
+    card(t, g) {
+      const { s } = g;
+      let b = windowCard(t, g, "my-app");
+      const rows = [
+        ["/bkit-design", "design", [3, 2], "approved"],
+        ["/bkit-plan", "plan", [3, 2], "approved"],
+        ["/bkit-build", "build", [2, 2], "tests pass"],
+        ["/bkit-debug", "debug", [2, 2], "fixed"],
+        ["/bkit-ship", "ship", [1, 2], "merged"],
+      ];
+      const { step, first } = bodyRows(g, rows.length, 17 * s * 0.72);
+      rows.forEach(([cmd, p, [a, z], status], i) => {
+        const y = first + i * step;
+        b += text(g.x + 22 * s, y, cmd, { size: 17 * s, fill: t[p], font: MONO, weight: 600 });
+        b += dots(g.x + 170 * s, y - 6 * s, a, t[p], 6 * s, 16 * s);
+        b += dots(g.x + 170 * s + a * 16 * s + 10 * s, y - 6 * s, z, t[p], 6 * s, 16 * s);
+        b += text(g.x + g.w - 22 * s, y, `✓ ${status}`, {
+          size: 15 * s,
+          fill: t.ok,
+          anchor: "end",
+          weight: 600,
+        });
+      });
+      return b;
+    },
+    label: () =>
+      "bkit — from vibe coding to production code. A senior engineering team's process, ready-made, run by AI agents and battle-tested over more than 2,000 commits.",
+  },
+};
+
+function hero(t, v) {
   const W = 1200,
     H = 340;
   const phases = ["design", "plan", "build", "debug", "ship"];
   let b = `<rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="18" fill="${t.surface}" stroke="${t.border}"/>`;
   b += phases.map((p, i) => `<circle cx="${72 + i * 22}" cy="84" r="7" fill="${t[p]}"/>`).join("");
   b += text(64, 178, "bkit", { size: 96, weight: 800, fill: t.text, ls: -3 });
-  b += text(66, 236, "Not another agent framework.", { size: 34, weight: 700, fill: t.text });
-  b += text(66, 277, "Prompts ask agents to do the work right.", { size: 21, fill: t.muted });
-  b += text(66, 306, "bkit's fences check that they did.", { size: 21, fill: t.muted });
-  b += fenceCard(t, 716, 56, 444, 232, 1, 36, t.bg);
-  return svg(
-    W,
-    H,
-    b,
-    "bkit — not another agent framework. Prompts ask agents to do the work right; bkit's fences check that they did. An agent says a task is done, bkit refuses it until the test has been seen failing first, and only then does the task pass.",
-  );
+  b += text(66, 236, v.headline ?? "Not just another agent framework.", {
+    size: 34,
+    weight: 700,
+    fill: t.text,
+  });
+  b += text(66, 277, v.lines[0], { size: 21, fill: t.muted });
+  b += text(66, 306, v.lines[1], { size: 21, fill: t.muted });
+  b += v.card(t, { x: 716, y: 32, w: 444, h: 276, s: 1, fill: t.bg });
+  return svg(W, H, b, v.label());
 }
 
-// ---------- Social preview ----------
 // GitHub repo Settings → Social preview takes PNG/JPG only. `bkit-social.png` is emitted by the
 // headless-browser rasterisation at the end of this script; upload it there by hand.
-function social(t) {
+function social(t, v) {
   const W = 1280,
     H = 640,
     L = 96;
@@ -246,11 +420,13 @@ function social(t) {
     .map((p, i) => `<circle cx="${L + 9 + i * 28}" cy="118" r="9" fill="${t[p]}"/>`)
     .join("");
   b += text(L - 6, 250, "bkit", { size: 140, weight: 800, fill: t.text, ls: -4 });
-  b += text(L, 330, "Not another", { size: 46, weight: 700, fill: t.text });
-  b += text(L, 386, "agent framework.", { size: 46, weight: 700, fill: t.text });
-  b += text(L, 446, "Prompts ask agents to do it right.", { size: 26, fill: t.muted });
-  b += text(L, 482, "bkit's fences check that they did.", { size: 26, fill: t.muted });
-  b += fenceCard(t, 660, 110, 524, 372, 1.18, 62, t.surface);
+  const [h1, h2] = v.socialHeadline ?? ["Not just another", "agent framework."];
+  b += text(L, 330, h1, { size: 46, weight: 700, fill: t.text });
+  b += text(L, 386, h2, { size: 46, weight: 700, fill: t.text });
+  const [l1, l2] = v.social ?? v.lines;
+  b += text(L, 446, l1, { size: 23, fill: t.muted });
+  b += text(L, 480, l2, { size: 23, fill: t.muted });
+  b += v.card(t, { x: 660, y: 96, w: 524, h: 404, s: 1.18, fill: t.surface });
 
   // Hosts band
   b += text(L, 572, "Works with", { size: 21, fill: t.muted, weight: 600 });
@@ -265,7 +441,7 @@ function social(t) {
     W,
     H,
     b,
-    "bkit — not another agent framework. Prompts ask agents to do it right; bkit's fences check that they did. Works with Claude Code, Cursor, Codex, Antigravity and opencode.",
+    `${v.label()} Works with Claude Code, Cursor, Codex, Antigravity and opencode.`,
   );
 }
 
@@ -2413,7 +2589,10 @@ if (!browser)
 
 const images = [];
 for (const [name, t] of Object.entries(THEMES)) {
-  images.push([`bkit-hero-${name}`, hero(t)]);
+  images.push([`bkit-hero-${name}`, hero(t, HEROES.compare)]);
+  images.push([`bkit-hero-reviewers-${name}`, hero(t, HEROES.reviewers)]);
+  images.push([`bkit-hero-refusals-${name}`, hero(t, HEROES.refusals)]);
+  images.push([`bkit-hero-process-${name}`, hero(t, HEROES.process)]);
   images.push([`bkit-pipeline-${name}`, pipeline(t)]);
   images.push([`bkit-features-${name}`, features(t)]);
   images.push([`bkit-fences-${name}`, fences(t)]);
@@ -2426,8 +2605,12 @@ for (const [name, t] of Object.entries(THEMES)) {
   images.push([`bkit-engine-${name}`, engine(t)]);
   images.push([`bkit-models-${name}`, models(t)]);
 }
-// One social image: link previews have no light/dark switch, and dark reads on both.
-images.push(["bkit-social", social(THEMES.dark)]);
+// Social images: link previews have no light/dark switch, and dark reads on both. `bkit-social`
+// is the one uploaded to GitHub; the other two are alternates.
+images.push(["bkit-social", social(THEMES.dark, HEROES.compare)]);
+images.push(["bkit-social-reviewers", social(THEMES.dark, HEROES.reviewers)]);
+images.push(["bkit-social-refusals", social(THEMES.dark, HEROES.refusals)]);
+images.push(["bkit-social-process", social(THEMES.dark, HEROES.process)]);
 
 for (const [name, markup] of images) {
   const svgPath = join(OUT, `${name}.svg`);

@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-hero-dark.svg">
-    <img alt="bkit: not another agent framework. Prompts ask agents to do the work right; bkit’s fences check that they did." src=".github/assets/bkit-hero-light.svg" width="100%">
+    <img alt="bkit: not just another agent framework. Most frameworks have some of these, bkit is the only one with all of them: reviewers who didn’t write it, your sign-off, “done” checked by code, lessons later runs read, audit checklists and a CI pipeline for your app." src=".github/assets/bkit-hero-light.svg" width="100%">
   </picture>
 </p>
 
