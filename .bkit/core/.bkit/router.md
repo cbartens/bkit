@@ -31,7 +31,7 @@ Hold the `{command}` of the first `bkit-{command}` in the prompt, with or withou
    ```bash
    "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" repo info --allow-detached
    ```
-   Hold `bkit` as `{BKIT}` and `sessionDir` as `{SESSION_DIR}`.
+   Hold `bkit` as `BKIT` and `sessionDir` as `SESSION_DIR`.
 2. Write the session prompt verbatim to `{SESSION_DIR}/prompt.md`, then read the issue it names:
    ```bash
    "{BKIT}" fids parse --prompt-file="{SESSION_DIR}/prompt.md"

@@ -53,7 +53,7 @@ developer_instructions = """
 - **Authoring:** Follow `.bkit/authoring.md` § All Agent-Read Files when you write or edit an agent-read file, plus § Docs for a doc, and follow each doc's `Rules` header.
 - **Format:** Write plain, complete sentences that keep their grammar words (articles, plurals), and cut filler, hedges and repetition. Prefer tables to prose, and bullets to paragraphs.
 - **Verify tools:** Verify every return; do not assume success.
-- **Deferred work:** Record each deferral instead of dropping it silently: append one row per deferral to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first. Every row MUST carry a `reason` from the closed enum; a deferral with no valid reason is not a deferral, so finish the work.
+- **Deferred work:** Record each deferral instead of dropping it silently: append one row per deferral to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), reusing the `key` of any existing entry for the same item. Every row MUST carry a `reason` from the closed enum; a deferral with no valid reason is not a deferral, so finish the work.
 - **Commits:** Commit early and often, without asking for confirmation; subagents do not commit. Assume other agents are editing the same working tree in parallel, so commit only the files you touched, named explicitly (`git commit -- {paths}`), and never whatever is already staged. Use `git add -A` / `git add .` / `git commit -a` only when the whole tree is your task; otherwise add your own paths by name. **If** a file you touched also carries another agent's edits → **STOP** and ask. Do not stage `.DS_Store`, `*.log`, editor swaps or dependency / build dirs (e.g. `node_modules/`).
 - **Destructive git:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git stash clear`, `git push --force` (any flavour). In-progress rebase resolution (`git checkout --theirs|--ours {conflicted}`, `git rebase --continue` / `--abort`) is not covered.
 - **Other parallel agents:** Unexpected changes in `git status` belong to another agent, not you. NEVER revert, reformat, stash or "clean up" them; NEVER `git stash`, switch branches, or `git checkout` / `git restore` files you did not touch.
@@ -77,19 +77,19 @@ developer_instructions = """
 8. Apply each `OPTIONAL` item on merit. No consensus is required. **If** it conflicts with an applied `CRITICAL` item or expands scope → skip it.
 9. **If** an input carries `Suggested Scope Expansion` candidates → write them into the plan's `Suggested Scope Expansion`, per **Suggested Scope Expansion** above.
 10. Never append a `Suggested Scope Expansion` candidate to `docs/deferrals.jsonl`.
-11. **If** applied findings add `Out of Scope` `Exempt` rows → mirror each to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
+11. **If** applied findings add `Out of Scope` `Exempt` rows → mirror each to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), reusing the `key` of any existing entry for the same item.
     - **If** `reason` = `scope-declared` → `references` must contain the plan item that declares it out of scope. The row itself is not that declaration.
     - **If** `reason` = `own-cycle` → state what makes it plan-sized.
-12. **If** applied findings add or change an architecture or technology decision → append its row to `docs/decisions.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
+12. **If** applied findings add or change an architecture or technology decision → append its row to `docs/decisions.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), reusing the `key` of any existing entry for the same item.
     - **If** a decision changed → write a new row with the same `key`.
 13. Add each decision or deferral `key` you wrote to the plan's `**Ledger rows:**` line.
 14. Shape the open questions:
     - **If** applied findings add or reword questions under `Open Questions & Assumptions` → shape each per **Open questions** above.
     - Questions in regions no finding touches stay verbatim.
 15. Set `Verdict` in **Create** with `Edit`:
-    - `PASS` = all `CRITICAL` items applied; `OPTIONAL` items applied on merit.
-    - `CONCERNS` = some `OPTIONAL` items skipped.
-    - `FAIL` = findings contradictory and unresolvable, plan unanimously rejected by all lenses.
+    - `PASS` = every `CRITICAL` item applied, and no `OPTIONAL` item skipped. A `CRITICAL` item that lost a conflict to stricter wording counts as applied.
+    - `CONCERNS` = no `FAIL` condition holds, but at least one `OPTIONAL` item was skipped.
+    - `FAIL` = a `CRITICAL` item is left unapplied: two `CRITICAL` items contradict and preferring the stricter wording does not settle which one wins, **or** a rule in this file forbids the edit it asks for.
 
 **Output format:**
 

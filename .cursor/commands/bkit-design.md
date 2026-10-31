@@ -61,7 +61,7 @@ Design Feature — Autonomous design phase
    Route:
    - **If** exit 80 → open PR on `{BRANCH}` via `list_pull_requests` → re-run with `--open-pr={number}` or `--open-pr=none`.
    - **Else** → **If** `tracker.done` = false → post `comment` via the tracker MCP per the header's fallback section → step 4.
-4. **STOP**, no further downstream steps. Line 1 of the final message = the no-issue warning, when one was emitted.
+4. **STOP**, no further downstream steps. **If** `SUMMARY_VERDICT` = FAIL → the final message is `design-summary.md` content verbatim. Line 1 of the final message = the no-issue warning, when one was emitted.
 
 ---
 
@@ -71,7 +71,7 @@ Design Feature — Autonomous design phase
    ```bash
    "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" repo info --fetch
    ```
-   Hold `bkit` as `{BKIT}`, `ownerRepo` as `OWNER_REPO`, `owner` as `OWNER`, `repo` as `REPO`, `branch` as `BRANCH`, `repoRoot` as `REPO_ROOT`, `outboxRoot` as `OUTBOX_ROOT`, `sessionDir` as `{SESSION_DIR}`, `bkitAdvisory` as `BKIT_ADVISORY`. **If** `BKIT_ADVISORY` != null → emit advisory `[bkit-design] {BKIT_ADVISORY}`.
+   Hold `bkit` as `BKIT`, `ownerRepo` as `OWNER_REPO`, `owner` as `OWNER`, `repo` as `REPO`, `branch` as `BRANCH`, `repoRoot` as `REPO_ROOT`, `outboxRoot` as `OUTBOX_ROOT`, `sessionDir` as `SESSION_DIR`, `bkitAdvisory` as `BKIT_ADVISORY`. **If** `BKIT_ADVISORY` != null → emit advisory `[bkit-design] {BKIT_ADVISORY}`.
    Hold `trackerTeam` as `TRACKER_TEAM`, `trackerProject` as `TRACKER_PROJECT`, `trackerSite` as `TRACKER_SITE`.
 2. Write the session prompt verbatim to `{SESSION_DIR}/prompt.md` → read the issue and the `FID` it names:
    ```bash
@@ -278,15 +278,15 @@ Design Feature — Autonomous design phase
    ```
    **If** exit 80 → per hit read the issue via the tracker MCP (**Tracker**) → append `## {ref} — {title} ({state})` plus its description and human comments to `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md`.
 2. Launch these subagents in parallel using `Task` tool:
-   - **Subagent:** Invoke `/bkit-design-brainstorm-ideate-1`
+   - **Subagent:** Invoke `/bkit-design-brainstorm-ideate-1` using `Task` tool:
      Context: You are a subagent in the Design phase running in parallel with two other agents. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-1.md`.
-   - **Subagent:** Invoke `/bkit-design-brainstorm-ideate-2`
+   - **Subagent:** Invoke `/bkit-design-brainstorm-ideate-2` using `Task` tool:
      Context: You are a subagent in the Design phase running in parallel with two other agents. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-2.md`.
-   - **Subagent:** Invoke `/bkit-design-brainstorm-ideate-3`
+   - **Subagent:** Invoke `/bkit-design-brainstorm-ideate-3` using `Task` tool:
      Context: You are a subagent in the Design phase running in parallel with two other agents. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-3.md`.
@@ -327,11 +327,11 @@ Design Feature — Autonomous design phase
 ## 🧠 Step 6 — Design Review
 
 1. Launch these subagents in parallel using `Task` tool:
-   - **Subagent:** Invoke `/bkit-design-review-1`
+   - **Subagent:** Invoke `/bkit-design-review-1` using `Task` tool:
      Context: You are a subagent in the Design phase running in parallel with another agent. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/design-review-1.md`.
-   - **Subagent:** Invoke `/bkit-design-review-2`
+   - **Subagent:** Invoke `/bkit-design-review-2` using `Task` tool:
      Context: You are a subagent in the Design phase running in parallel with another agent. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/design-review-2.md`.
@@ -383,11 +383,16 @@ Design Feature — Autonomous design phase
    ```bash
    "{BKIT}" steps finish --file="{STATUS}" --workflow=design --step=design-apply-review --attempt=1 --agent=bkit-design-update --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-v2-reviewed.md --message="chore({FID}): apply-review" --number=8 --post --title="Apply Review" --link-ref=dev
    ```
+   Hold `verdict` as `APPLY_VERDICT`.
+3. Route:
+   - **If** `APPLY_VERDICT` = PASS **or** CONCERNS → Step 9.
+   - **Else** → **Failure Path**.
 
 ### 🔒 Gate 8 — Apply Review
 
 - [ ] Subagent invoked (`@bkit-design-update`, no inline work)
 - [ ] Mechanical checks passed (`steps finish`)
+- [ ] Routed correctly
 
 ---
 
@@ -401,12 +406,16 @@ Design Feature — Autonomous design phase
    ```bash
    "{BKIT}" steps finish --file="{STATUS}" --workflow=design --step=design-organise --attempt=1 --agent=bkit-design-organise --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-v3-organised.md --message="chore({FID}): design-organise" --number=9 --post --title="Design Organise" --link-ref=dev
    ```
-   **If** `verdict` = FAIL → **Failure Path**.
+   Hold `verdict` as `ORGANISE_VERDICT`.
+3. Route:
+   - **If** `ORGANISE_VERDICT` = PASS **or** CONCERNS → Step 10.
+   - **Else** → **Failure Path**.
 
 ### 🔒 Gate 9 — Design Organise
 
 - [ ] Subagent invoked (`@bkit-design-organise`, no inline work)
 - [ ] Mechanical checks passed (`steps finish`)
+- [ ] Routed correctly
 
 ---
 
@@ -431,7 +440,6 @@ Design Feature — Autonomous design phase
    ```
 4. Route:
    - **If** `SUMMARY_VERDICT` = PASS **or** CONCERNS → Step 11.
-   - **If** `SUMMARY_VERDICT` = FAIL → display `design-summary.md` content verbatim as final message to user. Line 1 of the final message = the no-issue warning, when one was emitted. → **Failure Path**.
    - **Else** → **Failure Path**.
 
 ### 🔒 Gate 10 — Summary

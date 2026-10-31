@@ -103,12 +103,12 @@ autoCompactWindow: 300000
     - **If** a finding is an unreachable escalation or contradictory guards → `CRITICAL`.
     - **Else** → `HIGH`.
     - Minimum checks:
-      - status.jsonl step-name match: every `PRIOR_STRATEGY` / fold query `--arg s "…"` equals the `step:"…"` recorded for that phase (e.g. ship remediate must query `ship-failure-remediate`, not bare `failure-remediate`).
+      - status.jsonl step-name match: every `--step=` / `--attempt-of=` a workflow reads back (`status route`, `counters derive`, `status row`) equals the `step` that phase records (e.g. ship remediate must read `ship-failure-remediate`, not bare `failure-remediate`).
       - Run-only-if vs Route: a step header `**Run only if**` matches the preceding step's Route / counter-bus targets (e.g. when CONCERNS and FAIL both route → remediator, the guard must allow both).
       - status append + commit: phase-aligned durability. **If** a sibling phase commits immediately after its `status.jsonl` append (build Run Tests) → peers that append must commit the same way (debug Run Tests).
-      - authoring rules: no rationale or internal IDs (`DE-*`, `EC-*`, `#NNN`) in workflow files, gate items prose-first (vars only in trailing `` `…` ``), `Read:` / `Create:` / `Update:` spaced, labeled `Decide` / `Route` blocks for 2+ branches, bash decides → prose routes on exit code, tracker `github` / `linear` / `true` / `false` blocks balanced, and no cross-refs to `.bkit/workflows.md`.
+      - authoring rules: no internal labels (tracker issue numbers, ledger keys, review-finding ids) in workflow files, gate items that remind in general words and never restate a detail, labelled `Decide` / `Route` blocks ending in `**Else**` for 2+ branches, bash decides → prose routes on exit code, tracker `github` / `linear` / `true` / `false` blocks balanced, and each workflow self-contained, with its instructions written in the file rather than pointed to.
       - HARD STOP + step counts: File Layout / per-phase tables match the numbered steps in each workflow, hard-stop:yes phases end with `**HARD STOP**`, and listed workflow files exist (planned stubs called out, not silently missing).
-      - cross-refs: every `@bkit-*` invocation has a matching `.bkit/core/prompts/bkit-*.md`, and parallel siblings carry sibling-blind Context wording.
+      - cross-refs: every `@bkit-*` invocation has a matching `.bkit/core/prompts/bkit-*.md`, and parallel siblings coordinate only through their `**Parallel run:**` / `**Lens discipline:**` Contract clauses.
 16. Compile the report (Output format). Each finding needs all of: `severity` (`CRITICAL|HIGH|MEDIUM|LOW`), `location` (`file:line`), defect, impact, fix, and reproduced live.
     - **If** a step names the severity → use it.
     - **Else** → grade it:

@@ -75,17 +75,18 @@ autoCompactWindow: 300000
      - Run at most 3 searches, with external terms only.
      - State the URL and a verbatim quote for every claim.
    - Run web searches only after an instrument-and-observe pass, never before.
-6. Verify that `git grep -F '[DEBUG-OBSERVE]'` over the source returns nothing.
-   - **If** this iteration applied a fix → run `pnpm bkit:gate:static-unit`, and record pass or fail in the log entry.
+6. **If** this iteration applied a fix:
+   - Verify that `git grep -F '[DEBUG-OBSERVE]'` over the source returns nothing.
+   - Run `pnpm bkit:gate:static-unit`, and record pass or fail in the log entry.
 7. Log the step: append the entry at EOF with Bash `echo {log entry} >> {output}`.
    - **If** the entry spans several lines → append it with a heredoc instead.
    - On success → `DONE — {instrument|fix}: {what} — {evidence / expected effect}`.
    - When stuck → `BLOCKED — {what} — {reason}`.
    - Refuted attempts must remain. Do not delete them.
 8. Set `Verdict` in **Create** with `Edit`:
-   - `PASS` = a fix that concrete evidence supports is applied, and all local tests pass.
-   - `FAIL` = you cannot instrument or remediate, **or** any step ends `BLOCKED` with no later `DONE`, **or** some local tests still fail.
-   - `CONCERNS` = instrumentation or a partial step is applied, and more iteration is needed.
+   - `PASS` = this iteration applied a fix, its log entry is `DONE`, and `pnpm bkit:gate:static-unit` passes.
+   - `CONCERNS` = this iteration applied instrumentation only, and its log entry is `DONE`.
+   - `FAIL` = this iteration has no `DONE` log entry (none at all, or `BLOCKED` with no later `DONE`), **or** it applied a fix and `pnpm bkit:gate:static-unit` fails, **or** it applied a fix and `git grep -F '[DEBUG-OBSERVE]'` still finds a line.
 
 **Output format:**
 

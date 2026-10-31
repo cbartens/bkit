@@ -45,7 +45,7 @@ Auto — Phase-routed dispatch of any bkit phase
    ```bash
    "{BKIT}" issues labels --write --failed=on --issue={ISSUE_ID}
    ```
-   Hold `labels` as `{LABELS}`, `trackerState` as `{TRACKER_STATE}`.
+   Hold `labels` as `LABELS`, `trackerState` as `TRACKER_STATE`.
    Fallback (`tracker.done` = false): `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
 3. **STOP**, no further downstream steps.
 
@@ -58,7 +58,7 @@ Auto — Phase-routed dispatch of any bkit phase
    ```bash
    "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" repo info --allow-detached
    ```
-   Hold `bkit` as `{BKIT}`, `outboxRoot` as `OUTBOX_ROOT`.
+   Hold `bkit` as `BKIT`, `outboxRoot` as `OUTBOX_ROOT`.
    Hold `trackerTeam` as `TRACKER_TEAM`, `trackerProject` as `TRACKER_PROJECT`, `trackerSite` as `TRACKER_SITE`.
 3. Resolve the phase, its mode, and everything the dispatch needs:
    - `BRIEF` (design / plan / build): `ARG` is the issue.
@@ -67,7 +67,7 @@ Auto — Phase-routed dispatch of any bkit phase
    ```bash
    "{BKIT}" runs context --phase="{PHASE}" --arg="{ARG}"
    ```
-   Hold `phase` as `PHASE`, `mode` as `MODE`, `ownerRepo` as `OWNER_REPO`, `owner` as `OWNER`, `repo` as `REPO`, `issueId` as `ISSUE_ID`, `fid` as `{FID}`, `prNumber` as `PR_NUMBER`, `branch` as `BRANCH`, `headSha` as `HEAD_SHA`, `prUrl` as `PR_URL`, `runId` as `{RUN_ID}`, `ref` as `REF` (`null` → empty).
+   Hold `phase` as `PHASE`, `mode` as `MODE`, `ownerRepo` as `OWNER_REPO`, `owner` as `OWNER`, `repo` as `REPO`, `issueId` as `ISSUE_ID`, `fid` as `FID`, `prNumber` as `PR_NUMBER`, `branch` as `BRANCH`, `headSha` as `HEAD_SHA`, `prUrl` as `PR_URL`, `runId` as `RUN_ID`, `ref` as `REF` (`null` → empty).
 4. Comment. `MODE` = BRIEF drops `--tree`, `--pr-number`, `--pr-url`, `--run-id`. `MODE` = CI_DEV drops `--pr-number`, `--pr-url`, `--run-id`:
    ```bash
    "{BKIT}" issues comment --post --issue="{ISSUE_ID}" --workflow=auto --workflow-heading --step-number=1 --step-title="Start Workflow" --field=Phase={PHASE} --owner-repo={OWNER_REPO} --tree={BRANCH} --pr-number={PR_NUMBER} --pr-url={PR_URL} --run-id={RUN_ID}

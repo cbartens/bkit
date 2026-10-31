@@ -64,7 +64,7 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
    ```bash
    "{BKIT}" issues labels --write --failed=on --issue={ISSUE_ID}
    ```
-   Hold `labels` as `{LABELS}`, `trackerState` as `{TRACKER_STATE}`.
+   Hold `labels` as `LABELS`, `trackerState` as `TRACKER_STATE`.
    <!-- bkit:tracker true end -->
    <!-- bkit:tracker github start -->
    Fallback (`tracker.done` = false): `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
@@ -86,7 +86,7 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
    ```bash
    "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" repo info --allow-detached
    ```
-   Hold `bkit` as `{BKIT}`, `outboxRoot` as `OUTBOX_ROOT`.
+   Hold `bkit` as `BKIT`, `outboxRoot` as `OUTBOX_ROOT`.
    <!-- bkit:tracker true start -->
    Hold `trackerTeam` as `TRACKER_TEAM`, `trackerProject` as `TRACKER_PROJECT`, `trackerSite` as `TRACKER_SITE`.
    <!-- bkit:tracker true end -->
@@ -97,7 +97,7 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
    ```bash
    "{BKIT}" runs context --phase="{PHASE}" --arg="{ARG}"
    ```
-   Hold `phase` as `PHASE`, `mode` as `MODE`, `ownerRepo` as `OWNER_REPO`, `owner` as `OWNER`, `repo` as `REPO`, `issueId` as `ISSUE_ID`, `fid` as `{FID}`, `prNumber` as `PR_NUMBER`, `branch` as `BRANCH`, `headSha` as `HEAD_SHA`, `prUrl` as `PR_URL`, `runId` as `{RUN_ID}`, `ref` as `REF` (`null` → empty).
+   Hold `phase` as `PHASE`, `mode` as `MODE`, `ownerRepo` as `OWNER_REPO`, `owner` as `OWNER`, `repo` as `REPO`, `issueId` as `ISSUE_ID`, `fid` as `FID`, `prNumber` as `PR_NUMBER`, `branch` as `BRANCH`, `headSha` as `HEAD_SHA`, `prUrl` as `PR_URL`, `runId` as `RUN_ID`, `ref` as `REF` (`null` → empty).
    <!-- bkit:tracker false start -->
    No tracker is wired: set `ISSUE_ID=""`, and skip sub-step 4.
    <!-- bkit:tracker false end -->

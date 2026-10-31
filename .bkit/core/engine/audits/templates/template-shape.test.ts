@@ -201,7 +201,9 @@ describe("template shape", () => {
     expect(bare).toEqual([]);
   });
 
-  it("only bkit-build-plan-execute carries the gate no-permission line", () => {
+  // Execute works from a group brief that carries no gate boxes, and no agent ticks a plan
+  // gate, so no prompt or workflow has a gate at which to ask for permission.
+  it("no prompt or workflow carries a gate no-permission line", () => {
     const carriers = [promptsDir(), workflowsDir()].flatMap((dir) =>
       fs
         .readdirSync(dir)
@@ -211,7 +213,7 @@ describe("template shape", () => {
         )
         .map((f) => f),
     );
-    expect(carriers).toEqual(["bkit-build-plan-execute.md"]);
+    expect(carriers).toEqual([]);
   });
 
   it("no plan prompt defers a rule to the template", () => {

@@ -218,7 +218,7 @@ describe("bkit-local-gate-audit (#437)", () => {
       it.runIf(blocks.some((b) => b.includes("{GATE_FLAGS}")))(
         "routes the engine's gate list where a block passes {GATE_FLAGS}",
         () => {
-          expect(body).toContain("`gates` as `{GATES}`");
+          expect(body).toContain("`gates` as `GATES`");
           expect(debugStart([], "", 2).gates).toEqual([...gates]);
         },
       );

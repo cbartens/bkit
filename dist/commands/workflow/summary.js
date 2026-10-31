@@ -49,8 +49,9 @@ export function refOf(fid, tracker = "any") {
  * A step whose FAIL a later, non-FAIL step of the same workflow (and the same plan
  * group, when the failed row has one) answers; the run carried on past it. A build
  * challenge is answered by its fix tasks running (`build-plan-execute`) or by a
- * Decision Pause (`build-decision`); a group's execute by that group's verify, which
- * judges the group's work after the executor and after any Decision Pause on it.
+ * Decision Pause (`build-decision`); a group's execute or gaps fix by that group's
+ * verify, which judges the group's work after the executor, the gaps fix and any
+ * Decision Pause on it. The build workflow never routes on the gaps fix's own verdict.
  */
 const ANSWERED_BY = {
     "plan/plan-review": ["plan-apply-review"],
@@ -58,6 +59,7 @@ const ANSWERED_BY = {
     "design/design-spike": ["design-apply-review"],
     "build/build-challenge": ["build-plan-execute", "build-decision"],
     "build/build-plan-execute": ["build-plan-verify"],
+    "build/build-plan-gaps-remediate": ["build-plan-verify"],
 };
 const RUN_TESTS = new Set(["build-run-tests", "debug-run-tests"]);
 const SEVERITY = /\*\*Severity:\*\*\s*(CRITICAL|HIGH|MEDIUM|LOW)\b/;

@@ -1011,6 +1011,7 @@ describe("fully retired clauses", () => {
       "synthesise",
       "base-verdict",
       "output-cap",
+      "plan-review-other-gap-critical",
     ];
     expect(CLAUSES.filter((c) => c.fullyRetired).map((c) => c.name)).toEqual(names);
     expect(clause("output-cap").retired[0]).toBe(

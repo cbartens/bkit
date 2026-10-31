@@ -42,9 +42,10 @@ tools:
 4. Confirm the inputs: `VERSION` (semver, required) and `FID` (credit issue, optional).
    - **If** there is no `VERSION` → **STOP** and ask.
 5. Assert these preconditions before any write:
+   - Run `git fetch origin main dev` first, so the checks below read the current remote refs.
    - `git rev-parse --abbrev-ref HEAD` == `dev`, NEVER a worktree or feature branch.
    - `git status --porcelain` is empty.
-   - `git rev-list --count origin/dev..dev` == 0.
+   - `git rev-list --count origin/dev..dev` == 0 **and** `git rev-list --count dev..origin/dev` == 0, so local `dev` matches `origin/dev`.
    - Gates are green at `HEAD`, local first: `pnpm bkit:gate:static-unit-integration` exits 0. Then CI: `gh run list --workflow bkit-ci --branch dev --event push --commit $(git rev-parse HEAD) --json databaseId,status,conclusion`.
      - **If** it shows `completed` **and** `success` → record the run id.
      - **If** it shows `in_progress` / `queued` → `timeout 1800 gh run watch {id} --exit-status`, then re-check.
@@ -52,16 +53,23 @@ tools:
    - The `package.json` version, `.bkit/version` `pinnedVersion` and `CHANGELOG.md` top entry all == `{VERSION}`, **and** the `## [{VERSION}]` block has >= 1 content line (reject a bare bump).
    - There is no tag `v{VERSION}` (`git ls-remote --tags origin v{VERSION}`).
    - **If** any precondition fails → **STOP** and ask.
-6. Backmerge:
-   - **If** `git rev-list --count origin/dev..origin/main` == 0 → skip this step.
-   - **Else** → `git fetch origin main dev`, then confirm that `git log origin/dev..origin/main --oneline` lists ONLY prior `chore(release):` squash commit(s) (dev strictly ahead, main carrying nothing dev lacks):
+6. Backmerge main into dev, so the release PR merges without conflicts:
+   - Run `git fetch origin main dev` first, so the checks below read the current remote refs.
+   - **If** `git rev-list --count origin/dev..origin/main` == 0 → skip the rest of this step.
+   - Confirm that `git log origin/dev..origin/main --oneline` lists ONLY prior `chore(release):` squash commit(s).
      - **If** it lists anything else → **STOP** and ask.
-     - Merge with `git merge origin/main -s ours -m "chore: backmerge main into dev pre-release"`. Use `-s ours`, NEVER `-X ours`.
-     - **If** the merge reports conflicts → **STOP**, surface them, and ask.
-     - Push with `git push origin dev`.
+   - Confirm that main carries no content dev lacks: the tree of `origin/main` must equal the tree of a commit already on `origin/dev`.
+     ```bash
+     git log origin/dev --format=%T | grep -qx "$(git rev-parse 'origin/main^{tree}')"
+     ```
+     - **If** it exits non-zero → **STOP**, name the files that `git diff --stat origin/dev origin/main` lists, and ask. Main holds content that never reached dev, such as a fix pushed to an earlier release branch, and the merge below would drop it with no conflict.
+   - Merge with `git merge origin/main -s ours -m "chore: backmerge main into dev pre-release"`. Use `-s ours`, NEVER `-X ours`. `-s ours` keeps dev's tree as it is and only records main's commits as merged, so it never reports a conflict. The tree check above is what catches a real one.
+   - **If** the merge exits non-zero → **STOP**, surface its output, and ask.
+   - Push with `git push origin dev`.
 7. Cut the branch and PR: `git checkout -b release/{VERSION}` → `git push -u origin release/{VERSION}` → `gh pr create --base main --head release/{VERSION} --title "chore(release): {VERSION}" --body "Promotes {VERSION} dev → main. Notes: CHANGELOG.md."`. Capture the PR number as `{pr}`.
 8. Watch the checks with `timeout 1800 gh pr checks {pr} --watch`.
    - **If** they do not pass or time out → **STOP**. NEVER merge.
+   - Do not push a fix to `release/{VERSION}`. A fix lands on `dev` first, and the release is cut again from `dev`, so main never holds a tree that `dev` lacks.
 9. Squash-merge with a scrubbed body: `gh pr merge {pr} --squash --subject "chore(release): {VERSION} (#{pr})" --body "Release {VERSION}. See CHANGELOG.md."`. NEVER use the default body.
 10. Sync and tag:
     - `git checkout main` → `git pull --ff-only origin main`.

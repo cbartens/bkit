@@ -270,7 +270,7 @@ describe("bkit-ship.md — bookkeeping and status writes", () => {
     expect(block!.indexOf('cd "{WORKTREE_PATH}"')).toBeGreaterThanOrEqual(0);
     expect(block!.indexOf('cd "{WORKTREE_PATH}"')).toBeLessThan(block!.indexOf("status path"));
     expect(block!).not.toMatch(/--dev-pushes/);
-    expect(step1).toContain("hold `path` as `{STATUS}`");
+    expect(step1).toContain("hold `path` as `STATUS`");
   });
 
   it("Step 1 opens the run in the worktree straight after the lock, before any tracker write", () => {
@@ -447,7 +447,7 @@ describe("bkit-ship.md — the merge is pinned to the head the gate passed", () 
     expect(gate, "bkit runs gate --pr not found").toBeGreaterThan(-1);
     expect(merge, "bkit prs merge not found").toBeGreaterThan(-1);
     expect(gate).toBeLessThan(merge);
-    expect(step).toContain("hold `mergeHead` as `{GATE_HEAD}`");
+    expect(step).toContain("hold `mergeHead` as `GATE_HEAD`");
     expect(step).toMatch(
       /"\{BKIT\}" prs merge [^\n]*--match-head="\{GATE_HEAD\}"[^\n]*--expect-merged/,
     );

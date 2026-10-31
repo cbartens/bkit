@@ -125,7 +125,7 @@ describe("engine calls", () => {
 });
 
 describe("bkit lookup", () => {
-  it.each(ALL)("%s resolves the binary once, in Step 1, and holds it as {BKIT}", (name) => {
+  it.each(ALL)("%s resolves the binary once, in Step 1, and holds it as BKIT", (name) => {
     const text = workflow(name);
     expect(text).not.toContain('BKIT="$(dirname');
     expect(text).not.toContain('"$BKIT"');
@@ -134,7 +134,8 @@ describe("bkit lookup", () => {
       .filter((l) => l.trimStart().startsWith('"$(dirname "$(git rev-parse'));
     expect(lookups, name).toHaveLength(1);
     expect(lookups[0]).toContain('node_modules/.bin/bkit" repo info');
-    expect(section(text, /Step 1 — Start Workflow/)).toMatch(/[Hh]old `bkit` as `\{BKIT\}`/);
+    // The held name carries no braces; a clause-owned line may still brace it.
+    expect(section(text, /Step 1 — Start Workflow/)).toMatch(/[Hh]old `bkit` as `\{?BKIT\}?`/);
   });
 });
 
@@ -202,10 +203,10 @@ describe("debug Step 1 start decisions", () => {
     expect(more).toEqual([]);
     expect(line).toContain('--prompt-file="{SESSION_DIR}/prompt.md"');
     for (const held of [
-      "`debugAttempt` as `{DEBUG_ATTEMPT}`",
-      "`debugMode` as `{DEBUG_MODE}`",
-      "`repro` as `{REPRO}`",
-      "`gates` as `{GATES}`",
+      "`debugAttempt` as `DEBUG_ATTEMPT`",
+      "`debugMode` as `DEBUG_MODE`",
+      "`repro` as `REPRO`",
+      "`gates` as `GATES`",
     ])
       expect(step1()).toContain(held);
   });
@@ -256,7 +257,7 @@ describe("Step 1 FID check", () => {
     "%s writes the session prompt to a file and reads it with `fids parse`",
     (name) => {
       const step1 = section(workflow(name), /Step 1 — Start Workflow/);
-      expect(step1).toContain("`sessionDir` as `{SESSION_DIR}`");
+      expect(step1).toContain("`sessionDir` as `SESSION_DIR`");
       expect(step1).toContain("Write the session prompt verbatim to `{SESSION_DIR}/prompt.md`");
       expect(step1).toContain('"{BKIT}" fids parse --prompt-file="{SESSION_DIR}/prompt.md"');
       expect(step1).toContain("Hold `fidNamed` as `FID_NAMED`");
@@ -464,17 +465,21 @@ describe("build", () => {
     ])
       expect(merge[0], flag).toContain(flag);
     for (const route of [
-      "`route` = `none` → Step 12",
-      "`route` = `pause`",
-      "`route` = `fix`",
+      "`MERGE_ROUTE` = `none` → Step 12",
+      "`MERGE_ROUTE` = `pause`",
+      "`MERGE_ROUTE` = `fix`",
       "exit 22",
     ])
       expect(step11, route).toContain(route);
     expect(step11).toContain(
       "`PAUSE_STEP` = 11, `PAUSE_POINT` = `build.challenge`, `PAUSE_QUESTION` = `CHALLENGE`",
     );
+    expect(step11).toContain("hold `route` as `MERGE_ROUTE`");
+    expect(step11, "the merge route reads the held name, never the bare field").not.toMatch(
+      /\*\*If\*\* `route` =/,
+    );
     expect(step11).toContain(
-      "`route` = `fix` → `CHALLENGE_ROUND` = `CHALLENGE_MAX` already → `CHALLENGE_DONE` = true",
+      "**If** `CHALLENGE_ROUND` = `CHALLENGE_MAX` already → `CHALLENGE_DONE` = true.",
     );
   });
 
@@ -494,7 +499,7 @@ describe("build", () => {
     const resumeLine = build.split("\n").find((l) => l.includes("**Resume:**"))!;
     expect(resumeLine).not.toContain("the decision file's task numbers");
     expect(resumeLine).toContain("Step 11 sub-steps 2 and 5");
-    expect(resumeLine).toContain("`fixTasks` as `{CHALLENGE_TASKS}`");
+    expect(resumeLine).toContain("`fixTasks` as `CHALLENGE_TASKS`");
     expect(resumeLine).toContain("NEVER sub-step 6");
   });
 
@@ -555,7 +560,7 @@ describe("build", () => {
     expect(step11.indexOf("challenge gate")).toBeLessThan(
       step11.indexOf("Invoke `@bkit-build-challenge-1`"),
     );
-    expect(step11).toContain("hold `size` as `{CHALLENGE_SIZE}`");
+    expect(step11).toContain("hold `size` as `CHALLENGE_SIZE`");
     const small = step11.split("\n").filter((l) => l.includes("`CHALLENGE_SIZE` = small"));
     expect(small.join("\n")).toContain("`@bkit-build-challenge-2` only");
     expect(small.join("\n")).toContain("--agent=bkit-build-challenge-1");
@@ -678,7 +683,7 @@ describe("build", () => {
     // `workflows input` counts the comments posted after the plan's last commit; convert
     // writes them into the plan before any code, so every later agent works from it.
     expect(section(build, /Step 2 — Worktree Setup/)).toContain(
-      "Hold `newerThanPlan` as `{NEWER_COMMENTS}`.",
+      "Hold `newerThanPlan` as `NEWER_COMMENTS`.",
     );
     const step4 = section(build, /Step 4 — Plan Convert/);
     expect(step4).toContain(
@@ -900,7 +905,7 @@ describe("auto", () => {
   it("resolves phase, mode and the CI context with one `runs context` call", () => {
     const step1 = section(auto, /Step 1 — Start Workflow/);
     expect(step1).toContain('"{BKIT}" runs context --phase="{PHASE}" --arg="{ARG}"');
-    expect(step1).toContain("`runId` as `{RUN_ID}`");
+    expect(step1).toContain("`runId` as `RUN_ID`");
     expect(step1).not.toContain("gh run list");
     expect(step1).not.toContain("case ");
   });
@@ -1455,7 +1460,12 @@ describe("issue-less runs", () => {
       '**If** the no-issue warning was emitted → add `--warning="<that warning>"`.',
     );
     expect(section(text, /Failure Path/), `${name}: Failure Path STOP`).toContain(FINAL_FIRST_LINE);
-    const failDisplay = lines.filter((l) => l.includes("`SUMMARY_VERDICT` = FAIL → display"));
+    // A failing summary is the final message at the Failure Path STOP, after the warning line.
+    const failDisplay = lines.filter(
+      (l) =>
+        l.includes("`SUMMARY_VERDICT` = FAIL → display") ||
+        l.includes("`SUMMARY_VERDICT` = FAIL → the final message is"),
+    );
     expect(failDisplay.length, `${name}: summary-FAIL display`).toBe(1);
     expect(failDisplay[0], `${name}: summary-FAIL display`).toContain(FINAL_FIRST_LINE);
   });
@@ -1508,10 +1518,8 @@ describe("issue-less runs", () => {
     const step1 = section(workflow("plan"), /Step 1 — Start Workflow/);
     expect(step1).toContain('--prompt-file="{SESSION_DIR}/prompt.md"');
     expect(step1).toContain('--description-file="{SESSION_DIR}/issue-description.md"');
-    expect(step1).toContain("Hold `auditPaths` as `{AUDIT_PATHS}`");
-    expect(step1).toContain(
-      "hold `parentFid` as `{PARENT_FID}`, `parentMonth` as `{PARENT_YYYYMM}`",
-    );
+    expect(step1).toContain("Hold `auditPaths` as `AUDIT_PATHS`");
+    expect(step1).toContain("hold `parentFid` as `PARENT_FID`, `parentMonth` as `PARENT_YYYYMM`");
   });
 
   it.each(["design", "plan"])(
@@ -1704,7 +1712,7 @@ describe("debug on dev", () => {
     for (const line of commandLines(debug, "context diff"))
       expect(line).toContain("--base={DIFF_BASE}");
     const step2 = section(debug, /Step 2 — Worktree Setup/);
-    expect(step2).toContain("`startSha` as `{DIFF_BASE}`");
+    expect(step2).toContain("`startSha` as `DIFF_BASE`");
     expect(step2).toContain("`origin/dev` when null");
   });
 
@@ -1798,7 +1806,7 @@ describe("fix loops ask only when the last round made no progress", () => {
 
   it("ship takes a merge fix round without asking when the diagnosis found the cause", () => {
     const step11 = section(workflow("ship"), /Step 11 — Failure Diagnose/);
-    expect(step11).toContain("Hold `verdict` as `{DIAGNOSE_VERDICT}`");
+    expect(step11).toContain("Hold `verdict` as `DIAGNOSE_VERDICT`");
     expect(step11).toContain("**If** `MERGE_ASK` = false **or** `DIAGNOSE_VERDICT` = PASS →");
   });
 });

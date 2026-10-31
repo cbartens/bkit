@@ -81,7 +81,7 @@ description: "Plan Feature — Autonomous plan generation"
    Route:
    - **If** exit 80 → open PR on `{BRANCH}` via `list_pull_requests` → re-run with `--open-pr={number}` or `--open-pr=none`.
    - **Else** → **If** `tracker.done` = false → post `comment` via the tracker MCP per the header's fallback section → step 4.
-4. **STOP**, no further downstream steps.<!-- bkit:tracker true start --> Line 1 of the final message = the no-issue warning, when one was emitted.<!-- bkit:tracker true end -->
+4. **STOP**, no further downstream steps. **If** `SUMMARY_VERDICT` = FAIL → the final message is `plan-summary.md` content verbatim.<!-- bkit:tracker true start --> Line 1 of the final message = the no-issue warning, when one was emitted.<!-- bkit:tracker true end -->
 
 ---
 
@@ -91,7 +91,7 @@ description: "Plan Feature — Autonomous plan generation"
    ```bash
    "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" repo info --fetch
    ```
-   Hold `bkit` as `{BKIT}`, `ownerRepo` as `OWNER_REPO`, `owner` as `OWNER`, `repo` as `REPO`, `branch` as `BRANCH`, `repoRoot` as `REPO_ROOT`, `outboxRoot` as `OUTBOX_ROOT`, `sessionDir` as `{SESSION_DIR}`, `bkitAdvisory` as `BKIT_ADVISORY`, `tasks.maxPerGroup` as `MAX_TASKS_PER_GROUP`, `tasks.maxTestsPerGroup` as `MAX_TESTS_PER_GROUP`, `tasks.maxTestsPerTask` as `MAX_TESTS_PER_TASK`, `tasks.maxTestFilesPerTask` as `MAX_TEST_FILES_PER_TASK`. **If** `BKIT_ADVISORY` != null → emit advisory `[bkit-plan] {BKIT_ADVISORY}`.
+   Hold `bkit` as `BKIT`, `ownerRepo` as `OWNER_REPO`, `owner` as `OWNER`, `repo` as `REPO`, `branch` as `BRANCH`, `repoRoot` as `REPO_ROOT`, `outboxRoot` as `OUTBOX_ROOT`, `sessionDir` as `SESSION_DIR`, `bkitAdvisory` as `BKIT_ADVISORY`, `tasks.maxPerGroup` as `MAX_TASKS_PER_GROUP`, `tasks.maxTestsPerGroup` as `MAX_TESTS_PER_GROUP`, `tasks.maxTestsPerTask` as `MAX_TESTS_PER_TASK`, `tasks.maxTestFilesPerTask` as `MAX_TEST_FILES_PER_TASK`. **If** `BKIT_ADVISORY` != null → emit advisory `[bkit-plan] {BKIT_ADVISORY}`.
    <!-- bkit:tracker true start -->
    Hold `trackerTeam` as `TRACKER_TEAM`, `trackerProject` as `TRACKER_PROJECT`, `trackerSite` as `TRACKER_SITE`.
    <!-- bkit:tracker true end -->
@@ -151,8 +151,8 @@ description: "Plan Feature — Autonomous plan generation"
    ```bash
    "{BKIT}" fids design --fid={FID} --month={YYYYMM} --prompt-file="{SESSION_DIR}/prompt.md"<!-- bkit:tracker true start --> --description-file="{SESSION_DIR}/issue-description.md"<!-- bkit:tracker true end -->
    ```
-   Hold `auditPaths` as `{AUDIT_PATHS}`, `workstreams` as `{WORKSTREAMS}`. Route:
-   - **If** exit 0 → hold `parentFid` as `{PARENT_FID}`, `parentMonth` as `{PARENT_YYYYMM}`.
+   Hold `auditPaths` as `AUDIT_PATHS`, `workstreams` as `WORKSTREAMS`. Route:
+   - **If** exit 0 → hold `parentFid` as `PARENT_FID`, `parentMonth` as `PARENT_YYYYMM`.
    - **If** exit 1 → leave `PARENT_FID` empty.
    - **Else** → **Failure Path**.
 7. <!-- bkit:tracker true start -->
@@ -313,15 +313,15 @@ description: "Plan Feature — Autonomous plan generation"
 ## 🧠 Step 5 — Review Plan
 
 1. Launch these subagents in parallel using `Agent` tool:
-   - **Subagent:** Invoke `@bkit-plan-review-1`
+   - **Subagent:** Invoke `@bkit-plan-review-1` using `Agent` tool:
      Context: You are a subagent in the Plan phase running in parallel with two other agents. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-review-1.md`.
-   - **Subagent:** Invoke `@bkit-plan-review-2`
+   - **Subagent:** Invoke `@bkit-plan-review-2` using `Agent` tool:
      Context: You are a subagent in the Plan phase running in parallel with two other agents. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-review-2.md`.
-   - **Subagent:** Invoke `@bkit-plan-scope-check`
+   - **Subagent:** Invoke `@bkit-plan-scope-check` using `Agent` tool:
      Context: You are a subagent in the Plan phase running in parallel with two other agents. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check.md`.
@@ -358,6 +358,10 @@ description: "Plan Feature — Autonomous plan generation"
    ```bash
    "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-apply-review --attempt=1 --agent=bkit-plan-update --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-update-check.md --message="chore({FID}): apply-review" --number=6 --post --title="Apply Review" --link-ref=dev
    ```
+   Hold `verdict` as `APPLY_VERDICT`.
+5. Route:
+   - **If** `APPLY_VERDICT` = PASS **or** CONCERNS → Step 7.
+   - **Else** → **Failure Path**.
 
 ### 🔒 Gate 6 — Apply Review
 
@@ -365,6 +369,7 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] Subagent invoked (`@bkit-plan-update`, no inline work)
 - [ ] Reviewed plan checked (`tests plan-check`)
 - [ ] Mechanical checks passed (`steps finish`)
+- [ ] Routed correctly
 
 ---
 
@@ -393,7 +398,6 @@ description: "Plan Feature — Autonomous plan generation"
    ```
 4. Route:
    - **If** `SUMMARY_VERDICT` = PASS **or** CONCERNS → Step 8.
-   - **If** `SUMMARY_VERDICT` = FAIL → display `plan-summary.md` content verbatim as final message to user<!-- bkit:tracker true start -->. Line 1 of the final message = the no-issue warning, when one was emitted.<!-- bkit:tracker true end --> → **Failure Path**.
    - **Else** → **Failure Path**.
 
 ### 🔒 Gate 7 — Summary

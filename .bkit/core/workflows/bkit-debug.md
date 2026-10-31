@@ -95,7 +95,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    Route:
    - **If** exit 80 → open PR on `{BRANCH}` via `list_pull_requests` → re-run with `--open-pr={number}` or `--open-pr=none`.
    - **Else** → **If** `tracker.done` = false → post `comment` via the tracker MCP per the header's fallback section → step 6.
-6. **STOP**, no further downstream steps.<!-- bkit:tracker true start --> Line 1 of the final message = the no-issue warning, when one was emitted.<!-- bkit:tracker true end -->
+6. **STOP**, no further downstream steps. **If** `SUMMARY_VERDICT` = FAIL → the final message is `debug-summary.md` content verbatim.<!-- bkit:tracker true start --> Line 1 of the final message = the no-issue warning, when one was emitted.<!-- bkit:tracker true end -->
 
 ---
 
@@ -128,7 +128,10 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    A reply that names a letter (`B`, `B)` or `B) {option}`) means the option that letter labels.
    - **If** the answer is `Try again` → return to the calling step.
    - **If** the answer is `Stop` → step 5.
-   - **Else** → discuss → record the wait (step 3) → end turn.
+   - **Else** → answer the reply in plain text and ask Q1 again in the same message, then record the wait and end the turn:
+     ```bash
+     "{BKIT}" status row --file="{STATUS}" --workflow=debug --type=owner-pause --field=reason=loop >/dev/null || exit 1
+     ```
 5. Create `docs/plans/{YYYYMM}/logs/{FID}/debug-handover.md` with the question, the answer, and the line `Stopped by the owner; run stays IN_PROGRESS. /bkit-debug {FID} resumes at Step 3.`
    Then push the record and release the lock. NEVER run `workflows fail`:
    ```bash
@@ -153,7 +156,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    ```bash
    "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" repo info --fetch
    ```
-   Hold `bkit` as `{BKIT}`, `ownerRepo` as `OWNER_REPO`, `owner` as `OWNER`, `repo` as `REPO`, `branch` as `BRANCH`, `repoRoot` as `REPO_ROOT`, `outboxRoot` as `OUTBOX_ROOT`, `sessionDir` as `{SESSION_DIR}`, `bkitAdvisory` as `BKIT_ADVISORY`. **If** `BKIT_ADVISORY` != null → emit advisory `[bkit-debug] {BKIT_ADVISORY}`.
+   Hold `bkit` as `BKIT`, `ownerRepo` as `OWNER_REPO`, `owner` as `OWNER`, `repo` as `REPO`, `branch` as `BRANCH`, `repoRoot` as `REPO_ROOT`, `outboxRoot` as `OUTBOX_ROOT`, `sessionDir` as `SESSION_DIR`, `bkitAdvisory` as `BKIT_ADVISORY`. **If** `BKIT_ADVISORY` != null → emit advisory `[bkit-debug] {BKIT_ADVISORY}`.
    <!-- bkit:tracker true start -->
    Hold `trackerTeam` as `TRACKER_TEAM`, `trackerProject` as `TRACKER_PROJECT`, `trackerSite` as `TRACKER_SITE`.
    <!-- bkit:tracker true end -->
@@ -222,7 +225,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    "{BKIT}" status route --workflow=debug --fid={FID} --month={YYYYMM} --prompt-file="{SESSION_DIR}/prompt.md"
    ```
    Route:
-   - **If** exit 0 → hold `debugAttempt` as `{DEBUG_ATTEMPT}`, `debugMode` as `{DEBUG_MODE}`, `repro` as `{REPRO}`, `gates` as `{GATES}`.
+   - **If** exit 0 → hold `debugAttempt` as `DEBUG_ATTEMPT`, `debugMode` as `DEBUG_MODE`, `repro` as `REPRO`, `gates` as `GATES`.
    - **Else** → **Failure Path**.
 8. <!-- bkit:tracker true start -->
    **Skip if** `ISSUE_ID` empty. Set the phase label `bkit:debug`, and drop the prior phase label, `next:*` and `bkit:failed`. `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry:
@@ -266,7 +269,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    ```bash
    "{BKIT}" worktrees setup --workflow=debug --fid={FID} --month={YYYYMM} --detect
    ```
-   Hold `worktreePath` as `WORKTREE_PATH`, `{OUTBOX_ROOT}/{FID}` as `OUTBOX`, `branch` as `BRANCH`, `sentinel` as `SENTINEL`, `logDir` as `LOG_DIR`, `startSha` as `{DIFF_BASE}` (`origin/dev` when null).
+   Hold `worktreePath` as `WORKTREE_PATH`, `{OUTBOX_ROOT}/{FID}` as `OUTBOX`, `branch` as `BRANCH`, `sentinel` as `SENTINEL`, `logDir` as `LOG_DIR`, `startSha` as `DIFF_BASE` (`origin/dev` when null).
    Route:
    - **If** exit 0 → `cd "{WORKTREE_PATH}"` → verify with `pwd` → sub-step 2.
    - **If** exit 3 → resolve the rebase:
@@ -321,7 +324,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    ```bash
    "{BKIT}" steps finish --file="{STATUS}" --workflow=debug --step=debug-run-tests --verdict={TEST_VERDICT} {FAILURES_FLAG} --scope="{TEST_SCOPE}" --attempt=next --artifact=docs/plans/{YYYYMM}/logs/{FID}/context-tests-local-{DEBUG_ATTEMPT}.md --clamp-log=debug-run-tests:{DEBUG_ATTEMPT} --commit=none --number=3 --post --title="Run Tests"
    ```
-   Hold `attempt` as `{NORMAL_ATTEMPT}`.
+   Hold `attempt` as `NORMAL_ATTEMPT`.
 3. **If** `TEST_VERDICT` = PASS → route on the fix and reproduce rows in the active run:
    ```bash
    "{BKIT}" status route --file="{STATUS}" --workflow=debug --step=debug-run-tests --expect=verdict=PASS >/dev/null || exit 2
@@ -340,7 +343,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    "{BKIT}" status route --file="{STATUS}" --workflow=debug --step=debug-run-tests --expect=verdict=FAIL --expect=debugMode=NORMAL >/dev/null || exit 2
    "{BKIT}" counters route --name=FIX_ATTEMPT --of=debug-failure-remediate:next --all-runs --file="{STATUS}" --workflow=debug --point=debug.fix --continue=step-4 --exceeded=soak-escalation
    ```
-   Hold `value` as `{LOOP_ATTEMPT}`, `max` as `LOOP_MAX` and `ask` as `LOOP_ASK`.
+   Hold `value` as `LOOP_ATTEMPT`, `max` as `LOOP_MAX` and `ask` as `LOOP_ASK`.
    Route — first match wins:
    - **If** exit 0 **and** `{LOOP_ATTEMPT}` = 1 → Step 4.
    - **If** exit 0 → `LOOP_POINT` = `fix`, `LOOP_FIX` = `debug-failure-remediate` → **Loop Question** → Step 4.
@@ -354,7 +357,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    "{BKIT}" status route --file="{STATUS}" --workflow=debug --step=debug-run-tests --expect=verdict=FAIL --expect=debugMode=SOAK >/dev/null || exit 2
    "{BKIT}" counters route --name=SOAK_ATTEMPT --of=debug-failure-soak:next --all-runs --file="{STATUS}" --workflow=debug --point=debug.soak --continue=step-4 --exceeded=failure-path
    ```
-   Hold `value` as `{LOOP_ATTEMPT}`, `max` as `LOOP_MAX` and `ask` as `LOOP_ASK`.
+   Hold `value` as `LOOP_ATTEMPT`, `max` as `LOOP_MAX` and `ask` as `LOOP_ASK`.
    Route:
    - **If** exit 0 → `LOOP_POINT` = `soak`, `LOOP_FIX` = `debug-failure-soak` → **Loop Question** → Step 4.
    - **Else** → **Failure Path** (exit 1: `debug.soak.maxAttempts` used up, max-retry exhaustion).
@@ -594,7 +597,6 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    ```
 3. Route:
    - **If** `SUMMARY_VERDICT` = PASS **or** CONCERNS → Step 11.
-   - **If** `SUMMARY_VERDICT` = FAIL → display `debug-summary.md` content verbatim as final message to user<!-- bkit:tracker true start -->. Line 1 of the final message = the no-issue warning, when one was emitted.<!-- bkit:tracker true end --> → **Failure Path**.
    - **Else** → **Failure Path**.
 
 ### 🔒 Gate 10 — Summary
@@ -669,7 +671,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      "{BKIT}" branches push --mode=dev --require-ci --fid={FID}
      ```
      Route:
-     - **If** exit 0 **and** `skipped` null → hold `sha` as `{DEV_SHA}` (never the local HEAD); `BRANCH` = `dev` → `{CLOSE_PARENT}` = `{DEV_SHA}`; `DEV_PUSHED` = true.
+     - **If** exit 0 **and** `skipped` null → hold `sha` as `DEV_SHA` (never the local HEAD); `BRANCH` = `dev` → `{CLOSE_PARENT}` = `{DEV_SHA}`; `DEV_PUSHED` = true.
      - **If** exit 0 **and** `skipped` = `no-run-commits` → narrate `[bkit-debug] dev push: every run commit is already on origin/dev; nothing pushed, no CI run to gate` → `DEV_PUSHED` = false.
      - **If** exit 8 (push failed or refused), exit 10 (fetch failed), exit 11 (replay conflict, the conflicting paths printed) or exit 20 (the run's record is gone, nothing pushed) → **Failure Path**.
      - **Else** → **Failure Path**.
@@ -715,8 +717,8 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      ```
 
      Route:
-     - **If** exit 0 → hold the printed `head` as `{DEV_SHA}` → wait below.
-     - **If** exit 81 **or** 80 → hold the printed `head` as `{DEV_SHA}` → **CI wait turn-loop**, polling `runs wait --head="{DEV_SHA}" --branch=dev --once` in place of `--pr` → re-run this block with `{CI_REENTRY}`, `--sha="{DEV_SHA}"` re-held from each printed `head` (after a `repoll` phase too).
+     - **If** exit 0 → hold the printed `head` as `DEV_SHA` → wait below.
+     - **If** exit 81 **or** 80 → hold the printed `head` as `DEV_SHA` → **CI wait turn-loop**, polling `runs wait --head="{DEV_SHA}" --branch=dev --once` in place of `--pr` → re-run this block with `{CI_REENTRY}`, `--sha="{DEV_SHA}"` re-held from each printed `head` (after a `repoll` phase too).
      - **Else** → **Failure Path**.
 
      ```bash

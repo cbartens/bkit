@@ -32,7 +32,7 @@ autoCompactWindow: 300000
 - **No commits:** Do not run `git commit` / `git add`, and NEVER run `git push`. The caller runs them.
 - **Output header:** Every line above `<!-- verdict:end -->` MUST stay machine-parseable.
 - **Runbook tasks:** The runbook is groups of task blocks in build order (schema, then API, then UI). A group is `<!-- bkit:group N start -->`, `### TASK GROUP N: {title}`, its task blocks and `<!-- bkit:group N end -->`, holding tasks and `TEST FIRST` tests within the per-group plan caps your Context names (`bkit.workflows.tasks`: tasks, and `TEST FIRST` tests in all); bigger → split the group. A task is `<!-- bkit:task N start -->`, `- [ ] **TASK N:** {title}`, one sub-bullet per field and `<!-- bkit:task N end -->`, its number unique across the plan. Fields, uppercase: `**CREATE:**` / `**READ:**` / `**UPDATE:**` / `**DELETE:**` (`` `{symbol}` in `{file}`: {what} `` or `` `{file}`: {what} ``, one line per reference), `**DEPENDS ON:**` (task numbers, same or earlier group), `**DONE WHEN:**`, `**TEST FIRST:**`, `**TEST EXCEPTION:**`; `bkit tests plan-check` refuses task-like text outside every block. `DONE WHEN` is short, testable and checkable in the codebase (a file exists, a signature matches, a test passes, a behaviour shows). A task that adds or changes logic names its own tests and fixes the tests it breaks; no task leaves its tests to a later one. Behaviour tests come only from `Derived Test Matrix` rows, and a task crossing a boundary (DB, API, model, network, migration) pairs them with non-mock tests. An audit plan has one task per in-scope finding id; tasks group findings only on one shared root cause and still name every id.
-- **Testing strategy:** Test backend and pipeline logic at the unit or integration tier, not through a UI; each core data path has an integration test calling the real API against a local database with no ORM or database mocks. Drive a browser or device ONLY for UI behaviour. UI E2E tests log in once in a shared setup and reuse its auth state (sign-in, sign-up and account-deletion tests excepted), and build data with typed factories, per `docs/testing.md`.
+- **Testing strategy:** Test backend and pipeline logic at the unit or integration tier, not through a UI; each core data path has an integration test calling the real API against a local database with no ORM or database mocks. Drive a browser or device only for UI behaviour. UI E2E tests log in once in a shared setup and reuse its auth state (sign-in, sign-up and account-deletion tests excepted), and build data with typed factories, per `docs/testing.md`.
 - **Verification Plan:** `Verification Plan` and `Manual Verification` boxes are advisory checks for the build phase. Only the runbook's `DONE WHEN` fields gate the merge, and an unticked box there blocks nothing. Work that must block the merge is a runbook task with a `DONE WHEN` that can be checked in the codebase, and a CI lane that must run belongs in the CI config. No box says "before merge".
 - **Checkboxes:** A literal `[x]` in the plan means done and `[ ]` means not done, whatever the surrounding text says.
 - **Mandatory tasks:** After the runbook, check that each `Derived Test Matrix` row has its test in one task's `DONE WHEN` (a gap goes into that task), every task fixed the tests it broke and the full suite passes, every task's `DONE WHEN` tests exist and pass, errors are logged per `docs/observability.md`, and every `Documentation Updates` row is done.
@@ -118,6 +118,7 @@ autoCompactWindow: 300000
     - Set `Verdict` from the `Fixable` values you decided, never from the report's `null`. First match wins:
       - **If** any unresolved gap is `Fixable: false` → `FAIL`.
       - **If** any unresolved gap is `Fixable: true` → `CONCERNS`.
+      - **If** `Mode` = `Holistic` **and** the `Groups Verified` count differs from the plan's group count → `CONCERNS`.
       - **Else** → `PASS`.
 
 **Output format:**
@@ -138,7 +139,7 @@ Tasks: <the task numbers you judged satisfied, comma-separated; none when there 
 
 ## Groups Verified
 
-[**If** the scope is `Holistic` → the count of groups verified, which must match the plan's group count. A mismatch → `CONCERNS`. **Else** → `None`. Initially set to `PENDING`.]
+[**If** the scope is `Holistic` → the count of groups verified, and the plan's group count. **Else** → `None`. Initially set to `PENDING`.]
 
 ## Integration Gaps
 

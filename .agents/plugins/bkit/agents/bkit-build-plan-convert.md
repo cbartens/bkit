@@ -70,9 +70,10 @@ tools:
    - Number the tasks from 1 across the whole plan.
 5. Per task, the fields as sub-bullets: `CREATE` / `READ` / `UPDATE` / `DELETE` name only files you opened this session, one field line per reference; a symbol you did not find → name the file alone (`` `{file}`: {what} ``). `DONE WHEN` = a codebase-verifiable end state. `TEST FIRST` = one or more tests, within the per-task plan caps your Context names (tests, test files), or `n/a — {reason}` for no behaviour change. NEVER write `TEST EXCEPTION` of your own; copy each `TEST EXCEPTION` field an input writes into its task, word for word.
 6. For each `CREATE` file, add one `NEW` row to `## Reuse Inventory` that records the search you ran and why nothing existing fits.
-7. Run the supplied check command:
+7. Run the supplied check command, at most 3 times in all. Route each run — first match wins:
+   - **If** it exits 0 → stop.
+   - **If** it exits non-zero on the third run → stop, and leave the plan as it stands. The caller runs the same check and handles the problems that are left.
    - **If** it exits non-zero → fix each problem its report lists, and run it again.
-   - Run it at most 3 times in all.
 
 **Output format:**
 

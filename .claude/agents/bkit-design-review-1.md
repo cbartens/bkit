@@ -73,20 +73,18 @@ autoCompactWindow: 300000
    - **If** an existing solution covers more than 80% of the requirement:
      - Recommend it over custom code.
      - Note the remaining 20% gap.
-   - **If** the design's `Reuse & Prior Art` verdict is `NEW` where a candidate covers the capability, or its reason is a cleaner fresh start, a messy existing candidate or a close-but-different one → `Verdict` = `CONCERNS`, and name the candidate.
+   - **If** the design's `Reuse & Prior Art` verdict is `NEW` where a candidate covers the capability, or its reason is a cleaner fresh start, a messy existing candidate or a close-but-different one → record a reuse caveat under `CRITICAL` that names the candidate.
 6. Assess stack feasibility: whether the design is buildable with the approved stack, and under which constraints.
 7. Evaluate each library and API: maturity, footprint (e.g. bundle, binary or image size where relevant), types where the language has them, and license.
 8. Assess the integration risk: the systems touched and the blast radius, plus monorepo fit where the repo is one.
 9. Describe the PoC approach in at most 200 words.
-   - **If** it cannot be described that briefly → `Verdict` = `CONCERNS`.
+   - **If** it cannot be described that briefly → record a size caveat under `CRITICAL`.
 10. List the unknowns and blockers that need experimentation.
-11. Update **Create** — set `Spike` via `Edit`, using this mapping:
-    - `true` = at least one `Unknowns & Blockers` item can be settled only by running code.
-    - `false` = every open item resolves by reading docs or source.
-12. Update **Create** — set `Verdict` via `Edit`, using this mapping:
-    - `PASS` = feasible as designed, and the design proceeds.
-    - `CONCERNS` = feasible with caveats: the design proceeds, and the findings are addressable.
-    - `FAIL` = not feasible in the current stack or scope: the design does not proceed, and the findings are not addressable.
+11. Set `Spike` in **Create** with `Edit` = `true` when at least one `Unknowns & Blockers` item can be settled only by running code, and `false` when every open item resolves by reading docs or source.
+12. Set `Verdict` in **Create** with `Edit`:
+    - `PASS` = feasible as designed, and `CRITICAL` is `None`.
+    - `CONCERNS` = `CRITICAL` lists at least one addressable caveat (a reuse caveat or a size caveat counts), and no `FAIL` condition holds.
+    - `FAIL` = not feasible in the current stack or scope.
 
 **Output format:**
 

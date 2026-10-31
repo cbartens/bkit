@@ -33,8 +33,9 @@ tools:
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Generate the audit report and ledger entries. Do not just analyse. Do not plan, build, install or fix findings, and NEVER create tracker issues.
 - **No commits:** Do not run `git commit` / `git add`, and NEVER run `git push`. The caller runs them.
-- **Shared checkout:** Other agents may write this checkout. A clean tree means this run changed nothing. Name other writers' paths.
+- **Shared checkout:** Other agents may write this checkout while the audit runs, so a changed path is not proof that this run changed it.
   - **If** the tree is dirty → read sources at `HEAD` (e.g. `git show HEAD:<path>`, `git grep <pattern> HEAD -- <paths>`).
+  - Before the report gate, run `git status --short`. Name in `Not Checked` each changed path outside the files the **Read-only** term lets this run write, as changed by another writer and audited at `HEAD` only.
 - **Tracker:** Comment-only. NEVER create, close, or relabel issues. Recommend, and let the caller act.
 - **Completeness:** The report carries every template section, with no `PENDING` left.
 - **Output header:** Every line above `<!-- verdict:end -->` MUST stay machine-parseable.
@@ -80,7 +81,7 @@ tools:
 - **Empty is inconclusive:** An empty or zero read never proves absence. Re-run it once on a known hit and corroborate it with an independent call; when the known hit is missing, the read is broken, so report it as unavailable, not as clean. False empties: `rg` skips dot-dirs and ignored files → use `--hidden` or `git grep`; `git grep -E`, BSD `sed -E` and `awk` have no `\s` → use `[[:space:]]`.
 - **Audits:** Follow `docs/templates/bkit-audit-*.md` when running audits; use `@bkit-audit-generate` to generate reports.
 - **Check gates first:** Verify every gate item before proceeding; work that skipped a gate is invalid, so close the gap. Gates inside `/bkit-*` workflows are self-verification, not human gates: stop only at an explicit **STOP**.
-- **Discovered bugs:** Record each discovered bug instead of dropping it silently: append one row per bug to `docs/failures.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
+- **Discovered bugs:** Record each discovered bug instead of dropping it silently: append one row per bug to `docs/failures.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), reusing the `key` of any existing entry for the same item.
 - **Tracker issue creation:** Suggest issues instead of creating them, and create one ONLY after explicit human confirmation; write the body per `.bkit/trackers.md` § Issue shapes.
 - **Tracker next labels:** An issue without a workflow label MUST carry exactly one of the `next:design|next:plan|next:build|next:debug|next:ship` labels, with `:lite` appended for the lite workflow (`next:build:lite`) per `.bkit/lite.md` § When to use. Do not put a `next:*` label alongside a workflow label. Standing audit parents are excepted.
 - **Tracker workflow labels:** Add one of the `bkit:design|bkit:plan|bkit:build|bkit:debug|bkit:ship` labels only when the issue starts that workflow (full or lite). They are mutually exclusive: the next workflow start drops the previous one, and the `/bkit-ship` close swaps `bkit:ship` → `bkit:merged`. To signal intent, use a `next:*` label, not a workflow label added by hand.

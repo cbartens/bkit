@@ -270,7 +270,7 @@ describe("bkit-debug.md — Step 11 on dev", () => {
     expect(dev[0]!).toMatch(/"\{BKIT\}" runs dispatch [^\n]*--sha="?\{DEV_SHA\}"?/);
     expect(dev[0]!).not.toMatch(/--pr[= ]/);
     // The sha is the push's own `sha`, never a local HEAD (an own-commit push lands copies).
-    expect(step11).toContain("hold `sha` as `{DEV_SHA}`");
+    expect(step11).toContain("hold `sha` as `DEV_SHA`");
     expect(step11).not.toContain("git rev-parse HEAD");
     expect(at(/"\{BKIT\}" branches push --mode=dev\b/)).toBeGreaterThan(-1);
   });
@@ -282,7 +282,7 @@ describe("bkit-debug.md — Step 11 on dev", () => {
     );
     expect(step11).toMatch(/exit 20 \(the run's record is gone, nothing pushed\)/);
     // A re-trigger commit lands a new sha: the wait and gate follow the dispatch's printed head.
-    expect(step11).toContain("hold the printed `head` as `{DEV_SHA}`");
+    expect(step11).toContain("hold the printed `head` as `DEV_SHA`");
     expect(step11).toContain('`--sha="{DEV_SHA}"` re-held from each printed `head`');
   });
 

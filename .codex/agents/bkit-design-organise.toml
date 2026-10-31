@@ -73,12 +73,11 @@ developer_instructions = """
     - Confirm every workstream `Requires` ID refers to an existing workstream, and every plan `Requires` ID to an existing plan.
       - **If** a reference dangles → fix it and recheck.
     - Confirm there are no cycles: no workstream's or plan's `Requires` chain loops back to itself.
-      - **If** a loop is detected → `FAIL`.
-    - **If** the self-verify still fails after the fix iterations → `FAIL`.
+      - **If** a loop is detected → break it and recheck: drop a `Requires` entry that is not a real prerequisite, or merge the looped workstreams or plans into one, since work that needs each other cannot ship alone.
 11. Set `Verdict` in **Create** with `Edit`:
-    - `PASS` = all elements are covered, every workstream is in one plan, all references are valid, and the workstream and plan DAGs are clean.
-    - `CONCERNS` = the decomposition is workable but has structural ambiguities: tightly coupled workstreams, or fuzzy scope or plan boundaries.
-    - `FAIL` = a cycle is detected (a workstream or plan `Requires` chain loops back to itself), or the self-verify failed.
+    - `PASS` = every self-verify check passes, and the decomposition has no structural ambiguity.
+    - `CONCERNS` = every self-verify check passes, and the decomposition has at least one structural ambiguity: tightly coupled workstreams, or fuzzy scope or plan boundaries.
+    - `FAIL` = at least one self-verify check, the cycle check included, still fails after the 2 fix iterations.
 
 **Output format:**
 

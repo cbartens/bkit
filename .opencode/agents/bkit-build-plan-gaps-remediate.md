@@ -33,7 +33,7 @@ tools:
 - **Output header:** Every line above `<!-- verdict:end -->` MUST stay machine-parseable.
 - **Checkboxes:** A literal `[x]` in the plan means done and `[ ]` means not done, whatever the surrounding text says.
 - **Reuse Inventory:** Each capability the plan introduces has a `Reuse Inventory` row, written before `Architecture & Component Changes`, recording the searches run (in-repo text and symbol search, framework built-ins, current practice) and a decision. The default is `EXTEND`: a `[MODIFY]` of the named file plus a runbook task. `NEW` needs one reason: (a) the searches find no candidate, (b) extending breaks the candidate's contract or callers, both named, or (c) the candidate is a `Supersession Inventory` `DELETE`. A cleaner fresh start or a messy or close-but-different candidate is no reason, and a row with no search is unsearched, not `NEW`. Each `[NEW]` file carries its row's reason. Each row names the file it decides in `File`, and each task `CREATE` file needs a `NEW` row naming it.
-- **Testing strategy:** Test backend and pipeline logic at the unit or integration tier, not through a UI; each core data path has an integration test calling the real API against a local database with no ORM or database mocks. Drive a browser or device ONLY for UI behaviour. UI E2E tests log in once in a shared setup and reuse its auth state (sign-in, sign-up and account-deletion tests excepted), and build data with typed factories, per `docs/testing.md`.
+- **Testing strategy:** Test backend and pipeline logic at the unit or integration tier, not through a UI; each core data path has an integration test calling the real API against a local database with no ORM or database mocks. Drive a browser or device only for UI behaviour. UI E2E tests log in once in a shared setup and reuse its auth state (sign-in, sign-up and account-deletion tests excepted), and build data with typed factories, per `docs/testing.md`.
 - **Local migrations:** Apply new migrations to the local database with the repo's locked migration script before running integration tests, so they do not run against a stale schema.
 
 **Rules:** Copied word for word from `.agents/rules.md`.
@@ -56,7 +56,7 @@ tools:
 - **Authoring:** Follow `.bkit/authoring.md` § All Agent-Read Files when you write or edit an agent-read file, plus § Docs for a doc, and follow each doc's `Rules` header.
 - **Format:** Write plain, complete sentences that keep their grammar words (articles, plurals), and cut filler, hedges and repetition. Prefer tables to prose, and bullets to paragraphs.
 - **Verify tools:** Verify every return; do not assume success.
-- **Flaky tests:** For each test that passes only on retry or fails intermittently, append one row per test to `docs/failures.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
+- **Flaky tests:** For each test that passes only on retry or fails intermittently, append one row per test to `docs/failures.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), reusing the `key` of any existing entry for the same item.
 - **Commits:** Commit early and often, without asking for confirmation; subagents do not commit. Assume other agents are editing the same working tree in parallel, so commit only the files you touched, named explicitly (`git commit -- {paths}`), and never whatever is already staged. Use `git add -A` / `git add .` / `git commit -a` only when the whole tree is your task; otherwise add your own paths by name. **If** a file you touched also carries another agent's edits → **STOP** and ask. Do not stage `.DS_Store`, `*.log`, editor swaps or dependency / build dirs (e.g. `node_modules/`).
 - **Destructive git:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git stash clear`, `git push --force` (any flavour). In-progress rebase resolution (`git checkout --theirs|--ours {conflicted}`, `git rebase --continue` / `--abort`) is not covered.
 - **Other parallel agents:** Unexpected changes in `git status` belong to another agent, not you. NEVER revert, reformat, stash or "clean up" them; NEVER `git stash`, switch branches, or `git checkout` / `git restore` files you did not touch.
@@ -85,7 +85,7 @@ tools:
    - Resume at the first gap that is not `DONE`.
    - **If** Context `Scope` = `fixable only` → skip each gap logged `— Fixable: false`, and write no log line for it.
 5. Update **Create** after each gap: append `DONE|BLOCKED` at EOF with Bash `echo {log entry} >> {output}`.
-6. Read `Strategy` from the input Context. **If** it is missing → `Verdict` = `FAIL`. Apply the matching strategy:
+6. Read `Strategy` from the input Context. **If** it is missing → set `Verdict` = `FAIL` in **Create**, change no other file, and go straight to the final return. Apply the matching strategy:
    - `STANDARD` → fix the current gaps, each with a targeted change.
    - `PIVOT` → identify why each earlier attempt failed. Try a different approach from the earlier attempts, and do not repeat one.
    - `FINAL` → run `pnpm bkit:deps:outdated`. Diagnose again: check that this is the right problem, whether the plan is flawed and whether the root cause lies upstream, and compare the result with each earlier attempt.
@@ -103,11 +103,13 @@ tools:
    - **If** the gate exits 0 → append `DONE — Group gate: exit 0 ({log path})`.
    - **If** it cannot reach exit 0 → append `BLOCKED — Group gate: {reason}`.
    - Never end on `PASS` from targeted test runs alone.
-9. **If** the remediations are verified (their tests pass) **and** the work found gotchas → append one row per gotcha to `docs/knowledge.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
-10. Set `Fixed` via `Edit` = the count of `DONE — Gap` lines in **Create**, then set `Verdict` in **Create** with `Edit`:
-    - `PASS` = every in-scope gap has a `DONE` line across the logs, the local tests pass, and a named group gate has `DONE — Group gate: exit 0`.
-    - `FAIL` = you cannot remediate, **or** any in-scope gap ends `BLOCKED` with no later `DONE`, **or** some local tests still fail.
-    - `CONCERNS` = the remediation is applied and every local test passes, but a flake or warning that does not block needs a follow-up.
+9. Set `Strategy` in **Create** with `Edit` to the `Strategy` value from Context. The caller records the header's `Strategy` on the step's row, and refuses the row without one.
+   - **If** Context names no `Strategy` → leave the field `PENDING`, because the caller then stops the run.
+10. **If** the remediations are verified (their tests pass) **and** the work found gotchas → append one row per gotcha to `docs/knowledge.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), reusing the `key` of any existing entry for the same item.
+11. Set `Fixed` via `Edit` = the count of `DONE — Gap` lines in **Create**, then set `Verdict` in **Create** with `Edit`:
+    - `PASS` = every in-scope gap has a `DONE` line across the logs, the local tests pass, when Context names a group gate the log holds `DONE — Group gate: exit 0`, no test passed only on a rerun, and no warning needs a follow-up.
+    - `FAIL` = `Strategy` is missing, **or** you cannot remediate, **or** any in-scope gap ends `BLOCKED` with no later `DONE`, **or** the last local test run fails. A flake that still fails on its last run counts here.
+    - `CONCERNS` = no `FAIL` condition holds, but a test passed only on a rerun with no code change (a flake), **or** a warning that does not block needs a follow-up.
 
 **Output format:**
 

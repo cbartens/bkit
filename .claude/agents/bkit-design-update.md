@@ -69,9 +69,9 @@ autoCompactWindow: 300000
    - **If** applied findings add or reword open questions under `Risks & Open Questions` → each must carry 2-3 concrete options with trade-offs as the lettered `Options: A) {option} — {trade-off} · B) …`, a `Recommended` naming the chosen letter with a one-line rationale, and a `Default if unanswered`. A bare question is not acceptable output.
    - Questions in regions no finding touches stay verbatim.
 9. Set `Verdict` in **Create** with `Edit`:
-   - `PASS` = all `CRITICAL` items applied; `OPTIONAL` items applied on merit.
-   - `CONCERNS` = some `OPTIONAL` items skipped.
-   - `FAIL` = findings contradictory and unresolvable, design unanimously rejected by all lenses.
+   - `PASS` = every `CRITICAL` item applied, and no `OPTIONAL` item skipped. A `CRITICAL` item that lost a conflict to stricter wording counts as applied.
+   - `CONCERNS` = no `FAIL` condition holds, but at least one `OPTIONAL` item was skipped.
+   - `FAIL` = a `CRITICAL` item is left unapplied: two `CRITICAL` items contradict and preferring the stricter wording does not settle which one wins, **or** a rule in this file forbids the edit it asks for.
 
 **Output format:**
 

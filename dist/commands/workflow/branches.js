@@ -54,6 +54,7 @@ export const EXIT_NO_RECORD = 20;
 export const EXIT_NOTHING_TO_PUSH = 21;
 export const EXIT_DIVERGED = 22;
 export const EXIT_DIFF_FAILED = 23;
+export const EXIT_HAND_RESOLVE = 24;
 // ---------------------------------------------------------------------------
 // Process helpers
 // ---------------------------------------------------------------------------
@@ -203,9 +204,12 @@ function lockfileResolve(top, file) {
  * Drive an in-progress rebase to completion, auto-resolving each stop. Loops
  * because `--continue` replays the next commit, which can conflict in turn; the
  * bound is a runaway guard. Never aborts: on refusal the rebase is left in
- * progress and `branches rebase` aborts it.
+ * progress and `branches rebase` aborts it. `handResolve`: a stop holding a path
+ * it may not resolve gets its ledgers and lockfiles resolved, and the run returns
+ * with the other paths in `pending`, still conflicted, for a hand resolution; the
+ * next call continues the rebase from there.
  */
-export function resolveRebase(top, onLog = () => undefined) {
+export function resolveRebase(top, onLog = () => undefined, opts = {}) {
     const result = {
         ok: false,
         resolved: [],
@@ -213,6 +217,7 @@ export function resolveRebase(top, onLog = () => undefined) {
         rounds: 0,
         refused: null,
         reason: null,
+        pending: [],
         log: [],
     };
     const log = (line) => {
@@ -231,12 +236,15 @@ export function resolveRebase(top, onLog = () => undefined) {
         if (conflicts.length > 0) {
             // Classify the whole set before resolving any of it, so a refused path
             // never leaves half the set rewritten.
-            const refused = conflicts.find((f) => classifyConflict(f) === "refuse");
-            if (refused !== undefined) {
+            const handPaths = conflicts.filter((f) => classifyConflict(f) === "refuse");
+            const refused = handPaths[0];
+            if (refused !== undefined && !opts.handResolve) {
                 return refuse(`REFUSE ${refused} — not an append-only ledger or a recognised lockfile; routing to Failure Path`, refused, "not an append-only ledger or a recognised lockfile");
             }
             for (const f of conflicts) {
                 const kind = classifyConflict(f);
+                if (kind === "refuse")
+                    continue;
                 const ok = kind === "ledger" ? unionResolve(top, f).ok : lockfileResolve(top, f);
                 if (!ok || !runGit(top, ["add", "--", f]).ok) {
                     return refuse(`REFUSE ${f} — resolution failed`, f, "resolution failed");
@@ -245,6 +253,14 @@ export function resolveRebase(top, onLog = () => undefined) {
                 log(kind === "ledger"
                     ? `RESOLVED ${f} — union (append-only ledger)`
                     : `RESOLVED ${f} — took rebase target + regenerated`);
+            }
+            if (refused !== undefined) {
+                result.pending = handPaths;
+                for (const f of handPaths)
+                    log(`PENDING ${f} — left conflicted for a hand resolution`);
+                result.refused = refused;
+                result.reason = "needs a hand resolution";
+                return result;
             }
         }
         // A resolution can empty the commit (both sides appended the same rows);
@@ -408,9 +424,12 @@ function rebaseVerb(ctx) {
         ctx.log("no rebase in progress");
         return EXIT_NO_REBASE;
     }
-    const result = resolveRebase(top, (line) => ctx.log(line));
+    const result = resolveRebase(top, (line) => ctx.log(line), {
+        handResolve: ctx.flags.handResolve === true,
+    });
+    const pending = result.pending.length > 0;
     let aborted = false;
-    if (!result.ok) {
+    if (!result.ok && !pending) {
         // Abort before the log and sentinel writes: the abort resets tracked files.
         const abort = runGit(top, ["rebase", "--abort"]);
         aborted = abort.ok;
@@ -421,21 +440,25 @@ function rebaseVerb(ctx) {
         ctx.log(line);
     }
     appendLog(ctx, str(ctx.flags.logFile), result.log);
-    if (!result.ok && sentinelPath) {
+    const refusedRun = !result.ok && !pending;
+    if (refusedRun && sentinelPath) {
         fs.mkdirSync(path.dirname(sentinelPath), { recursive: true });
         fs.writeFileSync(sentinelPath, "");
     }
     ctx.emit({
-        outcome: result.ok ? "resolved" : "refused",
+        outcome: result.ok ? "resolved" : pending ? "pending" : "refused",
         resolved: result.resolved,
         skippedCommits: result.skippedCommits,
         rounds: result.rounds,
         refused: result.refused,
         reason: result.reason,
+        pending: result.pending,
         aborted,
-        sentinel: !result.ok && sentinel !== undefined ? sentinel : null,
+        sentinel: refusedRun && sentinel !== undefined ? sentinel : null,
     });
-    return result.ok ? EXIT.OK : EXIT_REFUSED;
+    if (result.ok)
+        return EXIT.OK;
+    return pending ? EXIT_HAND_RESOLVE : EXIT_REFUSED;
 }
 /**
  * Push the current branch with exactly one `git push`: plain for dev / main,
@@ -2066,7 +2089,7 @@ export const branchesCommand = {
             run: forceBuildVerb,
         },
         rebase: {
-            summary: "Drive a rebase to completion, auto-resolving ledger (union) and lockfile (regenerate) conflicts; refuse and abort on anything else.",
+            summary: "Drive a rebase to completion, auto-resolving ledger (union) and lockfile (regenerate) conflicts; refuse and abort on anything else, or with --hand-resolve leave it conflicted and the rebase in progress.",
             use: "workflow",
             flags: [
                 {
@@ -2079,20 +2102,27 @@ export const branchesCommand = {
                     type: "string",
                     help: "file removed at start and created on refusal, e.g. logs/{FID}/.rebase-failed",
                 },
+                {
+                    name: "hand-resolve",
+                    type: "boolean",
+                    help: "on a stop holding a path it may not resolve: resolve that stop's ledgers and lockfiles, leave the other paths conflicted and the rebase in progress, and exit 24; run it again after resolving them by hand",
+                },
             ],
             output: {
-                outcome: "resolved | refused (a refused rebase is aborted)",
+                outcome: "resolved | refused (a refused rebase is aborted) | pending (--hand-resolve: the rebase is still in progress)",
                 resolved: "conflicts resolved: [{path, how: union|lockfile}]",
                 skippedCommits: "commits skipped because resolution emptied them",
                 rounds: "resolve rounds run",
                 refused: "the path that stopped resolution (null when none, or not path-specific)",
-                reason: "why resolution refused (null on success)",
-                aborted: "a refused rebase was aborted (false on success, or when the abort failed)",
+                reason: "why resolution refused or stopped (null on success)",
+                pending: "--hand-resolve: the paths left conflicted for a hand resolution (empty otherwise)",
+                aborted: "a refused rebase was aborted (false on success, on pending, or when the abort failed)",
                 sentinel: "the sentinel written on refusal (null otherwise)",
             },
             exitCodes: {
                 [EXIT_REFUSED]: "a conflict is not auto-resolvable",
                 [EXIT_NO_REBASE]: "no rebase in progress",
+                [EXIT_HAND_RESOLVE]: "--hand-resolve: paths are left conflicted for a hand resolution",
             },
             run: rebaseVerb,
         },

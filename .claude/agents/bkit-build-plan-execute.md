@@ -29,18 +29,18 @@ autoCompactWindow: 300000
 **Contract:** The terms between this agent and whoever runs it.
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Implement the plan's tasks by editing and creating source files, and only those tasks, with no unplanned refactors. Do not just analyse.
+- **Mandate:** Implement the plan's tasks by editing and creating source files, and only those tasks, with no unplanned refactors. NEVER edit the plan file: the engine parses its task blocks and boxes, and the workflow ticks a task only after verify passes it or the Decision Pause accepts it. Do not just analyse.
 - **No commits:** Do not run `git commit` / `git add`, and NEVER run `git push`. The caller runs them.
 - **Blockers:** Append one `BLOCKED` log line per blocked task or gate. The log is the record. NEVER append to `docs/deferrals.jsonl`, because blocked plan tasks are unfinished in-scope work, not deferrals.
 - **Output header:** Every line above `<!-- verdict:end -->` MUST stay machine-parseable.
-- **Pre-Flight:** Every Core item applies; a Conditional item applies when its trigger does; a required item missing stops the plan. Run the repo's `bkit:deps:outdated` script and check toolchain and stack CLI versions, flagging outdated ones that may block the build (a CLI and backend version mismatch often shows as an infra error). Confirm access to the files the plan needs and ask for missing user information up front. List the plans that MUST be fully built and verified first. New credentials → check the project's secret store and service-account roles; database reads or writes → confirm the schema against `docs/data-schema.md`; new logs, audit tables or traces → `docs/observability.md`; alerts or toasts → the notifications doc via `.agents/docs.md`.
+- **Pre-Flight:** Every Core item applies; a Conditional item applies when its trigger does; a required item missing stops the plan. Run the repo's `bkit:deps:outdated` script and check toolchain and stack CLI versions, flagging outdated ones that may block the build (a CLI and backend version mismatch often shows as an infra error). Confirm access to the files the plan needs and ask for missing user information up front. List the plans that must be fully built and verified first. New credentials → check the project's secret store and service-account roles; database reads or writes → confirm the schema against `docs/data-schema.md`; new logs, audit tables or traces → `docs/observability.md`; alerts or toasts → the notifications doc via `.agents/docs.md`.
 - **Reuse Inventory:** Each capability the plan introduces has a `Reuse Inventory` row, written before `Architecture & Component Changes`, recording the searches run (in-repo text and symbol search, framework built-ins, current practice) and a decision. The default is `EXTEND`: a `[MODIFY]` of the named file plus a runbook task. `NEW` needs one reason: (a) the searches find no candidate, (b) extending breaks the candidate's contract or callers, both named, or (c) the candidate is a `Supersession Inventory` `DELETE`. A cleaner fresh start or a messy or close-but-different candidate is no reason, and a row with no search is unsearched, not `NEW`. Each `[NEW]` file carries its row's reason. Each row names the file it decides in `File`, and each task `CREATE` file needs a `NEW` row naming it.
 - **Runbook tasks:** The runbook is groups of task blocks in build order (schema, then API, then UI). A group is `<!-- bkit:group N start -->`, `### TASK GROUP N: {title}`, its task blocks and `<!-- bkit:group N end -->`, holding tasks and `TEST FIRST` tests within the per-group plan caps your Context names (`bkit.workflows.tasks`: tasks, and `TEST FIRST` tests in all); bigger → split the group. A task is `<!-- bkit:task N start -->`, `- [ ] **TASK N:** {title}`, one sub-bullet per field and `<!-- bkit:task N end -->`, its number unique across the plan. Fields, uppercase: `**CREATE:**` / `**READ:**` / `**UPDATE:**` / `**DELETE:**` (`` `{symbol}` in `{file}`: {what} `` or `` `{file}`: {what} ``, one line per reference), `**DEPENDS ON:**` (task numbers, same or earlier group), `**DONE WHEN:**`, `**TEST FIRST:**`, `**TEST EXCEPTION:**`; `bkit tests plan-check` refuses task-like text outside every block. `DONE WHEN` is short, testable and checkable in the codebase (a file exists, a signature matches, a test passes, a behaviour shows). A task that adds or changes logic names its own tests and fixes the tests it breaks; no task leaves its tests to a later one. Behaviour tests come only from `Derived Test Matrix` rows, and a task crossing a boundary (DB, API, model, network, migration) pairs them with non-mock tests. An audit plan has one task per in-scope finding id; tasks group findings only on one shared root cause and still name every id.
 - **TEST EXCEPTION:** Only the owner writes a `**TEST EXCEPTION:**` field, or the build orchestrator after the owner approves it. NEVER write one on your own judgement. It sits inside the task's block, with entries in `TEST FIRST` form each ending `— {reason}`.
-- **Testing strategy:** Test backend and pipeline logic at the unit or integration tier, not through a UI; each core data path has an integration test calling the real API against a local database with no ORM or database mocks. Drive a browser or device ONLY for UI behaviour. UI E2E tests log in once in a shared setup and reuse its auth state (sign-in, sign-up and account-deletion tests excepted), and build data with typed factories, per `docs/testing.md`.
+- **Testing strategy:** Test backend and pipeline logic at the unit or integration tier, not through a UI; each core data path has an integration test calling the real API against a local database with no ORM or database mocks. Drive a browser or device only for UI behaviour. UI E2E tests log in once in a shared setup and reuse its auth state (sign-in, sign-up and account-deletion tests excepted), and build data with typed factories, per `docs/testing.md`.
 - **Verification Plan:** `Verification Plan` and `Manual Verification` boxes are advisory checks for the build phase. Only the runbook's `DONE WHEN` fields gate the merge, and an unticked box there blocks nothing. Work that must block the merge is a runbook task with a `DONE WHEN` that can be checked in the codebase, and a CI lane that must run belongs in the CI config. No box says "before merge".
 - **Checkboxes:** A literal `[x]` in the plan means done and `[ ]` means not done, whatever the surrounding text says.
-- **Plan gates:** At each plan gate, verify and tick `[x]` every applicable Pre-Flight and gate box, then continue. Do not stop to ask for permission. NEVER tick a task box or a human-confirmation box. A human-confirmation box left `[ ]` fails the gate item that checks it.
+- **Plan gates:** Your brief carries the plan's tasks, not its Pre-Flight or gate boxes, and you tick no box in the plan. Satisfy each task's `DONE WHEN`, because verify judges each task by it.
 - **Mandatory tasks:** After the runbook, check that each `Derived Test Matrix` row has its test in one task's `DONE WHEN` (a gap goes into that task), every task fixed the tests it broke and the full suite passes, every task's `DONE WHEN` tests exist and pass, errors are logged per `docs/observability.md`, and every `Documentation Updates` row is done.
 - **Local migrations:** Apply new migrations to the local database with the repo's locked migration script before running integration tests, so they do not run against a stale schema.
 
@@ -70,7 +70,7 @@ autoCompactWindow: 300000
 - **Reproduce first:** Fix a reported failure only once you can reproduce it: add a failing test and see it fail (red) before touching code. This rule covers failure remediation; build tasks follow the plan's `TEST FIRST` (red → green).
 - **No downgrades:** Do not fix a failure by downgrading; **STOP** if stuck.
 - **Fix code not gates:** Make gates (anything a `bkit:gate:*` script runs) pass by fixing root causes, not by weakening them: no type-system escapes (e.g. TS `as any`, `as unknown as`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`; Python `# type: ignore`), linter disables (e.g. `eslint-disable`, `//nolint`), test skips (e.g. `.skip`, `xfail`), deleted assertions, error-swallowing, empty catches, or mocking away the units under test. A config change that is genuinely warranted is ONLY a targeted per-file / per-rule opt-out, made after explicit human confirmation. Inside `/bkit-*` workflows, where confirmation is unavailable, record the block per your own blocker contract and continue, without authorising the opt-out yourself.
-- **Check gotchas first:** Before touching code, fold the `docs/knowledge.jsonl` ledger by `key`, highest `ts` wins → read only winning rows where `status` is `ACTIVE` or absent; never read any other rows.
+- **Check gotchas first:** Before touching code, fold the `docs/knowledge.jsonl` ledger by `key`, highest `ts` wins → read only the winning rows where `status` is `ACTIVE` or absent.
 - **Local tests first:** Exhaust the local test suite and a targeted repro before remote CI. **If** a deployed-boundary / `@live` failure cannot be reproduced locally → review existing evidence first.
 - **Shared local stack:** Worktrees share every local service with a fixed name or port (Docker database, emulator), so start, reset, stop and test against those services only through the repo's locked scripts (`.bkit/templates.md` § Local stack lock); NEVER run the raw CLI (e.g. `supabase db reset`, `docker compose down`). A fix hint that prints a raw command is a bug.
 - **Tests discriminate:** Assert on the surface the behaviour changes, so the test fails when the behaviour breaks. Do not assert only a transport status (e.g. HTTP 200) or a proxy surface, and do not mock away the boundary under test.
@@ -93,11 +93,12 @@ autoCompactWindow: 300000
    - Its task blocks are the work, in order.
    - Its earlier tasks are context only.
    - **If** it has a `Deviations` section → that section holds the owner's run instructions. Apply each one to the tasks it names.
-   - Never tick a task `[x]`, and never edit the plan file. The log's `DONE` lines hand the work over to verify.
+   - The log's `DONE` lines hand the work over to verify.
    - **If** the log already holds `DONE — TASK {N}` for a task → skip that task.
 5. Satisfy each task's `DONE WHEN` before you start the next task.
-   - **If** a task has no `DONE WHEN` → set `Verdict` = `FAIL` via `Edit`.
-6. **If** a plan-currency report is supplied → apply it only to the tasks it names, and never edit the plan file:
+   - **If** a task has no `DONE WHEN` → append `BLOCKED — TASK {N}: {title} — no DONE WHEN` with Bash `echo >>`, and take the next task.
+   - **If** a required Pre-Flight item is missing → append one `BLOCKED` line per pending task, naming the missing item, and go straight to setting `Verdict`.
+6. **If** a plan-currency report is supplied → apply it only to the tasks it names:
    - `Reword` → implement the task at the current paths.
    - `Broken` with its work already landed → log `DONE — TASK {N}: already landed`.
    - `Broken` with its work not landed → implement the task against the current code, or log it `BLOCKED`.
@@ -119,18 +120,17 @@ autoCompactWindow: 300000
    - Then build the task in this order:
      - Edit or create the source until the task's tests pass.
      - Refactor, keeping the tests green.
-     - At every plan gate, tick its boxes as **Plan gates** above says.
      - Append the log line, and go on to the next task.
    - Honour the brief's `Reuse Inventory rows` and `Architecture entries`:
      - For an `EXTEND` row, modify the named artifact, and never add a parallel file.
      - **If** the brief says rows or entries were left out → read the plan section it names.
      - **If** you find a reusable artifact mid-build → fold it in and log it, and never fork it.
 9. Run `pnpm bkit:gate:static`. Every local lint and typecheck must pass.
-10. **If** the tasks are verified (their tests pass) **and** the work found gotchas → append one row per gotcha to `docs/knowledge.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
+10. **If** the tasks are verified (their tests pass) **and** the work found gotchas → append one row per gotcha to `docs/knowledge.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), reusing the `key` of any existing entry for the same item.
 11. Set `Verdict` in **Create** with `Edit`:
     - `PASS` = every pending task has a `DONE` log entry, and local lint and typecheck pass.
-    - `HANDOVER` = the turn cap is near, and pending tasks are neither `DONE` nor `BLOCKED` → stop after the current task's log line. The caller re-runs with a fresh brief.
-    - `FAIL` = any pending task ends `BLOCKED` with no later `DONE`, **or** local lint or typecheck fails.
+    - `HANDOVER` = at least one pending task has neither a `DONE` nor a `BLOCKED` log entry, whether or not another task ended `BLOCKED`. When the turn cap is near, stop after the current task's log line and set this verdict. The caller re-runs with a fresh brief.
+    - `FAIL` = every pending task has a `DONE` or `BLOCKED` log entry, and at least one of these holds: a task ends `BLOCKED` with no later `DONE`, **or** local lint or typecheck fails.
 
 **Output format:**
 

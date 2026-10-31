@@ -333,6 +333,67 @@ describe("branches rebase: behaviour", { timeout: GIT_TIMEOUT }, () => {
     expect(read(dir, "docs/knowledge.jsonl")).toBe('{"key":"A","ts":1}\n{"key":"B","ts":2}\n');
   });
 
+  it("--hand-resolve resolves the ledger in a mixed stop and leaves the code path conflicted, the rebase in progress", async () => {
+    const dir = makeRepo("hand-mixed");
+    diverge(
+      dir,
+      { "src.txt": "feat\n", "docs/knowledge.jsonl": '{"key":"B","ts":2}\n' },
+      { "src.txt": "main\n", "docs/knowledge.jsonl": '{"key":"C","ts":3}\n' },
+    );
+    const r = await run(dir, ["rebase", "--hand-resolve", "--sentinel=logs/.rebase-failed"]);
+    expect(r.code).toBe(24);
+    expect(r.json).toMatchObject({
+      outcome: "pending",
+      resolved: [{ path: "docs/knowledge.jsonl", how: "union" }],
+      pending: ["src.txt"],
+      refused: "src.txt",
+      aborted: false,
+      sentinel: null,
+    });
+    expect(r.err).toContain("PENDING src.txt");
+    expect(inRebase(dir)).toBe(true);
+    expect(git(dir, "diff", "--name-only", "--diff-filter=U").out).toBe("src.txt");
+    expect(fs.existsSync(path.join(dir, "logs/.rebase-failed"))).toBe(false);
+
+    // The hand resolution, then the next call continues the rebase to the end.
+    write(dir, "src.txt", "code v0\nmain\nfeat\n");
+    git(dir, "add", "src.txt");
+    const next = await run(dir, ["rebase", "--hand-resolve"]);
+    expect(next.code).toBe(0);
+    expect(next.json).toMatchObject({ outcome: "resolved", pending: [] });
+    expect(inRebase(dir)).toBe(false);
+    expect(read(dir, "docs/knowledge.jsonl").split("\n").filter(Boolean)).toHaveLength(3);
+  });
+
+  it("--hand-resolve stops again at each later commit that conflicts", async () => {
+    const dir = makeRepo("hand-multi");
+    const replace = (body: string, message: string) => {
+      write(dir, "src.txt", body);
+      git(dir, "commit", "-q", "-am", message);
+    };
+    git(dir, "checkout", "-q", "-b", "feat");
+    replace("feat 1\n", "feat 1");
+    replace("feat 2\n", "feat 2");
+    git(dir, "checkout", "-q", "main");
+    replace("main\n", "main");
+    git(dir, "checkout", "-q", "feat");
+    git(dir, "rebase", "main");
+    const first = await run(dir, ["rebase", "--hand-resolve"]);
+    expect(first.code).toBe(24);
+    // Keeping both sides here makes the second commit conflict in turn.
+    write(dir, "src.txt", "main and feat 1\n");
+    git(dir, "add", "src.txt");
+    const second = await run(dir, ["rebase", "--hand-resolve"]);
+    expect(second.code).toBe(24);
+    expect(second.json).toMatchObject({ outcome: "pending", pending: ["src.txt"] });
+    write(dir, "src.txt", "feat 2\n");
+    git(dir, "add", "src.txt");
+    const third = await run(dir, ["rebase", "--hand-resolve"]);
+    expect(third.code).toBe(0);
+    expect(inRebase(dir)).toBe(false);
+    expect(read(dir, "src.txt")).toBe("feat 2\n");
+  });
+
   it("produces byte-identical output to merge=union", async () => {
     const divergeKnowledge = (dir: string) =>
       diverge(

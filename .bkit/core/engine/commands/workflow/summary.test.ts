@@ -130,6 +130,39 @@ describe("buildSummary", () => {
       expect(buildSummary(input({ rows })).reasons).toContain("build-plan-execute (group 7) FAIL");
   });
 
+  it("a group's gaps fix FAIL answered by that group's later non-FAIL verify is CONCERNS; else FAIL", () => {
+    const row = (step: string, group: number, verdict: string, attempt = 1) => ({
+      type: "step-done",
+      step,
+      group,
+      verdict,
+      attempt,
+    });
+    const gaps = row("build-plan-gaps-remediate", 3, "FAIL");
+    const answered = buildSummary(
+      input({
+        rows: [
+          row("build-plan-verify", 3, "CONCERNS"),
+          gaps,
+          row("build-plan-verify", 3, "PASS", 2),
+        ],
+      }),
+    );
+    expect(answered.reasons).toContain(
+      "build-plan-gaps-remediate (group 3) FAIL, answered by build-plan-verify",
+    );
+    expect(answered.verdict).toBe("CONCERNS");
+
+    for (const rows of [
+      [gaps],
+      [gaps, row("build-plan-verify", 4, "PASS")],
+      [gaps, row("build-plan-verify", 3, "FAIL", 2)],
+    ])
+      expect(buildSummary(input({ rows })).reasons).toContain(
+        "build-plan-gaps-remediate (group 3) FAIL",
+      );
+  });
+
   it("the Challenge section says when challenge-1 was skipped for a small change", () => {
     const gate = (linesChanged: number, filesChanged: number, size: string, skipped: boolean) => ({
       type: "challenge-gate",

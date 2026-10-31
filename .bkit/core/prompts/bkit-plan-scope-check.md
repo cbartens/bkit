@@ -68,18 +68,20 @@ autoCompactWindow: 300000
 6. Check the scenario sections and the open questions:
    - **If** the `Acceptance Scenario` or `Derived Test Matrix` section is missing or vague → `CRITICAL`.
    - **If** an `Open Questions & Assumptions` question breaks **Open questions** above → an `OPTIONAL` finding that names the missing parts.
-7. Check that every `Agent Execution Runbook` task has a scope and a verification step.
-8. Check that every scope item has both a build task and a verification task.
-9. Identify gaps, edge cases, untested assumptions and missing error handling.
+7. Check that every `Agent Execution Runbook` task has a scope and a verification step. A task missing either → `CRITICAL`.
+8. Check that every scope item has both a build task and a verification task. A scope item missing either → `CRITICAL`.
+9. Identify gaps, edge cases, untested assumptions and missing error handling. Give each finding a severity:
+   - **If** it is a kind the output's `CRITICAL` section lists → `CRITICAL`.
+   - **Else** → `OPTIONAL`.
 10. Check that each capability the plan introduces has a `Reuse Inventory` row, per **Reuse Inventory** above. A missing row, an empty `Search performed`, a rejected `NEW` reason, or an untraced `[NEW]` / `EXTEND` row → `CRITICAL`.
 11. Check that each `Out of Scope` entry is `Exempt` per **Out of Scope** above. Required work parked out of scope is a `Blocking` deferral → `CRITICAL`.
-12. Check that no task scopes edits inside a `bkit:start` / `bkit:end` block. Each such edit belongs below `bkit:end`.
+12. Check that no task scopes edits inside a `bkit:start` / `bkit:end` block. A task that does → `CRITICAL`, because `bkit upgrade` overwrites that block. The edit belongs below `bkit:end`.
 13. Sort findings into the three categories `CRITICAL`, `OPTIONAL` and `OUT OF SCOPE`.
 14. Set `Failures` in **Create** with `Edit` = the number of `CRITICAL` findings, counting only complete ones.
 15. Set `Verdict` in **Create** with `Edit`:
-    - `PASS` = the scope is complete.
+    - `PASS` = no `CRITICAL` items.
     - `CONCERNS` = `CRITICAL` gaps for plan-update to apply, and no `FAIL` condition holds.
-    - `FAIL` = a `Blocking` out-of-scope deferral that no plan edit recovers. Every other gap → `CRITICAL`.
+    - `FAIL` = a `CRITICAL` finding names a `Blocking` out-of-scope deferral that no plan edit recovers.
 
 **Output format:**
 
@@ -91,11 +93,11 @@ Failures: <integer >= 0>
 
 # Plan Scope Check
 
-Lens: Scope, criteria, verification audit.
+Lens: Scope audit — scope, criteria, verification.
 
 ## CRITICAL
 
-[Gaps that block plan progress: a missing or vague `Acceptance Scenario` or `Derived Test Matrix`, a missing build task, a missing verification task, missing traceability between a capability and its `Reuse Inventory` row, scope creep in the plan that must be removed, and a `Blocking` out-of-scope deferral. **If** none → `None`. Initially set to `PENDING`.]
+[Gaps that block plan progress: a missing or broken mandated section, a missing or vague `Acceptance Scenario` or `Derived Test Matrix`, a task with no scope or no verification step, a missing build task, a missing verification task, a task that edits inside a `bkit:start` / `bkit:end` block, missing traceability between a capability and its `Reuse Inventory` row, scope creep in the plan that must be removed, and a `Blocking` out-of-scope deferral. **If** none → `None`. Initially set to `PENDING`.]
 
 ## OPTIONAL
 

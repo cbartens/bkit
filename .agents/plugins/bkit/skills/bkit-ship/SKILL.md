@@ -68,14 +68,15 @@ description: "Ship Feature — Autonomous merge and archive"
    Context: You are a subagent in the Ship Debug phase. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
    Read: `{STATUS}`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input-{RUN}.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/ship-deferred-sweep.md` (if present), glob `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-remediate-*-log.md`, `tmp/bkit-diff-{FID}.md` (the run's diff, if present).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-handover.md`.
-5. Flush the run's book to `dev` as one commit and one push. **Skip if** `FID` **or** `YYYYMM` is empty. Drop `--worktree` when `WORKTREE_PATH` is not set:
+5. **If** `SUMMARY_VERDICT` = FAIL → read `{WORKTREE_PATH}/docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md` now, because the flush removes the worktree.
+   Flush the run's book to `dev` as one commit and one push. **Skip if** `FID` **or** `YYYYMM` is empty. Drop `--worktree` when `WORKTREE_PATH` is not set:
    ```bash
    "{BKIT}" workflows handover --post --workflow=ship --fid={FID} --month={YYYYMM} --flush --worktree="{WORKTREE_PATH}"
    ```
    The block posts a non-null `comment`, which links the handover only where the flush pushed it.
    **If** `tracker.done` = false → post `comment` via the tracker MCP per the header's fallback section.
    **If** the push failed → do not claim success on the tracker.
-6. **STOP**, no further downstream steps. Line 1 of the final message = the no-issue warning, when one was emitted.
+6. **STOP**, no further downstream steps. **If** `SUMMARY_VERDICT` = FAIL → the final message is `ship-summary.md` content verbatim. Line 1 of the final message = the no-issue warning, when one was emitted.
 
 ---
 
@@ -85,7 +86,7 @@ description: "Ship Feature — Autonomous merge and archive"
    ```bash
    "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" repo info --fetch
    ```
-   Hold `bkit` as `{BKIT}`, `ownerRepo` as `OWNER_REPO`, `owner` as `OWNER`, `repo` as `REPO`, `branch` as initial `BRANCH`, `repoRoot` as `REPO_ROOT`, `outboxRoot` as `OUTBOX_ROOT`, `sessionDir` as `{SESSION_DIR}`, `bkitAdvisory` as `BKIT_ADVISORY`.
+   Hold `bkit` as `BKIT`, `ownerRepo` as `OWNER_REPO`, `owner` as `OWNER`, `repo` as `REPO`, `branch` as initial `BRANCH`, `repoRoot` as `REPO_ROOT`, `outboxRoot` as `OUTBOX_ROOT`, `sessionDir` as `SESSION_DIR`, `bkitAdvisory` as `BKIT_ADVISORY`.
    **If** `BKIT_ADVISORY` != null → emit advisory `[bkit-ship] {BKIT_ADVISORY}`.
    Hold `trackerTeam` as `TRACKER_TEAM`, `trackerProject` as `TRACKER_PROJECT`, `trackerSite` as `TRACKER_SITE`.
 2. Write the session prompt verbatim to `{SESSION_DIR}/prompt.md` → read the issue and the `FID` it names:
@@ -146,7 +147,7 @@ description: "Ship Feature — Autonomous merge and archive"
    cd "{WORKTREE_PATH}" || exit 1
    "{BKIT}" status path --workflow=ship --fid="{FID}" --month="{YYYYMM}"
    ```
-   Then hold `path` as `{STATUS}` and `bookRoot` as `BOOK_ROOT`.
+   Then hold `path` as `STATUS` and `bookRoot` as `BOOK_ROOT`.
    Open the run and record the runtime. The block refuses a checkout not on `SHIP_BRANCH` (15), clears stale sentinels, and writes the `workflow-started` and `ship-start-workflow` rows:
    ```bash
    "{BKIT}" workflows start --workflow=ship --fid="{FID}" --month="{YYYYMM}" --file="{STATUS}" --branch="{SHIP_BRANCH}" --lock-held --token="{LOCK_TOKEN}" || exit 1
@@ -322,6 +323,7 @@ description: "Ship Feature — Autonomous merge and archive"
 2. Route:
    - **If** `BASE_PATH` = A → Step 5 (skip integration — dev has not moved).
    - **If** `BASE_PATH` = B → Step 4 (integration required).
+   - **Else** → **Failure Path**.
 
 ### 🔒 Gate 3 — Base Check
 
@@ -337,10 +339,16 @@ description: "Ship Feature — Autonomous merge and archive"
 
 **Run only if** `BASE_PATH` = B.
 
-1. **If** `MERGEABLE` = MERGEABLE (B1: no textual conflict) → refresh the PR head on the server, which the block does only when `dev` requires status checks → Step 5:
+1. **If** `MERGEABLE` = MERGEABLE (B1: no textual conflict) → refresh the PR head on the server, which the block does only when `dev` requires status checks:
    ```bash
    "{BKIT}" prs update-branch --number={PR_NUMBER} --only-if-required
    ```
+   Route:
+   - **If** exit 0 → Step 5.
+   - **If** exit 80 → refresh the PR head with `update_pull_request_branch`:
+     - **If** it succeeds → Step 5.
+     - **Else** → **Failure Path**.
+   - **Else** → **Failure Path**. `gh` could not refresh the PR head.
 2. **If** `MERGEABLE` = CONFLICTING (B2: textual conflict) → resolve the conflict locally and push:
    1. **Subagent:** Invoke `view_file` `.agents/plugins/bkit/agents/bkit-ship-conflict-resolve.md` using `view_file` tool:
       Context: You are a subagent in the Ship phase. Textual conflict against `origin/dev`. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
@@ -399,7 +407,7 @@ description: "Ship Feature — Autonomous merge and archive"
    cd "{WORKTREE_PATH}" && "{BKIT}" context diff --reset-log --artifact="tmp/bkit-diff-{FID}.md" --fid={FID} --step=ship-deferred-sweep >/dev/null || exit 2
    ```
    **Subagent:** Invoke `view_file` `.agents/plugins/bkit/agents/bkit-ship-deferred-sweep.md` using `view_file` tool:
-   Context: You are a subagent in the Ship phase. Pre-merge completeness gate. Diff base: `origin/dev` — run `bkit branches scan-diff --disabled-tests --base=origin/dev`. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
+   Context: You are a subagent in the Ship phase. Pre-merge completeness gate. FID: `{FID}`. Diff base: `origin/dev` — run `bkit branches scan-diff --disabled-tests --base=origin/dev`. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/ship-input-{RUN}.md`, `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), `docs/plans/{YYYYMM}/{FID}-design.md` (if present), `{STATUS}`, `docs/deferrals.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/*-plan-verify*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/*-challenge*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/*-summary.md`, `tmp/bkit-diff-{FID}.md` (the run's diff).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-deferred-sweep.md`.
 3. Finish (bookkeeping to `$BOOK_ROOT`):
@@ -449,7 +457,6 @@ description: "Ship Feature — Autonomous merge and archive"
    ```
 6. Route:
    - **If** `SUMMARY_VERDICT` = PASS **or** CONCERNS → Step 7.
-   - **If** `SUMMARY_VERDICT` = FAIL → display `ship-summary.md` content verbatim as final message to user. Line 1 of the final message = the no-issue warning, when one was emitted. → **Failure Path**.
    - **Else** → **Failure Path**.
 
 ### 🔒 Gate 6 — Update Docs & Summary
@@ -529,7 +536,7 @@ description: "Ship Feature — Autonomous merge and archive"
    "{BKIT}" runs gate --pr="{PR_NUMBER}" --validated="{VALIDATED_HEAD}" --month="{YYYYMM}" --fid="{FID}" --repo="{OWNER_REPO}" --branch="{SHIP_BRANCH}" --fetch --file="{STATUS}" --snapshot="{OUTBOX}/pre-merge-snapshot.jsonl" --record="{STATUS}"
    ```
    Route:
-   - **If** exit 0 → hold `mergeHead` as `{GATE_HEAD}` → sub-step 2.
+   - **If** exit 0 → hold `mergeHead` as `GATE_HEAD` → sub-step 2.
    - **If** exit 11 (in progress — poll), 14 (stale green), 10 (no run) **or** 17 (non-bookkeeping change past `VALIDATED_HEAD`) → route on the failed arrivals at Step 10, without asking:
      ```bash
      "{BKIT}" counters route --name=MERGE_ATTEMPT --of=ship-merge-pr:count --rows=ship-gate-refusal:count --file="{STATUS}" --workflow=ship --point=ship.merge --continue=step-9 --exceeded=failure-path
@@ -555,7 +562,7 @@ description: "Ship Feature — Autonomous merge and archive"
    ```bash
    "{BKIT}" steps finish --workflow=ship --step=ship-merge-pr --file="{STATUS}" --verdict={MERGE_VERDICT} --failures={MERGE_FAILURES} --attempt=next --commit=none --number=10 --post --title="Merge Gate + Merge PR"
    ```
-   Hold `attempt` as `{MERGE_ATTEMPT}`.
+   Hold `attempt` as `MERGE_ATTEMPT`.
 4. Route:
    - **If** `state` = MERGED → Step 13.
    - **If** `state` != MERGED → run counter routing:
@@ -588,7 +595,7 @@ description: "Ship Feature — Autonomous merge and archive"
    ```bash
    "{BKIT}" steps finish --workflow=ship --step=ship-failure-diagnose --file="{STATUS}" --attempt-of=ship-merge-pr:current --agent=bkit-debug-failure-diagnose --artifact="docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-<attempt>.md" --commit=none --number=11 --post --title="Failure Diagnose"
    ```
-   Hold `verdict` as `{DIAGNOSE_VERDICT}`.
+   Hold `verdict` as `DIAGNOSE_VERDICT`.
 3. Ask before the fix round only when the diagnosis found no clear cause. State the failure in plain English before the technical cause.
    **If** `MERGE_ASK` = false **or** `DIAGNOSE_VERDICT` = PASS → narrate `ship merge: attempt {MERGE_ROUNDS} of {MERGE_MAX}, fix round taken without asking ({the diagnosed cause})` → Step 12.
    Ask the human in this session, in plain text, in one message:
@@ -619,7 +626,10 @@ description: "Ship Feature — Autonomous merge and archive"
      Route:
      - **If** the handover exits non-zero → **Failure Path**.
      - **Else** → **STOP**, no further downstream steps.
-   - **Else** → discuss → record the wait → end turn.
+   - **Else** → answer the reply in plain text and ask Q1 again in the same message, then record the wait and end the turn:
+     ```bash
+     "{BKIT}" status row --file="{STATUS}" --workflow=ship --type=owner-pause --field=reason=merge >/dev/null || exit 1
+     ```
 
 ### 🔒 Gate 11 — Failure Diagnose
 
@@ -648,11 +658,11 @@ description: "Ship Feature — Autonomous merge and archive"
    ```
 4. Route on `verdict`:
    - **If** `verdict` = PASS:
-     - **If** `{MERGE_ATTEMPT}` is not held (resumed into this step) → read the merge round back:
+     - **If** `MERGE_ATTEMPT` is not held (resumed into this step) → read the merge round back:
        ```bash
        "{BKIT}" counters derive --file="{STATUS}" --workflow=ship --step=ship-merge-pr --position=current
        ```
-       Hold `value` as `{MERGE_ATTEMPT}`.
+       Hold `value` as `MERGE_ATTEMPT`.
      - Commit and push the fix, and NEVER force:
        ```bash
        "{BKIT}" ledgers commit --month="{YYYYMM}" --fid="{FID}" --scope=full --mode=commit --stage-tracked-updates --message="fix({FID}): failure-remediate attempt {MERGE_ATTEMPT}" >/dev/null \

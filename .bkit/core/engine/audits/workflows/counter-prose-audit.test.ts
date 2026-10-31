@@ -126,8 +126,11 @@ function stepDoneLines(block: string): Array<{ step: string; line: string }> {
  * Bans ANY bare `*_ATTEMPT` token in prose — assignment, increment, reset,
  * comparison all name the counter bare — exempting only:
  *   (a) `{X_ATTEMPT}` brace placeholders NOT preceded by `$` (a substitution
- *       token holding a value a command printed, never a computation), and
- *   (b) bare `MAX_*_ATTEMPT` threshold NAMES.
+ *       token holding a value a command printed, never a computation),
+ *   (b) bare `MAX_*_ATTEMPT` threshold NAMES,
+ *   (c) a hold target, ``as `X_ATTEMPT` `` (the name a command's printed field is
+ *       held under; held names carry no braces), and
+ *   (d) a held check, `` `X_ATTEMPT` is held `` or `` `X_ATTEMPT` is not held ``.
  * `${X_ATTEMPT}` is a `$`-prefixed VALUE reference and is NOT exempt; the
  * negative lookbehind on `$` is what keeps the two apart.
  */
@@ -136,9 +139,15 @@ function findBareAttemptTokenViolations(content: string): Array<{ line: number; 
   const hits: Array<{ line: number; text: string }> = [];
   const placeholderExempt = /(?<!\$)\{[A-Z][A-Z0-9_]*_ATTEMPT\}/g;
   const maxNameExempt = /\bMAX_[A-Z0-9_]*_ATTEMPT\b/g;
+  const holdExempt = /\bas `[A-Z][A-Z0-9_]*_ATTEMPT`(?!\s*[-+=<>])/g;
+  const heldCheckExempt = /`[A-Z][A-Z0-9_]*_ATTEMPT` is (?:not )?held\b/g;
   const bareToken = /\b[A-Z][A-Z0-9_]*_ATTEMPT\b/;
   lines.forEach((l, i) => {
-    const masked = l.replace(placeholderExempt, "").replace(maxNameExempt, "");
+    const masked = l
+      .replace(placeholderExempt, "")
+      .replace(maxNameExempt, "")
+      .replace(holdExempt, "")
+      .replace(heldCheckExempt, "");
     if (bareToken.test(masked)) hits.push({ line: i + 1, text: l.trim() });
   });
   return hits;
@@ -164,7 +173,7 @@ describe("1. no bare *_ATTEMPT token and no counter arithmetic in workflow prose
       const hits = findBareAttemptTokenViolations(readRepo(wfFile));
       expect(
         hits.map((h) => `line ~${h.line}: ${h.text.slice(0, 120)}`),
-        "derive the counter with bkit counters derive|run in a fenced block; prose may only hold {X_ATTEMPT}",
+        "derive the counter with bkit counters derive|run in a fenced block; prose may only name it as {X_ATTEMPT}, a hold target or a held check",
       ).toEqual([]);
     });
 
@@ -181,6 +190,8 @@ describe("1. no bare *_ATTEMPT token and no counter arithmetic in workflow prose
       "`NORMAL_ATTEMPT` > 1",
       "`SOAK_ATTEMPT` reset to 0",
       "cost `${TEST_ATTEMPT}` in prose",
+      "Hold `value` as `VERIFY_ATTEMPT` + 1",
+      "**If** `TEST_ATTEMPT` is held **and** `TEST_ATTEMPT` = 2",
     ];
     for (const line of knownBad) {
       it(`bare-token rule fires on: ${line}`, () => {
@@ -198,6 +209,18 @@ describe("1. no bare *_ATTEMPT token and no counter arithmetic in workflow prose
       expect(findBareAttemptTokenViolations("Attempt: {VERIFY_ATTEMPT}").length).toBe(0);
       expect(findBareAttemptTokenViolations("Bounded by MAX_TEST_ATTEMPT.").length).toBe(0);
       expect(findProseCounterArithmetic("Attempt: {VERIFY_ATTEMPT}").length).toBe(0);
+    });
+
+    it("does NOT fire on a hold target or a held check", () => {
+      expect(findBareAttemptTokenViolations("Hold `value` as `VERIFY_ATTEMPT`.").length).toBe(0);
+      expect(
+        findBareAttemptTokenViolations(
+          "`verifyAttempt` as `VERIFY_ATTEMPT`, `testAttempt` as `TEST_ATTEMPT`",
+        ).length,
+      ).toBe(0);
+      expect(
+        findBareAttemptTokenViolations("**If** `TEST_ATTEMPT` is not held → read it back").length,
+      ).toBe(0);
     });
   });
 });

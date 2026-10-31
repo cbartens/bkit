@@ -23,8 +23,8 @@ description: "Build Feature — Autonomous implementation"
 
 - **Friction:** Watch own context and subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → append rows to `.bkit/friction.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom) → continue or escalate; logging does not replace **Failure Path**.
 - **Finish:** `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, derives the attempt (`--attempt-of`; `<attempt>` in a path or message becomes it), checks artifacts and row, writes the row, commits, prints `comment`. Exit 5 **or** 6 → invoke `reask.agent` again with `"Your prior output '<reask.artifact>' has an invalid header. Re-emit only its header fields + '<!-- verdict:end -->' at top of that file. Do not redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**. Exit 8 → nothing written, nothing committed: fix what the hook's message names, then re-run this block — the step's attempt is unchanged. Hold `verdict` as the step's verdict, `fields` as its other header fields, `attempt` as its attempt.
-- **Resume:** After Step 2, `"{BKIT}" status resume --workflow=build --file="{STATUS}"` names where the active `IN_PROGRESS` run picks up — after its last `DONE` step; Steps 1-2 ALWAYS run again and rows of steps this workflow no longer has are ignored → continue at Step `number`; `group` non-null → `GROUP` = `group`; `CHALLENGE_ROUND` = `challengeRound`; `CHALLENGE_DONE` = `challengeDone`; `after` = `build-challenge` → Step 11 sub-step 1's `counters max --point=build.challenge` block (hold `value` as `CHALLENGE_MAX`), sub-step 2, then sub-step 5. **If** Step 2's `workflows start` printed `openDecision` != null → resume at **Decision Pause** step 3 with it instead: `decision` as `DECISION`, `question` as `PAUSE_QUESTION`, `pauseStep` as `PAUSE_STEP`, `group` as `GROUP`, `verifyAttempt` as `{VERIFY_ATTEMPT}`, `testAttempt` as `{TEST_ATTEMPT}`, `PAUSE_POINT` = `build.{from}`; `from` = `challenge` → `CHALLENGE_ROUND` = `challengeRound`, then run `counters max --point=build.challenge` (hold `value` as `CHALLENGE_MAX`) and Step 11 sub-steps 2 and 5 (the merge finds its tasks already in the plan, writes nothing and prints the round's open tasks) → hold `fixTasks` as `{CHALLENGE_TASKS}` → back to **Decision Pause** step 3, NEVER sub-step 6.
-- **Plan:** `docs/plans/{YYYYMM}/{FID}-plan.md`, in task-block form (`docs/templates/bkit-plan.md` § Agent Execution Runbook). Each group holds at most `MAX_TASKS_PER_GROUP` tasks and at most `MAX_TESTS_PER_GROUP` `TEST FIRST` tests (`bkit.workflows.tasks`, held at Step 1). One group runs per pass of Steps 7-9. Only the verify steps tick a task `[x]`, apart from a challenge task the **Decision Pause** accepts.
+- **Resume:** After Step 2, `"{BKIT}" status resume --workflow=build --file="{STATUS}"` names where the active `IN_PROGRESS` run picks up — after its last `DONE` step; Steps 1-2 ALWAYS run again and rows of steps this workflow no longer has are ignored → continue at Step `number`; `group` non-null → `GROUP` = `group`; `CHALLENGE_ROUND` = `challengeRound`; `CHALLENGE_DONE` = `challengeDone`; `after` = `build-challenge` → Step 11 sub-step 1's `counters max --point=build.challenge` block (hold `value` as `CHALLENGE_MAX`), sub-step 2, then sub-step 5. **If** Step 2's `workflows start` printed `openDecision` != null → resume at **Decision Pause** step 3 with it instead: `decision` as `DECISION`, `question` as `PAUSE_QUESTION`, `pauseStep` as `PAUSE_STEP`, `group` as `GROUP`, `verifyAttempt` as `VERIFY_ATTEMPT`, `testAttempt` as `TEST_ATTEMPT`, `PAUSE_POINT` = `build.{from}`; `from` = `challenge` → `CHALLENGE_ROUND` = `challengeRound`, then run `counters max --point=build.challenge` (hold `value` as `CHALLENGE_MAX`) and Step 11 sub-steps 2 and 5 (the merge finds its tasks already in the plan, writes nothing and prints the round's open tasks) → hold `fixTasks` as `CHALLENGE_TASKS` → back to **Decision Pause** step 3, NEVER sub-step 6.
+- **Plan:** `docs/plans/{YYYYMM}/{FID}-plan.md`, in task-block form (`docs/templates/bkit-plan.md` § Agent Execution Runbook). Each group holds at most `MAX_TASKS_PER_GROUP` tasks and at most `MAX_TESTS_PER_GROUP` `TEST FIRST` tests (`bkit.workflows.tasks`, held at Step 1). One group runs per pass of Steps 7-9. Only the verify steps and the **Decision Pause** tick a task `[x]`. The pause ticks a challenge task it accepts, whether the owner accepts it or the run assumes the accept.
 - **Status:** `status.jsonl` = append-only NDJSON event log, one event per line. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS|CONCERNS|FAIL`, or a word the step's agent adds, e.g. execute's `HANDOVER`), `failures`, `attempt`, `group`, `strategy` (`STANDARD|PIVOT|FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
 - **Locks:** Step 1 takes `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` with `bkit locks acquire --kind=workflow` (hold `token`); release in last step and Failure Path with that token; assert lock released before exiting. **If** still held → **Failure Path** with `Lock removal failed`. **If** existing lock — its owning workflow's folded status.jsonl decides: `IN_PROGRESS` and last step <30min idle → **Failure Path**; any other holder (`DONE`, `FAILED`, `IN_PROGRESS` idle >=30min, no run) → reclaimed.
 - **Status branch:** status.jsonl committed on `feat/{FID}` (`$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`); per-step commits, no pushes.
@@ -94,7 +94,7 @@ description: "Build Feature — Autonomous implementation"
    Route:
    - **If** exit 80 → open PR on `{BRANCH}` via `list_pull_requests` → re-run with `--open-pr={number}` or `--open-pr=none`.
    - **Else** → **If** `tracker.done` = false → post `comment` via the tracker MCP per the header's fallback section → step 6.
-6. **STOP**, no further downstream steps.<!-- bkit:tracker true start --> Line 1 of the final message = the no-issue warning, when one was emitted.<!-- bkit:tracker true end -->
+6. **STOP**, no further downstream steps. **If** `SUMMARY_VERDICT` = FAIL → the final message is `build-summary.md` content verbatim.<!-- bkit:tracker true start --> Line 1 of the final message = the no-issue warning, when one was emitted.<!-- bkit:tracker true end -->
 
 ---
 
@@ -254,7 +254,7 @@ description: "Build Feature — Autonomous implementation"
    ```bash
    "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" repo info --fetch
    ```
-   Hold `bkit` as `{BKIT}`, `ownerRepo` as `OWNER_REPO`, `owner` as `OWNER`, `repo` as `REPO`, `branch` as initial `BRANCH`, `repoRoot` as `REPO_ROOT`, `outboxRoot` as `OUTBOX_ROOT`, `sessionDir` as `{SESSION_DIR}`, `behindDev` as `BEHIND_DEV`, `divergedAgo` as `DIVERGED_AGO`, `bkitAdvisory` as `BKIT_ADVISORY`, `tasks.maxPerGroup` as `MAX_TASKS_PER_GROUP`, `tasks.maxTestsPerGroup` as `MAX_TESTS_PER_GROUP`, `tasks.maxTestsPerTask` as `MAX_TESTS_PER_TASK`, `tasks.maxTestFilesPerTask` as `MAX_TEST_FILES_PER_TASK`. **If** `BKIT_ADVISORY` != null → emit advisory `[bkit-build] {BKIT_ADVISORY}`.
+   Hold `bkit` as `BKIT`, `ownerRepo` as `OWNER_REPO`, `owner` as `OWNER`, `repo` as `REPO`, `branch` as initial `BRANCH`, `repoRoot` as `REPO_ROOT`, `outboxRoot` as `OUTBOX_ROOT`, `sessionDir` as `SESSION_DIR`, `behindDev` as `BEHIND_DEV`, `divergedAgo` as `DIVERGED_AGO`, `bkitAdvisory` as `BKIT_ADVISORY`, `tasks.maxPerGroup` as `MAX_TASKS_PER_GROUP`, `tasks.maxTestsPerGroup` as `MAX_TESTS_PER_GROUP`, `tasks.maxTestsPerTask` as `MAX_TESTS_PER_TASK`, `tasks.maxTestFilesPerTask` as `MAX_TEST_FILES_PER_TASK`. **If** `BKIT_ADVISORY` != null → emit advisory `[bkit-build] {BKIT_ADVISORY}`.
    <!-- bkit:tracker true start -->
    Hold `trackerTeam` as `TRACKER_TEAM`, `trackerProject` as `TRACKER_PROJECT`, `trackerSite` as `TRACKER_SITE`.
    <!-- bkit:tracker true end -->
@@ -383,7 +383,7 @@ description: "Build Feature — Autonomous implementation"
    ```bash
    "{BKIT}" workflows input --workflow=build --fid={FID} --run={RUN} --file="{STATUS}" --prompt-file="{SESSION_DIR}/prompt.md"<!-- bkit:tracker true start --> --description-file="{SESSION_DIR}/issue-description.md" --comments-file="{SESSION_DIR}/issue-comments.json"<!-- bkit:tracker true end --> --plan="docs/plans/{YYYYMM}/{FID}-plan.md" || exit 1
    ```
-   Hold `newerThanPlan` as `{NEWER_COMMENTS}`.
+   Hold `newerThanPlan` as `NEWER_COMMENTS`.
 5. Finish:
    ```bash
    "{BKIT}" steps done --workflow=build --step=build-start-workflow --file="{STATUS}" --commit=none >/dev/null || exit 1
@@ -562,7 +562,7 @@ Each task group gets its own pass of Steps 7-9, in group order. Step 7 briefs th
    ```bash
    "{BKIT}" counters derive --file="{STATUS}" --workflow=build --step=build-plan-verify --group={GROUP} --position=next
    ```
-   Hold `value` as `{VERIFY_ATTEMPT}`.
+   Hold `value` as `VERIFY_ATTEMPT`.
 2. Audit the group's test-first reds:
    ```bash
    "{BKIT}" tests green --file="{STATUS}" --workflow=build --group={GROUP} --plan="docs/plans/{YYYYMM}/{FID}-plan.md" --log="docs/plans/{YYYYMM}/logs/{FID}/build-tests-green-{GROUP}-{VERIFY_ATTEMPT}.md"
@@ -652,7 +652,7 @@ Each task group gets its own pass of Steps 7-9, in group order. Step 7 briefs th
    ```bash
    "{BKIT}" counters derive --file="{STATUS}" --workflow=build --step=build-plan-verify --group={GROUP} --position=current
    ```
-   Hold `value` as `{VERIFY_ATTEMPT}`.
+   Hold `value` as `VERIFY_ATTEMPT`.
    ```bash
    "{BKIT}" status route --file="{STATUS}" --workflow=build --step=build-plan-verify --group={GROUP} --require=verdict
    ```
@@ -672,7 +672,7 @@ Each task group gets its own pass of Steps 7-9, in group order. Step 7 briefs th
    ```bash
    "{BKIT}" steps finish --workflow=build --step=build-plan-gaps-remediate --file="{STATUS}" --attempt-of=build-plan-verify:current --group={GROUP} --agent=bkit-build-plan-gaps-remediate --artifact="docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{GROUP}-<attempt>-log.md" --number=9 --post --title="Plan Gaps Remediate" --message="chore({FID}): plan-gaps-remediate group {GROUP} attempt <attempt>"
    ```
-   Hold `fields.Fixed` as `VERIFY_FIXED`.
+   Hold `fields.Fixed` as `VERIFY_FIXED`. Nothing routes on `verdict`: it only goes on the step's row. Step 8 runs again and judges the fixes, and a later non-FAIL verify of the group answers a gaps-fix FAIL in the summary.
 4. Check that the attempt changed source files, not only logs and ledgers:
    ```bash
    cd "{WORKTREE_PATH}" && "{BKIT}" branches scan-diff --base=HEAD~1 --code >/dev/null
@@ -755,18 +755,18 @@ This step runs once, after the last group. Challenge fix groups pass through it 
    "{BKIT}" challenge gate --file="{STATUS}"
    ```
    Route:
-   - **If** exit 0 → hold `size` as `{CHALLENGE_SIZE}` → sub-step 3.
+   - **If** exit 0 → hold `size` as `CHALLENGE_SIZE` → sub-step 3.
    - **Else** → **Failure Path**.
 3. Write the run's diff to the file the agent reads
    ```bash
    cd "{WORKTREE_PATH}" && "{BKIT}" context diff --reset-log --artifact="tmp/bkit-diff-{FID}.md" --fid={FID} --step=build-challenge >/dev/null || exit 2
    ```
    Launch these subagents in parallel using `Agent` tool: **If** `CHALLENGE_SIZE` = small → launch `@bkit-build-challenge-2` only.
-   - **Subagent:** Invoke `@bkit-build-challenge-1`
+   - **Subagent:** Invoke `@bkit-build-challenge-1` using `Agent` tool:
      Context: You are a subagent in the Build phase running in parallel with another agent. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
      Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `tmp/bkit-diff-{FID}.md` (the run's diff).
      Create: `docs/plans/{YYYYMM}/logs/{FID}/build-challenge-1.md`.
-   - **Subagent:** Invoke `@bkit-build-challenge-2`
+   - **Subagent:** Invoke `@bkit-build-challenge-2` using `Agent` tool:
      Context: You are a subagent in the Build phase running in parallel with another agent. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
      Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `tmp/bkit-diff-{FID}.md` (the run's diff).
      Create: `docs/plans/{YYYYMM}/logs/{FID}/build-challenge-2.md`.
@@ -788,9 +788,12 @@ This step runs once, after the last group. Challenge fix groups pass through it 
    - **Else** → **Failure Path**.
 6. Clear `CHALLENGE_REFORMAT`.
    Route:
-   - **If** `route` = `none` → Step 12.
-   - **If** `route` = `pause` → `PAUSE_STEP` = 11, `PAUSE_POINT` = `build.challenge`, `PAUSE_QUESTION` = `CHALLENGE` → **Decision Pause**.
-   - **If** `route` = `fix` → `CHALLENGE_ROUND` = `CHALLENGE_MAX` already → `CHALLENGE_DONE` = true; **Else** → `CHALLENGE_ROUND` = `CHALLENGE_ROUND` + 1. Then Step 7; its brief takes the first new group.
+   - **If** `MERGE_ROUTE` = `none` → Step 12.
+   - **If** `MERGE_ROUTE` = `pause` → `PAUSE_STEP` = 11, `PAUSE_POINT` = `build.challenge`, `PAUSE_QUESTION` = `CHALLENGE` → **Decision Pause**.
+   - **If** `MERGE_ROUTE` = `fix`:
+     - **If** `CHALLENGE_ROUND` = `CHALLENGE_MAX` already → `CHALLENGE_DONE` = true.
+     - **Else** → `CHALLENGE_ROUND` = `CHALLENGE_ROUND` + 1.
+     - Then Step 7; its brief takes the first new group.
    - **Else** → **Failure Path**.
 
 ### 🔒 Gate 11 — Build Challenge
@@ -810,7 +813,7 @@ This step runs once, after the last group. Challenge fix groups pass through it 
    ```bash
    "{BKIT}" counters derive --file="{STATUS}" --workflow=build --step=build-run-tests --position=next
    ```
-   Hold `value` as `{TEST_ATTEMPT}`.
+   Hold `value` as `TEST_ATTEMPT`.
 2. Run this block exactly as written:
    ```bash
    "{BKIT}" tests run --gate=bkit:gate:static-unit-integration --gate=bkit:gate:static-unit --log="{OUTBOX}/run-tests-{TEST_ATTEMPT}.log" --artifact="docs/plans/{YYYYMM}/logs/{FID}/run-tests-{TEST_ATTEMPT}.md" --fid={FID} --step=build-run-tests --attempt={TEST_ATTEMPT}
@@ -837,7 +840,7 @@ This step runs once, after the last group. Challenge fix groups pass through it 
        ```bash
        "{BKIT}" counters progress --file="{STATUS}" --workflow=build --check=build-run-tests --fix=build-failure-remediate
        ```
-       **If** exit non-zero → **Failure Path**. Hold `trend` as `{TEST_TREND}`.
+       **If** exit non-zero → **Failure Path**. Hold `trend` as `TEST_TREND`.
        - **If** `TEST_TREND` = `stuck` **or** `worse` → `PAUSE_STEP` = 12, `PAUSE_POINT` = `build.tests`, `PAUSE_QUESTION` = `TESTS_LOOP` → **Decision Pause**.
        - **Else** → Step 13; a failed test round after a round that made progress is always fixed, never asked.
      - **Else** → **Failure Path**.
@@ -860,11 +863,11 @@ This step runs once, after the last group. Challenge fix groups pass through it 
    ```bash
    "{BKIT}" status route --file="{STATUS}" --workflow=build --step=build-failure-diagnose --require=strategy
    ```
-   Hold `nextStrategy` as `STRATEGY`. **If** `{TEST_ATTEMPT}` is not held (resumed into this step) → read the test round back:
+   Hold `nextStrategy` as `STRATEGY`. **If** `TEST_ATTEMPT` is not held (resumed into this step) → read the test round back:
    ```bash
    "{BKIT}" counters derive --file="{STATUS}" --workflow=build --step=build-run-tests --position=current
    ```
-   Hold `value` as `{TEST_ATTEMPT}`.
+   Hold `value` as `TEST_ATTEMPT`.
 2. **Subagent:** Invoke `@bkit-debug-failure-diagnose` using `Agent` tool:
    Context: You are a subagent in the Build Debug phase. Test failure during Build workflow. `Strategy`: `{STRATEGY}`. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/run-tests-{TEST_ATTEMPT}.md`, `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-decision-{RUN}-*.md` (highest number, if present).
@@ -890,11 +893,11 @@ This step runs once, after the last group. Challenge fix groups pass through it 
    ```bash
    "{BKIT}" status route --file="{STATUS}" --workflow=build --step=build-failure-diagnose
    ```
-   Hold `strategy` as `{STRATEGY}`. **If** `{TEST_ATTEMPT}` is not held (resumed into this step) → read the test round back:
+   Hold `strategy` as `STRATEGY`. **If** `TEST_ATTEMPT` is not held (resumed into this step) → read the test round back:
    ```bash
    "{BKIT}" counters derive --file="{STATUS}" --workflow=build --step=build-run-tests --position=current
    ```
-   Hold `value` as `{TEST_ATTEMPT}`.
+   Hold `value` as `TEST_ATTEMPT`.
 2. **Subagent:** Invoke `@bkit-debug-failure-remediate` using `Agent` tool:
    Context: You are a subagent in the Build Debug phase. Test failure during Build workflow. `Strategy`: `{STRATEGY}`. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/build-failure-diagnose-{TEST_ATTEMPT}.md`.
@@ -942,7 +945,6 @@ This step runs once, after the last group. Challenge fix groups pass through it 
    ```
 4. Route:
    - **If** `SUMMARY_VERDICT` = PASS **or** CONCERNS → Step 16.
-   - **If** `SUMMARY_VERDICT` = FAIL → display `build-summary.md` content verbatim as final message to user<!-- bkit:tracker true start -->. Line 1 of the final message = the no-issue warning, when one was emitted.<!-- bkit:tracker true end --> → **Failure Path**.
    - **Else** → **Failure Path**.
 
 ### 🔒 Gate 15 — Summary

@@ -55,51 +55,61 @@ autoCompactWindow: 300000
 3. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
 4. Update **Create** after each substep: append the log entry at EOF with Bash `echo {log entry} >> {output}`.
 5. Recreate the conflict state:
+   - Record the branch head with `git rev-parse HEAD`, and append a log entry naming it.
    - Run `git fetch origin dev`, then `git rebase origin/dev`.
-   - **If** the rebase succeeds with no conflicts → set `Verdict` = `FAIL` with `Edit` immediately, without waiting for the final pass.
+   - **If** the rebase completes with no conflicts:
+     - Set `Verdict` = `FAIL` with `Edit`. GitHub reported a conflict that the local rebase did not find, and that mismatch is not mechanical.
+     - Append a log entry saying that the branch is now rebased onto `origin/dev` locally, not pushed, and naming the head recorded before the rebase.
+     - Go straight to setting `Verdict`.
    - Append a log entry.
-6. Run the Tier-2 auto-resolver before any hand-classification. It clears every append-only ledger and the dependency lockfile deterministically, and leaves only the conflicts that need judgement:
+6. Run the auto-resolver before any hand-classification. It resolves every append-only ledger and the dependency lockfile in each rebase stop, continues the rebase, and stops at the first stop that holds a conflict needing judgement:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    [ -x "$BKIT" ] || BKIT="$(command -v bkit || echo "$BKIT")"
-   "$BKIT" branches rebase && echo "TIER2_COMPLETE" || echo "TIER2_REFUSED"
+   "$BKIT" branches rebase --hand-resolve
+   case $? in
+     0) echo "REBASE_COMPLETE" ;;
+     24) echo "HAND_RESOLVE" ;;
+     *) echo "RESOLVER_REFUSED" ;;
+   esac
    ```
-   - **If** it printed `TIER2_COMPLETE` → the rebase already ran to completion:
-     - Append a log entry.
-     - Skip to the verify gate.
-   - **Else** → the rebase is still in progress, with the paths it could not resolve still conflicted. Continue to classification.
-   - Do not run `git rebase --abort` in this step. The `FAIL` branch owns it.
+   - Append a log entry with what it printed and its `resolved` and `pending` paths.
+   - **If** it printed `REBASE_COMPLETE` → the rebase ran to completion. Skip to the verify gate.
+   - **If** it printed `HAND_RESOLVE` → the rebase is still in progress, and the paths in its `pending` list are still conflicted. Continue to classification.
+   - **Else** → the resolver could not go on. Either it aborted the rebase, because a ledger or lockfile resolution failed or `git rebase --continue` failed with no conflicted path left, or it found no rebase in progress. Name which in the log entry:
+     - Set `Verdict` = `FAIL` with `Edit`.
+     - Go straight to setting `Verdict`.
 7. Classify the conflicts:
    - List the conflicted files with `git diff --name-only --diff-filter=U`.
    - List each side's recent commits with `git log -5 --oneline HEAD` and `git log -5 --oneline origin/dev`, then append a log entry.
    - Classify each conflicted file against these two lists, then append a log entry:
      - `Allowed resolutions`:
-       - Append-only ledgers (`docs/knowledge.jsonl`, `docs/decisions.jsonl`, `docs/deferrals.jsonl`, `docs/failures.jsonl`, `.bkit/issues.jsonl`, `.bkit/stats.jsonl`, `.bkit/friction.jsonl`, `docs/plans/**/status.jsonl`) → `bkit branches rebase` unions both sides, so do not hand-merge them. A last-`ts`-wins fold resolves interleaved or duplicated rows, so they are never a reason to emit `FAIL`.
-       - `docs/roadmap.md` → union both sides, and leave duplicated marker blocks in place. The board is regenerated from `.bkit/issues.jsonl` later this cycle, so a roadmap conflict is never a reason to emit `FAIL`.
        - Non-overlapping additive edits to the same file → concatenate them, keeping both sides.
        - Formatting-only drift (whitespace, trailing newline, prettier output) → take the post-rebase format.
        - A dependency manifest bump on one side only (`package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`) → take the bump.
        - Additive JSON array entries or object property additions with no key or position overlap → concatenate them.
      - `Refused resolutions`:
+       - An append-only ledger or the dependency lockfile that is still conflicted. The auto-resolver resolves those, so one left conflicted is a resolution that failed.
        - The same function or method body edited on both sides.
        - The same JSON key with different values, except the one-sided bumps above.
        - The same line edited on both sides with different content.
        - Any conflict whose merged intent is not unambiguously mechanical.
-   - **If** any file matches `Refused resolutions` → set `Verdict` = `FAIL` with `Edit` immediately, without waiting for the final pass.
+   - **If** any file matches `Refused resolutions`:
+     - Set `Verdict` = `FAIL` with `Edit`.
+     - Go straight to setting `Verdict`.
 8. Resolve the `Allowed resolutions` files:
    - For each file:
      - Replace each conflict-marker hunk in it with the merged result, using `Edit`.
      - Run `git add <file>`.
      - Append a log entry.
-   - Run `git rebase --continue`.
-   - **If** `git rebase --continue` errors → set `Verdict` = `FAIL` with `Edit` immediately, without waiting for the final pass.
+   - Run the auto-resolver again. It continues the rebase, and the next commit may conflict in turn. Repeat the auto-resolver, classification and resolution until it prints `REBASE_COMPLETE` or `Verdict` = `FAIL`.
 9. **If** `Verdict` != `FAIL` → run the verify gate:
    - Run `pnpm bkit:gate:install-static-unit-build`.
    - Append a log entry with its exit code.
    - **If** it exits non-zero → set `Verdict` = `FAIL` with `Edit` immediately, without waiting for the final pass.
 10. Set `Verdict` in **Create** with `Edit`:
-    - `PASS` = the rebase reproduced conflicts, every conflicted file was classified `Allowed resolutions` and resolved, the rebase completed, and `pnpm bkit:gate:install-static-unit-build` exited 0.
-    - `FAIL` = the rebase did not reproduce conflicts (an anomaly), **or** any conflicted file was classified `Refused resolutions`, **or** `git rebase --continue` errored for non-mechanical reasons, **or** any verify command exited non-zero.
+    - `PASS` = the rebase reproduced conflicts, every conflicted file was resolved by the auto-resolver or classified `Allowed resolutions` and resolved, the rebase completed, and `pnpm bkit:gate:install-static-unit-build` exited 0.
+    - `FAIL` = the rebase completed with no conflicts, **or** any conflicted file was classified `Refused resolutions`, **or** the auto-resolver aborted the rebase, **or** any verify command exited non-zero.
 11. **If** `Verdict` = `FAIL`:
     - **If** `git status` reports a rebase in progress:
       - Run `git rebase --abort`.
