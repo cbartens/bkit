@@ -1137,7 +1137,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-adoption`, `bkit-audit-dependencies`, `bkit-audit-usability`
 - drift:
-  - `bkit-build:368`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-build:369`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `bkit-design:183`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
@@ -1237,7 +1237,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-adoption`, `bkit-audit-dependencies`, `bkit-audit-repo`, `bkit-audit-usability`
 - drift:
-  - `bkit-build:368`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-build:369`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `bkit-design:183`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
@@ -9501,11 +9501,11 @@ Route — first match wins:
 **If** `DECISION_ROUTE` = `retry` **and** `From: verify` → Step 9.
 **If** `DECISION_ROUTE` = `retry` → Step 13.
 **If** `DECISION_ROUTE` = `verify` → re-run Step 8.
-[secrets; workflow-pushes] List stray files first: `bkit workflows handover --list-stray` (`--workflow` / `--fid` / `--month` / `--worktree` as below) → on a feature branch remove only the `modified` / `untracked` files this run created by mistake, NEVER other agents' changes; on `dev` / `main` (`shared` = true) remove nothing (only the run's own record lands, through a throwaway checkout). Then keep the run's record; **Skip if** `{WORKTREE_PATH}` is not set:
-**If** `PUBLISH` = false **or** not yet resolved → the record stays in the worktree and NEVER pass `--push`, so a held run, or a failure before `status route` resolves `publish`, pushes nothing; link it by branch with `--ref`:
-[workflow-pushes] **Else** (`PUBLISH` = true) → commit and push the record — NEVER onto a branch with an open PR:
-[workflow-pushes] **If** `PUBLISH` = false → the record stays in the kept worktree and NEVER pass `--push`:
-[workflow-pushes] **Else** → push the record — NEVER onto a branch with an open PR:
+[secrets; workflow-pushes] List stray files first: `bkit workflows handover --list-stray` (`--workflow` / `--fid` / `--month` / `--worktree` as below) → on a feature branch remove only the `modified` / `untracked` files this run created by mistake, NEVER other agents' changes; on `dev` / `main` (`shared` = true) remove nothing (only the run's own record lands, through a throwaway checkout).
+**If** `PUBLISH` = false **or** `PUBLISH` is not held yet → keep the record in the worktree, linked by branch, and NEVER pass `--push`, because a held run pushes nothing and neither does a failure before `status route` resolves `publish`:
+[workflow-pushes] **Else** → commit and push the record, but NEVER onto a branch with an open PR:
+[workflow-pushes] **If** `PUBLISH` = false → keep the record in the kept worktree, linked by branch, and NEVER pass `--push`:
+[workflow-pushes] **Else** → push the record, but NEVER onto a branch with an open PR:
 [workflow-pushes] Record the wait (step 4 `owner-pause` block). Create `docs/plans/{YYYYMM}/logs/{FID}/build-handover.md` = the decision file plus the line `Stopped by the owner ({RUNTIME}); run stays IN_PROGRESS. /bkit-build {REF} resumes at this pause.`; `REF` empty → `{FID}`. Then keep the record:
 Release the lock. NEVER run `workflows fail`:
 Decision file written (`decisions compose`)
@@ -9521,7 +9521,7 @@ Read the blockers and their states via the tracker MCP (**Tracker**).
 Emit the long-branch advisory `[bkit-build] feature branch is {BEHIND_DEV} commits behind dev / {DIVERGED_AGO} since divergence`.
 Long-branch advisory emitted
 Blocker check attempted
-Hold `publish` as `PUBLISH`, `publishSource` as `PUBLISH_SOURCE`. **If** `PUBLISH_SOURCE` = `coerced` → emit: Warning: publish=false needs a local run — this run publishes.
+**If** `PUBLISH_SOURCE` = coerced → emit: Warning: publish=false needs a local run, so this run publishes.
 Input file written (`workflows input`)
 Merge `origin/dev` when the feature branch's `docs/` is behind it. The command resolves conflicts itself: ledgers by union, and other `docs/` files on `dev`'s side:
 Docs synced (`branches sync`)
@@ -9643,15 +9643,18 @@ Read status.jsonl and derive the next `STRATEGY`:
 Finish, then re-run Step 12:
 Strategy read before invocation
 Write `build-summary.md` from this run's status rows and the plan's tasks:
-Finish; **If** `PUBLISH` = true → then probe for a pre-existing open PR on `{BRANCH}` before the push:
+**If** `PUBLISH` = false → sub-step 4.
 **If** exit 80 → look for an open PR on `{BRANCH}` with base `dev` via `list_pull_requests`:
 **If** one is found → **Failure Path**.
 **Else** → sub-step 3.
-[workflow-pushes] **If** `PUBLISH` = true → push with exactly one command:
-Open-PR probe ran (publish=true only)
+[workflow-pushes] Push with exactly one command:
+Open-PR probe ran before any push
 Open-PR probe ran
-**Held close** — **If** `PUBLISH` = false → run this fence, then sub-steps 11-12 and Gate 16; sub-steps 1-10 do not run:
+**If** `PUBLISH` = false → **Held close**.
+**Else** → **Publish close**.
+**Held close:** Run the blocks below, then sub-steps 11-12 and Gate 16. Sub-steps 1-10 are for a published run only.
 `REF` empty → `{FID}`. Hold the close's `commentFile`, `tracker` and `finalReturn` under the names sub-step 3 uses: `CLOSE_COMMENT_FILE`, `CLOSE_TRACKER`, `FINAL_RETURN`.
+**If** `CLOSE_TRACKER`.done = false → post the content of `CLOSE_COMMENT_FILE` via the tracker MCP (**Comments** fallback).
 Before creating the PR, probe for an open PR that already exists on `{BRANCH}`:
 **If** exit 80 → look for an open PR on `{BRANCH}` with base `dev` via `list_pull_requests`:
 **If** one is found → **Failure Path**.
@@ -9670,7 +9673,9 @@ Record `build-create-pr`:
 **If** re-entering from the **CI wait turn-loop** → fill `{CI_REENTRY}`:
 **If** exit 80 **or** 81 → **CI wait turn-loop** → re-run this block.
 Re-read the issue's labels after the push, for the kill-switch check:
-`PUBLISH` = false → the `build-close-workflow` gate only; the held close commits to the local branch and pushes nothing, so only these lines apply: `steps gate`, close committed, lock released, final return, issue update attempted, artifact link list posted. `PUBLISH` = true → every line applies.
+**If** `PUBLISH` = true → also run:
+**If** `PUBLISH` = false → tick only the items for the close commit, the lock, the final return, the issue update and the artifact links, because the held close commits to the local branch and pushes nothing.
+**Else** → tick every item.
 Labels re-read before the close commit
 Lock released
 PR created

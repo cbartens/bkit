@@ -335,7 +335,7 @@ Run the slash commands at the repo root:
 
 Claude reads the issue, its comments and the plan files through the tracker MCP.
 
-**Held build:** `publish=false` (or `package.json` `bkit.workflows.build.publish.local: false`) stops `/bkit-build` before the push: no PR, no CI, no docs sync. The worktree and branch stay, the lock is released, the run ends `held`, the issue moves to `In review`, and the summary reads `Publish: held` and `Docs: not synced`. `/bkit-ship <ref>` lands it later. Cloud runs always publish.
+**Held build:** `publish=false`, or `package.json` `bkit.workflows.build.publish.local: false`, stops a local `/bkit-build` before the push, and `/bkit-ship <ref>` lands it later. Cloud runs always publish. `.bkit/workflows.md` § `/bkit-build` — 16 steps, **Publish resolution**, says what a held run keeps and skips.
 
 **Manual batch of held builds:** merge the held `feat/{FID}` branches into one branch off `dev` yourself, push it and open one PR. You own the push, the PR, the CI gate, the sweep and the docs sync. One head commit means post-merge auto-debug sees only the last FID. Never batch migrations.
 

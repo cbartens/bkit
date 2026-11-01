@@ -69,12 +69,13 @@ description: "Build Feature — Autonomous implementation"
    Context: You are a subagent in the Build Debug phase. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-*.md`, `tmp/bkit-diff-{FID}.md` (the run's diff, if present).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-handover.md`.
-5. List stray files first: `bkit workflows handover --list-stray` (`--workflow` / `--fid` / `--month` / `--worktree` as below) → on a feature branch remove only the `modified` / `untracked` files this run created by mistake, NEVER other agents' changes; on `dev` / `main` (`shared` = true) remove nothing (only the run's own record lands, through a throwaway checkout). Then keep the run's record; **Skip if** `{WORKTREE_PATH}` is not set:
-   - **If** `PUBLISH` = false **or** not yet resolved → the record stays in the worktree and NEVER pass `--push`, so a held run, or a failure before `status route` resolves `publish`, pushes nothing; link it by branch with `--ref`:
+5. List stray files first: `bkit workflows handover --list-stray` (`--workflow` / `--fid` / `--month` / `--worktree` as below) → on a feature branch remove only the `modified` / `untracked` files this run created by mistake, NEVER other agents' changes; on `dev` / `main` (`shared` = true) remove nothing (only the run's own record lands, through a throwaway checkout).
+   Keep the run's record. **Skip if** `{WORKTREE_PATH}` is not set.
+   - **If** `PUBLISH` = false **or** `PUBLISH` is not held yet → keep the record in the worktree, linked by branch, and NEVER pass `--push`, because a held run pushes nothing and neither does a failure before `status route` resolves `publish`:
      ```bash
      "{BKIT}" workflows handover --post --workflow=build --fid={FID} --month={YYYYMM} --ref="{BRANCH}" --worktree="{WORKTREE_PATH}"
      ```
-   - **Else** (`PUBLISH` = true) → commit and push the record — NEVER onto a branch with an open PR:
+   - **Else** → commit and push the record, but NEVER onto a branch with an open PR:
      ```bash
      "{BKIT}" workflows handover --post --workflow=build --fid={FID} --month={YYYYMM} --push --worktree="{WORKTREE_PATH}"
      ```
@@ -214,11 +215,11 @@ description: "Build Feature — Autonomous implementation"
    - **If** `DECISION_ROUTE` = `verify` → re-run Step 8.
    - **Else** → Step 12.
 8. Record the wait (step 4 `owner-pause` block). Create `docs/plans/{YYYYMM}/logs/{FID}/build-handover.md` = the decision file plus the line `Stopped by the owner ({RUNTIME}); run stays IN_PROGRESS. /bkit-build {REF} resumes at this pause.`; `REF` empty → `{FID}`. Then keep the record:
-   - **If** `PUBLISH` = false → the record stays in the kept worktree and NEVER pass `--push`:
+   - **If** `PUBLISH` = false → keep the record in the kept worktree, linked by branch, and NEVER pass `--push`:
      ```bash
      "{BKIT}" workflows handover --post --workflow=build --fid={FID} --month={YYYYMM} --ref="{BRANCH}" --worktree="{WORKTREE_PATH}"
      ```
-   - **Else** → push the record — NEVER onto a branch with an open PR:
+   - **Else** → push the record, but NEVER onto a branch with an open PR:
      ```bash
      "{BKIT}" workflows handover --post --workflow=build --fid={FID} --month={YYYYMM} --push --worktree="{WORKTREE_PATH}"
      ```
@@ -347,11 +348,13 @@ description: "Build Feature — Autonomous implementation"
    "{BKIT}" runtime row --workflow=build --file="{LOG_DIR}/status.jsonl" >/dev/null || exit 2
    "{BKIT}" runtime assert --workflow=build --file="{LOG_DIR}/status.jsonl"
    ```
-   Hold `file` as `STATUS`, `run` as `RUN`. Resolve this run's ending (runs again on every resume):
+   Hold `file` as `STATUS`, `run` as `RUN`.
+   Resolve this run's ending. This block runs again on every resume:
    ```bash
    "{BKIT}" status route --workflow=build --file="{STATUS}" --prompt-file="{SESSION_DIR}/prompt.md" || exit 2
    ```
-   Hold `publish` as `PUBLISH`, `publishSource` as `PUBLISH_SOURCE`. **If** `PUBLISH_SOURCE` = `coerced` → emit: Warning: publish=false needs a local run — this run publishes.
+   Hold `publish` as `PUBLISH`, `publishSource` as `PUBLISH_SOURCE`.
+   **If** `PUBLISH_SOURCE` = coerced → emit: Warning: publish=false needs a local run, so this run publishes.
 4. Write the input file — session prompt, issue text, plan (when present):
    **If** `ISSUE_ID` empty → drop `--description-file` and `--comments-file`.
    ```bash
@@ -942,10 +945,12 @@ This step runs once, after the last group. Challenge fix groups pass through it 
    "{BKIT}" workflows summary --workflow=build --file="{STATUS}" --publish={PUBLISH}
    ```
    **If** exit non-zero → **Failure Path**. Hold `verdict` as `SUMMARY_VERDICT`, `failures` as `SUMMARY_FAILURES`.
-2. Finish; **If** `PUBLISH` = true → then probe for a pre-existing open PR on `{BRANCH}` before the push:
+2. Finish:
    ```bash
    "{BKIT}" steps finish --workflow=build --step=build-summary --file="{STATUS}" --attempt=1 --verdict={SUMMARY_VERDICT} --failures={SUMMARY_FAILURES} --artifact=docs/plans/{YYYYMM}/logs/{FID}/build-summary.md --number=15 --post --title=Summary --link-ref={BRANCH} --comment-body --message="chore({FID}): summary"
    ```
+   **If** `PUBLISH` = false → sub-step 4.
+   Probe for a pre-existing open PR on `{BRANCH}` before the push:
    ```bash
    "{BKIT}" prs probe --base=dev
    ```
@@ -955,7 +960,7 @@ This step runs once, after the last group. Challenge fix groups pass through it 
      - **If** one is found → **Failure Path**.
      - **Else** → sub-step 3.
    - **Else** → sub-step 3.
-3. **If** `PUBLISH` = true → push with exactly one command:
+3. Push with exactly one command:
    ```bash
    "{BKIT}" branches push --mode=feature --set-upstream
    ```
@@ -968,8 +973,8 @@ This step runs once, after the last group. Challenge fix groups pass through it 
 - [ ] `workflows summary` printed a verdict
 - [ ] Mechanical checks passed (`steps finish`)
 - [ ] Failing summary displayed
-- [ ] Open-PR probe ran (publish=true only)
-- [ ] Summary commit pushed (publish=true only)
+- [ ] Open-PR probe ran before any push
+- [ ] Summary commit pushed, or kept local on a held run
 
 ---
 
@@ -977,9 +982,12 @@ This step runs once, after the last group. Challenge fix groups pass through it 
 
 **Run only if** `SUMMARY_VERDICT` = PASS **or** CONCERNS.
 
-**Held close** — **If** `PUBLISH` = false → run this fence, then sub-steps 11-12 and Gate 16; sub-steps 1-10 do not run:
+**If** `PUBLISH` = false → **Held close**.
+**Else** → **Publish close**.
 
-Append the roadmap row in the worktree only, close the run (`ending: held`, `publish: false`, telemetry, report, artifact links), commit it, release the lock; nothing is pushed:
+**Held close:** Run the blocks below, then sub-steps 11-12 and Gate 16. Sub-steps 1-10 are for a published run only.
+
+This block appends the roadmap row in the worktree only, closes and commits the run with `ending: held` and `publish: false`, posts its telemetry, report and artifact links, and releases the lock. It pushes nothing:
 
 ```bash
 "{BKIT}" roadmap feature --root="{WORKTREE_PATH}" --workflow=build --fid={FID} >/dev/null || exit 1
@@ -999,9 +1007,10 @@ Append the roadmap row in the worktree only, close the run (`ending: held`, `pub
 **If** `tracker.done` = false **or** `boardWrite.done` = false → apply the printed `labels` / `trackerState` / `board` via the tracker MCP (**Labels** fallback).
 
 
-**Skip if** `ISSUE_ID` empty. The close posted the built locally, not published comment; **If** `CLOSE_TRACKER`.done = false → post the content of `CLOSE_COMMENT_FILE` via the tracker MCP (**Comments** fallback).
+**Skip if** `ISSUE_ID` empty. The close already posted its "built locally, not published" comment.
+**If** `CLOSE_TRACKER`.done = false → post the content of `CLOSE_COMMENT_FILE` via the tracker MCP (**Comments** fallback).
 
-**Publish close** — **If** `PUBLISH` = true:
+**Publish close:**
 
 1. Before creating the PR, probe for an open PR that already exists on `{BRANCH}`:
    ```bash
@@ -1102,13 +1111,14 @@ Both paths:
 "{BKIT}" steps gate --workflow=build --step=build-close-workflow --file="{STATUS}" || exit 1
 ```
 
-`PUBLISH` = true only:
+**If** `PUBLISH` = true → also run:
 
 ```bash
 "{BKIT}" steps gate --workflow=build --step=build-create-pr --file="{STATUS}" --artifact={PR_URL}
 ```
 
-`PUBLISH` = false → the `build-close-workflow` gate only; the held close commits to the local branch and pushes nothing, so only these lines apply: `steps gate`, close committed, lock released, final return, issue update attempted, artifact link list posted. `PUBLISH` = true → every line applies.
+**If** `PUBLISH` = false → tick only the items for the close commit, the lock, the final return, the issue update and the artifact links, because the held close commits to the local branch and pushes nothing.
+**Else** → tick every item.
 
 - [ ] Mechanical checks passed (`steps gate`)
 

@@ -328,10 +328,9 @@ describe("Failure Path", () => {
       .split("\n")
       .filter((l) => l.includes("**Else**"))
       .pop()!;
-    expect(guard).not.toMatch(/not yet resolved/);
-    expect(guard).toMatch(/`PUBLISH` = true/);
+    expect(guard).toMatch(/^\s*- \*\*Else\*\* →/);
     expect(before).toMatch(
-      /`PUBLISH` = false \*\*or\*\* not yet resolved[^\n]*NEVER pass `--push`/,
+      /`PUBLISH` = false \*\*or\*\* `PUBLISH` is not held yet[^\n]*NEVER pass `--push`/,
     );
   });
 
@@ -1910,8 +1909,11 @@ describe("build publish ending", () => {
   /** The held fence and the publish path of Step 16, split at the two path labels. */
   const paths = () => {
     const text = step16();
-    const held = text.indexOf("**Held close**");
-    const pub = text.indexOf("**Publish close**");
+    expect(text).toMatch(
+      /\*\*If\*\* `PUBLISH` = false → \*\*Held close\*\*\.\n\*\*Else\*\* → \*\*Publish close\*\*\./,
+    );
+    const held = text.indexOf("**Held close:**");
+    const pub = text.indexOf("**Publish close:**");
     expect(held, "no **Held close** label").toBeGreaterThanOrEqual(0);
     expect(pub, "no **Publish close** label").toBeGreaterThan(held);
     return {
@@ -1953,7 +1955,7 @@ describe("build publish ending", () => {
 
   it("warns when a non-LOCAL run resolves publish false", () => {
     const text = step2();
-    expect(text).toContain("`PUBLISH_SOURCE` = `coerced`");
+    expect(text).toContain("`PUBLISH_SOURCE` = coerced");
     expect(text).toMatch(/Warning: publish=false[^\n]*publishes/);
   });
 
@@ -1997,10 +1999,10 @@ describe("build publish ending", () => {
     const text = step15();
     expect(commandLines(text, "workflows summary")[0]).toContain("--publish={PUBLISH}");
     const gate = text.slice(text.indexOf("### 🔒 Gate 15"));
-    expect(gate).toMatch(/- \[ \] Open-PR probe ran \(publish=true only\)/);
-    expect(gate).toMatch(/- \[ \] Summary commit pushed \(publish=true only\)/);
+    expect(gate).toMatch(/- \[ \] Open-PR probe ran before any push/);
+    expect(gate).toMatch(/- \[ \] Summary commit pushed, or kept local on a held run/);
     const body = text.slice(0, text.indexOf("### 🔒 Gate 15"));
-    expect(body).toMatch(/\*\*If\*\* `PUBLISH` = true[^\n]*\n[\s\S]*prs probe/);
+    expect(body).toMatch(/\*\*If\*\* `PUBLISH` = false → sub-step 4\.\n[\s\S]*prs probe/);
   });
 
   it("runs only the close gate on the held path", () => {
@@ -2009,7 +2011,9 @@ describe("build publish ending", () => {
     const prAt = gate.indexOf("--step=build-create-pr");
     expect(closeAt).toBeGreaterThanOrEqual(0);
     expect(prAt).toBeGreaterThan(closeAt);
-    expect(gate.slice(closeAt, prAt)).toMatch(/`PUBLISH` = true only/);
-    expect(gate).toMatch(/`PUBLISH` = false[^\n]*`build-close-workflow` gate only/);
+    expect(gate.slice(closeAt, prAt)).toMatch(/\*\*If\*\* `PUBLISH` = true → also run:/);
+    expect(gate).toMatch(
+      /\*\*If\*\* `PUBLISH` = false → tick only[^\n]*\n\*\*Else\*\* → tick every item\./,
+    );
   });
 });

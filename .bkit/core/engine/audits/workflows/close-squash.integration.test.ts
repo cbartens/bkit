@@ -299,7 +299,10 @@ function heldScript(): string[] {
   const md = fs.readFileSync(BUILD_MD, "utf-8");
   const step15 = md.slice(md.indexOf("## 🧠 Step 15 — Summary"), md.indexOf("### 🔒 Gate 15"));
   const step16 = md.slice(md.indexOf("## 🤖 Step 16 — Close Workflow"));
-  const held = step16.slice(step16.indexOf("**Held close**"), step16.indexOf("**Publish close**"));
+  const held = step16.slice(
+    step16.indexOf("**Held close:**"),
+    step16.indexOf("**Publish close:**"),
+  );
   const summary = fenceLines(step15, '"{BKIT}" workflows summary');
   const close = fenceLines(held, '"{BKIT}" workflows close');
   expect(summary, "Step 15 summary line not found").toHaveLength(1);
