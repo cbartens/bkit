@@ -297,7 +297,8 @@ fi
 # Other graphify release → blocked, with the install command. graphify NOT INSTALLED → warn
 # only, saying the check did not run: a cloud session without it must still push; CI's Check
 # Capability Register runs the same check on every push to dev and every pull request. The
-# open-PR lookup needs gh: gh NOT INSTALLED → warn only, as with graphify. Revert pushes
+# open-PR lookup needs gh: gh NOT INSTALLED, or its call FAILING (offline, not signed in) →
+# warn only, as with graphify; a lookup that cannot answer is never read as "no PR". Revert pushes
 # (IS_REVERT=1) skip it, as they skip the test tiers. A branch with no open PR → warn-only
 # staleness note.
 CAP_DOC="docs/capabilities.md"
@@ -322,17 +323,25 @@ if [ -f scripts/graphify/bkit-graphify.sh ] && [ -f "$CAP_DOC" ]; then
       *)
         if [ -z "$CAP_PUSHED" ]; then
           :
-        elif command -v gh >/dev/null 2>&1; then
-          # strip hook-injected GIT_DIR/GIT_WORK_TREE so gh resolves the repo from cwd (worktree-safe)
-          CAP_PR=$(env -u GIT_DIR -u GIT_WORK_TREE gh pr list --head "$CAP_BRANCH" --base dev --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
-          if [ -n "$CAP_PR" ]; then
-            CAP_GATE_SHA="$CAP_PUSHED"
-            CAP_GATE_WHAT="PR #$CAP_PR into dev"
-          fi
         else
-          echo "[pre-push] WARNING: $CAP_DOC was NOT checked — gh is not installed, so whether '$CAP_BRANCH' has an open PR is unknown." >&2
-          echo "[pre-push]    If a PR is open, CI's Check Capability Register fails it on a stale register; run" >&2
-          echo "[pre-push]    pnpm graph:refresh, commit, and push again." >&2
+          # Why the lookup could not answer; empty → it answered (a PR number, or none).
+          CAP_UNKNOWN=""
+          if ! command -v gh >/dev/null 2>&1; then
+            CAP_UNKNOWN="gh is not installed"
+          # strip hook-injected GIT_DIR/GIT_WORK_TREE so gh resolves the repo from cwd (worktree-safe)
+          elif CAP_PR=$(env -u GIT_DIR -u GIT_WORK_TREE gh pr list --head "$CAP_BRANCH" --base dev --state open --json number --jq '.[0].number' 2>/dev/null); then
+            if [ -n "$CAP_PR" ]; then
+              CAP_GATE_SHA="$CAP_PUSHED"
+              CAP_GATE_WHAT="PR #$CAP_PR into dev"
+            fi
+          else
+            CAP_UNKNOWN="gh pr list failed (offline, or gh not signed in)"
+          fi
+          if [ -n "$CAP_UNKNOWN" ]; then
+            echo "[pre-push] WARNING: $CAP_DOC was NOT checked — $CAP_UNKNOWN, so whether '$CAP_BRANCH' has an open PR is unknown." >&2
+            echo "[pre-push]    If a PR is open, CI's Check Capability Register fails it on a stale register; run" >&2
+            echo "[pre-push]    pnpm graph:refresh, commit, and push again." >&2
+          fi
         fi
         ;;
     esac

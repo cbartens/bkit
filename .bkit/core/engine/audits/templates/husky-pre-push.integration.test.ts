@@ -913,6 +913,22 @@ describe("graphify register pre-push gate", () => {
     expect(r.stderr).toContain("docs/capabilities.md was NOT checked — gh is not installed");
   });
 
+  it("branch push, gh installed but pr list fails → loud NOT-checked warning, push goes on", () => {
+    adopt(1);
+    installGraphify();
+    fs.writeFileSync(
+      path.join(tmp, "bin", "gh"),
+      `#!/bin/sh\necho "$*" >> "${tmp}/gh.log"\necho "gh: not logged in" >&2\nexit 4\n`,
+      { mode: 0o755 },
+    );
+    const r = run(branchPush);
+    expect(r.status).toBe(0);
+    expect(ghCalls()).toContain("pr list");
+    expect(r.calls).toBe("");
+    expect(r.stderr).toContain("docs/capabilities.md was NOT checked — gh pr list failed");
+    expect(r.stderr).toContain("whether 'feat/1-x' has an open PR is unknown");
+  });
+
   it("branch with an open PR, graphify not installed → loud NOT-checked warning naming the PR", () => {
     adopt(1);
     installGh("7");

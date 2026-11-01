@@ -662,7 +662,7 @@ graphify-out/
   - **If** your hook lacks the `Capability register` block → paste it from the template, above the gates.
   - It checks wherever CI's `Check Capability Register` would fail: a push to dev, and a push of a branch that has an open PR into dev (`gh pr list --head <branch> --base dev --state open`). It runs `check-at` on the pushed commit in a throwaway checkout, and blocks the push on a mismatch. Uncommitted edits, a concurrent session's included, cannot change the answer.
   - **If** graphify is not installed → it prints a loud "NOT checked" warning, and the push goes on. CI still checks.
-  - **If** `gh` is not installed on a branch push → it prints the same "NOT checked" warning, because whether the branch has an open PR is unknown, and the push goes on.
+  - **If** `gh` is not installed on a branch push, or its `pr list` call fails (offline, not signed in) → it prints the same "NOT checked" warning, because whether the branch has an open PR is unknown, and the push goes on. A lookup that cannot answer is never read as "no PR".
   - On a branch with no open PR, it prints a warn-only staleness note.
   - It reads `PUSH_DEV_SHA`, `BRANCH` and `PUSH_BRANCH_SHA` from the bkit pre-push template's stdin loop. **If** your hook copy is older → re-copy that loop and the `Capability register` call from `.bkit/templates/.husky/pre-push`. Until you do, the script checks the checked-out branch at `HEAD`.
 - `.github/workflows/bkit-ci.yml` ships `Check Capability Register`. It installs the `spec` release and runs the pinned `check-at HEAD`, and a stale register fails CI. It self-skips without `scripts/graphify/bkit-graphify.sh`.
