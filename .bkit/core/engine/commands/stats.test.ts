@@ -48,10 +48,10 @@ describe("bkit stats", () => {
 
     const md = buildRepoStats(root);
 
-    expect(md).toContain("| outcome | 1 |");
+    expect(md).toContain("| outcome | 1 | 0 |");
     expect(md).not.toContain("| chat |");
     expect(md).not.toContain("| run |");
-    expect(md).toContain("## Run durations");
+    expect(md).toContain("### Run durations");
   });
 
   it("prints each table unpadded under a prettier-ignore marker", () => {
@@ -67,16 +67,16 @@ describe("bkit stats", () => {
         "## Rows",
         "",
         "<!-- prettier-ignore -->",
-        "| Kind | Rows |",
-        "| --- | --- |",
-        "| outcome | 2 |",
+        "| Kind | Workflow rows | Direct-chat rows |",
+        "| --- | --- | --- |",
+        "| outcome | 2 | 0 |",
         "",
         "<!-- prettier-ignore -->",
         "| Workflow | Rows |",
         "| --- | --- |",
         "| build | 2 |",
         "",
-        "## Run durations",
+        "## Workflow runs",
       ].join("\n"),
     );
   });
@@ -98,7 +98,7 @@ describe("bkit stats", () => {
       [gate(1_700_000_000_001, "small"), gate(1_700_000_000_002, "large")].join("\n") + "\n",
     );
     const md = buildRepoStats(root);
-    expect(md).toContain("## Build challenge size");
+    expect(md).toContain("### Build challenge size");
     expect(md).toContain("| 2 | 1 | 1 |");
   });
 
@@ -120,7 +120,7 @@ describe("bkit stats", () => {
       ].join("\n") + "\n",
     );
     const md = buildRepoStats(root);
-    expect(md).toContain("## Agent context peaks");
+    expect(md).toContain("### Agent context peaks");
     expect(md).toContain("Cap: 160000 tokens per agent. 2 of 3 runs recorded context.");
     expect(md).toContain("| bkit-build-plan-execute | 5 | 2 | 171000 | 1 |");
     expect(md).toContain("| bkit-build-plan-verify | 1 | 1 | 40000 | 0 |");
@@ -132,8 +132,42 @@ describe("bkit stats", () => {
       row(1_700_000_000_001, "outcome", { run: { parentSha: "a".repeat(40) } }) + "\n",
     );
     const md = buildRepoStats(root);
-    expect(md).toContain("## Agent context peaks");
+    expect(md).toContain("### Agent context peaks");
     expect(md).toContain("No context data.");
+  });
+
+  it("reports a direct chat's outcome rows in their own section, never in the workflow figures", () => {
+    const utility = { by: { workflow: "utility", step: "manual" } };
+    fs.writeFileSync(
+      path.join(root, ".bkit", "stats.jsonl"),
+      [
+        row(1_700_000_000_001, "outcome", {
+          run: { parentSha: "a".repeat(40) },
+          time: { totalMinutes: 300 },
+        }),
+        row(1_700_000_000_002, "outcome", { ...utility, time: { totalMinutes: 2 } }),
+      ].join("\n") + "\n",
+    );
+
+    const md = buildRepoStats(root);
+    const [rows, workflow, chats] = md.split(/^## (?:Workflow runs|Direct chats \(`utility`\))$/m);
+
+    expect(rows).toContain("| outcome | 1 | 1 |");
+    expect(workflow).toContain("| 1 | 300.0 | 300.0 | 300 | 300 |");
+    expect(workflow).not.toContain("| 2 |");
+    expect(chats).toContain("never added to the workflow figures");
+    expect(chats).toContain("| 1 | 2.0 | 2.0 | 2 | 2 |");
+    expect(chats).not.toContain("300");
+  });
+
+  it("says a direct chat wrote no run rows when none exist", () => {
+    fs.writeFileSync(
+      path.join(root, ".bkit", "stats.jsonl"),
+      row(1_700_000_000_001, "outcome") + "\n",
+    );
+    expect(buildRepoStats(root)).toContain(
+      "## Direct chats (`utility`)\n\nRows a direct chat wrote outside any workflow run (`by.workflow` `utility`). They are never added to the workflow figures.\n\nNo outcome or compliance rows from direct chats.",
+    );
   });
 
   it("says there are no rows yet when the ledger is missing", () => {

@@ -13,6 +13,10 @@
 //
 // Rows are read folded, so rows written without `schema` arrive in the current shape.
 //
+// Every figure built from `outcome`, `counter` or `compliance` rows is computed twice: once over
+// the rows workflow closes wrote, once over the rows a direct chat wrote (`by.workflow`
+// `utility`). No figure adds the two together.
+//
 // All computation is advisory + inform-only; never gates any workflow.
 // See DE-34 for the shared-entrypoint + crash-isolation contract.
 
@@ -45,20 +49,33 @@ export type ComplianceRow = TelemetryEnvelope & CompliancePayload;
 // Counts / rates summary
 // ---------------------------------------------------------------------------
 
+/** `by.workflow` of a row a direct chat wrote, outside any workflow run. */
+export const UTILITY_WORKFLOW = "utility";
+
+/** Who wrote a row: a workflow (its close, or its orchestrator), or a direct chat. */
+export type RowSource = "workflow" | "utility";
+
+export const ROW_SOURCES: readonly RowSource[] = ["workflow", "utility"];
+
+export function rowSource(row: Pick<TelemetryEnvelope, "by">): RowSource {
+  return row.by?.workflow === UTILITY_WORKFLOW ? "utility" : "workflow";
+}
+
 export interface TelemetryCounts {
   total: number;
-  byKind: Record<string, number>;
+  /** Rows per kind, workflow rows and direct-chat rows apart. */
+  byKind: Record<string, Record<RowSource, number>>;
   byWorkflow: Record<string, number>;
   byRepo: Record<string, number>;
 }
 
 export function computeCounts(events: TelemetryEvent[]): TelemetryCounts {
-  const byKind: Record<string, number> = {};
+  const byKind: Record<string, Record<RowSource, number>> = {};
   const byWorkflow: Record<string, number> = {};
   const byRepo: Record<string, number> = {};
 
   for (const ev of events) {
-    byKind[ev.kind] = (byKind[ev.kind] ?? 0) + 1;
+    (byKind[ev.kind] ??= { workflow: 0, utility: 0 })[rowSource(ev)]++;
     const workflow = ev.by?.workflow ?? "unknown";
     byWorkflow[workflow] = (byWorkflow[workflow] ?? 0) + 1;
     byRepo[ev.repo] = (byRepo[ev.repo] ?? 0) + 1;
@@ -454,18 +471,96 @@ export function computeDeferralDiscipline(rows: DeferralRow[]): DeferralDiscipli
 }
 
 // ---------------------------------------------------------------------------
+// Run figures — one set per row source
+// ---------------------------------------------------------------------------
+
+/** Every figure built from one source's `outcome`, `counter` and `compliance` rows. */
+export interface RunFigures {
+  outcomes: number;
+  compliance: number;
+  elapsed: ElapsedStats;
+  regression: RegressionResult;
+  complianceRates: ComplianceRuleRate[];
+  versionCompliance: VersionComplianceEntry[];
+  challengeGate: ChallengeGateCounts;
+  agentContext: AgentContextReport;
+}
+
+export function computeRunFigures(
+  outcomeRows: OutcomeRow[],
+  counterRows: CounterRow[],
+  complianceRows: ComplianceRow[],
+): RunFigures {
+  return {
+    outcomes: outcomeRows.length,
+    compliance: complianceRows.length,
+    elapsed: computeElapsedStats(outcomeRows),
+    regression: computeRegression(outcomeRows, counterRows),
+    complianceRates: computeComplianceRates(complianceRows),
+    versionCompliance: computeVersionCompliance(complianceRows),
+    challengeGate: computeChallengeGate(outcomeRows),
+    agentContext: computeAgentContext(outcomeRows),
+  };
+}
+
+function runFigureLines(label: string, f: RunFigures): string[] {
+  const p = `[bkit-analysis] [${label}]`;
+  const lines = [`${p} Run outcomes: ${f.outcomes} | Compliance rows: ${f.compliance}`];
+  const { elapsed, regression, challengeGate, complianceRates, versionCompliance } = f;
+
+  if (elapsed.count > 0) {
+    lines.push(
+      `${p} Duration (min): mean=${elapsed.meanMinutes.toFixed(1)} | p50=${elapsed.p50Minutes.toFixed(1)} | min=${elapsed.minMinutes} | max=${elapsed.maxMinutes}`,
+    );
+  }
+
+  lines.push(
+    `${p} #183 Size↔outcome regression (dispatch-size threshold: ${regression.dispatchSizeThreshold} lines added):`,
+  );
+  for (const b of regression.buckets) {
+    if (b.count > 0) {
+      lines.push(
+        `  ${b.label}: ${b.count} runs, ${b.errorCount} errors (${(b.errorRate * 100).toFixed(1)}%)`,
+      );
+    }
+  }
+  lines.push(
+    `${p} counter.source trust: shell-bus=${regression.shellBusCount} (trusted) | model-self-report=${regression.modelSelfReportCount} (untrusted)`,
+  );
+
+  if (challengeGate.runs > 0) {
+    lines.push(
+      `${p} Build challenge size: ${challengeGate.small} small (challenge-1 skipped) | ${challengeGate.large} large, of ${challengeGate.runs} runs`,
+    );
+  }
+
+  if (complianceRates.length > 0) {
+    lines.push(`${p} Per-rule compliance rates:`);
+    for (const r of complianceRates) {
+      lines.push(
+        `  ${r.rule}: ${(r.passRate * 100).toFixed(1)}% pass (${r.passCount}/${r.totalCount})`,
+      );
+    }
+  }
+
+  if (versionCompliance.length > 0) {
+    lines.push(`${p} Per-bkit.version compliance:`);
+    for (const v of versionCompliance) {
+      lines.push(`  v${v.version}: ${(v.passRate * 100).toFixed(1)}% pass (${v.totalRuns} runs)`);
+    }
+  }
+  return lines;
+}
+
+// ---------------------------------------------------------------------------
 // Full analysis report
 // ---------------------------------------------------------------------------
 
 export interface AnalysisReport {
   counts: TelemetryCounts;
-  elapsed: ElapsedStats;
-  regression: RegressionResult;
-  complianceRates: ComplianceRuleRate[];
-  versionCompliance: VersionComplianceEntry[];
+  /** Workflow rows and direct-chat (`utility`) rows, never added together. */
+  runs: Record<RowSource, RunFigures>;
   deferralDiscipline: DeferralDisciplineEntry[];
-  challengeGate: ChallengeGateCounts;
-  agentContext: AgentContextReport;
   reportLines: string[];
 }
 
@@ -477,85 +572,52 @@ export function runAnalysis(
   const { state, rowCount, malformedLineCount } = foldFrom(paths);
   const events = [...state.values()].filter((ev) => !skipKinds.has(ev.kind));
 
-  const outcomeRows: OutcomeRow[] = [];
-  const counterRows: CounterRow[] = [];
-  const complianceRows: ComplianceRow[] = [];
+  const grouped = () => ({
+    outcome: [] as OutcomeRow[],
+    counter: [] as CounterRow[],
+    compliance: [] as ComplianceRow[],
+  });
+  const bySource: Record<RowSource, ReturnType<typeof grouped>> = {
+    workflow: grouped(),
+    utility: grouped(),
+  };
   const deferralRows: DeferralRow[] = [];
 
   for (const ev of events) {
+    const g = bySource[rowSource(ev)];
     if (ev.kind === "outcome") {
-      outcomeRows.push(ev);
+      g.outcome.push(ev);
     } else if (ev.kind === "counter") {
-      counterRows.push(ev);
+      g.counter.push(ev);
     } else if (ev.kind === "compliance") {
-      complianceRows.push(ev);
+      g.compliance.push(ev);
     } else if (ev.kind === "deferral") {
       deferralRows.push(ev);
     }
   }
 
   const counts = computeCounts(events);
-  const elapsed = computeElapsedStats(outcomeRows);
-  const regression = computeRegression(outcomeRows, counterRows);
-  const complianceRates = computeComplianceRates(complianceRows);
-  const versionCompliance = computeVersionCompliance(complianceRows);
+  const runs: Record<RowSource, RunFigures> = {
+    workflow: computeRunFigures(
+      bySource.workflow.outcome,
+      bySource.workflow.counter,
+      bySource.workflow.compliance,
+    ),
+    utility: computeRunFigures(
+      bySource.utility.outcome,
+      bySource.utility.counter,
+      bySource.utility.compliance,
+    ),
+  };
   const deferralDiscipline = computeDeferralDiscipline(deferralRows);
-  const challengeGate = computeChallengeGate(outcomeRows);
-  const agentContext = computeAgentContext(outcomeRows);
 
   const reportLines: string[] = [
     `[bkit-analysis] Telemetry rows: ${rowCount} | malformed: ${malformedLineCount}`,
     `[bkit-analysis] Kinds: ${JSON.stringify(counts.byKind)}`,
     `[bkit-analysis] Workflows: ${JSON.stringify(counts.byWorkflow)}`,
-    `[bkit-analysis] Run outcomes: ${outcomeRows.length} | Compliance rows: ${complianceRows.length}`,
+    ...runFigureLines("workflow", runs.workflow),
+    ...runFigureLines(UTILITY_WORKFLOW, runs.utility),
   ];
-
-  if (elapsed.count > 0) {
-    reportLines.push(
-      `[bkit-analysis] Duration (min): mean=${elapsed.meanMinutes.toFixed(1)} | p50=${elapsed.p50Minutes.toFixed(1)} | min=${elapsed.minMinutes} | max=${elapsed.maxMinutes}`,
-    );
-  }
-
-  // Regression report
-  reportLines.push(
-    `[bkit-analysis] #183 Size↔outcome regression (dispatch-size threshold: ${regression.dispatchSizeThreshold} lines added):`,
-  );
-  for (const b of regression.buckets) {
-    if (b.count > 0) {
-      reportLines.push(
-        `  ${b.label}: ${b.count} runs, ${b.errorCount} errors (${(b.errorRate * 100).toFixed(1)}%)`,
-      );
-    }
-  }
-  reportLines.push(
-    `[bkit-analysis] counter.source trust: shell-bus=${regression.shellBusCount} (trusted) | model-self-report=${regression.modelSelfReportCount} (untrusted)`,
-  );
-
-  if (challengeGate.runs > 0) {
-    reportLines.push(
-      `[bkit-analysis] Build challenge size: ${challengeGate.small} small (challenge-1 skipped) | ${challengeGate.large} large, of ${challengeGate.runs} runs`,
-    );
-  }
-
-  // Compliance rates
-  if (complianceRates.length > 0) {
-    reportLines.push(`[bkit-analysis] Per-rule compliance rates:`);
-    for (const r of complianceRates) {
-      reportLines.push(
-        `  ${r.rule}: ${(r.passRate * 100).toFixed(1)}% pass (${r.passCount}/${r.totalCount})`,
-      );
-    }
-  }
-
-  // Version compliance
-  if (versionCompliance.length > 0) {
-    reportLines.push(`[bkit-analysis] Per-bkit.version compliance:`);
-    for (const v of versionCompliance) {
-      reportLines.push(
-        `  v${v.version}: ${(v.passRate * 100).toFixed(1)}% pass (${v.totalRuns} runs)`,
-      );
-    }
-  }
 
   // Deferral discipline — who defers work they should have finished.
   if (deferralDiscipline.length > 0) {
@@ -577,15 +639,5 @@ export function runAnalysis(
     }
   }
 
-  return {
-    counts,
-    elapsed,
-    regression,
-    complianceRates,
-    versionCompliance,
-    deferralDiscipline,
-    challengeGate,
-    agentContext,
-    reportLines,
-  };
+  return { counts, runs, deferralDiscipline, reportLines };
 }

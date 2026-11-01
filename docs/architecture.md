@@ -41,7 +41,7 @@ cbartens/bkit (this repo)
 │   │   ├── launch.ts            # `bkit cursor` / `bkit opencode` launcher verbs — merges .bkit/.env over process.env and exec's the app binary directly (`open -a` routes via launchd, which DROPS the env — #279/#280)
 │   │   ├── comply.ts            # Compliance grader (#234 WS-2) — no-mirror-edit + skip-ci-not-head rules; emits kind:"compliance" rows; `bkit comply --phase <p>` (fail-open)
 │   │   ├── stats.ts             # `bkit stats` — this repo's .bkit/stats.jsonl + friction + deferrals → .bkit/stats.md (committed, no timestamp); never reads harvest/ or chats; chat/run rows not counted; fail-open
-│   │   ├── analysis.ts          # Computations behind `bkit stats` and the harvest report — counts/rates/elapsed, #183 size-vs-outcome regression, dispatch-size threshold, counter.source trust labelling, per-rule compliance rate over kind:"compliance" rows
+│   │   ├── analysis.ts          # Computations behind `bkit stats` and the harvest report — counts/rates/elapsed, #183 size-vs-outcome regression, dispatch-size threshold, counter.source trust labelling, per-rule compliance rate over kind:"compliance" rows; each figure computed apart for workflow rows and `utility` (direct-chat) rows, never one total
 │   │   └── workflow/ ci/ setup/ # `bkit <noun> <verb>` workflow commands
 │   ├── install/                 # what gets written into a consumer repo, and how
 │   │   ├── modules/index.ts     # Phase 2 — module dispatcher (MODULE_REGISTRY)

@@ -2384,21 +2384,27 @@ export const latestChats = (rows) => latestRows(rows, "chat");
  * appends the run's outcome again with the dispatch in `ci`. Newest is the larger `ts`, the later
  * row on a tie. Rows without `run.parentSha` are
  * all kept. Order follows each kept row's first appearance.
+ *
+ * Two groups, never merged: `workflow` = rows workflow closes wrote; `utility` = rows a direct chat
+ * wrote (`by.workflow` `utility`), which no run log stands behind.
+ * @returns {{workflow: object[], utility: object[]}}
  */
 export function latestOutcomes(rows) {
-  const out = [];
+  const out = { workflow: [], utility: [] };
   const at = new Map();
   for (const r of rows) {
     if (r?.kind !== "outcome") continue;
+    const workflow = r.by?.workflow ?? r.workflow;
+    const group = out[workflow === "utility" ? "utility" : "workflow"];
     const sha = r.run?.parentSha ?? r.parentSha;
     if (!sha) {
-      out.push(r);
+      group.push(r);
       continue;
     }
-    const k = [r.repo, r.by?.workflow ?? r.workflow, sha].join("\u0000");
+    const k = [r.repo, workflow, sha].join("\u0000");
     const i = at.get(k);
-    if (i === undefined) at.set(k, out.push(r) - 1);
-    else if ((r.ts ?? 0) >= (out[i].ts ?? 0)) out[i] = r;
+    if (i === undefined) at.set(k, group.push(r) - 1);
+    else if ((r.ts ?? 0) >= (group[i].ts ?? 0)) group[i] = r;
   }
   return out;
 }
@@ -3550,7 +3556,8 @@ export function chatClass(row) {
 export function linkChats(chatRows, ledgerRows) {
   const chats = chatRows.map(normalize);
   const rows = ledgerRows.filter(workflowRow).map(normalize);
-  const kept = new Set(latestOutcomes(rows));
+  const outcomes = latestOutcomes(rows);
+  const kept = new Set([...outcomes.workflow, ...outcomes.utility]);
   const others = rows.filter((r) => r.kind !== "outcome" || kept.has(r));
   const bySha = new Map();
   for (const r of others) {
@@ -4089,7 +4096,7 @@ export function renderReport(ledgerRows, names, now = Date.now(), logDirs = new 
     (a, b) => a.time.start - b.time.start,
   );
   const wfOf = (r) => r.by?.workflow;
-  const outcomes = latestOutcomes(ledgerRows);
+  const outcomes = latestOutcomes(ledgerRows).workflow;
   const outcomeBySha = new Map(
     outcomes.filter((r) => r.run?.parentSha).map((r) => [r.run.parentSha, r]),
   );
@@ -4606,6 +4613,7 @@ export function renderReport(ledgerRows, names, now = Date.now(), logDirs = new 
 /**
  * Per repo fingerprint: runs found on both sides, outcome rows with no `run` row, and `run` rows
  * with no outcome row. Only rows that carry `run.parentSha` take part, and only settled runs.
+ * Outcome rows a direct chat wrote (`utility`) have no run log, so they take no part either.
  * @returns {Map<string, {both: number, outcomeOnly: object[], runOnly: object[]}>}
  */
 export function runCheck(rows) {
@@ -4620,7 +4628,7 @@ export function runCheck(rows) {
     runs.set(runKey(r.repo, r.run.parentSha), r);
   }
   const matched = new Set();
-  for (const o of latestOutcomes(rows)) {
+  for (const o of latestOutcomes(rows).workflow) {
     const sha = o.run?.parentSha;
     if (!sha || typeof o.repo !== "string") continue;
     const fp = o.repo.startsWith("fp:") ? o.repo : repoFp(o.repo);
@@ -4790,8 +4798,8 @@ async function main() {
         [statsFile, frictionFile].filter((f) => fs.existsSync(f)),
         new Set(["chat", "run"]),
       ),
-      "Workflow rows, all repos",
-      "The rows every repo's workflow closes wrote, as copied into `harvest/`.",
+      "Ledger rows, all repos",
+      "The rows every repo's workflow closes and direct chats wrote, as copied into `harvest/`, each group reported apart.",
     ).replace(/^#/gm, "##");
     fs.writeFileSync(
       reportFile,

@@ -59,6 +59,8 @@ Each `kind` goes to one file. Its writers:
 
 **Writers are exhaustive:** Only the agents listed as writers for a kind may write that kind, with no exceptions. For the five `bkit ledgers append` kinds, this column is `KIND_WRITERS` in `.bkit/core/engine/ledgers/telemetry.ts`, the check that `append` runs. `telemetry.test.ts` fails when either side changes alone.
 
+**Stats readers keep `utility` rows apart:** `bkit stats` and the harvest report read `outcome`, `counter` and `compliance` rows in two groups: rows a workflow wrote, and rows a direct chat wrote (`by.workflow` `utility`). Each figure (run counts, durations, change size vs failures, attempt-counter trust, compliance rates, build challenge size, agent context peaks) is computed once per group, and no figure adds the two together, because no workflow run stands behind a `utility` row. The harvest's run check reads workflow `outcome` rows only, since a `utility` row has no run log.
+
 ## Generic Fields (all kinds)
 
 Every row opens with the same top section, in this order:

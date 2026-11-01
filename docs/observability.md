@@ -189,8 +189,8 @@ Every phase workflow header (`bkit-{design,plan,build,debug,ship}.md`) carries a
 
 1. **Ledgers** (`ledgers.ts`): copies `.bkit/stats.jsonl` and `.bkit/friction.jsonl` of bkit and of every repo in `harvest/consumers.md` (one absolute path per line) into `harvest/` (a row without `repo` gets the repo's `owner/repo`); then prunes every friction row and every `chat` / `run` row from the repos (§ `[bkit-harvest]` prefix; `.bkit/jsonl.md` § Friction Is a Drained Queue). `docs/deferrals.jsonl` / `docs/failures.jsonl` counted only.
 2. **Scan** (`bkit-harvest.mjs`): every chat on this machine (any repo, any host) and the run logs of every repo they ran in → `chat` and `run` rows appended to `harvest/stats.jsonl`.
-3. **Run check:** each repo's `outcome` rows against `run` rows, joined on `run.parentSha`; mismatches listed.
-4. **Report:** `harvest/stats.md` = chat / run report + run check + the `bkit stats` sections over every repo's workflow rows.
+3. **Run check:** each repo's workflow `outcome` rows against `run` rows, joined on `run.parentSha`; mismatches listed. `utility` (direct-chat) `outcome` rows have no run log and are left out.
+4. **Report:** `harvest/stats.md` = chat / run report + run check + the `bkit stats` sections over every repo's ledger rows, workflow rows and `utility` rows in separate sections (`.bkit/jsonl.md` § Ledgers & Writers).
 
 `harvest/` is gitignored and not backed up by bkit: after a prune it is the sole copy of those rows. Run by hand at least every few weeks: hosts delete old chats. Each repo's own report is `bkit stats` → `.bkit/stats.md` (committed).
 

@@ -1,7 +1,7 @@
 # bkit stats
 
 > [!CAUTION]
-> **Purpose:** This repo's workflow statistics, computed from `.bkit/stats.jsonl`, `.bkit/friction.jsonl`, `docs/deferrals.jsonl`. Workflow closes append the rows.
+> **Purpose:** This repo's workflow statistics, computed from `.bkit/stats.jsonl`, `.bkit/friction.jsonl`, `docs/deferrals.jsonl`. Workflow closes append the rows; rows a direct chat wrote (`utility`) are reported apart.
 >
 > **Rules:**
 >
@@ -10,13 +10,13 @@
 ## Rows
 
 <!-- prettier-ignore -->
-| Kind | Rows |
-| --- | --- |
-| deferral | 158 |
-| compliance | 71 |
-| counter | 40 |
-| outcome | 35 |
-| friction | 16 |
+| Kind | Workflow rows | Direct-chat rows |
+| --- | --- | --- |
+| deferral | 77 | 81 |
+| compliance | 71 | 0 |
+| counter | 40 | 0 |
+| outcome | 35 | 0 |
+| friction | 16 | 0 |
 
 <!-- prettier-ignore -->
 | Workflow | Rows |
@@ -29,14 +29,18 @@
 | migrate | 13 |
 | unknown | 2 |
 
-## Run durations
+## Workflow runs
+
+Rows a workflow close wrote at the end of a design, plan, build, debug or ship run.
+
+### Run durations
 
 <!-- prettier-ignore -->
 | Runs | Mean (min) | Median (min) | Min (min) | Max (min) |
 | --- | --- | --- | --- | --- |
 | 35 | 427.5 | 226.7 | 17.4 | 1305 |
 
-## Change size vs failures
+### Change size vs failures
 
 A run counts as an error when it added failures. Dispatch-size threshold: 0 lines added.
 
@@ -51,7 +55,7 @@ A run counts as an error when it added failures. Dispatch-size threshold: 0 line
 
 Attempt counters: 32 counted by the shell (trusted), 3 reported by the model (untrusted).
 
-## Build challenge size
+### Build challenge size
 
 Small changes (under 300 lines and 10 files) run the security reviewer alone.
 
@@ -60,7 +64,7 @@ Small changes (under 300 lines and 10 files) run the security reviewer alone.
 | --- | --- | --- |
 | 3 | 0 | 3 |
 
-## Agent context peaks
+### Agent context peaks
 
 Cap: 160000 tokens per agent. 5 of 35 runs recorded context.
 
@@ -84,7 +88,7 @@ Cap: 160000 tokens per agent. 5 of 35 runs recorded context.
 | bkit-design-review-2 | 1 | 1 | 60344 | 0 |
 | bkit-design-brainstorm-ideate-2 | 1 | 1 | 36541 | 0 |
 
-## Compliance by rule
+### Compliance by rule
 
 <!-- prettier-ignore -->
 | Rule | Pass | Fail | n/a | Pass rate |
@@ -92,7 +96,7 @@ Cap: 160000 tokens per agent. 5 of 35 runs recorded context.
 | skip-ci-not-head | 36 | 0 | 0 | 100.0% |
 | no-mirror-edit | 28 | 7 | 0 | 80.0% |
 
-## Compliance by bkit version
+### Compliance by bkit version
 
 <!-- prettier-ignore -->
 | Version | Runs | Pass rate |
@@ -106,6 +110,12 @@ Cap: 160000 tokens per agent. 5 of 35 runs recorded context.
 | 5.5.0 | 4 | 100.0% |
 | 5.5.1 | 2 | 100.0% |
 | 6.0.0 | 30 | 86.7% |
+
+## Direct chats (`utility`)
+
+Rows a direct chat wrote outside any workflow run (`by.workflow` `utility`). They are never added to the workflow figures.
+
+No outcome or compliance rows from direct chats.
 
 ## Deferral discipline
 

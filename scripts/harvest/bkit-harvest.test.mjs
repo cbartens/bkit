@@ -2683,10 +2683,10 @@ await test("outcome readers keep only the newest row per repo, workflow and pare
   };
   const first = { ...base, ts: ms(352) };
   const otherWorkflow = { ...base, ts: ms(352), by: { workflow: "debug", step: "close" } };
-  assert.deepEqual(latestOutcomes([redispatched, first, otherWorkflow]), [
-    redispatched,
-    otherWorkflow,
-  ]);
+  assert.deepEqual(latestOutcomes([redispatched, first, otherWorkflow]), {
+    workflow: [redispatched, otherWorkflow],
+    utility: [],
+  });
   const chat = {
     ...normalize({
       ...OLD_CHAT,
@@ -2751,6 +2751,50 @@ await test("the run check pairs outcome rows with run rows on parentSha, per rep
   const md = renderRunCheck(runCheck(rows), new Map([[fp, "widget"]]));
   assert.match(md, /\| widget \| 1 \| 1 \| 1 \|/);
   assert.match(md, /\| widget \| run only \| build \| .* \| cccccccc \|/);
+});
+
+await test("outcome readers keep a direct chat's outcome rows apart from workflow rows", () => {
+  const workflowRow = {
+    schema: 2,
+    ts: ms(352),
+    kind: "outcome",
+    repo: "acme/widget",
+    bkit: { version: "5.6.0" },
+    by: { workflow: "build", step: "build-close-workflow" },
+    run: { parentSha: BUILD_SHA },
+    time: { start: ms(300), end: ms(352), totalMinutes: 52 },
+    ending: "done",
+    lines: { total: { added: 30, deleted: 3, changed: 33, files: 3 } },
+  };
+  // Same repo and parentSha, written later by hand in a direct chat.
+  const utilityRow = {
+    ...workflowRow,
+    ts: ms(360),
+    by: { workflow: "utility", step: "manual" },
+    time: { start: ms(358), end: ms(360), totalMinutes: 2 },
+    lines: { total: { added: 1, deleted: 0, changed: 1, files: 1 } },
+  };
+  const noSha = { ...utilityRow, ts: ms(361), run: undefined };
+  assert.deepEqual(latestOutcomes([workflowRow, utilityRow, noSha]), {
+    workflow: [workflowRow],
+    utility: [utilityRow, noSha],
+  });
+
+  const fp = repoFp("acme/widget");
+  const run = {
+    schema: 2,
+    ts: 1,
+    kind: "run",
+    key: `${fp}:${BUILD_SHA}`,
+    repo: fp,
+    by: { workflow: "build", step: "scan" },
+    run: { parentSha: BUILD_SHA },
+    time: { start: 1 },
+    scan: { settled: true },
+  };
+  const c = runCheck([workflowRow, utilityRow, noSha, run]).get(fp);
+  assert.equal(c.both, 1);
+  assert.deepEqual(c.outcomeOnly, [], "a direct chat's row is no run-log mismatch");
 });
 
 // Per-run tokens, context at turn 10, plan reads, owner waits -----------------------------------

@@ -555,9 +555,18 @@ describe("computeCounts", () => {
 
     const counts = computeCounts(events);
     expect(counts.total).toBe(3);
-    expect(counts.byKind["compliance"]).toBe(2);
-    expect(counts.byKind["outcome"]).toBe(1);
+    expect(counts.byKind["compliance"]).toEqual({ workflow: 2, utility: 0 });
+    expect(counts.byKind["outcome"]).toEqual({ workflow: 1, utility: 0 });
     expect(counts.byWorkflow).toEqual({ ship: 2, build: 1 });
+  });
+
+  it("counts a direct chat's rows of a kind apart from workflow rows", () => {
+    const counts = computeCounts([
+      { ...outcomeRow(1001, 0, 0), kind: "outcome" },
+      { ...outcomeRow(1002, 0, 0), by: { workflow: "utility", step: "manual" } },
+    ]);
+    expect(counts.byKind["outcome"]).toEqual({ workflow: 1, utility: 1 });
+    expect(counts.byWorkflow).toEqual({ ship: 1, utility: 1 });
   });
 });
 
@@ -590,10 +599,11 @@ describe("runAnalysis — full report (WS4-T3)", () => {
     expect(joined).toMatch(/compliance.*2/i);
     expect(joined).toMatch(/no-mirror-edit/);
     expect(joined).toContain("Duration (min): mean=60.0");
-    expect(report.complianceRates).toHaveLength(1);
-    expect(report.complianceRates[0]!.rule).toBe("no-mirror-edit");
-    expect(report.regression.totalRows).toBe(1);
-    expect(report.regression.shellBusCount).toBe(1);
+    const figures = report.runs.workflow;
+    expect(figures.complianceRates).toHaveLength(1);
+    expect(figures.complianceRates[0]!.rule).toBe("no-mirror-edit");
+    expect(figures.regression.totalRows).toBe(1);
+    expect(figures.regression.shellBusCount).toBe(1);
     expect(joined).toContain("counter.source trust: shell-bus=1 (trusted) | model-self-report=0");
   });
 
@@ -637,11 +647,101 @@ describe("runAnalysis — full report (WS4-T3)", () => {
     );
   });
 
+  // A direct chat may write stats rows by hand; no workflow run stands behind them.
+  it("reports a direct chat's outcome, counter and compliance rows apart from workflow rows", () => {
+    const statsPath = path.join(tmpDir, "stats.jsonl");
+    const workflowOutcome = outcomeRow(1_700_000_001_000, 600, 12, { minutes: 300, failures: 2 });
+    workflowOutcome.build = {
+      challenge: {
+        verdict: "PASS",
+        findings: null,
+        gate: { size: "large", linesChanged: 720, filesChanged: 12, skipped: false },
+      },
+    } as OutcomeRow["build"];
+    workflowOutcome.context = {
+      host: "claude-code",
+      byAgent: { "bkit-build-plan-execute": { peak: 150_000, runs: 2 } },
+    };
+    const utility = { workflow: "utility", step: "manual" };
+    const utilityOutcome: OutcomeRow = {
+      ...outcomeRow(1_700_000_002_000, 10, 1, { minutes: 2 }),
+      by: utility,
+      repo: "cbartens/bkit",
+    };
+    const rows = [
+      workflowOutcome,
+      counterRowFor(workflowOutcome, "shell-bus"),
+      complianceRow(1_700_000_001_001, "no-mirror-edit", "pass"),
+      utilityOutcome,
+      counterRowFor(utilityOutcome, "model-self-report"),
+      { ...complianceRow(1_700_000_002_001, "no-mirror-edit", "fail", "6.0.0"), by: utility },
+    ];
+    fs.writeFileSync(statsPath, rows.map((r) => JSON.stringify(r)).join("\n") + "\n", "utf-8");
+
+    const { runs, counts, reportLines } = runAnalysis([statsPath]);
+
+    expect(counts.byKind).toEqual({
+      outcome: { workflow: 1, utility: 1 },
+      counter: { workflow: 1, utility: 1 },
+      compliance: { workflow: 1, utility: 1 },
+    });
+
+    const w = runs.workflow;
+    expect(w.outcomes).toBe(1);
+    expect(w.compliance).toBe(1);
+    expect(w.elapsed).toMatchObject({ count: 1, meanMinutes: 300, minMinutes: 300 });
+    expect(w.regression.totalRows).toBe(1);
+    expect(w.regression.shellBusCount).toBe(1);
+    expect(w.regression.modelSelfReportCount).toBe(0);
+    expect(w.regression.buckets.find((b) => b.count > 0)?.label).toBe("L (500–999)");
+    expect(w.complianceRates).toEqual([
+      {
+        rule: "no-mirror-edit",
+        passCount: 1,
+        failCount: 0,
+        naCount: 0,
+        totalCount: 1,
+        passRate: 1,
+      },
+    ]);
+    expect(w.versionCompliance).toEqual([{ version: "4.1.4", passRate: 1, totalRuns: 1 }]);
+    expect(w.challengeGate).toEqual({ runs: 1, small: 0, large: 1 });
+    expect(w.agentContext).toMatchObject({ outcomes: 1, recorded: 1 });
+
+    const u = runs.utility;
+    expect(u.outcomes).toBe(1);
+    expect(u.compliance).toBe(1);
+    expect(u.elapsed).toMatchObject({ count: 1, meanMinutes: 2, maxMinutes: 2 });
+    expect(u.regression.totalRows).toBe(1);
+    expect(u.regression.shellBusCount).toBe(0);
+    expect(u.regression.modelSelfReportCount).toBe(1);
+    expect(u.regression.buckets.find((b) => b.count > 0)?.label).toBe("XS (0–49)");
+    expect(u.complianceRates).toEqual([
+      {
+        rule: "no-mirror-edit",
+        passCount: 0,
+        failCount: 1,
+        naCount: 0,
+        totalCount: 1,
+        passRate: 0,
+      },
+    ]);
+    expect(u.versionCompliance).toEqual([{ version: "6.0.0", passRate: 0, totalRuns: 1 }]);
+    expect(u.challengeGate).toEqual({ runs: 0, small: 0, large: 0 });
+    expect(u.agentContext).toMatchObject({ outcomes: 1, recorded: 0, byAgent: [] });
+
+    const joined = reportLines.join("\n");
+    expect(joined).toContain("[workflow] Run outcomes: 1 | Compliance rows: 1");
+    expect(joined).toContain("[utility] Run outcomes: 1 | Compliance rows: 1");
+    expect(joined).not.toMatch(/Run outcomes: 2/);
+  });
+
   it("handles missing files gracefully", () => {
     const report = runAnalysis([path.join(tmpDir, "does-not-exist.jsonl")]);
     expect(report.counts.total).toBe(0);
-    expect(report.regression.totalRows).toBe(0);
-    expect(report.complianceRates).toHaveLength(0);
+    expect(report.runs.workflow.regression.totalRows).toBe(0);
+    expect(report.runs.utility.regression.totalRows).toBe(0);
+    expect(report.runs.workflow.complianceRates).toHaveLength(0);
     expect(report.deferralDiscipline).toHaveLength(0);
   });
 
