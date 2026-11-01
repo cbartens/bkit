@@ -1117,7 +1117,7 @@ Build order: config → runtime resolution → install → close row → build w
 <!-- bkit:task 18 end -->
 <!-- bkit:task 19 start -->
 
-- [ ] **TASK 19:** A `publish=false` build that hits the Failure Path or a Decision Pause runs `workflows handover --push`, which `git add -A`s, commits and pushes `feat/{FID}` to `origin`, so code the owner chose to hold (e.g. an embargoed fix in a public repo) is published irreversibly
+- [x] **TASK 19:** A `publish=false` build that hits the Failure Path or a Decision Pause runs `workflows handover --push`, which `git add -A`s, commits and pushes `feat/{FID}` to `origin`, so code the owner chose to hold (e.g. an embargoed fix in a public repo) is published irreversibly
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/workflows/bkit-build.md:92` · **Round:** 1
   - **DONE WHEN:** Failure Path step 5 (`.bkit/core/workflows/bkit-build.md:90-92`) and the Decision Pause owner-wait step 8 (`.bkit/core/workflows/bkit-build.md:228-230`) branch on `{PUBLISH}`: when it is false they commit the record locally (or link it with `--ref`) and never pass `--push`, so no step of a held run pushes `feat/{FID}`; the publish=true path keeps `--push` unchanged; `.bkit/core/engine/audits/workflows/workflow-shape.test.ts:310` is updated to match.
   - **TEST FIRST:**
