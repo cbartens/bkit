@@ -660,7 +660,7 @@ describe("runAnalysis — full report (WS4-T3)", () => {
     } as OutcomeRow["build"];
     workflowOutcome.context = {
       host: "claude-code",
-      byAgent: { "bkit-build-plan-execute": { peak: 150_000, runs: 2 } },
+      byAgent: { "bkit-build-plan-tasks": { peak: 150_000, runs: 2 } },
     };
     const utility = { workflow: "utility", step: "manual" };
     const utilityOutcome: OutcomeRow = {

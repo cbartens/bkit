@@ -387,11 +387,21 @@ describe("bkit worktrees setup — mint (resume)", () => {
     const logDir = path.join(wtOf(f), "docs/plans", MONTH, "logs", FID);
     fs.writeFileSync(path.join(logDir, ".rebase-failed"), "");
     const tip = advanceDev(f, "b.txt", "new\n");
+    const before = git(wtOf(f), "rev-parse", "HEAD");
 
     const r = await setup(f.repo, "build", "--worktrees");
     expect(r.code).toBe(0);
     expect(r.json).toMatchObject({ mode: "resumed", sentinel: null, rebaseConflict: false });
     expect(git(wtOf(f), "rev-parse", "HEAD~1")).toBe(tip);
+    // The rewrite is on the record: one engine-action row from the old tip to the new.
+    const rebases = fs
+      .readFileSync(path.join(logDir, "status.jsonl"), "utf-8")
+      .split("\n")
+      .filter((l) => l.includes('"type":"engine-action"'))
+      .map((l) => JSON.parse(l) as { action: string; key: string; ref: string });
+    expect(rebases).toMatchObject([
+      { action: "rebase", key: `rebase/${before}`, ref: git(wtOf(f), "rev-parse", "HEAD") },
+    ]);
     expect(fs.existsSync(path.join(logDir, ".rebase-failed"))).toBe(false);
     expect(installCalls()).toBe(`${wtOf(f)} install --frozen-lockfile`);
   });
@@ -497,8 +507,11 @@ describe("bkit worktrees setup — mint (resume)", () => {
       );
       expect(r.json.carriedSha).toBe(git(wtOf(f), "rev-parse", "HEAD"));
       expect(git(wtOf(f), "rev-parse", "HEAD~1")).toBe(tip);
-      // Only the .env setup copied in stays out of the commit.
-      expect(git(wtOf(f), "status", "--porcelain")).toBe("?? .env");
+      // Only the .env setup copied in and the rebase's engine-action row stay out of the commit.
+      expect(git(wtOf(f), "status", "--porcelain")).toBe(`M ${rel}/status.jsonl\n?? .env`);
+      expect(fs.readFileSync(path.join(logDir, "status.jsonl"), "utf-8")).toContain(
+        '"action":"rebase"',
+      );
       expect(fs.readFileSync(path.join(logDir, "ship-summary.md"), "utf-8")).toBe("landed copy\n");
       expect(fs.readFileSync(path.join(wtOf(f), "a.txt"), "utf-8")).toBe("ship doc edit\n");
     },
@@ -684,6 +697,127 @@ describe("bkit worktrees setup — mint (resume)", () => {
     expect(r.json.rebaseConflict).toBe(false);
     expect(r.json.carriedSha).toBe(null);
     expect(r.err).toContain("could not commit what an earlier run left");
+    expect(fs.existsSync(r.json.sentinel)).toBe(true);
+  });
+
+  /**
+   * A resumed worktree whose committed `status.jsonl` a pre-commit hook appends a `type`
+   * row to (after the commit snapshotted), with a leftover for the carry commit and dev moved.
+   */
+  async function hookDirtiedResume(type: string) {
+    const f = await minted();
+    const status = path.join(wtOf(f), "docs/plans", MONTH, "logs", FID, "status.jsonl");
+    const started = { type: "workflow-started", workflow: "build", at: "2026-10-29T10:00:00Z" };
+    fs.writeFileSync(status, `${JSON.stringify(started)}\n`);
+    git(wtOf(f), "add", status);
+    git(wtOf(f), "commit", "-q", "-m", "record");
+    const row = {
+      type,
+      workflow: "build",
+      at: "2026-10-29T10:05:00Z",
+      noun: "disk",
+      verb: "prune",
+    };
+    const hooks = path.join(f.repo, "hooks");
+    fs.mkdirSync(hooks);
+    fs.writeFileSync(
+      path.join(hooks, "pre-commit"),
+      `#!/bin/sh\nprintf '%s\\n' '${JSON.stringify(row)}' >> "${status}"\n`,
+    );
+    fs.chmodSync(path.join(hooks, "pre-commit"), 0o755);
+    git(f.repo, "config", "core.hooksPath", hooks);
+    fs.writeFileSync(path.join(wtOf(f), "left.txt"), "uncommitted\n");
+    const tip = advanceDev(f, "b.txt", "new\n");
+    return { f, status, row, tip, r: await setup(f.repo, "build", "--worktrees") };
+  }
+
+  it("rebases past engine-call rows the carry commit's hook appended to the status file, and puts them back", async () => {
+    const { f, status, row, tip, r } = await hookDirtiedResume("engine-call");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ sentinel: null, rebaseConflict: false });
+    expect(r.json.carriedSha).not.toBeNull();
+    expect(g(wtOf(f), "merge-base", "--is-ancestor", tip, "HEAD").status).toBe(0);
+    const lines = fs.readFileSync(status, "utf-8").trim().split("\n");
+    // The rebase's own `engine-action` row follows the row put back.
+    expect(lines.slice(-2).map((l) => JSON.parse(l))).toMatchObject([
+      row,
+      { type: "engine-action", action: "rebase" },
+    ]);
+    expect(git(wtOf(f), "status", "--porcelain", "--", status)).not.toBe("");
+  });
+
+  it("still refuses a status file the carry commit's hook dirtied with any other row: exit 9", async () => {
+    const { r } = await hookDirtiedResume("step-done");
+    expect(r.code).toBe(9);
+    expect(r.json.carriedSha).not.toBeNull();
+    expect(fs.existsSync(r.json.sentinel)).toBe(true);
+  });
+
+  /**
+   * A resumed worktree whose committed `.bkit/friction.jsonl` a pre-commit hook appends a
+   * `kind` row to (a hook-launched command's unexpected exit), with a leftover and dev moved.
+   */
+  async function hookDirtiedFriction(kind: string) {
+    const f = await minted();
+    const friction = path.join(wtOf(f), ".bkit", "friction.jsonl");
+    fs.mkdirSync(path.dirname(friction), { recursive: true });
+    fs.writeFileSync(friction, `${JSON.stringify({ kind: "friction", key: "earlier" })}\n`);
+    git(wtOf(f), "add", friction);
+    git(wtOf(f), "commit", "-q", "-m", "record");
+    const row = { kind, key: "disk-prune/disk-prune", category: "tool-failure" };
+    const hooks = path.join(f.repo, "hooks");
+    fs.mkdirSync(hooks);
+    fs.writeFileSync(
+      path.join(hooks, "pre-commit"),
+      `#!/bin/sh\nprintf '%s\\n' '${JSON.stringify(row)}' >> "${friction}"\n`,
+    );
+    fs.chmodSync(path.join(hooks, "pre-commit"), 0o755);
+    git(f.repo, "config", "core.hooksPath", hooks);
+    fs.writeFileSync(path.join(wtOf(f), "left.txt"), "uncommitted\n");
+    const tip = advanceDev(f, "b.txt", "new\n");
+    return { f, friction, row, tip, r: await setup(f.repo, "build", "--worktrees") };
+  }
+
+  it("rebases past friction rows the carry commit's hook appended, and puts them back", async () => {
+    const { f, friction, row, tip, r } = await hookDirtiedFriction("friction");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ sentinel: null, rebaseConflict: false });
+    expect(g(wtOf(f), "merge-base", "--is-ancestor", tip, "HEAD").status).toBe(0);
+    const lines = fs.readFileSync(friction, "utf-8").trim().split("\n");
+    expect(JSON.parse(lines.at(-1)!)).toEqual(row);
+  });
+
+  it("puts friction rows back after a rebase onto a dev that appended to the same file", async () => {
+    const f = fixture();
+    const earlier = JSON.stringify({ kind: "friction", key: "earlier" });
+    fs.mkdirSync(path.join(f.seed, ".bkit"), { recursive: true });
+    advanceDev(f, ".bkit/friction.jsonl", `${earlier}\n`);
+    expect((await setup(f.repo, "build", "--worktrees")).code).toBe(0);
+    const friction = path.join(wtOf(f), ".bkit", "friction.jsonl");
+    const row = JSON.stringify({ kind: "friction", key: "disk-prune/disk-prune" });
+    const hooks = path.join(f.repo, "hooks");
+    fs.mkdirSync(hooks);
+    fs.writeFileSync(
+      path.join(hooks, "pre-commit"),
+      `#!/bin/sh\nprintf '%s\\n' '${row}' >> "${friction}"\n`,
+    );
+    fs.chmodSync(path.join(hooks, "pre-commit"), 0o755);
+    git(f.repo, "config", "core.hooksPath", hooks);
+    fs.writeFileSync(path.join(wtOf(f), "left.txt"), "uncommitted\n");
+    const onDev = JSON.stringify({ kind: "friction", key: "on-dev" });
+    const tip = advanceDev(f, ".bkit/friction.jsonl", `${earlier}\n${onDev}\n`);
+
+    const r = await setup(f.repo, "build", "--worktrees");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ sentinel: null, rebaseConflict: false });
+    expect(g(wtOf(f), "merge-base", "--is-ancestor", tip, "HEAD").status).toBe(0);
+    expect(fs.readFileSync(friction, "utf-8")).toBe(`${earlier}\n${onDev}\n${row}\n`);
+    expect(git(wtOf(f), "stash", "list")).toBe("");
+  });
+
+  it("still refuses a friction file the carry commit's hook dirtied with another kind: exit 9", async () => {
+    const { r } = await hookDirtiedFriction("failure");
+    expect(r.code).toBe(9);
     expect(fs.existsSync(r.json.sentinel)).toBe(true);
   });
 

@@ -80,7 +80,7 @@ Give each annotation one verdict. **SILENT FAILURE** outranks every other verdic
 #### Conditional
 
 - [ ] **Workflow Linters:** **If** workflows are on disk → Step 6 (e.g., actionlint, zizmor, shellcheck). Fallback: read the workflows, and name each check skipped.
-- [ ] **Language Server:** **If** the language is typed **and** there is a lint annotation → Step 9 — per-file diagnostics (e.g., Serena, `tsserver`). Fallback: lint that file, and say so. An empty result is inconclusive, so corroborate it with a text search.
+- [ ] **Language Server:** **If** the language is typed **and** there is a lint annotation → Step 9 — per-file diagnostics (e.g., Serena, `tsserver`). Fallback: lint that file, and say so. An empty language-server result is inconclusive, so corroborate it with text search.
 - [ ] **Deprecated-API Lint:** **If** the language is typed → Step 10 (e.g., `@typescript-eslint/no-deprecated`). Fallback: text search for known deprecated calls, and record the under-count.
 
 ### 🔒 Gate 1: Prerequisites Check

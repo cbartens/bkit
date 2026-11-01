@@ -164,7 +164,6 @@ export function planBlock(tree, month, fid, events) {
         groups,
     };
 }
-const TEST_ORDER_GAP = /—\s*(no-red|late-red|red-mismatch|red-evidence-missing|test-changed)\s*—\s*not fixable/g;
 /** A task `bkit challenge merge` appended: its severity field. Planned tasks carry none. */
 const APPENDED_SEVERITY = /\*\*Severity:\*\*\s*(CRITICAL|HIGH|MEDIUM|LOW)\b/;
 const field = (r, k) => (r[k] === undefined ? null : r[k]);
@@ -172,36 +171,22 @@ const num = (v) => (typeof v === "number" ? v : null);
 const str = (v) => (typeof v === "string" ? v : null);
 /**
  * Build-only facts from the run's step rows and its log folder: every verify and
- * gaps-remediate round, the holistic verify, the challenge and the red-test runs. A
- * verify report counts its test-order gaps only when its verdict and failure count
- * match the round's row. Challenge findings are counted once a `build-challenge` row
+ * gaps-remediate round, the holistic verify, the challenge and the groups' red runs.
+ * Challenge findings are counted once a `build-challenge` row
  * exists: CRITICAL / HIGH / MEDIUM from the tasks `challenge merge` appended to
  * `plans`, LOW from its `build-challenge` rows among `deferrals` (the run's rows). The
  * challenge block carries the latest `challenge-gate` row's size as `gate`, when one exists.
  */
-export function buildBlock(rows, logDir, plans, deferrals) {
-    const read = (file) => {
-        const f = path.join(logDir, file);
-        return fs.existsSync(f) ? fs.readFileSync(f, "utf-8") : null;
-    };
+export function buildBlock(rows, plans, deferrals) {
     const steps = rows.filter((r) => r.type === "step-done");
     const verify = steps
         .filter((r) => r.step === "build-plan-verify")
-        .map((r) => {
-        const v = {
-            group: field(r, "group"),
-            attempt: field(r, "attempt"),
-            verdict: field(r, "verdict"),
-            failures: field(r, "failures"),
-            testOrderGaps: null,
-        };
-        const text = read(`build-plan-verify-${String(v.group)}-${String(v.attempt)}.md`);
-        if (text !== null &&
-            /^Verdict:\s*(\w+)/m.exec(text)?.[1] === v.verdict &&
-            Number(/^Failures:\s*(\d+)/m.exec(text)?.[1]) === v.failures)
-            v.testOrderGaps = [...text.matchAll(TEST_ORDER_GAP)].length;
-        return v;
-    });
+        .map((r) => ({
+        group: field(r, "group"),
+        attempt: field(r, "attempt"),
+        verdict: field(r, "verdict"),
+        failures: field(r, "failures"),
+    }));
     const gapsRemediate = steps
         .filter((r) => r.step === "build-plan-gaps-remediate")
         .map((r) => ({
@@ -253,7 +238,7 @@ export function buildBlock(rows, logDir, plans, deferrals) {
                     }),
             }
             : null,
-        redTests: steps.filter((r) => r.step === "build-task-red").length,
+        redTests: steps.filter((r) => r.step === "build-tests-red").length,
     };
 }
 /**
@@ -282,8 +267,18 @@ export function hostChat(env) {
  * sha256(`<platform>:<chat id>`), the same as the harvest's fingerprint of its `chat` row key.
  */
 export const chatFingerprint = (platform, id) => `fp:${createHash("sha256").update(`${platform}:${id}`).digest("hex").slice(0, 12)}`;
-/** Status rows that mark a moment rather than the end of a piece of work: step minutes skip them. */
-export const MARK_ROWS = new Set(["session", "owner-pause", "owner-answer"]);
+/**
+ * Status rows that mark a moment rather than the end of a piece of work: step minutes skip
+ * them. A `test-run` row lands just before its step's own row, so the run counts toward it.
+ */
+export const MARK_ROWS = new Set([
+    "session",
+    "owner-pause",
+    "owner-answer",
+    "test-run",
+    "engine-call",
+    "completeness",
+]);
 /** The `session` fingerprints on the run's status rows, in row order, each once. */
 export function runChats(rows) {
     const out = [];

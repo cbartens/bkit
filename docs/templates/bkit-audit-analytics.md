@@ -11,7 +11,7 @@
 >
 > **Rules:**
 >
-> - Name the field and where it lives.
+> - Name each field and where it lives.
 > - NEVER copy a personal-data value into the report.
 > - Use vendor consoles read-only.
 > - NEVER publish a container, change a property or send a live collection hit.

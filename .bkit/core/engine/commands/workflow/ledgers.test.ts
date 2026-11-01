@@ -282,23 +282,72 @@ describe("bkit ledgers commit (tests/book-commit.bats)", () => {
     expect(staged(r)).toContain("status.jsonl");
   });
 
-  it("top-level docs/*.md is committed under scope=pr, not under scope=core or scope=full", async () => {
+  it("top-level docs/*.md and the repo's ciSkipPaths are committed under scope=pr, not under scope=core or scope=full", async () => {
     const r = repo();
+    // bkit's own package.json shape: the engine hardcodes neither file.
+    put(
+      r,
+      "package.json",
+      JSON.stringify({
+        bkit: { testing: { ciSkipPaths: ["CHANGELOG.md", "README.md"] } },
+      }),
+    );
     put(r, "docs/plans/202610/logs/452d/status.jsonl", "{}\n");
     put(r, "docs/architecture.md", "a\n");
+    put(r, "CHANGELOG.md", "a\n");
+    put(r, "README.md", "a\n");
     commitAll(r);
     add(r, "docs/architecture.md", "b\n");
+    add(r, "CHANGELOG.md", "b\n");
+    add(r, "README.md", "b\n");
     add(r, "docs/plans/202610/logs/452d/status.jsonl", '{"a":1}\n');
     git(r, "switch", "-q", "-c", "feat/452d");
     const base = ["--month=202610", "--fid=452d", "--mode=commit"];
 
     expect((await run(r, commitArgs(r, ...base, "--scope=core", "--message=core"))).code).toBe(0);
     expect(stat(r)).not.toContain("architecture.md");
+    expect(stat(r)).not.toContain("CHANGELOG.md");
     add(r, "docs/plans/202610/logs/452d/status.jsonl", '{"a":2}\n');
     expect((await run(r, commitArgs(r, ...base, "--scope=full", "--message=full"))).code).toBe(0);
     expect(stat(r)).not.toContain("architecture.md");
+    expect(stat(r)).not.toContain("CHANGELOG.md");
     expect((await run(r, commitArgs(r, ...base, "--scope=pr", "--message=pr"))).code).toBe(0);
     expect(stat(r)).toContain("docs/architecture.md");
+    expect(stat(r)).toContain("CHANGELOG.md");
+    expect(stat(r)).toContain("README.md");
+  });
+
+  it("scope=pr reaches bkit.testing.ciSkipPaths from package.json, and nothing else outside the list", async () => {
+    const r = repo();
+    put(
+      r,
+      "package.json",
+      JSON.stringify({
+        bkit: { testing: { ciSkipPaths: ["CHANGES.md", "notes/*.md"] } },
+      }),
+    );
+    put(r, "docs/plans/202610/logs/452k/status.jsonl", "{}\n");
+    put(r, "CHANGES.md", "a\n");
+    put(r, "notes/today.md", "a\n");
+    put(r, "notes/deep/old.md", "a\n");
+    put(r, "src/a.ts", "a\n");
+    commitAll(r);
+    add(r, "CHANGES.md", "b\n");
+    add(r, "notes/today.md", "b\n");
+    add(r, "notes/deep/old.md", "b\n");
+    add(r, "src/a.ts", "b\n");
+    add(r, "docs/plans/202610/logs/452k/status.jsonl", '{"a":1}\n');
+    git(r, "switch", "-q", "-c", "feat/452k");
+    const res = await run(
+      r,
+      commitArgs(r, "--month=202610", "--fid=452k", "--scope=pr", "--mode=commit", "--message=pr"),
+    );
+    expect(res.code).toBe(0);
+    expect(stat(r)).toContain("CHANGES.md");
+    expect(stat(r)).toContain("notes/today.md");
+    // `*` in a package.json glob matches one folder, as in minPushPaths.
+    expect(stat(r)).not.toContain("notes/deep/old.md");
+    expect(stat(r)).not.toContain("src/a.ts");
   });
 
   it("scope=pr does not reach nested docs (another FID's plan, docs/templates/**)", async () => {
@@ -909,6 +958,26 @@ describe("bkit ledgers only-bookkeeping", () => {
     expect(res.json).toEqual({ onlyBookkeeping: true, ancestor: true, outside: [] });
   });
 
+  it("a bkit.testing.ciSkipPaths file counts as bookkeeping; without the setting it does not", async () => {
+    const r = base();
+    put(r, "CHANGELOG.md", "a\n");
+    commitAll(r);
+    const from = head(r);
+    add(r, "CHANGELOG.md", "b\n");
+    commitAll(r, "book");
+    const plain = await check(r, from, head(r));
+    expect(plain.code).toBe(7);
+    expect(plain.json.outside).toEqual(["CHANGELOG.md"]);
+    put(
+      r,
+      "package.json",
+      JSON.stringify({ bkit: { testing: { ciSkipPaths: ["CHANGELOG.md"] } } }),
+    );
+    const res = await check(r, from, head(r));
+    expect(res.code).toBe(0);
+    expect(res.json).toEqual({ onlyBookkeeping: true, ancestor: true, outside: [] });
+  });
+
   it("a source file in the range: exit 7, path listed", async () => {
     const r = base();
     commitAll(r);
@@ -968,6 +1037,15 @@ describe("bookPathspecs", () => {
     expect(full.slice(0, core.length)).toEqual(core);
     expect(pr).toEqual([...full, ":(glob)docs/*.md"]);
   });
+
+  it("appends the repo's extra bookkeeping paths as :(glob) pathspecs under pr only", () => {
+    const extra = ["CHANGES.md", ":(glob)notes/*.md"];
+    expect(bookPathspecs("202610", "1-x", "full", extra)).toEqual(
+      bookPathspecs("202610", "1-x", "full"),
+    );
+    const pr = bookPathspecs("202610", "1-x", "pr", extra);
+    expect(pr.slice(-2)).toEqual([":(glob)CHANGES.md", ":(glob)notes/*.md"]);
+  });
 });
 
 // The frozen bookkeeping allow-list: every ship stage/commit resolves through
@@ -988,7 +1066,9 @@ const BOOK_PATHS_ALLOW_LIST: readonly string[] = [
   ".claude/skills",
   ".cursor/skills",
   ".opencode/skills",
-  // Top-level project docs the ship docs sync edits — `--scope=pr` only.
+  // Top-level project docs the ship docs sync edits — `--scope=pr` only. Files outside
+  // docs/ (CHANGELOG.md, README.md) are the repo's `bkit.testing.ciSkipPaths`,
+  // never the engine's.
   ":(glob)docs/*.md",
 ];
 

@@ -5,17 +5,18 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { writeTier1, writeTier2, ensurePackageJsonScripts } from "../write.js";
 import { readBkitVersion, writeBkitVersion, hashFile, mergeCanonicalHashes, } from "../version-file.js";
-import { extractManagedBlock, stripManagedBlock } from "../managed-block.js";
+import { extractManagedBlock, findLineAnchoredMarkers, selectMarkers, stripManagedBlock, } from "../managed-block.js";
 import { listFilesRecursive, syncTemplateCopies } from "../template-copies.js";
 import { PAYLOAD_LINK_RELPATHS, syncPayloadLinks } from "../payload-links.js";
 import { writeNetworkAllowlist } from "../network-allowlist.js";
 import { migrateTemplateNotes } from "../template-notes.js";
+import { isAdvisorySuppressed } from "../../checks/after/suppression.js";
 import { parseJson, readJsonFile } from "../../shared/json.js";
 import { readInstallingVersion } from "../../shared/package-json.js";
 import { detectDepUpdater } from "../../shared/dep-updater.js";
 import { ASK_POINTS, CONFIG_DEFAULTS, limitKey } from "../../shared/settings.js";
 import { getCoreRoot, getSharedRoot, getBkitDocsRoot, TEMPLATE_COPIES_DIR, } from "../../shared/package-roots.js";
-import { getInstallManifest, BKIT_GATE_SCRIPTS, BKIT_OPTIONAL_GATES, BKIT_PUSH_GATES, BKIT_LINT_FILE_SCRIPT, BKIT_TEST_FILE_SCRIPT, } from "../manifest.js";
+import { getInstallManifest, BKIT_GATE_SCRIPTS, BKIT_OPTIONAL_GATES, BKIT_PUSH_GATES, BKIT_GATE_CHANGED_SCRIPT, BKIT_LINT_FILE_SCRIPT, BKIT_TEST_FILE_SCRIPT, } from "../manifest.js";
 import { migrateLedgers } from "../../ledgers/migrate.js";
 export function listMdFiles(dir, prefix) {
     if (!fs.existsSync(dir))
@@ -252,7 +253,51 @@ export function runBkitDocs(dryRun, tokens, ws, logPrefix) {
     migrateRetiredDevLock(dryRun, ws, logPrefix);
     migrateLedgerSchema(dryRun, ws, logPrefix);
     migrateJiraKeyName(dryRun, logPrefix);
+    migrateModelOverrideAgentNames(dryRun, ws, logPrefix);
     migrateTemplateNotes(dryRun, ws, logPrefix);
+}
+// Migration (installs up to 6.0.x, `docs/migrations.md`): agents renamed since. A
+// consumer's `## Model Overrides` row below `bkit:end` in `.bkit/prompts.md` naming an
+// old agent is renamed in place, provider and model kept, so the override keeps applying
+// (`parseModelOverrides` reports a row naming no agent as unknown and skips it). Runs
+// after the docs loop, which block-merges the file and leaves the consumer region alone.
+// A row already naming the new agent wins: the old row is then left for the unknown
+// report. Recorded in ws as an update; the canonical hash covers the managed block only.
+const PROMPTS_FILE = path.join(".bkit", "prompts.md");
+const MODEL_OVERRIDES_HEADING = "## Model Overrides";
+export const RENAMED_AGENTS = {
+    "bkit-build-plan-execute": "bkit-build-plan-tasks",
+};
+export function migrateModelOverrideAgentNames(dryRun, ws, logPrefix) {
+    if (!fs.existsSync(PROMPTS_FILE))
+        return;
+    const text = fs.readFileSync(PROMPTS_FILE, "utf-8");
+    const endIdx = findLineAnchoredMarkers(text, selectMarkers("html-comment")[1])[0];
+    if (endIdx === undefined)
+        return;
+    const headingAt = text.indexOf(MODEL_OVERRIDES_HEADING, endIdx);
+    if (headingAt === -1)
+        return;
+    const head = text.slice(0, headingAt);
+    const lines = text.slice(headingAt).split("\n");
+    // The first cell of a table row, backticks and padding aside.
+    const promptCell = (line) => /^\s*\|/.test(line) ? line.split("|")[1]?.trim().replace(/^`|`$/g, "") : undefined;
+    const named = new Set(lines.map(promptCell).filter((c) => c !== undefined));
+    const renamed = [];
+    const out = lines.map((line) => {
+        const cell = promptCell(line);
+        const to = cell === undefined ? undefined : RENAMED_AGENTS[cell];
+        if (cell === undefined || to === undefined || named.has(to))
+            return line;
+        renamed.push(`${cell} -> ${to}`);
+        return line.replace(cell, to);
+    });
+    if (renamed.length === 0)
+        return;
+    if (!dryRun)
+        fs.writeFileSync(PROMPTS_FILE, head + out.join("\n"), "utf-8");
+    ws.writes.push({ path: PROMPTS_FILE, action: "update" });
+    console.log(`${logPrefix} ${dryRun ? "[dry-run] " : ""}core: ${PROMPTS_FILE} — Model Overrides renamed: ${renamed.join(", ")}`);
 }
 // Migration (installs up to 5.5.x, `docs/migrations.md`): the Jira key was
 // `BKIT_JIRA_API_TOKEN`; the engine and the MCP configs now read `BKIT_JIRA_API_KEY`.
@@ -418,6 +463,9 @@ export function seedCorePackageJsonScripts(ctx) {
     if (migrateBkitLayout(dryRun, ws, logPrefix) && !written.includes("package.json")) {
         written.push("package.json");
     }
+    if (pruneMinPushPaths(dryRun, ws, logPrefix) && !written.includes("package.json")) {
+        written.push("package.json");
+    }
     if (seedBkitDefaults(dryRun, ws, logPrefix) && !written.includes("package.json")) {
         written.push("package.json");
     }
@@ -453,10 +501,15 @@ export const SEEDED_BKIT_DEFAULTS = {
     cloud: { agent: "" },
     providers: { opencode: { default: "", installed: [] } },
     testing: {
+        // What bkit writes (ship's bookkeeping allow-list, the plans tree) is always a min push;
+        // the seed adds nothing, because a project doc can be a test's input.
+        minPushPaths: [...CONFIG_DEFAULTS.minPushPaths],
         ciWorkflow: CONFIG_DEFAULTS.ciWorkflow,
         ciCapstone: CONFIG_DEFAULTS.capstoneJob,
-        shipGate: [...CONFIG_DEFAULTS.shipGateRequiredLanes],
-        minPushPaths: [...CONFIG_DEFAULTS.minPushPaths],
+        ciRequired: [...CONFIG_DEFAULTS.ciRequired],
+        // Project docs ship's [skip ci] bookkeeping commit may carry onto the PR untested; a
+        // repo names its own (bkit's: CHANGELOG.md, README.md), so the seed is the empty choice.
+        ciSkipPaths: [...CONFIG_DEFAULTS.ciSkipPaths],
     },
     workflows: {
         minFreeGb: CONFIG_DEFAULTS.diskMinFreeGb,
@@ -633,7 +686,9 @@ export const BKIT_LAYOUT_MOVES = [
     ["minPushPaths", "testing.minPushPaths"],
     ["capstoneJob", "testing.ciCapstone"],
     ["ciWorkflow", "testing.ciWorkflow"],
-    ["shipGateRequiredLanes", "testing.shipGate"],
+    ["shipGateRequiredLanes", "testing.ciRequired"],
+    // 6.0.0 installs named the required-lane list `testing.shipGate`.
+    ["testing.shipGate", "testing.ciRequired"],
     ["disk.minFreeGb", "workflows.minFreeGb"],
     ["worktree", "workflows.worktree"],
     ["tasks", "workflows.tasks"],
@@ -641,6 +696,43 @@ export const BKIT_LAYOUT_MOVES = [
     ["depUpdater", "dependencies.updater"],
     ["ignoreAdvisories", "advisories.ignore"],
 ];
+// Migration (up to 6.0.x installs, `docs/migrations.md`): `bkit.testing.minPushPaths` was the
+// whole min-push list, so installs seeded and repos restated what bkit itself writes. The
+// engine now always allows that floor (ship's bookkeeping allow-list, `docs/plans/**`) and
+// `bkit.testing.ciSkipPaths`; the setting only adds. Entries the floor already covers are
+// dropped from the list. Returns true when package.json changed.
+export const MIN_PUSH_FLOOR_ENTRIES = [
+    "docs/plans/**",
+    "docs/*.jsonl",
+    ".bkit/*.jsonl",
+];
+export function pruneMinPushPaths(dryRun, ws, logPrefix) {
+    const pkgPath = "package.json";
+    if (!fs.existsSync(pkgPath))
+        return false;
+    const raw = fs.readFileSync(pkgPath, "utf-8");
+    const parsed = parseJson(raw);
+    if (!parsed.ok)
+        return false;
+    const pkg = parsed.value;
+    if (!plainObject(pkg.bkit) || !plainObject(pkg.bkit.testing))
+        return false;
+    const testing = pkg.bkit.testing;
+    if (!Array.isArray(testing.minPushPaths))
+        return false;
+    const skip = Array.isArray(testing.ciSkipPaths) ? testing.ciSkipPaths : [];
+    const covered = new Set([...MIN_PUSH_FLOOR_ENTRIES, ...skip]);
+    const kept = testing.minPushPaths.filter((p) => !covered.has(p));
+    if (kept.length === testing.minPushPaths.length)
+        return false;
+    const dropped = testing.minPushPaths.filter((p) => covered.has(p)).map(String);
+    testing.minPushPaths = kept;
+    ws.writes.push({ path: pkgPath, action: "update" });
+    if (!dryRun)
+        writePackageJsonLike(raw, pkg);
+    console.log(`${logPrefix} ${dryRun ? "[dry-run] " : ""}core: dropped [${dropped.join(", ")}] from bkit.testing.minPushPaths in package.json — bkit always allows what it writes, and ciSkipPaths counts`);
+    return true;
+}
 // Fill `into` with each `from` key it lacks, descending into blocks both sides hold.
 function mergeMissing(into, from) {
     for (const [k, v] of Object.entries(from)) {
@@ -801,8 +893,8 @@ export const GATE_CONTENTS_NOTE = "Gate contents (`.bkit/workflows.md` § Local 
 /**
  * Advisories for the `bkit:gate:*` scripts: the scripts a still-default gate
  * chains that package.json does not declare, the deeper test tiers the repo has
- * but no gate runs, a commit gate that repeats the push gate, and a missing
- * `bkit:test:file`. Judges the scripts as install
+ * but no gate runs, a commit gate that repeats the push gate, a missing
+ * `bkit:test:file`, and a missing `bkit:gate:changed`. Judges the scripts as install
  * leaves them (missing gate names at their seeded defaults), so install, `bkit check`
  * and `bkit upgrade` report the same set. Read-only; an absent or unparseable
  * package.json yields none.
@@ -893,6 +985,19 @@ export function detectGateAdvisories(cwd) {
             severity: "advisory",
             detect: `package.json declares \`${BKIT_TEST_FILE_SCRIPT}\` but not \`${BKIT_LINT_FILE_SCRIPT}\`, so \`/bkit-build\` records a task's red before the linter sees the test; a lint fix after it pauses the build for an owner exception.`,
             action: `Add \`${BKIT_LINT_FILE_SCRIPT}\` to package.json: it lints the ONE test file bkit appends as its argument (repo-relative path) with the rules your static gate applies, exiting 0 when clean. \`bkit tests red\` runs it before the test and records no red while it fails. Examples:\n\n    "${BKIT_LINT_FILE_SCRIPT}": "eslint --max-warnings=0"\n    "${BKIT_LINT_FILE_SCRIPT}": "ruff check"\n\nUse the same linter config as the static gate, or the gate can still demand a rewrite after the red.`,
+        });
+    }
+    // Build and debug agents check their own change through this script; without it each
+    // one runs a whole gate after every change. bkit cannot seed it: what finds the tests
+    // a file affects is the stack's.
+    const changedId = "gate-changed-script-missing";
+    if (!(BKIT_GATE_CHANGED_SCRIPT in declared) &&
+        !isAdvisorySuppressed(cwd, changedId, "advisory")) {
+        findings.push({
+            id: changedId,
+            severity: "advisory",
+            detect: `package.json does not declare \`${BKIT_GATE_CHANGED_SCRIPT}\`, so \`/bkit-build\` and \`/bkit-debug\` agents run a whole gate (\`bkit:gate:static\` or \`bkit:gate:static-unit\`) after every change instead of checking only what changed.`,
+            action: `Add \`${BKIT_GATE_CHANGED_SCRIPT}\` to package.json. \`bkit tests changed\` calls it with the changed files as its arguments (repo-relative paths: uncommitted, untracked and committed since the step began; deleted files left out) and never with none. It runs the tests that import those files, the tests that name their paths, and the static checks (lint, format, typecheck) on those files, exiting 0 when clean. Vitest + ESLint example, with \`scripts/gate-changed.sh\` holding \`vitest related --run "$@" && eslint --max-warnings=0 --no-error-on-unmatched-pattern "$@" && prettier --check --ignore-unknown "$@"\`:\n\n    "${BKIT_GATE_CHANGED_SCRIPT}": "sh scripts/gate-changed.sh"\n\n\`vitest related\` finds only importers; also run the tests that read a changed file by its path (a text search of the test files for each path). The orchestrator's group gate, pre-push and CI still run the whole gates. To keep the whole gate on every change, add \`${changedId}\` to \`bkit.advisories.ignore\` in package.json.\n\n${GATE_CONTENTS_NOTE}`,
         });
     }
     return findings;

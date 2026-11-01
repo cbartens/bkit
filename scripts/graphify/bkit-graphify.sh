@@ -97,8 +97,9 @@ Usage: pnpm graph[:clean|:update|:rollup|:refresh|:check|:graphml|:tree|:scoped]
   graph:check     Rebuild from THIS tree; fail if the tracked register
                   docs/capabilities.md differs from the rebuild. Writes nothing
                   tracked. Reads uncommitted edits — `check-at` does not.
-  graph:refresh   Rebuild the register in a clean checkout of HEAD, copy it
-                  over docs/capabilities.md. Fixes a red gate; commit it.
+  graph:refresh   Rebuild the register in a clean checkout of the STAGED
+                  files (the index), copy it over docs/capabilities.md.
+                  Stage your change first. Fixes a red gate; commit it.
   check-at <rev>  `check` in a throwaway checkout of <rev>. Pre-push runs it
                   for every push to dev; CI runs it for every push and pull request.
   spec            Print the pinned graphify release (pip spec).
@@ -279,17 +280,20 @@ strip_stamps() {
 
 # Run this script's subcommands in a throwaway checkout of ONE commit: graphify reads the
 # working tree, so the build belongs to that commit, not to uncommitted edits here. Root
-# node_modules is linked in for the route scan. $1 = commit; rest = subcommands, in order.
-# $AT_DIR = the checkout.
+# node_modules is linked in for the route scan. $1 = commit; an optional `--tree=<tree>`
+# next replaces the checkout's files with that tree, deletions included, while HEAD stays
+# the commit; rest = subcommands, in order. $AT_DIR = the checkout.
 at_commit() {
-  local rev="$1" sha tmp sub
+  local rev="$1" tree="" sha tmp sub
   shift
+  case "${1:-}" in --tree=*) tree="${1#--tree=}"; shift ;; esac
   sha=$(git rev-parse --verify --quiet "$rev^{commit}") || { echo "[graph] not a commit: $rev" >&2; exit 2; }
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/graph-at-XXXXXX")
   AT_DIR="$tmp/checkout"
   # shellcheck disable=SC2064 # expand now: $tmp is local and gone by the time EXIT fires
   trap "git worktree remove --force '$AT_DIR' >/dev/null 2>&1; rm -rf '$tmp'" EXIT
   git -c core.hooksPath=/dev/null worktree add --detach --quiet "$AT_DIR" "$sha"
+  if [ -n "$tree" ]; then git -C "$AT_DIR" read-tree -u --reset "$tree"; fi
   ln -s "$(git rev-parse --show-toplevel)/node_modules" "$AT_DIR/node_modules"
   for sub in "$@"; do
     (cd "$AT_DIR" && env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE \
@@ -386,12 +390,15 @@ case "${1:-build}" in
     at_commit "${2:-HEAD}" check
     ;;
   refresh)
-    # Rebuild the register in a clean checkout of HEAD → copy over the tracked file here.
-    # Fixes a `check` / `check-at` red without baking in uncommitted edits, as
-    # `graph:update && graph:rollup` would. Commit the result.
-    at_commit HEAD build register
+    # Rebuild the register in a clean checkout of the staged files → copy over the tracked
+    # file here. Staged = the commit about to be made, so running it before that commit
+    # rebuilds the new state; unstaged edits stay out, as `graph:update && graph:rollup`
+    # would not. The checkout's HEAD stays HEAD, so the stamp names the parent of the commit
+    # carrying the register. Fixes a `check` / `check-at` red. Commit the result.
+    staged=$(git write-tree) || { echo "[graph] the index has unmerged paths — resolve them first" >&2; exit 1; }
+    at_commit HEAD --tree="$staged" build register
     cp "$AT_DIR/$CAPABILITIES_DOC" "$CAPABILITIES_DOC"
-    echo "[graph] $CAPABILITIES_DOC rebuilt from $(git rev-parse --short HEAD) — commit it"
+    echo "[graph] $CAPABILITIES_DOC rebuilt from the staged files on $(git rev-parse --short HEAD) — commit it"
     ;;
   scoped)
     target="${2:-apps/web/src}"

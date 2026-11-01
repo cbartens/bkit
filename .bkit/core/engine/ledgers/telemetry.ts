@@ -354,7 +354,7 @@ export const UNJUSTIFIED_REASON = "unjustified";
  * § Ledgers & Writers). EXHAUSTIVE: a subagent absent from this set does not
  * write the kind at all.
  *
- * `@bkit-build-plan-execute` and `@bkit-build-plan-gaps-remediate` are not in it: a
+ * `@bkit-build-plan-tasks` and `@bkit-build-plan-gaps-remediate` are not in it: a
  * blocked plan task's record is its `BLOCKED` log line, which the next verify pass reads.
  *
  * Orchestrator-written rows carry no `subagent` and are outside this check.
@@ -431,7 +431,8 @@ export const KIND_WRITERS: Record<AppendKind, KindWriters> = {
   failure: { subagents: ANY_WRITER, orchestrators: ANY_WRITER },
   knowledge: {
     subagents: new Set([
-      "bkit-build-plan-execute",
+      "bkit-build-plan-tests",
+      "bkit-build-plan-tasks",
       "bkit-build-plan-gaps-remediate",
       "bkit-debug-failure-remediate",
       "bkit-utility-update-knowledge",
@@ -1393,7 +1394,7 @@ export function totalsProblem(row: Obj): string | undefined {
         eq(
           "build.redTests",
           build["redTests"],
-          Number(field(steps, "byStep", "build-task-red", "n") ?? 0),
+          Number(field(steps, "byStep", "build-tests-red", "n") ?? 0),
         ),
       );
     }

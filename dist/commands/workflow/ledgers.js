@@ -13,6 +13,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { readBkitVersion } from "../../install/version-file.js";
+import { readBkitConfig } from "../../shared/settings.js";
 import { APPEND_LEDGERS, SCHEMA, UNJUSTIFIED_REASON, gitEnv, parse, mintTs, resolveRepoSlug, validate, withLineage, writerProblem, } from "../../ledgers/telemetry.js";
 import { COMPACT_LEDGERS, compactLedgers } from "../../ledgers/compact.js";
 import { CommandError, EXIT, isIgnoredPath, isSharedBranch, parseJson, } from "../lib.js";
@@ -32,11 +33,16 @@ export const EXIT_NOT_BOOKKEEPING = 7;
 export const EXIT_ROW_REFUSED = 8;
 const SCOPES = ["core", "full", "pr"];
 const MODES = ["stage", "commit", "commit-allow-empty"];
+/** `package.json` globs as git pathspecs: `:(glob)` unless an entry carries its own magic. */
+export const globPathspecs = (paths) => paths.map((p) => (p.startsWith(":") ? p : `:(glob)${p}`));
 /**
  * The bookkeeping allow-list. Plain git pathspec `*` crosses `/`, so the
- * top-level-only entry uses the `:(glob)` magic.
+ * top-level-only entries use the `:(glob)` magic. `extra` is
+ * `bkit.testing.ciSkipPaths` (`ciSkipPaths`), the project docs a repo
+ * keeps outside `docs/*.md` (bkit's own: `CHANGELOG.md`, `README.md`); it reaches
+ * the `pr` scope only.
  */
-export function bookPathspecs(month, fid, scope) {
+export function bookPathspecs(month, fid, scope, extra = []) {
     const specs = [
         `docs/plans/${month}/logs/${fid}/*`,
         ".bkit/friction.jsonl",
@@ -50,11 +56,14 @@ export function bookPathspecs(month, fid, scope) {
     if (scope === "full" || scope === "pr") {
         specs.push("docs/deferrals.jsonl", "docs/failures.jsonl", "docs/knowledge.jsonl", "docs/decisions.jsonl", "skills-lock.json", ".agents/skills/*", ".claude/skills/*", ".cursor/skills/*", ".opencode/skills/*");
     }
-    // `pr` adds the project docs ship's docs sync edits, for the commit that rides
-    // the PR. Kept out of `full` so a close on a laptop's dev checkout never sweeps
-    // unrelated dirty docs into its commit.
-    if (scope === "pr")
-        specs.push(":(glob)docs/*.md");
+    // `pr` adds the project docs ship's docs sync edits, for the commit that rides the
+    // PR: top-level `docs/*.md`, plus whatever the repo names in `ciSkipPaths` (the
+    // engine hardcodes no file name; a glob nothing matches selects nothing). Kept out
+    // of `full` so a close on a laptop's dev checkout never sweeps unrelated dirty docs
+    // into its commit.
+    if (scope === "pr") {
+        specs.push(":(glob)docs/*.md", ...globPathspecs(extra));
+    }
     return specs;
 }
 /** Ledgers a worktree teardown carries into the destination checkout. */
@@ -834,7 +843,7 @@ export function commitBookkeeping(o, log) {
             tracked = nulList(cached.stdout);
         }
     }
-    const specs = bookPathspecs(month, fid, scope);
+    const specs = bookPathspecs(month, fid, scope, readBkitConfig(root).ciSkipPaths);
     const listed = gitRaw(root, [
         "ls-files",
         "-z",
@@ -1266,7 +1275,7 @@ export function checkOnlyBookkeeping(root, o) {
     if (gitRaw(root, ["merge-base", "--is-ancestor", o.from, o.to]).status !== 0) {
         return { kind: "not-ancestor" };
     }
-    const diff = changedOutside(root, o.from, o.to, bookPathspecs(o.month, o.fid, "pr"));
+    const diff = changedOutside(root, o.from, o.to, bookPathspecs(o.month, o.fid, "pr", readBkitConfig(root).ciSkipPaths));
     if (!diff.ok)
         return { kind: "diff-failed", stderr: diff.stderr };
     return diff.outside.length ? { kind: "outside", outside: diff.outside } : { kind: "ok" };

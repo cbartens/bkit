@@ -207,7 +207,7 @@ describe("runStatusRows / stepsBlock / ciList", () => {
       started(0),
       step(1, "build-plan-verify"),
       { type: "workflow-meta", workflow: "build", at: at(2) } as Row,
-      step(4, "build-task-red"),
+      step(4, "build-tests-red"),
       step(5.5, "build-plan-verify"),
     ];
     const steps = stepsBlock(rows);
@@ -215,10 +215,26 @@ describe("runStatusRows / stepsBlock / ciList", () => {
       total: { n: 3, totalMinutes: 4.5 },
       byStep: {
         "build-plan-verify": { n: 2, totalMinutes: 2.5 },
-        "build-task-red": { n: 1, totalMinutes: 2 },
+        "build-tests-red": { n: 1, totalMinutes: 2 },
       },
     });
     expect(totalsProblem({ steps })).toBeUndefined();
+  });
+
+  // A row read back from `status.jsonl`: its type is not one `StatusEvent` declares.
+  const journalRow = (fields: Record<string, unknown>): Row =>
+    JSON.parse(JSON.stringify({ workflow: "build", ...fields }));
+
+  it("leaves a run's step minutes unchanged when journal rows land between step rows", () => {
+    const plain = [started(0), step(1, "build-a"), step(4, "build-b")];
+    const journaled = [
+      started(0),
+      step(1, "build-a"),
+      journalRow({ type: "engine-call", at: at(2), noun: "steps", verb: "finish" }),
+      journalRow({ type: "completeness", at: at(3), verdict: "complete" }),
+      step(4, "build-b"),
+    ];
+    expect(stepsBlock(journaled)).toEqual(stepsBlock(plain));
   });
 
   it("is empty when the run has only its start row", () => {
@@ -386,8 +402,8 @@ describe("planBlock", () => {
 describe("buildBlock", () => {
   const rows = [
     started(0),
-    step(1, "build-task-red"),
-    step(2, "build-task-red"),
+    step(1, "build-tests-red"),
+    step(2, "build-tests-red"),
     step(3, "build-plan-verify", { group: 1, attempt: 1, verdict: "FAIL", failures: 1 }),
     step(4, "build-plan-gaps-remediate", {
       group: 1,
@@ -396,25 +412,11 @@ describe("buildBlock", () => {
       strategy: "STANDARD",
     }),
     step(5, "build-plan-verify", { group: 1, attempt: 2, verdict: "PASS", failures: 0 }),
-    step(6, "build-task-red"),
+    step(6, "build-tests-red"),
     step(7, "build-plan-verify-holistic", { verdict: "FAIL", failures: 2 }),
     step(8, "build-plan-verify-holistic", { verdict: "PASS", failures: 0 }),
     step(9, "build-challenge", { verdict: "CONCERNS" }),
   ];
-
-  function logs() {
-    const logDir = tmp();
-    fs.writeFileSync(
-      path.join(logDir, "build-plan-verify-1-1.md"),
-      "Verdict: FAIL\nFailures: 1\n\n- Task 2 — no-red — not fixable here\n- Task 3 — late-red — not fixable\n",
-    );
-    // Its verdict does not match the round's row, so its gaps are not counted.
-    fs.writeFileSync(
-      path.join(logDir, "build-plan-verify-1-2.md"),
-      "Verdict: FAIL\nFailures: 3\n\n- Task 1 — no-red — not fixable\n",
-    );
-    return logDir;
-  }
 
   /** A plan file holding planned tasks and the tasks `challenge merge` appended at `severities`. */
   function challengePlan(...severities: string[]) {
@@ -442,11 +444,11 @@ describe("buildBlock", () => {
   ];
 
   it("reads every verify and gaps-remediate round, the last holistic and challenge, and the red-test runs", () => {
-    const block = buildBlock(rows, logs(), [challengePlan("HIGH", "MEDIUM")], lowRows(2));
+    const block = buildBlock(rows, [challengePlan("HIGH", "MEDIUM")], lowRows(2));
     expect(block).toEqual({
       verify: [
-        { group: 1, attempt: 1, verdict: "FAIL", failures: 1, testOrderGaps: 2 },
-        { group: 1, attempt: 2, verdict: "PASS", failures: 0, testOrderGaps: null },
+        { group: 1, attempt: 1, verdict: "FAIL", failures: 1 },
+        { group: 1, attempt: 2, verdict: "PASS", failures: 0 },
       ],
       gapsRemediate: [{ group: 1, attempt: 1, verdict: "FAIL", strategy: "STANDARD" }],
       holistic: { verdict: "PASS", failures: 0 },
@@ -459,16 +461,6 @@ describe("buildBlock", () => {
   });
 
   it("buildBlock keys verify attempts by group", () => {
-    const logDir = tmp();
-    fs.writeFileSync(
-      path.join(logDir, "build-plan-verify-2-1.md"),
-      "Verdict: FAIL\nFailures: 1\n\n- Task 4 — no-red — not fixable\n",
-    );
-    // Group 1's attempt 1 report: group 2's attempt 1 row never reads it.
-    fs.writeFileSync(
-      path.join(logDir, "build-plan-verify-1-1.md"),
-      "Verdict: FAIL\nFailures: 1\n\n- Task 1 — no-red — not fixable\n- Task 2 — late-red — not fixable\n",
-    );
     const grouped = [
       started(0),
       step(1, "build-plan-verify", { group: 1, attempt: 1, verdict: "PASS", failures: 0 }),
@@ -480,10 +472,10 @@ describe("buildBlock", () => {
         strategy: "STANDARD",
       }),
     ];
-    const block = buildBlock(grouped, logDir, [], []);
+    const block = buildBlock(grouped, [], []);
     expect(block.verify).toEqual([
-      { group: 1, attempt: 1, verdict: "PASS", failures: 0, testOrderGaps: null },
-      { group: 2, attempt: 1, verdict: "FAIL", failures: 1, testOrderGaps: 1 },
+      { group: 1, attempt: 1, verdict: "PASS", failures: 0 },
+      { group: 2, attempt: 1, verdict: "FAIL", failures: 1 },
     ]);
     expect(block.gapsRemediate).toEqual([
       { group: 2, attempt: 1, verdict: "PASS", strategy: "STANDARD" },
@@ -492,12 +484,12 @@ describe("buildBlock", () => {
       expect(v).not.toHaveProperty("subPlan");
   });
 
-  it("its totals match their parts: findings total = the four severities, redTests = the build-task-red rows", () => {
-    const build = buildBlock(rows, logs(), [challengePlan("HIGH", "MEDIUM")], lowRows(2));
+  it("its totals match their parts: findings total = the four severities, redTests = the build-tests-red rows", () => {
+    const build = buildBlock(rows, [challengePlan("HIGH", "MEDIUM")], lowRows(2));
     const f = build.challenge!.findings!;
     expect(f.total).toBe(f.CRITICAL + f.HIGH + f.MEDIUM + f.LOW);
     const steps = stepsBlock(rows);
-    expect(build.redTests).toBe(steps.byStep["build-task-red"]!.n);
+    expect(build.redTests).toBe(steps.byStep["build-tests-red"]!.n);
     expect(totalsProblem({ steps, build })).toBeUndefined();
   });
 
@@ -524,7 +516,7 @@ describe("buildBlock", () => {
       gateRow(42, 3, "small", true),
       rows.at(-1)!,
     ] as typeof rows;
-    const block = buildBlock(withGate, logs(), [challengePlan()], []);
+    const block = buildBlock(withGate, [challengePlan()], []);
     expect(block.challenge).toEqual({
       verdict: "CONCERNS",
       findings: { total: 0, CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 },
@@ -533,20 +525,18 @@ describe("buildBlock", () => {
   });
 
   it("counts challenge findings from appended tasks", () => {
-    expect(
-      buildBlock(rows, logs(), [challengePlan("HIGH", "MEDIUM")], lowRows(1)).challenge,
-    ).toEqual({
+    expect(buildBlock(rows, [challengePlan("HIGH", "MEDIUM")], lowRows(1)).challenge).toEqual({
       verdict: "CONCERNS",
       findings: { total: 3, CRITICAL: 0, HIGH: 1, MEDIUM: 1, LOW: 1 },
     });
   });
 
   it("counts findings once the merge ran; empty without the build's steps", () => {
-    expect(buildBlock(rows, logs(), [challengePlan()], []).challenge).toEqual({
+    expect(buildBlock(rows, [challengePlan()], []).challenge).toEqual({
       verdict: "CONCERNS",
       findings: { total: 0, CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 },
     });
-    expect(buildBlock([started(0)], tmp(), [challengePlan("HIGH")], lowRows(1))).toEqual({
+    expect(buildBlock([started(0)], [challengePlan("HIGH")], lowRows(1))).toEqual({
       verify: [],
       gapsRemediate: [],
       holistic: null,
@@ -691,12 +681,12 @@ describe("agentContextBlock", () => {
     const dir = claudeDir([
       {
         name: "agent-a1",
-        type: "bkit-build-plan-execute",
+        type: "bkit-build-plan-tasks",
         lines: [turn(T0 + 1000, "m1", 10, 100, 1000), turn(T0 + 2000, "m2", 5, 50, 90_000)],
       },
       {
         name: "agent-a2",
-        type: "bkit-build-plan-execute",
+        type: "bkit-build-plan-tasks",
         lines: [turn(T0 + 3000, "m3", 1, 2, 170_000)],
       },
       { name: "agent-a3", type: "bkit-build-plan-verify", lines: [turn(T0 + 4000, "m4", 1, 1, 1)] },
@@ -704,7 +694,7 @@ describe("agentContextBlock", () => {
     expect(agentContextBlock(T0, T0 + 60_000, { sessionId: SID, claudeDir: dir })).toEqual({
       host: "claude-code",
       byAgent: {
-        "bkit-build-plan-execute": { peak: 170_003, runs: 2 },
+        "bkit-build-plan-tasks": { peak: 170_003, runs: 2 },
         "bkit-build-plan-verify": { peak: 3, runs: 1 },
       },
     });
@@ -787,6 +777,20 @@ describe("agentContextBlock", () => {
       { type: "step-done", workflow: "build", step: "build-x", at: at(10) },
     ];
     expect(stepsBlock(rows as never).byStep["build-x"]).toEqual({ n: 1, totalMinutes: 10 });
+  });
+
+  it("stepsBlock times a gate step across its test-run rows", () => {
+    const at = (m: number) => new Date(T0 + m * 60_000).toISOString();
+    const rows = [
+      { type: "workflow-started", workflow: "build", at: at(0) },
+      { type: "test-run", workflow: "build", step: "build-group-gate-1", at: at(4) },
+      { type: "test-run", workflow: "build", step: "build-group-gate-1", at: at(9) },
+      { type: "step-done", workflow: "build", step: "build-group-gate", at: at(10) },
+    ];
+    expect(stepsBlock(rows as never).byStep["build-group-gate"]).toEqual({
+      n: 1,
+      totalMinutes: 10,
+    });
   });
 
   it("a subagent without a meta file counts as `unknown`", () => {

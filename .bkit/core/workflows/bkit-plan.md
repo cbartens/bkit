@@ -207,7 +207,7 @@ description: "Plan Feature — Autonomous plan generation"
    - **If** exit 3 → run the rebase block below; **If** it exits 0 → re-run sub-step 2, **Else** → **Failure Path**.
    - **Else** → **Failure Path**.
    ```bash
-   cd "{WORKTREE_PATH}" && "{BKIT}" branches rebase --sentinel="{SENTINEL}" --log-file="{LOG_DIR}/rebase-resolve-log.md"
+   cd "{WORKTREE_PATH}" && "{BKIT}" branches rebase --sentinel="{SENTINEL}" --log-file="{LOG_DIR}/rebase-resolve-log.md" --file="{LOG_DIR}/status.jsonl"
    ```
 3. Enter the worktree, open the run and record the runtime:
    ```bash
@@ -312,60 +312,86 @@ description: "Plan Feature — Autonomous plan generation"
 
 ## 🧠 Step 5 — Review Plan
 
-1. Launch these subagents in parallel using `Agent` tool:
+1. Count this review round. The plan gets one review and, after a `FAIL` that plan edits fix, exactly one re-review:
+   ```bash
+   "{BKIT}" counters route --name=REVIEW_ROUND --of=plan-review:next --file="{STATUS}" --workflow=plan --max=2 --continue=plan-review --exceeded=failure-path
+   ```
+   Hold `value` as `REVIEW_ROUND`.
+   Route — first match wins:
+   - **If** exit 1 → **Failure Path** — the one re-review already ran.
+   - **If** `REVIEW_ROUND` = 1 → `REVIEW_PLAN` = `plan-v1-draft.md`.
+   - **Else** → `REVIEW_PLAN` = `plan-v2-reviewed.md`, the plan Step 6 applied the first review to.
+2. Launch these subagents in parallel using `Agent` tool:
    - **Subagent:** Invoke `@bkit-plan-review-1` using `Agent` tool:
      Context: You are a subagent in the Plan phase running in parallel with two other agents. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
-     Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`.
+     Read: `docs/plans/{YYYYMM}/logs/{FID}/{REVIEW_PLAN}`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-review-1.md`.
    - **Subagent:** Invoke `@bkit-plan-review-2` using `Agent` tool:
      Context: You are a subagent in the Plan phase running in parallel with two other agents. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
-     Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`.
+     Read: `docs/plans/{YYYYMM}/logs/{FID}/{REVIEW_PLAN}`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-review-2.md`.
    - **Subagent:** Invoke `@bkit-plan-scope-check` using `Agent` tool:
      Context: You are a subagent in the Plan phase running in parallel with two other agents. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
-     Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`.
+     Read: `docs/plans/{YYYYMM}/logs/{FID}/{REVIEW_PLAN}`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check.md`.
-2. Wait for all subagents to complete, then finish — `verdict` = worst of the three (`FAIL > CONCERNS > PASS`), `failures` = their sum:
+3. Wait for all subagents to complete, then finish — `verdict` = worst of the three (`FAIL > CONCERNS > PASS`), `failures` = their sum:
    ```bash
-   "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-review --attempt=1 --agent=bkit-plan-review-1 --agent=bkit-plan-review-2 --agent=bkit-plan-scope-check --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-review-1.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-review-2.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check.md --message="chore({FID}): review-plan" --number=5 --post --title="Review Plan"
+   "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-review --attempt=next --agent=bkit-plan-review-1 --agent=bkit-plan-review-2 --agent=bkit-plan-scope-check --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-review-1.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-review-2.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check.md --message="chore({FID}): review-plan" --number=5 --post --title="Review Plan"
    ```
-   **If** `verdict` = FAIL → **Failure Path**.
+   Hold `verdict` as `REVIEW_VERDICT`, `fields.Redesign` as `REVIEW_REDESIGN` and `attempt` as `REVIEW_ROUND`.
+4. Route — first match wins:
+   - **If** `REVIEW_VERDICT` = FAIL **and** `REVIEW_REDESIGN` = true → **Failure Path** — a finding needs the design to change, which no plan edit does.
+   - **If** `REVIEW_VERDICT` = FAIL **and** `REVIEW_ROUND` = 2 → **Failure Path** — the one re-review failed.
+   - **Else** → Step 6.
 
 ### 🔒 Gate 5 — Review Plan
 
+- [ ] Review round counted (`counters route`)
 - [ ] Subagents invoked (`@bkit-plan-review-1`, `@bkit-plan-review-2`, `@bkit-plan-scope-check`, no inline work)
 - [ ] Mechanical checks passed (`steps finish`)
+- [ ] Routed correctly
 
 ---
 
 ## 🧠 Step 6 — Apply Review
 
 1. **If** any of `plan-review-1.md`, `plan-review-2.md`, `plan-scope-check.md` is missing from `docs/plans/{YYYYMM}/logs/{FID}/` → Step 5.
-2. **Subagent:** Invoke `@bkit-plan-update` using `Agent` tool:
-   Context: You are a subagent in the Plan phase applying review and scope-check critiques. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Input critiques carry distinct lenses — merge across them, max-wins on CRITICAL findings. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
-   Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-review-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-review-2.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check.md`.
-   Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md`.
-3. Check the reviewed plan's groups and task blocks, and that every symbol it names exists:
+2. Count this apply round, one per review round:
+   ```bash
+   "{BKIT}" counters derive --file="{STATUS}" --workflow=plan --step=plan-apply-review --position=next
+   ```
+   Hold `value` as `APPLY_ROUND`.
+3. Apply the critiques — first match wins:
+   - **If** `APPLY_ROUND` = 1 → **Subagent:** Invoke `@bkit-plan-update` using `Agent` tool:
+     Context: You are a subagent in the Plan phase applying review and scope-check critiques. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Input critiques carry distinct lenses — merge across them, max-wins on CRITICAL findings. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
+     Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-review-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-review-2.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check.md`.
+     Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md`.
+   - **Else** → **Subagent:** Invoke `@bkit-plan-update` using `Agent` tool:
+     Context: You are a subagent in the Plan phase applying review and scope-check critiques. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Input critiques carry distinct lenses — merge across them, max-wins on CRITICAL findings. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task. The critiques re-review the plan you edit in place.
+     Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-review-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-review-2.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check.md`.
+     Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md`.
+4. Check the reviewed plan's groups and task blocks, and that every symbol it names exists:
    ```bash
    "{BKIT}" tests plan-check --plan=docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md --existence=refuse --log=docs/plans/{YYYYMM}/logs/{FID}/plan-update-check.md
    ```
    Route — first match wins:
-   - **If** exit 0 → sub-step 4.
+   - **If** exit 0 → sub-step 5.
    - **If** this is the second exit 1 → **Failure Path**.
    - **If** exit 1 → invoke `@bkit-plan-update` again with Context `"Fix only what 'docs/plans/{YYYYMM}/logs/{FID}/plan-update-check.md' names; edit only those lines, do not seed the file again."` and the plan caps above, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md` → re-run this sub-step.
    - **Else** → **Failure Path**.
-4. Finish:
+5. Finish:
    ```bash
-   "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-apply-review --attempt=1 --agent=bkit-plan-update --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-update-check.md --message="chore({FID}): apply-review" --number=6 --post --title="Apply Review" --link-ref=dev
+   "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-apply-review --attempt=next --agent=bkit-plan-update --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-update-check.md --message="chore({FID}): apply-review" --number=6 --post --title="Apply Review" --link-ref=dev
    ```
    Hold `verdict` as `APPLY_VERDICT`.
-5. Route:
-   - **If** `APPLY_VERDICT` = PASS **or** CONCERNS → Step 7.
+6. Route:
+   - **If** `APPLY_VERDICT` = PASS **or** CONCERNS → Step 7, which sends a plan whose review failed back to Step 5 for its one re-review.
    - **Else** → **Failure Path**.
 
 ### 🔒 Gate 6 — Apply Review
 
 - [ ] Review critiques present
+- [ ] Apply round counted (`counters derive`)
 - [ ] Subagent invoked (`@bkit-plan-update`, no inline work)
 - [ ] Reviewed plan checked (`tests plan-check`)
 - [ ] Mechanical checks passed (`steps finish`)
@@ -375,7 +401,12 @@ description: "Plan Feature — Autonomous plan generation"
 
 ## 🧠 Step 7 — Summary
 
-1. Resolve the highest plan version:
+1. Check that the latest review did not fail:
+   ```bash
+   "{BKIT}" status route --file="{STATUS}" --workflow=plan --step=plan-review --require=verdict
+   ```
+   **If** `verdict` = FAIL → Step 5. Step 6 applied that review, so the applied plan gets its one re-review.
+2. Resolve the highest plan version:
    ```bash
    "{BKIT}" workflows promote --workflow=plan --fid={FID} --month={YYYYMM} --resolve
    ```
@@ -384,24 +415,25 @@ description: "Plan Feature — Autonomous plan generation"
    "{BKIT}" ledgers check --plan={PLAN_FINAL}
    ```
    **If** exit non-zero → **Failure Path**, naming each `missing` key.
-2. Write `plan-summary.md` from this run's status rows and the final plan:
+3. Write `plan-summary.md` from this run's status rows and the final plan:
    ```bash
    "{BKIT}" workflows summary --workflow=plan --file="{STATUS}" --plan={PLAN_FINAL}
    ```
    **If** exit non-zero → **Failure Path**. Hold `verdict` as `SUMMARY_VERDICT`, `failures` as `SUMMARY_FAILURES`.
-3. Finish, then push the summary commit:
+4. Finish, then push the summary commit:
    ```bash
    "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-summary --attempt=1 --verdict={SUMMARY_VERDICT} --failures={SUMMARY_FAILURES} --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-summary.md --message="chore({FID}): summary bkit [skip ci]" --number=7 --post --title=Summary --link-ref=dev --comment-body
    ```
    ```bash
    "{BKIT}" branches push --mode=feature
    ```
-4. Route:
+5. Route:
    - **If** `SUMMARY_VERDICT` = PASS **or** CONCERNS → Step 8.
    - **Else** → **Failure Path**.
 
 ### 🔒 Gate 7 — Summary
 
+- [ ] Latest review checked (`status route`)
 - [ ] Final plan resolved
 - [ ] Ledger rows checked (`ledgers check`)
 - [ ] `workflows summary` printed a verdict
@@ -419,7 +451,7 @@ description: "Plan Feature — Autonomous plan generation"
    <!-- bkit:tracker true start -->
    **If** the no-issue warning was emitted → add `--warning="<that warning>"`.
    <!-- bkit:tracker true end -->
-   **If** `## Open Questions` lists any question → add `--suggest="Want me to ask you the open questions one by one, with my recommendation for each? Then write 'yes, ask me one by one'."`.
+   **If** `Open Questions` lists any question → add `--suggest="Want me to ask you the open questions one by one, with my recommendation for each? Then write 'yes, ask me one by one'."`.
    ```bash
    "{BKIT}" workflows promote --workflow=plan --fid={FID} --month={YYYYMM} --file="{STATUS}" || exit 1
    "{BKIT}" workflows close --workflow=plan --fid={FID} --month={YYYYMM} --record-step --outbox="{OUTBOX}" --message="chore({FID}): close-workflow" --final-return --summary-file="docs/plans/{YYYYMM}/logs/{FID}/plan-summary.md" --session-dir="{SESSION_DIR}"
@@ -450,7 +482,33 @@ description: "Plan Feature — Autonomous plan generation"
    <!-- bkit:tracker true end -->
 5. Final return: display `{FINAL_RETURN}` verbatim as the final message to the user; do not summarise or trim; do not auto-invoke. **HARD STOP** — do not invoke `/bkit-build`.
 6. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, not nouns; do not re-run any step.
-7. **If** user requests the open questions one by one → ask each `## Open Questions` item on its own, verbatim, with its options lettered `A)`, `B)`, `C)`, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step. Each answer that settles an architecture / technology decision → append its row to `docs/decisions.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom) at once; `by.step` = `plan-close-workflow`; `rationale` = `answered by owner: {human's answer}`; decision already on disk → same `key`.
+7. **If** user requests the open questions one by one → ask each `Open Questions` item on its own, verbatim, with its options lettered `A)`, `B)`, `C)`, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step.
+8. **If** the user answers one or more `Open Questions` items (in the one-by-one pass, once its last question is answered, or in any chat message) → record the round in this order:
+   - For each answer that settles an architecture / technology decision, append one `docs/decisions.jsonl` row with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom). Set `by.step` = `plan-close-workflow`, and `rationale` = `answered by owner: {human's answer}`.
+     - **If** the decision is already on disk → reuse its `key`.
+   - Write `{OUTBOX}/plan-answers.md`: the `## Owner answers` heading, then per answer the question verbatim, the owner's answer verbatim, and `Decision: {key}`, or `Decision: none` when no row was written. Append its entries to `docs/plans/{YYYYMM}/logs/{FID}/plan-answers-{RUN}.md`.
+     - **If** that file is absent → create it with the heading.
+   - **Subagent:** Invoke `@bkit-plan-update` using `Agent` tool:
+     Context: You are a subagent in the Plan phase applying the owner's answers. Switch into the working directory with `cd "{REPO_ROOT}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
+     Read: `{OUTBOX}/plan-answers.md`.
+     Update: `docs/plans/{YYYYMM}/{FID}-plan.md`.
+     **If** `Verdict` = FAIL → tell the user which answer stays unapplied, never the **Failure Path**.
+   - Check the plan's groups and task blocks, and that every symbol it names exists:
+     ```bash
+     "{BKIT}" tests plan-check --plan=docs/plans/{YYYYMM}/{FID}-plan.md --existence=refuse --log={OUTBOX}/plan-answers-check.md
+     ```
+     Route — first match wins:
+     - **If** exit 0 → the commit below.
+     - **If** this is the second exit 1 → tell the user what `{OUTBOX}/plan-answers-check.md` names, and commit nothing from this round.
+     - **If** exit 1 → invoke `@bkit-plan-update` again with Context `"Fix only what '{OUTBOX}/plan-answers-check.md' names; edit only those lines, do not seed the file again."`, Update: `docs/plans/{YYYYMM}/{FID}-plan.md` → re-run this sub-step.
+     - **Else** → tell the user what the command printed, and commit nothing from this round.
+   - Commit `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-answers-{RUN}.md` and, when a row was written, `docs/decisions.jsonl` on `dev`, those files only, with the message `docs({FID}): owner answers bkit [skip ci]`. NEVER push.
+   <!-- bkit:tracker true start -->
+   - **Skip if** `ISSUE_ID` empty. Comment — this round's answers:
+     ```bash
+     "{BKIT}" issues comment --post --issue="{ISSUE_ID}" --workflow=plan --step-number=8 --step-title="Owner Answers" --body-file="{OUTBOX}/plan-answers.md"
+     ```
+   <!-- bkit:tracker true end -->
 
 ### 🔒 Gate 8 — Close Workflow
 

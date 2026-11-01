@@ -109,13 +109,13 @@ function derivedSteps(text: string): string[] {
 
 /** The `bkit steps done|finish` call lines in a block, each with the step it writes. */
 function stepDoneLines(block: string): Array<{ step: string; line: string }> {
-  return block
-    .split("\n")
-    .filter((l) => /\bsteps (?:done|finish)\b/.test(l))
-    .flatMap((line) => {
-      const m = /--step="?([\w-]+)"?/.exec(line);
-      return m ? [{ step: m[1]!, line }] : [];
-    });
+  return block.split("\n").flatMap((line) => {
+    // `bkit tests red` writes the build-tests-red row itself, with no `steps finish`.
+    if (/"\{BKIT\}" tests red\b/.test(line)) return [{ step: "build-tests-red", line }];
+    if (!/\bsteps (?:done|finish)\b/.test(line)) return [];
+    const m = /--step="?([\w-]+)"?/.exec(line);
+    return m ? [{ step: m[1]!, line }] : [];
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -288,6 +288,11 @@ const TRANSITIVE_EXEMPTIONS: ExemptionEntry[] = [
     reason:
       "#384: ship-merge-pr integrates via `bkit prs merge` (server-side squash); the squash commit IS the integration. No local `git commit` — the PR merge is the advancement.",
   },
+  {
+    step: "build-tests-red",
+    reason:
+      "#796: `bkit tests red` writes the build-tests-red row itself and commits nothing; the reds are evidence inside the group's execute attempt, which `steps finish --step=build-plan-tasks` commits later in Step 7.",
+  },
 ];
 
 /** Steps whose attempts are counted (see `derivedSteps`). */
@@ -310,6 +315,8 @@ function stepCommitsInBlock(content: string, step: string): boolean | null {
   for (const { block } of fencedBlocks(content)) {
     const row = stepDoneLines(block).find((s) => s.step === step);
     if (!row) continue;
+    // `bkit tests red` has no commit of its own; only a `git commit` in the block counts.
+    if (/"\{BKIT\}" tests red\b/.test(row.line)) return /\bgit commit\b/.test(block);
     return !/--commit=none\b/.test(row.line) || /\bgit commit\b/.test(block);
   }
   return null;
@@ -593,7 +600,8 @@ describe("5. no $(( )) arithmetic on a counter — positions are the command's j
 // ---------------------------------------------------------------------------
 
 const COUNTER_STEP_MAP: Record<string, string[]> = {
-  "build-plan-execute": ["build-plan-execute"],
+  "build-plan-tests": ["build-plan-tests"],
+  "build-plan-tasks": ["build-plan-tasks"],
   "build-plan-verify": ["build-plan-verify"],
   "build-plan-gaps-remediate": ["build-plan-verify"],
   "build-group-gate": ["build-plan-verify"],
@@ -609,6 +617,8 @@ const COUNTER_STEP_MAP: Record<string, string[]> = {
   "debug-failure-remediate": ["debug-run-tests"],
   "debug-failure-soak": ["debug-run-tests", "debug-failure-soak"],
   "debug-push-remediation": ["debug-run-tests"],
+  "plan-review": ["plan-review"],
+  "plan-apply-review": ["plan-apply-review"],
   "ship-merge-pr": ["ship-merge-pr"],
   "ship-failure-diagnose": ["ship-merge-pr"],
   "ship-failure-remediate": ["ship-merge-pr"],

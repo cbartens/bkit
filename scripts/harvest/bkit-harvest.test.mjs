@@ -1096,7 +1096,7 @@ function makeRunLogs() {
     status(200, "workflow-started", { workflow: "build", parentSha: SHA2 }),
     step(201, "build", "build-task-red", { subPlan: 1 }),
     step(202, "build", "build-task-red", { subPlan: 1 }),
-    step(210, "build", "build-plan-execute", { subPlan: 1, attempt: 1, verdict: "PASS" }),
+    step(210, "build", "build-plan-tasks", { subPlan: 1, attempt: 1, verdict: "PASS" }),
     step(215, "build", "build-plan-verify", {
       subPlan: 1,
       attempt: 1,
@@ -1554,7 +1554,7 @@ await test("active spans end at a gap over 5 minutes, and subagent events fill t
     counts({ stamps: [s(0), s(120), s(1200)] }),
     [
       {
-        agentType: "bkit-build-plan-execute",
+        agentType: "bkit-build-plan-tasks",
         counts: counts({ stamps: [s(130), s(400), s(600)] }),
       },
     ],
@@ -1956,7 +1956,7 @@ await test("the report lists open runs, marked, and leaves them out of the media
     activeMinutes: null,
     activeFrom: null,
     ending: settled ? "done" : "stopped",
-    steps: { "build-plan-execute": { n: 1, minutes, active: null } },
+    steps: { "build-plan-tasks": { n: 1, minutes, active: null } },
     closeCi: [],
     settled,
   });
@@ -1973,7 +1973,7 @@ await test("the report lists open runs, marked, and leaves them out of the media
   assert.match(md, /\| 650-secret-feature \(open\) \| 5\.5\.1 \| stopped \| 7 \|/);
   assert.match(
     md,
-    /\| build-plan-execute \| 1 \| 1 \| 100\.0 \|/,
+    /\| build-plan-tasks \| 1 \| 1 \| 100\.0 \|/,
     "step medians use the settled run only",
   );
   assert.match(md, /\| build \(open\)|build×2 \(open\)/);
@@ -3024,7 +3024,8 @@ await test("MARK_ROWS is the engine's", () => {
     "utf8",
   );
   const list = facts.match(/export const MARK_ROWS[^=]*= new Set\((\[[^\]]*\])\)/)?.[1];
-  assert.deepEqual([...MARK_ROWS], JSON.parse(list));
+  assert.deepEqual([...MARK_ROWS], JSON.parse(list.replace(/,\s*\]$/, "]")));
+  for (const t of ["engine-call", "completeness"]) assert.ok(MARK_ROWS.has(t), `${t} is a mark row`);
 });
 
 await test("report shows per-run tokens and owner waits", () => {

@@ -90,7 +90,7 @@ export const NEAR_COPY = 0.8;
 export const SHARED_MIN: Partial<Record<Surface, number>> = {
   prompt: 2,
   workflow: 2,
-  audit: 5,
+  audit: 2,
   doc: 2,
 };
 
@@ -348,6 +348,29 @@ export function loadCorpus(root: string): CorpusFile[] {
  * to check or rewrite.
  */
 export function proseLineIndexes(file: CorpusFile): number[] {
+  return memoLines(proseCache, file, computeProseLineIndexes);
+}
+
+/** Line-index memo keyed by surface and content; every clause asks for the same file's lines. */
+function memoLines(
+  cache: Map<string, number[]>,
+  file: CorpusFile,
+  compute: (file: CorpusFile) => number[],
+): number[] {
+  const key = `${file.surface}\u0000${file.content}`;
+  let hit = cache.get(key);
+  if (!hit) {
+    if (cache.size > 5_000) cache.clear();
+    hit = compute(file);
+    cache.set(key, hit);
+  }
+  return hit;
+}
+
+const proseCache = new Map<string, number[]>();
+const clauseLineCache = new Map<string, number[]>();
+
+function computeProseLineIndexes(file: CorpusFile): number[] {
   const lines = file.content.split("\n");
   let from = 0;
   let to = lines.length;
@@ -385,9 +408,11 @@ export function proseLineIndexes(file: CorpusFile): number[] {
  * `**Rules:**` block, whose lines are rules.md copies the `- carry:` check owns.
  */
 export function clauseLineIndexes(file: CorpusFile): number[] {
-  const prose = proseLineIndexes(file);
-  const block = file.surface === "prompt" ? ruleBlock(file.content.split("\n")) : undefined;
-  return block ? prose.filter((i) => i < block.from || i >= block.to) : prose;
+  return memoLines(clauseLineCache, file, (f) => {
+    const prose = proseLineIndexes(f);
+    const block = f.surface === "prompt" ? ruleBlock(f.content.split("\n")) : undefined;
+    return block ? prose.filter((i) => i < block.from || i >= block.to) : prose;
+  });
 }
 
 /** Lines a clause is matched against: a `block: rules` clause also sees the prompt's `**Rules:**` block it sits in. */
@@ -489,6 +514,8 @@ interface Compiled {
   slots: string[];
   /** Fixed text before the first slot; the whole text when unslotted. */
   prefix: string;
+  /** Longest fixed segment every match contains verbatim: a substring check before the regex runs. */
+  literal: string;
   slotted: boolean;
 }
 
@@ -498,29 +525,36 @@ export function compileText(text: string): Compiled {
   const hit = compiledCache.get(text);
   if (hit) return hit;
   const slots: string[] = [];
+  const literals: string[] = [];
   let source = "";
   let last = 0;
   for (const m of text.matchAll(SLOT)) {
-    source += escapeRe(text.slice(last, m.index));
+    const segment = text.slice(last, m.index);
+    literals.push(segment);
+    source += escapeRe(segment);
     source += m[2] ? "(.*?)" : "(.+?)";
     slots.push(m[1]!);
     last = m.index! + m[0].length;
   }
   const tail = text.slice(last);
   // A closing `.` also matches `;`: the line continues the sentence with local text.
-  source += tail.endsWith(".") ? `${escapeRe(tail.slice(0, -1))}[.;]` : escapeRe(tail);
+  const tailLiteral = tail.endsWith(".") ? tail.slice(0, -1) : tail;
+  literals.push(tailLiteral);
+  source += tail.endsWith(".") ? `${escapeRe(tailLiteral)}[.;]` : escapeRe(tail);
   const first = text.search(SLOT);
   const compiled = {
     re: new RegExp(source, "g"),
     slots,
     prefix: first === -1 ? text : text.slice(0, first),
+    literal: literals.reduce((a, b) => (b.length > a.length ? b : a), ""),
     slotted: slots.length > 0,
   };
   compiledCache.set(text, compiled);
   return compiled;
 }
 
-const countIn = (line: string, c: Compiled) => [...line.matchAll(c.re)].length;
+const countIn = (line: string, c: Compiled) =>
+  line.includes(c.literal) ? [...line.matchAll(c.re)].length : 0;
 
 /** Drop the blockquote, list marker, step number, or checkbox in front of a line's text. */
 export const stripLinePrefix = (line: string) =>
@@ -654,12 +688,15 @@ function nearCopies(
         if (!canonical.startsWith("**")) window = window.replace(LABEL, "");
         // A clause can close a sentence that opens with local text (`**If** {cond} → {clause}`): also compare the tail.
         const words = window.split(/\s+/);
-        const candidates = [window];
+        const candidates: [string, string[]][] = [[window, words]];
         for (const n of [cw - 1, cw, cw + 1]) {
-          if (n > 0 && n < words.length) candidates.push(words.slice(-n).join(" "));
+          if (n > 0 && n < words.length) {
+            const tail = words.slice(-n);
+            candidates.push([tail.join(" "), tail]);
+          }
         }
-        for (const found of candidates) {
-          if (allTexts.has(found) || !nearCandidate(found.split(/\s+/), canonicalWords)) continue;
+        for (const [found, foundWords] of candidates) {
+          if (allTexts.has(found) || !nearCandidate(foundWords, canonicalWords, counts)) continue;
           const score = similarity(found, canonical);
           if (score >= NEAR_COPY && (!best || score > best.score)) best = { found, size, score };
         }
@@ -844,18 +881,21 @@ export function checkClauses(clauses: Clause[], files: CorpusFile[]): Finding[] 
 }
 
 /** Could two sentences be NEAR_COPY-similar? Cheap word-count and shared-word bounds before `similarity`. */
-function nearCandidate(a: string[], b: string[]): boolean {
+function nearCandidate(a: string[], b: string[], bCounts?: Map<string, number>): boolean {
   const longer = Math.max(a.length, b.length);
   const need = Math.ceil(NEAR_COPY * longer);
   if (Math.min(a.length, b.length) < need) return false;
-  const pool = new Map<string, number>();
-  for (const w of b) pool.set(w, (pool.get(w) ?? 0) + 1);
+  // `bCounts` is read-only (a caller's memoised counts): track the words of `b` used up so far.
+  const counts = bCounts ?? wordCounts(b);
+  const used = new Map<string, number>();
   let shared = 0;
   for (const w of a) {
-    const n = pool.get(w) ?? 0;
-    if (n > 0) {
+    const n = counts.get(w);
+    if (n === undefined) continue;
+    const u = used.get(w) ?? 0;
+    if (u < n) {
       shared++;
-      pool.set(w, n - 1);
+      used.set(w, u + 1);
     }
   }
   return shared >= need;
@@ -902,6 +942,7 @@ function sharedGroups(
   noun: string,
 ): Finding[] {
   const words = new Map([...seen.keys()].map((s) => [s, s.split(/\s+/)]));
+  const counts = new Map([...words].map(([s, w]) => [s, wordCounts(w)]));
   const reported = new Set<string>();
   const findings: Finding[] = [];
   // Seeds: every sentence, widest first, so a group is reported once under its most-copied wording.
@@ -913,7 +954,7 @@ function sharedGroups(
       (s) =>
         s !== seed &&
         !reported.has(s) &&
-        nearCandidate(words.get(seed)!, words.get(s)!) &&
+        nearCandidate(words.get(seed)!, words.get(s)!, counts.get(s)!) &&
         similarity(seed, s) >= NEAR_COPY,
     );
     const group = new Set([...ids.keys(), ...near.flatMap((s) => [...seen.get(s)!.keys()])]);
@@ -1594,11 +1635,12 @@ export function similarEntries(store: string): string[] {
   }
   const out: string[] = [];
   const words = entries.map((e) => e.text.split(/\s+/));
+  const counts = words.map(wordCounts);
   for (let i = 0; i < entries.length; i++) {
     for (let j = i + 1; j < entries.length; j++) {
       const [a, b] = [entries[i]!, entries[j]!];
       if (a.name === b.name || a.distinct.has(b.name) || b.distinct.has(a.name)) continue;
-      if (!nearCandidate(words[i]!, words[j]!)) continue;
+      if (!nearCandidate(words[i]!, words[j]!, counts[j]!)) continue;
       const score = similarity(a.text, b.text);
       if (score >= NEAR_COPY) {
         out.push(

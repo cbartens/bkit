@@ -90,24 +90,28 @@ autoCompactWindow: 300000
    - `STANDARD` → fix the current gaps, each with a targeted change.
    - `PIVOT` → identify why each earlier attempt failed. Try a different approach from the earlier attempts, and do not repeat one.
    - `FINAL` → run `pnpm bkit:deps:outdated`. Diagnose again: check that this is the right problem, whether the plan is flawed and whether the root cause lies upstream, and compare the result with each earlier attempt.
-   - All strategies: NEVER record a red by undoing or swapping out code (restoring old source, stubbing over landed code). Test-order gap (`no-red`, `late-red`, `red-mismatch`, `red-evidence-missing`, `test-changed`) → `BLOCKED`; NEVER touch a `TEST EXCEPTION` field.
+   - All strategies: do not edit, rename, move or delete a planned `TEST FIRST` test, and NEVER touch a `TEST EXCEPTION` field. Only the tests step rewrites a planned test. A `no-red` gap → `BLOCKED`, naming the tests step.
    - **If** a decision record is supplied → follow the owner's words on its `Decision:` lines in this round; they override the strategy's default angle. `Decision: Accept (assumed)` and `Decision: Fix now — recommended; applied without asking` are not the owner's words: an assumed accept is settled for this build (leave it), an unasked `Fix now` takes the recommendation.
 7. Fix the gaps in `priority` order. For each gap:
    - Apply a targeted fix by editing or creating source.
    - **If** the gap suggests missing tests → implement them.
    - Check that the gap's acceptance criteria hold.
    - Append the gap's `DONE` or `BLOCKED` line before you take the next gap.
-8. Run `pnpm bkit:gate:static-unit`. Every local test must pass. **If** Context names a group gate → run that command after the fixes, and again after each further fix, until it exits 0:
+8. **If** `package.json` declares a `bkit:generate` script → run `pnpm bkit:generate` once, after your last code edit. It rewrites the generated files and saved baselines from your code, so the caller commits them with it.
+   - **If** it exits non-zero → append `BLOCKED — bkit:generate: {first error line}` with Bash `echo >>`. The verdict is then `FAIL`, whatever the tasks and tests show.
+9. Run `bkit tests changed --fallback=bkit:gate:static-unit`. Every local test must pass. **If** Context names a group gate → run that command after the fixes, and again after each further fix, until it exits 0:
    - The gate stops at its first failing stage, so treat each new failure that a later run shows as another gap of this round.
    - Before you fix a failure, search for every other test and source file built on the same failing assumption.
    - Fix those files in the same pass as the failure.
    - **If** the gate exits 0 → append `DONE — Group gate: exit 0 ({log path})`.
    - **If** it cannot reach exit 0 → append `BLOCKED — Group gate: {reason}`.
    - Never end on `PASS` from targeted test runs alone.
-9. Set `Strategy` in **Create** with `Edit` to the `Strategy` value from Context. The caller records the header's `Strategy` on the step's row, and refuses the row without one.
-   - **If** Context names no `Strategy` → leave the field `PENDING`, because the caller then stops the run.
-10. **If** the remediations are verified (their tests pass) **and** the work found gotchas → append one row per gotcha to `docs/knowledge.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), reusing the `key` of any existing entry for the same item.
-11. Set `Fixed` via `Edit` = the count of `DONE — Gap` lines in **Create**, then set `Verdict` in **Create** with `Edit`:
+10. Set `Strategy` in **Create** with `Edit` to the `Strategy` value from Context. The caller records the header's `Strategy` on the step's row, and refuses the row without one.
+
+- **If** Context names no `Strategy` → leave the field `PENDING`, because the caller then stops the run.
+
+11. **If** the remediations are verified (their tests pass) **and** the work found gotchas → append one row per gotcha to `docs/knowledge.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), reusing the `key` of any existing entry for the same item.
+12. Set `Fixed` via `Edit` = the count of `DONE — Gap` lines in **Create**, then set `Verdict` in **Create** with `Edit`:
     - `PASS` = every in-scope gap has a `DONE` line across the logs, the local tests pass, when Context names a group gate the log holds `DONE — Group gate: exit 0`, no test passed only on a rerun, and no warning needs a follow-up.
     - `FAIL` = `Strategy` is missing, **or** you cannot remediate, **or** any in-scope gap ends `BLOCKED` with no later `DONE`, **or** the last local test run fails. A flake that still fails on its last run counts here.
     - `CONCERNS` = no `FAIL` condition holds, but a test passed only on a rerun with no code change (a flake), **or** a warning that does not block needs a follow-up.
@@ -125,7 +129,7 @@ Fixed: <integer >= 0>
 
 ## Remediation Log
 
-[An append-only flat log with one line per entry, in the order the events happened, so `DONE` and `BLOCKED` lines mix. A gap's entry is `DONE — Gap {N}: {name / description} — {outcome} ({path or commit ref})` or `BLOCKED — Gap {N}: {name / description} — {reason}`. The group gate's entry is `DONE — Group gate: exit 0 ({log path})` or `BLOCKED — Group gate: {reason}`. Empty in the stub, and filled by appending with Bash `echo >>` as the work goes.]
+[An append-only flat log with one line per entry, in the order the events happened, so `DONE` and `BLOCKED` lines mix. A gap's entry is `DONE — Gap {N}: {name / description} — {outcome} ({path or commit ref})` or `BLOCKED — Gap {N}: {name / description} — {reason}`. The group gate's entry is `DONE — Group gate: exit 0 ({log path})` or `BLOCKED — Group gate: {reason}`. A failed generate run is `BLOCKED — bkit:generate: {first error line}`. Empty in the stub, and filled by appending with Bash `echo >>` as the work goes.]
 ```
 
 > ⛔ **STOP** once every in-scope gap is logged `DONE` or `BLOCKED` and `Verdict` is set. NEVER push, and do not expand scope.

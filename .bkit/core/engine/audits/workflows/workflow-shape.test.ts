@@ -6,6 +6,7 @@ import * as path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { callWords, stepSections } from "../../checks/status-holes";
 import { COMMANDS } from "../../commands/registry";
 import { WORKFLOW_STEPS } from "../../commands/workflow/step-table";
 import { substituteWorkflow } from "../../render/trackers";
@@ -59,28 +60,6 @@ function unclosedTrackerMarker(text: string): string | undefined {
   const tail = text.slice(lastOpen);
   const closes = /^<!-- bkit:tracker \S+ end -->/.test(tail);
   return lastOpen === -1 || closes ? undefined : tail.split("\n")[0];
-}
-
-/** The words of one `"{BKIT}" ...` call: shell-split, quotes kept, stopped at the first unquoted operator. */
-function callWords(rest: string): string[] {
-  const words: string[] = [];
-  let word = "";
-  let quote = "";
-  for (const ch of rest) {
-    if (quote) {
-      word += ch;
-      if (ch === quote) quote = "";
-    } else if (ch === '"' || ch === "'") {
-      word += ch;
-      quote = ch;
-    } else if ("|;&><)`".includes(ch)) break;
-    else if (/\s/.test(ch)) {
-      if (word) words.push(word);
-      word = "";
-    } else word += ch;
-  }
-  if (word) words.push(word);
-  return words;
 }
 
 /** Each `"{BKIT}" noun verb --flag` call in `text` whose verb or flag the CLI lacks. */
@@ -150,19 +129,20 @@ describe("gate logs", () => {
   );
 
   // `tests run --artifact` copies the log beside the run's artifacts, resets the
-  // step's clamp log and trims it in one call; no workflow does it by hand.
+  // step's clamp log and trims it in one call; no workflow does it by hand. `--file`
+  // appends the run's test-run row to status.jsonl.
   const ARTIFACTS: Array<[string, string]> = [
     [
       "build",
-      '--artifact="docs/plans/{YYYYMM}/logs/{FID}/build-group-gate-{GROUP}-{VERIFY_ATTEMPT}.md" --fid={FID} --step=build-group-gate-{GROUP} --attempt={VERIFY_ATTEMPT}',
+      '--artifact="docs/plans/{YYYYMM}/logs/{FID}/build-group-gate-{GROUP}-{VERIFY_ATTEMPT}.md" --fid={FID} --file="{STATUS}" --workflow=build --step=build-group-gate-{GROUP} --attempt={VERIFY_ATTEMPT}',
     ],
     [
       "build",
-      '--artifact="docs/plans/{YYYYMM}/logs/{FID}/run-tests-{TEST_ATTEMPT}.md" --fid={FID} --step=build-run-tests --attempt={TEST_ATTEMPT}',
+      '--artifact="docs/plans/{YYYYMM}/logs/{FID}/run-tests-{TEST_ATTEMPT}.md" --fid={FID} --file="{STATUS}" --workflow=build --step=build-run-tests --attempt={TEST_ATTEMPT}',
     ],
     [
       "debug",
-      '--artifact="docs/plans/{YYYYMM}/logs/{FID}/context-tests-local-{DEBUG_ATTEMPT}.md" --fid={FID} --step=debug-run-tests --attempt={DEBUG_ATTEMPT}',
+      '--artifact="docs/plans/{YYYYMM}/logs/{FID}/context-tests-local-{DEBUG_ATTEMPT}.md" --fid={FID} --file="{STATUS}" --workflow=debug --step=debug-run-tests --attempt={DEBUG_ATTEMPT}',
     ],
   ];
 
@@ -576,11 +556,11 @@ describe("build", () => {
 
   it("an execute cap stop is a handover, never a FAIL attempt", () => {
     const step7 = stepBody(build, /Step 7 — Plan Execute/);
-    expect(step7).toContain("Hold `verdict` as `EXECUTE_VERDICT`");
-    expect(step7).toContain("`EXECUTE_VERDICT` = HANDOVER");
+    expect(step7).toContain("Hold `verdict` as `TASKS_VERDICT`");
+    expect(step7).toContain("`TASKS_VERDICT` = HANDOVER");
     expect(step7).toContain("not a failed attempt");
     const prompt = fs.readFileSync(
-      path.join(REPO_ROOT, ".bkit", "core", "prompts", "bkit-build-plan-execute.md"),
+      path.join(REPO_ROOT, ".bkit", "core", "prompts", "bkit-build-plan-tasks.md"),
       "utf-8",
     );
     expect(prompt).toMatch(/^Verdict: PASS \| HANDOVER \| FAIL/m);
@@ -644,12 +624,12 @@ describe("build", () => {
   it("Plan Convert leaves a valid plan with no newer comments alone", () => {
     const step4 = section(build, /Step 4 — Plan Convert/);
     const skip =
-      "**If** exit 0 **and** (`NEWER_COMMENTS` = 0 **or** `CONVERTED` is held) → Step 5.";
+      "**If** exit 0 **and** `CONVERTED` is not held **and** `NEWER_COMMENTS` = 0 → sub-step 4.";
     expect(step4).toContain(skip);
-    // That route leaves the step at once: no dispatch, no row and no comment.
+    // That route skips the dispatch and writes the no-agent skip row (sub-step 4).
     expect(step4.indexOf(skip)).toBeLessThan(step4.indexOf("Invoke `@bkit-build-plan-convert`"));
-    expect(commandLines(step4, "steps finish")).toHaveLength(1);
-    expect(step4.indexOf("--step=build-plan-convert")).toBeGreaterThan(
+    expect(commandLines(step4, "steps finish")).toHaveLength(2);
+    expect(step4.indexOf("--attempt-of=build-plan-convert:next")).toBeGreaterThan(
       step4.indexOf("Invoke `@bkit-build-plan-convert`"),
     );
   });
@@ -659,7 +639,7 @@ describe("build", () => {
     expect(sharedStepNumbers()).toEqual([
       ["build-close-workflow", "build-create-pr"],
       ["build-group-gate", "build-plan-verify"],
-      ["build-group-start", "build-plan-execute"],
+      ["build-group-start", "build-plan-tasks", "build-plan-tests"],
     ]);
     // Each finish line posts the number and title of its own table row.
     expect(commentNumberProblems(build)).toEqual([]);
@@ -669,9 +649,11 @@ describe("build", () => {
     const finish = commandLines(section(build, /Step 4 — Plan Convert/), "steps finish").filter(
       (l) => l.includes("--step=build-plan-convert"),
     );
-    expect(finish).toHaveLength(1);
-    expect(finish[0]).toContain("--number=4");
-    expect(finish[0]).toContain('--post --title="Plan Convert"');
+    expect(finish).toHaveLength(2);
+    for (const line of finish) {
+      expect(line).toContain("--number=4");
+      expect(line).toContain('--post --title="Plan Convert"');
+    }
     expect(section(build, /Step 3 — Branch Sync/)).not.toContain("--step=build-plan-convert");
   });
 
@@ -679,9 +661,9 @@ describe("build", () => {
     // A plan-less run routes to the convert before the check writes its log, so the log
     // can be absent when the finish runs; a required artifact would exit 7 there and the
     // Plan Convert comment would never post. Optional records it whenever it exists.
-    const finish = commandLines(section(build, /Step 4 — Plan Convert/), "steps finish").filter(
-      (l) => l.includes("--step=build-plan-convert"),
-    );
+    const finish = commandLines(section(build, /Step 4 — Plan Convert/), "steps finish")
+      .filter((l) => l.includes("--step=build-plan-convert"))
+      .filter((l) => l.includes("--attempt-of="));
     expect(finish).toHaveLength(1);
     expect(finish[0]).toContain(
       "--optional-artifact=docs/plans/{YYYYMM}/logs/{FID}/build-plan-check.md",
@@ -722,8 +704,9 @@ describe("build", () => {
     );
     const step4 = section(build, /Step 4 — Plan Convert/);
     expect(step4).toContain(
-      "**If** exit 0 **and** (`NEWER_COMMENTS` = 0 **or** `CONVERTED` is held) → Step 5.",
+      "**If** exit 0 **and** `CONVERTED` is not held **and** `NEWER_COMMENTS` = 0 → sub-step 4.",
     );
+    expect(step4).toContain("**If** exit 0 **and** `CONVERTED` is held → Step 5.");
     expect(step4).toMatch(
       /`CONVERTED` is not held \*\*and\*\* \(exit 0 with `NEWER_COMMENTS` > 0,/,
     );
@@ -741,18 +724,44 @@ describe("build", () => {
   it("Step 7 takes the next group's brief and hands execute its path", () => {
     const step7 = stepBody(build, /Step 7 — Plan Execute/);
     const brief = commandLines(step7, "context brief");
-    expect(brief).toHaveLength(1);
+    expect(brief).toHaveLength(2);
     expect(brief[0]).toContain("--next");
-    expect(brief[0]).toContain('--plan="docs/plans/{YYYYMM}/{FID}-plan.md"');
-    expect(brief[0]).toContain('--note-file="{SESSION_DIR}/brief-note.md"');
+    for (const line of brief) {
+      expect(line).toContain('--plan="docs/plans/{YYYYMM}/{FID}-plan.md"');
+      expect(line).toContain('--note-file="{SESSION_DIR}/brief-note.md"');
+    }
     expect(step7).toContain("drop `--note-file` when `{SESSION_DIR}/brief-note.md` does not exist");
     expect(step7).toContain("`{BRIEF}`");
     expect(step7.indexOf("context brief")).toBeLessThan(
-      step7.indexOf("Invoke `@bkit-build-plan-execute`"),
+      step7.indexOf("Invoke `@bkit-build-plan-tasks`"),
     );
     const finish = commandLines(step7, "steps finish");
-    expect(finish).toHaveLength(1);
-    expect(finish[0]).toContain("--group={GROUP}");
+    expect(finish).toHaveLength(2);
+    for (const line of finish) expect(line).toContain("--group={GROUP}");
+  });
+
+  it("Step 7 writes a group's tests with their own subagent, records them red and only then invokes execute", () => {
+    const step7 = stepBody(build, /Step 7 — Plan Execute/);
+    const [, testsBrief] = commandLines(step7, "context brief");
+    expect(testsBrief).toContain("--tests-only");
+    expect(testsBrief).toContain("--group={GROUP}");
+    expect(testsBrief).toContain('--file="{STATUS}"');
+    const tests = step7.indexOf("Invoke `@bkit-build-plan-tests`");
+    const red = step7.indexOf('"{BKIT}" tests red');
+    const execute = step7.indexOf("Invoke `@bkit-build-plan-tasks`");
+    expect(tests).toBeGreaterThan(0);
+    expect(red).toBeGreaterThan(tests);
+    expect(execute).toBeGreaterThan(red);
+    const [testsFinish, executeFinish] = commandLines(step7, "steps finish");
+    expect(testsFinish).toContain("--step=build-plan-tests");
+    expect(testsFinish).toContain('--plan="docs/plans/{YYYYMM}/{FID}-plan.md"');
+    expect(executeFinish).toContain("--step=build-plan-tasks");
+    expect(step7).toContain("**If** exit 15");
+    expect(step7).toContain("**If** exit 11");
+    expect(commandLines(step7, "tests red")[0]).toContain(
+      '--log="docs/plans/{YYYYMM}/logs/{FID}/build-tests-red-{GROUP}-{RED_ATTEMPT}.md"',
+    );
+    expect(step7).not.toContain("--task=");
   });
 
   it("Step 8 verifies a diff cut from the group's start commit", () => {
@@ -771,7 +780,7 @@ describe("build", () => {
 
   it("the execute prompt logs `DONE — TASK {N}`, the line the brief and the commit check read", () => {
     const prompt = fs.readFileSync(
-      path.join(REPO_ROOT, ".bkit", "core", "prompts", "bkit-build-plan-execute.md"),
+      path.join(REPO_ROOT, ".bkit", "core", "prompts", "bkit-build-plan-tasks.md"),
       "utf-8",
     );
     expect(prompt).toMatch(/^DONE\s*[—–-]+\s*TASK\s+\{N\}/m);
@@ -854,24 +863,6 @@ describe("live docs", () => {
 });
 
 describe("resume", () => {
-  /** Each `Step N — Title` heading, with the text up to the next step or section heading. */
-  function stepSections(text: string): Array<{ number: number; title: string; body: string }> {
-    const lines = text.split("\n");
-    const heading = /^#{2,3} \S+ Step (\d+) — (.+)$/;
-    const out: Array<{ number: number; title: string; body: string }> = [];
-    lines.forEach((l, i) => {
-      const m = heading.exec(l);
-      if (!m) return;
-      const end = lines.findIndex((x, j) => j > i && /^#{2,3} /.test(x) && !x.startsWith("### 🔒"));
-      out.push({
-        number: Number(m[1]),
-        title: m[2]!,
-        body: lines.slice(i, end === -1 ? undefined : end).join("\n"),
-      });
-    });
-    return out;
-  }
-
   it.each(PHASES)("%s: the Resume line calls `status resume`", (name) => {
     const line = workflow(name)
       .split("\n")
@@ -894,6 +885,38 @@ describe("resume", () => {
       }
     },
   );
+});
+
+describe("plan convert skip row", () => {
+  it("writes a build-plan-convert row on the no-conversion route", () => {
+    const step4 = stepSections(workflow("build")).find((s) => s.number === 4)!;
+    const skip = commandLines(step4.body, "steps finish").filter((l) =>
+      l.includes("--step=build-plan-convert"),
+    );
+    expect(skip).toHaveLength(2);
+    const skipRow = skip.find((l) => l.includes("--attempt=1"))!;
+    expect(skipRow).toContain("--number=4");
+    expect(skipRow).toContain("skipped");
+    expect(skipRow).not.toContain("--attempt-of=");
+    expect(skip.filter((l) => l.includes("--attempt-of=build-plan-convert:next"))).toHaveLength(1);
+    // The pass route with nothing to convert reaches the skip row, not Step 5.
+    expect(step4.body).toMatch(
+      /exit 0 \*\*and\*\* `CONVERTED` is not held \*\*and\*\* `NEWER_COMMENTS` = 0 → sub-step 4/,
+    );
+    expect(step4.body).toMatch(/exit 0 \*\*and\*\* `CONVERTED` is held → Step 5/);
+  });
+});
+
+describe("promoted parsers", () => {
+  it("holds the workflows to the step table", () => {
+    const own = fs.readFileSync(__filename, "utf-8");
+    expect(own).not.toMatch(/^\s*function (stepSections|callWords)\(/m);
+    for (const name of PHASES)
+      expect(
+        stepSections(workflow(name)).map((s) => s.number),
+        name,
+      ).toEqual([...new Set(WORKFLOW_STEPS[name].map((s) => s.number))]);
+  });
 });
 
 describe("debug", () => {
@@ -1177,22 +1200,30 @@ describe("plan", () => {
     const writers = plan
       .split(/\n(?=## )/)
       .filter((s) => /Invoke `@bkit-plan-(generate|update)`/.test(s));
-    expect(writers.length).toBe(2);
+    expect(writers.length).toBe(3);
     for (const step of writers) {
       const heading = step.split("\n")[0];
       const lines = step.split("\n");
       const invoke = lines.findIndex((l) => /Invoke `@bkit-plan-(generate|update)`/.test(l));
-      const created = /Create: `([^`]+)`/.exec(lines.slice(invoke).join("\n"))?.[1];
+      // The close step edits the canonical plan in place (Update); the run's steps write a new version (Create).
+      const written = /(?:Create|Update): `([^`]+)`/.exec(lines.slice(invoke).join("\n"))?.[1];
       const check =
         invoke +
         1 +
         lines.slice(invoke + 1).findIndex((l) => l.includes('"{BKIT}" tests plan-check'));
       expect(check, heading).toBeGreaterThan(invoke);
-      expect(lines[check], heading).toContain(`--plan=${created}`);
+      expect(lines[check], heading).toContain(`--plan=${written}`);
       expect(lines[check], heading).toContain("--existence=refuse");
       expect(step, heading).toContain("Fix only what");
-      expect(step, heading).toMatch(/second exit 1 → \*\*Failure Path\*\*/);
     }
+    // After close the run has landed: a failed check is reported to the owner, never routed to the Failure Path.
+    const isClose = (s: string) => /Close Workflow/.test(s.split("\n")[0]!);
+    const closeSteps = writers.filter(isClose);
+    expect(closeSteps).toHaveLength(1);
+    expect(closeSteps[0]).toMatch(/second exit 1 → tell the user/);
+    expect(closeSteps[0]).toContain("commit nothing from this round");
+    for (const step of writers.filter((s) => !isClose(s)))
+      expect(step, step.split("\n")[0]).toMatch(/second exit 1 → \*\*Failure Path\*\*/);
     expect(section(plan, /Step 4 — Fetch Context/)).not.toContain("tests plan-check");
     expect(plan).not.toContain("--children");
     expect(plan).not.toContain("--brief");

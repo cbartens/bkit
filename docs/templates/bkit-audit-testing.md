@@ -30,7 +30,7 @@ A green suite means the tests passed. It does not mean they could fail, that eve
 
 - Risk-based testing (e.g., ISO/IEC/IEEE 29119 Part 1:2022 and Part 2:2021, ISTQB Foundation Level syllabus).
 - Test-size model (e.g., Testing Trophy, Google test sizes); unversioned → record the date read.
-- Mutation tool, incl. incremental mode and disable comments (e.g., StrykerJS, mutmut); record the version run.
+- Mutation tool, incl. incremental mode and disable comments (e.g., StrykerJS, mutmut); record the version.
 - Property-based testing (e.g., fast-check, Hypothesis); record the version read.
 - Contract testing (e.g., Pact, schema snapshots); record the version read.
 - Database tests (e.g., pgTAP, a catalog check against the deployed schema); record the date read.

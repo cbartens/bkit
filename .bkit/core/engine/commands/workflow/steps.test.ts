@@ -10,7 +10,16 @@ import { parseText } from "../../shared/text";
 import { runCommand } from "../lib";
 import { COMMANDS } from "../registry";
 import { newRecord, readRecord, writeRecord } from "./ledgers";
-import { ROW_FIELDS, placeholderLines, promptHeader, promptVerdicts, readHeader } from "./steps";
+import {
+  EXIT_SOURCE_TOUCHED,
+  EXIT_TESTS_TOUCHED,
+  ROW_FIELDS,
+  placeholderLines,
+  promptHeader,
+  promptVerdicts,
+  readHeader,
+  stepsCommand,
+} from "./steps";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
 
@@ -778,6 +787,32 @@ describe("bkit steps finish", () => {
     expect(r.json.row).toMatchObject({ verdict: "CONCERNS", failures: 1, attempt: 0 });
   });
 
+  it("a true | false header field is true when any agent sets it true", async () => {
+    const cwd = repo();
+    const review = (redesign: string) =>
+      `Verdict: FAIL\nFailures: 1\nRedesign: ${redesign}\n<!-- verdict:end -->\n`;
+    write(cwd, "logs/r1.md", review("false"));
+    write(cwd, "logs/r2.md", review("true"));
+    write(cwd, "logs/s.md", review("false"));
+    const r = await run(cwd, [
+      "steps",
+      "finish",
+      "--file=logs/status.jsonl",
+      "--workflow=plan",
+      "--step=plan-review",
+      "--attempt=1",
+      "--agent=bkit-plan-review-1",
+      "--agent=bkit-plan-review-2",
+      "--agent=bkit-plan-scope-check",
+      "--artifact=logs/r1.md",
+      "--artifact=logs/r2.md",
+      "--artifact=logs/s.md",
+      "--commit=none",
+    ]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ verdict: "FAIL", fields: { Redesign: "true" } });
+  });
+
   it("text output leaves out the row and passing checks, and prints parentSha", async () => {
     const cwd = repo();
     const before = git(cwd, "rev-parse", "HEAD");
@@ -1358,5 +1393,357 @@ describe("bkit steps done — a run in place on dev that shares its checkout", (
     expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
     expect(readRecord(cwd, FID)).toMatchObject({ commits: [] });
     expect(fs.existsSync(path.join(cwd, LOGS, "status.jsonl"))).toBe(false);
+  });
+});
+
+describe("bkit steps finish — the tests step touches only tests, the code steps never touch a test", () => {
+  const TEST = { file: "src/a.test.ts", name: "adds a row" };
+  const PLAN = [
+    "# Plan",
+    "",
+    "<!-- bkit:group 1 start -->",
+    "### GROUP 1: Rows",
+    "<!-- bkit:task 1 start -->",
+    "- [ ] **TASK 1:** Add a row",
+    "  - **CREATE:** `src/a.ts`: the row",
+    "  - **UPDATE:** `src/b.ts`: calls it",
+    "  - **DONE WHEN:** passes",
+    "  - **TEST FIRST:**",
+    `    - \`${TEST.file}\` \`${TEST.name}\` fails on the stub`,
+    "<!-- bkit:task 1 end -->",
+    "<!-- bkit:group 1 end -->",
+    "",
+  ].join("\n");
+  const STATUS = "logs/status.jsonl";
+  const codeStep = (step: string, agent: string, log: string) => [
+    "steps",
+    "finish",
+    `--file=${STATUS}`,
+    "--workflow=build",
+    `--step=${step}`,
+    "--group=1",
+    `--attempt-of=${step}:next`,
+    `--agent=${agent}`,
+    `--artifact=${log}`,
+    `--message=chore(1-x): ${step} group 1`,
+  ];
+  const EXECUTE = codeStep("build-plan-tasks", "bkit-build-plan-tasks", "logs/execute-1-log.md");
+  const REMEDIATE = codeStep(
+    "build-plan-gaps-remediate",
+    "bkit-build-plan-gaps-remediate",
+    "logs/remediate-1-log.md",
+  );
+  const TESTS = [
+    "steps",
+    "finish",
+    `--file=${STATUS}`,
+    "--workflow=build",
+    "--step=build-plan-tests",
+    "--group=1",
+    "--attempt=1",
+    "--plan=plan.md",
+    "--verdict=PASS",
+    "--artifact=logs/build-plan-tests-1-log.md",
+    "--message=chore(1-x): plan-tests group 1",
+  ];
+
+  /** A repo holding the plan, a source file and the planned test, all committed, plus the step logs. */
+  function planned() {
+    const cwd = repo();
+    fs.mkdirSync(path.join(cwd, "src"));
+    write(cwd, "plan.md", PLAN);
+    write(cwd, "src/b.ts", "export const b = 1;\n");
+    write(cwd, TEST.file, "it('adds a row', () => expect(addRow()).toBe(1));\n");
+    git(cwd, "add", "-A");
+    git(cwd, "commit", "-q", "-m", "tests");
+    write(
+      cwd,
+      "logs/execute-1-log.md",
+      "Verdict: PASS\n\n<!-- verdict:end -->\n\n# Build Plan\n\nDONE — TASK 1: added\n",
+    );
+    write(
+      cwd,
+      "logs/remediate-1-log.md",
+      "Verdict: PASS\nStrategy: STANDARD\nFixed: 1\n\n<!-- verdict:end -->\n\n# Plan Gaps\n",
+    );
+    write(
+      cwd,
+      "logs/build-plan-tests-1-log.md",
+      "# Tests\n\nWROTE — TASK 1: src/a.test.ts adds a row\n",
+    );
+    return cwd;
+  }
+  const blobOf = (cwd: string, file: string) => git(cwd, "hash-object", file);
+  /** The group's build-tests-red row, naming the planned test at its committed blob. */
+  const redRow = (cwd: string, extra: Record<string, unknown> = {}) =>
+    fs.appendFileSync(
+      path.join(cwd, STATUS),
+      `${JSON.stringify({
+        type: "step-done",
+        workflow: "build",
+        step: "build-tests-red",
+        status: "DONE",
+        at: "2026-11-01T05:00:00Z",
+        parentSha: git(cwd, "rev-parse", "HEAD"),
+        group: 1,
+        attempt: 1,
+        enforced: true,
+        artifacts: ["logs/build-tests-red-1-1.md"],
+        tests: [
+          {
+            task: 1,
+            test: TEST.file,
+            testName: TEST.name,
+            state: "red",
+            blob: blobOf(cwd, TEST.file),
+          },
+        ],
+        ...extra,
+      })}\n`,
+    );
+  const unchanged = (cwd: string, head: string, status: string) => {
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+    expect(fs.readFileSync(path.join(cwd, STATUS), "utf-8")).toBe(status);
+  };
+
+  it("refuses the execute step when a planned test file's blob differs from the row, exit 11, naming the files", async () => {
+    const cwd = planned();
+    redRow(cwd);
+    write(cwd, TEST.file, "it('adds a row', () => expect(true).toBe(true));\n");
+    write(cwd, "src/a.ts", "export const addRow = () => 1;\n");
+    const head = git(cwd, "rev-parse", "HEAD");
+    const status = fs.readFileSync(path.join(cwd, STATUS), "utf-8");
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(EXIT_TESTS_TOUCHED);
+    expect(r.code).toBe(11);
+    expect(r.json.touched).toEqual([TEST.file]);
+    expect(r.json.reask).toEqual({
+      agent: "bkit-build-plan-tasks",
+      artifact: "logs/execute-1-log.md",
+    });
+    expect(r.json.problem).toContain(TEST.file);
+    expect(r.json.problem).toContain("BLOCKED");
+    unchanged(cwd, head, status);
+  });
+
+  it("passes the execute step when every planned test file matches the row, and checks nothing without a row", async () => {
+    const cwd = planned();
+    redRow(cwd);
+    write(cwd, "src/a.ts", "export const addRow = () => 1;\n");
+    expect((await run(cwd, EXECUTE)).code).toBe(0);
+    expect(git(cwd, "show", "--name-only", "--format=", "HEAD")).toContain("src/a.ts");
+
+    const bare = planned();
+    write(bare, TEST.file, "it('adds a row', () => expect(true).toBe(true));\n");
+    expect((await run(bare, EXECUTE)).code).toBe(0);
+  });
+
+  it("applies the blob check to the gaps-remediate step, against the latest blob each file was recorded at", async () => {
+    const cwd = planned();
+    redRow(cwd, {
+      tests: [
+        { task: 1, test: TEST.file, testName: TEST.name, state: "red", blob: "0".repeat(40) },
+      ],
+    });
+    redRow(cwd);
+    // A later row of the group naming only another file leaves this file's blob standing.
+    write(cwd, "src/other.test.ts", "it('other', () => expect(1).toBe(1));\n");
+    redRow(cwd, {
+      attempt: 3,
+      tests: [
+        {
+          task: 2,
+          test: "src/other.test.ts",
+          testName: "other",
+          state: "red",
+          blob: blobOf(cwd, "src/other.test.ts"),
+        },
+      ],
+    });
+    write(cwd, "src/a.ts", "export const addRow = () => 1;\n");
+    expect((await run(cwd, REMEDIATE)).code).toBe(0);
+    write(cwd, TEST.file, "it('adds a row', () => expect(true).toBe(true));\n");
+    write(
+      cwd,
+      "logs/remediate-2-log.md",
+      fs.readFileSync(path.join(cwd, "logs/remediate-1-log.md"), "utf-8"),
+    );
+    const r = await run(
+      cwd,
+      REMEDIATE.map((a) => a.replace("remediate-1-log", "remediate-2-log")),
+    );
+    expect(r.code).toBe(11);
+    expect(r.json.touched).toEqual([TEST.file]);
+  });
+
+  it("refuses a build-plan-tests step whose diff changes a file no TEST FIRST line of the group names, exit 15", async () => {
+    const cwd = planned();
+    write(cwd, TEST.file, "it('adds a row', () => expect(addRow()).toBe(2));\n");
+    write(cwd, "src/b.ts", "export const b = 2;\n");
+    const head = git(cwd, "rev-parse", "HEAD");
+    const r = await run(cwd, TESTS);
+    expect(r.code).toBe(EXIT_SOURCE_TOUCHED);
+    expect(r.code).toBe(15);
+    expect(r.json.source).toEqual(["src/b.ts"]);
+    expect(r.err).toContain("src/b.ts");
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+    expect(fs.existsSync(path.join(cwd, STATUS))).toBe(false);
+  });
+
+  it("allows the tests step to add a file no CREATE line of the plan names, and refuses one a CREATE line names", async () => {
+    const cwd = planned();
+    write(cwd, TEST.file, "it('adds a row', () => expect(addRow()).toBe(2));\n");
+    fs.mkdirSync(path.join(cwd, "src/fixtures"));
+    write(cwd, "src/fixtures/rows.json", "[]\n");
+    expect((await run(cwd, TESTS)).code).toBe(0);
+    expect(git(cwd, "show", "--name-only", "--format=", "HEAD")).toContain(
+      "src/fixtures/rows.json",
+    );
+
+    const created = planned();
+    write(created, "src/a.ts", "export const addRow = () => 1;\n");
+    const r = await run(created, TESTS);
+    expect(r.code).toBe(15);
+    expect(r.json.source).toEqual(["src/a.ts"]);
+  });
+
+  it("exit codes list 11 as planned tests touched and 15 as source touched in the tests step", () => {
+    const codes = stepsCommand.verbs.finish!.exitCodes as Record<number, string>;
+    expect(codes[11]).toMatch(/planned test/);
+    expect(codes[11]).not.toMatch(/red/);
+    expect(codes[15]).toMatch(/tests step/);
+    expect(codes[15]).toMatch(/TEST FIRST/);
+  });
+});
+
+describe("bkit steps finish — the attempt matches the saved artifacts", () => {
+  const GATE = [
+    "steps",
+    "finish",
+    "--file=logs/status.jsonl",
+    "--workflow=build",
+    "--step=build-group-gate",
+    "--verdict=PASS",
+    "--scope=unit",
+    "--group=3",
+    "--artifact=logs/gate-3-<attempt>.md",
+    "--message=chore(1-x): group-gate group 3 attempt <attempt>",
+  ];
+  const gate = (cwd: string, attempt: number) =>
+    write(cwd, `logs/gate-3-${attempt}.md`, `Verdict: PASS\n\n<!-- verdict:end -->\n`);
+
+  it("refuses (exit 12) an attempt below the highest saved artifact, writing nothing", async () => {
+    const cwd = repo();
+    for (const n of [2, 3, 6]) gate(cwd, n);
+    const head = git(cwd, "rev-parse", "HEAD");
+    const r = await run(cwd, [...GATE, "--attempt=2"]);
+    expect(r.code).toBe(12);
+    expect(r.json.later).toEqual(["logs/gate-3-3.md", "logs/gate-3-6.md"]);
+    expect(r.err).toContain("logs/gate-3-6.md");
+    expect(fs.existsSync(path.join(cwd, "logs/status.jsonl"))).toBe(false);
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+  });
+
+  it("passes the highest saved attempt, and ignores another group's artifacts", async () => {
+    const cwd = repo();
+    for (const n of [1, 2]) gate(cwd, n);
+    write(cwd, "logs/gate-13-5.md", "Verdict: PASS\n\n<!-- verdict:end -->\n");
+    expect((await run(cwd, [...GATE, "--attempt=2"])).code).toBe(0);
+  });
+
+  it("does not count an artifact the run found committed when it started", async () => {
+    const cwd = repo();
+    gate(cwd, 4);
+    git(cwd, "add", "-A");
+    git(cwd, "commit", "-q", "-m", "an earlier run");
+    write(
+      cwd,
+      "logs/status.jsonl",
+      `${JSON.stringify({
+        type: "workflow-started",
+        workflow: "build",
+        at: "2026-01-01T00:00:00Z",
+        parentSha: git(cwd, "rev-parse", "HEAD"),
+      })}\n`,
+    );
+    gate(cwd, 1);
+    expect((await run(cwd, [...GATE, "--attempt=1"])).code).toBe(0);
+  });
+});
+
+describe("bkit steps finish — a step commit never changes bkit.workflows", () => {
+  const pkg = (workflows: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
+    `${JSON.stringify({ name: "x", ...extra, bkit: { workflows } }, null, 2)}\n`;
+  const FINISH_SYNC = [
+    "steps",
+    "finish",
+    "--file=logs/status.jsonl",
+    "--workflow=build",
+    "--step=build-branch-sync",
+    "--artifact=logs/verify-1.md",
+    "--message=m",
+  ];
+
+  /** A repo whose committed package.json sets build.verify.maxAttempts to 2. */
+  function configured() {
+    const cwd = repo();
+    write(cwd, "package.json", pkg({ build: { verify: { ask: true, maxAttempts: 2 } } }));
+    git(cwd, "add", "package.json");
+    git(cwd, "commit", "-q", "-m", "config");
+    return cwd;
+  }
+
+  it("refuses (exit 13) a commit that would change a bkit.workflows key, naming it", async () => {
+    const cwd = configured();
+    write(
+      cwd,
+      "package.json",
+      pkg({ build: { verify: { ask: true, maxAttempts: 5 } }, tasks: { maxPerGroup: 4 } }),
+    );
+    const head = git(cwd, "rev-parse", "HEAD");
+    const r = await run(cwd, FINISH_SYNC);
+    expect(r.code).toBe(13);
+    expect(r.json.changed).toEqual(["build.verify.maxAttempts", "tasks"]);
+    expect(r.err).toContain("build.verify.maxAttempts");
+    expect(fs.existsSync(path.join(cwd, "logs/status.jsonl"))).toBe(false);
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+  });
+
+  it("commits a package.json change outside bkit.workflows", async () => {
+    const cwd = configured();
+    write(
+      cwd,
+      "package.json",
+      pkg({ build: { verify: { ask: true, maxAttempts: 2 } } }, { scripts: { t: "x" } }),
+    );
+    expect((await run(cwd, FINISH_SYNC)).code).toBe(0);
+    expect(git(cwd, "show", "--name-only", "--format=", "HEAD")).toContain("package.json");
+  });
+
+  it("in a shared checkout, a bkit.workflows edit dirty before the run is not the step's", async () => {
+    const cwd = configured();
+    git(cwd, "checkout", "-q", "-b", "dev");
+    write(cwd, "package.json", pkg({ build: { verify: { ask: true, maxAttempts: 5 } } }));
+    writeRecord(cwd, newRecord(cwd, "1-x", "dev"));
+    const status = "docs/plans/202611/logs/1-x/status.jsonl";
+    fs.mkdirSync(path.join(cwd, path.dirname(status)), { recursive: true });
+    write(cwd, "docs/plans/202611/logs/1-x/verify-1.md", "Verdict: PASS\n");
+    const r = await run(cwd, [
+      "steps",
+      "finish",
+      `--file=${status}`,
+      "--workflow=build",
+      "--step=build-branch-sync",
+      "--artifact=docs/plans/202611/logs/1-x/verify-1.md",
+      "--message=m",
+    ]);
+    expect(r.code).toBe(0);
+    expect(git(cwd, "show", "--name-only", "--format=", "HEAD")).not.toContain("package.json");
+    expect(
+      JSON.parse(git(cwd, "show", "HEAD:package.json")).bkit.workflows.build.verify,
+    ).toMatchObject({ maxAttempts: 2 });
+    expect(
+      JSON.parse(fs.readFileSync(path.join(cwd, "package.json"), "utf-8")).bkit.workflows,
+    ).toMatchObject({ build: { verify: { maxAttempts: 5 } } });
   });
 });

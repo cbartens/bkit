@@ -480,8 +480,9 @@ A doc template is the skeleton of a document an agent fills in: the plan (`docs/
 | --- | --- | --- |
 | Write | `@bkit-plan-generate` | Fills `docs/templates/bkit-plan.md` into `docs/plans/{YYYYMM}/{FID}-plan.md`. |
 | Check | `bkit tests plan-check` | Parses the task blocks and refuses task-like text outside them. |
-| Brief | `bkit context brief` | Cuts the next group with an open task into a brief for the builder. |
-| Build | `@bkit-build-plan-execute` | Works each task until its `DONE WHEN` holds, and logs `DONE` or `BLOCKED`. It never ticks a task box. |
+| Brief | `bkit context brief` | Cuts the next group with an open task into a brief for the builder, and its planned tests into a brief for the tests writer. |
+| Tests | `@bkit-build-plan-tests`, then `bkit tests red` | Writes the group's planned tests and nothing else; the engine records each one failing. |
+| Build | `@bkit-build-plan-tasks` | Works each task until its `DONE WHEN` holds, and logs `DONE` or `BLOCKED`. It never edits a planned test and never ticks a task box. |
 | Verify | `@bkit-build-plan-verify`, then `bkit tasks tick` | Checks each task against the code. The engine ticks the tasks that pass. |
 
 - **Template is shape, prompt owns rules:** A template holds headings, tables, placeholders, checkbox labels, owner callouts and the markers the engine parses, and nothing else.
@@ -501,7 +502,7 @@ A doc template is the skeleton of a document an agent fills in: the plan (`docs/
 
     <!-- bkit:task 2 end -->
     ```
-    The rules for that block (how many tasks a group may hold, what makes a good `DONE WHEN`, who may write a `TEST EXCEPTION`) are in the **Runbook tasks** and **TEST EXCEPTION** bullets of `bkit-build-plan-execute.md` § Contract.
+    The rules for that block (how many tasks a group may hold, what makes a good `DONE WHEN`, who may write a `TEST EXCEPTION`) are in the **Runbook tasks** and **TEST EXCEPTION** bullets of `bkit-build-plan-tasks.md` § Contract.
 
 - **Opening note:** Start a template with `<!-- bkit:start -->` and the managed marker, then an HTML comment naming where the filled document lives and which agent fills it, then the title and a `> [!CAUTION]` box holding `**Purpose:**`.
   - Why: The filling agent learns its output path, and that the file is its own, before it reads the body. The note sits inside the block because `bkit upgrade` refreshes only the text between `<!-- bkit:start -->` and `<!-- bkit:end -->`, and text above the block keeps the wording of the first install.
@@ -664,6 +665,10 @@ This section applies to `.bkit/core/workflows/*.md`. § Prompts and Workflows ap
   - Two-value flags take lowercase `true|false`.
   - In prose, backtick the name and leave a literal enum value plain: ``**If** `VERIFY_VERDICT` = PASS``. Inside fenced output blocks, leave both plain.
   - Example (`bkit-build.md`): `VERIFY_FIXED` comes from `@bkit-build-plan-gaps-remediate` and `CHALLENGE_TASKS` from `bkit challenge merge`, and each prefix names the loop the value serves.
+
+- **Step conditionality and rows:** Mark a step as one a run may skip only with a column-0 `**Run only if**` or `**Skip if**` line anywhere in its section, or a `(Path X only)` marker in its heading. Every other step writes its own `steps finish` or `steps done` row on every route toward the next step, with a no-agent skip row where no work runs.
+  - Why: The completeness check (`checks/status-holes.ts`) reads only these markers to learn which steps a run may skip. A marker indented under a numbered sub-step, or in a section no step owns, marks nothing, so a step that routes onward with no row and no marker reads as a step hole on every run.
+  - Checked by: `.bkit/core/engine/checks/status-holes.test.ts`.
 
 ## Before You Save
 

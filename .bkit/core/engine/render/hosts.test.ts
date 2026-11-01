@@ -176,9 +176,9 @@ describe("T2 — command body rewrites", () => {
   });
 
   it("rewrites Invoke `@name` on **Subagent:** lines (real workflow shape)", () => {
-    const input = "1. **Subagent:** Invoke `@bkit-build-plan-execute` using `Agent` tool:\n";
+    const input = "1. **Subagent:** Invoke `@bkit-build-plan-tasks` using `Agent` tool:\n";
     expect(applyT2(input)).toBe(
-      "1. **Subagent:** Invoke `/bkit-build-plan-execute` using `Task` tool:\n",
+      "1. **Subagent:** Invoke `/bkit-build-plan-tasks` using `Task` tool:\n",
     );
   });
 
@@ -381,8 +381,8 @@ describe("applyOpencodeToolRewrites", () => {
   });
 
   it("still respells @name → /name on **Subagent:** lines", () => {
-    const input = "**Subagent:** @bkit-build-plan-execute\n";
-    expect(applyOpencodeToolRewrites(input)).toBe("**Subagent:** /bkit-build-plan-execute\n");
+    const input = "**Subagent:** @bkit-build-plan-tasks\n";
+    expect(applyOpencodeToolRewrites(input)).toBe("**Subagent:** /bkit-build-plan-tasks\n");
   });
 });
 
@@ -429,12 +429,12 @@ describe("applyOpencodeCommand", () => {
 
   it("rewrites Invoke `@name` on **Subagent:** lines (real workflow shape)", () => {
     const input =
-      "---\ndescription: x\n---\n1. **Subagent:** Invoke `@bkit-build-plan-execute` using `Agent` tool:\n";
+      "---\ndescription: x\n---\n1. **Subagent:** Invoke `@bkit-build-plan-tasks` using `Agent` tool:\n";
     const result = applyOpencodeCommand(input);
     expect(result).toContain(
-      "**Subagent:** Invoke `/bkit-build-plan-execute` using `subagent` tool:",
+      "**Subagent:** Invoke `/bkit-build-plan-tasks` using `subagent` tool:",
     );
-    expect(result).not.toContain("`@bkit-build-plan-execute`");
+    expect(result).not.toContain("`@bkit-build-plan-tasks`");
   });
 
   it("rewrites indented list **Subagent:** Invoke `@name` lines", () => {
@@ -787,12 +787,12 @@ describe("applyAntigravityToolRewrites", () => {
 
   it("resolves **Subagent:** @name to the prompt file loaded with view_file", () => {
     const out = applyAntigravityToolRewrites(
-      "1. **Subagent:** Invoke `@bkit-build-plan-execute` using `Agent` tool:\n",
+      "1. **Subagent:** Invoke `@bkit-build-plan-tasks` using `Agent` tool:\n",
     );
     expect(out).toContain(
-      "**Subagent:** Invoke `view_file` `.agents/plugins/bkit/agents/bkit-build-plan-execute.md` using `view_file` tool:",
+      "**Subagent:** Invoke `view_file` `.agents/plugins/bkit/agents/bkit-build-plan-tasks.md` using `view_file` tool:",
     );
-    expect(out).not.toContain("`@bkit-build-plan-execute`");
+    expect(out).not.toContain("`@bkit-build-plan-tasks`");
   });
 
   it("leaves @name in body prose untouched", () => {
@@ -896,7 +896,7 @@ describe("autoCompactWindow — Claude-only per-agent compaction window", () => 
   const files = fs.readdirSync(src).filter((f) => f.startsWith("bkit-") && f.endsWith(".md"));
 
   it("every bkit source agent sets autoCompactWindow 300000", () => {
-    expect(files).toHaveLength(39);
+    expect(files).toHaveLength(40);
     const frontmatter = (f: string) =>
       fs.readFileSync(path.join(src, f), "utf-8").split("\n---\n")[0];
     const wrong = files.filter((f) => !/^autoCompactWindow: 300000$/m.test(frontmatter(f)));

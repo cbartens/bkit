@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-hero-dark.svg">
-    <img alt="bkit: not just another agent framework. Most frameworks have some of these, bkit is the only one with all of them: reviewers who didn’t write it, your sign-off, “done” checked by code, lessons later runs read, audit checklists and a CI pipeline for your app." src=".github/assets/bkit-hero-light.svg" width="100%">
+    <img alt="bkit: not just another agent framework. Most frameworks have some of these, bkit is the only one with all of them: reviewers who didn’t write it, your sign-off, “done” checked by code, lessons the next run reads, audits that find the gaps and CI that keeps agents honest." src=".github/assets/bkit-hero-light.svg" width="100%">
   </picture>
 </p>
 
@@ -67,7 +67,7 @@ Everything a senior team would otherwise write down over years, in files you can
 <!-- prettier-ignore -->
 | What | How many | What it does for you |
 | --- | --- | --- |
-| [Agents](.bkit/prompts.md) | 39 | Single-job specialists, each with its own model, thinking depth and tool list. A reviewer can read code but can't change it. |
+| [Agents](.bkit/prompts.md) | 40 | Single-job specialists, each with its own model, thinking depth and tool list. A reviewer can read code but can't change it. |
 | [Workflows](.bkit/workflows.md) | 6 | The five phases plus a cloud router. Every step ends in a checklist and a mechanical check before the next one starts. |
 | [Agent rules](.agents/rules.md) | 70+ | One rulebook every agent follows: read before editing, never defer silently, report honestly, never rewrite history. |
 | [Writing rules](.bkit/authoring.md) | 50+ | How every prompt, workflow, rule and doc is worded, [matched practice by practice](.bkit/authoring.md#who-says-what) against Anthropic's, OpenAI's and Google's prompting guides, so one text works on every model. |
@@ -346,6 +346,7 @@ All templates, what each is for, and how to install them: [`.bkit/templates.md`]
 - **Best model for each job, on every tool.** Each agent has its own model and thinking depth, per tool and provider: deep reasoning models for architecture and security review, faster ones for writing code and docs. Starting a session on a cheaper model never quietly downgrades the reviewers. [Which model does each job](#models).
 - **It tests ideas before you commit to them.** When reviewers flag an unknown a design depends on, design writes throwaway probe code to settle it before you approve. A design reviewer also checks failure modes and monitoring, not just whether it can be built.
 - **Big features are built a group at a time.** The plan's tasks are grouped by the code they share. Each group gets a fresh agent and a short brief from `bkit`, never the whole plan, and an independent check of just that group's changes before the next group starts. [The engine](#engine).
+- **The right expertise for each feature, added and removed for you.** Before build writes code, an agent works out which tools the plan needs (say Stripe or Supabase) and installs one matching skill (a packaged set of instructions for that tool) from [skills.sh](https://skills.sh) for each one not already covered. It only takes a skill from the official publisher, or one with 1,000+ installs and 100+ stars on its repo. It never runs scripts a skill brings along. When the feature ships, bkit removes every skill not listed in `.agents/skills.md`, so add one there to keep it. Put `[skills=false]` in the issue to skip it.
 - **Numbers on your own work.** Every run records its time, size of change, retries and the tokens each agent read in `.bkit/stats.jsonl`, and posts them to the issue next to the median of your last five runs.
 
 ### It fits how you work
@@ -353,7 +354,6 @@ All templates, what each is for, and how to install them: [`.bkit/templates.md`]
 - **Never blocked by usage limits.** Out of Claude for the week? Carry on in Cursor, Codex or Antigravity, or point opencode at your own key: OpenRouter, Ollama or the opencode gateways. Same feature, same checks, nothing to set up again. [Tool differences](.bkit/providers.md).
 - **Start on your laptop, check in from your phone.** A feature started at your desk can continue in a cloud session (Claude Code on the web or the Claude app, Cursor cloud agents, or opencode on GitHub Actions), or start by itself when CI finishes: ship on green, debug on red. The cloud setup ships ready to adopt: [`.bkit/cloud.md`](.bkit/cloud.md).
 - **Run several features at once.** Each works in its own copy of the repo (a git worktree), so they never trip over each other.
-- **The right expertise for each feature.** When a plan needs, say, Stripe or Supabase, bkit installs a matching skill for the build and removes it when the feature ships.
 
 ### Your tracker is the control panel
 
@@ -539,7 +539,7 @@ bkit's process was worked out over months of building real products with it. The
 | _Agentic Design Patterns_ (Antonio Gulli) | A "done when" line on every plan task, and testing hypotheses before fixing in debug. The book is also the yardstick in the [patterns comparison](.bkit/comparison.md#patterns). |
 | [skills](https://github.com/mattpocock/skills) (Matt Pocock) | The interview that opens `/bkit-design`, adapted from `grill-me`: open questions are settled with you before any design work starts. |
 
-**Built on.** The templates set up these tools; thanks to their maintainers: [Serena](https://github.com/oraios/serena), [graphify](https://github.com/Graphify-Labs/graphify), [slop-scan](https://github.com/modem-dev/slop-scan), [Vale](https://github.com/vale-cli/vale) with [write-good](https://github.com/vale-cli/write-good), [Renovate](https://github.com/renovatebot/renovate), [Dependabot](https://docs.github.com/en/code-security/dependabot), [Trivy](https://github.com/aquasecurity/trivy), [Husky](https://github.com/typicode/husky), [lint-staged](https://github.com/lint-staged/lint-staged), [Prettier](https://github.com/prettier/prettier), [actionlint](https://github.com/rhysd/actionlint) and [direnv](https://github.com/direnv/direnv).
+**Built on.** The templates set up these tools; thanks to their maintainers: [Serena](https://github.com/oraios/serena), [graphify](https://github.com/Graphify-Labs/graphify), [slop-scan](https://github.com/modem-dev/slop-scan), [Vale](https://github.com/vale-cli/vale) with [write-good](https://github.com/vale-cli/write-good), [Renovate](https://github.com/renovatebot/renovate), [Dependabot](https://docs.github.com/en/code-security/dependabot), [Trivy](https://github.com/aquasecurity/trivy), [Husky](https://github.com/typicode/husky), [lint-staged](https://github.com/lint-staged/lint-staged), [Prettier](https://github.com/prettier/prettier), [actionlint](https://github.com/rhysd/actionlint), [direnv](https://github.com/direnv/direnv) and the [skills](https://github.com/vercel-labs/skills) CLI behind [skills.sh](https://skills.sh).
 
 ## License
 

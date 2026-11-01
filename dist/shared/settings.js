@@ -38,10 +38,11 @@ export const CONFIG_DEFAULTS = {
     // `started` is a state type every Linear team has; In Review is a name a default team lacks.
     linear: { team: null, project: null, progress: "started", review: "In Review" },
     jira: { site: null, project: null, progress: "In Progress", review: "In Review" },
-    shipGateRequiredLanes: [],
-    // What bkit's workflows write: plan / design / build logs and the ledgers. Never
-    // `docs/**`: a project doc can be a test's input, so a docs edit can red a test.
-    minPushPaths: ["docs/plans/**", "docs/*.jsonl", ".bkit/*.jsonl"],
+    ciRequired: [],
+    // Nothing beyond what bkit writes. Never seed `docs/**`: a project doc can be a test's
+    // input, so a docs edit can red a test; a repo that knows its tests opts in.
+    minPushPaths: [],
+    ciSkipPaths: [],
     opencodeProvider: null,
     opencodeProviders: [],
     cloudAgents: DEFAULT_CLOUD_AGENTS,
@@ -56,7 +57,7 @@ export const CONFIG_DEFAULTS = {
         "ship.merge": { ask: true, max: 2 },
     },
     // Plan caps, `.bkit/workflows.md` § Test-first.
-    tasks: { maxPerGroup: 3, maxTestsPerGroup: 15, maxTestsPerTask: 10, maxTestFilesPerTask: 3 },
+    tasks: { maxPerGroup: 5, maxTestsPerGroup: 25, maxTestsPerTask: 10, maxTestFilesPerTask: 3 },
     buildPublish: { remote: true, local: true },
     depUpdater: null,
     issueTrackerExplicit: false,
@@ -183,9 +184,10 @@ export function readBkitConfig(root) {
     const testing = record(bkit.testing);
     const workflows = record(bkit.workflows);
     const worktree = record(workflows.worktree);
+    const ciSkip = testing.ciSkipPaths;
     const copy = worktree.copy;
     const minFreeGb = workflows.minFreeGb;
-    const lanes = testing.shipGate;
+    const lanes = testing.ciRequired;
     const book = testing.minPushPaths;
     const provider = opencode.default;
     const providers = opencode.installed;
@@ -223,11 +225,11 @@ export function readBkitConfig(root) {
             project: optionalString(jira.project),
             ...trackerStates(jira, CONFIG_DEFAULTS.jira),
         },
-        shipGateRequiredLanes: Array.isArray(lanes) ? lanes.filter(nonEmptyString) : [],
-        // An explicit [] is kept: it switches the min push off.
+        ciRequired: Array.isArray(lanes) ? lanes.filter(nonEmptyString) : [],
         minPushPaths: Array.isArray(book)
             ? book.filter(nonEmptyString)
             : [...CONFIG_DEFAULTS.minPushPaths],
+        ciSkipPaths: Array.isArray(ciSkip) ? ciSkip.filter(nonEmptyString) : [],
         opencodeProvider: typeof provider === "string" && isOpencodeProvider(provider) ? provider : null,
         opencodeProviders: Array.isArray(providers)
             ? providers.filter((v) => typeof v === "string" && isOpencodeProvider(v))

@@ -110,10 +110,12 @@ const GATE_CALLERS: ReadonlyArray<readonly [string, string]> = [
   [".bkit/templates/.husky/pre-push", "pnpm bkit:gate:static-unit"],
   [".bkit/templates/.husky/pre-push", "pnpm bkit:gate:static"],
   [".bkit/templates/.husky/pre-push", "pnpm bkit:gate:min"],
-  [".bkit/core/prompts/bkit-build-plan-execute.md", "pnpm bkit:gate:static"],
-  [".bkit/core/prompts/bkit-build-plan-gaps-remediate.md", "pnpm bkit:gate:static-unit"],
-  [".bkit/core/prompts/bkit-debug-failure-remediate.md", "pnpm bkit:gate:static-unit"],
-  [".bkit/core/prompts/bkit-build-plan-verify.md", "pnpm bkit:gate:static-unit"],
+  // Agent steps check their own change through `bkit tests changed`, which runs
+  // `bkit:gate:changed` when declared and the named fallback gate otherwise.
+  [".bkit/core/prompts/bkit-build-plan-tasks.md", "--fallback=bkit:gate:static`"],
+  [".bkit/core/prompts/bkit-build-plan-gaps-remediate.md", "--fallback=bkit:gate:static-unit`"],
+  [".bkit/core/prompts/bkit-debug-failure-remediate.md", "--fallback=bkit:gate:static-unit`"],
+  [".bkit/core/prompts/bkit-build-plan-verify.md", "--fallback=bkit:gate:static-unit`"],
   [".bkit/core/prompts/bkit-ship-conflict-resolve.md", "pnpm bkit:gate:install-static-unit-build"],
   // bkit-build.md / bkit-debug.md are NOT listed: they run the gate through
   // `bkit tests run --gate=<candidate>...`, which picks the deepest declared
@@ -140,7 +142,9 @@ describe("bkit-local-gate-audit (#437)", () => {
 
   it("every gate a call site names is one install actually seeds", () => {
     const seeded = new Set(Object.keys(BKIT_GATE_SCRIPTS));
-    const named = new Set(GATE_CALLERS.map(([, call]) => call.replace(/^pnpm /, "")));
+    const named = new Set(
+      GATE_CALLERS.map(([, call]) => call.replace(/^(pnpm |--fallback=)/, "").replace(/`$/, "")),
+    );
     for (const name of named) expect(seeded).toContain(name);
   });
 

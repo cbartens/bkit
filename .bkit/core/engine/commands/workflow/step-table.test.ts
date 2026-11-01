@@ -113,14 +113,10 @@ describe("bkit status resume", () => {
     expect(await round(verified)).toBe(1);
     // A round-1 challenge that sent the build back to Step 7 (route fix), or to a decision.
     const fixed = [...verified, done("build", "build-challenge", { round: 1 })];
-    expect(await round([...fixed, done("build", "build-plan-execute")])).toBe(2);
+    expect(await round([...fixed, done("build", "build-plan-tasks")])).toBe(2);
     expect(await round([...fixed, done("build", "build-decision")])).toBe(2);
     // A round-1 challenge that passed on to Run Tests (route none) wrote no tasks.
-    const passed = [
-      ...fixed,
-      done("build", "build-run-tests"),
-      done("build", "build-plan-execute"),
-    ];
+    const passed = [...fixed, done("build", "build-run-tests"), done("build", "build-plan-tasks")];
     expect(await round(passed)).toBe(1);
     expect((await resume("plan", log(setUp("plan")))).json.challengeRound).toBeNull();
   });
@@ -135,7 +131,7 @@ describe("bkit status resume", () => {
       (await resume("build", log([...challenged, done("build", "build-decision", { route })])))
         .json;
     expect(await after("fix")).toMatchObject({
-      step: "build-plan-execute",
+      step: "build-plan-tasks",
       number: 7,
       after: "build-decision",
       challengeRound: 2,
@@ -208,12 +204,12 @@ describe("bkit status resume", () => {
     expect(await doneOf(r1)).toBe(false);
     const r2 = [
       ...r1,
-      done("build", "build-plan-execute"),
+      done("build", "build-plan-tasks"),
       done("build", "build-challenge", { round: 2 }),
     ];
     expect(await doneOf(r2)).toBe(false);
     expect(await doneOf([...r2, done("build", "build-decision", { route: "fix" })])).toBe(true);
-    expect(await doneOf([...r2, done("build", "build-plan-execute")])).toBe(true);
+    expect(await doneOf([...r2, done("build", "build-plan-tasks")])).toBe(true);
     expect(await doneOf([...r2, done("build", "build-run-tests")])).toBe(true);
     expect((await resume("plan", log(setUp("plan")))).json.challengeDone).toBeNull();
   });
@@ -261,13 +257,24 @@ describe("bkit status resume", () => {
   it("ignores rows that are not steps of the table (a red-test row, the decision)", async () => {
     const file = log([
       ...setUp("build"),
-      done("build", "build-plan-execute", { group: 2 }),
-      done("build", "build-task-red"),
+      done("build", "build-plan-tasks", { group: 2 }),
+      done("build", "build-tests-red", { group: 2 }),
       done("build", "build-decision"),
     ]);
     expect((await resume("build", file)).json).toMatchObject({
       number: 8,
-      after: "build-plan-execute",
+      after: "build-plan-tasks",
+      group: 2,
+    });
+  });
+
+  it("build-plan-tests is step 7 Plan Execute resuming at build-plan-tests", async () => {
+    const file = log([...setUp("build"), done("build", "build-plan-tests", { group: 2 })]);
+    expect((await resume("build", file)).json).toMatchObject({
+      step: "build-plan-tests",
+      number: 7,
+      title: "Plan Execute",
+      after: "build-plan-tests",
       group: 2,
     });
   });
@@ -275,17 +282,17 @@ describe("bkit status resume", () => {
   it("a HANDOVER execute resumes at Plan Execute with the same group; PASS goes on to verify", async () => {
     let file = log([
       ...setUp("build"),
-      done("build", "build-plan-execute", { group: 2, verdict: "HANDOVER" }),
+      done("build", "build-plan-tasks", { group: 2, verdict: "HANDOVER" }),
     ]);
     expect((await resume("build", file)).json).toMatchObject({
-      step: "build-plan-execute",
+      step: "build-plan-tasks",
       number: 7,
-      after: "build-plan-execute",
+      after: "build-plan-tasks",
       group: 2,
     });
     file = log([
       ...setUp("build"),
-      done("build", "build-plan-execute", { group: 2, verdict: "PASS" }),
+      done("build", "build-plan-tasks", { group: 2, verdict: "PASS" }),
     ]);
     expect((await resume("build", file)).json).toMatchObject({
       step: "build-plan-verify",

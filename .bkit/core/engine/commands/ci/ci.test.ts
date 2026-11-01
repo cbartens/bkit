@@ -775,6 +775,91 @@ describe("bkit ci skip-token", () => {
 // bkit ci min-push
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// bkit ci bookkeeping-push
+// ---------------------------------------------------------------------------
+
+describe("bkit ci bookkeeping-push", () => {
+  /** A feat/1-x repo: a base commit (the head the remote holds), then a commit writing `files`. */
+  function pushed(files: Record<string, string>, pkg?: unknown, branch = "feat/1-x") {
+    const cwd = mkdir("bkit-ci-bookpush-");
+    git(cwd, "init", "-q", "-b", branch);
+    write(cwd, "src/a.ts", "export {};\n");
+    write(cwd, "CHANGELOG.md", "# Changelog\n");
+    if (pkg !== undefined) write(cwd, "package.json", JSON.stringify(pkg));
+    const remote = commit(cwd, "feat(1): code");
+    for (const [rel, body] of Object.entries(files)) write(cwd, rel, body);
+    const head = commit(cwd, "docs(1): ship bookkeeping bkit [skip ci]");
+    return { cwd, remote, head };
+  }
+
+  it("exits 0 when the push adds docs, the FID's logs in any month and ledgers only", async () => {
+    const { cwd, remote } = pushed({
+      "docs/plans/202611/logs/1-x/ship-summary.md": "s\n",
+      "docs/architecture.md": "a\n",
+      "docs/decisions.jsonl": "{}\n",
+    });
+    const r = await run(cwd, [`--from=${remote}`], "bookkeeping-push");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ bookkeepingPush: true, reason: null, outside: [] });
+  });
+
+  it("exits 1 naming the code file, whatever the commit message says", async () => {
+    const { cwd, remote } = pushed({
+      "docs/architecture.md": "a\n",
+      "src/a.ts": "export const a = 1;\n",
+    });
+    const r = await run(cwd, [`--from=${remote}`], "bookkeeping-push");
+    expect(r.code).toBe(1);
+    expect(r.json).toMatchObject({
+      bookkeepingPush: false,
+      reason: "outside",
+      outside: ["src/a.ts"],
+    });
+  });
+
+  it("exits 1 when the remote head is not an ancestor (a rewritten PR head)", async () => {
+    const { cwd, remote } = pushed({ "docs/architecture.md": "a\n" });
+    git(cwd, "checkout", "-q", "--orphan", "rewritten");
+    const other = commit(cwd, "feat(1): rewritten");
+    const r = await run(
+      cwd,
+      [`--from=${remote}`, `--to=${other}`, "--branch=feat/1-x"],
+      "bookkeeping-push",
+    );
+    expect(r.code).toBe(1);
+    expect(r.json.reason).toBe("not-ancestor");
+  });
+
+  it("exits 1 on an all-zero remote head and on a branch that is not feat/{FID}", async () => {
+    const { cwd, remote } = pushed({ "docs/architecture.md": "a\n" });
+    const zero = await run(cwd, [`--from=${"0".repeat(40)}`], "bookkeeping-push");
+    expect(zero.code).toBe(1);
+    expect(zero.json.reason).toBe("no-remote-head");
+    const branch = await run(cwd, [`--from=${remote}`, "--branch=release/1.0"], "bookkeeping-push");
+    expect(branch.code).toBe(1);
+    expect(branch.json.reason).toBe("not-a-feature-branch");
+  });
+
+  it("CHANGELOG.md passes only through bkit.testing.ciSkipPaths in package.json", async () => {
+    const { cwd, remote } = pushed(
+      { "CHANGELOG.md": "# Changelog\n\n- x\n" },
+      { bkit: { testing: { ciSkipPaths: ["CHANGELOG.md"] } } },
+    );
+    expect((await run(cwd, [`--from=${remote}`], "bookkeeping-push")).code).toBe(0);
+    const plain = pushed({ "CHANGELOG.md": "# Changelog\n\n- x\n" });
+    const r = await run(plain.cwd, [`--from=${plain.remote}`], "bookkeeping-push");
+    expect(r.code).toBe(1);
+    expect(r.json.outside).toEqual(["CHANGELOG.md"]);
+  });
+
+  it("exits 7 when a commit cannot be read", async () => {
+    const { cwd } = pushed({});
+    const r = await run(cwd, ["--from=deadbeef"], "bookkeeping-push");
+    expect(r.code).toBe(7);
+  });
+});
+
 describe("bkit ci min-push", () => {
   /** A repo whose first commit is `origin/dev`, then a branch commit writing `files`. */
   function pushed(files: Record<string, string>, pkg?: unknown) {
@@ -802,9 +887,10 @@ describe("bkit ci min-push", () => {
   });
 
   it("exits 1 naming the files outside, whatever the commit message says", async () => {
+    // A nested doc: only top-level `docs/*.md` is on ship's allow-list.
     const { cwd, head } = pushed({
       "docs/plans/202610/logs/1-x/status.jsonl": "{}\n",
-      "docs/design.md": "# Design\n",
+      "docs/guides/design.md": "# Design\n",
       "src/a.ts": "export const a = 1;\n",
     });
     const r = await run(cwd, [`--ref=${head}`], "min-push");
@@ -813,7 +899,7 @@ describe("bkit ci min-push", () => {
       minPush: false,
       reason: "outside",
       changed: 3,
-      outside: ["docs/design.md", "src/a.ts"],
+      outside: ["docs/guides/design.md", "src/a.ts"],
     });
   });
 
@@ -837,26 +923,43 @@ describe("bkit ci min-push", () => {
     expect(r.json.outside).toEqual(["src/c.ts"]);
   });
 
-  it("reads bkit.testing.minPushPaths from package.json; an explicit [] turns it off", async () => {
-    const custom = pushed(
-      { "notes/today.md": "x\n" },
-      { bkit: { testing: { minPushPaths: ["notes/**"] } } },
-    );
-    expect((await run(custom.cwd, [`--ref=${custom.head}`], "min-push")).code).toBe(0);
-    const off = pushed(
-      { "docs/decisions.jsonl": "{}\n" },
+  it("the floor is ship's pr allow-list plus the plans tree, and an explicit [] keeps it", async () => {
+    const floor = pushed(
+      {
+        "docs/architecture.md": "# A\n",
+        "docs/plans/202610/1-x-design.md": "# D\n",
+        "docs/roadmap.md": "x\n",
+        ".claude/skills/old/SKILL.md": "x\n",
+      },
       { bkit: { testing: { minPushPaths: [] } } },
     );
-    const r = await run(off.cwd, [`--ref=${off.head}`], "min-push");
-    expect(r.code).toBe(1);
-    expect(r.json.reason).toBe("no-paths");
+    const r = await run(floor.cwd, [`--ref=${floor.head}`], "min-push");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ minPush: true, reason: null, changed: 4, outside: [] });
+    expect(r.json.paths).toContain(":(glob)docs/*.md");
+    expect(r.json.paths).toContain(":(glob)docs/plans/**");
   });
 
-  it("a top-level glob does not reach into folders", async () => {
-    const { cwd, head } = pushed({ "docs/sub/notes.jsonl": "{}\n" });
+  it("bkit.testing.minPushPaths and ciSkipPaths add to the floor; a repo file passes only through them", async () => {
+    const bare = pushed({ "notes/today.md": "x\n", "CHANGELOG.md": "# C\n" });
+    const r = await run(bare.cwd, [`--ref=${bare.head}`], "min-push");
+    expect(r.code).toBe(1);
+    expect(r.json.outside).toEqual(["CHANGELOG.md", "notes/today.md"]);
+    const named = pushed(
+      { "notes/today.md": "x\n", "CHANGELOG.md": "# C\n" },
+      { bkit: { testing: { minPushPaths: ["notes/**"], ciSkipPaths: ["CHANGELOG.md"] } } },
+    );
+    expect((await run(named.cwd, [`--ref=${named.head}`], "min-push")).code).toBe(0);
+  });
+
+  it("a top-level glob in the setting does not reach into folders", async () => {
+    const { cwd, head } = pushed(
+      { "notes/sub/deep.md": "x\n" },
+      { bkit: { testing: { minPushPaths: ["notes/*.md"] } } },
+    );
     const r = await run(cwd, [`--ref=${head}`], "min-push");
     expect(r.code).toBe(1);
-    expect(r.json.outside).toEqual(["docs/sub/notes.jsonl"]);
+    expect(r.json.outside).toEqual(["notes/sub/deep.md"]);
   });
 
   it("a push that changes no files is not proven a min push", async () => {

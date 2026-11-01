@@ -176,11 +176,11 @@ function runFigureSections(f: RunFigures, source: RowSource): string[] {
 
 /**
  * The report as markdown sections under `## ` headings. `title` is the `# ` heading;
- * `scope` the sentence under it saying which rows were read.
+ * `header` the block under it: which rows were read, and the rules for reading the file.
  */
-export function renderStatsMarkdown(report: AnalysisReport, title: string, scope: string): string {
+export function renderStatsMarkdown(report: AnalysisReport, title: string, header: string): string {
   const { counts, runs, deferralDiscipline } = report;
-  const out: string[] = [`# ${title}`, "", scope, ""];
+  const out: string[] = [`# ${title}`, "", header, ""];
 
   out.push("## Rows", "");
   if (counts.total === 0) {

@@ -105,9 +105,9 @@ describe("bkit-ship.md — no CI-Dispatch gate", () => {
 // ---------------------------------------------------------------------------
 // 3. Ship Step 9 re-validates through `bkit runs revalidate`
 //
-// Step 9 can FOLLOW a head move (Path B `bkit prs update-branch`) that already
-// fired a run at that SHA, so the command probes first and dispatches only when
-// none is present; it probes at VALIDATED_HEAD, not the PR head (ship's own
+// Step 9 can FOLLOW a head move (Path B's local merge of origin/dev, pushed
+// plain) whose `[skip ci]` commits fired no run, so the command probes first and
+// dispatches only when none is present; it probes at VALIDATED_HEAD, not the PR head (ship's own
 // `[skip ci]` bookkeeping commit never gets a run). All of that is pinned in
 // commands/workflow/runs.test.ts; here: the workflow hands it what it needs.
 // ---------------------------------------------------------------------------

@@ -131,17 +131,17 @@ describe("bkit stats", () => {
       path.join(root, ".bkit", "stats.jsonl"),
       [
         withCtx(1_700_000_000_001, {
-          "bkit-build-plan-execute": { peak: 120_000, runs: 2 },
+          "bkit-build-plan-tasks": { peak: 120_000, runs: 2 },
           "bkit-build-plan-verify": { peak: 40_000, runs: 1 },
         }),
-        withCtx(1_700_000_000_002, { "bkit-build-plan-execute": { peak: 171_000, runs: 3 } }),
+        withCtx(1_700_000_000_002, { "bkit-build-plan-tasks": { peak: 171_000, runs: 3 } }),
         row(1_700_000_000_003, "outcome", { run: { parentSha: "c".repeat(40) } }),
       ].join("\n") + "\n",
     );
     const md = buildRepoStats(root);
     expect(md).toContain("### Agent context peaks");
     expect(md).toContain("Cap: 160000 tokens per agent. 2 of 3 runs recorded context.");
-    expect(md).toContain("| bkit-build-plan-execute | 5 | 2 | 171000 | 1 |");
+    expect(md).toContain("| bkit-build-plan-tasks | 5 | 2 | 171000 | 1 |");
     expect(md).toContain("| bkit-build-plan-verify | 1 | 1 | 40000 | 0 |");
   });
 

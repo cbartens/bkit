@@ -56,6 +56,7 @@ autoCompactWindow: 300000
    ```bash
    "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" steps stub --from="<prior-versioned-design-from-Read>" --to="<Create>"
    ```
+   **If** the caller names **Update** and no **Create** → skip the seed: set the `Verdict` of **Update** to `PENDING`, and apply the findings to **Update** in place wherever the steps below name **Create**.
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
 3. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
 4. Update **Create** — apply findings via `Edit` as content becomes available.
@@ -64,13 +65,18 @@ autoCompactWindow: 300000
 7. **If** a spike input is supplied:
    - Revise every design element its `Design Impact` names as invalidated, to what the recorded evidence supports.
    - Record its `Unsettled` claims as open questions under `Risks & Open Questions`.
-8. Shape the open questions:
+8. **If** an input carries the `## Owner answers` heading → each answer in it is one `CRITICAL` item:
+   - Remove the answered question from `Risks & Open Questions`.
+   - **If** the answer carries `Decision: {key}` → add a `Decisions` item that states the decision and cites that `key`.
+   - Revise every statement the answer overrides to what the answer says.
+   - Questions and regions no answer touches stay verbatim.
+9. Shape the open questions:
    - **If** applied findings add or reword open questions under `Risks & Open Questions` → each must carry 2-3 concrete options with trade-offs as the lettered `Options: A) {option} — {trade-off} · B) …`, a `Recommended` naming the chosen letter with a one-line rationale, and a `Default if unanswered`. A bare question is not acceptable output.
    - Questions in regions no finding touches stay verbatim.
-9. Set `Verdict` in **Create** with `Edit`:
-   - `PASS` = every `CRITICAL` item applied, and no `OPTIONAL` item skipped. A `CRITICAL` item that lost a conflict to stricter wording counts as applied.
-   - `CONCERNS` = no `FAIL` condition holds, but at least one `OPTIONAL` item was skipped.
-   - `FAIL` = a `CRITICAL` item is left unapplied: two `CRITICAL` items contradict and preferring the stricter wording does not settle which one wins, **or** a rule in this file forbids the edit it asks for.
+10. Set `Verdict` in **Create** with `Edit`:
+    - `PASS` = every `CRITICAL` item applied, and no `OPTIONAL` item skipped. A `CRITICAL` item that lost a conflict to stricter wording counts as applied.
+    - `CONCERNS` = no `FAIL` condition holds, but at least one `OPTIONAL` item was skipped.
+    - `FAIL` = a `CRITICAL` item is left unapplied: two `CRITICAL` items contradict and preferring the stricter wording does not settle which one wins, **or** a rule in this file forbids the edit it asks for.
 
 **Output format:**
 

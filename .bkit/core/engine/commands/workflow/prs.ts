@@ -539,9 +539,9 @@ export function devRequiresChecks(gh: (args: string[]) => GhResult, repo: string
 }
 
 /**
- * Request a server-side base-into-head refresh (ship Step 4 B1). GitHub authors
- * the merge commit, so bkit cannot set its message and there is no local head to
- * read back — ship's Step 9 poll observes the new head. gh missing →
+ * Request a server-side base-into-head refresh. GitHub authors the merge commit,
+ * so bkit cannot set its message and there is no local head to read back. Ship
+ * does not call it: its Step 4 merges origin/dev locally (`branches sync --merge`). gh missing →
  * EXIT.USE_MCP (route through `update_pull_request_branch`).
  *
  * `onlyIfRequired`: refresh only when dev requires status checks. Otherwise the

@@ -55,19 +55,27 @@ import {
   mergePr,
   openPrFor,
   probePr,
-  updateBranch,
 } from "./prs.js";
 import { AUTO_LABEL, AUTO_ROUTE_SUFFIX } from "./issues.js";
 import { appendFeature } from "./roadmap.js";
 import { detect } from "./runtime.js";
 import { readRuns, readStatusRows, readStatusRowsAt } from "./status.js";
 import { declaredName } from "./test-blocks.js";
-import { addAllButCopied, copyExcludes, removeWorktree, worktreeDir } from "./worktrees.js";
+import {
+  addAllButCopied,
+  copyExcludes,
+  hasLeftovers,
+  recordRebase,
+  removeWorktree,
+  worktreeDir,
+} from "./worktrees.js";
 import {
   COULD_NOT_RUN_EXIT_CODES,
   LOCKFILE_REGENERATE,
   installCommand,
+  scriptCommand,
 } from "../../shared/package-manager.js";
+import { readPackageJson } from "../../shared/package-json.js";
 import { str } from "./status.js";
 
 const REMOTE = "origin";
@@ -94,6 +102,7 @@ export const EXIT_NOTHING_TO_PUSH = 21;
 export const EXIT_DIVERGED = 22;
 export const EXIT_DIFF_FAILED = 23;
 export const EXIT_HAND_RESOLVE = 24;
+export const EXIT_GENERATE_FAILED = 25;
 
 // ---------------------------------------------------------------------------
 // Process helpers
@@ -242,15 +251,15 @@ export function unionResolve(
 }
 
 /**
- * Resolve a lockfile conflict: start from the rebase target's copy, then
- * regenerate from the manifest, which merged normally (or refused and stopped
- * the rebase before this). During a rebase `--ours` is the branch being rebased
- * ONTO; `--theirs` is the commit being replayed.
+ * Resolve a lockfile conflict: start from dev's copy, then regenerate from the
+ * manifest, which merged normally (or refused and stopped the rebase or merge
+ * before this). During a rebase dev is `--ours` (the branch being rebased ONTO;
+ * `--theirs` is the commit being replayed); in a merge of origin/dev it is `--theirs`.
  */
-function lockfileResolve(top: string, file: string): boolean {
+function lockfileResolve(top: string, file: string, dev: "ours" | "theirs" = "ours"): boolean {
   const regenerate = LOCKFILE_REGENERATE[file];
   if (!regenerate) return false;
-  if (!runGit(top, ["checkout", "--ours", "--", file]).ok) return false;
+  if (!runGit(top, ["checkout", `--${dev}`, "--", file]).ok) return false;
   const res = spawnSync(regenerate[0]!, regenerate.slice(1), { cwd: top, stdio: "ignore" });
   return res.status === 0;
 }
@@ -267,8 +276,6 @@ export interface RebaseResult {
   rounds: number;
   refused: string | null;
   reason: string | null;
-  /** `handResolve` only: the paths left conflicted for a hand resolution, the rebase still in progress. */
-  pending: string[];
   log: string[];
 }
 
@@ -276,15 +283,11 @@ export interface RebaseResult {
  * Drive an in-progress rebase to completion, auto-resolving each stop. Loops
  * because `--continue` replays the next commit, which can conflict in turn; the
  * bound is a runaway guard. Never aborts: on refusal the rebase is left in
- * progress and `branches rebase` aborts it. `handResolve`: a stop holding a path
- * it may not resolve gets its ledgers and lockfiles resolved, and the run returns
- * with the other paths in `pending`, still conflicted, for a hand resolution; the
- * next call continues the rebase from there.
+ * progress and `branches rebase` aborts it.
  */
 export function resolveRebase(
   top: string,
   onLog: (line: string) => void = () => undefined,
-  opts: { handResolve?: boolean } = {},
 ): RebaseResult {
   const result: RebaseResult = {
     ok: false,
@@ -293,7 +296,6 @@ export function resolveRebase(
     rounds: 0,
     refused: null,
     reason: null,
-    pending: [],
     log: [],
   };
   const log = (line: string) => {
@@ -313,9 +315,8 @@ export function resolveRebase(
     if (conflicts.length > 0) {
       // Classify the whole set before resolving any of it, so a refused path
       // never leaves half the set rewritten.
-      const handPaths = conflicts.filter((f) => classifyConflict(f) === "refuse");
-      const refused = handPaths[0];
-      if (refused !== undefined && !opts.handResolve) {
+      const refused = conflicts.find((f) => classifyConflict(f) === "refuse");
+      if (refused !== undefined) {
         return refuse(
           `REFUSE ${refused} — not an append-only ledger or a recognised lockfile; routing to Failure Path`,
           refused,
@@ -324,7 +325,6 @@ export function resolveRebase(
       }
       for (const f of conflicts) {
         const kind = classifyConflict(f);
-        if (kind === "refuse") continue;
         const ok = kind === "ledger" ? unionResolve(top, f).ok : lockfileResolve(top, f);
         if (!ok || !runGit(top, ["add", "--", f]).ok) {
           return refuse(`REFUSE ${f} — resolution failed`, f, "resolution failed");
@@ -335,13 +335,6 @@ export function resolveRebase(
             ? `RESOLVED ${f} — union (append-only ledger)`
             : `RESOLVED ${f} — took rebase target + regenerated`,
         );
-      }
-      if (refused !== undefined) {
-        result.pending = handPaths;
-        for (const f of handPaths) log(`PENDING ${f} — left conflicted for a hand resolution`);
-        result.refused = refused;
-        result.reason = "needs a hand resolution";
-        return result;
       }
     }
 
@@ -540,12 +533,10 @@ function rebaseVerb(ctx: RunContext): number {
     ctx.log("no rebase in progress");
     return EXIT_NO_REBASE;
   }
-  const result = resolveRebase(top, (line) => ctx.log(line), {
-    handResolve: ctx.flags.handResolve === true,
-  });
-  const pending = result.pending.length > 0;
+  const origHead = rebaseOrigHead(top);
+  const result = resolveRebase(top, (line) => ctx.log(line));
   let aborted = false;
-  if (!result.ok && !pending) {
+  if (!result.ok) {
     // Abort before the log and sentinel writes: the abort resets tracked files.
     const abort = runGit(top, ["rebase", "--abort"]);
     aborted = abort.ok;
@@ -556,24 +547,38 @@ function rebaseVerb(ctx: RunContext): number {
     ctx.log(line);
   }
   appendLog(ctx, str(ctx.flags.logFile), result.log);
-  const refusedRun = !result.ok && !pending;
-  if (refusedRun && sentinelPath) {
+  if (!result.ok && sentinelPath) {
     fs.mkdirSync(path.dirname(sentinelPath), { recursive: true });
     fs.writeFileSync(sentinelPath, "");
   }
   ctx.emit({
-    outcome: result.ok ? "resolved" : pending ? "pending" : "refused",
+    outcome: result.ok ? "resolved" : "refused",
     resolved: result.resolved,
     skippedCommits: result.skippedCommits,
     rounds: result.rounds,
     refused: result.refused,
     reason: result.reason,
-    pending: result.pending,
     aborted,
-    sentinel: refusedRun && sentinel !== undefined ? sentinel : null,
+    sentinel: !result.ok && sentinel !== undefined ? sentinel : null,
   });
-  if (result.ok) return EXIT.OK;
-  return pending ? EXIT_HAND_RESOLVE : EXIT_REFUSED;
+  const statusFile = str(ctx.flags.file);
+  if (result.ok && statusFile !== undefined)
+    recordRebase(path.resolve(ctx.cwd, statusFile), origHead, git(top, ["rev-parse", "HEAD"]));
+  return result.ok ? EXIT.OK : EXIT_REFUSED;
+}
+
+/** The branch tip the in-progress rebase started from. */
+function rebaseOrigHead(top: string): string | null {
+  for (const dir of ["rebase-merge", "rebase-apply"]) {
+    const file = git(top, [
+      "rev-parse",
+      "--path-format=absolute",
+      "--git-path",
+      `${dir}/orig-head`,
+    ]);
+    if (file !== null && fs.existsSync(file)) return fs.readFileSync(file, "utf-8").trim();
+  }
+  return null;
 }
 
 export interface PushOutcome {
@@ -587,6 +592,8 @@ export interface PushOutcome {
     prNumber: number | null;
     /** The run's commits went out as copies cherry-picked onto a fresh origin/dev. */
     replayed: boolean;
+    /** origin/dev's docs and ledger commits were merged in before the push. */
+    mergedDev: boolean;
   };
 }
 
@@ -630,6 +637,7 @@ export async function pushBranch(
       skipped: null,
       prNumber: null,
       replayed: false,
+      mergedDev: false,
       ...extra,
     },
   });
@@ -667,6 +675,18 @@ export async function pushBranch(
     }
   }
   if (rec !== null) return pushOwnCommits(cwd, rec, o, log, notPushed);
+  let mergedDev = false;
+  if (mode === "feature" && o.requireCi === true && !shared) {
+    const top = topLevel(cwd);
+    const fetched = fetchDev(top);
+    if (!fetched.ok) {
+      log(`git fetch ${REMOTE} ${DEV} failed: ${fetched.stderr}`);
+      return notPushed(EXIT_FETCH_FAILED);
+    }
+    const m = mergeDevDocs(top, { branch, generate: true }, log);
+    if (m.code !== EXIT.OK) return notPushed(m.code, { mergedDev: m.merged });
+    mergedDev = m.merged;
+  }
   if (mode === "abort" && !shared) {
     const pr =
       openPrFlag === undefined
@@ -704,6 +724,7 @@ export async function pushBranch(
       skipped: null,
       prNumber: null,
       replayed: false,
+      mergedDev,
     },
   };
 }
@@ -772,6 +793,7 @@ function pushPlain(
       skipped: null,
       prNumber: null,
       replayed: false,
+      mergedDev: false,
     },
   };
 }
@@ -918,6 +940,7 @@ async function pushOwnCommits(
           skipped: null,
           prNumber: null,
           replayed: false,
+          mergedDev: false,
         },
       };
     }
@@ -954,6 +977,7 @@ async function pushOwnCommits(
           skipped: null,
           prNumber: null,
           replayed: true,
+          mergedDev: false,
         },
       };
     case "refused":
@@ -1018,6 +1042,7 @@ async function pushVerb(ctx: RunContext): Promise<number> {
         skipped: "skip-ci",
         prNumber: null,
         replayed: false,
+        mergedDev: false,
       });
       return EXIT_SKIP_CI;
     }
@@ -1453,39 +1478,283 @@ async function forceBuildVerb(ctx: RunContext): Promise<number> {
   return pushed.code;
 }
 
-/** Resolve sync's docs-merge conflicts: ledgers by union, other `docs/` paths take dev's side. */
-function resolveDocsMerge(top: string): { resolved: Resolution[] } | { refused: string } {
-  const conflicts = unmergedPaths(top);
-  const refused = conflicts.find((f) => classifyConflict(f) !== "ledger" && !f.startsWith("docs/"));
-  if (refused !== undefined) return { refused };
-  const resolved: Resolution[] = [];
-  for (const f of conflicts) {
-    if (classifyConflict(f) === "ledger") {
-      if (!unionResolve(top, f).ok || !runGit(top, ["add", "--", f]).ok) return { refused: f };
-      resolved.push({ path: f, how: "union" });
-      continue;
-    }
+/** The paths a feature branch must hold dev's commits for before GitHub reads it: docs/ and every ledger. */
+const DEV_DOC_PATHSPECS = ["docs/", ...LEDGERS.map((l) => `:(glob)${l}`)];
+
+/** Commits on origin/dev not in `head` that touch docs/ or a ledger. */
+function docsBehindOf(top: string, head: string): number {
+  return Number(
+    git(top, ["rev-list", "--count", `${head}..${UPSTREAM}`, "--", ...DEV_DOC_PATHSPECS]) ?? "0",
+  );
+}
+
+export interface DevDocsMerge extends DevMerge {
+  docsBehind: number;
+}
+
+/**
+ * The `docs` merge: bring dev's docs/ and ledger commits onto the feature branch
+ * when it is behind them, so GitHub, which ignores `merge=union`, reads no ledger
+ * conflict and CI runs. Nothing on a shared branch or when docs/ is current.
+ */
+function mergeDevDocs(
+  top: string,
+  o: { branch: string; generate: boolean },
+  log: (m: string) => void,
+): DevDocsMerge {
+  const docsBehind = docsBehindOf(top, "HEAD");
+  const current = isSharedBranch(o.branch) || docsBehind === 0;
+  if (!current)
+    log(`docs/ and the ledgers are ${docsBehind} commit(s) behind ${UPSTREAM} — merging it in`);
+  const merged = mergeDev(
+    top,
+    { branch: o.branch, policy: "docs", generate: o.generate, current },
+    log,
+  );
+  return { ...merged, docsBehind };
+}
+
+/**
+ * Run the consumer's `bkit:generate` (`.bkit/workflows.md` § Local gate scripts)
+ * and commit what it rewrote. null when the script is undeclared, or the tree was
+ * already dirty (a commit would sweep up work that is not generated). `skipCi`
+ * marks the commit `bkit [skip ci]` for a caller whose workflow dispatches CI itself.
+ */
+function regenerate(
+  top: string,
+  branch: string,
+  log: (m: string) => void,
+  o: { fid?: string; skipCi?: boolean } = {},
+): boolean | null {
+  const pkg = readPackageJson(top);
+  const scripts = pkg.ok ? pkg.pkg.scripts : undefined;
+  const declared =
+    typeof scripts === "object" &&
+    scripts !== null &&
+    typeof (scripts as Record<string, unknown>)["bkit:generate"] === "string" &&
+    (scripts as Record<string, unknown>)["bkit:generate"] !== "";
+  if (!declared) return null;
+  if (hasLeftovers(top)) {
+    log("the tree has uncommitted changes — bkit:generate not run after the merge");
+    return null;
+  }
+  const argv = scriptCommand("bkit:generate");
+  const res = spawnSync(argv[0]!, argv.slice(1), {
+    cwd: top,
+    encoding: "utf-8",
+    stdio: ["ignore", "pipe", "pipe"],
+    maxBuffer: 1 << 26,
+  });
+  if (res.status !== 0) {
+    log(`${argv.join(" ")} exited ${String(res.status ?? res.error?.message)} after the merge`);
+    const out = `${res.stdout ?? ""}${res.stderr ?? ""}`.trim();
+    if (out !== "") for (const line of out.split("\n").slice(-20)) log(`  ${line}`);
+    return false;
+  }
+  if (!hasLeftovers(top)) return true;
+  const fid = o.fid ?? branch.replace(/^feat\//, "");
+  const message = `chore(${fid}): regenerate after merging ${DEV}${o.skipCi ? " bkit [skip ci]" : ""}`;
+  if (!addAllButCopied(top).ok || !quietGit(top, ["commit", "-m", message]).ok) {
+    log("committing bkit:generate's output failed");
+    return false;
+  }
+  log(`committed bkit:generate's output after merging ${UPSTREAM}`);
+  return true;
+}
+
+/** Whether a merge is in progress in `top` (its MERGE_HEAD exists). */
+function mergeInProgress(top: string): boolean {
+  const p = git(top, ["rev-parse", "--path-format=absolute", "--git-path", "MERGE_HEAD"]);
+  return p !== null && fs.existsSync(p);
+}
+
+/**
+ * Which conflicts a merge of origin/dev settles on its own. `docs` (build's Branch
+ * Sync, a `--require-ci` push, land's PR retry) integrates only what GitHub must see
+ * merged: ledgers union, other docs/ paths take dev, anything else refuses and the
+ * merge is aborted. `full` (ship Step 4) integrates all of dev: ledgers union, a
+ * lockfile regenerates from dev's copy, anything else is left conflicted for a hand
+ * resolution with the merge in progress.
+ */
+export type MergePolicy = "docs" | "full";
+
+/** Settle one conflicted path under `policy`, staging it when it is resolved. */
+function resolvePath(
+  top: string,
+  file: string,
+  policy: MergePolicy,
+): Resolution["how"] | "pending" | { refused: string } {
+  const kind = classifyConflict(file);
+  if (kind === "ledger") {
+    const union = unionResolve(top, file);
+    if (!union.ok) return { refused: union.problem };
+    return runGit(top, ["add", "--", file]).ok ? "union" : { refused: "git add failed" };
+  }
+  if (policy === "docs") {
+    if (!file.startsWith("docs/")) return { refused: "outside docs/ and the ledgers" };
     // In a merge `--theirs` is the branch merged in: dev. Dev deleting the file
     // leaves no stage 3, and taking dev's side means deleting it here too.
-    const devHasIt = runGit(top, ["cat-file", "-e", `:3:${f}`]).ok;
+    const devHasIt = runGit(top, ["cat-file", "-e", `:3:${file}`]).ok;
     const ok = devHasIt
-      ? runGit(top, ["checkout", "--theirs", "--", f]).ok && runGit(top, ["add", "--", f]).ok
-      : runGit(top, ["rm", "-q", "--", f]).ok;
-    if (!ok) return { refused: f };
-    resolved.push({ path: f, how: "dev" });
+      ? runGit(top, ["checkout", "--theirs", "--", file]).ok && runGit(top, ["add", "--", file]).ok
+      : runGit(top, ["rm", "-q", "--", file]).ok;
+    return ok ? "dev" : { refused: `taking ${DEV}'s side failed` };
   }
-  return { resolved };
+  if (kind === "lockfile") {
+    if (!lockfileResolve(top, file, "theirs")) return { refused: "lockfile regenerate failed" };
+    return runGit(top, ["add", "--", file]).ok ? "lockfile" : { refused: "git add failed" };
+  }
+  return "pending";
+}
+
+const RESOLVED_HOW: Record<Resolution["how"], string> = {
+  union: "union (append-only ledger)",
+  dev: `took ${DEV}`,
+  lockfile: `lockfile regenerated from ${DEV}'s copy`,
+};
+
+export interface DevMerge {
+  /** EXIT.OK, EXIT_REFUSED, EXIT_MERGE_CONFLICT, EXIT_HAND_RESOLVE or EXIT_GENERATE_FAILED. */
+  code: number;
+  outcome: "merged" | "current" | "pending" | "refused";
+  merged: boolean;
+  /** The commit that carried the tree's uncommitted work before the merge; null when it was clean or not carried. */
+  carried: string | null;
+  resolved: Resolution[];
+  /** Paths left conflicted for a hand resolution, the merge still in progress (`full` only). */
+  pending: string[];
+  /** A refused merge was aborted. */
+  aborted: boolean;
+  /** bkit:generate ran after the merge: true, false (failed), null (not run). */
+  generated: boolean | null;
+  /** The branch tip the merge started from (ORIG_HEAD when continuing one). */
+  before: string | null;
+}
+
+interface MergeDevOptions {
+  branch: string;
+  policy: MergePolicy;
+  /** The feature id in the commit messages (default: the branch name without feat/). */
+  fid?: string;
+  /** Run a declared bkit:generate after the merge and commit its output. */
+  generate: boolean;
+  /** Nothing to integrate: outcome `current`, the tree untouched. */
+  current: boolean;
+}
+
+/**
+ * Merge origin/dev (already fetched) into the checked-out feature branch under
+ * `policy`. A merge in progress at the start is continued: its remaining conflicts
+ * are settled and it is committed, which is how a `full` hand resolution finishes
+ * (`git add`, then run again). `full` also commits the tree's uncommitted work first
+ * (ship's open status.jsonl) and marks every commit `[skip ci]`, because ship Step 9
+ * dispatches the re-validation itself; a `docs` merge may carry code, so its commits
+ * run CI as any code commit does. Never a rebase: GitHub ignores `merge=union`, so a
+ * branch rebased onto dev still shows as conflicting on every ledger both sides
+ * appended to, while the merge commit is what GitHub's own merge would compute.
+ */
+function mergeDev(top: string, o: MergeDevOptions, log: (m: string) => void): DevMerge {
+  const out: DevMerge = {
+    code: EXIT.OK,
+    outcome: "merged",
+    merged: false,
+    carried: null,
+    resolved: [],
+    pending: [],
+    aborted: false,
+    generated: null,
+    before: null,
+  };
+  const full = o.policy === "full";
+  const fid = o.fid ?? o.branch.replace(/^feat\//, "");
+  const tag = full ? " bkit [skip ci]" : "";
+  const refuse = (why: string): DevMerge => {
+    const abort = runGit(top, ["merge", "--abort"]);
+    out.aborted = abort.ok;
+    log(abort.ok ? `${why} — merge aborted` : `${why} — git merge --abort failed: ${abort.stderr}`);
+    return { ...out, code: EXIT_MERGE_CONFLICT, outcome: "refused" };
+  };
+  if (mergeInProgress(top)) {
+    out.before = git(top, ["rev-parse", "--verify", "--quiet", "ORIG_HEAD"]);
+    log(`a merge of ${UPSTREAM} is in progress — continuing it`);
+  } else {
+    if (o.current) return { ...out, outcome: "current" };
+    if (full && hasLeftovers(top)) {
+      const message = `chore(${fid}): carry uncommitted work before merging ${DEV}${tag}`;
+      if (!addAllButCopied(top).ok || !quietGit(top, ["commit", "-q", "-m", message]).ok) {
+        log("the uncommitted work could not be committed before the merge");
+        return { ...out, code: EXIT_REFUSED, outcome: "refused" };
+      }
+      out.carried = git(top, ["rev-parse", "HEAD"]);
+      log(`committed the uncommitted work as ${out.carried} before merging ${UPSTREAM}`);
+    }
+    out.before = git(top, ["rev-parse", "HEAD"]);
+    const message = `chore(${fid}): merge ${DEV}${tag}`;
+    const merge = quietGit(top, ["merge", "--no-edit", "-m", message, UPSTREAM]);
+    if (!merge.ok && !mergeInProgress(top)) {
+      // Not a conflict: git refused to start the merge at all.
+      log(`git merge ${UPSTREAM} failed: ${merge.stderr.trim()}`);
+      return { ...out, code: EXIT_MERGE_CONFLICT, outcome: "refused" };
+    }
+  }
+  if (mergeInProgress(top)) {
+    for (const f of unmergedPaths(top)) {
+      const r = resolvePath(top, f, o.policy);
+      if (typeof r === "object") return refuse(`${f}: ${r.refused}`);
+      if (r === "pending") {
+        out.pending.push(f);
+        continue;
+      }
+      out.resolved.push({ path: f, how: r });
+      log(`RESOLVED ${f} — ${RESOLVED_HOW[r]}`);
+    }
+    if (out.pending.length > 0) {
+      for (const p of out.pending)
+        log(`PENDING ${p} — needs a hand resolution; run again after git add`);
+      return { ...out, code: EXIT_HAND_RESOLVE, outcome: "pending" };
+    }
+    if (!quietGit(top, ["commit", "--no-edit"]).ok)
+      return refuse("the merge could not be committed");
+  }
+  out.merged = true;
+  log(`merged ${UPSTREAM} into ${o.branch} as ${git(top, ["rev-parse", "HEAD"])}`);
+  if (o.generate) {
+    out.generated = regenerate(top, o.branch, log, { fid, skipCi: full });
+    if (out.generated === false) out.code = EXIT_GENERATE_FAILED;
+  }
+  return out;
+}
+
+/**
+ * An engine-action row for a merge of origin/dev that moved the branch, keyed on
+ * the tip it started from, so the run's record shows the integration. Nothing when
+ * HEAD did not move.
+ */
+function recordMerge(statusFile: string, before: string | null, after: string | null): void {
+  if (before === null || after === null || before === after) return;
+  recordAction(statusFile, {
+    action: "merge",
+    key: actionKey("merge", before),
+    hash: actionHash(`${before}..${after}`),
+    ref: after,
+  });
 }
 
 function syncVerb(ctx: RunContext): number {
   const mergeDocs = ctx.flags.mergeDocs === true;
+  const merge = ctx.flags.merge === true;
   const headFlag = str(ctx.flags.head);
-  if (mergeDocs && headFlag !== undefined) {
+  if ((mergeDocs || merge) && headFlag !== undefined) {
     throw new CommandError(
       EXIT.USAGE,
-      "--merge-docs merges into HEAD; give --head or --merge-docs, not both",
+      "--merge and --merge-docs merge into HEAD; give --head or one of them, not both",
     );
   }
+  if (mergeDocs && merge)
+    throw new CommandError(EXIT.USAGE, "give --merge or --merge-docs, not both");
+  const sentinel = str(ctx.flags.sentinel);
+  const sentinelPath = sentinel === undefined ? undefined : path.resolve(ctx.cwd, sentinel);
+  if (merge && sentinelPath) fs.rmSync(sentinelPath, { force: true });
   const top = topLevel(ctx.cwd);
   const fetch = fetchDev(top);
   if (!fetch.ok) {
@@ -1509,7 +1778,7 @@ function syncVerb(ctx: RunContext): number {
   }
   const count = (args: string[]) => Number(git(top, ["rev-list", "--count", ...args]) ?? "0");
   const behind = count([`${head}..${UPSTREAM}`]);
-  const docsBehind = count([`${head}..${UPSTREAM}`, "--", "docs/"]);
+  const docsBehind = docsBehindOf(top, head);
   const out = {
     branch: branch === "" ? null : branch,
     head,
@@ -1518,6 +1787,7 @@ function syncVerb(ctx: RunContext): number {
     docsBehind,
     merged: false,
     resolved: [] as Resolution[],
+    generated: null as boolean | null,
   };
 
   if (mergeDocs) {
@@ -1525,31 +1795,54 @@ function syncVerb(ctx: RunContext): number {
       ctx.log("no branch checked out (detached HEAD) — cannot merge dev's docs");
       return EXIT_DETACHED;
     }
-    if (!isSharedBranch(branch) && docsBehind > 0) {
-      ctx.log(`docs/ is ${docsBehind} commit(s) behind ${UPSTREAM} — merging it in`);
-      if (!quietGit(top, ["merge", "--no-edit", UPSTREAM]).ok) {
-        const outcome = resolveDocsMerge(top);
-        if ("refused" in outcome) {
-          runGit(top, ["merge", "--abort"]);
-          ctx.log(
-            `merge of ${UPSTREAM} conflicts on ${outcome.refused} — outside docs/, merge aborted`,
-          );
-          return EXIT_MERGE_CONFLICT;
-        }
-        if (unmergedPaths(top).length > 0 || !quietGit(top, ["commit", "--no-edit"]).ok) {
-          runGit(top, ["merge", "--abort"]);
-          ctx.log(`merge of ${UPSTREAM} could not be committed — merge aborted`);
-          return EXIT_MERGE_CONFLICT;
-        }
-        out.resolved = outcome.resolved;
-        for (const r of outcome.resolved)
-          ctx.log(
-            `RESOLVED ${r.path} — ${r.how === "union" ? "union (append-only ledger)" : `took ${DEV}`}`,
-          );
-      }
-      out.merged = true;
-      out.head = git(top, ["rev-parse", "HEAD"]) ?? head;
+    const m = mergeDevDocs(top, { branch, generate: true }, ctx.log);
+    if (m.code === EXIT_MERGE_CONFLICT) return m.code;
+    out.merged = m.merged;
+    out.resolved = m.resolved;
+    out.generated = m.generated;
+    if (m.merged) out.head = git(top, ["rev-parse", "HEAD"]) ?? head;
+    ctx.emit(out);
+    return m.code;
+  }
+  if (merge) {
+    if (branch === "") {
+      ctx.log(`no branch checked out (detached HEAD) — cannot merge ${UPSTREAM}`);
+      return EXIT_DETACHED;
     }
+    if (isSharedBranch(branch)) {
+      throw new CommandError(
+        EXIT.USAGE,
+        `--merge merges ${UPSTREAM} into a feature branch, never into ${branch}`,
+      );
+    }
+    const fid = str(ctx.flags.fid) || branch.replace(/^feat\//, "");
+    const m = mergeDev(
+      top,
+      { branch, policy: "full", fid, generate: true, current: out.basePath === "A" },
+      ctx.log,
+    );
+    const refused = m.outcome === "refused";
+    if (refused && sentinelPath) {
+      fs.mkdirSync(path.dirname(sentinelPath), { recursive: true });
+      fs.writeFileSync(sentinelPath, "");
+    }
+    const newHead = git(top, ["rev-parse", "HEAD"]) ?? head;
+    ctx.emit({
+      ...out,
+      head: newHead,
+      merged: m.merged,
+      resolved: m.resolved,
+      generated: m.generated,
+      outcome: m.outcome,
+      carried: m.carried,
+      pending: m.pending,
+      aborted: m.aborted,
+      sentinel: refused && sentinel !== undefined ? sentinel : null,
+    });
+    const statusFile = str(ctx.flags.file);
+    if (m.merged && statusFile !== undefined)
+      recordMerge(path.resolve(ctx.cwd, statusFile), m.before, newHead);
+    return m.code;
   }
   ctx.emit(out);
   return EXIT.OK;
@@ -1800,10 +2093,41 @@ function branchTree(root: string, branch: string): string | null {
 }
 
 /**
+ * A land retry: merge origin/dev's docs and ledger commits into the PR branch in
+ * the checkout holding it and push, so the PR carries dev's ledger rows. GitHub's
+ * own branch update ignores `merge=union` and fails on the same conflict each time.
+ */
+async function mergeDevIntoPrBranch(
+  root: string,
+  branch: string,
+  log: (m: string) => void,
+): Promise<void> {
+  const tree = branchTree(root, branch);
+  if (tree === null)
+    throw new Stop(
+      EXIT_LAND_STOPPED,
+      `no checkout has ${branch} checked out — cannot merge ${DEV} into the PR branch; the PR stays open`,
+    );
+  if (!fetchDev(tree).ok)
+    throw new Stop(EXIT_LAND_STOPPED, `fetch of ${UPSTREAM} failed — the PR stays open`);
+  const m = mergeDevDocs(tree, { branch, generate: false }, log);
+  if (m.code !== EXIT.OK)
+    throw new Stop(
+      EXIT_LAND_STOPPED,
+      `merging ${UPSTREAM} into ${branch} stopped on a conflict outside docs/ and the ledgers — the PR stays open`,
+    );
+  if (!m.merged) return;
+  const pushed = await pushBranch(tree, { mode: "feature" }, log);
+  if (pushed.code !== EXIT.OK)
+    throw new Stop(EXIT_PUSH_FAILED, `push of ${branch} after merging ${DEV} failed`);
+  log(`merged ${UPSTREAM} into ${branch} and pushed it`);
+}
+
+/**
  * The PR close (the dev push was refused): commit the roadmap row on the branch
  * in the checkout holding it, push it, open or reuse the PR, squash-merge it with
- * an empty body. A merge that does not land on an open PR → update its branch
- * from dev and try again, with backoff, LAND_ATTEMPTS tries in all; then stop with
+ * an empty body. A merge that does not land on an open PR → merge dev into its
+ * branch locally, push, and try again, with backoff, LAND_ATTEMPTS tries in all; then stop with
  * the PR left open. gh missing → EXIT.USE_MCP with what to create / merge; re-run
  * with `--pr` (and `--merged-sha` once merged).
  */
@@ -1909,10 +2233,10 @@ async function landPr(
           EXIT_LAND_STOPPED,
           `PR ${prNumber} still not merged after ${attempt} tries — left open; merge it, then re-run with --pr=${prNumber} --merged-sha=<merge commit>`,
         );
-      updateBranch(root, prNumber, ctx.log);
+      await mergeDevIntoPrBranch(root, o.branch, ctx.log);
       const wait = landBackoffMs(attempt);
       ctx.log(
-        `PR ${prNumber} not merged on try ${attempt} of ${TIMEOUTS.LAND_ATTEMPTS} — branch updated from dev; trying again in ${(wait / 1000).toFixed(1)}s`,
+        `PR ${prNumber} not merged on try ${attempt} of ${TIMEOUTS.LAND_ATTEMPTS} — trying again in ${(wait / 1000).toFixed(1)}s`,
       );
       await sleep(wait);
     }
@@ -2250,7 +2574,7 @@ export const branchesCommand: CommandSpec = {
   summary: "Sync, push, land and rebase branches; stamp and read a doc's base-commit anchor.",
   verbs: {
     sync: {
-      summary: `Fetch ${UPSTREAM}; report whether it is an ancestor of HEAD (Path A/B) and how far docs/ is behind; optionally merge it in.`,
+      summary: `Fetch ${UPSTREAM}; report whether it is an ancestor of HEAD (Path A/B) and how far docs/ and the ledgers are behind; optionally merge it in.`,
       use: "workflow",
       flags: [
         {
@@ -2259,25 +2583,57 @@ export const branchesCommand: CommandSpec = {
           help: "commit to compare (default HEAD), e.g. ship's ENTRY_HEAD",
         },
         {
+          name: "merge",
+          type: "boolean",
+          help: `ship Step 4: merge ${UPSTREAM} into the checked-out feature branch — the run's uncommitted work is committed first, ledger conflicts union, a lockfile regenerates from ${DEV}'s copy, any other conflict stays in the tree with the merge in progress for a hand resolution (exit 24; run again after git add), then a declared bkit:generate runs and its output is committed; never a rebase or force-push, never on ${DEV} / main`,
+        },
+        {
           name: "merge-docs",
           type: "boolean",
-          help: `on a feature branch whose docs/ is behind, merge ${UPSTREAM} (ledgers union, other docs/ take ${DEV}, anything else aborts)`,
+          help: `on a feature branch whose docs/ or ledgers are behind, merge ${UPSTREAM} (ledgers union, other docs/ take ${DEV}, anything else aborts), then run a declared bkit:generate and commit its output`,
+        },
+        {
+          name: "fid",
+          type: "string",
+          help: "--merge: the feature id in the commit messages (default: the branch name without feat/)",
+        },
+        {
+          name: "file",
+          type: "string",
+          help: "--merge: the run's status.jsonl: a completed merge appends an engine-action row (action merge, key merge/{old tip}, ref the new HEAD)",
+        },
+        {
+          name: "sentinel",
+          type: "string",
+          help: "--merge: file removed at start and created on refusal, e.g. logs/{FID}/.rebase-failed",
         },
       ],
       output: {
         branch: "current branch (null when detached)",
-        head: "commit compared (after a merge: the merge commit)",
+        head: "commit compared (after a merge: the new HEAD)",
         basePath: `A when ${UPSTREAM} is an ancestor of head (nothing to integrate), else B`,
         behind: `commits on ${UPSTREAM} not in head`,
-        docsBehind: `of those, commits touching docs/`,
-        merged: `true when --merge-docs merged ${UPSTREAM}`,
-        resolved: "conflicts the merge resolved: [{path, how: union|dev}]",
+        docsBehind: `of those, commits touching docs/ or a ledger path (LEDGERS)`,
+        merged: `true when --merge or --merge-docs merged ${UPSTREAM}`,
+        resolved: "conflicts the merge resolved: [{path, how: union|lockfile|dev}]",
+        generated:
+          "bkit:generate after the merge: true (ran; output committed), false (failed, exit 25), null (not run: no merge, undeclared, or the tree was dirty)",
+        outcome: `--merge: merged | current (${UPSTREAM} already an ancestor; nothing done) | pending (conflicts left for a hand resolution, merge in progress) | refused (merge aborted)`,
+        carried:
+          "--merge: the commit that carried the uncommitted work before the merge (null when the tree was clean)",
+        pending: "--merge: the paths left conflicted for a hand resolution (empty otherwise)",
+        aborted: "--merge: a refused merge was aborted",
+        sentinel: "--merge: the sentinel written on refusal (null otherwise)",
       },
       exitCodes: {
-        [EXIT_DETACHED]: "--merge-docs with no branch checked out",
+        [EXIT_REFUSED]: "--merge: the uncommitted work could not be committed before the merge",
+        [EXIT_DETACHED]: "--merge / --merge-docs with no branch checked out",
         [EXIT_FETCH_FAILED]: `git fetch ${REMOTE} ${DEV} failed`,
-        [EXIT_MERGE_CONFLICT]:
-          "the docs merge conflicted outside docs/ or could not be committed; merge aborted",
+        [EXIT_MERGE_CONFLICT]: `the merge conflicted where it may not (--merge-docs: outside docs/ and the ledgers; --merge: a ledger union or lockfile regenerate failed), could not be committed, or (--merge) ${UPSTREAM} could not be merged at all; merge aborted`,
+        [EXIT_HAND_RESOLVE]:
+          "--merge: conflicts outside the ledgers and lockfiles are left in the tree with the merge in progress; resolve them, git add, run again",
+        [EXIT_GENERATE_FAILED]:
+          "bkit:generate failed after the merge, or its output could not be committed; the merge commit stays",
       },
       run: syncVerb,
     },
@@ -2314,7 +2670,7 @@ export const branchesCommand: CommandSpec = {
         {
           name: "require-ci",
           type: "boolean",
-          help: "this push must start a CI run: refuse when the HEAD message carries a skip-CI token",
+          help: `this push must start a CI run: refuse when the HEAD message carries a skip-CI token; --mode=feature on a feature branch first merges ${UPSTREAM} in when its docs/ or ledgers are behind (as sync --merge-docs does), so GitHub sees no ledger conflict`,
         },
         {
           name: "open-pr",
@@ -2337,6 +2693,7 @@ export const branchesCommand: CommandSpec = {
         skipped:
           "why the push did not run: open-pr | skip-ci | no-run-commits (an in-place run on dev with nothing new to push) (null otherwise)",
         prNumber: "the open PR that stopped an abort push (null otherwise)",
+        mergedDev: `--require-ci: ${UPSTREAM} was merged in before the push`,
         commit: "--commit: the marker commit's sha",
         deduped: "--commit: the marker commit was already made this run (not made again)",
       },
@@ -2352,9 +2709,12 @@ export const branchesCommand: CommandSpec = {
         [EXIT_NOT_DEV]: "--mode=dev and the checkout is not on dev",
         [EXIT_NO_RECORD]:
           "--mode=dev, or --fid, on dev with no shared-checkout record for the run: nothing pushed",
-        [EXIT_FETCH_FAILED]: "in-place run on dev: fetching origin/dev failed",
+        [EXIT_FETCH_FAILED]:
+          "fetching origin/dev failed (in-place run on dev, or a --require-ci feature push); nothing pushed",
         [EXIT_MERGE_CONFLICT]:
-          "in-place run on dev: a run commit does not apply onto origin/dev without the local commits it builds on; the conflicting paths are printed, nothing pushed",
+          "in-place run on dev: a run commit does not apply onto origin/dev without the local commits it builds on; or a --require-ci feature push: merging origin/dev conflicts outside docs/ and the ledgers (merge aborted). The conflicting paths are printed, nothing pushed",
+        [EXIT_GENERATE_FAILED]:
+          "--require-ci feature push: bkit:generate failed after merging origin/dev; nothing pushed",
       },
       run: pushVerb,
     },
@@ -2476,7 +2836,7 @@ export const branchesCommand: CommandSpec = {
     },
     rebase: {
       summary:
-        "Drive a rebase to completion, auto-resolving ledger (union) and lockfile (regenerate) conflicts; refuse and abort on anything else, or with --hand-resolve leave it conflicted and the rebase in progress.",
+        "Drive a rebase to completion, auto-resolving ledger (union) and lockfile (regenerate) conflicts; refuse and abort on anything else.",
       use: "workflow",
       flags: [
         {
@@ -2490,29 +2850,24 @@ export const branchesCommand: CommandSpec = {
           help: "file removed at start and created on refusal, e.g. logs/{FID}/.rebase-failed",
         },
         {
-          name: "hand-resolve",
-          type: "boolean",
-          help: "on a stop holding a path it may not resolve: resolve that stop's ledgers and lockfiles, leave the other paths conflicted and the rebase in progress, and exit 24; run it again after resolving them by hand",
+          name: "file",
+          type: "string",
+          help: "the run's status.jsonl: a completed rebase appends an engine-action row (action rebase, key rebase/{old tip}, ref the new HEAD)",
         },
       ],
       output: {
-        outcome:
-          "resolved | refused (a refused rebase is aborted) | pending (--hand-resolve: the rebase is still in progress)",
+        outcome: "resolved | refused (a refused rebase is aborted)",
         resolved: "conflicts resolved: [{path, how: union|lockfile}]",
         skippedCommits: "commits skipped because resolution emptied them",
         rounds: "resolve rounds run",
         refused: "the path that stopped resolution (null when none, or not path-specific)",
         reason: "why resolution refused or stopped (null on success)",
-        pending:
-          "--hand-resolve: the paths left conflicted for a hand resolution (empty otherwise)",
-        aborted:
-          "a refused rebase was aborted (false on success, on pending, or when the abort failed)",
+        aborted: "a refused rebase was aborted (false on success, or when the abort failed)",
         sentinel: "the sentinel written on refusal (null otherwise)",
       },
       exitCodes: {
         [EXIT_REFUSED]: "a conflict is not auto-resolvable",
         [EXIT_NO_REBASE]: "no rebase in progress",
-        [EXIT_HAND_RESOLVE]: "--hand-resolve: paths are left conflicted for a hand resolution",
       },
       run: rebaseVerb,
     },

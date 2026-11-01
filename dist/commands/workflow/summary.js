@@ -48,7 +48,7 @@ export function refOf(fid, tracker = "any") {
 /**
  * A step whose FAIL a later, non-FAIL step of the same workflow (and the same plan
  * group, when the failed row has one) answers; the run carried on past it. A build
- * challenge is answered by its fix tasks running (`build-plan-execute`) or by a
+ * challenge is answered by its fix tasks running (`build-plan-tasks`) or by a
  * Decision Pause (`build-decision`); a group's execute or gaps fix by that group's
  * verify, which judges the group's work after the executor, the gaps fix and any
  * Decision Pause on it. The build workflow never routes on the gaps fix's own verdict.
@@ -57,8 +57,8 @@ const ANSWERED_BY = {
     "plan/plan-review": ["plan-apply-review"],
     "design/design-review": ["design-apply-review"],
     "design/design-spike": ["design-apply-review"],
-    "build/build-challenge": ["build-plan-execute", "build-decision"],
-    "build/build-plan-execute": ["build-plan-verify"],
+    "build/build-challenge": ["build-plan-tasks", "build-decision"],
+    "build/build-plan-tasks": ["build-plan-verify"],
     "build/build-plan-gaps-remediate": ["build-plan-verify"],
 };
 const RUN_TESTS = new Set(["build-run-tests", "debug-run-tests"]);
@@ -109,6 +109,26 @@ function planSection(text, title) {
             out.push(line);
     }
     return out.join("\n").trim();
+}
+/**
+ * A TEST EXCEPTION field's entries from its 1-based plan `fieldLines` (`plan-blocks.ts`):
+ * the label line's inline value and each sub-bullet, continuation lines joined to the entry above.
+ */
+function exceptionEntries(lines, fieldLines) {
+    const out = [];
+    for (const n of fieldLines) {
+        const raw = lines[n - 1] ?? "";
+        const label = raw.indexOf(TEST_EXCEPTION);
+        const bullet = /^\s*- (.*)$/.exec(raw);
+        const text = (label >= 0 ? raw.slice(label + TEST_EXCEPTION.length) : (bullet?.[1] ?? raw)).trim();
+        if (text === "")
+            continue;
+        if (label < 0 && bullet === null && out.length > 0)
+            out[out.length - 1] += ` ${text}`;
+        else
+            out.push(text);
+    }
+    return out;
 }
 export function buildSummary(input) {
     const { workflow } = input;
@@ -275,8 +295,20 @@ export function buildSummary(input) {
             items.push(`- \`${rel}\`: no decision recorded`);
     }
     for (const p of input.plans) {
-        for (const line of p.text.split("\n").filter((l) => l.includes(TEST_EXCEPTION)))
-            items.push(`- \`${p.path}\`: ${line.trim()}`);
+        const lines = p.text.split(/\r?\n/);
+        const covered = new Set();
+        for (const t of tasks.filter((x) => x.path === p.path && x.testException !== undefined)) {
+            const fieldLines = t.testException.lines;
+            for (const n of fieldLines)
+                covered.add(n);
+            const entries = exceptionEntries(lines, fieldLines);
+            for (const e of entries.length > 0 ? entries : ["no reason recorded"])
+                items.push(`- TEST EXCEPTION, task ${t.task}: ${e} (\`${p.path}\`)`);
+        }
+        lines.forEach((l, i) => {
+            if (l.includes(TEST_EXCEPTION) && !covered.has(i + 1))
+                items.push(`- \`${p.path}\`: ${l.trim()}`);
+        });
     }
     out.push("", "## Risks and Action Items", "", ...(items.length > 0 ? items : ["None"]));
     out.push("", "## Recommended Next Step", "", "```text", nextStep, "```");

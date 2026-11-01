@@ -7,7 +7,8 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { CommandError, runCommand } from "../lib";
 import { COMMANDS } from "../registry";
-import { readRuns } from "./status";
+import { runStatusRows, stepsBlock } from "./run-facts";
+import { readRuns, readStatusEvents, readStatusRows } from "./status";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -85,6 +86,39 @@ describe("the status fold", () => {
     expect(runs[0]!.steps.map((s) => s.step)).toEqual(["build-plan-verify"]);
   });
 
+  it("ignores a row type it does not know", () => {
+    const rows = [
+      started("build", "2026-10-01T00:00:00Z"),
+      done("build", "build-a", "2026-10-01T00:01:00Z"),
+      {
+        type: "engine-call",
+        workflow: "build",
+        at: "2026-10-01T00:02:00Z",
+        noun: "steps",
+        verb: "finish",
+        flags: [],
+      },
+      { type: "completeness", workflow: "build", at: "2026-10-01T00:03:00Z", verdict: "complete" },
+      { type: "future-row", workflow: "build", at: "2026-10-01T00:04:00Z" },
+      done("build", "build-b", "2026-10-01T00:05:00Z"),
+    ];
+    const file = log(rows);
+    expect(readStatusRows(file)).toHaveLength(rows.length);
+    const runs = readRuns(file);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]!.steps.map((s) => s.step)).toEqual(["build-a", "build-b"]);
+    const kept = runStatusRows(readStatusEvents(file), "build", "2026-10-01T00:00:00Z");
+    expect(kept.map((r) => r.type)).toEqual([
+      "workflow-started",
+      "step-done",
+      "engine-call",
+      "completeness",
+      "future-row",
+      "step-done",
+    ]);
+    expect(stepsBlock(kept).total.n).toBe(2);
+  });
+
   it("refuses a line that is not JSON rather than folding around it (exit 3)", () => {
     const file = log([started("build", "2026-10-01T00:00:00Z")]);
     fs.appendFileSync(file, "{not json\n");
@@ -140,6 +174,27 @@ describe("bkit status route", () => {
       "--group=1",
     ]);
     expect(r.json).toMatchObject({ verdict: "FAIL", failures: 2 });
+  });
+
+  it("reads a build-plan-execute row written before the step rename as build-plan-tasks", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      done("build", "build-plan-execute", "2026-10-01T00:01:00Z", {
+        verdict: "PASS",
+        failures: 0,
+        group: 1,
+      }),
+    ]);
+    const r = await run([
+      ...base,
+      `--file=${file}`,
+      "--workflow=build",
+      "--step=build-plan-tasks",
+      "--group=1",
+    ]);
+    expect(r.json).toMatchObject({ verdict: "PASS", failures: 0, parentSha: SHA });
+    // The row on disk is history and keeps its name.
+    expect(fs.readFileSync(file, "utf-8")).toContain('"step":"build-plan-execute"');
   });
 
   it("prints the parentSha of the step's last row in the active run, per group", async () => {

@@ -14,9 +14,9 @@
 # Revert-branch bypass: on a revert branch the unit and integration tiers are skipped; lint +
 # typecheck still run.
 #
-# Min push: every changed file matches `bkit.testing.minPushPaths` (package.json; default plan logs,
-# ledgers) → `bkit:gate:min` replaces the full gate; MIN_PUSH=1 for repo extras. Files decide,
-# never `[skip ci]`.
+# Min push: every changed file is one bkit writes or one that `bkit.testing.minPushPaths`
+# adds (package.json; .bkit/templates.md § Git hooks — Husky) → `bkit:gate:min` replaces the
+# full gate; MIN_PUSH=1 for repo extras. Files decide, never `[skip ci]`.
 set -e
 
 # Log: the hook runs itself once more with everything it prints copied to tmp/pre-push.log,
@@ -57,14 +57,18 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
 # stdin here is safe: every later command redirects from /dev/null. `[ -t 0 ]` keeps a
 # hand-run hook from hanging. The loop also sets PUSH_DEV_SHA (commit pushed to dev) for
 # repo extras that gate only dev pushes (e.g. scripts/graphify/bkit-graph-pre-push.sh),
-# PUSH_SHAS (every pushed commit) and PUSH_SHARED_SHAS (those pushed to dev / main).
+# PUSH_SHAS (every pushed commit), PUSH_SHARED_SHAS (those pushed to dev / main) and
+# PUSH_BRANCH_REMOTE_SHA (the head the remote holds for the current branch, empty when
+# it holds none), which the CI-suppressor guard below hands to `bkit ci bookkeeping-push`.
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
 PUSH_SAW_REF=0
 PUSH_HAS_COMMITS=0
 PUSH_DEV_SHA=""
 PUSH_SHAS=""
 PUSH_SHARED_SHAS=""
+PUSH_BRANCH_REMOTE_SHA=""
 if [ ! -t 0 ]; then
-  while read -r _push_local_ref push_local_sha push_remote_ref _push_remote_sha; do
+  while read -r _push_local_ref push_local_sha push_remote_ref push_remote_sha; do
     [ -n "$push_local_sha" ] || continue
     PUSH_SAW_REF=1
     case "$push_local_sha" in
@@ -72,6 +76,9 @@ if [ ! -t 0 ]; then
         PUSH_HAS_COMMITS=1
         PUSH_SHAS="$PUSH_SHAS $push_local_sha"
         [ "$push_remote_ref" = "refs/heads/dev" ] && PUSH_DEV_SHA="$push_local_sha"
+        if [ "$push_remote_ref" = "refs/heads/$BRANCH" ]; then
+          case "$push_remote_sha" in *[!0]*) PUSH_BRANCH_REMOTE_SHA="$push_remote_sha" ;; esac
+        fi
         case "$push_remote_ref" in
           refs/heads/dev|refs/heads/main) PUSH_SHARED_SHAS="$PUSH_SHARED_SHAS $push_local_sha" ;;
         esac
@@ -85,7 +92,6 @@ if [ "$PUSH_SAW_REF" = "1" ] && [ "$PUSH_HAS_COMMITS" = "0" ]; then
 fi
 # ── end delete-only push
 
-BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
 HEAD_SUBJECT=$(git log -1 --pretty=%s 2>/dev/null || echo "")
 IS_REVERT=0
 case "$BRANCH" in
@@ -101,6 +107,12 @@ esac
 # -> allowed ([skip ci] pushes for mid-loop status, abort handover). dev/main exempt;
 # gh absent -> allow. `bkit ci skip-token` exits 0 when HEAD's message carries one of
 # the tokens GitHub honours; bkit owns that list.
+# Exception, the same one ship's merge gate makes: a push that adds only files on ship's
+# `--scope=pr` allow-list (.bkit/workflows.md § `/bkit-ship` — 14 steps) on top of the
+# head the remote already holds leaves nothing new for CI to test, so the PR's checks at
+# that head still cover the code. `bkit ci bookkeeping-push` exits 0 for exactly that
+# shape. A rewritten head (force-push) or any code file still blocks. The merge gate
+# (`bkit runs gate --validated=`) stays the authority on what merges.
 case "$BRANCH" in
   dev|main) ;;
   *)
@@ -109,9 +121,14 @@ case "$BRANCH" in
         # strip hook-injected GIT_DIR/GIT_WORK_TREE so gh resolves the repo from cwd (worktree-safe)
         OPEN_PR=$(env -u GIT_DIR -u GIT_WORK_TREE gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
         if [ -n "$OPEN_PR" ]; then
-          echo "[pre-push] BLOCKED: HEAD on '$BRANCH' carries a CI-suppressing token and PR #$OPEN_PR is open — its checks would stay vacuously green." >&2
-          echo "[pre-push] Add a clean trigger commit and re-push:  git commit --allow-empty -m \"chore: trigger CI\" && git push" >&2
-          exit 1
+          if [ -n "$PUSH_BRANCH_REMOTE_SHA" ] &&
+            pnpm -s bkit ci bookkeeping-push --from="$PUSH_BRANCH_REMOTE_SHA" < /dev/null > /dev/null; then
+            echo "[pre-push] HEAD on '$BRANCH' carries a CI-suppressing token and PR #$OPEN_PR is open, but every file changed since the remote head $PUSH_BRANCH_REMOTE_SHA is bookkeeping — the PR's checks at that head still cover the code; allowing." >&2
+          else
+            echo "[pre-push] BLOCKED: HEAD on '$BRANCH' carries a CI-suppressing token and PR #$OPEN_PR is open — its checks would stay vacuously green." >&2
+            echo "[pre-push] Add a clean trigger commit and re-push:  git commit --allow-empty -m \"chore: trigger CI\" && git push" >&2
+            exit 1
+          fi
         fi
       else
         echo "[pre-push] WARN: HEAD on '$BRANCH' carries a CI-suppressing token but gh is unavailable to check for an open PR; allowing. If a PR is open, ensure HEAD triggers CI." >&2
@@ -121,7 +138,8 @@ case "$BRANCH" in
 esac
 
 # Min push: `bkit ci min-push` exits 0 only when every file changed since each pushed
-# commit left origin/dev (else origin/main) matches `bkit.testing.minPushPaths`. Anything else
+# commit left origin/dev (else origin/main) is one bkit writes or `bkit.testing.minPushPaths`
+# adds. Anything else
 # (code, no files, unreadable range, no refs) → MIN_PUSH=0, full gate: a skip on no
 # evidence reads as a pass.
 MIN_PUSH=0
@@ -141,7 +159,7 @@ for push_sha in $PUSH_SHARED_SHAS; do
   if pnpm -s bkit ci skip-token --ref="$push_sha" < /dev/null > /dev/null; then
     if [ "$MIN_PUSH" != "1" ] &&
       ! pnpm -s bkit ci min-push --ref="$push_sha" < /dev/null > /dev/null; then
-      echo "[pre-push] BLOCKED: $push_sha carries a CI-suppressing token and changes files outside bkit.testing.minPushPaths — that code would land on dev / main with no CI run." >&2
+      echo "[pre-push] BLOCKED: $push_sha carries a CI-suppressing token and changes files outside the min-push paths (what bkit writes, plus bkit.testing.minPushPaths) — that code would land on dev / main with no CI run." >&2
       echo "[pre-push] Add a clean trigger commit and re-push:  git commit --allow-empty -m \"chore: trigger CI\" && git push" >&2
       exit 1
     fi

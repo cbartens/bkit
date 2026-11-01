@@ -160,7 +160,7 @@ const CLAUDE_MANIFEST = [
 // (bkit-tests-static / -unit / -integration / -e2e / -live). Where a step is not a
 // tier (`format`, the ship gate) the name spells out the actual steps. One exception:
 // `min` sits off the chain: the least a push runs, on a push that changes no code
-// (`bkit.testing.minPushPaths`); its steps are whatever that push can still break.
+// (what bkit writes, plus `bkit.testing.minPushPaths`); its steps are whatever that push can still break.
 //
 // The consumer owns every value: a turbo monorepo writes `turbo run … --filter`,
 // a Python repo writes `ruff check && pytest`. bkit never reads a value — only
@@ -190,7 +190,7 @@ export const BKIT_GATE_SCRIPTS = {
     // `.husky/pre-commit`: prettier --write over staged files, and nothing else —
     // seconds, not minutes. Prose is a whole-repo scan, so it gates at pre-push.
     "bkit:gate:format": "pnpm lint-staged",
-    // `.husky/pre-push` on a min push (every file matches `bkit.testing.minPushPaths`): no code, so
+    // `.husky/pre-push` on a min push (every file is one bkit writes or `bkit.testing.minPushPaths` adds): no code, so
     // no typecheck, lint or tests. Off the chain. Add any test that reads a min-push file.
     "bkit:gate:min": "pnpm format:check && pnpm lint:prose && pnpm slop:delta",
     // Everything that needs no test runner. Every part has a matching step in the
@@ -271,6 +271,14 @@ export const BKIT_TEST_FILE_SCRIPT = "bkit:test:file";
  * declared and this is not (detectGateAdvisories).
  */
 export const BKIT_LINT_FILE_SCRIPT = "bkit:lint:file";
+/**
+ * Checks only what changed — `pnpm bkit:gate:changed <repo-relative path>...`, exit 0
+ * when clean: the tests that import the files, the tests that name their paths, and
+ * static checks on the files. `bkit tests changed` passes the files and falls back to a
+ * whole gate when this is undeclared. Never seeded: install, check and upgrade advise
+ * when it is missing (detectGateAdvisories).
+ */
+export const BKIT_GATE_CHANGED_SCRIPT = "bkit:gate:changed";
 /**
  * The deeper gates, shallowest first, with what declaring each one costs.
  *

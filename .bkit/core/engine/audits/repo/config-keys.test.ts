@@ -4,7 +4,7 @@
 // How each key resolves (defaults, overrides, malformed values) is tested where it
 // is read: shared/settings.test.ts (readBkitConfig), and the commands that
 // consume it — commands/setup/setup.test.ts (capstoneJob, ciWorkflow) and
-// commands/workflow/runs.test.ts (capstoneJob, ciWorkflow, shipGateRequiredLanes).
+// commands/workflow/runs.test.ts (capstoneJob, ciWorkflow, ciRequired).
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -30,7 +30,7 @@ describe("bkit's own package.json", () => {
 
   // Code 16 is opt-in (a lane whose `if:` is event-scoped cannot run pre-merge).
   // Install seeds `[]`, which reads the same as absent: the capstone's green decides.
-  it("declares no bkit.testing.shipGate lane", () => {
-    expect([undefined, []]).toContainEqual(ownTesting()?.shipGate);
+  it("declares no bkit.testing.ciRequired lane", () => {
+    expect([undefined, []]).toContainEqual(ownTesting()?.ciRequired);
   });
 });

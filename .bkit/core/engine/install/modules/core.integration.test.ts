@@ -21,13 +21,14 @@ import {
   migrateLinearTeamKey,
   migrateGithubProjectKey,
   migrateBkitLayout,
+  pruneMinPushPaths,
   seedBkitDefaults,
   SEEDED_BKIT_DEFAULTS,
 } from "./core";
 import { dispatchModules, listStampedFiles, type ModuleContext } from "./index";
 import { readInstallingVersion } from "../../shared/package-json";
 import { getBkitDocsRoot, getPkgRoot } from "../../shared/package-roots";
-import { BKIT_GATE_SCRIPTS } from "../manifest";
+import { BKIT_GATE_CHANGED_SCRIPT, BKIT_GATE_SCRIPTS } from "../manifest";
 import { readBkitConfig } from "../../shared/settings";
 import { hashFile, readBkitVersion, readManagedVersion, writeBkitVersion } from "../version-file";
 import { applyTokens } from "../placeholders";
@@ -367,6 +368,7 @@ describe("detectGateAdvisories — gate advisories point at .bkit/templates.md",
       f.id.startsWith("gate-"),
     );
     expect(findings.map((f) => f.id).sort()).toEqual([
+      "gate-changed-script-missing",
       "gate-commit-repeats-push",
       "gate-missing-called-scripts",
       "gate-noop",
@@ -374,6 +376,40 @@ describe("detectGateAdvisories — gate advisories point at .bkit/templates.md",
     ]);
     for (const f of findings) expect(f.action, f.id).toContain(GATE_CONTENTS_NOTE);
     expect(GATE_CONTENTS_NOTE).toContain(".bkit/workflows.md` § Local gate scripts");
+  });
+
+  it("tells a repo without bkit:gate:changed how to declare it, and what bkit passes it", () => {
+    writeScripts({ ...BKIT_GATE_SCRIPTS });
+    const finding = detectGateAdvisories(tmpDir).find(
+      (f) => f.id === "gate-changed-script-missing",
+    );
+    expect(finding?.severity).toBe("advisory");
+    expect(finding?.detect).toContain(`\`${BKIT_GATE_CHANGED_SCRIPT}\``);
+    expect(finding?.action).toContain("repo-relative");
+    expect(finding?.action).toContain(`"${BKIT_GATE_CHANGED_SCRIPT}": "`);
+    expect(finding?.action).not.toMatch(/docs\/[a-z-]+\.md/);
+  });
+
+  it("stays silent once bkit:gate:changed is declared", () => {
+    writeScripts({ ...BKIT_GATE_SCRIPTS, [BKIT_GATE_CHANGED_SCRIPT]: "node scripts/changed.mjs" });
+    expect(detectGateAdvisories(tmpDir).map((f) => f.id)).not.toContain(
+      "gate-changed-script-missing",
+    );
+  });
+
+  it("stays silent when bkit.advisories.ignore names gate-changed-script-missing", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({
+        name: "x",
+        scripts: { ...BKIT_GATE_SCRIPTS },
+        bkit: { advisories: { ignore: ["gate-changed-script-missing"] } },
+      }),
+      "utf-8",
+    );
+    expect(detectGateAdvisories(tmpDir).map((f) => f.id)).not.toContain(
+      "gate-changed-script-missing",
+    );
   });
 
   it("runs in check (dry run) as well as install, with the same findings", () => {
@@ -738,15 +774,16 @@ describe("seedBkitDefaults (via seedCorePackageJsonScripts)", () => {
       testing: {
         ciWorkflow: "bkit-ci.yml",
         ciCapstone: "bkit-tests-check",
-        shipGate: [],
-        minPushPaths: ["docs/plans/**", "docs/*.jsonl", ".bkit/*.jsonl"],
+        ciRequired: [],
+        minPushPaths: [],
+        ciSkipPaths: [],
       },
       workflows: {
         minFreeGb: 40,
         worktree: { copy: [".env", ".env.local"], install: true },
         tasks: {
-          maxPerGroup: 3,
-          maxTestsPerGroup: 15,
+          maxPerGroup: 5,
+          maxTestsPerGroup: 25,
           maxTestsPerTask: 10,
           maxTestFilesPerTask: 3,
         },
@@ -776,7 +813,7 @@ describe("seedBkitDefaults (via seedCorePackageJsonScripts)", () => {
     seed({
       bkit: {
         tracker: { default: "github", github: { project: false } },
-        testing: { minPushPaths: [] },
+        testing: { minPushPaths: ["notes/**"] },
         workflows: { worktree: { copy: [] }, build: { verify: { ask: "yes" } } },
       },
     });
@@ -788,7 +825,7 @@ describe("seedBkitDefaults (via seedCorePackageJsonScripts)", () => {
       progress: "In progress",
       review: "In review",
     });
-    expect(bkit.testing.minPushPaths).toEqual([]);
+    expect(bkit.testing.minPushPaths).toEqual(["notes/**"]);
     expect(bkit.workflows.worktree).toEqual({ copy: [], install: true });
     expect(bkit.workflows.build.verify).toEqual({ ask: "yes", maxAttempts: 2 });
     const before = read();
@@ -800,8 +837,8 @@ describe("seedBkitDefaults (via seedCorePackageJsonScripts)", () => {
     seed({ bkit: { cloud: { agent: "" } } });
     run();
     expect(JSON.parse(read()).bkit.workflows.tasks).toEqual({
-      maxPerGroup: 3,
-      maxTestsPerGroup: 15,
+      maxPerGroup: 5,
+      maxTestsPerGroup: 25,
       maxTestsPerTask: 10,
       maxTestFilesPerTask: 3,
     });
@@ -810,7 +847,7 @@ describe("seedBkitDefaults (via seedCorePackageJsonScripts)", () => {
     expect(JSON.parse(read()).bkit.workflows.tasks).toEqual({
       maxPerGroup: 5,
       maxTestsPerTask: 0,
-      maxTestsPerGroup: 15,
+      maxTestsPerGroup: 25,
       maxTestFilesPerTask: 3,
     });
   });
@@ -1040,7 +1077,7 @@ describe("migrateBkitLayout (via seedCorePackageJsonScripts)", () => {
         minPushPaths: ["docs/**"],
         ciCapstone: "gate",
         ciWorkflow: "ci.yml",
-        shipGate: ["e2e"],
+        ciRequired: ["e2e"],
       },
       workflows: { minFreeGb: 20, worktree: { install: false }, tasks: { maxPerGroup: 4 } },
       prompts: { roadmapNext: 10 },
@@ -1048,6 +1085,15 @@ describe("migrateBkitLayout (via seedCorePackageJsonScripts)", () => {
       advisories: { ignore: ["x"] },
     });
     expect(read()).toMatch(/\n {4}"bkit"/);
+  });
+
+  it("moves a 6.0.0 testing.shipGate to testing.ciRequired, and a ciRequired already set wins", () => {
+    seed({ testing: { ciWorkflow: "ci.yml", shipGate: ["e2e"] } });
+    expect(touched(run())).toBe(true);
+    expect(bkitKey().testing).toEqual({ ciWorkflow: "ci.yml", ciRequired: ["e2e"] });
+    seed({ testing: { shipGate: ["e2e"], ciRequired: [] } });
+    expect(touched(run())).toBe(true);
+    expect(bkitKey().testing).toEqual({ ciRequired: [] });
   });
 
   it("a value already at the new path wins; two blocks merge key by key", () => {
@@ -1113,8 +1159,56 @@ describe("migrateBkitLayout (via seedCorePackageJsonScripts)", () => {
     expect(bkit.tracker!.default).toBe("github");
     expect(bkit.workflows!.minFreeGb).toBe(12);
     expect(bkit.workflows!.ship).toEqual({ merge: { ask: false, maxAttempts: 2 } });
+    expect(bkit.testing!.ciSkipPaths).toEqual([]);
     expect(bkit).not.toHaveProperty("disk");
     expect(touched(run())).toBe(false);
+  });
+});
+
+describe("pruneMinPushPaths (via seedCorePackageJsonScripts)", () => {
+  const seed = (bkit: unknown): void =>
+    fs.writeFileSync("package.json", JSON.stringify({ name: "x", bkit }, null, 2) + "\n", "utf-8");
+  const read = (): string => fs.readFileSync("package.json", "utf-8");
+  const testing = (): Record<string, unknown> => JSON.parse(read()).bkit.testing;
+  const run = (dryRun = false): boolean => {
+    const ctx = makeCtx({ dryRun });
+    return pruneMinPushPaths(ctx.dryRun, ctx.ws, ctx.logPrefix);
+  };
+
+  it("drops what bkit always allows and what ciSkipPaths already names, keeping the rest", () => {
+    seed({
+      testing: {
+        minPushPaths: [
+          "docs/**",
+          ".bkit/*.jsonl",
+          "docs/plans/**",
+          "docs/*.jsonl",
+          "CHANGELOG.md",
+          "README.md",
+        ],
+        ciSkipPaths: ["CHANGELOG.md", "README.md"],
+      },
+    });
+    expect(run()).toBe(true);
+    expect(testing()).toEqual({
+      minPushPaths: ["docs/**"],
+      ciSkipPaths: ["CHANGELOG.md", "README.md"],
+    });
+    expect(run()).toBe(false);
+  });
+
+  it("a 6.0.x seed becomes []; a dry run writes nothing; a list it cannot shorten is left alone", () => {
+    seed({ testing: { minPushPaths: ["docs/plans/**", "docs/*.jsonl", ".bkit/*.jsonl"] } });
+    const before = read();
+    expect(run(true)).toBe(true);
+    expect(read()).toBe(before);
+    expect(run()).toBe(true);
+    expect(testing().minPushPaths).toEqual([]);
+    seed({ testing: { minPushPaths: ["notes/**"] } });
+    expect(run()).toBe(false);
+    seed({ testing: { ciWorkflow: "ci.yml" } });
+    expect(run()).toBe(false);
+    expect(testing()).toEqual({ ciWorkflow: "ci.yml" });
   });
 });
 
@@ -1214,6 +1308,72 @@ describe("migrateJiraKeyName (via runBkitDocs)", () => {
     seed("BKIT_JIRA_API_KEY=new\nBKIT_JIRA_API_TOKEN=old\n");
     run();
     expect(fs.readFileSync(ENV, "utf-8")).toBe("BKIT_JIRA_API_KEY=new\nBKIT_JIRA_API_TOKEN=old\n");
+  });
+});
+
+describe("migrateModelOverrideAgentNames (via runBkitDocs)", () => {
+  const PROMPTS = path.join(".bkit", "prompts.md");
+  const OLD_ROW = "| `bkit-build-plan-execute` | openrouter | openai/gpt-6.1-sol |";
+  const NEW_ROW = "| `bkit-build-plan-tasks` | openrouter | openai/gpt-6.1-sol |";
+  const run = (dryRun = false): { ctx: ModuleContext; logs: string[] } => {
+    const logs: string[] = [];
+    const spy = vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => {
+      logs.push(a.join(" "));
+    });
+    const ctx = makeCtx({ dryRun });
+    runBkitDocs(ctx.dryRun, ctx.tokens, ctx.ws, ctx.logPrefix);
+    spy.mockRestore();
+    return { ctx, logs };
+  };
+  /** The installed prompts.md as an older install left it, with `rows` under Model Overrides. */
+  const seed = (...rows: string[]): void => {
+    fs.mkdirSync(".bkit", { recursive: true });
+    const rendered = applyTokens(
+      fs.readFileSync(path.join(getBkitDocsRoot(), "prompts.md"), "utf-8"),
+      bkitDocTokens(makeCtx().tokens),
+    );
+    fs.writeFileSync(PROMPTS, rendered.trimEnd() + "\n" + rows.join("\n") + "\n", "utf-8");
+  };
+  const consumerRegion = (): string => {
+    const text = fs.readFileSync(PROMPTS, "utf-8");
+    return text.slice(text.indexOf("## Model Overrides"));
+  };
+
+  it("renames an old agent's override row in place, provider and model kept, and records the update", () => {
+    seed("| `bkit-plan-review-2` | openrouter | x/y |", OLD_ROW);
+    const { ctx, logs } = run();
+    expect(consumerRegion()).toContain(NEW_ROW);
+    expect(consumerRegion()).toContain("| `bkit-plan-review-2` | openrouter | x/y |");
+    expect(consumerRegion()).not.toContain("bkit-build-plan-execute");
+    expect(logs.join("\n")).toContain("bkit-build-plan-execute -> bkit-build-plan-tasks");
+    expect(ctx.ws.writes).toContainEqual({ path: PROMPTS, action: "update" });
+  });
+
+  it("dry-run computes the same write but leaves the file; a second run changes nothing", () => {
+    seed(OLD_ROW);
+    const dry = run(true);
+    expect(consumerRegion()).toContain(OLD_ROW);
+    expect(dry.ctx.ws.writes).toContainEqual({ path: PROMPTS, action: "update" });
+    run();
+    const again = run();
+    expect(consumerRegion()).toContain(NEW_ROW);
+    expect(again.ctx.ws.writes).not.toContainEqual({ path: PROMPTS, action: "update" });
+    expect(again.logs.join("\n")).not.toContain("Model Overrides renamed");
+  });
+
+  it("leaves the old row alone when a row already names the new agent", () => {
+    seed(NEW_ROW.replace("openai/gpt-6.1-sol", "x/new"), OLD_ROW);
+    run();
+    expect(consumerRegion()).toContain(OLD_ROW);
+    expect(consumerRegion()).toContain(NEW_ROW.replace("openai/gpt-6.1-sol", "x/new"));
+  });
+
+  it("never touches a row inside the managed block, and does nothing without a Model Overrides section", () => {
+    fs.mkdirSync(".bkit", { recursive: true });
+    fs.writeFileSync(PROMPTS, "<!-- bkit:start -->\n" + OLD_ROW + "\n<!-- bkit:end -->\n", "utf-8");
+    const { logs } = run();
+    expect(logs.join("\n")).not.toContain("Model Overrides renamed");
+    expect(fs.readFileSync(PROMPTS, "utf-8")).not.toContain("bkit-build-plan-tasks` | openrouter");
   });
 });
 

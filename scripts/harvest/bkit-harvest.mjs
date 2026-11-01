@@ -85,7 +85,7 @@
  *   ci       one entry per close step that dispatched CI: {status, reason?, attempts}
  *   steps    total {n, totalMinutes, activeMinutes}, byStep {<step>: {n, totalMinutes,
  *            activeMinutes}}; a step's minutes run from the row before it that is not a mark row
- *            (`session`, `owner-pause`, `owner-answer`); time before the first step is in
+ *            (`session`, `owner-pause`, `owner-answer`, `test-run`); time before the first step is in
  *            time.totalMinutes only
  *   owner    waitBeforeMinutes (since the folder's previous run's last row; null for its first),
  *            total {stops, minutes}, stops [{minutes, open, reason}]: one stop per `owner-pause`
@@ -1424,7 +1424,7 @@ export function buildFacts(run, dir, isLastBuild, window) {
     gapsRemediate,
     ...(hol ? { holistic: { verdict: hol.verdict ?? null, failures: hol.failures ?? null } } : {}),
     ...(ch ? { challenge: { verdict: ch.verdict ?? null, findings } } : {}),
-    // Filled from the row's steps block: build.redTests = steps.byStep["build-task-red"].n.
+    // Filled from the row's steps block: build.redTests = the build-task-red (older runs) and build-tests-red rows.
     redTests: 0,
   };
 }
@@ -1476,7 +1476,14 @@ export function endingOf(run, dir, ordinal) {
  * it that is not one of these. A copy of the engine's `MARK_ROWS`
  * (`.bkit/core/engine/commands/workflow/run-facts.ts`); a test holds the two equal.
  */
-export const MARK_ROWS = new Set(["session", "owner-pause", "owner-answer"]);
+export const MARK_ROWS = new Set([
+  "session",
+  "owner-pause",
+  "owner-answer",
+  "test-run",
+  "engine-call",
+  "completeness",
+]);
 
 /** A run row's key: `<fid fp>:<workflow>:<start>`. */
 const runKey = (slug, fid, workflow, start) =>
@@ -1657,7 +1664,8 @@ export function runRows(dir, repo, history, activity = () => null, usage = () =>
     let build;
     if (run.workflow === "build") {
       build = buildFacts(run, dir, run === lastOf("build"), window);
-      build.redTests = steps.byStep["build-task-red"]?.n ?? 0;
+      build.redTests =
+        (steps.byStep["build-task-red"]?.n ?? 0) + (steps.byStep["build-tests-red"]?.n ?? 0);
     }
     return {
       schema: SCHEMA,
@@ -2356,7 +2364,11 @@ export function validateTotals(row) {
   }
   const b = row.build;
   if (b && "redTests" in b && st?.byStep)
-    same("build.redTests", b.redTests, st.byStep["build-task-red"]?.n ?? 0);
+    same(
+      "build.redTests",
+      b.redTests,
+      (st.byStep["build-task-red"]?.n ?? 0) + (st.byStep["build-tests-red"]?.n ?? 0),
+    );
   const f = b?.challenge?.findings;
   if (f) same("build.challenge.findings.total", f.total, f.CRITICAL + f.HIGH + f.MEDIUM + f.LOW);
 

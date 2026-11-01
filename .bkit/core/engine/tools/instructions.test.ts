@@ -21,6 +21,7 @@ import * as path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { loadFactor } from "../../../../vitest.timeout-budget";
 import {
   NEAR_COPY,
   SHARED_MIN,
@@ -46,6 +47,12 @@ import {
   type Surface,
   type CorpusFile,
 } from "./instructions";
+
+/**
+ * The whole-corpus cases' time limit: a 60s base for a CPU-bound scan of every agent-read
+ * file, scaled by the load factor the tier budget uses (1 on CI).
+ */
+const CORPUS_CASE = { timeout: Math.ceil(60_000 * loadFactor()) };
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const STORE = fs.readFileSync(path.join(REPO_ROOT, ".bkit/instructions.md"), "utf-8");
@@ -150,7 +157,7 @@ function underusedClauseNames(): string[] {
 describe("the corpus matches the instructions store", () => {
   it(
     "finds prompts, workflows, both rules files, and every audit template with its adopted copy",
-    { timeout: 60_000 },
+    CORPUS_CASE,
     () => {
       // Asserted before any loop: an empty glob would otherwise pass everything.
       const by = (s: string) => CORPUS.filter((f) => f.surface === s).length;
@@ -203,7 +210,7 @@ describe("the corpus matches the instructions store", () => {
     expect(poolOf("prompt")).toBe("prompt");
   });
 
-  it("has no findings", { timeout: 60_000 }, () => {
+  it("has no findings", CORPUS_CASE, () => {
     const findings = checkClauses(CLAUSES, CORPUS).map(formatFinding);
     expect(
       findings,
@@ -218,12 +225,12 @@ describe("the corpus matches the instructions store", () => {
     expect(checkRuleCopies(STORE, CORPUS)).toEqual([]);
   });
 
-  it("sync has nothing left to rewrite", { timeout: 60_000 }, () => {
+  it("sync has nothing left to rewrite", CORPUS_CASE, () => {
     expect([...syncClauses(CLAUSES, CORPUS).keys()]).toEqual([]);
     expect(syncStore(STORE, CORPUS) === STORE, "run pnpm instructions:sync").toBe(true);
   });
 
-  it("every clause reaches the cut-off of one surface it applies to", { timeout: 60_000 }, () => {
+  it("every clause reaches the cut-off of one surface it applies to", CORPUS_CASE, () => {
     // The cut-off works both ways: a clause used by fewer files belongs back in
     // those files, not in the store.
     expect(underusedClauseNames()).toEqual([]);

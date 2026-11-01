@@ -80,12 +80,12 @@ Sync, push, land and rebase branches; stamp and read a doc's base-commit anchor.
 <!-- prettier-ignore -->
 | Verb | Use | Flags | What it does |
 | --- | --- | --- | --- |
-| `sync` | workflow | `--head` `--merge-docs` | Fetch origin/dev; report whether it is an ancestor of HEAD (Path A/B) and how far docs/ is behind; optionally merge it in. |
+| `sync` | workflow | `--head` `--merge` `--merge-docs` `--fid` `--file` `--sentinel` | Fetch origin/dev; report whether it is an ancestor of HEAD (Path A/B) and how far docs/ and the ledgers are behind; optionally merge it in. |
 | `push` | workflow | **`--mode`** `--set-upstream` `--ahead-of` `--commit` `--label` `--file` `--workflow` `--require-ci` `--open-pr` `--fid` | Push the current branch with exactly one git push: plain for dev/main, --force-with-lease otherwise. |
 | `fast-forward` | workflow | **`--onto`** | Fetch a remote branch and fast-forward the checkout onto it; refuse when diverged. |
 | `scan-diff` | by hand | **`--base`** `--paths` `--marker` `--code` `--disabled-tests` `--expect-none` | Exit 0 when the branch's diff from --base matches (paths, an added marker line, a source change, or a disabled test); 1 when not — --disabled-tests turns that round: 1 when a test was disabled or lost an assertion, 0 when none was. |
 | `force-build` | workflow | **`--fid`** **`--file`** **`--workflow`** `--label` `--open-pr` `--title-set` | Force a full CI build: put [force build] on the open PR's title, then push an empty marker commit (once per run). |
-| `rebase` | workflow | `--log-file` `--sentinel` `--hand-resolve` | Drive a rebase to completion, auto-resolving ledger (union) and lockfile (regenerate) conflicts; refuse and abort on anything else, or with --hand-resolve leave it conflicted and the rebase in progress. |
+| `rebase` | workflow | `--log-file` `--sentinel` `--file` | Drive a rebase to completion, auto-resolving ledger (union) and lockfile (regenerate) conflicts; refuse and abort on anything else. |
 | `sync-dev` | workflow | — | After a merge, fast-forward local dev to origin/dev without checking it out or pushing; frozen install when the main checkout is on dev and moved. |
 | `land` | workflow | **`--workflow`** **`--fid`** `--month` `--token` `--issue` `--branch` `--pr` `--merged-sha` | Design / plan close: squash the branch onto origin/dev in a throwaway worktree and push it as dev (retrying with backoff when dev moved), else the PR squash-merge; then audit it, fast-forward local dev on a laptop and release the lock. |
 | `anchor-stamp` | workflow | **`--file`** **`--base-sha`** `--base-ref` `--design` | Put a <!-- bkit:anchor --> block recording the base commit and bkit release on top of a design/plan doc or audit report (idempotent). |
@@ -111,8 +111,18 @@ Gates CI and the git hooks run.
 | `slop` | by hand | `--base` | Fail when the working tree adds or worsens slop on net against a base ref. |
 | `prose` | by hand | `--glob` | Run Vale over the markdown files the globs select; fail when Vale or required styles are unavailable. |
 | `skip-token` | by hand | `--ref` | Whether a commit message carries a GitHub skip-CI token ([skip ci] and kin). |
-| `min-push` | by hand | `--ref` `--base` | Exit 0 when every file a push changes matches bkit.testing.minPushPaths (the pre-push light gate). |
+| `min-push` | by hand | `--ref` `--base` | Exit 0 when every file a push changes is one bkit writes or bkit.testing.minPushPaths / ciSkipPaths adds (the pre-push light gate). |
+| `bookkeeping-push` | by hand | **`--from`** `--to` `--branch` | Exit 0 when a feature-branch push adds bookkeeping only on top of the remote head (ship's --scope=pr allow-list). |
 | `pins` | by hand | `--file` | Download each *_VERSION + *_SHA256 pinned tool in the files and fail when a hash differs. |
+
+### `completeness`
+
+Check a run for missing steps and missing bkit commands.
+
+<!-- prettier-ignore -->
+| Verb | Use | Flags | What it does |
+| --- | --- | --- | --- |
+| `check` | by hand | **`--file`** `--workflow` | Report the steps and bkit commands a run is missing, from its status.jsonl and the workflow markdown; advisory, always exits 0. |
 
 ### `context`
 
@@ -125,7 +135,7 @@ Clamp context artifacts; scan ledgers; write the run's diff and a build group's 
 | `clamp-log` | workflow | `--log` `--fid` `--step` `--attempt` `--reset` | Read a step's clamp records (the status row's clamped array), or reset the log. |
 | `ledger-scan` | workflow | **`--terms`** **`--source`** **`--artifact`** `--log` `--fid` `--step` `--attempt` `--reset-log` | Write a ledger's lines matching query terms, strongest first, then clamp (ledger profile). |
 | `diff` | workflow | **`--artifact`** `--base` `--log` `--fid` `--step` `--attempt` `--reset-log` | Write the run's diff ({base}...HEAD, docs/plans/** excluded) as one artifact — whole, or a per-file budget past the guard — and print its numbers. |
-| `brief` | workflow | **`--plan`** `--group` `--next` **`--dir`** `--file` `--note-file` | Write one group's brief (why and what, where it fits, its open task blocks, the earlier tasks they depend on, the Reuse Inventory rows and Architecture entries for their files, deviations) as build-brief-{group}-{n}.md, and print only its path and sizes. |
+| `brief` | workflow | **`--plan`** `--group` `--next` **`--dir`** `--tests-only` `--file` `--note-file` | Write one group's brief (why and what, where it fits, its open task blocks, the earlier tasks they depend on, the Reuse Inventory rows and Architecture entries for their files, deviations) as build-brief-{group}-{n}.md, and print only its path and sizes; --tests-only writes the tests step's brief as build-brief-tests-{group}-{n}.md, with the Derived Test Matrix rows for the group's tests in place of the inventory and architecture entries. |
 | `list-blocks` | by hand | — | Enumerate the consumer's context-fetch blocks and narrate coverage per context. |
 | `provision` | by hand | — | Run each context-fetch:provision recipe below bkit:end on its own and list the failed ones in .bkit/.unavailable. |
 | `run-block` | workflow | **`--idx`** **`--script`** **`--fid`** **`--month`** `--attempt` `--file` | Run one customised block; write its output fenced (clamped first), its skip line, or nothing. |
@@ -142,7 +152,7 @@ Attempt counters derived from status.jsonl, and the ask points' limits.
 | `derive` | workflow | **`--file`** **`--workflow`** **`--step`** `--group` **`--position`** `--all-runs` | Count a step's DONE rows in the active run, at one of three positions. |
 | `run` | workflow | **`--file`** **`--workflow`** | Which run of the workflow this invocation is (1-based; a resume keeps its number). |
 | `route` | workflow | **`--name`** `--value` `--of` `--rows` `--file` `--workflow` `--group` `--all-runs` `--max` `--point` `--continue` `--exceeded` | Compare a counter to its max: exit 0 continue, exit 1 exceeded; with --point, also whether to ask. |
-| `max` | workflow | `--point` | The ask points' limits and ask settings: one by --point, or all. |
+| `max` | workflow | `--point` `--file` `--workflow` | The ask points' limits and ask settings: one by --point, or all. |
 | `progress` | workflow | **`--file`** **`--workflow`** **`--check`** **`--fix`** `--group` | Progress report for a fix loop in the active run: counts per round, code change, strategy, trend. |
 | `rows` | workflow | **`--file`** **`--workflow`** **`--type`** **`--position`** | Count rows of one audit type in the active run (since its workflow-started row). |
 
@@ -332,7 +342,7 @@ Write a step's status row, finish a step in one call, read a verdict header, che
 | Verb | Use | Flags | What it does |
 | --- | --- | --- | --- |
 | `done` | workflow | **`--file`** **`--workflow`** **`--step`** `--status` `--verdict` `--agent` `--allowed` `--failures` `--attempt` `--group` `--strategy` `--artifact` `--field` `--parent-sha` `--commit` `--message` | Append a step-done row and commit it (parentSha captured first). |
-| `finish` | workflow | **`--file`** **`--workflow`** **`--step`** `--artifact` `--optional-artifact` `--agent` `--verdict` `--allowed` `--failures` `--attempt` `--attempt-of` `--count-field` `--group` `--strategy` `--scope` `--field` `--clamp-log` `--docs-only` `--parent-sha` `--commit` `--message` `--done-fallback` `--verbose-ci-local` `--number` `--title` `--post` `--group-count` `--link-ref` `--tree` `--owner-repo` `--comment-body` `--comment-field` | End a step: read the verdict header(s), derive the attempt, check the gate, write the row, commit, print the tracker comment. |
+| `finish` | workflow | **`--file`** **`--workflow`** **`--step`** `--artifact` `--optional-artifact` `--agent` `--verdict` `--allowed` `--failures` `--attempt` `--attempt-of` `--count-field` `--group` `--strategy` `--scope` `--field` `--clamp-log` `--docs-only` `--plan` `--parent-sha` `--commit` `--message` `--done-fallback` `--verbose-ci-local` `--number` `--title` `--post` `--group-count` `--link-ref` `--tree` `--owner-repo` `--comment-body` `--comment-field` | End a step: read the verdict header(s), derive the attempt, check the gate, write the row, commit, print the tracker comment. |
 | `verdict` | by hand | **`--file`** `--agent` `--allowed` `--field` | Read an artifact's header down to <!-- verdict:end -->. |
 | `gate` | workflow | `--file` `--ref` **`--workflow`** **`--step`** `--group` `--attempt` `--attempt-of` `--artifact` `--verdict-required` `--agent` `--allowed` `--placeholder` `--fid` `--issue` `--month` `--token` | Mechanical gate checks for one step: placeholders, FID, lock, artifacts, verdict, status row (with its attempt / strategy / scope where the step writes them). |
 | `stub` | workflow | **`--from`** **`--to`** `--strip-header` | Seed a versioned artifact: copy the prior version, then put a PENDING verdict header on top. |
@@ -355,10 +365,11 @@ Run the deepest declared local gate, or one test file to record a red and audit 
 <!-- prettier-ignore -->
 | Verb | Use | Flags | What it does |
 | --- | --- | --- | --- |
-| `run` | by hand | **`--gate`** **`--log`** `--tail` `--artifact` `--fid` `--step` `--attempt` | Run the first declared --gate; exit 0 PASS, 1 FAIL, 4 could not run. |
-| `red` | workflow | **`--file`** **`--workflow`** `--group` **`--task`** **`--test`** **`--name`** **`--log`** | Lint a task's new test with bkit:lint:file when declared, then run it before its code exists; exit 0 red recorded, 1 not a red (the test failed lint, or the named test did not run, passed, or was skipped). |
-| `green` | workflow | **`--file`** **`--workflow`** `--group` **`--plan`** **`--log`** | Audit a plan's test-first evidence (a red per TEST FIRST test recorded before the task's code commit, or its red run already passing on another task's overlapping code; the test's own lines and the code it runs unchanged since; the named test passing now); exit 0 no gaps, 1 gaps or a plan with no task markers. |
-| `plan-check` | by hand | **`--plan`** `--existence` **`--log`** | Check a plan's group and task blocks: the block format, DONE WHEN and TEST FIRST on every task, DEPENDS ON order, the caps from package.json `bkit.workflows.tasks` (defaults: 3 tasks and 15 TEST FIRST tests per group; 10 tests across 3 test files per task), a Reuse Inventory NEW row per CREATE file, a Supersession Inventory row per DELETE, a `Task` on every Derived Test Matrix row and a row per test-bearing task, and that each READ / UPDATE / DELETE file and symbol exists; exit 0 no problems, 1 refused. |
+| `changed` | by hand | `--base` `--fallback` | Check only the files changed since --base: run `bkit:gate:changed` with them as arguments, else the --fallback gate; exit 0 PASS or nothing changed, 1 FAIL, 4 could not run. |
+| `run` | by hand | **`--gate`** **`--log`** `--tail` `--artifact` `--fid` `--step` `--attempt` `--file` `--workflow` | Run the first declared --gate, and with --file append a test-run status row for the run; exit 0 PASS, 1 FAIL, 4 could not run. |
+| `red` | workflow | **`--file`** **`--workflow`** **`--group`** **`--plan`** **`--log`** `--writer-log` | Run every TEST FIRST test of one group's open tasks before any task code exists, and write one build-tests-red row holding a state and blob per planned test; a test an earlier row of the group proved red, its file unchanged since, is not run again. Exit 0 every test red, 1 a gap (a test passing, absent from its report, failing lint, or its file missing), 3 bkit:test:file undeclared (blobs recorded, nothing ran), 4 a script could not run. |
+| `green` | workflow | **`--file`** **`--workflow`** `--group` **`--plan`** **`--log`** | Audit a plan's test-first evidence (each TEST FIRST test red at its group's tests step, by the build-tests-red row, or accepted there as passing before any task code; the named test passing now); exit 0 no gaps, 1 gaps or a plan with no task markers. |
+| `plan-check` | by hand | **`--plan`** `--existence` **`--log`** | Check a plan's group and task blocks: the block format, DONE WHEN and TEST FIRST on every task, DEPENDS ON order, the caps from package.json `bkit.workflows.tasks` (defaults: 5 tasks and 25 TEST FIRST tests per group; 10 tests across 3 test files per task), a Reuse Inventory NEW row per CREATE file, a Supersession Inventory row per DELETE, a `Task` on every Derived Test Matrix row and a row per test-bearing task, and that each READ / UPDATE / DELETE file and symbol exists; exit 0 no problems, 1 refused. |
 
 ### `workflows`
 

@@ -24,7 +24,9 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { appendLine, fold, lastRun, runNumber, runOrStepField, statusTimestamp, } from "../../ledgers/status.js";
 import { foldFrom, normalize, resolveRepoSlug, workflowTelemetry, } from "../../ledgers/telemetry.js";
-import { readBkitConfig } from "../../shared/settings.js";
+import { check as checkCompleteness, deriveContract, parseRows, readCompleteness, } from "../../checks/status-holes.js";
+import { getWorkflowsRoot } from "../../shared/package-roots.js";
+import { ASK_POINTS, readBkitConfig } from "../../shared/settings.js";
 import { gradeCompliance } from "../comply.js";
 import { fetchDev, landDir, pushToDev } from "../land.js";
 import { CommandError, DEV, EXIT, git, isSharedBranch, parseJson, repoRoot, runGh, runGit, statusLocation, statusRelPath, } from "../lib.js";
@@ -158,19 +160,25 @@ function checkHeldLock(file, who) {
 // fail
 // ---------------------------------------------------------------------------
 /**
- * Abort a rebase left in progress in `tree`. `git rev-parse --git-path X` always
- * exits 0 (it only computes the path), so the directory's existence is the test.
+ * Abort a rebase or a merge left in progress in `tree` (ship Step 4 leaves a merge
+ * of origin/dev in progress for a hand resolution). `git rev-parse --git-path X`
+ * always exits 0 (it only computes the path), so the path's existence is the test.
  */
 function abortRebase(tree, log) {
-    const inProgress = ["rebase-merge", "rebase-apply"].some((name) => {
+    const present = (name) => {
         const p = git(tree, ["rev-parse", "--path-format=absolute", "--git-path", name]);
         return p !== null && fs.existsSync(p);
-    });
-    if (!inProgress)
+    };
+    const op = ["rebase-merge", "rebase-apply"].some(present)
+        ? "rebase"
+        : present("MERGE_HEAD")
+            ? "merge"
+            : null;
+    if (op === null)
         return false;
-    const res = runGit(tree, ["rebase", "--abort"]);
+    const res = runGit(tree, [op, "--abort"]);
     if (!res.ok)
-        log(`git rebase --abort failed in ${tree}: ${res.stderr}`);
+        log(`git ${op} --abort failed in ${tree}: ${res.stderr}`);
     return res.ok;
 }
 /** The workflow-failed state: row, rebase abort, lock release, sentinels. */
@@ -818,6 +826,83 @@ function appendStats(tree, rows, log) {
         return false;
     }
 }
+/**
+ * The rows of `workflow`'s `nth` run in `file` (the last when omitted), in time order;
+ * unreadable lines skipped. Runs split as `fold` splits them: rows ordered by `at`, file
+ * order on a tie, each new `workflow-started` opening a run, so a previous run's rows in
+ * the same second as this run's start stay with the previous run.
+ */
+function runRowsOf(file, workflow, nth = -1) {
+    const at = (r) => (typeof r["at"] === "string" ? r["at"] : "");
+    const ordered = parseRows(fs.readFileSync(file, "utf-8"))
+        .map((r, i) => ({ r, i }))
+        .filter(({ r }) => r.workflow === workflow)
+        .sort((a, b) => (at(a.r) < at(b.r) ? -1 : at(a.r) > at(b.r) ? 1 : a.i - b.i))
+        .map(({ r }) => r);
+    const runs = [];
+    const starts = new Set();
+    for (const r of ordered) {
+        if (r.type === "workflow-started" && !starts.has(at(r))) {
+            starts.add(at(r));
+            runs.push([]);
+        }
+        else if (runs.length === 0 && r.type === "step-done") {
+            runs.push([]);
+        }
+        runs.at(-1)?.push(r);
+    }
+    return runs.at(nth) ?? [];
+}
+/** The contract of `workflow`, derived from its shipped markdown rendered for the tracker `cwd` is configured with. */
+const contractOf = (workflow, cwd) => deriveContract(fs.readFileSync(path.join(getWorkflowsRoot(), `bkit-${workflow}.md`), "utf-8"), workflow, readIssueTracker(cwd));
+/**
+ * Appends the close's `completeness` row for `workflow`'s last run. Advisory:
+ * a failure of the check or of the write is logged in one line and never fails the close.
+ * `journalSuspect` is set here only: the closing engine journals itself.
+ */
+function writeCompletenessRow(file, workflow, parentSha, log) {
+    try {
+        const verdict = checkCompleteness(runRowsOf(file, workflow), contractOf(workflow, path.dirname(file)), {
+            journalSuspect: true,
+        });
+        const row = { type: "completeness", ...verdict, at: statusTimestamp(), parentSha };
+        fs.appendFileSync(file, appendLine(row));
+        if (verdict.journalSuspect) {
+            log("[bkit-telemetry] journal looks dead at close: no engine-call rows for this run; the completeness verdict cannot be trusted");
+        }
+    }
+    catch (err) {
+        // The check is advisory: report the failure and close without the row.
+        log(`[bkit-telemetry] completeness row not written: ${err.message}`);
+    }
+}
+/**
+ * The warning line for the run before the one being started (or resumed) when that run
+ * was holey; `null` when it is clean, absent or unreadable. Never throws.
+ */
+function previousRunWarning(file, resumed) {
+    try {
+        const events = readStatusEvents(file);
+        const runs = fold(events);
+        const at = runs.length - (resumed ? 2 : 1);
+        const prev = runs[at];
+        if (prev === undefined)
+            return null;
+        const number = runs.slice(0, at + 1).filter((r) => r.workflow === prev.workflow).length;
+        const own = runRowsOf(file, prev.workflow, number - 1);
+        const { verdict } = readCompleteness(own, contractOf(prev.workflow, path.dirname(file)));
+        if (!verdict.holey)
+            return null;
+        const closed = own.filter((e) => e.type === "workflow-done").at(-1)?.["at"] ?? "never";
+        return (`[bkit-workflows] previous run (${prev.workflow} run ${number}, closed ${closed}) was incomplete: ` +
+            `${verdict.evidenceHoles.length} evidence hole(s), ${verdict.stepHoles.length} step hole(s); ` +
+            `see: bkit completeness check --workflow=${prev.workflow} --file=${path.relative(process.cwd(), file) || file}`);
+    }
+    catch {
+        // Advisory: an unreadable run or checker failure degrades to no warning.
+        return null;
+    }
+}
 /** Markdown link per feature doc and per log of this workflow, as on `ref`. */
 export function artifactLinks(root, ref, month, fid, workflow, ownerRepo) {
     const list = (dir) => (git(root, ["ls-tree", "-r", "--name-only", ref, "--", dir]) ?? "").split("\n").filter(Boolean);
@@ -889,6 +974,7 @@ export function closeWorkflow(cwd, o, log) {
     if (o.recordStep === true) {
         writeStepRow(where.tree, { file: where.status, workflow, step, artifacts: [], commit: "none" }, log);
     }
+    writeCompletenessRow(where.status, workflow, parentSha, log);
     const endAt = statusTimestamp();
     const ending = o.ending ?? "done";
     const row = {
@@ -911,7 +997,6 @@ export function closeWorkflow(cwd, o, log) {
         ? runLines(where.tree, `${o.squashSha}^`, o.squashSha)
         : runLines(where.tree, base, parentSha);
     const startedRows = new Set(events.filter((e) => e.type === "workflow-started" && e.workflow === workflow).map((e) => e.at)).size;
-    const logDir = path.join(where.tree, logDirRel(where.month, o.fid));
     const by = { workflow, step };
     const counterRow = {
         kind: "counter",
@@ -952,7 +1037,7 @@ export function closeWorkflow(cwd, o, log) {
         ...(plan === undefined ? {} : { plan }),
         ...(workflow === "build"
             ? {
-                build: buildBlock(runRowsOf, logDir, planFiles(where.tree, where.month, o.fid), runDeferrals()),
+                build: buildBlock(runRowsOf, planFiles(where.tree, where.month, o.fid), runDeferrals()),
             }
             : {}),
         ...(context === undefined ? {} : { context }),
@@ -1593,7 +1678,7 @@ export const workflowsCommand = {
                 lock: "{path, month, token, reclaimed} of the lock taken, or {path} with --lock-held",
                 file: "absolute path to status.jsonl",
                 resumed: "the latest run was this workflow, IN_PROGRESS: no new row",
-                row: "the appended workflow-started row, or null when resuming",
+                row: "the appended workflow-started row, with `limits` (the workflow's ask points from bkit.workflows, frozen for the run), or null when resuming",
                 run: "which run of the workflow this is (1-based)",
                 lastDoneStep: "the current run's last DONE step: resume after it (null on a new run)",
                 openDecision: "{file, decision, question, from, pauseStep, group, verifyAttempt, testAttempt, plan} of the current run's highest {workflow}-decision-{run}-{N}.md holding Status: OPEN, else null",
@@ -1658,13 +1743,20 @@ export const workflowsCommand = {
                 }
                 const latest = fold(readStatusEvents(file)).at(-1);
                 const resumed = latest?.workflow === workflow && latest.status === "IN_PROGRESS";
+                const holeyWarning = previousRunWarning(file, resumed);
+                if (holeyWarning !== null)
+                    ctx.log(holeyWarning);
                 let row = null;
                 if (!resumed) {
+                    // The run's limits, frozen here: `counters route` reads them for the whole run.
+                    const asks = readBkitConfig(where.tree).asks;
+                    const limits = Object.fromEntries(ASK_POINTS.filter((p) => p.startsWith(`${workflow}.`)).map((p) => [p, asks[p]]));
                     row = {
                         type: "workflow-started",
                         workflow,
                         at: statusTimestamp(),
                         parentSha: headSha(path.dirname(file)),
+                        ...(Object.keys(limits).length === 0 ? {} : { limits }),
                     };
                     fs.appendFileSync(file, appendLine(row));
                 }
@@ -1745,7 +1837,7 @@ export const workflowsCommand = {
             ],
             output: {
                 row: "the appended workflow-failed row, or null (no --token, or no status.jsonl)",
-                rebaseAborted: "an in-progress rebase was found and aborted",
+                rebaseAborted: "an in-progress rebase or merge was found and aborted",
                 lock: "{path, existed, released, heldBy}: heldBy is another owner's lock line, left in place; null without --token",
                 sentinels: "[{name, path}] sentinels that existed before this call removed them",
                 handoverNeeded: "--max-exceeded, a sentinel existed, or a debug run in SOAK mode: write the abort handover",

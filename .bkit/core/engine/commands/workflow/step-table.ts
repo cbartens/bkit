@@ -72,14 +72,16 @@ export const WORKFLOW_STEPS: Readonly<Record<ResumableWorkflow, readonly Workflo
       step: "build-group-start",
       number: 7,
       title: "Plan Execute",
-      resumeAt: "build-plan-execute",
+      resumeAt: "build-plan-tasks",
     },
+    // The group's tests are written before its code: Step 7 resumes at the tests step.
+    { step: "build-plan-tests", number: 7, title: "Plan Execute", resumeAt: "build-plan-tests" },
     // A handover stops a group part-done: Step 7 runs again with a fresh brief.
     {
-      step: "build-plan-execute",
+      step: "build-plan-tasks",
       number: 7,
       title: "Plan Execute",
-      resumeOnVerdict: { HANDOVER: "build-plan-execute" },
+      resumeOnVerdict: { HANDOVER: "build-plan-tasks" },
     },
     // Verify, its group gate and the gaps fix route on the verify verdict: Step 8 again.
     { step: "build-plan-verify", number: 8, title: "Plan Verify", resumeAt: "build-plan-verify" },
@@ -211,7 +213,7 @@ export const DECISION_ROUTES: Readonly<
   build: {
     step: "build-decision",
     routes: {
-      fix: "build-plan-execute",
+      fix: "build-plan-tasks",
       verify: "build-plan-verify",
       tests: "build-run-tests",
       // Try again: a verify loop goes on to its gaps fix (Step 9), a tests loop to Step 13.
@@ -243,7 +245,7 @@ export interface ResumePoint {
   challengeDone: boolean | null;
 }
 
-const CHALLENGE_ROUTES = new Set(["build-plan-execute", "build-decision", "build-run-tests"]);
+const CHALLENGE_ROUTES = new Set(["build-plan-tasks", "build-decision", "build-run-tests"]);
 const roundOf = (s: WorkflowRun["steps"][number]): number => {
   const round = Number((s as { round?: unknown }).round);
   return Number.isInteger(round) && round >= 1 ? round : 1;
@@ -266,7 +268,7 @@ function challengeDone(steps: WorkflowRun["steps"], max: number): boolean {
 /**
  * The build challenge's round, read from the run's `build-challenge` rows (each carries the
  * `round` it ran as; a row without one counts as round 1) and the step row after each: the
- * next of `build-plan-execute` (route fix), `build-decision` (route pause) or
+ * next of `build-plan-tasks` (route fix), `build-decision` (route pause) or
  * `build-run-tests` (route none). A challenge row with no such row after it has not merged
  * yet, so the run keeps that row's round. Otherwise one past the highest round whose merge
  * wrote tasks (route fix or pause), or that ran past round 1; at most `max`

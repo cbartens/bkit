@@ -71,6 +71,8 @@ tools:
    - Mock-only coverage: a task crossing an external boundary (DB, API, model, network, migration) whose `DONE WHEN` lacks non-mock boundary tests → `CRITICAL`. A non-mock test reaches the real boundary and asserts a ground-truth signal, with `@live` for an external or deployed boundary.
    - Unpassable checks: a `TEST FIRST` or `DONE WHEN` check that the current code cannot pass (a value always emitted, a shape never returned) and that no task changes → `CRITICAL`. Cite the ruling `file:line`.
    - Tests that cannot fail: a `TEST FIRST` test that already passes, read against the current code or the code an earlier task lands → `CRITICAL`. A task that adds behaviour names a new test for it, never an existing passing one. Cite the code that satisfies the test as `file:line`.
+   - Fake data: a planned test whose faked or fixture value differs from what the code it stands in for produces → `CRITICAL`. Read the code that produces each value the test checks or fakes, and cite it as `file:line`.
+   - Baseline tests: a `TEST FIRST` test that only compares output against a regenerated baseline (a snapshot, a coverage list, a generated doc) → `CRITICAL`. Regenerating the baseline makes it pass, so it cannot fail first.
 7. Design-coverage: **If** a design artifact exists (`docs/plans/{YYYYMM}/{FID}-design.md`, or one the input references):
    - Each design section that names a touched surface needs a plan task with regression-test coverage, or an out-of-scope note, declared non-goals aside.
    - A touched surface parked out of scope or missing → `CRITICAL`.
@@ -79,8 +81,10 @@ tools:
    - Search those rows and `related-failures.md` for past regressions and known failures in the touched surfaces.
    - A plan task that re-enters a known-broken pattern, or touches a surface with an unacknowledged known failure or without acknowledging its prior fixes → `CRITICAL`.
 9. Sort findings into the three categories `CRITICAL`, `OPTIONAL` and `OUT OF SCOPE`.
-10. Set `Failures` in **Create** with `Edit` = the number of `CRITICAL` findings, counting only complete ones.
-11. Set `Verdict` in **Create** with `Edit`:
+10. Mark each `CRITICAL` finding `(plan edit)` when an edit to the plan resolves it, or `(design change)` when only a change to the source design resolves it.
+11. Set `Failures` in **Create** with `Edit` = the number of `CRITICAL` findings, counting only complete ones.
+12. Set `Redesign` in **Create** with `Edit` = `true` when at least one `CRITICAL` finding is marked `(design change)`, and `false` otherwise.
+13. Set `Verdict` in **Create** with `Edit`:
     - `PASS` = no `CRITICAL` items.
     - `CONCERNS` = `CRITICAL` items flagged for orchestrator merge, and no `FAIL` condition holds.
     - `FAIL` = a `CRITICAL` finding names a regression vector that the source design itself requires and that no plan edit mitigates.
@@ -90,6 +94,7 @@ tools:
 ```markdown
 Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 Failures: <integer >= 0>
+Redesign: true | false
 
 <!-- verdict:end -->
 

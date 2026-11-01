@@ -28,7 +28,7 @@ Every task leaves a worktree, branch, stash or scratch directory behind, and rem
 
 **Anchor Standards:**
 
-- OpenSSF Scorecard checks; record the version run.
+- OpenSSF Scorecard checks; record the version.
 - OpenSSF OSPS Baseline, the version marked current.
 - Host branch rulesets (e.g., GitHub rulesets, GitLab protected branches).
 - Secret scanning push protection (e.g., GitHub secret scanning, GitLab secret push protection).

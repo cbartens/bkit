@@ -30,7 +30,7 @@ tools:
 - **Parallel run:** **If** Context indicates parallel run → do not reference other agents' outputs.
 - **Lens discipline:** Stay within the lens that your Process defines. A finding outside that lens is outside your remit.
 - **Output header:** Every line above `<!-- verdict:end -->` MUST stay machine-parseable.
-- **Acceptance Scenario:** `Narrative` and `Success Criteria` come word for word from the first source that has them: the design's `## Acceptance Scenario`, else the issue's change-shape fields (`.bkit/trackers.md` § Issue shapes), else, for an audit-only plan, the user or operator impact of the in-scope findings. With no source, both read `⚠️ MISSING: no design doc, no issue Narrative and no audit report — human must provide before plan proceeds`; NEVER invent them. `Narrative` is 1-2 sentences from the user's side: what they do and what they get back. `Success Criteria` are at most 5 measurable outcomes, not steps; an audit plan has one per in-scope finding id, from its `Expected`, with no cap. `Context & Goals` does not repeat them.
+- **Acceptance Scenario:** `Narrative` and `Success Criteria` come word for word from the first source that has them: the design's `Acceptance Scenario`, else the issue's change-shape fields (`.bkit/trackers.md` § Issue shapes), else, for an audit-only plan, the user or operator impact of the in-scope findings. With no source, both read `⚠️ MISSING: no design doc, no issue Narrative and no audit report — human must provide before plan proceeds`; NEVER invent them. `Narrative` is 1-2 sentences from the user's side: what they do and what they get back. `Success Criteria` are at most 5 measurable outcomes, not steps; an audit plan has one per in-scope finding id, from its `Expected`, with no cap. `Context & Goals` does not repeat them.
 - **Scenario detail:** `Process Sketch` restates the `Concrete Example` and `Edge Cases` as 3-7 `WHEN X → THEN Y` outcome lines, with no new examples. `Concrete Example` is one scenario: role, starting state, numbered steps, observable outcome. `Edge Cases` keep the design's Key Edge Cases, else the issue's rows, word for word, and add validation, error and boundary cases. `Derived Test Matrix` has one row per testable behaviour, each with a target file and a `Task` cell naming the one runbook task that lands its test; issue rows stay word for word, and each in-scope audit behaviour has a row.
 - **Open questions:** Each open question gives 2-3 options with their trade-offs as the lettered `Options: A) {option} — {trade-off} · B) …`, a `Recommended` naming the chosen letter and the default if unanswered; the design's options and recommendation carry forward where it already answered. Each assumption names what breaks if it is wrong.
 - **Out of Scope:** Plan work is in scope by default. An `Out of Scope` row is `Exempt` ONLY when no `Success Criteria`, `Acceptance Scenario`, `Derived Test Matrix` row or design item (non-goals aside) needs it, and it says why and where the item belongs. Required work parked there is a `Blocking` deferral and belongs in the runbook. Each `Exempt` row has a matching `docs/deferrals.jsonl` row; an audit `LOW` finding left out is an `Exempt` row.
@@ -81,10 +81,13 @@ tools:
     - Each dependency the design implies (e.g. "X depends on the migration in §Y") appears as a task dependency.
     - A missing dependency → `CRITICAL`.
 12. Cycle detection: tasks that consume each other's artefacts → `CRITICAL`.
-13. `Suggested Scope Expansion`: list the `related-*.md` items that overlap the plan's surfaces as candidates, per **Suggested Scope Expansion** above. They are advisory and never `CRITICAL`.
-14. Sort findings into the three categories `CRITICAL`, `OPTIONAL` and `OUT OF SCOPE`.
-15. Set `Failures` in **Create** with `Edit` = the number of `CRITICAL` findings, counting only complete ones.
-16. Set `Verdict` in **Create** with `Edit`:
+13. Group hand-off: a test that a group's tasks leave failing, which only a later group's task makes pass → `CRITICAL` (move the fixing task into that group, or the test into the later group). The build checks each group before it starts the next, so every group ends with its tests passing.
+14. `Suggested Scope Expansion`: list the `related-*.md` items that overlap the plan's surfaces as candidates, per **Suggested Scope Expansion** above. They are advisory and never `CRITICAL`.
+15. Sort findings into the three categories `CRITICAL`, `OPTIONAL` and `OUT OF SCOPE`.
+16. Mark each `CRITICAL` finding `(plan edit)` when an edit to the plan resolves it, or `(design change)` when only a change to the source design resolves it.
+17. Set `Failures` in **Create** with `Edit` = the number of `CRITICAL` findings, counting only complete ones.
+18. Set `Redesign` in **Create** with `Edit` = `true` when at least one `CRITICAL` finding is marked `(design change)`, and `false` otherwise.
+19. Set `Verdict` in **Create** with `Edit`:
     - `PASS` = no `CRITICAL` items.
     - `CONCERNS` = `CRITICAL` items flagged for orchestrator merge, and no `FAIL` condition holds.
     - `FAIL` = a `CRITICAL` finding names a task-order cycle that no reorder resolves, **or** a plan that contradicts its source design.
@@ -94,6 +97,7 @@ tools:
 ```markdown
 Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 Failures: <integer >= 0>
+Redesign: true | false
 
 <!-- verdict:end -->
 

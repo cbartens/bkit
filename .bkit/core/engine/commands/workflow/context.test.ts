@@ -1668,9 +1668,9 @@ describe("bkit context brief", () => {
     fs.writeFileSync(plan, PLAN);
     const logs = path.join(dir, "logs");
     fs.mkdirSync(logs, { recursive: true });
-    fs.writeFileSync(path.join(logs, "build-plan-execute-1-log.md"), "DONE — TASK 2\n");
+    fs.writeFileSync(path.join(logs, "build-plan-tasks-1-log.md"), "DONE — TASK 2\n");
     fs.writeFileSync(
-      path.join(logs, "build-plan-execute-2-log.md"),
+      path.join(logs, "build-plan-tasks-2-log.md"),
       "notes\nDONE — TASK 4: validated\n",
     );
     return { dir, plan, logs };
@@ -1696,13 +1696,24 @@ describe("bkit context brief", () => {
     expect(again.json.artifact).toBe(path.join(logs, "build-brief-2-2.md"));
   });
 
+  it("brief --next reads a build-plan-execute-*-log.md written before the step rename", async () => {
+    const { dir, plan, logs } = setup("old-log-name");
+    fs.renameSync(
+      path.join(logs, "build-plan-tasks-2-log.md"),
+      path.join(logs, "build-plan-execute-2-log.md"),
+    );
+    const r = await run(["brief", `--plan=${plan}`, "--next", `--dir=${logs}`], dir);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ group: 2, tasks: [3, 5] });
+  });
+
   it("brief --next with every task done writes nothing and reports no group", async () => {
     const { dir, plan, logs } = setup("all-done");
     fs.writeFileSync(
-      path.join(logs, "build-plan-execute-2-log.md"),
+      path.join(logs, "build-plan-tasks-2-log.md"),
       "DONE — TASK 3\nDONE — TASK 4\nDONE — TASK 5\n",
     );
-    fs.writeFileSync(path.join(logs, "build-plan-execute-3-log.md"), "DONE — TASK 6\n");
+    fs.writeFileSync(path.join(logs, "build-plan-tasks-3-log.md"), "DONE — TASK 6\n");
     const r = await run(["brief", `--plan=${plan}`, "--next", `--dir=${logs}`], dir);
     expect(r.code).toBe(0);
     expect(r.json).toEqual({
@@ -1710,6 +1721,7 @@ describe("bkit context brief", () => {
       bytes: 0,
       group: null,
       tasks: [],
+      tests: 0,
       workBytes: 0,
       workCap: 8192,
     });
@@ -1751,29 +1763,6 @@ describe("bkit context brief", () => {
     expect(read(plain.json.artifact)).not.toContain("## Deviations");
   });
 
-  it("brief names a red already recorded for an open task", async () => {
-    const { dir, plan, logs } = setup("red");
-    const status = path.join(dir, "status.jsonl");
-    fs.writeFileSync(
-      status,
-      JSON.stringify({
-        type: "step-done",
-        workflow: "build",
-        step: "build-task-red",
-        task: 5,
-        test: "src/t5.test.ts",
-        testName: "logs the change",
-      }) + "\n",
-    );
-    const r = await run(
-      ["brief", `--plan=${plan}`, "--group=2", `--dir=${logs}`, `--file=${status}`],
-      dir,
-    );
-    expect(read(r.json.artifact)).toContain(
-      "TASK 5: red already recorded for `src/t5.test.ts` `logs the change` — test written and seen failing; code may be partly done in the files it names",
-    );
-  });
-
   it("brief prints path and sizes only", async () => {
     const { dir, plan, logs } = setup("stdout");
     const r = await run(["brief", `--plan=${plan}`, "--group=2", `--dir=${logs}`], dir);
@@ -1782,6 +1771,7 @@ describe("bkit context brief", () => {
       "bytes",
       "group",
       "tasks",
+      "tests",
       "workBytes",
       "workCap",
     ]);
@@ -1868,6 +1858,130 @@ describe("bkit context brief", () => {
     );
     expect(r.json.workBytes).toBeLessThanOrEqual(8192);
     expect(r.err).toBe("");
+  });
+
+  /** The sections plan with TEST FIRST tests on tasks 3 and 5 and a Derived Test Matrix. */
+  function setupWithTests(name: string) {
+    const s = setupWithSections(name, smallArch);
+    const withTests = (plan: string, task: number, tests: string[]) =>
+      plan.replace(
+        new RegExp(
+          `(- \\[ \\] \\*\\*TASK ${task}:\\*\\*[\\s\\S]*?)  - \\*\\*TEST FIRST:\\*\\* n/a — docs only`,
+        ),
+        `$1  - **TEST FIRST:**\n${tests.map((t) => `    - ${t} fails on the stub`).join("\n")}`,
+      );
+    const matrix = [
+      "## Derived Test Matrix",
+      "",
+      "| Test description | Type | Target file |",
+      "| --- | --- | --- |",
+      "| sets it | unit | `src/t3.test.ts` |",
+      "| logs it | unit | `src/t5.test.ts` |",
+      "| shows it | unit | `src/t6.test.ts` |",
+      "",
+      "## Reuse Inventory",
+    ].join("\n");
+    let plan = read(s.plan).replace("## Reuse Inventory", matrix);
+    plan = withTests(plan, 3, ["`src/t3.test.ts` `sets it`", "`src/t3.test.ts` `rejects bad`"]);
+    plan = withTests(plan, 5, ["`src/t5.test.ts` `logs it`"]);
+    fs.writeFileSync(s.plan, plan);
+    return s;
+  }
+  const testsOnly = (plan: string, logs: string, dir: string, extra: string[] = []) =>
+    run(["brief", `--plan=${plan}`, "--group=2", `--dir=${logs}`, "--tests-only", ...extra], dir);
+
+  it("--tests-only writes build-brief-tests-{group}-{n}.md with the open task blocks and no Reuse Inventory or Architecture entries", async () => {
+    const { dir, plan, logs } = setupWithTests("tests-only");
+    const r = await testsOnly(plan, logs, dir);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ group: 2, tasks: [3, 5], tests: 3 });
+    expect(r.json.artifact).toBe(path.join(logs, "build-brief-tests-2-1.md"));
+    const body = read(r.json.artifact);
+    expect(body).toContain("# Brief: group 2 — API (tests)");
+    expect(body).toContain("Widgets need a status the API can set.");
+    const work = body.split("## The work")[1]!;
+    expect(work).toContain("- [ ] **TASK 3:** Set the status");
+    expect(work).toContain("- [ ] **TASK 5:** Log the change");
+    expect(work).not.toContain("**TASK 4:**");
+    expect(work).not.toContain("### Reuse Inventory rows");
+    expect(work).not.toContain("### Architecture entries");
+    expect(work).not.toContain("left out");
+    // The tests briefs and the code briefs count separately.
+    expect((await testsOnly(plan, logs, dir)).json.artifact).toBe(
+      path.join(logs, "build-brief-tests-2-2.md"),
+    );
+    const code = await run(["brief", `--plan=${plan}`, "--group=2", `--dir=${logs}`], dir);
+    expect(code.json.artifact).toBe(path.join(logs, "build-brief-2-1.md"));
+    expect(read(code.json.artifact)).toContain("### Reuse Inventory rows");
+  });
+
+  it("--tests-only adds the Derived Test Matrix rows whose Target file a TEST FIRST line of the group names", async () => {
+    const { dir, plan, logs } = setupWithTests("matrix");
+    const work = read((await testsOnly(plan, logs, dir)).json.artifact).split("## The work")[1]!;
+    const rows = work.split("### Derived Test Matrix rows")[1]!;
+    expect(rows).toContain("| Test description | Type | Target file |");
+    expect(rows).toContain("| sets it | unit | `src/t3.test.ts` |");
+    expect(rows).toContain("| logs it | unit | `src/t5.test.ts` |");
+    expect(rows).not.toContain("src/t6.test.ts");
+  });
+
+  it("--tests-only --file leaves out a test a build-tests-red row of the group proved red, and a task with no test left", async () => {
+    const { dir, plan, logs } = setupWithTests("proven");
+    const status = path.join(logs, "status.jsonl");
+    const redRow = (tests: Array<[number, string, string, string]>) =>
+      fs.appendFileSync(
+        status,
+        `${JSON.stringify({
+          type: "step-done",
+          workflow: "build",
+          step: "build-tests-red",
+          status: "DONE",
+          at: "2026-11-01T05:00:00Z",
+          group: 2,
+          attempt: 1,
+          enforced: true,
+          tests: tests.map(([task, test, testName, state]) => ({
+            task,
+            test,
+            testName,
+            state,
+            blob: "0".repeat(40),
+          })),
+        })}\n`,
+      );
+    redRow([
+      [3, "src/t3.test.ts", "sets it", "red"],
+      [3, "src/t3.test.ts", "rejects bad", "vacuous"],
+      [5, "src/t5.test.ts", "logs it", "red-not-loaded"],
+    ]);
+    const r = await testsOnly(plan, logs, dir, [`--file=${status}`]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ group: 2, tasks: [3], tests: 1 });
+    const work = read(r.json.artifact).split("## The work")[1]!;
+    expect(work).toContain("**TASK 3:**");
+    expect(work).not.toContain("**TASK 5:**");
+    // Without --file every planned test is briefed.
+    expect((await testsOnly(plan, logs, dir)).json).toMatchObject({ tasks: [3, 5], tests: 3 });
+    // A later row proving the last test leaves nothing to brief.
+    redRow([[3, "src/t3.test.ts", "rejects bad", "red"]]);
+    const done = await testsOnly(plan, logs, dir, [`--file=${status}`]);
+    expect(done.json).toMatchObject({ artifact: null, tasks: [], tests: 0 });
+  });
+
+  it("--tests-only prints tests: 0 for a group with no planned test, and writes nothing", async () => {
+    const { dir, plan, logs } = setup("no-tests");
+    const r = await testsOnly(plan, logs, dir);
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({
+      artifact: null,
+      bytes: 0,
+      group: 2,
+      tasks: [],
+      tests: 0,
+      workBytes: 0,
+      workCap: 8192,
+    });
+    expect(fs.readdirSync(logs).some((f) => f.startsWith("build-brief-"))).toBe(false);
   });
 
   it("brief refuses a group the plan does not have", async () => {

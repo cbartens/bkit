@@ -302,6 +302,9 @@ describe(".husky/pre-push CI-suppressor guard", () => {
         'if [ "$*" = "-s bkit ci skip-token" ]; then',
         `  exec node ${JSON.stringify(path.join(REPO, "dist", "cli.js"))} ci skip-token`,
         "fi",
+        'case "$*" in "-s bkit ci bookkeeping-push "*)',
+        `  shift 2; exec node ${JSON.stringify(path.join(REPO, "dist", "cli.js"))} "$@" ;;`,
+        "esac",
         'case "$*" in *"ci min-push"*) exit 1 ;; esac',
         `echo "$*" >> "${tmp}/pnpm.log"`,
         "exit 0",
@@ -314,11 +317,22 @@ describe(".husky/pre-push CI-suppressor guard", () => {
   });
   afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
-  const pushWithHead = (hook: string, message: string) => {
+  /** Commit `files` (empty: an empty commit) under `message`, then push onto `remoteSha`. */
+  const pushWithHead = (
+    hook: string,
+    message: string,
+    files: Record<string, string> = {},
+    remoteSha = "0".repeat(40),
+  ) => {
+    for (const [rel, body] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(tmp, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmp, rel), body);
+      gitIn(tmp, "add", rel);
+    }
     gitIn(tmp, "commit", "-q", "--allow-empty", "-m", message);
     const result = spawnSync("sh", [path.join(REPO, hook)], {
       cwd: tmp,
-      input: `refs/heads/feat/1-x ${SHA} refs/heads/feat/1-x ${"0".repeat(40)}\n`,
+      input: `refs/heads/feat/1-x ${SHA} refs/heads/feat/1-x ${remoteSha}\n`,
       encoding: "utf-8",
       timeout: 20_000,
       env: { ...process.env, PATH: `${path.join(tmp, "bin")}:${process.env.PATH}` },
@@ -343,6 +357,40 @@ describe(".husky/pre-push CI-suppressor guard", () => {
       const r = pushWithHead(hook, "feat(1): change");
       expect(r.stderr).not.toContain("BLOCKED");
       expect(r.gates).toContain("bkit:gate:static-unit");
+    });
+
+    it(`${hook}: [skip ci] bookkeeping only on top of the remote head, open PR → allowed, gates run`, () => {
+      // CHANGELOG.md is bookkeeping only because the repo's package.json says so.
+      fs.writeFileSync(
+        path.join(tmp, "package.json"),
+        JSON.stringify({ bkit: { testing: { ciSkipPaths: ["CHANGELOG.md"] } } }),
+      );
+      gitIn(tmp, "add", "package.json");
+      gitIn(tmp, "commit", "-q", "-m", "feat(1): code");
+      const remote = gitIn(tmp, "rev-parse", "HEAD").stdout.trim();
+      const r = pushWithHead(
+        hook,
+        "docs(1): ship bookkeeping bkit [skip ci]",
+        { "docs/plans/202611/logs/1-x/ship-summary.md": "s\n", "CHANGELOG.md": "- x\n" },
+        remote,
+      );
+      expect(r.stderr).not.toContain("BLOCKED");
+      expect(r.stderr).toContain("is bookkeeping");
+      expect(r.gates).toContain("bkit:gate:static-unit");
+    });
+
+    it(`${hook}: [skip ci] head that also changes code, open PR → blocked before any gate`, () => {
+      gitIn(tmp, "commit", "-q", "--allow-empty", "-m", "feat(1): code");
+      const remote = gitIn(tmp, "rev-parse", "HEAD").stdout.trim();
+      const r = pushWithHead(
+        hook,
+        "docs(1): ship bookkeeping bkit [skip ci]",
+        { "docs/architecture.md": "a\n", "src/a.ts": "export {};\n" },
+        remote,
+      );
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain("PR #7 is open");
+      expect(r.gates).toBe("");
     });
 
     it(`${hook}: no integration gate declared → the unit gate runs`, () => {

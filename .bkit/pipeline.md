@@ -208,7 +208,8 @@ Output: a PR to `dev`. This is the heaviest phase: most of its steps verify rath
 | `bkit-build-plan-convert` | Plan writer | Runs only when the plan is missing, has no task markers, or is older than an issue comment. Writes `{FID}-plan.md` as groups of task blocks within the `bkit.workflows.tasks` caps, from the build-input file (prompt and issue) and any existing plan, whose other sections it keeps. Where they disagree, the newer text wins. |
 | `bkit-build-plan-current` | Plan freshness | Judges whether changes landed since the plan was written leave it executable; findings feed execute. |
 | `bkit-build-install-skills` | Setup | Installs the skills the plan needs for this build. |
-| `bkit-build-plan-execute` | Producer | Implements one task group's tasks from its brief, seeing each task's tests fail first. Iterates edit → lint/typecheck/test → edit. Near its turn cap it hands over (`HANDOVER`), and the group re-runs once. |
+| `bkit-build-plan-tests` | Test writer | Writes one task group's planned tests from its tests brief, touching test files only; the engine then records each one failing. |
+| `bkit-build-plan-tasks` | Producer | Implements one task group's tasks from its brief against the tests already recorded failing, touching no planned test. Iterates edit → lint/typecheck/test → edit. Near its turn cap it hands over (`HANDOVER`), and the group re-runs once. |
 | `bkit-build-plan-verify` | Critic | Verifies each task of one group against the group's own diff. Passes the satisfied task numbers, and `bkit tasks tick` sets the boxes. Producer-critic loop, capped at 3 attempts per group. |
 | `bkit-build-plan-gaps-remediate` | Gap-fixer | Fills gaps the verifier found, then re-verifies. |
 | `bkit-build-plan-verify` | Holistic critic | Second, whole-of-plan verification pass across everything built. |

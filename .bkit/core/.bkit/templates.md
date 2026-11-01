@@ -192,9 +192,11 @@ pnpm add -D prettier@^3.5.3 slop-scan@^0.3.0 lint-staged@^17.0.0 husky@^9.1.7
 - `bkit:test:file` runs one test file and writes a JUnit report to `$BKIT_TEST_REPORT`. bkit appends the file's repo-relative path. `/bkit-build` reads the report for test-first. It is not seeded, and `test-file-script-missing` fires until it is declared.
   - Vitest: `"bkit:test:file": "vitest run --reporter=default --reporter=junit --outputFile.junit=\"$BKIT_TEST_REPORT\""`.
   - Call the runner directly, not through a caching task runner.
-- `bkit:lint:file` lints one test file with the static gate's rules, and exits 0 when clean. bkit appends the path. `bkit tests red` runs it before the test, and records no red while it fails. It is not seeded, and `lint-file-script-missing` fires once `bkit:test:file` is declared without it.
+- `bkit:lint:file` lints one test file with the static gate's rules, and exits 0 when clean. bkit appends the path. `bkit tests red` runs it on each planned test file before running the file, and records a `lint` gap for the file's tests while it fails. It is not seeded, and `lint-file-script-missing` fires once `bkit:test:file` is declared without it.
   - ESLint: `"bkit:lint:file": "eslint --max-warnings=0"`.
   - Ruff: `"bkit:lint:file": "ruff check"`.
+- `bkit:gate:changed` checks only the files an agent step changed: the tests that import them, the tests that name their paths, and static checks on them; exit 0 when clean. `bkit tests changed` appends the repo-relative paths and never calls it with none. It is not seeded, and `gate-changed-script-missing` fires until it is declared; undeclared, agents run the whole `bkit:gate:static` / `bkit:gate:static-unit` instead.
+  - Vitest + ESLint: a script running `vitest related --run "$@" && eslint --max-warnings=0 --no-error-on-unmatched-pattern "$@"`, plus a text search of the test files for each path.
 
 ## CI workflow — `bkit-ci.yml`
 
@@ -274,8 +276,9 @@ chmod +x .husky/pre-commit .husky/pre-push
 - `.gitignore`: `.husky/_` (bkit's `.gitignore` block already lists it).
 - Adapt: repo-only checks go below the bkit lines in each hook. What a gate runs belongs in the `bkit:gate:*` script, not the hook.
 - Min push:
-  - **If** every file changed since each pushed commit left `origin/dev` (else `origin/main`) matches `bkit.testing.minPushPaths` → `bkit:gate:min` replaces the full gate, and `MIN_PUSH=1`.
-  - The setting takes `package.json` globs: `*` matches one folder and `**` any depth. The default is `docs/plans/**`, `docs/*.jsonl`, `.bkit/*.jsonl`, and `[]` turns it off.
+  - **If** every file changed since each pushed commit left `origin/dev` (else `origin/main`) is one bkit writes or one `bkit.testing.minPushPaths` adds → `bkit:gate:min` replaces the full gate, and `MIN_PUSH=1`.
+  - What bkit writes = ship's `--scope=pr` allow-list (`.bkit/workflows.md` § `/bkit-ship` — 14 steps) plus `docs/plans/**`.
+  - The setting takes `package.json` globs: `*` matches one folder and `**` any depth. The default is `[]`, which leaves what bkit writes alone, because the setting only adds to it.
   - `bkit ci min-push` decides from files, never from `[skip ci]`, because that is a typed label and GitHub reads the last commit only.
   - **If** there are no files, the range is unreadable or there is no ref list → the full gate runs.
 - Min-push paths: list only files that no code, build or test reads.
@@ -283,6 +286,8 @@ chmod +x .husky/pre-commit .husky/pre-push
   - **If** a test reads a ledger → put that test into `bkit:gate:min`.
 - `[skip ci]` guards:
   - On a feature branch, the push is blocked only while a PR is open, because workflows push `[skip ci]` code heads mid-run.
+  - With a PR open, `bkit ci bookkeeping-push --from=<remote head>` lets the push through when every file changed since the head the remote holds is on ship's `--scope=pr` allow-list. Such a push adds nothing that CI has not tested at that head.
+  - A rewritten head or a code file still blocks.
   - On `dev` / `main`, the push is blocked unless it is a min push, because GitHub skips CI for the whole push.
 - Slop base:
   - **If** the push is to `dev` **and** `scripts/ci/lanes/bkit-resolve-push-base.mjs` is copied → the hook runs it with `--local --branch=dev --head=<pushed sha>`, and exports `SLOP_BASE_REF` as CI's push base. That base is the head of the last green CI push run on `dev`, else `origin/dev`. The hook prints the base and its source.
@@ -676,7 +681,7 @@ graphify-out/
 | `pnpm graph:rollup` | Package and module views, plus `docs/capabilities.md`. |
 | `pnpm graph:check` | Rebuild and fail if `docs/capabilities.md` is not what this tree produces. Reads uncommitted edits. Shipped as a self-skipping CI step (every push and pull request; on a PR, GitHub's test merge into the base); enabled in bkit's own CI. |
 | `bash scripts/graphify/bkit-graphify.sh check-at <rev>` | `check` in a throwaway checkout of `<rev>` (default HEAD); pre-push gate runs it on the commit pushed to dev. |
-| `pnpm graph:refresh` | Rebuild register in a throwaway checkout of HEAD → copy over `docs/capabilities.md`. Fixes a red gate; commit result. |
+| `pnpm graph:refresh` | Rebuild register in a throwaway checkout of the staged files (the index) → copy over `docs/capabilities.md`. Stage the change first, so a run before its commit builds the new state. Fixes a red gate; commit result. |
 | `pnpm graph:scoped [path]` | One subtree. Default `apps/web/src`. |
 | `pnpm graph:graphml` | Opt-in GraphML for Gephi / yEd. |
 

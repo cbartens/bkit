@@ -2044,6 +2044,15 @@ describe("writerProblem", () => {
     ).toBeUndefined();
   });
 
+  it("accepts a knowledge row written by bkit-build-plan-tests", () => {
+    expect(
+      writerProblem({
+        kind: "knowledge",
+        by: { workflow: "build", subagent: "bkit-build-plan-tests", model: "m" },
+      }),
+    ).toBeUndefined();
+  });
+
   it("admits a direct chat (utility) on friction rows", () => {
     expect(
       writerProblem({ kind: "friction", by: { workflow: "utility", step: "manual" } }),
@@ -2309,7 +2318,7 @@ describe("normalize — schema-1 rows to schema 2", () => {
       main: { turns: 3, ...tokens(6, 12, 18), ctxPeak: 900, compactions: 1, mix },
       subagents: 1,
       agents: {
-        "bkit-build-plan-execute": {
+        "bkit-build-plan-tasks": {
           n: 1,
           turns: 1,
           ...tokens(4, 8, 12),
@@ -2372,7 +2381,7 @@ describe("normalize — schema-1 rows to schema 2", () => {
       agents: {
         total: { n: 1, errors: 2 },
         byAgent: {
-          "bkit-build-plan-execute": {
+          "bkit-build-plan-tasks": {
             n: 1,
             errors: 2,
             instances: [{ turns: 1, contextPeak: 500 }],
@@ -2412,7 +2421,7 @@ describe("normalize — schema-1 rows to schema 2", () => {
       parentShas: ["deadbeef"],
       closeCi: [{ outcome: "unresolved", reason: "ci-declared-no-run", attempts: 2 }],
       steps: {
-        "build-task-red": { n: 2, minutes: 3.04, active: 1 },
+        "build-tests-red": { n: 2, minutes: 3.04, active: 1 },
         "build-plan-verify": { n: 1, minutes: 4.04, active: 2 },
       },
       lines: {
@@ -2429,7 +2438,7 @@ describe("normalize — schema-1 rows to schema 2", () => {
         testFilesPerTask: [1, null],
         complexity: { verdict: "OK", tasksChecked: 2, reasons: [] },
       },
-      verify: [{ subPlan: 1, attempt: 1, verdict: "PASS", failures: 0, testOrderGaps: 0 }],
+      verify: [{ subPlan: 1, attempt: 1, verdict: "PASS", failures: 0 }],
       holistic: { verdict: "PASS", failures: 0 },
       challenge: { verdict: "CONCERNS", findings: { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 0 } },
       redTests: 2,
@@ -2449,7 +2458,7 @@ describe("normalize — schema-1 rows to schema 2", () => {
       ci: [{ status: "unresolved", reason: "ci-declared-no-run", attempts: 2 }],
       steps: {
         total: { n: 3, totalMinutes: 7.1, activeMinutes: 3 },
-        byStep: { "build-task-red": { n: 2, totalMinutes: 3.04, activeMinutes: 1 } },
+        byStep: { "build-tests-red": { n: 2, totalMinutes: 3.04, activeMinutes: 1 } },
       },
       lines: { total: { added: 16, deleted: 1, changed: 17, files: 4 }, merges: 0 },
       plan: {
@@ -2809,10 +2818,10 @@ describe("totals — validate refuses a total that does not match its parts", ()
     expect(totalsOf(plan(3), plan(2))).toEqual(refused("plan.total.tasks"));
   });
 
-  it('build.redTests = steps.byStep["build-task-red"].n', () => {
+  it('build.redTests = steps.byStep["build-tests-red"].n', () => {
     const steps = {
       total: { n: 2, totalMinutes: 1 },
-      byStep: { "build-task-red": { n: 2, totalMinutes: 1 } },
+      byStep: { "build-tests-red": { n: 2, totalMinutes: 1 } },
     };
     expect(totalsOf({ steps, build: { redTests: 2 } }, { steps, build: { redTests: 3 } })).toEqual(
       refused("build.redTests"),

@@ -10,7 +10,13 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { judgeGreen, parseJunit, REPORT_ENV } from "../../commands/workflow/tests.js";
+import {
+  isNamedCase,
+  judgeGreen,
+  judgeRed,
+  parseJunit,
+  REPORT_ENV,
+} from "../../commands/workflow/tests.js";
 
 const ROOT = process.cwd();
 
@@ -87,6 +93,50 @@ describe("bkit:test:file runs every test file kind into a JUnit report", () => {
     expect(res.status).toBe(2);
     expect(res.stderr).toContain("one runner");
   });
+});
+
+const FAILING = [
+  {
+    kind: "node",
+    name: "probe.test.mjs",
+    test: "probe fails before its code exists",
+    body:
+      'import assert from "node:assert/strict";\n' +
+      'import { test } from "node:test";\n\n' +
+      'test("probe fails before its code exists", () => {\n' +
+      "  assert.equal(1, 2);\n" +
+      "});\n",
+  },
+  {
+    kind: "bats",
+    name: "probe.bats",
+    test: "probe fails before its code exists",
+    body:
+      "#!/usr/bin/env bats\n\n" +
+      '@test "probe fails before its code exists" {\n' +
+      "  [ 1 -eq 2 ]\n" +
+      "}\n",
+  },
+];
+
+describe("bkit:test:file reports a failing test file kind as a red", () => {
+  it.each(FAILING)(
+    "$kind — a failing $name exits non-zero with a <failure> for its named test",
+    { timeout: 120_000 },
+    ({ name, test, body }) => {
+      const dir = tempDir();
+      const file = path.join(dir, name);
+      fs.writeFileSync(file, body);
+      const report = path.join(dir, "junit.xml");
+      const res = pnpm({ [REPORT_ENV]: report }, "bkit:test:file", file);
+      expect(res.status, `${res.stdout}\n${res.stderr}`).not.toBe(0);
+      const cases = parseJunit(fs.readFileSync(report, "utf-8"));
+      expect(cases.filter((c) => isNamedCase(c.name, test)).map((c) => c.state)).toEqual([
+        "failure",
+      ]);
+      expect(judgeRed(cases, test, file).state).toBe("red");
+    },
+  );
 });
 
 describe("bkit:lint:file passes a test file its linter does not cover", () => {

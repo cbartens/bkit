@@ -67,7 +67,7 @@ describe("workflow bookkeeping pathspec — no BOOK_PATHS regression (#446)", ()
       .map((file) => fs.readFileSync(file, "utf-8"))
       .reduce((n, content) => n + countLedgersCalls(content), 0);
     // The bookkeeping call sites left in the markdown: the three pre-worktree
-    // commits (design, plan, build) and ship's B2 stage and bookkeeping commit.
+    // commits (design, plan, build) and ship's bookkeeping commit.
     // The land, close, flush and re-validate bookkeeping runs inside commands.
     expect(totalCalls).toBeGreaterThanOrEqual(5);
   });

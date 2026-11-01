@@ -46,6 +46,8 @@ const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 /** A lock this old, or whose process is gone, belongs to a sweep that died. */
 const LOCK_STALE_MS = HOUR_MS;
+/** How often a running sweep renews its lock, so a long sweep is never taken for a dead one. */
+const LOCK_RENEW_MS = 10 * 60 * 1000;
 /** How often a waiting sweep tries the lock again. */
 const LOCK_POLL_MS = 5_000;
 const GB = 1e9;
@@ -220,7 +222,10 @@ function pidAlive(pid: number): boolean {
   }
 }
 
-/** Take the sweep lock; a dead or hour-old holder's lock is replaced. False when held. */
+/**
+ * Take the sweep lock; a lock whose holder is gone, or that no holder renewed for an hour, is
+ * replaced. False when held.
+ */
 function takeLock(): boolean {
   const file = lockPath();
   const line = `${new Date().toISOString()} ${process.pid}`;
@@ -236,8 +241,8 @@ function takeLock(): boolean {
 
 /**
  * Take the sweep lock, waiting while another sweep holds it. False only when it is still held
- * after `maxWaitMs` (default `LOCK_STALE_MS`, after which `takeLock` would have replaced the
- * lock unless it keeps renewing).
+ * after `maxWaitMs` (default `LOCK_STALE_MS`): a sweep that long renews its lock, so `takeLock`
+ * never replaces it.
  */
 async function waitForLock(
   pollMs: number,
@@ -254,10 +259,19 @@ async function waitForLock(
   return false;
 }
 
+const holdsLock = (file: string) =>
+  fs.existsSync(file) && fs.readFileSync(file, "utf-8").split(/\s+/)[1] === String(process.pid);
+
+/** Mark this sweep's lock as live; another process's lock is left alone. */
+function renewLock(): void {
+  const file = lockPath();
+  const now = new Date();
+  if (holdsLock(file)) fs.utimesSync(file, now, now);
+}
+
 function releaseLock(): void {
   const file = lockPath();
-  const pid = fs.existsSync(file) ? fs.readFileSync(file, "utf-8").split(/\s+/)[1] : undefined;
-  if (pid === String(process.pid)) fs.rmSync(file, { force: true });
+  if (holdsLock(file)) fs.rmSync(file, { force: true });
 }
 
 // ---------------------------------------------------------------------------
@@ -288,17 +302,38 @@ export interface SweepResult {
   freeAfter: number | null;
 }
 
-function shell(command: string, cwd: string, log: (m: string) => void) {
-  const r = spawnSync("sh", ["-c", command], { cwd, encoding: "utf-8", maxBuffer: 1 << 26 });
-  const out = `${r.stdout ?? ""}${r.stderr ?? ""}`.trim();
-  if (out !== "") for (const line of out.split("\n").slice(-20)) log(`  ${line}`);
-  return r.error ? 127 : (r.status ?? 1);
+/**
+ * Run a step's shell command and log its last 20 output lines. Spawned, not run in step: the
+ * lock renewal timer has to fire while a long command runs.
+ */
+function shell(command: string, cwd: string, log: (m: string) => void): Promise<number> {
+  return new Promise((resolve) => {
+    const child = spawn("sh", ["-c", command], { cwd, stdio: ["ignore", "pipe", "pipe"] });
+    let out = "";
+    const keep = (chunk: Buffer) => {
+      out = `${out}${chunk.toString()}`.slice(-(1 << 16));
+    };
+    child.stdout.on("data", keep);
+    child.stderr.on("data", keep);
+    let settled = false;
+    const finish = (status: number) => {
+      if (settled) return;
+      settled = true;
+      const text = out.trim();
+      if (text !== "") for (const line of text.split("\n").slice(-20)) log(`  ${line}`);
+      resolve(status);
+    };
+    child.on("error", () => finish(127));
+    child.on("close", (status) => finish(status ?? 1));
+  });
 }
 
 async function skipReason(step: Step, ctx: StepContext): Promise<string | null> {
   if (step.skip === undefined) return null;
   if (typeof step.skip === "string") {
-    return shell(step.skip, ctx.cwd, ctx.log) === 0 ? `skip check passed: ${step.skip}` : null;
+    return (await shell(step.skip, ctx.cwd, ctx.log)) === 0
+      ? `skip check passed: ${step.skip}`
+      : null;
   }
   const answer = await step.skip(ctx);
   if (!answer) return null;
@@ -313,7 +348,7 @@ async function runStep(
     const reason = await skipReason(step, ctx);
     if (reason !== null) return { outcome: "skipped", detail: reason };
     if (typeof step.run === "string") {
-      const status = shell(step.run, ctx.cwd, ctx.log);
+      const status = await shell(step.run, ctx.cwd, ctx.log);
       if (status !== 0) return { outcome: "failed", detail: `exit ${status}` };
     } else {
       await step.run(ctx);
@@ -339,6 +374,8 @@ export async function sweep(opts: {
   pollMs?: number;
   /** Longest wait for the lock with `wait`; default a full stale lock age. */
   maxWaitMs?: number;
+  /** How often a running sweep renews its lock; tests shorten it. */
+  renewMs?: number;
   log: (m: string) => void;
 }): Promise<SweepResult> {
   const result: SweepResult = {
@@ -389,6 +426,8 @@ export async function sweep(opts: {
     opts.log(`another sweep is running (${lockPath()})`);
     return { ...result, reason: "locked" };
   }
+  const renewal = setInterval(renewLock, opts.renewMs ?? LOCK_RENEW_MS);
+  renewal.unref();
   try {
     result.freeBefore = freeBytes(opts.cwd);
     opts.log(`${new Date().toISOString()} ${opts.mode} sweep, ${gb(result.freeBefore)} free`);
@@ -407,6 +446,7 @@ export async function sweep(opts: {
     opts.log(`${gb(result.freeBefore)} → ${gb(result.freeAfter)} free`);
     saveNotes(checkoutTop(opts.cwd), result.notes);
   } finally {
+    clearInterval(renewal);
     releaseLock();
   }
   return result;

@@ -183,7 +183,7 @@ The batch verdict goes in `Summary`, not on each PR. The CI result of the landin
     - **C, copy parity:** a test requires two copies of a file to stay identical, and the bot updates only the copy it scans, because the other copy is on an ignored path. It fails by design, and the fix is to mirror the change into the other copy. Count recurrences in Step 16.
     - **C, checksum:** the PR bumps a version pinned beside a checksum (e.g., a download URL and its SHA-256), and the checksum does not match the new version. A green PR can be C here, because a stale checksum fails only where the download runs.
 
-  The batch is the green, A and B PRs that are past the bot's release age. A class C PR is EXCLUDED and goes in `Excluded`. A breaking major is DECISION, even when it would be IN BATCH. A non-security PR inside the release age is EXCLUDED, even when it would be IN BATCH (Step 5). **Done when:** `Classes` has a row per non-green PR: class · behind-count · quoted evidence · verdict.
+  The batch is the green, A and B PRs that are past the bot's release age. A class C PR is EXCLUDED and goes in `Excluded`. A breaking major is DECISION, even when it would be IN BATCH. A non-security PR inside the release age is EXCLUDED, even when it would be IN BATCH (Step 5). **Done when:** `Classes` has a row per classified PR (every non-green PR, and every green PR that bumps a version pinned beside a checksum): class · behind-count · quoted evidence · verdict.
 
 - [ ] **Step 8 — Batch:** Make a detached worktree off the audited commit (`bkit:anchor` `baseSha`), not the remote integration ref.
   - **If** the local branch is ahead → the landing push carries those commits, so the batch builds on them.

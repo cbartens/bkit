@@ -75,7 +75,7 @@ autoCompactWindow: 300000
    - Data exposure: PII in logs or responses, internal ids, over-fetching, sensitive serialised fields and missing redaction.
    - The rest of the OWASP Top 10: cryptographic failures, insecure design, misconfiguration, vulnerable dependencies, and identification, integrity or logging failures.
    - Supply chain: for each new dependency, its CVEs, its maintainers' trustworthiness and its install scripts.
-7. Write one task block per finding under `## Findings Log`, in the Output format shape:
+7. Write one task block per finding under `Findings Log`, in the Output format shape:
    - Fill in every field of the block:
      - The title: the failure in one line, as an exploit scenario.
      - `severity` (`CRITICAL|HIGH|MEDIUM|LOW`).

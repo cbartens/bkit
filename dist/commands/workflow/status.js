@@ -62,6 +62,14 @@ export function readStatusRowsAt(file, ref) {
         throw new CommandError(EXIT_NO_STATUS, `${spec} does not exist`);
     return parseStatusRows(text, spec);
 }
+/**
+ * Step names a row may carry from before a rename, read as the current name so a run
+ * in flight across the rename folds, resumes and counts as one (`docs/migrations.md`).
+ * The row on disk is history and is not rewritten.
+ */
+const RENAMED_STEPS = {
+    "build-plan-execute": "build-plan-tasks",
+};
 /** Parse NDJSON status text; `label` names it in errors. Malformed is an error, never "no rows". */
 function parseStatusRows(text, label) {
     return text
@@ -75,7 +83,9 @@ function parseStatusRows(text, label) {
         if (typeof parsed.value !== "object" || parsed.value === null) {
             throw new CommandError(EXIT_NO_STATUS, `${label} line ${i + 1} is not a JSON object`);
         }
-        return parsed.value;
+        const row = parsed.value;
+        const renamed = typeof row.step === "string" ? RENAMED_STEPS[row.step] : undefined;
+        return renamed === undefined ? row : { ...row, step: renamed };
     });
 }
 /** The rows as the fold reads them; the fold skips types it does not model. */

@@ -31,7 +31,7 @@ Dead code is a control that looks live and is not. Examples: a limiter on an env
 - Compiler unused and unreachable options (e.g., TypeScript `noUnusedLocals`, `noUnusedParameters`, `allowUnreachableCode`; Ruff `F401`, `F841`).
 - Always-true / always-false condition lint (e.g., typescript-eslint `no-unnecessary-condition`).
 - Unused-index advisor (e.g., Supabase Splinter `0005_unused_index`, engine index stats).
-- Database inspection CLI (e.g., `supabase inspect db`); record CLI version.
+- Database inspection CLI (e.g., `supabase inspect db`); record the version.
 - Feature-flag cleanup (e.g., Uber Piranha).
 - Runtime-usage dead-code removal (e.g., Meta SCARF).
 - i18n key checkers (e.g., `i18n-check`).

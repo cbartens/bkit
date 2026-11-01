@@ -16,9 +16,16 @@
 // `skip-token` — whether a commit message carries a GitHub skip-CI token
 // (`SKIP_CI_TOKEN`), for the `.husky/pre-push` CI-suppressor guard.
 //
-// `min-push` — whether every file a push changes matches `bkit.testing.minPushPaths`, so
+// `min-push` — whether every file a push changes is one bkit's workflows write (ship's bookkeeping
+// allow-list, the plans tree) or one `bkit.testing.minPushPaths` / `ciSkipPaths` adds, so
 // `.husky/pre-push` runs `bkit:gate:min`. Files decide, never `[skip ci]` (a typed label
 // GitHub reads off the last commit only).
+//
+// `bookkeeping-push` — whether a feature-branch push adds bookkeeping only on top of the
+// head the remote holds (ship's `--scope=pr` allow-list, the one `bkit ledgers
+// only-bookkeeping` and the merge gate's carry-forward read). The `.husky/pre-push`
+// CI-suppressor guard lets a `[skip ci]` head through to an open PR on exit 0: the PR's
+// checks at the remote head still cover every line of code.
 //
 // `pins` — downloads each `*_VERSION` + `*_SHA256` pinned tool the files name and checks
 // the hash, so a version-only Renovate bump goes red in its own PR (`pins.ts`).
@@ -28,7 +35,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { readBkitConfig } from "../../shared/settings.js";
 import { CommandError, commitMessage, EXIT, git, parseJson, runGit, SKIP_CI_TOKEN, } from "../lib.js";
-import { changedOutside } from "../workflow/ledgers.js";
+import { bookPathspecs, changedOutside, checkOnlyBookkeeping, globPathspecs, } from "../workflow/ledgers.js";
 import { pins } from "./pins.js";
 /** Exit code: slop-scan could not be started (not installed, not executable). */
 export const EXIT_SLOP_UNAVAILABLE = 3;
@@ -466,8 +473,19 @@ function skipToken(ctx) {
 // ---------------------------------------------------------------------------
 // min-push
 // ---------------------------------------------------------------------------
-/** `bkit.testing.minPushPaths` as git pathspecs: `:(glob)` unless an entry carries its own magic. */
-export const minPushPathspecs = (paths) => paths.map((p) => (p.startsWith(":") ? p : `:(glob)${p}`));
+/**
+ * The min-push pathspecs: ship's `pr` bookkeeping allow-list for every month and feature
+ * (the same list `bkit ci bookkeeping-push` and the ship gate accept untested, including
+ * `bkit.testing.ciSkipPaths`), the plans tree bkit's workflows write, and whatever the repo
+ * adds in `bkit.testing.minPushPaths` (`:(glob)` unless an entry carries its own magic).
+ * The engine hardcodes no consumer file: the floor is what bkit itself writes.
+ */
+export function minPushPathspecs(cfg) {
+    return [
+        ...bookPathspecs("*", "*", "pr", cfg.ciSkipPaths),
+        ...globPathspecs(["docs/plans/**", ...cfg.minPushPaths]),
+    ];
+}
 /** Where a pushed commit's range starts: its merge-base with origin/dev, else origin/main. */
 export function pushBase(cwd, sha) {
     for (const cand of BASE_CANDIDATES) {
@@ -486,14 +504,13 @@ function minPush(ctx) {
     const given = ctx.flags.ref;
     const refs = Array.isArray(given) && given.length > 0 ? given.map(String) : ["HEAD"];
     const baseFlag = typeof ctx.flags.base === "string" && ctx.flags.base ? ctx.flags.base : null;
-    const paths = readBkitConfig(top.stdout).minPushPaths;
-    const specs = minPushPathspecs(paths);
+    const paths = minPushPathspecs(readBkitConfig(top.stdout));
     const changed = new Set();
     const outside = new Set();
     for (const ref of refs) {
         const sha = git(ctx.cwd, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
         const base = sha ? (baseFlag ?? pushBase(ctx.cwd, sha)) : null;
-        const diff = sha && base ? changedOutside(top.stdout, base, sha, specs) : null;
+        const diff = sha && base ? changedOutside(top.stdout, base, sha, paths) : null;
         if (!diff?.ok) {
             const why = !sha
                 ? `cannot read commit '${ref}'`
@@ -520,9 +537,6 @@ function minPush(ctx) {
         });
         return code;
     };
-    if (paths.length === 0) {
-        return result("no-paths", EXIT.NO, "bkit.testing.minPushPaths is empty — not a min push");
-    }
     if (changed.size === 0) {
         return result("no-changes", EXIT.NO, "the push changes no files — not proven a min push");
     }
@@ -531,6 +545,47 @@ function minPush(ctx) {
         return result("outside", EXIT.NO, `${outside.size} of ${changed.size} changed files match no min-push path (first: ${first})`);
     }
     return result(null, EXIT.OK, `all ${changed.size} changed files match min-push paths`);
+}
+// ---------------------------------------------------------------------------
+// bookkeeping-push
+// ---------------------------------------------------------------------------
+/** A feature branch, as the workflows name one; the FID is the slug after `feat/`. */
+const FEAT_BRANCH = /^feat\/([a-z0-9][a-z0-9-]*)$/;
+function bookkeepingPush(ctx) {
+    const top = runGit(ctx.cwd, ["rev-parse", "--show-toplevel"]);
+    if (!top.ok)
+        throw new CommandError(EXIT.USAGE, `not inside a git repository: ${ctx.cwd}`);
+    const from = String(ctx.flags.from);
+    const toRef = typeof ctx.flags.to === "string" && ctx.flags.to !== "" ? ctx.flags.to : "HEAD";
+    const branch = typeof ctx.flags.branch === "string" && ctx.flags.branch !== ""
+        ? ctx.flags.branch
+        : (git(ctx.cwd, ["rev-parse", "--abbrev-ref", "HEAD"]) ?? "");
+    const result = (reason, code, outside, message) => {
+        ctx.log(message);
+        ctx.emit({ bookkeepingPush: reason === null, reason, branch, from, to: toRef, outside });
+        return code;
+    };
+    const fid = FEAT_BRANCH.exec(branch)?.[1];
+    if (fid === undefined) {
+        return result("not-a-feature-branch", EXIT.NO, [], `'${branch}' is not a feat/{FID} branch — not a bookkeeping push`);
+    }
+    if (/^0+$/.test(from)) {
+        return result("no-remote-head", EXIT.NO, [], "the remote holds no head for this branch — nothing to carry CI forward from");
+    }
+    // Every plan month: the hook knows the branch, not the run's `{YYYYMM}`.
+    const check = checkOnlyBookkeeping(top.stdout, { month: "*", fid, from, to: toRef });
+    switch (check.kind) {
+        case "ok":
+            return result(null, EXIT.OK, [], `every file changed in ${from}..${toRef} is bookkeeping`);
+        case "not-ancestor":
+            return result("not-ancestor", EXIT.NO, [], `${from} is not an ancestor of ${toRef} — the push rewrites the PR head`);
+        case "outside":
+            return result("outside", EXIT.NO, check.outside, `${check.outside.length} changed file(s) outside the bookkeeping allow-list (first: ${check.outside[0]})`);
+        case "unknown-commit":
+            throw new CommandError(EXIT_RANGE_UNKNOWN, `cannot read commit '${check.ref}'`);
+        case "diff-failed":
+            throw new CommandError(EXIT_RANGE_UNKNOWN, `'git diff' failed for ${from}..${toRef}: ${check.stderr}`);
+    }
 }
 export const ciCommand = {
     noun: "ci",
@@ -599,7 +654,7 @@ export const ciCommand = {
             run: skipToken,
         },
         "min-push": {
-            summary: "Exit 0 when every file a push changes matches bkit.testing.minPushPaths (the pre-push light gate).",
+            summary: "Exit 0 when every file a push changes is one bkit writes or bkit.testing.minPushPaths / ciSkipPaths adds (the pre-push light gate).",
             use: "by-hand",
             flags: [
                 {
@@ -611,16 +666,46 @@ export const ciCommand = {
                 { name: "base", type: "string", help: "start every range here instead" },
             ],
             output: {
-                minPush: "true when every changed file matches bkit.testing.minPushPaths",
-                reason: "null when a min push; else no-paths | no-changes | outside | unknown",
+                minPush: "true when every changed file matches a min-push path",
+                reason: "null when a min push; else no-changes | outside | unknown",
                 changed: "files the push changes, across every ref",
                 outside: "the changed files no min-push path matches",
-                paths: "bkit.testing.minPushPaths as read",
+                paths: "the min-push pathspecs in force: ship's pr bookkeeping allow-list (with bkit.testing.ciSkipPaths), docs/plans/**, bkit.testing.minPushPaths",
             },
             exitCodes: {
                 [EXIT_RANGE_UNKNOWN]: "a pushed commit, its base, or its git diff could not be read",
             },
             run: minPush,
+        },
+        "bookkeeping-push": {
+            summary: "Exit 0 when a feature-branch push adds bookkeeping only on top of the remote head (ship's --scope=pr allow-list).",
+            use: "by-hand",
+            flags: [
+                {
+                    name: "from",
+                    type: "string",
+                    required: true,
+                    help: "the head the remote holds (git's remote sha on the hook's stdin)",
+                },
+                { name: "to", type: "string", help: "the head being pushed (default HEAD)" },
+                {
+                    name: "branch",
+                    type: "string",
+                    help: "the feat/{FID} branch (default the current branch); the FID picks the plan log dir",
+                },
+            ],
+            output: {
+                bookkeepingPush: "true when every file changed in from..to is bookkeeping",
+                reason: "null when bookkeeping only; else not-a-feature-branch | no-remote-head | not-ancestor | outside",
+                branch: "the branch read",
+                from: "the remote head as given",
+                to: "the pushed head as given",
+                outside: "the changed files outside the allow-list",
+            },
+            exitCodes: {
+                [EXIT_RANGE_UNKNOWN]: "a commit or the git diff could not be read",
+            },
+            run: bookkeepingPush,
         },
         pins: {
             summary: "Download each *_VERSION + *_SHA256 pinned tool in the files and fail when a hash differs.",

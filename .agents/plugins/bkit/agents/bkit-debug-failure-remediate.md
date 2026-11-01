@@ -27,7 +27,7 @@ tools:
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Apply the diagnosis fixes by editing or creating source files. Fix only the identified gaps, with no new scope. Do not just analyse.
-- **No commits:** Do not run `git commit`, and NEVER run `git push`. The caller runs them. `git add`, `git checkout --theirs|--ours <conflicted>` and `git rebase --continue` / `--abort` are permitted ONLY for in-progress rebase resolution.
+- **No commits:** Do not run `git commit`, and NEVER run `git push`. The caller runs them. `git add`, `git checkout --theirs|--ours <conflicted>`, `git rebase --continue` / `--abort` and `git merge --abort` are permitted ONLY for in-progress rebase or merge resolution.
 - **Blockers:** Append one `BLOCKED` log line per blocked remediation. NEVER defer a blocked remediation as out of scope.
 - **Output header:** Every line above `<!-- verdict:end -->` MUST stay machine-parseable.
 
@@ -71,7 +71,7 @@ tools:
    - Dependency lockfile → take the rebase target's copy, and regenerate it from the manifest with the repo's package manager.
    - Task-runner / build config → merge both sides' task definitions.
    - Ordered database migrations → resequence them so each new file sorts after every migration already applied upstream.
-8. Run `pnpm bkit:gate:static-unit`. Every local test must pass.
+8. Run `bkit tests changed --fallback=bkit:gate:static-unit`. Every local test must pass.
    - **If** any declared live tests were failing → the remediation is done only when those same live tests pass.
 9. **If** the last local test run has failures → document the errors in the output, and set `Verdict` = `FAIL`.
 10. **If** the remediations are verified (the tests pass) **and** the work found gotchas → append one row per gotcha to `docs/knowledge.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), reusing the `key` of any existing entry for the same item.

@@ -153,7 +153,7 @@ description: "Design Feature — Autonomous design phase"
    - **If** exit 3 → run the rebase block below; **If** it exits 0 → re-run step 2, **Else** → **Failure Path**.
    - **Else** → **Failure Path**.
    ```bash
-   cd "{WORKTREE_PATH}" && "{BKIT}" branches rebase --sentinel="{SENTINEL}" --log-file="{LOG_DIR}/rebase-resolve-log.md"
+   cd "{WORKTREE_PATH}" && "{BKIT}" branches rebase --sentinel="{SENTINEL}" --log-file="{LOG_DIR}/rebase-resolve-log.md" --file="{LOG_DIR}/status.jsonl"
    ```
 3. Enter the worktree, open the run and record the runtime:
    ```bash
@@ -186,7 +186,7 @@ description: "Design Feature — Autonomous design phase"
 1. Read the runtime: `runtime assert`, then the grill settings (`bkit.workflows.design.grill`) with `counters max`.
    ```bash
    "{BKIT}" runtime assert --file="{STATUS}" --workflow=design
-   "{BKIT}" counters max --point=design.grill
+   "{BKIT}" counters max --point=design.grill --file="{STATUS}" --workflow=design
    ```
    Hold `value` as `GRILL_TURNS` (`maxTurns`: interview turns including the draft turn), `ask` as `GRILL_ASK` (false when headless), `runtimeHeadless` as `RUNTIME_HEADLESS`, `runtime` as `RUNTIME`.
    Route — first match wins:
@@ -248,13 +248,13 @@ description: "Design Feature — Autonomous design phase"
    - Unanswered at stop → `Assumed, not confirmed`, with the recommended answer.
    - "don't know" → `Open`.
    - Empty section → `None.`
-   - **If** nobody was asked → add the line `No human interviewed this run ({ask:false|headless}, {RUNTIME}); every answer is assumed.` under the `## Grill decisions` heading.
+   - **If** nobody was asked → add the line `No human interviewed this run ({ask:false|headless}, {RUNTIME}); every answer is assumed.` under `Grill decisions`.
 
    Decide `DRAFT_REVIEW`:
    - **If** the human accepted the draft (its last question `Settled`) → `reviewed in the design interview`.
    - **Else** → `not reviewed by a human; built from the issue and the recommended answers`.
 
-   First line under `### Draft Acceptance Scenario` = `> **DRAFT only:** {DRAFT_REVIEW}. Starting point for the design's Acceptance Scenario, not a fixed contract: the design may change any part, and records each change as a Decisions row.`
+   First line under `Draft Acceptance Scenario` = `> **DRAFT only:** {DRAFT_REVIEW}. Starting point for the design's Acceptance Scenario, not a fixed contract: the design may change any part, and records each change as a Decisions row.`
 
 6. Append `design-grill-{RUN}.md` verbatim to `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`. **If** `design-input-{RUN}.md` already holds a `Grill decisions` section → replace it.
 7. Finish:
@@ -489,7 +489,7 @@ description: "Design Feature — Autonomous design phase"
 
 1. Promote the final design to the canonical bucket (anchor stamped, a superseded design archived), then close the run and commit:
    **If** the no-issue warning was emitted → add `--warning="<that warning>"`.
-   **If** `## Open Questions` lists any question → add `--suggest="Want me to ask you the open questions one by one, with my recommendation for each? Then write 'yes, ask me one by one'."`.
+   **If** `Open Questions` lists any question → add `--suggest="Want me to ask you the open questions one by one, with my recommendation for each? Then write 'yes, ask me one by one'."`.
    ```bash
    "{BKIT}" workflows promote --workflow=design --fid={FID} --month={YYYYMM} --file="{STATUS}" || exit 1
    "{BKIT}" workflows close --workflow=design --fid={FID} --month={YYYYMM} --record-step --outbox="{OUTBOX}" --message="chore({FID}): close-workflow" --final-return --summary-file="docs/plans/{YYYYMM}/logs/{FID}/design-summary.md" --session-dir="{SESSION_DIR}"
@@ -516,7 +516,22 @@ description: "Design Feature — Autonomous design phase"
    ```
 5. Final return: display `{FINAL_RETURN}` verbatim as the final message to the user; do not summarise or trim; do not auto-invoke. **HARD STOP** — do not invoke `/bkit-plan`.
 6. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, not nouns; do not re-run any step.
-7. **If** user requests the open questions one by one → ask each `## Open Questions` item on its own, verbatim, with its options lettered `A)`, `B)`, `C)`, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step. Each answer that settles an architecture / technology decision → append its row to `docs/decisions.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom) at once; `by.step` = `design-close-workflow`; `rationale` = `answered by owner: {human's answer}`; decision already on disk → same `key`.
+7. **If** user requests the open questions one by one → ask each `Open Questions` item on its own, verbatim, with its options lettered `A)`, `B)`, `C)`, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step.
+8. **If** the user answers one or more `Open Questions` items (in the one-by-one pass, once its last question is answered, or in any chat message) → record the round in this order:
+   - For each answer that settles an architecture / technology decision, append one `docs/decisions.jsonl` row with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom). Set `by.step` = `design-close-workflow`, and `rationale` = `answered by owner: {human's answer}`.
+     - **If** the decision is already on disk → reuse its `key`.
+   - Write `{OUTBOX}/design-answers.md`: the `## Owner answers` heading, then per answer the question verbatim, the owner's answer verbatim, and `Decision: {key}`, or `Decision: none` when no row was written. Append its entries to `docs/plans/{YYYYMM}/logs/{FID}/design-answers-{RUN}.md`.
+     - **If** that file is absent → create it with the heading.
+   - **Subagent:** Invoke `view_file` `.agents/plugins/bkit/agents/bkit-design-update.md` using `view_file` tool:
+     Context: You are a subagent in the Design phase applying the owner's answers. Switch into the working directory with `cd "{REPO_ROOT}"`, check it with `pwd`, and use it for every file operation that follows.
+     Read: `{OUTBOX}/design-answers.md`.
+     Update: `docs/plans/{YYYYMM}/{FID}-design.md`.
+     **If** `Verdict` = FAIL → tell the user which answer stays unapplied, never the **Failure Path**.
+   - Commit `docs/plans/{YYYYMM}/{FID}-design.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-answers-{RUN}.md` and, when a row was written, `docs/decisions.jsonl` on `dev`, those files only, with the message `docs({FID}): owner answers bkit [skip ci]`. NEVER push.
+   - **Skip if** `ISSUE_ID` empty. Comment — this round's answers:
+     ```bash
+     "{BKIT}" issues comment --post --issue="{ISSUE_ID}" --workflow=design --step-number=12 --step-title="Owner Answers" --body-file="{OUTBOX}/design-answers.md"
+     ```
 
 ### 🔒 Gate 12 — Close Workflow
 

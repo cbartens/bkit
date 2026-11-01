@@ -63,6 +63,7 @@ cbartens/bkit (this repo)
 │   │                            #   vercel, ci-yml, tools, managed); checklist formatter
 │   ├── ledgers/                 # JSONL ledger codecs
 │   │   ├── compact.ts           # `bkit ledgers compact`: keyed ledgers rewritten to their fold winners, each stamped `firstTs` / `updates`
+│   │   ├── journal.ts           # Dispatch-seam row primitives (leaf: no `commands/**` import): `engine-call` status row, `tool-failure` friction row, dedup key, `BKIT_ENGINE_JOURNAL` kill switch, git-launched (hook) check; `commands/lib.ts` `runCommand` calls it
 │   │   ├── migrate.ts           # Install / upgrade rewrite of ledger rows without `schema` into the current shape via `normalize`; `isSchemaLedger` keeps ledgers out of canonicalHashes
 │   │   ├── status.ts            # status.jsonl workflow-log contract + fold reducer + invariant validator (the `bkit status` verb lives in commands/install/doctor.ts)
 │   │   └── telemetry.ts         # Unified JSONL telemetry codec — TelemetryEvent union, normalize/parse/fold/foldFrom/validate/totalsProblem/appendLine (#234 WS-1)
@@ -80,6 +81,8 @@ cbartens/bkit (this repo)
 │   └── audits/                  # tests only: read shipped text (workflows/ templates/ hooks/ repo/)
 ├── scripts/ci/             # Adopted copy of `.bkit/templates/scripts/ci/`, plus bkit-repo-only
 │                           #   bkit-test-file.mjs (`bkit:test:file`: runner picked by test file type)
+├── scripts/gate/           # bkit-repo-only bkit-gate-changed.mjs (`bkit:gate:changed`: checks on
+│                           #   the changed files bkit passes it)
 ├── dist/                   # Compiled output (committed; published in tarball)
 ├── .bkit/core/             # Payload bkit writes and keeps current: engine/, workflows/,
 │                           #   prompts/, docs/templates/, the hooks, AGENTS.md and .agents/*.md,
