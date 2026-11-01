@@ -199,6 +199,10 @@
         "tests": {
           "ask": true,
           "maxAttempts": 2
+        },
+        "publish": {
+          "remote": true,
+          "local": true
         }
       },
       "debug": {
