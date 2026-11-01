@@ -21,7 +21,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-10-31T05:19:10Z)_
+_(refreshed 2026-11-01T04:39:11Z)_
 
 ### Design
 
@@ -48,6 +48,7 @@ _(refreshed 2026-10-31T05:19:10Z)_
 | --- | --- | --- |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
 | 699-engine-run-completeness | 699-engine-run-completeness | 1793423949175 |
+| 715-retire-lite-workflows | 715-retire-lite-workflows | 1793507950218 |
 
 ### Debug
 
