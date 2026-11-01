@@ -45,6 +45,7 @@ Test run for this sweep: `pnpm exec vitest run` over the 11 Derived Test Matrix 
     - `steps done` (`bkit-build.md:1035`) does not appear, because it sits below `workflows close` and so falls in `outsideWindow` (`:357-364`).
 
     The skip therefore never applies, and the "the call that wrote its `step-done` row" case named in `DONE WHEN` (here `workflows close` / `steps done`) is not implemented. The scratch probe `/private/tmp/claude-501/-Users-christian-Documents-GitHub-bkit/91131698-d6a2-4b6f-9113-720b495a9c74/scratchpad/u16.mjs` printed that unit's call list.
+
   - **Effect on users.** The build run has no stored `completeness` row: its `workflow-done` at `status.jsonl:433` was written by a non-journaling engine. So `previousRunWarning` (`workflows.ts:1117-1127`) computes this verdict on the fly, and a start on this FID warns about a hole that is not real. That is exactly the case TASK 25 was meant to remove. Any consumer whose build Step 16 runs under a non-journaling `{BKIT}` gets the same false warning.
 - **Disabled-test scan:** `node dist/cli.js branches scan-diff --disabled-tests --base=origin/dev` → `found: false`, `disabled: []`, exit 0. No test was disabled.
 
