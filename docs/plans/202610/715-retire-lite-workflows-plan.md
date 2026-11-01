@@ -731,7 +731,7 @@ Build order: config → runtime resolution → install → close row → build w
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** Report the two publish advisories from `bkit check`
+- [x] **TASK 3:** Report the two publish advisories from `bkit check`
   - **UPDATE:** `detectInvalidTaskCaps` in `.bkit/core/engine/checks/before/repo.ts`: add `detectBuildPublish` beside it, reading raw `bkit.workflows.build.publish`; one finding per key — `bkit-build-publish-remote` for `remote !== true` on an object block, `bkit-build-publish-invalid` for a non-object block or a non-boolean `local`, never both for one key
   - **UPDATE:** `runPreflight` in `.bkit/core/engine/checks/before/index.ts`: push the new finding into `advisories`
   - **UPDATE:** `dist/cli.js`: rebuilt by `pnpm build` and staged in the same commit
@@ -777,7 +777,7 @@ Build order: config → runtime resolution → install → close row → build w
 
 <!-- bkit:task 5 start -->
 
-- [ ] **TASK 5:** Write the `Publish:` and `Docs:` lines into the build summary
+- [x] **TASK 5:** Write the `Publish:` and `Docs:` lines into the build summary
   - **UPDATE:** `SummaryInput` in `.bkit/core/engine/commands/workflow/summary.ts`: accept `publish?: boolean`
   - **UPDATE:** `buildSummary` in `.bkit/core/engine/commands/workflow/summary.ts`: emit `Publish: held` / `Publish: pr`, and `Docs: not synced (ship syncs on landing)` only when `publish` is false
   - **UPDATE:** `.bkit/core/engine/commands/workflow/workflows.ts`: the `summary` verb adds optional `--publish` and threads it into the input
@@ -802,7 +802,7 @@ Build order: config → runtime resolution → install → close row → build w
 
 <!-- bkit:task 6 start -->
 
-- [ ] **TASK 6:** Seed `build.publish` on install and upgrade
+- [x] **TASK 6:** Seed `build.publish` on install and upgrade
   - **UPDATE:** `SEEDED_BKIT_DEFAULTS` in `.bkit/core/engine/install/modules/core.ts`: merge `publish` beside the ask blocks — `build: { ...askBlocks().build, publish: { remote: true, local: true } }`
   - **UPDATE:** `dist/cli.js`: rebuilt by `pnpm build` and staged in the same commit
   - **READ:** `askBlocks` in `.bkit/core/engine/install/modules/core.ts`: the spread the seed merges beside
@@ -822,7 +822,7 @@ Build order: config → runtime resolution → install → close row → build w
 
 <!-- bkit:task 7 start -->
 
-- [ ] **TASK 7:** Retire the lite payload in one install transition
+- [x] **TASK 7:** Retire the lite payload in one install transition
   - **UPDATE:** `migrateShortcutsToLite` in `.bkit/core/engine/install/modules/core.ts`: rename to `migrateRetiredLite` (same call site), covering `.agents/shortcuts.md` and `.bkit/lite.md`; write the stub with a `RETIRED_LITE_STUB_SENTINEL = "<!-- bkit:retired-lite-stub -->"` first line; a destination with no single managed block and the sentinel returns with no write and no log, one without the sentinel warns without naming `<!-- bkit:end -->`; create the merge destination when `.bkit/lite.md` is absent instead of the unconditional `fs.readFileSync(dst, "utf-8")` read at line 358; do not gate on `getBkitDocsRoot()/lite.md` existing; exclude the seeded `## Project Lite Workflows` heading the way the old function excludes `## Project Shortcuts`
   - **UPDATE:** `BKIT_CANONICAL_DOCS` in `.bkit/core/engine/install/modules/core.ts`: remove `"lite.md"` so the docs loop stops writing it before the migration runs
   - **UPDATE:** `DOCS` in `.bkit/core/engine/install/modules/core.integration.test.ts`: remove `"lite.md"`; rewrite the migration block against inline stub fixtures, dropping `renderedLite()` so nothing reads the source doc
@@ -855,7 +855,7 @@ Build order: config → runtime resolution → install → close row → build w
 
 <!-- bkit:task 17 start -->
 
-- [ ] **TASK 17:** Delete the shipped `lite.md` source doc so the install payload test passes
+- [x] **TASK 17:** Delete the shipped `lite.md` source doc so the install payload test passes
   - **DELETE:** `.bkit/core/.bkit/lite.md`: the retired lite payload; the install no longer writes it
   - **UPDATE:** `.bkit/core/engine/install/manifest.ts`: remove the `.bkit/lite.md` entry and the comment naming it; keep `prompts.md` markered-text
   - **UPDATE:** `.bkit/core/engine/install/manifest.test.ts`: replace the lite-presence assertion with absence plus `prompts.md` as the only markered-text core doc
@@ -889,7 +889,7 @@ Build order: config → runtime resolution → install → close row → build w
 
 <!-- bkit:task 9 start -->
 
-- [ ] **TASK 9:** Teach `bkit uninstall` the retired lite path
+- [x] **TASK 9:** Teach `bkit uninstall` the retired lite path
   - **UPDATE:** `CORE_TEMPLATE_DOCTRINE` in `.bkit/core/engine/commands/install/uninstall.ts`: add `{ path: ".bkit/lite.md", format: "markered-text", module: "core" }` and correct the line-381 comment that mislabels the `.agents/shortcuts.md` entry
   - **UPDATE:** `.bkit/core/engine/commands/install/uninstall.test.ts`: add the retired `.bkit/lite.md` case (managed block stripped, consumer section kept)
   - **UPDATE:** `dist/cli.js`: rebuilt by `pnpm build` and staged in the same commit
@@ -909,7 +909,7 @@ Build order: config → runtime resolution → install → close row → build w
 
 <!-- bkit:task 10 start -->
 
-- [ ] **TASK 10:** Record `ending: held` and `publish: false` on the close
+- [x] **TASK 10:** Record `ending: held` and `publish: false` on the close
   - **UPDATE:** `CloseInput` in `.bkit/core/engine/commands/workflow/workflows.ts`: add `ending?: "done" | "held"` and `publish?: boolean`
   - **UPDATE:** `closeWorkflow` in `.bkit/core/engine/commands/workflow/workflows.ts`: write both fields onto the `workflow-done` and outcome rows
   - **UPDATE:** `.bkit/core/engine/commands/workflow/workflows.ts`: the `close` command spec adds `--ending` and `--publish` with validation
@@ -933,7 +933,7 @@ Build order: config → runtime resolution → install → close row → build w
 
 <!-- bkit:task 11 start -->
 
-- [ ] **TASK 11:** Derive and display the held ending in stats / harvest
+- [x] **TASK 11:** Derive and display the held ending in stats / harvest
   - **UPDATE:** `endingOf` in `scripts/harvest/bkit-harvest.mjs`: return `held` when the run's last `workflow-done` row carries `ending: "held"`
   - **UPDATE:** `scripts/harvest/bkit-harvest.mjs`: the ending list and legend add `held`
   - **UPDATE:** `.bkit/core/engine/ledgers/telemetry.ts`: the per-run view shows an `ending: held` row
