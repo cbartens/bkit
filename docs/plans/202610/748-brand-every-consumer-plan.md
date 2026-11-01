@@ -5,7 +5,7 @@ bkitVersion: 6.0.0
 bkitLatest: 6.0.0
 -->
 
-Verdict: CONCERNS
+Verdict: FAIL
 <!-- verdict:end -->
 
 # Brand Every Consumer-Facing Name Implementation Plan
@@ -135,6 +135,7 @@ Observable outcome: after step 2 `package.json` holds `bkit:lint:prose`, `bkit:s
 | Branding guard: template script names running bkit code, workflow / job display names, Vale style all carry the prefix | Unit | `.bkit/core/engine/audits/templates/branding.test.ts` | 6 |
 | bkit's own adopted copies match the renamed templates | Unit | `.bkit/core/engine/audits/repo/dogfood-templates.test.ts` | 6 |
 | Gate advisory names the missing tool scripts by their `bkit:` names | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 1 |
+| Vale-missing advisory fires when `bkit:lint:prose` runs `bkit ci prose` and vale is not on PATH | Unit | `.bkit/core/engine/checks/after/tools.test.ts` | 1 |
 | Token rewrite changes whole `pnpm <old>` / `pnpm run <old>` tokens only | Unit | `.bkit/core/engine/install/modules/core.test.ts` | 4 |
 | Token rewrite reaches `pnpm` flag forms (`pnpm -s <old>`, `pnpm run --silent <old>`) | Unit | `.bkit/core/engine/install/modules/core.test.ts` | 4 |
 | A foreign `graph*` script (value not running `scripts/graphify/bkit-`) keeps its key and its `pnpm graph` tokens | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 4 |
@@ -384,7 +385,8 @@ None
 
 #### [MODIFY] `.bkit/core/engine/{cli.ts,commands/ci/ci.ts,checks/after/tools.ts,checks/after/index.ts,checks/after/ci-yml.ts,checks/tips/catalogue.ts,install/modules/cloud.ts,install/version-file.ts}`
 
-- **Existence Check:** files exist (`cli.ts:814`, `ci.ts:3,12`, `tools.ts:41,50,141,234`, `index.ts:175`, `ci-yml.ts:709`, `catalogue.ts:170,200,220,371,375,448`, `cloud.ts:57,113,166`, `version-file.ts:155-157`).
+- **Existence Check:** files exist (`cli.ts:814`, `ci.ts:3,12`, `tools.ts:26,35,44` (`detectValeMissing`), `tools.ts:67,76` (`detectValePackageNotSynced`), `index.ts:177` (`renderAdvisoriesMarkdown`), `index.ts:483` (`runPostInstallCheck`), `ci-yml.ts:709`, `catalogue.ts:170,200,220,371,375,448`, `cloud.ts:57,113,166`, `version-file.ts:155-157`).
+- `detectValeMissing` in `tools.ts` reads the `bkit:lint:prose` script key, so the `vale-not-installed` advisory keeps firing after the rename.
 - Help, advisory and tip text name `bkit:lint:prose`, `bkit:slop:delta`, `bkit:graph*`, `Bkit.*` and the `scripts/ci/bkit-*` / `scripts/launchd/bkit-*` templates; `cloud.ts` advisories and the `version-file.ts` comment state the copy-and-own contract with its one exception (the exact-shipped-text brand migrations).
 
 ### Templates and shipped docs
@@ -476,7 +478,7 @@ None
 <!-- prettier-ignore -->
 | Doc | Change required |
 | --- | --- |
-| `docs/knowledge.jsonl` | Superseding same-key rows for ACTIVE rows whose text goes stale — `kn-29-bkit-lints-itself-with-a-narrower-lint-prose-than-it-ships` ("bkit never writes or overwrites a consumer's `.vale.ini`"), `capability-register-drift-reached-dev-through-warn-only-pre-push` (`pnpm graph:refresh`), `kn-lint-prose-gitignored-styles-silently-disable-gate-in-worktrees`, `kn-32-slop-delta-scans-head-live-tree-against-a-clean-ba` — appended by the build's knowledge writers (`@bkit-build-plan-execute` / `@bkit-utility-update-knowledge`) once the names land; ledger rows are not runbook tasks |
+| `docs/knowledge.jsonl` | Superseding same-key rows for ACTIVE rows whose text goes stale — `kn-29-bkit-lints-itself-with-a-narrower-lint-prose-than-it-ships` ("bkit never writes or overwrites a consumer's `.vale.ini`"), `capability-register-drift-reached-dev-through-warn-only-pre-push` (`pnpm graph:refresh`), `kn-lint-prose-gitignored-styles-silently-disable-gate-in-worktrees`, `kn-32-slop-delta-scans-head-live-tree-against-a-clean-ba` — appended by the build's knowledge writers (`@bkit-build-plan-tasks` / `@bkit-utility-update-knowledge`) once the names land; ledger rows are not runbook tasks |
 | `docs/decisions.jsonl` | Rows `748-consumer-facing-names-carry-bkit-prefix`, `748-brand-migration-rewrites-adopted-copies-exact-shipped-text` (written at plan time; updated at plan review for template file names, the token grammar, the `graph*` value guard and the CI-script move) |
 | `docs/architecture.md` | None — `audits/templates/` already places template guard tests |
 | `docs/technology.md` | Line ~83: `lint:prose` / `House` → `bkit:lint:prose` / `Bkit` (Task 12) |
@@ -525,8 +527,10 @@ Build order: script names, template file names and the branding guard (Group 1) 
   - **UPDATE:** `.bkit/core/engine/install/modules/core.ts`: gate advisory text (line ~1098)
   - **UPDATE:** `.bkit/core/engine/cli.ts`: help text (line ~814)
   - **UPDATE:** `.bkit/core/engine/commands/ci/ci.ts`: header comments (lines 3, 12)
-  - **UPDATE:** `.bkit/core/engine/checks/after/tools.ts`: advisory text (line 50)
-  - **UPDATE:** `.bkit/core/engine/checks/after/index.ts`: text (line 175)
+  - **UPDATE:** `detectValeMissing` in `.bkit/core/engine/checks/after/tools.ts`: look up the `bkit:lint:prose` script key instead of the literal `"lint:prose"` (line 35), so the `vale-not-installed` advisory keeps firing after the rename; its doc comment (line 26) and `detect` text (line 44) name `bkit:lint:prose`
+  - **UPDATE:** `detectValePackageNotSynced` in `.bkit/core/engine/checks/after/tools.ts`: `lint:prose` in its write-good `action` text (line 76)
+  - **UPDATE:** `renderAdvisoriesMarkdown` in `.bkit/core/engine/checks/after/index.ts`: comment naming the shipped `lint:prose` (line 177)
+  - **UPDATE:** `runPostInstallCheck` in `.bkit/core/engine/checks/after/index.ts`: the comment `vale missing while lint:prose runs the prose gate` above the `detectValeMissing` call (line 483) names `bkit:lint:prose`
   - **UPDATE:** `.bkit/core/engine/checks/tips/catalogue.ts`: `lint:prose` / `slop:delta` parts of the CI and slop tip text (lines 170, 200)
   - **UPDATE:** `.bkit/core/.bkit/templates.md`: § Gate tool scripts json block and table keys (lines ~146-178, ~192, ~246-263)
   - **UPDATE:** `.bkit/core/.bkit/workflows.md`: gate chains (lines ~1405-1421)
@@ -548,8 +552,9 @@ Build order: script names, template file names and the branding guard (Group 1) 
   - **UPDATE:** `.bkit/core/engine/audits/repo/dogfood-templates.test.ts`: `bkit-ci.yml` adapted edits (lines 180, 194) name `pnpm bkit:slop:delta`
   - **UPDATE:** `.bkit/core/engine/install/modules/core.integration.test.ts`: `names the tool scripts a default gate chains that package.json lacks` (line 261) and the `bkit:gate:format` advisory case (lines 290-294) use the new names
   - **UPDATE:** `.bkit/core/engine/checks/after/index.test.ts`: test title naming `lint:prose` (line 181)
+  - **UPDATE:** `.bkit/core/engine/checks/after/tools.test.ts`: the three `detectValeMissing` tests (lines 67, 75, 81) seed `bkit:lint:prose` and name it in their titles; `returns a finding when lint:prose runs bkit ci prose and vale is not on PATH` → `returns a finding when bkit:lint:prose runs bkit ci prose and vale is not on PATH`, which fails on the old `"lint:prose"` lookup and also asserts the `detect` text names `bkit:lint:prose`
   - **READ:** `unresolvedGateCalls` in `.bkit/core/engine/audits/workflows/local-gate-audit.test.ts`: every default-gate `pnpm` call resolves in the repo's own `package.json`
-  - **DONE WHEN:** every `lint:prose` / `slop:delta` in non-test files under `.bkit/core/engine`, `.bkit/templates/.github/`, `.bkit/templates/.husky/` and `.bkit/core/.bkit/templates.md` is preceded by `bkit:`; root `package.json` has no `lint:prose` / `slop:delta` key; `template-ci-yml.test.ts` `runs every part of the local static gate as a step, bar the named exceptions`, `local-gate-audit.test.ts` and `dogfood-templates.test.ts` pass; `pnpm bkit:gate:static` passes on bkit
+  - **DONE WHEN:** every `lint:prose` / `slop:delta` in non-test files under `.bkit/core/engine`, `.bkit/templates/.github/`, `.bkit/templates/.husky/` and `.bkit/core/.bkit/templates.md` is preceded by `bkit:`; root `package.json` has no `lint:prose` / `slop:delta` key; `detectValeMissing` reads `scripts["bkit:lint:prose"]`; `grep -nE '(^|[^:])lint:prose' .bkit/core/engine/checks/after/tools.test.ts` is empty; `tools.test.ts` `detectValeMissing > returns a finding when bkit:lint:prose runs bkit ci prose and vale is not on PATH` passes; `template-ci-yml.test.ts` `runs every part of the local static gate as a step, bar the named exceptions`, `local-gate-audit.test.ts` and `dogfood-templates.test.ts` pass; `pnpm bkit:gate:static` passes on bkit
   - **TEST FIRST:**
     - `.bkit/core/engine/install/manifest.test.ts` `gate chains call bkit:lint:prose and bkit:slop:delta` fails on chains calling the old names
     - `.bkit/core/engine/install/manifest.test.ts` `gate tool script template values > bkit:lint:prose and bkit:slop:delta call their bkit ci gates` fails on the `templates.md` block lacking the new keys
@@ -595,6 +600,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
   - **UPDATE:** `.github/workflows/bkit-ci.yml`: bkit's own copy (lines 531, 551)
   - **UPDATE:** `.bkit/core/engine/checks/tips/catalogue.ts`: `pnpm graph*` parts of the graphify and slop tip text (lines 170, 200)
   - **UPDATE:** `package.json`: `graph`, `graph:<verb>` keys → `bkit:graph`, `bkit:graph:<verb>`
+  - **UPDATE:** `package.json`: `bkit:generate` value (line 66) calls `pnpm bkit:graph:refresh` instead of `pnpm graph:refresh` inside its `command -v graphify` branch
   - **UPDATE:** `.husky/pre-push`: bkit-only graphify hints (lines 259, 263, 274)
   - **UPDATE:** `docs/templates/bkit-audit-duplication.md`: project part (below `bkit:end`) permissions and capability-register lines name `pnpm bkit:graph:check`, `pnpm bkit:graph:update`, `pnpm bkit:graph:rollup` (lines 242, 246, 249)
   - **UPDATE:** `.bkit/core/engine/audits/repo/dogfood-templates.test.ts`: `what: "pnpm bkit:graph:rollup writes it"` (line 459)
@@ -611,7 +617,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
   - **UPDATE:** `.bkit/core/engine/audits/templates/templates-content.test.ts`: graphify script assertions
   - **CREATE:** `.bkit/core/engine/audits/templates/branding.test.ts`: describe `consumer-facing names carry the bkit prefix` — script names in `.bkit/core/.bkit/templates.md` json blocks whose value runs `bkit ` or `scripts/**/bkit-*` start with `bkit:`; every file under `.bkit/templates/scripts/` and `.bkit/templates/context/` starts with `bkit-`, no exception list; checks are pure functions so seeded negatives run on fixture text
   - **DEPENDS ON:** 1, 2
-  - **DONE WHEN:** no file under `.bkit/templates/`, `.bkit/core/.bkit/`, `.bkit/core/engine/checks/` names `pnpm graph` without `bkit:`; `grep -rnE '(^|[^:])(lint:prose|slop:delta)' .bkit/templates` is empty; `docs/templates/bkit-audit-duplication.md` names no `pnpm graph:` script without `bkit:`; root `package.json` has no `graph*` key; `pnpm bkit:graph:check` passes on bkit; `husky-pre-push.integration.test.ts`, `catalogue.test.ts` and `dogfood-templates.test.ts` pass; `branding.test.ts` passes on the tree and its file-name check fails on a seeded `scripts/foo.sh`
+  - **DONE WHEN:** no file under `.bkit/templates/`, `.bkit/core/.bkit/`, `.bkit/core/engine/checks/` names `pnpm graph` without `bkit:`; `grep -rnE '(^|[^:])(lint:prose|slop:delta)' .bkit/templates` is empty; `docs/templates/bkit-audit-duplication.md` names no `pnpm graph:` script without `bkit:`; root `package.json` has no `graph*` key; no root `package.json` script value calls `pnpm graph` (`bkit:generate` calls `pnpm bkit:graph:refresh`); `pnpm bkit:graph:check` passes on bkit; `husky-pre-push.integration.test.ts`, `catalogue.test.ts` and `dogfood-templates.test.ts` pass; `branding.test.ts` passes on the tree and its file-name check fails on a seeded `scripts/foo.sh`
   - **TEST FIRST:**
     - `.bkit/core/engine/audits/templates/templates-content.test.ts` `lists the graphify scripts under bkit:graph names` fails on `graph*` keys
     - `.bkit/core/engine/audits/templates/branding.test.ts` `consumer-facing names carry the bkit prefix > template script names that run bkit code` fails on the shipped `graph` script names
@@ -696,7 +702,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
   - **DELETE:** `.bkit/templates/.vale/styles/House/LLMSlop.yml`: replaced by `Bkit/LLMSlop.yml`
   - **DELETE:** `.bkit/templates/.vale/styles/House/Verbose.yml`: replaced by `Bkit/Verbose.yml`
   - **UPDATE:** `.bkit/templates/.vale.ini`: `BasedOnStyles = Bkit` / `write-good, Bkit`; `Bkit.<rule>` toggles
-  - **UPDATE:** `.bkit/core/engine/checks/after/tools.ts`: `Bkit` style text (line 41)
+  - **UPDATE:** `detectValePackageNotSynced` in `.bkit/core/engine/checks/after/tools.ts`: `Bkit` style text in its no-`.vale.ini` `action` (line 67)
   - **UPDATE:** `.bkit/core/engine/checks/tips/catalogue.ts`: `Bkit` style text (line 220)
   - **UPDATE:** `.bkit/core/.bkit/templates.md`: Contract row and § Vale name `Bkit`
   - **UPDATE:** `.bkit/core/.bkit/README.md`: Vale path `.vale/styles/Bkit/*` (line 241)
@@ -890,7 +896,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
 - [ ] **Full Local Gate Suite:** `pnpm bkit:gate:static-unit` (bkit's deepest push gate, now calling `bkit:lint:prose` / `bkit:slop:delta`) and `bkit check` (0 writes) pass.
 - [ ] **Test Synchronization:** no E2E suite; existing template and migration tests updated in the task that changes their surface (Tasks 1-10).
 - [ ] **Build Configuration:** `branding.test.ts` and the new tests sit under `.bkit/core/engine/**/*.test.ts`, which the `dist/` build excludes; `pnpm build` output has no test file.
-- [ ] **Unit (`.bkit/core/engine/install/manifest.test.ts`, `.bkit/core/engine/audits/templates/{template-ci-yml,templates,templates-content,branding,ci-scripts}.test.ts`, `.bkit/core/engine/audits/repo/dogfood-templates.test.ts`, `.bkit/core/engine/install/modules/core.test.ts`):** gate chains, tool-script keys, CI steps, smoke and health stubs, `scripts/ci/bkit-*` paths, Vale style, graphify list, branding guard (positive and seeded negatives), adopted copies, token rewrite and residual warning.
+- [ ] **Unit (`.bkit/core/engine/install/manifest.test.ts`, `.bkit/core/engine/audits/templates/{template-ci-yml,templates,templates-content,branding,ci-scripts}.test.ts`, `.bkit/core/engine/audits/repo/dogfood-templates.test.ts`, `.bkit/core/engine/install/modules/core.test.ts`, `.bkit/core/engine/checks/after/tools.test.ts`):** gate chains, tool-script keys, the Vale-missing advisory on `bkit:lint:prose`, CI steps, smoke and health stubs, `scripts/ci/bkit-*` paths, Vale style, graphify list, branding guard (positive and seeded negatives), adopted copies, token rewrite and residual warning.
 - [ ] **Integration (`.bkit/core/engine/install/modules/core.integration.test.ts`, `.bkit/core/engine/commands/install/upgrade.integration.test.ts`):** each migration seeds the old shape in a real tmpdir; idempotency, dry-run and no-canonical-hash rows.
 - [ ] **Apply local migrations:** n/a — no database.
 - [ ] **Run all tests:** `pnpm test` (unit + integration) passes; `pnpm bkit:graph:check` and `pnpm exec tsx .bkit/core/engine/tools/instructions.ts` exit 0.
