@@ -16,7 +16,7 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { lastRun } from "../../ledgers/status.js";
+import { actionHash, actionKey, lastRun, recordAction } from "../../ledgers/status.js";
 import { APPEND_LEDGERS, gitEnv } from "../../ledgers/telemetry.js";
 import { parseJson } from "../../shared/json.js";
 import { readBkitConfig } from "../../shared/settings.js";
@@ -227,6 +227,20 @@ function addWorktree(root, wt, branch, mayCreate, workflow, log) {
     if (!res.ok)
         throw new CommandError(EXIT_WORKTREE_ADD, `git worktree add failed: ${res.stderr}`);
     return true;
+}
+/**
+ * An engine-action row for a rebase that rewrote the branch, keyed on the tip it
+ * replaced, so the run's record shows the rewrite. Nothing when HEAD did not move.
+ */
+export function recordRebase(statusFile, before, after) {
+    if (before === null || after === null || before === after)
+        return;
+    recordAction(statusFile, {
+        action: "rebase",
+        key: actionKey("rebase", before),
+        hash: actionHash(`${before}..${after}`),
+        ref: after,
+    });
 }
 function rebaseInProgress(wt) {
     return ["rebase-merge", "rebase-apply"].some((p) => {
@@ -775,10 +789,13 @@ export const worktreesCommand = {
                         // nothing else is left, bar `engine-call` rows appended to the status file
                         // after the carry commit: a refused carry commit still stops the rebase.
                         const aside = !hasLeftovers(wt) || onlyJournalRowsAppended(wt, statusFile) ? ["--autostash"] : [];
+                        const before = git(wt, ["rev-parse", "HEAD"]);
                         const rb = runGit(wt, ["rebase", "--rebase-merges", ...aside, onto]);
                         // The rebase replays the carry commit on top: report the replayed one.
                         if (rb.ok && carried?.sha)
                             carried.sha = git(wt, ["rev-parse", "HEAD"]);
+                        if (rb.ok)
+                            recordRebase(path.join(logDir, "status.jsonl"), before, git(wt, ["rev-parse", "HEAD"]));
                         if (!rb.ok) {
                             failure = {
                                 conflict: rebaseInProgress(wt),

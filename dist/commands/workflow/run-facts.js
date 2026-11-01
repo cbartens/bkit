@@ -282,11 +282,15 @@ export function hostChat(env) {
  * sha256(`<platform>:<chat id>`), the same as the harvest's fingerprint of its `chat` row key.
  */
 export const chatFingerprint = (platform, id) => `fp:${createHash("sha256").update(`${platform}:${id}`).digest("hex").slice(0, 12)}`;
-/** Status rows that mark a moment rather than the end of a piece of work: step minutes skip them. */
+/**
+ * Status rows that mark a moment rather than the end of a piece of work: step minutes skip
+ * them. A `test-run` row lands just before its step's own row, so the run counts toward it.
+ */
 export const MARK_ROWS = new Set([
     "session",
     "owner-pause",
     "owner-answer",
+    "test-run",
     "engine-call",
     "completeness",
 ]);
