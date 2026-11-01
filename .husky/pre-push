@@ -14,9 +14,9 @@
 # Revert-branch bypass: on a revert branch the unit and integration tiers are skipped; lint +
 # typecheck still run.
 #
-# Min push: every changed file is one bkit writes (ledgers, plans, logs) or one that
-# `bkit.testing.minPushPaths` adds (package.json) → `bkit:gate:min` replaces the full gate;
-# MIN_PUSH=1 for repo extras. Files decide, never `[skip ci]`.
+# Min push: every changed file is one bkit writes or one that `bkit.testing.minPushPaths`
+# adds (package.json; .bkit/templates.md § Git hooks — Husky) → `bkit:gate:min` replaces the
+# full gate; MIN_PUSH=1 for repo extras. Files decide, never `[skip ci]`.
 set -e
 
 # Log: the hook runs itself once more with everything it prints copied to tmp/pre-push.log,
@@ -164,11 +164,11 @@ esac
 # -> allowed ([skip ci] pushes for mid-loop status, abort handover). dev/main exempt;
 # gh absent -> allow. `bkit ci skip-token` exits 0 when HEAD's message carries one of
 # the tokens GitHub honours; bkit owns that list.
-# Exception, the same one ship's merge gate makes: a push that adds bookkeeping only
-# (docs, logs, ledgers, skill removals — ship's `--scope=pr` allow-list) on top of the
+# Exception, the same one ship's merge gate makes: a push that adds only files on ship's
+# `--scope=pr` allow-list (.bkit/workflows.md § `/bkit-ship` — 14 steps) on top of the
 # head the remote already holds leaves nothing new for CI to test, so the PR's checks at
 # that head still cover the code. `bkit ci bookkeeping-push` exits 0 for exactly that
-# shape; a rewritten head (force-push) or any code file blocks as before. The merge gate
+# shape. A rewritten head (force-push) or any code file still blocks. The merge gate
 # (`bkit runs gate --validated=`) stays the authority on what merges.
 case "$BRANCH" in
   dev|main) ;;

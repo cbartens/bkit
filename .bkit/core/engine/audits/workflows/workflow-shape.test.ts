@@ -589,7 +589,7 @@ describe("build", () => {
   it("Plan Convert leaves a valid plan with no newer comments alone", () => {
     const step4 = section(build, /Step 4 — Plan Convert/);
     const skip =
-      "**If** exit 0, `CONVERTED` is not held **and** `NEWER_COMMENTS` = 0 → sub-step 4.";
+      "**If** exit 0 **and** `CONVERTED` is not held **and** `NEWER_COMMENTS` = 0 → sub-step 4.";
     expect(step4).toContain(skip);
     // That route skips the dispatch and writes the no-agent skip row (sub-step 4).
     expect(step4.indexOf(skip)).toBeLessThan(step4.indexOf("Invoke `@bkit-build-plan-convert`"));
@@ -669,7 +669,7 @@ describe("build", () => {
     );
     const step4 = section(build, /Step 4 — Plan Convert/);
     expect(step4).toContain(
-      "**If** exit 0, `CONVERTED` is not held **and** `NEWER_COMMENTS` = 0 → sub-step 4.",
+      "**If** exit 0 **and** `CONVERTED` is not held **and** `NEWER_COMMENTS` = 0 → sub-step 4.",
     );
     expect(step4).toContain("**If** exit 0 **and** `CONVERTED` is held → Step 5.");
     expect(step4).toMatch(
@@ -866,7 +866,7 @@ describe("plan convert skip row", () => {
     expect(skip.filter((l) => l.includes("--attempt-of=build-plan-convert:next"))).toHaveLength(1);
     // The pass route with nothing to convert reaches the skip row, not Step 5.
     expect(step4.body).toMatch(
-      /exit 0, `CONVERTED` is not held \*\*and\*\* `NEWER_COMMENTS` = 0 → sub-step 4/,
+      /exit 0 \*\*and\*\* `CONVERTED` is not held \*\*and\*\* `NEWER_COMMENTS` = 0 → sub-step 4/,
     );
     expect(step4.body).toMatch(/exit 0 \*\*and\*\* `CONVERTED` is held → Step 5/);
   });

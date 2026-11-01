@@ -383,7 +383,7 @@ description: "Build Feature — Autonomous implementation"
    "{BKIT}" tests plan-check --plan="docs/plans/{YYYYMM}/{FID}-plan.md" --existence=report --log="docs/plans/{YYYYMM}/logs/{FID}/build-plan-check.md"
    ```
    Route:
-   - **If** exit 0, `CONVERTED` is not held **and** `NEWER_COMMENTS` = 0 → sub-step 4.
+   - **If** exit 0 **and** `CONVERTED` is not held **and** `NEWER_COMMENTS` = 0 → sub-step 4.
    - **If** exit 0 **and** `CONVERTED` is held → Step 5.
    - **If** `CONVERTED` is not held **and** (exit 0 with `NEWER_COMMENTS` > 0, **or** exit 2 with no `docs/plans/{YYYYMM}/{FID}-plan.md`, **or** exit 1 with a `markers`, `matrix` or `supersession` problem) → sub-step 2.
    - **If** exit 1 **and** `CONVERTED` is held **and** `CONVERT_RETRY` is not held → `CONVERT_RETRY` = the printed `problems` → sub-step 2.

@@ -276,8 +276,9 @@ chmod +x .husky/pre-commit .husky/pre-push
 - `.gitignore`: `.husky/_` (bkit's `.gitignore` block already lists it).
 - Adapt: repo-only checks go below the bkit lines in each hook. What a gate runs belongs in the `bkit:gate:*` script, not the hook.
 - Min push:
-  - **If** every file changed since each pushed commit left `origin/dev` (else `origin/main`) is one bkit writes (ship's `--scope=pr` bookkeeping allow-list, `docs/plans/**`, the repo's `bkit.testing.ciSkipPaths`) or one `bkit.testing.minPushPaths` adds → `bkit:gate:min` replaces the full gate, and `MIN_PUSH=1`.
-  - The setting takes `package.json` globs: `*` matches one folder and `**` any depth. The default is `[]`: what bkit writes is always a min push, and the setting only adds to it (bkit's own: `docs/**`).
+  - **If** every file changed since each pushed commit left `origin/dev` (else `origin/main`) is one bkit writes or one `bkit.testing.minPushPaths` adds → `bkit:gate:min` replaces the full gate, and `MIN_PUSH=1`.
+  - What bkit writes = ship's `--scope=pr` allow-list (`.bkit/workflows.md` § `/bkit-ship` — 14 steps) plus `docs/plans/**`.
+  - The setting takes `package.json` globs: `*` matches one folder and `**` any depth. The default is `[]`, which leaves what bkit writes alone, because the setting only adds to it.
   - `bkit ci min-push` decides from files, never from `[skip ci]`, because that is a typed label and GitHub reads the last commit only.
   - **If** there are no files, the range is unreadable or there is no ref list → the full gate runs.
 - Min-push paths: list only files that no code, build or test reads.
@@ -285,7 +286,8 @@ chmod +x .husky/pre-commit .husky/pre-push
   - **If** a test reads a ledger → put that test into `bkit:gate:min`.
 - `[skip ci]` guards:
   - On a feature branch, the push is blocked only while a PR is open, because workflows push `[skip ci]` code heads mid-run.
-  - With a PR open, `bkit ci bookkeeping-push --from=<remote head>` lets the push through when every file changed since the head the remote holds is on ship's `--scope=pr` bookkeeping allow-list (docs, logs, ledgers, skill removals, plus the repo's `bkit.testing.ciSkipPaths`, e.g. `CHANGELOG.md`, `README.md`): ship's bookkeeping push adds nothing CI has not tested at that head. A rewritten head or a code file still blocks.
+  - With a PR open, `bkit ci bookkeeping-push --from=<remote head>` lets the push through when every file changed since the head the remote holds is on ship's `--scope=pr` allow-list. Such a push adds nothing that CI has not tested at that head.
+  - A rewritten head or a code file still blocks.
   - On `dev` / `main`, the push is blocked unless it is a min push, because GitHub skips CI for the whole push.
 - Slop base:
   - **If** the push is to `dev` **and** `scripts/ci/lanes/bkit-resolve-push-base.mjs` is copied → the hook runs it with `--local --branch=dev --head=<pushed sha>`, and exports `SLOP_BASE_REF` as CI's push base. That base is the head of the last green CI push run on `dev`, else `origin/dev`. The hook prints the base and its source.
