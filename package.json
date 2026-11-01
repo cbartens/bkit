@@ -63,7 +63,7 @@
     "bkit:deps:audit": "pnpm audit",
     "bkit:test:file": "node scripts/ci/bkit-test-file.mjs",
     "bkit:gate:changed": "node scripts/gate/bkit-gate-changed.mjs",
-    "bkit:generate": "pnpm build && pnpm cli:sync && pnpm instructions:sync && vitest run .bkit/core/engine/render -u && bash -c 'if command -v graphify >/dev/null 2>&1; then pnpm graph:refresh; else echo \"[bkit] graphify missing — skipping the capability register (install graphify to rebuild docs/capabilities.md)\"; fi'",
+    "bkit:generate": "pnpm build && pnpm cli:sync && pnpm instructions:sync && pnpm bkit upgrade && vitest run .bkit/core/engine/render -u && bash -c 'if command -v graphify >/dev/null 2>&1; then pnpm graph:refresh; else echo \"[bkit] graphify missing — skipping the capability register (install graphify to rebuild docs/capabilities.md)\"; fi'",
     "bkit:lint:file": "oxlint -c .oxlintrc.json --type-aware --tsconfig tsconfig.test.json --deny-warnings --no-error-on-unmatched-pattern",
     "bkit": "node dist/cli.js",
     "typecheck": "tsc --noEmit && pnpm bkit:typecheck:tests",

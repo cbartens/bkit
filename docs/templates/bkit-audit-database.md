@@ -36,7 +36,7 @@ Migrations and integration tests exercise queries, but neither checks that privi
 **Anchor Standards:**
 
 - Platform production checklist and security guide (e.g., Supabase).
-- Platform advisors and inspection CLI (e.g., Supabase Advisors, `supabase inspect db`); record CLI version.
+- Platform advisors and inspection CLI (e.g., Supabase Advisors, `supabase inspect db`); record the version.
 - Platform backup / restore docs.
 - Platform serverless connection guidance.
 - DB routine-maintenance docs, edition = hosted major (e.g., PostgreSQL Routine Database Maintenance Tasks).

@@ -90,7 +90,7 @@ export const NEAR_COPY = 0.8;
 export const SHARED_MIN: Partial<Record<Surface, number>> = {
   prompt: 2,
   workflow: 2,
-  audit: 5,
+  audit: 2,
   doc: 2,
 };
 
