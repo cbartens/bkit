@@ -608,7 +608,7 @@ export const statusCommand: CommandSpec = {
     },
     row: {
       summary:
-        "Append a typed audit row the fold does not model (ship's gate refusals, CI probes, merge CI).",
+        "Append a typed audit row the fold does not model (ship's gate refusals, CI probes, merge CI); an owner-pause row also logs a human-confirm friction row.",
       use: "workflow",
       flags: [
         FILE_FLAG,

@@ -523,7 +523,7 @@ export const statusCommand = {
             },
         },
         row: {
-            summary: "Append a typed audit row the fold does not model (ship's gate refusals, CI probes, merge CI).",
+            summary: "Append a typed audit row the fold does not model (ship's gate refusals, CI probes, merge CI); an owner-pause row also logs a human-confirm friction row.",
             use: "workflow",
             flags: [
                 FILE_FLAG,
