@@ -429,7 +429,7 @@ $ARGUMENTS
    - Write `{OUTBOX}/plan-answers.md`: the `## Owner answers` heading, then per answer the question verbatim, the owner's answer verbatim, and `Decision: {key}`, or `Decision: none` when no row was written. Append its entries to `docs/plans/{YYYYMM}/logs/{FID}/plan-answers-{RUN}.md`.
      - **If** that file is absent → create it with the heading.
    - **Subagent:** Invoke `/bkit-plan-update` using `subagent` tool:
-     Context: You are a subagent in the Plan phase applying the owner's answers. Switch into the working directory with `cd "{REPO_ROOT}"`, check it with `pwd`, and use it for every file operation that follows.
+     Context: You are a subagent in the Plan phase applying the owner's answers. Switch into the working directory with `cd "{REPO_ROOT}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
      Read: `{OUTBOX}/plan-answers.md`.
      Update: `docs/plans/{YYYYMM}/{FID}-plan.md`.
      **If** `Verdict` = FAIL → tell the user which answer stays unapplied, never the **Failure Path**.

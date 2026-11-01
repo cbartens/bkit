@@ -1160,14 +1160,15 @@ describe("plan", () => {
       expect(lines[check], heading).toContain(`--plan=${written}`);
       expect(lines[check], heading).toContain("--existence=refuse");
       expect(step, heading).toContain("Fix only what");
-      // After close the run has landed: a failed check is reported to the owner, never routed to the Failure Path.
-      if (/Close Workflow/.test(heading)) {
-        expect(step, heading).toMatch(/second exit 1 → tell the user/);
-        expect(step, heading).toContain("commit nothing from this round");
-      } else {
-        expect(step, heading).toMatch(/second exit 1 → \*\*Failure Path\*\*/);
-      }
     }
+    // After close the run has landed: a failed check is reported to the owner, never routed to the Failure Path.
+    const isClose = (s: string) => /Close Workflow/.test(s.split("\n")[0]!);
+    const closeSteps = writers.filter(isClose);
+    expect(closeSteps).toHaveLength(1);
+    expect(closeSteps[0]).toMatch(/second exit 1 → tell the user/);
+    expect(closeSteps[0]).toContain("commit nothing from this round");
+    for (const step of writers.filter((s) => !isClose(s)))
+      expect(step, step.split("\n")[0]).toMatch(/second exit 1 → \*\*Failure Path\*\*/);
     expect(section(plan, /Step 4 — Fetch Context/)).not.toContain("tests plan-check");
     expect(plan).not.toContain("--children");
     expect(plan).not.toContain("--brief");
