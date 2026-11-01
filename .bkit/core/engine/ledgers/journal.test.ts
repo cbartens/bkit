@@ -133,6 +133,35 @@ describe("appendFrictionRow", () => {
     expect(winner).toMatchObject({ recurrenceCount: 3, lastConfirmed: same[2]!["ts"] });
   });
 
+  it("reopens a CLOSED row that recurs, and keeps a TRIAGED one triaged", () => {
+    for (const [triaged, reopened] of [
+      ["CLOSED", "OPEN"],
+      ["TRIAGED", "TRIAGED"],
+    ] as const) {
+      const root = tmp();
+      const first = own(root);
+      expect(appendFrictionRow(root, first)).toEqual({ ok: true });
+      const winner = JSON.parse(lines(root)[0]!) as Record<string, unknown>;
+      const ts = (winner["ts"] as number) + 1;
+      fs.appendFileSync(ledger(root), `${JSON.stringify({ ...winner, ts, status: triaged })}\n`);
+      expect(appendFrictionRow(root, own(root))).toEqual({ ok: true });
+      const last = JSON.parse(lines(root).at(-1)!) as Record<string, unknown>;
+      expect(last).toMatchObject({ key: first["key"], status: reopened, recurrenceCount: 2 });
+    }
+  });
+
+  it("finds the same-key row whatever the spacing of its key field", () => {
+    const root = tmp();
+    const first = own(root);
+    fs.mkdirSync(path.dirname(ledger(root)), { recursive: true });
+    fs.writeFileSync(
+      ledger(root),
+      `${JSON.stringify({ ...first, recurrenceCount: 4 }, null, 1).replace(/\n\s*/g, " ")}\n`,
+    );
+    expect(appendFrictionRow(root, own(root))).toEqual({ ok: true });
+    expect(JSON.parse(lines(root).at(-1)!)).toMatchObject({ recurrenceCount: 5 });
+  });
+
   it("keeps a row another writer appends while a recurrence is recorded", () => {
     const root = tmp();
     expect(appendFrictionRow(root, own(root))).toEqual({ ok: true });

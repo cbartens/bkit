@@ -264,7 +264,7 @@ Categories are free-form. Use the closest term, or `other` if none fits. `deferr
 | `permission-prompt` | tool / permission approval prompt |
 | `agent-rework` | agent redo / self-correction |
 | `manual-install` | manual dependency / tool install |
-| `tool-failure` | tool / command error; the engine writes it on a bkit command's exit that is neither a shared routing code nor one of the verb's own `exitCodes`, or on a non-`CommandError` throw. `key` = `<noun>-<verb>/<step>` (`<step>` = the command's `--step=`, else `<noun>-<verb>`), kept under 60 chars because the identity-gated prune truncates a friction key at about 68. The first row carries `recurrenceCount` 1; a recurrence appends the same-`key` winner again with a later `ts`, `recurrenceCount` raised by one and `lastConfirmed` = that `ts` (§ Updating a Row) |
+| `tool-failure` | tool / command error; the engine writes it on a bkit command's exit that is neither a shared routing code nor one of the verb's own `exitCodes`, or on a non-`CommandError` throw. `key` = `<noun>-<verb>/<step>` (`<step>` = the command's `--step=`, else `<noun>-<verb>`), kept under 60 chars because the identity-gated prune truncates a friction key at about 68. The first row carries `recurrenceCount` 1; a recurrence appends the same-`key` winner again with a later `ts`, `recurrenceCount` raised by one and `lastConfirmed` = that `ts` (§ Updating a Row). A `CLOSED` winner comes back `OPEN`, so a fixed failure that returns reaches triage again; a `TRIAGED` one stays `TRIAGED` |
 | `destructive-backout` | reverted a destructive action |
 | `other` | none of the above |
 

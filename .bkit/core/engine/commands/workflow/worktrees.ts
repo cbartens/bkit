@@ -359,14 +359,16 @@ const hasLeftovers = (wt: string) =>
   (git(wt, ["status", "--porcelain", "--untracked-files=all", "--", ".", ...copyExcludes(wt)]) ??
     "") !== "";
 
+/** A tracked file split into its committed text and the rows appended after it. */
+type Appended = { committed: string; rows: string };
+
 /**
- * Whether the only changes in `wt` are rows the dispatch seam appends after the last
- * commit: `engine-call` rows at the end of the tracked `statusFile`, and `friction`
- * rows at the end of the tracked `.bkit/friction.jsonl` (a hook-launched command's
- * unexpected exit). The resume rebase sets those aside with `--autostash` and puts
- * them back.
+ * The rows the dispatch seam appended after the last commit, by tracked path, when they
+ * are the only changes in `wt`: `engine-call` rows at the end of `statusFile`, and
+ * `friction` rows at the end of `.bkit/friction.jsonl` (a hook-launched command's
+ * unexpected exit). Null when anything else changed.
  */
-function onlyJournalRowsAppended(wt: string, statusFile: string): boolean {
+function journalRowsAppended(wt: string, statusFile: string): Map<string, Appended> | null {
   const allowed = new Map<string, (row: Record<string, unknown>) => boolean>([
     [path.relative(wt, statusFile), (row) => row["type"] === "engine-call"],
     [APPEND_LEDGERS.friction.file, (row) => row["kind"] === "friction"],
@@ -377,31 +379,34 @@ function onlyJournalRowsAppended(wt: string, statusFile: string): boolean {
   )
     .split("\n")
     .filter((l) => l !== "");
-  return (
-    changed.length > 0 &&
-    changed.every((line) => {
-      const rel = [...allowed.keys()].find((r) => line.endsWith(` ${r}`));
-      return rel !== undefined && onlyRowsAppended(wt, rel, allowed.get(rel)!);
-    })
-  );
+  if (changed.length === 0) return null;
+  const out = new Map<string, Appended>();
+  for (const line of changed) {
+    const rel = [...allowed.keys()].find((r) => line.endsWith(` ${r}`));
+    const appended = rel === undefined ? null : appendedRows(wt, rel, allowed.get(rel)!);
+    if (rel === undefined || appended === null) return null;
+    out.set(rel, appended);
+  }
+  return out;
 }
 
-/** Whether `rel` is its committed content plus one or more appended rows `accepts` takes. */
-function onlyRowsAppended(
+/** `rel` as its committed text plus one or more appended rows `accepts` takes; null otherwise. */
+function appendedRows(
   wt: string,
   rel: string,
   accepts: (row: Record<string, unknown>) => boolean,
-): boolean {
+): Appended | null {
   const committed = git(wt, ["cat-file", "blob", `HEAD:${rel}`]);
   const file = path.join(wt, rel);
-  if (committed === null || !fs.existsSync(file)) return false;
+  if (committed === null || !fs.existsSync(file)) return null;
   const text = fs.readFileSync(file, "utf-8");
-  if (!text.startsWith(committed)) return false;
-  const added = text
-    .slice(committed.length)
-    .split("\n")
-    .filter((l) => l.trim() !== "");
-  return (
+  if (!text.startsWith(committed)) return null;
+  // `git` trims its output: the committed text's own last newline comes back with it.
+  const rest = text.slice(committed.length);
+  const lead = rest.startsWith("\n") ? "\n" : "";
+  const rows = rest.slice(lead.length);
+  const added = rows.split("\n").filter((l) => l.trim() !== "");
+  const ok =
     added.length > 0 &&
     added.every((l) => {
       const parsed = parseJson(l);
@@ -412,8 +417,30 @@ function onlyRowsAppended(
         !Array.isArray(parsed.value) &&
         accepts(parsed.value as Record<string, unknown>)
       );
-    })
-  );
+    });
+  return ok ? { committed: text.slice(0, committed.length) + lead, rows } : null;
+}
+
+/**
+ * Appends the rows `journalRowsAppended` set aside back onto their files and returns "".
+ * A rebase that stopped part-way cannot continue past unstaged rows, so then nothing is
+ * appended and the rows come back as text for the rebase log.
+ */
+function putJournalRowsBack(wt: string, journal: Map<string, Appended>): string {
+  if (rebaseInProgress(wt)) {
+    return [...journal]
+      .map(
+        ([rel, a]) =>
+          `rows set aside from ${rel}; append them once the rebase finishes:\n${a.rows}`,
+      )
+      .join("");
+  }
+  for (const [rel, a] of journal) {
+    const file = path.join(wt, rel);
+    const text = fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
+    fs.appendFileSync(file, `${text !== "" && !text.endsWith("\n") ? "\n" : ""}${a.rows}`);
+  }
+  return "";
 }
 
 /**
@@ -951,14 +978,18 @@ export const worktreesCommand: CommandSpec = {
             const onto = worktreeBase(wt, workflow, ctx.log);
             const statusFile = path.join(logDir, "status.jsonl");
             carried = carryLeftovers(wt, { fid, onto, statusFile }, ctx.log);
+            // Journal rows a hook appended after the carry commit go aside by hand and
+            // back after the rebase, never through `--autostash`: a dev that appended to
+            // the same file makes the autostash pop conflict, and git still exits 0.
+            const journal = hasLeftovers(wt) ? journalRowsAppended(wt, statusFile) : null;
+            for (const [rel, a] of journal ?? []) fs.writeFileSync(path.join(wt, rel), a.committed);
             // A tracked copy entry setup copied over (a committed placeholder `.env`) is
             // never committed, so the rebase sets it aside and puts it back. Only when
-            // nothing else is left, bar `engine-call` rows appended to the status file
-            // after the carry commit: a refused carry commit still stops the rebase.
-            const aside =
-              !hasLeftovers(wt) || onlyJournalRowsAppended(wt, statusFile) ? ["--autostash"] : [];
+            // nothing else is left: a refused carry commit still stops the rebase.
+            const aside = hasLeftovers(wt) ? [] : ["--autostash"];
             const before = git(wt, ["rev-parse", "HEAD"]);
             const rb = runGit(wt, ["rebase", "--rebase-merges", ...aside, onto]);
+            const unput = journal === null ? "" : putJournalRowsBack(wt, journal);
             // The rebase replays the carry commit on top: report the replayed one.
             if (rb.ok && carried?.sha) carried.sha = git(wt, ["rev-parse", "HEAD"]);
             if (rb.ok)
@@ -970,7 +1001,7 @@ export const worktreesCommand: CommandSpec = {
             if (!rb.ok) {
               failure = {
                 conflict: rebaseInProgress(wt),
-                detail: [rb.stdout, rb.stderr].filter(Boolean).join("\n"),
+                detail: [rb.stdout, rb.stderr, unput].filter(Boolean).join("\n"),
                 onto,
               };
             }

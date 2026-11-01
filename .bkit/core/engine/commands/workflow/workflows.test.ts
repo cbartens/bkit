@@ -1154,6 +1154,24 @@ describe("bkit workflows close", () => {
     ]);
   });
 
+  it("leaves out the previous run's rows that share a second with this run's start", async () => {
+    const cwd = closable("build");
+    const T = "2020-01-01T00:00:00Z";
+    write(
+      cwd,
+      `${REL}/status.jsonl`,
+      jsonl([
+        { type: "workflow-started", workflow: "build", at: "2019-12-31T00:00:00Z" },
+        { type: "step-done", workflow: "build", step: "build-stray-step", status: "DONE", at: T },
+        { type: "workflow-done", workflow: "build", at: T },
+        { type: "workflow-started", workflow: "build", at: T },
+      ]),
+    );
+    expect((await run(cwd, wf("close", "build"))).code).toBe(0);
+    const stored = rows(statusOf(cwd)).find((x) => x.type === "completeness");
+    expect(stored?.unexpected).toEqual([]);
+  });
+
   it("still closes when the completeness check throws", async () => {
     const cwd = closable("build");
     holes.throwCheck = true;

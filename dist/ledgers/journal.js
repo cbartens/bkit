@@ -138,8 +138,9 @@ export function appendFrictionRow(bookRoot, row) {
 }
 /**
  * The row recording one more occurrence of `prior`: its fields with a `ts` later
- * than its own, the raised count and `lastConfirmed`. Falls back to `row`'s fields
- * when `prior`'s no longer validate.
+ * than its own, the raised count and `lastConfirmed`. A `CLOSED` prior reopens with
+ * `row`'s `status`, so a fixed failure that comes back reaches triage again. Falls
+ * back to `row`'s fields when `prior`'s no longer validate.
  */
 function recurrence(prior, row) {
     const count = typeof prior["recurrenceCount"] === "number" ? prior["recurrenceCount"] : 1;
@@ -147,14 +148,15 @@ function recurrence(prior, row) {
         ? mintTs(prior["ts"])
         : row["ts"];
     const raised = { recurrenceCount: count + 1, lastConfirmed: ts };
-    const carried = { ...prior, ts, ...raised };
+    const reopened = prior["status"] === "CLOSED" ? { status: row["status"] } : {};
+    const carried = { ...prior, ts, ...raised, ...reopened };
     return validate(carried).ok ? carried : { ...row, ts, ...raised };
 }
 /** The same-`key` friction row in `text` that `fold` keeps: highest `ts`, the later line on a tie. */
 function latestSameKey(text, key) {
     let best;
     for (const line of text.split("\n")) {
-        if (!line.includes(`"key":${JSON.stringify(key)}`))
+        if (!line.includes(JSON.stringify(key)))
             continue;
         const parsed = readRow(line);
         if (parsed?.["kind"] !== "friction" || parsed["key"] !== key)

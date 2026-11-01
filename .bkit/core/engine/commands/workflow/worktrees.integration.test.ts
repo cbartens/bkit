@@ -738,7 +738,11 @@ describe("bkit worktrees setup — mint (resume)", () => {
     expect(r.json.carriedSha).not.toBeNull();
     expect(g(wtOf(f), "merge-base", "--is-ancestor", tip, "HEAD").status).toBe(0);
     const lines = fs.readFileSync(status, "utf-8").trim().split("\n");
-    expect(JSON.parse(lines.at(-1)!)).toEqual(row);
+    // The rebase's own `engine-action` row follows the row put back.
+    expect(lines.slice(-2).map((l) => JSON.parse(l))).toMatchObject([
+      row,
+      { type: "engine-action", action: "rebase" },
+    ]);
     expect(git(wtOf(f), "status", "--porcelain", "--", status)).not.toBe("");
   });
 
@@ -781,6 +785,34 @@ describe("bkit worktrees setup — mint (resume)", () => {
     expect(g(wtOf(f), "merge-base", "--is-ancestor", tip, "HEAD").status).toBe(0);
     const lines = fs.readFileSync(friction, "utf-8").trim().split("\n");
     expect(JSON.parse(lines.at(-1)!)).toEqual(row);
+  });
+
+  it("puts friction rows back after a rebase onto a dev that appended to the same file", async () => {
+    const f = fixture();
+    const earlier = JSON.stringify({ kind: "friction", key: "earlier" });
+    fs.mkdirSync(path.join(f.seed, ".bkit"), { recursive: true });
+    advanceDev(f, ".bkit/friction.jsonl", `${earlier}\n`);
+    expect((await setup(f.repo, "build", "--worktrees")).code).toBe(0);
+    const friction = path.join(wtOf(f), ".bkit", "friction.jsonl");
+    const row = JSON.stringify({ kind: "friction", key: "disk-prune/disk-prune" });
+    const hooks = path.join(f.repo, "hooks");
+    fs.mkdirSync(hooks);
+    fs.writeFileSync(
+      path.join(hooks, "pre-commit"),
+      `#!/bin/sh\nprintf '%s\\n' '${row}' >> "${friction}"\n`,
+    );
+    fs.chmodSync(path.join(hooks, "pre-commit"), 0o755);
+    git(f.repo, "config", "core.hooksPath", hooks);
+    fs.writeFileSync(path.join(wtOf(f), "left.txt"), "uncommitted\n");
+    const onDev = JSON.stringify({ kind: "friction", key: "on-dev" });
+    const tip = advanceDev(f, ".bkit/friction.jsonl", `${earlier}\n${onDev}\n`);
+
+    const r = await setup(f.repo, "build", "--worktrees");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ sentinel: null, rebaseConflict: false });
+    expect(g(wtOf(f), "merge-base", "--is-ancestor", tip, "HEAD").status).toBe(0);
+    expect(fs.readFileSync(friction, "utf-8")).toBe(`${earlier}\n${onDev}\n${row}\n`);
+    expect(git(wtOf(f), "stash", "list")).toBe("");
   });
 
   it("still refuses a friction file the carry commit's hook dirtied with another kind: exit 9", async () => {

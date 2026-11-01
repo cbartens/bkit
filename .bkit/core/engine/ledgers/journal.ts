@@ -187,8 +187,9 @@ export function appendFrictionRow(bookRoot: string, row: Record<string, unknown>
 
 /**
  * The row recording one more occurrence of `prior`: its fields with a `ts` later
- * than its own, the raised count and `lastConfirmed`. Falls back to `row`'s fields
- * when `prior`'s no longer validate.
+ * than its own, the raised count and `lastConfirmed`. A `CLOSED` prior reopens with
+ * `row`'s `status`, so a fixed failure that comes back reaches triage again. Falls
+ * back to `row`'s fields when `prior`'s no longer validate.
  */
 function recurrence(
   prior: Record<string, unknown>,
@@ -200,7 +201,8 @@ function recurrence(
       ? mintTs(prior["ts"])
       : row["ts"];
   const raised = { recurrenceCount: count + 1, lastConfirmed: ts };
-  const carried = { ...prior, ts, ...raised };
+  const reopened = prior["status"] === "CLOSED" ? { status: row["status"] } : {};
+  const carried = { ...prior, ts, ...raised, ...reopened };
   return validate(carried).ok ? carried : { ...row, ts, ...raised };
 }
 
@@ -208,7 +210,7 @@ function recurrence(
 function latestSameKey(text: string, key: unknown): Record<string, unknown> | undefined {
   let best: Record<string, unknown> | undefined;
   for (const line of text.split("\n")) {
-    if (!line.includes(`"key":${JSON.stringify(key)}`)) continue;
+    if (!line.includes(JSON.stringify(key))) continue;
     const parsed = readRow(line);
     if (parsed?.["kind"] !== "friction" || parsed["key"] !== key) continue;
     if (best === undefined || compareTs({ ts: parsed["ts"] }, { ts: best["ts"] }) >= 0) {

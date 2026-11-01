@@ -820,25 +820,43 @@ function appendStats(tree, rows, log) {
         return false;
     }
 }
-/** `workflow`'s rows of `file` from `startAt` (run start) on, in time order; unreadable lines skipped. */
-function runRowsOf(file, workflow, startAt, before) {
+/**
+ * The rows of `workflow`'s `nth` run in `file` (the last when omitted), in time order;
+ * unreadable lines skipped. Runs split as `fold` splits them: rows ordered by `at`, file
+ * order on a tie, each new `workflow-started` opening a run, so a previous run's rows in
+ * the same second as this run's start stay with the previous run.
+ */
+function runRowsOf(file, workflow, nth = -1) {
     const at = (r) => (typeof r["at"] === "string" ? r["at"] : "");
-    return parseRows(fs.readFileSync(file, "utf-8"))
-        .filter((r) => r.workflow === workflow &&
-        (startAt === undefined || at(r) >= startAt) &&
-        (before === undefined || at(r) < before))
-        .sort((a, b) => (at(a) < at(b) ? -1 : at(a) > at(b) ? 1 : 0));
+    const ordered = parseRows(fs.readFileSync(file, "utf-8"))
+        .map((r, i) => ({ r, i }))
+        .filter(({ r }) => r.workflow === workflow)
+        .sort((a, b) => (at(a.r) < at(b.r) ? -1 : at(a.r) > at(b.r) ? 1 : a.i - b.i))
+        .map(({ r }) => r);
+    const runs = [];
+    const starts = new Set();
+    for (const r of ordered) {
+        if (r.type === "workflow-started" && !starts.has(at(r))) {
+            starts.add(at(r));
+            runs.push([]);
+        }
+        else if (runs.length === 0 && r.type === "step-done") {
+            runs.push([]);
+        }
+        runs.at(-1)?.push(r);
+    }
+    return runs.at(nth) ?? [];
 }
 /** The contract of `workflow`, derived from its shipped markdown rendered for the tracker `cwd` is configured with. */
 const contractOf = (workflow, cwd) => deriveContract(fs.readFileSync(path.join(getWorkflowsRoot(), `bkit-${workflow}.md`), "utf-8"), workflow, readIssueTracker(cwd));
 /**
- * Appends the close's `completeness` row for the run that started at `startAt`. Advisory:
+ * Appends the close's `completeness` row for `workflow`'s last run. Advisory:
  * a failure of the check or of the write is logged in one line and never fails the close.
  * `journalSuspect` is set here only: the closing engine journals itself.
  */
-function writeCompletenessRow(file, workflow, startAt, parentSha, log) {
+function writeCompletenessRow(file, workflow, parentSha, log) {
     try {
-        const verdict = checkCompleteness(runRowsOf(file, workflow, startAt), contractOf(workflow, path.dirname(file)), {
+        const verdict = checkCompleteness(runRowsOf(file, workflow), contractOf(workflow, path.dirname(file)), {
             journalSuspect: true,
         });
         const row = { type: "completeness", ...verdict, at: statusTimestamp(), parentSha };
@@ -864,12 +882,11 @@ function previousRunWarning(file, resumed) {
         const prev = runs[at];
         if (prev === undefined)
             return null;
-        const next = runs.slice(at + 1).find((r) => r.workflow === prev.workflow);
-        const own = runRowsOf(file, prev.workflow, prev.startedAt, next?.startedAt);
+        const number = runs.slice(0, at + 1).filter((r) => r.workflow === prev.workflow).length;
+        const own = runRowsOf(file, prev.workflow, number - 1);
         const { verdict } = readCompleteness(own, contractOf(prev.workflow, path.dirname(file)));
         if (!verdict.holey)
             return null;
-        const number = runs.slice(0, at + 1).filter((r) => r.workflow === prev.workflow).length;
         const closed = own.filter((e) => e.type === "workflow-done").at(-1)?.["at"] ?? "never";
         return (`[bkit-workflows] previous run (${prev.workflow} run ${number}, closed ${closed}) was incomplete: ` +
             `${verdict.evidenceHoles.length} evidence hole(s), ${verdict.stepHoles.length} step hole(s); ` +
@@ -938,7 +955,7 @@ export function closeWorkflow(cwd, o, log) {
     if (o.recordStep === true) {
         writeStepRow(where.tree, { file: where.status, workflow, step, artifacts: [], commit: "none" }, log);
     }
-    writeCompletenessRow(where.status, workflow, lastOfType(readStatusEvents(where.status), "workflow-started", workflow)?.at, parentSha, log);
+    writeCompletenessRow(where.status, workflow, parentSha, log);
     const endAt = statusTimestamp();
     const row = { type: "workflow-done", workflow, at: endAt, parentSha };
     fs.appendFileSync(where.status, appendLine(row));
