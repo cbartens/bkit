@@ -23,9 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-01T04:39:10Z)_
-_(refreshed 2026-11-01T04:39:11Z)_
-_(refreshed 2026-11-01T07:21:44Z)_
+_(refreshed 2026-11-01T13:21:28Z)_
 
 ### Design
 
@@ -52,7 +50,6 @@ _(refreshed 2026-11-01T07:21:44Z)_
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
-| 715-retire-lite-workflows | 715-retire-lite-workflows | 1793507950218 |
 
 ### Debug
 
@@ -63,6 +60,7 @@ _(none)_
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 715-retire-lite-workflows | 715-retire-lite-workflows | 1793539288121 |
 | 699-engine-run-completeness | 699-engine-run-completeness | 1793517704318 |
 | 701-engine-work-build | 701-engine-work-build | 1793191338658 |
 | 705-build-plan-convert | 705-build-plan-convert | 1793100657723 |
@@ -72,7 +70,6 @@ _(none)_
 | 342-injection-hardening | Prompt-injection hardening | 1787201470000 |
 | 363-widen-bkit-cloud-trigger | Widen bkit-cloud trigger to post-merge dev CI | 1785451674356 |
 | 384-ship-bookkeeping | Ship bookkeeping mutated the validated PR head | 1785303519000 |
-| completed-ship-bookkeeping-path-a-b-with-tiered-quality-carriers-38-b1b1268 | Ship bookkeeping Path A/B with tiered quality carriers — #384 | 1785283200000 |
 <!-- bkit:roadmap-status end -->
 
 <!-- bkit:roadmap-analysis start -->
