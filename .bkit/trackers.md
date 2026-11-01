@@ -120,10 +120,10 @@ Workflows read an issue's body and comments (`bkit issues text`), never its titl
 - Edge Cases: `| Scenario | Expected Behavior |`.
 - Derived Test Matrix: `| Test description | Type | Target file |`. Type = the lowest tier that exercises the test, named as in `docs/testing.md`. Exactly one task covers each row.
 - Tasks, in build order, as task group and task blocks (`docs/templates/bkit-plan.md` § Agent Execution Runbook), sized by `package.json` `bkit.workflows.tasks`:
-  - Each group holds <= `bkit.workflows.tasks.maxPerGroup` tasks (default 3) and <= `bkit.workflows.tasks.maxTestsPerGroup` `TEST FIRST` tests (default 15).
+  - Each group holds <= `bkit.workflows.tasks.maxPerGroup` tasks (default 5) and <= `bkit.workflows.tasks.maxTestsPerGroup` `TEST FIRST` tests (default 25).
   - Each task has 1 to `bkit.workflows.tasks.maxTestsPerTask` tests (default 10) across <= `bkit.workflows.tasks.maxTestFilesPerTask` test files (default 3), or `n/a — {reason}` for docs, config, a pure refactor, or E2E / @live only.
   - The fields are the plan's: `CREATE` / `READ` / `UPDATE` / `DELETE` (`` `{symbol}` in `{file}`: {what} `` or `` `{file}`: {what} ``, one line per reference), `DEPENDS ON` (task numbers, in the same or an earlier group), `DONE WHEN`, `TEST FIRST`, and `TEST EXCEPTION` (owner only), which counts once it is committed alone in the plan.
-  - An issue's `TEST EXCEPTION` is a request. Convert copies it word for word, `bkit tests green` refuses it (`exception-refused`, or its test-order gaps), and the owner confirms it at the build's Decision Pause, where Accept rewrites it with the owner's reason and date.
+  - An issue's `TEST EXCEPTION` is a request. Convert copies it word for word, `bkit tests green` refuses it (`exception-refused`, or its `no-red` gaps), and the owner confirms it at the build's Decision Pause, where Accept rewrites it with the owner's reason and date.
   - With a plan file, the build reads both. Where the issue and the plan disagree, the newer text wins, and comments posted after the plan's last commit send the build through convert before any code.
 
   The form `.github/ISSUE_TEMPLATE/bkit-change.yml` shows the same fields:

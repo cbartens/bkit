@@ -69,10 +69,10 @@ describe("renderAntigravityAgentsSkills", () => {
     renderAntigravityAgentsSkills(ctx);
 
     // Subagent prompt mirror inside the plugin.
-    const prompt = path.join(tmpDir, ANTIGRAVITY_AGENTS_DIR, "bkit-build-plan-execute.md");
+    const prompt = path.join(tmpDir, ANTIGRAVITY_AGENTS_DIR, "bkit-build-plan-tasks.md");
     expect(fs.existsSync(prompt)).toBe(true);
     const promptBody = fs.readFileSync(prompt, "utf-8");
-    expect(promptBody).toContain("name: bkit-build-plan-execute");
+    expect(promptBody).toContain("name: bkit-build-plan-tasks");
     expect(promptBody).toMatch(/^model: gemini-4-argon$/m);
     expect(promptBody).toContain("- view_file");
     expect(promptBody).toContain("bkit:managed v9.9.9");

@@ -320,10 +320,10 @@ describe("readBkitConfig", () => {
     expect(invalidAskSettings({})).toEqual([]);
   });
 
-  it("tasks defaults to 3, 15, 10 and 3", () => {
+  it("tasks defaults to 5, 25, 10 and 3", () => {
     const want = {
-      maxPerGroup: 3,
-      maxTestsPerGroup: 15,
+      maxPerGroup: 5,
+      maxTestsPerGroup: 25,
       maxTestsPerTask: 10,
       maxTestFilesPerTask: 3,
     };

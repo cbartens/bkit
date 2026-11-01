@@ -976,7 +976,6 @@ export function closeWorkflow(cwd, o, log) {
         ? runLines(where.tree, `${o.squashSha}^`, o.squashSha)
         : runLines(where.tree, base, parentSha);
     const startedRows = new Set(events.filter((e) => e.type === "workflow-started" && e.workflow === workflow).map((e) => e.at)).size;
-    const logDir = path.join(where.tree, logDirRel(where.month, o.fid));
     const by = { workflow, step };
     const counterRow = {
         kind: "counter",
@@ -1016,7 +1015,7 @@ export function closeWorkflow(cwd, o, log) {
         ...(plan === undefined ? {} : { plan }),
         ...(workflow === "build"
             ? {
-                build: buildBlock(runRowsOf, logDir, planFiles(where.tree, where.month, o.fid), runDeferrals()),
+                build: buildBlock(runRowsOf, planFiles(where.tree, where.month, o.fid), runDeferrals()),
             }
             : {}),
         ...(context === undefined ? {} : { context }),

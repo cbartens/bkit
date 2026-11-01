@@ -179,8 +179,8 @@
         "install": true
       },
       "tasks": {
-        "maxPerGroup": 3,
-        "maxTestsPerGroup": 15,
+        "maxPerGroup": 5,
+        "maxTestsPerGroup": 25,
         "maxTestsPerTask": 10,
         "maxTestFilesPerTask": 3
       },

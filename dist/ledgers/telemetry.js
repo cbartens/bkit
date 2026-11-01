@@ -175,7 +175,7 @@ export const UNJUSTIFIED_REASON = "unjustified";
  * § Ledgers & Writers). EXHAUSTIVE: a subagent absent from this set does not
  * write the kind at all.
  *
- * `@bkit-build-plan-execute` and `@bkit-build-plan-gaps-remediate` are not in it: a
+ * `@bkit-build-plan-tasks` and `@bkit-build-plan-gaps-remediate` are not in it: a
  * blocked plan task's record is its `BLOCKED` log line, which the next verify pass reads.
  *
  * Orchestrator-written rows carry no `subagent` and are outside this check.
@@ -237,7 +237,8 @@ export const KIND_WRITERS = {
     failure: { subagents: ANY_WRITER, orchestrators: ANY_WRITER },
     knowledge: {
         subagents: new Set([
-            "bkit-build-plan-execute",
+            "bkit-build-plan-tests",
+            "bkit-build-plan-tasks",
             "bkit-build-plan-gaps-remediate",
             "bkit-debug-failure-remediate",
             "bkit-utility-update-knowledge",
@@ -797,7 +798,7 @@ export function totalsProblem(row) {
             checks.push(() => eq("build.challenge.findings.total", findings["total"], sumOf(["CRITICAL", "HIGH", "MEDIUM", "LOW"].map((s) => findings[s]))));
         }
         if (typeof build["redTests"] === "number" && isObj(field(steps, "byStep"))) {
-            checks.push(() => eq("build.redTests", build["redTests"], Number(field(steps, "byStep", "build-task-red", "n") ?? 0)));
+            checks.push(() => eq("build.redTests", build["redTests"], Number(field(steps, "byStep", "build-tests-red", "n") ?? 0)));
         }
     }
     const usage = row["usage"];

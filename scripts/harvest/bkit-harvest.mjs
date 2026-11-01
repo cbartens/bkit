@@ -1424,7 +1424,7 @@ export function buildFacts(run, dir, isLastBuild, window) {
     gapsRemediate,
     ...(hol ? { holistic: { verdict: hol.verdict ?? null, failures: hol.failures ?? null } } : {}),
     ...(ch ? { challenge: { verdict: ch.verdict ?? null, findings } } : {}),
-    // Filled from the row's steps block: build.redTests = steps.byStep["build-task-red"].n.
+    // Filled from the row's steps block: build.redTests = the build-task-red (older runs) and build-tests-red rows.
     redTests: 0,
   };
 }
@@ -1663,7 +1663,8 @@ export function runRows(dir, repo, history, activity = () => null, usage = () =>
     let build;
     if (run.workflow === "build") {
       build = buildFacts(run, dir, run === lastOf("build"), window);
-      build.redTests = steps.byStep["build-task-red"]?.n ?? 0;
+      build.redTests =
+        (steps.byStep["build-task-red"]?.n ?? 0) + (steps.byStep["build-tests-red"]?.n ?? 0);
     }
     return {
       schema: SCHEMA,
@@ -2362,7 +2363,11 @@ export function validateTotals(row) {
   }
   const b = row.build;
   if (b && "redTests" in b && st?.byStep)
-    same("build.redTests", b.redTests, st.byStep["build-task-red"]?.n ?? 0);
+    same(
+      "build.redTests",
+      b.redTests,
+      (st.byStep["build-task-red"]?.n ?? 0) + (st.byStep["build-tests-red"]?.n ?? 0),
+    );
   const f = b?.challenge?.findings;
   if (f) same("build.challenge.findings.total", f.total, f.CRITICAL + f.HIGH + f.MEDIUM + f.LOW);
 

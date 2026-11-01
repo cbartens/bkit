@@ -521,11 +521,11 @@ describe("build", () => {
 
   it("an execute cap stop is a handover, never a FAIL attempt", () => {
     const step7 = stepBody(build, /Step 7 — Plan Execute/);
-    expect(step7).toContain("Hold `verdict` as `EXECUTE_VERDICT`");
-    expect(step7).toContain("`EXECUTE_VERDICT` = HANDOVER");
+    expect(step7).toContain("Hold `verdict` as `TASKS_VERDICT`");
+    expect(step7).toContain("`TASKS_VERDICT` = HANDOVER");
     expect(step7).toContain("not a failed attempt");
     const prompt = fs.readFileSync(
-      path.join(REPO_ROOT, ".bkit", "core", "prompts", "bkit-build-plan-execute.md"),
+      path.join(REPO_ROOT, ".bkit", "core", "prompts", "bkit-build-plan-tasks.md"),
       "utf-8",
     );
     expect(prompt).toMatch(/^Verdict: PASS \| HANDOVER \| FAIL/m);
@@ -604,7 +604,7 @@ describe("build", () => {
     expect(sharedStepNumbers()).toEqual([
       ["build-close-workflow", "build-create-pr"],
       ["build-group-gate", "build-plan-verify"],
-      ["build-group-start", "build-plan-execute"],
+      ["build-group-start", "build-plan-tasks", "build-plan-tests"],
     ]);
     // Each finish line posts the number and title of its own table row.
     expect(commentNumberProblems(build)).toEqual([]);
@@ -689,18 +689,44 @@ describe("build", () => {
   it("Step 7 takes the next group's brief and hands execute its path", () => {
     const step7 = stepBody(build, /Step 7 — Plan Execute/);
     const brief = commandLines(step7, "context brief");
-    expect(brief).toHaveLength(1);
+    expect(brief).toHaveLength(2);
     expect(brief[0]).toContain("--next");
-    expect(brief[0]).toContain('--plan="docs/plans/{YYYYMM}/{FID}-plan.md"');
-    expect(brief[0]).toContain('--note-file="{SESSION_DIR}/brief-note.md"');
+    for (const line of brief) {
+      expect(line).toContain('--plan="docs/plans/{YYYYMM}/{FID}-plan.md"');
+      expect(line).toContain('--note-file="{SESSION_DIR}/brief-note.md"');
+    }
     expect(step7).toContain("drop `--note-file` when `{SESSION_DIR}/brief-note.md` does not exist");
     expect(step7).toContain("`{BRIEF}`");
     expect(step7.indexOf("context brief")).toBeLessThan(
-      step7.indexOf("Invoke `@bkit-build-plan-execute`"),
+      step7.indexOf("Invoke `@bkit-build-plan-tasks`"),
     );
     const finish = commandLines(step7, "steps finish");
-    expect(finish).toHaveLength(1);
-    expect(finish[0]).toContain("--group={GROUP}");
+    expect(finish).toHaveLength(2);
+    for (const line of finish) expect(line).toContain("--group={GROUP}");
+  });
+
+  it("Step 7 writes a group's tests with their own subagent, records them red and only then invokes execute", () => {
+    const step7 = stepBody(build, /Step 7 — Plan Execute/);
+    const [, testsBrief] = commandLines(step7, "context brief");
+    expect(testsBrief).toContain("--tests-only");
+    expect(testsBrief).toContain("--group={GROUP}");
+    expect(testsBrief).toContain('--file="{STATUS}"');
+    const tests = step7.indexOf("Invoke `@bkit-build-plan-tests`");
+    const red = step7.indexOf('"{BKIT}" tests red');
+    const execute = step7.indexOf("Invoke `@bkit-build-plan-tasks`");
+    expect(tests).toBeGreaterThan(0);
+    expect(red).toBeGreaterThan(tests);
+    expect(execute).toBeGreaterThan(red);
+    const [testsFinish, executeFinish] = commandLines(step7, "steps finish");
+    expect(testsFinish).toContain("--step=build-plan-tests");
+    expect(testsFinish).toContain('--plan="docs/plans/{YYYYMM}/{FID}-plan.md"');
+    expect(executeFinish).toContain("--step=build-plan-tasks");
+    expect(step7).toContain("**If** exit 15");
+    expect(step7).toContain("**If** exit 11");
+    expect(commandLines(step7, "tests red")[0]).toContain(
+      '--log="docs/plans/{YYYYMM}/logs/{FID}/build-tests-red-{GROUP}-{RED_ATTEMPT}.md"',
+    );
+    expect(step7).not.toContain("--task=");
   });
 
   it("Step 8 verifies a diff cut from the group's start commit", () => {
@@ -719,7 +745,7 @@ describe("build", () => {
 
   it("the execute prompt logs `DONE — TASK {N}`, the line the brief and the commit check read", () => {
     const prompt = fs.readFileSync(
-      path.join(REPO_ROOT, ".bkit", "core", "prompts", "bkit-build-plan-execute.md"),
+      path.join(REPO_ROOT, ".bkit", "core", "prompts", "bkit-build-plan-tasks.md"),
       "utf-8",
     );
     expect(prompt).toMatch(/^DONE\s*[—–-]+\s*TASK\s+\{N\}/m);

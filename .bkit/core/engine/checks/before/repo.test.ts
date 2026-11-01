@@ -198,7 +198,7 @@ describe("detectInvalidTaskCaps", () => {
     expect(finding!.detect).toContain("`bkit.workflows.tasks.maxPerGroup`");
     expect(finding!.detect).toContain("`bkit.workflows.tasks.maxTestsPerTask`");
     expect(finding!.detect).not.toContain("maxTestsPerGroup");
-    expect(finding!.action).toContain("`bkit.workflows.tasks.maxPerGroup` (default 3)");
+    expect(finding!.action).toContain("`bkit.workflows.tasks.maxPerGroup` (default 5)");
     expect(finding!.action).toContain("`bkit.workflows.tasks.maxTestsPerTask` (default 10)");
   });
 });
@@ -213,7 +213,7 @@ describe("detectTaskCapFormStale", () => {
     fs.mkdirSync(path.join(tmpDir, ".github/ISSUE_TEMPLATE"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, FORM),
-      `description: groups of up to \`bkit.workflows.tasks.maxPerGroup\` tasks (default ${perGroup}) and \`bkit.workflows.tasks.maxTestsPerGroup\` **TEST FIRST** tests (default 15), 1 to \`bkit.workflows.tasks.maxTestsPerTask\` per task (default ${perTask}) across up to \`bkit.workflows.tasks.maxTestFilesPerTask\` test files (default 3).\n`,
+      `description: groups of up to \`bkit.workflows.tasks.maxPerGroup\` tasks (default ${perGroup}) and \`bkit.workflows.tasks.maxTestsPerGroup\` **TEST FIRST** tests (default 25), 1 to \`bkit.workflows.tasks.maxTestsPerTask\` per task (default ${perTask}) across up to \`bkit.workflows.tasks.maxTestFilesPerTask\` test files (default 3).\n`,
       "utf-8",
     );
   };
@@ -236,11 +236,11 @@ describe("detectTaskCapFormStale", () => {
   });
 
   it("compares against the defaults when package.json sets no caps", () => {
-    form(3, 10);
+    form(5, 10);
     expect(detectTaskCapFormStale(tmpDir)).toBeNull();
     form(4, 10);
     expect(detectTaskCapFormStale(tmpDir)?.detect).toContain(
-      "`bkit.workflows.tasks.maxPerGroup` (default 4) is 3",
+      "`bkit.workflows.tasks.maxPerGroup` (default 4) is 5",
     );
   });
 

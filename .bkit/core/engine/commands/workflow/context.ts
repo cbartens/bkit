@@ -55,15 +55,16 @@ import { parseJson } from "../../shared/json.js";
 import { checkedTable } from "../../shared/text.js";
 import { buildComment } from "./issues.js";
 import {
+  derivedTestMatrix,
   parsePlanBlocks,
   reuseInventory,
   type PlanGroup,
   type PlanTaskBlock,
 } from "./plan-blocks.js";
 import { COMMENT_FILE_OUTPUT, commentFileOf } from "./tracker.js";
-import { EXIT_NO_STATUS, positiveInt, readRuns, str } from "./status.js";
+import { EXIT_NO_STATUS, FILE_FLAG, positiveInt, readRuns, str } from "./status.js";
 import { EXIT_COMMIT, writeStepRow } from "./steps.js";
-import { doneTasks, redRows } from "./tests.js";
+import { RED_PROVEN, doneTasks, redEntries, redKey } from "./tests.js";
 
 /** Exit code: the artifact to clamp is missing, unreadable, or could not be replaced. */
 export const EXIT_ARTIFACT = 4;
@@ -1028,7 +1029,9 @@ export const BRIEF_WORK_WARN_BYTES = 8 * 1024;
 const BRIEF_SECTIONS = ["Context & Goals", "Narrative", "Success Criteria", "Out of Scope"];
 
 /** The plan-execute logs whose `DONE — TASK N` lines mark a task done. */
-const EXECUTE_LOG = /^build-plan-execute-.+-log\.md$/;
+// `build-plan-execute-*` is the log's name from before the step rename: a run in flight
+// across the rename keeps its DONE lines (`docs/migrations.md`).
+const TASKS_LOG = /^build-plan-(?:tasks|execute)-.+-log\.md$/;
 
 /** A heading's text without leading emoji and marks. */
 const headingText = (text: string) => text.replace(/^[^A-Za-z0-9]+/, "").trim();
@@ -1059,7 +1062,7 @@ function planSection(lines: string[], name: string): string | undefined {
 function loggedDone(dir: string): Set<number> {
   const done = new Set<number>();
   if (!fs.existsSync(dir)) return done;
-  for (const f of fs.readdirSync(dir).filter((f) => EXECUTE_LOG.test(f)))
+  for (const f of fs.readdirSync(dir).filter((f) => TASKS_LOG.test(f)))
     for (const n of doneTasks(fs.readFileSync(path.join(dir, f), "utf-8"))) done.add(n);
   return done;
 }
@@ -1104,14 +1107,18 @@ function architectureEntries(lines: string[], files: Set<string>): string[] {
   });
 }
 
-/** The next free `build-brief-{group}-{n}.md` in `dir`. */
-function nextBriefPath(dir: string, group: number): string {
-  const re = new RegExp(`^build-brief-${group}-([0-9]+)\\.md$`);
+/** The next free `{prefix}-{group}-{n}.md` in `dir`: the code briefs and the tests briefs count apart. */
+function nextBriefPath(dir: string, group: number, prefix = "build-brief"): string {
+  const re = new RegExp(`^${prefix}-${group}-([0-9]+)\\.md$`);
   const taken = fs.existsSync(dir)
     ? fs.readdirSync(dir).map((f) => Number(re.exec(f)?.[1] ?? 0))
     : [];
-  return path.join(dir, `build-brief-${group}-${Math.max(0, ...taken) + 1}.md`);
+  return path.join(dir, `${prefix}-${group}-${Math.max(0, ...taken) + 1}.md`);
 }
+
+/** The TEST FIRST tests of `tasks`, in plan order. */
+export const plannedTests = (tasks: PlanTaskBlock[]) =>
+  tasks.flatMap((t) => (t.testFirst?.tests ?? []).map((x) => ({ task: t.task, ...x })));
 
 export interface BriefInput {
   plan: string;
@@ -1120,7 +1127,8 @@ export interface BriefInput {
   group: PlanGroup;
   groups: PlanGroup[];
   isDone: (t: PlanTaskBlock) => boolean;
-  reds: Array<Record<string, unknown>>;
+  /** The tests step's brief: the Derived Test Matrix rows for the group's tests replace the Reuse Inventory rows and Architecture entries. */
+  testsOnly?: boolean;
   note?: string;
 }
 
@@ -1128,7 +1136,12 @@ export interface BriefInput {
 export function briefText(o: BriefInput): { text: string; workBytes: number } {
   const lines = o.plan.split("\n");
   const title = lines.find((l) => /^#\s/.test(l))?.replace(/^#\s+/, "") ?? "Plan";
-  const out = [`# Brief: group ${o.group.group} — ${o.group.title}`, "", `Plan: ${title}`, ""];
+  const out = [
+    `# Brief: group ${o.group.group} — ${o.group.title}${o.testsOnly ? " (tests)" : ""}`,
+    "",
+    `Plan: ${title}`,
+    "",
+  ];
 
   out.push("## Why and what", "");
   for (const name of BRIEF_SECTIONS) {
@@ -1159,16 +1172,6 @@ export function briefText(o: BriefInput): { text: string; workBytes: number } {
   const open = o.group.tasks.filter((t) => !o.isDone(t));
   const work = ["## The work", ""];
   for (const t of open) work.push(t.text.trim(), "");
-  const openNums = new Set(open.map((t) => t.task));
-  const reds = o.reds.filter((r) => openNums.has(Number(r.task)));
-  if (reds.length > 0) {
-    work.push("### Reds already recorded", "");
-    for (const r of reds)
-      work.push(
-        `- TASK ${Number(r.task)}: red already recorded for \`${String(r.test)}\` \`${String(r.testName)}\` — test written and seen failing; code may be partly done in the files it names`,
-      );
-    work.push("");
-  }
   const deps = [...new Set(open.flatMap((t) => t.dependsOn))]
     .filter((n) => !o.group.tasks.some((t) => t.task === n))
     .sort((a, b) => a - b)
@@ -1185,7 +1188,8 @@ export function briefText(o: BriefInput): { text: string; workBytes: number } {
     }
     work.push("");
   }
-  work.push(...planEntries(lines, open, work, o.planFile));
+  if (o.testsOnly) work.push(...matrixRows(o.plan, open));
+  else work.push(...planEntries(lines, open, work, o.planFile));
   out.push(...work);
 
   if (o.note !== undefined) out.push("## Deviations", "", o.note.trim(), "");
@@ -1193,6 +1197,19 @@ export function briefText(o: BriefInput): { text: string; workBytes: number } {
     text: out.join("\n"),
     workBytes: Buffer.byteLength(work.join("\n")),
   };
+}
+
+/** The Derived Test Matrix rows naming a TEST FIRST file of `open`, under the table's header. */
+function matrixRows(plan: string, open: PlanTaskBlock[]): string[] {
+  const matrix = derivedTestMatrix(plan);
+  if (matrix === null) return [];
+  const files = new Set(plannedTests(open).map((t) => path.posix.normalize(t.test)));
+  const rows = matrix.rows.filter((r) =>
+    [...r.line.matchAll(/`([^`]+)`/g)].some((m) => files.has(path.posix.normalize(m[1]!))),
+  );
+  return rows.length === 0
+    ? []
+    : ["### Derived Test Matrix rows", "", ...matrix.head, ...rows.map((r) => r.line), ""];
 }
 
 /**
@@ -1479,7 +1496,7 @@ export const contextCommand: CommandSpec = {
     },
     brief: {
       summary:
-        "Write one group's brief (why and what, where it fits, its open task blocks, the earlier tasks they depend on, the Reuse Inventory rows and Architecture entries for their files, deviations) as build-brief-{group}-{n}.md, and print only its path and sizes.",
+        "Write one group's brief (why and what, where it fits, its open task blocks, the earlier tasks they depend on, the Reuse Inventory rows and Architecture entries for their files, deviations) as build-brief-{group}-{n}.md, and print only its path and sizes; --tests-only writes the tests step's brief as build-brief-tests-{group}-{n}.md, with the Derived Test Matrix rows for the group's tests in place of the inventory and architecture entries.",
       use: "workflow",
       flags: [
         { name: "plan", type: "string", required: true, help: "the plan file" },
@@ -1493,12 +1510,17 @@ export const contextCommand: CommandSpec = {
           name: "dir",
           type: "string",
           required: true,
-          help: "the run's logs folder: the brief is written there, and its build-plan-execute-*-log.md DONE lines mark tasks done",
+          help: "the run's logs folder: the brief is written there, and its build-plan-tasks-*-log.md DONE lines mark tasks done",
         },
         {
-          name: "file",
-          type: "string",
-          help: "status.jsonl, to name the reds already recorded for open tasks",
+          name: "tests-only",
+          type: "boolean",
+          help: "the tests step's brief: build-brief-tests-{group}-{n}.md (a group with no planned test writes nothing, tests 0)",
+        },
+        {
+          ...FILE_FLAG,
+          required: false,
+          help: "with --tests-only: the run's status.jsonl; a planned test a build-tests-red row of the group already proved red is left out, and a task with no test left is not briefed",
         },
         {
           name: "note-file",
@@ -1511,12 +1533,12 @@ export const contextCommand: CommandSpec = {
         bytes: "the brief's size in bytes",
         group: "the group briefed (null when --next finds no open group)",
         tasks: "the open task numbers the brief carries",
+        tests: "the TEST FIRST tests of those tasks (0 when --next finds no open group)",
         workBytes: "the work section's size in bytes (0 when --next finds no open group)",
         workCap: `the work section's cap in bytes (${BRIEF_WORK_WARN_BYTES}): Reuse Inventory rows and Architecture entries past it are left out and counted; task blocks over it warn on stderr`,
       },
       exitCodes: {
         [EXIT_ARTIFACT]: "the plan or note file is missing, or the plan's blocks do not parse",
-        [EXIT_NO_STATUS]: "--file names a missing or malformed status.jsonl",
       },
       run: (ctx) => {
         const groupFlag = positiveInt(ctx.flags.group, "group");
@@ -1549,6 +1571,32 @@ export const contextCommand: CommandSpec = {
             bytes: 0,
             group: null,
             tasks: [],
+            tests: 0,
+            workBytes: 0,
+            workCap: BRIEF_WORK_WARN_BYTES,
+          });
+          return EXIT.OK;
+        }
+        const testsOnly = ctx.flags.testsOnly === true;
+        const statusArg = str(ctx.flags.file);
+        const proven =
+          testsOnly && statusArg !== undefined
+            ? redEntries(path.resolve(ctx.cwd, statusArg), "build", group.group)
+            : new Map<string, never>();
+        const left = (t: PlanTaskBlock) =>
+          plannedTests([t]).filter((x) => {
+            const red = proven.get(redKey(x.task, x.test, x.name));
+            return red === undefined || !RED_PROVEN.has(red.state);
+          });
+        const open = group.tasks.filter((t) => !isDone(t) && (!testsOnly || left(t).length > 0));
+        const tests = testsOnly ? open.flatMap(left).length : plannedTests(open).length;
+        if (testsOnly && tests === 0) {
+          ctx.emit({
+            artifact: null,
+            bytes: 0,
+            group: group.group,
+            tasks: open.map((t) => t.task),
+            tests,
             workBytes: 0,
             workCap: BRIEF_WORK_WARN_BYTES,
           });
@@ -1558,17 +1606,16 @@ export const contextCommand: CommandSpec = {
         const noteFile = noteFlag === undefined ? undefined : path.resolve(ctx.cwd, noteFlag);
         if (noteFile !== undefined && !fs.existsSync(noteFile))
           throw new CommandError(EXIT_ARTIFACT, `${noteFlag} does not exist`);
-        const status = str(ctx.flags.file);
         const { text, workBytes } = briefText({
           plan,
           planFile: String(ctx.flags.plan),
           group,
           groups: blocks.groups,
-          isDone,
-          reds: status === undefined ? [] : redRows(path.resolve(ctx.cwd, status), "build"),
+          isDone: (t) => isDone(t) || (group.tasks.includes(t) && !open.includes(t)),
+          testsOnly,
           note: noteFile === undefined ? undefined : fs.readFileSync(noteFile, "utf-8"),
         });
-        const out = nextBriefPath(dir, group.group);
+        const out = nextBriefPath(dir, group.group, testsOnly ? "build-brief-tests" : undefined);
         fs.mkdirSync(dir, { recursive: true });
         fs.writeFileSync(out, text);
         if (workBytes > BRIEF_WORK_WARN_BYTES) {
@@ -1581,7 +1628,8 @@ export const contextCommand: CommandSpec = {
           artifact,
           bytes: Buffer.byteLength(text),
           group: group.group,
-          tasks: group.tasks.filter((t) => !isDone(t)).map((t) => t.task),
+          tasks: open.map((t) => t.task),
+          tests,
           workBytes,
           workCap: BRIEF_WORK_WARN_BYTES,
         });

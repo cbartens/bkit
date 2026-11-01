@@ -782,8 +782,8 @@ describe("seedBkitDefaults (via seedCorePackageJsonScripts)", () => {
         minFreeGb: 40,
         worktree: { copy: [".env", ".env.local"], install: true },
         tasks: {
-          maxPerGroup: 3,
-          maxTestsPerGroup: 15,
+          maxPerGroup: 5,
+          maxTestsPerGroup: 25,
           maxTestsPerTask: 10,
           maxTestFilesPerTask: 3,
         },
@@ -837,8 +837,8 @@ describe("seedBkitDefaults (via seedCorePackageJsonScripts)", () => {
     seed({ bkit: { cloud: { agent: "" } } });
     run();
     expect(JSON.parse(read()).bkit.workflows.tasks).toEqual({
-      maxPerGroup: 3,
-      maxTestsPerGroup: 15,
+      maxPerGroup: 5,
+      maxTestsPerGroup: 25,
       maxTestsPerTask: 10,
       maxTestFilesPerTask: 3,
     });
@@ -847,7 +847,7 @@ describe("seedBkitDefaults (via seedCorePackageJsonScripts)", () => {
     expect(JSON.parse(read()).bkit.workflows.tasks).toEqual({
       maxPerGroup: 5,
       maxTestsPerTask: 0,
-      maxTestsPerGroup: 15,
+      maxTestsPerGroup: 25,
       maxTestFilesPerTask: 3,
     });
   });
@@ -1277,6 +1277,72 @@ describe("migrateJiraKeyName (via runBkitDocs)", () => {
     seed("BKIT_JIRA_API_KEY=new\nBKIT_JIRA_API_TOKEN=old\n");
     run();
     expect(fs.readFileSync(ENV, "utf-8")).toBe("BKIT_JIRA_API_KEY=new\nBKIT_JIRA_API_TOKEN=old\n");
+  });
+});
+
+describe("migrateModelOverrideAgentNames (via runBkitDocs)", () => {
+  const PROMPTS = path.join(".bkit", "prompts.md");
+  const OLD_ROW = "| `bkit-build-plan-execute` | openrouter | openai/gpt-6.1-sol |";
+  const NEW_ROW = "| `bkit-build-plan-tasks` | openrouter | openai/gpt-6.1-sol |";
+  const run = (dryRun = false): { ctx: ModuleContext; logs: string[] } => {
+    const logs: string[] = [];
+    const spy = vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => {
+      logs.push(a.join(" "));
+    });
+    const ctx = makeCtx({ dryRun });
+    runBkitDocs(ctx.dryRun, ctx.tokens, ctx.ws, ctx.logPrefix);
+    spy.mockRestore();
+    return { ctx, logs };
+  };
+  /** The installed prompts.md as an older install left it, with `rows` under Model Overrides. */
+  const seed = (...rows: string[]): void => {
+    fs.mkdirSync(".bkit", { recursive: true });
+    const rendered = applyTokens(
+      fs.readFileSync(path.join(getBkitDocsRoot(), "prompts.md"), "utf-8"),
+      bkitDocTokens(makeCtx().tokens),
+    );
+    fs.writeFileSync(PROMPTS, rendered.trimEnd() + "\n" + rows.join("\n") + "\n", "utf-8");
+  };
+  const consumerRegion = (): string => {
+    const text = fs.readFileSync(PROMPTS, "utf-8");
+    return text.slice(text.indexOf("## Model Overrides"));
+  };
+
+  it("renames an old agent's override row in place, provider and model kept, and records the update", () => {
+    seed("| `bkit-plan-review-2` | openrouter | x/y |", OLD_ROW);
+    const { ctx, logs } = run();
+    expect(consumerRegion()).toContain(NEW_ROW);
+    expect(consumerRegion()).toContain("| `bkit-plan-review-2` | openrouter | x/y |");
+    expect(consumerRegion()).not.toContain("bkit-build-plan-execute");
+    expect(logs.join("\n")).toContain("bkit-build-plan-execute -> bkit-build-plan-tasks");
+    expect(ctx.ws.writes).toContainEqual({ path: PROMPTS, action: "update" });
+  });
+
+  it("dry-run computes the same write but leaves the file; a second run changes nothing", () => {
+    seed(OLD_ROW);
+    const dry = run(true);
+    expect(consumerRegion()).toContain(OLD_ROW);
+    expect(dry.ctx.ws.writes).toContainEqual({ path: PROMPTS, action: "update" });
+    run();
+    const again = run();
+    expect(consumerRegion()).toContain(NEW_ROW);
+    expect(again.ctx.ws.writes).not.toContainEqual({ path: PROMPTS, action: "update" });
+    expect(again.logs.join("\n")).not.toContain("Model Overrides renamed");
+  });
+
+  it("leaves the old row alone when a row already names the new agent", () => {
+    seed(NEW_ROW.replace("openai/gpt-6.1-sol", "x/new"), OLD_ROW);
+    run();
+    expect(consumerRegion()).toContain(OLD_ROW);
+    expect(consumerRegion()).toContain(NEW_ROW.replace("openai/gpt-6.1-sol", "x/new"));
+  });
+
+  it("never touches a row inside the managed block, and does nothing without a Model Overrides section", () => {
+    fs.mkdirSync(".bkit", { recursive: true });
+    fs.writeFileSync(PROMPTS, "<!-- bkit:start -->\n" + OLD_ROW + "\n<!-- bkit:end -->\n", "utf-8");
+    const { logs } = run();
+    expect(logs.join("\n")).not.toContain("Model Overrides renamed");
+    expect(fs.readFileSync(PROMPTS, "utf-8")).not.toContain("bkit-build-plan-tasks` | openrouter");
   });
 });
 

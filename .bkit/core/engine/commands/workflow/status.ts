@@ -90,6 +90,15 @@ export function readStatusRowsAt(file: string, ref: string): StatusRow[] {
   return parseStatusRows(text, spec);
 }
 
+/**
+ * Step names a row may carry from before a rename, read as the current name so a run
+ * in flight across the rename folds, resumes and counts as one (`docs/migrations.md`).
+ * The row on disk is history and is not rewritten.
+ */
+const RENAMED_STEPS: Readonly<Record<string, string>> = {
+  "build-plan-execute": "build-plan-tasks",
+};
+
 /** Parse NDJSON status text; `label` names it in errors. Malformed is an error, never "no rows". */
 function parseStatusRows(text: string, label: string): StatusRow[] {
   return text
@@ -102,7 +111,9 @@ function parseStatusRows(text: string, label: string): StatusRow[] {
       if (typeof parsed.value !== "object" || parsed.value === null) {
         throw new CommandError(EXIT_NO_STATUS, `${label} line ${i + 1} is not a JSON object`);
       }
-      return parsed.value as StatusRow;
+      const row = parsed.value as StatusRow;
+      const renamed = typeof row.step === "string" ? RENAMED_STEPS[row.step] : undefined;
+      return renamed === undefined ? row : { ...row, step: renamed };
     });
 }
 

@@ -329,7 +329,7 @@ describe("bkit repo info — where the wired tracker's issues live", () => {
     pkg({ workflows: { tasks: { maxPerGroup: 4, maxTestsPerTask: 0 } } });
     expect((await run([])).json.tasks).toEqual({
       maxPerGroup: 4,
-      maxTestsPerGroup: 15,
+      maxTestsPerGroup: 25,
       maxTestsPerTask: 10,
       maxTestFilesPerTask: 3,
     });

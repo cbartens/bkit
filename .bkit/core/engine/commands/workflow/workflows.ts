@@ -1270,7 +1270,6 @@ export function closeWorkflow(
   const startedRows = new Set(
     events.filter((e) => e.type === "workflow-started" && e.workflow === workflow).map((e) => e.at),
   ).size;
-  const logDir = path.join(where.tree, logDirRel(where.month, o.fid));
   const by = { workflow, step };
 
   const counterRow = {
@@ -1318,12 +1317,7 @@ export function closeWorkflow(
     ...(plan === undefined ? {} : { plan }),
     ...(workflow === "build"
       ? {
-          build: buildBlock(
-            runRowsOf,
-            logDir,
-            planFiles(where.tree, where.month, o.fid),
-            runDeferrals(),
-          ),
+          build: buildBlock(runRowsOf, planFiles(where.tree, where.month, o.fid), runDeferrals()),
         }
       : {}),
     ...(context === undefined ? {} : { context }),

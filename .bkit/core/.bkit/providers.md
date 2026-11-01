@@ -121,10 +121,10 @@ The persistent variant is a `RunAtLoad` LaunchAgent plist (`~/Library/LaunchAgen
 <!-- prettier-ignore -->
 | Host | Tool name | Prefix | Example |
 | --- | --- | --- | --- |
-| Claude | `Agent` | `@` | `@bkit-build-plan-execute` invoked via `Agent` tool |
-| Cursor | `Task` | `/` | `/bkit-build-plan-execute` invoked via `Task` tool |
-| opencode | `/` (slash command) | `/` | `/bkit-build-plan-execute` invoked via opencode slash command |
-| Antigravity | `view_file` (in-session prompt load) | `.agents/plugins/bkit/agents/` | `view_file` `.agents/plugins/bkit/agents/bkit-build-plan-execute.md` |
+| Claude | `Agent` | `@` | `@bkit-build-plan-tasks` invoked via `Agent` tool |
+| Cursor | `Task` | `/` | `/bkit-build-plan-tasks` invoked via `Task` tool |
+| opencode | `/` (slash command) | `/` | `/bkit-build-plan-tasks` invoked via opencode slash command |
+| Antigravity | `view_file` (in-session prompt load) | `.agents/plugins/bkit/agents/` | `view_file` `.agents/plugins/bkit/agents/bkit-build-plan-tasks.md` |
 
 **Transform (Claude → Cursor, command bodies):**
 
@@ -669,9 +669,9 @@ Re-pin one provider column at a time. The cells are in `prompts.md` § Models. T
 
 **Measured on opencode itself** (`bkit harvest scan`, 2026-10-25 → 10-28, 166 chats on `deepseek-v4.1-flash`): a heavy day carries 27.8M fresh input, 1.04B cache read and 2.08M output. The fresh input is what the Claude profile misses, because Claude Code caches almost all of it away and opencode does not. Per heavy day at list prices: DeepSeek $8.6, Gemini 4 Argon or GPT-6.1 Sol $180.8, Claude Opus 5.5 $361.5. Input price therefore matters on this profile: the Gemini / GPT tier spends $56 of its $181 on fresh input alone.
 
-**What the A$70 cap buys on that day** (A$0.703/USD, 2-day gap, day cost split evenly over 39 agents): `gpt-6.1-sol` costs about A$13.16 per agent per gap, and `deepseek-v4.1-flash-1017` A$0.62.
+**What the A$70 cap buys on that day** (A$0.703/USD, 2-day gap, day cost split evenly over 40 agents): `gpt-6.1-sol` costs about A$13.16 per agent per gap, and `deepseek-v4.1-flash-1017` A$0.62.
 
-- All 39 on DeepSeek: A$24.
+- All 40 on DeepSeek: A$25.
 - Four on sol, the rest on DeepSeek: A$74. That is A$4 over, and accepted.
 - A$140 buys nine on sol (A$137). All twelve judges land at A$175 and breach it.
 

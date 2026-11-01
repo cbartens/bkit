@@ -8,12 +8,13 @@
 // ran (not executable / not found), so it is not recorded as a failing test.
 // The failure count comes from the JUnit reports the gate's runners write into
 // `{log}.reports/` (`BKIT_TEST_REPORT_DIR`), never from reading the log.
-//
-// bkit tests red / green — test-first evidence for build tasks. Both run one test
-// file through the consumer's `bkit:test:file` script and judge its JUnit report,
-// never its exit code alone: a misspelled path, a syntax error and an import of
-// unwritten code all exit non-zero exactly like a real failure. A red counts only
-// when the NAMED test ran and failed; green only when it ran and passed.
+// bkit tests red / green — test-first evidence for build tasks. `red` runs every TEST FIRST
+// test of one group's open tasks after the tests step wrote them and before any task code
+// exists: one run per test file through the consumer's `bkit:test:file` script, each test
+// judged by the JUnit report, never the exit code alone (a misspelled path, a syntax error
+// and an import of unwritten code all exit non-zero exactly like a real failure). A red is
+// the NAMED test failing, or its file failing to load; `green` reads the group's red row and
+// needs the named test to run and pass.
 
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -23,8 +24,7 @@ import * as path from "node:path";
 import { BKIT_LINT_FILE_SCRIPT, BKIT_TEST_FILE_SCRIPT } from "../../install/manifest.js";
 import { clampLogPath } from "../../ledgers/clamp-log.js";
 import { appendLine, statusTimestamp } from "../../ledgers/status.js";
-import { gitEnv } from "../../ledgers/telemetry.js";
-import { CommandError, EXIT, OUTPUT_LIMIT, git, runGit, type CommandSpec } from "../lib.js";
+import { CommandError, EXIT, git, type CommandSpec } from "../lib.js";
 import { parseJson } from "../../shared/json.js";
 import { readPackageJson } from "../../shared/package-json.js";
 import { COULD_NOT_RUN_EXIT_CODES, scriptCommand } from "../../shared/package-manager.js";
@@ -48,7 +48,6 @@ import {
   type PlanTaskBlock,
 } from "./plan-blocks.js";
 import { writeStepRow } from "./steps.js";
-import { diffLines, testChange, type TestChange } from "./test-blocks.js";
 import { appendRecord, clampFile, type ClampRecord } from "./context.js";
 import { testsChangedVerb } from "./tests-changed.js";
 
@@ -58,10 +57,6 @@ export const EXIT_NO_GATE = 3;
 export const EXIT_COULD_NOT_RUN = 4;
 /** Exit code: --artifact could not be written, trimmed or recorded. */
 export const EXIT_ARTIFACT_STEP = 5;
-/** Exit code: the named test failed, but its failure holds none of the plan's quoted fails-on fragments. */
-export const EXIT_RED_REASON = 6;
-/** Exit code: --log is already the log of another test's red. */
-export const EXIT_LOG_TAKEN = 7;
 
 /** The status row type `tests run --file` appends, one per run. */
 export const TEST_RUN_ROW = "test-run";
@@ -205,10 +200,99 @@ function appendTestRun(
 
 /** The env var naming the JUnit report path `bkit:test:file` must write. */
 export const REPORT_ENV = "BKIT_TEST_REPORT";
-/** The status row step a recorded red writes. */
-export const RED_STEP = "build-task-red";
-/** The status row step a red refused as `passed` writes: HEAD and the uncommitted files then. */
-export const RED_PASSED_STEP = "build-task-red-passed";
+/** The status row step a group's red writes: one row per `tests red` run, a state and blob per planned test. */
+export const RED_STEP = "build-tests-red";
+
+/** How a planned test stood at the group's red. */
+export type RedState =
+  | "red"
+  | "red-not-loaded"
+  | "passed-accepted"
+  | "vacuous"
+  | "missing"
+  | "no-report"
+  | "lint"
+  | "unknown";
+
+/** One planned test on a red row: its state, and the blob of its file as it stood then. */
+export interface RedTest {
+  task: number;
+  test: string;
+  testName: string;
+  state: RedState;
+  /** `git hash-object` of the test file, written to the object store; null when the file is missing. */
+  blob: string | null;
+  /** The tests step's reason, on `passed-accepted`. */
+  reason?: string;
+}
+
+/** The states that count as a red: the test failed, its file did not load, or the tests step vouched for its pass. */
+export const RED_PROVEN: ReadonlySet<RedState> = new Set([
+  "red",
+  "red-not-loaded",
+  "passed-accepted",
+]);
+
+/** The `build-tests-red` rows of `workflow` in status.jsonl, in file order; `group` narrows. */
+function redRows(file: string, workflow: string, group?: number): Record<string, unknown>[] {
+  if (!fs.existsSync(file)) return [];
+  return (readStatusRows(file) as Array<Record<string, unknown>>).filter(
+    (r) =>
+      r.type === "step-done" &&
+      r.workflow === workflow &&
+      r.step === RED_STEP &&
+      typeof r.group === "number" &&
+      (group === undefined || r.group === group),
+  );
+}
+
+/** A red row's `tests`, as written. */
+export const redTestsOf = (row: Record<string, unknown>): RedTest[] =>
+  Array.isArray(row.tests) ? (row.tests as RedTest[]) : [];
+
+/** The key a planned test is looked up by: task numbers are unique across the plan. */
+export const redKey = (task: number, test: string, name: string) =>
+  JSON.stringify([task, test, name]);
+
+/** The number this group's next red row carries: its rows so far, plus one. */
+function redAttempt(file: string, workflow: string, group: number): number {
+  if (!fs.existsSync(file)) return 1;
+  return (
+    readStatusRows(file).filter((r) => {
+      const row = r as Record<string, unknown>;
+      return (
+        row.type === "step-done" &&
+        row.workflow === workflow &&
+        row.step === RED_STEP &&
+        row.group === group
+      );
+    }).length + 1
+  );
+}
+
+/**
+ * Every planned test the red rows recorded, keyed by task, file and name; a later row's entry
+ * wins, so a retry or a later task of the group overrides only the tests it ran. `group`
+ * narrows to one group.
+ */
+export function redEntries(file: string, workflow: string, group?: number): Map<string, RedTest> {
+  const out = new Map<string, RedTest>();
+  for (const row of redRows(file, workflow, group))
+    for (const t of redTestsOf(row)) out.set(redKey(t.task, t.test, t.testName), t);
+  return out;
+}
+
+/** The blob each planned test file of the group last stood at when a red row recorded it. */
+export function redBlobs(
+  file: string,
+  workflow: string,
+  group: number,
+): Map<string, string | null> {
+  const out = new Map<string, string | null>();
+  for (const row of redRows(file, workflow, group))
+    for (const t of redTestsOf(row)) out.set(t.test, t.blob);
+  return out;
+}
 
 const NO_TEST_FILE_HINT =
   `declare "${BKIT_TEST_FILE_SCRIPT}" in package.json: it runs the one test file passed as its ` +
@@ -286,36 +370,51 @@ const caseNames = (cases: JunitCase[]) =>
         .map((c) => `"${c.name}"`)
         .join(", ")}${cases.length > 5 ? ", …" : ""}`;
 
-/** Why a run is not a red: `passed` means the code under test already exists. */
-export type RedRefusal = "no-report" | "not-run" | "passed" | "skipped" | "exit-mismatch";
+/** The stem a load error names: the test file's base name without its extension. */
+const fileStem = (file: string) => path.posix.basename(file).replace(/\.[^.]*$/, "");
 
-/** Why a run is not a valid red for `want` (kind + reason), or null when it is one. */
+/** The red states `judgeRed` tells apart. */
+export type JudgedRed = Extract<
+  RedState,
+  "red" | "red-not-loaded" | "vacuous" | "missing" | "no-report"
+>;
+
+/**
+ * How `want` stood in a red run of `file`, from its JUnit report: `red` (the named test
+ * failed or errored), `red-not-loaded` (the file ran no test, or the only cases are failures
+ * named after the file itself: a load error, which an import of unwritten code is),
+ * `vacuous` (the named test passed, so it proves nothing before the task's code), `missing`
+ * (it did not run, or was skipped) or `no-report`.
+ */
 export function judgeRed(
-  exitCode: number,
   cases: JunitCase[] | null,
   want: string,
-): { kind: RedRefusal; reason: string } | null {
+  file: string,
+): { state: JudgedRed; detail: string } {
   if (cases === null)
     return {
-      kind: "no-report",
-      reason: `no JUnit report at $${REPORT_ENV} — ${BKIT_TEST_FILE_SCRIPT} must write one`,
+      state: "no-report",
+      detail: `no JUnit report at $${REPORT_ENV} — ${BKIT_TEST_FILE_SCRIPT} must write one`,
     };
   const named = cases.filter((c) => isNamedCase(c.name, want));
-  if (named.length === 0)
-    return { kind: "not-run", reason: `the named test "${want}" did not run; ${caseNames(cases)}` };
+  if (named.length === 0) {
+    const stem = fileStem(file);
+    if (cases.length === 0 || cases.every((c) => c.state !== "passed" && c.name.includes(stem)))
+      return {
+        state: "red-not-loaded",
+        detail: `\`${file}\` did not load${cases[0]?.message ? `: ${cases[0].message}` : ""}`,
+      };
+    return { state: "missing", detail: `"${want}" did not run; ${caseNames(cases)}` };
+  }
   if (named.some((c) => c.state === "passed"))
     return {
-      kind: "passed",
-      reason: `"${want}" passed — a red must fail before the task's code exists`,
+      state: "vacuous",
+      detail: `"${want}" passes before any task code exists, so it proves nothing`,
     };
   if (named.some((c) => c.state === "skipped"))
-    return { kind: "skipped", reason: `"${want}" was skipped, not run` };
-  if (exitCode === 0)
-    return {
-      kind: "exit-mismatch",
-      reason: `"${want}" failed in the report but the script exited 0`,
-    };
-  return null;
+    return { state: "missing", detail: `"${want}" was skipped, not run` };
+  const failed = named.find((c) => c.state !== "passed")!;
+  return { state: "red", detail: `${failed.state}${failed.message ? `: ${failed.message}` : ""}` };
 }
 
 /** Why a run is not green for `want`, or null when every case of the named test passed. */
@@ -335,7 +434,7 @@ export interface PlannedTest {
   name: string;
 }
 
-/** A human-recorded acceptance of a task's test-order gaps: the tests it covers, its 1-based plan lines. */
+/** A human-recorded acceptance of a task's `no-red` gaps: the tests it covers, its 1-based plan lines. */
 export interface TestOrderException {
   tests: PlannedTest[];
   lines: number[];
@@ -346,7 +445,7 @@ export type TestFirst =
   | { task: number; kind: "na"; reason: string }
   | { task: number; kind: "missing" | "malformed" };
 
-/** The task field naming a task's tests, and the one recording an accepted test-order gap. */
+/** The task field naming a task's tests, and the one recording an accepted `no-red` gap. */
 export const TEST_FIRST = "**TEST FIRST:**";
 export const TEST_EXCEPTION = "**TEST EXCEPTION:**";
 
@@ -376,7 +475,7 @@ function testFirstOf(t: PlanTaskBlock): TestFirst {
  * Each task block's TEST FIRST field (`plan-blocks.ts`): one test per sub-bullet (first
  * backticked span = file, second = test name), `n/a — {reason}`, missing, or malformed
  * (an entry with fewer than two spans, or no entry). A TEST EXCEPTION field names, in
- * the same entry form, the tests whose test-order gaps it accepts. `group` narrows to
+ * the same entry form, the tests whose `no-red` gaps it accepts. `group` narrows to
  * one group's tasks.
  */
 export function readTestFirst(plan: string, group?: number): TestFirst[] {
@@ -755,61 +854,6 @@ export function planExistence(text: string, root: string): ExistenceFinding[] {
   return out.sort((a, b) => a.line - b.line);
 }
 
-/** True when `after` keeps every non-blank line of `before`, in order, ignoring whitespace: lines were only added. */
-export function onlyAddsLines(before: string, after: string): boolean {
-  const norm = (text: string) =>
-    text
-      .split("\n")
-      .map((l) => l.replace(/\s+/g, ""))
-      .filter(Boolean);
-  const want = norm(before);
-  let kept = 0;
-  for (const line of norm(after)) if (kept < want.length && line === want[kept]) kept++;
-  return kept === want.length;
-}
-
-/**
- * The audit's `Changed since red` value for a planned test whose file differs from its red
- * snapshot, and its `test-changed` detail, or null detail when nothing the test runs
- * changed. `located` null (the test not declared exactly once in both copies) judges the
- * whole file, as an unlocated test may sit anywhere in it.
- */
-function sinceRed(
-  t: PlannedTest,
-  before: string,
-  after: string,
-  located: TestChange | null,
-): { changed: string; detail: string | null } {
-  if (located === null) {
-    const added = onlyAddsLines(before, after);
-    return {
-      changed: added ? "added lines only" : "yes",
-      detail: `\`${t.test}\` ${added ? "gained lines" : "differs from its red snapshot"} since its red for "${t.name}"; the test is not declared exactly once in both copies, so the whole file counts (diff below)`,
-    };
-  }
-  if (located.body)
-    return {
-      changed: "test body",
-      detail: `"${t.name}"'s own lines changed since its red (diff below)`,
-    };
-  if (located.runs.length > 0)
-    return {
-      changed: "code it runs",
-      detail: `code "${t.name}" runs changed since its red: ${located.runs.map((r) => `\`${r}\``).join(", ")} (diff below)`,
-    };
-  return { changed: "outside the test only", detail: null };
-}
-
-/** `test` as a repo-relative path inside `top`; usage error when absolute, outside, or absent. */
-function repoTestPath(top: string, test: string): string {
-  const rel = path.relative(top, path.resolve(top, test));
-  if (path.isAbsolute(test) || rel.startsWith("..") || rel === "")
-    throw new CommandError(EXIT.USAGE, `--test must be a path inside the repo, got "${test}"`);
-  if (!fs.statSync(path.join(top, rel), { throwIfNoEntry: false })?.isFile())
-    throw new CommandError(EXIT.USAGE, `--test ${rel} is not a file`);
-  return rel.split(path.sep).join("/");
-}
-
 /** Run one test file through `bkit:test:file`; the report is read and removed. */
 function runTestFile(
   top: string,
@@ -829,68 +873,6 @@ function runTestFile(
 const couldNotRunMessage = (exitCode: number) =>
   `${gateScope(BKIT_TEST_FILE_SCRIPT)} could not run (exit ${exitCode}: ${exitCode === 126 ? "not executable" : "command not found"}) — no test executed`;
 
-/** The copy of the test file a red keeps beside its log. */
-export const snapshotPath = (log: string) => `${log.replace(/\.md$/, "")}.snapshot`;
-
-/** Characters of the named test's failure message a red row keeps as `failure`. */
-export const FAILURE_EXCERPT = 500;
-
-/** The bytes git stores for blob `sha` (`tests red` writes it with `hash-object -w`), or null. */
-function storedBlob(top: string, sha: unknown): Buffer | null {
-  if (typeof sha !== "string" || !/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(sha)) return null;
-  const res = spawnSync("git", ["cat-file", "blob", sha], {
-    cwd: top,
-    env: gitEnv(),
-    maxBuffer: OUTPUT_LIMIT,
-  });
-  return res.error === undefined && res.status === 0 ? res.stdout : null;
-}
-
-/**
- * The run's plan for a status file at `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`:
- * `docs/plans/{YYYYMM}/{FID}-plan.md`, when it exists.
- */
-function runPlanOf(status: string): string | undefined {
-  const m = /^(.*\/docs\/plans\/[0-9]{6})\/logs\/([^/]+)\/status\.jsonl$/.exec(
-    status.split(path.sep).join("/"),
-  );
-  const plan = m === null ? undefined : `${m[1]}/${m[2]}-plan.md`;
-  return plan !== undefined && fs.existsSync(plan) ? plan : undefined;
-}
-
-const normalised = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
-
-/**
- * A planned test's fails-on fragments: the double-quoted spans of its TEST FIRST entry
- * after the test file and name, code spans left out, with the entry's 1-based plan line.
- * Null when the plan does not name the test or its fails-on text quotes nothing.
- */
-export function failsOnFragments(
-  planText: string,
-  task: number,
-  test: string,
-  name: string,
-): { line: number; fragments: string[] } | null {
-  const entry = parsePlanBlocks(planText)
-    .tasks.find((t) => t.task === task)
-    ?.testFirst?.tests.find((t) => t.test === test && t.name === name);
-  if (entry === undefined) return null;
-  const failsOn = (planText.split(/\r?\n/)[entry.line - 1] ?? "")
-    .replace(/^[^`]*`[^`]+`[^`]*`[^`]+`/, "")
-    .replace(/`[^`]*`/g, " ");
-  const fragments = [...failsOn.matchAll(/"([^"]+)"|“([^”]+)”/g)]
-    .map((m) => (m[1] ?? m[2]!).trim())
-    .filter((f) => f !== "");
-  return fragments.length === 0 ? null : { line: entry.line, fragments };
-}
-
-/** True when a failure's text holds one of the fragments, case and whitespace runs aside. */
-export const failsAsPlanned = (fragments: string[], messages: string[]) =>
-  fragments.some((f) => messages.some((m) => normalised(m).includes(normalised(f))));
-
-/** What a failed case says: its message, then its detail, for `failsAsPlanned`. */
-export const failureText = (c: JunitCase) => `${c.message}\n${c.detail}`;
-
 const toplevel = (cwd: string) => git(cwd, ["rev-parse", "--show-toplevel"]) ?? cwd;
 
 /** A fence longer than any backtick run in `text`. */
@@ -899,19 +881,16 @@ const fenceFor = (text: string) =>
 
 /**
  * Every gap the audit emits, and the verifier's `Fixable` for it: `null` = the
- * answer needs a diff read, which only the verifier can make.
+ * answer needs a diff read, which only the verifier can make. `no-red` is not fixable:
+ * no code-writing step may touch a planned test, so the owner accepts it or stops.
  */
 const GAP_FIXABLE = {
   "not-green": true,
-  "delete-still-referenced": null,
-  "test-changed": null,
-  "red-mismatch": null,
   "no-red": false,
-  "late-red": false,
+  "delete-still-referenced": null,
   "no-test-first": false,
   "test-first-malformed": false,
   "test-first-unread": false,
-  "red-evidence-missing": false,
   "exception-refused": false,
 } as const satisfies Record<string, boolean | null>;
 
@@ -955,52 +934,14 @@ const verdictOf = (gaps: Gap[]): "PASS" | "FAIL" | "CONCERNS" | null =>
         ? "FAIL"
         : "CONCERNS";
 
-/** Gaps about when a test was seen failing; no edit made after the task's code can close one. */
-export const TEST_ORDER_GAPS: ReadonlySet<string> = new Set([
-  "no-red",
-  "late-red",
-  "red-mismatch",
-  "red-evidence-missing",
-  "test-changed",
-]);
-
 /** The gap for a task whose only test field is a TEST EXCEPTION that is not honoured. */
 export const EXCEPTION_REFUSED = "exception-refused";
 
 /** The status row step plan-execute's finish writes; its commit carries the code of each task its log records DONE. */
-export const PLAN_EXECUTE_STEP = "build-plan-execute";
+export const PLAN_TASKS_STEP = "build-plan-tasks";
 
 const repoRel = (top: string, cwd: string, p: string) =>
   path.relative(top, path.resolve(cwd, p)).split(path.sep).join("/");
-
-/**
- * Per task, the first plan-execute step commit whose log records the task `DONE` — the
- * commit that first holds the task's code. `steps finish` writes the row then commits
- * everything, so a row's commit is the first commit after its `parentSha` touching the status file.
- */
-function taskCodeCommits(
-  top: string,
-  cwd: string,
-  file: string,
-  workflow: string,
-): Map<number, string> {
-  const statusRel = repoRel(top, cwd, file);
-  const commits = new Map<number, string>();
-  for (const r of readStatusRows(file) as Array<Record<string, unknown>>) {
-    if (r.type !== "step-done" || r.workflow !== workflow || r.step !== PLAN_EXECUTE_STEP) continue;
-    const log = Array.isArray(r.artifacts) ? r.artifacts.map(String)[0] : undefined;
-    if (typeof r.parentSha !== "string" || log === undefined) continue;
-    const range = `${r.parentSha}..HEAD`;
-    const commit = git(top, ["rev-list", "--reverse", "--ancestry-path", range, "--", statusRel])
-      ?.split("\n")
-      .find(Boolean);
-    const text =
-      commit === undefined ? null : git(top, ["show", `${commit}:${repoRel(top, cwd, log)}`]);
-    if (commit === undefined || text === null) continue;
-    for (const n of doneTasks(text)) if (!commits.has(n)) commits.set(n, commit);
-  }
-  return commits;
-}
 
 /**
  * The task numbers a plan-execute log records `DONE — TASK N` for, in log order. `verbs`
@@ -1187,67 +1128,107 @@ interface AuditRow {
   task: number;
   test: string;
   red: string;
-  changed: string;
   green: string;
 }
 
-/**
- * The red rows of status.jsonl for this workflow, oldest first. Task numbers are unique
- * across the plan, so a red matches its task by number whatever group recorded it.
- */
-export function redRows(file: string, workflow: string) {
-  return readStatusRows(file).filter((r) => {
-    const row = r as Record<string, unknown>;
-    return row.type === "step-done" && row.workflow === workflow && row.step === RED_STEP;
-  }) as Array<Record<string, unknown>>;
+/** A planned test whose pass the tests step accepted: no red is due for it. */
+interface Landed {
+  task: number;
+  test: string;
+  name: string;
+  reason: string;
 }
 
-/** Files changed from HEAD or untracked, repo-relative. */
-function uncommittedFiles(top: string): string[] {
-  const list = (args: string[]) => (git(top, args) ?? "").split("\0").filter(Boolean);
+/** A planned test the group's red did not prove, and why. */
+interface RedGap {
+  task: number;
+  test: string;
+  name: string;
+  kind: Extract<RedState, "vacuous" | "missing" | "no-report" | "lint">;
+  detail: string;
+}
+
+/** A `PASSES — TASK N: \`file\` \`name\`: reason` line of the tests step's log. */
+interface PassesLine extends PlannedTest {
+  task: number;
+  reason: string;
+}
+
+/** Every PASSES line of a tests step's log: the tests the writer saw passing and vouches for. */
+function passesLines(log: string): PassesLine[] {
   return [
-    ...new Set([
-      ...list(["diff", "--name-only", "-z", "HEAD"]),
-      ...list(["ls-files", "--others", "--exclude-standard", "-z"]),
-    ]),
-  ].sort();
+    ...log.matchAll(/^PASSES\s*[—–-]+\s*TASK\s+(\d+):\s*`([^`]+)`\s+`([^`]+)`\s*:\s*(.+)$/gm),
+  ].map((m) => ({
+    task: Number(m[1]),
+    test: m[2]!.trim(),
+    name: m[3]!.trim(),
+    reason: m[4]!.trim(),
+  }));
 }
 
-/** A task's CREATE / UPDATE files, its TEST FIRST files left out. */
-const codeFiles = (b: PlanTaskBlock) => {
-  const tests = new Set((b.testFirst?.tests ?? []).map((t) => t.test));
-  return [...b.create, ...b.update].map((r) => r.file).filter((f) => !tests.has(f));
-};
+/** Why a plan cannot be read for its tests (no file, no task markers, a fence never closed), or undefined. */
+const planRefusal = (
+  plan: string | undefined,
+  parsed: ReturnType<typeof parsePlanBlocks>,
+): string | undefined =>
+  plan === undefined
+    ? `no plan file; ${NO_MARKERS_REASON}`
+    : parsed.tasks.length === 0
+      ? parsed.fenceOpen === undefined
+        ? NO_MARKERS_REASON
+        : fenceNeverClosed(parsed.fenceOpen)
+      : undefined;
 
-/**
- * Why a test with no red passed when its red was run: another task's code, committed on
- * or before the refusal's HEAD, whose CREATE / UPDATE files overlap this task's, with
- * none of this task's own files uncommitted then. Else `why` says what rules that out.
- */
-function landedBy(
-  top: string,
-  refusal: Record<string, unknown>,
-  block: PlanTaskBlock,
-  tasks: PlanTaskBlock[],
-  codeCommits: Map<number, string>,
-): { task: number; commit: string } | { why: string } {
-  const on = String(refusal.parentSha);
-  const mine = codeFiles(block);
-  const dirty = Array.isArray(refusal.dirty) ? refusal.dirty.map(String) : [];
-  const own = mine.filter((f) => dirty.includes(f));
-  if (own.length > 0)
-    return {
-      why: `its red was refused as passed on ${on.slice(0, 7)} while TASK ${block.task}'s own files were uncommitted (${own.map((f) => `\`${f}\``).join(", ")}) — its code was written before the red`,
-    };
-  for (const [task, commit] of [...codeCommits].sort(([a], [b]) => a - b)) {
-    const other = tasks.find((t) => t.task === task);
-    if (task === block.task || other === undefined) continue;
-    if (!codeFiles(other).some((f) => mine.includes(f))) continue;
-    if (runGit(top, ["merge-base", "--is-ancestor", commit, on]).ok) return { task, commit };
+/** A table cell: pipes escaped, line breaks folded. */
+const cell = (s: string) => s.replace(/\s+/g, " ").replace(/\|/g, "\\|").trim();
+
+function writeRedReport(
+  log: string,
+  o: {
+    enforced: boolean;
+    reason?: string;
+    plan?: string;
+    group: number;
+    attempt: number;
+    tests: RedTest[];
+    details: Map<RedTest, string>;
+    gaps: RedGap[];
+    outputs: Array<{ title: string; text: string }>;
+  },
+): void {
+  const red = o.tests.filter((t) => t.state === "red" || t.state === "red-not-loaded").length;
+  const accepted = o.tests.filter((t) => t.state === "passed-accepted").length;
+  const out = [
+    `Enforced: ${o.enforced}`,
+    `Red: ${red}`,
+    `Accepted: ${accepted}`,
+    `Gaps: ${o.gaps.length}`,
+    "",
+    "<!-- verdict:end -->",
+    "",
+    `# Tests Red — group ${o.group}, attempt ${o.attempt}`,
+    "",
+  ];
+  if (o.plan) out.push(`Plan: \`${o.plan}\``, "");
+  if (!o.enforced) out.push(`Not enforced: ${o.reason}.`, "");
+  if (o.tests.length > 0) {
+    out.push("| Task | Test | State | Detail |", "| --- | --- | --- | --- |");
+    for (const t of o.tests)
+      out.push(
+        `| ${t.task} | \`${t.test}\` "${cell(t.testName)}" | ${t.state} | ${cell(o.details.get(t) ?? "")} |`,
+      );
+    out.push("");
   }
-  return {
-    why: `its red was refused as passed on ${on.slice(0, 7)}, and no other task's code committed by then shares a CREATE / UPDATE file with TASK ${block.task}`,
-  };
+  out.push("## Gaps", "");
+  if (o.gaps.length === 0) out.push("None.");
+  for (const g of o.gaps)
+    out.push(`- TASK ${g.task} \`${g.test}\` "${g.name}" \`${g.kind}\` — ${g.detail}`);
+  for (const t of o.outputs) {
+    const fence = fenceFor(t.text);
+    out.push("", `## ${t.title}`, "", fence, t.text.replace(/\n$/, ""), fence);
+  }
+  fs.mkdirSync(path.dirname(log), { recursive: true });
+  fs.writeFileSync(log, `${out.join("\n")}\n`);
 }
 
 function writeAuditReport(
@@ -1259,11 +1240,8 @@ function writeAuditReport(
     verdict: "PASS" | "FAIL" | "CONCERNS" | null;
     rows: AuditRow[];
     gaps: Gap[];
-    testOrderOnly: boolean;
     exceptions: ExceptionResult[];
-    lateUnchecked: number[];
-    landed: Array<{ task: number; test: string; name: string; by: number; commit: string }>;
-    diffs: Array<{ task: number; test: string; diff: string }>;
+    landed: Landed[];
     outputs: Array<{ test: string; tail: string }>;
   },
 ): void {
@@ -1271,7 +1249,6 @@ function writeAuditReport(
     `Enforced: ${o.enforced}`,
     `Verdict: ${o.verdict}`,
     `Gaps: ${o.gaps.length}`,
-    `Test order only: ${o.testOrderOnly}`,
     "",
     "<!-- verdict:end -->",
     "",
@@ -1280,12 +1257,8 @@ function writeAuditReport(
   if (o.plan) out.push(`Plan: \`${o.plan}\``, "");
   if (!o.enforced) out.push(`Not enforced: ${o.reason}.`, "");
   if (o.rows.length > 0) {
-    out.push(
-      "| Task | Test | Red | Changed since red | Green |",
-      "| --- | --- | --- | --- | --- |",
-    );
-    for (const r of o.rows)
-      out.push(`| ${r.task} | ${r.test} | ${r.red} | ${r.changed} | ${r.green} |`);
+    out.push("| Task | Test | Red | Green |", "| --- | --- | --- | --- |");
+    for (const r of o.rows) out.push(`| ${r.task} | ${r.test} | ${r.red} | ${r.green} |`);
     out.push("");
   }
   out.push("## Gaps", "");
@@ -1301,27 +1274,11 @@ function writeAuditReport(
         ? `- Task ${e.task} — honoured; cleared ${e.cleared.length > 0 ? e.cleared.join(", ") : "nothing"}`
         : `- Task ${e.task} — not honoured: ${e.refusal}`,
     );
-  if (o.lateUnchecked.length > 0) out.push("", "## Late-red check", "");
-  for (const task of o.lateUnchecked)
-    out.push(
-      `- Task ${task} — not checked: no plan-execute step commit's log records \`DONE — TASK ${task}\`, so when its code landed is unknown`,
-    );
   if (o.landed.length > 0) out.push("", "## Already landed", "");
   for (const l of o.landed)
     out.push(
-      `- Task ${l.task} \`${l.test}\` "${l.name}" — passed at its red, standing on TASK ${l.by}'s code (${l.commit.slice(0, 7)}), which shares its CREATE / UPDATE files; no red is due`,
+      `- Task ${l.task} \`${l.test}\` "${l.name}" — passed at the group's red, and the tests step accepted it: ${l.reason}; no red is due`,
     );
-  for (const d of o.diffs) {
-    const fence = fenceFor(d.diff);
-    out.push(
-      "",
-      `## Diff since red — Task ${d.task} \`${d.test}\``,
-      "",
-      `${fence}diff`,
-      d.diff,
-      fence,
-    );
-  }
   for (const t of o.outputs) {
     const fence = fenceFor(t.tail);
     out.push("", `## Runner output — \`${t.test}\``, "", fence, t.tail, fence);
@@ -1523,215 +1480,256 @@ export const testsCommand: CommandSpec = {
     },
     red: {
       summary:
-        "Lint a task's new test with bkit:lint:file when declared, then run it before its code exists; exit 0 red recorded, 1 not a red (the test failed lint, or the named test did not run, passed, or was skipped), 6 it failed for another reason than the plan's quoted fails-on text, 7 --log already holds another test's red.",
+        "Run every TEST FIRST test of one group's open tasks before any task code exists, and write one build-tests-red row holding a state and blob per planned test; a test an earlier row of the group proved red, its file unchanged since, is not run again. Exit 0 every test red, 1 a gap (a test passing, absent from its report, failing lint, or its file missing), 3 bkit:test:file undeclared (blobs recorded, nothing ran), 4 a script could not run.",
       use: "workflow",
       flags: [
         FILE_FLAG,
         WORKFLOW_FLAG,
-        GROUP_FLAG,
         {
-          name: "task",
-          type: "string",
+          ...GROUP_FLAG,
           required: true,
-          help: "plan task number (positive integer)",
+          help: "the group whose planned tests run (positive integer)",
         },
         {
-          name: "test",
+          name: "plan",
           type: "string",
           required: true,
-          help: "the test file, repo-relative — passed whole to bkit:test:file",
-        },
-        {
-          name: "name",
-          type: "string",
-          required: true,
-          help: "the test's name as the runner reports it, or its last segment",
+          repeatable: true,
+          help: "candidate plan file; the first that exists is read",
         },
         {
           name: "log",
           type: "string",
           required: true,
-          help: "file the runner output is saved to; the test file's copy lands beside it as .snapshot",
+          help: "file the red report is written to (directories are created)",
+        },
+        {
+          name: "writer-log",
+          type: "string",
+          help: "the tests step's log: a `PASSES — TASK N: `file` `name`: reason` line there accepts that test's pass as passed-accepted",
         },
       ],
       output: {
-        recorded: "true when the red row was written, or already recorded for this unchanged test",
-        already:
-          "true when an earlier red for this task, test and name stands (test unchanged); nothing ran",
-        refused:
-          "lint | no-report | not-run | passed | skipped | exit-mismatch | reason-mismatch | log-taken (when recorded is false); lint: bkit:lint:file failed on the test, which then did not run; reason-mismatch: the named test failed, but no failure message holds a double-quoted fragment of its fails-on text in the run's plan; log-taken: --log is the log of another test's red, nothing ran",
-        reason: "why the run is not a red (when recorded is false)",
-        exitCode:
-          "the exit code of the script that decided it (bkit:lint:file on lint, else bkit:test:file)",
-        row: "the build-task-red row written (when recorded), or the build-task-red-passed row (refused as passed: HEAD and the uncommitted files, read by green's already-landed check)",
-        log: "where the runner output was saved (as given)",
+        enforced:
+          "false when bkit:test:file is not declared (the row records the blobs, every state unknown, exit 3) or the plan could not be read (no row, exit 1)",
+        reason: "why test-first is not enforced",
+        attempt: "this group's build-tests-red rows so far, this one included",
+        tests:
+          "[{task, test, testName, state, blob, reason?}] in plan order, the tests run now: state red | red-not-loaded | passed-accepted | vacuous | missing | no-report | lint | unknown; blob the test file's git blob as it stood (null when the file is missing); reason the tests step's, on passed-accepted",
+        skipped:
+          "planned tests an earlier row of the group proved red, their file unchanged since: not run again, and not on this row",
+        gaps: "[{task, test, name, kind, detail}]: every planned test whose state is not red, red-not-loaded or passed-accepted; kind is the state",
+        row: "the build-tests-red row written",
+        log: "where the report was written (as given)",
       },
       exitCodes: {
-        [EXIT_NO_GATE]: `${BKIT_TEST_FILE_SCRIPT} is not declared in package.json`,
-        [EXIT_COULD_NOT_RUN]: "bkit:lint:file or bkit:test:file could not run (exit 126 / 127)",
-        [EXIT_RED_REASON]:
-          "the named test failed, but not as planned: the run's plan ({FID}-plan.md beside the status file's logs folder) quotes fails-on text for it, and no failure message holds any quoted fragment (case and spacing aside); no red recorded",
-        [EXIT_LOG_TAKEN]:
-          "--log is already the log of a red (or a red refused as passed) for another test or name in this workflow; nothing ran",
+        [EXIT_NO_GATE]: `${BKIT_TEST_FILE_SCRIPT} is not declared in package.json: the row holds the blobs with enforced false, and no test ran`,
+        [EXIT_COULD_NOT_RUN]:
+          "bkit:lint:file or bkit:test:file could not run (exit 126 / 127); nothing written",
       },
       run: (ctx) => {
         const workflow = String(ctx.flags.workflow);
-        const group = positiveInt(ctx.flags.group, "group");
-        const task = positiveInt(ctx.flags.task, "task")!;
-        const name = String(ctx.flags.name).trim();
-        if (name === "") throw new CommandError(EXIT.USAGE, "--name must be non-empty");
+        const group = positiveInt(ctx.flags.group, "group")!;
         const logArg = String(ctx.flags.log);
         if (logArg === "") throw new CommandError(EXIT.USAGE, "--log must be non-empty");
-        const top = toplevel(ctx.cwd);
-        if (resolveGate(top, [BKIT_TEST_FILE_SCRIPT]) === null) {
-          ctx.log(`${BKIT_TEST_FILE_SCRIPT} is not declared — ${NO_TEST_FILE_HINT}`);
-          return EXIT_NO_GATE;
-        }
-        const test = repoTestPath(top, String(ctx.flags.test));
-        // `-w` stores the test file in git, so green can read it back when the snapshot is lost.
-        const blob = git(top, ["hash-object", "-w", "--", test]);
-        const status = statusFile(ctx);
-        const prior = fs.existsSync(status)
-          ? redRows(status, workflow)
-              .reverse()
-              .find((r) => r.task === task && r.test === test && r.testName === name)
-          : undefined;
-        if (prior !== undefined && prior.testBlob === blob) {
-          const priorLog = Array.isArray(prior.artifacts) ? String(prior.artifacts[0]) : null;
-          ctx.emit({ recorded: true, already: true, row: prior, log: priorLog });
-          ctx.log(`red already recorded for task ${task}: "${name}" (test unchanged since)`);
-          return EXIT.OK;
-        }
         const log = path.resolve(ctx.cwd, logArg);
-        const holder = fs.existsSync(status)
-          ? readStatusRows(status).find((r) => {
-              const row = r as Record<string, unknown>;
-              return (
-                row.type === "step-done" &&
-                row.workflow === workflow &&
-                (row.step === RED_STEP || row.step === RED_PASSED_STEP) &&
-                Array.isArray(row.artifacts) &&
-                path.resolve(ctx.cwd, String(row.artifacts[0])) === log &&
-                (row.test !== test || row.testName !== name)
-              );
-            })
-          : undefined;
-        if (holder !== undefined) {
-          const reason = `--log ${logArg} already holds the ${String(holder.step)} log of \`${String(holder.test)}\` "${String(holder.testName)}" (TASK ${String(holder.task)}); a red for \`${test}\` "${name}" there would overwrite that log and its snapshot — pass this test's own log path, numbered by its TEST FIRST position`;
-          ctx.emit({ recorded: false, refused: "log-taken", reason, log: logArg });
-          ctx.log(`not a red (log-taken): ${reason}`);
-          return EXIT_LOG_TAKEN;
-        }
-        if (resolveGate(top, [BKIT_LINT_FILE_SCRIPT]) === null) {
-          ctx.log(
-            `${BKIT_LINT_FILE_SCRIPT} is not declared — the test is not linted before its red`,
-          );
-        } else {
-          const linted = runToLog([...scriptCommand(BKIT_LINT_FILE_SCRIPT), test], top, log);
-          if (COULD_NOT_RUN_EXIT_CODES.has(linted)) {
-            ctx.log(
-              `${gateScope(BKIT_LINT_FILE_SCRIPT)} could not run (exit ${linted}: ${linted === 126 ? "not executable" : "command not found"}) — no test executed`,
-            );
-            return EXIT_COULD_NOT_RUN;
-          }
-          if (linted !== 0) {
-            const reason = `${BKIT_LINT_FILE_SCRIPT} exited ${linted} on ${test}: fix the test until it lints clean, then run red again`;
-            ctx.emit({ recorded: false, refused: "lint", reason, exitCode: linted, log: logArg });
-            ctx.log(`not a red (lint): ${reason} — full output in ${logArg}`);
-            return EXIT.NO;
-          }
-        }
-        const { exitCode, cases } = runTestFile(top, test, log);
-        if (COULD_NOT_RUN_EXIT_CODES.has(exitCode)) {
-          ctx.log(couldNotRunMessage(exitCode));
-          return EXIT_COULD_NOT_RUN;
-        }
-        const refusal = judgeRed(exitCode, cases, name);
-        if (refusal !== null) {
-          const noted =
-            refusal.kind === "passed"
-              ? writeStepRow(
-                  ctx.cwd,
-                  {
-                    file: statusFile(ctx),
-                    workflow,
-                    step: RED_PASSED_STEP,
-                    group,
-                    artifacts: [path.relative(ctx.cwd, log)],
-                    extras: {
-                      task,
-                      test,
-                      testName: name,
-                      testBlob: blob,
-                      exitCode,
-                      dirty: uncommittedFiles(top),
-                    },
-                    commit: "none",
-                  },
-                  ctx.log,
-                ).row
-              : undefined;
-          ctx.emit({
-            recorded: false,
-            refused: refusal.kind,
-            reason: refusal.reason,
-            exitCode,
-            ...(noted === undefined ? {} : { row: noted }),
-            log: logArg,
+        const top = toplevel(ctx.cwd);
+        const exists = (p: string) => fs.existsSync(path.resolve(ctx.cwd, p));
+        const plan = (ctx.flags.plan as string[]).find(exists);
+        const planText = plan ? fs.readFileSync(path.resolve(ctx.cwd, plan), "utf-8") : "";
+        const parsed = parsePlanBlocks(planText);
+        const status = statusFile(ctx);
+        const attempt = redAttempt(status, workflow, group);
+        const refusal = planRefusal(plan, parsed);
+        if (refusal !== undefined) {
+          writeRedReport(log, {
+            enforced: false,
+            reason: refusal,
+            plan,
+            group,
+            attempt,
+            tests: [],
+            details: new Map(),
+            gaps: [],
+            outputs: [],
           });
-          ctx.log(`not a red (${refusal.kind}): ${refusal.reason} — full output in ${logArg}`);
+          ctx.emit({ enforced: false, reason: refusal, attempt, tests: [], gaps: [], log: logArg });
+          ctx.log(`test-first not enforced: ${refusal}`);
           return EXIT.NO;
         }
-        const named = cases!.filter((c) => isNamedCase(c.name, name));
-        const failed = named[0]!;
-        const plan = runPlanOf(status);
-        const planned =
-          plan === undefined
-            ? null
-            : failsOnFragments(fs.readFileSync(plan, "utf-8"), task, test, name);
-        if (planned !== null && !failsAsPlanned(planned.fragments, named.map(failureText))) {
-          const failure = (failed.message || failed.detail).slice(0, FAILURE_EXCERPT);
-          const reason = `"${name}" failed, but not as the plan says: \`${path.relative(ctx.cwd, plan!)}:${planned.line}\` fails on ${planned.fragments.map((f) => `"${f}"`).join(" or ")}, and the failure says "${failure}" — fix the test's fake data or stub until it fails the planned way, then run red again; never force it. When the real code would fail the way the run shows, log the task BLOCKED naming both texts`;
-          ctx.emit({
-            recorded: false,
-            refused: "reason-mismatch",
-            reason,
-            exitCode,
-            log: logArg,
-          });
-          ctx.log(`not a red (reason-mismatch): ${reason} — full output in ${logArg}`);
-          return EXIT_RED_REASON;
+        const g = parsed.groups.find((x) => x.group === group);
+        if (g === undefined) throw new CommandError(EXIT.USAGE, `the plan has no GROUP ${group}`);
+        if (g.tasks.length === 0)
+          throw new CommandError(EXIT.USAGE, `GROUP ${group} has no tasks; nothing to run`);
+        const done = new Set(parsed.tasks.filter((t) => t.done).map((t) => t.task));
+        // A red an earlier row proved stands while its file is unchanged, so a retry, a
+        // handover or a task added to the group runs only what is left.
+        const proven = redEntries(status, workflow, group);
+        const recorded = redBlobs(status, workflow, group);
+        const standing = (t: RedTest) => {
+          const earlier = proven.get(redKey(t.task, t.test, t.testName));
+          if (earlier === undefined || !RED_PROVEN.has(earlier.state)) return false;
+          return git(top, ["hash-object", "--", t.test]) === recorded.get(t.test);
+        };
+        const tests: RedTest[] = [];
+        let skipped = 0;
+        for (const s of readTestFirst(planText, group)) {
+          if (s.kind !== "test" || done.has(s.task)) continue;
+          for (const t of s.tests) {
+            const planned: RedTest = {
+              task: s.task,
+              test: t.test,
+              testName: t.name,
+              state: "unknown",
+              blob: null,
+            };
+            if (standing(planned)) skipped += 1;
+            else tests.push(planned);
+          }
         }
-        const snapshot = snapshotPath(log);
-        fs.copyFileSync(path.join(top, test), snapshot);
+        if (skipped > 0)
+          ctx.log(`tests red: ${skipped} planned test(s) already red, not run again`);
+        const enforced = resolveGate(top, [BKIT_TEST_FILE_SCRIPT]) !== null;
+        const lint = resolveGate(top, [BKIT_LINT_FILE_SCRIPT]) !== null;
+        if (enforced && !lint && tests.length > 0)
+          ctx.log(
+            `${BKIT_LINT_FILE_SCRIPT} is not declared — the tests are not linted before their red`,
+          );
+        const writerLog = str(ctx.flags.writerLog);
+        const writerPath = writerLog === undefined ? undefined : path.resolve(ctx.cwd, writerLog);
+        const passes =
+          writerPath !== undefined && fs.existsSync(writerPath)
+            ? passesLines(fs.readFileSync(writerPath, "utf-8"))
+            : [];
+        const details = new Map<RedTest, string>();
+        const outputs: Array<{ title: string; text: string }> = [];
+        const couldNotRun = (script: string, exitCode: number) =>
+          `${gateScope(script)} could not run (exit ${exitCode}: ${exitCode === 126 ? "not executable" : "command not found"}) — no test executed`;
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-tests-red-"));
+        try {
+          for (const file of [...new Set(tests.map((t) => t.test))]) {
+            const mine = tests.filter((t) => t.test === file);
+            if (!fs.existsSync(path.join(top, file))) {
+              for (const t of mine) {
+                t.state = "missing";
+                details.set(t, `\`${file}\` does not exist`);
+              }
+              continue;
+            }
+            // `-w` stores the file in git: green and `steps finish` read the blob back later.
+            const blob = git(top, ["hash-object", "-w", "--", file]);
+            for (const t of mine) t.blob = blob;
+            if (!enforced) continue;
+            const runLog = path.join(dir, "run.log");
+            if (lint) {
+              const linted = runToLog([...scriptCommand(BKIT_LINT_FILE_SCRIPT), file], top, runLog);
+              outputs.push({
+                title: `Lint output — \`${file}\``,
+                text: fs.readFileSync(runLog, "utf-8"),
+              });
+              if (COULD_NOT_RUN_EXIT_CODES.has(linted)) {
+                ctx.log(couldNotRun(BKIT_LINT_FILE_SCRIPT, linted));
+                return EXIT_COULD_NOT_RUN;
+              }
+              if (linted !== 0) {
+                for (const t of mine) {
+                  t.state = "lint";
+                  details.set(
+                    t,
+                    `${BKIT_LINT_FILE_SCRIPT} exited ${linted} on \`${file}\`: fix the test until it lints clean (output below)`,
+                  );
+                }
+                continue;
+              }
+            }
+            const { exitCode, cases } = runTestFile(top, file, runLog);
+            outputs.push({
+              title: `Runner output — \`${file}\``,
+              text: fs.readFileSync(runLog, "utf-8"),
+            });
+            if (COULD_NOT_RUN_EXIT_CODES.has(exitCode)) {
+              ctx.log(couldNotRun(BKIT_TEST_FILE_SCRIPT, exitCode));
+              return EXIT_COULD_NOT_RUN;
+            }
+            for (const t of mine) {
+              const judged = judgeRed(cases, t.testName, file);
+              const accepted =
+                judged.state === "vacuous"
+                  ? passes.find(
+                      (p) => p.task === t.task && p.test === t.test && p.name === t.testName,
+                    )
+                  : undefined;
+              if (accepted !== undefined) {
+                t.state = "passed-accepted";
+                t.reason = accepted.reason;
+                details.set(t, `passes; accepted by the tests step: ${accepted.reason}`);
+              } else {
+                t.state = judged.state;
+                details.set(t, judged.detail);
+              }
+            }
+          }
+        } finally {
+          fs.rmSync(dir, { recursive: true, force: true });
+        }
+        const gaps: RedGap[] = [];
+        for (const t of tests) {
+          if (RED_PROVEN.has(t.state) || t.state === "unknown") continue;
+          const gap: RedGap = {
+            task: t.task,
+            test: t.test,
+            name: t.testName,
+            kind: t.state as RedGap["kind"],
+            detail: details.get(t) ?? t.state,
+          };
+          gaps.push(gap);
+          ctx.log(
+            `not a red (${gap.kind}): TASK ${gap.task} \`${gap.test}\` "${gap.name}" — ${gap.detail}`,
+          );
+        }
+        writeRedReport(log, {
+          enforced,
+          reason: enforced
+            ? undefined
+            : `\`${BKIT_TEST_FILE_SCRIPT}\` is not declared in package.json`,
+          plan,
+          group,
+          attempt,
+          tests,
+          details,
+          gaps,
+          outputs,
+        });
         const written = writeStepRow(
           ctx.cwd,
           {
-            file: statusFile(ctx),
+            file: status,
             workflow,
             step: RED_STEP,
             group,
-            artifacts: [path.relative(ctx.cwd, log), path.relative(ctx.cwd, snapshot)],
-            extras: {
-              task,
-              test,
-              testName: name,
-              testBlob: blob,
-              exitCode,
-              failure: failed.message.slice(0, FAILURE_EXCERPT),
-            },
+            attempt,
+            artifacts: [path.relative(ctx.cwd, log)],
+            extras: { enforced, tests },
             commit: "none",
           },
           ctx.log,
         );
-        ctx.emit({ recorded: true, exitCode, row: written.row, log: logArg });
-        ctx.log(`red recorded for task ${task}: "${name}" failed (${failed.state})`);
+        ctx.emit({ enforced, attempt, tests, skipped, gaps, row: written.row, log: logArg });
+        if (gaps.length > 0) {
+          ctx.log(`tests red: ${gaps.length} gap(s) — report in ${logArg}`);
+          return EXIT.NO;
+        }
+        if (!enforced) {
+          ctx.log(`${BKIT_TEST_FILE_SCRIPT} is not declared — ${NO_TEST_FILE_HINT}`);
+          return EXIT_NO_GATE;
+        }
+        ctx.log(`tests red: ${tests.length} planned test(s) red — report in ${logArg}`);
         return EXIT.OK;
       },
     },
     green: {
       summary:
-        "Audit a plan's test-first evidence (a red per TEST FIRST test recorded before the task's code commit, or its red run already passing on another task's overlapping code; the test's own lines and the code it runs unchanged since; the named test passing now); exit 0 no gaps, 1 gaps or a plan with no task markers.",
+        "Audit a plan's test-first evidence (each TEST FIRST test red at its group's tests step, by the build-tests-red row, or accepted there as passing before any task code; the named test passing now); exit 0 no gaps, 1 gaps or a plan with no task markers.",
       use: "workflow",
       flags: [
         FILE_FLAG,
@@ -1758,13 +1756,9 @@ export const testsCommand: CommandSpec = {
         plan: "the plan file audited",
         verdict:
           "PASS no gaps | FAIL a gap's fixable is false | CONCERNS every gap's fixable is true | null when a gap needs a diff read, or the audit could not run",
-        gaps: "[{task, kind, detail, fixable, logLine}]: no-test-first | test-first-malformed | test-first-unread (task null: a plan-level format problem) | no-red | late-red | red-mismatch | red-evidence-missing | test-changed | not-green | exception-refused (a task whose only test field is a TEST EXCEPTION not honoured) | delete-still-referenced (a DELETE line's file still exists, or its name is still found in the tree); fixable is null when the gap needs a diff read; logLine is the line the verifier appends",
-        testOrderOnly:
-          "true when there are gaps and every one is a test-order gap (no-red | late-red | red-mismatch | red-evidence-missing | test-changed)",
-        lateRedUnchecked:
-          "tasks with a red but no plan-execute step commit whose log records `DONE — TASK N`: the late-red check could not run for them",
+        gaps: "[{task, kind, detail, fixable, logLine}]: no-test-first | test-first-malformed | test-first-unread (task null: a plan-level format problem) | no-red (the group's tests step recorded no red for the test: no build-tests-red row, or a state other than red, red-not-loaded or passed-accepted) | not-green | exception-refused (a task whose only test field is a TEST EXCEPTION not honoured) | delete-still-referenced (a DELETE line's file still exists, or its name is still found in the tree); fixable is null when the gap needs a diff read; logLine is the line the verifier appends",
         alreadyLanded:
-          "[{task, test, name, by, commit}]: tests with no red whose red run was refused as passed while standing on TASK `by`'s code commit, which shares a CREATE / UPDATE file with the task, none of the task's own files uncommitted then; no no-red gap for them",
+          "[{task, test, name, reason}]: tests the tests step accepted as passing before any task code (passed-accepted on the red row); no no-red gap for them",
         log: "where the report was written (as given)",
       },
       exitCodes: {
@@ -1784,14 +1778,7 @@ export const testsCommand: CommandSpec = {
         const specs = readTestFirst(planText, group);
         // A plan with no task markers is an old-format plan: nothing it says can be audited,
         // and passing it would let its tests go unchecked.
-        const refusal =
-          plan === undefined
-            ? `no plan file; ${NO_MARKERS_REASON}`
-            : parsed.tasks.length === 0
-              ? parsed.fenceOpen === undefined
-                ? NO_MARKERS_REASON
-                : fenceNeverClosed(parsed.fenceOpen)
-              : undefined;
+        const refusal = planRefusal(plan, parsed);
         if (refusal === undefined && group !== undefined) {
           const g = parsed.groups.find((x) => x.group === group);
           if (g === undefined) throw new CommandError(EXIT.USAGE, `the plan has no GROUP ${group}`);
@@ -1807,11 +1794,8 @@ export const testsCommand: CommandSpec = {
           verdict: null,
           rows: [],
           gaps: [],
-          testOrderOnly: false,
           exceptions: [],
-          lateUnchecked: [],
           landed: [],
-          diffs: [],
           outputs: [],
         };
         if (reason !== undefined) {
@@ -1822,8 +1806,6 @@ export const testsCommand: CommandSpec = {
             plan: plan ?? null,
             verdict: null,
             gaps: [],
-            testOrderOnly: false,
-            lateRedUnchecked: [],
             alreadyLanded: [],
             log: logArg,
           });
@@ -1831,27 +1813,13 @@ export const testsCommand: CommandSpec = {
           return refusal === undefined ? EXIT.OK : EXIT.NO;
         }
 
-        const reds = redRows(statusFile(ctx), workflow);
-        const passedReds = readStatusRows(statusFile(ctx)).filter((r) => {
-          const row = r as Record<string, unknown>;
-          return (
-            row.type === "step-done" && row.workflow === workflow && row.step === RED_PASSED_STEP
-          );
-        }) as Array<Record<string, unknown>>;
-        const landed: Array<{
-          task: number;
-          test: string;
-          name: string;
-          by: number;
-          commit: string;
-        }> = [];
+        const reds = redEntries(statusFile(ctx), workflow);
+        const groupOf = (task: number) => parsed.tasks.find((b) => b.task === task)?.group;
+        const landed: Landed[] = [];
         const statusRel = repoRel(top, ctx.cwd, statusFile(ctx));
-        const codeCommits = taskCodeCommits(top, ctx.cwd, statusFile(ctx), workflow);
         const exceptions: ExceptionResult[] = [];
-        const lateUnchecked = new Set<number>();
         const gaps: Gap[] = [];
         const rows: AuditRow[] = [];
-        const diffs: Array<{ task: number; test: string; diff: string }> = [];
         const outputs: Array<{ test: string; tail: string }> = [];
         const greens = new Map<string, { cases: JunitCase[] | null; tail: string }>();
         /** One run per test file; null when the script could not run. */
@@ -1923,15 +1891,11 @@ export const testsCommand: CommandSpec = {
                   cleared: [],
                 };
           if (exception !== undefined) exceptions.push(exception);
-          const taskReds = reds.filter((r) => r.task === s.task);
-          const planned = (r: Record<string, unknown>) =>
-            s.tests.some((t) => t.test === r.test && t.name === r.testName);
           for (const t of s.tests) {
             const row: AuditRow = {
               task: s.task,
               test: `\`${t.test}\` "${t.name}"`,
-              red: "missing",
-              changed: "—",
+              red: "no row",
               green: "—",
             };
             rows.push(row);
@@ -1941,124 +1905,26 @@ export const testsCommand: CommandSpec = {
                 ? exception
                 : undefined;
             const gap = (kind: GapKind, detail: string) => {
-              if (clearing !== undefined && TEST_ORDER_GAPS.has(kind))
+              if (clearing !== undefined && kind === "no-red")
                 clearing.cleared.push(`\`${kind}\` for \`${t.test}\` "${t.name}"`);
               else gaps.push(gapOf(s.task, kind, detail, { file: t.test, name: t.name }));
             };
-            const red = [...taskReds]
-              .reverse()
-              .find((r) => r.test === t.test && r.testName === t.name);
-            const unplanned = taskReds.filter((r) => !planned(r));
-            if (red === undefined && unplanned.length > 0) {
-              const recorded: string[] = [];
-              for (const r of unplanned) {
-                const rTest = String(r.test);
-                const rName = String(r.testName);
-                let now = "file missing";
-                if (fs.existsSync(path.join(top, rTest))) {
-                  const run = greenRun(rTest);
-                  if (run === null) return EXIT_COULD_NOT_RUN;
-                  const why = judgeGreen(run.cases, rName);
-                  now = why === null ? "passes now" : `not passing: ${why}`;
-                }
-                recorded.push(`\`${rTest}\` "${rName}" (${now})`);
-              }
+            const red = reds.get(redKey(s.task, t.test, t.name));
+            if (red === undefined)
               gap(
-                "red-mismatch",
-                `no red for \`${t.test}\` "${t.name}"; reds recorded for ${recorded.join(", ")}`,
+                "no-red",
+                `no tests step recorded a red for "${t.name}" — run the group's tests step, then \`bkit tests red --group=${groupOf(s.task) ?? "N"}\``,
               );
-            } else if (red === undefined) {
-              const refusal = [...passedReds]
-                .reverse()
-                .find((r) => r.task === s.task && r.test === t.test && r.testName === t.name);
-              const by =
-                refusal === undefined
-                  ? undefined
-                  : landedBy(
-                      top,
-                      refusal,
-                      parsed.tasks.find((b) => b.task === s.task)!,
-                      parsed.tasks,
-                      codeCommits,
-                    );
-              if (by !== undefined && "task" in by) {
-                row.red = `already landed by TASK ${by.task} (${by.commit.slice(0, 7)})`;
-                landed.push({
-                  task: s.task,
-                  test: t.test,
-                  name: t.name,
-                  by: by.task,
-                  commit: by.commit,
-                });
-              } else
-                gap(
-                  "no-red",
-                  `no red recorded for "${t.name}" — ${by === undefined ? "the test was never seen failing before the code" : by.why}`,
-                );
-            } else {
-              row.red = `recorded ${String(red.at)}`;
-              const code = codeCommits.get(s.task);
-              const on = typeof red.parentSha === "string" ? red.parentSha : undefined;
-              if (code === undefined || on === undefined) lateUnchecked.add(s.task);
-              else if (runGit(top, ["merge-base", "--is-ancestor", code, on]).ok) {
-                row.red = `late — ${row.red}`;
-                gap(
-                  "late-red",
-                  `the red for "${t.name}" was recorded on ${on.slice(0, 7)}, on or after ${code.slice(0, 7)}, the first commit whose plan-execute log records TASK ${s.task} DONE — the task's code already existed`,
-                );
-              }
-              const snap = (Array.isArray(red.artifacts) ? red.artifacts : [])
-                .map(String)
-                .find((a) => a.endsWith(".snapshot"));
-              const snapAbs = snap === undefined ? undefined : path.resolve(ctx.cwd, snap);
-              const testAbs = path.join(top, t.test);
-              // A lost snapshot falls back to the copy `tests red` wrote into git.
-              const kept =
-                snapAbs !== undefined && fs.existsSync(snapAbs)
-                  ? fs.readFileSync(snapAbs)
-                  : storedBlob(top, red.testBlob);
-              if (kept === null) {
-                row.changed = "unknown";
-                gap(
-                  "red-evidence-missing",
-                  `the red's test snapshot ${snap ?? "(none recorded)"} is missing, and git holds no blob ${typeof red.testBlob === "string" ? red.testBlob : "(none recorded)"} for it`,
-                );
-              } else if (!fs.existsSync(testAbs)) {
-                row.changed = "deleted";
-                gap("test-changed", `\`${t.test}\` no longer exists`);
-              } else if (!kept.equals(fs.readFileSync(testAbs))) {
-                const before = kept.toString("utf-8");
-                const after = fs.readFileSync(testAbs, "utf-8");
-                const blobDir =
-                  snapAbs !== undefined && fs.existsSync(snapAbs)
-                    ? undefined
-                    : fs.mkdtempSync(path.join(os.tmpdir(), "bkit-test-blob-"));
-                const beforeFile =
-                  blobDir === undefined ? snapAbs! : path.join(blobDir, path.basename(t.test));
-                if (blobDir !== undefined) fs.writeFileSync(beforeFile, kept);
-                const diffOf = (...flags: string[]) =>
-                  runGit(top, [
-                    "diff",
-                    "--no-index",
-                    "--no-color",
-                    ...flags,
-                    "--",
-                    path.relative(top, beforeFile),
-                    t.test,
-                  ]).stdout;
-                const judged = sinceRed(
-                  t,
-                  before,
-                  after,
-                  testChange(before, after, t.name, diffLines(diffOf("-U0"))),
-                );
-                row.changed = judged.changed;
-                if (judged.detail !== null) {
-                  gap("test-changed", judged.detail);
-                  diffs.push({ task: s.task, test: t.test, diff: diffOf() });
-                }
-                if (blobDir !== undefined) fs.rmSync(blobDir, { recursive: true, force: true });
-              } else row.changed = "no";
+            else if (red.state === "passed-accepted") {
+              row.red = red.state;
+              landed.push({ task: s.task, test: t.test, name: t.name, reason: red.reason ?? "" });
+            } else if (RED_PROVEN.has(red.state)) row.red = red.state;
+            else {
+              row.red = red.state;
+              gap(
+                "no-red",
+                `the tests step left "${t.name}" as \`${red.state}\`, not red — fix the test in the tests step and run \`bkit tests red --group=${groupOf(s.task) ?? "N"}\` again`,
+              );
             }
 
             if (!fs.existsSync(path.join(top, t.test))) {
@@ -2093,7 +1959,6 @@ export const testsCommand: CommandSpec = {
               `\`${plan}:${e.line}\` ${e.message} — tests there were not audited; the plan's blocks need fixing`,
             ),
           );
-        const testOrderOnly = gaps.length > 0 && gaps.every((g) => TEST_ORDER_GAPS.has(g.kind));
         const verdict = verdictOf(gaps);
         writeAuditReport(log, {
           enforced: true,
@@ -2101,11 +1966,8 @@ export const testsCommand: CommandSpec = {
           verdict,
           rows,
           gaps,
-          testOrderOnly,
           exceptions,
-          lateUnchecked: [...lateUnchecked].sort((a, b) => a - b),
           landed,
-          diffs,
           outputs,
         });
         ctx.emit({
@@ -2113,8 +1975,6 @@ export const testsCommand: CommandSpec = {
           plan,
           verdict,
           gaps,
-          testOrderOnly,
-          lateRedUnchecked: [...lateUnchecked].sort((a, b) => a - b),
           alreadyLanded: landed,
           log: logArg,
         });

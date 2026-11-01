@@ -192,7 +192,7 @@ pnpm add -D prettier@^3.5.3 slop-scan@^0.3.0 lint-staged@^17.0.0 husky@^9.1.7
 - `bkit:test:file` runs one test file and writes a JUnit report to `$BKIT_TEST_REPORT`. bkit appends the file's repo-relative path. `/bkit-build` reads the report for test-first. It is not seeded, and `test-file-script-missing` fires until it is declared.
   - Vitest: `"bkit:test:file": "vitest run --reporter=default --reporter=junit --outputFile.junit=\"$BKIT_TEST_REPORT\""`.
   - Call the runner directly, not through a caching task runner.
-- `bkit:lint:file` lints one test file with the static gate's rules, and exits 0 when clean. bkit appends the path. `bkit tests red` runs it before the test, and records no red while it fails. It is not seeded, and `lint-file-script-missing` fires once `bkit:test:file` is declared without it.
+- `bkit:lint:file` lints one test file with the static gate's rules, and exits 0 when clean. bkit appends the path. `bkit tests red` runs it on each planned test file before running the file, and records a `lint` gap for the file's tests while it fails. It is not seeded, and `lint-file-script-missing` fires once `bkit:test:file` is declared without it.
   - ESLint: `"bkit:lint:file": "eslint --max-warnings=0"`.
   - Ruff: `"bkit:lint:file": "ruff check"`.
 - `bkit:gate:changed` checks only the files an agent step changed: the tests that import them, the tests that name their paths, and static checks on them; exit 0 when clean. `bkit tests changed` appends the repo-relative paths and never calls it with none. It is not seeded, and `gate-changed-script-missing` fires until it is declared; undeclared, agents run the whole `bkit:gate:static` / `bkit:gate:static-unit` instead.

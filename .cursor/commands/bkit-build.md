@@ -89,7 +89,7 @@ Build Feature — Autonomous implementation
 2. Write `{OUTBOX}/decision-items.json` = one JSON object per item, in item order — `{"title", "question", "options", "recommended", "reason"}`, or a hard blocker `{"title", "question", "options", "noRecommendation"}` (why no agent can settle it); never a recommendation on a hard blocker. Per `question`: word each so "yes" accepts the recommendation. State what the owner must decide and what each option does, in plain English, before naming any file, test or identifier. Items:
    - **If** `PAUSE_QUESTION` = `VERIFY_GAPS` → write one item per `## Identified Gaps Log` line of `build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}.md`. Add the gap's last `BLOCKED` reason from `build-plan-gaps-remediate-{GROUP}-*-log.md` when it has one.
      - A fixable gap → options `["Accept", "Fix now"]`, with a recommendation per item.
-     - A test-order gap (`no-red`, `late-red`, `red-mismatch`, `red-evidence-missing`, `test-changed`) → a hard blocker with options `["Accept", "Stop"]`. Its question ends `Accept it? You write the reason, and it is recorded as your TEST EXCEPTION.`
+     - A `no-red` gap → a hard blocker with options `["Accept", "Stop"]`. Its question ends `Accept it? You write the reason, and it is recorded as your TEST EXCEPTION.`
      - Any other unfixable gap (`no-test-first`, `test-first-malformed`, `test-first-unread`, `exception-refused`) → a hard blocker with options `["Accept", "Fix now", "Stop"]`.
      - A group-gate failure is never an item, because it is always fixed.
    - **If** `PAUSE_QUESTION` = `CHALLENGE`:
@@ -148,7 +148,7 @@ Build Feature — Autonomous implementation
      - **Else** → step 5.
 5. Apply each decision:
    - **Accept** by the owner → write the acceptance ONLY on that item's explicit approval from the owner. A "yes" to an `Accept` recommendation counts as approval.
-     - **If** the item is a test-order gap **or** an `exception-refused` gap → write a `- **TEST EXCEPTION:**` field as the last field of the task's block in `docs/plans/{YYYYMM}/{FID}-plan.md`:
+     - **If** the item is a `no-red` **or** an `exception-refused` gap → write a `- **TEST EXCEPTION:**` field as the last field of the task's block in `docs/plans/{YYYYMM}/{FID}-plan.md`:
        - Give the field one sub-bullet per test, in `TEST FIRST` form, each ending `— {human's reason} (owner, {YYYY-MM-DD})`.
        - **If** the task has no `TEST FIRST` → the field holds `{human's reason} (owner, {YYYY-MM-DD})` alone.
        - The field replaces the task's existing `TEST EXCEPTION` field; NEVER add a second one.
@@ -158,7 +158,7 @@ Build Feature — Autonomous implementation
    - **Accept (assumed)**, written by `decisions apply` → write nothing else: no `docs/decisions.jsonl` row and no `TEST EXCEPTION`. Ship asks the owner to confirm the item later.
      - **If** the item is a challenge task → tick it `[x]` and end its title with ` — accepted (assumed)`.
    - **Fix now**:
-     - Write no test and no fix code at this pause. Step 7 writes each `TEST FIRST` test, records it failing with `tests red`, and only then writes the fix. NEVER undo code to force a red.
+     - Write no test and no fix code at this pause. Step 7 writes the new task's `TEST FIRST` tests with `@bkit-build-plan-tests`, records them failing with `tests red`, and only then writes the fix with `@bkit-build-plan-tasks`. NEVER undo code to force a red.
      - **If** the item is a challenge task → keep that task open. It runs as it is.
      - **Else** → write a new task block:
        - Use the task-block form (`docs/templates/bkit-plan.md` § Agent Execution Runbook), numbered one above the plan's highest task.
@@ -470,13 +470,13 @@ Build Feature — Autonomous implementation
 
 ## Group Loop — Steps 7-9
 
-Each task group gets its own pass of Steps 7-9, in group order. Step 7 briefs the first group with an open task, Step 8 verifies that group's own diff, and Step 9 closes its gaps. Attempt budgets count per group (`--group`). Per-group files are named `{step}-{GROUP}-{ATTEMPT}.md`. When no group is left open → Step 10.
+Each task group gets its own pass of Steps 7-9, in group order. Step 7 briefs the first group with an open task, writes its planned tests, records them red and then writes its code; Step 8 verifies that group's own diff, and Step 9 closes its gaps. Attempt budgets count per group (`--group`). Per-group files are named `{step}-{GROUP}-{ATTEMPT}.md`. When no group is left open → Step 10.
 
 ---
 
 ### 🧠 Step 7 — Plan Execute
 
-1. Brief the first group with an open task. An open task is one neither ticked `[x]` nor logged `DONE` in a `build-plan-execute-*-log.md`.
+1. Brief the first group with an open task. An open task is one neither ticked `[x]` nor logged `DONE` in a `build-plan-tasks-*-log.md`.
    Once per run, first: **If** the session prompt (`{SESSION_DIR}/prompt.md`) carries run instructions beyond naming the issue, such as a redo, a resume or a constraint → write them word for word to `{SESSION_DIR}/brief-note.md`.
    Run the block below, and drop `--note-file` when `{SESSION_DIR}/brief-note.md` does not exist:
    ```bash
@@ -491,33 +491,67 @@ Each task group gets its own pass of Steps 7-9, in group order. Step 7 briefs th
    ```bash
    "{BKIT}" steps done --workflow=build --step=build-group-start --file="{STATUS}" --group={GROUP} --commit=none >/dev/null || exit 1
    ```
-3. **Subagent:** Invoke `/bkit-build-plan-execute` using `Task` tool:
-   Context: You are a subagent in the Build phase. Execute group `{GROUP}`, tasks `{GROUP_TASKS}`, from the brief `{BRIEF}`; append to the existing log. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task. Red command: `"{BKIT}" tests red --file="{STATUS}" --workflow=build --group={GROUP} --task={task} --test={test file} --name="{test name}" --log=docs/plans/{YYYYMM}/logs/{FID}/build-task-red-{GROUP}-{task}-{test position}.md`.
-   Read: `{BRIEF}`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-current.md` (if present, consider findings when executing plan; do not revise plan).
-   Update: Source files.
-   Create: `docs/plans/{YYYYMM}/logs/{FID}/build-plan-execute-{GROUP}-log.md`.
-4. Finish:
+3. Brief the group's planned tests:
+   Run the block below, and drop `--note-file` when `{SESSION_DIR}/brief-note.md` does not exist:
    ```bash
-   "{BKIT}" steps finish --workflow=build --step=build-plan-execute --file="{STATUS}" --attempt-of=build-plan-execute:next --group={GROUP} --agent=bkit-build-plan-execute --artifact=docs/plans/{YYYYMM}/logs/{FID}/build-plan-execute-{GROUP}-log.md --number=7 --post --title="Plan Execute" --message="chore({FID}): plan-execute group {GROUP} attempt <attempt>"
+   "{BKIT}" context brief --plan="docs/plans/{YYYYMM}/{FID}-plan.md" --group={GROUP} --tests-only --dir="docs/plans/{YYYYMM}/logs/{FID}" --file="{STATUS}" --note-file="{SESSION_DIR}/brief-note.md"
    ```
-   **If** exit 11 → a task is logged `DONE` whose red passed with no red recorded: invoke `@bkit-build-plan-execute` again with `"<problem> Log each task it names BLOCKED, or DONE with 'already landed', in '<reask.artifact>'. Do not redo other tasks."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**.
-   Hold `verdict` as `EXECUTE_VERDICT`.
-5. Read the group's open tasks:
+   Hold `artifact` as `WRITE_BRIEF` and `tests` as `WRITE_LEFT`. The brief leaves out every test a `build-tests-red` row of the group already proved red. **If** `WRITE_LEFT` = 0 → step 7.
+4. **Subagent:** Invoke `/bkit-build-plan-tests` using `Task` tool:
+   Context: You are a subagent in the Build phase. Write the planned tests of group `{GROUP}` from the brief `{WRITE_BRIEF}`; append to the existing log. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task. **If** `RED_REPORT` is held → add `Your tests were run: read '{RED_REPORT}' and rewrite only the tests it lists as vacuous, missing, no-report or lint.`
+   Read: `{WRITE_BRIEF}`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-current.md` (if present, consider findings when writing tests; do not revise plan), `{RED_REPORT}` (if held).
+   Update: Test files only.
+   Create: `docs/plans/{YYYYMM}/logs/{FID}/build-plan-tests-{GROUP}-log.md`.
+5. Finish:
    ```bash
-   "{BKIT}" tasks open --plan="docs/plans/{YYYYMM}/{FID}-plan.md" --group={GROUP} --log="docs/plans/{YYYYMM}/logs/{FID}/build-plan-execute-{GROUP}-log.md"
+   "{BKIT}" steps finish --workflow=build --step=build-plan-tests --file="{STATUS}" --attempt-of=build-plan-tests:next --group={GROUP} --plan="docs/plans/{YYYYMM}/{FID}-plan.md" --agent=bkit-build-plan-tests --artifact=docs/plans/{YYYYMM}/logs/{FID}/build-plan-tests-{GROUP}-log.md --number=7 --post --title="Plan Execute" --message="chore({FID}): plan-tests group {GROUP} attempt <attempt>"
    ```
-   Hold `handover` as `EXECUTE_HANDOVER`.
+   **If** exit 15 → the diff changes a file no `TEST FIRST` line of the group names (`source`): invoke `@bkit-build-plan-tests` again with `"<problem> Undo your edits to each file in <source>: restore it to its committed content, or delete it when you created it. Write no source code."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**.
+   Hold `verdict` as `WRITE_VERDICT`.
+   **If** `WRITE_RESUMED` is not held for `GROUP` **and** `WRITE_VERDICT` = HANDOVER → the agent stopped at its turn cap. This is a handover, not a failed attempt: `WRITE_RESUMED` = `GROUP`, then re-run from step 3. Its brief leaves out the tests the log records `WROTE`.
+6. Record the reds, before any task code exists:
+   ```bash
+   "{BKIT}" counters derive --file="{STATUS}" --workflow=build --step=build-tests-red --group={GROUP} --position=next
+   ```
+   Hold `value` as `RED_ATTEMPT`.
+   ```bash
+   "{BKIT}" tests red --file="{STATUS}" --workflow=build --group={GROUP} --plan="docs/plans/{YYYYMM}/{FID}-plan.md" --log="docs/plans/{YYYYMM}/logs/{FID}/build-tests-red-{GROUP}-{RED_ATTEMPT}.md" --writer-log="docs/plans/{YYYYMM}/logs/{FID}/build-plan-tests-{GROUP}-log.md"
+   ```
    Route:
-   - **If** `EXECUTE_RESUMED` is not held for `GROUP` **and** either `EXECUTE_VERDICT` = HANDOVER **or** `EXECUTE_HANDOVER` = true → the agent stopped at its turn cap. This is a handover, not a failed attempt:
-     - `EXECUTE_RESUMED` = `GROUP`.
-     - Re-run Step 7. Its brief leaves out the `DONE` tasks.
+   - **If** exit 0 → every planned test is red → step 7.
+   - **If** exit 3 → the repo declares no `bkit:test:file` script; test-first is not enforced → step 7.
+   - **If** exit 1 **and** `WRITE_RETRIED` is not held for `GROUP` → a planned test passes, is absent from its report, fails lint or is missing: `WRITE_RETRIED` = `GROUP`, `RED_REPORT` = `docs/plans/{YYYYMM}/logs/{FID}/build-tests-red-{GROUP}-{RED_ATTEMPT}.md` → step 3.
+   - **If** exit 1 → the gaps stand; `tests green` reports each as `no-red` at Step 8, where the owner decides → step 7.
+   - **Else** → **Failure Path**.
+7. **Subagent:** Invoke `/bkit-build-plan-tasks` using `Task` tool:
+   Context: You are a subagent in the Build phase. Execute group `{GROUP}`, tasks `{GROUP_TASKS}`, from the brief `{BRIEF}`; append to the existing log. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task. The group's `TEST FIRST` tests are written and recorded red; make them pass without editing them.
+   Read: `{BRIEF}`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-current.md` (if present, consider findings when executing plan; do not revise plan), `docs/plans/{YYYYMM}/logs/{FID}/build-plan-tests-{GROUP}-log.md` (if present).
+   Update: Source files.
+   Create: `docs/plans/{YYYYMM}/logs/{FID}/build-plan-tasks-{GROUP}-log.md`.
+8. Finish:
+   ```bash
+   "{BKIT}" steps finish --workflow=build --step=build-plan-tasks --file="{STATUS}" --attempt-of=build-plan-tasks:next --group={GROUP} --agent=bkit-build-plan-tasks --artifact=docs/plans/{YYYYMM}/logs/{FID}/build-plan-tasks-{GROUP}-log.md --number=7 --post --title="Plan Execute" --message="chore({FID}): plan-execute group {GROUP} attempt <attempt>"
+   ```
+   **If** exit 11 → a planned test file differs from the blob the tests step recorded (`touched`): invoke `@bkit-build-plan-tasks` again with `"<problem> Restore each file in <touched> to its committed content, or log its task BLOCKED in '<reask.artifact>'. Do not redo other tasks."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**.
+   Hold `verdict` as `TASKS_VERDICT`.
+9. Read the group's open tasks:
+   ```bash
+   "{BKIT}" tasks open --plan="docs/plans/{YYYYMM}/{FID}-plan.md" --group={GROUP} --log="docs/plans/{YYYYMM}/logs/{FID}/build-plan-tasks-{GROUP}-log.md"
+   ```
+   Hold `handover` as `TASKS_HANDOVER`.
+   Route:
+   - **If** `TASKS_RESUMED` is not held for `GROUP` **and** either `TASKS_VERDICT` = HANDOVER **or** `TASKS_HANDOVER` = true → the agent stopped at its turn cap. This is a handover, not a failed attempt:
+     - `TASKS_RESUMED` = `GROUP`.
+     - Re-run Step 7. Its briefs leave out the `DONE` tasks and the tests already proved red.
    - **Else** → Step 8.
 
 ### 🔒 Gate 7 — Plan Execute
 
 - [ ] Group briefed (`context brief`)
 - [ ] Group start commit recorded
-- [ ] Subagent invoked (`@bkit-build-plan-execute`, no inline work)
+- [ ] Tests written by their own subagent (`@bkit-build-plan-tests`, no inline work), or none left to write
+- [ ] Reds recorded before any task code (`tests red`)
+- [ ] Subagent invoked (`@bkit-build-plan-tasks`, no inline work)
 - [ ] Mechanical checks passed (`steps finish`)
 - [ ] Source files implemented
 
@@ -545,7 +579,7 @@ Each task group gets its own pass of Steps 7-9, in group order. Step 7 briefs th
    ```
 4. **Subagent:** Invoke `/bkit-build-plan-verify` using `Task` tool:
    Context: You are a subagent in the Build phase. Group verification. Group `{GROUP}`, attempt `{VERIFY_ATTEMPT}`. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
-   Read: glob `docs/plans/{YYYYMM}/logs/{FID}/build-brief-{GROUP}-*.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-diff-{GROUP}-{VERIFY_ATTEMPT}.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-execute-{GROUP}-log.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-tests-green-{GROUP}-{VERIFY_ATTEMPT}.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-current.md` (if present), glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{GROUP}-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{GROUP}-*-log.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-decision-*.md`.
+   Read: glob `docs/plans/{YYYYMM}/logs/{FID}/build-brief-{GROUP}-*.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-diff-{GROUP}-{VERIFY_ATTEMPT}.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-tests-{GROUP}-log.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/build-plan-tasks-{GROUP}-log.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-tests-green-{GROUP}-{VERIFY_ATTEMPT}.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-current.md` (if present), glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{GROUP}-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{GROUP}-*-log.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-decision-*.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}.md`.
 5. Finish:
    ```bash
@@ -632,7 +666,7 @@ Each task group gets its own pass of Steps 7-9, in group order. Step 7 briefs th
    Hold `verdict` as `GATE_VERDICT`.
 2. **Subagent:** Invoke `/bkit-build-plan-gaps-remediate` using `Task` tool:
    Context: You are a subagent in the Build phase. Group `{GROUP}`, attempt `{VERIFY_ATTEMPT}`. `Strategy`: `{STRATEGY}`. **If** `GATE_VERDICT` = FAIL → add `Group gate`: `"{BKIT}" tests run --gate=bkit:gate:static-unit --log="{OUTBOX}/build-plan-gaps-remediate-{GROUP}-{VERIFY_ATTEMPT}-gate.log"`. **If** `VERIFY_VERDICT` = FAIL → add `Scope`: `fixable only`. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
-   Read: glob `docs/plans/{YYYYMM}/logs/{FID}/build-brief-{GROUP}-*.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-group-gate-{GROUP}-{VERIFY_ATTEMPT}.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/build-tests-green-{GROUP}-{VERIFY_ATTEMPT}.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{GROUP}-*-log.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-decision-{RUN}-*.md` (highest number, if present).
+   Read: glob `docs/plans/{YYYYMM}/logs/{FID}/build-brief-{GROUP}-*.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-group-gate-{GROUP}-{VERIFY_ATTEMPT}.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/build-tests-green-{GROUP}-{VERIFY_ATTEMPT}.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-tests-{GROUP}-log.md` (if present), glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{GROUP}-*-log.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-decision-{RUN}-*.md` (highest number, if present).
    Update: Source files.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{GROUP}-{VERIFY_ATTEMPT}-log.md`.
 3. Finish. The command records the header's `Strategy`:
@@ -675,7 +709,7 @@ This step runs once, after the last group. Challenge fix groups pass through it 
    ```
    **Subagent:** Invoke `/bkit-build-plan-verify` using `Task` tool:
    Context: You are a subagent in the Build phase. Holistic plan verification (every group). Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
-   Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-execute-*-log.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-*-log.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-decision-*.md`, `tmp/bkit-diff-{FID}.md` (the run's diff; review full feature diff for cross-group integration).
+   Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-tasks-*-log.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-*-log.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-decision-*.md`, `tmp/bkit-diff-{FID}.md` (the run's diff; review full feature diff for cross-group integration).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-holistic.md`.
 3. Finish:
    ```bash

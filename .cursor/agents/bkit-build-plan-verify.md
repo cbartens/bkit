@@ -83,22 +83,9 @@ tools:
    - `delete-still-referenced` → read each hit:
      - **If** the hit is a different thing with the same name → no gap.
      - **Else** → `Fixable: true`.
-   - `test-changed` on a row whose `Changed since red` = `test body` **or** `yes` → read its diff:
-     - **If** only formatting changed → no gap.
-     - **If** assertions were weakened, removed or rewritten → `Fixable: false`.
-   - `test-changed` on a row whose `Changed since red` = `code it runs` → read its diff:
-     - **If** the named helper, hook, fixture or import was refactored with the test's inputs, mocks and expected values unchanged → no gap.
-     - **If** any of those inputs, mocks or expected values changed → `Fixable: false`.
-   - `test-changed` on a row whose `Changed since red` = `added lines only` → read its diff:
-     - **If** any line was added inside a planned test or in setup it runs (`beforeEach`, fixture, mock) → `Fixable: false`.
-     - **If** lines were added only outside every planned test → no gap.
-   - `red-mismatch`:
-     - **If** the recorded test is the planned one, renamed or moved, **and** it passes now → no gap, and no gap for that test's `not-green` either.
-     - **Else** → `Fixable: false`.
-   - `no-red` on a task that the plan-currency report classifies `Broken` with its work already landed, **and** the execute log records `DONE — TASK {N}: already landed` → no gap. This overrides the gap's `Fixable: false`.
+   - `no-red` → its `Fixable: false` stands: the tests step could not prove that test red, and no code step may rewrite a planned test. The owner accepts it or stops at the Decision Pause.
    - `Enforced: false` → record the reason in `Notes`. No gap.
-   - `Late-red check` section → list each task it did not check in `Notes`. No gap.
-   - `Already landed` section → list each test, and the task whose code it stood on, in `Notes`. No gap.
+   - `Already landed` section → list each test, and the reason the tests step gave for its pass, in `Notes`. No gap.
    - A gap you leave `Fixable: false` is a `FAIL`.
 9. For each task, check that the codebase satisfies its `DONE WHEN` (a file exists, a signature matches, a test passes, a behaviour shows) and that the task has no test-first audit gap:
    - `BLOCKED` log lines, `docs/deferrals.jsonl` rows and out-of-scope notes never satisfy it.

@@ -85,7 +85,7 @@ describe("buildSummary", () => {
       failures: 1,
       attempt: 1,
     };
-    for (const answer of ["build-plan-execute", "build-decision"]) {
+    for (const answer of ["build-plan-tasks", "build-decision"]) {
       const s = buildSummary(
         input({
           rows: [challenge, { type: "step-done", step: answer, verdict: "PASS", attempt: 2 }],
@@ -105,7 +105,7 @@ describe("buildSummary", () => {
       verdict,
       attempt,
     });
-    const execute = row("build-plan-execute", 7, "FAIL");
+    const execute = row("build-plan-tasks", 7, "FAIL");
     // Verify FAIL → Decision Pause accepts the gap → verify re-runs with CONCERNS.
     const s = buildSummary(
       input({
@@ -118,7 +118,7 @@ describe("buildSummary", () => {
       }),
     );
     expect(s.verdict).toBe("CONCERNS");
-    expect(s.reasons).toContain("build-plan-execute (group 7) FAIL, answered by build-plan-verify");
+    expect(s.reasons).toContain("build-plan-tasks (group 7) FAIL, answered by build-plan-verify");
     expect(s.reasons).toContain("build-plan-verify (group 7) CONCERNS");
 
     for (const rows of [
@@ -127,7 +127,7 @@ describe("buildSummary", () => {
       [row("build-plan-verify", 7, "PASS"), execute],
       [execute, { type: "step-done", step: "build-decision", attempt: 1 }],
     ])
-      expect(buildSummary(input({ rows })).reasons).toContain("build-plan-execute (group 7) FAIL");
+      expect(buildSummary(input({ rows })).reasons).toContain("build-plan-tasks (group 7) FAIL");
   });
 
   it("a group's gaps fix FAIL answered by that group's later non-FAIL verify is CONCERNS; else FAIL", () => {
@@ -401,7 +401,7 @@ describe("buildSummary", () => {
       "<!-- bkit:group 1 end -->",
     ].join("\n");
     const files: Record<string, string> = {
-      "log/build-plan-execute-1-log.md": "DONE — Task 1\nBLOCKED — Task 2: needs a key\n",
+      "log/build-plan-tasks-1-log.md": "DONE — Task 1\nBLOCKED — Task 2: needs a key\n",
       "log/build-decision-1-1.md": "Status: DECIDED\n**Q1 — gap:** x\nDecision: Accept — fine\n",
       "log/build-decision-1-2.md": "Status: OPEN\n**Q1 — gap:** y\n",
     };
@@ -410,9 +410,9 @@ describe("buildSummary", () => {
         rows: [
           {
             type: "step-done",
-            step: "build-plan-execute",
+            step: "build-plan-tasks",
             attempt: 1,
-            artifacts: ["log/build-plan-execute-1-log.md"],
+            artifacts: ["log/build-plan-tasks-1-log.md"],
           },
           {
             type: "step-done",

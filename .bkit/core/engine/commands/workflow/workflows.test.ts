@@ -466,7 +466,7 @@ describe("bkit workflows start — resume facts", () => {
         started("2026-07-01T00:00:00Z"),
         done("build-start-workflow", "2026-07-01T00:01:00Z"),
         done("build-worktree-setup", "2026-07-01T00:02:00Z"),
-        { ...done("build-plan-execute", "2026-07-01T00:03:00Z"), status: "FAILED" },
+        { ...done("build-plan-tasks", "2026-07-01T00:03:00Z"), status: "FAILED" },
       ]),
     );
     writeDecision(cwd, 1, 1, ["Status: DECIDED", "Question: CHALLENGE", "From: challenge"]);
@@ -817,7 +817,7 @@ describe("bkit workflows close", () => {
 
   describe("context peaks", () => {
     const SID = "0f0e0d0c-1111-2222-3333-444455556666";
-    /** A Claude config dir whose session SID ran one `bkit-build-plan-execute` subagent. */
+    /** A Claude config dir whose session SID ran one `bkit-build-plan-tasks` subagent. */
     function claudeDir() {
       const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-claude-")));
       dirs.push(dir);
@@ -835,7 +835,7 @@ describe("bkit workflows close", () => {
       fs.writeFileSync(path.join(sub, "agent-a.jsonl"), `${JSON.stringify(line)}\n`);
       fs.writeFileSync(
         path.join(sub, "agent-a.meta.json"),
-        JSON.stringify({ agentType: "bkit-build-plan-execute" }),
+        JSON.stringify({ agentType: "bkit-build-plan-tasks" }),
       );
       return dir;
     }
@@ -848,7 +848,7 @@ describe("bkit workflows close", () => {
       const outcome = writtenOutcome(cwd);
       expect(outcome?.context).toEqual({
         host: "claude-code",
-        byAgent: { "bkit-build-plan-execute": { peak: 6, runs: 1 } },
+        byAgent: { "bkit-build-plan-tasks": { peak: 6, runs: 1 } },
       });
       expect(validate(outcome)).toEqual({ ok: true });
     });
@@ -872,7 +872,7 @@ describe("bkit workflows close", () => {
       expect((await run(cwd, wf("close", "build"))).code).toBe(0);
       expect(writtenOutcome(cwd)?.context).toEqual({
         host: "claude-code",
-        byAgent: { "bkit-build-plan-execute": { peak: 6, runs: 1 } },
+        byAgent: { "bkit-build-plan-tasks": { peak: 6, runs: 1 } },
       });
     });
 

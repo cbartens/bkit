@@ -67,7 +67,7 @@ Everything a senior team would otherwise write down over years, in files you can
 <!-- prettier-ignore -->
 | What | How many | What it does for you |
 | --- | --- | --- |
-| [Agents](.bkit/prompts.md) | 39 | Single-job specialists, each with its own model, thinking depth and tool list. A reviewer can read code but can't change it. |
+| [Agents](.bkit/prompts.md) | 40 | Single-job specialists, each with its own model, thinking depth and tool list. A reviewer can read code but can't change it. |
 | [Workflows](.bkit/workflows.md) | 6 | The five phases plus a cloud router. Every step ends in a checklist and a mechanical check before the next one starts. |
 | [Agent rules](.agents/rules.md) | 70+ | One rulebook every agent follows: read before editing, never defer silently, report honestly, never rewrite history. |
 | [Writing rules](.bkit/authoring.md) | 50+ | How every prompt, workflow, rule and doc is worded, [matched practice by practice](.bkit/authoring.md#who-says-what) against Anthropic's, OpenAI's and Google's prompting guides, so one text works on every model. |

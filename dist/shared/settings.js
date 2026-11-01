@@ -57,7 +57,7 @@ export const CONFIG_DEFAULTS = {
         "ship.merge": { ask: true, max: 2 },
     },
     // Plan caps, `.bkit/workflows.md` § Test-first.
-    tasks: { maxPerGroup: 3, maxTestsPerGroup: 15, maxTestsPerTask: 10, maxTestFilesPerTask: 3 },
+    tasks: { maxPerGroup: 5, maxTestsPerGroup: 25, maxTestsPerTask: 10, maxTestFilesPerTask: 3 },
     depUpdater: null,
     issueTrackerExplicit: false,
     cloudAgentsExplicit: false,

@@ -57,14 +57,14 @@ body:
       label: Tasks
       description: |
         List the tasks in build order. The preferred shape is the same group and task blocks a plan uses:
-        - Each group holds up to `bkit.workflows.tasks.maxPerGroup` tasks (default 3) and `bkit.workflows.tasks.maxTestsPerGroup` **TEST FIRST** tests (default 15).
+        - Each group holds up to `bkit.workflows.tasks.maxPerGroup` tasks (default 5) and `bkit.workflows.tasks.maxTestsPerGroup` **TEST FIRST** tests (default 25).
         - Each task is a block. Task numbers are unique across the issue.
         - **CREATE** / **READ** / **UPDATE** / **DELETE**: one line per file the task touches, as `` `symbol` in `file`: what to do `` or `` `file`: what to do ``.
         - **DEPENDS ON**: the numbers of the tasks it builds on, in the same group or an earlier one.
         - **DONE WHEN**: a check you can verify in the code. For example, a file exists, a test passes, or a behaviour is observable.
         - **TEST FIRST**: the matrix tests that fail before the code exists. A task has 1 to `bkit.workflows.tasks.maxTestsPerTask` tests (default 10), across up to `bkit.workflows.tasks.maxTestFilesPerTask` test files (default 3). Write one line each, as `` `test file` `test name` fails on what goes wrong ``.
         - **If** the task is docs, config, a pure refactor, or covered by E2E / @live only → write `n/a — reason` under **TEST FIRST**.
-        - **TEST EXCEPTION**: written only by the owner. It lists the tests whose test-order gap you accept, each written as in **TEST FIRST** and ending `— reason`. It counts once it is committed alone in the plan.
+        - **TEST EXCEPTION**: written only by the owner. It lists the tests whose `no-red` gap you accept, each written as in **TEST FIRST** and ending `— reason`. It counts once it is committed alone in the plan.
         - A **TEST EXCEPTION** written here is a request. The build copies it word for word and stops on it. The owner confirms it at the build's Decision Pause, where Accept rewrites it with the owner's reason and date.
 
         Free text works too. The build converts it.

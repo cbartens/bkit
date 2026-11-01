@@ -112,7 +112,7 @@ const GATE_CALLERS: ReadonlyArray<readonly [string, string]> = [
   [".bkit/templates/.husky/pre-push", "pnpm bkit:gate:min"],
   // Agent steps check their own change through `bkit tests changed`, which runs
   // `bkit:gate:changed` when declared and the named fallback gate otherwise.
-  [".bkit/core/prompts/bkit-build-plan-execute.md", "--fallback=bkit:gate:static`"],
+  [".bkit/core/prompts/bkit-build-plan-tasks.md", "--fallback=bkit:gate:static`"],
   [".bkit/core/prompts/bkit-build-plan-gaps-remediate.md", "--fallback=bkit:gate:static-unit`"],
   [".bkit/core/prompts/bkit-debug-failure-remediate.md", "--fallback=bkit:gate:static-unit`"],
   [".bkit/core/prompts/bkit-build-plan-verify.md", "--fallback=bkit:gate:static-unit`"],

@@ -78,7 +78,7 @@ developer_instructions = """
    - `STANDARD` → fix the current gaps, each with a targeted change.
    - `PIVOT` → identify why each earlier attempt failed. Try a different approach from the earlier attempts, and do not repeat one.
    - `FINAL` → run `pnpm bkit:deps:outdated`. Diagnose again: check that this is the right problem, whether the plan is flawed and whether the root cause lies upstream, and compare the result with each earlier attempt.
-   - All strategies: NEVER record a red by undoing or swapping out code (restoring old source, stubbing over landed code). Test-order gap (`no-red`, `late-red`, `red-mismatch`, `red-evidence-missing`, `test-changed`) → `BLOCKED`; NEVER touch a `TEST EXCEPTION` field.
+   - All strategies: do not edit, rename, move or delete a planned `TEST FIRST` test, and NEVER touch a `TEST EXCEPTION` field. Only the tests step rewrites a planned test. A `no-red` gap → `BLOCKED`, naming the tests step.
    - **If** a decision record is supplied → follow the owner's words on its `Decision:` lines in this round; they override the strategy's default angle. `Decision: Accept (assumed)` and `Decision: Fix now — recommended; applied without asking` are not the owner's words: an assumed accept is settled for this build (leave it), an unasked `Fix now` takes the recommendation.
 7. Fix the gaps in `priority` order. For each gap:
    - Apply a targeted fix by editing or creating source.

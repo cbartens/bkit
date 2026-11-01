@@ -202,8 +202,6 @@ export function planBlock(
   };
 }
 
-const TEST_ORDER_GAP =
-  /—\s*(no-red|late-red|red-mismatch|red-evidence-missing|test-changed)\s*—\s*not fixable/g;
 /** A task `bkit challenge merge` appended: its severity field. Planned tasks carry none. */
 const APPENDED_SEVERITY = /\*\*Severity:\*\*\s*(CRITICAL|HIGH|MEDIUM|LOW)\b/;
 
@@ -213,43 +211,26 @@ const str = (v: unknown) => (typeof v === "string" ? v : null);
 
 /**
  * Build-only facts from the run's step rows and its log folder: every verify and
- * gaps-remediate round, the holistic verify, the challenge and the red-test runs. A
- * verify report counts its test-order gaps only when its verdict and failure count
- * match the round's row. Challenge findings are counted once a `build-challenge` row
+ * gaps-remediate round, the holistic verify, the challenge and the groups' red runs.
+ * Challenge findings are counted once a `build-challenge` row
  * exists: CRITICAL / HIGH / MEDIUM from the tasks `challenge merge` appended to
  * `plans`, LOW from its `build-challenge` rows among `deferrals` (the run's rows). The
  * challenge block carries the latest `challenge-gate` row's size as `gate`, when one exists.
  */
 export function buildBlock(
   rows: Row[],
-  logDir: string,
   plans: string[],
   deferrals: Array<Record<string, unknown>>,
 ): BuildBlock {
-  const read = (file: string) => {
-    const f = path.join(logDir, file);
-    return fs.existsSync(f) ? fs.readFileSync(f, "utf-8") : null;
-  };
   const steps = rows.filter((r) => r.type === "step-done");
   const verify = steps
     .filter((r) => r.step === "build-plan-verify")
-    .map((r) => {
-      const v = {
-        group: field(r, "group"),
-        attempt: field(r, "attempt"),
-        verdict: field(r, "verdict"),
-        failures: field(r, "failures"),
-        testOrderGaps: null as number | null,
-      };
-      const text = read(`build-plan-verify-${String(v.group)}-${String(v.attempt)}.md`);
-      if (
-        text !== null &&
-        /^Verdict:\s*(\w+)/m.exec(text)?.[1] === v.verdict &&
-        Number(/^Failures:\s*(\d+)/m.exec(text)?.[1]) === v.failures
-      )
-        v.testOrderGaps = [...text.matchAll(TEST_ORDER_GAP)].length;
-      return v;
-    });
+    .map((r) => ({
+      group: field(r, "group"),
+      attempt: field(r, "attempt"),
+      verdict: field(r, "verdict"),
+      failures: field(r, "failures"),
+    }));
   const gapsRemediate = steps
     .filter((r) => r.step === "build-plan-gaps-remediate")
     .map((r) => ({
@@ -305,7 +286,7 @@ export function buildBlock(
               }),
         }
       : null,
-    redTests: steps.filter((r) => r.step === "build-task-red").length,
+    redTests: steps.filter((r) => r.step === "build-tests-red").length,
   };
 }
 

@@ -5,7 +5,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { writeTier1, writeTier2, ensurePackageJsonScripts } from "../write.js";
 import { readBkitVersion, writeBkitVersion, hashFile, mergeCanonicalHashes, } from "../version-file.js";
-import { extractManagedBlock, stripManagedBlock } from "../managed-block.js";
+import { extractManagedBlock, findLineAnchoredMarkers, selectMarkers, stripManagedBlock, } from "../managed-block.js";
 import { listFilesRecursive, syncTemplateCopies } from "../template-copies.js";
 import { PAYLOAD_LINK_RELPATHS, syncPayloadLinks } from "../payload-links.js";
 import { writeNetworkAllowlist } from "../network-allowlist.js";
@@ -254,7 +254,51 @@ export function runBkitDocs(dryRun, tokens, ws, logPrefix) {
     migrateRetiredDevLock(dryRun, ws, logPrefix);
     migrateLedgerSchema(dryRun, ws, logPrefix);
     migrateJiraKeyName(dryRun, logPrefix);
+    migrateModelOverrideAgentNames(dryRun, ws, logPrefix);
     migrateTemplateNotes(dryRun, ws, logPrefix);
+}
+// Migration (installs up to 6.0.x, `docs/migrations.md`): agents renamed since. A
+// consumer's `## Model Overrides` row below `bkit:end` in `.bkit/prompts.md` naming an
+// old agent is renamed in place, provider and model kept, so the override keeps applying
+// (`parseModelOverrides` reports a row naming no agent as unknown and skips it). Runs
+// after the docs loop, which block-merges the file and leaves the consumer region alone.
+// A row already naming the new agent wins: the old row is then left for the unknown
+// report. Recorded in ws as an update; the canonical hash covers the managed block only.
+const PROMPTS_FILE = path.join(".bkit", "prompts.md");
+const MODEL_OVERRIDES_HEADING = "## Model Overrides";
+export const RENAMED_AGENTS = {
+    "bkit-build-plan-execute": "bkit-build-plan-tasks",
+};
+export function migrateModelOverrideAgentNames(dryRun, ws, logPrefix) {
+    if (!fs.existsSync(PROMPTS_FILE))
+        return;
+    const text = fs.readFileSync(PROMPTS_FILE, "utf-8");
+    const endIdx = findLineAnchoredMarkers(text, selectMarkers("html-comment")[1])[0];
+    if (endIdx === undefined)
+        return;
+    const headingAt = text.indexOf(MODEL_OVERRIDES_HEADING, endIdx);
+    if (headingAt === -1)
+        return;
+    const head = text.slice(0, headingAt);
+    const lines = text.slice(headingAt).split("\n");
+    // The first cell of a table row, backticks and padding aside.
+    const promptCell = (line) => /^\s*\|/.test(line) ? line.split("|")[1]?.trim().replace(/^`|`$/g, "") : undefined;
+    const named = new Set(lines.map(promptCell).filter((c) => c !== undefined));
+    const renamed = [];
+    const out = lines.map((line) => {
+        const cell = promptCell(line);
+        const to = cell === undefined ? undefined : RENAMED_AGENTS[cell];
+        if (cell === undefined || to === undefined || named.has(to))
+            return line;
+        renamed.push(`${cell} -> ${to}`);
+        return line.replace(cell, to);
+    });
+    if (renamed.length === 0)
+        return;
+    if (!dryRun)
+        fs.writeFileSync(PROMPTS_FILE, head + out.join("\n"), "utf-8");
+    ws.writes.push({ path: PROMPTS_FILE, action: "update" });
+    console.log(`${logPrefix} ${dryRun ? "[dry-run] " : ""}core: ${PROMPTS_FILE} — Model Overrides renamed: ${renamed.join(", ")}`);
 }
 // Migration (installs up to 5.5.x, `docs/migrations.md`): the Jira key was
 // `BKIT_JIRA_API_TOKEN`; the engine and the MCP configs now read `BKIT_JIRA_API_KEY`.

@@ -73,7 +73,8 @@ import {
   postForVerb,
   type TrackerOutcome,
 } from "./tracker.js";
-import { PLAN_EXECUTE_STEP, RED_PASSED_STEP, RED_STEP, doneTasks } from "./tests.js";
+import { parsePlanBlocks } from "./plan-blocks.js";
+import { PLAN_TASKS_STEP, readTestFirst, redBlobs } from "./tests.js";
 import { addAllButCopied } from "./worktrees.js";
 
 const VERDICT_END = "<!-- verdict:end -->";
@@ -88,12 +89,19 @@ export const EXIT_ARTIFACT = 7;
 export const EXIT_COMMIT = 8;
 /** finish --docs-only: the step staged a file outside the artifact tree. */
 export const EXIT_OUTSIDE_DOCS = 9;
-/** finish (build plan-execute): a task logged `DONE` has a red refused as passed and no red. */
-export const EXIT_RED_PASSED = 11;
+/** finish (build plan-execute / plan-gaps-remediate): a planned test file differs from the blob the group's tests step recorded. */
+export const EXIT_TESTS_TOUCHED = 11;
 /** finish: a saved artifact holds a later attempt than the one finished. */
 export const EXIT_LATER_ATTEMPT = 12;
 /** finish: the step's commit would change `bkit.workflows` in package.json. */
 export const EXIT_WORKFLOWS_CHANGED = 13;
+/** finish (build plan-tests): the tests step's commit changes a file that is not one of the group's planned tests. */
+export const EXIT_SOURCE_TOUCHED = 15;
+
+/** The step whose subagent writes the group's TEST FIRST tests, before any task code. */
+export const PLAN_TESTS_STEP = "build-plan-tests";
+/** The step whose subagent closes the group's verification gaps: a code step, like plan-execute. */
+export const PLAN_REMEDIATE_STEP = "build-plan-gaps-remediate";
 
 /** Where `finish` puts the derived attempt in `--artifact` / `--message` / `--clamp-log`. */
 export const ATTEMPT_TOKEN = "<attempt>";
@@ -316,7 +324,8 @@ export const ROW_FIELDS: Record<string, readonly RowField[]> = {
   "build/build-plan-convert": ["attempt"],
   "build/build-plan-current": ["attempt"],
   "build/build-install-skills": ["attempt"],
-  "build/build-plan-execute": ["attempt"],
+  "build/build-plan-tests": ["attempt"],
+  "build/build-plan-tasks": ["attempt"],
   "build/build-plan-verify": ["attempt"],
   "build/build-group-gate": ["attempt", "scope"],
   "build/build-plan-gaps-remediate": ["attempt", "strategy"],
@@ -766,45 +775,43 @@ export function doneDescription(file: string): string {
 const DOCS_ONLY =
   /^docs\/plans\/|^docs\/(deferrals|decisions|failures)\.jsonl$|^\.bkit\/(friction|stats)\.jsonl$/;
 
-/** One test whose red was refused as passed, for a task the execute log closes `DONE`. */
-interface PassedRed {
-  task: number;
-  test: string;
-  name: string;
-}
-
 /**
- * Each test of a task the execute log closes `DONE` (a line saying `already landed`
- * aside) whose red the active run refused as passed, with no red recorded for it: the
- * task's code came before its test failed, so the task is `BLOCKED`, not done.
+ * Staged paths the tests step's commit may not carry: a modified or deleted file that is
+ * not a TEST FIRST file of the group's open tasks, one of `allowed` (the step's artifacts
+ * and the run's logs folder, as given) or a docs ledger; or an added file a CREATE line of
+ * the plan names. Stages everything first, as the commit would.
  */
-function passedRedsLoggedDone(file: string, workflow: string, log: string): PassedRed[] {
-  if (!fs.existsSync(file) || !fs.existsSync(log)) return [];
-  const closing = fs
-    .readFileSync(log, "utf-8")
-    .split("\n")
-    .filter((l) => !/\balready landed\b/i.test(l))
-    .join("\n");
-  const done = new Set(doneTasks(closing));
-  if (done.size === 0) return [];
-  const runs = readRuns(file);
-  const rows = (step: string) =>
-    activeDoneSteps(runs, workflow, { step }) as Array<Step & Record<string, unknown>>;
-  const reds = rows(RED_STEP);
-  const found = new Map<string, PassedRed>();
-  for (const p of rows(RED_PASSED_STEP)) {
-    if (!done.has(Number(p.task))) continue;
-    const red = reds.some(
-      (r) => r.task === p.task && r.test === p.test && r.testName === p.testName,
-    );
-    if (!red)
-      found.set(JSON.stringify([p.task, p.test, p.testName]), {
-        task: Number(p.task),
-        test: String(p.test),
-        name: String(p.testName),
-      });
+function sourceTouched(
+  cwd: string,
+  o: { plan: string; group: number; allowed: string[] },
+): string[] {
+  const top = git(cwd, ["rev-parse", "--show-toplevel"]) ?? cwd;
+  const rel = (p: string) => path.relative(top, path.resolve(cwd, p)).split(path.sep).join("/");
+  const planText = fs.existsSync(o.plan) ? fs.readFileSync(o.plan, "utf-8") : "";
+  const parsed = parsePlanBlocks(planText);
+  const done = new Set(parsed.tasks.filter((t) => t.done).map((t) => t.task));
+  const tests = new Set<string>();
+  for (const s of readTestFirst(planText, o.group))
+    if (s.kind === "test" && !done.has(s.task)) for (const t of s.tests) tests.add(t.test);
+  const created = new Set(parsed.tasks.flatMap((t) => t.create.map((c) => c.file)));
+  const allowed = o.allowed.map(rel);
+  const under = (p: string) => allowed.some((a) => p === a || p.startsWith(`${a}/`));
+  const own = (p: string) => tests.has(p) || under(p) || DOCS_ONLY.test(p);
+  addAllButCopied(cwd);
+  const out = runGit(cwd, ["diff", "--cached", "--name-status", "-z"]).stdout.split("\0");
+  const source: string[] = [];
+  for (let i = 0; i < out.length;) {
+    const status = out[i] ?? "";
+    if (status === "") break;
+    const two = status.startsWith("R") || status.startsWith("C");
+    const [a, b] = [out[i + 1] ?? "", two ? (out[i + 2] ?? "") : ""];
+    i += two ? 3 : 2;
+    const changed = status.startsWith("A") || status.startsWith("C") ? [] : [a];
+    const added = status.startsWith("A") ? [a] : two ? [b] : [];
+    for (const p of changed) if (!own(p)) source.push(p);
+    for (const p of added) if (created.has(p) && !tests.has(p)) source.push(p);
   }
-  return [...found.values()];
+  return [...new Set(source)].sort();
 }
 
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -1021,23 +1028,49 @@ async function finish(ctx: RunContext): Promise<number> {
   if (!["auto", "none"].includes(commit))
     throw new CommandError(EXIT.USAGE, "--commit must be auto or none");
 
-  // A task built before its test failed is BLOCKED, unless its work had already landed.
-  if (workflow === "build" && step === PLAN_EXECUTE_STEP && artifacts[0] !== undefined) {
-    const passed = passedRedsLoggedDone(file, workflow, path.resolve(ctx.cwd, artifacts[0]));
-    if (passed.length > 0) {
-      const problem = `${passed
-        .map((p) => `TASK ${p.task} is logged DONE, but its red for "${p.name}" (${p.test})`)
-        .join(
-          "; ",
-        )} was refused as passed and no red is recorded: log the task BLOCKED, or "DONE — TASK {N}: already landed" when its DONE WHEN held with no task code written (nothing written)`;
+  // A code step never edits a planned test: each one must still be the blob the group's
+  // tests step recorded at its red.
+  if (
+    workflow === "build" &&
+    (step === PLAN_TASKS_STEP || step === PLAN_REMEDIATE_STEP) &&
+    group !== undefined
+  ) {
+    const top = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
+    const touched = [...redBlobs(file, workflow, group)]
+      .filter(([test, blob]) => git(top, ["hash-object", "--", test]) !== blob)
+      .map(([test]) => test);
+    if (touched.length > 0) {
+      const problem = `${touched.map((p) => `\`${p}\``).join(", ")} differ${touched.length === 1 ? "s" : ""} from the blob the group's tests step recorded: a code step never edits a planned test — put the file back as the tests step left it, or log the task BLOCKED naming the test and what it gets wrong (nothing written)`;
       ctx.log(problem);
       ctx.emit({
         pass: false,
         reask: agents.length ? { agent: agents[0], artifact: artifacts[0] } : null,
         problem,
-        redPassed: passed,
+        touched,
       });
-      return EXIT_RED_PASSED;
+      return EXIT_TESTS_TOUCHED;
+    }
+  }
+
+  // The tests step writes the group's tests: its commit may change those files, its own
+  // artifacts and the run's logs only, and add files no CREATE line of the plan names.
+  if (workflow === "build" && step === PLAN_TESTS_STEP && commit === "auto") {
+    const planArg = str(f.plan);
+    if (planArg === undefined)
+      throw new CommandError(EXIT.USAGE, `--plan is required to finish ${PLAN_TESTS_STEP}`);
+    if (group === undefined)
+      throw new CommandError(EXIT.USAGE, `--group is required to finish ${PLAN_TESTS_STEP}`);
+    const source = sourceTouched(ctx.cwd, {
+      plan: path.resolve(ctx.cwd, planArg),
+      group,
+      allowed: [...artifacts, path.dirname(file)],
+    });
+    if (source.length > 0) {
+      ctx.log(
+        `the tests step changed ${source.join(", ")}: it writes the group's TEST FIRST files only — put the rest back (nothing written)`,
+      );
+      ctx.emit({ pass: false, source });
+      return EXIT_SOURCE_TOUCHED;
     }
   }
 
@@ -1437,6 +1470,11 @@ export const stepsCommand: CommandSpec = {
           type: "boolean",
           help: "refuse (exit 9) when the step staged anything outside docs/plans/ and the docs ledgers",
         },
+        {
+          name: "plan",
+          type: "string",
+          help: `${PLAN_TESTS_STEP}: the plan file whose TEST FIRST lines bound the step's commit (required there with --commit=auto)`,
+        },
         ...COMMIT_FLAGS.map((c) =>
           c.name === "message"
             ? {
@@ -1499,11 +1537,13 @@ export const stepsCommand: CommandSpec = {
         commentFile: COMMENT_FILE_OUTPUT,
         tracker: TRACKER_OUTPUT,
         reask:
-          "verdict read failed, or a DONE task's red passed: {agent, artifact} to re-ask (exit 4 / 5 / 6 / 11 only)",
+          "verdict read failed, or a planned test was touched: {agent, artifact} to re-ask (exit 4 / 5 / 6 / 11 only)",
         problem:
-          "why the verdict read failed, or why the DONE task is refused (exit 4 / 5 / 6 / 11 only)",
-        redPassed:
-          "[{task, test, name}] tests whose red passed, of tasks logged DONE (exit 11 only)",
+          "why the verdict read failed, or which planned tests the code step touched (exit 4 / 5 / 6 / 11 only)",
+        touched:
+          "planned test files of the group that differ from the blob its tests step recorded (exit 11 only)",
+        source:
+          "files the tests step's commit would change that are not the group's TEST FIRST files, or add although a CREATE line names them (exit 15 only)",
         later: "artifacts of a later attempt this run saved (exit 12 only)",
         changed: "bkit.workflows keys the commit would change, dotted (exit 13 only)",
       },
@@ -1525,12 +1565,14 @@ export const stepsCommand: CommandSpec = {
           "a debug run on dev/main with no shared-checkout record: nothing written or committed",
         [EXIT_OUTSIDE_DOCS]:
           "--docs-only and the step staged a file outside the artifact tree (nothing written)",
-        [EXIT_RED_PASSED]:
-          "build plan-execute: a task the log closes DONE (not `already landed`) has a red refused as passed and no red — re-ask `reask.agent` to log it BLOCKED (nothing written)",
+        [EXIT_TESTS_TOUCHED]:
+          "build plan-execute / plan-gaps-remediate: a planned test file of the group differs from the blob its tests step wrote to status.jsonl (`touched`) — re-ask `reask.agent` to put it back or log the task BLOCKED (nothing written)",
         [EXIT_LATER_ATTEMPT]:
           "this run saved an artifact of a later attempt (`later`) than the one finished (nothing written)",
         [EXIT_WORKFLOWS_CHANGED]:
           "the commit would change bkit.workflows in package.json (`changed` names the keys) (nothing written)",
+        [EXIT_SOURCE_TOUCHED]:
+          "build plan-tests: the tests step changed a file no TEST FIRST line of the group's open tasks names, or added one a CREATE line of the plan names (`source`) (nothing written)",
       },
       run: finish,
     },

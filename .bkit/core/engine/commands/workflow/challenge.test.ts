@@ -20,6 +20,11 @@ const R2 = `${LOG}/build-challenge-2.md`;
 let cwd: string;
 beforeEach(() => {
   cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-challenge-")));
+  // The group arithmetic below assumes a cap of 3 tasks, so the cap is pinned here and does not move with the defaults.
+  fs.writeFileSync(
+    path.join(cwd, "package.json"),
+    JSON.stringify({ bkit: { workflows: { tasks: { maxPerGroup: 3 } } } }),
+  );
 });
 afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
 

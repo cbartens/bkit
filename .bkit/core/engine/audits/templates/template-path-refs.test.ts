@@ -84,8 +84,9 @@ const ALLOWED: Array<{ file: string; text: string; why: string }> = [
   ...[
     "bkit-plan-review-2",
     "bkit-plan-generate",
-    "bkit-build-plan-execute",
+    "bkit-build-plan-tasks",
     "bkit-build-plan-gaps-remediate",
+    "bkit-build-plan-tests",
   ].map((name) => ({
     file: `.bkit/core/prompts/${name}.md`,
     text: "`docs/capabilities.md` when present",

@@ -291,7 +291,7 @@ A plan's `Derived Test Matrix` (`docs/templates/bkit-plan.md`) applies this rubr
 
 ## Test first
 
-`/bkit-build` writes each task's tests before its code and proves them: each test fails against stubs (red), then passes once the code exists (green). This covers the unit and integration tiers only. E2E and `@live` rows run in CI and stay planned in the `Derived Test Matrix`. Each plan task names its tests on a `**Test first:**` line (`;`-separated), or `n/a — {reason}`.
+`/bkit-build` writes each group's tests before its code and proves them: one subagent writes the planned tests and may touch nothing else, the engine records each one failing (red), and only then does another subagent write the code, which may touch no planned test, until each passes (green). This covers the unit and integration tiers only. E2E and `@live` rows run in CI and stay planned in the `Derived Test Matrix`. Each plan task names its tests on a `**TEST FIRST:**` field, one sub-bullet per test, or `n/a — {reason}`.
 
 - **Declare `bkit:test:file`:** it runs the one test file bkit appends as its argument (a repo-relative path), and writes a JUnit XML report to the path in `$BKIT_TEST_REPORT`. Vitest: `vitest run --reporter=default --reporter=junit --outputFile.junit="$BKIT_TEST_REPORT"`. pytest: `pytest --junitxml="$BKIT_TEST_REPORT"`. jest needs the `jest-junit` reporter.
   - **If** it is undeclared → the build reports test-first as not enforced.
@@ -299,10 +299,9 @@ A plan's `Derived Test Matrix` (`docs/templates/bkit-plan.md`) applies this rubr
   - **If** `$BKIT_TEST_REPORT` is unset → pass no report flag. An empty `--outputFile.junit=` takes the next argument, the test file, as the report path, and overwrites it.
 - **Declare `bkit:lint:file`:** it lints the one test file bkit appends (a repo-relative path) with the static gate's linter config, and exits 0 when clean. ESLint: `eslint --max-warnings=0`. Ruff: `ruff check`.
   - **If** the linter does not cover the test file (for example, `.bats`) → exit 0 (Oxlint: `--no-error-on-unmatched-pattern`).
-  - The build lints each new test before its red. **If** `bkit:lint:file` is undeclared → the red is recorded unlinted, and a lint rewrite after it reads as an edited test.
+  - The build lints each planned test file before running it for its red. **If** `bkit:lint:file` is undeclared → the red is recorded unlinted, and a lint rewrite after it changes a frozen test file, which the code step's finish refuses.
 - **Call the runner directly:** a task runner that caches results, or runs dependent packages' suites first, breaks the one-file contract. A monorepo routes the path to the package and config that own it. An integration file gets the same environment setup that the integration suite gets.
-- **Judged by the report, never the exit code:** a misspelled path, a syntax error and an import of unwritten code all exit non-zero, just like a real failure. A red counts only when the named test ran and failed, and a green only when it ran and passed.
-- **Stub first:** tests that fail because the code they import does not exist never show their assertions failing. Write stubs, then see the assertions fail.
+- **Judged by the report, never the exit code:** a misspelled path, a syntax error and an import of unwritten code all exit non-zero, just like a real failure. A red counts when the named test ran and failed, or when its file failed to load with no case of its own in the report (the tests step writes no source, so an import of unwritten code is the expected shape of a red); a green only when it ran and passed.
 - **Test name:** use the name as the runner reports it, or its last segment (`clamp > keeps a value inside the range` → `keeps a value inside the range`).
 - **The red test stays:** after the red, the test may gain tests or formatting. A weakened, removed or rewritten assertion fails the build's verify.
 

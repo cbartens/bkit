@@ -176,6 +176,27 @@ describe("bkit status route", () => {
     expect(r.json).toMatchObject({ verdict: "FAIL", failures: 2 });
   });
 
+  it("reads a build-plan-execute row written before the step rename as build-plan-tasks", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      done("build", "build-plan-execute", "2026-10-01T00:01:00Z", {
+        verdict: "PASS",
+        failures: 0,
+        group: 1,
+      }),
+    ]);
+    const r = await run([
+      ...base,
+      `--file=${file}`,
+      "--workflow=build",
+      "--step=build-plan-tasks",
+      "--group=1",
+    ]);
+    expect(r.json).toMatchObject({ verdict: "PASS", failures: 0, parentSha: SHA });
+    // The row on disk is history and keeps its name.
+    expect(fs.readFileSync(file, "utf-8")).toContain('"step":"build-plan-execute"');
+  });
+
   it("prints the parentSha of the step's last row in the active run, per group", async () => {
     const g1 = "1".repeat(40);
     const g2 = "2".repeat(40);
