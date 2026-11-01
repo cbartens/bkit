@@ -69,11 +69,11 @@ description: "Build Feature — Autonomous implementation"
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-*.md`, `tmp/bkit-diff-{FID}.md` (the run's diff, if present).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-handover.md`.
 5. List stray files first: `bkit workflows handover --list-stray` (`--workflow` / `--fid` / `--month` / `--worktree` as below) → on a feature branch remove only the `modified` / `untracked` files this run created by mistake, NEVER other agents' changes; on `dev` / `main` (`shared` = true) remove nothing (only the run's own record lands, through a throwaway checkout). Then keep the run's record; **Skip if** `{WORKTREE_PATH}` is not set:
-   - **If** `PUBLISH` = false → the record stays in the kept worktree and NEVER pass `--push`, so a held run pushes nothing; link it by branch with `--ref`:
+   - **If** `PUBLISH` = false **or** not yet resolved → the record stays in the worktree and NEVER pass `--push`, so a held run, or a failure before `status route` resolves `publish`, pushes nothing; link it by branch with `--ref`:
      ```bash
      "{BKIT}" workflows handover --post --workflow=build --fid={FID} --month={YYYYMM} --ref="{BRANCH}" --worktree="{WORKTREE_PATH}"
      ```
-   - **Else** (`PUBLISH` = true **or** not yet resolved) → commit and push the record — NEVER onto a branch with an open PR:
+   - **Else** (`PUBLISH` = true) → commit and push the record — NEVER onto a branch with an open PR:
      ```bash
      "{BKIT}" workflows handover --post --workflow=build --fid={FID} --month={YYYYMM} --push --worktree="{WORKTREE_PATH}"
      ```

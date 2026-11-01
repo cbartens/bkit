@@ -8641,8 +8641,8 @@ Route — first match wins:
 **If** `DECISION_ROUTE` = `retry` → Step 13.
 **If** `DECISION_ROUTE` = `verify` → re-run Step 8.
 [secrets; workflow-pushes] List stray files first: `bkit workflows handover --list-stray` (`--workflow` / `--fid` / `--month` / `--worktree` as below) → on a feature branch remove only the `modified` / `untracked` files this run created by mistake, NEVER other agents' changes; on `dev` / `main` (`shared` = true) remove nothing (only the run's own record lands, through a throwaway checkout). Then keep the run's record; **Skip if** `{WORKTREE_PATH}` is not set:
-**If** `PUBLISH` = false → the record stays in the kept worktree and NEVER pass `--push`, so a held run pushes nothing; link it by branch with `--ref`:
-[workflow-pushes] **Else** (`PUBLISH` = true **or** not yet resolved) → commit and push the record — NEVER onto a branch with an open PR:
+**If** `PUBLISH` = false **or** not yet resolved → the record stays in the worktree and NEVER pass `--push`, so a held run, or a failure before `status route` resolves `publish`, pushes nothing; link it by branch with `--ref`:
+[workflow-pushes] **Else** (`PUBLISH` = true) → commit and push the record — NEVER onto a branch with an open PR:
 [workflow-pushes] **If** `PUBLISH` = false → the record stays in the kept worktree and NEVER pass `--push`:
 [workflow-pushes] **Else** → push the record — NEVER onto a branch with an open PR:
 [workflow-pushes] Record the wait (step 4 `owner-pause` block). Create `docs/plans/{YYYYMM}/logs/{FID}/build-handover.md` = the decision file plus the line `Stopped by the owner ({RUNTIME}); run stays IN_PROGRESS. /bkit-build {REF} resumes at this pause.`; `REF` empty → `{FID}`. Then keep the record:
