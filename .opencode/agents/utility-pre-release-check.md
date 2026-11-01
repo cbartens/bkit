@@ -97,7 +97,13 @@ tools:
 14. Guardrail parity: every host enforces the same destructive-op and secret-exposure guardrails.
     - **If** a guardrail is weaker than the docs claim **or** a host gates fewer dangerous ops than its peers → finding.
     - Confirm that no untrusted input reaches a shell or model-prompt surface unsanitised.
-15. Workflow integrity: audit every `.bkit/core/workflows/bkit-*.md` against `.bkit/authoring.md` § Prompts and Workflows and § Workflows Only, and for flow / logic defects that would strand a live run. Confirm each with Read before recording it.
+15. Authoring: check every `.md` file that `git diff --name-only {BASE}..HEAD` lists against `.bkit/authoring.md`. Confirm each with Read before recording it.
+    - Take the file's row in § Which Sections Apply, and check the file against every rule in every section that row lists.
+    - **If** no row matches the file → skip it.
+    - Skip a rule whose `Checked by:` names a test, because step 6 already ran it.
+    - **If** a breach would make an agent misread or skip an instruction → `HIGH`.
+    - **Else** → grade it at the report step.
+16. Workflow integrity: audit every `.bkit/core/workflows/bkit-*.md` for flow / logic defects that would strand a live run. Confirm each with Read before recording it.
     - **If** a finding is an unreachable escalation or contradictory guards → `CRITICAL`.
     - **Else** → `HIGH`.
     - Minimum checks:
@@ -107,7 +113,7 @@ tools:
       - authoring rules: no internal labels (tracker issue numbers, ledger keys, review-finding ids) in workflow files, gate items that remind in general words and never restate a detail, labelled `Decide` / `Route` blocks ending in `**Else**` for 2+ branches, bash decides → prose routes on exit code, tracker `github` / `linear` / `true` / `false` blocks balanced, and each workflow self-contained, with its instructions written in the file rather than pointed to.
       - HARD STOP + step counts: File Layout / per-phase tables match the numbered steps in each workflow, hard-stop:yes phases end with `**HARD STOP**`, and listed workflow files exist (planned stubs called out, not silently missing).
       - cross-refs: every `@bkit-*` invocation has a matching `.bkit/core/prompts/bkit-*.md`, and parallel siblings coordinate only through their `**Parallel run:**` / `**Lens discipline:**` Contract clauses.
-16. Compile the report (Output format). Each finding needs all of: `severity` (`CRITICAL|HIGH|MEDIUM|LOW`), `location` (`file:line`), defect, impact, fix, and reproduced live.
+17. Compile the report (Output format). Each finding needs all of: `severity` (`CRITICAL|HIGH|MEDIUM|LOW`), `location` (`file:line`), defect, impact, fix, and reproduced live.
     - **If** a step names the severity → use it.
     - **Else** → grade it:
       - `CRITICAL` = data loss, a security hole, or a broken workflow with no workaround.
@@ -118,7 +124,7 @@ tools:
     - **If** `OPEN_ISSUE` → draft a tracker issue, with the body per `.bkit/trackers.md` § Issue shapes. File it ONLY after the owner explicitly confirms.
     - **Else** → report inline.
     - Restore the throwaway consumer, and confirm that the source tree is clean.
-17. Final return: Display the output format verbatim as the final message to the user. Do not summarise or trim it.
+18. Final return: Display the output format verbatim as the final message to the user. Do not summarise or trim it.
 
 **Output format:**
 
