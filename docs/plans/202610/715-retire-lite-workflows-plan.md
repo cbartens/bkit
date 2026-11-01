@@ -1122,6 +1122,8 @@ Build order: config → runtime resolution → install → close row → build w
   - **DONE WHEN:** Failure Path step 5 (`.bkit/core/workflows/bkit-build.md:90-92`) and the Decision Pause owner-wait step 8 (`.bkit/core/workflows/bkit-build.md:228-230`) branch on `{PUBLISH}`: when it is false they commit the record locally (or link it with `--ref`) and never pass `--push`, so no step of a held run pushes `feat/{FID}`; the publish=true path keeps `--push` unchanged; `.bkit/core/engine/audits/workflows/workflow-shape.test.ts:310` is updated to match.
   - **TEST FIRST:**
     - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `bkit-build.md: a held run's Failure Path and Decision Pause never push the feature branch` fails on both handover fences calling `--push` with no `{PUBLISH}` = false branch, so a held run pushes `feat/{FID}`
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `bkit-build.md: a held run's Failure Path and Decision Pause never push the feature branch` fails on both handover fences calling `--push` with no `{PUBLISH}` = false branch, so a held run pushes `feat/{FID}` — The test only checks the wording of the workflow file. On the old file, with its unconditional `--push`, it would have failed; the executor edited the workflow before running it. (owner, 2026-11-01)
 
 <!-- bkit:task 19 end -->
 <!-- bkit:group 9 end -->
