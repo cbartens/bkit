@@ -1077,6 +1077,49 @@ describe("check — hole classes", () => {
     expect(journaledWriter.evidenceHoles.map((h) => h.step)).toEqual(["build-b"]);
   });
 
+  it("a visit whose row writer sits below workflows close is judged steps-only when the journal saw none of its calls", () => {
+    const md = [
+      "## 🧠 Step 1 — Verify",
+      ...fence("tests run --gate=a", FINISH("build-a", 1)),
+      "## 🤖 Step 2 — Close Workflow & Create PR",
+      ...fence(
+        "prs probe --base=dev",
+        "workflows close --workflow=build",
+        "steps done --workflow=build --step=build-create-pr",
+        "steps done --workflow=build --step=build-close-workflow",
+      ),
+    ].join("\n");
+    const contract = deriveContract(md, "build");
+    const head = [
+      callRow("build", "tests", "run"),
+      callRow("build", "steps", "finish"),
+      stepRow("build", "build-a"),
+    ];
+    const unjournaled = check(
+      [
+        ...head,
+        stepRow("build", "build-create-pr"),
+        stepRow("build", "build-close-workflow"),
+      ] as StatusRow[],
+      contract,
+    );
+    expect(unjournaled.evidenceHoles).toEqual([]);
+    expect(unjournaled.verdict).toBe("CLEAN");
+    const journaled = check(
+      [
+        ...head,
+        callRow("build", "workflows", "close"),
+        stepRow("build", "build-create-pr"),
+        stepRow("build", "build-close-workflow"),
+      ] as StatusRow[],
+      contract,
+    );
+    expect(journaled.verdict).toBe("HOLEY");
+    expect(journaled.evidenceHoles[0]!.missing.map((c) => `${c.noun} ${c.verb}`)).toEqual([
+      "prs probe",
+    ]);
+  });
+
   it("reports a missing required step as a step hole", () => {
     const md = [
       "## 🧠 Step 1 — Start",

@@ -653,10 +653,11 @@ export function check(
     const got = owned.get(v) ?? new Set<string>();
     // A visit whose own row-writing call (`steps finish` / `steps done`) left no journaled
     // call is judged on its step row alone: the journal did not see this visit's commands.
+    // A writer outside the journal window is never required, so there a visit with no
+    // journaled call at all is judged the same way.
     const isWriter = (k: string): boolean => k === "steps finish" || k === "steps done";
-    if (v.unit.calls.some((c) => !c.branch && isWriter(callKey(c))) && ![...got].some(isWriter)) {
-      continue;
-    }
+    const writerInWindow = v.unit.calls.some((c) => !c.branch && isWriter(callKey(c)));
+    if (writerInWindow ? ![...got].some(isWriter) : got.size === 0) continue;
     const pool = exercised.get(v.unit) ?? new Set<string>();
     for (const k of got) pool.add(k);
     exercised.set(v.unit, pool);
