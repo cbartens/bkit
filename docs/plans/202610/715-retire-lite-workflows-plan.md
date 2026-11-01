@@ -1108,7 +1108,7 @@ Build order: config → runtime resolution → install → close row → build w
 
 <!-- bkit:task 18 start -->
 
-- [ ] **TASK 18:** A low-disk `bkit worktrees setup` that meets a hook-started `max` sweep now blocks for up to `LOCK_STALE_MS + pollMs` (3605s) with one log line, outliving the agent's shell-call timeout and the 3600s step timeout, so build Step 2 is killed mid-wait instead of getting the routed exit 12
+- [x] **TASK 18:** A low-disk `bkit worktrees setup` that meets a hook-started `max` sweep now blocks for up to `LOCK_STALE_MS + pollMs` (3605s) with one log line, outliving the agent's shell-call timeout and the 3600s step timeout, so build Step 2 is killed mid-wait instead of getting the routed exit 12
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/disk.ts:554` · **Round:** 1
   - **DONE WHEN:** `ensureDiskSpace` waits for a running sweep only up to a bounded `maxWaitMs` (a named wait in `.bkit/core/engine/shared/timeouts.ts`, per `.bkit/workflows.md` § Retry / timeout / iteration constants "Waits live in `TIMEOUTS`"), set well under a single agent shell call, then returns the existing "another sweep ... re-run once it ends" refusal so `worktrees setup` exits 12 instead of hanging; `waitForLock` takes that bound instead of hard-coding `LOCK_STALE_MS + pollMs`; the detached `--auto` sweep keeps its long wait.
   - **TEST FIRST:**
