@@ -24,4 +24,6 @@ export const TIMEOUTS = {
   BKIT_LATEST_RETRY_S: 3600,
   /** Seconds the registry lookup may take before it counts as failed. */
   BKIT_LATEST_LOOKUP_TIMEOUT_S: 5,
+  /** Seconds `worktrees setup` waits for a running disk sweep before refusing; under one agent shell call. */
+  DISK_SETUP_SWEEP_WAIT_S: 60,
 } as const;

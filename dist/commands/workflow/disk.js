@@ -29,6 +29,7 @@ import { pathToFileURL } from "node:url";
 import { isCloudOrCi } from "../../checks/before/env.js";
 import { readJsonFile } from "../../shared/json.js";
 import { readBkitConfig } from "../../shared/settings.js";
+import { TIMEOUTS } from "../../shared/timeouts.js";
 import { CommandError, EXIT, git } from "../lib.js";
 import { tryCreate } from "./locks.js";
 const MODES = ["min", "max"];
@@ -182,13 +183,14 @@ function takeLock() {
 }
 /**
  * Take the sweep lock, waiting while another sweep holds it. False only when it is still held
- * after `LOCK_STALE_MS`, which `takeLock` would by then have replaced unless it keeps renewing.
+ * after `maxWaitMs` (default `LOCK_STALE_MS`, after which `takeLock` would have replaced the
+ * lock unless it keeps renewing).
  */
-async function waitForLock(pollMs, log) {
+async function waitForLock(pollMs, log, maxWaitMs = LOCK_STALE_MS + pollMs) {
     if (takeLock())
         return true;
     log(`another sweep is running (${lockPath()}) — waiting for it to end`);
-    const deadline = Date.now() + LOCK_STALE_MS + pollMs;
+    const deadline = Date.now() + maxWaitMs;
     while (Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, pollMs));
         if (takeLock())
@@ -287,7 +289,7 @@ export async function sweep(opts) {
         return result;
     }
     const locked = opts.wait
-        ? !(await waitForLock(opts.pollMs ?? LOCK_POLL_MS, opts.log))
+        ? !(await waitForLock(opts.pollMs ?? LOCK_POLL_MS, opts.log, opts.maxWaitMs))
         : !takeLock();
     if (locked) {
         opts.log(`another sweep is running (${lockPath()})`);
@@ -433,6 +435,7 @@ export async function ensureDiskSpace(opts) {
         dryRun: false,
         wait: true,
         pollMs: opts.pollMs,
+        maxWaitMs: opts.maxWaitMs ?? TIMEOUTS.DISK_SETUP_SWEEP_WAIT_S * 1000,
         log: opts.log,
     });
     const after = freeBytes(opts.cwd);
@@ -440,9 +443,7 @@ export async function ensureDiskSpace(opts) {
         return null;
     opts.log("what your max steps still cover:");
     await sweep({ cwd: opts.cwd, mode: "max", dryRun: true, log: opts.log });
-    const locked = ran.reason === "locked"
-        ? " (another sweep held the lock for over an hour — re-run once it ends)"
-        : "";
+    const locked = ran.reason === "locked" ? " (another sweep still holds the lock — re-run once it ends)" : "";
     return `${gb(after)} free after your max cleanup steps, still under ${SETTING} (${opts.minFreeGb} GB)${locked} — free space by hand or add steps (.bkit/templates.md § Disk prune), then re-run`;
 }
 // ---------------------------------------------------------------------------

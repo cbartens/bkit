@@ -310,7 +310,9 @@ describe("Failure Path", () => {
     "%s always keeps its record through one `workflows handover --push` in the run's worktree",
     (name) => {
       const failure = section(workflow(name), /Failure Path/);
-      const calls = commandLines(failure, "workflows handover").map((l) => l.trim());
+      const calls = commandLines(failure, "workflows handover")
+        .map((l) => l.trim())
+        .filter((l) => l.includes("--push"));
       expect(calls, name).toEqual([
         `"{BKIT}" workflows handover --post --workflow=${name} --fid={FID} --month={YYYYMM} --push --worktree="{WORKTREE_PATH}"`,
       ]);
@@ -319,6 +321,21 @@ describe("Failure Path", () => {
       expect(failure).not.toMatch(/HANDOVER_NEEDED` = true → step 4\. \*\*Else\*\* → step 6/);
     },
   );
+
+  it("bkit-build.md: a held run's Failure Path and Decision Pause never push the feature branch", () => {
+    const build = workflow("build");
+    for (const part of [section(build, /Failure Path/), section(build, /Decision Pause/)]) {
+      const calls = commandLines(part, "workflows handover").map((l) => l.trim());
+      const pushing = calls.filter((l) => l.includes("--push"));
+      const local = calls.filter((l) => !l.includes("--push"));
+      expect(pushing).toHaveLength(1);
+      expect(local).toHaveLength(1);
+      const at = part.indexOf(pushing[0]!);
+      const before = part.slice(0, at);
+      expect(before).toMatch(/`PUBLISH` = false[^\n]*NEVER pass `--push`/);
+      expect(part.indexOf(local[0]!)).toBeLessThan(at);
+    }
+  });
 
   it.each(["design", "plan", "build", "debug"])(
     "%s removes only files the run created by mistake, never other agents' changes",
@@ -1871,9 +1888,13 @@ describe("build publish ending", () => {
 
   it("re-derives publish on resume", () => {
     // Steps 1-2 run again on every resume, so the only place `PUBLISH` is set is Step 2,
-    // after `runtime row`, and nothing reads it before.
-    const first = build.search(/`\{?PUBLISH\}?`|=\{PUBLISH\}/);
-    expect(first).toBeGreaterThan(build.indexOf("## 🤖 Step 2 — Worktree Setup"));
+    // after `runtime row`, and nothing reads it before except the Failure Path and Decision
+    // Pause, which treat an unset value as publish true.
+    const reads = build
+      .replace(section(build, /Failure Path/), "")
+      .replace(section(build, /Decision Pause/), "");
+    const first = reads.search(/`\{?PUBLISH\}?`|=\{PUBLISH\}/);
+    expect(first).toBeGreaterThan(reads.indexOf("## 🤖 Step 2 — Worktree Setup"));
     const text = step2();
     expect(text.indexOf("status route --workflow=build")).toBeGreaterThan(
       text.indexOf("runtime row"),

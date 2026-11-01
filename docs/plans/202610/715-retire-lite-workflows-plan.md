@@ -201,6 +201,8 @@ Copied word for word from issue #715 § Success criteria.
 | The root README points every small-change recommendation at `/bkit-build #N` and links no lite doc | Unit | `.bkit/core/engine/audits/templates/templates.test.ts` | 15 |
 | The root README carries the manual batch recipe with both limitations | Unit | `.bkit/core/engine/audits/templates/templates.test.ts` | 15 |
 | The root README carries the held handoff | Unit | `.bkit/core/engine/audits/templates/templates.test.ts` | 15 |
+| worktree setup's low-disk sweep stops waiting after maxWaitMs while a live sweep holds the lock | Unit | `.bkit/core/engine/commands/workflow/disk.test.ts` | 18 |
+| bkit-build.md: a held run's Failure Path and Decision Pause never push the feature branch | Unit | `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` | 19 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -1099,6 +1101,30 @@ Build order: config → runtime resolution → install → close row → build w
 <!-- bkit:task 16 end -->
 
 <!-- bkit:group 8 end -->
+
+<!-- bkit:group 9 start -->
+
+### TASK GROUP 9: Challenge round 1 findings
+
+<!-- bkit:task 18 start -->
+
+- [ ] **TASK 18:** A low-disk `bkit worktrees setup` that meets a hook-started `max` sweep now blocks for up to `LOCK_STALE_MS + pollMs` (3605s) with one log line, outliving the agent's shell-call timeout and the 3600s step timeout, so build Step 2 is killed mid-wait instead of getting the routed exit 12
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/disk.ts:554` · **Round:** 1
+  - **DONE WHEN:** `ensureDiskSpace` waits for a running sweep only up to a bounded `maxWaitMs` (a named wait in `.bkit/core/engine/shared/timeouts.ts`, per `.bkit/workflows.md` § Retry / timeout / iteration constants "Waits live in `TIMEOUTS`"), set well under a single agent shell call, then returns the existing "another sweep ... re-run once it ends" refusal so `worktrees setup` exits 12 instead of hanging; `waitForLock` takes that bound instead of hard-coding `LOCK_STALE_MS + pollMs`; the detached `--auto` sweep keeps its long wait.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/disk.test.ts` `worktree setup's low-disk sweep stops waiting after maxWaitMs while a live sweep holds the lock` fails on `ensureDiskSpace({ cwd, minFreeGb: 1e9, pollMs: 10, maxWaitMs: 100, log })` with a fresh `holdLock(process.pid)` that is never released: today the option is ignored, the call waits ~3605s and the test times out instead of resolving with a message containing `another sweep`
+
+<!-- bkit:task 18 end -->
+<!-- bkit:task 19 start -->
+
+- [ ] **TASK 19:** A `publish=false` build that hits the Failure Path or a Decision Pause runs `workflows handover --push`, which `git add -A`s, commits and pushes `feat/{FID}` to `origin`, so code the owner chose to hold (e.g. an embargoed fix in a public repo) is published irreversibly
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/workflows/bkit-build.md:92` · **Round:** 1
+  - **DONE WHEN:** Failure Path step 5 (`.bkit/core/workflows/bkit-build.md:90-92`) and the Decision Pause owner-wait step 8 (`.bkit/core/workflows/bkit-build.md:228-230`) branch on `{PUBLISH}`: when it is false they commit the record locally (or link it with `--ref`) and never pass `--push`, so no step of a held run pushes `feat/{FID}`; the publish=true path keeps `--push` unchanged; `.bkit/core/engine/audits/workflows/workflow-shape.test.ts:310` is updated to match.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `bkit-build.md: a held run's Failure Path and Decision Pause never push the feature branch` fails on both handover fences calling `--push` with no `{PUBLISH}` = false branch, so a held run pushes `feat/{FID}`
+
+<!-- bkit:task 19 end -->
+<!-- bkit:group 9 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
 
