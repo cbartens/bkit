@@ -1145,21 +1145,28 @@ describe("plan", () => {
     const writers = plan
       .split(/\n(?=## )/)
       .filter((s) => /Invoke `@bkit-plan-(generate|update)`/.test(s));
-    expect(writers.length).toBe(2);
+    expect(writers.length).toBe(3);
     for (const step of writers) {
       const heading = step.split("\n")[0];
       const lines = step.split("\n");
       const invoke = lines.findIndex((l) => /Invoke `@bkit-plan-(generate|update)`/.test(l));
-      const created = /Create: `([^`]+)`/.exec(lines.slice(invoke).join("\n"))?.[1];
+      // The close step edits the canonical plan in place (Update); the run's steps write a new version (Create).
+      const written = /(?:Create|Update): `([^`]+)`/.exec(lines.slice(invoke).join("\n"))?.[1];
       const check =
         invoke +
         1 +
         lines.slice(invoke + 1).findIndex((l) => l.includes('"{BKIT}" tests plan-check'));
       expect(check, heading).toBeGreaterThan(invoke);
-      expect(lines[check], heading).toContain(`--plan=${created}`);
+      expect(lines[check], heading).toContain(`--plan=${written}`);
       expect(lines[check], heading).toContain("--existence=refuse");
       expect(step, heading).toContain("Fix only what");
-      expect(step, heading).toMatch(/second exit 1 → \*\*Failure Path\*\*/);
+      // After close the run has landed: a failed check is reported to the owner, never routed to the Failure Path.
+      if (/Close Workflow/.test(heading)) {
+        expect(step, heading).toMatch(/second exit 1 → tell the user/);
+        expect(step, heading).toContain("commit nothing from this round");
+      } else {
+        expect(step, heading).toMatch(/second exit 1 → \*\*Failure Path\*\*/);
+      }
     }
     expect(section(plan, /Step 4 — Fetch Context/)).not.toContain("tests plan-check");
     expect(plan).not.toContain("--children");

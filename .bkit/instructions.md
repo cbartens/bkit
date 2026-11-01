@@ -3146,6 +3146,42 @@ Update **Create** — set `Verdict` via `Edit`; mapping:
 Update **Create** — {{fields}}; set `Verdict` via `Edit`; mapping:
 ```
 
+### update-without-create
+
+- prompt: where-used
+- carriers: prompt `bkit-design-update`, `bkit-plan-update`
+
+```text
+**If** the caller names **Update** and no **Create** → skip the seed: set the `Verdict` of **Update** to `PENDING`, and apply the findings to **Update** in place wherever the steps below name **Create**.
+```
+
+### owner-answers-critical
+
+- prompt: where-used
+- carriers: prompt `bkit-design-update`, `bkit-plan-update`
+
+```text
+**If** an input carries the `## Owner answers` heading → each answer in it is one `CRITICAL` item:
+```
+
+### owner-answers-revise
+
+- prompt: where-used
+- carriers: prompt `bkit-design-update`, `bkit-plan-update`
+
+```text
+Revise every statement the answer overrides to what the answer says.
+```
+
+### owner-answers-untouched
+
+- prompt: where-used
+- carriers: prompt `bkit-design-update`, `bkit-plan-update`
+
+```text
+Questions and regions no answer touches stay verbatim.
+```
+
 ### set-failures
 
 - prompt: where-used
@@ -3319,10 +3355,11 @@ to `docs/{{ledger}}.jsonl` in `.bkit/jsonl.md` format; check existing entries fi
 - carriers: prompt `bkit-build-challenge-*`
 
 ```text
-Write one task block per finding under `## Findings Log`, in the Output format shape:
+Write one task block per finding under `Findings Log`, in the Output format shape:
 ```
 
 ```retired
+Write one task block per finding under `## Findings Log`, in the Output format shape:
 Per finding, one task block under `## Findings Log` in the Output format shape, every field required: title = the failure in one line (exploit scenario), `severity` (`CRITICAL|HIGH|MEDIUM|LOW`), `class` (`mechanical|architectural`), `fixable` (`true|false`), `location` (`file:line`), `done when` = the end state the fix leaves, `test first` = a test file and a test name that fails on the finding — every finding, `LOW` included. Read the test's logic against the code the diff leaves: it must fail there, never pass already. A finding an existing plan task or test already covers → no task block. Number tasks from 1, worst `severity` first. **If** incomplete → not counted in `Failures`.
 Per finding, one task block under `## Findings Log` in the Output format shape, every field required: title = the failure in one line (exploit scenario), `severity` (`CRITICAL|HIGH|MEDIUM|LOW`), `class` (`mechanical|architectural`), `fixable` (`true|false`), `location` (`file:line`), `done when` = the end state the fix leaves, `test first` = a test file and a test name that fails on the finding — every finding, `LOW` included. Read the test's logic against the code the diff leaves: it MUST fail there, never pass already. A finding an existing plan task or test already covers → no task block. Number tasks from 1, worst `severity` first. **If** incomplete → not counted in `Failures`.
 ```
@@ -3509,10 +3546,11 @@ Record `partial diff coverage` in the verdict.
 - carriers: prompt `bkit-plan-generate`, `bkit-plan-review-1`, `bkit-plan-scope-check`, `bkit-plan-update`
 
 ```text
-**Acceptance Scenario:** `Narrative` and `Success Criteria` come word for word from the first source that has them: the design's `## Acceptance Scenario`, else the issue's change-shape fields (`.bkit/trackers.md` § Issue shapes), else, for an audit-only plan, the user or operator impact of the in-scope findings. With no source, both read `⚠️ MISSING: no design doc, no issue Narrative and no audit report — human must provide before plan proceeds`; NEVER invent them. `Narrative` is 1-2 sentences from the user's side: what they do and what they get back. `Success Criteria` are at most 5 measurable outcomes, not steps; an audit plan has one per in-scope finding id, from its `Expected`, with no cap. `Context & Goals` does not repeat them.
+**Acceptance Scenario:** `Narrative` and `Success Criteria` come word for word from the first source that has them: the design's `Acceptance Scenario`, else the issue's change-shape fields (`.bkit/trackers.md` § Issue shapes), else, for an audit-only plan, the user or operator impact of the in-scope findings. With no source, both read `⚠️ MISSING: no design doc, no issue Narrative and no audit report — human must provide before plan proceeds`; NEVER invent them. `Narrative` is 1-2 sentences from the user's side: what they do and what they get back. `Success Criteria` are at most 5 measurable outcomes, not steps; an audit plan has one per in-scope finding id, from its `Expected`, with no cap. `Context & Goals` does not repeat them.
 ```
 
 ```retired
+**Acceptance Scenario:** `Narrative` and `Success Criteria` come word for word from the first source that has them: the design's `## Acceptance Scenario`, else the issue's change-shape fields (`.bkit/trackers.md` § Issue shapes), else, for an audit-only plan, the user or operator impact of the in-scope findings. With no source, both read `⚠️ MISSING: no design doc, no issue Narrative and no audit report — human must provide before plan proceeds`; NEVER invent them. `Narrative` is 1-2 sentences from the user's side: what they do and what they get back. `Success Criteria` are at most 5 measurable outcomes, not steps; an audit plan has one per in-scope finding id, from its `Expected`, with no cap. `Context & Goals` does not repeat them.
 **Acceptance Scenario:** `Narrative` and `Success Criteria` come word for word from the first source that has them: the design's `## Acceptance Scenario`, else the issue's change-shape fields (`.bkit/trackers.md` § Issue shapes), else, for an audit-only plan, the user or operator impact of the in-scope findings. With no source, both read `⚠️ MISSING: no design doc, no issue Narrative and no audit report — human must provide before plan proceeds`; never invent them. `Narrative` is 1-2 sentences from the user's side: what they do and what they get back. `Success Criteria` are at most 5 measurable outcomes, not steps; an audit plan has one per in-scope finding id, from its `Expected`, with no cap. `Context & Goals` does not repeat them.
 ```
 
@@ -5847,6 +5885,7 @@ Context: You are a subagent in the {{phase}} phase
 
 ```text
 Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
+Switch into the working directory with `cd "{REPO_ROOT}"`, check it with `pwd`, and use it for every file operation that follows.
 ```
 
 ```retired
@@ -5888,7 +5927,7 @@ Wait for all subagents to complete, then finish
 ### workflow-verdict-fail
 
 - workflow: repeatable
-- carriers: workflow `bkit-design`, `bkit-ship`
+- carriers: workflow `bkit-design`, `bkit-plan`, `bkit-ship`
 
 ```text
 **If** `{{verdict}}` = FAIL → {{then?}}**Failure Path**.
@@ -6564,10 +6603,11 @@ Decide nothing on the human's behalf.
 - carriers: workflow `bkit-design`, `bkit-plan`
 
 ```text
-**If** `## Open Questions` lists any question → add `--suggest="Want me to ask you the open questions one by one, with my recommendation for each? Then write 'yes, ask me one by one'."`.
+**If** `Open Questions` lists any question → add `--suggest="Want me to ask you the open questions one by one, with my recommendation for each? Then write 'yes, ask me one by one'."`.
 ```
 
 ```retired
+**If** `## Open Questions` lists any question → add `--suggest="Want me to ask you the open questions one by one, with my recommendation for each? Then write 'yes, ask me one by one'."`.
 **If** `## Outstanding Questions` lists any question → add `--suggest="Want me to ask you the open questions one by one, with my recommendation for each? Then write 'yes, ask me one by one'."`.
 ```
 
@@ -6577,10 +6617,11 @@ Decide nothing on the human's behalf.
 - carriers: workflow `bkit-design`, `bkit-plan`
 
 ```text
-**If** user requests the open questions one by one → ask each `## Open Questions` item on its own, verbatim, with its options lettered `A)`, `B)`, `C)`, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step.
+**If** user requests the open questions one by one → ask each `Open Questions` item on its own, verbatim, with its options lettered `A)`, `B)`, `C)`, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step.
 ```
 
 ```retired
+**If** user requests the open questions one by one → ask each `## Open Questions` item on its own, verbatim, with its options lettered `A)`, `B)`, `C)`, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step.
 **If** user requests the open questions one by one → ask each `## Open Questions` item on its own, verbatim, with its options, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step.
 **If** user requests the open questions one by one → ask each `## Outstanding Questions` item on its own, verbatim, with its options, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step.
 ```
@@ -6591,6 +6632,10 @@ Decide nothing on the human's behalf.
 - carriers: workflow `bkit-design`, `bkit-plan`
 
 ```text
+Set `by.step` = `{{workflow}}-close-workflow`, and `rationale` = `answered by owner: {human's answer}`.
+```
+
+```retired
 `rationale` = `answered by owner: {human's answer}`;
 ```
 
@@ -6600,7 +6645,65 @@ Decide nothing on the human's behalf.
 - carriers: workflow `bkit-design`, `bkit-plan`
 
 ```text
+**If** the decision is already on disk → reuse its `key`.
+```
+
+```retired
 decision already on disk → same `key`.
+```
+
+### workflow-owner-answers-round
+
+- workflow: where-used
+- carriers: workflow `bkit-design`, `bkit-plan`
+
+```text
+**If** the user answers one or more `Open Questions` items (in the one-by-one pass, once its last question is answered, or in any chat message) → record the round in this order:
+```
+
+### workflow-owner-answers-decision-row
+
+- workflow: where-used
+- carriers: workflow `bkit-design`, `bkit-plan`
+
+```text
+For each answer that settles an architecture / technology decision, append one `docs/decisions.jsonl` row with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom).
+```
+
+### workflow-owner-answers-file
+
+- workflow: where-used
+- carriers: workflow `bkit-design`, `bkit-plan`
+
+```text
+Write `{OUTBOX}/{{workflow}}-answers.md`: the `## Owner answers` heading, then per answer the question verbatim, the owner's answer verbatim, and `Decision: {key}`, or `Decision: none` when no row was written. Append its entries to `docs/plans/{YYYYMM}/logs/{FID}/{{workflow}}-answers-{RUN}.md`.
+```
+
+### workflow-owner-answers-file-absent
+
+- workflow: where-used
+- carriers: workflow `bkit-design`, `bkit-plan`
+
+```text
+**If** that file is absent → create it with the heading.
+```
+
+### workflow-owner-answers-verdict
+
+- workflow: where-used
+- carriers: workflow `bkit-design`, `bkit-plan`
+
+```text
+**If** `Verdict` = FAIL → tell the user which answer stays unapplied, never the **Failure Path**.
+```
+
+### workflow-owner-answers-commit
+
+- workflow: where-used
+- carriers: workflow `bkit-design`, `bkit-plan`
+
+```text
+Commit `docs/plans/{YYYYMM}/{FID}-{{workflow}}.md`, `docs/plans/{YYYYMM}/logs/{FID}/{{workflow}}-answers-{RUN}.md` and, when a row was written, `docs/decisions.jsonl` on `dev`, those files only, with the message `docs({FID}): owner answers bkit [skip ci]`. NEVER push.
 ```
 
 ### workflow-land-dev
@@ -8935,7 +9038,7 @@ A single dense bullet in the `**Rules:**` block, identical in every file — the
 - source: `.bkit/core/.bkit/prompts.md` § Special Behaviors (frontmatter-adjacent contracts)
 
 ```text
-`.agents/rules.md` is a 2x2: `bkit Rules` and `Project Rules` each split into `Universal Rules` (binds every agent) and `Orchestrator Rules` (workflows / commands only — git, CI, merge, tracker, and human-gate rules a leaf must not act on). **bkit rules are copied:** the `**Rules:**` block after `**Contract:**` holds, word for word and in `rules.md` order, every bkit `Universal Rules` bullet whose `- carry:` line in `.bkit/instructions.md` names the prompt (the agent acts on it: its carriers plus its tool set — `Bash` → `Destructive git`, `Other parallel agents`; `Edit` / `Write` → `File edits`, `Edit tools`). A rule never appears in `**Protocol:**` or `**Contract:**` as well. A leaf sees only the bkit rules its carry lines name. **Project rules are read:** a prompt with `Grep` or `Bash` says ``Find the line of `<!-- bkit:end -->` in `.agents/rules.md` (`grep -n`), then read the file from that line on → follow its `Universal Rules`; skip its `Orchestrator Rules`.``, so its agent never loads the bkit block it already carries; a prompt with neither says ``Read `.agents/rules.md` below `<!-- bkit:end -->` → …``. Either way a consumer's universal rules and `## Project Settings` reach leaves while their orchestrator-only rules do not. The split is the consumer's declaration of which is which. Subsection names are shared across the two groups (`Agent Management`, `Git, CI & Merges`); a subsection is omitted only where it has no entry. **Position is contract:** `**Rules file:**` is always the first bullet of the `**Protocol:**` block, in every prompt and every workflow. Workflows and the repo-only `utility-*` agents (they push and merge) take the unscoped `**Rules file:**` line, and the entry files (`CLAUDE.md`, `AGENTS.md`, `.cursor/rules/bkit-rules.mdc`, un-quoted `- **Rules:**`) the same text under `**Rules:**`: ``Read `.agents/rules.md` → follow all rules.``. `.bkit/core/engine/tools/instructions.test.ts` asserts the three header blocks, the `**Rules file:**` anchor, the block and order of every placed header clause, `rules-leaf` forbidden on workflows and `utility-*` agents, both groups under `bkit Rules`, and a universal counterpart for every orchestrator subsection; `.bkit/core/engine/tools/instructions-coverage.test.ts` asserts every prompt holds each rule its carry line names, no prompt holds a bkit rule no carry line names, and every prompt carries at least one. **Assertions stop at `bkit:end`:** `Project Rules` is consumer-owned; `bkit install` never writes it and `bkit check` ignores it. Header clauses (`**Order:**`, `**No improv:**`, `**No commits:**` (prompts with `Bash`)) stay inline in every prompt they apply to. `**Auto-apply:**` is `Orchestrator Rules` only and inlined in no prompt.
+`.agents/rules.md` is a 2x2: `bkit Rules` and `Project Rules` each split into `Universal Rules` (binds every agent) and `Orchestrator Rules` (workflows / commands only — git, CI, merge, tracker, and human-gate rules a leaf must not act on). **bkit rules are copied:** the `**Rules:**` block after `**Contract:**` holds, word for word and in `rules.md` order, every bkit `Universal Rules` bullet whose `- carry:` line in `.bkit/instructions.md` names the prompt (the agent acts on it: its carriers plus its tool set — `Bash` → `Destructive git`, `Other parallel agents`; `Edit` / `Write` → `File edits`, `Edit tools`). A rule never appears in `**Protocol:**` or `**Contract:**` as well. A leaf sees only the bkit rules its carry lines name. **Project rules are read:** a prompt with `Grep` or `Bash` says ``Find the line of `<!-- bkit:end -->` in `.agents/rules.md` (`grep -n`), then read the file from that line on → follow its `Universal Rules`; skip its `Orchestrator Rules`.``, so its agent never loads the bkit block it already carries; a prompt with neither says ``Read `.agents/rules.md` below `<!-- bkit:end -->` → …``. Either way a consumer's universal rules and `Project Settings` reach leaves while their orchestrator-only rules do not. The split is the consumer's declaration of which is which. Subsection names are shared across the two groups (`Agent Management`, `Git, CI & Merges`); a subsection is omitted only where it has no entry. **Position is contract:** `**Rules file:**` is always the first bullet of the `**Protocol:**` block, in every prompt and every workflow. Workflows and the repo-only `utility-*` agents (they push and merge) take the unscoped `**Rules file:**` line, and the entry files (`CLAUDE.md`, `AGENTS.md`, `.cursor/rules/bkit-rules.mdc`, un-quoted `- **Rules:**`) the same text under `**Rules:**`: ``Read `.agents/rules.md` → follow all rules.``. `.bkit/core/engine/tools/instructions.test.ts` asserts the three header blocks, the `**Rules file:**` anchor, the block and order of every placed header clause, `rules-leaf` forbidden on workflows and `utility-*` agents, both groups under `bkit Rules`, and a universal counterpart for every orchestrator subsection; `.bkit/core/engine/tools/instructions-coverage.test.ts` asserts every prompt holds each rule its carry line names, no prompt holds a bkit rule no carry line names, and every prompt carries at least one. **Assertions stop at `bkit:end`:** `Project Rules` is consumer-owned; `bkit install` never writes it and `bkit check` ignores it. Header clauses (`**Order:**`, `**No improv:**`, `**No commits:**` (prompts with `Bash`)) stay inline in every prompt they apply to. `**Auto-apply:**` is `Orchestrator Rules` only and inlined in no prompt.
 ```
 
 ### agents-docs-md-read-exemption
@@ -9168,7 +9271,7 @@ If the output stops mid-stream after the verdict line, the verdict is still usab
 - source: `.bkit/core/.bkit/workflows.md` § Failure Path
 
 ```text
-Every command has a `## 🤖 Failure Path` section before Step 1. Any step, tool or gate failure triggers it.
+Every command has a `🤖 Failure Path` section before Step 1. Any step, tool or gate failure triggers it.
 
 **Standard failure (always):**
 
@@ -9331,7 +9434,7 @@ Orchestrator exits and the dispatched skill owns the session
 **Scope:** Build the feature and open a PR to the default integration branch.
 **Plan:** `docs/plans/{YYYYMM}/{FID}-plan.md`, in task-block form (`docs/templates/bkit-plan.md` § Agent Execution Runbook). Each group holds at most `MAX_TASKS_PER_GROUP` tasks and at most `MAX_TESTS_PER_GROUP` `TEST FIRST` tests (`bkit.workflows.tasks`, held at Step 1). One group runs per pass of Steps 7-9. Only the verify steps and the **Decision Pause** tick a task `[x]`. The pause ticks a challenge task it accepts, whether the owner accepts it or the run assumes the accept.
 Derive the decision number:
-**If** `PAUSE_QUESTION` = `VERIFY_GAPS` → write one item per `## Identified Gaps Log` line of `build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}.md`. Add the gap's last `BLOCKED` reason from `build-plan-gaps-remediate-{GROUP}-*-log.md` when it has one.
+**If** `PAUSE_QUESTION` = `VERIFY_GAPS` → write one item per `Identified Gaps Log` line of `build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}.md`. Add the gap's last `BLOCKED` reason from `build-plan-gaps-remediate-{GROUP}-*-log.md` when it has one.
 A fixable gap → options `["Accept", "Fix now"]`, with a recommendation per item.
 A `no-red` gap → a hard blocker with options `["Accept", "Stop"]`. Its question ends `Accept it? You write the reason, and it is recorded as your TEST EXCEPTION.`
 Any other unfixable gap (`no-test-first`, `test-first-malformed`, `test-first-unread`, `exception-refused`) → a hard blocker with options `["Accept", "Fix now", "Stop"]`.
@@ -9737,7 +9840,7 @@ The `### Draft Acceptance Scenario` heading, with the draft's four parts as `###
 Unanswered at stop → `Assumed, not confirmed`, with the recommended answer.
 "don't know" → `Open`.
 Empty section → `None.`
-**If** nobody was asked → add the line `No human interviewed this run ({ask:false|headless}, {RUNTIME}); every answer is assumed.` under the `## Grill decisions` heading.
+**If** nobody was asked → add the line `No human interviewed this run ({ask:false|headless}, {RUNTIME}); every answer is assumed.` under `Grill decisions`.
 **If** the human accepted the draft (its last question `Settled`) → `reviewed in the design interview`.
 **Else** → `not reviewed by a human; built from the issue and the recommended answers`.
 Append `design-grill-{RUN}.md` verbatim to `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`. **If** `design-input-{RUN}.md` already holds a `Grill decisions` section → replace it.
@@ -9771,6 +9874,10 @@ No tracker connected → Step 12.
 Read repo facts, fetching `origin/dev` first:
 Find the parent design, the workstreams this plan covers and the audit reports: a `**Parent design:**` link, else this feature's own design doc; the `**Workstreams:**` line; and every `docs/audits/{YYYYMM}/*.md` path the prompt or the issue description names.
 **If** exit 1 → leave `PARENT_FID` empty.
+Check the plan's groups and task blocks, and that every symbol it names exists:
+**If** this is the second exit 1 → tell the user what `{OUTBOX}/plan-answers-check.md` names, and commit nothing from this round.
+**If** exit 1 → invoke `@bkit-plan-update` again with Context `"Fix only what '{OUTBOX}/plan-answers-check.md' names; edit only those lines, do not seed the file again."`, Update: `docs/plans/{YYYYMM}/{FID}-plan.md` → re-run this sub-step.
+**Else** → tell the user what the command printed, and commit nothing from this round.
 Parent FID extraction attempted
 Audit report paths extracted
 Write the input file — session prompt, issue text, parent design, audit reports:
@@ -10144,7 +10251,7 @@ Split the work into tasks, each one a testable change, and group the tasks in bu
 Keep each group within the per-group plan caps that your Context names (`bkit.workflows.tasks`: tasks, and `TEST FIRST` tests in all).
 In each group, `DEPENDS ON` names only tasks in earlier groups or in the same group.
 Number the tasks from 1 across the whole plan.
-For each `CREATE` file, add one `NEW` row to `## Reuse Inventory` that records the search you ran and why nothing existing fits.
+For each `CREATE` file, add one `NEW` row to `Reuse Inventory` that records the search you ran and why nothing existing fits.
 **If** it exits 0 → stop.
 **If** it exits non-zero on the third run → stop, and leave the plan as it stands. The caller runs the same check and handles the problems that are left.
 **If** it exits non-zero → fix each problem its report lists, and run it again.
@@ -10657,6 +10764,8 @@ Classify each claim:
 **If** a spike input is supplied:
 Revise every design element its `Design Impact` names as invalidated, to what the recorded evidence supports.
 Record its `Unsettled` claims as open questions under `Risks & Open Questions`.
+Remove the answered question from `Risks & Open Questions`.
+**If** the answer carries `Decision: {key}` → add a `Decisions` item that states the decision and cites that `key`.
 **If** applied findings add or reword open questions under `Risks & Open Questions` → each must carry 2-3 concrete options with trade-offs as the lettered `Options: A) {option} — {trade-off} · B) …`, a `Recommended` naming the chosen letter with a one-line rationale, and a `Default if unanswered`. A bare question is not acceptable output.
 ```
 
@@ -10800,7 +10909,8 @@ A critique may change `DONE WHEN` and `TEST FIRST` only to make them more testab
 Never append a `Suggested Scope Expansion` candidate to `docs/deferrals.jsonl`.
 Add each decision or deferral `key` you wrote to the plan's `**Ledger rows:**` line.
 **If** applied findings add or reword questions under `Open Questions & Assumptions` → shape each per **Open questions** above.
-**If** the caller names **Update** and no **Create** → skip the seed: set the `Verdict` of **Update** to `PENDING`, and apply the findings to **Update** in place wherever the steps below name **Create**.
+Remove the answered question from `Open Questions & Assumptions`.
+**If** the answer carries `Decision: {key}` → add that `key` to the plan's `**Ledger rows:**` line.
 ```
 
 #### bkit-ship-conflict-resolve
@@ -11293,7 +11403,13 @@ The tracker marker contract (`.bkit/trackers.md`) vs the inline blocks.
 Guardrail parity: every host enforces the same destructive-op and secret-exposure guardrails.
 **If** a guardrail is weaker than the docs claim **or** a host gates fewer dangerous ops than its peers → finding.
 [external-input] Confirm that no untrusted input reaches a shell or model-prompt surface unsanitised.
-Workflow integrity: audit every `.bkit/core/workflows/bkit-*.md` against `.bkit/authoring.md` § Prompts and Workflows and § Workflows Only, and for flow / logic defects that would strand a live run. Confirm each with Read before recording it.
+Authoring: check every `.md` file that `git diff --name-only {BASE}..HEAD` lists against `.bkit/authoring.md`. Confirm each with Read before recording it.
+Take the file's row in § Which Sections Apply, and check the file against every rule in every section that row lists.
+**If** no row matches the file → skip it.
+Skip a rule whose `Checked by:` names a test, because step 6 already ran it.
+**If** a breach would make an agent misread or skip an instruction → `HIGH`.
+**Else** → grade it at the report step.
+Workflow integrity: audit every `.bkit/core/workflows/bkit-*.md` for flow / logic defects that would strand a live run. Confirm each with Read before recording it.
 **If** a finding is an unreachable escalation or contradictory guards → `CRITICAL`.
 **Else** → `HIGH`.
 Minimum checks:

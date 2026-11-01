@@ -393,7 +393,7 @@ description: "Plan Feature — Autonomous plan generation"
 
 1. Promote the final plan to the canonical bucket (anchor stamped, a superseded plan archived), then close the run and commit:
    **If** the no-issue warning was emitted → add `--warning="<that warning>"`.
-   **If** `## Open Questions` lists any question → add `--suggest="Want me to ask you the open questions one by one, with my recommendation for each? Then write 'yes, ask me one by one'."`.
+   **If** `Open Questions` lists any question → add `--suggest="Want me to ask you the open questions one by one, with my recommendation for each? Then write 'yes, ask me one by one'."`.
    ```bash
    "{BKIT}" workflows promote --workflow=plan --fid={FID} --month={YYYYMM} --file="{STATUS}" || exit 1
    "{BKIT}" workflows close --workflow=plan --fid={FID} --month={YYYYMM} --record-step --outbox="{OUTBOX}" --message="chore({FID}): close-workflow" --final-return --summary-file="docs/plans/{YYYYMM}/logs/{FID}/plan-summary.md" --session-dir="{SESSION_DIR}"
@@ -420,7 +420,31 @@ description: "Plan Feature — Autonomous plan generation"
    ```
 5. Final return: display `{FINAL_RETURN}` verbatim as the final message to the user; do not summarise or trim; do not auto-invoke. **HARD STOP** — do not invoke `/bkit-build`.
 6. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, not nouns; do not re-run any step.
-7. **If** user requests the open questions one by one → ask each `## Open Questions` item on its own, verbatim, with its options lettered `A)`, `B)`, `C)`, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step. Each answer that settles an architecture / technology decision → append its row to `docs/decisions.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom) at once; `by.step` = `plan-close-workflow`; `rationale` = `answered by owner: {human's answer}`; decision already on disk → same `key`.
+7. **If** user requests the open questions one by one → ask each `Open Questions` item on its own, verbatim, with its options lettered `A)`, `B)`, `C)`, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step.
+8. **If** the user answers one or more `Open Questions` items (in the one-by-one pass, once its last question is answered, or in any chat message) → record the round in this order:
+   - For each answer that settles an architecture / technology decision, append one `docs/decisions.jsonl` row with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom). Set `by.step` = `plan-close-workflow`, and `rationale` = `answered by owner: {human's answer}`.
+     - **If** the decision is already on disk → reuse its `key`.
+   - Write `{OUTBOX}/plan-answers.md`: the `## Owner answers` heading, then per answer the question verbatim, the owner's answer verbatim, and `Decision: {key}`, or `Decision: none` when no row was written. Append its entries to `docs/plans/{YYYYMM}/logs/{FID}/plan-answers-{RUN}.md`.
+     - **If** that file is absent → create it with the heading.
+   - **Subagent:** Invoke `view_file` `.agents/plugins/bkit/agents/bkit-plan-update.md` using `view_file` tool:
+     Context: You are a subagent in the Plan phase applying the owner's answers. Switch into the working directory with `cd "{REPO_ROOT}"`, check it with `pwd`, and use it for every file operation that follows.
+     Read: `{OUTBOX}/plan-answers.md`.
+     Update: `docs/plans/{YYYYMM}/{FID}-plan.md`.
+     **If** `Verdict` = FAIL → tell the user which answer stays unapplied, never the **Failure Path**.
+   - Check the plan's groups and task blocks, and that every symbol it names exists:
+     ```bash
+     "{BKIT}" tests plan-check --plan=docs/plans/{YYYYMM}/{FID}-plan.md --existence=refuse --log={OUTBOX}/plan-answers-check.md
+     ```
+     Route — first match wins:
+     - **If** exit 0 → the commit below.
+     - **If** this is the second exit 1 → tell the user what `{OUTBOX}/plan-answers-check.md` names, and commit nothing from this round.
+     - **If** exit 1 → invoke `@bkit-plan-update` again with Context `"Fix only what '{OUTBOX}/plan-answers-check.md' names; edit only those lines, do not seed the file again."`, Update: `docs/plans/{YYYYMM}/{FID}-plan.md` → re-run this sub-step.
+     - **Else** → tell the user what the command printed, and commit nothing from this round.
+   - Commit `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-answers-{RUN}.md` and, when a row was written, `docs/decisions.jsonl` on `dev`, those files only, with the message `docs({FID}): owner answers bkit [skip ci]`. NEVER push.
+   - **Skip if** `ISSUE_ID` empty. Comment — this round's answers:
+     ```bash
+     "{BKIT}" issues comment --post --issue="{ISSUE_ID}" --workflow=plan --step-number=8 --step-title="Owner Answers" --body-file="{OUTBOX}/plan-answers.md"
+     ```
 
 ### 🔒 Gate 8 — Close Workflow
 
