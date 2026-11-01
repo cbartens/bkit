@@ -856,6 +856,12 @@ export function changedKeys(a: unknown, b: unknown, at = ""): string[] {
  * The `bkit.workflows` keys the working tree's package.json changes from HEAD's (`git add -A`
  * commits the working tree). Empty when either side cannot be read as JSON.
  */
+/** True when the active shared-checkout record for `fid` holds `rel` as dirty before the run. */
+function recordedPath(cwd: string, fid: string | undefined, rel: string): boolean {
+  const rec = fid === undefined ? null : activeRecord(cwd, fid);
+  return rec !== null && rec.paths.some((p) => p.path === rel);
+}
+
 function workflowsChange(cwd: string): string[] {
   const top = git(cwd, ["rev-parse", "--show-toplevel"]) ?? cwd;
   const file = path.join(top, "package.json");
@@ -1054,7 +1060,10 @@ async function finish(ctx: RunContext): Promise<number> {
   }
 
   // A run never changes its own limits: the step commit may not carry a bkit.workflows edit.
-  if (commit === "auto") {
+  // With a shared-checkout record the commit carries the run's own paths only, so a
+  // package.json that was already dirty when the run started stays out of it: a recorded
+  // one the run then changed is refused as foreign by the commit itself.
+  if (commit === "auto" && !recordedPath(ctx.cwd, fidOfStatusFile(file), "package.json")) {
     const changed = workflowsChange(ctx.cwd);
     if (changed.length > 0) {
       ctx.log(

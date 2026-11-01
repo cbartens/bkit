@@ -1603,15 +1603,27 @@ function mergeDevDocs(
 function regenerate(top: string, branch: string, log: (m: string) => void): boolean | null {
   const pkg = readPackageJson(top);
   const scripts = pkg.ok ? pkg.pkg.scripts : undefined;
-  if (typeof scripts !== "object" || scripts === null || !("bkit:generate" in scripts)) return null;
+  const declared =
+    typeof scripts === "object" &&
+    scripts !== null &&
+    typeof (scripts as Record<string, unknown>)["bkit:generate"] === "string" &&
+    (scripts as Record<string, unknown>)["bkit:generate"] !== "";
+  if (!declared) return null;
   if ((git(top, ["status", "--porcelain"]) ?? "") !== "") {
     log("the tree has uncommitted changes — bkit:generate not run after the merge");
     return null;
   }
   const argv = scriptCommand("bkit:generate");
-  const res = spawnSync(argv[0]!, argv.slice(1), { cwd: top, stdio: "ignore" });
+  const res = spawnSync(argv[0]!, argv.slice(1), {
+    cwd: top,
+    encoding: "utf-8",
+    stdio: ["ignore", "pipe", "pipe"],
+    maxBuffer: 1 << 26,
+  });
   if (res.status !== 0) {
     log(`${argv.join(" ")} exited ${String(res.status ?? res.error?.message)} after the merge`);
+    const out = `${res.stdout ?? ""}${res.stderr ?? ""}`.trim();
+    if (out !== "") for (const line of out.split("\n").slice(-20)) log(`  ${line}`);
     return false;
   }
   if ((git(top, ["status", "--porcelain"]) ?? "") === "") return true;

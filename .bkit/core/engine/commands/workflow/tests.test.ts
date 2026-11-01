@@ -479,14 +479,33 @@ describe("parseJunit", () => {
       ),
     );
     expect(cases).toEqual<JunitCase[]>([
-      { name: "clamp > passes", state: "passed", message: "" },
+      { name: "clamp > passes", state: "passed", message: "", detail: "" },
       {
         name: `clamp > ${NAME}`,
         state: "failure",
         message: "expected +0 to be 5 // Object.is & co",
+        detail: "trace",
       },
-      { name: "boom", state: "error", message: "TypeError" },
-      { name: "later", state: "skipped", message: "" },
+      { name: "boom", state: "error", message: "TypeError", detail: "" },
+      { name: "later", state: "skipped", message: "", detail: "" },
+    ]);
+  });
+
+  it("keeps a failure's text as detail, CDATA as written and tags stripped", () => {
+    const cases = parseJunit(
+      junit(
+        `<testcase name="t"><failure message="m"><![CDATA[expected 12 <total> to be 0]]></failure></testcase>`,
+        `<testcase name="u"><failure>AssertionError: <b>expected 1</b>&#10;  at u.test.ts:4</failure></testcase>`,
+      ),
+    );
+    expect(cases).toEqual<JunitCase[]>([
+      { name: "t", state: "failure", message: "m", detail: "expected 12 <total> to be 0" },
+      {
+        name: "u",
+        state: "failure",
+        message: "",
+        detail: "AssertionError: expected 1\n  at u.test.ts:4",
+      },
     ]);
   });
 
@@ -1749,6 +1768,20 @@ describe("bkit tests red / green", () => {
       expect(r.json.reason).toContain(`${RUN_PLAN}:`);
       expect(r.err).toContain("not a red (reason-mismatch)");
       expect(runRows()).toEqual([]);
+    });
+
+    it("records a red whose quoted fragment is in the failure's text, not its message", async () => {
+      planWith('the total "expected 12" being 0');
+      vi.stubEnv("FAKE_EXIT", "1");
+      vi.stubEnv(
+        "FAKE_JUNIT",
+        junit(
+          `<testcase classname="f" name="${NAME}"><failure message="AssertionError" type="AssertionError">AssertionError: expected 12 to be 0\n  at clamp.test.ts:4</failure></testcase>`,
+        ),
+      );
+      const r = await runRed();
+      expect(r.code).toBe(0);
+      expect(runRows().map((row) => row.step)).toEqual(["build-task-red"]);
     });
 
     it("records a red whose failure holds a quoted fragment, case and spacing aside", async () => {

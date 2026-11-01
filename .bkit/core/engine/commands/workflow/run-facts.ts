@@ -354,7 +354,12 @@ export const chatFingerprint = (platform: string, id: string) =>
  * Status rows that mark a moment rather than the end of a piece of work: step minutes skip
  * them. A `test-run` row lands just before its step's own row, so the run counts toward it.
  */
-export const MARK_ROWS = new Set(["session", "owner-pause", "owner-answer", "test-run"]);
+export const MARK_ROWS: ReadonlySet<string> = new Set([
+  "session",
+  "owner-pause",
+  "owner-answer",
+  "test-run",
+]);
 
 /** The `session` fingerprints on the run's status rows, in row order, each once. */
 export function runChats(rows: Row[]): string[] {

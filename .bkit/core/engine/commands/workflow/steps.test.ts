@@ -1559,4 +1559,31 @@ describe("bkit steps finish — a step commit never changes bkit.workflows", () 
     expect((await run(cwd, FINISH_SYNC)).code).toBe(0);
     expect(git(cwd, "show", "--name-only", "--format=", "HEAD")).toContain("package.json");
   });
+
+  it("in a shared checkout, a bkit.workflows edit dirty before the run is not the step's", async () => {
+    const cwd = configured();
+    git(cwd, "checkout", "-q", "-b", "dev");
+    write(cwd, "package.json", pkg({ build: { verify: { ask: true, maxAttempts: 5 } } }));
+    writeRecord(cwd, newRecord(cwd, "1-x", "dev"));
+    const status = "docs/plans/202611/logs/1-x/status.jsonl";
+    fs.mkdirSync(path.join(cwd, path.dirname(status)), { recursive: true });
+    write(cwd, "docs/plans/202611/logs/1-x/verify-1.md", "Verdict: PASS\n");
+    const r = await run(cwd, [
+      "steps",
+      "finish",
+      `--file=${status}`,
+      "--workflow=build",
+      "--step=build-branch-sync",
+      "--artifact=docs/plans/202611/logs/1-x/verify-1.md",
+      "--message=m",
+    ]);
+    expect(r.code).toBe(0);
+    expect(git(cwd, "show", "--name-only", "--format=", "HEAD")).not.toContain("package.json");
+    expect(
+      JSON.parse(git(cwd, "show", "HEAD:package.json")).bkit.workflows.build.verify,
+    ).toMatchObject({ maxAttempts: 2 });
+    expect(
+      JSON.parse(fs.readFileSync(path.join(cwd, "package.json"), "utf-8")).bkit.workflows,
+    ).toMatchObject({ build: { verify: { maxAttempts: 5 } } });
+  });
 });

@@ -2251,11 +2251,20 @@ describe("branches sync", { timeout: GIT_TIMEOUT }, () => {
     expect(git(clone, "status", "--porcelain").out).toBe("");
   });
 
-  it("--merge-docs exits 25 when bkit:generate fails after the merge", async () => {
-    const clone = withGenerate("sync-generate-fail", "exit 3");
+  it("--merge-docs exits 25 when bkit:generate fails after the merge, logging its output", async () => {
+    const clone = withGenerate("sync-generate-fail", "echo 'snapshot gen.md is stale' >&2; exit 3");
     const r = await run(clone, ["sync", "--merge-docs"]);
     expect(r.code).toBe(25);
     expect(r.json).toMatchObject({ merged: true, generated: false });
+    expect(r.err).toContain("exited 3 after the merge");
+    expect(r.err).toContain("snapshot gen.md is stale");
+  });
+
+  it("--merge-docs skips an empty bkit:generate script", async () => {
+    const clone = withGenerate("sync-generate-empty", "");
+    const r = await run(clone, ["sync", "--merge-docs"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ merged: true, generated: null });
   });
 
   it("--merge-docs leaves the branch alone when only code moved on dev", async () => {

@@ -177,18 +177,21 @@ function attr(attrs, name) {
     const m = new RegExp(String.raw `\s${name}\s*=\s*(?:"([^"]*)"|'([^']*)')`).exec(attrs);
     return m ? decodeXml(m[1] ?? m[2] ?? "") : undefined;
 }
-/** Every `<testcase>` in a JUnit report: its name, outcome and first failure message. */
+/** CDATA text as escaped character data, so a tag inside it never ends an element early. */
+const escapeCdata = (xml) => xml.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, (_, text) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"));
+/** Every `<testcase>` in a JUnit report: its name, outcome, first failure message and detail. */
 export function parseJunit(xml) {
-    const body = xml.replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, "").replace(/<!--[\s\S]*?-->/g, "");
+    const body = escapeCdata(xml).replace(/<!--[\s\S]*?-->/g, "");
     const cases = [];
     const testcase = new RegExp(String.raw `<testcase${ATTRS}\s*(?:\/>|>([\s\S]*?)<\/testcase>)`, "g");
-    const outcome = new RegExp(String.raw `<(failure|error|skipped)${ATTRS}`);
+    const outcome = new RegExp(String.raw `<(failure|error|skipped)${ATTRS}\s*(?:\/>|>([\s\S]*?)<\/\1>)`);
     for (const m of body.matchAll(testcase)) {
         const child = outcome.exec(m[2] ?? "");
         cases.push({
             name: attr(m[1] ?? "", "name") ?? "",
             state: child ? child[1] : "passed",
             message: child ? (attr(child[2] ?? "", "message") ?? "") : "",
+            detail: child ? decodeXml((child[3] ?? "").replace(/<[^>]*>/g, "")).trim() : "",
         });
     }
     return cases;
@@ -678,8 +681,10 @@ export function failsOnFragments(planText, task, test, name) {
         .filter((f) => f !== "");
     return fragments.length === 0 ? null : { line: entry.line, fragments };
 }
-/** True when a failure message holds one of the fragments, case and whitespace runs aside. */
+/** True when a failure's text holds one of the fragments, case and whitespace runs aside. */
 export const failsAsPlanned = (fragments, messages) => fragments.some((f) => messages.some((m) => normalised(m).includes(normalised(f))));
+/** What a failed case says: its message, then its detail, for `failsAsPlanned`. */
+export const failureText = (c) => `${c.message}\n${c.detail}`;
 const toplevel = (cwd) => git(cwd, ["rev-parse", "--show-toplevel"]) ?? cwd;
 /** A fence longer than any backtick run in `text`. */
 const fenceFor = (text) => "`".repeat(Math.max(3, ...[...text.matchAll(/`+/g)].map((m) => m[0].length + 1)));
@@ -1345,9 +1350,8 @@ export const testsCommand = {
                 const planned = plan === undefined
                     ? null
                     : failsOnFragments(fs.readFileSync(plan, "utf-8"), task, test, name);
-                if (planned !== null &&
-                    !failsAsPlanned(planned.fragments, named.map((c) => c.message))) {
-                    const failure = failed.message.slice(0, FAILURE_EXCERPT);
+                if (planned !== null && !failsAsPlanned(planned.fragments, named.map(failureText))) {
+                    const failure = (failed.message || failed.detail).slice(0, FAILURE_EXCERPT);
                     const reason = `"${name}" failed, but not as the plan says: \`${path.relative(ctx.cwd, plan)}:${planned.line}\` fails on ${planned.fragments.map((f) => `"${f}"`).join(" or ")}, and the failure says "${failure}" — fix the test's fake data or stub until it fails the planned way, then run red again; never force it. When the real code would fail the way the run shows, log the task BLOCKED naming both texts`;
                     ctx.emit({
                         recorded: false,

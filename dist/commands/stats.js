@@ -109,11 +109,11 @@ function runFigureSections(f, source) {
 }
 /**
  * The report as markdown sections under `## ` headings. `title` is the `# ` heading;
- * `scope` the sentence under it saying which rows were read.
+ * `header` the block under it: which rows were read, and the rules for reading the file.
  */
-export function renderStatsMarkdown(report, title, scope) {
+export function renderStatsMarkdown(report, title, header) {
     const { counts, runs, deferralDiscipline } = report;
-    const out = [`# ${title}`, "", scope, ""];
+    const out = [`# ${title}`, "", header, ""];
     out.push("## Rows", "");
     if (counts.total === 0) {
         out.push("No rows yet. Workflows append them at close.", "");

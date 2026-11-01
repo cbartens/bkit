@@ -160,7 +160,7 @@ description: "Build Feature — Autonomous implementation"
    - **Accept (assumed)**, written by `decisions apply` → write nothing else: no `docs/decisions.jsonl` row and no `TEST EXCEPTION`. Ship asks the owner to confirm the item later.
      - **If** the item is a challenge task → tick it `[x]` and end its title with ` — accepted (assumed)`.
    - **Fix now**:
-     - Write no test and no fix code at this pause. Step 8 writes each `TEST FIRST` test, records it failing with `tests red`, and only then writes the fix. NEVER undo code to force a red.
+     - Write no test and no fix code at this pause. Step 7 writes each `TEST FIRST` test, records it failing with `tests red`, and only then writes the fix. NEVER undo code to force a red.
      - **If** the item is a challenge task → keep that task open. It runs as it is.
      - **Else** → write a new task block:
        - Use the task-block form (`docs/templates/bkit-plan.md` § Agent Execution Runbook), numbered one above the plan's highest task.

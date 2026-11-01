@@ -270,6 +270,22 @@ describe("bkit disk prune — lock", () => {
     expect(fs.existsSync(lock())).toBe(false);
   });
 
+  it("renews its lock while a long step runs, so a waiter never takes it over", async () => {
+    const cwd = repo(
+      `export default [{ name: "slow", mode: "min", run: "sleep 0.4; echo slow >> order" }];\n`,
+    );
+    const running = sweep({ cwd, mode: "min", dryRun: false, renewMs: 20, log: () => {} });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const stale = (Date.now() - 2 * 60 * 60 * 1000) / 1000;
+    fs.utimesSync(lock(), stale, stale);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(Date.now() - fs.statSync(lock()).mtimeMs).toBeLessThan(60 * 1000);
+    expect((await prune(cwd, "--mode=min")).json.reason).toBe("locked");
+    expect((await running).reason).toBeNull();
+    expect(order(cwd)).toEqual(["slow"]);
+    expect(fs.existsSync(lock())).toBe(false);
+  });
+
   it("the sweep --auto starts waits its turn, for only the due scopes", () => {
     expect(detachedArgs("min", ["repo"])).toEqual([
       "disk",
