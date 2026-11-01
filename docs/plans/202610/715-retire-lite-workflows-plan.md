@@ -1140,6 +1140,8 @@ Build order: config → runtime resolution → install → close row → build w
   - **DONE WHEN:** Failure Path step 5 (`.bkit/core/workflows/bkit-build.md:90-98`) passes `--push` only when `{PUBLISH}` = true; a `{PUBLISH}` that is false or not yet resolved takes the `--ref="{BRANCH}"` branch (or the Failure Path resolves `publish` itself before choosing), so no failure before Step 2 sub-step 3 finishes can push `feat/{FID}`; the publish=true path keeps `--push` unchanged.
   - **TEST FIRST:**
     - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `bkit-build.md: a Failure Path reached before publish is resolved never pushes the feature branch` fails on the Failure Path's pushing `workflows handover` line being guarded by "`PUBLISH` = true **or** not yet resolved", so the text before the `--push` line matches `not yet resolved` and an unresolved run pushes `feat/{FID}`
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `bkit-build.md: a Failure Path reached before publish is resolved never pushes the feature branch` fails on the Failure Path's pushing `workflows handover` line being guarded by "`PUBLISH` = true **or** not yet resolved", so the text before the `--push` line matches `not yet resolved` and an unresolved run pushes `feat/{FID}` — The test was seen failing first. Its first form banned 'not yet resolved' above the push line, which the planned fix itself puts there, so it was narrowed to the push branch and a check on the non-pushing branch was added. (owner, 2026-11-01)
 
 <!-- bkit:task 20 end -->
 <!-- bkit:group 10 end -->
