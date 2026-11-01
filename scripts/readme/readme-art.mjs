@@ -184,9 +184,9 @@ const COMPARE_ROWS = [
   ["Reviewers", "Reviewers who didn't write it"],
   ["Sign-offs", "Your sign-off before merge"],
   ["Checked", "“Done” checked by code"],
-  ["Memory", "Lessons later runs read"],
-  ["Audits", "Audit checklists"],
-  ["CI", "A CI pipeline for your app"],
+  ["Memory", "Lessons the next run reads"],
+  ["Audits", "Audits that find the gaps"],
+  ["CI", "CI that keeps agents honest"],
 ];
 function comparison() {
   const md = readFileSync(
