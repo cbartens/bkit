@@ -1024,7 +1024,7 @@ Build order: config → runtime resolution → install → close row → build w
 
 <!-- bkit:task 14 start -->
 
-- [ ] **TASK 14:** Remove lite guidance from the rules, prompts and reference docs
+- [x] **TASK 14:** Remove lite guidance from the rules, prompts and reference docs
   - **UPDATE:** `.bkit/core/.agents/rules.md`: the Tracker next labels and Tracker workflow labels bullets name plain `next:*` only
   - **UPDATE:** `.bkit/core/prompts/bkit-audit-generate.md`: remove every lite recommendation and `:lite` rule
   - **UPDATE:** `.bkit/core/prompts/bkit-utility-update-roadmap.md`: remove the lite recommendation
@@ -1059,7 +1059,7 @@ Build order: config → runtime resolution → install → close row → build w
 
 <!-- bkit:task 15 start -->
 
-- [ ] **TASK 15:** Rewrite the root README and roadmap guidance; document the held handoff and the manual batch recipe
+- [x] **TASK 15:** Rewrite the root README and roadmap guidance; document the held handoff and the manual batch recipe
   - **UPDATE:** `README.md`: add the `/bkit-build #N publish=false` hold row beside the default `/bkit-build #N` row; document the held handoff (the lite row, sign-off, FAQ, "run fewer steps" and `.bkit/lite.md` doc-row text were already removed from `README.md` by commit `7c9b909ea`, so only keep them absent)
   - **UPDATE:** `README.md`: add the manual batch recipe — build held, then land the batches yourself with `git` — stating both limitations (one head commit means post-merge auto-debug sees only the last FID; never batch migrations) and that the user owns the push, PR, CI gate, sweep and docs sync
   - **UPDATE:** `docs/roadmap.md`: rewrite item 20's `lite:build` to `/bkit-build`
