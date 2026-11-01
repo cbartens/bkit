@@ -13,6 +13,7 @@ import {
   ghUnavailable,
   parseFlags,
   repoRoot,
+  resolveActiveRun,
   runCommand,
   runGit,
   runTool,
@@ -201,6 +202,48 @@ const OMITTING: CommandSpec = {
   },
 };
 
+const ODD: CommandSpec = {
+  noun: "widgets",
+  summary: "journal probe",
+  verbs: {
+    odd: {
+      summary: "exits 9, which it does not declare",
+      use: "by-hand",
+      flags: [],
+      output: { odd: "n" },
+      run: (ctx) => {
+        ctx.emit({ odd: 1 });
+        return 9;
+      },
+    },
+    declared: {
+      summary: "exits 4, which it declares",
+      use: "by-hand",
+      flags: [],
+      output: {},
+      exitCodes: { 4: "declared" },
+      run: () => 4,
+    },
+    fine: { summary: "exits 0", use: "by-hand", flags: [], output: {}, run: () => EXIT.OK },
+    "needs-human": {
+      summary: "exits 82",
+      use: "by-hand",
+      flags: [],
+      output: {},
+      run: () => EXIT.NEEDS_HUMAN,
+    },
+    boom: {
+      summary: "throws",
+      use: "by-hand",
+      flags: [],
+      output: {},
+      run: () => {
+        throw new Error("boom");
+      },
+    },
+  },
+};
+
 function harness() {
   const out: string[] = [];
   const err: string[] = [];
@@ -259,6 +302,69 @@ describe("runCommand", () => {
     const h = harness();
     expect(await h.run(["widgets", "fails"])).toBe(EXIT.NEEDS_HUMAN);
     expect(h.err).toEqual(["[bkit-widgets] a human has to look\n"]);
+  });
+
+  it("passes the command's exit code through when the journal write throws", async () => {
+    const calls: string[] = [];
+    const journal = {
+      call: () => {
+        calls.push("call");
+        throw new Error("disk full");
+      },
+      failure: () => {
+        calls.push("failure");
+        throw new Error("disk full");
+      },
+    };
+    const h = harness();
+    const code = await runCommand(["widgets", "odd"], [ODD], {
+      classicVerbs: new Set(),
+      io: { stdout: (t) => h.out.push(t), stderr: (t) => h.err.push(t) },
+      journal,
+    });
+    expect(code).toBe(9);
+    expect(calls).toEqual(["call", "failure"]);
+    expect(h.out).toEqual(["odd: 1\n"]);
+  });
+
+  it("logs one [bkit-telemetry] line when the journal throws, however many writes fail", async () => {
+    const journal = {
+      call: () => {
+        throw new Error("disk full");
+      },
+      failure: () => {
+        throw new Error("disk full");
+      },
+    };
+    const h = harness();
+    await runCommand(["widgets", "odd"], [ODD], {
+      classicVerbs: new Set(),
+      io: { stdout: (t) => h.out.push(t), stderr: (t) => h.err.push(t) },
+      journal,
+    });
+    expect(h.err).toEqual(["[bkit-telemetry] journal write failed: disk full\n"]);
+  });
+
+  it("hands the journal the failure only for an undeclared exit", async () => {
+    const seen: Array<[string, number | null]> = [];
+    const journal = {
+      call: () => {},
+      failure: (i: { verb: string; code: number | null }) => {
+        seen.push([i.verb, i.code]);
+      },
+    };
+    const io = { stdout: () => {}, stderr: () => {} };
+    await runCommand(["widgets", "odd"], [ODD], { classicVerbs: new Set(), io, journal });
+    await runCommand(["widgets", "declared"], [ODD], { classicVerbs: new Set(), io, journal });
+    await runCommand(["widgets", "fine"], [ODD], { classicVerbs: new Set(), io, journal });
+    await runCommand(["widgets", "needs-human"], [ODD], { classicVerbs: new Set(), io, journal });
+    await expect(
+      runCommand(["widgets", "boom"], [ODD], { classicVerbs: new Set(), io, journal }),
+    ).rejects.toThrow("boom");
+    expect(seen).toEqual([
+      ["odd", 9],
+      ["boom", null],
+    ]);
   });
 
   it("refuses a second JSON object", async () => {
@@ -639,5 +745,37 @@ describe("runGit / runTool output limit", () => {
       stdout: "",
       stderr: "bkit-no-such-binary-586 not found on PATH",
     });
+  });
+});
+
+describe("resolveActiveRun", () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+  });
+
+  function treeWithOneRun(): { cwd: string; status: string } {
+    const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-active-run-")));
+    dirs.push(cwd);
+    spawnSync("git", ["init", "-q"], { cwd });
+    const status = path.join(cwd, "docs/plans/202610/logs/901-x/status.jsonl");
+    fs.mkdirSync(path.dirname(status), { recursive: true });
+    fs.writeFileSync(
+      status,
+      `${JSON.stringify({ type: "workflow-started", workflow: "build", at: "2026-10-29T10:00:00Z" })}\n`,
+    );
+    return { cwd, status };
+  }
+
+  it("resolveActiveRun falls back to the cwd scan when --file names a non-status file", () => {
+    const { cwd, status } = treeWithOneRun();
+    const run = resolveActiveRun({ cwd, file: "docs/plans/202610/x-plan.md" });
+    expect(run).toEqual({ workflow: "build", file: status, bookRoot: cwd });
+  });
+
+  it("still takes a status.jsonl --file as the run itself", () => {
+    const { cwd, status } = treeWithOneRun();
+    const run = resolveActiveRun({ cwd, file: path.relative(cwd, status) });
+    expect(run).toEqual({ workflow: "build", file: status, bookRoot: cwd });
   });
 });

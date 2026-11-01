@@ -22,6 +22,7 @@ None.
 
 ## Attempt History
 
+<!-- prettier-ignore -->
 | Strategy | What was tried | Why it failed |
 | --- | --- | --- |
 | (none) | No diagnose or remediate attempt files exist. The run failed straight from `ship-deferred-sweep`. | n/a |
@@ -29,6 +30,7 @@ None.
 ## Verified Resolutions (do not roll back)
 
 From the sweep's runs at HEAD `472e66b5f`, all passing:
+
 - 11 Derived Test Matrix files: 686 tests pass; `pnpm test:harvest` 58 pass; `tests/status-holes-sweep-liveness.bats` 2/2.
 - `node dist/cli.js check`, `pnpm bkit:check:dist`, `pnpm bkit:typecheck:tests` and `graphify check-at HEAD` all exit 0.
 - Delivered: success criteria 1-5; TASKs 1-2, 3-5, 7-24 (except 25); the `completeness` verb; the `tool-failure` friction seam; the CI advisory step (`.github/workflows/bkit-ci.yml:521-524`); the 3 knowledge entries. No test was disabled (`scan-diff --disabled-tests` found none).

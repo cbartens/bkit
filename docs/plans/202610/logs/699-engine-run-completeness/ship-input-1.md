@@ -62,10 +62,12 @@ Current state (from an engine read-through, 2026-10-26):
 Work done: filed and corrected this issue from an engine read-through of workflow-run observability.
 
 **Outcome**
+
 - Created the issue, then brought it into line with `.agents/rules.md`: title reduced to <=70 chars, body restructured to the `idea` shape (`.bkit/trackers.md` § Issue shapes), `enhancement` + `next:design` labels, project + Status/Priority/Size set, milestone **Workflow Optimisation**, and issue references rewritten to title + URL form.
 - No parent and no blockers: standalone issue, nothing to block on.
 
 **Findings recorded**
+
 - End-of-run command/step completeness is ship-only advisory today (`.bkit/core/engine/checks/status-holes.ts`), CI-only, fail-open.
 - No completeness assertion on the previous run at workflow start (resume/reclaim only).
 - Engine errors/warnings never auto-write `.bkit/friction.jsonl` or `docs/failures.jsonl`; only a `workflow-failed` status row + `bkit:failed` label.
@@ -84,7 +86,8 @@ Checked against `dev` at `2003f19cc`. The plan's base is `443a20a9`, and 87 comm
 ### Must fix (the checker would cry wolf)
 
 **1. Calls a step makes after its own finish row get charged to the next step.**
-The plan attributes a journaled call by position: calls between two `step-done` rows belong to "the step in progress". But `steps finish` writes the step's row partway through many steps, so anything the step runs after that lands in the *next* step's window.
+The plan attributes a journaled call by position: calls between two `step-done` rows belong to "the step in progress". But `steps finish` writes the step's row partway through many steps, so anything the step runs after that lands in the _next_ step's window.
+
 - Measured on the current workflow markdown: 20 of 61 step sections have bkit calls written below their own `steps finish` / `steps done` line (59 call lines in total).
 - Example: build Step 15 Summary runs `steps finish --step=build-summary`, then `prs probe` and `branches push`. Those two calls fall between the `build-summary` row and the `build-create-pr` row. Step 15 then looks like it skipped them (an evidence hole), and Step 16 gets two "unexpected" calls. That happens on **every passing build**.
 - The same shape shows up in build Steps 8, 11, 12 and 16; debug Steps 3 and 11; and ship Steps 1, 4, 8 and 10.
@@ -93,6 +96,7 @@ The plan attributes a journaled call by position: calls between two `step-done` 
 
 **2. A finished step that took one branch of its route is charged for the other branch's calls.**
 Every `"{BKIT}"` literal in a step's section is "required". "Unexercised" is only defined at the step level: steps not reached, or conditional steps not taken. So a step that finished down one branch of its `Route:` is missing the other branch's calls, and that counts as an evidence hole.
+
 - Example: build Step 12 Run Tests calls `counters route` only on the FAIL branch, so every passing run "misses" it.
 - Example: build Step 5 Plan Current has two alternative `steps finish` calls (the skip and the agent path). They differ only in flag names, and the plan reduces calls to noun / verb / flag names, so a run takes one and "misses" the other.
 - About 38 of 61 steps have an `**If**` route and more than one call.
@@ -101,6 +105,7 @@ Every `"{BKIT}"` literal in a step's section is "required". "Unexercised" is onl
 
 **3. The new build Step 4 "Plan Convert" writes no row on its normal path, and has no marker.**
 This step landed after the plan was written, via [#705 — Build: plan-convert plan-current get their own numbered steps comments](https://github.com/cbartens/bkit/issues/705) (commit `483552f82`).
+
 - When `tests plan-check` passes, the step goes straight to Step 5 without `steps finish --step=build-plan-convert`.
 - It has no column-0 `**Run only if**` / `**Skip if**` line. Under the plan's rule it is therefore a required step, and every build whose plan is already in task-block form gets a step hole.
 - The plan's "23/23 conditional sites" count was taken before this step existed. The marker count is still 23 because Step 4 adds none.
@@ -109,6 +114,7 @@ This step landed after the plan was written, via [#705 — Build: plan-convert p
 
 **4. Calls in shared sections that belong to no step.**
 45 calls sit in workflow-level sections that no step owns:
+
 - the Failure Path (2-3 per workflow)
 - build's Decision Pause (12)
 - debug's Loop Question (4)
@@ -116,6 +122,7 @@ This step landed after the plan was written, via [#705 — Build: plan-convert p
 - 2 opening resume calls in each file
 
 The plan never says how these are classified. Under positional attribution they land in whatever step is in progress and show up as "unexpected". That doesn't make a run holey, but it adds noise to every paused or failed run.
+
 - **Needed:** a "workflow-level calls" bucket: allowed anywhere, never required, never unexpected.
 
 ### Should fix (smaller)
@@ -125,7 +132,8 @@ The plan never says how these are classified. Under positional attribution they 
    - `lib.ts` is 604 lines, and `statusLocation` is at 569.
 
    This is harmless, but worth correcting so the build agent doesn't go hunting.
-6. **Per file or per run?** One `status.jsonl` holds several runs (699's own file has the design run and the plan run). TASK 6 says each file "infers its workflow from its own rows" (one workflow per file), while TASK 10 says each *run*. Make TASK 6 say runs too, and pin whether `[bkit-status-holes] sweep: {N} file(s), {M} holey` counts holey files or holey runs.
+
+6. **Per file or per run?** One `status.jsonl` holds several runs (699's own file has the design run and the plan run). TASK 6 says each file "infers its workflow from its own rows" (one workflow per file), while TASK 10 says each _run_. Make TASK 6 say runs too, and pin whether `[bkit-status-holes] sweep: {N} file(s), {M} holey` counts holey files or holey runs.
 7. **Text left over from before your answers.**
    - The Open Question block still reads as open. Answer A lives only in this thread and in decision `699-ci-advisory-check-surface`, not in the plan.
    - Gate 1 still says "the three human-confirmation boxes above are still open", but they are ticked.
@@ -134,12 +142,14 @@ The plan never says how these are classified. Under positional attribution they 
 9. **TASK 13 edits `.github/workflows/bkit-ci.yml`.** The rules require your confirmation for CI edits. Say explicitly in the plan that your sign-off covers this edit, so the build doesn't stop at TASK 13.
 
 ### Checked and fine
+
 - `SHIP_STEP_ORDER` still equals the deduplicated `WORKFLOW_STEPS.ship` (14 keys), so TASK 6's equality assertion will hold.
 - The `MARK_ROWS` copies at `run-facts.ts:354` and `bkit-harvest.mjs:1478`, and the parity test at `bkit-harvest.test.mjs:2937`, are as the plan says.
 - `KIND_WRITERS.friction.orchestrators` lists all five phases plus auto. `validate` refuses an empty `by.step` (`telemetry.ts:1536`), so the `<noun>-<verb>` fallback step name is needed, as planned. `recurrenceCount` is declared but nothing computes it, as stated.
 - `SHARED_EXIT_CODES`, `runCommand` (`lib.ts:317`) and `statusLocation` exist. So do the scripts `bkit:audit:status`, `bkit:test:bats`, `test:harvest`, `graph:rollup` and `bkit:check:dist`, and every file the tasks list under READ.
 
 ### Recommendation
+
 Settle items 1-4 in the plan (TASKs 6-9) before building. They are design decisions, so either give a short answer on each or re-run the plan's apply-review step. Items 5-9 are edits.
 
 **Work done:** read the plan, the design's sections on attribution and conditionality, and this thread; checked them against `dev`; ran throwaway measurement scripts over the current workflow markdown and the tracked `status.jsonl` files. No repo files changed and nothing committed.
@@ -161,6 +171,7 @@ This covers every item from the review above. The file is `docs/plans/202610/699
 TASK 8 now has the work and seven tests for R1-R4. One of those tests replays every step section of the five workflow files in order and expects a clean verdict. TASK 9's "unattributable" now means a call after the run's last row, or one in a gap where neither neighbouring row is in the contract.
 
 **Smaller edits:**
+
 - TASK 6: the sweep works out the workflow for each run, not each file, because one `status.jsonl` holds runs of several workflows. `{M}` in the summary line counts holey runs. The literal itself is unchanged, so TASK 13's grep still matches.
 - TASK 13 notes that your sign-off on this plan covers its edit to `.github/workflows/bkit-ci.yml`.
 - Line numbers and file sizes updated (`workflow-shape.test.ts`, `lib.ts`, `workflows.ts`). The build group loop is now "Steps 7-9", after the #705 renumber. The call-site count reads 358 at the design's probe, 365 at `2003f19cc`.
@@ -169,6 +180,7 @@ TASK 8 now has the work and seven tests for R1-R4. One of those tests replays ev
 **One correction to my review.** The plan header's `Verdict: PASS` is right. It is the Apply Review verdict, so I left it as it was.
 
 **Please re-check the 👤 sections.** I added plan-added rows there, so your earlier sign-off didn't see them:
+
 - 5 Edge Case rows;
 - 5 Test Matrix rows;
 - one Assumption (that R1-R4 cover every step shape);
@@ -176,6 +188,7 @@ TASK 8 now has the work and seven tests for R1-R4. One of those tests replays ev
 - one Breaking Changes bullet: a build with an already-converted plan now writes one more step row and posts one more tracker comment.
 
 **Related issues** added to the plan:
+
 - [#705 — Build: plan-convert plan-current get their own numbered steps comments](https://github.com/cbartens/bkit/issues/705) (closed).
 - [#715 — Retire lite workflows; add build publish true/false](https://github.com/cbartens/bkit/issues/715) (open). It also edits `.bkit/core/.bkit/workflows.md` and adds a `publish=false` route. Whichever of the two lands second has to mark the skipped calls under R1 or the new authoring rule.
 
@@ -210,6 +223,7 @@ Reviewed the branch at local head `0f20be919` against `origin/dev`, excluding lo
 Worked through the review in https://github.com/cbartens/bkit/issues/699#issuecomment-6553349755 on `feat/699-engine-run-completeness`. The branch was rebased onto local `dev` first. The fixes are in commit 472e66b5f. The branch has **not been pushed yet**: it needs a force-push after the rebase, and that waits for owner approval.
 
 **Fixed (each with a test that failed before the fix)**
+
 - **MEDIUM, decisions.jsonl:** the file is now dev's copy plus this branch's one new decision (`699-harvest-test-outside-audit-runner`). The ~770 old rows the branch had added back are gone. Before cutting them, I checked that every key folds to the same winner as on dev.
 - **MEDIUM, CLOSED rows never reopen:** a friction failure that comes back after being marked CLOSED now returns as OPEN, so it reaches triage again. A TRIAGED row stays TRIAGED. Documented in `.bkit/core/.bkit/jsonl.md` (`tool-failure` row).
 - **LOW, key match depends on spacing:** the recurrence lookup now finds the earlier row however its JSON is spaced.
@@ -218,14 +232,17 @@ Worked through the review in https://github.com/cbartens/bkit/issues/699#issueco
 - **LOW, duplicate fix(765) commit:** dropped during the rebase.
 
 **Checked, no change needed**
+
 - **LOW, Step 4 skip row hardcodes `--attempt=1`:** a resume carries on after the last finished step, so the skip row is only ever written once per run. `plan-current` uses the same pattern.
 - **LOW, help-text-only test at `completeness.test.ts:179`:** redundant, but the real behaviour is already covered at `completeness.test.ts:98`.
 - **Note, transient vitest skill:** transient by design.
 
 **Deferred**
+
 - **LOW, read-then-append race in `appendFrictionRow`:** two writers recording the same recurrence at the same instant can both write count N+1. The engine has no lock helper yet. Recorded in `docs/deferrals.jsonl` as `699-engine-run-completeness-friction-recurrence-parallel-race`.
 
 **Open question for the owner**
+
 - **MEDIUM, `engineJournal().failure` writes friction rows from git hooks:** left as it is. `docs/observability.md:63` documents this as intended ("its friction row is still written"). Whether to keep it is the owner's call.
 
 **Verification:** build and typecheck clean. 2,130 tests pass in the workflow and journal suites, plus 770 in run-facts and checks and 58 in the harvest node tests. `bkit check`, `bkit:check:dist` and `graph:check` all pass. Installed mirrors are refreshed and the capabilities graph is regenerated.

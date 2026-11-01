@@ -110,6 +110,26 @@ function planSection(text, title) {
     }
     return out.join("\n").trim();
 }
+/**
+ * A TEST EXCEPTION field's entries from its 1-based plan `fieldLines` (`plan-blocks.ts`):
+ * the label line's inline value and each sub-bullet, continuation lines joined to the entry above.
+ */
+function exceptionEntries(lines, fieldLines) {
+    const out = [];
+    for (const n of fieldLines) {
+        const raw = lines[n - 1] ?? "";
+        const label = raw.indexOf(TEST_EXCEPTION);
+        const bullet = /^\s*- (.*)$/.exec(raw);
+        const text = (label >= 0 ? raw.slice(label + TEST_EXCEPTION.length) : (bullet?.[1] ?? raw)).trim();
+        if (text === "")
+            continue;
+        if (label < 0 && bullet === null && out.length > 0)
+            out[out.length - 1] += ` ${text}`;
+        else
+            out.push(text);
+    }
+    return out;
+}
 export function buildSummary(input) {
     const { workflow } = input;
     const groups = stepGroups(input.rows);
@@ -275,8 +295,20 @@ export function buildSummary(input) {
             items.push(`- \`${rel}\`: no decision recorded`);
     }
     for (const p of input.plans) {
-        for (const line of p.text.split("\n").filter((l) => l.includes(TEST_EXCEPTION)))
-            items.push(`- \`${p.path}\`: ${line.trim()}`);
+        const lines = p.text.split(/\r?\n/);
+        const covered = new Set();
+        for (const t of tasks.filter((x) => x.path === p.path && x.testException !== undefined)) {
+            const fieldLines = t.testException.lines;
+            for (const n of fieldLines)
+                covered.add(n);
+            const entries = exceptionEntries(lines, fieldLines);
+            for (const e of entries.length > 0 ? entries : ["no reason recorded"])
+                items.push(`- TEST EXCEPTION, task ${t.task}: ${e} (\`${p.path}\`)`);
+        }
+        lines.forEach((l, i) => {
+            if (l.includes(TEST_EXCEPTION) && !covered.has(i + 1))
+                items.push(`- \`${p.path}\`: ${l.trim()}`);
+        });
     }
     out.push("", "## Risks and Action Items", "", ...(items.length > 0 ? items : ["None"]));
     out.push("", "## Recommended Next Step", "", "```text", nextStep, "```");

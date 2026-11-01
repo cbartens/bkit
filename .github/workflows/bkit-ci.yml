@@ -515,9 +515,14 @@ jobs:
       - name: Assert Dist Freshness
         run: pnpm bkit:check:dist
 
-      # bkit repo only: status-hole detector, advisory (exits 0 when it finds holes).
+      # bkit repo only: run-completeness sweep over every workflow's status.jsonl, advisory
+      # (exits 0 when it finds holes). Fails only when the sweep printed no summary line: a
+      # hole never reds the lane, a silent no-op does.
       - name: Check Status Holes
-        run: pnpm bkit:audit:status || true
+        run: |
+          pnpm bkit:audit:status > "$RUNNER_TEMP/status-holes.txt" 2>&1 || true
+          cat "$RUNNER_TEMP/status-holes.txt"
+          grep -qF '[bkit-status-holes] sweep:' "$RUNNER_TEMP/status-holes.txt" || { echo '[bkit] status-holes sweep printed no summary line'; exit 1; }
 
       # Capability-register freshness gate: rebuild the graph with graphify and fail when
       # docs/capabilities.md is not what this tree produces, so the register cannot drift

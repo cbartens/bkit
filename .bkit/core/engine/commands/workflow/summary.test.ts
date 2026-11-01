@@ -429,8 +429,35 @@ describe("buildSummary", () => {
     expect(s.markdown).toContain("BLOCKED — Task 2: needs a key");
     expect(s.markdown).toContain("Decision: Accept — fine");
     expect(s.markdown).toContain("log/build-decision-1-2.md");
-    expect(s.markdown).toContain("**TEST EXCEPTION:**");
+    expect(s.markdown).toContain(
+      "- TEST EXCEPTION, task 1: `a.test.ts` `t1` — owner accepted (`docs/plans/p.md`)",
+    );
     expect(s.verdict).toBe("CONCERNS");
+  });
+
+  it("lists each sub-bullet of a nested TEST EXCEPTION field with its task and reason", () => {
+    const plan = [
+      "<!-- bkit:group 1 start -->",
+      "### GROUP 1: Do",
+      "<!-- bkit:task 7 start -->",
+      "- [x] **TASK 7:** Do.",
+      "  - **DONE WHEN:** d.",
+      "  - **TEST FIRST:**",
+      "    - `a.test.ts` `t1`",
+      "    - `b.test.ts` `t2`",
+      "  - **TEST EXCEPTION:**",
+      "    - `a.test.ts` `t1` fails on x — task 6 already built it",
+      "      (owner, 2026-10-29)",
+      "    - `b.test.ts` `t2` fails on y — edited first (owner, 2026-10-29)",
+      "<!-- bkit:task 7 end -->",
+      "<!-- bkit:group 1 end -->",
+    ].join("\n");
+    const s = buildSummary(input({ plans: [{ path: "docs/plans/p.md", text: plan }] }));
+    const risks = s.markdown.split("## Risks and Action Items")[1]!.split("\n## ")[0]!;
+    expect(risks.split("\n").filter((l) => l.startsWith("- "))).toEqual([
+      "- TEST EXCEPTION, task 7: `a.test.ts` `t1` fails on x — task 6 already built it (owner, 2026-10-29) (`docs/plans/p.md`)",
+      "- TEST EXCEPTION, task 7: `b.test.ts` `t2` fails on y — edited first (owner, 2026-10-29) (`docs/plans/p.md`)",
+    ]);
   });
 
   it("counts a lettered Accept decision as accepted at the Decision Pause", () => {
