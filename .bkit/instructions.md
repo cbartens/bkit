@@ -331,7 +331,7 @@ Clause section lines:
   - specialised: all except `bkit-audit-adoption`, `bkit-audit-analytics`, `bkit-audit-config`, `bkit-audit-security`, `bkit-audit-slop`
   - applies: `bkit-audit-agents`, `bkit-audit-dead-code`, `bkit-audit-deferrals`, `bkit-audit-models`
 - drift:
-  - `bkit-ship-conflict-resolve:107`: "Run `pnpm bkit:gate:install-static-unit-build`." Runs `pnpm bkit:gate:install-static-unit-build`, not the push gate the pre-push hook runs
+  - `bkit-ship-conflict-resolve:106`: "Run `pnpm bkit:gate:install-static-unit-build`." Runs `pnpm bkit:gate:install-static-unit-build`, not the push gate the pre-push hook runs
     - kept: subagents never push; they run their own lighter gate (`local-pre-commit`: `/bkit-*` steps run their own gates) and the pre-push hook runs the push gate
 
 ```text
@@ -1144,8 +1144,8 @@ Clause section lines:
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `bkit-plan:197`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
-  - `bkit-ship-conflict-resolve:32`: "`git add`, `git checkout --theirs|--ours <conflicted>`" Permits `git add` (`commits` says subagents do not commit; staging is allowed here only for rebase resolution, matching `destructive-git-prohibited`'s in-progress-rebase carve-out)
-    - kept: staging and `git rebase --continue` are the in-progress rebase resolution `destructive-git-prohibited` carves out; the caller commits and pushes
+  - `bkit-ship-conflict-resolve:32`: "`git add`, `git checkout --theirs|--ours <conflicted>`" Permits `git add` (`commits` says subagents do not commit; staging is allowed here only for rebase or merge resolution, matching `destructive-git-prohibited`'s in-progress-rebase carve-out)
+    - kept: staging and `git rebase --continue` are the in-progress rebase resolution `destructive-git-prohibited` carves out, and `git merge --abort` is on none of its prohibited forms; the caller commits and pushes
   - `utility-new-release:30`: "are pre-approved by the owner's release request" Declares commit / push / PR / merge into main / tag pre-approved by 'the owner's release request'; `pushes` says one approval covers one push, but this run does up to three pushes (dev backmerge, release branch, tag); `production-merge` requires explicit human confirmation for any merge into main
     - kept: release flow as designed: the human release request approves its commit, pushes, PR into `main`, merge and tag
 
@@ -1180,8 +1180,8 @@ Clause section lines:
   - specialised: `bkit-ship`
   - applies: `bkit-plan`, `bkit-ship`
 - drift:
-  - `bkit-ship:408`: "chore({FID}): conflict-resolve bkit [skip ci]" Stages via ledgers commit then runs a bare git commit with no -- paths, committing whatever is staged; `commits` says NEVER commit whatever is staged already
-    - kept: `bkit ledgers commit --mode=stage` stages exactly the bookkeeping allow-list on this run's own branch, so the commit holds only those paths; Re-validate runs CI on the code head even though this commit carries `[skip ci]`
+  - `bkit-ship:386`: "Each commit the block makes carries `bkit [skip ci]`" The Step 4 merge commit brings `dev`'s code onto the branch under `[skip ci]`; `docs-commits` says the tag goes ONLY on a commit that carries no code
+    - kept: a push trigger would validate nothing a run has not already validated on `dev`; Step 9 `runs revalidate` dispatches CI at the merged head itself, so the code is validated by a run the workflow starts
 
 ```text
 **Docs commits:** Append `bkit [skip ci]` ONLY to a commit that carries no code.
@@ -1279,8 +1279,8 @@ Clause section lines:
 - permission:
   - partial: `ask-destructive-git`, `deny-force-push`
 - drift:
-  - `bkit-ship-conflict-resolve:32`: "`git add`, `git checkout --theirs|--ours <conflicted>`" Permits `git add` (`commits` says subagents do not commit; staging is allowed here only for rebase resolution, matching `destructive-git-prohibited`'s in-progress-rebase carve-out)
-    - kept: staging and `git rebase --continue` are the in-progress rebase resolution `destructive-git-prohibited` carves out; the caller commits and pushes
+  - `bkit-ship-conflict-resolve:32`: "`git add`, `git checkout --theirs|--ours <conflicted>`" Permits `git add` (`commits` says subagents do not commit; staging is allowed here only for rebase or merge resolution, matching `destructive-git-prohibited`'s in-progress-rebase carve-out)
+    - kept: staging and `git rebase --continue` are the in-progress rebase resolution `destructive-git-prohibited` carves out, and `git merge --abort` is on none of its prohibited forms; the caller commits and pushes
   - `utility-new-release:35`: "`git stash clear`, `git push --force` (any flavour)." (missing here) Omits `destructive-git-prohibited`'s closing sentence exempting in-progress rebase resolution
     - kept: the `utility-*` agents read all of `.agents/rules.md` (`rules-orchestrator`), which holds the full rule with its rebase carve-out
   - `utility-pre-release-check:37`: "`git push --force` (any flavour)" (missing here) Omits `destructive-git-prohibited`'s closing sentence exempting in-progress rebase resolution
@@ -1372,7 +1372,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-annotations`, `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:559`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:550`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -1674,7 +1674,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:559`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:550`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -4044,10 +4044,11 @@ Refuted {{entries}} must remain; do not delete.
 - carriers: prompt `bkit-debug-failure-remediate`, `bkit-ship-conflict-resolve`
 
 ```text
-**No commits:** Do not run `git commit`, and NEVER run `git push`. The caller runs them. `git add`, `git checkout --theirs|--ours <conflicted>` and `git rebase --continue` / `--abort` are permitted ONLY for in-progress rebase resolution.
+**No commits:** Do not run `git commit`, and NEVER run `git push`. The caller runs them. `git add`, `git checkout --theirs|--ours <conflicted>`, `git rebase --continue` / `--abort` and `git merge --abort` are permitted ONLY for in-progress rebase or merge resolution.
 ```
 
 ```retired
+**No commits:** Do not run `git commit`, and NEVER run `git push`. The caller runs them. `git add`, `git checkout --theirs|--ours <conflicted>` and `git rebase --continue` / `--abort` are permitted ONLY for in-progress rebase resolution.
 **No commits:** Do not run `git commit` / `git push`. The caller runs them. `git add`, `git checkout --theirs|--ours <conflicted>` and `git rebase --continue` / `--abort` are permitted ONLY for in-progress rebase resolution.
 **No commits:** Do not run `git commit` / `git push` (caller does). `git add`, `git checkout --theirs|--ours <conflicted>`, `git rebase --continue` / `--abort` permitted ONLY for in-progress rebase resolution.
 **No commits:** Do not run `git commit` / `git push` (caller does). `git add`, `git checkout --theirs|--ours <conflicted>`, `git rebase --continue` / `--abort` permitted only for in-progress rebase resolution.
@@ -9018,7 +9019,7 @@ The table lists the header bullets of the 6 workflow files, block by block, in f
 | --- | --- |
 | **Diff per reader** | build, debug, ship: Every agent that reads the run's diff gets `tmp/bkit-diff-{FID}.md`, written by `bkit context diff --reset-log` in the same sub-step, just before it: build Steps 10, 11 and the Failure Path; debug Step 10 and the Failure Path; ship Step 5 and the Failure Path. Build's group verify (Step 8) reads `build-diff-{GROUP}-{VERIFY_ATTEMPT}.md` instead: `bkit context diff --base=` the group's start commit (`status route --step=build-group-start --group=N` `parentSha`), so a group's review reads only that group's commits. Past 10000 lines the file is a per-file budget: line 1 says `partial diff coverage`, line 2 lists the files not shown whole, and the whole diff stays in `{OUTBOX}` (§ Context artifact clamping). Debug passes `--base={DIFF_BASE}` (run start commit). |
 | **Locks** | Step 1 takes the per-feature `.lock` with `bkit locks acquire --kind=workflow` once `FID` is resolved; hold `token` as `{LOCK_TOKEN}`. The lock path is absolute (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock`, ship included, because the lock file is gitignored and never rides a commit), so acquire / release resolve to the same inode whatever the cwd. Lock line `{at} {workflow} {fid} {token}`. Existing lock → its owning workflow's folded status.jsonl decides: `IN_PROGRESS` + last step <30min → refused (`workflow already running for {FID}`) → Failure Path; any other holder (`DONE` / `FAILED`, idle `IN_PROGRESS`, no run in the log) is reclaimed as soon as it is idle; the lock file's own age is not checked. Released in Close Workflow (`bkit locks release --token=`) and Failure Path (`bkit workflows fail --token=`, skipped when `{LOCK_TOKEN}` is empty — the run never took the lock). Release removes only the caller's own lock (another owner's stays, exit 4); a lock file that survives removal exits 5 → `Lock removal failed`. |
-| **Pre-merge CI** | Ship re-resolves CI against the PR head it is about to merge (`bkit runs gate` at Step 10), not the read taken at Step 2: when `dev` requires status checks, `bkit prs update-branch` moves the head before `gh pr merge`, so the earlier read describes a SHA that is no longer being merged. A failed query is not a pass — an API error (403 on PAT scope, for one) is gate code 20, never green. Anything short of a `completed` run whose capstone concluded `success` refuses the merge. |
+| **Pre-merge CI** | Ship re-resolves CI against the PR head it is about to merge (`bkit runs gate` at Step 10), not the read taken at Step 2: on Path B the Step 4 merge of `origin/dev` moves the head before `gh pr merge`, so the earlier read describes a SHA that is no longer being merged. A failed query is not a pass — an API error (403 on PAT scope, for one) is gate code 20, never green. Anything short of a `completed` run whose capstone concluded `success` refuses the merge. |
 | **Artifact tree** | A subagent's artifact is asserted under the working directory its dispatch supplied: `{WORKTREE_PATH}` for every worktree-phase agent, ship's included. The subagent's reported path is not evidence: the `cd` and `pwd` line in the dispatch Context is prose, and agents have written to the main checkout despite it. design / plan additionally assert no `{FID}` artifact is left untracked in the main checkout before the close squash — an untracked file at the same path makes `git merge --squash` fail with `untracked working tree files would be overwritten`. |
 | **Main-checkout staging** | Every `git add` and every `git commit` that targets the main checkout carries an explicit pathspec. `add` alone is not enough: a pathspec-less `git commit` commits the whole index, sweeping in work a user staged themselves. Worktree-phase `git add -A` is unrestricted, because that tree holds only this feature's work. |
 | **Close squash** | design / plan close, every runtime: `bkit branches land` fetches `origin/dev`, adds a detached `.worktrees/_land-{FID}` there, squashes `{BRANCH}` into it with `-X ours`, then appends back any `.jsonl` row the branch added that the squash dropped (a ledger without `merge=union`, e.g. a consumer's `.bkit/friction.jsonl`). Non-zero squash, staged non-doc files (`CLOSE_DOCS`; a staged path that is local `dev`'s own content — a branch carrying unpushed `dev` commits — is named as such, with the unpushed count and `git push origin dev`), or a staged `{FID}-design.md` / `{FID}-plan.md` blob that differs from the branch's → stop; nothing pushed, branch and worktree kept — presence on `dev` proves nothing on a re-run, and `-X ours` keeps `dev`'s side of a conflicting hunk. Roadmap row, then commit via `bkit ledgers commit --squash-of={BRANCH}` and `git push origin HEAD:dev`. Push rejected because `dev` moved → drop the throwaway worktree, refetch, rebuild, push again: `LAND_ATTEMPTS` pushes, waits doubling from `LAND_BACKOFF_START_S` to `LAND_BACKOFF_CAP_S` with jitter; all used → exit 8, nothing landed. A push with no server answer → exit 8, nothing landed, no PR. A server refusal → PR close (roadmap commit on the branch in the checkout holding it, push, open or reuse the PR, squash-merge; a refused merge on an OPEN PR → merge `origin/dev`'s `docs/` and ledger commits into the branch in the checkout holding it (ledger conflicts union, other `docs/` conflicts take `dev`; any other conflict → exit 17) and push, then retry on the same schedule, then exit 17 with the PR left open — never GitHub's server-side update-branch, which ignores `merge=union` and conflicts on every ledger both sides appended to). The throwaway worktree is removed on every path. `RUNTIME_DEVPUSHES=true` only, after landing: local `dev` fast-forwards to the landed commit when that is a pure fast-forward (`merge --ff-only` when the main checkout is on `dev`, else the pointer alone); local `dev` already past the landed commit and on `origin/dev` (a later close fast-forwarded it) → `current`; local-only commits on `dev` (listed as `origin/dev..dev`) or git refusing (an uncommitted edit the move would overwrite) skip it with a log line, never failing the close; then the workflow-created worktree and `feat/{FID}` go. Nothing is deleted until `origin/dev` holds the branch's work: any file the branch changed that differs on `origin/dev` (`.jsonl`: any line the branch added that `origin/dev` lacks; `docs/roadmap.md` excepted) → exit 18, branch and worktree kept; uncommitted or untracked files in `.worktrees/{FID}` (the `bkit.workflows.worktree.copy` entries and `.bkit/.env` excepted) → close succeeds, worktree and branch kept (`worktree.reason: uncommitted`) with the file list logged. The main checkout is never written to: the `close-transport` row is written only when the run's own checkout is the branch (`RUNTIME_DEVPUSHES=false`); otherwise its `shape` / `sha` / `scan` go to a log line and the cross-check reads the landed commit's copy. Gate 12 reads `status.jsonl` from `origin/dev` (`bkit steps gate --ref=origin/dev`), so it passes whether or not local `dev` moved. |
@@ -9138,7 +9139,7 @@ Every command has a `## 🤖 Failure Path` section before Step 1. Any step, tool
 
 **Standard failure (always):**
 
-1. Write the error text to `{OUTBOX_ROOT}/error.md`, then one call: `bkit workflows fail --workflow= --fid= --month= --token={LOCK_TOKEN} [--max-exceeded] {LABEL_FLAGS} --step-number= --step-title= --sub-step= --error-file="{OUTBOX_ROOT}/error.md" [--stderr-file=]` (ship adds `--pr=`). State is changed only with a `--token`. An empty one counts as absent, because the failure came before Step 1 took the lock. With a token, the call appends `workflow-failed` (nothing when `status.jsonl` does not exist yet), aborts a rebase in progress in the run's worktree, releases the caller's own lock (another owner's stays, reported as `lock.heldBy`), clears the sentinels (`.rebase-failed`; ship `.deferred-blocked`). Exit 5 = the lock file survived; the printed comment already says `Lock removal failed`. It always prints `labels` (the current labels plus `bkit:failed`; a ship whose `--pr` already MERGED also moves to `bkit:merged`), `trackerState`, `handoverNeeded` (`--max-exceeded`, a sentinel existed, or a debug run in `SOAK`), and the `### Workflow Failure` `comment`. No dev push.
+1. Write the error text to `{OUTBOX_ROOT}/error.md`, then one call: `bkit workflows fail --workflow= --fid= --month= --token={LOCK_TOKEN} [--max-exceeded] {LABEL_FLAGS} --step-number= --step-title= --sub-step= --error-file="{OUTBOX_ROOT}/error.md" [--stderr-file=]` (ship adds `--pr=`). State is changed only with a `--token`. An empty one counts as absent, because the failure came before Step 1 took the lock. With a token, the call appends `workflow-failed` (nothing when `status.jsonl` does not exist yet), aborts a rebase or merge in progress in the run's worktree, releases the caller's own lock (another owner's stays, reported as `lock.heldBy`), clears the sentinels (`.rebase-failed`; ship `.deferred-blocked`). Exit 5 = the lock file survived; the printed comment already says `Lock removal failed`. It always prints `labels` (the current labels plus `bkit:failed`; a ship whose `--pr` already MERGED also moves to `bkit:merged`), `trackerState`, `handoverNeeded` (`--max-exceeded`, a sentinel existed, or a debug run in `SOAK`), and the `### Workflow Failure` `comment`. No dev push.
 2. `--post` posts `comment` and writes the labels and state (`tracker`, `labelsWrite`). If either prints `done` = false, the tracker MCP does that write.
 
 **Conditional handover** — only when `handoverNeeded` **and** a worktree exists. The handover agent `cd`s to `{WORKTREE_PATH}`. `/bkit-debug` decides `DEBUG_MODE` at Step 1, before the worktree exists, so a failure before the worktree goes straight to STOP:
@@ -9792,7 +9793,7 @@ Find the branch's PR — open first, then merged:
 Assert `PR_NUMBER` non-empty and `PR_BASE` = dev. **If** the assertion fails → **Failure Path**.
 **If** `state` = MERGED → record the resume marker → Step 13:
 **Else** → next sub-step.
-Read the PR's head SHA and mergeable state:
+Read the PR's head SHA:
 [honest-reporting] **If** `SHIP_OPENED_PR` = true → wait for CI on the new PR first, then assert its check rollup green:
 **If** exit 80 → read the checks with `pull_request_read` (`get_status`):
 **If** there is no check, **or** any check failed or is pending → **Failure Path**.
@@ -9800,7 +9801,7 @@ Finish (bookkeeping to `$BOOK_ROOT`, no branch commit):
 Run **Confirm Assumed Items** → Step 3.
 Mechanical checks passed (`steps gate`, `steps finish`)
 PR found or opened
-Entry head and mergeable read, PR CI checked
+Entry head read, PR CI checked
 List the build's assumed Accepts nobody has confirmed, and read the runtime:
 **If** `ASSUMED_COUNT` = 0 → return to Step 2.
 **If** `RUNTIME_HEADLESS` = true → step 4, since there is no one to ask.
@@ -9821,16 +9822,18 @@ Determine whether `origin/dev` is an ancestor of the PR head:
 **If** `BASE_PATH` = A → Step 5 (skip integration — dev has not moved).
 **If** `BASE_PATH` = B → Step 4 (integration required).
 Ancestor verdict determined
-**If** `MERGEABLE` = MERGEABLE (B1: no textual conflict) → refresh the PR head on the server, which the block does only when `dev` requires status checks:
-**If** exit 80 → refresh the PR head with `update_pull_request_branch`:
-**If** it succeeds → Step 5.
-**If** `MERGEABLE` = CONFLICTING (B2: textual conflict) → resolve the conflict locally and push:
+Merge `origin/dev` into `SHIP_BRANCH` locally. The block commits the run's uncommitted work first, unions the append-only ledgers, regenerates a conflicted lockfile from `dev`'s copy, runs a declared `bkit:generate`, and leaves every other conflict in the tree for sub-step 2. GitHub ignores `merge=union`, so the merged commit, not a server-side update or a rebase, is what makes the PR mergeable. Each commit the block makes carries `bkit [skip ci]`; Step 9 re-validates the merged head:
+**If** exit 0 **and** `MERGE_OUTCOME` = merged → sub-step 3.
+**If** exit 0 **and** `MERGE_OUTCOME` = current → Step 5. `dev` has not moved since Step 3.
+**If** exit 24 → the merge is still in progress with the `PENDING` paths conflicted → sub-step 2.
+Resolve the conflicts the block left:
 Finish (bookkeeping to `$BOOK_ROOT`):
-[force-push; workflow-pushes] **If** `verdict` = PASS → commit and push. B2 is the ONLY step that force-pushes `SHIP_BRANCH`: `branches push --mode=feature` pushes it with `--force-with-lease`:
+**If** `verdict` = PASS → sub-step 3. The subagent's re-run of the block committed the merge.
 [fit `workflow-else-failure` 0.73; keep: names what the failure report carries] **Else** → **Failure Path** (non-mechanical conflict → handover).
+[force-push; workflow-pushes] Push the merged branch. The merge adds commits on top of the pushed head, so the push is plain, NEVER forced:
 Path classified
-Branch update attempted (`prs update-branch`)
-Resolved branch pushed
+`origin/dev` merged locally (`branches sync --merge`), never rebased
+Merged branch pushed plain
 Fast-forward to the PR head, never onto a diverged branch:
 Check for the plan:
 [fit `workflow-summary-route` 0.62; keep: routes on PASS alone, not PASS or CONCERNS] **If** `verdict` = PASS → Step 6.
@@ -9874,8 +9877,6 @@ Close the run. The block keeps the summary in the outbox (the close removes the 
 **If** `CLOSE_VIA` = close-pr-open → drop `--ref`, and gate with `--file="{STATUS}"`.
 Squash-merge CI capstone green (`runs gate`)
 Close landed (`workflows close`)
-**Else** → `MERGEABLE` = UNKNOWN, because GitHub has not computed it yet. End the turn, then read it once more:
-**If** `MERGEABLE` = MERGEABLE **or** CONFLICTING → sub-step 1.
 Route on `verdict`:
 **If** `verdict` = PASS:
 Commit and push the fix, and NEVER force:
@@ -10763,20 +10764,18 @@ Add each decision or deferral `key` you wrote to the plan's `**Ledger rows:**` l
 - source: `.bkit/core/prompts/bkit-ship-conflict-resolve.md`
 
 ```text
-**Role:** Senior engineer resolving mechanical rebase conflicts before handover.
-Recreate the conflict state:
+**Role:** Senior engineer resolving mechanical merge conflicts before handover.
+Confirm the merge state the caller left:
 Record the branch head with `git rev-parse HEAD`, and append a log entry naming it.
-Run `git fetch origin dev`, then `git rebase origin/dev`.
-**If** the rebase completes with no conflicts:
-Set `Verdict` = `FAIL` with `Edit`. GitHub reported a conflict that the local rebase did not find, and that mismatch is not mechanical.
-Append a log entry saying that the branch is now rebased onto `origin/dev` locally, not pushed, and naming the head recorded before the rebase.
+Run `git rev-parse -q --verify MERGE_HEAD`.
+**If** it prints nothing → no merge of `origin/dev` is in progress, so there is no conflict here to resolve:
 Go straight to setting `Verdict`.
 Append a log entry.
-Run the auto-resolver before any hand-classification. It resolves every append-only ledger and the dependency lockfile in each rebase stop, continues the rebase, and stops at the first stop that holds a conflict needing judgement:
+Run the auto-resolver before any hand-classification. It resolves every append-only ledger and the dependency lockfile, commits the merge once no conflicted path is left, runs a declared `bkit:generate`, and stops with the merge still in progress when a conflict needs judgement. `{STATUS}` is the `status.jsonl` path the Read list names:
 Append a log entry with what it printed and its `resolved` and `pending` paths.
-**If** it printed `REBASE_COMPLETE` → the rebase ran to completion. Skip to the verify gate.
-**If** it printed `HAND_RESOLVE` → the rebase is still in progress, and the paths in its `pending` list are still conflicted. Continue to classification.
-**Else** → the resolver could not go on. Either it aborted the rebase, because a ledger or lockfile resolution failed or `git rebase --continue` failed with no conflicted path left, or it found no rebase in progress. Name which in the log entry:
+**If** it printed `MERGE_COMPLETE` → the merge is committed. Skip to the verify gate.
+**If** it printed `HAND_RESOLVE` → the merge is still in progress, and the paths in its `pending` list are still conflicted. Continue to classification.
+**Else** → the resolver could not go on. Either it aborted the merge, because a ledger or lockfile resolution, the merge commit or `bkit:generate` failed, or it found no merge in progress. Name which in the log entry:
 Set `Verdict` = `FAIL` with `Edit`.
 Go straight to setting `Verdict`.
 Classify the conflicts:
@@ -10785,7 +10784,7 @@ List each side's recent commits with `git log -5 --oneline HEAD` and `git log -5
 Classify each conflicted file against these two lists, then append a log entry:
 `Allowed resolutions`:
 Non-overlapping additive edits to the same file → concatenate them, keeping both sides.
-Formatting-only drift (whitespace, trailing newline, prettier output) → take the post-rebase format.
+Formatting-only drift (whitespace, trailing newline, prettier output) → take `origin/dev`'s format.
 A dependency manifest bump on one side only (`package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`) → take the bump.
 Additive JSON array entries or object property additions with no key or position overlap → concatenate them.
 `Refused resolutions`:
@@ -10801,15 +10800,15 @@ Resolve the `Allowed resolutions` files:
 For each file:
 Replace each conflict-marker hunk in it with the merged result, using `Edit`.
 Run `git add <file>`.
-Run the auto-resolver again. It continues the rebase, and the next commit may conflict in turn. Repeat the auto-resolver, classification and resolution until it prints `REBASE_COMPLETE` or `Verdict` = `FAIL`.
+Run the auto-resolver again. With no conflicted path left it commits the merge and runs `bkit:generate`. Repeat the auto-resolver, classification and resolution until it prints `MERGE_COMPLETE` or `Verdict` = `FAIL`.
 **If** `Verdict` != `FAIL` → run the verify gate:
 Run `pnpm bkit:gate:install-static-unit-build`.
 Append a log entry with its exit code.
-[honest-reporting] `PASS` = the rebase reproduced conflicts, every conflicted file was resolved by the auto-resolver or classified `Allowed resolutions` and resolved, the rebase completed, and `pnpm bkit:gate:install-static-unit-build` exited 0.
-`FAIL` = the rebase completed with no conflicts, **or** any conflicted file was classified `Refused resolutions`, **or** the auto-resolver aborted the rebase, **or** any verify command exited non-zero.
+[honest-reporting] `PASS` = a merge of `origin/dev` was in progress, every conflicted file was resolved by the auto-resolver or classified `Allowed resolutions` and resolved, the merge is committed, and `pnpm bkit:gate:install-static-unit-build` exited 0.
+`FAIL` = no merge was in progress, **or** any conflicted file was classified `Refused resolutions`, **or** the auto-resolver aborted the merge, **or** any verify command exited non-zero.
 **If** `Verdict` = `FAIL`:
-**If** `git status` reports a rebase in progress:
-Run `git rebase --abort`.
+**If** `git rev-parse -q --verify MERGE_HEAD` prints a SHA:
+Run `git merge --abort`.
 **If** it exits non-zero → append its error to the log word for word.
 Confirm that the working tree is clean with `git status --short`.
 Leave the sentinel in place.

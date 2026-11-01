@@ -43,7 +43,7 @@ _No tracker connected, skip step._
 
 **Single-write contract:** Every step before the flush creates no git object. Never route back to the **Failure Path**: log the error and continue to the flush.
 
-1. Write the error message / tool response to `{OUTBOX_ROOT}/error.md` (`--error-file` dropped while `{OUTBOX_ROOT}` is not held). `{STDERR_FILE}` = `{OUTBOX}/stderr.log` holding the failed shell command's stderr — drop `--stderr-file` when the failure was not a shell command or `{OUTBOX}` is not set yet; drop `--token` when `{LOCK_TOKEN}` is empty, `--pr` when `{PR_NUMBER}` is empty; `--max-exceeded` only when a `counters route` exit 1 (a `MAX_*` limit) sent the run here; `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry. Abort any in-progress rebase, record the failure, release the lock, delete the session folder (drop `--session-dir` while `{SESSION_DIR}` is not held), clear sentinels — **state only, no `add` / `commit` / `push`**; a MERGED PR moves the issue to `bkit:merged` plus `bkit:failed`, else the prior phase label persists:
+1. Write the error message / tool response to `{OUTBOX_ROOT}/error.md` (`--error-file` dropped while `{OUTBOX_ROOT}` is not held). `{STDERR_FILE}` = `{OUTBOX}/stderr.log` holding the failed shell command's stderr — drop `--stderr-file` when the failure was not a shell command or `{OUTBOX}` is not set yet; drop `--token` when `{LOCK_TOKEN}` is empty, `--pr` when `{PR_NUMBER}` is empty; `--max-exceeded` only when a `counters route` exit 1 (a `MAX_*` limit) sent the run here; `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry. Abort any in-progress rebase or merge, record the failure, release the lock, delete the session folder (drop `--session-dir` while `{SESSION_DIR}` is not held), clear sentinels — **state only, no `add` / `commit` / `push`**; a MERGED PR moves the issue to `bkit:merged` plus `bkit:failed`, else the prior phase label persists:
    ```bash
    "{BKIT}" workflows fail --post --issue="{ISSUE_ID}" --workflow=ship --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --max-exceeded --pr={PR_NUMBER} {LABEL_FLAGS} --step-number={N} --step-title="{Step Name}" --sub-step={M} --error-file="{OUTBOX_ROOT}/error.md" --stderr-file="{STDERR_FILE}" --session-dir="{SESSION_DIR}"
    ```
@@ -189,11 +189,11 @@ _No tracker connected, skip step._
      "{BKIT}" status row --file="{STATUS}" --workflow=ship --type=ship-merged-on-entry >/dev/null
      ```
    - **Else** → next sub-step.
-4. Read the PR's head SHA and mergeable state:
+4. Read the PR's head SHA:
    ```bash
    "{BKIT}" prs probe --number="{PR_NUMBER}"
    ```
-   Hold `headRefOid` as `ENTRY_HEAD` and `mergeable` as `MERGEABLE`.
+   Hold `headRefOid` as `ENTRY_HEAD`.
    Assert `ENTRY_HEAD` non-empty.
 5. **If** `SHIP_OPENED_PR` = true → wait for CI on the new PR first, then assert its check rollup green:
    ```bash
@@ -222,7 +222,7 @@ _No tracker connected, skip step._
 
 - [ ] Mechanical checks passed (`steps gate`, `steps finish`)
 - [ ] PR found or opened
-- [ ] Entry head and mergeable read, PR CI checked
+- [ ] Entry head read, PR CI checked
 
 ---
 
@@ -303,19 +303,19 @@ _No tracker connected, skip step._
 
 **Run only if** `BASE_PATH` = B.
 
-1. **If** `MERGEABLE` = MERGEABLE (B1: no textual conflict) → refresh the PR head on the server, which the block does only when `dev` requires status checks:
+1. Merge `origin/dev` into `SHIP_BRANCH` locally. The block commits the run's uncommitted work first, unions the append-only ledgers, regenerates a conflicted lockfile from `dev`'s copy, runs a declared `bkit:generate`, and leaves every other conflict in the tree for sub-step 2. GitHub ignores `merge=union`, so the merged commit, not a server-side update or a rebase, is what makes the PR mergeable. Each commit the block makes carries `bkit [skip ci]`; Step 9 re-validates the merged head:
    ```bash
-   "{BKIT}" prs update-branch --number={PR_NUMBER} --only-if-required
+   cd "{WORKTREE_PATH}" && "{BKIT}" branches sync --merge --fid="{FID}" --file="{STATUS}" --sentinel="docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed"
    ```
+   Hold `outcome` as `MERGE_OUTCOME`, `pending` as `PENDING`.
    Route:
-   - **If** exit 0 → Step 5.
-   - **If** exit 80 → refresh the PR head with `update_pull_request_branch`:
-     - **If** it succeeds → Step 5.
-     - **Else** → **Failure Path**.
-   - **Else** → **Failure Path**. `gh` could not refresh the PR head.
-2. **If** `MERGEABLE` = CONFLICTING (B2: textual conflict) → resolve the conflict locally and push:
+   - **If** exit 0 **and** `MERGE_OUTCOME` = merged → sub-step 3.
+   - **If** exit 0 **and** `MERGE_OUTCOME` = current → Step 5. `dev` has not moved since Step 3.
+   - **If** exit 24 → the merge is still in progress with the `PENDING` paths conflicted → sub-step 2.
+   - **Else** → **Failure Path**. The block aborted the merge and wrote the sentinel.
+2. Resolve the conflicts the block left:
    1. **Subagent:** Invoke `@bkit-ship-conflict-resolve` using `Agent` tool:
-      Context: You are a subagent in the Ship phase. Textual conflict against `origin/dev`. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
+      Context: You are a subagent in the Ship phase. A merge of `origin/dev` is in progress with conflicts outside the ledgers and the lockfile: `{PENDING}`. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
       Read: `docs/plans/{YYYYMM}/logs/{FID}/ship-input-{RUN}.md`, `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), `{STATUS}`.
       Update: Conflicted source files.
       Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-conflict-resolve.md`.
@@ -323,29 +323,20 @@ _No tracker connected, skip step._
       ```bash
       "{BKIT}" steps finish --workflow=ship --step=ship-conflict-resolve --file="{STATUS}" --agent=bkit-ship-conflict-resolve --artifact="docs/plans/{YYYYMM}/logs/{FID}/ship-conflict-resolve.md" --commit=none --number=4 --post --title="Integrate (Path B)"
       ```
-   3. **If** `verdict` = PASS → commit and push. B2 is the ONLY step that force-pushes `SHIP_BRANCH`: `branches push --mode=feature` pushes it with `--force-with-lease`:
-      ```bash
-      "{BKIT}" ledgers commit --month="{YYYYMM}" --fid="{FID}" --scope=full --mode=commit --stage-tracked-updates --message="chore({FID}): conflict-resolve bkit [skip ci]" >/dev/null \
-        || { echo "[bkit-ship] conflict-resolve bookkeeping commit failed" >&2; exit 1; }
-      "{BKIT}" branches push --mode=feature
-      ```
+   3. **If** `verdict` = PASS → sub-step 3. The subagent's re-run of the block committed the merge.
       **Else** → **Failure Path** (non-mechanical conflict → handover).
-3. **Else** → `MERGEABLE` = UNKNOWN, because GitHub has not computed it yet. End the turn, then read it once more:
+3. Push the merged branch. The merge adds commits on top of the pushed head, so the push is plain, NEVER forced:
    ```bash
-   "{BKIT}" prs probe --number="{PR_NUMBER}"
+   "{BKIT}" branches push --mode=plain >/dev/null
    ```
-   Hold `mergeable` as `MERGEABLE`.
-   Route:
-   - **If** `MERGEABLE` = MERGEABLE **or** CONFLICTING → sub-step 1.
-   - **Else** → **Failure Path**.
 
 ### 🔒 Gate 4 — Integrate
 
 - [ ] Path classified
-- [ ] Branch update attempted (`prs update-branch`)
+- [ ] `origin/dev` merged locally (`branches sync --merge`), never rebased
 - [ ] Subagent invoked (`@bkit-ship-conflict-resolve`, no inline work)
 - [ ] Mechanical checks passed (`steps finish`)
-- [ ] Resolved branch pushed
+- [ ] Merged branch pushed plain
 
 ---
 

@@ -362,67 +362,6 @@ describe("branches rebase: behaviour", { timeout: GIT_TIMEOUT }, () => {
     expect(read(dir, "docs/knowledge.jsonl")).toBe('{"key":"A","ts":1}\n{"key":"B","ts":2}\n');
   });
 
-  it("--hand-resolve resolves the ledger in a mixed stop and leaves the code path conflicted, the rebase in progress", async () => {
-    const dir = makeRepo("hand-mixed");
-    diverge(
-      dir,
-      { "src.txt": "feat\n", "docs/knowledge.jsonl": '{"key":"B","ts":2}\n' },
-      { "src.txt": "main\n", "docs/knowledge.jsonl": '{"key":"C","ts":3}\n' },
-    );
-    const r = await run(dir, ["rebase", "--hand-resolve", "--sentinel=logs/.rebase-failed"]);
-    expect(r.code).toBe(24);
-    expect(r.json).toMatchObject({
-      outcome: "pending",
-      resolved: [{ path: "docs/knowledge.jsonl", how: "union" }],
-      pending: ["src.txt"],
-      refused: "src.txt",
-      aborted: false,
-      sentinel: null,
-    });
-    expect(r.err).toContain("PENDING src.txt");
-    expect(inRebase(dir)).toBe(true);
-    expect(git(dir, "diff", "--name-only", "--diff-filter=U").out).toBe("src.txt");
-    expect(fs.existsSync(path.join(dir, "logs/.rebase-failed"))).toBe(false);
-
-    // The hand resolution, then the next call continues the rebase to the end.
-    write(dir, "src.txt", "code v0\nmain\nfeat\n");
-    git(dir, "add", "src.txt");
-    const next = await run(dir, ["rebase", "--hand-resolve"]);
-    expect(next.code).toBe(0);
-    expect(next.json).toMatchObject({ outcome: "resolved", pending: [] });
-    expect(inRebase(dir)).toBe(false);
-    expect(read(dir, "docs/knowledge.jsonl").split("\n").filter(Boolean)).toHaveLength(3);
-  });
-
-  it("--hand-resolve stops again at each later commit that conflicts", async () => {
-    const dir = makeRepo("hand-multi");
-    const replace = (body: string, message: string) => {
-      write(dir, "src.txt", body);
-      git(dir, "commit", "-q", "-am", message);
-    };
-    git(dir, "checkout", "-q", "-b", "feat");
-    replace("feat 1\n", "feat 1");
-    replace("feat 2\n", "feat 2");
-    git(dir, "checkout", "-q", "main");
-    replace("main\n", "main");
-    git(dir, "checkout", "-q", "feat");
-    git(dir, "rebase", "main");
-    const first = await run(dir, ["rebase", "--hand-resolve"]);
-    expect(first.code).toBe(24);
-    // Keeping both sides here makes the second commit conflict in turn.
-    write(dir, "src.txt", "main and feat 1\n");
-    git(dir, "add", "src.txt");
-    const second = await run(dir, ["rebase", "--hand-resolve"]);
-    expect(second.code).toBe(24);
-    expect(second.json).toMatchObject({ outcome: "pending", pending: ["src.txt"] });
-    write(dir, "src.txt", "feat 2\n");
-    git(dir, "add", "src.txt");
-    const third = await run(dir, ["rebase", "--hand-resolve"]);
-    expect(third.code).toBe(0);
-    expect(inRebase(dir)).toBe(false);
-    expect(read(dir, "src.txt")).toBe("feat 2\n");
-  });
-
   it("produces byte-identical output to merge=union", async () => {
     const divergeKnowledge = (dir: string) =>
       diverge(
@@ -2213,6 +2152,8 @@ describe("branches sync", { timeout: GIT_TIMEOUT }, () => {
     expect(r.json).toMatchObject({ docsBehind: 1, merged: true, resolved: [] });
     expect(read(clone, "docs/testing.md")).toBe("testing v0\ndev docs\n");
     expect(r.json?.head).toBe(sha(clone));
+    // A docs merge may carry dev's code, so its commit is a plain code commit: no [skip ci].
+    expect(subject(clone)).toBe("chore(1-x): merge dev");
   });
 
   it("--merge-docs merges dev when only a ledger outside docs/ moved on dev", async () => {
@@ -2322,6 +2263,232 @@ describe("branches sync", { timeout: GIT_TIMEOUT }, () => {
     expect(sha(clone)).toBe(before);
     expect(fs.existsSync(path.join(clone, ".git/MERGE_HEAD"))).toBe(false);
     expect(git(clone, "status", "--porcelain").out).toBe("");
+  });
+
+  // --- --merge: ship Step 4 ---
+
+  const MERGE_MSG = "chore(1-x): merge dev bkit [skip ci]";
+  const SENTINEL = "docs/plans/202610/logs/1-x/.rebase-failed";
+  const subject = (cwd: string, rev = "HEAD") => git(cwd, "log", "-1", "--format=%s", rev).out;
+  const inMerge = (cwd: string) => fs.existsSync(path.join(cwd, ".git/MERGE_HEAD"));
+  const ledgerKeys = (cwd: string, rel: string) =>
+    read(cwd, rel)
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => (JSON.parse(l) as { key: string }).key)
+      .sort();
+
+  it("--merge merges dev into the feature branch with a skip-ci merge commit, never a rebase", async () => {
+    const { origin, clone } = feature("merge-clean");
+    const own = sha(clone);
+    landOnDev(origin, { "src.txt": "moved\n" });
+    const r = await run(clone, ["sync", "--merge"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      basePath: "B",
+      behind: 1,
+      merged: true,
+      outcome: "merged",
+      carried: null,
+      resolved: [],
+      pending: [],
+      aborted: false,
+      sentinel: null,
+      generated: null,
+      head: sha(clone),
+    });
+    expect(subject(clone)).toBe(MERGE_MSG);
+    // A merge keeps the branch's own commit as first parent; a rebase would rewrite it.
+    expect(sha(clone, "HEAD^1")).toBe(own);
+    expect(git(clone, "merge-base", "--is-ancestor", "origin/dev", "HEAD").ok).toBe(true);
+    expect(read(clone, "src.txt")).toBe("code v0\nmoved\n");
+    expect(git(clone, "status", "--porcelain").out).toBe("");
+  });
+
+  it("--merge does nothing when origin/dev is already an ancestor, and clears a stale sentinel", async () => {
+    const { clone } = feature("merge-current");
+    const before = sha(clone);
+    write(clone, SENTINEL, "");
+    const r = await run(clone, ["sync", "--merge", `--sentinel=${SENTINEL}`]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      basePath: "A",
+      merged: false,
+      outcome: "current",
+      head: before,
+      sentinel: null,
+    });
+    expect(sha(clone)).toBe(before);
+    expect(fs.existsSync(path.join(clone, SENTINEL))).toBe(false);
+  });
+
+  it("--merge commits the run's uncommitted work first, so a ledger dev also appended to can merge", async () => {
+    // Ship keeps status.jsonl uncommitted until Step 8; a merge refuses to overwrite it.
+    const { origin, clone } = feature("merge-carry");
+    const status = "docs/plans/202610/logs/1-x/status.jsonl";
+    commit(
+      clone,
+      { [status]: '{"type":"workflow-started","workflow":"build"}\n' },
+      "build: status",
+    );
+    landOnDev(origin, { [status]: '{"type":"workflow-failed","workflow":"ship"}\n' });
+    fs.appendFileSync(path.join(clone, status), '{"type":"workflow-started","workflow":"ship"}\n');
+    write(clone, "docs/plans/202610/logs/1-x/ship-output.md", "log\n");
+    const r = await run(clone, ["sync", "--merge", "--fid=1-x"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      merged: true,
+      outcome: "merged",
+      resolved: [{ path: status, how: "union" }],
+      carried: sha(clone, "HEAD^1"),
+    });
+    expect(subject(clone)).toBe(MERGE_MSG);
+    expect(subject(clone, "HEAD^1")).toBe(
+      "chore(1-x): carry uncommitted work before merging dev bkit [skip ci]",
+    );
+    expect(read(clone, status).split("\n").filter(Boolean)).toHaveLength(3);
+    expect(read(clone, "docs/plans/202610/logs/1-x/ship-output.md")).toBe("log\n");
+    expect(git(clone, "status", "--porcelain").out).toBe("");
+  });
+
+  it("--merge regenerates a conflicted lockfile from dev's copy", async () => {
+    const lockfile = "uv.lock";
+    const tool = LOCKFILE_REGENERATE[lockfile]![0]!;
+    const bin = stubBin({ [tool]: `echo "# regenerated" >> ${lockfile}` });
+    const { origin, clone } = feature("merge-lockfile");
+    commit(clone, { [lockfile]: "feat pin\n" }, "feat: pin");
+    landOnDev(origin, { [lockfile]: "dev pin\n" });
+    const r = await run(clone, ["sync", "--merge"], { PATH: withBin(bin) });
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      outcome: "merged",
+      resolved: [{ path: lockfile, how: "lockfile" }],
+    });
+    expect(read(clone, lockfile)).toBe("dev pin\n# regenerated\n");
+    expect(git(clone, "status", "--porcelain").out).toBe("");
+  });
+
+  it("--merge leaves a code conflict for a hand resolution (24) and completes once it is staged", async () => {
+    const { origin, clone } = feature("merge-pending");
+    commit(
+      clone,
+      { "src.txt": "branch\n", "docs/knowledge.jsonl": '{"key":"B","ts":2}\n' },
+      "feat: code + row",
+    );
+    landOnDev(origin, { "src.txt": "dev\n", "docs/knowledge.jsonl": '{"key":"C","ts":3}\n' });
+    const first = await run(clone, ["sync", "--merge", `--sentinel=${SENTINEL}`]);
+    expect(first.code).toBe(24);
+    expect(first.json).toMatchObject({
+      outcome: "pending",
+      merged: false,
+      pending: ["src.txt"],
+      resolved: [{ path: "docs/knowledge.jsonl", how: "union" }],
+      aborted: false,
+      sentinel: null,
+    });
+    expect(inMerge(clone)).toBe(true);
+    expect(fs.existsSync(path.join(clone, SENTINEL))).toBe(false);
+    expect(first.err).toContain("PENDING src.txt");
+    // Run again with nothing resolved: still pending, merge still in progress.
+    const again = await run(clone, ["sync", "--merge", `--sentinel=${SENTINEL}`]);
+    expect(again.code).toBe(24);
+    expect(again.json).toMatchObject({ outcome: "pending", pending: ["src.txt"] });
+    expect(inMerge(clone)).toBe(true);
+    // The hand resolution: fix the file, stage it, run again.
+    write(clone, "src.txt", "code v0\nbranch\ndev\n");
+    git(clone, "add", "src.txt");
+    const done = await run(clone, ["sync", "--merge", `--sentinel=${SENTINEL}`]);
+    expect(done.code).toBe(0);
+    expect(done.json).toMatchObject({
+      outcome: "merged",
+      merged: true,
+      pending: [],
+      head: sha(clone),
+    });
+    expect(inMerge(clone)).toBe(false);
+    expect(subject(clone)).toBe(MERGE_MSG);
+    expect(read(clone, "src.txt")).toBe("code v0\nbranch\ndev\n");
+    expect(ledgerKeys(clone, "docs/knowledge.jsonl")).toEqual(["A", "B", "C"]);
+    expect(git(clone, "status", "--porcelain").out).toBe("");
+  });
+
+  it("--merge refuses (11), aborts the merge and writes the sentinel when a lockfile regenerate fails", async () => {
+    const lockfile = "uv.lock";
+    const tool = LOCKFILE_REGENERATE[lockfile]![0]!;
+    const bin = stubBin({ [tool]: "exit 1" });
+    const { origin, clone } = feature("merge-refuse");
+    commit(clone, { [lockfile]: "feat pin\n" }, "feat: pin");
+    const before = sha(clone);
+    landOnDev(origin, { [lockfile]: "dev pin\n" });
+    const r = await run(clone, ["sync", "--merge", `--sentinel=${SENTINEL}`], {
+      PATH: withBin(bin),
+    });
+    expect(r.code).toBe(11);
+    expect(r.json).toMatchObject({
+      outcome: "refused",
+      merged: false,
+      aborted: true,
+      sentinel: SENTINEL,
+      head: before,
+    });
+    expect(sha(clone)).toBe(before);
+    expect(inMerge(clone)).toBe(false);
+    expect(fs.existsSync(path.join(clone, SENTINEL))).toBe(true);
+    expect(git(clone, "status", "--porcelain", "--", ".", ":(exclude)docs/plans").out).toBe("");
+  });
+
+  it("--merge runs a declared bkit:generate after the merge and commits its output with skip ci", async () => {
+    const { origin, clone } = feature("merge-generate");
+    commit(
+      clone,
+      {
+        "package.json": JSON.stringify({
+          name: "x",
+          scripts: {
+            "bkit:generate": "node -e \"require('fs').writeFileSync('docs/gen.md','gen\\\\n')\"",
+          },
+        }),
+      },
+      "chore: generate script",
+    );
+    landOnDev(origin, { "src.txt": "moved\n" });
+    const r = await run(clone, ["sync", "--merge"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ outcome: "merged", generated: true, head: sha(clone) });
+    expect(read(clone, "docs/gen.md")).toBe("gen\n");
+    expect(subject(clone)).toBe("chore(1-x): regenerate after merging dev bkit [skip ci]");
+    expect(subject(clone, "HEAD^")).toBe(MERGE_MSG);
+    expect(git(clone, "status", "--porcelain").out).toBe("");
+  });
+
+  it("--merge --file records an engine-action row keyed on the tip it merged from", async () => {
+    const { origin, clone } = feature("merge-record");
+    const before = sha(clone);
+    landOnDev(origin, { "src.txt": "moved\n" });
+    const status = "docs/plans/202610/logs/1-x/status.jsonl";
+    const r = await run(clone, ["sync", "--merge", `--file=${status}`]);
+    expect(r.code).toBe(0);
+    const rows = read(clone, status)
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      type: "engine-action",
+      action: "merge",
+      key: `merge/${before}`,
+      ref: sha(clone),
+    });
+  });
+
+  it("refuses --merge with --head or --merge-docs, on dev, and detached (5)", async () => {
+    const { clone } = feature("merge-usage");
+    expect((await run(clone, ["sync", "--merge", "--head=HEAD"])).code).toBe(2);
+    expect((await run(clone, ["sync", "--merge", "--merge-docs"])).code).toBe(2);
+    git(clone, "checkout", "-q", "dev");
+    expect((await run(clone, ["sync", "--merge"])).code).toBe(2);
+    git(clone, "checkout", "-q", "--detach");
+    expect((await run(clone, ["sync", "--merge"])).code).toBe(5);
   });
 
   it("exits 10 when the fetch fails", async () => {

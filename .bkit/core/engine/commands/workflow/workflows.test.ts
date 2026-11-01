@@ -614,6 +614,23 @@ describe("bkit workflows fail", () => {
     ).toBe(false);
   });
 
+  it("aborts a merge left in progress (ship Step 4's hand-resolution state)", async () => {
+    const cwd = repo();
+    git(cwd, "checkout", "-q", "-b", "other");
+    write(cwd, "a.txt", "theirs\n");
+    git(cwd, "commit", "-qam", "theirs");
+    git(cwd, "checkout", "-q", "dev");
+    write(cwd, "a.txt", "ours\n");
+    git(cwd, "commit", "-qam", "ours");
+    git(cwd, "merge", "other");
+    const gitDir = git(cwd, "rev-parse", "--absolute-git-dir");
+    expect(fs.existsSync(path.join(gitDir, "MERGE_HEAD"))).toBe(true);
+    const r = await run(cwd, wf("fail", "build", `--month=${M}`, "--token=t"));
+    expect(r.json.rebaseAborted).toBe(true);
+    expect(fs.existsSync(path.join(gitDir, "MERGE_HEAD"))).toBe(false);
+    expect(fs.readFileSync(path.join(cwd, "a.txt"), "utf-8")).toBe("ours\n");
+  });
+
   it("the workflow-failed row survives the rebase abort when status.jsonl is tracked in the rebasing tree", async () => {
     // `git rebase --abort` resets the tree, discarding an uncommitted append to a
     // tracked status.jsonl — so the abort must run before the row is written.

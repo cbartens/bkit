@@ -287,7 +287,7 @@ export function addAllButCopied(tree, copied) {
     return runGit(tree, ["add", "-A", "--", ".", ...copyExcludes(tree, copied)]);
 }
 /** Whether `wt` holds changes beyond the entries setup copies in (`copyExcludes`). */
-const hasLeftovers = (wt) => (git(wt, ["status", "--porcelain", "--untracked-files=all", "--", ".", ...copyExcludes(wt)]) ??
+export const hasLeftovers = (wt) => (git(wt, ["status", "--porcelain", "--untracked-files=all", "--", ".", ...copyExcludes(wt)]) ??
     "") !== "";
 /**
  * The rows the dispatch seam appended after the last commit, by tracked path, when they

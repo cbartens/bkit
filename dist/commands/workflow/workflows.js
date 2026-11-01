@@ -160,19 +160,25 @@ function checkHeldLock(file, who) {
 // fail
 // ---------------------------------------------------------------------------
 /**
- * Abort a rebase left in progress in `tree`. `git rev-parse --git-path X` always
- * exits 0 (it only computes the path), so the directory's existence is the test.
+ * Abort a rebase or a merge left in progress in `tree` (ship Step 4 leaves a merge
+ * of origin/dev in progress for a hand resolution). `git rev-parse --git-path X`
+ * always exits 0 (it only computes the path), so the path's existence is the test.
  */
 function abortRebase(tree, log) {
-    const inProgress = ["rebase-merge", "rebase-apply"].some((name) => {
+    const present = (name) => {
         const p = git(tree, ["rev-parse", "--path-format=absolute", "--git-path", name]);
         return p !== null && fs.existsSync(p);
-    });
-    if (!inProgress)
+    };
+    const op = ["rebase-merge", "rebase-apply"].some(present)
+        ? "rebase"
+        : present("MERGE_HEAD")
+            ? "merge"
+            : null;
+    if (op === null)
         return false;
-    const res = runGit(tree, ["rebase", "--abort"]);
+    const res = runGit(tree, [op, "--abort"]);
     if (!res.ok)
-        log(`git rebase --abort failed in ${tree}: ${res.stderr}`);
+        log(`git ${op} --abort failed in ${tree}: ${res.stderr}`);
     return res.ok;
 }
 /** The workflow-failed state: row, rebase abort, lock release, sentinels. */
@@ -1806,7 +1812,7 @@ export const workflowsCommand = {
             ],
             output: {
                 row: "the appended workflow-failed row, or null (no --token, or no status.jsonl)",
-                rebaseAborted: "an in-progress rebase was found and aborted",
+                rebaseAborted: "an in-progress rebase or merge was found and aborted",
                 lock: "{path, existed, released, heldBy}: heldBy is another owner's lock line, left in place; null without --token",
                 sentinels: "[{name, path}] sentinels that existed before this call removed them",
                 handoverNeeded: "--max-exceeded, a sentinel existed, or a debug run in SOAK mode: write the abort handover",

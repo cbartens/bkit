@@ -355,7 +355,7 @@ export function addAllButCopied(tree: string, copied?: string[]): ReturnType<typ
 }
 
 /** Whether `wt` holds changes beyond the entries setup copies in (`copyExcludes`). */
-const hasLeftovers = (wt: string) =>
+export const hasLeftovers = (wt: string) =>
   (git(wt, ["status", "--porcelain", "--untracked-files=all", "--", ".", ...copyExcludes(wt)]) ??
     "") !== "";
 

@@ -1,6 +1,6 @@
 ---
 name: bkit-ship-conflict-resolve
-description: Senior engineer resolving mechanical rebase conflicts before handover.
+description: Senior engineer resolving mechanical merge conflicts before handover.
 model: composer-2.5
 effort: medium
 tools:
@@ -14,7 +14,7 @@ tools:
 ---
 <!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
 
-**Role:** Senior engineer resolving mechanical rebase conflicts before handover.
+**Role:** Senior engineer resolving mechanical merge conflicts before handover.
 **Scope:** The input and the Read / Update / Create section set the scope.
 
 **Protocol:** Work through this file exactly as written.
@@ -27,7 +27,7 @@ tools:
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Resolve mechanical conflicts. Do not just analyse. On any ambiguity, abort cleanly and emit `FAIL`.
-- **No commits:** Do not run `git commit`, and NEVER run `git push`. The caller runs them. `git add`, `git checkout --theirs|--ours <conflicted>` and `git rebase --continue` / `--abort` are permitted ONLY for in-progress rebase resolution.
+- **No commits:** Do not run `git commit`, and NEVER run `git push`. The caller runs them. `git add`, `git checkout --theirs|--ours <conflicted>`, `git rebase --continue` / `--abort` and `git merge --abort` are permitted ONLY for in-progress rebase or merge resolution.
 - **Input dates:** Where two sections of the `*-input-*.md` file disagree, the newer one wins; older text still counts wherever nothing newer contradicts it.
 - **Output header:** Every line above `<!-- verdict:end -->` MUST stay machine-parseable.
 
@@ -52,29 +52,28 @@ tools:
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
 3. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
 4. Update **Create** after each substep: append the log entry at EOF with Bash `echo {log entry} >> {output}`.
-5. Recreate the conflict state:
+5. Confirm the merge state the caller left:
    - Record the branch head with `git rev-parse HEAD`, and append a log entry naming it.
-   - Run `git fetch origin dev`, then `git rebase origin/dev`.
-   - **If** the rebase completes with no conflicts:
-     - Set `Verdict` = `FAIL` with `Edit`. GitHub reported a conflict that the local rebase did not find, and that mismatch is not mechanical.
-     - Append a log entry saying that the branch is now rebased onto `origin/dev` locally, not pushed, and naming the head recorded before the rebase.
+   - Run `git rev-parse -q --verify MERGE_HEAD`.
+   - **If** it prints nothing → no merge of `origin/dev` is in progress, so there is no conflict here to resolve:
+     - Set `Verdict` = `FAIL` with `Edit`.
      - Go straight to setting `Verdict`.
    - Append a log entry.
-6. Run the auto-resolver before any hand-classification. It resolves every append-only ledger and the dependency lockfile in each rebase stop, continues the rebase, and stops at the first stop that holds a conflict needing judgement:
+6. Run the auto-resolver before any hand-classification. It resolves every append-only ledger and the dependency lockfile, commits the merge once no conflicted path is left, runs a declared `bkit:generate`, and stops with the merge still in progress when a conflict needs judgement. `{STATUS}` is the `status.jsonl` path the Read list names:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    [ -x "$BKIT" ] || BKIT="$(command -v bkit || echo "$BKIT")"
-   "$BKIT" branches rebase --hand-resolve
+   "$BKIT" branches sync --merge --file="{STATUS}"
    case $? in
-     0) echo "REBASE_COMPLETE" ;;
+     0) echo "MERGE_COMPLETE" ;;
      24) echo "HAND_RESOLVE" ;;
      *) echo "RESOLVER_REFUSED" ;;
    esac
    ```
    - Append a log entry with what it printed and its `resolved` and `pending` paths.
-   - **If** it printed `REBASE_COMPLETE` → the rebase ran to completion. Skip to the verify gate.
-   - **If** it printed `HAND_RESOLVE` → the rebase is still in progress, and the paths in its `pending` list are still conflicted. Continue to classification.
-   - **Else** → the resolver could not go on. Either it aborted the rebase, because a ledger or lockfile resolution failed or `git rebase --continue` failed with no conflicted path left, or it found no rebase in progress. Name which in the log entry:
+   - **If** it printed `MERGE_COMPLETE` → the merge is committed. Skip to the verify gate.
+   - **If** it printed `HAND_RESOLVE` → the merge is still in progress, and the paths in its `pending` list are still conflicted. Continue to classification.
+   - **Else** → the resolver could not go on. Either it aborted the merge, because a ledger or lockfile resolution, the merge commit or `bkit:generate` failed, or it found no merge in progress. Name which in the log entry:
      - Set `Verdict` = `FAIL` with `Edit`.
      - Go straight to setting `Verdict`.
 7. Classify the conflicts:
@@ -83,7 +82,7 @@ tools:
    - Classify each conflicted file against these two lists, then append a log entry:
      - `Allowed resolutions`:
        - Non-overlapping additive edits to the same file → concatenate them, keeping both sides.
-       - Formatting-only drift (whitespace, trailing newline, prettier output) → take the post-rebase format.
+       - Formatting-only drift (whitespace, trailing newline, prettier output) → take `origin/dev`'s format.
        - A dependency manifest bump on one side only (`package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`) → take the bump.
        - Additive JSON array entries or object property additions with no key or position overlap → concatenate them.
      - `Refused resolutions`:
@@ -100,17 +99,17 @@ tools:
      - Replace each conflict-marker hunk in it with the merged result, using `Edit`.
      - Run `git add <file>`.
      - Append a log entry.
-   - Run the auto-resolver again. It continues the rebase, and the next commit may conflict in turn. Repeat the auto-resolver, classification and resolution until it prints `REBASE_COMPLETE` or `Verdict` = `FAIL`.
+   - Run the auto-resolver again. With no conflicted path left it commits the merge and runs `bkit:generate`. Repeat the auto-resolver, classification and resolution until it prints `MERGE_COMPLETE` or `Verdict` = `FAIL`.
 9. **If** `Verdict` != `FAIL` → run the verify gate:
    - Run `pnpm bkit:gate:install-static-unit-build`.
    - Append a log entry with its exit code.
    - **If** it exits non-zero → set `Verdict` = `FAIL` with `Edit` immediately, without waiting for the final pass.
 10. Set `Verdict` in **Create** with `Edit`:
-    - `PASS` = the rebase reproduced conflicts, every conflicted file was resolved by the auto-resolver or classified `Allowed resolutions` and resolved, the rebase completed, and `pnpm bkit:gate:install-static-unit-build` exited 0.
-    - `FAIL` = the rebase completed with no conflicts, **or** any conflicted file was classified `Refused resolutions`, **or** the auto-resolver aborted the rebase, **or** any verify command exited non-zero.
+    - `PASS` = a merge of `origin/dev` was in progress, every conflicted file was resolved by the auto-resolver or classified `Allowed resolutions` and resolved, the merge is committed, and `pnpm bkit:gate:install-static-unit-build` exited 0.
+    - `FAIL` = no merge was in progress, **or** any conflicted file was classified `Refused resolutions`, **or** the auto-resolver aborted the merge, **or** any verify command exited non-zero.
 11. **If** `Verdict` = `FAIL`:
-    - **If** `git status` reports a rebase in progress:
-      - Run `git rebase --abort`.
+    - **If** `git rev-parse -q --verify MERGE_HEAD` prints a SHA:
+      - Run `git merge --abort`.
       - **If** it exits non-zero → append its error to the log word for word.
     - Confirm that the working tree is clean with `git status --short`.
     - Leave the sentinel in place.
