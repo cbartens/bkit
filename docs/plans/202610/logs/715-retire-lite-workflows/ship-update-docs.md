@@ -2,11 +2,11 @@
 
 ## Files Modified
 
-- `docs/testing.md`
+- `docs/testing.md` (edited earlier this cycle, already committed in `edf98a3e6` and `e70ff7fa0`; this re-check found nothing new to change)
 
 ## Drift Resolved
 
-History: the clone is not shallow (`git rev-parse --is-shallow-repository` prints `false`), so all of `origin/dev..HEAD` (96 commits) was read.
+History: the clone is not shallow (`git rev-parse --is-shallow-repository` prints `false`), so all of `origin/dev..HEAD` (104 commits) was read.
 
 - `docs/testing.md` (content sync, then compress, then cross-references): the test inventory rows had not caught up with the tests this cycle added. Each row below now names the new coverage.
   - `commands/workflow/summary.test.ts`: `Publish: held` and `Docs: not synced` lines on a held build, `Publish: pr` otherwise, verdict and next step unchanged by `publish`.

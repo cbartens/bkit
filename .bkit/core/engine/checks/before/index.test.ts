@@ -126,6 +126,20 @@ describe("runPreflight", () => {
     expect(advisories.filter((f) => f.id === "bkit-tasks-form-stale")).toHaveLength(1);
   });
 
+  it("collects build publish advisories into advisories", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({
+        bkit: { workflows: { build: { publish: { remote: false, local: "x" } } } },
+      }),
+      "utf-8",
+    );
+    const { advisories } = runPreflight(makeModules("core"), tmpDir);
+    const ids = advisories.map((f) => f.id);
+    expect(ids).toContain("bkit-build-publish-remote");
+    expect(ids).toContain("bkit-build-publish-invalid");
+  });
+
   it("not-git-repo does NOT fire when --core is not requested", () => {
     // No package.json, no .git, but no --core either — not-git-repo should not fire
     fs.writeFileSync(path.join(tmpDir, "package.json"), '{"name":"test"}', "utf-8");

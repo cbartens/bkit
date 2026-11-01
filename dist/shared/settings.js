@@ -26,6 +26,19 @@ export const ASK_POINTS = [
 ];
 /** The limit key a point's block holds. */
 export const limitKey = (point) => point === "design.grill" ? "maxTurns" : "maxAttempts";
+/**
+ * The `{job}/{step}` CI steps of bkit's `bkit-ci.yml` template whose failure a
+ * `bkit:generate` fixes: the capability register and the mirror drift check. Always
+ * counted; `bkit.testing.ciGenerated` adds to it and cannot remove it.
+ */
+export const CI_GENERATED_FLOOR = [
+    "bkit-tests-static/Check Capability Register",
+    "bkit-tests-static/Run bkit Check",
+];
+/** The CI steps ship regenerates for: the floor plus the repo's `bkit.testing.ciGenerated`. */
+export const ciGeneratedSteps = (cfg) => [
+    ...new Set([...CI_GENERATED_FLOOR, ...cfg.ciGenerated]),
+];
 export const CONFIG_DEFAULTS = {
     ciWorkflow: "bkit-ci.yml",
     capstoneJob: "bkit-tests-check",
@@ -43,6 +56,7 @@ export const CONFIG_DEFAULTS = {
     // input, so a docs edit can red a test; a repo that knows its tests opts in.
     minPushPaths: [],
     ciSkipPaths: [],
+    ciGenerated: [],
     opencodeProvider: null,
     opencodeProviders: [],
     cloudAgents: DEFAULT_CLOUD_AGENTS,
@@ -58,6 +72,7 @@ export const CONFIG_DEFAULTS = {
     },
     // Plan caps, `.bkit/workflows.md` § Test-first.
     tasks: { maxPerGroup: 5, maxTestsPerGroup: 25, maxTestsPerTask: 10, maxTestFilesPerTask: 3 },
+    buildPublish: { remote: true, local: true },
     depUpdater: null,
     issueTrackerExplicit: false,
     cloudAgentsExplicit: false,
@@ -86,6 +101,33 @@ export function invalidTaskCaps(raw) {
         return ["tasks"];
     const set = raw;
     return TASK_CAP_KEYS.filter((k) => set[k] !== undefined && !validCap(set[k]));
+}
+/**
+ * The dotted keys of a `bkit.workflows.build` value that fall back to their default:
+ * `build` when set but not an object, `build.publish` when set but not an object,
+ * `build.publish.local` when set but not a boolean. `remote` is never listed: the
+ * preflight advisory `bkit-build-publish-remote` owns it.
+ */
+export function invalidBuildPublish(raw) {
+    if (raw === undefined)
+        return [];
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw))
+        return ["build"];
+    const publish = raw.publish;
+    if (publish === undefined)
+        return [];
+    if (publish === null || typeof publish !== "object" || Array.isArray(publish))
+        return ["build.publish"];
+    const local = publish.local;
+    return local !== undefined && typeof local !== "boolean" ? ["build.publish.local"] : [];
+}
+/** `bkit.workflows.build.publish`; `remote` always resolves `true`. */
+function buildPublish(raw) {
+    const { local } = record(raw);
+    return {
+        remote: true,
+        local: typeof local === "boolean" ? local : CONFIG_DEFAULTS.buildPublish.local,
+    };
 }
 /** `bkit.workflows.tasks` read key by key; a missing or invalid key takes its default. */
 function taskCaps(raw) {
@@ -157,6 +199,7 @@ export function readBkitConfig(root) {
     const workflows = record(bkit.workflows);
     const worktree = record(workflows.worktree);
     const ciSkip = testing.ciSkipPaths;
+    const generated = testing.ciGenerated;
     const copy = worktree.copy;
     const minFreeGb = workflows.minFreeGb;
     const lanes = testing.ciRequired;
@@ -202,6 +245,7 @@ export function readBkitConfig(root) {
             ? book.filter(nonEmptyString)
             : [...CONFIG_DEFAULTS.minPushPaths],
         ciSkipPaths: Array.isArray(ciSkip) ? ciSkip.filter(nonEmptyString) : [],
+        ciGenerated: Array.isArray(generated) ? generated.filter(nonEmptyString) : [],
         opencodeProvider: typeof provider === "string" && isOpencodeProvider(provider) ? provider : null,
         opencodeProviders: Array.isArray(providers)
             ? providers.filter((v) => typeof v === "string" && isOpencodeProvider(v))
@@ -209,6 +253,7 @@ export function readBkitConfig(root) {
         cloudAgents: parseCloudAgents(cloud.agent) ?? CONFIG_DEFAULTS.cloudAgents,
         asks: askSettings(workflows),
         tasks: taskCaps(workflows.tasks),
+        buildPublish: buildPublish(record(workflows.build).publish),
         depUpdater: parseDepUpdater(record(bkit.dependencies).updater),
         issueTrackerExplicit: tracker.default !== undefined && tracker.default !== "",
         cloudAgentsExplicit: cloud.agent !== undefined && cloud.agent !== "",

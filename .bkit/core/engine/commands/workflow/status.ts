@@ -176,7 +176,14 @@ const DEBUG_MODES = ["NORMAL", "SOAK"];
 const PUSH_MODES = ["PR", "LOCAL"];
 const STRATEGIES = ["STANDARD", "PIVOT", "FINAL"];
 
-const ROUTE_FIELDS = ["verdict", "failures", "strategy", "debugMode", "pushMode"] as const;
+const ROUTE_FIELDS = [
+  "verdict",
+  "failures",
+  "strategy",
+  "debugMode",
+  "pushMode",
+  "publish",
+] as const;
 type RouteField = (typeof ROUTE_FIELDS)[number];
 
 /** Exit code: a `--require`d field is missing or holds a value outside its set. */
@@ -190,6 +197,8 @@ function route(runs: WorkflowRun[], workflow: string, step: string | undefined, 
     nextStrategy: null,
     debugMode: null,
     pushMode: null,
+    publish: null,
+    publishSource: null,
     debugAttempt: 0,
     parentSha: null,
   };
@@ -234,6 +243,8 @@ function route(runs: WorkflowRun[], workflow: string, step: string | undefined, 
         value === "" ? `${field} not recorded` : `${field} "${value}" is not ${allowed.join("|")}`;
   }
 
+  problems.publish = "publish not resolved: needs --workflow=build with --prompt-file";
+
   const attempt = Number(lastRun(runs, workflow)?.debugAttempt ?? 0);
   out.debugAttempt = Number.isFinite(attempt) ? attempt : 0;
   return { out, problems };
@@ -263,6 +274,34 @@ export function debugStart(runs: WorkflowRun[], promptText: string, fixMax: numb
     gates: promptText.includes("[live=off]")
       ? BKIT_DEBUG_GATES.filter((g) => !g.endsWith("-live"))
       : [...BKIT_DEBUG_GATES],
+  };
+}
+
+const PUBLISH_TOKEN = /(?<![\w-])publish=(true|false)(?![\w-])/;
+
+/**
+ * Build's ending, from the session prompt, `bkit.workflows.build.publish` and the runtime.
+ * A `publish=true|false` token wins; else LOCAL reads `publish.local` and any other runtime
+ * `publish.remote`. A non-LOCAL `false` resolves `true`. No `runtime-resolved` row throws.
+ */
+export function publishRoute(
+  rows: StatusRow[],
+  promptText: string,
+  config: { remote: boolean; local: boolean },
+): { publish: boolean; publishSource: "token" | "local" | "remote" | "coerced" } {
+  const row = rows.filter((r) => r.type === "runtime-resolved" && r.workflow === "build").at(-1);
+  if (row === undefined)
+    throw new CommandError(
+      EXIT_ROUTE_MISSING,
+      "no runtime-resolved row for build: Step 2 never recorded the runtime",
+    );
+  const local = row.runtime === "LOCAL";
+  const token = PUBLISH_TOKEN.exec(promptText)?.[1];
+  const wanted = token !== undefined ? token === "true" : local ? config.local : config.remote;
+  if (!local && !wanted) return { publish: true, publishSource: "coerced" };
+  return {
+    publish: wanted,
+    publishSource: token !== undefined ? "token" : local ? "local" : "remote",
   };
 }
 
@@ -371,7 +410,7 @@ export const statusCommand: CommandSpec = {
         {
           name: "prompt-file",
           type: "string",
-          help: "debug only: the session prompt; decides this run's attempt, mode, repro and gates (a missing status.jsonl is a fresh run)",
+          help: "debug or build: the session prompt; debug: this run's attempt, mode, repro and gates (a missing status.jsonl is a fresh run); build: publish and publishSource",
         },
         { name: "fid", type: "string", help: "with --prompt-file, in place of --file: feature id" },
         { name: "month", type: "string", help: "with --prompt-file, in place of --file: YYYYMM" },
@@ -390,6 +429,10 @@ export const statusCommand: CommandSpec = {
         repro: "with --prompt-file: [repro] in the prompt",
         gates:
           "with --prompt-file: the gates to try, deepest first; [live=off] in the prompt drops the live gate",
+        publish:
+          "with --workflow=build and --prompt-file: whether the build publishes (a publish=true|false token, else publish.local on LOCAL or publish.remote elsewhere; a non-LOCAL false resolves true), else null",
+        publishSource:
+          "with publish: token | local | remote | coerced (a non-LOCAL false forced to true), else null",
         parentSha:
           "HEAD when the step's last DONE row in the active run was written — a build-group-start row's is the group's start commit, the base for `context diff` — or null",
       },
@@ -427,8 +470,8 @@ export const statusCommand: CommandSpec = {
           }
         }
         const promptFile = str(ctx.flags.promptFile);
-        if (promptFile !== undefined && ctx.flags.workflow !== "debug")
-          throw new CommandError(EXIT.USAGE, "--prompt-file is for --workflow=debug");
+        if (promptFile !== undefined && !["debug", "build"].includes(String(ctx.flags.workflow)))
+          throw new CommandError(EXIT.USAGE, "--prompt-file is for --workflow=debug or build");
         const file = routeFile(ctx);
         let promptText = "";
         if (promptFile !== undefined) {
@@ -446,9 +489,15 @@ export const statusCommand: CommandSpec = {
         );
         if (promptFile !== undefined) {
           const root = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
-          const fixMax = readBkitConfig(root).asks["debug.fix"].max;
-          Object.assign(out, debugStart(runs, promptText, fixMax));
-          delete problems.debugMode;
+          const config = readBkitConfig(root);
+          if (ctx.flags.workflow === "debug") {
+            Object.assign(out, debugStart(runs, promptText, config.asks["debug.fix"].max));
+            delete problems.debugMode;
+          } else {
+            const rows = fs.existsSync(file) ? readStatusRows(file) : [];
+            Object.assign(out, publishRoute(rows, promptText, config.buildPublish));
+            delete problems.publish;
+          }
         }
         ctx.emit(out);
         const failed = required.filter((r) => problems[r as RouteField] !== undefined);

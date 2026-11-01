@@ -948,6 +948,35 @@ describe("bkit workflows close", () => {
     expect(r.json.report.length).toBeGreaterThan(0);
   });
 
+  it("records ending held and publish false on the workflow-done row", async () => {
+    const cwd = closable();
+    const r = await run(cwd, wf("close", "build", "--ending=held", "--publish=false"));
+    expect(r.code).toBe(0);
+    const done = rows(statusOf(cwd)).filter((x) => x.type === "workflow-done");
+    expect(done).toHaveLength(1);
+    expect(done[0]).toMatchObject({ ending: "held", publish: false });
+    const outcome = writtenOutcome(cwd);
+    expect(outcome).toMatchObject({ ending: "held", publish: false });
+    expect(validate(outcome!)).toEqual({ ok: true });
+  });
+
+  it("defaults the close row to ending done", async () => {
+    const cwd = closable();
+    expect((await run(cwd, wf("close", "build"))).code).toBe(0);
+    const done = rows(statusOf(cwd)).filter((x) => x.type === "workflow-done");
+    expect(done[0]).toMatchObject({ ending: "done" });
+    expect(done[0]).not.toHaveProperty("publish");
+    expect(writtenOutcome(cwd)).toMatchObject({ ending: "done" });
+    expect(writtenOutcome(cwd)).not.toHaveProperty("publish");
+  });
+
+  it("refuses an unknown ending", async () => {
+    const cwd = closable();
+    expect((await run(cwd, wf("close", "build", "--ending=paused"))).code).toBe(2);
+    expect((await run(cwd, wf("close", "build", "--publish=maybe"))).code).toBe(2);
+    expect(rows(statusOf(cwd)).some((x) => x.type === "workflow-done")).toBe(false);
+  });
+
   it("stamps its compliance rows with the same run.parentSha as its counter and outcome, at the close step", async () => {
     const cwd = closable();
     expect((await run(cwd, wf("close", "build"))).code).toBe(0);
@@ -2897,6 +2926,28 @@ describe("bkit workflows summary", () => {
       `--workflow=${workflow}`,
       `--file=${path.join(cwd, SREL, "status.jsonl")}`,
     ]);
+
+  it("passes publish into the summary input", async () => {
+    const cwd = tree(
+      [done("build-plan-verify", "2020-01-01T00:10:00Z", { verdict: "PASS", failures: 0 })],
+      planOf(task(1, true)),
+    );
+    const md = () => fs.readFileSync(path.join(cwd, SREL, "build-summary.md"), "utf-8");
+    const base = [
+      "workflows",
+      "summary",
+      "--workflow=build",
+      `--file=${path.join(cwd, SREL, "status.jsonl")}`,
+    ];
+    expect((await run(cwd, [...base, "--publish=false"])).code).toBe(0);
+    expect(md()).toContain("Publish: held");
+    expect(md()).toContain("Docs: not synced");
+    expect((await run(cwd, [...base, "--publish=true"])).code).toBe(0);
+    expect(md()).toContain("Publish: pr");
+    expect((await run(cwd, base)).code).toBe(0);
+    expect(md()).toContain("Publish: pr");
+    expect((await run(cwd, [...base, "--publish=maybe"])).code).toBe(2);
+  });
 
   it("summary is FAIL when a plan task is not done", async () => {
     const cwd = tree(

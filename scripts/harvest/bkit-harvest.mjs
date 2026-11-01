@@ -81,7 +81,7 @@
  *            `workflow-done` row's, else its last close step's, else null), parentShas (every
  *            commit its status rows name)
  *   time     start, end, totalMinutes, activeMinutes, activeFrom {chats, bytes}, lastActivity
- *   ending   `done` | `close-failed` | `failed` | `decision-pause` | `stopped`
+ *   ending   `done` | `close-failed` | `failed` | `decision-pause` | `stopped` | `held`
  *   ci       one entry per close step that dispatched CI: {status, reason?, attempts}
  *   steps    total {n, totalMinutes, activeMinutes}, byStep {<step>: {n, totalMinutes,
  *            activeMinutes}}; a step's minutes run from the row before it that is not a mark row
@@ -1448,9 +1448,10 @@ const joinSha = (run) =>
  * `workflow-done` and the close after it failed: its last close found CI never started
  * (`ciDispatch.outcome: "unresolved"`), or a `workflow-failed` row came after the done row with
  * no close after it. With no end row, `decision-pause` when its `build-decision-<run>-*.md` is
- * still `Status: OPEN`, else `stopped`.
+ * still `Status: OPEN`, else `stopped`. `held` when the last `workflow-done` row says `ending: held`.
  */
 export function endingOf(run, dir, ordinal) {
+  if (run.rows.findLast((r) => r.type === "workflow-done")?.ending === "held") return "held";
   // splitRuns keeps only close steps after an end row, so a done row before the last end row
   // means the work finished and anything after it is the close.
   if (run.end && run.rows.some((r) => r.type === "workflow-done")) {
@@ -4229,7 +4230,7 @@ export function renderReport(ledgerRows, names, now = Date.now(), logDirs = new 
   out.push(
     "## Workflow runs, from the run logs\n\n" +
       "Every run is listed; one whose log changed within the settle window is **open**: counted here, left out of the medians. " +
-      "**Ending**: `done` / `failed` from its last end row; `close-failed` = the work wrote `workflow-done` and only the close after it failed, or its last close found CI never started (a later close that started CI → `done`); with no end row, `decision-pause` when its `build-decision-*.md` is still `Status: OPEN`, else `stopped`. **Close CI not started**: closes, counted one by one, whose `ciDispatch` found CI never started, by reason.\n",
+      "**Ending**: `done` / `failed` from its last end row; `close-failed` = the work wrote `workflow-done` and only the close after it failed, or its last close found CI never started (a later close that started CI → `done`); with no end row, `decision-pause` when its `build-decision-*.md` is still `Status: OPEN`, else `stopped`; `held` = the last `workflow-done` row says `ending: held` (a local build that published nothing). **Close CI not started**: closes, counted one by one, whose `ciDispatch` found CI never started, by reason.\n",
   );
   const wfs = uniq(runs.map(wfOf)).sort();
   /** Median of the known values, `-` when none is known; with how many runs it covers when not all. */
@@ -4239,7 +4240,7 @@ export function renderReport(ledgerRows, names, now = Date.now(), logDirs = new 
     const m = Math.round(median(known));
     return known.length === xs.length ? m : `${m} (${known.length} of ${xs.length})`;
   };
-  const endings = ["done", "close-failed", "failed", "decision-pause", "stopped"];
+  const endings = ["done", "close-failed", "failed", "decision-pause", "stopped", "held"];
   out.push(
     table(
       [

@@ -560,7 +560,7 @@ describe("bkit status route --prompt-file (debug Step 1)", () => {
 
   it("refuses --prompt-file for another workflow, and a missing --file without --fid", async () => {
     const p = prompt("x");
-    const other = ["status", "route", "--workflow=build", `--prompt-file=${p}`];
+    const other = ["status", "route", "--workflow=ship", `--prompt-file=${p}`];
     expect((await run([...other, `--file=${path.join(tmp(), "s.jsonl")}`])).code).toBe(2);
     expect((await run(["status", "route", "--workflow=debug", `--prompt-file=${p}`])).code).toBe(2);
     expect((await run(["status", "route", "--workflow=debug"])).code).toBe(2);
@@ -576,6 +576,83 @@ describe("bkit status route --prompt-file (debug Step 1)", () => {
     ]);
     expect(r.code).toBe(2);
     expect(r.err).toContain("nope.md");
+  });
+});
+
+describe("bkit status route --workflow=build publish", () => {
+  const runtimeRow = (runtime: string) => ({
+    type: "runtime-resolved",
+    workflow: "build",
+    at: "2026-10-01T00:00:01Z",
+    runtime,
+    runtimeWorktrees: true,
+    runtimeDevPushes: true,
+    runtimeGithubCli: true,
+  });
+  const setup = (rows: object[], promptText: string, config?: object) => {
+    const root = tmp();
+    if (config)
+      fs.writeFileSync(
+        path.join(root, "package.json"),
+        JSON.stringify({ bkit: { workflows: { build: { publish: config } } } }),
+      );
+    const file = path.join(root, "status.jsonl");
+    fs.writeFileSync(file, rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
+    const prompt = path.join(root, "prompt.md");
+    fs.writeFileSync(prompt, promptText);
+    return { root, file, prompt };
+  };
+  const route = (s: ReturnType<typeof setup>) =>
+    run(
+      ["status", "route", `--file=${s.file}`, "--workflow=build", `--prompt-file=${s.prompt}`],
+      s.root,
+    );
+  const rows = (runtime: string) => [started("build", "2026-10-01T00:00:00Z"), runtimeRow(runtime)];
+
+  it("lets the publish token override publish.local", async () => {
+    const r = await route(setup(rows("LOCAL"), "/bkit-build 7 publish=true", { local: false }));
+    expect(r.json).toMatchObject({ publish: true, publishSource: "token" });
+    const h = await route(setup(rows("LOCAL"), "/bkit-build 7 publish=false"));
+    expect(h.json).toMatchObject({ publish: false, publishSource: "token" });
+  });
+
+  it("reads publish.local on LOCAL without a token", async () => {
+    const r = await route(setup(rows("LOCAL"), "/bkit-build 7", { local: false }));
+    expect(r.json).toMatchObject({ publish: false, publishSource: "local" });
+  });
+
+  it("coerces publish false to true on a non-LOCAL runtime", async () => {
+    const r = await route(setup(rows("CLOUD_CLAUDE"), "/bkit-build 7 publish=false"));
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ publish: true, publishSource: "coerced" });
+  });
+
+  it("accepts --prompt-file with --workflow=build", async () => {
+    const r = await route(setup(rows("LOCAL"), "/bkit-build 7"));
+    expect(r.code).toBe(0);
+    expect(r.json.debugMode).toBeNull();
+    expect(r.json.gates).toBeUndefined();
+  });
+
+  it("ignores publish=maybe and falls through to config", async () => {
+    const r = await route(setup(rows("LOCAL"), "/bkit-build 7 publish=maybe", { local: false }));
+    expect(r.json).toMatchObject({ publish: false, publishSource: "local" });
+  });
+
+  it("refuses publish without a runtime-resolved row", async () => {
+    const r = await route(setup([started("build", "2026-10-01T00:00:00Z")], "/bkit-build 7"));
+    expect(r.code).toBe(4);
+    expect(r.err).toContain("Step 2");
+  });
+
+  it("prints publishSource for token, local, remote and coerced", async () => {
+    const sources = [
+      (await route(setup(rows("LOCAL"), "publish=false"))).json.publishSource,
+      (await route(setup(rows("LOCAL"), "x"))).json.publishSource,
+      (await route(setup(rows("GITHUB_ACTION"), "x"))).json.publishSource,
+      (await route(setup(rows("GITHUB_ACTION"), "publish=false"))).json.publishSource,
+    ];
+    expect(sources).toEqual(["token", "local", "remote", "coerced"]);
   });
 });
 

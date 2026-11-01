@@ -155,6 +155,8 @@ export const repoCommand = {
                 trackerProgress: "the state an issue moves to when work starts: package.json bkit.tracker.<tracker>.progress for the wired tracker, at its default when unset (github `In progress`, linear `started`, jira `In Progress`); null under none",
                 trackerReview: "the state an issue moves to when it is handed to a human: package.json bkit.tracker.<tracker>.review for the wired tracker, at its default when unset (github `In review`, linear `In Review`, jira `In Review`); null under none",
                 tasks: "{maxPerGroup, maxTestsPerGroup, maxTestsPerTask, maxTestFilesPerTask}: the plan caps from package.json bkit.workflows.tasks, each missing or invalid key at its default",
+                buildPublishRemote: "boolean: the remote build ending from package.json bkit.workflows.build.publish.remote; always true, a false value is refused",
+                buildPublishLocal: "boolean: the local build ending from package.json bkit.workflows.build.publish.local; true publishes, false holds; true when unset or invalid",
             },
             exitCodes: {
                 [EXIT_NO_REPO]: "neither gh nor the origin remote named an owner/repo",
@@ -208,6 +210,8 @@ export const repoCommand = {
                     trackerProgress: states?.progress ?? null,
                     trackerReview: states?.review ?? null,
                     tasks: config.tasks,
+                    buildPublishRemote: config.buildPublish.remote,
+                    buildPublishLocal: config.buildPublish.local,
                 });
                 if (branch === null && ctx.flags.allowDetached !== true) {
                     ctx.log("HEAD is detached — no current branch");

@@ -159,7 +159,6 @@ const GROUP_A_MD_FILES: Array<[root: string, rel: string]> = [
   [CORE_ROOT, ".agents/rules.md"],
   [CORE_ROOT, ".agents/docs.md"],
   [CORE_ROOT, ".agents/skills.md"],
-  [CORE_ROOT, ".bkit/lite.md"],
   [CORE_ROOT, "docs/templates/bkit-plan.md"],
   ...listAuditTemplates().map((rel): [string, string] => [CORE_ROOT, rel]),
 ];
@@ -390,5 +389,49 @@ describe("husky templates — no bkit markers in template content", () => {
   it(".husky/pre-commit template still invokes pnpm at the script level", () => {
     const content = readTemplate(".husky/pre-commit");
     expect(content).toContain("pnpm");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Retired lite workflows: the change form, the reference docs and the root README
+// ---------------------------------------------------------------------------
+
+describe("retired lite guidance", () => {
+  const REPO_ROOT = path.resolve(".");
+  const readRepo = (rel: string) => fs.readFileSync(path.join(REPO_ROOT, rel), "utf-8");
+  const README = readRepo("README.md");
+
+  it("the change issue form names no lite workflow", () => {
+    for (const rel of [
+      ".github/ISSUE_TEMPLATE/bkit-change.yml",
+      ".bkit/templates/.github/ISSUE_TEMPLATE/bkit-change.yml",
+    ]) {
+      expect(readRepo(rel)).not.toMatch(/:lite\b|lite\.md|lite workflow/i);
+    }
+  });
+
+  it("the shipped reference docs list no lite doc", () => {
+    const docs = fs.readdirSync(path.join(CORE_ROOT, ".bkit"));
+    expect(docs).not.toContain("lite.md");
+    expect(readRepo(".bkit/core/.agents/docs.md")).not.toMatch(/lite\.md/);
+    expect(readRepo(".bkit/core/.bkit/README.md")).not.toMatch(/lite\.md|:lite\b/);
+  });
+
+  it("the root README points small changes at /bkit-build", () => {
+    expect(README).not.toMatch(/:lite\b|lite\.md|\blite workflows?\b/i);
+    expect(README).toContain("/bkit-build #N publish=false");
+  });
+
+  it("the root README carries the held handoff", () => {
+    expect(README).toContain("Publish: held");
+    expect(README).toContain("Docs: not synced");
+    expect(README).toContain("/bkit-ship");
+  });
+
+  it("the root README carries the manual batch recipe with both limitations", () => {
+    expect(README).toMatch(/batch recipe/i);
+    expect(README).toMatch(/only the last (FID|feature)/i);
+    expect(README).toMatch(/never batch migrations/i);
+    expect(README).toMatch(/you own the push, the PR, the CI gate, the sweep and the docs sync/i);
   });
 });

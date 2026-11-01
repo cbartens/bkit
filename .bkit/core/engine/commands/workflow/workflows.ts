@@ -1195,6 +1195,20 @@ function closeComment(
   });
 }
 
+/** `--ending` / `--publish` of the close verb, validated. */
+function closeEnding(f: Record<string, FlagValue>): Pick<CloseInput, "ending" | "publish"> {
+  const ending = str(f.ending);
+  if (ending !== undefined && ending !== "done" && ending !== "held")
+    throw new CommandError(EXIT.USAGE, `--ending must be done or held, got ${ending}`);
+  const publish = str(f.publish);
+  if (publish !== undefined && publish !== "true" && publish !== "false")
+    throw new CommandError(EXIT.USAGE, `--publish must be true or false, got ${publish}`);
+  return {
+    ...(ending === undefined ? {} : { ending }),
+    ...(publish === undefined ? {} : { publish: publish === "true" }),
+  };
+}
+
 export interface CloseInput {
   workflow: string;
   fid: string;
@@ -1212,6 +1226,10 @@ export interface CloseInput {
   number?: string;
   title?: string;
   tree?: string;
+  /** `held` = a local build that published nothing; default `done`. */
+  ending?: "done" | "held";
+  /** The resolved publish value of a build; absent when unset. */
+  publish?: boolean;
 }
 
 /**
@@ -1253,7 +1271,15 @@ export function closeWorkflow(
   }
   writeCompletenessRow(where.status, workflow, parentSha, log);
   const endAt = statusTimestamp();
-  const row = { type: "workflow-done" as const, workflow, at: endAt, parentSha };
+  const ending = o.ending ?? "done";
+  const row = {
+    type: "workflow-done" as const,
+    workflow,
+    at: endAt,
+    parentSha,
+    ending,
+    ...(o.publish === undefined ? {} : { publish: o.publish }),
+  };
   fs.appendFileSync(where.status, appendLine(row));
 
   const repo = resolveRepoSlug(where.root) || "unknown/repo";
@@ -1309,7 +1335,8 @@ export function closeWorkflow(
     by,
     run: { parentSha, ...(o.prNumber === undefined ? {} : { pr: o.prNumber }) },
     time: startKnown === undefined ? null : timeBlock(startKnown, Math.max(startKnown, endMs)),
-    ending: "done",
+    ending,
+    ...(o.publish === undefined ? {} : { publish: o.publish }),
     lines,
     ...(runRowsOf.length > 0 ? { steps: stepsBlock(runRowsOf) } : {}),
     ...(ci.length > 0 ? { ci } : {}),
@@ -1698,8 +1725,12 @@ function summaryVerb(ctx: RunContext): number {
       ? fs.readFileSync(organisedPath, "utf-8")
       : undefined;
   const prNumber = positiveInt(ctx.flags.pr, "pr");
+  const publishFlag = str(ctx.flags.publish);
+  if (publishFlag !== undefined && publishFlag !== "true" && publishFlag !== "false")
+    throw new CommandError(EXIT.USAGE, `--publish must be true or false, got ${publishFlag}`);
 
   const summary = buildSummary({
+    publish: publishFlag === undefined ? undefined : publishFlag === "true",
     workflow: workflow as SummaryWorkflow,
     fid,
     ref: refOf(fid, readIssueTracker(tree)),
@@ -2332,6 +2363,16 @@ export const workflowsCommand: CommandSpec = {
         ...COMMENT_FLAGS,
         { name: "tree", type: "string", help: "the close comment links the tree of this ref" },
         {
+          name: "ending",
+          type: "string",
+          help: "done|held (default done); held = a local build that published nothing",
+        },
+        {
+          name: "publish",
+          type: "string",
+          help: "build: true|false, the resolved publish value; recorded on the workflow-done and outcome rows",
+        },
+        {
           name: "flush",
           type: "boolean",
           help: "ship: commit `ship DONE` in a throwaway origin/dev checkout carrying the run's book, land it on dev (refused: a ship-close PR), release the lock (--token), remove the worktree",
@@ -2435,6 +2476,7 @@ export const workflowsCommand: CommandSpec = {
           number: str(f.number),
           title: str(f.title),
           tree: str(f.tree),
+          ...closeEnding(f),
         };
         const finalParts = finalReturnParts(ctx, input.fid);
         if (f.flush === true) {
@@ -2628,6 +2670,11 @@ export const workflowsCommand: CommandSpec = {
           name: "pr",
           type: "string",
           help: "ship: the PR number; its size comes from gh pr view (left out when gh cannot answer)",
+        },
+        {
+          name: "publish",
+          type: "string",
+          help: "build: true|false, the resolved ending; false writes `Publish: held` and `Docs: not synced` (default true)",
         },
       ],
       output: {

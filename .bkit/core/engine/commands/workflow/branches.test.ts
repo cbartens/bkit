@@ -3129,3 +3129,131 @@ describe("branches land", { timeout: GIT_TIMEOUT }, () => {
     expect(fs.existsSync(path.join(gh.base, "updates"))).toBe(false);
   });
 });
+
+describe("branches regenerate", { timeout: GIT_TIMEOUT }, () => {
+  const STATUS = "docs/plans/202611/logs/1-x/status.jsonl";
+  /** A feature branch declaring bkit:generate as `body`, with the run's status.jsonl left uncommitted. */
+  function withGenerate(
+    name: string,
+    body: string | undefined,
+    files: Record<string, string> = {},
+  ) {
+    const { clone } = featureBranch(name);
+    const scripts = body === undefined ? {} : { "bkit:generate": body };
+    commit(
+      clone,
+      { "package.json": JSON.stringify({ name: "x", scripts }), [STATUS]: "", ...files },
+      "chore: generate script",
+    );
+    write(clone, STATUS, '{"type":"step-done"}\n');
+    return clone;
+  }
+  const node = (js: string) => `node -e "${js}"`;
+  const subject = (cwd: string) => git(cwd, "log", "-1", "--format=%s").out;
+  const committedFiles = (clone: string) =>
+    git(clone, "show", "--name-only", "--format=", "HEAD").out.split("\n").filter(Boolean);
+
+  it("commits only what bkit:generate changed; the run's status.jsonl stays uncommitted", async () => {
+    const clone = withGenerate(
+      "regen-commit",
+      node("require('fs').writeFileSync('docs/capabilities.md','fresh\\\\n')"),
+    );
+    const before = sha(clone);
+    const r = await run(clone, ["regenerate", "--fid=1-x", `--file=${STATUS}`]);
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({
+      outcome: "committed",
+      head: sha(clone),
+      paths: ["docs/capabilities.md"],
+    });
+    expect(subject(clone)).toBe("chore(1-x): regenerate before re-validating");
+    expect(committedFiles(clone)).toEqual(["docs/capabilities.md"]);
+    expect(git(clone, "status", "--porcelain").out).toBe(`M ${STATUS}`);
+    const rows = read(clone, STATUS)
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
+    expect(rows.at(-1)).toMatchObject({
+      type: "engine-action",
+      action: "regenerate",
+      key: `regenerate/${before}`,
+      ref: sha(clone),
+    });
+  });
+
+  it("--attempt names the merge round in a fix commit", async () => {
+    const clone = withGenerate(
+      "regen-attempt",
+      node("require('fs').writeFileSync('docs/capabilities.md','fresh\\\\n')"),
+    );
+    const r = await run(clone, ["regenerate", "--attempt=2"]);
+    expect(r.code).toBe(0);
+    expect(subject(clone)).toBe("fix(1-x): regenerate attempt 2");
+  });
+
+  it("commits a rewritten and a deleted tracked file", async () => {
+    const clone = withGenerate(
+      "regen-tracked",
+      node(
+        "const fs=require('fs');fs.writeFileSync('dist/a.js','new\\\\n');fs.rmSync('dist/old.js')",
+      ),
+      { "dist/a.js": "old\n", "dist/old.js": "gone\n" },
+    );
+    const r = await run(clone, ["regenerate"]);
+    expect(r.code).toBe(0);
+    expect(r.json?.paths).toEqual(["dist/a.js", "dist/old.js"]);
+    expect(committedFiles(clone)).toEqual(["dist/a.js", "dist/old.js"]);
+    expect(git(clone, "status", "--porcelain").out).toBe(`M ${STATUS}`);
+  });
+
+  it("reports unchanged and commits nothing when bkit:generate changed nothing", async () => {
+    const clone = withGenerate("regen-unchanged", "true");
+    const before = sha(clone);
+    const r = await run(clone, ["regenerate"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({ outcome: "unchanged", head: before, paths: [] });
+    expect(sha(clone)).toBe(before);
+  });
+
+  it.each([
+    ["no scripts", undefined],
+    ["an empty script", ""],
+  ])("reports undeclared and runs nothing with %s", async (_label, body) => {
+    const clone = withGenerate("regen-undeclared", body);
+    const before = sha(clone);
+    const r = await run(clone, ["regenerate"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({ outcome: "undeclared", head: before, paths: [] });
+    expect(sha(clone)).toBe(before);
+  });
+
+  it("exits 25 when bkit:generate fails, logging its output, and commits nothing", async () => {
+    const clone = withGenerate("regen-fail", "echo 'graph build broke' >&2; exit 3");
+    const before = sha(clone);
+    const r = await run(clone, ["regenerate"]);
+    expect(r.code).toBe(25);
+    expect(r.err).toContain("exited 3 on the branch");
+    expect(r.err).toContain("graph build broke");
+    expect(sha(clone)).toBe(before);
+  });
+
+  it("exits 25 and commits nothing when bkit:generate rewrites a path that was already changed", async () => {
+    const clone = withGenerate(
+      "regen-dirty",
+      node(`require('fs').appendFileSync('${STATUS}','{}\\\\n')`),
+    );
+    const before = sha(clone);
+    const r = await run(clone, ["regenerate"]);
+    expect(r.code).toBe(25);
+    expect(r.err).toContain(STATUS);
+    expect(r.err).toContain("already held uncommitted changes");
+    expect(sha(clone)).toBe(before);
+  });
+
+  it("refuses dev, and an --attempt that is not a whole number >= 1", async () => {
+    const clone = withGenerate("regen-usage", "true");
+    expect((await run(clone, ["regenerate", "--attempt=0"])).code).toBe(2);
+    git(clone, "checkout", "-q", "-B", "dev");
+    expect((await run(clone, ["regenerate"])).code).toBe(2);
+  });
+});

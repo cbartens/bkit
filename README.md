@@ -97,10 +97,20 @@ Everything a senior team would otherwise write down over years, in files you can
 | Work out how to build it | [`/bkit-design`](.bkit/pipeline.md#bkit-design) | Reads related issues and past decisions. Three agents propose different approaches, two critique them, and throwaway code tests any risky unknown the reviewers flag. **You approve one design.** |
 | Plan the work | [`/bkit-plan`](.bkit/pipeline.md#bkit-plan) | A plan of small, self-contained tasks, each naming the code it touches and the test that proves it's done. Two reviewers and a scope check go over it in one round, with past bugs and postponed work in view. **You approve it.** |
 | Build it | [`/bkit-build`](.bkit/pipeline.md#bkit-build) | Checks the plan still matches the code, then builds it one group of tasks at a time, each with a fresh agent: tests first, then code, then an independent check. Hunts for bugs and security holes (only security holes on a small change), fixes what it finds as more tasks, and opens a pull request. |
+| Build it, hold the push | `/bkit-build #N publish=false` | The same build, stopped before the push: no pull request, no CI, the worktree and branch kept. `/bkit-ship <ref>` lands it later. |
 | Fix what broke | [`/bkit-debug`](.bkit/pipeline.md#bkit-debug) | Pulls evidence from CI and your platforms, fixes the root cause, re-tests and records the lesson. Hard runtime bugs get their own mode; if it can't fix something, it stops and writes you a clear handover. |
 | Ship it | [`/bkit-ship`](.bkit/pipeline.md#bkit-ship) | Checks nothing planned was quietly dropped, waits for every test lane to pass, merges into `dev` and updates the docs. |
 | Health check | [35 audits](#audits) | One specialist checklist per area. Findings feed straight into `/bkit-plan`. |
 | Housekeeping | 8 utility agents | Keep docs, decisions, lessons and known bugs current, and rank what to work on next. |
+
+**Build now, publish later.** `/bkit-build #N` builds and publishes: it pushes `feat/{FID}`, opens the pull request and starts CI. `/bkit-build #N publish=false` builds locally and holds. The same plan, tests-first checks and bug hunt run, but nothing is pushed, no pull request is opened and no CI starts. The worktree and branch stay, the lock is released, the issue moves to `In review` with a "built locally, not published" comment, and the summary reads `Publish: held` and `Docs: not synced`. `/bkit-ship <ref>` later lands a held build end to end. To make holding the default on your machine, set `bkit.workflows.build.publish.local` to `false` in `package.json`. Cloud runs always publish: `publish.remote` accepts only `true`, and `publish=false` on a cloud run is turned back into `true` with a warning.
+
+<a id="batch-recipe"></a>
+
+**Batch recipe (manual).** To land several held builds in one go, build each with `publish=false`, then land them yourself with `git`: merge the held `feat/{FID}` branches into one branch off `dev`, push it, open one pull request and let CI run. bkit has no batch command, and you own the push, the PR, the CI gate, the sweep and the docs sync, because `/bkit-ship` does none of them for a batch. Two limits apply:
+
+- One head commit: post-merge auto-debug sees only the last FID, so a failure from an earlier build in the batch is not routed to its own issue.
+- Never batch migrations: a batch applies them together, and one bad migration blocks every build in it.
 
 Every agent in each phase, in the order it runs and what it checks: [pipeline reference](.bkit/pipeline.md#pipeline-map). Every step, verdict and contract: [`.bkit/workflows.md`](.bkit/workflows.md).
 

@@ -290,7 +290,9 @@ describe("Failure Path", () => {
     "%s always keeps its record through one `workflows handover --push` in the run's worktree",
     (name) => {
       const failure = section(workflow(name), /Failure Path/);
-      const calls = commandLines(failure, "workflows handover").map((l) => l.trim());
+      const calls = commandLines(failure, "workflows handover")
+        .map((l) => l.trim())
+        .filter((l) => l.includes("--push"));
       expect(calls, name).toEqual([
         `"{BKIT}" workflows handover --post --workflow=${name} --fid={FID} --month={YYYYMM} --push --worktree="{WORKTREE_PATH}"`,
       ]);
@@ -299,6 +301,38 @@ describe("Failure Path", () => {
       expect(failure).not.toMatch(/HANDOVER_NEEDED` = true → step 4\. \*\*Else\*\* → step 6/);
     },
   );
+
+  it("bkit-build.md: a held run's Failure Path and Decision Pause never push the feature branch", () => {
+    const build = workflow("build");
+    for (const part of [section(build, /Failure Path/), section(build, /Decision Pause/)]) {
+      const calls = commandLines(part, "workflows handover").map((l) => l.trim());
+      const pushing = calls.filter((l) => l.includes("--push"));
+      const local = calls.filter((l) => !l.includes("--push"));
+      expect(pushing).toHaveLength(1);
+      expect(local).toHaveLength(1);
+      const at = part.indexOf(pushing[0]!);
+      const before = part.slice(0, at);
+      expect(before).toMatch(/`PUBLISH` = false[^\n]*NEVER pass `--push`/);
+      expect(part.indexOf(local[0]!)).toBeLessThan(at);
+    }
+  });
+
+  it("bkit-build.md: a Failure Path reached before publish is resolved never pushes the feature branch", () => {
+    const failure = section(workflow("build"), /Failure Path/);
+    const calls = commandLines(failure, "workflows handover").map((l) => l.trim());
+    const pushing = calls.filter((l) => l.includes("--push"));
+    expect(pushing).toHaveLength(1);
+    const before = failure.slice(0, failure.indexOf(pushing[0]!));
+    const guard = before
+      .trimEnd()
+      .split("\n")
+      .filter((l) => l.includes("**Else**"))
+      .pop()!;
+    expect(guard).toMatch(/^\s*- \*\*Else\*\* →/);
+    expect(before).toMatch(
+      /`PUBLISH` = false \*\*or\*\* `PUBLISH` is not held yet[^\n]*NEVER pass `--push`/,
+    );
+  });
 
   it.each(["design", "plan", "build", "debug"])(
     "%s removes only files the run created by mistake, never other agents' changes",
@@ -1060,6 +1094,26 @@ describe("ship", () => {
   });
 });
 
+describe("retired lite workflows", () => {
+  it("no shipped prompt or workflow names a lite workflow", () => {
+    const dirs = ["workflows", "prompts"].map((d) => path.join(REPO_ROOT, ".bkit", "core", d));
+    const hits = dirs.flatMap((dir) =>
+      fs
+        .readdirSync(dir)
+        .filter((f) => f.endsWith(".md"))
+        .flatMap((f) =>
+          fs
+            .readFileSync(path.join(dir, f), "utf-8")
+            .split("\n")
+            .map((l, i) => [i + 1, /:lite\b|lite\.md|\blite workflows?\b/i.test(l)] as const)
+            .filter(([, hit]) => hit)
+            .map(([n]) => `${f}:${n}`),
+        ),
+    );
+    expect(hits).toEqual([]);
+  });
+});
+
 describe("plan caps", () => {
   // A number written next to tasks, tests, test files or TEST FIRST: the caps are
   // `bkit.workflows.tasks` settings, so prose names the held value instead.
@@ -1234,6 +1288,8 @@ describe("locks", () => {
   });
 });
 
+const FINAL_RETURN_CLOSES = { design: 1, plan: 1, build: 2, debug: 1, ship: 1 } as const;
+
 describe("final return at the close", () => {
   it.each(PHASES)(
     "%s builds its final message in `workflows close` and displays it verbatim",
@@ -1243,8 +1299,9 @@ describe("final return at the close", () => {
       const close = commandLines(text, "workflows close").filter((l) =>
         l.includes("--final-return"),
       );
-      expect(close, name).toHaveLength(1);
-      expect(close[0]).toContain('--session-dir="{SESSION_DIR}"');
+      // Build closes two ways: the publish close and the held close.
+      expect(close, name).toHaveLength(FINAL_RETURN_CLOSES[name]);
+      for (const line of close) expect(line).toContain('--session-dir="{SESSION_DIR}"');
       // Setup tips are appended by the engine, never collected by the workflow.
       expect(commandLines(text, "tips"), name).toEqual([]);
       expect(text).not.toContain("{BKIT_TIPS}");
@@ -1837,5 +1894,126 @@ describe("fix loops ask only when the last round made no progress", () => {
     const step11 = section(workflow("ship"), /Step 11 — Failure Diagnose/);
     expect(step11).toContain("Hold `verdict` as `DIAGNOSE_VERDICT`");
     expect(step11).toContain("**If** `MERGE_ASK` = false **or** `DIAGNOSE_VERDICT` = PASS →");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Build's ending: `publish` resolved once in Step 2, the held close in Step 16.
+// ---------------------------------------------------------------------------
+
+describe("build publish ending", () => {
+  const build = workflow("build");
+  const step2 = () => section(build, /Step 2 — Worktree Setup/);
+  const step15 = () => section(build, /Step 15 — Summary/);
+  const step16 = () => section(build, /Step 16 — Close Workflow/);
+  /** The held fence and the publish path of Step 16, split at the two path labels. */
+  const paths = () => {
+    const text = step16();
+    expect(text).toMatch(
+      /\*\*If\*\* `PUBLISH` = false → \*\*Held close\*\*\.\n\*\*Else\*\* → \*\*Publish close\*\*\./,
+    );
+    const held = text.indexOf("**Held close:**");
+    const pub = text.indexOf("**Publish close:**");
+    expect(held, "no **Held close** label").toBeGreaterThanOrEqual(0);
+    expect(pub, "no **Publish close** label").toBeGreaterThan(held);
+    return {
+      held: text.slice(held, pub),
+      publish: text.slice(pub, text.indexOf("### 🔒 Gate 16")),
+      gate: text.slice(text.indexOf("### 🔒 Gate 16")),
+    };
+  };
+
+  it("resolves publish through status route", () => {
+    const text = step2();
+    const route = commandLines(text, "status route");
+    expect(route).toHaveLength(1);
+    expect(route[0]).toContain("--workflow=build");
+    expect(route[0]).toContain('--file="{STATUS}"');
+    expect(route[0]).toContain('--prompt-file="{SESSION_DIR}/prompt.md"');
+    expect(text).toContain("`publish` as `PUBLISH`");
+    expect(text).toContain("`publishSource` as `PUBLISH_SOURCE`");
+    const assert = commandLines(text, "runtime assert");
+    expect(assert).toHaveLength(1);
+    expect(assert[0]).not.toContain("/dev/null");
+  });
+
+  it("re-derives publish on resume", () => {
+    // Steps 1-2 run again on every resume, so the only place `PUBLISH` is set is Step 2,
+    // after `runtime row`, and nothing reads it before except the Failure Path and Decision
+    // Pause, which treat an unset value as publish true.
+    const reads = build
+      .replace(section(build, /Failure Path/), "")
+      .replace(section(build, /Decision Pause/), "");
+    const first = reads.search(/`\{?PUBLISH\}?`|=\{PUBLISH\}/);
+    expect(first).toBeGreaterThan(reads.indexOf("## 🤖 Step 2 — Worktree Setup"));
+    const text = step2();
+    expect(text.indexOf("status route --workflow=build")).toBeGreaterThan(
+      text.indexOf("runtime row"),
+    );
+    expect(build).toMatch(/Steps 1-2 always run again/i);
+  });
+
+  it("warns when a non-LOCAL run resolves publish false", () => {
+    const text = step2();
+    expect(text).toContain("`PUBLISH_SOURCE` = coerced");
+    expect(text).toMatch(/Warning: publish=false[^\n]*publishes/);
+  });
+
+  it("skips push, PR and CI on a held close", () => {
+    const { held } = paths();
+    for (const verb of [
+      "branches push",
+      "prs probe",
+      "prs open",
+      "runs dispatch",
+      "branches scan-diff",
+      "branches force-build",
+    ])
+      expect(commandLines(held, verb), verb).toEqual([]);
+    const close = commandLines(held, "workflows close");
+    expect(close).toHaveLength(1);
+    expect(close[0]).toContain("--ending=held --publish=false --record-step");
+    expect(commandLines(held, "locks release")).toHaveLength(1);
+    expect(commandLines(held, "issues labels")[0]).toContain("--board=review");
+    expect(held).toContain("built locally, not published");
+  });
+
+  it("keeps the publish=true close path", () => {
+    const { publish } = paths();
+    for (const verb of ["prs probe", "branches scan-diff", "prs open", "runs dispatch"])
+      expect(commandLines(publish, verb).length, verb).toBeGreaterThan(0);
+    expect(commandLines(publish, "branches push").join("\n")).toContain("--require-ci");
+    expect(publish).toContain("Final return: display `{FINAL_RETURN}` verbatim");
+  });
+
+  it("appends the held roadmap row without roadmap mirror", () => {
+    const { held, publish } = paths();
+    const row = commandLines(held, "roadmap feature");
+    expect(row).toHaveLength(1);
+    expect(row[0]).toContain('--root="{WORKTREE_PATH}" --workflow=build --fid={FID}');
+    expect(held).not.toContain("roadmap mirror");
+    expect(commandLines(publish, "roadmap mirror")).toHaveLength(1);
+  });
+
+  it("makes Gate 15 conditional on the held path", () => {
+    const text = step15();
+    expect(commandLines(text, "workflows summary")[0]).toContain("--publish={PUBLISH}");
+    const gate = text.slice(text.indexOf("### 🔒 Gate 15"));
+    expect(gate).toMatch(/- \[ \] Open-PR probe ran before any push/);
+    expect(gate).toMatch(/- \[ \] Summary commit pushed, or kept local on a held run/);
+    const body = text.slice(0, text.indexOf("### 🔒 Gate 15"));
+    expect(body).toMatch(/\*\*If\*\* `PUBLISH` = false → sub-step 4\.\n[\s\S]*prs probe/);
+  });
+
+  it("runs only the close gate on the held path", () => {
+    const { gate } = paths();
+    const closeAt = gate.indexOf("--step=build-close-workflow");
+    const prAt = gate.indexOf("--step=build-create-pr");
+    expect(closeAt).toBeGreaterThanOrEqual(0);
+    expect(prAt).toBeGreaterThan(closeAt);
+    expect(gate.slice(closeAt, prAt)).toMatch(/\*\*If\*\* `PUBLISH` = true → also run:/);
+    expect(gate).toMatch(
+      /\*\*If\*\* `PUBLISH` = false → tick only[^\n]*\n\*\*Else\*\* → tick every item\./,
+    );
   });
 });

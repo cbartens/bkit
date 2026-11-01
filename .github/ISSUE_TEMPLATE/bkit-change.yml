@@ -11,7 +11,6 @@ body:
         Write this issue as the plan. A build with no plan converts this issue into one.
         - `/bkit-plan #<issue number>` turns this issue into a checked plan. The build then proves each **TEST FIRST** test fails before its code exists.
         - `/bkit-build #<issue number>` converts this issue into a plan, then builds it. It proves each **TEST FIRST** test fails before its code exists.
-        - `build:lite` also builds from this issue, but it checks nothing: no failing-test proof, no gates, no PR and no CI.
 
         Keep the title short, because it names the feature folder. Nothing ticks boxes in an issue.
   - type: textarea

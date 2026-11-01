@@ -15,6 +15,8 @@ import {
   SCHEMA,
   SEVERITY_KINDS,
   TRIAGE_STATUSES,
+  OUTCOME_ENDINGS,
+  RUN_ENDINGS,
   UNJUSTIFIED_REASON,
   VALID_KINDS,
   VALID_SEVERITIES,
@@ -1435,6 +1437,28 @@ describe("outcome — shape and inline-jq parity", () => {
     }
   });
 
+  it("accepts held in outcome and run endings", () => {
+    expect(validate(outcomeEvent({ ending: "held" }))).toEqual({ ok: true });
+    expect(OUTCOME_ENDINGS.has("held")).toBe(true);
+    expect(RUN_ENDINGS.has("held")).toBe(true);
+    expect(validate(runEvent("fp:x:build:1", { ending: "held" })).ok).toBe(true);
+    expect(validate(outcomeEvent({ ending: "paused" })).reason).toBe(
+      `outcome ending must be ${[...OUTCOME_ENDINGS].join("|")} (got: paused)`,
+    );
+  });
+
+  it("keeps publish false on the outcome row", () => {
+    const e = outcomeEvent({ ending: "held", publish: false });
+    expect(validate(e)).toEqual({ ok: true });
+    expect(parse(JSON.stringify(e)).events[0]).toMatchObject({ ending: "held", publish: false });
+  });
+
+  it("rejects a non-boolean publish", () => {
+    const bad = validate(outcomeEvent({ ending: "held", publish: "false" }));
+    expect(bad.ok).toBe(false);
+    expect(bad.reason).toBe("outcome publish must be a boolean (got: false)");
+  });
+
   it("folds outcome by (repo, run.pr)", () => {
     const e = outcomeEvent();
     const state = fold([e]);
@@ -1693,6 +1717,12 @@ describe("workflowTelemetry — this-run vs med·5 baseline", () => {
     );
     expect(file.lines.find((l) => l.startsWith("| time.totalMinutes "))).toContain("10 (10m)");
     expect(file.lines.join("\n")).not.toContain("brief");
+  });
+
+  it("shows an ending row for a held close", () => {
+    const run = outcomeEvent({ run: { parentSha: "held-sha" }, ending: "held", publish: false });
+    const s = workflowTelemetry(foldFrom([writeStats([run])]), "build");
+    expect(s.lines.some((l) => l.startsWith("| ending | held "))).toBe(true);
   });
 
   it("prints — for the baseline until at least 3 prior runs exist", () => {

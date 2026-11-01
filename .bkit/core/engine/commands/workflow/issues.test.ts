@@ -230,13 +230,13 @@ describe("bkit issues labels", () => {
       "--label=bkit:design",
       "--label=bkit:auto",
       "--label=bkit:failed",
-      "--label=next:plan:lite",
+      "--label=next:plan",
       "--label=nextjs",
       "--phase=plan",
     );
     expect(r.json).toEqual({
       add: ["bkit:plan"],
-      remove: ["bkit:design", "next:plan:lite", "bkit:failed"],
+      remove: ["bkit:design", "next:plan", "bkit:failed"],
       labels: ["bug", "bkit:auto", "nextjs", "bkit:plan"],
       changed: true,
       autoRouteSuffix: " bkit [auto route]",

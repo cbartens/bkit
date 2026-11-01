@@ -292,7 +292,7 @@ Every prompt and workflow has the same parts, in this order:
 
 - **Self-contained:** Every prompt and workflow stands alone, with its instructions written in the file rather than pointed to.
   - Why: A subagent runs with only its prompt and the files it is told to read. A pointer to another file is an instruction it may never load.
-  - Prompts may read `.agents/rules.md`, `.agents/docs.md`, `.bkit/lite.md`, the `*.jsonl` ledgers and the templates they fill. Workflows hand each subagent its context in the call.
+  - Prompts may read `.agents/rules.md`, `.agents/docs.md`, the `*.jsonl` ledgers and the templates they fill. Workflows hand each subagent its context in the call.
 
 - **Cross-file alignment:** When you change an instruction, change every prompt and workflow that carries it in the same edit.
   - Why: Two files that disagree make the pipeline contradict itself: one agent writes what the next one rejects.

@@ -6,8 +6,11 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   ASK_POINTS,
+  CI_GENERATED_FLOOR,
   CONFIG_DEFAULTS,
+  ciGeneratedSteps,
   invalidAskSettings,
+  invalidBuildPublish,
   invalidTaskCaps,
   readBkitConfig,
 } from "./settings";
@@ -280,6 +283,26 @@ describe("readBkitConfig", () => {
     expect(CONFIG_DEFAULTS.ciSkipPaths).toEqual([]);
   });
 
+  it("reads testing.ciGenerated as non-empty strings, else []: the floor is not a setting", () => {
+    const steps = (v: unknown) =>
+      readBkitConfig(root(JSON.stringify({ bkit: { testing: { ciGenerated: v } } }))).ciGenerated;
+    expect(steps(["app/Check Client Drift", "", 3])).toEqual(["app/Check Client Drift"]);
+    expect(steps([])).toEqual([]);
+    for (const bad of ["app/Check Client Drift", null, { 0: "x/y" }])
+      expect(steps(bad)).toEqual([]);
+    expect(readBkitConfig(root()).ciGenerated).toEqual([]);
+    expect(CONFIG_DEFAULTS.ciGenerated).toEqual([]);
+  });
+
+  it("ciGeneratedSteps always holds the floor, and adds the repo's steps once each", () => {
+    expect(ciGeneratedSteps({ ciGenerated: [] })).toEqual([...CI_GENERATED_FLOOR]);
+    expect(
+      ciGeneratedSteps({
+        ciGenerated: ["app/Check Client Drift", "bkit-tests-static/Run bkit Check"],
+      }),
+    ).toEqual([...CI_GENERATED_FLOOR, "app/Check Client Drift"]);
+  });
+
   it("asks at every point with 2 attempts by default, and 6 turns for the grill", () => {
     const asks = readBkitConfig(root()).asks;
     expect(Object.keys(asks)).toEqual([...ASK_POINTS]);
@@ -355,6 +378,43 @@ describe("readBkitConfig", () => {
     ).toEqual(["maxPerGroup", "maxTestFilesPerTask"]);
     expect(invalidTaskCaps(undefined)).toEqual([]);
     expect(invalidTaskCaps(7)).toEqual(["tasks"]);
+  });
+
+  it("defaults build.publish to true", () => {
+    expect(CONFIG_DEFAULTS.buildPublish).toEqual({ remote: true, local: true });
+    expect(readBkitConfig(root()).buildPublish).toEqual({ remote: true, local: true });
+    expect(readBkitConfig(root(JSON.stringify({ bkit: {} }))).buildPublish).toEqual({
+      remote: true,
+      local: true,
+    });
+  });
+
+  const publish = (value: unknown) =>
+    readBkitConfig(root(JSON.stringify({ bkit: { workflows: { build: { publish: value } } } })))
+      .buildPublish;
+
+  it("reads an explicit publish.local false", () => {
+    expect(publish({ local: false })).toEqual({ remote: true, local: false });
+    expect(publish({ local: "no" })).toEqual({ remote: true, local: true });
+  });
+
+  it("coerces publish.remote false to true", () => {
+    expect(publish({ remote: false, local: false })).toEqual({ remote: true, local: false });
+  });
+
+  it("lists every invalid build.publish key", () => {
+    expect(invalidBuildPublish({ publish: { local: "no", remote: false } })).toEqual([
+      "build.publish.local",
+    ]);
+    expect(invalidBuildPublish({ publish: { local: false, remote: true } })).toEqual([]);
+    expect(invalidBuildPublish(undefined)).toEqual([]);
+    expect(invalidBuildPublish(7)).toEqual(["build"]);
+  });
+
+  it("reports a non-object publish block", () => {
+    expect(publish(false)).toEqual({ remote: true, local: true });
+    expect(invalidBuildPublish({ publish: false })).toEqual(["build.publish"]);
+    expect(invalidBuildPublish({ publish: [1] })).toEqual(["build.publish"]);
   });
 });
 

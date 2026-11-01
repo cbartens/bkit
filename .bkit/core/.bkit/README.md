@@ -61,7 +61,7 @@ Plans are sized by `bkit.workflows.tasks` in `package.json`. Each group holds up
 | Issue | Start with |
 | --- | --- |
 | Idea — how it should work still open | `/bkit-design` |
-| Change — what to build and "done" known | `/bkit-plan`, or `/bkit-build` / `build:lite` with no plan. With no plan, `/bkit-build` first writes `{FID}-plan.md` from the issue, then checks that each `TEST FIRST` is red. An existing plan wins over the issue. `build:lite` checks nothing. |
+| Change — what to build and "done" known | `/bkit-plan`, or `/bkit-build` with no plan. With no plan, `/bkit-build` first writes `{FID}-plan.md` from the issue, then checks that each `TEST FIRST` is red. An existing plan wins over the issue. |
 | Bug — a test or CI run already fails | `/bkit-debug`, on the branch the fix lands on |
 | Bug — nothing fails yet | `/bkit-debug [repro]` (writes a failing test first, then fixes) |
 
@@ -222,7 +222,7 @@ bkit owns some files outright, owns one part of others, and ships the rest as te
 <!-- prettier-ignore -->
 | Kind | Semantics | Files |
 | --- | --- | --- |
-| **Tier 1 — Fully managed** | Idempotent rewrite of whole file on every install. A consumer edit is overwritten. Uninstall deletes the file while it still matches the hash bkit recorded. | `.bkit/*.md` (except `prompts.md` and `lite.md`, Tier 2), `.bkit/.env.example`, `.bkit/allowlist.json`, `.cursor/cli.json` |
+| **Tier 1 — Fully managed** | Idempotent rewrite of whole file on every install. A consumer edit is overwritten. Uninstall deletes the file while it still matches the hash bkit recorded. | `.bkit/*.md` (except `prompts.md`, Tier 2), `.bkit/.env.example`, `.bkit/allowlist.json`, `.cursor/cli.json` |
 | **Tier 2 — Managed-block** | bkit owns content between `bkit:start`/`bkit:end` markers. Consumer owns everything outside. File absent → write whole file. File present without markers → append block at EOF, unless the markdown file already holds an older unmarked copy of the block (its `# ` title plus 10+ long lines verbatim) → warn + skip. A full uninstall strips the block and deletes a file left with nothing else; `docs/templates/bkit-*.md` are bkit's whole and are deleted. | `docs/*.md`, `docs/templates/bkit-*.md`, `.gitignore`, `.agents/rules.md`, `.agents/context.md`, `.agents/docs.md`, `.agents/skills.md`, `AGENTS.md`, `CLAUDE.md`, `.claude/hooks/bkit-preflight.sh`, `.cursor/hooks/bkit-preflight.sh`, `.claude/hooks/bkit-gateguard.cjs`, `.cursor/hooks/bkit-gateguard.cjs`, `.opencode/plugin/bkit-gateguard.js`, `.cursor/hooks/bkit-guardrails.cjs`, `.codex/hooks/bkit-gateguard.cjs`, `.codex/hooks/bkit-guardrails.cjs` |
 | **Shared JSON** | bkit owns the keys its template sets; every other key is yours. `.mcp.json` / `.cursor/mcp.json`: bkit owns exactly one entry, `mcpServers.<tracker>`, and resets it to the template on every install and upgrade. | `.claude/settings.json`, `.cursor/hooks.json`, `.opencode/opencode.json`, `.mcp.json`, `.cursor/mcp.json` |
 | **Seeded package.json scripts** | Every install and upgrade adds a missing name with bkit's default; a name already present is never touched, whatever its value. `bkit check` reports a missing name. Uninstall leaves them. | `scripts.bkit:gate:format` / `bkit:gate:static` / `bkit:gate:static-unit` / `bkit:gate:install-static-unit-build` / `bkit:deps:outdated` / `bkit:deps:audit` |
@@ -257,7 +257,7 @@ Block updates keep the comment prefixes (`# `, `// `) before the markers.
 | `.gitattributes` | core | `.bkit/shared/.gitattributes` | Tier 2 html-comment (`merge=union` for the append-only ledgers) |
 | `.bkit/templates/**` | — | the whole `.bkit/templates/` root | Raw copies, refreshed on every install and upgrade; never hashed. Upgrade prints the changed paths. |
 | `.bkit/{core,shared}` | core | symlink into `node_modules/@cbartens/bkit/.bkit/{core,shared}` | View link, not a copy — browse the payload in-repo; always the installed version. Gitignored (dangles on a fresh clone / CI; install recreates). A real directory is never clobbered; `bkit uninstall` removes the link. |
-| `.bkit/{authoring,cloud,comparison,install,jsonl,LICENSE,lite,pipeline,providers,prompts,router,trackers,workflows,README}.md` | core | `.bkit/core/.bkit/` | Tier 1 (canonical-overwrite); `prompts.md` and `lite.md` Tier 2 html-comment. The reference docs agents read at runtime (`router.md`: the workflow router `AGENTS.md` sends `bkit-{command}` prompts to), plus `LICENSE.md`: the MIT text and copyright notice that travel with every file bkit writes. |
+| `.bkit/{authoring,cloud,comparison,install,jsonl,LICENSE,pipeline,providers,prompts,router,trackers,workflows,README}.md` | core | `.bkit/core/.bkit/` | Tier 1 (canonical-overwrite); `prompts.md` Tier 2 html-comment. The reference docs agents read at runtime (`router.md`: the workflow router `AGENTS.md` sends `bkit-{command}` prompts to), plus `LICENSE.md`: the MIT text and copyright notice that travel with every file bkit writes. |
 | `.claude/commands/bkit-*.md` | claude | `.bkit/core/workflows/` (byte-identical) | Host pass — always overwrite |
 | `.claude/agents/bkit-*.md` | claude | `.bkit/core/prompts/` (byte-identical) | Host pass — always overwrite |
 | `.claude/settings.json` | claude | `.bkit/shared/.claude/settings.json` | Tier 2 JSON deep-containment. Permission allow/deny/ask + SessionStart / PreToolUse hook wiring. |
@@ -328,11 +328,16 @@ Run the slash commands at the repo root:
 /bkit-design ISSUE-123      # produce a design doc
 /bkit-plan ISSUE-123        # produce an implementation plan
 /bkit-build ISSUE-123       # execute the plan in a worktree, open a PR
+/bkit-build ISSUE-123 publish=false  # build locally and hold: no push, no PR, no CI; land it later with /bkit-ship
 /bkit-debug ISSUE-123       # diagnose and remediate CI failures
 /bkit-ship ISSUE-123        # merge the PR for the current branch, set the issue In Review
 ```
 
 Claude reads the issue, its comments and the plan files through the tracker MCP.
+
+**Held build:** `publish=false`, or `package.json` `bkit.workflows.build.publish.local: false`, stops a local `/bkit-build` before the push, and `/bkit-ship <ref>` lands it later. Cloud runs always publish. `.bkit/workflows.md` § `/bkit-build` — 16 steps, **Publish resolution**, says what a held run keeps and skips.
+
+**Manual batch of held builds:** merge the held `feat/{FID}` branches into one branch off `dev` yourself, push it and open one PR. You own the push, the PR, the CI gate, the sweep and the docs sync. One head commit means post-merge auto-debug sees only the last FID. Never batch migrations.
 
 **Requirements:** `BKIT_GH_TOKEN` and an active Claude Code session (subscription or `BKIT_ANTHROPIC_API_KEY`). `BKIT_LINEAR_API_KEY` as well when `bkit.tracker.default = "linear"`, and `BKIT_JIRA_API_KEY` when it is `"jira"`. The session model is the orchestrator pin in `.bkit/prompts.md` § Orchestrators (`Claude` column). Set it with `/model` before you invoke a command. This file does not repeat the pin.
 

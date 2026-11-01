@@ -230,7 +230,7 @@ export function buildSummary(input) {
     if (workflow === "build")
         out.push("", input.plans.length === 0
             ? "Plan tasks: no plan file."
-            : `Plan tasks: ${tasks.filter((t) => t.done).length} of ${tasks.length} ticked in ${input.plans.map((p) => `\`${p.path}\``).join(", ")}.`);
+            : `Plan tasks: ${tasks.filter((t) => t.done).length} of ${tasks.length} ticked in ${input.plans.map((p) => `\`${p.path}\``).join(", ")}.`, "", input.publish === false ? "Publish: held" : "Publish: pr", ...(input.publish === false ? ["", "Docs: not synced (ship syncs on landing)"] : []));
     out.push("", "## Steps", "", "| Step | Verdict | Failures | Attempts | Artifact |", "| --- | --- | --- | --- | --- |");
     for (const g of groups) {
         const { row } = lastOf(g);

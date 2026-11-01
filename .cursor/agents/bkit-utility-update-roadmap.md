@@ -87,7 +87,6 @@ tools:
     - Treat items done together as one list item.
 11. For each item:
     - Recommend the `/bkit-<phase>` command.
-    - Recommend the `.bkit/lite.md` lite workflow `<phase>:lite` instead, only where it is clearly enough.
     - Recommend a model tier.
     - Recommend `@bkit-audit-generate` for audit reports.
     - **If** a tracker is wired and the item has no issue → recommend filing one first, shaped per `.bkit/trackers.md` § Issue shapes.
@@ -119,7 +118,7 @@ tools:
 
 ## Next Items
 
-[Each item, in priority order: what to do, a short priority rationale, the recommended `/bkit-<phase>` command or, where clearly enough, the `<phase>:lite` lite workflow, and the model tier. **If** none → `None`.]
+[Each item, in priority order: what to do, a short priority rationale, the recommended `/bkit-<phase>` command and the model tier. **If** none → `None`.]
 
 ## Groupings
 

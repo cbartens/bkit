@@ -22,6 +22,7 @@ import {
   detectNoPackageJson,
   detectNotGitRepo,
   detectInvalidAskSettings,
+  detectBuildPublish,
   detectInvalidTaskCaps,
   detectTaskCapFormStale,
   detectUnmarkedPlans,
@@ -136,6 +137,8 @@ export function runPreflight(
 
   const invalidTaskCaps = detectInvalidTaskCaps(cwd);
   if (invalidTaskCaps) advisories.push(invalidTaskCaps);
+
+  advisories.push(...detectBuildPublish(cwd));
 
   const taskCapFormStale = detectTaskCapFormStale(cwd);
   if (taskCapFormStale) advisories.push(taskCapFormStale);

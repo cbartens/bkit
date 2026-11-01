@@ -307,13 +307,14 @@ export function mintTs(after) {
  * tokens" per build group). Rows store peaks only; readers judge them against this.
  */
 export const AGENT_CONTEXT_CAP = 160_000;
-export const OUTCOME_ENDINGS = new Set(["done", "close-failed"]);
+export const OUTCOME_ENDINGS = new Set(["done", "close-failed", "held"]);
 export const RUN_ENDINGS = new Set([
     "done",
     "close-failed",
     "failed",
     "decision-pause",
     "stopped",
+    "held",
 ]);
 // ---------------------------------------------------------------------------
 // Identity — per-kind composite tuple for dedup (NOT bare ts)
@@ -1074,7 +1075,13 @@ export function validate(event) {
         if (!OUTCOME_ENDINGS.has(e["ending"])) {
             return {
                 ok: false,
-                reason: `outcome ending must be done|close-failed (got: ${String(e["ending"])})`,
+                reason: `outcome ending must be ${[...OUTCOME_ENDINGS].join("|")} (got: ${String(e["ending"])})`,
+            };
+        }
+        if (e["publish"] !== undefined && typeof e["publish"] !== "boolean") {
+            return {
+                ok: false,
+                reason: `outcome publish must be a boolean (got: ${String(e["publish"])})`,
             };
         }
         const ledgers = e["ledgers"];
@@ -1474,8 +1481,8 @@ export function workflowTelemetry(result, workflow) {
             show("lines.total.files", (r) => r.lines?.total?.files);
         }
         show("plan.total.tasks", (r) => r.plan?.total?.tasks);
-        if (cur.ending === "close-failed")
-            row("ending", "close-failed", "—");
+        if (cur.ending === "close-failed" || cur.ending === "held")
+            row("ending", cur.ending, "—");
         // Instinct-loop deltas — friction is the featured signal (shown even at 0).
         show("ledgers.friction.added", (r) => r.ledgers?.friction?.added);
         show("ledgers.deferrals.added", (r) => r.ledgers?.deferrals?.added);

@@ -16,14 +16,14 @@ PASS
 | Step | Verdict | Failures | Attempts | Artifact |
 | --- | --- | --- | --- | --- |
 | ship-start-workflow | - | - | 1 | - |
-| ship-worktree-setup | - | - | 1 | `docs/plans/202610/logs/715-retire-lite-workflows/ship-input-2.md` |
+| ship-worktree-setup | - | - | 1 | `docs/plans/202610/logs/715-retire-lite-workflows/ship-input-3.md` |
 | ship-regression-guard | PASS | - | 1 | - |
 | ship-deferred-sweep | PASS | 0 | 1 | `docs/plans/202610/logs/715-retire-lite-workflows/ship-deferred-sweep.md` |
 | ship-update-docs | - | - | 1 | `docs/plans/202610/logs/715-retire-lite-workflows/ship-update-docs.md` |
 
 ## Pull Request
 
-PR #790: +74735 / -642 lines across 187 files.
+PR #790: +73423 / -926 lines across 193 files.
 
 ## Risks and Action Items
 

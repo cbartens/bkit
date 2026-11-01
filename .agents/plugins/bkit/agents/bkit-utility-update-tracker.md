@@ -47,8 +47,8 @@ tools:
 - **Verify tools:** Verify every return; do not assume success.
 - **Tracker issue creation:** Suggest issues instead of creating them, and create one ONLY after explicit human confirmation; write the body per `.bkit/trackers.md` § Issue shapes.
 - **Tracker issue settings:** Keep the title to at most 70 characters, or two lines on mobile. Set labels, project, project status, priority, size, milestone, parent, and every open blocking issue as blocked-by. Set priority and size per `docs/templates/bkit-audit-issues.md` § Ranking Rules and § Size Scale, not by label alone. Blocked-by MUST use the machine-read form per `.bkit/trackers.md` § Issue shapes, not prose alone. Check similar issues when unclear.
-- **Tracker next labels:** An issue without a workflow label MUST carry exactly one of the `next:design|next:plan|next:build|next:debug|next:ship` labels, with `:lite` appended for the lite workflow (`next:build:lite`) per `.bkit/lite.md` § When to use. Do not put a `next:*` label alongside a workflow label. Standing audit parents are excepted.
-- **Tracker workflow labels:** Add one of the `bkit:design|bkit:plan|bkit:build|bkit:debug|bkit:ship` labels only when the issue starts that workflow (full or lite). They are mutually exclusive: the next workflow start drops the previous one, and the `/bkit-ship` close swaps `bkit:ship` → `bkit:merged`. To signal intent, use a `next:*` label, not a workflow label added by hand.
+- **Tracker next labels:** An issue without a workflow label MUST carry exactly one of the `next:design|next:plan|next:build|next:debug|next:ship` labels. Do not put a `next:*` label alongside a workflow label. Standing audit parents are excepted.
+- **Tracker workflow labels:** Add one of the `bkit:design|bkit:plan|bkit:build|bkit:debug|bkit:ship` labels only when the issue starts that workflow. They are mutually exclusive: the next workflow start drops the previous one, and the `/bkit-ship` close swaps `bkit:ship` → `bkit:merged`. To signal intent, use a `next:*` label, not a workflow label added by hand.
 - **Tracker work comments:** For any issue worked on outside `/bkit-*` workflows, post one comment per related issue at the end of every major turn (files changed, commit, PR, finding or blocked stop) with the work done, the outcome and links. Skip turns with no work (Q&A, clarifying questions). Describe the change instead of pasting diffs or restating code, and do not mention @claude or @cursor in the comment body.
 - **Tracker MCPs:** Do tracker reads / writes via `bkit` verbs; use the configured tracker MCP only when a verb prints `tracker.done: false` or exits 80.
 - **Commits:** Commit early and often, without asking for confirmation; subagents do not commit. Assume other agents are editing the same working tree in parallel, so commit only the files you touched, named explicitly (`git commit -- {paths}`), and never whatever is already staged. Use `git add -A` / `git add .` / `git commit -a` only when the whole tree is your task; otherwise add your own paths by name. **If** a file you touched also carries another agent's edits → **STOP** and ask. Do not stage `.DS_Store`, `*.log`, editor swaps or dependency / build dirs (e.g. `node_modules/`).
@@ -60,7 +60,7 @@ tools:
 **Process:**
 
 1. Read every supplied input once at the start, and work from what it says, not from session memory.
-2. Read `.agents/docs.md`, and load the docs it lists for this task, always including `.bkit/trackers.md` and `.bkit/lite.md`. Skip any listed doc that does not exist.
+2. Read `.agents/docs.md`, and load the docs it lists for this task, always including `.bkit/trackers.md`. Skip any listed doc that does not exist.
 3. Read repo facts:
    ```bash
    "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" repo info --allow-detached
@@ -89,7 +89,6 @@ tools:
      - **If** a workflow label (`bkit:design|bkit:plan|bkit:build|bkit:debug|bkit:ship`) is present → remove every `next:*`.
      - **Else** → exactly one `next:*`, from the `REPORT` label correction, then the roadmap item's recommended command, then the issue shape per `.bkit/trackers.md` § `Issue shapes`:
        - Shape to label: idea → `next:design`, change → `next:plan`, change with `Tasks` → `next:build`, bug → `next:debug`.
-       - Append `:lite` per `.bkit/lite.md` § `When to use`.
        - An existing single `next:*` stands unless `REPORT` corrects it.
      - **If** the type label (`enhancement|bug`) is missing → add it per shape. `REPORT` label corrections apply.
      - **If** a label is not in the repo or team labels → `Unapplied`.

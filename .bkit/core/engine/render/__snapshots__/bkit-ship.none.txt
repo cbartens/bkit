@@ -31,7 +31,7 @@ description: "Ship Feature — Autonomous merge and archive"
 
 _No tracker connected, skip step._
 
-- **Limits:** `bkit.workflows.ship.merge` holds `ask` and `maxAttempts`, read via `bkit counters route --point=` in fenced routing blocks below. One count covers every failed arrival at the merge step — a merge-gate refusal (`ship-gate-refusal` rows) or a failed merge (`ship-merge-pr` rows); used up → **Failure Path**. `ask` applies only before a failure fix round, never to a refusal that just needs CI again. Assumed items from build are asked once, at **Confirm Assumed Items**, whatever `ship.merge.ask` says.
+- **Limits:** `bkit.workflows.ship.merge` holds `ask` and `maxAttempts`, read via `bkit counters route --point=` in fenced routing blocks below. One count covers every failed arrival at the merge step — a merge-gate refusal (`ship-gate-refusal` rows, the regenerate round's red CI run included) or a failed merge (`ship-merge-pr` rows); used up → **Failure Path**. `ask` applies only before a failure fix round, never to a refusal that just needs CI again or to the regenerate round, which no model decides. Assumed items from build are asked once, at **Confirm Assumed Items**, whatever `ship.merge.ask` says.
 
 **Rules:** Copied word for word from `.agents/rules.md`.
 
@@ -285,8 +285,21 @@ _No tracker connected, skip step._
    ```
    Hold `basePath` as `BASE_PATH`.
 2. Route:
-   - **If** `BASE_PATH` = A → Step 5 (skip integration — dev has not moved).
-   - **If** `BASE_PATH` = B → Step 4 (integration required).
+   - **If** `BASE_PATH` = A → sub-step 3 (skip integration — dev has not moved).
+   - **If** `BASE_PATH` = B → Step 4 (integration required; its merge runs `bkit:generate`).
+   - **Else** → **Failure Path**.
+3. Regenerate, because no merge runs `bkit:generate` on Path A. A hand merge of `dev` brings `dev`'s generated files, which may not match this branch's code. The block commits only the paths `bkit:generate` changed:
+   ```bash
+   cd "{WORKTREE_PATH}" && "{BKIT}" branches regenerate --fid="{FID}" --file="{STATUS}"
+   ```
+   Hold `outcome` as `REGEN_OUTCOME`.
+   Route:
+   - **If** exit 0 **and** `REGEN_OUTCOME` = committed → push it, so CI starts at the regenerated head; NEVER force:
+     ```bash
+     "{BKIT}" branches push --mode=plain >/dev/null
+     ```
+     Then Step 5.
+   - **If** exit 0 **and** `REGEN_OUTCOME` = unchanged **or** undeclared → Step 5. Nothing was committed.
    - **Else** → **Failure Path**.
 
 ### 🔒 Gate 3 — Base Check
@@ -296,6 +309,7 @@ _No tracker connected, skip step._
 ```
 
 - [ ] Ancestor verdict determined
+- [ ] Path A regenerated (`branches regenerate`), a commit pushed plain
 
 ---
 
@@ -499,6 +513,23 @@ _No tracker connected, skip step._
      Hold `value` as `MERGE_ROUNDS` and `max` as `MERGE_MAX`.
      - **If** exit 0 → set `{REVALIDATE_REASON}` = `gate-refusal` → Step 9.
      - **Else** → **Failure Path** (exit 1: `ship.merge.maxAttempts` used up, max-retry exhaustion).
+   - **If** exit 12 **and** `regenerable` = true → every failed CI step is one `bkit:generate` fixes (`bkit.testing.ciGenerated`). Route on the failed arrivals at Step 10, without asking:
+     ```bash
+     "{BKIT}" counters route --name=MERGE_ATTEMPT --of=ship-merge-pr:count --rows=ship-gate-refusal:count --file="{STATUS}" --workflow=ship --point=ship.merge --continue=step-9 --exceeded=failure-path
+     ```
+     Hold `value` as `MERGE_ROUNDS` and `max` as `MERGE_MAX`.
+     - **If** exit 0 → regenerate. The block commits only the paths `bkit:generate` changed:
+       ```bash
+       "{BKIT}" branches regenerate --fid="{FID}" --attempt="{MERGE_ROUNDS}" --file="{STATUS}"
+       ```
+       Hold `outcome` as `REGEN_OUTCOME` and `head` as `CODE_HEAD`.
+       - **If** exit 0 **and** `REGEN_OUTCOME` = committed → push the fix, and NEVER force:
+         ```bash
+         "{BKIT}" branches push --mode=plain >/dev/null
+         ```
+         Then set `REVALIDATE_REASON` empty → Step 9 (re-validate at the regenerated head, then re-run the merge gate).
+       - **Else** → **Failure Path** (`unchanged`: regenerating does not fix the failed steps; `undeclared`; or the block failed).
+     - **Else** → **Failure Path** (exit 1: `ship.merge.maxAttempts` used up, max-retry exhaustion).
    - **Else** (12, 13, 15, 16, 18 or 20) → **Failure Path**.
 2. Merge with an empty body and `--match-head`, so GitHub refuses when the head moved. Re-read the labels from the tracker, so that ` bkit [auto route]` rides the squash subject on `bkit:auto`. The labels are never carried forward from Step 1's `{LABELS}`. `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry, empty when no tracker is wired:
    ```bash
@@ -528,6 +559,7 @@ _No tracker connected, skip step._
 
 - [ ] Merge gate asserted (`runs gate`)
 - [ ] Failed arrivals counted against `ship.merge.maxAttempts` (`counters route`)
+- [ ] A red CI run regenerated only when every failed step is a generated file (`branches regenerate`)
 - [ ] PR merge attempted (`prs merge`)
 - [ ] Mechanical checks passed (`steps finish`)
 

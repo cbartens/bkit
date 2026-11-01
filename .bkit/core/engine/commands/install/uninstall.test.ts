@@ -211,6 +211,20 @@ describe("buildDecisionTable — markered-text format", () => {
     }
   });
 
+  it("strips a managed lite.md block and keeps the consumer section", async () => {
+    const consumer = "## Our lite notes\n\nkeep me\n";
+    writeFile(
+      ".bkit/lite.md",
+      `<!-- bkit:start -->\n\nretired lite payload\n\n<!-- bkit:end -->\n${consumer}`,
+    );
+    const table = buildDecisionTable(["core"], makeCtx());
+    await runUninstall(["core"], makeCtx());
+    expect(table.find((r) => r.file === ".bkit/lite.md")?.decision).toBe("strip-block");
+    const after = readFile(".bkit/lite.md");
+    expect(after).not.toContain("retired lite payload");
+    expect(after).toBe(consumer);
+  });
+
   describe("docs/", () => {
     const marker = "<!-- bkit:managed v4.0.0 — do not edit; run `bkit upgrade` to refresh -->";
     const block = `<!-- bkit:start -->\n\n${marker}\n\n# Testing\n\nbkit doctrine\n\n<!-- bkit:end -->\n`;

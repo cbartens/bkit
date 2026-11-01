@@ -2006,3 +2006,50 @@ describe("Scenario: bkit upgrade --to self-bump dry-run (#1)", () => {
     expect(result.status).toBe(1);
   });
 });
+
+describe("#715 — upgrade retires a 5.2.4 .bkit/lite.md", () => {
+  const bkitInstallPath = path.resolve(
+    path.dirname(new URL(import.meta.url).pathname),
+    "../../cli.ts",
+  );
+  function runCli(args: string[]) {
+    return spawnSync(requireTsx(), [bkitInstallPath, ...args], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: {
+        ...process.env,
+        NODE_NO_WARNINGS: "1",
+        GIT_DIR: path.join(tmpDir, ".git"),
+        GIT_WORK_TREE: tmpDir,
+      },
+      timeout: 90_000,
+    });
+  }
+
+  it("upgrade from a 5.2.4 lite.md keeps the consumer section", () => {
+    expect(spawnSync("git", ["init", "-q"], { cwd: tmpDir }).status).toBe(0);
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
+      "utf-8",
+    );
+    expect(runCli(["install", "--claude", "--tracker=github"]).status).toBe(0);
+    const own = "### hotfix\n\n```text\nShip the hotfix below.\n```";
+    const lite = path.join(tmpDir, ".bkit", "lite.md");
+    fs.writeFileSync(
+      lite,
+      "<!-- bkit:start -->\n\n<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->\n\n# Lite Workflows\n\nbody\n\n<!-- bkit:end -->\n\n## Project Lite Workflows\n\n" +
+        own +
+        "\n",
+      "utf-8",
+    );
+
+    expect(runCli(["upgrade", "--auto-apply"]).status).toBe(0);
+
+    const after = fs.readFileSync(lite, "utf-8");
+    expect(after).toContain(own);
+    expect(after).not.toContain("bkit:start");
+    expect(after.split("\n")[0]).toBe("<!-- bkit:retired-lite-stub -->");
+    expect(runCli(["check"]).status).toBe(0);
+  });
+});

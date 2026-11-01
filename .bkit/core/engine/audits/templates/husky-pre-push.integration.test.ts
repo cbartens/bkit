@@ -585,7 +585,9 @@ describe(".husky/pre-push template fast checks", () => {
       fs.mkdirSync(path.join(tmp, "scripts", "graphify"), { recursive: true });
       fs.writeFileSync(
         path.join(tmp, "scripts", "graphify", "bkit-graph-pre-push.sh"),
-        `echo "register $PUSH_DEV_SHA $IS_REVERT" >> "${tmp}/calls.log"\nexit ${register}\n`,
+        `echo "register $PUSH_DEV_SHA $IS_REVERT" >> "${tmp}/calls.log"\n` +
+          `echo "register-vars \${BRANCH+set} \${PUSH_BRANCH_SHA+set}" >> "${tmp}/calls.log"\n` +
+          `exit ${register}\n`,
       );
     }
     const result = spawnSync("sh", [path.join(REPO, HOOK)], {
@@ -607,6 +609,8 @@ describe(".husky/pre-push template fast checks", () => {
     const at = r.calls.indexOf(`register ${SHA} 0`);
     expect(at).toBeGreaterThanOrEqual(0);
     expect(gateAt(r.calls)).toBeGreaterThan(at);
+    // The open-PR gate reads the checked-out branch and the commit pushed to it.
+    expect(r.calls).toContain("register-vars set set");
   });
 
   it("a stale register stops the push before any gate runs", () => {
@@ -852,6 +856,136 @@ describe("graphify register pre-push gate", () => {
     expect(r.stderr).toBe("");
   });
 
+  // A branch with an open PR into dev: CI's Check Capability Register fails the PR, so the
+  // push is gated as a push to dev is. Stub gh logs its args and prints `pr` for `pr list`.
+  const installGh = (pr: string) =>
+    fs.writeFileSync(
+      path.join(tmp, "bin", "gh"),
+      `#!/bin/sh\necho "$*" >> "${tmp}/gh.log"\necho "${pr}"\n`,
+      { mode: 0o755 },
+    );
+  const ghCalls = () => {
+    const log = path.join(tmp, "gh.log");
+    return fs.existsSync(log) ? fs.readFileSync(log, "utf-8") : "";
+  };
+  const BRANCH_SHA = "c".repeat(40);
+  const branchPush = { PUSH_DEV_SHA: "", BRANCH: "feat/1-x", PUSH_BRANCH_SHA: BRANCH_SHA };
+  /** A PATH with no gh on it: the stubs, then only the system tools the snippet calls,
+   * linked from `/usr/bin` / `/bin`. GitHub runners ship gh at `/usr/bin/gh`. */
+  const pathWithoutGh = () => {
+    const dir = path.join(tmp, "sysbin");
+    fs.mkdirSync(dir);
+    for (const tool of ["sh", "bash", "git", "env", "sed", "head", "tr", "wc"]) {
+      const found = ["/usr/bin", "/bin"]
+        .map((d) => path.join(d, tool))
+        .find((p) => fs.existsSync(p));
+      if (found === undefined) throw new Error(`${tool} is in neither /usr/bin nor /bin`);
+      fs.symlinkSync(found, path.join(dir, tool));
+    }
+    return `${path.join(tmp, "bin")}:${dir}`;
+  };
+
+  it("branch with an open PR into dev, register stale → blocked, check-at on the pushed commit", () => {
+    adopt(1);
+    installGraphify();
+    installGh("7");
+    const r = run(branchPush);
+    expect(r.status).toBe(1);
+    expect(ghCalls()).toContain("pr list --head feat/1-x --base dev --state open");
+    expect(r.calls).toContain(`check-at ${BRANCH_SHA}`);
+    expect(r.stderr).toContain(
+      "BLOCKED: docs/capabilities.md is not what the pushed commit builds",
+    );
+    expect(r.stderr).toContain("CI fails PR #7 into dev on it");
+  });
+
+  it("branch with an open PR into dev, register current → push goes on", () => {
+    adopt(0);
+    installGraphify();
+    installGh("7");
+    const r = run(branchPush);
+    expect(r.status).toBe(0);
+    expect(r.calls).toContain(`check-at ${BRANCH_SHA}`);
+  });
+
+  it("branch with no open PR → no check, push goes on", () => {
+    adopt(1);
+    installGraphify();
+    installGh("");
+    const r = run(branchPush);
+    expect(r.status).toBe(0);
+    expect(ghCalls()).toContain("pr list");
+    expect(r.calls).toBe("");
+  });
+
+  it("branch push, gh not installed → loud NOT-checked warning, push goes on", () => {
+    adopt(1);
+    installGraphify();
+    const r = run({ ...branchPush, PATH: pathWithoutGh() });
+    expect(r.status).toBe(0);
+    expect(r.calls).toBe("");
+    expect(r.stderr).toContain("docs/capabilities.md was NOT checked — gh is not installed");
+  });
+
+  it("branch push, gh installed but pr list fails → loud NOT-checked warning, push goes on", () => {
+    adopt(1);
+    installGraphify();
+    fs.writeFileSync(
+      path.join(tmp, "bin", "gh"),
+      `#!/bin/sh\necho "$*" >> "${tmp}/gh.log"\necho "gh: not logged in" >&2\nexit 4\n`,
+      { mode: 0o755 },
+    );
+    const r = run(branchPush);
+    expect(r.status).toBe(0);
+    expect(ghCalls()).toContain("pr list");
+    expect(r.calls).toBe("");
+    expect(r.stderr).toContain("docs/capabilities.md was NOT checked — gh pr list failed");
+    expect(r.stderr).toContain("whether 'feat/1-x' has an open PR is unknown");
+  });
+
+  it("branch with an open PR, graphify not installed → loud NOT-checked warning naming the PR", () => {
+    adopt(1);
+    installGh("7");
+    const r = run(branchPush);
+    expect(r.status).toBe(0);
+    expect(r.calls).not.toContain("check-at");
+    expect(r.stderr).toContain("docs/capabilities.md was NOT checked — graphify is not installed");
+    expect(r.stderr).toContain("checks it for PR #7 into dev");
+  });
+
+  it("a push that does not update the checked-out branch → no PR lookup, no check", () => {
+    adopt(1);
+    installGraphify();
+    installGh("7");
+    const r = run({ ...branchPush, PUSH_BRANCH_SHA: "" });
+    expect(r.status).toBe(0);
+    expect(ghCalls()).toBe("");
+    expect(r.calls).toBe("");
+  });
+
+  it("revert push of a branch with an open PR → no check", () => {
+    adopt(1);
+    installGraphify();
+    installGh("7");
+    const r = run({ ...branchPush, IS_REVERT: "1" });
+    expect(r.status).toBe(0);
+    expect(r.calls).toBe("");
+  });
+
+  it("an older hook copy (no BRANCH / PUSH_BRANCH_SHA) → the checked-out branch and HEAD stand in", () => {
+    adopt(1);
+    installGraphify();
+    installGh("7");
+    const git = (...a: string[]) =>
+      spawnSync("git", a, { cwd: tmp, encoding: "utf-8" }).stdout.trim();
+    git("init", "-q", "-b", "feat/1-x");
+    git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "x");
+    const r = run({ PUSH_DEV_SHA: "" });
+    expect(r.status).toBe(1);
+    expect(ghCalls()).toContain("pr list --head feat/1-x");
+    expect(r.calls).toContain(`check-at ${git("rev-parse", "HEAD")}`);
+  });
+
   // bkit's own hook carries the snippet: git's stdin ref reaches it as PUSH_DEV_SHA only for
   // a push to dev. Stub pnpm passes every gate, reports no skip-CI token.
   const runRepoHook = (stdin: string) => {
@@ -883,6 +1017,22 @@ describe("graphify register pre-push gate", () => {
     const r = runRepoHook(`refs/heads/x ${SHA} refs/heads/feature ${"0".repeat(40)}\n`);
     expect(r.status).toBe(0);
     expect(fs.existsSync(path.join(tmp, "graph.log"))).toBe(false);
+  });
+
+  it(".husky/pre-push: push of the checked-out branch with an open PR → the gate checks the pushed commit", () => {
+    adopt(1);
+    installGraphify();
+    installGh("7");
+    // An unborn branch has no name for `git rev-parse --abbrev-ref HEAD` → commit once.
+    spawnSync("git", ["init", "-q", "-b", "feature"], { cwd: tmp });
+    spawnSync(
+      "git",
+      ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "x"],
+      { cwd: tmp },
+    );
+    const r = runRepoHook(`refs/heads/feature ${SHA} refs/heads/feature ${"0".repeat(40)}\n`);
+    expect(r.status).toBe(1);
+    expect(fs.readFileSync(path.join(tmp, "graph.log"), "utf-8")).toContain(`check-at ${SHA}`);
   });
 });
 

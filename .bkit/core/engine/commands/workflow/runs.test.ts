@@ -177,7 +177,8 @@ const gate = (cwd: string, ...args: string[]) =>
   cli(cwd, ["gate", "--repo=example/example", ...args]);
 
 describe("bkit runs gate", () => {
-  type Job = { name: string; status: string; conclusion: string | null };
+  type Step = { name: string; conclusion: string | null };
+  type Job = { name: string; status: string; conclusion: string | null; steps?: Step[] };
   /** A fixture root holding one run at `sha` with the given status / conclusion and jobs. */
   function fixtureRun(
     sha: string,
@@ -336,6 +337,123 @@ describe("bkit runs gate", () => {
     expect(r.code).toBe(12);
     expect(r.json.passed).toBe(false);
     expect(r.err).toContain(`concluded '${conclusion}' (not success)`);
+  });
+
+  // #800: exit 12 names each failed step; regenerable only when bkit:generate fixes every one.
+  describe("exit 12 failed steps", () => {
+    const red = { status: "completed", conclusion: "failure" };
+    const job = (name: string, conclusion: string, steps: Step[] = []): Job => ({
+      name,
+      status: "completed",
+      conclusion,
+      steps,
+    });
+    const step = (name: string, conclusion: string | null): Step => ({ name, conclusion });
+    const staticJob = (...failed: string[]) =>
+      job("bkit-tests-static", "failure", [
+        step("Run Typecheck", "success"),
+        ...failed.map((n) => step(n, "failure")),
+        step("Check Dependency Audit", "skipped"),
+      ]);
+
+    it("a stale register alone is regenerable; the capstone is left out", async () => {
+      fixtureGh();
+      fixtureRun("stale-register", red, [
+        staticJob("Check Capability Register"),
+        job("bkit-tests-unit", "success", [step("Run Unit Tests", "success")]),
+        capstone("completed", "failure"),
+      ]);
+      const r = await gate(tmp(), "--head=stale-register");
+      expect(r.code).toBe(12);
+      expect(r.json.failedSteps).toEqual(["bkit-tests-static/Check Capability Register"]);
+      expect(r.json.regenerable).toBe(true);
+      expect(r.err).toContain("failed step: bkit-tests-static/Check Capability Register");
+    });
+
+    it("both floor steps failing is regenerable", async () => {
+      fixtureGh();
+      fixtureRun("stale-both", red, [
+        staticJob("Run bkit Check", "Check Capability Register"),
+        capstone("completed", "failure"),
+      ]);
+      const r = await gate(tmp(), "--head=stale-both");
+      expect(r.json.regenerable).toBe(true);
+    });
+
+    it("any failed step off the list makes the whole result unregenerable", async () => {
+      fixtureGh();
+      fixtureRun("stale-and-unit", red, [
+        staticJob("Check Capability Register"),
+        job("bkit-tests-unit", "failure", [step("Run Unit Tests", "failure")]),
+        capstone("completed", "failure"),
+      ]);
+      const r = await gate(tmp(), "--head=stale-and-unit");
+      expect(r.code).toBe(12);
+      expect(r.json.failedSteps).toEqual([
+        "bkit-tests-static/Check Capability Register",
+        "bkit-tests-unit/Run Unit Tests",
+      ]);
+      expect(r.json.regenerable).toBe(false);
+    });
+
+    it.each(["failure", "timed_out", "cancelled"])(
+      "a job that concluded '%s' with no failed step is {job}/ and unregenerable",
+      async (conclusion) => {
+        fixtureGh();
+        fixtureRun("runner-lost", red, [
+          staticJob("Check Capability Register"),
+          job("bkit-tests-unit", conclusion, [step("Run Unit Tests", null)]),
+          capstone("completed", "failure"),
+        ]);
+        const r = await gate(tmp(), "--head=runner-lost");
+        expect(r.json.failedSteps).toContain("bkit-tests-unit/");
+        expect(r.json.regenerable).toBe(false);
+      },
+    );
+
+    it("a timed-out step counts as failed", async () => {
+      fixtureGh();
+      fixtureRun("step-timeout", red, [
+        staticJob("Check Capability Register"),
+        job("bkit-tests-unit", "failure", [step("Run Unit Tests", "cancelled")]),
+        capstone("completed", "failure"),
+      ]);
+      const r = await gate(tmp(), "--head=step-timeout");
+      expect(r.json.failedSteps).toContain("bkit-tests-unit/Run Unit Tests");
+      expect(r.json.regenerable).toBe(false);
+    });
+
+    it("bkit.testing.ciGenerated adds steps to the floor", async () => {
+      fixtureGh();
+      fixtureRun("client-drift", red, [
+        job("app", "failure", [step("Check Client Drift", "failure")]),
+        capstone("completed", "failure"),
+      ]);
+      const cwd = tmp();
+      expect((await gate(cwd, "--head=client-drift")).json.regenerable).toBe(false);
+      fs.writeFileSync(
+        path.join(cwd, "package.json"),
+        JSON.stringify({ bkit: { testing: { ciGenerated: ["app/Check Client Drift"] } } }),
+      );
+      expect((await gate(cwd, "--head=client-drift")).json.regenerable).toBe(true);
+    });
+
+    it("a step name alone does not match a {job}/{step} entry in another job", async () => {
+      fixtureGh();
+      fixtureRun("other-job", red, [
+        job("app", "failure", [step("Check Capability Register", "failure")]),
+        capstone("completed", "failure"),
+      ]);
+      expect((await gate(tmp(), "--head=other-job")).json.regenerable).toBe(false);
+    });
+
+    it("refusals other than a failed run carry no failed steps", async () => {
+      fixtureGh();
+      const r = await gate(tmp(), "--head=cancelled");
+      expect(r.code).toBe(15);
+      expect(r.json.failedSteps).toEqual([]);
+      expect(r.json.regenerable).toBe(false);
+    });
   });
 
   // #533: `--repo` must resolve the PR, not the checkout's remote.
@@ -763,6 +881,8 @@ describe("bkit runs mirror", () => {
     repo: "example/example",
     skippedLanes: [],
     nonBookkeepingPaths: [],
+    failedSteps: [],
+    regenerable: false,
     reason: `fake gate exit ${code}`,
   });
 

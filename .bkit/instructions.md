@@ -1002,19 +1002,17 @@ Clause section lines:
 
 - rule: Universal Rules › Workflows & Process
 - carry: `bkit-audit-generate`, `bkit-utility-update-tracker`
-- refs:
-  - `.bkit/lite.md` § When to use
 - workflow:
   - condensed: `bkit-debug`, `bkit-design`, `bkit-plan`
 - prompt:
-  - specialised: `bkit-audit-generate`
   - applies: `bkit-utility-update-tracker`
 
 ```text
-**Tracker next labels:** An issue without a workflow label MUST carry exactly one of the `next:design|next:plan|next:build|next:debug|next:ship` labels, with `:lite` appended for the lite workflow (`next:build:lite`) per `.bkit/lite.md` § When to use. Do not put a `next:*` label alongside a workflow label. Standing audit parents are excepted.
+**Tracker next labels:** An issue without a workflow label MUST carry exactly one of the `next:design|next:plan|next:build|next:debug|next:ship` labels. Do not put a `next:*` label alongside a workflow label. Standing audit parents are excepted.
 ```
 
 ```retired
+**Tracker next labels:** An issue without a workflow label MUST carry exactly one of the `next:design|next:plan|next:build|next:debug|next:ship` labels, with `:lite` appended for the lite workflow (`next:build:lite`) per `.bkit/lite.md` § When to use. Do not put a `next:*` label alongside a workflow label. Standing audit parents are excepted.
 **Tracker next labels:** An issue without a workflow label → ALWAYS exactly one of the `next:design|next:plan|next:build|next:debug|next:ship` labels; append `:lite` for the lite workflow (`next:build:lite`) per `.bkit/lite.md` § When to use. NEVER alongside a workflow label. Standing audit parents are excepted.
 **Tracker next labels:** Issue without workflow label → ALWAYS exactly one `next:design` / `next:plan` / `next:build` / `next:debug` / `next:ship`; append `:lite` for lite workflow (`next:build:lite`) per `.bkit/lite.md` § When to use. NEVER alongside workflow label. Standing audit parents excepted.
 **Tracker next labels:** Issue without workflow label → ALWAYS exactly one `next:design` / `next:plan` / `next:build` / `next:debug` / `next:ship`; append `:lite` for lite workflow (`next:build:lite`) per `.bkit/lite.md` § When to use. NEVER alongside workflow label.
@@ -1031,10 +1029,11 @@ Clause section lines:
   - specialised: `bkit-audit-generate`, `bkit-utility-update-tracker`
 
 ```text
-**Tracker workflow labels:** Add one of the `bkit:design|bkit:plan|bkit:build|bkit:debug|bkit:ship` labels only when the issue starts that workflow (full or lite). They are mutually exclusive: the next workflow start drops the previous one, and the `/bkit-ship` close swaps `bkit:ship` → `bkit:merged`. To signal intent, use a `next:*` label, not a workflow label added by hand.
+**Tracker workflow labels:** Add one of the `bkit:design|bkit:plan|bkit:build|bkit:debug|bkit:ship` labels only when the issue starts that workflow. They are mutually exclusive: the next workflow start drops the previous one, and the `/bkit-ship` close swaps `bkit:ship` → `bkit:merged`. To signal intent, use a `next:*` label, not a workflow label added by hand.
 ```
 
 ```retired
+**Tracker workflow labels:** Add one of the `bkit:design|bkit:plan|bkit:build|bkit:debug|bkit:ship` labels only when the issue starts that workflow (full or lite). They are mutually exclusive: the next workflow start drops the previous one, and the `/bkit-ship` close swaps `bkit:ship` → `bkit:merged`. To signal intent, use a `next:*` label, not a workflow label added by hand.
 **Tracker workflow labels:** Add one of the `bkit:design|bkit:plan|bkit:build|bkit:debug|bkit:ship` labels ONLY when the issue starts that workflow (full or lite); they are mutually exclusive — the next workflow start drops the previous one; the `/bkit-ship` close swaps `bkit:ship` → `bkit:merged`. NEVER add one by hand to signal intent; use `next:*`.
 **Tracker workflow labels:** Add `bkit:design` / `bkit:plan` / `bkit:build` / `bkit:debug` / `bkit:ship` ONLY when issue starts that workflow (full or lite); mutually exclusive — next workflow start drops previous; `/bkit-ship` close swaps `bkit:ship` → `bkit:merged`. NEVER add by hand to signal intent; use `next:*`.
 ```
@@ -1138,7 +1137,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-adoption`, `bkit-audit-dependencies`, `bkit-audit-usability`
 - drift:
-  - `bkit-build:358`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-build:369`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `bkit-design:183`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
@@ -1180,7 +1179,7 @@ Clause section lines:
   - specialised: `bkit-ship`
   - applies: `bkit-plan`, `bkit-ship`
 - drift:
-  - `bkit-ship:386`: "Each commit the block makes carries `bkit [skip ci]`" The Step 4 merge commit brings `dev`'s code onto the branch under `[skip ci]`; `docs-commits` says the tag goes ONLY on a commit that carries no code
+  - `bkit-ship:400`: "Each commit the block makes carries `bkit [skip ci]`" The Step 4 merge commit brings `dev`'s code onto the branch under `[skip ci]`; `docs-commits` says the tag goes ONLY on a commit that carries no code
     - kept: a push trigger would validate nothing a run has not already validated on `dev`; Step 9 `runs revalidate` dispatches CI at the merged head itself, so the code is validated by a run the workflow starts
 
 ```text
@@ -1238,7 +1237,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-adoption`, `bkit-audit-dependencies`, `bkit-audit-repo`, `bkit-audit-usability`
 - drift:
-  - `bkit-build:358`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-build:369`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `bkit-design:183`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
@@ -1372,7 +1371,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-annotations`, `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:550`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:564`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -1671,7 +1670,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:550`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:564`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -5202,7 +5201,7 @@ Record the failure, abort any rebase, release the lock
 
 - workflow: where-used
 - tags: secrets
-- carriers: workflow all except `bkit-auto`, `bkit-ship`
+- carriers: workflow `bkit-debug`, `bkit-design`, `bkit-plan`
 
 ```text
 `bkit workflows handover --list-stray` (`--workflow` / `--fid` / `--month` / `--worktree` as below) → on a feature branch remove only the `modified` / `untracked` files this run created by mistake, NEVER other agents' changes; on `dev` / `main` (`shared` = true) remove nothing (only the run's own record lands, through a throwaway checkout). Then commit and push the run's record — NEVER onto a branch with an open PR; **Skip if** `{WORKTREE_PATH}` is not set:
@@ -8128,7 +8127,7 @@ Fallback: there is none, so mark {{items}} `Not Checked`.
 
 - doc: where-used
 - tags: authoring, format
-- carriers: doc `architecture`, `context`, `data-schema`, `deployments`, `design`, `docs`, `noise`, `observability`, `prompts`, `security`, `setup`, `skills`, `technology`, `testing`; rules
+- carriers: doc all except `CLAUDE`, `GEMINI`, `bkit-rules`; rules
 
 ```text
 Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
@@ -8142,7 +8141,7 @@ Use dense token-efficient phrasing; no filler / hedging / restating; tables > pr
 ### doc-local-section
 
 - doc: where-used
-- carriers: doc `docs`, `lite`, `skills`; rules
+- carriers: doc `docs`, `skills`; rules
 
 ```text
 Local project {{what}} → `Project {{section}}` below the bkit-managed block.
@@ -9502,7 +9501,12 @@ Route — first match wins:
 **If** `DECISION_ROUTE` = `retry` **and** `From: verify` → Step 9.
 **If** `DECISION_ROUTE` = `retry` → Step 13.
 **If** `DECISION_ROUTE` = `verify` → re-run Step 8.
-[workflow-pushes] Record the wait (step 4 `owner-pause` block). Create `docs/plans/{YYYYMM}/logs/{FID}/build-handover.md` = the decision file plus the line `Stopped by the owner ({RUNTIME}); run stays IN_PROGRESS. /bkit-build {REF} resumes at this pause.`; `REF` empty → `{FID}`. Then push the record — NEVER onto a branch with an open PR:
+[secrets; workflow-pushes] List stray files first: `bkit workflows handover --list-stray` (`--workflow` / `--fid` / `--month` / `--worktree` as below) → on a feature branch remove only the `modified` / `untracked` files this run created by mistake, NEVER other agents' changes; on `dev` / `main` (`shared` = true) remove nothing (only the run's own record lands, through a throwaway checkout).
+**If** `PUBLISH` = false **or** `PUBLISH` is not held yet → keep the record in the worktree, linked by branch, and NEVER pass `--push`, because a held run pushes nothing and neither does a failure before `status route` resolves `publish`:
+[workflow-pushes] **Else** → commit and push the record, but NEVER onto a branch with an open PR:
+[workflow-pushes] **If** `PUBLISH` = false → keep the record in the kept worktree, linked by branch, and NEVER pass `--push`:
+[workflow-pushes] **Else** → push the record, but NEVER onto a branch with an open PR:
+[workflow-pushes] Record the wait (step 4 `owner-pause` block). Create `docs/plans/{YYYYMM}/logs/{FID}/build-handover.md` = the decision file plus the line `Stopped by the owner ({RUNTIME}); run stays IN_PROGRESS. /bkit-build {REF} resumes at this pause.`; `REF` empty → `{FID}`. Then keep the record:
 Release the lock. NEVER run `workflows fail`:
 Decision file written (`decisions compose`)
 Questions asked in the session, or recommendations taken (`decisions apply --by=headless`)
@@ -9517,6 +9521,7 @@ Read the blockers and their states via the tracker MCP (**Tracker**).
 Emit the long-branch advisory `[bkit-build] feature branch is {BEHIND_DEV} commits behind dev / {DIVERGED_AGO} since divergence`.
 Long-branch advisory emitted
 Blocker check attempted
+**If** `PUBLISH_SOURCE` = coerced → emit: Warning: publish=false needs a local run, so this run publishes.
 Input file written (`workflows input`)
 Merge `origin/dev` when the feature branch's `docs/` is behind it. The command resolves conflicts itself: ledgers by union, and other `docs/` files on `dev`'s side:
 Docs synced (`branches sync`)
@@ -9638,12 +9643,18 @@ Read status.jsonl and derive the next `STRATEGY`:
 Finish, then re-run Step 12:
 Strategy read before invocation
 Write `build-summary.md` from this run's status rows and the plan's tasks:
-Finish, then probe for a pre-existing open PR on `{BRANCH}` before the push:
+**If** `PUBLISH` = false → sub-step 4.
 **If** exit 80 → look for an open PR on `{BRANCH}` with base `dev` via `list_pull_requests`:
 **If** one is found → **Failure Path**.
 **Else** → sub-step 3.
 [workflow-pushes] Push with exactly one command:
+Open-PR probe ran before any push
 Open-PR probe ran
+**If** `PUBLISH` = false → **Held close**.
+**Else** → **Publish close**.
+**Held close:** Run the blocks below, then sub-steps 11-12 and Gate 16. Sub-steps 1-10 are for a published run only.
+`REF` empty → `{FID}`. Hold the close's `commentFile`, `tracker` and `finalReturn` under the names sub-step 3 uses: `CLOSE_COMMENT_FILE`, `CLOSE_TRACKER`, `FINAL_RETURN`.
+**If** `CLOSE_TRACKER`.done = false → post the content of `CLOSE_COMMENT_FILE` via the tracker MCP (**Comments** fallback).
 Before creating the PR, probe for an open PR that already exists on `{BRANCH}`:
 **If** exit 80 → look for an open PR on `{BRANCH}` with base `dev` via `list_pull_requests`:
 **If** one is found → **Failure Path**.
@@ -9662,6 +9673,9 @@ Record `build-create-pr`:
 **If** re-entering from the **CI wait turn-loop** → fill `{CI_REENTRY}`:
 **If** exit 80 **or** 81 → **CI wait turn-loop** → re-run this block.
 Re-read the issue's labels after the push, for the kill-switch check:
+**If** `PUBLISH` = true → also run:
+**If** `PUBLISH` = false → tick only the items for the close commit, the lock, the final return, the issue update and the artifact links, because the held close commits to the local branch and pushes nothing.
+**Else** → tick every item.
 Labels re-read before the close commit
 Lock released
 PR created
@@ -9969,9 +9983,13 @@ Asked in the session, never headless
 Confirmations and rejections written (`decisions apply --by=owner`)
 Each unconfirmed item deferred (`decisions pending --defer`)
 Determine whether `origin/dev` is an ancestor of the PR head:
-**If** `BASE_PATH` = A → Step 5 (skip integration — dev has not moved).
-**If** `BASE_PATH` = B → Step 4 (integration required).
+**If** `BASE_PATH` = A → sub-step 3 (skip integration — dev has not moved).
+**If** `BASE_PATH` = B → Step 4 (integration required; its merge runs `bkit:generate`).
+Regenerate, because no merge runs `bkit:generate` on Path A. A hand merge of `dev` brings `dev`'s generated files, which may not match this branch's code. The block commits only the paths `bkit:generate` changed:
+**If** exit 0 **and** `REGEN_OUTCOME` = committed → push it, so CI starts at the regenerated head; NEVER force:
+**If** exit 0 **and** `REGEN_OUTCOME` = unchanged **or** undeclared → Step 5. Nothing was committed.
 Ancestor verdict determined
+Path A regenerated (`branches regenerate`), a commit pushed plain
 Merge `origin/dev` into `SHIP_BRANCH` locally. The block commits the run's uncommitted work first, unions the append-only ledgers, regenerates a conflicted lockfile from `dev`'s copy, runs a declared `bkit:generate`, and leaves every other conflict in the tree for sub-step 2. GitHub ignores `merge=union`, so the merged commit, not a server-side update or a rebase, is what makes the PR mergeable. Each commit the block makes carries `bkit [skip ci]`; Step 9 re-validates the merged head:
 **If** exit 0 **and** `MERGE_OUTCOME` = merged → sub-step 3.
 **If** exit 0 **and** `MERGE_OUTCOME` = current → Step 5. `dev` has not moved since Step 3.
@@ -10005,12 +10023,17 @@ Validated head resolved
 CI re-validated (`runs revalidate`)
 [merge-bodies] Assert the gate at the PR's current head, with CI checked at `VALIDATED_HEAD`. This gate is the ONLY merge precondition. The block writes the pre-merge snapshot to the outbox before the gate decides, refuses a title that carries a skip token (18), and records a refusal in `{STATUS}`:
 [polls-loops] **If** exit 11 (in progress — poll), 14 (stale green), 10 (no run) **or** 17 (non-bookkeeping change past `VALIDATED_HEAD`) → route on the failed arrivals at Step 10, without asking:
+**If** exit 12 **and** `regenerable` = true → every failed CI step is one `bkit:generate` fixes (`bkit.testing.ciGenerated`). Route on the failed arrivals at Step 10, without asking:
+**If** exit 0 **and** `REGEN_OUTCOME` = committed → push the fix, and NEVER force:
+Then set `REVALIDATE_REASON` empty → Step 9 (re-validate at the regenerated head, then re-run the merge gate).
+**Else** → **Failure Path** (`unchanged`: regenerating does not fix the failed steps; `undeclared`; or the block failed).
 [integration-merge] Merge with an empty body and `--match-head`, so GitHub refuses when the head moved. Re-read the labels from the tracker, so that ` bkit [auto route]` rides the squash subject on `bkit:auto`. The labels are never carried forward from Step 1's `{LABELS}`. `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry, empty when no tracker is wired<!-- bkit:tracker true start --> or `ISSUE_ID` is empty<!-- bkit:tracker true end -->:
 **If** exit 0 **or** 7 → hold `verdict` as `MERGE_VERDICT`, `failures` as `MERGE_FAILURES`, and hold `state`.
 **If** `state` = MERGED → Step 13.
 **If** `state` != MERGED → run counter routing:
 Merge gate asserted (`runs gate`)
 Failed arrivals counted against `ship.merge.maxAttempts` (`counters route`)
+A red CI run regenerated only when every failed step is a generated file (`branches regenerate`)
 PR merge attempted (`prs merge`)
 Ask before the fix round only when the diagnosis found no clear cause. State the failure in plain English before the technical cause.
 **If** `MERGE_ASK` = false **or** `DIAGNOSE_VERDICT` = PASS → narrate `ship merge: attempt {MERGE_ROUNDS} of {MERGE_MAX}, fix round taken without asking ({the diagnosed cause})` → Step 12.
@@ -10099,7 +10122,6 @@ A failing test / CI / runtime, cause unknown → `/bkit-debug`.
 The approach is open (options, trade-offs, unanswered questions) → `/bkit-design`.
 The approach is settled, not broken into tasks → `/bkit-plan`.
 The change is clear → `/bkit-build`.
-[tracker-next-labels] **If** `.bkit/lite.md` § When to use allows a lite workflow → `/bkit-build` becomes `build:lite`, and `/bkit-debug` becomes `debug:lite`.
 `Reason` = the deciding fact, in one clause.
 [discovered-bugs] Write ledger entries to `docs/failures.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), with `by: {workflow: "audit", step: "audit-{slug}"}`.
 **If** the template audits `docs/failures.jsonl` or `docs/deferrals.jsonl` → skip this step.
@@ -11169,7 +11191,6 @@ Group by domain boundaries, never by token count.
 Treat items done together as one list item.
 For each item:
 Recommend the `/bkit-<phase>` command.
-[recommend-do-not-decide] Recommend the `.bkit/lite.md` lite workflow `<phase>:lite` instead, only where it is clearly enough.
 Recommend a model tier.
 Recommend `@bkit-audit-generate` for audit reports.
 [recommend-do-not-decide; tracker-issue-creation] **If** a tracker is wired and the item has no issue → recommend filing one first, shaped per `.bkit/trackers.md` § Issue shapes.
@@ -11211,7 +11232,6 @@ For each issue, build target values from the sources in the order listed. The fi
 **If** a workflow label (`bkit:design|bkit:plan|bkit:build|bkit:debug|bkit:ship`) is present → remove every `next:*`.
 [tracker-next-labels] **Else** → exactly one `next:*`, from the `REPORT` label correction, then the roadmap item's recommended command, then the issue shape per `.bkit/trackers.md` § `Issue shapes`:
 Shape to label: idea → `next:design`, change → `next:plan`, change with `Tasks` → `next:build`, bug → `next:debug`.
-Append `:lite` per `.bkit/lite.md` § `When to use`.
 An existing single `next:*` stands unless `REPORT` corrects it.
 **If** the type label (`enhancement|bug`) is missing → add it per shape. `REPORT` label corrections apply.
 **If** a label is not in the repo or team labels → `Unapplied`.

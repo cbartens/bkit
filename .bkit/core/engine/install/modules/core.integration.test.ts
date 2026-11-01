@@ -2,6 +2,7 @@
 // gate scripts and advisories, the first-install advisory, `.bkit/version`, and the managed blocks
 // of the shared `.agents/` files.
 
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -103,7 +104,6 @@ describe("bkit canonical docs pass (runBkitDocs, #218)", () => {
     "install.md",
     "jsonl.md",
     "LICENSE.md",
-    "lite.md",
     "pipeline.md",
     "providers.md",
     "prompts.md",
@@ -681,7 +681,7 @@ describe.each([
 });
 
 // ---------------------------------------------------------------------------
-// Migration: .agents/shortcuts.md (5.1.0 – 5.2.4) → .bkit/lite.md
+// Migration: .agents/shortcuts.md (5.1.0 – 5.2.4) and .bkit/lite.md → consumer-owned stub
 // ---------------------------------------------------------------------------
 
 describe("migrateLinearTeamKey (via seedCorePackageJsonScripts)", () => {
@@ -777,6 +777,7 @@ describe("seedBkitDefaults (via seedCorePackageJsonScripts)", () => {
         ciRequired: [],
         minPushPaths: [],
         ciSkipPaths: [],
+        ciGenerated: [],
       },
       workflows: {
         minFreeGb: 40,
@@ -850,6 +851,37 @@ describe("seedBkitDefaults (via seedCorePackageJsonScripts)", () => {
       maxTestsPerGroup: 25,
       maxTestFilesPerTask: 3,
     });
+  });
+
+  it("seeds build.publish on install", () => {
+    seed({});
+    run();
+    expect(JSON.parse(read()).bkit.workflows.build.publish).toEqual({ remote: true, local: true });
+  });
+
+  it("keeps an existing publish.local false on upgrade", () => {
+    seed({ bkit: { workflows: { build: { publish: { local: false } } } } });
+    run();
+    expect(JSON.parse(read()).bkit.workflows.build.publish).toEqual({ remote: true, local: false });
+  });
+
+  it("seeds publish without dropping the ask blocks", () => {
+    seed({});
+    run();
+    expect(JSON.parse(read()).bkit.workflows.build).toEqual({
+      verify: { ask: true, maxAttempts: 2 },
+      challenge: { ask: true, maxAttempts: 2 },
+      tests: { ask: true, maxAttempts: 2 },
+      publish: { remote: true, local: true },
+    });
+  });
+
+  it("seeds publish when the bkit block has no build", () => {
+    seed({ bkit: { workflows: { minFreeGb: 10 } } });
+    run();
+    const build = JSON.parse(read()).bkit.workflows.build;
+    expect(build.publish).toEqual({ remote: true, local: true });
+    expect(build.verify).toEqual({ ask: true, maxAttempts: 2 });
   });
 
   it("leaves a non-object nested block alone", () => {
@@ -1391,21 +1423,41 @@ describe("migrateLedgerSchema (via runBkitDocs)", () => {
   });
 });
 
-describe("migrateShortcutsToLite (via runBkitDocs)", () => {
-  const FIXTURE = path.join(getPkgRoot(), "tests/fixtures/shortcuts-5.2.4/shortcuts.md.txt");
+describe("migrateRetiredLite (via runBkitDocs)", () => {
   const OLD = path.join(".agents", "shortcuts.md");
   const LITE = path.join(".bkit", "lite.md");
+  const SENTINEL = "<!-- bkit:retired-lite-stub -->";
   const OWN = "### hotfix\n\n```text\nShip the hotfix below.\n```";
+  const OWN_OLD = "### nightly\n\n```text\nRun the nightly.\n```";
+  const BLOCK =
+    "<!-- bkit:start -->\n\n<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->\n\n# Lite Workflows\n\nbody\n\n<!-- bkit:end -->\n";
+  const SHORTCUTS_BLOCK = BLOCK.replace("# Lite Workflows", "# Shortcuts");
 
-  const seedOld = (extra = ""): void => {
-    fs.mkdirSync(".agents", { recursive: true });
-    fs.writeFileSync(OLD, fs.readFileSync(FIXTURE, "utf-8") + extra, "utf-8");
+  let savedGitDir: string | undefined;
+  let savedWorkTree: string | undefined;
+
+  beforeEach(() => {
+    savedGitDir = process.env.GIT_DIR;
+    savedWorkTree = process.env.GIT_WORK_TREE;
+    delete process.env.GIT_DIR;
+    delete process.env.GIT_WORK_TREE;
+    spawnSync("git", ["init", "-q"], { cwd: tmpDir });
+    process.env.GIT_DIR = path.join(tmpDir, ".git");
+    process.env.GIT_WORK_TREE = tmpDir;
+  });
+
+  afterEach(() => {
+    if (savedGitDir === undefined) delete process.env.GIT_DIR;
+    else process.env.GIT_DIR = savedGitDir;
+    if (savedWorkTree === undefined) delete process.env.GIT_WORK_TREE;
+    else process.env.GIT_WORK_TREE = savedWorkTree;
+    vi.restoreAllMocks();
+  });
+
+  const put = (file: string, text: string): void => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, text, "utf-8");
   };
-  const renderedLite = (): string =>
-    applyTokens(
-      fs.readFileSync(path.join(getBkitDocsRoot(), "lite.md"), "utf-8"),
-      makeCtx().tokens,
-    );
   const run = (dryRun = false): ModuleContext => {
     const ctx = makeCtx({ dryRun });
     runBkitDocs(ctx.dryRun, ctx.tokens, ctx.ws, ctx.logPrefix);
@@ -1413,51 +1465,105 @@ describe("migrateShortcutsToLite (via runBkitDocs)", () => {
   };
   const paths = (ctx: ModuleContext): string[] => ctx.ws.writes.map((w) => path.normalize(w.path));
 
-  it("deletes a pristine 5.2.4 copy and leaves .bkit/lite.md as rendered", () => {
-    seedOld();
+  it("strips the managed block and keeps consumer lines", () => {
+    put(LITE, `${BLOCK}\n## Project Lite Workflows\n\n${OWN}\n`);
+    run();
+    const lite = fs.readFileSync(LITE, "utf-8");
+    expect(lite.split("\n")[0]).toBe(SENTINEL);
+    expect(lite).toContain(OWN);
+    expect(lite).not.toContain("bkit:start");
+    expect(lite).not.toContain("bkit:managed");
+    expect(lite).not.toContain("## Project Lite Workflows");
+  });
+
+  it("deletes .bkit/lite.md when it holds only the seeded heading", () => {
+    put(LITE, `${BLOCK}\n## Project Lite Workflows\n`);
+    const ctx = run();
+    expect(fs.existsSync(LITE)).toBe(false);
+    expect(paths(ctx)).toContain(LITE);
+  });
+
+  it("merges .agents/shortcuts.md consumer lines into the stub", () => {
+    put(LITE, `${BLOCK}\n## Project Lite Workflows\n\n${OWN}\n`);
+    put(OLD, `${SHORTCUTS_BLOCK}\n## Project Shortcuts\n\n${OWN_OLD}\n`);
     const ctx = run();
     expect(fs.existsSync(OLD)).toBe(false);
-    expect(fs.readFileSync(LITE, "utf-8")).toBe(renderedLite());
+    const lite = fs.readFileSync(LITE, "utf-8");
+    expect(lite.split("\n")[0]).toBe(SENTINEL);
+    expect(lite).toContain(OWN);
+    expect(lite).toContain(OWN_OLD);
+    expect(lite).not.toContain("## Project Shortcuts");
     expect(paths(ctx)).toContain(OLD);
   });
 
-  it("moves the consumer's own lines under ## Project Lite Workflows, without the old heading", () => {
-    seedOld(`\n${OWN}\n`);
+  it("creates the stub when the shortcuts merge finds no lite.md", () => {
+    put(OLD, `${SHORTCUTS_BLOCK}\n## Project Shortcuts\n\n${OWN_OLD}\n`);
+    expect(fs.existsSync(LITE)).toBe(false);
     run();
     expect(fs.existsSync(OLD)).toBe(false);
-    const lite = fs.readFileSync(LITE, "utf-8");
-    expect(lite).toBe(`${renderedLite().replace(/\n*$/, "\n\n")}${OWN}\n`);
-    expect(lite).not.toContain("## Project Shortcuts");
-    expect(extractManagedBlock(lite, "html-comment")).not.toBeNull();
+    expect(fs.readFileSync(LITE, "utf-8")).toBe(`${SENTINEL}\n\n${OWN_OLD}\n`);
   });
 
-  it("is idempotent: a second run changes nothing", () => {
-    seedOld(`\n${OWN}\n`);
+  it("leaves a blockless or two-block lite.md untouched and logs", () => {
+    for (const text of [`# my notes\n\n${OWN}\n`, `${BLOCK}\n${BLOCK}\n${OWN}\n`]) {
+      put(LITE, text);
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      const ctx = run();
+      expect(fs.readFileSync(LITE, "utf-8")).toBe(text);
+      expect(paths(ctx)).not.toContain(LITE);
+      const logged = warn.mock.calls.map((c) => String(c[0])).join("\n");
+      expect(logged).toContain(LITE);
+      expect(logged).not.toContain("<!-- bkit:end -->");
+      warn.mockRestore();
+    }
+  });
+
+  it("logs no fix and writes nothing on a second install over its own stub", () => {
+    put(LITE, `${BLOCK}\n## Project Lite Workflows\n\n${OWN}\n`);
     run();
-    expect(fs.existsSync(OLD)).toBe(false);
+    const stub = fs.readFileSync(LITE, "utf-8");
+    expect(stub.split("\n")[0]).toBe(SENTINEL);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const again = run();
+    expect(warn).not.toHaveBeenCalled();
+    expect(log.mock.calls.map((c) => String(c[0])).join("\n")).not.toContain("lite");
+    expect(paths(again)).not.toContain(LITE);
+    expect(fs.readFileSync(LITE, "utf-8")).toBe(stub);
+  });
+
+  it("is idempotent across a second install", () => {
+    put(LITE, `${BLOCK}\n## Project Lite Workflows\n\n${OWN}\n`);
+    put(OLD, `${SHORTCUTS_BLOCK}\n## Project Shortcuts\n\n${OWN_OLD}\n`);
+    run();
     const after = fs.readFileSync(LITE, "utf-8");
+    expect(after.split("\n")[0]).toBe(SENTINEL);
     const again = run();
     expect(fs.readFileSync(LITE, "utf-8")).toBe(after);
     expect(paths(again)).not.toContain(OLD);
     expect(paths(again)).not.toContain(LITE);
   });
 
-  it("dry-run touches nothing and records the same writes as the real run", () => {
-    seedOld(`\n${OWN}\n`);
+  it("records the same write set in a dry run", () => {
+    put(LITE, `${BLOCK}\n## Project Lite Workflows\n\n${OWN}\n`);
+    put(OLD, `${SHORTCUTS_BLOCK}\n## Project Shortcuts\n\n${OWN_OLD}\n`);
+    const before = fs.readFileSync(LITE, "utf-8");
     const dry = run(true);
-    expect(fs.readFileSync(OLD, "utf-8")).toContain(OWN);
-    expect(fs.existsSync(LITE)).toBe(false);
-    expect(paths(dry).filter((p) => [LITE, OLD].includes(p))).toEqual([LITE, LITE, OLD]);
+    expect(fs.readFileSync(LITE, "utf-8")).toBe(before);
+    expect(fs.existsSync(OLD)).toBe(true);
+    expect(paths(dry).filter((p) => [LITE, OLD].includes(p))).not.toHaveLength(0);
     const real = run();
+    expect(fs.readFileSync(LITE, "utf-8").split("\n")[0]).toBe(SENTINEL);
     expect(paths(dry)).toEqual(paths(real));
   });
 
-  it("leaves an old copy without a managed block in place", () => {
-    fs.mkdirSync(".agents", { recursive: true });
-    fs.writeFileSync(OLD, `# Shortcuts\n\n${OWN}\n`, "utf-8");
-    const ctx = run();
-    expect(fs.readFileSync(OLD, "utf-8")).toContain(OWN);
-    expect(fs.readFileSync(LITE, "utf-8")).toBe(renderedLite());
-    expect(paths(ctx)).not.toContain(OLD);
+  it("installs no lite.md and still mirrors every other canonical doc", () => {
+    const ctx = makeCtx();
+    runCoreModule(ctx);
+    flushPostDispatch(ctx);
+    expect(fs.existsSync(LITE)).toBe(false);
+    for (const name of ["workflows.md", "prompts.md", "templates.md", "README.md"]) {
+      expect(fs.existsSync(path.join(".bkit", name)), name).toBe(true);
+    }
   });
 });

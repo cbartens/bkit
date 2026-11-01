@@ -63,6 +63,38 @@ describe("buildSummary", () => {
     expect(s.markdown).toContain("## Recommended Next Step");
   });
 
+  it("writes Publish: held when publish is false", () => {
+    const s = buildSummary(input({ publish: false }));
+    expect(s.markdown).toMatch(/^Publish: held$/m);
+    expect(s.markdown).not.toMatch(/^Publish: pr$/m);
+  });
+
+  it("writes Publish: pr by default", () => {
+    for (const publish of [undefined, true]) {
+      const s = buildSummary(input({ publish }));
+      expect(s.markdown).toMatch(/^Publish: pr$/m);
+      expect(s.markdown).not.toContain("Publish: held");
+    }
+  });
+
+  it("writes Docs: not synced on a held summary", () => {
+    const held = buildSummary(input({ publish: false }));
+    expect(held.markdown).toContain("Docs: not synced (ship syncs on landing)");
+    expect(buildSummary(input({ publish: true })).markdown).not.toContain("Docs:");
+    expect(buildSummary(input({})).markdown).not.toContain("Docs:");
+  });
+
+  it("keeps the verdict and next step unchanged by publish", () => {
+    const held = buildSummary(input({ publish: false }));
+    const pr = buildSummary(input({ publish: true }));
+    expect(held.markdown).toContain("Publish: held");
+    expect(pr.markdown).toContain("Publish: pr");
+    expect(held.verdict).toBe(pr.verdict);
+    expect(held.nextStep).toBe(pr.nextStep);
+    expect(held.reasons).toEqual(pr.reasons);
+    expect(held.markdown.split("\n").slice(0, 3)).toEqual(pr.markdown.split("\n").slice(0, 3));
+  });
+
   it("a plan step's FAIL review answered by its apply step is CONCERNS, not FAIL", () => {
     const s = buildSummary(
       input({

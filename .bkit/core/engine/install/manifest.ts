@@ -137,7 +137,7 @@ const CORE_MANIFEST: ManifestEntry[] = [
   // `.bkit/core/.bkit/` and are read from there at runtime (getBkitDocsRoot); these
   // consumer copies are force-overwritten mirrors (writeTier1) so a consumer can read
   // them in-repo. Whole file is bkit-owned → byte-equal-text (refreshed every install);
-  // prompts.md and lite.md are markered-text, keeping the consumer section below `bkit:end`.
+  // prompts.md is markered-text, keeping the consumer section below `bkit:end`.
   { path: ".bkit/authoring.md", format: "byte-equal-text", module: "core" },
   { path: ".bkit/cloud.md", format: "byte-equal-text", module: "core" },
   { path: ".bkit/cli.md", format: "byte-equal-text", module: "core" },
@@ -147,7 +147,6 @@ const CORE_MANIFEST: ManifestEntry[] = [
   // The MIT notice that travels with the files bkit writes: the full text and copyright
   // notice. Sourced from `.bkit/core/.bkit/LICENSE.md`.
   { path: ".bkit/LICENSE.md", format: "byte-equal-text", module: "core" },
-  { path: ".bkit/lite.md", format: "markered-text", module: "core" },
   { path: ".bkit/pipeline.md", format: "byte-equal-text", module: "core" },
   { path: ".bkit/providers.md", format: "byte-equal-text", module: "core" },
   { path: ".bkit/prompts.md", format: "markered-text", module: "core" },

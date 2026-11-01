@@ -164,9 +164,9 @@ Copied word for word from issue #715 § Success criteria.
 | A dry run records the same write set as a real install | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 7 |
 | A fresh install writes no `.bkit/lite.md` and mirrors every other canonical doc | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 7 |
 | `bkit upgrade` from a 5.2.4 `lite.md` keeps the consumer section | Integration | `.bkit/core/engine/commands/install/upgrade.integration.test.ts` | 7 |
-| The install manifest no longer lists `.bkit/lite.md` and keeps `prompts.md` as the only markered-text core doc | Unit | `.bkit/core/engine/install/manifest.test.ts` | 8 |
-| The migration still runs when the package `.bkit/core/.bkit/lite.md` is absent | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 8 |
-| The managed group-A doc list excludes `.bkit/lite.md` | Unit | `.bkit/core/engine/audits/templates/templates.test.ts` | 8 |
+| The install manifest no longer lists `.bkit/lite.md` and keeps `prompts.md` as the only markered-text core doc | Unit | `.bkit/core/engine/install/manifest.test.ts` | 17 |
+| The managed group-A doc list excludes `.bkit/lite.md` | Unit | `.bkit/core/engine/audits/templates/templates.test.ts` | 17 |
+| Every shipped payload file lands on install, and the retired `.bkit/lite.md` source is not shipped | Integration | `.bkit/core/engine/commands/install/install.integration.test.ts` | 17 |
 | `bkit uninstall` strips the managed lite block from an un-upgraded install | Unit | `.bkit/core/engine/commands/install/uninstall.test.ts` | 9 |
 | A held close writes `ending: held` and `publish: false` on the `workflow-done` row | Unit | `.bkit/core/engine/commands/workflow/workflows.test.ts` | 10 |
 | A normal close still writes no `ending` override and no `publish` field | Unit | `.bkit/core/engine/commands/workflow/workflows.test.ts` | 10 |
@@ -201,6 +201,9 @@ Copied word for word from issue #715 § Success criteria.
 | The root README points every small-change recommendation at `/bkit-build #N` and links no lite doc | Unit | `.bkit/core/engine/audits/templates/templates.test.ts` | 15 |
 | The root README carries the manual batch recipe with both limitations | Unit | `.bkit/core/engine/audits/templates/templates.test.ts` | 15 |
 | The root README carries the held handoff | Unit | `.bkit/core/engine/audits/templates/templates.test.ts` | 15 |
+| worktree setup's low-disk sweep stops waiting after maxWaitMs while a live sweep holds the lock | Unit | `.bkit/core/engine/commands/workflow/disk.test.ts` | 18 |
+| bkit-build.md: a held run's Failure Path and Decision Pause never push the feature branch | Unit | `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` | 19 |
+| bkit-build.md: a Failure Path reached before publish is resolved never pushes the feature branch | Unit | `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` | 20 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -546,8 +549,8 @@ The retired surface is removed from every current doc, prompt and rule; the publ
 
 #### [MODIFY] `README.md`
 
-- **Existence Check:** file exists; the command table (line 97), "three sign-offs" (354), "run fewer steps" (413), the sign-off FAQ (443) and the documentation table (482) name lite workflows.
-- Replace the lite row with `/bkit-build #N publish=false` (hold) beside the default `/bkit-build #N` row; rewrite the sign-off and FAQ sentences; remove the `.bkit/lite.md` documentation row; document the held handoff.
+- **Existence Check:** file exists; commit `7c9b909ea` (issue comment of 2026-10-28T11:19:47Z) already removed the lite command row, sign-off and FAQ sentences, the "run fewer steps" paragraph and the `.bkit/lite.md` documentation row; `grep -ni lite README.md` now matches only "literature".
+- Add `/bkit-build #N publish=false` (hold) beside the default `/bkit-build #N` row; document the held handoff. Do not reintroduce any lite reference.
 - Add the manual batch recipe the issue asks for (`#715` § No batch command): combine held builds, then land them yourself with `git` — with both known limitations stated (one head commit means post-merge auto-debug sees only the last FID; never batch migrations) and the user's ownership of the push, PR, CI gate, sweep and docs sync named.
 
 #### [MODIFY] `.bkit/core/engine/commands/workflow/issues.test.ts`
@@ -697,7 +700,7 @@ Build order: config → runtime resolution → install → close row → build w
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** Parse and validate `bkit.workflows.build.publish` in settings
+- [x] **TASK 1:** Parse and validate `bkit.workflows.build.publish` in settings
   - **UPDATE:** `BkitConfig` in `.bkit/core/engine/shared/settings.ts`: add the `BuildPublish` type and a flat `buildPublish` field
   - **UPDATE:** `CONFIG_DEFAULTS` in `.bkit/core/engine/shared/settings.ts`: `buildPublish` = `{ remote: true, local: true }`
   - **UPDATE:** `readBkitConfig` in `.bkit/core/engine/shared/settings.ts`: parse `workflows.build.publish`; `remote` resolves `true`; `local` accepts only a boolean; a non-object block resolves both defaults
@@ -716,7 +719,7 @@ Build order: config → runtime resolution → install → close row → build w
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Print the resolved publish values from `repo info`
+- [x] **TASK 2:** Print the resolved publish values from `repo info`
   - **UPDATE:** `.bkit/core/engine/commands/workflow/repo.ts`: the `repo info` verb emits `buildPublishRemote` and `buildPublishLocal`
   - **UPDATE:** `.bkit/core/engine/commands/workflow/repo.ts`: document both keys in the command's `output` block
   - **UPDATE:** `dist/cli.js`: rebuilt by `pnpm build` and staged in the same commit
@@ -731,7 +734,7 @@ Build order: config → runtime resolution → install → close row → build w
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** Report the two publish advisories from `bkit check`
+- [x] **TASK 3:** Report the two publish advisories from `bkit check`
   - **UPDATE:** `detectInvalidTaskCaps` in `.bkit/core/engine/checks/before/repo.ts`: add `detectBuildPublish` beside it, reading raw `bkit.workflows.build.publish`; one finding per key — `bkit-build-publish-remote` for `remote !== true` on an object block, `bkit-build-publish-invalid` for a non-object block or a non-boolean `local`, never both for one key
   - **UPDATE:** `runPreflight` in `.bkit/core/engine/checks/before/index.ts`: push the new finding into `advisories`
   - **UPDATE:** `dist/cli.js`: rebuilt by `pnpm build` and staged in the same commit
@@ -756,7 +759,7 @@ Build order: config → runtime resolution → install → close row → build w
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** Resolve `{PUBLISH}` in `bkit status route`
+- [x] **TASK 4:** Resolve `{PUBLISH}` in `bkit status route`
   - **UPDATE:** `ROUTE_FIELDS` in `.bkit/core/engine/commands/workflow/status.ts`: add `publish`
   - **UPDATE:** `.bkit/core/engine/commands/workflow/status.ts`: add `publishRoute(runs, promptText, config)` reading the last `runtime-resolved` row's `runtime`, the prompt tokens `publish=true` / `publish=false`, else `LOCAL` → `buildPublish.local` and any other runtime → `buildPublish.remote`; a non-LOCAL `false` resolves `true`; a token matching neither value falls through to config; no runtime row throws `CommandError(EXIT_ROUTE_MISSING, …)` naming build Step 2
   - **UPDATE:** `.bkit/core/engine/commands/workflow/status.ts`: widen the `--prompt-file` guard to accept `--workflow=build` as well as `debug`, attaching the debug fields only for `debug`; the `route` verb's `output` block documents `publish` and `publishSource` (`token` | `local` | `remote` | `coerced`); `run` emits both
@@ -777,7 +780,7 @@ Build order: config → runtime resolution → install → close row → build w
 
 <!-- bkit:task 5 start -->
 
-- [ ] **TASK 5:** Write the `Publish:` and `Docs:` lines into the build summary
+- [x] **TASK 5:** Write the `Publish:` and `Docs:` lines into the build summary
   - **UPDATE:** `SummaryInput` in `.bkit/core/engine/commands/workflow/summary.ts`: accept `publish?: boolean`
   - **UPDATE:** `buildSummary` in `.bkit/core/engine/commands/workflow/summary.ts`: emit `Publish: held` / `Publish: pr`, and `Docs: not synced (ship syncs on landing)` only when `publish` is false
   - **UPDATE:** `.bkit/core/engine/commands/workflow/workflows.ts`: the `summary` verb adds optional `--publish` and threads it into the input
@@ -802,7 +805,7 @@ Build order: config → runtime resolution → install → close row → build w
 
 <!-- bkit:task 6 start -->
 
-- [ ] **TASK 6:** Seed `build.publish` on install and upgrade
+- [x] **TASK 6:** Seed `build.publish` on install and upgrade
   - **UPDATE:** `SEEDED_BKIT_DEFAULTS` in `.bkit/core/engine/install/modules/core.ts`: merge `publish` beside the ask blocks — `build: { ...askBlocks().build, publish: { remote: true, local: true } }`
   - **UPDATE:** `dist/cli.js`: rebuilt by `pnpm build` and staged in the same commit
   - **READ:** `askBlocks` in `.bkit/core/engine/install/modules/core.ts`: the spread the seed merges beside
@@ -814,12 +817,15 @@ Build order: config → runtime resolution → install → close row → build w
     - `.bkit/core/engine/install/modules/core.integration.test.ts` `keeps an existing publish.local false on upgrade` fails when the value is overwritten
     - `.bkit/core/engine/install/modules/core.integration.test.ts` `seeds publish without dropping the ask blocks` fails when `build.verify` / `build.challenge` / `build.tests` disappear
     - `.bkit/core/engine/install/modules/core.integration.test.ts` `seeds publish when the bkit block has no build` fails on a missing `build` block staying empty
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `seeds build.publish on install` fails on the key being absent — accept all as exceptions (owner, 2026-10-29)
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `keeps an existing publish.local false on upgrade` fails when the value is overwritten — accept all as exceptions (owner, 2026-10-29)
 
 <!-- bkit:task 6 end -->
 
 <!-- bkit:task 7 start -->
 
-- [ ] **TASK 7:** Retire the lite payload in one install transition
+- [x] **TASK 7:** Retire the lite payload in one install transition
   - **UPDATE:** `migrateShortcutsToLite` in `.bkit/core/engine/install/modules/core.ts`: rename to `migrateRetiredLite` (same call site), covering `.agents/shortcuts.md` and `.bkit/lite.md`; write the stub with a `RETIRED_LITE_STUB_SENTINEL = "<!-- bkit:retired-lite-stub -->"` first line; a destination with no single managed block and the sentinel returns with no write and no log, one without the sentinel warns without naming `<!-- bkit:end -->`; create the merge destination when `.bkit/lite.md` is absent instead of the unconditional `fs.readFileSync(dst, "utf-8")` read at line 358; do not gate on `getBkitDocsRoot()/lite.md` existing; exclude the seeded `## Project Lite Workflows` heading the way the old function excludes `## Project Shortcuts`
   - **UPDATE:** `BKIT_CANONICAL_DOCS` in `.bkit/core/engine/install/modules/core.ts`: remove `"lite.md"` so the docs loop stops writing it before the migration runs
   - **UPDATE:** `DOCS` in `.bkit/core/engine/install/modules/core.integration.test.ts`: remove `"lite.md"`; rewrite the migration block against inline stub fixtures, dropping `renderedLite()` so nothing reads the source doc
@@ -840,8 +846,31 @@ Build order: config → runtime resolution → install → close row → build w
     - `.bkit/core/engine/install/modules/core.integration.test.ts` `records the same write set in a dry run` fails when dry-run parity breaks
     - `.bkit/core/engine/install/modules/core.integration.test.ts` `installs no lite.md and still mirrors every other canonical doc` fails when the file is written or a doc is dropped
     - `.bkit/core/engine/commands/install/upgrade.integration.test.ts` `upgrade from a 5.2.4 lite.md keeps the consumer section` fails when the section is lost
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `strips the managed block and keeps consumer lines` fails when the consumer lines are lost — accept all as exceptions (owner, 2026-10-29)
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `deletes .bkit/lite.md when it holds only the seeded heading` fails on an empty stub remaining — accept all as exceptions (owner, 2026-10-29)
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `merges .agents/shortcuts.md consumer lines into the stub` fails when the old lines are dropped — accept all as exceptions (owner, 2026-10-29)
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `creates the stub when the shortcuts merge finds no lite.md` fails on a throw from reading a missing destination — accept all as exceptions (owner, 2026-10-29)
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `leaves a blockless or two-block lite.md untouched and logs` fails when the file is rewritten or deleted — accept all as exceptions (owner, 2026-10-29)
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `installs no lite.md and still mirrors every other canonical doc` fails when the file is written or a doc is dropped — accept all as exceptions (owner, 2026-10-29)
 
 <!-- bkit:task 7 end -->
+
+<!-- bkit:task 17 start -->
+
+- [x] **TASK 17:** Delete the shipped `lite.md` source doc so the install payload test passes
+  - **DELETE:** `.bkit/core/.bkit/lite.md`: the retired lite payload; the install no longer writes it
+  - **UPDATE:** `.bkit/core/engine/install/manifest.ts`: remove the `.bkit/lite.md` entry and the comment naming it; keep `prompts.md` markered-text
+  - **UPDATE:** `.bkit/core/engine/install/manifest.test.ts`: replace the lite-presence assertion with absence plus `prompts.md` as the only markered-text core doc
+  - **UPDATE:** `GROUP_A_MD_FILES` in `.bkit/core/engine/audits/templates/templates.test.ts`: remove `[CORE_ROOT, ".bkit/lite.md"]`
+  - **UPDATE:** `dist/cli.js`: rebuilt by `pnpm build` and staged in the same commit
+  - **READ:** `BKIT_CANONICAL_DOCS` in `.bkit/core/engine/install/modules/core.ts`: Task 7 already removed `"lite.md"`, which leaves the shipped file unwritten
+  - **DEPENDS ON:** 7
+  - **DONE WHEN:** `pnpm vitest run .bkit/core/engine/commands/install/install.integration.test.ts .bkit/core/engine/install/manifest.test.ts .bkit/core/engine/audits/templates/templates.test.ts` passes; `ls .bkit/core/.bkit/lite.md` fails; `pnpm build` succeeds and its `dist/` diff is staged
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/install/install.integration.test.ts` `every payload file lands, no template does, and .bkit/LICENSE.md is the only LICENSE.md` fails on the shipped `.bkit/lite.md` the install no longer writes
+
+<!-- bkit:task 17 end -->
 
 <!-- bkit:group 3 end -->
 
@@ -851,27 +880,19 @@ Build order: config → runtime resolution → install → close row → build w
 
 <!-- bkit:task 8 start -->
 
-- [ ] **TASK 8:** Delete the lite payload and prove the upgrade keeps consumer content
-  - **DELETE:** `.bkit/core/.bkit/lite.md`: the retired lite payload and its five paste prompts
-  - **UPDATE:** `.bkit/core/engine/install/manifest.ts`: remove the `.bkit/lite.md` entry and the line-140 comment naming it; keep `prompts.md` markered-text
-  - **UPDATE:** `.bkit/core/engine/install/manifest.test.ts`: replace the lite-presence assertion with absence plus `prompts.md` as the only markered-text core doc
-  - **UPDATE:** `GROUP_A_MD_FILES` in `.bkit/core/engine/audits/templates/templates.test.ts`: remove `[CORE_ROOT, ".bkit/lite.md"]`
-  - **UPDATE:** `.bkit/core/engine/install/modules/core.integration.test.ts`: add the case that `migrateRetiredLite` still runs with the package `.bkit/core/.bkit/lite.md` absent
+- [x] **TASK 8:** Drop the retired lite doc from the install docs
   - **UPDATE:** `.bkit/core/.bkit/README.md`: drop `lite.md` from the Tier-2 exception (line 244) and the install-writes list (line 279)
   - **UPDATE:** `.bkit/core/.agents/docs.md`: delete the `.bkit/lite.md` index row
-  - **READ:** `GROUP_A_MD_FILES` in `.bkit/core/engine/audits/templates/templates.test.ts`: the source-format audit that would read the deleted file
-  - **DEPENDS ON:** 7
-  - **DONE WHEN:** `pnpm vitest run .bkit/core/engine/audits/templates/templates.test.ts .bkit/core/engine/install/modules/core.integration.test.ts .bkit/core/engine/install/manifest.test.ts` passes; `ls .bkit/core/.bkit/lite.md` fails
-  - **TEST FIRST:**
-    - `.bkit/core/engine/audits/templates/templates.test.ts` `audits every managed group-A doc without lite.md` fails while `lite.md` is enumerated
-    - `.bkit/core/engine/install/modules/core.integration.test.ts` `migrates with the package lite doc absent` fails when the migration gates on the payload doc
-    - `.bkit/core/engine/install/manifest.test.ts` `no longer lists .bkit/lite.md and keeps prompts.md markered-text` fails while the entry remains or the branch breaks
+  - **READ:** `.bkit/core/engine/install/manifest.ts`: Task 17 removed the `.bkit/lite.md` entry; the docs must match it
+  - **DEPENDS ON:** 17
+  - **DONE WHEN:** `grep -n lite.md .bkit/core/.bkit/README.md .bkit/core/.agents/docs.md` prints no line naming the retired doc
+  - **TEST FIRST:** n/a — documentation edits only; the deletion and its tests moved to Task 17, and the migration running without the payload doc is covered by Task 7's inline-fixture cases
 
 <!-- bkit:task 8 end -->
 
 <!-- bkit:task 9 start -->
 
-- [ ] **TASK 9:** Teach `bkit uninstall` the retired lite path
+- [x] **TASK 9:** Teach `bkit uninstall` the retired lite path
   - **UPDATE:** `CORE_TEMPLATE_DOCTRINE` in `.bkit/core/engine/commands/install/uninstall.ts`: add `{ path: ".bkit/lite.md", format: "markered-text", module: "core" }` and correct the line-381 comment that mislabels the `.agents/shortcuts.md` entry
   - **UPDATE:** `.bkit/core/engine/commands/install/uninstall.test.ts`: add the retired `.bkit/lite.md` case (managed block stripped, consumer section kept)
   - **UPDATE:** `dist/cli.js`: rebuilt by `pnpm build` and staged in the same commit
@@ -891,7 +912,7 @@ Build order: config → runtime resolution → install → close row → build w
 
 <!-- bkit:task 10 start -->
 
-- [ ] **TASK 10:** Record `ending: held` and `publish: false` on the close
+- [x] **TASK 10:** Record `ending: held` and `publish: false` on the close
   - **UPDATE:** `CloseInput` in `.bkit/core/engine/commands/workflow/workflows.ts`: add `ending?: "done" | "held"` and `publish?: boolean`
   - **UPDATE:** `closeWorkflow` in `.bkit/core/engine/commands/workflow/workflows.ts`: write both fields onto the `workflow-done` and outcome rows
   - **UPDATE:** `.bkit/core/engine/commands/workflow/workflows.ts`: the `close` command spec adds `--ending` and `--publish` with validation
@@ -915,7 +936,7 @@ Build order: config → runtime resolution → install → close row → build w
 
 <!-- bkit:task 11 start -->
 
-- [ ] **TASK 11:** Derive and display the held ending in stats / harvest
+- [x] **TASK 11:** Derive and display the held ending in stats / harvest
   - **UPDATE:** `endingOf` in `scripts/harvest/bkit-harvest.mjs`: return `held` when the run's last `workflow-done` row carries `ending: "held"`
   - **UPDATE:** `scripts/harvest/bkit-harvest.mjs`: the ending list and legend add `held`
   - **UPDATE:** `.bkit/core/engine/ledgers/telemetry.ts`: the per-run view shows an `ending: held` row
@@ -931,6 +952,10 @@ Build order: config → runtime resolution → install → close row → build w
     - `scripts/harvest/bkit-harvest.test.mjs` `keeps a normal done run as done` fails when every run reads held
     - `.bkit/core/engine/ledgers/telemetry.test.ts` `shows an ending row for a held close` fails when the row is omitted
     - `.bkit/core/engine/commands/stats.test.ts` `counts a held outcome row in its kind total` fails when the held row is dropped or filed under a new kind
+  - **TEST EXCEPTION:**
+    - `scripts/harvest/bkit-harvest.test.mjs` `derives held from a workflow-done row ending held` fails on done or stopped — accept all as exceptions: the file runs under plain node (`pnpm test:harvest`), which the red and green tools cannot run; the test passes and `pnpm test:harvest` is the proof (owner, 2026-10-29)
+    - `scripts/harvest/bkit-harvest.test.mjs` `counts held runs in the workflow report` fails when the column is missing — accept all as exceptions: the file runs under plain node (`pnpm test:harvest`), which the red and green tools cannot run; the test passes and `pnpm test:harvest` is the proof (owner, 2026-10-29)
+    - `scripts/harvest/bkit-harvest.test.mjs` `keeps a normal done run as done` fails when every run reads held — accept all as exceptions: the file runs under plain node (`pnpm test:harvest`), which the red and green tools cannot run; the test passes and `pnpm test:harvest` is the proof (owner, 2026-10-29)
 
 <!-- bkit:task 11 end -->
 
@@ -942,7 +967,7 @@ Build order: config → runtime resolution → install → close row → build w
 
 <!-- bkit:task 12 start -->
 
-- [ ] **TASK 12:** Branch `bkit-build.md` on the resolved publish ending
+- [x] **TASK 12:** Branch `bkit-build.md` on the resolved publish ending
   - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: § Step 2 — Worktree Setup: after `runtime row`, run `status route --workflow=build --file="{STATUS}" --prompt-file="{SESSION_DIR}/prompt.md"` and hold `publish` as `{PUBLISH}` and `publishSource` as `{PUBLISH_SOURCE}`; drop the `>/dev/null` on `runtime assert`; narrate the visible coercion warning when `{PUBLISH_SOURCE}` = `coerced`
   - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: § Step 15 — Summary: pass `--publish={PUBLISH}`; skip the PR probe and branch push when false; mark Gate 15's probe and push lines `(publish=true only)`
   - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: § Step 16 — Close Workflow & Create PR: add the held close fence (skip the probe / scan-diff / push / PR / dispatch; close with `--ending=held --publish=false --record-step`, append the roadmap row with `roadmap feature --root="{WORKTREE_PATH}" --workflow=build --fid={FID}` and never `roadmap mirror`, release the lock, set the issue `In review`, post the "built locally, not published" comment, `build-close-workflow` gate only, held final message) and state in the Gate 16 block which checklist lines apply on each path
@@ -963,13 +988,16 @@ Build order: config → runtime resolution → install → close row → build w
     - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `makes Gate 15 conditional on the held path` fails while the probe/push lines stay unconditional
     - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `runs only the close gate on the held path` fails while Gate 16 names both gates
     - `.bkit/core/engine/render/trackers.test.ts` `bkit-build: the none render matches its baseline byte for byte` fails on a stale baseline
-    - `.bkit/core/engine/tools/instructions-coverage.test.ts` `every standing line has an entry` fails while a retired Step 15/16 line keeps its entry
+    - `.bkit/core/engine/tools/instructions-coverage.test.ts` `the repo > has no coverage findings` fails while a retired Step 15/16 line keeps its entry
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/render/trackers.test.ts` `bkit-build: the none render matches its baseline byte for byte` fails on a stale baseline — accept all as exceptions: the snapshot and instructions entries were regenerated after the workflow edit; the test passes (owner, 2026-10-29)
+    - `.bkit/core/engine/tools/instructions-coverage.test.ts` `the repo > has no coverage findings` fails while a retired Step 15/16 line keeps its entry — accept all as exceptions: the snapshot and instructions entries were regenerated after the workflow edit; the test passes (owner, 2026-10-29)
 
 <!-- bkit:task 12 end -->
 
 <!-- bkit:task 13 start -->
 
-- [ ] **TASK 13:** Verify the held ending and its deferred landing against real boundaries
+- [x] **TASK 13:** Verify the held ending and its deferred landing against real boundaries
   - **UPDATE:** `.bkit/core/engine/audits/workflows/close-squash.integration.test.ts`: add a `pushFeature?: boolean` option to `initFixture` (default `true`; the held case passes `false` so `feat/{FID}` is local-only before the close) and a `build` held-close describe that runs the shipped Step 15 summary line then the shipped Step 16 held-close fence as written
   - **UPDATE:** `.bkit/core/engine/audits/workflows/ship-verdict.integration.test.ts`: add `extractStepLine(stepHeading, prefix)` beside `extractStep6Line` and a `writeGhShim()` that records every `gh` argv to `tmpDir/gh-calls.jsonl`, answers `pr list` / `pr create` / `pr view` / `pr merge` (a `pr create` prints the PR URL as its last stdout line; `pr view` returns `PR_FIELDS` with `baseRefName: "dev"`), and execs `tests/fixtures/gh/bin/gh` for `gh api …/actions/…`; prepend `tmpDir/bin` to `PATH`
   - **UPDATE:** `.bkit/core/engine/audits/workflows/ship-verdict.integration.test.ts`: add the deferred-landing describe — Step 2's no-PR route, then Step 10's `runs gate` and `prs merge --match-head` lines, against a real bare origin
@@ -983,6 +1011,11 @@ Build order: config → runtime resolution → install → close row → build w
     - `.bkit/core/engine/audits/workflows/close-squash.integration.test.ts` `held close records the rows, summary and worktree-only roadmap row` fails when a row, the `Docs: not synced` line or the local-only roadmap row is missing
     - `.bkit/core/engine/audits/workflows/ship-verdict.integration.test.ts` `ship pushes the held branch and opens a dev PR` fails when the bare origin lacks the head or the recorded create names another base
     - `.bkit/core/engine/audits/workflows/ship-verdict.integration.test.ts` `ship gates on CI and merges the pinned head` fails when the recorded merge drops `--match-head-commit` or names another head
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/audits/workflows/close-squash.integration.test.ts` `held close leaves origin refs unchanged, keeps the branch and worktree, releases the lock` — accept all as exceptions: Task 13 only adds tests for behaviour Tasks 4, 5, 10 and 12 already landed, so they pass on first run (owner, 2026-10-29)
+    - `.bkit/core/engine/audits/workflows/close-squash.integration.test.ts` `held close records the rows, summary and worktree-only roadmap row` — accept all as exceptions: Task 13 only adds tests for behaviour Tasks 4, 5, 10 and 12 already landed, so they pass on first run (owner, 2026-10-29)
+    - `.bkit/core/engine/audits/workflows/ship-verdict.integration.test.ts` `ship pushes the held branch and opens a dev PR` — accept all as exceptions: Task 13 only adds tests for behaviour Tasks 4, 5, 10 and 12 already landed, so they pass on first run (owner, 2026-10-29)
+    - `.bkit/core/engine/audits/workflows/ship-verdict.integration.test.ts` `ship gates on CI and merges the pinned head` — accept all as exceptions: Task 13 only adds tests for behaviour Tasks 4, 5, 10 and 12 already landed, so they pass on first run (owner, 2026-10-29)
 
 <!-- bkit:task 13 end -->
 
@@ -994,7 +1027,7 @@ Build order: config → runtime resolution → install → close row → build w
 
 <!-- bkit:task 14 start -->
 
-- [ ] **TASK 14:** Remove lite guidance from the rules, prompts and reference docs
+- [x] **TASK 14:** Remove lite guidance from the rules, prompts and reference docs
   - **UPDATE:** `.bkit/core/.agents/rules.md`: the Tracker next labels and Tracker workflow labels bullets name plain `next:*` only
   - **UPDATE:** `.bkit/core/prompts/bkit-audit-generate.md`: remove every lite recommendation and `:lite` rule
   - **UPDATE:** `.bkit/core/prompts/bkit-utility-update-roadmap.md`: remove the lite recommendation
@@ -1018,22 +1051,32 @@ Build order: config → runtime resolution → install → close row → build w
     - `.bkit/core/engine/tools/instructions-sources.test.ts` `the clause store holds no lite text` fails while a clause `text` block keeps the suffix
     - `.bkit/core/engine/audits/templates/templates.test.ts` `the change issue form names no lite workflow` fails while `build:lite` remains
     - `.bkit/core/engine/audits/templates/templates.test.ts` `the shipped reference docs list no lite doc` fails while `lite.md` is listed
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `no shipped prompt or workflow names a lite workflow` fails while `:lite` remains — Each test only checks that text is present in or gone from shipped docs. The old files still had the lite text and lacked the README sections, so every test would have failed on them; the README tests were seen failing locally before the edit. (owner, 2026-11-01)
+    - `.bkit/core/engine/tools/instructions-sources.test.ts` `no shipped rule or prompt instructs a next:*:lite label` fails while the rule remains — Each test only checks that text is present in or gone from shipped docs. The old files still had the lite text and lacked the README sections, so every test would have failed on them; the README tests were seen failing locally before the edit. (owner, 2026-11-01)
+    - `.bkit/core/engine/tools/instructions-sources.test.ts` `the clause store holds no lite text` fails while a clause `text` block keeps the suffix — Each test only checks that text is present in or gone from shipped docs. The old files still had the lite text and lacked the README sections, so every test would have failed on them; the README tests were seen failing locally before the edit. (owner, 2026-11-01)
+    - `.bkit/core/engine/audits/templates/templates.test.ts` `the change issue form names no lite workflow` fails while `build:lite` remains — Each test only checks that text is present in or gone from shipped docs. The old files still had the lite text and lacked the README sections, so every test would have failed on them; the README tests were seen failing locally before the edit. (owner, 2026-11-01)
+    - `.bkit/core/engine/audits/templates/templates.test.ts` `the shipped reference docs list no lite doc` fails while `lite.md` is listed — Each test only checks that text is present in or gone from shipped docs. The old files still had the lite text and lacked the README sections, so every test would have failed on them; the README tests were seen failing locally before the edit. (owner, 2026-11-01)
 
 <!-- bkit:task 14 end -->
 
 <!-- bkit:task 15 start -->
 
-- [ ] **TASK 15:** Rewrite the root README and roadmap guidance; document the held handoff and the manual batch recipe
-  - **UPDATE:** `README.md`: add the `/bkit-build #N publish=false` hold row beside the default `/bkit-build #N` row; rewrite the sign-off, "run fewer steps" and FAQ sentences; remove the `.bkit/lite.md` doc row; document the held handoff
+- [x] **TASK 15:** Rewrite the root README and roadmap guidance; document the held handoff and the manual batch recipe
+  - **UPDATE:** `README.md`: add the `/bkit-build #N publish=false` hold row beside the default `/bkit-build #N` row; document the held handoff (the lite row, sign-off, FAQ, "run fewer steps" and `.bkit/lite.md` doc-row text were already removed from `README.md` by commit `7c9b909ea`, so only keep them absent)
   - **UPDATE:** `README.md`: add the manual batch recipe — build held, then land the batches yourself with `git` — stating both limitations (one head commit means post-merge auto-debug sees only the last FID; never batch migrations) and that the user owns the push, PR, CI gate, sweep and docs sync
   - **UPDATE:** `docs/roadmap.md`: rewrite item 20's `lite:build` to `/bkit-build`
   - **READ:** `§ Documentation` in `README.md`: the table that links `.bkit/lite.md`
   - **DEPENDS ON:** 14
   - **DONE WHEN:** `grep -niE '(:lite|lite\.md|[Ll]ite workflows?)' README.md docs/roadmap.md` returns nothing; `pnpm vitest run .bkit/core/engine/audits/templates/templates.test.ts` passes; the README carries a batch recipe section naming both limitations
   - **TEST FIRST:**
-    - `.bkit/core/engine/audits/templates/templates.test.ts` `the root README points small changes at /bkit-build` fails while a lite link or command remains
+    - `.bkit/core/engine/audits/templates/templates.test.ts` `the root README points small changes at /bkit-build` fails while the `/bkit-build #N publish=false` hold row is absent or a lite link or command is present
     - `.bkit/core/engine/audits/templates/templates.test.ts` `the root README carries the held handoff` fails while `Publish: held` / `Docs: not synced` are absent
     - `.bkit/core/engine/audits/templates/templates.test.ts` `the root README carries the manual batch recipe with both limitations` fails while the recipe, the last-FID limitation or the no-batched-migrations rule is missing
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/audits/templates/templates.test.ts` `the root README points small changes at /bkit-build` fails while the `/bkit-build #N publish=false` hold row is absent or a lite link or command is present — Each test only checks that text is present in or gone from shipped docs. The old files still had the lite text and lacked the README sections, so every test would have failed on them; the README tests were seen failing locally before the edit. (owner, 2026-11-01)
+    - `.bkit/core/engine/audits/templates/templates.test.ts` `the root README carries the held handoff` fails while `Publish: held` / `Docs: not synced` are absent — Each test only checks that text is present in or gone from shipped docs. The old files still had the lite text and lacked the README sections, so every test would have failed on them; the README tests were seen failing locally before the edit. (owner, 2026-11-01)
+    - `.bkit/core/engine/audits/templates/templates.test.ts` `the root README carries the manual batch recipe with both limitations` fails while the recipe, the last-FID limitation or the no-batched-migrations rule is missing — Each test only checks that text is present in or gone from shipped docs. The old files still had the lite text and lacked the README sections, so every test would have failed on them; the README tests were seen failing locally before the edit. (owner, 2026-11-01)
 
 <!-- bkit:task 15 end -->
 
@@ -1045,7 +1088,7 @@ Build order: config → runtime resolution → install → close row → build w
 
 <!-- bkit:task 16 start -->
 
-- [ ] **TASK 16:** Rebuild `dist/`, refresh the dogfood mirrors and run the gate
+- [x] **TASK 16:** Rebuild `dist/`, refresh the dogfood mirrors and run the gate
   - **UPDATE:** `dist/cli.js`: rebuilt by `pnpm build` and staged in the same commit as the engine changes
   - **UPDATE:** `.bkit/version`: refreshed by the repo's own install
   - **UPDATE:** `.bkit/lite.md`: deleted by `migrateRetiredLite` on the repo's own install (it has no consumer lines below `## Project Lite Workflows`)
@@ -1059,6 +1102,49 @@ Build order: config → runtime resolution → install → close row → build w
 <!-- bkit:task 16 end -->
 
 <!-- bkit:group 8 end -->
+
+<!-- bkit:group 9 start -->
+
+### TASK GROUP 9: Challenge round 1 findings
+
+<!-- bkit:task 18 start -->
+
+- [x] **TASK 18:** A low-disk `bkit worktrees setup` that meets a hook-started `max` sweep now blocks for up to `LOCK_STALE_MS + pollMs` (3605s) with one log line, outliving the agent's shell-call timeout and the 3600s step timeout, so build Step 2 is killed mid-wait instead of getting the routed exit 12
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/disk.ts:554` · **Round:** 1
+  - **DONE WHEN:** `ensureDiskSpace` waits for a running sweep only up to a bounded `maxWaitMs` (a named wait in `.bkit/core/engine/shared/timeouts.ts`, per `.bkit/workflows.md` § Retry / timeout / iteration constants "Waits live in `TIMEOUTS`"), set well under a single agent shell call, then returns the existing "another sweep ... re-run once it ends" refusal so `worktrees setup` exits 12 instead of hanging; `waitForLock` takes that bound instead of hard-coding `LOCK_STALE_MS + pollMs`; the detached `--auto` sweep keeps its long wait.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/disk.test.ts` `worktree setup's low-disk sweep stops waiting after maxWaitMs while a live sweep holds the lock` fails on `ensureDiskSpace({ cwd, minFreeGb: 1e9, pollMs: 10, maxWaitMs: 100, log })` with a fresh `holdLock(process.pid)` that is never released: today the option is ignored, the call waits ~3605s and the test times out instead of resolving with a message containing `another sweep`
+
+<!-- bkit:task 18 end -->
+<!-- bkit:task 19 start -->
+
+- [x] **TASK 19:** A `publish=false` build that hits the Failure Path or a Decision Pause runs `workflows handover --push`, which `git add -A`s, commits and pushes `feat/{FID}` to `origin`, so code the owner chose to hold (e.g. an embargoed fix in a public repo) is published irreversibly
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/workflows/bkit-build.md:92` · **Round:** 1
+  - **DONE WHEN:** Failure Path step 5 (`.bkit/core/workflows/bkit-build.md:90-92`) and the Decision Pause owner-wait step 8 (`.bkit/core/workflows/bkit-build.md:228-230`) branch on `{PUBLISH}`: when it is false they commit the record locally (or link it with `--ref`) and never pass `--push`, so no step of a held run pushes `feat/{FID}`; the publish=true path keeps `--push` unchanged; `.bkit/core/engine/audits/workflows/workflow-shape.test.ts:310` is updated to match.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `bkit-build.md: a held run's Failure Path and Decision Pause never push the feature branch` fails on both handover fences calling `--push` with no `{PUBLISH}` = false branch, so a held run pushes `feat/{FID}`
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `bkit-build.md: a held run's Failure Path and Decision Pause never push the feature branch` fails on both handover fences calling `--push` with no `{PUBLISH}` = false branch, so a held run pushes `feat/{FID}` — The test only checks the wording of the workflow file. On the old file, with its unconditional `--push`, it would have failed; the executor edited the workflow before running it. (owner, 2026-11-01)
+
+<!-- bkit:task 19 end -->
+<!-- bkit:group 9 end -->
+
+<!-- bkit:group 10 start -->
+
+### TASK GROUP 10: Challenge round 2 findings
+
+<!-- bkit:task 20 start -->
+
+- [x] **TASK 20:** A held build resumed after a Decision Pause (or any held run) that fails in Step 2 after `worktrees setup` holds `{WORKTREE_PATH}` but before `status route` resolves `{PUBLISH}` (a rebase conflict on the exit-3 route, `workflows start` refusing the lock, `runtime row` / `runtime assert` failing, or `status route` exiting 4) takes the Failure Path's "`PUBLISH` = true **or** not yet resolved" branch and runs `workflows handover --push`, which `git add -A`s, commits and pushes `feat/{FID}` with every held commit to `origin`, even when the prompt says `publish=false` or `publish.local` is `false`
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/workflows/bkit-build.md:95` · **Round:** 2
+  - **DONE WHEN:** Failure Path step 5 (`.bkit/core/workflows/bkit-build.md:90-98`) passes `--push` only when `{PUBLISH}` = true; a `{PUBLISH}` that is false or not yet resolved takes the `--ref="{BRANCH}"` branch (or the Failure Path resolves `publish` itself before choosing), so no failure before Step 2 sub-step 3 finishes can push `feat/{FID}`; the publish=true path keeps `--push` unchanged.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `bkit-build.md: a Failure Path reached before publish is resolved never pushes the feature branch` fails on the Failure Path's pushing `workflows handover` line being guarded by "`PUBLISH` = true **or** not yet resolved", so the text before the `--push` line matches `not yet resolved` and an unresolved run pushes `feat/{FID}`
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `bkit-build.md: a Failure Path reached before publish is resolved never pushes the feature branch` fails on the Failure Path's pushing `workflows handover` line being guarded by "`PUBLISH` = true **or** not yet resolved", so the text before the `--push` line matches `not yet resolved` and an unresolved run pushes `feat/{FID}` — The test was seen failing first. Its first form banned 'not yet resolved' above the push line, which the planned fix itself puts there, so it was narrowed to the push branch and a check on the non-pushing branch was added. (owner, 2026-11-01)
+
+<!-- bkit:task 20 end -->
+<!-- bkit:group 10 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
 

@@ -604,14 +604,13 @@ Issues are the first input every workflow reads. There is one form per way work 
 | Form | Use when | Next step | Asks for |
 | --- | --- | --- | --- |
 | `bkit-idea.yml` | How it should work is still open | `/bkit-design #N` | problem, outcome, success criteria, constraints and non-goals, decisions already made, open questions |
-| `bkit-change.yml` | What to build and "done" are known | `/bkit-plan #N`, or `/bkit-build #N` / `build:lite` with no plan | the plan in short: narrative, success criteria, edge cases, test matrix, tasks with `DONE WHEN` + `TEST FIRST` as task group and task blocks showing every plan task field (`CREATE` / `READ` / `UPDATE` / `DELETE`, `DEPENDS ON`, `DONE WHEN`, `TEST FIRST`, `TEST EXCEPTION`), breaking changes and names, out of scope |
+| `bkit-change.yml` | What to build and "done" are known | `/bkit-plan #N`, or `/bkit-build #N` with no plan | the plan in short: narrative, success criteria, edge cases, test matrix, tasks with `DONE WHEN` + `TEST FIRST` as task group and task blocks showing every plan task field (`CREATE` / `READ` / `UPDATE` / `DELETE`, `DEPENDS ON`, `DONE WHEN`, `TEST FIRST`, `TEST EXCEPTION`), breaking changes and names, out of scope |
 | `bkit-bug.yml` | Something does not work | a test or CI run already fails → `/bkit-debug #N`; nothing fails yet → `/bkit-debug #N [repro]` | failing test or CI run, what happened, what should, repro steps, how often, affected area, where and when, evidence |
 
 - Every form ends with References. The change form shows the lines workflows read: `**Parent design:**` and `**Audit reports:**` (plan), and the blocked-by block (build). Other references are not fetched. Write exact paths, ledger `key`s and `#N — title`.
 - A change issue is the plan's source when no design or audit report exists. Its narrative, success criteria, edge cases, test rows and tasks carry over verbatim.
   - `/bkit-build` with no plan first writes `{FID}-plan.md` from them (`@bkit-build-plan-convert`). Then it builds the tasks, and checks that each `TEST FIRST` test failed before its code.
   - An existing `{FID}-plan.md` wins, and the issue text is not read.
-  - `build:lite` checks nothing.
   - Nothing ticks the boxes.
 - Debug commits to the branch it runs on, so start it on the branch the fix lands on.
 - Copy the folder and commit it on the default branch, because GitHub reads forms from there only. Blank issues stay enabled.
@@ -623,7 +622,7 @@ Issues are the first input every workflow reads. There is one form per way work 
 
 graphify runs on demand only. It is not an installed skill or git hook. graphify ships an MCP server (`graphify-mcp`, stdio default). That server stays unwired, because its answers come from the `graph.json` snapshot, and build / debug agents invalidate the graph faster than it rebuilds. Serena, which has no index to go stale, owns the agent surface.
 
-Two gates keep `docs/capabilities.md` current on dev: the pre-push block below, which blocks a stale push to dev, and a self-skipping CI step on every push. Agents read `docs/capabilities.md`. Audit templates that need the graph build it via `scripts/graphify/bkit-graphify.sh`. The only tracked output is `docs/capabilities.md`. The Mermaid views are `docs/graphify-out/reports/graph-packages.mmd` and `graph-modules.mmd`. Reference: https://github.com/Graphify-Labs/graphify.
+Two gates keep `docs/capabilities.md` current on dev: the pre-push block below, which blocks a stale push to dev or to a branch with an open PR into dev, and a self-skipping CI step on every push. Agents read `docs/capabilities.md`. Audit templates that need the graph build it via `scripts/graphify/bkit-graphify.sh`. The only tracked output is `docs/capabilities.md`. The Mermaid views are `docs/graphify-out/reports/graph-packages.mmd` and `graph-modules.mmd`. Reference: https://github.com/Graphify-Labs/graphify.
 
 ```bash
 uv tool install "$(bash scripts/graphify/bkit-graphify.sh spec)"
@@ -661,10 +660,11 @@ graphify-out/
 
 - Copy `scripts/graphify/bkit-graph-pre-push.sh`. The `.husky/pre-push` template runs it above the gates, so a stale register blocks in ~30s, not after the full gate. It is skipped while the script is absent, and on a min push.
   - **If** your hook lacks the `Capability register` block → paste it from the template, above the gates.
-  - On a push to dev, it runs `check-at` on the pushed commit in a throwaway checkout, and blocks the push on a mismatch. Uncommitted edits, a concurrent session's included, cannot change the answer.
+  - It checks wherever CI's `Check Capability Register` would fail: a push to dev, and a push of a branch that has an open PR into dev (`gh pr list --head <branch> --base dev --state open`). It runs `check-at` on the pushed commit in a throwaway checkout, and blocks the push on a mismatch. Uncommitted edits, a concurrent session's included, cannot change the answer.
   - **If** graphify is not installed → it prints a loud "NOT checked" warning, and the push goes on. CI still checks.
-  - On other branches, it prints a warn-only staleness note.
-  - It reads `PUSH_DEV_SHA` from the bkit pre-push template's stdin loop. **If** your hook copy is older → re-copy that loop from `.bkit/templates/.husky/pre-push`.
+  - **If** `gh` is not installed on a branch push, or its `pr list` call fails (offline, not signed in) → it prints the same "NOT checked" warning, because whether the branch has an open PR is unknown, and the push goes on. A lookup that cannot answer is never read as "no PR".
+  - On a branch with no open PR, it prints a warn-only staleness note.
+  - It reads `PUSH_DEV_SHA`, `BRANCH` and `PUSH_BRANCH_SHA` from the bkit pre-push template's stdin loop. **If** your hook copy is older → re-copy that loop and the `Capability register` call from `.bkit/templates/.husky/pre-push`. Until you do, the script checks the checked-out branch at `HEAD`.
 - `.github/workflows/bkit-ci.yml` ships `Check Capability Register`. It installs the `spec` release and runs the pinned `check-at HEAD`, and a stale register fails CI. It self-skips without `scripts/graphify/bkit-graphify.sh`.
   - It runs on every push and pull request, on the checked-out commit. On a PR, that is GitHub's test merge into the base, so a branch behind its base syncs, refreshes and commits to clear a red.
 - graphify's MCP server is opt-in. Install `graphifyy[mcp]` (`mcp` + `starlette`; the HTTP transport also needs `uvicorn`), and pass the graph path explicitly, because `graphify-mcp` defaults to `graphify-out/graph.json`, not the pinned `docs/graphify-out/graph.json`. Snapshot-dated answers suit audit / orientation, never build or debug.

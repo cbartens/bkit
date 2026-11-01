@@ -167,6 +167,9 @@
       "ciSkipPaths": [
         "CHANGELOG.md",
         "README.md"
+      ],
+      "ciGenerated": [
+        "bkit-tests-static/Assert Dist Freshness"
       ]
     },
     "workflows": {
@@ -193,7 +196,7 @@
       "build": {
         "verify": {
           "ask": true,
-          "maxAttempts": 2
+          "maxAttempts": 5
         },
         "challenge": {
           "ask": true,
@@ -202,6 +205,10 @@
         "tests": {
           "ask": true,
           "maxAttempts": 2
+        },
+        "publish": {
+          "remote": true,
+          "local": true
         }
       },
       "debug": {

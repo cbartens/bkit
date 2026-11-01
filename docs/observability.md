@@ -124,7 +124,7 @@ Run-completeness check (`checks/status-holes.ts`, `bkit completeness check`). Ad
 | 2 | Usage error (missing `--head`, bad args) | refuse (operator) |
 | 10 | No run of the CI workflow exists at head | refuse (poll) → Step 9 re-validate |
 | 11 | Runs exist at head but none completed | refuse (poll) → Step 9 |
-| 12 | Selected run or its capstone did not conclude success | refuse |
+| 12 | Selected run or its capstone did not conclude success | refuse; `regenerable` = true → ship's regenerate round → Step 9 |
 | 13 | Selected run exists but capstone job absent | refuse |
 | 14 | Green run exists, but at a SUPERSEDED SHA (needs `--branch`) | refuse → Step 9 (re-validate at new head) |
 | 15 | Selected run concluded `cancelled` | refuse |
@@ -141,6 +141,7 @@ The refusal itself is signalled by the process exit code; every refusal ends wit
 - `[bkit-runs] head tested:    %s  (SUPERSEDED)` — green run was at a superseded head (code 14).
 - `[bkit-runs] no run of %s[ (event=%s)] exists at head %s (total_count=0)` — no CI run at head (code 10); `(event=…)` when `--event` narrowed the query.
 - `[bkit-runs] head %s is not %s plus bookkeeping only (…) — re-validate at head` — code 17; the offending paths follow, one per line.
+- `[bkit-runs] failed step: %s` — code 12, one line per failed step outside the capstone as `{job}/{step}` (`{job}/` for a failed job with no failed step); `[bkit-runs] every failed step is one bkit:generate fixes (bkit.testing.ciGenerated)` follows when `regenerable` = true, and `[bkit-runs] failed steps unknown: the jobs of run %s could not be read` replaces both when the jobs API failed.
 - `[bkit-runs] note: N lane(s) concluded 'skipped' at head %s: …` — skipped lanes are always reported; they refuse only when required (code 16).
 - `[bkit-runs] rate limit exhausted (...)` / `[bkit-runs] API error (...)` — code 20 (rate-limit-shaped message distinguishes the dispatch path).
 - `[bkit-runs] override honoured for head %s (BKIT_SHIP_GATE_OVERRIDE matches refused head)` — sanctioned escape hatch; also writes a `ship-gate-override` `status.jsonl` row (`--file=`) for audit, or emits it to stderr when the file is absent or unwritable.
@@ -235,7 +236,7 @@ pnpm harvest report      # rewrite harvest/stats.md only
 - Per run: a chat's tokens split by run (`usage.byRun`, main chat vs subagents). A chat belongs to a run when the run's `session` status rows name it, or same repo, issue and overlapping time; each model call goes to the run whose first-to-last status row window holds it. The run row sums them (`usage`); `null` when a chat lacks call times (Cursor, Antigravity).
 - Row shape: `.bkit/jsonl.md` § Generic Fields, § Shared Blocks, § Per-Kind Fields — every total computed from its parts at write and checked; a row that fails is not written (`[bkit-telemetry] … not written: <reason>` on stderr).
 - `run` rows: one per run in `docs/plans/<YYYYMM>/logs/<FID>/status.jsonl`, main checkout and `.worktrees/*` (largest copy wins); new row when the log grows, its counted chats change or it settles. Fields → `.bkit/jsonl.md` § Per-Kind Fields.
-  - `ending`: last end row (a close after it writes its own). `close-failed` = work done, close failed (CI never started, or a failed row), until a later close starts CI → `done`. No end row → `decision-pause` (`build-decision-*.md` `Status: OPEN`), else `stopped`. `ci` = each close's CI dispatch.
+  - `ending`: last end row (a close after it writes its own). `close-failed` = work done, close failed (CI never started, or a failed row), until a later close starts CI → `done`. No end row → `decision-pause` (`build-decision-*.md` `Status: OPEN`), else `stopped`. `held` = the last `workflow-done` row says `ending: held`, which marks a local build that published nothing. That row and the `outcome` row also carry `publish: false`. `ci` = each close's CI dispatch.
   - Active minutes: chat spans (main + subagents) split at gaps over 5 min; a run's = overlap with the spans of counted chats naming its issue (command or summary); per step too. A tool call over 5 min counts as idle.
   - Steps: count, total minutes (since the previous status row; `session` / `owner-pause` / `owner-answer` rows skipped), active minutes; `steps.total` beside `steps.byStep`.
   - Owner waits (`owner`): each stop from an `owner-pause` row to the next `owner-answer`, with its reason; open stops marked; minutes since the same log's previous run.
