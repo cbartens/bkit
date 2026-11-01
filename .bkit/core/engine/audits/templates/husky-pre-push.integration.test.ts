@@ -870,6 +870,20 @@ describe("graphify register pre-push gate", () => {
   };
   const BRANCH_SHA = "c".repeat(40);
   const branchPush = { PUSH_DEV_SHA: "", BRANCH: "feat/1-x", PUSH_BRANCH_SHA: BRANCH_SHA };
+  /** A PATH with no gh on it: the stubs, then only the system tools the snippet calls,
+   * linked from `/usr/bin` / `/bin`. GitHub runners ship gh at `/usr/bin/gh`. */
+  const pathWithoutGh = () => {
+    const dir = path.join(tmp, "sysbin");
+    fs.mkdirSync(dir);
+    for (const tool of ["sh", "bash", "git", "env", "sed", "head", "tr", "wc"]) {
+      const found = ["/usr/bin", "/bin"]
+        .map((d) => path.join(d, tool))
+        .find((p) => fs.existsSync(p));
+      if (found === undefined) throw new Error(`${tool} is in neither /usr/bin nor /bin`);
+      fs.symlinkSync(found, path.join(dir, tool));
+    }
+    return `${path.join(tmp, "bin")}:${dir}`;
+  };
 
   it("branch with an open PR into dev, register stale → blocked, check-at on the pushed commit", () => {
     adopt(1);
@@ -907,7 +921,7 @@ describe("graphify register pre-push gate", () => {
   it("branch push, gh not installed → loud NOT-checked warning, push goes on", () => {
     adopt(1);
     installGraphify();
-    const r = run(branchPush);
+    const r = run({ ...branchPush, PATH: pathWithoutGh() });
     expect(r.status).toBe(0);
     expect(r.calls).toBe("");
     expect(r.stderr).toContain("docs/capabilities.md was NOT checked — gh is not installed");
