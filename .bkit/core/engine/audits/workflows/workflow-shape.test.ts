@@ -337,6 +337,24 @@ describe("Failure Path", () => {
     }
   });
 
+  it("bkit-build.md: a Failure Path reached before publish is resolved never pushes the feature branch", () => {
+    const failure = section(workflow("build"), /Failure Path/);
+    const calls = commandLines(failure, "workflows handover").map((l) => l.trim());
+    const pushing = calls.filter((l) => l.includes("--push"));
+    expect(pushing).toHaveLength(1);
+    const before = failure.slice(0, failure.indexOf(pushing[0]!));
+    const guard = before
+      .trimEnd()
+      .split("\n")
+      .filter((l) => l.includes("**Else**"))
+      .pop()!;
+    expect(guard).not.toMatch(/not yet resolved/);
+    expect(guard).toMatch(/`PUBLISH` = true/);
+    expect(before).toMatch(
+      /`PUBLISH` = false \*\*or\*\* not yet resolved[^\n]*NEVER pass `--push`/,
+    );
+  });
+
   it.each(["design", "plan", "build", "debug"])(
     "%s removes only files the run created by mistake, never other agents' changes",
     (name) => {

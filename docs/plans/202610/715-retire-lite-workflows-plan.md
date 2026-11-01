@@ -203,6 +203,7 @@ Copied word for word from issue #715 § Success criteria.
 | The root README carries the held handoff | Unit | `.bkit/core/engine/audits/templates/templates.test.ts` | 15 |
 | worktree setup's low-disk sweep stops waiting after maxWaitMs while a live sweep holds the lock | Unit | `.bkit/core/engine/commands/workflow/disk.test.ts` | 18 |
 | bkit-build.md: a held run's Failure Path and Decision Pause never push the feature branch | Unit | `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` | 19 |
+| bkit-build.md: a Failure Path reached before publish is resolved never pushes the feature branch | Unit | `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` | 20 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -1127,6 +1128,21 @@ Build order: config → runtime resolution → install → close row → build w
 
 <!-- bkit:task 19 end -->
 <!-- bkit:group 9 end -->
+
+<!-- bkit:group 10 start -->
+
+### TASK GROUP 10: Challenge round 2 findings
+
+<!-- bkit:task 20 start -->
+
+- [ ] **TASK 20:** A held build resumed after a Decision Pause (or any held run) that fails in Step 2 after `worktrees setup` holds `{WORKTREE_PATH}` but before `status route` resolves `{PUBLISH}` (a rebase conflict on the exit-3 route, `workflows start` refusing the lock, `runtime row` / `runtime assert` failing, or `status route` exiting 4) takes the Failure Path's "`PUBLISH` = true **or** not yet resolved" branch and runs `workflows handover --push`, which `git add -A`s, commits and pushes `feat/{FID}` with every held commit to `origin`, even when the prompt says `publish=false` or `publish.local` is `false`
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/workflows/bkit-build.md:95` · **Round:** 2
+  - **DONE WHEN:** Failure Path step 5 (`.bkit/core/workflows/bkit-build.md:90-98`) passes `--push` only when `{PUBLISH}` = true; a `{PUBLISH}` that is false or not yet resolved takes the `--ref="{BRANCH}"` branch (or the Failure Path resolves `publish` itself before choosing), so no failure before Step 2 sub-step 3 finishes can push `feat/{FID}`; the publish=true path keeps `--push` unchanged.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `bkit-build.md: a Failure Path reached before publish is resolved never pushes the feature branch` fails on the Failure Path's pushing `workflows handover` line being guarded by "`PUBLISH` = true **or** not yet resolved", so the text before the `--push` line matches `not yet resolved` and an unresolved run pushes `feat/{FID}`
+
+<!-- bkit:task 20 end -->
+<!-- bkit:group 10 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
 
