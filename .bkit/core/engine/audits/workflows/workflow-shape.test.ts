@@ -1037,6 +1037,26 @@ describe("ship", () => {
   });
 });
 
+describe("retired lite workflows", () => {
+  it("no shipped prompt or workflow names a lite workflow", () => {
+    const dirs = ["workflows", "prompts"].map((d) => path.join(REPO_ROOT, ".bkit", "core", d));
+    const hits = dirs.flatMap((dir) =>
+      fs
+        .readdirSync(dir)
+        .filter((f) => f.endsWith(".md"))
+        .flatMap((f) =>
+          fs
+            .readFileSync(path.join(dir, f), "utf-8")
+            .split("\n")
+            .map((l, i) => [i + 1, /:lite\b|lite\.md|\blite workflows?\b/i.test(l)] as const)
+            .filter(([, hit]) => hit)
+            .map(([n]) => `${f}:${n}`),
+        ),
+    );
+    expect(hits).toEqual([]);
+  });
+});
+
 describe("plan caps", () => {
   // A number written next to tasks, tests, test files or TEST FIRST: the caps are
   // `bkit.workflows.tasks` settings, so prose names the held value instead.

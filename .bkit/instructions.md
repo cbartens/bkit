@@ -1002,19 +1002,17 @@ Clause section lines:
 
 - rule: Universal Rules › Workflows & Process
 - carry: `bkit-audit-generate`, `bkit-utility-update-tracker`
-- refs:
-  - `.bkit/lite.md` § When to use
 - workflow:
   - condensed: `bkit-debug`, `bkit-design`, `bkit-plan`
 - prompt:
-  - specialised: `bkit-audit-generate`
   - applies: `bkit-utility-update-tracker`
 
 ```text
-**Tracker next labels:** An issue without a workflow label MUST carry exactly one of the `next:design|next:plan|next:build|next:debug|next:ship` labels, with `:lite` appended for the lite workflow (`next:build:lite`) per `.bkit/lite.md` § When to use. Do not put a `next:*` label alongside a workflow label. Standing audit parents are excepted.
+**Tracker next labels:** An issue without a workflow label MUST carry exactly one of the `next:design|next:plan|next:build|next:debug|next:ship` labels. Do not put a `next:*` label alongside a workflow label. Standing audit parents are excepted.
 ```
 
 ```retired
+**Tracker next labels:** An issue without a workflow label MUST carry exactly one of the `next:design|next:plan|next:build|next:debug|next:ship` labels, with `:lite` appended for the lite workflow (`next:build:lite`) per `.bkit/lite.md` § When to use. Do not put a `next:*` label alongside a workflow label. Standing audit parents are excepted.
 **Tracker next labels:** An issue without a workflow label → ALWAYS exactly one of the `next:design|next:plan|next:build|next:debug|next:ship` labels; append `:lite` for the lite workflow (`next:build:lite`) per `.bkit/lite.md` § When to use. NEVER alongside a workflow label. Standing audit parents are excepted.
 **Tracker next labels:** Issue without workflow label → ALWAYS exactly one `next:design` / `next:plan` / `next:build` / `next:debug` / `next:ship`; append `:lite` for lite workflow (`next:build:lite`) per `.bkit/lite.md` § When to use. NEVER alongside workflow label. Standing audit parents excepted.
 **Tracker next labels:** Issue without workflow label → ALWAYS exactly one `next:design` / `next:plan` / `next:build` / `next:debug` / `next:ship`; append `:lite` for lite workflow (`next:build:lite`) per `.bkit/lite.md` § When to use. NEVER alongside workflow label.
@@ -1031,10 +1029,11 @@ Clause section lines:
   - specialised: `bkit-audit-generate`, `bkit-utility-update-tracker`
 
 ```text
-**Tracker workflow labels:** Add one of the `bkit:design|bkit:plan|bkit:build|bkit:debug|bkit:ship` labels only when the issue starts that workflow (full or lite). They are mutually exclusive: the next workflow start drops the previous one, and the `/bkit-ship` close swaps `bkit:ship` → `bkit:merged`. To signal intent, use a `next:*` label, not a workflow label added by hand.
+**Tracker workflow labels:** Add one of the `bkit:design|bkit:plan|bkit:build|bkit:debug|bkit:ship` labels only when the issue starts that workflow. They are mutually exclusive: the next workflow start drops the previous one, and the `/bkit-ship` close swaps `bkit:ship` → `bkit:merged`. To signal intent, use a `next:*` label, not a workflow label added by hand.
 ```
 
 ```retired
+**Tracker workflow labels:** Add one of the `bkit:design|bkit:plan|bkit:build|bkit:debug|bkit:ship` labels only when the issue starts that workflow (full or lite). They are mutually exclusive: the next workflow start drops the previous one, and the `/bkit-ship` close swaps `bkit:ship` → `bkit:merged`. To signal intent, use a `next:*` label, not a workflow label added by hand.
 **Tracker workflow labels:** Add one of the `bkit:design|bkit:plan|bkit:build|bkit:debug|bkit:ship` labels ONLY when the issue starts that workflow (full or lite); they are mutually exclusive — the next workflow start drops the previous one; the `/bkit-ship` close swaps `bkit:ship` → `bkit:merged`. NEVER add one by hand to signal intent; use `next:*`.
 **Tracker workflow labels:** Add `bkit:design` / `bkit:plan` / `bkit:build` / `bkit:debug` / `bkit:ship` ONLY when issue starts that workflow (full or lite); mutually exclusive — next workflow start drops previous; `/bkit-ship` close swaps `bkit:ship` → `bkit:merged`. NEVER add by hand to signal intent; use `next:*`.
 ```
@@ -9210,7 +9209,6 @@ A failing test / CI / runtime, cause unknown → `/bkit-debug`.
 The approach is open (options, trade-offs, unanswered questions) → `/bkit-design`.
 The approach is settled, not broken into tasks → `/bkit-plan`.
 The change is clear → `/bkit-build`.
-[tracker-next-labels] **If** `.bkit/lite.md` § When to use allows a lite workflow → `/bkit-build` becomes `build:lite`, and `/bkit-debug` becomes `debug:lite`.
 `Reason` = the deciding fact, in one clause.
 [discovered-bugs] Write ledger entries to `docs/failures.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), with `by: {workflow: "audit", step: "audit-{slug}"}`.
 **If** the template audits `docs/failures.jsonl` or `docs/deferrals.jsonl` → skip this step.
@@ -10273,7 +10271,6 @@ Group by domain boundaries, never by token count.
 Treat items done together as one list item.
 For each item:
 Recommend the `/bkit-<phase>` command.
-[recommend-do-not-decide] Recommend the `.bkit/lite.md` lite workflow `<phase>:lite` instead, only where it is clearly enough.
 Recommend a model tier.
 Recommend `@bkit-audit-generate` for audit reports.
 [recommend-do-not-decide; tracker-issue-creation] **If** a tracker is wired and the item has no issue → recommend filing one first, shaped per `.bkit/trackers.md` § Issue shapes.
@@ -10315,7 +10312,6 @@ For each issue, build target values from the sources in the order listed. The fi
 **If** a workflow label (`bkit:design|bkit:plan|bkit:build|bkit:debug|bkit:ship`) is present → remove every `next:*`.
 [tracker-next-labels] **Else** → exactly one `next:*`, from the `REPORT` label correction, then the roadmap item's recommended command, then the issue shape per `.bkit/trackers.md` § `Issue shapes`:
 Shape to label: idea → `next:design`, change → `next:plan`, change with `Tasks` → `next:build`, bug → `next:debug`.
-Append `:lite` per `.bkit/lite.md` § `When to use`.
 An existing single `next:*` stands unless `REPORT` corrects it.
 **If** the type label (`enhancement|bug`) is missing → add it per shape. `REPORT` label corrections apply.
 **If** a label is not in the repo or team labels → `Unapplied`.

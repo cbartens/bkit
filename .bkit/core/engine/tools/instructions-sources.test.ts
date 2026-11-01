@@ -171,6 +171,26 @@ describe("rules and Project Rules", () => {
   });
 });
 
+describe("retired lite labels", () => {
+  it("no shipped rule or prompt instructs a next:*:lite label", () => {
+    const files = [
+      ".bkit/core/.agents/rules.md",
+      ...fs
+        .readdirSync(path.join(REPO_ROOT, ".bkit/core/prompts"))
+        .filter((f) => f.endsWith(".md"))
+        .map((f) => `.bkit/core/prompts/${f}`),
+    ];
+    const hits = files.filter((f) => /next:[a-z]+:lite|:lite\b|lite\.md/.test(read(f)));
+    expect(hits).toEqual([]);
+  });
+
+  it("the clause store holds no lite text", () => {
+    const text = STORE.replace(/```retired\n[\s\S]*?```/g, "");
+    const hits = text.match(/.*(?::lite\b|lite\.md|\(full or lite\)|lite workflow).*/gi);
+    expect(hits).toBeNull();
+  });
+});
+
 describe("Hook Text", () => {
   const JS = [
     "function advise(base) {",

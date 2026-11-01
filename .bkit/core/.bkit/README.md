@@ -61,7 +61,7 @@ Plans are sized by `bkit.workflows.tasks` in `package.json`. Each group holds up
 | Issue | Start with |
 | --- | --- |
 | Idea — how it should work still open | `/bkit-design` |
-| Change — what to build and "done" known | `/bkit-plan`, or `/bkit-build` / `build:lite` with no plan. With no plan, `/bkit-build` first writes `{FID}-plan.md` from the issue, then checks that each `TEST FIRST` is red. An existing plan wins over the issue. `build:lite` checks nothing. |
+| Change — what to build and "done" known | `/bkit-plan`, or `/bkit-build` with no plan. With no plan, `/bkit-build` first writes `{FID}-plan.md` from the issue, then checks that each `TEST FIRST` is red. An existing plan wins over the issue. |
 | Bug — a test or CI run already fails | `/bkit-debug`, on the branch the fix lands on |
 | Bug — nothing fails yet | `/bkit-debug [repro]` (writes a failing test first, then fixes) |
 
@@ -328,11 +328,16 @@ Run the slash commands at the repo root:
 /bkit-design ISSUE-123      # produce a design doc
 /bkit-plan ISSUE-123        # produce an implementation plan
 /bkit-build ISSUE-123       # execute the plan in a worktree, open a PR
+/bkit-build ISSUE-123 publish=false  # build locally and hold: no push, no PR, no CI; land it later with /bkit-ship
 /bkit-debug ISSUE-123       # diagnose and remediate CI failures
 /bkit-ship ISSUE-123        # merge the PR for the current branch, set the issue In Review
 ```
 
 Claude reads the issue, its comments and the plan files through the tracker MCP.
+
+**Held build:** `publish=false` (or `package.json` `bkit.workflows.build.publish.local: false`) stops `/bkit-build` before the push: no PR, no CI, no docs sync. The worktree and branch stay, the lock is released, the run ends `held`, the issue moves to `In review`, and the summary reads `Publish: held` and `Docs: not synced`. `/bkit-ship <ref>` lands it later. Cloud runs always publish.
+
+**Manual batch of held builds:** merge the held `feat/{FID}` branches into one branch off `dev` yourself, push it and open one PR. You own the push, the PR, the CI gate, the sweep and the docs sync. One head commit means post-merge auto-debug sees only the last FID. Never batch migrations.
 
 **Requirements:** `BKIT_GH_TOKEN` and an active Claude Code session (subscription or `BKIT_ANTHROPIC_API_KEY`). `BKIT_LINEAR_API_KEY` as well when `bkit.tracker.default = "linear"`, and `BKIT_JIRA_API_KEY` when it is `"jira"`. The session model is the orchestrator pin in `.bkit/prompts.md` § Orchestrators (`Claude` column). Set it with `/model` before you invoke a command. This file does not repeat the pin.
 
