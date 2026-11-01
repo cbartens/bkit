@@ -6,93 +6,89 @@ Lazy: 0
 
 # Deferred Sweep
 
-Plan: `docs/plans/202610/715-retire-lite-workflows-plan.md` (anchor `baseSha: e0542d74e`, last committed 2026-11-01T04:26:21Z; the copy in `ship-input-2.md` § Plan is byte-identical). No design doc exists. Judged at `bda284bed` (working tree clean apart from ship-run logs). Diff file `tmp/bkit-diff-715-retire-lite-workflows.md` is partial diff coverage (131 files, 20 largest shown), so the code was read directly.
-
-Checks run by this sweep:
-
-- `pnpm exec vitest run` on the 19 unit files the plan's `DONE WHEN` lines name: 19 files, 1691 passed.
-- `pnpm exec vitest run` on `core.integration`, `upgrade.integration`, `install.integration`, `close-squash.integration`, `ship-verdict.integration`: 5 files, 253 passed.
-- `pnpm test:harvest`: 61 tests, 61 pass, 0 fail.
-- `node dist/cli.js check`: exit 0, `0 write(s) would occur`, no `DRIFT DETECTED`.
-- `pnpm bkit:gate:static-unit`: exit 1 at `prettier --check .`, whose only warning is `docs/plans/202610/logs/715-retire-lite-workflows/ship-input-2.md`, the untracked input file this ship run wrote. It is not in the branch. Every other part was then run alone and passed: typecheck and lint (before the stop), `format:tables:check` exit 0, `lint:prose` exit 0, `slop:delta` exit 0, `test:coverage:unit` exit 0 (165 files, 6885 passed, 2 skipped), `bkit:test:bats` exit 0.
-- `pnpm instructions:sync` (it runs with `--write`): the working tree was unchanged afterwards, so the store is in sync.
-- `pnpm bkit:gate:static-unit-integration` and a full `pnpm vitest run` were not re-run by this sweep. `run-tests-1.md` records `static-unit-integration` PASS for the build.
-
 ## Planned vs Delivered
 
-Success criteria (plan § Acceptance Scenario § Success Criteria, copied from issue #715):
+Plan: `docs/plans/202610/715-retire-lite-workflows-plan.md` (byte-identical to the copy embedded in `ship-input-3.md`, last committed 2026-11-01T14:26:21+10:00). Intended deliverables = § Acceptance Scenario › Success Criteria (S1-S9, declared 2026-10-28 from issue #715 § Success criteria) plus the 20 runbook tasks' `DONE WHEN` lines (T1-T20). Evidence gathered 2026-11-02 in `.worktrees/715-retire-lite-workflows` at `1f17923a0`.
 
-- `Delivered` SC1 — install / upgrade leave no managed lite block and keep consumer content below `bkit:end`. Evidence: `.bkit/core/.bkit/lite.md` and the root `.bkit/lite.md` are absent; `manifest.ts` has no `lite.md` entry; `migrateRetiredLite` at `.bkit/core/engine/install/modules/core.ts:425` with `RETIRED_LITE_STUB_SENTINEL` at `core.ts:410`, called at `core.ts:329`; the migration cases in `core.integration.test.ts` and `upgrade.integration.test.ts` pass.
-- `Delivered` SC2 — no current doc, prompt, workflow or label rule names a `<phase>:lite` workflow or a `next:*:lite` label. Evidence: the Task 14 grep over `.bkit/core/.agents`, `.bkit/core/prompts`, `.bkit/core/.bkit` and both `bkit-change.yml` forms returns nothing; the Task 15 grep over `README.md` and `docs/roadmap.md` returns nothing; across `.claude`, `.cursor`, `.opencode`, `.codex`, `.agents`, `.bkit/*.md`, `.bkit/core/workflows` and `docs/templates` the only hit is `.bkit/instructions.md:1015-1018`, inside the `retired` fence of `### tracker-next-labels`. That fence holds the retired text on purpose, and `instructions-sources.test.ts:187` strips it before asserting no lite text. The remaining `:lite` hits in `.bkit/core/engine` are the guard tests' own regexes.
-- `Delivered` SC3 — small-change guidance points at `/bkit-build #N`. Evidence: `README.md:100` and `README.md:106`, `.bkit/core/.bkit/trackers.md:114`, `.bkit/core/.bkit/templates.md:607`, `.github/ISSUE_TEMPLATE/bkit-change.yml:13`, `.bkit/core/.bkit/README.md:64` and `:331`; `templates.test.ts` passes.
-- `Delivered` SC4 — `publish` defaults to `{ remote: true, local: true }`, `local: false` holds, `remote: false` is refused with an advisory. Evidence: `settings.ts:196` defaults; `settings.ts:253-258` (`remote` is always `true`); `invalidBuildPublish` at `settings.ts:241`; advisories `bkit-build-publish-remote` / `bkit-build-publish-invalid` at `.bkit/core/engine/checks/before/repo.ts:103` and `:114`; `package.json:206-209` is seeded; `settings.test.ts`, `checks/before/repo.test.ts` and `index.test.ts` pass.
-- `Delivered` SC5 — a `publish=false` run pushes nothing, opens no PR and starts no CI, keeps the worktree and branch, releases the lock, ends `held`, and leaves the issue `In review` with the comment, `Publish: held` and `Docs: not synced`. Evidence: `.bkit/core/workflows/bkit-build.md:1027-1036` (held close with `--ending=held --publish=false`, title "Built locally, not published"); `summary.ts:312-313`; `telemetry.ts:618` (`OUTCOME_ENDINGS` includes `held`); `close-squash.integration.test.ts` (remote refs unchanged, lock released, rows and summary lines) passes.
-- `Delivered` SC6 — a `publish=true` run behaves as today. Evidence: `bkit-build.md:1172` keeps the probe, push, PR and dispatch under `PUBLISH` = true; the `workflow-shape.test.ts` case for the `publish=true` close path passes; the `bkit-build` none-render baseline in `render/trackers.test.ts` passes.
-- `Delivered` SC7 — a non-LOCAL `publish=false` coerces to `true` with a visible warning. Evidence: `publishRoute` at `.bkit/core/engine/commands/workflow/status.ts:287-305` (`publishSource: "coerced"`); `bkit-build.md:397` emits the warning; `status.test.ts` passes.
-- `Delivered` SC8 — `/bkit-ship <ref>` lands a held build end to end. Evidence: `ship-verdict.integration.test.ts` (push to a bare origin, `pr create` base `dev`, `runs gate`, `pr merge --match-head-commit`) passes. A LOW gap in how that test runs the no-PR fence is deferred (`...ship-verdict-integration-test-ts-302`, below).
-- `Delivered` SC9 — `pnpm bkit:gate:static-unit` and `bkit check` pass. Evidence: `bkit check` exit 0. The gate's only failure is prettier on the untracked ship-run input file `ship-input-2.md`, which is not part of the branch. Every gate part passed when run alone (see checks above).
+Test runs used as evidence:
 
-Runbook `DONE WHEN` lines (all 20 tasks `[x]` in the plan):
+- `pnpm build` → exit 0, `git status --short dist` empty (dist is fresh).
+- `pnpm vitest run` over the 19 unit files the plan names (`settings`, `repo`, `checks/before/repo`, `checks/before/index`, `status`, `summary`, `workflows`, `manifest`, `templates`, `uninstall`, `telemetry`, `stats`, `workflow-shape`, `render/trackers`, `instructions-coverage`, `instructions-sources`, `instructions`, `issues`, `disk`) → 19 files, 1693 tests passed.
+- `pnpm vitest run` over the 5 integration files the plan names (`core.integration`, `upgrade.integration`, `install.integration`, `close-squash.integration`, `ship-verdict.integration`) → 5 files, 253 tests passed.
+- `pnpm test:harvest` → 61 tests, 61 pass, 0 fail.
+- `node dist/cli.js check` → exit 0, "0 write(s) would occur", no `DRIFT DETECTED`, 0 blockers.
+- `pnpm tsx .bkit/core/engine/tools/instructions.ts` (the check mode of `instructions:sync`) → exit 0, tree unchanged.
+- `pnpm bkit:gate:static-unit` → exit 0: static checks pass, unit coverage run 165 files / 6907 passed / 2 skipped (no skip added by this diff, see Blocking Deferrals), bats 36 ok / 0 not ok.
+- `pnpm test:integration` → exit 0, 50 files / 1700 passed (so `bkit:gate:static-unit-integration` holds).
 
-- `Delivered` Tasks 1-5 (settings, `repo info`, advisories, `status route` publish, summary lines). Evidence: `settings.test.ts`, `commands/workflow/repo.test.ts` (`repo.ts:245-246` prints `buildPublishRemote` / `buildPublishLocal`), `checks/before/repo.test.ts`, `checks/before/index.test.ts`, `status.test.ts`, `summary.test.ts` and `workflows.test.ts` all pass.
-- `Delivered` Tasks 6, 7, 17 (install seed, retired-lite migration, source doc deleted). Evidence: `core.integration.test.ts`, `upgrade.integration.test.ts`, `install.integration.test.ts`, `manifest.test.ts` and `templates.test.ts` pass; `ls .bkit/core/.bkit/lite.md` fails.
-- `Delivered` Task 8. Evidence: `grep -n lite.md .bkit/core/.bkit/README.md .bkit/core/.agents/docs.md` prints nothing.
-- `Delivered` Task 9. Evidence: `uninstall.ts:384-385` keeps the retired path; `uninstall.test.ts` passes.
-- `Delivered` Tasks 10-11 (close rows, telemetry, stats, harvest). Evidence: `workflows.test.ts`, `telemetry.test.ts` and `stats.test.ts` pass; `pnpm test:harvest` 61/61. The Task 11 test-order gaps the build summary lists as BLOCKED were accepted by the owner (`build-decision-1-2.md`) and carry `TEST EXCEPTION` fields in the plan.
-- `Delivered` Task 12. Evidence: `workflow-shape.test.ts`, `render/trackers.test.ts` and `instructions-coverage.test.ts` pass.
-- `Delivered` Task 13. Evidence: `close-squash.integration.test.ts` and `ship-verdict.integration.test.ts` pass.
-- `Delivered` Tasks 14-15. Evidence: both greps return nothing; `instructions:sync` leaves a clean tree; `workflow-shape`, `instructions-sources`, `instructions`, `templates` and `issues` tests pass; `README.md:108-113` holds the batch recipe with both limitations.
-- `Delivered` Task 16. Evidence: `.bkit/lite.md` is absent; `bkit check` exit 0 with 0 writes; `instructions:sync` is clean; the gate result is as for SC9.
-- `Delivered` Task 18. Evidence: `TIMEOUTS.DISK_SETUP_SWEEP_WAIT_S: 60` at `.bkit/core/engine/shared/timeouts.ts:28`; `ensureDiskSpace` passes `maxWaitMs` at `disk.ts:606`; `waitForLock` takes the bound at `disk.ts:250-254`; `disk.test.ts` passes.
-- `Delivered` Tasks 19-20. Evidence: Failure Path step 5 at `bkit-build.md:93-99` passes `--push` only in the Else branch, and "`PUBLISH` = false **or** `PUBLISH` is not held yet" takes `--ref="{BRANCH}"`; the Decision Pause at `bkit-build.md:237-243` makes the same split; `workflow-shape.test.ts` passes. Task 19's test-order gap was accepted by the owner (`build-decision-1-5.md`).
-
-Not plan deliverables. These were observed and reported, and they do not affect the verdict:
-
-- `package.json:196` raises `bkit.workflows.build.verify.maxAttempts` from 2 to 5. This is a bundled bkit-repo run setting that no task asks for (issue comment 2026-11-01T04:21:54Z, MEDIUM).
-- `CHANGELOG.md` is unchanged against `origin/dev`. The plan's § Documentation Updates does not list it.
-- On a held run, the handover `--ref="{BRANCH}"`, the held close `--tree={BRANCH}` and the Step 15 `--link-ref={BRANCH}` links point at a branch that is not on `origin` until ship pushes it. The holistic verify notes that no `DONE WHEN` covers this.
+<!-- prettier-ignore -->
+| Id | Deliverable (where declared) | Status | Evidence |
+| --- | --- | --- | --- |
+| S1 | Install / upgrade leave no managed lite block; consumer content below `bkit:end` kept (plan:50) | Delivered | `migrateRetiredLite` at `.bkit/core/engine/install/modules/core.ts:403-442`; `core.integration.test.ts` `strips the managed block and keeps consumer lines`, `logs no fix and writes nothing on a second install over its own stub`; `upgrade.integration.test.ts` `upgrade from a 5.2.4 lite.md keeps the consumer section` — all pass |
+| S2 | No current doc, prompt, workflow or label rule names a `<phase>:lite` workflow or `next:*:lite` label (plan:51) | Delivered | `git grep` over tracked files minus `docs/plans`, `docs/audits`, `CHANGELOG.md`, `*.jsonl`: remaining hits are absence-asserting tests, the migration / uninstall code naming the retired path, the `docs/migrations.md` row, and the `retired` history block at `.bkit/instructions.md:1014-1019` — none is a current rule or recommendation |
+| S3 | Every "small change" recommendation points at `/bkit-build #N` (plan:52) | Delivered | `README.md:99-113`, `.bkit/core/.bkit/README.md:331-340`, `.bkit/core/.bkit/templates.md:607`, `.github/ISSUE_TEMPLATE/bkit-change.yml:12-13` (template copy identical); `templates.test.ts` `the root README points small changes at /bkit-build` passes |
+| S4 | `publish` defaults `{ remote: true, local: true }`; `local: false` holds; `remote: false` refused with advisory (plan:53) | Delivered | `settings.test.ts` `defaults build.publish to true`, `coerces publish.remote false to true`; `checks/before/repo.test.ts` `reports only the remote advisory when remote is false and local is valid` — pass |
+| S5 | `publish=false` run: no push / PR / CI, worktree + branch kept, lock released, ending `held`, In review comment, `Publish: held`, `Docs: not synced` (plan:54) | Delivered | `close-squash.integration.test.ts` `held close leaves origin refs unchanged, keeps the branch and worktree, releases the lock` and `held close records the rows, summary and worktree-only roadmap row`; `workflow-shape.test.ts` held-close cases — pass |
+| S6 | `publish=true` run behaves as today (plan:55) | Delivered | `workflow-shape.test.ts` `keeps the publish=true close path`; `summary.test.ts` `keeps the verdict and next step unchanged by publish` — pass |
+| S7 | Non-LOCAL `publish=false` coerces to `true` with visible warning (plan:56) | Delivered | `status.test.ts` `coerces publish false to true on a non-LOCAL runtime`; `workflow-shape.test.ts` `warns when a non-LOCAL run resolves publish false` — pass |
+| S8 | `/bkit-ship <ref>` lands a held build end to end (plan:57) | Delivered | `ship-verdict.integration.test.ts` `ship pushes the held branch and opens a dev PR`, `ship gates on CI and merges the pinned head` — pass |
+| S9 | `pnpm bkit:gate:static-unit` and `bkit check` pass (plan:58) | Delivered | `bkit check` exit 0; `pnpm bkit:gate:static-unit` exit 0 (above) |
+| T1 | settings parse / validate (plan:710) | Delivered | `settings.test.ts` passes; `invalidBuildPublish` exported from `.bkit/core/engine/shared/settings.ts` |
+| T2 | `repo info` publish keys (plan:728) | Delivered | `repo.test.ts` `prints buildPublishRemote and buildPublishLocal` passes |
+| T3 | `bkit check` publish advisories (plan:743) | Delivered | `checks/before/repo.test.ts`, `checks/before/index.test.ts` pass |
+| T4 | `status route` resolves `{PUBLISH}` (plan:769) | Delivered | `status.test.ts` passes, incl. `refuses publish without a runtime-resolved row` |
+| T5 | summary `Publish:` / `Docs:` lines (plan:790) | Delivered | `summary.test.ts`, `workflows.test.ts` pass |
+| T6 | install / upgrade seed `build.publish` (plan:814) | Delivered | `core.integration.test.ts` seed cases pass; `package.json` carries `bkit.workflows.build.publish` |
+| T7 | retired-lite migration (plan:837) | Delivered | `core.integration.test.ts`, `upgrade.integration.test.ts` pass |
+| T17 | delete shipped `lite.md` source (plan:869) | Delivered | `ls .bkit/core/.bkit/lite.md` fails (no such file); `install.integration`, `manifest`, `templates` tests pass |
+| T8 | drop lite doc from install docs (plan:888) | Delivered | `grep -n lite.md .bkit/core/.bkit/README.md .bkit/core/.agents/docs.md` → exit 1, no output |
+| T9 | `bkit uninstall` retired lite path (plan:901) | Delivered | `.bkit/core/engine/commands/install/uninstall.ts:384-385`; `uninstall.test.ts` `strips a managed lite.md block` passes |
+| T10 | close row `ending: held` / `publish: false` (plan:926) | Delivered | `workflows.test.ts` `records ending held and publish false on the workflow-done row`, `telemetry.test.ts` pass |
+| T11 | held ending in stats / harvest (plan:948) | Delivered | `pnpm test:harvest` 61/61; `telemetry.test.ts`, `stats.test.ts` pass |
+| T12 | `bkit-build.md` publish branch (plan:980) | Delivered | `workflow-shape.test.ts`, `render/trackers.test.ts`, `instructions-coverage.test.ts` pass |
+| T13 | held close + deferred landing vs real boundaries (plan:1008) | Delivered | `close-squash.integration.test.ts`, `ship-verdict.integration.test.ts` pass after `pnpm build` |
+| T14 | remove lite guidance (plan:1047) | Delivered | The source grep over `.bkit/core/.agents .bkit/core/prompts .bkit/core/.bkit` and both `bkit-change.yml` copies → exit 1, no output. `grep -rn ':lite' .bkit/core/engine` hits only the regexes inside the absence-asserting tests (`instructions-sources.test.ts:175-189`, `workflow-shape.test.ts:1108`, `templates.test.ts:409-421`) that this task's own `TEST FIRST` requires; no engine source hit. Instructions check clean; the five named test files pass |
+| T15 | README / roadmap guidance, held handoff, batch recipe (plan:1071) | Delivered | `grep -niE '(:lite\|lite\.md\|[Ll]ite workflows?)' README.md docs/roadmap.md` → exit 1; batch recipe with both limitations at `README.md:108-113`; `templates.test.ts` passes |
+| T16 | dist, mirrors, gate (plan:1099) | Delivered | `pnpm build` leaves `dist/` unchanged; `bkit check` 0 writes, no drift; `.bkit/lite.md` absent; instructions check clean; `pnpm test:harvest` passes; `pnpm bkit:gate:static-unit` and `pnpm test:integration` exit 0. The repo `bkit install` itself was not re-run here (this sweep does not install); `bkit check`'s 0-write dry run is the observable result |
+| T18 | bounded low-disk sweep wait (plan:1114) | Delivered | `disk.test.ts` `worktree setup's low-disk sweep stops waiting after maxWaitMs while a live sweep holds the lock` passes |
+| T19 | held Failure Path / Decision Pause never push (plan:1123) | Delivered | `workflow-shape.test.ts` `bkit-build.md: a held run's Failure Path and Decision Pause never push the feature branch` passes |
+| T20 | unresolved-publish Failure Path never pushes (plan:1140) | Delivered | `workflow-shape.test.ts` `bkit-build.md: a Failure Path reached before publish is resolved never pushes the feature branch` passes |
 
 ## Blocking Deferrals
 
-None
-
-`bkit branches scan-diff --disabled-tests --base=origin/dev` exit 0: `found: false`, `disabled: []`.
+None. All 29 intended deliverables (S1-S9, T1-T20) are `Delivered`. `node dist/cli.js branches scan-diff --disabled-tests --base=origin/dev` → exit 0, `found: false`, `disabled: []`.
 
 ## Exempt Deferrals
 
-Ledger rows (`bkit ledgers triage --fid=715-retire-lite-workflows --plan=docs/plans/202610/715-retire-lite-workflows-plan.md`: 12 rows, all `bucket: Exempt`, 0 written):
+**Ledger rows** (`bkit ledgers triage --fid=715-retire-lite-workflows --plan=docs/plans/202610/715-retire-lite-workflows-plan.md` → 12 rows, every `bucket` = `Exempt`, 0 written):
 
-- `715-no-batch-publish-verb` — no `bkit ship --batch` verb. Declared 2026-10-28 in plan § Out of Scope and issue #715 § Out of scope. `reason` `scope-declared`. Tests: in-scope-surface and own-declaration fail.
-- `715-build-docs-sync-stays-in-ship` — docs sync is not moved into build or the PR. Declared 2026-10-28 in plan § Out of Scope. `reason` `scope-declared`. Tests: in-scope-surface and own-declaration fail.
-- `715-build-verification-unchanged` — build verification, challenge sizing, worktree model and `dev` push are unchanged. Declared 2026-10-28 in plan § Out of Scope. `reason` `scope-declared`. Tests: in-scope-surface and own-declaration fail.
-- `715-debug-publish-mode-unchanged` — debug's `PUSH_MODE` is unchanged. Declared 2026-10-28 in plan § Out of Scope. `reason` `scope-declared`. Tests: in-scope-surface and own-declaration fail.
-- `715-tracker-label-definitions-unchanged` — existing `next:*:lite` GitHub label definitions are not deleted. Declared 2026-10-28 in plan § Out of Scope. `reason` `scope-declared`. Tests: in-scope-surface and own-declaration fail.
-- `715-consumer-lite-content-migration` — consumer lite content is preserved in a stub, not converted. Declared 2026-10-28 in plan § Out of Scope. `reason` `scope-declared`. Tests: in-scope-surface and own-declaration fail.
-- `715-historical-audit-report-mentions` — dated `docs/audits/**` reports and `CHANGELOG.md` keep their lite mentions. Declared 2026-10-28 in plan § Out of Scope, which cites issue #715 § Success criteria (historical records exempt). `reason` `scope-declared`. Tests: in-scope-surface fails.
-- `715-retire-lite-workflows-challenge-low-bkit-core-engine-commands-workflow-disk-ts-232` — non-atomic stale-lock replacement in `takeLock`. Build challenge round 1. `reason` `low-severity` (not tested).
-- `715-retire-lite-workflows-challenge-low-bkit-core-engine-commands-workflow-status-ts-269` — a `publish=true` substring in pasted prompt text overrides `publish.local: false`; this needs an owner decision. Build challenge. `reason` `low-severity` (not tested).
-- `715-retire-lite-workflows-challenge-low-bkit-core-engine-commands-workflow-disk-ts-245` — a sweep running longer than `LOCK_STALE_MS` never renews its lock. Build challenge round 1. `reason` `low-severity` (not tested).
-- `715-retire-lite-workflows-challenge-low-bkit-core-engine-commands-workflow-disk-ts-559` — a timed-out low-disk setup wait still stamps the `--auto` step files. Build challenge round 1. `reason` `low-severity` (not tested).
-- `715-retire-lite-workflows-challenge-low-bkit-core-engine-audits-workflows-ship-verdict-integration-test-ts-302` — the landing test's `openPr` runs only part of ship Step 2's no-PR fence. Build challenge round 1. `reason` `low-severity` (not tested).
+<!-- prettier-ignore -->
+| Key | Leaves uncovered | Declared (where, when) | Reason | Triage tests |
+| --- | --- | --- | --- | --- |
+| `715-no-batch-publish-verb` | No `bkit ship --batch`; batching held builds stays a user script | plan § Out of Scope (plan:286); issue #715 § Out of scope; row by `plan-generate`, 2026-10-28 | `scope-declared` | in-scope-surface fails, own-declaration fails |
+| `715-build-docs-sync-stays-in-ship` | Docs sync not moved into build or the PR | plan:287; issue § Out of scope; `plan-generate`, 2026-10-28 | `scope-declared` | in-scope-surface fails, own-declaration fails |
+| `715-build-verification-unchanged` | Build verification, challenge sizing, plan-convert, worktree model, `dev` push rules untouched | plan:288; issue § Out of scope; `plan-generate`, 2026-10-28 | `scope-declared` | in-scope-surface fails, own-declaration fails |
+| `715-debug-publish-mode-unchanged` | Debug's `PUSH_MODE` / behaviour untouched | plan:289; issue § Out of scope; `plan-generate`, 2026-10-28 | `scope-declared` | in-scope-surface fails, own-declaration fails |
+| `715-tracker-label-definitions-unchanged` | Existing `next:*:lite` GitHub label definitions not deleted | plan:290; issue § Out of scope; `plan-generate`, 2026-10-28 | `scope-declared` | in-scope-surface fails, own-declaration fails |
+| `715-consumer-lite-content-migration` | Consumer lite content preserved, not converted | plan:291; issue § Out of scope; `plan-generate`, 2026-10-28 | `scope-declared` | in-scope-surface fails, own-declaration fails |
+| `715-historical-audit-report-mentions` | Dated `docs/audits/**` reports and `CHANGELOG.md` keep lite mentions | plan:292; issue § Success criteria exemption; `plan-generate`, 2026-10-28 | `scope-declared` | in-scope-surface fails (own-declaration holds) |
+| `715-retire-lite-workflows-challenge-low-bkit-core-engine-commands-workflow-disk-ts-232` | Two `--wait` sweeps can each `rmSync` the other's fresh lock (`disk.ts:232`) | `build-challenge`, 2026-11-01 | `low-severity` | not tested (LOW) |
+| `715-retire-lite-workflows-challenge-low-bkit-core-engine-commands-workflow-status-ts-269` | A `publish=true` substring anywhere in the prompt overrides `publish.local: false` (`status.ts:269`) | `build-challenge`, 2026-11-01 | `low-severity` | not tested (LOW) |
+| `715-retire-lite-workflows-challenge-low-bkit-core-engine-commands-workflow-disk-ts-245` | A sweep longer than `LOCK_STALE_MS` can be joined by a second sweep (`disk.ts:245`) | `build-challenge`, 2026-11-01 | `low-severity` | not tested (LOW) |
+| `715-retire-lite-workflows-challenge-low-bkit-core-engine-commands-workflow-disk-ts-559` | A low-disk setup that gives up after 60s has already stamped the sweep cadence (`disk.ts:559`) | `build-challenge`, 2026-11-01 | `low-severity` | not tested (LOW) |
+| `715-retire-lite-workflows-challenge-low-bkit-core-engine-audits-workflows-ship-verdict-integration-test-ts-302` | The deferred-landing test runs only the push and `prs open` lines, not the exit-surfacing `case` lines (`ship-verdict.integration.test.ts:302`) | `build-challenge`, 2026-11-01 | `low-severity` | not tested (LOW) |
 
-Plan items declared future work (plan § Suggested Scope Expansion and § Alternative Approaches, 2026-10-28, each marked "Keep deferred"):
+**Declared future work with no ledger row** (plan § Suggested Scope Expansion, plan:299-305, declared at plan time 2026-10-28, each marked "Keep deferred"): a `bkit builds --held` listing verb; retiring the `.agents/shortcuts.md` migration (kept inside `migrateRetiredLite` instead); `bkit plan --publish`; a `publish` value on `bkit status meta`; `main-checkout-left-core-bare-true`; the full-gate timeout cluster; `650-debug-dev-ci-live-round-trip`. All are outside this feature's deliverables; the last three are rows of other FIDs.
 
-- A `bkit builds --held` listing verb. No consumer need yet.
-- `bkit plan --publish` for plan / design closes. Design and plan always push their record.
-- A `publish` value on `bkit status meta` for resume. `status route` re-derives it on every run.
-- `main-checkout-left-core-bare-true` (HIGH, open). This is repo hygiene, not this feature.
-- The full-gate timeout cluster (`instructions-retired-clause-timeout-under-full-gate` and three `resolve-push-base` timeouts). These are known flakes.
-- `650-debug-dev-ci-live-round-trip`. It needs a real GitHub Actions round trip, so it is hard-blocked.
+**Advisory plan conditions** (preconditions and process steps, advisory only per this sweep's contract):
 
-Advisory preconditions and process boxes (never blocking):
-
-- Gate 1 human-confirmation boxes (Acceptance Scenario, Breaking Changes, Open Questions) and the other Gate 1-4 and Verification Plan checkboxes are unticked in the plan. Each one is a precondition or build-process step. The owner accepted the test-order exceptions in `build-decision-1-1.md` to `build-decision-1-6.md`.
-- The Manual Verification steps 1-4 are owner-run and advisory by the plan's own wording.
-- The build summary's "BLOCKED" Risks are resolved. Gap 9 (`lite.md` still shipped) was fixed by Task 17, and `install.integration.test.ts` passes. The Task 11 and Task 19 test-order gaps were accepted by the owner.
+- Gate 1 / Gate 2 / Gate 3 / Gate 4 checkboxes and the three 👤 Human Confirmation boxes are unticked (plan:210, 238, 268, 333-338, 1151-1166, 1172-1184). The build ran through them; no deliverable depends on the tick.
+- § Manual Verification Steps 1-4 (plan:1191-1194) are marked "advisory only" by the plan itself.
+- Task 16's repo `bkit install` run and second zero-write install (plan:1099) are build process steps; `bkit check` reporting 0 writes and no drift stands in as the observable result.
 
 ## Lazy Deferrals
 
-None
+None. No intended deliverable was left `Planned`, and `bkit ledgers triage` bucketed every one of the 12 deferral rows for this FID `Exempt` (`written: 0`), so no `unjustified` row was appended to `docs/deferrals.jsonl`.
 
 ## Handover Notes
 

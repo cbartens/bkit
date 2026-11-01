@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-01T13:21:28Z)_
+_(refreshed 2026-11-01T23:27:25Z)_
 
 ### Design
 
@@ -60,7 +60,7 @@ _(none)_
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
-| 715-retire-lite-workflows | 715-retire-lite-workflows | 1793539288121 |
+| 715-retire-lite-workflows | 715-retire-lite-workflows | 1793575645147 |
 | 699-engine-run-completeness | 699-engine-run-completeness | 1793517704318 |
 | 701-engine-work-build | 701-engine-work-build | 1793191338658 |
 | 705-build-plan-convert | 705-build-plan-convert | 1793100657723 |
