@@ -46,6 +46,7 @@ docs/roadmap.md
 # on it.
 docs/plans/*/logs/*/run-tests-*.md
 docs/plans/*/logs/*/build-tests-red-*.md
+docs/plans/*/logs/*/build-task-red-*.md
 docs/plans/*/logs/*/build-tests-green-*.md
 docs/plans/*/logs/*/build-diff-*.md
 docs/plans/*/logs/*/build-brief-*.md

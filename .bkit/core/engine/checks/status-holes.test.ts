@@ -20,7 +20,7 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { DECISION_ROUTES, WORKFLOW_STEPS } from "../commands/workflow/step-table";
-import { RED_PASSED_STEP, RED_STEP } from "../commands/workflow/tests";
+import { RED_STEP } from "../commands/workflow/tests";
 import { substituteWorkflow } from "../render/trackers";
 import {
   SHIP_STEP_ORDER,
@@ -159,10 +159,10 @@ describe("source derivation", () => {
       expect(contract.drift, name).toEqual([]);
       expect(contract.orphanSteps, name).toEqual([]);
     }
-    // Build writes three row keys outside its numbered steps by design; the contract names them.
+    // Build writes two row keys outside its numbered steps by design; the contract names them.
     const build = deriveContract(flowMd("build"), "build");
     expect(build.pauseRows).toEqual([DECISION_ROUTES.build!.step]);
-    expect(build.subRows).toEqual([RED_STEP, RED_PASSED_STEP]);
+    expect(build.subRows).toEqual([RED_STEP]);
     for (const name of ["design", "plan", "debug", "ship"] as const) {
       const contract = deriveContract(flowMd(name), name);
       expect([...contract.pauseRows, ...contract.subRows], name).toEqual([]);
@@ -1335,15 +1335,10 @@ describe("check — hole classes", () => {
     const md = flowMd("build");
     const build = deriveContract(md, "build");
     const after: Array<[string, StatusRow[]]> = [
-      // Step 7's `tests red` writes its own rows between the group's start and finish rows.
+      // Step 7's `tests red` writes its own row between the group's start and finish rows.
       [
         "build-group-start",
-        [
-          callRow("build", "tests", "red"),
-          stepRow("build", RED_STEP),
-          callRow("build", "tests", "red"),
-          stepRow("build", RED_PASSED_STEP),
-        ] as StatusRow[],
+        [callRow("build", "tests", "red"), stepRow("build", RED_STEP)] as StatusRow[],
       ],
       // A Decision Pause after Run Tests writes `build-decision` with no step number.
       [

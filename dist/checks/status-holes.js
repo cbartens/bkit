@@ -79,11 +79,13 @@ const MERGED_ON_ENTRY_SKIP = new Set([
 ]);
 /**
  * Step rows an engine verb writes itself, keyed by noun + verb: `tests red` writes the
- * `RED_STEP` / `RED_PASSED_STEP` rows of `commands/workflow/tests.ts` inside build Step 7.
+ * `RED_STEP` row of `commands/workflow/tests.ts` inside build Step 7.
  */
 const VERB_ROWS = {
-    "tests red": ["build-task-red", "build-task-red-passed"],
+    "tests red": ["build-tests-red"],
 };
+// A step that reads a verb row (`counters derive --step=build-tests-red`) does not own it.
+const VERB_ROW_KEYS = new Set(Object.values(VERB_ROWS).flat());
 /**
  * Calls the orchestrator may run at any point of a run, active when the workflow's
  * `**Contract:**` block names them as `` `bkit {noun} {verb}` `` (the **Friction** bullet's
@@ -264,7 +266,7 @@ export function deriveContract(sourceMd, workflow, tracker) {
         return {
             number: s.number,
             title: s.title,
-            keys: stepKeys(s.body),
+            keys: stepKeys(s.body).filter((k) => !VERB_ROW_KEYS.has(k)),
             writes: stepWrites(s.body),
             calls: inside,
             conditional: isConditionalSection(s.body),

@@ -175,11 +175,13 @@ export interface Contract {
 
 /**
  * Step rows an engine verb writes itself, keyed by noun + verb: `tests red` writes the
- * `RED_STEP` / `RED_PASSED_STEP` rows of `commands/workflow/tests.ts` inside build Step 7.
+ * `RED_STEP` row of `commands/workflow/tests.ts` inside build Step 7.
  */
 const VERB_ROWS: Readonly<Record<string, readonly string[]>> = {
-  "tests red": ["build-task-red", "build-task-red-passed"],
+  "tests red": ["build-tests-red"],
 };
+// A step that reads a verb row (`counters derive --step=build-tests-red`) does not own it.
+const VERB_ROW_KEYS: ReadonlySet<string> = new Set(Object.values(VERB_ROWS).flat());
 
 /**
  * Calls the orchestrator may run at any point of a run, active when the workflow's
@@ -367,7 +369,7 @@ export function deriveContract(
     return {
       number: s.number,
       title: s.title,
-      keys: stepKeys(s.body),
+      keys: stepKeys(s.body).filter((k) => !VERB_ROW_KEYS.has(k)),
       writes: stepWrites(s.body),
       calls: inside,
       conditional: isConditionalSection(s.body),

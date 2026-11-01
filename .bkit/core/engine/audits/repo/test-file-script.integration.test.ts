@@ -134,7 +134,7 @@ describe("bkit:test:file reports a failing test file kind as a red", () => {
       expect(cases.filter((c) => isNamedCase(c.name, test)).map((c) => c.state)).toEqual([
         "failure",
       ]);
-      expect(judgeRed(Number(res.status), cases, test)).toBeNull();
+      expect(judgeRed(cases, test, file).state).toBe("red");
     },
   );
 });
