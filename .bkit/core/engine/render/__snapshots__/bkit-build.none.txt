@@ -80,7 +80,7 @@ _No tracker connected, skip step._
    ```
    Hold `value` as `DECISION`.
 2. Write `{OUTBOX}/decision-items.json` = one JSON object per item, in item order — `{"title", "question", "options", "recommended", "reason"}`, or a hard blocker `{"title", "question", "options", "noRecommendation"}` (why no agent can settle it); never a recommendation on a hard blocker. Per `question`: word each so "yes" accepts the recommendation. State what the owner must decide and what each option does, in plain English, before naming any file, test or identifier. Items:
-   - **If** `PAUSE_QUESTION` = `VERIFY_GAPS` → write one item per `## Identified Gaps Log` line of `build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}.md`. Add the gap's last `BLOCKED` reason from `build-plan-gaps-remediate-{GROUP}-*-log.md` when it has one.
+   - **If** `PAUSE_QUESTION` = `VERIFY_GAPS` → write one item per `Identified Gaps Log` line of `build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}.md`. Add the gap's last `BLOCKED` reason from `build-plan-gaps-remediate-{GROUP}-*-log.md` when it has one.
      - A fixable gap → options `["Accept", "Fix now"]`, with a recommendation per item.
      - A `no-red` gap → a hard blocker with options `["Accept", "Stop"]`. Its question ends `Accept it? You write the reason, and it is recorded as your TEST EXCEPTION.`
      - Any other unfixable gap (`no-test-first`, `test-first-malformed`, `test-first-unread`, `exception-refused`) → a hard blocker with options `["Accept", "Fix now", "Stop"]`.

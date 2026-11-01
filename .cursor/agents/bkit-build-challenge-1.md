@@ -66,7 +66,7 @@ tools:
    - Error paths: unhandled exceptions, missing error boundaries, silent failures, swallowed rejections, retry storms and timeout gaps. A `catch` that only logs around an irreversible side effect (delete, charge, send, deploy) and then carries on is a finding too, because that code must fail closed.
    - Edge cases: empty states, large payloads, Unicode, time zones, zero-length arrays, `NaN` and negative numbers.
    - Data integrity: races, concurrent mutations, missing constraints, orphaned records, gaps in transactions, and guards or filters relaxed with no compensating limit, which opens a rate, quota or cost-amplification vector.
-7. Write one task block per finding under `## Findings Log`, in the Output format shape:
+7. Write one task block per finding under `Findings Log`, in the Output format shape:
    - Fill in every field of the block:
      - The title: the failure in one line, as an exploit scenario.
      - `severity` (`CRITICAL|HIGH|MEDIUM|LOW`).
