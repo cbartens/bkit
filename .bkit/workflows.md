@@ -33,7 +33,7 @@ The source files live in `.bkit/core/workflows/`. `bkit install` regenerates `.c
 | --- | --- | --- | --- |
 | `/bkit-design` | yes | yes | `docs/plans/{YYYYMM}/{FID}-design.md` |
 | `/bkit-plan` | yes | yes | `docs/plans/{YYYYMM}/{FID}-plan.md` |
-| `/bkit-build` | yes | no — CI continues | PR to `dev` with plan-link URL |
+| `/bkit-build` | yes | no — CI continues | PR to `dev` with plan-link URL; with `publish=false` (local only), no push or PR: the build is held on `feat/{FID}` for `/bkit-ship` |
 | `/bkit-debug` | yes | no | Remediated commit pushed to feature branch |
 | `/bkit-ship` | yes | yes | Squash-merged PR; plans canonical at `docs/plans/{YYYYMM}/` (no archive move — `{YYYYMM}` = creation month); worktree gone |
 | `/bkit-auto` | args `{PHASE} {ARG}` (`{ARG}` = PR number **or** FID slug for ship / debug, issue for design/plan/build) | n/a (dispatches into the matching `/bkit-{phase}`) | Phase-routed; same session continues into the dispatched skill |
@@ -895,6 +895,8 @@ Each subsection documents a command's behaviour: steps, subagents, artifacts, ve
 ### `/bkit-build` — 16 steps
 
 **Goal:** implementation and PR creation. CI takes over once the PR exists. The workflow stops on PR creation; there is no human gate within build itself.
+
+**Publish resolution:** `bkit status route` resolves `{PUBLISH}` from the `publish=true|false` session token, else `package.json` `bkit.workflows.build.publish` (`local` on a local run, `remote` elsewhere, both default `true`). `remote` accepts only `true` (`false` → advisory `bkit-build-publish-remote`, resolves `true`), and a token `false` on a non-local run is coerced to `true` with a warning. `PUBLISH` false holds the run: no branch push, no PR, no CI, no docs sync; the worktree and branch stay, the lock is released and the close writes `ending: held`, `publish: false`. The issue moves to `In review` with the "built locally, not published" comment, and the summary reads `Publish: held` / `Docs: not synced`. `/bkit-ship <ref>` lands a held build.
 
 **Build never reads the CI conclusion (by design):** the Step 16 CI-Dispatch Gate proves only that a run started (`bkit runs dispatch`). `/bkit-ship` owns the result (`bkit runs gate` refuses to merge on red). A red PR → `/bkit-debug` (manual, or auto-routed by `bkit-cloud.yml`). Waiting in build would add the full CI duration to every run and race the cloud auto-router on the same branch. The final message says so.
 

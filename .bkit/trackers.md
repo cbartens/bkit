@@ -111,7 +111,7 @@ Workflows read an issue's body and comments (`bkit issues text`), never its titl
 | Shape | When | Next command | Sections (**required**) |
 | --- | --- | --- | --- |
 | idea | how it should work still open | `/bkit-design #N` | **Problem**, **Outcome**, Success criteria, Constraints and non-goals, Decisions already made, Open questions, References |
-| change | what to build + how to tell done both known | `/bkit-plan #N`; or `/bkit-build #N` / `build:lite` straight from issue | **Narrative**, **Success Criteria**, Edge Cases, **Derived Test Matrix**, **Tasks**, Open Questions & Assumptions, Breaking Changes & Naming, Out of Scope, References |
+| change | what to build + how to tell done both known | `/bkit-plan #N`; or `/bkit-build #N` straight from issue | **Narrative**, **Success Criteria**, Edge Cases, **Derived Test Matrix**, **Tasks**, Open Questions & Assumptions, Breaking Changes & Naming, Out of Scope, References |
 | bug | worked / should work, does not | test or CI run already fails → `/bkit-debug #N` on branch fix lands on (`[soak]` if intermittent); nothing fails → `/bkit-debug #N [repro]` (failing test first; `[soak]` too if intermittent) | **Failing test or CI run** (`none yet` allowed), **What happened**, **What should happen**, **Steps to reproduce**, How often, Affected area, Where and when, Evidence, References |
 
 **Change shape syntax** (the plan keeps it word for word):
@@ -153,7 +153,7 @@ Workflows read an issue's body and comments (`bkit issues text`), never its titl
   <!-- bkit:group 1 end -->
   ```
 
-- `/bkit-build` with no plan converts the issue into a plan first. `build:lite` checks neither `DONE WHEN` nor `TEST FIRST`. Nothing ticks issue boxes.
+- `/bkit-build` with no plan converts the issue into a plan first. Nothing ticks issue boxes.
 
 **Machine-read lines** — exact syntax, anywhere in the body. Nothing else in References is fetched:
 
@@ -175,7 +175,7 @@ Workflows read an issue's body and comments (`bkit issues text`), never its titl
 | Source | Shape | Carry |
 | --- | --- | --- |
 | audit run, tracker wired, no open audit parent for its template (`Parent: missing`) | audit parent (below) | template path line |
-| audit `Suggested Issues` row | by `Next Step`: `/bkit-design` → idea; `/bkit-plan`, `/bkit-build`, `build:lite` → change; `/bkit-debug`, `debug:lite` → bug; `manual` → plain task | `**Audit reports:**` line with row's finding IDs; sub-issue of the template's audit parent (linear → `parentId`; jira → `parent`) |
+| audit `Suggested Issues` row | by `Next Step`: `/bkit-design` → idea; `/bkit-plan`, `/bkit-build` → change; `/bkit-debug` → bug; `manual` → plain task | `**Audit reports:**` line with row's finding IDs; sub-issue of the template's audit parent (linear → `parentId`; jira → `parent`) |
 | design `Suggested Plans` (`P-N`; 2+ → design summary next step; 1 → planned on the design's own issue) | one issue per plan, never per workstream; title = plan name; body = its deliverable and covered workstream scopes, spec left to design; filed in `Requires` order | `**Parent design:**` line; `**Workstreams:**` line = its `Covers` ids; blocked-by block = plan issues filed for its `Requires` (linear → `blockedBy` relation; jira → `Blocks` link, `inwardIssue` = blocker) |
 | roadmap item with no issue (ledger row, audit candidate) | by recommended command, as audit row | ledger `key` / report path in References |
 
