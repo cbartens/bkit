@@ -563,7 +563,7 @@ describe("computeCounts", () => {
   it("counts a direct chat's rows of a kind apart from workflow rows", () => {
     const counts = computeCounts([
       { ...outcomeRow(1001, 0, 0), kind: "outcome" },
-      { ...outcomeRow(1002, 0, 0), by: { workflow: "utility", step: "manual" } },
+      { ...outcomeRow(1002, 0, 0), kind: "outcome", by: { workflow: "utility", step: "manual" } },
     ]);
     expect(counts.byKind["outcome"]).toEqual({ workflow: 1, utility: 1 });
     expect(counts.byWorkflow).toEqual({ ship: 1, utility: 1 });
