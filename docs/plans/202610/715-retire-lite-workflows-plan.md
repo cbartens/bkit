@@ -1085,7 +1085,7 @@ Build order: config → runtime resolution → install → close row → build w
 
 <!-- bkit:task 16 start -->
 
-- [ ] **TASK 16:** Rebuild `dist/`, refresh the dogfood mirrors and run the gate
+- [x] **TASK 16:** Rebuild `dist/`, refresh the dogfood mirrors and run the gate
   - **UPDATE:** `dist/cli.js`: rebuilt by `pnpm build` and staged in the same commit as the engine changes
   - **UPDATE:** `.bkit/version`: refreshed by the repo's own install
   - **UPDATE:** `.bkit/lite.md`: deleted by `migrateRetiredLite` on the repo's own install (it has no consumer lines below `## Project Lite Workflows`)
