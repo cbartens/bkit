@@ -510,6 +510,9 @@ export const SEEDED_BKIT_DEFAULTS = {
         // Project docs ship's [skip ci] bookkeeping commit may carry onto the PR untested; a
         // repo names its own (bkit's: CHANGELOG.md, README.md), so the seed is the empty choice.
         ciSkipPaths: [...CONFIG_DEFAULTS.ciSkipPaths],
+        // CI steps whose failure bkit:generate fixes, beyond the floor bkit's own template
+        // steps form (CI_GENERATED_FLOOR); a repo names its own, so the seed is the empty choice.
+        ciGenerated: [...CONFIG_DEFAULTS.ciGenerated],
     },
     workflows: {
         minFreeGb: CONFIG_DEFAULTS.diskMinFreeGb,

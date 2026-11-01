@@ -55,15 +55,17 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
 # all-zero local sha. When EVERY line is a delete, the push carries no commits. A push
 # mixing a delete with a real update still gates, and so does an empty ref list. Reading
 # stdin here is safe: every later command redirects from /dev/null. `[ -t 0 ]` keeps a
-# hand-run hook from hanging. The loop also sets PUSH_DEV_SHA (commit pushed to dev) for
-# repo extras that gate only dev pushes (e.g. scripts/graphify/bkit-graph-pre-push.sh),
-# PUSH_SHAS (every pushed commit), PUSH_SHARED_SHAS (those pushed to dev / main) and
-# PUSH_BRANCH_REMOTE_SHA (the head the remote holds for the current branch, empty when
-# it holds none), which the CI-suppressor guard below hands to `bkit ci bookkeeping-push`.
+# hand-run hook from hanging. The loop also sets PUSH_DEV_SHA (commit pushed to dev) and
+# PUSH_BRANCH_SHA (commit pushed to the current branch, empty when the push does not update
+# it) for repo extras (e.g. scripts/graphify/bkit-graph-pre-push.sh), PUSH_SHAS (every pushed
+# commit), PUSH_SHARED_SHAS (those pushed to dev / main) and PUSH_BRANCH_REMOTE_SHA (the head
+# the remote holds for the current branch, empty when it holds none), which the CI-suppressor
+# guard below hands to `bkit ci bookkeeping-push`.
 BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
 PUSH_SAW_REF=0
 PUSH_HAS_COMMITS=0
 PUSH_DEV_SHA=""
+PUSH_BRANCH_SHA=""
 PUSH_SHAS=""
 PUSH_SHARED_SHAS=""
 PUSH_BRANCH_REMOTE_SHA=""
@@ -77,6 +79,7 @@ if [ ! -t 0 ]; then
         PUSH_SHAS="$PUSH_SHAS $push_local_sha"
         [ "$push_remote_ref" = "refs/heads/dev" ] && PUSH_DEV_SHA="$push_local_sha"
         if [ "$push_remote_ref" = "refs/heads/$BRANCH" ]; then
+          PUSH_BRANCH_SHA="$push_local_sha"
           case "$push_remote_sha" in *[!0]*) PUSH_BRANCH_REMOTE_SHA="$push_remote_sha" ;; esac
         fi
         case "$push_remote_ref" in
@@ -214,12 +217,13 @@ if [ -n "$PUSH_DEV_SHA" ] && [ -f scripts/ci/lanes/bkit-resolve-push-base.mjs ];
   fi
 fi
 
-# Capability register (graphify, .bkit/templates.md § graphify) — blocks a push to dev when
-# docs/capabilities.md is not what the pushed commit builds (~30s); warn-only on other
-# branches. Skipped until scripts/graphify/ holds the script, and on a min push: it changes
-# no source the register is built from.
+# Capability register (graphify, .bkit/templates.md § graphify) — blocks a push to dev, and a
+# push of a branch with an open PR into dev, when docs/capabilities.md is not what the pushed
+# commit builds (~30s); warn-only on other branches. Skipped until scripts/graphify/ holds the
+# script, and on a min push: it changes no source the register is built from.
 if [ "$MIN_PUSH" != "1" ] && [ -f scripts/graphify/bkit-graph-pre-push.sh ]; then
-  PUSH_DEV_SHA="$PUSH_DEV_SHA" IS_REVERT="$IS_REVERT" bash scripts/graphify/bkit-graph-pre-push.sh < /dev/null
+  PUSH_DEV_SHA="$PUSH_DEV_SHA" BRANCH="$BRANCH" PUSH_BRANCH_SHA="$PUSH_BRANCH_SHA" IS_REVERT="$IS_REVERT" \
+    bash scripts/graphify/bkit-graph-pre-push.sh < /dev/null
 fi
 
 # tmp/ prune — deletes files under tmp/ untouched for 7+ days. Not a gate: a failed

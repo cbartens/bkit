@@ -141,6 +141,12 @@ export interface BkitConfig {
    * (`bkit.testing.ciSkipPaths`, e.g. `CHANGELOG.md`, `README.md`); empty = none.
    */
   ciSkipPaths: string[];
+  /**
+   * `{job}/{step}` CI steps whose failure `bkit:generate` fixes, on top of
+   * `CI_GENERATED_FLOOR`: ship regenerates instead of failing when every failed step is
+   * on the list (`bkit.testing.ciGenerated`); empty = that floor alone.
+   */
+  ciGenerated: string[];
   /** The opencode provider recorded on install; null = absent or not a supported provider. */
   opencodeProvider: OpencodeProvider | null;
   /** Every installed opencode provider, supported ones only; empty = none recorded. */
@@ -161,6 +167,21 @@ export interface BkitConfig {
   cloudAgentsExplicit: boolean;
 }
 
+/**
+ * The `{job}/{step}` CI steps of bkit's `bkit-ci.yml` template whose failure a
+ * `bkit:generate` fixes: the capability register and the mirror drift check. Always
+ * counted; `bkit.testing.ciGenerated` adds to it and cannot remove it.
+ */
+export const CI_GENERATED_FLOOR: readonly string[] = [
+  "bkit-tests-static/Check Capability Register",
+  "bkit-tests-static/Run bkit Check",
+];
+
+/** The CI steps ship regenerates for: the floor plus the repo's `bkit.testing.ciGenerated`. */
+export const ciGeneratedSteps = (cfg: Pick<BkitConfig, "ciGenerated">): string[] => [
+  ...new Set([...CI_GENERATED_FLOOR, ...cfg.ciGenerated]),
+];
+
 export const CONFIG_DEFAULTS: Readonly<BkitConfig> = {
   ciWorkflow: "bkit-ci.yml",
   capstoneJob: "bkit-tests-check",
@@ -178,6 +199,7 @@ export const CONFIG_DEFAULTS: Readonly<BkitConfig> = {
   // input, so a docs edit can red a test; a repo that knows its tests opts in.
   minPushPaths: [],
   ciSkipPaths: [],
+  ciGenerated: [],
   opencodeProvider: null,
   opencodeProviders: [],
   cloudAgents: DEFAULT_CLOUD_AGENTS,
@@ -327,6 +349,7 @@ export function readBkitConfig(root: string): BkitConfig {
   const workflows = record(bkit.workflows);
   const worktree = record(workflows.worktree);
   const ciSkip = testing.ciSkipPaths;
+  const generated = testing.ciGenerated;
   const copy = worktree.copy;
   const minFreeGb = workflows.minFreeGb;
   const lanes = testing.ciRequired;
@@ -376,6 +399,7 @@ export function readBkitConfig(root: string): BkitConfig {
       ? book.filter(nonEmptyString)
       : [...CONFIG_DEFAULTS.minPushPaths],
     ciSkipPaths: Array.isArray(ciSkip) ? ciSkip.filter(nonEmptyString) : [],
+    ciGenerated: Array.isArray(generated) ? generated.filter(nonEmptyString) : [],
     opencodeProvider:
       typeof provider === "string" && isOpencodeProvider(provider) ? provider : null,
     opencodeProviders: Array.isArray(providers)

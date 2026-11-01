@@ -185,7 +185,8 @@ describe("bkit-ship.md — Step 10 gate-refusal re-entry is a bounded poll", () 
     const blocks = fences(shipMd).filter((f) =>
       /"\{BKIT\}" counters route --name=MERGE_ATTEMPT\b/.test(f),
     );
-    expect(blocks.length, "MERGE_ATTEMPT routing blocks").toBe(2);
+    // Step 10: the poll re-entry, the regenerate round and the non-merged route.
+    expect(blocks.length, "MERGE_ATTEMPT routing blocks").toBe(3);
     for (const block of blocks) {
       expect(block).toContain("--of=ship-merge-pr:count --rows=ship-gate-refusal:count");
       expect(block).not.toMatch(/MERGE_ATTEMPT=|\bjq\b/);

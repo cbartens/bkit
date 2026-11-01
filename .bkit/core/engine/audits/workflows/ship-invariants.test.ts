@@ -173,15 +173,17 @@ describe("bkit-ship.md — staging hygiene (banned patterns)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Feature-branch pushes — four steps only, never forced
+// Feature-branch pushes — six steps only, never forced
 // ---------------------------------------------------------------------------
 
 describe("bkit-ship.md — push-timing invariant (feature-branch pushes before merge)", () => {
-  // Ship pushes the feature branch before the merge in exactly three places:
-  // opening a PR that does not exist yet (Step 2), the Path B integration
-  // (Step 4, after merging origin/dev locally), and the one pre-merge
-  // bookkeeping commit (Commit + Push Bookkeeping) that carries docs, summaries,
-  // ledgers and skill removals onto the PR so the merge lands them on `dev`.
+  // Ship pushes the feature branch before the merge in exactly these places:
+  // opening a PR that does not exist yet (Step 2), the Path A regenerate commit
+  // (Step 3), the Path B integration (Step 4, after merging origin/dev locally),
+  // the one pre-merge bookkeeping commit (Commit + Push Bookkeeping) that carries
+  // docs, summaries, ledgers and skill removals onto the PR so the merge lands
+  // them on `dev`, the regenerate round after a red CI run (Step 10), and a
+  // Failure Remediate fix.
   // Every one of them is plain: the merge adds commits on top of the pushed
   // head, so nothing in ship ever needs `--force-with-lease`
   // (`bkit branches push --mode=feature`).
@@ -206,12 +208,14 @@ describe("bkit-ship.md — push-timing invariant (feature-branch pushes before m
       ),
     ].sort();
 
-  it("pushes the feature branch only to open a missing PR, in Integrate (Path B), in Commit + Push Bookkeeping and after a Failure Remediate fix", () => {
+  it("pushes the feature branch only to open a missing PR, after a regenerate (Base Check, Merge Gate), in Integrate (Path B), in Commit + Push Bookkeeping and after a Failure Remediate fix", () => {
     expect(stepsWhere(isFeaturePush)).toEqual(
       [
+        "Base Check",
         "Commit + Push Bookkeeping",
         "Failure Remediate",
         "Integrate (Path B only)",
+        "Merge Gate + Merge PR",
         "Verify PR (Worktree Setup + Regression Guard)",
       ].sort(),
     );

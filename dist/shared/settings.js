@@ -26,6 +26,19 @@ export const ASK_POINTS = [
 ];
 /** The limit key a point's block holds. */
 export const limitKey = (point) => point === "design.grill" ? "maxTurns" : "maxAttempts";
+/**
+ * The `{job}/{step}` CI steps of bkit's `bkit-ci.yml` template whose failure a
+ * `bkit:generate` fixes: the capability register and the mirror drift check. Always
+ * counted; `bkit.testing.ciGenerated` adds to it and cannot remove it.
+ */
+export const CI_GENERATED_FLOOR = [
+    "bkit-tests-static/Check Capability Register",
+    "bkit-tests-static/Run bkit Check",
+];
+/** The CI steps ship regenerates for: the floor plus the repo's `bkit.testing.ciGenerated`. */
+export const ciGeneratedSteps = (cfg) => [
+    ...new Set([...CI_GENERATED_FLOOR, ...cfg.ciGenerated]),
+];
 export const CONFIG_DEFAULTS = {
     ciWorkflow: "bkit-ci.yml",
     capstoneJob: "bkit-tests-check",
@@ -43,6 +56,7 @@ export const CONFIG_DEFAULTS = {
     // input, so a docs edit can red a test; a repo that knows its tests opts in.
     minPushPaths: [],
     ciSkipPaths: [],
+    ciGenerated: [],
     opencodeProvider: null,
     opencodeProviders: [],
     cloudAgents: DEFAULT_CLOUD_AGENTS,
@@ -185,6 +199,7 @@ export function readBkitConfig(root) {
     const workflows = record(bkit.workflows);
     const worktree = record(workflows.worktree);
     const ciSkip = testing.ciSkipPaths;
+    const generated = testing.ciGenerated;
     const copy = worktree.copy;
     const minFreeGb = workflows.minFreeGb;
     const lanes = testing.ciRequired;
@@ -230,6 +245,7 @@ export function readBkitConfig(root) {
             ? book.filter(nonEmptyString)
             : [...CONFIG_DEFAULTS.minPushPaths],
         ciSkipPaths: Array.isArray(ciSkip) ? ciSkip.filter(nonEmptyString) : [],
+        ciGenerated: Array.isArray(generated) ? generated.filter(nonEmptyString) : [],
         opencodeProvider: typeof provider === "string" && isOpencodeProvider(provider) ? provider : null,
         opencodeProviders: Array.isArray(providers)
             ? providers.filter((v) => typeof v === "string" && isOpencodeProvider(v))

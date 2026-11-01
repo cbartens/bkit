@@ -622,7 +622,7 @@ Issues are the first input every workflow reads. There is one form per way work 
 
 graphify runs on demand only. It is not an installed skill or git hook. graphify ships an MCP server (`graphify-mcp`, stdio default). That server stays unwired, because its answers come from the `graph.json` snapshot, and build / debug agents invalidate the graph faster than it rebuilds. Serena, which has no index to go stale, owns the agent surface.
 
-Two gates keep `docs/capabilities.md` current on dev: the pre-push block below, which blocks a stale push to dev, and a self-skipping CI step on every push. Agents read `docs/capabilities.md`. Audit templates that need the graph build it via `scripts/graphify/bkit-graphify.sh`. The only tracked output is `docs/capabilities.md`. The Mermaid views are `docs/graphify-out/reports/graph-packages.mmd` and `graph-modules.mmd`. Reference: https://github.com/Graphify-Labs/graphify.
+Two gates keep `docs/capabilities.md` current on dev: the pre-push block below, which blocks a stale push to dev or to a branch with an open PR into dev, and a self-skipping CI step on every push. Agents read `docs/capabilities.md`. Audit templates that need the graph build it via `scripts/graphify/bkit-graphify.sh`. The only tracked output is `docs/capabilities.md`. The Mermaid views are `docs/graphify-out/reports/graph-packages.mmd` and `graph-modules.mmd`. Reference: https://github.com/Graphify-Labs/graphify.
 
 ```bash
 uv tool install "$(bash scripts/graphify/bkit-graphify.sh spec)"
@@ -660,10 +660,11 @@ graphify-out/
 
 - Copy `scripts/graphify/bkit-graph-pre-push.sh`. The `.husky/pre-push` template runs it above the gates, so a stale register blocks in ~30s, not after the full gate. It is skipped while the script is absent, and on a min push.
   - **If** your hook lacks the `Capability register` block → paste it from the template, above the gates.
-  - On a push to dev, it runs `check-at` on the pushed commit in a throwaway checkout, and blocks the push on a mismatch. Uncommitted edits, a concurrent session's included, cannot change the answer.
+  - It checks wherever CI's `Check Capability Register` would fail: a push to dev, and a push of a branch that has an open PR into dev (`gh pr list --head <branch> --base dev --state open`). It runs `check-at` on the pushed commit in a throwaway checkout, and blocks the push on a mismatch. Uncommitted edits, a concurrent session's included, cannot change the answer.
   - **If** graphify is not installed → it prints a loud "NOT checked" warning, and the push goes on. CI still checks.
-  - On other branches, it prints a warn-only staleness note.
-  - It reads `PUSH_DEV_SHA` from the bkit pre-push template's stdin loop. **If** your hook copy is older → re-copy that loop from `.bkit/templates/.husky/pre-push`.
+  - **If** `gh` is not installed on a branch push → it prints the same "NOT checked" warning, because whether the branch has an open PR is unknown, and the push goes on.
+  - On a branch with no open PR, it prints a warn-only staleness note.
+  - It reads `PUSH_DEV_SHA`, `BRANCH` and `PUSH_BRANCH_SHA` from the bkit pre-push template's stdin loop. **If** your hook copy is older → re-copy that loop and the `Capability register` call from `.bkit/templates/.husky/pre-push`. Until you do, the script checks the checked-out branch at `HEAD`.
 - `.github/workflows/bkit-ci.yml` ships `Check Capability Register`. It installs the `spec` release and runs the pinned `check-at HEAD`, and a stale register fails CI. It self-skips without `scripts/graphify/bkit-graphify.sh`.
   - It runs on every push and pull request, on the checked-out commit. On a PR, that is GitHub's test merge into the base, so a branch behind its base syncs, refreshes and commits to clear a red.
 - graphify's MCP server is opt-in. Install `graphifyy[mcp]` (`mcp` + `starlette`; the HTTP transport also needs `uvicorn`), and pass the graph path explicitly, because `graphify-mcp` defaults to `graphify-out/graph.json`, not the pinned `docs/graphify-out/graph.json`. Snapshot-dated answers suit audit / orientation, never build or debug.

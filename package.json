@@ -167,6 +167,9 @@
       "ciSkipPaths": [
         "CHANGELOG.md",
         "README.md"
+      ],
+      "ciGenerated": [
+        "bkit-tests-static/Assert Dist Freshness"
       ]
     },
     "workflows": {

@@ -23,7 +23,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { statusTimestamp } from "../../ledgers/status.js";
 import { bodySkipToken, commitMessage, CommandError, DEV, EXIT, git, isSharedBranch, parseJson, runGh, runGit, SKIP_CI_TOKEN, } from "../lib.js";
-import { readBkitConfig } from "../../shared/settings.js";
+import { ciGeneratedSteps, readBkitConfig } from "../../shared/settings.js";
 import { TIMEOUTS } from "../../shared/timeouts.js";
 import { FID_PATTERNS, fromBranch, fromMarker, issueIdOf, readIssueTracker } from "./fids.js";
 import { AUTO_LABEL, AUTO_ROUTE_SUFFIX } from "./issues.js";
@@ -413,6 +413,28 @@ export function onlyBookkeeping(root, o) {
             };
     }
 }
+/** Job and step conclusions that are not a failure. */
+const NOT_FAILED = new Set(["success", "skipped", "neutral"]);
+/**
+ * The failed steps of a run's jobs as `{job}/{step}`, the capstone left out: it fails
+ * only because another job did. A job that did not pass with no step that failed (a
+ * runner or setup failure) is `{job}/`, which no list entry matches.
+ */
+export function failedStepsOf(jobs, capstone) {
+    const out = [];
+    for (const job of jobs) {
+        const name = text(job.name);
+        if (name === capstone || NOT_FAILED.has(text(job.conclusion)))
+            continue;
+        const steps = arr(job.steps)
+            .map(obj)
+            .filter((st) => st.conclusion !== null && st.conclusion !== undefined)
+            .filter((st) => !NOT_FAILED.has(text(st.conclusion)))
+            .map((st) => `${name}/${text(st.name)}`);
+        out.push(...(steps.length > 0 ? steps : [`${name}/`]));
+    }
+    return out;
+}
 const toRun = (v) => {
     const r = obj(v);
     return {
@@ -448,6 +470,8 @@ export function shipGate(o, gh, log) {
         repo: o.repo || null,
         skippedLanes: [],
         nonBookkeepingPaths: [],
+        failedSteps: [],
+        regenerable: false,
         reason: "",
     };
     const requiredLanes = cfg.ciRequired;
@@ -518,9 +542,9 @@ export function shipGate(o, gh, log) {
         log(GH_MISSING);
         return r;
     };
-    /** The run's jobs, or the refusal. `--slurp` turns --paginate's one-document-per-page
-     * stream into one array; without it a run with more than 100 jobs hides every page but the first. */
-    const readJobs = (run) => {
+    /** The run's jobs. `--slurp` turns --paginate's one-document-per-page stream into one
+     * array; without it a run with more than 100 jobs hides every page but the first. */
+    const listJobs = (run) => {
         const jobsRes = gh([
             "api",
             `/repos/${r.repo}/actions/runs/${run.id}/jobs`,
@@ -528,16 +552,43 @@ export function shipGate(o, gh, log) {
             "--slurp",
         ]);
         if (jobsRes.missing)
-            return ghMissing();
-        if (!jobsRes.ok) {
-            return apiError(`jobs query failed for run ${run.id} — API error (distinct from 'no capstone')`, run.html_url);
-        }
+            return "missing";
+        if (!jobsRes.ok)
+            return "api-error";
         const jobsJson = jsonOrUndefined(jobsRes.stdout);
-        if (jobsJson === undefined) {
-            return refuse(GATE.API_ERROR, `jobs response for run ${run.id} is not valid JSON`, run.html_url);
-        }
+        if (jobsJson === undefined)
+            return "invalid";
         const pages = Array.isArray(jobsJson) ? jobsJson : [jobsJson];
         return pages.flatMap((p) => arr(obj(p).jobs).map(obj));
+    };
+    /** The run's jobs, or the refusal. */
+    const readJobs = (run) => {
+        const jobs = listJobs(run);
+        if (jobs === "missing")
+            return ghMissing();
+        if (jobs === "api-error") {
+            return apiError(`jobs query failed for run ${run.id} — API error (distinct from 'no capstone')`, run.html_url);
+        }
+        if (jobs === "invalid") {
+            return refuse(GATE.API_ERROR, `jobs response for run ${run.id} is not valid JSON`, run.html_url);
+        }
+        return jobs;
+    };
+    /** A failed run's failed steps, and whether `bkit:generate` fixes each one. Jobs that
+     * cannot be read leave it unregenerable; the refusal itself does not change. */
+    const classifyFailure = (run) => {
+        const jobs = listJobs(run);
+        if (!Array.isArray(jobs)) {
+            log(`failed steps unknown: the jobs of run ${run.id} could not be read`);
+            return;
+        }
+        r.failedSteps = failedStepsOf(jobs, r.capstone);
+        const fixable = ciGeneratedSteps(cfg);
+        r.regenerable = r.failedSteps.length > 0 && r.failedSteps.every((st) => fixable.includes(st));
+        for (const st of r.failedSteps)
+            log(`failed step: ${st}`);
+        if (r.regenerable)
+            log("every failed step is one bkit:generate fixes (bkit.testing.ciGenerated)");
     };
     /** Capstone-only verdict: the capstone job's own result, whatever the run and its other jobs did. */
     const capstoneVerdict = (run) => {
@@ -651,6 +702,7 @@ export function shipGate(o, gh, log) {
     if (o.capstoneOnly)
         return capstoneVerdict(selected);
     if (selected.conclusion === "failure") {
+        classifyFailure(selected);
         return refuse(GATE.FAILED, `selected run concluded FAILURE at head ${r.head}`, url);
     }
     if (selected.conclusion === "cancelled") {
@@ -1205,6 +1257,8 @@ function runGate(ctx) {
             repo: str(f.repo) ?? null,
             skippedLanes: [],
             nonBookkeepingPaths: [],
+            failedSteps: [],
+            regenerable: false,
             reason: `PR title '${title}' contains the CI-suppressing token ${titleToken}`,
         }
         : shipGate({

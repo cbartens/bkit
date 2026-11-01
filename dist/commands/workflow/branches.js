@@ -12,6 +12,7 @@
 // plain push, every other branch `--force-with-lease`, so a shared branch is
 // never force-pushed and a personal one survives the rebase that rewrote it.
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -1265,33 +1266,14 @@ function mergeDevDocs(top, o, log) {
  * marks the commit `bkit [skip ci]` for a caller whose workflow dispatches CI itself.
  */
 function regenerate(top, branch, log, o = {}) {
-    const pkg = readPackageJson(top);
-    const scripts = pkg.ok ? pkg.pkg.scripts : undefined;
-    const declared = typeof scripts === "object" &&
-        scripts !== null &&
-        typeof scripts["bkit:generate"] === "string" &&
-        scripts["bkit:generate"] !== "";
-    if (!declared)
+    if (!generateDeclared(top))
         return null;
     if (hasLeftovers(top)) {
         log("the tree has uncommitted changes — bkit:generate not run after the merge");
         return null;
     }
-    const argv = scriptCommand("bkit:generate");
-    const res = spawnSync(argv[0], argv.slice(1), {
-        cwd: top,
-        encoding: "utf-8",
-        stdio: ["ignore", "pipe", "pipe"],
-        maxBuffer: 1 << 26,
-    });
-    if (res.status !== 0) {
-        log(`${argv.join(" ")} exited ${String(res.status ?? res.error?.message)} after the merge`);
-        const out = `${res.stdout ?? ""}${res.stderr ?? ""}`.trim();
-        if (out !== "")
-            for (const line of out.split("\n").slice(-20))
-                log(`  ${line}`);
+    if (!runGenerate(top, log, "after the merge"))
         return false;
-    }
     if (!hasLeftovers(top))
         return true;
     const fid = o.fid ?? branch.replace(/^feat\//, "");
@@ -1302,6 +1284,140 @@ function regenerate(top, branch, log, o = {}) {
     }
     log(`committed bkit:generate's output after merging ${UPSTREAM}`);
     return true;
+}
+/** Whether `top`'s package.json declares a non-empty `bkit:generate` script. */
+function generateDeclared(top) {
+    const pkg = readPackageJson(top);
+    const scripts = pkg.ok ? pkg.pkg.scripts : undefined;
+    return (typeof scripts === "object" &&
+        scripts !== null &&
+        typeof scripts["bkit:generate"] === "string" &&
+        scripts["bkit:generate"] !== "");
+}
+/** Run `bkit:generate` in `top`; false when it failed, logged with its output's last lines. */
+function runGenerate(top, log, when) {
+    const argv = scriptCommand("bkit:generate");
+    const res = spawnSync(argv[0], argv.slice(1), {
+        cwd: top,
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "pipe"],
+        maxBuffer: 1 << 26,
+    });
+    if (res.status === 0)
+        return true;
+    log(`${argv.join(" ")} exited ${String(res.status ?? res.error?.message)} ${when}`);
+    const out = `${res.stdout ?? ""}${res.stderr ?? ""}`.trim();
+    if (out !== "")
+        for (const line of out.split("\n").slice(-20))
+            log(`  ${line}`);
+    return false;
+}
+/**
+ * Each changed path in `top` (the entries worktree setup copies in left out), with a hash
+ * of its content ("" when deleted); null when git could not run. Read raw: `--porcelain`
+ * lines start with a status column that may be a space.
+ */
+function changedPaths(top) {
+    const res = spawnSync("git", ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ".", ...copyExcludes(top)], { cwd: top, env: gitEnv(), encoding: "utf-8", maxBuffer: OUTPUT_LIMIT });
+    if (res.error || res.status !== 0)
+        return null;
+    const out = new Map();
+    const entries = res.stdout.split("\0");
+    for (let i = 0; i < entries.length; i++) {
+        const entry = entries[i];
+        if (entry.length < 4)
+            continue;
+        const file = entry.slice(3);
+        // A staged rename or copy carries its source as the next entry.
+        if (entry[0] === "R" || entry[0] === "C")
+            i++;
+        const abs = path.join(top, file);
+        out.set(file, fs.existsSync(abs) && fs.statSync(abs).isFile()
+            ? createHash("sha256").update(fs.readFileSync(abs)).digest("hex")
+            : "");
+    }
+    return out;
+}
+/**
+ * Ship's regenerate (`.bkit/workflows.md` § `/bkit-ship`): run a declared `bkit:generate`
+ * on the checked-out feature branch and commit only the paths it changed, so the run's
+ * own uncommitted bookkeeping (status.jsonl) stays out of the commit. Step 3 runs it when
+ * there is no merge to regenerate after; Step 10 runs it when every failed CI step is one
+ * it fixes (`--attempt`). A path that was already changed and that it changed again cannot
+ * be told apart from work that is not generated, so that refuses.
+ */
+function regenerateVerb(ctx) {
+    const top = topLevel(ctx.cwd);
+    const branch = currentBranch(top);
+    if (branch === "") {
+        ctx.log("no branch checked out (detached HEAD) — cannot regenerate");
+        return EXIT_DETACHED;
+    }
+    if (isSharedBranch(branch))
+        throw new CommandError(EXIT.USAGE, `regenerate runs on a feature branch, never on ${branch}`);
+    const attempt = str(ctx.flags.attempt);
+    if (attempt !== undefined && !/^[1-9]\d*$/.test(attempt))
+        throw new CommandError(EXIT.USAGE, "--attempt must be a whole number >= 1");
+    const fid = str(ctx.flags.fid) || branch.replace(/^feat\//, "");
+    const before = git(top, ["rev-parse", "HEAD"]);
+    const out = { outcome: "undeclared", head: before, paths: [] };
+    if (!generateDeclared(top)) {
+        ctx.log("bkit:generate is not declared — nothing regenerated");
+        ctx.emit(out);
+        return EXIT.OK;
+    }
+    const dirty = changedPaths(top);
+    if (dirty === null) {
+        ctx.log("git status failed — bkit:generate not run");
+        return EXIT_GENERATE_FAILED;
+    }
+    if (!runGenerate(top, ctx.log, "on the branch"))
+        return EXIT_GENERATE_FAILED;
+    const after = changedPaths(top);
+    if (after === null) {
+        ctx.log("git status failed after bkit:generate");
+        return EXIT_GENERATE_FAILED;
+    }
+    const rewritten = [...after]
+        .filter(([f, h]) => dirty.has(f) && dirty.get(f) !== h)
+        .map(([f]) => f);
+    if (rewritten.length > 0) {
+        for (const f of rewritten)
+            ctx.log(`  ${f}`);
+        ctx.log("bkit:generate changed paths that already held uncommitted changes — nothing committed");
+        return EXIT_GENERATE_FAILED;
+    }
+    out.paths = [...after.keys()].filter((f) => !dirty.has(f)).sort();
+    if (out.paths.length === 0) {
+        out.outcome = "unchanged";
+        ctx.log("bkit:generate changed nothing");
+        ctx.emit(out);
+        return EXIT.OK;
+    }
+    const message = attempt === undefined
+        ? `chore(${fid}): regenerate before re-validating`
+        : `fix(${fid}): regenerate attempt ${attempt}`;
+    if (!runGit(top, ["add", "-A", "--", ...out.paths]).ok ||
+        !quietGit(top, ["commit", "-q", "-m", message, "--", ...out.paths]).ok) {
+        ctx.log("committing bkit:generate's output failed");
+        return EXIT_GENERATE_FAILED;
+    }
+    out.outcome = "committed";
+    out.head = git(top, ["rev-parse", "HEAD"]);
+    for (const f of out.paths)
+        ctx.log(`regenerated ${f}`);
+    ctx.log(`committed bkit:generate's output as ${out.head}`);
+    const statusFile = str(ctx.flags.file);
+    if (statusFile !== undefined && before !== null && out.head !== null) {
+        recordAction(path.resolve(ctx.cwd, statusFile), {
+            action: "regenerate",
+            key: actionKey("regenerate", before),
+            hash: actionHash(`${before}..${out.head}`),
+            ref: out.head,
+        });
+    }
+    ctx.emit(out);
+    return EXIT.OK;
 }
 /** Whether a merge is in progress in `top` (its MERGE_HEAD exists). */
 function mergeInProgress(top) {
@@ -2177,6 +2293,37 @@ export const branchesCommand = {
                 [EXIT_GENERATE_FAILED]: "bkit:generate failed after the merge, or its output could not be committed; the merge commit stays",
             },
             run: syncVerb,
+        },
+        regenerate: {
+            summary: "Run a declared bkit:generate on the feature branch and commit only the paths it changed (ship Step 3, and Step 10's fix round).",
+            use: "workflow",
+            flags: [
+                {
+                    name: "fid",
+                    type: "string",
+                    help: "the feature id in the commit message (default: the branch name without feat/)",
+                },
+                {
+                    name: "attempt",
+                    type: "string",
+                    help: "ship Step 10's merge round: the commit is fix({FID}): regenerate attempt {N}; without it, chore({FID}): regenerate before re-validating",
+                },
+                {
+                    name: "file",
+                    type: "string",
+                    help: "the run's status.jsonl: a commit appends an engine-action row (action regenerate, key regenerate/{old tip}, ref the new HEAD)",
+                },
+            ],
+            output: {
+                outcome: "committed (bkit:generate changed paths; committed) | unchanged (it changed nothing) | undeclared (no bkit:generate script; nothing run)",
+                head: "HEAD after the verb (the regenerate commit when committed)",
+                paths: "the paths bkit:generate changed and the commit carries (empty otherwise)",
+            },
+            exitCodes: {
+                [EXIT_DETACHED]: "no branch checked out",
+                [EXIT_GENERATE_FAILED]: "bkit:generate failed, changed a path that already held uncommitted changes, or its output could not be committed; nothing committed",
+            },
+            run: regenerateVerb,
         },
         push: {
             summary: "Push the current branch with exactly one git push: plain for dev/main, --force-with-lease otherwise.",

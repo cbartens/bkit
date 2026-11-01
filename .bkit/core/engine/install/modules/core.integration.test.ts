@@ -777,6 +777,7 @@ describe("seedBkitDefaults (via seedCorePackageJsonScripts)", () => {
         ciRequired: [],
         minPushPaths: [],
         ciSkipPaths: [],
+        ciGenerated: [],
       },
       workflows: {
         minFreeGb: 40,

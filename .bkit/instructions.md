@@ -1179,7 +1179,7 @@ Clause section lines:
   - specialised: `bkit-ship`
   - applies: `bkit-plan`, `bkit-ship`
 - drift:
-  - `bkit-ship:386`: "Each commit the block makes carries `bkit [skip ci]`" The Step 4 merge commit brings `dev`'s code onto the branch under `[skip ci]`; `docs-commits` says the tag goes ONLY on a commit that carries no code
+  - `bkit-ship:400`: "Each commit the block makes carries `bkit [skip ci]`" The Step 4 merge commit brings `dev`'s code onto the branch under `[skip ci]`; `docs-commits` says the tag goes ONLY on a commit that carries no code
     - kept: a push trigger would validate nothing a run has not already validated on `dev`; Step 9 `runs revalidate` dispatches CI at the merged head itself, so the code is validated by a run the workflow starts
 
 ```text
@@ -1371,7 +1371,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-annotations`, `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:550`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:564`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -1670,7 +1670,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:550`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:564`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -9983,9 +9983,13 @@ Asked in the session, never headless
 Confirmations and rejections written (`decisions apply --by=owner`)
 Each unconfirmed item deferred (`decisions pending --defer`)
 Determine whether `origin/dev` is an ancestor of the PR head:
-**If** `BASE_PATH` = A → Step 5 (skip integration — dev has not moved).
-**If** `BASE_PATH` = B → Step 4 (integration required).
+**If** `BASE_PATH` = A → sub-step 3 (skip integration — dev has not moved).
+**If** `BASE_PATH` = B → Step 4 (integration required; its merge runs `bkit:generate`).
+Regenerate, because no merge runs `bkit:generate` on Path A. A hand merge of `dev` brings `dev`'s generated files, which may not match this branch's code. The block commits only the paths `bkit:generate` changed:
+**If** exit 0 **and** `REGEN_OUTCOME` = committed → push it, so CI starts at the regenerated head; NEVER force:
+**If** exit 0 **and** `REGEN_OUTCOME` = unchanged **or** undeclared → Step 5. Nothing was committed.
 Ancestor verdict determined
+Path A regenerated (`branches regenerate`), a commit pushed plain
 Merge `origin/dev` into `SHIP_BRANCH` locally. The block commits the run's uncommitted work first, unions the append-only ledgers, regenerates a conflicted lockfile from `dev`'s copy, runs a declared `bkit:generate`, and leaves every other conflict in the tree for sub-step 2. GitHub ignores `merge=union`, so the merged commit, not a server-side update or a rebase, is what makes the PR mergeable. Each commit the block makes carries `bkit [skip ci]`; Step 9 re-validates the merged head:
 **If** exit 0 **and** `MERGE_OUTCOME` = merged → sub-step 3.
 **If** exit 0 **and** `MERGE_OUTCOME` = current → Step 5. `dev` has not moved since Step 3.
@@ -10019,12 +10023,17 @@ Validated head resolved
 CI re-validated (`runs revalidate`)
 [merge-bodies] Assert the gate at the PR's current head, with CI checked at `VALIDATED_HEAD`. This gate is the ONLY merge precondition. The block writes the pre-merge snapshot to the outbox before the gate decides, refuses a title that carries a skip token (18), and records a refusal in `{STATUS}`:
 [polls-loops] **If** exit 11 (in progress — poll), 14 (stale green), 10 (no run) **or** 17 (non-bookkeeping change past `VALIDATED_HEAD`) → route on the failed arrivals at Step 10, without asking:
+**If** exit 12 **and** `regenerable` = true → every failed CI step is one `bkit:generate` fixes (`bkit.testing.ciGenerated`). Route on the failed arrivals at Step 10, without asking:
+**If** exit 0 **and** `REGEN_OUTCOME` = committed → push the fix, and NEVER force:
+Then set `REVALIDATE_REASON` empty → Step 9 (re-validate at the regenerated head, then re-run the merge gate).
+**Else** → **Failure Path** (`unchanged`: regenerating does not fix the failed steps; `undeclared`; or the block failed).
 [integration-merge] Merge with an empty body and `--match-head`, so GitHub refuses when the head moved. Re-read the labels from the tracker, so that ` bkit [auto route]` rides the squash subject on `bkit:auto`. The labels are never carried forward from Step 1's `{LABELS}`. `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry, empty when no tracker is wired<!-- bkit:tracker true start --> or `ISSUE_ID` is empty<!-- bkit:tracker true end -->:
 **If** exit 0 **or** 7 → hold `verdict` as `MERGE_VERDICT`, `failures` as `MERGE_FAILURES`, and hold `state`.
 **If** `state` = MERGED → Step 13.
 **If** `state` != MERGED → run counter routing:
 Merge gate asserted (`runs gate`)
 Failed arrivals counted against `ship.merge.maxAttempts` (`counters route`)
+A red CI run regenerated only when every failed step is a generated file (`branches regenerate`)
 PR merge attempted (`prs merge`)
 Ask before the fix round only when the diagnosis found no clear cause. State the failure in plain English before the technical cause.
 **If** `MERGE_ASK` = false **or** `DIAGNOSE_VERDICT` = PASS → narrate `ship merge: attempt {MERGE_ROUNDS} of {MERGE_MAX}, fix round taken without asking ({the diagnosed cause})` → Step 12.

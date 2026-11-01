@@ -124,7 +124,7 @@ Run-completeness check (`checks/status-holes.ts`, `bkit completeness check`). Ad
 | 2 | Usage error (missing `--head`, bad args) | refuse (operator) |
 | 10 | No run of the CI workflow exists at head | refuse (poll) → Step 9 re-validate |
 | 11 | Runs exist at head but none completed | refuse (poll) → Step 9 |
-| 12 | Selected run or its capstone did not conclude success | refuse |
+| 12 | Selected run or its capstone did not conclude success | refuse; `regenerable` = true → ship's regenerate round → Step 9 |
 | 13 | Selected run exists but capstone job absent | refuse |
 | 14 | Green run exists, but at a SUPERSEDED SHA (needs `--branch`) | refuse → Step 9 (re-validate at new head) |
 | 15 | Selected run concluded `cancelled` | refuse |
@@ -141,6 +141,7 @@ The refusal itself is signalled by the process exit code; every refusal ends wit
 - `[bkit-runs] head tested:    %s  (SUPERSEDED)` — green run was at a superseded head (code 14).
 - `[bkit-runs] no run of %s[ (event=%s)] exists at head %s (total_count=0)` — no CI run at head (code 10); `(event=…)` when `--event` narrowed the query.
 - `[bkit-runs] head %s is not %s plus bookkeeping only (…) — re-validate at head` — code 17; the offending paths follow, one per line.
+- `[bkit-runs] failed step: %s` — code 12, one line per failed step outside the capstone as `{job}/{step}` (`{job}/` for a failed job with no failed step); `[bkit-runs] every failed step is one bkit:generate fixes (bkit.testing.ciGenerated)` follows when `regenerable` = true, and `[bkit-runs] failed steps unknown: the jobs of run %s could not be read` replaces both when the jobs API failed.
 - `[bkit-runs] note: N lane(s) concluded 'skipped' at head %s: …` — skipped lanes are always reported; they refuse only when required (code 16).
 - `[bkit-runs] rate limit exhausted (...)` / `[bkit-runs] API error (...)` — code 20 (rate-limit-shaped message distinguishes the dispatch path).
 - `[bkit-runs] override honoured for head %s (BKIT_SHIP_GATE_OVERRIDE matches refused head)` — sanctioned escape hatch; also writes a `ship-gate-override` `status.jsonl` row (`--file=`) for audit, or emits it to stderr when the file is absent or unwritable.

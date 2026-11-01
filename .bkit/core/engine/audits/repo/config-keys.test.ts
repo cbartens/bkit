@@ -4,7 +4,7 @@
 // How each key resolves (defaults, overrides, malformed values) is tested where it
 // is read: shared/settings.test.ts (readBkitConfig), and the commands that
 // consume it — commands/setup/setup.test.ts (capstoneJob, ciWorkflow) and
-// commands/workflow/runs.test.ts (capstoneJob, ciWorkflow, ciRequired).
+// commands/workflow/runs.test.ts (capstoneJob, ciWorkflow, ciRequired, ciGenerated).
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -32,5 +32,11 @@ describe("bkit's own package.json", () => {
   // Install seeds `[]`, which reads the same as absent: the capstone's green decides.
   it("declares no bkit.testing.ciRequired lane", () => {
     expect([undefined, []]).toContainEqual(ownTesting()?.ciRequired);
+  });
+
+  // bkit's CI asserts dist/ matches the sources; bkit:generate rebuilds it, so a stale dist
+  // red is one ship's regenerate round fixes. The floor (CI_GENERATED_FLOOR) is not repeated.
+  it("declares bkit.testing.ciGenerated ['bkit-tests-static/Assert Dist Freshness']", () => {
+    expect(ownTesting()?.ciGenerated).toEqual(["bkit-tests-static/Assert Dist Freshness"]);
   });
 });
