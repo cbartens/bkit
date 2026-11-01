@@ -5,7 +5,7 @@ bkitVersion: 6.0.0
 bkitLatest: 6.0.0
 -->
 
-Verdict: CONCERNS
+Verdict: PASS
 <!-- verdict:end -->
 
 # Machine-wide tests lock Implementation Plan
@@ -23,9 +23,9 @@ Verdict: CONCERNS
 
 1. Rename + generalise the copy-and-own stack lock `.bkit/templates/scripts/ci/bkit-local-stack-lock.sh` → `bkit-machine-lock.sh`: optional `[name]` on every function (API taken from a consumer's adopted copy), named locks machine-wide (no repo prefix), `BKIT_TEST_SLOTS` slots + `BKIT_TEST_WORKERS` on the `tests` lock, `run [<who>] --lock <name>` (`<who>` from `LOCAL_STACK_LOCK_WHO`, else the `package.json` script name), distinct exit codes for lock outcomes, enforced lock order (tests → other named → stack), 60 s default wait when stdin is not a TTY (Open Question 7). Unnamed stack lock keeps its file path, function and env names.
 2. Copy-and-own wiring (Open Question 1): a consumer copies the script to `scripts/ci/` and wraps its test-running `bkit:gate:*` scripts as `bash scripts/ci/bkit-machine-lock.sh run --lock tests -- <gate command>`; bkit's root `package.json` does the same. The engine never executes the script. `bkit tests run` runs the gate as today, passes `--lock-wait-s` (default 60) as `LOCAL_STACK_LOCK_WAIT_S` and its run name as `LOCAL_STACK_LOCK_WHO`, and maps a `tests`-lock give-up (75) of this run to exit 81 naming the holder and a `tests`-lock refusal (73) to exit 4. `red` / `green` never lock.
-3. `/bkit-build` and `/bkit-debug` route exit 81 from every `tests run` block to end-turn + re-run.
+3. `/bkit-build` and `/bkit-debug` route exit 81 from every `tests run` block to end-turn + re-run; `bkit-build-plan-gaps-remediate.md` re-runs the `Group gate` command that `bkit-build.md` Step 9 hands it in `Context:` on exit 81 (TASK 7).
 4. bkit's own heavy raw vitest runs (`pnpm test`, `test:integration`, `test:coverage:unit`) take the `tests` lock through a vitest global setup; single-file, watch, CI and nested runs (incl. vitest inside a wrapped gate) never wait; with no TTY the script's 60 s default applies (Open Question 7).
-5. The shipped pre-push hook and subagent prompts stay unchanged (Open Question 6): they call `pnpm bkit:gate:*`, which carries the lock in a repo that wires it; a raw caller that gives up waiting sees the gate exit 75 with the holder line.
+5. The shipped pre-push hook and the prompts that still run a gate raw (`pnpm bkit:gate:static-unit` in `bkit-debug-failure-soak.md`, `pnpm bkit:gate:install-static-unit-build` in `bkit-ship-conflict-resolve.md`) stay unchanged (Open Question 6): the wrapped gate carries the lock in a repo that wires it, and a raw caller that gives up waiting sees the gate exit 75 with the holder line. The four prompts that check their change through `bkit tests changed --fallback=bkit:gate:*` (`bkit-build-plan-tasks.md`, `bkit-build-plan-gaps-remediate.md`, `bkit-debug-failure-remediate.md`, `bkit-build-plan-verify.md`) reach the gate through the engine, which today maps every gate failure, a lock give-up included, to exit 1. Under Open Question 11's recommended option A, `bkit tests changed` passes the wait and its run name like `tests run`, maps a `tests`-lock give-up to exit 81 naming the holder, and those four prompts re-run the command on 81 (TASK 10).
 
 **Plan-input deviations (surfaced, not silent):**
 
@@ -40,6 +40,15 @@ Verdict: CONCERNS
 - Issue TASK 5 split into TASK 8 (pure decision helpers, unit tier) + TASK 9 (global setup, config wiring, integration tier) to stay under the per-task test cap; its `DONE WHEN` lives on in TASK 9.
 - Owner answer Open Question 1: the engine never executes the lock script; consumers and bkit wrap their test-running `bkit:gate:*` scripts in it (copy-and-own, `.bkit/templates.md` § Machine lock). SC 1 holds for repos that wire the script into their gate scripts; a repo that does not wire it gets no lock.
 - Owner answer Open Question 6 (option D): the shipped pre-push hook and subagent prompts keep calling `pnpm bkit:gate:*`, which carries the lock; no hook or prompt task. Plan-added TASK 6 wraps bkit's own gate scripts.
+- Currency update after the plan was confirmed (code landed in 52bab3514, ade710750, 94915b0d4, d53fea47e):
+  - Four of the prompts Open Question 6 names now call `bkit tests changed --fallback=bkit:gate:*` (`.bkit/core/engine/commands/workflow/tests-changed.ts`), which maps every non-zero gate exit to 1, so a lock give-up reaches those subagents as exit 1, not exit 75. Re-opened as Open Question 11; TASK 10 (group 3, numbered above the plan's highest so no task renumbers; split from TASK 5, which sits at the 10-test cap) carries the recommended option A, including the exit-81 line those prompts gain.
+  - `bkit tests run --file` now appends a `test-run` status row on every run. Whether a lock-wait (exit 81) run writes one is Open Question 12; TASK 10 lands the recommended option A (no row).
+  - `bkit:gate:changed` (`scripts/gate/bkit-gate-changed.mjs`) is a fourth test-running gate in bkit's `package.json`. Open Question 13; TASK 6 follows its recommended option A (wrap it).
+  - `bkit-build.md` Step 9 hands the gaps-remediate subagent a `tests run` command in `Context:`; TASK 7 adds that prompt's exit-81 line and a guard test for it.
+  - `tests red` now takes `--group` / `--plan` (no `--task` / `--test`); the matching test and Concrete Example step 5 use them.
+  - `.bkit/core/.bkit/cli.md` is generated from the command specs (`pnpm cli:sync`, drift pinned by `.bkit/core/engine/tools/cli-doc.test.ts`); TASKS 4, 5 and 10 regenerate it.
+  - The task-writing prompt TASK 3 updates is now `.bkit/core/prompts/bkit-build-plan-tasks.md` (renamed in ade710750), and `.bkit/core/prompts/bkit-build-plan-tests.md` is a second carrier of the Shared local stack line; TASK 3 updates both.
+  - The `docs/architecture.md` `scripts/ci/` and `scripts/gate/` tree lines exist (d53fea47e); TASK 1 checks them instead of adding one.
 - Owner answer Open Question 7 (option A′): the 60 s no-TTY default wait lives in the lock script; the matrix row "a run with no TTY caps the lock wait at 60 s unless LOCAL_STACK_LOCK_WAIT_S is set" moves from the vitest helper to the script (TASK 2); the vitest global setup hands the script vitest's own stdin and sets no wait.
 - Script `run` `<who>` becomes optional (from `LOCAL_STACK_LOCK_WHO`, else `npm_lifecycle_event`, else `run`): the owner's wiring `run --lock tests -- <gate command>` names no run, and `bkit tests run` passes its run name via env.
 - Plan-added tests: `run` exit 73 on lock error and on missing perl; `run` with no `<who>`; lock-order refusals; a tests-lock holder's child still waits on the stack lock; a killed tests-lock holder frees its slot; the no-TTY default wait; `--lock-wait-s` validation and `=0`; lock-exit classification (nested lock give-up never 81, another lock's refusal never 4); a gate's own exit 75 stays a FAIL; the gate env end to end; `CI=1`; a wrapped gate calling a wrapped gate never waits on itself; bkit's gate scripts wrapped; watch-mode runs take no lock; exit-81 routing guards; the vitest global setup run against a real lock (wait, give-up, teardown).
@@ -74,7 +83,7 @@ When several agents run test suites at the same time on one laptop, the machine 
 
 - **WHEN** an agent's `bkit tests run` starts a wrapped gate while no gate holds the `tests` lock **→ THEN** the gate's lock script takes the lock (wait and run name from the engine's env), exports `BKIT_TEST_WORKERS`, runs the gate, frees the lock on exit.
 - **WHEN** a second wrapped gate (any repo, any worktree, any caller) starts while the first holds it **→ THEN** it waits and prints the first one's holder line; it starts once the holder ends.
-- **IF** the lock stays held past `--lock-wait-s` **→ THEN** `bkit tests run` exits 81 naming the holder; the workflow ends its turn and re-runs the block. A raw caller (push, subagent prompt) sees the gate exit 75 with the holder line.
+- **IF** the lock stays held past `--lock-wait-s` **→ THEN** `bkit tests run` exits 81 naming the holder; the workflow ends its turn and re-runs the block. A raw caller (a push, or a prompt that runs `pnpm bkit:gate:*`) sees the gate exit 75 with the holder line; a subagent's `bkit tests changed` exits 81 naming the holder, and the subagent runs it again (Open Question 11).
 - **IF** the run is light (`tests red` / `green`, one existing test file), nested under a holder (a wrapped gate inside a wrapped gate included), in watch mode, or `CI` is set **→ THEN** no lock is taken and nothing waits.
 - **IF** the holder is killed **→ THEN** the lock frees within a second and the waiter starts.
 - **IF** the lock dir cannot be written **→ THEN** the wrapped gate exits 73 naming the path and reason; `bkit tests run` exits 4, no test verdict.
@@ -90,9 +99,9 @@ When several agents run test suites at the same time on one laptop, the machine 
 2. Agent A's group-gate block runs `bkit tests run …` 20 s later → A's wrapped gate waits; the log gets `[machine-lock] ⏳ bkit tests run bkit:gate:static-unit-integration 724-x build-group-gate-1 is waiting for the tests lock: in use by bkit tests run … — /path/to/consumer (pid 4242, since 10:31:07)`.
 3. 60 s pass with B's gate still running → A's gate exits 75 with the give-up line naming the `tests` lock and A's run → the engine exits 81, printing B's holder line and `lockHolder` → A ends its turn and re-runs the block.
 4. B's gate finishes → lock frees → A's re-run takes the lock and runs its gate.
-5. Meanwhile A's TASK runner runs `bkit tests red --file=…` → runs at once; no lock line in its output.
+5. Meanwhile A's Step 7 records group 1's reds: `bkit tests red --file="{STATUS}" --workflow=build --group=1 --plan="docs/plans/202610/724-x-plan.md" --log=…` → each planned test runs through `bkit:test:file` at once; no lock line in its output.
 
-**Outcome:** the two gates never overlap; A's log and its 81 hand-back both name B's run; A's single-file red never waited.
+**Outcome:** the two gates never overlap; A's log and its 81 hand-back both name B's run; A's red never waited.
 
 ### Edge Cases
 
@@ -119,7 +128,9 @@ When several agents run test suites at the same time on one laptop, the machine 
 | Plan-added: a gate's nested lock is refused (exit 73, refusal line for a lock other than `tests`) | Read as the gate's exit: verdict FAIL, exit 1, never 4 |
 | Plan-added: a child of a `tests` holder needs the unnamed stack lock | Waits on the stack lock as usual, under this script and under an older copy |
 | Plan-added: a wrapped gate calls another wrapped gate (`bkit:gate:static-unit-integration` → `bkit:gate:static-unit`) | The inner wrap sees the live `tests` owner and runs unlocked; never waits on itself |
-| Plan-added: a push (pre-push hook) or a shipped subagent prompt starts a wrapped full gate while another gate holds the lock | The gate waits (60 s with no TTY), then exits 75 with the script's holder line: the push stops, the subagent sees a failed gate naming the holder (Open Question 6) |
+| Plan-added: a push (pre-push hook) or a shipped prompt that runs `pnpm bkit:gate:*` raw starts a wrapped full gate while another gate holds the lock | The gate waits (60 s with no TTY), then exits 75 with the script's holder line: the push stops, the subagent sees a failed gate naming the holder (Open Question 6) |
+| Plan-added: a subagent's `bkit tests changed` runs a wrapped gate (`bkit:gate:changed` or its `--fallback` gate) while another gate holds the lock | The gate waits up to `--lock-wait-s` (default 60), then `tests changed` exits 81 naming the holder; the subagent runs it again and edits no code for it (Open Question 11) |
+| Plan-added: `bkit tests run --file` exits 81 on a held tests lock | No `test-run` row is appended, so the step's `run` count and its verdicts show only runs that reached the gate (Open Question 12) |
 | Plan-added: any wrapped gate, or a heavy raw vitest run in bkit's repo, started with no TTY (agent tool call, push) finds the lock held, `LOCAL_STACK_LOCK_WAIT_S` unset | Waits at most 60 s, then exits 75 naming the holder; a terminal run keeps 3600 s; an explicit `LOCAL_STACK_LOCK_WAIT_S` wins (Open Question 7) |
 | Plan-added: a repo whose gate scripts are not wrapped | No lock; `bkit tests run` runs the gate as before (opt-in, as the stack lock) |
 | Plan-added: `run` with no `<who>` | Names the run from `LOCAL_STACK_LOCK_WHO`, else the `package.json` script name (`npm_lifecycle_event`), else `run` |
@@ -166,9 +177,15 @@ When several agents run test suites at the same time on one laptop, the machine 
 | tests run with --lock-wait-s=0 exits 81 at once against a held lock (plan-added) | Integration | `.bkit/core/engine/commands/workflow/tests-lock.integration.test.ts` | 5 |
 | a gate that itself exits 75 is a FAIL verdict, not a lock wait (plan-added) | Integration | `.bkit/core/engine/commands/workflow/tests-lock.integration.test.ts` | 5 |
 | the gate runs with BKIT_TEST_WORKERS and LOCAL_STACK_LOCK_OWNER_tests set, and a nested run --lock tests inside it does not wait (plan-added) | Integration | `.bkit/core/engine/commands/workflow/tests-lock.integration.test.ts` | 5 |
+| tests run --file appends no test-run row when it exits 81 on a held tests lock (plan-added, Open Question 12) | Integration | `.bkit/core/engine/commands/workflow/tests-lock.integration.test.ts` | 10 |
+| tests changed exits 81 naming the holder when its wrapped gate gives up on the tests lock (plan-added, Open Question 11) | Integration | `.bkit/core/engine/commands/workflow/tests-lock.integration.test.ts` | 10 |
+| tests changed with an unwritable lock dir exits 4 naming the path (plan-added, Open Question 11) | Integration | `.bkit/core/engine/commands/workflow/tests-lock.integration.test.ts` | 10 |
+| tests changed with a --lock-wait-s that is not a whole number exits 2 and runs no gate (plan-added, Open Question 11) | Unit | `.bkit/core/engine/commands/workflow/tests-changed.test.ts` | 10 |
+| every prompt that runs bkit tests changed routes exit 81 to a re-run of the command (plan-added, Open Question 11) | Unit | `.bkit/core/engine/audits/workflows/local-gate-audit.test.ts` | 10 |
 | a wrapped gate that runs another wrapped gate runs the inner one unlocked, never waiting on itself (plan-added) | Integration | `.bkit/core/engine/commands/workflow/tests-lock.integration.test.ts` | 6 |
 | bkit's root package.json wraps every test-running bkit:gate script in the tests lock (plan-added) | Unit | `.bkit/core/engine/audits/repo/package-json.test.ts` | 6 |
 | every tests run call site routes exit 81 to a re-run of its block (plan-added) | Unit | `.bkit/core/engine/audits/workflows/local-gate-audit.test.ts` | 7 |
+| a tests run command a workflow hands a subagent in Context is re-run on exit 81 by that subagent's prompt (plan-added) | Unit | `.bkit/core/engine/audits/workflows/local-gate-audit.test.ts` | 7 |
 | a run whose every filter is an existing test file is light and takes no lock | Unit | `.bkit/core/engine/audits/repo/vitest-test-lock.test.ts` | 8 |
 | a run with no filters, or a pattern filter, is heavy and takes the tests lock | Unit | `.bkit/core/engine/audits/repo/vitest-test-lock.test.ts` | 8 |
 | a run started under a live tests-lock owner takes no lock | Unit | `.bkit/core/engine/audits/repo/vitest-test-lock.test.ts` | 8 |
@@ -195,14 +212,15 @@ When several agents run test suites at the same time on one laptop, the machine 
 **Breaking changes:**
 
 - **Template renamed:** `.bkit/templates/scripts/ci/bkit-local-stack-lock.sh` → `.bkit/templates/scripts/ci/bkit-machine-lock.sh`. No migration: adopted copies are the consumer's (any path, any name) and keep working; `syncTemplateCopies` prunes the old name from the consumer's `.bkit/templates/` and the upgrade report prints `removed:`.
-- **Wrapped gates take a machine-wide lock locally** (Open Question 1): in a repo whose `bkit:gate:*` scripts run through `bash scripts/ci/bkit-machine-lock.sh run --lock tests -- …`, a second gate on the same machine waits; `bkit tests run` waits <= `--lock-wait-s` and may exit 81; a raw caller (push, subagent prompt) sees exit 75 and the holder line. Outside `CI` a wrapped gate needs `bash` and `/usr/bin/perl` (missing → `run` exits 73, `bkit tests run` exits 4). A repo that wires nothing sees no change.
-- **bkit's own gate scripts wrapped:** bkit's root `package.json` test-running `bkit:gate:*` scripts take the `tests` lock, so bkit's pushes and subagent gates queue too.
+- **Wrapped gates take a machine-wide lock locally** (Open Question 1): in a repo whose `bkit:gate:*` scripts run through `bash scripts/ci/bkit-machine-lock.sh run --lock tests -- …`, a second gate on the same machine waits; `bkit tests run` waits <= `--lock-wait-s` and may exit 81, and so does `bkit tests changed` under Open Question 11 option A; a raw caller (a push, or a prompt that runs `pnpm bkit:gate:*`) sees exit 75 and the holder line. Outside `CI` a wrapped gate needs `bash` and `/usr/bin/perl` (missing → `run` exits 73, `bkit tests run` exits 4). A repo that wires nothing sees no change.
+- **bkit's own gate scripts wrapped:** bkit's root `package.json` test-running `bkit:gate:*` scripts take the `tests` lock, so bkit's pushes and subagent gates queue too; under Open Question 13 option A that includes `bkit:gate:changed`, so every subagent's `bkit tests changed` check in bkit's repo queues behind a full gate.
+- **Subagent prompts that call `bkit tests changed` gain an exit-81 line** (Open Question 11 option A, TASK 10), and `bkit-build-plan-gaps-remediate.md` re-runs its `Group gate` command on exit 81 (TASK 7).
 - **Lock order refused in reverse** (Open Question 3): a caller holding the stack lock that asks for `tests` is refused (functions return 1, `run` exits 73).
 - **`run` exit codes:** a lock wait that gives up exits 75 (was 1); a lock that cannot be taken exits 73 (was 1). Function return codes unchanged.
 - **No-TTY default wait 60 s** (Open Question 7): with stdin not a TTY and `LOCAL_STACK_LOCK_WAIT_S` unset, every lock in the script (stack lock included) gives up after 60 s, was 3600 s; terminal runs keep 3600 s; an explicit `LOCAL_STACK_LOCK_WAIT_S` wins.
 - **Doc section renamed:** `.bkit/templates.md` § Local stack lock → § Machine lock (rules / prompt references follow).
 
-**Unchanged (compatibility):** functions `take_local_stack_lock` / `try_local_stack_lock` / `release_local_stack_lock` / `local_stack_lock_holder` / `local_stack_lock_file`; env `BKIT_LOCAL_STACK`, `LOCAL_STACK_LOCK_WAIT_S`, `LOCAL_STACK_LOCK_OWNER`, `LOCAL_STACK_LOCK_PID`; `run "<who>" -- <cmd>` (a `<who>` before `--lock` / `--` still names the run); the unnamed lock file `~/.cache/bkit/local-stack-lock/<stack>.lock`; `.bkit/templates/.husky/pre-push` and the shipped prompts (Open Question 6).
+**Unchanged (compatibility):** functions `take_local_stack_lock` / `try_local_stack_lock` / `release_local_stack_lock` / `local_stack_lock_holder` / `local_stack_lock_file`; env `BKIT_LOCAL_STACK`, `LOCAL_STACK_LOCK_WAIT_S`, `LOCAL_STACK_LOCK_OWNER`, `LOCAL_STACK_LOCK_PID`; `run "<who>" -- <cmd>` (a `<who>` before `--lock` / `--` still names the run); the unnamed lock file `~/.cache/bkit/local-stack-lock/<stack>.lock`; `.bkit/templates/.husky/pre-push` and the prompts that run `pnpm bkit:gate:*` raw (`bkit-debug-failure-soak.md`, `bkit-ship-conflict-resolve.md`) (Open Question 6).
 
 **New names:**
 
@@ -213,7 +231,7 @@ When several agents run test suites at the same time on one laptop, the machine 
 | Lock dir | `~/.cache/bkit/machine-lock/` (`$XDG_CACHE_HOME/bkit/` when set); `tests.lock`, `tests.<k>.lock` |
 | Env | `BKIT_TEST_SLOTS`, `BKIT_TEST_WORKERS`, `LOCAL_STACK_LOCK_OWNER_<name>`, `LOCAL_STACK_LOCK_PID_<name>`, `LOCAL_STACK_LOCK_WHO` |
 | Lock name | `tests` |
-| CLI | `bkit tests run --lock-wait-s`; exit 81; output field `lockHolder` |
+| CLI | `bkit tests run --lock-wait-s`; exit 81; output field `lockHolder`; the same flag, exit and field on `bkit tests changed` (Open Question 11 option A) |
 | Script CLI | `run ["<who>"] [--lock <name>] -- <cmd>`; exits 73, 75 |
 | Gate wiring | `"bkit:gate:<name>": "bash scripts/ci/bkit-machine-lock.sh run --lock tests -- <gate command>"` |
 | Script log prefix | `[machine-lock]` (was `[local-stack-lock]`) |
@@ -263,6 +281,7 @@ When several agents run test suites at the same time on one laptop, the machine 
   - **Recommended:** A) — the only option that meets SC 1 as written.
   - **Default if unanswered:** A.
   - **Answered by owner:** D.
+  - **Premise changed after the answer:** four of the prompts above now run `bkit tests changed --fallback=bkit:gate:*` instead of `pnpm bkit:gate:*`, and that verb maps a lock give-up to exit 1, not 75. Open Question 11 asks the question again for them. The pre-push hook, `bkit-debug-failure-soak.md` (`pnpm bkit:gate:static-unit`, Process step 6) and `bkit-ship-conflict-resolve.md` (`pnpm bkit:gate:install-static-unit-build`, Process step 9) still run the gate raw, so answer D stands for them.
 - **Open Question 7:** a heavy raw vitest run in bkit's repo started by an agent with no TTY (ad-hoc `pnpm test`, any raw gate left after Open Question 6) waits the script's default 3600 s while another gate holds the lock — past the agent's ~10-minute tool timeout, so the agent sees a killed call, not a holder line.
   - **Options:** A) the global setup passes `LOCAL_STACK_LOCK_WAIT_S` = 60 to its holder when stdin is not a TTY and the variable is unset, then throws naming the holder — the agent sees the holder within a minute and re-runs; a terminal run keeps the 3600 s wait · A′) the lock script itself defaults the wait to 60 s when stdin is not a TTY and `LOCAL_STACK_LOCK_WAIT_S` is unset (terminal runs keep 3600 s; an explicit `LOCAL_STACK_LOCK_WAIT_S` always wins) — every wrapped gate, push and subagent call in every repo sees the holder within a minute; the global setup sets no wait · B) always 60 s — a human's terminal run fails after a minute too · C) keep 3600 s, documented — agent calls time out silently
   - **Recommended:** A) — reuses the script's existing wait variable; no new env name.
@@ -283,6 +302,21 @@ When several agents run test suites at the same time on one laptop, the machine 
   - **Recommended:** A) — issue text; one worker is noise once only one gate runs.
   - **Default if unanswered:** A.
   - **Answered by owner:** A.
+- **Open Question 11 (UNANSWERED — owner to decide):** how `bkit tests changed` reports a `tests`-lock give-up of the gate it runs → the owner picks an option; TASK 10 is written for the recommended one. Four shipped prompts run it: `bkit-build-plan-tasks.md` (`--fallback=bkit:gate:static`), `bkit-build-plan-gaps-remediate.md`, `bkit-debug-failure-remediate.md` and `bkit-build-plan-verify.md` (`--fallback=bkit:gate:static-unit`). `testsChangedVerb.run` in `.bkit/core/engine/commands/workflow/tests-changed.ts` runs `bkit:gate:changed` when declared, else the fallback gate, with stdin closed (so the script's 60 s no-TTY wait applies) and no `LOCAL_STACK_LOCK_WHO` (holder lines name the gate through `npm_lifecycle_event`). It echoes the gate's output lines and maps every non-zero exit except 126 / 127 to exit 1 FAIL. Open Question 6's answer D assumed such a subagent would see exit 75; it sees exit 1 with the give-up line in its output.
+  - **Options:** A) `tests changed` takes the `tests run` contract from TASKS 4 / 5: `--lock-wait-s` (default 60) passed as `LOCAL_STACK_LOCK_WAIT_S`, `LOCAL_STACK_LOCK_WHO` = `bkit tests changed <gate>`, `classifyLockExit` mapping a give-up of this run to exit 81 + `lockHolder` and a `tests`-lock refusal to exit 4; the four prompts gain one line: exit 81 → run the command again, a wait is not a failure — one lock contract for every engine verb that runs a gate; costs TASK 10, a CLI flag and four prompt edits · B) `tests changed` unchanged; the four prompts gain a line saying that exit 1 with a `[machine-lock]` give-up line naming the `tests` lock is a wait, so run the command again — no engine change; the subagent must spot the line in the output, and a model that misses it edits code or writes `BLOCKED` for a wait · C) change nothing, and Goal 5 and the Edge Cases say a subagent sees exit 1 with the holder line — no work; a lock wait reads as a test failure, so a subagent may "fix" passing code or block its group
+  - **Recommended:** A) — the subagent gets the same unambiguous exit the workflow blocks get, and the engine already has the classifier (TASK 4).
+  - **Default if unanswered:** A.
+  - **Answered by owner:** not yet.
+- **Open Question 12 (UNANSWERED — owner to decide):** whether a `bkit tests run --file` that exits 81 on the `tests` lock appends a `test-run` status row → the owner picks an option; TASK 10 is written for the recommended one. Every `--file` run appends one row today, pass, fail or could not run (`appendTestRun` in `.bkit/core/engine/commands/workflow/tests.ts`), and the row's `run` counts the step's rows in the workflow's active run. `.bkit/core/.bkit/workflows.md` § `status.jsonl` — workflow state SoT documents `verdict` null as "the gate could not run". With no ceiling on exit-81 re-runs (Open Question 9), a 30-minute holder means about 30 re-runs of one block.
+  - **Options:** A) no row on a lock wait: the gate's tests never started, so `run` and the verdicts count only runs that reached the gate — the status log keeps no trace of the waits; the holder shows only in the agent's output and the gate log · B) a row with `verdict` null and `exitCode` 81 — waits show in the status log; `run` climbs once per wait, and a null verdict no longer means only "could not run", so its documented meaning and every reader of it change · C) a new row type (e.g. `test-wait`) carrying the holder — waits show without touching `test-run` counts; one more row type to document in `.bkit/core/.bkit/workflows.md` and to add to `MARK_ROWS` in `.bkit/core/engine/commands/workflow/run-facts.ts`
+  - **Recommended:** A) — a wait is not a test run, and the gate log and the 81 hand-back already name the holder.
+  - **Default if unanswered:** A.
+  - **Answered by owner:** not yet.
+- **Open Question 13 (UNANSWERED — owner to decide):** whether bkit's `bkit:gate:changed` takes the `tests` lock → the owner picks an option; TASK 6 is written for the recommended one. bkit's root `package.json` declares `"bkit:gate:changed": "node scripts/gate/bkit-gate-changed.mjs"`. The script runs `vitest related --run --passWithNoTests <changed files>`, then `vitest run` / `node --test` / bats on the test files that name a changed path, oxlint, prettier, and `pnpm typecheck` when a `.ts` file changed. In bkit's repo every `bkit tests changed` call runs it, because it is declared. vitest 5.0.5 hands `vitest related` its files as the `related` option, not as filters (`runRelated` in `node_modules/vitest/dist/chunks/cac.*.js` calls `start([], argv)`), so TASK 8's rule reads a raw `vitest related` run as heavy (no filters), and the script's `vitest run <test files>` stage as light.
+  - **Options:** A) wrap it like the three full gates: `"bash scripts/ci/bkit-machine-lock.sh run --lock tests -- node scripts/gate/bkit-gate-changed.mjs"`, with no `sh -c`, so the file arguments pnpm appends reach the script; the vitest runs inside see the live owner and take no lock of their own — one lock for the whole check, given up as exit 75, which `tests changed` maps to 81 under Open Question 11 A; every subagent check in bkit's repo queues behind a full gate, up to 60 s per try · B) leave it unwrapped and let TASKS 8 / 9 decide per vitest run: the `related` stage takes the lock through the global setup (heavy), the `named` stage does not (light), and typecheck and lint never lock — no `package.json` change; the lock is taken and dropped per stage, and a give-up surfaces as the global setup throwing (vitest exit 1), which no classifier reads as a wait · C) leave it unwrapped and add `vitest related` to TASK 8's light rule — a subagent check never waits; a related run can reach many test files and `pnpm typecheck` stays unlocked, so this load keeps overlapping full gates
+  - **Recommended:** A) — the check is a real test run, and one wrap gives one wait, one holder line and one exit to classify.
+  - **Default if unanswered:** A.
+  - **Answered by owner:** not yet.
 - **Assumption:** vitest 5.0.3 exposes the CLI filters to a global setup as `project.vitest.config.filters` (`ResolvedConfig.filters?: string[]` confirmed in `node_modules/vitest/dist/chunks/plugin.d.*.d.ts`; runtime read confirmed at TASK 9's red) → wrong: the light rule falls back to `bkit:test:file` exporting a skip variable (issue's fallback); TASK 9 changes `package.json` `bkit:test:file`.
 - **Assumption:** vitest 5.0.3 exposes watch mode to a global setup as `project.vitest.config.watch` (runtime read confirmed at TASK 9's red) → wrong: every watch session reads as heavy, takes the lock and blocks gates for hours; TASK 9 then reads watch from `process.argv` (no `run` subcommand).
 - **Assumption:** a gate exiting 75 by itself is rare; the engine reads 75 as a lock give-up only when the log's give-up line names the `tests` lock and this run's `<who>` (TASK 4 tests pin it, nested-lock case included) → wrong: none, the check is the guard.
@@ -344,7 +378,7 @@ When several agents run test suites at the same time on one laptop, the machine 
 - [ ] **New API Route** — n/a: no routes.
 - [ ] **New DB Table/Column** — n/a: no database.
 - [ ] **Role-Gated Mutation** — n/a.
-- [x] **User Input** — `--lock-wait-s` validated in the `tests run` handler (`wholeNumber`, exit 2); `BKIT_TEST_SLOTS` validated in the script (whole number >= 1, else 1 + note); lock names sanitised to `A-Za-z0-9._-` before they reach a path (`A-Za-z0-9_` for env keys).
+- [x] **User Input** — `--lock-wait-s` validated in the `tests run` handler, and in the `tests changed` handler under Open Question 11 A (`wholeNumber`, exit 2); `BKIT_TEST_SLOTS` validated in the script (whole number >= 1, else 1 + note); lock names sanitised to `A-Za-z0-9._-` before they reach a path (`A-Za-z0-9_` for env keys).
 - [x] **Shell injection** (`docs/security.md` § Shell Injection) — the engine runs the gate argv unchanged (`spawnSync`, no shell); `<who>` (gate name, fid, step) and the wait pass as env values (`LOCAL_STACK_LOCK_WHO`, `LOCAL_STACK_LOCK_WAIT_S`), never interpolated into a command string; the script passes `<who>` to perl as `@ARGV`.
 - [x] **PII** — holder lines hold `<who>`, a local checkout path, pid and time, written only under `~/.cache/bkit/` and to the local log; no repo content.
 - [ ] **Redirect URL** — n/a.
@@ -359,7 +393,7 @@ When several agents run test suites at the same time on one laptop, the machine 
 - [x] **Package Management:** no new packages; `package.json` + `pnpm-lock.yaml` untouched.
 - [x] **Dependency Versions:** `pnpm bkit:deps:outdated` → `vitest` / `@vitest/coverage-v8` 5.0.3 → 5.0.5 (patch), `oxlint` 1.87.0 → 1.89.0, `@types/node` 24 → 26, `vite` 6.4.4 → 8.3.5 (majors); none blocks this plan. Toolchain: node v24.16.0 (`engines` >= 24), pnpm 10.34.6 (= `packageManager`), bash 5.3.20 on `PATH` (script must also parse under stock macOS `/bin/bash` 3.2), `/usr/bin/perl` 5.34.1, `getconf _NPROCESSORS_ONLN` = 10.
 - [x] **Existing-Solution Search (reuse over duplicate):** recorded in `Reuse Inventory`.
-- [x] **User Context:** read access confirmed to every file the runbook names, and to the consumer's adopted copy the named-lock API comes from. No missing user information; human decisions are Open Questions 1-10.
+- [x] **User Context:** read access confirmed to every file the runbook names, and to the consumer's adopted copy the named-lock API comes from. No missing user information; human decisions are Open Questions 1-13 (11-13 unanswered).
 - [x] **Project Context:** read `docs/knowledge.jsonl` `local-pnpm-test-full-parallelism-integration-timeouts-flake`, `spawn-heavy-unit-suite-needs-its-own-budget-under-load`; `docs/failures.jsonl` `subprocess-integration-tests-time-out-at-5000ms-under-high-load`, `install-upgrade-integration-tests-flake-on-default-5s-timeout` and the open `*-timeout-under-full-gate` rows; `docs/decisions.jsonl` (no prior `724-*` row; lock rows `467-*` are workflow locks, unrelated).
 - [ ] **Provider parity (lock dir writes):** every host bkit supports must write `~/.cache/bkit/machine-lock/` or refuse with exit 4 naming the setting that grants it — hosts and behaviour in Open Question 8; per-host write scope confirmed by Manual Verification Step 6.
 - [x] **Testing & Quality:** tiers per `docs/testing.md` § Which tier does a behaviour need? — lock and engine behaviour cross real bash / perl / flock / subprocess boundaries → Integration, no mocks at the boundary; pure decision helpers and shipped-text guards → Unit. Engine spawned via `requireTsx()` (§ Spawning `bkit` from tests).
@@ -369,7 +403,7 @@ When several agents run test suites at the same time on one laptop, the machine 
 
 - [ ] **Secrets & Env Vars:** n/a — no secrets. New non-secret env names listed in Breaking Changes & Naming Review.
 - [ ] **Schema State:** n/a — no database.
-- [x] **Architecture & UI:** `docs/architecture.md` places neither root `vitest.*.ts` helpers nor `scripts/` dogfood copies → TASKS 1 and 9 add tree lines. No UI.
+- [x] **Architecture & UI:** `docs/architecture.md` § Package Boundaries tree already places `scripts/ci/` (adopted template copies) and `scripts/gate/`; it places no root `vitest.*.ts` helpers → TASK 9 adds that tree line. No UI.
 - [x] **Observability:** engine lines use `ctx.log` under the existing `[bkit-tests]` prefix (`logTag`) (`docs/observability.md` § Log Format: no new prefix without a new noun); script lines keep one script-owned prefix (`[machine-lock]`). No audit tables / traces.
 - [ ] **Notifications:** n/a — no alerts or toasts.
 
@@ -402,24 +436,26 @@ None
 | Machine-wide named locks with slots, `run --lock`, lock order | `.bkit/templates/scripts/ci/bkit-machine-lock.sh` | `grep -rl -e 'local-stack-lock' -e 'Local stack lock' . --exclude-dir={node_modules,dist,.git}`; `ls .bkit/templates/scripts/ci`; read the consumer's adopted copy (`take_local_stack_lock "<who>" [name]`, `_lsl_vars`); Node `flock` built-in (none) | `.bkit/templates/scripts/ci/bkit-local-stack-lock.sh` — waits, names holder, never stale, CI no-op; missing named / machine-wide / slotted locks, lock order, distinct `run` exits | NEW | (c) the candidate is a `Supersession Inventory` `DELETE`: renamed and extended in place of it |
 | Lock script tests | `.bkit/core/engine/audits/templates/machine-lock.integration.test.ts` | `grep -rl 'bkit-local-stack-lock' .bkit/core/engine` | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts` — every stack-lock test | NEW | (c) candidate is a `Supersession Inventory` `DELETE`; its tests move here unchanged in intent |
 | bkit's adopted copy of the lock | `scripts/ci/bkit-machine-lock.sh` | `ls scripts/ci`; `dogfood-templates.test.ts` entry `scripts/ci/bkit-local-stack-lock.sh` (`not-adopted`) | None — bkit adopts no stack lock today | NEW | (a) no candidate; bkit's wrapped gate scripts and vitest's global setup run this copy |
-| bkit's test gates take the tests lock | `package.json` | `grep -n '"bkit:gate' package.json`; `grep -rln 'BKIT_GATE_SCRIPTS' .bkit/core/engine` (seeded consumer defaults, `detectGateAdvisories` skips a gate whose value is not the seeded default) | root `package.json` `bkit:gate:static-unit`, `bkit:gate:static-unit-integration`, `bkit:gate:install-static-unit-build` | EXTEND | each value wrapped as `bash scripts/ci/bkit-machine-lock.sh run --lock tests -- <current command>`; `bkit:gate:min` / `static` / `format` run no test suite and stay unwrapped |
+| bkit's test gates take the tests lock | `package.json` | `grep -n '"bkit:gate' package.json`; `grep -rln 'BKIT_GATE_SCRIPTS' .bkit/core/engine` (seeded consumer defaults, `detectGateAdvisories` skips a gate whose value is not the seeded default) | root `package.json` `bkit:gate:static-unit`, `bkit:gate:static-unit-integration`, `bkit:gate:install-static-unit-build`, `bkit:gate:changed` | EXTEND | each value wrapped as `bash scripts/ci/bkit-machine-lock.sh run --lock tests -- <current command>` (`bkit:gate:changed` under Open Question 13 A, with no `sh -c` so pnpm's appended file arguments reach `scripts/gate/bkit-gate-changed.mjs`); `bkit:gate:min` / `static` / `format` run no test suite and stay unwrapped |
 | Guard: bkit's test gates stay wrapped | `.bkit/core/engine/audits/repo/package-json.test.ts` | `ls .bkit/core/engine/audits/repo/package-json*`; `grep -n 'describe(' package-json.test.ts` | `package.json manifest invariants` suite — bkit's own `package.json` invariants | EXTEND | one `it` asserting the three test gates' wrap prefix |
 | Dogfood registry entry for the renamed template | `.bkit/core/engine/audits/repo/dogfood-templates.test.ts` | `grep -n 'local-stack-lock' .bkit/core/engine/audits/repo/dogfood-templates.test.ts` | `ADOPTED` map, `identical` entry kind | EXTEND | entry renamed to `scripts/ci/bkit-machine-lock.sh`, `identical` |
 | Frozen older copy for the SC 5 compatibility test | `tests/fixtures/machine-lock/stack-lock-6.0.0.sh` | `ls tests/fixtures`; `grep -rl 'bkit-local-stack-lock' tests/` (none) | `.bkit/templates/scripts/ci/bkit-local-stack-lock.sh` — the bytes an adopted consumer copy holds | NEW | (c) the candidate is a `Supersession Inventory` `DELETE`; the fixture freezes its bytes (`git show HEAD:…`) so the compat test meets a real older copy, outside TASK 3's grep scope |
 | Engine reads a wrapped gate's lock outcome | `.bkit/core/engine/commands/workflow/tests.ts` | `find_symbol testsCommand`; `grep -n -e runToLog -e EXIT_COULD_NOT_RUN tests.ts`; `grep -rn '\b81\b' .bkit/core/engine/commands` | `testsCommand.verbs.run` + `runToLog` — runs the gate with extra env, maps 126/127 to exit 4; `EXIT.AGENT_WAIT` (81, shared code in `lib.ts`) used as is | EXTEND | gate argv unchanged; env gains `LOCAL_STACK_LOCK_WAIT_S` (`--lock-wait-s`) + `LOCAL_STACK_LOCK_WHO` (this run); `classifyLockExit` maps 75 → 81 (give-up line naming `tests` and this run) and 73 → 4 (refusal line naming `tests`); `--lock-wait-s` flag; `lockHolder` output |
 | `--lock-wait-s` whole-number parsing | `.bkit/core/engine/commands/lib.ts` | `grep -rn 'const wholeNumber' .bkit/core/engine`; `positiveInt` in `status.ts` (>= 1 only) | `wholeNumber` in `.bkit/core/engine/commands/workflow/runs.ts` (module-local, `--budget-s`) | EXTEND | move `wholeNumber` to `lib.ts` as an export; `runs.ts` imports it |
 | `bkit tests run` lock tests | `.bkit/core/engine/commands/workflow/tests-lock.integration.test.ts` | `ls .bkit/core/engine/commands/workflow/tests*` | `.bkit/core/engine/commands/workflow/tests.test.ts` — `Unit` tier, in-process `runCommand` (takes TASK 4's unit rows) | NEW | (b) the suffix is the tier contract (`.agents/rules.md` § Naming Conventions; `docs/testing.md` § Tiers: spawning `bkit` via `tsx` = Integration), and its caller `test:coverage:unit` counts `*.test.ts` toward the unit branch floor |
-| Workflows route exit 81 from gate blocks | `.bkit/core/workflows/bkit-build.md`, `.bkit/core/workflows/bkit-debug.md` | `grep -rn 'tests run' .bkit/core/workflows .bkit/core/prompts`; `grep -n 'exit 81' .bkit/core/workflows/*.md` | 3 `tests run` blocks; `**If** exit 80 or 81 → …` route precedent (`bkit-build.md:946`) | EXTEND | add the route line to each block |
-| Exit-81 routing guards | `.bkit/core/engine/audits/workflows/local-gate-audit.test.ts` | `ls .bkit/core/engine/audits/workflows`; `grep -ln 'tests run' …/audits/workflows/*.ts` | `testBlocks` / `callPosition` helpers find every `tests run` block | EXTEND | a route-capture helper (the list after each block's closing fence); one `it` per probe: the route holds `exit 81` |
+| Workflows route exit 81 from gate blocks | `.bkit/core/workflows/bkit-build.md`, `.bkit/core/workflows/bkit-debug.md` | `grep -rn 'tests run' .bkit/core/workflows .bkit/core/prompts`; `grep -n 'exit 81' .bkit/core/workflows/*.md` | 3 `tests run` blocks; `**If** exit 81 **or** 80 → **CI wait turn-loop** …` route precedent (`bkit-debug.md:709`, Step 11 — Close Workflow sub-step 7) | EXTEND | add the route line to each block |
+| Subagents re-run a gate command on exit 81 | `.bkit/core/prompts/bkit-build-plan-gaps-remediate.md` (TASK 7: the `Group gate` command `bkit-build.md` Step 9 hands it), plus `bkit-build-plan-tasks.md`, `bkit-debug-failure-remediate.md`, `bkit-build-plan-verify.md` (TASK 10: `bkit tests changed`, Open Question 11 A) | `grep -rn -e 'tests run' -e 'tests changed' -e 'exit 81' .bkit/core/prompts`; `pnpm instructions:show --file bkit-build-plan-gaps-remediate.md` | the prompts' gate step (gaps-remediate Process step 9 "run that command … until it exits 0"); no prompt handles exit 81 today | EXTEND | one line in each prompt's existing gate step; shared wording goes through `.bkit/instructions.md` |
+| Exit-81 routing guards | `.bkit/core/engine/audits/workflows/local-gate-audit.test.ts` | `ls .bkit/core/engine/audits/workflows`; `grep -ln 'tests run' …/audits/workflows/*.ts` | `testBlocks` / `callPosition` helpers find every `tests run` block; `PROBES` keyed by `step` (`build-run-tests`, `build-group-gate-`, debug `""`); `GATE_CALLERS` lists the prompts' `--fallback=bkit:gate:*` calls | EXTEND | a route-capture helper (the list after each block's closing fence) filtered per `PROBES` entry by its `--step=`; one `it` per probe: the route holds `exit 81`; a `Context:`-line check for the Step 9 `Group gate` (TASK 7); a `GATE_CALLERS`-driven check that each `--fallback=` prompt routes exit 81 (TASK 10) |
+| `bkit tests changed` reads a wrapped gate's lock outcome (Open Question 11 A) | `.bkit/core/engine/commands/workflow/tests-changed.ts` | `grep -n -e runLogged -e COULD_NOT_RUN tests-changed.ts`; `find_symbol testsChangedVerb` | `testsChangedVerb` + module-local `runLogged` (stdin closed, output echoed through `ctx.log`); `classifyLockExit` (TASK 4) and `wholeNumber` in `lib.ts` (TASK 4) | EXTEND | gate env gains `LOCAL_STACK_LOCK_WAIT_S` + `LOCAL_STACK_LOCK_WHO`; `classifyLockExit` maps the exit; `--lock-wait-s`; `lockHolder` output |
 | Run-wide tests lock for raw vitest runs + heavy / light decision | `vitest.test-lock.ts` | `grep -n globalSetup vitest*.ts` (none); `ls vitest*`; vitest `globalSetup` built-in (`plugin.d.*.d.ts`); Node `process.kill(pid, 0)` liveness probe | `vitest.setup.ts` — a `setupFiles` entry run in every worker once per test file; `vitest.timeout-budget.ts` — pure timeout maths | NEW | (a) no global setup exists; (b) for `vitest.setup.ts`: its contract runs per file in every worker, so a run-wide lock there would be taken N times by its callers (each worker) |
 | Heavy / light decision tests | `.bkit/core/engine/audits/repo/vitest-test-lock.test.ts` | `grep -rl -e vitest.timeout-budget -e vitest.test-lock .bkit/core/engine` | `.bkit/core/engine/audits/repo/vitest-timeout-budget.test.ts` — asserts only `vitest.timeout-budget.ts` | NEW | (b) extending breaks its contract — one test file per root helper, named after the module it tests (`vitest-timeout-budget.test.ts` ↔ `vitest.timeout-budget.ts`) — and its callers: `docs/testing.md` § Key test files row and `bkit tests red --file` per task address it as the timeout module's test |
 | Global setup against a real lock | `.bkit/core/engine/audits/repo/vitest-test-lock.integration.test.ts` | same search | `vitest-test-lock.test.ts` (this plan, `Unit` tier) | NEW | (b) spawns real bash / perl holders → Integration suffix (`.agents/rules.md` § Naming Conventions); the unit file's caller `test:coverage:unit` counts only `*.test.ts` |
 | Global setup registration + `maxWorkers` | `vitest.config.ts` | `Read vitest.config.ts`; `vitest.unit.config.ts` merges it | `vitest.config.ts` `test` block | EXTEND | `globalSetup`, `...testWorkers()` |
-| Machine lock docs | `.bkit/core/.bkit/templates.md` | `grep -n 'Local stack lock' .bkit/core/.bkit/templates.md` | § Local stack lock + catalog rows (lines 17, 41, 73) | EXTEND | renamed § Machine lock, extended |
+| Machine lock docs | `.bkit/core/.bkit/templates.md` | `grep -n 'Local stack lock' .bkit/core/.bkit/templates.md` | § Local stack lock + catalog lines (§ What each template is for intro line 16 and table row 41; § Contract table row 74) | EXTEND | renamed § Machine lock, extended |
 
 ## Architecture & Component Changes
 
-Areas: copy-and-own template script, bkit dogfood copy and its wrapped gate scripts, engine (`bkit tests run`), workflows, bkit's own vitest config, docs. The shipped pre-push hook and prompts stay unchanged (Open Question 6).
+Areas: copy-and-own template script, bkit dogfood copy and its wrapped gate scripts, engine (`bkit tests run`, and `bkit tests changed` under Open Question 11 A), workflows, the subagent prompts' exit-81 lines, bkit's own vitest config, docs. The shipped pre-push hook and the prompts that run `pnpm bkit:gate:*` raw stay unchanged (Open Question 6).
 
 **Ledger rows:** `724-tests-lock-fixed-slots-not-live-load`, `724-tests-run-lock-wait-exit-81`, `724-light-runs-skip-tests-lock`, `724-machine-lock-script-named-locks-no-migration`, `724-lock-order-tests-named-stack-enforced`, `724-engine-runs-packaged-lock-template`, `724-lock-run-exit-codes-73-75`, `724-vitest-global-setup-holds-tests-lock`, `724-shipped-gate-calls-run-through-tests-run`, `724-lock-script-short-wait-without-tty`, `724-host-hook-catches-raw-test-runners`, `724-upstream-consumer-load-gate`, `724-timeout-budget-and-ci-serialisation-unchanged`, `724-gate-templates-pass-test-workers`
 
@@ -473,35 +509,50 @@ None
 
 #### [MODIFY] `.bkit/core/engine/audits/repo/dogfood-templates.test.ts`
 
-- **Existence Check:** file exists (`ADOPTED` map, line 327 entry).
+- **Existence Check:** file exists (`ADOPTED` map, entry `"scripts/ci/bkit-local-stack-lock.sh"` at line 346).
 - `[DELETE]` entry `"scripts/ci/bkit-local-stack-lock.sh": { status: "not-adopted", … }`; `[NEW]` entry `"scripts/ci/bkit-machine-lock.sh": identical`.
 
 #### [MODIFY] `package.json`
 
-- **Existence Check:** `bkit:gate:static-unit` (line 59), `bkit:gate:static-unit-integration` (line 60), `bkit:gate:install-static-unit-build` (line 61).
-- Each value becomes `bash scripts/ci/bkit-machine-lock.sh run --lock tests -- <current command>` (the command after `--` passed as one `sh -c` string where it chains with `&&`). Nested gates (`static-unit-integration` → `static-unit`, `install-static-unit-build` → `static-unit`) do not self-deadlock: the inner wrap sees the live `LOCAL_STACK_LOCK_OWNER_tests` and runs unlocked. `bkit:gate:min` / `static` / `format` unchanged (no test suite).
+- **Existence Check:** `bkit:gate:static-unit` (line 59), `bkit:gate:static-unit-integration` (line 60), `bkit:gate:install-static-unit-build` (line 61), `bkit:gate:changed` (line 65, `node scripts/gate/bkit-gate-changed.mjs`).
+- Each value becomes `bash scripts/ci/bkit-machine-lock.sh run --lock tests -- <current command>` (the command after `--` passed as one `sh -c` string where it chains with `&&`). `bkit:gate:changed` is wrapped too under Open Question 13 A, as `bash scripts/ci/bkit-machine-lock.sh run --lock tests -- node scripts/gate/bkit-gate-changed.mjs` with no `sh -c`, so the file arguments `pnpm bkit:gate:changed {file}...` appends reach the script. Nested gates (`static-unit-integration` → `static-unit`, `install-static-unit-build` → `static-unit`) do not self-deadlock: the inner wrap sees the live `LOCAL_STACK_LOCK_OWNER_tests` and runs unlocked. `bkit:gate:min` / `static` / `format` unchanged (no test suite).
 
 #### [MODIFY] `.bkit/core/engine/audits/repo/package-json.test.ts`
 
 - **Existence Check:** `package.json manifest invariants (BAR-138)` suite.
-- Gains the TASK 6 guard: the three test gates start with `bash scripts/ci/bkit-machine-lock.sh run --lock tests -- `.
+- Gains the TASK 6 guard: the three full test gates and `bkit:gate:changed` (Open Question 13 A) start with `bash scripts/ci/bkit-machine-lock.sh run --lock tests -- `.
 
 ### Engine — `bkit tests run`
 
 #### [MODIFY] `.bkit/core/engine/commands/workflow/tests.ts`
 
-- **Existence Check:** `testsCommand` (line 1205), `runToLog` (line 97) exist.
+- **Existence Check:** `testsCommand` (line 1290), `runToLog` (line 102), `appendTestRun` (line 155) exist; the `run` verb is `use: "by-hand"` with `--file` / `--workflow` and a `row` output.
 - `run` verb: new flag `lock-wait-s` (whole number >= 0, default 60; `0` = one try); bad value → `CommandError(EXIT.USAGE)`.
 - Gate argv unchanged (`scriptCommand(gate)`); the engine never executes the lock script. Gate env gains `LOCAL_STACK_LOCK_WAIT_S` = `--lock-wait-s` and `LOCAL_STACK_LOCK_WHO` = `bkit tests run <gate>[ <fid>][ <step>]`, always set (under `CI` too: the script ignores them there). A wrapped gate's script adds `BKIT_TEST_WORKERS` + `LOCAL_STACK_LOCK_OWNER_tests`; an unwrapped gate takes no lock.
 - Exported pure `classifyLockExit({ exitCode, log, who })` → `gate` | `lock-wait` | `could-not-run`: `lock-wait` only for exit 75 **and** a give-up line naming the `tests` lock **and** this run's `<who>`; `could-not-run` only for exit 73 **and** a `[machine-lock] ❌` refusal line naming the `tests` lock; else `gate`.
-- `lock-wait` → no verdict, no artifact; prints the `[machine-lock]` lines; emits `lockHolder`; returns `EXIT.AGENT_WAIT` (81). A 75 with no such line (the gate's own 75, or a nested lock's give-up) → the gate's own exit (FAIL).
+- `lock-wait` → no verdict, no artifact, and no `test-run` row under `--file` (Open Question 12 A, TASK 10); prints the `[machine-lock]` lines; emits `lockHolder`; returns `EXIT.AGENT_WAIT` (81). A 75 with no such line (the gate's own 75, or a nested lock's give-up) → the gate's own exit (FAIL).
 - `could-not-run` → exit 4 (`EXIT_COULD_NOT_RUN`), the line (path + reason) logged.
 - Output gains `lockHolder` (holder line when the wait gave up, else null). 81 stays out of `exitCodes` (verb codes must sit in `OWN_EXIT_MIN`-`OWN_EXIT_MAX`, 3-79, `conventions.test.ts:74-79`; 81 is the shared `EXIT.AGENT_WAIT` every `--help` already lists); summary names `81 tests lock held`. `red` / `green` unchanged.
 
 #### [MODIFY] `.bkit/core/engine/commands/workflow/tests.test.ts`
 
-- **Existence Check:** PASS-case exact `toEqual` at line ~136.
+- **Existence Check:** PASS-case exact `toEqual` at line 135 (`describe("bkit tests run")`, `it("PASS: runs the gate through the package runner, …")`; it already holds `row: null`).
 - Expected output gains `lockHolder: null`; TASK 4's unit rows (`classifyLockExit`, `--lock-wait-s` validation).
+
+#### [MODIFY] `.bkit/core/engine/commands/workflow/tests-changed.ts` (Open Question 11 A)
+
+- **Existence Check:** `testsChangedVerb` (line 74), module-local `runLogged` (line 51, stdin closed, output echoed through `ctx.log`).
+- New flag `lock-wait-s` (`wholeNumber` from `lib.ts`, default 60); gate env gains `LOCAL_STACK_LOCK_WAIT_S` and `LOCAL_STACK_LOCK_WHO` = `bkit tests changed <gate>`; `classifyLockExit` (TASK 4) maps a give-up of this run to `EXIT.AGENT_WAIT` (81) + `lockHolder` and a `tests`-lock refusal to exit 4; else the current PASS / FAIL mapping. Summary names `81 tests lock held`.
+
+#### [MODIFY] `.bkit/core/engine/commands/workflow/tests-changed.test.ts`
+
+- **Existence Check:** `describe("tests changed")`; output asserted with `toMatchObject`, so a new `lockHolder` key breaks none.
+- Gains the `--lock-wait-s` validation row (TASK 10).
+
+#### [MODIFY] `.bkit/core/.bkit/cli.md`
+
+- **Existence Check:** generated region; `tests` rows `changed` (line 368) and `run` (line 369); `.bkit/core/engine/tools/cli-doc.test.ts` `the generated region of .bkit/cli.md is current (run pnpm cli:sync)` fails on drift.
+- Regenerated with `pnpm cli:sync` in each task that changes a `tests` verb's flags or summary (TASKS 4, 5, 10); `.bkit/cli.md` mirrored by `bkit install`.
 
 #### [MODIFY] `.bkit/core/engine/commands/lib.ts`
 
@@ -530,13 +581,23 @@ None
 
 #### [MODIFY] `.bkit/core/workflows/bkit-build.md`
 
-- **Existence Check:** Step 8 (Plan Verify) sub-step 8 group-gate `Route:` (line ~555) and Step 12 sub-step 2 `Decide` (line ~749) exist.
-- Each gains `**If** exit 81 → end turn, re-run this block.` before `**Else**`.
+- **Existence Check:** Step 8 — Plan Verify sub-step 8 group-gate `Route:` (lines 651-653; the block at 648-650 runs `--gate=bkit:gate:static-unit` with `--file` / `--workflow`) and Step 12 — Run Tests sub-step 2 `Decide` (lines 866-869) exist. Step 9 — Plan Gaps Remediate sub-step 2 `Context:` (line 711) hands the subagent a `Group gate` `tests run` command; it is prose, not a fenced block, so the block route does not reach it (see the prompt below).
+- Each fenced block's route gains `**If** exit 81 → end turn, re-run this block.` before `**Else**`.
 
 #### [MODIFY] `.bkit/core/workflows/bkit-debug.md`
 
-- **Existence Check:** Step 3 sub-step 1 `Decide` (line ~297).
+- **Existence Check:** Step 3 — Run Tests sub-step 1 `Decide` (lines 319-322).
 - Same route line.
+
+#### [MODIFY] `.bkit/core/prompts/bkit-build-plan-gaps-remediate.md`
+
+- **Existence Check:** Process step 9 (line 102): "**If** Context names a group gate → run that command after the fixes, and again after each further fix, until it exits 0".
+- TASK 7: a sub-bullet in step 9 — **If** the group gate exits 81 → another run holds the machine-wide tests lock; run the same command again, and treat the wait as no gap and no reason to edit code. TASK 10 (Open Question 11 A): the same handling for its `bkit tests changed` line.
+
+#### [MODIFY] `.bkit/core/prompts/bkit-build-plan-tasks.md`, `.bkit/core/prompts/bkit-debug-failure-remediate.md`, `.bkit/core/prompts/bkit-build-plan-verify.md` (Open Question 11 A)
+
+- **Existence Check:** `bkit tests changed --fallback=bkit:gate:static` (`bkit-build-plan-tasks.md:118`), `--fallback=bkit:gate:static-unit` (`bkit-debug-failure-remediate.md:76`, `bkit-build-plan-verify.md:83`).
+- TASK 10: each gate step gains the exit-81 line (run the command again; a wait is not a failure).
 
 #### [MODIFY] `.bkit/core/engine/render/__snapshots__/bkit-build.none.txt`, `.bkit/core/engine/render/__snapshots__/bkit-debug.none.txt`
 
@@ -545,8 +606,8 @@ None
 
 #### [MODIFY] `.bkit/core/engine/audits/workflows/local-gate-audit.test.ts`
 
-- **Existence Check:** `PROBES` / `testBlocks` (lines ~156-165).
-- Route-capture helper (the `Route:` / `Decide` list after each block's closing fence; `testBlocks` returns only the fenced body); TASK 7 row. `GATE_CALLERS` unchanged: the pre-push hook and prompts keep calling `pnpm bkit:gate:*` (Open Question 6).
+- **Existence Check:** `GATE_CALLERS` (line 107), `PROBES` (lines 166-183: three probes keyed by `step` — `build-run-tests`, `build-group-gate-`, debug `""`), `testBlocks` (lines 185-188), `callPosition` (line 197), the test `every \`tests run\` call site of a workflow is probed` (line 202).
+- Route-capture helper (the `Route:` / `Decide` list after each block's closing fence; `testBlocks` returns only the fenced body), applied per `PROBES` entry through the same `--step=` filter the probe's `describe` uses; TASK 7 rows: the block route, and the Step 9 `Context:` `Group gate` command matched by the exit-81 line in `bkit-build-plan-gaps-remediate.md`. TASK 10 row: each `GATE_CALLERS` entry whose call is `--fallback=bkit:gate:*` (a `bkit tests changed` caller) carries the exit-81 line. `GATE_CALLERS` keeps its entries: the pre-push hook's `pnpm bkit:gate:*` calls, `bkit-ship-conflict-resolve.md`'s `pnpm bkit:gate:install-static-unit-build`, and the four prompts' `--fallback=bkit:gate:*` calls.
 
 ### Vitest (bkit repo only)
 
@@ -574,7 +635,7 @@ None
 
 ### Docs
 
-- `.bkit/core/.bkit/templates.md` § Local stack lock → § Machine lock (catalog rows 17 / 41 / 73 in TASK 1; section incl. the consumer wiring step in TASKS 3 / 5); `.bkit/core/.agents/rules.md` § Shared local stack, `bkit-build-plan-execute.md`, `bkit-build-plan-gaps-remediate.md` name § Machine lock; `.bkit/instructions.md` re-synced (`pnpm instructions:sync`); `.bkit/core/.bkit/workflows.md` tests-lock bullet; § Tests lock in `.bkit/shared/docs/testing.md` (consumer-facing, inside the shipped block) and the same text in the root `docs/testing.md` `bkit:start` / `bkit:end` block; bkit-only `docs/testing.md` lines (§ Stack, § Key test files) below `bkit:end`; `docs/architecture.md` tree lines; `CHANGELOG.md` `[Unreleased]` incl. the upgrade note to wire the script; mirrors via `bkit install`.
+- `.bkit/core/.bkit/templates.md` § Local stack lock → § Machine lock (catalog lines 16 / 41 / 74 in TASK 1; section incl. the consumer wiring step in TASKS 3 / 5); `.bkit/core/.agents/rules.md` § Shared local stack, `bkit-build-plan-tasks.md`, `bkit-build-plan-tests.md`, `bkit-build-plan-gaps-remediate.md` name § Machine lock; `.bkit/core/.bkit/cli.md` regenerated by `pnpm cli:sync` (TASKS 4, 5, 10); `.bkit/core/.bkit/workflows.md` `test-run` row docs say a lock wait writes no row (TASK 10, Open Question 12 A); `.bkit/instructions.md` re-synced (`pnpm instructions:sync`); `.bkit/core/.bkit/workflows.md` tests-lock bullet; § Tests lock in `.bkit/shared/docs/testing.md` (consumer-facing, inside the shipped block) and the same text in the root `docs/testing.md` `bkit:start` / `bkit:end` block; bkit-only `docs/testing.md` lines (§ Stack, § Key test files) below `bkit:end`; `docs/architecture.md` tree line for `vitest.*.ts` (TASK 9; the `scripts/ci/` and `scripts/gate/` lines exist); `CHANGELOG.md` `[Unreleased]` incl. the upgrade note to wire the script; mirrors via `bkit install`.
 
 ### Cron Jobs & Scheduled Tasks
 
@@ -595,16 +656,20 @@ None
 <!-- prettier-ignore -->
 | Doc | Change required |
 | --- | --- |
-| `.bkit/core/.bkit/templates.md` | catalog rows (lines 17, 41, 73) name `bkit-machine-lock.sh` (TASK 1); § Local stack lock → § Machine lock: stack lock, named locks, `tests` lock, slots, `BKIT_TEST_WORKERS` (gates pass it to their runner, e.g. vitest `--maxWorkers`), lock order, `run` exits 73 / 75, optional `<who>`, 60 s no-TTY wait, consumer wiring (copy to `scripts/ci/`, wrap test-running `bkit:gate:*` scripts; a chained command goes in one `sh -c` string), adopted copies keep working (TASK 3); light vs heavy runs, `bkit tests run` passes `--lock-wait-s` + its run name and maps 75 → 81, 73 → 4 (TASK 5) |
+| `.bkit/core/.bkit/templates.md` | catalog lines (§ What each template is for line 16 and row 41, § Contract row 74) name the machine lock and `bkit-machine-lock.sh` (TASK 1); § Local stack lock → § Machine lock: stack lock, named locks, `tests` lock, slots, `BKIT_TEST_WORKERS` (gates pass it to their runner, e.g. vitest `--maxWorkers`), lock order, `run` exits 73 / 75, optional `<who>`, 60 s no-TTY wait, consumer wiring (copy to `scripts/ci/`, wrap test-running `bkit:gate:*` scripts; a chained command goes in one `sh -c` string), adopted copies keep working (TASK 3); light vs heavy runs, `bkit tests run` passes `--lock-wait-s` + its run name and maps 75 → 81, 73 → 4 (TASK 5) |
 | `.bkit/core/.agents/rules.md` | § Shared local stack names `.bkit/templates.md` § Machine lock (TASK 3) |
-| `.bkit/core/prompts/bkit-build-plan-execute.md`, `.bkit/core/prompts/bkit-build-plan-gaps-remediate.md` | Shared local stack line names § Machine lock (TASK 3) |
+| `.bkit/core/prompts/bkit-build-plan-tasks.md`, `.bkit/core/prompts/bkit-build-plan-tests.md`, `.bkit/core/prompts/bkit-build-plan-gaps-remediate.md` | Shared local stack line names § Machine lock (TASK 3) |
+| `.bkit/core/prompts/bkit-build-plan-gaps-remediate.md` | Process step 9: the group gate's exit 81 → run the same command again, no gap (TASK 7) |
+| `.bkit/core/prompts/bkit-build-plan-tasks.md`, `bkit-build-plan-gaps-remediate.md`, `bkit-debug-failure-remediate.md`, `bkit-build-plan-verify.md` | `bkit tests changed` exit 81 → run it again, not a failure (TASK 10, Open Question 11 A) |
+| `.bkit/core/.bkit/cli.md` (+ `.bkit/cli.md` mirror) | regenerated by `pnpm cli:sync`: `tests run` and `tests changed` gain `--lock-wait-s` and the `81` summary (TASKS 4, 5, 10) |
+| `.bkit/core/.bkit/workflows.md` § `status.jsonl` — workflow state SoT | `test-run` row: a run that exits 81 on the tests lock writes no row (TASK 10, Open Question 12 A) |
 | `.bkit/instructions.md` | `shared-local-stack` refs + text re-synced with `pnpm instructions:sync` (TASKS 3, 7) |
 | `.bkit/core/.bkit/workflows.md` | rationale bullet beside **CI-Dispatch poll**: `bkit tests run` exits 81 while the tests lock is held; every `tests run` block routes 81 → end turn, re-run, no ceiling (Open Question 9) (TASK 7) |
 | `.bkit/shared/docs/testing.md` + root `docs/testing.md` `bkit:start` / `bkit:end` block | new § Tests lock (wrapped `bkit:gate:*` scripts take it for the whole gate; light runs, nested wraps and `CI` skip it; `BKIT_TEST_SLOTS`, `BKIT_TEST_WORKERS`, `--lock-wait-s`, exit 81; raw callers see exit 75; no-TTY 60 s wait; an unwired repo takes no lock) (TASK 5) |
-| `docs/testing.md` below `bkit:end` | § Stack line: bkit's test gates are wrapped (TASK 6); § Stack line for `vitest.test-lock.ts` + raw-run rule (TASK 9); § Key test files rows for the new test files and fixture (TASKS 1, 5, 9) |
-| `docs/architecture.md` | tree line `scripts/` (adopted template copies, pinned by `dogfood-templates.test.ts`) (TASK 1); tree line `vitest.*.ts` (root test-runner config + helpers) (TASK 9) |
-| `CHANGELOG.md` | `[Unreleased]`: template rename + named locks, no-TTY wait, upgrade note: copy `bkit-machine-lock.sh` to `scripts/ci/` and wrap the test-running `bkit:gate:*` scripts to get the tests lock (TASK 3); `bkit tests run` passes the wait + run name, exit 81 (TASK 5) |
-| Mirrors (`.bkit/templates.md`, `.agents/rules.md`, `.claude/` / `.cursor/` / `.opencode/` / `.codex/` / `.agents/plugins/` agents and workflows) | regenerated by `bkit install` (TASKS 3, 5, 7) |
+| `docs/testing.md` below `bkit:end` | § Stack line: bkit's test gates are wrapped, `bkit:gate:changed` included under Open Question 13 A (its **Changed files** bullet) (TASK 6); § Stack line for `vitest.test-lock.ts` + raw-run rule (TASK 9); § Key test files rows for the new test files and fixture (TASKS 1, 5, 9) |
+| `docs/architecture.md` | § Package Boundaries tree line `vitest.*.ts` (root test-runner config + helpers) (TASK 9); the `scripts/ci/` and `scripts/gate/` lines exist (TASK 1 checks them) |
+| `CHANGELOG.md` | `[Unreleased]`: template rename + named locks, no-TTY wait, upgrade note: copy `bkit-machine-lock.sh` to `scripts/ci/` and wrap the test-running `bkit:gate:*` scripts to get the tests lock (TASK 3); `bkit tests run` passes the wait + run name, exit 81 (TASK 5); `bkit tests changed` does the same (TASK 10, Open Question 11 A) |
+| Mirrors (`.bkit/templates.md`, `.bkit/cli.md`, `.bkit/workflows.md`, `.agents/rules.md`, `.claude/` / `.cursor/` / `.opencode/` / `.codex/` / `.agents/plugins/` agents and workflows) | regenerated by `bkit install` (TASKS 3, 4, 5, 7, 10) |
 | `docs/capabilities.md` | regenerated by `pnpm graph:rollup` when the pre-push graph check asks (new modules) |
 | `docs/decisions.jsonl` | 10 `724-*` rows written by this plan (Ledger rows line) |
 | `docs/deferrals.jsonl` | 4 `724-*` `Exempt` rows (Out of Scope) |
@@ -617,14 +682,14 @@ None
 | Axis | Action | Notes |
 | --- | --- | --- |
 | **DB** | n/a | No database |
-| **Code** | `git revert {COMMIT}` per task commit, newest first | Reverting TASK 6 restores bkit's unlocked gates, TASK 5 the engine's plain exit mapping; consumers' adopted copies and wrapped gate scripts are theirs and unaffected |
+| **Code** | `git revert {COMMIT}` per task commit, newest first | Reverting TASK 6 restores bkit's unlocked gates, TASK 5 the engine's plain exit mapping, TASK 10 `bkit tests changed`'s plain exit mapping and the prompts' gate steps; consumers' adopted copies and wrapped gate scripts are theirs and unaffected |
 | **Risk window** | Between a release with TASK 3 and one with TASK 5 | A consumer who wires the script then gets the lock, but `bkit tests run` reads a give-up as the gate's FAIL (exit 1), not 81; TASK 3's docs and upgrade note ship with the script, TASK 5's exit mapping in the next commit of the same PR |
 
 Code-only — `git revert` sufficient.
 
 ## Agent Execution Runbook
 
-Build order: script (Groups 1-2) → engine (Group 3) → bkit's wrapped gates + workflows (Group 4) → bkit's own vitest (Group 5). Suggested integration shape (advice only): one PR; one commit per task. Every engine-editing commit carries `pnpm build` output (`dist/`).
+Build order: script (Groups 1-2) → engine (Group 3; TASK 10 runs after TASK 5 and is numbered above the plan's highest so no task renumbers) → bkit's wrapped gates + workflows (Group 4) → bkit's own vitest (Group 5). Suggested integration shape (advice only): one PR; one commit per task. Every engine-editing commit carries `pnpm build` output (`dist/`).
 
 <!-- bkit:group 1 start -->
 
@@ -639,11 +704,11 @@ Build order: script (Groups 1-2) → engine (Group 3) → bkit's wrapped gates +
   - **CREATE:** `scripts/ci/bkit-machine-lock.sh`: byte-identical dogfood copy of the template
   - **DELETE:** `.bkit/templates/scripts/ci/bkit-local-stack-lock.sh`: replaced by `bkit-machine-lock.sh`
   - **DELETE:** `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts`: its tests move to `machine-lock.integration.test.ts`
-  - **UPDATE:** `.bkit/core/engine/audits/repo/dogfood-templates.test.ts`: `ADOPTED` entry `scripts/ci/bkit-local-stack-lock.sh` (`not-adopted`) → `scripts/ci/bkit-machine-lock.sh`: `identical`
-  - **UPDATE:** `.bkit/core/.bkit/templates.md`: catalog rows at lines 17, 41, 73 name `bkit-machine-lock.sh`, so no row names a deleted file
-  - **UPDATE:** `docs/architecture.md`: Package Boundaries tree gains `scripts/` (adopted template copies, pinned by `dogfood-templates.test.ts`)
+  - **UPDATE:** `.bkit/core/engine/audits/repo/dogfood-templates.test.ts`: `ADOPTED` entry `scripts/ci/bkit-local-stack-lock.sh` (`not-adopted`, line 346) → `scripts/ci/bkit-machine-lock.sh`: `identical`
+  - **UPDATE:** `.bkit/core/.bkit/templates.md`: the catalog lines name the machine lock and `bkit-machine-lock.sh`, so no row names a deleted file — § What each template is for intro line 16 ("The local stack lock has no tip…") and table row 41 (`Local stack lock`), § Contract table row 74 (`.bkit/templates/scripts/ci/bkit-local-stack-lock.sh`)
+  - **READ:** `docs/architecture.md`: § Package Boundaries tree line `scripts/ci/` ("Adopted copy of `.bkit/templates/scripts/ci/`…") already covers the dogfood copy; no edit
   - **UPDATE:** `docs/testing.md`: § Key test files rows (below `bkit:end`) for `machine-lock.integration.test.ts` and the `tests/fixtures/machine-lock/` fixture
-  - **DONE WHEN:** `pnpm vitest run .bkit/core/engine/audits/templates/machine-lock.integration.test.ts .bkit/core/engine/audits/repo/dogfood-templates.test.ts .bkit/core/engine/audits/templates/template-path-refs.test.ts .bkit/core/engine/audits/templates/templates.test.ts` passes, including every carried-over stack-lock test unchanged in intent; `/bin/bash -n .bkit/templates/scripts/ci/bkit-machine-lock.sh` exits 0; `cmp .bkit/templates/scripts/ci/bkit-machine-lock.sh scripts/ci/bkit-machine-lock.sh` exits 0; `.bkit/templates/scripts/ci/bkit-local-stack-lock.sh` is gone; `git show "$(git merge-base HEAD main)":.bkit/templates/scripts/ci/bkit-local-stack-lock.sh | cmp - tests/fixtures/machine-lock/stack-lock-6.0.0.sh` exits 0
+  - **DONE WHEN:** `pnpm vitest run .bkit/core/engine/audits/templates/machine-lock.integration.test.ts .bkit/core/engine/audits/repo/dogfood-templates.test.ts .bkit/core/engine/audits/templates/template-path-refs.test.ts .bkit/core/engine/audits/templates/templates.test.ts` passes, including every carried-over stack-lock test unchanged in intent; `/bin/bash -n .bkit/templates/scripts/ci/bkit-machine-lock.sh` exits 0; `cmp .bkit/templates/scripts/ci/bkit-machine-lock.sh scripts/ci/bkit-machine-lock.sh` exits 0; `.bkit/templates/scripts/ci/bkit-local-stack-lock.sh` is gone; `git show "$(git merge-base HEAD main)":.bkit/templates/scripts/ci/bkit-local-stack-lock.sh | cmp - tests/fixtures/machine-lock/stack-lock-6.0.0.sh` exits 0; the `.bkit/core/.bkit/templates.md` § Contract table row names `.bkit/templates/scripts/ci/bkit-machine-lock.sh`; `grep -c '── scripts/ci/ .*Adopted copy' docs/architecture.md` prints 1
   - **TEST FIRST:**
     - `.bkit/core/engine/audits/templates/machine-lock.integration.test.ts` `a named lock is machine-wide: checkouts of two different repos wait on the same named lock` fails on the second repo starting at once
     - `.bkit/core/engine/audits/templates/machine-lock.integration.test.ts` `one process holds a named lock and the unnamed stack lock side by side` fails on the second take refusing
@@ -688,8 +753,9 @@ Build order: script (Groups 1-2) → engine (Group 3) → bkit's wrapped gates +
 - [ ] **TASK 3:** Point every template doc, rule and prompt at § Machine lock, with the consumer wiring step
   - **UPDATE:** `.bkit/core/.bkit/templates.md`: § Local stack lock → § Machine lock (stack lock, named locks, `tests` lock, slots, `BKIT_TEST_WORKERS` passed to the runner, lock order, `run` exits 73 / 75, optional `<who>`, 60 s no-TTY wait, a consumer's adopted copy keeps working); consumer wiring like the stack lock's: `cp .bkit/templates/scripts/ci/bkit-machine-lock.sh scripts/ci/`, then a `Wire into` row wrapping each test-running `bkit:gate:*` script as `"bash scripts/ci/bkit-machine-lock.sh run --lock tests -- <gate command>"` (a chained command in one `sh -c '…'` string); an unwired repo takes no lock
   - **UPDATE:** `.bkit/core/.agents/rules.md`: § Shared local stack names `.bkit/templates.md` § Machine lock
-  - **UPDATE:** `.bkit/core/prompts/bkit-build-plan-execute.md`: Shared local stack line names § Machine lock
-  - **UPDATE:** `.bkit/core/prompts/bkit-build-plan-gaps-remediate.md`: Shared local stack line names § Machine lock
+  - **UPDATE:** `.bkit/core/prompts/bkit-build-plan-tasks.md`: Shared local stack line (line 74) names § Machine lock
+  - **UPDATE:** `.bkit/core/prompts/bkit-build-plan-tests.md`: Shared local stack line (line 58) names § Machine lock
+  - **UPDATE:** `.bkit/core/prompts/bkit-build-plan-gaps-remediate.md`: Shared local stack line (line 68) names § Machine lock
   - **UPDATE:** `.bkit/instructions.md`: `shared-local-stack` refs and text re-synced (`pnpm instructions:show --file` before editing, `pnpm instructions:sync` after)
   - **UPDATE:** `CHANGELOG.md`: `[Unreleased]` entry — template renamed `bkit-machine-lock.sh`, named machine-wide locks, slots, lock order, `run` exits 73 / 75, 60 s no-TTY wait; adopted copies keep working; upgrade note: copy `bkit-machine-lock.sh` to `scripts/ci/` and wrap the test-running `bkit:gate:*` scripts to get the machine-wide tests lock
   - **DEPENDS ON:** 2
@@ -701,7 +767,7 @@ Build order: script (Groups 1-2) → engine (Group 3) → bkit's wrapped gates +
 
 <!-- bkit:group 3 start -->
 
-### TASK GROUP 3: `bkit tests run` reads the tests-lock outcome of a wrapped gate
+### TASK GROUP 3: `bkit tests run` and `bkit tests changed` read the tests-lock outcome of a wrapped gate
 
 <!-- bkit:task 4 start -->
 
@@ -711,11 +777,12 @@ Build order: script (Groups 1-2) → engine (Group 3) → bkit's wrapped gates +
   - **UPDATE:** `.bkit/core/engine/commands/lib.ts`: exports `wholeNumber` (moved from `runs.ts`)
   - **UPDATE:** `.bkit/core/engine/commands/workflow/runs.ts`: imports `wholeNumber` from `../lib.js`
   - **DELETE:** `wholeNumber` in `.bkit/core/engine/commands/workflow/runs.ts`: moved to `lib.ts`
-  - **UPDATE:** `.bkit/core/engine/commands/workflow/tests.test.ts`: PASS-case expected output (exact `toEqual`, line ~136) gains `lockHolder: null`; the tests below
+  - **UPDATE:** `.bkit/core/engine/commands/workflow/tests.test.ts`: PASS-case expected output (exact `toEqual` at line 135 in `it("PASS: runs the gate through the package runner, …")`, which already holds `row: null`) gains `lockHolder: null`; the tests below
   - **READ:** `runsCommand` in `.bkit/core/engine/commands/workflow/runs.ts`: the `--budget-s` / exit 81 pattern to mirror
+  - **UPDATE:** `.bkit/core/.bkit/cli.md`: `tests` `run` row regenerated with `pnpm cli:sync` (new `--lock-wait-s` flag and summary); `.bkit/cli.md` mirrored by `bkit install`
   - **UPDATE:** `dist/cli.js`: `pnpm build` output (all of `dist/`)
   - **DEPENDS ON:** 2
-  - **DONE WHEN:** `pnpm vitest run .bkit/core/engine/commands/workflow/tests.test.ts .bkit/core/engine/commands/workflow/runs.test.ts .bkit/core/engine/commands/lib.test.ts .bkit/core/engine/commands/conventions.test.ts` passes; `node dist/cli.js tests run --help` lists `--lock-wait-s`, the output key `lockHolder` and exit 81; `grep -c 'const wholeNumber' .bkit/core/engine/commands/workflow/runs.ts` prints 0
+  - **DONE WHEN:** `pnpm vitest run .bkit/core/engine/commands/workflow/tests.test.ts .bkit/core/engine/commands/workflow/runs.test.ts .bkit/core/engine/commands/lib.test.ts .bkit/core/engine/commands/conventions.test.ts .bkit/core/engine/tools/cli-doc.test.ts` passes; `node dist/cli.js tests run --help` lists `--lock-wait-s`, the output key `lockHolder` and exit 81; `grep -c 'const wholeNumber' .bkit/core/engine/commands/workflow/runs.ts` prints 0; `grep -c 'lock-wait-s' .bkit/core/.bkit/cli.md` prints >= 1; `bkit install` then `bkit check` reports no drift (`.bkit/cli.md` mirror in sync)
   - **TEST FIRST:**
     - `.bkit/core/engine/commands/workflow/tests.test.ts` `a 75 exit is a lock wait only when the log's give-up line names the tests lock and this run` fails on a tests-lock give-up read as the gate's own FAIL
     - `.bkit/core/engine/commands/workflow/tests.test.ts` `a gate whose nested lock gives up (exit 75, give-up line for another lock) is never exit 81` fails on a nested lock's give-up read as a tests-lock wait
@@ -727,21 +794,23 @@ Build order: script (Groups 1-2) → engine (Group 3) → bkit's wrapped gates +
 <!-- bkit:task 5 start -->
 
 - [ ] **TASK 5:** `bkit tests run` passes the wait and its run name to a wrapped gate and maps its lock exits; single-file runs never wait
-  - **UPDATE:** `testsCommand` in `.bkit/core/engine/commands/workflow/tests.ts`: gate argv unchanged (the engine never executes the lock script); gate env gains `LOCAL_STACK_LOCK_WAIT_S` = `--lock-wait-s` and `LOCAL_STACK_LOCK_WHO` = `bkit tests run <gate>[ <fid>][ <step>]`; `classifyLockExit` → `lock-wait`: print the `[machine-lock]` lines, emit `lockHolder`, no artifact, return `EXIT.AGENT_WAIT`; → `could-not-run`: `EXIT_COULD_NOT_RUN` naming path + reason; `red` / `green` unchanged
+  - **UPDATE:** `testsCommand` in `.bkit/core/engine/commands/workflow/tests.ts`: gate argv unchanged (the engine never executes the lock script); gate env gains `LOCAL_STACK_LOCK_WAIT_S` = `--lock-wait-s` and `LOCAL_STACK_LOCK_WHO` = `bkit tests run <gate>[ <fid>][ <step>]`; `classifyLockExit` → `lock-wait`: print the `[machine-lock]` lines, emit `lockHolder`, no artifact, return `EXIT.AGENT_WAIT`; → `could-not-run`: `EXIT_COULD_NOT_RUN` naming path + reason; `red` / `green` unchanged. The `--file` `test-run` row is written as today, so a lock-wait run still appends one until TASK 10 changes that with its own test (Open Question 12); `bkit tests changed` is TASK 10's too (Open Question 11)
   - **READ:** `runToLog` in `.bkit/core/engine/commands/workflow/tests.ts`: argv + env the gate runs with
-  - **CREATE:** `.bkit/core/engine/commands/workflow/tests-lock.integration.test.ts`: the tests below, in a temp consumer checkout with the template copied to `scripts/ci/bkit-machine-lock.sh` and a stub `bkit:gate:*` (records its start / end and env) wrapped as `bash scripts/ci/bkit-machine-lock.sh run --lock tests -- …`, `bkit:test:file` unwrapped, real lock holders of the template script, `bkit` spawned via `requireTsx()`, `tierTimeouts(true)` budgets, holder-file polling
+  - **READ:** `testsCommand` in `.bkit/core/engine/commands/workflow/tests.ts`: the `red` verb's required `--file` (an existing `status.jsonl`), `--workflow`, `--group`, `--plan`, `--log`; it runs each open task's TEST FIRST test of the group through `bkit:test:file`
+  - **CREATE:** `.bkit/core/engine/commands/workflow/tests-lock.integration.test.ts`: the tests below, in a temp consumer git checkout with the template copied to `scripts/ci/bkit-machine-lock.sh`, a stub `bkit:gate:*` (records its start / end and env) wrapped as `bash scripts/ci/bkit-machine-lock.sh run --lock tests -- …`, `bkit:test:file` unwrapped (writes a JUnit report holding one failing case for the planned test), a temp plan with one `<!-- bkit:group 1 start -->` group holding one open task block whose `**TEST FIRST:**` names that test file and test, an empty `status.jsonl`, real lock holders of the template script, `bkit` spawned via `requireTsx()`, `tierTimeouts(true)` budgets, holder-file polling
   - **UPDATE:** `.bkit/shared/docs/testing.md`: new § Tests lock (wrapped `bkit:gate:*` scripts take it for the whole gate; light runs, nested wraps and `CI` skip it; `BKIT_TEST_SLOTS`, `BKIT_TEST_WORKERS`, `--lock-wait-s`, exit 81; raw callers see exit 75 + the holder line; no-TTY 60 s wait; an unwired repo takes no lock)
   - **UPDATE:** `docs/testing.md`: the same § Tests lock inside the `bkit:start` / `bkit:end` block (byte-identical to the shipped source); § Key test files row (below `bkit:end`) for `tests-lock.integration.test.ts`
   - **UPDATE:** `.bkit/core/.bkit/templates.md`: § Machine lock gains light vs heavy runs and "`bkit tests run` passes `--lock-wait-s` and its run name to a wrapped gate, maps 75 → 81 and 73 → 4"
   - **UPDATE:** `CHANGELOG.md`: `[Unreleased]` entry — `bkit tests run` passes `--lock-wait-s` and its run name to a wrapped gate, exit 81 when the gate gave up on the tests lock
+  - **UPDATE:** `.bkit/core/.bkit/cli.md`: `tests` `run` row regenerated with `pnpm cli:sync` when this task changes the verb's summary or flag help (the `--lock-wait-s` help names the env it sets); `.bkit/cli.md` mirrored by `bkit install`
   - **UPDATE:** `dist/cli.js`: `pnpm build` output (all of `dist/`)
   - **DEPENDS ON:** 4
-  - **DONE WHEN:** `pnpm vitest run .bkit/core/engine/commands/workflow/tests-lock.integration.test.ts .bkit/core/engine/commands/workflow/tests.test.ts .bkit/core/engine/commands/workflow/runs.test.ts` passes; `node dist/cli.js tests run --help` lists `--lock-wait-s` and exit 81; `grep -c 'bkit-machine-lock.sh' .bkit/core/engine/commands/workflow/tests.ts` prints 0 (the engine never executes the script); `bkit install` then `bkit check` reports no drift (shipped `docs/testing.md` block in sync)
+  - **DONE WHEN:** `pnpm vitest run .bkit/core/engine/commands/workflow/tests-lock.integration.test.ts .bkit/core/engine/commands/workflow/tests.test.ts .bkit/core/engine/commands/workflow/runs.test.ts .bkit/core/engine/tools/cli-doc.test.ts` passes; `node dist/cli.js tests run --help` lists `--lock-wait-s` and exit 81; `grep -c 'bkit-machine-lock.sh' .bkit/core/engine/commands/workflow/tests.ts` prints 0 (the engine never executes the script); `bkit install` then `bkit check` reports no drift (shipped `docs/testing.md` block and `.bkit/cli.md` mirror in sync)
   - **TEST FIRST:**
     - `.bkit/core/engine/commands/workflow/tests-lock.integration.test.ts` `tests run waits for a held tests lock and runs the gate once the holder finishes` fails on the gate starting while the lock is held
     - `.bkit/core/engine/commands/workflow/tests-lock.integration.test.ts` `tests run exits 81 naming the holder when the lock stays held past --lock-wait-s` fails on the gate running at once instead of exit 81
     - `.bkit/core/engine/commands/workflow/tests-lock.integration.test.ts` `tests run holds the tests lock for the whole gate, so a second tests run waits` fails on both gates running at once
-    - `.bkit/core/engine/commands/workflow/tests-lock.integration.test.ts` `tests red runs its test file without waiting for a held tests lock` fails if red is wired to the lock, or on the contrast `tests run --lock-wait-s=0` against the same held lock not exiting 81 (the lock is not really held)
+    - `.bkit/core/engine/commands/workflow/tests-lock.integration.test.ts` `tests red runs its test file without waiting for a held tests lock` fails if `tests red --file=<status.jsonl> --workflow=build --group=1 --plan=<temp plan> --log=<log>` waits on the held lock (it must finish with its planned test recorded `red` long before the holder ends), or on the contrast `tests run --lock-wait-s=0` against the same held lock not exiting 81 (the lock is not really held)
     - `.bkit/core/engine/commands/workflow/tests-lock.integration.test.ts` `tests run under CI=true never waits on a held tests lock` fails if the CI no-op is lost, or on the contrast run without `CI` not exiting 81 against the same held lock
     - `.bkit/core/engine/commands/workflow/tests-lock.integration.test.ts` `tests run under CI=1 never waits on a held tests lock` fails on `CI=1` read as unset and the call waiting
     - `.bkit/core/engine/commands/workflow/tests-lock.integration.test.ts` `tests run with an unwritable lock dir exits 4 naming the path` fails on exit 1 counted as a test failure
@@ -750,6 +819,36 @@ Build order: script (Groups 1-2) → engine (Group 3) → bkit's wrapped gates +
     - `.bkit/core/engine/commands/workflow/tests-lock.integration.test.ts` `the gate runs with BKIT_TEST_WORKERS and LOCAL_STACK_LOCK_OWNER_tests set, and a nested run --lock tests inside it does not wait` fails on the gate env lacking both variables, or `LOCAL_STACK_LOCK_WAIT_S` / `LOCAL_STACK_LOCK_WHO` not matching `--lock-wait-s` and this run
 
 <!-- bkit:task 5 end -->
+<!-- bkit:task 10 start -->
+
+- [ ] **TASK 10:** Lock waits reach `bkit tests changed` callers as exit 81 and leave no `test-run` row (Open Questions 11 and 12, written for recommended option A of each)
+  - **UPDATE:** `testsChangedVerb` in `.bkit/core/engine/commands/workflow/tests-changed.ts`: new flag `--lock-wait-s` (`wholeNumber` from `../lib.js`, default 60; bad value → `CommandError(EXIT.USAGE)` with `--lock-wait-s takes a whole number >= 0`); `runLogged` runs the gate with env `LOCAL_STACK_LOCK_WAIT_S` = `--lock-wait-s` and `LOCAL_STACK_LOCK_WHO` = `bkit tests changed <gate>`; the gate's exit and output go through `classifyLockExit` (TASK 4): `lock-wait` → emit `lockHolder`, return `EXIT.AGENT_WAIT` (81); `could-not-run` → exit 4 naming path + reason; else the current PASS / FAIL mapping; output gains `lockHolder` (null unless the wait gave up); summary names `81 tests lock held`
+  - **UPDATE:** `testsCommand` in `.bkit/core/engine/commands/workflow/tests.ts`: the `run` verb appends no `test-run` row under `--file` when `classifyLockExit` returns `lock-wait` (`row` null)
+  - **UPDATE:** `.bkit/core/engine/commands/workflow/tests-lock.integration.test.ts`: the integration tests below, with a stub `bkit:gate:changed` wrapped like the other stub gates
+  - **UPDATE:** `.bkit/core/engine/commands/workflow/tests-changed.test.ts`: the unit test below
+  - **UPDATE:** `.bkit/core/engine/audits/workflows/local-gate-audit.test.ts`: the guard below, driven by the `GATE_CALLERS` entries whose call is `--fallback=bkit:gate:*`
+  - **UPDATE:** `.bkit/core/prompts/bkit-build-plan-tasks.md`: Process step 10, which runs `bkit tests changed --fallback=bkit:gate:static`, gains **If** it exits 81 → another run holds the machine-wide tests lock: run it again; a wait is not a failure and no reason to edit code (`pnpm instructions:show --file bkit-build-plan-tasks.md` first)
+  - **UPDATE:** `.bkit/core/prompts/bkit-build-plan-gaps-remediate.md`: Process step 9's `bkit tests changed --fallback=bkit:gate:static-unit` gains the same line
+  - **UPDATE:** `.bkit/core/prompts/bkit-debug-failure-remediate.md`: Process step 8's `bkit tests changed --fallback=bkit:gate:static-unit` gains the same line
+  - **UPDATE:** `.bkit/core/prompts/bkit-build-plan-verify.md`: Process step 7's `bkit tests changed --base=origin/dev --fallback=bkit:gate:static-unit` gains the same line
+  - **UPDATE:** `.bkit/instructions.md`: re-synced (`pnpm instructions:sync`) when the exit-81 line is a shared clause
+  - **UPDATE:** `.bkit/core/.bkit/workflows.md`: § `status.jsonl` — workflow state SoT, `test-run` row — a run that exits 81 on the tests lock writes no row
+  - **UPDATE:** `.bkit/core/.bkit/templates.md`: § Machine lock names `bkit tests changed` beside `bkit tests run` (passes the wait and its run name, maps 75 → 81 and 73 → 4)
+  - **UPDATE:** `.bkit/shared/docs/testing.md`: § Tests lock names `bkit tests changed` and its exit 81
+  - **UPDATE:** `docs/testing.md`: the same § Tests lock text inside the `bkit:start` / `bkit:end` block (byte-identical to the shipped source)
+  - **UPDATE:** `CHANGELOG.md`: `[Unreleased]` entry — `bkit tests changed` gains `--lock-wait-s` and exit 81 when its gate gave up on the tests lock; a lock wait writes no `test-run` row
+  - **UPDATE:** `.bkit/core/.bkit/cli.md`: `tests` `changed` row regenerated with `pnpm cli:sync`; `.bkit/cli.md` mirrored by `bkit install`
+  - **UPDATE:** `dist/cli.js`: `pnpm build` output (all of `dist/`)
+  - **DEPENDS ON:** 5
+  - **DONE WHEN:** `pnpm vitest run .bkit/core/engine/commands/workflow/tests-lock.integration.test.ts .bkit/core/engine/commands/workflow/tests-changed.test.ts .bkit/core/engine/commands/workflow/tests.test.ts .bkit/core/engine/audits/workflows/local-gate-audit.test.ts .bkit/core/engine/tools/cli-doc.test.ts .bkit/core/engine/tools/instructions.test.ts` passes; `node dist/cli.js tests changed --help` lists `--lock-wait-s`, the output key `lockHolder` and exit 81; `grep -c 'bkit-machine-lock.sh' .bkit/core/engine/commands/workflow/tests-changed.ts` prints 0 (the engine never executes the script); `bkit install` then `bkit check` reports no drift
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/tests-lock.integration.test.ts` `tests run --file appends no test-run row when it exits 81 on a held tests lock` fails on a `test-run` row appended for the wait
+    - `.bkit/core/engine/commands/workflow/tests-lock.integration.test.ts` `tests changed exits 81 naming the holder when its wrapped gate gives up on the tests lock` fails on exit 1 with verdict FAIL and no `lockHolder`
+    - `.bkit/core/engine/commands/workflow/tests-lock.integration.test.ts` `tests changed with an unwritable lock dir exits 4 naming the path` fails on exit 1 counted as a test failure
+    - `.bkit/core/engine/commands/workflow/tests-changed.test.ts` `tests changed with a --lock-wait-s that is not a whole number exits 2 and runs no gate` fails on the generic unknown-flag error with no `--lock-wait-s takes a whole number >= 0` message
+    - `.bkit/core/engine/audits/workflows/local-gate-audit.test.ts` `every prompt that runs bkit tests changed routes exit 81 to a re-run of the command` fails on a `--fallback=bkit:gate:*` caller whose `bkit tests changed` step carries no exit-81 line
+
+<!-- bkit:task 10 end -->
 <!-- bkit:group 3 end -->
 
 <!-- bkit:group 4 start -->
@@ -758,25 +857,26 @@ Build order: script (Groups 1-2) → engine (Group 3) → bkit's wrapped gates +
 
 <!-- bkit:task 6 start -->
 
-- [ ] **TASK 6:** bkit's root `package.json` wraps its test-running gates in the tests lock
-  - **UPDATE:** `package.json`: `bkit:gate:static-unit`, `bkit:gate:static-unit-integration` and `bkit:gate:install-static-unit-build` each become `bash scripts/ci/bkit-machine-lock.sh run --lock tests -- sh -c '<current command>'`; nested gates (`static-unit-integration` → `static-unit`, `install-static-unit-build` → `static-unit`) never self-deadlock: the inner wrap sees the live `LOCAL_STACK_LOCK_OWNER_tests` and runs unlocked; `bkit:gate:min` / `static` / `format` unchanged (no test suite)
-  - **UPDATE:** `.bkit/core/engine/audits/repo/package-json.test.ts`: the guard test below
+- [ ] **TASK 6:** bkit's root `package.json` wraps its test-running gates in the tests lock (`bkit:gate:changed` included, per Open Question 13's recommended option A)
+  - **UPDATE:** `package.json`: `bkit:gate:static-unit`, `bkit:gate:static-unit-integration` and `bkit:gate:install-static-unit-build` (lines 59-61) each become `bash scripts/ci/bkit-machine-lock.sh run --lock tests -- sh -c '<current command>'`; `bkit:gate:changed` (line 65) becomes `bash scripts/ci/bkit-machine-lock.sh run --lock tests -- node scripts/gate/bkit-gate-changed.mjs`, with no `sh -c`, so the file arguments `bkit tests changed` appends reach the script; nested gates (`static-unit-integration` → `static-unit`, `install-static-unit-build` → `static-unit`) and the vitest runs inside `bkit-gate-changed.mjs` never self-deadlock: the inner wrap or global setup sees the live `LOCAL_STACK_LOCK_OWNER_tests` and runs unlocked; `bkit:gate:min` / `static` / `format` unchanged (no test suite)
+  - **UPDATE:** `.bkit/core/engine/audits/repo/package-json.test.ts`: the guard test below, listing the four wrapped gates
   - **UPDATE:** `.bkit/core/engine/commands/workflow/tests-lock.integration.test.ts`: the nested-gate test below — a stub outer gate calling a stub inner gate, both wrapped with the prefix read from bkit's own `bkit:gate:static-unit-integration` / `bkit:gate:static-unit` values, run through `bkit tests run`
-  - **UPDATE:** `docs/testing.md`: § Stack (below `bkit:end`) — bkit's test-running gates hold the `tests` lock through `scripts/ci/bkit-machine-lock.sh`; a nested gate runs unlocked under its parent
+  - **UPDATE:** `docs/testing.md`: § Stack (below `bkit:end`) — bkit's test-running gates, `bkit:gate:changed` included (its **Changed files** bullet), hold the `tests` lock through `scripts/ci/bkit-machine-lock.sh`; a nested gate runs unlocked under its parent
   - **DEPENDS ON:** 5
-  - **DONE WHEN:** `pnpm vitest run .bkit/core/engine/audits/repo/package-json.test.ts .bkit/core/engine/commands/workflow/tests-lock.integration.test.ts .bkit/core/engine/audits/repo/dogfood-templates.test.ts` passes; with a `sleep 30` holder of the `tests` lock, `LOCAL_STACK_LOCK_WAIT_S=2 pnpm bkit:gate:static-unit` exits 75 naming the holder; with no holder, `pnpm bkit:gate:static-unit-integration` passes and its output has no `[machine-lock] ⏳` line
+  - **DONE WHEN:** `pnpm vitest run .bkit/core/engine/audits/repo/package-json.test.ts .bkit/core/engine/commands/workflow/tests-lock.integration.test.ts .bkit/core/engine/audits/repo/dogfood-templates.test.ts` passes; with a `sleep 30` holder of the `tests` lock, `LOCAL_STACK_LOCK_WAIT_S=2 pnpm bkit:gate:static-unit` exits 75 naming the holder; with no holder, `pnpm bkit:gate:static-unit-integration` passes and its output has no `[machine-lock] ⏳` line; with no holder, `pnpm bkit:gate:changed package.json` exits 0, its output shows the script received `package.json`, and it has no `[machine-lock] ⏳` line
   - **TEST FIRST:**
     - `.bkit/core/engine/commands/workflow/tests-lock.integration.test.ts` `a wrapped gate that runs another wrapped gate runs the inner one unlocked, never waiting on itself` fails on bkit's gate values carrying no wrap (a contrast `tests run --lock-wait-s=0` during the outer gate does not exit 81), or on the inner wrap waiting on its own parent until `--lock-wait-s` and the run exiting 81
-    - `.bkit/core/engine/audits/repo/package-json.test.ts` `bkit's root package.json wraps every test-running bkit:gate script in the tests lock` fails on `bkit:gate:static-unit`, `bkit:gate:static-unit-integration` or `bkit:gate:install-static-unit-build` running unwrapped
+    - `.bkit/core/engine/audits/repo/package-json.test.ts` `bkit's root package.json wraps every test-running bkit:gate script in the tests lock` fails on `bkit:gate:static-unit`, `bkit:gate:static-unit-integration`, `bkit:gate:install-static-unit-build` or `bkit:gate:changed` running unwrapped, or on `bkit:gate:changed` wrapped in `sh -c` (which drops the file arguments)
 
 <!-- bkit:task 6 end -->
 <!-- bkit:task 7 start -->
 
 - [ ] **TASK 7:** Workflows route exit 81 from the test gates back to the turn loop
-  - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: Step 8 sub-step 8 (group gate) `Route:` and Step 12 sub-step 2 `Decide` gain `**If** exit 81 → end turn, re-run this block.` before `**Else**` (read `.bkit/authoring.md` § Prompts and Workflows + § Workflows Only first; `pnpm instructions:show --file bkit-build.md` before editing sentences)
-  - **UPDATE:** `.bkit/core/workflows/bkit-debug.md`: Step 3 sub-step 1 `Decide` gains the same route (`pnpm instructions:show --file bkit-debug.md` first)
-  - **UPDATE:** `.bkit/core/.bkit/workflows.md`: rationale bullet beside **CI-Dispatch poll** — `bkit tests run` exits 81 while the machine-wide tests lock is held past `--lock-wait-s`; every `tests run` block routes 81 → end turn, re-run; no re-run ceiling (Open Question 9), the holder line's pid and start time let the agent report a stale holder
-  - **UPDATE:** `.bkit/core/engine/audits/workflows/local-gate-audit.test.ts`: a helper capturing the `Route:` / `Decide` list after each `tests run` block's closing fence (`testBlocks` returns only the fenced body); the test below, per `PROBES` workflow
+  - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: Step 8 — Plan Verify sub-step 8 (group gate) `Route:` (lines 651-653) and Step 12 — Run Tests sub-step 2 `Decide` (lines 866-869) gain `**If** exit 81 → end turn, re-run this block.` before `**Else**` (read `.bkit/authoring.md` § Prompts and Workflows + § Workflows Only first; `pnpm instructions:show --file bkit-build.md` before editing sentences)
+  - **UPDATE:** `.bkit/core/workflows/bkit-debug.md`: Step 3 — Run Tests sub-step 1 `Decide` (lines 319-322) gains the same route (`pnpm instructions:show --file bkit-debug.md` first)
+  - **UPDATE:** `.bkit/core/prompts/bkit-build-plan-gaps-remediate.md`: Process step 9, which runs the `Group gate` command that `bkit-build.md` Step 9 — Plan Gaps Remediate sub-step 2 puts in the subagent's `Context:` (line 711), gains a sub-bullet: **If** the group gate exits 81 → another run holds the machine-wide tests lock; run the same command again, and count the wait as no gap and no reason to edit code (`pnpm instructions:show --file bkit-build-plan-gaps-remediate.md` first). This site sits in a `Context:` line, not a fenced block, so the block guard cannot see it; the second test below covers it
+  - **UPDATE:** `.bkit/core/.bkit/workflows.md`: rationale bullet beside **CI-Dispatch poll** — `bkit tests run` exits 81 while the machine-wide tests lock is held past `--lock-wait-s`; every `tests run` block routes 81 → end turn, re-run, and a subagent handed a `tests run` command re-runs it; no re-run ceiling (Open Question 9), the holder line's pid and start time let the agent report a stale holder
+  - **UPDATE:** `.bkit/core/engine/audits/workflows/local-gate-audit.test.ts`: a helper capturing the `Route:` / `Decide` list after each `tests run` block's closing fence (`testBlocks`, lines 185-188, returns only the fenced body), applied per `PROBES` entry (lines 166-183, keyed by `step`) through the same `--step=` filter its `describe` uses; a check that each `tests run` command in a workflow `Context:` line (today `Group gate` in `bkit-build.md` Step 9) has an exit-81 line in the prompt that `Context:` line's sub-step invokes; the tests below. `GATE_CALLERS` (line 107) keeps its entries, which list the four prompts' `--fallback=bkit:gate:*` calls, the hook's and `bkit-ship-conflict-resolve.md`'s `pnpm bkit:gate:*` calls
   - **UPDATE:** `.bkit/core/engine/render/__snapshots__/bkit-build.none.txt`: regenerated after reviewing the diff (`vitest -u`, per `trackers.test.ts`)
   - **UPDATE:** `.bkit/core/engine/render/__snapshots__/bkit-debug.none.txt`: regenerated after reviewing the diff
   - **UPDATE:** `.bkit/instructions.md`: re-synced (`pnpm instructions:sync`) if the route line is a tracked clause
@@ -784,6 +884,7 @@ Build order: script (Groups 1-2) → engine (Group 3) → bkit's wrapped gates +
   - **DONE WHEN:** `pnpm vitest run .bkit/core/engine/audits/workflows/local-gate-audit.test.ts .bkit/core/engine/audits/workflows/workflow-shape.test.ts .bkit/core/engine/render/trackers.test.ts .bkit/core/engine/tools/instructions.test.ts` passes; `bkit install` regenerates the mirrors and `bkit check` reports no drift
   - **TEST FIRST:**
     - `.bkit/core/engine/audits/workflows/local-gate-audit.test.ts` `every tests run call site routes exit 81 to a re-run of its block` fails on a block whose `Else` sends exit 81 to the Failure Path
+    - `.bkit/core/engine/audits/workflows/local-gate-audit.test.ts` `a tests run command a workflow hands a subagent in Context is re-run on exit 81 by that subagent's prompt` fails on `bkit-build-plan-gaps-remediate.md` running the `Group gate` command until exit 0 with no exit-81 line, or on the check finding no `Context:` line that hands over a `tests run` command
 
 <!-- bkit:task 7 end -->
 <!-- bkit:group 4 end -->
@@ -852,14 +953,14 @@ Build order: script (Groups 1-2) → engine (Group 3) → bkit's wrapped gates +
 ### Automated Tests
 
 - [ ] **Full Local Gate Suite:** `pnpm bkit:gate:static-unit-integration` and `node dist/cli.js check` pass.
-- [ ] **Test Synchronization:** `.bkit/core/engine/commands/workflow/tests.test.ts` (in-process `tests run` with unwrapped stub gates; PASS output with `lockHolder: null`), `.bkit/core/engine/commands/workflow/runs.test.ts` and `lib.test.ts` (`wholeNumber` move), `.bkit/core/engine/commands/conventions.test.ts` (no 81 in `exitCodes`), `.bkit/core/engine/render/trackers.test.ts` (none-render snapshots), `package-json.test.ts`, `husky-pre-push.integration.test.ts` and `local-gate-audit.test.ts` `GATE_CALLERS` green (hook and prompts unchanged); no E2E suite in bkit.
+- [ ] **Test Synchronization:** `.bkit/core/engine/commands/workflow/tests.test.ts` (in-process `tests run` with unwrapped stub gates; PASS output with `lockHolder: null`), `.bkit/core/engine/commands/workflow/runs.test.ts` and `lib.test.ts` (`wholeNumber` move), `.bkit/core/engine/commands/conventions.test.ts` (no 81 in `exitCodes`), `.bkit/core/engine/render/trackers.test.ts` (none-render snapshots), `package-json.test.ts`, `husky-pre-push.integration.test.ts`, `tests-changed.test.ts`, `cli-doc.test.ts` (`pnpm cli:sync` output current) and `local-gate-audit.test.ts` `GATE_CALLERS` green (hook unchanged; the `--fallback=` prompts keep their calls and gain the exit-81 line); no E2E suite in bkit.
 - [ ] **Dogfood (`.agents/rules.md` § Verify before complete):** `pnpm build && pnpm pack`; install the tarball into a fresh scratch consumer; copy `.bkit/templates/scripts/ci/bkit-machine-lock.sh` to `scripts/ci/` and set `bkit:gate:static-unit` to `bash scripts/ci/bkit-machine-lock.sh run --lock tests -- sleep 30`; two concurrent `node_modules/.bin/bkit tests run --gate=bkit:gate:static-unit --log=a.log` / `--log=b.log --lock-wait-s=5` → the second exits 81 printing the first's holder line; inspect the on-disk footprint (`~/.cache/bkit/machine-lock/` only; nothing under the scratch consumer from the engine).
 - [ ] **Build Configuration:** `tsconfig.json` still excludes `**/*.test.ts`; `vitest.test-lock.ts` stays outside `dist/` (root helper, not an engine entry).
 - [ ] **Integration (`machine-lock.integration.test.ts`):** its Derived Test Matrix rows + every carried-over stack-lock test; real bash / perl / flock, per-test `XDG_CACHE_HOME`.
-- [ ] **Integration (`tests-lock.integration.test.ts`):** its matrix rows (TASKS 5, 6); real holders and a real wrapped gate, `bkit` via `requireTsx()`.
-- [ ] **Unit (`tests.test.ts`):** lock-exit classification and `--lock-wait-s` rows.
-- [ ] **Unit (`package-json.test.ts`):** bkit's test gates wrapped.
-- [ ] **Unit (`local-gate-audit.test.ts`):** exit-81 routing guard (workflow blocks).
+- [ ] **Integration (`tests-lock.integration.test.ts`):** its matrix rows (TASKS 5, 6, 10); real holders and a real wrapped gate, `bkit` via `requireTsx()`.
+- [ ] **Unit (`tests.test.ts`, `tests-changed.test.ts`):** lock-exit classification and `--lock-wait-s` rows.
+- [ ] **Unit (`package-json.test.ts`):** bkit's test gates wrapped, `bkit:gate:changed` included.
+- [ ] **Unit (`local-gate-audit.test.ts`):** exit-81 routing guards (workflow blocks, the Step 9 `Context:` `Group gate`, the `bkit tests changed` caller prompts).
 - [ ] **Unit + Integration (`vitest-test-lock*.test.ts`):** their matrix rows.
 - [ ] **Run all tests:** `pnpm vitest run` (full, never scoped) and `pnpm bkit:test:bats` pass.
 
