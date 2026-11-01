@@ -26,12 +26,14 @@ _(above the bkit list — yours, never overwritten)_
 _(refreshed 2026-11-01T04:39:11Z)_
 _(refreshed 2026-10-31T05:19:09Z)_
 _(refreshed 2026-10-31T05:19:10Z)_
+_(refreshed 2026-11-01T06:50:36Z)_
 
 ### Design
 
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 546-knowledge-store-ledger | 546-knowledge-store-ledger | 1793515836097 |
 | 80-audit-workflow | 80-audit-workflow | 1785311294164 |
 
 ### Plan
