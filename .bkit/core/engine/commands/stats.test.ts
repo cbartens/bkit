@@ -164,4 +164,11 @@ describe("bkit stats", () => {
     expect(fs.readFileSync(path.join(root, STATS_REPORT), "utf-8")).toBe(first);
     expect(first.startsWith("# bkit stats\n")).toBe(true);
   });
+
+  it("opens with a rules box that marks the file generated", () => {
+    const md = buildRepoStats(root);
+
+    expect(md.startsWith("# bkit stats\n\n> [!CAUTION]\n> **Purpose:** ")).toBe(true);
+    expect(md).toContain("> - Generated — do not edit. `bkit stats` rewrites this file.");
+  });
 });

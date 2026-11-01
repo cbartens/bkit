@@ -265,7 +265,7 @@
     ".cursor/agents/bkit-build-plan-convert.md": "cd9f01d39d1c06a2c1cb8b70d37522469bdcaf6becd2d4dd57783267a93517a0",
     ".opencode/agents/bkit-build-plan-convert.md": "c7d4f872ed7d8d59c6a3f70f9c8d5a0b2d0b0c8f44234d1414e892a4b54d186f",
     ".codex/agents/bkit-build-plan-convert.toml": "05d6950764be9af8b3517fe6c755747b67c0cdb2908ec4d4be0e8b2247b4963e",
-    ".bkit/authoring.md": "26d627c08b087fd123c3b2f74a0b889e07d9d3b3fd1fcfe96e8a46f02c6740e3",
+    ".bkit/authoring.md": "bd89415378ed538a833d65c87d52596cbb09abb256c31187f01a9418abc3f697",
     ".codex/hooks/bkit-rules.cjs": "37b3c590ada277b78a246908dadddbb31c64798ca5d300e57b193e314620da67",
     ".opencode/plugin/bkit-rules.js": "6769eacc40fc2856faa9265c5665d5e4426b23c21e3df1e4f177ed6422221824",
     ".bkit/router.md": "86d116ff31947df4b7f52b76b3e3928bc3ac5bfad54ddf7c4a9ae53d2b0cf18a",

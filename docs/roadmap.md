@@ -5,8 +5,10 @@
 >
 > **Rules:**
 >
-> - The `bkit` tables between the `bkit:roadmap-status` markers are generated: do not hand-edit them; append to `.bkit/issues.jsonl` instead.
+> - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit the parts that are yours.
 > - Text above the first marker and the `## Notes` blocks are yours; bkit never overwrites them.
+> - Everything between the `bkit:roadmap-status` markers is generated: `bkit roadmap fold` rewrites it on every run, so a hand edit there is lost. Append to `.bkit/issues.jsonl` instead.
+> - Everything between the `bkit:roadmap-analysis` markers belongs to `@bkit-utility-update-roadmap`, which rewrites it on every run.
 
 <!-- bkit:roadmap-notes-pre start -->
 ## Notes

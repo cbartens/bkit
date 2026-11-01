@@ -7,9 +7,24 @@
 >
 > **Rules:**
 >
-> - Read § How to Read This File and § All Agent-Read Files, then every section that applies to the kind of file you are editing or the change you are making. Each section opens by saying when it applies.
+> - Find the file you are editing in § Which Sections Apply, and read the sections its row lists. § How to Read This File explains the shape of every rule.
 > - Before you add a rule, search this file and `.agents/rules.md` for it. Each rule has one home.
 > - This file ships to every project that installs bkit. Describe the current setup only.
+
+## Which Sections Apply
+
+Take the first row that matches the file you are editing, and read every section it lists. A path matches at any depth, so `.bkit/core/docs/templates/bkit-plan.md` takes the `docs/templates/*.md` row.
+
+<!-- prettier-ignore -->
+| File you are editing | Sections |
+| --- | --- |
+| `.bkit/core/workflows/*.md` | § All Agent-Read Files, § Prompts and Workflows, § Output Formatting, § Workflows Only |
+| `.bkit/core/prompts/*.md` | § All Agent-Read Files, § Prompts and Workflows, § Output Formatting, § Prompts Only |
+| `docs/templates/*.md` | § All Agent-Read Files, § Output Formatting, § Doc Templates |
+| `.agents/**`, `.bkit/*.md`, `docs/*.md` | § All Agent-Read Files, § Docs |
+| Any other file under `.bkit/` or `docs/`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md` | § All Agent-Read Files |
+
+When you add or change a rule in this file, read § Who Says What as well.
 
 ## How to Read This File
 

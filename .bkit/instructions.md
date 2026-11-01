@@ -2279,55 +2279,15 @@ Rules below `bkit:end` in `.agents/rules.md`: bkit's own, never shipped; no ship
 **Edit source:** ONLY edit files in `.bkit/core/*`, `.bkit/shared/*`, `.bkit/templates/*`, and `.agents/*` then mirror; NEVER edit mirrors directly in `.claude/*`, `.cursor/*`, `.opencode/*`.
 ```
 
-### install-to-mirror
-
-- rule: Project Rules › Universal Rules › Repo Authoring
-
-```text
-**Install to mirror:** After editing `.bkit/core/workflows/*`, `.bkit/core/prompts/*` or `.bkit/core/.agents/*`, run `bkit install` to regenerate the mirrors in `.claude/`, `.cursor/`, `.opencode/`, `.codex/` and `.agents/`, once at the end of the session rather than after each edit.
-```
-
-```retired
-**Install to mirror:** After editing `.bkit/core/workflows/*` or `.bkit/core/prompts/*`, run `bkit install` to regenerate the `.claude/`, `.cursor/` and `.opencode/` mirrors, once at the end of the session rather than after each edit.
-**Install to mirror:** After editing `.bkit/core/workflows/*` or `.bkit/core/prompts/*`, run `bkit install` to regenerate the `.claude/`, `.cursor/` and `.opencode/` mirrors. Batch it once at the end of the session; NEVER per edit.
-**Install to mirror:** After editing `.bkit/core/workflows/*` or `.bkit/core/prompts/*` run `bkit install` to regenerate `.claude/`, `.cursor/`, and `.opencode/` mirrors. Batch once at session end; NEVER per edit.
-```
-
-### workflow-edits
+### authoring-sections
 
 - rule: Project Rules › Universal Rules › Repo Authoring
 - refs:
-  - `.bkit/core/workflows/*.md`
-  - `.bkit/authoring.md` § Prompts and Workflows
-  - `.bkit/authoring.md` § Workflows Only
+  - `.bkit/authoring.md` § Which Sections Apply
+  - `.bkit/authoring.md` § Before You Save
 
 ```text
-**Workflow edits:** Before editing `.bkit/core/workflows/*.md`, read `.bkit/authoring.md` § Prompts and Workflows and § Workflows Only, and follow them. Update `.bkit/workflows.md` in the same change; index drift is a regression.
-```
-
-```retired
-**Workflow edits:** Before editing `.bkit/core/workflows/*.md` → ALWAYS read `.bkit/authoring.md` § Prompts and Workflows and § Workflows Only and follow them; update `.bkit/workflows.md` in the same change; index drift = regression.
-**Workflow edits:** Editing `.bkit/core/workflows/*.md` → ALWAYS read `.bkit/authoring.md` § Prompts and Workflows and § Workflows Only first and follow; update `.bkit/workflows.md` in the same change; index drift = regression.
-**Workflow edits:** Editing `.bkit/core/workflows/*.md` → ALWAYS read `.bkit/workflows.md` § Workflow Authoring Rules first and follow; update `.bkit/workflows.md` in the same change; index drift = regression.
-```
-
-### prompt-edits
-
-- rule: Project Rules › Universal Rules › Repo Authoring
-- distinct-from: `workflow-edits`
-- refs:
-  - `.bkit/core/prompts/*.md`
-  - `.bkit/authoring.md` § Prompts and Workflows
-  - `.bkit/authoring.md` § Prompts Only
-
-```text
-**Prompt edits:** Before editing `.bkit/core/prompts/*.md`, read `.bkit/authoring.md` § Prompts and Workflows and § Prompts Only, and follow them. Update `.bkit/prompts.md` in the same change; index drift is a regression.
-```
-
-```retired
-**Prompt edits:** Before editing `.bkit/core/prompts/*.md` → ALWAYS read `.bkit/authoring.md` § Prompts and Workflows and § Prompts Only and follow them; update `.bkit/prompts.md` in the same change; index drift = regression.
-**Prompt edits:** Editing `.bkit/core/prompts/*.md` → ALWAYS read `.bkit/authoring.md` § Prompts and Workflows and § Prompts Only first and follow; update `.bkit/prompts.md` in the same change; index drift = regression.
-**Prompt edits:** Editing `.bkit/core/prompts/*.md` → ALWAYS read `.bkit/prompts.md` § Prompt Authoring Rules first and follow; update `.bkit/prompts.md` in the same change; index drift = regression.
+**Authoring sections:** Before editing an agent-read file, read the `.bkit/authoring.md` sections that § Which Sections Apply lists for it, and follow them. Before you finish, work through § Before You Save.
 ```
 
 ### shared-instructions
@@ -2377,37 +2337,6 @@ Rules below `bkit:end` in `.agents/rules.md`: bkit's own, never shipped; no ship
 **Provider parity:** All agent-facing changes (workflows, prompts, permissions, hooks, shell) MUST work across ALL providers; verify each, keep shell POSIX-portable.
 ```
 
-### workflow-bash-blocks
-
-- rule: Project Rules › Universal Rules › Repo Authoring
-- refs:
-  - `.bkit/core/workflows/*.md`
-
-```text
-**Workflow bash blocks:** In fenced bash inside `.bkit/core/workflows/*.md`, quote variables instead of relying on shell word-splitting, and do not use an `ls` or glob that aborts when nothing matches. Put anything that needs bash-only features (arrays, `--pathspec-from-file`, process substitution) or argument parsing in a `bkit <noun> <verb>` command (`.bkit/core/engine/commands/`).
-```
-
-```retired
-**Workflow bash blocks:** In fenced bash inside `.bkit/core/workflows/*.md`, NEVER rely on unquoted shell word-splitting or on an `ls` / glob that aborts when unmatched. Anything needing bash-only features (arrays, `--pathspec-from-file`, process substitution) or argument parsing goes in a `bkit <noun> <verb>` command (`.bkit/core/engine/commands/`).
-**Workflow bash blocks:** Host shell is not guaranteed bash. NEVER rely on unquoted shell word-splitting or an `ls`/glob that aborts when unmatched inside `.bkit/core/workflows/*.md` fenced bash. Anything needing bash-only features (arrays, `--pathspec-from-file`, process substitution) or argument parsing goes in a `bkit <noun> <verb>` command (`.bkit/core/engine/commands/`).
-**Workflow bash blocks:** Host shell is NOT guaranteed bash. NEVER rely on unquoted shell word-splitting or an `ls`/glob that aborts when unmatched inside `.bkit/core/workflows/*.md` fenced bash. Anything needing bash-ONLY features (arrays, `--pathspec-from-file`, process substitution) or argument parsing goes in a `bkit <noun> <verb>` command (`.bkit/core/engine/commands/`).
-```
-
-### adding-migrations
-
-- rule: Project Rules › Universal Rules › Repo Authoring
-- refs:
-  - `docs/migrations.md`
-
-```text
-**Migrations:** Add a migration only when asked. **If** a change breaks old installs → propose a migration, and build it ONLY after the owner confirms. Each migration is idempotent, sits in the install / upgrade path, is tested on the old shape and has a row in `docs/migrations.md`.
-```
-
-```retired
-**Migrations:** NEVER add one unasked. A change breaks old installs → propose a migration, and build it ONLY on confirmation. Each migration is idempotent, sits in the install / upgrade path, is tested on the old shape and has a row in `docs/migrations.md`.
-**Migrations:** NEVER add unasked; old installs break → propose, build ONLY on confirmation. Each one idempotent, in install / upgrade path, tested on old shape, row in `docs/migrations.md`.
-```
-
 ### stack-agnostic
 
 - rule: Project Rules › Universal Rules › Repo Authoring
@@ -2422,6 +2351,22 @@ Rules below `bkit:end` in `.agents/rules.md`: bkit's own, never shipped; no ship
 ```retired
 **Stack-agnostic:** The engine, workflows and prompts NEVER assume an app stack; a stack-specific need → ONLY a `package.json` script name plus its I/O contract (`.bkit/workflows.md` § Local gate scripts); the consumer owns the implementation.
 **Stack-agnostic:** Engine / workflows / prompts NEVER assume an app stack; stack-specific need → `package.json` script name + I/O contract ONLY (`.bkit/workflows.md` § Local gate scripts); consumer owns implementation.
+```
+
+### workflow-bash-blocks
+
+- rule: Project Rules › Universal Rules › Repo Authoring
+- refs:
+  - `.bkit/core/workflows/*.md`
+
+```text
+**Workflow bash blocks:** In fenced bash inside `.bkit/core/workflows/*.md`, quote variables instead of relying on shell word-splitting, and do not use an `ls` or glob that aborts when nothing matches. Put anything that needs bash-only features (arrays, `--pathspec-from-file`, process substitution) or argument parsing in a `bkit <noun> <verb>` command (`.bkit/core/engine/commands/`).
+```
+
+```retired
+**Workflow bash blocks:** In fenced bash inside `.bkit/core/workflows/*.md`, NEVER rely on unquoted shell word-splitting or on an `ls` / glob that aborts when unmatched. Anything needing bash-only features (arrays, `--pathspec-from-file`, process substitution) or argument parsing goes in a `bkit <noun> <verb>` command (`.bkit/core/engine/commands/`).
+**Workflow bash blocks:** Host shell is not guaranteed bash. NEVER rely on unquoted shell word-splitting or an `ls`/glob that aborts when unmatched inside `.bkit/core/workflows/*.md` fenced bash. Anything needing bash-only features (arrays, `--pathspec-from-file`, process substitution) or argument parsing goes in a `bkit <noun> <verb>` command (`.bkit/core/engine/commands/`).
+**Workflow bash blocks:** Host shell is NOT guaranteed bash. NEVER rely on unquoted shell word-splitting or an `ls`/glob that aborts when unmatched inside `.bkit/core/workflows/*.md` fenced bash. Anything needing bash-ONLY features (arrays, `--pathspec-from-file`, process substitution) or argument parsing goes in a `bkit <noun> <verb>` command (`.bkit/core/engine/commands/`).
 ```
 
 ### advisories-self-contained
@@ -2453,6 +2398,66 @@ Rules below `bkit:end` in `.agents/rules.md`: bkit's own, never shipped; no ship
 **Consumer names:** NEVER name bkit consumers (repo, org, product, domain, checkout path, abbreviation) in tracked files, commit / tag messages, release notes, or tracker text; write `a consumer`.
 ```
 
+### adding-migrations
+
+- rule: Project Rules › Universal Rules › Repo Authoring
+- refs:
+  - `docs/migrations.md`
+
+```text
+**Migrations:** Add a migration only when asked. **If** a change breaks old installs → propose a migration, and build it ONLY after the owner confirms. Each migration is idempotent, sits in the install / upgrade path, is tested on the old shape and has a row in `docs/migrations.md`.
+```
+
+```retired
+**Migrations:** NEVER add one unasked. A change breaks old installs → propose a migration, and build it ONLY on confirmation. Each migration is idempotent, sits in the install / upgrade path, is tested on the old shape and has a row in `docs/migrations.md`.
+**Migrations:** NEVER add unasked; old installs break → propose, build ONLY on confirmation. Each one idempotent, in install / upgrade path, tested on old shape, row in `docs/migrations.md`.
+```
+
+### index-updates
+
+- rule: Project Rules › Universal Rules › Repo Authoring
+- refs:
+  - `.bkit/workflows.md`
+  - `.bkit/prompts.md`
+  - `.bkit/prompts.md` § Audit (Ad-hoc)
+  - `.bkit/templates.md`
+
+```text
+**Index updates:** Update the index in the same change as the file it lists; index drift is a regression. Update `.bkit/workflows.md` with any `.bkit/core/workflows/*.md` edit and `.bkit/prompts.md` with any `.bkit/core/prompts/*.md` edit. Update the row in `.bkit/prompts.md` § Audit (Ad-hoc) when a `.bkit/core/docs/templates/bkit-audit-*.md` template is added, removed or renamed, or its title or purpose changes. Update `.bkit/templates.md` when a `.bkit/templates/` template is added or removed, or its install steps change.
+```
+
+```retired
+**Index updates:** Update `.bkit/workflows.md` in the same change as a `.bkit/core/workflows/*.md` edit, and `.bkit/prompts.md` in the same change as a `.bkit/core/prompts/*.md` edit; index drift is a regression.
+```
+
+### engine-builds
+
+- rule: Project Rules › Universal Rules › Repo Authoring
+
+```text
+**Engine builds:** After editing `.bkit/core/engine/**/*.ts`, run `pnpm build && git add dist/`, so `dist/` lands in the same commit.
+```
+
+```retired
+**Engine builds:** After editing `.bkit/core/engine/**/*.ts` → ALWAYS run `pnpm build && git add dist/` in the same commit.
+**Engine builds:** Editing `.bkit/core/engine/**/*.ts` → ALWAYS `pnpm build && git add dist/` in the same commit.
+```
+
+### install-to-mirror
+
+- rule: Project Rules › Universal Rules › Repo Authoring
+
+```text
+**Install to mirror:** After editing `.bkit/core/workflows/*`, `.bkit/core/prompts/*`, `.bkit/core/.agents/*`, `.bkit/core/.bkit/*` or `.bkit/core/docs/templates/*`, run `pnpm tsx .bkit/core/engine/cli.ts upgrade` to re-render the installed copies in `.claude/`, `.cursor/`, `.opencode/`, `.codex/`, `.agents/`, `.bkit/` and `docs/templates/`, once at the end of the session rather than after each edit.
+```
+
+```retired
+**Install to mirror:** After editing `.bkit/core/workflows/*`, `.bkit/core/prompts/*` or `.bkit/core/.agents/*`, run `bkit install` to regenerate the mirrors in `.claude/`, `.cursor/`, `.opencode/`, `.codex/` and `.agents/`, once at the end of the session rather than after each edit.
+**Install to mirror:** After editing `.bkit/core/workflows/*` or `.bkit/core/prompts/*`, run `bkit install` to regenerate the `.claude/`, `.cursor/` and `.opencode/` mirrors, once at the end of the session rather than after each edit.
+**Install to mirror:** After editing `.bkit/core/workflows/*` or `.bkit/core/prompts/*`, run `bkit install` to regenerate the `.claude/`, `.cursor/` and `.opencode/` mirrors. Batch it once at the end of the session; NEVER per edit.
+**Install to mirror:** After editing `.bkit/core/workflows/*` or `.bkit/core/prompts/*` run `bkit install` to regenerate `.claude/`, `.cursor/`, and `.opencode/` mirrors. Batch once at session end; NEVER per edit.
+```
+
 ### verify-before-complete
 
 - rule: Project Rules › Universal Rules › Repo Authoring
@@ -2469,19 +2474,6 @@ Rules below `bkit:end` in `.agents/rules.md`: bkit's own, never shipped; no ship
 
 ```retired
 **Verify before complete:** Done = both full suite (`pnpm vitest run`, NEVER scoped) and real dogfood (`pnpm build` → `node dist/cli.js <verb> <flags>` on a fresh scratch consumer; inspect on-disk footprint). Green tests ≠ proof.
-```
-
-### engine-builds
-
-- rule: Project Rules › Universal Rules › Repo Authoring
-
-```text
-**Engine builds:** After editing `.bkit/core/engine/**/*.ts`, run `pnpm build && git add dist/`, so `dist/` lands in the same commit.
-```
-
-```retired
-**Engine builds:** After editing `.bkit/core/engine/**/*.ts` → ALWAYS run `pnpm build && git add dist/` in the same commit.
-**Engine builds:** Editing `.bkit/core/engine/**/*.ts` → ALWAYS `pnpm build && git add dist/` in the same commit.
 ```
 
 ## Clauses

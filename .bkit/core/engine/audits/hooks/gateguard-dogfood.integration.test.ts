@@ -135,6 +135,26 @@ function sectionRules(heading: string): Rule[] {
   return rules;
 }
 
+/** The section lists of `.bkit/core/.bkit/authoring.md` § Which Sections Apply, row by row. */
+function whichSectionsApplyRows(): string[][] {
+  const lines = fs.readFileSync(AUTHORING_SOURCE, "utf-8").split("\n");
+  const start = lines.indexOf("## Which Sections Apply");
+  const end = lines.findIndex((l, i) => i > start && l.startsWith("## "));
+  return lines
+    .slice(start + 1, end)
+    .map((l) => /^\| .+ \| (§ .+) \|$/.exec(l))
+    .filter((m): m is RegExpExecArray => m !== null)
+    .map((m) => m[1]!.split(", ").map((s) => s.replace(/^§ /, "")));
+}
+
+/** `.agents/rules.md` § Repo Authoring, from its heading to the next `####` heading. */
+function repoAuthoringSection(): string {
+  const rules = fs.readFileSync(".agents/rules.md", "utf-8");
+  const at = rules.indexOf("#### Repo Authoring");
+  const next = rules.indexOf("\n#### ", at + 1);
+  return rules.slice(at, next < 0 ? undefined : next);
+}
+
 const SECTIONS = [
   "All Agent-Read Files",
   "Docs",
@@ -258,6 +278,13 @@ describe("dogfood authoring advisories — each file gets the sections whose sco
     }
   });
 
+  it("§ Which Sections Apply lists the same sections, in the same order, as the hook's routes", () => {
+    const rows = whichSectionsApplyRows();
+    expect(rows).toEqual(ROUTES.map((r) => r.sections));
+    const lines = fs.readFileSync(AUTHORING_SOURCE, "utf-8").split("\n");
+    for (const s of rows.flat()) expect(lines, s).toContain(`## ${s}`);
+  });
+
   it("a hook that cannot read the doc still fires, naming where to read each section", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "gg-dogfood-"));
     try {
@@ -358,19 +385,17 @@ describe("dogfood region — placement guarantees", () => {
 
 describe("dogfood advisories — .agents/rules.md § Repo Authoring", () => {
   it("every file and section the Repo Authoring rules name exists", () => {
-    const rules = fs.readFileSync(".agents/rules.md", "utf-8");
-    expect(rules).toContain("#### Repo Authoring");
+    const section = repoAuthoringSection();
+    expect(section).toContain("#### Repo Authoring");
     const authoring = fs.readFileSync(AUTHORING_SOURCE, "utf-8");
-    expect(rules).toContain("`.bkit/authoring.md` § ");
-    for (const heading of [
-      "All Agent-Read Files",
-      "Docs",
-      "Prompts and Workflows",
-      "Prompts Only",
-      "Workflows Only",
-    ]) {
-      expect(rules).toContain(`§ ${heading}`);
+    expect(section).toContain("`.bkit/authoring.md` sections");
+    for (const heading of ["Which Sections Apply", "Before You Save"]) {
+      expect(section).toContain(`§ ${heading}`);
       expect(authoring).toContain(`\n## ${heading}\n`);
+    }
+    for (const index of [".bkit/workflows.md", ".bkit/prompts.md"]) {
+      expect(section).toContain(`\`${index}\``);
+      expect(fs.existsSync(index), index).toBe(true);
     }
   });
 });

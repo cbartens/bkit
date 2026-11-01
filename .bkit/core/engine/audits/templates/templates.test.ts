@@ -54,6 +54,17 @@ function listAuditTemplates(): string[] {
     .map((name) => path.posix.join("docs/templates", name));
 }
 
+/** Template names in the `.bkit/prompts.md` § Audit (Ad-hoc) catalogue table, sorted. */
+function listAuditCatalogue(): string[] {
+  const doc = fs.readFileSync(path.join(CORE_ROOT, ".bkit", "prompts.md"), "utf-8");
+  const section = doc.indexOf("\n## Audit (Ad-hoc)\n");
+  const start = doc.indexOf("Every template under `docs/templates/bkit-audit-*.md`", section);
+  const end = doc.indexOf("\n## ", section + 1);
+  return [...doc.slice(start, end).matchAll(/^\| `(bkit-audit-[a-z0-9-]+)` \|/gm)]
+    .map((m) => m[1]!)
+    .sort();
+}
+
 /**
  * Anchor refs in `- bkit block of `docs/<doc>` (…): <ref>; <ref>` lines that the shipped
  * `.bkit/shared/docs/<doc>` cannot satisfy. A ref is `§ <## or ### heading>`, `Rules`
@@ -164,6 +175,12 @@ describe("audit templates — managed block plus consumer stub", () => {
     expect(audits.length).toBeGreaterThan(0);
     expect(audits).toContain("docs/templates/bkit-audit-repo.md");
     expect(audits).toContain("docs/templates/bkit-audit-security.md");
+  });
+
+  it("the .bkit/prompts.md § Audit (Ad-hoc) catalogue lists exactly the shipped audit templates", () => {
+    const listed = listAuditCatalogue();
+    expect(listed.length).toBeGreaterThan(0);
+    expect(listed).toEqual(audits.map((rel) => path.basename(rel, ".md")));
   });
 
   it.each(audits)("%s keeps project instructions outside the managed block", (relPath) => {

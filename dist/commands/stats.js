@@ -24,6 +24,15 @@ export const STATS_SOURCES = [
 ];
 /** Where `bkit stats` writes its report, relative to the repo root. */
 export const STATS_REPORT = ".bkit/stats.md";
+/** The rules box the report opens with, under its title. */
+const STATS_HEADER = [
+    "> [!CAUTION]",
+    `> **Purpose:** This repo's workflow statistics, computed from ${STATS_SOURCES.map((s) => `\`${s}\``).join(", ")}. Workflow closes append the rows.`,
+    ">",
+    "> **Rules:**",
+    ">",
+    "> - Generated — do not edit. `bkit stats` rewrites this file.",
+].join("\n");
 /** Kinds the harvest owns: never counted in a repo's own report. */
 const HARVEST_KINDS = new Set(["chat", "run"]);
 const pct = (rate) => `${(rate * 100).toFixed(1)}%`;
@@ -117,7 +126,7 @@ export function renderStatsMarkdown(report, title, scope) {
 /** Build this repo's report from the ledgers under `root`. */
 export function buildRepoStats(root) {
     const files = STATS_SOURCES.map((rel) => path.join(root, rel)).filter((p) => fs.existsSync(p));
-    return renderStatsMarkdown(runAnalysis(files, HARVEST_KINDS), "bkit stats", `This repo only: ${STATS_SOURCES.map((s) => `\`${s}\``).join(", ")}. Written by \`bkit stats\`; workflow closes append the rows.`);
+    return renderStatsMarkdown(runAnalysis(files, HARVEST_KINDS), "bkit stats", STATS_HEADER);
 }
 // stats — this repo's stats report. Advisory + inform-only: exits 0.
 // See DE-34 for the shared-entrypoint + crash-isolation contract.
