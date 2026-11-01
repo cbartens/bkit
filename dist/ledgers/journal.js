@@ -3,7 +3,8 @@
 // `commands/lib.ts` `runCommand` writes two kinds of row while a workflow run is
 // active: an `engine-call` row in the run's `status.jsonl` (one per bkit command
 // dispatched, except one git launched) and a `friction` row in the run's own `.bkit/friction.jsonl` (one per
-// unexpected non-zero exit). This module builds and appends them. It is a leaf:
+// unexpected non-zero exit). `status row --type=owner-pause` writes a `human-confirm`
+// friction row through the same append. This module builds and appends them. It is a leaf:
 // it imports only `node:*`, `../shared/json.js`, `./status.js` and `./telemetry.js`, never a `commands/**`
 // module, so `lib.ts` can import it without a cycle. The caller passes in the exit
 // codes that are declared routing (`SHARED_EXIT_CODES` plus the verb's own).
@@ -92,6 +93,36 @@ export function frictionRow(input) {
         severity: "MEDIUM",
         summary: `bkit ${input.noun} ${input.verb} ${how}`,
         description: `\`bkit ${input.noun} ${input.verb}\` ${how} at ${step}; the code is not one the command declares as routing.`,
+        source: "orchestrator",
+        status: "OPEN",
+    };
+    if (input.parentSha !== undefined && input.parentSha !== "") {
+        row["run"] = { parentSha: input.parentSha };
+    }
+    return row;
+}
+/**
+ * The `human-confirm` friction row for an owner pause (`status row --type=owner-pause`).
+ * `key` is `owner-pause/<workflow>.<reason>`, or `owner-pause/<workflow>` with no
+ * reason, clipped to KEY_LIMIT. `run` carries `parentSha` only when it resolved.
+ */
+export function pauseFrictionRow(input) {
+    const point = input.reason !== undefined && input.reason !== ""
+        ? `${input.workflow}.${input.reason}`
+        : input.workflow;
+    const row = {
+        schema: SCHEMA,
+        ts: mintTs(),
+        kind: "friction",
+        key: `owner-pause/${point}`.slice(0, KEY_LIMIT),
+        repo: resolveRepoSlug(input.bookRoot) || "unknown/repo",
+        bkit: { version: pinnedVersion(input.bookRoot) },
+        by: { workflow: input.workflow, step: "owner-pause" },
+        category: "human-confirm",
+        scope: "bkit-repo",
+        severity: "LOW",
+        summary: `${input.workflow} paused for the owner at ${point}`,
+        description: `The ${input.workflow} workflow stopped and asked the owner (\`owner-pause\` at ${point}).`,
         source: "orchestrator",
         status: "OPEN",
     };

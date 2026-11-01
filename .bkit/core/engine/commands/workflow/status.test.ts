@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CommandError, runCommand } from "../lib";
 import { COMMANDS } from "../registry";
@@ -828,5 +828,125 @@ describe("bkit status row", () => {
       (await run(["status", "row", `--file=${file}`, "--workflow=ship", "--type=x"])).code,
     ).toBe(3);
     expect(fs.existsSync(file)).toBe(false);
+  });
+});
+
+describe("bkit status row owner-pause friction", () => {
+  beforeEach(() => vi.stubEnv("BKIT_ENGINE_JOURNAL", "on"));
+  afterEach(() => vi.unstubAllEnvs());
+  const at = (s: number) => `2026-11-01T00:00:${String(s).padStart(2, "0")}Z`;
+
+  /** A git checkout holding one IN_PROGRESS run's status.jsonl in the docs/plans layout. */
+  function book(workflow: string) {
+    const root = tmp();
+    spawnSync("git", ["init", "-q", "-b", "dev"], { cwd: root });
+    const file = path.join(root, "docs/plans/202611/logs/802-x/status.jsonl");
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, `${JSON.stringify(started(workflow, at(0)))}\n`);
+    return { root, file };
+  }
+  const friction = (root: string) => {
+    const f = path.join(root, ".bkit", "friction.jsonl");
+    if (!fs.existsSync(f)) return [];
+    return fs
+      .readFileSync(f, "utf-8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+  };
+  const row = (root: string, file: string, workflow: string, type: string, ...fields: string[]) =>
+    run(
+      [
+        "status",
+        "row",
+        `--file=${file}`,
+        `--workflow=${workflow}`,
+        `--type=${type}`,
+        ...fields.map((f) => `--field=${f}`),
+      ],
+      root,
+    );
+  const pause = (root: string, file: string, workflow: string, reason: string) =>
+    row(root, file, workflow, "owner-pause", `reason=${reason}`);
+  const stepDone = (file: string, workflow: string, step: string) =>
+    fs.appendFileSync(file, `${JSON.stringify(done(workflow, step, at(30)))}\n`);
+
+  it("status row owner-pause appends one human-confirm friction row", async () => {
+    const { root, file } = book("debug");
+    const r = await pause(root, file, "debug", "foreign-path");
+    expect(r.code).toBe(0);
+    expect(r.json.row).toMatchObject({
+      type: "owner-pause",
+      workflow: "debug",
+      reason: "foreign-path",
+    });
+    const rows = friction(root);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      kind: "friction",
+      key: "owner-pause/debug.foreign-path",
+      category: "human-confirm",
+      by: { workflow: "debug", step: "owner-pause" },
+      recurrenceCount: 1,
+    });
+  });
+
+  it("status row owner-pause skips the friction row when no step-done follows the last owner-pause with the same reason", async () => {
+    const { root, file } = book("build");
+    expect((await pause(root, file, "build", "decision")).code).toBe(0);
+    expect((await row(root, file, "build", "owner-answer")).code).toBe(0);
+    expect((await pause(root, file, "build", "decision")).code).toBe(0);
+    expect((await pause(root, file, "build", "decision")).code).toBe(0);
+    expect(friction(root)).toHaveLength(1);
+    const pauses = readStatusRows(file).filter((r) => r.type === "owner-pause");
+    expect(pauses).toHaveLength(3);
+  });
+
+  it("status row owner-pause with a new reason appends its own row with no step-done in between", async () => {
+    const { root, file } = book("design");
+    for (const reason of ["grill", "grill", "draft", "grill", "draft"]) {
+      expect((await pause(root, file, "design", reason)).code).toBe(0);
+    }
+    const rows = friction(root);
+    expect(rows.map((r) => r["key"])).toEqual([
+      "owner-pause/design.grill",
+      "owner-pause/design.draft",
+    ]);
+    expect(rows.map((r) => r["recurrenceCount"])).toEqual([1, 1]);
+  });
+
+  it("status row owner-pause in a later pause appends a same-key recurrence", async () => {
+    const { root, file } = book("build");
+    expect((await pause(root, file, "build", "decision")).code).toBe(0);
+    stepDone(file, "build", "build-decisions");
+    expect((await pause(root, file, "build", "decision")).code).toBe(0);
+    const rows = friction(root);
+    expect(rows.map((r) => r["key"])).toEqual([
+      "owner-pause/build.decision",
+      "owner-pause/build.decision",
+    ]);
+    expect(rows.map((r) => r["recurrenceCount"])).toEqual([1, 2]);
+    expect(rows[0]).not.toHaveProperty("lastConfirmed");
+    expect(rows[1]!["lastConfirmed"]).toBe(rows[1]!["ts"]);
+  });
+
+  it("status row writes no friction row for other types or with BKIT_ENGINE_JOURNAL=off", async () => {
+    const { root, file } = book("ship");
+    expect((await row(root, file, "ship", "ship-gate-refusal", "exitCode=11")).code).toBe(0);
+    expect((await row(root, file, "ship", "owner-answer")).code).toBe(0);
+    expect(friction(root)).toHaveLength(0);
+    vi.stubEnv("BKIT_ENGINE_JOURNAL", "off");
+    expect((await pause(root, file, "ship", "merge")).code).toBe(0);
+    expect(friction(root)).toHaveLength(0);
+    expect(readStatusRows(file).filter((r) => r.type === "owner-pause")).toHaveLength(1);
+  });
+
+  it("status row owner-pause keeps the status row and exits 4 when the friction row cannot be written", async () => {
+    const { root, file } = book("build");
+    fs.writeFileSync(path.join(root, ".bkit"), "not a directory");
+    const r = await pause(root, file, "build", "decision");
+    expect(r.code).toBe(4);
+    expect(r.err).toContain("friction");
+    expect(readStatusRows(file).filter((r) => r.type === "owner-pause")).toHaveLength(1);
   });
 });

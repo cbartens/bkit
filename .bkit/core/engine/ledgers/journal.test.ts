@@ -31,6 +31,7 @@ import {
   frictionRow,
   journalEnabled,
   launchedByGit,
+  pauseFrictionRow,
   shouldRecordFriction,
 } from "./journal";
 import { foldFrom, validate, writerProblem } from "./telemetry";
@@ -101,6 +102,50 @@ describe("frictionRow", () => {
     const line = fs.readFileSync(path.join(root, ".bkit", "friction.jsonl"), "utf-8");
     expect(JSON.parse(line)).not.toHaveProperty("run");
     expect(own(root)["run"]).toEqual({ parentSha: "a".repeat(40) });
+  });
+});
+
+describe("pauseFrictionRow", () => {
+  it("pauseFrictionRow builds a valid human-confirm row keyed owner-pause/{workflow}.{reason}", () => {
+    const root = tmp();
+    const row = pauseFrictionRow({
+      workflow: "build",
+      reason: "decision",
+      bookRoot: root,
+      parentSha: "a".repeat(40),
+    });
+    expect(row).toMatchObject({
+      kind: "friction",
+      key: "owner-pause/build.decision",
+      by: { workflow: "build", step: "owner-pause" },
+      category: "human-confirm",
+      scope: "bkit-repo",
+      severity: "LOW",
+      source: "orchestrator",
+      status: "OPEN",
+      run: { parentSha: "a".repeat(40) },
+    });
+    expect(validate(row)).toEqual({ ok: true });
+    expect(writerProblem(row)).toBeUndefined();
+    expect(appendFrictionRow(root, row)).toEqual({ ok: true });
+    const line = fs.readFileSync(path.join(root, ".bkit", "friction.jsonl"), "utf-8");
+    expect(JSON.parse(line)).toMatchObject({
+      key: "owner-pause/build.decision",
+      recurrenceCount: 1,
+    });
+  });
+
+  it("pauseFrictionRow keys a reasonless pause owner-pause/{workflow} and clips long keys", () => {
+    const root = tmp();
+    for (const reason of [undefined, ""]) {
+      const row = pauseFrictionRow({ workflow: "ship", reason, bookRoot: root });
+      expect(row["key"]).toBe("owner-pause/ship");
+      expect(row).not.toHaveProperty("run");
+      expect(validate(row)).toEqual({ ok: true });
+    }
+    const long = pauseFrictionRow({ workflow: "design", reason: "r".repeat(200), bookRoot: root });
+    expect(long["key"]).toBe(`owner-pause/design.${"r".repeat(60 - "owner-pause/design.".length)}`);
+    expect(validate(long)).toEqual({ ok: true });
   });
 });
 

@@ -4,6 +4,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { BKIT_DEBUG_GATES } from "../../install/manifest.js";
+import { appendFrictionRow, journalEnabled, pauseFrictionRow } from "../../ledgers/journal.js";
+import { resolveGitSha } from "../../ledgers/telemetry.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import {
   activeDoneSteps,
@@ -25,6 +27,7 @@ import {
   EXIT,
   git,
   parseJson,
+  resolveActiveRun,
   statusLocation,
   type CommandSpec,
   type FlagSpec,
@@ -63,6 +66,8 @@ export const GROUP_FLAG: FlagSpec = {
 
 /** Exit code: status.jsonl missing, unreadable, or not valid NDJSON. */
 export const EXIT_NO_STATUS = 3;
+/** Exit code: the owner-pause friction row was not written; the status row is kept. */
+export const EXIT_PAUSE_FRICTION = 4;
 
 /** Every row of status.jsonl, whatever its type; exit 3 when the file is missing or a line is not JSON. */
 export function readStatusRows(file: string): StatusRow[] {
@@ -622,7 +627,11 @@ export const statusCommand: CommandSpec = {
         },
       ],
       output: { row: "the appended row" },
-      exitCodes: { [EXIT_NO_STATUS]: "status.jsonl does not exist (a row never starts a log)" },
+      exitCodes: {
+        [EXIT_NO_STATUS]: "status.jsonl does not exist (a row never starts a log)",
+        [EXIT_PAUSE_FRICTION]:
+          "an owner-pause row was appended but its human-confirm friction row was not written",
+      },
       run: (ctx) => {
         const type = String(ctx.flags.type);
         if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(type))
@@ -646,10 +655,59 @@ export const statusCommand: CommandSpec = {
           at: statusTimestamp(),
           ...fields,
         };
+        const prior = type === "owner-pause" ? fs.readFileSync(file, "utf-8") : "";
         fs.appendFileSync(file, appendLine(row));
+        if (type === "owner-pause") recordPause(ctx.cwd, file, row, prior);
         ctx.emit({ row });
         return EXIT.OK;
       },
     },
   },
 };
+
+const pauseReason = (row: Record<string, unknown>) =>
+  row["reason"] === undefined ? undefined : String(row["reason"]);
+
+/**
+ * Log an owner pause as `human-confirm` friction in the active run's books. A
+ * follow-up wait writes nothing: `prior` (the status file before this row) holds an
+ * `owner-pause` row with the same workflow and reason and no `step-done` row after it.
+ * Nothing is written outside an active run or with `BKIT_ENGINE_JOURNAL=off`.
+ */
+function recordPause(
+  cwd: string,
+  file: string,
+  row: StatusRow & { workflow: string },
+  prior: string,
+) {
+  if (!journalEnabled()) return;
+  const reason = pauseReason(row);
+  let waiting = false;
+  for (const line of prior.split("\n")) {
+    const parsed = parseJson(line);
+    if (!parsed.ok || parsed.value === null || typeof parsed.value !== "object") continue;
+    const r = parsed.value as Record<string, unknown>;
+    if (r["type"] === "step-done") waiting = false;
+    else if (r["type"] === "owner-pause" && r["workflow"] === row.workflow) {
+      waiting ||= pauseReason(r) === reason;
+    }
+  }
+  if (waiting) return;
+  const run = resolveActiveRun({ cwd, file });
+  if (run === undefined) return;
+  const wrote = appendFrictionRow(
+    run.bookRoot,
+    pauseFrictionRow({
+      workflow: row.workflow,
+      reason,
+      bookRoot: run.bookRoot,
+      parentSha: resolveGitSha("HEAD", run.bookRoot),
+    }),
+  );
+  if (!wrote.ok) {
+    throw new CommandError(
+      EXIT_PAUSE_FRICTION,
+      `owner-pause row kept; its friction row was not written: ${wrote.error}`,
+    );
+  }
+}
