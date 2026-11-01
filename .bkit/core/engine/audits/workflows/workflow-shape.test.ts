@@ -1842,28 +1842,28 @@ describe("build publish ending", () => {
     expect(route[0]).toContain("--workflow=build");
     expect(route[0]).toContain('--file="{STATUS}"');
     expect(route[0]).toContain('--prompt-file="{SESSION_DIR}/prompt.md"');
-    expect(text).toContain("`publish` as `{PUBLISH}`");
-    expect(text).toContain("`publishSource` as `{PUBLISH_SOURCE}`");
+    expect(text).toContain("`publish` as `PUBLISH`");
+    expect(text).toContain("`publishSource` as `PUBLISH_SOURCE`");
     const assert = commandLines(text, "runtime assert");
     expect(assert).toHaveLength(1);
     expect(assert[0]).not.toContain("/dev/null");
   });
 
   it("re-derives publish on resume", () => {
-    // Steps 1-2 run again on every resume, so the only place `{PUBLISH}` is set is Step 2,
+    // Steps 1-2 run again on every resume, so the only place `PUBLISH` is set is Step 2,
     // after `runtime row`, and nothing reads it before.
-    const first = build.indexOf("{PUBLISH}");
+    const first = build.search(/`\{?PUBLISH\}?`|=\{PUBLISH\}/);
     expect(first).toBeGreaterThan(build.indexOf("## 🤖 Step 2 — Worktree Setup"));
     const text = step2();
     expect(text.indexOf("status route --workflow=build")).toBeGreaterThan(
       text.indexOf("runtime row"),
     );
-    expect(build).toContain("Steps 1-2 always run again");
+    expect(build).toMatch(/Steps 1-2 always run again/i);
   });
 
   it("warns when a non-LOCAL run resolves publish false", () => {
     const text = step2();
-    expect(text).toContain("`{PUBLISH_SOURCE}` = `coerced`");
+    expect(text).toContain("`PUBLISH_SOURCE` = `coerced`");
     expect(text).toMatch(/Warning: publish=false[^\n]*publishes/);
   });
 
@@ -1910,7 +1910,7 @@ describe("build publish ending", () => {
     expect(gate).toMatch(/- \[ \] Open-PR probe ran \(publish=true only\)/);
     expect(gate).toMatch(/- \[ \] Summary commit pushed \(publish=true only\)/);
     const body = text.slice(0, text.indexOf("### 🔒 Gate 15"));
-    expect(body).toMatch(/\*\*If\*\* `\{PUBLISH\}` = true[^\n]*\n[\s\S]*prs probe/);
+    expect(body).toMatch(/\*\*If\*\* `PUBLISH` = true[^\n]*\n[\s\S]*prs probe/);
   });
 
   it("runs only the close gate on the held path", () => {
@@ -1919,7 +1919,7 @@ describe("build publish ending", () => {
     const prAt = gate.indexOf("--step=build-create-pr");
     expect(closeAt).toBeGreaterThanOrEqual(0);
     expect(prAt).toBeGreaterThan(closeAt);
-    expect(gate.slice(closeAt, prAt)).toMatch(/`\{PUBLISH\}` = true only/);
-    expect(gate).toMatch(/`\{PUBLISH\}` = false[^\n]*`build-close-workflow` gate only/);
+    expect(gate.slice(closeAt, prAt)).toMatch(/`PUBLISH` = true only/);
+    expect(gate).toMatch(/`PUBLISH` = false[^\n]*`build-close-workflow` gate only/);
   });
 });

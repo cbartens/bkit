@@ -379,7 +379,7 @@ description: "Build Feature — Autonomous implementation"
    ```bash
    "{BKIT}" status route --workflow=build --file="{STATUS}" --prompt-file="{SESSION_DIR}/prompt.md" || exit 2
    ```
-   Hold `publish` as `{PUBLISH}`, `publishSource` as `{PUBLISH_SOURCE}`. **If** `{PUBLISH_SOURCE}` = `coerced` → emit: Warning: publish=false needs a local run — this run publishes.
+   Hold `publish` as `PUBLISH`, `publishSource` as `PUBLISH_SOURCE`. **If** `PUBLISH_SOURCE` = `coerced` → emit: Warning: publish=false needs a local run — this run publishes.
 4. Write the input file — session prompt, issue text, plan (when present):
    <!-- bkit:tracker true start -->
    **If** `ISSUE_ID` empty → drop `--description-file` and `--comments-file`.
@@ -930,7 +930,7 @@ This step runs once, after the last group. Challenge fix groups pass through it 
    "{BKIT}" workflows summary --workflow=build --file="{STATUS}" --publish={PUBLISH}
    ```
    **If** exit non-zero → **Failure Path**. Hold `verdict` as `SUMMARY_VERDICT`, `failures` as `SUMMARY_FAILURES`.
-2. Finish; **If** `{PUBLISH}` = true → then probe for a pre-existing open PR on `{BRANCH}` before the push:
+2. Finish; **If** `PUBLISH` = true → then probe for a pre-existing open PR on `{BRANCH}` before the push:
    ```bash
    "{BKIT}" steps finish --workflow=build --step=build-summary --file="{STATUS}" --attempt=1 --verdict={SUMMARY_VERDICT} --failures={SUMMARY_FAILURES} --artifact=docs/plans/{YYYYMM}/logs/{FID}/build-summary.md --number=15 --post --title=Summary --link-ref={BRANCH} --comment-body --message="chore({FID}): summary"
    ```
@@ -943,7 +943,7 @@ This step runs once, after the last group. Challenge fix groups pass through it 
      - **If** one is found → **Failure Path**.
      - **Else** → sub-step 3.
    - **Else** → sub-step 3.
-3. **If** `{PUBLISH}` = true → push with exactly one command:
+3. **If** `PUBLISH` = true → push with exactly one command:
    ```bash
    "{BKIT}" branches push --mode=feature --set-upstream
    ```
@@ -965,7 +965,7 @@ This step runs once, after the last group. Challenge fix groups pass through it 
 
 **Run only if** `SUMMARY_VERDICT` = PASS **or** CONCERNS.
 
-**Held close** — **If** `{PUBLISH}` = false → run this fence, then sub-steps 11-12 and Gate 16; sub-steps 1-10 do not run:
+**Held close** — **If** `PUBLISH` = false → run this fence, then sub-steps 11-12 and Gate 16; sub-steps 1-10 do not run:
 
 Append the roadmap row in the worktree only, close the run (`ending: held`, `publish: false`, telemetry, report, artifact links), commit it, release the lock; nothing is pushed:
 
@@ -975,7 +975,7 @@ Append the roadmap row in the worktree only, close the run (`ending: held`, `pub
 "{BKIT}" locks release --kind=workflow --workflow=build --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} >/dev/null
 ```
 
-`REF` empty → `{FID}`. Hold `commentFile` as `{CLOSE_COMMENT_FILE}` and `tracker` as `{CLOSE_TRACKER}`; `{FINAL_RETURN}` = `finalReturn`.
+`REF` empty → `{FID}`. Hold the close's `commentFile`, `tracker` and `finalReturn` under the names sub-step 3 uses: `CLOSE_COMMENT_FILE`, `CLOSE_TRACKER`, `FINAL_RETURN`.
 
 <!-- bkit:tracker true start -->
 
@@ -990,10 +990,10 @@ Append the roadmap row in the worktree only, close the run (`ending: held`, `pub
 
 <!-- bkit:tracker true start -->
 
-**Skip if** `ISSUE_ID` empty. The close posted the built locally, not published comment; **If** `{CLOSE_TRACKER}`.done = false → post the content of `{CLOSE_COMMENT_FILE}` via the tracker MCP (**Comments** fallback).
+**Skip if** `ISSUE_ID` empty. The close posted the built locally, not published comment; **If** `CLOSE_TRACKER`.done = false → post the content of `CLOSE_COMMENT_FILE` via the tracker MCP (**Comments** fallback).
 <!-- bkit:tracker true end -->
 
-**Publish close** — **If** `{PUBLISH}` = true:
+**Publish close** — **If** `PUBLISH` = true:
 
 1. Before creating the PR, probe for an open PR that already exists on `{BRANCH}`:
    ```bash
@@ -1106,13 +1106,13 @@ Both paths:
 "{BKIT}" steps gate --workflow=build --step=build-close-workflow --file="{STATUS}" || exit 1
 ```
 
-`{PUBLISH}` = true only:
+`PUBLISH` = true only:
 
 ```bash
 "{BKIT}" steps gate --workflow=build --step=build-create-pr --file="{STATUS}" --artifact={PR_URL}
 ```
 
-`{PUBLISH}` = false → the `build-close-workflow` gate only; the held close commits and pushes nothing, so only these lines apply: `steps gate`, close committed, lock released, final return, issue update attempted, artifact link list posted. `{PUBLISH}` = true → every line applies.
+`PUBLISH` = false → the `build-close-workflow` gate only; the held close commits to the local branch and pushes nothing, so only these lines apply: `steps gate`, close committed, lock released, final return, issue update attempted, artifact link list posted. `PUBLISH` = true → every line applies.
 
 - [ ] Mechanical checks passed (`steps gate`)
 

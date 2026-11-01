@@ -7291,7 +7291,7 @@ Mark {{what}} `Not Checked`.
 
 - doc: where-used
 - tags: authoring, format
-- carriers: doc `architecture`, `context`, `data-schema`, `deployments`, `design`, `docs`, `noise`, `observability`, `prompts`, `security`, `setup`, `skills`, `technology`, `testing`; rules
+- carriers: doc all except `CLAUDE`, `GEMINI`, `bkit-rules`; rules
 
 ```text
 Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
@@ -7305,7 +7305,7 @@ Use dense token-efficient phrasing; no filler / hedging / restating; tables > pr
 ### doc-local-section
 
 - doc: where-used
-- carriers: doc `docs`, `lite`, `skills`; rules
+- carriers: doc `docs`, `skills`; rules
 
 ```text
 Local project {{what}} → `Project {{section}}` below the bkit-managed block.
@@ -8656,6 +8656,7 @@ Read the blockers and their states via the tracker MCP (**Tracker**).
 Emit the long-branch advisory `[bkit-build] feature branch is {BEHIND_DEV} commits behind dev / {DIVERGED_AGO} since divergence`.
 Long-branch advisory emitted
 Blocker check attempted
+Hold `publish` as `PUBLISH`, `publishSource` as `PUBLISH_SOURCE`. **If** `PUBLISH_SOURCE` = `coerced` → emit: Warning: publish=false needs a local run — this run publishes.
 Input file written (`workflows input`)
 Merge `origin/dev` when the feature branch's `docs/` is behind it. The command resolves conflicts itself: ledgers by union, and other `docs/` files on `dev`'s side:
 Docs synced (`branches sync`)
@@ -8763,12 +8764,15 @@ Read status.jsonl and derive the next `STRATEGY`:
 Finish, then re-run Step 12:
 Strategy read before invocation
 Write `build-summary.md` from this run's status rows and the plan's tasks:
-Finish, then probe for a pre-existing open PR on `{BRANCH}` before the push:
+Finish; **If** `PUBLISH` = true → then probe for a pre-existing open PR on `{BRANCH}` before the push:
 **If** exit 80 → look for an open PR on `{BRANCH}` with base `dev` via `list_pull_requests`:
 **If** one is found → **Failure Path**.
 **Else** → sub-step 3.
-[workflow-pushes] Push with exactly one command:
+[workflow-pushes] **If** `PUBLISH` = true → push with exactly one command:
+Open-PR probe ran (publish=true only)
 Open-PR probe ran
+**Held close** — **If** `PUBLISH` = false → run this fence, then sub-steps 11-12 and Gate 16; sub-steps 1-10 do not run:
+`REF` empty → `{FID}`. Hold the close's `commentFile`, `tracker` and `finalReturn` under the names sub-step 3 uses: `CLOSE_COMMENT_FILE`, `CLOSE_TRACKER`, `FINAL_RETURN`.
 Before creating the PR, probe for an open PR that already exists on `{BRANCH}`:
 **If** exit 80 → look for an open PR on `{BRANCH}` with base `dev` via `list_pull_requests`:
 **If** one is found → **Failure Path**.
@@ -8787,6 +8791,7 @@ Record `build-create-pr`:
 **If** re-entering from the **CI wait turn-loop** → fill `{CI_REENTRY}`:
 **If** exit 80 **or** 81 → **CI wait turn-loop** → re-run this block.
 Re-read the issue's labels after the push, for the kill-switch check:
+`PUBLISH` = false → the `build-close-workflow` gate only; the held close commits to the local branch and pushes nothing, so only these lines apply: `steps gate`, close committed, lock released, final return, issue update attempted, artifact link list posted. `PUBLISH` = true → every line applies.
 Labels re-read before the close commit
 Lock released
 PR created

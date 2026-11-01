@@ -328,7 +328,14 @@ describe("bkit-build.md held close", () => {
     const run = (args: string[], cwd: string) =>
       spawnSync(bin, args, { cwd, encoding: "utf-8", env });
     const lock = run(
-      ["locks", "acquire", "--kind=workflow", "--workflow=build", `--fid=${BUILD_FID}`],
+      [
+        "locks",
+        "acquire",
+        "--kind=workflow",
+        "--workflow=build",
+        `--fid=${BUILD_FID}`,
+        `--month=${MONTH}`,
+      ],
       fx.repo,
     );
     expect(lock.status, lock.stderr).toBe(0);
