@@ -65,6 +65,11 @@ process.env.BKIT_NO_UPDATE_CHECK = "1";
 delete process.env.CLAUDE_CODE_SESSION_ID;
 delete process.env.CLAUDE_CONFIG_DIR;
 
+// No test journals into a real run: `runCommand` appends `engine-call` rows to the active
+// run's `status.jsonl` found from the cwd, and a test run from this repo's own worktree would
+// write into the live run. A test of the journal sets `BKIT_ENGINE_JOURNAL` itself.
+process.env.BKIT_ENGINE_JOURNAL = "off";
+
 // No test reads or writes the developer's real bkit config and cache folders: a real
 // `~/.config/bkit/disk-prune.mjs` holds delete steps, and any test that mints a worktree
 // runs `bkit disk prune`'s low-disk check (`commands/workflow/disk.ts`). Each worker gets

@@ -359,6 +359,8 @@ export const MARK_ROWS: ReadonlySet<string> = new Set([
   "owner-pause",
   "owner-answer",
   "test-run",
+  "engine-call",
+  "completeness",
 ]);
 
 /** The `session` fingerprints on the run's status rows, in row order, each once. */

@@ -1475,7 +1475,14 @@ export function endingOf(run, dir, ordinal) {
  * it that is not one of these. A copy of the engine's `MARK_ROWS`
  * (`.bkit/core/engine/commands/workflow/run-facts.ts`); a test holds the two equal.
  */
-export const MARK_ROWS = new Set(["session", "owner-pause", "owner-answer", "test-run"]);
+export const MARK_ROWS = new Set([
+  "session",
+  "owner-pause",
+  "owner-answer",
+  "test-run",
+  "engine-call",
+  "completeness",
+]);
 
 /** A run row's key: `<fid fp>:<workflow>:<start>`. */
 const runKey = (slug, fid, workflow, start) =>
