@@ -292,3 +292,10 @@
 {"type":"engine-call","workflow":"ship","at":"2026-11-01T12:30:44Z","noun":"branches","verb":"sync","flags":["head"]}
 {"type":"engine-call","workflow":"ship","at":"2026-11-01T12:30:47Z","noun":"steps","verb":"gate","flags":["workflow","step","placeholder"]}
 {"type":"engine-call","workflow":"ship","at":"2026-11-01T12:30:52Z","noun":"branches","verb":"sync","flags":["merge","fid","file","sentinel"]}
+{"type":"engine-call","workflow":"ship","at":"2026-11-01T12:31:11Z","noun":"branches","verb":"sync","flags":["merge","file"]}
+{"type":"engine-call","workflow":"ship","at":"2026-11-01T12:31:35Z","noun":"steps","verb":"finish","flags":["workflow","step","file","agent","artifact","commit","number","post","title"]}
+{"type":"engine-action","action":"comment","key":"ship/1/ship-conflict-resolve/-/-/comment","hash":"c79d5c60549cf89343944df61a4b2dbe119fbc9f36fc16cf862a5c788d59a84d","ref":"https://github.com/cbartens/bkit/issues/715#issuecomment-6557978515","at":"2026-11-01T12:31:36Z"}
+{"type":"step-done","workflow":"ship","step":"ship-conflict-resolve","status":"DONE","at":"2026-11-01T12:31:36Z","parentSha":"191c5e0e4df91fa94263e00efa38abfd40426192","artifacts":["docs/plans/202610/logs/715-retire-lite-workflows/ship-conflict-resolve.md"],"verdict":"FAIL"}
+{"type":"engine-call","workflow":"ship","at":"2026-11-01T12:31:44Z","noun":"workflows","verb":"fail","flags":["post","issue","workflow","fid","month","token","pr","label","step-number","step-title","sub-step","error-file","session-dir"]}
+{"type":"workflow-failed","workflow":"ship","at":"2026-11-01T12:31:44Z"}
+{"type":"engine-action","action":"comment","key":"ship/1/failure/4/2/comment","hash":"76cf0cc45b21304dbbd7dfae7c96bca56b1036cb6595ca6ab72122a1edcee049","ref":"https://github.com/cbartens/bkit/issues/715#issuecomment-6557980233","at":"2026-11-01T12:31:46Z"}
