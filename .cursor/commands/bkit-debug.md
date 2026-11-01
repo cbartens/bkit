@@ -232,7 +232,7 @@ Debug Feature — Autonomous diagnosis and remediation
    - **If** exit 0 → `cd "{WORKTREE_PATH}"` → verify with `pwd` → sub-step 2.
    - **If** exit 3 → resolve the rebase:
      ```bash
-     cd "{WORKTREE_PATH}" && "{BKIT}" branches rebase --sentinel="{SENTINEL}" --log-file="{LOG_DIR}/rebase-resolve-log.md"
+     cd "{WORKTREE_PATH}" && "{BKIT}" branches rebase --sentinel="{SENTINEL}" --log-file="{LOG_DIR}/rebase-resolve-log.md" --file="{LOG_DIR}/status.jsonl"
      ```
      - **If** exit 0 → re-run this sub-step.
      - **Else** → **Failure Path**.
@@ -269,7 +269,7 @@ Debug Feature — Autonomous diagnosis and remediation
 
 1. Run the deepest declared gate. It writes the trimmed log to the artifact. `{GATE_FLAGS}` = one `--gate=<name>` per `GATES` entry, in order:
    ```bash
-   "{BKIT}" tests run {GATE_FLAGS} --log="{OUTBOX}/context-tests-local-{DEBUG_ATTEMPT}.log" --artifact="docs/plans/{YYYYMM}/logs/{FID}/context-tests-local-{DEBUG_ATTEMPT}.md" --fid={FID} --step=debug-run-tests --attempt={DEBUG_ATTEMPT}
+   "{BKIT}" tests run {GATE_FLAGS} --log="{OUTBOX}/context-tests-local-{DEBUG_ATTEMPT}.log" --artifact="docs/plans/{YYYYMM}/logs/{FID}/context-tests-local-{DEBUG_ATTEMPT}.md" --fid={FID} --file="{STATUS}" --workflow=debug --step=debug-run-tests --attempt={DEBUG_ATTEMPT}
    ```
    Hold `scope` as `TEST_SCOPE` and `failures` as `TEST_FAILURES`.
    Decide `TEST_VERDICT`:

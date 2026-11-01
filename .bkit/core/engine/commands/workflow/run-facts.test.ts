@@ -789,6 +789,20 @@ describe("agentContextBlock", () => {
     expect(stepsBlock(rows as never).byStep["build-x"]).toEqual({ n: 1, totalMinutes: 10 });
   });
 
+  it("stepsBlock times a gate step across its test-run rows", () => {
+    const at = (m: number) => new Date(T0 + m * 60_000).toISOString();
+    const rows = [
+      { type: "workflow-started", workflow: "build", at: at(0) },
+      { type: "test-run", workflow: "build", step: "build-group-gate-1", at: at(4) },
+      { type: "test-run", workflow: "build", step: "build-group-gate-1", at: at(9) },
+      { type: "step-done", workflow: "build", step: "build-group-gate", at: at(10) },
+    ];
+    expect(stepsBlock(rows as never).byStep["build-group-gate"]).toEqual({
+      n: 1,
+      totalMinutes: 10,
+    });
+  });
+
   it("a subagent without a meta file counts as `unknown`", () => {
     const dir = claudeDir([{ name: "agent-n", lines: [turn(T0 + 10, "n1", 4, 0, 0)] }]);
     expect(agentContextBlock(T0, T0 + 60_000, { sessionId: SID, claudeDir: dir })?.byAgent).toEqual(

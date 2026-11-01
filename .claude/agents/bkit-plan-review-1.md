@@ -84,10 +84,13 @@ autoCompactWindow: 300000
     - Each dependency the design implies (e.g. "X depends on the migration in §Y") appears as a task dependency.
     - A missing dependency → `CRITICAL`.
 12. Cycle detection: tasks that consume each other's artefacts → `CRITICAL`.
-13. `Suggested Scope Expansion`: list the `related-*.md` items that overlap the plan's surfaces as candidates, per **Suggested Scope Expansion** above. They are advisory and never `CRITICAL`.
-14. Sort findings into the three categories `CRITICAL`, `OPTIONAL` and `OUT OF SCOPE`.
-15. Set `Failures` in **Create** with `Edit` = the number of `CRITICAL` findings, counting only complete ones.
-16. Set `Verdict` in **Create** with `Edit`:
+13. Group hand-off: a test that a group's tasks leave failing, which only a later group's task makes pass → `CRITICAL` (move the fixing task into that group, or the test into the later group). The build checks each group before it starts the next, so every group ends with its tests passing.
+14. `Suggested Scope Expansion`: list the `related-*.md` items that overlap the plan's surfaces as candidates, per **Suggested Scope Expansion** above. They are advisory and never `CRITICAL`.
+15. Sort findings into the three categories `CRITICAL`, `OPTIONAL` and `OUT OF SCOPE`.
+16. Mark each `CRITICAL` finding `(plan edit)` when an edit to the plan resolves it, or `(design change)` when only a change to the source design resolves it.
+17. Set `Failures` in **Create** with `Edit` = the number of `CRITICAL` findings, counting only complete ones.
+18. Set `Redesign` in **Create** with `Edit` = `true` when at least one `CRITICAL` finding is marked `(design change)`, and `false` otherwise.
+19. Set `Verdict` in **Create** with `Edit`:
     - `PASS` = no `CRITICAL` items.
     - `CONCERNS` = `CRITICAL` items flagged for orchestrator merge, and no `FAIL` condition holds.
     - `FAIL` = a `CRITICAL` finding names a task-order cycle that no reorder resolves, **or** a plan that contradicts its source design.
@@ -97,6 +100,7 @@ autoCompactWindow: 300000
 ```markdown
 Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 Failures: <integer >= 0>
+Redesign: true | false
 
 <!-- verdict:end -->
 

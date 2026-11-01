@@ -73,7 +73,7 @@ autoCompactWindow: 300000
    - Dependency lockfile → take the rebase target's copy, and regenerate it from the manifest with the repo's package manager.
    - Task-runner / build config → merge both sides' task definitions.
    - Ordered database migrations → resequence them so each new file sorts after every migration already applied upstream.
-8. Run `pnpm bkit:gate:static-unit`. Every local test must pass.
+8. Run `bkit tests changed --fallback=bkit:gate:static-unit`. Every local test must pass.
    - **If** any declared live tests were failing → the remediation is done only when those same live tests pass.
 9. **If** the last local test run has failures → document the errors in the output, and set `Verdict` = `FAIL`.
 10. **If** the remediations are verified (the tests pass) **and** the work found gotchas → append one row per gotcha to `docs/knowledge.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), reusing the `key` of any existing entry for the same item.

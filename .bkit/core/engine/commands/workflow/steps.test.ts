@@ -778,6 +778,32 @@ describe("bkit steps finish", () => {
     expect(r.json.row).toMatchObject({ verdict: "CONCERNS", failures: 1, attempt: 0 });
   });
 
+  it("a true | false header field is true when any agent sets it true", async () => {
+    const cwd = repo();
+    const review = (redesign: string) =>
+      `Verdict: FAIL\nFailures: 1\nRedesign: ${redesign}\n<!-- verdict:end -->\n`;
+    write(cwd, "logs/r1.md", review("false"));
+    write(cwd, "logs/r2.md", review("true"));
+    write(cwd, "logs/s.md", review("false"));
+    const r = await run(cwd, [
+      "steps",
+      "finish",
+      "--file=logs/status.jsonl",
+      "--workflow=plan",
+      "--step=plan-review",
+      "--attempt=1",
+      "--agent=bkit-plan-review-1",
+      "--agent=bkit-plan-review-2",
+      "--agent=bkit-plan-scope-check",
+      "--artifact=logs/r1.md",
+      "--artifact=logs/r2.md",
+      "--artifact=logs/s.md",
+      "--commit=none",
+    ]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ verdict: "FAIL", fields: { Redesign: "true" } });
+  });
+
   it("text output leaves out the row and passing checks, and prints parentSha", async () => {
     const cwd = repo();
     const before = git(cwd, "rev-parse", "HEAD");
@@ -1358,5 +1384,179 @@ describe("bkit steps done — a run in place on dev that shares its checkout", (
     expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
     expect(readRecord(cwd, FID)).toMatchObject({ commits: [] });
     expect(fs.existsSync(path.join(cwd, LOGS, "status.jsonl"))).toBe(false);
+  });
+});
+
+describe("bkit steps finish — plan-execute refuses DONE on a red that passed", () => {
+  const RED = { file: "src/a.test.ts", name: "adds a row" };
+  const EXECUTE = [
+    "steps",
+    "finish",
+    "--file=logs/status.jsonl",
+    "--workflow=build",
+    "--step=build-plan-execute",
+    "--group=1",
+    "--attempt-of=build-plan-execute:next",
+    "--agent=bkit-build-plan-execute",
+    "--artifact=logs/execute-1-log.md",
+    "--message=chore(1-x): plan-execute group 1",
+  ];
+  const rowFor = (step: string) => [
+    "steps",
+    "done",
+    "--file=logs/status.jsonl",
+    "--workflow=build",
+    `--step=${step}`,
+    "--group=1",
+    "--commit=none",
+    "--field=task=7",
+    `--field=test=${RED.file}`,
+    `--field=testName=${RED.name}`,
+  ];
+
+  /** A repo whose execute log closes TASK 7 with `line`, and whose status log holds a red refused as passed for it. */
+  async function executed(line: string) {
+    const cwd = repo();
+    write(
+      cwd,
+      "logs/execute-1-log.md",
+      `Verdict: PASS\n\n<!-- verdict:end -->\n\n# Build Plan\n\n## Execution Log\n\n${line}\n`,
+    );
+    expect((await run(cwd, rowFor("build-task-red-passed"))).code).toBe(0);
+    return cwd;
+  }
+
+  it("refuses (exit 11) a task logged DONE whose red passed and has no red, writing nothing", async () => {
+    const cwd = await executed("DONE — TASK 7: add a row — implemented (src/a.ts)");
+    const head = git(cwd, "rev-parse", "HEAD");
+    const before = fs.readFileSync(path.join(cwd, "logs/status.jsonl"), "utf-8");
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(11);
+    expect(r.json.reask).toEqual({
+      agent: "bkit-build-plan-execute",
+      artifact: "logs/execute-1-log.md",
+    });
+    expect(r.json.problem).toContain("TASK 7");
+    expect(r.json.problem).toContain(RED.name);
+    expect(fs.readFileSync(path.join(cwd, "logs/status.jsonl"), "utf-8")).toBe(before);
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+  });
+
+  it("passes once a real red is recorded for that test", async () => {
+    const cwd = await executed("DONE — TASK 7: add a row — implemented (src/a.ts)");
+    expect((await run(cwd, rowFor("build-task-red"))).code).toBe(0);
+    expect((await run(cwd, EXECUTE)).code).toBe(0);
+  });
+
+  it("passes a task logged already landed, or BLOCKED", async () => {
+    expect((await run(await executed("DONE — TASK 7: already landed"), EXECUTE)).code).toBe(0);
+    expect(
+      (await run(await executed("BLOCKED — TASK 7: add a row — the red passed"), EXECUTE)).code,
+    ).toBe(0);
+  });
+});
+
+describe("bkit steps finish — the attempt matches the saved artifacts", () => {
+  const GATE = [
+    "steps",
+    "finish",
+    "--file=logs/status.jsonl",
+    "--workflow=build",
+    "--step=build-group-gate",
+    "--verdict=PASS",
+    "--scope=unit",
+    "--group=3",
+    "--artifact=logs/gate-3-<attempt>.md",
+    "--message=chore(1-x): group-gate group 3 attempt <attempt>",
+  ];
+  const gate = (cwd: string, attempt: number) =>
+    write(cwd, `logs/gate-3-${attempt}.md`, `Verdict: PASS\n\n<!-- verdict:end -->\n`);
+
+  it("refuses (exit 12) an attempt below the highest saved artifact, writing nothing", async () => {
+    const cwd = repo();
+    for (const n of [2, 3, 6]) gate(cwd, n);
+    const head = git(cwd, "rev-parse", "HEAD");
+    const r = await run(cwd, [...GATE, "--attempt=2"]);
+    expect(r.code).toBe(12);
+    expect(r.json.later).toEqual(["logs/gate-3-3.md", "logs/gate-3-6.md"]);
+    expect(r.err).toContain("logs/gate-3-6.md");
+    expect(fs.existsSync(path.join(cwd, "logs/status.jsonl"))).toBe(false);
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+  });
+
+  it("passes the highest saved attempt, and ignores another group's artifacts", async () => {
+    const cwd = repo();
+    for (const n of [1, 2]) gate(cwd, n);
+    write(cwd, "logs/gate-13-5.md", "Verdict: PASS\n\n<!-- verdict:end -->\n");
+    expect((await run(cwd, [...GATE, "--attempt=2"])).code).toBe(0);
+  });
+
+  it("does not count an artifact the run found committed when it started", async () => {
+    const cwd = repo();
+    gate(cwd, 4);
+    git(cwd, "add", "-A");
+    git(cwd, "commit", "-q", "-m", "an earlier run");
+    write(
+      cwd,
+      "logs/status.jsonl",
+      `${JSON.stringify({
+        type: "workflow-started",
+        workflow: "build",
+        at: "2026-01-01T00:00:00Z",
+        parentSha: git(cwd, "rev-parse", "HEAD"),
+      })}\n`,
+    );
+    gate(cwd, 1);
+    expect((await run(cwd, [...GATE, "--attempt=1"])).code).toBe(0);
+  });
+});
+
+describe("bkit steps finish — a step commit never changes bkit.workflows", () => {
+  const pkg = (workflows: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
+    `${JSON.stringify({ name: "x", ...extra, bkit: { workflows } }, null, 2)}\n`;
+  const FINISH_SYNC = [
+    "steps",
+    "finish",
+    "--file=logs/status.jsonl",
+    "--workflow=build",
+    "--step=build-branch-sync",
+    "--artifact=logs/verify-1.md",
+    "--message=m",
+  ];
+
+  /** A repo whose committed package.json sets build.verify.maxAttempts to 2. */
+  function configured() {
+    const cwd = repo();
+    write(cwd, "package.json", pkg({ build: { verify: { ask: true, maxAttempts: 2 } } }));
+    git(cwd, "add", "package.json");
+    git(cwd, "commit", "-q", "-m", "config");
+    return cwd;
+  }
+
+  it("refuses (exit 13) a commit that would change a bkit.workflows key, naming it", async () => {
+    const cwd = configured();
+    write(
+      cwd,
+      "package.json",
+      pkg({ build: { verify: { ask: true, maxAttempts: 5 } }, tasks: { maxPerGroup: 4 } }),
+    );
+    const head = git(cwd, "rev-parse", "HEAD");
+    const r = await run(cwd, FINISH_SYNC);
+    expect(r.code).toBe(13);
+    expect(r.json.changed).toEqual(["build.verify.maxAttempts", "tasks"]);
+    expect(r.err).toContain("build.verify.maxAttempts");
+    expect(fs.existsSync(path.join(cwd, "logs/status.jsonl"))).toBe(false);
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+  });
+
+  it("commits a package.json change outside bkit.workflows", async () => {
+    const cwd = configured();
+    write(
+      cwd,
+      "package.json",
+      pkg({ build: { verify: { ask: true, maxAttempts: 2 } } }, { scripts: { t: "x" } }),
+    );
+    expect((await run(cwd, FINISH_SYNC)).code).toBe(0);
+    expect(git(cwd, "show", "--name-only", "--format=", "HEAD")).toContain("package.json");
   });
 });

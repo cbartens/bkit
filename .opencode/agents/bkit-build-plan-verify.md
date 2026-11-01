@@ -79,7 +79,7 @@ tools:
      - The API contracts match.
      - Shared state is consistent.
      - Cross-domain boundaries are respected.
-   - Run `pnpm bkit:gate:static-unit`.
+   - Run `bkit tests changed --base=origin/dev --fallback=bkit:gate:static-unit`.
 8. **If** a test-first audit report is supplied (its header has `Enforced`, `Verdict` and `Gaps`) → decide each of its gaps. A gap's `fixable` stands unless it is `null`. Decide each `null` one from the diff it names:
    - `delete-still-referenced` → read each hit:
      - **If** the hit is a different thing with the same name → no gap.

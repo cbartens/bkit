@@ -26,7 +26,7 @@ import {
 import { dispatchModules, listStampedFiles, type ModuleContext } from "./index";
 import { readInstallingVersion } from "../../shared/package-json";
 import { getBkitDocsRoot, getPkgRoot } from "../../shared/package-roots";
-import { BKIT_GATE_SCRIPTS } from "../manifest";
+import { BKIT_GATE_CHANGED_SCRIPT, BKIT_GATE_SCRIPTS } from "../manifest";
 import { readBkitConfig } from "../../shared/settings";
 import { hashFile, readBkitVersion, readManagedVersion, writeBkitVersion } from "../version-file";
 import { applyTokens } from "../placeholders";
@@ -367,6 +367,7 @@ describe("detectGateAdvisories — gate advisories point at .bkit/templates.md",
       f.id.startsWith("gate-"),
     );
     expect(findings.map((f) => f.id).sort()).toEqual([
+      "gate-changed-script-missing",
       "gate-commit-repeats-push",
       "gate-missing-called-scripts",
       "gate-noop",
@@ -374,6 +375,40 @@ describe("detectGateAdvisories — gate advisories point at .bkit/templates.md",
     ]);
     for (const f of findings) expect(f.action, f.id).toContain(GATE_CONTENTS_NOTE);
     expect(GATE_CONTENTS_NOTE).toContain(".bkit/workflows.md` § Local gate scripts");
+  });
+
+  it("tells a repo without bkit:gate:changed how to declare it, and what bkit passes it", () => {
+    writeScripts({ ...BKIT_GATE_SCRIPTS });
+    const finding = detectGateAdvisories(tmpDir).find(
+      (f) => f.id === "gate-changed-script-missing",
+    );
+    expect(finding?.severity).toBe("advisory");
+    expect(finding?.detect).toContain(`\`${BKIT_GATE_CHANGED_SCRIPT}\``);
+    expect(finding?.action).toContain("repo-relative");
+    expect(finding?.action).toContain(`"${BKIT_GATE_CHANGED_SCRIPT}": "`);
+    expect(finding?.action).not.toMatch(/docs\/[a-z-]+\.md/);
+  });
+
+  it("stays silent once bkit:gate:changed is declared", () => {
+    writeScripts({ ...BKIT_GATE_SCRIPTS, [BKIT_GATE_CHANGED_SCRIPT]: "node scripts/changed.mjs" });
+    expect(detectGateAdvisories(tmpDir).map((f) => f.id)).not.toContain(
+      "gate-changed-script-missing",
+    );
+  });
+
+  it("stays silent when bkit.advisories.ignore names gate-changed-script-missing", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({
+        name: "x",
+        scripts: { ...BKIT_GATE_SCRIPTS },
+        bkit: { advisories: { ignore: ["gate-changed-script-missing"] } },
+      }),
+      "utf-8",
+    );
+    expect(detectGateAdvisories(tmpDir).map((f) => f.id)).not.toContain(
+      "gate-changed-script-missing",
+    );
   });
 
   it("runs in check (dry run) as well as install, with the same findings", () => {

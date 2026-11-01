@@ -8,6 +8,7 @@
 //            be 0 there, so 0 is refused (it means the row was dropped).
 //   count    routing on a DIFFERENT step, prior or not yet run: the bare count, and
 //            0 is a legal answer (that step simply has not run).
+import * as fs from "node:fs";
 import * as path from "node:path";
 import { activeDoneSteps, allRunsDoneSteps, lastDoneStepAllRuns, nextStrategy, runNumber, } from "../../ledgers/status.js";
 import { ASK_POINTS, readBkitConfig, } from "../../shared/settings.js";
@@ -70,6 +71,28 @@ const ALL_RUNS_FLAG = {
     type: "boolean",
     help: "count every run of the workflow in --file, not only the active one",
 };
+/** The `workflow-started` row that opened `workflow`'s active run; undefined with no file or no run. */
+export function activeRunStart(file, workflow) {
+    if (!fs.existsSync(file))
+        return undefined;
+    return readStatusRows(file)
+        .filter((r) => r.type === "workflow-started" && r.workflow === workflow)
+        .sort((a, b) => String(a.at).localeCompare(String(b.at)))
+        .at(-1);
+}
+/** The point's limit as the active run froze it in its `workflow-started` row's `limits`. */
+function frozenAskSetting(file, workflow, point) {
+    const limits = activeRunStart(file, workflow)?.limits;
+    const frozen = limits !== null && typeof limits === "object"
+        ? limits[point]
+        : undefined;
+    if (frozen === null || typeof frozen !== "object")
+        return undefined;
+    const { ask, max } = frozen;
+    return typeof ask === "boolean" && Number.isInteger(max) && max >= 0
+        ? { ask, max: max }
+        : undefined;
+}
 /** Rows of `type` in `workflow`'s active run (since its last workflow-started row). */
 function typedRowCount(file, workflow, type) {
     const rows = readStatusRows(file);
@@ -236,7 +259,7 @@ export const countersCommand = {
                 {
                     name: "point",
                     type: "string",
-                    help: `ask point whose limit is the max: ${ASK_POINTS.join(" | ")}`,
+                    help: `ask point whose limit is the max: ${ASK_POINTS.join(" | ")}; with --file and --workflow, as the active run's workflow-started row froze it, else live from package.json`,
                 },
                 { name: "continue", type: "string", help: "step to go to when value <= max" },
                 { name: "exceeded", type: "string", help: "step to go to when value > max" },
@@ -247,6 +270,7 @@ export const countersCommand = {
                 next: "--continue or --exceeded step, whichever applies (null when not given)",
                 max: "the max compared against",
                 ask: "with --point: the point's ask setting, false when headless (GITHUB_ACTION); else false",
+                limitsFrom: "with --point: run (the active run's workflow-started row froze the limit) | package.json (read live: no --file / --workflow, or no frozen limit)",
             },
             exitCodes: {
                 [EXIT_NO_STATUS]: "--of / --rows: status.jsonl missing, unreadable, or not valid NDJSON",
@@ -265,7 +289,10 @@ export const countersCommand = {
                     throw new CommandError(EXIT.USAGE, "give exactly one of --max or --point");
                 }
                 const point = ctx.flags.point === undefined ? undefined : askPoint(String(ctx.flags.point));
-                const setting = point === undefined ? undefined : askSetting(ctx.cwd, point);
+                const frozen = point === undefined || ctx.flags.file === undefined || ctx.flags.workflow === undefined
+                    ? undefined
+                    : frozenAskSetting(statusFile(ctx), String(ctx.flags.workflow), point);
+                const setting = point === undefined ? undefined : (frozen ?? askSetting(ctx.cwd, point));
                 const max = setting === undefined ? nonNegativeInt(ctx.flags.max, "max") : setting.max;
                 const exceeded = value > max;
                 if (exceeded)
@@ -276,6 +303,7 @@ export const countersCommand = {
                     next: (exceeded ? str(ctx.flags.exceeded) : str(ctx.flags.continue)) ?? null,
                     max,
                     ask: setting !== undefined && setting.ask && !headlessRun(ctx.cwd),
+                    ...(point === undefined ? {} : { limitsFrom: frozen ? "run" : "package.json" }),
                 });
                 return exceeded ? EXIT.NO : EXIT.OK;
             },
@@ -283,10 +311,19 @@ export const countersCommand = {
         max: {
             summary: "The ask points' limits and ask settings: one by --point, or all.",
             use: "workflow",
-            flags: [{ name: "point", type: "string", help: "ask point, e.g. debug.fix" }],
+            flags: [
+                { name: "point", type: "string", help: "ask point, e.g. debug.fix" },
+                {
+                    ...FILE_FLAG,
+                    required: false,
+                    help: "status.jsonl: with --point and --workflow, the limit as the active run's workflow-started row froze it",
+                },
+                { ...WORKFLOW_FLAG, required: false, help: "workflow, with --file" },
+            ],
             output: {
                 value: "the point's limit (with --point)",
                 ask: "the point's ask setting, false when headless (with --point)",
+                limitsFrom: "run (the active run's workflow-started row froze the limit) | package.json (with --point)",
                 points: "every point's {ask, max} as set (without --point)",
             },
             run: (ctx) => {
@@ -295,10 +332,15 @@ export const countersCommand = {
                     ctx.emit({ points: readBkitConfig(checkoutRoot(ctx.cwd)).asks });
                     return EXIT.OK;
                 }
-                const setting = askSetting(ctx.cwd, askPoint(name));
+                const point = askPoint(name);
+                const frozen = ctx.flags.file === undefined || ctx.flags.workflow === undefined
+                    ? undefined
+                    : frozenAskSetting(statusFile(ctx), String(ctx.flags.workflow), point);
+                const setting = frozen ?? askSetting(ctx.cwd, point);
                 ctx.emit({
                     value: setting.max,
                     ask: setting.ask && !headlessRun(ctx.cwd),
+                    limitsFrom: frozen ? "run" : "package.json",
                 });
                 return EXIT.OK;
             },

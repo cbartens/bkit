@@ -18,6 +18,7 @@ import { PAYLOAD_LINK_RELPATHS, syncPayloadLinks } from "../payload-links.js";
 import { writeNetworkAllowlist } from "../network-allowlist.js";
 import { migrateTemplateNotes } from "../template-notes.js";
 import type { PreflightFinding } from "../../checks/before/index.js";
+import { isAdvisorySuppressed } from "../../checks/after/suppression.js";
 import { parseJson, readJsonFile } from "../../shared/json.js";
 import { readInstallingVersion } from "../../shared/package-json.js";
 import { detectDepUpdater, type DepUpdater } from "../../shared/dep-updater.js";
@@ -33,6 +34,7 @@ import {
   BKIT_GATE_SCRIPTS,
   BKIT_OPTIONAL_GATES,
   BKIT_PUSH_GATES,
+  BKIT_GATE_CHANGED_SCRIPT,
   BKIT_LINT_FILE_SCRIPT,
   BKIT_TEST_FILE_SCRIPT,
 } from "../manifest.js";
@@ -838,8 +840,8 @@ export const GATE_CONTENTS_NOTE =
 /**
  * Advisories for the `bkit:gate:*` scripts: the scripts a still-default gate
  * chains that package.json does not declare, the deeper test tiers the repo has
- * but no gate runs, a commit gate that repeats the push gate, and a missing
- * `bkit:test:file`. Judges the scripts as install
+ * but no gate runs, a commit gate that repeats the push gate, a missing
+ * `bkit:test:file`, and a missing `bkit:gate:changed`. Judges the scripts as install
  * leaves them (missing gate names at their seeded defaults), so install, `bkit check`
  * and `bkit upgrade` report the same set. Read-only; an absent or unparseable
  * package.json yields none.
@@ -932,6 +934,22 @@ export function detectGateAdvisories(cwd: string): PreflightFinding[] {
       severity: "advisory",
       detect: `package.json declares \`${BKIT_TEST_FILE_SCRIPT}\` but not \`${BKIT_LINT_FILE_SCRIPT}\`, so \`/bkit-build\` records a task's red before the linter sees the test; a lint fix after it pauses the build for an owner exception.`,
       action: `Add \`${BKIT_LINT_FILE_SCRIPT}\` to package.json: it lints the ONE test file bkit appends as its argument (repo-relative path) with the rules your static gate applies, exiting 0 when clean. \`bkit tests red\` runs it before the test and records no red while it fails. Examples:\n\n    "${BKIT_LINT_FILE_SCRIPT}": "eslint --max-warnings=0"\n    "${BKIT_LINT_FILE_SCRIPT}": "ruff check"\n\nUse the same linter config as the static gate, or the gate can still demand a rewrite after the red.`,
+    });
+  }
+
+  // Build and debug agents check their own change through this script; without it each
+  // one runs a whole gate after every change. bkit cannot seed it: what finds the tests
+  // a file affects is the stack's.
+  const changedId = "gate-changed-script-missing";
+  if (
+    !(BKIT_GATE_CHANGED_SCRIPT in declared) &&
+    !isAdvisorySuppressed(cwd, changedId, "advisory")
+  ) {
+    findings.push({
+      id: changedId,
+      severity: "advisory",
+      detect: `package.json does not declare \`${BKIT_GATE_CHANGED_SCRIPT}\`, so \`/bkit-build\` and \`/bkit-debug\` agents run a whole gate (\`bkit:gate:static\` or \`bkit:gate:static-unit\`) after every change instead of checking only what changed.`,
+      action: `Add \`${BKIT_GATE_CHANGED_SCRIPT}\` to package.json. \`bkit tests changed\` calls it with the changed files as its arguments (repo-relative paths: uncommitted, untracked and committed since the step began; deleted files left out) and never with none. It runs the tests that import those files, the tests that name their paths, and the static checks (lint, format, typecheck) on those files, exiting 0 when clean. Vitest + ESLint example, with \`scripts/gate-changed.sh\` holding \`vitest related --run "$@" && eslint --max-warnings=0 --no-error-on-unmatched-pattern "$@" && prettier --check --ignore-unknown "$@"\`:\n\n    "${BKIT_GATE_CHANGED_SCRIPT}": "sh scripts/gate-changed.sh"\n\n\`vitest related\` finds only importers; also run the tests that read a changed file by its path (a text search of the test files for each path). The orchestrator's group gate, pre-push and CI still run the whole gates. To keep the whole gate on every change, add \`${changedId}\` to \`bkit.advisories.ignore\` in package.json.\n\n${GATE_CONTENTS_NOTE}`,
     });
   }
   return findings;

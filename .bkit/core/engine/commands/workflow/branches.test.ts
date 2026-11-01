@@ -284,6 +284,35 @@ describe("branches rebase: behaviour", { timeout: GIT_TIMEOUT }, () => {
     expect(r.err).toContain("COMPLETE");
   });
 
+  it("--file records the completed rebase as an engine-action row, from the old tip to the new", async () => {
+    const dir = makeRepo("ledger-record");
+    git(dir, "checkout", "-q", "-b", "feat");
+    commit(dir, { "docs/knowledge.jsonl": '{"key":"B","ts":2}\n' }, "feat");
+    const before = sha(dir);
+    git(dir, "checkout", "-q", "main");
+    commit(dir, { "docs/knowledge.jsonl": '{"key":"C","ts":3}\n' }, "main");
+    git(dir, "checkout", "-q", "feat");
+    git(dir, "rebase", "main");
+    const status = path.join(tmp("status"), "status.jsonl");
+    const r = await run(dir, ["rebase", `--file=${status}`]);
+    expect(r.code).toBe(0);
+    const rows = read(path.dirname(status), "status.jsonl")
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(rows).toMatchObject([
+      { type: "engine-action", action: "rebase", key: `rebase/${before}`, ref: sha(dir) },
+    ]);
+  });
+
+  it("--file records nothing for a refused rebase", async () => {
+    const dir = makeRepo("code-record");
+    diverge(dir, { "src.txt": "feat\n" }, { "src.txt": "main\n" });
+    const status = path.join(tmp("status"), "status.jsonl");
+    expect((await run(dir, ["rebase", `--file=${status}`])).code).toBe(3);
+    expect(fs.existsSync(status)).toBe(false);
+  });
+
   it("refuses a code conflict and aborts the rebase on the spot", async () => {
     const dir = makeRepo("code");
     diverge(dir, { "src.txt": "feat\n" }, { "src.txt": "main\n" });
@@ -1012,6 +1041,7 @@ describe("branches push", { timeout: GIT_TIMEOUT }, () => {
       skipped: null,
       prNumber: null,
       replayed: false,
+      mergedDev: false,
     });
     expect(remoteSha(origin, "feat/1-x")).toBe(sha(clone));
     // A rebased (rewritten) branch still pushes: that is what the lease is for.
@@ -1098,6 +1128,58 @@ describe("branches push", { timeout: GIT_TIMEOUT }, () => {
     expect((await run(clone, ["push", "--mode=feature", "--require-ci"])).code).toBe(0);
   });
 
+  /** A feature branch and dev that both appended a row to a ledger outside docs/. */
+  function ledgerDiverged(name: string) {
+    const { origin, clone } = withOrigin(name);
+    landOnDev(origin, { ".bkit/issues.jsonl": '{"key":"A"}\n' });
+    git(clone, "pull", "-q", "origin", "dev");
+    git(clone, "checkout", "-q", "-b", "feat/1-x");
+    commit(clone, { ".bkit/issues.jsonl": '{"key":"B"}\n' }, "feat(1-x): work");
+    landOnDev(origin, { ".bkit/issues.jsonl": '{"key":"C"}\n' }, "docs: dev row bkit [skip ci]");
+    return { origin, clone };
+  }
+
+  it("--require-ci merges dev's new ledger rows in before pushing, so GitHub sees no conflict", async () => {
+    const { origin, clone } = ledgerDiverged("push-ledger-merge");
+    const r = await run(clone, ["push", "--mode=feature", "--require-ci"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ pushed: true, mergedDev: true, sha: sha(clone) });
+    expect(remoteSha(origin, "feat/1-x")).toBe(sha(clone));
+    expect(git(clone, "merge-base", "--is-ancestor", "origin/dev", "HEAD").ok).toBe(true);
+    const keys = read(clone, ".bkit/issues.jsonl")
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => (JSON.parse(l) as { key: string }).key);
+    expect(keys.sort()).toEqual(["A", "B", "C"]);
+  });
+
+  it("--require-ci pushes as-is when dev has not moved", async () => {
+    const { clone } = feature("push-dev-still");
+    const before = sha(clone);
+    const r = await run(clone, ["push", "--mode=feature", "--require-ci"]);
+    expect(r.json).toMatchObject({ pushed: true, mergedDev: false, sha: before });
+  });
+
+  it("--mode=feature without --require-ci never merges dev (ship's force-push)", async () => {
+    const { clone } = ledgerDiverged("push-no-ci");
+    const before = sha(clone);
+    const r = await run(clone, ["push", "--mode=feature"]);
+    expect(r.json).toMatchObject({ pushed: true, mergedDev: false, sha: before });
+  });
+
+  it("--require-ci stops (11) and pushes nothing when dev's commits conflict outside docs/ and the ledgers", async () => {
+    const { origin, clone } = ledgerDiverged("push-code-conflict");
+    commit(clone, { "src.txt": "branch\n" }, "feat(1-x): code");
+    landOnDev(origin, { "src.txt": "dev\n" });
+    const before = sha(clone);
+    const r = await run(clone, ["push", "--mode=feature", "--require-ci"]);
+    expect(r.code).toBe(11);
+    expect(r.json).toMatchObject({ pushed: false });
+    expect(sha(clone)).toBe(before);
+    expect(fs.existsSync(path.join(clone, ".git/MERGE_HEAD"))).toBe(false);
+    expect(git(origin, "rev-parse", "--verify", "-q", "refs/heads/feat/1-x").ok).toBe(false);
+  });
+
   it("--require-ci also reads the message body, as the HEAD-Subject Assertion did", async () => {
     const { clone } = feature("push-body");
     git(clone, "commit", "-q", "--allow-empty", "-m", "chore(1-x): close", "-m", "body [skip ci]");
@@ -1121,6 +1203,7 @@ describe("branches push", { timeout: GIT_TIMEOUT }, () => {
       skipped: "open-pr",
       prNumber: 12,
       replayed: false,
+      mergedDev: false,
     });
     expect(fs.readFileSync(log, "utf-8")).toContain(
       "pr list --head feat/1-x --state open --json number,state",
@@ -2132,6 +2215,49 @@ describe("branches sync", { timeout: GIT_TIMEOUT }, () => {
     expect(r.json?.head).toBe(sha(clone));
   });
 
+  it("--merge-docs merges dev when only a ledger outside docs/ moved on dev", async () => {
+    const { origin, clone } = feature("sync-ledger-only");
+    landOnDev(origin, { ".bkit/issues.jsonl": '{"key":"I1"}\n' });
+    const r = await run(clone, ["sync", "--merge-docs"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ behind: 1, docsBehind: 1, merged: true });
+    expect(read(clone, ".bkit/issues.jsonl")).toBe('{"key":"I1"}\n');
+  });
+
+  /** A feature branch declaring bkit:generate as `body`, with dev's docs/ one commit ahead. */
+  function withGenerate(name: string, body: string) {
+    const { origin, clone } = feature(name);
+    commit(
+      clone,
+      { "package.json": JSON.stringify({ name: "x", scripts: { "bkit:generate": body } }) },
+      "chore: generate script",
+    );
+    landOnDev(origin, { "docs/testing.md": "dev docs\n" });
+    return clone;
+  }
+
+  it("--merge-docs runs a declared bkit:generate after the merge and commits its output", async () => {
+    const clone = withGenerate(
+      "sync-generate",
+      "node -e \"require('fs').writeFileSync('docs/gen.md','gen\\\\n')\"",
+    );
+    const r = await run(clone, ["sync", "--merge-docs"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ merged: true, generated: true, head: sha(clone) });
+    expect(read(clone, "docs/gen.md")).toBe("gen\n");
+    expect(git(clone, "log", "-1", "--format=%s").out).toBe(
+      "chore(1-x): regenerate after merging dev",
+    );
+    expect(git(clone, "status", "--porcelain").out).toBe("");
+  });
+
+  it("--merge-docs exits 25 when bkit:generate fails after the merge", async () => {
+    const clone = withGenerate("sync-generate-fail", "exit 3");
+    const r = await run(clone, ["sync", "--merge-docs"]);
+    expect(r.code).toBe(25);
+    expect(r.json).toMatchObject({ merged: true, generated: false });
+  });
+
   it("--merge-docs leaves the branch alone when only code moved on dev", async () => {
     const { origin, clone } = feature("sync-codeonly");
     const before = sha(clone);
@@ -2567,7 +2693,11 @@ describe("branches land", { timeout: GIT_TIMEOUT }, () => {
       landedSha: merged,
       pushAttempts: 0,
     });
-    expect(read(gh.base, "updates")).toBe("update\n");
+    // The retry merged dev in locally and pushed; GitHub was never asked to update the branch.
+    expect(fs.existsSync(path.join(gh.base, "updates"))).toBe(false);
+    expect(git(repo, "merge-base", "--is-ancestor", "origin/dev", `origin/feat/${FID}`).ok).toBe(
+      true,
+    );
   });
 
   /** `.worktrees/12-x` holding feat/12-x, owned by a workflow (so the close would remove it). */
@@ -2626,7 +2756,7 @@ describe("branches land", { timeout: GIT_TIMEOUT }, () => {
     expect(r.code).toBe(0);
     expect(r.json).toMatchObject({ shape: "pr", landedSha: merged });
     // Try 1 lost to the failed read, try 2 to the refused merge, try 3 merges.
-    expect(read(gh.base, "updates")).toBe("update\nupdate\n");
+    expect(fs.existsSync(path.join(gh.base, "updates"))).toBe(false);
   });
 
   it("PR merge refused on every try: stops (17) after LAND_ATTEMPTS, PR left open", async () => {
@@ -2649,7 +2779,7 @@ describe("branches land", { timeout: GIT_TIMEOUT }, () => {
     );
     expect(r.code).toBe(17);
     expect(r.err).toContain("PR 5 still not merged after 3 tries — left open");
-    expect(read(base, "updates")).toBe("update\nupdate\n");
+    expect(fs.existsSync(path.join(base, "updates"))).toBe(false);
     expect(git(repo, "rev-parse", "-q", "--verify", `refs/heads/feat/${FID}`).ok).toBe(true);
   });
 

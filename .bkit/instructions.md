@@ -1138,7 +1138,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-adoption`, `bkit-audit-dependencies`, `bkit-audit-usability`
 - drift:
-  - `bkit-build:356`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-build:358`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `bkit-design:183`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
@@ -1238,7 +1238,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-adoption`, `bkit-audit-dependencies`, `bkit-audit-repo`, `bkit-audit-usability`
 - drift:
-  - `bkit-build:356`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-build:358`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `bkit-design:183`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
@@ -1508,7 +1508,7 @@ Clause section lines:
   - specialised: `bkit-build-plan-execute`, `bkit-build-plan-gaps-remediate`
   - applies: `bkit-build-plan-execute`, `bkit-debug-failure-reproduce`
 - drift:
-  - `bkit-build-plan-execute:114`: "is not declared → log `red not enforced` once, and continue." When `bkit:test:file` is not declared, or no red command is supplied, red is not enforced/recorded; `reproduce-first`/plan `TEST FIRST` says ALWAYS see tests fail first
+  - `bkit-build-plan-execute:115`: "is not declared → log `red not enforced` once, and continue." When `bkit:test:file` is not declared, or no red command is supplied, red is not enforced/recorded; `reproduce-first`/plan `TEST FIRST` says ALWAYS see tests fail first
     - kept: a project with no single-file test script cannot run a per-test red; the tests are still written first and the gap is logged once
 
 ```text
@@ -1649,7 +1649,7 @@ Clause section lines:
   - verbatim: `bkit-build-plan-execute`, `bkit-build-plan-verify`
   - applies: `bkit-build-plan-gaps-remediate`, `bkit-debug-failure-reproduce`
 - drift:
-  - `bkit-build-plan-gaps-remediate:100`: "Run `pnpm bkit:gate:static-unit`. Every local test must pass." Runs only `pnpm bkit:gate:static-unit`, not the integration tier the pre-push hook adds when `bkit:gate:static-unit-integration` is declared
+  - `bkit-build-plan-gaps-remediate:102`: "Run `bkit tests changed --fallback=bkit:gate:static-unit`. Every local test must pass." Runs only `pnpm bkit:gate:changed` on the changed files, or `pnpm bkit:gate:static-unit` when that is undeclared, not the integration tier the pre-push hook adds when `bkit:gate:static-unit-integration` is declared
     - kept: subagents never push; they run their own lighter gate (`local-pre-commit`: `/bkit-*` steps run their own gates) and the pre-push hook runs the push gate
 
 ```text
@@ -1802,7 +1802,7 @@ Clause section lines:
   - specialised: `bkit-debug-failure-soak`
   - applies: `bkit-debug-failure-remediate`
 - drift:
-  - `bkit-debug-failure-remediate:76`: "Run `pnpm bkit:gate:static-unit`. Every local test must pass." Runs only `pnpm bkit:gate:static-unit`, not the integration tier the pre-push hook adds when `bkit:gate:static-unit-integration` is declared
+  - `bkit-debug-failure-remediate:76`: "Run `bkit tests changed --fallback=bkit:gate:static-unit`. Every local test must pass." Runs only `pnpm bkit:gate:changed` on the changed files, or `pnpm bkit:gate:static-unit` when that is undeclared, not the integration tier the pre-push hook adds when `bkit:gate:static-unit-integration` is declared
     - kept: subagents never push; they run their own lighter gate (`local-pre-commit`: `/bkit-*` steps run their own gates) and the pre-push hook runs the push gate
 
 ```text
@@ -3605,7 +3605,7 @@ Record `partial diff coverage` in the verdict.
 - carriers: prompt `bkit-build-plan-convert`, `bkit-plan-generate`, `bkit-plan-scope-check`, `bkit-plan-update`
 
 ```text
-**TEST FIRST:** Each task carries a `**TEST FIRST:**` field after `DONE WHEN`. A behaviour change at the unit or integration tier lists one or more tests, within the per-task plan caps your Context names (tests, test files), one sub-bullet per test, each `` `{test file}` `` `` `{test name}` `` fails on {what goes wrong}: a repo-relative test file, the test name as the runner reports it or its last segments, and {what goes wrong} as the wrong behaviour a stub shows, not a literal assertion. More tests or files → split the task. No behaviour change (docs, config, pure refactor) or E2E / `@live` tier only → `n/a — {reason naming which}` on the field line.
+**TEST FIRST:** Each task carries a `**TEST FIRST:**` field after `DONE WHEN`. A behaviour change at the unit or integration tier lists one or more tests, within the per-task plan caps your Context names (tests, test files), one sub-bullet per test, each `` `{test file}` `` `` `{test name}` `` fails on {what goes wrong}: a repo-relative test file, the test name as the runner reports it or its last segments, and {what goes wrong} as the wrong behaviour a stub shows, not a literal assertion. When the planned failure prints a phrase no other failure would, put that phrase in double quotes inside {what goes wrong}, e.g. fails on the total "expected 12" being 0: `tests red` refuses a red whose failure message holds none of the quoted phrases. More tests or files → split the task. No behaviour change (docs, config, pure refactor) or E2E / `@live` tier only → `n/a — {reason naming which}` on the field line. A regenerated baseline (a snapshot, a coverage list, a generated doc) is never a `TEST FIRST` test: regenerating it makes it pass, so it cannot fail first.
 ```
 
 ```retired
@@ -3753,6 +3753,42 @@ Sort findings: `CRITICAL` / OPTIONAL / OUT OF SCOPE.
 
 ```retired
 `CONCERNS` = `CRITICAL` items flagged for orchestrator merge.
+```
+
+### plan-review-mark-fix
+
+- prompt: where-used
+- carriers: prompt `bkit-plan-review-*`, `bkit-plan-scope-check`
+
+```text
+Mark each `CRITICAL` finding `(plan edit)` when an edit to the plan resolves it, or `(design change)` when only a change to the source design resolves it.
+```
+
+### plan-review-redesign
+
+- prompt: where-used
+- carriers: prompt `bkit-plan-review-*`, `bkit-plan-scope-check`
+
+```text
+Set `Redesign` in **Create** with `Edit` = `true` when at least one `CRITICAL` finding is marked `(design change)`, and `false` otherwise.
+```
+
+### generate-before-done
+
+- prompt: where-used
+- carriers: prompt `bkit-build-plan-execute`, `bkit-build-plan-gaps-remediate`
+
+```text
+**If** `package.json` declares a `bkit:generate` script → run `pnpm bkit:generate` once, after your last code edit. It rewrites the generated files and saved baselines from your code, so the caller commits them with it.
+```
+
+### generate-blocked
+
+- prompt: where-used
+- carriers: prompt `bkit-build-plan-execute`, `bkit-build-plan-gaps-remediate`
+
+```text
+**If** it exits non-zero → append `BLOCKED — bkit:generate: {first error line}` with Bash `echo >>`. The verdict is then `FAIL`, whatever the tasks and tests show.
 ```
 
 ### plan-review-other-gap-critical
@@ -3903,11 +3939,12 @@ Set `Strategy` in **Create** with `Edit` to the `Strategy` value from Context. T
 - carriers: prompt `bkit-build-plan-gaps-remediate`, `bkit-debug-failure-remediate`
 
 ```text
-Run `pnpm bkit:gate:static-unit`. Every local test must pass.
+Run `bkit tests changed --fallback=bkit:gate:static-unit`. Every local test must pass.
 ```
 
 ```retired
 Run `pnpm bkit:gate:static-unit` — all local tests MUST pass.
+Run `pnpm bkit:gate:static-unit`. Every local test must pass.
 ```
 
 ### remediate-verdict-fail
@@ -5852,7 +5889,7 @@ Wait for all subagents to complete, then finish
 ### workflow-verdict-fail
 
 - workflow: repeatable
-- carriers: workflow `bkit-design`, `bkit-plan`, `bkit-ship`
+- carriers: workflow `bkit-design`, `bkit-ship`
 
 ```text
 **If** `{{verdict}}` = FAIL → {{then?}}**Failure Path**.
@@ -6244,7 +6281,7 @@ Fetch each hit and write the file (`None.` when there are none):
 ### workflow-else-step-heading
 
 - workflow: repeatable
-- carriers: workflow `bkit-build`, `bkit-debug`, `bkit-design`
+- carriers: workflow all except `bkit-auto`, `bkit-ship`
 
 ```text
 **Else** → Step {{step}}.
@@ -8255,7 +8292,7 @@ The table lists the header bullets of the 6 workflow files, block by block, in f
 | **Timeouts** | Protocol | all 6 | Workflow or subagent run > 3600 seconds → **Failure Path**. |
 | **CI wait turn-loop** | Protocol | build, debug | CI-wait block exits 81 (or 80) → resolve the poll in the agent turn loop, then re-run the block with the result. |
 | **Friction** | Contract | all 6 | Confirm prompts, manual installs, rework, repeated tool failures, destructive backouts → append `.bkit/friction.jsonl` rows → continue or escalate; never replaces **Failure Path**. |
-| **Finish** | Contract | design, plan, build, debug, ship | `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, derives the attempt, checks what the gate checks, writes the row, commits, prints `comment`. Exit 5 or 6 → re-ask `reask.agent` for its header only, re-run the block; still non-zero → **Failure Path**. Exit 8 → nothing written, nothing committed: fix what the hook's message names, then re-run the block; the attempt is unchanged. Exit 82 → the commit failed and the row stays in `status.jsonl` (another writer appended after it) → **Failure Path**. |
+| **Finish** | Contract | design, plan, build, debug, ship | `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, derives the attempt, checks what the gate checks, writes the row, commits, prints `comment`. Across agents: the worst verdict, `Failures` summed, a `true \| false` field true when any agent sets it true, any other field from the first agent that sets it. Exit 5 or 6 → re-ask `reask.agent` for its header only, re-run the block; still non-zero → **Failure Path**. Exit 8 → nothing written, nothing committed: fix what the hook's message names, then re-run the block; the attempt is unchanged. Exit 82 → the commit failed and the row stays in `status.jsonl` (another writer appended after it) → **Failure Path**. |
 | **Resume** | Contract | design, plan, build, debug, ship | After Step 2, `bkit status resume` folds status.jsonl and names the step after the last `DONE` step of the active `IN_PROGRESS` run; for build, `workflows start` also prints the run's `OPEN` decision as `openDecision`. |
 | **Plan** | Contract | build | The plan path, in task-block form, with the `bkit.workflows.tasks` group caps held at Step 1; one group per pass of the execute-verify loop; tasks tick `[x]` only in verify. |
 | **Status** | Contract | design, plan, build, debug, ship | `status.jsonl` = append-only NDJSON event log, folded to the run array; `step-done` carries `parentSha` captured at step start plus optional `verdict`, `failures`, `attempt`, `strategy`; build adds `group`, debug a `workflow-meta` `debugAttempt`. |
@@ -8267,7 +8304,7 @@ The table lists the header bullets of the 6 workflow files, block by block, in f
 | **External tools** | Contract | auto | `gh` reads the PR and its CI run inside `bkit runs context`; exit 80 → **Failure Path**; tracker reads and writes go through `bkit` verbs, the tracker MCP only on `tracker.done` = false or exit 80. |
 | **Tracker** / **Labels** / **Comments** | Contract | all 6, once per tracker block | `bkit` verbs read and write the tracker; its MCP tools only when a verb exits 80 or prints `done` = false; writes best-effort, retry once after 5s. Phase labels mutually exclusive; a phase start drops `next:*` and `bkit:failed`; `bkit:auto`, `bkit:failed` additive (§ Tracker Integration); `bkit issues labels --write` writes each transition, the **Labels** line names the MCP fallback call. A step's `bkit` block posts its `comment` with `--post` before its gate and prints `tracker`; `tracker.done` = false → the tracker MCP posts it. Every gate includes `Issue comment attempted (Step N section)` without listing it; never edit prior content (§ Comment Lifecycle). |
 | **No issue** | Contract | design, plan, build, debug, ship | `ISSUE_ID` empty → run issue-less: no issue-tied tracker read, label, comment or board call; emit the no-issue warning once `FID` is held (§ Best-effort runs (no issue, no plan)). |
-| **Limits** | Contract | build, debug, ship | Each ask point's `ask` and limit from `package.json` `bkit.workflows.<workflow>.<point>`, read by `bkit counters route --point=` / `bkit counters max --point=` (§ Ask points). |
+| **Limits** | Contract | build, debug, ship | Each ask point's `ask` and limit from `package.json` `bkit.workflows.<workflow>.<point>`, frozen in the run's `workflow-started` row and read by `bkit counters route --point=` / `bkit counters max --point=` with `--file` and `--workflow` (§ Ask points). |
 | **Modes** | Contract | debug | `PUSH_MODE` (`PR\|LOCAL`) and `DEBUG_MODE` (`NORMAL\|SOAK`), both set at Step 1. |
 | **External input** | Rules | all 6 | The `external-input` clause shared with every prompt and `.agents/rules.md`; sole bullet of the Rules block. |
 ```
@@ -8285,7 +8322,7 @@ The table lists the header bullets of the 6 workflow files, block by block, in f
 | **Pre-merge CI** | Ship re-resolves CI against the PR head it is about to merge (`bkit runs gate` at Step 10), not the read taken at Step 2: when `dev` requires status checks, `bkit prs update-branch` moves the head before `gh pr merge`, so the earlier read describes a SHA that is no longer being merged. A failed query is not a pass — an API error (403 on PAT scope, for one) is gate code 20, never green. Anything short of a `completed` run whose capstone concluded `success` refuses the merge. |
 | **Artifact tree** | A subagent's artifact is asserted under the working directory its dispatch supplied: `{WORKTREE_PATH}` for every worktree-phase agent, ship's included. The subagent's reported path is not evidence: the `cd` and `pwd` line in the dispatch Context is prose, and agents have written to the main checkout despite it. design / plan additionally assert no `{FID}` artifact is left untracked in the main checkout before the close squash — an untracked file at the same path makes `git merge --squash` fail with `untracked working tree files would be overwritten`. |
 | **Main-checkout staging** | Every `git add` and every `git commit` that targets the main checkout carries an explicit pathspec. `add` alone is not enough: a pathspec-less `git commit` commits the whole index, sweeping in work a user staged themselves. Worktree-phase `git add -A` is unrestricted, because that tree holds only this feature's work. |
-| **Close squash** | design / plan close, every runtime: `bkit branches land` fetches `origin/dev`, adds a detached `.worktrees/_land-{FID}` there, squashes `{BRANCH}` into it with `-X ours`, then appends back any `.jsonl` row the branch added that the squash dropped (a ledger without `merge=union`, e.g. a consumer's `.bkit/friction.jsonl`). Non-zero squash, staged non-doc files (`CLOSE_DOCS`; a staged path that is local `dev`'s own content — a branch carrying unpushed `dev` commits — is named as such, with the unpushed count and `git push origin dev`), or a staged `{FID}-design.md` / `{FID}-plan.md` blob that differs from the branch's → stop; nothing pushed, branch and worktree kept — presence on `dev` proves nothing on a re-run, and `-X ours` keeps `dev`'s side of a conflicting hunk. Roadmap row, then commit via `bkit ledgers commit --squash-of={BRANCH}` and `git push origin HEAD:dev`. Push rejected because `dev` moved → drop the throwaway worktree, refetch, rebuild, push again: `LAND_ATTEMPTS` pushes, waits doubling from `LAND_BACKOFF_START_S` to `LAND_BACKOFF_CAP_S` with jitter; all used → exit 8, nothing landed. A push with no server answer → exit 8, nothing landed, no PR. A server refusal → PR close (roadmap commit on the branch in the checkout holding it, push, open or reuse the PR, squash-merge; a refused merge on an OPEN PR → `bkit prs update-branch` and retry on the same schedule, then exit 17 with the PR left open). The throwaway worktree is removed on every path. `RUNTIME_DEVPUSHES=true` only, after landing: local `dev` fast-forwards to the landed commit when that is a pure fast-forward (`merge --ff-only` when the main checkout is on `dev`, else the pointer alone); local `dev` already past the landed commit and on `origin/dev` (a later close fast-forwarded it) → `current`; local-only commits on `dev` (listed as `origin/dev..dev`) or git refusing (an uncommitted edit the move would overwrite) skip it with a log line, never failing the close; then the workflow-created worktree and `feat/{FID}` go. Nothing is deleted until `origin/dev` holds the branch's work: any file the branch changed that differs on `origin/dev` (`.jsonl`: any line the branch added that `origin/dev` lacks; `docs/roadmap.md` excepted) → exit 18, branch and worktree kept; uncommitted or untracked files in `.worktrees/{FID}` (the `bkit.workflows.worktree.copy` entries and `.bkit/.env` excepted) → close succeeds, worktree and branch kept (`worktree.reason: uncommitted`) with the file list logged. The main checkout is never written to: the `close-transport` row is written only when the run's own checkout is the branch (`RUNTIME_DEVPUSHES=false`); otherwise its `shape` / `sha` / `scan` go to a log line and the cross-check reads the landed commit's copy. Gate 12 reads `status.jsonl` from `origin/dev` (`bkit steps gate --ref=origin/dev`), so it passes whether or not local `dev` moved. |
+| **Close squash** | design / plan close, every runtime: `bkit branches land` fetches `origin/dev`, adds a detached `.worktrees/_land-{FID}` there, squashes `{BRANCH}` into it with `-X ours`, then appends back any `.jsonl` row the branch added that the squash dropped (a ledger without `merge=union`, e.g. a consumer's `.bkit/friction.jsonl`). Non-zero squash, staged non-doc files (`CLOSE_DOCS`; a staged path that is local `dev`'s own content — a branch carrying unpushed `dev` commits — is named as such, with the unpushed count and `git push origin dev`), or a staged `{FID}-design.md` / `{FID}-plan.md` blob that differs from the branch's → stop; nothing pushed, branch and worktree kept — presence on `dev` proves nothing on a re-run, and `-X ours` keeps `dev`'s side of a conflicting hunk. Roadmap row, then commit via `bkit ledgers commit --squash-of={BRANCH}` and `git push origin HEAD:dev`. Push rejected because `dev` moved → drop the throwaway worktree, refetch, rebuild, push again: `LAND_ATTEMPTS` pushes, waits doubling from `LAND_BACKOFF_START_S` to `LAND_BACKOFF_CAP_S` with jitter; all used → exit 8, nothing landed. A push with no server answer → exit 8, nothing landed, no PR. A server refusal → PR close (roadmap commit on the branch in the checkout holding it, push, open or reuse the PR, squash-merge; a refused merge on an OPEN PR → merge `origin/dev`'s `docs/` and ledger commits into the branch in the checkout holding it (ledger conflicts union, other `docs/` conflicts take `dev`; any other conflict → exit 17) and push, then retry on the same schedule, then exit 17 with the PR left open — never GitHub's server-side update-branch, which ignores `merge=union` and conflicts on every ledger both sides appended to). The throwaway worktree is removed on every path. `RUNTIME_DEVPUSHES=true` only, after landing: local `dev` fast-forwards to the landed commit when that is a pure fast-forward (`merge --ff-only` when the main checkout is on `dev`, else the pointer alone); local `dev` already past the landed commit and on `origin/dev` (a later close fast-forwarded it) → `current`; local-only commits on `dev` (listed as `origin/dev..dev`) or git refusing (an uncommitted edit the move would overwrite) skip it with a log line, never failing the close; then the workflow-created worktree and `feat/{FID}` go. Nothing is deleted until `origin/dev` holds the branch's work: any file the branch changed that differs on `origin/dev` (`.jsonl`: any line the branch added that `origin/dev` lacks; `docs/roadmap.md` excepted) → exit 18, branch and worktree kept; uncommitted or untracked files in `.worktrees/{FID}` (the `bkit.workflows.worktree.copy` entries and `.bkit/.env` excepted) → close succeeds, worktree and branch kept (`worktree.reason: uncommitted`) with the file list logged. The main checkout is never written to: the `close-transport` row is written only when the run's own checkout is the branch (`RUNTIME_DEVPUSHES=false`); otherwise its `shape` / `sha` / `scan` go to a log line and the cross-check reads the landed commit's copy. Gate 12 reads `status.jsonl` from `origin/dev` (`bkit steps gate --ref=origin/dev`), so it passes whether or not local `dev` moved. |
 ```
 
 ### tracker-writes-are-best-effort
@@ -8510,7 +8547,7 @@ Same text in 2+ files. `- carriers:` names them per surface; `pnpm instructions:
   Finish:
   ```
 
-- carriers: workflow `bkit-build`
+- carriers: workflow `bkit-build`, `bkit-plan`
 
   ```text
   Route — first match wins:
@@ -8790,6 +8827,9 @@ Re-read the issue's labels after the push, for the kill-switch check:
 Labels re-read before the close commit
 Lock released
 PR created
+**Owner decisions:** A subagent learns the owner's answers only by reading the decision file (`build-decision-{RUN}-*.md`) named in its `Read`. NEVER restate, summarise or paraphrase an owner's answer in a subagent's `Context`.
+Write no test and no fix code at this pause. Step 8 writes each `TEST FIRST` test, records it failing with `tests red`, and only then writes the fix. NEVER undo code to force a red.
+**If** exit 11 → a task is logged `DONE` whose red passed with no red recorded: invoke `@bkit-build-plan-execute` again with `"<problem> Log each task it names BLOCKED, or DONE with 'already landed', in '<reask.artifact>'. Do not redo other tasks."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**.
 ```
 
 #### bkit-debug
@@ -9022,6 +9062,18 @@ Write `plan-summary.md` from this run's status rows and the final plan:
 [workflow-pushes] Finish, then push the summary commit:
 Final plan resolved
 Ledger rows checked (`ledgers check`)
+Count this review round. The plan gets one review and, after a `FAIL` that plan edits fix, exactly one re-review:
+**If** exit 1 → **Failure Path** — the one re-review already ran.
+**If** `REVIEW_ROUND` = 1 → `REVIEW_PLAN` = `plan-v1-draft.md`.
+**Else** → `REVIEW_PLAN` = `plan-v2-reviewed.md`, the plan Step 6 applied the first review to.
+**If** `REVIEW_VERDICT` = FAIL **and** `REVIEW_REDESIGN` = true → **Failure Path** — a finding needs the design to change, which no plan edit does.
+**If** `REVIEW_VERDICT` = FAIL **and** `REVIEW_ROUND` = 2 → **Failure Path** — the one re-review failed.
+Review round counted (`counters route`)
+Count this apply round, one per review round:
+Apply round counted (`counters derive`)
+Check that the latest review did not fail:
+**If** `verdict` = FAIL → Step 5. Step 6 applied that review, so the applied plan gets its one re-review.
+Latest review checked (`status route`)
 ```
 
 #### bkit-ship
@@ -9433,9 +9485,10 @@ Honour the brief's `Reuse Inventory rows` and `Architecture entries`:
 [improve-over-duplicate] For an `EXTEND` row, modify the named artifact, and never add a parallel file.
 **If** the brief says rows or entries were left out → read the plan section it names.
 [improve-over-duplicate] **If** you find a reusable artifact mid-build → fold it in and log it, and never fork it.
-[local-pre-commit] Run `pnpm bkit:gate:static`. Every local lint and typecheck must pass.
+[local-pre-commit] Run `bkit tests changed --fallback=bkit:gate:static`. Every local lint and typecheck must pass.
 `PASS` = every pending task has a `DONE` log entry, and local lint and typecheck pass.
 `HANDOVER` = at least one pending task has neither a `DONE` nor a `BLOCKED` log entry, whether or not another task ended `BLOCKED`. When the turn cap is near, stop after the current task's log line and set this verdict. The caller re-runs with a fresh brief.
+For each value a test checks or fakes, read the code that produces it, and append `SOURCE — TASK {N}: {value} from {file}:{line}` with Bash `echo >>`. A fake that differs from what that code returns lets the test pass against code that fails for real.
 `FAIL` = every pending task has a `DONE` or `BLOCKED` log entry, and at least one of these holds: a task ends `BLOCKED` with no later `DONE`, **or** local lint or typecheck fails.
 ```
 
@@ -9494,7 +9547,7 @@ A gap that a supplied decision record accepts (`Decision: Accept` or `Decision: 
 **If** the task is satisfied → name its number on the header's `Tasks` line. The workflow ticks the plan.
 **If** the task is not satisfied, or its work is missing:
 Leave it off that line, and append its log entry.
-[local-pre-commit] Run `pnpm bkit:gate:static-unit`.
+[local-pre-commit] Run `bkit tests changed --base=origin/dev --fallback=bkit:gate:static-unit`.
 **If** a test-first audit report is supplied (its header has `Enforced`, `Verdict` and `Gaps`) → decide each of its gaps. A gap's `fixable` stands unless it is `null`. Decide each `null` one from the diff it names:
 `delete-still-referenced` → read each hit:
 **If** the hit is a different thing with the same name → no gap.
@@ -9944,6 +9997,7 @@ A missing dependency → `CRITICAL`.
 Cycle detection: tasks that consume each other's artefacts → `CRITICAL`.
 [recommend-do-not-decide] `Suggested Scope Expansion`: list the `related-*.md` items that overlap the plan's surfaces as candidates, per **Suggested Scope Expansion** above. They are advisory and never `CRITICAL`.
 `FAIL` = a `CRITICAL` finding names a task-order cycle that no reorder resolves, **or** a plan that contradicts its source design.
+Group hand-off: a test that a group's tasks leave failing, which only a later group's task makes pass → `CRITICAL` (move the fixing task into that group, or the test into the later group). The build checks each group before it starts the next, so every group ends with its tests passing.
 ```
 
 #### bkit-plan-review-2
@@ -9970,6 +10024,8 @@ Cross-reference knowledge:
 Search those rows and `related-failures.md` for past regressions and known failures in the touched surfaces.
 A plan task that re-enters a known-broken pattern, or touches a surface with an unacknowledged known failure or without acknowledging its prior fixes → `CRITICAL`.
 `FAIL` = a `CRITICAL` finding names a regression vector that the source design itself requires and that no plan edit mitigates.
+Fake data: a planned test whose faked or fixture value differs from what the code it stands in for produces → `CRITICAL`. Read the code that produces each value the test checks or fakes, and cite it as `file:line`.
+Baseline tests: a `TEST FIRST` test that only compares output against a regenerated baseline (a snapshot, a coverage list, a generated doc) → `CRITICAL`. Regenerating the baseline makes it pass, so it cannot fail first.
 ```
 
 #### bkit-plan-scope-check
@@ -10008,6 +10064,7 @@ A critique may change `DONE WHEN` and `TEST FIRST` only to make them more testab
 Never append a `Suggested Scope Expansion` candidate to `docs/deferrals.jsonl`.
 Add each decision or deferral `key` you wrote to the plan's `**Ledger rows:**` line.
 **If** applied findings add or reword questions under `Open Questions & Assumptions` → shape each per **Open questions** above.
+**If** the caller names **Update** and no **Create** → skip the seed: set the `Verdict` of **Update** to `PENDING`, and apply the findings to **Update** in place wherever the steps below name **Create**.
 ```
 
 #### bkit-ship-conflict-resolve

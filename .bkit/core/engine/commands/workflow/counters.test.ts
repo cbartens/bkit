@@ -335,7 +335,14 @@ describe("bkit counters route", () => {
       pkgDir({ workflows: { build: { verify: { ask: false } } } }),
     );
     expect(r.code).toBe(1);
-    expect(r.json).toEqual({ value: 3, exceeded: true, next: null, max: 2, ask: false });
+    expect(r.json).toEqual({
+      value: 3,
+      exceeded: true,
+      next: null,
+      max: 2,
+      ask: false,
+      limitsFrom: "package.json",
+    });
   });
 
   it("needs exactly one of --max and --point", async () => {
@@ -468,6 +475,7 @@ describe("bkit counters route --point", () => {
         next: "step-8",
         max,
         ask: true,
+        limitsFrom: "package.json",
       });
       const over = await route(String(max + 1), point, cwd);
       expect(over.code).toBe(1);
@@ -497,6 +505,57 @@ describe("bkit counters route --point", () => {
   it("an invalid limit or ask takes its default", async () => {
     const cwd = pkgDir({ workflows: { ship: { merge: { ask: "no", maxAttempts: 0 } } } });
     expect((await route("1", "ship.merge", cwd)).json).toMatchObject({ max: 2, ask: true });
+  });
+
+  /** route over a status log whose active build run started with `start`. */
+  const routeRun = (value: string, start: Record<string, unknown>, cwd: string) =>
+    run(
+      [
+        "counters",
+        "route",
+        "--name=VERIFY_ATTEMPT",
+        `--value=${value}`,
+        "--point=build.verify",
+        `--file=${log([{ ...started("build", "2026-10-01T00:00:00Z"), ...start }])}`,
+        "--workflow=build",
+      ],
+      cwd,
+    );
+
+  it("takes the limit the run froze at its start, not package.json's live value", async () => {
+    const cwd = pkgDir({ workflows: { build: { verify: { ask: true, maxAttempts: 5 } } } });
+    const frozen = { limits: { "build.verify": { ask: false, max: 2 } } };
+    const r = await routeRun("3", frozen, cwd);
+    expect(r.code).toBe(1);
+    expect(r.json).toMatchObject({ exceeded: true, max: 2, ask: false, limitsFrom: "run" });
+  });
+
+  it("reads package.json when the run froze no limit for the point", async () => {
+    const cwd = pkgDir({ workflows: { build: { verify: { maxAttempts: 5 } } } });
+    for (const start of [{}, { limits: { "build.tests": { ask: true, max: 1 } } }])
+      expect((await routeRun("3", start, cwd)).json).toMatchObject({
+        exceeded: false,
+        max: 5,
+        limitsFrom: "package.json",
+      });
+  });
+
+  it("max --point takes the run's frozen limit with --file and --workflow, else package.json", async () => {
+    const cwd = pkgDir({ workflows: { build: { verify: { ask: true, maxAttempts: 5 } } } });
+    const file = log([
+      {
+        ...started("build", "2026-10-01T00:00:00Z"),
+        limits: { "build.verify": { ask: false, max: 2 } },
+      },
+    ]);
+    const max = (...extra: string[]) =>
+      run(["counters", "max", "--point=build.verify", ...extra], cwd);
+    expect((await max(`--file=${file}`, "--workflow=build")).json).toMatchObject({
+      value: 2,
+      ask: false,
+      limitsFrom: "run",
+    });
+    expect((await max()).json).toMatchObject({ value: 5, limitsFrom: "package.json" });
   });
 
   it("a headless run never asks", async () => {
@@ -638,10 +697,12 @@ describe("bkit counters max", () => {
     expect((await run(["counters", "max", "--point=debug.fix"], cwd)).json).toEqual({
       value: 4,
       ask: false,
+      limitsFrom: "package.json",
     });
     expect((await run(["counters", "max", "--point=design.grill"], cwd)).json).toEqual({
       value: 6,
       ask: true,
+      limitsFrom: "package.json",
     });
     const all = (await run(["counters", "max"], cwd)).json;
     expect(Object.keys(all.points)).toEqual([...ASK_POINTS]);

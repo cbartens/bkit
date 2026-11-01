@@ -387,11 +387,21 @@ describe("bkit worktrees setup — mint (resume)", () => {
     const logDir = path.join(wtOf(f), "docs/plans", MONTH, "logs", FID);
     fs.writeFileSync(path.join(logDir, ".rebase-failed"), "");
     const tip = advanceDev(f, "b.txt", "new\n");
+    const before = git(wtOf(f), "rev-parse", "HEAD");
 
     const r = await setup(f.repo, "build", "--worktrees");
     expect(r.code).toBe(0);
     expect(r.json).toMatchObject({ mode: "resumed", sentinel: null, rebaseConflict: false });
     expect(git(wtOf(f), "rev-parse", "HEAD~1")).toBe(tip);
+    // The rewrite is on the record: one engine-action row from the old tip to the new.
+    const rebases = fs
+      .readFileSync(path.join(logDir, "status.jsonl"), "utf-8")
+      .split("\n")
+      .filter((l) => l.includes('"type":"engine-action"'))
+      .map((l) => JSON.parse(l) as { action: string; key: string; ref: string });
+    expect(rebases).toMatchObject([
+      { action: "rebase", key: `rebase/${before}`, ref: git(wtOf(f), "rev-parse", "HEAD") },
+    ]);
     expect(fs.existsSync(path.join(logDir, ".rebase-failed"))).toBe(false);
     expect(installCalls()).toBe(`${wtOf(f)} install --frozen-lockfile`);
   });
@@ -497,8 +507,11 @@ describe("bkit worktrees setup — mint (resume)", () => {
       );
       expect(r.json.carriedSha).toBe(git(wtOf(f), "rev-parse", "HEAD"));
       expect(git(wtOf(f), "rev-parse", "HEAD~1")).toBe(tip);
-      // Only the .env setup copied in stays out of the commit.
-      expect(git(wtOf(f), "status", "--porcelain")).toBe("?? .env");
+      // Only the .env setup copied in and the rebase's engine-action row stay out of the commit.
+      expect(git(wtOf(f), "status", "--porcelain")).toBe(`M ${rel}/status.jsonl\n?? .env`);
+      expect(fs.readFileSync(path.join(logDir, "status.jsonl"), "utf-8")).toContain(
+        '"action":"rebase"',
+      );
       expect(fs.readFileSync(path.join(logDir, "ship-summary.md"), "utf-8")).toBe("landed copy\n");
       expect(fs.readFileSync(path.join(wtOf(f), "a.txt"), "utf-8")).toBe("ship doc edit\n");
     },

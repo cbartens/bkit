@@ -77,7 +77,7 @@ describe("textOmit audit", () => {
       "workflows start": ["row"],
       "workflows fail": ["row"],
       "workflows close": ["row", "counterRow", "outcomeRow"],
-      "tests run": clamp,
+      "tests run": ["clamp", "row"],
       "context diff": clamp,
       "context run-block": clamp,
       "context ledger-scan": clamp,

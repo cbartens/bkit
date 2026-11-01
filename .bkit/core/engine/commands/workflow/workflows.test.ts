@@ -158,8 +158,31 @@ describe("bkit workflows start", () => {
         workflow: "build",
         at: r.json.row.at,
         parentSha: git(cwd, "rev-parse", "HEAD"),
+        limits: {
+          "build.verify": { ask: true, max: 2 },
+          "build.challenge": { ask: true, max: 2 },
+          "build.tests": { ask: true, max: 2 },
+        },
       },
     ]);
+  });
+
+  it("freezes the workflow's own limits from package.json in the workflow-started row", async () => {
+    const cwd = repo();
+    write(
+      cwd,
+      "package.json",
+      JSON.stringify({ bkit: { workflows: { debug: { fix: { ask: false, maxAttempts: 4 } } } } }),
+    );
+    expect((await run(cwd, wf("start", "debug"))).json.row.limits).toEqual({
+      "debug.fix": { ask: false, max: 4 },
+      "debug.soak": { ask: true, max: 2 },
+    });
+  });
+
+  it("writes no limits for a workflow with no ask point", async () => {
+    const cwd = repo();
+    expect((await run(cwd, wf("start", "plan"))).json.row).not.toHaveProperty("limits");
   });
 
   it("does not open a new run when resuming the same workflow's IN_PROGRESS run", async () => {

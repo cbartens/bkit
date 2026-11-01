@@ -150,19 +150,20 @@ describe("gate logs", () => {
   );
 
   // `tests run --artifact` copies the log beside the run's artifacts, resets the
-  // step's clamp log and trims it in one call; no workflow does it by hand.
+  // step's clamp log and trims it in one call; no workflow does it by hand. `--file`
+  // appends the run's test-run row to status.jsonl.
   const ARTIFACTS: Array<[string, string]> = [
     [
       "build",
-      '--artifact="docs/plans/{YYYYMM}/logs/{FID}/build-group-gate-{GROUP}-{VERIFY_ATTEMPT}.md" --fid={FID} --step=build-group-gate-{GROUP} --attempt={VERIFY_ATTEMPT}',
+      '--artifact="docs/plans/{YYYYMM}/logs/{FID}/build-group-gate-{GROUP}-{VERIFY_ATTEMPT}.md" --fid={FID} --file="{STATUS}" --workflow=build --step=build-group-gate-{GROUP} --attempt={VERIFY_ATTEMPT}',
     ],
     [
       "build",
-      '--artifact="docs/plans/{YYYYMM}/logs/{FID}/run-tests-{TEST_ATTEMPT}.md" --fid={FID} --step=build-run-tests --attempt={TEST_ATTEMPT}',
+      '--artifact="docs/plans/{YYYYMM}/logs/{FID}/run-tests-{TEST_ATTEMPT}.md" --fid={FID} --file="{STATUS}" --workflow=build --step=build-run-tests --attempt={TEST_ATTEMPT}',
     ],
     [
       "debug",
-      '--artifact="docs/plans/{YYYYMM}/logs/{FID}/context-tests-local-{DEBUG_ATTEMPT}.md" --fid={FID} --step=debug-run-tests --attempt={DEBUG_ATTEMPT}',
+      '--artifact="docs/plans/{YYYYMM}/logs/{FID}/context-tests-local-{DEBUG_ATTEMPT}.md" --fid={FID} --file="{STATUS}" --workflow=debug --step=debug-run-tests --attempt={DEBUG_ATTEMPT}',
     ],
   ];
 

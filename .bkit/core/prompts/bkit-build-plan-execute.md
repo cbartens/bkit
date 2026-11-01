@@ -105,6 +105,7 @@ autoCompactWindow: 300000
 8. Implement the tasks one at a time. For each task:
    - **If** the task's `TEST FIRST` names tests **and** the task is not logged `DONE — TASK {N}: already landed`:
      - Write those tests, plus stubs of the code they call.
+     - For each value a test checks or fakes, read the code that produces it, and append `SOURCE — TASK {N}: {value} from {file}:{line}` with Bash `echo >>`. A fake that differs from what that code returns lets the test pass against code that fails for real.
      - Record every red before you write the task code.
      - Run the supplied red command once per test that the task's `TEST EXCEPTION` field does not name, with the task number, the test's position in `TEST FIRST`, its file and its name.
      - NEVER undo code to force a red, and NEVER touch a `TEST EXCEPTION` field.
@@ -124,9 +125,11 @@ autoCompactWindow: 300000
      - For an `EXTEND` row, modify the named artifact, and never add a parallel file.
      - **If** the brief says rows or entries were left out → read the plan section it names.
      - **If** you find a reusable artifact mid-build → fold it in and log it, and never fork it.
-9. Run `pnpm bkit:gate:static`. Every local lint and typecheck must pass.
-10. **If** the tasks are verified (their tests pass) **and** the work found gotchas → append one row per gotcha to `docs/knowledge.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), reusing the `key` of any existing entry for the same item.
-11. Set `Verdict` in **Create** with `Edit`:
+9. **If** `package.json` declares a `bkit:generate` script → run `pnpm bkit:generate` once, after your last code edit. It rewrites the generated files and saved baselines from your code, so the caller commits them with it.
+   - **If** it exits non-zero → append `BLOCKED — bkit:generate: {first error line}` with Bash `echo >>`. The verdict is then `FAIL`, whatever the tasks and tests show.
+10. Run `bkit tests changed --fallback=bkit:gate:static`. Every local lint and typecheck must pass.
+11. **If** the tasks are verified (their tests pass) **and** the work found gotchas → append one row per gotcha to `docs/knowledge.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), reusing the `key` of any existing entry for the same item.
+12. Set `Verdict` in **Create** with `Edit`:
     - `PASS` = every pending task has a `DONE` log entry, and local lint and typecheck pass.
     - `HANDOVER` = at least one pending task has neither a `DONE` nor a `BLOCKED` log entry, whether or not another task ended `BLOCKED`. When the turn cap is near, stop after the current task's log line and set this verdict. The caller re-runs with a fresh brief.
     - `FAIL` = every pending task has a `DONE` or `BLOCKED` log entry, and at least one of these holds: a task ends `BLOCKED` with no later `DONE`, **or** local lint or typecheck fails.
@@ -146,6 +149,8 @@ Verdict: PASS | HANDOVER | FAIL [Initially set to PENDING.]
 
 DONE — TASK {N}: {title} — {outcome} ({path or commit ref})
 BLOCKED — TASK {N}: {title} — {reason}
+BLOCKED — bkit:generate: {first error line}
+SOURCE — TASK {N}: {value} from {file}:{line}
 ```
 
 > ⛔ **STOP** once `Verdict` is set, with every task block the brief assigns logged `DONE` or `BLOCKED`, or with `Verdict` = `HANDOVER` at the turn cap. NEVER push or open PRs.

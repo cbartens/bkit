@@ -24,7 +24,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { appendLine, fold, lastRun, runNumber, runOrStepField, statusTimestamp, } from "../../ledgers/status.js";
 import { foldFrom, normalize, resolveRepoSlug, workflowTelemetry, } from "../../ledgers/telemetry.js";
-import { readBkitConfig } from "../../shared/settings.js";
+import { ASK_POINTS, readBkitConfig } from "../../shared/settings.js";
 import { gradeCompliance } from "../comply.js";
 import { fetchDev, landDir, pushToDev } from "../land.js";
 import { CommandError, DEV, EXIT, git, isSharedBranch, parseJson, repoRoot, runGh, runGit, statusLocation, statusRelPath, } from "../lib.js";
@@ -1567,7 +1567,7 @@ export const workflowsCommand = {
                 lock: "{path, month, token, reclaimed} of the lock taken, or {path} with --lock-held",
                 file: "absolute path to status.jsonl",
                 resumed: "the latest run was this workflow, IN_PROGRESS: no new row",
-                row: "the appended workflow-started row, or null when resuming",
+                row: "the appended workflow-started row, with `limits` (the workflow's ask points from bkit.workflows, frozen for the run), or null when resuming",
                 run: "which run of the workflow this is (1-based)",
                 lastDoneStep: "the current run's last DONE step: resume after it (null on a new run)",
                 openDecision: "{file, decision, question, from, pauseStep, group, verifyAttempt, testAttempt, plan} of the current run's highest {workflow}-decision-{run}-{N}.md holding Status: OPEN, else null",
@@ -1634,11 +1634,15 @@ export const workflowsCommand = {
                 const resumed = latest?.workflow === workflow && latest.status === "IN_PROGRESS";
                 let row = null;
                 if (!resumed) {
+                    // The run's limits, frozen here: `counters route` reads them for the whole run.
+                    const asks = readBkitConfig(where.tree).asks;
+                    const limits = Object.fromEntries(ASK_POINTS.filter((p) => p.startsWith(`${workflow}.`)).map((p) => [p, asks[p]]));
                     row = {
                         type: "workflow-started",
                         workflow,
                         at: statusTimestamp(),
                         parentSha: headSha(path.dirname(file)),
+                        ...(Object.keys(limits).length === 0 ? {} : { limits }),
                     };
                     fs.appendFileSync(file, appendLine(row));
                 }

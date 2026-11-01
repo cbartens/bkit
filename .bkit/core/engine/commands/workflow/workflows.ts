@@ -41,7 +41,7 @@ import {
   type CoverageStats,
   type OutcomePayload,
 } from "../../ledgers/telemetry.js";
-import { readBkitConfig } from "../../shared/settings.js";
+import { ASK_POINTS, readBkitConfig } from "../../shared/settings.js";
 import { gradeCompliance } from "../comply.js";
 import { fetchDev, landDir, pushToDev, type DevPush } from "../land.js";
 import {
@@ -1926,7 +1926,7 @@ export const workflowsCommand: CommandSpec = {
         lock: "{path, month, token, reclaimed} of the lock taken, or {path} with --lock-held",
         file: "absolute path to status.jsonl",
         resumed: "the latest run was this workflow, IN_PROGRESS: no new row",
-        row: "the appended workflow-started row, or null when resuming",
+        row: "the appended workflow-started row, with `limits` (the workflow's ask points from bkit.workflows, frozen for the run), or null when resuming",
         run: "which run of the workflow this is (1-based)",
         lastDoneStep: "the current run's last DONE step: resume after it (null on a new run)",
         openDecision:
@@ -1994,11 +1994,17 @@ export const workflowsCommand: CommandSpec = {
         const resumed = latest?.workflow === workflow && latest.status === "IN_PROGRESS";
         let row: Record<string, unknown> | null = null;
         if (!resumed) {
+          // The run's limits, frozen here: `counters route` reads them for the whole run.
+          const asks = readBkitConfig(where.tree).asks;
+          const limits = Object.fromEntries(
+            ASK_POINTS.filter((p) => p.startsWith(`${workflow}.`)).map((p) => [p, asks[p]]),
+          );
           row = {
             type: "workflow-started",
             workflow,
             at: statusTimestamp(),
             parentSha: headSha(path.dirname(file)),
+            ...(Object.keys(limits).length === 0 ? {} : { limits }),
           };
           fs.appendFileSync(file, appendLine(row as StatusEvent));
         }

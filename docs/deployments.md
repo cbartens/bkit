@@ -626,7 +626,7 @@ GitHub Actions suppresses `pull_request` + `push` when HEAD has `[skip ci]` or `
 <!-- prettier-ignore -->
 | Surface | Mechanic |
 | --- | --- |
-| build / debug PR push (final close-workflow) | `chore({FID}): close-workflow` — no skip tags; loud. Opted-in builds additionally append `bkit [auto route]` (conditional on issue `bkit:auto` at close time). Pushed with `bkit branches push --require-ci`. Debug PR-mode: the push fires `pull_request` synchronize. Build: the push lands before the PR exists; `bkit prs open` then creates the PR, which fires `pull_request`. |
+| build / debug PR push (final close-workflow) | `chore({FID}): close-workflow` — no skip tags; loud. Opted-in builds additionally append `bkit [auto route]` (conditional on issue `bkit:auto` at close time). Pushed with `bkit branches push --require-ci`, which on an unshared feature branch first merges `origin/dev`'s `docs/` and ledger commits. Debug PR-mode: the push fires `pull_request` synchronize. Build: the push lands before the PR exists; `bkit prs open` then creates the PR, which fires `pull_request`. |
 | build `worktree-setup` commit | `chore({FID}): worktree-setup bkit [skip ci]` — bookkeeping; no CI trigger. |
 | debug LOCAL-mode `create-pr` commit | `chore({FID}): create-pr` — loud; the CI-triggering HEAD in LOCAL mode, pushed with `bkit branches push --require-ci`. Build has no `create-pr` commit. |
 | ship squash merge | `gh pr merge --squash --body ""` — empty body strips PR-body `bkit [skip ci]` from the squash subject so `dev`'s merge HEAD is clean. Step 14 then runs `bkit runs gate --head=<SQUASH_SHA> --capstone-only` (the capstone job's result alone; deploy and other jobs never fail the close) and records its run in the `ship-merge-ci` row. |

@@ -85,7 +85,7 @@
  *   ci       one entry per close step that dispatched CI: {status, reason?, attempts}
  *   steps    total {n, totalMinutes, activeMinutes}, byStep {<step>: {n, totalMinutes,
  *            activeMinutes}}; a step's minutes run from the row before it that is not a mark row
- *            (`session`, `owner-pause`, `owner-answer`); time before the first step is in
+ *            (`session`, `owner-pause`, `owner-answer`, `test-run`); time before the first step is in
  *            time.totalMinutes only
  *   owner    waitBeforeMinutes (since the folder's previous run's last row; null for its first),
  *            total {stops, minutes}, stops [{minutes, open, reason}]: one stop per `owner-pause`
@@ -1475,7 +1475,7 @@ export function endingOf(run, dir, ordinal) {
  * it that is not one of these. A copy of the engine's `MARK_ROWS`
  * (`.bkit/core/engine/commands/workflow/run-facts.ts`); a test holds the two equal.
  */
-export const MARK_ROWS = new Set(["session", "owner-pause", "owner-answer"]);
+export const MARK_ROWS = new Set(["session", "owner-pause", "owner-answer", "test-run"]);
 
 /** A run row's key: `<fid fp>:<workflow>:<start>`. */
 const runKey = (slug, fid, workflow, start) =>

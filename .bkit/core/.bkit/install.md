@@ -267,6 +267,7 @@ After the writes, bkit re-runs the credential and environment checks, because so
 | `gate-tier-not-wired` | `package.json` declares a deeper test tier (`test:integration`, `test:e2e`, `test:live`) that no `bkit:gate:*` script runs; the advisory prints the gate line to add. |
 | `test-file-script-missing` | `package.json` does not declare `bkit:test:file`, so `/bkit-build` reports test-first as not enforced. The advisory prints the script contract and a Vitest line. |
 | `lint-file-script-missing` | `package.json` declares `bkit:test:file` but not `bkit:lint:file`, so `bkit tests red` records a task's red before the linter sees the test, and a lint fix after it pauses the build for an owner exception. The advisory prints the script contract and ESLint / Ruff lines. |
+| `gate-changed-script-missing` | `package.json` does not declare `bkit:gate:changed`, so build and debug agents run a whole gate after every change instead of checking only the changed files. The advisory prints the script contract and a Vitest + ESLint line. Silence it with `bkit.advisories.ignore`. |
 
 Every `gate-*` advisory ends with what a gate may run, which bkit cannot check: no test that needs a deployed boundary or remote service outside the two `…-e2e` gates (`.bkit/workflows.md` § Local gate scripts).
 

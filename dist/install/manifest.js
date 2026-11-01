@@ -273,6 +273,14 @@ export const BKIT_TEST_FILE_SCRIPT = "bkit:test:file";
  */
 export const BKIT_LINT_FILE_SCRIPT = "bkit:lint:file";
 /**
+ * Checks only what changed — `pnpm bkit:gate:changed <repo-relative path>...`, exit 0
+ * when clean: the tests that import the files, the tests that name their paths, and
+ * static checks on the files. `bkit tests changed` passes the files and falls back to a
+ * whole gate when this is undeclared. Never seeded: install, check and upgrade advise
+ * when it is missing (detectGateAdvisories).
+ */
+export const BKIT_GATE_CHANGED_SCRIPT = "bkit:gate:changed";
+/**
  * The deeper gates, shallowest first, with what declaring each one costs.
  *
  * Never seeded. The probe's rule is "declared = run it". `declaredBy` is how install

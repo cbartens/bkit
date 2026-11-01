@@ -20,7 +20,9 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { BKIT_LINT_FILE_SCRIPT, BKIT_TEST_FILE_SCRIPT } from "../../install/manifest.js";
 import { clampLogPath } from "../../ledgers/clamp-log.js";
-import { CommandError, EXIT, git, runGit } from "../lib.js";
+import { appendLine, statusTimestamp } from "../../ledgers/status.js";
+import { gitEnv } from "../../ledgers/telemetry.js";
+import { CommandError, EXIT, OUTPUT_LIMIT, git, runGit } from "../lib.js";
 import { parseJson } from "../../shared/json.js";
 import { readPackageJson } from "../../shared/package-json.js";
 import { COULD_NOT_RUN_EXIT_CODES, scriptCommand } from "../../shared/package-manager.js";
@@ -30,12 +32,19 @@ import { NO_MARKERS_REASON, derivedTestMatrix, fenceNeverClosed, parsePlanBlocks
 import { writeStepRow } from "./steps.js";
 import { diffLines, testChange } from "./test-blocks.js";
 import { appendRecord, clampFile } from "./context.js";
+import { testsChangedVerb } from "./tests-changed.js";
 /** Exit code: no candidate gate is declared in package.json. */
 export const EXIT_NO_GATE = 3;
 /** Exit code: the gate could not run (exit 126 / 127, or the package runner is missing). */
 export const EXIT_COULD_NOT_RUN = 4;
 /** Exit code: --artifact could not be written, trimmed or recorded. */
 export const EXIT_ARTIFACT_STEP = 5;
+/** Exit code: the named test failed, but its failure holds none of the plan's quoted fails-on fragments. */
+export const EXIT_RED_REASON = 6;
+/** Exit code: --log is already the log of another test's red. */
+export const EXIT_LOG_TAKEN = 7;
+/** The status row type `tests run --file` appends, one per run. */
+export const TEST_RUN_ROW = "test-run";
 /** The env var naming the folder every runner a gate calls writes its JUnit XML into. */
 export const REPORT_DIR_ENV = "BKIT_TEST_REPORT_DIR";
 const NO_REPORT_HINT = `no JUnit report in $${REPORT_DIR_ENV} — failures unknown; turn on each test runner's JUnit ` +
@@ -103,6 +112,39 @@ const tailLines = (file, n) => fs
     .replace(/\r?\n$/, "")
     .split(/\r?\n/)
     .slice(-n);
+/**
+ * Append one `test-run` row to `file`. `run` numbers this step's test-run rows in the
+ * workflow's active run (since its last workflow-started row), this one included, so a
+ * gate re-run under the same attempt still shows.
+ */
+function appendTestRun(file, r) {
+    const rows = readStatusRows(file);
+    let start = -1;
+    rows.forEach((x, i) => {
+        if (x.type === "workflow-started" && x.workflow === r.workflow)
+            start = i;
+    });
+    const run = rows
+        .slice(start + 1)
+        .filter((x) => x.type === TEST_RUN_ROW && x.workflow === r.workflow && x.step === r.step)
+        .length + 1;
+    const row = {
+        type: TEST_RUN_ROW,
+        workflow: r.workflow,
+        at: statusTimestamp(),
+        step: r.step,
+        ...(r.attempt === undefined ? {} : { attempt: r.attempt }),
+        run,
+        verdict: r.verdict,
+        exitCode: r.exitCode,
+        failures: r.failures,
+        scope: r.scope,
+        log: r.log,
+        ...(r.artifact === undefined ? {} : { artifact: r.artifact }),
+    };
+    fs.appendFileSync(file, appendLine(row));
+    return row;
+}
 // ---------------------------------------------------------------------------
 // Test-first: JUnit reading, plan `Test first:` lines, red / green judgement
 // ---------------------------------------------------------------------------
@@ -594,6 +636,50 @@ function runTestFile(top, test, log) {
 const couldNotRunMessage = (exitCode) => `${gateScope(BKIT_TEST_FILE_SCRIPT)} could not run (exit ${exitCode}: ${exitCode === 126 ? "not executable" : "command not found"}) — no test executed`;
 /** The copy of the test file a red keeps beside its log. */
 export const snapshotPath = (log) => `${log.replace(/\.md$/, "")}.snapshot`;
+/** Characters of the named test's failure message a red row keeps as `failure`. */
+export const FAILURE_EXCERPT = 500;
+/** The bytes git stores for blob `sha` (`tests red` writes it with `hash-object -w`), or null. */
+function storedBlob(top, sha) {
+    if (typeof sha !== "string" || !/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(sha))
+        return null;
+    const res = spawnSync("git", ["cat-file", "blob", sha], {
+        cwd: top,
+        env: gitEnv(),
+        maxBuffer: OUTPUT_LIMIT,
+    });
+    return res.error === undefined && res.status === 0 ? res.stdout : null;
+}
+/**
+ * The run's plan for a status file at `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`:
+ * `docs/plans/{YYYYMM}/{FID}-plan.md`, when it exists.
+ */
+function runPlanOf(status) {
+    const m = /^(.*\/docs\/plans\/[0-9]{6})\/logs\/([^/]+)\/status\.jsonl$/.exec(status.split(path.sep).join("/"));
+    const plan = m === null ? undefined : `${m[1]}/${m[2]}-plan.md`;
+    return plan !== undefined && fs.existsSync(plan) ? plan : undefined;
+}
+const normalised = (s) => s.replace(/\s+/g, " ").trim().toLowerCase();
+/**
+ * A planned test's fails-on fragments: the double-quoted spans of its TEST FIRST entry
+ * after the test file and name, code spans left out, with the entry's 1-based plan line.
+ * Null when the plan does not name the test or its fails-on text quotes nothing.
+ */
+export function failsOnFragments(planText, task, test, name) {
+    const entry = parsePlanBlocks(planText)
+        .tasks.find((t) => t.task === task)
+        ?.testFirst?.tests.find((t) => t.test === test && t.name === name);
+    if (entry === undefined)
+        return null;
+    const failsOn = (planText.split(/\r?\n/)[entry.line - 1] ?? "")
+        .replace(/^[^`]*`[^`]+`[^`]*`[^`]+`/, "")
+        .replace(/`[^`]*`/g, " ");
+    const fragments = [...failsOn.matchAll(/"([^"]+)"|“([^”]+)”/g)]
+        .map((m) => (m[1] ?? m[2]).trim())
+        .filter((f) => f !== "");
+    return fragments.length === 0 ? null : { line: entry.line, fragments };
+}
+/** True when a failure message holds one of the fragments, case and whitespace runs aside. */
+export const failsAsPlanned = (fragments, messages) => fragments.some((f) => messages.some((m) => normalised(m).includes(normalised(f))));
 const toplevel = (cwd) => git(cwd, ["rev-parse", "--show-toplevel"]) ?? cwd;
 /** A fence longer than any backtick run in `text`. */
 const fenceFor = (text) => "`".repeat(Math.max(3, ...[...text.matchAll(/`+/g)].map((m) => m[0].length + 1)));
@@ -930,8 +1016,9 @@ export const testsCommand = {
     noun: "tests",
     summary: "Run the deepest declared local gate, or one test file to record a red and audit a green.",
     verbs: {
+        changed: testsChangedVerb,
         run: {
-            summary: "Run the first declared --gate; exit 0 PASS, 1 FAIL, 4 could not run.",
+            summary: "Run the first declared --gate, and with --file append a test-run status row for the run; exit 0 PASS, 1 FAIL, 4 could not run.",
             use: "by-hand",
             flags: [
                 {
@@ -958,8 +1045,22 @@ export const testsCommand = {
                     help: "copy the log here, trim the copy (debug-evidence) and record the clamp; needs --fid and --step",
                 },
                 { name: "fid", type: "string", help: "--artifact: feature id, for the clamp log" },
-                { name: "step", type: "string", help: "--artifact: step name, for the clamp log" },
-                { name: "attempt", type: "string", help: "--artifact: attempt, for the clamp log" },
+                {
+                    name: "step",
+                    type: "string",
+                    help: "step name: the test-run row's (--file) and the clamp log's (--artifact)",
+                },
+                {
+                    name: "attempt",
+                    type: "string",
+                    help: "attempt: on the test-run row (--file) and in the clamp log's name (--artifact)",
+                },
+                {
+                    name: "file",
+                    type: "string",
+                    help: "status.jsonl: append one test-run row for this run, pass or fail; needs --workflow and --step",
+                },
+                { name: "workflow", type: "string", help: "--file: workflow name, for the test-run row" },
             ],
             output: {
                 verdict: "PASS | FAIL (null when the gate could not run)",
@@ -972,8 +1073,9 @@ export const testsCommand = {
                 logBytes: "size of the saved output",
                 artifact: "--artifact as given, else null",
                 clamp: "the artifact's clamp record (raw = the log, source = scope), else null",
+                row: `the ${TEST_RUN_ROW} row appended to --file ({type, workflow, at, step, attempt?, run, verdict, exitCode, failures, scope, log, artifact?}; run = this step's test-run rows in the workflow's active run, this one included), else null`,
             },
-            textOmit: ["clamp"],
+            textOmit: ["clamp", "row"],
             exitCodes: {
                 [EXIT_NO_GATE]: "no candidate gate is declared in package.json",
                 [EXIT_COULD_NOT_RUN]: "the gate could not run (exit 126 / 127): not a test failure",
@@ -990,6 +1092,13 @@ export const testsCommand = {
                 const attempt = positiveInt(ctx.flags.attempt, "attempt");
                 if (artifact !== undefined && (!fid || !step))
                     throw new CommandError(EXIT.USAGE, "--artifact needs --fid and --step");
+                const statusArg = str(ctx.flags.file);
+                const workflow = str(ctx.flags.workflow);
+                if (statusArg !== undefined && (!workflow || !step))
+                    throw new CommandError(EXIT.USAGE, "--file needs --workflow and --step");
+                const status = statusArg === undefined ? undefined : path.resolve(ctx.cwd, statusArg);
+                if (status !== undefined && !fs.existsSync(status))
+                    throw new CommandError(EXIT.USAGE, `--file ${statusArg} does not exist (a test-run row never starts a log)`);
                 const tailRaw = str(ctx.flags.tail) ?? String(DEFAULT_TAIL);
                 if (!/^[0-9]+$/.test(tailRaw)) {
                     throw new CommandError(EXIT.USAGE, `--tail must be a non-negative integer, got "${tailRaw}"`);
@@ -1045,6 +1154,19 @@ export const testsCommand = {
                         artifactFailed = err.message;
                     }
                 }
+                const row = status === undefined
+                    ? null
+                    : appendTestRun(status, {
+                        workflow: workflow,
+                        step: step,
+                        attempt,
+                        verdict,
+                        exitCode,
+                        failures,
+                        scope,
+                        log: logArg,
+                        artifact,
+                    });
                 ctx.emit({
                     verdict,
                     exitCode,
@@ -1056,6 +1178,7 @@ export const testsCommand = {
                     logBytes: fs.statSync(log).size,
                     artifact: artifact ?? null,
                     clamp,
+                    row,
                 });
                 if (artifactFailed !== null) {
                     ctx.log(`--artifact ${artifact}: ${artifactFailed}`);
@@ -1070,7 +1193,7 @@ export const testsCommand = {
             },
         },
         red: {
-            summary: "Lint a task's new test with bkit:lint:file when declared, then run it before its code exists; exit 0 red recorded, 1 not a red (the test failed lint, or the named test did not run, passed, or was skipped).",
+            summary: "Lint a task's new test with bkit:lint:file when declared, then run it before its code exists; exit 0 red recorded, 1 not a red (the test failed lint, or the named test did not run, passed, or was skipped), 6 it failed for another reason than the plan's quoted fails-on text, 7 --log already holds another test's red.",
             use: "workflow",
             flags: [
                 FILE_FLAG,
@@ -1104,7 +1227,7 @@ export const testsCommand = {
             output: {
                 recorded: "true when the red row was written, or already recorded for this unchanged test",
                 already: "true when an earlier red for this task, test and name stands (test unchanged); nothing ran",
-                refused: "lint | no-report | not-run | passed | skipped | exit-mismatch (when recorded is false); lint: bkit:lint:file failed on the test, which then did not run",
+                refused: "lint | no-report | not-run | passed | skipped | exit-mismatch | reason-mismatch | log-taken (when recorded is false); lint: bkit:lint:file failed on the test, which then did not run; reason-mismatch: the named test failed, but no failure message holds a double-quoted fragment of its fails-on text in the run's plan; log-taken: --log is the log of another test's red, nothing ran",
                 reason: "why the run is not a red (when recorded is false)",
                 exitCode: "the exit code of the script that decided it (bkit:lint:file on lint, else bkit:test:file)",
                 row: "the build-task-red row written (when recorded), or the build-task-red-passed row (refused as passed: HEAD and the uncommitted files, read by green's already-landed check)",
@@ -1113,6 +1236,8 @@ export const testsCommand = {
             exitCodes: {
                 [EXIT_NO_GATE]: `${BKIT_TEST_FILE_SCRIPT} is not declared in package.json`,
                 [EXIT_COULD_NOT_RUN]: "bkit:lint:file or bkit:test:file could not run (exit 126 / 127)",
+                [EXIT_RED_REASON]: "the named test failed, but not as planned: the run's plan ({FID}-plan.md beside the status file's logs folder) quotes fails-on text for it, and no failure message holds any quoted fragment (case and spacing aside); no red recorded",
+                [EXIT_LOG_TAKEN]: "--log is already the log of a red (or a red refused as passed) for another test or name in this workflow; nothing ran",
             },
             run: (ctx) => {
                 const workflow = String(ctx.flags.workflow);
@@ -1130,7 +1255,8 @@ export const testsCommand = {
                     return EXIT_NO_GATE;
                 }
                 const test = repoTestPath(top, String(ctx.flags.test));
-                const blob = git(top, ["hash-object", "--", test]);
+                // `-w` stores the test file in git, so green can read it back when the snapshot is lost.
+                const blob = git(top, ["hash-object", "-w", "--", test]);
                 const status = statusFile(ctx);
                 const prior = fs.existsSync(status)
                     ? redRows(status, workflow)
@@ -1144,6 +1270,23 @@ export const testsCommand = {
                     return EXIT.OK;
                 }
                 const log = path.resolve(ctx.cwd, logArg);
+                const holder = fs.existsSync(status)
+                    ? readStatusRows(status).find((r) => {
+                        const row = r;
+                        return (row.type === "step-done" &&
+                            row.workflow === workflow &&
+                            (row.step === RED_STEP || row.step === RED_PASSED_STEP) &&
+                            Array.isArray(row.artifacts) &&
+                            path.resolve(ctx.cwd, String(row.artifacts[0])) === log &&
+                            (row.test !== test || row.testName !== name));
+                    })
+                    : undefined;
+                if (holder !== undefined) {
+                    const reason = `--log ${logArg} already holds the ${String(holder.step)} log of \`${String(holder.test)}\` "${String(holder.testName)}" (TASK ${String(holder.task)}); a red for \`${test}\` "${name}" there would overwrite that log and its snapshot — pass this test's own log path, numbered by its TEST FIRST position`;
+                    ctx.emit({ recorded: false, refused: "log-taken", reason, log: logArg });
+                    ctx.log(`not a red (log-taken): ${reason}`);
+                    return EXIT_LOG_TAKEN;
+                }
                 if (resolveGate(top, [BKIT_LINT_FILE_SCRIPT]) === null) {
                     ctx.log(`${BKIT_LINT_FILE_SCRIPT} is not declared — the test is not linted before its red`);
                 }
@@ -1196,9 +1339,28 @@ export const testsCommand = {
                     ctx.log(`not a red (${refusal.kind}): ${refusal.reason} — full output in ${logArg}`);
                     return EXIT.NO;
                 }
+                const named = cases.filter((c) => isNamedCase(c.name, name));
+                const failed = named[0];
+                const plan = runPlanOf(status);
+                const planned = plan === undefined
+                    ? null
+                    : failsOnFragments(fs.readFileSync(plan, "utf-8"), task, test, name);
+                if (planned !== null &&
+                    !failsAsPlanned(planned.fragments, named.map((c) => c.message))) {
+                    const failure = failed.message.slice(0, FAILURE_EXCERPT);
+                    const reason = `"${name}" failed, but not as the plan says: \`${path.relative(ctx.cwd, plan)}:${planned.line}\` fails on ${planned.fragments.map((f) => `"${f}"`).join(" or ")}, and the failure says "${failure}" — fix the test's fake data or stub until it fails the planned way, then run red again; never force it. When the real code would fail the way the run shows, log the task BLOCKED naming both texts`;
+                    ctx.emit({
+                        recorded: false,
+                        refused: "reason-mismatch",
+                        reason,
+                        exitCode,
+                        log: logArg,
+                    });
+                    ctx.log(`not a red (reason-mismatch): ${reason} — full output in ${logArg}`);
+                    return EXIT_RED_REASON;
+                }
                 const snapshot = snapshotPath(log);
                 fs.copyFileSync(path.join(top, test), snapshot);
-                const failed = cases.find((c) => isNamedCase(c.name, name));
                 const written = writeStepRow(ctx.cwd, {
                     file: statusFile(ctx),
                     workflow,
@@ -1211,7 +1373,7 @@ export const testsCommand = {
                         testName: name,
                         testBlob: blob,
                         exitCode,
-                        failure: failed.message.slice(0, 200),
+                        failure: failed.message.slice(0, FAILURE_EXCERPT),
                     },
                     commit: "none",
                 }, ctx.log);
@@ -1456,24 +1618,34 @@ export const testsCommand = {
                                 .find((a) => a.endsWith(".snapshot"));
                             const snapAbs = snap === undefined ? undefined : path.resolve(ctx.cwd, snap);
                             const testAbs = path.join(top, t.test);
-                            if (snapAbs === undefined || !fs.existsSync(snapAbs)) {
+                            // A lost snapshot falls back to the copy `tests red` wrote into git.
+                            const kept = snapAbs !== undefined && fs.existsSync(snapAbs)
+                                ? fs.readFileSync(snapAbs)
+                                : storedBlob(top, red.testBlob);
+                            if (kept === null) {
                                 row.changed = "unknown";
-                                gap("red-evidence-missing", `the red's test snapshot ${snap ?? "(none recorded)"} is missing`);
+                                gap("red-evidence-missing", `the red's test snapshot ${snap ?? "(none recorded)"} is missing, and git holds no blob ${typeof red.testBlob === "string" ? red.testBlob : "(none recorded)"} for it`);
                             }
                             else if (!fs.existsSync(testAbs)) {
                                 row.changed = "deleted";
                                 gap("test-changed", `\`${t.test}\` no longer exists`);
                             }
-                            else if (!fs.readFileSync(snapAbs).equals(fs.readFileSync(testAbs))) {
-                                const before = fs.readFileSync(snapAbs, "utf-8");
+                            else if (!kept.equals(fs.readFileSync(testAbs))) {
+                                const before = kept.toString("utf-8");
                                 const after = fs.readFileSync(testAbs, "utf-8");
+                                const blobDir = snapAbs !== undefined && fs.existsSync(snapAbs)
+                                    ? undefined
+                                    : fs.mkdtempSync(path.join(os.tmpdir(), "bkit-test-blob-"));
+                                const beforeFile = blobDir === undefined ? snapAbs : path.join(blobDir, path.basename(t.test));
+                                if (blobDir !== undefined)
+                                    fs.writeFileSync(beforeFile, kept);
                                 const diffOf = (...flags) => runGit(top, [
                                     "diff",
                                     "--no-index",
                                     "--no-color",
                                     ...flags,
                                     "--",
-                                    path.relative(top, snapAbs),
+                                    path.relative(top, beforeFile),
                                     t.test,
                                 ]).stdout;
                                 const judged = sinceRed(t, before, after, testChange(before, after, t.name, diffLines(diffOf("-U0"))));
@@ -1482,6 +1654,8 @@ export const testsCommand = {
                                     gap("test-changed", judged.detail);
                                     diffs.push({ task: s.task, test: t.test, diff: diffOf() });
                                 }
+                                if (blobDir !== undefined)
+                                    fs.rmSync(blobDir, { recursive: true, force: true });
                             }
                             else
                                 row.changed = "no";

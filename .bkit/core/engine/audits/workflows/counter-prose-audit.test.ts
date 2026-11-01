@@ -609,6 +609,8 @@ const COUNTER_STEP_MAP: Record<string, string[]> = {
   "debug-failure-remediate": ["debug-run-tests"],
   "debug-failure-soak": ["debug-run-tests", "debug-failure-soak"],
   "debug-push-remediation": ["debug-run-tests"],
+  "plan-review": ["plan-review"],
+  "plan-apply-review": ["plan-apply-review"],
   "ship-merge-pr": ["ship-merge-pr"],
   "ship-failure-diagnose": ["ship-merge-pr"],
   "ship-failure-remediate": ["ship-merge-pr"],

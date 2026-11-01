@@ -350,8 +350,11 @@ export function hostChat(
 export const chatFingerprint = (platform: string, id: string) =>
   `fp:${createHash("sha256").update(`${platform}:${id}`).digest("hex").slice(0, 12)}`;
 
-/** Status rows that mark a moment rather than the end of a piece of work: step minutes skip them. */
-export const MARK_ROWS: ReadonlySet<string> = new Set(["session", "owner-pause", "owner-answer"]);
+/**
+ * Status rows that mark a moment rather than the end of a piece of work: step minutes skip
+ * them. A `test-run` row lands just before its step's own row, so the run counts toward it.
+ */
+export const MARK_ROWS = new Set(["session", "owner-pause", "owner-answer", "test-run"]);
 
 /** The `session` fingerprints on the run's status rows, in row order, each once. */
 export function runChats(rows: Row[]): string[] {

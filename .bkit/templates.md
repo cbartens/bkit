@@ -195,6 +195,8 @@ pnpm add -D prettier@^3.5.3 slop-scan@^0.3.0 lint-staged@^17.0.0 husky@^9.1.7
 - `bkit:lint:file` lints one test file with the static gate's rules, and exits 0 when clean. bkit appends the path. `bkit tests red` runs it before the test, and records no red while it fails. It is not seeded, and `lint-file-script-missing` fires once `bkit:test:file` is declared without it.
   - ESLint: `"bkit:lint:file": "eslint --max-warnings=0"`.
   - Ruff: `"bkit:lint:file": "ruff check"`.
+- `bkit:gate:changed` checks only the files an agent step changed: the tests that import them, the tests that name their paths, and static checks on them; exit 0 when clean. `bkit tests changed` appends the repo-relative paths and never calls it with none. It is not seeded, and `gate-changed-script-missing` fires until it is declared; undeclared, agents run the whole `bkit:gate:static` / `bkit:gate:static-unit` instead.
+  - Vitest + ESLint: a script running `vitest related --run "$@" && eslint --max-warnings=0 --no-error-on-unmatched-pattern "$@"`, plus a text search of the test files for each path.
 
 ## CI workflow — `bkit-ci.yml`
 
@@ -677,7 +679,7 @@ graphify-out/
 | `pnpm graph:rollup` | Package and module views, plus `docs/capabilities.md`. |
 | `pnpm graph:check` | Rebuild and fail if `docs/capabilities.md` is not what this tree produces. Reads uncommitted edits. Shipped as a self-skipping CI step (every push and pull request; on a PR, GitHub's test merge into the base); enabled in bkit's own CI. |
 | `bash scripts/graphify/bkit-graphify.sh check-at <rev>` | `check` in a throwaway checkout of `<rev>` (default HEAD); pre-push gate runs it on the commit pushed to dev. |
-| `pnpm graph:refresh` | Rebuild register in a throwaway checkout of HEAD → copy over `docs/capabilities.md`. Fixes a red gate; commit result. |
+| `pnpm graph:refresh` | Rebuild register in a throwaway checkout of the staged files (the index) → copy over `docs/capabilities.md`. Stage the change first, so a run before its commit builds the new state. Fixes a red gate; commit result. |
 | `pnpm graph:scoped [path]` | One subtree. Default `apps/web/src`. |
 | `pnpm graph:graphml` | Opt-in GraphML for Gephi / yEd. |
 

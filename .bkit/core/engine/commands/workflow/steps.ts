@@ -31,6 +31,7 @@ import {
   EXIT,
   git,
   isSharedBranch,
+  parseJson,
   repoRoot,
   runGit,
   type CommandSpec,
@@ -38,6 +39,7 @@ import {
   type FlagValue,
   type RunContext,
 } from "../lib.js";
+import { activeRunStart } from "./counters.js";
 import { fidProblem, normaliseFid, readIssueTracker } from "./fids.js";
 import { buildComment } from "./issues.js";
 import {
@@ -71,6 +73,7 @@ import {
   postForVerb,
   type TrackerOutcome,
 } from "./tracker.js";
+import { PLAN_EXECUTE_STEP, RED_PASSED_STEP, RED_STEP, doneTasks } from "./tests.js";
 import { addAllButCopied } from "./worktrees.js";
 
 const VERDICT_END = "<!-- verdict:end -->";
@@ -85,6 +88,12 @@ export const EXIT_ARTIFACT = 7;
 export const EXIT_COMMIT = 8;
 /** finish --docs-only: the step staged a file outside the artifact tree. */
 export const EXIT_OUTSIDE_DOCS = 9;
+/** finish (build plan-execute): a task logged `DONE` has a red refused as passed and no red. */
+export const EXIT_RED_PASSED = 11;
+/** finish: a saved artifact holds a later attempt than the one finished. */
+export const EXIT_LATER_ATTEMPT = 12;
+/** finish: the step's commit would change `bkit.workflows` in package.json. */
+export const EXIT_WORKFLOWS_CHANGED = 13;
 
 /** Where `finish` puts the derived attempt in `--artifact` / `--message` / `--clamp-log`. */
 export const ATTEMPT_TOKEN = "<attempt>";
@@ -757,6 +766,111 @@ export function doneDescription(file: string): string {
 const DOCS_ONLY =
   /^docs\/plans\/|^docs\/(deferrals|decisions|failures)\.jsonl$|^\.bkit\/(friction|stats)\.jsonl$/;
 
+/** One test whose red was refused as passed, for a task the execute log closes `DONE`. */
+interface PassedRed {
+  task: number;
+  test: string;
+  name: string;
+}
+
+/**
+ * Each test of a task the execute log closes `DONE` (a line saying `already landed`
+ * aside) whose red the active run refused as passed, with no red recorded for it: the
+ * task's code came before its test failed, so the task is `BLOCKED`, not done.
+ */
+function passedRedsLoggedDone(file: string, workflow: string, log: string): PassedRed[] {
+  if (!fs.existsSync(file) || !fs.existsSync(log)) return [];
+  const closing = fs
+    .readFileSync(log, "utf-8")
+    .split("\n")
+    .filter((l) => !/\balready landed\b/i.test(l))
+    .join("\n");
+  const done = new Set(doneTasks(closing));
+  if (done.size === 0) return [];
+  const runs = readRuns(file);
+  const rows = (step: string) =>
+    activeDoneSteps(runs, workflow, { step }) as Array<Step & Record<string, unknown>>;
+  const reds = rows(RED_STEP);
+  const found = new Map<string, PassedRed>();
+  for (const p of rows(RED_PASSED_STEP)) {
+    if (!done.has(Number(p.task))) continue;
+    const red = reds.some(
+      (r) => r.task === p.task && r.test === p.test && r.testName === p.testName,
+    );
+    if (!red)
+      found.set(JSON.stringify([p.task, p.test, p.testName]), {
+        task: Number(p.task),
+        test: String(p.test),
+        name: String(p.testName),
+      });
+  }
+  return [...found.values()];
+}
+
+const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * Saved artifacts of a later attempt than `attempt`, for each pattern whose file name
+ * holds `<attempt>`, matched with any number there. An artifact already committed at
+ * `startSha` (the active run's start) belongs to an earlier run, so it does not count.
+ */
+function laterAttempts(
+  cwd: string,
+  patterns: string[],
+  attempt: number,
+  startSha: string | undefined,
+): string[] {
+  const later: Array<{ rel: string; n: number }> = [];
+  for (const p of patterns) {
+    const dir = path.dirname(p);
+    const base = path.basename(p);
+    if (isUrl(p) || !base.includes(ATTEMPT_TOKEN) || dir.includes(ATTEMPT_TOKEN)) continue;
+    const abs = path.resolve(cwd, dir);
+    if (!fs.existsSync(abs) || !fs.statSync(abs).isDirectory()) continue;
+    const shape = new RegExp(`^${base.split(ATTEMPT_TOKEN).map(escapeRegex).join("([0-9]+)")}$`);
+    for (const name of fs.readdirSync(abs)) {
+      const n = (shape.exec(name)?.slice(1) ?? []).map(Number);
+      if (n.length === 0 || n.some((x) => x !== n[0]) || n[0]! <= attempt) continue;
+      const rel = path.join(dir, name);
+      if (startSha !== undefined && runGit(cwd, ["cat-file", "-e", `${startSha}:./${rel}`]).ok)
+        continue;
+      if (!later.some((l) => l.rel === rel)) later.push({ rel, n: n[0]! });
+    }
+  }
+  return later.sort((a, b) => a.n - b.n || a.rel.localeCompare(b.rel)).map((l) => l.rel);
+}
+
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  v !== null && typeof v === "object" && !Array.isArray(v);
+
+/** Dotted keys whose values differ between two `bkit.workflows` objects, sorted. */
+export function changedKeys(a: unknown, b: unknown, at = ""): string[] {
+  if (isRecord(a) && isRecord(b))
+    return [...new Set([...Object.keys(a), ...Object.keys(b)])]
+      .sort()
+      .flatMap((k) => changedKeys(a[k], b[k], at === "" ? k : `${at}.${k}`));
+  return JSON.stringify(a) === JSON.stringify(b) ? [] : [at === "" ? "bkit.workflows" : at];
+}
+
+/**
+ * The `bkit.workflows` keys the working tree's package.json changes from HEAD's (`git add -A`
+ * commits the working tree). Empty when either side cannot be read as JSON.
+ */
+function workflowsChange(cwd: string): string[] {
+  const top = git(cwd, ["rev-parse", "--show-toplevel"]) ?? cwd;
+  const file = path.join(top, "package.json");
+  const head = runGit(top, ["cat-file", "-e", "HEAD:package.json"]).ok
+    ? parseJson(runGit(top, ["show", "HEAD:package.json"]).stdout)
+    : { ok: true as const, value: {} };
+  const work = fs.existsSync(file)
+    ? parseJson(fs.readFileSync(file, "utf-8"))
+    : { ok: true as const, value: {} };
+  if (!head.ok || !work.ok) return [];
+  const workflows = (pkg: unknown) =>
+    (isRecord(pkg) && isRecord(pkg.bkit) ? pkg.bkit.workflows : undefined) ?? {};
+  return changedKeys(workflows(head.value), workflows(work.value));
+}
+
 /** `soakAttempt` → `Soak Attempt`, for a comment header. */
 const titleCase = (key: string) =>
   key.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase());
@@ -842,6 +956,8 @@ async function finish(ctx: RunContext): Promise<number> {
       for (const [k, v] of Object.entries(read.fields)) {
         if (k === "Verdict") continue;
         if (k === "Failures") failures = (failures ?? 0) + Number(v);
+        // A `true | false` field is true when any agent sets it: one reviewer's flag is never outvoted.
+        else if (v === "true" && fields[k] === "false") fields[k] = v;
         else if (!(k in fields)) fields[k] = v;
       }
     }
@@ -898,6 +1014,57 @@ async function finish(ctx: RunContext): Promise<number> {
   const commit = str(f.commit) ?? "auto";
   if (!["auto", "none"].includes(commit))
     throw new CommandError(EXIT.USAGE, "--commit must be auto or none");
+
+  // A task built before its test failed is BLOCKED, unless its work had already landed.
+  if (workflow === "build" && step === PLAN_EXECUTE_STEP && artifacts[0] !== undefined) {
+    const passed = passedRedsLoggedDone(file, workflow, path.resolve(ctx.cwd, artifacts[0]));
+    if (passed.length > 0) {
+      const problem = `${passed
+        .map((p) => `TASK ${p.task} is logged DONE, but its red for "${p.name}" (${p.test})`)
+        .join(
+          "; ",
+        )} was refused as passed and no red is recorded: log the task BLOCKED, or "DONE — TASK {N}: already landed" when its DONE WHEN held with no task code written (nothing written)`;
+      ctx.log(problem);
+      ctx.emit({
+        pass: false,
+        reask: agents.length ? { agent: agents[0], artifact: artifacts[0] } : null,
+        problem,
+        redPassed: passed,
+      });
+      return EXIT_RED_PASSED;
+    }
+  }
+
+  // The attempt finished is the latest one this run saved artifacts for.
+  if (attempt !== undefined) {
+    const startSha = activeRunStart(file, workflow)?.parentSha;
+    const later = laterAttempts(
+      ctx.cwd,
+      [...list(f.artifact), ...list(f.optionalArtifact)],
+      attempt,
+      typeof startSha === "string" && startSha !== "" ? startSha : undefined,
+    );
+    if (later.length > 0) {
+      ctx.log(
+        `attempt ${attempt} is not the latest: this run saved ${later.join(", ")} after it — finish the latest attempt (nothing written)`,
+      );
+      ctx.emit({ pass: false, attempt, later });
+      return EXIT_LATER_ATTEMPT;
+    }
+  }
+
+  // A run never changes its own limits: the step commit may not carry a bkit.workflows edit.
+  if (commit === "auto") {
+    const changed = workflowsChange(ctx.cwd);
+    if (changed.length > 0) {
+      ctx.log(
+        `the step's commit would change bkit.workflows in package.json (${changed.join(", ")}): restore HEAD's values, then finish again (nothing written)`,
+      );
+      ctx.emit({ pass: false, changed });
+      return EXIT_WORKFLOWS_CHANGED;
+    }
+  }
+
   if (f.docsOnly === true && commit === "auto") {
     addAllButCopied(ctx.cwd);
     const outside = runGit(ctx.cwd, ["diff", "--cached", "--name-only"])
@@ -1322,8 +1489,14 @@ export const stepsCommand: CommandSpec = {
         comment: "the step's tracker comment body (with --number), else null",
         commentFile: COMMENT_FILE_OUTPUT,
         tracker: TRACKER_OUTPUT,
-        reask: "verdict read failed: {agent, artifact} to re-ask (exit 4 / 5 / 6 only)",
-        problem: "why the verdict read failed (exit 4 / 5 / 6 only)",
+        reask:
+          "verdict read failed, or a DONE task's red passed: {agent, artifact} to re-ask (exit 4 / 5 / 6 / 11 only)",
+        problem:
+          "why the verdict read failed, or why the DONE task is refused (exit 4 / 5 / 6 / 11 only)",
+        redPassed:
+          "[{task, test, name}] tests whose red passed, of tasks logged DONE (exit 11 only)",
+        later: "artifacts of a later attempt this run saved (exit 12 only)",
+        changed: "bkit.workflows keys the commit would change, dotted (exit 13 only)",
       },
       textOmit: ["row", { key: "checks", when: (_checks, out) => out.pass === true }],
       exitCodes: {
@@ -1343,6 +1516,12 @@ export const stepsCommand: CommandSpec = {
           "a debug run on dev/main with no shared-checkout record: nothing written or committed",
         [EXIT_OUTSIDE_DOCS]:
           "--docs-only and the step staged a file outside the artifact tree (nothing written)",
+        [EXIT_RED_PASSED]:
+          "build plan-execute: a task the log closes DONE (not `already landed`) has a red refused as passed and no red — re-ask `reask.agent` to log it BLOCKED (nothing written)",
+        [EXIT_LATER_ATTEMPT]:
+          "this run saved an artifact of a later attempt (`later`) than the one finished (nothing written)",
+        [EXIT_WORKFLOWS_CHANGED]:
+          "the commit would change bkit.workflows in package.json (`changed` names the keys) (nothing written)",
       },
       run: finish,
     },

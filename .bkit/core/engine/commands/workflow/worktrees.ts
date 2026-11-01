@@ -18,7 +18,7 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { lastRun } from "../../ledgers/status.js";
+import { actionHash, actionKey, lastRun, recordAction } from "../../ledgers/status.js";
 import { gitEnv } from "../../ledgers/telemetry.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { COULD_NOT_RUN_EXIT_CODES, installCommand } from "../../shared/package-manager.js";
@@ -282,6 +282,24 @@ function addWorktree(
   const res = runGit(root, ["worktree", "add", ...args]);
   if (!res.ok) throw new CommandError(EXIT_WORKTREE_ADD, `git worktree add failed: ${res.stderr}`);
   return true;
+}
+
+/**
+ * An engine-action row for a rebase that rewrote the branch, keyed on the tip it
+ * replaced, so the run's record shows the rewrite. Nothing when HEAD did not move.
+ */
+export function recordRebase(
+  statusFile: string,
+  before: string | null,
+  after: string | null,
+): void {
+  if (before === null || after === null || before === after) return;
+  recordAction(statusFile, {
+    action: "rebase",
+    key: actionKey("rebase", before),
+    hash: actionHash(`${before}..${after}`),
+    ref: after,
+  });
 }
 
 function rebaseInProgress(wt: string): boolean {
@@ -882,9 +900,16 @@ export const worktreesCommand: CommandSpec = {
             // never committed, so the rebase sets it aside and puts it back. Only when
             // nothing else is left: a refused carry commit still stops the rebase.
             const aside = hasLeftovers(wt) ? [] : ["--autostash"];
+            const before = git(wt, ["rev-parse", "HEAD"]);
             const rb = runGit(wt, ["rebase", "--rebase-merges", ...aside, onto]);
             // The rebase replays the carry commit on top: report the replayed one.
             if (rb.ok && carried?.sha) carried.sha = git(wt, ["rev-parse", "HEAD"]);
+            if (rb.ok)
+              recordRebase(
+                path.join(logDir, "status.jsonl"),
+                before,
+                git(wt, ["rev-parse", "HEAD"]),
+              );
             if (!rb.ok) {
               failure = {
                 conflict: rebaseInProgress(wt),

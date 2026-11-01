@@ -193,7 +193,7 @@ description: "Design Feature — Autonomous design phase"
    - **If** exit 3 → run the rebase block below; **If** it exits 0 → re-run step 2, **Else** → **Failure Path**.
    - **Else** → **Failure Path**.
    ```bash
-   cd "{WORKTREE_PATH}" && "{BKIT}" branches rebase --sentinel="{SENTINEL}" --log-file="{LOG_DIR}/rebase-resolve-log.md"
+   cd "{WORKTREE_PATH}" && "{BKIT}" branches rebase --sentinel="{SENTINEL}" --log-file="{LOG_DIR}/rebase-resolve-log.md" --file="{LOG_DIR}/status.jsonl"
    ```
 3. Enter the worktree, open the run and record the runtime:
    ```bash
@@ -228,7 +228,7 @@ description: "Design Feature — Autonomous design phase"
 1. Read the runtime: `runtime assert`, then the grill settings (`bkit.workflows.design.grill`) with `counters max`.
    ```bash
    "{BKIT}" runtime assert --file="{STATUS}" --workflow=design
-   "{BKIT}" counters max --point=design.grill
+   "{BKIT}" counters max --point=design.grill --file="{STATUS}" --workflow=design
    ```
    Hold `value` as `GRILL_TURNS` (`maxTurns`: interview turns including the draft turn), `ask` as `GRILL_ASK` (false when headless), `runtimeHeadless` as `RUNTIME_HEADLESS`, `runtime` as `RUNTIME`.
    Route — first match wins:
