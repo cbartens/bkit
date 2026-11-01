@@ -128,7 +128,7 @@ Run-completeness check (`checks/status-holes.ts`, `bkit completeness check`). Ad
 | 13 | Selected run exists but capstone job absent | refuse |
 | 14 | Green run exists, but at a SUPERSEDED SHA (needs `--branch`) | refuse → Step 9 (re-validate at new head) |
 | 15 | Selected run concluded `cancelled` | refuse |
-| 16 | A lane named in `bkit.testing.shipGate` concluded `skipped` | refuse |
+| 16 | A lane named in `bkit.testing.ciRequired` concluded `skipped` | refuse |
 | 17 | Non-bookkeeping change past `--validated`, or not its descendant | refuse → Step 9 (re-validate at head) |
 | 20 | API error / rate limit / auth | refuse |
 | 80 | `gh` not on PATH | do it via the MCP fallback |

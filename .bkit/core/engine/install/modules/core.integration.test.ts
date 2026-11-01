@@ -20,6 +20,7 @@ import {
   migrateLinearTeamKey,
   migrateGithubProjectKey,
   migrateBkitLayout,
+  pruneMinPushPaths,
   seedBkitDefaults,
   SEEDED_BKIT_DEFAULTS,
 } from "./core";
@@ -773,8 +774,9 @@ describe("seedBkitDefaults (via seedCorePackageJsonScripts)", () => {
       testing: {
         ciWorkflow: "bkit-ci.yml",
         ciCapstone: "bkit-tests-check",
-        shipGate: [],
-        minPushPaths: ["docs/plans/**", "docs/*.jsonl", ".bkit/*.jsonl"],
+        ciRequired: [],
+        minPushPaths: [],
+        ciSkipPaths: [],
       },
       workflows: {
         minFreeGb: 40,
@@ -811,7 +813,7 @@ describe("seedBkitDefaults (via seedCorePackageJsonScripts)", () => {
     seed({
       bkit: {
         tracker: { default: "github", github: { project: false } },
-        testing: { minPushPaths: [] },
+        testing: { minPushPaths: ["notes/**"] },
         workflows: { worktree: { copy: [] }, build: { verify: { ask: "yes" } } },
       },
     });
@@ -823,7 +825,7 @@ describe("seedBkitDefaults (via seedCorePackageJsonScripts)", () => {
       progress: "In progress",
       review: "In review",
     });
-    expect(bkit.testing.minPushPaths).toEqual([]);
+    expect(bkit.testing.minPushPaths).toEqual(["notes/**"]);
     expect(bkit.workflows.worktree).toEqual({ copy: [], install: true });
     expect(bkit.workflows.build.verify).toEqual({ ask: "yes", maxAttempts: 2 });
     const before = read();
@@ -1044,7 +1046,7 @@ describe("migrateBkitLayout (via seedCorePackageJsonScripts)", () => {
         minPushPaths: ["docs/**"],
         ciCapstone: "gate",
         ciWorkflow: "ci.yml",
-        shipGate: ["e2e"],
+        ciRequired: ["e2e"],
       },
       workflows: { minFreeGb: 20, worktree: { install: false }, tasks: { maxPerGroup: 4 } },
       prompts: { roadmapNext: 10 },
@@ -1052,6 +1054,15 @@ describe("migrateBkitLayout (via seedCorePackageJsonScripts)", () => {
       advisories: { ignore: ["x"] },
     });
     expect(read()).toMatch(/\n {4}"bkit"/);
+  });
+
+  it("moves a 6.0.0 testing.shipGate to testing.ciRequired, and a ciRequired already set wins", () => {
+    seed({ testing: { ciWorkflow: "ci.yml", shipGate: ["e2e"] } });
+    expect(touched(run())).toBe(true);
+    expect(bkitKey().testing).toEqual({ ciWorkflow: "ci.yml", ciRequired: ["e2e"] });
+    seed({ testing: { shipGate: ["e2e"], ciRequired: [] } });
+    expect(touched(run())).toBe(true);
+    expect(bkitKey().testing).toEqual({ ciRequired: [] });
   });
 
   it("a value already at the new path wins; two blocks merge key by key", () => {
@@ -1117,8 +1128,56 @@ describe("migrateBkitLayout (via seedCorePackageJsonScripts)", () => {
     expect(bkit.tracker!.default).toBe("github");
     expect(bkit.workflows!.minFreeGb).toBe(12);
     expect(bkit.workflows!.ship).toEqual({ merge: { ask: false, maxAttempts: 2 } });
+    expect(bkit.testing!.ciSkipPaths).toEqual([]);
     expect(bkit).not.toHaveProperty("disk");
     expect(touched(run())).toBe(false);
+  });
+});
+
+describe("pruneMinPushPaths (via seedCorePackageJsonScripts)", () => {
+  const seed = (bkit: unknown): void =>
+    fs.writeFileSync("package.json", JSON.stringify({ name: "x", bkit }, null, 2) + "\n", "utf-8");
+  const read = (): string => fs.readFileSync("package.json", "utf-8");
+  const testing = (): Record<string, unknown> => JSON.parse(read()).bkit.testing;
+  const run = (dryRun = false): boolean => {
+    const ctx = makeCtx({ dryRun });
+    return pruneMinPushPaths(ctx.dryRun, ctx.ws, ctx.logPrefix);
+  };
+
+  it("drops what bkit always allows and what ciSkipPaths already names, keeping the rest", () => {
+    seed({
+      testing: {
+        minPushPaths: [
+          "docs/**",
+          ".bkit/*.jsonl",
+          "docs/plans/**",
+          "docs/*.jsonl",
+          "CHANGELOG.md",
+          "README.md",
+        ],
+        ciSkipPaths: ["CHANGELOG.md", "README.md"],
+      },
+    });
+    expect(run()).toBe(true);
+    expect(testing()).toEqual({
+      minPushPaths: ["docs/**"],
+      ciSkipPaths: ["CHANGELOG.md", "README.md"],
+    });
+    expect(run()).toBe(false);
+  });
+
+  it("a 6.0.x seed becomes []; a dry run writes nothing; a list it cannot shorten is left alone", () => {
+    seed({ testing: { minPushPaths: ["docs/plans/**", "docs/*.jsonl", ".bkit/*.jsonl"] } });
+    const before = read();
+    expect(run(true)).toBe(true);
+    expect(read()).toBe(before);
+    expect(run()).toBe(true);
+    expect(testing().minPushPaths).toEqual([]);
+    seed({ testing: { minPushPaths: ["notes/**"] } });
+    expect(run()).toBe(false);
+    seed({ testing: { ciWorkflow: "ci.yml" } });
+    expect(run()).toBe(false);
+    expect(testing()).toEqual({ ciWorkflow: "ci.yml" });
   });
 });
 

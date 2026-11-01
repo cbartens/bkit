@@ -464,6 +464,9 @@ export function seedCorePackageJsonScripts(
   if (migrateBkitLayout(dryRun, ws, logPrefix) && !written.includes("package.json")) {
     written.push("package.json");
   }
+  if (pruneMinPushPaths(dryRun, ws, logPrefix) && !written.includes("package.json")) {
+    written.push("package.json");
+  }
   if (seedBkitDefaults(dryRun, ws, logPrefix) && !written.includes("package.json")) {
     written.push("package.json");
   }
@@ -500,10 +503,15 @@ export const SEEDED_BKIT_DEFAULTS: Readonly<Record<string, unknown>> = {
   cloud: { agent: "" },
   providers: { opencode: { default: "", installed: [] } },
   testing: {
+    // What bkit writes (ship's bookkeeping allow-list, the plans tree) is always a min push;
+    // the seed adds nothing, because a project doc can be a test's input.
+    minPushPaths: [...CONFIG_DEFAULTS.minPushPaths],
     ciWorkflow: CONFIG_DEFAULTS.ciWorkflow,
     ciCapstone: CONFIG_DEFAULTS.capstoneJob,
-    shipGate: [...CONFIG_DEFAULTS.shipGateRequiredLanes],
-    minPushPaths: [...CONFIG_DEFAULTS.minPushPaths],
+    ciRequired: [...CONFIG_DEFAULTS.ciRequired],
+    // Project docs ship's [skip ci] bookkeeping commit may carry onto the PR untested; a
+    // repo names its own (bkit's: CHANGELOG.md, README.md), so the seed is the empty choice.
+    ciSkipPaths: [...CONFIG_DEFAULTS.ciSkipPaths],
   },
   workflows: {
     minFreeGb: CONFIG_DEFAULTS.diskMinFreeGb,
@@ -679,7 +687,9 @@ export const BKIT_LAYOUT_MOVES: readonly (readonly [string, string])[] = [
   ["minPushPaths", "testing.minPushPaths"],
   ["capstoneJob", "testing.ciCapstone"],
   ["ciWorkflow", "testing.ciWorkflow"],
-  ["shipGateRequiredLanes", "testing.shipGate"],
+  ["shipGateRequiredLanes", "testing.ciRequired"],
+  // 6.0.0 installs named the required-lane list `testing.shipGate`.
+  ["testing.shipGate", "testing.ciRequired"],
   ["disk.minFreeGb", "workflows.minFreeGb"],
   ["worktree", "workflows.worktree"],
   ["tasks", "workflows.tasks"],
@@ -687,6 +697,41 @@ export const BKIT_LAYOUT_MOVES: readonly (readonly [string, string])[] = [
   ["depUpdater", "dependencies.updater"],
   ["ignoreAdvisories", "advisories.ignore"],
 ];
+
+// Migration (up to 6.0.x installs, `docs/migrations.md`): `bkit.testing.minPushPaths` was the
+// whole min-push list, so installs seeded and repos restated what bkit itself writes. The
+// engine now always allows that floor (ship's bookkeeping allow-list, `docs/plans/**`) and
+// `bkit.testing.ciSkipPaths`; the setting only adds. Entries the floor already covers are
+// dropped from the list. Returns true when package.json changed.
+export const MIN_PUSH_FLOOR_ENTRIES: readonly string[] = [
+  "docs/plans/**",
+  "docs/*.jsonl",
+  ".bkit/*.jsonl",
+];
+
+export function pruneMinPushPaths(dryRun: boolean, ws: WriteSet, logPrefix: string): boolean {
+  const pkgPath = "package.json";
+  if (!fs.existsSync(pkgPath)) return false;
+  const raw = fs.readFileSync(pkgPath, "utf-8");
+  const parsed = parseJson(raw);
+  if (!parsed.ok) return false;
+  const pkg = parsed.value as Record<string, unknown>;
+  if (!plainObject(pkg.bkit) || !plainObject(pkg.bkit.testing)) return false;
+  const testing = pkg.bkit.testing;
+  if (!Array.isArray(testing.minPushPaths)) return false;
+  const skip = Array.isArray(testing.ciSkipPaths) ? testing.ciSkipPaths : [];
+  const covered = new Set<unknown>([...MIN_PUSH_FLOOR_ENTRIES, ...skip]);
+  const kept = testing.minPushPaths.filter((p) => !covered.has(p));
+  if (kept.length === testing.minPushPaths.length) return false;
+  const dropped = testing.minPushPaths.filter((p) => covered.has(p)).map(String);
+  testing.minPushPaths = kept;
+  ws.writes.push({ path: pkgPath, action: "update" });
+  if (!dryRun) writePackageJsonLike(raw, pkg);
+  console.log(
+    `${logPrefix} ${dryRun ? "[dry-run] " : ""}core: dropped [${dropped.join(", ")}] from bkit.testing.minPushPaths in package.json — bkit always allows what it writes, and ciSkipPaths counts`,
+  );
+  return true;
+}
 
 // Fill `into` with each `from` key it lacks, descending into blocks both sides hold.
 function mergeMissing(into: Record<string, unknown>, from: Record<string, unknown>): void {

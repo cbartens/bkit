@@ -159,14 +159,15 @@
     },
     "testing": {
       "minPushPaths": [
-        "docs/**",
-        ".bkit/*.jsonl",
+        "docs/**"
+      ],
+      "ciWorkflow": "bkit-ci.yml",
+      "ciCapstone": "bkit-tests-check",
+      "ciRequired": [],
+      "ciSkipPaths": [
         "CHANGELOG.md",
         "README.md"
-      ],
-      "ciCapstone": "bkit-tests-check",
-      "ciWorkflow": "bkit-ci.yml",
-      "shipGate": []
+      ]
     },
     "workflows": {
       "minFreeGb": 40,

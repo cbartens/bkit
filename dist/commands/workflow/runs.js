@@ -384,7 +384,7 @@ export const GATE = {
     SUPERSEDED: 14,
     /** The selected run was cancelled. */
     CANCELLED: 15,
-    /** A lane named in bkit.testing.shipGate concluded skipped. */
+    /** A lane named in bkit.testing.ciRequired concluded skipped. */
     LANE_SKIPPED: 16,
     /** --validated is not an ancestor of the head plus bookkeeping-only commits. */
     NOT_BOOKKEEPING: 17,
@@ -450,7 +450,7 @@ export function shipGate(o, gh, log) {
         nonBookkeepingPaths: [],
         reason: "",
     };
-    const requiredLanes = cfg.shipGateRequiredLanes;
+    const requiredLanes = cfg.ciRequired;
     const refuse = (code, reason, runUrl) => {
         log(reason);
         log(`required head:  ${r.head}`);
@@ -682,7 +682,7 @@ export function shipGate(o, gh, log) {
         log(`note: capstone '${r.capstone}' is green and owns the planned-vs-vacuous judgement for those lanes`);
         const required = r.skippedLanes.filter((l) => requiredLanes.includes(l));
         if (required.length) {
-            log(`declared in bkit.testing.shipGate: ${requiredLanes.join(",")}`);
+            log(`declared in bkit.testing.ciRequired: ${requiredLanes.join(",")}`);
             return refuse(GATE.LANE_SKIPPED, `required lane(s) concluded 'skipped' at head ${r.head} — vacuous green: ${required.join(", ")}`, url);
         }
     }

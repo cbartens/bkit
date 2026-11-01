@@ -45,7 +45,7 @@ describe("readBkitConfig", () => {
             testing: {
               ciWorkflow: "test.yml",
               ciCapstone: "decide",
-              shipGate: ["bkit-tests-e2e", ""],
+              ciRequired: ["bkit-tests-e2e", ""],
             },
             workflows: { worktree: { copy: [".env", "apps/web/.env.preview"], install: false } },
             tracker: {
@@ -70,7 +70,7 @@ describe("readBkitConfig", () => {
         progress: "In progress",
         review: "QA",
       },
-      shipGateRequiredLanes: ["bkit-tests-e2e"],
+      ciRequired: ["bkit-tests-e2e"],
     });
   });
 
@@ -253,22 +253,31 @@ describe("readBkitConfig", () => {
     expect(cfg).toEqual(CONFIG_DEFAULTS);
   });
 
-  it("keeps only non-empty string lanes, and reads a non-array testing.shipGate as none", () => {
+  it("keeps only non-empty string lanes, and reads a non-array testing.ciRequired as none", () => {
     const lanes = (v: unknown) =>
-      readBkitConfig(root(JSON.stringify({ bkit: { testing: { shipGate: v } } })))
-        .shipGateRequiredLanes;
+      readBkitConfig(root(JSON.stringify({ bkit: { testing: { ciRequired: v } } }))).ciRequired;
     expect(lanes(["bkit-tests-unit", 42, null])).toEqual(["bkit-tests-unit"]);
     expect(lanes("bkit-tests-unit")).toEqual([]);
   });
 
-  it("reads testing.minPushPaths as non-empty strings, keeps an explicit [], else the default", () => {
+  it("reads testing.minPushPaths as non-empty strings, else []: the floor is not a setting", () => {
     const book = (v: unknown) =>
       readBkitConfig(root(JSON.stringify({ bkit: { testing: { minPushPaths: v } } }))).minPushPaths;
-    expect(book(["docs/plans/**", "", 3])).toEqual(["docs/plans/**"]);
+    expect(book(["notes/**", "", 3])).toEqual(["notes/**"]);
     expect(book([])).toEqual([]);
-    for (const bad of ["docs/plans/**", null, { 0: "docs/**" }])
-      expect(book(bad)).toEqual(CONFIG_DEFAULTS.minPushPaths);
-    expect(CONFIG_DEFAULTS.minPushPaths.some((p) => /^docs\/\*\*/.test(p))).toBe(false);
+    for (const bad of ["docs/plans/**", null, { 0: "docs/**" }]) expect(book(bad)).toEqual([]);
+    // What bkit writes is always a min push, and `docs/**` is a repo's own call.
+    expect(CONFIG_DEFAULTS.minPushPaths).toEqual([]);
+  });
+
+  it("reads testing.ciSkipPaths as non-empty strings, else []", () => {
+    const book = (v: unknown) =>
+      readBkitConfig(root(JSON.stringify({ bkit: { testing: { ciSkipPaths: v } } }))).ciSkipPaths;
+    expect(book(["CHANGELOG.md", "", 3])).toEqual(["CHANGELOG.md"]);
+    expect(book([])).toEqual([]);
+    for (const bad of ["CHANGELOG.md", null, { 0: "CHANGELOG.md" }]) expect(book(bad)).toEqual([]);
+    expect(readBkitConfig(root()).ciSkipPaths).toEqual([]);
+    expect(CONFIG_DEFAULTS.ciSkipPaths).toEqual([]);
   });
 
   it("asks at every point with 2 attempts by default, and 6 turns for the grill", () => {

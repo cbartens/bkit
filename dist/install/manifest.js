@@ -161,7 +161,7 @@ const CLAUDE_MANIFEST = [
 // (bkit-tests-static / -unit / -integration / -e2e / -live). Where a step is not a
 // tier (`format`, the ship gate) the name spells out the actual steps. One exception:
 // `min` sits off the chain: the least a push runs, on a push that changes no code
-// (`bkit.testing.minPushPaths`); its steps are whatever that push can still break.
+// (what bkit writes, plus `bkit.testing.minPushPaths`); its steps are whatever that push can still break.
 //
 // The consumer owns every value: a turbo monorepo writes `turbo run … --filter`,
 // a Python repo writes `ruff check && pytest`. bkit never reads a value — only
@@ -191,7 +191,7 @@ export const BKIT_GATE_SCRIPTS = {
     // `.husky/pre-commit`: prettier --write over staged files, and nothing else —
     // seconds, not minutes. Prose is a whole-repo scan, so it gates at pre-push.
     "bkit:gate:format": "pnpm lint-staged",
-    // `.husky/pre-push` on a min push (every file matches `bkit.testing.minPushPaths`): no code, so
+    // `.husky/pre-push` on a min push (every file is one bkit writes or `bkit.testing.minPushPaths` adds): no code, so
     // no typecheck, lint or tests. Off the chain. Add any test that reads a min-push file.
     "bkit:gate:min": "pnpm format:check && pnpm lint:prose && pnpm slop:delta",
     // Everything that needs no test runner. Every part has a matching step in the

@@ -363,12 +363,12 @@ describe("bkit runs gate", () => {
   });
 
   describe("skipped lanes (16 is opt-in)", () => {
-    /** A checkout whose package.json declares `bkit.testing.shipGate`. */
+    /** A checkout whose package.json declares `bkit.testing.ciRequired`. */
     const requiring = (lanes: string[]) => {
       const d = tmp();
       fs.writeFileSync(
         path.join(d, "package.json"),
-        JSON.stringify({ name: "x", bkit: { testing: { shipGate: lanes } } }),
+        JSON.stringify({ name: "x", bkit: { testing: { ciRequired: lanes } } }),
       );
       return d;
     };
@@ -382,7 +382,7 @@ describe("bkit runs gate", () => {
       expect(r.err).toContain("owns the planned-vs-vacuous judgement");
     });
 
-    it("refuses a skipped lane named in bkit.testing.shipGate (16)", async () => {
+    it("refuses a skipped lane named in bkit.testing.ciRequired (16)", async () => {
       fixtureGh();
       const r = await gate(requiring(["test"]), "--head=skipped-lane");
       expect(r.code).toBe(16);
@@ -522,23 +522,23 @@ describe("bkit runs gate", () => {
       expect((await gate(tmp(), "--head=green-capstone")).code).toBe(0);
     });
 
-    it("bkit.testing.shipGate resolves from package.json", async () => {
+    it("bkit.testing.ciRequired resolves from package.json", async () => {
       fixtureGh();
-      const r = await gate(pkg({ testing: { shipGate: ["test"] } }), "--head=skipped-lane");
+      const r = await gate(pkg({ testing: { ciRequired: ["test"] } }), "--head=skipped-lane");
       expect(r.code).toBe(16);
       expect(r.err).toContain("vacuous green: test");
     });
 
-    it("absent shipGateRequiredLanes means no refusal", async () => {
+    it("absent ciRequired means no refusal", async () => {
       fixtureGh();
       expect((await gate(pkg({}), "--head=skipped-lane")).code).toBe(0);
     });
 
-    it("a malformed shipGateRequiredLanes falls back to none, never crashes", async () => {
+    it("a malformed ciRequired falls back to none, never crashes", async () => {
       fixtureGh();
-      expect((await gate(pkg({ testing: { shipGate: "test" } }), "--head=skipped-lane")).code).toBe(
-        0,
-      );
+      expect(
+        (await gate(pkg({ testing: { ciRequired: "test" } }), "--head=skipped-lane")).code,
+      ).toBe(0);
     });
 
     it("a configured capstone that is a job in the run passes; one that is not is absent (13)", async () => {
@@ -662,7 +662,7 @@ describe("bkit runs gate", () => {
       const d = tmp();
       fs.writeFileSync(
         path.join(d, "package.json"),
-        JSON.stringify({ name: "x", bkit: { testing: { shipGate: ["test"] } } }),
+        JSON.stringify({ name: "x", bkit: { testing: { ciRequired: ["test"] } } }),
       );
       expect((await gate(d, "--head=skipped-lane", "--capstone-only")).code).toBe(0);
       expect((await gate(d, "--head=skipped-lane")).code).toBe(16);
