@@ -7,7 +7,7 @@ bkitVersion: 6.0.0
 bkitLatest: 6.0.0
 -->
 
-Verdict: CONCERNS
+Verdict: PASS
 
 <!-- verdict:end -->
 
@@ -336,7 +336,7 @@ Non-goals (new tracker values, marker contract, vendor-native trigger install) a
 
 ## Security & Privacy
 
-Per `docs/security.md` (§ Token isolation `:22`, secrets `:54-76`, § CI Auto-Route Trust `:149-158`, § Untrusted Content):
+Per `docs/security.md` (§ Token isolation `:22`, § Secrets Management `:73-103`, § CI Auto-Route Trust `:172-180`, § Untrusted Content):
 
 - [ ] **New API Route** — n/a: no route.
 - [ ] **New DB Table/Column** — n/a: no database.
@@ -345,7 +345,7 @@ Per `docs/security.md` (§ Token isolation `:22`, secrets `:54-76`, § CI Auto-R
 - [x] **PII** — engine redaction (`redact`) stays on every `fetch` failure line; annotations carry `reason` + secret **names**, never values; guard output names tracker + reason only.
 - [ ] **Redirect URL** — n/a.
 - [ ] **Webhook** — n/a.
-- [x] **New Secret/Env Var** — `BKIT_OPENAI_API_KEY` in `.bkit/shared/.bkit/.env.example`; all router secrets at step `env:` scope (`719-router-tracker-secrets-step-scope`), never job / workflow scope; Renovate PRs keep no access (`:22` updated to the `BKIT_` names); `BKIT_ANTHROPIC_API_KEY` stays a session-hijack key dropped from cloud env blocks (`:76`).
+- [x] **New Secret/Env Var** — `BKIT_OPENAI_API_KEY` in `.bkit/shared/.bkit/.env.example`; all router secrets at step `env:` scope (`719-router-tracker-secrets-step-scope`), never job / workflow scope; Renovate PRs keep no access (`:22` updated to the `BKIT_` names); `BKIT_ANTHROPIC_API_KEY` stays a session-hijack key dropped from cloud env blocks (§ Secrets Management, `**Session-hijack keys always dropped**` bullet `:99`).
 
 Further surfaces:
 
@@ -557,7 +557,7 @@ None — no database.
 
 #### [MODIFY] repo-root mirrors (regenerated, TASK 18)
 
-- **Existence Check:** `.claude/hooks/bkit-preflight.sh`, `.cursor/hooks/bkit-preflight.sh`, `.bkit/*.md`, `.bkit/.env.example`, `docs/security.md` (managed block `:1-44`, source `.bkit/shared/docs/security.md`) exist; `bkit install` rewrites them; header text outside `bkit:start/end` hand-synced when the parity test reports it.
+- **Existence Check:** `.claude/hooks/bkit-preflight.sh`, `.cursor/hooks/bkit-preflight.sh`, `.bkit/*.md`, `.bkit/.env.example`, `docs/security.md` (managed `bkit:start` / `bkit:end` block `:1-67`, source `.bkit/shared/docs/security.md`) exist; `bkit install` rewrites them; header text outside `bkit:start/end` hand-synced when the parity test reports it.
 
 ### Cron Jobs & Scheduled Tasks
 
@@ -595,13 +595,13 @@ None — `bkit-cloud.yml` triggers (`workflow_run`, `workflow_dispatch`) unchang
 | `docs/testing.md` | Key-file rows for `cloud-ctx-step.integration.test.ts` (fixture bkit bin, recorded `fetch` replies, outcomes), `workflow-templates.integration.test.ts` (codex job, actionlint), `preflight-sh.integration.test.ts` (per-tracker guard, `curl` stub) — TASK 17. |
 | `docs/observability.md` | `[bkit-cloud] gate:` annotations + summary row (TASK 8; `jobs` field contents TASK 9); § Phase 3 Credential + Migration Findings `detectCiRouterSecrets` row with the new findings (TASK 14); `buildCloudSetupAdvisory` sniffs (TASK 13). |
 | `docs/migrations.md` | § Detect-only guards rows: `cloud-router-tracker-stale` + `cloud-router-codex-missing` + `cloud-router-agent-unset` (TASK 13), `cloud-router-secret-renamed` (TASK 14). |
-| `docs/security.md` | `:22` secret names via its shipped source `.bkit/shared/docs/security.md:22` (inside the managed `bkit:start` / `bkit:end` block; TASK 18's `bkit install` regenerates the repo copy); `:67` opencode provider keys (no fan-out); § CI Auto-Route Trust: engine-owned FID parse + the dev-guard charset assert, dev subject via `fids parse --prompt-file`, kill switch on every tracker, tracker keys at step scope, PR head `package.json` steers its own routing run — TASK 17. |
-| `docs/deployments.md` | § `bkit-cloud.yml` jobs table (`:580-597`): one agent per run, `BKIT_` secrets, codex job, context install — TASK 17. |
-| `.bkit/core/.bkit/cloud.md` | Purpose + support matrix one row per agent (no tracker columns); § Post-CI auto-routing codex row; credentials table (`BKIT_` names, tracker keys); GitHub-tracker-only text gone (`:46`, `:445-475`); § Routing decision tracker-neutral; troubleshooting `verdict` / `reason` table + codex summary line; codex runner notes; session guard per tracker, no-id sessions unguarded, Codex Cloud unguarded; Linear / Jira router dispatch, the codex router job and the Cursor Jira guard "not yet verified live" — TASK 16. |
+| `docs/security.md` | `:22` secret names via its shipped source `.bkit/shared/docs/security.md:22` (inside the managed `bkit:start` / `bkit:end` block `:1-67`; TASK 18's `bkit install` regenerates the repo copy); § Credential surfaces opencode provider keys row (`:90`; no fan-out); § CI Auto-Route Trust (`:172-180`): engine-owned FID parse + the dev-guard charset assert, dev subject via `fids parse --prompt-file`, kill switch on every tracker, tracker keys at step scope, PR head `package.json` steers its own routing run — TASK 17. |
+| `docs/deployments.md` | § `bkit-cloud.yml` — dual-job cloud-agent lane jobs table (`:659-675`): one agent per run, `BKIT_` secrets, codex job, context install — TASK 17. |
+| `.bkit/core/.bkit/cloud.md` | Purpose + support matrix one row per agent (no tracker columns); § Post-CI auto-routing codex row; credentials table (`BKIT_` names, tracker keys); GitHub-tracker-only text gone (§ Reactive comment handlers `:46`; § Post-CI auto-routing `:471-519`: routing rows `:482-483`, credentials sentence `:519`); § Routing decision tracker-neutral; troubleshooting `verdict` / `reason` table + codex summary line; codex runner notes; session guard per tracker, no-id sessions unguarded, Codex Cloud unguarded; Linear / Jira router dispatch, the codex router job and the Cursor Jira guard "not yet verified live" — TASK 16. |
 | `.bkit/core/.bkit/providers.md` | `preflight-linear.sh` row → `preflight-tracker.sh` (`:307`); Codex rows (`--auto=codex`, router job) — TASK 16. |
-| `.bkit/core/.bkit/templates.md` | `{{NODE_VERSION}}` row also lists `bkit-cloud.yml` (`:83`) — TASK 8; secrets line `:199` — TASK 16. |
-| `.bkit/core/.bkit/install.md` | `:170`, `:314`, `:321`, `:361` — variants incl. codex, any tracker, `BKIT_` secrets — TASK 16. |
-| `.bkit/core/.bkit/README.md` | `:312` `--auto=claude\|cursor\|opencode\|codex`; GitHub / Linear / Jira guard requirements (`:352-370`) — TASK 16. |
+| `.bkit/core/.bkit/templates.md` | `{{NODE_VERSION}}` row also lists `bkit-cloud.yml` (`:85`) — TASK 8; § Cloud-agent workflow secrets bullets `Secrets for claude` / `Secrets for opencode` (`:254-255`) — TASK 16. |
+| `.bkit/core/.bkit/install.md` | § Cloud agent environments post-CI auto-routing paragraph + job bullets + `requires tracker=github` (`:187-193`); § Optional post-install decisions "Why opt-in" bullets (`:364-369`) and step 4 `--auto=claude\|cursor\|opencode` (`:376`); § Doctor cloud-router credential bullet (`:416`) — variants incl. codex, any tracker, `BKIT_` secrets — TASK 16. |
+| `.bkit/core/.bkit/README.md` | § Optional post-install decisions `--auto=claude\|cursor\|opencode\|codex` paragraph (`:293`); GitHub / Linear / Jira guard requirements (§ From a tracker comment and § From Claude Code `**Requirements**` lines, `:319-337`) — TASK 16. |
 | `.agents/docs.md` | No change: no new doc. |
 
 ## Rollback Strategy
@@ -796,7 +796,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
   - **UPDATE:** `.bkit/templates/.github/workflows/bkit-cloud.yml`: `bkit_gate <issue>` shell function (outcomes `bkit-unavailable` / `no-issue` / `unreadable` / `label-absent` / `pass`, `|| rc=$?` captures, `::warning::` vs `::notice::`, one `$GITHUB_STEP_SUMMARY` row `tracker | issue | verdict | reason | jobs`) replaces both `gh issue view … grep -qxF 'bkit:auto'` sites (`:341`, `:424`); feat arm `node_modules/.bin/bkit fids parse --marker "$PR_BODY" --branch "$BRANCH" --json` replaces the marker regex + branch fallback (`:395-417`); `BKIT_LINEAR_API_KEY` / `BKIT_JIRA_API_KEY` + `GH_TOKEN` in the ctx step `env:`
   - **UPDATE:** `.github/workflows/bkit-cloud.yml`: re-copy, `runs-on` + `{{NODE_VERSION}}` re-applied
   - **UPDATE:** `.bkit/core/engine/audits/repo/dogfood-templates.test.ts`: `bkit-cloud.yml` entry gains the `{{NODE_VERSION}}` edit row
-  - **UPDATE:** `.bkit/core/.bkit/templates.md`: `{{NODE_VERSION}}` row (`:83`) lists `bkit-cloud.yml`
+  - **UPDATE:** `.bkit/core/.bkit/templates.md`: `{{NODE_VERSION}}` row (`:85`) lists `bkit-cloud.yml`
   - **UPDATE:** `docs/observability.md`: `[bkit-cloud] gate:` annotations + the summary row
   - **UPDATE:** `.bkit/core/engine/audits/templates/cloud-ctx-step.integration.test.ts`: `setupFixture` writes `node_modules/.bin/bkit` (real CLI via `requireTsx()`, or recorded `issues fetch` reply + exit code); tracker no-op `it.each` (`:357`) and "a github tracker passes the tracker gate" (`:381`) rewritten as gate outcomes; feat-path describes (`:504-807`) to `fids parse`
   - **UPDATE:** `.bkit/core/engine/audits/templates/workflow-templates.integration.test.ts`: describe "T2.7 — two-tier CI gate positive assertions" (c) and "Challenge Finding 1 — SHARED-DERIV …" feat-arm pins; new context-checkout `ref` case (template parsed with `yaml`)
@@ -964,12 +964,12 @@ Build order: guard (engine fact → hook part) → install engine → router con
 <!-- bkit:task 16 start -->
 
 - [ ] **TASK 16:** Shipped docs under `.bkit/core/.bkit/`
-  - **UPDATE:** `.bkit/core/.bkit/cloud.md`: Purpose + support matrix one row per agent, no tracker columns (`:20-35`); § Reactive comment handlers `:46` and § Post-CI auto-routing (`:434-475`) — one agent per run, codex row, `BKIT_` credentials table incl. tracker keys, GitHub-tracker-only text removed; § Routing decision tracker-neutral; troubleshooting `verdict` / `reason` → cause → action incl. codex summary line; codex runner notes (unguarded diffs, `drop-sudo`, Node 24); session guard per tracker, no-id sessions unguarded, Codex Cloud unguarded; Linear / Jira router dispatch, the codex router job and the Cursor Jira guard (bin present at `sessionStart`) "not yet verified live" (`719-live-checks-deferred-to-owner-use`)
+  - **UPDATE:** `.bkit/core/.bkit/cloud.md`: Purpose + support matrix one row per agent, no tracker columns (`:20-35`); § Reactive comment handlers `:46` and § Post-CI auto-routing (`:471-519`: § What lives where (post-CI half) routing rows `:482-483`, § bkit-cloud.yml — required GitHub repo credentials table `:503` and its "GitHub-tracker only" sentence `:519`) — one agent per run, codex row, `BKIT_` credentials table incl. tracker keys, GitHub-tracker-only text removed; § Routing decision tracker-neutral; troubleshooting `verdict` / `reason` → cause → action incl. codex summary line; codex runner notes (unguarded diffs, `drop-sudo`, Node 24); session guard per tracker, no-id sessions unguarded, Codex Cloud unguarded; Linear / Jira router dispatch, the codex router job and the Cursor Jira guard (bin present at `sessionStart`) "not yet verified live" (`719-live-checks-deferred-to-owner-use`)
   - **UPDATE:** `.bkit/core/.bkit/providers.md`: `preflight-linear.sh` row (`:307`) → `preflight-tracker.sh`; Codex rows (`--auto=codex`, router job)
-  - **UPDATE:** `.bkit/core/.bkit/templates.md`: secrets line (`:199`) to the `BKIT_` names + codex
-  - **UPDATE:** `.bkit/core/.bkit/install.md`: `:170`, `:314`, `:321`, `:361`
-  - **UPDATE:** `.bkit/core/.bkit/README.md`: `:312`; guard requirements `:352-370`
-  - **READ:** `.bkit/core/engine/audits/workflows/workflow-shape.test.ts`: `:407-415` pins `` `bkit-build` Step N close-workflow `` in `.bkit/core/.bkit/cloud.md`
+  - **UPDATE:** `.bkit/core/.bkit/templates.md`: § Cloud-agent workflow — `bkit-cloud.yml` (`:243`) secrets bullets `Secrets for claude` (`:254`) and `Secrets for opencode` (`:255`) to the `BKIT_` names, plus a codex bullet
+  - **UPDATE:** `.bkit/core/.bkit/install.md`: § Cloud agent environments post-CI auto-routing paragraph, claude / opencode job bullets and `requires tracker=github` (`:187-193`); § Optional post-install decisions "Why opt-in" bullets (`:364-369`) and step 4 `--auto=claude|cursor|opencode` (`:376`); § Doctor cloud-router credential bullet (`:416`)
+  - **UPDATE:** `.bkit/core/.bkit/README.md`: § Optional post-install decisions `--auto=claude|cursor|opencode` paragraph (`:293`); guard requirements (§ From a tracker comment `**Requirements (Linear)**` / `**Requirements (GitHub)**` and § From Claude Code `**Requirements:**`, `:319-337`)
+  - **READ:** `.bkit/core/engine/audits/workflows/workflow-shape.test.ts`: `build-close-workflow` entries `:388-395` pin `` `bkit-build` Step N close-workflow `` in `.bkit/cloud.md` and `.bkit/core/.bkit/cloud.md`
   - **DEPENDS ON:** 3, 5, 11, 12, 13, 14
   - **DONE WHEN:** `git grep -nE 'GitHub-tracker only|GitHub tracker only|OPENCODE_PROVIDER_KEY|preflight-linear|--auto=claude\|cursor\|opencode[^|]' -- .bkit/core/.bkit` prints nothing; the `.bkit/core/.bkit/cloud.md` support matrix header has no `Tracker` column and the matrix holds exactly one row each for claude, opencode, codex and cursor; `git grep -n 'not yet verified live' -- .bkit/core/.bkit/cloud.md` prints lines naming Linear and Jira router dispatch, the codex router job and the Cursor Jira guard; `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` and `shipped-docs-refs.test.ts` pass. Doc drift between these sources and their installed `.bkit/*.md` copies is gated by TASK 18's `node dist/cli.js check` after `bkit install`.
   - **TEST FIRST:** n/a — docs only, no behaviour change
@@ -979,14 +979,14 @@ Build order: guard (engine fact → hook part) → install engine → router con
 <!-- bkit:task 17 start -->
 
 - [ ] **TASK 17:** Repo docs and code comments
-  - **UPDATE:** `docs/deployments.md`: § `bkit-cloud.yml` jobs table (`:580-597`): one agent per run, `BKIT_` secrets, codex job, context install
-  - **UPDATE:** `.bkit/shared/docs/security.md`: `:22` (inside the managed `bkit:start` / `bkit:end` block) secret names → `secrets.BKIT_ANTHROPIC_API_KEY` / the provider `BKIT_` keys / `secrets.BKIT_OPENAI_API_KEY`
-  - **UPDATE:** `docs/security.md`: outside the managed block only — `:67` opencode provider keys; § CI Auto-Route Trust (`:149-158`): engine-owned FID parse plus the `bkit_dev_dispatch_guard` charset assert, dev subject via `fids parse --prompt-file`, kill switch on every tracker, tracker keys at step scope, a same-repo PR's head `package.json` (`bkit.cloud.agent`, `bkit.tracker.default`) steering its own routing run (collaborator-trusted); `:22` comes from TASK 18's `bkit install`
-  - **UPDATE:** `docs/testing.md`: key-file rows for `cloud-ctx-step.integration.test.ts`, `workflow-templates.integration.test.ts`, `preflight-sh.integration.test.ts` (`:599`)
+  - **UPDATE:** `docs/deployments.md`: § `bkit-cloud.yml` — dual-job cloud-agent lane jobs table and rules (`:659-675`): one agent per run, `BKIT_` secrets, codex job, context install
+  - **UPDATE:** `.bkit/shared/docs/security.md`: § Supply-Chain (GitHub Actions) Token isolation bullet `:22` (inside the managed `bkit:start` / `bkit:end` block) secret names → `secrets.BKIT_ANTHROPIC_API_KEY` / the provider `BKIT_` keys / `secrets.BKIT_OPENAI_API_KEY`
+  - **UPDATE:** `docs/security.md`: outside the managed block (`:1-67`) only — § Credential surfaces opencode provider keys row (`:90`); § CI Auto-Route Trust (`:172-180`): engine-owned FID parse plus the `bkit_dev_dispatch_guard` charset assert, dev subject via `fids parse --prompt-file`, kill switch on every tracker, tracker keys at step scope, a same-repo PR's head `package.json` (`bkit.cloud.agent`, `bkit.tracker.default`) steering its own routing run (collaborator-trusted); `:22` comes from TASK 18's `bkit install`
+  - **UPDATE:** `docs/testing.md`: key-file rows for `cloud-ctx-step.integration.test.ts`, `workflow-templates.integration.test.ts`, `preflight-sh.integration.test.ts` (§ Key test files `:662`; the `preflight-sh.integration.test.ts` row is `:689`, the other two rows are new)
   - **UPDATE:** `.bkit/core/engine/install/modules/opencode.ts`: comments `:163`, `:225` name the provider's `BKIT_` secret
   - **UPDATE:** `dist/install/modules/opencode.js`: `pnpm build` output
   - **DEPENDS ON:** 8, 10, 12
-  - **DONE WHEN:** `git grep -n -e OPENCODE_PROVIDER_KEY -e 'secrets\.ANTHROPIC_API_KEY' -- docs/deployments.md docs/security.md docs/testing.md .bkit/shared/docs/security.md .bkit/core/engine/install/modules/opencode.ts` prints nothing outside `docs/security.md:1-44` (the managed block TASK 18 regenerates); `pnpm build` leaves `dist/` matching its sources.
+  - **DONE WHEN:** `git grep -n -e OPENCODE_PROVIDER_KEY -e 'secrets\.ANTHROPIC_API_KEY' -- docs/deployments.md docs/security.md docs/testing.md .bkit/shared/docs/security.md .bkit/core/engine/install/modules/opencode.ts` prints nothing outside `docs/security.md:1-67` (the managed `bkit:start` / `bkit:end` block TASK 18 regenerates); `pnpm build` leaves `dist/` matching its sources.
   - **TEST FIRST:** n/a — docs and comments only, no behaviour change
 
 <!-- bkit:task 17 end -->
@@ -1009,7 +1009,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
   - **UPDATE:** `.bkit/templates.md`: regenerated installed copy
   - **UPDATE:** `.bkit/install.md`: regenerated installed copy
   - **UPDATE:** `.bkit/README.md`: regenerated installed copy
-  - **UPDATE:** `docs/security.md`: managed `bkit:start` / `bkit:end` block (`:1-44`) regenerated from `.bkit/shared/docs/security.md`
+  - **UPDATE:** `docs/security.md`: managed `bkit:start` / `bkit:end` block (`:1-67`) regenerated from `.bkit/shared/docs/security.md`
   - **DEPENDS ON:** 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17
   - **DONE WHEN:** `pnpm vitest run` passes; `node dist/cli.js check` on the repo exits 0 with no drift finding; `git grep -n -e OPENCODE_PROVIDER_KEY -e 'secrets\.ANTHROPIC_API_KEY' -- docs/security.md` prints nothing; in a scratch consumer from `pnpm pack`, `bkit install --tracker=jira --codex --auto=codex` exits 0 and records `codex`, and `bkit install --auto=claude` with tracker `none` exits 1 naming `--tracker=`; in that consumer, with the new router adopted and a stub `gh` on `PATH` whose `secret list` prints `ANTHROPIC_API_KEY`, `node dist/cli.js check` raises `cloud-router-secret-renamed`.
   - **TEST FIRST:** n/a — verification and regenerated mirrors, no new behaviour
