@@ -1,6 +1,6 @@
 ## Session Prompt — this run's, newer than everything below
 
-#748 https://github.com/cbartens/bkit/actions/runs/41405235221 red on tests-integration
+/bkit-debug feat/748-brand-every-consumer
 
 ## Issue description — oldest
 
@@ -239,6 +239,72 @@ Not committed yet. These are working-tree edits awaiting review.
 **Checks:** `bkit tests plan-check` reports 0 problems.
 
 **Commit:** 4118f2c07 on local `dev` (not pushed yet).
+
+## Issue comment — posted 2026-11-02T07:36:15.000Z
+
+Rules read. **Step 1 — Start Workflow.**
+
+Step 1 done (issue #748, feature `748-brand-every-consumer`, attempt 1, NORMAL mode). Running Gate 1, then **Step 2 — Worktree Setup**.
+
+Step 2 done. **Step 3 — Run Tests** (deepest gate available; this runs in the background since it may take a while).
+
+Tests are running in the background; I'll continue once they finish.
+
+The local test gate for #748 is still running in the background, so I'm paused partway through `/bkit-debug`.
+
+Done so far:
+- **Step 1:** picked up issue #748 as feature `748-brand-every-consumer`. This is run 1 in the normal fix mode (not soak, the slower step-by-step mode). I took the workflow lock and switched the label to `bkit:debug`.
+- **Step 2:** resumed the existing worktree at `.worktrees/748-brand-every-consumer` on branch `feat/748-brand-every-consumer`. It is now based on `origin/dev`. Your local `dev` has 14 commits that are not on `origin/dev`, and none of them are in this worktree.
+- **Step 3:** the tests are now running through `bkit:gate:static-unit-integration-e2e-live`.
+
+When the run finishes:
+- **If it fails:** I'll gather context (including the failed CI run you linked, 41405235221), diagnose and fix it.
+- **If it passes:** a pass here wouldn't show what broke `tests-integration` in CI. I'll go straight to the summary and close, which pushes the branch and waits for CI to rerun.
+
+The tests for #748 are still running. The task that just finished was only an empty placeholder, not the test run. I'll go on from Step 3 when the tests finish.
+
+Local tests pass (1731 tests across 50 files), but I want to confirm what actually caused the red CI run before relying on that, so I'll check the CI failure logs next.
+
+The failed run tested commit 9630471bf, and since the two commits after it only add workflow records, the code is unchanged—yet CI fails while it passes locally. I'll dig into the failure log to see why.
+
+Found it: all 19 failures stem from `fatal: invalid object name 'v6.0.0'`, since something runs `git` against that tag, which exists in this checkout but likely not in CI's. I'll check whether the tests or the shipped code actually require that tag.
+
+I've found why `bkit-tests-integration` is red, and nothing is wrong with the shipped code. The cause is in the tests: CI can't see something these tests need, while this machine can. I've stopped at Step 3 because carrying on as written would leave CI red again.
+
+**What's failing.** In run 41405235221, 19 tests fail, all with `fatal: invalid object name 'v6.0.0'`. The tests check that the #748 rename migration handles files exactly as bkit 6.0.0 shipped them. To get those old files they call `git show v6.0.0:<path>`, which reads them from the `v6.0.0` release tag in git. Four helpers do this:
+- `.bkit/core/engine/commands/install/upgrade.integration.test.ts:1087` and `:1162`
+- `.bkit/core/engine/install/modules/core.integration.test.ts:1786` and `:1957`
+
+**Why it passes here.** Your checkout has the `v6.0.0` tag, so locally all 1731 tests in 50 files pass under `bkit:gate:static-unit-integration`. The integration job in CI most likely downloads the repo without release tags, so that git call fails. I haven't opened that job's checkout settings to confirm this, but it fits the evidence. Only test files read the tag, so consumers are unaffected.
+
+**Why I stopped.** A local pass sends the workflow straight to the summary and close. The close pushes the branch, CI fails the same way, and the run lands on the Failure Path. The steps that diagnose and fix a failure only run when the local tests fail.
+
+**The fix I'd recommend.** Commit the old 6.0.0 file contents next to the tests as saved copies, and have the four helpers read those instead of the tag. The tests then work in any checkout. The other route is making CI download tags, but that means editing `.github/workflows/`, which needs your sign-off, and it would still leave the tests depending on how the repo was cloned.
+
+**The two choices:**
+- **Restart with `[repro]` (recommended).** This adds the reproduce step. It first writes a test that fails the way CI does, then the normal diagnose-and-fix steps run.
+- **Close as passed.** The run records green and pushes, and CI will almost certainly go red again.
+
+The workflow lock for this run is still held. If you pick the restart, I'll release or reclaim the lock first so the new run can start.
+
+## Issue comment — posted 2026-11-02T22:30:13.000Z
+
+Rebased `feat/748-brand-every-consumer` onto `dev` (9fe3aaf59) and force-pushed with lease. Old tip: 9630471bf (remote) / 072461c33 (local). New tip: 16a630e29.
+
+**What changed**
+- The branch now sits on top of `dev` as 69 commits, and the two "merge dev" commits are gone.
+- Conflicts came from `dev`'s new graph-embed content meeting the branch's `pnpm graph*` → `pnpm bkit:graph*` rename. I kept `dev`'s text and applied the rename on top: in the templates doc, both copies of `bkit-graphify.sh` and both copies of `bkit-graph-pre-push.sh`. Generated files (`docs/capabilities.md`, `.bkit/version`) took `dev`'s side and were regenerated at the end.
+- 5537ba972: `dev` added `bkit-graph-embed.py`, which still said `pnpm graph:rollup`. Both copies now use the `bkit:graph` names. This commit also removes a duplicate "refreshed" stamp the rebase left in `docs/roadmap.md`.
+- 16a630e29: regenerated `docs/capabilities.md` and the README packages diagram.
+
+**Checks run**
+- typecheck, `bkit:check:dist`, `bkit check` (0 writes), `bkit:graph:check` (matches the rebuild)
+- unit: 216 files, 8707 tests passed
+- pre-push hook: 1731 tests passed, exit 0
+
+**Open**
+- `bkit check` still flags `.husky/pre-push` and `.github/workflows/bkit-ci.yml` as running the old `graph` script name. These warnings were there before the rebase. They are false positives: the check matches the word "graph" in a comment and in `graph.json`.
+- The stopped `/bkit-debug` run left a `status.jsonl` edit and an untracked `context-tests-local-1.md` in the worktree. Both are still there, uncommitted.
 
 ## Plan — docs/plans/202610/748-brand-every-consumer-plan.md — last committed 2026-11-02T07:05:07.000Z
 

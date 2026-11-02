@@ -557,3 +557,17 @@
 {"type":"engine-call","workflow":"debug","at":"2026-11-02T22:36:22Z","noun":"status","verb":"route","flags":["workflow","fid","month","prompt-file"]}
 {"type":"engine-call","workflow":"debug","at":"2026-11-02T22:36:34Z","noun":"steps","verb":"gate","flags":["workflow","step","fid","month","token","issue","placeholder"]}
 {"type":"engine-call","workflow":"debug","at":"2026-11-02T22:36:37Z","noun":"worktrees","verb":"setup","flags":["workflow","fid","month","detect"]}
+{"type":"engine-action","action":"rebase","key":"rebase/b79b2135b86a472caa0931e605e206ff1b193ec2","hash":"2888b34590fe76812caa39da3597f5a05b209fb2832618c140c9032f793a902c","ref":"5ec87ab05e9df989837b18b5dcd202a930f3c00f","at":"2026-11-02T22:36:46Z"}
+{"type":"engine-call","workflow":"debug","at":"2026-11-02T22:36:52Z","noun":"workflows","verb":"start","flags":["workflow","fid","month","lock-held","token"]}
+{"type":"session","workflow":"debug","at":"2026-11-02T22:36:52Z","platform":"claude-code","session":"fp:73c47060c0db"}
+{"type":"engine-call","workflow":"debug","at":"2026-11-02T22:36:57Z","noun":"status","verb":"resume","flags":["workflow","file"]}
+{"type":"engine-call","workflow":"debug","at":"2026-11-02T22:37:04Z","noun":"workflows","verb":"input","flags":["workflow","fid","run","file","prompt-file","description-file","comments-file","plan"]}
+{"type":"engine-call","workflow":"debug","at":"2026-11-02T22:37:04Z","noun":"runtime","verb":"row","flags":["workflow","file"]}
+{"type":"runtime-resolved","workflow":"debug","at":"2026-11-02T22:37:04Z","runtime":"LOCAL","runtimeWorktrees":true,"runtimeDevPushes":true,"runtimeGithubCli":true,"runtimeGithubCliExit":0,"runtimeGithubCliErr":"","baseSha":""}
+{"type":"engine-call","workflow":"debug","at":"2026-11-02T22:37:05Z","noun":"runtime","verb":"assert","flags":["file","workflow"]}
+{"type":"engine-call","workflow":"debug","at":"2026-11-02T22:37:05Z","noun":"steps","verb":"done","flags":["file","workflow","step","commit"]}
+{"type":"step-done","workflow":"debug","step":"debug-start-workflow","status":"DONE","at":"2026-11-02T22:37:05Z","parentSha":"5ec87ab05e9df989837b18b5dcd202a930f3c00f","artifacts":[]}
+{"type":"engine-call","workflow":"debug","at":"2026-11-02T22:37:05Z","noun":"status","verb":"meta","flags":["file","workflow","debug-attempt","debug-mode","push-mode"]}
+{"type":"workflow-meta","workflow":"debug","at":"2026-11-02T22:37:05Z","debugMode":"NORMAL","pushMode":"LOCAL","debugAttempt":1}
+{"type":"engine-call","workflow":"debug","at":"2026-11-02T22:37:05Z","noun":"steps","verb":"finish","flags":["file","workflow","step","artifact","field","message","number","post","title","tree"]}
+{"type":"step-done","workflow":"debug","step":"debug-worktree-setup","status":"DONE","at":"2026-11-02T22:37:05Z","parentSha":"5ec87ab05e9df989837b18b5dcd202a930f3c00f","artifacts":["docs/plans/202610/logs/748-brand-every-consumer/debug-input-1.md"],"debugMode":"NORMAL","pushMode":"LOCAL"}
