@@ -13,7 +13,7 @@
 # `additional_context` so the user sees the reason.
 #
 # bkit generates the managed block at install: the Linear guard and the rules-read
-# advisory are shared with the Claude hook (bkit's `hooks/preflight-linear.sh` and
+# advisory are shared with the Claude hook (bkit's `hooks/preflight-tracker.sh` and
 # `hooks/preflight-rules.sh`); the trigger, the runtime marker and the output shape
 # below are Cursor's own.
 
@@ -93,6 +93,6 @@ fi
 # pre-installed via .cursor/Dockerfile, so the laptop-side brew check makes no sense here.
 # (Claude variant: validates required CLIs are on PATH; missing → HARD STOP with brew install hint.)
 
-# {{BKIT_PART preflight-linear.sh}}
+# {{BKIT_PART preflight-tracker.sh}}
 
 # <!-- bkit:end -->
