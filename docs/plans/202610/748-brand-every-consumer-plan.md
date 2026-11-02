@@ -808,7 +808,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
 
 <!-- bkit:task 9 start -->
 
-- [ ] **TASK 9:** Upgrade migration for workflow check names and the old health stub
+- [x] **TASK 9:** Upgrade migration for workflow check names and the old health stub
   - **UPDATE:** `.bkit/core/engine/install/modules/core.ts`: add `migrateBrandedCheckNames(dryRun, ws, logPrefix)` — exact shipped old `name:` lines in `.github/workflows/bkit-cloud.yml`, `bkit-renovate.yml`, `bkit-trivy.yml` → branded; job `name:` inserted after the exact `  renovate:` / `  trivy:` line when the job has none; in `ciWorkflowPath(".")`, the old shipped `bkit-stub:health` block → the current block naming `.bkit/templates/.github/workflows/bkit-health.yml` (`{{DEFAULT_BRANCH}}` matched as any branch); one log line per renamed check naming old → new and the branch-protection fix; writes `unhashed: true`
   - **UPDATE:** `runBkitDocs` in `.bkit/core/engine/install/modules/core.ts`: calls `migrateBrandedCheckNames`
   - **UPDATE:** `.bkit/core/engine/install/modules/cloud.ts`: advisory strings (lines 57, 113, 166) state the copy-and-own contract with the exact-shipped-text brand-migration exception; tests pinning them updated
@@ -828,7 +828,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
 
 <!-- bkit:task 10 start -->
 
-- [ ] **TASK 10:** Upgrade migration for the Vale style
+- [x] **TASK 10:** Upgrade migration for the Vale style
   - **UPDATE:** `.bkit/core/engine/install/modules/core.ts`: add `SHIPPED_HOUSE_RULE_HASHES` — sha256 of every distinct release content of `Filler`, `Hedging`, `LLMSlop`, `Verbose`, from `git tag -l 'v*'` × every path each rule has had (`git log --all --follow --name-only -- .bkit/templates/.vale/styles/House/<rule>.yml`), committed as constants in the `RETIRED_DRIVER_HASHES` shape
   - **UPDATE:** `.bkit/core/engine/install/modules/core.ts`: add `migrateValeHouseStyle(dryRun, ws, logPrefix)` — matching `House/<rule>.yml` moved byte-identical to `Bkit/<rule>.yml` when absent; edited rule or existing target → left, one `console.warn` naming the rule and the manual move (`mv .vale/styles/House/<rule>.yml .vale/styles/Bkit/` plus the `.vale.ini` toggle); `.vale.ini` `House.<moved>` → `Bkit.<moved>`; `BasedOnStyles` `House` → `Bkit` once `House/` is empty (directory removed), else `Bkit` appended; no `.vale.ini` → rules move, no `.vale.ini` write; no `.vale/` → silent; moved-away and removed paths pushed `{ action: "write", unhashed: true }`; other writes `unhashed: true`
   - **READ:** `RETIRED_DRIVER_HASHES` in `.bkit/core/engine/install/write.ts`: table shape and `sha256` use

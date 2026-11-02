@@ -283,3 +283,5 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-02T05:02:24Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-verify/4/1/comment","hash":"64a79da99cd1b89129eb326e561c3818907181be8d577ac025fda693c6f0cd00","ref":"https://github.com/cbartens/bkit/issues/748#issuecomment-6569485585","at":"2026-11-02T05:02:25Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-02T05:02:25Z","parentSha":"25c06ea5d1379fec7e2c1cc307e8aff8e6b03ff7","artifacts":["docs/plans/202610/logs/748-brand-every-consumer/build-plan-verify-4-1.md"],"verdict":"PASS","attempt":1,"group":4,"failures":0}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T05:02:26Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks","green"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T05:02:26Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
