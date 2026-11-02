@@ -16,3 +16,13 @@
 {"type":"step-done","workflow":"plan","step":"plan-summary","status":"DONE","at":"2026-10-29T02:10:18Z","parentSha":"f939fd19d1bfe6b3cfc55e9dd1671564679e1ad0","artifacts":["docs/plans/202610/logs/724-machine-wide-test/plan-summary.md"],"verdict":"CONCERNS","attempt":1,"failures":0}
 {"type":"step-done","workflow":"plan","step":"plan-close-workflow","status":"DONE","at":"2026-10-29T02:11:19Z","parentSha":"c2631f902e15341ad3633cb11a9c9a681df8329b","artifacts":[]}
 {"type":"workflow-done","workflow":"plan","at":"2026-10-29T02:11:19Z","parentSha":"c2631f902e15341ad3633cb11a9c9a681df8329b"}
+{"type":"workflow-started","workflow":"build","at":"2026-11-02T07:47:55Z","parentSha":"2f310527c95c5c5a83549e5c72b88e9cf8be2ee8","limits":{"build.verify":{"ask":true,"max":5},"build.challenge":{"ask":true,"max":2},"build.tests":{"ask":true,"max":2}}}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T07:48:04Z","noun":"runtime","verb":"row","flags":["workflow","file"]}
+{"type":"runtime-resolved","workflow":"build","at":"2026-11-02T07:48:04Z","runtime":"LOCAL","runtimeWorktrees":true,"runtimeDevPushes":true,"runtimeGithubCli":true,"runtimeGithubCliExit":0,"runtimeGithubCliErr":"","baseSha":""}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T07:48:05Z","noun":"runtime","verb":"assert","flags":["workflow","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T07:48:05Z","noun":"status","verb":"route","flags":["workflow","file","prompt-file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T07:48:12Z","noun":"workflows","verb":"input","flags":["workflow","fid","run","file","prompt-file","description-file","comments-file","plan"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T07:48:21Z","noun":"steps","verb":"done","flags":["workflow","step","file","commit"]}
+{"type":"step-done","workflow":"build","step":"build-start-workflow","status":"DONE","at":"2026-11-02T07:48:21Z","parentSha":"2f310527c95c5c5a83549e5c72b88e9cf8be2ee8","artifacts":[]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T07:48:21Z","noun":"steps","verb":"finish","flags":["workflow","step","file","artifact","number","post","title","tree","message"]}
+{"type":"step-done","workflow":"build","step":"build-worktree-setup","status":"DONE","at":"2026-11-02T07:48:22Z","parentSha":"2f310527c95c5c5a83549e5c72b88e9cf8be2ee8","artifacts":["docs/plans/202610/logs/724-machine-wide-test/build-input-1.md"]}
