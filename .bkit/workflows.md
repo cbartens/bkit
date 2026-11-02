@@ -1481,8 +1481,8 @@ Each gate is the previous gate plus its own tier, so the name and the value desc
 | Gate | Seeded default | Called by |
 | --- | --- | --- |
 | `bkit:gate:format` | `pnpm lint-staged` | `.husky/pre-commit` |
-| `bkit:gate:min` | `pnpm format:check && pnpm lint:prose && pnpm slop:delta` | `.husky/pre-push` on a min push |
-| `bkit:gate:static` | `pnpm typecheck && pnpm lint && pnpm format:check && pnpm lint:prose && pnpm slop:delta` | `@bkit-build-plan-tasks` (through `bkit tests changed`, when `bkit:gate:changed` is undeclared), `.husky/pre-push` revert path |
+| `bkit:gate:min` | `pnpm format:check && pnpm bkit:lint:prose && pnpm bkit:slop:delta` | `.husky/pre-push` on a min push |
+| `bkit:gate:static` | `pnpm typecheck && pnpm lint && pnpm format:check && pnpm bkit:lint:prose && pnpm bkit:slop:delta` | `@bkit-build-plan-tasks` (through `bkit tests changed`, when `bkit:gate:changed` is undeclared), `.husky/pre-push` revert path |
 | `bkit:gate:static-unit` | `pnpm bkit:gate:static && pnpm test` | build Step 8 (group gate), build Step 12 and `.husky/pre-push` (no integration gate declared); `@bkit-build-plan-gaps-remediate`, `@bkit-build-plan-verify` and `@bkit-debug-failure-remediate` (through `bkit tests changed`, when `bkit:gate:changed` is undeclared) |
 | `bkit:gate:static-unit-integration` | not seeded — `pnpm bkit:gate:static-unit && pnpm test:integration` | build Step 12, debug Step 3, `.husky/pre-push` |
 | `bkit:gate:static-unit-integration-e2e` | not seeded — chains the gate above | debug Step 3 |
@@ -1517,7 +1517,7 @@ Not seeded, because finding the tests a file affects is the stack's job; the `ga
 
 Agents and humans run the same scripts, so a green agent gate and a green `git push` mean the same thing. `bkit-ci.yml` deliberately stays off them: it needs per-step reporting, affected-package conditionals, and the heavier tiers the local gate excludes, so it calls `pnpm typecheck` / `pnpm test` / … directly.
 
-`lint:slop` is in no gate, because `slop-scan scan` is report-only and never fails; `slop:delta` (`bkit ci slop`) is the enforcing gate. `bkit check` (mirror drift) sits in `.husky/pre-push` outside the gates: it validates the bkit install, not consumer source. `lint:prose` (`bkit ci prose`) scans a whole-repo file set, so it gates at pre-push, not pre-commit.
+`lint:slop` is in no gate, because `slop-scan scan` is report-only and never fails; `bkit:slop:delta` (`bkit ci slop`) is the enforcing gate. `bkit check` (mirror drift) sits in `.husky/pre-push` outside the gates: it validates the bkit install, not consumer source. `bkit:lint:prose` (`bkit ci prose`) scans a whole-repo file set, so it gates at pre-push, not pre-commit.
 
 The three deep gates are not seeded: a seeded `pnpm test:integration` hard-fails every repo without that tier, and a gate named `…-integration-e2e` that skipped them silently is the false-green this design exists to kill. Declaring one — a single line chaining its parent — is how a consumer opts a workflow into a deeper tier.
 

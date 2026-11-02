@@ -84,8 +84,8 @@ Placeholders: the copies keep them raw, so replace each one in your copy:
 | `{{PRODUCTION_URL}}` | `bkit-health.yml` (`env.PRODUCTION_URL`) | the origin production serves | `https://example.com` |
 | `{{NODE_VERSION}}` | `bkit-ci.yml` (`actions/setup-node` `node-version`, both lanes) | your Node major, or swap the line for `node-version-file: .nvmrc` | `.nvmrc`, then `engines.node`, then `22` |
 | `{{CLOUD_RUNNER}}` | `bkit-cloud.yml` (`runs-on`, all three jobs) | a runner label | `ubuntu-latest` |
-| `{{SCRIPT_PATH}}` | `ai.bkit.launchd.plist` (`ProgramArguments`) | absolute path to the loader script, outside a TCC-protected folder (see § Launchd GUI environment) | `/Users/<you>/.config/bkit/bkit-launchd-env.sh` |
-| `{{ENV_FILE}}` | `ai.bkit.launchd.plist` (`ProgramArguments`, `WatchPaths`) | absolute path to your env file | `/Users/<you>/.config/bkit/launchd.env` |
+| `{{SCRIPT_PATH}}` | `bkit-launchd.plist` (`ProgramArguments`) | absolute path to the loader script, outside a TCC-protected folder (see § Launchd GUI environment) | `/Users/<you>/.config/bkit/bkit-launchd-env.sh` |
+| `{{ENV_FILE}}` | `bkit-launchd.plist` (`ProgramArguments`, `WatchPaths`) | absolute path to your env file | `/Users/<you>/.config/bkit/launchd.env` |
 
 - `bkit install` / `bkit upgrade` refresh `.bkit/templates/` to the package's templates, unsubstituted. `bkit check` fails on a stale copy. `bkit uninstall` removes the folder, never an adopted copy.
 - **What changed on upgrade.** `bkit upgrade` lists the changed, added and removed template paths. For each one you adopted, run `diff .bkit/templates/<path> <path>`, and merge what you want. The placeholder lines differ by design. `git diff .bkit/templates` in the upgrade commit shows the package change.
@@ -163,8 +163,8 @@ bkit seeds only the `bkit:gate:*` / `bkit:deps:*` names, and adds each one only 
 | Gate (default) | Chains | Needs |
 | --- | --- | --- |
 | `bkit:gate:format` | `pnpm lint-staged` | lint-staged devDep + `.lintstagedrc.json` + prettier |
-| `bkit:gate:min` | `format:check`, `lint:prose`, `slop:delta` | the scripts below + any test reading a min-push file |
-| `bkit:gate:static` | `typecheck`, `lint`, `format:check`, `lint:prose`, `slop:delta` | the scripts below |
+| `bkit:gate:min` | `format:check`, `bkit:lint:prose`, `bkit:slop:delta` | the scripts below + any test reading a min-push file |
+| `bkit:gate:static` | `typecheck`, `lint`, `format:check`, `bkit:lint:prose`, `bkit:slop:delta` | the scripts below |
 | `bkit:gate:static-unit` | `bkit:gate:static` + `test` | a `test` script |
 | `bkit:gate:install-static-unit-build` | `pnpm install --frozen-lockfile` + `bkit:gate:static-unit` + `build` | a `build` script |
 
@@ -173,9 +173,9 @@ bkit seeds only the `bkit:gate:*` / `bkit:deps:*` names, and adds each one only 
   "typecheck": "tsc --noEmit",
   "lint": "oxlint -c .oxlintrc.json --type-aware --deny-warnings",
   "format:check": "prettier --check .",
-  "lint:prose": "bkit ci prose",
+  "bkit:lint:prose": "bkit ci prose",
   "lint:slop": "slop-scan scan .",
-  "slop:delta": "bkit ci slop",
+  "bkit:slop:delta": "bkit ci slop",
   "prepare": "husky"
 }
 ```
@@ -188,8 +188,8 @@ pnpm add -D prettier@^3.5.3 slop-scan@^0.3.0 lint-staged@^17.0.0 husky@^9.1.7
 - The value above runs the Oxlint test rules (§ Oxlint) and fails on any hit. It needs `oxlint` and `oxlint-tsgolint`, and fails loudly without them.
 - **If** you have your own linter → chain both: `<your linter> && oxlint -c .oxlintrc.json --type-aware --deny-warnings`.
 - **If** there is no `tsconfig.json` → use `"typecheck": "echo \"[bkit] typecheck: no tsconfig.json — skipping\" >&2"`.
-- `slop:delta` runs `bkit ci slop` (the bkit devDep is on `PATH` through the package script). CI passes the base sha as its one bare argument.
-- `lint:prose` runs `bkit ci prose`: Vale over every `*.md` outside `node_modules/`. Narrow it with the repeatable `--glob=<pattern>` (`*`, `**`, `?`, relative to the repo root), for example `bkit ci prose --glob='docs/*.md' --glob='.agents/*.md'`.
+- `bkit:slop:delta` runs `bkit ci slop` (the bkit devDep is on `PATH` through the package script). CI passes the base sha as its one bare argument.
+- `bkit:lint:prose` runs `bkit ci prose`: Vale over every `*.md` outside `node_modules/`. Narrow it with the repeatable `--glob=<pattern>` (`*`, `**`, `?`, relative to the repo root), for example `bkit ci prose --glob='docs/*.md' --glob='.agents/*.md'`.
 - **If** the stack is not Node → point each gate at your own commands, and keep the gate names.
 - `bkit:test:file` runs one test file and writes a JUnit report to `$BKIT_TEST_REPORT`. bkit appends the file's repo-relative path. `/bkit-build` reads the report for test-first. It is not seeded, and `test-file-script-missing` fires until it is declared.
   - Vitest: `"bkit:test:file": "vitest run --reporter=default --reporter=junit --outputFile.junit=\"$BKIT_TEST_REPORT\""`.
@@ -225,7 +225,7 @@ Setup:
   - **If** you rename the job → set `bkit.testing.ciCapstone`.
 - Adopt a scaffold lane only when its tier exists (`docs/testing.md`). Each `# bkit-stub:<id> —` header raises an install advisory until you enable or delete that stub.
 - Keep the `name: bkit-ci` line, or rename `workflows: [bkit-ci]` in `bkit-cloud.yml` and `bkit-health.yml` and set `bkit.testing.ciWorkflow` to the new file name.
-- Keep `fetch-depth: 0` on the static lane, because `slop:delta` checks the PR base out as a worktree.
+- Keep `fetch-depth: 0` on the static lane, because `bkit:slop:delta` checks the PR base out as a worktree.
 - **If** CI script copies are named without the `bkit-` prefix (`check-capstone.mjs`, `accepted-advisories.json`, …) → the `bkit check` advisory `ci-scripts-old-names` lists each rename.
   - Rename a file and its paths in `.github/workflows/*.yml`, `.husky/pre-push` and `scripts/ci/` in one commit, because the `Check Dependency Audit` step is guarded by `hashFiles` and skips silently when only the file moved.
 
@@ -332,7 +332,7 @@ pnpm add -D lint-staged@^17.0.0 prettier@^3.5.3
 
 ## Vale — prose lint, with House styles
 
-`lint:prose` (`bkit ci prose`, in `bkit:gate:static`) runs Vale with the `write-good` package and bkit's House styles (`Filler`, `Hedging`, `LLMSlop`, `Verbose`) on `.agents/**`. Workflows reach Vale only through the gate. Reference: https://vale.sh/docs/install.
+`bkit:lint:prose` (`bkit ci prose`, in `bkit:gate:static`) runs Vale with the `write-good` package and bkit's House styles (`Filler`, `Hedging`, `LLMSlop`, `Verbose`) on `.agents/**`. Workflows reach Vale only through the gate. Reference: https://vale.sh/docs/install.
 
 ```bash
 brew install vale
@@ -345,13 +345,13 @@ vale sync
 - Cursor: the `Dockerfile` template installs it.
 - Adapt: add `[glob]` scope blocks for your own docs. Turn rules off per path, not globally.
 - Traps:
-  - **If** Vale is not on `PATH` → `lint:prose` fails, so a push from a machine without Vale stops at pre-push. Install Vale there.
-  - A missing `write-good` is copied from the main worktree, else `vale sync` runs. When both fail, `lint:prose` fails.
+  - **If** Vale is not on `PATH` → `bkit:lint:prose` fails, so a push from a machine without Vale stops at pre-push. Install Vale there.
+  - A missing `write-good` is copied from the main worktree, else `vale sync` runs. When both fail, `bkit:lint:prose` fails.
   - Keep the `.bkit/templates/**` block, which turns rules off for the copies.
 
 ## slop-scan — `slop-scan.config.json`
 
-`lint:slop` reports. `slop:delta` (`bkit ci slop`, in `bkit:gate:static`) fails on net-new findings against the base. The base is `--base` / the bare argument, else `$SLOP_BASE_REF`, else the merge-base with `origin/dev` (else `origin/main`). CI passes its planner base, and pre-push on a `dev` push exports the same base as `SLOP_BASE_REF` (§ Git hooks), so both compare against the last green CI push run. On failure it logs each net-new / worsened finding (`path:line`, rule, message; line shifts dropped) and emits them as `findings`. Reference: https://github.com/benvinegar/slop-scan.
+`lint:slop` reports. `bkit:slop:delta` (`bkit ci slop`, in `bkit:gate:static`) fails on net-new findings against the base. The base is `--base` / the bare argument, else `$SLOP_BASE_REF`, else the merge-base with `origin/dev` (else `origin/main`). CI passes its planner base, and pre-push on a `dev` push exports the same base as `SLOP_BASE_REF` (§ Git hooks), so both compare against the last green CI push run. On failure it logs each net-new / worsened finding (`path:line`, rule, message; line shifts dropped) and emits them as `findings`. Reference: https://github.com/benvinegar/slop-scan.
 
 ```bash
 pnpm add -D slop-scan@^0.3.0
@@ -422,17 +422,17 @@ Dock / Spotlight launches start under `launchd`, which never runs the login shel
 | File | Copy from | To | Commit |
 | --- | --- | --- | --- |
 | Loader | `.bkit/templates/scripts/launchd/bkit-launchd-env.sh` | `scripts/launchd/bkit-launchd-env.sh` | that file |
-| LaunchAgent | `.bkit/templates/scripts/launchd/ai.bkit.launchd.plist` | `~/Library/LaunchAgents/ai.bkit.launchd.plist` | never (machine-local) |
-| Tokens | `.bkit/templates/scripts/launchd/launchd.env.example` | `~/.config/bkit/launchd.env` | never (machine-local) |
+| LaunchAgent | `.bkit/templates/scripts/launchd/bkit-launchd.plist` | `~/Library/LaunchAgents/ai.bkit.launchd.plist` | never (machine-local) |
+| Tokens | `.bkit/templates/scripts/launchd/bkit-launchd.env.example` | `~/.config/bkit/launchd.env` | never (machine-local) |
 
 ```bash
 cp .bkit/templates/scripts/launchd/bkit-launchd-env.sh scripts/launchd/
 chmod +x scripts/launchd/bkit-launchd-env.sh
 mkdir -p ~/.config/bkit
-cp .bkit/templates/scripts/launchd/launchd.env.example ~/.config/bkit/launchd.env
+cp .bkit/templates/scripts/launchd/bkit-launchd.env.example ~/.config/bkit/launchd.env
 chmod 600 ~/.config/bkit/launchd.env     # tokens stay owner-only
 # fill in the tokens, then place the agent:
-cp .bkit/templates/scripts/launchd/ai.bkit.launchd.plist ~/Library/LaunchAgents/
+cp .bkit/templates/scripts/launchd/bkit-launchd.plist ~/Library/LaunchAgents/ai.bkit.launchd.plist
 # replace {{SCRIPT_PATH}} and {{ENV_FILE}} with absolute paths in the copied plist
 launchctl bootout gui/$UID ~/Library/LaunchAgents/ai.bkit.launchd.plist 2>/dev/null || true
 launchctl bootstrap gui/$UID ~/Library/LaunchAgents/ai.bkit.launchd.plist
@@ -636,15 +636,15 @@ The PyPI name is `graphifyy`, and the CLI is `graphify`. `[sql]` adds `.sql` fil
 
 ```json
 {
-  "graph": "bash scripts/graphify/bkit-graphify.sh build",
-  "graph:check": "bash scripts/graphify/bkit-graphify.sh check",
-  "graph:clean": "bash scripts/graphify/bkit-graphify.sh clean",
-  "graph:graphml": "bash scripts/graphify/bkit-graphify.sh graphml",
-  "graph:refresh": "bash scripts/graphify/bkit-graphify.sh refresh",
-  "graph:rollup": "bash scripts/graphify/bkit-graphify.sh rollup",
-  "graph:scoped": "bash scripts/graphify/bkit-graphify.sh scoped",
-  "graph:tree": "bash scripts/graphify/bkit-graphify.sh tree",
-  "graph:update": "bash scripts/graphify/bkit-graphify.sh update"
+  "bkit:graph": "bash scripts/graphify/bkit-graphify.sh build",
+  "bkit:graph:check": "bash scripts/graphify/bkit-graphify.sh check",
+  "bkit:graph:clean": "bash scripts/graphify/bkit-graphify.sh clean",
+  "bkit:graph:graphml": "bash scripts/graphify/bkit-graphify.sh graphml",
+  "bkit:graph:refresh": "bash scripts/graphify/bkit-graphify.sh refresh",
+  "bkit:graph:rollup": "bash scripts/graphify/bkit-graphify.sh rollup",
+  "bkit:graph:scoped": "bash scripts/graphify/bkit-graphify.sh scoped",
+  "bkit:graph:tree": "bash scripts/graphify/bkit-graphify.sh tree",
+  "bkit:graph:update": "bash scripts/graphify/bkit-graphify.sh update"
 }
 ```
 
@@ -678,25 +678,25 @@ graphify-out/
 <!-- prettier-ignore -->
 | Command | Does |
 | --- | --- |
-| `pnpm graph` | Extract + cluster. Local. No API key. |
-| `pnpm graph:clean` | Same, after deleting `docs/graphify-out/`. Required after any tsconfig `paths` change. `--force` does not invalidate the module-resolution cache. |
-| `pnpm graph:update` | Re-extract changed files, then recluster. |
-| `pnpm graph:rollup` | Package and module views, plus `docs/capabilities.md` and its diagram copies. |
-| `pnpm graph:check` | Rebuild and fail if `docs/capabilities.md` is not what this tree produces, or a diagram copy differs from it. Reads uncommitted edits. Shipped as a self-skipping CI step (every push and pull request; on a PR, GitHub's test merge into the base); enabled in bkit's own CI. |
+| `pnpm bkit:graph` | Extract + cluster. Local. No API key. |
+| `pnpm bkit:graph:clean` | Same, after deleting `docs/graphify-out/`. Required after any tsconfig `paths` change. `--force` does not invalidate the module-resolution cache. |
+| `pnpm bkit:graph:update` | Re-extract changed files, then recluster. |
+| `pnpm bkit:graph:rollup` | Package and module views, plus `docs/capabilities.md` and its diagram copies. |
+| `pnpm bkit:graph:check` | Rebuild and fail if `docs/capabilities.md` is not what this tree produces, or a diagram copy differs from it. Reads uncommitted edits. Shipped as a self-skipping CI step (every push and pull request; on a PR, GitHub's test merge into the base); enabled in bkit's own CI. |
 | `bash scripts/graphify/bkit-graphify.sh check-at <rev>` | `check` in a throwaway checkout of `<rev>` (default HEAD); pre-push gate runs it on the commit pushed to dev. |
-| `pnpm graph:refresh` | Rebuild register in a throwaway checkout of the staged files (the index) → copy over `docs/capabilities.md` → rewrite the diagram copies. Stage the change first, so a run before its commit builds the new state. Fixes a red gate; commit result. |
-| `pnpm graph:scoped [path]` | One subtree. Default `apps/web/src`. |
-| `pnpm graph:graphml` | Opt-in GraphML for Gephi / yEd. |
+| `pnpm bkit:graph:refresh` | Rebuild register in a throwaway checkout of the staged files (the index) → copy over `docs/capabilities.md` → rewrite the diagram copies. Stage the change first, so a run before its commit builds the new state. Fixes a red gate; commit result. |
+| `pnpm bkit:graph:scoped [path]` | One subtree. Default `apps/web/src`. |
+| `pnpm bkit:graph:graphml` | Opt-in GraphML for Gephi / yEd. |
 
 - `docs/graphify-out/` holds the raw `graph.json`, and `docs/graphify-out/reports/` holds the derived views.
-- Copy `.bkit/templates/docs/capabilities.md` → `docs/capabilities.md` before the first rollup, because the Overrides block must exist. `pnpm graph:rollup` rewrites it after that.
+- Copy `.bkit/templates/docs/capabilities.md` → `docs/capabilities.md` before the first rollup, because the Overrides block must exist. `pnpm bkit:graph:rollup` rewrites it after that.
 - To add a capability, add a rule in `bkit-graph-drift-rules.json`: lane, owner module, one literal marker. The shipped rules JSON has one example row. Replace it.
 - The marker is a literal that only the owner should contain (a host, a header, a marker string). Never use the owner's exported function name, because every legitimate caller then reads as `bypassed`.
 
 `MMD_MIN_WEIGHT` (default 12, set in `bkit-graphify.sh`) drops light edges from the Mermaid views (`.mmd` files and the diagrams in `docs/capabilities.md`).
 
 - **If** the repo has one module per file → edges are thinner, so lower the default in your copy.
-- An env override changes `docs/capabilities.md` per shell, and fails `pnpm graph:check`.
+- An env override changes `docs/capabilities.md` per shell, and fails `pnpm bkit:graph:check`.
 
 To show the packages diagram in another doc, such as your `README.md`, copy `scripts/graphify/bkit-graph-embed.py`:
 
@@ -713,7 +713,7 @@ npx -y @mermaid-js/mermaid-cli -i docs/graphify-out/reports/graph-packages.mmd -
 ```
 
 - `bkit-graph-repair.py` runs between extract and cluster. It restores `.js` specifiers that point at `.tsx` files, and workspace subpaths through an `exports` map.
-  - A bare `graphify update` drops that injection, and `pnpm graph:update` restores it.
+  - A bare `graphify update` drops that injection, and `pnpm bkit:graph:update` restores it.
   - `bkit-graph-eager.py` and `bkit-graphify-rollup.py` re-derive those imports from source, and warn with the count that graph.json lacks.
   - Two files that import each other keep one link after clustering, so that pair never reads as missing.
 - `bkit-graph-surface.py` is the route layer. It assumes `apps/web` / `apps/mobile` page routes, `packages/api/src/v1.ts` and the workspace scope `@scope/services/`.

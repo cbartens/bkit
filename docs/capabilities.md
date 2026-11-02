@@ -341,7 +341,7 @@ flowchart LR
         n_bkit_core_engine_install_modules_antigravity["antigravity<br/>7 symbols · 1 files"]
         n_bkit_core_engine_install_modules_claude["claude<br/>6 symbols · 1 files"]
         n_bkit_core_engine_install_modules_codex["codex<br/>5 symbols · 1 files"]
-        n_bkit_core_engine_install_modules_core["core<br/>56 symbols · 1 files"]
+        n_bkit_core_engine_install_modules_core["core<br/>62 symbols · 1 files"]
         n_bkit_core_engine_install_modules_cursor["cursor<br/>3 symbols · 1 files"]
         n_bkit_core_engine_install_modules_opencode["opencode<br/>10 symbols · 1 files"]
       end
@@ -448,6 +448,7 @@ flowchart LR
   n_bkit_core_engine_commands_workflow_steps -->|11| n_bkit_core_engine_commands_workflow_ledgers
   n_bkit_core_engine_commands_workflow_tests -->|11| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_commands_workflow_tracker -->|11| n_bkit_core_engine_commands_lib
+  n_bkit_core_engine_install_modules_core -->|11| n_bkit_core_engine_shared_json
   n_bkit_core_engine_install_modules_opencode -->|11| n_bkit_core_engine_render_models
   n_bkit_core_engine_install_modules_opencode -->|11| n_bkit_core_engine_shared_package_roots
   n_bkit_core_engine_shared_settings -->|11| n_bkit_core_engine_install_manifest
@@ -464,7 +465,6 @@ flowchart LR
   n_bkit_core_engine_install_modules_antigravity -->|10| n_bkit_core_engine_install_modules_core
   n_bkit_core_engine_install_modules_claude -->|10| n_bkit_core_engine_install_modules_core
   n_bkit_core_engine_install_modules_codex -->|10| n_bkit_core_engine_install_modules_core
-  n_bkit_core_engine_install_modules_core -->|10| n_bkit_core_engine_shared_json
   n_bkit_core_engine_install_modules_core -->|10| n_bkit_core_engine_install_write
   n_bkit_core_engine_install_modules_cursor -->|10| n_bkit_core_engine_install_modules_core
   n_bkit_core_engine_install_modules_index -->|10| n_bkit_core_engine_install_modules_core

@@ -211,7 +211,7 @@ describe("T2.7 — two-tier CI gate positive assertions (GAP-3)", () => {
     );
     expect(gates).toHaveLength(1);
     expect(gates[0]).toContain(containsExpr);
-    expect(rawTemplate).toMatch(/^ {2}context:\n {4}name: context[^\n]*\n {4}if: >-\n/m);
+    expect(rawTemplate).toMatch(/^ {2}context:\n {4}name: bkit-cloud-context[^\n]*\n {4}if: >-\n/m);
   });
 });
 
