@@ -33,3 +33,14 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-02T07:48:54Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
 {"type":"engine-call","workflow":"build","at":"2026-11-02T07:49:18Z","noun":"workflows","verb":"fail","flags":["post","issue","workflow","fid","month","token","label","step-number","step-title","sub-step","error-file","session-dir"]}
 {"type":"workflow-failed","workflow":"build","at":"2026-11-02T07:49:18Z"}
+{"type":"workflow-started","workflow":"build","at":"2026-11-02T08:15:04Z","parentSha":"0e19dc4e7cd84ec49076623d3eb2f8eb9afff47b","limits":{"build.verify":{"ask":true,"max":5},"build.challenge":{"ask":true,"max":2},"build.tests":{"ask":true,"max":2}}}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T08:15:06Z","noun":"runtime","verb":"row","flags":["workflow","file"]}
+{"type":"runtime-resolved","workflow":"build","at":"2026-11-02T08:15:06Z","runtime":"LOCAL","runtimeWorktrees":true,"runtimeDevPushes":true,"runtimeGithubCli":true,"runtimeGithubCliExit":0,"runtimeGithubCliErr":"","baseSha":""}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T08:15:10Z","noun":"runtime","verb":"assert","flags":["workflow","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T08:15:13Z","noun":"status","verb":"route","flags":["workflow","file","prompt-file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T08:15:23Z","noun":"workflows","verb":"input","flags":["workflow","fid","run","file","prompt-file","description-file","comments-file","plan"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T08:15:28Z","noun":"steps","verb":"done","flags":["workflow","step","file","commit"]}
+{"type":"step-done","workflow":"build","step":"build-start-workflow","status":"DONE","at":"2026-11-02T08:15:28Z","parentSha":"0e19dc4e7cd84ec49076623d3eb2f8eb9afff47b","artifacts":[]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T08:15:31Z","noun":"steps","verb":"finish","flags":["workflow","step","file","artifact","number","post","title","tree","message"]}
+{"type":"engine-action","action":"comment","key":"build/2/build-worktree-setup/-/-/comment","hash":"97aaccda7e734320a940edc6cb9096a6f89481e3e98550104b6b59d6e7fe8298","ref":"https://github.com/cbartens/bkit/issues/724#issuecomment-6572340102","at":"2026-11-02T08:15:34Z"}
+{"type":"step-done","workflow":"build","step":"build-worktree-setup","status":"DONE","at":"2026-11-02T08:15:34Z","parentSha":"0e19dc4e7cd84ec49076623d3eb2f8eb9afff47b","artifacts":["docs/plans/202610/logs/724-machine-wide-test/build-input-2.md"]}
