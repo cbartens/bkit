@@ -318,7 +318,7 @@ The Selection and State Contract and Verification and Rollback sections are bind
 
 <!-- bkit:task 5 start -->
 
-- [ ] **TASK 5:** Complete and audit CI evidence rounds without weakening local checks.
+- [x] **TASK 5:** Complete and audit CI evidence rounds without weakening local checks.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/steps.ts`: accept validated CI evidence rounds without local clamp records, checking source, artifact and selection identity while preserving local clamp enforcement.
   - **UPDATE:** `.bkit/core/engine/checks/status-holes.ts`: recognize the evidence-first debug path while retaining required evidence and step auditing.
   - **DEPENDS ON:** 4.
