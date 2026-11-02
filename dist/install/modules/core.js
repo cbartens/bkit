@@ -673,20 +673,34 @@ function otherWorkflows(skip) {
         .map((f) => path.join(dir, f))
         .filter((f) => !skipped.has(f) && fs.lstatSync(f).isFile());
 }
+// Every regular `action.yml` / `action.yaml` file under `.github/actions/`, at any depth.
+function compositeActions() {
+    const dir = path.join(".github", "actions");
+    if (!fs.lstatSync(dir, { throwIfNoEntry: false })?.isDirectory())
+        return [];
+    const walk = (d) => fs.readdirSync(d).flatMap((f) => {
+        const p = path.join(d, f);
+        const st = fs.lstatSync(p);
+        if (st.isDirectory())
+            return walk(p);
+        return st.isFile() && /^action\.ya?ml$/.test(f) ? [p] : [];
+    });
+    return walk(dir);
+}
 function escapeRegExp(text) {
     return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 /**
  * Rewrites `pnpm [flags] [run] [flags] <old>` to the new name, keeping the flags and `run`.
  * Each flag is a value-less `-x` / `--x[=v]` token, except the package selectors (`-F`, `-C`,
- * `--filter`, `--dir`, `--prefix`), which leave the call alone; `<old>` ends at a character outside
+ * `-r`, `--recursive`, `--filter`, `--dir`, `--prefix`), which leave the call alone; `<old>` ends at a character outside
  * `[\w:-]` or at the end of the text. Anything else (`npm run`, `echo`, `--filter web`) stays.
  */
 export function renameScriptTokens(text, renames) {
     const names = Object.keys(renames).sort((a, b) => b.length - a.length);
     if (names.length === 0)
         return text;
-    const re = new RegExp(`\\bpnpm((?:\\s+(?:run|(?!-(?:F|C|-filter|-dir|-prefix))-{1,2}[\\w-]+(?:=\\S*)?))*)(\\s+)(${names.map(escapeRegExp).join("|")})(?![\\w:-])`, "g");
+    const re = new RegExp(`\\bpnpm((?:\\s+(?:run|(?!-(?:F|C|r|-filter|-dir|-prefix|-recursive))-{1,2}[\\w-]+(?:=\\S*)?))*)(\\s+)(${names.map(escapeRegExp).join("|")})(?![\\w:-])`, "g");
     return text.replace(re, (_m, flags, gap, old) => `pnpm${flags}${gap}${renames[old]}`);
 }
 /** Each old script name still in `text`, with its 1-based line. */
@@ -889,10 +903,10 @@ export function migrateBrandedTemplateFiles(dryRun, ws, logPrefix) {
             console.warn(`${logPrefix} ${tag}core: ${linkedAll.join(", ")} is a symlink (or sits under one); ${present.map(([from]) => from).join(", ")} not moved to the bkit- names; move them by hand and update every reference`);
             continue;
         }
-        const referenced = otherWorkflows([
-            ciWorkflowPath("."),
-            path.join(".github", "workflows", "bkit-trivy.yml"),
-        ]).flatMap((file) => {
+        const referenced = [
+            ...otherWorkflows([ciWorkflowPath("."), path.join(".github", "workflows", "bkit-trivy.yml")]),
+            ...compositeActions(),
+        ].flatMap((file) => {
             const lines = fs.readFileSync(file, "utf-8").split("\n");
             return present.flatMap(([from]) => lines.flatMap((l, i) => new RegExp(`${escapeRegExp(from)}(?![\\w.-])`).test(l)
                 ? [{ file, line: i + 1, from }]
@@ -996,10 +1010,18 @@ export function migrateBrandedCheckNames(dryRun, ws, logPrefix, defaultBranch = 
         if (jobStart !== null) {
             const bodyStart = jobStart.index + jobStart[0].length;
             const rest = next.slice(bodyStart);
-            const end = rest.search(/^(?: {2}\S|\S)/m);
+            const end = rest.search(/^(?: {2}[^\s#]|[^\s#])/m);
             const body = end === -1 ? rest : rest.slice(0, end);
             if (!/^ {4}name:/m.test(body)) {
                 next = `${next.slice(0, bodyStart)}    name: ${newName}\n${next.slice(bodyStart)}`;
+            }
+            const after = new RegExp(`^ {2}${escapeRegExp(job)}:[ \\t]*\\n`, "m").exec(next);
+            const afterRest = after === null ? "" : next.slice(after.index + after[0].length);
+            const afterEnd = afterRest.search(/^(?: {2}[^\s#]|[^\s#])/m);
+            const afterBody = afterEnd === -1 ? afterRest : afterRest.slice(0, afterEnd);
+            if ((afterBody.match(/^ {4}name:/gm) ?? []).length > 1) {
+                console.warn(`${logPrefix} ${tag}core: ${target} not renamed (a second job name: would make the workflow invalid YAML); rename by hand: name: ${oldName} -> name: ${newName} and set the ${job} job name: to ${newName}`);
+                continue;
             }
         }
         finish(target, text, next, [`${oldName} / ${job} -> ${newName} / ${newName}`]);
