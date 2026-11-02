@@ -28,7 +28,7 @@ import {
 } from "./core";
 import { dispatchModules, listStampedFiles, type ModuleContext } from "./index";
 import { readInstallingVersion } from "../../shared/package-json";
-import { getBkitDocsRoot, getPkgRoot } from "../../shared/package-roots";
+import { getBkitDocsRoot, getPkgRoot, getTemplatesRoot } from "../../shared/package-roots";
 import { BKIT_GATE_CHANGED_SCRIPT, BKIT_GATE_SCRIPTS } from "../manifest";
 import { readBkitConfig } from "../../shared/settings";
 import { hashFile, readBkitVersion, readManagedVersion, writeBkitVersion } from "../version-file";
@@ -1759,5 +1759,159 @@ describe("migrateRetiredLite (via runBkitDocs)", () => {
     for (const name of ["workflows.md", "prompts.md", "templates.md", "README.md"]) {
       expect(fs.existsSync(path.join(".bkit", name)), name).toBe(true);
     }
+  });
+});
+
+describe("migrateBrandedFileTokens (via runBkitDocs)", () => {
+  const put = (file: string, text: string): void => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, text, "utf-8");
+  };
+  const run = (dryRun = false): ModuleContext => {
+    const ctx = makeCtx({ dryRun });
+    runBkitDocs(ctx.dryRun, ctx.tokens, ctx.ws, ctx.logPrefix);
+    return ctx;
+  };
+
+  it("rewrites old script tokens in husky hooks and the CI workflow", () => {
+    fs.writeFileSync(
+      "package.json",
+      JSON.stringify(
+        {
+          name: "x",
+          scripts: { "lint:prose": "custom", "slop:delta": "custom" },
+          bkit: { testing: { ciWorkflow: "ci.yml" } },
+        },
+        null,
+        2,
+      ) + "\n",
+      "utf-8",
+    );
+    put(
+      ".husky/pre-push",
+      "#!/bin/sh\npnpm lint:prose\npnpm slop:delta\npnpm --filter web lint:prose\n",
+    );
+    put(
+      ".github/workflows/ci.yml",
+      "name: CI\njobs:\n  a:\n    steps:\n      - run: pnpm lint:prose\n",
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      run();
+      const hook = fs.readFileSync(".husky/pre-push", "utf-8");
+      expect(hook).toContain("pnpm bkit:lint:prose\n");
+      expect(hook).toContain("pnpm bkit:slop:delta\n");
+      expect(fs.readFileSync(".github/workflows/ci.yml", "utf-8")).toContain(
+        "pnpm bkit:lint:prose",
+      );
+      expect(fs.existsSync(".husky/pre-commit")).toBe(false);
+      expect(fs.existsSync(".github/workflows/bkit-ci.yml")).toBe(false);
+      const out = warn.mock.calls.map((c) => String(c[0])).join("\n");
+      expect(out).toContain(".husky/pre-push");
+      expect(out).toMatch(/pre-push:?\s*(line\s*)?4|pre-push.*:4/);
+      expect(out).toContain("lint:prose");
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+});
+
+describe("migrateBrandedTemplateFiles (via runBkitDocs)", () => {
+  const CI_DIR = path.join("scripts", "ci");
+  const put = (file: string, text: string): void => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, text, "utf-8");
+  };
+  const run = (dryRun = false): ModuleContext => {
+    const ctx = makeCtx({ dryRun });
+    runBkitDocs(ctx.dryRun, ctx.tokens, ctx.ws, ctx.logPrefix);
+    return ctx;
+  };
+  /** The shipped pre-#748 content of a CI script, read from the v6.0.0 release tag. */
+  const shippedOld = (file: string): string => {
+    const env = { ...process.env };
+    delete env.GIT_DIR;
+    delete env.GIT_WORK_TREE;
+    const r = spawnSync("git", ["show", `v6.0.0:.bkit/templates/scripts/ci/${file}`], {
+      cwd: originalCwd,
+      encoding: "utf-8",
+      env,
+    });
+    expect(r.status, r.stderr).toBe(0);
+    return r.stdout;
+  };
+  const templateFile = (file: string): string =>
+    fs.readFileSync(path.join(getTemplatesRoot(), "scripts", "ci", file), "utf-8");
+  const ADVISORIES = '{"advisories":[{"id":"GHSA-x"}]}\n';
+
+  beforeEach(() => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("moves shipped CI script units to bkit- names and rewrites their paths", () => {
+    for (const f of [
+      "check-capstone.mjs",
+      "check-capstone.test.mjs",
+      "check-dependency-audit.mjs",
+      "check-dependency-audit.test.mjs",
+    ]) {
+      put(path.join(CI_DIR, f), shippedOld(f));
+    }
+    put(path.join(CI_DIR, "accepted-advisories.json"), ADVISORIES);
+    put(
+      ".github/workflows/bkit-ci.yml",
+      "name: bkit-ci\njobs:\n  a:\n    steps:\n      - run: node scripts/ci/check-capstone.mjs\n",
+    );
+    put(".husky/pre-push", "#!/bin/sh\nnode scripts/ci/check-dependency-audit.mjs < /dev/null\n");
+    run();
+
+    expect(fs.existsSync(path.join(CI_DIR, "check-capstone.mjs"))).toBe(false);
+    expect(fs.existsSync(path.join(CI_DIR, "check-capstone.test.mjs"))).toBe(false);
+    expect(fs.existsSync(path.join(CI_DIR, "check-dependency-audit.mjs"))).toBe(false);
+    expect(fs.existsSync(path.join(CI_DIR, "accepted-advisories.json"))).toBe(false);
+    expect(fs.readFileSync(path.join(CI_DIR, "bkit-check-capstone.mjs"), "utf-8")).toBe(
+      templateFile("bkit-check-capstone.mjs"),
+    );
+    const movedTest = fs.readFileSync(path.join(CI_DIR, "bkit-check-capstone.test.mjs"), "utf-8");
+    expect(movedTest).toContain('./bkit-check-capstone.mjs"');
+    expect(movedTest).not.toContain('"./check-capstone.mjs"');
+    expect(fs.readFileSync(path.join(CI_DIR, "bkit-accepted-advisories.json"), "utf-8")).toBe(
+      ADVISORIES,
+    );
+    expect(fs.readFileSync(path.join(CI_DIR, "bkit-check-dependency-audit.mjs"), "utf-8")).toBe(
+      templateFile("bkit-check-dependency-audit.mjs"),
+    );
+    const ci = fs.readFileSync(".github/workflows/bkit-ci.yml", "utf-8");
+    expect(ci).toContain("node scripts/ci/bkit-check-capstone.mjs");
+    expect(ci).not.toContain("node scripts/ci/check-capstone.mjs");
+    expect(fs.readFileSync(".husky/pre-push", "utf-8")).toContain(
+      "node scripts/ci/bkit-check-dependency-audit.mjs",
+    );
+  });
+
+  it("leaves an edited or already-renamed unit and logs the manual move", () => {
+    const edited = shippedOld("check-capstone.mjs") + "\n// consumer edit\n";
+    put(path.join(CI_DIR, "check-capstone.mjs"), edited);
+    put(path.join(CI_DIR, "check-capstone.test.mjs"), shippedOld("check-capstone.test.mjs"));
+    const existing = "// consumer's own bkit-check-dependency-audit\n";
+    put(path.join(CI_DIR, "check-dependency-audit.mjs"), shippedOld("check-dependency-audit.mjs"));
+    put(path.join(CI_DIR, "bkit-check-dependency-audit.mjs"), existing);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    run();
+
+    expect(fs.readFileSync(path.join(CI_DIR, "check-capstone.mjs"), "utf-8")).toBe(edited);
+    expect(fs.existsSync(path.join(CI_DIR, "check-capstone.test.mjs"))).toBe(true);
+    expect(fs.existsSync(path.join(CI_DIR, "bkit-check-capstone.mjs"))).toBe(false);
+    expect(fs.existsSync(path.join(CI_DIR, "check-dependency-audit.mjs"))).toBe(true);
+    expect(fs.readFileSync(path.join(CI_DIR, "bkit-check-dependency-audit.mjs"), "utf-8")).toBe(
+      existing,
+    );
+    const out = warn.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(out).toContain("check-capstone");
+    expect(out).toContain("check-dependency-audit");
   });
 });

@@ -105,6 +105,14 @@ describe("consumer-facing names carry the bkit prefix", () => {
     expect(bad).toEqual([]);
   });
 
+  it("the shipped Vale style", () => {
+    const styles = path.join(templatesRoot, ".vale/styles");
+    expect(fs.readdirSync(styles)).toEqual(["Bkit"]);
+    const ini = fs.readFileSync(path.join(templatesRoot, ".vale.ini"), "utf-8");
+    expect(ini).toMatch(/BasedOnStyles = .*\bBkit\b/);
+    expect(ini).not.toMatch(/\bHouse\b/);
+  });
+
   it("flags a seeded job whose display name lacks bkit-", () => {
     const named = "name: bkit-x\njobs:\n  lint:\n    name: lint\n    runs-on: ubuntu-latest\n";
     expect(unprefixedWorkflowNames("x.yml", named)).toEqual(["x.yml:lint:lint"]);

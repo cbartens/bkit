@@ -372,10 +372,10 @@ const ADOPTED: Record<string, Entry> = {
       },
     ],
   },
-  ".vale/styles/House/Filler.yml": identical,
-  ".vale/styles/House/Hedging.yml": identical,
-  ".vale/styles/House/LLMSlop.yml": identical,
-  ".vale/styles/House/Verbose.yml": identical,
+  ".vale/styles/Bkit/Filler.yml": identical,
+  ".vale/styles/Bkit/Hedging.yml": identical,
+  ".vale/styles/Bkit/LLMSlop.yml": identical,
+  ".vale/styles/Bkit/Verbose.yml": identical,
   "slop-scan.config.json": {
     status: "adopted",
     edits: [
