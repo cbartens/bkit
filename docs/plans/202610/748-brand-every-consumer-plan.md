@@ -522,7 +522,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** Rename `lint:prose` → `bkit:lint:prose`, `slop:delta` → `bkit:slop:delta` everywhere they are wired
+- [x] **TASK 1:** Rename `lint:prose` → `bkit:lint:prose`, `slop:delta` → `bkit:slop:delta` everywhere they are wired
   - **UPDATE:** `BKIT_GATE_SCRIPTS` in `.bkit/core/engine/install/manifest.ts`: gate chains call `pnpm bkit:lint:prose` / `pnpm bkit:slop:delta`; comments
   - **UPDATE:** `.bkit/core/engine/install/modules/core.ts`: gate advisory text (line ~1098)
   - **UPDATE:** `.bkit/core/engine/cli.ts`: help text (line ~814)
