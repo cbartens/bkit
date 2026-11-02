@@ -312,4 +312,17 @@ describe("renameScriptTokens", () => {
       "pnpm --workspace-root bkit:slop:delta",
     );
   });
+
+  it("renameScriptTokens returns a many-flag line in bounded time", () => {
+    const flags = Array.from(
+      { length: 30 },
+      (_, i) => `--${String.fromCharCode(97 + (i % 26))}${i}`,
+    );
+    const line = `pnpm ${flags.join(" ")}`;
+    const start = performance.now();
+    const out = renameScriptTokens(line, renames);
+    const elapsed = performance.now() - start;
+    expect(out).toBe(line);
+    expect(elapsed).toBeLessThan(500);
+  });
 });
