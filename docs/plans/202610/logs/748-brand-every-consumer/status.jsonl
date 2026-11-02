@@ -400,3 +400,11 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-02T06:14:52Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-verify/6/2/comment","hash":"d2f3bd44def82b658bd4b9353178c2d907f635473f997c66581c0251e12d6b64","ref":"https://github.com/cbartens/bkit/issues/748#issuecomment-6570467667","at":"2026-11-02T06:14:53Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-02T06:14:53Z","parentSha":"678c3619b3d31dffcd8c6f63b1299b97874b978c","artifacts":["docs/plans/202610/logs/748-brand-every-consumer/build-plan-verify-6-2.md"],"verdict":"CONCERNS","attempt":2,"group":6,"failures":1}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T06:14:55Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks","green"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T06:14:55Z","noun":"counters","verb":"route","flags":["name","of","file","workflow","group","point","continue","exceeded"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T06:14:55Z","noun":"status","verb":"route","flags":["file","workflow","step","group","require"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T06:15:20Z","noun":"ci","verb":"prose","flags":["glob"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T06:15:21Z","noun":"ci","verb":"slop","flags":[]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T06:17:48Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-gaps-remediate/6/2/comment","hash":"f545407b479cebda943d1734d088655cf552a414e677adae49854e57dccfb2a4","ref":"https://github.com/cbartens/bkit/issues/748#issuecomment-6570510430","at":"2026-11-02T06:17:49Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-gaps-remediate","status":"DONE","at":"2026-11-02T06:17:49Z","parentSha":"3f7d698083f0d0b58d06690b330000b0480cf42d","artifacts":["docs/plans/202610/logs/748-brand-every-consumer/build-plan-gaps-remediate-6-2-log.md"],"verdict":"PASS","attempt":2,"group":6,"strategy":"PIVOT"}

@@ -943,7 +943,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
 <!-- bkit:task 18 end -->
 <!-- bkit:task 19 start -->
 
-- [ ] **TASK 19:** A symlink committed under `scripts/ci/` or `.vale/styles/` makes `bkit upgrade` write outside the repo or copy an out-of-repo file into it
+- [x] **TASK 19:** A symlink committed under `scripts/ci/` or `.vale/styles/` makes `bkit upgrade` write outside the repo or copy an out-of-repo file into it
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/modules/core.ts:1028` · **Round:** 1
   - **DONE WHEN:** `migrateBrandedTemplateFiles` and `migrateValeHouseStyle` check every source, target and target directory with `fs.lstatSync` (as `migrateBrandedFileTokens` and `migrateBrandedCheckNames` already do) and treat a symlink as "not moved" with one `console.warn` naming the path. Today `fs.existsSync(to)` follows links, so a dangling `scripts/ci/bkit-accepted-advisories.json` link counts as absent, and `fs.copyFileSync(from, to)` (`core.ts:1028`) writes the data file's committed bytes to wherever the link points. A symlinked `scripts/ci/accepted-advisories.json` is read through the link and lands in the tree as a regular file holding the target's bytes, for example `~/.npmrc`. A data file needs no shipped hash, and a unit holding only the data file still moves. The same follow-through applies to `.vale/styles/Bkit` (or `Bkit/<rule>.yml`) at `core.ts:1193`, which writes shipped-rule bytes into a linked-to directory. Cross-ref `docs/security.md` § Untrusted Content & Prompt Injection (repo content is untrusted data) and § PII ("NEVER log consumer repo content verbatim"); no symlink rule exists there yet.
   - **TEST FIRST:**
