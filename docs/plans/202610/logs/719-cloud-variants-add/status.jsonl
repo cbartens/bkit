@@ -66,3 +66,9 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-02T01:29:14Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","artifact","optional-artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-convert/-/1/comment","hash":"1fa0653a20627a2842072f352cc90a45ecfcc2659062cdd7bf2bc37f8a993a3d","ref":"https://github.com/cbartens/bkit/issues/719#issuecomment-6566910176","at":"2026-11-02T01:29:15Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-convert","status":"DONE","at":"2026-11-02T01:29:15Z","parentSha":"4fc1a2f167b7f5392f73b2a90988b5732977ed9d","artifacts":["docs/plans/202610/719-cloud-variants-add-plan.md","docs/plans/202610/logs/719-cloud-variants-add/build-plan-check.md"],"attempt":1}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T01:29:16Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T01:29:20Z","noun":"branches","verb":"anchor-read","flags":["file","field","against"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T01:30:14Z","noun":"tasks","verb":"currency","flags":["plan","base","against"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T01:34:25Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-current/-/1/comment","hash":"fc8b5f3de817ba36a53ead15f6f8ff2a9f24ceaea9a918fc5df47762a2f174f8","ref":"https://github.com/cbartens/bkit/issues/719#issuecomment-6566971303","at":"2026-11-02T01:34:26Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-current","status":"DONE","at":"2026-11-02T01:34:26Z","parentSha":"ff6b6c7f98040d1f7268fc109e14d8d68237b9cd","artifacts":["docs/plans/202610/logs/719-cloud-variants-add/build-plan-current.md"],"verdict":"CONCERNS","attempt":1}
