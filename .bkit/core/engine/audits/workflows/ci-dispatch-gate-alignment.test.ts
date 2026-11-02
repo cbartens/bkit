@@ -52,6 +52,28 @@ function debugStep(number: number): string {
 }
 
 describe("selected CI evidence routing", () => {
+  it("requires main branch selected CI proof at the held pushed commit before success", () => {
+    const close = debugStep(11);
+    expect(close).toMatch(/`BRANCH` = `dev` \*\*or\*\* `main`[^\n]*`\{PR_OPEN\}` = 0/);
+    expect(close).toMatch(/`BRANCH` = `dev` \*\*or\*\* `main`[^\n]*`TRIGGER_PR` = 0/);
+    const guard = close.match(/^7\. \*\*Run only if\*\*[^\n]+/m)?.[0];
+    expect(guard).toMatch(/\*\*or\*\* CI is selected/);
+    const push = fences(close).find((body) =>
+      /branches push --mode=feature --require-ci\s*\n/.test(body),
+    );
+    expect(push).toBeDefined();
+    expect(close.slice(0, close.indexOf("7. **Run only if**"))).toMatch(
+      /hold `sha` as `VERIFY_HEAD`/,
+    );
+    const proof = close.slice(close.indexOf("With a saved CI selection, require fail-then-pass"));
+    expect(proof).toMatch(
+      /`VERIFY_HEAD`[^\n]*(?:empty|not held|missing)[^\n]*\*\*Failure Path\*\*/,
+    );
+    expect(proof).toMatch(/runs wait --head="\{VERIFY_HEAD\}"/);
+    expect(proof).toMatch(/runs gate --head="\{VERIFY_HEAD\}"[^\n]*--ci-selection-file=/);
+    expect(proof.indexOf('runs gate --head="{VERIFY_HEAD}"')).toBeLessThan(proof.indexOf("10."));
+  });
+
   it("routes selected evidence through context diagnosis and generation-scoped fixes", () => {
     const setup = debugStep(1) + debugStep(2);
     expect(setup).toMatch(/branches parse[^\n]*--workflow=debug/);

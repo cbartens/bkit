@@ -649,8 +649,11 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    - **If** `BRANCH` != `dev`:
      ```bash
      "{BKIT}" locks release --kind=workflow --workflow=debug --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} >/dev/null || exit 1
-     "{BKIT}" branches push --mode=feature --require-ci >/dev/null
+     "{BKIT}" branches push --mode=feature --require-ci
      ```
+     Route:
+     - **If** exit 0 **and** `pushed` = true **and** `sha` non-empty → hold `sha` as `VERIFY_HEAD`.
+     - **Else** → **Failure Path** with the missing pushed verification head.
    - **If** `BRANCH` = `dev`:
      Push ONLY the run's own commits, and keep the lock:
      ```bash
@@ -683,7 +686,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    ```bash
    "{BKIT}" branches push --mode=feature --require-ci --commit="chore({FID}): create-pr bkit [verbose ci]" {LABEL_FLAGS} --file="{STATUS}" --workflow=debug
    ```
-7. **Run only if** `{PR_OPEN}` = 1 **or** `TRIGGER_PR` = 1 **or** `BRANCH` = `dev`.
+7. **Run only if** `{PR_OPEN}` = 1 **or** `TRIGGER_PR` = 1 **or** `BRANCH` = `dev` **or** CI is selected.
    **If** `{PR_OPEN}` = 1 **or** `TRIGGER_PR` = 1 → run the CI-Dispatch Gate on the pushed head. It records `{DISPATCH_ROW}`, cross-checks the transport and records the close transport. `{DISPATCH_ROW}` = `--step=debug-close-workflow {LIVE_SKIPPED}` when `{PR_OPEN}` = 1, `--step=debug-create-pr --artifact={PR_URL}` after a created PR. `{LABEL_FLAGS}` as in sub-step 6:
 
    ```bash
@@ -725,7 +728,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    "{BKIT}" locks release --kind=workflow --workflow=debug --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} >/dev/null || exit 1
    ```
 
-   With a saved CI selection, require fail-then-pass proof after the final push and dispatch, before a success comment or final return. Keep the original `CI_RUN_ID`/`CI_RUN_URL` unchanged. Hold the pushed feature head printed by `runs dispatch` as `VERIFY_HEAD`; on `dev`, use the held pushed `DEV_SHA`. Wait for the configured workflow at that exact head:
+   With a saved CI selection, require fail-then-pass proof after the final push and applicable dispatch, before a success comment or final return. Keep the original `CI_RUN_ID`/`CI_RUN_URL` unchanged. On `dev`, set `VERIFY_HEAD` = `DEV_SHA`; other branches keep the exact head held from their final successful push or dispatch, including `main` without a PR. **If** `VERIFY_HEAD` is empty or not held → **Failure Path** with the missing pushed verification head. Wait for the configured workflow at that exact head:
 
    ```bash
    "{BKIT}" runs wait --head="{VERIFY_HEAD}" --branch="{BRANCH}" --until=completed

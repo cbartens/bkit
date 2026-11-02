@@ -338,7 +338,7 @@ The Selection and State Contract and Verification and Rollback sections are bind
 
 <!-- bkit:task 6 start -->
 
-- [ ] **TASK 6:** Pin and validate context evidence.
+- [x] **TASK 6:** Pin and validate context evidence.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/context.ts`: add `context fetch --ci-selection-file`. Validate the same selection schema. Set `BKIT_CI_RUN_ID`, `BKIT_CI_RUN_ATTEMPT`, `BKIT_CI_REPO` and `BKIT_CI_HEAD_SHA` in the child environment for a selected CI run; remove inherited values of these variables when no CI selection is supplied.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/context.ts`: a selected `ci` block emits one machine-readable identity line, `bkit-ci-evidence: <JSON>`, with `provider`, `repo`, `runId`, `runAttempt`, `headSha`, `workflowId`, and `complete: true`, followed by the logs. The block emits `complete: true` only after every required metadata/job/log read succeeds. Parse and compare the identity with the selection. Empty logs, skip breadcrumbs, partial evidence or mismatched identity cannot count as fetched evidence for diagnosis.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/context.ts`: existing consumer-owned blocks are not rewritten automatically. Step 4 already customises a temporary script; adapt that script to honor the selected identity and emit the receipt. If the block's provider or available tools cannot supply it, retain the output as unchecked evidence and stop before diagnosis. A matching header with no logs is insufficient.

@@ -9859,6 +9859,8 @@ Mirrors the roadmap row to `dev`.
 Closes the run (telemetry, report, artifact links) and commits it.
 [fit `workflow-exit-0` 0.60; keep: routes on exit 10, not exit 0] **If** exit 10 → **Foreign path**.
 **If** `BRANCH` != `dev`:
+**If** exit 0 **and** `pushed` = true **and** `sha` non-empty → hold `sha` as `VERIFY_HEAD`.
+**Else** → **Failure Path** with the missing pushed verification head.
 **If** `BRANCH` = `dev`:
 [workflow-pushes] Push ONLY the run's own commits, and keep the lock:
 **If** exit 0 **and** `skipped` null → hold `sha` as `DEV_SHA` (never the local HEAD); `BRANCH` = `dev` → `{CLOSE_PARENT}` = `{DEV_SHA}`; `DEV_PUSHED` = true.
@@ -9872,7 +9874,7 @@ Set `TRIGGER_PR`:
 **If** `TRIGGER_PR` = 1 → create or adopt the PR (its body names `docs/plans/{YYYYMM}/{FID}-plan.md` if present). `--existing=reuse` adopts a PR that appeared since sub-step 1:
 **If** exit 80 → `create_pull_request` with the printed `title` / `body` / `base` / `head` → hold its number as `PR_NUMBER` and its URL as `PR_URL`.
 [code-commits] **If** `TRIGGER_PR` = 1 → commit and push the CI-triggering head. `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry<!-- bkit:tracker true start -->, empty when `ISSUE_ID` is empty<!-- bkit:tracker true end -->:
-**Run only if** `{PR_OPEN}` = 1 **or** `TRIGGER_PR` = 1 **or** `BRANCH` = `dev`.
+**Run only if** `{PR_OPEN}` = 1 **or** `TRIGGER_PR` = 1 **or** `BRANCH` = `dev` **or** CI is selected.
 **If** exit 81 **or** 80 → **CI wait turn-loop** → re-run this block with `{CI_REENTRY}`.
 **If** `BRANCH` = `dev` **and** `DEV_PUSHED` = false → only release the lock (the last block below).
 **If** `BRANCH` = `dev` **and** `DEV_PUSHED` = true → gate the push-event CI run at `{DEV_SHA}`, then release the lock. `{LIVE_SKIPPED}` and `{LABEL_FLAGS}` as above:
@@ -9880,6 +9882,7 @@ Set `TRIGGER_PR`:
 [fit `workflow-verdict-fail` 0.67; keep: fails on a missing CI run, not on a FAIL verdict] **If** `result` != `found` → **Failure Path**.
 **If** `conclusion` != `success` → **Failure Path** naming the run at `{DEV_SHA}`.
 [fit `workflow-else-failure` 0.67; keep: names what the failure report carries] **Else** → **Failure Path** naming the run (`runUrl`).
+With a saved CI selection, require fail-then-pass proof after the final push and applicable dispatch, before a success comment or final return. Keep the original `CI_RUN_ID`/`CI_RUN_URL` unchanged. On `dev`, set `VERIFY_HEAD` = `DEV_SHA`; other branches keep the exact head held from their final successful push or dispatch, including `main` without a PR. **If** `VERIFY_HEAD` is empty or not held → **Failure Path** with the missing pushed verification head. Wait for the configured workflow at that exact head:
 **If** `PR_NUMBER` is set (PR-mode only) → re-read issue labels → check kill-switch:
 PR title `[verbose ci]` stripped
 Auto-label presence re-read
