@@ -15,7 +15,7 @@
 # informational only.
 #
 # bkit generates the managed block at install: the Linear guard and the rules-read
-# advisory are shared with the Cursor hook (bkit's `hooks/preflight-linear.sh` and
+# advisory are shared with the Cursor hook (bkit's `hooks/preflight-tracker.sh` and
 # `hooks/preflight-rules.sh`); the trigger, the brew check and the output shape below
 # are Claude's own.
 
@@ -100,6 +100,6 @@ if [[ "$(uname)" == "Darwin" ]]; then
   fi
 fi
 
-# {{BKIT_PART preflight-linear.sh}}
+# {{BKIT_PART preflight-tracker.sh}}
 
 # <!-- bkit:end -->

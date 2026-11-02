@@ -733,7 +733,13 @@ async function fetchVerb(ctx: RunContext): Promise<number> {
     comments: path.join(dir, "issue-comments.json"),
     facts: path.join(dir, "issue-facts.json"),
   };
-  const facts = { title: issue.title, url: issue.url, state: issue.state, labels: issue.labels };
+  const facts = {
+    title: issue.title,
+    url: issue.url,
+    state: issue.state,
+    labels: issue.labels,
+    terminal: issue.terminal,
+  };
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(files.description, issue.body);
   const comments = sortOldestFirst(issue.comments).comments;
@@ -854,12 +860,15 @@ export const issuesCommand: CommandSpec = {
         title: "issue title",
         url: "issue URL",
         state: "tracker state name (GitHub: open | closed)",
-        labels: "label names",
+        labels: "label names (the bkit-cloud.yml router reads bkit:auto here)",
+        terminal:
+          "true when the tracker's state category is finished (GitHub closed, Linear completed / canceled, Jira done), whatever the state is named",
         files:
-          "{description, comments, facts}: raw description, comments oldest first as JSON, {title, url, state, labels} as JSON",
-        skipped: "no-issue | tracker-none: nothing read, nothing written",
+          "{description, comments, facts}: raw description, comments oldest first as JSON, {title, url, state, labels, terminal} as JSON",
+        skipped:
+          "no-issue | tracker-none: nothing read, nothing written (the bkit-cloud.yml router reads this as skipped)",
         reason:
-          "exit 80: network | auth | scope | rate-limit | not-found | http-<n>; read the issue via the tracker MCP",
+          "exit 80 (the bkit-cloud.yml router fails closed on it): network | auth | scope | rate-limit | not-found | http-<n>; read the issue via the tracker MCP",
       },
       exitCodes: {},
       run: fetchVerb,
