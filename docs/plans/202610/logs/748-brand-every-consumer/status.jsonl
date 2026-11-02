@@ -32,3 +32,8 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-02T01:28:49Z","noun":"steps","verb":"finish","flags":["workflow","step","file","number","post","title","tree","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-branch-sync/-/-/comment","hash":"e716e8cfe702e4745d6c9e49c82e2774ca92350b4d01e47cb66002582d7e001e","ref":"https://github.com/cbartens/bkit/issues/748#issuecomment-6566905347","at":"2026-11-02T01:28:50Z"}
 {"type":"step-done","workflow":"build","step":"build-branch-sync","status":"DONE","at":"2026-11-02T01:28:50Z","parentSha":"b1b5eb2c518fa5f2c2dc3817c53e8dcd04d43ad4","artifacts":[]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T01:28:51Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T01:29:22Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T01:29:38Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","artifact","optional-artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-convert/-/1/comment","hash":"1fa0653a20627a2842072f352cc90a45ecfcc2659062cdd7bf2bc37f8a993a3d","ref":"https://github.com/cbartens/bkit/issues/748#issuecomment-6566914784","at":"2026-11-02T01:29:39Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-convert","status":"DONE","at":"2026-11-02T01:29:39Z","parentSha":"dc45a11a785dcb5b158627a95017a87a9349b04f","artifacts":["docs/plans/202610/748-brand-every-consumer-plan.md","docs/plans/202610/logs/748-brand-every-consumer/build-plan-check.md"],"attempt":1}
