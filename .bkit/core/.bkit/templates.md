@@ -890,14 +890,14 @@ Every worktree of a repo uses the same local services when their names and ports
 
 ```bash
 mkdir -p scripts/ci
-cp .bkit/templates/scripts/ci/bkit-local-stack-lock.sh scripts/ci/
+cp .bkit/templates/scripts/ci/bkit-machine-lock.sh scripts/ci/
 ```
 
 <!-- prettier-ignore -->
 | Wire into | How | Holds the lock |
 | --- | --- | --- |
-| `package.json` scripts that start / reset / stop the stack | `"db:reset": "bash scripts/ci/bkit-local-stack-lock.sh run db:reset -- <reset command>"` | for the command; its exit status passes on |
-| local runners that test against the stack | `. scripts/ci/bkit-local-stack-lock.sh`, then `take_local_stack_lock "<who>"` before the first stack command; non-zero → exit | until the runner exits or calls `release_local_stack_lock` |
+| `package.json` scripts that start / reset / stop the stack | `"db:reset": "bash scripts/ci/bkit-machine-lock.sh run db:reset -- <reset command>"` | for the command; its exit status passes on |
+| local runners that test against the stack | `. scripts/ci/bkit-machine-lock.sh`, then `take_local_stack_lock "<who>"` before the first stack command; non-zero → exit | until the runner exits or calls `release_local_stack_lock` |
 
 - Functions (all safe under `set -e`):
   - `take_local_stack_lock` waits.

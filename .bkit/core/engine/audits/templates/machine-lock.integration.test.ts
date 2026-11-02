@@ -153,6 +153,44 @@ function commandRun(args: string[], env: NodeJS.ProcessEnv, script = SCRIPT): Re
 }
 
 describe("bkit-machine-lock.sh", { timeout: BUDGET.testTimeout }, () => {
+  it("punctuation in distinct named locks keeps acquisition and release state separate", () => {
+    const result = run(
+      'take_local_stack_lock "hyphen holder" a-b || exit 11\n' +
+        'take_local_stack_lock "underscore holder" a_b || exit 12\n' +
+        "local_stack_lock_holder a-b\nlocal_stack_lock_holder a_b\n" +
+        "release_local_stack_lock a-b\n" +
+        'printf "remaining: "; local_stack_lock_holder a_b\n' +
+        "release_local_stack_lock a_b",
+      envFor(),
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("hyphen holder");
+    expect(result.stdout).toContain("underscore holder");
+    expect(result.stdout).toContain("remaining: underscore holder");
+  });
+
+  it.each(["", "tests", "a-b"])("unset owner state is safe under bash -eu for lock %j", (name) => {
+    const result = spawnSync(
+      "bash",
+      [
+        "-eu",
+        "-c",
+        '. "$1"; take_local_stack_lock "strict caller" "$2"; local_stack_lock_holder "$2"; release_local_stack_lock "$2"; release_local_stack_lock "$2"',
+        "strict-lock",
+        SCRIPT,
+        name,
+      ],
+      {
+        env: envFor({ BKIT_LOCAL_STACK: "strict-stack" }),
+        encoding: "utf-8",
+        timeout: BUDGET.testTimeout,
+      },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("strict caller");
+    expect(result.stderr).not.toContain("unbound variable");
+  });
+
   it("a second run cannot take the lock while the first holds it, and is told who holds it", async () => {
     const env = envFor();
     const first = hold("first run", 10, env);

@@ -71,7 +71,10 @@ local_stack_lock_holder() {
 
 _local_stack_lock_vars() {
   local _lsl_key
-  _lsl_key="$(printf '%s' "${1:-}" | LC_ALL=C tr -c 'A-Za-z0-9_' '_')"
+  _lsl_key="$(printf '%s' "${1:-}" | LC_ALL=C tr -c 'A-Za-z0-9._-' '_')"
+  _lsl_key="${_lsl_key//_/__}"
+  _lsl_key="${_lsl_key//-/_h}"
+  _lsl_key="${_lsl_key//./_d}"
   _lsl_pid_var="LOCAL_STACK_LOCK_PID"
   _lsl_owner_var="LOCAL_STACK_LOCK_OWNER"
   if [ -n "${1:-}" ]; then
@@ -86,8 +89,8 @@ _local_stack_lock() {
   local _lsl_file _lsl_label _lsl_fifo _lsl_pid _lsl_reply _lsl_checkout
   _LOCAL_STACK_LOCK_EXIT=73
   _local_stack_lock_vars "$_lsl_name"
-  _lsl_owner="${!_lsl_owner_var}"
-  _lsl_existing="${!_lsl_pid_var}"
+  _lsl_owner="${!_lsl_owner_var:-}"
+  _lsl_existing="${!_lsl_pid_var:-}"
   if [ "${CI:-}" = "true" ] || [ "${CI:-}" = "1" ]; then return 0; fi
   if [ -n "$_lsl_owner" ] && kill -0 "$_lsl_owner" 2>/dev/null; then return 0; fi
   if [ -n "$_lsl_existing" ] && kill -0 "$_lsl_existing" 2>/dev/null; then return 0; fi
@@ -204,7 +207,7 @@ try_local_stack_lock() { _local_stack_lock try "$1" "${2:-}"; }
 release_local_stack_lock() {
   local _lsl_pid_var _lsl_owner_var _lsl_release_pid
   _local_stack_lock_vars "${1:-}"
-  _lsl_release_pid="${!_lsl_pid_var}"
+  _lsl_release_pid="${!_lsl_pid_var:-}"
   [ -n "$_lsl_release_pid" ] || return 0
   kill "$_lsl_release_pid" 2>/dev/null || true
   wait "$_lsl_release_pid" 2>/dev/null || true
