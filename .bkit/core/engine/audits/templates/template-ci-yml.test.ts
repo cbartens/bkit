@@ -114,7 +114,13 @@ describe("template bkit-tests-static job matches the bkit:gate:static local gate
     !(part in GATE_PARTS_ABSENT_FROM_CI) && !runsScript(runs, part);
 
   it("reads the gate as a chain of pnpm scripts", () => {
-    expect(gateParts).toEqual(["typecheck", "lint", "format:check", "lint:prose", "slop:delta"]);
+    expect(gateParts).toEqual([
+      "typecheck",
+      "lint",
+      "format:check",
+      "bkit:lint:prose",
+      "bkit:slop:delta",
+    ]);
   });
 
   it("runs every part of the local static gate as a step, bar the named exceptions", () => {

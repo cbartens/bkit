@@ -460,7 +460,7 @@ const ADOPTED: Record<string, Entry> = {
       },
     ],
   },
-  "docs/capabilities.md": { status: "generated", what: "pnpm graph:rollup writes it" },
+  "docs/capabilities.md": { status: "generated", what: "pnpm bkit:graph:rollup writes it" },
   "scripts/graphify/bkit-graph-drift-rules.json": {
     status: "adopted",
     edits: [
@@ -651,11 +651,11 @@ const ADOPTED: Record<string, Entry> = {
   "scripts/serena/bkit-serena-mcp.sh": identical,
   "scripts/serena/bkit-serena.mcp.json": identical,
   "scripts/launchd/bkit-launchd-env.sh": identical,
-  "scripts/launchd/ai.bkit.launchd.plist": {
+  "scripts/launchd/bkit-launchd.plist": {
     status: "not-adopted",
     what: "machine-local LaunchAgent plist lives in ~/Library/LaunchAgents/",
   },
-  "scripts/launchd/launchd.env.example": {
+  "scripts/launchd/bkit-launchd.env.example": {
     status: "not-adopted",
     what: "machine-local secrets env file lives in ~/.config/bkit/launchd.env",
   },
@@ -758,7 +758,14 @@ describe("this repo adopts its own templates", () => {
     expect(fs.existsSync(copyPathOf(rel)), rel).toBe(true);
   });
 
-  it.each(entriesWith("adopted"))("%s", (rel, entry) => {
+  /** Adopted files whose copy is also pinned to carry no unprefixed `pnpm graph` hint (#748). */
+  const GRAPHIFY_BRANDED = [
+    "scripts/graphify/bkit-graphify.sh",
+    "scripts/graphify/bkit-graphify-rollup.py",
+  ];
+  const UNPREFIXED_GRAPH = /pnpm graph(?!ify)/;
+
+  function expectCopyMatchesTemplate(rel: string, entry: Extract<Entry, { status: "adopted" }>) {
     const copyPath = copyPathOf(rel);
     expect(fs.existsSync(copyPath), rel).toBe(true);
     const template = fs.readFileSync(path.join(templatesRoot, rel), "utf-8");
@@ -766,5 +773,42 @@ describe("this repo adopts its own templates", () => {
     const applied = apply(template, copy, entry.edits, rel);
     expect(applied.problems).toEqual([]);
     expect(copy).toBe(applied.text);
+    return { template, copy };
+  }
+
+  it.each(entriesWith("adopted").filter(([rel]) => !GRAPHIFY_BRANDED.includes(rel)))(
+    "%s",
+    (rel, entry) => {
+      const { copy } = expectCopyMatchesTemplate(rel, entry);
+      expect(copy.length).toBeGreaterThan(0);
+    },
+  );
+
+  it("scripts/graphify/bkit-graphify.sh", () => {
+    const entry = ADOPTED["scripts/graphify/bkit-graphify.sh"] as Extract<
+      Entry,
+      { status: "adopted" }
+    >;
+    const { template, copy } = expectCopyMatchesTemplate(
+      "scripts/graphify/bkit-graphify.sh",
+      entry,
+    );
+    expect(template).not.toMatch(UNPREFIXED_GRAPH);
+    expect(copy).not.toMatch(UNPREFIXED_GRAPH);
+    expect(copy).toContain("pnpm bkit:graph");
+  });
+
+  it("scripts/graphify/bkit-graphify-rollup.py", () => {
+    const entry = ADOPTED["scripts/graphify/bkit-graphify-rollup.py"] as Extract<
+      Entry,
+      { status: "adopted" }
+    >;
+    const { template, copy } = expectCopyMatchesTemplate(
+      "scripts/graphify/bkit-graphify-rollup.py",
+      entry,
+    );
+    expect(template).not.toMatch(UNPREFIXED_GRAPH);
+    expect(copy).not.toMatch(UNPREFIXED_GRAPH);
+    expect(copy).toContain("pnpm bkit:graph:refresh");
   });
 });

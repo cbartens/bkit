@@ -46,3 +46,11 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-02T01:36:56Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-install-skills/-/1/comment","hash":"89999e27e175ec3408266f8fad1bd1c4051b3617ce7232240a2dfbd1648336a5","ref":"https://github.com/cbartens/bkit/issues/748#issuecomment-6567002875","at":"2026-11-02T01:36:57Z"}
 {"type":"step-done","workflow":"build","step":"build-install-skills","status":"DONE","at":"2026-11-02T01:36:57Z","parentSha":"da74af2879d358a29a16a47a1fd605651f9b07ba","artifacts":["docs/plans/202610/logs/748-brand-every-consumer/build-install-skills.md"],"attempt":1}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T01:37:02Z","noun":"context","verb":"brief","flags":["plan","next","dir","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T01:37:06Z","noun":"status","verb":"route","flags":["step","group","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T01:37:06Z","noun":"steps","verb":"done","flags":["workflow","step","file","group","commit"]}
+{"type":"step-done","workflow":"build","step":"build-group-start","status":"DONE","at":"2026-11-02T01:37:06Z","parentSha":"cd37fe5efa8ef8f9f1825e6cf5a5f76fd51b30c6","artifacts":[],"group":1}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T01:37:06Z","noun":"context","verb":"brief","flags":["plan","group","tests-only","dir","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T01:39:09Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","plan","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-tests/1/1/comment","hash":"9310cfa62083d556caa88849341d51b7dd83a489769ffbcb0c95a8b69b85e947","ref":"https://github.com/cbartens/bkit/issues/748#issuecomment-6567030330","at":"2026-11-02T01:39:10Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-tests","status":"DONE","at":"2026-11-02T01:39:10Z","parentSha":"cd37fe5efa8ef8f9f1825e6cf5a5f76fd51b30c6","artifacts":["docs/plans/202610/logs/748-brand-every-consumer/build-plan-tests-1-log.md"],"verdict":"PASS","attempt":1,"group":1}

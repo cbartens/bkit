@@ -274,7 +274,14 @@ describe("detectGateAdvisories — gate advisories point at .bkit/templates.md",
       (f) => f.id === "gate-missing-called-scripts",
     );
     expect(finding).toBeDefined();
-    for (const name of ["lint", "format:check", "lint:prose", "slop:delta", "test", "build"]) {
+    for (const name of [
+      "lint",
+      "format:check",
+      "bkit:lint:prose",
+      "bkit:slop:delta",
+      "test",
+      "build",
+    ]) {
       expect(finding!.detect).toContain(`\`${name}\``);
     }
     expect(finding!.detect).not.toContain("`typecheck`");
