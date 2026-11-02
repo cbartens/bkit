@@ -692,7 +692,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
 
 <!-- bkit:task 6 start -->
 
-- [ ] **TASK 6:** Rename Vale style `House` → `Bkit`
+- [x] **TASK 6:** Rename Vale style `House` → `Bkit`
   - **CREATE:** `.bkit/templates/.vale/styles/Bkit/Filler.yml`: byte-identical move of the `House/` rule
   - **CREATE:** `.bkit/templates/.vale/styles/Bkit/Hedging.yml`: byte-identical move
   - **CREATE:** `.bkit/templates/.vale/styles/Bkit/LLMSlop.yml`: byte-identical move
