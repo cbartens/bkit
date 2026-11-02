@@ -30,3 +30,6 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-02T07:48:42Z","noun":"branches","verb":"sync","flags":["merge-docs"]}
 {"type":"engine-call","workflow":"build","at":"2026-11-02T07:48:52Z","noun":"steps","verb":"finish","flags":["workflow","step","file","number","post","title","tree","message"]}
 {"type":"step-done","workflow":"build","step":"build-branch-sync","status":"DONE","at":"2026-11-02T07:48:52Z","parentSha":"ebe7532469db3dec32d725a1d0c65dfb37751832","artifacts":[]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T07:48:54Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T07:49:18Z","noun":"workflows","verb":"fail","flags":["post","issue","workflow","fid","month","token","label","step-number","step-title","sub-step","error-file","session-dir"]}
+{"type":"workflow-failed","workflow":"build","at":"2026-11-02T07:49:18Z"}
