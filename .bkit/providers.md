@@ -840,6 +840,25 @@ The cloud OpenAI-compatible cells are tool-call-smoked (a `tools:` round-trip re
 
 ---
 
+## Long-running shell commands
+
+A full test gate runs for minutes, and a gate that waits for the machine-wide tests lock runs for longer. What a host does with a shell command that outlives one tool call differs per host, so the time a bkit verb may spend waiting inside one call is a host property, not a repo property. `bkit tests run`, `bkit tests changed` and `bkit branches push` read it from `BKIT_LOCK_WAIT_S`.
+
+<!-- prettier-ignore -->
+| Host | One tool call | Past the call's limit | Told when it ends | `BKIT_LOCK_WAIT_S` |
+| --- | --- | --- | --- | --- |
+| Claude Code | `Bash`: two minutes by default; Claude may ask for up to ten (`BASH_DEFAULT_TIMEOUT_MS`, `BASH_MAX_TIMEOUT_MS`) | Moved to the background and kept running (off under `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` and in bare mode); `run_in_background: true` starts it there. An unattended session (`-p`, Agent SDK, CI, cloud) stops a background command after 30 minutes by default and 2 hours at most; a local session never stops one | Yes: Claude is re-invoked when the command exits and reads its output file | `1200`, shipped in `.claude/settings.json` `env`: a 20-minute wait plus a 10-minute gate stays inside the unattended 30-minute cap |
+| Cursor | No documented limit for the agent terminal; the CLI's Shell Mode stops a command after 30 seconds | Not documented | Not documented | unset → 60 s, then exit 81 and a re-run |
+| opencode | `bash` runs in the foreground until the call's timeout | Stopped; no background option | No | unset → 60 s, then exit 81 and a re-run |
+| Codex CLI | `exec_command` under unified exec (`features.unified_exec`, on by default) returns after its yield time while the process keeps running as a resumable session | The model reads on with `write_stdin` polls, each at most `background_terminal_max_timeout` (300000 ms by default); managed requirements can turn the resumable path off | No: the model polls | unset → 60 s, then exit 81 and a re-run |
+| Google Antigravity | `run_command` returns after `WaitMsBeforeAsync` | Continues as a background task; `manage_task` (`list`, `kill`, `status`, `send_input`) polls it, and the Stop hook's `fullyIdle` stays `false` while one runs | No: the agent polls | unset → 60 s, then exit 81 and a re-run |
+
+**Rule:** a bkit verb that may wait on another process bounds the wait by `BKIT_LOCK_WAIT_S` (default 60 s), prints who it is waiting for and how long that holder's last run took, and exits 81 naming the holder when the wait runs out; every workflow block that runs such a verb routes 81 → end turn, re-run the block. A host that keeps a command alive past its call and reports its exit gets a long budget, so one call outlasts the holder. Every other host loops in short calls, which costs a re-run per minute of waiting and nothing else.
+
+**Sources:** Claude Code tools reference (<https://code.claude.com/docs/en/tools-reference>, § Bash tool: timeout and output limits, background commands, time limit for background commands, foreground commands that move to the background); Codex config reference (<https://learn.chatgpt.com/docs/config-file/config-reference>, `features.unified_exec`, `background_terminal_max_timeout`); Antigravity hooks reference (<https://antigravity.google/docs/hooks/>, `run_command`, `manage_task`, Stop `fullyIdle`); Cursor CLI Shell Mode docs. The Cursor agent tools and terminal pages and the opencode tools page state no timeout and no background contract.
+
+---
+
 ## Tool name parity
 
 Subagent `tools:` and command bodies use the Claude spelling (`Bash`, `Edit`, `Read`, etc.). Cursor uses different identifiers (`terminal`, `edit_file`, `read_file`, `apply_diff`). T3 (`applyT3`, `.bkit/core/engine/render/hosts.ts`) passes `tools:` through unchanged, with no name mapping. Cursor CLI 2026.10.01 does not enforce `tools:` (measured, § Architectural note — `readonly` reconciled), so the spelling has no effect there.
@@ -865,4 +884,5 @@ The Cursor API and frontmatter churn. Confirm these before any change that depen
 - Cursor `readonly: true` semantics: file writes only, or bash / terminal too.
 - Cursor tool-name parity (`Bash` vs `terminal`, `Edit` vs `edit_file`, etc.).
 - Cursor `Task` resolution: `/<name>` → `.cursor/agents/<name>.md` (mirrors Claude `Agent` `@<name>` → `.claude/agents/<name>.md`).
+- Cursor agent terminal: whether a command past the call's limit is stopped, moved to the background or reported on exit (§ Long-running shell commands: undocumented today).
 - `AGENTS.md` adoption: when all hosts read it natively, the redirects (`CLAUDE.md`, `.cursor/rules/bkit-rules.mdc`) can shrink.
