@@ -107,7 +107,7 @@ The engine works out the line and the agent shows it word for word, so the agent
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Acceptance Scenario confirmed:** The owner has reviewed this section.
+- [x] **Acceptance Scenario confirmed:** The owner has reviewed this section.
 
 ## 👤 ⚠️ Breaking Changes & Naming Review
 
@@ -115,7 +115,7 @@ Add the output key `progressLine` to completion commands and the pure helper `ru
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Breaking Changes confirmed:** The owner has reviewed this section.
+- [x] **Breaking Changes confirmed:** The owner has reviewed this section.
 
 ## 👤 ⚠️ Open Questions & Assumptions
 
@@ -126,7 +126,7 @@ Add the output key `progressLine` to completion commands and the pure helper `ru
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Open Questions & Assumptions confirmed:** The owner has reviewed this section.
+- [x] **Open Questions & Assumptions confirmed:** The owner has reviewed this section.
 
 ## Alternative Approaches & Recommendations
 
@@ -183,13 +183,13 @@ No prerequisite plan or new service access is required. The issue supplies the a
 
 ### 🔒 Gate 1: Prerequisites Check
 
-- [ ] **Acceptance Scenario confirmed:** The owner confirms the acceptance section.
-- [ ] **Breaking Changes confirmed:** The owner confirms additive output and naming.
-- [ ] **Open Questions confirmed:** The owner accepts the assumptions and default.
+- [x] **Acceptance Scenario confirmed:** The owner confirms the acceptance section.
+- [x] **Breaking Changes confirmed:** The owner confirms additive output and naming.
+- [x] **Open Questions confirmed:** The owner accepts the assumptions and default.
 - [x] **Security & Privacy checked:** Applicable handling is recorded below.
 - [x] **Reuse Inventory complete:** Capabilities name their searches and decisions.
 - [x] **Reuse reasons:** Every new artifact has a searched reason.
-- [ ] **Gate 1 — Verified:** Owner confirmations remain open.
+- [x] **Gate 1 — Verified:** The owner has confirmed the acceptance scenario, breaking changes, and assumptions.
 
 ## Data Schema Integration
 
