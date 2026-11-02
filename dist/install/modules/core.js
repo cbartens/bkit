@@ -649,19 +649,44 @@ function activeScriptRenames(scripts, renames) {
     }
     return { active, bothPresent };
 }
+function isLink(p) {
+    return fs.lstatSync(p, { throwIfNoEntry: false })?.isSymbolicLink() === true;
+}
+// True when `p` or any directory above it (within the relative path) is a symlink.
+function linkedPath(p) {
+    const parts = path.normalize(p).split(path.sep);
+    for (let i = 1; i <= parts.length; i++) {
+        if (isLink(parts.slice(0, i).join(path.sep)))
+            return true;
+    }
+    return false;
+}
+// Every `.github/workflows/*.yml` / `*.yaml` regular file outside `skip`.
+function otherWorkflows(skip) {
+    const dir = path.join(".github", "workflows");
+    if (!fs.lstatSync(dir, { throwIfNoEntry: false })?.isDirectory())
+        return [];
+    const skipped = new Set(skip.map((f) => path.normalize(f)));
+    return fs
+        .readdirSync(dir)
+        .filter((f) => /\.ya?ml$/.test(f))
+        .map((f) => path.join(dir, f))
+        .filter((f) => !skipped.has(f) && fs.lstatSync(f).isFile());
+}
 function escapeRegExp(text) {
     return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 /**
  * Rewrites `pnpm [flags] [run] [flags] <old>` to the new name, keeping the flags and `run`.
- * Each flag is a value-less `-x` / `--x[=v]` token; `<old>` ends at a character outside
+ * Each flag is a value-less `-x` / `--x[=v]` token, except the package selectors (`-F`, `-C`,
+ * `--filter`, `--dir`, `--prefix`), which leave the call alone; `<old>` ends at a character outside
  * `[\w:-]` or at the end of the text. Anything else (`npm run`, `echo`, `--filter web`) stays.
  */
 export function renameScriptTokens(text, renames) {
     const names = Object.keys(renames).sort((a, b) => b.length - a.length);
     if (names.length === 0)
         return text;
-    const re = new RegExp(`\\bpnpm((?:\\s+(?:run|-{1,2}[\\w-]+(?:=\\S*)?))*)(\\s+)(${names.map(escapeRegExp).join("|")})(?![\\w:-])`, "g");
+    const re = new RegExp(`\\bpnpm((?:\\s+(?:run|(?!-(?:F|C|-filter|-dir|-prefix))-{1,2}[\\w-]+(?:=\\S*)?))*)(\\s+)(${names.map(escapeRegExp).join("|")})(?![\\w:-])`, "g");
     return text.replace(re, (_m, flags, gap, old) => `pnpm${flags}${gap}${renames[old]}`);
 }
 /** Each old script name still in `text`, with its 1-based line. */
@@ -778,6 +803,11 @@ export function migrateBrandedFileTokens(dryRun, ws, logPrefix, pathRenames = []
         ws.writes.push({ path: file, action: "update", unhashed: true });
         console.log(`${logPrefix} ${tag}core: ${file} — branded script and path names rewritten`);
     }
+    for (const file of otherWorkflows(files)) {
+        for (const { name, line } of findOldScriptNames(fs.readFileSync(file, "utf-8"), active)) {
+            console.warn(`${logPrefix} ${tag}core: ${file}:${line} still runs the old script name "${name}"; rename it to "${active[name]}" by hand`);
+        }
+    }
     if (pkg === undefined || pkgRaw === undefined || pathRenames.length === 0)
         return;
     let changed = false;
@@ -844,15 +874,39 @@ export function migrateBrandedTemplateFiles(dryRun, ws, logPrefix) {
     const renames = [];
     const templates = getTemplatesRoot();
     for (const unit of CI_SCRIPT_UNITS) {
-        const present = unit.filter(([from]) => fs.existsSync(from));
-        const done = unit.filter(([from, to]) => !fs.existsSync(from) && fs.existsSync(to));
+        const exists = (p) => fs.lstatSync(p, { throwIfNoEntry: false }) !== undefined;
+        const present = unit.filter(([from]) => exists(from));
+        const done = unit.filter(([from, to]) => !exists(from) && exists(to));
         for (const [from, to] of done)
             renames.push({ from, to });
         if (present.length === 0)
             continue;
+        const linkedTargets = present.map(([, to]) => to).filter((to) => linkedPath(to));
+        const linkedAll = [
+            ...new Set([...present.map(([from]) => from).filter((f) => linkedPath(f)), ...linkedTargets]),
+        ];
+        if (linkedAll.length > 0) {
+            console.warn(`${logPrefix} ${tag}core: ${linkedAll.join(", ")} is a symlink (or sits under one); ${present.map(([from]) => from).join(", ")} not moved to the bkit- names; move them by hand and update every reference`);
+            continue;
+        }
+        const referenced = otherWorkflows([
+            ciWorkflowPath("."),
+            path.join(".github", "workflows", "bkit-trivy.yml"),
+        ]).flatMap((file) => {
+            const lines = fs.readFileSync(file, "utf-8").split("\n");
+            return present.flatMap(([from]) => lines.flatMap((l, i) => new RegExp(`${escapeRegExp(from)}(?![\\w.-])`).test(l)
+                ? [{ file, line: i + 1, from }]
+                : []));
+        });
+        if (referenced.length > 0) {
+            for (const { file, line, from } of referenced) {
+                console.warn(`${logPrefix} ${tag}core: ${file}:${line} still names ${from}; the unit was not moved to the bkit- names — move the files by hand and update that reference`);
+            }
+            continue;
+        }
         const edited = present.filter(([from]) => from.endsWith(".mjs") &&
             !SHIPPED_CI_SCRIPT_HASHES[from]?.includes(sha256(fs.readFileSync(from))));
-        const taken = present.filter(([, to]) => fs.existsSync(to));
+        const taken = present.filter(([, to]) => exists(to));
         const noTemplate = present.filter(([, to]) => to.endsWith(".mjs") && !fs.existsSync(path.join(templates, to)));
         if (edited.length > 0 || taken.length > 0 || noTemplate.length > 0) {
             const why = edited.length > 0
@@ -938,7 +992,16 @@ export function migrateBrandedCheckNames(dryRun, ws, logPrefix, defaultBranch = 
         if (!nameLine.test(text))
             continue;
         let next = text.replace(nameLine, `name: ${newName}`);
-        next = next.replace(new RegExp(`^( {2}${escapeRegExp(job)}:\\n)(?! {4}name:)`, "m"), `$1    name: ${newName}\n`);
+        const jobStart = new RegExp(`^ {2}${escapeRegExp(job)}:[ \\t]*\\n`, "m").exec(next);
+        if (jobStart !== null) {
+            const bodyStart = jobStart.index + jobStart[0].length;
+            const rest = next.slice(bodyStart);
+            const end = rest.search(/^(?: {2}\S|\S)/m);
+            const body = end === -1 ? rest : rest.slice(0, end);
+            if (!/^ {4}name:/m.test(body)) {
+                next = `${next.slice(0, bodyStart)}    name: ${newName}\n${next.slice(bodyStart)}`;
+            }
+        }
         finish(target, text, next, [`${oldName} / ${job} -> ${newName} / ${newName}`]);
     }
     const ci = ciWorkflowPath(".");
@@ -995,6 +1058,11 @@ export function migrateValeHouseStyle(dryRun, ws, logPrefix) {
     const bkitDir = path.join(stylesDir, "Bkit");
     if (!fs.lstatSync(houseDir, { throwIfNoEntry: false })?.isDirectory())
         return;
+    const linkedVale = [".vale", stylesDir, bkitDir].find((p) => isLink(p));
+    if (linkedVale !== undefined) {
+        console.warn(`${logPrefix} ${tag}core: ${linkedVale} is a symlink; the House rules were not moved to the Bkit style — move them by hand: mv .vale/styles/House/<rule>.yml .vale/styles/Bkit/ and rename the House.<rule> toggles in .vale.ini to Bkit.<rule>`);
+        return;
+    }
     const moved = [];
     for (const [rule, hashes] of Object.entries(SHIPPED_HOUSE_RULE_HASHES)) {
         const from = path.join(houseDir, `${rule}.yml`);
@@ -1003,7 +1071,7 @@ export function migrateValeHouseStyle(dryRun, ws, logPrefix) {
         const to = path.join(bkitDir, `${rule}.yml`);
         const stays = !hashes.includes(sha256(fs.readFileSync(from)))
             ? "differs from every shipped release"
-            : fs.existsSync(to)
+            : fs.lstatSync(to, { throwIfNoEntry: false }) !== undefined
                 ? `${to} already exists`
                 : undefined;
         if (stays !== undefined) {
