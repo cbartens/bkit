@@ -121,3 +121,17 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-02T02:07:47Z","noun":"steps","verb":"finish","flags":["workflow","step","file","verdict","scope","attempt-of","group","artifact","clamp-log","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-group-gate/1/2/comment","hash":"61e8c9403e75aab42a0f5d46406ee798f3733fbe16efd914a6585a9b28984632","ref":"https://github.com/cbartens/bkit/issues/719#issuecomment-6567364583","at":"2026-11-02T02:07:48Z"}
 {"type":"step-done","workflow":"build","step":"build-group-gate","status":"DONE","at":"2026-11-02T02:07:48Z","parentSha":"cb3de2ea81cb098dfba59db24e0ef2bcbcdfcb14","artifacts":["docs/plans/202610/logs/719-cloud-variants-add/build-group-gate-1-2.md"],"verdict":"FAIL","attempt":2,"group":1,"scope":"pnpm bkit:gate:static-unit","clamped":[{"artifact":"docs/plans/202610/logs/719-cloud-variants-add/build-group-gate-1-2.md","clamped":true,"origLines":3576,"keptLines":1723,"origBytes":277332,"keptBytes":121076,"lineCapped":0,"ceilingHit":false,"raw":".git/bkit-outbox/719-cloud-variants-add/build-group-gate-1-2.log","source":"pnpm bkit:gate:static-unit","fetchedAt":"2026-11-02T02:02:16Z"}]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T02:07:49Z","noun":"counters","verb":"route","flags":["name","of","file","workflow","group","point","continue","exceeded"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T02:07:57Z","noun":"status","verb":"route","flags":["file","workflow","step","group","require"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T02:10:25Z","noun":"tests","verb":"run","flags":["gate","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T02:11:22Z","noun":"ci","verb":"prose","flags":["glob"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T02:11:26Z","noun":"ci","verb":"slop","flags":[]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T02:15:18Z","noun":"tests","verb":"run","flags":["gate","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T02:15:39Z","noun":"ci","verb":"prose","flags":["glob"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T02:15:42Z","noun":"ci","verb":"slop","flags":[]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T02:20:32Z","noun":"tests","verb":"run","flags":["gate","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T02:20:56Z","noun":"ci","verb":"prose","flags":["glob"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T02:20:59Z","noun":"ci","verb":"slop","flags":[]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T02:28:31Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-gaps-remediate/1/2/comment","hash":"6ce200dd90fcadfe5965a729d3ef3b3fd18df0fc18cab7ca15e4132be88f6bff","ref":"https://github.com/cbartens/bkit/issues/719#issuecomment-6567615550","at":"2026-11-02T02:28:32Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-gaps-remediate","status":"DONE","at":"2026-11-02T02:28:32Z","parentSha":"ea1d608d6b164c7c6b9f89360e43418208fc1ff0","artifacts":["docs/plans/202610/logs/719-cloud-variants-add/build-plan-gaps-remediate-1-2-log.md"],"verdict":"FAIL","attempt":2,"group":1,"strategy":"PIVOT"}
