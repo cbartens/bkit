@@ -55,3 +55,10 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-02T10:41:36Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-verify/1/1/comment","hash":"c7568277f648550d9f85771ead0ac76cbfe7ecd3dfcbcc7889c5a66f295cdf60","ref":"https://github.com/cbartens/bkit/issues/830#issuecomment-6575115528","at":"2026-11-02T10:41:37Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-02T10:41:37Z","parentSha":"4c6adc33ecc5af637075a5e1b01af602b9ee3a6d","artifacts":["docs/plans/202611/logs/830-debug-diagnose-named/build-plan-verify-1-1.md"],"verdict":"CONCERNS","attempt":1,"group":1,"failures":1}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T10:41:45Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks","green"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T10:41:50Z","noun":"counters","verb":"route","flags":["name","of","file","workflow","group","point","continue","exceeded"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T10:41:55Z","noun":"status","verb":"route","flags":["file","workflow","step","group","require"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T10:44:40Z","noun":"tests","verb":"changed","flags":["fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T10:50:31Z","noun":"workflows","verb":"fail","flags":["post","issue","workflow","fid","month","token","label","step-number","step-title","sub-step","error-file","session-dir"]}
+{"type":"workflow-failed","workflow":"build","at":"2026-11-02T10:50:31Z"}
+{"type":"engine-action","action":"comment","key":"build/1/failure/9/3/comment","hash":"f81dfeb2c01e896cac716cd1017052325ac52b04b6e8edc19a37df16e882e064","ref":"https://github.com/cbartens/bkit/issues/830#issuecomment-6575282199","at":"2026-11-02T10:50:32Z"}

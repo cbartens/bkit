@@ -263,7 +263,10 @@ function locateCi(ctx) {
         }
         else {
             const response = obj(api(`/repos/${repo}/actions/workflows/${queryValue(declared.ciWorkflow)}/runs?branch=${queryValue(branch)}&status=completed&per_page=100${expectedHead ? `&head_sha=${expectedHead}` : ""}`));
-            if (!Array.isArray(response.workflow_runs) || !Number.isSafeInteger(response.total_count))
+            if (!Array.isArray(response.workflow_runs) ||
+                !Number.isSafeInteger(response.total_count) ||
+                Number(response.total_count) < 0 ||
+                Number(response.total_count) < response.workflow_runs.length)
                 throw new CommandError(82, "workflow lookup returned an incomplete response");
             const candidates = response.workflow_runs
                 .map(obj)

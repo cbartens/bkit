@@ -237,7 +237,7 @@ The Selection and State Contract and Verification and Rollback sections are bind
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** Parse and safely adopt an explicitly named branch.
+- [x] **TASK 1:** Parse and safely adopt an explicitly named branch.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/branches.ts`: add `parse --prompt-file` with `branch`, `via` and `where` outputs. Validate candidates with `git check-ref-format --branch` and exact `refs/heads/` or `refs/remotes/origin/` existence checks. Deduplicate the same branch found locally and remotely.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/worktrees.ts`: accept `--branch` for debug, preserving ship behavior and keeping `--issue` ship-only. An existing worktree must match the requested branch. Reuse the existing adoption path; do not switch a conflicting checkout or create a missing branch.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/branches.ts`: `branches parse`: 0 for one branch or no candidate, 3 for a missing explicit branch, 8 for ambiguity. Existing setup refusal codes remain documented. Ambiguous or conflicting user input stops before edits.

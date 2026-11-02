@@ -114,6 +114,7 @@ type LocateData = {
   error?: boolean;
   malformed?: boolean;
   failPage?: boolean;
+  lookupCount?: number;
 };
 
 /** Unit boundary: real temporary git repository and a fixture-only GitHub executable. */
@@ -214,7 +215,7 @@ if (/\\/actions\\/workflows\\/[^/]+\\/runs/.test(endpoint)) {
     (!query.get("branch") || run.head_branch === query.get("branch")) &&
     (endpoint.includes("consumer-ci.yml") || endpoint.includes("456")) &&
     (run.workflow_id === 456 || run.path === ".github/workflows/consumer-ci.yml"));
-  emit({total_count: runs.length, workflow_runs: runs}); process.exit(0);
+  emit({total_count: data.lookupCount ?? runs.length, workflow_runs: runs}); process.exit(0);
 }
 if (/\\/actions\\/runs\\/\\d+/.test(endpoint)) {
   const id = Number(endpoint.match(/\\/runs\\/(\\d+)/)[1]);
@@ -477,6 +478,24 @@ describe("bkit runs locate", () => {
     absent.data.runs = [];
     expect((await absent.locate()).code).toBe(1);
     expect(absent.selected()).toMatchObject({ mode: "local" });
+  });
+
+  it.each([-1, 0.5, 1])(
+    "rejects malformed empty workflow result count %s without selecting local",
+    async (count) => {
+      const f = locateFixture();
+      f.data.runs = [];
+      f.data.lookupCount = count;
+      expect((await f.locate()).code).toBe(82);
+      expect(fs.existsSync(f.selection)).toBe(false);
+    },
+  );
+
+  it("rejects a workflow result count smaller than its returned records", async () => {
+    const f = locateFixture();
+    f.data.lookupCount = 0;
+    expect((await f.locate()).code).toBe(82);
+    expect(fs.existsSync(f.selection)).toBe(false);
   });
 
   it("validates normalized fallback evidence against the requested identity", async () => {
