@@ -1079,18 +1079,16 @@ describe("#255 — upgrade does not force-create uninstalled host/tooling module
     expect(out).toContain(".github/workflows/bkit-ci.yml");
   });
 
-  /** The shipped pre-#748 content of a CI script, read from the v6.0.0 release tag. */
+  /** The shipped pre-#748 content of a CI script, read from the committed v6.0.0 fixtures. */
   function shippedOldCiScript(file: string): string {
-    const env = { ...process.env };
-    delete env.GIT_DIR;
-    delete env.GIT_WORK_TREE;
-    const r = spawnSync("git", ["show", `v6.0.0:.bkit/templates/scripts/ci/${file}`], {
-      cwd: originalCwd,
-      encoding: "utf-8",
-      env,
-    });
-    expect(r.status, r.stderr).toBe(0);
-    return r.stdout;
+    return fs.readFileSync(
+      path.join(
+        originalCwd,
+        ".bkit/core/engine/install/modules/__fixtures__/v6.0.0/scripts/ci",
+        `${file}.fixture`,
+      ),
+      "utf-8",
+    );
   }
   const CI_FILES = [
     "check-capstone.mjs",
@@ -1154,18 +1152,16 @@ describe("#255 — upgrade does not force-create uninstalled host/tooling module
     expect(snapshotTree()).toEqual(afterFirst);
   });
 
-  /** The shipped pre-#748 content of a template file, read from the v6.0.0 release tag. */
+  /** The shipped pre-#748 content of a template file, read from the committed v6.0.0 fixtures. */
   function shippedAtV6(templateRel: string): string {
-    const env = { ...process.env };
-    delete env.GIT_DIR;
-    delete env.GIT_WORK_TREE;
-    const r = spawnSync("git", ["show", `v6.0.0:.bkit/templates/${templateRel}`], {
-      cwd: originalCwd,
-      encoding: "utf-8",
-      env,
-    });
-    expect(r.status, r.stderr).toBe(0);
-    return r.stdout;
+    return fs.readFileSync(
+      path.join(
+        originalCwd,
+        ".bkit/core/engine/install/modules/__fixtures__/v6.0.0",
+        `${templateRel}.fixture`,
+      ),
+      "utf-8",
+    );
   }
   const WF_FILES = ["bkit-cloud.yml", "bkit-renovate.yml", "bkit-trivy.yml"];
   function seedOldCheckNames(): void {

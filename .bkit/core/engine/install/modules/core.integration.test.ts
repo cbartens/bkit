@@ -1852,18 +1852,16 @@ describe("migrateBrandedTemplateFiles (via runBkitDocs)", () => {
     runBkitDocs(ctx.dryRun, ctx.tokens, ctx.ws, ctx.logPrefix);
     return ctx;
   };
-  /** The shipped pre-#748 content of a CI script, read from the v6.0.0 release tag. */
+  /** The shipped pre-#748 content of a CI script, read from the committed v6.0.0 fixtures. */
   const shippedOld = (file: string): string => {
-    const env = { ...process.env };
-    delete env.GIT_DIR;
-    delete env.GIT_WORK_TREE;
-    const r = spawnSync("git", ["show", `v6.0.0:.bkit/templates/scripts/ci/${file}`], {
-      cwd: originalCwd,
-      encoding: "utf-8",
-      env,
-    });
-    expect(r.status, r.stderr).toBe(0);
-    return r.stdout;
+    return fs.readFileSync(
+      path.join(
+        originalCwd,
+        ".bkit/core/engine/install/modules/__fixtures__/v6.0.0/scripts/ci",
+        `${file}.fixture`,
+      ),
+      "utf-8",
+    );
   };
   const templateFile = (file: string): string =>
     fs.readFileSync(path.join(getTemplatesRoot(), "scripts", "ci", file), "utf-8");
@@ -2023,18 +2021,16 @@ describe("migrateBrandedTemplateFiles (via runBkitDocs)", () => {
   });
 });
 
-/** The shipped pre-#748 content of a template file, read from the v6.0.0 release tag. */
+/** The shipped pre-#748 content of a template file, read from the committed v6.0.0 fixtures. */
 function shippedAtV6(templateRel: string): string {
-  const env = { ...process.env };
-  delete env.GIT_DIR;
-  delete env.GIT_WORK_TREE;
-  const r = spawnSync("git", ["show", `v6.0.0:.bkit/templates/${templateRel}`], {
-    cwd: originalCwd,
-    encoding: "utf-8",
-    env,
-  });
-  expect(r.status, r.stderr).toBe(0);
-  return r.stdout;
+  return fs.readFileSync(
+    path.join(
+      originalCwd,
+      ".bkit/core/engine/install/modules/__fixtures__/v6.0.0",
+      `${templateRel}.fixture`,
+    ),
+    "utf-8",
+  );
 }
 
 describe("migrateBrandedCheckNames (via runBkitDocs)", () => {
