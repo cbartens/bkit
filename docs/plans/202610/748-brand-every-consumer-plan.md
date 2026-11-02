@@ -1001,7 +1001,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
 
 <!-- bkit:task 23 start -->
 
-- [ ] **TASK 23:** The pattern in `renameScriptTokens` that skips package-selecting flags backtracks exponentially, so a short committed line can hang `bkit check`, `bkit install` and `bkit upgrade`
+- [x] **TASK 23:** The pattern in `renameScriptTokens` that skips package-selecting flags backtracks exponentially, so a short committed line can hang `bkit check`, `bkit install` and `bkit upgrade`
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/modules/core.ts` (`renameScriptTokens`, the flag part `-{1,2}[\w-]+`) · **Round:** 2
   - **DONE WHEN:** no pattern in `core.ts` (and so none in the built `dist/install/modules/core.js`) can match the same flag text in two ways: `--a` currently matches as `-` + `-a` or as `--` + `a`, so when the overall match fails the engine tries every combination and the time doubles with each extra flag. Measured on the old pattern: 24 flags take 59 ms, 28 flags 968 ms, 30 flags 3933 ms, and 40 flags (about 160 bytes) would take over an hour. The input can be any `package.json` script value, `.husky/pre-commit`, `.husky/pre-push` or the CI workflow file, and it runs on every check and upgrade. Every existing `renameScriptTokens` and `findOldScriptNames` test keeps passing with the same output
   - **TEST FIRST:**
