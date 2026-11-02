@@ -385,7 +385,7 @@ One implementation PR may carry all groups. Group 1 supplies the engine behavior
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** Tell every workflow to show the printed line word for word after each step, as plain text and not in a code block
+- [x] **TASK 3:** Tell every workflow to show the printed line word for word after each step, as plain text and not in a code block
   - **UPDATE:** `.bkit/instructions.md`: extend the canonical `workflow-narrate` clause without removing its existing wording, then run `pnpm instructions:sync`.
   - **UPDATE:** `.bkit/core/workflows/bkit-design.md`: synchronized narration and explicit Step 1 progress gate; expose any sole completion output hidden by redirection.
   - **UPDATE:** `.bkit/core/workflows/bkit-plan.md`: synchronized narration and explicit Step 1 progress gate; keep deferred Step 1 bookkeeping from duplicating chat output.
@@ -403,7 +403,7 @@ One implementation PR may carry all groups. Group 1 supplies the engine behavior
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** Update the docs that describe narration and step endings
+- [x] **TASK 4:** Update the docs that describe narration and step endings
   - **UPDATE:** `.bkit/core/.bkit/workflows.md`: describe the final progress contract, formulas, loop backtracking, gate-only numeric positions and plain-text narration.
   - **UPDATE:** `.bkit/core/.bkit/cli.md`: explain the generated progress output and additive gate option outside the generated command-spec region where appropriate.
   - **UPDATE:** `docs/testing.md`: in § Key test files below `<!-- bkit:end -->`, record focused progress calculation/command coverage and the owner-run phone procedure in this project-owned region.
