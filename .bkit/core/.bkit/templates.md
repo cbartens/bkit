@@ -622,7 +622,7 @@ Issues are the first input every workflow reads. There is one form per way work 
 
 graphify runs on demand only. It is not an installed skill or git hook. graphify ships an MCP server (`graphify-mcp`, stdio default). That server stays unwired, because its answers come from the `graph.json` snapshot, and build / debug agents invalidate the graph faster than it rebuilds. Serena, which has no index to go stale, owns the agent surface.
 
-Two gates keep `docs/capabilities.md` current on dev: the pre-push block below, which blocks a stale push to dev or to a branch with an open PR into dev, and a self-skipping CI step on every push. Agents read `docs/capabilities.md`. Audit templates that need the graph build it via `scripts/graphify/bkit-graphify.sh`. The only tracked output is `docs/capabilities.md`. The Mermaid views are `docs/graphify-out/reports/graph-packages.mmd` and `graph-modules.mmd`. Reference: https://github.com/Graphify-Labs/graphify.
+Two gates keep `docs/capabilities.md` current on dev: the pre-push block below, which blocks a stale push to dev or to a branch with an open PR into dev, and a self-skipping CI step on every push. Agents read `docs/capabilities.md`. Audit templates that need the graph build it via `scripts/graphify/bkit-graphify.sh`. The tracked outputs are `docs/capabilities.md` and any copies of its packages diagram (below). The Mermaid views are `docs/graphify-out/reports/graph-packages.mmd` and `graph-modules.mmd`. Reference: https://github.com/Graphify-Labs/graphify.
 
 ```bash
 uv tool install "$(bash scripts/graphify/bkit-graphify.sh spec)"
@@ -679,10 +679,10 @@ graphify-out/
 | `pnpm graph` | Extract + cluster. Local. No API key. |
 | `pnpm graph:clean` | Same, after deleting `docs/graphify-out/`. Required after any tsconfig `paths` change. `--force` does not invalidate the module-resolution cache. |
 | `pnpm graph:update` | Re-extract changed files, then recluster. |
-| `pnpm graph:rollup` | Package and module views, plus `docs/capabilities.md`. |
-| `pnpm graph:check` | Rebuild and fail if `docs/capabilities.md` is not what this tree produces. Reads uncommitted edits. Shipped as a self-skipping CI step (every push and pull request; on a PR, GitHub's test merge into the base); enabled in bkit's own CI. |
+| `pnpm graph:rollup` | Package and module views, plus `docs/capabilities.md` and its diagram copies. |
+| `pnpm graph:check` | Rebuild and fail if `docs/capabilities.md` is not what this tree produces, or a diagram copy differs from it. Reads uncommitted edits. Shipped as a self-skipping CI step (every push and pull request; on a PR, GitHub's test merge into the base); enabled in bkit's own CI. |
 | `bash scripts/graphify/bkit-graphify.sh check-at <rev>` | `check` in a throwaway checkout of `<rev>` (default HEAD); pre-push gate runs it on the commit pushed to dev. |
-| `pnpm graph:refresh` | Rebuild register in a throwaway checkout of the staged files (the index) → copy over `docs/capabilities.md`. Stage the change first, so a run before its commit builds the new state. Fixes a red gate; commit result. |
+| `pnpm graph:refresh` | Rebuild register in a throwaway checkout of the staged files (the index) → copy over `docs/capabilities.md` → rewrite the diagram copies. Stage the change first, so a run before its commit builds the new state. Fixes a red gate; commit result. |
 | `pnpm graph:scoped [path]` | One subtree. Default `apps/web/src`. |
 | `pnpm graph:graphml` | Opt-in GraphML for Gephi / yEd. |
 
@@ -695,6 +695,14 @@ graphify-out/
 
 - **If** the repo has one module per file → edges are thinner, so lower the default in your copy.
 - An env override changes `docs/capabilities.md` per shell, and fails `pnpm graph:check`.
+
+To show the packages diagram in another doc, such as your `README.md`, copy `scripts/graphify/bkit-graph-embed.py`:
+
+- Put one `<!-- graph:packages:start -->` and one `<!-- graph:packages:end -->` line in the doc, where the diagram goes.
+- Add the doc's path to `GRAPH_EMBED_DOCS` in `bkit-graphify.sh`. Separate several paths with spaces.
+- `rollup`, `register` and `refresh` rewrite the block from `docs/capabilities.md`, so commit the doc with the register.
+- `check` fails when a copy differs from the register, so the pre-push block and CI gate the copies too.
+- **If** a listed doc lacks exactly one marker pair → the run exits 2.
 
 Iterate in mermaid.live, and render the internal-architecture diagram locally:
 
@@ -716,6 +724,8 @@ npx -y @mermaid-js/mermaid-cli -i docs/graphify-out/reports/graph-packages.mmd -
   - `by_package` / `by_module` in `bkit-graphify-rollup.py` (the diagram boxes)
 - **If** the repo has another layout → adapt all five. Otherwise capabilities read `gap`, and the diagrams come out empty.
 - **If** the repo has one flat source folder → `by_module` gives one node per file.
+- **If** the repo is a single package → have `by_package` return its top-level source folders, so each package box is one part of the codebase.
+- The packages diagram groups package boxes by their parent folder and gives each group one colour, so the keys `by_package` returns decide the groups.
 - **If** there are no web routes, or no imports between top-level folders → the route and package diagrams stay empty. That is the answer, not a fault.
 - The extract warning `had syntax errors and may be partially extracted` can fire on valid code. The symbols after that line are then missing from the graph, so treat that file as unmapped.
 
