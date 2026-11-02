@@ -971,17 +971,17 @@ describe("bkit tests plan-check", () => {
     ].join("\n");
 
   it("reports a planned test of an open task whose name its file already carries, and never refuses for it", async () => {
-    const tf = (n: number, box = " ") =>
+    const tf = (n: number, name: string, box = " ") =>
       taskBlock(
         n,
         [
           "  - **DONE WHEN:** passes",
           "  - **TEST FIRST:**",
-          `    - \`src/a.test.ts\` \`${n === 1 ? "adds a row" : "counts rows"}\` fails`,
+          `    - \`src/a.test.ts\` \`${name}\` fails`,
         ],
         box,
       );
-    write("plan.md", groupBlock(1, tf(1), tf(2)));
+    write("plan.md", groupBlock(1, tf(1, "adds a row"), tf(2, "counts rows")));
     fs.mkdirSync(path.join(cwd, "src"), { recursive: true });
     fs.writeFileSync(
       path.join(cwd, "src/a.test.ts"),
@@ -1000,7 +1000,7 @@ describe("bkit tests plan-check", () => {
       "adds a row",
     );
     expect(report()).toContain('already holds a test named "adds a row"');
-    write("plan.md", groupBlock(1, tf(1, "x"), tf(2)));
+    write("plan.md", groupBlock(1, tf(1, "adds a row", "x"), tf(2, "counts rows")));
     expect((await check("--existence=report")).json.existing).toEqual([]);
   });
 
