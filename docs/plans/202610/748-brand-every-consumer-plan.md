@@ -995,9 +995,9 @@ Build order: script names, template file names and the branding guard (Group 1) 
 <!-- bkit:task 22 end -->
 <!-- bkit:group 7 end -->
 
-### TASK GROUP 8: Challenge round 2 finding left without a task
-
 <!-- bkit:group 8 start -->
+
+### TASK GROUP 8: Challenge round 2 finding left without a task
 
 <!-- bkit:task 23 start -->
 
