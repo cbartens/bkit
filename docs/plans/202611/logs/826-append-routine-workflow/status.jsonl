@@ -150,3 +150,7 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-02T22:34:30Z","noun":"steps","verb":"finish","flags":["workflow","step","file","number","post","title","tree","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-branch-sync/-/-/comment","hash":"7b18f1d2d89d3896055240594493feaa46c437f9736cb072ab35f6ed37a5e40a","ref":"https://github.com/cbartens/bkit/issues/826#issuecomment-6590204559","at":"2026-11-02T22:34:31Z"}
 {"type":"step-done","workflow":"build","step":"build-branch-sync","status":"DONE","at":"2026-11-02T22:34:31Z","parentSha":"624c54f690dd76220f1a110ad36413cd6cbb43fb","artifacts":[]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T22:34:38Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T22:34:52Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt","number","post","title","comment-field","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-convert/-/1/comment","hash":"3cfb345e449cbbab37f8a013a0ea246125d422c30a7e8e8f8cf8edddf2a676ff","ref":"https://github.com/cbartens/bkit/issues/826#issuecomment-6590211101","at":"2026-11-02T22:34:53Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-convert","status":"DONE","at":"2026-11-02T22:34:53Z","parentSha":"092992d646e50b1a6bcc05b96a1ee15ee108ca53","artifacts":[],"attempt":1}
