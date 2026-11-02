@@ -26,3 +26,7 @@
 {"type":"step-done","workflow":"build","step":"build-start-workflow","status":"DONE","at":"2026-11-02T07:48:21Z","parentSha":"2f310527c95c5c5a83549e5c72b88e9cf8be2ee8","artifacts":[]}
 {"type":"engine-call","workflow":"build","at":"2026-11-02T07:48:21Z","noun":"steps","verb":"finish","flags":["workflow","step","file","artifact","number","post","title","tree","message"]}
 {"type":"step-done","workflow":"build","step":"build-worktree-setup","status":"DONE","at":"2026-11-02T07:48:22Z","parentSha":"2f310527c95c5c5a83549e5c72b88e9cf8be2ee8","artifacts":["docs/plans/202610/logs/724-machine-wide-test/build-input-1.md"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T07:48:42Z","noun":"status","verb":"resume","flags":["workflow","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T07:48:42Z","noun":"branches","verb":"sync","flags":["merge-docs"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T07:48:52Z","noun":"steps","verb":"finish","flags":["workflow","step","file","number","post","title","tree","message"]}
+{"type":"step-done","workflow":"build","step":"build-branch-sync","status":"DONE","at":"2026-11-02T07:48:52Z","parentSha":"ebe7532469db3dec32d725a1d0c65dfb37751832","artifacts":[]}
