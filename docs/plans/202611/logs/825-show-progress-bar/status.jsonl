@@ -161,3 +161,12 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-02T22:14:49Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-gaps-remediate/1/3/comment","hash":"483ccdc3da72366f7976ff355f6484f997077587384c897dd24ddc2b540b0e17","ref":"https://github.com/cbartens/bkit/issues/825#issuecomment-6589817674","at":"2026-11-02T22:14:50Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-gaps-remediate","status":"DONE","at":"2026-11-02T22:14:50Z","parentSha":"c9586e5fc5e2e646e2a605e050fd40cef88e4f77","artifacts":["docs/plans/202611/logs/825-show-progress-bar/build-plan-gaps-remediate-1-3-log.md"],"verdict":"CONCERNS","attempt":3,"group":1,"strategy":"FINAL"}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T22:15:06Z","noun":"branches","verb":"scan-diff","flags":["base","code"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T22:15:07Z","noun":"counters","verb":"derive","flags":["file","workflow","step","position"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T22:15:17Z","noun":"decisions","verb":"compose","flags":["out","header","items","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T22:15:23Z","noun":"counters","verb":"max","flags":["point","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T22:15:23Z","noun":"runtime","verb":"assert","flags":["file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T22:15:28Z","noun":"counters","verb":"grant","flags":["name","of","group","point","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T22:15:34Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","artifact","field","number","post","title","comment-body","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-decision/-/2/comment","hash":"35f7fbf04a5d8f927b421944f80852386333070a18a796ad592c20131a0f394d","ref":"https://github.com/cbartens/bkit/issues/825#issuecomment-6589832717","at":"2026-11-02T22:15:35Z"}
+{"type":"step-done","workflow":"build","step":"build-decision","status":"DONE","at":"2026-11-02T22:15:35Z","parentSha":"9dd9e85de0a0013c5864003d9ae96b2d20e22ef3","artifacts":["docs/plans/202611/logs/825-show-progress-bar/build-decision-1-2.md"],"attempt":2,"route":"verify"}
