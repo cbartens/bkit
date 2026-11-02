@@ -735,7 +735,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
 
 <!-- bkit:task 7 start -->
 
-- [ ] **TASK 7:** Unhashed write class and the husky / CI token migration
+- [x] **TASK 7:** Unhashed write class and the husky / CI token migration
   - **UPDATE:** `WriteEntry` in `.bkit/core/engine/install/write.ts`: optional `unhashed?: true`
   - **UPDATE:** `.bkit/core/engine/install/modules/core.ts`: install postDispatch canonical-hash loop (~1027-1060) skips `unhashed` entries
   - **UPDATE:** `.bkit/core/engine/commands/install/upgrade.ts`: the `renderWs.writes` → `updateCanonicalHashesAfterUpgrade` path (~1025-1045) skips `unhashed` entries
@@ -760,7 +760,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
 
 <!-- bkit:task 8 start -->
 
-- [ ] **TASK 8:** Upgrade migration for the renamed CI script files
+- [x] **TASK 8:** Upgrade migration for the renamed CI script files
   - **UPDATE:** `.bkit/core/engine/checks/after/ci-yml.ts`: export `CI_SCRIPT_RENAMES` (old → new path per file, already listing all ten) and group it into units: `check-capstone.mjs` + `.test.mjs`; `check-dependency-audit.mjs` + `.test.mjs` + `accepted-advisories.json`; `check-accepted-divergences.mjs` + `.test.mjs` + `accepted-divergences.json`; `lanes/resolve-push-base.mjs` + `.test.mjs`; `detectCiScriptsOldNames` doc comment states that `bkit upgrade` moves unedited copies and the advisory names the ones it leaves
   - **UPDATE:** `.bkit/core/engine/install/modules/core.ts`: add `SHIPPED_CI_SCRIPT_HASHES` — sha256 of every distinct release content of the eight `.mjs` files, from `git tag -l 'v*'` × every path each file has had (`git log --all --follow --name-only -- .bkit/templates/scripts/ci/<file>`), committed as constants in the `RETIRED_DRIVER_HASHES` shape
   - **UPDATE:** `.bkit/core/engine/install/modules/core.ts`: add `migrateBrandedTemplateFiles(dryRun, ws, logPrefix): PathRename[]` — a unit whose present `.mjs` files all match `SHIPPED_CI_SCRIPT_HASHES` and whose `bkit-` targets are absent → old files removed (`{ action: "write", unhashed: true }`), `.mjs` targets written from `getTemplatesRoot()` and the data file moved byte-identical (`{ action: "write", unhashed: true }`); an edited file or an existing target → unit left, one `console.warn` naming the manual move; no `scripts/ci/` → silent; returns the renames applied plus those already applied (old absent, new present)
@@ -780,7 +780,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
 
 <!-- bkit:task 13 start -->
 
-- [ ] **TASK 13:** Scope the second-upgrade check of the hook and CI token migration to its own log line
+- [x] **TASK 13:** Scope the second-upgrade check of the hook and CI token migration to its own log line
   - **UPDATE:** `.bkit/core/engine/commands/install/upgrade.integration.test.ts`: replace `copy-and-own migration writes record no canonical hash and a second upgrade writes nothing` (Task 7, line ~1059) with a test that checks the second upgrade's output for the migration's own line (`core: .husky/pre-push — branded`) and not for the bare path `.husky/pre-push`, which every upgrade of the bare scratch consumer names in advisories
   - **DEPENDS ON:** 7
   - **DONE WHEN:** the replaced test passes; it still asserts the hook and CI file are rewritten, `.bkit/version` `canonicalHashes` has no entry for them, and a second upgrade logs no migration line for them; the Task 7 test it replaces is gone from the file
@@ -791,7 +791,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
 
 <!-- bkit:task 14 start -->
 
-- [ ] **TASK 14:** Leave the per-upgrade cache-bust file out of the second-run snapshot of the CI script move
+- [x] **TASK 14:** Leave the per-upgrade cache-bust file out of the second-run snapshot of the CI script move
   - **UPDATE:** `.bkit/core/engine/commands/install/upgrade.integration.test.ts`: replace `a second template-file migration and a dry run write and move nothing` (Task 8, line ~1147) with a test whose before-and-after tree snapshot leaves out `.claude/bkit-cloud.md`, which `renderCloudCacheBust` (`.bkit/core/engine/install/cloud-env.ts:335`) rewrites with a new `# cache-bust` counter on every upgrade
   - **DEPENDS ON:** 8
   - **DONE WHEN:** the replaced test passes; `scripts/ci/`, the hooks and the CI workflow are equal before and after a second upgrade and after a dry run; the Task 8 test it replaces is gone from the file
