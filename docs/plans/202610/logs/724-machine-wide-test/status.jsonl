@@ -107,3 +107,17 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-02T08:59:56Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/2/build-plan-gaps-remediate/1/2/comment","hash":"6ce200dd90fcadfe5965a729d3ef3b3fd18df0fc18cab7ca15e4132be88f6bff","ref":"https://github.com/cbartens/bkit/issues/724#issuecomment-6573111946","at":"2026-11-02T08:59:57Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-gaps-remediate","status":"DONE","at":"2026-11-02T08:59:57Z","parentSha":"d01f650809ac26c5a8877bc62ec9875db559dd3a","artifacts":["docs/plans/202610/logs/724-machine-wide-test/build-plan-gaps-remediate-1-2-log.md"],"verdict":"FAIL","attempt":2,"group":1,"strategy":"PIVOT"}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T08:59:59Z","noun":"branches","verb":"scan-diff","flags":["base","code"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T08:59:59Z","noun":"counters","verb":"derive","flags":["file","workflow","step","position"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T09:00:33Z","noun":"decisions","verb":"compose","flags":["out","header","items","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T09:00:34Z","noun":"counters","verb":"max","flags":["point","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T09:00:34Z","noun":"runtime","verb":"assert","flags":["file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T09:00:48Z","noun":"status","verb":"row","flags":["file","workflow","type","field"]}
+{"type":"owner-pause","workflow":"build","at":"2026-11-02T09:00:48Z","reason":"decision"}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T09:51:05Z","noun":"status","verb":"row","flags":["file","workflow","type"]}
+{"type":"owner-answer","workflow":"build","at":"2026-11-02T09:51:05Z"}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T09:54:07Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T09:54:14Z","noun":"counters","verb":"grant","flags":["name","of","group","point","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T09:54:18Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","artifact","field","number","post","title","comment-body","message"]}
+{"type":"engine-action","action":"comment","key":"build/2/build-decision/-/1/comment","hash":"42dc9995886cc5fd726d0832c820eee6d2b6dd4eb3dab73eefd313fd73b98610","ref":"https://github.com/cbartens/bkit/issues/724#issuecomment-6574162819","at":"2026-11-02T09:54:19Z"}
+{"type":"step-done","workflow":"build","step":"build-decision","status":"DONE","at":"2026-11-02T09:54:19Z","parentSha":"ff8d9e7f31a912126c2afc5d464e79dda471b56a","artifacts":["docs/plans/202610/logs/724-machine-wide-test/build-decision-2-1.md"],"attempt":1,"route":"fix"}

@@ -152,6 +152,7 @@ When several agents run test suites at the same time on one laptop, the machine 
 | Test description | Type | Target file | Task |
 | --- | --- | --- | --- |
 | a named lock is machine-wide: checkouts of two different repos wait on the same named lock | Integration | `.bkit/core/engine/audits/templates/machine-lock.integration.test.ts` | 1 |
+| copied-repository lock helpers execute in the requested caller checkout | Integration | `.bkit/core/engine/audits/templates/machine-lock.integration.test.ts` | 12 |
 | one process holds a named lock and the unnamed stack lock side by side | Integration | `.bkit/core/engine/audits/templates/machine-lock.integration.test.ts` | 1 |
 | a runner started by a named-lock holder does not wait on that named lock | Integration | `.bkit/core/engine/audits/templates/machine-lock.integration.test.ts` | 1 |
 | the unnamed stack lock keeps its lock file path, so an older copy and this one exclude each other | Integration | `.bkit/core/engine/audits/templates/machine-lock.integration.test.ts` | 1 |
@@ -757,6 +758,16 @@ Build order: script (Groups 1-2) → engine (Group 3; TASK 10 runs after TASK 5 
     - `.bkit/core/engine/audits/templates/machine-lock.integration.test.ts` `run with no who names the run from LOCAL_STACK_LOCK_WHO, else the package.json script name` fails on `run --lock tests -- <cmd>` exiting 2 as a usage error, or a holder line naming `--lock`
 
 <!-- bkit:task 1 end -->
+
+<!-- bkit:task 12 start -->
+
+- [ ] **TASK 12:** Correct the copied-repository test process working directories
+  - **UPDATE:** `.bkit/core/engine/audits/templates/machine-lock.integration.test.ts`: through the tests step, give the lock helpers an explicit caller working directory and run each copied-repository process in its respective checkout. Preserve the existing machine-wide exclusion and caller-checkout assertions. Add a regression that observes the subprocess working directory, first failing against the existing helper setup; do not undo production code to obtain a red result.
+  - **DONE WHEN:** `pnpm vitest run .bkit/core/engine/audits/templates/machine-lock.integration.test.ts` passes, including the machine-wide cross-repository test and the helper working-directory regression; holder messages still identify the caller checkout.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/templates/machine-lock.integration.test.ts` `copied-repository lock helpers execute in the requested caller checkout` fails on the helper subprocess inheriting the build worktree instead of the requested temporary repository
+
+<!-- bkit:task 12 end -->
 <!-- bkit:group 1 end -->
 
 <!-- bkit:group 2 start -->
