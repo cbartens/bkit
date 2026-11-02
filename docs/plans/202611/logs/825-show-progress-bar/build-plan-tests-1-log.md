@@ -33,3 +33,7 @@ WROTE — TASK 2: `.bkit/core/engine/commands/workflow/progress.integration.test
 WROTE — TASK 2: `.bkit/core/engine/commands/workflow/progress.integration.test.ts` `progress specialized completion producers`
 WROTE — TASK 2: `.bkit/core/engine/commands/workflow/progress.integration.test.ts` `progress gate only completions`
 WROTE — TASK 2: `.bkit/core/engine/commands/workflow/progress.integration.test.ts` `progress excludes noncompletions`
+SOURCE — TASK 2: The owner approved the specific fixture correction in build-decision-1-1.md: `Decision: Fix now — B)`.
+SOURCE — TASK 2: `.bkit/core/engine/commands/lib.ts:369` skips malformed lines when finding the active run, and `.bkit/core/engine/commands/lib.ts:478` appends its normal engine-call journal entry before command validation. The malformed-status fixture therefore expects one journal entry. The unreadable-status fixture still expects zero.
+WROTE — TASK 2: `.bkit/core/engine/commands/workflow/progress.integration.test.ts` `progress excludes noncompletions`
+SOURCE — TASK 2: On 2026-11-03, targeted `pnpm bkit:lint:file .bkit/core/engine/commands/workflow/progress.integration.test.ts` exited 0, and `pnpm bkit:test:file .bkit/core/engine/commands/workflow/progress.integration.test.ts` exited 0 with 8 Integration tests passed. The sole test edit changes the malformed-status journal expectation to one; every completion, commit, and journal assertion remains present. Production code was unchanged.

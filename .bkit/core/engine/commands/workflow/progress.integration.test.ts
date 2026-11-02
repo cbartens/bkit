@@ -170,7 +170,7 @@ function invalidInput(kind: string) {
         .readFileSync(file, "utf8")
         .split("\n")
         .filter((line) => line.includes('"engine-call"')).length,
-    expectedJournals: kind === "malformed-status" ? 0 : 1,
+    expectedJournals: 1,
   };
 }
 
