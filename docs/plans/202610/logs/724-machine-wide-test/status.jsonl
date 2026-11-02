@@ -260,3 +260,18 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-02T23:27:48Z","noun":"steps","verb":"finish","flags":["workflow","step","file","verdict","scope","attempt-of","group","artifact","clamp-log","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/3/build-group-gate/3/1/comment","hash":"6896209f5cbc943d67d73c5458c873f3971d72def479037b437d5e4f68e7f2a6","ref":"https://github.com/cbartens/bkit/issues/724#issuecomment-6591118907","at":"2026-11-02T23:27:49Z"}
 {"type":"step-done","workflow":"build","step":"build-group-gate","status":"DONE","at":"2026-11-02T23:27:49Z","parentSha":"6721fa15f7225ea7c06f537d7fa6868cab25755f","artifacts":["docs/plans/202610/logs/724-machine-wide-test/build-group-gate-3-1.md"],"verdict":"FAIL","attempt":1,"group":3,"scope":"pnpm bkit:gate:static-unit","clamped":[{"artifact":"docs/plans/202610/logs/724-machine-wide-test/build-group-gate-3-1.md","clamped":true,"origLines":3376,"keptLines":1694,"origBytes":260239,"keptBytes":114857,"lineCapped":0,"ceilingHit":false,"raw":".git/bkit-outbox/724-machine-wide-test/build-group-gate-3-1.log","source":"pnpm bkit:gate:static-unit","fetchedAt":"2026-11-02T23:22:32Z"}]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T23:28:04Z","noun":"counters","verb":"route","flags":["name","of","file","workflow","group","point","continue","exceeded"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T23:28:04Z","noun":"status","verb":"route","flags":["file","workflow","step","group","require"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T23:33:09Z","noun":"tests","verb":"run","flags":["gate","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T23:33:27Z","noun":"ci","verb":"prose","flags":["glob"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T23:33:29Z","noun":"ci","verb":"slop","flags":[]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T23:33:50Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T23:36:41Z","noun":"tests","verb":"changed","flags":["fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T23:44:07Z","noun":"tests","verb":"run","flags":["gate","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T23:44:19Z","noun":"ci","verb":"prose","flags":["glob"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T23:44:20Z","noun":"ci","verb":"slop","flags":[]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T23:46:30Z","noun":"tests","verb":"changed","flags":["fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T23:47:19Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T23:49:48Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/3/build-plan-gaps-remediate/3/1/comment","hash":"6825838c7c53e97ac925d7cb3e31b8c194eed04088f4a8b39a851153085b87b6","ref":"https://github.com/cbartens/bkit/issues/724#issuecomment-6591471827","at":"2026-11-02T23:49:49Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-gaps-remediate","status":"DONE","at":"2026-11-02T23:49:49Z","parentSha":"ff96751a88626b0e8ae0847fc6992f91c2ef4f15","artifacts":["docs/plans/202610/logs/724-machine-wide-test/build-plan-gaps-remediate-3-1-log.md"],"verdict":"CONCERNS","attempt":1,"group":3,"strategy":"STANDARD"}

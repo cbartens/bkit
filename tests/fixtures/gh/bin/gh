@@ -44,6 +44,14 @@
 
 set -u
 
+# Reuse this executable for per-test tool bodies instead of repeatedly creating executables.
+# Clear the selector so a body can delegate back to the normal gh fixtures.
+if [ -n "${BKIT_FAKE_TOOL_SCRIPT:-}" ]; then
+  BODY="$BKIT_FAKE_TOOL_SCRIPT"
+  unset BKIT_FAKE_TOOL_SCRIPT
+  exec /bin/sh "$BODY" "$@"
+fi
+
 FIXTURE_ROOT="${BKIT_FAKE_GH_FIXTURE_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 RUNS_DIR="$FIXTURE_ROOT/runs"
 JOBS_DIR="$FIXTURE_ROOT/jobs"

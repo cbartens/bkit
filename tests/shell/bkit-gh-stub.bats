@@ -8,9 +8,31 @@
 # The bkit:test:bats package script selects tests/shell/*.bats for local and CI runs.
 
 GH_FIXTURE_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../fixtures/gh" && pwd)"
+bats_require_minimum_version 1.5.0
 
 setup() {
   export PATH="$GH_FIXTURE_ROOT/bin:$PATH"
+}
+
+@test "stub: a response script keeps argv and exit status through the stable executable" {
+  local body="$BATS_TEST_TMPDIR/response.sh"
+  printf '%s\n' 'printf "%s\n" "$*"; exit 23' > "$body"
+  run env BKIT_FAKE_TOOL_SCRIPT="$body" gh alpha --flag
+  [ "$status" -eq 23 ]
+  [ "$output" = "alpha --flag" ]
+}
+
+@test "stub: a missing response script fails instead of using the normal fixtures" {
+  run ! env BKIT_FAKE_TOOL_SCRIPT="$BATS_TEST_TMPDIR/absent.sh" gh api rate_limit
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"absent.sh"* ]]
+}
+
+@test "stub: the response selector is cleared before running its body" {
+  local body="$BATS_TEST_TMPDIR/response.sh"
+  printf '%s\n' 'test -z "${BKIT_FAKE_TOOL_SCRIPT:-}"' > "$body"
+  run env BKIT_FAKE_TOOL_SCRIPT="$body" gh
+  [ "$status" -eq 0 ]
 }
 
 @test "stub: gh api runs?head_sha=green-capstone returns the captured workflow_runs list" {

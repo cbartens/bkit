@@ -145,7 +145,10 @@ describe("bkitVersionStatus", () => {
 describe("lookupLatestPublished", () => {
   const fakePnpm = (body: string) => {
     const bin = tmp("bkit-latest-bin-");
-    fs.writeFileSync(path.join(bin, "pnpm"), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+    const script = path.join(bin, "response.sh");
+    fs.writeFileSync(script, `${body}\n`);
+    fs.symlinkSync(path.resolve("tests/fixtures/gh/bin/gh"), path.join(bin, "pnpm"));
+    vi.stubEnv("BKIT_FAKE_TOOL_SCRIPT", script);
     vi.stubEnv("PATH", `${bin}:${process.env.PATH}`);
   };
 
