@@ -303,12 +303,12 @@ describe("bkit-machine-lock.sh", { timeout: BUDGET.testTimeout }, () => {
     const env = envFor();
 
     const lockFile = path.join(cache, "bkit", "local-stack-lock", "app-main.lock");
-    expect(run("local_stack_lock_file", env, inMain).stdout.trim()).toBe(lockFile);
-    expect(run("local_stack_lock_file", env, inWorktree).stdout.trim()).toBe(lockFile);
+    expect(run("local_stack_lock_file", env, inMain, main).stdout.trim()).toBe(lockFile);
+    expect(run("local_stack_lock_file", env, inWorktree, worktree).stdout.trim()).toBe(lockFile);
 
-    const first = hold("main run", 30, env, inMain);
+    const first = hold("main run", 30, env, inMain, main);
     await first.locked;
-    const second = run(`try_local_stack_lock "worktree run"`, env, inWorktree);
+    const second = run(`try_local_stack_lock "worktree run"`, env, inWorktree, worktree);
     expect(second.status).toBe(1);
     expect(second.stderr).toContain(`main run — ${main}`);
   });
@@ -321,6 +321,7 @@ describe("bkit-machine-lock.sh", { timeout: BUDGET.testTimeout }, () => {
       `take_local_stack_lock "loose run"`,
       envFor({ GIT_CEILING_DIRECTORIES: tmp }),
       path.join(loose, "bkit-machine-lock.sh"),
+      loose,
     );
     expect(r.status).toBe(1);
     expect(r.stderr).toContain("cannot name the local stack");
@@ -373,12 +374,13 @@ describe("bkit-machine-lock.sh", { timeout: BUDGET.testTimeout }, () => {
     const firstRepo = checkout("first-repo");
     const secondRepo = checkout("second-repo");
     const env = envFor({ LOCAL_STACK_LOCK_WAIT_S: "10" });
-    const first = holdNamed("first repo gate", "tests", env, firstRepo.script, 2);
+    const first = holdNamed("first repo gate", "tests", env, firstRepo.script, 2, firstRepo.root);
     await first.locked;
     const second = run(
       'take_local_stack_lock "second repo gate" tests && echo acquired',
       env,
       secondRepo.script,
+      secondRepo.root,
     );
     await first.done;
     expect(second.status, second.stderr).toBe(0);
@@ -386,12 +388,28 @@ describe("bkit-machine-lock.sh", { timeout: BUDGET.testTimeout }, () => {
     expect(second.stderr).toContain("first repo gate");
     expect(second.stderr).toContain(firstRepo.root);
     expect(second.ms).toBeGreaterThanOrEqual(1_000);
-    expect(run("local_stack_lock_file tests", env, firstRepo.script).stdout.trim()).toBe(
-      path.join(cache, "bkit", "machine-lock", "tests.lock"),
+    expect(
+      run("local_stack_lock_file tests", env, firstRepo.script, firstRepo.root).stdout.trim(),
+    ).toBe(path.join(cache, "bkit", "machine-lock", "tests.lock"));
+    expect(
+      run("local_stack_lock_file tests", env, secondRepo.script, secondRepo.root).stdout.trim(),
+    ).toBe(path.join(cache, "bkit", "machine-lock", "tests.lock"));
+  });
+
+  it("copied-repository lock helpers execute in the requested caller checkout", () => {
+    const copied = checkout("requested-caller");
+    const env = envFor();
+    const sourced = run("pwd -P", env, copied.script, copied.root);
+    const command = commandRun(
+      ["caller cwd probe", "--lock", "cwd-probe", "--", "bash", "-c", "pwd -P"],
+      env,
+      copied.script,
+      copied.root,
     );
-    expect(run("local_stack_lock_file tests", env, secondRepo.script).stdout.trim()).toBe(
-      path.join(cache, "bkit", "machine-lock", "tests.lock"),
-    );
+    expect(sourced.status, sourced.stderr).toBe(0);
+    expect(sourced.stdout.trim()).toBe(copied.root);
+    expect(command.status, command.stderr).toBe(0);
+    expect(command.stdout.trim()).toBe(copied.root);
   });
 
   it("one process holds a named lock and the unnamed stack lock side by side", () => {
