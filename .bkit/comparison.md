@@ -56,22 +56,23 @@ Kind: a **Framework** runs a fixed multi-phase process · a **Spec toolkit** wri
 | **Docs**<br>project docs kept current | ✅ | — | ✅ | ◐ | ◐ | ◐ | ◐ | ◐ specs | ◐ | ◐ | ◐ AGENTS.md |
 | **Parallel**<br>several features at once, isolated | ✅ | ◐ | ◐ via Conductor | ◐ | ✅ | ◐ | ◐ via extensions | ◐ | ✅ 10 cloud sandboxes | ◐ | ✅ containers |
 | **Cloud**<br>runs unattended, triggered or hosted | ✅ ship on green, debug on red | ? | ◐ stops at gates | ◐ scheduler | ◐ local | ◐ local | ◐ | ◐ via Copilot agent | ✅ | ◐ | ✅ |
+| **Tokens**<br>cuts what each agent reads | ✅ fresh agent per few-KB brief; re-read hook; per-run stats | ✅ fresh subagent per task; skill size cap | ✅ per-run token cap; fresh-context handoffs | ✅ fresh worker per unit; 8 KB skill cap | ✅ fresh agent per task; context warnings | ◐ fresh chat per stage (✅ with loop: per-session cap) | ◐ sub-agents by hand; minimal loads | ◐ advice to start fresh | ✅ compaction; guidance and tools on demand | ✅ compaction hooks; cost tracking | ✅ condenser; output cap; cost metrics |
 | **Guards**<br>hooks that block dangerous actions | ✅ all hosts | ◐ prompt rules | ◐ opt-in, Claude Code only | ◐ prompt rules | ◐ blocks `.env` reads | — | — | ? | ✅ | ✅ GateGuard | ✅ sandbox + hooks |
 | **Audits**<br>audit / checklist templates | ✅ 35 | — | ✅ ~10 + 8 checklists | ◐ reviewer personas | ◐ ~8 | ◐ 5 lenses | ◐ checklists | ? | ? | ✅ ~25 | ◐ |
 | **AI tools** | 5 | 16 | 1 certified, 7 experimental | ~14 | 15 | 10+ | 40+ | 30+ | own IDE, CLI, web, mobile | 1 stable, ~15 beta / experimental | own UI / CLI / cloud, ACP editors |
 
 Where others are ahead of bkit:
 
-- **Superpowers:** skills trigger automatically; skill eval harness; official marketplaces.
-- **gstack:** real-browser and iOS device QA; design mockups; deploy + canary monitoring; prompt-injection defences.
-- **Compound Engineering:** learnings shared across repos; Jira; stacked-PR babysitting; Slack / GitHub feedback → plan.
-- **GSD Core:** cross-tool plan review; ship blocked by open security threats; cross-project learnings.
-- **BMAD:** Agile roles and artifacts (PRD, UX spec, epics, stories); most trackers.
+- **Superpowers:** skills trigger automatically; skill eval harness; official marketplaces; CI fails any skill file over 20 KB.
+- **gstack:** real-browser and iOS device QA; design mockups; deploy + canary monitoring; prompt-injection defences; a per-run token cap that won't start a step past it.
+- **Compound Engineering:** learnings shared across repos; Jira; stacked-PR babysitting; Slack / GitHub feedback → plan; tests hold each skill to Codex's 8 KB limit.
+- **GSD Core:** cross-tool plan review; ship blocked by open security threats; cross-project learnings; CI fails an agent file past its line limit.
+- **BMAD:** Agile roles and artifacts (PRD, UX spec, epics, stories); most trackers; bmad-loop ends a session that runs past its token cap.
 - **Spec Kit:** most AI tools; 181 community extensions; workflow engine for custom processes.
 - **OpenSpec:** light to adopt; made for existing code (spec deltas → living specs); multi-repo planning (beta).
-- **Kiro:** full product; EARS requirements; workflow rules enforced by runtime; enterprise SSO.
+- **Kiro:** full product; EARS requirements; workflow rules enforced by runtime; enterprise SSO; MCP tool definitions loaded only when needed.
 - **ECC:** largest library (70+ agents, 300+ skills); finding refutation; hosted skill generator.
-- **OpenHands:** sandboxed and hosted execution; issue-to-merge with no human; Jira, GitLab.
+- **OpenHands:** sandboxed and hosted execution; issue-to-merge with no human; Jira, GitLab; cut tool output saved to a file the agent can open.
 
 Where bkit stands apart, per the table:
 
