@@ -625,29 +625,30 @@ export function detectGhaFloatingTags(cwd) {
  * CI template copies named without the `bkit-` prefix: unprefixed path → template name, both
  * relative to the repo root.
  */
-const CI_SCRIPT_RENAMES = [
-    ["scripts/ci/check-capstone.mjs", "scripts/ci/bkit-check-capstone.mjs"],
-    ["scripts/ci/check-capstone.test.mjs", "scripts/ci/bkit-check-capstone.test.mjs"],
-    ["scripts/ci/check-dependency-audit.mjs", "scripts/ci/bkit-check-dependency-audit.mjs"],
-    ["scripts/ci/check-dependency-audit.test.mjs", "scripts/ci/bkit-check-dependency-audit.test.mjs"],
-    ["scripts/ci/accepted-advisories.json", "scripts/ci/bkit-accepted-advisories.json"],
-    ["scripts/ci/check-accepted-divergences.mjs", "scripts/ci/bkit-check-accepted-divergences.mjs"],
-    [
-        "scripts/ci/check-accepted-divergences.test.mjs",
-        "scripts/ci/bkit-check-accepted-divergences.test.mjs",
-    ],
-    ["scripts/ci/accepted-divergences.json", "scripts/ci/bkit-accepted-divergences.json"],
-    ["scripts/ci/lanes/resolve-push-base.mjs", "scripts/ci/lanes/bkit-resolve-push-base.mjs"],
-    [
-        "scripts/ci/lanes/resolve-push-base.test.mjs",
-        "scripts/ci/lanes/bkit-resolve-push-base.test.mjs",
-    ],
+const CI_SCRIPT_DIR = "scripts/ci";
+const ciScriptUnit = (...files) => files.map((file) => {
+    const slash = file.lastIndexOf("/");
+    const dir = slash === -1 ? "" : file.slice(0, slash + 1);
+    return [`${CI_SCRIPT_DIR}/${file}`, `${CI_SCRIPT_DIR}/${dir}bkit-${file.slice(slash + 1)}`];
+});
+/**
+ * The renamed files grouped into units that move together: a script, its test and the
+ * data file it reads. `bkit upgrade` moves a unit only whole.
+ */
+export const CI_SCRIPT_UNITS = [
+    ciScriptUnit("check-capstone.mjs", "check-capstone.test.mjs"),
+    ciScriptUnit("check-dependency-audit.mjs", "check-dependency-audit.test.mjs", "accepted-advisories.json"),
+    ciScriptUnit("check-accepted-divergences.mjs", "check-accepted-divergences.test.mjs", "accepted-divergences.json"),
+    ciScriptUnit("lanes/resolve-push-base.mjs", "lanes/resolve-push-base.test.mjs"),
 ];
+export const CI_SCRIPT_RENAMES = CI_SCRIPT_UNITS.flat();
 /**
  * Detect CI template copies named without the `bkit-` prefix. They keep working while every
  * reference uses the same old name; the risk is renaming a file without its references — the
  * CI dependency-audit step is guarded by `hashFiles(...)` and silently skips. The copies are the
- * consumer's, so bkit never renames them; the action inlines the rename and the reference edit.
+ * consumer's: `bkit upgrade` moves the unedited ones (`migrateBrandedTemplateFiles`), and this
+ * advisory names the ones it leaves (edited, or a `bkit-` target already present); the action
+ * inlines the rename and the reference edit.
  */
 export function detectCiScriptsOldNames(cwd) {
     const found = CI_SCRIPT_RENAMES.filter(([oldPath]) => fs.existsSync(path.join(cwd, oldPath)));

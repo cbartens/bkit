@@ -248,7 +248,8 @@ describe("mergeCanonicalHashes — fresh overwrites, absent paths are pruned", (
 
   it("drops an entry whose path belongs to the copy-and-own template set", () => {
     // A template-set path is never bkit-owned: install copies it byte-for-byte into
-    // `.bkit/templates/` and never writes the consumer's own copy, so it must carry
+    // `.bkit/templates/` and never writes the consumer's own copy (bar the brand migrations, which rewrite it
+    // only where bkit's exact shipped old text matches), so it must carry
     // no ownership hash even when the adopted copy stays on disk.
     const rel = "scripts/serena/bkit-serena-mcp.sh";
     expect(fs.existsSync(path.join(getTemplatesRoot(), rel))).toBe(true);

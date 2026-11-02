@@ -237,7 +237,7 @@ export const SETUP_TIPS: readonly SetupTip[] = [
     title: "Keep written docs tight",
     line: "Nothing checks the project's written docs, so they slowly fill with vague, padded wording that agents then have to read. Add Vale.",
     why: "Agents read your docs and instructions on every run. Padded writing costs time and money every time it's read, and vague rules get followed vaguely. Vale (a writing checker) flags it.",
-    ask: "Run `brew install vale`, copy .bkit/templates/.vale.ini to .vale.ini and .bkit/templates/.vale/styles/House/ to .vale/styles/House/, then run `vale sync`.",
+    ask: "Run `brew install vale`, copy .bkit/templates/.vale.ini to .vale.ini and .bkit/templates/.vale/styles/Bkit/ to .vale/styles/Bkit/, then run `vale sync`.",
     steps: "`.bkit/templates.md` § Vale.",
     fires: (cwd) => !exists(cwd, ".vale.ini"),
   },

@@ -4,7 +4,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { writeTier1, writeTier2, ensurePackageJsonScripts } from "../write.js";
-import { readBkitVersion, writeBkitVersion, hashFile, mergeCanonicalHashes, } from "../version-file.js";
+import { readBkitVersion, writeBkitVersion, hashFile, mergeCanonicalHashes, sha256, } from "../version-file.js";
 import { extractManagedBlock, findLineAnchoredMarkers, selectMarkers, stripManagedBlock, } from "../managed-block.js";
 import { listFilesRecursive, syncTemplateCopies } from "../template-copies.js";
 import { PAYLOAD_LINK_RELPATHS, syncPayloadLinks } from "../payload-links.js";
@@ -15,8 +15,9 @@ import { isAdvisorySuppressed } from "../../checks/after/suppression.js";
 import { parseJson, readJsonFile } from "../../shared/json.js";
 import { readInstallingVersion } from "../../shared/package-json.js";
 import { detectDepUpdater } from "../../shared/dep-updater.js";
-import { ASK_POINTS, CONFIG_DEFAULTS, limitKey } from "../../shared/settings.js";
-import { getCoreRoot, getSharedRoot, getBkitDocsRoot, TEMPLATE_COPIES_DIR, } from "../../shared/package-roots.js";
+import { ASK_POINTS, CONFIG_DEFAULTS, ciWorkflowPath, limitKey } from "../../shared/settings.js";
+import { CI_SCRIPT_UNITS } from "../../checks/after/ci-yml.js";
+import { getCoreRoot, getSharedRoot, getBkitDocsRoot, getTemplatesRoot, TEMPLATE_COPIES_DIR, } from "../../shared/package-roots.js";
 import { getInstallManifest, BKIT_GATE_SCRIPTS, BKIT_OPTIONAL_GATES, BKIT_PUSH_GATES, BKIT_GATE_CHANGED_SCRIPT, BKIT_LINT_FILE_SCRIPT, BKIT_TEST_FILE_SCRIPT, } from "../manifest.js";
 import { migrateLedgers } from "../../ledgers/migrate.js";
 export function listMdFiles(dir, prefix) {
@@ -257,6 +258,8 @@ export function runBkitDocs(dryRun, tokens, ws, logPrefix) {
     migrateModelOverrideAgentNames(dryRun, ws, logPrefix);
     migrateTemplateNotes(dryRun, ws, logPrefix);
     migrateContextCiWorkflow(dryRun, ws, logPrefix);
+    const renames = migrateBrandedTemplateFiles(dryRun, ws, logPrefix);
+    migrateBrandedFileTokens(dryRun, ws, logPrefix, renames);
 }
 // Migration (installs up to 6.0.x, `docs/migrations.md`): agents renamed since. A
 // consumer's `## Model Overrides` row below `bkit:end` in `.bkit/prompts.md` naming an
@@ -726,6 +729,154 @@ export function migrateBrandedScriptNames(dryRun, ws, logPrefix) {
         writePackageJsonLike(raw, pkg);
     console.log(`${logPrefix} ${tag}core: package.json script names branded${renamed.length > 0 ? ` [${renamed.join(", ")}]` : ""}`);
     return true;
+}
+function renamePathTokens(text, pathRenames) {
+    let out = text;
+    for (const { from, to } of pathRenames) {
+        out = out.replace(new RegExp(`${escapeRegExp(from)}(?![\\w.-])`, "g"), to);
+    }
+    return out;
+}
+export function migrateBrandedFileTokens(dryRun, ws, logPrefix, pathRenames = []) {
+    const tag = dryRun ? "[dry-run] " : "";
+    let scripts = {};
+    let pkgRaw;
+    let pkg;
+    if (fs.existsSync("package.json")) {
+        pkgRaw = fs.readFileSync("package.json", "utf-8");
+        const parsed = parseJson(pkgRaw);
+        if (parsed.ok && plainObject(parsed.value)) {
+            pkg = parsed.value;
+            if (plainObject(pkg.scripts))
+                scripts = pkg.scripts;
+        }
+    }
+    const { active } = activeScriptRenames(scripts, BKIT_SCRIPT_RENAMES);
+    const tokenFiles = [
+        path.join(".husky", "pre-commit"),
+        path.join(".husky", "pre-push"),
+        ciWorkflowPath("."),
+    ];
+    const files = [...new Set([...tokenFiles, path.join(".github", "workflows", "bkit-trivy.yml")])];
+    for (const file of files) {
+        if (!fs.lstatSync(file, { throwIfNoEntry: false })?.isFile())
+            continue;
+        const text = fs.readFileSync(file, "utf-8");
+        let next = tokenFiles.includes(file) ? renameScriptTokens(text, active) : text;
+        next = renamePathTokens(next, pathRenames);
+        if (tokenFiles.includes(file)) {
+            for (const { name, line } of findOldScriptNames(next, active)) {
+                console.warn(`${logPrefix} ${tag}core: ${file}:${line} still runs the old script name "${name}"; rename it to "${active[name]}" by hand`);
+            }
+        }
+        if (next === text)
+            continue;
+        if (!dryRun)
+            fs.writeFileSync(file, next, "utf-8");
+        ws.writes.push({ path: file, action: "update", unhashed: true });
+        console.log(`${logPrefix} ${tag}core: ${file} — branded script and path names rewritten`);
+    }
+    if (pkg === undefined || pkgRaw === undefined || pathRenames.length === 0)
+        return;
+    let changed = false;
+    const nextScripts = {};
+    for (const [key, value] of Object.entries(scripts)) {
+        const nextValue = typeof value === "string" ? renamePathTokens(value, pathRenames) : value;
+        if (nextValue !== value)
+            changed = true;
+        nextScripts[key] = nextValue;
+    }
+    if (!changed)
+        return;
+    pkg.scripts = nextScripts;
+    ws.writes.push({ path: "package.json", action: "update", unhashed: true });
+    if (!dryRun)
+        writePackageJsonLike(pkgRaw, pkg);
+    console.log(`${logPrefix} ${tag}core: package.json — branded CI script paths rewritten`);
+}
+// sha256 of every distinct release content of the CI script `.mjs` files, per old path, from
+// each `v*` tag. An unedited copy matches one of them.
+export const SHIPPED_CI_SCRIPT_HASHES = {
+    "scripts/ci/check-capstone.mjs": [
+        "3813d9fe3cfae79788990b0a7a4914d18350dde165a3c2fe5940e8348362cea6",
+        "45078e630f5ec9ff4e7704c99ac5f56fd37b9c2e94c052f084c03feddc86ef71",
+    ],
+    "scripts/ci/check-capstone.test.mjs": [
+        "0554d64652dcc32ea368a4791372e860a5e3314ecfb7084256627015333c7afb",
+        "ad58a0095528fdb3fe7310586b4091824f29fda261542df73c324c8dd574a0d6",
+    ],
+    "scripts/ci/check-dependency-audit.mjs": [
+        "b410ab27cdbeed8d659fdf523d1af9b519beb874901186bb59e2889646cdaa19",
+    ],
+    "scripts/ci/check-dependency-audit.test.mjs": [
+        "db3643ae6ef7ad01d628e6110aa2f7b47cdf2423ca07efc1a8bc6176eb98b6a2",
+    ],
+    "scripts/ci/check-accepted-divergences.mjs": [
+        "3b410c53535e66b7a65b54d574ba7f7e47139bfba58a883a60697b8ab44deef4",
+        "66e6f1f9ce22b52afe93454c268613b8f5b03c1c58b5817cac958435fefbe5b1",
+    ],
+    "scripts/ci/check-accepted-divergences.test.mjs": [
+        "743e623f0dcb118a96744d31611fb599e9041a8007a3202fb46c30d72a3e183e",
+        "f130f5784349c21c5ae4f02626243362d9c29f783b9ad4b9c158beeca9bf4107",
+    ],
+    "scripts/ci/lanes/resolve-push-base.mjs": [
+        "016c4dacf34ce6edffcc7c7f666027a0a34669ce299d755679c877540fc751e7",
+        "11930bf63081ca2b5201799e0262acfcfc148e15bce41e17ebead688a94fe8ce",
+        "84acc7ff1596234af0c614236608e2009e794da9549bf77a4cc9560c2784a8f8",
+    ],
+    "scripts/ci/lanes/resolve-push-base.test.mjs": [
+        "1ce7b5fdf1de756f56e6b9710952c1e272c633107b06c0d47780fce36b90d1ad",
+        "32e17be38751f2744d660acdd99c6a08e7f437cdeaeb7075bc876b1cd31f0237",
+        "6883deb2b20f99af68721b085fbf3e2ab14e4b58d17dd676afaf734c75195e96",
+    ],
+};
+// Migration (up to 6.0.x installs, `docs/migrations.md`): the CI script files carry the
+// `bkit-` prefix. A unit (script, test and data file, `CI_SCRIPT_UNITS`) moves whole when each
+// present `.mjs` matches a shipped release and no `bkit-` target exists: the old files go, the
+// `.mjs` targets come from the shipped templates, the data file moves byte for byte. Any
+// other unit stays, with a warning naming the manual move (the `ci-scripts-old-names`
+// advisory lists it too). Returns the renames applied plus those already applied (old absent,
+// new present), for the path-token rewrite.
+export function migrateBrandedTemplateFiles(dryRun, ws, logPrefix) {
+    const tag = dryRun ? "[dry-run] " : "";
+    const renames = [];
+    const templates = getTemplatesRoot();
+    for (const unit of CI_SCRIPT_UNITS) {
+        const present = unit.filter(([from]) => fs.existsSync(from));
+        const done = unit.filter(([from, to]) => !fs.existsSync(from) && fs.existsSync(to));
+        for (const [from, to] of done)
+            renames.push({ from, to });
+        if (present.length === 0)
+            continue;
+        const edited = present.filter(([from]) => from.endsWith(".mjs") &&
+            !SHIPPED_CI_SCRIPT_HASHES[from]?.includes(sha256(fs.readFileSync(from))));
+        const taken = present.filter(([, to]) => fs.existsSync(to));
+        const noTemplate = present.filter(([, to]) => to.endsWith(".mjs") && !fs.existsSync(path.join(templates, to)));
+        if (edited.length > 0 || taken.length > 0 || noTemplate.length > 0) {
+            const why = edited.length > 0
+                ? `${edited.map(([from]) => from).join(", ")} differs from every shipped release`
+                : taken.length > 0
+                    ? `${taken.map(([, to]) => to).join(", ")} already exists`
+                    : "the shipped template is missing";
+            console.warn(`${logPrefix} ${tag}core: ${present.map(([from]) => from).join(", ")} not moved to the bkit- names (${why}); move them by hand and update every reference`);
+            continue;
+        }
+        for (const [from, to] of present) {
+            if (!dryRun) {
+                fs.mkdirSync(path.dirname(to), { recursive: true });
+                if (to.endsWith(".mjs"))
+                    fs.copyFileSync(path.join(templates, to), to);
+                else
+                    fs.copyFileSync(from, to);
+                fs.rmSync(from);
+            }
+            ws.writes.push({ path: from, action: "write", unhashed: true });
+            ws.writes.push({ path: to, action: "write", unhashed: true });
+            renames.push({ from, to });
+            console.log(`${logPrefix} ${tag}core: ${from} moved to ${to}`);
+        }
+    }
+    return renames;
 }
 // Status option ids of GitHub's Kanban and Team planning board templates; every board
 // made from one carries the same ids.
@@ -1244,6 +1395,9 @@ export function runCoreModule(ctx) {
         // Exclude .bkit/version itself and .agents/ internal files (not consumer-facing).
         const newCanonicalEntries = {};
         for (const entry of ws.writes) {
+            // Brand-migrated copy-and-own files carry no hash.
+            if (entry.unhashed)
+                continue;
             const absPath = path.isAbsolute(entry.path) ? entry.path : path.resolve(cwd, entry.path);
             const relPath = path.relative(cwd, absPath);
             if (relPath === path.join(".bkit", "version"))

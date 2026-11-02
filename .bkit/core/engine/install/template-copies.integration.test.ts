@@ -83,7 +83,7 @@ describe("the templates root is the copy-and-own set", () => {
       ".github/workflows/bkit-trivy.yml",
       ".husky/pre-push",
       ".vale.ini",
-      ".vale/styles/House/LLMSlop.yml",
+      ".vale/styles/Bkit/LLMSlop.yml",
       ".prettierignore",
       ".oxlintrc.json",
       ".envrc",

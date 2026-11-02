@@ -8,7 +8,7 @@
 > **Rules:**
 >
 > - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
-> - `bkit install` and `bkit upgrade` never write these files and never overwrite a copy.
+> - `bkit install` and `bkit upgrade` never write these files and never overwrite a copy, with one exception: they rewrite an adopted copy where bkit's exact shipped old text matches (the brand migrations, `docs/migrations.md`), never otherwise.
 > - Adapt the app roots, the workspace package scope and the rules JSON. The examples use `apps/web`, `apps/mobile`, `packages/api` and `@scope`.
 
 ## What each template is for
@@ -54,7 +54,7 @@ The adoption order is the `bkit tips` order. The local stack lock has no tip, be
 | Git hooks (Husky) | `.bkit/templates/.husky/pre-commit`, `.bkit/templates/.husky/pre-push` | `.husky/pre-commit`, `.husky/pre-push` | both files |
 | Prettier ignore list | `.bkit/templates/.prettierignore` | `.prettierignore` | that file |
 | lint-staged | `.bkit/templates/.lintstagedrc.json` | `.lintstagedrc.json` | that file |
-| Vale | `.bkit/templates/.vale.ini`, `.bkit/templates/.vale/styles/House/` | `.vale.ini`, `.vale/styles/House/` | `.vale.ini` + the four House styles |
+| Vale | `.bkit/templates/.vale.ini`, `.bkit/templates/.vale/styles/Bkit/` | `.vale.ini`, `.vale/styles/Bkit/` | `.vale.ini` + the four Bkit styles |
 | slop-scan | `.bkit/templates/slop-scan.config.json`, `.bkit/templates/scripts/slop/bkit-slop-type-suppression.mjs` | `slop-scan.config.json`, `scripts/slop/bkit-slop-type-suppression.mjs` | both files |
 | Oxlint | `.bkit/templates/.oxlintrc.json` | `.oxlintrc.json` | that file |
 | direnv | `.bkit/templates/.envrc` | `.envrc` | that file |
@@ -330,17 +330,17 @@ pnpm add -D lint-staged@^17.0.0 prettier@^3.5.3
 - Globs must not overlap, because lint-staged runs entries concurrently, so two entries that write one file race. The second entry negates the first.
 - Adapt: add per-glob commands (eslint `--fix`, etc.), and keep them seconds-fast.
 
-## Vale — prose lint, with House styles
+## Vale — prose lint, with Bkit styles
 
-`bkit:lint:prose` (`bkit ci prose`, in `bkit:gate:static`) runs Vale with the `write-good` package and bkit's House styles (`Filler`, `Hedging`, `LLMSlop`, `Verbose`) on `.agents/**`. Workflows reach Vale only through the gate. Reference: https://vale.sh/docs/install.
+`bkit:lint:prose` (`bkit ci prose`, in `bkit:gate:static`) runs Vale with the `write-good` package and bkit's Bkit styles (`Filler`, `Hedging`, `LLMSlop`, `Verbose`) on `.agents/**`. Workflows reach Vale only through the gate. Reference: https://vale.sh/docs/install.
 
 ```bash
 brew install vale
 vale sync
 ```
 
-- Copy `.vale.ini` and all four `.vale/styles/House/*.yml`.
-- `.gitignore`: `.vale/styles/write-good`. `vale sync` downloads it, and the House styles stay tracked.
+- Copy `.vale.ini` and all four `.vale/styles/Bkit/*.yml`.
+- `.gitignore`: `.vale/styles/write-good`. `vale sync` downloads it, and the Bkit styles stay tracked.
 - CI: the `bkit-ci.yml` template installs a pinned Vale and runs `vale sync`.
 - Cursor: the `Dockerfile` template installs it.
 - Adapt: add `[glob]` scope blocks for your own docs. Turn rules off per path, not globally.
