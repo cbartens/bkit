@@ -537,3 +537,16 @@
 {"type":"step-done","workflow":"build","step":"build-create-pr","status":"DONE","at":"2026-11-02T07:16:35Z","parentSha":"9630471bf1c709fcaa3935319d57e5fd9512ce01","artifacts":["https://github.com/cbartens/bkit/pull/829"]}
 {"type":"step-done","workflow":"build","step":"build-close-workflow","status":"DONE","at":"2026-11-02T07:16:36Z","parentSha":"9630471bf1c709fcaa3935319d57e5fd9512ce01","artifacts":[],"ciDispatch":{"outcome":"dispatched","head":"9630471bf1c709fcaa3935319d57e5fd9512ce01","attempts":1,"retrigger":false}}
 {"type":"close-transport","shape":"push","sha":"9630471bf1c709fcaa3935319d57e5fd9512ce01","scanResult":"clean","at":"2026-11-02T07:16:36Z"}
+{"type":"workflow-started","workflow":"debug","at":"2026-11-02T07:21:58Z","parentSha":"22852498e0f9d871a42cf3c04a1b0ac3aaa9a32b","limits":{"debug.fix":{"ask":true,"max":2},"debug.soak":{"ask":true,"max":2}}}
+{"type":"session","workflow":"debug","at":"2026-11-02T07:21:58Z","platform":"claude-code","session":"fp:d1933d08ca75"}
+{"type":"engine-call","workflow":"debug","at":"2026-11-02T07:22:04Z","noun":"workflows","verb":"input","flags":["workflow","fid","run","file","prompt-file","description-file","comments-file","plan"]}
+{"type":"engine-call","workflow":"debug","at":"2026-11-02T07:22:05Z","noun":"runtime","verb":"row","flags":["workflow","file"]}
+{"type":"runtime-resolved","workflow":"debug","at":"2026-11-02T07:22:05Z","runtime":"LOCAL","runtimeWorktrees":true,"runtimeDevPushes":true,"runtimeGithubCli":true,"runtimeGithubCliExit":0,"runtimeGithubCliErr":"","baseSha":""}
+{"type":"engine-call","workflow":"debug","at":"2026-11-02T07:22:05Z","noun":"runtime","verb":"assert","flags":["file","workflow"]}
+{"type":"engine-call","workflow":"debug","at":"2026-11-02T07:22:05Z","noun":"steps","verb":"done","flags":["file","workflow","step","commit"]}
+{"type":"step-done","workflow":"debug","step":"debug-start-workflow","status":"DONE","at":"2026-11-02T07:22:05Z","parentSha":"22852498e0f9d871a42cf3c04a1b0ac3aaa9a32b","artifacts":[]}
+{"type":"engine-call","workflow":"debug","at":"2026-11-02T07:22:05Z","noun":"status","verb":"meta","flags":["file","workflow","debug-attempt","debug-mode","push-mode"]}
+{"type":"workflow-meta","workflow":"debug","at":"2026-11-02T07:22:05Z","debugMode":"NORMAL","pushMode":"LOCAL","debugAttempt":1}
+{"type":"engine-call","workflow":"debug","at":"2026-11-02T07:22:05Z","noun":"steps","verb":"finish","flags":["file","workflow","step","artifact","field","message","number","post","title","tree"]}
+{"type":"engine-action","action":"comment","key":"debug/1/debug-worktree-setup/-/-/comment","hash":"54686478fdbbb08eda59726d9b0306d5106fec02df1f1a33a1e8ba2245c96b87","ref":"https://github.com/cbartens/bkit/issues/748#issuecomment-6571475801","at":"2026-11-02T07:22:06Z"}
+{"type":"step-done","workflow":"debug","step":"debug-worktree-setup","status":"DONE","at":"2026-11-02T07:22:06Z","parentSha":"22852498e0f9d871a42cf3c04a1b0ac3aaa9a32b","artifacts":["docs/plans/202610/logs/748-brand-every-consumer/debug-input-1.md"],"debugMode":"NORMAL","pushMode":"LOCAL"}
