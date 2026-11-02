@@ -291,6 +291,13 @@ Cursor Cloud automation uses `composer-2.5` for metadata / API plumbing, and the
 - Never set `CLAUDE_CODE_EFFORT_LEVEL`, because it outranks subagent `effort:` frontmatter. Every subagent then runs at one level, and the § Effort tiers ladder is gone.
 - Never set `maxEffortLevel` below `high`, because it caps subagent `effort:` frontmatter. The `high` agents (§ Effort tiers) then run at the cap.
 
+**Codex session setup:** the orchestrator runs on the session model and effort. Subagents ignore both, because each `.codex/agents/*.toml` sets its own `model` and `model_reasoning_effort`.
+
+<!-- prettier-ignore -->
+| Goal | How |
+| --- | --- |
+| Model per phase | Launch on the `OpenAI` cell above before the first prompt: `codex -m gpt-6-astra -c model_reasoning_effort=medium` → `$bkit-design`, `$bkit-plan`, `$bkit-debug`; `codex -m gpt-6.1-sol -c model_reasoning_effort=medium` → `$bkit-build`, `$bkit-ship`. The `-c` flag sets the effort, because `.codex/config.toml` sets none. |
+
 ## Design Phase
 
 <!-- prettier-ignore -->
