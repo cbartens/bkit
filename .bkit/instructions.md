@@ -1866,18 +1866,18 @@ Clause section lines:
 - rule: Universal Rules › Testing & Debugging
 - carry: `bkit-build-plan-tasks`, `bkit-build-plan-gaps-remediate`, `bkit-build-plan-tests`
 - refs:
-  - `.bkit/templates.md` § Local stack lock — one run at a time on a shared stack
+  - `.bkit/templates.md` § Machine lock
 
 - prompt:
   - verbatim: `bkit-build-plan-tasks`, `bkit-build-plan-gaps-remediate`
 
 ```text
-**Shared local stack:** Worktrees share every local service with a fixed name or port (Docker database, emulator), so start, reset, stop and test against those services only through the repo's locked scripts (`.bkit/templates.md` § Local stack lock); NEVER run the raw CLI (e.g. `supabase db reset`, `docker compose down`). A fix hint that prints a raw command is a bug.
+**Shared local stack:** Worktrees share every local service with a fixed name or port (Docker database, emulator), so start, reset, stop and test against those services only through the repo's locked scripts (`.bkit/templates.md` § Machine lock); NEVER run the raw CLI (e.g. `supabase db reset`, `docker compose down`). A fix hint that prints a raw command is a bug.
 ```
 
 ```retired
-**Shared local stack:** Worktrees share every local service with fixed names / ports (Docker database, emulator) → start / reset / stop / test against them ONLY through the repo's locked scripts (`.bkit/templates.md` § Local stack lock); NEVER run the raw CLI (e.g. `supabase db reset`, `docker compose down`). A fix hint that prints a raw command is a bug.
-**Shared local stack:** worktrees share every local service with fixed names / ports (Docker database, emulator) → start / reset / stop / test against them ONLY through the repo's locked scripts (`.bkit/templates.md` § Local stack lock); NEVER run the raw CLI (e.g. `supabase db reset`, `docker compose down`); a fix hint printing a raw command = bug.
+**Shared local stack:** Worktrees share every local service with fixed names / ports (Docker database, emulator) → start / reset / stop / test against them ONLY through the repo's locked scripts (`.bkit/templates.md` § Machine lock); NEVER run the raw CLI (e.g. `supabase db reset`, `docker compose down`). A fix hint that prints a raw command is a bug.
+**Shared local stack:** worktrees share every local service with fixed names / ports (Docker database, emulator) → start / reset / stop / test against them ONLY through the repo's locked scripts (`.bkit/templates.md` § Machine lock); NEVER run the raw CLI (e.g. `supabase db reset`, `docker compose down`); a fix hint printing a raw command = bug.
 ```
 
 ### tests-discriminate

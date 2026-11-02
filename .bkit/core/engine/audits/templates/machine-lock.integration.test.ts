@@ -594,7 +594,10 @@ describe("bkit-machine-lock.sh", { timeout: BUDGET.testTimeout }, () => {
     const broken = path.join(tmp, "broken-lock.sh");
     const text = fs.readFileSync(SCRIPT, "utf-8");
     expect(text).toContain("/usr/bin/perl -e '\n");
-    fs.writeFileSync(broken, text.replace("/usr/bin/perl -e '\n", "/usr/bin/perl -e 'exit 1;\n"));
+    fs.writeFileSync(
+      broken,
+      text.replaceAll("/usr/bin/perl -e '\n", "/usr/bin/perl -e 'exit 1;\n"),
+    );
     const r = run(`take_local_stack_lock "doomed run"`, envFor({ BKIT_LOCAL_STACK: "x" }), broken);
     expect(r.status).toBe(1);
     expect(r.stderr).toContain("stopped before it answered");
