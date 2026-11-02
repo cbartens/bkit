@@ -10,6 +10,7 @@
 
 ## Already Installed
 
+- `bash-defensive-patterns`
 - `bkit-auto`
 - `bkit-build`
 - `bkit-debug`
@@ -21,18 +22,22 @@
 - `executing-plans`
 - `find-skills`
 - `finishing-a-development-branch`
+- `gh-fix-ci`
+- `nodejs-best-practices`
 - `receiving-code-review`
 - `requesting-code-review`
 - `subagent-driven-development`
 - `systematic-debugging`
 - `test-driven-development`
+- `typescript-advanced-types`
 - `using-git-worktrees`
 - `using-superpowers`
 - `verification-before-completion`
+- `vitest`
 - `writing-plans`
 - `writing-skills`
 
-## Newly Installed
+The current plan requires the same five technologies as the prior run. The five matching skill folders remain present and are reused for this continuation:
 
 <!-- prettier-ignore -->
 | Folder | Exact package and source | Quality evidence |
@@ -43,9 +48,11 @@
 | `gh-fix-ci` | [`openai/skills@gh-fix-ci`](https://skills.sh/openai/skills/gh-fix-ci) | OpenAI is the official publisher; the search reported 11.6K installs. |
 | `bash-defensive-patterns` | [`wshobson/agents@bash-defensive-patterns`](https://skills.sh/wshobson/agents/bash-defensive-patterns) | The search reported 13.8K installs; GitHub reported 42,095 repository stars. |
 
-Each named installation exited successfully, and each folder was confirmed under `.agents/skills/`. The installer updated `skills-lock.json`. No bundled skill script was executed. The shell skill supplies applicable defensive programming guidance; the plan's POSIX portability requirement still governs shipped blocks.
+The quality evidence above records the checks performed when these skills were installed in the prior run; this continuation did not refresh registry counts. Folder inventory confirms that all five remain installed. The TypeScript skill covers selection types, the Node.js skill covers process and filesystem work, Vitest covers regression tests, `gh-fix-ci` covers CI diagnosis, and the shell skill supplies applicable defensive programming guidance. The plan's POSIX portability requirement still governs shipped blocks.
 
-The initial sandboxed registry searches failed with `ENOTFOUND registry.npmjs.org`. The same searches succeeded with approved network access. Each technology received one skill, chosen for its direct match over framework-specific or workflow-authoring alternatives.
+## Newly Installed
+
+None. The existing skill folders cover the current plan, so no registry search or reinstall was needed. No bundled skill script was executed and `skills-lock.json` was not changed by this continuation.
 
 ## Not Found
 
