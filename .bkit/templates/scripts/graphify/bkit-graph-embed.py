@@ -5,8 +5,8 @@
 #!/usr/bin/env python3
 """Copy the packages diagram from the capability register into other docs.
 
-Called by `pnpm graph:rollup`, `:register` and `:refresh` (write) and by `pnpm
-graph:check` (--check), scripts/graphify/bkit-graphify.sh, for every doc in
+Called by `pnpm bkit:graph:rollup`, `:register` and `:refresh` (write) and by
+`pnpm bkit:graph:check` (--check), scripts/graphify/bkit-graphify.sh, for every doc in
 GRAPH_EMBED_DOCS. Runs on system python (stdlib only).
 
     bkit-graph-embed.py <capabilities.md> <doc>... [--check]
@@ -33,7 +33,7 @@ args = ap.parse_args()
 
 register = open(args.capabilities_doc, encoding="utf-8").read()
 if HEADING not in register:
-    sys.exit(f"[graph] {args.capabilities_doc}: no `{HEADING}` section — run pnpm graph:rollup first")
+    sys.exit(f"[graph] {args.capabilities_doc}: no `{HEADING}` section — run pnpm bkit:graph:rollup first")
 m = re.search(r"```mermaid\n.*?\n```", register.split(HEADING, 1)[1], re.S)
 if not m:
     sys.exit(f"[graph] {args.capabilities_doc}: `{HEADING}` has no ```mermaid block")
