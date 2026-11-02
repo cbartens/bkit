@@ -265,6 +265,88 @@ describe("test-round completion evidence", () => {
   });
 });
 
+describe("progress command output", () => {
+  it("finish prints progressLine", async () => {
+    const cwd = repo();
+    const r = await run(cwd, [
+      "steps",
+      "finish",
+      ...STEP,
+      "--group=1",
+      "--attempt=1",
+      "--verdict=FAIL",
+      "--failures=2",
+      "--artifact=logs/verify-1.md",
+      "--commit=none",
+    ]);
+    expect(r.code).toBe(0);
+    expect(r.json.progressLine).toBe(
+      "Progress: █████░░░░░ 50% · Step 8/16 Plan Verify · Group 1 of 1",
+    );
+    expect(r.json.row).not.toHaveProperty("progressLine");
+    expect(fs.readFileSync(path.join(cwd, "logs/status.jsonl"), "utf8")).not.toContain(
+      "progressLine",
+    );
+  });
+
+  it("done prints progressLine", async () => {
+    const cwd = repo();
+    const r = await run(cwd, ["steps", "done", ...STEP, "--group=1", "--commit=none"]);
+    expect(r.code).toBe(0);
+    expect(r.json.progressLine).toBe(
+      "Progress: █████░░░░░ 50% · Step 8/16 Plan Verify · Group 1 of 1",
+    );
+    const out: string[] = [];
+    const code = await runCommand(
+      ["steps", "done", ...STEP, "--group=1", "--commit=none"],
+      COMMANDS,
+      {
+        classicVerbs: new Set(),
+        cwd,
+        io: { stdout: (text) => out.push(text), stderr: () => undefined },
+      },
+    );
+    expect(code).toBe(0);
+    expect(out.join("")).toContain(`progressLine: ${r.json.progressLine}`);
+    expect(r.json.row).not.toHaveProperty("progressLine");
+  });
+
+  it("progress output metadata", () => {
+    for (const [noun, verbs] of [
+      ["steps", ["done", "finish", "gate"]],
+      ["context", ["finalise"]],
+      ["runs", ["dispatch"]],
+      ["workflows", ["close"]],
+    ] as const) {
+      const spec = COMMANDS.find((entry) => entry.noun === noun)!;
+      for (const verb of verbs)
+        expect(spec.verbs[verb]!.output, `${noun} ${verb}`).toHaveProperty("progressLine");
+    }
+    expect(stepsCommand.verbs.gate!.flags?.some((flag) => flag.name === "progress-number")).toBe(
+      true,
+    );
+  });
+
+  it("gate progress number validation", async () => {
+    const cwd = repo();
+    await run(cwd, ["steps", "done", ...STEP, "--group=1", "--attempt=1", "--commit=none"]);
+    const args = ["steps", "gate", ...STEP, "--group=1", "--attempt=1"];
+    for (const value of ["0", "17", "1.5", "not-a-number"]) {
+      const result = await run(cwd, [...args, `--progress-number=${value}`]);
+      expect(result.code, value).not.toBe(0);
+      expect(result.json?.progressLine).toBeUndefined();
+    }
+    const good = await run(cwd, [...args, "--progress-number=8"]);
+    expect(good.code).toBe(0);
+    expect(good.json.progressLine).toBe(
+      "Progress: █████░░░░░ 50% · Step 8/16 Plan Verify · Group 1 of 1",
+    );
+    const badGate = await run(cwd, [...args, "--artifact=logs/missing.md", "--progress-number=8"]);
+    expect(badGate.code).not.toBe(0);
+    expect(badGate.json?.progressLine).toBeUndefined();
+  });
+});
+
 describe("bkit steps done", () => {
   it("captures parentSha first, writes the row, then commits on top of it", async () => {
     const cwd = repo();
