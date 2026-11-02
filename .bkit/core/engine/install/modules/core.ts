@@ -546,9 +546,10 @@ export function seedCorePackageJsonScripts(
   const tag = dryRun ? "[dry-run] " : "";
   const written: string[] = [];
 
+  if (migrateBrandedScriptNames(dryRun, ws, logPrefix)) written.push("package.json");
   const gates = ensurePackageJsonScripts({ ...BKIT_GATE_SCRIPTS }, dryRun, ws);
   if (gates.added.length > 0) {
-    written.push("package.json");
+    if (!written.includes("package.json")) written.push("package.json");
     console.log(
       `${logPrefix} ${tag}core: package.json scripts added [${gates.added.join(", ")}] — what a gate may run: .bkit/workflows.md § Local gate scripts`,
     );
@@ -712,6 +713,152 @@ function writePackageJsonLike(raw: string, pkg: unknown): void {
   const indent = indentMatch ? indentMatch[1] : "  ";
   const trailingNewline = raw.endsWith("\n") ? "\n" : "";
   fs.writeFileSync("package.json", JSON.stringify(pkg, null, indent) + trailingNewline, "utf-8");
+}
+
+// Migration (up to 6.0.x installs, `docs/migrations.md`): the package.json scripts bkit runs
+// carry the `bkit:` prefix. Old name -> new name. A `graph*` key moves only when its value
+// runs bkit's graph scripts; any other `graph*` script is the consumer's own.
+export const BKIT_SCRIPT_RENAMES: Readonly<Record<string, string>> = {
+  "lint:prose": "bkit:lint:prose",
+  "slop:delta": "bkit:slop:delta",
+  graph: "bkit:graph",
+  ...Object.fromEntries(
+    ["check", "clean", "graphml", "refresh", "rollup", "scoped", "tree", "update"].map((verb) => [
+      `graph:${verb}`,
+      `bkit:graph:${verb}`,
+    ]),
+  ),
+};
+
+const GRAPH_VALUE_GUARD = "scripts/graphify/bkit-";
+
+// The pairs a migration acts on. A pair is inactive when `package.json` holds both keys, or
+// when the old key is a `graph*` script whose value is not bkit's; a pair with neither key
+// is active, so its tokens in other values and in default gate chains are rewritten.
+function activeScriptRenames(
+  scripts: Record<string, unknown>,
+  renames: Readonly<Record<string, string>>,
+): { active: Record<string, string>; bothPresent: string[] } {
+  const has = (k: string): boolean => Object.prototype.hasOwnProperty.call(scripts, k);
+  const active: Record<string, string> = {};
+  const bothPresent: string[] = [];
+  for (const [oldName, newName] of Object.entries(renames)) {
+    if (has(oldName) && has(newName)) {
+      bothPresent.push(oldName);
+      continue;
+    }
+    const value = scripts[oldName];
+    if (
+      has(oldName) &&
+      oldName.startsWith("graph") &&
+      !(typeof value === "string" && value.includes(GRAPH_VALUE_GUARD))
+    ) {
+      continue;
+    }
+    active[oldName] = newName;
+  }
+  return { active, bothPresent };
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Rewrites `pnpm [flags] [run] [flags] <old>` to the new name, keeping the flags and `run`.
+ * Each flag is a value-less `-x` / `--x[=v]` token; `<old>` ends at a character outside
+ * `[\w:-]` or at the end of the text. Anything else (`npm run`, `echo`, `--filter web`) stays.
+ */
+export function renameScriptTokens(
+  text: string,
+  renames: Readonly<Record<string, string>>,
+): string {
+  const names = Object.keys(renames).sort((a, b) => b.length - a.length);
+  if (names.length === 0) return text;
+  const re = new RegExp(
+    `\\bpnpm((?:\\s+(?:run|-{1,2}[\\w-]+(?:=\\S*)?))*)(\\s+)(${names.map(escapeRegExp).join("|")})(?![\\w:-])`,
+    "g",
+  );
+  return text.replace(
+    re,
+    (_m, flags: string, gap: string, old: string) => `pnpm${flags}${gap}${renames[old]}`,
+  );
+}
+
+/** Each old script name still in `text`, with its 1-based line. */
+export function findOldScriptNames(
+  text: string,
+  renames: Readonly<Record<string, string>>,
+): { line: number; name: string }[] {
+  const found: { line: number; name: string }[] = [];
+  const lines = text.split("\n");
+  for (const name of Object.keys(renames)) {
+    const re = new RegExp(`(?<![\\w:./-])${escapeRegExp(name)}(?![\\w:-])`);
+    lines.forEach((l, i) => {
+      if (re.test(l)) found.push({ line: i + 1, name });
+    });
+  }
+  return found;
+}
+
+// Renames the old script keys in place (values kept), rewrites old `pnpm` tokens in every
+// script value, and warns on an old name it cannot reach. Returns true when package.json
+// changed.
+export function migrateBrandedScriptNames(
+  dryRun: boolean,
+  ws: WriteSet,
+  logPrefix: string,
+): boolean {
+  const pkgPath = "package.json";
+  if (!fs.existsSync(pkgPath)) return false;
+  const raw = fs.readFileSync(pkgPath, "utf-8");
+  const parsed = parseJson(raw);
+  if (!parsed.ok) {
+    console.warn(`${logPrefix} core: package.json is not valid JSON; script names not migrated`);
+    return false;
+  }
+  const pkg = parsed.value as Record<string, unknown>;
+  if (!plainObject(pkg.scripts)) return false;
+  const scripts = pkg.scripts;
+  const { active, bothPresent } = activeScriptRenames(scripts, BKIT_SCRIPT_RENAMES);
+  const tag = dryRun ? "[dry-run] " : "";
+  for (const oldName of bothPresent) {
+    console.warn(
+      `${logPrefix} ${tag}core: package.json scripts hold both "${oldName}" and "${BKIT_SCRIPT_RENAMES[oldName]}"; left "${oldName}" in place — remove it once nothing uses it`,
+    );
+  }
+  const next: Record<string, unknown> = {};
+  const renamed: string[] = [];
+  let changed = false;
+  for (const [key, value] of Object.entries(scripts)) {
+    const newKey = active[key];
+    if (newKey !== undefined) {
+      renamed.push(key);
+      changed = true;
+    }
+    let newValue = value;
+    if (typeof value === "string") {
+      newValue = renameScriptTokens(value, active);
+      if (newValue !== value) changed = true;
+    }
+    next[newKey ?? key] = newValue;
+  }
+  if (!changed) return false;
+  for (const [key, value] of Object.entries(next)) {
+    if (typeof value !== "string") continue;
+    for (const { name } of findOldScriptNames(value, active)) {
+      console.warn(
+        `${logPrefix} ${tag}core: package.json script "${key}" still runs the old name "${name}"; rename it to "${active[name]}" by hand`,
+      );
+    }
+  }
+  pkg.scripts = next;
+  ws.writes.push({ path: pkgPath, action: "update" });
+  if (!dryRun) writePackageJsonLike(raw, pkg);
+  console.log(
+    `${logPrefix} ${tag}core: package.json script names branded${renamed.length > 0 ? ` [${renamed.join(", ")}]` : ""}`,
+  );
+  return true;
 }
 
 // Status option ids of GitHub's Kanban and Team planning board templates; every board

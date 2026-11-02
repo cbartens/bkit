@@ -93,7 +93,7 @@ jobs:
   # this job is skipped, both runner jobs are skipped with it.
   # ---------------------------------------------------------------------------
   context:
-    name: context (${{ github.event_name }})
+    name: bkit-cloud-context (${{ github.event_name }})
     if: >-
       github.event_name == 'workflow_dispatch'
       || (
@@ -469,7 +469,7 @@ jobs:
   # `/install-github-app` in the consumer repo.
   # ---------------------------------------------------------------------------
   run:
-    name: claude (${{ github.event_name }})
+    name: bkit-cloud-claude (${{ github.event_name }})
     needs: context
     if: needs.context.outputs.claude == 'true' && needs.context.outputs.skip != 'true'
     runs-on: {{CLOUD_RUNNER}}
@@ -544,7 +544,7 @@ jobs:
   # opencode.json ${VAR} reference resolves regardless of which provider is installed.
   # ---------------------------------------------------------------------------
   opencode:
-    name: opencode (${{ github.event_name }})
+    name: bkit-cloud-opencode (${{ github.event_name }})
     needs: context
     if: needs.context.outputs.opencode == 'true' && needs.context.outputs.skip != 'true'
     runs-on: {{CLOUD_RUNNER}}
