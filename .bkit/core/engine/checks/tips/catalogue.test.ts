@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -76,6 +77,11 @@ describe("SETUP_TIPS — catalogue", () => {
   it("ALL_WORKFLOWS names every phase workflow; EVERY_CONTEXT every tips context", () => {
     expect([...ALL_WORKFLOWS]).toEqual([...COMPLY_PHASES]);
     expect([...EVERY_CONTEXT]).toEqual([...TIPS_CONTEXTS]);
+  });
+
+  it("the upgrade tip leads the catalogue and matters in every context", () => {
+    expect(SETUP_TIPS[0]?.id).toBe("bkit-upgrade");
+    expect([...workflowsOf(tip("bkit-upgrade"))]).toEqual([...EVERY_CONTEXT]);
   });
 
   it("comms tips matter in every context, and every context has its own tips", () => {
@@ -453,6 +459,42 @@ describe("SETUP_TIPS — detection", () => {
     expect(tip("bkit-output-json").fires(cwd)).toBe(true);
     write(".claude/hooks/bkit-cloud-bootstrap.sh", '"$BKIT" context list-blocks --json | jq .x\n');
     expect(tip("bkit-output-json").fires(cwd)).toBe(false);
+  });
+
+  describe("bkit-upgrade", () => {
+    const pin = (version: string) =>
+      write(".bkit/version", JSON.stringify({ pinnedVersion: version }));
+    const cache = (latest: unknown, checkedAt = 0) =>
+      write(".git/bkit-latest-version.json", JSON.stringify({ latest, checkedAt }));
+    beforeEach(() => {
+      execFileSync("git", ["init", "-q"], { cwd });
+    });
+
+    it("fires when the cached release is newer than the pin, however old the cache", () => {
+      pin("6.0.0");
+      expect(tip("bkit-upgrade").fires(cwd)).toBe(false); // nothing cached yet
+      cache("6.0.0");
+      expect(tip("bkit-upgrade").fires(cwd)).toBe(false);
+      cache("6.1.0", 1);
+      expect(tip("bkit-upgrade").fires(cwd)).toBe(true);
+      pin("6.1.0");
+      expect(tip("bkit-upgrade").fires(cwd)).toBe(false);
+    });
+
+    it("stays quiet on a remembered lookup failure or a missing pin", () => {
+      cache("6.1.0");
+      expect(tip("bkit-upgrade").fires(cwd)).toBe(false); // no pin
+      pin("6.0.0");
+      cache(null);
+      expect(tip("bkit-upgrade").fires(cwd)).toBe(false);
+    });
+
+    it("the lookup opt-out does not hide a release already seen", () => {
+      pin("6.0.0");
+      cache("6.1.0");
+      vi.stubEnv("BKIT_NO_UPDATE_CHECK", "1");
+      expect(tip("bkit-upgrade").fires(cwd)).toBe(true);
+    });
   });
 
   describe("share-friction", () => {

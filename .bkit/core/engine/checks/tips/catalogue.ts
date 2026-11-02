@@ -4,11 +4,12 @@
 // `audit` / `utility` for the agents); `bkit tips` prints the top three;
 // `.bkit/advisories.md` lists every firing tip under `Setup tips`.
 //
-// Array order is the priority: comms first (can workflows reach anything), then change
-// quality (design → build), delivery (debug → ship), running cost, nice-to-have, and
-// setup-specific plumbing last. `workflows` names where a tip matters: a workflow shows
-// its own tips first, in array order, then the rest. Comms tips name every context, so
-// they lead everywhere until fixed.
+// Array order is the priority: an outdated bkit first (every workflow runs its old text and
+// misses its fixes), then comms (can workflows reach anything), change quality (design →
+// build), delivery (debug → ship), running cost, nice-to-have, and setup-specific plumbing
+// last. `workflows` names where a tip matters: a workflow shows its own tips first, in
+// array order, then the rest. The upgrade and comms tips name every context, so they lead
+// everywhere until fixed; the upgrade tip alone cannot be silenced.
 //
 // Text rules: `line`, `why`, `caution` and `ask` are for the person, in plain English, and
 // never name an outside service — examples of specific services go in `steps`, which is
@@ -49,6 +50,7 @@ import {
   hasJsTestRunner,
   hasLintStagedConfig,
   hasMcpServer,
+  hasNewerBkit,
   hasTestLinter,
   hasUnsharedFriction,
   readsBkitText,
@@ -72,6 +74,8 @@ export interface SetupTip {
   ask: string;
   /** Where the agent finds the exact steps. */
   steps: string;
+  /** False when no `bkit.advisories.ignore` entry may silence the tip. */
+  silenceable?: false;
   /** Advisory ids this tip reuses the check of; a trailing `*` matches an id prefix. */
   advisories?: readonly string[];
   /** True when the gap exists. Local checks only. */
@@ -87,6 +91,21 @@ export const ALL_WORKFLOWS: readonly ComplyPhase[] = ["design", "plan", "build",
 export const EVERY_CONTEXT: readonly TipsContext[] = [...ALL_WORKFLOWS, "audit", "utility"];
 
 export const SETUP_TIPS: readonly SetupTip[] = [
+  // --- current: is bkit itself up to date ---------------------------------------------
+  {
+    id: "bkit-upgrade",
+    workflows: EVERY_CONTEXT,
+    title: "Upgrade bkit",
+    line: "A newer bkit is out, but this repo still runs an older one, so your workflows miss its fixes. Upgrade it.",
+    why: "Each release fixes problems found in earlier ones and improves the steps your workflows follow. Upgrading is one command, and it also refreshes the files bkit keeps in this repo so they match the new version.",
+    caution:
+      "Upgrading rewrites the files bkit manages in this repo. Look over what changed and commit it as one change.",
+    ask: "Upgrade bkit in this repo to the latest version: follow the paste block in .bkit/install.md § Upgrade — already installed, then show me what changed before committing.",
+    steps: "`.bkit/install.md` § Upgrade — already installed.",
+    silenceable: false,
+    fires: hasNewerBkit,
+  },
+
   // --- connect: can bkit talk to anything at all -------------------------------------
   {
     id: "tracker",

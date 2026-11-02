@@ -99,16 +99,38 @@ export interface BkitLatestDeps {
   lookup?: (cwd: string) => string | null;
 }
 
-/** The cached registry answer when still fresh: a version, or null for a remembered failure. */
-function readCache(file: string, now: number): { latest: string | null } | undefined {
+/** The cache file's registry answer and when it was asked, however old; undefined when unreadable. */
+function readCacheEntry(file: string): { latest: string | null; checkedAt: number } | undefined {
   if (!fs.existsSync(file)) return undefined;
   const parsed = parseJson(fs.readFileSync(file, "utf-8"));
   if (!parsed.ok || typeof parsed.value !== "object" || parsed.value === null) return undefined;
   const { latest, checkedAt } = parsed.value as { latest?: unknown; checkedAt?: unknown };
   if (typeof checkedAt !== "number") return undefined;
   const value = typeof latest === "string" && SEMVER_RE.test(latest) ? latest : null;
-  const ttl = value === null ? TIMEOUTS.BKIT_LATEST_RETRY_S : TIMEOUTS.BKIT_LATEST_CACHE_S;
-  return now - checkedAt < ttl * 1000 && now >= checkedAt ? { latest: value } : undefined;
+  return { latest: value, checkedAt };
+}
+
+/** The cached registry answer when still fresh: a version, or null for a remembered failure. */
+function readCache(file: string, now: number): { latest: string | null } | undefined {
+  const entry = readCacheEntry(file);
+  if (entry === undefined) return undefined;
+  const { latest, checkedAt } = entry;
+  const ttl = latest === null ? TIMEOUTS.BKIT_LATEST_RETRY_S : TIMEOUTS.BKIT_LATEST_CACHE_S;
+  return now - checkedAt < ttl * 1000 && now >= checkedAt ? { latest } : undefined;
+}
+
+/**
+ * True when the release last cached in `gitCommonDir` is newer than this repo's bkit,
+ * however old that answer is: a release once seen stays newer until the repo upgrades.
+ * Never asks the registry, so local callers (setup tips) can use it, and ignores
+ * `NO_UPDATE_CHECK_ENV`: that skips the lookup, while a release already seen stays
+ * true. False when the cache or the pin leave nothing to compare.
+ */
+export function cachedBkitOutdated(root: string, gitCommonDir: string): boolean {
+  const version = readBkitVersion(path.join(root, ".bkit", "version"))?.pinnedVersion || null;
+  if (version === null) return false;
+  const latest = readCacheEntry(path.join(gitCommonDir, BKIT_LATEST_CACHE))?.latest ?? null;
+  return latest !== null && compareSemver(version, latest) === -1;
 }
 
 /** Remember the registry answer; a cache that cannot be written only costs a lookup next run. */

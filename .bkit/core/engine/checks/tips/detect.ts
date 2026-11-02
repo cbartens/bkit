@@ -3,8 +3,9 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { git } from "../../commands/lib.js";
 import { fold, parse } from "../../ledgers/telemetry.js";
-import { BKIT_PACKAGE } from "../../shared/bkit-latest.js";
+import { BKIT_PACKAGE, cachedBkitOutdated } from "../../shared/bkit-latest.js";
 import { parseJson } from "../../shared/json.js";
 import { readDependencyNames, readPackageJson } from "../../shared/package-json.js";
 
@@ -240,4 +241,13 @@ export function hasUnsharedFriction(cwd: string): boolean {
       r["scope"] !== "consumer"
     );
   });
+}
+
+/**
+ * True when a newer bkit release is out than the one this repo runs, per the answer
+ * `bkit repo info` cached in git's common dir. Never asks the registry itself.
+ */
+export function hasNewerBkit(cwd: string): boolean {
+  const common = git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  return common !== null && cachedBkitOutdated(cwd, common);
 }

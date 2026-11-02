@@ -110,6 +110,11 @@ describe("matchesAdvisory / isTipSilenced", () => {
     expect(isTipSilenced(t, new Set(["blank-key-1"]))).toBe(true);
     expect(isTipSilenced(t, new Set(["other"]))).toBe(false);
   });
+
+  it("never silences an unsilenceable tip", () => {
+    const t = fake("t", true, { advisories: ["adv-x"], silenceable: false });
+    expect(isTipSilenced(t, new Set(["t", "adv-x"]))).toBe(false);
+  });
 });
 
 describe("collectTips", () => {
@@ -253,6 +258,15 @@ describe("formatTips — star line", () => {
     expect(formatTips(tips, { star: false })).not.toContain(STAR_TIP);
     expect(formatTips([], { star: false })).toBe("");
     expect(formatTips([], { workflow: "ship", star: false })).toBe("");
+  });
+
+  it("leaves an unsilenceable tip out of the silence line", () => {
+    const pinned = fake("up", true, { silenceable: false });
+    const out = formatTips([pinned], { workflow: "ship", star: true });
+    expect(out.endsWith(silenceLine([STAR_TIP_ID])), out).toBe(true);
+    expect(formatTips([pinned], { workflow: "audit", star: true })).not.toContain(
+      "Want to silence",
+    );
   });
 
   it("is left out of audit and utility output, which often run back to back", () => {

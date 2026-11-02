@@ -90,15 +90,16 @@ export const STAR_TIP_PARAGRAPH = STAR_TIP.replace("Do you like bkit?", "**Do yo
 
 /** Intro of the Setup tips section: who reads which field, and how to silence a tip. */
 export const TIPS_SECTION_INTRO =
-  "Things not set up yet, most useful first. For the person: each tip says what goes wrong today and a sentence to ask your agent. For an AI agent: follow each tip's Agent steps unless the person declines it. Silence a tip by adding its id to `bkit.advisories.ignore` in package.json. Full template catalogue: .bkit/templates.md.";
+  "Things not set up yet, most useful first. For the person: each tip says what goes wrong today and a sentence to ask your agent. For an AI agent: follow each tip's Agent steps unless the person declines it. Silence a tip by adding its id to `bkit.advisories.ignore` in package.json; `bkit-upgrade` cannot be silenced. Full template catalogue: .bkit/templates.md.";
 
 /** True when advisory `id` matches catalogue pattern `pattern` (trailing `*` = prefix). */
 export function matchesAdvisory(pattern: string, id: string): boolean {
   return pattern.endsWith("*") ? id.startsWith(pattern.slice(0, -1)) : id === pattern;
 }
 
-/** True when `ignored` names the tip's id or any advisory id it reuses. */
+/** True when `ignored` names the tip's id or any advisory id it reuses; never for an unsilenceable tip. */
 export function isTipSilenced(tip: SetupTip, ignored: ReadonlySet<string>): boolean {
+  if (tip.silenceable === false) return false;
   if (ignored.has(tip.id)) return true;
   const patterns = tip.advisories ?? [];
   return [...ignored].some((id) => patterns.some((p) => matchesAdvisory(p, id)));
@@ -209,7 +210,7 @@ function formatWorkflowTips(
   star: boolean,
 ): string {
   const shown = orderForWorkflow(tips, workflow).slice(0, WORKFLOW_TIPS_CAP);
-  const ids = shown.map((t) => t.id);
+  const ids = shown.filter((t) => t.silenceable !== false).map((t) => t.id);
   const parts = shown.map(tipParagraph);
   if (star) {
     parts.push(STAR_TIP_PARAGRAPH);

@@ -394,7 +394,7 @@ bkit tips --all              # every firing tip
 <!-- prettier-ignore -->
 | Rule | Behaviour |
 | --- | --- |
-| Order | One fixed priority list. `--workflow=<name>` moves the tips that matter in that workflow to the front: tracker, GitHub token, `.bkit/.env` and direnv matter in every workflow, so they lead until fixed; then e.g. context-fetch for debug, Husky / slop-scan / Oxlint for build, CI workflow / cloud for ship, Serena / CI workflow / graphify / updater / Trivy for `audit`, Serena for `utility`. |
+| Order | One fixed priority list. The upgrade tip (a newer bkit is out, per the answer `bkit repo info` caches) comes first everywhere, since an outdated bkit runs old workflow text, and no `bkit.advisories.ignore` entry silences it. `--workflow=<name>` moves the tips that matter in that workflow to the front: tracker, GitHub token, `.bkit/.env` and direnv matter in every workflow, so they lead until fixed; then e.g. context-fetch for debug, Husky / slop-scan / Oxlint for build, CI workflow / cloud for ship, Serena / CI workflow / graphify / updater / Trivy for `audit`, Serena for `utility`. |
 | Detection | Local only — files, settings, environment; no network. A tip clears once its local half exists; dashboard steps live in the tip text. |
 | Reuse | A tip for a gap an advisory already detects calls that advisory's detector — tip and advisory never disagree. |
 | Artifact | `bkit install` / `check` / `upgrade` / `doctor` list every firing tip, with its id, in `.bkit/advisories.md` § Setup tips and the console banner: line, why, caution, ask-your-agent sentence, agent steps. |
