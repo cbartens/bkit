@@ -275,3 +275,11 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-02T04:53:23Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-tasks/4/1/comment","hash":"4925b2bf4919ab9057d5d67015e4d9b0e5d6a772adce41659fcd89ef8638cfc4","ref":"https://github.com/cbartens/bkit/issues/748#issuecomment-6569377927","at":"2026-11-02T04:53:24Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-tasks","status":"DONE","at":"2026-11-02T04:53:24Z","parentSha":"eb14b9115e6c1812b1953151213551695426c440","artifacts":["docs/plans/202610/logs/748-brand-every-consumer/build-plan-tasks-4-log.md"],"verdict":"PASS","attempt":1,"group":4}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T04:53:26Z","noun":"tasks","verb":"open","flags":["plan","group","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T04:53:33Z","noun":"counters","verb":"derive","flags":["file","workflow","step","group","position"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T04:53:33Z","noun":"tests","verb":"green","flags":["file","workflow","group","plan","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T04:54:14Z","noun":"status","verb":"route","flags":["step","group","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T04:54:14Z","noun":"context","verb":"diff","flags":["reset-log","base","artifact","fid","step","attempt"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T05:02:24Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-verify/4/1/comment","hash":"64a79da99cd1b89129eb326e561c3818907181be8d577ac025fda693c6f0cd00","ref":"https://github.com/cbartens/bkit/issues/748#issuecomment-6569485585","at":"2026-11-02T05:02:25Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-02T05:02:25Z","parentSha":"25c06ea5d1379fec7e2c1cc307e8aff8e6b03ff7","artifacts":["docs/plans/202610/logs/748-brand-every-consumer/build-plan-verify-4-1.md"],"verdict":"PASS","attempt":1,"group":4,"failures":0}
