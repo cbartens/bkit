@@ -475,7 +475,13 @@ export function check(rows, contract, options = {}) {
                     .map((r, i) => (r.type === "workflow-started" ? i : -1))
                     .filter((i) => i >= 0)
                     .at(-1) ?? -1;
-                const ci = prior.slice(start + 1).some((r) => r.type === "test-run" && r.source === "ci");
+                const history = prior.slice(start + 1);
+                const meta = [...history]
+                    .reverse()
+                    .find((r) => r.type === "workflow-meta" && r.workflow === "debug" && r.ciSelection !== undefined);
+                const ci = history.some((r) => r.type === "test-run" &&
+                    r.workflow === "debug" &&
+                    ciRoundMatches(r, meta?.ciSelection, meta?.ciGeneration));
                 if (ci &&
                     !prior
                         .slice(previous + 1)

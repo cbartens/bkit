@@ -283,7 +283,7 @@ The Selection and State Contract and Verification and Rollback sections are bind
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** Persist selection atomically and route by its generation.
+- [x] **TASK 3:** Persist selection atomically and route by its generation.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/status.ts`: implement `status meta --ci-selection-file` and generation assignment under Atomic saved selection. Extend `debugStart` and `status route` to expose the derived values and reorder `BKIT_DEBUG_GATES`.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/status.ts`: existing status/ledger row types and validators wherever metadata is constrained. Reuse the active-run predicate from `debugStart`; an unrelated or finished run cannot provide evidence or progress.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/status.ts`: mode changes or changed CI identities increment `ciGeneration`; identical identities preserve it. A local variant replaces the whole object, removing stale tiers and references. Route `[local]` before reading saved CI fields. Validate the complete object before appending any row.
@@ -301,7 +301,7 @@ The Selection and State Contract and Verification and Rollback sections are bind
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** Record a CI round without pretending to execute local tests.
+- [x] **TASK 4:** Record a CI round without pretending to execute local tests.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/tests.ts`: add `tests run --ci-run --ci-url`; require `--file`, an active debug run and a matching validated saved CI selection. Reject a flag/metadata mismatch. Read the current generation and its DONE remediation/soak rows.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/tests.ts`: before a matching fix, create the evidence artifact identifying repository, workflow, run, attempt, commit and URL. State that the local gate was not run. Append the test-run row defined in Tests, reproduction and proof; emit `source`, `verdict`, `scope`, `gate: null`, nullable `failures`, `runAttempt`, `ciGeneration`; return 1. After a matching fix, use the normal local gate runner and emit `source: local`.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/tests.ts`: `appendTestRun`, row types and telemetry/status validators to accept this bounded CI variant. Preserve numeric local exit codes and existing local validation. Do not loosen schemas for unrelated row kinds.

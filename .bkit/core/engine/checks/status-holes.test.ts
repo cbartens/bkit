@@ -1040,6 +1040,79 @@ describe("check — hole classes", () => {
     expect(check(forged, contract).verdict).toBe("HOLEY");
   });
 
+  const contextSelection = {
+    mode: "ci",
+    provider: "github",
+    repo: "example/example",
+    runId: "123",
+    runAttempt: 2,
+    runUrl: "https://github.com/example/example/actions/runs/123/attempts/2",
+    workflowId: "456",
+    workflowPath: ".github/workflows/consumer-ci.yml",
+    headBranch: "fix/ci",
+    headSha: "a".repeat(40),
+    conclusion: "failure",
+    redTiers: ["integration"],
+    via: "prompt-run",
+  };
+  const contextRound: StatusRow = {
+    type: "test-run",
+    workflow: "debug",
+    at: AT,
+    step: "debug-run-tests",
+    source: "ci",
+    scope: "ci:123",
+    verdict: "FAIL",
+    exitCode: null,
+    failures: null,
+    ciRun: "123",
+    ciUrl: contextSelection.runUrl,
+    repo: contextSelection.repo,
+    workflowId: contextSelection.workflowId,
+    workflowPath: contextSelection.workflowPath,
+    headSha: contextSelection.headSha,
+    gate: null,
+    runAttempt: 2,
+    ciGeneration: 1,
+    artifact: "logs/ci-round-1.md",
+    log: "logs/ci-round-1.md",
+    attempt: 1,
+    run: 1,
+  };
+
+  it.each([
+    ["local replacement", { mode: "local", reason: "explicit-local" }, 2],
+    ["new generation", contextSelection, 2],
+    ["changed identity", { ...contextSelection, headSha: "b".repeat(40) }, 1],
+    ["invalid selection", { mode: "ci" }, 1],
+  ])("ignores stale CI context-fetch requirements after %s", (_name, selection, generation) => {
+    const md = [
+      "## Step 1 — Fetch Context",
+      ...fence("steps finish --workflow=debug --step=context-fetch --number=1"),
+    ].join("\n");
+    const rows: StatusRow[] = [
+      { type: "workflow-started", workflow: "debug", at: AT },
+      {
+        type: "workflow-meta",
+        workflow: "debug",
+        at: AT,
+        ciSelection: contextSelection,
+        ciGeneration: 1,
+      },
+      contextRound,
+      {
+        type: "workflow-meta",
+        workflow: "debug",
+        at: AT,
+        ciSelection: selection,
+        ciGeneration: generation,
+      },
+      callRow("debug", "steps", "finish"),
+      stepRow("debug", "context-fetch"),
+    ];
+    expect(check(rows, deriveContract(md, "debug")).evidenceHoles).toEqual([]);
+  });
+
   /** Calls and row of every step section of a workflow, in markdown order, each step on its first arm. */
   const replay = (name: (typeof FLOWS)[number], withBranches: boolean): StatusRow[] => {
     return contractUnits(deriveContract(flowMd(name), name)).flatMap((u) => {
