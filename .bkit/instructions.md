@@ -1645,7 +1645,7 @@ Clause section lines:
   - verbatim: `bkit-build-plan-tasks`, `bkit-build-plan-verify`
   - applies: `bkit-build-plan-gaps-remediate`, `bkit-debug-failure-reproduce`
 - drift:
-  - `bkit-build-plan-gaps-remediate:102`: "Run `bkit tests changed --fallback=bkit:gate:static-unit`. Every local test must pass." Runs only `pnpm bkit:gate:changed` on the changed files, or `pnpm bkit:gate:static-unit` when that is undeclared, not the integration tier the pre-push hook adds when `bkit:gate:static-unit-integration` is declared
+  - `bkit-build-plan-gaps-remediate:103`: "Run `bkit tests changed --fallback=bkit:gate:static-unit`. Every local test must pass." Runs only `pnpm bkit:gate:changed` on the changed files, or `pnpm bkit:gate:static-unit` when that is undeclared, not the integration tier the pre-push hook adds when `bkit:gate:static-unit-integration` is declared
     - kept: subagents never push; they run their own lighter gate (`local-pre-commit`: `/bkit-*` steps run their own gates) and the pre-push hook runs the push gate
 
 ```text
@@ -9485,7 +9485,7 @@ Orchestrator exits and the dispatched skill owns the session
 Derive the decision number:
 **If** `PAUSE_QUESTION` = `VERIFY_GAPS` → write one item per `Identified Gaps Log` line of `build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}.md`. Add the gap's last `BLOCKED` reason from `build-plan-gaps-remediate-{GROUP}-*-log.md` when it has one.
 A fixable gap → options `["Accept", "Fix now"]`, with a recommendation per item.
-Any unfixable gap (`no-test-first`, `test-first-malformed`, `test-first-unread`, `exception-refused`) → a hard blocker with options `["Accept", "Fix now", "Stop"]`.
+Any unfixable gap (`no-test-first`, `test-first-malformed`, `test-first-unread`, `exception-refused`, `test-loosened` logged `Fixable: false`) → a hard blocker with options `["Accept", "Fix now", "Stop"]`.
 A group-gate failure is never an item, because it is always fixed.
 **If** `PAUSE_QUESTION` = `CHALLENGE`:
 **If** `CHALLENGE_OVERFLOW` is set → the merge wrote nothing to the plan. Write one item per `Location` of each `CRITICAL`, `HIGH` or `MEDIUM` finding in the merged reports: `build-challenge-2.md`, plus `build-challenge-1.md` when the change is large.
@@ -9657,6 +9657,8 @@ Read status.jsonl and derive the next `STRATEGY`:
 Read status.jsonl and derive the next `STRATEGY`:
 **If** `docs/plans/{YYYYMM}/logs/{FID}/build-group-gate-{GROUP}-{VERIFY_ATTEMPT}.md` does not exist → `GATE_VERDICT` = SKIPPED.
 **Else** → read the group gate's verdict:
+**If** `VERIFY_LOOSENED` != `none` → the tests step removed or loosened an expectation of an existing test (each `test-loosened` gap of the verify report, `Fixable: true`). The tests step restores it, because no code step may rewrite a planned test; no fixer runs this round:
+**If** exit 0, 1 or 3 → re-run Step 8: the next verify round judges the restored diff, and a test the restore left unproven waits for Step 15 like any other.
 Finish. The command records the header's `Strategy`:
 **If** exit 11 → the fix edited a planned test case the tests step recorded (`tests`; the engine logs an `agent-rework` friction row): invoke `@bkit-build-plan-gaps-remediate` again with `"<problem> Put each test in <tests> back as the tests step left it; your other edits to those files stay. Correct the Fixed count and verdict in your log to match."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**.
 Check that the attempt changed source files, not only logs and ledgers:
@@ -10426,6 +10428,7 @@ Read the group's briefs (their task blocks), the plan gaps, the group gate log w
 Each failure in the group gate log is one gap. In the logs, `DONE` = done and `BLOCKED` = blocked.
 Resume at the first gap that is not `DONE`.
 **If** Context `Scope` = `fixable only` → skip each gap logged `— Fixable: false`, and write no log line for it.
+Skip each gap logged `test-loosened`, and write no log line for it: the tests step restores that test, because a code step never edits a planned test.
 `STANDARD` → fix the current gaps, each with a targeted change.
 Fix the gaps in `priority` order. For each gap:
 Apply a targeted fix by editing or creating source.
@@ -10455,12 +10458,19 @@ Its task blocks' `TEST FIRST` entries are the work, in order; the rest of each b
 Its `Derived Test Matrix rows` say what each test asserts.
 **If** the log already holds `WROTE` or `PASSES` for a test → skip that test.
 **If** a red report is supplied → it names the tests whose red the engine could not prove, each with the state it found (`vacuous`, `missing`, `no-report`, `lint`). Rewrite only those tests, as the state says: a `vacuous` test passed with nothing to test, so make it reach the planned behaviour; a `missing` or `no-report` test is not at the file and name the entry gives; a `lint` test fails `bkit:lint:file`.
+**If** the caller asks you to restore tests instead of supplying a brief (verify logged each one `test-loosened`) → for each test named:
+Read its `Updated tests` entry in the supplied green report. The entry's diff shows the test's own lines at `base` against the lines now.
+Put back every expectation the update removed or loosened, as it stood at `base` (`git show {base}:{file}`).
+Keep the expectations the update added.
+Lint the file and run it, as for a test you write.
+Append ``WROTE — TASK {N}: `{file}` `{name}` `` with Bash `echo >>`.
+Change no other test, and then set the verdict.
 Write the tests one task at a time. For each `TEST FIRST` entry that the task's `TEST EXCEPTION` does not name:
 Take the import path, symbol names and signatures from the task's `CREATE`, `UPDATE` and `DONE WHEN` lines exactly; the code step builds to those names.
 For each value the test checks or fakes, read the code that produces it where that code exists, and append `SOURCE — TASK {N}: {value} from {file}:{line}` with Bash `echo >>`. A fake that differs from what that code returns lets the test pass against code that fails for real.
 Write the test at the file and under the test name the entry gives, asserting the behaviour its `Derived Test Matrix` row names.
-Give it that name as one literal string, not a name built when the tests run (a parameterised table name such as `it.each`, `@pytest.mark.parametrize` or a template string), because the engine finds and locks each planned test by its name in the file.
-**If** the file already holds a test under that name → update that test. Add expectations, and never remove or loosen one: the engine records the test as `updated`, and verify fails an update that removes or loosens an expectation.
+Give it that name as one literal string, not a name built when the tests run (a parameterised table name such as `it.each`, `@pytest.mark.parametrize` or a template string), because the engine finds and locks each planned test by its name in the file. A name given as a suite path (`suite > test`) is found by its last segment, so that segment is the test's literal name.
+**If** the file already holds a test under that name (the brief's `Planned tests that already exist` section names it with the line it starts on) → update that test in place. Add expectations, and never remove or loosen one: the engine records the test as `updated` with the line diff of its own lines, and verify logs an update that removes or loosens an expectation as `test-loosened`, which sends the test back to you to restore.
 **If** `package.json` declares `bkit:lint:file` → run `pnpm bkit:lint:file {file}`, and fix the file until it exits 0.
 **If** `package.json` declares `bkit:test:file` → run `pnpm bkit:test:file {file}` once. A failure, or a load error on an import the code step will create, is the expected result.
 **If** the run passes → append ``PASSES — TASK {N}: `{file}` `{name}`: {reason}`` with Bash `echo >>`, where the reason names the code that already satisfies it.
@@ -10500,9 +10510,11 @@ Cross-domain boundaries are respected.
 **If** the hit is a different thing with the same name → no gap.
 **Else** → `Fixable: true`.
 `Unproven` section → list each test in `Notes`. No gap: the engine could not prove that test red before its code existed, and the owner answers it once, at the end of the build.
-`Updated tests` section → each test is an existing test the tests step changed. Read its diff in the supplied group diff:
-**If** the update only adds expectations → no gap.
-**Else** → the update removes or loosens an expectation. Append ``Task {N} `{file}` "{name}" — the update removes or loosens an expectation: {what} — Fixable: false``, because no code step may rewrite a planned test.
+`Updated tests` section → each test is an existing test the tests step changed. Its entry carries the engine's line diff of the test's own lines since `base`, and says whether the change is additive (no line removed). Read that diff, and the supplied group diff when the entry says the lines could not be read:
+**If** the update only adds expectations → no gap. An additive change is one unless an added line disables or overrides an earlier expectation (a skip, an early return, a reassignment).
+**Else** → the update removes or loosens an expectation. The tests step restores it and keeps the additions, because no code step may rewrite a planned test:
+**If** a supplied earlier verify report of the group already logged `test-loosened` for that test → append ``TASK {N}: `{file}` `{name}` — test-loosened: {what} — Fixable: false``, because the tests step loosened it again, so the owner decides.
+**Else** → append ``TASK {N}: `{file}` `{name}` — test-loosened: {what} — Fixable: true``, and name the test on the header's `Loosened` line, which sends it back to the tests step.
 `Enforced: false` → record the reason in `Notes`. No gap.
 `Already landed` section → list each test, and the reason the tests step gave for its pass, in `Notes`. No gap.
 A gap you leave `Fixable: false` is a `FAIL`.
@@ -10518,6 +10530,7 @@ Set `Failures` = the count of unresolved gaps.
 Set `Fixable`:
 **If** any of those gaps is `Fixable: true` → `true`.
 **Else** → `false`.
+Set `Loosened` = the tests you logged `test-loosened` at `Fixable: true`, each as `` `{file}` `{name}` ``, comma-separated; `none` when there are none.
 Set `Verdict` from the `Fixable` values you decided, never from the report's `null`. First match wins:
 **If** any unresolved gap is `Fixable: false` → `FAIL`.
 **If** any unresolved gap is `Fixable: true` → `CONCERNS`.

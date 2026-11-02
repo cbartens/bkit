@@ -29,7 +29,9 @@ import {
   redEntries,
   resolveGate,
   taskSizes,
+  lineDiff,
   testBlock,
+  testSpan,
   testsCommand,
   type JunitCase,
 } from "./tests";
@@ -1572,6 +1574,14 @@ describe("testBlock — a planned test's own lines, by name and indentation", ()
     expect(blockHash(VITEST.replace("toBe(1)", "toBe(2)"), "adds a row")).not.toBe(before);
   });
 
+  it("testSpan gives the 1-based first and last line of the block, and lineDiff counts the lines removed and added", () => {
+    expect(testSpan(VITEST, "counts rows")).toEqual({ start: 8, end: 10 });
+    expect(testSpan(VITEST, "no such test")).toBeNull();
+    const d = lineDiff("a\nb\nc", "a\nc\nd");
+    expect(d).toEqual({ text: " a\n-b\n c\n+d", removed: 1, added: 1 });
+    expect(lineDiff("a\nb", "a\nb")).toEqual({ text: " a\n b", removed: 0, added: 0 });
+  });
+
   it("finds a test planned by its suite path (`suite > test`) through its last segment", () => {
     expect(testBlock(VITEST, "rows > adds a row")).toBe(testBlock(VITEST, "adds a row"));
     expect(testBlock(VITEST, "outer > rows > counts rows")).toBe(testBlock(VITEST, "counts rows"));
@@ -2077,8 +2087,60 @@ describe("bkit tests red / green", () => {
       const g = await green();
       expect(g.code).toBe(0);
       expect(g.json.unproven).toEqual([]);
-      expect(g.json.updated).toEqual([{ task: 1, test: TEST, name: NAME, base: start }]);
-      expect(report()).toContain("## Updated tests");
+      // The expectation's line changed: not additive, and the report carries the line diff.
+      expect(g.json.updated).toEqual([
+        {
+          task: 1,
+          test: TEST,
+          name: NAME,
+          base: start,
+          additive: false,
+          diff: [
+            `   it('${NAME}', () => {`,
+            "-    expect(clamp(5, 1, 10)).toBe(5);",
+            "+    expect(clamp(5, 1, 10)).toBe(5).not.toBe(6);",
+            "   });",
+          ].join("\n"),
+        },
+      ]);
+      const out = report();
+      expect(out).toContain("## Updated tests");
+      expect(out).toContain("not additive: a line of the test was removed or changed");
+      expect(out).toContain(
+        `  \`\`\`diff\n     it('${NAME}', () => {\n  -    expect(clamp(5, 1, 10)).toBe(5);`,
+      );
+    });
+
+    it("an update that only adds lines to the test is additive, and the report says no expectation was dropped", async () => {
+      fs.writeFileSync(path.join(cwd, TEST), body("5", "1"));
+      const start = commitAll("existing tests");
+      fs.mkdirSync(path.join(cwd, "logs"), { recursive: true });
+      fs.writeFileSync(
+        path.join(cwd, STATUS),
+        `${JSON.stringify({ type: "step-done", workflow: "build", step: "build-group-start", status: "DONE", group: 1, parentSha: start })}\n`,
+      );
+      fs.writeFileSync(
+        path.join(cwd, TEST),
+        body("5", "1").replace(
+          "    expect(clamp(5, 1, 10)).toBe(5);",
+          "    expect(clamp(5, 1, 10)).toBe(5);\n    expect(clamp(11, 1, 10)).toBe(10);",
+        ),
+      );
+      vi.stubEnv("FAKE_EXIT", "0");
+      vi.stubEnv("FAKE_JUNIT", junit(passed(`clamp > ${NAME}`)));
+      const r = await red();
+      expect(states(r)).toEqual([`${NAME}:updated`]);
+      const g = await green();
+      expect(g.code).toBe(0);
+      expect(g.json.updated).toEqual([
+        expect.objectContaining({
+          task: 1,
+          additive: true,
+          diff: expect.stringContaining("+    expect(clamp(11, 1, 10)).toBe(10);"),
+        }),
+      ]);
+      expect(g.json.updated[0].diff).not.toContain("\n-");
+      expect(report()).toContain("additive: no line of the test was removed");
     });
   });
 

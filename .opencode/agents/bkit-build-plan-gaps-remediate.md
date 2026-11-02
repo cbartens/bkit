@@ -84,6 +84,7 @@ tools:
    - Each failure in the group gate log is one gap. In the logs, `DONE` = done and `BLOCKED` = blocked.
    - Resume at the first gap that is not `DONE`.
    - **If** Context `Scope` = `fixable only` → skip each gap logged `— Fixable: false`, and write no log line for it.
+   - Skip each gap logged `test-loosened`, and write no log line for it: the tests step restores that test, because a code step never edits a planned test.
 5. Update **Create** after each gap: append `DONE|BLOCKED` at EOF with Bash `echo {log entry} >> {output}`.
 6. Read `Strategy` from the input Context. **If** it is missing → set `Verdict` = `FAIL` in **Create**, change no other file, and go straight to the final return. Apply the matching strategy:
    - `STANDARD` → fix the current gaps, each with a targeted change.

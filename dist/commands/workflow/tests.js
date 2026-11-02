@@ -282,6 +282,19 @@ function testStart(lines, matches) {
 export function testBlock(text, name) {
     if (text === null)
         return null;
+    const span = testSpan(text, name);
+    return span === null
+        ? null
+        : text
+            .split("\n")
+            .slice(span.start - 1, span.end)
+            .join("\n");
+}
+/**
+ * The 1-based first and last line of the test named `name` in `text` (the lines
+ * `testBlock` returns), or null when no line names it.
+ */
+export function testSpan(text, name) {
     const lines = text.split("\n");
     const quoted = [`"${name}"`, `'${name}'`, `\`${name}\``];
     let at = testStart(lines, (l) => quoted.some((q) => l.includes(q)));
@@ -292,7 +305,7 @@ export function testBlock(text, name) {
     if (at < 0) {
         // A suite path (`suite > test`, as a JUnit report names it): the last segment is the test.
         const last = name.split(" > ").pop();
-        return last === name ? null : testBlock(text, last);
+        return last === name ? null : testSpan(text, last);
     }
     let start = at;
     while (start > 0 &&
@@ -313,7 +326,45 @@ export function testBlock(text, name) {
             end = i;
         break;
     }
-    return lines.slice(start, end + 1).join("\n");
+    return { start: start + 1, end: end + 1 };
+}
+/**
+ * The line diff of a test's own lines, `before` to `after`: unified lines (` `, `-`, `+`)
+ * over a longest common subsequence, and the counts of lines removed and added. A change
+ * that removes no line cannot have dropped an expectation; it can still have disabled one,
+ * which only a read of the added lines tells.
+ */
+export function lineDiff(before, after) {
+    const a = before.split("\n");
+    const b = after.split("\n");
+    const lcs = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
+    for (let i = a.length - 1; i >= 0; i--)
+        for (let j = b.length - 1; j >= 0; j--)
+            lcs[i][j] =
+                a[i] === b[j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+    const out = [];
+    let removed = 0;
+    let added = 0;
+    let i = 0;
+    let j = 0;
+    while (i < a.length || j < b.length) {
+        if (i < a.length && j < b.length && a[i] === b[j]) {
+            out.push(` ${a[i]}`);
+            i++;
+            j++;
+        }
+        else if (i < a.length && (j >= b.length || lcs[i + 1][j] >= lcs[i][j + 1])) {
+            out.push(`-${a[i]}`);
+            removed++;
+            i++;
+        }
+        else {
+            out.push(`+${b[j]}`);
+            added++;
+            j++;
+        }
+    }
+    return { text: out.join("\n"), removed, added };
 }
 /** The sha-1 of a test's own lines (`testBlock`), or null when `text` holds no such test. */
 export function blockHash(text, name) {
@@ -992,6 +1043,22 @@ function deleteGaps(top, planRel, tasks, planTasks) {
         }
     return gaps;
 }
+/** The `Updated` entry for a planned test: its own lines at `base` against the file now. */
+function updatedEntry(top, task, t, base) {
+    const entry = { task, test: t.test, name: t.name, base, additive: null, diff: null };
+    if (base === null)
+        return entry;
+    const shown = runGit(top, ["show", `${base}:${t.test}`]);
+    const abs = path.join(top, t.test);
+    if (!shown.ok || !fs.existsSync(abs))
+        return entry;
+    const was = testBlock(shown.stdout, t.name);
+    const now = testBlock(fs.readFileSync(abs, "utf-8"), t.name);
+    if (was === null || now === null)
+        return entry;
+    const d = lineDiff(was, now);
+    return { ...entry, additive: d.removed === 0, diff: d.text };
+}
 /** Every PASSES line of a tests step's log: the tests the writer saw passing and vouches for. */
 function passesLines(log) {
     return [
@@ -1089,8 +1156,19 @@ function writeAuditReport(log, o) {
         out.push(`- Task ${l.task} \`${l.test}\` "${l.name}" — passed at the group's red, and the tests step accepted it: ${l.reason}; no red is due`);
     if (o.updated.length > 0)
         out.push("", "## Updated tests", "");
-    for (const u of o.updated)
-        out.push(`- Task ${u.task} \`${u.test}\` "${u.name}" — an existing test the tests step changed${u.base === null ? "" : ` since \`${u.base.slice(0, 9)}\``}: the update may add expectations, never remove or loosen one`);
+    for (const u of o.updated) {
+        const since = u.base === null ? "" : ` since \`${u.base.slice(0, 9)}\``;
+        const judged = u.additive === null
+            ? "its lines at the base commit could not be read, so read the group diff"
+            : u.additive
+                ? "additive: no line of the test was removed, so no expectation was dropped — read the added lines for one that disables an earlier expectation"
+                : "not additive: a line of the test was removed or changed — read the diff for an expectation removed or loosened";
+        out.push(`- Task ${u.task} \`${u.test}\` "${u.name}" — an existing test the tests step changed${since}; the update may add expectations, never remove or loosen one. ${judged}`);
+        if (u.diff !== null) {
+            const fence = fenceFor(u.diff);
+            out.push("", `  ${fence}diff`, ...u.diff.split("\n").map((l) => `  ${l}`), `  ${fence}`, "");
+        }
+    }
     if (o.unproven.length > 0)
         out.push("", "## Unproven", "");
     for (const u of o.unproven)
@@ -1574,7 +1652,7 @@ export const testsCommand = {
                 gaps: "[{task, kind, detail, fixable, logLine}]: no-test-first | test-first-malformed | test-first-unread (task null: a plan-level format problem) | not-green | exception-refused (a task whose only test field is a TEST EXCEPTION not honoured) | delete-still-referenced (a DELETE line's file still exists, or its name is still found in the tree); fixable is null when the gap needs a diff read; logLine is the line the verifier appends",
                 alreadyLanded: "[{task, test, name, reason}]: tests the tests step accepted as passing before any task code (passed-accepted on the red row); no red is due for them",
                 unproven: "[{task, test, name, detail}]: tests with no proven red (no build-tests-red row, or a state other than red, red-not-loaded, updated or passed-accepted) and no honoured TEST EXCEPTION; never a gap — the owner answers them once, at the end of the build",
-                updated: "[{task, test, name, base}]: existing tests the tests step changed (updated on the red row); base is the group's start commit; the verifier judges each diff — it may add expectations, never remove or loosen one",
+                updated: "[{task, test, name, base, additive, diff}]: existing tests the tests step changed (updated on the red row); base is the group's start commit; additive = the test's own lines since base gained lines and lost none (null when a side cannot be read), diff = their unified line diff; the verifier judges each diff — it may add expectations, never remove or loosen one",
                 log: "where the report was written (as given)",
             },
             exitCodes: {
@@ -1722,7 +1800,7 @@ export const testsCommand = {
                         else if (RED_PROVEN.has(red.state)) {
                             row.red = red.state;
                             if (red.state === "updated")
-                                updated.push({ task: s.task, test: t.test, name: t.name, base: red.base ?? null });
+                                updated.push(updatedEntry(top, s.task, t, red.base ?? null));
                         }
                         else {
                             row.red = red.state;

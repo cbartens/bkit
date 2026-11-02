@@ -87,9 +87,11 @@ autoCompactWindow: 300000
      - **If** the hit is a different thing with the same name → no gap.
      - **Else** → `Fixable: true`.
    - `Unproven` section → list each test in `Notes`. No gap: the engine could not prove that test red before its code existed, and the owner answers it once, at the end of the build.
-   - `Updated tests` section → each test is an existing test the tests step changed. Read its diff in the supplied group diff:
-     - **If** the update only adds expectations → no gap.
-     - **Else** → the update removes or loosens an expectation. Append ``Task {N} `{file}` "{name}" — the update removes or loosens an expectation: {what} — Fixable: false``, because no code step may rewrite a planned test.
+   - `Updated tests` section → each test is an existing test the tests step changed. Its entry carries the engine's line diff of the test's own lines since `base`, and says whether the change is additive (no line removed). Read that diff, and the supplied group diff when the entry says the lines could not be read:
+     - **If** the update only adds expectations → no gap. An additive change is one unless an added line disables or overrides an earlier expectation (a skip, an early return, a reassignment).
+     - **Else** → the update removes or loosens an expectation. The tests step restores it and keeps the additions, because no code step may rewrite a planned test:
+       - **If** a supplied earlier verify report of the group already logged `test-loosened` for that test → append ``TASK {N}: `{file}` `{name}` — test-loosened: {what} — Fixable: false``, because the tests step loosened it again, so the owner decides.
+       - **Else** → append ``TASK {N}: `{file}` `{name}` — test-loosened: {what} — Fixable: true``, and name the test on the header's `Loosened` line, which sends it back to the tests step.
    - `Enforced: false` → record the reason in `Notes`. No gap.
    - `Already landed` section → list each test, and the reason the tests step gave for its pass, in `Notes`. No gap.
    - A gap you leave `Fixable: false` is a `FAIL`.
@@ -106,6 +108,7 @@ autoCompactWindow: 300000
     - Set `Fixable`:
       - **If** any of those gaps is `Fixable: true` → `true`.
       - **Else** → `false`.
+    - Set `Loosened` = the tests you logged `test-loosened` at `Fixable: true`, each as `` `{file}` `{name}` ``, comma-separated; `none` when there are none.
     - Set `Verdict` from the `Fixable` values you decided, never from the report's `null`. First match wins:
       - **If** any unresolved gap is `Fixable: false` → `FAIL`.
       - **If** any unresolved gap is `Fixable: true` → `CONCERNS`.
@@ -119,6 +122,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 Failures: <integer >= 0>
 Fixable: true | false
 Tasks: <the task numbers you judged satisfied, comma-separated; none when there are none>
+Loosened: <the tests logged test-loosened at Fixable: true, each as `{file}` `{name}`, comma-separated; none when there are none>
 
 <!-- verdict:end -->
 

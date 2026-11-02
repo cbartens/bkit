@@ -64,7 +64,7 @@ import {
 import { COMMENT_FILE_OUTPUT, commentFileOf } from "./tracker.js";
 import { EXIT_NO_STATUS, FILE_FLAG, positiveInt, readRuns, str } from "./status.js";
 import { EXIT_COMMIT, writeStepRow } from "./steps.js";
-import { RED_PROVEN, doneTasks, redEntries, redKey } from "./tests.js";
+import { RED_PROVEN, doneTasks, redEntries, redKey, testSpan } from "./tests.js";
 
 /** Exit code: the artifact to clamp is missing, unreadable, or could not be replaced. */
 export const EXIT_ARTIFACT = 4;
@@ -1129,7 +1129,33 @@ export interface BriefInput {
   isDone: (t: PlanTaskBlock) => boolean;
   /** The tests step's brief: the Derived Test Matrix rows for the group's tests replace the Reuse Inventory rows and Architecture entries. */
   testsOnly?: boolean;
+  /** Tests-only: the planned tests a test in their file already carries, with the line that test starts on. */
+  existing?: ExistingTest[];
   note?: string;
+}
+
+/** A planned test whose file already holds a test of that name, at `line` (1-based). */
+export interface ExistingTest {
+  task: number;
+  test: string;
+  name: string;
+  line: number;
+}
+
+/**
+ * The planned tests of `open` that already exist in the tree under `top`: the tests step
+ * updates each one in place (adding expectations, never removing or loosening one) rather
+ * than writing a second test of that name.
+ */
+export function existingPlannedTests(top: string, open: PlanTaskBlock[]): ExistingTest[] {
+  const out: ExistingTest[] = [];
+  for (const t of plannedTests(open)) {
+    const abs = path.join(top, t.test);
+    if (!fs.existsSync(abs)) continue;
+    const span = testSpan(fs.readFileSync(abs, "utf-8"), t.name);
+    if (span !== null) out.push({ task: t.task, test: t.test, name: t.name, line: span.start });
+  }
+  return out;
 }
 
 /** The brief's text and its work section's size in bytes. */
@@ -1188,8 +1214,18 @@ export function briefText(o: BriefInput): { text: string; workBytes: number } {
     }
     work.push("");
   }
-  if (o.testsOnly) work.push(...matrixRows(o.plan, open));
-  else work.push(...planEntries(lines, open, work, o.planFile));
+  if (o.testsOnly) {
+    work.push(...matrixRows(o.plan, open));
+    const existing = (o.existing ?? []).filter((e) => open.some((t) => t.task === e.task));
+    if (existing.length > 0) {
+      work.push("### Planned tests that already exist", "");
+      for (const e of existing)
+        work.push(
+          `- TASK ${e.task} \`${e.test}\` \`${e.name}\` — exists at \`${e.test}:${e.line}\`; update that test in place: add expectations, never remove or loosen one`,
+        );
+      work.push("");
+    }
+  } else work.push(...planEntries(lines, open, work, o.planFile));
   out.push(...work);
 
   if (o.note !== undefined) out.push("## Deviations", "", o.note.trim(), "");
@@ -1613,6 +1649,9 @@ export const contextCommand: CommandSpec = {
           groups: blocks.groups,
           isDone: (t) => isDone(t) || (group.tasks.includes(t) && !open.includes(t)),
           testsOnly,
+          existing: testsOnly
+            ? existingPlannedTests(git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd, open)
+            : undefined,
           note: noteFile === undefined ? undefined : fs.readFileSync(noteFile, "utf-8"),
         });
         const out = nextBriefPath(dir, group.group, testsOnly ? "build-brief-tests" : undefined);

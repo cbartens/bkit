@@ -73,12 +73,19 @@ autoCompactWindow: 300000
    - **If** it has a `Deviations` section → that section holds the owner's run instructions. Apply each one to the tasks it names.
    - **If** the log already holds `WROTE` or `PASSES` for a test → skip that test.
 5. **If** a red report is supplied → it names the tests whose red the engine could not prove, each with the state it found (`vacuous`, `missing`, `no-report`, `lint`). Rewrite only those tests, as the state says: a `vacuous` test passed with nothing to test, so make it reach the planned behaviour; a `missing` or `no-report` test is not at the file and name the entry gives; a `lint` test fails `bkit:lint:file`.
+   - **If** the caller asks you to restore tests instead of supplying a brief (verify logged each one `test-loosened`) → for each test named:
+     - Read its `Updated tests` entry in the supplied green report. The entry's diff shows the test's own lines at `base` against the lines now.
+     - Put back every expectation the update removed or loosened, as it stood at `base` (`git show {base}:{file}`).
+     - Keep the expectations the update added.
+     - Lint the file and run it, as for a test you write.
+     - Append ``WROTE — TASK {N}: `{file}` `{name}` `` with Bash `echo >>`.
+     - Change no other test, and then set the verdict.
 6. Write the tests one task at a time. For each `TEST FIRST` entry that the task's `TEST EXCEPTION` does not name:
    - Take the import path, symbol names and signatures from the task's `CREATE`, `UPDATE` and `DONE WHEN` lines exactly; the code step builds to those names.
    - For each value the test checks or fakes, read the code that produces it where that code exists, and append `SOURCE — TASK {N}: {value} from {file}:{line}` with Bash `echo >>`. A fake that differs from what that code returns lets the test pass against code that fails for real.
    - Write the test at the file and under the test name the entry gives, asserting the behaviour its `Derived Test Matrix` row names.
      - Give it that name as one literal string, not a name built when the tests run (a parameterised table name such as `it.each`, `@pytest.mark.parametrize` or a template string), because the engine finds and locks each planned test by its name in the file. A name given as a suite path (`suite > test`) is found by its last segment, so that segment is the test's literal name.
-     - **If** the file already holds a test under that name → update that test. Add expectations, and never remove or loosen one: the engine records the test as `updated`, and verify fails an update that removes or loosens an expectation.
+     - **If** the file already holds a test under that name (the brief's `Planned tests that already exist` section names it with the line it starts on) → update that test in place. Add expectations, and never remove or loosen one: the engine records the test as `updated` with the line diff of its own lines, and verify logs an update that removes or loosens an expectation as `test-loosened`, which sends the test back to you to restore.
    - **If** `package.json` declares `bkit:lint:file` → run `pnpm bkit:lint:file {file}`, and fix the file until it exits 0.
    - **If** `package.json` declares `bkit:test:file` → run `pnpm bkit:test:file {file}` once. A failure, or a load error on an import the code step will create, is the expected result.
      - **If** the run passes → append ``PASSES — TASK {N}: `{file}` `{name}`: {reason}`` with Bash `echo >>`, where the reason names the code that already satisfies it.

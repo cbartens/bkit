@@ -1925,6 +1925,30 @@ describe("bkit context brief", () => {
     expect(rows).not.toContain("src/t6.test.ts");
   });
 
+  it("--tests-only lists each planned test its file already holds, with the line it starts on, and leaves the section out when none exists", async () => {
+    const { dir, plan, logs } = setupWithTests("existing");
+    const none = read((await testsOnly(plan, logs, dir)).json.artifact);
+    expect(none).not.toContain("### Planned tests that already exist");
+    fs.mkdirSync(path.join(dir, "src"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "src/t3.test.ts"),
+      [
+        "describe('status', () => {",
+        "  it('rejects bad', () => {",
+        "    expect(set('x')).toBe(false);",
+        "  });",
+        "});",
+        "",
+      ].join("\n"),
+    );
+    const work = read((await testsOnly(plan, logs, dir)).json.artifact).split("## The work")[1]!;
+    const section = work.split("### Planned tests that already exist")[1]!;
+    expect(section).toContain(
+      "- TASK 3 `src/t3.test.ts` `rejects bad` — exists at `src/t3.test.ts:2`; update that test in place: add expectations, never remove or loosen one",
+    );
+    expect(section).not.toContain("`sets it`");
+  });
+
   it("--tests-only --file leaves out a test a build-tests-red row of the group proved red, and a task with no test left", async () => {
     const { dir, plan, logs } = setupWithTests("proven");
     const status = path.join(logs, "status.jsonl");
