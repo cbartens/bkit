@@ -239,22 +239,44 @@ const indentOf = (line) => line.length - line.trimStart().length;
 /** A line that only closes the block opened at its own indent. */
 const CLOSER = /^(?:[)\]}]|end\b)/;
 const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** A comment line: a name in it is prose, not the test. */
+const COMMENT = /^(?:\/\/|\/\*|\*|#|--|<!--)/;
+/** A line opening a suite (`describe`, `context`, `suite`, a class), not a test. */
+const SUITE = /^(?:[\w$]+\.)?(?:describe|context|suite|class)\b/;
+/**
+ * The first line `matches` that is no comment and opens no suite; else the first matching
+ * suite line, so a suite that alone carries the name still yields a block; else -1.
+ */
+function testStart(lines, matches) {
+    let suite = -1;
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trimStart();
+        if (!matches(lines[i]) || COMMENT.test(line))
+            continue;
+        if (!SUITE.test(line))
+            return i;
+        if (suite < 0)
+            suite = i;
+    }
+    return suite;
+}
 /**
  * The lines of the test named `name` in `text`, or null when no line names it. The test
- * starts on the first line naming it as a quoted string (else as a whole word), or on the
- * line before when the name opens its line and that line ends with `(`; it runs through
- * every deeper-indented line after the start, and one closing line (`}`, `)`, `]`, `end`) at
- * the start's indent. Framework-agnostic: it needs only a name and indentation.
+ * starts on the first line naming it as a quoted string (else as a whole word) that is no
+ * comment and opens no suite, or on the line before when the name opens its line and that
+ * line ends with `(`; it runs through every deeper-indented line after the start, and one
+ * closing line (`}`, `)`, `]`, `end`) at the start's indent. Framework-agnostic: it needs
+ * only a name and indentation.
  */
 export function testBlock(text, name) {
     if (text === null)
         return null;
     const lines = text.split("\n");
     const quoted = [`"${name}"`, `'${name}'`, `\`${name}\``];
-    let at = lines.findIndex((l) => quoted.some((q) => l.includes(q)));
+    let at = testStart(lines, (l) => quoted.some((q) => l.includes(q)));
     if (at < 0) {
         const word = new RegExp(`(^|[^\\w])${escapeRegExp(name)}([^\\w]|$)`);
-        at = lines.findIndex((l) => word.test(l));
+        at = testStart(lines, (l) => word.test(l));
     }
     if (at < 0)
         return null;

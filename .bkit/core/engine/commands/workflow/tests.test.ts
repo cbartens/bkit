@@ -1608,6 +1608,43 @@ describe("testBlock — a planned test's own lines, by name and indentation", ()
     expect(testBlock(text, name)).toBe(block);
   });
 
+  it("passes over a comment that quotes the name: the test, not the comment, is locked", () => {
+    const text = [
+      "// TODO: 'adds a row' should also cover retries",
+      "describe('rows', () => {",
+      "  it('adds a row', () => {",
+      "    expect(addRow()).toBe(1);",
+      "  });",
+      "});",
+    ].join("\n");
+    expect(testBlock(text, "adds a row")).toBe(text.split("\n").slice(2, 5).join("\n"));
+    expect(blockHash(text.replace("toBe(1)", "toBe(2)"), "adds a row")).not.toBe(
+      blockHash(text, "adds a row"),
+    );
+  });
+
+  it("passes over a suite titled like the test, so its neighbours stay free to change", () => {
+    const text = [
+      "describe('adds a row', () => {",
+      "  it('adds a row', () => {",
+      "    expect(addRow()).toBe(1);",
+      "  });",
+      "  it('counts rows', () => {",
+      "    expect(count()).toBe(0);",
+      "  });",
+      "});",
+    ].join("\n");
+    expect(testBlock(text, "adds a row")).toBe(text.split("\n").slice(1, 4).join("\n"));
+    expect(blockHash(text.replace("toBe(0)", "toBe(2)"), "adds a row")).toBe(
+      blockHash(text, "adds a row"),
+    );
+  });
+
+  it("falls back to a suite line when nothing else carries the name", () => {
+    const text = ["describe('adds a row', () => {", "  it('works', () => {});", "});"].join("\n");
+    expect(testBlock(text, "adds a row")).toBe(text);
+  });
+
   it("is null when the name is not in the file, or there is no file", () => {
     expect(testBlock(VITEST, "removes a row")).toBeNull();
     expect(testBlock(null, "adds a row")).toBeNull();
