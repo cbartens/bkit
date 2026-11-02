@@ -704,6 +704,57 @@ describe("#386: line 1 of a rendered command is a description, never the marker"
 // Antigravity — tool map, prompt frontmatter, skill, invocation rewrite
 // ---------------------------------------------------------------------------
 
+describe("workflow progress narration", () => {
+  const src = path.join(REPO_ROOT, ".bkit/core/workflows");
+  const files = fs.readdirSync(src).filter((file) => /^bkit-.*\.md$/.test(file));
+
+  for (const file of files) {
+    const raw = fs.readFileSync(path.join(src, file), "utf8");
+    const name = file.slice(0, -3);
+    const narration = raw.match(/^- \*\*Narrate:\*\* (.+)$/m)?.[1];
+    const tracked = substituteWorkflow(raw, DEFAULT_ISSUE_TRACKER).output;
+    const renderedHosts = [
+      tracked,
+      applyT2(applyT1(tracked)),
+      applyCodexSkill(raw, name, DEFAULT_ISSUE_TRACKER),
+      applyAntigravitySkill(tracked, name),
+      applyOpencodeCommand(tracked),
+    ];
+    const firstGates = renderedHosts.map((rendered) =>
+      rendered.split("\n").find((line) => /steps gate.*-start-workflow/.test(line)),
+    );
+    it(`preserves the progress contract across hosts: ${file}`, () => {
+      expect(narration).toContain("`progressLine`");
+      expect(narration).toContain("word for word");
+      expect(narration).toContain("plain text outside code blocks");
+      expect(narration).toContain("Headless");
+      for (const rendered of renderedHosts) {
+        expect(rendered).toContain(narration);
+        expect(rendered).not.toMatch(
+          /(?:steps finish --workflow=ship --step=ship-update-docs|steps done[^\n]*--step=debug-close-workflow)[^\n]*>\/dev\/null/,
+        );
+      }
+    });
+    if (name !== "bkit-auto") {
+      it(`retains explicit first-step gates: ${file}`, () => {
+        for (const gate of firstGates) expect(gate).toContain("--progress-number=1");
+      });
+    }
+    if (name === "bkit-ship") {
+      it("retains explicit rowless ship gates", () => {
+        for (const rendered of renderedHosts) {
+          expect(rendered).toContain(
+            'steps gate --workflow=ship --step=ship-regression-guard --file="{STATUS}" --progress-number=3',
+          );
+          expect(rendered).toContain(
+            'steps gate --workflow=ship --step=ship-bookkeeping-push --file="{STATUS}" --progress-number=9',
+          );
+        }
+      });
+    }
+  }
+});
+
 describe("antigravityToolsBlock", () => {
   it("maps Claude tool names to Antigravity's vocabulary, keeping list shape", () => {
     const out = antigravityToolsBlock("tools:\n  - Read\n  - Write\n  - Edit\n  - Bash");

@@ -14,7 +14,7 @@ description: "Ship Feature — Autonomous merge and archive"
 - **Rules file:** Read `.agents/rules.md` → follow all rules.
 - **Order:** Execute steps sequentially unless stated otherwise.
 - **No improv:** Skip no step, and add no step of your own; how deeply you investigate within a step is your call.
-- **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does not mean silent.
+- **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). After each completed numbered step, show its printed `progressLine` word for word as plain text outside code blocks. Show each completed row's line once; delayed bookkeeping and repeated validation gates add no second line. `/bkit-auto` shows its delegated workflow's lines. Headless runs show the same lines without waiting for acknowledgement. Silence between actions = compliance regression; Auto-apply does not mean silent.
 - **Failures:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
 - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, etc non-empty if required before making tool calls (`{ISSUE_ID}` may be empty). **Else** → **Failure Path**.
 - **Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is `key: value` lines, nested keys indented under their parent (`a.b` = `b` under `a:`), lists of rows as tables: hold named keys under bare `UPPER_SNAKE` names, a `"quoted"` value without its quotes, and write a held name as `{VAR}` where it goes into a command or a `Context:` / `Read:` / `Create:` line. Exit non-zero with no `Route:` for it → **Failure Path**; exit 80 → mapped MCP tool (**gh MCP fallback**); exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
@@ -175,7 +175,7 @@ description: "Ship Feature — Autonomous merge and archive"
 ### 🔒 Gate 1 — Start Workflow
 
 ```bash
-"{BKIT}" steps gate --workflow=ship --step=ship-start-workflow --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --issue="{ISSUE_ID}" --placeholder=OWNER_REPO={OWNER_REPO} --placeholder=BRANCH={BRANCH} --placeholder=RUNTIME_WORKTREES={RUNTIME_WORKTREES}
+"{BKIT}" steps gate --workflow=ship --step=ship-start-workflow --progress-number=1 --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --issue="{ISSUE_ID}" --placeholder=OWNER_REPO={OWNER_REPO} --placeholder=BRANCH={BRANCH} --placeholder=RUNTIME_WORKTREES={RUNTIME_WORKTREES}
 ```
 
 - [ ] Mechanical checks passed (`steps gate`)
@@ -340,7 +340,7 @@ description: "Ship Feature — Autonomous merge and archive"
 ### 🔒 Gate 3 — Base Check
 
 ```bash
-"{BKIT}" steps gate --workflow=ship --step=ship-regression-guard --placeholder=BASE_PATH={BASE_PATH}
+"{BKIT}" steps gate --workflow=ship --step=ship-regression-guard --file="{STATUS}" --progress-number=3 --placeholder=BASE_PATH={BASE_PATH}
 ```
 
 - [ ] Ancestor verdict determined
@@ -448,7 +448,7 @@ description: "Ship Feature — Autonomous merge and archive"
 3. Wait for the subagent to complete. Then append the `SHIPPED` row to the worktree ledger, re-render the mechanical `roadmap-status` board from it, and finish the step (bookkeeping to `$BOOK_ROOT`). The block exits 1 when the row did not land:
    ```bash
    "{BKIT}" roadmap feature --root="{WORKTREE_PATH}" --workflow=ship --fid="{FID}" --step=ship-update-docs --strict >/dev/null || exit 1
-   "{BKIT}" steps finish --workflow=ship --step=ship-update-docs --file="{STATUS}" --artifact="docs/plans/{YYYYMM}/logs/{FID}/ship-update-docs.md" --commit=none >/dev/null || exit 1
+   "{BKIT}" steps finish --workflow=ship --step=ship-update-docs --file="{STATUS}" --artifact="docs/plans/{YYYYMM}/logs/{FID}/ship-update-docs.md" --commit=none || exit 1
    ```
 4. Write `ship-summary.md` from this run's status rows and the PR's size:
    ```bash
@@ -525,7 +525,7 @@ description: "Ship Feature — Autonomous merge and archive"
 ### 🔒 Gate 9 — Re-validate
 
 ```bash
-"{BKIT}" steps gate --workflow=ship --step=ship-bookkeeping-push --placeholder=VALIDATED_HEAD={VALIDATED_HEAD}
+"{BKIT}" steps gate --workflow=ship --step=ship-bookkeeping-push --file="{STATUS}" --progress-number=9 --placeholder=VALIDATED_HEAD={VALIDATED_HEAD}
 ```
 
 - [ ] Validated head resolved

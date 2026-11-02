@@ -214,7 +214,7 @@ The table lists the header bullets of the 6 workflow files, block by block, in f
 | **Rules file** | Protocol | all 6 | Read `.agents/rules.md` → follow all rules. First Protocol bullet (`rules-orchestrator`). |
 | **Order** | Protocol | all 6 | Execute steps sequentially unless stated otherwise. The `order` clause shared with every prompt. |
 | **No improv** | Protocol | all 6 | Skip no step, and add no step of your own; how deeply you investigate within a step is your call. The `no-improv` clause shared with every prompt; `Scope discipline` in `.agents/rules.md` covers scope. |
-| **Narrate** | Protocol | all 6 | User-visible lines at step start, subagent return, pivot, blocker; Auto-apply does not mean silent. |
+| **Narrate** | Protocol | all 6 | User-visible lines at step start, subagent return, pivot and blocker; after each numbered completion, show the engine's `progressLine` word for word as plain text outside code blocks. Delayed bookkeeping and repeated validation gates add no duplicate. Auto forwards its delegated workflow's lines; headless runs show them without acknowledgement. |
 | **Failures** | Protocol | all 6 | Any step, tool, command failure, or gate that cannot pass → **Failure Path**. |
 | **Placeholders** | Protocol | all 6 | Assert required `{PLACEHOLDERS}` non-empty before tool calls → else **Failure Path**. auto and plan name their own placeholders; auto derives `{OWNER}` / `{REPO}` from `{OWNER_REPO}` at Step 1. |
 | **Commands** | Protocol | all 6 | Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info` (before it, the lookup expression); stdout is `key: value` text (see `.bkit/cli.md`); exit non-zero with no `Route:` → **Failure Path**; exit 80 → mapped MCP tool (auto: **Failure Path**); exit 81 → end turn, re-run block; a flag still holding a literal `{PLACEHOLDER}` exits 2. |
@@ -661,6 +661,23 @@ Every stamp (design, plan, audit report) adds 2 more when `.bkit/version` exists
 **Truth, not intent:** if `origin/dev` was stale at fetch, the recorded `baseSha` is the stale base the branch was actually cut from. A later diff then surfaces that honestly instead of papering over it.
 
 **Read by build's Plan Current step** (`/bkit-build` Step 5), the only consumer of `baseSha` on a plan doc. `designPath` / `designBaseSha` are provenance only and have no consumer: once a plan exists it is judged against the codebase, never against its design. Absent or unreachable `baseSha` skips the judgement, never fails it.
+
+### Progress Lines
+
+The engine returns `progressLine` after a successful numbered completion. The orchestrator shows that string word for word as plain text outside a code block, including skipped steps and retries. Each completed row gets one line. A delayed Step 1 bookkeeping row and a repeated validation gate do not add a duplicate. `/bkit-auto` forwards the selected workflow's lines; headless runs use the same output without waiting for acknowledgement.
+
+```text
+Progress: █████░░░░░ 50% · Step 8/16 Plan Verify · Group 2 of 3
+Progress: ███████░░░ 71% · Step 10/14 Merge Gate + Merge PR · Attempt 2 of 3
+```
+
+The line describes the current numbered position, rather than elapsed time or a count of completed rows. Flat workflows divide the current number by their distinct numbered positions. Build expands Steps 7–9 for each current plan group: with `G` groups its total is `6 + 3G + 7`; inside group ordinal `g`, completed units are `6 + 3(g - 1) + (n - 6)`, and after the loop they are `6 + 3G + (n - 9)`. Sparse group markers map to their order in the plan. A missing plan uses one group, and each emission reads the plan again, so added groups immediately change the denominator.
+
+The percentage uses nearest-integer rounding, and the ten-cell bar uses nearest-ten rounding. Nonfinal positions are capped at 99%; the final numbered position reaches 100%. Returning to an earlier step can lower progress. Build loop lines add `Group {g} of {G}`. Retries above one add `Attempt {a} of {allowance}` from saved limits and grants, or `Attempt {a}` when no budget is known. Debug soak uses its saved cross-run soak count and grants.
+
+`steps finish`, `steps done`, recorded `context finalise`, recorded `runs dispatch` and a close that records its step expose eligible completion lines. Invalid input, a refused completion write or commit, decision and owner-pause rows, and unnumbered bookkeeping expose none. Progress is derived output and is never stored in status rows. A resume selects the same run and saved counter context.
+
+`steps gate --progress-number` explicitly renders a gate-only completion after validation, without appending a completion row. The five Step 1 gates use their feature, month and held lock; ship's Base Check and Re-validate gates use their status file and numbers 3 and 9. Their existing step validation remains in force. Gates without the flag remain read-only validation and print no progress line; ordinary command journaling still applies.
 
 ### Gates
 

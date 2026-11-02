@@ -14,7 +14,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - **Rules file:** Read `.agents/rules.md` → follow all rules.
 - **Order:** Execute steps sequentially unless stated otherwise.
 - **No improv:** Skip no step, and add no step of your own; how deeply you investigate within a step is your call.
-- **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does not mean silent.
+- **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). After each completed numbered step, show its printed `progressLine` word for word as plain text outside code blocks. Show each completed row's line once; delayed bookkeeping and repeated validation gates add no second line. `/bkit-auto` shows its delegated workflow's lines. Headless runs show the same lines without waiting for acknowledgement. Silence between actions = compliance regression; Auto-apply does not mean silent.
 - **Failures:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
 - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, etc non-empty if required before making tool calls (`{ISSUE_ID}` may be empty). **Else** → **Failure Path**.
 - **Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is `key: value` lines, nested keys indented under their parent (`a.b` = `b` under `a:`), lists of rows as tables: hold named keys under bare `UPPER_SNAKE` names, a `"quoted"` value without its quotes, and write a held name as `{VAR}` where it goes into a command or a `Context:` / `Read:` / `Create:` line. Exit non-zero with no `Route:` for it → **Failure Path**; exit 80 → mapped MCP tool (**gh MCP fallback**); exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
@@ -218,7 +218,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 ### 🔒 Gate 1 — Start Workflow
 
 ```bash
-"{BKIT}" steps gate --workflow=debug --step=debug-start-workflow --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --issue="{ISSUE_ID}" --placeholder=OWNER_REPO={OWNER_REPO} --placeholder=BRANCH={BRANCH} --placeholder=REPO_ROOT={REPO_ROOT}
+"{BKIT}" steps gate --workflow=debug --step=debug-start-workflow --progress-number=1 --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --issue="{ISSUE_ID}" --placeholder=OWNER_REPO={OWNER_REPO} --placeholder=BRANCH={BRANCH} --placeholder=REPO_ROOT={REPO_ROOT}
 ```
 
 - [ ] Mechanical checks passed (`steps gate`)
@@ -671,7 +671,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 3. **If** `{PR_OPEN}` = 0 → record the close row and audit the landed commit. `{LIVE_SKIPPED}` = `--field="testsLiveSkipped=No live tests ran, runtime-only defects not gated (not declared or opted out)."` when `TEST_SCOPE` lacks `live`, else empty:
    ```bash
-   "{BKIT}" steps done --file="{STATUS}" --workflow=debug --step=debug-close-workflow --parent-sha={CLOSE_PARENT} {LIVE_SKIPPED} --commit=none >/dev/null || exit 1
+   "{BKIT}" steps done --file="{STATUS}" --workflow=debug --step=debug-close-workflow --parent-sha={CLOSE_PARENT} {LIVE_SKIPPED} --commit=none || exit 1
    "{BKIT}" prs transport-row --file="{STATUS}" --kind=close --shape=push --sha={CLOSE_PARENT} --scan --cross-check=gh
    ```
 4. Set `TRIGGER_PR`:

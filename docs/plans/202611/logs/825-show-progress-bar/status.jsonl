@@ -181,3 +181,12 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-02T22:17:56Z","noun":"steps","verb":"finish","flags":["workflow","step","file","verdict","scope","attempt-of","group","artifact","number","post","title","comment-field","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-group-gate/1/4/comment","hash":"76b675b4edeb7c80e093038c4693a895a101fc58823b23ba24f712a7c3a8bbc9","ref":"https://github.com/cbartens/bkit/issues/825#issuecomment-6589879529","at":"2026-11-02T22:17:57Z"}
 {"type":"step-done","workflow":"build","step":"build-group-gate","status":"DONE","at":"2026-11-02T22:17:57Z","parentSha":"311199da942368aa2f6eff53a9ba0f6016fedf45","artifacts":["docs/plans/202611/logs/825-show-progress-bar/build-plan-gaps-remediate-1-3-log.md"],"verdict":"PASS","attempt":4,"group":1,"scope":"pnpm bkit:gate:static-unit"}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T22:18:00Z","noun":"context","verb":"brief","flags":["plan","next","dir","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T22:18:04Z","noun":"status","verb":"route","flags":["step","group","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T22:18:08Z","noun":"steps","verb":"done","flags":["workflow","step","file","group","commit"]}
+{"type":"step-done","workflow":"build","step":"build-group-start","status":"DONE","at":"2026-11-02T22:18:08Z","parentSha":"81473759228a674d709baedef96d0a2e23032f22","artifacts":[],"group":2}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T22:18:09Z","noun":"context","verb":"brief","flags":["plan","group","tests-only","dir","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T22:26:49Z","noun":"tests","verb":"changed","flags":["fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T22:29:21Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-tasks/2/1/comment","hash":"04dd017f3baf962851388a045304c57174f47721251f5df272cae7bb0e3b8e32","ref":"https://github.com/cbartens/bkit/issues/825#issuecomment-6590112406","at":"2026-11-02T22:29:22Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-tasks","status":"DONE","at":"2026-11-02T22:29:22Z","parentSha":"81473759228a674d709baedef96d0a2e23032f22","artifacts":["docs/plans/202611/logs/825-show-progress-bar/build-plan-tasks-2-log.md"],"verdict":"PASS","attempt":1,"group":2}

@@ -474,6 +474,27 @@ describe("workflow progress command wiring", () => {
     expect(landed.filter((row) => row.step === "ship-close-workflow")).toHaveLength(1);
   });
 
+  it("progress accepts the ship base-check regression guard gate", async () => {
+    const cwd = repo("ship");
+    fs.appendFileSync(
+      path.join(cwd, STATUS),
+      jsonl([completed(cwd, "ship", "ship-regression-guard")]),
+    );
+    const before = domainRows(cwd);
+    const result = await run(cwd, [
+      "steps",
+      "gate",
+      "--workflow=ship",
+      `--file=${STATUS}`,
+      "--step=ship-regression-guard",
+      "--progress-number=3",
+      "--placeholder=BASE_PATH=A",
+    ]);
+    expect(result.code).toBe(0);
+    expect(result.json?.progressLine).toBe("Progress: ██░░░░░░░░ 21% · Step 3/14 Base Check");
+    expect(domainRows(cwd)).toEqual(before);
+  });
+
   it("progress gate only completions", async () => {
     vi.stubEnv("BKIT_ENGINE_JOURNAL", "on");
     vi.stubEnv("GIT_EXEC_PATH", "");

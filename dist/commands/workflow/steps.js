@@ -1597,7 +1597,8 @@ export const stepsCommand = {
                 if (progressNumber !== undefined && isResumable(workflow)) {
                     const step = String(f.step);
                     const recordedNumber = WORKFLOW_STEPS[workflow].find((s) => s.step === step)?.number;
-                    const gateNumber = workflow === "ship" && step === "ship-worktree-setup"
+                    const gateNumber = workflow === "ship" &&
+                        (step === "ship-worktree-setup" || step === "ship-regression-guard")
                         ? 3
                         : workflow === "ship" && step === "ship-bookkeeping-push"
                             ? 9
