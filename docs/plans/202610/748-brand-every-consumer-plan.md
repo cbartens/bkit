@@ -907,7 +907,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
 
 <!-- bkit:task 15 start -->
 
-- [ ] **TASK 15:** `migrateBrandedTemplateFiles` deletes `scripts/ci/check-dependency-audit.mjs` even when a workflow the path pass does not reach still guards its step with `if: hashFiles('scripts/ci/check-dependency-audit.mjs') != ''`. That workflow might be a renamed CI file with no `bkit.testing.ciWorkflow`, or a separate nightly security workflow. The step then skips silently, and the dependency-audit gate is off with no log line
+- [x] **TASK 15:** `migrateBrandedTemplateFiles` deletes `scripts/ci/check-dependency-audit.mjs` even when a workflow the path pass does not reach still guards its step with `if: hashFiles('scripts/ci/check-dependency-audit.mjs') != ''`. That workflow might be a renamed CI file with no `bkit.testing.ciWorkflow`, or a separate nightly security workflow. The step then skips silently, and the dependency-audit gate is off with no log line
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/modules/core.ts:1024` · **Round:** 1
   - **DONE WHEN:** before moving a unit, `migrateBrandedTemplateFiles` searches every `.github/workflows/*.yml` / `*.yaml` file outside the path pass (`ciWorkflowPath(".")`, `bkit-trivy.yml`) for each old path in the unit. A hit leaves the unit in place and logs one `console.warn` naming the file, the line and the manual move, so an irreversible delete never runs while an unreached reference remains
   - **TEST FIRST:**
@@ -916,7 +916,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
 <!-- bkit:task 15 end -->
 <!-- bkit:task 16 start -->
 
-- [ ] **TASK 16:** A consumer whose `trivy:` / `renovate:` job sets `name:` below another key (for example after `runs-on:`) gets a second `name:` inserted, so GitHub rejects the workflow file and the scan stops running
+- [x] **TASK 16:** A consumer whose `trivy:` / `renovate:` job sets `name:` below another key (for example after `runs-on:`) gets a second `name:` inserted, so GitHub rejects the workflow file and the scan stops running
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/modules/core.ts:1109` · **Round:** 1
   - **DONE WHEN:** `migrateBrandedCheckNames` inserts the job `name:` only when no 4-space `name:` key exists anywhere in that job's block (up to the next 2-space job key or the end of `jobs:`), and the result parses with `parseYaml`. The `docs/migrations.md` "Branded check names" row ("when the job has none") then holds
   - **TEST FIRST:**
@@ -925,7 +925,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
 <!-- bkit:task 16 end -->
 <!-- bkit:task 17 start -->
 
-- [ ] **TASK 17:** `pnpm --filter=web lint:prose` (also `--dir=pkg` and `--prefix=pkg`) is rewritten to `pnpm --filter=web bkit:lint:prose`. Only the root `package.json` keys are renamed, so the sub-package has no `bkit:lint:prose`, and the hook or CI step fails with a missing script after upgrade
+- [x] **TASK 17:** `pnpm --filter=web lint:prose` (also `--dir=pkg` and `--prefix=pkg`) is rewritten to `pnpm --filter=web bkit:lint:prose`. Only the root `package.json` keys are renamed, so the sub-package has no `bkit:lint:prose`, and the hook or CI step fails with a missing script after upgrade
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/modules/core.ts:784` · **Round:** 1
   - **DONE WHEN:** `renameScriptTokens` leaves a call unchanged when its flags select another package or directory (`--filter=…`, `-F…`, `--dir=…`, `-C…`, `--prefix=…`), as it already does for the space-separated `--filter web` form. `findOldScriptNames` then reports the call for the manual-rename warning that the `docs/migrations.md` "Branded script tokens in hooks and CI" row promises
   - **TEST FIRST:**
@@ -934,7 +934,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
 <!-- bkit:task 17 end -->
 <!-- bkit:task 18 start -->
 
-- [ ] **TASK 18:** A consumer who adopted the v3 / v4 CI template as `.github/workflows/ci.yml` and never set `bkit.testing.ciWorkflow` gets `lint:prose` / `slop:delta` renamed in `package.json`. `ciWorkflowPath(".")` looks only for `bkit-ci.yml`, so their CI keeps `run: pnpm lint:prose` and fails with a missing script, and the upgrade log says nothing about that file
+- [x] **TASK 18:** A consumer who adopted the v3 / v4 CI template as `.github/workflows/ci.yml` and never set `bkit.testing.ciWorkflow` gets `lint:prose` / `slop:delta` renamed in `package.json`. `ciWorkflowPath(".")` looks only for `bkit-ci.yml`, so their CI keeps `run: pnpm lint:prose` and fails with a missing script, and the upgrade log says nothing about that file
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/modules/core.ts:908` · **Round:** 1
   - **DONE WHEN:** after the rewrite pass, `migrateBrandedFileTokens` runs `findOldScriptNames` over every other `.github/workflows/*.yml` / `*.yaml` file for the active pairs, as a warning with no write. Each surviving `pnpm <old>` call outside the migrated files then logs one warning with file and line
   - **TEST FIRST:**

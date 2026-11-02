@@ -1244,8 +1244,14 @@ export function migrateValeHouseStyle(dryRun: boolean, ws: WriteSet, logPrefix: 
   const stylesDir = path.join(".vale", "styles");
   const houseDir = path.join(stylesDir, "House");
   const bkitDir = path.join(stylesDir, "Bkit");
+  const linkedVale = [".vale", stylesDir, houseDir, bkitDir].find((p) => isLink(p));
+  if (linkedVale === houseDir || linkedVale === ".vale" || linkedVale === stylesDir) {
+    console.warn(
+      `${logPrefix} ${tag}core: ${linkedVale} is a symlink; the House rules were not moved to the Bkit style — move them by hand: mv .vale/styles/House/<rule>.yml .vale/styles/Bkit/ and rename the House.<rule> toggles in .vale.ini to Bkit.<rule>`,
+    );
+    return;
+  }
   if (!fs.lstatSync(houseDir, { throwIfNoEntry: false })?.isDirectory()) return;
-  const linkedVale = [".vale", stylesDir, bkitDir].find((p) => isLink(p));
   if (linkedVale !== undefined) {
     console.warn(
       `${logPrefix} ${tag}core: ${linkedVale} is a symlink; the House rules were not moved to the Bkit style — move them by hand: mv .vale/styles/House/<rule>.yml .vale/styles/Bkit/ and rename the House.<rule> toggles in .vale.ini to Bkit.<rule>`,
@@ -1255,6 +1261,12 @@ export function migrateValeHouseStyle(dryRun: boolean, ws: WriteSet, logPrefix: 
   const moved: string[] = [];
   for (const [rule, hashes] of Object.entries(SHIPPED_HOUSE_RULE_HASHES)) {
     const from = path.join(houseDir, `${rule}.yml`);
+    if (isLink(from)) {
+      console.warn(
+        `${logPrefix} ${tag}core: ${from} is a symlink and was not moved to the Bkit style; move it by hand: mv .vale/styles/House/${rule}.yml .vale/styles/Bkit/ and rename the House.${rule} toggle in .vale.ini to Bkit.${rule}`,
+      );
+      continue;
+    }
     if (!fs.lstatSync(from, { throwIfNoEntry: false })?.isFile()) continue;
     const to = path.join(bkitDir, `${rule}.yml`);
     const stays = !hashes.includes(sha256(fs.readFileSync(from)))
