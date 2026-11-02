@@ -22,6 +22,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { readJsonFile } from "../../shared/json.js";
 
 import {
   CI_TIERS,
@@ -1962,15 +1963,13 @@ function runGate(ctx: RunContext): number {
   let selection: CiSelection | undefined;
   const selectionFile = str(f.ciSelectionFile);
   if (selectionFile !== undefined) {
-    try {
-      const value: unknown = JSON.parse(
-        fs.readFileSync(path.resolve(ctx.cwd, selectionFile), "utf8"),
+    const parsed = readJsonFile(path.resolve(ctx.cwd, selectionFile));
+    if (!parsed.ok || !validateCiSelection(parsed.value))
+      throw new CommandError(
+        EXIT.USAGE,
+        "cannot read validated CI selection: unreadable JSON or invalid selection",
       );
-      if (!validateCiSelection(value)) throw new Error("invalid CI selection");
-      selection = value;
-    } catch (error) {
-      throw new CommandError(EXIT.USAGE, `cannot read validated CI selection: ${String(error)}`);
-    }
+    selection = parsed.value;
   }
   const given = [f.head, f.pr, f.squashOf].filter((v) => v !== undefined).length;
   if (given !== 1)

@@ -21,6 +21,7 @@
 // name and not "any check".
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { readJsonFile } from "../../shared/json.js";
 import { CI_TIERS, lastRun, statusTimestamp, validateCiSelection, } from "../../ledgers/status.js";
 import { bodySkipToken, commitMessage, CommandError, DEV, EXIT, git, isSharedBranch, parseJson, runGh, runGit, runTool, SKIP_CI_TOKEN, } from "../lib.js";
 import { ciGeneratedSteps, readBkitConfig } from "../../shared/settings.js";
@@ -1444,15 +1445,10 @@ function runGate(ctx) {
     let selection;
     const selectionFile = str(f.ciSelectionFile);
     if (selectionFile !== undefined) {
-        try {
-            const value = JSON.parse(fs.readFileSync(path.resolve(ctx.cwd, selectionFile), "utf8"));
-            if (!validateCiSelection(value))
-                throw new Error("invalid CI selection");
-            selection = value;
-        }
-        catch (error) {
-            throw new CommandError(EXIT.USAGE, `cannot read validated CI selection: ${String(error)}`);
-        }
+        const parsed = readJsonFile(path.resolve(ctx.cwd, selectionFile));
+        if (!parsed.ok || !validateCiSelection(parsed.value))
+            throw new CommandError(EXIT.USAGE, "cannot read validated CI selection: unreadable JSON or invalid selection");
+        selection = parsed.value;
     }
     const given = [f.head, f.pr, f.squashOf].filter((v) => v !== undefined).length;
     if (given !== 1)
