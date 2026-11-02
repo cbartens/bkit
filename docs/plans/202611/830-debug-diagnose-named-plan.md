@@ -402,7 +402,7 @@ The Selection and State Contract and Verification and Rollback sections are bind
 
 <!-- bkit:task 9 start -->
 
-- [ ] **TASK 9:** Update the documentation, reference rows and decision record.
+- [x] **TASK 9:** Update the documentation, reference rows and decision record.
   - **UPDATE:** `.bkit/core/.bkit/workflows.md`: `.bkit/core/.bkit/workflows.md` source: Debug modes, Steps 1–8 and Close, branch adoption, the evidence-round artifact contract, current-generation progress and local gate ordering. Include auto's exact-run handoff if Task 8 changes it.
   - **UPDATE:** `.bkit/core/.bkit/workflows.md`: `.bkit/core/.bkit/templates.md` for the changed CI/diff block inputs and evidence output contract. Update `.bkit/core/.bkit/prompts.md` only if Task 8 changes a prompt. Regenerate the installed catalogs.
   - **UPDATE:** `docs/testing.md`: distinguish CI evidence, explicit reproduction, local post-fix checks and pushed-head proof. Document the new integration test and the retained `[live=off]`/live-skipped behavior.
@@ -434,7 +434,7 @@ The Selection and State Contract and Verification and Rollback sections are bind
 
 <!-- bkit:task 11 start -->
 
-- [ ] **TASK 11:** Regenerate and inspect the distributable and fresh-consumer footprint.
+- [x] **TASK 11:** Regenerate and inspect the distributable and fresh-consumer footprint.
   - **READ:** `package.json`: use the existing `pnpm bkit:generate` pipeline for build, CLI and shared-instruction sync, mirror regeneration, render snapshots and graph refresh.
   - **READ:** `docs/testing.md`: run the unit and integration matrix, `pnpm bkit:gate:static-unit-integration` and `bkit check`; report skipped tooling honestly.
   - **UPDATE:** `.bkit/core/engine/audits/workflows/debug-ci-evidence.integration.test.ts`: verify the complete fixture sequence without weakening the tests recorded by the test-writing step.
