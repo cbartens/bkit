@@ -373,7 +373,7 @@ The Selection and State Contract and Verification and Rollback sections are bind
 
 <!-- bkit:task 8 start -->
 
-- [ ] **TASK 8:** Wire selection, reproduction and final proof through Debug.
+- [x] **TASK 8:** Wire selection, reproduction and final proof through Debug.
   - **UPDATE:** `.bkit/core/workflows/bkit-debug.md`: `.bkit/core/workflows/bkit-debug.md` header and Steps 1–2: parse branch input, adopt safely, resolve evidence with prompt/current issue text/active status, and validate branch alignment. Persist the validated selection, then rederive gates. Run this resolution before resuming a downstream step so explicit reference or `[local]` overrides cannot be skipped on resume.
   - **UPDATE:** `.bkit/core/workflows/bkit-debug.md`: Step 2 routing: exit 1 means an explicit local choice or a proven no-red result; exit 80 enters the existing mapped read fallback, not local-first; unresolved unavailable evidence stops with its reference. Ambiguous references or branch conflicts use an owner stop before tests or edits. Record fallback transport and pause state using existing mechanisms.
   - **UPDATE:** `.bkit/core/workflows/bkit-debug.md`: Step 3: pass CI flags only for the saved CI selection, record `source` and `ciGeneration`, and condition local clamp arguments on `source: local`. Preserve attempt counters and normal local FAIL loops. A changed CI generation restarts evidence collection regardless of previous fix rows.
