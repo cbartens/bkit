@@ -636,7 +636,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** Upgrade migration for package.json script names
+- [x] **TASK 4:** Upgrade migration for package.json script names
   - **UPDATE:** `.bkit/core/engine/install/modules/core.ts`: add `BKIT_SCRIPT_RENAMES` — old → new table (`lint:prose`, `slop:delta`, `graph`, `graph:<verb>` for `check`, `clean`, `graphml`, `refresh`, `rollup`, `scoped`, `tree`, `update`); `graph*` entries carry the value guard (value runs `scripts/graphify/bkit-`)
   - **UPDATE:** `.bkit/core/engine/install/modules/core.ts`: add the one **active pair** definition every token rewrite uses — `package.json` does not hold both keys, and the old key, when present, is not a foreign `graph*` value; a pair with neither key is active
   - **UPDATE:** `.bkit/core/engine/install/modules/core.ts`: add `renameScriptTokens(text, renames)` — exported, pure; rewrites `pnpm [flags] [run] [flags] <old>` where each flag is a value-less `-x` / `--x[=v]` token and `<old>` is followed by a character outside `[\w:-]` or end of text; flags and `run` kept
@@ -665,7 +665,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
 
 <!-- bkit:task 5 start -->
 
-- [ ] **TASK 5:** Brand workflow and job display names
+- [x] **TASK 5:** Brand workflow and job display names
   - **UPDATE:** `.bkit/templates/.github/workflows/bkit-cloud.yml`: job names `bkit-cloud-context (${{ github.event_name }})`, `bkit-cloud-claude (…)`, `bkit-cloud-opencode (…)`; job ids unchanged; comments naming the checks (lines 96, 472, 498, 547)
   - **UPDATE:** `.bkit/templates/.github/workflows/bkit-renovate.yml`: workflow `name: bkit-renovate`; job `renovate` gets `name: bkit-renovate`
   - **UPDATE:** `.bkit/templates/.github/workflows/bkit-trivy.yml`: workflow `name: bkit-trivy`; job `trivy` gets `name: bkit-trivy`
