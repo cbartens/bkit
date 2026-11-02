@@ -284,4 +284,18 @@ describe("renameScriptTokens", () => {
       "pnpm --reporter=silent run -s bkit:lint:prose",
     );
   });
+
+  it("renameScriptTokens leaves package-selecting flag forms alone", () => {
+    for (const call of [
+      "pnpm --filter=web lint:prose",
+      "pnpm -Fweb lint:prose",
+      "pnpm --dir=pkg lint:prose",
+      "pnpm -Cpkg lint:prose",
+      "pnpm --prefix=pkg lint:prose",
+      "pnpm --filter web lint:prose",
+    ]) {
+      expect(renameScriptTokens(call, renames)).toBe(call);
+    }
+    expect(renameScriptTokens("pnpm lint:prose", renames)).toBe("pnpm bkit:lint:prose");
+  });
 });

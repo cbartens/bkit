@@ -7,6 +7,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { parse as parseYaml } from "yaml";
 import type { WriteSet } from "../write";
 import { extractManagedBlock } from "../managed-block";
 import type { PreflightFinding } from "../../checks/before/index";
@@ -1815,6 +1816,29 @@ describe("migrateBrandedFileTokens (via runBkitDocs)", () => {
       vi.restoreAllMocks();
     }
   });
+
+  it("warns on an old script name in a workflow it does not rewrite", () => {
+    fs.writeFileSync(
+      "package.json",
+      JSON.stringify({ name: "x", scripts: { "lint:prose": "bkit ci prose" } }, null, 2) + "\n",
+      "utf-8",
+    );
+    put(
+      ".github/workflows/ci.yml",
+      "name: CI\njobs:\n  a:\n    steps:\n      - run: pnpm lint:prose\n",
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      run();
+      const out = warn.mock.calls.map((c) => String(c[0]));
+      const lines = out.filter((l) => l.includes(".github/workflows/ci.yml")).join("\n");
+      expect(lines).toContain("lint:prose");
+      expect(fs.readFileSync(".github/workflows/ci.yml", "utf-8")).toContain("pnpm lint:prose");
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
 });
 
 describe("migrateBrandedTemplateFiles (via runBkitDocs)", () => {
@@ -1913,6 +1937,68 @@ describe("migrateBrandedTemplateFiles (via runBkitDocs)", () => {
     const out = warn.mock.calls.map((c) => String(c[0])).join("\n");
     expect(out).toContain("check-capstone");
     expect(out).toContain("check-dependency-audit");
+  });
+
+  it("leaves a unit whose old path a workflow outside the path pass still names", () => {
+    put(path.join(CI_DIR, "check-dependency-audit.mjs"), shippedOld("check-dependency-audit.mjs"));
+    put(
+      path.join(CI_DIR, "check-dependency-audit.test.mjs"),
+      shippedOld("check-dependency-audit.test.mjs"),
+    );
+    put(
+      ".github/workflows/security.yml",
+      "name: security\njobs:\n  audit:\n    steps:\n      - if: hashFiles('scripts/ci/check-dependency-audit.mjs') != ''\n        run: node scripts/ci/check-dependency-audit.mjs\n",
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    run();
+
+    expect(fs.existsSync(path.join(CI_DIR, "check-dependency-audit.mjs"))).toBe(true);
+    expect(fs.existsSync(path.join(CI_DIR, "bkit-check-dependency-audit.mjs"))).toBe(false);
+    const out = warn.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(out).toContain(".github/workflows/security.yml");
+    expect(out).toContain("check-dependency-audit");
+  });
+
+  it("does not write through a dangling bkit- target symlink", () => {
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-outside-"));
+    try {
+      const payloadTarget = path.join(outside, "planted.json");
+      put(path.join(CI_DIR, "accepted-advisories.json"), ADVISORIES);
+      fs.symlinkSync(payloadTarget, path.join(CI_DIR, "bkit-accepted-advisories.json"));
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      run();
+
+      expect(fs.existsSync(payloadTarget)).toBe(false);
+      expect(
+        fs.lstatSync(path.join(CI_DIR, "bkit-accepted-advisories.json")).isSymbolicLink(),
+      ).toBe(true);
+      const out = warn.mock.calls.map((c) => String(c[0])).join("\n");
+      expect(out).toContain("bkit-accepted-advisories.json");
+    } finally {
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("leaves a symlinked old data file in place", () => {
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-outside-"));
+    try {
+      const secret = path.join(outside, "secret.txt");
+      fs.writeFileSync(secret, "TOP-SECRET-BYTES\n", "utf-8");
+      fs.mkdirSync(CI_DIR, { recursive: true });
+      fs.symlinkSync(secret, path.join(CI_DIR, "accepted-advisories.json"));
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      run();
+
+      expect(fs.readdirSync(CI_DIR)).not.toContain("bkit-accepted-advisories.json");
+      expect(fs.lstatSync(path.join(CI_DIR, "accepted-advisories.json")).isSymbolicLink()).toBe(
+        true,
+      );
+      const out = warn.mock.calls.map((c) => String(c[0])).join("\n");
+      expect(out).toContain("accepted-advisories.json");
+      expect(out).not.toContain("TOP-SECRET-BYTES");
+    } finally {
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
   });
 });
 
@@ -2044,6 +2130,21 @@ describe("migrateBrandedCheckNames (via runBkitDocs)", () => {
     expect(after).toContain("# tail\n");
     expect(fs.existsSync(path.join(WF, "bkit-ci.yml"))).toBe(false);
   });
+  it("inserts no job name when the job sets name below another key", () => {
+    const old = shippedAtV6(".github/workflows/bkit-trivy.yml");
+    const custom = old.replace(
+      "    runs-on: ubuntu-latest # Edit this label in your copy.\n",
+      "    runs-on: ubuntu-latest # Edit this label in your copy.\n    name: our trivy\n",
+    );
+    expect(custom).toContain("    name: our trivy\n");
+    put(path.join(WF, "bkit-trivy.yml"), custom);
+    run();
+
+    const after = fs.readFileSync(path.join(WF, "bkit-trivy.yml"), "utf-8");
+    const parsed = parseYaml(after) as { jobs: { trivy: { name?: string } } };
+    expect(parsed.jobs.trivy.name).toBe("our trivy");
+    expect(after.match(/^ {4}name:/gm)).toHaveLength(1);
+  });
 });
 
 describe("migrateValeHouseStyle (via runBkitDocs)", () => {
@@ -2143,5 +2244,22 @@ describe("migrateValeHouseStyle (via runBkitDocs)", () => {
     expect(fs.existsSync(".vale.ini")).toBe(false);
     expect(ctx.ws.writes.map((w) => w.path)).not.toContain(".vale.ini");
     expect(ctx.ws.writes.some((w) => w.path.endsWith(".vale.ini"))).toBe(false);
+  });
+
+  it("does not move rules into a symlinked Bkit directory", () => {
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-outside-"));
+    try {
+      seed(RULES);
+      fs.mkdirSync(path.dirname(BKIT), { recursive: true });
+      fs.symlinkSync(outside, BKIT);
+      run();
+
+      expect(fs.readdirSync(outside)).toEqual([]);
+      expect(fs.lstatSync(BKIT).isSymbolicLink()).toBe(true);
+      expect(fs.existsSync(path.join(HOUSE, "Filler.yml"))).toBe(true);
+      expect(captured.join("\n")).toContain("Bkit");
+    } finally {
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
   });
 });
