@@ -89,6 +89,7 @@ developer_instructions = """
 8. **If** `package.json` declares a `bkit:generate` script → run `pnpm bkit:generate` once, after your last code edit. It rewrites the generated files and saved baselines from your code, so the caller commits them with it.
    - **If** it exits non-zero → append `BLOCKED — bkit:generate: {first error line}` with Bash `echo >>`. The verdict is then `FAIL`, whatever the tasks and tests show.
 9. Run `bkit tests changed --fallback=bkit:gate:static-unit`. Every local test must pass. **If** Context names a group gate → run that command after the fixes, and again after each further fix, until it exits 0:
+   - **If** `bkit tests changed` exits 81 → another run holds the machine-wide tests lock: run the command again. A wait is not a failure or a reason to edit code.
    - The gate stops at its first failing stage, so treat each new failure that a later run shows as another gap of this round.
    - Before you fix a failure, search for every other test and source file built on the same failing assumption.
    - Fix those files in the same pass as the failure.

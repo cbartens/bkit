@@ -52,6 +52,38 @@ export class CommandError extends Error {
         this.code = code;
     }
 }
+/** Parse a whole-number flag, using its fallback only when absent. */
+export const wholeNumber = (v, flag, fallback, min = 0) => {
+    if (v === undefined)
+        return fallback;
+    const s = String(v);
+    if (!/^[0-9]+$/.test(s) || Number(s) < min) {
+        throw new CommandError(EXIT.USAGE, `--${flag} takes a whole number >= ${min} (got "${s}")`);
+    }
+    return Number(s);
+};
+/** The holder named by this run when its tests-lock wait gave up. */
+export function testsLockHolder(log, who) {
+    const prefix = `[machine-lock] ❌ ${who} gave up after `;
+    for (const line of log.split(/\r?\n/)) {
+        if (!line.startsWith(prefix))
+            continue;
+        const holder = /^\d+s waiting for tests, in use by (.+)$/.exec(line.slice(prefix.length));
+        if (holder)
+            return holder[1];
+    }
+    return null;
+}
+/** Classify only a tests-lock outcome, leaving gate and nested-lock failures intact. */
+export function classifyLockExit({ exitCode, log, who, }) {
+    const lines = log.split(/\r?\n/);
+    if (exitCode === 75 && testsLockHolder(log, who) !== null)
+        return "lock-wait";
+    if (exitCode === 73 &&
+        lines.some((line) => /^\[machine-lock\] ❌ (?:could not take the lock for tests:|cannot take tests while holding )/.test(line)))
+        return "could-not-run";
+    return "gate";
+}
 // ---------------------------------------------------------------------------
 // Flags
 // ---------------------------------------------------------------------------

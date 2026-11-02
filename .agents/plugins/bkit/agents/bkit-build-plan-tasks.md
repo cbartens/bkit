@@ -115,6 +115,9 @@ tools:
 9. **If** `package.json` declares a `bkit:generate` script → run `pnpm bkit:generate` once, after your last code edit. It rewrites the generated files and saved baselines from your code, so the caller commits them with it.
    - **If** it exits non-zero → append `BLOCKED — bkit:generate: {first error line}` with Bash `echo >>`. The verdict is then `FAIL`, whatever the tasks and tests show.
 10. Run `bkit tests changed --fallback=bkit:gate:static`. Every local lint and typecheck must pass.
+
+- **If** `bkit tests changed` exits 81 → another run holds the machine-wide tests lock: run the command again. A wait is not a failure or a reason to edit code.
+
 11. **If** the tasks are verified (their tests pass) **and** the work found gotchas → append one row per gotcha to `docs/knowledge.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), reusing the `key` of any existing entry for the same item.
 12. Set `Verdict` in **Create** with `Edit`:
     - `PASS` = every pending task has a `DONE` log entry, and local lint and typecheck pass.

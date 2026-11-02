@@ -45,6 +45,7 @@ import {
   runGit,
   runTool,
   SKIP_CI_TOKEN,
+  wholeNumber,
   type CommandSpec,
   type FlagSpec,
   type FlagValue,
@@ -1585,15 +1586,6 @@ export const EXIT_TRIGGER_FAILED = 5;
 export const EXIT_SKIP_TOKEN = 4;
 /** Exit code: the pushed head's commit message could not be read for the body scan. */
 export const EXIT_SCAN_ERROR = 5;
-
-const wholeNumber = (v: FlagValue, flag: string, fallback: number, min = 0): number => {
-  if (v === undefined) return fallback;
-  const s = String(v);
-  if (!/^[0-9]+$/.test(s) || Number(s) < min) {
-    throw new CommandError(EXIT.USAGE, `--${flag} takes a whole number >= ${min} (got "${s}")`);
-  }
-  return Number(s);
-};
 
 const HEAD_FLAG: FlagSpec = { name: "head", type: "string", help: "commit SHA" };
 const REPO_FLAG: FlagSpec = {
