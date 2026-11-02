@@ -105,3 +105,11 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-02T11:31:16Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-gaps-remediate/1/1/comment","hash":"97ea09fce7a08cf549ebdd2eb704ca6913582360f2d933df70f086314f4bdb15","ref":"https://github.com/cbartens/bkit/issues/825#issuecomment-6576056365","at":"2026-11-02T11:31:18Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-gaps-remediate","status":"DONE","at":"2026-11-02T11:31:18Z","parentSha":"70d6d544822bf4d3195bcb9e34acd54e900536af","artifacts":["docs/plans/202611/logs/825-show-progress-bar/build-plan-gaps-remediate-1-1-log.md"],"verdict":"FAIL","attempt":1,"group":1,"strategy":"STANDARD"}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T11:31:27Z","noun":"branches","verb":"scan-diff","flags":["base","code"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T11:31:27Z","noun":"counters","verb":"derive","flags":["file","workflow","step","group","position"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T11:31:36Z","noun":"tests","verb":"green","flags":["file","workflow","group","plan","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T11:31:46Z","noun":"status","verb":"route","flags":["step","group","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T11:31:52Z","noun":"context","verb":"diff","flags":["reset-log","base","artifact","fid","step","attempt"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T11:33:36Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-verify/1/2/comment","hash":"c0ce30b95c697cfb25044d263c6909eae2df9a689b785e94550ef7be17048161","ref":"https://github.com/cbartens/bkit/issues/825#issuecomment-6576099417","at":"2026-11-02T11:33:37Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-02T11:33:37Z","parentSha":"33aaed508904f933d6085672aea91cbb3a93c90e","artifacts":["docs/plans/202611/logs/825-show-progress-bar/build-plan-verify-1-2.md"],"verdict":"CONCERNS","attempt":2,"group":1,"failures":1}
