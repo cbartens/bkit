@@ -1959,6 +1959,19 @@ function logResolvedPrRepo(
 
 function runGate(ctx: RunContext): number {
   const f = ctx.flags;
+  let selection: CiSelection | undefined;
+  const selectionFile = str(f.ciSelectionFile);
+  if (selectionFile !== undefined) {
+    try {
+      const value: unknown = JSON.parse(
+        fs.readFileSync(path.resolve(ctx.cwd, selectionFile), "utf8"),
+      );
+      if (!validateCiSelection(value)) throw new Error("invalid CI selection");
+      selection = value;
+    } catch (error) {
+      throw new CommandError(EXIT.USAGE, `cannot read validated CI selection: ${String(error)}`);
+    }
+  }
   const given = [f.head, f.pr, f.squashOf].filter((v) => v !== undefined).length;
   if (given !== 1)
     throw new CommandError(EXIT.USAGE, "give exactly one of --head, --pr, --squash-of");
@@ -2061,7 +2074,7 @@ function runGate(ctx: RunContext): number {
   // A title carrying a skip token would squash into a dev commit CI never runs on.
   const title = pr?.kind === "ok" ? (pr.pr?.title ?? "") : "";
   const titleToken = f.pr !== undefined ? SKIP_CI_TOKEN.exec(title)?.[0] : undefined;
-  const r: GateResult =
+  let r: GateResult =
     titleToken !== undefined
       ? {
           code: GATE.TITLE_SKIP,
@@ -2101,6 +2114,49 @@ function runGate(ctx: RunContext): number {
         );
   if (titleToken !== undefined) ctx.log(r.reason);
 
+  // Debug retains the configured gate above and also proves the original
+  // selected workflow at the pushed head. A different workflow need not contain
+  // the configured capstone, but its whole run must have completed successfully.
+  let verifyingRun: Run | undefined;
+  if (r.code === EXIT.OK && selection?.mode === "ci") {
+    const repo = str(f.repo) ?? r.repo;
+    let reason = "";
+    let code: number = GATE.FAILED;
+    if (repo !== selection.repo) {
+      reason = "selected CI repository differs from the gated repository";
+    } else {
+      const response = gh([
+        "api",
+        `/repos/${selection.repo}/actions/workflows/${selection.workflowId}/runs?head_sha=${queryValue(head)}`,
+      ]);
+      if (!response.ok) {
+        code = response.missing ? EXIT.USE_MCP : GATE.API_ERROR;
+        reason = "selected workflow verification is unavailable";
+      } else {
+        const payload = jsonOrUndefined(response.stdout);
+        const candidates = arr(obj(payload).workflow_runs)
+          .filter(
+            (value) =>
+              String(obj(value).workflow_id) === selection.workflowId &&
+              (!str(f.branch) || obj(value).head_branch === str(f.branch)),
+          )
+          .map(toRun)
+          .filter((run) => run.head_sha === head && run.id !== null);
+        verifyingRun = latest(candidates.filter((run) => run.status === "completed"));
+        if (!verifyingRun) {
+          code = candidates.length > 0 ? GATE.IN_PROGRESS : GATE.NO_RUN;
+          reason = `selected workflow ${selection.workflowId} has no completed run at pushed head ${head}`;
+        } else if (verifyingRun.conclusion !== "success") {
+          reason = `selected workflow verification concluded '${verifyingRun.conclusion}' at pushed head ${head}`;
+        }
+      }
+    }
+    if (reason) {
+      ctx.log(reason);
+      r = { ...r, code, passed: false, overridden: false, reason };
+    }
+  }
+
   if (recordFile !== undefined && r.code !== EXIT.USE_MCP) {
     if (f.capstoneOnly === true) {
       const verdict = r.code === EXIT.OK ? "PASS" : "FAIL";
@@ -2114,7 +2170,17 @@ function runGate(ctx: RunContext): number {
       auditRow(recordFile, "ship-gate-refusal", { exitCode: r.code, head: r.mergeHead });
     }
   }
-  ctx.emit({ ...r });
+  ctx.emit({
+    ...r,
+    ...(selection?.mode === "ci"
+      ? {
+          originalRunId: selection.runId,
+          originalRunUrl: selection.runUrl,
+          verifyingRunId: verifyingRun?.id ?? null,
+          verifyingRunUrl: verifyingRun?.html_url ?? null,
+        }
+      : {}),
+  });
   return r.code;
 }
 
@@ -2628,6 +2694,11 @@ export const runsCommand: CommandSpec = {
         "Ship merge gate: the capstone job present and green at the head (exit 0), or why not.",
       use: "workflow",
       flags: [
+        {
+          name: "ci-selection-file",
+          type: "string",
+          help: "validated original debug selection: additionally require its workflow to succeed at the exact pushed head",
+        },
         { ...HEAD_FLAG, help: "the PR head to merge (or --pr / --squash-of)" },
         {
           name: "pr",
@@ -2692,6 +2763,12 @@ export const runsCommand: CommandSpec = {
         testedHead: "head the selected (or superseded) run tested",
         runId: "selected run id",
         runUrl: "selected run URL",
+        originalRunId: "--ci-selection-file: original failing run ID",
+        originalRunUrl: "--ci-selection-file: original failing attempt URL",
+        verifyingRunId:
+          "--ci-selection-file: selected workflow's verifying run ID at the pushed head",
+        verifyingRunUrl:
+          "--ci-selection-file: selected workflow's verifying run URL at the pushed head",
         conclusion: "selected run conclusion",
         capstone: "capstone job name",
         ciWorkflow: "CI workflow file",

@@ -108,7 +108,7 @@ The block rules (markers, contexts, self-skip, output bounds) are in the managed
 <!-- prettier-ignore -->
 | File | Fits | `context=` | Fetches | Secret / non-secret env | Domains | CLI (provision) |
 | --- | --- | --- | --- | --- | --- | --- |
-| `bkit-github.md` | GitHub Actions | `ci`, `diff` | `ci`: failing run: failed jobs / steps, `::error` annotations, failed-step logs tail-bounded per failed job; `diff`: `git diff --stat` (capped) since the last green CI run on trunk | `GH_TOKEN` / `CI_LOG_TAIL`; `BASELINE_BRANCH`, `BASELINE_WORKFLOW`, `DIFF_STAT_N` (`diff`) | — | `gh` (base tool) |
+| `bkit-github.md` | GitHub Actions | `ci`, `diff` | `ci`: exact selected run/attempt, complete identity receipt and bounded logs for every failed job; `diff`: selected failing commit against an ancestral same-workflow green baseline | `GH_TOKEN` / `CI_LOG_TAIL`; optional `BKIT_CI_RUN_ID`, `BKIT_CI_RUN_ATTEMPT`, `BKIT_CI_REPO`, `BKIT_CI_HEAD_SHA`; configured `bkit.testing.ciWorkflow`; `BASELINE_BRANCH`, `BASELINE_WORKFLOW`, `DIFF_STAT_N` (`diff`) | — | `gh` (base tool) |
 | `bkit-playwright.md` | Playwright on GitHub Actions | `e2e` | failing run's report artifact, failing specs first; inlined files, lines and binary paths capped | `GH_TOKEN` / `E2E_ARTIFACT`, `E2E_JOB_RE`, `E2E_MAX_FILES`, `E2E_MAX_LINES`, `E2E_MAX_BIN` | — | `gh` (base tool) |
 | `bkit-maestro.md` | Maestro iOS and Android lanes on GitHub Actions | `e2e` | every failed Maestro job's log, sliced to the result steps, each slice tail-bounded | `GH_TOKEN` / `MAESTRO_JOB_RE`, `MAESTRO_STEPS`, `MAESTRO_LOG_TAIL` | — | `gh` (base tool) |
 | `bkit-tavily.md` | any | `web` | web search for upstream causes (untrusted output) | `BKIT_TAVILY_API_KEY` / `QUERY` | — | — |

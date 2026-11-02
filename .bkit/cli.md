@@ -80,7 +80,7 @@ Sync, push, land and rebase branches; stamp and read a doc's base-commit anchor.
 <!-- prettier-ignore -->
 | Verb | Use | Flags | What it does |
 | --- | --- | --- | --- |
-| `parse` | workflow | **`--prompt-file`** | Read an explicitly named or existing branch from the session prompt. |
+| `parse` | workflow | **`--prompt-file`** `--workflow` | Read an explicitly named or existing branch from the session prompt. |
 | `sync` | workflow | `--head` `--merge` `--merge-docs` `--fid` `--file` `--sentinel` | Fetch origin/dev; report whether it is an ancestor of HEAD (Path A/B) and how far docs/ and the ledgers are behind; optionally merge it in. |
 | `regenerate` | workflow | `--fid` `--attempt` `--file` | Run a declared bkit:generate on the feature branch and commit only the paths it changed (ship Step 3, and Step 10's fix round). |
 | `push` | workflow | **`--mode`** `--set-upstream` `--ahead-of` `--commit` `--label` `--file` `--workflow` `--require-ci` `--open-pr` `--fid` | Push the current branch with exactly one git push: plain for dev/main, --force-with-lease otherwise. |
@@ -140,8 +140,8 @@ Clamp context artifacts; scan ledgers; write the run's diff and a build group's 
 | `brief` | workflow | **`--plan`** `--group` `--next` **`--dir`** `--tests-only` `--file` `--note-file` | Write one group's brief (why and what, where it fits, its open task blocks, the earlier tasks they depend on, the Reuse Inventory rows and Architecture entries for their files, deviations) as build-brief-{group}-{n}.md, and print only its path and sizes; --tests-only writes the tests step's brief as build-brief-tests-{group}-{n}.md, with the Derived Test Matrix rows for the group's tests in place of the inventory and architecture entries. |
 | `list-blocks` | by hand | — | Enumerate the consumer's context-fetch blocks and narrate coverage per context. |
 | `provision` | by hand | — | Run each context-fetch:provision recipe below bkit:end on its own and list the failed ones in .bkit/.unavailable. |
-| `run-block` | workflow | **`--idx`** **`--script`** **`--fid`** **`--month`** `--attempt` `--file` | Run one customised block; write its output fenced (clamped first), its skip line, or nothing. |
-| `fetch` | workflow | **`--idx`** **`--script`** **`--fid`** **`--month`** `--attempt` `--file` `--render` | run-block, with a JSON array of flat objects written as a markdown table; the raw output stays in the outbox. |
+| `run-block` | workflow | **`--idx`** **`--script`** **`--fid`** **`--month`** `--attempt` `--file` `--ci-selection-file` | Run one customised block; write its output fenced (clamped first), its skip line, or nothing. |
+| `fetch` | workflow | **`--idx`** **`--script`** **`--fid`** **`--month`** `--attempt` `--file` `--ci-selection-file` `--render` | run-block, with a JSON array of flat objects written as a markdown table; the raw output stays in the outbox. |
 | `finalise` | workflow | **`--fid`** **`--month`** `--attempt` `--file` `--record` `--message` `--number` `--title` `--link-ref` `--owner-repo` | The context-fetch status row's fields: verdict, artifacts, contexts configured, clamped; --record writes and commits the row and prints the step comment. |
 
 ### `counters`
@@ -290,7 +290,7 @@ CI runs: wait for one, prove one was dispatched, re-validate and gate a merge on
 | `locate` | workflow | **`--prompt-file`** `--issue-text-file` **`--branch`** **`--repo`** `--file` **`--selection-out`** `--evidence-file` | Select and validate the red CI run for the adopted debug branch before local discovery: exit 0 selects red CI, 1 selects local discovery, 2 rejects arguments, 8 rejects ambiguous references, 80 requests read fallback, and 82 requires owner action for unavailable or mismatched evidence. |
 | `wait` | by hand | `--pr` `--head` `--branch` `--until` `--budget-s` `--interval-s` `--once` `--dispatch-if-absent` | Bounded poll for a CI check on a PR (--pr) or a CI run at a head (--head --branch), present or completed. |
 | `dispatch` | workflow | `--pr` `--sha` **`--fid`** `--label` `--file` `--workflow` `--step` `--artifact` `--field` `--budget-s` `--interval-s` `--poll-result` `--attempts` `--all-errored` `--retriggered` | CI-Dispatch Gate after the last push: poll, one clean re-trigger, the ciDispatch verdict, and the body scan. A run in place on dev has no PR: it polls the push-event run at the pushed sha, and its re-trigger commits and pushes only the run's own work. |
-| `gate` | workflow | `--head` `--pr` `--squash-of` `--snapshot` `--record` `--validated` `--month` `--fid` `--repo` `--branch` `--fetch` `--event` `--file` `--capstone-only` | Ship merge gate: the capstone job present and green at the head (exit 0), or why not. |
+| `gate` | workflow | `--ci-selection-file` `--head` `--pr` `--squash-of` `--snapshot` `--record` `--validated` `--month` `--fid` `--repo` `--branch` `--fetch` `--event` `--file` `--capstone-only` | Ship merge gate: the capstone job present and green at the head (exit 0), or why not. |
 | `revalidate` | workflow | **`--pr`** **`--entry-head`** **`--code-head`** **`--branch`** **`--month`** **`--fid`** **`--file`** `--reason` `--repo` | Ship: pick the head CI must pass at, probe for a run there, dispatch only when none, wait for it to complete. |
 | `mirror` | workflow | **`--head`** `--branch` `--repo` `--ci-workflow` `--capstone` `--absent-minutes` `--max-minutes` `--interval-s` | Release PR: wait for the branch's push run at the head and copy its capstone verdict. |
 | `context` | workflow | **`--phase`** **`--arg`** `--marker` | /bkit-auto Step 1: the phase and mode, the repo, and the issue / FID / PR / run the dispatch carries. |

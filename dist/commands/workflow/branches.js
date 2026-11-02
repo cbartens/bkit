@@ -2237,7 +2237,14 @@ export const branchesCommand = {
         parse: {
             summary: "Read an explicitly named or existing branch from the session prompt.",
             use: "workflow",
-            flags: [{ name: "prompt-file", type: "string", required: true, help: "session prompt" }],
+            flags: [
+                { name: "prompt-file", type: "string", required: true, help: "session prompt" },
+                {
+                    name: "workflow",
+                    type: "string",
+                    help: "debug: validate an explicit debug adoption request",
+                },
+            ],
             output: {
                 branch: "one existing branch, or null",
                 via: "explicit | token | null",
@@ -2248,6 +2255,8 @@ export const branchesCommand = {
                 8: "multiple branches were named",
             },
             run: (ctx) => {
+                if (ctx.flags.workflow !== undefined && ctx.flags.workflow !== "debug")
+                    throw new CommandError(EXIT.USAGE, "--workflow must be debug");
                 const prompt = fs.readFileSync(path.resolve(ctx.cwd, String(ctx.flags.promptFile)), "utf8");
                 const candidates = new Map();
                 for (const token of prompt.split(/\s+/)) {
