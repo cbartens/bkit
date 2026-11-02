@@ -252,7 +252,7 @@ The Selection and State Contract and Verification and Rollback sections are bind
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Locate and validate the relevant CI evidence.
+- [x] **TASK 2:** Locate and validate the relevant CI evidence.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/runs.ts`: add pure reference parsing and `runs locate --prompt-file --issue-text-file --branch --repo --file --selection-out`. `--file` is the active status log when available; `--selection-out` writes the validated candidate selection JSON for Task 3. Inputs and output paths are explicit; do not change active metadata from this read operation.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/runs.ts`: apply Reference precedence and CI lookup above. Read `readBkitConfig(root).ciWorkflow`; branch and PR discovery filter by that workflow. Reuse `runGh`, existing workflow-filtered queries and pagination helpers. Fetch selected-attempt metadata and jobs, retaining the workflow ID/path, head repository, head branch and head commit.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/runs.ts`: branch alignment and commit ancestry before emitting an actionable CI selection. Treat an ancestry check error distinctly from proven non-ancestry. Unknown failed jobs yield `redTiers: []` for default gate order and remain listed in `failedJobs`.
@@ -355,7 +355,7 @@ The Selection and State Contract and Verification and Rollback sections are bind
 
 <!-- bkit:task 7 start -->
 
-- [ ] **TASK 7:** Make the shipped evidence blocks honor the selection.
+- [x] **TASK 7:** Make the shipped evidence blocks honor the selection.
   - **UPDATE:** `.bkit/templates/context/bkit-github.md`: `.bkit/templates/context/bkit-github.md`, the `context=ci` block: when pinned, read the exact repository/run/attempt and do not call branch discovery. Validate returned metadata before fetching complete, bounded job logs. Include failed/timed-out/startup-failure evidence where available; missing logs remain unavailable, not a clean result.
   - **UPDATE:** `.bkit/templates/context/bkit-github.md`: its unpinned discovery to use the consumer's existing configured workflow selector. Resolve the setting through the existing configuration convention; do not add a second default filename or setting. Preserve no-config and tool-unavailable breadcrumbs.
   - **UPDATE:** `.bkit/templates/context/bkit-github.md`: the `context=diff` block to use the selected failing commit as the diff endpoint when pinned. Find a successful baseline of the same selected workflow on the configured baseline branch at or before the failing run; validate ancestry. Report an unavailable baseline honestly rather than diffing unrelated or newer code. Unpinned behavior retains the existing discovery path.
@@ -416,7 +416,7 @@ The Selection and State Contract and Verification and Rollback sections are bind
 
 <!-- bkit:task 10 start -->
 
-- [ ] **TASK 10:** Verify the complete sequence and regenerate the shipped output.
+- [x] **TASK 10:** Verify the complete sequence and regenerate the shipped output.
   - **CREATE:** `.bkit/core/engine/audits/workflows/debug-ci-evidence.integration.test.ts`: NEW because no existing integration suite owns the complete selected-evidence fix sequence. Follow existing workflow-snippet integration fixtures: use a fresh temporary consumer, real CLI commands/status files/context execution, the actual workflow command blocks and an argv-checking fake CI transport. Stub the remote boundary and agent-produced fix artifact, not selection, metadata folding, gate execution, context validation or final gate evaluation.
   - **UPDATE:** `.bkit/core/engine/audits/workflows/debug-ci-evidence.integration.test.ts`: generated outputs via the existing `pnpm bkit:generate` once after source edits. Run the prescribed build, CLI/instruction sync, mirror generation, snapshots and graph refresh through that script; inspect the generated diff. Do not hand-edit mirrors.
   - **UPDATE:** `.bkit/core/engine/audits/workflows/debug-ci-evidence.integration.test.ts`: run the unit and integration tests named by the matrix, then `pnpm bkit:gate:static-unit-integration` and `bkit check`. Run generation again only to prove idempotence or after a change; it must add no new delta. Inspect that the working tree contains only intended changes.
