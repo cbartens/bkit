@@ -564,6 +564,68 @@ describe("workflow progress command wiring", () => {
     expect(released.code).toBe(0);
   });
 
+  it("progress normal debug attempts span runs", async () => {
+    const cwd = repo("debug", { "debug.fix": { ask: true, max: 3 } });
+    write(
+      cwd,
+      STATUS,
+      jsonl([
+        started("debug", { "debug.fix": { ask: true, max: 3 } }),
+        completed(cwd, "debug", "debug-failure-remediate", { attempt: 1 }),
+        { type: "workflow-done", workflow: "debug", at: at() },
+        started("debug", { "debug.fix": { ask: true, max: 3 } }),
+        { type: "workflow-meta", workflow: "debug", at: at(), debugMode: "NORMAL" },
+      ]),
+    );
+    const result = await run(cwd, doneArgs("debug", "debug-failure-remediate", "--attempt=1"));
+    expect(result.code).toBe(0);
+    expect(result.json.row).toMatchObject({ step: "debug-failure-remediate", attempt: 1 });
+    expect(result.json.progressLine).toBe(
+      "Progress: ██████░░░░ 64% · Step 7/11 Failure Remediate · Attempt 2 of 3",
+    );
+    expect(domainRows(cwd).filter((row) => row.step === "debug-failure-remediate")).toHaveLength(2);
+  });
+
+  it("progress reuses saved soak counter on later completions", async () => {
+    const cwd = repo("debug", { "debug.soak": { ask: true, max: 3 } });
+    fs.appendFileSync(
+      path.join(cwd, STATUS),
+      jsonl([
+        { type: "workflow-meta", workflow: "debug", at: at(), debugMode: "SOAK" },
+        completed(cwd, "debug", "debug-failure-soak", { attempt: 1, soakAttempt: 4 }),
+        { type: "allowance-granted", workflow: "debug", point: "debug.soak", at: at() },
+      ]),
+    );
+    const result = await run(
+      cwd,
+      doneArgs("debug", "debug-run-tests", "--attempt=2", "--field=scope=unit"),
+    );
+    expect(result.code).toBe(0);
+    expect(result.json.row).toMatchObject({ step: "debug-run-tests", attempt: 2, scope: "unit" });
+    expect(result.json.progressLine).toBe(
+      "Progress: ███░░░░░░░ 27% · Step 3/11 Run Tests · Attempt 4 of 6",
+    );
+    expect(domainRows(cwd).filter((row) => row.step === "debug-failure-soak")).toEqual([
+      expect.objectContaining({ soakAttempt: 4 }),
+    ]);
+  });
+
+  it("progress challenge budget follows round rather than report attempt", async () => {
+    const cwd = repo("build", { "build.challenge": { ask: true, max: 2 } });
+    fs.appendFileSync(
+      path.join(cwd, STATUS),
+      jsonl([completed(cwd, "build", "build-challenge", { attempt: 1, round: 1 })]),
+    );
+    const result = await run(
+      cwd,
+      doneArgs("build", "build-challenge", "--attempt=2", "--field=round=1"),
+    );
+    expect(result.code).toBe(0);
+    expect(result.json.row).toMatchObject({ step: "build-challenge", attempt: 2, round: 1 });
+    expect(result.json.progressLine).toBe("Progress: ███████░░░ 69% · Step 11/16 Build Challenge");
+    expect(domainRows(cwd).filter((row) => row.step === "build-challenge")).toHaveLength(2);
+  });
+
   it("progress excludes noncompletions", async () => {
     vi.stubEnv("BKIT_ENGINE_JOURNAL", "on");
     vi.stubEnv("GIT_EXEC_PATH", "");

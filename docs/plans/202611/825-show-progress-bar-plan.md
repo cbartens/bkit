@@ -104,6 +104,9 @@ The engine works out the line and the agent shows it word for word, so the agent
 | Registered command output metadata declares `progressLine` for every emitting verb. | Unit | `.bkit/core/engine/commands/workflow/steps.test.ts` | 2 |
 | All six workflow sources carry the narration clause and provider renders retain it without swallowed command output. | Static | `.bkit/core/engine/render/hosts.test.ts` | 3 |
 | The Claude app renders the prefix without a break at 375px, with plain text and a wrapping suffix. | E2E | `docs/plans/202611/logs/825-show-progress-bar/phone-verification.md` | 4 |
+| progress normal debug attempts span runs | Integration | `.bkit/core/engine/commands/workflow/progress.integration.test.ts` | 5 |
+| progress reuses saved soak counter on later completions | Integration | `.bkit/core/engine/commands/workflow/progress.integration.test.ts` | 5 |
+| progress challenge budget follows round rather than report attempt | Integration | `.bkit/core/engine/commands/workflow/progress.integration.test.ts` | 5 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -416,6 +419,23 @@ One implementation PR may carry all groups. Group 1 supplies the engine behavior
 <!-- bkit:task 4 end -->
 
 <!-- bkit:group 2 end -->
+
+<!-- bkit:group 3 start -->
+
+### TASK GROUP 3: Challenge round 1 findings
+
+<!-- bkit:task 5 start -->
+
+- [ ] **TASK 5:** Resuming debug or retrying challenge formatting displays an incorrect budget attempt
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/steps.ts:481` · **Round:** 1
+  - **DONE WHEN:** Progress derives the attempt and allowance from the same workflow counter: normal debug remediation uses its cross-run remediation count, saved soak attempts survive later completions, and build challenge uses its challenge round rather than its report invocation count. This preserves the counter scopes documented in `.bkit/core/.bkit/workflows.md` under Counters and Progress Lines and the plan's requirement to use normal/soak/challenge counter contexts.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/progress.integration.test.ts` `progress normal debug attempts span runs` fails when one remediation in a completed debug run followed by the first remediation in a new run with a frozen maximum of three emits no `Attempt 2 of 3` suffix.
+    - `.bkit/core/engine/commands/workflow/progress.integration.test.ts` `progress reuses saved soak counter on later completions` fails when a saved `soakAttempt: 4`, a maximum of three and one grant are followed by `debug-run-tests --attempt=2`, producing `Attempt 2 of 6` instead of `Attempt 4 of 6`.
+    - `.bkit/core/engine/commands/workflow/progress.integration.test.ts` `progress challenge budget follows round rather than report attempt` fails when `build-challenge --attempt=2 --field=round=1` follows the first report in round one and incorrectly prints `Attempt 2 of 2`, although the challenge remains in its first budget round.
+
+<!-- bkit:task 5 end -->
+<!-- bkit:group 3 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
 

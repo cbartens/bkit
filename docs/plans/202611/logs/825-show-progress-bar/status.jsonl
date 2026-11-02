@@ -220,3 +220,12 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-02T22:42:17Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt","agent","artifact","field","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-challenge/-/1/comment","hash":"32b15950b0cbbd53e11e274b6fc23432d1214f038cef08f3ff7acba7822b0649","ref":"https://github.com/cbartens/bkit/issues/825#issuecomment-6590343205","at":"2026-11-02T22:42:18Z"}
 {"type":"step-done","workflow":"build","step":"build-challenge","status":"DONE","at":"2026-11-02T22:42:18Z","parentSha":"817c95ba4e49b004a0a7cc7ee5561da31b89d0ff","artifacts":["docs/plans/202611/logs/825-show-progress-bar/build-challenge-1.md","docs/plans/202611/logs/825-show-progress-bar/build-challenge-2.md"],"verdict":"CONCERNS","attempt":1,"failures":0,"round":1}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T22:42:22Z","noun":"challenge","verb":"merge","flags":["report","plan","log","round"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T22:42:27Z","noun":"context","verb":"brief","flags":["plan","next","dir","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T22:42:31Z","noun":"status","verb":"route","flags":["step","group","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T22:42:37Z","noun":"steps","verb":"done","flags":["workflow","step","file","group","commit"]}
+{"type":"step-done","workflow":"build","step":"build-group-start","status":"DONE","at":"2026-11-02T22:42:37Z","parentSha":"3efb77f8efc3aba3ae5818f2953b643b99d69e4c","artifacts":[],"group":3}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T22:42:37Z","noun":"context","verb":"brief","flags":["plan","group","tests-only","dir","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T22:44:05Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","plan","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-tests/3/1/comment","hash":"98b4b52679e01a78521987750b5a92e0ebae2f8d598cf551c36aba43b978cac1","ref":"https://github.com/cbartens/bkit/issues/825#issuecomment-6590374414","at":"2026-11-02T22:44:06Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-tests","status":"DONE","at":"2026-11-02T22:44:06Z","parentSha":"3efb77f8efc3aba3ae5818f2953b643b99d69e4c","artifacts":["docs/plans/202611/logs/825-show-progress-bar/build-plan-tests-3-log.md"],"verdict":"PASS","attempt":1,"group":3}
