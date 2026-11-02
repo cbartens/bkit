@@ -44,6 +44,66 @@ import {
   type TelemetryEvent,
 } from "./telemetry";
 import { getBkitDocsRoot } from "../shared/package-roots";
+import { testRunProblem } from "./status";
+
+describe("test-run status row validation", () => {
+  it("accepts bounded CI evidence rows while preserving local exit validation", () => {
+    const ci = {
+      type: "test-run",
+      workflow: "debug",
+      step: "debug-run-tests",
+      at: "2026-10-01T00:00:00Z",
+      attempt: 1,
+      run: 1,
+      source: "ci",
+      verdict: "FAIL",
+      scope: "ci:123",
+      gate: null,
+      exitCode: null,
+      failures: null,
+      ciRun: "123",
+      ciUrl: "https://github.com/example/example/actions/runs/123/attempts/2",
+      runAttempt: 2,
+      ciGeneration: 1,
+      repo: "example/example",
+      workflowId: "456",
+      workflowPath: ".github/workflows/consumer-ci.yml",
+      headSha: "a".repeat(40),
+      log: "logs/run-tests-1.md",
+      artifact: "docs/plans/202611/logs/1-x/run-tests-1.md",
+    };
+    expect(testRunProblem(ci)).toBeNull();
+    expect(testRunProblem({ ...ci, workflow: "build" })).not.toBeNull();
+    expect(testRunProblem({ ...ci, exitCode: 0 })).not.toBeNull();
+    expect(testRunProblem({ ...ci, failures: 0 })).not.toBeNull();
+    expect(testRunProblem({ ...ci, verdict: "PASS" })).not.toBeNull();
+    expect(testRunProblem({ ...ci, gate: "bkit:gate:static-unit" })).not.toBeNull();
+    expect(testRunProblem({ ...ci, ciGeneration: 0 })).not.toBeNull();
+    expect(testRunProblem({ ...ci, runAttempt: 0 })).not.toBeNull();
+    expect(testRunProblem({ ...ci, scope: "ci:999" })).not.toBeNull();
+    expect(testRunProblem({ ...ci, artifact: undefined })).not.toBeNull();
+    const local = {
+      type: "test-run",
+      workflow: "build",
+      step: "build-run-tests",
+      at: ci.at,
+      attempt: 1,
+      run: 1,
+      source: "local",
+      verdict: "PASS",
+      exitCode: 0,
+      failures: 0,
+      scope: "pnpm bkit:gate:static-unit",
+      log: "logs/tests.log",
+    };
+    expect(testRunProblem(local)).toBeNull();
+    expect(testRunProblem({ ...local, source: undefined })).toBeNull();
+    expect(testRunProblem({ ...local, exitCode: null })).not.toBeNull();
+    expect(testRunProblem({ ...local, exitCode: "0" })).not.toBeNull();
+    expect(testRunProblem({ ...local, exitCode: 0.5 })).not.toBeNull();
+    expect(testRunProblem({ ...local, failures: -1 })).not.toBeNull();
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Helpers

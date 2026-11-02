@@ -940,6 +940,179 @@ describe("check — hole classes", () => {
   const FINISH = (key: string, n: number) =>
     `steps finish --workflow=build --step=${key} --number=${n}`;
 
+  it("audits evidence-first debug rounds without requiring a local discovery run", () => {
+    const md = [
+      "## Step 1 — Run Tests",
+      ...fence(
+        "tests run --ci-run=123 --ci-url=https://github.com/example/example/actions/runs/123/attempts/2",
+        "steps finish --workflow=debug --step=debug-run-tests --number=1",
+      ),
+      "## Step 2 — Fetch Context",
+      ...fence(
+        "context fetch --context=ci",
+        "steps finish --workflow=debug --step=context-fetch --number=2",
+      ),
+      "## Step 3 — Diagnose",
+      ...fence("steps finish --workflow=debug --step=debug-failure-diagnose --number=3"),
+      "## Step 4 — Close",
+      ...fence("steps finish --workflow=debug --step=debug-close-workflow --number=4"),
+    ].join("\n");
+    const selection = {
+      mode: "ci",
+      provider: "github",
+      repo: "example/example",
+      runId: "123",
+      runAttempt: 2,
+      runUrl: "https://github.com/example/example/actions/runs/123/attempts/2",
+      workflowId: "456",
+      workflowPath: ".github/workflows/consumer-ci.yml",
+      headBranch: "fix/ci",
+      headSha: "a".repeat(40),
+      conclusion: "failure",
+      redTiers: ["integration"],
+      via: "prompt-run",
+    };
+    const rows: StatusRow[] = [
+      { type: "workflow-started", workflow: "debug", at: AT },
+      { type: "workflow-meta", workflow: "debug", at: AT, ciSelection: selection, ciGeneration: 1 },
+      callRow("debug", "tests", "run"),
+      {
+        type: "test-run",
+        workflow: "debug",
+        at: AT,
+        step: "debug-run-tests",
+        source: "ci",
+        scope: "ci:123",
+        verdict: "FAIL",
+        exitCode: null,
+        failures: null,
+        ciRun: "123",
+        ciUrl: selection.runUrl,
+        repo: selection.repo,
+        workflowId: selection.workflowId,
+        workflowPath: selection.workflowPath,
+        headSha: selection.headSha,
+        gate: null,
+        runAttempt: 2,
+        ciGeneration: 1,
+        artifact: "logs/ci-round-1.md",
+        log: "logs/ci-round-1.md",
+        attempt: 1,
+        run: 1,
+      },
+      callRow("debug", "steps", "finish"),
+      stepRow("debug", "debug-run-tests", {
+        source: "ci",
+        scope: "ci:123",
+        verdict: "FAIL",
+        attempt: 1,
+        ciGeneration: 1,
+        artifacts: ["logs/ci-round-1.md"],
+      }),
+      callRow("debug", "context", "fetch"),
+      callRow("debug", "steps", "finish"),
+      stepRow("debug", "context-fetch", { attempt: 1, artifacts: ["logs/context-ci-1.md"] }),
+      callRow("debug", "steps", "finish"),
+      stepRow("debug", "debug-failure-diagnose", {
+        attempt: 1,
+        strategy: "STANDARD",
+        ciGeneration: 1,
+      }),
+      callRow("debug", "steps", "finish"),
+      stepRow("debug", "debug-close-workflow"),
+    ];
+    const contract = deriveContract(md, "debug");
+    expect(check(rows, contract).verdict).toBe("CLEAN");
+    expect(auditRun(rows, "debug", md).missing).toEqual([]);
+    expect(
+      check(
+        rows.filter((value) => value.type !== "test-run"),
+        contract,
+      ).verdict,
+    ).toBe("HOLEY");
+    const missingContext = rows.filter((value) => value.noun !== "context");
+    expect(
+      check(missingContext, contract).evidenceHoles.some((hole) => hole.step === "context-fetch"),
+    ).toBe(true);
+    const evidenceIndex = rows.findIndex((value) => value.type === "test-run");
+    const forged = [...rows];
+    forged[evidenceIndex] = { ...rows[evidenceIndex]!, ciGeneration: 2 };
+    expect(check(forged, contract).verdict).toBe("HOLEY");
+  });
+
+  const contextSelection = {
+    mode: "ci",
+    provider: "github",
+    repo: "example/example",
+    runId: "123",
+    runAttempt: 2,
+    runUrl: "https://github.com/example/example/actions/runs/123/attempts/2",
+    workflowId: "456",
+    workflowPath: ".github/workflows/consumer-ci.yml",
+    headBranch: "fix/ci",
+    headSha: "a".repeat(40),
+    conclusion: "failure",
+    redTiers: ["integration"],
+    via: "prompt-run",
+  };
+  const contextRound: StatusRow = {
+    type: "test-run",
+    workflow: "debug",
+    at: AT,
+    step: "debug-run-tests",
+    source: "ci",
+    scope: "ci:123",
+    verdict: "FAIL",
+    exitCode: null,
+    failures: null,
+    ciRun: "123",
+    ciUrl: contextSelection.runUrl,
+    repo: contextSelection.repo,
+    workflowId: contextSelection.workflowId,
+    workflowPath: contextSelection.workflowPath,
+    headSha: contextSelection.headSha,
+    gate: null,
+    runAttempt: 2,
+    ciGeneration: 1,
+    artifact: "logs/ci-round-1.md",
+    log: "logs/ci-round-1.md",
+    attempt: 1,
+    run: 1,
+  };
+
+  it.each([
+    ["local replacement", { mode: "local", reason: "explicit-local" }, 2],
+    ["new generation", contextSelection, 2],
+    ["changed identity", { ...contextSelection, headSha: "b".repeat(40) }, 1],
+    ["invalid selection", { mode: "ci" }, 1],
+  ])("ignores stale CI context-fetch requirements after %s", (_name, selection, generation) => {
+    const md = [
+      "## Step 1 — Fetch Context",
+      ...fence("steps finish --workflow=debug --step=context-fetch --number=1"),
+    ].join("\n");
+    const rows: StatusRow[] = [
+      { type: "workflow-started", workflow: "debug", at: AT },
+      {
+        type: "workflow-meta",
+        workflow: "debug",
+        at: AT,
+        ciSelection: contextSelection,
+        ciGeneration: 1,
+      },
+      contextRound,
+      {
+        type: "workflow-meta",
+        workflow: "debug",
+        at: AT,
+        ciSelection: selection,
+        ciGeneration: generation,
+      },
+      callRow("debug", "steps", "finish"),
+      stepRow("debug", "context-fetch"),
+    ];
+    expect(check(rows, deriveContract(md, "debug")).evidenceHoles).toEqual([]);
+  });
+
   /** Calls and row of every step section of a workflow, in markdown order, each step on its first arm. */
   const replay = (name: (typeof FLOWS)[number], withBranches: boolean): StatusRow[] => {
     return contractUnits(deriveContract(flowMd(name), name)).flatMap((u) => {

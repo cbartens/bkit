@@ -79,15 +79,29 @@ describe("issue text is joined, filtered and cut only by the engine", () => {
   ];
 
   for (const rel of PHASES) {
+    const expectedEvidenceJoins = rel.endsWith("bkit-debug.md")
+      ? [`"{BKIT}" issues text ${ISSUE_JOIN}`]
+      : [];
     it(`${rel}: the input artifact's issue text is joined by bkit workflows input`, () => {
       const content = read(rel);
       const inputs = content.split("\n").filter((l) => l.includes('"{BKIT}" workflows input '));
       expect(inputs, "one workflows input call").toHaveLength(1);
       expect(inputs[0], "issue-text join").toContain(ISSUE_JOIN);
-      expect(content).not.toContain("issues text");
-      expect(content).not.toContain("ISSUE_TEXT");
+      const evidenceJoins = content
+        .split("\n")
+        .filter((line) => line.includes('"{BKIT}" issues text '))
+        .map((line) => line.trim());
+      expect(evidenceJoins, "current issue evidence uses the same engine join").toEqual(
+        expectedEvidenceJoins,
+      );
     });
   }
+
+  it("debug supplies the engine-joined current issue text to evidence selection", () => {
+    expect(read(".bkit/core/workflows/bkit-debug.md")).toContain(
+      '--issue-text-file="{OUTBOX}/issue-text.md"',
+    );
+  });
 
   for (const rel of SWEEPS) {
     it(`${rel}: each related-issues hit is joined by bkit issues related`, () => {
@@ -155,10 +169,11 @@ describe("comments are read by the engine, oldest first", () => {
   });
 
   for (const rel of PHASES) {
+    const expectedReferences = rel.endsWith("bkit-debug.md") ? 3 : 2;
     it(`${rel}: every write of the comments file is oldest first`, () => {
       const content = read(rel);
       expect(content.split(FALLBACK).length - 1, "exit-80 fallback").toBe(1);
-      expect(content.split("issue-comments.json").length - 1).toBe(2);
+      expect(content.split("issue-comments.json").length - 1).toBe(expectedReferences);
     });
   }
 

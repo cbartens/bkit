@@ -11,7 +11,7 @@
 // and print the step's tracker comment.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { actionKey, activeDoneSteps, allRunsDoneSteps, appendLine, runNumber, runOrStepField, statusTimestamp, } from "../../ledgers/status.js";
+import { actionKey, activeDoneSteps, allRunsDoneSteps, appendLine, ciRoundMatches, runNumber, runOrStepField, statusTimestamp, } from "../../ledgers/status.js";
 import { clampLogPath, readRecords } from "../../ledgers/clamp-log.js";
 import { appendFrictionRow, frictionRow, journalEnabled } from "../../ledgers/journal.js";
 import { resolveRepoSlug } from "../../ledgers/telemetry.js";
@@ -22,7 +22,7 @@ import { fidProblem, normaliseFid, readIssueTracker } from "./fids.js";
 import { buildComment } from "./issues.js";
 import { EXIT_FOREIGN_PATH, activeRecord, ownPathCommit, ownSet, } from "./ledgers.js";
 import { readHolder, resolveMonth, workflowLockPath } from "./locks.js";
-import { EXIT_NO_STATUS, FILE_FLAG, GROUP_FLAG, STEP_FLAG, WORKFLOW_FLAG, extraField, nonNegativeInt, positiveInt, readRuns, readRunsAt, statusFile, str, } from "./status.js";
+import { EXIT_NO_STATUS, FILE_FLAG, GROUP_FLAG, STEP_FLAG, WORKFLOW_FLAG, extraField, nonNegativeInt, positiveInt, readRuns, readStatusRows, readRunsAt, statusFile, str, } from "./status.js";
 import { COMMENT_FILE_OUTPUT, POST_FLAG, TRACKER_OUTPUT, commentFileOf, postForVerb, } from "./tracker.js";
 import { parsePlanBlocks } from "./plan-blocks.js";
 import { PLAN_TASKS_STEP, readTestFirst, touchedTests } from "./tests.js";
@@ -818,11 +818,63 @@ async function finish(ctx) {
     if (strategy !== undefined && !STRATEGIES.includes(strategy))
         throw new CommandError(EXIT.USAGE, "--strategy must be STANDARD|PIVOT|FINAL");
     delete fields.Strategy;
+    if (workflow === "debug" && step === "debug-failure-reproduce" && fields.Reproduced !== undefined)
+        extras.reproduced = fields.Reproduced;
     const clampLog = str(f.clampLog);
     if (clampLog !== undefined) {
         const [clampStep, clampAttempt] = fill(clampLog, attempt).split(":");
         const fid = path.basename(path.dirname(file));
         extras.clamped = readRecords(clampLogPath(ctx.cwd, fid, clampStep, positiveInt(clampAttempt, "clamp-log attempt")), (l) => ctx.log(`skipping a malformed clamp record: ${l}`));
+    }
+    if (workflow === "debug" && step === "debug-run-tests") {
+        const active = readRuns(file).at(-1);
+        const rows = readStatusRows(file);
+        const start = rows
+            .map((r, i) => (r.type === "workflow-started" && r.workflow === "debug" ? i : -1))
+            .filter((i) => i >= 0)
+            .at(-1) ?? -1;
+        const round = rows
+            .slice(start + 1)
+            .reverse()
+            .find((r) => r.type === "test-run" &&
+            r.workflow === workflow &&
+            r.step === step &&
+            r.attempt === attempt);
+        if (extras.source === "ci" || round?.source === "ci") {
+            const matching = active?.workflow === "debug" &&
+                active.status === "IN_PROGRESS" &&
+                round &&
+                ciRoundMatches(round, active.ciSelection, active.ciGeneration) &&
+                extras.source === "ci" &&
+                extras.ciGeneration === active.ciGeneration &&
+                verdict === "FAIL" &&
+                failures === undefined &&
+                extras.scope === round.scope &&
+                artifacts.includes(String(round.artifact));
+            if (!matching)
+                throw new CommandError(EXIT.USAGE, "CI evidence does not match the active selection");
+            const text = fs.readFileSync(path.resolve(ctx.cwd, String(round.artifact)), "utf-8");
+            const required = [
+                "Verdict: FAIL",
+                "Source: ci",
+                `Scope: ${round.scope}`,
+                `Repository: ${round.repo}`,
+                `Workflow: ${round.workflowPath} (${round.workflowId})`,
+                `Run: ${round.ciRun}`,
+                `Run attempt: ${round.runAttempt}`,
+                `CI generation: ${round.ciGeneration}`,
+                `Commit: ${round.headSha}`,
+                `URL: ${round.ciUrl}`,
+                "The local gate was not run.",
+            ];
+            if (!required.every((line) => text.split(/\r?\n/).includes(line)))
+                throw new CommandError(EXIT.USAGE, "CI evidence artifact identity mismatch");
+            delete extras.clamped;
+        }
+        else if ((clampLog !== undefined || round !== undefined) &&
+            (!Array.isArray(extras.clamped) || extras.clamped.length === 0)) {
+            throw new CommandError(EXIT.USAGE, "local test completion needs clamp evidence");
+        }
     }
     // What the gate would refuse, refused before anything is written.
     const pre = gateChecks(ctx.cwd, {

@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-02T16:26:54Z)_
+_(refreshed 2026-11-02T22:29:11Z)_
 
 ### Design
 
@@ -53,7 +53,6 @@ _(refreshed 2026-11-02T16:26:54Z)_
 | --- | --- | --- |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
 | 748-brand-every-consumer | 748-brand-every-consumer | 1793603451032 |
-| 830-debug-diagnose-named | 830-debug-diagnose-named | 1793636814106 |
 
 ### Debug
 
@@ -64,6 +63,7 @@ _(none)_
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 830-debug-diagnose-named | 830-debug-diagnose-named | 1793658551188 |
 | 715-retire-lite-workflows | 715-retire-lite-workflows | 1793575645147 |
 | 699-engine-run-completeness | 699-engine-run-completeness | 1793517704318 |
 | 701-engine-work-build | 701-engine-work-build | 1793191338658 |
@@ -73,7 +73,6 @@ _(none)_
 | 380-roadmap-analysis-refresh | Roadmap ledger, two-tier generated board, fold + cadence + on-demand utility | 1787868628424 |
 | 342-injection-hardening | Prompt-injection hardening | 1787201470000 |
 | 363-widen-bkit-cloud-trigger | Widen bkit-cloud trigger to post-merge dev CI | 1785451674356 |
-| 384-ship-bookkeeping | Ship bookkeeping mutated the validated PR head | 1785303519000 |
 <!-- bkit:roadmap-status end -->
 
 <!-- bkit:roadmap-analysis start -->

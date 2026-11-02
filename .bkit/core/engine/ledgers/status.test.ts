@@ -13,8 +13,59 @@ import {
   appendLine,
   fold,
   recordAction,
+  validateCiSelection,
+  ciSelectionIdentity,
 } from "./status";
 import { readStatusEvents } from "../commands/workflow/status";
+
+describe("CI evidence selection contract", () => {
+  it("validates atomic CI and local selections with stable evidence identities", () => {
+    const selection = {
+      mode: "ci" as const,
+      provider: "github" as const,
+      repo: "example/example",
+      runId: "123",
+      runAttempt: 2,
+      runUrl: "https://github.com/example/example/actions/runs/123/attempts/2",
+      workflowId: "456",
+      workflowPath: ".github/workflows/consumer-ci.yml",
+      headBranch: "fix/ci",
+      headSha: "a".repeat(40),
+      conclusion: "failure" as const,
+      redTiers: ["integration" as const],
+      via: "prompt-run",
+    };
+    expect(validateCiSelection(selection)).toBe(true);
+    expect(validateCiSelection({ mode: "local", reason: "explicit-local" })).toBe(true);
+    expect(validateCiSelection({ ...selection, headSha: "not-a-commit" })).toBe(false);
+    expect(validateCiSelection({ ...selection, runAttempt: 0 })).toBe(false);
+    expect(validateCiSelection({ ...selection, runAttempt: 1.5 })).toBe(false);
+    expect(validateCiSelection({ ...selection, runId: "../123" })).toBe(false);
+    expect(validateCiSelection({ ...selection, repo: "../example" })).toBe(false);
+    expect(validateCiSelection({ ...selection, workflowId: "" })).toBe(false);
+    expect(validateCiSelection({ ...selection, workflowPath: "../../ci.yml" })).toBe(false);
+    expect(validateCiSelection({ ...selection, headBranch: "" })).toBe(false);
+    expect(validateCiSelection({ ...selection, headBranch: "fix/../ci" })).toBe(false);
+    expect(
+      validateCiSelection({
+        ...selection,
+        runUrl: "https://github.com/other/repo/actions/runs/123/attempts/2",
+      }),
+    ).toBe(false);
+    expect(validateCiSelection({ ...selection, redTiers: ["unknown"] })).toBe(false);
+    expect(validateCiSelection({ ...selection, conclusion: "success" })).toBe(false);
+    expect(validateCiSelection({ ...selection, provider: "other" })).toBe(false);
+    expect(validateCiSelection({ mode: "local", reason: "" })).toBe(false);
+    const identity = ciSelectionIdentity(selection);
+    expect(identity).toBe(ciSelectionIdentity({ ...selection, via: "issue-run" }));
+    expect(identity).not.toBe(ciSelectionIdentity({ ...selection, repo: "other/example" }));
+    expect(identity).not.toBe(ciSelectionIdentity({ ...selection, workflowId: "457" }));
+    expect(identity).not.toBe(ciSelectionIdentity({ ...selection, runId: "124" }));
+    expect(identity).not.toBe(ciSelectionIdentity({ ...selection, runAttempt: 3 }));
+    expect(identity).not.toBe(ciSelectionIdentity({ ...selection, headSha: "b".repeat(40) }));
+    expect(identity).not.toBe(ciSelectionIdentity({ mode: "local", reason: "explicit-local" }));
+  });
+});
 
 describe("fold — event log → run array", () => {
   it("folds a single run, step-done appends to the open run", () => {

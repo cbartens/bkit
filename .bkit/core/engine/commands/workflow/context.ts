@@ -39,7 +39,7 @@ import {
   renderCloudContextFetchProvision,
 } from "../../install/cloud-env.js";
 import { clampLogPath, readRecords } from "../../ledgers/clamp-log.js";
-import { lastRun } from "../../ledgers/status.js";
+import { lastRun, validateCiSelection, type CiSelection } from "../../ledgers/status.js";
 import {
   CommandError,
   EXIT,
@@ -1315,10 +1315,16 @@ const RUN_BLOCK_FLAGS: FlagSpec[] = [
   FID_FLAG,
   MONTH_FLAG,
   ...ATTEMPT_FLAGS,
+  {
+    name: "ci-selection-file",
+    type: "string",
+    help: "validated CI selection JSON; pin child evidence reads and require a matching complete CI receipt",
+  },
 ];
 
 const RUN_BLOCK_OUTPUT: Record<string, string> = {
-  outcome: "checked (data written) | self-skipped (skip line written) | silent (nothing) | not-run",
+  outcome:
+    "checked (validated data written) | unchecked (selected CI evidence invalid) | self-skipped (skip line written) | silent (nothing) | not-run",
   artifact: "the artifact path, or null when nothing was written",
   skip: "the block's [context-fetch:<name>] stderr line, or null",
   clamp: "the payload's clamp record, or null",
@@ -1842,6 +1848,7 @@ export const contextCommand: CommandSpec = {
         if (record) {
           const file = str(ctx.flags.file);
           if (file === undefined) throw new CommandError(EXIT.USAGE, "--record needs --file");
+          const active = lastRun(readRuns(path.resolve(ctx.cwd, file)), "debug");
           written = writeStepRow(
             ctx.cwd,
             {
@@ -1851,7 +1858,16 @@ export const contextCommand: CommandSpec = {
               verdict,
               attempt,
               artifacts,
-              extras: { contextsConfigured, clamped, clampSummary },
+              extras: {
+                contextsConfigured,
+                clamped,
+                clampSummary,
+                ...(active &&
+                validateCiSelection(active.ciSelection) &&
+                active.ciSelection.mode === "ci"
+                  ? { ciGeneration: active.ciGeneration }
+                  : {}),
+              },
               commit: "auto",
               message: str(ctx.flags.message),
             },
@@ -1905,6 +1921,44 @@ function tableOf(stdout: Buffer): { text: string } | { reason: string } {
   return table.ok ? { text: table.text } : { reason: table.reason };
 }
 
+/** Selected CI evidence is usable only with one complete receipt and actual logs. */
+function ciEvidenceProblem(
+  stdout: Buffer,
+  selection: Extract<CiSelection, { mode: "ci" }>,
+): string | null {
+  const lines = stdout.toString("utf-8").split("\n");
+  const receipts = lines.filter((line) => line.startsWith("bkit-ci-evidence: "));
+  if (receipts.length !== 1) return "selected CI evidence needs exactly one identity receipt";
+  const parsed = parseJson(receipts[0]!.slice("bkit-ci-evidence: ".length));
+  if (
+    !parsed.ok ||
+    parsed.value === null ||
+    typeof parsed.value !== "object" ||
+    Array.isArray(parsed.value)
+  )
+    return "selected CI evidence receipt is malformed";
+  const receipt = parsed.value as Record<string, unknown>;
+  for (const field of [
+    "provider",
+    "repo",
+    "runId",
+    "runAttempt",
+    "headSha",
+    "workflowId",
+  ] as const) {
+    if (receipt[field] !== selection[field]) return `selected CI evidence ${field} does not match`;
+  }
+  if (receipt.complete !== true) return "selected CI evidence is incomplete";
+  const logs = lines
+    .filter((line) => !line.startsWith("bkit-ci-evidence: "))
+    .join("\n")
+    .trim();
+  if (logs === "") return "selected CI evidence contains no logs";
+  if (/\[context-fetch:[^\n]*skipped|===== TRUNCATED:/i.test(logs))
+    return "selected CI evidence is skipped or partial";
+  return null;
+}
+
 /**
  * Run consumer block `--idx` and write what it printed, fenced and clamped. With `render`
  * (`context fetch`), a JSON array of flat objects is written as a table instead; the
@@ -1937,11 +1991,35 @@ function runBlock(ctx: RunContext, render?: Render): number {
 
   const repoRoot = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
   const fetchedAt = utcNow();
+  const selectionFile = str(ctx.flags.ciSelectionFile);
+  let selection: CiSelection | undefined;
+  if (selectionFile !== undefined) {
+    const file = path.resolve(ctx.cwd, selectionFile);
+    if (!fs.existsSync(file))
+      throw new CommandError(EXIT.USAGE, `--ci-selection-file ${selectionFile} does not exist`);
+    const parsed = parseJson(fs.readFileSync(file, "utf-8"));
+    if (!parsed.ok || !validateCiSelection(parsed.value))
+      throw new CommandError(
+        EXIT.USAGE,
+        "--ci-selection-file must contain a validated CI or local selection",
+      );
+    selection = parsed.value;
+  }
+  const childEnv: NodeJS.ProcessEnv = { ...process.env };
+  for (const key of ["BKIT_CI_RUN_ID", "BKIT_CI_RUN_ATTEMPT", "BKIT_CI_REPO", "BKIT_CI_HEAD_SHA"])
+    delete childEnv[key];
+  if (selection?.mode === "ci")
+    Object.assign(childEnv, {
+      BKIT_CI_RUN_ID: selection.runId,
+      BKIT_CI_RUN_ATTEMPT: String(selection.runAttempt),
+      BKIT_CI_REPO: selection.repo,
+      BKIT_CI_HEAD_SHA: selection.headSha,
+    });
   // The inline block ran inside the step's shell, so these were in scope for it.
   const res = spawnSync("bash", [script], {
     cwd: ctx.cwd,
     env: {
-      ...process.env,
+      ...childEnv,
       REPO_ROOT: repoRoot,
       CONTEXT: block.context,
       NAME: block.name,
@@ -1961,6 +2039,12 @@ function runBlock(ctx: RunContext, render?: Render): number {
   );
   const out = path.resolve(ctx.cwd, artifact);
   const shown = `context-fetch context=${block.context} name=${block.name || "default"}`;
+  const evidenceProblem =
+    selection?.mode === "ci" && block.context === "ci"
+      ? res.status !== 0 || skip !== undefined
+        ? "selected CI evidence command failed or self-skipped"
+        : ciEvidenceProblem(stdout, selection)
+      : null;
 
   if (stdout.some((b) => b !== 0x0a && b !== 0)) {
     fs.mkdirSync(path.dirname(out), { recursive: true });
@@ -1997,9 +2081,22 @@ function runBlock(ctx: RunContext, render?: Render): number {
     }
     appendRecord(clampLogPath(ctx.cwd, fid, "context-fetch", attempt), clamp);
     fs.writeFileSync(out, fenced(fs.readFileSync(out)));
-    ctx.log(`${shown} CHECKED — data returned`);
+    ctx.log(
+      evidenceProblem === null
+        ? `${shown} CHECKED — data returned`
+        : `${shown} UNCHECKED — ${evidenceProblem}`,
+    );
     ctx.emit(
-      shape({ outcome: "checked", artifact, skip: skip ?? null, clamp, reason: null }, written),
+      shape(
+        {
+          outcome: evidenceProblem === null ? "checked" : "unchecked",
+          artifact,
+          skip: skip ?? null,
+          clamp,
+          reason: evidenceProblem,
+        },
+        written,
+      ),
     );
     return EXIT.OK;
   }

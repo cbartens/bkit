@@ -5,7 +5,7 @@ import { BKIT_DEBUG_GATES } from "../../install/manifest.js";
 import { appendFrictionRow, journalEnabled, pauseFrictionRow } from "../../ledgers/journal.js";
 import { resolveGitSha } from "../../ledgers/telemetry.js";
 import { readBkitConfig } from "../../shared/settings.js";
-import { activeDoneSteps, allRunsDoneSteps, appendLine, fold, lastDoneStepAllRuns, lastRun, nextStrategy, runNumber, runOrStepField, statusTimestamp, } from "../../ledgers/status.js";
+import { activeDoneSteps, validateCiSelection, ciSelectionIdentity, allRunsDoneSteps, appendLine, fold, lastDoneStepAllRuns, lastRun, nextStrategy, runNumber, runOrStepField, statusTimestamp, } from "../../ledgers/status.js";
 import { CommandError, EXIT, git, parseJson, resolveActiveRun, statusLocation, } from "../lib.js";
 import { WORKFLOW_STEPS, isResumable, resumePoint } from "./step-table.js";
 // ---------------------------------------------------------------------------
@@ -229,13 +229,32 @@ export function debugStart(runs, promptText, fixMax) {
             open.steps.some((s) => s.step === "debug-failure-soak" && s.status === "DONE"));
     const fixes = allRunsDoneSteps(runs, "debug", { step: "debug-failure-remediate" }).length;
     const debugMode = promptText.includes("[soak]") || soaking || fixes >= fixMax ? "SOAK" : "NORMAL";
+    const selection = !promptText.includes("[local]") && validateCiSelection(open?.ciSelection)
+        ? open.ciSelection
+        : null;
+    const ci = selection?.mode === "ci" ? selection : null;
+    const ciGeneration = typeof open?.ciGeneration === "number" ? open.ciGeneration : 0;
+    const current = open?.steps.filter((s) => s.status === "DONE" && s.ciGeneration === ciGeneration) ?? [];
+    const defaults = promptText.includes("[live=off]")
+        ? BKIT_DEBUG_GATES.filter((g) => !g.endsWith("-live"))
+        : [...BKIT_DEBUG_GATES];
+    const covering = ci && ci.redTiers.length > 0
+        ? defaults
+            .filter((g) => ci.redTiers.every((tier) => g.slice("bkit:gate:".length).split("-").includes(tier)))
+            .reverse()
+        : [];
     return {
         debugAttempt: attempt,
         debugMode,
         repro: promptText.includes("[repro]"),
-        gates: promptText.includes("[live=off]")
-            ? BKIT_DEBUG_GATES.filter((g) => !g.endsWith("-live"))
-            : [...BKIT_DEBUG_GATES],
+        gates: [...new Set([...covering, ...defaults])],
+        ciRun: ci?.runId ?? null,
+        ciGeneration,
+        redTiers: ci?.redTiers ?? [],
+        ciFixDone: ci !== null &&
+            current.some((s) => ["debug-failure-remediate", "debug-failure-soak"].includes(s.step)),
+        ciReproduced: ci !== null &&
+            current.some((s) => s.step === "debug-failure-reproduce" && s.reproduced === "YES"),
     };
 }
 const PUBLISH_TOKEN = /(?<![\w-])publish=(true|false)(?![\w-])/;
@@ -364,6 +383,11 @@ export const statusCommand = {
             ],
             output: {
                 verdict: "PASS|CONCERNS|FAIL of the step's last DONE row in the active run, or null",
+                ciRun: "active saved CI run ID with --prompt-file, or null; explicit [local] clears it",
+                ciGeneration: "active saved selection generation with --prompt-file, or 0",
+                redTiers: "active selected failed tiers with --prompt-file; empty for local or unknown jobs",
+                ciFixDone: "whether the active generation has a DONE remediation or soak",
+                ciReproduced: "whether the active generation has DONE reproduction with YES",
                 failures: "its failures (absent on PASS|CONCERNS = 0, absent on FAIL = null: count unknown), or null",
                 strategy: "the step's last strategy across ALL runs, or null",
                 nextStrategy: "next rung: STANDARD, PIVOT, FINAL (null without --step)",
@@ -484,6 +508,11 @@ export const statusCommand = {
                     help: "positive integer, or run (the active run's number)",
                 },
                 { name: "opened-pr", type: "boolean", help: "record openedPr: this run opened the PR" },
+                {
+                    name: "ci-selection-file",
+                    type: "string",
+                    help: "validated atomic debug CI or local selection JSON",
+                },
             ],
             output: { row: "the appended workflow-meta row" },
             exitCodes: { [EXIT_NO_STATUS]: "status.jsonl does not exist (meta never starts a log)" },
@@ -491,6 +520,22 @@ export const statusCommand = {
                 const file = statusFile(ctx);
                 const at = statusTimestamp();
                 const fields = {};
+                if (ctx.flags.ciSelectionFile !== undefined) {
+                    const parsed = parseJson(fs.readFileSync(path.resolve(ctx.cwd, String(ctx.flags.ciSelectionFile)), "utf-8"));
+                    const selection = parsed.ok ? parsed.value : null;
+                    if (!validateCiSelection(selection))
+                        throw new CommandError(EXIT.USAGE, "invalid CI selection");
+                    const active = readRuns(file).at(-1);
+                    if (ctx.flags.workflow !== "debug" ||
+                        active?.workflow !== "debug" ||
+                        active.status !== "IN_PROGRESS")
+                        throw new CommandError(EXIT.USAGE, "CI selection needs an active debug run");
+                    const same = validateCiSelection(active.ciSelection) &&
+                        ciSelectionIdentity(active.ciSelection) === ciSelectionIdentity(selection);
+                    fields.ciSelection =
+                        selection.mode === "local" ? { mode: "local", reason: selection.reason } : selection;
+                    fields.ciGeneration = (Number(active.ciGeneration) || 0) + (same ? 0 : 1);
+                }
                 for (const { key, check } of Object.values(META_FIELDS)) {
                     const v = str(ctx.flags[key]);
                     // `--debug-attempt=run`: the active run's number, read once the log is known to exist.
