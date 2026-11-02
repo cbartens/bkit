@@ -426,7 +426,7 @@ One implementation PR may carry all groups. Group 1 supplies the engine behavior
 
 <!-- bkit:task 5 start -->
 
-- [ ] **TASK 5:** Resuming debug or retrying challenge formatting displays an incorrect budget attempt
+- [x] **TASK 5:** Resuming debug or retrying challenge formatting displays an incorrect budget attempt
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/steps.ts:481` · **Round:** 1
   - **DONE WHEN:** Progress derives the attempt and allowance from the same workflow counter: normal debug remediation uses its cross-run remediation count, saved soak attempts survive later completions, and build challenge uses its challenge round rather than its report invocation count. This preserves the counter scopes documented in `.bkit/core/.bkit/workflows.md` under Counters and Progress Lines and the plan's requirement to use normal/soak/challenge counter contexts.
   - **TEST FIRST:**
