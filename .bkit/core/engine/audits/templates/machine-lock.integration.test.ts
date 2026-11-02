@@ -156,6 +156,243 @@ function checkout(name: string): { root: string; script: string } {
   return { root, script };
 }
 
+/** Observable subprocess output also works when a holder uses a numbered slot. */
+function running(snippet: string, env: NodeJS.ProcessEnv, script = SCRIPT, cwd = process.cwd()) {
+  const started = Date.now();
+  const child = spawn("bash", ["-c", `. "${script}"; ${snippet}`], {
+    env,
+    cwd,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  children.push(child);
+  const output = { stdout: "", stderr: "" };
+  child.stdout.on("data", (data: Buffer) => (output.stdout += data.toString()));
+  child.stderr.on("data", (data: Buffer) => (output.stderr += data.toString()));
+  const done = new Promise<Result>((resolve) => {
+    child.on("close", (status) => resolve({ status, ...output, ms: Date.now() - started }));
+  });
+  return { child, output, done };
+}
+
+async function waitForOutput(process: ReturnType<typeof running>, text: string): Promise<void> {
+  const until = Date.now() + BUDGET.hookTimeout;
+  while (Date.now() < until) {
+    if ((process.output.stdout + process.output.stderr).includes(text)) return;
+    if (process.child.exitCode !== null || process.child.signalCode !== null) {
+      throw new Error(`process exited before ${text}: ${process.output.stderr}`);
+    }
+    await delay(20);
+  }
+  throw new Error(`process did not print ${text}: ${process.output.stderr}`);
+}
+
+function slotHolder(who: string, env: NodeJS.ProcessEnv) {
+  return running(`take_local_stack_lock "${who}" tests || exit 1; echo acquired; sleep 30`, env);
+}
+
+describe("machine lock slots, order and wait budgets", () => {
+  it("with N slots, N runs hold a named lock at once and run N+1 waits naming every holder", async () => {
+    const env = envFor({ BKIT_TEST_SLOTS: "2", LOCAL_STACK_LOCK_WAIT_S: "2" });
+    const first = slotHolder("first slot", env);
+    await waitForOutput(first, "acquired");
+    const second = slotHolder("second slot", env);
+    await waitForOutput(second, "acquired");
+    const holders = run("local_stack_lock_holder tests", env);
+    expect(holders.stdout).toContain("first slot");
+    expect(holders.stdout).toContain("second slot");
+    const third = commandRun(["third slot", "--lock", "tests", "--", "echo", "entered"], env);
+    expect(third.status).toBe(75);
+    expect(third.stdout).not.toContain("entered");
+    expect(third.stderr).toContain("waiting");
+    expect(third.stderr).toContain("first slot");
+    expect(third.stderr).toContain("second slot");
+  });
+
+  it("a slots value that is not a whole number >= 1 falls back to 1 and says so", async () => {
+    const invalid = ["0", "-1", "1.5", "garbage"];
+    const notes = invalid.map((value) =>
+      run(
+        "take_local_stack_lock invalid tests || exit 1; release_local_stack_lock tests; take_local_stack_lock again tests || exit 1; release_local_stack_lock tests",
+        envFor({ BKIT_TEST_SLOTS: value }),
+      ),
+    );
+    expect(notes.map((result) => result.status)).toEqual([0, 0, 0, 0]);
+    expect(notes.map((result) => result.stderr.match(/BKIT_TEST_SLOTS/g)?.length)).toEqual([
+      1, 1, 1, 1,
+    ]);
+    expect(notes.map((result) => result.stderr)).toEqual(
+      invalid.map(() => expect.stringMatching(/(?:fall|using|default).*1/i)),
+    );
+    const env = envFor({ BKIT_TEST_SLOTS: "0", LOCAL_STACK_LOCK_WAIT_S: "0" });
+    const holder = slotHolder("invalid slots holder", env);
+    await waitForOutput(holder, "acquired");
+    const next = commandRun(["next", "--lock", "tests", "--", "echo", "entered"], env);
+    expect(next.status).toBe(75);
+    expect(next.stdout).not.toContain("entered");
+  });
+
+  it("the tests lock exports BKIT_TEST_WORKERS as cores divided by slots, minus one, never below one", () => {
+    const bin = path.join(tmp, "bin");
+    fs.mkdirSync(bin);
+    fs.writeFileSync(
+      path.join(bin, "getconf"),
+      '#!/bin/sh\n[ "$1" = _NPROCESSORS_ONLN ] || exit 1\nprintf "10\\n"\n',
+      { mode: 0o755 },
+    );
+    const results = ["1", "2", "20"].map((slots) =>
+      commandRun(
+        ["workers", "--lock", "tests", "--", "bash", "-c", 'printf "%s" "$BKIT_TEST_WORKERS"'],
+        envFor({ BKIT_TEST_SLOTS: slots, PATH: bin + path.delimiter + process.env.PATH }),
+      ),
+    );
+    expect(results.map((result) => result.status)).toEqual([0, 0, 0]);
+    expect(results.map((result) => result.stdout)).toEqual(["9", "4", "1"]);
+  });
+
+  it("a killed tests-lock holder frees its slot within a second and the waiter starts", async () => {
+    const env = envFor({ LOCAL_STACK_LOCK_WAIT_S: "5" });
+    const holder = slotHolder("doomed holder", env);
+    await waitForOutput(holder, "acquired");
+    const waiter = running(
+      "take_local_stack_lock waiter tests || exit 1; echo entered; release_local_stack_lock tests",
+      env,
+    );
+    await waitForOutput(waiter, "waiting");
+    const killedAt = Date.now();
+    holder.child.kill("SIGKILL");
+    await waitForOutput(waiter, "entered");
+    // A one-second poll may straddle two scheduler ticks; allow one extra polling tick.
+    expect(Date.now() - killedAt).toBeLessThan(2000);
+    expect((await waiter.done).status).toBe(0);
+  });
+
+  it("taking the tests lock while holding the stack lock is refused, naming the lock order", () => {
+    const result = run(
+      'take_local_stack_lock outer || exit 9; take_local_stack_lock inner tests; status=$?; release_local_stack_lock; exit "$status"',
+      envFor(),
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/order/i);
+    expect(result.stderr).toContain("tests");
+    expect(result.stderr).toContain("stack");
+    expect(result.ms).toBeLessThan(2000);
+  });
+
+  it("taking the tests lock while holding another named lock is refused, naming the lock order", () => {
+    const result = run(
+      'take_local_stack_lock outer database || exit 9; take_local_stack_lock inner tests; status=$?; release_local_stack_lock database; exit "$status"',
+      envFor(),
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/order/i);
+    expect(result.stderr).toContain("tests");
+    expect(result.stderr).toContain("database");
+    expect(result.ms).toBeLessThan(2000);
+  });
+
+  it("taking a named lock while holding the stack lock is refused, naming the lock order", () => {
+    const result = run(
+      'take_local_stack_lock outer || exit 9; take_local_stack_lock inner database; status=$?; release_local_stack_lock; exit "$status"',
+      envFor(),
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/order/i);
+    expect(result.stderr).toContain("database");
+    expect(result.stderr).toContain("stack");
+    expect(result.ms).toBeLessThan(2000);
+  });
+
+  it("a child of a stack-lock holder asking for the tests lock is refused, naming the lock order", () => {
+    const result = run(
+      `take_local_stack_lock parent || exit 9; bash "${SCRIPT}" run child --lock tests -- echo entered; status=$?; release_local_stack_lock; exit "$status"`,
+      envFor(),
+    );
+    expect(result.status).toBe(73);
+    expect(result.stdout).not.toContain("entered");
+    expect(result.stderr).toMatch(/order/i);
+    expect(result.stderr).toContain("tests");
+    expect(result.stderr).toContain("stack");
+    expect(result.ms).toBeLessThan(2000);
+  });
+
+  it("a run with no TTY caps the lock wait at 60 s unless LOCAL_STACK_LOCK_WAIT_S is set", async () => {
+    const env = envFor();
+    delete env.LOCAL_STACK_LOCK_WAIT_S;
+    const holder = slotHolder("budget holder", env);
+    await waitForOutput(holder, "acquired");
+    const defaultWait = running("take_local_stack_lock default tests", env);
+    await waitForOutput(defaultWait, "waiting");
+    defaultWait.child.kill("SIGKILL");
+    await defaultWait.done;
+    expect(defaultWait.output.stderr).toContain("up to 60s");
+    const explicit = commandRun(["explicit", "--lock", "tests", "--", "echo", "entered"], {
+      ...env,
+      LOCAL_STACK_LOCK_WAIT_S: "2",
+    });
+    expect(explicit.status).toBe(75);
+    expect(explicit.stderr).toContain("up to 2s");
+    expect(explicit.stderr).toContain("after 2s");
+    expect(explicit.stdout).not.toContain("entered");
+    expect(explicit.ms).toBeGreaterThanOrEqual(1000);
+    expect(explicit.ms).toBeLessThan(4000);
+  });
+
+  it("the tests lock records its held time by checkout on release and the next waiting note names the holder's last run", async () => {
+    const first = checkout("first-history");
+    const second = checkout("second-history");
+    const env = envFor({ LOCAL_STACK_LOCK_WAIT_S: "1" });
+    const firstRun = run(
+      "take_local_stack_lock first tests || exit 1; sleep 1; release_local_stack_lock tests",
+      env,
+      first.script,
+      first.root,
+    );
+    expect(firstRun.status).toBe(0);
+    const history = path.join(cache, "bkit", "machine-lock", "tests.last");
+    expect(fs.readFileSync(history, "utf-8")).toMatch(new RegExp(`${first.root}\\t[1-9][0-9]*`));
+    const secondRun = run(
+      "take_local_stack_lock second tests || exit 1; sleep 1; release_local_stack_lock tests",
+      env,
+      second.script,
+      second.root,
+    );
+    expect(secondRun.status).toBe(0);
+    expect(fs.readFileSync(history, "utf-8").trim().split("\n")).toHaveLength(2);
+    // Distinct recorded durations make choosing the current holder's checkout observable.
+    fs.writeFileSync(history, `${first.root}\t610\n${second.root}\t2\n`);
+    const holder = running(
+      "take_local_stack_lock current tests || exit 1; echo acquired; sleep 30",
+      env,
+      second.script,
+      second.root,
+    );
+    await waitForOutput(holder, "acquired");
+    const waiting = commandRun(
+      ["waiting", "--lock", "tests", "--", "echo", "entered"],
+      env,
+      first.script,
+      first.root,
+    );
+    expect(waiting.status).toBe(75);
+    expect(waiting.stderr).toContain("current");
+    expect(waiting.stderr).toContain("last run took 0m2s");
+    expect(waiting.stderr).not.toContain("last run took 10m10s");
+    holder.child.kill("SIGKILL");
+    await holder.done;
+    const replacement = run(
+      "take_local_stack_lock replacement tests || exit 1; release_local_stack_lock tests",
+      env,
+      first.script,
+      first.root,
+    );
+    expect(replacement.status).toBe(0);
+    const rows = fs.readFileSync(history, "utf-8").trim().split("\n");
+    expect(rows).toHaveLength(2);
+    expect(rows.filter((row) => row.startsWith(first.root + "\t"))).toHaveLength(1);
+    expect(rows.filter((row) => row.startsWith(second.root + "\t"))).toHaveLength(1);
+  });
+});
+
 function commandRun(
   args: string[],
   env: NodeJS.ProcessEnv,
