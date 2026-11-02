@@ -985,6 +985,44 @@ describe("bkit issues fetch", () => {
     expect(text.json.text).toBe("The ask.\n<!-- raw html stays -->\n\nfirst\n\nsecond");
   });
 
+  it("fetch prints terminal in its facts and in issue-facts.json", async () => {
+    process.env.BKIT_LINEAR_API_KEY = "k";
+    const cwd = dir({ tracker: { default: "linear" } });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              data: {
+                issue: {
+                  identifier: "ENG-4",
+                  title: "Export CSV",
+                  url: "https://linear.app/x/issue/ENG-4",
+                  description: "d",
+                  state: { name: "Shipped", type: "completed" },
+                  labels: { nodes: [{ name: "bkit:auto" }] },
+                  comments: { nodes: [] },
+                },
+              },
+            }),
+          ),
+      ),
+    );
+    const out = path.join(cwd, "session-terminal");
+    const r = await run(cwd, ["issues", "fetch", "--issue=ENG-4", `--session-dir=${out}`]);
+    expect(r.code).toBe(0);
+    expect(r.json.terminal).toBe(true);
+    const facts = JSON.parse(fs.readFileSync(path.join(out, "issue-facts.json"), "utf-8"));
+    expect(facts).toEqual({
+      title: "Export CSV",
+      url: "https://linear.app/x/issue/ENG-4",
+      state: "Shipped",
+      labels: ["bkit:auto"],
+      terminal: true,
+    });
+  });
+
   it("needs --session-dir or --outbox; skips tracker none and an issue-less run", async () => {
     expect(
       (await run(dir({ tracker: { default: "linear" } }), ["issues", "fetch", "--issue=ENG-4"]))

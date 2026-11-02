@@ -36,7 +36,7 @@ function runPreflight(
   hook: string,
   env: Record<string, string | undefined>,
   input = "{}",
-  opts: { path?: string } = {},
+  opts: { path?: string; cwd?: string } = {},
 ): { status: number | null; stdout: string; stderr: string } {
   // Strip undefined keys so we don't leak the parent process env back in.
   const cleanEnv: Record<string, string> = {};
@@ -45,7 +45,7 @@ function runPreflight(
   }
   // cwd outside any git repo: Cursor's runtime marker write is skipped.
   const result = spawnSync("bash", [hook], {
-    cwd: GENERATED,
+    cwd: opts.cwd ?? GENERATED,
     env: { PATH: opts.path ?? process.env.PATH ?? "", ...cleanEnv },
     input,
     encoding: "utf-8",
@@ -173,10 +173,10 @@ describe("preflight.sh — the rules-read advisory", () => {
   });
 });
 
-describe("preflight.sh — generated from one Linear guard", () => {
+describe("preflight.sh — generated from one tracker guard", () => {
   it("both generated hooks carry the shared guard verbatim and never call bkit", () => {
     const guard = fs
-      .readFileSync(path.join(HOOK_SOURCES, "hooks", "preflight-linear.sh"), "utf-8")
+      .readFileSync(path.join(HOOK_SOURCES, "hooks", "preflight-tracker.sh"), "utf-8")
       .trimEnd();
     for (const hook of [CLAUDE_HOOK, CURSOR_HOOK]) {
       const text = fs.readFileSync(hook, "utf-8");
@@ -228,5 +228,130 @@ describe("BAR-186 — SessionStart preflight.sh source-level checks", () => {
     expect(darwinIdx).toBeGreaterThan(-1);
     expect(brewBinsIdx).toBeGreaterThan(-1);
     expect(darwinIdx).toBeLessThan(brewBinsIdx);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tracker-aware guard (preflight-tracker.sh): GitHub REST and Linear by state category.
+// Each case runs in its own fixture repo (package.json with bkit.tracker.default, an
+// origin remote, a feat/{FID} branch) with a `curl` stub first on PATH.
+// ---------------------------------------------------------------------------
+
+const BACKGROUND = '{"is_background_agent": true}';
+
+/** A fixture consumer repo on `feat/12-thing`, its tracker set in package.json. */
+function fixtureRepo(tracker: string): string {
+  const cwd = fs.mkdtempSync(path.join(GENERATED, "repo-"));
+  spawnSync("git", ["init", "-q", "-b", "feat/12-thing"], { cwd });
+  spawnSync("git", ["remote", "add", "origin", "https://github.com/o/r.git"], { cwd });
+  fs.writeFileSync(
+    path.join(cwd, "package.json"),
+    JSON.stringify({ bkit: { tracker: { default: tracker } } }),
+  );
+  return cwd;
+}
+
+/**
+ * A `curl` stub: prints `body` and exits `exit` (or fails with 22 and no output). Its
+ * directory is returned as a PATH that puts the stub before the real curl.
+ */
+function curlStub(body: string, exit = 0): string {
+  const bin = fs.mkdtempSync(path.join(GENERATED, "curl-"));
+  const file = path.join(bin, "curl");
+  fs.writeFileSync(path.join(bin, "reply"), body);
+  fs.writeFileSync(
+    file,
+    `#!/bin/sh\n[ ${exit} -eq 0 ] && cat "${path.join(bin, "reply")}"\nexit ${exit}\n`,
+  );
+  fs.chmodSync(file, 0o755);
+  return `${bin}${path.delimiter}${process.env.PATH ?? ""}`;
+}
+
+const githubIssue = (state: string, labels: string[]) =>
+  JSON.stringify({ state, labels: labels.map((name) => ({ name })) });
+
+/** The one JSON document on stdout, parsed; fails the case when there are more lines. */
+function onlyDocument(stdout: string): string {
+  expect(stdout.trim().split("\n")).toHaveLength(1);
+  return emittedContext(stdout);
+}
+
+describe("preflight-tracker.sh — GitHub tracker", () => {
+  const run = (reply: string, env: Record<string, string | undefined> = {}, curlExit = 0) =>
+    runPreflight(
+      CURSOR_HOOK,
+      { BKIT_GH_TOKEN: "ghp_x", GITHUB_ISSUE_ID: "12", ...env },
+      BACKGROUND,
+      { cwd: fixtureRepo("github"), path: curlStub(reply, curlExit) },
+    );
+
+  it("github issue without bkit:auto stops the Cursor background session", () => {
+    const result = run(githubIssue("open", ["enhancement"]));
+    expect(result.status).toBe(1);
+    const context = onlyDocument(result.stdout);
+    expect(context).toContain("HARD STOP");
+    expect(context).toContain("bkit:auto");
+  });
+
+  it("github closed issue stops the session and an open labelled one passes", () => {
+    const closed = run(githubIssue("closed", ["bkit:auto"]));
+    expect(closed.status).toBe(1);
+    expect(onlyDocument(closed.stdout)).toContain("HARD STOP");
+    const open = run(githubIssue("open", ["bkit:auto"]));
+    expect(open.status).toBe(0);
+    const context = onlyDocument(open.stdout);
+    expect(context).toContain("PASS");
+    expect(context).not.toContain("HARD STOP");
+  });
+
+  it.each([
+    ["curl failure", { BKIT_GH_TOKEN: "ghp_x" }, 22, /github.*(could not|failed)/i],
+    ["BKIT_GH_TOKEN unset", { BKIT_GH_TOKEN: undefined }, 0, /BKIT_GH_TOKEN/],
+  ])(
+    "github read failure stops the session naming the tracker and the reason",
+    (_n, env, curlExit, reason) => {
+      const result = run(githubIssue("open", ["bkit:auto"]), env, curlExit);
+      expect(result.status).toBe(1);
+      const context = onlyDocument(result.stdout);
+      expect(context).toContain("HARD STOP");
+      expect(context).toMatch(reason);
+    },
+  );
+});
+
+describe("preflight-tracker.sh — Linear tracker by state category", () => {
+  it("linear completed state renamed Shipped stops the session", () => {
+    const reply = JSON.stringify({
+      data: {
+        issue: {
+          identifier: "ENG-4",
+          title: "T",
+          state: { name: "Shipped", type: "completed" },
+          labels: { nodes: [{ name: "bkit:auto" }] },
+        },
+      },
+    });
+    const result = runPreflight(
+      CURSOR_HOOK,
+      { BKIT_LINEAR_API_KEY: "k", LINEAR_ISSUE_ID: "ENG-4" },
+      BACKGROUND,
+      { cwd: fixtureRepo("linear"), path: curlStub(reply) },
+    );
+    expect(result.status).toBe(1);
+    const context = onlyDocument(result.stdout);
+    expect(context).toContain("HARD STOP");
+    expect(context).toContain("terminal");
+  });
+});
+
+describe("preflight-tracker.sh — one shared part", () => {
+  it("generated Claude and Cursor hooks carry the one preflight-tracker.sh part", () => {
+    const part = path.join(HOOK_SOURCES, "hooks", "preflight-tracker.sh");
+    expect(fs.existsSync(part)).toBe(true);
+    const guard = fs.readFileSync(part, "utf-8").trimEnd();
+    for (const hook of [CLAUDE_HOOK, CURSOR_HOOK]) {
+      expect(fs.readFileSync(hook, "utf-8"), hook).toContain(guard);
+    }
+    expect(fs.existsSync(path.join(HOOK_SOURCES, "hooks", "preflight-linear.sh"))).toBe(false);
   });
 });
