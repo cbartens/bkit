@@ -269,3 +269,6 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-02T23:11:05Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","strategy","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-failure-diagnose/-/1/comment","hash":"79256bb639a2c84f7f27bc0931b356ede0deeaeb6415b515ab4a2bd865a52b5d","ref":"https://github.com/cbartens/bkit/issues/825#issuecomment-6590841243","at":"2026-11-02T23:11:06Z"}
 {"type":"step-done","workflow":"build","step":"build-failure-diagnose","status":"DONE","at":"2026-11-02T23:11:06Z","parentSha":"626e84b27880cd4a1ced4f97b459fd5204e1a417","artifacts":["docs/plans/202611/logs/825-show-progress-bar/build-failure-diagnose-1.md"],"verdict":"CONCERNS","attempt":1,"strategy":"STANDARD"}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T23:11:53Z","noun":"workflows","verb":"fail","flags":["post","issue","workflow","fid","month","token","label","step-number","step-title","sub-step","error-file","session-dir"]}
+{"type":"workflow-failed","workflow":"build","at":"2026-11-02T23:11:53Z"}
+{"type":"engine-action","action":"comment","key":"build/1/failure/13/3/comment","hash":"578543a819c78a3158b491cdcecfb7a48787fb6e607a8e0d8d498542d8a9c2ad","ref":"https://github.com/cbartens/bkit/issues/825#issuecomment-6590855341","at":"2026-11-02T23:11:54Z"}
