@@ -8,6 +8,10 @@ Format: `## [version] — YYYY-MM-DD`
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- **BREAKING — Every name a consumer types or sees now carries the bkit brand.** Package scripts: `lint:prose` → `bkit:lint:prose`, `slop:delta` → `bkit:slop:delta`, `graph*` → `bkit:graph*`. Files: `scripts/launchd/ai.bkit.launchd.plist` → `bkit-launchd.plist`, `launchd.env.example` → `bkit-launchd.env.example`, and the CI scripts under `scripts/ci/` (`check-capstone`, `check-dependency-audit`, `check-accepted-divergences`, `lanes/resolve-push-base`, `accepted-advisories.json`) gain `bkit-`. Check names: every workflow `name:` and job display name in the shipped workflows starts with `bkit-` (`bkit-renovate`, `bkit-trivy` and the cloud jobs included). Vale style: `House` → `Bkit`, so `.vale.ini` names `Bkit.*`. `bkit upgrade` migrates all of it: it renames the keys in `package.json`, the tokens in `.husky/pre-commit`, `.husky/pre-push` and the `bkit.testing.ciWorkflow` file, moves unedited CI script copies and Vale rules that still match the shipped text, rewrites shipped workflow names, and leaves anything you edited alone; a second run changes nothing. Branch protection: a required status check that names an old job (for example `Renovate` or `Trivy`) no longer matches; update the required checks in the repo settings to the `bkit-*` names after upgrading. Generic stack scripts (`typecheck`, `lint`, `format:check`, `test`, `build`, `lint:slop`, `prepare`) keep their names. #748
+
 ### Added
 
 - **A setup tip tells you when a newer bkit is out.** `bkit tips` shows `bkit-upgrade` first, ahead of every other tip in every workflow, while the newest release `bkit repo info` last saw (cached once a day in git's common dir) is newer than `.bkit/version`. The tip only reads that cache and never asks the registry itself, so it stays quiet until a workflow has run once. It cannot be silenced: `bkit.advisories.ignore` skips it, a workflow's silence line never names it, and `BKIT_NO_UPDATE_CHECK=1` stops only the lookup, not a release already seen. Its ask points the agent at `.bkit/install.md` § Upgrade — already installed.

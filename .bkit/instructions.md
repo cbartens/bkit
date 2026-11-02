@@ -1819,10 +1819,11 @@ Clause section lines:
   - specialised: `bkit-audit-slop`
 
 ```text
-**Slop gate:** When the gate runs `slop:delta`, fix only net-new findings, not the baseline. Do not delete, move or merge files, or rewire callers, to clear structural findings.
+**Slop gate:** When the gate runs `bkit:slop:delta`, fix only net-new findings, not the baseline. Do not delete, move or merge files, or rewire callers, to clear structural findings.
 ```
 
 ```retired
+**Slop gate:** When the gate runs `slop:delta`, fix only net-new findings, not the baseline. Do not delete, move or merge files, or rewire callers, to clear structural findings.
 **Slop gate:** When the gate runs `slop:delta`, ONLY fix net-new findings, NEVER the baseline. NEVER delete / move / merge files or rewire callers to clear structural findings.
 **Slop gate:** When the gate runs `slop:delta`: ONLY fix net-new findings, NEVER the baseline. NEVER delete /move / merge files or rewire callers to clear structural findings.
 ```
@@ -2246,6 +2247,14 @@ Rules below `bkit:end` in `.agents/rules.md`: bkit's own, never shipped; no ship
 ```retired
 **Tests:** `*.test.ts` → Vitest unit; `*.integration.test.ts` → Vitest integration.
 **Tests:** `*.test.ts` Vitest unit, `*.integration.test.ts` Vitest integration.
+```
+
+### branding
+
+- rule: Project Rules › Universal Rules › Naming Conventions
+
+```text
+**Branding:** Give every file, `package.json` script, CI check (workflow `name:` and job display name) and style name that a consumer or their agent runs or sees in a consumer repo the prefix `bkit-` (scripts `bkit:`). Engine and hook internals never carry it, and neither do names a third-party tool fixes (`.oxlintrc.json`, `dependabot.yml`, `.vale.ini`, `.husky/*`) or generic stack scripts (`typecheck`, `lint`, `test`). `.bkit/core/engine/audits/templates/branding.test.ts` enforces it.
 ```
 
 ### source-of-truth
