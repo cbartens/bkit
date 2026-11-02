@@ -871,7 +871,7 @@ Build order: script (Groups 1-2) → engine (Group 3; TASK 10 runs after TASK 5 
 <!-- bkit:task 5 end -->
 <!-- bkit:task 10 start -->
 
-- [ ] **TASK 10:** Lock waits reach `bkit tests changed` callers as exit 81 and leave no `test-run` row (owner answer A to Open Questions 11 and 12)
+- [x] **TASK 10:** Lock waits reach `bkit tests changed` callers as exit 81 and leave no `test-run` row (owner answer A to Open Questions 11 and 12)
   - **UPDATE:** `testsChangedVerb` in `.bkit/core/engine/commands/workflow/tests-changed.ts`: new flag `--lock-wait-s` (`wholeNumber` from `../lib.js`, default `BKIT_LOCK_WAIT_S` else 60; bad value → `CommandError(EXIT.USAGE)` with `--lock-wait-s takes a whole number >= 0`); `runLogged` runs the gate with env `LOCAL_STACK_LOCK_WAIT_S` = `--lock-wait-s` and `LOCAL_STACK_LOCK_WHO` = `bkit tests changed <gate>`; the gate's exit and output go through `classifyLockExit` (TASK 4): `lock-wait` → emit `lockHolder`, return `EXIT.AGENT_WAIT` (81); `could-not-run` → exit 4 naming path + reason; else the current PASS / FAIL mapping; output gains `lockHolder` (null unless the wait gave up); summary names `81 tests lock held`
   - **UPDATE:** `testsCommand` in `.bkit/core/engine/commands/workflow/tests.ts`: the `run` verb appends no `test-run` row under `--file` when `classifyLockExit` returns `lock-wait` (`row` null)
   - **UPDATE:** `.bkit/core/engine/commands/workflow/tests-lock.integration.test.ts`: the integration tests below, with a stub `bkit:gate:changed` wrapped like the other stub gates
