@@ -180,6 +180,51 @@ afterEach(() => {
 });
 
 describe("workflow progress command wiring", () => {
+  it("progress uses saved cross-run soak attempts and grants", async () => {
+    const cwd = repo("debug", { "debug.soak": { ask: true, max: 3 } });
+    fs.appendFileSync(
+      path.join(cwd, STATUS),
+      jsonl([
+        {
+          type: "allowance-granted",
+          workflow: "debug",
+          point: "debug.soak",
+          at: at(),
+        },
+        { type: "workflow-done", workflow: "debug", at: at() },
+        started("debug", { "debug.soak": { ask: true, max: 3 } }),
+      ]),
+    );
+    const result = await run(
+      cwd,
+      doneArgs("debug", "debug-failure-soak", "--attempt=1", "--field=soakAttempt=4"),
+    );
+    expect(result.code).toBe(0);
+    expect(result.json.progressLine).toBe(
+      "Progress: ███████░░░ 73% · Step 8/11 Failure Remediate Soak · Attempt 4 of 6",
+    );
+  });
+
+  it("progress refuses contextless or mismatched numeric gates", async () => {
+    const cwd = repo();
+    for (const [step, number] of [
+      ["unrecognized-bookkeeping", 16],
+      ["build-close-workflow", 16],
+      ["build-start-workflow", 16],
+    ] as const) {
+      const result = await run(cwd, [
+        "steps",
+        "gate",
+        "--workflow=build",
+        `--step=${step}`,
+        `--progress-number=${number}`,
+      ]);
+      expect.soft(result.code, step).not.toBe(0);
+      expect.soft(result.json?.progressLine, step).toBeUndefined();
+    }
+    expect(domainRows(cwd)).toHaveLength(1);
+  });
+
   it("progress reads fresh plan groups", async () => {
     const cwd = repo();
     plan(cwd, [1, 5]);

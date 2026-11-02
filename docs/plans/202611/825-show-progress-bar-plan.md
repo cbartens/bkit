@@ -325,7 +325,7 @@ One implementation PR may carry all groups. Group 1 supplies the engine behavior
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** Work out a run's progress line from its status rows, its group count and its attempt budget
+- [x] **TASK 1:** Work out a run's progress line from its status rows, its group count and its attempt budget
   - **UPDATE:** `.bkit/core/engine/commands/workflow/step-table.ts`: add the pure `runProgress` helper beside the existing workflow table, with the precise unit formulas, suffix ordering and rounding described above; preserve resume behavior.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/step-table.test.ts`: add the derived calculation cases and repair any existing test this logic changes.
   - **READ:** `parsePlanBlocks` in `.bkit/core/engine/commands/workflow/plan-blocks.ts`: use its task-group contract as the supplied group-count source.

@@ -129,11 +129,11 @@ export function grantCount(file, workflow, point, group, allRuns) {
         (group === undefined || r.group === group)).length;
 }
 /** A loop's frozen allowance, including the owner's saved grants; absent for legacy runs. */
-export function savedPointLimit(file, workflow, point, group) {
+export function savedPointLimit(file, workflow, point, group, allRuns = false) {
     const setting = frozenAskSetting(file, workflow, point);
     return setting === undefined
         ? undefined
-        : setting.max * (1 + grantCount(file, workflow, point, group, false));
+        : setting.max * (1 + grantCount(file, workflow, point, group, allRuns));
 }
 /** `route --rows=<type>:count`: rows of that type in the active run. */
 function derivedRows(ctx) {

@@ -374,7 +374,11 @@ function stepProgress(cwd, r, number) {
     const same = prior.filter((s) => s.step === r.step && (r.group === undefined || s.group === r.group));
     const soak = runOrStepField(runs, r.workflow, "debugMode") === "SOAK";
     const point = progressPoint(r.workflow, r.step, soak);
-    const attempt = r.attempt ?? (typeof r.extras?.round === "number" ? r.extras.round : same.at(-1)?.attempt);
+    const soakAttempt = r.extras?.soakAttempt ?? runOrStepField(runs, r.workflow, "soakAttempt");
+    const attempt = point === "debug.soak" && typeof soakAttempt === "number"
+        ? soakAttempt
+        : (r.attempt ??
+            (typeof r.extras?.round === "number" ? r.extras.round : same.at(-1)?.attempt));
     return runProgress({
         workflow: r.workflow,
         step: r.step,
@@ -382,7 +386,9 @@ function stepProgress(cwd, r, number) {
         groups,
         group: r.group,
         attempt,
-        max: point === undefined ? undefined : savedPointLimit(r.file, r.workflow, point, r.group),
+        max: point === undefined
+            ? undefined
+            : savedPointLimit(r.file, r.workflow, point, r.group, point === "debug.soak"),
     }).progressLine;
 }
 /** Exit code: a debug run on a shared branch has no shared-checkout record, so nothing was written or committed. */
@@ -1588,6 +1594,23 @@ export const stepsCommand = {
                     (!isResumable(workflow) ||
                         !WORKFLOW_STEPS[workflow].some((s) => s.number === progressNumber)))
                     throw new CommandError(EXIT.USAGE, "--progress-number is not a workflow step");
+                if (progressNumber !== undefined && isResumable(workflow)) {
+                    const step = String(f.step);
+                    const recordedNumber = WORKFLOW_STEPS[workflow].find((s) => s.step === step)?.number;
+                    const gateNumber = workflow === "ship" && step === "ship-worktree-setup"
+                        ? 3
+                        : workflow === "ship" && step === "ship-bookkeeping-push"
+                            ? 9
+                            : recordedNumber;
+                    if (progressNumber !== recordedNumber && progressNumber !== gateNumber)
+                        throw new CommandError(EXIT.USAGE, "--progress-number does not match the gated step");
+                    if (file === undefined &&
+                        (progressNumber !== 1 ||
+                            !str(f.fid) ||
+                            !/^[0-9]{6}$/.test(str(f.month) ?? "") ||
+                            !str(f.token)))
+                        throw new CommandError(EXIT.USAGE, "gate progress needs --file, or Step 1 with --fid, --month and --token");
+                }
                 if (f.attempt !== undefined && f.attemptOf !== undefined)
                     throw new CommandError(EXIT.USAGE, "give --attempt or --attempt-of, not both");
                 if (f.attemptOf !== undefined && file === undefined)

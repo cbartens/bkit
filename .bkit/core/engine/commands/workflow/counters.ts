@@ -200,11 +200,12 @@ export function savedPointLimit(
   workflow: string,
   point: AskPoint,
   group?: number,
+  allRuns = false,
 ): number | undefined {
   const setting = frozenAskSetting(file, workflow, point);
   return setting === undefined
     ? undefined
-    : setting.max * (1 + grantCount(file, workflow, point, group, false));
+    : setting.max * (1 + grantCount(file, workflow, point, group, allRuns));
 }
 
 /** `route --rows=<type>:count`: rows of that type in the active run. */
