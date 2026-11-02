@@ -90,3 +90,12 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-02T12:26:00Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/2/build-install-skills/-/1/comment","hash":"89999e27e175ec3408266f8fad1bd1c4051b3617ce7232240a2dfbd1648336a5","ref":"https://github.com/cbartens/bkit/issues/830#issuecomment-6577087434","at":"2026-11-02T12:26:02Z"}
 {"type":"step-done","workflow":"build","step":"build-install-skills","status":"DONE","at":"2026-11-02T12:26:02Z","parentSha":"4e98d626e0bb3857062eddaa291dc12d23d84a9d","artifacts":["docs/plans/202611/logs/830-debug-diagnose-named/build-install-skills.md"],"attempt":1}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T12:26:11Z","noun":"context","verb":"brief","flags":["plan","next","dir","file","note-file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T12:26:17Z","noun":"status","verb":"route","flags":["step","group","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T12:26:23Z","noun":"steps","verb":"done","flags":["workflow","step","file","group","commit"]}
+{"type":"step-done","workflow":"build","step":"build-group-start","status":"DONE","at":"2026-11-02T12:26:23Z","parentSha":"3fd9584e8d8f8f4063db354107fc1d61bfb8422b","artifacts":[],"group":2}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T12:26:23Z","noun":"context","verb":"brief","flags":["plan","group","tests-only","dir","file","note-file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T12:27:12Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T12:36:04Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","plan","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/2/build-plan-tests/2/1/comment","hash":"f90346d7f8fae56f78022d052a8d5c2890923bd830c3967f62c39391a9b1db8c","ref":"https://github.com/cbartens/bkit/issues/830#issuecomment-6577307456","at":"2026-11-02T12:36:05Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-tests","status":"DONE","at":"2026-11-02T12:36:05Z","parentSha":"3fd9584e8d8f8f4063db354107fc1d61bfb8422b","artifacts":["docs/plans/202611/logs/830-debug-diagnose-named/build-plan-tests-2-log.md"],"verdict":"PASS","attempt":1,"group":2}

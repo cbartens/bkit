@@ -79,6 +79,192 @@ const doneArgs = (...extra: string[]) => [
   ...extra,
 ];
 
+function ciFinishFixture() {
+  const cwd = repo();
+  const selection = {
+    mode: "ci",
+    provider: "github",
+    repo: "example/example",
+    runId: "123",
+    runAttempt: 2,
+    runUrl: "https://github.com/example/example/actions/runs/123/attempts/2",
+    workflowId: "456",
+    workflowPath: ".github/workflows/consumer-ci.yml",
+    headBranch: "feat/1-x",
+    headSha: git(cwd, "rev-parse", "HEAD"),
+    conclusion: "failure",
+    redTiers: ["integration"],
+    via: "prompt-run",
+  };
+  const artifact = "logs/ci-round-1.md";
+  const row = {
+    type: "test-run",
+    workflow: "debug",
+    step: "debug-run-tests",
+    at: "2026-10-01T00:00:02Z",
+    attempt: 1,
+    run: 1,
+    source: "ci",
+    verdict: "FAIL",
+    scope: "ci:123",
+    gate: null,
+    exitCode: null,
+    failures: null,
+    ciRun: "123",
+    ciUrl: selection.runUrl,
+    runAttempt: 2,
+    ciGeneration: 1,
+    repo: selection.repo,
+    workflowId: selection.workflowId,
+    workflowPath: selection.workflowPath,
+    headSha: selection.headSha,
+    log: artifact,
+    artifact,
+  };
+  const rows = [
+    { type: "workflow-started", workflow: "debug", at: "2026-10-01T00:00:00Z" },
+    {
+      type: "workflow-meta",
+      workflow: "debug",
+      at: "2026-10-01T00:00:01Z",
+      ciSelection: selection,
+      ciGeneration: 1,
+    },
+    row,
+  ];
+  const save = () =>
+    write(cwd, "logs/status.jsonl", rows.map((value) => JSON.stringify(value)).join("\n") + "\n");
+  save();
+  write(
+    cwd,
+    artifact,
+    [
+      "Verdict: FAIL",
+      "Source: ci",
+      "Scope: ci:123",
+      `Repository: ${selection.repo}`,
+      `Workflow: ${selection.workflowPath} (${selection.workflowId})`,
+      "Run: 123",
+      "Run attempt: 2",
+      "CI generation: 1",
+      `Commit: ${selection.headSha}`,
+      `URL: ${selection.runUrl}`,
+      "",
+      "<!-- verdict:end -->",
+      "",
+      "# CI evidence",
+      "",
+      "The local gate was not run.",
+      "",
+    ].join("\n"),
+  );
+  const args = [
+    "steps",
+    "finish",
+    "--file=logs/status.jsonl",
+    "--workflow=debug",
+    "--step=debug-run-tests",
+    "--attempt=1",
+    "--verdict=FAIL",
+    "--scope=ci:123",
+    `--artifact=${artifact}`,
+    "--field=source=ci",
+    "--field=ciGeneration=1",
+    "--clamp-log=debug-run-tests:1",
+    "--commit=none",
+  ];
+  return { cwd, selection, artifact, row, rows, save, args };
+}
+
+describe("test-round completion evidence", () => {
+  it("finishes validated CI evidence rounds without local clamp records", async () => {
+    const valid = ciFinishFixture();
+    const finished = await run(valid.cwd, valid.args);
+    expect(finished.code).toBe(0);
+    expect(finished.json).toMatchObject({ pass: true, verdict: "FAIL", attempt: 1 });
+    expect(finished.json.row).toMatchObject({
+      step: "debug-run-tests",
+      source: "ci",
+      ciGeneration: 1,
+      scope: "ci:123",
+    });
+    expect(finished.json.row.artifacts).toContain(valid.artifact);
+    expect(finished.json.row.failures).not.toBe(0);
+    const wrongAttempt = ciFinishFixture();
+    wrongAttempt.row.runAttempt = 3;
+    wrongAttempt.save();
+    const refused = await run(wrongAttempt.cwd, wrongAttempt.args);
+    expect(refused.code).not.toBe(0);
+    expect(
+      fs.readFileSync(path.join(wrongAttempt.cwd, "logs/status.jsonl"), "utf-8"),
+    ).not.toContain('"type":"step-done"');
+    const forged = ciFinishFixture();
+    const artifact = fs.readFileSync(path.join(forged.cwd, forged.artifact), "utf-8");
+    write(
+      forged.cwd,
+      forged.artifact,
+      artifact.replace(
+        forged.selection.runUrl,
+        "https://github.com/example/example/actions/runs/999/attempts/2",
+      ),
+    );
+    expect((await run(forged.cwd, forged.args)).code).not.toBe(0);
+  });
+
+  it("preserves local clamp enforcement when completing test rounds", async () => {
+    const cwd = repo();
+    write(
+      cwd,
+      "logs/local-round-1.md",
+      "Verdict: PASS\n\n<!-- verdict:end -->\n\n# Local checks\n\nOne local test passed.\n",
+    );
+    write(
+      cwd,
+      "logs/status.jsonl",
+      [
+        { type: "workflow-started", workflow: "debug", at: "2026-10-01T00:00:00Z" },
+        {
+          type: "test-run",
+          workflow: "debug",
+          step: "debug-run-tests",
+          at: "2026-10-01T00:00:01Z",
+          attempt: 1,
+          run: 1,
+          source: "local",
+          verdict: "PASS",
+          exitCode: 0,
+          failures: 0,
+          scope: "pnpm bkit:gate:static-unit",
+          log: "logs/local.log",
+          artifact: "logs/local-round-1.md",
+        },
+      ]
+        .map((value) => JSON.stringify(value))
+        .join("\n") + "\n",
+    );
+    const result = await run(cwd, [
+      "steps",
+      "finish",
+      "--file=logs/status.jsonl",
+      "--workflow=debug",
+      "--step=debug-run-tests",
+      "--attempt=1",
+      "--verdict=PASS",
+      "--failures=0",
+      "--scope=pnpm bkit:gate:static-unit",
+      "--artifact=logs/local-round-1.md",
+      "--field=source=local",
+      "--clamp-log=debug-run-tests:1",
+      "--commit=none",
+    ]);
+    expect(result.code).not.toBe(0);
+    expect(`${result.err} ${JSON.stringify(result.json)}`).toMatch(/clamp/i);
+    expect(fs.readFileSync(path.join(cwd, "logs/status.jsonl"), "utf-8")).not.toContain(
+      '"type":"step-done"',
+    );
+  });
+});
+
 describe("bkit steps done", () => {
   it("captures parentSha first, writes the row, then commits on top of it", async () => {
     const cwd = repo();

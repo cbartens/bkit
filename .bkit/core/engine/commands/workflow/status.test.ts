@@ -51,6 +51,211 @@ function log(rows: object[]) {
   return file;
 }
 
+const ciStateSelection = (extra: Record<string, unknown> = {}) => ({
+  mode: "ci",
+  provider: "github",
+  repo: "example/example",
+  runId: "123",
+  runAttempt: 2,
+  runUrl: "https://github.com/example/example/actions/runs/123/attempts/2",
+  workflowId: "456",
+  workflowPath: ".github/workflows/consumer-ci.yml",
+  headBranch: "fix/ci",
+  headSha: SHA,
+  conclusion: "failure",
+  redTiers: ["integration"],
+  via: "prompt-run",
+  ...extra,
+});
+const ciStateMeta = (generation = 1, extra: Record<string, unknown> = {}) => ({
+  type: "workflow-meta",
+  workflow: "debug",
+  at: "2026-10-01T00:00:01Z",
+  ciSelection: ciStateSelection(),
+  ciGeneration: generation,
+  ...extra,
+});
+const ciStateRoute = (file: string, text = "/bkit-debug 7-x", cwd = process.cwd()) => {
+  const prompt = path.join(tmp(), "prompt.md");
+  fs.writeFileSync(prompt, text);
+  return run(
+    ["status", "route", `--file=${file}`, "--workflow=debug", `--prompt-file=${prompt}`],
+    cwd,
+  );
+};
+const ciStateWrite = (file: string, selection: object) => {
+  const input = path.join(tmp(), "selection.json");
+  fs.writeFileSync(input, JSON.stringify(selection));
+  return run([
+    "status",
+    "meta",
+    `--file=${file}`,
+    "--workflow=debug",
+    `--ci-selection-file=${input}`,
+  ]);
+};
+
+describe("debug evidence state", () => {
+  it("persists atomic selections and preserves identical evidence generations", async () => {
+    const file = log([started("debug", "2026-10-01T00:00:00Z")]);
+    const selection = ciStateSelection();
+    const first = await ciStateWrite(file, selection);
+    expect(first.code).toBe(0);
+    expect(first.json.row).toMatchObject({ ciSelection: selection, ciGeneration: 1 });
+    const repeated = await ciStateWrite(file, { ...selection, via: "issue-run" });
+    expect(repeated.code).toBe(0);
+    expect(repeated.json.row.ciGeneration).toBe(1);
+    expect(readRuns(file).at(-1)).toMatchObject({
+      ciSelection: { mode: "ci", runId: "123" },
+      ciGeneration: 1,
+    });
+    const local = { mode: "local", reason: "explicit-local" };
+    expect((await ciStateWrite(file, local)).code).toBe(0);
+    expect(readRuns(file).at(-1)).toMatchObject({ ciSelection: local, ciGeneration: 2 });
+    expect(readRuns(file).at(-1)?.ciSelection).toEqual(local);
+    const before = fs.readFileSync(file, "utf-8");
+    expect((await ciStateWrite(file, { ...selection, runAttempt: 0 })).code).not.toBe(0);
+    expect(fs.readFileSync(file, "utf-8")).toBe(before);
+  });
+
+  it("resumes saved evidence and replaces it only on explicit new selection", async () => {
+    const file = log([started("debug", "2026-10-01T00:00:00Z"), ciStateMeta()]);
+    const before = fs.readFileSync(file, "utf-8");
+    const resume = await ciStateRoute(file);
+    expect(resume.code).toBe(0);
+    expect(resume.json).toMatchObject({ ciRun: "123", ciGeneration: 1, redTiers: ["integration"] });
+    expect((await ciStateRoute(file)).json).toMatchObject({ ciRun: "123", ciGeneration: 1 });
+    expect(fs.readFileSync(file, "utf-8")).toBe(before);
+    const next = ciStateSelection({
+      runAttempt: 3,
+      runUrl: "https://github.com/example/example/actions/runs/123/attempts/3",
+    });
+    expect((await ciStateWrite(file, next)).code).toBe(0);
+    expect((await ciStateRoute(file)).json).toMatchObject({
+      ciRun: "123",
+      ciGeneration: 2,
+      ciFixDone: false,
+      ciReproduced: false,
+    });
+    expect(
+      (
+        await ciStateWrite(file, {
+          ...next,
+          runId: "124",
+          runUrl: "https://github.com/example/example/actions/runs/124/attempts/3",
+        })
+      ).code,
+    ).toBe(0);
+    expect((await ciStateRoute(file)).json).toMatchObject({ ciRun: "124", ciGeneration: 3 });
+  });
+
+  it("clears saved CI routing immediately for explicit local selection", async () => {
+    const file = log([started("debug", "2026-10-01T00:00:00Z"), ciStateMeta()]);
+    const before = fs.readFileSync(file, "utf-8");
+    const route = await ciStateRoute(
+      file,
+      "/bkit-debug 7-x [local] https://github.com/example/example/actions/runs/999",
+    );
+    expect(route.code).toBe(0);
+    expect(route.json).toMatchObject({
+      ciRun: null,
+      redTiers: [],
+      ciFixDone: false,
+      ciReproduced: false,
+    });
+    expect(fs.readFileSync(file, "utf-8")).toBe(before);
+    expect((await ciStateWrite(file, { mode: "local", reason: "explicit-local" })).code).toBe(0);
+    expect((await ciStateRoute(file)).json).toMatchObject({
+      ciRun: null,
+      redTiers: [],
+      ciGeneration: 2,
+    });
+    expect(readRuns(file).at(-1)?.ciSelection).toEqual({ mode: "local", reason: "explicit-local" });
+  });
+
+  it("counts reproduction and fixes only in the active generation", async () => {
+    const file = log([
+      started("build", "2026-08-01T00:00:00Z"),
+      started("debug", "2026-09-01T00:00:00Z"),
+      done("debug", "debug-failure-remediate", "2026-09-01T00:01:00Z", { ciGeneration: 2 }),
+      done("debug", "debug-failure-reproduce", "2026-09-01T00:02:00Z", {
+        ciGeneration: 2,
+        reproduced: "YES",
+      }),
+      { type: "workflow-done", workflow: "debug", at: "2026-09-01T00:03:00Z" },
+      started("debug", "2026-10-01T00:00:00Z"),
+      ciStateMeta(2),
+      done("debug", "debug-failure-remediate", "2026-10-01T00:01:00Z", { ciGeneration: 1 }),
+      done("debug", "debug-failure-reproduce", "2026-10-01T00:02:00Z", {
+        ciGeneration: 1,
+        reproduced: "YES",
+      }),
+      done("build", "debug-failure-soak", "2026-10-01T00:03:00Z", { ciGeneration: 2 }),
+    ]);
+    const root = tmp();
+    fs.writeFileSync(
+      path.join(root, "package.json"),
+      JSON.stringify({ bkit: { workflows: { debug: { fix: { maxAttempts: 2 } } } } }),
+    );
+    const noCurrent = await ciStateRoute(file, "/bkit-debug 7-x [repro]", root);
+    expect(noCurrent.json).toMatchObject({
+      ciFixDone: false,
+      ciReproduced: false,
+      debugMode: "SOAK",
+    });
+    fs.appendFileSync(
+      file,
+      JSON.stringify(
+        done("debug", "debug-failure-reproduce", "2026-10-01T00:04:00Z", {
+          ciGeneration: 2,
+          reproduced: "YES",
+        }),
+      ) + "\n",
+    );
+    fs.appendFileSync(
+      file,
+      JSON.stringify(
+        done("debug", "debug-failure-remediate", "2026-10-01T00:05:00Z", { ciGeneration: 2 }),
+      ) + "\n",
+    );
+    expect((await ciStateRoute(file)).json).toMatchObject({ ciFixDone: true, ciReproduced: true });
+    fs.appendFileSync(
+      file,
+      JSON.stringify({ type: "workflow-done", workflow: "debug", at: "2026-10-01T00:06:00Z" }) +
+        "\n",
+    );
+    expect((await ciStateRoute(file)).json).toMatchObject({
+      ciRun: null,
+      redTiers: [],
+      ciFixDone: false,
+      ciReproduced: false,
+    });
+  });
+
+  it("orders covering gates for red tiers and preserves live off", async () => {
+    const file = log([
+      started("debug", "2026-10-01T00:00:00Z"),
+      ciStateMeta(1, { ciSelection: ciStateSelection({ redTiers: ["unit"] }) }),
+    ]);
+    const unit = await ciStateRoute(file);
+    expect(unit.json.gates[0]).toBe("bkit:gate:static-unit");
+    expect(new Set(unit.json.gates).size).toBe(unit.json.gates.length);
+    const integrationFile = log([started("debug", "2026-10-01T00:00:00Z"), ciStateMeta()]);
+    expect((await ciStateRoute(integrationFile)).json.gates[0]).toBe(
+      "bkit:gate:static-unit-integration",
+    );
+    const off = await ciStateRoute(integrationFile, "/bkit-debug 7-x [live=off]");
+    expect(off.json.gates.some((gate: string) => gate.endsWith("-live"))).toBe(false);
+    const unknownFile = log([
+      started("debug", "2026-10-01T00:00:00Z"),
+      ciStateMeta(1, { ciSelection: ciStateSelection({ redTiers: [] }) }),
+    ]);
+    expect((await ciStateRoute(unknownFile)).json.gates[0]).toBe(
+      "bkit:gate:static-unit-integration-e2e-live",
+    );
+  });
+});
+
 describe("bkit status path", () => {
   it("returns the main checkout's path outside a worktree, and whether it exists", async () => {
     const root = tmp();

@@ -97,6 +97,161 @@ async function run(argv: string[], at = cwd, verb = "run") {
 const BUILD = [...BKIT_BUILD_GATES.map((g) => `--gate=${g}`), "--log=logs/test.md"];
 const readLog = () => fs.readFileSync(path.join(cwd, "logs/test.md"), "utf-8");
 
+function ciRoundFixture() {
+  const selection = {
+    mode: "ci",
+    provider: "github",
+    repo: "example/example",
+    runId: "123",
+    runAttempt: 2,
+    runUrl: "https://github.com/example/example/actions/runs/123/attempts/2",
+    workflowId: "456",
+    workflowPath: ".github/workflows/consumer-ci.yml",
+    headBranch: "fix/ci",
+    headSha: "a".repeat(40),
+    conclusion: "failure",
+    redTiers: ["integration"],
+    via: "prompt-run",
+  };
+  const file = path.join(cwd, "status.jsonl");
+  fs.writeFileSync(
+    file,
+    [
+      { type: "workflow-started", workflow: "debug", at: "2026-10-01T00:00:00Z" },
+      {
+        type: "workflow-meta",
+        workflow: "debug",
+        at: "2026-10-01T00:00:01Z",
+        ciSelection: selection,
+        ciGeneration: 2,
+      },
+    ]
+      .map((row) => JSON.stringify(row))
+      .join("\n") + "\n",
+  );
+  const marker = path.join(cwd, "local-gate-ran");
+  fs.rmSync(marker, { force: true });
+  fs.writeFileSync(
+    path.join(bin, PACKAGE_RUNNER),
+    `#!/bin/sh\necho "$1" >> '${marker}'\nexit 0\n`,
+    { mode: 0o755 },
+  );
+  const args = [
+    ...BUILD,
+    `--file=${file}`,
+    "--workflow=debug",
+    "--step=debug-run-tests",
+    "--attempt=1",
+    "--ci-run=123",
+    `--ci-url=${selection.runUrl}`,
+    "--artifact=docs/plans/202611/logs/1-x/run-tests-1.md",
+    "--fid=1-x",
+  ];
+  const append = (row: object) => fs.appendFileSync(file, JSON.stringify(row) + "\n");
+  const fix = (generation: number, step = "debug-failure-remediate", status = "DONE") =>
+    append({
+      type: "step-done",
+      workflow: "debug",
+      step,
+      status,
+      at: "2026-10-01T00:01:00Z",
+      parentSha: selection.headSha,
+      artifacts: [],
+      ciGeneration: generation,
+    });
+  return { file, marker, selection, args, append, fix };
+}
+
+describe("CI evidence test rounds", () => {
+  it("records a CI evidence round without executing a local gate", async () => {
+    const f = ciRoundFixture();
+    const result = await run(f.args);
+    expect(result.code).toBe(1);
+    expect(result.json).toMatchObject({
+      source: "ci",
+      verdict: "FAIL",
+      scope: "ci:123",
+      gate: null,
+      exitCode: null,
+      failures: null,
+      runAttempt: 2,
+      ciGeneration: 2,
+    });
+    expect(result.json.row).toMatchObject({
+      type: "test-run",
+      workflow: "debug",
+      step: "debug-run-tests",
+      source: "ci",
+      verdict: "FAIL",
+      scope: "ci:123",
+      exitCode: null,
+      failures: null,
+      ciRun: "123",
+      runAttempt: 2,
+      ciGeneration: 2,
+    });
+    expect(fs.existsSync(f.marker)).toBe(false);
+    const artifact = fs.readFileSync(path.join(cwd, result.json.artifact), "utf-8");
+    expect(artifact).toContain(f.selection.repo);
+    expect(artifact).toContain(f.selection.workflowPath);
+    expect(artifact).toContain(f.selection.headSha);
+    expect(artifact).toContain(f.selection.runUrl);
+    expect(artifact).toMatch(/local.+(?:not run|not executed)|(?:not run|not executed).+local/i);
+    expect(result.json.clamp).toBeNull();
+  });
+
+  it("runs local gates only after current-generation remediation or soak", async () => {
+    const f = ciRoundFixture();
+    f.fix(1);
+    expect((await run(f.args)).json.source).toBe("ci");
+    expect(fs.existsSync(f.marker)).toBe(false);
+    f.fix(2, "debug-failure-remediate", "FAILED");
+    expect((await run(f.args)).json.source).toBe("ci");
+    expect(fs.existsSync(f.marker)).toBe(false);
+    f.fix(2);
+    const checked = await run(f.args);
+    expect(checked.code).toBe(0);
+    expect(checked.json).toMatchObject({
+      source: "local",
+      verdict: "PASS",
+      exitCode: 0,
+      gate: DEEP,
+    });
+    expect(fs.readFileSync(f.marker, "utf-8")).toContain(DEEP);
+    const soak = ciRoundFixture();
+    soak.fix(2, "debug-failure-soak");
+    expect((await run(soak.args)).json.source).toBe("local");
+    expect(fs.existsSync(soak.marker)).toBe(true);
+  });
+
+  it("rejects CI rounds without active matching debug selection", async () => {
+    const f = ciRoundFixture();
+    expect((await run(f.args)).code).toBe(1);
+    expect((await run(f.args.filter((arg) => !arg.startsWith("--file=")))).code).toBe(2);
+    expect(
+      (await run([...f.args.filter((arg) => !arg.startsWith("--ci-run=")), "--ci-run=999"])).code,
+    ).toBe(2);
+    expect(
+      (
+        await run([
+          ...f.args.filter((arg) => !arg.startsWith("--ci-url=")),
+          "--ci-url=https://github.com/other/repo/actions/runs/123/attempts/2",
+        ])
+      ).code,
+    ).toBe(2);
+    f.append({ type: "workflow-done", workflow: "debug", at: "2026-10-01T00:02:00Z" });
+    expect((await run(f.args)).code).toBe(2);
+    fs.writeFileSync(
+      f.file,
+      JSON.stringify({ type: "workflow-started", workflow: "debug", at: "2026-10-01T00:00:00Z" }) +
+        "\n",
+    );
+    expect((await run(f.args)).code).toBe(2);
+    expect(fs.existsSync(f.marker)).toBe(false);
+    expect(fs.readFileSync(f.file, "utf-8")).not.toContain('"type":"test-run"');
+  });
+});
+
 describe("resolveGate", () => {
   it("picks the deepest declared candidate, not the first declared in package.json", () => {
     expect(resolveGate(cwd, [DEEP, SHALLOW])).toBe(DEEP);
