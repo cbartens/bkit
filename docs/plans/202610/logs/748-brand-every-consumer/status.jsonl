@@ -28,3 +28,7 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-02T01:28:41Z","noun":"steps","verb":"finish","flags":["workflow","step","file","artifact","number","post","title","tree","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-worktree-setup/-/-/comment","hash":"54686478fdbbb08eda59726d9b0306d5106fec02df1f1a33a1e8ba2245c96b87","ref":"https://github.com/cbartens/bkit/issues/748#issuecomment-6566903832","at":"2026-11-02T01:28:42Z"}
 {"type":"step-done","workflow":"build","step":"build-worktree-setup","status":"DONE","at":"2026-11-02T01:28:42Z","parentSha":"db424ac7af6c361b882bd063c74a527a304573a7","artifacts":["docs/plans/202610/logs/748-brand-every-consumer/build-input-1.md"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T01:28:48Z","noun":"branches","verb":"sync","flags":["merge-docs"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T01:28:49Z","noun":"steps","verb":"finish","flags":["workflow","step","file","number","post","title","tree","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-branch-sync/-/-/comment","hash":"e716e8cfe702e4745d6c9e49c82e2774ca92350b4d01e47cb66002582d7e001e","ref":"https://github.com/cbartens/bkit/issues/748#issuecomment-6566905347","at":"2026-11-02T01:28:50Z"}
+{"type":"step-done","workflow":"build","step":"build-branch-sync","status":"DONE","at":"2026-11-02T01:28:50Z","parentSha":"b1b5eb2c518fa5f2c2dc3817c53e8dcd04d43ad4","artifacts":[]}
