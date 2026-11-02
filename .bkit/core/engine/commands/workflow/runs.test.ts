@@ -230,7 +230,7 @@ if (endpoint.includes("/jobs")) {
   emit({total_count: 1, jobs: [{id: 1, name: "bkit-tests-check", status: "completed", conclusion: endpoint.includes("301") ? state.selected : state.configured}]});
 } else if (endpoint.includes("/actions/workflows/")) {
   const sha = selected ? state.sha : ${JSON.stringify(f.head)};
-  const runs = selected && state.absent ? [] : [{id: selected ? 301 : 201, run_attempt: 1, workflow_id: selected ? 777 : 456, head_sha: sha, head_branch: "fix/ci", event: "push", status: "completed", conclusion, html_url: "https://github.com/example/example/actions/runs/" + (selected ? 301 : 201)}];
+  const runs = selected && state.absent ? [] : [{id: selected ? 301 : 201, run_attempt: 1, workflow_id: selected ? 777 : 456, head_sha: sha, head_branch: "fix/ci", repository: {full_name: "example/example"}, head_repository: {full_name: "example/example"}, event: "push", status: "completed", conclusion, html_url: "https://github.com/example/example/actions/runs/" + (selected ? 301 : 201)}];
   emit({total_count: runs.length, workflow_runs: runs});
 } else { process.stderr.write("unhandled gate fixture " + endpoint); process.exit(1); }
 `,
