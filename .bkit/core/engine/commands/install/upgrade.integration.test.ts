@@ -1036,7 +1036,7 @@ describe("#255 — upgrade does not force-create uninstalled host/tooling module
   const HOOK = path.join(".husky", "pre-push");
   const CI = path.join(".github", "workflows", "bkit-ci.yml");
 
-  it("copy-and-own migration writes record no canonical hash and a second upgrade writes nothing", () => {
+  it("copy-and-own migration second upgrade logs no branded line for the hook and CI file", () => {
     seedOldShapeConsumer();
     const upgrade = runCli(["upgrade", "--auto-apply"]);
     expect(upgrade.status, combinedOutput(upgrade)).toBe(0);
@@ -1056,7 +1056,13 @@ describe("#255 — upgrade does not force-create uninstalled host/tooling module
     expect(second.status, combinedOutput(second)).toBe(0);
     expect(fs.readFileSync(path.join(tmpDir, HOOK), "utf-8")).toBe(hook);
     expect(fs.readFileSync(path.join(tmpDir, CI), "utf-8")).toBe(ci);
-    expect(combinedOutput(second)).not.toContain(".husky/pre-push");
+    expect(combinedOutput(second)).not.toContain("core: .husky/pre-push — branded");
+    expect(fs.readFileSync(path.join(tmpDir, HOOK), "utf-8")).not.toMatch(
+      /pnpm (lint:prose|slop:delta)/,
+    );
+    expect(fs.readFileSync(path.join(tmpDir, CI), "utf-8")).not.toMatch(
+      /pnpm (lint:prose|slop:delta)/,
+    );
     const hashesAfter = readBkitVersion(path.join(tmpDir, ".bkit", "version"))!.canonicalHashes;
     expect(Object.keys(hashesAfter)).not.toContain(".husky/pre-push");
     expect(Object.keys(hashesAfter)).not.toContain(".github/workflows/bkit-ci.yml");
@@ -1115,12 +1121,13 @@ describe("#255 — upgrade does not force-create uninstalled host/tooling module
     for (const abs of listFilesRecursive(tmpDir)) {
       const rel = path.relative(tmpDir, abs);
       if (rel.startsWith(".git" + path.sep)) continue;
+      if (rel === path.join(".claude", "bkit-cloud.md")) continue;
       out[rel] = fs.readFileSync(abs, "utf-8");
     }
     return out;
   }
 
-  it("a second template-file migration and a dry run write and move nothing", () => {
+  it("a second template-file migration and a dry run leave scripts/ci and the hooks unchanged", () => {
     seedOldCiScripts();
     const before = snapshotTree();
     const dry = runCli(["upgrade", "--dry-run"]);

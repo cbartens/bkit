@@ -229,3 +229,9 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-02T04:21:31Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","artifact","field","number","post","title","comment-body","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-decision/-/1/comment","hash":"e4aba29ae39892857bec9c5a99d935fe17fbbe3b5eed9d1fd5a4e2f8c8248b8f","ref":"https://github.com/cbartens/bkit/issues/748#issuecomment-6568980541","at":"2026-11-02T04:21:32Z"}
 {"type":"step-done","workflow":"build","step":"build-decision","status":"DONE","at":"2026-11-02T04:21:32Z","parentSha":"a4438cbf6517810a5f7d2d094a9404c7262fb527","artifacts":["docs/plans/202610/logs/748-brand-every-consumer/build-decision-1-1.md"],"attempt":1,"route":"fix"}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T04:21:40Z","noun":"context","verb":"brief","flags":["plan","next","dir","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T04:21:40Z","noun":"status","verb":"route","flags":["step","group","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T04:21:40Z","noun":"context","verb":"brief","flags":["plan","group","tests-only","dir","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T04:22:22Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","plan","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-tests/3/2/comment","hash":"02c4ff95099364154b8c6baefba38412501bd659c1af1176a1967097dc0898b3","ref":"https://github.com/cbartens/bkit/issues/748#issuecomment-6568991299","at":"2026-11-02T04:22:24Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-tests","status":"DONE","at":"2026-11-02T04:22:24Z","parentSha":"87efaf7e8c215782406f321a5f1a1ce0318543b5","artifacts":["docs/plans/202610/logs/748-brand-every-consumer/build-plan-tests-3-log.md"],"verdict":"PASS","attempt":2,"group":3}
