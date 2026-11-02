@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-02T22:29:11Z)_
+_(refreshed 2026-11-02T23:33:09Z)_
 
 ### Design
 
@@ -52,11 +52,13 @@ _(refreshed 2026-11-02T22:29:11Z)_
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
-| 748-brand-every-consumer | 748-brand-every-consumer | 1793603451032 |
 
 ### Debug
 
-_(none)_
+<!-- prettier-ignore -->
+| FID | Title | Last-transition (ts) |
+| --- | --- | --- |
+| 748-brand-every-consumer | 748-brand-every-consumer | 1793662389773 |
 
 ### Shipped _(last 10)_
 
