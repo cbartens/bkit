@@ -533,9 +533,9 @@ export const statusCommand: CommandSpec = {
         group: "that row's task group, or null",
         active: "whether the latest run is this workflow, still IN_PROGRESS",
         challengeRound:
-          "build: the round Step 10's challenge runs as (1 up to bkit.workflows.build.challenge.maxAttempts), from the build-challenge rows' round field; null for other workflows",
+          "build: the round Step 11's challenge runs as (1 up to bkit.workflows.build.challenge.maxAttempts), from the build-challenge rows' round field; null for other workflows",
         challengeDone:
-          "build: true once the last allowed challenge round has merged, so Step 10 goes on to Step 11; null for other workflows",
+          "build: true once the last allowed challenge round has merged, so Step 11 goes on to Step 12; null for other workflows",
       },
       exitCodes: { [EXIT_NO_STATUS]: "status.jsonl unreadable or not valid NDJSON" },
       run: (ctx) => {

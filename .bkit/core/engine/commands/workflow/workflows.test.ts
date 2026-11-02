@@ -298,6 +298,30 @@ describe("bkit workflows start", () => {
     expect(rows(statusOf(cwd))).toHaveLength(1);
   });
 
+  it("resumes the workflow's own IN_PROGRESS run when another workflow's run came after it", async () => {
+    const cwd = repo();
+    write(
+      cwd,
+      `${REL}/status.jsonl`,
+      jsonl([
+        { type: "workflow-started", workflow: "build", at: "2026-07-01T00:00:00Z" },
+        { type: "workflow-started", workflow: "debug", at: "2026-07-02T00:00:00Z" },
+        { type: "workflow-done", workflow: "debug", at: "2026-07-02T01:00:00Z" },
+      ]),
+    );
+    const lock = await run(cwd, [
+      "locks",
+      "acquire",
+      "--kind=workflow",
+      "--workflow=build",
+      `--fid=${FID}`,
+    ]);
+    const r = await run(cwd, wf("start", "build", "--lock-held", `--token=${lock.json.token}`));
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ resumed: true, row: null, run: 1 });
+    expect(rows(statusOf(cwd))).toHaveLength(3);
+  });
+
   describe("start records the chat that runs the workflow", () => {
     const A = "0a0a0a0a-1111-2222-3333-444455556666";
     const B = "0b0b0b0b-1111-2222-3333-444455556666";

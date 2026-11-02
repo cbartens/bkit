@@ -255,7 +255,8 @@ function subdirs(dir) {
  * The run a command call belongs to, or undefined. In order: the command's own
  * `--file`; `--fid` (+ `--month`, default this UTC month) through `statusLocation`;
  * the single IN_PROGRESS run among the `docs/plans/<month>/logs/<fid>/status.jsonl`
- * files under the cwd's git toplevel (capped). From the main checkout a feature
+ * files under the cwd's git toplevel (capped), only `--fid`'s own when it is set, so a
+ * run from an earlier month is found and another feature's run never is. From the main checkout a feature
  * worktree's run is not found, so an out-of-worktree call is skipped, never
  * attributed to another run. Reads with this module's own `node:fs` and `parseJson`
  * and folds with `ledgers/status.ts`, so it never imports a `commands/**` module.
@@ -304,6 +305,8 @@ export function resolveActiveRun(opts) {
         for (const fid of subdirs(path.join(top, "docs", "plans", month, "logs"))) {
             if (++read > ACTIVE_RUN_SCAN_CAP)
                 return undefined;
+            if (opts.fid !== undefined && fid !== opts.fid)
+                continue;
             const file = path.join(top, statusRelPath(month, fid));
             const workflow = inProgressWorkflow(file);
             if (workflow !== undefined)

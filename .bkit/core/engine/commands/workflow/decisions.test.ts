@@ -117,6 +117,25 @@ describe("bkit decisions compose", () => {
     expect((await compose(root, logs, bad)).r.code).toBe(2);
   });
 
+  it("refuses an item with more options than letters", async () => {
+    const { root, logs } = checkout();
+    const options = Array.from({ length: 27 }, (_, i) => `Option ${i + 1}`);
+    const bad = [{ ...ITEMS[0], options, recommended: "Option 27" }];
+    expect((await compose(root, logs, bad)).r.code).toBe(2);
+  });
+
+  it("round-trips the last lettered option through parseDecisionItems", async () => {
+    const { root, logs } = checkout();
+    const options = Array.from({ length: 26 }, (_, i) => `Option ${i + 1}`);
+    const { r, out } = await compose(root, logs, [
+      { ...ITEMS[0], options, recommended: "Option 26" },
+    ]);
+    expect(r.code).toBe(0);
+    const item = parseDecisionItems(fs.readFileSync(out, "utf-8"))[0]!;
+    expect(item.options).toEqual(options);
+    expect(item.recommended).toBe("Option 26");
+  });
+
   it("--loop adds the attempt line, the progress block and the loop question as Q1", async () => {
     const { root, logs } = checkout();
     const status = path.join(logs, "status.jsonl");

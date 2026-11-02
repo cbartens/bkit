@@ -26,6 +26,8 @@ import { positiveInt, str } from "./status.js";
 export const EXIT_HARD_BLOCKERS = 4;
 const ITEM_SPLIT = /^(?=\*\*Q\d+ — )/m;
 const lineOf = (text, key) => new RegExp(`^${key}:[ \\t]*(.+?)[ \\t]*$`, "m").exec(text)?.[1] ?? null;
+/** Options one item may hold: one per letter, `A` to `Z`. */
+const MAX_OPTIONS = 26;
 /** `A`, `B`, … for option index `i`. */
 const letterAt = (i) => String.fromCharCode(65 + i);
 /** An option entry's leading letter (`A) `) dropped, so a parsed name stays bare. */
@@ -148,6 +150,8 @@ function composeItems(raw) {
         const options = Array.isArray(o.options) ? o.options.filter((x) => typeof x === "string") : [];
         if (s("title") === "" || s("question") === "" || options.length === 0)
             throw new CommandError(EXIT.USAGE, `item ${i + 1}: needs title, question and options`);
+        if (options.length > MAX_OPTIONS)
+            throw new CommandError(EXIT.USAGE, `item ${i + 1}: at most ${MAX_OPTIONS} options (A-Z)`);
         if (s("noRecommendation") === "" && !options.includes(s("recommended")))
             throw new CommandError(EXIT.USAGE, `item ${i + 1}: recommended must be one of its options, or set noRecommendation`);
         return {

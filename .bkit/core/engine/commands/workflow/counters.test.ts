@@ -165,7 +165,7 @@ describe("bkit counters derive", () => {
     expect((await derive(onlyFailed, "remediate", "current")).code).toBe(4);
   });
 
-  it("a build resumed after an interleaved finished debug run opens a fresh run: its budget resets", async () => {
+  it("a build resumed after an interleaved finished debug run keeps its run and its budget", async () => {
     const before = [
       started("build", "2026-10-01T00:00:00Z"),
       done("build", "run-tests", "2026-10-01T00:01:00Z", { parentSha: "b1" }),
@@ -173,13 +173,9 @@ describe("bkit counters derive", () => {
       started("debug", "2026-10-01T00:03:00Z"),
       finished("debug", "2026-10-01T00:04:00Z"),
     ];
-    // The paused run, before the resume writes anything, still counts both rows.
     expect((await derive(log(before), "run-tests", "next")).json).toEqual({ value: 3, count: 2 });
-    // `counters run` reads the paused build as finished, so the resume starts a new run.
     const runs = await run(["counters", "run", `--file=${log(before)}`, "--workflow=build"]);
-    expect(runs.json.run).toBe(2);
-    const resumed = log([...before, started("build", "2026-10-01T00:05:00Z")]);
-    expect((await derive(resumed, "run-tests", "next")).json).toEqual({ value: 1, count: 0 });
+    expect(runs.json.run).toBe(1);
   });
 
   it("a paused run keeps counting after another workflow's run interleaves", async () => {
@@ -212,13 +208,13 @@ describe("bkit counters run", () => {
     expect(await runOf([...first, started("build", "2026-10-01T00:02:00Z")])).toBe(2);
   });
 
-  it("an interleaved debug run makes the paused build run count as finished", async () => {
+  it("an interleaved debug run leaves the paused build run in progress", async () => {
     const rows = [
       started("build", "2026-10-01T00:00:00Z"),
       started("debug", "2026-10-01T00:01:00Z"),
       finished("debug", "2026-10-01T00:02:00Z"),
     ];
-    expect(await runOf(rows)).toBe(2);
+    expect(await runOf(rows)).toBe(1);
   });
 
   it("is n+1 after a FAILED run too", async () => {

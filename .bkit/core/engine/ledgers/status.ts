@@ -197,13 +197,12 @@ export function lastDoneStepAllRuns(
 
 /**
  * Which run of `workflow` this invocation is (1-based): the count of its runs,
- * plus one unless the latest run overall is one of them still IN_PROGRESS — a
- * resume. Same answer before and after the run's `workflow-started` row lands.
+ * plus one unless the latest of them is still IN_PROGRESS — a resume, even after
+ * another workflow's run. Same answer before and after the run's `workflow-started` row lands.
  */
 export function runNumber(runs: WorkflowRun[], workflow: string): number {
   const n = runs.filter((r) => r.workflow === workflow).length;
-  const latest = runs.at(-1);
-  return latest?.workflow === workflow && latest.status === "IN_PROGRESS" ? n : n + 1;
+  return lastRun(runs, workflow)?.status === "IN_PROGRESS" ? n : n + 1;
 }
 
 /**

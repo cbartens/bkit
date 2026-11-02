@@ -11,6 +11,25 @@ import * as path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+/** `after` runs once, right after `readFileSync` of `file` returns: a second sweep between read and removal. */
+const readHook = vi.hoisted(() => ({
+  file: "",
+  after: undefined as (() => void) | undefined,
+}));
+vi.mock("node:fs", async (importOriginal) => {
+  const real = await importOriginal<typeof import("node:fs")>();
+  const readFileSync = ((...args: Parameters<typeof real.readFileSync>) => {
+    const out = real.readFileSync(...args);
+    if (String(args[0]) === readHook.file) {
+      const after = readHook.after;
+      readHook.after = undefined;
+      after?.();
+    }
+    return out;
+  }) as typeof real.readFileSync;
+  return { ...real, default: { ...real, readFileSync }, readFileSync };
+});
+
 import { runCommand } from "../lib";
 import { runTipsCommand } from "../tips";
 import {
@@ -330,6 +349,18 @@ describe("bkit disk prune — lock", () => {
     const r = await prune(repo(), "--mode=min", "--auto", "--wait");
     expect(r.code).toBe(2);
     expect(r.err).toContain("not both");
+  });
+
+  it("never removes a lock created after the stale check", async () => {
+    const dead = spawnSync("sh", ["-c", "echo $$"], { encoding: "utf-8" });
+    holdLock(Number(dead.stdout.trim()), 0);
+    readHook.file = lock();
+    readHook.after = () => holdLock(process.pid);
+    const cwd = repo(marks(["a", "min"]));
+    const r = await prune(cwd, "--mode=min");
+    expect(r.json.reason).toBe("locked");
+    expect(order(cwd)).toEqual([]);
+    expect(fs.readFileSync(lock(), "utf-8")).toContain(` ${process.pid}`);
   });
 
   it("replaces a lock whose process is gone, or that is an hour old, and releases it", async () => {

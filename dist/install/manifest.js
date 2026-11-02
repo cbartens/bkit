@@ -199,7 +199,7 @@ export const BKIT_GATE_SCRIPTS = {
     // path.
     "bkit:gate:static": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm lint:prose && pnpm slop:delta",
     // The default local gate: `.husky/pre-push` (when no `…-integration` gate is declared),
-    // build Step 11, the remediates. `pnpm test` is the unit tier only: a test file the
+    // build Steps 8 and 12, the remediates. `pnpm test` is the unit tier only: a test file the
     // integration gate also runs must not match it.
     "bkit:gate:static-unit": "pnpm bkit:gate:static && pnpm test",
     // Ship's conflict-resolve, the only caller whose dependency graph may have just

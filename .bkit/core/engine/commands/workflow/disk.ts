@@ -224,19 +224,43 @@ function pidAlive(pid: number): boolean {
 
 /**
  * Take the sweep lock; a lock whose holder is gone, or that no holder renewed for an hour, is
- * replaced. False when held.
+ * replaced. False when held. The stale lock is renamed aside before it is removed, so a lock
+ * another sweep took after this one's check is put back, never deleted.
  */
 function takeLock(): boolean {
   const file = lockPath();
   const line = `${new Date().toISOString()} ${process.pid}`;
   if (tryCreate(file, line)) return true;
   const st = fs.statSync(file, { throwIfNoEntry: false });
-  const holder = st === undefined ? "" : fs.readFileSync(file, "utf-8");
+  if (st === undefined) return tryCreate(file, line);
+  const holder = fs.readFileSync(file, "utf-8");
   const pid = Number(holder.split(/\s+/)[1]);
-  const live = st !== undefined && Date.now() - st.mtimeMs < LOCK_STALE_MS;
+  const live = Date.now() - st.mtimeMs < LOCK_STALE_MS;
   if (live && Number.isInteger(pid) && pid > 0 && pidAlive(pid)) return false;
-  fs.rmSync(file, { force: true });
+  const aside = `${file}.${process.pid}.${Date.now()}.stale`;
+  try {
+    fs.renameSync(file, aside);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    return tryCreate(file, line);
+  }
+  const taken = fs.readFileSync(aside, "utf-8");
+  if (taken !== holder) {
+    restoreLock(aside, file);
+    return false;
+  }
+  fs.rmSync(aside, { force: true });
   return tryCreate(file, line);
+}
+
+/** Put a lock renamed aside back at `file`, unless a third sweep has taken `file` since. */
+function restoreLock(aside: string, file: string): void {
+  try {
+    fs.linkSync(aside, file);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+  }
+  fs.rmSync(aside, { force: true });
 }
 
 /**

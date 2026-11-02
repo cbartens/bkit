@@ -2125,8 +2125,7 @@ export const workflowsCommand: CommandSpec = {
           }
         }
 
-        const latest = fold(readStatusEvents(file)).at(-1);
-        const resumed = latest?.workflow === workflow && latest.status === "IN_PROGRESS";
+        const resumed = lastRun(fold(readStatusEvents(file)), workflow)?.status === "IN_PROGRESS";
         const holeyWarning = previousRunWarning(file, resumed);
         if (holeyWarning !== null) ctx.log(holeyWarning);
         let row: Record<string, unknown> | null = null;

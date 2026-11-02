@@ -293,3 +293,71 @@ describe("bkit-ci.yml template registry-auth assertion (Task 6.1 — BAR-138)", 
     expect(content).not.toContain("npm.pkg.github.com");
   });
 });
+
+const REPO_CI = path.join(REPO_ROOT, ".github", "workflows", "bkit-ci.yml");
+const CAPABILITY_STEP = "Check Capability Register";
+
+interface StepDoc {
+  name?: string;
+  if?: unknown;
+}
+interface WorkflowDoc {
+  on?: unknown;
+  jobs?: Record<string, { if?: unknown; steps?: StepDoc[] }>;
+}
+
+/** Why a workflow can skip the capability-register step on a pull request, or null when it never does. */
+function capabilityRegisterSkip(doc: WorkflowDoc): string | null {
+  const on = doc.on;
+  const events = typeof on === "string" ? [on] : Array.isArray(on) ? on : Object.keys(on ?? {});
+  if (!events.includes("pull_request")) return "on: has no pull_request";
+  for (const [name, job] of Object.entries(doc.jobs ?? {})) {
+    const step = (job.steps ?? []).find((s) => s.name === CAPABILITY_STEP);
+    if (step === undefined) continue;
+    for (const [where, cond] of [
+      [`job ${name}`, job.if],
+      [`step ${CAPABILITY_STEP}`, step.if],
+    ] as const) {
+      if (typeof cond === "string" && /event_name|GITHUB_EVENT_NAME/.test(cond))
+        return `${where} if: filters on the event`;
+    }
+    return null;
+  }
+  return `step "${CAPABILITY_STEP}" not found`;
+}
+
+describe("the capability-register step runs on pull_request", () => {
+  const workflows = () => ({
+    repo: parseYaml(REPO_CI) as WorkflowDoc,
+    template: parseYaml(filledTemplate()) as WorkflowDoc,
+  });
+  const holder = (doc: WorkflowDoc) =>
+    Object.values(doc.jobs ?? {}).find((j) => j.steps?.some((s) => s.name === CAPABILITY_STEP))!;
+
+  it("capability register runs on pull_request in both workflows", () => {
+    for (const [which, doc] of Object.entries(workflows()))
+      expect(capabilityRegisterSkip(doc), which).toBeNull();
+  });
+
+  it("flags an event filter on the capability-register step", () => {
+    for (const doc of Object.values(workflows())) {
+      const step = holder(doc).steps!.find((s) => s.name === CAPABILITY_STEP)!;
+      step.if = `${String(step.if)} && github.event_name != 'pull_request'`;
+      expect(capabilityRegisterSkip(doc)).toBe(`step ${CAPABILITY_STEP} if: filters on the event`);
+    }
+  });
+
+  it("flags an event filter on the job, a missing pull_request trigger and a renamed step", () => {
+    const { repo } = workflows();
+    holder(repo).if = "github.event_name == 'push'";
+    expect(capabilityRegisterSkip(repo)).toMatch(/^job .* if: filters on the event$/);
+
+    const { template } = workflows();
+    delete (template.on as Record<string, unknown>).pull_request;
+    expect(capabilityRegisterSkip(template)).toBe("on: has no pull_request");
+
+    const renamed = workflows().repo;
+    holder(renamed).steps!.find((s) => s.name === CAPABILITY_STEP)!.name = "Check Register";
+    expect(capabilityRegisterSkip(renamed)).toBe(`step "${CAPABILITY_STEP}" not found`);
+  });
+});

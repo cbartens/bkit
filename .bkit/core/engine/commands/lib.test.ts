@@ -778,4 +778,15 @@ describe("resolveActiveRun", () => {
     const run = resolveActiveRun({ cwd, file: path.relative(cwd, status) });
     expect(run).toEqual({ workflow: "build", file: status, bookRoot: cwd });
   });
+
+  it("never files a --fid call under another feature's in-progress run", () => {
+    const { cwd } = treeWithOneRun();
+    expect(resolveActiveRun({ cwd, fid: "902-y", month: "202611" })).toBeUndefined();
+  });
+
+  it("finds a --fid run that started in an earlier month through the scan", () => {
+    const { cwd, status } = treeWithOneRun();
+    const run = resolveActiveRun({ cwd, fid: "901-x", month: "202611" });
+    expect(run).toEqual({ workflow: "build", file: status, bookRoot: cwd });
+  });
 });

@@ -364,7 +364,7 @@ export function runPostInstallCheck(
   const ghMcpToken = detectGhMcpToken(cwd);
   if (ghMcpToken) phase3.push(ghMcpToken);
 
-  // Main branch protection — bkit's PR-base gates (build Step 14, ship Step 2)
+  // Main branch protection — bkit's PR-base gates (build Step 16, ship Step 2)
   // assert feat/* PRs target dev. Enforcing it at the GitHub layer needs branch
   // protection on main restricting merges to PRs from dev.
   const protectionStatus = detectMainBranchProtection();
