@@ -374,11 +374,15 @@ function stepProgress(cwd, r, number) {
     const same = prior.filter((s) => s.step === r.step && (r.group === undefined || s.group === r.group));
     const soak = runOrStepField(runs, r.workflow, "debugMode") === "SOAK";
     const point = progressPoint(r.workflow, r.step, soak);
-    const soakAttempt = r.extras?.soakAttempt ?? runOrStepField(runs, r.workflow, "soakAttempt");
-    const attempt = point === "debug.soak" && typeof soakAttempt === "number"
+    const soakAttempt = Number(r.extras?.soakAttempt ?? runOrStepField(runs, r.workflow, "soakAttempt"));
+    const challengeRound = Number(r.extras?.round ?? runOrStepField(runs, r.workflow, "round"));
+    const attempt = point === "debug.soak" && Number.isSafeInteger(soakAttempt) && soakAttempt > 0
         ? soakAttempt
-        : (r.attempt ??
-            (typeof r.extras?.round === "number" ? r.extras.round : same.at(-1)?.attempt));
+        : point === "debug.fix" && r.step === "debug-failure-remediate"
+            ? allRunsDoneSteps(runs, r.workflow, { step: r.step }).length + 1
+            : point === "build.challenge" && Number.isSafeInteger(challengeRound) && challengeRound > 0
+                ? challengeRound
+                : (r.attempt ?? same.at(-1)?.attempt);
     return runProgress({
         workflow: r.workflow,
         step: r.step,
@@ -388,7 +392,7 @@ function stepProgress(cwd, r, number) {
         attempt,
         max: point === undefined
             ? undefined
-            : savedPointLimit(r.file, r.workflow, point, r.group, point === "debug.soak"),
+            : savedPointLimit(r.file, r.workflow, point, r.group, point === "debug.fix" || point === "debug.soak"),
     }).progressLine;
 }
 /** Exit code: a debug run on a shared branch has no shared-checkout record, so nothing was written or committed. */
