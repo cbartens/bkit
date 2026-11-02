@@ -339,6 +339,8 @@ export function runBkitDocs(
   migrateContextCiWorkflow(dryRun, ws, logPrefix);
   const renames = migrateBrandedTemplateFiles(dryRun, ws, logPrefix);
   migrateBrandedFileTokens(dryRun, ws, logPrefix, renames);
+  migrateBrandedCheckNames(dryRun, ws, logPrefix, tokens.DEFAULT_BRANCH);
+  migrateValeHouseStyle(dryRun, ws, logPrefix);
 }
 
 // Migration (installs up to 6.0.x, `docs/migrations.md`): agents renamed since. A
@@ -1035,6 +1037,202 @@ export function migrateBrandedTemplateFiles(
     }
   }
   return renames;
+}
+
+// The old `bkit-stub:health` block, as shipped by every release up to 6.0.x.
+const OLD_HEALTH_STUB = [
+  "# bkit-stub:health — copy into .github/workflows/health.yml. workflow_run cannot share a file with",
+  "# push / pull_request. WHEN: you have a live URL to smoke after CI. Trigger on CI completed, default",
+  "# branch only, if the CI run succeeded. Then hit the health URL of the deployment this SHA promoted.",
+  "# e.g. poll the host until that deployment is ready, then GET /health. Not a required check.",
+  "# DROP if you have no deployed health URL.",
+].join("\n");
+
+// Exact old workflow `name:` lines the three shipped example workflows carried, with the
+// branded line and the check each one renames. `job` names the job whose display name the
+// workflow name branded (the job has no `name:` of its own, so its check showed the bare id).
+const BRANDED_WORKFLOWS = [
+  { file: "bkit-renovate.yml", oldName: "Renovate", newName: "bkit-renovate", job: "renovate" },
+  { file: "bkit-trivy.yml", oldName: "Trivy", newName: "bkit-trivy", job: "trivy" },
+] as const;
+const CHECK_RENAME_FIX =
+  "update the branch-protection required checks (and any ruleset) to the new name";
+
+// Migration (up to 6.0.x installs, `docs/migrations.md`): the shipped example workflows and
+// the health stub in the CI workflow carry bkit- check names. Only the exact shipped old
+// lines are rewritten, so a customised `name:` stays; the job `name:` is inserted only when
+// the workflow name was rewritten and the job has none. The health stub block is replaced
+// by the current one when it is byte-identical to the shipped old one. Writes are `unhashed`:
+// the files stay the consumer's. One log line per renamed check names old -> new, because
+// branch protection matches the check name.
+export function migrateBrandedCheckNames(
+  dryRun: boolean,
+  ws: WriteSet,
+  logPrefix: string,
+  defaultBranch = "main",
+): void {
+  const tag = dryRun ? "[dry-run] " : "";
+  const wfDir = path.join(".github", "workflows");
+  const finish = (file: string, text: string, next: string, renamed: string[]): void => {
+    if (next === text) return;
+    if (!dryRun) fs.writeFileSync(file, next, "utf-8");
+    ws.writes.push({ path: file, action: "update", unhashed: true });
+    for (const line of renamed) {
+      console.log(`${logPrefix} ${tag}core: ${file} — check renamed ${line}; ${CHECK_RENAME_FIX}`);
+    }
+  };
+  const readFile = (file: string): string | undefined =>
+    fs.lstatSync(file, { throwIfNoEntry: false })?.isFile()
+      ? fs.readFileSync(file, "utf-8")
+      : undefined;
+
+  const cloud = path.join(wfDir, "bkit-cloud.yml");
+  const cloudText = readFile(cloud);
+  if (cloudText !== undefined) {
+    const renamed: string[] = [];
+    const next = cloudText.replace(
+      /^( {4}name: )(context|claude|opencode)( \(\$\{\{ github\.event_name \}\}\))$/gm,
+      (_m, pre: string, job: string, post: string) => {
+        renamed.push(`bkit-cloud / ${job}${post} -> bkit-cloud / bkit-cloud-${job}${post}`);
+        return `${pre}bkit-cloud-${job}${post}`;
+      },
+    );
+    finish(cloud, cloudText, next, renamed);
+  }
+
+  for (const { file, oldName, newName, job } of BRANDED_WORKFLOWS) {
+    const target = path.join(wfDir, file);
+    const text = readFile(target);
+    if (text === undefined) continue;
+    const nameLine = new RegExp(`^name: ${escapeRegExp(oldName)}$`, "m");
+    if (!nameLine.test(text)) continue;
+    let next = text.replace(nameLine, `name: ${newName}`);
+    next = next.replace(
+      new RegExp(`^( {2}${escapeRegExp(job)}:\\n)(?! {4}name:)`, "m"),
+      `$1    name: ${newName}\n`,
+    );
+    finish(target, text, next, [`${oldName} / ${job} -> ${newName} / ${newName}`]);
+  }
+
+  const ci = ciWorkflowPath(".");
+  const ciText = readFile(ci);
+  if (ciText !== undefined && ciText.includes(OLD_HEALTH_STUB)) {
+    const template = readFile(path.join(getTemplatesRoot(), ".github", "workflows", "bkit-ci.yml"));
+    const current = template?.match(
+      /^# bkit-stub:health[^\n]*\n(?:#[^\n]*\n)*?#[^\n]*DROP if you have no deployed health URL\./m,
+    )?.[0];
+    if (current !== undefined) {
+      const next = ciText.replace(OLD_HEALTH_STUB, () =>
+        current.replace(/\{\{DEFAULT_BRANCH\}\}/g, () => defaultBranch),
+      );
+      if (next !== ciText) {
+        if (!dryRun) fs.writeFileSync(ci, next, "utf-8");
+        ws.writes.push({ path: ci, action: "update", unhashed: true });
+        console.log(
+          `${logPrefix} ${tag}core: ${ci} — old bkit-stub:health text replaced by the current block`,
+        );
+      }
+    }
+  }
+}
+
+// sha256 of every distinct release content of the four shipped `House` Vale rules, from each
+// `v*` tag, across `.agents/templates/.vale/styles/House/` and `.bkit/templates/.vale/styles/House/`.
+// An unedited copy matches one of them. Same shape as `RETIRED_DRIVER_HASHES` (write.ts).
+export const SHIPPED_HOUSE_RULE_HASHES: Readonly<Record<string, readonly string[]>> = {
+  Filler: [
+    "96139df9ffc61835e23014addac887d9465169d62cd1be24c2f272f838166524",
+    "9b10438de3158a1923c51375fcba56de7a8dd2f17de97d62385407eee2a6e377",
+    "e04e9e76a4857de0d13ff106343e25000418c535a983317f5a2e1710fa68cbc7",
+  ],
+  Hedging: [
+    "7289b6bfe98f48803734c016c6ba49661071b5d8ded0f4678509b37c6ab8aff9",
+    "b7425861cb3085cc798379d8e92f01a0420aa2c40f7be1ba1bbfabd908767a37",
+    "c46cda04406629377555d3add75e56edaad40521864743dbbd47781f2c048ef0",
+  ],
+  LLMSlop: [
+    "17a22ab44f0bd37de4d4c972fbb39a71dc256712ba0cfc39320043381f180a8e",
+    "c39313e229249786ba189bb1abe55728f83e325a54777b41b54e0a1dec47b4f7",
+    "e1ce58da6c86d7bc746698fbf17fd3d0075980ca78f2d8b8c927ea3ddc35094e",
+  ],
+  Verbose: [
+    "8278791997cca85a2df63b2c93decac480e685215e0569e8472aa433e7a27ac8",
+    "bcb18beb903e7bd57780905778ea4d1a4f294589cf191375db144ecb11f4c619",
+    "f7939a5be92562803183108581538a1b4ca73c3b8a1b68ceeb2b2149ba1a4357",
+  ],
+};
+
+// Migration (up to 6.0.x installs, `docs/migrations.md`): the shipped Vale style is `Bkit`,
+// it was `House`. A `House/<rule>.yml` byte-identical to a shipped release moves to
+// `Bkit/<rule>.yml` when that is absent; an edited rule or a taken target stays with one
+// warning naming the manual move. In `.vale.ini`, `House.<moved>` becomes `Bkit.<moved>`;
+// `BasedOnStyles` swaps `House` for `Bkit` once `House/` is empty (the directory goes), else
+// appends `Bkit`. Own rules in `House/` stay. Writes are `unhashed`.
+export function migrateValeHouseStyle(dryRun: boolean, ws: WriteSet, logPrefix: string): void {
+  const tag = dryRun ? "[dry-run] " : "";
+  const stylesDir = path.join(".vale", "styles");
+  const houseDir = path.join(stylesDir, "House");
+  const bkitDir = path.join(stylesDir, "Bkit");
+  if (!fs.lstatSync(houseDir, { throwIfNoEntry: false })?.isDirectory()) return;
+  const moved: string[] = [];
+  for (const [rule, hashes] of Object.entries(SHIPPED_HOUSE_RULE_HASHES)) {
+    const from = path.join(houseDir, `${rule}.yml`);
+    if (!fs.lstatSync(from, { throwIfNoEntry: false })?.isFile()) continue;
+    const to = path.join(bkitDir, `${rule}.yml`);
+    const stays = !hashes.includes(sha256(fs.readFileSync(from)))
+      ? "differs from every shipped release"
+      : fs.existsSync(to)
+        ? `${to} already exists`
+        : undefined;
+    if (stays !== undefined) {
+      console.warn(
+        `${logPrefix} ${tag}core: ${from} not moved to the Bkit style (${stays}); move it by hand: mv .vale/styles/House/${rule}.yml .vale/styles/Bkit/ and rename the House.${rule} toggle in .vale.ini to Bkit.${rule}`,
+      );
+      continue;
+    }
+    if (!dryRun) {
+      fs.mkdirSync(bkitDir, { recursive: true });
+      fs.copyFileSync(from, to);
+      fs.rmSync(from);
+    }
+    ws.writes.push({ path: from, action: "write", unhashed: true });
+    ws.writes.push({ path: to, action: "write", unhashed: true });
+    moved.push(rule);
+    console.log(`${logPrefix} ${tag}core: ${from} moved to ${to}`);
+  }
+  const remaining = fs
+    .readdirSync(houseDir)
+    .filter((f) => !moved.includes(f.replace(/\.yml$/, "")));
+  const houseGone = remaining.length === 0;
+  if (houseGone) {
+    if (!dryRun) fs.rmSync(houseDir, { recursive: true });
+    ws.writes.push({ path: houseDir, action: "write", unhashed: true });
+  }
+  if (moved.length === 0 && !houseGone) return;
+  const ini = ".vale.ini";
+  if (!fs.lstatSync(ini, { throwIfNoEntry: false })?.isFile()) return;
+  const text = fs.readFileSync(ini, "utf-8");
+  let next = text;
+  if (moved.length > 0) {
+    next = next.replace(
+      new RegExp(`^(\\s*)House\\.(${moved.join("|")})\\b`, "gm"),
+      (_m, lead: string, rule: string) => `${lead}Bkit.${rule}`,
+    );
+  }
+  if (houseGone) next = next.replace(/^(#.*)\bHouse rules\b/gm, "$1Bkit rules");
+  next = next.replace(/^(BasedOnStyles\s*=\s*)(.*)$/gm, (line, pre: string, list: string) => {
+    const styles = list.split(",").map((s) => s.trim());
+    if (!styles.includes("House")) return line;
+    if (houseGone) {
+      const swapped = styles.map((s) => (s === "House" ? "Bkit" : s));
+      return pre + [...new Set(swapped)].join(", ");
+    }
+    return styles.includes("Bkit") ? line : `${line}, Bkit`;
+  });
+  if (next === text) return;
+  if (!dryRun) fs.writeFileSync(ini, next, "utf-8");
+  ws.writes.push({ path: ini, action: "update", unhashed: true });
+  console.log(`${logPrefix} ${tag}core: ${ini} — House style names rewritten to Bkit`);
 }
 
 // Status option ids of GitHub's Kanban and Team planning board templates; every board

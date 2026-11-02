@@ -381,7 +381,7 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
     fs.writeFileSync(path.join(tmpDir, ".github", "renovate.json5"), owned, "utf-8");
     fs.writeFileSync(
       path.join(tmpDir, ".github", "workflows", "bkit-renovate.yml"),
-      "name: Renovate\n",
+      "name: Renovate (ours)\n",
       "utf-8",
     );
 
@@ -390,7 +390,7 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
     expect(fs.readFileSync(path.join(tmpDir, ".github", "renovate.json5"), "utf-8")).toBe(owned);
     expect(
       fs.readFileSync(path.join(tmpDir, ".github", "workflows", "bkit-renovate.yml"), "utf-8"),
-    ).toBe("name: Renovate\n");
+    ).toBe("name: Renovate (ours)\n");
   });
 
   it("preserves consumer prose after bkit:end in docs/*.md through a real `bkit upgrade` (#129 §1/§6)", () => {

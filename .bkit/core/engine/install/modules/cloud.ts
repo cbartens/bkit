@@ -54,7 +54,7 @@ function setConsumerBkitField(field: string, value: string, dryRun: boolean): vo
 // The cloud workflow is a template (`.bkit/templates.md`). Shared first step of the
 // claude and opencode setup advisories.
 const CLOUD_WORKFLOW_ADOPT_STEP =
-  "  - Copy `.bkit/templates/.github/workflows/bkit-cloud.yml` to `.github/workflows/bkit-cloud.yml` and own it: bkit never writes or overwrites that file. Replace the `{{CLOUD_RUNNER}}` placeholder in both jobs' `runs-on` with a runner label (e.g. `ubuntu-latest`). `.bkit/templates.md` lists every placeholder; on each `bkit upgrade`, diff the refreshed template against your copy.\n";
+  "  - Copy `.bkit/templates/.github/workflows/bkit-cloud.yml` to `.github/workflows/bkit-cloud.yml` and own it: bkit never writes or overwrites that file after you copy it. The one exception is a brand migration: `bkit upgrade` rewrites exact shipped old names in it and leaves any edited line. Replace the `{{CLOUD_RUNNER}}` placeholder in both jobs' `runs-on` with a runner label (e.g. `ubuntu-latest`). `.bkit/templates.md` lists every placeholder; on each `bkit upgrade`, diff the refreshed template against your copy.\n";
 
 // ---------------------------------------------------------------------------
 // runCloudModule — opt-in cloud-agent integration
@@ -110,7 +110,7 @@ export function runCloudModule(ctx: ModuleContext): void {
         "Cloud env config splits across the repo (`.claude/hooks/bkit-cloud-bootstrap.sh`, a copy-and-own template you adopt) and the Claude app dashboard (setup script + env vars + auth tokens, manual).",
       action:
         "Two locations to touch — full recipe in bkit's `cloud.md`.\n\n" +
-        "IN REPO (copy-and-own; bkit never writes it):\n" +
+        "IN REPO (copy-and-own; bkit never writes it, apart from brand migrations that rewrite exact shipped old names):\n" +
         "  - Adopt `.bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh` as `.claude/hooks/bkit-cloud-bootstrap.sh` and edit it freely — the baseline runs `pnpm install` / `vale sync` and the gh login on each cloud session; add your own repo-specific steps (Supabase start, turbo prebuild, etc. — examples inlined). The `.claude/settings.json` SessionStart entry runs it only when present (`test -f … || true`).\n\n" +
         "IN CLAUDE APP (claude.ai/code → environment selector → + Add environment):\n" +
         "  - Name: the repo name (e.g. `acme-web`) — one environment per repo, since secrets are per-repo.\n" +
@@ -163,7 +163,7 @@ export function runCloudModule(ctx: ModuleContext): void {
         "  - Allowed concurrency: latest-supersedes.\n" +
         "  - Set `BKIT_LINEAR_API_KEY` as a **Runtime Secret** in the Cloud Agents dashboard (https://cursor.com/dashboard/cloud-agents) → your environment → Secrets tab.\n" +
         "  - Label the issue `bkit:auto` in Linear before pushing the build commit.\n\n" +
-        "IN REPO (copy each template and own it; bkit never writes or overwrites these files — see `.bkit/templates.md`):\n" +
+        "IN REPO (copy each template and own it; bkit never writes or overwrites these files, apart from brand migrations that rewrite exact shipped old names — see `.bkit/templates.md`):\n" +
         "  - `.bkit/templates/.cursor/Dockerfile` → `.cursor/Dockerfile`: change Node major if `engines.node` differs from 20; add Playwright / Supabase CLI / extra apt deps.\n" +
         "  - `.bkit/templates/.cursor/environment.json` → `.cursor/environment.json`: set `install` / `start` / `terminals[]` / `env` for your stack.",
     });
