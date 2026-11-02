@@ -154,3 +154,14 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-02T02:40:44Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-gaps-remediate/1/2/comment","hash":"032525598626001520acf70b8de87358eb0cedf2a6b084ddae96e021b096014f","ref":"https://github.com/cbartens/bkit/issues/719#issuecomment-6567761039","at":"2026-11-02T02:40:46Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-gaps-remediate","status":"DONE","at":"2026-11-02T02:40:46Z","parentSha":"ed700a3ce821f9fdf9b8a9a6dc3804d24ab6a1c6","artifacts":["docs/plans/202610/logs/719-cloud-variants-add/build-plan-gaps-remediate-1-2-log.md"],"verdict":"FAIL","attempt":2,"group":1,"strategy":"FINAL"}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T02:40:51Z","noun":"counters","verb":"derive","flags":["file","workflow","step","position"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T02:40:52Z","noun":"decisions","verb":"compose","flags":["out","header","items","file","loop","group","attempt","max"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T02:40:52Z","noun":"status","verb":"row","flags":["file","workflow","type","field"]}
+{"type":"owner-pause","workflow":"build","at":"2026-11-02T02:40:52Z","reason":"decision"}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T02:45:36Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T02:56:19Z","noun":"status","verb":"row","flags":["file","workflow","type"]}
+{"type":"owner-answer","workflow":"build","at":"2026-11-02T02:56:19Z"}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T02:56:29Z","noun":"counters","verb":"grant","flags":["name","of","group","point","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T02:56:29Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","artifact","field","number","post","title","comment-body","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-decision/-/2/comment","hash":"9abdbb28a3b8e60e522da80982743dba64572852b42eeaa4b3f2791d2e93f329","ref":"https://github.com/cbartens/bkit/issues/719#issuecomment-6567943192","at":"2026-11-02T02:56:30Z"}
+{"type":"step-done","workflow":"build","step":"build-decision","status":"DONE","at":"2026-11-02T02:56:30Z","parentSha":"496eb2ff8d5a3b8d1376038feb52c16e710712da","artifacts":["docs/plans/202610/logs/719-cloud-variants-add/build-decision-1-2.md"],"attempt":2,"route":"retry"}
