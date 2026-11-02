@@ -83,6 +83,11 @@ R_EAGER="graph-eager.json"
 # register carries its findings.
 REACH_MJS="scripts/ci/guards/assert-routes-reachable.mjs"
 R_REACH="graph-reachability.json"
+# Docs that carry a copy of the register's packages diagram between the
+# graph:packages markers, space-separated; empty = none. rollup, register and
+# refresh rewrite each copy, and check fails on a stale one. Runs on system python.
+EMBED_PY="scripts/graphify/bkit-graph-embed.py"
+GRAPH_EMBED_DOCS="README.md"
 
 usage() {
   cat <<'EOF'
@@ -95,11 +100,14 @@ Usage: pnpm graph[:clean|:update|:rollup|:refresh|:check|:graphml|:tree|:scoped]
                   alias edit will silently keep the old, unresolved edges.
   graph:update    Re-extract changed files only, then recluster.
   graph:check     Rebuild from THIS tree; fail if the tracked register
-                  docs/capabilities.md differs from the rebuild. Writes nothing
-                  tracked. Reads uncommitted edits — `check-at` does not.
+                  docs/capabilities.md differs from the rebuild, or a
+                  GRAPH_EMBED_DOCS copy of its packages diagram differs from
+                  the register. Writes nothing tracked. Reads uncommitted
+                  edits — `check-at` does not.
   graph:refresh   Rebuild the register in a clean checkout of the STAGED
-                  files (the index), copy it over docs/capabilities.md.
-                  Stage your change first. Fixes a red gate; commit it.
+                  files (the index), copy it over docs/capabilities.md, and
+                  rewrite the GRAPH_EMBED_DOCS copies. Stage your change
+                  first. Fixes a red gate; commit it.
   check-at <rev>  `check` in a throwaway checkout of <rev>. Pre-push runs it
                   for every push to dev; CI runs it for every push and pull request.
   spec            Print the pinned graphify release (pip spec).
@@ -269,6 +277,15 @@ capabilities() {
     --min-weight "$MMD_MIN_WEIGHT" --overlay "$REPORTS/$R_OVERLAY"
 }
 
+# Rewrite every GRAPH_EMBED_DOCS copy of the packages diagram from the tracked
+# register; pass --check to fail on a stale copy instead.
+embed() {
+  [ -n "$GRAPH_EMBED_DOCS" ] || return 0
+  local docs
+  read -r -a docs <<< "$GRAPH_EMBED_DOCS"
+  python3 "$EMBED_PY" "$CAPABILITIES_DOC" "${docs[@]}" "$@"
+}
+
 # Strip the three provenance stamps (one header line, two `%% Generated ... from
 # <sha>` comments) so `check` compares CONTENT: the graph is built at HEAD, a
 # committed register at the PARENT of the commit carrying it. Stamp staleness is
@@ -306,6 +323,7 @@ case "${1:-build}" in
   clean)  rm -rf "$OUT" && run_local extract . --code-only && repair && cluster ;;
   rollup)
     capabilities "$CAPABILITIES_DOC"
+    embed
     for lvl in packages modules; do
       run_scratch cluster-only "$REPORTS/.build/$lvl" --no-label >/dev/null 2>&1 || true
     done
@@ -375,7 +393,11 @@ case "${1:-build}" in
       echo "[graph] $CAPABILITIES_DOC matches a rebuild at $(git rev-parse --short HEAD)."
     else
       echo "[graph] DRIFT: $CAPABILITIES_DOC is not what this tree produces (diff above)." >&2
-      echo "[graph] Fix:   pnpm graph:refresh && git add $CAPABILITIES_DOC && git commit" >&2
+      echo "[graph] Fix:   pnpm graph:refresh && git add $CAPABILITIES_DOC $GRAPH_EMBED_DOCS && git commit" >&2
+      exit 1
+    fi
+    if ! embed --check; then
+      echo "[graph] Fix:   pnpm graph:refresh && git add $GRAPH_EMBED_DOCS && git commit" >&2
       exit 1
     fi
     ;;
@@ -383,6 +405,7 @@ case "${1:-build}" in
     # Tracked register only: `rollup` minus its HTML views (minutes of rendering `refresh`
     # does not need). Needs a built graph.
     capabilities "$CAPABILITIES_DOC"
+    embed
     ;;
   check-at)
     # `check` in a clean checkout of one commit (default HEAD); pre-push runs it for every
@@ -398,6 +421,7 @@ case "${1:-build}" in
     staged=$(git write-tree) || { echo "[graph] the index has unmerged paths — resolve them first" >&2; exit 1; }
     at_commit HEAD --tree="$staged" build register
     cp "$AT_DIR/$CAPABILITIES_DOC" "$CAPABILITIES_DOC"
+    embed
     echo "[graph] $CAPABILITIES_DOC rebuilt from the staged files on $(git rev-parse --short HEAD) — commit it"
     ;;
   scoped)

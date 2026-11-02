@@ -528,6 +528,12 @@ const ADOPTED: Record<string, Entry> = {
       },
       {
         kind: "adapt",
+        what: "one package per .bkit/core/engine folder",
+        fill: "def by_package(p):\n",
+        with: 'def by_package(p):\n    # .bkit/core/engine: one package per top-level folder or file.\n    if p.startswith(".bkit/core/engine/"):\n        return re.sub(r"\\.[^./]+$", "", "/".join(p.split("/")[:4]))\n',
+      },
+      {
+        kind: "adapt",
         what: "one module per file in .bkit/core/engine",
         fill: "def by_module(p):\n",
         with: 'def by_module(p):\n    # .bkit/core/engine: one module per file.\n    if p.startswith(".bkit/core/engine/"):\n        return re.sub(r"\\.[^./]+$", "", p)\n',
@@ -543,9 +549,16 @@ const ADOPTED: Record<string, Entry> = {
         fill: 'MMD_MIN_WEIGHT="${MMD_MIN_WEIGHT:-12}"',
         with: '# bkit repo: one module per .bkit/core/engine file, so the default is 6.\nMMD_MIN_WEIGHT="${MMD_MIN_WEIGHT:-6}"',
       },
+      {
+        kind: "adapt",
+        what: "README carries the packages diagram",
+        fill: 'GRAPH_EMBED_DOCS=""',
+        with: 'GRAPH_EMBED_DOCS="README.md"',
+      },
     ],
   },
   "scripts/graphify/bkit-graph-eager-rules.json": identical,
+  "scripts/graphify/bkit-graph-embed.py": identical,
   "scripts/graphify/bkit-graph-pre-push.sh": identical,
   "scripts/graphify/bkit-graph-repair.py": identical,
   "scripts/graphify/bkit-graph-surface.py": {

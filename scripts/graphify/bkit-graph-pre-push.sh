@@ -74,7 +74,7 @@ if [ -f scripts/graphify/bkit-graphify.sh ] && [ -f "$CAP_DOC" ]; then
       echo "[pre-push]    brew install uv && uv tool install '$(bash scripts/graphify/bkit-graphify.sh spec)'" >&2
     elif ! bash scripts/graphify/bkit-graphify.sh check-at "$CAP_GATE_SHA" < /dev/null; then
       echo "[pre-push] BLOCKED: $CAP_DOC is not what the pushed commit builds (diff above); CI fails $CAP_GATE_WHAT on it." >&2
-      echo "[pre-push] Fix: pnpm graph:refresh && git add $CAP_DOC && git commit, then push again." >&2
+      echo "[pre-push] Fix: pnpm graph:refresh, git add the files it rewrote, git commit, then push again." >&2
       exit 1
     fi
   else
