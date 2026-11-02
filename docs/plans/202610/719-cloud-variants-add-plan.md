@@ -627,7 +627,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** `terminal` fact on `bkit issues fetch` (`719-issues-fetch-terminal-fact`)
+- [x] **TASK 1:** `terminal` fact on `bkit issues fetch` (`719-issues-fetch-terminal-fact`)
   - **UPDATE:** `fetchIssue` in `.bkit/core/engine/commands/workflow/tracker.ts`: every tracker's result carries `terminal` from one helper; Linear fetch query asks `state { name type }`; Jira fetch (`JIRA_TOOLS.getIssue`, `view: "evidence"`) reads `fields.status.statusCategory.key`, requesting that field explicitly if the evidence view omits it (record which in the code comment beside the call)
   - **UPDATE:** `readBlockers` in `.bkit/core/engine/commands/workflow/tracker.ts`: `open` = not the shared helper's `terminal`
   - **UPDATE:** `.bkit/core/engine/commands/workflow/issues.test.ts`: `fetch` facts case for `terminal` on stdout and in `issue-facts.json`
