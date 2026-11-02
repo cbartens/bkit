@@ -1,3 +1,6 @@
+Verdict: PASS
+<!-- verdict:end -->
+
 # Build Skills Installed
 
 ## Technologies Identified
@@ -11,7 +14,7 @@
 
 `using-git-worktrees`, `bkit-ship`, `test-driven-development`, `systematic-debugging`, `bkit-design`, `using-superpowers`, `dispatching-parallel-agents`, `find-skills`, `executing-plans`, `finishing-a-development-branch`, `bkit-plan`, `bkit-build`, `bkit-auto`, `bkit-debug`, `brainstorming`, `writing-plans`, `requesting-code-review`, `receiving-code-review`, `writing-skills`, `verification-before-completion`, `subagent-driven-development`.
 
-## Newly Installed
+The four technology skills below are also already installed and have matching entries in `skills-lock.json`. They cover the retained plan's shell lock, Perl holder, TypeScript commands and Vitest tests. No required technology gap remains.
 
 <!-- prettier-ignore -->
 | Folder | Package | Source | Quality evidence |
@@ -21,12 +24,14 @@
 | `.agents/skills/typescript-pro` | `jeffallan/claude-skills@typescript-pro` | https://skills.sh/jeffallan/claude-skills/typescript-pro | Registry: 14.4K installs. GitHub: 12,172 stars. |
 | `.agents/skills/vitest` | `antfu/skills@vitest` | https://skills.sh/antfu/skills/vitest | Registry: 45.5K installs. GitHub: 6,032 stars. |
 
-Each named install exited 0, and all four folders are present. The installer updated `skills-lock.json`. No bundled scripts were executed.
+All four skill folders and their `SKILL.md` files are present. Their source names in `skills-lock.json` match the table. The quality figures above are the evidence recorded during the prior install, not fresh registry measurements.
 
-The installer reported `typescript-pro` as `Critical Risk` in its Gen assessment, with zero Socket alerts and Snyk `Low Risk`. Its content was not loaded or executed by this install step; implementation agents must review it under the standing untrusted-content contract before use. The other three installs reported Gen `Safe`, zero Socket alerts and Snyk `Low Risk`.
+The prior installer reported `typescript-pro` as Gen `Critical Risk`, with zero Socket alerts and Snyk `Low Risk`. This reassessment read its `SKILL.md` as untrusted text. It contains implementation directives to enable compiler flags, introduce branded types, generate declarations and run extra type checks. These directives are outside this install task and were not executed or treated as changes to the retained plan. The other three prior installs reported Gen `Safe`, zero Socket alerts and Snyk `Low Risk`.
+
+## Newly Installed
+
+None. The existing set satisfies the retained plan, so this reassessment ran no registry searches, additions or reinstalls and changed no skill files or lock entries.
 
 ## Not Found
 
-None. Each technology has one accepted matching skill. More specialised, unrelated search results were not installed.
-
-The initial sandboxed registry requests failed with `ENOTFOUND registry.npmjs.org`; the bounded retry with network access succeeded for all four searches. Publisher repository names and star counts were independently checked through the GitHub API.
+None. Each required technology has an existing matching skill.
