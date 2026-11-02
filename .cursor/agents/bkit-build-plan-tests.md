@@ -75,7 +75,7 @@ tools:
    - Take the import path, symbol names and signatures from the task's `CREATE`, `UPDATE` and `DONE WHEN` lines exactly; the code step builds to those names.
    - For each value the test checks or fakes, read the code that produces it where that code exists, and append `SOURCE — TASK {N}: {value} from {file}:{line}` with Bash `echo >>`. A fake that differs from what that code returns lets the test pass against code that fails for real.
    - Write the test at the file and under the test name the entry gives, asserting the behaviour its `Derived Test Matrix` row names.
-     - Give it that name as one literal string, not a name built when the tests run (a parameterised table name such as `it.each`, `@pytest.mark.parametrize` or a template string), because the engine finds and locks each planned test by its name in the file.
+     - Give it that name as one literal string, not a name built when the tests run (a parameterised table name such as `it.each`, `@pytest.mark.parametrize` or a template string), because the engine finds and locks each planned test by its name in the file. A name given as a suite path (`suite > test`) is found by its last segment, so that segment is the test's literal name.
      - **If** the file already holds a test under that name → update that test. Add expectations, and never remove or loosen one: the engine records the test as `updated`, and verify fails an update that removes or loosens an expectation.
    - **If** `package.json` declares `bkit:lint:file` → run `pnpm bkit:lint:file {file}`, and fix the file until it exits 0.
    - **If** `package.json` declares `bkit:test:file` → run `pnpm bkit:test:file {file}` once. A failure, or a load error on an import the code step will create, is the expected result.

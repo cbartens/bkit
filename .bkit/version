@@ -3,7 +3,7 @@
   "canonicalHashes": {
     ".cursor/mcp.json": "355e01cadabed3b924ebe339dc07ecbf7179397ebc9accf8618d5d7d6af6c438",
     "docs/deployments.md": "b7a8014afb7da246d615894519d87d5def6d0c6c7be8e714fb634157cdd7580f",
-    "docs/testing.md": "3ec96b5c34bdcf6204c0103f508c1d0b2d968b1935e646c17913f7c7f4475557",
+    "docs/testing.md": "04d591fb6ab9f66ad269a58d457d03a38a15b6c5c6d7e3a8af51d31feb697320",
     ".claude/settings.json": "f6c41bd5f3d1f6a10d456543c0653a82c9432bd6f3a6a8aa1b3e9a78eb72a3b7",
     ".agents/context.md": "5cf54b91ffaa5d9372415a24dd1acfe0910c7def1f4434e25ccf110e3eaed013",
     ".agents/docs.md": "bfbddbf98bc4238c6a01dbd68fbe515ba01db2371c440d868fe12a8db6c96df0",
@@ -264,7 +264,11 @@
     ".codex/hooks/bkit-rules.cjs": "37b3c590ada277b78a246908dadddbb31c64798ca5d300e57b193e314620da67",
     ".opencode/plugin/bkit-rules.js": "6769eacc40fc2856faa9265c5665d5e4426b23c21e3df1e4f177ed6422221824",
     ".bkit/router.md": "86d116ff31947df4b7f52b76b3e3928bc3ac5bfad54ddf7c4a9ae53d2b0cf18a",
-    ".bkit/cli.md": "fbcf361fb9f1496b5844c91ac7afa9cff78c67ad2dff7d06f1ccecce0affb77c"
+    ".bkit/cli.md": "fbcf361fb9f1496b5844c91ac7afa9cff78c67ad2dff7d06f1ccecce0affb77c",
+    ".claude/agents/bkit-build-plan-tests.md": "1a32ba7f8c778d67f4c7788336427ab6196cbc4c41aeea0148f94817e66a5c69",
+    ".cursor/agents/bkit-build-plan-tests.md": "32145923d722758ffa0a153893d14a8414f189488d99cf8e3aac2c1ec7b42ac9",
+    ".opencode/agents/bkit-build-plan-tests.md": "7c135f8aa139a2e0dfc6dd19c2217680739a94d4ba8b194c1dcfc38d7dabc825",
+    ".codex/agents/bkit-build-plan-tests.toml": "eee202c3fb73723e6095d922505e6135cdacfa08872d9a9cb2ab015d791732a6"
   },
   "claudeAllowDerived": [
     "WebFetch(domain:12factor.net)",

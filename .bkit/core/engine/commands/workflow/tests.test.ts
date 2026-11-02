@@ -1572,6 +1572,12 @@ describe("testBlock — a planned test's own lines, by name and indentation", ()
     expect(blockHash(VITEST.replace("toBe(1)", "toBe(2)"), "adds a row")).not.toBe(before);
   });
 
+  it("finds a test planned by its suite path (`suite > test`) through its last segment", () => {
+    expect(testBlock(VITEST, "rows > adds a row")).toBe(testBlock(VITEST, "adds a row"));
+    expect(testBlock(VITEST, "outer > rows > counts rows")).toBe(testBlock(VITEST, "counts rows"));
+    expect(testBlock(VITEST, "rows > no such test")).toBeNull();
+  });
+
   it("starts at the call when the name sits on its own line under an open paren", () => {
     const text = [
       "it(",

@@ -392,7 +392,11 @@ export function testBlock(text: string | null, name: string): string | null {
     const word = new RegExp(`(^|[^\\w])${escapeRegExp(name)}([^\\w]|$)`);
     at = testStart(lines, (l) => word.test(l));
   }
-  if (at < 0) return null;
+  if (at < 0) {
+    // A suite path (`suite > test`, as a JUnit report names it): the last segment is the test.
+    const last = name.split(" > ").pop()!;
+    return last === name ? null : testBlock(text, last);
+  }
   let start = at;
   while (
     start > 0 &&
