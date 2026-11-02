@@ -56,10 +56,16 @@ function envFor(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
 }
 
 /** Runs a bash snippet with `script` sourced. */
-function run(snippet: string, env: NodeJS.ProcessEnv, script = SCRIPT): Result {
+function run(
+  snippet: string,
+  env: NodeJS.ProcessEnv,
+  script = SCRIPT,
+  cwd = process.cwd(),
+): Result {
   const started = Date.now();
   const r = spawnSync("bash", ["-c", `. "${script}"; ${snippet}`], {
     env,
+    cwd,
     encoding: "utf-8",
     timeout: BUDGET.testTimeout,
   });
@@ -67,15 +73,21 @@ function run(snippet: string, env: NodeJS.ProcessEnv, script = SCRIPT): Result {
 }
 
 /** A run that takes the lock and holds it `holdS` seconds; `locked` resolves once it holds it. */
-function hold(who: string, holdS: number, env: NodeJS.ProcessEnv, script = SCRIPT) {
+function hold(
+  who: string,
+  holdS: number,
+  env: NodeJS.ProcessEnv,
+  script = SCRIPT,
+  cwd = process.cwd(),
+) {
   const child = spawn(
     "bash",
     ["-c", `. "${script}"; take_local_stack_lock "${who}" || exit 1; echo locked; sleep ${holdS}`],
-    { env, stdio: ["ignore", "pipe", "pipe"] },
+    { env, cwd, stdio: ["ignore", "pipe", "pipe"] },
   );
   children.push(child);
   const done = new Promise<void>((resolve) => child.on("exit", () => resolve()));
-  const lockFile = run("local_stack_lock_file", env, script);
+  const lockFile = run("local_stack_lock_file", env, script, cwd);
   const locked = waitForHolder(lockFile.stdout.trim() + ".holder", who, child);
   return { child, locked, done };
 }
@@ -102,7 +114,14 @@ async function waitForHolder(file: string, who: string, child: ChildProcess): Pr
   throw new Error("holder " + who + " did not write " + file);
 }
 
-function holdNamed(who: string, name: string, env: NodeJS.ProcessEnv, script = SCRIPT, holdS = 30) {
+function holdNamed(
+  who: string,
+  name: string,
+  env: NodeJS.ProcessEnv,
+  script = SCRIPT,
+  holdS = 30,
+  cwd = process.cwd(),
+) {
   const child = spawn(
     "bash",
     [
@@ -116,7 +135,7 @@ function holdNamed(who: string, name: string, env: NodeJS.ProcessEnv, script = S
         '" || exit 1; sleep ' +
         holdS,
     ],
-    { env, stdio: ["ignore", "pipe", "pipe"] },
+    { env, cwd, stdio: ["ignore", "pipe", "pipe"] },
   );
   children.push(child);
   const done = new Promise<void>((resolve) => child.on("exit", () => resolve()));
@@ -137,10 +156,16 @@ function checkout(name: string): { root: string; script: string } {
   return { root, script };
 }
 
-function commandRun(args: string[], env: NodeJS.ProcessEnv, script = SCRIPT): Result {
+function commandRun(
+  args: string[],
+  env: NodeJS.ProcessEnv,
+  script = SCRIPT,
+  cwd = process.cwd(),
+): Result {
   const started = Date.now();
   const result = spawnSync("bash", [script, "run", ...args], {
     env,
+    cwd,
     encoding: "utf-8",
     timeout: BUDGET.testTimeout,
   });
