@@ -92,6 +92,429 @@ const stub = (args: string[], vars: Record<string, string> = {}) => {
 const RUNS_URL = (sha: string) =>
   `/repos/example/example/actions/workflows/bkit-ci.yml/runs?head_sha=${sha}`;
 
+type LocateRun = {
+  id: number;
+  run_attempt: number;
+  workflow_id: number;
+  path: string;
+  head_branch: string;
+  head_sha: string;
+  head_repository: { full_name: string };
+  repository: { full_name: string };
+  status: string;
+  conclusion: string;
+  html_url: string;
+  created_at: string;
+  updated_at: string;
+};
+type LocateData = {
+  runs: LocateRun[];
+  jobs: Array<{ id: number; name: string; status: string; conclusion: string }>;
+  pr: { head: { ref: string; sha: string; repo: { full_name: string } } };
+  error?: boolean;
+  malformed?: boolean;
+  failPage?: boolean;
+};
+
+/** Unit boundary: real temporary git repository and a fixture-only GitHub executable. */
+function locateFixture() {
+  const cwd = tmp("bkit-locate-");
+  gitIn(cwd, "init", "-q", "-b", "fix/ci");
+  gitIn(cwd, "commit", "-q", "--allow-empty", "-m", "before");
+  const ancestor = gitIn(cwd, "rev-parse", "HEAD");
+  gitIn(cwd, "commit", "-q", "--allow-empty", "-m", "current");
+  const head = gitIn(cwd, "rev-parse", "HEAD");
+  gitIn(cwd, "remote", "add", "origin", "https://github.com/example/example.git");
+  fs.mkdirSync(path.join(cwd, ".github/workflows"), { recursive: true });
+  fs.writeFileSync(path.join(cwd, ".github/workflows/consumer-ci.yml"), "name: CI\n");
+  fs.writeFileSync(
+    path.join(cwd, "package.json"),
+    JSON.stringify({
+      bkit: { testing: { ciWorkflow: "consumer-ci.yml" } },
+    }),
+  );
+  const prompt = path.join(cwd, "prompt.md");
+  const issue = path.join(cwd, "issue.md");
+  const file = path.join(cwd, "status.jsonl");
+  const selection = path.join(cwd, "selection.json");
+  fs.writeFileSync(prompt, "bkit-debug #1\n");
+  fs.writeFileSync(issue, "No run supplied.\n");
+  fs.writeFileSync(
+    file,
+    JSON.stringify({ type: "workflow-started", workflow: "debug", at: "2026-11-01T00:00:00Z" }) +
+      "\n",
+  );
+  const run: LocateRun = {
+    id: 101,
+    run_attempt: 2,
+    workflow_id: 456,
+    path: ".github/workflows/consumer-ci.yml",
+    head_branch: "fix/ci",
+    head_sha: head,
+    head_repository: { full_name: "example/example" },
+    repository: { full_name: "example/example" },
+    status: "completed",
+    conclusion: "failure",
+    html_url: "https://github.com/example/example/actions/runs/101",
+    created_at: "2026-11-01T00:00:00Z",
+    updated_at: "2026-11-01T00:01:00Z",
+  };
+  const data: LocateData = {
+    runs: [run],
+    jobs: [
+      { id: 1, name: "bkit-tests-integration", status: "completed", conclusion: "failure" },
+      { id: 2, name: "bkit-tests-check", status: "completed", conclusion: "failure" },
+    ],
+    pr: { head: { ref: "fix/ci", sha: head, repo: { full_name: "example/example" } } },
+  };
+  const bin = path.join(cwd, "bin");
+  fs.mkdirSync(bin);
+  const dataFile = path.join(bin, "data.json");
+  const callsFile = path.join(bin, "calls.jsonl");
+  fs.writeFileSync(callsFile, "");
+  fs.writeFileSync(
+    path.join(bin, "gh"),
+    `#!${process.execPath}
+const fs = require("node:fs");
+const path = require("node:path");
+const dir = __dirname;
+const args = process.argv.slice(2);
+fs.appendFileSync(path.join(dir, "calls.jsonl"), JSON.stringify(args) + "\\n");
+const data = JSON.parse(fs.readFileSync(path.join(dir, "data.json"), "utf8"));
+if (data.error) { process.stderr.write("HTTP 403 unavailable fixture\\n"); process.exit(4); }
+if (data.malformed) { process.stdout.write("{"); process.exit(0); }
+const emit = value => process.stdout.write(JSON.stringify(value));
+const endpoint = args.find(value => value.startsWith("/repos/")) || "";
+if (args[0] === "api" && /\\/pulls\\/\\d+/.test(endpoint)) { emit(data.pr); process.exit(0); }
+if (args[0] === "pr" && args[1] === "view") {
+  emit({headRefName: data.pr.head.ref, headRefOid: data.pr.head.sha,
+    headRepository: {name: "example", nameWithOwner: data.pr.head.repo.full_name},
+    headRepositoryOwner: {login: data.pr.head.repo.full_name.split("/")[0]}});
+  process.exit(0);
+}
+if (args[0] !== "api") { process.stderr.write("unhandled fixture call"); process.exit(1); }
+if (/\\/jobs(?:\\?|$)/.test(endpoint)) {
+  const match = endpoint.match(/\\/attempts\\/(\\d+)/);
+  if (!match || Number(match[1]) !== 2) { process.stderr.write("attempt must be pinned"); process.exit(1); }
+  const page = Number(new URL("https://fixture.invalid" + endpoint).searchParams.get("page") ||
+    (args.find(value => /^page=/.test(value)) || "page=1").split("=")[1]);
+  if (data.failPage && (page > 1 || args.includes("--paginate"))) { process.stderr.write("page unavailable"); process.exit(1); }
+  const pages = [];
+  for (let offset = 0; offset < data.jobs.length; offset += 100) pages.push({total_count: data.jobs.length, jobs: data.jobs.slice(offset, offset + 100)});
+  if (!pages.length) pages.push({total_count: 0, jobs: []});
+  if (args.includes("--paginate")) {
+    if (args.includes("--slurp")) emit(pages);
+    else process.stdout.write(pages.map(value => JSON.stringify(value)).join("\\n"));
+  } else emit(pages[page - 1] || {total_count: data.jobs.length, jobs: []});
+  process.exit(0);
+}
+if (/\\/actions\\/workflows\\/[^/]+\\/runs/.test(endpoint)) {
+  const query = new URL("https://fixture.invalid" + endpoint).searchParams;
+  const runs = data.runs.filter(run => (!query.get("head_sha") || run.head_sha === query.get("head_sha")) &&
+    (!query.get("branch") || run.head_branch === query.get("branch")) &&
+    (endpoint.includes("consumer-ci.yml") || endpoint.includes("456")) &&
+    (run.workflow_id === 456 || run.path === ".github/workflows/consumer-ci.yml"));
+  emit({total_count: runs.length, workflow_runs: runs}); process.exit(0);
+}
+if (/\\/actions\\/runs\\/\\d+/.test(endpoint)) {
+  const id = Number(endpoint.match(/\\/runs\\/(\\d+)/)[1]);
+  const run = data.runs.find(value => value.id === id);
+  if (!run) process.exit(1);
+  const attempt = endpoint.match(/\\/attempts\\/(\\d+)(?:\\?|$)/);
+  emit(attempt ? {...run, run_attempt: Number(attempt[1])} : run); process.exit(0);
+}
+if (/\\/actions\\/runs/.test(endpoint)) {
+  emit({total_count: data.runs.length, workflow_runs: data.runs}); process.exit(0);
+}
+process.stderr.write("unhandled fixture endpoint " + endpoint); process.exit(1);
+`,
+    { mode: 0o755 },
+  );
+  env({ PATH: `${bin}${path.delimiter}${process.env.PATH ?? ""}` });
+  const save = () => fs.writeFileSync(dataFile, JSON.stringify(data));
+  save();
+  return {
+    cwd,
+    prompt,
+    issue,
+    file,
+    selection,
+    head,
+    ancestor,
+    data,
+    save,
+    locate: (...extra: string[]) => {
+      save();
+      return cli(cwd, [
+        "locate",
+        `--prompt-file=${prompt}`,
+        `--issue-text-file=${issue}`,
+        "--branch=fix/ci",
+        "--repo=example/example",
+        `--file=${file}`,
+        `--selection-out=${selection}`,
+        ...extra,
+      ]);
+    },
+    calls: () =>
+      fs
+        .readFileSync(callsFile, "utf-8")
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as string[]),
+    selected: () => JSON.parse(fs.readFileSync(selection, "utf-8")),
+    saved: (runId = "101") => {
+      const ciSelection = {
+        mode: "ci",
+        provider: "github",
+        repo: "example/example",
+        runId,
+        runAttempt: 2,
+        runUrl: `https://github.com/example/example/actions/runs/${runId}/attempts/2`,
+        workflowId: "456",
+        workflowPath: ".github/workflows/consumer-ci.yml",
+        headBranch: "fix/ci",
+        headSha: head,
+        conclusion: "failure",
+        redTiers: ["integration"],
+        via: "prompt-run",
+      };
+      fs.appendFileSync(
+        file,
+        JSON.stringify({
+          type: "workflow-meta",
+          workflow: "debug",
+          at: "2026-11-01T00:00:01Z",
+          ciSelection,
+          ciGeneration: 1,
+        }) + "\n",
+      );
+    },
+  };
+}
+
+describe("bkit runs locate", () => {
+  it("locates CI evidence using prompt saved issue and local precedence", async () => {
+    const f = locateFixture();
+    f.data.runs.push({ ...f.data.runs[0]!, id: 102 });
+    fs.writeFileSync(f.issue, "https://github.com/example/example/actions/runs/102\n");
+    f.saved("102");
+    fs.writeFileSync(
+      f.prompt,
+      "bkit-debug https://github.com/example/example/actions/runs/101 https://github.com/example/example/pull/7\n",
+    );
+    const before = fs.readFileSync(f.file, "utf-8");
+    const prompt = await f.locate();
+    expect(prompt.code).toBe(0);
+    expect(prompt.json).toMatchObject({ runId: "101", via: "prompt-run" });
+    expect(f.selected()).toMatchObject({
+      mode: "ci",
+      runId: "101",
+      runAttempt: 2,
+      redTiers: ["integration"],
+    });
+    expect(fs.readFileSync(f.file, "utf-8")).toBe(before);
+    fs.writeFileSync(f.prompt, "bkit-debug #1\n");
+    expect((await f.locate()).json).toMatchObject({ runId: "102" });
+    fs.writeFileSync(
+      f.prompt,
+      "bkit-debug [local] https://github.com/other/repo/actions/runs/999\n",
+    );
+    expect((await f.locate()).code).toBe(1);
+    expect(f.selected()).toMatchObject({ mode: "local", reason: "explicit-local" });
+    const issue = locateFixture();
+    fs.writeFileSync(issue.issue, "https://github.com/example/example/actions/runs/101\n");
+    expect((await issue.locate()).json).toMatchObject({ runId: "101", via: "issue-run" });
+    fs.writeFileSync(
+      issue.issue,
+      "###### bkit:generated generated-id\nhttps://github.com/other/repo/actions/runs/999\n",
+    );
+    expect((await issue.locate()).code).toBe(0);
+    expect(issue.selected()).toMatchObject({ runId: "101" });
+  });
+
+  it("rejects ambiguous cross-repository and malformed attempt references", async () => {
+    const f = locateFixture();
+    fs.writeFileSync(
+      f.prompt,
+      "https://github.com/example/example/actions/runs/101 https://github.com/example/example/actions/runs/102",
+    );
+    expect((await f.locate()).code).toBe(8);
+    fs.writeFileSync(f.prompt, "https://github.com/other/repo/actions/runs/101");
+    expect((await f.locate()).code).toBe(82);
+    fs.writeFileSync(f.prompt, "https://github.com/example/example/actions/runs/101/attempts/0");
+    expect((await f.locate()).code).toBe(2);
+    fs.writeFileSync(f.prompt, "https://github.com/example/example/actions/runs/101/attempts/nope");
+    expect((await f.locate()).code).toBe(2);
+    expect(fs.existsSync(f.selection)).toBe(false);
+    expect(f.calls()).toEqual([]);
+  });
+
+  it("filters branch and PR discovery by configured workflow and exact head", async () => {
+    const f = locateFixture();
+    f.data.runs.push({
+      ...f.data.runs[0]!,
+      id: 202,
+      workflow_id: 999,
+      path: ".github/workflows/unrelated.yml",
+      conclusion: "success",
+      updated_at: "2026-11-02T00:00:00Z",
+    });
+    expect((await f.locate()).code).toBe(0);
+    expect(f.selected()).toMatchObject({ runId: "101", workflowId: "456" });
+    const branchCalls = f
+      .calls()
+      .map((call) => call.join(" "))
+      .join("\n");
+    expect(branchCalls).toMatch(/actions\/workflows\/(?:consumer-ci\.yml|456)\/runs/);
+    expect(decodeURIComponent(branchCalls)).toContain("branch=fix/ci");
+    fs.writeFileSync(f.prompt, "https://github.com/example/example/pull/7");
+    const pr = await f.locate();
+    expect(pr.code).toBe(0);
+    expect(pr.json).toMatchObject({ runId: "101", via: "prompt-pr", headSha: f.head });
+    expect(
+      f
+        .calls()
+        .map((call) => call.join(" "))
+        .join("\n"),
+    ).toContain(`head_sha=${f.head}`);
+  });
+
+  it("freezes explicit workflow run attempt and all failed job pages", async () => {
+    const f = locateFixture();
+    f.data.runs[0]!.workflow_id = 777;
+    f.data.runs[0]!.run_attempt = 3;
+    f.data.runs[0]!.path = ".github/workflows/other-ci.yml";
+    f.data.jobs = Array.from({ length: 100 }, (_, index) => ({
+      id: index + 1,
+      name: `success-${index}`,
+      status: "completed",
+      conclusion: "success",
+    }));
+    f.data.jobs.push(
+      { id: 101, name: "bkit-tests-integration", status: "completed", conclusion: "failure" },
+      { id: 102, name: "unknown-deploy", status: "completed", conclusion: "failure" },
+    );
+    fs.writeFileSync(f.prompt, "https://github.com/example/example/actions/runs/101/attempts/2");
+    const result = await f.locate();
+    expect(result.code).toBe(0);
+    expect(result.json).toMatchObject({
+      runId: "101",
+      runAttempt: 2,
+      workflowId: "777",
+      workflowPath: ".github/workflows/other-ci.yml",
+      tiers: [],
+    });
+    expect(JSON.stringify(result.json.failedJobs)).toContain("bkit-tests-integration");
+    expect(JSON.stringify(result.json.failedJobs)).toContain("unknown-deploy");
+    expect(f.selected()).toMatchObject({ runAttempt: 2, redTiers: [], workflowId: "777" });
+    const calls = f.calls().filter((call) => call.join(" ").includes("/jobs"));
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.every((call) => call.join(" ").includes("/attempts/2/jobs"))).toBe(true);
+  });
+
+  it("validates branch fork ancestor divergent and unavailable ancestry evidence", async () => {
+    const f = locateFixture();
+    fs.writeFileSync(f.prompt, "https://github.com/example/example/actions/runs/101");
+    const current = await f.locate();
+    expect(current.code).toBe(0);
+    expect(current.json.headRelation).toBe("current");
+    f.data.runs[0]!.head_sha = f.ancestor;
+    const historical = await f.locate();
+    expect(historical.code).toBe(0);
+    expect(historical.json.headRelation).toBe("ancestor");
+    f.data.runs[0]!.head_branch = "fix/other";
+    expect((await f.locate()).code).toBe(82);
+    f.data.runs[0]!.head_branch = "fix/ci";
+    f.data.runs[0]!.head_repository = { full_name: "fork/example" };
+    expect((await f.locate()).code).toBe(82);
+    f.data.runs[0]!.head_repository = { full_name: "example/example" };
+    gitIn(f.cwd, "switch", "-q", "-c", "fix/divergent", f.ancestor);
+    gitIn(f.cwd, "commit", "-q", "--allow-empty", "-m", "divergent");
+    const divergent = gitIn(f.cwd, "rev-parse", "HEAD");
+    gitIn(f.cwd, "switch", "-q", "fix/ci");
+    f.data.runs[0]!.head_sha = divergent;
+    const rejected = await f.locate();
+    expect(rejected.code).toBe(82);
+    expect(`${rejected.err} ${rejected.out}`).toMatch(/diverg/i);
+    f.data.runs[0]!.head_sha = "f".repeat(40);
+    const unavailable = await f.locate();
+    expect(unavailable.code).toBe(82);
+    expect(`${unavailable.err} ${unavailable.out}`).toMatch(/unknown|unavailable|missing|ancestr/i);
+  });
+
+  it("distinguishes proven automatic no-red from explicit non-red and unavailable lookup", async () => {
+    const f = locateFixture();
+    f.data.runs[0]!.conclusion = "success";
+    expect((await f.locate()).code).toBe(1);
+    expect(f.selected()).toMatchObject({ mode: "local" });
+    fs.writeFileSync(f.prompt, "https://github.com/example/example/actions/runs/101");
+    expect((await f.locate()).code).toBe(82);
+    f.data.runs[0]!.conclusion = "timed_out";
+    expect((await f.locate()).code).toBe(0);
+    f.data.runs[0]!.conclusion = "startup_failure";
+    expect((await f.locate()).code).toBe(0);
+    fs.writeFileSync(f.prompt, "bkit-debug #1");
+    f.data.error = true;
+    expect((await f.locate()).code).toBe(80);
+    f.data.error = false;
+    f.data.malformed = true;
+    expect((await f.locate()).code).not.toBe(1);
+    f.data.malformed = false;
+    f.data.runs[0]!.conclusion = "failure";
+    f.data.jobs = Array.from({ length: 101 }, (_, index) => ({
+      id: index + 1,
+      name: "bkit-tests-unit",
+      status: "completed",
+      conclusion: "failure",
+    }));
+    f.data.failPage = true;
+    const partial = await f.locate();
+    expect(partial.code).not.toBe(0);
+    expect(partial.code).not.toBe(1);
+    const absent = locateFixture();
+    absent.data.runs = [];
+    expect((await absent.locate()).code).toBe(1);
+    expect(absent.selected()).toMatchObject({ mode: "local" });
+  });
+
+  it("validates normalized fallback evidence against the requested identity", async () => {
+    const f = locateFixture();
+    fs.writeFileSync(f.prompt, "https://github.com/example/example/actions/runs/101/attempts/2");
+    const evidence = path.join(f.cwd, "evidence.json");
+    const response = {
+      request: {
+        repo: "example/example",
+        branch: "fix/ci",
+        kind: "run",
+        runId: "101",
+        runAttempt: 2,
+      },
+      run: f.data.runs[0],
+      jobs: f.data.jobs,
+      complete: true,
+    };
+    fs.writeFileSync(evidence, JSON.stringify(response));
+    f.data.error = true;
+    const accepted = await f.locate(`--evidence-file=${evidence}`);
+    expect(accepted.code).toBe(0);
+    expect(f.selected()).toMatchObject({ runId: "101", runAttempt: 2, headSha: f.head });
+    fs.writeFileSync(
+      evidence,
+      JSON.stringify({ ...response, request: { ...response.request, runId: "999" } }),
+    );
+    expect((await f.locate(`--evidence-file=${evidence}`)).code).not.toBe(0);
+    fs.writeFileSync(evidence, JSON.stringify({ ...response, complete: false }));
+    expect((await f.locate(`--evidence-file=${evidence}`)).code).not.toBe(0);
+    fs.writeFileSync(
+      evidence,
+      JSON.stringify({ ...response, run: { ...response.run, workflow_id: null } }),
+    );
+    expect((await f.locate(`--evidence-file=${evidence}`)).code).not.toBe(0);
+  });
+});
+
 describe("fixture gh stub", () => {
   it("runs?head_sha=green-capstone returns the captured workflow_runs list", () => {
     const r = stub(["api", RUNS_URL("green-capstone")]);

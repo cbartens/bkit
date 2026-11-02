@@ -175,6 +175,37 @@ describe("bkit worktrees setup — adopt in place", () => {
 });
 
 describe("bkit worktrees setup — debug", () => {
+  it("adopts a requested debug branch without mutating conflicting worktrees", async () => {
+    const cwd = repo("dev");
+    git(cwd, "branch", "fix/ci");
+    const adopted = await setup(cwd, "debug", "--branch=fix/ci", "--worktrees");
+    expect(adopted.code).toBe(0);
+    expect(adopted.json).toMatchObject({
+      branch: "fix/ci",
+      worktreePath: worktreeDir(cwd, FID),
+    });
+    expect(git(worktreeDir(cwd, FID), "branch", "--show-current")).toBe("fix/ci");
+    expect(git(cwd, "branch", "--show-current")).toBe("dev");
+
+    const conflictRoot = repo("dev");
+    git(conflictRoot, "branch", "fix/ci");
+    const conflict = linked(conflictRoot);
+    const sentinel = path.join(conflict, "owner-work.txt");
+    fs.writeFileSync(sentinel, "keep my uncommitted work\n");
+    const before = git(conflict, "rev-parse", "HEAD");
+    const refused = await setup(conflictRoot, "debug", "--branch=fix/ci", "--worktrees");
+    expect(refused.code).toBe(7);
+    expect(refused.err).toContain("fix/ci");
+    expect(git(conflict, "branch", "--show-current")).toBe(`feat/${FID}`);
+    expect(git(conflict, "rev-parse", "HEAD")).toBe(before);
+    expect(fs.readFileSync(sentinel, "utf-8")).toBe("keep my uncommitted work\n");
+    expect(git(conflictRoot, "branch", "--show-current")).toBe("dev");
+
+    const missingRoot = repo("dev");
+    expect((await setup(missingRoot, "debug", "--branch=fix/missing", "--worktrees")).code).toBe(7);
+    expect(git(missingRoot, "branch", "--list", "fix/missing")).toBe("");
+  });
+
   it("may debug in place on dev", async () => {
     const r = await setup(repo("dev"), "debug");
     expect(r.code).toBe(0);

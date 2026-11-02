@@ -140,6 +140,58 @@ const inRebase = (dir: string) =>
   fs.existsSync(path.join(dir, ".git/rebase-merge")) ||
   fs.existsSync(path.join(dir, ".git/rebase-apply"));
 
+describe("bkit branches parse", () => {
+  it("parses explicit and existing branch tokens without consuming URLs", async () => {
+    const cwd = makeRepo("parse");
+    git(cwd, "branch", "fix/ci");
+    git(cwd, "update-ref", "refs/remotes/origin/fix/ci", sha(cwd));
+    const prompt = path.join(cwd, "prompt.md");
+    write(
+      cwd,
+      "prompt.md",
+      "bkit-debug branch=fix/ci https://github.com/example/repo/actions/runs/123",
+    );
+    const explicit = await run(cwd, ["parse", `--prompt-file=${prompt}`]);
+    expect(explicit.code).toBe(0);
+    expect(explicit.json).toMatchObject({ branch: "fix/ci" });
+    write(
+      cwd,
+      "prompt.md",
+      "bkit-debug fix/ci https://github.com/example/repo/pull/4 docs/testing.md",
+    );
+    const token = await run(cwd, ["parse", `--prompt-file=${prompt}`]);
+    expect(token.code).toBe(0);
+    expect(token.json).toMatchObject({ branch: "fix/ci" });
+    write(
+      cwd,
+      "prompt.md",
+      "bkit-debug https://github.com/example/repo/actions/runs/123 docs/testing.md",
+    );
+    const noBranch = await run(cwd, ["parse", `--prompt-file=${prompt}`]);
+    expect(noBranch.code).toBe(0);
+    expect(noBranch.json).toMatchObject({ branch: null });
+    git(cwd, "update-ref", "refs/remotes/origin/fix/remote", sha(cwd));
+    write(cwd, "prompt.md", "bkit-debug fix/remote");
+    const remoteOnly = await run(cwd, ["parse", `--prompt-file=${prompt}`]);
+    expect(remoteOnly.code).toBe(0);
+    expect(remoteOnly.json).toMatchObject({ branch: "fix/remote" });
+  });
+
+  it("rejects missing explicit and ambiguous existing branch selections", async () => {
+    const cwd = makeRepo("parse-refusals");
+    git(cwd, "branch", "fix/one");
+    git(cwd, "branch", "fix/two");
+    const prompt = path.join(cwd, "prompt.md");
+    write(cwd, "prompt.md", "bkit-debug branch=fix/missing");
+    expect((await run(cwd, ["parse", `--prompt-file=${prompt}`])).code).toBe(3);
+    write(cwd, "prompt.md", "bkit-debug fix/one fix/two");
+    expect((await run(cwd, ["parse", `--prompt-file=${prompt}`])).code).toBe(8);
+    write(cwd, "prompt.md", "bkit-debug branch=fix/one branch=fix/two");
+    expect((await run(cwd, ["parse", `--prompt-file=${prompt}`])).code).toBe(8);
+    expect(git(cwd, "branch", "--show-current").out).toBe("main");
+  });
+});
+
 /** A bare `origin` with `dev`, and a clone of it on `dev`. */
 function withOrigin(name: string): { origin: string; clone: string } {
   const origin = tmp(`${name}-origin`);
