@@ -5,7 +5,7 @@ import * as path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { alreadyDone } from "../../ledgers/status";
+import { actionHash, alreadyDone, recordAction } from "../../ledgers/status";
 import {
   JIRA_COMMENT_LIMIT,
   JIRA_TOOLS,
@@ -19,8 +19,10 @@ import {
   moveOnBoard,
   postComment,
   postCommentOnce,
+  recentComments,
   readBlockers,
   readLabels,
+  runActionKey,
   splitAt,
   trackerTarget,
   writeLabels,
@@ -51,6 +53,7 @@ if [ -f "$d/exit" ]; then cat "$d/stderr" >&2; exit "$(cat "$d/exit")"; fi
 ep=""
 for a in "$@"; do case "$a" in repos/*|graphql) ep="$a"; break ;; esac; done
 f="$d/resp-$(printf '%s' "$ep" | tr '/?=&' '____')"
+[ -f "$f-$n" ] && f="$f-$n"
 [ -f "$f" ] && cat "$f"
 exit 0
 `;
@@ -107,6 +110,84 @@ const jira = () =>
   repo({
     tracker: { default: "jira", jira: { site: "https://acme.atlassian.net", project: "PROJ" } },
   });
+
+function progressFixture() {
+  const cwd = github();
+  const file = path.join(cwd, "docs/plans/202611/logs/12-progress/status.jsonl");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(
+    file,
+    `${JSON.stringify({ type: "workflow-started", workflow: "build", at: "2026-11-01T01:00:00Z" })}\n`,
+  );
+  const body = stampMarker("###### bkit:generated\n### Step 7 — Plan Execute\nexact 😀 source\n");
+  const url = "https://github.com/o/r/issues/12#issuecomment-101";
+  gh.resp(
+    "repos/o/r/issues/12/comments",
+    JSON.stringify({
+      id: 101,
+      node_id: "IC_101",
+      body,
+      html_url: url,
+      user: { id: 7, node_id: "U_7", login: "engine" },
+      created_at: "2026-11-01T01:01:00Z",
+      updated_at: "2026-11-01T01:01:00Z",
+      issue_url: "https://api.github.com/repos/o/r/issues/12",
+    }),
+  );
+  gh.resp(
+    "graphql",
+    JSON.stringify({
+      data: {
+        repository: {
+          issue: {
+            comments: {
+              nodes: [
+                {
+                  id: "IC_101",
+                  body,
+                  url,
+                  author: { login: "engine" },
+                  createdAt: "2026-11-01T01:01:00Z",
+                  updatedAt: "2026-11-01T01:01:00Z",
+                },
+              ],
+              pageInfo: { hasPreviousPage: false, hasNextPage: false, startCursor: "cursor-101" },
+            },
+          },
+        },
+      },
+    }),
+  );
+  return {
+    cwd,
+    file,
+    body,
+    url,
+    target: trackerTarget(cwd, { fid: "12-progress" }),
+    options: {
+      file,
+      key: runActionKey(file, "build", "build-plan-tasks", 1, 1),
+      log: () => undefined,
+    },
+  };
+}
+
+function progressFiles(cwd: string): string[] {
+  const root = path.join(cwd, ".git/bkit-outbox");
+  if (!fs.existsSync(root)) return [];
+  return fs
+    .readdirSync(root, { recursive: true })
+    .map((entry) => path.join(root, entry))
+    .filter((entry) => fs.statSync(entry).isFile() && entry.endsWith(".json"));
+}
+
+function stringsOf(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  if (typeof value === "number") return [String(value)];
+  if (Array.isArray(value)) return value.flatMap((entry: unknown) => stringsOf(entry));
+  if (value !== null && typeof value === "object") return Object.values(value).flatMap(stringsOf);
+  return [];
+}
 
 /** A fetch stub answering each call with the next queued response; records every request. */
 function stubFetch(...responses: Array<Response | Error>) {
@@ -195,6 +276,32 @@ describe("trackerTarget", () => {
 // ---------------------------------------------------------------------------
 
 describe("splitAt", () => {
+  it("budgets the entire encoded body at limit and overflow", () => {
+    const limit = JIRA_COMMENT_LIMIT;
+    const marker = stampMarker("###### bkit:generated\nreport").split("\n")[0]!;
+    const exact = `${marker}\n${"a".repeat(limit - marker.length - 1)}`;
+    expect(splitAt(exact, limit)).toEqual([exact]);
+    const parts = splitAt(`${exact}b`, limit);
+    expect(parts.length).toBeGreaterThan(1);
+    expect(parts.every((part) => part.length <= limit)).toBe(true);
+    expect(parts.map((part) => part.split("\n")[0])).toEqual(parts.map(() => marker));
+    expect(parts.map((part) => part.split("\n").slice(2).join("\n")).join("")).toBe(
+      `${exact}b`.slice(marker.length + 1),
+    );
+  });
+
+  it("keeps non BMP code points intact in deterministic parts", () => {
+    const marker = stampMarker("###### bkit:generated\nreport").split("\n")[0]!;
+    const text = "😀".repeat(100);
+    const body = `${marker}\n${text}`;
+    const parts = splitAt(body, 101);
+    expect(parts.length).toBeGreaterThan(1);
+    expect(parts.every((part) => part.length <= 101)).toBe(true);
+    expect(parts.every((part) => part.isWellFormed())).toBe(true);
+    expect(parts.map((part) => part.split("\n").slice(2).join("\n")).join("")).toBe(text);
+    expect(splitAt(body, 101)).toEqual(parts);
+  });
+
   it("keeps a body at the limit whole", () => {
     const body = `###### bkit:generated\n${"a".repeat(JIRA_COMMENT_LIMIT - 22)}`;
     expect(body.length).toBe(JIRA_COMMENT_LIMIT);
@@ -220,6 +327,187 @@ describe("splitAt", () => {
     const parts = splitAt(body, JIRA_COMMENT_LIMIT);
     expect(parts.length).toBe(3);
     for (const p of parts) expect(p.length).toBeLessThanOrEqual(JIRA_COMMENT_LIMIT);
+  });
+});
+
+describe("progress inspection", () => {
+  it("rejects marker preserving external edits", async () => {
+    const f = progressFixture();
+    const original = await recentComments(f.target, 1);
+    const editedBody = `${f.body}external edit that retains the generated marker`;
+    gh.resp(
+      "graphql",
+      JSON.stringify({
+        data: {
+          repository: {
+            issue: {
+              comments: {
+                nodes: [
+                  {
+                    id: "IC_101",
+                    body: editedBody,
+                    url: f.url,
+                    author: { login: "engine" },
+                    createdAt: "2026-11-01T01:01:00Z",
+                    updatedAt: "2026-11-01T01:02:00Z",
+                  },
+                ],
+                pageInfo: { hasPreviousPage: false, hasNextPage: false },
+              },
+            },
+          },
+        },
+      }),
+    );
+    const edited = await recentComments(f.target, 1);
+    expect(markerHashOf(original[0]!.body)).toBe(markerHashOf(edited[0]!.body));
+    expect(stringsOf(original)).toContain(actionHash(f.body));
+    expect(stringsOf(edited)).toContain(actionHash(editedBody));
+    expect(stringsOf(edited)).not.toContain(actionHash(f.body));
+    expect(gh.calls().some((call) => call.includes("--method PATCH"))).toBe(false);
+  });
+
+  it("preserves generated first line and extracts versioned h6 section markers", async () => {
+    const f = progressFixture();
+    const section = actionHash("original section identity");
+    const body = stampMarker(
+      `###### bkit:generated\n###### bkit:section v1 ${section} 1/2\nsection report 😀`,
+    );
+    gh.resp(
+      "graphql",
+      JSON.stringify({
+        data: {
+          repository: {
+            issue: {
+              comments: {
+                nodes: [
+                  {
+                    id: "IC_101",
+                    body,
+                    url: f.url,
+                    author: { login: "engine" },
+                    createdAt: "2026-11-01T01:01:00Z",
+                    updatedAt: "2026-11-01T01:01:00Z",
+                  },
+                ],
+                pageInfo: { hasPreviousPage: false, hasNextPage: false },
+              },
+            },
+          },
+        },
+      }),
+    );
+    const inspected = await recentComments(f.target, 1);
+    expect(inspected[0]?.body.split("\n")[0]).toBe(body.split("\n")[0]);
+    expect(stringsOf(inspected)).toContain(section);
+    expect(markerHashOf(body)).toMatch(/^[a-f0-9]{12}$/);
+    expect(markerHashOf(`<h6>bkit:generated ${markerHashOf(body)}</h6>\n<p>section</p>`)).toBe(
+      markerHashOf(body),
+    );
+  });
+
+  it("returns owned comment identity and stable representation evidence", async () => {
+    const f = progressFixture();
+    const githubResult = await postComment(f.target, f.body);
+    const githubEvidence = stringsOf(githubResult);
+    expect(githubEvidence).toContain("101");
+    expect(githubEvidence).toContain("7");
+    expect(githubEvidence).toContain(actionHash(f.body));
+
+    process.env.BKIT_LINEAR_API_KEY = "unit-linear-key";
+    stubFetch(
+      json({
+        data: {
+          commentCreate: {
+            success: true,
+            comment: {
+              id: "comment-101",
+              body: f.body,
+              url: "https://linear.test/comment-101",
+              createdAt: "2026-11-01T01:01:00.000Z",
+              updatedAt: "2026-11-01T01:01:00.000Z",
+              user: { id: "author-7" },
+            },
+          },
+        },
+      }),
+    );
+    const linearResult = await postComment(trackerTarget(linear(), { issue: "ENG-4" }), f.body);
+    const linearEvidence = stringsOf(linearResult);
+    expect(linearEvidence).toContain("comment-101");
+    expect(linearEvidence).toContain("author-7");
+    expect(linearEvidence).toContain(actionHash(f.body));
+  });
+
+  it("selects newest created comment across complete pages", async () => {
+    const target = trackerTarget(github(), { fid: "12-progress" });
+    const newer = Array.from({ length: 100 }, (_, index) => ({
+      id: `IC_${index + 2}`,
+      body: `comment ${index + 2}`,
+      url: `https://gh/c/${index + 2}`,
+      author: { login: "engine" },
+      createdAt: new Date(Date.UTC(2026, 10, 1, 0, index + 1)).toISOString(),
+      updatedAt: new Date(Date.UTC(2026, 10, 1, 0, index + 1)).toISOString(),
+    }));
+    const older = {
+      id: "IC_1",
+      body: "older but edited later",
+      url: "https://gh/c/1",
+      author: { login: "engine" },
+      createdAt: "2026-11-01T00:00:00.000Z",
+      updatedAt: "2026-11-02T00:00:00.000Z",
+    };
+    gh.resp(
+      "graphql-1",
+      JSON.stringify({
+        data: {
+          repository: {
+            issue: {
+              comments: {
+                nodes: newer,
+                pageInfo: { hasPreviousPage: true, hasNextPage: false, startCursor: "cursor-2" },
+              },
+            },
+          },
+        },
+      }),
+    );
+    gh.resp(
+      "graphql-2",
+      JSON.stringify({
+        data: {
+          repository: {
+            issue: {
+              comments: {
+                nodes: [older],
+                pageInfo: { hasPreviousPage: false, hasNextPage: true, startCursor: "cursor-1" },
+              },
+            },
+          },
+        },
+      }),
+    );
+    const comments = await recentComments(target, 101);
+    expect(comments.map((comment) => comment.body)).toEqual([
+      older.body,
+      ...newer.map((c) => c.body),
+    ]);
+    expect(comments.at(-1)?.url).toBe("https://gh/c/101");
+    expect(gh.calls()).toHaveLength(2);
+    expect(gh.calls().join("\n")).not.toMatch(/(?:first|last):101/);
+    expect(gh.calls()[1]).toContain("cursor-2");
+
+    gh.resp(
+      "graphql-3",
+      JSON.stringify({
+        data: {
+          repository: {
+            issue: { comments: { nodes: newer, pageInfo: { hasPreviousPage: true } } },
+          },
+        },
+      }),
+    );
+    await expect(recentComments(target, 101)).rejects.toBeInstanceOf(TrackerError);
   });
 });
 
@@ -502,6 +790,191 @@ describe("jira client (MCP over HTTP)", () => {
 
 describe("postCommentOnce", () => {
   const log = () => undefined;
+
+  it("reuses original section time without changing duplicate identity", async () => {
+    const f = progressFixture();
+    const originalTime = "2026-11-01T01:02:03Z";
+    const completed = {
+      type: "step-done",
+      workflow: "build",
+      step: "build-plan-tasks",
+      status: "DONE",
+      at: originalTime,
+      parentSha: "a".repeat(40),
+      artifacts: [],
+      group: 1,
+      attempt: 1,
+    };
+    fs.appendFileSync(f.file, `${JSON.stringify(completed)}\n`);
+    expect(await postCommentOnce(f.target, f.body, f.options)).toMatchObject({ done: true });
+    const firstWrite = gh.calls().findIndex((call) => call.includes("--method POST"));
+    const submitted: { body: string } = JSON.parse(gh.stdin(firstWrite + 1));
+    expect(submitted.body).toMatch(/2026-11-01[T ]01:02:03(?:\.000)?(?:Z| UTC)/);
+    expect(alreadyDone(f.file, f.options.key!, actionHash(f.body))?.ref).toBe(f.url);
+    fs.appendFileSync(f.file, `${JSON.stringify({ ...completed, at: "2026-11-01T02:03:04Z" })}\n`);
+    expect(await postCommentOnce(f.target, f.body, f.options)).toMatchObject({ deduped: true });
+    const cached = progressFiles(f.cwd).flatMap((file) =>
+      stringsOf(JSON.parse(fs.readFileSync(file, "utf-8"))),
+    );
+    expect(cached).toContain(submitted.body);
+    expect(cached.join("\n")).not.toContain("2026-11-01T02:03:04Z");
+    expect(gh.calls().filter((call) => call.includes("--method POST"))).toHaveLength(1);
+  });
+
+  it("caches exact engine source with available progress identity", async () => {
+    const f = progressFixture();
+    expect(await postCommentOnce(f.target, f.body, f.options)).toMatchObject({ done: true });
+    const files = progressFiles(f.cwd);
+    expect(files.length).toBeGreaterThan(0);
+    const values = files.flatMap((file) => stringsOf(JSON.parse(fs.readFileSync(file, "utf-8"))));
+    const firstWrite = gh.calls().findIndex((call) => call.includes("--method POST"));
+    const submitted: { body: string } = JSON.parse(gh.stdin(firstWrite + 1));
+    expect(values).toContain(submitted.body);
+    expect(submitted.body).toContain(f.body.split("\n").slice(1).join("\n"));
+    expect(values).toContain(f.url);
+    expect(values.join("\n")).toContain("build");
+    expect(values.join("\n")).toContain("o/r");
+    expect(values.join("\n")).toContain("12");
+    expect(values.join("\n")).not.toContain("remote-only source");
+  });
+
+  it("keeps original body identity separate from time and changed output", async () => {
+    const f = progressFixture();
+    await postCommentOnce(f.target, f.body, f.options);
+    const files = progressFiles(f.cwd);
+    expect(files.length).toBeGreaterThan(0);
+    const original = files.map((file) => fs.readFileSync(file, "utf-8")).join("\n");
+    expect(await postCommentOnce(f.target, f.body, f.options)).toMatchObject({ deduped: true });
+    expect(files.map((file) => fs.readFileSync(file, "utf-8")).join("\n")).toBe(original);
+    const changed = `${f.body}changed output\n`;
+    expect(await postCommentOnce(f.target, changed, f.options)).toMatchObject({ done: true });
+    expect(alreadyDone(f.file, f.options.key!, actionHash(f.body))?.ref).toBe(f.url);
+    expect(alreadyDone(f.file, f.options.key!, actionHash(changed))?.ref).toBe(f.url);
+    expect(gh.calls().filter((call) => /--method (?:POST|PATCH)/.test(call))).toHaveLength(2);
+  });
+
+  it("reuses matching invocation state without adopting foreign ownership", async () => {
+    const f = progressFixture();
+    await postCommentOnce(f.target, f.body, f.options);
+    expect(progressFiles(f.cwd).length).toBeGreaterThan(0);
+    expect(await postCommentOnce(f.target, f.body, f.options)).toMatchObject({ deduped: true });
+    const otherTarget = trackerTarget(f.cwd, { issue: "13", fid: "13-progress" });
+    gh.resp("repos/o/r/issues/13/comments", JSON.stringify({ html_url: "https://gh/c/foreign" }));
+    expect(await postCommentOnce(otherTarget, f.body, f.options)).toMatchObject({
+      done: true,
+      url: "https://gh/c/foreign",
+    });
+    expect(gh.calls().filter((call) => call.includes("--method PATCH"))).toEqual([]);
+    expect(
+      gh.calls().some((call) => call.includes("repos/o/r/issues/13/comments --method POST")),
+    ).toBe(true);
+  });
+
+  it("invalidates missing corrupt and unsupported progress cache", async () => {
+    const missing = progressFixture();
+    const corrupt = progressFixture();
+    const unsupported = progressFixture();
+    await postCommentOnce(missing.target, missing.body, missing.options);
+    await postCommentOnce(corrupt.target, corrupt.body, corrupt.options);
+    await postCommentOnce(unsupported.target, unsupported.body, unsupported.options);
+    const missingFiles = progressFiles(missing.cwd);
+    const corruptFiles = progressFiles(corrupt.cwd);
+    const unsupportedFiles = progressFiles(unsupported.cwd);
+    expect(missingFiles.length).toBeGreaterThan(0);
+    expect(corruptFiles.length).toBeGreaterThan(0);
+    expect(unsupportedFiles.length).toBeGreaterThan(0);
+    missingFiles.forEach((file) => fs.unlinkSync(file));
+    corruptFiles.forEach((file) => fs.writeFileSync(file, "{not-json"));
+    unsupportedFiles.forEach((file) =>
+      fs.writeFileSync(file, JSON.stringify({ version: 999_999, schema: 999_999 })),
+    );
+    const next = stampMarker("###### bkit:generated\n### Step 8 — Plan Verify\nnew report only");
+    const first = await postCommentOnce(missing.target, next, {
+      ...missing.options,
+      key: runActionKey(missing.file, "build", "build-plan-verify", 1, 1),
+    });
+    const second = await postCommentOnce(corrupt.target, next, {
+      ...corrupt.options,
+      key: runActionKey(corrupt.file, "build", "build-plan-verify", 1, 1),
+    });
+    const third = await postCommentOnce(unsupported.target, next, {
+      ...unsupported.options,
+      key: runActionKey(unsupported.file, "build", "build-plan-verify", 1, 1),
+    });
+    expect([first, second, third]).toEqual([
+      expect.objectContaining({ done: true }),
+      expect.objectContaining({ done: true }),
+      expect.objectContaining({ done: true }),
+    ]);
+    const writes = gh
+      .calls()
+      .map((call, index) => ({ call, index }))
+      .filter(({ call }) => call.includes("--method POST"));
+    expect(writes).toHaveLength(6);
+    expect(writes.slice(-3).map(({ index }) => JSON.parse(gh.stdin(index + 1)))).toEqual([
+      { body: next },
+      { body: next },
+      { body: next },
+    ]);
+    expect(gh.calls().filter((call) => call.includes("--method PATCH"))).toEqual([]);
+  });
+
+  it("contains cache read and write failures as standalone degradation", async () => {
+    const f = progressFixture();
+    await postCommentOnce(f.target, f.body, f.options);
+    const files = progressFiles(f.cwd);
+    expect(files.length).toBeGreaterThan(0);
+    files.forEach((file) => {
+      fs.unlinkSync(file);
+      fs.mkdirSync(file);
+    });
+    const next = stampMarker("###### bkit:generated\n### Step 8 — Plan Verify\nstandalone");
+    expect(
+      await postCommentOnce(f.target, next, {
+        ...f.options,
+        key: runActionKey(f.file, "build", "build-plan-verify", 1, 1),
+      }),
+    ).toMatchObject({ done: true, url: f.url });
+    const writes = gh
+      .calls()
+      .map((call, index) => ({ call, index }))
+      .filter(({ call }) => call.includes("--method POST"));
+    expect(writes).toHaveLength(2);
+    expect(JSON.parse(gh.stdin(writes[1]!.index + 1))).toEqual({ body: next });
+    expect(gh.calls().filter((call) => call.includes("--method PATCH"))).toEqual([]);
+  });
+
+  it("uses legacy receipts and contains receipt failures", async () => {
+    const cwd = github();
+    const target = trackerTarget(cwd, { fid: "12-x" });
+    const body = stampMarker("###### bkit:generated\n### Step 7 — Plan Execute\nreport");
+    const file = path.join(cwd, "status.jsonl");
+    recordAction(file, {
+      action: "comment",
+      key: "build/1/build-plan-tasks/1/1/comment",
+      hash: actionHash(body),
+      ref: "https://gh/c/legacy",
+    });
+    const known = await postCommentOnce(target, body, {
+      file,
+      key: "build/1/build-plan-tasks/1/1/comment",
+      log,
+    });
+    expect(known).toMatchObject({ done: true, deduped: true, url: "https://gh/c/legacy" });
+    expect(gh.calls()).toEqual([]);
+
+    gh.resp("repos/o/r/issues/12/comments", JSON.stringify({ html_url: "https://gh/c/fresh" }));
+    const unavailable = path.join(cwd, "package.json", "status.jsonl");
+    const fresh = await postCommentOnce(target, body, {
+      file: unavailable,
+      key: "build/1/build-plan-tasks/1/1/comment",
+      log,
+    });
+    expect(fresh).toMatchObject({ done: true, url: "https://gh/c/fresh" });
+    expect(fresh).not.toHaveProperty("deduped");
+    expect(gh.calls().filter((call) => call.includes("--method POST"))).toHaveLength(1);
+    expect(JSON.parse(gh.stdin(1))).toEqual({ body });
+  });
 
   it("skips issue-less runs and tracker none", async () => {
     expect(
