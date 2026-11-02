@@ -85,6 +85,128 @@ async function cli(cwd: string, argv: string[]) {
 // The fixture gh stub (tests/gh-stub-smoke.bats) — the gate tests rest on it
 // ---------------------------------------------------------------------------
 
+function verificationProvenanceFixture() {
+  const f = locateFixture();
+  const candidate = (
+    id: number,
+    conclusion: string,
+    extra: Record<string, unknown> = {},
+  ): Record<string, unknown> => ({
+    id,
+    run_attempt: 1,
+    workflow_id: 777,
+    path: ".github/workflows/special-ci.yml",
+    head_sha: f.head,
+    head_branch: "fix/ci",
+    repository: { full_name: "example/example" },
+    head_repository: { full_name: "example/example" },
+    event: "push",
+    status: "completed",
+    conclusion,
+    created_at: `2026-11-01T00:00:${String(id - 300).padStart(2, "0")}Z`,
+    updated_at: `2026-11-01T00:00:${String(id - 300).padStart(2, "0")}Z`,
+    html_url: `https://github.com/example/example/actions/runs/${id}`,
+    ...extra,
+  });
+  const state = {
+    selected: [
+      candidate(301, "failure"),
+      candidate(302, "success", {
+        event: "pull_request",
+        head_repository: { full_name: "a-fork/example" },
+      }),
+    ],
+  };
+  const dataFile = path.join(f.cwd, "provenance.json");
+  const callsFile = path.join(f.cwd, "provenance-calls.jsonl");
+  const bin = path.join(f.cwd, "provenance-bin");
+  fs.mkdirSync(bin);
+  fs.writeFileSync(callsFile, "");
+  fs.writeFileSync(
+    path.join(bin, "gh"),
+    `#!${process.execPath}
+const fs=require("node:fs"), args=process.argv.slice(2);
+fs.appendFileSync(${JSON.stringify(callsFile)},JSON.stringify(args)+"\\n");
+const data=JSON.parse(fs.readFileSync(${JSON.stringify(dataFile)},"utf8"));
+const endpoint=args.find(value=>value.startsWith("/repos/")) || "";
+const emit=value=>process.stdout.write(JSON.stringify(value));
+if(args[0]!=="api" || !endpoint.startsWith("/repos/example/example/")) process.exit(3);
+if(endpoint.includes("/201/jobs")) {
+  emit({total_count:1,jobs:[{id:1,name:"bkit-tests-check",status:"completed",conclusion:"success"}]});
+} else if(endpoint.includes("/workflows/777/")) {
+  if(!endpoint.includes("head_sha=${f.head}")) process.exit(3);
+  emit({total_count:data.selected.length,workflow_runs:data.selected});
+} else if(endpoint.includes("/workflows/consumer-ci.yml/")) {
+  emit({total_count:1,workflow_runs:[{id:201,workflow_id:456,head_sha:${JSON.stringify(f.head)},head_branch:"fix/ci",event:"push",status:"completed",conclusion:"success",repository:{full_name:"example/example"},head_repository:{full_name:"example/example"}}]});
+} else {process.stderr.write("unexpected provenance fixture endpoint "+endpoint);process.exit(3)}
+`,
+    { mode: 0o755 },
+  );
+  env({ PATH: `${bin}${path.delimiter}${process.env.PATH}` });
+  fs.writeFileSync(
+    f.selection,
+    JSON.stringify({
+      mode: "ci",
+      provider: "github",
+      repo: "example/example",
+      runId: "123",
+      runAttempt: 2,
+      runUrl: "https://github.com/example/example/actions/runs/123/attempts/2",
+      workflowId: "777",
+      workflowPath: ".github/workflows/special-ci.yml",
+      headBranch: "fix/ci",
+      headSha: f.ancestor,
+      conclusion: "failure",
+      redTiers: ["integration"],
+      via: "prompt-run",
+    }),
+  );
+  const gate = async (...flags: string[]) => {
+    fs.writeFileSync(dataFile, JSON.stringify(state));
+    return cli(f.cwd, [
+      "gate",
+      "--repo=example/example",
+      `--head=${f.head}`,
+      "--branch=fix/ci",
+      `--ci-selection-file=${f.selection}`,
+      ...flags,
+    ]);
+  };
+  return { state, candidate, gate };
+}
+
+it("rejects fork verification runs that shadow a red selected workflow at the same head", async () => {
+  const f = verificationProvenanceFixture();
+  const implicit = await f.gate();
+  expect.soft(implicit.code).not.toBe(0);
+  expect.soft(implicit.json).toMatchObject({ passed: false, verifyingRunId: 301 });
+  const pushed = await f.gate("--event=push");
+  expect.soft(pushed.code).not.toBe(0);
+  expect.soft(pushed.json).toMatchObject({ passed: false, verifyingRunId: 301 });
+  f.state.selected[1] = f.candidate(302, "success", { head_repository: undefined });
+  const absent = await f.gate();
+  expect.soft(absent.code).not.toBe(0);
+  expect.soft(absent.json).toMatchObject({ passed: false, verifyingRunId: 301 });
+  f.state.selected[1] = f.candidate(302, "success", {
+    repository: { full_name: "a-fork/example" },
+  });
+  const wrongRepository = await f.gate();
+  expect.soft(wrongRepository.code).not.toBe(0);
+  expect.soft(wrongRepository.json).toMatchObject({ passed: false, verifyingRunId: 301 });
+});
+
+it("preserves the requested event for selected-workflow verification", async () => {
+  const f = verificationProvenanceFixture();
+  f.state.selected[1] = f.candidate(302, "success", { event: "pull_request" });
+  const pushed = await f.gate("--event=push");
+  expect.soft(pushed.code).not.toBe(0);
+  expect.soft(pushed.json).toMatchObject({ passed: false, verifyingRunId: 301 });
+  f.state.selected.push(f.candidate(303, "success"));
+  const green = await f.gate("--event=push");
+  expect(green.code).toBe(0);
+  expect(green.json).toMatchObject({ passed: true, originalRunId: "123", verifyingRunId: 303 });
+});
+
 it("requires selected other-workflow success at the exact pushed head", async () => {
   const f = locateFixture();
   const state = { selected: "success", configured: "success", sha: f.head, absent: false };

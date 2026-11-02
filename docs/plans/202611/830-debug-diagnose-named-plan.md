@@ -224,6 +224,11 @@ Each row names the exact test and its sole implementing task.
 | reloads saved fixes and recollects explicitly replaced evidence generations | Integration | `.bkit/core/engine/audits/workflows/debug-ci-evidence.integration.test.ts` | 10 |
 | preserves local and repro overrides across actual workflow command sequences | Integration | `.bkit/core/engine/audits/workflows/debug-ci-evidence.integration.test.ts` | 10 |
 | blocks missing logs and wrong-branch evidence before source edits | Integration | `.bkit/core/engine/audits/workflows/debug-ci-evidence.integration.test.ts` | 10 |
+| finishes local-only rounds through the actual Debug Step 3 commands | Integration | `.bkit/core/engine/audits/workflows/debug-ci-evidence.integration.test.ts` | 12 |
+| finishes replacement CI evidence with the unchanged debug run number | Integration | `.bkit/core/engine/audits/workflows/debug-ci-evidence.integration.test.ts` | 13 |
+| finishes the first CI evidence round of the second debug run | Integration | `.bkit/core/engine/audits/workflows/debug-ci-evidence.integration.test.ts` | 13 |
+| rejects fork verification runs that shadow a red selected workflow at the same head | Unit | `.bkit/core/engine/commands/workflow/runs.test.ts` | 14 |
+| preserves the requested event for selected-workflow verification | Unit | `.bkit/core/engine/commands/workflow/runs.test.ts` | 14 |
 
 Static documentation and generation audits run in Tasks 9 and 11. The historical smoke replay and fresh-consumer footprint inspection run in Task 11; they do not replace the deterministic integration tests.
 
@@ -445,6 +450,41 @@ The Selection and State Contract and Verification and Rollback sections are bind
 <!-- bkit:task 11 end -->
 
 <!-- bkit:group 4 end -->
+
+<!-- bkit:group 5 start -->
+
+### TASK GROUP 5: Challenge round 1 findings
+
+<!-- bkit:task 12 start -->
+
+- [ ] **TASK 12:** A local Debug round cannot finish because its missing source suppresses the required clamp argument.
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/tests.ts:1876` · **Round:** 1
+  - **DONE WHEN:** Every executed local round returns `source: local`, including a fresh no-CI run and an explicit `[local]` replacement. Debug Step 3 passes the existing clamp record and completes the round through `steps finish`; local clamp enforcement remains intact.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/workflows/debug-ci-evidence.integration.test.ts` `finishes local-only rounds through the actual Debug Step 3 commands` fails when a fresh local run or an explicit local override executes its gate successfully but the workflow-derived finish command exits 2 with `local test completion needs clamp evidence`.
+
+<!-- bkit:task 12 end -->
+<!-- bkit:task 13 start -->
+
+- [ ] **TASK 13:** Replacing CI evidence during a resumed run makes the next evidence round impossible to finish.
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/workflows/bkit-debug.md:352` · **Round:** 1
+  - **DONE WHEN:** The test-run row and its `steps finish` row use the same current test-round attempt, independently of the Debug workflow run number. A second evidence generation in the same run and the first evidence round in a later Debug run both finish with matching selection identity and without weakening CI evidence validation.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/workflows/debug-ci-evidence.integration.test.ts` `finishes replacement CI evidence with the unchanged debug run number` fails when selection changes after a completed evidence round, `DEBUG_ATTEMPT` remains the run number, and the real Step 3 finish command rejects the new valid evidence.
+    - `.bkit/core/engine/audits/workflows/debug-ci-evidence.integration.test.ts` `finishes the first CI evidence round of the second debug run` fails when `DEBUG_ATTEMPT=2` writes a test-run attempt of 2 but `steps finish --attempt=next` derives round 1.
+
+<!-- bkit:task 13 end -->
+<!-- bkit:task 14 start -->
+
+- [ ] **TASK 14:** A fork's green PR run can validate a still-red same-repository workflow at the pushed commit.
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/runs.ts:2138` · **Round:** 1
+  - **DONE WHEN:** The additional selected-workflow gate accepts only runs whose repository and head repository match the saved repository, whose branch and commit match the verification target, and whose event matches an explicitly requested event. Missing or mismatched provenance cannot replace the same-repository result. Keep this scoped to the newly added selected-workflow verification path.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/runs.test.ts` `rejects fork verification runs that shadow a red selected workflow at the same head` fails on the configured gate being green, selected-workflow run 301 being a red same-repository push, and newer run 302 being a green fork PR with the same workflow ID, head SHA and branch: the current gate returns exit 0, passed true and verifyingRunId 302. Require refusal both without an event flag and with `--event=push`, and require refusal when the head-repository identity is missing.
+    - `.bkit/core/engine/commands/workflow/runs.test.ts` `preserves the requested event for selected-workflow verification` fails on a newer green same-repository pull_request result masking the selected workflow's red push despite `--event=push`; require the push result to decide the gate and retain a same-repository matching-event success control.
+
+<!-- bkit:task 14 end -->
+<!-- bkit:group 5 end -->
 
 ## Breaking Changes & Naming
 

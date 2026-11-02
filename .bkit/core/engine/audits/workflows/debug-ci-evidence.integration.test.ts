@@ -247,6 +247,15 @@ reject("unsupported fixture endpoint "+endpoint);
     return { found, state: state.json };
   };
   const round = () => {
+    // Hold any round counter the workflow declares before running tests. This
+    // reads the shipped command and its real result, independent of its name.
+    const preparation = command(3, "tests run");
+    const beforeRun = stepText(3).slice(0, stepText(3).indexOf(preparation));
+    for (const match of beforeRun.matchAll(/"\{BKIT\}" (counters route --name=([A-Z_]+)[^\n]*)/g)) {
+      const counter = execute(3, match[1]!);
+      if (counter.code !== 0) throw new Error(`Prepare test round: ${counter.err}`);
+      vars[match[2]!] = String(counter.json.value);
+    }
     const result = execute(3, "tests run");
     if (!result.json) throw new Error(`Run tests exited ${result.code}: ${result.err}`);
     vars.TEST_SOURCE = result.json.source ?? "local";
@@ -323,6 +332,82 @@ reject("unsupported fixture endpoint "+endpoint);
 }
 
 describe("Debug CI evidence sequence", () => {
+  it("finishes local-only rounds through the actual Debug Step 3 commands", () => {
+    const fresh = consumer();
+    fresh.prompt("/bkit-debug #1 [local] [live=off]\n");
+    expect(fresh.select().state.ciRun).toBeNull();
+    fresh.control.local = true;
+    fresh.save();
+    const first = fresh.round();
+    expect(first).toMatchObject({ code: 0, json: { verdict: "PASS", exitCode: 0 } });
+    expect.soft(first.json.source).toBe("local");
+    expect.soft(first.json.row.source).toBe("local");
+    const firstFinished = fresh.finishRound();
+    expect.soft(firstFinished, firstFinished.err).toMatchObject({ code: 0, json: { pass: true } });
+    expect(fresh.events().filter((event) => event.kind === "local-gate")).toHaveLength(1);
+
+    const override = consumer();
+    expect(override.select().state.ciRun).toBe("123");
+    override.prompt("/bkit-debug #1 [local] [live=off]\n");
+    expect(override.select().state).toMatchObject({ ciRun: null, ciGeneration: 2 });
+    override.control.local = true;
+    override.save();
+    const local = override.round();
+    expect(local).toMatchObject({ code: 0, json: { verdict: "PASS", exitCode: 0 } });
+    expect.soft(local.json.source).toBe("local");
+    expect.soft(local.json.row.source).toBe("local");
+    const finished = override.finishRound();
+    expect.soft(finished, finished.err).toMatchObject({ code: 0, json: { pass: true } });
+  });
+
+  it("finishes replacement CI evidence with the unchanged debug run number", () => {
+    const f = consumer();
+    expect(f.select().state).toMatchObject({ ciGeneration: 1, debugAttempt: 1 });
+    expect(f.round()).toMatchObject({ code: 1, json: { source: "ci", ciGeneration: 1 } });
+    expect(f.finishRound().code).toBe(0);
+    f.prompt(
+      "/bkit-debug #1 https://github.com/example/example/actions/runs/124/attempts/2 [live=off]\n",
+    );
+    expect(f.select().state).toMatchObject({ ciRun: "124", ciGeneration: 2, debugAttempt: 1 });
+    expect(f.vars.DEBUG_ATTEMPT).toBe("1");
+    const replacement = f.round();
+    expect(replacement).toMatchObject({
+      code: 1,
+      json: { source: "ci", ciGeneration: 2, ciRun: "124" },
+    });
+    const finished = f.finishRound();
+    expect(finished, finished.err).toMatchObject({ code: 0, json: { pass: true } });
+    expect(finished.json.row.attempt).toBe(replacement.json.row.attempt);
+    expect(finished.json.row).toMatchObject({ ciGeneration: 2, scope: "ci:124" });
+    expect(f.events().filter((event) => event.kind === "local-gate")).toEqual([]);
+  });
+
+  it("finishes the first CI evidence round of the second debug run", () => {
+    const f = consumer();
+    f.write(
+      `${LOG}/status.jsonl`,
+      [
+        { type: "workflow-started", workflow: "debug", at: "2026-10-01T00:00:00Z" },
+        { type: "workflow-done", workflow: "debug", at: "2026-10-01T00:01:00Z" },
+        { type: "workflow-started", workflow: "debug", at: "2026-11-01T00:00:00Z" },
+      ]
+        .map((row) => JSON.stringify(row))
+        .join("\n") + "\n",
+    );
+    f.vars.DEBUG_ATTEMPT = "2";
+    expect(f.select().state).toMatchObject({ ciRun: "123", debugAttempt: 2 });
+    const round = f.round();
+    expect(round).toMatchObject({
+      code: 1,
+      json: { source: "ci", runAttempt: 2, ciGeneration: 1 },
+    });
+    const finished = f.finishRound();
+    expect(finished, finished.err).toMatchObject({ code: 0, json: { pass: true } });
+    expect(finished.json.row.attempt).toBe(round.json.row.attempt);
+    expect(finished.json.row).toMatchObject({ ciGeneration: 1, scope: "ci:123" });
+    expect(f.events().filter((event) => event.kind === "local-gate")).toEqual([]);
+  });
+
   it("checks the complete selected CI fix sequence against green and red final runs", () => {
     const f = consumer();
     expect(f.select().state).toMatchObject({
