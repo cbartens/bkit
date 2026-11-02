@@ -236,6 +236,17 @@ bkit supports Jira Cloud only. `ISSUE_ID` is the issue key (`PROJ-123`), which g
 2. Each person opens https://id.atlassian.com/manage-profile/security/api-tokens → **Create API token with scopes** (not classic) → app **Atlassian MCP V2** (not **Jira**, not **Atlassian MCP**) → the Jira read / write / search scopes (`read:jira:agent-interface`, `write:jira:agent-interface`, `search:jira:agent-interface`). Copy the token, which is shown once, into `BKIT_JIRA_API_KEY` in `.bkit/.env`, then run `direnv allow`. The token works on MCP only, and the Jira REST API answers 401.
 3. Run `bkit install --tracker=jira`, then set `bkit.tracker.jira.site` and `bkit.tracker.jira.project`. In Claude, approve the project `.mcp.json` once in an interactive `claude` session. Until then, `claude mcp list` shows "Pending approval".
 
+### Authentication troubleshooting
+
+The scoped **Atlassian MCP V2** token is a personal API token used as `Bearer` by bkit's Rovo transport. It needs no account email. The API-token management page alone does not identify the token's app or scopes. Jira REST guidance about `Basic` authentication with an email does not establish the authentication contract for this MCP endpoint.
+
+For an authentication failure:
+
+1. Read this section and the project's active `docs/knowledge.jsonl` entries before asking for credentials. Check related tracker decisions and comments when the owner says the setup worked previously.
+2. Check that the running process loads `BKIT_JIRA_API_KEY` from the intended `.bkit/.env`, including in a linked worktree. After a credential update, compare the loaded and saved values without printing either value, and check for surrounding whitespace. Report presence and equality only.
+3. Verify the setup above: the token's app and scopes, the org's API-token permission, the `/v2/mcp` endpoint, the `Bearer` header and a non-default `User-Agent`. A scripted probe must use the engine's `initialize` handshake before tool calls.
+4. **If** initialization still returns HTTP 401 with `invalid_token` → record that the endpoint rejected the configured credential and which checks passed. Ask the owner to verify or replace the scoped token locally. Do not infer a missing email, switch to `Basic`, or add an email setting from this response. Tool schemas and write behaviour remain unverified until authentication succeeds.
+
 **Behaviour workflows rely on:**
 
 - Status changes only by transition. Workflows list the issue's transitions (`executeRead` `listJiraIssueTransitions`) and fire the one whose `to.name` = the target status. When none matches, the status change is `Unapplied`, and the labels still land. Basic team-managed boards may lack `In Review`, so set `bkit.tracker.jira.review` to a status the board has.
@@ -247,6 +258,7 @@ bkit supports Jira Cloud only. `ISSUE_ID` is the issue key (`PROJ-123`), which g
 <!-- prettier-ignore -->
 | Symptom | Fix |
 | --- | --- |
+| HTTP 401 with `invalid_token` during initialization | Follow § Authentication troubleshooting; the response alone does not identify why the credential was rejected. |
 | Only 4 tools listed (`getTeamworkGraphContext` …), no Jira tools | URL `/v2/mcp`, not `/v1/mcp` |
 | Every call: `Cloud id: … isn't explicitly granted by the user` | Scoped **Atlassian MCP V2** token sent as `Bearer`, not classic token or `Basic` |
 | `missing the scope claim` | Classic token → create token with scopes |
