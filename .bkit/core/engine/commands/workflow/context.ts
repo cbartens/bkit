@@ -1807,6 +1807,8 @@ export const contextCommand: CommandSpec = {
           "those records totalled per context: artifacts written, lines and bytes fetched -> kept, and how many were written as a table vs raw",
         row: "--record: the step-done row written, else null",
         commit: "--record: the new commit's sha, else null",
+        progressLine:
+          "--record: the exact chat progress line after a successful numbered completion",
         comment:
           "the step comment (with --number): verdict, contexts, artifact links, a NOT CONFIGURED line per context with no block; else null",
         commentFile: COMMENT_FILE_OUTPUT,
@@ -1839,7 +1841,7 @@ export const contextCommand: CommandSpec = {
         );
         const clampSummary = summariseRecords(clamped);
         const verdict = artifacts.length > 0 ? "PASS" : "FAIL";
-        let written: { row: Record<string, unknown>; commit: string | null; code: number } = {
+        let written: ReturnType<typeof writeStepRow> = {
           row: {},
           commit: null,
           code: EXIT.OK,
@@ -1904,6 +1906,7 @@ export const contextCommand: CommandSpec = {
           clampSummary,
           row: record ? written.row : null,
           commit: written.commit,
+          ...(written.progressLine === undefined ? {} : { progressLine: written.progressLine }),
           comment,
           commentFile: commentFileOf(ctx.cwd, comment),
         });

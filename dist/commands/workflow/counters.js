@@ -128,6 +128,13 @@ export function grantCount(file, workflow, point, group, allRuns) {
         r.point === point &&
         (group === undefined || r.group === group)).length;
 }
+/** A loop's frozen allowance, including the owner's saved grants; absent for legacy runs. */
+export function savedPointLimit(file, workflow, point, group) {
+    const setting = frozenAskSetting(file, workflow, point);
+    return setting === undefined
+        ? undefined
+        : setting.max * (1 + grantCount(file, workflow, point, group, false));
+}
 /** `route --rows=<type>:count`: rows of that type in the active run. */
 function derivedRows(ctx) {
     const [type, position] = String(ctx.flags.rows).split(":");
@@ -435,6 +442,7 @@ export const countersCommand = {
                     help: "status.jsonl: with --point and --workflow, the limit as the active run's workflow-started row froze it",
                 },
                 { ...WORKFLOW_FLAG, required: false, help: "workflow, with --file" },
+                GROUP_FLAG,
             ],
             output: {
                 value: "the point's limit (with --point)",

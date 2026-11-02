@@ -1262,12 +1262,14 @@ export function closeWorkflow(
   // Graded first, so the report below carries this run's grade.
   const violations = gradeCompliance(where.tree, workflow, log, o.squashSha, { parentSha, step });
 
+  let progressLine: string | undefined;
   if (o.recordStep === true) {
-    writeStepRow(
+    const written = writeStepRow(
       where.tree,
       { file: where.status, workflow, step, artifacts: [], commit: "none" },
       log,
     );
+    progressLine = written.progressLine;
   }
   writeCompletenessRow(where.status, workflow, parentSha, log);
   const endAt = statusTimestamp();
@@ -1428,6 +1430,7 @@ export function closeWorkflow(
     comment,
     roadmapFoldNeeded: true,
     featureStatus: FEATURE_STATUS[workflow],
+    ...(progressLine === undefined ? {} : { progressLine }),
   };
 }
 
@@ -2437,6 +2440,8 @@ export const workflowsCommand: CommandSpec = {
         roadmapFoldNeeded:
           "always true: append the feature row and re-render the board (not run here)",
         featureStatus: "roadmap status this close moves the feature to",
+        progressLine:
+          "--record-step: the exact chat progress line after a numbered completion is recorded",
         landed: "--flush: {ref, via: head-push | close-pr | close-pr-open}",
         worktree:
           "--flush: the `bkit worktrees remove` result once the close is on dev; null while the close PR is unmerged or the removal failed",
