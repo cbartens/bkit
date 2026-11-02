@@ -721,7 +721,7 @@ npx -y @mermaid-js/mermaid-cli -i docs/graphify-out/reports/graph-packages.mmd -
 - Source roots are hard-coded for an `apps/` + `packages/` monorepo:
   - `ROOTS` in `bkit-graph-drift.py` (the files the drift rules scan)
   - `ROOTS` in `bkit-graph-eager.py` and `DEFAULT_ROOTS` in `bkit-graph-imports.py` (the files those passes walk)
-  - `by_package` / `by_module` in `bkit-graphify-rollup.py` (the diagram boxes; a package box should be one part of the codebase, so a single-package repo splits by its top-level source folders)
+  - `by_package` / `by_module` in `bkit-graphify-rollup.py` (the diagram boxes; a package box should be one part of the codebase, so a single-package repo splits by its top-level source folders. The packages diagram groups package boxes by their parent folder, and colours each group)
 - **If** the repo has another layout → adapt all five. Otherwise capabilities read `gap`, and the diagrams come out empty.
 - **If** the repo has one flat source folder → `by_module` gives one node per file.
 - **If** there are no web routes, or no imports between top-level folders → the route and package diagrams stay empty. That is the answer, not a fault.

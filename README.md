@@ -74,7 +74,7 @@ Everything a senior team would otherwise write down over years, in files you can
 | [Guardrails](.bkit/providers.md#guardrails) | 10+ hook files | Block dangerous commands and secret reads, and make agents investigate before they edit, on all five AI tools. |
 | [Audits](.bkit/pipeline.md#audits) | 35 | Security, privacy, accessibility, performance, reliability, database, LLM usage, cost and more. Findings feed straight into a plan. |
 | [Project docs](.bkit/shared/docs/) | 10 + [index](.agents/docs.md) | Architecture, data schema, deployments, testing, security, monitoring, design system, tech stack, setup, and an index telling each agent what to read at each step. |
-| [Templates](.bkit/templates.md) | 60+ | A full CI pipeline, cloud agents, git hooks, linters, dependency updates, secrets sync, code search, and 10+ ready-made connectors for your platforms. |
+| [Templates](.bkit/templates.md) | 60+ | A full CI pipeline, cloud agents, git hooks, linters, dependency updates, secrets sync, code search, a map of your code that marks likely problems, and 10+ ready-made connectors for your platforms. |
 
 **These are the files your agents read, so they're written for agents,** to the writing rules above: short, dense, tables over prose. For day-to-day use, start with [`.bkit/README.md`](.bkit/README.md); for every agent in the order it runs, see the [pipeline reference](.bkit/pipeline.md).
 
@@ -332,12 +332,16 @@ The ones that matter most, in the order to adopt them:
 | **Cloud agents** | When CI finishes, a cloud agent picks up: ship on green, debug on red. No laptop needed. |
 | **Context connectors** | `/bkit-debug` reads the real errors instead of guessing from the code: 10+ ready-made connectors for CI, error trackers, hosting, databases, payments, email, queues and the web. |
 | **Secrets sync** | Keeps every password and key the same everywhere: one local file, one command to push it to Vercel, GitHub Actions, Google Cloud, Supabase, Expo and Cursor's cloud agents, another to prove every copy matches without printing a value. Prevents "works for me, broken in production". |
-| **graphify** | Keeps a map of how your code fits together (`docs/capabilities.md`), so agents check what already exists before building it again. |
+| **graphify** | Draws your code as a map (`docs/capabilities.md`), so agents check what already exists before building it again. The map marks likely problems in red, and the check fails when the map falls behind the code ([bkit's own map below](#code-map)). |
 | **Dependency updates** | Small, grouped update pull requests from Renovate or Dependabot instead of one big risky upgrade later. GitHub Actions stay pinned, and security fixes skip the queue. |
 | **Security scan** | Trivy fails the check when a change adds a known-vulnerable library in any language, a risky container or cluster setting, or a committed password. A daily run catches problems that have no fix yet, which an updater never shows. |
 | **Audits** | 35 specialist checklists, one per area: testing, security, privacy, reliability, cost and more. Already installed in `docs/templates/`, so there's nothing to copy: name one to `@bkit-audit-generate` and hand its report to `/bkit-plan` ([above](#audits)). |
 
-**Here is the map graphify draws of bkit's own engine.** Each box is one part of the code. An arrow means one part uses another, and its number counts the links between them. An amber box is a part where some code skips the module meant to own a job. The map is generated: `pnpm graph:refresh` redraws it from the code, and the check fails if this copy falls behind. The full map, one level down, is in [`docs/capabilities.md`](docs/capabilities.md).
+<a id="code-map"></a>
+
+**See your code as a map, with likely problems marked in red.** This is the map graphify draws of bkit's own engine, and the same template draws yours. Each box is one part of the code, and parts that share a folder sit in one bigger box. An arrow means one part uses another; its number counts the links between them, and the more links, the thicker the arrow.
+
+**A red dashed box is an open finding:** a part where graphify found a likely problem. Some code may skip the module that owns a job, two copies of one job may compete, a job may have no owner yet, or a call may go to an API route that nothing serves. Each kind has its own dash pattern. The box counts its findings, and [`docs/capabilities.md`](docs/capabilities.md) names each one. An amber box is one somebody has looked at and accepted, and the check fails if the number of exceptions changes. The map is generated: `pnpm graph:refresh` redraws it from the code, and the check fails if this copy falls behind. The full map, one level down, is in [`docs/capabilities.md`](docs/capabilities.md).
 
 <!-- graph:packages:start -->
 
@@ -345,18 +349,21 @@ The ones that matter most, in the order to adopt them:
 ---
 config:
   layout: elk
+  themeCSS: "marker { overflow: visible; } marker path { transform: scale(1.8); transform-origin: 5px 5px; }"
   flowchart:
     useMaxWidth: false
 ---
 flowchart LR
-  %% Generated by bkit-graphify-rollup.py from 672e082b7b1f4803023684fff5ac172dc80f6a6a — do not edit
-  n_bkit_core_engine_checks[".bkit/core/engine/checks<br/>248 symbols · 18 files"]
-  n_bkit_core_engine_cli[".bkit/core/engine/cli<br/>33 symbols · 1 files"]
-  n_bkit_core_engine_commands[".bkit/core/engine/commands<br/>1647 symbols · 49 files"]
-  n_bkit_core_engine_install[".bkit/core/engine/install<br/>280 symbols · 19 files"]
-  n_bkit_core_engine_ledgers[".bkit/core/engine/ledgers<br/>176 symbols · 6 files"]
-  n_bkit_core_engine_render[".bkit/core/engine/render<br/>62 symbols · 4 files"]
-  n_bkit_core_engine_shared[".bkit/core/engine/shared<br/>149 symbols · 13 files<br/>Cursor API access · 1 of 2 sites skip the owner"]
+  %% Generated by bkit-graphify-rollup.py from 6d416db53c64ce0576bfa423136db99c8c6ff4c2 — do not edit
+  subgraph gn_bkit_core_engine[".bkit/core/engine"]
+    n_bkit_core_engine_checks["checks<br/>248 symbols · 18 files"]
+    n_bkit_core_engine_cli["cli<br/>33 symbols · 1 files"]
+    n_bkit_core_engine_commands["commands<br/>1647 symbols · 49 files"]
+    n_bkit_core_engine_install["install<br/>280 symbols · 19 files"]
+    n_bkit_core_engine_ledgers["ledgers<br/>176 symbols · 6 files"]
+    n_bkit_core_engine_render["render<br/>62 symbols · 4 files"]
+    n_bkit_core_engine_shared["shared<br/>149 symbols · 13 files<br/>1 open finding"]
+  end
   nscripts_harvest["scripts/harvest<br/>199 symbols · 2 files"]
   n_bkit_core_engine_commands -->|346| n_bkit_core_engine_shared
   n_bkit_core_engine_commands -->|332| n_bkit_core_engine_ledgers
@@ -383,39 +390,40 @@ flowchart LR
   n_bkit_core_engine_render -->|7| n_bkit_core_engine_install
   n_bkit_core_engine_checks -->|6| n_bkit_core_engine_render
   n_bkit_core_engine_cli -->|6| n_bkit_core_engine_shared
-  style n_bkit_core_engine_checks stroke:#0a7b83,stroke-width:2px,fill:transparent
-  style n_bkit_core_engine_cli stroke:#1a7f37,stroke-width:2px,fill:transparent
-  style n_bkit_core_engine_commands stroke:#7a9a0e,stroke-width:2px,fill:transparent
-  style n_bkit_core_engine_install stroke:#0969da,stroke-width:2px,fill:transparent
-  style n_bkit_core_engine_ledgers stroke:#8250df,stroke-width:2px,fill:transparent
-  style n_bkit_core_engine_render stroke:#1a7f37,stroke-width:2px,fill:transparent
-  style n_bkit_core_engine_shared stroke:#0a7b83,stroke-width:4px,stroke-dasharray:8 4,fill:#bf8700,color:#1f2328
-  style nscripts_harvest stroke:#59636e,stroke-width:2px,fill:transparent
-  linkStyle 0 stroke:#0a7b83,stroke-width:2px
-  linkStyle 1 stroke:#8250df,stroke-width:2px
-  linkStyle 2 stroke:#0969da,stroke-width:2px
-  linkStyle 3 stroke:#0a7b83,stroke-width:2px
-  linkStyle 4 stroke:#0a7b83,stroke-width:2px
-  linkStyle 5 stroke:#0a7b83,stroke-width:2px
-  linkStyle 6 stroke:#1a7f37,stroke-width:2px
-  linkStyle 7 stroke:#0969da,stroke-width:2px
-  linkStyle 8 stroke:#1a7f37,stroke-width:2px
-  linkStyle 9 stroke:#7a9a0e,stroke-width:2px
-  linkStyle 10 stroke:#7a9a0e,stroke-width:2px
-  linkStyle 11 stroke:#0a7b83,stroke-width:2px
-  linkStyle 12 stroke:#0969da,stroke-width:2px
-  linkStyle 13 stroke:#1a7f37,stroke-width:2px
-  linkStyle 14 stroke:#8250df,stroke-width:2px
-  linkStyle 15 stroke:#0a7b83,stroke-width:2px
-  linkStyle 16 stroke:#1a7f37,stroke-width:2px
-  linkStyle 17 stroke:#0a7b83,stroke-width:2px
-  linkStyle 18 stroke:#8250df,stroke-width:2px
-  linkStyle 19 stroke:#8250df,stroke-width:2px
-  linkStyle 20 stroke:#1a7f37,stroke-width:2px
-  linkStyle 21 stroke:#0969da,stroke-width:2px
-  linkStyle 22 stroke:#0969da,stroke-width:2px
-  linkStyle 23 stroke:#1a7f37,stroke-width:2px
-  linkStyle 24 stroke:#0a7b83,stroke-width:2px
+  style gn_bkit_core_engine fill:#59636e0a,stroke:#59636e,stroke-width:2px
+  style n_bkit_core_engine_checks stroke:#1a7f37,stroke-width:2px,fill:#1a7f3714
+  style n_bkit_core_engine_cli stroke:#8250df,stroke-width:2px,fill:#8250df14
+  style n_bkit_core_engine_commands stroke:#0969da,stroke-width:2px,fill:#0969da14
+  style n_bkit_core_engine_install stroke:#0a7b83,stroke-width:2px,fill:#0a7b8314
+  style n_bkit_core_engine_ledgers stroke:#1a7f37,stroke-width:2px,fill:#1a7f3714
+  style n_bkit_core_engine_render stroke:#0a7b83,stroke-width:2px,fill:#0a7b8314
+  style n_bkit_core_engine_shared stroke:#cf222e,stroke-width:4px,stroke-dasharray:8 4,fill:#cf222e26
+  style nscripts_harvest stroke:#8250df,stroke-width:2px,fill:#8250df14
+  linkStyle 0 stroke:#59636e,stroke-width:6px
+  linkStyle 1 stroke:#59636e,stroke-width:6px
+  linkStyle 2 stroke:#59636e,stroke-width:6px
+  linkStyle 3 stroke:#59636e,stroke-width:6px
+  linkStyle 4 stroke:#59636e,stroke-width:6px
+  linkStyle 5 stroke:#59636e,stroke-width:6px
+  linkStyle 6 stroke:#59636e,stroke-width:6px
+  linkStyle 7 stroke:#59636e,stroke-width:6px
+  linkStyle 8 stroke:#59636e,stroke-width:6px
+  linkStyle 9 stroke:#59636eb3,stroke-width:3px
+  linkStyle 10 stroke:#59636eb3,stroke-width:3px
+  linkStyle 11 stroke:#59636eb3,stroke-width:3px
+  linkStyle 12 stroke:#59636eb3,stroke-width:3px
+  linkStyle 13 stroke:#59636eb3,stroke-width:3px
+  linkStyle 14 stroke:#59636eb3,stroke-width:3px
+  linkStyle 15 stroke:#59636eb3,stroke-width:3px
+  linkStyle 16 stroke:#59636eb3,stroke-width:3px
+  linkStyle 17 stroke:#59636eb3,stroke-width:3px
+  linkStyle 18 stroke:#59636e80,stroke-width:2px
+  linkStyle 19 stroke:#59636e80,stroke-width:2px
+  linkStyle 20 stroke:#59636e80,stroke-width:2px
+  linkStyle 21 stroke:#59636e80,stroke-width:2px
+  linkStyle 22 stroke:#59636e80,stroke-width:2px
+  linkStyle 23 stroke:#59636e80,stroke-width:2px
+  linkStyle 24 stroke:#59636e80,stroke-width:2px
 ```
 
 <!-- graph:packages:end -->

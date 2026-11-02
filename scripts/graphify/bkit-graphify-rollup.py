@@ -213,36 +213,36 @@ def as_graphify_json(keyfn, out_dir):
     return len(payload["nodes"]), len(payload["links"])
 
 
-# Two visual channels, one meaning each:
-#   colour      = the CALLED capability. A node that is called owns a hue, and
-#                 every edge INTO it takes that hue, so all the callers of one
-#                 capability are one colour and can be followed back at a glance.
-#                 A node nothing calls has no hue and stays grey — web and mobile
-#                 routes only ever call, so the whole UI column is grey.
-#   dash + fill = drift status.
-# Every colour is a bkit README token (design, plan, build, ship, lime, gate, muted),
-# light-theme value, each at least 3:1 against both a white and a #0d1117 page. The
-# hues leave out debug red and gate amber, which mean failure and drift here. An
-# undrifted node and every subgraph are transparent, so they keep the theme's
-# background and text colour.
-PALETTE = ["#8250df", "#0969da", "#1a7f37", "#0a7b83", "#7a9a0e"]
-# Drift = a dashed border plus a tinted box; no tint and a solid border means no
-# drift. Each drift status has its own dash pattern. The status colours the BOX;
-# the label carries no emoji (GitHub renders Mermaid at securityLevel strict).
-# Every fill pins its own `color` (INK), so text stays dark on any theme.
-INK, PAPER = "#1f2328", "#ffffff"
-# ONE colour (gate amber) for every drift status; the status word and the dash
-# pattern tell them apart.
-WARN = "#bf8700"
-# `budgeted` is the one marked state that is NOT a warning: solid border, blue box.
-# It still gets a box. Blue, not green: green reads as `one`.
-SETTLED = "#4493f8"
-DRIFT_STYLE = {"split": f"stroke-width:4px,stroke-dasharray:2 3,fill:{WARN},color:{INK}",
-               "bypassed": f"stroke-width:4px,stroke-dasharray:8 4,fill:{WARN},color:{INK}",
-               "gap": f"stroke-width:3px,stroke-dasharray:1 5,fill:{WARN},color:{INK}",
-               "dead": f"stroke-width:4px,stroke-dasharray:3 3,fill:{WARN},color:{INK}",
-               "budgeted": f"stroke-width:3px,fill:{SETTLED},color:{INK}",
-               "ok": "stroke-width:2px,fill:transparent"}
+# Three visual channels, one meaning each:
+#   box colour  = the top-level group a box sits in. The group's outline and every
+#                 box inside it share one hue, picked from the group's key, so a
+#                 group keeps its colour from run to run. A box in no group is grey.
+#                 A chart with ONE top-level group draws it grey and gives every
+#                 box its own hue, because one colour for the whole chart says nothing.
+#   red, dashed = an open drift status; each status has its own dash pattern.
+#   arrow width = how many links an edge carries, in thirds of the chart's own
+#                 weights. Arrows are grey; a box is the only thing that is coloured.
+# Every colour is a bkit README token, light-theme value, each at least 3:1 against
+# both a white and a #0d1117 page. A fill is the token at low alpha, so it tints
+# whatever background the theme draws and the theme's own text stays readable.
+# The hues are the four phase colours (design, plan, build, ship). Debug red and
+# gate amber are left out: here they mean an open problem and an accepted one.
+PALETTE = ["#8250df", "#0969da", "#1a7f37", "#0a7b83"]
+ISSUE = "#cf222e"
+# `budgeted` is a drift status somebody has accepted, with a count the gate holds
+# it to: solid gate amber, not dashed red.
+NOTED = "#bf8700"
+GREY = "#59636e"
+ISSUE_DASH = {"split": "2 3", "bypassed": "8 4", "gap": "1 5", "dead": "3 3"}
+GROUP_WASH, HUE_WASH, ISSUE_WASH = "0a", "14", "26"   # alpha: 4%, 8% and 15%
+# (width, alpha) for the light, middle and heavy third of the edges.
+EDGE_TIERS = [(2, "80"), (3, "b3"), (6, "")]
+# GitHub draws arrowheads at a fixed 8px whatever the line width; this scales them
+# to match the thicker lines. Front matter, so it applies per diagram.
+FRONT_MATTER = ["---", "config:", "  layout: elk",
+                '  themeCSS: "marker { overflow: visible; } '
+                'marker path { transform: scale(1.8); transform-origin: 5px 5px; }"',
+                "  flowchart:", "    useMaxWidth: false", "---"]
 
 
 def hues(keys):
@@ -261,22 +261,38 @@ def hues(keys):
     return out
 
 
-GREY = "#59636e"
+def node_style(cls, hue):
+    if cls in ISSUE_DASH:
+        return (f"stroke:{ISSUE},stroke-width:4px,stroke-dasharray:{ISSUE_DASH[cls]},"
+                f"fill:{ISSUE}{ISSUE_WASH}")
+    if cls == "budgeted":
+        return f"stroke:{NOTED},stroke-width:3px,fill:{NOTED}{ISSUE_WASH}"
+    return f"stroke:{hue},stroke-width:2px,fill:{hue}{HUE_WASH}"
 
 
-def style_lines(nodes, edge_target_keys, groups=()):
+def style_lines(nodes, edge_weights, groups=()):
     """`style` per node and subgraph, and `linkStyle` per edge.
 
-    Pass the TARGET key of each edge, in emission order — linkStyle indexes are
-    that order, and the colour belongs to the capability being called, not the
-    caller. A node that is never a target keeps the grey default.
+    nodes are (id, colour key, status, own key) and groups are (id, colour key,
+    top level); a None colour key is grey. Pass each edge's weight in emission
+    order — linkStyle indexes are that order. An unweighted edge (None) is drawn
+    in the middle tier.
     """
-    hue = hues(set(edge_target_keys))
-    out = [f"  style {gid} fill:transparent,stroke:{GREY},stroke-width:1px" for gid in groups]
-    out += [f"  style {nid} stroke:{hue.get(key, GREY)},{DRIFT_STYLE[cls]}"
-            for nid, key, cls in nodes]
-    for i, tgt_key in enumerate(edge_target_keys):
-        out.append(f"  linkStyle {i} stroke:{hue[tgt_key]},stroke-width:2px")
+    if len({c for _, c, top in groups if top}) == 1:
+        nodes = [(nid, own, cls, own) for nid, _, cls, own in nodes]
+        groups = [(gid, None, top) for gid, _, top in groups]
+    # A flagged box is drawn red or amber, so it takes no hue from the palette.
+    hue = hues({c for _, c, cls, _ in nodes if c and cls == "ok"}
+               | {c for _, c, _ in groups if c})
+    out = [f"  style {gid} fill:{hue.get(c, GREY)}{GROUP_WASH},stroke:{hue.get(c, GREY)},stroke-width:2px"
+           if top else f"  style {gid} fill:transparent,stroke:{hue.get(c, GREY)},stroke-width:1px"
+           for gid, c, top in groups]
+    out += [f"  style {nid} {node_style(cls, hue.get(c, GREY))}" for nid, c, cls, _ in nodes]
+    known = sorted(w for w in edge_weights if w is not None)
+    cuts = (known[len(known) // 3], known[2 * len(known) // 3]) if known else (0, 0)
+    for i, w in enumerate(edge_weights):
+        width, alpha = EDGE_TIERS[1 if w is None else sum(w >= c for c in cuts)]
+        out.append(f"  linkStyle {i} stroke:{GREY}{alpha},stroke-width:{width}px")
     return out
 
 
@@ -340,11 +356,31 @@ def resolve_paint(overlay, keys):
                     best = k
         if best is not None:
             acc[best].append(val)
+    # The box counts its findings, e.g. "1 open finding" or "1 open · 2 budgeted
+    # findings"; the register table names them.
     out = {}
     for k, vals in acc.items():
         cls = max((v[0] for v in vals), key=lambda c: rank.get(c, 0))
-        out[k] = (cls, " · ".join(v[1] for v in sorted(vals, key=lambda v: -rank.get(v[0], 0))))
+        budgeted = sum(v[0] == "budgeted" for v in vals)
+        counts = [f"{n} {word}" for n, word in ((len(vals) - budgeted, "open"), (budgeted, "budgeted")) if n]
+        out[k] = (cls, " · ".join(counts) + (" finding" if len(vals) == 1 else " findings"))
     return out
+
+
+def base_parts(edges, keep, flagged):
+    """Parts nearly everything uses: {key: caller count}.
+
+    A base part calls nothing in the chart, and at least a quarter of the other
+    boxes (four at least) call it. Its arrows only say "everyone uses this", so the
+    chart leaves them out and the box counts its callers. A flagged box is never
+    one: its arrows show how far the problem reaches.
+    """
+    callers, calls = collections.defaultdict(set), {a for a, _ in edges}
+    for a, b in edges:
+        callers[b].add(a)
+    need = max(4, (len(keep) - 1) / 4)
+    return {k: len(callers[k]) for k in keep
+            if k not in calls and k not in flagged and len(callers[k]) >= need}
 
 
 def as_mermaid(keyfn, out, level, min_weight, overlay):
@@ -374,6 +410,8 @@ def as_mermaid(keyfn, out, level, min_weight, overlay):
     sid = lambda k: "n" + re.sub(r"[^a-z0-9]", "_", k.lower())
 
     resolved = resolve_paint(overlay, keep)
+    base = base_parts(edges, keep, resolved)
+    edges = {e: w for e, w in edges.items() if e[1] not in base}
 
     def paint(k):
         if k in resolved:
@@ -381,23 +419,37 @@ def as_mermaid(keyfn, out, level, min_weight, overlay):
             return cls, "<br/>" + note
         return "ok", ""
 
-    L = ["---", "config:", "  layout: elk", "  flowchart:", "    useMaxWidth: false", "---",
+    L = [*FRONT_MATTER,
          "flowchart LR",
          f"  %% Generated by bkit-graphify-rollup.py from {raw.get('built_at_commit', '?')} — do not edit"]
     NODES, ELIST, GROUPS = [], [], []
-    def node(k, label, indent):
+    def node(k, label, indent, colour=None):
         cls, note = paint(k)
         label = renames.get(k, label)
+        if k in base:
+            note += f"<br/>used by {base[k]} parts, arrows left out"
         if k in extra_notes:
             note += "<br/>" + extra_notes[k]
-        NODES.append((sid(k), k, cls))
+        NODES.append((sid(k), colour, cls, k))
         L.append(f'{indent}{sid(k)}["{label}<br/>'
                  f'{symbols[k]} symbols · {len(files[k])} files{note}"]')
 
     if level == "package":
-        # The group IS the node at this level; no subgraph per group.
+        # One subgraph per parent folder (apps, packages, .bkit/core/engine), drawn
+        # only around two or more boxes; a lone box keeps its full path instead.
+        parents = collections.defaultdict(list)
         for k in sorted(keep):
-            node(k, k, "  ")
+            parents[k.rsplit("/", 1)[0] if "/" in k else ""].append(k)
+        for p, members in sorted(parents.items()):
+            if not p or len(members) == 1:
+                for k in members:
+                    node(k, k, "  ")
+                continue
+            GROUPS.append((f"g{sid(p)}", p, True))
+            L.append(f'  subgraph {GROUPS[-1][0]}["{p}"]')
+            for k in members:
+                node(k, k.rsplit("/", 1)[1], "    ", p)
+            L.append("  end")
     else:
         # The folder tree, drawn as nested subgraphs — Mermaid nests them to any
         # depth. A chain of single-child directories (apps > apps/web > .../src)
@@ -407,10 +459,10 @@ def as_mermaid(keyfn, out, level, min_weight, overlay):
             if k in forced:
                 grouped[forced[k]].append(k)
         for g, members in sorted(grouped.items()):
-            GROUPS.append(f'g{sid("custom-" + g)}')
-            L.append(f'  subgraph {GROUPS[-1]}["{g}"]')
+            GROUPS.append((f'g{sid("custom-" + g)}', "custom-" + g, True))
+            L.append(f'  subgraph {GROUPS[-1][0]}["{g}"]')
             for k in members:
-                node(k, k, "    ")
+                node(k, k, "    ", "custom-" + g)
             L.append("  end")
 
         tree = {}
@@ -422,13 +474,13 @@ def as_mermaid(keyfn, out, level, min_weight, overlay):
                 cur = cur.setdefault(seg, {})
             cur["__leaf__"] = k
 
-        def emit(subtree, path, depth, root=False):
+        def emit(subtree, path, depth, root=False, top=None):
             dirs = {k: v for k, v in subtree.items() if k != "__leaf__"}
             leaf = subtree.get("__leaf__")
             pad = "  " * (depth + 1)
             if leaf and not dirs:
                 # At the top level the short name has lost its folder, so carry the path.
-                node(leaf, path if root else path.split("/")[-1], pad)
+                node(leaf, path if root else path.split("/")[-1], pad, top)
                 return
             title, inner = path, subtree
             while not inner.get("__leaf__") and len(
@@ -439,14 +491,15 @@ def as_mermaid(keyfn, out, level, min_weight, overlay):
             if inner.get("__leaf__") and not inner_dirs:
                 # A box around exactly one node is the node, drawn twice. Emit the
                 # node carrying the full path instead, so it keeps its context.
-                node(inner["__leaf__"], title, pad)
+                node(inner["__leaf__"], title, pad, top)
                 return
-            GROUPS.append(f"g{sid(title)}")
-            L.append(f'{pad}subgraph {GROUPS[-1]}["{title}"]')
+            GROUPS.append((f"g{sid(title)}", top or title, top is None))
+            top = top or title
+            L.append(f'{pad}subgraph {GROUPS[-1][0]}["{title}"]')
             if inner.get("__leaf__"):
-                node(inner["__leaf__"], title.split("/")[-1], pad + "  ")
+                node(inner["__leaf__"], title.split("/")[-1], pad + "  ", top)
             for seg, sub in sorted((k, v) for k, v in inner.items() if k != "__leaf__"):
-                emit(sub, f"{title}/{seg}", depth + 1)
+                emit(sub, f"{title}/{seg}", depth + 1, top=top)
             L.append(f"{pad}end")
 
         # The root segment is dropped: an `apps` box around apps/web and apps/mobile
@@ -459,7 +512,7 @@ def as_mermaid(keyfn, out, level, min_weight, overlay):
                 emit(sub2, f"{seg}/{child}", 0, root=True)
 
     for (a, b), w in sorted(edges.items(), key=lambda x: -x[1]):
-        ELIST.append(b)
+        ELIST.append(w)
         L.append(f"  {sid(a)} -->|{w}| {sid(b)}")
     L += style_lines(NODES, ELIST, GROUPS)
     # The YAML front matter must be the FIRST thing in the file. A leading %%
@@ -469,7 +522,7 @@ def as_mermaid(keyfn, out, level, min_weight, overlay):
     if out:
         with open(out, "w") as fh:
             fh.write(text)
-    print(f"[graph] {out or 'inline'}: {len(keep)} nodes, {len(edges)} edges "
+    print(f"[graph] {out or 'inline'}: {len(keep)} nodes, {len(edges)} edges, {len(base)} base "
           f"(level={level}, min-weight={min_weight}, {len(overlay)} drift markers)")
     return text
 
@@ -534,24 +587,29 @@ def chain_block(surface, overlay, reach):
     if not (used_eps or mods or provs or dead_any):
         return None, 0
 
-    L = ["---", "config:", "  layout: elk", "  flowchart:", "    useMaxWidth: false", "---",
+    L = [*FRONT_MATTER,
          "flowchart LR"]
     NODES, ELIST = [], []
+    col = [None]
+
+    def column(gid, title):
+        col[0] = gid
+        L.append(f'  subgraph {gid}["{title}"]')
 
     def decl(nid, key, label, cls="ok", indent="    "):
-        NODES.append((nid, key, cls))
+        NODES.append((nid, col[0], cls, key))
         L.append(f'{indent}{nid}["{label}"]')
 
     for platform, title in (("web", "apps/web routes"), ("native", "apps/mobile routes")):
         members = [r for r, d in sorted(routes.items())
                    if d["platform"] == platform and r not in hidden]
         if members:
-            L.append(f'  subgraph gp_{platform}["UI — {title}"]')
+            column(f"gp_{platform}", f"UI — {title}")
             for r in members:
                 decl(sid("r_", r), r, renames.get(r, r))
             L.append("  end")
 
-    L.append('  subgraph gp_ep["API — /api/v1 endpoints"]')
+    column("gp_ep", "API — /api/v1 endpoints")
     for seg in used_eps:
         decl(sid("e_", seg), seg, f"/{seg}")
     L.append("  end")
@@ -569,7 +627,7 @@ def chain_block(surface, overlay, reach):
     stranded = [r for r in (reach or {}).get("strandedHonoRoutes", [])
                 if r not in hidden and r not in dead_keys]
     if dead or stranded:
-        L.append('  subgraph gp_dead["UNREACHABLE — 404 at runtime"]')
+        column("gp_dead", "UNREACHABLE — 404 at runtime")
         for key, sites, refused in dead:
             where = "<br/>".join(sites[:3]) + ("<br/>…" if len(sites) > 3 else "")
             decl(sid("d_", key), key, f"{key}<br/>{refused}<br/>{where}", "dead")
@@ -578,19 +636,19 @@ def chain_block(surface, overlay, reach):
         L.append("  end")
 
     all_routers = sorted({rf for v in routers.values() for rf in v} - hidden)
-    L.append('  subgraph gp_rt["API — Hono routers"]')
+    column("gp_rt", "API — Hono routers")
     for rf in all_routers:
         decl(sid("t_", rf), rf, f"routes/{rf}.ts")
     L.append("  end")
 
-    L.append('  subgraph gp_svc["BACKEND — modules"]')
+    column("gp_svc", "BACKEND — modules")
     for m in mods:
         cls, note = paint(m)
         decl(sid("s_", m), m, f"{renames.get(m, m)}{note}", cls)
     L.append("  end")
 
     if provs:
-        L.append('  subgraph gp_ext["EXTERNAL — third-party APIs"]')
+        column("gp_ext", "EXTERNAL — third-party APIs")
         for pv in provs:
             d = ext[pv]
             # Reached by BOTH a client library and a hand-rolled fetch = two
@@ -610,10 +668,10 @@ def chain_block(surface, overlay, reach):
 
     drawn = set()
 
-    def edge(a, b, tgt_key):
+    def edge(a, b):
         if (a, b) not in drawn:
             drawn.add((a, b))
-            ELIST.append(tgt_key)
+            ELIST.append(None)
             L.append(f"  {a} --> {b}")
 
     for r, d in sorted(routes.items()):
@@ -621,19 +679,19 @@ def chain_block(surface, overlay, reach):
             continue
         for seg in d["endpoints"]:
             if seg in used_eps:
-                edge(sid("r_", r), sid("e_", seg), seg)
+                edge(sid("r_", r), sid("e_", seg))
     for seg in used_eps:
         for rf in routers[seg]:
             if rf not in hidden:
-                edge(sid("e_", seg), sid("t_", rf), rf)
+                edge(sid("e_", seg), sid("t_", rf))
                 for sv in svc_of[seg]:
                     m = f"packages/services/src/{sv}"
                     if m in mods:
-                        edge(sid("t_", rf), sid("s_", m), m)
+                        edge(sid("t_", rf), sid("s_", m))
     for pv in provs:
         for c in ext[pv]["callers"]:
             if c in mods:
-                edge(sid("s_", c), sid("x_", pv), pv)
+                edge(sid("s_", c), sid("x_", pv))
     # Only when the call sits in the route file itself. Any other dead call stands
     # alone; the call site in its label says where to look.
     route_of_file = {d["file"]: r for r, d in routes.items() if r not in hidden}
@@ -641,8 +699,8 @@ def chain_block(surface, overlay, reach):
         for site in sites:
             r = route_of_file.get(site.rsplit(":", 1)[0])
             if r:
-                edge(sid("r_", r), sid("d_", key), key)
-    L += style_lines(NODES, ELIST, re.findall(r"subgraph (gp_\w+)", "\n".join(L)))
+                edge(sid("r_", r), sid("d_", key))
+    L += style_lines(NODES, ELIST, [(g, g, True) for g in re.findall(r"subgraph (gp_\w+)", "\n".join(L))])
     return "\n".join(L), len(routes)
 
 
@@ -799,9 +857,12 @@ def as_capabilities_doc(out, min_weight, overlay, rows, rules_path, surface, ov_
         "> - That scan reads source, not the graph, because module-level initialiser calls are the one construct graphify drops.",
         "> - Nothing discovers an SDK itself; find gaps by listing non-workspace deps.",
         "> - Only the Overrides block is hand-maintained. It round-trips; malformed aborts the run.",
-        "> - Colour = called capability, shared by its inbound edges. Grey = never called.",
-        "> - Drift = dashed border + one amber box for all four. No ranking: each scan proves a shape, never an intent.",
-        "> - `budgeted` = solid border + blue box. Still drawn, because a declared bypass is still a bypass, but it is settled, not an open question.",
+        "> - Box colour = the top-level group it sits in; a box in no group is grey. With one top-level group, that group is grey and each box has its own colour.",
+        "> - Arrows are grey; a thicker arrow carries more links.",
+        "> - A flagged box counts its open and budgeted findings; the Register table names them.",
+        "> - A part that calls nothing in the chart and that a quarter of the other boxes call (`base_parts`) has its arrows left out and counts its callers.",
+        "> - Drift = thick dashed red border + a faint red box for all four. No ranking: each scan proves a shape, never an intent.",
+        "> - `budgeted` = solid amber border + a faint amber box. Still drawn, because a declared bypass is still a bypass, but it is settled, not an open question.",
         "> - Which status is which: `split` fine dash · `bypassed` long dash · `dead` even dash · `gap` dotted · `budgeted` no dash.",
         "> - A fetched URL is a STRING, never an edge, because the reachability scan (§ Unreachable API calls) is the only check that sees it.",
         f"> - Table rescanned every run, never stale. Diagrams from `graph.json` @ `{GRAPH_COMMIT[:9]}`; when that differs from HEAD ⇒ run `pnpm graph:update` first.",
@@ -809,7 +870,7 @@ def as_capabilities_doc(out, min_weight, overlay, rows, rules_path, surface, ov_
         "",
         "## Status Vocabulary",
         "",
-        "The first four are warnings, not verdicts, and they share one amber in the diagrams. Any",
+        "The first four are warnings, not verdicts, and they share one red in the diagrams. Any",
         "of them can turn out to be deliberate, because the scans prove a shape, never an intent.",
         "",
         "`budgeted` is what one of those four becomes once somebody has decided. The rule declares",
@@ -819,7 +880,7 @@ def as_capabilities_doc(out, min_weight, overlay, rows, rules_path, surface, ov_
         "reads `over` or `stale`, and `pnpm graph:check` fails until the register is refreshed.",
         "That is why the status can be quieter without being a place to hide work.",
         "",
-        "It still gets a box in the diagrams, drawn solid and blue rather than dashed and amber. A",
+        "It still gets a box in the diagrams, drawn solid and amber rather than dashed and red. A",
         "budgeted bypass is still a bypass; the different drawing stops the picture asking the",
         "same question of it every sweep. Drawn identically, an unbounded marker (18 of 19) and a",
         "marker that is exactly at its declared count — whose note says the copies are probes and",

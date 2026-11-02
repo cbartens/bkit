@@ -67,14 +67,23 @@ bkit has no UI. Its visuals are the README images and the Mermaid diagrams, and 
 
 ### Mermaid diagrams
 
-A Mermaid diagram on GitHub takes one hex per colour for both themes, so `scripts/graphify/bkit-graphify-rollup.py` uses only light values, each at least 3:1 against both `bg` values.
+A Mermaid diagram on GitHub takes one hex per colour for both themes, so `scripts/graphify/bkit-graphify-rollup.py` uses only light values, each at least 3:1 against both `bg` values. A box fill is its outline colour at low alpha, so it tints whichever background the theme draws and the theme's own text stays readable on it.
+
+- Colour belongs to the top-level groups. A group's outline and every box inside it share one hue, so the colour shows where a box lives. A box in no group is grey.
+- A chart with only one top-level group draws that group grey and gives each box its own hue, because one colour across the whole chart tells the reader nothing.
+- A group keeps its hue from run to run, because the hue is picked from the group's key.
+- Arrows are grey, and their width carries the weight.
+- The four phase colours mark groups. `debug` red and `gate` amber mark findings, so neither is ever a group colour.
+- Red means an open problem, and only that. A red box is always dashed, so the meaning survives without colour.
+- Amber means a problem somebody has accepted, held to a fixed count. Its box is solid, never dashed.
 
 <!-- prettier-ignore -->
-| Diagram element | Token (light value) | Why |
+| Diagram element | Token (light value) | Drawing |
 | --- | --- | --- |
-| Called-part hues, in order | `design`, `plan`, `build`, `ship`, `lime` | Every phase hue except `debug`, which would read as failure |
-| Drift box fill | `gate` | Drift is a warning; dark `text` on it reads at 5.0:1 |
-| Budgeted box fill | `plan`, dark value `#4493f8` | Settled, not a warning; dark `text` on it reads at 5.1:1 |
-| Never-called part, subgraph outline | `muted` | De-emphasised |
-| Box text on a fill | `text` | Stays dark on either theme |
-| Undrifted box, subgraph fill | `transparent` | Keeps the theme's own background and text colour |
+| Top-level group | `design`, `plan`, `build`, `ship` | 2px outline, 4% fill |
+| Nested group | Its top-level group's hue | 1px outline, transparent fill |
+| Part box | Its top-level group's hue, or `muted` when in no group; its own hue when the chart has one top-level group | 2px outline, 8% fill |
+| Drift box (`split`, `bypassed`, `gap`, `dead`) | `debug` | 4px dashed outline, one dash pattern per status, 15% fill |
+| Budgeted box | `gate` | 3px solid outline, 15% fill: accepted, and held to a count by the gate |
+| Arrow | `muted` | Grey. Width 2, 3 or 6px for the light, middle and heavy third of the chart's weights; the lighter two are also fainter |
+| Arrowhead | Theme line colour | Scaled 1.8x by `themeCSS` in the diagram's front matter, to match the thicker lines |
