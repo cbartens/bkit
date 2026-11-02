@@ -1467,6 +1467,26 @@ describe("check — hole classes", () => {
     expect(detour.evidenceHoles.map((h) => h.step)).toEqual(["build-plan-tests"]);
   });
 
+  it("treats a call written after an inline If arrow in the same sentence as a route arm", () => {
+    const md = [
+      "## 🧠 Step 1 — Remediate",
+      '1. Context: group 1. **If** `GATE_VERDICT` = FAIL → add `Group gate`: `"{BKIT}" tests run --gate=static`. Run `"{BKIT}" tests green --fid=1` first.',
+      "2. Merge the findings.",
+      "   **If** `SIZE` = small → drop the `--report` pair:",
+      "   ```bash",
+      '   "{BKIT}" counters max --name=ROUNDS',
+      "   ```",
+      ...fence(FINISH("build-plan-gaps-remediate", 1)),
+    ].join("\n");
+    const contract = deriveContract(md, "build");
+    expect(contract.steps[0]!.calls.map((c) => [`${c.noun} ${c.verb}`, c.branch])).toEqual([
+      ["tests run", true],
+      ["tests green", false],
+      ["counters max", false],
+      ["steps finish", false],
+    ]);
+  });
+
   it("treats a numbered If sub-step as a route arm", () => {
     const md = [
       "## 🧠 Step 1 — Verify",

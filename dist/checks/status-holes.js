@@ -201,6 +201,22 @@ function branchLines(lines) {
     });
     return branch;
 }
+/**
+ * Per `"{BKIT}"` call in `text`, true when it sits after an inline `**If** … →` / `**Else** →`
+ * in the same sentence (`→ add `Group gate`: `"{BKIT}" tests run …``). A call in the fence
+ * below such a line stays required: there the condition may only change the call.
+ */
+function inlineArms(text) {
+    const parts = text.split('"{BKIT}"');
+    return parts.slice(1).map((_, i) => {
+        const before = parts.slice(0, i + 1).join('"{BKIT}"');
+        const lead = [...before.matchAll(/\*\*(?:If|Else)\*\*/g)].at(-1);
+        if (lead?.index === undefined)
+            return false;
+        const clause = before.slice(lead.index).replace(/`[^`]*`/g, "");
+        return clause.includes("→") && !/\.\s/.test(clause);
+    });
+}
 /** The `"{BKIT}"` calls of one step section, each tagged with its position (R3) and branch flag (R1). */
 function sectionCalls(body) {
     const lines = body.split("\n");
@@ -221,12 +237,15 @@ function sectionCalls(body) {
     const finishes = perLine.flatMap((calls, i) => (calls.some(isFinish) ? [i] : []));
     const plain = finishes.filter((i) => !logical[i].branch);
     const lastFinish = (plain.length > 0 ? plain : finishes).at(-1) ?? -1;
-    return perLine.flatMap((calls, i) => calls.map((c) => ({
-        ...c,
-        position: i > lastFinish && lastFinish !== -1 ? "post" : "pre",
-        branch: logical[i].branch,
-        line: i,
-    })));
+    return perLine.flatMap((calls, i) => {
+        const inline = inlineArms(logical[i].text);
+        return calls.map((c, j) => ({
+            ...c,
+            position: i > lastFinish && lastFinish !== -1 ? "post" : "pre",
+            branch: logical[i].branch || inline[j],
+            line: i,
+        }));
+    });
 }
 /** Row keys a section writes (not merely names in a `steps gate --step=` read). */
 function stepWrites(text) {
@@ -478,6 +497,11 @@ export function check(rows, contract, options = {}) {
                     !nextNames(false) &&
                     (take(slots.arm, key) || !nextNames(true))));
         const insideVisit = prevVisit !== undefined && prevVisit === nextVisit ? prevVisit : undefined;
+        // A post call journaled between its visit's own rows (above an arm's row) uses its slot.
+        if (insideVisit !== undefined && slots !== undefined) {
+            if (!take(slots.plain, key))
+                take(slots.arm, key);
+        }
         const owner = insideVisit ?? (claimsPost ? prevVisit : nextVisit);
         const required = owner?.unit.calls.some((c) => callKey(c) === key) === true;
         if (owner && required) {

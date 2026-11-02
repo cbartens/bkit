@@ -9652,6 +9652,7 @@ Unfixable gaps routed
 Exhausted fix loop asked in a session, or sent to the Failure Path
 Read status.jsonl and derive the next `STRATEGY`:
 Read status.jsonl and derive the next `STRATEGY`:
+**If** `VERIFY_VERDICT` is not held (resumed into this step) → read group `{GROUP}`'s last verify round back, one block at a time:
 **If** `docs/plans/{YYYYMM}/logs/{FID}/build-group-gate-{GROUP}-{VERIFY_ATTEMPT}.md` does not exist → `GATE_VERDICT` = SKIPPED.
 **Else** → read the group gate's verdict:
 **If** `VERIFY_LOOSENED` != `none` → the tests step removed or loosened an expectation of an existing test (each `test-loosened` gap of the verify report, `Fixable: true`). The tests step restores it, because no code step may rewrite a planned test; no fixer runs this round:

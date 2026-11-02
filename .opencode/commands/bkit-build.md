@@ -691,21 +691,22 @@ Each task group gets its own pass of Steps 7-9, in group order. Step 7 briefs th
    ```bash
    "{BKIT}" status route --file="{STATUS}" --workflow=build --step=build-plan-gaps-remediate --group={GROUP} --require=strategy
    ```
-   Hold `nextStrategy` as `STRATEGY`. **If** `VERIFY_VERDICT` is not held (resumed into this step) → read group `{GROUP}`'s last verify round back, one block at a time:
-   ```bash
-   "{BKIT}" counters derive --file="{STATUS}" --workflow=build --step=build-plan-verify --group={GROUP} --position=current
-   ```
-   Hold `value` as `VERIFY_ATTEMPT`.
-   ```bash
-   "{BKIT}" status route --file="{STATUS}" --workflow=build --step=build-plan-verify --group={GROUP} --require=verdict
-   ```
-   Hold `verdict` as `VERIFY_VERDICT`. Read the `Loosened:` line of `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}.md`'s header and hold its value as `VERIFY_LOOSENED`.
-   **If** `docs/plans/{YYYYMM}/logs/{FID}/build-group-gate-{GROUP}-{VERIFY_ATTEMPT}.md` does not exist → `GATE_VERDICT` = SKIPPED.
-   **Else** → read the group gate's verdict:
-   ```bash
-   "{BKIT}" status route --file="{STATUS}" --workflow=build --step=build-group-gate --group={GROUP} --require=verdict
-   ```
-   Hold `verdict` as `GATE_VERDICT`.
+   Hold `nextStrategy` as `STRATEGY`.
+   - **If** `VERIFY_VERDICT` is not held (resumed into this step) → read group `{GROUP}`'s last verify round back, one block at a time:
+     ```bash
+     "{BKIT}" counters derive --file="{STATUS}" --workflow=build --step=build-plan-verify --group={GROUP} --position=current
+     ```
+     Hold `value` as `VERIFY_ATTEMPT`.
+     ```bash
+     "{BKIT}" status route --file="{STATUS}" --workflow=build --step=build-plan-verify --group={GROUP} --require=verdict
+     ```
+     Hold `verdict` as `VERIFY_VERDICT`. Read the `Loosened:` line of `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}.md`'s header and hold its value as `VERIFY_LOOSENED`.
+     - **If** `docs/plans/{YYYYMM}/logs/{FID}/build-group-gate-{GROUP}-{VERIFY_ATTEMPT}.md` does not exist → `GATE_VERDICT` = SKIPPED.
+     - **Else** → read the group gate's verdict:
+       ```bash
+       "{BKIT}" status route --file="{STATUS}" --workflow=build --step=build-group-gate --group={GROUP} --require=verdict
+       ```
+       Hold `verdict` as `GATE_VERDICT`.
 2. **If** `VERIFY_LOOSENED` != `none` → the tests step removed or loosened an expectation of an existing test (each `test-loosened` gap of the verify report, `Fixable: true`). The tests step restores it, because no code step may rewrite a planned test; no fixer runs this round:
    **Subagent:** Invoke `/bkit-build-plan-tests` using `subagent` tool:
    Context: You are a subagent in the Build phase. Restore these tests of group `{GROUP}`, which verify logged `test-loosened`: `{VERIFY_LOOSENED}`. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
