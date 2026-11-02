@@ -678,6 +678,8 @@ Replay a stored verdict: each `completeness` row carries `sourceSha` (the sha256
 
 Workflow progress has focused Unit coverage for position math and command output, Integration coverage for real saved status/plan files and completion producers, and renderer coverage for each supported host. The external Claude app's 375px layout is an owner-run check: `docs/plans/202611/logs/825-show-progress-bar/phone-verification.md` records its procedure, screenshots and explicit outcome. A character-count assertion does not verify app typography.
 
+The machine-lock integration tests in `audits/templates/machine-lock.integration.test.ts` run real Bash and Perl holders against isolated cache folders. `tests/fixtures/machine-lock/stack-lock-6.0.0.sh` freezes the older stack-lock script for compatibility checks.
+
 <!-- prettier-ignore -->
 | File | Tier | Scope |
 | --- | --- | --- |
