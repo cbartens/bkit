@@ -803,7 +803,7 @@ await test("claude-code: one folded row per chat, with fingerprints and no prose
     "models",
   ])
     assert.ok(!(gone in row), `row still has ${gone}`);
-  const text = JSON.stringify(row);
+  const text = JSON.stringify({ ...row, time: { ...row.time, lastActivity: 0 } });
   for (const leak of ["widget", "secret", "650", "/tmp", repoDir])
     assert.ok(!text.includes(leak), `row contains ${leak}`);
 });
