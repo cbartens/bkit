@@ -3,7 +3,7 @@
 {{BKIT_MANAGED_MARKER}}
 
 > [!CAUTION]
-> **Purpose:** What bkit does, the environment and tracker setup, the upgrade paste and the ongoing CLI. First-time install and the full auth setup are in `.bkit/install.md`. Workflow internals are in `.bkit/workflows.md`, and subagent metadata (effort, model, tools, `maxTurns`) is in `.bkit/prompts.md`.
+> **Purpose:** What bkit does, the environment and tracker setup, the upgrade paste, the ongoing CLI and the friction-sharing paste. First-time install and the full auth setup are in `.bkit/install.md`. Workflow internals are in `.bkit/workflows.md`, and subagent metadata (effort, model, tools, `maxTurns`) is in `.bkit/prompts.md`.
 >
 > **Rules:**
 >
@@ -214,6 +214,45 @@ Every `bkit` command with its flags (`bkit install`, `bkit upgrade`, `bkit check
 **Outdated-version warning:** Step 1 of every phase workflow (`bkit repo info`) and every design / plan / audit doc stamp compare `.bkit/version` `pinnedVersion` with the newest published `@cbartens/bkit`. When the pinned version is older, a warning names the upgrade command, and stamped docs carry a visible `Outdated bkit` line under their `bkit:anchor` block. The warning never stops a run. The registry is asked at most once a day, and the answer is cached in `<git common dir>/bkit-latest-version.json`. Offline, there is no warning. `BKIT_NO_UPDATE_CHECK=1` skips the lookup (air-gapped machines, CI).
 
 > **Version bumps:** use `bkit upgrade --latest` (or `--to=<version>`). A bare `pnpm add @cbartens/bkit` / Renovate bump refreshes only the lockfile. Run `bkit upgrade` after it, and commit the resync with the bump. Otherwise `bkit check` turns CI red.
+
+### Share friction with bkit
+
+Workflows note each place bkit itself got in the way in `.bkit/friction.jsonl`, and `bkit stats` sums up your runs in `.bkit/stats.md`. Both stay in your repo. Copy this block to send them to bkit's makers as one public issue. Your agent removes anything that names your project and shows you the text before posting. `bkit tips` offers it again only when new friction arrives.
+
+````text
+Share this repo's bkit friction and stats with bkit's makers as one new issue on https://github.com/cbartens/bkit/issues.
+1. Refresh the stats. If `bkit` is not on PATH, use `pnpm bkit`:
+   ```bash
+   bkit stats
+   ```
+2. List the friction entries not shared yet, stripped to the fields bkit needs. The command keeps the newest row of each `key`, and keeps an entry only when it is `OPEN` and not `consumer` scope, because a `consumer` entry is about this project, not bkit:
+   ```bash
+   jq -R -n -c '[inputs | fromjson? | select(.kind == "friction")] | group_by(.key) | map(max_by(.ts)) | .[] | select((.status // "OPEN") == "OPEN" and .scope != "consumer") | {key, category, scope, severity, summary, description, remediation, recurrenceCount, version: .bkit.version, workflow: .by.workflow, step: .by.step} | with_entries(select(.value != null))' .bkit/friction.jsonl
+   ```
+   **If** nothing is listed → stop and say so.
+3. Clean every listed entry and `.bkit/stats.md`:
+   - Replace with `<redacted>` each thing that names this project or its people: repo, company and product names, people and handles, issue and PR numbers, URLs, hostnames, email addresses, and file paths outside bkit's own folders (`.bkit/`, `.agents/` and the host folders such as `.claude/`).
+   - Delete every key, token and password.
+   - **If** an entry still gives the project away, or no longer makes sense once cleaned → leave it out, and note why.
+4. Write the issue to `tmp/bkit-friction-report.md`:
+   - Title: `Friction report: {N} entries from bkit {version}`, where `{N}` = the entries in the body and `{version}` = `pinnedVersion` in `.bkit/version`. Example: `Friction report: 12 entries from bkit 6.0.0`.
+   - Body, in this order: the line `Friction and stats from a project using bkit {version}.`, a `jsonl` code block with the cleaned entries, then `.bkit/stats.md` from its first `##` heading on.
+   - **If** the body is over 60,000 characters, because the issue page rejects a body over 65,536:
+     - Leave out the lowest-severity entries first until it fits.
+     - Add a line to the body saying how many entries were left out for length.
+5. Show me the full title, the full body, and each entry left out with why.
+   - Post ONLY after I say yes.
+   - **If** I say no → stop. Post nothing and mark nothing.
+6. Post the issue to `cbartens/bkit` with the first of these that works:
+   - The GitHub MCP `issue_write` tool.
+   - `gh issue create --repo cbartens/bkit --title "<title>" --body-file tmp/bkit-friction-report.md`.
+   - **Else** → give me the file and https://github.com/cbartens/bkit/issues/new so I paste it myself, then ask me for the issue link.
+7. Mark each entry as shared, so `bkit tips` stops offering it. Append one same-`key` row per entry, the posted ones and the left-out ones, as `.bkit/jsonl.md` § Updating a Row describes, with `bkit ledgers append --ledger=friction --rows=-`:
+   - `status` = `TRIAGED`.
+   - `references` = the old `references` plus the issue link for a posted entry, or plus `not shared: {why}` for a left-out entry.
+   - `by` = `{"workflow": "utility", "step": "share-friction"}`.
+8. End with: the issue link, the entries shared, and each entry left out with why.
+````
 
 ## File ownership
 

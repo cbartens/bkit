@@ -3,6 +3,8 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { fold, parse } from "../../ledgers/telemetry.js";
+import { BKIT_PACKAGE } from "../../shared/bkit-latest.js";
 import { parseJson } from "../../shared/json.js";
 import { readDependencyNames, readPackageJson } from "../../shared/package-json.js";
 
@@ -217,5 +219,25 @@ export function readsBkitText(cwd: string): string[] {
   return OUTPUT_READER_DIRS.flatMap((dir) => filesUnder(cwd, dir)).filter((rel) => {
     const text = readText(cwd, rel);
     return text.split("\n").some((line) => READS_BKIT_TEXT.some((re) => re.test(line)));
+  });
+}
+
+/**
+ * True when `.bkit/friction.jsonl` holds an entry worth sending to bkit: its fold winner
+ * is `OPEN` (or has no status) and its `scope` is not `consumer`. A shared entry gets a
+ * same-`key` `TRIAGED` row, so it stops counting. Never in bkit's own repo.
+ */
+export function hasUnsharedFriction(cwd: string): boolean {
+  const pkg = readPackageJson(cwd);
+  if (pkg.ok && pkg.pkg["name"] === BKIT_PACKAGE) return false;
+  const p = path.join(cwd, ".bkit", "friction.jsonl");
+  if (!fs.existsSync(p)) return false;
+  return [...fold(parse(fs.readFileSync(p, "utf-8")).events).values()].some((row) => {
+    const r = row as Record<string, unknown>;
+    return (
+      r["kind"] === "friction" &&
+      (r["status"] === undefined || r["status"] === "OPEN") &&
+      r["scope"] !== "consumer"
+    );
   });
 }

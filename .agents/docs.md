@@ -64,7 +64,7 @@
 <!-- prettier-ignore -->
 | Doc | Design | Plan | Build | Debug | Ship | Scope |
 | --- | --- | --- | --- | --- | --- | --- |
-| `.bkit/README.md` | ○ | ○ | ○ | ○ | ○ | Operator guide — workflow run, prerequisites, env, tracker setup, CLI. |
+| `.bkit/README.md` | ○ | ○ | ○ | ○ | ○ | Operator guide — workflow run, prerequisites, env, tracker setup, CLI, friction-sharing paste. |
 | `.bkit/install.md` | — | — | — | — | ○ | First-time install / upgrade paste, local env setup, install lifecycle, uninstall. |
 | `.bkit/providers.md` | ○ | ○ | ○ | ○ | ○ | IDE host differences — install transforms, hosts, providers, model pins. |
 | `.bkit/trackers.md` | ○ | ○ | ○ | ○ | ○ | Tracker marker contract — `github` / `linear` / `jira` / `none` blocks in workflow sources; issue shapes (idea / change / bug) + machine-read body lines. |

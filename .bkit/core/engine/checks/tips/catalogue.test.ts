@@ -454,4 +454,36 @@ describe("SETUP_TIPS — detection", () => {
     write(".claude/hooks/bkit-cloud-bootstrap.sh", '"$BKIT" context list-blocks --json | jq .x\n');
     expect(tip("bkit-output-json").fires(cwd)).toBe(false);
   });
+
+  describe("share-friction", () => {
+    const row = (key: string, ts: number, extra: Record<string, unknown>) =>
+      JSON.stringify({ schema: 3, ts, kind: "friction", key, severity: "LOW", ...extra });
+    const friction = (...rows: string[]) => write(".bkit/friction.jsonl", rows.join("\n") + "\n");
+
+    it("fires on an OPEN entry that is not consumer scope", () => {
+      expect(tip("share-friction").fires(cwd)).toBe(false);
+      friction(row("a", 1, { scope: "consumer", status: "OPEN" }));
+      expect(tip("share-friction").fires(cwd)).toBe(false);
+      friction(
+        row("a", 1, { scope: "consumer", status: "OPEN" }),
+        row("b", 2, { scope: "bkit-repo", status: "OPEN" }),
+      );
+      expect(tip("share-friction").fires(cwd)).toBe(true);
+    });
+
+    it("stops once the newest row of each entry is TRIAGED, and a new entry brings it back", () => {
+      const open = row("b", 1, { scope: "universal", status: "OPEN" });
+      const shared = row("b", 2, { scope: "universal", status: "TRIAGED" });
+      friction(open, shared);
+      expect(tip("share-friction").fires(cwd)).toBe(false);
+      friction(open, shared, "not json", row("c", 3, { scope: "bkit-repo", status: "OPEN" }));
+      expect(tip("share-friction").fires(cwd)).toBe(true);
+    });
+
+    it("stays quiet in bkit's own repo", () => {
+      friction(row("b", 1, { scope: "bkit-repo", status: "OPEN" }));
+      write("package.json", JSON.stringify({ name: "@cbartens/bkit" }));
+      expect(tip("share-friction").fires(cwd)).toBe(false);
+    });
+  });
 });
