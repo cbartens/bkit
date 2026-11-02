@@ -540,6 +540,8 @@ export interface FetchedIssue {
   url: string;
   state: string;
   labels: string[];
+  /** Finished by the tracker's state category (never by state name). */
+  terminal: boolean;
   /** The description, raw. */
   body: string;
   /** In the order the tracker returned them; callers sort. */
@@ -547,6 +549,17 @@ export interface FetchedIssue {
 }
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
+
+/**
+ * One terminal judgement for every tracker, by state category: GitHub `closed`, Linear
+ * state type `completed` / `canceled`, Jira status category `done`. Renamed states
+ * stay judged right because the name is never read.
+ */
+function isTerminal(tracker: "github" | "linear" | "jira", state: string, category: string) {
+  if (tracker === "github") return state === "closed";
+  if (tracker === "linear") return category === "completed" || category === "canceled";
+  return category === "done";
+}
 
 // ADF nodes whose children are inline text; every other node's children are blocks, one per line.
 const ADF_INLINE = new Set(["paragraph", "heading", "codeBlock", "mediaSingle"]);
@@ -605,6 +618,7 @@ export async function fetchIssue(t: TrackerTarget): Promise<FetchedIssue> {
       labels: (Array.isArray(issue.labels) ? issue.labels : []).map((l) =>
         typeof l === "string" ? l : str(asRecord(l).name),
       ),
+      terminal: isTerminal("github", str(issue.state), ""),
       body: str(issue.body),
       comments,
     };
@@ -612,7 +626,7 @@ export async function fetchIssue(t: TrackerTarget): Promise<FetchedIssue> {
   if (t.tracker === "linear") {
     const page = "nodes { body createdAt } pageInfo { hasNextPage endCursor }";
     const data = await linearGql(
-      `query($id: String!) { issue(id: $id) { identifier title url description state { name } labels { nodes { name } } comments(first: 250) { ${page} } } }`,
+      `query($id: String!) { issue(id: $id) { identifier title url description state { name type } labels { nodes { name } } comments(first: 250) { ${page} } } }`,
       { id: t.issue },
     );
     const issue = asRecord(data.issue);
@@ -637,6 +651,7 @@ export async function fetchIssue(t: TrackerTarget): Promise<FetchedIssue> {
       url: str(issue.url),
       state: str(asRecord(issue.state).name),
       labels: nodes(issue.labels).map((l) => str(asRecord(l).name)),
+      terminal: isTerminal("linear", "", str(asRecord(issue.state).type)),
       body: str(issue.description),
       comments,
     };
@@ -648,6 +663,7 @@ export async function fetchIssue(t: TrackerTarget): Promise<FetchedIssue> {
       await jira.call(JIRA_TOOLS.getIssue, {
         cloudId: site,
         issueIdOrKey: t.issue,
+        // The evidence view carries `fields.status` with its `statusCategory`, read below.
         view: "evidence",
       }),
     );
@@ -686,6 +702,7 @@ export async function fetchIssue(t: TrackerTarget): Promise<FetchedIssue> {
       url: `${site}/browse/${t.issue}`,
       state: str(asRecord(fields.status).name),
       labels: (Array.isArray(fields.labels) ? fields.labels : []).map((l) => String(l)),
+      terminal: isTerminal("jira", "", str(asRecord(asRecord(fields.status).statusCategory).key)),
       body: textOf(description),
       comments,
     };
@@ -885,7 +902,7 @@ export async function readBlockers(t: TrackerTarget): Promise<Blocker[]> {
     const numbers = parseBlockedBy(str(asRecord(parsed.ok ? parsed.value : null).body));
     return numbers.map((n) => {
       const state = gh(t, ["api", `repos/${t.ownerRepo}/issues/${n}`, "--jq", ".state"]).trim();
-      return { id: `#${n}`, state, open: state !== "closed" };
+      return { id: `#${n}`, state, open: !isTerminal("github", state, "") };
     });
   }
   if (t.tracker === "linear") {
@@ -904,7 +921,7 @@ export async function readBlockers(t: TrackerTarget): Promise<Blocker[]> {
         return {
           id: str(issue.identifier),
           state: str(state.name),
-          open: !["completed", "canceled"].includes(str(state.type)),
+          open: !isTerminal("linear", "", str(state.type)),
         };
       });
   }
@@ -924,7 +941,7 @@ export async function readBlockers(t: TrackerTarget): Promise<Blocker[]> {
       return {
         id: str(issue.key),
         state: str(status.name),
-        open: str(asRecord(status.statusCategory).key) !== "done",
+        open: !isTerminal("jira", "", str(asRecord(status.statusCategory).key)),
       };
     });
   }

@@ -955,6 +955,7 @@ describe("bkit issues fetch", () => {
       url: "https://linear.app/x/issue/ENG-4",
       state: "Todo",
       labels: ["bkit:design"],
+      terminal: false,
       files: {
         description: path.join(out, "issue-description.md"),
         comments: path.join(out, "issue-comments.json"),
@@ -971,6 +972,7 @@ describe("bkit issues fetch", () => {
       url: "https://linear.app/x/issue/ENG-4",
       state: "Todo",
       labels: ["bkit:design"],
+      terminal: false,
     });
     // The files feed `issues text` unchanged.
     const text = await run(cwd, [
