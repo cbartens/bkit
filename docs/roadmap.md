@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-02T09:02:04Z)_
+_(refreshed 2026-11-02T10:34:25Z)_
 
 ### Design
 
@@ -44,6 +44,7 @@ _(refreshed 2026-11-02T09:02:04Z)_
 | 651-sops-env-backup | 651-sops-env-backup | 1792633642892 |
 | 719-cloud-variants-add | 719-cloud-variants-add | 1793249397536 |
 | 724-machine-wide-test | 724-machine-wide-test | 1793239890768 |
+| 825-show-progress-bar | 825-show-progress-bar | 1793615665496 |
 
 ### Build
 
