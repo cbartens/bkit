@@ -209,8 +209,9 @@ export function redEntries(file, workflow, group) {
 }
 /**
  * The planned tests of `group` a code step changed since their red: a test whose own lines
- * (`testBlock`) no longer hash to the recorded block. A test whose lines could not be found,
- * and rows written before per-test locking, compare the whole file's blob. Other edits to a
+ * (`testBlock`) no longer hash to the recorded block. A row with no block (written before
+ * per-test locking, or when no line carried the name) derives the block from the recorded
+ * blob; when that holds no block either, the whole file's blob is compared. Other edits to a
  * test file are free.
  */
 export function touchedTests(top, file, workflow, group) {
@@ -224,15 +225,25 @@ export function touchedTests(top, file, workflow, group) {
         return texts.get(test);
     };
     for (const t of redEntries(file, workflow, group).values()) {
-        if (t.block === undefined || t.block === null) {
+        let block = t.block ?? null;
+        if (block === null)
+            block = blockHash(blobText(top, t.blob), t.testName);
+        if (block === null) {
             if (git(top, ["hash-object", "--", t.test]) !== t.blob)
                 touched.push({ test: t.test, name: t.testName });
             continue;
         }
-        if (blockHash(textOf(t.test), t.testName) !== t.block)
+        if (blockHash(textOf(t.test), t.testName) !== block)
             touched.push({ test: t.test, name: t.testName });
     }
     return touched;
+}
+/** The text a recorded blob holds, untrimmed; null when the object store lacks it. */
+function blobText(top, blob) {
+    if (blob === null)
+        return null;
+    const res = spawnSync("git", ["cat-file", "-p", blob], { cwd: top, encoding: "utf-8" });
+    return res.status === 0 ? res.stdout : null;
 }
 /** Leading whitespace width, a tab counting as one column. */
 const indentOf = (line) => line.length - line.trimStart().length;

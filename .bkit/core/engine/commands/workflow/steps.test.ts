@@ -1562,6 +1562,21 @@ describe("bkit steps finish — the tests step touches only tests, the code step
     return { cwd, body };
   }
 
+  it("derives the block from the recorded blob when the row has none: a neighbour edit passes, a planned-test edit is refused", async () => {
+    const { cwd, body } = twoTests();
+    const status = path.join(cwd, STATUS);
+    fs.writeFileSync(
+      status,
+      fs.readFileSync(status, "utf-8").replace(/"block":"[0-9a-f]+"/, '"block":null'),
+    );
+    write(cwd, TEST.file, body("1", "2"));
+    expect((await run(cwd, EXECUTE)).code).toBe(0);
+    write(cwd, TEST.file, body("2", "2"));
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(11);
+    expect(r.json.tests).toEqual([{ test: TEST.file, name: TEST.name }]);
+  });
+
   it("locks the planned test case, not its file: an edit to another test of the file passes", async () => {
     const { cwd, body } = twoTests();
     write(cwd, TEST.file, body("1", "2"));
