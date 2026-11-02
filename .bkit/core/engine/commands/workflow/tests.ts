@@ -1658,7 +1658,7 @@ export const testsCommand: CommandSpec = {
         { name: "ci-url", type: "string", help: "selected GitHub evidence attempt URL" },
       ],
       output: {
-        source: "ci for pinned red evidence; local after its current-generation fix",
+        source: "ci for pinned red evidence; local for every executed gate",
         runAttempt: "selected CI attempt for a CI evidence round",
         ciGeneration: "active selection generation for a CI evidence round",
         ciRun: "selected CI run ID for a CI evidence round",
@@ -1870,10 +1870,10 @@ export const testsCommand: CommandSpec = {
                 scope,
                 log: logArg,
                 artifact,
-                ...(ctx.flags.ciRun === undefined ? {} : { source: "local" as const }),
+                source: "local",
               });
         ctx.emit({
-          ...(ctx.flags.ciRun === undefined ? {} : { source: "local" }),
+          source: "local",
           verdict,
           exitCode,
           gate,

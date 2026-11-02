@@ -256,6 +256,13 @@ reject("unsupported fixture endpoint "+endpoint);
       if (counter.code !== 0) throw new Error(`Prepare test round: ${counter.err}`);
       vars[match[2]!] = String(counter.json.value);
     }
+    for (const match of beforeRun.matchAll(
+      /"\{BKIT\}" (counters derive[^\n]*)\n\s*```\n\s*Hold `value` as `([A-Z_]+)`/g,
+    )) {
+      const counter = execute(3, match[1]!);
+      if (counter.code !== 0) throw new Error(`Prepare test round: ${counter.err}`);
+      vars[match[2]!] = String(counter.json.value);
+    }
     const result = execute(3, "tests run");
     if (!result.json) throw new Error(`Run tests exited ${result.code}: ${result.err}`);
     vars.TEST_SOURCE = result.json.source ?? "local";

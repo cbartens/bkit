@@ -293,6 +293,7 @@ describe("bkit tests run", () => {
     const r = await run(BUILD);
     expect(r.code).toBe(0);
     expect(r.json).toEqual({
+      source: "local",
       verdict: "PASS",
       exitCode: 0,
       gate: DEEP,

@@ -142,7 +142,7 @@ describe("gate logs", () => {
     ],
     [
       "debug",
-      '--artifact="docs/plans/{YYYYMM}/logs/{FID}/context-tests-local-{DEBUG_ATTEMPT}.md" --fid={FID} --file="{STATUS}" --workflow=debug --step=debug-run-tests --attempt={DEBUG_ATTEMPT}',
+      '--artifact="docs/plans/{YYYYMM}/logs/{FID}/context-tests-local-{DEBUG_ATTEMPT}.md" --fid={FID} --file="{STATUS}" --workflow=debug --step=debug-run-tests --attempt={NORMAL_ATTEMPT}',
     ],
   ];
 

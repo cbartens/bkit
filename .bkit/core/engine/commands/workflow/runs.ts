@@ -2137,7 +2137,12 @@ function runGate(ctx: RunContext): number {
           .filter(
             (value) =>
               String(obj(value).workflow_id) === selection.workflowId &&
-              (!str(f.branch) || obj(value).head_branch === str(f.branch)),
+              text(obj(obj(value).repository).full_name).toLowerCase() ===
+                selection.repo.toLowerCase() &&
+              text(obj(obj(value).head_repository).full_name).toLowerCase() ===
+                selection.repo.toLowerCase() &&
+              obj(value).head_branch === (str(f.branch) ?? selection.headBranch) &&
+              (str(f.event) === undefined || obj(value).event === str(f.event)),
           )
           .map(toRun)
           .filter((run) => run.head_sha === head && run.id !== null);

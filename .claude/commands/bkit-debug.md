@@ -304,9 +304,14 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 ## 🤖 Step 3 — Run Tests
 
-1. Run the deepest declared gate, or record the selected CI failure before a current-generation fix. `{GATE_FLAGS}` = one `--gate=<name>` per `GATES` entry, in order. `{CI_TEST_FLAGS}` = `--ci-run={CI_RUN_ID} --ci-url="{CI_RUN_URL}"` only for the saved CI selection, else empty:
+1. Derive this run's next test round independently of `{DEBUG_ATTEMPT}`, which numbers workflow runs:
    ```bash
-   "{BKIT}" tests run {GATE_FLAGS} {CI_TEST_FLAGS} --log="{OUTBOX}/context-tests-local-{DEBUG_ATTEMPT}.log" --artifact="docs/plans/{YYYYMM}/logs/{FID}/context-tests-local-{DEBUG_ATTEMPT}.md" --fid={FID} --file="{STATUS}" --workflow=debug --step=debug-run-tests --attempt={DEBUG_ATTEMPT}
+   "{BKIT}" counters derive --file="{STATUS}" --workflow=debug --step=debug-run-tests --position=next
+   ```
+   Hold `value` as `NORMAL_ATTEMPT`. Exit non-zero → **Failure Path**.
+   Run the deepest declared gate, or record the selected CI failure before a current-generation fix. `{GATE_FLAGS}` = one `--gate=<name>` per `GATES` entry, in order. `{CI_TEST_FLAGS}` = `--ci-run={CI_RUN_ID} --ci-url="{CI_RUN_URL}"` only for the saved CI selection, else empty:
+   ```bash
+   "{BKIT}" tests run {GATE_FLAGS} {CI_TEST_FLAGS} --log="{OUTBOX}/context-tests-local-{DEBUG_ATTEMPT}.log" --artifact="docs/plans/{YYYYMM}/logs/{FID}/context-tests-local-{DEBUG_ATTEMPT}.md" --fid={FID} --file="{STATUS}" --workflow=debug --step=debug-run-tests --attempt={NORMAL_ATTEMPT}
    ```
    Hold `scope` as `TEST_SCOPE` and `failures` as `TEST_FAILURES`.
    Hold `source` as `TEST_SOURCE` and `ciGeneration` as `CI_GENERATION` (retain the saved generation if absent). A CI source records evidence; no local gate executed.
@@ -314,7 +319,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    - **If** exit 0 → `TEST_VERDICT` = PASS.
    - **If** exit 1 → `TEST_VERDICT` = FAIL.
    - **Else** → **Failure Path**.
-2. Finish, with no commit. `{FAILURES_FLAG}` = `--failures={TEST_FAILURES}`, empty when `TEST_FAILURES` = null (count unknown): `{CLAMP_FLAG}` = `--clamp-log=debug-run-tests:{DEBUG_ATTEMPT}` only when `source` = `local`; otherwise empty:
+2. Finish, with no commit. `{FAILURES_FLAG}` = `--failures={TEST_FAILURES}`, empty when `TEST_FAILURES` = null (count unknown): `{CLAMP_FLAG}` = `--clamp-log=debug-run-tests:{NORMAL_ATTEMPT}` only when `source` = `local`; otherwise empty:
    ```bash
    "{BKIT}" steps finish --file="{STATUS}" --workflow=debug --step=debug-run-tests --verdict={TEST_VERDICT} {FAILURES_FLAG} --scope="{TEST_SCOPE}" --field=source={TEST_SOURCE} --field=ciGeneration={CI_GENERATION} --attempt=next --artifact=docs/plans/{YYYYMM}/logs/{FID}/context-tests-local-{DEBUG_ATTEMPT}.md {CLAMP_FLAG} --commit=none --number=3 --post --title="Run Tests"
    ```

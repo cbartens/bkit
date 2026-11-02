@@ -9804,7 +9804,8 @@ Repro decided
 Open the run inside the worktree:
 Record the runtime and the run's modes, then finish:
 Runtime row written and asserted
-Run the deepest declared gate, or record the selected CI failure before a current-generation fix. `{GATE_FLAGS}` = one `--gate=<name>` per `GATES` entry, in order. `{CI_TEST_FLAGS}` = `--ci-run={CI_RUN_ID} --ci-url="{CI_RUN_URL}"` only for the saved CI selection, else empty:
+Derive this run's next test round independently of `{DEBUG_ATTEMPT}`, which numbers workflow runs:
+Hold `value` as `NORMAL_ATTEMPT`. Exit non-zero → **Failure Path**.
 **If** `TEST_VERDICT` = PASS → route on the fix and reproduce rows in the active run:
 **If** exit 1 **and** it printed `step-9` → Step 9.
 **If** exit 1 **and** it printed `step-10` → Step 10.
