@@ -1,0 +1,11 @@
+{"type":"workflow-started","workflow":"build","at":"2026-11-02T09:51:26Z","parentSha":"e5ba78d2d8d3a5f4b0844549bf0be5fe03a80025","limits":{"build.verify":{"ask":true,"max":5},"build.challenge":{"ask":true,"max":2},"build.tests":{"ask":true,"max":2}}}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T09:51:32Z","noun":"runtime","verb":"row","flags":["workflow","file"]}
+{"type":"runtime-resolved","workflow":"build","at":"2026-11-02T09:51:32Z","runtime":"LOCAL","runtimeWorktrees":true,"runtimeDevPushes":true,"runtimeGithubCli":true,"runtimeGithubCliExit":0,"runtimeGithubCliErr":"","baseSha":""}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T09:51:33Z","noun":"runtime","verb":"assert","flags":["workflow","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T09:51:39Z","noun":"status","verb":"route","flags":["workflow","file","prompt-file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T09:51:49Z","noun":"workflows","verb":"input","flags":["workflow","fid","run","file","prompt-file","description-file","comments-file","plan"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T09:51:59Z","noun":"steps","verb":"done","flags":["workflow","step","file","commit"]}
+{"type":"step-done","workflow":"build","step":"build-start-workflow","status":"DONE","at":"2026-11-02T09:51:59Z","parentSha":"e5ba78d2d8d3a5f4b0844549bf0be5fe03a80025","artifacts":[]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T09:51:59Z","noun":"steps","verb":"finish","flags":["workflow","step","file","artifact","number","post","title","tree","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-worktree-setup/-/-/comment","hash":"a80c6302ead4e588fe1636679091756625087854c97f1dc0702acab9c848ecda","ref":"https://github.com/cbartens/bkit/issues/830#issuecomment-6574119911","at":"2026-11-02T09:52:01Z"}
+{"type":"step-done","workflow":"build","step":"build-worktree-setup","status":"DONE","at":"2026-11-02T09:52:01Z","parentSha":"e5ba78d2d8d3a5f4b0844549bf0be5fe03a80025","artifacts":["docs/plans/202611/logs/830-debug-diagnose-named/build-input-1.md"]}
