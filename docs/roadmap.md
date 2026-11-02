@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-02T08:58:26Z)_
+_(refreshed 2026-11-02T09:02:04Z)_
 
 ### Design
 
@@ -33,6 +33,7 @@ _(refreshed 2026-11-02T08:58:26Z)_
 | 546-knowledge-store-ledger | 546-knowledge-store-ledger | 1793515836097 |
 | 787-show-authoring-rules | 787-show-authoring-rules | 1793609906429 |
 | 80-audit-workflow | 80-audit-workflow | 1785311294164 |
+| 826-append-routine-workflow | 826-append-routine-workflow | 1793610124288 |
 
 ### Plan
 
