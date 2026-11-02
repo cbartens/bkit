@@ -147,3 +147,10 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-02T02:30:03Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","artifact","field","number","post","title","comment-body","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-decision/-/1/comment","hash":"fbbe8f5968f16317833aa7a910cd30b502c9fe6316716530c425ae6aea5585fa","ref":"https://github.com/cbartens/bkit/issues/719#issuecomment-6567633791","at":"2026-11-02T02:30:05Z"}
 {"type":"step-done","workflow":"build","step":"build-decision","status":"DONE","at":"2026-11-02T02:30:05Z","parentSha":"90c5e692e71146c42305c59cbd12a8320c048336","artifacts":["docs/plans/202610/logs/719-cloud-variants-add/build-decision-1-1.md"],"attempt":1,"route":"retry"}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T02:30:09Z","noun":"status","verb":"route","flags":["file","workflow","step","group","require"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T02:30:33Z","noun":"tests","verb":"run","flags":["gate","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T02:32:14Z","noun":"ci","verb":"prose","flags":["glob"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T02:32:19Z","noun":"ci","verb":"slop","flags":[]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T02:40:44Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-gaps-remediate/1/2/comment","hash":"032525598626001520acf70b8de87358eb0cedf2a6b084ddae96e021b096014f","ref":"https://github.com/cbartens/bkit/issues/719#issuecomment-6567761039","at":"2026-11-02T02:40:46Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-gaps-remediate","status":"DONE","at":"2026-11-02T02:40:46Z","parentSha":"ed700a3ce821f9fdf9b8a9a6dc3804d24ab6a1c6","artifacts":["docs/plans/202610/logs/719-cloud-variants-add/build-plan-gaps-remediate-1-2-log.md"],"verdict":"FAIL","attempt":2,"group":1,"strategy":"FINAL"}
