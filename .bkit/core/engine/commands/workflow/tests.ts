@@ -17,6 +17,7 @@
 // needs the named test to run and pass.
 
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -24,7 +25,7 @@ import * as path from "node:path";
 import { BKIT_LINT_FILE_SCRIPT, BKIT_TEST_FILE_SCRIPT } from "../../install/manifest.js";
 import { clampLogPath } from "../../ledgers/clamp-log.js";
 import { appendLine, statusTimestamp } from "../../ledgers/status.js";
-import { CommandError, EXIT, git, type CommandSpec } from "../lib.js";
+import { CommandError, EXIT, git, runGit, type CommandSpec } from "../lib.js";
 import { parseJson } from "../../shared/json.js";
 import { readPackageJson } from "../../shared/package-json.js";
 import { COULD_NOT_RUN_EXIT_CODES, scriptCommand } from "../../shared/package-manager.js";
@@ -208,6 +209,7 @@ export type RedState =
   | "red"
   | "red-not-loaded"
   | "passed-accepted"
+  | "updated"
   | "vacuous"
   | "missing"
   | "no-report"
@@ -222,15 +224,27 @@ export interface RedTest {
   state: RedState;
   /** `git hash-object` of the test file, written to the object store; null when the file is missing. */
   blob: string | null;
+  /**
+   * Hash of the test's own lines (`testBlock`) as they stood; null when the file holds no
+   * block for the name. Null, and absent on rows written before per-test locking, lock by `blob`.
+   */
+  block?: string | null;
   /** The tests step's reason, on `passed-accepted`. */
   reason?: string;
+  /** On `updated`: the commit the group started at, where the test already existed. */
+  base?: string;
 }
 
-/** The states that count as a red: the test failed, its file did not load, or the tests step vouched for its pass. */
+/**
+ * The states that count as a red: the test failed, its file did not load, the tests step
+ * vouched for its pass, or it is an existing test updated and passing, whose diff the
+ * verifier judges (it may add expectations, never remove or loosen one).
+ */
 export const RED_PROVEN: ReadonlySet<RedState> = new Set([
   "red",
   "red-not-loaded",
   "passed-accepted",
+  "updated",
 ]);
 
 /** The `build-tests-red` rows of `workflow` in status.jsonl, in file order; `group` narrows. */
@@ -271,27 +285,133 @@ function redAttempt(file: string, workflow: string, group: number): number {
 }
 
 /**
- * Every planned test the red rows recorded, keyed by task, file and name; a later row's entry
- * wins, so a retry or a later task of the group overrides only the tests it ran. `group`
- * narrows to one group.
+ * Every planned test the red rows recorded, keyed by task, file and name. A later row's entry
+ * wins, so a retry or a later task of the group overrides only the tests it ran, except that a
+ * proven red is never replaced by an unproven result for the same test lines. `group` narrows
+ * to one group.
  */
 export function redEntries(file: string, workflow: string, group?: number): Map<string, RedTest> {
   const out = new Map<string, RedTest>();
   for (const row of redRows(file, workflow, group))
-    for (const t of redTestsOf(row)) out.set(redKey(t.task, t.test, t.testName), t);
+    for (const t of redTestsOf(row)) {
+      const key = redKey(t.task, t.test, t.testName);
+      const earlier = out.get(key);
+      const keepsProof =
+        earlier !== undefined &&
+        RED_PROVEN.has(earlier.state) &&
+        !RED_PROVEN.has(t.state) &&
+        typeof earlier.block === "string" &&
+        earlier.block === t.block;
+      if (!keepsProof) out.set(key, t);
+    }
   return out;
 }
 
-/** The blob each planned test file of the group last stood at when a red row recorded it. */
-export function redBlobs(
+/** A planned test that differs from how the group's tests step left it. */
+export interface TouchedTest {
+  test: string;
+  name: string;
+}
+
+/**
+ * The planned tests of `group` a code step changed since their red: a test whose own lines
+ * (`testBlock`) no longer hash to the recorded block. A test whose lines could not be found,
+ * and rows written before per-test locking, compare the whole file's blob. Other edits to a
+ * test file are free.
+ */
+export function touchedTests(
+  top: string,
   file: string,
   workflow: string,
   group: number,
-): Map<string, string | null> {
-  const out = new Map<string, string | null>();
-  for (const row of redRows(file, workflow, group))
-    for (const t of redTestsOf(row)) out.set(t.test, t.blob);
-  return out;
+): TouchedTest[] {
+  const touched: TouchedTest[] = [];
+  const texts = new Map<string, string | null>();
+  const textOf = (test: string) => {
+    if (!texts.has(test)) {
+      const abs = path.join(top, test);
+      texts.set(test, fs.existsSync(abs) ? fs.readFileSync(abs, "utf-8") : null);
+    }
+    return texts.get(test)!;
+  };
+  for (const t of redEntries(file, workflow, group).values()) {
+    if (t.block === undefined || t.block === null) {
+      if (git(top, ["hash-object", "--", t.test]) !== t.blob)
+        touched.push({ test: t.test, name: t.testName });
+      continue;
+    }
+    if (blockHash(textOf(t.test), t.testName) !== t.block)
+      touched.push({ test: t.test, name: t.testName });
+  }
+  return touched;
+}
+
+/** Leading whitespace width, a tab counting as one column. */
+const indentOf = (line: string) => line.length - line.trimStart().length;
+
+/** A line that only closes the block opened at its own indent. */
+const CLOSER = /^(?:[)\]}]|end\b)/;
+
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * The lines of the test named `name` in `text`, or null when no line names it. The test
+ * starts on the first line naming it as a quoted string (else as a whole word), or on the
+ * line before when the name opens its line and that line ends with `(`; it runs through
+ * every deeper-indented line after the start, and one closing line (`}`, `)`, `]`, `end`) at
+ * the start's indent. Framework-agnostic: it needs only a name and indentation.
+ */
+export function testBlock(text: string | null, name: string): string | null {
+  if (text === null) return null;
+  const lines = text.split("\n");
+  const quoted = [`"${name}"`, `'${name}'`, `\`${name}\``];
+  let at = lines.findIndex((l) => quoted.some((q) => l.includes(q)));
+  if (at < 0) {
+    const word = new RegExp(`(^|[^\\w])${escapeRegExp(name)}([^\\w]|$)`);
+    at = lines.findIndex((l) => word.test(l));
+  }
+  if (at < 0) return null;
+  let start = at;
+  while (
+    start > 0 &&
+    /^["'`]/.test(lines[start]!.trimStart()) &&
+    /\($/.test(lines[start - 1]!.trimEnd())
+  )
+    start -= 1;
+  const base = indentOf(lines[start]!);
+  let end = start;
+  for (let i = start + 1; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (line.trim() === "") continue;
+    if (indentOf(line) > base) {
+      end = i;
+      continue;
+    }
+    if (indentOf(line) === base && CLOSER.test(line.trimStart())) end = i;
+    break;
+  }
+  return lines.slice(start, end + 1).join("\n");
+}
+
+/** The sha-1 of a test's own lines (`testBlock`), or null when `text` holds no such test. */
+export function blockHash(text: string | null, name: string): string | null {
+  const block = testBlock(text, name);
+  return block === null ? null : createHash("sha1").update(block).digest("hex");
+}
+
+/** The commit the group started at: its `build-group-start` row's `parentSha`. */
+function groupStartSha(file: string, workflow: string, group: number): string | undefined {
+  if (!fs.existsSync(file)) return undefined;
+  const row = (readStatusRows(file) as Array<Record<string, unknown>>)
+    .filter(
+      (r) =>
+        r.type === "step-done" &&
+        r.workflow === workflow &&
+        r.step === "build-group-start" &&
+        r.group === group,
+    )
+    .at(-1);
+  return typeof row?.parentSha === "string" ? row.parentSha : undefined;
 }
 
 const NO_TEST_FILE_HINT =
@@ -409,7 +529,7 @@ export function judgeRed(
   if (named.some((c) => c.state === "passed"))
     return {
       state: "vacuous",
-      detail: `"${want}" passes before any task code exists, so it proves nothing`,
+      detail: `"${want}" passes at its red, so it proves nothing`,
     };
   if (named.some((c) => c.state === "skipped"))
     return { state: "missing", detail: `"${want}" was skipped, not run` };
@@ -434,7 +554,7 @@ export interface PlannedTest {
   name: string;
 }
 
-/** A human-recorded acceptance of a task's `no-red` gaps: the tests it covers, its 1-based plan lines. */
+/** A human-recorded acceptance of a task's missing reds: the tests it covers, its 1-based plan lines. */
 export interface TestOrderException {
   tests: PlannedTest[];
   lines: number[];
@@ -445,7 +565,7 @@ export type TestFirst =
   | { task: number; kind: "na"; reason: string }
   | { task: number; kind: "missing" | "malformed" };
 
-/** The task field naming a task's tests, and the one recording an accepted `no-red` gap. */
+/** The task field naming a task's tests, and the one recording an accepted missing red. */
 export const TEST_FIRST = "**TEST FIRST:**";
 export const TEST_EXCEPTION = "**TEST EXCEPTION:**";
 
@@ -457,6 +577,30 @@ export const capsText = (c: TaskCaps) =>
   `${c.maxPerGroup} tasks and ${c.maxTestsPerGroup} TEST FIRST tests per group; ${c.maxTestsPerTask} tests across ${c.maxTestFilesPerTask} test files per task`;
 
 /** A task block's TEST FIRST read as one `TestFirst`; a TEST EXCEPTION with no TEST FIRST is its `n/a`. */
+/**
+ * Planned tests of open tasks whose name a test in their file already carries: the tests
+ * step cannot write a new test under that name, so it either updates the existing one or
+ * finds it passing. Reported only — the plan names the update, or a new name.
+ */
+function existingTestNames(
+  text: string,
+  top: string,
+): Array<{ line: number; task: number; test: string; name: string }> {
+  const out: Array<{ line: number; task: number; test: string; name: string }> = [];
+  for (const t of parsePlanBlocks(text).tasks) {
+    if (t.done) continue;
+    const s = testFirstOf(t);
+    if (s.kind !== "test") continue;
+    for (const x of s.tests) {
+      const abs = path.join(top, x.test);
+      if (!fs.existsSync(abs)) continue;
+      if (testBlock(fs.readFileSync(abs, "utf-8"), x.name) !== null)
+        out.push({ line: t.testFirst?.line ?? t.line, task: t.task, test: x.test, name: x.name });
+    }
+  }
+  return out;
+}
+
 function testFirstOf(t: PlanTaskBlock): TestFirst {
   const { task, testFirst: tf, testException: exc } = t;
   const plain = (tests: PlannedTest[]) => tests.map(({ test, name }) => ({ test, name }));
@@ -475,7 +619,7 @@ function testFirstOf(t: PlanTaskBlock): TestFirst {
  * Each task block's TEST FIRST field (`plan-blocks.ts`): one test per sub-bullet (first
  * backticked span = file, second = test name), `n/a — {reason}`, missing, or malformed
  * (an entry with fewer than two spans, or no entry). A TEST EXCEPTION field names, in
- * the same entry form, the tests whose `no-red` gaps it accepts. `group` narrows to
+ * the same entry form, the tests whose missing reds it accepts. `group` narrows to
  * one group's tasks.
  */
 export function readTestFirst(plan: string, group?: number): TestFirst[] {
@@ -881,12 +1025,12 @@ const fenceFor = (text: string) =>
 
 /**
  * Every gap the audit emits, and the verifier's `Fixable` for it: `null` = the
- * answer needs a diff read, which only the verifier can make. `no-red` is not fixable:
- * no code-writing step may touch a planned test, so the owner accepts it or stops.
+ * answer needs a diff read, which only the verifier can make. A test with no proven red
+ * is no gap: the audit lists it as unproven, and the owner answers every unproven test
+ * once, at the end of the build.
  */
 const GAP_FIXABLE = {
   "not-green": true,
-  "no-red": false,
   "delete-still-referenced": null,
   "no-test-first": false,
   "test-first-malformed": false,
@@ -1139,6 +1283,22 @@ interface Landed {
   reason: string;
 }
 
+/** A planned test with no proven red: the owner answers it at the end of the build. */
+interface Unproven {
+  task: number;
+  test: string;
+  name: string;
+  detail: string;
+}
+
+/** An existing test the tests step changed: the verifier judges its diff since `base`. */
+interface Updated {
+  task: number;
+  test: string;
+  name: string;
+  base: string | null;
+}
+
 /** A planned test the group's red did not prove, and why. */
 interface RedGap {
   task: number;
@@ -1198,10 +1358,12 @@ function writeRedReport(
 ): void {
   const red = o.tests.filter((t) => t.state === "red" || t.state === "red-not-loaded").length;
   const accepted = o.tests.filter((t) => t.state === "passed-accepted").length;
+  const updated = o.tests.filter((t) => t.state === "updated").length;
   const out = [
     `Enforced: ${o.enforced}`,
     `Red: ${red}`,
     `Accepted: ${accepted}`,
+    `Updated: ${updated}`,
     `Gaps: ${o.gaps.length}`,
     "",
     "<!-- verdict:end -->",
@@ -1242,6 +1404,8 @@ function writeAuditReport(
     gaps: Gap[];
     exceptions: ExceptionResult[];
     landed: Landed[];
+    unproven: Unproven[];
+    updated: Updated[];
     outputs: Array<{ test: string; tail: string }>;
   },
 ): void {
@@ -1249,6 +1413,7 @@ function writeAuditReport(
     `Enforced: ${o.enforced}`,
     `Verdict: ${o.verdict}`,
     `Gaps: ${o.gaps.length}`,
+    `Unproven: ${o.unproven.length}`,
     "",
     "<!-- verdict:end -->",
     "",
@@ -1278,6 +1443,16 @@ function writeAuditReport(
   for (const l of o.landed)
     out.push(
       `- Task ${l.task} \`${l.test}\` "${l.name}" — passed at the group's red, and the tests step accepted it: ${l.reason}; no red is due`,
+    );
+  if (o.updated.length > 0) out.push("", "## Updated tests", "");
+  for (const u of o.updated)
+    out.push(
+      `- Task ${u.task} \`${u.test}\` "${u.name}" — an existing test the tests step changed${u.base === null ? "" : ` since \`${u.base.slice(0, 9)}\``}: the update may add expectations, never remove or loosen one`,
+    );
+  if (o.unproven.length > 0) out.push("", "## Unproven", "");
+  for (const u of o.unproven)
+    out.push(
+      `- Task ${u.task} \`${u.test}\` "${u.name}" — ${u.detail}; the owner answers it at the end of the build`,
     );
   for (const t of o.outputs) {
     const fence = fenceFor(t.tail);
@@ -1562,14 +1737,28 @@ export const testsCommand: CommandSpec = {
         if (g.tasks.length === 0)
           throw new CommandError(EXIT.USAGE, `GROUP ${group} has no tasks; nothing to run`);
         const done = new Set(parsed.tasks.filter((t) => t.done).map((t) => t.task));
-        // A red an earlier row proved stands while its file is unchanged, so a retry, a
-        // handover or a task added to the group runs only what is left.
+        // A red an earlier row proved stands while the test's own lines are unchanged, so a
+        // retry, a handover or a task added to the group runs only what is left, and an edit
+        // to another test of the same file costs no proof. A test whose lines could not be
+        // found, and rows from before per-test locking, stand while the whole file is unchanged.
         const proven = redEntries(status, workflow, group);
-        const recorded = redBlobs(status, workflow, group);
+        const textOf = (test: string) => {
+          const abs = path.join(top, test);
+          return fs.existsSync(abs) ? fs.readFileSync(abs, "utf-8") : null;
+        };
         const standing = (t: RedTest) => {
           const earlier = proven.get(redKey(t.task, t.test, t.testName));
           if (earlier === undefined || !RED_PROVEN.has(earlier.state)) return false;
-          return git(top, ["hash-object", "--", t.test]) === recorded.get(t.test);
+          if (earlier.block === undefined || earlier.block === null)
+            return git(top, ["hash-object", "--", t.test]) === earlier.blob;
+          return blockHash(textOf(t.test), t.testName) === earlier.block;
+        };
+        const startSha = groupStartSha(status, workflow, group);
+        /** The test's lines at the group's start commit: it existed before this group's tests step. */
+        const blockAtStart = (t: RedTest) => {
+          if (startSha === undefined) return null;
+          const shown = runGit(top, ["show", `${startSha}:${t.test}`]);
+          return shown.ok ? blockHash(shown.stdout, t.testName) : null;
         };
         const tests: RedTest[] = [];
         let skipped = 0;
@@ -1618,7 +1807,11 @@ export const testsCommand: CommandSpec = {
             }
             // `-w` stores the file in git: green and `steps finish` read the blob back later.
             const blob = git(top, ["hash-object", "-w", "--", file]);
-            for (const t of mine) t.blob = blob;
+            const text = textOf(file);
+            for (const t of mine) {
+              t.blob = blob;
+              t.block = blockHash(text, t.testName);
+            }
             if (!enforced) continue;
             const runLog = path.join(dir, "run.log");
             if (lint) {
@@ -1659,10 +1852,18 @@ export const testsCommand: CommandSpec = {
                       (p) => p.task === t.task && p.test === t.test && p.name === t.testName,
                     )
                   : undefined;
+              const before = judged.state === "vacuous" ? blockAtStart(t) : null;
               if (accepted !== undefined) {
                 t.state = "passed-accepted";
                 t.reason = accepted.reason;
                 details.set(t, `passes; accepted by the tests step: ${accepted.reason}`);
+              } else if (before !== null && before !== t.block) {
+                t.state = "updated";
+                t.base = startSha;
+                details.set(
+                  t,
+                  `an existing test, changed since the group started (\`${startSha!.slice(0, 9)}\`) and passing: the verifier judges its diff — it may add expectations, never remove or loosen one`,
+                );
               } else {
                 t.state = judged.state;
                 details.set(t, judged.detail);
@@ -1756,9 +1957,13 @@ export const testsCommand: CommandSpec = {
         plan: "the plan file audited",
         verdict:
           "PASS no gaps | FAIL a gap's fixable is false | CONCERNS every gap's fixable is true | null when a gap needs a diff read, or the audit could not run",
-        gaps: "[{task, kind, detail, fixable, logLine}]: no-test-first | test-first-malformed | test-first-unread (task null: a plan-level format problem) | no-red (the group's tests step recorded no red for the test: no build-tests-red row, or a state other than red, red-not-loaded or passed-accepted) | not-green | exception-refused (a task whose only test field is a TEST EXCEPTION not honoured) | delete-still-referenced (a DELETE line's file still exists, or its name is still found in the tree); fixable is null when the gap needs a diff read; logLine is the line the verifier appends",
+        gaps: "[{task, kind, detail, fixable, logLine}]: no-test-first | test-first-malformed | test-first-unread (task null: a plan-level format problem) | not-green | exception-refused (a task whose only test field is a TEST EXCEPTION not honoured) | delete-still-referenced (a DELETE line's file still exists, or its name is still found in the tree); fixable is null when the gap needs a diff read; logLine is the line the verifier appends",
         alreadyLanded:
-          "[{task, test, name, reason}]: tests the tests step accepted as passing before any task code (passed-accepted on the red row); no no-red gap for them",
+          "[{task, test, name, reason}]: tests the tests step accepted as passing before any task code (passed-accepted on the red row); no red is due for them",
+        unproven:
+          "[{task, test, name, detail}]: tests with no proven red (no build-tests-red row, or a state other than red, red-not-loaded, updated or passed-accepted) and no honoured TEST EXCEPTION; never a gap — the owner answers them once, at the end of the build",
+        updated:
+          "[{task, test, name, base}]: existing tests the tests step changed (updated on the red row); base is the group's start commit; the verifier judges each diff — it may add expectations, never remove or loosen one",
         log: "where the report was written (as given)",
       },
       exitCodes: {
@@ -1796,6 +2001,8 @@ export const testsCommand: CommandSpec = {
           gaps: [],
           exceptions: [],
           landed: [],
+          unproven: [],
+          updated: [],
           outputs: [],
         };
         if (reason !== undefined) {
@@ -1807,6 +2014,8 @@ export const testsCommand: CommandSpec = {
             verdict: null,
             gaps: [],
             alreadyLanded: [],
+            unproven: [],
+            updated: [],
             log: logArg,
           });
           ctx.log(`test-first not enforced: ${reason}`);
@@ -1816,6 +2025,8 @@ export const testsCommand: CommandSpec = {
         const reds = redEntries(statusFile(ctx), workflow);
         const groupOf = (task: number) => parsed.tasks.find((b) => b.task === task)?.group;
         const landed: Landed[] = [];
+        const unproven: Unproven[] = [];
+        const updated: Updated[] = [];
         const statusRel = repoRel(top, ctx.cwd, statusFile(ctx));
         const exceptions: ExceptionResult[] = [];
         const gaps: Gap[] = [];
@@ -1904,27 +2115,28 @@ export const testsCommand: CommandSpec = {
               excepted!.tests.some((e) => e.test === t.test && e.name === t.name)
                 ? exception
                 : undefined;
-            const gap = (kind: GapKind, detail: string) => {
-              if (clearing !== undefined && kind === "no-red")
-                clearing.cleared.push(`\`${kind}\` for \`${t.test}\` "${t.name}"`);
-              else gaps.push(gapOf(s.task, kind, detail, { file: t.test, name: t.name }));
+            const gap = (kind: GapKind, detail: string) =>
+              gaps.push(gapOf(s.task, kind, detail, { file: t.test, name: t.name }));
+            const noRed = (detail: string) => {
+              if (clearing !== undefined)
+                clearing.cleared.push(`the red for \`${t.test}\` "${t.name}"`);
+              else unproven.push({ task: s.task, test: t.test, name: t.name, detail });
             };
             const red = reds.get(redKey(s.task, t.test, t.name));
             if (red === undefined)
-              gap(
-                "no-red",
-                `no tests step recorded a red for "${t.name}" — run the group's tests step, then \`bkit tests red --group=${groupOf(s.task) ?? "N"}\``,
+              noRed(
+                `no tests step recorded a red for it (\`bkit tests red --group=${groupOf(s.task) ?? "N"}\`)`,
               );
             else if (red.state === "passed-accepted") {
               row.red = red.state;
               landed.push({ task: s.task, test: t.test, name: t.name, reason: red.reason ?? "" });
-            } else if (RED_PROVEN.has(red.state)) row.red = red.state;
-            else {
+            } else if (RED_PROVEN.has(red.state)) {
               row.red = red.state;
-              gap(
-                "no-red",
-                `the tests step left "${t.name}" as \`${red.state}\`, not red — fix the test in the tests step and run \`bkit tests red --group=${groupOf(s.task) ?? "N"}\` again`,
-              );
+              if (red.state === "updated")
+                updated.push({ task: s.task, test: t.test, name: t.name, base: red.base ?? null });
+            } else {
+              row.red = red.state;
+              noRed(`the tests step left it as \`${red.state}\`, not red`);
             }
 
             if (!fs.existsSync(path.join(top, t.test))) {
@@ -1968,6 +2180,8 @@ export const testsCommand: CommandSpec = {
           gaps,
           exceptions,
           landed,
+          unproven,
+          updated,
           outputs,
         });
         ctx.emit({
@@ -1976,9 +2190,13 @@ export const testsCommand: CommandSpec = {
           verdict,
           gaps,
           alreadyLanded: landed,
+          unproven,
+          updated,
           log: logArg,
         });
-        ctx.log(`test-first audit: ${gaps.length} gap(s) — report in ${logArg}`);
+        ctx.log(
+          `test-first audit: ${gaps.length} gap(s), ${unproven.length} unproven — report in ${logArg}`,
+        );
         return gaps.length === 0 ? EXIT.OK : EXIT.NO;
       },
     },
@@ -2013,6 +2231,8 @@ export const testsCommand: CommandSpec = {
           "[{line, kind, message}]: format | stray | field | depends | cap | inventory | matrix | supersession | markers — each refuses the plan",
         existence:
           "[{line, task, message}]: READ / UPDATE / DELETE files or symbols not found; refuses only with --existence=refuse",
+        existing:
+          "[{line, task, test, name}]: planned tests of open tasks whose name a test in their file already carries; reported only, never refuses",
         log: "where the report was written (as given)",
       },
       run: (ctx) => {
@@ -2032,6 +2252,7 @@ export const testsCommand: CommandSpec = {
         const caps = planCaps(ctx.cwd);
         const { groups, sizes, problems } = checkPlanText(text, caps);
         const existence = planExistence(text, toplevel(ctx.cwd));
+        const existing = existingTestNames(text, toplevel(ctx.cwd));
         const refused = problems.length > 0 || (existenceArg === "refuse" && existence.length > 0);
 
         const out = [
@@ -2076,10 +2297,16 @@ export const testsCommand: CommandSpec = {
         );
         if (existence.length === 0) out.push("None.");
         for (const e of existence) out.push(`- \`${plan}:${e.line}\` — ${e.message}`);
+        if (existing.length > 0)
+          out.push("", "## Planned test names already in use (reported only)", "");
+        for (const e of existing)
+          out.push(
+            `- \`${plan}:${e.line}\` TASK ${e.task}: \`${e.test}\` already holds a test named "${e.name}" — name the update to it in TEST FIRST, or give the new test a new name`,
+          );
         const log = path.resolve(ctx.cwd, logArg);
         fs.mkdirSync(path.dirname(log), { recursive: true });
         fs.writeFileSync(log, `${out.join("\n")}\n`);
-        ctx.emit({ plan, groups, tasks: sizes, problems, existence, log: logArg });
+        ctx.emit({ plan, groups, tasks: sizes, problems, existence, existing, log: logArg });
         ctx.log(
           `plan check: ${problems.length} problem(s), ${existence.length} existence finding(s)${refused ? " — refused" : ""}; report in ${logArg}`,
         );

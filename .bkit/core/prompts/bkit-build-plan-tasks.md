@@ -104,6 +104,7 @@ autoCompactWindow: 300000
 7. Update **Create** after each task: append `DONE|BLOCKED` at EOF with Bash `echo {log entry} >> {output}`.
 8. Implement the tasks one at a time. For each task:
    - The task's `TEST FIRST` tests are already on disk: the tests step wrote them, and the engine recorded each one red before this step. Do not edit, rename, move or delete a planned test, and NEVER touch a `TEST EXCEPTION` field.
+     - Other tests in the same file are yours to change, for example to fix a test your code breaks: the engine locks each planned test case, not its file, and `steps finish` exit 11 names the planned test you edited.
      - **If** a planned test is wrong (it asserts what the task's `DONE WHEN` does not ask for, or fakes a value the real code cannot return) → append ``BLOCKED — TASK {N}: test `{file}` `{name}` — {why}`` with Bash `echo >>`, and build the rest of the task.
    - Build the task in this order:
      - Edit or create the source until the task's tests pass.

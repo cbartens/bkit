@@ -1137,7 +1137,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-adoption`, `bkit-audit-dependencies`, `bkit-audit-usability`
 - drift:
-  - `bkit-build:369`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-build:388`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `bkit-design:183`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
@@ -1237,7 +1237,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-adoption`, `bkit-audit-dependencies`, `bkit-audit-repo`, `bkit-audit-usability`
 - drift:
-  - `bkit-build:369`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-build:388`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `bkit-design:183`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
@@ -5237,6 +5237,51 @@ Record the failure, abort any rebase, release the lock
 **Else** → post `comment` (when non-null **and** `ISSUE_ID` non-empty) → step {{step}}.
 **Else** → post `comment` (when non-null; skipped when `ISSUE_ID` empty) → step {{step}}.
 **Else** → post `comment` (when non-null) → step {{step}}.
+```
+
+### workflow-record-not-pushed
+
+- workflow: where-used
+- carriers: workflow `bkit-build`, `bkit-debug`
+
+```text
+**If** exit 10 → the record did not reach the remote: add the line `Record not pushed: the handover commit is only in {WORKTREE_PATH}, and the links in this run's comments open once it is pushed` to the final message → **If** `tracker.done` = false → post `comment` via the tracker MCP per the header's fallback section → step {{step}}.
+```
+
+### workflow-limit-ask-off-failure
+
+- workflow: where-used
+- carriers: workflow `bkit-debug`, `bkit-ship`
+
+```text
+`ask` = false, or headless → **Failure Path**.
+```
+
+### workflow-limit-asks-allowance
+
+- workflow: where-used
+- carriers: workflow `bkit-debug`, `bkit-ship`
+
+```text
+{{attempts}} used up with `ask` = true and not headless → the **{{question}}**, where `Try again` gives {{loop}} one more full allowance (`bkit counters grant`) and it asks again once that allowance is used up too.
+```
+
+### workflow-limit-question-stop
+
+- workflow: where-used
+- carriers: workflow `bkit-debug`, `bkit-ship`
+
+```text
+Stop here instead of trying one more set of attempts?`
+```
+
+### workflow-try-again-return
+
+- workflow: where-used
+- carriers: workflow `bkit-debug`, `bkit-ship`
+
+```text
+**If** the answer is `Try again` → return to the calling step.
 ```
 
 ### workflow-post-comment
@@ -9432,12 +9477,15 @@ Orchestrator exits and the dispatched skill owns the session
 
 ```text
 **Scope:** Build the feature and open a PR to the default integration branch.
+**Owner decisions:** A subagent learns the owner's answers only by reading the decision file (`build-decision-{RUN}-*.md`) named in its `Read`. NEVER restate, summarise or paraphrase an owner's answer in a subagent's `Context`.
 **Plan:** `docs/plans/{YYYYMM}/{FID}-plan.md`, in task-block form (`docs/templates/bkit-plan.md` § Agent Execution Runbook). Each group holds at most `MAX_TASKS_PER_GROUP` tasks and at most `MAX_TESTS_PER_GROUP` `TEST FIRST` tests (`bkit.workflows.tasks`, held at Step 1). One group runs per pass of Steps 7-9. Only the verify steps and the **Decision Pause** tick a task `[x]`. The pause ticks a challenge task it accepts, whether the owner accepts it or the run assumes the accept.
+[secrets; workflow-pushes] List stray files first: `bkit workflows handover --list-stray` (`--workflow` / `--fid` / `--month` / `--worktree` as below) → on a feature branch remove only the `modified` / `untracked` files this run created by mistake, NEVER other agents' changes; on `dev` / `main` (`shared` = true) remove nothing (only the run's own record lands, through a throwaway checkout).
+**If** `PUBLISH` = false **or** `PUBLISH` is not held yet → keep the record in the worktree, linked by branch, and NEVER pass `--push`, because a held run pushes nothing and neither does a failure before `status route` resolves `publish`:
+[workflow-pushes] **Else** → commit and push the record, but NEVER onto a branch with an open PR:
 Derive the decision number:
 **If** `PAUSE_QUESTION` = `VERIFY_GAPS` → write one item per `Identified Gaps Log` line of `build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}.md`. Add the gap's last `BLOCKED` reason from `build-plan-gaps-remediate-{GROUP}-*-log.md` when it has one.
 A fixable gap → options `["Accept", "Fix now"]`, with a recommendation per item.
-A `no-red` gap → a hard blocker with options `["Accept", "Stop"]`. Its question ends `Accept it? You write the reason, and it is recorded as your TEST EXCEPTION.`
-Any other unfixable gap (`no-test-first`, `test-first-malformed`, `test-first-unread`, `exception-refused`) → a hard blocker with options `["Accept", "Fix now", "Stop"]`.
+Any unfixable gap (`no-test-first`, `test-first-malformed`, `test-first-unread`, `exception-refused`) → a hard blocker with options `["Accept", "Fix now", "Stop"]`.
 A group-gate failure is never an item, because it is always fixed.
 **If** `PAUSE_QUESTION` = `CHALLENGE`:
 **If** `CHALLENGE_OVERFLOW` is set → the merge wrote nothing to the plan. Write one item per `Location` of each `CRITICAL`, `HIGH` or `MEDIUM` finding in the merged reports: `build-challenge-2.md`, plus `build-challenge-1.md` when the change is large.
@@ -9446,13 +9494,15 @@ Title each item with its task number, when it has one, followed by its `Location
 **If** the item is `**Fixable:** false` → a hard blocker with options `["Accept", "Fix now", "Stop"]`.
 **Else** → options `["Accept", "Fix now"]`, with a recommendation per finding.
 **If** `PAUSE_QUESTION` = `TESTS_LOOP` → write no items, because failing suites are always fixed.
-`{LOOP_FLAGS}` = `--loop=tests --attempt={TEST_ATTEMPT} --max={PAUSE_MAX}` when `PAUSE_QUESTION` = `TESTS_LOOP`, and empty otherwise.
-`{HEADER_FLAGS}` = `--header=Question={PAUSE_QUESTION} --header=From={verify|challenge|tests} --header="Pause step={PAUSE_STEP}" --header="Plan=docs/plans/{YYYYMM}/{FID}-plan.md"`.
+**If** `PAUSE_QUESTION` = `UNPROVEN` → write one item per entry of `UNPROVEN_TESTS`, titled with its task number and test name. Each item is a planned test that never failed before its code existed, so nothing shows it can catch the bug it was written for. Options `["Accept", "Stop"]`, recommended `Accept`. Its question ends `Accept it? You write the reason, and it is recorded as your TEST EXCEPTION.`
+`{LOOP_FLAGS}` = `--loop=tests --attempt={TEST_ATTEMPT} --max={PAUSE_MAX}` when `PAUSE_QUESTION` = `TESTS_LOOP`; `--loop=verify --group={GROUP} --attempt={VERIFY_ATTEMPT} --max={PAUSE_MAX}` when `PAUSE_LOOP` = `verify`; empty otherwise.
+`{HEADER_FLAGS}` = `--header=Question={PAUSE_QUESTION} --header=From={verify|challenge|tests|summary} --header="Pause step={PAUSE_STEP}" --header="Plan=docs/plans/{YYYYMM}/{FID}-plan.md"`.
 **If** the pause comes from verify → add `--header=Group={GROUP} --header="Verify attempt={VERIFY_ATTEMPT}"` to `{HEADER_FLAGS}`.
 **If** the pause comes from tests → add `--header="Test attempt={TEST_ATTEMPT}"` to `{HEADER_FLAGS}`.
 **If** `decisions compose` exits non-zero → **Failure Path**.
 **If** exit 4 **and** `RUNTIME_HEADLESS` = true → **Failure Path** naming each printed `hardBlockers` question.
 **If** exit 4 → step 4, asking only the printed `hardBlockers` questions.
+Route — first match wins:
 Route — first match wins:
 **If** the owner says stop, **or** answers `Stop` → step 8.
 **If** the loop question is answered `Try again` → step 6. The items then need no decision.
@@ -9462,7 +9512,7 @@ Record the wait with the `owner-pause` block above.
 End the turn and wait for the answers.
 Apply each decision:
 [recommend-do-not-decide; major-changes] **Accept** by the owner → write the acceptance ONLY on that item's explicit approval from the owner. A "yes" to an `Accept` recommendation counts as approval.
-**If** the item is a `no-red` **or** an `exception-refused` gap → write a `- **TEST EXCEPTION:**` field as the last field of the task's block in `docs/plans/{YYYYMM}/{FID}-plan.md`:
+**If** the item is an `exception-refused` gap **or** an `UNPROVEN` item → write a `- **TEST EXCEPTION:**` field as the last field of the task's block in `docs/plans/{YYYYMM}/{FID}-plan.md`:
 Give the field one sub-bullet per test, in `TEST FIRST` form, each ending `— {human's reason} (owner, {YYYY-MM-DD})`.
 **If** the task has no `TEST FIRST` → the field holds `{human's reason} (owner, {YYYY-MM-DD})` alone.
 The field replaces the task's existing `TEST EXCEPTION` field; NEVER add a second one.
@@ -9472,6 +9522,7 @@ Append one `docs/decisions.jsonl` row with `bkit ledgers append` (`.bkit/jsonl.m
 **Accept (assumed)**, written by `decisions apply` → write nothing else: no `docs/decisions.jsonl` row and no `TEST EXCEPTION`. Ship asks the owner to confirm the item later.
 **If** the item is a challenge task → tick it `[x]` and end its title with ` — accepted (assumed)`.
 **Fix now**:
+Write no test and no fix code at this pause. Step 7 writes the new task's `TEST FIRST` tests with `@bkit-build-plan-tests`, records them failing with `tests red`, and only then writes the fix with `@bkit-build-plan-tasks`. NEVER undo code to force a red.
 **If** the item is a challenge task → keep that task open. It runs as it is.
 **Else** → write a new task block:
 Use the task-block form (`docs/templates/bkit-plan.md` § Agent Execution Runbook), numbered one above the plan's highest task.
@@ -9496,18 +9547,19 @@ Set `Status: ASSUMED` while any `Decision: Accept (assumed)` line remains, and `
 **If** any item was answered `Fix now` → `DECISION_ROUTE` = `fix`.
 **If** the loop question was answered `Try again` → `DECISION_ROUTE` = `retry`.
 **If** `From: verify` → `DECISION_ROUTE` = `verify`.
+**If** `From: summary` → `DECISION_ROUTE` = `summary`.
 **Else** → `DECISION_ROUTE` = `tests`. This covers `From: tests` and `From: challenge`.
-Route — first match wins:
+Clear `PAUSE_LOOP`. **If** `From: verify` **or** `From: tests` → the owner chose to go on, so give that loop one more full allowance when its limit is used up. Below the limit, or with `ask` = false, the command grants nothing and exits 1; both exits go on:
+**If** `From: verify`:
+**If** exit >= 2 → **Failure Path**.
 **If** `DECISION_ROUTE` = `fix` → Step 7.
 **If** `DECISION_ROUTE` = `retry` **and** `From: verify` → Step 9.
 **If** `DECISION_ROUTE` = `retry` → Step 13.
 **If** `DECISION_ROUTE` = `verify` → re-run Step 8.
-[secrets; workflow-pushes] List stray files first: `bkit workflows handover --list-stray` (`--workflow` / `--fid` / `--month` / `--worktree` as below) → on a feature branch remove only the `modified` / `untracked` files this run created by mistake, NEVER other agents' changes; on `dev` / `main` (`shared` = true) remove nothing (only the run's own record lands, through a throwaway checkout).
-**If** `PUBLISH` = false **or** `PUBLISH` is not held yet → keep the record in the worktree, linked by branch, and NEVER pass `--push`, because a held run pushes nothing and neither does a failure before `status route` resolves `publish`:
-[workflow-pushes] **Else** → commit and push the record, but NEVER onto a branch with an open PR:
+**If** `DECISION_ROUTE` = `summary` → Step 15.
+[workflow-pushes] Record the wait (step 4 `owner-pause` block). Create `docs/plans/{YYYYMM}/logs/{FID}/build-handover.md` = the decision file plus the line `Stopped by the owner ({RUNTIME}); run stays IN_PROGRESS. /bkit-build {REF} resumes at this pause.`; `REF` empty → `{FID}`. Then keep the record:
 [workflow-pushes] **If** `PUBLISH` = false → keep the record in the kept worktree, linked by branch, and NEVER pass `--push`:
 [workflow-pushes] **Else** → push the record, but NEVER onto a branch with an open PR:
-[workflow-pushes] Record the wait (step 4 `owner-pause` block). Create `docs/plans/{YYYYMM}/logs/{FID}/build-handover.md` = the decision file plus the line `Stopped by the owner ({RUNTIME}); run stays IN_PROGRESS. /bkit-build {REF} resumes at this pause.`; `REF` empty → `{FID}`. Then keep the record:
 Release the lock. NEVER run `workflows fail`:
 Decision file written (`decisions compose`)
 Questions asked in the session, or recommendations taken (`decisions apply --by=headless`)
@@ -9515,8 +9567,10 @@ Hard blockers asked in a session, or sent to the Failure Path when headless
 Acceptances written only on the owner's approval
 Assumed acceptances left without a ledger row or `TEST EXCEPTION`
 Fix now tasks checked (`tests plan-check`)
+Used-up verify or tests loop given its allowance on a go-on answer (`counters grant`)
 Resolve the repo, the branch and how far the branch is behind `dev`:
 **If** `open` > 0 → **Failure Path** naming the open `blockers`.
+**If** exit 80:
 Read the blockers and their states via the tracker MCP (**Tracker**).
 **If** any blocker is not closed / done → **Failure Path**.
 Emit the long-branch advisory `[bkit-build] feature branch is {BEHIND_DEV} commits behind dev / {DIVERGED_AGO} since divergence`.
@@ -9561,7 +9615,8 @@ Hold `artifact` as `WRITE_BRIEF` and `tests` as `WRITE_LEFT`. The brief leaves o
 Record the reds, before any task code exists:
 **If** exit 3 → the repo declares no `bkit:test:file` script; test-first is not enforced → step 7.
 **If** exit 1 **and** `WRITE_RETRIED` is not held for `GROUP` → a planned test passes, is absent from its report, fails lint or is missing: `WRITE_RETRIED` = `GROUP`, `RED_REPORT` = `docs/plans/{YYYYMM}/logs/{FID}/build-tests-red-{GROUP}-{RED_ATTEMPT}.md` → step 3.
-**If** exit 1 → the gaps stand; `tests green` reports each as `no-red` at Step 8, where the owner decides → step 7.
+**If** exit 1 → the gaps stand and the run goes on; `tests green` lists each as `unproven`, and the owner answers them once, at Step 15 → step 7.
+**If** exit 11 → the code step edited a planned test case the tests step recorded (`tests`; the engine logs an `agent-rework` friction row): invoke `@bkit-build-plan-tasks` again with `"<problem> Put each test in <tests> back as the tests step left it; your other edits to those files stay. Or log its task BLOCKED in '<reask.artifact>'. Do not redo other tasks."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**.
 Read the group's open tasks:
 **If** `TASKS_RESUMED` is not held for `GROUP` **and** either `TASKS_VERDICT` = HANDOVER **or** `TASKS_HANDOVER` = true → the agent stopped at its turn cap. This is a handover, not a failed attempt:
 `TASKS_RESUMED` = `GROUP`.
@@ -9573,7 +9628,6 @@ Reds recorded before any task code (`tests red`)
 Source files implemented
 Derive the attempt the verify artifact is named for:
 [reproduce-first] Audit the group's test-first reds:
-**If** exit >= 2 → **Failure Path**.
 Cut the group's own diff, from the commit it started at:
 Hold `parentSha` as `GROUP_BASE`. **If** `GROUP_BASE` = null → **Failure Path**.
 Tick the satisfied tasks in the plan. A task that the test-first report lists as a gap stays open:
@@ -9586,20 +9640,25 @@ Run the group gate: the static checks and the unit tier. The integration tier ru
 **If** exit 0 **or** 1 → hold `verdict` as `GATE_VERDICT` and `scope` as `TEST_SCOPE` → sub-step 9.
 **If** `VERIFY_VERDICT` = PASS **and** `GATE_VERDICT` != FAIL → Step 7, which briefs the next group or goes to Step 10 when none is open.
 **If** `VERIFY_VERDICT` = CONCERNS **or** `VERIFY_VERDICT` = FAIL **or** `GATE_VERDICT` = FAIL → route on the group's verify rounds:
+**If** `LIMIT_ASK` = true **and** either exit 1 **or** `VERIFY_ROUNDS` = `PAUSE_MAX` → `PAUSE_LOOP` = `verify`, so the pause also asks whether to try another round.
+**If** exit 1 **and** `LIMIT_ASK` = true → `PAUSE_QUESTION` = `VERIFY_GAPS` → **Decision Pause** — `build.verify.maxAttempts` is used up, so the owner decides.
 **If** exit 1 → **Failure Path** — `build.verify.maxAttempts` is used up.
 **If** exit 0 **and** `VERIFY_VERDICT` = FAIL **and** either `VERIFY_FIXABLE` = false **or** `VERIFY_ROUNDS` = `PAUSE_MAX` → `PAUSE_QUESTION` = `VERIFY_GAPS` → **Decision Pause**.
 **If** exit 0 **and** `VERIFY_VERDICT` = FAIL → Step 9, for a round that fixes only the fixable gaps.
 **If** exit 0 **and** `VERIFY_ROUNDS` < `PAUSE_MAX` → Step 9. Fixable gaps and group-gate failures are always fixed, never asked.
+**If** exit 0 **and** `VERIFY_VERDICT` = PASS **and** `LIMIT_ASK` = true → `PAUSE_QUESTION` = `VERIFY_GAPS` → **Decision Pause** — no round is left to fix the group gate, so the owner decides whether to try another round.
 **If** exit 0 **and** `VERIFY_VERDICT` = PASS → **Failure Path** — no round is left to fix the group gate.
 Test-first reds audited (`tests green`)
 Group diff cut from its start commit (`context diff`)
 Group gate verdict decided
 Unfixable gaps routed
-Exhausted fix loop routed
+Exhausted fix loop asked in a session, or sent to the Failure Path
+Read status.jsonl and derive the next `STRATEGY`:
 Read status.jsonl and derive the next `STRATEGY`:
 **If** `docs/plans/{YYYYMM}/logs/{FID}/build-group-gate-{GROUP}-{VERIFY_ATTEMPT}.md` does not exist → `GATE_VERDICT` = SKIPPED.
 **Else** → read the group gate's verdict:
 Finish. The command records the header's `Strategy`:
+**If** exit 11 → the fix edited a planned test case the tests step recorded (`tests`; the engine logs an `agent-rework` friction row): invoke `@bkit-build-plan-gaps-remediate` again with `"<problem> Put each test in <tests> back as the tests step left it; your other edits to those files stay. Correct the Fixed count and verdict in your log to match."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**.
 Check that the attempt changed source files, not only logs and ledgers:
 **If** exit 1 **or** `VERIFY_FIXED` = 0 → `PAUSE_STEP` = 9, `PAUSE_POINT` = `build.verify`, `PAUSE_QUESTION` = `VERIFY_GAPS` → **Decision Pause**.
 Strategy computed before invocation
@@ -9636,19 +9695,27 @@ Merge route followed
 Derive the attempt the test log is named for:
 Run this block exactly as written:
 **If** `TEST_VERDICT` = FAIL → route on the test rounds:
+**If** `LIMIT_ASK` = true **and** either exit 1 **or** `TEST_ROUNDS` = `PAUSE_MAX` → `PAUSE_STEP` = 12, `PAUSE_POINT` = `build.tests`, `PAUSE_QUESTION` = `TESTS_LOOP` → **Decision Pause** — `build.tests.maxAttempts` is used up, so the owner decides whether to try another round.
 **If** exit 1 **or** `TEST_ROUNDS` = `PAUSE_MAX` → **Failure Path** — `build.tests.maxAttempts` is used up, so no round is left.
 **If** `TEST_TREND` = `stuck` **or** `worse` → `PAUSE_STEP` = 12, `PAUSE_POINT` = `build.tests`, `PAUSE_QUESTION` = `TESTS_LOOP` → **Decision Pause**.
 Tests executed
-Exhausted test loop routed
-Read status.jsonl and derive the next `STRATEGY`:
+Exhausted test loop asked in a session, or sent to the Failure Path
 Finish, then re-run Step 12:
 Strategy read before invocation
+Ask once about the planned tests that never failed before their code existed. **Skip if** a `docs/plans/{YYYYMM}/logs/{FID}/build-decision-{RUN}-*.md` file holds the line `Question: UNPROVEN`, because the owner already answered them this run → sub-step 2.
+**If** exit >= 2 → **Failure Path**. Hold `unproven` as `UNPROVEN_TESTS`.
+**If** `UNPROVEN_TESTS` is not empty → `PAUSE_STEP` = 15, `PAUSE_POINT` = `build.verify`, `PAUSE_QUESTION` = `UNPROVEN` → **Decision Pause**. Headless, it takes `Accept (assumed)` for each test, and ship asks the owner to confirm them.
+**Else** → sub-step 2.
 Write `build-summary.md` from this run's status rows and the plan's tasks:
-**If** `PUBLISH` = false → sub-step 4.
+**If** `PUBLISH` = false → sub-step 5.
+**If** exit 80 → look for an open PR on `{BRANCH}` with base `dev` via `list_pull_requests`:
 **If** exit 80 → look for an open PR on `{BRANCH}` with base `dev` via `list_pull_requests`:
 **If** one is found → **Failure Path**.
-**Else** → sub-step 3.
+**If** one is found → **Failure Path**.
+**Else** → sub-step 4.
+**Else** → sub-step 4.
 [workflow-pushes] Push with exactly one command:
+Unproven planned tests asked once, or none left
 Open-PR probe ran before any push
 Open-PR probe ran
 **If** `PUBLISH` = false → **Held close**.
@@ -9657,14 +9724,10 @@ Open-PR probe ran
 `REF` empty → `{FID}`. Hold the close's `commentFile`, `tracker` and `finalReturn` under the names sub-step 3 uses: `CLOSE_COMMENT_FILE`, `CLOSE_TRACKER`, `FINAL_RETURN`.
 **If** `CLOSE_TRACKER`.done = false → post the content of `CLOSE_COMMENT_FILE` via the tracker MCP (**Comments** fallback).
 Before creating the PR, probe for an open PR that already exists on `{BRANCH}`:
-**If** exit 80 → look for an open PR on `{BRANCH}` with base `dev` via `list_pull_requests`:
-**If** one is found → **Failure Path**.
-**Else** → sub-step 2.
 Scan the branch for migrations:
 **If** exit 1 → `FORCE_BUILD` = false → sub-step 3.
 [commits] Re-read the labels, then close the run with the block below. The block mirrors the roadmap row to `dev`, closes the run (telemetry, report, artifact links) and commits it. Its commit subject carries ` bkit [auto route]` when the re-read labels hold `bkit:auto`. It then pushes with the HEAD-Subject Assertion and releases the lock. `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry, and empty when no tracker is wired:
 Create the PR. Its body names `docs/plans/{YYYYMM}/{FID}-plan.md` when the plan exists:
-**If** exit 80:
 [prs] Call `create_pull_request` with the printed `title`, `body`, `base` and `head`.
 Hold its URL as `PR_URL` and its number as `PR_NUMBER`.
 **If** its base != dev → **Failure Path**.
@@ -9680,9 +9743,6 @@ Re-read the issue's labels after the push, for the kill-switch check:
 Labels re-read before the close commit
 Lock released
 PR created
-**Owner decisions:** A subagent learns the owner's answers only by reading the decision file (`build-decision-{RUN}-*.md`) named in its `Read`. NEVER restate, summarise or paraphrase an owner's answer in a subagent's `Context`.
-Write no test and no fix code at this pause. Step 7 writes the new task's `TEST FIRST` tests with `@bkit-build-plan-tests`, records them failing with `tests red`, and only then writes the fix with `@bkit-build-plan-tasks`. NEVER undo code to force a red.
-**If** exit 11 → a planned test file differs from the blob the tests step recorded (`touched`): invoke `@bkit-build-plan-tasks` again with `"<problem> Restore each file in <touched> to its committed content, or log its task BLOCKED in '<reask.artifact>'. Do not redo other tasks."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**.
 ```
 
 #### bkit-debug
@@ -9694,9 +9754,8 @@ Write no test and no fix code at this pause. Step 7 writes the new task's `TEST 
 **Modes:** Step 1 decides `PUSH_MODE` (`PR|LOCAL`) and `DEBUG_MODE` (`NORMAL|SOAK`). `DEBUG_MODE` selects the fix step: `NORMAL` → Diagnose (6) and Remediate (7); `SOAK` → Failure Remediate Soak (8). `REPRO` (`[repro]`) adds Failure Reproduce (5) after a first-attempt PASS, in either mode. A run starts in `SOAK` on `[soak]`, on an open run already soaking, or once the feature's runs hold `debug.fix.maxAttempts` Remediate rows. `NORMAL` switches to `SOAK` mid-run when the diagnose agent sets `Mode: SOAK`, or when the fix attempts are used up. `SOAK` is terminal.
 **If** `LOOP_ASK` = false → narrate `debug {LOOP_POINT}: attempt {LOOP_ATTEMPT} of {LOOP_MAX}, taken without asking` → return to the calling step.
 Read the loop's progress:
-**If** `LOOP_TREND` != `stuck` **and** `LOOP_TREND` != `worse` → narrate `debug {LOOP_POINT}: attempt {LOOP_ATTEMPT} of {LOOP_MAX}, taken without asking (failures {LOOP_COUNTS})` → return to the calling step.
+**If** `LOOP_LIMIT` is not held **and** `LOOP_TREND` != `stuck` **and** `LOOP_TREND` != `worse` → narrate `debug {LOOP_POINT}: attempt {LOOP_ATTEMPT} of {LOOP_MAX}, taken without asking (failures {LOOP_COUNTS})` → return to the calling step.
 `debug {LOOP_POINT}: attempt {LOOP_ATTEMPT} of {LOOP_MAX}`, then `Failures per test round: {LOOP_COUNTS}`, then the newest diagnosis (`debug-failure-diagnose-*.md`) or soak log (`debug-failure-soak-*-log.md`) in one line each.
-The question:
 **If** `LOOP_POINT` = `fix` → `**Q1 — Fix:** The last fix attempt left no fewer failures. Stop here instead of trying again?`.
 **If** `LOOP_POINT` = `soak` **and** `{LOOP_ATTEMPT}` = 1 → `**Q1 — Soak:** The fix attempts are used up, and the last one left no fewer failures. Stop here instead of starting soak (a slower, step-by-step investigation)?`.
 **Else** → `**Q1 — Soak:** The last soak attempt left no fewer failures. Stop here instead of trying again?`.
@@ -9704,16 +9763,19 @@ The question:
 The line `Reply per question. "yes" takes every recommendation. "stop" writes a handover; the run can be resumed.`
 Record the wait → end turn → wait for the answer:
 Record the reply before anything else:
+**If** the answer is `Try again` **and** `LOOP_LIMIT` = true → give soak one more full allowance, clear `LOOP_LIMIT` → return to the calling step:
 **If** the answer is `Try again` → return to the calling step.
 **If** the answer is `Stop` → step 5.
 Create `docs/plans/{YYYYMM}/logs/{FID}/debug-handover.md` with the question, the answer, and the line `Stopped by the owner; run stays IN_PROGRESS. /bkit-debug {FID} resumes at Step 3.`
-Asked only with `ask` = true, not headless, and `trend` stuck or worse (`counters progress`)
+Asked only with `ask` = true, not headless, and `trend` stuck or worse (`counters progress`), or the soak limit used up
+Used-up soak given its allowance on `Try again` (`counters grant`)
 Wait and reply recorded (`owner-pause`, `owner-answer`)
 Stop wrote a handover and released the lock
 Read repo facts (fetches `origin/dev` first):
 **If** `BRANCH` = `dev` **or** `main` → `PUSH_MODE` = LOCAL → step 7. **Else** → find the open PR from `{BRANCH}` into any base:
 **If** exit 1 → `PUSH_MODE` = LOCAL.
 **If** exit 80 → `list_pull_requests` (head `{BRANCH}`, state open):
+[mcp-fallback] **If** exit 80 → `list_pull_requests` (head `{BRANCH}`, state open):
 **If** it finds a PR → hold its number as `PR_NUMBER` → `PUSH_MODE` = PR.
 **Else** → `PUSH_MODE` = LOCAL.
 Decide this run's attempt, mode, repro and gates from the session prompt and the current run (a resume keeps its attempt; a finished run's soak never carries over):
@@ -9735,6 +9797,7 @@ Run the deepest declared gate. It writes the trimmed log to the artifact. `{GATE
 **If** exit 0 **and** `{LOOP_ATTEMPT}` = 1 → Step 4.
 **If** exit 1 (it printed `soak-escalation`: the fix attempts are used up) → record the switch → `DEBUG_MODE` = SOAK → sub-step 5:
 **If** `TEST_VERDICT` = FAIL **and** `DEBUG_MODE` = SOAK → route on soak attempts across the feature's debug runs:
+**If** exit 1 **and** `LOOP_ASK` = true → `debug.soak.maxAttempts` is used up, so the owner decides: `LOOP_POINT` = `soak`, `LOOP_FIX` = `debug-failure-soak`, `LOOP_LIMIT` = true → **Loop Question** → Step 4.
 Tests executed (`tests run`)
 [debug-on-demand] Live fail-then-pass observed
 [external-context-first] Reset the clamp log, then enumerate every `context-fetch` block after `<!-- bkit:end -->` in `.agents/context.md` and narrate coverage per context before fetching:
@@ -9751,14 +9814,15 @@ Context-fetch blocks enumerated and coverage narrated
 Context-fetch blocks run and outcomes narrated
 [commits] Finish — commits the test:
 [reproduce-first] **If** `REPRODUCED` = YES → Step 3.
+→ Step 3.
+→ Step 3.
 **If** `REPRODUCED` = NO → Step 10.
 Read the strategy ladder from status.jsonl:
 **If** `DEBUG_MODE` = NORMAL **and** `DIAGNOSE_MODE` = SOAK → record the switch → `DEBUG_MODE` = SOAK → Step 8:
 Strategy computed
 [commit-format] Finish. The fix commit subject is the log's first `DONE` line, with ` bkit [verbose ci]` added in `PUSH_MODE` = LOCAL:
-→ Step 3.
+Strategy read
 Finish. The row carries the soak attempt, counted across the feature's debug runs:
-→ Step 3.
 Finish, with no commit:
 **Run only if** `PUSH_MODE` = PR. Add `bkit [verbose ci]` to the PR title (a no-op when it is already there):
 **Skip if** `BRANCH` = `dev` (the Step 11 close pushes). Push:
@@ -9767,7 +9831,6 @@ PR title tagged `[verbose ci]`
 Write `debug-summary.md` from this run's status rows:
 **If** `BRANCH` = `dev` **or** `main` → `{PR_OPEN}` = 0, `PUSH_MODE` = LOCAL, with no probe → sub-step 2. **Else** → probe the live PR state from `{BRANCH}` into any base:
 **If** exit 1 → `{PR_OPEN}` = 0, `PUSH_MODE` = LOCAL.
-[mcp-fallback] **If** exit 80 → `list_pull_requests` (head `{BRANCH}`, state open):
 **If** it finds a PR → `{PR_OPEN}` = 1 and `PUSH_MODE` = PR, with its `number` / `url`.
 **Else** → `{PR_OPEN}` = 0 and `PUSH_MODE` = LOCAL.
 In both cases, record the fallback via `"{BKIT}" prs transport-row --file="{STATUS}" --kind=fallback --asserted-by=<re-read>`.
@@ -9782,6 +9845,7 @@ Closes the run (telemetry, report, artifact links) and commits it.
 **If** `BRANCH` = `dev`:
 [workflow-pushes] Push ONLY the run's own commits, and keep the lock:
 **If** exit 0 **and** `skipped` null → hold `sha` as `DEV_SHA` (never the local HEAD); `BRANCH` = `dev` → `{CLOSE_PARENT}` = `{DEV_SHA}`; `DEV_PUSHED` = true.
+**If** exit 0 **and** `skipped` = `no-run-commits` → narrate `[bkit-debug] dev push: every run commit is already on origin/dev; nothing pushed, no CI run to gate` → `DEV_PUSHED` = false.
 **If** exit 8 (push failed or refused), exit 10 (fetch failed), exit 11 (replay conflict, the conflicting paths printed) or exit 20 (the run's record is gone, nothing pushed) → **Failure Path**.
 [name-the-suites-you-ran] **If** `{PR_OPEN}` = 0 → record the close row and audit the landed commit. `{LIVE_SKIPPED}` = `--field="testsLiveSkipped=No live tests ran, runtime-only defects not gated (not declared or opted out)."` when `TEST_SCOPE` lacks `live`, else empty:
 Set `TRIGGER_PR`:
@@ -9805,8 +9869,6 @@ Auto-label presence re-read
 No-leak Assertion passed
 Live PR probe ran
 PR created or adopted
-Strategy read
-**If** exit 0 **and** `skipped` = `no-run-commits` → narrate `[bkit-debug] dev push: every run commit is already on origin/dev; nothing pushed, no CI run to gate` → `DEV_PUSHED` = false.
 ```
 
 #### bkit-design
@@ -10024,26 +10086,41 @@ Validated head resolved
 CI re-validated (`runs revalidate`)
 [merge-bodies] Assert the gate at the PR's current head, with CI checked at `VALIDATED_HEAD`. This gate is the ONLY merge precondition. The block writes the pre-merge snapshot to the outbox before the gate decides, refuses a title that carries a skip token (18), and records a refusal in `{STATUS}`:
 [polls-loops] **If** exit 11 (in progress — poll), 14 (stale green), 10 (no run) **or** 17 (non-bookkeeping change past `VALIDATED_HEAD`) → route on the failed arrivals at Step 10, without asking:
+**If** exit 1 **and** `MERGE_ASK` = true → set `{REVALIDATE_REASON}` = `gate-refusal`, `LIMIT_NEXT` = Step 9 → **Merge Question**.
 **If** exit 12 **and** `regenerable` = true → every failed CI step is one `bkit:generate` fixes (`bkit.testing.ciGenerated`). Route on the failed arrivals at Step 10, without asking:
 **If** exit 0 **and** `REGEN_OUTCOME` = committed → push the fix, and NEVER force:
 Then set `REVALIDATE_REASON` empty → Step 9 (re-validate at the regenerated head, then re-run the merge gate).
 **Else** → **Failure Path** (`unchanged`: regenerating does not fix the failed steps; `undeclared`; or the block failed).
+**If** exit 1 **and** `MERGE_ASK` = true → `LIMIT_NEXT` = sub-step 1, which routes the red run again within the new allowance → **Merge Question**.
 [integration-merge] Merge with an empty body and `--match-head`, so GitHub refuses when the head moved. Re-read the labels from the tracker, so that ` bkit [auto route]` rides the squash subject on `bkit:auto`. The labels are never carried forward from Step 1's `{LABELS}`. `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry, empty when no tracker is wired<!-- bkit:tracker true start --> or `ISSUE_ID` is empty<!-- bkit:tracker true end -->:
 **If** exit 0 **or** 7 → hold `verdict` as `MERGE_VERDICT`, `failures` as `MERGE_FAILURES`, and hold `state`.
 **If** `state` = MERGED → Step 13.
 **If** `state` != MERGED → run counter routing:
+**If** exit 1 **and** `MERGE_ASK` = true → `LIMIT_NEXT` = Step 11 → **Merge Question**.
 Merge gate asserted (`runs gate`)
 Failed arrivals counted against `ship.merge.maxAttempts` (`counters route`)
+Used-up merge step sent to the **Merge Question** in a session, or to the Failure Path
 A red CI run regenerated only when every failed step is a generated file (`branches regenerate`)
 PR merge attempted (`prs merge`)
-Ask before the fix round only when the diagnosis found no clear cause. State the failure in plain English before the technical cause.
-**If** `MERGE_ASK` = false **or** `DIAGNOSE_VERDICT` = PASS → narrate `ship merge: attempt {MERGE_ROUNDS} of {MERGE_MAX}, fix round taken without asking ({the diagnosed cause})` → Step 12.
-`ship merge: attempt {MERGE_ROUNDS} of {MERGE_MAX}`, then `**Q1 — Merge:** failed, and the diagnosis found no clear cause ({the diagnosis in one line}). Stop here instead of a fix round?`
+Ask the human in this session, in plain text, in one message:
+`ship merge: attempt {MERGE_ROUNDS} of {MERGE_MAX}`, then the first question that matches:
+**Else** → `**Q1 — Merge:** failed, and the diagnosis found no clear cause ({the diagnosis in one line}). Stop here instead of a fix round?`
 `Options: A) Stop / B) Try again`, then `Recommended: A) Stop — {reason}`.
-**If** the answer is `Try again` → Step 12.
+**If** the answer is `Try again` **and** `LIMIT_NEXT` is held → give the merge step one more full allowance, then clear `LIMIT_NEXT` and go to the step it named:
+Asked only in a session with `ship.merge.ask` = true
+Wait and reply recorded (`status row`)
+Used-up limit given one more allowance only on `Try again` (`counters grant`)
+Ask before the fix round only when the diagnosis found no clear cause.
+**If** `MERGE_ASK` = false **or** `DIAGNOSE_VERDICT` = PASS → narrate `ship merge: attempt {MERGE_ROUNDS} of {MERGE_MAX}, fix round taken without asking ({the diagnosed cause})` → Step 12.
+**Else** → **Merge Question** → Step 12.
 Fix round asked only with `ask` = true, not headless, and a diagnosis verdict other than PASS
 Derive the next strategy rung from `{STATUS}`:
 Finish (bookkeeping to `$BOOK_ROOT`), which records the header's `Strategy`:
+Route on `verdict`:
+**If** `verdict` = PASS:
+Commit and push the fix, and NEVER force:
+Set `REVALIDATE_REASON` empty → Step 9 (re-validate, then re-run the merge).
+Fix committed and pushed
 Fast-forward local `dev` to `origin/dev`, then finish:
 Local `dev` synced (`branches sync-dev`)
 Assert that the capstone passed at the squash commit. The block records the squash-merge CI verdict (`ship-merge-ci`) before routing:
@@ -10051,11 +10128,6 @@ Close the run. The block keeps the summary in the outbox (the close removes the 
 **If** `CLOSE_VIA` = close-pr-open → drop `--ref`, and gate with `--file="{STATUS}"`.
 Squash-merge CI capstone green (`runs gate`)
 Close landed (`workflows close`)
-Route on `verdict`:
-**If** `verdict` = PASS:
-Commit and push the fix, and NEVER force:
-Set `REVALIDATE_REASON` empty → Step 9 (re-validate, then re-run the merge).
-Fix committed and pushed
 ```
 
 ### Prompts
@@ -10327,6 +10399,7 @@ Satisfy each task's `DONE WHEN` before you start the next task.
 `Broken` with its work already landed → log `DONE — TASK {N}: already landed`.
 `Broken` with its work not landed → implement the task against the current code, or log it `BLOCKED`.
 Implement the tasks one at a time. For each task:
+Other tests in the same file are yours to change, for example to fix a test your code breaks: the engine locks each planned test case, not its file, and `steps finish` exit 11 names the planned test you edited.
 **If** a planned test is wrong (it asserts what the task's `DONE WHEN` does not ask for, or fakes a value the real code cannot return) → append ``BLOCKED — TASK {N}: test `{file}` `{name}` — {why}`` with Bash `echo >>`, and build the rest of the task.
 Build the task in this order:
 [reproduce-first] Edit or create the source until the task's tests pass.
@@ -10386,6 +10459,8 @@ Write the tests one task at a time. For each `TEST FIRST` entry that the task's 
 Take the import path, symbol names and signatures from the task's `CREATE`, `UPDATE` and `DONE WHEN` lines exactly; the code step builds to those names.
 For each value the test checks or fakes, read the code that produces it where that code exists, and append `SOURCE — TASK {N}: {value} from {file}:{line}` with Bash `echo >>`. A fake that differs from what that code returns lets the test pass against code that fails for real.
 Write the test at the file and under the test name the entry gives, asserting the behaviour its `Derived Test Matrix` row names.
+Give it that name as one literal string, not a name built when the tests run (a parameterised table name such as `it.each`, `@pytest.mark.parametrize` or a template string), because the engine finds and locks each planned test by its name in the file.
+**If** the file already holds a test under that name → update that test. Add expectations, and never remove or loosen one: the engine records the test as `updated`, and verify fails an update that removes or loosens an expectation.
 **If** `package.json` declares `bkit:lint:file` → run `pnpm bkit:lint:file {file}`, and fix the file until it exits 0.
 **If** `package.json` declares `bkit:test:file` → run `pnpm bkit:test:file {file}` once. A failure, or a load error on an import the code step will create, is the expected result.
 **If** the run passes → append ``PASSES — TASK {N}: `{file}` `{name}`: {reason}`` with Bash `echo >>`, where the reason names the code that already satisfies it.
@@ -10419,6 +10494,18 @@ The groups' components work together.
 The API contracts match.
 Shared state is consistent.
 Cross-domain boundaries are respected.
+[local-pre-commit] Run `bkit tests changed --base=origin/dev --fallback=bkit:gate:static-unit`.
+**If** a test-first audit report is supplied (its header has `Enforced`, `Verdict` and `Gaps`) → decide each of its gaps. A gap's `fixable` stands unless it is `null`. Decide each `null` one from the diff it names:
+`delete-still-referenced` → read each hit:
+**If** the hit is a different thing with the same name → no gap.
+**Else** → `Fixable: true`.
+`Unproven` section → list each test in `Notes`. No gap: the engine could not prove that test red before its code existed, and the owner answers it once, at the end of the build.
+`Updated tests` section → each test is an existing test the tests step changed. Read its diff in the supplied group diff:
+**If** the update only adds expectations → no gap.
+**Else** → the update removes or loosens an expectation. Append ``Task {N} `{file}` "{name}" — the update removes or loosens an expectation: {what} — Fixable: false``, because no code step may rewrite a planned test.
+`Enforced: false` → record the reason in `Notes`. No gap.
+`Already landed` section → list each test, and the reason the tests step gave for its pass, in `Notes`. No gap.
+A gap you leave `Fixable: false` is a `FAIL`.
 For each task, check that the codebase satisfies its `DONE WHEN` (a file exists, a signature matches, a test passes, a behaviour shows) and that the task has no test-first audit gap:
 `BLOCKED` log lines, `docs/deferrals.jsonl` rows and out-of-scope notes never satisfy it.
 A gap that a supplied decision record accepts (`Decision: Accept` or `Decision: Accept (assumed)`) is no gap. Name the record in `Notes`.
@@ -10426,15 +10513,6 @@ A gap that a supplied decision record accepts (`Decision: Accept` or `Decision: 
 **If** the task is satisfied → name its number on the header's `Tasks` line. The workflow ticks the plan.
 **If** the task is not satisfied, or its work is missing:
 Leave it off that line, and append its log entry.
-[local-pre-commit] Run `bkit tests changed --base=origin/dev --fallback=bkit:gate:static-unit`.
-**If** a test-first audit report is supplied (its header has `Enforced`, `Verdict` and `Gaps`) → decide each of its gaps. A gap's `fixable` stands unless it is `null`. Decide each `null` one from the diff it names:
-`delete-still-referenced` → read each hit:
-**If** the hit is a different thing with the same name → no gap.
-**Else** → `Fixable: true`.
-`no-red` → its `Fixable: false` stands: the tests step could not prove that test red, and no code step may rewrite a planned test. The owner accepts it or stops at the Decision Pause.
-`Already landed` section → list each test, and the reason the tests step gave for its pass, in `Notes`. No gap.
-`Enforced: false` → record the reason in `Notes`. No gap.
-A gap you leave `Fixable: false` is a `FAIL`.
 Update **Create** via `Edit`:
 Set `Failures` = the count of unresolved gaps.
 Set `Fixable`:
@@ -14466,9 +14544,9 @@ These are the unknowns and assumptions this plan relies on. An unresolved questi
 **No bolt-on:** every `[NEW]` file traces to a `Reuse Inventory` `NEW` row.
 **Extensions landed:** every `EXTEND` landed in the artifact its row names.
 **No gate weakened:** no gate was weakened.
-**Red before code:** the tests step recorded every planned test of the group red before its code step ran.
-**Tests unchanged:** every planned test file matches the blob its red row recorded.
-**No-red gaps:** each `no-red` gap is cleared only by a human-committed `TEST EXCEPTION` field.
+**Red before code:** the tests step recorded every planned test of the group red, or as an `updated` existing test, before its code step ran.
+**Tests unchanged:** every planned test case matches the lines its red row recorded.
+**Unproven tests:** each planned test with no proven red is cleared only by a human-committed `TEST EXCEPTION` field.
 [fit `audit-gate-2-verified` 0.81; keep: plan gates verify against the plan] **Gate 2 — Verified:** every box above is checked.
 **Verify test coverage against Derived Test Matrix:** each row's test is in one task's `DONE WHEN`.
 **Sweep existing tests:** broken tests are fixed, and the full suite passes.

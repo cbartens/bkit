@@ -117,6 +117,8 @@ export function needleOf(symbol) {
 }
 /** `paths` as git printed them, split on NUL; empty output is no path. */
 const splitPaths = (stdout) => stdout.split("\0").filter(Boolean);
+/** A workflow run log: another feature's record, never code a plan task reads or changes. */
+const RUN_LOG = /^docs\/plans\/[^/]+\/logs\//;
 export const tasksCommand = {
     noun: "tasks",
     summary: "Tick a plan's task boxes, from the tasks a verify judged satisfied.",
@@ -261,7 +263,7 @@ export const tasksCommand = {
             },
         },
         currency: {
-            summary: "Print each task whose CREATE / READ / UPDATE / DELETE paths or symbols moved between --base and --against, with its matched paths, needles and diff hunks; exit 0 (including no match), 1 a plan with no task blocks, 2 a bad plan.",
+            summary: "Print each task whose CREATE / READ / UPDATE / DELETE paths or symbols moved between --base and --against, with its matched paths, needles and diff hunks (run logs under docs/plans/*/logs/ are left out); exit 0 (including no match), 1 a plan with no task blocks, 2 a bad plan.",
             use: "by-hand",
             flags: [
                 {
@@ -313,7 +315,7 @@ export const tasksCommand = {
                 const changed = runGit(top, ["diff", "--name-only", "-z", "--no-renames", range]);
                 if (!changed.ok)
                     throw new CommandError(EXIT_DIFF_FAILED, `git diff ${range} failed: ${changed.stderr}`);
-                const changedPaths = splitPaths(changed.stdout);
+                const changedPaths = splitPaths(changed.stdout).filter((p) => !RUN_LOG.test(p));
                 const needleCache = new Map();
                 /** The paths `needle` moved in, read once per needle. */
                 const needleMoves = (needle) => {
@@ -331,7 +333,7 @@ export const tasksCommand = {
                     ]);
                     if (!diff.ok)
                         throw new CommandError(EXIT_DIFF_FAILED, `git diff ${range} -S${needle} failed: ${diff.stderr}`);
-                    const paths = splitPaths(diff.stdout);
+                    const paths = splitPaths(diff.stdout).filter((p) => !RUN_LOG.test(p));
                     needleCache.set(needle, paths);
                     return paths;
                 };

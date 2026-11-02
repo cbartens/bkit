@@ -1884,7 +1884,9 @@ describe("fix loops ask only when the last round made no progress", () => {
     expect(commandLines(loop, "counters progress").map((l) => l.trim())).toEqual([
       '"{BKIT}" counters progress --file="{STATUS}" --workflow=debug --check=debug-run-tests --fix={LOOP_FIX}',
     ]);
-    expect(loop).toContain("**If** `LOOP_TREND` != `stuck` **and** `LOOP_TREND` != `worse` →");
+    expect(loop).toContain(
+      "**If** `LOOP_LIMIT` is not held **and** `LOOP_TREND` != `stuck` **and** `LOOP_TREND` != `worse` →",
+    );
     const step3 = section(workflow("debug"), /Step 3 — Run Tests/);
     expect(step3).toContain("`LOOP_POINT` = `fix`, `LOOP_FIX` = `debug-failure-remediate`");
     expect(step3).toContain("`LOOP_POINT` = `soak`, `LOOP_FIX` = `debug-failure-soak`");
@@ -2002,7 +2004,7 @@ describe("build publish ending", () => {
     expect(gate).toMatch(/- \[ \] Open-PR probe ran before any push/);
     expect(gate).toMatch(/- \[ \] Summary commit pushed, or kept local on a held run/);
     const body = text.slice(0, text.indexOf("### 🔒 Gate 15"));
-    expect(body).toMatch(/\*\*If\*\* `PUBLISH` = false → sub-step 4\.\n[\s\S]*prs probe/);
+    expect(body).toMatch(/\*\*If\*\* `PUBLISH` = false → sub-step 5\.\n[\s\S]*prs probe/);
   });
 
   it("runs only the close gate on the held path", () => {

@@ -31,6 +31,7 @@ import { parseDecisionItems } from "./decisions.js";
 import { EXIT_ROW_REFUSED, EXIT_STAGE, appendLedgerRows } from "./ledgers.js";
 import { derivedTestMatrix, parsePlanBlocks, type PlanTaskBlock } from "./plan-blocks.js";
 import { readBkitConfig, type TaskCaps } from "../../shared/settings.js";
+import { grantCount } from "./counters.js";
 import { checkPlanText, planCaps, readTestFirst } from "./tests.js";
 import { ledgerRows } from "./workflows.js";
 
@@ -584,7 +585,7 @@ export const challengeCommand: CommandSpec = {
           name: "round",
           type: "string",
           required: true,
-          help: "challenge round, 1 up to bkit.workflows.build.challenge.maxAttempts",
+          help: "challenge round, 1 up to bkit.workflows.build.challenge.maxAttempts, one more full set per allowance-granted row for build.challenge in the log folder's status.jsonl",
         },
       ],
       output: {
@@ -614,17 +615,25 @@ export const challengeCommand: CommandSpec = {
       run: (ctx) => {
         const round = String(ctx.flags.round);
         const top = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
-        const maxRounds = readBkitConfig(top).asks["build.challenge"].max;
-        if (!/^[1-9][0-9]*$/.test(round) || Number(round) > maxRounds)
-          throw new CommandError(
-            EXIT.USAGE,
-            `--round must be 1 to ${maxRounds} (bkit.workflows.build.challenge.maxAttempts), got "${round}"`,
-          );
-        const roundN = Number(round);
         const abs = (p: string) => path.resolve(ctx.cwd, p);
         const rel = (p: string) => path.relative(ctx.cwd, p).split(path.sep).join("/");
         const planArg = String(ctx.flags.plan);
         const logDir = abs(String(ctx.flags.log));
+        // Each allowance the owner granted at the used-up limit adds one full set of rounds.
+        const grants = grantCount(
+          path.join(logDir, "status.jsonl"),
+          "build",
+          "build.challenge",
+          undefined,
+          false,
+        );
+        const maxRounds = readBkitConfig(top).asks["build.challenge"].max * (1 + grants);
+        if (!/^[1-9][0-9]*$/.test(round) || Number(round) > maxRounds)
+          throw new CommandError(
+            EXIT.USAGE,
+            `--round must be 1 to ${maxRounds} (bkit.workflows.build.challenge.maxAttempts x (1 + ${grants} allowance(s) granted)), got "${round}"`,
+          );
+        const roundN = Number(round);
         const fid = path.basename(logDir);
 
         const reports = (ctx.flags.report as string[]).map((r) => {

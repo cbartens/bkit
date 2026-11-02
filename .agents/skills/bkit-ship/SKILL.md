@@ -40,7 +40,7 @@ description: "Ship Feature — Autonomous merge and archive"
 - **No issue:** `ISSUE_ID` empty → run issue-less; skip every issue-tied tracker read, label, comment and board call. Once Step 1 sub-step 4 holds `FID`, emit: Warning: no issue named — running issue-less as {FID}; no tracker reads, labels or comments. Name {FID} in the next prompt to continue this run.
 
 
-- **Limits:** `bkit.workflows.ship.merge` holds `ask` and `maxAttempts`, read via `bkit counters route --point=` in fenced routing blocks below. One count covers every failed arrival at the merge step — a merge-gate refusal (`ship-gate-refusal` rows, the regenerate round's red CI run included) or a failed merge (`ship-merge-pr` rows); used up → **Failure Path**. `ask` applies only before a failure fix round, never to a refusal that just needs CI again or to the regenerate round, which no model decides. Assumed items from build are asked once, at **Confirm Assumed Items**, whatever `ship.merge.ask` says.
+- **Limits:** `bkit.workflows.ship.merge` holds `ask` and `maxAttempts`, read via `bkit counters route --point=` in fenced routing blocks below. One count covers every failed arrival at the merge step — a merge-gate refusal (`ship-gate-refusal` rows, the regenerate round's red CI run included) or a failed merge (`ship-merge-pr` rows). Merge attempts used up with `ask` = true and not headless → the **Merge Question**, where `Try again` gives the merge step one more full allowance (`bkit counters grant`) and it asks again once that allowance is used up too; `ask` = false, or headless → **Failure Path**. Within the limit, `ask` applies only before a failure fix round, never to a refusal that just needs CI again or to the regenerate round, which no model decides. Assumed items from build are asked once, at **Confirm Assumed Items**, whatever `ship.merge.ask` says.
 
 **Rules:** Copied word for word from `.agents/rules.md`.
 
@@ -546,14 +546,15 @@ description: "Ship Feature — Autonomous merge and archive"
      ```bash
      "{BKIT}" counters route --name=MERGE_ATTEMPT --of=ship-merge-pr:count --rows=ship-gate-refusal:count --file="{STATUS}" --workflow=ship --point=ship.merge --continue=step-9 --exceeded=failure-path
      ```
-     Hold `value` as `MERGE_ROUNDS` and `max` as `MERGE_MAX`.
+     Hold `value` as `MERGE_ROUNDS`, `max` as `MERGE_MAX` and `ask` as `MERGE_ASK`.
      - **If** exit 0 → set `{REVALIDATE_REASON}` = `gate-refusal` → Step 9.
+     - **If** exit 1 **and** `MERGE_ASK` = true → set `{REVALIDATE_REASON}` = `gate-refusal`, `LIMIT_NEXT` = Step 9 → **Merge Question**.
      - **Else** → **Failure Path** (exit 1: `ship.merge.maxAttempts` used up, max-retry exhaustion).
    - **If** exit 12 **and** `regenerable` = true → every failed CI step is one `bkit:generate` fixes (`bkit.testing.ciGenerated`). Route on the failed arrivals at Step 10, without asking:
      ```bash
      "{BKIT}" counters route --name=MERGE_ATTEMPT --of=ship-merge-pr:count --rows=ship-gate-refusal:count --file="{STATUS}" --workflow=ship --point=ship.merge --continue=step-9 --exceeded=failure-path
      ```
-     Hold `value` as `MERGE_ROUNDS` and `max` as `MERGE_MAX`.
+     Hold `value` as `MERGE_ROUNDS`, `max` as `MERGE_MAX` and `ask` as `MERGE_ASK`.
      - **If** exit 0 → regenerate. The block commits only the paths `bkit:generate` changed:
        ```bash
        "{BKIT}" branches regenerate --fid="{FID}" --attempt="{MERGE_ROUNDS}" --file="{STATUS}"
@@ -565,6 +566,7 @@ description: "Ship Feature — Autonomous merge and archive"
          ```
          Then set `REVALIDATE_REASON` empty → Step 9 (re-validate at the regenerated head, then re-run the merge gate).
        - **Else** → **Failure Path** (`unchanged`: regenerating does not fix the failed steps; `undeclared`; or the block failed).
+     - **If** exit 1 **and** `MERGE_ASK` = true → `LIMIT_NEXT` = sub-step 1, which routes the red run again within the new allowance → **Merge Question**.
      - **Else** → **Failure Path** (exit 1: `ship.merge.maxAttempts` used up, max-retry exhaustion).
    - **Else** (12, 13, 15, 16, 18 or 20) → **Failure Path**.
 2. Merge with an empty body and `--match-head`, so GitHub refuses when the head moved. Re-read the labels from the tracker, so that ` bkit [auto route]` rides the squash subject on `bkit:auto`. The labels are never carried forward from Step 1's `{LABELS}`. `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry, empty when no tracker is wired or `ISSUE_ID` is empty:
@@ -593,6 +595,7 @@ description: "Ship Feature — Autonomous merge and archive"
      ```
      Hold `value` as `MERGE_ROUNDS`, `max` as `MERGE_MAX` and `ask` as `MERGE_ASK`.
      - **If** exit 0 → Step 11.
+     - **If** exit 1 **and** `MERGE_ASK` = true → `LIMIT_NEXT` = Step 11 → **Merge Question**.
      - **Else** → **Failure Path** (exit 1: `ship.merge.maxAttempts` used up, max-retry exhaustion).
    - **Else** → **Failure Path**.
 
@@ -600,29 +603,21 @@ description: "Ship Feature — Autonomous merge and archive"
 
 - [ ] Merge gate asserted (`runs gate`)
 - [ ] Failed arrivals counted against `ship.merge.maxAttempts` (`counters route`)
+- [ ] Used-up merge step sent to the **Merge Question** in a session, or to the Failure Path
 - [ ] A red CI run regenerated only when every failed step is a generated file (`branches regenerate`)
 - [ ] PR merge attempted (`prs merge`)
 - [ ] Mechanical checks passed (`steps finish`)
 
 ---
 
-## 🧠 Step 11 — Failure Diagnose
+## 🤖 Merge Question
 
-**Run only if** `state` != MERGED.
+Asked from Step 10 when `ship.merge.maxAttempts` is used up (`LIMIT_NEXT` held) and from Step 11 before a fix round the diagnosis found no clear cause. State the failure in plain English before the technical cause.
 
-1. **Subagent:** Invoke `@bkit-debug-failure-diagnose` using `Agent` tool:
-   Context: You are a subagent in the Ship Debug phase. Merge failure during Ship workflow. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
-   Read: `docs/plans/{YYYYMM}/logs/{FID}/ship-input-{RUN}.md`, `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), `{STATUS}`.
-   Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-{MERGE_ATTEMPT}.md`.
-2. Finish (bookkeeping to `$BOOK_ROOT`):
-   ```bash
-   "{BKIT}" steps finish --workflow=ship --step=ship-failure-diagnose --file="{STATUS}" --attempt-of=ship-merge-pr:current --agent=bkit-debug-failure-diagnose --artifact="docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-<attempt>.md" --commit=none --number=11 --post --title="Failure Diagnose"
-   ```
-   Hold `verdict` as `DIAGNOSE_VERDICT`.
-3. Ask before the fix round only when the diagnosis found no clear cause. State the failure in plain English before the technical cause.
-   **If** `MERGE_ASK` = false **or** `DIAGNOSE_VERDICT` = PASS → narrate `ship merge: attempt {MERGE_ROUNDS} of {MERGE_MAX}, fix round taken without asking ({the diagnosed cause})` → Step 12.
-   Ask the human in this session, in plain text, in one message:
-   - `ship merge: attempt {MERGE_ROUNDS} of {MERGE_MAX}`, then `**Q1 — Merge:** failed, and the diagnosis found no clear cause ({the diagnosis in one line}). Stop here instead of a fix round?`
+1. Ask the human in this session, in plain text, in one message:
+   - `ship merge: attempt {MERGE_ROUNDS} of {MERGE_MAX}`, then the first question that matches:
+     - **If** `LIMIT_NEXT` is held → `**Q1 — Merge:** The merge attempts are used up ({the last refusal or failure in one line}). Stop here instead of trying one more set of attempts?`
+     - **Else** → `**Q1 — Merge:** failed, and the diagnosis found no clear cause ({the diagnosis in one line}). Stop here instead of a fix round?`
    - `Options: A) Stop / B) Try again`, then `Recommended: A) Stop — {reason}`.
    - End the message with the line `Reply per question. "yes" takes every recommendation. "stop" writes a handover; the run can be resumed.`
 
@@ -639,7 +634,11 @@ description: "Ship Feature — Autonomous merge and archive"
    ```
 
    A reply that names a letter (`B`, `B)` or `B) {option}`) means the option that letter labels.
-   - **If** the answer is `Try again` → Step 12.
+   - **If** the answer is `Try again` **and** `LIMIT_NEXT` is held → give the merge step one more full allowance, then clear `LIMIT_NEXT` and go to the step it named:
+     ```bash
+     "{BKIT}" counters grant --name=MERGE_ATTEMPT --of=ship-merge-pr:count --rows=ship-gate-refusal:count --point=ship.merge --file="{STATUS}" --workflow=ship >/dev/null || exit 1
+     ```
+   - **If** the answer is `Try again` → return to the calling step.
    - **If** the answer is `Stop` → create `docs/plans/{YYYYMM}/logs/{FID}/ship-handover.md` with the question, the answer and the line `Stopped by the owner; run stays IN_PROGRESS. /bkit-ship {FID} resumes at Step 10.`
      Then push it and release the lock. NEVER run `workflows fail`:
      ```bash
@@ -653,6 +652,31 @@ description: "Ship Feature — Autonomous merge and archive"
      ```bash
      "{BKIT}" status row --file="{STATUS}" --workflow=ship --type=owner-pause --field=reason=merge >/dev/null || exit 1
      ```
+
+### 🔒 Gate — Merge Question
+
+- [ ] Asked only in a session with `ship.merge.ask` = true
+- [ ] Wait and reply recorded (`status row`)
+- [ ] Used-up limit given one more allowance only on `Try again` (`counters grant`)
+
+---
+
+## 🧠 Step 11 — Failure Diagnose
+
+**Run only if** `state` != MERGED.
+
+1. **Subagent:** Invoke `@bkit-debug-failure-diagnose` using `Agent` tool:
+   Context: You are a subagent in the Ship Debug phase. Merge failure during Ship workflow. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
+   Read: `docs/plans/{YYYYMM}/logs/{FID}/ship-input-{RUN}.md`, `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), `{STATUS}`.
+   Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-{MERGE_ATTEMPT}.md`.
+2. Finish (bookkeeping to `$BOOK_ROOT`):
+   ```bash
+   "{BKIT}" steps finish --workflow=ship --step=ship-failure-diagnose --file="{STATUS}" --attempt-of=ship-merge-pr:current --agent=bkit-debug-failure-diagnose --artifact="docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-<attempt>.md" --commit=none --number=11 --post --title="Failure Diagnose"
+   ```
+   Hold `verdict` as `DIAGNOSE_VERDICT`.
+3. Ask before the fix round only when the diagnosis found no clear cause.
+   **If** `MERGE_ASK` = false **or** `DIAGNOSE_VERDICT` = PASS → narrate `ship merge: attempt {MERGE_ROUNDS} of {MERGE_MAX}, fix round taken without asking ({the diagnosed cause})` → Step 12.
+   **Else** → **Merge Question** → Step 12.
 
 ### 🔒 Gate 11 — Failure Diagnose
 

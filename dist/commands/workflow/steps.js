@@ -13,6 +13,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { actionKey, activeDoneSteps, allRunsDoneSteps, appendLine, runNumber, runOrStepField, statusTimestamp, } from "../../ledgers/status.js";
 import { clampLogPath, readRecords } from "../../ledgers/clamp-log.js";
+import { appendFrictionRow, frictionRow, journalEnabled } from "../../ledgers/journal.js";
 import { resolveRepoSlug } from "../../ledgers/telemetry.js";
 import { getPromptsRoot } from "../../shared/package-roots.js";
 import { CommandError, EXIT, git, isSharedBranch, parseJson, repoRoot, runGit, } from "../lib.js";
@@ -24,8 +25,32 @@ import { readHolder, resolveMonth, workflowLockPath } from "./locks.js";
 import { EXIT_NO_STATUS, FILE_FLAG, GROUP_FLAG, STEP_FLAG, WORKFLOW_FLAG, extraField, nonNegativeInt, positiveInt, readRuns, readRunsAt, statusFile, str, } from "./status.js";
 import { COMMENT_FILE_OUTPUT, POST_FLAG, TRACKER_OUTPUT, commentFileOf, postForVerb, } from "./tracker.js";
 import { parsePlanBlocks } from "./plan-blocks.js";
-import { PLAN_TASKS_STEP, readTestFirst, redBlobs } from "./tests.js";
+import { PLAN_TASKS_STEP, readTestFirst, touchedTests } from "./tests.js";
 import { addAllButCopied } from "./worktrees.js";
+/**
+ * An `agent-rework` friction row for a refused planned-test edit: the step reruns, so
+ * `bkit stats` counts it. Best effort — a ledger that cannot be written never changes
+ * the refusal.
+ */
+function recordTestLockFriction(top, step, named) {
+    if (!journalEnabled())
+        return;
+    const row = frictionRow({
+        workflow: "build",
+        step,
+        noun: "steps",
+        verb: "finish",
+        code: EXIT_TESTS_TOUCHED,
+        bookRoot: top,
+        parentSha: git(top, ["rev-parse", "HEAD"]) ?? undefined,
+    });
+    row["category"] = "agent-rework";
+    row["severity"] = "LOW";
+    row["summary"] = "a code step edited a planned test case";
+    row["description"] =
+        `\`bkit steps finish\` refused ${step} with exit ${EXIT_TESTS_TOUCHED}: ${named} changed after the group's red; the step reruns.`;
+    appendFrictionRow(top, row);
+}
 const VERDICT_END = "<!-- verdict:end -->";
 const DEFAULT_VERDICTS = ["PASS", "CONCERNS", "FAIL"];
 const STRATEGIES = ["STANDARD", "PIVOT", "FINAL"];
@@ -37,7 +62,7 @@ export const EXIT_ARTIFACT = 7;
 export const EXIT_COMMIT = 8;
 /** finish --docs-only: the step staged a file outside the artifact tree. */
 export const EXIT_OUTSIDE_DOCS = 9;
-/** finish (build plan-execute / plan-gaps-remediate): a planned test file differs from the blob the group's tests step recorded. */
+/** finish (build plan-execute / plan-gaps-remediate): a planned test case differs from the lines the group's tests step recorded. */
 export const EXIT_TESTS_TOUCHED = 11;
 /** finish: a saved artifact holds a later attempt than the one finished. */
 export const EXIT_LATER_ATTEMPT = 12;
@@ -824,23 +849,26 @@ async function finish(ctx) {
     const commit = str(f.commit) ?? "auto";
     if (!["auto", "none"].includes(commit))
         throw new CommandError(EXIT.USAGE, "--commit must be auto or none");
-    // A code step never edits a planned test: each one must still be the blob the group's
-    // tests step recorded at its red.
+    // A code step never edits a planned test case: each one's own lines must still be the
+    // lines the group's tests step recorded at its red. Every other edit to the file is
+    // ordinary code-step work the verifier reads in the diff.
     if (workflow === "build" &&
         (step === PLAN_TASKS_STEP || step === PLAN_REMEDIATE_STEP) &&
         group !== undefined) {
         const top = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
-        const touched = [...redBlobs(file, workflow, group)]
-            .filter(([test, blob]) => git(top, ["hash-object", "--", test]) !== blob)
-            .map(([test]) => test);
-        if (touched.length > 0) {
-            const problem = `${touched.map((p) => `\`${p}\``).join(", ")} differ${touched.length === 1 ? "s" : ""} from the blob the group's tests step recorded: a code step never edits a planned test — put the file back as the tests step left it, or log the task BLOCKED naming the test and what it gets wrong (nothing written)`;
+        const tests = touchedTests(top, file, workflow, group);
+        if (tests.length > 0) {
+            const touched = [...new Set(tests.map((t) => t.test))];
+            const named = tests.map((t) => `\`${t.test}\` "${t.name}"`).join(", ");
+            const problem = `${named} differ${tests.length === 1 ? "s" : ""} from what the group's tests step recorded at its red: a code step never edits a planned test case — put ${tests.length === 1 ? "that test" : "those tests"} back as the tests step left ${tests.length === 1 ? "it" : "them"} (other edits to the file stay), or log the task BLOCKED naming the test and what it gets wrong (nothing written)`;
             ctx.log(problem);
+            recordTestLockFriction(top, step, named);
             ctx.emit({
                 pass: false,
                 reask: agents.length ? { agent: agents[0], artifact: artifacts[0] } : null,
                 problem,
                 touched,
+                tests,
             });
             return EXIT_TESTS_TOUCHED;
         }
@@ -1300,7 +1328,7 @@ export const stepsCommand = {
                 [EXIT_FOREIGN_PATH]: "nothing written, nothing committed: a path that was dirty before an in-place run changed during it",
                 [EXIT_NO_RECORD]: "a debug run on dev/main with no shared-checkout record: nothing written or committed",
                 [EXIT_OUTSIDE_DOCS]: "--docs-only and the step staged a file outside the artifact tree (nothing written)",
-                [EXIT_TESTS_TOUCHED]: "build plan-execute / plan-gaps-remediate: a planned test file of the group differs from the blob its tests step wrote to status.jsonl (`touched`) — re-ask `reask.agent` to put it back or log the task BLOCKED (nothing written)",
+                [EXIT_TESTS_TOUCHED]: "build plan-execute / plan-gaps-remediate: a planned test case of the group differs from the lines its tests step recorded in status.jsonl (`tests`: [{test, name}]; `touched`: their files) — re-ask `reask.agent` to put that test back or log the task BLOCKED; other edits to the file stay (nothing written; an agent-rework friction row is appended)",
                 [EXIT_LATER_ATTEMPT]: "this run saved an artifact of a later attempt (`later`) than the one finished (nothing written)",
                 [EXIT_WORKFLOWS_CHANGED]: "the commit would change bkit.workflows in package.json (`changed` names the keys) (nothing written)",
                 [EXIT_SOURCE_TOUCHED]: "build plan-tests: the tests step changed a file no TEST FIRST line of the group's open tasks names, or added one a CREATE line of the plan names (`source`) (nothing written)",

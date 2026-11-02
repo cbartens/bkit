@@ -153,6 +153,7 @@ Attempt counters derived from status.jsonl, and the ask points' limits.
 | `derive` | workflow | **`--file`** **`--workflow`** **`--step`** `--group` **`--position`** `--all-runs` | Count a step's DONE rows in the active run, at one of three positions. |
 | `run` | workflow | **`--file`** **`--workflow`** | Which run of the workflow this invocation is (1-based; a resume keeps its number). |
 | `route` | workflow | **`--name`** `--value` `--of` `--rows` `--file` `--workflow` `--group` `--all-runs` `--max` `--point` `--continue` `--exceeded` | Compare a counter to its max: exit 0 continue, exit 1 exceeded; with --point, also whether to ask. |
+| `grant` | workflow | **`--name`** `--value` `--of` `--rows` `--file` `--workflow` `--group` `--all-runs` **`--point`** | Give one loop one more full allowance after the owner chose to continue at its used-up limit: exit 0 granted, exit 1 not (below the limit, ask off or headless). |
 | `max` | workflow | `--point` `--file` `--workflow` | The ask points' limits and ask settings: one by --point, or all. |
 | `progress` | workflow | **`--file`** **`--workflow`** **`--check`** **`--fix`** `--group` | Progress report for a fix loop in the active run: counts per round, code change, strategy, trend. |
 | `rows` | workflow | **`--file`** **`--workflow`** **`--type`** **`--position`** | Count rows of one audit type in the active run (since its workflow-started row). |
@@ -357,7 +358,7 @@ Tick a plan's task boxes, from the tasks a verify judged satisfied.
 | --- | --- | --- | --- |
 | `tick` | workflow | **`--plan`** **`--group`** `--tasks` `--green` | Tick the named tasks of one task group, less those a `tests green` report gaps; exit 0 ticked (including none), 1 a plan with no task blocks, 2 a bad flag value or plan. |
 | `open` | by hand | **`--plan`** **`--group`** **`--log`** | Print the group's tasks holding neither a `DONE` nor a `BLOCKED` line in the plan-execute log, and whether any is open; exit 0 (including none), 1 a plan with no task blocks, 2 a missing file or group. |
-| `currency` | by hand | **`--plan`** `--base` `--against` | Print each task whose CREATE / READ / UPDATE / DELETE paths or symbols moved between --base and --against, with its matched paths, needles and diff hunks; exit 0 (including no match), 1 a plan with no task blocks, 2 a bad plan. |
+| `currency` | by hand | **`--plan`** `--base` `--against` | Print each task whose CREATE / READ / UPDATE / DELETE paths or symbols moved between --base and --against, with its matched paths, needles and diff hunks (run logs under docs/plans/*/logs/ are left out); exit 0 (including no match), 1 a plan with no task blocks, 2 a bad plan. |
 
 ### `tests`
 

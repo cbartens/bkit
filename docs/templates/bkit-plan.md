@@ -314,9 +314,9 @@ _e.g.,_ **WHEN** a user submits the form with a valid file **→ THEN** it is qu
 - [ ] **No bolt-on:** every `[NEW]` file traces to a `Reuse Inventory` `NEW` row.
 - [ ] **Extensions landed:** every `EXTEND` landed in the artifact its row names.
 - [ ] **No gate weakened:** no gate was weakened.
-- [ ] **Red before code:** the tests step recorded every planned test of the group red before its code step ran.
-- [ ] **Tests unchanged:** every planned test file matches the blob its red row recorded.
-- [ ] **No-red gaps:** each `no-red` gap is cleared only by a human-committed `TEST EXCEPTION` field.
+- [ ] **Red before code:** the tests step recorded every planned test of the group red, or as an `updated` existing test, before its code step ran.
+- [ ] **Tests unchanged:** every planned test case matches the lines its red row recorded.
+- [ ] **Unproven tests:** each planned test with no proven red is cleared only by a human-committed `TEST EXCEPTION` field.
 - [ ] **Gate 2 — Verified:** every box above is checked.
 
 **Mandatory Tasks (Testing & Documentation):**

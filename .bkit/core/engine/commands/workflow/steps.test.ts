@@ -20,6 +20,7 @@ import {
   readHeader,
   stepsCommand,
 } from "./steps";
+import { blockHash } from "./tests";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
 
@@ -1524,6 +1525,73 @@ describe("bkit steps finish — the tests step touches only tests, the code step
     expect(r.json.problem).toContain(TEST.file);
     expect(r.json.problem).toContain("BLOCKED");
     unchanged(cwd, head, status);
+  });
+
+  /** A test file holding the planned test and an unplanned one, and a red row naming the planned test's lines. */
+  function twoTests() {
+    const cwd = planned();
+    const body = (planned: string, other: string) =>
+      [
+        "describe('rows', () => {",
+        "  it('adds a row', () => {",
+        `    expect(addRow()).toBe(${planned});`,
+        "  });",
+        "",
+        "  it('counts rows', () => {",
+        `    expect(count()).toBe(${other});`,
+        "  });",
+        "});",
+        "",
+      ].join("\n");
+    write(cwd, TEST.file, body("1", "0"));
+    git(cwd, "commit", "-qam", "tests");
+    const text = fs.readFileSync(path.join(cwd, TEST.file), "utf-8");
+    redRow(cwd, {
+      tests: [
+        {
+          task: 1,
+          test: TEST.file,
+          testName: TEST.name,
+          state: "red",
+          blob: blobOf(cwd, TEST.file),
+          block: blockHash(text, TEST.name),
+        },
+      ],
+    });
+    write(cwd, "src/a.ts", "export const addRow = () => 1;\n");
+    return { cwd, body };
+  }
+
+  it("locks the planned test case, not its file: an edit to another test of the file passes", async () => {
+    const { cwd, body } = twoTests();
+    write(cwd, TEST.file, body("1", "2"));
+    expect((await run(cwd, EXECUTE)).code).toBe(0);
+    expect(git(cwd, "show", "--name-only", "--format=", "HEAD")).toContain(TEST.file);
+  });
+
+  it("refuses an edit to the planned test case, exit 11, naming the test, and appends an agent-rework friction row", async () => {
+    const { cwd, body } = twoTests();
+    write(cwd, TEST.file, body("2", "2"));
+    vi.stubEnv("BKIT_ENGINE_JOURNAL", "on");
+    const r = await run(cwd, EXECUTE);
+    vi.unstubAllEnvs();
+    expect(r.code).toBe(11);
+    expect(r.json.tests).toEqual([{ test: TEST.file, name: TEST.name }]);
+    expect(r.json.touched).toEqual([TEST.file]);
+    expect(r.json.problem).toContain(`"${TEST.name}"`);
+    expect(r.json.problem).toContain("other edits to the file stay");
+    const friction = fs
+      .readFileSync(path.join(cwd, ".bkit/friction.jsonl"), "utf-8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(friction).toEqual([
+      expect.objectContaining({
+        kind: "friction",
+        category: "agent-rework",
+        by: { workflow: "build", step: "build-plan-tasks" },
+      }),
+    ]);
   });
 
   it("passes the execute step when every planned test file matches the row, and checks nothing without a row", async () => {

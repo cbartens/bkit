@@ -358,6 +358,32 @@ describe("bkit challenge merge", () => {
     expect(r.json).toMatchObject({ route: "pause", appended: 1, round: 2 });
   });
 
+  it("refuses a round over the limit, and takes it once the owner granted one more allowance", async () => {
+    write(PLAN, plan(2));
+    write(R1, report({ sev: "MEDIUM", loc: "src/a.ts:10" }));
+    const refused = await merge(...args([R1], 3));
+    expect(refused.code).toBe(2);
+    expect(refused.err).toContain("--round must be 1 to 2");
+    write(
+      `${LOG}/status.jsonl`,
+      [
+        { type: "workflow-started", workflow: "build", at: "2026-11-02T00:00:00Z" },
+        {
+          type: "allowance-granted",
+          workflow: "build",
+          at: "2026-11-02T00:01:00Z",
+          point: "build.challenge",
+          value: 2,
+        },
+      ]
+        .map((r) => JSON.stringify(r))
+        .join("\n") + "\n",
+    );
+    const r = await merge(...args([R1], 3));
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ route: "fix", round: 3 });
+  });
+
   it("refuses an old-format report with findings", async () => {
     write(PLAN, plan(2));
     write(

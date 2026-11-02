@@ -73,7 +73,10 @@ developer_instructions = """
    - `delete-still-referenced` → read each hit:
      - **If** the hit is a different thing with the same name → no gap.
      - **Else** → `Fixable: true`.
-   - `no-red` → its `Fixable: false` stands: the tests step could not prove that test red, and no code step may rewrite a planned test. The owner accepts it or stops at the Decision Pause.
+   - `Unproven` section → list each test in `Notes`. No gap: the engine could not prove that test red before its code existed, and the owner answers it once, at the end of the build.
+   - `Updated tests` section → each test is an existing test the tests step changed. Read its diff in the supplied group diff:
+     - **If** the update only adds expectations → no gap.
+     - **Else** → the update removes or loosens an expectation. Append ``Task {N} `{file}` "{name}" — the update removes or loosens an expectation: {what} — Fixable: false``, because no code step may rewrite a planned test.
    - `Enforced: false` → record the reason in `Notes`. No gap.
    - `Already landed` section → list each test, and the reason the tests step gave for its pass, in `Notes`. No gap.
    - A gap you leave `Fixable: false` is a `FAIL`.

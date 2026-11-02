@@ -688,8 +688,8 @@ describe("consumer .prettierignore template (.bkit/templates/.prettierignore)", 
     ["build-group-gate-1-1.md", true],
     ["build-subplan-gate-1-1.md", true],
     ["context-tests-local-1.md", true],
-    ["build-plan-verify-1-1.md", false],
-  ])("prettier ignores the committed gate log %s: %s", async (name, ignored) => {
+    ["build-plan-verify-1-1.md", true],
+  ])("prettier ignores the committed run log %s: %s", async (name, ignored) => {
     const file = path.join(
       path.dirname(CONSUMER_PRETTIERIGNORE_TEMPLATE),
       "docs/plans/202610/logs/1-x",

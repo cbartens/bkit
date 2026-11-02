@@ -42,7 +42,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - **No issue:** `ISSUE_ID` empty → run issue-less; skip every issue-tied tracker read, label, comment and board call. Once Step 1 sub-step 4 holds `FID`, emit: Warning: no issue named — running issue-less as {FID}; no tracker reads, labels or comments. Name {FID} in the next prompt to continue this run.
 
 
-- **Limits:** `bkit.workflows.debug.fix` / `.soak` each hold `ask` and `maxAttempts`, read via `bkit counters route --point=` in fenced routing blocks below. `{FIX_ATTEMPT}` (Remediate rows) and `{SOAK_ATTEMPT}` (Soak rows) count across every debug run of the feature (`--all-runs`), before and after merge; there is no limit on runs. `{DEBUG_ATTEMPT}` is the run number, `{NORMAL_ATTEMPT}` the run's test round. A limit used up → fix → SOAK, soak → **Failure Path**. `ask` = true and not headless → the **Loop Question** before each further attempt; a question never resets a count.
+- **Limits:** `bkit.workflows.debug.fix` / `.soak` each hold `ask` and `maxAttempts`, read via `bkit counters route --point=` in fenced routing blocks below. `{FIX_ATTEMPT}` (Remediate rows) and `{SOAK_ATTEMPT}` (Soak rows) count across every debug run of the feature (`--all-runs`), before and after merge; there is no limit on runs. `{DEBUG_ATTEMPT}` is the run number, `{NORMAL_ATTEMPT}` the run's test round. A limit used up → fix → SOAK. Soak attempts used up with `ask` = true and not headless → the **Loop Question**, where `Try again` gives soak one more full allowance (`bkit counters grant`) and it asks again once that allowance is used up too; `ask` = false, or headless → **Failure Path**. `ask` = true and not headless → the **Loop Question** before each further attempt; a question never resets a count.
 - **Modes:** Step 1 decides `PUSH_MODE` (`PR|LOCAL`) and `DEBUG_MODE` (`NORMAL|SOAK`). `DEBUG_MODE` selects the fix step: `NORMAL` → Diagnose (6) and Remediate (7); `SOAK` → Failure Remediate Soak (8). `REPRO` (`[repro]`) adds Failure Reproduce (5) after a first-attempt PASS, in either mode. A run starts in `SOAK` on `[soak]`, on an open run already soaking, or once the feature's runs hold `debug.fix.maxAttempts` Remediate rows. `NORMAL` switches to `SOAK` mid-run when the diagnose agent sets `Mode: SOAK`, or when the fix attempts are used up. `SOAK` is terminal.
 
 **Rules:** Copied word for word from `.agents/rules.md`.
@@ -76,6 +76,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    ```
    Route:
    - **If** exit 80 → open PR on `{BRANCH}` via `list_pull_requests` → re-run with `--open-pr={number}` or `--open-pr=none`.
+   - **If** exit 10 → the record did not reach the remote: add the line `Record not pushed: the handover commit is only in {WORKTREE_PATH}, and the links in this run's comments open once it is pushed` to the final message → **If** `tracker.done` = false → post `comment` via the tracker MCP per the header's fallback section → step 6.
    - **Else** → **If** `tracker.done` = false → post `comment` via the tracker MCP per the header's fallback section → step 6.
 6. **STOP**, no further downstream steps. **If** `SUMMARY_VERDICT` = FAIL → the final message is `debug-summary.md` content verbatim. Line 1 of the final message = the no-issue warning, when one was emitted.
 
@@ -90,10 +91,11 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    ```
    **If** exit non-zero → **Failure Path**.
    Hold `trend` as `LOOP_TREND` and `counts` as `LOOP_COUNTS`.
-   **If** `LOOP_TREND` != `stuck` **and** `LOOP_TREND` != `worse` → narrate `debug {LOOP_POINT}: attempt {LOOP_ATTEMPT} of {LOOP_MAX}, taken without asking (failures {LOOP_COUNTS})` → return to the calling step.
+   **If** `LOOP_LIMIT` is not held **and** `LOOP_TREND` != `stuck` **and** `LOOP_TREND` != `worse` → narrate `debug {LOOP_POINT}: attempt {LOOP_ATTEMPT} of {LOOP_MAX}, taken without asking (failures {LOOP_COUNTS})` → return to the calling step.
 3. Ask the owner in this session; plain text, not through a host question tool. State what the owner must decide and what each option does, in plain English, before naming any file, test or identifier. One message:
    - `debug {LOOP_POINT}: attempt {LOOP_ATTEMPT} of {LOOP_MAX}`, then `Failures per test round: {LOOP_COUNTS}`, then the newest diagnosis (`debug-failure-diagnose-*.md`) or soak log (`debug-failure-soak-*-log.md`) in one line each.
-   - The question:
+   - The question — first match wins:
+     - **If** `LOOP_LIMIT` = true → `**Q1 — Soak:** The soak attempts are used up. Stop here instead of trying one more set of attempts?`.
      - **If** `LOOP_POINT` = `fix` → `**Q1 — Fix:** The last fix attempt left no fewer failures. Stop here instead of trying again?`.
      - **If** `LOOP_POINT` = `soak` **and** `{LOOP_ATTEMPT}` = 1 → `**Q1 — Soak:** The fix attempts are used up, and the last one left no fewer failures. Stop here instead of starting soak (a slower, step-by-step investigation)?`.
      - **Else** → `**Q1 — Soak:** The last soak attempt left no fewer failures. Stop here instead of trying again?`.
@@ -108,6 +110,10 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    "{BKIT}" status row --file="{STATUS}" --workflow=debug --type=owner-answer >/dev/null || exit 1
    ```
    A reply that names a letter (`B`, `B)` or `B) {option}`) means the option that letter labels.
+   - **If** the answer is `Try again` **and** `LOOP_LIMIT` = true → give soak one more full allowance, clear `LOOP_LIMIT` → return to the calling step:
+     ```bash
+     "{BKIT}" counters grant --name=SOAK_ATTEMPT --of=debug-failure-soak:next --all-runs --point=debug.soak --file="{STATUS}" --workflow=debug >/dev/null || exit 1
+     ```
    - **If** the answer is `Try again` → return to the calling step.
    - **If** the answer is `Stop` → step 5.
    - **Else** → answer the reply in plain text and ask Q1 again in the same message, then record the wait and end the turn:
@@ -126,7 +132,8 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 ### 🔒 Gate — Loop Question
 
-- [ ] Asked only with `ask` = true, not headless, and `trend` stuck or worse (`counters progress`)
+- [ ] Asked only with `ask` = true, not headless, and `trend` stuck or worse (`counters progress`), or the soak limit used up
+- [ ] Used-up soak given its allowance on `Try again` (`counters grant`)
 - [ ] Wait and reply recorded (`owner-pause`, `owner-answer`)
 - [ ] Stop wrote a handover and released the lock
 
@@ -316,8 +323,9 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    "{BKIT}" counters route --name=SOAK_ATTEMPT --of=debug-failure-soak:next --all-runs --file="{STATUS}" --workflow=debug --point=debug.soak --continue=step-4 --exceeded=failure-path
    ```
    Hold `value` as `LOOP_ATTEMPT`, `max` as `LOOP_MAX` and `ask` as `LOOP_ASK`.
-   Route:
+   Route — first match wins:
    - **If** exit 0 → `LOOP_POINT` = `soak`, `LOOP_FIX` = `debug-failure-soak` → **Loop Question** → Step 4.
+   - **If** exit 1 **and** `LOOP_ASK` = true → `debug.soak.maxAttempts` is used up, so the owner decides: `LOOP_POINT` = `soak`, `LOOP_FIX` = `debug-failure-soak`, `LOOP_LIMIT` = true → **Loop Question** → Step 4.
    - **Else** → **Failure Path** (exit 1: `debug.soak.maxAttempts` used up, max-retry exhaustion).
 6. **Else** → **Failure Path**.
 

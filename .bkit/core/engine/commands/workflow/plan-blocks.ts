@@ -60,7 +60,7 @@ export interface PlanTestFirst {
   malformed: number[];
 }
 
-/** An owner-accepted `no-red` gap: the tests it covers and its 1-based plan lines. */
+/** An owner-accepted missing red: the tests it covers and its 1-based plan lines. */
 export interface PlanTestException {
   tests: PlanTest[];
   lines: number[];

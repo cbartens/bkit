@@ -312,6 +312,20 @@ describe("bkit tasks currency", () => {
     expect(r.json.tasks[0].hunks.join("\n")).toContain("total");
   });
 
+  it("currency leaves run logs out: a symbol named only in another plan's log matches no task", async () => {
+    cwd = repo({ "src/money.ts": "export const price = 1;\n" });
+    const base = git(cwd, "rev-parse", "HEAD");
+    writeIn(cwd, "docs/plans/202610/logs/9-other/build-plan-tasks-1-log.md", "DONE — total\n");
+    commit(cwd, "another feature's run log");
+    const plan = write(
+      "currency-logs.md",
+      refPlan("`total` in `src/money.ts`: renamed from price"),
+    );
+    const r = await run(["currency", `--plan=${plan}`, `--base=${base}`, "--against=HEAD"]);
+    expect(r.code).toBe(0);
+    expect(r.json.tasks).toEqual([]);
+  });
+
   it("currency emits no hunk outside the matched set", async () => {
     cwd = repo({
       "src/matched.ts": "export const alpha = 1;\n",
