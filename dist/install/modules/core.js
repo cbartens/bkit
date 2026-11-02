@@ -700,7 +700,7 @@ export function renameScriptTokens(text, renames) {
     const names = Object.keys(renames).sort((a, b) => b.length - a.length);
     if (names.length === 0)
         return text;
-    const re = new RegExp(`\\bpnpm((?:\\s+(?:run|(?!-(?:F|C|r|-filter|-dir|-prefix|-recursive))-{1,2}[\\w-]+(?:=\\S*)?))*)(\\s+)(${names.map(escapeRegExp).join("|")})(?![\\w:-])`, "g");
+    const re = new RegExp(`\\bpnpm((?:\\s+(?:run|(?!-(?:F|C|r|-filter|-dir|-prefix|-recursive))--?\\w[\\w-]*(?:=\\S*)?))*)(\\s+)(${names.map(escapeRegExp).join("|")})(?![\\w:-])`, "g");
     return text.replace(re, (_m, flags, gap, old) => `pnpm${flags}${gap}${renames[old]}`);
 }
 /** Each old script name still in `text`, with its 1-based line. */

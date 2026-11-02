@@ -823,7 +823,7 @@ export function renameScriptTokens(
   const names = Object.keys(renames).sort((a, b) => b.length - a.length);
   if (names.length === 0) return text;
   const re = new RegExp(
-    `\\bpnpm((?:\\s+(?:run|(?!-(?:F|C|r|-filter|-dir|-prefix|-recursive))-{1,2}[\\w-]+(?:=\\S*)?))*)(\\s+)(${names.map(escapeRegExp).join("|")})(?![\\w:-])`,
+    `\\bpnpm((?:\\s+(?:run|(?!-(?:F|C|r|-filter|-dir|-prefix|-recursive))--?\\w[\\w-]*(?:=\\S*)?))*)(\\s+)(${names.map(escapeRegExp).join("|")})(?![\\w:-])`,
     "g",
   );
   return text.replace(
