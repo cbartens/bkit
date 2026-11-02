@@ -224,3 +224,11 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-02T22:23:55Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/3/build-install-skills/-/1/comment","hash":"89999e27e175ec3408266f8fad1bd1c4051b3617ce7232240a2dfbd1648336a5","ref":"https://github.com/cbartens/bkit/issues/724#issuecomment-6590000722","at":"2026-11-02T22:23:58Z"}
 {"type":"step-done","workflow":"build","step":"build-install-skills","status":"DONE","at":"2026-11-02T22:23:58Z","parentSha":"7d68493b412467c62566a51131589c676d225af4","artifacts":["docs/plans/202610/logs/724-machine-wide-test/build-install-skills.md"],"attempt":1}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T22:24:04Z","noun":"context","verb":"brief","flags":["plan","next","dir","file","note-file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T22:24:13Z","noun":"status","verb":"route","flags":["step","group","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T22:24:13Z","noun":"steps","verb":"done","flags":["workflow","step","file","group","commit"]}
+{"type":"step-done","workflow":"build","step":"build-group-start","status":"DONE","at":"2026-11-02T22:24:13Z","parentSha":"ef6e76ab4847dfb4e39c3a3a044272d6fec8c54a","artifacts":[],"group":3}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T22:24:14Z","noun":"context","verb":"brief","flags":["plan","group","tests-only","dir","file","note-file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T22:32:34Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","plan","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/3/build-plan-tests/3/1/comment","hash":"98b4b52679e01a78521987750b5a92e0ebae2f8d598cf551c36aba43b978cac1","ref":"https://github.com/cbartens/bkit/issues/724#issuecomment-6590170309","at":"2026-11-02T22:32:35Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-tests","status":"DONE","at":"2026-11-02T22:32:35Z","parentSha":"ef6e76ab4847dfb4e39c3a3a044272d6fec8c54a","artifacts":["docs/plans/202610/logs/724-machine-wide-test/build-plan-tests-3-log.md"],"verdict":"PASS","attempt":1,"group":3}

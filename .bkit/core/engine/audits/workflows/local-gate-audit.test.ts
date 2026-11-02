@@ -123,6 +123,20 @@ const GATE_CALLERS: ReadonlyArray<readonly [string, string]> = [
 ];
 
 describe("bkit-local-gate-audit (#437)", () => {
+  it("every prompt that runs bkit tests changed routes exit 81 to a re-run of the command", () => {
+    const callers = GATE_CALLERS.filter(([, call]) => call.startsWith("--fallback=bkit:gate:"));
+    expect(callers).toHaveLength(4);
+    for (const [rel, call] of callers) {
+      const body = fs.readFileSync(path.join(REPO_ROOT, rel), "utf-8");
+      const steps = body.split(/\n(?=\d+\. )/);
+      const step = steps.find((part) => part.includes(call));
+      expect(step, rel).toBeDefined();
+      expect(step, rel).toMatch(/\btests changed\b/);
+      expect(step, rel).toMatch(/(?:exit(?:s)?|exit code)\s+`?81\b/i);
+      expect(step, rel).toMatch(/(?:re-run|rerun|run (?:it|the command|that command) again)/i);
+    }
+  });
+
   describe("no toolchain command is inlined at a call site", () => {
     for (const { pattern, why } of BANNED) {
       it(`\`${pattern}\` appears nowhere unexempted — ${why}`, () => {
