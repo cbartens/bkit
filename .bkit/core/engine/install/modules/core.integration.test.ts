@@ -1959,6 +1959,27 @@ describe("migrateBrandedTemplateFiles (via runBkitDocs)", () => {
     expect(out).toContain("check-dependency-audit");
   });
 
+  it("leaves a unit whose old path a composite action still names", () => {
+    put(path.join(CI_DIR, "check-dependency-audit.mjs"), shippedOld("check-dependency-audit.mjs"));
+    put(
+      path.join(CI_DIR, "check-dependency-audit.test.mjs"),
+      shippedOld("check-dependency-audit.test.mjs"),
+    );
+    put(
+      ".github/actions/audit/action.yml",
+      "runs:\n  using: composite\n  steps:\n    - if: hashFiles('scripts/ci/check-dependency-audit.mjs') != ''\n      run: node scripts/ci/check-dependency-audit.mjs\n      shell: bash\n",
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    run();
+
+    expect(fs.existsSync(path.join(CI_DIR, "check-dependency-audit.mjs"))).toBe(true);
+    expect(fs.existsSync(path.join(CI_DIR, "check-dependency-audit.test.mjs"))).toBe(true);
+    expect(fs.existsSync(path.join(CI_DIR, "bkit-check-dependency-audit.mjs"))).toBe(false);
+    const out = warn.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(out).toContain(".github/actions/audit/action.yml");
+    expect(out).toContain("check-dependency-audit");
+  });
+
   it("does not write through a dangling bkit- target symlink", () => {
     const outside = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-outside-"));
     try {
@@ -2136,6 +2157,24 @@ describe("migrateBrandedCheckNames (via runBkitDocs)", () => {
       "    runs-on: ubuntu-latest # Edit this label in your copy.\n",
       "    runs-on: ubuntu-latest # Edit this label in your copy.\n    name: our trivy\n",
     );
+    expect(custom).toContain("    name: our trivy\n");
+    put(path.join(WF, "bkit-trivy.yml"), custom);
+    run();
+
+    const after = fs.readFileSync(path.join(WF, "bkit-trivy.yml"), "utf-8");
+    const parsed = parseYaml(after) as { jobs: { trivy: { name?: string } } };
+    expect(parsed.jobs.trivy.name).toBe("our trivy");
+    expect(after.match(/^ {4}name:/gm)).toHaveLength(1);
+  });
+  it("inserts no job name when a job-indent comment sits above the job's own name", () => {
+    const old = shippedAtV6(".github/workflows/bkit-trivy.yml");
+    const custom = old
+      .replace("\n  trivy:\n", "\n  trivy:\n  # owner: security team\n")
+      .replace(
+        "    runs-on: ubuntu-latest # Edit this label in your copy.\n",
+        "    runs-on: ubuntu-latest # Edit this label in your copy.\n    name: our trivy\n",
+      );
+    expect(custom).toContain("  # owner: security team\n");
     expect(custom).toContain("    name: our trivy\n");
     put(path.join(WF, "bkit-trivy.yml"), custom);
     run();

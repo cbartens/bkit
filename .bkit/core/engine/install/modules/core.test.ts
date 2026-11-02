@@ -298,4 +298,18 @@ describe("renameScriptTokens", () => {
     }
     expect(renameScriptTokens("pnpm lint:prose", renames)).toBe("pnpm bkit:lint:prose");
   });
+
+  it("renameScriptTokens leaves recursive flag forms alone", () => {
+    for (const call of [
+      "pnpm -r lint:prose",
+      "pnpm --recursive slop:delta",
+      "pnpm -r run graph:update",
+    ]) {
+      expect(renameScriptTokens(call, renames)).toBe(call);
+    }
+    expect(renameScriptTokens("pnpm -w lint:prose", renames)).toBe("pnpm -w bkit:lint:prose");
+    expect(renameScriptTokens("pnpm --workspace-root slop:delta", renames)).toBe(
+      "pnpm --workspace-root bkit:slop:delta",
+    );
+  });
 });

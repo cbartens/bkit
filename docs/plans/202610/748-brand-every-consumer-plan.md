@@ -173,6 +173,9 @@ Observable outcome: after step 2 `package.json` holds `bkit:lint:prose`, `bkit:s
 | migrateBrandedTemplateFiles (via runBkitDocs) > does not write through a dangling bkit- target symlink | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 19 |
 | migrateBrandedTemplateFiles (via runBkitDocs) > leaves a symlinked old data file in place | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 19 |
 | migrateValeHouseStyle (via runBkitDocs) > does not move rules into a symlinked Bkit directory | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 19 |
+| migrateBrandedCheckNames (via runBkitDocs) > inserts no job name when a job-indent comment sits above the job's own name | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 20 |
+| renameScriptTokens leaves recursive flag forms alone | Unit | `.bkit/core/engine/install/modules/core.test.ts` | 21 |
+| migrateBrandedTemplateFiles (via runBkitDocs) > leaves a unit whose old path a composite action still names | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 22 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -953,6 +956,39 @@ Build order: script names, template file names and the branding guard (Group 1) 
 
 <!-- bkit:task 19 end -->
 <!-- bkit:group 6 end -->
+
+<!-- bkit:group 7 start -->
+
+### TASK GROUP 7: Challenge round 2 findings
+
+<!-- bkit:task 20 start -->
+
+- [ ] **TASK 20:** A consumer's `trivy:` / `renovate:` job that holds a comment at job-key indent (`  # owner: security team`) above its own `name:` still gets a second `name:` inserted, so GitHub rejects the workflow file and the scan stops running
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/modules/core.ts:1177` · **Round:** 2
+  - **DONE WHEN:** the job-block scan in `migrateBrandedCheckNames` ends only at the next 2-space job key or a column-0 key, skipping blank and comment lines (`rest.search(/^(?: {2}[^\s#]|[^\s#])/m)` today stops at `  #` and `#`), and the rewritten workflow is checked with `parseYaml` before `finish` writes it; a result that does not parse is not written and logs one `console.warn` naming the file and the manual rename. Probed with `tsx` on the shipped v6.0.0 `bkit-trivy.yml` seeded with `  # owner: security team` after `  trivy:` and `    name: our trivy` after `    runs-on:`: the output holds `    name: bkit-trivy` and `    name: our trivy` under `  trivy:`, and `parseYaml` throws "Map keys must be unique at line 39". Task 16's DONE WHEN ("the result parses with `parseYaml`") is met only by the test, not by the code, and the `docs/migrations.md` "Branded check names" row ("when the job has none") does not hold for this shape
+  - **TEST FIRST:**
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `migrateBrandedCheckNames (via runBkitDocs) > inserts no job name when a job-indent comment sits above the job's own name` fails on the shipped v6.0.0 `bkit-trivy.yml`, seeded with `  # owner: security team` after `  trivy:` and `    name: our trivy` after `    runs-on:`, coming out with two `    name:` lines under `  trivy:` and `parseYaml` throwing
+
+<!-- bkit:task 20 end -->
+<!-- bkit:task 21 start -->
+
+- [ ] **TASK 21:** `pnpm -r lint:prose` (also `pnpm --recursive slop:delta`, `pnpm -r run graph:update`) in a hook or CI step is rewritten to `pnpm -r bkit:lint:prose`. A recursive run skips the workspace root by default and runs the script in the sub-packages, whose `lint:prose` keys the migration never renames, so after upgrade pnpm fails with "None of the selected packages has a "bkit:lint:prose" script"
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/modules/core.ts:810` · **Round:** 2
+  - **DONE WHEN:** the package-selector lookahead in `renameScriptTokens` also leaves calls with `-r` / `--recursive` alone (as it does for `-F`, `-C`, `--filter`, `--dir` and `--prefix`), so `findOldScriptNames` reports them for the manual-rename warning; `-w` / `--workspace-root` (which selects the root) keeps being rewritten. Probed with `tsx`: `renameScriptTokens("pnpm -r lint:prose", BKIT_SCRIPT_RENAMES)` returns `pnpm -r bkit:lint:prose`, and `pnpm --recursive slop:delta` returns `pnpm --recursive bkit:slop:delta`. Same failure as Task 17, through a selector the fix did not list
+  - **TEST FIRST:**
+    - `.bkit/core/engine/install/modules/core.test.ts` `renameScriptTokens leaves recursive flag forms alone` fails on `pnpm -r lint:prose`, `pnpm --recursive slop:delta` or `pnpm -r run graph:update` coming back with a `bkit:` name
+
+<!-- bkit:task 21 end -->
+<!-- bkit:task 22 start -->
+
+- [ ] **TASK 22:** A consumer whose dependency-audit step lives in a local composite action (`.github/actions/audit/action.yml` with `if: hashFiles('scripts/ci/check-dependency-audit.mjs') != ''`) gets the shipped audit unit moved to `scripts/ci/bkit-*`, because the Task 15 reference scan reads only `.github/workflows/*.yml` / `*.yaml`. The composite step then skips on every run, the dependency-audit gate is off and CI stays green with no log line
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/modules/core.ts:1047` · **Round:** 2
+  - **DONE WHEN:** the reference scan in `migrateBrandedTemplateFiles` also reads every regular `action.yml` / `action.yaml` file under `.github/actions/` (the files a `uses: ./.github/actions/<name>` step runs, whose `runs.steps[*].if` accepts `hashFiles`). A hit leaves the unit in place and logs one `console.warn` naming the file, the line and the manual move, as a workflow hit does today, so the irreversible delete never runs while a composite action still names the old path. The `docs/migrations.md` "Branded CI script files" row, which today says "a workflow outside the path pass", then names composite actions too
+  - **TEST FIRST:**
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `migrateBrandedTemplateFiles (via runBkitDocs) > leaves a unit whose old path a composite action still names` fails on shipped v6.0.0 `scripts/ci/check-dependency-audit.mjs` and `.test.mjs` being removed (and `scripts/ci/bkit-check-dependency-audit.mjs` written) while `.github/actions/audit/action.yml` holds `runs:\n  using: composite\n  steps:\n    - if: hashFiles('scripts/ci/check-dependency-audit.mjs') != ''\n      run: node scripts/ci/check-dependency-audit.mjs\n      shell: bash\n`, with no warning naming `.github/actions/audit/action.yml`
+
+<!-- bkit:task 22 end -->
+<!-- bkit:group 7 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
 
