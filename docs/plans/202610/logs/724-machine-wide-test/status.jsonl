@@ -187,3 +187,11 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-02T10:50:07Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/2/build-plan-gaps-remediate/2/1/comment","hash":"ab0609cc00c58147f8b6f57f89225cc7651965a90f83b5d5635ffff8a5612dee","ref":"https://github.com/cbartens/bkit/issues/724#issuecomment-6575274988","at":"2026-11-02T10:50:08Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-gaps-remediate","status":"DONE","at":"2026-11-02T10:50:08Z","parentSha":"c0a0b0a820b684039bd1611cdfc7f94d7005e2f2","artifacts":["docs/plans/202610/logs/724-machine-wide-test/build-plan-gaps-remediate-2-1-log.md"],"verdict":"FAIL","attempt":1,"group":2,"strategy":"STANDARD"}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T10:50:10Z","noun":"branches","verb":"scan-diff","flags":["base","code"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T10:50:11Z","noun":"counters","verb":"derive","flags":["file","workflow","step","group","position"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T10:50:16Z","noun":"tests","verb":"green","flags":["file","workflow","group","plan","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T10:50:23Z","noun":"status","verb":"route","flags":["step","group","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T10:50:23Z","noun":"context","verb":"diff","flags":["reset-log","base","artifact","fid","step","attempt"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T10:51:30Z","noun":"workflows","verb":"fail","flags":["post","issue","workflow","fid","month","token","label","step-number","step-title","sub-step","error-file","session-dir"]}
+{"type":"workflow-failed","workflow":"build","at":"2026-11-02T10:51:30Z"}
+{"type":"engine-action","action":"comment","key":"build/2/failure/8/4/comment","hash":"46c3cf3338d39f15b483a7739bc93bb90b9ce64011cf367c20465b776aafbe27","ref":"https://github.com/cbartens/bkit/issues/724#issuecomment-6575300453","at":"2026-11-02T10:51:32Z"}
