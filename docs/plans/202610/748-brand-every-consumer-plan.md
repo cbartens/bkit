@@ -155,6 +155,8 @@ Observable outcome: after step 2 `package.json` holds `bkit:lint:prose`, `bkit:s
 | Shipped-content CI script units move to `bkit-` names with their data files, and their `scripts/ci/` paths are rewritten | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 8 |
 | An edited CI script unit, or one whose `bkit-` target exists, stays and is logged | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 8 |
 | A second template-file migration and a dry run write and move nothing | Integration | `.bkit/core/engine/commands/install/upgrade.integration.test.ts` | 8 |
+| Second upgrade logs no branded line for the hook and CI file, and records no hash for them | Integration | `.bkit/core/engine/commands/install/upgrade.integration.test.ts` | 13 |
+| A second template-file migration and a dry run leave `scripts/ci/`, the hooks and the CI workflow unchanged | Integration | `.bkit/core/engine/commands/install/upgrade.integration.test.ts` | 14 |
 | The upgrade log names each renamed check with the branch-protection fix | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 9 |
 | A `renovate:` / `trivy:` job that already carries a `name:` gets none inserted | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 9 |
 | A custom `bkit.testing.ciWorkflow` file gets the health-stub rewrite; `bkit-ci.yml` is not looked for | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 9 |
@@ -775,6 +777,28 @@ Build order: script names, template file names and the branding guard (Group 1) 
     - `.bkit/core/engine/commands/install/upgrade.integration.test.ts` `a second template-file migration and a dry run write and move nothing` fails on a second-run write or a dry-run move or write
 
 <!-- bkit:task 8 end -->
+
+<!-- bkit:task 13 start -->
+
+- [ ] **TASK 13:** Scope the second-upgrade check of the hook and CI token migration to its own log line
+  - **UPDATE:** `.bkit/core/engine/commands/install/upgrade.integration.test.ts`: replace `copy-and-own migration writes record no canonical hash and a second upgrade writes nothing` (Task 7, line ~1059) with a test that checks the second upgrade's output for the migration's own line (`core: .husky/pre-push — branded`) and not for the bare path `.husky/pre-push`, which every upgrade of the bare scratch consumer names in advisories
+  - **DEPENDS ON:** 7
+  - **DONE WHEN:** the replaced test passes; it still asserts the hook and CI file are rewritten, `.bkit/version` `canonicalHashes` has no entry for them, and a second upgrade logs no migration line for them; the Task 7 test it replaces is gone from the file
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/install/upgrade.integration.test.ts` `copy-and-own migration second upgrade logs no branded line for the hook and CI file` fails on a second-run `core: .husky/pre-push — branded` line, a `canonicalHashes` entry for `.husky/pre-push` or the CI workflow, or an old token left in either file
+
+<!-- bkit:task 13 end -->
+
+<!-- bkit:task 14 start -->
+
+- [ ] **TASK 14:** Leave the per-upgrade cache-bust file out of the second-run snapshot of the CI script move
+  - **UPDATE:** `.bkit/core/engine/commands/install/upgrade.integration.test.ts`: replace `a second template-file migration and a dry run write and move nothing` (Task 8, line ~1147) with a test whose before-and-after tree snapshot leaves out `.claude/bkit-cloud.md`, which `renderCloudCacheBust` (`.bkit/core/engine/install/cloud-env.ts:335`) rewrites with a new `# cache-bust` counter on every upgrade
+  - **DEPENDS ON:** 8
+  - **DONE WHEN:** the replaced test passes; `scripts/ci/`, the hooks and the CI workflow are equal before and after a second upgrade and after a dry run; the Task 8 test it replaces is gone from the file
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/install/upgrade.integration.test.ts` `a second template-file migration and a dry run leave scripts/ci and the hooks unchanged` fails on a second-run write or a dry-run move or write in `scripts/ci/`, `.husky/` or the CI workflow
+
+<!-- bkit:task 14 end -->
 
 <!-- bkit:group 3 end -->
 
