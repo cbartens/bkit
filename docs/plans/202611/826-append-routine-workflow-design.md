@@ -16,7 +16,7 @@ Verdict: PASS
 >
 > **Rules:**
 >
-> - Treat this document as a design proposal, with unresolved owner decisions named under Risks & Open Questions.
+> - Follow the owner decisions recorded under Decisions, including best-effort comments that never fail the workflow.
 > - Keep implementation in the existing shared tracker posting path.
 > - Preserve the engine's original section text and the agent's create-only fallback.
 
@@ -26,19 +26,19 @@ None. The related-issue search returned only the current issue.
 
 ## Acceptance Scenario
 
-This is the starting scenario accepted in the design interview, refined below for concurrency and uncertain delivery. The two departures from Q4 require owner confirmation before the plan treats them as settled acceptance criteria. Until then, their strict defaults apply: no consolidation edit without verified atomic chronology support, and no declaration of duplicate-free acceptance through unresolved delivery. Finishing this design records those dependencies; it does not approve the departures or certify any adapter's consolidation behavior.
+The owner accepted the final-preflight chronology boundary, possible duplicate reports after uncertain delivery, all-three-tracker scope and the verification work described below. The later controlling clarification makes commenting best effort: try to append to the latest eligible engine-owned progress comment; if that is unavailable or fails, try a new comment. If commenting still fails, record friction best effort and continue the workflow. Lost or duplicate comments are acceptable occasional outcomes. Comment transport, source state, receipts, locks, reconciliation and failure logging cannot fail or block a workflow. Verification requirements govern implementation evidence, not the success of an individual workflow's comment delivery.
 
 ### Narrative
 
-I can follow a workflow's progress without routine reports overwhelming the issue conversation. Decisions, failures, handovers and completion remain separate, visible comments, and replies already visible when bkit checks the issue keep their place in the conversation. If a tracker request has an uncertain outcome, I can see that uncertainty rather than being told that delivery was exactly once.
+I can follow a workflow's progress without routine reports overwhelming the issue conversation. Decisions, failures, handovers and completion remain separate, visible comments, and replies already visible when bkit checks the issue keep their place in the conversation. If a tracker request has an uncertain outcome, bkit tries a new comment and keeps the workflow moving; a missing or duplicate report does not stop my work.
 
 ### Success Criteria
 
-1. A clean uninterrupted build produces at most two bkit comments when progress fits one comment, identity and source state are available, and neither fallback nor an intervening comment requires another: progress and completion.
-2. Decision pauses, failures, handovers and final close / Create PR reports each use a separate new comment; exact retries of those reports are deduplicated.
-3. Before an edit, the engine establishes that its target is the newest created comment and still matches its last acknowledged revision. An intervening comment or external edit detected at that check causes a new progress segment; the remaining read/write race is disclosed.
-4. Re-executing an acknowledged report adds no duplicate section. Prepared writes are reconciled before retry; an unresolved remote outcome or unchanged create-only fallback is reported as uncertain and can duplicate a report.
-5. GitHub, Linear and Jira stay within their verified comment budgets, every section displays its original UTC time, and auto and its dispatched phase own separate progress state. Tracker edit-notification limitations are documented.
+1. A clean uninterrupted build produces at most two bkit comments when progress fits one comment, identity and source state are available, and delivery succeeds without fallback or an intervening comment: progress and completion.
+2. Decision pauses, failures, handovers and final close / Create PR reports each attempt a separate new comment; exact retries are deduplicated when existing evidence permits.
+3. Before an append edit, the engine establishes that its own target is the newest created comment and still matches its saved revision evidence. An intervening comment, external edit or inconclusive check sends the current report to a new comment; the remaining read/write race is accepted.
+4. Identical reports are deduplicated where saved receipts or bounded marker lookup establish prior delivery. Failed or uncertain append attempts fall back to a new comment. If all comment attempts fail, friction is recorded best effort and the workflow continues successfully with respect to commenting.
+5. GitHub, Linear and Jira use their verified comment budgets, sections show their original UTC time when available, and auto and its dispatched phase own separate progress state. Missing or invalid comment state and tracker edit-notification limitations are diagnosed without stopping the workflow.
 
 ### Key Edge Cases
 
@@ -54,7 +54,8 @@ WHEN a workflow starts → THEN its own progress comment opens.
 WHEN a routine report arrives → THEN it appears once in the eligible progress comment with its original time.
 WHEN the eligibility check sees another comment, an external edit or a size overflow → THEN only new progress starts another segment.
 WHEN an acknowledged report repeats → THEN the existing delivery is returned.
-WHEN a previous write is uncertain → THEN recovery checks its identity before another write and reports unresolved ambiguity.
+WHEN an append fails or its outcome is uncertain → THEN a bounded check may establish prior success; otherwise bkit attempts a new comment.
+WHEN all comment attempts fail → THEN bkit records friction best effort and continues the workflow.
 WHEN attention is needed or the workflow ends → THEN a separate comment appears.
 WHEN auto dispatches a phase → THEN that phase opens separate progress state.
 
@@ -64,200 +65,183 @@ WHEN auto dispatches a phase → THEN that phase opens separate progress state.
 | Capability | Prior art | Verdict | Why |
 | --- | --- | --- | --- |
 | Shared posting and policy | `.bkit/core/engine/commands/workflow/tracker.ts`: `postForVerb`, `postCommentOnce`, `trackerTarget` | EXTEND | Callers already converge here. Classify reports and choose create/update centrally. |
-| Stable report identity and completion receipt | `ledgers/status.ts`: `actionKey`, `actionHash`, `alreadyDone`, `recordAction`; `tracker.ts`: `runActionKey`, `endedRunActionKey` | EXTEND | Preserve key-plus-body semantics and add pending delivery, section identities and comment references. Existing successful action rows remain valid evidence. |
+| Stable report identity and completion receipt | `ledgers/status.ts`: `actionKey`, `actionHash`, `alreadyDone`, `recordAction`; `tracker.ts`: `runActionKey`, `endedRunActionKey` | EXTEND | Preserve key-plus-body semantics and use available receipts, section identities and comment references for best-effort duplicate suppression. |
 | Generated marker and standalone body file | `stampMarker`, `markerHashOf`, `writeBodyFile`, `commentFileOf` | EXTEND | Keep the first-line generated marker and the exact standalone fallback body; add section and revision evidence below it. |
-| Exact source retention | Existing run artifacts under `docs/plans/{YYYYMM}/logs/{FID}/`; existing Git-common outbox for bootstrap | EXTEND | Save engine-authored outgoing bodies beside run records. The outbox bridges pre-run posting; it is not the durable authority after adoption. |
+| Exact source retention | Existing run artifacts under `docs/plans/{YYYYMM}/logs/{FID}/`; existing Git-common outbox for bootstrap | EXTEND | Keep the engine-authored aggregate in a small progress-state cache. Missing state starts a new comment; remote Markdown never becomes the outgoing source. |
 | Local publication serialization | Workflow-lock primitives in `commands/workflow/locks.ts` | EXTEND | Reuse exclusive creation / ownership checks for a narrow delivery lock. A long-lived workflow lock alone does not serialize separate CLI processes. |
 | Tracker creation, inspection and editing | `postComment`, `recentComments`, GitHub `gh`, Linear GraphQL and `JiraSession` | EXTEND | Add stable IDs and metadata to the existing transports and an edit operation. Do not introduce a messaging service or runtime dependency. |
 | Body limits and continuation parts | `splitAt`, `JIRA_COMMENT_LIMIT` | EXTEND | Centralize all three provider budgets and retain deterministic per-part receipts. |
-| Operator diagnostics | Existing prefixed stderr, `TrackerOutcome`, status records | EXTEND | Expose append, rollover, dedupe and uncertainty using CLI output and records. |
+| Operator diagnostics | Existing prefixed stderr, `TrackerOutcome`, status records | EXTEND | Expose append, new-comment fallback, dedupe and lost reports using existing CLI output and best-effort friction records. |
 | Cross-provider mutation contracts | [GitHub comment update](https://docs.github.com/en/rest/issues/comments#update-an-issue-comment), [Linear GraphQL](https://linear.app/developers/graphql), [Rovo supported tools](https://developer.atlassian.com/cloud/rovo-mcp/guides/supported-tools/) | EXTEND | GitHub documents ID-based updates; Linear supports schema introspection; Rovo documents an add/edit comment tool. These establish transport directions, not an atomic newest-comment predicate or every required field. |
 
 The repo sweep covered `tracker.ts`, its comment callers in `issues.ts` / `steps.ts`, `ledgers/status.ts`, the lock primitives and the committed capability map. No existing progress-aggregation or per-section delivery implementation was found in the engine text search. The language server rejected the ignored worktree path, so bounded source reads supplied symbol evidence. Node's filesystem and crypto facilities and the current transports cover the required primitives; no dependency addition is proposed.
 
 ## Architecture
 
-### Shared publisher
+### Shared publisher and nonfatal boundary
 
-Extend `postForVerb` / `postCommentOnce` with one delivery policy and one recovery protocol. Report builders continue to produce their current standalone section. The publisher receives structured workflow, verb, step, group and attempt identity from `RunContext`, flags and existing action keys; it never classifies by a display title.
+Extend `postForVerb` / `postCommentOnce` with one best-effort delivery policy. Report builders continue to produce the current standalone section. The publisher receives structured workflow, verb, step, group and attempt identity from `RunContext`, flags and existing action keys; it never classifies by display title.
 
 The classification order is:
 
 1. No issue or tracker: retain the existing skip result.
-2. Decision Pause, failure, handover or final close / Create PR: standalone creation with deduplication.
-3. Recognized routine report in an identified workflow invocation: progress publication.
-4. Missing or ambiguous workflow ownership: standalone creation, with a diagnostic explaining why aggregation was unavailable.
+2. Decision Pause, failure, handover or final close / Create PR: attempt standalone creation with available duplicate suppression.
+3. Recognized routine report in an identified workflow invocation: try the latest eligible engine-owned progress comment, then a new comment if appending is unavailable, failed or uncertain.
+4. Missing or ambiguous workflow ownership: attempt a standalone new comment with a diagnostic.
 
-Start Workflow is routine and opens a segment. Dispatch is routine within auto's own invocation. Intermediate summaries are routine; the final artifact / PR handoff is standalone. A single final report is posted by the existing final posting point, rather than adding an extra terminal notification at a verb that currently only prepares return text.
+Start Workflow opens progress on a successful create. Dispatch is routine within auto's own invocation. Auto and the dispatched phase own separate progress state. Intermediate summaries are routine; the final artifact / PR handoff is standalone at the existing posting point.
 
-### Durable run source and delivery state
+The complete comment path is nonfatal. Catch comment-specific errors at the shared posting boundary, including report preparation, state reads/writes, receipt handling, lock operations, inspection, transport, reconciliation and diagnostics. Return a failed or uncertain tracker outcome for fallback without turning the step verdict into failure. Preserve failures from the step's actual work; this rule does not swallow unrelated command errors.
 
-Keep exact report and prepared aggregate bodies under the existing run log tree, in a `tracker-progress/{workflow}-{runId}/` artifact directory. This stores only text bkit generated and publication metadata; it does not snapshot human discussion or add a tracker ledger.
+The agent fallback remains create-only: when `tracker.done: false` and a body is available, attempt the printed standalone `commentFile` as a new comment. Bound that attempt and continue if it fails. Update every workflow's comment and gate wording together so a failed MCP comment never routes a successful step into Failure Path. The engine never edits a human comment, and agents never edit prior tracker content.
 
-Extend the existing status action mechanism with delivery preparation and acknowledgment records referencing those bodies. Historical source files are immutable. The active segment and pending operation are a projection of these records. Use atomic local file replacement for prepared body files and append records only after the corresponding file exists.
+### Progress source and run ownership
 
-For a pre-run Start Workflow call, `repo info`'s session directory holds an invocation manifest with an opaque ID, target fingerprint, workflow and FID. The first routine posting call receives that session directory explicitly through proposed shared invocation context. It creates the manifest once under the publication lock, and every later fileless call receives the same context; cwd, the issue's newest comment and the most recent session are never identity sources. This requires extending the common invocation resolver and the callers that currently omit session context. The session directory alone is not an already implemented resolver.
+Keep a small, replaceable progress-state record in the existing Git-common outbox, keyed by the exact tracker target and explicit workflow invocation. It holds the active comment identity, the engine's exact aggregate body, known section identities and available revision evidence. Use atomic replacement where practical, but a cache error invalidates append eligibility and sends only the current standalone report to a new comment. There is no requirement to save every historical aggregate, journal every prepared mutation or commit comment state before a workflow can proceed.
 
-Before `workflows start` removes or supersedes bootstrap state, it copies immutable bodies into `tracker-progress/{workflow}-{runId}/`, writes an adoption record binding the invocation ID to the exact status path and run number, and commits those artifacts with the setup step. The operation is restartable: matching files and the same adoption binding are reused byte-for-byte; a conflicting target, workflow, FID or binding refuses adoption. A completed invocation cannot become a new run. Once the durable binding exists, fileless resolution uses the explicit invocation ID plus that binding, and the session manifest becomes a pointer rather than the source authority.
+Pass explicit session invocation context to fileless Start Workflow and Dispatch calls. Reuse the same opaque invocation ID throughout that workflow run; bind it to the status path/run number when available. Auto retains its own invocation and the phase receives a new one. A conflicting association, missing session, cleanup or fresh clone starts fresh progress rather than guessing another run's comment. Normal session/worktree cleanup and workflow close do not wait for comment receipts or carry a pending-delivery obligation.
 
-Auto has no ordinary phase status run in its current workflow. Its Start Workflow and Dispatch calls receive the same explicit session invocation context and store their source and receipts under the feature's log tree using that invocation ID, even without a numbered phase status run. Dispatch persists a cleanup-safe copy of that artifact bundle in the Git-common delivery area. If dispatch moves into another worktree, phase setup imports the bundle under `tracker-progress/auto-{runId}/` and commits it with setup before the bootstrap copy can be removed. The dispatched phase receives a new identity, following Q1; it archives auto's final bundle without adopting auto's publishing identity. This is context plumbing, not separate posting policy. An unassociated fileless call falls back to standalone posting rather than borrowing the latest issue comment.
+Keep only engine-authored text as outgoing source. Jira's returned formatting must never be read back and re-sent as historical content. Missing or corrupt source, unsupported state versions, target mismatch or external edits invalidate the old cache; retain its URL when available and start a new comment for the current report. Older sections may be unavailable locally after state loss; occasional lost retry evidence and duplicate reports are accepted.
 
-For a terminal report posted after the close commit, prepare its exact standalone body, deterministic operation ID and invocation binding in the run artifact tree before that commit. The operation ID uses the target, workflow invocation, terminal purpose and original-body hash, so a later retry can resolve it from the closed run's committed manifest without a live session. After publication, save its acknowledgment in a target/invocation-keyed delivery journal under the Git-common outbox, outside the removable session directory. This journal is a recovery cache, not the sole source authority: a fresh clone reconciles the committed preparation against the provider marker before any resend. The next ordinary run-record commit may carry the acknowledgment into the artifact tree; no extra push is required solely for it. Normal session/worktree cleanup preserves the Git-common delivery journal, and cleanup failure never erases pending evidence. If the pre-close body cannot be determined at that point, move its preparation before the close commit rather than introducing an unrecorded terminal write.
+One active publisher per invocation remains the operating assumption. Reuse a narrow local ownership-aware lock where available. A lock failure or inconclusive owner check skips append and tries standalone creation; it never blocks the step or authorizes overwriting another process's state. No cross-machine service or persistent pending-delivery queue is introduced.
 
 ### Provider boundary
 
-Each adapter returns stable comment identity, URL, author identity, creation-order evidence, revision evidence and extracted bkit markers. Fetch only enough comments to identify the newest created comment and reconcile a known pending operation; paginate when the provider cannot answer that directly. Sorting by modification time is invalid.
+Extend the existing adapters with stable comment identity, URL, author identity, creation ordering and useful revision evidence. Inspect the newest created comment, using bounded pagination only when required. Sorting by modification time is invalid. An eligible append target belongs to the exact invocation and tracker target, is still newest at the final check, and matches the engine's saved ownership and revision evidence.
 
-The adapter also exposes create, edit, its verified encoded-body budget and whether useful conditional revision semantics exist. GitHub uses its existing authenticated `gh` transport; Linear stays on GraphQL; Jira stays on Rovo MCP with the existing token. No Jira REST credential path is introduced.
+Retain a fingerprint of a stable returned body representation when available, separately from the outgoing source. Before an edit, require the same comment identity, author, representation fingerprint and any useful revision token. Markers locate reports but do not prove unchanged content; a human can edit non-marker text. Missing or unstable evidence, unknown normalization or changed content sends the current report to a new comment. Do not mutate a comment merely because it contains a bkit marker.
 
-Revision equality uses an acknowledged remote representation, independently of the saved outgoing source. After a successful mutation, retrieve the recorded comment and retain SHA-256 of the exact UTF-8 bytes of its stable returned body representation, together with its representation kind, comment ID, author and any provider revision token. Before an edit, fetch through the same adapter and representation and require the same fingerprint, identity and author; require an equal revision token as well when one is available. Markers locate an operation but do not prove body equality, and update timestamps alone are insufficient. A person changing non-marker text therefore invalidates eligibility even when every marker survives. Normalization that changes across unchanged reads, an unavailable acknowledgment fingerprint, a missing field or a representation-version change makes equality inconclusive and seals the segment. The remote body is hashed in memory as evidence and is never substituted into the next outgoing body.
+GitHub keeps the authenticated `gh` transport; Linear keeps GraphQL; Jira keeps `JiraSession` and Rovo MCP. No new SDK, service or Jira REST credential path is introduced. Each adapter uses verified body budgets and complete-body counting, including markers and timestamps. Unsupported edit contracts use new-comment behavior and a friction record; they never fail a running workflow.
 
-### Provider acceptance matrix
+### Provider verification matrix
 
-The matrix distinguishes public contract evidence from the read-only spike. None of these observations proves a live mutation round trip or an atomic newest-comment condition. Complete the remaining evidence on authenticated disposable issues before declaring the corresponding adapter accepted; a standalone fallback does not satisfy consolidation acceptance.
+The matrix distinguishes public contracts from the read-only spike. Complete the provider evidence as implementation verification before claiming consolidation support. Missing credentials, inconclusive reads or unverified behavior do not become runtime workflow gates.
 
 <!-- prettier-ignore -->
-| Tracker | Create / edit / read contract | Identity, order and pagination | Revision and marker evidence | Body budget and notifications | Consolidation acceptance |
-| --- | --- | --- | --- | --- | --- |
-| GitHub | Existing create/read transport; official REST ID-based comment update. | The spike observed stable IDs, author, creation/update times, ascending creation order and a complete four-comment sample. Multi-page behavior remains to exercise. | Exact returned Markdown matched production bodies; ordinary generated h6 markers survived unchanged reads. Fingerprint comparison, new section markers and mutation normalization still need a create/edit/read probe. No documented issue-wide newest predicate. | The issue specifies 65,536 characters. Header-inclusive ASCII/non-BMP counting and boundary acceptance remain unverified. Edit-notification behavior is documented as a limitation, not measured by this spike. | BLOCKED by unconfirmed chronology default and unverified mutation, recovery and boundary evidence. |
-| Linear | Existing GraphQL create/read; the first-party schema establishes `commentUpdate` with `CommentUpdateInput.body`. Edit schema availability is settled. | Stable IDs, exact creation ordering and bounded pagination through the production read path remain to verify. | Returned representation stability, external-edit fingerprinting, h6/part marker extraction and conditional revision semantics remain to verify. | Numeric comment limit and counting unit remain unknown; establish them through authoritative contract or bounded boundary evidence. Do not use an internal `skipEditedAt` argument as a notification contract. | BLOCKED; credentials and a disposable issue were unavailable in the spike. |
-| Jira | Existing `JiraSession`; official Rovo tool catalog names add/edit and paginated comment listing. Discover exact deployed schemas and required IDs before use. | Stable comment/author IDs, creation ordering and pagination remain to verify. | Jira returns transformed text. Use one verified stable returned representation for fingerprints; h6/part marker extraction and revision evidence require a live round trip. | Existing threshold is 32,767; actual encoded-body/header/non-BMP counting remains unverified. Project notification schemes may notify on edits, accepted as a disclosed limitation under Q2. | BLOCKED; credentials and a disposable issue were unavailable in the spike. |
+| Tracker | Evidence already available | Remaining implementation evidence |
+| --- | --- | --- |
+| GitHub | Existing create/read transport and official ID-based update; the spike observed stable IDs, author, creation/update times, ascending creation order, unchanged returned Markdown and generated h6 markers. | Create/edit/read round trip, external edits, new section markers, multi-page ordering, lost responses and header-inclusive ASCII/non-BMP boundary accounting. The issue specifies 65,536 characters. No issue-wide newest predicate is documented. |
+| Linear | Existing GraphQL create/read; the first-party schema establishes `commentUpdate` and `CommentUpdateInput.body`. | Authenticated disposable-target update/read, stable IDs/order/representation, markers, pagination, external edits, numeric body limit and counting unit. No `BKIT_LINEAR_API_KEY` was available in the spike. Do not use internal `skipEditedAt` as a notification contract. |
+| Jira | Existing `JiraSession`; the official Rovo catalog names add/edit and paginated comment listing. The existing budget is 32,767. | Discover deployed schema/IDs; verify transformed representation, h6 markers, external-edit detection, ordering/pagination, exact body counting and lost responses. No `BKIT_JIRA_API_KEY` was available in the spike. Project schemes may notify on edits. |
 
-Record the accepted schema fields, representation, ordering query, counting unit and evidence version beside each adapter capability. Carry the compact capability/notification table into the interaction catalog during implementation. If a required contract is missing or unstable, report `aggregation-unavailable` and use the existing safe creation/fallback behavior while leaving that adapter's feature acceptance blocked.
-
-A recorded comment ID, exact tracker target and known create acknowledgment establish ownership. A generated marker alone never authorizes a mutation. Remote text is evidence only; every outgoing aggregate is assembled from saved source.
+Record verified fields and limitations beside each adapter capability and in the tracker interaction catalog. All three adapters remain in scope. New-comment fallback is acceptable runtime degradation; it does not prove an adapter's consolidation tests passed. Notification limits remain disclosed.
 
 ## Data Model
 
-These are proposed internal shapes, not a public configuration surface.
+Use the existing action identity and receipt mechanisms where they help. No new public configuration surface is required.
 
 <!-- prettier-ignore -->
 | Record | Fields and meaning |
 | --- | --- |
-| Invocation | Format version, opaque `runId`, tracker target fingerprint, workflow, FID when present, session association, eventual status-file / run-number binding. |
-| Section | `sectionId`, existing action key or equivalent structured purpose, original-body hash, exact source-body path, first prepared UTC timestamp, routine / standalone classification. |
-| Segment | Run and sequence, ordered section-part identities, exact acknowledged aggregate path/hash, provider comment ID/URL, author, last observed revision, stable returned-representation kind/fingerprint, sealed state and reason. |
-| Prepared operation | Deterministic operation ID, create / edit, segment identity, expected prior revision, intended exact body path/hash, section-part identities, preparation time. |
-| Acknowledgment | Operation ID, provider ID/URL, observed revision, stable returned-body fingerprint and marker evidence, acknowledged / reconciled delivery time; fingerprint may be unavailable while the mutation remains acknowledged. |
-| Uncertainty | Operation ID, failed phase, redacted reason and reconciliation result; never a fabricated success receipt. |
-| Delivery outcome | Version, workflow/invocation, operation ID, target fingerprint, segment, section/part count, rendered length, attempt number, outcome/reason and known comment URL; omit raw bodies and credentials. |
+| Progress state | Version, workflow invocation, target fingerprint, active comment ID/URL, exact engine-authored aggregate, known section identities, available author/revision/returned-representation fingerprint. |
+| Section identity | Existing action key or equivalent structured purpose plus original-body hash, original UTC time when first available, and optional continuation part identity. |
+| Existing success receipt | Existing action key/body hash and comment reference, written best effort after acknowledged delivery. Missing receipts may cause a duplicate and never fail the workflow. |
+| Tracker outcome / friction | Attempted append/create, success/uncertainty/failure, redacted reason and known URL. Failure recording is itself best effort. |
 
-Use the existing action-key meaning: a repeated action key with the same original report body is the same section. The body hash is taken before adding a timestamp, segment header or continuation labels. A changed body for the same key is a new immutable report version, appended with a new section identity; previous text is preserved. New attempts / groups already differ in their structured identity.
-
-Keep the existing first line `###### bkit:generated {aggregateHash}`. Add a versioned h6 run / segment / revision marker and a h6 section marker such as `###### bkit:section v1 {sectionId} {part}/{parts}` before each timestamped section. The design chooses visible headings to align with existing tracker markers; exact parsing must cover Markdown and Jira's returned HTML. Marker survival and unambiguous extraction must be demonstrated before that adapter is accepted.
-
-A prepared create has a stable run/segment marker, so it can be found after a lost response. A prepared edit carries an aggregate revision marker and all new section-part markers. All parts of one report retain its original timestamp. Unsupported state versions, missing files or target mismatches seal the affected segment; they do not trigger remote-body reconstruction.
+Hash the original report before adding timestamp or continuation labels. The same action and body identify an identical report; changed output is appended as a new version when possible. Preserve existing first-line `###### bkit:generated {aggregateHash}` and use per-section h6 markers such as `###### bkit:section v1 {sectionId} {part}/{parts}` for bounded duplicate lookup. Every outgoing body is built from the engine's own cached source plus the current report.
 
 ## Components / Flows
 
 ### Routine delivery
 
-1. Acquire a narrow local lock for the target and invocation under the bounded policy below; read durable state.
-2. Resolve any pending operation before accepting another operation for that invocation.
-3. Deduplicate the original report identity against acknowledged sections in every segment, not only the last five comments.
-4. Prepare its section text and timestamp once. Keep the printed `comment` and `commentFile` as the original standalone report.
-5. Inspect the current target. Once the owner's chronology gate permits editing, edit only when the comment is still newest by creation order, belongs to the exact run and target, and matches the acknowledged fingerprint and revision evidence. Otherwise seal it and start a new segment. An unanswered strict chronology gate never silently selects editing.
-6. Measure the complete outgoing body, persist the prepared operation and source bytes, then create or edit.
-7. Save the returned identity/revision acknowledgment and the existing engine-action receipt. A postflight inspection records the stable representation fingerprint and detects an observed intervening comment, sealing the segment for future writes; it cannot undo a race. If this inspection fails after a mutation was positively acknowledged, retain `done: true` and the known comment URL, record `postflight-unavailable`, and seal the segment. Do not request fallback for a known successful write. An acknowledgment persistence failure retains the prepared-operation recovery case and reports the operation ID and known URL.
+1. Build the standalone current report and stable identity. Keep `comment` / `commentFile` unchanged for the create-only fallback. If even preparation fails, record friction best effort and return control to the workflow.
+2. Use existing receipts or a bounded marker lookup to skip a clearly delivered identical report. Missing evidence does not create a recovery gate.
+3. Resolve explicit invocation/cache state and attempt the short local lock. If either is unavailable, skip append and try a new comment.
+4. Check the latest comment immediately before an edit. Append only to the eligible engine-owned progress comment, within its complete-body limit. External comments/edits, missing ownership evidence or size overflow select a new comment.
+5. On failed or uncertain append, optionally use a bounded read to recognize success. If success is not established, attempt a standalone new comment with the current report. Duplicates are acceptable; do not wait for a pending operation to settle.
+6. Save successful comment identity, aggregate source and existing receipt best effort. If all attempts fail, emit a diagnostic and append a friction row best effort, then continue the workflow.
 
-A failed eligibility read returns the existing failure result for fallback. It does not authorize an edit or prove that no comment exists. An unsupported edit capability can choose a fresh progress segment when creation remains safe; the capability limitation is visible rather than reported as successful consolidation.
+A positively acknowledged write remains successful if postflight inspection or local cache/receipt persistence fails. Invalidate future append eligibility when evidence is unavailable. Do not turn that local failure into an unnecessary resend.
 
-### Bounded work and lock ownership
+### Bounded attempts and failure handling
 
-Use the existing exclusive-create and token ownership primitives for one delivery lock per target/invocation. Wait at most 30 seconds to acquire it, reporting holder identity and elapsed wait without credentials. Reclaim only when the recorded same-host owner process is proved dead using its process identity/start evidence; age alone, a remote host or an inconclusive process check never authorizes reclamation. Refusal returns a bounded `lock-unavailable` outcome, leaves pending source intact and does not edit a comment. Release the owned lock in a finalizer on every path.
+Keep the existing shorter transport timeouts. One comment-publication invocation has at most a 60-second network budget, including reconciliation, rate-limit waits and new-comment fallback, and at most 10 pages of 100 comments. Reserve enough of the budget for the new-comment attempt; abandon optional lookup when it would consume that opportunity. Use at most three transport attempts in total. No ambiguous append is retried as another append without a conclusive read; choose a new comment instead when uncertain.
 
-One publication/reconciliation invocation has a 60-second network budget and at most 10 comment-list pages of at most 100 comments each. Existing transport request timeouts remain ceilings; clamp each request and rate-limit delay to the remaining total budget, never lengthen an existing shorter timeout. Use at most three read or conclusively failed transport attempts within that budget. Never automatically retry an ambiguous mutation; reconcile it first. Exhaustion before complete ordering or identity evidence returns uncertainty rather than absence. Release the local lock and retain the prepared operation. A later invocation starts a fresh bounded inspection of the same operation; it does not reset its identity or accumulated attempt history.
-
-### Recovery and fallback
+Wait at most 30 seconds for a local append lock. Refusal, inconclusive same-host ownership or a remote-host lock skips append. Reclaim only a proven-dead owner under the existing ownership-aware mechanism; age alone never authorizes recovery. Release an owned lock in a finalizer. Lock acquire/release errors are comment diagnostics and cannot fail the step.
 
 <!-- prettier-ignore -->
-| Observed state | Result |
+| Comment outcome | Required behavior |
 | --- | --- |
-| Section already acknowledged | Return its prior URL with `deduped: true`. |
-| Prepared create found remotely with matching identity/revision | Record a reconciled acknowledgment; do not create another comment. |
-| Prepared edit's intended revision found on the recorded comment | Record a reconciled acknowledgment; do not resend it. |
-| Known absence after a conclusive read, or recorded prior revision still current | Retry the same prepared operation only after rechecking eligibility. |
-| Changed, deleted or superseded target with no pending outcome | Seal it and start a new segment containing only new sections. |
-| Unresolved remote outcome | Retain pending state, return `done: false` with an uncertainty reason, and preserve the current standalone fallback payload. |
-| Remote success followed by local receipt failure | Return success with the existing warning convention, retain preparation evidence, and reconcile on the next call. |
-| Acknowledged mutation followed by failed postflight read | Keep `done: true` and the known URL; record `postflight-unavailable` and seal the segment so no future edit assumes eligibility. |
+| Clearly acknowledged identical report | Return its prior URL; no new write. |
+| Eligible latest engine-owned progress comment | Try appending from the engine's source copy. |
+| Human reply/edit, unavailable cache/lock, unsupported edit or size overflow | Try a new comment containing only the current report. |
+| Failed or uncertain append | Use only a bounded success check, then try a new comment if success remains unknown. |
+| New-comment attempt also fails | Record friction best effort and continue; an occasional lost comment is acceptable. |
+| Successful remote write, failed local receipt/cache or postflight read | Keep the known success; invalidate append state as needed and record friction best effort. |
+| Failed friction append or diagnostic write | Emit a brief redacted warning when possible and continue; do not recursively log or fail the workflow. |
+| Independent decision/failure/handover/terminal report | Attempt its own new comment immediately; prior routine uncertainty cannot block it. |
 
-The unchanged agent fallback posts a new standalone comment. It can duplicate a report after an unresolved remote success, which is a stated limit requiring owner confirmation below. A later engine call reconciles marker evidence where possible; it does not retroactively edit or delete fallback comments. Successful fallback is not inferred merely because a command returned `done: false`.
+The tracker outcome can remain `done: false` when no delivery is established, while the workflow's substantive step still passes. Agent fallback attempts are bounded and nonfatal too. Every workflow gate checks that commenting was attempted, not that it succeeded.
 
-### Recovery and retention procedure
+### State cleanup and diagnostics
 
-On a rerun, resolve the exact invocation manifest, inspect prepared and acknowledged operation records, and verify referenced source hashes before provider reads. A matching acknowledged operation returns its saved URL. A prepared operation is inspected by its stable identity and intended fingerprint/markers; retry only after a conclusive non-delivery result or a verified unchanged prior revision and a fresh eligibility check. A partial report resumes at its first unacknowledged part. Preserve all evidence when inspection is incomplete, fingerprints disagree or the network budget expires; report the operation, target fingerprint, known URL and next safe inspection rather than instructing the operator to delete state or repost blindly.
+Retain the active aggregate source and small identity cache only while useful. Exact retries reuse existing hashes and receipts when available. State cleanup, missing source or a fresh clone can start a new progress comment; no historical snapshots, post-close acknowledgment journal or fresh-clone reconciliation protocol is required to keep the workflow moving. Normal cleanup never waits for comment recovery.
 
-A pending routine mutation serializes further routine publication for that invocation. Attention reports may proceed as independent standalone operations under the same short local lock after the routine attempt has released it; each has its own prepared source and acknowledgment, so an unresolved progress append cannot hide a failure, decision or handover. Any such new comment seals the previous progress segment. An uncertain attention report blocks only retries of that same report until reconciliation, with the existing fallback and disclosed duplicate risk retained.
+For each exhausted comment problem, best-effort append a `friction` row through `bkit ledgers append`, with orchestrator author fields, stable recurrence key, redacted reason, phase and known URL. Cover append/create transport, cache, receipt, lock and reconciliation failures. The engine may perform this shared logging, and the orchestrator handles a failed MCP fallback similarly. Never log raw bodies, credentials or personal data. A failure to record friction produces a warning when possible and then stops that logging attempt.
 
-For a stale lock, first check its recorded host/process/start identity. Automatic recovery uses only the proven-dead rule above. An unverifiable owner is a bounded refusal requiring the operator to verify that no publisher is active before an ownership-aware recovery action; there is no age-only delete instruction. For missing source or external edits, preserve the old URL and reason, seal the segment and use a new segment for new content. A confirmed remote success is never undone by deleting or rewriting discussion.
-
-Retain immutable section source, all prepared aggregate snapshots, operation records and the invocation binding for the lifetime of a resumable run. Completed-run cleanup may remove disposable staging files and bootstrap copies only after verified adoption and with no pending delivery; committed source and manifests remain ordinary design/run artifacts. Retain the Git-common terminal delivery journal until its acknowledgment is carried into durable run artifacts or independently reconciled from committed preparation; pending journals are never removed by session/worktree cleanup. An unresolved journal remains visible in the local delivery summary even after close. Fresh clones rely on committed preparation plus bounded provider reconciliation, not on the old machine's cache.
-
-Artifact growth includes one original body per section and one full aggregate body per prepared revision, plus small records. For a segment with cumulative body lengths `L1..Ln`, source storage is approximately the section bytes plus `sum(Li)`, not merely the provider's final comment limit; one segment can therefore accumulate quadratic snapshot bytes in its section count. Reuse an identical hash-addressed snapshot for exact retries, record the accumulated bytes in the local summary, and retain snapshots needed by pending or acknowledged reconciliation. No new retention setting, automatic history rewrite or remote cleanup service is introduced.
+Reuse existing tracker results and prefixed stderr to show append, new-comment fallback, dedupe, uncertainty and lost-report outcomes. Do not add a hosted metrics system, a new delivery ledger or a requirement to persist a counter before continuing.
 
 ### Limits and parts
 
-Use the issue's GitHub budget of 65,536 characters and the existing Jira budget of 32,767, with the provider's actual counting / encoded request semantics verified. Linear's numeric limit remains unverified; do not copy a third-party client truncation limit into the design as a provider fact.
+Use the verified GitHub/Jira budgets and establish Linear's actual numeric budget and counting unit. Measure the entire submitted body, including first-line/section markers, timestamps and continuation headers. When appending would overflow, start a new comment with only the current report. If one report exceeds a verified budget, extend the existing splitter with deterministic Unicode-safe parts and exact header accounting.
 
-Measure the entire submitted body, including first-line and section markers, time lines and continuation headers. If the next section does not fit, create a fresh segment without copying earlier sections. If one section exceeds the provider budget, extend `splitAt` to produce deterministic, Unicode-safe parts with exact header accounting and per-part acknowledgments. A partial multi-comment success resumes at the first unacknowledged part.
+Use available part receipts to avoid repeating acknowledged parts. A part failure gets the bounded new-comment fallback; exhausted failures are logged best effort, and remaining publication work does not block the workflow. Tests must document partial-loss/duplicate behavior instead of claiming unconditional exactly-once multipart delivery.
 
 ### Documentation and compatibility
 
-Clarify the shared workflow fallback wording to bind agents explicitly: the engine may update its own run-owned progress comments through its posting API; agents still post `commentFile` verbatim as a new comment and never edit prior tracker content. Update the shared clause source, the interaction catalog, workflow catalog and CLI output contract together, then render host mirrors through the existing install process.
+Clarify the shared workflow clause: the engine may edit only its own eligible progress comment; agents post the standalone `commentFile` verbatim as a new comment. Routine append failure uses new-comment fallback, and commenting problems never trigger Failure Path or change a substantive step verdict. Update every provider block, the shared clause, interaction catalog, workflow catalog, CLI result contract and rendered host mirrors together.
 
-Existing comments need no rewrite or migration. Existing action receipts still suppress exact repeats. A resumed old run with no source state starts a new segment for new work. The manual Tracker work comments rule remains outside this feature.
-
-Emit redacted delivery outcomes with operation, segment, section count, rendered length and reason. Reuse existing verb stderr prefixes and structured tracker results; do not add raw bodies, tokens, a hosted metrics system or a tracing dependency.
-
-Append durable local outcomes for `create`, `append`, `dedupe`, `rollover`, `conflict`, `eligibility-failed`, `uncertain`, `receipt-failed`, `postflight-unavailable`, `aggregation-unavailable`, `lock-unavailable` and `fallback-requested`. Include workflow/invocation, operation, target fingerprint, segment, attempt, length and reason; include a known URL when available. Count one logical operation by its deterministic operation ID and count each transport attempt separately. A transition to uncertainty followed by reconciliation is one operation with both events, not two delivered reports. A compact per-run/local terminal summary reports successful operations, attempts, dedupes, rollovers by reason, recurring aggregation failures, unresolved operations and retained source/snapshot bytes. `fallback-requested` is never counted as fallback delivered. Repeated provider failures retain the same reason and expose their count rather than inventing a warning category per step.
+Existing comments need no rewrite or migration. Existing success receipts continue to suppress known exact repeats. Old runs without usable state start a fresh progress comment. The manual Tracker work comments rule remains outside this feature. Provider contract, lost-response and lifecycle tests must exercise nonfatal degradation, bounded fallback and continuation after cache/receipt/lock/friction failures.
 
 ## Decisions
 
 <!-- prettier-ignore -->
 | Decided | Alternatives | Why |
 | --- | --- | --- |
-| Extend the existing publisher with durable exact bodies and prepared / acknowledged delivery records. | Outbox-only cache; active snapshot only; reconstruct from step artifacts. | Preserves original bytes and permits recovery across crash, retry and committed-run resume. |
-| Keep policy centralized and pass only missing invocation context from callers. | Per-verb aggregation rules; display-title matching. | The issue requires one code path, while auto's fileless Dispatch lacks enough context today. |
-| Use original body plus structured action identity for deduplication. | Timestamp hash; step number alone. | Retries stay stable, and changed reports / attempts remain distinguishable. |
-| Preserve prior versions and append changed output as a new section. | Replace an earlier section silently. | Earlier sections are part of the conversation history and may already have been read. |
-| Keep Q1 separate auto / phase ownership, Q2 documented notification limits and Q3 qualified two-comment outcome. | Shared comment; universal silence; absolute two-comment cap. | The owner explicitly accepted those recommendations. |
-| Depart from Q4's absolute chronology wording to recommend newest-at-final-preflight with race detection. | Claim atomicity from a local lock; require an unverified provider condition. | GitHub's documented update accepts a comment ID and body, with no issue-wide newest predicate. A read and edit can race; confirmation remains open. |
-| Refine Q4 Success Criteria 4 to distinguish acknowledged retries from uncertain delivery and fallback. | Promise unconditional exactly-once delivery. | A remote write can succeed before a timeout, and the unchanged fallback creates another comment. Confirmation remains open. |
-| Refine Q4 fit criteria to include usable source and invocation state. | Reconstruct from remote Markdown after state loss. | Jira normalization prevents a safe source round trip. |
-| Store h6 section / revision markers and original timestamps separately from duplicate identity. | HTML comments; aggregate hash only. | Fits the existing marker contract and makes parts independently reconcilable; provider round-trip evidence is still required. |
-| Retain create-only standalone fallback and separate attention reports. | Resend the aggregate as fallback; agents edit progress. | These are explicit issue constraints. |
-| Compare exact stable returned-body fingerprints separately from outgoing source. | Trust surviving markers or timestamp equality. | A human edit can preserve every marker, and provider normalization makes outgoing/returned byte equality an unsafe assumption. |
-| Bind bootstrap and terminal operations to explicit invocation manifests with committed preparation and cleanup-safe local acknowledgment caches. | Guess the newest session; require a post-close status write to have been in an earlier commit. | Startup and terminal posting occur outside an ordinary open-run action boundary; deterministic binding permits conservative reconciliation after cleanup or on a fresh clone. |
-| Apply bounded delivery work, acknowledged-success semantics, local outcome counts and retention rules. | Unbounded pagination/retries; turn failed postflight inspection into fallback; prune pending evidence. | These review refinements make failure behavior operable within the existing CLI stack. |
+| Extend the existing shared publisher with an exact aggregate source cache and available success receipts. | Per-verb posting policy; reconstruct outgoing text from returned Markdown. | Keeps one code path and avoids Jira formatting round trips while allowing a new comment when state is unavailable. |
+| Use original body plus structured action identity for best-effort deduplication. | Timestamp hash; step number alone; unconditional exactly-once delivery. | Stable evidence suppresses known duplicates; lost evidence must not stop the workflow. |
+| Preserve prior report text and append changed output as a new section where possible. | Replace an earlier section silently. | Existing sections may already have been read. |
+| Keep Q1 separate auto / phase ownership, Q2 disclosed notification limits and Q3 the qualified two-comment outcome. | Shared auto/phase comment; universal silence; absolute two-comment cap. | The owner accepted those recommendations. |
+| Accept newest-at-final-preflight with local serialization and postflight detection. Decision: `826-newest-at-final-preflight` in `docs/decisions.jsonl`. | Require literal global chronology or claim provider atomicity. | The owner accepted the remote read/write race; unavailable lock or revision evidence uses a new comment. |
+| Accept possible duplicates after bounded reconciliation followed by new-comment fallback. Decision: `826-uncertain-write-fallback-duplicates` in `docs/decisions.jsonl`. | Block until unconditional exactly-once delivery is proven. | The owner accepted duplicate risk, and the later clarification requires workflow continuation. |
+| Retain all three trackers and require authenticated disposable-target contract evidence for implementation acceptance claims. Decision: `826-three-provider-contract-evidence` in `docs/decisions.jsonl`. | Narrow the requested tracker scope. | Provider verification remains required work; unavailable evidence never becomes a runtime comment gate. |
+| Require bounded lost-response probes and reconciliation/fallback fixtures. Decision: `826-lost-response-recovery-evidence` in `docs/decisions.jsonl`. | Claim recovery passed from the read-only spike. | Verify bounded success recognition, new-comment fallback and workflow continuation when delivery remains uncertain. |
+| Require lifecycle fixtures across restart/adoption, auto transfer, post-close response loss, cleanup and fresh clones. Decision: `826-lifecycle-persistence-fixtures` in `docs/decisions.jsonl`. | Leave those boundaries untested. | The later clarification permits fresh comments and occasional loss/duplicates, so fixtures verify safe nonfatal degradation rather than mandate durable exactly-once recovery. |
+| Use one active publisher per invocation and roll over on unavailable source or conflicting revision evidence. Decision: `826-single-active-publisher` in `docs/decisions.jsonl`. | Add a shared remote coordination service. | Fits the CLI model; uncertain ownership never authorizes editing foreign content. |
+| Make all commenting best effort: eligible append, then new comment, then best-effort friction and continue. Decision: `826-commenting-best-effort-never-fails-workflow` in `docs/decisions.jsonl`. | Fail or block a workflow on comment delivery, locks, source, receipts, recovery or failure logging. | This later owner clarification controls earlier conflicting guarantees; occasional lost or duplicate comments are acceptable. |
+| Retain h6 section markers, original timestamps and exact source separate from returned-representation evidence. | HTML comments; aggregate hash alone; returned Markdown as source. | Supports available duplicate detection and safe append eligibility without turning missing evidence into a workflow failure. |
+| Keep separate attention/terminal creation and agents' create-only fallback, both nonfatal. | Hide attention reports in progress; require agents to edit prior comments. | Preserves visible attention reports and the existing agent boundary while following the best-effort rule. |
 
 ## Approaches Considered
 
 <!-- prettier-ignore -->
 | Approach | Verdict | Why |
 | --- | --- | --- |
-| Durable exact sections, source bodies and separate delivery records, with risk-premortem recovery layered in | KEPT | Best handles resume, normalization, partial delivery and uncertain responses within existing CLI boundaries. |
-| Mutable active snapshot with a pending-operation field | MERGED | Atomic snapshot preparation is useful, but all segment identities and acknowledgments must remain available; an active-only cache loses retry evidence. |
-| Outbox-only cache | REJECTED | Cleanup or a fresh clone loses the authoritative source and bootstrap state cannot be the lasting run record. |
-| Re-render old progress from workflow artifacts | REJECTED | Historical artifacts and renderers can change, and fileless calls lack replay inputs. Saving rendered source is simpler. |
+| Small progress-source cache, available receipts and bounded append/new-comment fallback | KEPT | Satisfies the owner's best-effort behavior with the existing shared posting path. |
+| Durable prepared/acknowledged delivery journal, historical aggregate snapshots and pending-operation gates | REJECTED | Adds recovery and lifecycle obligations that conflict with continuing after commenting problems; occasional loss and duplicates are acceptable. |
+| Reconstruct outgoing progress from remote comment Markdown | REJECTED | Jira transforms returned text, so repeated edits can damage previous sections. |
+| Per-verb aggregation or a new remote coordination service | REJECTED | Duplicates the shared publisher or expands deployment beyond the requested CLI feature. |
 
 ## Trade-offs Accepted
 
-- Durable source and delivery records add an internal format and more small artifacts. They preserve exact source across ordinary resume and avoid lossy tracker round trips.
-- Full-body edits cost more bytes as a segment grows. Provider budgets bound each segment, and rollover keeps calls proportional to one segment.
-- Conservative rollover produces extra comments after external edits, unavailable source or unsupported evidence. It protects existing content and makes degradation visible.
-- Visible h6 markers add a small amount of issue text. They support independently recoverable sections using the repository's established marker style.
-- Q2 accepts notification limitations. Consolidation reduces clutter even where the provider or project still notifies on edits.
-- The recommended concurrency and uncertainty guarantees are weaker than literal global ordering / exactly-once promises. They are proposals for owner confirmation, not settled permissions.
+- The owner accepts occasional missing or duplicate comments. Bounded delivery and workflow continuation take precedence over unconditional delivery guarantees.
+- An eligible engine-owned progress comment receives a best-effort append. Human replies/edits, missing source, lock trouble, unsupported editing or an uncertain append can produce another comment.
+- The engine retains its own aggregate source for ordinary appends. State loss can reset progress and duplicate detection without requiring a durable journal or historical snapshots.
+- A final eligibility check and postflight detection cannot make provider creation and editing atomic. The owner accepted that race.
+- Consolidation reduces clutter even where provider or project notification rules still send notifications on edits.
+- Friction logging is best effort too. If it fails, a brief warning is sufficient and the workflow continues.
 
 ## Risks & Open Questions
 
-- **Chronology departure from Q4:** Accept newest-at-final-preflight, with local serialization and postflight detection, as the enforceable boundary? Options: A) Accept this boundary — consolidation ships with an explicit remote race. · B) Retain the literal never-edit-after-an-intervening-comment guarantee — block editing on any adapter without verified atomic support. Recommended: A), because the documented GitHub update contract supplies no issue-wide newest predicate. Default if unanswered: B); the strict accepted guarantee remains unresolved and must not be silently weakened.
-- **Uncertain-delivery departure from Q4:** Accept that an unresolved write followed by the unchanged agent fallback may duplicate a report? Options: A) Accept the disclosed exception after attempted reconciliation — preserves the required fallback behavior. · B) Require unconditional no-duplicate delivery — block the posting change until a compatible idempotent provider / fallback contract is proven. Recommended: A), because local records cannot prove a remote outcome through an outage. Default if unanswered: B); unconditional retry deduplication remains unresolved.
-- **Provider contract evidence after the spike:** Linear's first-party schema settles edit support, and the read-only GitHub sample settles only the metadata prerequisites recorded in the matrix. Live mutation, normalization, external-edit detection, pagination and exact size boundaries remain unverified across the full provider matrix; the spike found no `BKIT_LINEAR_API_KEY` or `BKIT_JIRA_API_KEY`. Options: A) Retain all three adapters in scope and require authenticated disposable-target contract evidence before their consolidation acceptance — preserves the requested outcome without claiming a pass. · B) Ask the owner to narrow delivery to verified adapters and file separate work for the rest — permits a smaller release but departs from the issue. Recommended: A), because unavailable credentials do not prove that an adapter cannot meet the contract. Default if unanswered: A); each incomplete matrix row remains an acceptance blocker, and standalone fallback does not close it.
-- **Lost-response recovery evidence:** The spike did not inject a lost create/edit response, so recovery is designed but unproven through the production read path. Options: A) Require a bounded mutation-and-discard probe on each accepted adapter plus implementation fixtures for reconciliation — verifies that stable identity and representation evidence survive the actual transport. · B) Ship without that evidence and disclose recovery as experimental — leaves an essential delivery claim unverified. Recommended: A), because source inspection cannot establish a remote acknowledgment lost in transit. Default if unanswered: A); no exactly-once claim or successful reconciliation result is inferred from the read-only spike.
-- **Lifecycle persistence evidence:** Bootstrap/adoption and terminal ownership are specified above, but the spike could not execute mechanisms that do not yet exist. Options: A) Require implementation fixtures covering restart before/after adoption, auto worktree transfer, post-close acknowledgment loss, session/worktree cleanup and fresh-clone reconciliation — validates the selected lifecycle without implementing it during design. · B) Drop persistence across those edges — reduces work but invalidates the proposed retry/resume outcome. Recommended: A), because deterministic source and receipt ownership are necessary for the accepted resume behavior. Default if unanswered: A); the lifecycle remains unproven until those fixtures exercise the implementation.
-- **Source loss / cross-machine concurrency:** Durable artifacts cover committed state, while another machine can act on stale uncommitted state and no local lock coordinates it. Options: A) Require one active publisher per invocation and roll over on missing source or conflicting revision evidence — fits the CLI workflow model. · B) Add a shared remote coordination service — expands deployment and ownership substantially. Recommended: A). Default if unanswered: A); report conflicts and never overwrite uncertain foreign revisions.
+No unanswered owner questions remain.
+
+### Remaining verification requirements
+
+- All three adapters remain in scope. The read-only spike established only the recorded metadata prerequisites. Complete authenticated disposable-target create/edit/read, normalization, external-edit detection, pagination and exact size-boundary evidence as implementation verification. The spike lacked Linear/Jira credentials; report missing evidence honestly while allowing running workflows to use best-effort new comments.
+- Lost-response tests must exercise bounded success recognition, new-comment fallback, possible duplicates, exhausted delivery and workflow continuation. The read-only spike did not prove those outcomes.
+- Lifecycle fixtures must cover restart before/after run association, auto worktree transfer, post-close response loss, session/worktree cleanup and fresh clones. Missing state must safely start new progress without blocking the workflow.
+- Verify that cache, receipt, lock, transport, reconciliation and friction-recording errors are contained within commenting. Independent decision/failure/handover/close reports must still be attempted, and substantive step failures must retain their existing meaning.
+- Local locks do not coordinate different machines. Test conflicts conservatively: skip append and attempt a new comment rather than overwrite uncertain foreign content.
 
 ## Suggested Workstreams
 
@@ -265,25 +249,9 @@ Append durable local outcomes for `create`, `append`, `dedupe`, `rollover`, `con
 
 #### Scope
 
-Extend the existing GitHub, Linear and Jira adapters with typed create, edit and inspection contracts, stable target/comment/author identities, creation ordering, bounded pagination, returned-representation fingerprints and any verified revision conditions. Establish the adapter capability matrix, exact body counting units and budgets, h6 marker extraction, notification limitations and safe degradation when evidence is unavailable. Retain the selected transports and the zero-runtime-dependency boundary.
+Extend existing GitHub, Linear and Jira adapters with typed create/edit/inspection results, stable target/comment/author identity, creation ordering, bounded pagination and available returned-representation/revision evidence. Establish complete-body counting and provider limits, h6 marker behavior and notification caveats. Keep the selected transports and zero-runtime-dependency boundary.
 
-Carry the chronology and uncertain-delivery departures from Q4 as owner decisions with their stated strict defaults. Preserve the all-three-provider scope and the provider-evidence question; unavailable mutation or limit evidence remains an acceptance blocker. Define the contract probes needed to finish that evidence without treating the read-only spike as a mutation pass. Full implementation recovery and integration evidence belongs to WS-5.
-
-#### Requires
-
-[]
-
-#### Rationale
-
-The shared publisher needs a dependable interpretation of provider identity, ordering, body limits and edit eligibility. These are one adapter boundary, and neither local locks nor generic retry policy can supply missing remote guarantees.
-
-### WS-2: Invocation ownership and durable delivery records
-
-#### Scope
-
-Extend existing run artifacts, action records and Git-common bootstrap storage with the Invocation, Section, Segment, Prepared operation, Acknowledgment and Uncertainty records. Retain immutable original bodies and prepared aggregate snapshots, stable original-body/action identities, original UTC timestamps, deterministic operation IDs, compatible historical success receipts and atomic local preparation.
-
-Specify explicit session invocation context and restartable adoption into a status path/run number, refusing conflicting bindings. Cover auto's fileless Start Workflow and Dispatch, cleanup-safe transfer to the phase worktree with separate phase ownership, pre-close terminal preparation and post-close acknowledgment journals, fresh-clone reconciliation inputs, source-loss rollover and the retention/storage-growth rules. Carry the lifecycle-persistence and one-active-publisher questions with their recorded defaults. This workstream owns the local representation and lifecycle; WS-3 uses them for publication.
+Apply the owner-approved final-preflight race and possible duplicate/loss boundaries. Keep all three trackers in scope and collect authenticated contract evidence as implementation verification. Missing or unsupported comment capabilities select best-effort new-comment behavior at runtime.
 
 #### Requires
 
@@ -291,17 +259,33 @@ Specify explicit session invocation context and restartable adoption into a stat
 
 #### Rationale
 
-Source ownership and operation identity span startup, normal execution and cleanup. They form one durable lifecycle that can be specified independently of provider transport details and reused by every publication outcome.
+One adapter boundary interprets provider ordering, ownership, edit eligibility and body limits for the shared publisher.
 
-### WS-3: Shared progress publication and bounded recovery
+### WS-2: Run ownership and progress source state
 
 #### Scope
 
-Extend `postForVerb` / `postCommentOnce` with the central report classification order, routine aggregation and separate decision/failure/handover/terminal creation. Keep exact standalone `comment` / `commentFile` payloads for the agent fallback. Apply the accepted Q1-Q3 behavior and the strict Q4 defaults until the owner settles the proposed departures.
+Extend existing invocation/action context and Git-common outbox helpers with a small versioned active-progress cache containing the exact engine aggregate, target/invocation, comment identity, available revision evidence and section identities. Use existing receipts for known duplicates and atomic state replacement where practical.
 
-Use WS-1's inspection evidence and WS-2's records to deduplicate across segments, append changed report versions immutably, check ownership/newest-created status/fingerprints, seal ineligible segments and prepare before mutation. Extend the existing splitter for complete-body budgeting, deterministic Unicode-safe parts, h6 markers and per-part acknowledgment. Cover partial success, deleted targets, external edits, source loss and unsupported capabilities.
+Pass explicit ownership through fileless startup/auto calls and normal run association; keep auto and its dispatched phase separate. Missing/corrupt state, failed association, cleanup and fresh clones start fresh comments. Keep cache, receipt and lock failures nonfatal. Do not add historical aggregate snapshots, durable pending operations or post-close acknowledgment journals.
 
-Reuse narrow ownership-aware locks with the 30-second acquisition bound, proven-dead recovery and finalizer release. Enforce the 60-second network budget, pagination/attempt caps and reconciliation before ambiguous-write retry. Preserve positively acknowledged success after postflight-read failure, retain pending evidence after receipt failure, and let independent attention reports proceed without hiding them behind pending routine operations. Record every designed Delivery outcome with redacted context and stable logical-operation identity.
+#### Requires
+
+[]
+
+#### Rationale
+
+The engine needs its own source for safe appends and enough context to avoid editing another run's comment. Best-effort fallback removes the need for a durable delivery subsystem.
+
+### WS-3: Shared progress publication and bounded fallback
+
+#### Scope
+
+Extend `postForVerb` / `postCommentOnce` with central routine/attention classification, available duplicate suppression and eligible latest-comment appending. Failed, uncertain or unavailable append selects a new comment containing the current report. Preserve exact standalone `comment` / `commentFile` payloads.
+
+Contain all comment-specific failures, bound network/lock/read attempts, reserve a new-comment fallback opportunity and release owned locks best effort. Positively acknowledged delivery stays successful after cache/receipt/postflight failure. Exhausted publication logs friction best effort and returns control without changing the substantive step verdict. Prior routine uncertainty cannot block independent attention or terminal reports.
+
+Extend the existing splitter for verified complete-body budgets and Unicode-safe parts. Use available part receipts without claiming unconditional delivery.
 
 #### Requires
 
@@ -309,15 +293,15 @@ Reuse narrow ownership-aware locks with the 30-second acquisition bound, proven-
 
 #### Rationale
 
-Classification, aggregation, mutation and recovery share the same delivery state machine. Separating them into independently releasable changes would create gaps in duplicate handling, conversation preservation or failure reporting.
+Classification, safe append and nonfatal fallback form one shared posting behavior across every workflow.
 
-### WS-4: Workflow integration, diagnostics and compatibility documentation
+### WS-4: Workflow integration and compatibility documentation
 
 #### Scope
 
-Pass the missing invocation association through existing callers and lifecycle boundaries without adding per-verb aggregation policy. Integrate bootstrap adoption, auto transfer and pre-close preparation/post-close acknowledgment with existing setup, commit and cleanup ordering. Preserve issue-less behavior, legacy receipt compatibility, new-segment behavior for old runs without source state and the manual Tracker work comments rule.
+Pass only missing invocation context through existing callers. Clarify engine-owned progress updates versus agents' verbatim create-only fallback. Update source clauses, all provider/workflow fallback blocks and gates, interaction/capability catalog, workflow catalog, CLI result contract and rendered host mirrors together.
 
-Clarify the shared workflow clause so engine-owned progress edits are distinct from agents' verbatim create-only fallback. Update the source clause, tracker interaction/capability catalog, workflow catalog and CLI result contract together, and render the host mirrors through the existing install path. Document the recovery/retention procedure, exact safe next inspection for unresolved operations, notification caveats and pending-evidence preservation. Expose the local delivery summary with attempts, logical successes, dedupes, rollover reasons, recurring failures, unresolved operations and retained source/snapshot bytes, using WS-3's outcomes and no hosted metrics system.
+Make engine/MCP comment attempts, receipt/state/lock handling and best-effort friction explicitly nonfatal. Keep substantive workflow errors and Failure Path reports meaningful. Preserve issue-less behavior, existing receipts and the separate manual Tracker work comments rule. Document notification caveats, occasional lost/duplicate reports and state-reset behavior.
 
 #### Requires
 
@@ -325,15 +309,17 @@ Clarify the shared workflow clause so engine-owned progress edits are distinct f
 
 #### Rationale
 
-The shared publisher depends on correct identity at every call site and on cleanup preserving its evidence. The matching workflow and operator contract must change in the same deliverable so agents continue to use the fallback correctly on every host.
+Every caller and agent must interpret failed comments consistently so a successful step cannot be failed by a fallback or diagnostic error.
 
-### WS-5: Delivery acceptance and recovery evidence
+### WS-5: Commenting acceptance and failure-continuation evidence
 
 #### Scope
 
-Verify the full Acceptance Scenario and all identified edge cases through the existing test and workflow-fixture boundaries. Cover central classification, exact and changed retries, timestamp stability, human replies/edits, remote races under the owner-selected boundary, deletion, rollover, Unicode/header-inclusive limits, multipart partial success, pending writes, acknowledged writes with failed postflight reads, failed receipts, bounded pagination/locks/network attempts and independent attention delivery.
+Verify the complete best-effort Acceptance Scenario through existing tests and workflow fixtures: central classification, normal two-comment outcome, known duplicates, changed reports, timestamps, replies/edits, remote races, cache loss, size limits, partial parts, lock failures and bounded reads/retries.
 
-Complete the provider matrix's authenticated disposable-target create/edit/read, external-edit, pagination and boundary evidence for every accepted adapter, preserving blocked status where prerequisites are unavailable. Exercise the lost-response mutation-and-discard probes through the production inspection path and fixtures for restart before/after adoption, auto worktree transfer, terminal acknowledgment loss, cleanup and fresh-clone reconciliation. Confirm backward-compatible receipts, issue-less behavior, create-only fallback payloads, redacted diagnostics, local counts and host-rendered wording. Carry the provider-contract, lost-response and lifecycle-evidence questions through acceptance rather than interpreting design completion as evidence of their success.
+Complete authenticated disposable-target provider contracts and lost-response probes where credentials/targets are available. Cover restart/run association, auto transfer, close response loss, cleanup and fresh clones. Fault-inject every comment boundary, including receipts and friction logging, and assert that workflow work continues with the intended substantive result. Confirm attention/terminal comments are attempted independently, fallback bodies stay verbatim and logs redact secrets.
+
+Unavailable live evidence remains reported verification work; it does not authorize fabricated passes or introduce a runtime delivery gate.
 
 #### Requires
 
@@ -341,17 +327,19 @@ Complete the provider matrix's authenticated disposable-target create/edit/read,
 
 #### Rationale
 
-The feature's observable result crosses provider, durable-state and workflow boundaries. Its final evidence must exercise that combined behavior; read-only metadata observations alone cannot establish it.
+The observable behavior includes successful consolidation and continued workflow execution when any part of commenting fails.
 
 ## Suggested Plans
 
-### P-1: Consolidate workflow progress with durable delivery recovery
+### P-1: Consolidate workflow progress with best-effort commenting
 
 #### Deliverable
 
-Ship the shared per-invocation progress publisher across GitHub, Linear and Jira, with exact retained source, durable recovery at startup/auto/close boundaries, separate attention and final reports, compatible create-only fallback, bounded operations, complete diagnostics and synchronized workflow documentation. The plan includes the evidence needed for each adapter's consolidation acceptance and the unresolved owner decisions with their strict defaults. It does not declare those decisions approved or blocked provider evidence passed.
+Ship one shared progress-comment path across GitHub, Linear and Jira: append to the latest eligible engine-owned comment when possible, try a new comment when append is unavailable or fails, and record friction best effort before continuing after exhausted delivery. Use the engine's own source cache and available receipts without durable pending-delivery gates. Preserve separate attention/final reports, create-only agent fallback, bounded operations and synchronized workflow documentation.
 
-All five workstreams belong to one release and rollback unit: adapters and records support the publisher, caller integration supplies its identity, and verification/documentation establish its usable contract. No workstream is an independent requested deliverable, so the technical sequence does not create separate filed plans.
+Apply all seven recorded owner decisions, with the later best-effort clarification controlling earlier conflicting delivery guarantees. Include provider, lost-response and lifecycle tests that prove safe degradation and continuation. Design approval does not claim unavailable live evidence passed.
+
+All five workstreams belong to one release and rollback unit. Adapters and source state support the shared publisher, workflow integration makes fallback nonfatal on every host, and verification proves that behavior. No workstream is an independent requested deliverable.
 
 #### Covers
 

@@ -1010,10 +1010,11 @@ describe("fully retired clauses", () => {
     ]);
   });
 
-  it("the removed prompt clauses stay on record, and the cut-off skips them", () => {
+  it("the removed clauses stay on record, and the cut-off skips them", () => {
     const names = [
       "execution-protocol",
       "code-reads",
+      "workflow-timeouts",
       "disregard-auto-approvals",
       "synthesise",
       "base-verdict",

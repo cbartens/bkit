@@ -208,6 +208,8 @@ Extend the existing rendered-hook corpus with positive, read-only and uncertain 
 | Include the documented missing tools and interactive-input boundary. | Leave tool inventory to an unspecified later audit. | The review identifies Claude `NotebookEdit` payload rejection, Cursor `Delete`, Antigravity `multi_replace_file_content` and Codex `write_stdin` as concrete cases. Matcher and payload coverage are both required. |
 | Keep the default Cursor driver and its upgrade outcome explicitly unverified. | Claim a managed-body update repairs its consumer-owned output envelope. | C1 did not establish delivery or failure. The design names the affected path and safe wiring boundary without authorizing a migration. |
 | Use bounded descriptor reads, a small positive read-only grammar, measured timing bounds and safe local recovery signatures. | Unbounded read-then-truncate, absence-of-writer classification, or a new monitoring subsystem. | These review improvements fit the accepted bounded advisory architecture and make failures diagnosable. |
+| Proceed with explicit unverified host delivery and Cursor upgrade boundaries; preserve current driver ownership. | Arrange a separately authorized trusted live-host verification round before claiming coverage. | The owner answered post-close Question 1 with A. Decision `787-unverified-host-delivery-boundaries` keeps the core detection design moving without claiming live delivery or authorizing an external probe or migration. |
+| Use conservative per-host budgets and the reserve/acknowledgement rules without claiming measured visibility. | Measure actual host threshold behavior after verifying a live route, before choosing validated delivery budgets. | The owner answered post-close Question 2 with A. Decision `787-conservative-host-advisory-budgets` leaves omitted, truncated and unverified blocks unacknowledged. |
 
 ## Approaches Considered
 
@@ -244,27 +246,7 @@ The risk exploration's bounds, delivery checks, safe diagnostics, state acknowle
 - **Upgrade compatibility:** Default and customized drivers need separate installation evidence. The default Cursor outer driver emits `additional_context`, and a managed-body update does not validate or repair that envelope. Retain its stated limitation until verified; a necessary change outside managed ownership needs safe wiring guidance or a separately approved migration.
 - **Secrets:** Safe reason codes and target paths are sufficient diagnostic output. Avoid command bodies, script source and environment values in output and state.
 
-### Open Question 1 — Unsettled live delivery and Cursor upgrade outcome
-
-Can a trusted Codex hook session and separately authorized Cursor edit/shell sessions establish that the model can read and act on the advisory before the pending edit, and that the default Cursor envelope carries it? C1 is `BLOCKED`: the Codex scratch hook fired zero times, and Cursor did not reach an authenticated session. Neither claim was disproven. The automatic approval reviewer rejected authenticated Cursor retries because the design request did not authorize sending the confined workspace prompt/data to the external Cursor destination. No further retry is part of this design run.
-
-Options: A) Continue with the explicit unverified coverage boundaries and preserve current driver ownership — the core detection design can proceed without claiming live delivery. · B) Arrange a separately authorized and trusted live-host verification round before claiming coverage — this can settle timing and the default Cursor envelope, but requires the missing host setup and explicit Cursor destination/data approval.
-
-Recommended: A) Continue with explicit boundaries, because the accepted scenario allows sourced host gaps and the probe did not establish a compatible live route.
-
-Default if unanswered: A) Keep Cursor/Codex timing and the default Cursor upgrade outcome unverified; authorize no external probe or migration by silence.
-
-### Open Question 2 — Unsettled complete-block visibility
-
-Which complete advisory blocks remain visible around the actual host/version output thresholds? C2 is `BLOCKED` because no live scratch advisory hook ran, so no below/above-threshold visibility experiment took place. The common 64 KiB budget is not validated.
-
-Options: A) Use the conservative per-host budgets and reserve/acknowledgement rules in this design — this bounds output using documented limits while retaining unverified visibility status. · B) After a live route is verified, measure its threshold behavior before increasing or claiming validated delivery budgets — this supplies stronger evidence but depends on resolving the live-session prerequisites.
-
-Recommended: A) Use conservative budgets now, because their purpose is to avoid oversized responses while actual visibility remains unverified.
-
-Default if unanswered: A) Keep the conservative limits, leave omitted/truncated/unverified blocks unacknowledged, and make no measured visibility claim.
-
-These are unsettled technical verification questions with conservative defaults, not a request for the owner to guess host facts. The design preserves Q1/Q3 and the prohibition on new shell blocking whichever later evidence is obtained.
+There are no outstanding owner decisions. The owner chose to proceed with the explicit unverified host boundaries under `787-unverified-host-delivery-boundaries` and the conservative budgets under `787-conservative-host-advisory-budgets`. C1 and C2 remain `BLOCKED` technical claims: no live delivery timing or complete-block visibility was established. These decisions do not authorize an external probe or migration, and preserve Q1/Q3 and the prohibition on new shell blocking.
 
 ## Suggested Workstreams
 
@@ -286,7 +268,7 @@ Lexical recognition and evidence classification are one shared contract used by 
 
 #### Scope
 
-Extend the existing GateGuard formatters and agent-read-file predicate to provide the same general authoring advisory for shell and edit-tool targets. Consume the WS-1 evidence through the shared advice path, retaining the investigation, new-file and configuration checklists. Separate preparation, host-budgeted selection and acknowledgement; reserve notice capacity, report omitted known targets and leave omitted, truncated, unknown or unverified-delivery targets unacknowledged. Normalize warning identity across channels in the existing session/agent scope. Preserve sequential deduplication, state fallback, concurrency limits, `off` behavior and the accepted shell-advisory/deny-mode interaction. Use the reviewed conservative host budgets while Open Question 2 remains unverified.
+Extend the existing GateGuard formatters and agent-read-file predicate to provide the same general authoring advisory for shell and edit-tool targets. Consume the WS-1 evidence through the shared advice path, retaining the investigation, new-file and configuration checklists. Separate preparation, host-budgeted selection and acknowledgement; reserve notice capacity, report omitted known targets and leave omitted, truncated, unknown or unverified-delivery targets unacknowledged. Normalize warning identity across channels in the existing session/agent scope. Preserve sequential deduplication, state fallback, concurrency limits, `off` behavior and the accepted shell-advisory/deny-mode interaction. Use the reviewed conservative host budgets under `787-conservative-host-advisory-budgets`; complete-block visibility remains unverified.
 
 #### Requires
 
@@ -300,7 +282,7 @@ Advice content, complete-block selection and warning acknowledgement jointly det
 
 #### Scope
 
-Integrate the shared detector/advice contracts through the existing rendered host hooks and matcher/payload adapters. Include Claude `NotebookEdit` and `notebook_path`, Cursor `Delete`, Antigravity `multi_replace_file_content`, existing Codex shell/patch targets and complete multi-file patch handling. Preserve each existing delivery mechanism, stronger shell decisions and the no-new-blocking/no-after-edit-check boundaries. Carry the reviewed host capability table into the delivered behavior: distinguish pre-execution emission, model receipt and an opportunity to act before the pending edit. Retain Codex interactive-input and OpenCode before-edit coverage limits. Preserve consumer-owned drivers, including the default Cursor input/output envelope, and keep its delivery/upgrade outcome unverified under Open Question 1's default. No live-host retry, external destination authorization or driver migration is implied by this workstream.
+Integrate the shared detector/advice contracts through the existing rendered host hooks and matcher/payload adapters. Include Claude `NotebookEdit` and `notebook_path`, Cursor `Delete`, Antigravity `multi_replace_file_content`, existing Codex shell/patch targets and complete multi-file patch handling. Preserve each existing delivery mechanism, stronger shell decisions and the no-new-blocking/no-after-edit-check boundaries. Carry the reviewed host capability table into the delivered behavior: distinguish pre-execution emission, model receipt and an opportunity to act before the pending edit. Retain Codex interactive-input and OpenCode before-edit coverage limits. Preserve consumer-owned drivers, including the default Cursor input/output envelope, and keep its delivery/upgrade outcome unverified under `787-unverified-host-delivery-boundaries`. No live-host retry, external destination authorization or driver migration is implied by this workstream.
 
 #### Requires
 
@@ -314,7 +296,7 @@ Tool registration, target extraction, response envelopes and managed rendering m
 
 #### Scope
 
-Update the shipped Authoring and Edit tools rules and their shared wording so template editing names `Doc Templates` and script exceptions retain authoring-read obligations. Add editor pointers to every current template opening HTML note while preserving the filling-agent Rules boxes. Use the already installed `.bkit/authoring.md`; retain the retired `lite.md` outcome. Update the canonical provider/hook guidance with the sourced coverage table, safe diagnostic/recovery signatures, conservative analysis/output limits, default/customized driver ownership and exact Cursor wiring limitation. Preserve both open verification questions and their defaults, the accepted decisions and the existing future-work record for file-type-specific advisories. Keep prompt/workflow header pointers and repo-only rules outside scope.
+Update the shipped Authoring and Edit tools rules and their shared wording so template editing names `Doc Templates` and script exceptions retain authoring-read obligations. Add editor pointers to every current template opening HTML note while preserving the filling-agent Rules boxes. Use the already installed `.bkit/authoring.md`; retain the retired `lite.md` outcome. Update the canonical provider/hook guidance with the sourced coverage table, safe diagnostic/recovery signatures, conservative analysis/output limits, default/customized driver ownership and exact Cursor wiring limitation. Preserve the unverified technical claims, the accepted decisions and the existing future-work record for file-type-specific advisories. Keep prompt/workflow header pointers and repo-only rules outside scope.
 
 #### Requires
 
@@ -328,7 +310,7 @@ The authoring reminders and operator guidance are shipped text whose accuracy de
 
 #### Scope
 
-Extend the existing behavioral, parity and install fixtures to cover the complete Evidence expected from implementation section. Establish recognition positives/readers/uncertainty, enforcement preservation, both cross-channel call orders, identity scope, off/deny behavior, state failures, complete-block batching and omitted-target acknowledgement. Measure cold-start timing and response size against the reviewed bounds. Check fresh installs and upgrades on disk, including current template pointers, preserved default/customized driver text and explicit Cursor limitations. Confirm shared advisory content and classification across host adapters while respecting different batching budgets. Keep fixture output distinct from live model visibility; carry C1/C2 and Open Questions 1/2 as unverified wherever their authorized prerequisites remain unavailable. No external probe or migration is authorized by this evidence workstream.
+Extend the existing behavioral, parity and install fixtures to cover the complete Evidence expected from implementation section. Establish recognition positives/readers/uncertainty, enforcement preservation, both cross-channel call orders, identity scope, off/deny behavior, state failures, complete-block batching and omitted-target acknowledgement. Measure cold-start timing and response size against the reviewed bounds. Check fresh installs and upgrades on disk, including current template pointers, preserved default/customized driver text and explicit Cursor limitations. Confirm shared advisory content and classification across host adapters while respecting different batching budgets. Keep fixture output distinct from live model visibility; carry C1/C2 as unverified wherever their authorized prerequisites remain unavailable, following `787-unverified-host-delivery-boundaries` and `787-conservative-host-advisory-budgets`. No external probe or migration is authorized by this evidence workstream.
 
 #### Requires
 
@@ -344,7 +326,7 @@ The deliverable is the behavior of installed, rendered hooks and shipped guidanc
 
 #### Deliverable
 
-Ship the bounded shared shell/script detector, unified checklist/advisory and warning-state flow, documented host payload coverage, consumer authoring pointers and operational guidance as one verified package change. Preserve the conservative defaults and explicit unverified host boundaries from Open Questions 1 and 2. The workstreams share changed call contracts, rendered artifacts and consumer-install verification, so they form one release and rollback unit rather than independently releasable features.
+Ship the bounded shared shell/script detector, unified checklist/advisory and warning-state flow, documented host payload coverage, consumer authoring pointers and operational guidance as one verified package change. Preserve the conservative budgets and explicit unverified host boundaries accepted under `787-conservative-host-advisory-budgets` and `787-unverified-host-delivery-boundaries`. The workstreams share changed call contracts, rendered artifacts and consumer-install verification, so they form one release and rollback unit rather than independently releasable features.
 
 #### Covers
 

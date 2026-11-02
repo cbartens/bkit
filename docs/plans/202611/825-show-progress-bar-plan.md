@@ -107,7 +107,7 @@ The engine works out the line and the agent shows it word for word, so the agent
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Acceptance Scenario confirmed:** The owner has reviewed this section.
+- [x] **Acceptance Scenario confirmed:** The owner has reviewed this section.
 
 ## 👤 ⚠️ Breaking Changes & Naming Review
 
@@ -115,7 +115,7 @@ Add the output key `progressLine` to completion commands and the pure helper `ru
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Breaking Changes confirmed:** The owner has reviewed this section.
+- [x] **Breaking Changes confirmed:** The owner has reviewed this section.
 
 ## 👤 ⚠️ Open Questions & Assumptions
 
@@ -123,14 +123,10 @@ Add the output key `progressLine` to completion commands and the pure helper `ru
 - **Assumption:** Percentages use nearest-integer rounding; filled cells use nearest-ten rounding, clamped to 0-10. A nonfinal step is capped at 99%, even when its bar has ten filled cells. If wrong, the exact expected strings change.
 - **Assumption:** Gate-only steps use the optional numeric position to distinguish ship Steps 3 and 9 from the earlier row ids their gates validate. If wrong, those steps would display 2 and 8 instead of 3 and 9.
 - **Assumption:** Claude app typography can keep the 25-character prefix intact at 375px. The engine controls characters, while the app controls layout. If wrong, the stated phone success criterion needs an owner decision on the format.
-- **Open Question:** Should a line add a short reason when the total grows, such as `· 2 groups added`?
-  - **Options:** A) Keep the specified format — derive each line from current rows and the current plan without new stored state. · B) Add the reason — define and persist a previous group count, widening the row contract and format.
-  - **Recommended:** A) Keep the specified format, because the updated denominator and group suffix already expose the current count.
-  - **Default if unanswered:** A) Keep the specified format.
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Open Questions & Assumptions confirmed:** The owner has reviewed this section.
+- [x] **Open Questions & Assumptions confirmed:** The owner has reviewed this section.
 
 ## Alternative Approaches & Recommendations
 
@@ -172,7 +168,7 @@ No prerequisite plan or new service access is required. The issue supplies the a
 - [x] **Package Management:** Existing TypeScript, Vitest and pnpm tooling is declared; this plan adds no dependency or manifest change.
 - [x] **Dependency Versions:** Ran `pnpm bkit:deps:outdated`. It exited 1 because `oxlint-tsgolint` 7.0.2004 has 7.0.2005 available, `@types/node` 24.19.2 has 26.6.5 available and `vite` 6.4.5 has 8.3.5 available. These are existing dev dependencies; no upgrade is needed for this change. Checked Node v24.16.0, pnpm 10.34.7, TypeScript 7.0.2 and Vitest 5.0.5 against the project's declared versions.
 - [x] **Existing-Solution Search:** The searches and reuse decisions are recorded below; native arithmetic and string operations cover formatting.
-- [x] **User Context:** All required files are readable. The optional suffix question has a recommended default; the phone screenshot remains an owner-run check in the Claude app.
+- [x] **User Context:** All required files are readable. The owner chose the specified format without a groups-added suffix; the phone screenshot remains an owner-run check in the Claude app.
 - [x] **Project Context:** Folded decisions and knowledge by key and timestamp, and read the relevant active summaries. Existing rules retain one status log, derive counters from saved rows, freeze attempt limits at run start and add grants without resetting attempts.
 - [x] **Testing & Quality:** Use Unit for pure calculation and single-command wrappers, Integration for saved-status/plan/command wiring, Static for text synchronization and provider renders, and a manual E2E observation for Claude app layout.
 - [x] **Prerequisite Plans:** None.
@@ -187,13 +183,13 @@ No prerequisite plan or new service access is required. The issue supplies the a
 
 ### 🔒 Gate 1: Prerequisites Check
 
-- [ ] **Acceptance Scenario confirmed:** The owner confirms the acceptance section.
-- [ ] **Breaking Changes confirmed:** The owner confirms additive output and naming.
-- [ ] **Open Questions confirmed:** The owner accepts the assumptions and default.
+- [x] **Acceptance Scenario confirmed:** The owner confirms the acceptance section.
+- [x] **Breaking Changes confirmed:** The owner confirms additive output and naming.
+- [x] **Open Questions confirmed:** The owner accepts the assumptions and default.
 - [x] **Security & Privacy checked:** Applicable handling is recorded below.
 - [x] **Reuse Inventory complete:** Capabilities name their searches and decisions.
 - [x] **Reuse reasons:** Every new artifact has a searched reason.
-- [ ] **Gate 1 — Verified:** Owner confirmations remain open.
+- [x] **Gate 1 — Verified:** The owner has confirmed the acceptance scenario, breaking changes, and assumptions.
 
 ## Data Schema Integration
 
@@ -243,6 +239,7 @@ None.
 - For build use `G = max(1, parsed groups)` and total `6 + 3G + 7`. Before the loop use the numbered position. Inside Steps 7-9 use `6 + 3(g-1) + (n-6)`, where `g` is the current group's one-based ordinal in parsed file order, not its marker number. Map the recorded marker number to this ordinal and use the same ordinal in `Group {g} of {G}`; sparse markers such as 1 and 5 therefore display groups 1 and 2 of 2. After the loop use `6 + 3G + (n-9)`. `Step n/16` keeps the human workflow number; it does not show the expanded unit count.
 - Duplicate numbers, conditional skips and repeated completions do not increase the denominator. Use the current completed position rather than a high-water mark or count of all completed rows, so retries can move backward.
 - Round the percentage to the nearest whole number and cap nonfinal output at 99%; final numbered completion is 100%. Produce exactly ten bar cells and a prefix of at most 25 characters. Use `Progress: {bar} {pct}% · Step {n}/{steps} {title}`, then the group suffix only inside build Steps 7-9, then the attempt suffix only above 1. Use `Attempt {a}` when the step has no limit.
+- Keep this specified format when the total grows. The updated denominator and group suffix expose the current count; add no groups-added suffix or stored previous group count.
 
 #### [MODIFY] `.bkit/core/engine/commands/workflow/steps.ts`
 

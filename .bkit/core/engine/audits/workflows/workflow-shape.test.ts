@@ -967,11 +967,9 @@ describe("auto", () => {
     expect(step1).not.toContain("case ");
   });
 
-  it("Timeouts header line says 3600 seconds, like the phase workflows", () => {
+  it("workflows impose no blanket runtime deadline on workflows or subagents", () => {
     for (const name of ALL) {
-      expect(workflow(name), name).toContain(
-        "- **Timeouts:** **If** workflow or subagent run > 3600 seconds → **Failure Path**.",
-      );
+      expect(workflow(name), name).not.toMatch(/workflow or subagent run > \d+ seconds/);
     }
   });
 });
