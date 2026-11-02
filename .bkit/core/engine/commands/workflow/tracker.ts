@@ -427,8 +427,10 @@ export function splitAt(body: string, limit: number): string[] {
     let line = raw;
     while (line.length > room) {
       flush();
-      chunks.push(line.slice(0, room));
-      line = line.slice(room);
+      const cut = room > 0 && /[\uD800-\uDBFF]/.test(line[room - 1] ?? "") ? room - 1 : room;
+      if (cut <= 0) throw new TrackerError("http-400", "comment limit cannot fit one code point");
+      chunks.push(line.slice(0, cut));
+      line = line.slice(cut);
     }
     const next = cur === "" ? line : `${cur}\n${line}`;
     if (next.length > room) {
@@ -446,6 +448,44 @@ export interface PostedComment {
   url: string | null;
   /** How many comments the body went out as (Jira splits long bodies). */
   parts: number;
+  evidence?: CommentEvidence;
+}
+
+export interface CommentEvidence {
+  id: string;
+  authorId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  fingerprint: string;
+  representation: "markdown";
+  sectionIds: string[];
+}
+
+function commentEvidence(raw: Record<string, unknown>): CommentEvidence | undefined {
+  const author = asRecord(raw.user ?? raw.author);
+  const id = raw.databaseId ?? raw.id;
+  const authorId = author.databaseId ?? author.id;
+  const createdAt = raw.created_at ?? raw.createdAt;
+  const updatedAt = raw.updated_at ?? raw.updatedAt;
+  if (
+    (typeof id !== "string" && typeof id !== "number") ||
+    typeof createdAt !== "string" ||
+    typeof updatedAt !== "string" ||
+    typeof raw.body !== "string"
+  )
+    return undefined;
+  return {
+    id: String(id),
+    authorId:
+      typeof authorId === "string" || typeof authorId === "number" ? String(authorId) : null,
+    createdAt,
+    updatedAt,
+    fingerprint: actionHash(raw.body),
+    representation: "markdown",
+    sectionIds: [
+      ...raw.body.matchAll(/(?:######[ \t]+|<h6\b[^>]*>\s*)bkit:section v1 ([a-f0-9]{64})\b/g),
+    ].map((match) => match[1]!),
+  };
 }
 
 /** Post `body` as a new comment on the target issue. Throws `TrackerError` on failure. */
@@ -465,19 +505,31 @@ export async function postComment(t: TrackerTarget, body: string): Promise<Poste
       JSON.stringify({ body }),
     );
     const parsed = parseJson(out);
-    const url = asRecord(parsed.ok ? parsed.value : null).html_url;
-    return { url: typeof url === "string" ? url : null, parts: 1 };
+    const raw = asRecord(parsed.ok ? parsed.value : null);
+    const url = raw.html_url;
+    const evidence = commentEvidence(raw);
+    return {
+      url: typeof url === "string" ? url : null,
+      parts: 1,
+      ...(evidence ? { evidence } : {}),
+    };
   }
   if (t.tracker === "linear") {
     const data = await linearGql(
-      "mutation($input: CommentCreateInput!) { commentCreate(input: $input) { success comment { url } } }",
+      "mutation($input: CommentCreateInput!) { commentCreate(input: $input) { success comment { id body url createdAt updatedAt user { id } } } }",
       { input: { issueId: t.issue, body } },
     );
     const created = asRecord(data.commentCreate);
     if (created.success !== true)
       throw new TrackerError("http-400", "linear: commentCreate failed");
-    const url = asRecord(created.comment).url;
-    return { url: typeof url === "string" ? url : null, parts: 1 };
+    const raw = asRecord(created.comment);
+    const url = raw.url;
+    const evidence = commentEvidence(raw);
+    return {
+      url: typeof url === "string" ? url : null,
+      parts: 1,
+      ...(evidence ? { evidence } : {}),
+    };
   }
   if (t.tracker === "jira") {
     const site = jiraSite(t);
@@ -505,31 +557,87 @@ export async function postComment(t: TrackerTarget, body: string): Promise<Poste
 export async function recentComments(
   t: TrackerTarget,
   n: number,
-): Promise<Array<{ body: string; url: string | null }>> {
+): Promise<Array<{ body: string; url: string | null; evidence?: CommentEvidence }>> {
   if (t.issue === null) return [];
   if (t.tracker === "github") {
     const [owner, name] = t.ownerRepo.split("/");
-    const out = gh(t, [
-      "api",
-      "graphql",
-      "-f",
-      `query=query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){issue(number:$n){comments(last:${n}){nodes{body url}}}}}`,
-      "-F",
-      `o=${owner ?? ""}`,
-      "-F",
-      `r=${name ?? ""}`,
-      "-F",
-      `n=${t.issue}`,
-    ]);
-    const parsed = parseJson(out);
-    const nodes = asRecord(
-      asRecord(asRecord(asRecord(asRecord(parsed.ok ? parsed.value : null).data).repository).issue)
-        .comments,
-    ).nodes;
-    return (Array.isArray(nodes) ? nodes : []).map((c) => {
+    const nodes: unknown[] = [];
+    const cursors = new Set<string>();
+    let before: string | undefined;
+    for (let page = 0; page < 10; page++) {
+      const out = gh(t, [
+        "api",
+        "graphql",
+        "-f",
+        `query=query($o:String!,$r:String!,$n:Int!,$before:String){repository(owner:$o,name:$r){issue(number:$n){comments(last:${Math.min(n, 100)},before:$before){nodes{id databaseId body url author{__typename ... on User{id databaseId} ... on Bot{id databaseId}} createdAt updatedAt} pageInfo{hasPreviousPage startCursor}}}}}`,
+        "-F",
+        `o=${owner ?? ""}`,
+        "-F",
+        `r=${name ?? ""}`,
+        "-F",
+        `n=${t.issue}`,
+        ...(before ? ["-f", `before=${before}`] : []),
+      ]);
+      const parsed = parseJson(out);
+      const comments = asRecord(
+        asRecord(
+          asRecord(asRecord(asRecord(parsed.ok ? parsed.value : null).data).repository).issue,
+        ).comments,
+      );
+      if (!Array.isArray(comments.nodes))
+        throw new TrackerError("http-200", "github: comment page returned no nodes");
+      nodes.unshift(...comments.nodes);
+      const info = asRecord(comments.pageInfo);
+      if (info.hasPreviousPage !== true || nodes.length >= n) break;
+      const cursor = info.startCursor;
+      if (typeof cursor !== "string" || cursor === "" || cursors.has(cursor) || page === 9)
+        throw new TrackerError("http-200", "github: comment pagination is incomplete");
+      cursors.add(cursor);
+      before = cursor;
+    }
+    return nodes.map((c) => {
       const r = asRecord(c);
-      return { body: String(r.body ?? ""), url: typeof r.url === "string" ? r.url : null };
+      const evidence = commentEvidence(r);
+      return {
+        body: String(r.body ?? ""),
+        url: typeof r.url === "string" ? r.url : null,
+        ...(evidence ? { evidence } : {}),
+      };
     });
+  }
+  if (t.tracker === "linear") {
+    const nodes: unknown[] = [];
+    const cursors = new Set<string>();
+    let after: string | null = null;
+    for (let page = 0; page < 10; page++) {
+      const data = await linearGql(
+        "query($id: String!, $after: String) { issue(id: $id) { comments(first: 100, after: $after) { nodes { id body url createdAt updatedAt user { id } } pageInfo { hasNextPage endCursor } } } }",
+        { id: t.issue, after },
+      );
+      const comments = asRecord(asRecord(data.issue).comments);
+      if (!Array.isArray(comments.nodes))
+        throw new TrackerError("http-200", "linear: comment page returned no nodes");
+      nodes.push(...comments.nodes);
+      const info = asRecord(comments.pageInfo);
+      if (info.hasNextPage !== true) break;
+      const cursor = info.endCursor;
+      if (typeof cursor !== "string" || cursor === "" || cursors.has(cursor) || page === 9)
+        throw new TrackerError("http-200", "linear: comment pagination is incomplete");
+      cursors.add(cursor);
+      after = cursor;
+    }
+    return nodes
+      .map((raw) => asRecord(raw))
+      .sort((a, b) => str(a.createdAt).localeCompare(str(b.createdAt)))
+      .slice(-n)
+      .map((raw) => {
+        const evidence = commentEvidence(raw);
+        return {
+          body: str(raw.body),
+          url: typeof raw.url === "string" ? raw.url : null,
+          ...(evidence ? { evidence } : {}),
+        };
+      });
   }
   const issue = await fetchIssue(t);
   return issue.comments.slice(-n).map((c) => ({ body: c.body, url: null }));
@@ -1041,6 +1149,188 @@ export interface OnceOptions {
   log: (line: string) => void;
 }
 
+interface ProgressSource {
+  version: 1;
+  target: string;
+  invocation: string;
+  workflow: string;
+  source: string;
+  comment: { url: string | null; evidence: CommentEvidence };
+  sections: Array<{ id: string; key: string; hash: string; at?: string }>;
+}
+
+interface ProgressBinding {
+  target: string;
+  invocation: string;
+  workflow: string;
+  file: string;
+  at?: string;
+  priorDelivery: boolean;
+}
+
+function progressBinding(t: TrackerTarget, o: OnceOptions): ProgressBinding | "conflict" | null {
+  if (!o.file || !o.key) return null;
+  const [workflow, runText, step, group, attempt] = o.key.split("/");
+  if (!workflow || !/^\d+$/.test(runText ?? "")) return null;
+  if (step === "failure") return null;
+  const runs = readRunsLenient(o.file).filter((run) => run.workflow === workflow);
+  const run = runs[Number(runText) - 1];
+  if (!run) return null;
+  const fid = path.basename(path.dirname(o.file));
+  const issue = issueIdOf(fid, t.tracker);
+  if (issue !== null && issue !== t.issue) return "conflict";
+  if (issue === null) return null;
+  const target = [t.tracker, t.ownerRepo || t.jiraSite || t.linearTeam || "", t.issue].join("/");
+  const invocation = actionHash(
+    [path.resolve(o.file), workflow, runText, run.startedAt].join("\0"),
+  );
+  const common = git(t.cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  if (!common) return null;
+  const at = run.steps.find(
+    (row) =>
+      row.step === step &&
+      (group === "-" || row.group === Number(group)) &&
+      (attempt === "-" || row.attempt === Number(attempt)),
+  )?.at;
+  const prefix = `${workflow}/${runText}/`;
+  const priorDelivery = fs
+    .readFileSync(o.file, "utf-8")
+    .split("\n")
+    .some((line) => {
+      const parsed = parseJson(line);
+      const row = asRecord(parsed.ok ? parsed.value : null);
+      return (
+        row.type === "engine-action" && typeof row.key === "string" && row.key.startsWith(prefix)
+      );
+    });
+  return {
+    target,
+    invocation,
+    workflow,
+    file: path.join(
+      common,
+      "bkit-outbox",
+      "progress",
+      `${actionHash(`${target}\0${invocation}`)}.json`,
+    ),
+    ...(at && Number.isFinite(Date.parse(at)) ? { at } : {}),
+    priorDelivery,
+  };
+}
+
+function readProgress(binding: ProgressBinding): ProgressSource | null {
+  if (!fs.existsSync(binding.file)) return null;
+  const parsed = parseJson(fs.readFileSync(binding.file, "utf-8"));
+  const raw = asRecord(parsed.ok ? parsed.value : null);
+  const comment = asRecord(raw.comment);
+  const evidence = asRecord(comment.evidence);
+  if (
+    raw.version !== 1 ||
+    raw.target !== binding.target ||
+    raw.invocation !== binding.invocation ||
+    raw.workflow !== binding.workflow ||
+    typeof raw.source !== "string" ||
+    !Array.isArray(raw.sections) ||
+    typeof evidence.id !== "string" ||
+    typeof evidence.authorId !== "string" ||
+    typeof evidence.fingerprint !== "string" ||
+    typeof evidence.createdAt !== "string" ||
+    typeof evidence.updatedAt !== "string" ||
+    evidence.representation !== "markdown" ||
+    !Array.isArray(evidence.sectionIds) ||
+    !evidence.sectionIds.every((id) => typeof id === "string") ||
+    (comment.url !== null && typeof comment.url !== "string")
+  )
+    return null;
+  const sections: ProgressSource["sections"] = [];
+  for (const value of raw.sections) {
+    const section = asRecord(value);
+    if (
+      typeof section.id !== "string" ||
+      typeof section.key !== "string" ||
+      typeof section.hash !== "string" ||
+      (section.at !== undefined && typeof section.at !== "string")
+    )
+      return null;
+    sections.push({
+      id: section.id,
+      key: section.key,
+      hash: section.hash,
+      ...(typeof section.at === "string" ? { at: section.at } : {}),
+    });
+  }
+  return {
+    version: 1,
+    target: binding.target,
+    invocation: binding.invocation,
+    workflow: binding.workflow,
+    source: raw.source,
+    comment: {
+      url: comment.url,
+      evidence: {
+        id: evidence.id,
+        authorId: evidence.authorId,
+        fingerprint: evidence.fingerprint,
+        createdAt: evidence.createdAt,
+        updatedAt: evidence.updatedAt,
+        representation: "markdown",
+        sectionIds: evidence.sectionIds,
+      },
+    },
+    sections,
+  };
+}
+
+function progressSection(body: string, binding: ProgressBinding, key: string) {
+  const hash = actionHash(body);
+  const section = {
+    id: actionHash(`${key}\0${hash}`),
+    key,
+    hash,
+    ...(binding.at ? { at: binding.at } : {}),
+  };
+  const rest = body.split("\n").slice(1).join("\n");
+  const source = stampMarker(
+    [
+      GENERATED_MARKER,
+      `###### bkit:progress v1 ${binding.invocation} 1 1`,
+      `###### bkit:section v1 ${section.id} 1/1`,
+      ...(binding.at ? [`Reported at ${binding.at}`, ""] : []),
+      rest,
+    ].join("\n"),
+  );
+  return { section, source };
+}
+
+function saveProgress(
+  binding: ProgressBinding,
+  source: string,
+  section: ProgressSource["sections"][number],
+  posted: PostedComment,
+): void {
+  if (!posted.evidence?.authorId) return;
+  const state: ProgressSource = {
+    version: 1,
+    target: binding.target,
+    invocation: binding.invocation,
+    workflow: binding.workflow,
+    source,
+    comment: { url: posted.url, evidence: posted.evidence },
+    sections: [section],
+  };
+  fs.mkdirSync(path.dirname(binding.file), { recursive: true });
+  fs.writeFileSync(binding.file, JSON.stringify(state), { mode: 0o600 });
+}
+
+function commentDiagnostic(o: OnceOptions, text: string, warnings: string[]): void {
+  const detail = redact(text);
+  try {
+    o.log(detail);
+  } catch {
+    warnings.push(`${detail}; comment diagnostic unavailable`);
+  }
+}
+
 /** The latest of `recent` that is `body` posted before: same marker hash, else same text. */
 function samePosted<T extends { body: string }>(recent: T[], body: string): T | undefined {
   const hash = markerHashOf(body);
@@ -1065,33 +1355,86 @@ export async function postCommentOnce(
   const action = "comment";
   const hash = actionHash(body);
   let posted: PostedComment;
+  let binding: ProgressBinding | "conflict" | null = null;
+  let outgoing = body;
+  let section: ProgressSource["sections"][number] | undefined;
+  const warnings: string[] = [];
   try {
-    if (o.file && o.key) {
-      const prior = alreadyDone(o.file, o.key, hash);
-      if (prior) return { done: true, action, url: prior.ref, deduped: true };
+    try {
+      binding = progressBinding(t, o);
+    } catch {
+      commentDiagnostic(
+        o,
+        "[bkit-tracker] progress association unavailable; creating standalone comment",
+        warnings,
+      );
+    }
+    if (o.file && o.key && binding !== "conflict") {
+      try {
+        const prior = alreadyDone(o.file, o.key, hash);
+        if (prior) return { done: true, action, url: prior.ref, deduped: true };
+      } catch {
+        commentDiagnostic(
+          o,
+          "[bkit-tracker] comment receipt unavailable; creating standalone comment",
+          warnings,
+        );
+      }
+    }
+    if (binding && binding !== "conflict" && o.key && markerHashOf(body)) {
+      try {
+        const cached = readProgress(binding);
+        const rendered = progressSection(body, binding, o.key);
+        section = rendered.section;
+        if (cached || !binding.priorDelivery) outgoing = rendered.source;
+      } catch {
+        commentDiagnostic(
+          o,
+          "[bkit-tracker] progress source unavailable; creating standalone comment",
+          warnings,
+        );
+      }
     }
     if (o.recent) {
       const same = samePosted(await recentComments(t, o.recent), body);
       if (same) return { done: true, action, url: same.url, deduped: true };
     }
-    posted = await postComment(t, body);
+    posted = await postComment(t, outgoing);
   } catch (err) {
     const reason = classifyFailure(err);
-    o.log(redact(`tracker ${action} failed (${reason}): ${(err as Error).message ?? String(err)}`));
+    commentDiagnostic(
+      o,
+      `tracker ${action} failed (${reason}): ${(err as Error).message ?? String(err)}`,
+      warnings,
+    );
     return { done: false, action, reason };
   }
-  if (o.file && o.key) {
+  if (binding && binding !== "conflict" && section) {
+    try {
+      saveProgress(binding, outgoing, section, posted);
+    } catch {
+      const warning = "[bkit-tracker] posted, but progress source could not be saved";
+      commentDiagnostic(o, warning, warnings);
+      warnings.push(warning);
+    }
+  }
+  if (o.file && o.key && binding !== "conflict") {
     try {
       recordAction(o.file, { action, key: o.key, hash, ref: posted.url });
     } catch (err) {
       const warning = redact(
         `posted, but the engine-action row was not written to ${o.file}: ${(err as Error).message ?? String(err)}`,
       );
-      o.log(warning);
-      return { done: true, action, url: posted.url, warning };
+      commentDiagnostic(o, warning, warnings);
+      warnings.push(warning);
     }
   }
-  return { done: true, action, url: posted.url };
+  return {
+    done: true,
+    action,
+    url: posted.url,
+    ...(warnings.length ? { warning: warnings.join("; ") } : {}),
+  };
 }
 
 /** Run one tracker write as `action`: `done: true`, or `done: false` with the reason (logged, redacted). */

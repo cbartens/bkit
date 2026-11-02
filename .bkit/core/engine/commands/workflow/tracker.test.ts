@@ -1,3 +1,5 @@
+/// <reference lib="es2024.string" />
+
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -176,7 +178,7 @@ function progressFiles(cwd: string): string[] {
   const root = path.join(cwd, ".git/bkit-outbox");
   if (!fs.existsSync(root)) return [];
   return fs
-    .readdirSync(root, { recursive: true })
+    .readdirSync(root, { recursive: true, encoding: "utf8" })
     .map((entry) => path.join(root, entry))
     .filter((entry) => fs.statSync(entry).isFile() && entry.endsWith(".json"));
 }
