@@ -950,8 +950,10 @@ describe("check — hole classes", () => {
           // A fresh run finds no active run at `workflows start`, so the journal never holds it.
           .filter((c) => !(c.noun === "workflows" && c.verb === "start"))
           .map((c) => callRow(name, c.noun, c.verb) as StatusRow);
-      const own = u.keys.map((k) => stepRow(name, k) as StatusRow);
-      return [...take("pre"), ...own, ...take("post")];
+      // A post call sits below the step's own finish line, so it follows the step's first row
+      // and precedes a row an arm below it writes (build Step 8's group gate).
+      const [first, ...rest] = u.keys.map((k) => stepRow(name, k) as StatusRow);
+      return [...take("pre"), ...(first ? [first] : []), ...take("post"), ...rest];
     });
   };
 
@@ -1396,6 +1398,189 @@ describe("check — hole classes", () => {
       index: 2,
       group: 2,
     });
+  });
+
+  it("charges a row two steps write to the step whose visit it sits in", () => {
+    const md = [
+      "## 🧠 Step 1 — Execute",
+      ...fence(
+        "context brief --group=1",
+        FINISH("build-group-start", 1),
+        "tests red --group=1",
+        FINISH("build-plan-tests", 1),
+        "tasks open --group=1",
+        FINISH("build-plan-tasks", 1),
+      ),
+      "## 🧠 Step 2 — Repair",
+      "**Run only if** Step 1 routed here.",
+      ...fence(
+        "status route --group=1",
+        FINISH("build-plan-tests", 2),
+        "tests run --gate=a",
+        FINISH("build-plan-gaps-remediate", 2),
+      ),
+      "## 🧠 Step 3 — Close",
+      ...fence(FINISH("build-close-workflow", 3)),
+    ].join("\n");
+    const contract = deriveContract(md, "build");
+    const execute = [
+      callRow("build", "context", "brief"),
+      callRow("build", "steps", "finish"),
+      stepRow("build", "build-group-start", { group: 1 }),
+      callRow("build", "tests", "red"),
+      callRow("build", "steps", "finish"),
+      stepRow("build", "build-plan-tests", { group: 1 }),
+      callRow("build", "tasks", "open"),
+      callRow("build", "steps", "finish"),
+      stepRow("build", "build-plan-tasks", { group: 1 }),
+    ] as StatusRow[];
+    const repair = [
+      callRow("build", "status", "route"),
+      callRow("build", "steps", "finish"),
+      stepRow("build", "build-plan-tests", { group: 1 }),
+      callRow("build", "tests", "run"),
+      callRow("build", "steps", "finish"),
+      stepRow("build", "build-plan-gaps-remediate", { group: 1 }),
+    ] as StatusRow[];
+    const close = [
+      callRow("build", "steps", "finish"),
+      stepRow("build", "build-close-workflow"),
+    ] as StatusRow[];
+    for (const rows of [
+      [...execute, ...close],
+      [...execute, ...repair, ...close],
+    ]) {
+      const verdict = check(rows, contract);
+      expect(verdict.evidenceHoles).toEqual([]);
+      expect(verdict.unexpected).toEqual([]);
+    }
+    // A tests row no step's route leads to stays a hole.
+    const detour = check(
+      [
+        ...execute,
+        callRow("build", "steps", "finish"),
+        stepRow("build", "build-plan-tests", { group: 1 }),
+        ...close,
+      ] as StatusRow[],
+      contract,
+    );
+    expect(detour.evidenceHoles.map((h) => h.step)).toEqual(["build-plan-tests"]);
+  });
+
+  it("treats a numbered If sub-step as a route arm", () => {
+    const md = [
+      "## 🧠 Step 1 — Verify",
+      "1. Finish:",
+      "   ```bash",
+      '   "{BKIT}" steps finish --workflow=build --step=build-plan-verify --number=1',
+      "   ```",
+      "2. **If** the verdict is not PASS → route on the rounds:",
+      "   ```bash",
+      '   "{BKIT}" counters route --name=VERIFY_ATTEMPT',
+      "   ```",
+      "3. **Else** → Step 2.",
+      "## 🧠 Step 2 — Close",
+      ...fence(FINISH("build-close-workflow", 2)),
+    ].join("\n");
+    const contract = deriveContract(md, "build");
+    expect(contract.steps[0]!.calls.map((c) => [c.verb, c.branch])).toEqual([
+      ["finish", false],
+      ["route", true],
+    ]);
+    const verdict = check(
+      [
+        callRow("build", "steps", "finish"),
+        stepRow("build", "build-plan-verify"),
+        callRow("build", "steps", "finish"),
+        stepRow("build", "build-close-workflow"),
+      ] as StatusRow[],
+      contract,
+    );
+    expect(verdict.evidenceHoles).toEqual([]);
+  });
+
+  it("treats a named block an If line picks as a route arm", () => {
+    const md = [
+      "## 🧠 Step 1 — Close",
+      ...fence("tests green --group=1"),
+      "**If** `PUBLISH` = false → **Held close**.",
+      "**Else** → **Publish close**.",
+      "",
+      "**Held close:** Run the block below.",
+      "",
+      ...fence("roadmap feature --fid=1", "locks release --kind=workflow"),
+      "",
+      "**Publish close:**",
+      "",
+      "1. Probe:",
+      "   ```bash",
+      '   "{BKIT}" prs probe --base=dev',
+      "   ```",
+      "2. Record:",
+      "   ```bash",
+      '   "{BKIT}" steps done --workflow=build --step=build-create-pr',
+      "   ```",
+      "",
+      "### 🔒 Gate 1 — Close",
+      "",
+      ...fence("steps gate --workflow=build --step=build-create-pr"),
+    ].join("\n");
+    const contract = deriveContract(md, "build");
+    expect(contract.steps[0]!.calls.map((c) => [`${c.noun} ${c.verb}`, c.branch])).toEqual([
+      ["tests green", false],
+      ["roadmap feature", true],
+      ["locks release", true],
+      ["prs probe", true],
+      ["steps done", true],
+      ["steps gate", false],
+    ]);
+  });
+
+  it("charges a call below a step's first finish line to that step when its optional finish is skipped", () => {
+    const md = [
+      "## 🧠 Step 1 — Verify",
+      "1. Finish:",
+      "   ```bash",
+      '   "{BKIT}" steps finish --workflow=build --step=build-plan-verify --number=1',
+      "   ```",
+      "2. Tick:",
+      "   ```bash",
+      '   "{BKIT}" tasks tick --group=1',
+      "   ```",
+      "3. Route:",
+      "   - **If** PASS → run the group gate:",
+      "     ```bash",
+      '     "{BKIT}" steps finish --workflow=build --step=build-group-gate --number=1',
+      "     ```",
+      "   - **Else** → Step 2.",
+      "## 🧠 Step 2 — Repair",
+      ...fence("status route --group=1", FINISH("build-plan-gaps-remediate", 2)),
+      "## 🧠 Step 3 — Close",
+      ...fence(FINISH("build-close-workflow", 3)),
+    ].join("\n");
+    const contract = deriveContract(md, "build");
+    const verify = [
+      callRow("build", "steps", "finish"),
+      stepRow("build", "build-plan-verify"),
+      callRow("build", "tasks", "tick"),
+    ] as StatusRow[];
+    const close = [
+      callRow("build", "steps", "finish"),
+      stepRow("build", "build-close-workflow"),
+    ] as StatusRow[];
+    for (const rows of [
+      [...verify, callRow("build", "steps", "finish"), stepRow("build", "build-group-gate")],
+      [
+        ...verify,
+        callRow("build", "status", "route"),
+        callRow("build", "steps", "finish"),
+        stepRow("build", "build-plan-gaps-remediate"),
+      ],
+    ]) {
+      const verdict = check([...rows, ...close] as StatusRow[], contract);
+      expect(verdict.evidenceHoles).toEqual([]);
+      expect(verdict.unexpected).toEqual([]);
+    }
   });
 
   it("matches a call the Contract allows at any point", () => {
