@@ -1153,6 +1153,102 @@ describe("#255 — upgrade does not force-create uninstalled host/tooling module
     expect(second.status, combinedOutput(second)).toBe(0);
     expect(snapshotTree()).toEqual(afterFirst);
   });
+
+  /** The shipped pre-#748 content of a template file, read from the v6.0.0 release tag. */
+  function shippedAtV6(templateRel: string): string {
+    const env = { ...process.env };
+    delete env.GIT_DIR;
+    delete env.GIT_WORK_TREE;
+    const r = spawnSync("git", ["show", `v6.0.0:.bkit/templates/${templateRel}`], {
+      cwd: originalCwd,
+      encoding: "utf-8",
+      env,
+    });
+    expect(r.status, r.stderr).toBe(0);
+    return r.stdout;
+  }
+  const WF_FILES = ["bkit-cloud.yml", "bkit-renovate.yml", "bkit-trivy.yml"];
+  function seedOldCheckNames(): void {
+    seedOldShapeConsumer();
+    for (const f of WF_FILES) {
+      fs.writeFileSync(
+        path.join(tmpDir, ".github", "workflows", f),
+        shippedAtV6(`.github/workflows/${f}`),
+        "utf-8",
+      );
+    }
+  }
+
+  it("a second check-name migration writes nothing", () => {
+    seedOldCheckNames();
+    const upgrade = runCli(["upgrade", "--auto-apply"]);
+    expect(upgrade.status, combinedOutput(upgrade)).toBe(0);
+    const trivy = fs.readFileSync(
+      path.join(tmpDir, ".github", "workflows", "bkit-trivy.yml"),
+      "utf-8",
+    );
+    expect(trivy).toMatch(/^name: bkit-trivy$/m);
+    expect(trivy).toMatch(/^ {2}trivy:\n {4}name: bkit-trivy\n/m);
+    const renovate = fs.readFileSync(
+      path.join(tmpDir, ".github", "workflows", "bkit-renovate.yml"),
+      "utf-8",
+    );
+    expect(renovate).toMatch(/^name: bkit-renovate$/m);
+    const hashes = Object.keys(
+      readBkitVersion(path.join(tmpDir, ".bkit", "version"))!.canonicalHashes,
+    );
+    expect(hashes.filter((h) => WF_FILES.some((f) => h.endsWith(f)))).toEqual([]);
+
+    const afterFirst = snapshotTree();
+    const second = runCli(["upgrade", "--auto-apply"]);
+    expect(second.status, combinedOutput(second)).toBe(0);
+    expect(snapshotTree()).toEqual(afterFirst);
+    expect(combinedOutput(second)).not.toContain("Trivy / trivy");
+  });
+
+  it("a dry-run check-name migration writes and moves nothing", () => {
+    seedOldCheckNames();
+    const before = snapshotTree();
+    const dry = runCli(["upgrade", "--dry-run"]);
+    expect(dry.status, combinedOutput(dry)).toBe(0);
+    expect(snapshotTree()).toEqual(before);
+    const trivy = fs.readFileSync(
+      path.join(tmpDir, ".github", "workflows", "bkit-trivy.yml"),
+      "utf-8",
+    );
+    expect(trivy).toMatch(/^name: Trivy$/m);
+    expect(combinedOutput(dry)).toContain("bkit-trivy.yml");
+  });
+
+  it("a second Vale migration and a dry run write nothing", () => {
+    seedOldShapeConsumer();
+    const house = path.join(tmpDir, ".vale", "styles", "House");
+    fs.mkdirSync(house, { recursive: true });
+    for (const r of ["Filler", "Hedging", "LLMSlop", "Verbose"]) {
+      fs.writeFileSync(
+        path.join(house, `${r}.yml`),
+        shippedAtV6(`.vale/styles/House/${r}.yml`),
+        "utf-8",
+      );
+    }
+    fs.writeFileSync(path.join(tmpDir, ".vale.ini"), shippedAtV6(".vale.ini"), "utf-8");
+
+    const before = snapshotTree();
+    const dry = runCli(["upgrade", "--dry-run"]);
+    expect(dry.status, combinedOutput(dry)).toBe(0);
+    expect(snapshotTree()).toEqual(before);
+
+    const upgrade = runCli(["upgrade", "--auto-apply"]);
+    expect(upgrade.status, combinedOutput(upgrade)).toBe(0);
+    expect(fs.existsSync(path.join(tmpDir, ".vale", "styles", "Bkit", "Filler.yml"))).toBe(true);
+    expect(fs.existsSync(path.join(house, "Filler.yml"))).toBe(false);
+    expect(fs.readFileSync(path.join(tmpDir, ".vale.ini"), "utf-8")).toContain("Bkit.Filler = NO");
+
+    const afterFirst = snapshotTree();
+    const second = runCli(["upgrade", "--auto-apply"]);
+    expect(second.status, combinedOutput(second)).toBe(0);
+    expect(snapshotTree()).toEqual(afterFirst);
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -1915,3 +1915,233 @@ describe("migrateBrandedTemplateFiles (via runBkitDocs)", () => {
     expect(out).toContain("check-dependency-audit");
   });
 });
+
+/** The shipped pre-#748 content of a template file, read from the v6.0.0 release tag. */
+function shippedAtV6(templateRel: string): string {
+  const env = { ...process.env };
+  delete env.GIT_DIR;
+  delete env.GIT_WORK_TREE;
+  const r = spawnSync("git", ["show", `v6.0.0:.bkit/templates/${templateRel}`], {
+    cwd: originalCwd,
+    encoding: "utf-8",
+    env,
+  });
+  expect(r.status, r.stderr).toBe(0);
+  return r.stdout;
+}
+
+describe("migrateBrandedCheckNames (via runBkitDocs)", () => {
+  const WF = path.join(".github", "workflows");
+  const put = (file: string, text: string): void => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, text, "utf-8");
+  };
+  const run = (dryRun = false): ModuleContext => {
+    const ctx = makeCtx({ dryRun });
+    runBkitDocs(ctx.dryRun, ctx.tokens, ctx.ws, ctx.logPrefix);
+    return ctx;
+  };
+  const captured: string[] = [];
+  const out = (): string => captured.join("\n");
+
+  beforeEach(() => {
+    captured.length = 0;
+    vi.spyOn(console, "log").mockImplementation((m: unknown) => {
+      captured.push(String(m));
+    });
+    vi.spyOn(console, "warn").mockImplementation((m: unknown) => {
+      captured.push(String(m));
+    });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("rewrites shipped old workflow names and leaves customised ones", () => {
+    put(path.join(WF, "bkit-cloud.yml"), shippedAtV6(".github/workflows/bkit-cloud.yml"));
+    put(path.join(WF, "bkit-trivy.yml"), shippedAtV6(".github/workflows/bkit-trivy.yml"));
+    const custom = shippedAtV6(".github/workflows/bkit-renovate.yml").replace(
+      "name: Renovate\n",
+      "name: Renovate (ours)\n",
+    );
+    expect(custom).toContain("name: Renovate (ours)\n");
+    put(path.join(WF, "bkit-renovate.yml"), custom);
+    run();
+
+    const cloud = fs.readFileSync(path.join(WF, "bkit-cloud.yml"), "utf-8");
+    expect(cloud).toContain("name: bkit-cloud-context (${{ github.event_name }})");
+    expect(cloud).toContain("name: bkit-cloud-claude (${{ github.event_name }})");
+    expect(cloud).toContain("name: bkit-cloud-opencode (${{ github.event_name }})");
+    expect(cloud).not.toMatch(/^ {4}name: (context|claude|opencode) \(/m);
+    const trivy = fs.readFileSync(path.join(WF, "bkit-trivy.yml"), "utf-8");
+    expect(trivy).toMatch(/^name: bkit-trivy$/m);
+    expect(trivy).toMatch(/^ {2}trivy:\n {4}name: bkit-trivy\n/m);
+    expect(trivy).not.toMatch(/^name: Trivy$/m);
+    const renovate = fs.readFileSync(path.join(WF, "bkit-renovate.yml"), "utf-8");
+    expect(renovate).toContain("name: Renovate (ours)\n");
+    expect(renovate).not.toMatch(/^name: bkit-renovate$/m);
+  });
+
+  it("logs each renamed check name with the branch-protection fix", () => {
+    put(path.join(WF, "bkit-trivy.yml"), shippedAtV6(".github/workflows/bkit-trivy.yml"));
+    put(path.join(WF, "bkit-renovate.yml"), shippedAtV6(".github/workflows/bkit-renovate.yml"));
+    run();
+    const text = out();
+    expect(text).toContain("Trivy / trivy");
+    expect(text).toContain("bkit-trivy / bkit-trivy");
+    expect(text).toContain("Renovate / renovate");
+    expect(text).toContain("bkit-renovate / bkit-renovate");
+    expect(text).toMatch(/branch[- ]protection/i);
+  });
+
+  it("inserts no job name when the renovate or trivy job already has one", () => {
+    const named = (file: string, job: string): string =>
+      shippedAtV6(`.github/workflows/${file}`).replace(
+        `\n  ${job}:\n`,
+        `\n  ${job}:\n    name: our ${job}\n`,
+      );
+    put(path.join(WF, "bkit-renovate.yml"), named("bkit-renovate.yml", "renovate"));
+    put(path.join(WF, "bkit-trivy.yml"), named("bkit-trivy.yml", "trivy"));
+    put(path.join(WF, "bkit-cloud.yml"), shippedAtV6(".github/workflows/bkit-cloud.yml"));
+    run();
+    expect(fs.readFileSync(path.join(WF, "bkit-cloud.yml"), "utf-8")).toContain(
+      "name: bkit-cloud-context (",
+    );
+    const renovate = fs.readFileSync(path.join(WF, "bkit-renovate.yml"), "utf-8");
+    const trivy = fs.readFileSync(path.join(WF, "bkit-trivy.yml"), "utf-8");
+    expect(renovate).toContain("  renovate:\n    name: our renovate\n");
+    expect(trivy).toContain("  trivy:\n    name: our trivy\n");
+    expect(renovate.match(/^ {4}name:/gm)).toHaveLength(1);
+    expect(trivy.match(/^ {4}name:/gm)).toHaveLength(1);
+  });
+
+  it("rewrites the old health stub in a custom bkit.testing.ciWorkflow file", () => {
+    fs.writeFileSync(
+      "package.json",
+      JSON.stringify({ name: "x", bkit: { testing: { ciWorkflow: "ci.yml" } } }, null, 2) + "\n",
+      "utf-8",
+    );
+    const ciOld = shippedAtV6(".github/workflows/bkit-ci.yml");
+    const start = ciOld.indexOf("# bkit-stub:health");
+    const endMarker = "# DROP if you have no deployed health URL.";
+    const end = ciOld.indexOf(endMarker) + endMarker.length;
+    expect(start).toBeGreaterThan(-1);
+    const oldBlock = ciOld.slice(start, end);
+    const wrap = (block: string): string =>
+      `name: CI\njobs:\n  a:\n    steps:\n      - run: true\n# === JOB 6 ===\n${block}\n# tail\n`;
+
+    const edited = oldBlock.replace("Not a required check.", "Not a required check (ours).");
+    expect(edited).not.toBe(oldBlock);
+    put(path.join(WF, "ci.yml"), wrap(edited));
+    run();
+    expect(fs.readFileSync(path.join(WF, "ci.yml"), "utf-8")).toBe(wrap(edited));
+
+    put(path.join(WF, "ci.yml"), wrap(oldBlock));
+    run();
+    const after = fs.readFileSync(path.join(WF, "ci.yml"), "utf-8");
+    expect(after).toContain(".bkit/templates/.github/workflows/bkit-health.yml");
+    expect(after).not.toContain("copy into .github/workflows/health.yml");
+    expect(after).toContain("# tail\n");
+    expect(fs.existsSync(path.join(WF, "bkit-ci.yml"))).toBe(false);
+  });
+});
+
+describe("migrateValeHouseStyle (via runBkitDocs)", () => {
+  const RULES = ["Filler", "Hedging", "LLMSlop", "Verbose"] as const;
+  const HOUSE = path.join(".vale", "styles", "House");
+  const BKIT = path.join(".vale", "styles", "Bkit");
+  const put = (file: string, text: string): void => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, text, "utf-8");
+  };
+  const oldRule = (r: string): string => shippedAtV6(`.vale/styles/House/${r}.yml`);
+  const run = (dryRun = false): ModuleContext => {
+    const ctx = makeCtx({ dryRun });
+    runBkitDocs(ctx.dryRun, ctx.tokens, ctx.ws, ctx.logPrefix);
+    return ctx;
+  };
+  const seed = (rules: readonly string[], withIni = true): void => {
+    for (const r of rules) put(path.join(HOUSE, `${r}.yml`), oldRule(r));
+    if (withIni) put(".vale.ini", shippedAtV6(".vale.ini"));
+  };
+  const captured: string[] = [];
+
+  beforeEach(() => {
+    captured.length = 0;
+    vi.spyOn(console, "log").mockImplementation((m: unknown) => {
+      captured.push(String(m));
+    });
+    vi.spyOn(console, "warn").mockImplementation((m: unknown) => {
+      captured.push(String(m));
+    });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("moves shipped Vale rules to Bkit and keeps own and edited rules in House", () => {
+    seed(RULES);
+    const edited = oldRule("Hedging") + "\n# consumer edit\n";
+    put(path.join(HOUSE, "Hedging.yml"), edited);
+    put(path.join(HOUSE, "Mine.yml"), "extends: existence\nmessage: own\ntokens: [x]\n");
+    run();
+
+    for (const r of ["Filler", "LLMSlop", "Verbose"]) {
+      expect(fs.existsSync(path.join(HOUSE, `${r}.yml`))).toBe(false);
+      expect(fs.readFileSync(path.join(BKIT, `${r}.yml`), "utf-8")).toBe(oldRule(r));
+    }
+    expect(fs.readFileSync(path.join(HOUSE, "Hedging.yml"), "utf-8")).toBe(edited);
+    expect(fs.existsSync(path.join(BKIT, "Hedging.yml"))).toBe(false);
+    expect(fs.existsSync(path.join(HOUSE, "Mine.yml"))).toBe(true);
+    expect(fs.existsSync(path.join(BKIT, "Mine.yml"))).toBe(false);
+    const text = captured.join("\n");
+    expect(text).toContain("Hedging");
+    expect(text).toContain("mv .vale/styles/House/Hedging.yml .vale/styles/Bkit/");
+  });
+
+  it("names Bkit rules in .vale.ini and lists both styles while House keeps files", () => {
+    seed(RULES);
+    put(path.join(HOUSE, "Hedging.yml"), oldRule("Hedging") + "\n# consumer edit\n");
+    run();
+    const ini = fs.readFileSync(".vale.ini", "utf-8");
+    expect(ini).toContain("Bkit.Filler = NO");
+    expect(ini).toContain("Bkit.LLMSlop = NO");
+    expect(ini).toContain("Bkit.Verbose = NO");
+    expect(ini).not.toContain("House.Filler");
+    expect(ini).not.toContain("House.LLMSlop");
+    expect(ini).not.toContain("House.Verbose");
+    expect(ini).toContain("House.Hedging = NO");
+    const based = ini.split("\n").filter((l) => l.startsWith("BasedOnStyles"));
+    expect(based.length).toBeGreaterThan(0);
+    for (const l of based) {
+      expect(l).toMatch(/\bHouse\b/);
+      expect(l).toMatch(/\bBkit\b/);
+    }
+  });
+
+  it("moves every House rule and removes House", () => {
+    seed(RULES);
+    run();
+    for (const r of RULES) {
+      expect(fs.readFileSync(path.join(BKIT, `${r}.yml`), "utf-8")).toBe(oldRule(r));
+    }
+    expect(fs.existsSync(HOUSE)).toBe(false);
+    const ini = fs.readFileSync(".vale.ini", "utf-8");
+    expect(ini).not.toMatch(/\bHouse\b/);
+    expect(ini).toContain("BasedOnStyles = Bkit\n");
+    expect(ini).toContain("BasedOnStyles = write-good, Bkit\n");
+    for (const r of RULES) expect(ini).toContain(`Bkit.${r} = NO`);
+  });
+
+  it("moves rules without a .vale.ini", () => {
+    seed(RULES, false);
+    const ctx = run();
+    for (const r of RULES) {
+      expect(fs.existsSync(path.join(HOUSE, `${r}.yml`))).toBe(false);
+      expect(fs.readFileSync(path.join(BKIT, `${r}.yml`), "utf-8")).toBe(oldRule(r));
+    }
+    expect(fs.existsSync(".vale.ini")).toBe(false);
+    expect(ctx.ws.writes.map((w) => w.path)).not.toContain(".vale.ini");
+    expect(ctx.ws.writes.some((w) => w.path.endsWith(".vale.ini"))).toBe(false);
+  });
+});
