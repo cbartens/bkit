@@ -298,3 +298,27 @@ PENDING
 <!-- bkit:end -->
 
 ## Project Instructions
+
+### Permissions
+
+- No allow rules are needed: `git`, `jq`, `direnv exec . gh issue view|list`, `direnv exec . gh label list`, `direnv exec . gh repo view`, `mcp__github__search_issues`, `mcp__github__add_issue_comment`, `WebFetch` and `WebSearch` all ran without a prompt.
+
+### Pre-Flight / Dependencies
+
+- **Tracker:** this runtime's GitHub MCP exposes `search_issues` and `add_issue_comment` only, and `bkit issues` has no verb that reads an arbitrary issue. Read issue state, bodies and comments with `direnv exec . gh issue view <N> --json state,title,closedAt,body,comments`.
+- **Run Stats:** the inflow field on `outcome` rows is `ledgers.deferrals.added` (`.bkit/jsonl.md` § Per-Kind Fields). Sum it with `git show HEAD:.bkit/stats.jsonl | jq -s '[.[]|select(.kind=="outcome")]|map(.ledgers.deferrals.added//0)|add'`.
+
+### Step 3 — Fold
+
+- Fold at `HEAD`, keeping line numbers for the report: `git show HEAD:docs/deferrals.jsonl | jq -s 'to_entries | map(.value + {_line:(.key+1)}) | group_by(.key) | map(sort_by(.ts, ._line) | last)'`.
+- Use `firstTs // ts` for ages. A `firstTs` of `0` is a defect, not an age.
+
+### Step 5 — Source
+
+- `bkit challenge merge` writes the `low-severity` rows from `.bkit/core/engine/commands/workflow/challenge.ts` (the `reason: "low-severity"` block). Those rows carry no `status` and always `category: "correctness"`; each names its `file:line` in `description`, and that line drifts as the file changes.
+- Host-guard surfaces: Codex `.bkit/core/.codex/hooks/`, OpenCode `.bkit/core/.opencode/plugin/` plus `.bkit/core/engine/install/modules/opencode.ts`, the shared tiers in `.bkit/core/hooks/guardrails-tiers.js`, and the cloud router `.bkit/templates/.github/workflows/bkit-cloud.yml`.
+- Engine sources moved from `.bkit/src/` to `.bkit/core/engine/`. Older rows cite the old paths and line numbers; map them before calling a surface removed.
+
+### Step 7 — Cost
+
+- Churn: `git log --since=90.days --oneline HEAD -- <path>`. Add `--follow` for a single file that moved from `.bkit/src/`.
