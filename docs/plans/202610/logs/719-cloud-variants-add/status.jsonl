@@ -90,3 +90,11 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-02T01:46:59Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-tasks/1/1/comment","hash":"b8020ba67ac83d17ffd0e2a559aea96f454408c9db698f5ba25d731ca0e86874","ref":"https://github.com/cbartens/bkit/issues/719#issuecomment-6567122307","at":"2026-11-02T01:47:01Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-tasks","status":"DONE","at":"2026-11-02T01:47:01Z","parentSha":"fc26bff4bf29056b507cd1e10abd6a574cb5ac1c","artifacts":["docs/plans/202610/logs/719-cloud-variants-add/build-plan-tasks-1-log.md"],"verdict":"PASS","attempt":1,"group":1}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T01:47:04Z","noun":"tasks","verb":"open","flags":["plan","group","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T01:47:10Z","noun":"counters","verb":"derive","flags":["file","workflow","step","group","position"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T01:47:10Z","noun":"tests","verb":"green","flags":["file","workflow","group","plan","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T01:47:29Z","noun":"status","verb":"route","flags":["step","group","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T01:47:29Z","noun":"context","verb":"diff","flags":["reset-log","base","artifact","fid","step","attempt"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T01:50:44Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-verify/1/1/comment","hash":"58dce9e0581579f2c7b5260592b456425edf1e81b43df8c0db69ff5a592d51ff","ref":"https://github.com/cbartens/bkit/issues/719#issuecomment-6567165692","at":"2026-11-02T01:50:45Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-02T01:50:45Z","parentSha":"7d86d453fbb3075c66d99fb836f5ef12cca7b669","artifacts":["docs/plans/202610/logs/719-cloud-variants-add/build-plan-verify-1-1.md"],"verdict":"CONCERNS","attempt":1,"group":1,"failures":1}
